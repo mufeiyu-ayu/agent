@@ -14,9 +14,6 @@ importers:
       openai:
         specifier: ^6.39.0
         version: 6.39.0(zod@4.4.3)
-      zod:
-        specifier: ^4.4.3
-        version: 4.4.3
     devDependencies:
       '@antfu/eslint-config':
         specifier: ^9.0.0
@@ -3109,6 +3106,7 @@ snapshots:
 
   yocto-queue@0.1.0: {}
 
-  zod@4.4.3: {}
+  zod@4.4.3:
+    optional: true
 
   zwitch@2.0.4: {}
