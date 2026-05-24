@@ -27,7 +27,7 @@ async function main() {
     stream: false,
   } as unknown as ChatCompletionCreateParamsNonStreaming)
 
-  console.log(completion)
+  console.log(completion.choices[0]?.message.content)
 }
 
 main().catch((error: unknown) => {
