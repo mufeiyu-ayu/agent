@@ -1,33 +1,46 @@
-import type { ChatCompletionCreateParamsNonStreaming } from 'openai/resources/chat/completions'
+import type {
+  ChatCompletionMessageParam,
+} from 'openai/resources/chat/completions'
 
 import process from 'node:process'
 
-import OpenAI from 'openai'
+import { createChatCompletion } from './services/deepseek-chat.js'
+
+import { appendAssistantMessage } from './utils/messages.js'
 import 'dotenv/config'
 
-const openai = new OpenAI({
-  baseURL: 'https://api.deepseek.com',
-  apiKey: process.env.DEEPSEEK_API_KEY,
-})
-
 async function main() {
-  const completion = await openai.chat.completions.create({
-    messages: [
-      {
-        role: 'system',
-        content: '你是一个专业的 SEO 内容生成助手。',
-      },
-      {
-        role: 'user',
-        content: '帮我为 PUBG UC 充值页面生成英文 SEO title 和 description。',
-      },
-    ],
-    model: 'deepseek-v4-flash',
-    thinking: { type: 'disabled' },
-    stream: false,
-  } as unknown as ChatCompletionCreateParamsNonStreaming)
+  const messages: ChatCompletionMessageParam[] = [
+    {
+      role: 'system',
+      content: '你是一个简洁准确的知识问答助手。',
+    },
+    {
+      role: 'user',
+      content: 'What is the highest mountain in the world?',
+    },
+  ]
 
-  console.log(completion.choices[0]?.message.content)
+  const round1Completion = await createChatCompletion(messages)
+  const round1Answer = appendAssistantMessage(messages, round1Completion)
+
+  console.log('Round 1 Answer:')
+  console.log(round1Answer)
+  console.log('Messages Round 1:')
+  console.log(JSON.stringify(messages, null, 2))
+
+  messages.push({
+    role: 'user',
+    content: 'What is the second?',
+  })
+
+  const round2Completion = await createChatCompletion(messages)
+  const round2Answer = appendAssistantMessage(messages, round2Completion)
+
+  console.log('Round 2 Answer:')
+  console.log(round2Answer)
+  console.log('Messages Round 2:')
+  console.log(JSON.stringify(messages, null, 2))
 }
 
 main().catch((error: unknown) => {
