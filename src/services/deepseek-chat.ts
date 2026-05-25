@@ -8,6 +8,11 @@ import 'dotenv/config'
 
 let openai: OpenAI | null = null
 
+type CreateChatCompletionOptions = Pick<
+  DeepSeekChatCompletionParams,
+  'max_tokens' | 'response_format'
+>
+
 function getDeepSeekApiKey() {
   const apiKey = process.env.DEEPSEEK_API_KEY
 
@@ -27,10 +32,15 @@ function getOpenAIClient() {
   return openai
 }
 
-export async function createChatCompletion(messages: ChatCompletionMessageParam[]) {
+export async function createChatCompletion(
+  messages: ChatCompletionMessageParam[],
+  options: CreateChatCompletionOptions = {},
+) {
   const params: DeepSeekChatCompletionParams = {
     model: 'deepseek-v4-flash',
     messages,
+    ...options,
+    // 当前阶段先关闭 thinking，避免 JSON Output 示例混入推理内容字段。
     thinking: { type: 'disabled' },
     stream: false,
   }
