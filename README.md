@@ -26,8 +26,13 @@ pnpm lint:fix
 ```text
 src/
   Index.ts
+  services/
+  utils/
+  types/
+docs/
+  learning-log.md
 ```
 
 ## 当前阶段
 
-当前先不引入 Agent 框架和 MOR 架构，只跑通一次 DeepSeek API 调用。等 API Key、模型名和请求参数确认没问题后，再拆出配置、上下文、工具调用和 Agent loop。
+当前先不引入 Agent 框架和复杂工作流，重点跑通 DeepSeek API 调用，并理解 `messages` 如何维护多轮对话上下文。学习过程记录在 `docs/learning-log.md`。
