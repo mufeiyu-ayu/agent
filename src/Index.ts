@@ -1,53 +1,54 @@
 import type {
   ChatCompletionMessageParam,
 } from 'openai/resources/chat/completions'
-import type { SeoMetadataOutput } from './types/seo.js'
 
 import process from 'node:process'
 
 import { createChatCompletion } from './services/deepseek-chat.js'
-import { parseJsonOutput } from './utils/json-output.js'
+import { weatherTools } from './tools/weather.js'
 import 'dotenv/config'
 
-async function main() {
-  const systemPrompt = `
-用户会提供一个页面主题。
-请根据页面主题生成英文 SEO title 和 description。
+async function sendMessages(messages: ChatCompletionMessageParam[]) {
+  const response = await createChatCompletion(messages, {
+    tools: weatherTools,
+  })
+  const message = response.choices[0]?.message
 
-你必须只输出 json，不要输出任何解释、Markdown 或额外文本。
-
-示例 json 输出：
-{
-  "title": "Buy PUBG UC Online - Fast & Secure Top Up",
-  "description": "Top up PUBG UC instantly with secure payment and fast delivery."
+  if (message == null) {
+    throw new Error('模型没有返回 assistant message。')
+  }
+  return message
 }
-`
 
+async function main() {
   const messages: ChatCompletionMessageParam[] = [
     {
-      role: 'system',
-      content: systemPrompt,
-    },
-    {
       role: 'user',
-      content: 'PUBG UC 充值页面',
+      content: 'How\'s the weather in Hangzhou, Zhejiang?',
     },
   ]
 
-  const completion = await createChatCompletion(messages, {
-    max_tokens: 500,
-    response_format: {
-      type: 'json_object',
-    },
+  const message = await sendMessages(messages)
+  console.log(`User>\t ${messages[0]?.content}`)
+
+  const tool = message.tool_calls?.[0]
+  if (tool == null) {
+    console.log('模型没有选择调用工具，直接回复：')
+    console.log(message.content)
+    return
+  }
+
+  messages.push(message)
+  messages.push({
+    role: 'tool',
+    tool_call_id: tool.id,
+    content: '24℃',
   })
 
-  const content = completion.choices[0]?.message.content
-  const seoMetadata = parseJsonOutput<SeoMetadataOutput>(content)
+  console.log(messages, 3333)
+  const finalMessage = await sendMessages(messages)
 
-  console.log('Raw JSON Output:')
-  console.log(content, typeof content, 33)
-  console.log('Parsed Object:')
-  console.log(seoMetadata, typeof seoMetadata)
+  console.log(`Model>\t ${finalMessage.content}`)
 }
 
 main().catch((error: unknown) => {

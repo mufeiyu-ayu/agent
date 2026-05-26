@@ -10,7 +10,7 @@ let openai: OpenAI | null = null
 
 type CreateChatCompletionOptions = Pick<
   DeepSeekChatCompletionParams,
-  'max_tokens' | 'response_format'
+  'max_tokens' | 'response_format' | 'thinking' | 'tool_choice' | 'tools'
 >
 
 function getDeepSeekApiKey() {
@@ -37,11 +37,9 @@ export async function createChatCompletion(
   options: CreateChatCompletionOptions = {},
 ) {
   const params: DeepSeekChatCompletionParams = {
-    model: 'deepseek-v4-flash',
+    model: 'deepseek-v4-pro',
     messages,
     ...options,
-    // 当前阶段先关闭 thinking，避免 JSON Output 示例混入推理内容字段。
-    thinking: { type: 'disabled' },
     stream: false,
   }
 
