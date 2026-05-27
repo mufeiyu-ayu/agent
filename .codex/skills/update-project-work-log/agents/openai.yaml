@@ -1,0 +1,4 @@
+interface:
+  display_name: "更新项目工作记录"
+  short_description: "记录每次项目推进、commit 上下文、关键决策和验证结果"
+  default_prompt: "Use $update-project-work-log to record this project change in the work log."

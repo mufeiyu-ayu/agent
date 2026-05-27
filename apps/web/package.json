@@ -1,0 +1,21 @@
+{
+  "name": "@agent/web",
+  "type": "module",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "vite",
+    "typecheck": "vue-tsc --noEmit -p tsconfig.json",
+    "build": "vue-tsc --noEmit -p tsconfig.json && vite build"
+  },
+  "dependencies": {
+    "axios": "^1.13.2",
+    "vue": "^3.5.25"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^6.0.3",
+    "typescript": "^6.0.3",
+    "vite": "^7.2.4",
+    "vue-tsc": "^3.1.7"
+  }
+}

@@ -1,18 +1,18 @@
 {
-  "name": "agent-deepseek-minimal",
+  "name": "agent-ai-seo-workspace",
   "type": "module",
   "version": "0.1.0",
   "private": true,
   "packageManager": "pnpm@10.32.1",
   "scripts": {
-    "dev": "tsx src/Index.ts",
-    "typecheck": "tsc --noEmit",
+    "dev": "pnpm dev:apps",
+    "dev:api": "pnpm --filter @agent/api dev",
+    "dev:web": "pnpm --filter @agent/web dev",
+    "dev:apps": "pnpm --parallel --filter './apps/*' dev",
+    "typecheck": "pnpm typecheck:apps",
+    "typecheck:apps": "pnpm --recursive --filter './apps/*' typecheck",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix"
-  },
-  "dependencies": {
-    "dotenv": "^17.4.2",
-    "openai": "^6.39.0"
   },
   "devDependencies": {
     "@antfu/eslint-config": "^9.0.0",
