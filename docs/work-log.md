@@ -17,8 +17,8 @@
 
 | 日期 | 提交 | 类型 | 目标 | 核心完成 | 业务进度 | 讨论与决策 | 关键文件 | 验证结果 | 下一步 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 2026-05-28 | 待提交 | 架构迁移 | 从单文件 CLI 学习项目升级为前后端工程骨架 | 新增 `apps/api` Nest 后端、`apps/web` Vue/Vite 前端、axios 请求封装，删除旧根目录 `src/` 示例代码 | 前端已能通过 Vite 代理访问 Nest demo 接口 | 确认使用 Vue + Nest + pnpm workspace，根目录保留 Antfu ESLint；旧 `src/` 可删除，后续模型调用放到后端 | `pnpm-workspace.yaml`、`apps/api/src/app.controller.ts`、`apps/web/src/api/http.ts`、`apps/web/src/App.vue` | `pnpm typecheck`、`pnpm lint`、`pnpm --filter @agent/web build` 通过；`curl` 验证 `localhost:3000/api/demo` 与 `localhost:5173/api/demo` 均返回后端数据 | 在 Nest 中实现最小 AI SEO Agent 接口，并由 Vue 表单调用 |
-| 2026-05-28 | 待提交 | 工作流规范 | 新增提交专用 skill，固定提交前后的项目记忆更新流程 | 创建 `.codex/skills/git-commit`，要求 commit 前更新 `docs/work-log.md`，必要时更新 `docs/learning-log.md`，再运行验证和提交 | 项目具备更稳定的 Codex 记忆维护流程 | 明确 skill 不能自动调用 skill，但可以在 `git-commit` 流程中规定 Codex 主动执行两个日志更新职责 | `.codex/skills/git-commit/SKILL.md`、`AGENTS.md`、`docs/work-log.md` | `pnpm lint`、`pnpm typecheck`、`pnpm --filter @agent/web build` 通过 | 下次用户要求 commit 时，使用该 skill 串起记录、验证和提交 |
+| 2026-05-28 | `edb34ee feat: 搭建前后端工作区骨架` | 架构迁移 | 从单文件 CLI 学习项目升级为前后端工程骨架 | 新增 `apps/api` Nest 后端、`apps/web` Vue/Vite 前端、axios 请求封装，删除旧根目录 `src/` 示例代码 | 前端已能通过 Vite 代理访问 Nest demo 接口 | 确认使用 Vue + Nest + pnpm workspace，根目录保留 Antfu ESLint；旧 `src/` 可删除，后续模型调用放到后端 | `pnpm-workspace.yaml`、`apps/api/src/app.controller.ts`、`apps/web/src/api/http.ts`、`apps/web/src/App.vue` | `pnpm typecheck`、`pnpm lint`、`pnpm --filter @agent/web build` 通过；`curl` 验证 `localhost:3000/api/demo` 与 `localhost:5173/api/demo` 均返回后端数据 | 在 Nest 中实现最小 AI SEO Agent 接口，并由 Vue 表单调用 |
+| 2026-05-28 | `edb34ee feat: 搭建前后端工作区骨架` | 工作流规范 | 新增提交专用 skill，固定提交前后的项目记忆更新流程 | 创建 `.codex/skills/git-commit`，要求 commit 前更新 `docs/work-log.md`，必要时更新 `docs/learning-log.md`，再运行验证和提交 | 项目具备更稳定的 Codex 记忆维护流程 | 明确 skill 不能自动调用 skill，但可以在 `git-commit` 流程中规定 Codex 主动执行两个日志更新职责 | `.codex/skills/git-commit/SKILL.md`、`AGENTS.md`、`docs/work-log.md` | `pnpm lint`、`pnpm typecheck`、`pnpm --filter @agent/web build` 通过 | 下次用户要求 commit 时，使用该 skill 串起记录、验证和提交 |
 
 ## 记录规则
 
