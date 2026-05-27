@@ -23,6 +23,11 @@
     { "rule": "*semi", "severity": "off", "fixable": true }
   ],
 
+  // Resolve eslint from the matching workspace package in this monorepo
+  "eslint.workingDirectories": [
+    { "mode": "auto" }
+  ],
+
   // Enable eslint for all supported languages
   "eslint.validate": [
     "javascript",

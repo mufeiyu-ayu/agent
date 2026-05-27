@@ -27,14 +27,15 @@ const { default: antfu } = await import('@antfu/eslint-config')
 export default antfu({
   type: 'app',
   typescript: true,
+  vue: true,
   stylistic: {
     indent: 2,
     quotes: 'single',
     semi: false,
   },
   ignores: [
-    'dist',
-    'node_modules',
+    '**/dist',
+    '**/node_modules',
   ],
   rules: {
     'no-console': ['error', {

@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "tsx src/main.ts",
     "start": "node dist/main.js",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src",
+    "lint:fix": "eslint src --fix"
   },
   "dependencies": {
     "@nestjs/common": "^11.1.9",

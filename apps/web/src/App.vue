@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import type { DemoResponse } from './api/demo'
 
-import { getDemoMessage, type DemoResponse } from './api/demo'
+import { onMounted, ref } from 'vue'
+import { getDemoMessage } from './api/demo'
 
 const demo = ref<DemoResponse | null>(null)
 const loading = ref(false)
