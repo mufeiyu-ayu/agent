@@ -11,11 +11,14 @@
     "lint:fix": "eslint src --fix"
   },
   "dependencies": {
+    "@lucide/vue": "^1.17.0",
     "axios": "^1.13.2",
     "vue": "^3.5.25"
   },
   "devDependencies": {
+    "@tailwindcss/vite": "^4.3.0",
     "@vitejs/plugin-vue": "^6.0.3",
+    "tailwindcss": "^4.3.0",
     "typescript": "^6.0.3",
     "vite": "^7.2.4",
     "vue-tsc": "^3.1.7"

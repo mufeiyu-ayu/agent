@@ -175,6 +175,22 @@ TypeScript 代码应优先保证类型清晰，避免滥用 `any`。
 
 ---
 
+## 8.1 Web 前端开发约束
+
+修改 `apps/web` 下 Vue、TypeScript、Tailwind、组件、页面、hooks、utils、types、assets 或前端接口封装时，优先使用项目内 skill `.codex/skills/web-frontend-development`。
+
+该 skill 约束内容包括：
+
+- `apps/web/src` 目录职责划分
+- Vue 组件拆分规范
+- Tailwind 与真实浏览器尺寸适配
+- 移动端响应式规则
+- 主题切换设计边界
+- `api`、`hooks`、`utils`、`types` 的封装方式
+- `utils` 导出函数必须使用中文 TSDoc 注释
+
+---
+
 ## 9. 依赖和命令规则
 
 Codex 不应随意安装新依赖。
