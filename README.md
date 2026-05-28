@@ -13,6 +13,21 @@ context/  -> 项目规划和上下文
 
 ## 快速开始
 
+环境要求：
+
+```txt
+Node.js 20.19.3 推荐，至少满足 ^20.19.0 || >=22.12.0
+pnpm 10.32.1
+```
+
+如果使用 nvm：
+
+```sh
+nvm use
+corepack enable
+corepack install --global pnpm@10.32.1
+```
+
 ```sh
 pnpm install
 pnpm dev:api

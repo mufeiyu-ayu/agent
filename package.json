@@ -4,6 +4,10 @@
   "version": "0.1.0",
   "private": true,
   "packageManager": "pnpm@10.32.1",
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0",
+    "pnpm": "10.32.1"
+  },
   "scripts": {
     "dev": "pnpm dev:apps",
     "dev:api": "pnpm --filter @agent/api dev",
