@@ -358,7 +358,7 @@ docs/prompt-notes.md
 
 文档应服务于用户理解和后续复盘，不要为了形式写大量空泛内容。
 
-`docs/learning-log.md` 记录 Agent 概念学习；`docs/work-log.md` 记录项目推进、commit 上下文、关键决策和验证结果。更新工作记录时，优先使用项目内 skill `.codex/skills/update-project-work-log`。
+`docs/learning-log.md` 只记录 Agent 概念学习以及项目 agent 架构经验，禁止提交跟 agent 无关的内容；`docs/work-log.md` 记录项目推进、commit 上下文、关键决策和验证结果。更新工作记录时，优先使用项目内 skill `.codex/skills/update-project-work-log`。
 
 当用户要求提交代码、commit 或 git commit 时，优先使用项目内 skill `.codex/skills/git-commit`：提交前更新 `docs/work-log.md`，如涉及 Agent 概念学习再更新 `docs/learning-log.md`，验证通过后再创建 commit。
 
