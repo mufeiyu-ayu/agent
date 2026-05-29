@@ -23,8 +23,8 @@ description: 模块化架构开发约束。Use when creating, modifying, refacto
 当任务涉及以下情况时，应主动使用本 skill：
 
 - 新增页面、组件、接口、hook、service、tool、DTO、类型文件
-- 修改 `apps/web/src/App.vue`
-- 修改 `apps/api/src/app.controller.ts`
+- 修改 `apps/web/**`
+- 修改 `apps/api/**`
 - 接入 LLM API、Tool Calling、JSON Output、Streaming
 - 用户要求“顺手加一下逻辑”，但该逻辑会让现有文件继续膨胀
 - 代码 review 时发现单文件职责过多
