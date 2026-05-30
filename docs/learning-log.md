@@ -11,7 +11,7 @@
 | 1 | DeepSeek / OpenAI-compatible API 基础调用 | 已完成 | 能通过 TypeScript 调用模型并拿到非流式回复 |
 | 2 | `messages`、`model`、`stream`、`system prompt`、`user prompt` | 已完成 | 能解释多轮对话上下文如何通过 `messages` 维护 |
 | 3 | 基础 `LLMService` 封装 | 已完成 | 模型调用入口清晰，可复用，可替换配置 |
-| 4 | 最小 AI SEO 助手接口 | 准备中 | 能通过一个接口输入页面主题并返回 SEO 建议 |
+| 4 | 最小 AI SEO 助手接口 | 进行中 | 能通过一个接口输入页面主题并返回 SEO 建议 |
 | 5 | JSON Output | 进行中 | 能让模型稳定返回结构化 JSON，并在代码层校验 |
 | 6 | 流式输出 | 进行中 | 能理解并实现 token 级或 chunk 级响应 |
 | 7 | Tool Calling | 进行中 | 能区分模型决策、后端执行工具、工具结果回传模型 |
@@ -26,6 +26,7 @@
 | 2026-05-26 | JSON Output | 按 DeepSeek JSON Output 思路，将 SEO 示例改为通过中文 `system prompt` 规定 json 输出格式，并在请求参数中加入 `response_format: { type: 'json_object' }`，再把模型返回的 `content` 解析为业务对象。 | JSON Output、输出格式约束、`response_format`、`JSON.parse`、TypeScript 类型与运行时校验边界 | `src/Index.ts`、`src/services/deepseek-chat.ts`、`src/types/seo.ts`、`src/utils/json-output.ts` | `pnpm typecheck` 通过；此前 `pnpm dev` 已验证可返回合法 JSON 并解析成对象。 | `prompt` 负责描述目标字段，`response_format` 负责约束 JSON 语法，TypeScript 类型不能替代运行时字段校验。 | 补充 `title` / `description` 的运行时校验，再决定是否封装成最小 AI SEO 助手接口。 |
 | 2026-05-27 | Tool Calling | 按 DeepSeek 官方 demo 改写 Tool Calls 示例：定义 `get_weather` 工具，第一次请求让模型返回 `tool_calls`，追加 assistant tool call 与 `role: tool` 的工具结果后，再请求模型生成最终回答。 | Tool Calls、`tools`、`tool_calls`、`tool_call_id`、`role: tool`、模型决策与代码执行分离 | `src/Index.ts`、`src/services/deepseek-chat.ts`、`src/tools/weather.ts` | `pnpm typecheck` 通过；`pnpm dev` 已验证官方 demo 风格流程可输出杭州天气最终回答。 | 官方示例的目的不是查天气，而是演示“模型提出工具调用，代码提供工具结果，模型再生成最终回复”的协议闭环。 | 下一步把写死的 `24℃` 替换为本地函数执行，并加入 tool arguments 的解析与运行时校验。 |
 | 2026-05-27 | 流式输出 | 将入口示例改为 DeepSeek streaming 调用，新增 `createStreamingChatCompletion`，通过 `for await...of` 逐段读取 `chunk.choices[0]?.delta.content`，并对比实时输出与最终 `fullContent` 拼接结果。 | Streaming、`stream: true`、异步迭代器、chunk、`delta.content`、实时输出与完整内容拼接 | `src/Index.ts`、`src/services/deepseek-chat.ts`、`src/types/deepseek.ts` | `pnpm typecheck` 通过；`pnpm dev` 已验证可以边生成边输出，并在最后得到完整文本。 | `await` 只拿到流对象，真正消费模型输出要靠 `for await...of`；`fullContent += content` 负责拼接，`process.stdout.write` 只负责实时展示。 | 下一步进入最小 NestJS + Vue 集成前，先保留当前 streaming 示例，明确后端未来如何把 chunk 转成 SSE 给前端。 |
+| 2026-05-30 | 最小 AI SEO 助手接口 | 用 Nest 接口先跑通“输入 -> 后端业务流程 -> 确定性 SEO checks -> 结构化响应”的最小闭环，暂时用 mock 代替模型生成。 | Agent 执行流程边界、确定性 Tool 函数、模型输出后处理位置、运行时入参校验 | `apps/api/src/seo/seo.controller.ts`、`apps/api/src/seo/seo.service.ts`、`apps/api/src/seo/tools/seo-check.tool.ts` | `curl POST /api/seo/generate` 返回 `title`、`description`、`checks`；空 `pageTopic` 和多余字段返回 400。 | 本地 SEO check 现在还不是 Tool Calling，而是后端确定性工具；它解决的是“模型生成结果要由代码再校验和解释”的工程边界。 | 下一步把前端接到该接口，再用 LLMService + JSON Output 替换 Service 中的 mock 生成。 |
 
 ## 记录规则
 
