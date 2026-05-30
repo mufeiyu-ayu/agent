@@ -70,8 +70,11 @@ pnpm lint:fix
 项目规划见：
 
 ```txt
+docs/development-task-plan.md
 context/ai-seo-agent-plan.md
 ```
+
+后续开发优先以 `docs/development-task-plan.md` 作为任务基线。
 
 学习过程记录在：
 

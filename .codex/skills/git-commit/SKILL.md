@@ -19,8 +19,9 @@ description: 执行项目提交前的固定流程。Use when the user asks to co
    - 必要时读取关键 diff 或关键文件
 2. 判断是否需要更新记录：
    - 总是更新 `docs/work-log.md`，记录本次 commit 的项目推进、核心完成、验证结果和下一步。
+   - 总是检查 `docs/development-task-plan.md`。如果本次提交推进了业务任务，必须更新对应任务的 `状态`、`验收标准` 或 `下一步`；如果新增了不属于现有行的业务能力，先新增任务行。
    - 默认不要更新 `docs/learning-log.md`。只有本次提交确实包含 Agent 概念学习或 Agent 链路错误排查，例如 LLM API、`messages`、prompt、JSON Output、streaming、Tool Calling、上下文管理、记忆、评估、安全边界、Agent 可观测性，才更新学习日志。
-   - 普通工程搭建、依赖安装、UI 调整、后端基础设施、commit 上下文和项目管理信息只写 `docs/work-log.md`。
+   - 普通工程搭建、依赖安装、UI 调整、后端基础设施、commit 上下文和项目管理信息只写 `docs/work-log.md`；不要写进 `docs/development-task-plan.md`，除非它们直接改变业务任务的完成状态。
 3. 提交前验证：
    - 优先运行与本次改动相关的最小验证。
    - 常规工程改动默认运行 `pnpm lint`。
@@ -48,6 +49,7 @@ description: 执行项目提交前的固定流程。Use when the user asks to co
 
 ## 记录职责
 
+- `docs/development-task-plan.md`：记录项目完成路径和业务任务状态，是后续判断“下一步做什么”的主看板。
 - `docs/work-log.md`：记录项目推进、commit 上下文、关键决策、验证结果、下一步。
 - `docs/learning-log.md`：记录 Agent 概念学习、阶段复盘、学习问题和理解变化。
 
