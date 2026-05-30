@@ -10,6 +10,20 @@ export interface ApiSuccessResponse<T> {
   requestId?: string
 }
 
+export interface ApiErrorResponse {
+  success: false
+  code: number
+  message: string
+  error: {
+    statusCode: number
+    error: string
+    details?: unknown
+  }
+  timestamp: string
+  path: string
+  requestId?: string
+}
+
 export const http = axios.create({
   timeout: 10000,
 })

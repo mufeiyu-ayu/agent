@@ -10,12 +10,12 @@
     "useDefineForClassFields": true,
     "module": "ESNext",
     "moduleResolution": "Bundler",
-    "resolveJsonModule": true,
     "paths": {
       "@/*": [
         "./src/*"
       ]
     },
+    "resolveJsonModule": true,
     "types": [
       "vite/client",
       "node"

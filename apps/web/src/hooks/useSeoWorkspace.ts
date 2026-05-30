@@ -1,27 +1,26 @@
-import type { CopyableSeoField, GenerationStatus, SeoCheck } from '../types/seo'
+import type { ApiErrorResponse } from '../api/http'
+import type { CopyableSeoField, GenerateSeoResponse, GenerationStatus, SeoCheck } from '../types/seo'
 
+import { isAxiosError } from 'axios'
 import { computed, ref } from 'vue'
 
-import { buildSeoChecks, formatGeneratedTime } from '../utils/seo-check'
+import { generateSeoContent as requestSeoContent } from '../api/seo'
+import { formatGeneratedTime } from '../utils/seo-check'
 
 export function useSeoWorkspace() {
   const pageTopic = ref('PUBG UC 充值页面')
   const language = ref('English')
   const keywordInput = ref('')
   const keywords = ref(['PUBG UC', 'Top up', 'cheap UC', 'instant delivery'])
-  const status = ref<GenerationStatus>('success')
-  const lastGeneratedAt = ref('14:32')
+  const status = ref<GenerationStatus>('empty')
+  const lastGeneratedAt = ref('--:--')
   const copiedField = ref<CopyableSeoField | null>(null)
   const errorMessage = ref('')
 
-  const seoTitle = ref('PUBG UC Top Up | Cheap UC with Instant Delivery | Secure & Best Prices')
-  const metaDescription = ref(
-    'Top up PUBG UC securely and instantly. Best prices, 100% safe payments, fast delivery, and 24/7 support. Get cheap UC for PUBG Mobile now and enhance your gaming experience!',
-  )
+  const seoTitle = ref('')
+  const metaDescription = ref('')
 
-  const seoChecks = computed<SeoCheck[]>(() => {
-    return buildSeoChecks(seoTitle.value, metaDescription.value, keywords.value)
-  })
+  const seoChecks = ref<SeoCheck[]>([])
 
   const titleCharacterCount = computed(() => seoTitle.value.length)
   const descriptionCharacterCount = computed(() => metaDescription.value.length)
@@ -88,12 +87,13 @@ export function useSeoWorkspace() {
     keywords.value = []
     seoTitle.value = ''
     metaDescription.value = ''
+    seoChecks.value = []
     status.value = 'empty'
     errorMessage.value = ''
     copiedField.value = null
   }
 
-  function generateSeoContent() {
+  async function generateSeoContent() {
     if (!pageTopic.value.trim()) {
       status.value = 'error'
       errorMessage.value = 'Please enter a page topic before generating SEO content.'
@@ -103,14 +103,42 @@ export function useSeoWorkspace() {
     status.value = 'loading'
     errorMessage.value = ''
 
-    window.setTimeout(() => {
-      const primaryKeyword = keywords.value[0] ?? 'SEO'
+    try {
+      const result = await requestSeoContent({
+        pageTopic: pageTopic.value,
+        language: language.value,
+        keywords: keywords.value,
+      })
 
-      seoTitle.value = `${primaryKeyword} Top Up | Cheap UC with Instant Delivery | Secure & Best Prices`
-      metaDescription.value = `Top up ${primaryKeyword} securely and instantly. Best prices, 100% safe payments, fast delivery, and 24/7 support. Get cheap UC for PUBG Mobile now and enhance your gaming experience!`
-      lastGeneratedAt.value = formatGeneratedTime(new Date())
+      applySeoResult(result)
       status.value = 'success'
-    }, 720)
+    }
+    catch (error) {
+      status.value = 'error'
+      errorMessage.value = getGenerateErrorMessage(error)
+    }
+  }
+
+  function applySeoResult(result: GenerateSeoResponse) {
+    seoTitle.value = result.title
+    metaDescription.value = result.description
+    seoChecks.value = result.checks
+    lastGeneratedAt.value = formatGeneratedTime(new Date(result.generatedAt))
+  }
+
+  function getGenerateErrorMessage(error: unknown): string {
+    if (!isAxiosError<ApiErrorResponse>(error)) {
+      return 'Failed to generate SEO content. Please try again.'
+    }
+
+    const responseData = error.response?.data
+    const details = responseData?.error.details
+
+    if (Array.isArray(details) && details.length > 0) {
+      return String(details[0])
+    }
+
+    return responseData?.message ?? 'Failed to generate SEO content. Please try again.'
   }
 
   async function copyResult(field: CopyableSeoField, content: string) {

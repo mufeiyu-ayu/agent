@@ -3,8 +3,10 @@ import { Module } from '@nestjs/common'
 
 import { AppController } from './app.controller.js'
 import { RequestIdMiddleware } from './common/middleware/request-id.middleware.js'
+import { SeoModule } from './seo/seo.module.js'
 
 @Module({
+  imports: [SeoModule],
   controllers: [AppController],
 })
 export class AppModule implements NestModule {

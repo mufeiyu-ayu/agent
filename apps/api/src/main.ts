@@ -1,10 +1,11 @@
+/* eslint-disable perfectionist/sort-imports */
 import process from 'node:process'
+import 'reflect-metadata'
 
 import { NestFactory } from '@nestjs/core'
 import { AppModule } from './app.module.js'
 
 import { registerAppGlobals } from './common/bootstrap/register-app-globals.js'
-import 'reflect-metadata'
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule)

@@ -15,3 +15,16 @@ export interface SeoCheck {
   detail: string
   pass: boolean
 }
+
+export interface GenerateSeoRequest {
+  pageTopic: string
+  language: string
+  keywords: string[]
+}
+
+export interface GenerateSeoResponse {
+  title: string
+  description: string
+  checks: SeoCheck[]
+  generatedAt: string
+}
