@@ -20,7 +20,7 @@ const emit = defineEmits<{
 </script>
 
 <template>
-  <section class="flex min-h-0 flex-col overflow-hidden rounded-[28px] border border-slate-200 bg-white/82 p-5 shadow-[0_22px_55px_rgb(31_42_68/8%)]">
+  <section class="flex min-h-0 flex-col overflow-hidden p-5">
     <div class="mb-5 flex shrink-0 flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
       <div class="flex items-start gap-3">
         <span class="mt-2 size-2.5 rounded-full bg-emerald-500 shadow-[0_0_0_5px_rgb(16_185_129/12%)]" />

@@ -2,7 +2,6 @@
 import AppHeader from '../components/layout/AppHeader.vue'
 import AppSidebar from '../components/layout/AppSidebar.vue'
 import SeoInputPanel from '../components/seo/SeoInputPanel.vue'
-import SeoOrbitGraphic from '../components/seo/SeoOrbitGraphic.vue'
 import SeoResultPanel from '../components/seo/SeoResultPanel.vue'
 import { useSeoWorkspace } from '../hooks/useSeoWorkspace'
 
@@ -39,7 +38,7 @@ const {
       <div class="flex min-h-0 min-w-0 flex-col rounded-[28px] border border-slate-200/80 bg-white/55 p-4 shadow-[0_20px_70px_rgb(30_41_72/9%)] backdrop-blur-xl xl:h-full">
         <AppHeader />
 
-        <section class="grid min-h-0 flex-1 gap-4 xl:grid-cols-[minmax(520px,0.95fr)_116px_minmax(640px,1.15fr)] 2xl:grid-cols-[minmax(640px,0.96fr)_132px_minmax(780px,1.18fr)]">
+        <section class="grid min-h-0 flex-1 grid-cols-1 overflow-hidden rounded-[28px] border border-slate-200 bg-white/82 shadow-[0_22px_55px_rgb(31_42_68/8%)] xl:grid-cols-[1fr_1px_1fr]">
           <SeoInputPanel
             v-model:page-topic="pageTopic"
             v-model:language="language"
@@ -56,7 +55,7 @@ const {
             @reset="resetWorkspace"
           />
 
-          <SeoOrbitGraphic />
+          <div class="hidden xl:block xl:h-full xl:w-px xl:bg-slate-200" />
 
           <SeoResultPanel
             :status="status"
