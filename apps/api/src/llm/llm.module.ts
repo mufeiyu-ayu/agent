@@ -1,0 +1,13 @@
+import { Global, Module } from '@nestjs/common'
+import { LLMService } from './llm.service.js'
+
+/**
+ * LLM 模块 — 全局模块。
+ * 使用 @Global() 装饰器，让 LLMService 可以在任何模块中直接注入，无需重复 import。
+ */
+@Global()
+@Module({
+  providers: [LLMService],
+  exports: [LLMService],
+})
+export class LlmModule {}
