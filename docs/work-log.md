@@ -12,7 +12,7 @@
 | 后端 API | 基础设施完成 | NestJS demo 接口 `GET /api/demo` 可访问；已接入统一响应结构、全局校验管道、全局异常过滤器和 request id 中间件 | 新增最小 AI SEO Agent 接口 |
 | 前端 Web | UI 模块化拆分完成 | 接入 Tailwind CSS 与 Lucide，按设计稿重构 AI SEO Agent 单屏工作台；补齐 `components`、`views`、`hooks`、`types`、`utils`、`assets` 等前端基础目录；已将 `App.vue` 拆分为 `views`、`components`、`hooks`、`types`、`utils` | 将前端表单接入后端 SEO 生成接口 |
 | Agent 能力 | 学习迁移中 | 已学习 API 调用、多轮对话、JSON Output、Tool Calling、Streaming | 将 DeepSeek JSON Output 落到 Nest 服务中 |
-| 项目任务计划 | 已建立 | 新增 `docs/development-task-plan.md` 作为后续开发主任务看板，覆盖已完成、当前准备中和后续未开始的业务任务 | 每次业务提交时同步更新对应任务状态 |
+| 项目任务计划 | 已优化 | 已建立 `docs/development-task-plan.md` 主任务看板，并按用户前端强、Nest 生疏、目标转 Agent 应用开发的能力曲线重排 T05-T20 和 Sprint 节奏 | 按 Sprint 1 先实现 SEO 接口骨架和本地 SEO checks，不接模型 |
 
 ## 工作记录
 
@@ -29,6 +29,7 @@
 | 2026-05-30 | 待提交 | 技术决策 | 收紧学习日志和提交流程边界，避免学习记录混入普通项目进度 | 清理 `docs/learning-log.md` 中的工程搭建、工具迁移和后端基础设施记录；更新 Codex / Claude 学习日志 skill，明确只记录 Agent 概念学习；更新 `git-commit` skill，要求 `learning-log.md` 不和普通业务代码默认混在同一个提交 | 项目文档职责更清晰，学习日志用于 Agent 概念复盘，工作记录用于项目推进和提交上下文 | 确认默认工程搭建、UI 调整、依赖安装、commit 上下文、普通后端基础设施不进入学习日志；只有 LLM、messages、prompt、JSON Output、streaming、Tool Calling 等 Agent 概念学习才记录 | `docs/learning-log.md`、`.codex/skills/update-agent-learning-log/SKILL.md`、`.claude/skills/update-agent-learning-log/SKILL.md`、`.codex/skills/git-commit/SKILL.md`、`.codex/skills/update-agent-learning-log/agents/openai.yaml` | 未运行代码验证；本次只调整 Markdown 文档和 skill 规则 | 后续提交时按新规则分离学习日志与业务代码提交 |
 | 2026-05-30 | 待提交 | 工程配置 | 为前端配置 `@` 路径别名到 `apps/web/src` | 在 Vite `resolve.alias` 中配置 `@` 指向 `src`，在 `tsconfig.json` 中配置 `@/*` 到 `./src/*`，并将 `main.ts` 的入口 import 改为 `@/...` 验证别名生效 | 前端后续组件、hooks、api、types 引用可以使用稳定的 `@` 绝对路径 | TypeScript 6 下 `baseUrl` 会触发弃用错误，因此使用不含 `baseUrl` 的相对 `paths` 写法 | `apps/web/vite.config.ts`、`apps/web/tsconfig.json`、`apps/web/src/main.ts` | `pnpm --filter @agent/web typecheck`、`pnpm --filter @agent/web lint`、`pnpm --filter @agent/web build` 通过 | 后续重构前端 import 时可逐步改成 `@/...` |
 | 2026-05-30 | `d9db50d docs: 建立项目任务计划` | 技术决策 | 建立项目完成任务主看板，后续开发以任务计划为基础推进 | 新增 `docs/development-task-plan.md`，按产品定义、前端工作台、后端接口、LLM 调用、JSON Output、SEO 检查、联调、错误恢复、Streaming、Tool Calling、评估和收尾整理项目完成任务；更新 `git-commit` skill、`AGENTS.md` 和 `README.md`，要求后续开发优先以任务计划为基线 | 项目后续推进有统一任务基线，不再只依赖工作日志里的“下一步”字段 | 任务计划只记录业务相关事项，不记录环境、lint、格式化、提交流程等杂项；`work-log.md` 记录发生过什么，`development-task-plan.md` 记录完成路径和状态 | `docs/development-task-plan.md`、`.codex/skills/git-commit/SKILL.md`、`AGENTS.md`、`README.md`、`docs/work-log.md` | 未运行代码验证；本次只新增和调整 Markdown 文档 | 下一步按 T05 实现 `POST /api/seo/generate` |
+| 2026-05-30 | `1ff3c4b docs: 优化 AI SEO Agent 开发任务计划` | 技术决策 | 按用户当前能力重新优化 AI SEO Agent 开发任务计划 | 将 T05-T20 重排为更细的任务链路，新增计划设计原则、当前主线和 Sprint 1-6；明确先做 SEO 接口骨架和本地 checks，再做前端真实调用，最后接 LLMService、JSON Output 和端到端闭环 | 项目后续开发节奏更贴合“前端强、Nest 生疏、目标转 Agent 应用开发”的能力曲线，降低一次性同时学习 Nest、LLM、JSON Output 和前端联调的负担 | 确认当前不继续优化 UI，也不提前做 RAG、多 Agent、数据库、Streaming；第一阶段只做 Nest SEO 模块、DTO、Controller、Service 和本地 SEO 检查工具 | `docs/development-task-plan.md`、`docs/work-log.md` | 未运行代码验证；本次只调整 Markdown 文档 | 按 Sprint 1 开始实现 T05 和 T07 最小版本：SEO 接口骨架 + 后端本地 SEO checks |
 
 ## 记录规则
 
