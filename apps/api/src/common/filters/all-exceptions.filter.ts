@@ -40,12 +40,24 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const request = context.getRequest<RequestWithId>()
     const statusCode = getExceptionStatusCode(exception)
     const normalizedException = normalizeException(exception, statusCode)
+    const requestId = getRequestId(request)
+    const requestPath = getRequestPath(request)
+    const isAiException = exception instanceof LLMError || exception instanceof SeoGenerationOutputError
+    const logMessage = formatExceptionLogMessage({
+      message: normalizedException.message,
+      path: requestPath,
+      requestId,
+      statusCode,
+    })
 
     if (statusCode >= HttpStatus.INTERNAL_SERVER_ERROR) {
       this.logger.error(
-        normalizedException.message,
+        logMessage,
         exception instanceof Error ? exception.stack : undefined,
       )
+    }
+    else if (isAiException) {
+      this.logger.warn(logMessage)
     }
 
     const payload: ApiErrorResponse = {
@@ -58,9 +70,8 @@ export class AllExceptionsFilter implements ExceptionFilter {
         details: normalizedException.details,
       },
       timestamp: new Date().toISOString(),
-      path: getRequestPath(request),
+      path: requestPath,
     }
-    const requestId = getRequestId(request)
 
     if (requestId) {
       payload.requestId = requestId
@@ -205,4 +216,15 @@ function getDefaultMessage(statusCode: number): string {
 
 function getDefaultError(statusCode: number): string {
   return HttpStatus[statusCode] ?? 'Error'
+}
+
+function formatExceptionLogMessage(input: {
+  message: string
+  path: string
+  requestId: string | undefined
+  statusCode: number
+}): string {
+  const requestId = input.requestId ?? 'no-request-id'
+
+  return `[${requestId}] ${input.statusCode} ${input.path} - ${input.message}`
 }

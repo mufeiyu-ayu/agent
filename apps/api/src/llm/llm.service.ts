@@ -11,6 +11,8 @@ import {
   LLMServerError,
 } from './llm.types.js'
 
+const LLM_REQUEST_TIMEOUT_MS = 10000
+
 class LLMConfigError extends LLMInvalidRequestError {
   constructor(configName: 'LLM_BASE_URL' | 'LLM_MODEL') {
     const message = `请在项目根目录 .env 中设置 ${configName}`
@@ -73,6 +75,7 @@ export class LLMService {
     try {
       response = await fetch(`${normalizedBaseUrl}/chat/completions`, {
         method: 'POST',
+        signal: AbortSignal.timeout(LLM_REQUEST_TIMEOUT_MS),
         headers: {
           'Authorization': `Bearer ${apiKey}`,
           'Content-Type': 'application/json',
@@ -123,7 +126,13 @@ export class LLMService {
       }
     }
 
-    const data = (await response.json()) as OpenAIChatResponse
+    let data: OpenAIChatResponse
+    try {
+      data = (await response.json()) as OpenAIChatResponse
+    }
+    catch (cause) {
+      throw new LLMApiError('LLM API 返回内容不是合法 JSON，请稍后重试', cause)
+    }
 
     // 2xx 但 body 仍可能包含 error（如 API 层面的逻辑错误）
     if (data.error) {

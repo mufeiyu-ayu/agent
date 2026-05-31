@@ -191,7 +191,7 @@ export function useSeoWorkspace() {
     }
 
     const responseData = error.response?.data
-    const details = responseData?.error.details
+    const details = responseData?.error?.details
 
     if (Array.isArray(details) && details.length > 0) {
       return String(details[0])
