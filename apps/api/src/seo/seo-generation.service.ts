@@ -22,6 +22,7 @@ export class SeoGenerationService {
       maxTokens: 500,
     })
 
+    console.log(rawContent, 'llm 返回数据')
     return parseSeoGenerationOutput(rawContent)
   }
 }

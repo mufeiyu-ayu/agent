@@ -5,6 +5,7 @@
   "private": true,
   "scripts": {
     "dev": "tsx --env-file-if-exists=../../.env src/main.ts",
+    "dev:watch": "tsx watch --env-file-if-exists=../../.env src/main.ts",
     "start": "node dist/main.js",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src",

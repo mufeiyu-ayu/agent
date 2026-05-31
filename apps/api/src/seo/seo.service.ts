@@ -1,26 +1,28 @@
 import type { GenerateSeoDto } from './dto/generate-seo.dto.js'
 import type { GenerateSeoContentResult } from './types/seo.types.js'
-import { Injectable } from '@nestjs/common'
+import { Inject, Injectable } from '@nestjs/common'
 
+import { SeoGenerationService } from './seo-generation.service.js'
 import { buildSeoChecks } from './tools/seo-check.tool.js'
-import { buildMockDescription, buildMockTitle, normalizeKeywords } from './utils/seo-content.util.js'
+import { normalizeKeywords } from './utils/seo-content.util.js'
 
 @Injectable()
 export class SeoService {
-  generateSeoContent(input: GenerateSeoDto): GenerateSeoContentResult {
-    const pageTopic = input.pageTopic.trim()
-    const language = input.language.trim()
+  constructor(
+    @Inject(SeoGenerationService)
+    private readonly seoGenerationService: SeoGenerationService,
+  ) {}
+
+  async generateSeoContent(input: GenerateSeoDto): Promise<GenerateSeoContentResult> {
     const keywords = normalizeKeywords(input.keywords)
-    const primaryKeyword = keywords[0] ?? pageTopic
-    const title = buildMockTitle(primaryKeyword)
-    const description = buildMockDescription(primaryKeyword, pageTopic, language)
+    const generated = await this.seoGenerationService.generateWithJsonOutput(input)
 
     return {
-      title,
-      description,
+      title: generated.title,
+      description: generated.description,
       checks: buildSeoChecks({
-        title,
-        description,
+        title: generated.title,
+        description: generated.description,
         keywords,
       }),
       generatedAt: new Date().toISOString(),

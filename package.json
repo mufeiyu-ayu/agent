@@ -11,6 +11,7 @@
   "scripts": {
     "dev": "pnpm dev:apps",
     "dev:api": "pnpm --filter @agent/api dev",
+    "dev:api:watch": "pnpm --filter @agent/api dev:watch",
     "dev:web": "pnpm --filter @agent/web dev",
     "dev:apps": "pnpm --parallel --filter './apps/*' dev",
     "typecheck": "pnpm typecheck:apps",
