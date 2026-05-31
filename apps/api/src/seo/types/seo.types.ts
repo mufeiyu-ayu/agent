@@ -16,3 +16,18 @@ export interface SeoCheckInput {
   description: string
   keywords: string[]
 }
+
+export interface SeoGenerationOutput {
+  title: string
+  description: string
+}
+
+export class SeoGenerationOutputError extends Error {
+  constructor(
+    message: string,
+    public readonly detail?: unknown,
+  ) {
+    super(message)
+    this.name = 'SeoGenerationOutputError'
+  }
+}
