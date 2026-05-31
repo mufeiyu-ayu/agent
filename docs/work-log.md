@@ -9,10 +9,10 @@
 | 模块 | 当前状态 | 已完成 | 下一步 |
 | --- | --- | --- | --- |
 | 项目架构 | 进行中 | 已迁移为 `pnpm workspace`，拆分 `apps/api` 与 `apps/web` | 把 AI SEO 能力接入后端接口 |
-| 后端 API | SEO 接口已接入真实 LLM 生成 | NestJS demo 接口 `GET /api/demo` 可访问；已接入统一响应结构、全局校验管道、全局异常过滤器和 request id 中间件；`POST /api/seo/generate` 已从 mock 切到 `SeoGenerationService` + LLM JSON Output + 本地 checks；LLM 配置统一从项目根目录 `.env` 读取；T12 基础错误恢复已收口 | 继续完善 T13 输入边界与成本控制 |
-| 前端 Web | 已完成最小闭环联调 | 接入 Tailwind CSS 与 Lucide，按设计稿重构 AI SEO Agent 单屏工作台；补齐 `components`、`views`、`hooks`、`types`、`utils`、`assets` 等前端基础目录；已将 `App.vue` 拆分为 `views`、`components`、`hooks`、`types`、`utils`；`useSeoWorkspace` 已调用真实后端接口并完成 Vue -> Nest -> LLM -> SEO Tool -> Vue 联调；生成失败可展示后端 message | 继续完善输入边界和结果体验 |
-| Agent 能力 | 学习迁移中 | 已学习 API 调用、多轮对话、JSON Output、Tool Calling、Streaming；已完成后端 `LLMService` 基础封装、SEO JSON Output、真实模型生成和基础错误恢复 | 按 T13 练习输入边界、成本控制和 Agent 安全边界 |
-| 项目任务计划 | 已优化 | 已建立 `docs/development-task-plan.md` 主任务看板，并按用户前端强、Nest 生疏、目标转 Agent 应用开发的能力曲线重排 T05-T20 和 Sprint 节奏；T05 至 T12 已完成 | 进入 T13：输入边界与成本控制 |
+| 后端 API | SEO 接口已接入真实 LLM 生成 | NestJS demo 接口 `GET /api/demo` 可访问；已接入统一响应结构、全局校验管道、全局异常过滤器和 request id 中间件；`POST /api/seo/generate` 已从 mock 切到 `SeoGenerationService` + LLM JSON Output + 本地 checks；LLM 配置统一从项目根目录 `.env` 读取；T12 基础错误恢复已收口 | 暂缓 T13 细化规则，优先准备 T16 基础效果评估 |
+| 前端 Web | 已完成最小闭环联调 | 接入 Tailwind CSS 与 Lucide，按设计稿重构 AI SEO Agent 单屏工作台；补齐 `components`、`views`、`hooks`、`types`、`utils`、`assets` 等前端基础目录；已将 `App.vue` 拆分为 `views`、`components`、`hooks`、`types`、`utils`；`useSeoWorkspace` 已调用真实后端接口并完成 Vue -> Nest -> LLM -> SEO Tool -> Vue 联调；生成失败可展示后端 message | 暂不扩展输入边界，后续围绕评估样例观察生成效果 |
+| Agent 能力 | 学习迁移中 | 已学习 API 调用、多轮对话、JSON Output、Tool Calling、Streaming；已完成后端 `LLMService` 基础封装、SEO JSON Output、真实模型生成和基础错误恢复 | 按 T16 练习固定样例、人工评估检查点和 prompt 回归观察 |
+| 项目任务计划 | 已优化 | 已建立 `docs/development-task-plan.md` 主任务看板，并按用户前端强、Nest 生疏、目标转 Agent 应用开发的能力曲线重排 T05-T20 和 Sprint 节奏；T05 至 T12 已完成，T13 暂缓 | 进入 T16：基础效果评估准备 |
 
 ## 工作记录
 
@@ -41,6 +41,7 @@
 | 2026-05-31 | `6267db3 feat: 补齐生成错误提示与前端校验` | 功能开发 | 开始 T12：补齐模型失败的后端错误映射和前端 message 提示 | 全局异常过滤器识别 `LLMError` 与 `SeoGenerationOutputError`，映射为安全的 HTTP message；前端新增轻量 `AppMessage`，生成失败时展示后端错误 message；生成请求增加请求锁和 800ms 节流；移除模型原始输出调试日志 | T12 进入进行中，坏 key 场景已能从后端返回可读错误，并由前端具备弹窗展示入口 | 暂不引入第三方 toast 包；先保证错误语义正确，再用项目内组件展示；错误响应保留 `requestId`，不返回 API Key 或原始模型错误详情 | `apps/api/src/common/filters/all-exceptions.filter.ts`、`apps/api/src/seo/seo-generation.service.ts`、`apps/web/src/components/common/AppMessage.vue`、`apps/web/src/hooks/useSeoWorkspace.ts`、`apps/web/src/views/SeoWorkspaceView.vue`、`apps/web/src/types/seo.ts` | `pnpm --filter @agent/api typecheck`、`pnpm --filter @agent/api lint`、`pnpm --filter @agent/web typecheck`、`pnpm --filter @agent/web lint`、`pnpm --filter @agent/web build`、`pnpm typecheck`、`pnpm lint` 通过；`LLM_API_KEY=bad-key PORT=3002 pnpm dev:api:watch` 后 `curl POST /api/seo/generate` 返回 502 和 `AI 服务认证失败，请检查服务端模型配置` | 继续补充网络失败、限流和 JSON 格式异常样例；用户可在浏览器验证 message 展示和重复点击拦截 |
 | 2026-05-31 | `0d526b1 fix: 收口 T12 基础错误恢复` | 接口联调 | 完成 T11：前端到真实 LLM 的最小闭环联调 | 使用前端页面完成 Vue -> Nest -> LLM -> JSON validator -> SEO checks -> Vue 展示链路验证；正常生成、前端必填校验和坏 key 错误提示均已由用户手动验证 | T11 已完成，项目进入错误恢复和输入边界完善阶段 | 以用户手动浏览器验收为准，本次只同步任务状态，不改代码 | `docs/development-task-plan.md`、`docs/work-log.md` | 未运行代码验证；本次仅更新文档状态 | 继续推进 T12 剩余失败样例和 T13 前后端输入规则对齐 |
 | 2026-05-31 | `0d526b1 fix: 收口 T12 基础错误恢复` | 工程修复 | 收口 T12：优化基础错误恢复实现 | 后端异常日志补充 `requestId`、请求路径和状态码；AI 相关 4xx 错误也会写入 warn 日志便于定位；`LLMService` 为模型请求增加 10 秒超时，并将成功响应 JSON 解析失败包装为安全的 LLM 错误；前端生成失败时读取 `error.details` 改为安全可选链 | T12 已完成，错误恢复不再继续扩张状态码体系，下一步集中做 T13 输入边界 | 保留现有 LLM 错误类型和全局异常映射，不新增依赖、不引入第三方 toast；失败提示继续以安全 message 返回给前端，详细错误只留在服务端日志 | `apps/api/src/common/filters/all-exceptions.filter.ts`、`apps/api/src/llm/llm.service.ts`、`apps/web/src/hooks/useSeoWorkspace.ts`、`docs/development-task-plan.md`、`docs/work-log.md` | `pnpm --filter @agent/api typecheck`、`pnpm --filter @agent/api lint`、`pnpm --filter @agent/web typecheck`、`pnpm --filter @agent/web lint`、`pnpm --filter @agent/web build` 通过 | 进入 T13：对齐前后端页面主题长度、关键词数量、关键词长度和成本控制规则 |
+| 2026-05-31 | 待提交 | 技术决策 | 暂缓 T13 输入边界细化，调整下一步为 T16 基础效果评估 | 将 T13 标记为暂缓，只保留已完成的必填校验；将 T16 标记为准备中，下一步先整理固定输入样例和人工评估检查点 | 项目从继续加输入限制，调整为先观察和评估真实模型生成质量 | 当前产品输入规则后续可能变化，过早限制长度、关键词数量和成本规则容易返工；评估样例对后续 prompt、JSON Output 和结果体验更有复用价值 | `docs/development-task-plan.md`、`docs/work-log.md` | 未运行代码验证；本次只调整任务计划和工作记录 | 展示 T16 的最小实施方案，并在确认后再写入具体评估样例 |
 
 ## 记录规则
 
