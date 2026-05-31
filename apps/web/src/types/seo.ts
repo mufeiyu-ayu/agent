@@ -28,3 +28,16 @@ export interface GenerateSeoResponse {
   checks: SeoCheck[]
   generatedAt: string
 }
+
+export interface SeoInputValidationErrors {
+  pageTopic?: string
+  keywords?: string
+}
+
+export type AppMessageType = 'error' | 'success' | 'info'
+
+export interface AppMessageState {
+  visible: boolean
+  type: AppMessageType
+  text: string
+}

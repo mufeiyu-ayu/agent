@@ -3,6 +3,17 @@ import type { ApiErrorResponse } from '../types/api-response.type.js'
 import type { HttpResponseLike, RequestWithId } from '../utils/http-request.util.js'
 import { Catch, HttpException, HttpStatus, Logger } from '@nestjs/common'
 
+import {
+  LLMApiError,
+  LLMAuthError,
+  LLMBalanceError,
+  LLMError,
+  LLMInvalidRequestError,
+  LLMNetworkError,
+  LLMRateLimitError,
+  LLMServerError,
+} from '../../llm/llm.types.js'
+import { SeoGenerationOutputError } from '../../seo/types/seo.types.js'
 import { getRequestId, getRequestPath } from '../utils/http-request.util.js'
 
 interface HttpExceptionResponse {
@@ -64,6 +75,14 @@ function getExceptionStatusCode(exception: unknown): number {
     return exception.getStatus()
   }
 
+  if (exception instanceof LLMRateLimitError) {
+    return HttpStatus.TOO_MANY_REQUESTS
+  }
+
+  if (exception instanceof LLMError || exception instanceof SeoGenerationOutputError) {
+    return getAiGatewayStatusCode(exception)
+  }
+
   return HttpStatus.INTERNAL_SERVER_ERROR
 }
 
@@ -92,12 +111,76 @@ function normalizeException(exception: unknown, statusCode: number): NormalizedE
     }
   }
 
+  if (exception instanceof LLMError || exception instanceof SeoGenerationOutputError) {
+    return normalizeAiException(exception, statusCode)
+  }
+
   return {
     statusCode,
     message: getDefaultMessage(statusCode),
     error: getDefaultError(statusCode),
     details: [],
   }
+}
+
+function getAiGatewayStatusCode(exception: LLMError | SeoGenerationOutputError): number {
+  if (exception instanceof LLMRateLimitError) {
+    return HttpStatus.TOO_MANY_REQUESTS
+  }
+
+  if (exception instanceof LLMNetworkError || exception instanceof LLMServerError) {
+    return HttpStatus.SERVICE_UNAVAILABLE
+  }
+
+  return HttpStatus.BAD_GATEWAY
+}
+
+function normalizeAiException(
+  exception: LLMError | SeoGenerationOutputError,
+  statusCode: number,
+): NormalizedException {
+  return {
+    statusCode,
+    message: getAiExceptionMessage(exception),
+    error: getDefaultError(statusCode),
+    details: [],
+  }
+}
+
+function getAiExceptionMessage(exception: LLMError | SeoGenerationOutputError): string {
+  if (exception instanceof LLMAuthError) {
+    return 'AI 服务认证失败，请检查服务端模型配置'
+  }
+
+  if (exception instanceof LLMBalanceError) {
+    return 'AI 服务账户余额不足，请检查模型平台账户状态'
+  }
+
+  if (exception instanceof LLMRateLimitError) {
+    return 'AI 服务请求过于频繁，请稍后重试'
+  }
+
+  if (exception instanceof LLMInvalidRequestError) {
+    return 'AI 服务请求参数异常，请稍后重试'
+  }
+
+  if (exception instanceof LLMNetworkError) {
+    return 'AI 服务暂时不可用，请稍后重试'
+  }
+
+  if (exception instanceof LLMServerError) {
+    return 'AI 服务繁忙，请稍后重试'
+  }
+
+  if (exception instanceof LLMApiError) {
+    return 'AI 服务返回异常，请稍后重试'
+  }
+
+  if (exception instanceof SeoGenerationOutputError) {
+    return 'AI 返回格式异常，请重试'
+  }
+
+  return 'AI 服务异常，请稍后重试'
 }
 
 function isHttpExceptionResponse(value: unknown): value is HttpExceptionResponse {

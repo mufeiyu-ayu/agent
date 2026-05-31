@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { GenerationStatus } from '../../types/seo'
+import type { GenerationStatus, SeoInputValidationErrors } from '../../types/seo'
 
 import { ChevronDown, Globe2, Info, LoaderCircle, Plus, RefreshCw, Sparkles, X } from '@lucide/vue'
 import { computed } from 'vue'
@@ -16,6 +16,7 @@ const props = defineProps<{
   statusCardTitle: string
   statusCardDescription: string
   completionPercent: number
+  validationErrors: SeoInputValidationErrors
 }>()
 
 const emit = defineEmits<{
@@ -41,6 +42,20 @@ const languageModel = computed({
 const keywordInputModel = computed({
   get: () => props.keywordInput,
   set: value => emit('update:keywordInput', value),
+})
+
+const pageTopicInputClass = computed(() => {
+  if (props.validationErrors.pageTopic)
+    return 'border-rose-300 focus:border-rose-400 focus:ring-rose-100'
+
+  return 'border-slate-200 focus:border-blue-400 focus:ring-blue-100'
+})
+
+const keywordGroupClass = computed(() => {
+  if (props.validationErrors.keywords)
+    return 'border-rose-300 bg-rose-50/30'
+
+  return 'border-transparent focus-within:border-blue-200 focus-within:bg-blue-50/60'
 })
 </script>
 
@@ -69,12 +84,22 @@ const keywordInputModel = computed({
             v-model="pageTopicModel"
             maxlength="200"
             rows="4"
-            class="min-h-28 w-full resize-none rounded-[16px] border border-slate-200 bg-white px-5 py-4 text-[15px] font-semibold text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:ring-4 focus:ring-blue-100"
+            class="min-h-28 w-full resize-none rounded-[16px] border bg-white px-5 py-4 text-[15px] font-semibold text-slate-900 outline-none transition placeholder:text-slate-400 focus:ring-4"
+            :class="pageTopicInputClass"
+            :aria-invalid="Boolean(validationErrors.pageTopic)"
+            aria-describedby="page-topic-error"
             placeholder="例如：PUBG UC 充值页面"
           />
           <span class="absolute bottom-4 right-5 text-sm font-semibold text-slate-400">
             {{ pageTopicCharacterCount }} / 200
           </span>
+        </span>
+        <span
+          v-if="validationErrors.pageTopic"
+          id="page-topic-error"
+          class="mt-2 block text-sm font-semibold text-rose-600"
+        >
+          {{ validationErrors.pageTopic }}
         </span>
       </label>
 
@@ -104,34 +129,48 @@ const keywordInputModel = computed({
           <Info class="text-slate-400" :size="16" />
         </div>
 
-        <div class="flex flex-wrap gap-3">
-          <span
-            v-for="keyword in keywords"
-            :key="keyword"
-            class="inline-flex h-10 items-center gap-3 rounded-[12px] border border-slate-200 bg-slate-50 px-4 text-sm font-semibold text-slate-700 shadow-sm"
-          >
-            {{ keyword }}
-            <button
-              type="button"
-              :aria-label="`Remove ${keyword}`"
-              :title="`Remove ${keyword}`"
-              class="text-slate-500 transition hover:text-rose-500"
-              @click="emit('removeKeyword', keyword)"
+        <div
+          class="rounded-[16px] border p-2 transition"
+          :class="keywordGroupClass"
+        >
+          <div class="flex flex-wrap gap-3">
+            <span
+              v-for="keyword in keywords"
+              :key="keyword"
+              class="inline-flex h-10 items-center gap-3 rounded-[12px] border border-slate-200 bg-slate-50 px-4 text-sm font-semibold text-slate-700 shadow-sm"
             >
-              <X :size="16" />
-            </button>
-          </span>
+              {{ keyword }}
+              <button
+                type="button"
+                :aria-label="`Remove ${keyword}`"
+                :title="`Remove ${keyword}`"
+                class="text-slate-500 transition hover:text-rose-500"
+                @click="emit('removeKeyword', keyword)"
+              >
+                <X :size="16" />
+              </button>
+            </span>
 
-          <label class="inline-flex h-10 min-w-44 items-center gap-2 rounded-[12px] border border-dashed border-transparent px-2 text-sm font-semibold text-slate-500 transition focus-within:border-blue-200 focus-within:bg-blue-50/60">
-            <Plus :size="18" />
-            <input
-              v-model="keywordInputModel"
-              class="min-w-0 flex-1 bg-transparent outline-none placeholder:text-slate-400"
-              placeholder="Add keyword"
-              @keydown.enter.prevent="emit('addKeyword')"
-            >
-          </label>
+            <label class="inline-flex h-10 min-w-44 items-center gap-2 rounded-[12px] border border-dashed border-transparent px-2 text-sm font-semibold text-slate-500 transition">
+              <Plus :size="18" />
+              <input
+                v-model="keywordInputModel"
+                class="min-w-0 flex-1 bg-transparent outline-none placeholder:text-slate-400"
+                :aria-invalid="Boolean(validationErrors.keywords)"
+                aria-describedby="keywords-error"
+                placeholder="Add keyword"
+                @keydown.enter.prevent="emit('addKeyword')"
+              >
+            </label>
+          </div>
         </div>
+        <p
+          v-if="validationErrors.keywords"
+          id="keywords-error"
+          class="mt-2 text-sm font-semibold text-rose-600"
+        >
+          {{ validationErrors.keywords }}
+        </p>
       </div>
 
       <div class="grid grid-cols-[minmax(0,1fr)_64px] gap-4">

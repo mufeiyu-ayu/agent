@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppMessage from '../components/common/AppMessage.vue'
 import AppHeader from '../components/layout/AppHeader.vue'
 import AppSidebar from '../components/layout/AppSidebar.vue'
 import SeoInputPanel from '../components/seo/SeoInputPanel.vue'
@@ -13,6 +14,8 @@ const {
   status,
   lastGeneratedAt,
   copiedField,
+  validationErrors,
+  appMessage,
   seoTitle,
   metaDescription,
   seoChecks,
@@ -26,12 +29,20 @@ const {
   removeKeyword,
   resetWorkspace,
   generateSeoContent,
+  hideMessage,
   copyResult,
 } = useSeoWorkspace()
 </script>
 
 <template>
   <main class="min-h-screen w-full overflow-y-auto p-3 text-slate-950 xl:h-screen xl:overflow-hidden xl:p-3">
+    <AppMessage
+      :visible="appMessage.visible"
+      :type="appMessage.type"
+      :text="appMessage.text"
+      @close="hideMessage"
+    />
+
     <div class="grid min-h-0 w-full gap-3 lg:grid-cols-[76px_minmax(0,1fr)] xl:h-full">
       <AppSidebar />
 
@@ -49,6 +60,7 @@ const {
             :status-card-title="statusCardTitle"
             :status-card-description="statusCardDescription"
             :completion-percent="completionPercent"
+            :validation-errors="validationErrors"
             @add-keyword="addKeyword"
             @remove-keyword="removeKeyword"
             @generate="generateSeoContent"

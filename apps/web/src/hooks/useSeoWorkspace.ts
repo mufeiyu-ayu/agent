@@ -1,11 +1,13 @@
 import type { ApiErrorResponse } from '../api/http'
-import type { CopyableSeoField, GenerateSeoResponse, GenerationStatus, SeoCheck } from '../types/seo'
+import type { AppMessageState, AppMessageType, CopyableSeoField, GenerateSeoResponse, GenerationStatus, SeoCheck, SeoInputValidationErrors } from '../types/seo'
 
 import { isAxiosError } from 'axios'
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 
 import { generateSeoContent as requestSeoContent } from '../api/seo'
 import { formatGeneratedTime } from '../utils/seo-check'
+
+const GENERATE_REQUEST_INTERVAL_MS = 800
 
 export function useSeoWorkspace() {
   const pageTopic = ref('PUBG UC 充值页面')
@@ -16,6 +18,14 @@ export function useSeoWorkspace() {
   const lastGeneratedAt = ref('--:--')
   const copiedField = ref<CopyableSeoField | null>(null)
   const errorMessage = ref('')
+  const validationErrors = ref<SeoInputValidationErrors>({})
+  const appMessage = ref<AppMessageState>({
+    visible: false,
+    type: 'info',
+    text: '',
+  })
+  let messageTimer: number | undefined
+  let lastGenerateRequestedAt = 0
 
   const seoTitle = ref('')
   const metaDescription = ref('')
@@ -75,6 +85,7 @@ export function useSeoWorkspace() {
       keywords.value.push(nextKeyword)
 
     keywordInput.value = ''
+    clearValidationError('keywords')
   }
 
   function removeKeyword(keyword: string) {
@@ -90,15 +101,22 @@ export function useSeoWorkspace() {
     seoChecks.value = []
     status.value = 'empty'
     errorMessage.value = ''
+    validationErrors.value = {}
+    hideMessage()
     copiedField.value = null
   }
 
   async function generateSeoContent() {
-    if (!pageTopic.value.trim()) {
-      status.value = 'error'
-      errorMessage.value = 'Please enter a page topic before generating SEO content.'
+    addKeyword()
+
+    if (!validateBeforeGenerate()) {
+      status.value = 'empty'
+      errorMessage.value = ''
       return
     }
+
+    if (!canStartGenerateRequest())
+      return
 
     status.value = 'loading'
     errorMessage.value = ''
@@ -116,7 +134,48 @@ export function useSeoWorkspace() {
     catch (error) {
       status.value = 'error'
       errorMessage.value = getGenerateErrorMessage(error)
+      showMessage(errorMessage.value, 'error')
     }
+  }
+
+  function validateBeforeGenerate(): boolean {
+    const nextErrors: SeoInputValidationErrors = {}
+
+    if (!pageTopic.value.trim()) {
+      nextErrors.pageTopic = '请输入页面主题。'
+    }
+
+    if (keywords.value.length === 0) {
+      nextErrors.keywords = '请至少添加一个目标关键词。'
+    }
+
+    validationErrors.value = nextErrors
+
+    return Object.keys(nextErrors).length === 0
+  }
+
+  function canStartGenerateRequest(): boolean {
+    if (status.value === 'loading')
+      return false
+
+    const now = Date.now()
+
+    if (now - lastGenerateRequestedAt < GENERATE_REQUEST_INTERVAL_MS)
+      return false
+
+    lastGenerateRequestedAt = now
+
+    return true
+  }
+
+  function clearValidationError(field: keyof SeoInputValidationErrors) {
+    if (!validationErrors.value[field])
+      return
+
+    const nextErrors = { ...validationErrors.value }
+
+    delete nextErrors[field]
+    validationErrors.value = nextErrors
   }
 
   function applySeoResult(result: GenerateSeoResponse) {
@@ -141,6 +200,34 @@ export function useSeoWorkspace() {
     return responseData?.message ?? 'Failed to generate SEO content. Please try again.'
   }
 
+  function showMessage(text: string, type: AppMessageType = 'info') {
+    if (messageTimer !== undefined) {
+      window.clearTimeout(messageTimer)
+    }
+
+    appMessage.value = {
+      visible: true,
+      type,
+      text,
+    }
+
+    messageTimer = window.setTimeout(() => {
+      hideMessage()
+    }, 3600)
+  }
+
+  function hideMessage() {
+    if (messageTimer !== undefined) {
+      window.clearTimeout(messageTimer)
+      messageTimer = undefined
+    }
+
+    appMessage.value = {
+      ...appMessage.value,
+      visible: false,
+    }
+  }
+
   async function copyResult(field: CopyableSeoField, content: string) {
     if (!content)
       return
@@ -154,6 +241,16 @@ export function useSeoWorkspace() {
     }, 1200)
   }
 
+  watch(pageTopic, (value) => {
+    if (value.trim())
+      clearValidationError('pageTopic')
+  })
+
+  watch(() => keywords.value.length, (length) => {
+    if (length > 0)
+      clearValidationError('keywords')
+  })
+
   return {
     pageTopic,
     language,
@@ -163,6 +260,8 @@ export function useSeoWorkspace() {
     lastGeneratedAt,
     copiedField,
     errorMessage,
+    validationErrors,
+    appMessage,
     seoTitle,
     metaDescription,
     seoChecks,
@@ -176,6 +275,7 @@ export function useSeoWorkspace() {
     removeKeyword,
     resetWorkspace,
     generateSeoContent,
+    hideMessage,
     copyResult,
   }
 }
