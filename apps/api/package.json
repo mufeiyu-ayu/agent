@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "tsx src/main.ts",
+    "dev": "tsx --env-file-if-exists=../../.env src/main.ts",
     "start": "node dist/main.js",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src",

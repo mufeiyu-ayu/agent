@@ -11,6 +11,16 @@ import {
   LLMServerError,
 } from './llm.types.js'
 
+class LLMConfigError extends LLMInvalidRequestError {
+  constructor(configName: 'LLM_BASE_URL' | 'LLM_MODEL') {
+    const message = `请在项目根目录 .env 中设置 ${configName}`
+
+    super(400, { configName, message })
+    this.name = 'LLMConfigError'
+    this.message = message
+  }
+}
+
 /**
  * 封装对 DeepSeek / OpenAI-compatible Chat Completions API 的 fetch 调用。
  *
@@ -35,18 +45,24 @@ export class LLMService {
    * @returns 模型回复的字符串内容
    */
   async chat(messages: ChatMessage[], options?: ChatOptions): Promise<string> {
-    const apiKey = process.env.LLM_API_KEY
-    const baseUrl = process.env.LLM_BASE_URL
+    const apiKey = process.env.LLM_API_KEY?.trim()
+    const baseUrl = process.env.LLM_BASE_URL?.trim()
+    const model = (options?.model ?? process.env.LLM_MODEL)?.trim()
 
     if (!apiKey) {
-      throw new LLMAuthError('请在 apps/api/.env 中设置 LLM_API_KEY')
+      throw new LLMAuthError('请在项目根目录 .env 中设置 LLM_API_KEY')
     }
     if (!baseUrl) {
-      throw new LLMAuthError('请在 apps/api/.env 中设置 LLM_BASE_URL')
+      throw new LLMConfigError('LLM_BASE_URL')
+    }
+    if (!model) {
+      throw new LLMConfigError('LLM_MODEL')
     }
 
+    const normalizedBaseUrl = baseUrl.replace(/\/+$/, '')
+
     const body = JSON.stringify({
-      model: options?.model ?? process.env.LLM_MODEL,
+      model,
       messages,
       temperature: options?.temperature ?? 0.7,
       max_tokens: options?.maxTokens ?? 2048,
@@ -55,7 +71,7 @@ export class LLMService {
 
     let response: Response
     try {
-      response = await fetch(`${baseUrl}/chat/completions`, {
+      response = await fetch(`${normalizedBaseUrl}/chat/completions`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${apiKey}`,
