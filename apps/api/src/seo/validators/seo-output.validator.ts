@@ -24,10 +24,12 @@ function validateSeoGenerationOutput(value: unknown): SeoGenerationOutput {
 
   const title = readRequiredString(value, 'title')
   const description = readRequiredString(value, 'description')
+  const suggestions = readSuggestionList(value, 'suggestions')
 
   return {
     title,
     description,
+    suggestions,
   }
 }
 
@@ -45,6 +47,32 @@ function readRequiredString(record: Record<string, unknown>, key: string): strin
   }
 
   return trimmedValue
+}
+
+function readSuggestionList(record: Record<string, unknown>, key: string): string[] {
+  const value = record[key]
+
+  if (!Array.isArray(value)) {
+    throw new SeoGenerationOutputError(`模型返回字段 ${key} 必须是数组`)
+  }
+
+  if (value.length < 3 || value.length > 5) {
+    throw new SeoGenerationOutputError(`模型返回字段 ${key} 必须包含 3 到 5 条建议`)
+  }
+
+  return value.map((item, index) => {
+    if (typeof item !== 'string') {
+      throw new SeoGenerationOutputError(`模型返回字段 ${key}[${index}] 必须是字符串`)
+    }
+
+    const trimmedItem = item.trim()
+
+    if (!trimmedItem) {
+      throw new SeoGenerationOutputError(`模型返回字段 ${key}[${index}] 不能为空`)
+    }
+
+    return trimmedItem
+  })
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

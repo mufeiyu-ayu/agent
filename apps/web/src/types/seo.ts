@@ -10,12 +10,6 @@ export interface NavigationItem {
   active?: boolean
 }
 
-export interface SeoCheck {
-  label: string
-  detail: string
-  pass: boolean
-}
-
 export interface GenerateSeoRequest {
   pageTopic: string
   language: string
@@ -25,7 +19,7 @@ export interface GenerateSeoRequest {
 export interface GenerateSeoResponse {
   title: string
   description: string
-  checks: SeoCheck[]
+  suggestions: string[]
   generatedAt: string
 }
 

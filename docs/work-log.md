@@ -9,10 +9,10 @@
 | 模块 | 当前状态 | 已完成 | 下一步 |
 | --- | --- | --- | --- |
 | 项目架构 | 进行中 | 已迁移为 `pnpm workspace`，拆分 `apps/api` 与 `apps/web` | 把 AI SEO 能力接入后端接口 |
-| 后端 API | SEO 接口已接入真实 LLM 生成 | NestJS demo 接口 `GET /api/demo` 可访问；已接入统一响应结构、全局校验管道、全局异常过滤器和 request id 中间件；`POST /api/seo/generate` 已从 mock 切到 `SeoGenerationService` + LLM JSON Output + 本地 checks；LLM 配置统一从项目根目录 `.env` 读取；T12 基础错误恢复已收口 | T13 与 T16 暂缓，下一步优先 T14 结果优化建议 |
-| 前端 Web | 已完成最小闭环联调 | 接入 Tailwind CSS 与 Lucide，按设计稿重构 AI SEO Agent 单屏工作台；补齐 `components`、`views`、`hooks`、`types`、`utils`、`assets` 等前端基础目录；已将 `App.vue` 拆分为 `views`、`components`、`hooks`、`types`、`utils`；`useSeoWorkspace` 已调用真实后端接口并完成 Vue -> Nest -> LLM -> SEO Tool -> Vue 联调；生成失败可展示后端 message | 后续围绕 T14 展示优化建议，再考虑会话级历史 |
-| Agent 能力 | 学习迁移中 | 已学习 API 调用、多轮对话、JSON Output、Tool Calling、Streaming；已完成后端 `LLMService` 基础封装、SEO JSON Output、真实模型生成和基础错误恢复 | 通过 T14 继续练习结构化输出字段扩展和前后端结果展示 |
-| 项目任务计划 | 已优化 | 已建立 `docs/development-task-plan.md` 主任务看板，并按用户前端强、Nest 生疏、目标转 Agent 应用开发的能力曲线重排 T05-T20 和 Sprint 节奏；T05 至 T12 已完成，T13 与 T16 暂缓 | 进入 T14：结果优化建议 |
+| 后端 API | SEO 接口已接入真实 LLM 生成 | NestJS demo 接口 `GET /api/demo` 可访问；已接入统一响应结构、全局校验管道、全局异常过滤器和 request id 中间件；`POST /api/seo/generate` 已从 mock 切到 `SeoGenerationService` + LLM JSON Output；接口返回 `title`、`description`、`suggestions` 和 `generatedAt`；LLM 配置统一从项目根目录 `.env` 读取；T12 基础错误恢复已收口 | T13 与 T16 暂缓，下一步进入 T15 会话级生成记录 |
+| 前端 Web | 已完成最小闭环联调 | 接入 Tailwind CSS 与 Lucide，按设计稿重构 AI SEO Agent 单屏工作台；补齐 `components`、`views`、`hooks`、`types`、`utils`、`assets` 等前端基础目录；已将 `App.vue` 拆分为 `views`、`components`、`hooks`、`types`、`utils`；`useSeoWorkspace` 已调用真实后端接口并完成 Vue -> Nest -> LLM -> Vue 联调；生成失败可展示后端 message；结果面板已展示优化建议 | 后续考虑 T15：保存当前会话内最近生成结果 |
+| Agent 能力 | 学习迁移中 | 已学习 API 调用、多轮对话、JSON Output、Tool Calling、Streaming；已完成后端 `LLMService` 基础封装、SEO JSON Output、真实模型生成、基础错误恢复和结构化建议字段扩展 | 下一步可练习简单会话状态管理，或进入 Streaming / Tool Calling |
+| 项目任务计划 | 已优化 | 已建立 `docs/development-task-plan.md` 主任务看板，并按用户前端强、Nest 生疏、目标转 Agent 应用开发的能力曲线重排 T05-T20 和 Sprint 节奏；T05 至 T12、T14 已完成，T13 与 T16 暂缓 | 进入 T15：会话级生成记录 |
 
 ## 工作记录
 
@@ -43,6 +43,7 @@
 | 2026-05-31 | `0d526b1 fix: 收口 T12 基础错误恢复` | 工程修复 | 收口 T12：优化基础错误恢复实现 | 后端异常日志补充 `requestId`、请求路径和状态码；AI 相关 4xx 错误也会写入 warn 日志便于定位；`LLMService` 为模型请求增加 10 秒超时，并将成功响应 JSON 解析失败包装为安全的 LLM 错误；前端生成失败时读取 `error.details` 改为安全可选链 | T12 已完成，错误恢复不再继续扩张状态码体系，下一步集中做 T13 输入边界 | 保留现有 LLM 错误类型和全局异常映射，不新增依赖、不引入第三方 toast；失败提示继续以安全 message 返回给前端，详细错误只留在服务端日志 | `apps/api/src/common/filters/all-exceptions.filter.ts`、`apps/api/src/llm/llm.service.ts`、`apps/web/src/hooks/useSeoWorkspace.ts`、`docs/development-task-plan.md`、`docs/work-log.md` | `pnpm --filter @agent/api typecheck`、`pnpm --filter @agent/api lint`、`pnpm --filter @agent/web typecheck`、`pnpm --filter @agent/web lint`、`pnpm --filter @agent/web build` 通过 | 进入 T13：对齐前后端页面主题长度、关键词数量、关键词长度和成本控制规则 |
 | 2026-05-31 | `9a32a72 docs: 暂缓 T13 并准备 T16 评估` | 技术决策 | 暂缓 T13 输入边界细化，调整下一步为 T16 基础效果评估 | 将 T13 标记为暂缓，只保留已完成的必填校验；将 T16 标记为准备中，下一步先整理固定输入样例和人工评估检查点 | 项目从继续加输入限制，调整为先观察和评估真实模型生成质量 | 当前产品输入规则后续可能变化，过早限制长度、关键词数量和成本规则容易返工；评估样例对后续 prompt、JSON Output 和结果体验更有复用价值 | `docs/development-task-plan.md`、`docs/work-log.md` | 未运行代码验证；本次只调整任务计划和工作记录 | 展示 T16 的最小实施方案，并在确认后再写入具体评估样例 |
 | 2026-06-03 | `8e3923e docs: 暂缓 T16 基础效果评估` | 技术决策 | 将 T16 从第一版主线中移出 | 按用户判断把 T16 基础效果评估标记为暂缓，并从 Sprint 5 中移除；后续第一版增强聚焦 T14 优化建议和 T15 会话级历史 | 项目不再把固定评估样例作为当前阻塞任务，下一步切到 T14 | 当前学习阶段更适合继续补产品可见能力，评估样例后续有 prompt 回归需求时再恢复 | `docs/development-task-plan.md`、`docs/work-log.md` | 未运行代码验证；本次只调整 Markdown 文档 | 进入 T14：扩展 SEO JSON Output，让接口返回 3 到 5 条优化建议并在前端展示 |
+| 2026-06-03 | 待提交 | 功能开发 | 完成 T14 结果优化建议并移除 SEO Checks | 后端 prompt、JSON validator 和响应类型新增 `suggestions`；`SeoService` 不再返回 `checks`；删除后端 SEO check tool 和前端 checks 展示；前端结果面板展示 3 到 5 条优化建议 | T14 已完成，第一版结果区聚焦 title、description 和 suggestions | 用户确认 SEO Checks 对当前产品价值不高，因此从第一版接口和 UI 中移除；后续 Tool Calling 将重新设计更有价值的工具场景 | `apps/api/src/seo/**`、`apps/web/src/components/seo/SeoResultPanel.vue`、`apps/web/src/hooks/useSeoWorkspace.ts`、`apps/web/src/types/seo.ts`、`apps/web/src/utils/seo-format.ts`、`docs/development-task-plan.md`、`docs/learning-log.md`、`docs/work-log.md` | `pnpm --filter @agent/api typecheck`、`pnpm --filter @agent/web typecheck`、`pnpm --filter @agent/api lint`、`pnpm --filter @agent/web lint`、`pnpm --filter @agent/web build`、`pnpm typecheck`、`pnpm lint` 通过；`curl POST /api/seo/generate` 固定样例返回 5 条 suggestions 且无 checks 字段 | 进入 T15：前端保存当前会话内最近生成结果 |
 
 ## 记录规则
 

@@ -18,7 +18,7 @@ const {
   appMessage,
   seoTitle,
   metaDescription,
-  seoChecks,
+  seoSuggestions,
   titleCharacterCount,
   descriptionCharacterCount,
   pageTopicCharacterCount,
@@ -74,9 +74,9 @@ const {
             :last-generated-at="lastGeneratedAt"
             :seo-title="seoTitle"
             :meta-description="metaDescription"
+            :seo-suggestions="seoSuggestions"
             :title-character-count="titleCharacterCount"
             :description-character-count="descriptionCharacterCount"
-            :seo-checks="seoChecks"
             :copied-field="copiedField"
             @copy="copyResult"
           />

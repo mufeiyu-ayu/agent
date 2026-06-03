@@ -1,11 +1,11 @@
 import type { ApiErrorResponse } from '../api/http'
-import type { AppMessageState, AppMessageType, CopyableSeoField, GenerateSeoResponse, GenerationStatus, SeoCheck, SeoInputValidationErrors } from '../types/seo'
+import type { AppMessageState, AppMessageType, CopyableSeoField, GenerateSeoResponse, GenerationStatus, SeoInputValidationErrors } from '../types/seo'
 
 import { isAxiosError } from 'axios'
 import { computed, ref, watch } from 'vue'
 
 import { generateSeoContent as requestSeoContent } from '../api/seo'
-import { formatGeneratedTime } from '../utils/seo-check'
+import { formatGeneratedTime } from '../utils/seo-format'
 
 const GENERATE_REQUEST_INTERVAL_MS = 800
 
@@ -29,8 +29,7 @@ export function useSeoWorkspace() {
 
   const seoTitle = ref('')
   const metaDescription = ref('')
-
-  const seoChecks = ref<SeoCheck[]>([])
+  const seoSuggestions = ref<string[]>([])
 
   const titleCharacterCount = computed(() => seoTitle.value.length)
   const descriptionCharacterCount = computed(() => metaDescription.value.length)
@@ -98,7 +97,7 @@ export function useSeoWorkspace() {
     keywords.value = []
     seoTitle.value = ''
     metaDescription.value = ''
-    seoChecks.value = []
+    seoSuggestions.value = []
     status.value = 'empty'
     errorMessage.value = ''
     validationErrors.value = {}
@@ -181,7 +180,7 @@ export function useSeoWorkspace() {
   function applySeoResult(result: GenerateSeoResponse) {
     seoTitle.value = result.title
     metaDescription.value = result.description
-    seoChecks.value = result.checks
+    seoSuggestions.value = result.suggestions
     lastGeneratedAt.value = formatGeneratedTime(new Date(result.generatedAt))
   }
 
@@ -264,7 +263,7 @@ export function useSeoWorkspace() {
     appMessage,
     seoTitle,
     metaDescription,
-    seoChecks,
+    seoSuggestions,
     titleCharacterCount,
     descriptionCharacterCount,
     pageTopicCharacterCount,

@@ -19,7 +19,7 @@ export class SeoGenerationService {
     const rawContent = await this.llmService.chat(messages, {
       responseFormat: { type: 'json_object' },
       temperature: 0.2,
-      maxTokens: 500,
+      maxTokens: 800,
     })
 
     return parseSeoGenerationOutput(rawContent)

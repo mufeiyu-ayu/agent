@@ -1,16 +1,16 @@
 <script setup lang="ts">
-import type { CopyableSeoField, GenerationStatus, SeoCheck } from '../../types/seo'
+import type { CopyableSeoField, GenerationStatus } from '../../types/seo'
 
-import { AlertCircle, CheckCircle2, ChevronDown, Clock3, Copy, Info, Sparkles } from '@lucide/vue'
+import { Clock3, Copy, Info, Lightbulb, Sparkles } from '@lucide/vue'
 
 defineProps<{
   status: GenerationStatus
   lastGeneratedAt: string
   seoTitle: string
   metaDescription: string
+  seoSuggestions: string[]
   titleCharacterCount: number
   descriptionCharacterCount: number
-  seoChecks: SeoCheck[]
   copiedField: CopyableSeoField | null
 }>()
 
@@ -29,7 +29,7 @@ const emit = defineEmits<{
             Results
           </h2>
           <p class="mt-1 text-sm font-medium text-slate-500">
-            AI-generated SEO content and checks
+            AI-generated SEO content and suggestions
           </p>
         </div>
       </div>
@@ -117,42 +117,29 @@ const emit = defineEmits<{
 
       <div>
         <h3 class="mb-4 flex items-center gap-2 text-sm font-black text-slate-900">
-          SEO Checks
+          Optimization Suggestions
           <Info class="text-slate-400" :size="16" />
         </h3>
-        <div class="overflow-hidden rounded-[16px] border border-slate-200 bg-white shadow-sm">
+        <div class="space-y-3">
           <div
-            v-for="check in seoChecks"
-            :key="check.label"
-            class="grid grid-cols-[minmax(0,1fr)_82px_24px] items-center gap-4 border-b border-slate-100 px-5 py-3 last:border-b-0"
+            v-for="(suggestion, index) in seoSuggestions"
+            :key="`${index}-${suggestion}`"
+            class="flex min-w-0 items-start gap-3 rounded-lg border border-slate-200 bg-white px-5 py-3 shadow-sm"
           >
-            <div class="flex min-w-0 items-center gap-3">
-              <CheckCircle2
-                v-if="check.pass"
-                class="shrink-0 text-emerald-500"
-                :size="20"
-              />
-              <AlertCircle
-                v-else
-                class="shrink-0 text-rose-500"
-                :size="20"
-              />
-              <div class="min-w-0">
-                <p class="truncate text-sm font-semibold text-slate-900">
-                  {{ check.label }}
-                </p>
-                <p class="mt-1 truncate text-xs font-medium text-slate-400">
-                  {{ check.detail }}
-                </p>
-              </div>
-            </div>
-            <span
-              class="inline-flex h-9 items-center justify-center rounded-full px-4 text-sm font-black"
-              :class="check.pass ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'"
-            >
-              {{ check.pass ? 'Pass' : 'Fix' }}
+            <span class="grid size-8 shrink-0 place-items-center rounded-full bg-amber-50 text-sm font-black text-amber-600">
+              {{ index + 1 }}
             </span>
-            <ChevronDown class="text-slate-500" :size="18" />
+            <p class="min-w-0 text-sm font-semibold leading-6 text-slate-800">
+              {{ suggestion }}
+            </p>
+          </div>
+
+          <div
+            v-if="seoSuggestions.length === 0"
+            class="flex min-h-16 items-center gap-3 rounded-lg border border-dashed border-slate-200 bg-slate-50 px-5 py-3 text-sm font-semibold text-slate-500"
+          >
+            <Lightbulb class="shrink-0 text-amber-500" :size="20" />
+            Waiting for generated suggestions
           </div>
         </div>
       </div>

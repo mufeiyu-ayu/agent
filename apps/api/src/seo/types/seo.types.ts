@@ -1,25 +1,14 @@
-export interface SeoCheck {
-  label: string
-  detail: string
-  pass: boolean
-}
-
 export interface GenerateSeoContentResult {
   title: string
   description: string
-  checks: SeoCheck[]
+  suggestions: string[]
   generatedAt: string
-}
-
-export interface SeoCheckInput {
-  title: string
-  description: string
-  keywords: string[]
 }
 
 export interface SeoGenerationOutput {
   title: string
   description: string
+  suggestions: string[]
 }
 
 export class SeoGenerationOutputError extends Error {
