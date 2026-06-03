@@ -31,8 +31,30 @@ export interface SeoConversationTurn {
   status: SeoConversationTurnStatus
   createdAt: string
   result?: GenerateSeoResponse
+  progressMessage?: string
   errorMessage?: string
 }
+
+export type SeoStreamEvent
+  = | {
+    type: 'started'
+    message: string
+  }
+  | {
+    type: 'progress'
+    message: string
+  }
+  | {
+    type: 'result'
+    data: GenerateSeoResponse
+  }
+  | {
+    type: 'error'
+    message: string
+  }
+  | {
+    type: 'done'
+  }
 
 export interface SeoInputValidationErrors {
   pageTopic?: string

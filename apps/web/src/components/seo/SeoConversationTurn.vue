@@ -75,7 +75,7 @@ function buildCopyItemKey(turnId: string, field: CopyableSeoField): string {
 
         <div v-if="turn.status === 'loading'" class="flex min-h-24 items-center gap-3 text-sm font-semibold text-slate-500">
           <LoaderCircle class="animate-spin text-blue-600" :size="22" />
-          Generating SEO content...
+          <span>{{ turn.progressMessage || 'Generating SEO content...' }}</span>
         </div>
 
         <div v-else-if="turn.status === 'error'" class="flex min-h-24 items-start gap-3 rounded-lg bg-rose-50 px-4 py-3 text-sm font-semibold leading-6 text-rose-700">

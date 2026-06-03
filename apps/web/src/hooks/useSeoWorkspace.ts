@@ -1,14 +1,17 @@
 import type { ApiErrorResponse } from '../api/http'
-import type { AppMessageState, AppMessageType, CopyableSeoField, GenerateSeoRequest, GenerateSeoResponse, GenerationStatus, SeoConversationTurn, SeoInputValidationErrors } from '../types/seo'
+import type { AppMessageState, AppMessageType, CopyableSeoField, GenerateSeoRequest, GenerateSeoResponse, GenerationStatus, SeoConversationTurn, SeoInputValidationErrors, SeoStreamEvent } from '../types/seo'
 
 import { isAxiosError } from 'axios'
 import { computed, ref, watch } from 'vue'
 
-import { generateSeoContent as requestSeoContent } from '../api/seo'
+import { streamGenerateSeoContent as requestSeoContentStream } from '../api/seo'
 import { formatGeneratedTime } from '../utils/seo-format'
 
 const GENERATE_REQUEST_INTERVAL_MS = 800
 const MAX_CONVERSATION_TURNS = 8
+const STREAM_PROGRESS_STEP_DELAY_MS = 520
+const STREAM_RESULT_REVEAL_DELAY_MS = 650
+const STREAM_FINAL_PROGRESS_MESSAGE = 'Preparing final answer'
 
 export function useSeoWorkspace() {
   const pageTopic = ref('PUBG UC 充值页面')
@@ -28,6 +31,7 @@ export function useSeoWorkspace() {
   })
   let messageTimer: number | undefined
   let lastGenerateRequestedAt = 0
+  let activeGenerationTurnId: string | null = null
 
   const pageTopicCharacterCount = computed(() => pageTopic.value.length)
   const completionPercent = computed(() => {
@@ -98,6 +102,7 @@ export function useSeoWorkspace() {
     hideMessage()
     copiedItemKey.value = null
     lastGeneratedAt.value = '--:--'
+    activeGenerationTurnId = null
   }
 
   async function generateSeoContent() {
@@ -114,27 +119,129 @@ export function useSeoWorkspace() {
 
     const request = buildGenerateRequest()
     const turnId = appendConversationTurn(request)
+    const streamRevealController = createSeoStreamRevealController(turnId)
 
+    activeGenerationTurnId = turnId
     status.value = 'loading'
     errorMessage.value = ''
 
     try {
-      const result = await requestSeoContent(request)
-
-      applySeoResult(turnId, result)
-      status.value = 'success'
+      await requestSeoContentStream(request, {
+        onEvent: event => streamRevealController.handleEvent(event),
+      })
+      await streamRevealController.revealResult()
     }
     catch (error) {
+      streamRevealController.cancel()
+
+      if (!isActiveGenerationTurn(turnId))
+        return
+
       const nextErrorMessage = getGenerateErrorMessage(error)
 
       status.value = 'error'
       errorMessage.value = nextErrorMessage
       updateConversationTurn(turnId, {
         status: 'error',
+        progressMessage: undefined,
         errorMessage: nextErrorMessage,
       })
       showMessage(errorMessage.value, 'error')
+      activeGenerationTurnId = null
     }
+  }
+
+  function createSeoStreamRevealController(turnId: string) {
+    let active = true
+    let lastDisplayedMessage = ''
+    let pendingResult: GenerateSeoResponse | null = null
+    let progressChain = Promise.resolve()
+
+    function canUpdateTurn(): boolean {
+      return active && isActiveGenerationTurn(turnId)
+    }
+
+    function enqueueProgressMessage(message: string) {
+      progressChain = progressChain.then(async () => {
+        if (!canUpdateTurn() || message === lastDisplayedMessage)
+          return
+
+        if (lastDisplayedMessage) {
+          await wait(STREAM_PROGRESS_STEP_DELAY_MS)
+        }
+
+        if (!canUpdateTurn())
+          return
+
+        lastDisplayedMessage = message
+        updateConversationTurn(turnId, {
+          status: 'loading',
+          progressMessage: message,
+        })
+      })
+    }
+
+    return {
+      cancel() {
+        active = false
+      },
+      handleEvent(event: SeoStreamEvent) {
+        if (!canUpdateTurn())
+          return
+
+        if (event.type === 'started' || event.type === 'progress') {
+          enqueueProgressMessage(event.message)
+          return
+        }
+
+        if (event.type === 'result') {
+          pendingResult = event.data
+          return
+        }
+
+        if (event.type === 'error') {
+          active = false
+          applySeoStreamError(turnId, event.message)
+        }
+      },
+      async revealResult() {
+        await progressChain
+
+        if (!canUpdateTurn())
+          return
+
+        if (!pendingResult) {
+          throw new Error('AI 返回结果异常，请重试')
+        }
+
+        enqueueProgressMessage(STREAM_FINAL_PROGRESS_MESSAGE)
+        await progressChain
+        await wait(STREAM_RESULT_REVEAL_DELAY_MS)
+
+        if (!canUpdateTurn())
+          return
+
+        applySeoResult(turnId, pendingResult)
+        status.value = 'success'
+        active = false
+        activeGenerationTurnId = null
+      },
+    }
+  }
+
+  function applySeoStreamError(turnId: string, message: string) {
+    if (!isActiveGenerationTurn(turnId))
+      return
+
+    status.value = 'error'
+    errorMessage.value = message
+    updateConversationTurn(turnId, {
+      status: 'error',
+      progressMessage: undefined,
+      errorMessage: message,
+    })
+    showMessage(message, 'error')
+    activeGenerationTurnId = null
   }
 
   function buildGenerateRequest(): GenerateSeoRequest {
@@ -154,6 +261,7 @@ export function useSeoWorkspace() {
         id: turnId,
         request,
         status: 'loading',
+        progressMessage: 'Waiting for stream connection',
         createdAt: new Date().toISOString(),
       },
     ]
@@ -220,12 +328,27 @@ export function useSeoWorkspace() {
     updateConversationTurn(turnId, {
       status: 'success',
       result,
+      progressMessage: undefined,
       errorMessage: undefined,
     })
     lastGeneratedAt.value = formatGeneratedTime(new Date(result.generatedAt))
   }
 
+  function isActiveGenerationTurn(turnId: string): boolean {
+    return activeGenerationTurnId === turnId
+  }
+
+  function wait(duration: number): Promise<void> {
+    return new Promise((resolve) => {
+      window.setTimeout(resolve, duration)
+    })
+  }
+
   function getGenerateErrorMessage(error: unknown): string {
+    if (error instanceof Error) {
+      return error.message
+    }
+
     if (!isAxiosError<ApiErrorResponse>(error)) {
       return 'Failed to generate SEO content. Please try again.'
     }
