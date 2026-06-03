@@ -13,14 +13,10 @@ const {
   keywords,
   status,
   lastGeneratedAt,
-  copiedField,
+  copiedItemKey,
   validationErrors,
   appMessage,
-  seoTitle,
-  metaDescription,
-  seoSuggestions,
-  titleCharacterCount,
-  descriptionCharacterCount,
+  conversationTurns,
   pageTopicCharacterCount,
   completionPercent,
   statusCardTitle,
@@ -70,14 +66,9 @@ const {
           <div class="hidden xl:block xl:h-full xl:w-px xl:bg-slate-200" />
 
           <SeoResultPanel
-            :status="status"
             :last-generated-at="lastGeneratedAt"
-            :seo-title="seoTitle"
-            :meta-description="metaDescription"
-            :seo-suggestions="seoSuggestions"
-            :title-character-count="titleCharacterCount"
-            :description-character-count="descriptionCharacterCount"
-            :copied-field="copiedField"
+            :turns="conversationTurns"
+            :copied-item-key="copiedItemKey"
             @copy="copyResult"
           />
         </section>

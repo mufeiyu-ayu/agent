@@ -1,5 +1,5 @@
 import type { ApiErrorResponse } from '../api/http'
-import type { AppMessageState, AppMessageType, CopyableSeoField, GenerateSeoResponse, GenerationStatus, SeoInputValidationErrors } from '../types/seo'
+import type { AppMessageState, AppMessageType, CopyableSeoField, GenerateSeoRequest, GenerateSeoResponse, GenerationStatus, SeoConversationTurn, SeoInputValidationErrors } from '../types/seo'
 
 import { isAxiosError } from 'axios'
 import { computed, ref, watch } from 'vue'
@@ -8,6 +8,7 @@ import { generateSeoContent as requestSeoContent } from '../api/seo'
 import { formatGeneratedTime } from '../utils/seo-format'
 
 const GENERATE_REQUEST_INTERVAL_MS = 800
+const MAX_CONVERSATION_TURNS = 8
 
 export function useSeoWorkspace() {
   const pageTopic = ref('PUBG UC 充值页面')
@@ -16,9 +17,10 @@ export function useSeoWorkspace() {
   const keywords = ref(['PUBG UC', 'Top up', 'cheap UC', 'instant delivery'])
   const status = ref<GenerationStatus>('empty')
   const lastGeneratedAt = ref('--:--')
-  const copiedField = ref<CopyableSeoField | null>(null)
+  const copiedItemKey = ref<string | null>(null)
   const errorMessage = ref('')
   const validationErrors = ref<SeoInputValidationErrors>({})
+  const conversationTurns = ref<SeoConversationTurn[]>([])
   const appMessage = ref<AppMessageState>({
     visible: false,
     type: 'info',
@@ -27,12 +29,6 @@ export function useSeoWorkspace() {
   let messageTimer: number | undefined
   let lastGenerateRequestedAt = 0
 
-  const seoTitle = ref('')
-  const metaDescription = ref('')
-  const seoSuggestions = ref<string[]>([])
-
-  const titleCharacterCount = computed(() => seoTitle.value.length)
-  const descriptionCharacterCount = computed(() => metaDescription.value.length)
   const pageTopicCharacterCount = computed(() => pageTopic.value.length)
   const completionPercent = computed(() => {
     if (status.value === 'success')
@@ -95,14 +91,13 @@ export function useSeoWorkspace() {
     pageTopic.value = ''
     keywordInput.value = ''
     keywords.value = []
-    seoTitle.value = ''
-    metaDescription.value = ''
-    seoSuggestions.value = []
+    conversationTurns.value = []
     status.value = 'empty'
     errorMessage.value = ''
     validationErrors.value = {}
     hideMessage()
-    copiedField.value = null
+    copiedItemKey.value = null
+    lastGeneratedAt.value = '--:--'
   }
 
   async function generateSeoContent() {
@@ -117,24 +112,68 @@ export function useSeoWorkspace() {
     if (!canStartGenerateRequest())
       return
 
+    const request = buildGenerateRequest()
+    const turnId = appendConversationTurn(request)
+
     status.value = 'loading'
     errorMessage.value = ''
 
     try {
-      const result = await requestSeoContent({
-        pageTopic: pageTopic.value,
-        language: language.value,
-        keywords: keywords.value,
-      })
+      const result = await requestSeoContent(request)
 
-      applySeoResult(result)
+      applySeoResult(turnId, result)
       status.value = 'success'
     }
     catch (error) {
+      const nextErrorMessage = getGenerateErrorMessage(error)
+
       status.value = 'error'
-      errorMessage.value = getGenerateErrorMessage(error)
+      errorMessage.value = nextErrorMessage
+      updateConversationTurn(turnId, {
+        status: 'error',
+        errorMessage: nextErrorMessage,
+      })
       showMessage(errorMessage.value, 'error')
     }
+  }
+
+  function buildGenerateRequest(): GenerateSeoRequest {
+    return {
+      pageTopic: pageTopic.value.trim(),
+      language: language.value.trim(),
+      keywords: [...keywords.value],
+    }
+  }
+
+  function appendConversationTurn(request: GenerateSeoRequest): string {
+    const turnId = createConversationTurnId()
+
+    conversationTurns.value = [
+      ...conversationTurns.value.slice(-(MAX_CONVERSATION_TURNS - 1)),
+      {
+        id: turnId,
+        request,
+        status: 'loading',
+        createdAt: new Date().toISOString(),
+      },
+    ]
+
+    return turnId
+  }
+
+  function updateConversationTurn(
+    turnId: string,
+    patch: Partial<Omit<SeoConversationTurn, 'id' | 'request' | 'createdAt'>>,
+  ) {
+    conversationTurns.value = conversationTurns.value.map((turn) => {
+      if (turn.id !== turnId)
+        return turn
+
+      return {
+        ...turn,
+        ...patch,
+      }
+    })
   }
 
   function validateBeforeGenerate(): boolean {
@@ -177,10 +216,12 @@ export function useSeoWorkspace() {
     validationErrors.value = nextErrors
   }
 
-  function applySeoResult(result: GenerateSeoResponse) {
-    seoTitle.value = result.title
-    metaDescription.value = result.description
-    seoSuggestions.value = result.suggestions
+  function applySeoResult(turnId: string, result: GenerateSeoResponse) {
+    updateConversationTurn(turnId, {
+      status: 'success',
+      result,
+      errorMessage: undefined,
+    })
     lastGeneratedAt.value = formatGeneratedTime(new Date(result.generatedAt))
   }
 
@@ -227,17 +268,27 @@ export function useSeoWorkspace() {
     }
   }
 
-  async function copyResult(field: CopyableSeoField, content: string) {
+  async function copyResult(turnId: string, field: CopyableSeoField, content: string) {
     if (!content)
       return
 
     await navigator.clipboard.writeText(content)
-    copiedField.value = field
+    const copyKey = buildCopyItemKey(turnId, field)
+
+    copiedItemKey.value = copyKey
 
     window.setTimeout(() => {
-      if (copiedField.value === field)
-        copiedField.value = null
+      if (copiedItemKey.value === copyKey)
+        copiedItemKey.value = null
     }, 1200)
+  }
+
+  function buildCopyItemKey(turnId: string, field: CopyableSeoField): string {
+    return `${turnId}:${field}`
+  }
+
+  function createConversationTurnId(): string {
+    return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`
   }
 
   watch(pageTopic, (value) => {
@@ -257,15 +308,11 @@ export function useSeoWorkspace() {
     keywords,
     status,
     lastGeneratedAt,
-    copiedField,
+    copiedItemKey,
     errorMessage,
     validationErrors,
     appMessage,
-    seoTitle,
-    metaDescription,
-    seoSuggestions,
-    titleCharacterCount,
-    descriptionCharacterCount,
+    conversationTurns,
     pageTopicCharacterCount,
     completionPercent,
     statusCardTitle,

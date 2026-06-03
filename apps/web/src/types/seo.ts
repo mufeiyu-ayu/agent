@@ -4,6 +4,8 @@ export type GenerationStatus = 'empty' | 'loading' | 'success' | 'error'
 
 export type CopyableSeoField = 'title' | 'description'
 
+export type SeoConversationTurnStatus = 'loading' | 'success' | 'error'
+
 export interface NavigationItem {
   label: string
   icon: LucideIcon
@@ -21,6 +23,15 @@ export interface GenerateSeoResponse {
   description: string
   suggestions: string[]
   generatedAt: string
+}
+
+export interface SeoConversationTurn {
+  id: string
+  request: GenerateSeoRequest
+  status: SeoConversationTurnStatus
+  createdAt: string
+  result?: GenerateSeoResponse
+  errorMessage?: string
 }
 
 export interface SeoInputValidationErrors {
