@@ -11,8 +11,8 @@
 | 1 | DeepSeek / OpenAI-compatible API 基础调用 | 已完成 | 能通过 TypeScript 调用模型并拿到非流式回复 |
 | 2 | `messages`、`model`、`stream`、`system prompt`、`user prompt` | 已完成 | 能解释多轮对话上下文如何通过 `messages` 维护 |
 | 3 | 基础 `LLMService` 封装 | 已完成 | 模型调用入口清晰，可复用，可替换配置 |
-| 4 | 最小 AI SEO 助手接口 | 进行中 | 能通过一个接口输入页面主题并返回 SEO 建议 |
-| 5 | JSON Output | 进行中 | 能让模型稳定返回结构化 JSON，并在代码层校验 |
+| 4 | 最小 AI SEO 助手接口 | 已完成 | 能通过一个接口输入页面主题并返回 SEO 建议 |
+| 5 | JSON Output | 已完成 | 能让模型稳定返回结构化 JSON，并在代码层校验 |
 | 6 | 流式输出 | 进行中 | 能理解并实现 token 级或 chunk 级响应 |
 | 7 | Tool Calling | 进行中 | 能区分模型决策、后端执行工具、工具结果回传模型 |
 | 8 | 完整 Agent 流程 | 未开始 | 能串起规划、工具、状态、错误恢复和人工确认 |
@@ -30,6 +30,7 @@
 | 2026-05-31 | JSON Output | 将 SEO 生成拆成 prompt 构造和 output validator 两部分，先不接业务接口，单独练习“模型输出协议”和“运行时校验”。 | JSON Output、`messages` 组织、system prompt、user prompt、模型输出不可信原则、运行时字段校验 | `apps/api/src/seo/prompts/seo-generation.prompt.ts`、`apps/api/src/seo/validators/seo-output.validator.ts` | `pnpm --filter @agent/api typecheck` 和 `pnpm --filter @agent/api lint` 通过，说明 prompt/validator 已能作为独立代码单元编译检查。 | `response_format` 和 prompt 只能约束模型，业务代码只能相信 `JSON.parse` 与字段校验之后的数据。 | 下一步用 `LLMService.chat(..., { responseFormat: { type: 'json_object' } })` 做一次真实 JSON Output 调用验证。 |
 | 2026-05-31 | LLM 替换 mock | 将正式 SEO 接口的 mock 生成替换为 `SeoGenerationService`，让模型输出先通过 JSON validator，再进入本地 SEO checks。 | Agent 业务编排、LLM 输出后处理、确定性 Tool 后处理、模型输出不可信原则 | `apps/api/src/seo/seo.service.ts`、`apps/api/src/seo/seo-generation.service.ts`、`apps/api/src/seo/tools/seo-check.tool.ts` | 固定样例 `PUBG UC 充值页面` 调用真实 `POST /api/seo/generate` 成功返回 `title`、`description`、checks 和 `requestId`。 | Agent 业务接口不应该直接相信模型文本，正式返回应来自“LLM 生成 -> validator -> 本地确定性规则”的组合。 | 下一步进入前端最小闭环联调，观察真实模型结果在页面 loading / success / error 中的表现。 |
 | 2026-05-31 | 错误恢复 | 将 LLM 层普通 `Error` 映射为 HTTP 层可读错误，并在前端用 message 提示用户。 | Agent 错误分类、错误边界、HTTP 错误映射、requestId、敏感信息保护 | `apps/api/src/common/filters/all-exceptions.filter.ts`、`apps/web/src/components/common/AppMessage.vue` | 坏 key 场景返回 502 和 `AI 服务认证失败，请检查服务端模型配置`，响应保留 `requestId` 且不泄露 API Key。 | LLMService 负责识别模型错误，全局异常过滤器负责把错误转成安全 HTTP 响应，前端只展示安全 message。 | 下一步继续构造网络失败、限流和 JSON 格式异常样例，完善 T12 验收。 |
+| 2026-06-03 | JSON Output 字段扩展 | 将 SEO JSON Output 从 `title` / `description` 扩展为 `title` / `description` / `suggestions`，并在运行时校验建议列表。 | JSON Output 字段扩展、prompt 输出协议、模型输出不可信原则、数组字段运行时校验 | `apps/api/src/seo/prompts/seo-generation.prompt.ts`、`apps/api/src/seo/validators/seo-output.validator.ts`、`apps/api/src/seo/seo-generation.service.ts` | 固定样例调用 `POST /api/seo/generate` 成功返回 5 条 `suggestions`；`pnpm typecheck` 和 `pnpm lint` 通过。 | 扩展结构化输出时，不只是改 prompt，还要同步 TypeScript 类型、validator、HTTP 响应和前端展示。 | 下一步可以练习会话级历史，观察一次生成结果如何在前端状态中保留和复用。 |
 
 ## 记录规则
 
