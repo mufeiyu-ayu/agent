@@ -13,7 +13,7 @@
 | 3 | 基础 `LLMService` 封装 | 已完成 | 模型调用入口清晰，可复用，可替换配置 |
 | 4 | 最小 AI SEO 助手接口 | 已完成 | 能通过一个接口输入页面主题并返回 SEO 建议 |
 | 5 | JSON Output | 已完成 | 能让模型稳定返回结构化 JSON，并在代码层校验 |
-| 6 | 流式输出 | 进行中 | 能理解并实现 token 级或 chunk 级响应 |
+| 6 | 流式输出 | 已完成 | 能实现事件级 SSE 响应，并理解事件级 streaming 与 token 级 streaming 的差异 |
 | 7 | Tool Calling | 进行中 | 能区分模型决策、后端执行工具、工具结果回传模型 |
 | 8 | 简单记忆机制 | 进行中 | 能区分前端会话记忆、模型上下文记忆和长期持久记忆 |
 | 9 | 完整 Agent 流程 | 未开始 | 能串起规划、工具、状态、错误恢复和人工确认 |
@@ -33,6 +33,7 @@
 | 2026-05-31 | 错误恢复 | 将 LLM 层普通 `Error` 映射为 HTTP 层可读错误，并在前端用 message 提示用户。 | Agent 错误分类、错误边界、HTTP 错误映射、requestId、敏感信息保护 | `apps/api/src/common/filters/all-exceptions.filter.ts`、`apps/web/src/components/common/AppMessage.vue` | 坏 key 场景返回 502 和 `AI 服务认证失败，请检查服务端模型配置`，响应保留 `requestId` 且不泄露 API Key。 | LLMService 负责识别模型错误，全局异常过滤器负责把错误转成安全 HTTP 响应，前端只展示安全 message。 | 下一步继续构造网络失败、限流和 JSON 格式异常样例，完善 T12 验收。 |
 | 2026-06-03 | JSON Output 字段扩展 | 将 SEO JSON Output 从 `title` / `description` 扩展为 `title` / `description` / `suggestions`，并在运行时校验建议列表。 | JSON Output 字段扩展、prompt 输出协议、模型输出不可信原则、数组字段运行时校验 | `apps/api/src/seo/prompts/seo-generation.prompt.ts`、`apps/api/src/seo/validators/seo-output.validator.ts`、`apps/api/src/seo/seo-generation.service.ts` | 固定样例调用 `POST /api/seo/generate` 成功返回 5 条 `suggestions`；`pnpm typecheck` 和 `pnpm lint` 通过。 | 扩展结构化输出时，不只是改 prompt，还要同步 TypeScript 类型、validator、HTTP 响应和前端展示。 | 下一步可以练习会话级历史，观察一次生成结果如何在前端状态中保留和复用。 |
 | 2026-06-03 | 会话级记忆 | 将 Results 改为 user / agent 对话线程，在前端保存最近 8 次生成 turn，刷新后允许丢失。 | 会话级记忆、Agent 状态管理、短期 UI 历史、模型上下文与持久记忆边界 | `apps/web/src/hooks/useSeoWorkspace.ts`、`apps/web/src/types/seo.ts`、`apps/web/src/components/seo/SeoConversationTurn.vue` | `pnpm --filter @agent/web typecheck` 和 `pnpm --filter @agent/web lint` 通过；生成请求会先创建 loading turn，成功后更新为 success turn。 | 当前“记忆”只是前端会话状态，模型本身还不知道历史；要让模型理解历史，需要后端组织 messages，这属于后续 T19。 | 下一步做 T17，把流式事件写入当前 loading turn，让对话线程具备生成过程反馈。 |
+| 2026-06-03 | 流式输出 | 在 Nest 后端新增 SSE 流式接口，前端用 `fetch + ReadableStream` 按 chunk 消费并更新当前 conversation turn。 | SSE、Streaming、chunk buffer、事件协议、前端增量渲染、Agent 执行状态 | `apps/api/src/seo/seo.controller.ts`、`apps/api/src/seo/seo-stream.service.ts`、`apps/web/src/api/seo.ts`、`apps/web/src/hooks/useSeoWorkspace.ts` | `curl --noproxy '*' -N POST /api/seo/generate/stream` 先收到 `started` / `progress`，模型返回后继续收到 `result` / `done`；非流式接口仍可用。 | 这次实现的是事件级流式体验：后端把 Agent 执行阶段推给前端；token 级 streaming 需要让 LLMService 直接消费模型 stream 后再逐段转成 SSE。 | 下一步可在 T18 练习 Tool Calling，或在当前 SSE 基础上继续升级 token 级输出。 |
 
 ## 记录规则
 
