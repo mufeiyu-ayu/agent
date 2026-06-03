@@ -28,6 +28,13 @@ export interface ChatOptions {
   responseFormat?: { type: 'json_object' } | { type: 'text' }
 }
 
+export const SUPPORTED_DEEPSEEK_MODELS = [
+  'deepseek-v4-flash',
+  'deepseek-v4-pro',
+] as const
+
+export type SupportedDeepSeekModel = typeof SUPPORTED_DEEPSEEK_MODELS[number]
+
 // ─── OpenAI 兼容 API 响应结构 ─────────────────
 
 interface OpenAIChoice {
@@ -57,6 +64,29 @@ export interface OpenAIChatResponse {
     type: string
     code?: string
   }
+}
+
+export interface DeepSeekModelInfo {
+  id: string
+  object: 'model'
+  owned_by: string
+}
+
+export interface DeepSeekModelsResponse {
+  object: 'list'
+  data: DeepSeekModelInfo[]
+}
+
+export interface DeepSeekBalanceInfo {
+  currency: 'CNY' | 'USD'
+  total_balance: string
+  granted_balance: string
+  topped_up_balance: string
+}
+
+export interface DeepSeekBalanceResponse {
+  is_available: boolean
+  balance_infos: DeepSeekBalanceInfo[]
 }
 
 // ─── DeepSeek / OpenAI 错误响应结构 ────────────

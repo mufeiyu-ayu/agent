@@ -1,10 +1,13 @@
 import {
   ArrayMaxSize,
   IsArray,
+  IsIn,
   IsNotEmpty,
+  IsOptional,
   IsString,
   MaxLength,
 } from 'class-validator'
+import { SUPPORTED_DEEPSEEK_MODELS } from '../../llm/llm.types.js'
 
 export class GenerateSeoDto {
   @IsString()
@@ -23,4 +26,9 @@ export class GenerateSeoDto {
   @IsNotEmpty({ each: true })
   @MaxLength(50, { each: true })
   keywords!: string[]
+
+  @IsOptional()
+  @IsString()
+  @IsIn([...SUPPORTED_DEEPSEEK_MODELS])
+  model?: string
 }

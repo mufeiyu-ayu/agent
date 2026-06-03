@@ -14,6 +14,7 @@ const STREAM_RESULT_REVEAL_DELAY_MS = 650
 const STREAM_FINAL_PROGRESS_MESSAGE = 'Preparing final answer'
 
 export function useSeoWorkspace() {
+  const instruction = ref('帮我生成 PUBG UC 充值页面 SEO，强调低价和即时到账')
   const pageTopic = ref('PUBG UC 充值页面')
   const language = ref('English')
   const keywordInput = ref('')
@@ -33,42 +34,7 @@ export function useSeoWorkspace() {
   let lastGenerateRequestedAt = 0
   let activeGenerationTurnId: string | null = null
 
-  const pageTopicCharacterCount = computed(() => pageTopic.value.length)
-  const completionPercent = computed(() => {
-    if (status.value === 'success')
-      return 100
-
-    if (status.value === 'loading')
-      return 64
-
-    return 0
-  })
-
-  const statusCardTitle = computed(() => {
-    if (status.value === 'loading')
-      return 'Analysis running'
-
-    if (status.value === 'error')
-      return 'Analysis failed'
-
-    if (status.value === 'empty')
-      return 'Ready to analyze'
-
-    return 'Analysis complete'
-  })
-
-  const statusCardDescription = computed(() => {
-    if (status.value === 'loading')
-      return 'AI is analyzing page topic and keywords'
-
-    if (status.value === 'error')
-      return errorMessage.value || 'Please adjust the input and retry'
-
-    if (status.value === 'empty')
-      return 'Fill in page details to generate SEO content'
-
-    return 'SEO content generated successfully'
-  })
+  const instructionCharacterCount = computed(() => instruction.value.length)
 
   function addKeyword() {
     const nextKeyword = keywordInput.value.trim()
@@ -92,6 +58,7 @@ export function useSeoWorkspace() {
   }
 
   function resetWorkspace() {
+    instruction.value = ''
     pageTopic.value = ''
     keywordInput.value = ''
     keywords.value = []
@@ -105,7 +72,7 @@ export function useSeoWorkspace() {
     activeGenerationTurnId = null
   }
 
-  async function generateSeoContent() {
+  async function generateSeoContent(model?: string) {
     addKeyword()
 
     if (!validateBeforeGenerate()) {
@@ -117,8 +84,8 @@ export function useSeoWorkspace() {
     if (!canStartGenerateRequest())
       return
 
-    const request = buildGenerateRequest()
-    const turnId = appendConversationTurn(request)
+    const request = buildGenerateRequest(model)
+    const turnId = appendConversationTurn(request, instruction.value.trim())
     const streamRevealController = createSeoStreamRevealController(turnId)
 
     activeGenerationTurnId = turnId
@@ -130,6 +97,7 @@ export function useSeoWorkspace() {
         onEvent: event => streamRevealController.handleEvent(event),
       })
       await streamRevealController.revealResult()
+      instruction.value = ''
     }
     catch (error) {
       streamRevealController.cancel()
@@ -244,15 +212,20 @@ export function useSeoWorkspace() {
     activeGenerationTurnId = null
   }
 
-  function buildGenerateRequest(): GenerateSeoRequest {
+  function buildGenerateRequest(model?: string): GenerateSeoRequest {
+    const nextInstruction = instruction.value.trim()
+    const nextPageTopic = pageTopic.value.trim() || nextInstruction
+    const nextModel = model?.trim()
+
     return {
-      pageTopic: pageTopic.value.trim(),
+      pageTopic: nextPageTopic,
       language: language.value.trim(),
       keywords: [...keywords.value],
+      ...(nextModel ? { model: nextModel } : {}),
     }
   }
 
-  function appendConversationTurn(request: GenerateSeoRequest): string {
+  function appendConversationTurn(request: GenerateSeoRequest, nextInstruction: string): string {
     const turnId = createConversationTurnId()
 
     conversationTurns.value = [
@@ -261,6 +234,7 @@ export function useSeoWorkspace() {
         id: turnId,
         request,
         status: 'loading',
+        instruction: nextInstruction || request.pageTopic,
         progressMessage: 'Waiting for stream connection',
         createdAt: new Date().toISOString(),
       },
@@ -287,12 +261,8 @@ export function useSeoWorkspace() {
   function validateBeforeGenerate(): boolean {
     const nextErrors: SeoInputValidationErrors = {}
 
-    if (!pageTopic.value.trim()) {
-      nextErrors.pageTopic = '请输入页面主题。'
-    }
-
-    if (keywords.value.length === 0) {
-      nextErrors.keywords = '请至少添加一个目标关键词。'
+    if (!instruction.value.trim() && !pageTopic.value.trim()) {
+      nextErrors.instruction = '请输入你想让 Agent 完成的任务。'
     }
 
     validationErrors.value = nextErrors
@@ -414,9 +384,9 @@ export function useSeoWorkspace() {
     return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`
   }
 
-  watch(pageTopic, (value) => {
+  watch(instruction, (value) => {
     if (value.trim())
-      clearValidationError('pageTopic')
+      clearValidationError('instruction')
   })
 
   watch(() => keywords.value.length, (length) => {
@@ -425,6 +395,7 @@ export function useSeoWorkspace() {
   })
 
   return {
+    instruction,
     pageTopic,
     language,
     keywordInput,
@@ -436,10 +407,7 @@ export function useSeoWorkspace() {
     validationErrors,
     appMessage,
     conversationTurns,
-    pageTopicCharacterCount,
-    completionPercent,
-    statusCardTitle,
-    statusCardDescription,
+    instructionCharacterCount,
     addKeyword,
     removeKeyword,
     resetWorkspace,

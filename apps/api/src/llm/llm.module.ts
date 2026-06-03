@@ -1,4 +1,5 @@
 import { Global, Module } from '@nestjs/common'
+import { LLMController } from './llm.controller.js'
 import { LLMService } from './llm.service.js'
 
 /**
@@ -7,6 +8,7 @@ import { LLMService } from './llm.service.js'
  */
 @Global()
 @Module({
+  controllers: [LLMController],
   providers: [LLMService],
   exports: [LLMService],
 })

@@ -1,4 +1,4 @@
-import type { ChatMessage, ChatOptions, DeepSeekErrorDetail, OpenAIChatResponse } from './llm.types.js'
+import type { ChatMessage, ChatOptions, DeepSeekBalanceResponse, DeepSeekErrorDetail, DeepSeekModelsResponse, OpenAIChatResponse } from './llm.types.js'
 import process from 'node:process'
 import { Injectable } from '@nestjs/common'
 import {
@@ -39,6 +39,14 @@ class LLMConfigError extends LLMInvalidRequestError {
  */
 @Injectable()
 export class LLMService {
+  async listModels(): Promise<DeepSeekModelsResponse> {
+    return this.requestDeepSeek<DeepSeekModelsResponse>('/models')
+  }
+
+  async getUserBalance(): Promise<DeepSeekBalanceResponse> {
+    return this.requestDeepSeek<DeepSeekBalanceResponse>('/user/balance')
+  }
+
   /**
    * 发送一次 chat 请求，返回模型回复的纯文本（choices[0].message.content）。
    *
@@ -47,21 +55,11 @@ export class LLMService {
    * @returns 模型回复的字符串内容
    */
   async chat(messages: ChatMessage[], options?: ChatOptions): Promise<string> {
-    const apiKey = process.env.LLM_API_KEY?.trim()
-    const baseUrl = process.env.LLM_BASE_URL?.trim()
     const model = (options?.model ?? process.env.LLM_MODEL)?.trim()
 
-    if (!apiKey) {
-      throw new LLMAuthError('请在项目根目录 .env 中设置 LLM_API_KEY')
-    }
-    if (!baseUrl) {
-      throw new LLMConfigError('LLM_BASE_URL')
-    }
     if (!model) {
       throw new LLMConfigError('LLM_MODEL')
     }
-
-    const normalizedBaseUrl = baseUrl.replace(/\/+$/, '')
 
     const body = JSON.stringify({
       model,
@@ -71,68 +69,10 @@ export class LLMService {
       ...(options?.responseFormat ? { response_format: options.responseFormat } : {}),
     })
 
-    let response: Response
-    try {
-      response = await fetch(`${normalizedBaseUrl}/chat/completions`, {
-        method: 'POST',
-        signal: AbortSignal.timeout(LLM_REQUEST_TIMEOUT_MS),
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body,
-      })
-    }
-    catch (cause) {
-      throw new LLMNetworkError(cause)
-    }
-
-    // 解析 error body（用于错误定位），所有非 2xx 都可能携带 DeepSeek error 结构
-    let errorBody: DeepSeekErrorDetail | undefined
-    if (!response.ok) {
-      try {
-        errorBody = (await response.json()) as DeepSeekErrorDetail
-      }
-      catch {
-        // body 无法解析时忽略，以 HTTP 状态码为准
-      }
-    }
-
-    // ─── 按 DeepSeek 官方错误码逐类处理 ───────
-    if (!response.ok) {
-      const apiMessage = errorBody?.error?.message
-
-      switch (response.status) {
-        case 400:
-          throw new LLMInvalidRequestError(400, errorBody)
-        case 401:
-          throw new LLMAuthError(undefined, errorBody)
-        case 402:
-          throw new LLMBalanceError(errorBody)
-        case 422:
-          throw new LLMInvalidRequestError(422, errorBody)
-        case 429:
-          throw new LLMRateLimitError(errorBody)
-        case 500:
-        case 503:
-          throw new LLMServerError(response.status, errorBody)
-        default:
-          throw new LLMApiError(
-            apiMessage
-              ? `HTTP ${response.status}: ${apiMessage}`
-              : `LLM API HTTP ${response.status} 错误，请稍后重试`,
-            errorBody ?? response.status,
-          )
-      }
-    }
-
-    let data: OpenAIChatResponse
-    try {
-      data = (await response.json()) as OpenAIChatResponse
-    }
-    catch (cause) {
-      throw new LLMApiError('LLM API 返回内容不是合法 JSON，请稍后重试', cause)
-    }
+    const data = await this.requestDeepSeek<OpenAIChatResponse>('/chat/completions', {
+      method: 'POST',
+      body,
+    })
 
     // 2xx 但 body 仍可能包含 error（如 API 层面的逻辑错误）
     if (data.error) {
@@ -151,5 +91,93 @@ export class LLMService {
     }
 
     return content
+  }
+
+  private getRuntimeConfig() {
+    const apiKey = process.env.LLM_API_KEY?.trim()
+    const baseUrl = process.env.LLM_BASE_URL?.trim()
+
+    if (!apiKey) {
+      throw new LLMAuthError('请在项目根目录 .env 中设置 LLM_API_KEY')
+    }
+    if (!baseUrl) {
+      throw new LLMConfigError('LLM_BASE_URL')
+    }
+
+    return {
+      apiKey,
+      baseUrl: baseUrl.replace(/\/+$/, ''),
+    }
+  }
+
+  private async requestDeepSeek<T>(path: string, init?: RequestInit): Promise<T> {
+    const { apiKey, baseUrl } = this.getRuntimeConfig()
+    const response = await this.fetchDeepSeek(`${baseUrl}${path}`, apiKey, init)
+
+    await this.handleDeepSeekHttpError(response)
+
+    try {
+      return await response.json() as T
+    }
+    catch (cause) {
+      throw new LLMApiError('LLM API 返回内容不是合法 JSON，请稍后重试', cause)
+    }
+  }
+
+  private async fetchDeepSeek(url: string, apiKey: string, init?: RequestInit): Promise<Response> {
+    const headers = new Headers(init?.headers)
+
+    headers.set('Authorization', `Bearer ${apiKey}`)
+    headers.set('Content-Type', 'application/json')
+
+    try {
+      return await fetch(url, {
+        ...init,
+        method: init?.method ?? 'GET',
+        signal: AbortSignal.timeout(LLM_REQUEST_TIMEOUT_MS),
+        headers,
+      })
+    }
+    catch (cause) {
+      throw new LLMNetworkError(cause)
+    }
+  }
+
+  private async handleDeepSeekHttpError(response: Response): Promise<void> {
+    if (response.ok)
+      return
+
+    let errorBody: DeepSeekErrorDetail | undefined
+    try {
+      errorBody = await response.json() as DeepSeekErrorDetail
+    }
+    catch {
+      // body 无法解析时忽略，以 HTTP 状态码为准
+    }
+
+    const apiMessage = errorBody?.error?.message
+
+    switch (response.status) {
+      case 400:
+        throw new LLMInvalidRequestError(400, errorBody)
+      case 401:
+        throw new LLMAuthError(undefined, errorBody)
+      case 402:
+        throw new LLMBalanceError(errorBody)
+      case 422:
+        throw new LLMInvalidRequestError(422, errorBody)
+      case 429:
+        throw new LLMRateLimitError(errorBody)
+      case 500:
+      case 503:
+        throw new LLMServerError(response.status, errorBody)
+      default:
+        throw new LLMApiError(
+          apiMessage
+            ? `HTTP ${response.status}: ${apiMessage}`
+            : `LLM API HTTP ${response.status} 错误，请稍后重试`,
+          errorBody ?? response.status,
+        )
+    }
   }
 }

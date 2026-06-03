@@ -1,21 +1,14 @@
-import type { LucideIcon } from '@lucide/vue'
-
 export type GenerationStatus = 'empty' | 'loading' | 'success' | 'error'
 
 export type CopyableSeoField = 'title' | 'description'
 
 export type SeoConversationTurnStatus = 'loading' | 'success' | 'error'
 
-export interface NavigationItem {
-  label: string
-  icon: LucideIcon
-  active?: boolean
-}
-
 export interface GenerateSeoRequest {
   pageTopic: string
   language: string
   keywords: string[]
+  model?: string
 }
 
 export interface GenerateSeoResponse {
@@ -30,6 +23,7 @@ export interface SeoConversationTurn {
   request: GenerateSeoRequest
   status: SeoConversationTurnStatus
   createdAt: string
+  instruction?: string
   result?: GenerateSeoResponse
   progressMessage?: string
   errorMessage?: string
@@ -57,6 +51,7 @@ export type SeoStreamEvent
   }
 
 export interface SeoInputValidationErrors {
+  instruction?: string
   pageTopic?: string
   keywords?: string
 }
