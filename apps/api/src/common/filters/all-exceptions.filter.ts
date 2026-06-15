@@ -13,7 +13,6 @@ import {
   LLMRateLimitError,
   LLMServerError,
 } from '../../llm/llm.types.js'
-import { SeoGenerationOutputError } from '../../seo/types/seo.types.js'
 import { getRequestId, getRequestPath } from '../utils/http-request.util.js'
 
 interface HttpExceptionResponse {
@@ -42,7 +41,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const normalizedException = normalizeException(exception, statusCode)
     const requestId = getRequestId(request)
     const requestPath = getRequestPath(request)
-    const isAiException = exception instanceof LLMError || exception instanceof SeoGenerationOutputError
+    const isAiException = exception instanceof LLMError
     const logMessage = formatExceptionLogMessage({
       message: normalizedException.message,
       path: requestPath,
@@ -90,7 +89,7 @@ function getExceptionStatusCode(exception: unknown): number {
     return HttpStatus.TOO_MANY_REQUESTS
   }
 
-  if (exception instanceof LLMError || exception instanceof SeoGenerationOutputError) {
+  if (exception instanceof LLMError) {
     return getAiGatewayStatusCode(exception)
   }
 
@@ -122,7 +121,7 @@ function normalizeException(exception: unknown, statusCode: number): NormalizedE
     }
   }
 
-  if (exception instanceof LLMError || exception instanceof SeoGenerationOutputError) {
+  if (exception instanceof LLMError) {
     return normalizeAiException(exception, statusCode)
   }
 
@@ -134,7 +133,7 @@ function normalizeException(exception: unknown, statusCode: number): NormalizedE
   }
 }
 
-function getAiGatewayStatusCode(exception: LLMError | SeoGenerationOutputError): number {
+function getAiGatewayStatusCode(exception: LLMError): number {
   if (exception instanceof LLMRateLimitError) {
     return HttpStatus.TOO_MANY_REQUESTS
   }
@@ -147,7 +146,7 @@ function getAiGatewayStatusCode(exception: LLMError | SeoGenerationOutputError):
 }
 
 function normalizeAiException(
-  exception: LLMError | SeoGenerationOutputError,
+  exception: LLMError,
   statusCode: number,
 ): NormalizedException {
   return {
@@ -158,7 +157,7 @@ function normalizeAiException(
   }
 }
 
-function getAiExceptionMessage(exception: LLMError | SeoGenerationOutputError): string {
+function getAiExceptionMessage(exception: LLMError): string {
   if (exception instanceof LLMAuthError) {
     return 'AI 服务认证失败，请检查服务端模型配置'
   }
@@ -185,10 +184,6 @@ function getAiExceptionMessage(exception: LLMError | SeoGenerationOutputError): 
 
   if (exception instanceof LLMApiError) {
     return 'AI 服务返回异常，请稍后重试'
-  }
-
-  if (exception instanceof SeoGenerationOutputError) {
-    return 'AI 返回格式异常，请重试'
   }
 
   return 'AI 服务异常，请稍后重试'

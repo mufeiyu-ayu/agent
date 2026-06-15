@@ -23,30 +23,21 @@ const {
 } = useLlmRuntime()
 
 const {
-  instruction,
-  pageTopic,
-  language,
-  keywordInput,
-  keywords,
+  message,
   status,
   lastGeneratedAt,
-  copiedItemKey,
   validationErrors,
   appMessage,
   conversationTurns,
-  instructionCharacterCount,
-  addKeyword,
-  removeKeyword,
+  messageCharacterCount,
   resetWorkspace,
-  generateSeoContent,
+  sendMessage,
   hideMessage,
-  copyResult,
 } = useSeoWorkspace()
 </script>
 
 <template>
   <AppShell
-    v-model:language="language"
     :balance-available="balanceAvailable"
     :balance-label="balanceLabel"
     :balance-status="balanceStatus"
@@ -66,23 +57,16 @@ const {
     <AgentConversation
       :last-generated-at="lastGeneratedAt"
       :turns="conversationTurns"
-      :copied-item-key="copiedItemKey"
-      @copy="copyResult"
     />
 
     <SeoChatComposer
-      v-model:instruction="instruction"
-      v-model:page-topic="pageTopic"
-      v-model:keyword-input="keywordInput"
+      v-model:message="message"
       v-model:selected-model="selectedModel"
-      :keywords="keywords"
       :models="models"
       :status="status"
-      :instruction-character-count="instructionCharacterCount"
+      :message-character-count="messageCharacterCount"
       :validation-errors="validationErrors"
-      @add-keyword="addKeyword"
-      @remove-keyword="removeKeyword"
-      @generate="generateSeoContent(selectedModel)"
+      @send="sendMessage(selectedModel)"
       @reset="resetWorkspace"
     />
   </AppShell>

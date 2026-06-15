@@ -1,49 +1,34 @@
 <script setup lang="ts">
-import type { CopyableSeoField, SeoConversationTurn } from '../../types/seo'
+import type { SeoConversationTurn } from '../../types/seo'
 
-import { Sparkles } from '@lucide/vue'
+import { LoaderCircle, Sparkles } from '@lucide/vue'
 
 import { formatGeneratedTime } from '../../utils/seo-format'
-import SeoResultCard from '../seo/SeoResultCard.vue'
 import AgentMessage from './AgentMessage.vue'
-import AgentProgressCard from './AgentProgressCard.vue'
 
 defineProps<{
   turns: SeoConversationTurn[]
   lastGeneratedAt: string
-  copiedItemKey: string | null
-}>()
-
-const emit = defineEmits<{
-  copy: [turnId: string, field: CopyableSeoField, content: string]
 }>()
 
 function getTurnTime(value: string): string {
   return formatGeneratedTime(new Date(value))
 }
-
-function shouldShowContext(turn: SeoConversationTurn): boolean {
-  return Boolean(turn.instruction && turn.instruction !== turn.request.pageTopic)
-}
-
-function handleCopy(turnId: string, field: CopyableSeoField, content: string) {
-  emit('copy', turnId, field, content)
-}
 </script>
 
 <template>
-  <section class="mx-auto flex min-h-0 w-full max-w-[1120px] flex-1 flex-col px-4">
+  <section class="mx-auto flex min-h-0 w-full max-w-[920px] flex-1 flex-col px-4">
     <div class="flex shrink-0 items-center justify-between gap-4 py-4">
       <div>
         <h2 class="text-sm font-black uppercase tracking-normal text-slate-400">
           Conversation
         </h2>
         <p class="mt-1 text-sm font-semibold text-slate-600">
-          Generate, refine and review SEO content in one thread.
+          Talk naturally with your SEO Agent.
         </p>
       </div>
       <div class="hidden rounded-full bg-white px-4 py-2 text-sm font-bold text-slate-500 shadow-sm sm:block">
-        Last generated: {{ lastGeneratedAt }}
+        Last reply: {{ lastGeneratedAt }}
       </div>
     </div>
 
@@ -56,17 +41,17 @@ function handleCopy(turnId: string, field: CopyableSeoField, content: string) {
           <Sparkles :size="26" />
         </div>
         <h3 class="text-2xl font-black text-slate-950">
-          Start with an SEO task
+          Start a SEO conversation
         </h3>
         <p class="mx-auto mt-3 max-w-md text-sm font-medium leading-6 text-slate-500">
-          Ask the agent to generate a title, meta description and optimization suggestions. Template context is optional.
+          Ask for SEO strategy, page optimization, keyword ideas, content structure, or technical SEO advice.
         </p>
         <div class="mt-6 flex flex-wrap justify-center gap-2">
           <span class="rounded-full bg-white px-4 py-2 text-sm font-bold text-slate-600 shadow-sm">
-            Generate a top-up landing page
+            帮我诊断一个落地页 SEO
           </span>
           <span class="rounded-full bg-white px-4 py-2 text-sm font-bold text-slate-600 shadow-sm">
-            Make title more conversion-focused
+            给我一个内容优化计划
           </span>
         </div>
       </div>
@@ -85,42 +70,37 @@ function handleCopy(turnId: string, field: CopyableSeoField, content: string) {
           name="You"
           :time="getTurnTime(turn.createdAt)"
         >
-          <div class="rounded-2xl bg-blue-50 px-5 py-3 text-sm font-bold leading-6 text-slate-800 shadow-sm">
-            {{ turn.instruction || turn.request.pageTopic }}
-            <div
-              v-if="shouldShowContext(turn)"
-              class="mt-2 text-xs font-semibold text-slate-500"
-            >
-              Context: {{ turn.request.pageTopic }}
-            </div>
+          <div class="max-w-[720px] whitespace-pre-wrap rounded-2xl bg-blue-50 px-5 py-3 text-sm font-bold leading-6 text-slate-800 shadow-sm">
+            {{ turn.userMessage }}
           </div>
         </AgentMessage>
 
         <AgentMessage
           role="agent"
           name="SEO Agent"
-          :time="getTurnTime(turn.createdAt)"
+          :time="getTurnTime(turn.generatedAt ?? turn.createdAt)"
         >
-          <AgentProgressCard
+          <div
             v-if="turn.status === 'loading'"
-            :message="turn.progressMessage"
-          />
+            class="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-5 py-4 text-sm font-bold text-slate-600 shadow-sm"
+          >
+            <LoaderCircle class="animate-spin text-blue-600" :size="18" />
+            SEO Agent is thinking...
+          </div>
 
           <div
             v-else-if="turn.status === 'error'"
-            class="max-w-[520px] rounded-2xl border border-rose-100 bg-rose-50 px-5 py-4 text-sm font-bold leading-6 text-rose-700"
+            class="max-w-[620px] rounded-2xl border border-rose-100 bg-rose-50 px-5 py-4 text-sm font-bold leading-6 text-rose-700"
           >
-            {{ turn.errorMessage || 'Failed to generate SEO content. Please try again.' }}
+            {{ turn.errorMessage || 'SEO Agent 暂时无法回复，请稍后重试。' }}
           </div>
 
-          <SeoResultCard
-            v-else-if="turn.result"
-            :turn-id="turn.id"
-            :request="turn.request"
-            :result="turn.result"
-            :copied-item-key="copiedItemKey"
-            @copy="handleCopy"
-          />
+          <div
+            v-else
+            class="max-w-[760px] whitespace-pre-wrap rounded-2xl border border-slate-200 bg-white px-5 py-4 text-sm font-semibold leading-7 text-slate-800 shadow-sm"
+          >
+            {{ turn.reply }}
+          </div>
         </AgentMessage>
       </template>
     </div>

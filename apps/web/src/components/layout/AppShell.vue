@@ -11,16 +11,14 @@ const props = defineProps<{
   balanceAvailable: boolean
   balanceLabel: string
   balanceStatus: LlmRuntimeStatus
-  language: string
   navigationItems: AgentNavigationItem[]
   recentChats: AgentRecentChat[]
   user: AgentPlatformUser
 }>()
 
 const emit = defineEmits<{
-  'newChat': []
-  'refreshBalance': []
-  'update:language': [value: string]
+  newChat: []
+  refreshBalance: []
 }>()
 
 const sidebarCollapsed = ref(false)
@@ -84,11 +82,9 @@ function handleNewChat() {
         :balance-available="props.balanceAvailable"
         :balance-label="props.balanceLabel"
         :balance-status="props.balanceStatus"
-        :language="props.language"
         :user="props.user"
         @open-navigation="mobileSidebarOpen = true"
         @refresh-balance="emit('refreshBalance')"
-        @update:language="value => emit('update:language', value)"
       />
 
       <slot />

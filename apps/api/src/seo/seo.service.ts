@@ -1,23 +1,27 @@
-import type { GenerateSeoDto } from './dto/generate-seo.dto.js'
-import type { GenerateSeoContentResult } from './types/seo.types.js'
+import type { SeoChatDto } from './dto/seo-chat.dto.js'
+import type { SeoChatResult } from './types/seo.types.js'
 import { Inject, Injectable } from '@nestjs/common'
 
-import { SeoGenerationService } from './seo-generation.service.js'
+import { LLMService } from '../llm/llm.service.js'
+import { buildSeoAgentChatMessages } from './prompts/seo-agent.prompt.js'
 
 @Injectable()
 export class SeoService {
   constructor(
-    @Inject(SeoGenerationService)
-    private readonly seoGenerationService: SeoGenerationService,
+    @Inject(LLMService)
+    private readonly llmService: LLMService,
   ) {}
 
-  async generateSeoContent(input: GenerateSeoDto): Promise<GenerateSeoContentResult> {
-    const generated = await this.seoGenerationService.generateWithJsonOutput(input)
+  async chat(input: SeoChatDto): Promise<SeoChatResult> {
+    const messages = buildSeoAgentChatMessages(input)
+    const reply = await this.llmService.chat(messages, {
+      ...(input.model ? { model: input.model } : {}),
+      temperature: 0.4,
+      maxTokens: 1200,
+    })
 
     return {
-      title: generated.title,
-      description: generated.description,
-      suggestions: generated.suggestions,
+      reply,
       generatedAt: new Date().toISOString(),
     }
   }

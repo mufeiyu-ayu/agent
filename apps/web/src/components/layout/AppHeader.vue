@@ -2,29 +2,20 @@
 import type { AgentPlatformUser } from '../../types/agent-platform'
 import type { LlmRuntimeStatus } from '../../types/llm'
 
-import { Bell, ChevronDown, CircleHelp, Globe2, PanelLeftOpen, RefreshCw, Sparkles } from '@lucide/vue'
+import { Bell, ChevronDown, CircleHelp, PanelLeftOpen, RefreshCw, Sparkles } from '@lucide/vue'
 import { computed } from 'vue'
 
 const props = defineProps<{
   balanceAvailable: boolean
   balanceLabel: string
   balanceStatus: LlmRuntimeStatus
-  language: string
   user: AgentPlatformUser
 }>()
 
 const emit = defineEmits<{
-  'openNavigation': []
-  'refreshBalance': []
-  'update:language': [value: string]
+  openNavigation: []
+  refreshBalance: []
 }>()
-
-const languageOptions = ['English', '中文', '日本語', 'Deutsch']
-
-const languageModel = computed({
-  get: () => props.language,
-  set: value => emit('update:language', value),
-})
 
 const balanceToneClass = computed(() => {
   if (props.balanceStatus === 'error')
@@ -78,23 +69,6 @@ const isRefreshingBalance = computed(() => props.balanceStatus === 'loading')
           <RefreshCw :class="{ 'animate-spin': isRefreshingBalance }" :size="15" />
         </button>
       </div>
-
-      <label class="relative flex h-10 items-center">
-        <Globe2 class="pointer-events-none absolute left-3 text-slate-500" :size="17" />
-        <select
-          v-model="languageModel"
-          aria-label="Language"
-          class="h-10 w-11 appearance-none rounded-full border border-slate-200 bg-white py-0 pl-10 pr-2 text-sm font-bold text-transparent shadow-sm outline-none transition hover:border-blue-200 focus:border-blue-300 focus:ring-4 focus:ring-blue-100 sm:w-[132px] sm:pl-9 sm:pr-8 sm:text-slate-700"
-        >
-          <option
-            v-for="option in languageOptions"
-            :key="option"
-          >
-            {{ option }}
-          </option>
-        </select>
-        <ChevronDown class="pointer-events-none absolute right-3 hidden text-slate-500 sm:block" :size="16" />
-      </label>
 
       <button
         type="button"
