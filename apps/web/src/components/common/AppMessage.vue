@@ -4,6 +4,9 @@ import type { AppMessageType } from '../../types/seo'
 import { AlertCircle, CheckCircle2, Info, X } from '@lucide/vue'
 import { computed } from 'vue'
 
+import { Alert } from '@/components/ui/alert'
+import { Button } from '@/components/ui/button'
+
 const props = defineProps<{
   visible: boolean
   type: AppMessageType
@@ -50,24 +53,26 @@ const Icon = computed(() => {
       role="alert"
       aria-live="assertive"
     >
-      <div
-        class="pointer-events-auto flex min-h-12 items-center gap-3 rounded-[14px] border px-4 py-3 text-sm font-semibold"
+      <Alert
+        class="pointer-events-auto flex min-h-12 items-center gap-3 rounded-[14px] px-4 py-3 text-sm font-semibold"
         :class="messageClass"
       >
         <component :is="Icon" class="shrink-0" :size="20" />
         <p class="min-w-0 flex-1 leading-5">
           {{ text }}
         </p>
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          size="icon-sm"
           title="Close message"
           aria-label="Close message"
-          class="grid size-7 shrink-0 place-items-center rounded-full transition hover:bg-white/70"
+          class="size-7 shrink-0 rounded-full hover:bg-white/70"
           @click="emit('close')"
         >
           <X :size="16" />
-        </button>
-      </div>
+        </Button>
+      </Alert>
     </div>
   </Transition>
 </template>

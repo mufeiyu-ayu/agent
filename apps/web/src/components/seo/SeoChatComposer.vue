@@ -2,8 +2,18 @@
 import type { LlmModelOption } from '../../types/llm'
 import type { GenerationStatus, SeoInputValidationErrors } from '../../types/seo'
 
-import { Bot, ChevronDown, LoaderCircle, RefreshCw, Send, Sparkles } from '@lucide/vue'
+import { Bot, LoaderCircle, RefreshCw, Send, Sparkles } from '@lucide/vue'
 import { computed } from 'vue'
+
+import { Button } from '@/components/ui/button'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { Textarea } from '@/components/ui/textarea'
 
 const props = defineProps<{
   message: string
@@ -21,16 +31,6 @@ const emit = defineEmits<{
   'reset': []
 }>()
 
-const messageModel = computed({
-  get: () => props.message,
-  set: value => emit('update:message', value),
-})
-
-const selectedModelModel = computed({
-  get: () => props.selectedModel,
-  set: value => emit('update:selectedModel', value),
-})
-
 const messageInputClass = computed(() => {
   if (props.validationErrors.message)
     return 'border-rose-300 focus-within:border-rose-400 focus-within:ring-rose-100'
@@ -43,6 +43,19 @@ function submitComposer() {
     return
 
   emit('send')
+}
+
+function updateMessage(value: string | number) {
+  emit('update:message', String(value))
+}
+
+function updateSelectedModel(value: unknown) {
+  const nextModel = props.models.find(model => model.id === value)
+
+  if (!nextModel)
+    return
+
+  emit('update:selectedModel', nextModel.id)
 }
 </script>
 
@@ -64,57 +77,65 @@ function submitComposer() {
           </span>
         </div>
 
-        <textarea
-          v-model="messageModel"
+        <Textarea
+          :model-value="message"
           maxlength="2000"
           rows="3"
-          class="max-h-44 min-h-20 w-full resize-none bg-transparent px-1 text-[15px] font-semibold leading-6 text-slate-900 outline-none placeholder:text-slate-400"
+          class="max-h-44 min-h-20 resize-none border-0 bg-transparent px-1 py-0 text-[15px] font-medium leading-6 text-slate-900 shadow-none focus-visible:ring-0 placeholder:font-medium placeholder:text-slate-400"
           :aria-invalid="Boolean(validationErrors.message)"
           aria-describedby="message-error"
-          placeholder="Ask your SEO Agent anything..."
+          placeholder="直接输入你想让 SEO Agent 分析的问题..."
+          @update:model-value="updateMessage"
           @keydown.enter.exact.prevent="submitComposer"
         />
 
         <div class="flex flex-col gap-3 pt-2 md:flex-row md:items-center md:justify-between">
-          <label class="relative h-10 min-w-[210px]">
-            <Bot class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" :size="17" />
-            <select
-              v-model="selectedModelModel"
+          <Select
+            :model-value="selectedModel"
+            @update:model-value="updateSelectedModel"
+          >
+            <SelectTrigger
               aria-label="DeepSeek model"
-              class="h-10 w-full appearance-none rounded-xl border border-slate-200 bg-white py-0 pl-9 pr-8 text-sm font-bold text-slate-700 outline-none transition hover:border-blue-200 focus:border-blue-300 focus:ring-4 focus:ring-blue-100"
+              class="h-10 min-w-[210px] rounded-xl border-slate-200 bg-white px-3 text-sm font-bold text-slate-700 hover:border-blue-200 focus:ring-blue-100"
             >
-              <option
+              <Bot class="mr-1 text-slate-500" :size="17" />
+              <SelectValue placeholder="DeepSeek model" />
+            </SelectTrigger>
+            <SelectContent class="min-w-[210px] rounded-xl">
+              <SelectItem
                 v-for="model in models"
                 :key="model.id"
                 :value="model.id"
               >
                 {{ model.label }}
-              </option>
-            </select>
-            <ChevronDown class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-500" :size="16" />
-          </label>
+              </SelectItem>
+            </SelectContent>
+          </Select>
 
           <div class="flex shrink-0 items-center justify-end gap-2">
-            <button
+            <Button
               type="button"
+              variant="outline"
+              size="icon-lg"
               title="Reset conversation"
               aria-label="Reset conversation"
-              class="grid size-10 place-items-center rounded-xl border border-slate-200 text-slate-600 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-600"
+              class="size-10 rounded-xl border-slate-200 text-slate-600 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-600"
               @click="emit('reset')"
             >
               <RefreshCw :size="19" />
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
+              size="icon-lg"
               title="Send message"
               aria-label="Send message"
-              class="grid size-11 place-items-center rounded-xl bg-blue-600 text-white shadow-[0_12px_26px_rgb(37_99_235/26%)] transition hover:bg-blue-500 disabled:bg-blue-400"
+              class="size-11 rounded-xl bg-blue-600 text-white shadow-[0_12px_26px_rgb(37_99_235/26%)] hover:bg-blue-500 disabled:bg-blue-400"
               :disabled="status === 'loading'"
               @click="submitComposer"
             >
               <LoaderCircle v-if="status === 'loading'" class="animate-spin" :size="20" />
               <Send v-else :size="19" />
-            </button>
+            </Button>
           </div>
         </div>
       </div>

@@ -3,6 +3,8 @@ import type { SeoConversationTurn } from '../../types/seo'
 
 import { LoaderCircle, Sparkles } from '@lucide/vue'
 
+import { ScrollArea } from '@/components/ui/scroll-area'
+
 import { formatGeneratedTime } from '../../utils/seo-format'
 import AgentMessage from './AgentMessage.vue'
 
@@ -57,52 +59,54 @@ function getTurnTime(value: string): string {
       </div>
     </div>
 
-    <div
+    <ScrollArea
       v-else
-      class="min-h-0 flex-1 space-y-7 overflow-y-auto pb-6 pr-1"
+      class="min-h-0 flex-1 pr-1"
     >
-      <template
-        v-for="turn in turns"
-        :key="turn.id"
-      >
-        <AgentMessage
-          role="user"
-          name="You"
-          :time="getTurnTime(turn.createdAt)"
+      <div class="space-y-7 pb-6">
+        <template
+          v-for="turn in turns"
+          :key="turn.id"
         >
-          <div class="max-w-[720px] whitespace-pre-wrap rounded-2xl bg-blue-50 px-5 py-3 text-sm font-bold leading-6 text-slate-800 shadow-sm">
-            {{ turn.userMessage }}
-          </div>
-        </AgentMessage>
-
-        <AgentMessage
-          role="agent"
-          name="SEO Agent"
-          :time="getTurnTime(turn.generatedAt ?? turn.createdAt)"
-        >
-          <div
-            v-if="turn.status === 'loading'"
-            class="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-5 py-4 text-sm font-bold text-slate-600 shadow-sm"
+          <AgentMessage
+            role="user"
+            name="You"
+            :time="getTurnTime(turn.createdAt)"
           >
-            <LoaderCircle class="animate-spin text-blue-600" :size="18" />
-            SEO Agent is thinking...
-          </div>
+            <div class="max-w-[720px] whitespace-pre-wrap rounded-2xl bg-blue-50 px-5 py-3 text-sm font-bold leading-6 text-slate-800 shadow-sm">
+              {{ turn.userMessage }}
+            </div>
+          </AgentMessage>
 
-          <div
-            v-else-if="turn.status === 'error'"
-            class="max-w-[620px] rounded-2xl border border-rose-100 bg-rose-50 px-5 py-4 text-sm font-bold leading-6 text-rose-700"
+          <AgentMessage
+            role="agent"
+            name="SEO Agent"
+            :time="getTurnTime(turn.generatedAt ?? turn.createdAt)"
           >
-            {{ turn.errorMessage || 'SEO Agent 暂时无法回复，请稍后重试。' }}
-          </div>
+            <div
+              v-if="turn.status === 'loading'"
+              class="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-5 py-4 text-sm font-bold text-slate-600 shadow-sm"
+            >
+              <LoaderCircle class="animate-spin text-blue-600" :size="18" />
+              SEO Agent is thinking...
+            </div>
 
-          <div
-            v-else
-            class="max-w-[760px] whitespace-pre-wrap rounded-2xl border border-slate-200 bg-white px-5 py-4 text-sm font-semibold leading-7 text-slate-800 shadow-sm"
-          >
-            {{ turn.reply }}
-          </div>
-        </AgentMessage>
-      </template>
-    </div>
+            <div
+              v-else-if="turn.status === 'error'"
+              class="max-w-[620px] rounded-2xl border border-rose-100 bg-rose-50 px-5 py-4 text-sm font-bold leading-6 text-rose-700"
+            >
+              {{ turn.errorMessage || 'SEO Agent 暂时无法回复，请稍后重试。' }}
+            </div>
+
+            <div
+              v-else
+              class="max-w-[760px] whitespace-pre-wrap rounded-2xl border border-slate-200 bg-white px-5 py-4 text-sm font-semibold leading-7 text-slate-800 shadow-sm"
+            >
+              {{ turn.reply }}
+            </div>
+          </AgentMessage>
+        </template>
+      </div>
+    </ScrollArea>
   </section>
 </template>

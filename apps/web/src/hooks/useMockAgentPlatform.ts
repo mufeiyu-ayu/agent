@@ -11,27 +11,7 @@ const navigationItems: AgentNavigationItem[] = [
 ]
 
 const recentChats: AgentRecentChat[] = [
-  {
-    id: 'pubg-uc',
-    title: 'PUBG UC top-up landing page',
-    updatedAt: 'Just now',
-    active: true,
-  },
-  {
-    id: 'free-fire',
-    title: 'Free Fire diamond top-up SEO',
-    updatedAt: '2 hours ago',
-  },
-  {
-    id: 'valorant',
-    title: 'Valorant points landing page',
-    updatedAt: 'Yesterday',
-  },
-  {
-    id: 'gaming-blog',
-    title: 'Best gaming top-up sites blog',
-    updatedAt: '2 days ago',
-  },
+
 ]
 
 const user: AgentPlatformUser = {

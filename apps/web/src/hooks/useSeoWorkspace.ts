@@ -11,7 +11,7 @@ const CHAT_REQUEST_INTERVAL_MS = 800
 const MAX_CONVERSATION_TURNS = 12
 
 export function useSeoWorkspace() {
-  const message = ref('帮我看看一个游戏充值网站的 SEO 应该先从哪里优化？')
+  const message = ref('')
   const status = ref<GenerationStatus>('empty')
   const lastGeneratedAt = ref('--:--')
   const errorMessage = ref('')

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+
 defineProps<{
   role: 'user' | 'agent'
   name: string
@@ -11,12 +13,15 @@ defineProps<{
     class="flex gap-3"
     :class="role === 'user' ? 'justify-end' : 'justify-start'"
   >
-    <div
+    <Avatar
       v-if="role === 'agent'"
-      class="grid size-10 shrink-0 place-items-center rounded-2xl bg-blue-600 text-sm font-black text-white shadow-[0_14px_26px_rgb(37_99_235/20%)]"
+      size="lg"
+      class="size-10 rounded-2xl bg-blue-600 text-white shadow-[0_14px_26px_rgb(37_99_235/20%)] after:rounded-2xl"
     >
-      AI
-    </div>
+      <AvatarFallback class="rounded-2xl bg-blue-600 text-sm font-black text-white">
+        AI
+      </AvatarFallback>
+    </Avatar>
 
     <div
       class="min-w-0"
@@ -33,11 +38,14 @@ defineProps<{
       <slot />
     </div>
 
-    <div
+    <Avatar
       v-if="role === 'user'"
-      class="grid size-10 shrink-0 place-items-center rounded-full bg-slate-800 text-sm font-black text-white"
+      size="lg"
+      class="size-10 bg-slate-800 text-white"
     >
-      D
-    </div>
+      <AvatarFallback class="bg-slate-800 text-sm font-black text-white">
+        D
+      </AvatarFallback>
+    </Avatar>
   </article>
 </template>

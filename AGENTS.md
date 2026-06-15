@@ -194,6 +194,32 @@ TypeScript 代码应优先保证类型清晰，避免滥用 `any`。
 
 ---
 
+## 8.2 前端组件库使用边界
+
+当前前端组件库优先使用 `shadcn-vue`，生成的基础组件统一放在：
+
+~~~txt
+apps/web/src/components/ui
+~~~
+
+使用组件库时应遵守以下边界：
+
+- 优先把 `shadcn-vue` 用在复杂交互组件上，例如 `Select`、`Dialog`、`Sheet`、`Dropdown`、`Popover`、`Textarea`、`Alert`、`Toast` 等。
+- 不要为了“组件库统一”强行替换所有简单元素。普通展示标签、简单 icon button、强定制导航项、侧边栏菜单、业务卡片布局，可以继续使用 Tailwind 手写。
+- 业务组件仍然放在 `components/agent`、`components/seo`、`components/layout` 等业务目录中；`components/ui` 只放通用基础组件，不写业务语义。
+- 当 `shadcn-vue` 默认样式影响业务布局、间距、对齐或 active 状态时，优先保留原来的业务 Tailwind 样式，不要为了套组件库牺牲可读性和视觉一致性。
+- 新增组件库组件前，先判断是否已有可用的 `components/ui` 组件；确实需要新增时，再使用 `shadcn-vue` CLI 按需生成，不要一次性安装大量暂时不用的组件。
+- 组件库生成文件要经过项目 ESLint 修正，避免双引号、分号、import 顺序等风格和项目规则冲突。
+
+经验原则：
+
+~~~txt
+复杂交互交给组件库
+强定制业务布局继续手写
+~~~
+
+---
+
 ## 9. 依赖和命令规则
 
 Codex 不应随意安装新依赖。
