@@ -14,21 +14,7 @@ defineProps<{
 </script>
 
 <template>
-  <section class="mx-auto flex min-h-0 w-full max-w-[920px] flex-1 flex-col px-4">
-    <div class="flex shrink-0 items-center justify-between gap-4 py-4">
-      <div>
-        <h2 class="text-sm font-black uppercase tracking-normal text-slate-400">
-          Conversation
-        </h2>
-        <p class="mt-1 text-sm font-semibold text-slate-600">
-          Talk naturally with your SEO Agent.
-        </p>
-      </div>
-      <div class="hidden rounded-full bg-white px-4 py-2 text-sm font-bold text-slate-500 shadow-sm sm:block">
-        Last reply: {{ lastGeneratedAt }}
-      </div>
-    </div>
-
+  <section class="mx-auto flex min-h-0 w-full max-w-[920px] flex-1 flex-col px-4 pt-10">
     <div
       v-if="turns.length === 0"
       class="grid min-h-0 flex-1 place-items-center px-4 py-8"
@@ -58,7 +44,7 @@ defineProps<{
       v-else
       class="min-h-0 flex-1 pr-1"
     >
-      <div class="space-y-7 pb-6">
+      <div class="space-y-7 pb-14 sm:pb-16">
         <template
           v-for="turn in turns"
           :key="turn.id"

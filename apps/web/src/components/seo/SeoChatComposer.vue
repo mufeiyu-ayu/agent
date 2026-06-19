@@ -2,7 +2,7 @@
 import type { LlmModelOption } from '../../types/llm'
 import type { GenerationStatus, SeoInputValidationErrors } from '../../types/seo'
 
-import { Bot, LoaderCircle, RefreshCw, Send, Sparkles } from '@lucide/vue'
+import { ArrowUp, LoaderCircle, RotateCcw } from '@lucide/vue'
 import { computed } from 'vue'
 
 import { Button } from '@/components/ui/button'
@@ -35,7 +35,7 @@ const messageInputClass = computed(() => {
   if (props.validationErrors.message)
     return 'border-rose-300 focus-within:border-rose-400 focus-within:ring-rose-100'
 
-  return 'border-slate-200 focus-within:border-blue-300 focus-within:ring-blue-100'
+  return 'border-slate-200 focus-within:border-slate-300 focus-within:ring-slate-100'
 })
 
 function submitComposer() {
@@ -60,28 +60,17 @@ function updateSelectedModel(value: unknown) {
 </script>
 
 <template>
-  <section class="shrink-0 bg-white px-4 pb-4 pt-3">
+  <section class="relative z-10 shrink-0 border-t border-slate-100 bg-gradient-to-t from-white via-white to-white/90 px-3 pb-3 pt-4 shadow-[0_-8px_24px_rgb(148_163_184/10%)] sm:px-4 sm:pb-4 sm:pt-5">
     <div class="mx-auto w-full max-w-[920px]">
       <div
-        class="rounded-2xl border bg-white p-3 shadow-[0_18px_44px_rgb(15_23_42/12%)] transition focus-within:ring-4"
+        class="rounded-[24px] border bg-white p-2 shadow-[0_8px_22px_rgb(15_23_42/8%)] transition focus-within:ring-4 sm:rounded-[28px] sm:p-3"
         :class="messageInputClass"
       >
-        <div class="mb-2 flex items-center justify-between gap-3">
-          <div class="inline-flex h-10 items-center gap-2 rounded-xl bg-slate-50 px-3 text-sm font-black text-slate-700">
-            <Sparkles :size="18" />
-            SEO Agent
-          </div>
-
-          <span class="text-xs font-bold text-slate-400">
-            {{ messageCharacterCount }} / 2000
-          </span>
-        </div>
-
         <Textarea
           :model-value="message"
           maxlength="2000"
-          rows="3"
-          class="max-h-44 min-h-20 resize-none border-0 bg-transparent px-1 py-0 text-[15px] font-medium leading-6 text-slate-900 shadow-none focus-visible:ring-0 placeholder:font-medium placeholder:text-slate-400"
+          rows="1"
+          class="max-h-40 min-h-[72px] resize-none border-0 bg-transparent px-3 pb-2 pt-2 text-[15px] font-normal leading-6 text-slate-900 shadow-none focus-visible:ring-0 sm:min-h-24 sm:px-4 sm:pt-3 placeholder:font-normal placeholder:text-slate-400"
           :aria-invalid="Boolean(validationErrors.message)"
           aria-describedby="message-error"
           placeholder="直接输入你想让 SEO Agent 分析的问题..."
@@ -89,16 +78,15 @@ function updateSelectedModel(value: unknown) {
           @keydown.enter.exact.prevent="submitComposer"
         />
 
-        <div class="flex flex-col gap-3 pt-2 md:flex-row md:items-center md:justify-between">
+        <div class="flex items-center justify-between gap-2 pt-1">
           <Select
             :model-value="selectedModel"
             @update:model-value="updateSelectedModel"
           >
             <SelectTrigger
               aria-label="DeepSeek model"
-              class="h-10 min-w-[210px] rounded-xl border-slate-200 bg-white px-3 text-sm font-bold text-slate-700 hover:border-blue-200 focus:ring-blue-100"
+              class="h-9 max-w-[calc(100vw-148px)] min-w-0 overflow-hidden rounded-full border-slate-200 bg-slate-50/70 px-3 text-[14px] font-medium tracking-normal text-slate-700 shadow-none hover:border-slate-300 hover:bg-white focus:ring-slate-100 sm:h-10 sm:max-w-none sm:min-w-[210px]"
             >
-              <Bot class="mr-1 text-slate-500" :size="17" />
               <SelectValue placeholder="DeepSeek model" />
             </SelectTrigger>
             <SelectContent class="min-w-[210px] rounded-xl">
@@ -112,29 +100,32 @@ function updateSelectedModel(value: unknown) {
             </SelectContent>
           </Select>
 
-          <div class="flex shrink-0 items-center justify-end gap-2">
+          <div class="flex shrink-0 items-center justify-end gap-1.5 sm:gap-2">
+            <span class="hidden text-xs font-bold text-slate-400 sm:inline">
+              {{ messageCharacterCount }} / 2000
+            </span>
             <Button
               type="button"
               variant="outline"
               size="icon-lg"
               title="Reset conversation"
               aria-label="Reset conversation"
-              class="size-10 rounded-xl border-slate-200 text-slate-600 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-600"
+              class="size-9 rounded-full border-slate-200 bg-white text-slate-500 shadow-none hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900 sm:size-10"
               @click="emit('reset')"
             >
-              <RefreshCw :size="19" />
+              <RotateCcw :size="17" />
             </Button>
             <Button
               type="button"
               size="icon-lg"
               title="Send message"
               aria-label="Send message"
-              class="size-11 rounded-xl bg-blue-600 text-white shadow-[0_12px_26px_rgb(37_99_235/26%)] hover:bg-blue-500 disabled:bg-blue-400"
+              class="size-10 rounded-full bg-slate-950 text-white shadow-[0_10px_22px_rgb(15_23_42/22%)] hover:bg-slate-800 disabled:bg-slate-300 sm:size-11"
               :disabled="status === 'loading'"
               @click="submitComposer"
             >
-              <LoaderCircle v-if="status === 'loading'" class="animate-spin" :size="20" />
-              <Send v-else :size="19" />
+              <LoaderCircle v-if="status === 'loading'" class="animate-spin" :size="19" />
+              <ArrowUp v-else :size="19" stroke-width="2.4" />
             </Button>
           </div>
         </div>

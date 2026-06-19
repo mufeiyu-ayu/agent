@@ -4,7 +4,7 @@ import type { LlmRuntimeStatus } from '../../types/llm'
 
 import { computed, ref } from 'vue'
 
-import { Sheet, SheetContent } from '@/components/ui/sheet'
+import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/components/ui/sheet'
 
 import AppHeader from './AppHeader.vue'
 import AppSidebar from './AppSidebar.vue'
@@ -62,9 +62,15 @@ function handleNewChat() {
     <Sheet v-model:open="mobileSidebarOpen">
       <SheetContent
         side="left"
-        class="w-[292px] max-w-[292px] gap-0 border-r border-slate-200 bg-white p-0 shadow-2xl lg:hidden"
+        class="w-[288px] max-w-[calc(100vw-28px)] gap-0 border-r border-slate-200/70 bg-[#fbfbfa] p-0 shadow-[24px_0_70px_rgb(15_23_42/14%)] duration-300 ease-[cubic-bezier(.22,1,.36,1)] will-change-transform data-[side=left]:data-[state=open]:slide-in-from-left-12 data-[side=left]:data-[state=closed]:slide-out-to-left-12 lg:hidden"
         :show-close-button="false"
       >
+        <SheetTitle class="sr-only">
+          Navigation
+        </SheetTitle>
+        <SheetDescription class="sr-only">
+          Main navigation and recent chats
+        </SheetDescription>
         <AppSidebar
           :collapsed="false"
           :navigation-items="props.navigationItems"

@@ -2,12 +2,13 @@
 import type { AgentPlatformUser } from '../../types/agent-platform'
 import type { LlmRuntimeStatus } from '../../types/llm'
 
-import { Bell, ChevronDown, CircleHelp, PanelLeftOpen, RefreshCw, Sparkles } from '@lucide/vue'
+import { Bell, CircleHelp, PanelLeftOpen, RefreshCw } from '@lucide/vue'
 import { computed } from 'vue'
 
-import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+
+import AppUserSettingsSheet from './AppUserSettingsSheet.vue'
 
 const props = defineProps<{
   balanceAvailable: boolean
@@ -32,25 +33,21 @@ const isRefreshingBalance = computed(() => props.balanceStatus === 'loading')
 </script>
 
 <template>
-  <header class="flex h-16 shrink-0 items-center justify-between gap-4 border-b border-slate-200 bg-white px-4 lg:px-7">
-    <div class="flex min-w-0 items-center gap-3">
+  <header class="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-slate-200/70 bg-white/88 px-3 backdrop-blur-xl lg:h-16 lg:gap-4 lg:bg-white lg:px-7">
+    <div class="flex min-w-0 items-center gap-2.5 lg:gap-3">
       <Button
         type="button"
-        variant="outline"
+        variant="ghost"
         size="icon-lg"
         title="Open navigation"
         aria-label="Open navigation"
-        class="size-10 rounded-xl border-slate-200 text-slate-600 hover:border-blue-200 hover:text-blue-600 lg:hidden"
+        class="size-9 rounded-full border border-slate-200/75 bg-white/80 text-slate-500 shadow-[0_8px_22px_rgb(15_23_42/6%)] hover:border-slate-300 hover:bg-white hover:text-slate-950 lg:hidden"
         @click="emit('openNavigation')"
       >
-        <PanelLeftOpen :size="20" />
+        <PanelLeftOpen :size="18" />
       </Button>
 
-      <div class="grid size-10 place-items-center rounded-2xl bg-blue-600 text-white lg:hidden">
-        <Sparkles :size="21" />
-      </div>
-
-      <div class="min-w-0">
+      <div class="hidden min-w-0 lg:block">
         <h1 class="truncate text-base font-black text-slate-950 sm:text-lg">
           AI SEO Agent
         </h1>
@@ -60,11 +57,11 @@ const isRefreshingBalance = computed(() => props.balanceStatus === 'loading')
       </div>
     </div>
 
-    <div class="flex shrink-0 items-center gap-2 sm:gap-3">
+    <div class="flex shrink-0 items-center gap-1.5 sm:gap-3">
       <Badge
         as="div"
         variant="outline"
-        class="flex h-10 items-center gap-2 rounded-full border-slate-200 bg-white px-3 text-sm font-bold text-slate-700 shadow-sm"
+        class="hidden h-10 items-center gap-2 rounded-full border-slate-200 bg-white px-3 text-sm font-bold text-slate-700 shadow-sm lg:flex"
       >
         <span class="size-2 rounded-full" :class="balanceToneClass" />
         <span class="hidden sm:inline">{{ balanceLabel }}</span>
@@ -88,7 +85,7 @@ const isRefreshingBalance = computed(() => props.balanceStatus === 'loading')
         size="icon-lg"
         title="Help"
         aria-label="Help"
-        class="hidden size-10 rounded-full text-slate-600 hover:bg-slate-100 hover:text-blue-600 md:inline-flex"
+        class="hidden size-10 rounded-full text-slate-600 hover:bg-slate-100 hover:text-blue-600 lg:inline-flex"
       >
         <CircleHelp :size="20" />
       </Button>
@@ -99,25 +96,18 @@ const isRefreshingBalance = computed(() => props.balanceStatus === 'loading')
         size="icon-lg"
         title="Notifications"
         aria-label="Notifications"
-        class="hidden size-10 rounded-full text-slate-600 hover:bg-slate-100 hover:text-blue-600 md:inline-flex"
+        class="hidden size-10 rounded-full text-slate-600 hover:bg-slate-100 hover:text-blue-600 lg:inline-flex"
       >
         <Bell :size="20" />
       </Button>
 
-      <Button
-        type="button"
-        variant="ghost"
-        title="User menu"
-        aria-label="User menu"
-        class="h-auto rounded-full py-1 pl-1 pr-2 hover:bg-slate-100"
-      >
-        <Avatar size="lg" class="size-10 bg-slate-800 text-white">
-          <AvatarFallback class="bg-slate-800 text-sm font-black text-white">
-            {{ user.initials }}
-          </AvatarFallback>
-        </Avatar>
-        <ChevronDown class="hidden text-slate-500 sm:block" :size="18" />
-      </Button>
+      <AppUserSettingsSheet
+        :balance-available="balanceAvailable"
+        :balance-label="balanceLabel"
+        :balance-status="balanceStatus"
+        :user="user"
+        @refresh-balance="emit('refreshBalance')"
+      />
     </div>
   </header>
 </template>
