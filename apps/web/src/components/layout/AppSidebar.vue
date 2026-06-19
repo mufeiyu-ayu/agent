@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import type { AgentNavigationItem, AgentRecentChat } from '../../types/agent-platform'
 
-import { ChevronLeft, MessageCircle, MoreVertical, PanelLeftOpen, Plus, Search, Sparkles, X } from '@lucide/vue'
+import { ChevronLeft, MessageCircle, MoreVertical, PanelLeftOpen, Plus, Search, X } from '@lucide/vue'
+
+import brandLogoUrl from '@/assets/brand-logo.png'
 
 defineProps<{
   collapsed: boolean
@@ -40,8 +42,13 @@ const emit = defineEmits<{
       </button>
 
       <div v-else class="flex min-w-0 items-center gap-3">
-        <div class="grid size-10 shrink-0 place-items-center rounded-2xl bg-blue-600 text-white shadow-[0_14px_26px_rgb(37_99_235/18%)]">
-          <Sparkles :size="22" />
+        <div class="size-10 shrink-0 overflow-hidden rounded-2xl bg-white shadow-[0_14px_26px_rgb(37_99_235/18%)] ring-1 ring-slate-200/70">
+          <img
+            :src="brandLogoUrl"
+            alt=""
+            aria-hidden="true"
+            class="size-full object-cover"
+          >
         </div>
         <div class="min-w-0">
           <h1 class="truncate text-xl font-bold tracking-normal text-slate-950">

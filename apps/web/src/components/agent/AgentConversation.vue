@@ -52,7 +52,7 @@ defineProps<{
           <AgentMessage
             role="user"
           >
-            <div class="max-w-[720px] whitespace-pre-wrap rounded-2xl bg-blue-50 px-5 py-3 text-sm font-bold leading-6 text-slate-800 shadow-sm">
+            <div class="max-w-[720px] whitespace-pre-wrap rounded-2xl bg-[#f3eee7] px-5 py-3.5 text-[15px] font-semibold leading-7 text-[#312d27] shadow-[0_8px_22px_rgb(49_45_39/6%)] ring-1 ring-[#e6ded4]">
               {{ turn.userMessage }}
             </div>
           </AgentMessage>
@@ -77,7 +77,7 @@ defineProps<{
 
             <div
               v-else
-              class="max-w-[760px] whitespace-pre-wrap rounded-2xl bg-white px-5 py-4 text-sm font-semibold leading-7 text-slate-800 shadow-sm"
+              class="max-w-[760px] whitespace-pre-wrap pt-1 text-[15px] font-medium leading-7 text-[#312d27]"
             >
               {{ turn.reply }}
             </div>

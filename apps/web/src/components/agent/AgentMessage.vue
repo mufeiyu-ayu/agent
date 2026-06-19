@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import aiAvatarUrl from '@/assets/ai-avatar.png'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 
 defineProps<{
   role: 'user' | 'agent'
@@ -14,9 +15,13 @@ defineProps<{
     <Avatar
       v-if="role === 'agent'"
       size="lg"
-      class="size-10 rounded-2xl bg-blue-600 text-white shadow-[0_14px_26px_rgb(37_99_235/20%)] after:rounded-2xl"
+      class="size-10 bg-white text-white shadow-[0_14px_26px_rgb(37_99_235/16%)] after:border-white/80"
     >
-      <AvatarFallback class="rounded-2xl bg-blue-600 text-sm font-black text-white">
+      <AvatarImage
+        :src="aiAvatarUrl"
+        alt="AI assistant avatar"
+      />
+      <AvatarFallback class="bg-slate-950 text-sm font-black text-white">
         AI
       </AvatarFallback>
     </Avatar>
