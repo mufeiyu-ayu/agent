@@ -3,11 +3,13 @@ import type { LlmBalanceInfo, LlmBalanceState, LlmModelOption, LlmRuntimeStatus 
 
 import { isAxiosError } from 'axios'
 import { computed, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 import { fetchLlmBalance, fetchLlmModels } from '../api/llm'
 import { FALLBACK_DEEPSEEK_MODELS } from '../types/llm'
 
 export function useLlmRuntime() {
+  const { locale, t } = useI18n()
   const models = ref<LlmModelOption[]>([...FALLBACK_DEEPSEEK_MODELS])
   const selectedModel = ref<LlmModelOption['id']>(FALLBACK_DEEPSEEK_MODELS[0].id)
   const balance = ref<LlmBalanceState | null>(null)
@@ -18,14 +20,14 @@ export function useLlmRuntime() {
 
   const balanceLabel = computed(() => {
     if (balanceStatus.value === 'loading' && !balance.value)
-      return 'Loading balance'
+      return t('runtime.balance.loading')
 
     const preferredBalance = readPreferredBalance(balance.value)
 
     if (!preferredBalance)
-      return 'Balance --'
+      return t('runtime.balance.empty')
 
-    return formatBalanceLabel(preferredBalance)
+    return formatBalanceLabel(preferredBalance, locale.value)
   })
 
   const balanceAvailable = computed(() => balance.value?.isAvailable ?? false)
@@ -43,7 +45,7 @@ export function useLlmRuntime() {
     catch (error) {
       models.value = [...FALLBACK_DEEPSEEK_MODELS]
       ensureSelectedModelExists()
-      modelError.value = getRuntimeErrorMessage(error, '模型列表读取失败，已使用默认 DeepSeek 模型')
+      modelError.value = getRuntimeErrorMessage(error, t('runtime.errors.models'))
       modelStatus.value = 'error'
     }
   }
@@ -57,7 +59,7 @@ export function useLlmRuntime() {
       balanceStatus.value = 'success'
     }
     catch (error) {
-      balanceError.value = getRuntimeErrorMessage(error, '余额读取失败，请稍后重试')
+      balanceError.value = getRuntimeErrorMessage(error, t('runtime.errors.balance'))
       balanceStatus.value = 'error'
     }
   }
@@ -97,7 +99,7 @@ function readPreferredBalance(balance: LlmBalanceState | null): LlmBalanceInfo |
     ?? balance.balances[0]
 }
 
-function formatBalanceLabel(balance: LlmBalanceInfo): string {
+function formatBalanceLabel(balance: LlmBalanceInfo, locale: string): string {
   const symbol = balance.currency === 'CNY'
     ? '¥'
     : balance.currency === 'USD'
@@ -108,7 +110,7 @@ function formatBalanceLabel(balance: LlmBalanceInfo): string {
   if (Number.isNaN(numericValue))
     return `${symbol}${balance.totalBalance}`
 
-  return `${symbol}${numericValue.toLocaleString(undefined, {
+  return `${symbol}${numericValue.toLocaleString(locale, {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`

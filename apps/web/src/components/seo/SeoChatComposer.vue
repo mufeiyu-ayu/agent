@@ -2,9 +2,10 @@
 import type { LlmModelOption } from '../../types/llm'
 import type { GenerationStatus, SeoInputValidationErrors } from '../../types/seo'
 
-import { ArrowUp, LoaderCircle, RotateCcw } from '@lucide/vue'
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 
+import AppIcon from '@/components/common/AppIcon.vue'
 import { Button } from '@/components/ui/button'
 import {
   Select,
@@ -17,6 +18,7 @@ import { Textarea } from '@/components/ui/textarea'
 
 const props = defineProps<{
   message: string
+  hasConversation: boolean
   models: LlmModelOption[]
   selectedModel: LlmModelOption['id']
   status: GenerationStatus
@@ -31,11 +33,17 @@ const emit = defineEmits<{
   'reset': []
 }>()
 
+const { t } = useI18n()
+
 const messageInputClass = computed(() => {
   if (props.validationErrors.message)
     return 'border-rose-300 focus-within:border-rose-400 focus-within:ring-rose-100'
 
-  return 'border-slate-200 focus-within:border-slate-300 focus-within:ring-slate-100'
+  return 'border-agent-border focus-within:border-agent-border focus-within:ring-agent-focus/35'
+})
+
+const canReset = computed(() => {
+  return props.hasConversation || props.message.trim().length > 0
 })
 
 function submitComposer() {
@@ -60,20 +68,20 @@ function updateSelectedModel(value: unknown) {
 </script>
 
 <template>
-  <section class="relative z-10 shrink-0 border-t border-slate-100 bg-gradient-to-t from-white via-white to-white/90 px-3 pb-3 pt-4 shadow-[0_-8px_24px_rgb(148_163_184/10%)] sm:px-4 sm:pb-4 sm:pt-5">
-    <div class="mx-auto w-full max-w-[920px]">
+  <section class="relative z-10 shrink-0 px-3 pb-3 pt-4 sm:px-4 sm:pb-4 sm:pt-5">
+    <div class="mx-auto w-full max-w-[760px]">
       <div
-        class="rounded-[24px] border bg-white p-2 shadow-[0_8px_22px_rgb(15_23_42/8%)] transition focus-within:ring-4 sm:rounded-[28px] sm:p-3"
+        class="rounded-2xl border bg-agent-surface-raised p-2 shadow-[0_4px_8px_rgb(61_49_36/5%)] transition focus-within:ring-4 sm:p-3"
         :class="messageInputClass"
       >
         <Textarea
           :model-value="message"
           maxlength="2000"
           rows="1"
-          class="max-h-40 min-h-[72px] resize-none border-0 bg-transparent px-3 pb-2 pt-2 text-[15px] font-normal leading-6 text-slate-900 shadow-none focus-visible:ring-0 sm:min-h-24 sm:px-4 sm:pt-3 placeholder:font-normal placeholder:text-slate-400"
+          class="max-h-40 min-h-[72px] resize-none border-0 bg-transparent px-3 pb-2 pt-2 text-[15px] font-medium leading-6 text-agent-ink shadow-none focus-visible:ring-0 sm:min-h-24 sm:px-4 sm:pt-3 placeholder:font-medium placeholder:text-agent-ink-muted"
           :aria-invalid="Boolean(validationErrors.message)"
-          aria-describedby="message-error"
-          placeholder="直接输入你想让 SEO Agent 分析的问题..."
+          :aria-describedby="validationErrors.message ? 'message-error' : undefined"
+          :placeholder="t('composer.placeholder')"
           @update:model-value="updateMessage"
           @keydown.enter.exact.prevent="submitComposer"
         />
@@ -84,10 +92,10 @@ function updateSelectedModel(value: unknown) {
             @update:model-value="updateSelectedModel"
           >
             <SelectTrigger
-              aria-label="DeepSeek model"
-              class="h-9 max-w-[calc(100vw-148px)] min-w-0 overflow-hidden rounded-full border-slate-200 bg-slate-50/70 px-3 text-[14px] font-medium tracking-normal text-slate-700 shadow-none hover:border-slate-300 hover:bg-white focus:ring-slate-100 sm:h-10 sm:max-w-none sm:min-w-[210px]"
+              :aria-label="t('composer.modelSelectAria')"
+              class="h-9 max-w-[calc(100vw-148px)] min-w-0 overflow-hidden rounded-full border-agent-border bg-agent-surface px-3 text-[14px] font-medium tracking-normal text-agent-ink-soft shadow-none hover:border-agent-border hover:bg-agent-surface-raised focus:ring-agent-focus/35 sm:h-10 sm:max-w-none sm:min-w-[210px]"
             >
-              <SelectValue placeholder="DeepSeek model" />
+              <SelectValue :placeholder="t('composer.modelPlaceholder')" />
             </SelectTrigger>
             <SelectContent class="min-w-[210px] rounded-xl">
               <SelectItem
@@ -101,31 +109,32 @@ function updateSelectedModel(value: unknown) {
           </Select>
 
           <div class="flex shrink-0 items-center justify-end gap-1.5 sm:gap-2">
-            <span class="hidden text-xs font-bold text-slate-400 sm:inline">
+            <span class="hidden text-xs font-bold text-agent-ink-muted sm:inline">
               {{ messageCharacterCount }} / 2000
             </span>
             <Button
               type="button"
-              variant="outline"
+              variant="ghost"
               size="icon-lg"
-              title="Reset conversation"
-              aria-label="Reset conversation"
-              class="size-9 rounded-full border-slate-200 bg-white text-slate-500 shadow-none hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900 sm:size-10"
+              :title="t('composer.reset')"
+              :aria-label="t('composer.reset')"
+              class="size-9 rounded-lg bg-transparent text-agent-ink-muted shadow-none hover:bg-agent-surface-sunken hover:text-agent-ink disabled:text-agent-ink-faint sm:size-10"
+              :disabled="!canReset || status === 'loading'"
               @click="emit('reset')"
             >
-              <RotateCcw :size="17" />
+              <AppIcon name="tabler:rotate-clockwise" :size="18" />
             </Button>
             <Button
               type="button"
               size="icon-lg"
-              title="Send message"
-              aria-label="Send message"
-              class="size-10 rounded-full bg-slate-950 text-white shadow-[0_10px_22px_rgb(15_23_42/22%)] hover:bg-slate-800 disabled:bg-slate-300 sm:size-11"
+              :title="t('composer.send')"
+              :aria-label="t('composer.send')"
+              class="size-10 rounded-full bg-agent-primary text-white shadow-none hover:bg-agent-primary-hover disabled:bg-agent-border sm:size-11"
               :disabled="status === 'loading'"
               @click="submitComposer"
             >
-              <LoaderCircle v-if="status === 'loading'" class="animate-spin" :size="19" />
-              <ArrowUp v-else :size="19" stroke-width="2.4" />
+              <AppIcon v-if="status === 'loading'" name="tabler:loader-2" :size="19" class="animate-spin" />
+              <AppIcon v-else name="tabler:arrow-up" :size="20" />
             </Button>
           </div>
         </div>

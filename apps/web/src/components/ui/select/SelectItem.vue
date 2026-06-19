@@ -2,7 +2,7 @@
 import type { SelectItemProps } from 'reka-ui'
 
 import type { HTMLAttributes } from 'vue'
-import { CheckIcon } from '@lucide/vue'
+import { Icon } from '@iconify/vue'
 import { reactiveOmit } from '@vueuse/core'
 import {
   SelectItem,
@@ -33,7 +33,7 @@ const forwardedProps = useForwardProps(delegatedProps)
     <span class="pointer-events-none absolute right-2 flex size-4 items-center justify-center">
       <SelectItemIndicator>
         <slot name="indicator-icon">
-          <CheckIcon class="pointer-events-none" />
+          <Icon icon="tabler:check" :width="16" :height="16" :inline="true" aria-hidden="true" class="pointer-events-none" />
         </slot>
       </SelectItemIndicator>
     </span>

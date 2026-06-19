@@ -3,6 +3,7 @@
     "target": "ES2022",
     "emitDecoratorMetadata": true,
     "experimentalDecorators": true,
+    "rootDir": "src",
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "types": [
@@ -11,7 +12,6 @@
     "strict": true,
     "exactOptionalPropertyTypes": true,
     "noUncheckedIndexedAccess": true,
-    "rootDir": "src",
     "outDir": "dist",
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,

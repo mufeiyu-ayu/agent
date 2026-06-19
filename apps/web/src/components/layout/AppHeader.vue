@@ -2,9 +2,11 @@
 import type { AgentPlatformUser } from '../../types/agent-platform'
 import type { LlmRuntimeStatus } from '../../types/llm'
 
-import { Bell, CircleHelp, PanelLeftOpen, RefreshCw } from '@lucide/vue'
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 
+import AppIcon from '@/components/common/AppIcon.vue'
+import LanguageSwitcher from '@/components/common/LanguageSwitcher.vue'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 
@@ -26,42 +28,45 @@ const balanceToneClass = computed(() => {
   if (props.balanceStatus === 'error')
     return 'bg-amber-500'
 
-  return props.balanceAvailable ? 'bg-emerald-500' : 'bg-slate-300'
+  return props.balanceAvailable ? 'bg-agent-moss' : 'bg-agent-border'
 })
 
 const isRefreshingBalance = computed(() => props.balanceStatus === 'loading')
+const { t } = useI18n()
 </script>
 
 <template>
-  <header class="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-slate-200/70 bg-white/88 px-3 backdrop-blur-xl lg:h-16 lg:gap-4 lg:bg-white lg:px-7">
+  <header class="flex h-14 shrink-0 items-center justify-between gap-3 bg-agent-surface/82 px-3 backdrop-blur-[2px] lg:h-16 lg:gap-4 lg:px-7">
     <div class="flex min-w-0 items-center gap-2.5 lg:gap-3">
       <Button
         type="button"
         variant="ghost"
         size="icon-lg"
-        title="Open navigation"
-        aria-label="Open navigation"
-        class="size-9 rounded-full border border-slate-200/75 bg-white/80 text-slate-500 shadow-[0_8px_22px_rgb(15_23_42/6%)] hover:border-slate-300 hover:bg-white hover:text-slate-950 lg:hidden"
+        :title="t('layout.mobileNavigation.open')"
+        :aria-label="t('layout.mobileNavigation.open')"
+        class="size-9 rounded-lg bg-transparent text-agent-ink-muted shadow-none hover:bg-agent-surface-sunken hover:text-agent-ink lg:hidden"
         @click="emit('openNavigation')"
       >
-        <PanelLeftOpen :size="18" />
+        <AppIcon name="tabler:layout-sidebar-left-expand" :size="21" />
       </Button>
 
-      <div class="hidden min-w-0 lg:block">
-        <h1 class="truncate text-base font-black text-slate-950 sm:text-lg">
-          AI SEO Agent
+      <div class="min-w-0">
+        <h1 class="truncate text-base font-extrabold text-agent-ink sm:text-lg">
+          {{ t('common.appName') }}
         </h1>
-        <p class="hidden text-xs font-semibold text-slate-500 sm:block">
-          Conversation workspace
+        <p class="hidden text-xs font-semibold text-agent-ink-muted sm:block">
+          {{ t('common.appSubtitle') }}
         </p>
       </div>
     </div>
 
-    <div class="flex shrink-0 items-center gap-1.5 sm:gap-3">
+    <div class="flex shrink-0 items-center gap-1.5 sm:gap-2 lg:gap-3">
+      <LanguageSwitcher />
+
       <Badge
         as="div"
         variant="outline"
-        class="hidden h-10 items-center gap-2 rounded-full border-slate-200 bg-white px-3 text-sm font-bold text-slate-700 shadow-sm lg:flex"
+        class="hidden h-10 items-center gap-2 rounded-full border-agent-border bg-agent-surface-raised px-3 text-sm font-bold text-agent-ink-soft shadow-none lg:flex"
       >
         <span class="size-2 rounded-full" :class="balanceToneClass" />
         <span class="hidden sm:inline">{{ balanceLabel }}</span>
@@ -69,37 +74,19 @@ const isRefreshingBalance = computed(() => props.balanceStatus === 'loading')
           type="button"
           variant="ghost"
           size="icon-sm"
-          title="Refresh balance"
-          aria-label="Refresh balance"
-          class="size-7 rounded-full text-slate-500 hover:bg-slate-100 hover:text-blue-600 disabled:opacity-50"
+          :title="t('common.actions.refreshBalance')"
+          :aria-label="t('common.actions.refreshBalance')"
+          class="size-7 rounded-lg text-agent-ink-muted hover:bg-agent-surface-sunken hover:text-agent-ink disabled:opacity-50"
           :disabled="isRefreshingBalance"
           @click="emit('refreshBalance')"
         >
-          <RefreshCw :class="{ 'animate-spin': isRefreshingBalance }" :size="15" />
+          <AppIcon
+            name="tabler:refresh"
+            :size="15"
+            :class="{ 'animate-spin': isRefreshingBalance }"
+          />
         </Button>
       </Badge>
-
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon-lg"
-        title="Help"
-        aria-label="Help"
-        class="hidden size-10 rounded-full text-slate-600 hover:bg-slate-100 hover:text-blue-600 lg:inline-flex"
-      >
-        <CircleHelp :size="20" />
-      </Button>
-
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon-lg"
-        title="Notifications"
-        aria-label="Notifications"
-        class="hidden size-10 rounded-full text-slate-600 hover:bg-slate-100 hover:text-blue-600 lg:inline-flex"
-      >
-        <Bell :size="20" />
-      </Button>
 
       <AppUserSettingsSheet
         :balance-available="balanceAvailable"

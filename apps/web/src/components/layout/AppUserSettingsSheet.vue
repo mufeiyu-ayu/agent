@@ -2,9 +2,10 @@
 import type { AgentPlatformUser } from '../../types/agent-platform'
 import type { LlmRuntimeStatus } from '../../types/llm'
 
-import { Bell, ChevronRight, CircleHelp, RefreshCw, Settings, UserRound, WalletCards, X } from '@lucide/vue'
 import { computed, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 
+import AppIcon from '@/components/common/AppIcon.vue'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import {
@@ -29,34 +30,39 @@ const emit = defineEmits<{
 }>()
 
 const settingsOpen = ref(false)
+const { t } = useI18n()
 
 const balanceToneClass = computed(() => {
   if (props.balanceStatus === 'error')
     return 'bg-amber-500'
 
-  return props.balanceAvailable ? 'bg-emerald-500' : 'bg-slate-300'
+  return props.balanceAvailable ? 'bg-agent-moss' : 'bg-agent-border'
 })
 
 const isRefreshingBalance = computed(() => props.balanceStatus === 'loading')
 
-const settingItems = [
+const settingItems = computed(() => [
   {
-    icon: UserRound,
-    label: 'Profile',
+    id: 'account',
+    icon: 'tabler:user-circle',
+    label: t('layout.settings.account'),
   },
   {
-    icon: Bell,
-    label: 'Notifications',
+    id: 'notifications',
+    icon: 'tabler:bell',
+    label: t('layout.settings.notifications'),
   },
   {
-    icon: CircleHelp,
-    label: 'Help',
+    id: 'help',
+    icon: 'tabler:help-circle',
+    label: t('layout.settings.help'),
   },
   {
-    icon: Settings,
-    label: 'Settings',
+    id: 'preferences',
+    icon: 'tabler:settings',
+    label: t('layout.settings.preferences'),
   },
-] as const
+])
 </script>
 
 <template>
@@ -65,12 +71,12 @@ const settingItems = [
       <Button
         type="button"
         variant="ghost"
-        title="User settings"
-        aria-label="User settings"
-        class="size-9 rounded-full border border-slate-200/80 bg-white/85 p-0 shadow-[0_8px_22px_rgb(15_23_42/8%)] transition-[background-color,border-color,box-shadow,transform] duration-200 hover:border-slate-300 hover:bg-white hover:shadow-[0_12px_28px_rgb(15_23_42/10%)] active:scale-95 sm:size-10"
+        :title="t('layout.settings.trigger')"
+        :aria-label="t('layout.settings.trigger')"
+        class="size-9 rounded-full border border-agent-border bg-agent-surface-raised p-0 shadow-none transition-[background-color,border-color,transform] duration-200 hover:border-agent-border hover:bg-agent-surface active:scale-95 sm:size-10"
       >
-        <Avatar size="lg" class="size-8 bg-slate-950 text-white sm:size-9">
-          <AvatarFallback class="bg-slate-950 text-sm font-semibold text-white">
+        <Avatar size="lg" class="size-8 bg-agent-primary text-white sm:size-9">
+          <AvatarFallback class="bg-agent-primary text-sm font-semibold text-white">
             {{ user.initials }}
           </AvatarFallback>
         </Avatar>
@@ -80,23 +86,23 @@ const settingItems = [
     <SheetContent
       side="right"
       :show-close-button="false"
-      class="!w-[334px] max-w-[calc(100vw-16px)] gap-0 border-l border-slate-200/70 bg-[#fbfbfa]/95 p-0 shadow-[0_24px_90px_rgb(15_23_42/16%)] backdrop-blur-2xl duration-300 ease-[cubic-bezier(.22,1,.36,1)] will-change-transform data-[side=right]:data-[state=open]:slide-in-from-right-12 data-[side=right]:data-[state=closed]:slide-out-to-right-12 sm:!w-[360px]"
+      class="!w-[334px] max-w-[calc(100vw-16px)] gap-0 border-l border-agent-border bg-agent-surface/95 p-0 shadow-[0_24px_64px_rgb(61_49_36/13%)] backdrop-blur-2xl duration-300 ease-[cubic-bezier(.22,1,.36,1)] will-change-transform data-[side=right]:data-[state=open]:slide-in-from-right-12 data-[side=right]:data-[state=closed]:slide-out-to-right-12 sm:!w-[360px]"
     >
       <div class="flex h-full flex-col">
         <SheetHeader class="px-5 pb-3 pt-4">
           <div class="flex items-start justify-between gap-4">
             <div class="flex min-w-0 items-center gap-3">
-              <Avatar size="lg" class="size-11 bg-slate-950 text-white shadow-[0_12px_30px_rgb(15_23_42/14%)]">
-                <AvatarFallback class="bg-slate-950 text-base font-semibold text-white">
+              <Avatar size="lg" class="size-11 bg-agent-primary text-white">
+                <AvatarFallback class="bg-agent-primary text-base font-semibold text-white">
                   {{ user.initials }}
                 </AvatarFallback>
               </Avatar>
               <div class="min-w-0">
-                <SheetTitle class="truncate text-[15px] font-semibold leading-5 text-slate-950">
+                <SheetTitle class="truncate text-[15px] font-semibold leading-5 text-agent-ink">
                   {{ user.name }}
                 </SheetTitle>
-                <SheetDescription class="mt-0.5 text-xs font-medium leading-5 text-slate-500">
-                  AI SEO Agent workspace
+                <SheetDescription class="mt-0.5 text-xs font-medium leading-5 text-agent-ink-muted">
+                  {{ t('common.appName') }}
                 </SheetDescription>
               </div>
             </div>
@@ -106,28 +112,28 @@ const settingItems = [
                 type="button"
                 variant="ghost"
                 size="icon-sm"
-                title="Close settings"
-                aria-label="Close settings"
-                class="size-8 rounded-full border border-slate-200/70 bg-white/80 text-slate-500 shadow-sm hover:border-slate-300 hover:bg-white hover:text-slate-950"
+                :title="t('layout.settings.close')"
+                :aria-label="t('layout.settings.close')"
+                class="size-8 rounded-lg bg-transparent text-agent-ink-muted shadow-none hover:bg-agent-surface-sunken hover:text-agent-ink"
               >
-                <X :size="16" />
+                <AppIcon name="tabler:x" :size="17" />
               </Button>
             </SheetClose>
           </div>
         </SheetHeader>
 
         <div class="flex flex-1 flex-col gap-3 px-3.5 pb-5 pt-2">
-          <section class="overflow-hidden rounded-[22px] border border-slate-200/75 bg-white/85 shadow-[0_16px_48px_rgb(15_23_42/6%)]">
+          <section class="overflow-hidden rounded-2xl border border-agent-border bg-agent-surface-raised">
             <div class="flex items-center justify-between gap-3">
               <div class="flex min-w-0 items-center gap-3 px-3.5 py-3">
-                <span class="grid size-8 shrink-0 place-items-center rounded-full bg-slate-950 text-white shadow-[0_10px_24px_rgb(15_23_42/12%)]">
-                  <WalletCards :size="15" />
+                <span class="grid size-8 shrink-0 place-items-center rounded-xl bg-agent-primary text-white">
+                  <AppIcon name="tabler:wallet" :size="16" />
                 </span>
                 <div class="min-w-0">
-                  <p class="text-[13px] font-semibold leading-5 text-slate-950">
-                    DeepSeek balance
+                  <p class="text-[13px] font-semibold leading-5 text-agent-ink">
+                    {{ t('layout.settings.balanceTitle') }}
                   </p>
-                  <p class="flex items-center gap-2 text-xs font-medium leading-5 text-slate-500">
+                  <p class="flex items-center gap-2 text-xs font-medium leading-5 text-agent-ink-muted">
                     <span class="size-2 rounded-full" :class="balanceToneClass" />
                     <span class="truncate">{{ balanceLabel }}</span>
                   </p>
@@ -138,27 +144,31 @@ const settingItems = [
                 type="button"
                 variant="ghost"
                 size="icon-lg"
-                title="Refresh balance"
-                aria-label="Refresh balance"
-                class="mr-2 size-8 rounded-full text-slate-500 hover:bg-slate-100 hover:text-slate-950 focus-visible:!border-slate-200 focus-visible:!ring-1 focus-visible:!ring-slate-200 disabled:opacity-50"
+                :title="t('common.actions.refreshBalance')"
+                :aria-label="t('common.actions.refreshBalance')"
+                class="mr-2 size-8 rounded-lg text-agent-ink-muted hover:bg-agent-surface-sunken hover:text-agent-ink focus-visible:!border-agent-border focus-visible:!ring-1 focus-visible:!ring-agent-focus/40 disabled:opacity-50"
                 :disabled="isRefreshingBalance"
                 @click="emit('refreshBalance')"
               >
-                <RefreshCw :class="{ 'animate-spin': isRefreshingBalance }" :size="16" />
+                <AppIcon
+                  name="tabler:refresh"
+                  :size="16"
+                  :class="{ 'animate-spin': isRefreshingBalance }"
+                />
               </Button>
             </div>
           </section>
 
-          <nav class="overflow-hidden rounded-[22px] border border-slate-200/75 bg-white/90 shadow-[0_16px_48px_rgb(15_23_42/6%)]">
+          <nav class="overflow-hidden rounded-2xl border border-agent-border bg-agent-surface-raised">
             <button
               v-for="item in settingItems"
-              :key="item.label"
+              :key="item.id"
               type="button"
-              class="group flex h-12 w-full items-center gap-3 border-b border-slate-100/80 px-3.5 text-left text-[13px] font-medium text-slate-700 transition last:border-b-0 hover:bg-slate-50/90 hover:text-slate-950"
+              class="group flex h-12 w-full items-center gap-3 border-b border-agent-border-subtle px-3.5 text-left text-[13px] font-medium text-agent-ink-soft transition last:border-b-0 hover:bg-agent-surface hover:text-agent-ink"
             >
-              <component :is="item.icon" :size="16" class="text-slate-500 transition group-hover:text-slate-700" />
+              <AppIcon :name="item.icon" :size="16" class="text-agent-ink-muted transition group-hover:text-agent-ink-soft" />
               <span class="min-w-0 flex-1 truncate">{{ item.label }}</span>
-              <ChevronRight :size="15" class="text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-slate-400" />
+              <AppIcon name="tabler:chevron-right" :size="15" class="text-agent-ink-faint transition group-hover:translate-x-0.5 group-hover:text-agent-ink-muted" />
             </button>
           </nav>
         </div>

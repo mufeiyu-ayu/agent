@@ -2,7 +2,7 @@
 import type { DialogContentEmits, DialogContentProps } from 'reka-ui'
 
 import type { HTMLAttributes } from 'vue'
-import { XIcon } from '@lucide/vue'
+import { Icon } from '@iconify/vue'
 import { reactiveOmit } from '@vueuse/core'
 import {
   DialogClose,
@@ -10,6 +10,7 @@ import {
   DialogPortal,
   useForwardPropsEmits,
 } from 'reka-ui'
+import { useI18n } from 'vue-i18n'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import SheetOverlay from './SheetOverlay.vue'
@@ -33,6 +34,7 @@ const emits = defineEmits<DialogContentEmits>()
 const delegatedProps = reactiveOmit(props, 'class', 'side', 'showCloseButton')
 
 const forwarded = useForwardPropsEmits(delegatedProps, emits)
+const { t } = useI18n()
 </script>
 
 <template>
@@ -51,9 +53,13 @@ const forwarded = useForwardPropsEmits(delegatedProps, emits)
         data-slot="sheet-close"
         as-child
       >
-        <Button variant="ghost" class="absolute top-3 right-3" size="icon-sm">
-          <XIcon />
-          <span class="sr-only">Close</span>
+        <Button
+          variant="ghost"
+          class="absolute top-3 right-3 size-8 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"
+          size="icon-sm"
+        >
+          <Icon icon="tabler:x" :width="16" :height="16" :inline="true" aria-hidden="true" />
+          <span class="sr-only">{{ t('common.actions.close') }}</span>
         </Button>
       </DialogClose>
     </DialogContent>

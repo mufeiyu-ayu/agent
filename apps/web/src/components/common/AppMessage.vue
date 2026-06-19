@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import type { AppMessageType } from '../../types/seo'
 
-import { AlertCircle, CheckCircle2, Info, X } from '@lucide/vue'
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 
+import AppIcon from '@/components/common/AppIcon.vue'
 import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 
@@ -17,24 +18,36 @@ const emit = defineEmits<{
   close: []
 }>()
 
+const { t } = useI18n()
+
 const messageClass = computed(() => {
   if (props.type === 'success')
-    return 'border-emerald-200 bg-emerald-50 text-emerald-700 shadow-[0_18px_45px_rgb(16_185_129/18%)]'
+    return 'border-agent-moss/25 bg-agent-moss-soft text-agent-ink shadow-[0_8px_18px_rgb(61_92_70/9%)]'
 
   if (props.type === 'info')
-    return 'border-blue-200 bg-blue-50 text-blue-700 shadow-[0_18px_45px_rgb(37_99_235/18%)]'
+    return 'border-agent-accent/25 bg-agent-accent-soft text-agent-ink shadow-[0_8px_18px_rgb(111_70_52/9%)]'
 
-  return 'border-rose-200 bg-rose-50 text-rose-700 shadow-[0_18px_45px_rgb(225_29_72/18%)]'
+  return 'border-agent-copper/30 bg-agent-copper-soft text-agent-ink shadow-[0_8px_18px_rgb(116_86_45/9%)]'
 })
 
-const Icon = computed(() => {
+const messageIconName = computed(() => {
   if (props.type === 'success')
-    return CheckCircle2
+    return 'tabler:circle-check'
 
   if (props.type === 'info')
-    return Info
+    return 'tabler:info-circle'
 
-  return AlertCircle
+  return 'tabler:alert-triangle'
+})
+
+const messageIconClass = computed(() => {
+  if (props.type === 'success')
+    return 'text-agent-moss'
+
+  if (props.type === 'info')
+    return 'text-agent-accent'
+
+  return 'text-agent-copper'
 })
 </script>
 
@@ -49,28 +62,33 @@ const Icon = computed(() => {
   >
     <div
       v-if="visible && text"
-      class="pointer-events-none fixed left-1/2 top-5 z-50 w-[calc(100%-32px)] max-w-md -translate-x-1/2"
-      role="alert"
-      aria-live="assertive"
+      class="pointer-events-none fixed left-1/2 top-4 z-50 w-[calc(100%-24px)] max-w-[720px] -translate-x-1/2 sm:top-5 sm:w-[calc(100%-40px)]"
+      role="status"
+      aria-live="polite"
     >
       <Alert
-        class="pointer-events-auto flex min-h-12 items-center gap-3 rounded-[14px] px-4 py-3 text-sm font-semibold"
+        class="pointer-events-auto flex min-h-10 items-center gap-2.5 rounded-xl px-3 py-2 text-[13px] font-semibold leading-5 sm:gap-3 sm:px-3.5"
         :class="messageClass"
       >
-        <component :is="Icon" class="shrink-0" :size="20" />
-        <p class="min-w-0 flex-1 leading-5">
+        <AppIcon
+          :name="messageIconName"
+          :size="17"
+          class="shrink-0"
+          :class="messageIconClass"
+        />
+        <p class="min-w-0 flex-1 text-pretty text-agent-ink-soft">
           {{ text }}
         </p>
         <Button
           type="button"
           variant="ghost"
           size="icon-sm"
-          title="Close message"
-          aria-label="Close message"
-          class="size-7 shrink-0 rounded-full hover:bg-white/70"
+          :title="t('common.actions.closeAlert')"
+          :aria-label="t('common.actions.closeAlert')"
+          class="-mr-1 size-7 shrink-0 rounded-lg text-agent-ink-muted hover:bg-agent-surface-raised/80 hover:text-agent-ink"
           @click="emit('close')"
         >
-          <X :size="16" />
+          <AppIcon name="tabler:x" :size="16" />
         </Button>
       </Alert>
     </div>

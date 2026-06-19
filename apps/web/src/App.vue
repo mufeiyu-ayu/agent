@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import SeoWorkspaceView from './views/SeoWorkspaceView.vue'
+import { RouterView } from 'vue-router'
 </script>
 
 <template>
-  <SeoWorkspaceView />
+  <RouterView />
 </template>

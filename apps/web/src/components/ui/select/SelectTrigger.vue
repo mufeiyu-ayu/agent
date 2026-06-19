@@ -2,7 +2,7 @@
 import type { SelectTriggerProps } from 'reka-ui'
 
 import type { HTMLAttributes } from 'vue'
-import { ChevronDownIcon } from '@lucide/vue'
+import { Icon } from '@iconify/vue'
 import { reactiveOmit } from '@vueuse/core'
 import { SelectIcon, SelectTrigger, useForwardProps } from 'reka-ui'
 import { cn } from '@/lib/utils'
@@ -28,7 +28,14 @@ const forwardedProps = useForwardProps(delegatedProps)
   >
     <slot />
     <SelectIcon as-child>
-      <ChevronDownIcon class="text-muted-foreground size-4 pointer-events-none" />
+      <Icon
+        icon="tabler:chevron-down"
+        :width="16"
+        :height="16"
+        :inline="true"
+        aria-hidden="true"
+        class="pointer-events-none text-muted-foreground"
+      />
     </SelectIcon>
   </SelectTrigger>
 </template>

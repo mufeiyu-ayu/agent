@@ -1,14 +1,16 @@
 import type { AgentNavigationItem, AgentPlatformUser, AgentRecentChat } from '../types/agent-platform'
 
-import { FileText, FolderOpen, History, LayoutTemplate, Settings, Sparkles } from '@lucide/vue'
+import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 
-const navigationItems: AgentNavigationItem[] = [
-  { id: 'templates', label: 'Templates', icon: LayoutTemplate },
-  { id: 'history', label: 'History', icon: History },
-  { id: 'projects', label: 'Projects', icon: FolderOpen },
-  { id: 'documents', label: 'Documents', icon: FileText },
-  { id: 'settings', label: 'Settings', icon: Settings },
-]
+const navigationConfig = [
+  { id: 'page-audit', labelKey: 'navigation.pageAudit', icon: 'tabler:file-search', active: true },
+  { id: 'keyword-ideas', labelKey: 'navigation.keywordIdeas', icon: 'tabler:bulb' },
+  { id: 'content-plan', labelKey: 'navigation.contentPlan', icon: 'tabler:article' },
+  { id: 'seo-checklist', labelKey: 'navigation.seoChecklist', icon: 'tabler:checklist' },
+  { id: 'history', labelKey: 'navigation.history', icon: 'tabler:history' },
+  { id: 'settings', labelKey: 'navigation.settings', icon: 'tabler:settings' },
+] as const
 
 const recentChats: AgentRecentChat[] = [
 
@@ -20,10 +22,21 @@ const user: AgentPlatformUser = {
 }
 
 export function useMockAgentPlatform() {
+  const { t } = useI18n()
+
+  const navigationItems = computed<AgentNavigationItem[]>(() => {
+    return navigationConfig.map(item => ({
+      id: item.id,
+      label: t(item.labelKey),
+      icon: item.icon,
+      active: 'active' in item ? item.active : undefined,
+    }))
+  })
+
   return {
     navigationItems,
     recentChats,
     user,
-    productIcon: Sparkles,
+    productIcon: 'tabler:sparkles',
   }
 }

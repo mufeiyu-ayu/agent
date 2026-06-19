@@ -1,9 +1,9 @@
-import type { LucideIcon } from '@lucide/vue'
+export type AgentIconName = string
 
 export interface AgentNavigationItem {
   id: string
   label: string
-  icon: LucideIcon
+  icon: AgentIconName
   active?: boolean
 }
 

@@ -3,3 +3,6 @@ dist
 .env
 .DS_Store
 *.log
+tmp/
+.impeccable/
+.playwright-mcp/

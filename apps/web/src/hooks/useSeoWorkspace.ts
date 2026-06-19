@@ -3,14 +3,18 @@ import type { AppMessageState, AppMessageType, GenerationStatus, SeoChatRequest,
 
 import { isAxiosError } from 'axios'
 import { computed, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 import { chatWithSeoAgent } from '../api/seo'
 import { formatGeneratedTime } from '../utils/seo-format'
 
 const CHAT_REQUEST_INTERVAL_MS = 800
+const DEFAULT_MESSAGE_TIMEOUT_MS = 3600
+const ERROR_MESSAGE_TIMEOUT_MS = 6400
 const MAX_CONVERSATION_TURNS = 12
 
 export function useSeoWorkspace() {
+  const { locale, t } = useI18n()
   const message = ref('')
   const status = ref<GenerationStatus>('empty')
   const lastGeneratedAt = ref('--:--')
@@ -128,7 +132,7 @@ export function useSeoWorkspace() {
     const nextErrors: SeoInputValidationErrors = {}
 
     if (!message.value.trim()) {
-      nextErrors.message = '请输入你想和 SEO Agent 讨论的问题。'
+      nextErrors.message = t('validation.messageRequired')
     }
 
     validationErrors.value = nextErrors
@@ -183,14 +187,14 @@ export function useSeoWorkspace() {
         return String(details[0])
       }
 
-      return responseData?.message ?? 'SEO Agent 暂时无法回复，请稍后重试。'
+      return responseData?.message ?? t('conversation.fallbackError')
     }
 
     if (error instanceof Error) {
       return error.message
     }
 
-    return 'SEO Agent 暂时无法回复，请稍后重试。'
+    return t('conversation.fallbackError')
   }
 
   function showMessage(text: string, type: AppMessageType = 'info') {
@@ -204,9 +208,11 @@ export function useSeoWorkspace() {
       text,
     }
 
+    const timeout = type === 'error' ? ERROR_MESSAGE_TIMEOUT_MS : DEFAULT_MESSAGE_TIMEOUT_MS
+
     messageTimer = window.setTimeout(() => {
       hideMessage()
-    }, 3600)
+    }, timeout)
   }
 
   function hideMessage() {
@@ -228,6 +234,16 @@ export function useSeoWorkspace() {
   watch(message, (value) => {
     if (value.trim())
       clearValidationError('message')
+  })
+
+  watch(locale, () => {
+    if (!validationErrors.value.message)
+      return
+
+    validationErrors.value = {
+      ...validationErrors.value,
+      message: t('validation.messageRequired'),
+    }
   })
 
   return {

@@ -1,41 +1,86 @@
 <script setup lang="ts">
 import type { SeoConversationTurn } from '../../types/seo'
 
-import { LoaderCircle, Sparkles } from '@lucide/vue'
+import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 
+import AppIcon from '@/components/common/AppIcon.vue'
 import { ScrollArea } from '@/components/ui/scroll-area'
 
+import AgentAssistantReply from './AgentAssistantReply.vue'
 import AgentMessage from './AgentMessage.vue'
 
 defineProps<{
   turns: SeoConversationTurn[]
   lastGeneratedAt: string
 }>()
+
+const emit = defineEmits<{
+  promptSelected: [value: string]
+}>()
+
+const { t } = useI18n()
+
+const starterPrompts = computed(() => [
+  {
+    icon: 'tabler:file-analytics',
+    iconClass: 'text-agent-accent',
+    label: t('conversation.starterPrompts.audit.label'),
+    description: t('conversation.starterPrompts.audit.description'),
+    prompt: t('conversation.starterPrompts.audit.prompt'),
+  },
+  {
+    icon: 'tabler:bulb',
+    iconClass: 'text-agent-moss',
+    label: t('conversation.starterPrompts.keywords.label'),
+    description: t('conversation.starterPrompts.keywords.description'),
+    prompt: t('conversation.starterPrompts.keywords.prompt'),
+  },
+  {
+    icon: 'tabler:article',
+    iconClass: 'text-agent-copper',
+    label: t('conversation.starterPrompts.content.label'),
+    description: t('conversation.starterPrompts.content.description'),
+    prompt: t('conversation.starterPrompts.content.prompt'),
+  },
+])
 </script>
 
 <template>
-  <section class="mx-auto flex min-h-0 w-full max-w-[920px] flex-1 flex-col px-4 pt-10">
+  <section class="mx-auto flex min-h-0 w-full max-w-[920px] flex-1 flex-col px-4 pt-5 sm:pt-6">
     <div
       v-if="turns.length === 0"
-      class="grid min-h-0 flex-1 place-items-center px-4 py-8"
+      class="flex min-h-0 flex-1 items-center justify-center px-1 pb-7 pt-5 sm:px-4 sm:pb-9 lg:pb-10"
     >
-      <div class="max-w-xl text-center">
-        <div class="mx-auto mb-5 grid size-14 place-items-center rounded-2xl bg-blue-600 text-white shadow-[0_18px_34px_rgb(37_99_235/22%)]">
-          <Sparkles :size="26" />
+      <div class="w-full max-w-2xl text-center">
+        <div class="mx-auto mb-4 inline-flex items-center justify-center text-agent-accent">
+          <AppIcon name="tabler:target-arrow" :size="30" />
         </div>
-        <h3 class="text-2xl font-black text-slate-950">
-          Start a SEO conversation
+        <h3 class="text-xl font-extrabold tracking-normal text-agent-ink sm:text-2xl">
+          {{ t('conversation.emptyTitle') }}
         </h3>
-        <p class="mx-auto mt-3 max-w-md text-sm font-medium leading-6 text-slate-500">
-          Ask for SEO strategy, page optimization, keyword ideas, content structure, or technical SEO advice.
+        <p class="mx-auto mt-2.5 max-w-lg text-[15px] font-medium leading-7 text-agent-ink-muted">
+          {{ t('conversation.emptyDescription') }}
         </p>
-        <div class="mt-6 flex flex-wrap justify-center gap-2">
-          <span class="rounded-full bg-white px-4 py-2 text-sm font-bold text-slate-600 shadow-sm">
-            帮我诊断一个落地页 SEO
-          </span>
-          <span class="rounded-full bg-white px-4 py-2 text-sm font-bold text-slate-600 shadow-sm">
-            给我一个内容优化计划
-          </span>
+        <div class="mt-5 flex flex-col gap-2.5 sm:flex-row sm:flex-wrap sm:justify-center">
+          <button
+            v-for="prompt in starterPrompts"
+            :key="prompt.label"
+            type="button"
+            class="group flex min-h-14 items-center gap-3 rounded-2xl border border-agent-border bg-agent-surface-raised px-4 py-3 text-left transition hover:border-agent-border hover:bg-agent-surface focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-agent-focus/45 sm:min-w-[208px]"
+            @click="emit('promptSelected', prompt.prompt)"
+          >
+            <span
+              class="flex size-8 shrink-0 items-center justify-center transition group-hover:text-agent-ink"
+              :class="prompt.iconClass"
+            >
+              <AppIcon :name="prompt.icon" :size="20" />
+            </span>
+            <span class="min-w-0">
+              <span class="block text-sm font-bold text-agent-ink">{{ prompt.label }}</span>
+              <span class="mt-0.5 block text-xs font-semibold text-agent-ink-muted">{{ prompt.description }}</span>
+            </span>
+          </button>
         </div>
       </div>
     </div>
@@ -44,45 +89,52 @@ defineProps<{
       v-else
       class="min-h-0 flex-1 pr-1"
     >
-      <div class="space-y-7 pb-14 sm:pb-16">
-        <template
-          v-for="turn in turns"
-          :key="turn.id"
+      <div class="py-5 sm:py-6">
+        <div
+          v-if="lastGeneratedAt !== '--:--'"
+          class="pb-3 text-right text-xs font-semibold text-agent-ink-muted"
         >
-          <AgentMessage
-            role="user"
+          {{ t('conversation.lastReply', { time: lastGeneratedAt }) }}
+        </div>
+        <div class="space-y-6 pb-14 sm:space-y-7 sm:pb-16">
+          <template
+            v-for="turn in turns"
+            :key="turn.id"
           >
-            <div class="max-w-[720px] whitespace-pre-wrap rounded-2xl bg-[#f3eee7] px-5 py-3.5 text-[15px] font-semibold leading-7 text-[#312d27] shadow-[0_8px_22px_rgb(49_45_39/6%)] ring-1 ring-[#e6ded4]">
-              {{ turn.userMessage }}
-            </div>
-          </AgentMessage>
-
-          <AgentMessage
-            role="agent"
-          >
-            <div
-              v-if="turn.status === 'loading'"
-              class="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-5 py-4 text-sm font-bold text-slate-600 shadow-sm"
+            <AgentMessage
+              role="user"
             >
-              <LoaderCircle class="animate-spin text-blue-600" :size="18" />
-              SEO Agent is thinking...
-            </div>
+              <div class="max-w-[720px] whitespace-pre-wrap rounded-2xl bg-agent-user-bubble px-5 py-3.5 text-[15px] font-semibold leading-7 text-agent-user-bubble-text ring-1 ring-agent-user-bubble-border">
+                {{ turn.userMessage }}
+              </div>
+            </AgentMessage>
 
-            <div
-              v-else-if="turn.status === 'error'"
-              class="max-w-[620px] rounded-2xl border border-rose-100 bg-rose-50 px-5 py-4 text-sm font-bold leading-6 text-rose-700"
+            <AgentMessage
+              role="agent"
             >
-              {{ turn.errorMessage || 'SEO Agent 暂时无法回复，请稍后重试。' }}
-            </div>
+              <div
+                v-if="turn.status === 'loading'"
+                class="inline-flex items-center gap-2 rounded-2xl border border-agent-border bg-agent-surface-raised px-5 py-4 text-sm font-bold text-agent-ink-muted"
+              >
+                <AppIcon name="tabler:loader-2" :size="18" class="animate-spin text-agent-ink-muted" />
+                {{ t('conversation.loading') }}
+              </div>
 
-            <div
-              v-else
-              class="max-w-[760px] whitespace-pre-wrap pt-1 text-[15px] font-medium leading-7 text-[#312d27]"
-            >
-              {{ turn.reply }}
-            </div>
-          </AgentMessage>
-        </template>
+              <div
+                v-else-if="turn.status === 'error'"
+                class="inline-flex max-w-[620px] items-start gap-2.5 rounded-2xl border border-agent-copper/30 bg-agent-copper-soft px-4 py-3 text-sm font-semibold leading-6 text-agent-ink-soft"
+              >
+                <AppIcon name="tabler:alert-triangle" :size="18" class="mt-0.5 shrink-0 text-agent-copper" />
+                <span>{{ turn.errorMessage || t('conversation.fallbackError') }}</span>
+              </div>
+
+              <AgentAssistantReply
+                v-else
+                :text="turn.reply || ''"
+              />
+            </AgentMessage>
+          </template>
+        </div>
       </div>
     </ScrollArea>
   </section>
