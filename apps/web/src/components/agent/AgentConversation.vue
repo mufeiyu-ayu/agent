@@ -5,17 +5,12 @@ import { LoaderCircle, Sparkles } from '@lucide/vue'
 
 import { ScrollArea } from '@/components/ui/scroll-area'
 
-import { formatGeneratedTime } from '../../utils/seo-format'
 import AgentMessage from './AgentMessage.vue'
 
 defineProps<{
   turns: SeoConversationTurn[]
   lastGeneratedAt: string
 }>()
-
-function getTurnTime(value: string): string {
-  return formatGeneratedTime(new Date(value))
-}
 </script>
 
 <template>
@@ -70,8 +65,6 @@ function getTurnTime(value: string): string {
         >
           <AgentMessage
             role="user"
-            name="You"
-            :time="getTurnTime(turn.createdAt)"
           >
             <div class="max-w-[720px] whitespace-pre-wrap rounded-2xl bg-blue-50 px-5 py-3 text-sm font-bold leading-6 text-slate-800 shadow-sm">
               {{ turn.userMessage }}
@@ -80,8 +73,6 @@ function getTurnTime(value: string): string {
 
           <AgentMessage
             role="agent"
-            name="SEO Agent"
-            :time="getTurnTime(turn.generatedAt ?? turn.createdAt)"
           >
             <div
               v-if="turn.status === 'loading'"
@@ -100,7 +91,7 @@ function getTurnTime(value: string): string {
 
             <div
               v-else
-              class="max-w-[760px] whitespace-pre-wrap rounded-2xl border border-slate-200 bg-white px-5 py-4 text-sm font-semibold leading-7 text-slate-800 shadow-sm"
+              class="max-w-[760px] whitespace-pre-wrap rounded-2xl bg-white px-5 py-4 text-sm font-semibold leading-7 text-slate-800 shadow-sm"
             >
               {{ turn.reply }}
             </div>

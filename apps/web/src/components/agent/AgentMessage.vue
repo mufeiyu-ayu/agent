@@ -3,8 +3,6 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 
 defineProps<{
   role: 'user' | 'agent'
-  name: string
-  time: string
 }>()
 </script>
 
@@ -27,14 +25,6 @@ defineProps<{
       class="min-w-0"
       :class="role === 'user' ? 'max-w-[78%]' : 'max-w-[920px] flex-1'"
     >
-      <div
-        class="mb-2 flex items-center gap-2 text-xs font-bold text-slate-400"
-        :class="role === 'user' ? 'justify-end' : 'justify-start'"
-      >
-        <span class="text-slate-700">{{ name }}</span>
-        <span>{{ time }}</span>
-      </div>
-
       <slot />
     </div>
 
