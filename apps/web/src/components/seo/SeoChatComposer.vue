@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { LlmModelOption } from '../../types/llm'
-import type { GenerationStatus, SeoInputValidationErrors } from '../../types/seo'
+import type { GenerationStatus } from '../../types/seo'
 
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -23,7 +23,6 @@ const props = defineProps<{
   selectedModel: LlmModelOption['id']
   status: GenerationStatus
   messageCharacterCount: number
-  validationErrors: SeoInputValidationErrors
 }>()
 
 const emit = defineEmits<{
@@ -35,13 +34,6 @@ const emit = defineEmits<{
 
 const { t } = useI18n()
 
-const messageInputClass = computed(() => {
-  if (props.validationErrors.message)
-    return 'border-rose-300 focus-within:border-rose-400 focus-within:ring-rose-100'
-
-  return 'border-agent-border focus-within:border-agent-border focus-within:ring-agent-focus/35'
-})
-
 const canReset = computed(() => {
   return props.hasConversation || props.message.trim().length > 0
 })
@@ -51,6 +43,13 @@ function submitComposer() {
     return
 
   emit('send')
+}
+
+function submitComposerFromKeyboard() {
+  if (!props.message.trim())
+    return
+
+  submitComposer()
 }
 
 function updateMessage(value: string | number) {
@@ -71,19 +70,16 @@ function updateSelectedModel(value: unknown) {
   <section class="relative z-10 shrink-0 px-3 pb-3 pt-4 sm:px-4 sm:pb-4 sm:pt-5">
     <div class="mx-auto w-full max-w-[760px]">
       <div
-        class="rounded-2xl border bg-agent-surface-raised p-2 shadow-[0_4px_8px_rgb(61_49_36/5%)] transition focus-within:ring-4 sm:p-3"
-        :class="messageInputClass"
+        class="rounded-2xl border border-agent-border bg-agent-surface-raised p-2 shadow-[0_4px_8px_rgb(61_49_36/5%)] sm:p-3"
       >
         <Textarea
           :model-value="message"
           maxlength="2000"
           rows="1"
           class="max-h-40 min-h-[72px] resize-none border-0 bg-transparent px-3 pb-2 pt-2 text-[15px] font-medium leading-6 text-agent-ink shadow-none focus-visible:ring-0 sm:min-h-24 sm:px-4 sm:pt-3 placeholder:font-medium placeholder:text-agent-ink-muted"
-          :aria-invalid="Boolean(validationErrors.message)"
-          :aria-describedby="validationErrors.message ? 'message-error' : undefined"
-          :placeholder="t('composer.placeholder')"
+          :placeholder="hasConversation ? '' : t('composer.placeholder')"
           @update:model-value="updateMessage"
-          @keydown.enter.exact.prevent="submitComposer"
+          @keydown.enter.exact.prevent="submitComposerFromKeyboard"
         />
 
         <div class="flex items-center justify-between gap-2 pt-1">
@@ -139,14 +135,6 @@ function updateSelectedModel(value: unknown) {
           </div>
         </div>
       </div>
-
-      <p
-        v-if="validationErrors.message"
-        id="message-error"
-        class="mt-2 px-1 text-sm font-semibold text-rose-600"
-      >
-        {{ validationErrors.message }}
-      </p>
     </div>
   </section>
 </template>

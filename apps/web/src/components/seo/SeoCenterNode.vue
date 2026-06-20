@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { SeoCenterNodeConfig } from '@/types/seo-flow'
 
-import aiAvatarHomeCoreSoftUrl from '@/assets/ai-avatar-variants/ai-avatar-home-core-soft.webp'
+import aiAvatarHomeCoreSoftUrl from '@/assets/avatar-olive.webp'
 
 defineProps<{
   node: SeoCenterNodeConfig

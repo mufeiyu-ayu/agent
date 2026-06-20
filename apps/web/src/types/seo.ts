@@ -22,10 +22,6 @@ export interface SeoConversationTurn {
   errorMessage?: string
 }
 
-export interface SeoInputValidationErrors {
-  message?: string
-}
-
 export type AppMessageType = 'error' | 'success' | 'info'
 
 export interface AppMessageState {

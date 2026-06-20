@@ -115,6 +115,7 @@ export function useSeoFlowMotion(options: UseSeoFlowMotionOptions) {
   let samplers: SeoFlowPathSampler[] = []
   let samplerById = new Map<string, SeoFlowPathSampler>()
   let animationFrameId: number | null = null
+  let frameTimeoutId: number | null = null
   let mediaQuery: MediaQueryList | null = null
   let intersectionObserver: IntersectionObserver | null = null
   let lastFrameTime = 0
@@ -174,8 +175,20 @@ export function useSeoFlowMotion(options: UseSeoFlowMotionOptions) {
   }
 
   function scheduleNextFrame() {
-    if (animationFrameId !== null)
+    if (animationFrameId !== null || frameTimeoutId !== null)
       return
+
+    const config = resolveConfig()
+    const minFrameMs = 1000 / config.fpsCap
+    const delayMs = Math.max(0, minFrameMs - (performance.now() - lastFrameTime))
+
+    if (delayMs > 4) {
+      frameTimeoutId = window.setTimeout(() => {
+        frameTimeoutId = null
+        animationFrameId = window.requestAnimationFrame(renderMotionFrame)
+      }, delayMs)
+      return
+    }
 
     animationFrameId = window.requestAnimationFrame(renderMotionFrame)
   }
@@ -258,6 +271,11 @@ export function useSeoFlowMotion(options: UseSeoFlowMotionOptions) {
   }
 
   function cancelLoop(shouldClearFrame: boolean) {
+    if (frameTimeoutId !== null) {
+      window.clearTimeout(frameTimeoutId)
+      frameTimeoutId = null
+    }
+
     if (animationFrameId !== null) {
       window.cancelAnimationFrame(animationFrameId)
       animationFrameId = null

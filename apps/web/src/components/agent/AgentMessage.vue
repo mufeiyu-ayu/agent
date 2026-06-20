@@ -1,14 +1,22 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-import aiAvatarUrl from '@/assets/ai-avatar.png'
+import aiAvatarHomeCoreSoftUrl from '@/assets/avatar-olive.webp'
+import aiAvatarUrl from '@/assets/avatar-warm.webp'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { useWorkspaceTheme } from '@/hooks/useWorkspaceTheme'
 
 defineProps<{
   role: 'user' | 'agent'
 }>()
 
 const { t } = useI18n()
+const { workspaceTheme } = useWorkspaceTheme()
+
+const agentAvatarUrl = computed(() => {
+  return workspaceTheme.value === 'olive-ember' ? aiAvatarHomeCoreSoftUrl : aiAvatarUrl
+})
 </script>
 
 <template>
@@ -22,7 +30,7 @@ const { t } = useI18n()
       class="size-10 bg-agent-surface-raised text-white after:border-agent-surface"
     >
       <AvatarImage
-        :src="aiAvatarUrl"
+        :src="agentAvatarUrl"
         :alt="t('conversation.avatarAlt')"
       />
       <AvatarFallback class="bg-agent-primary text-sm font-black text-white">

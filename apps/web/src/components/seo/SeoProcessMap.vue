@@ -203,7 +203,7 @@ const signalParticles = Array.from({ length: 150 }, (_, index) => {
           radius: { min: 1.2, max: 2.5 },
           opacity: { min: 0.32, max: 0.82 },
           pulseStrength: 0.16,
-          fpsCap: 60,
+          fpsCap: 30,
           seed: 41,
         }"
         view-box="0 0 1600 430"

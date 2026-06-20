@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { AgentPlatformUser } from '../../types/agent-platform'
 import type { LlmRuntimeStatus } from '../../types/llm'
+import type { WorkspaceThemeId, WorkspaceThemeOption } from '../../types/workspace-theme'
 
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -11,17 +12,21 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 
 import AppUserSettingsSheet from './AppUserSettingsSheet.vue'
+import WorkspaceThemeSwitcher from './WorkspaceThemeSwitcher.vue'
 
 const props = defineProps<{
   balanceAvailable: boolean
   balanceLabel: string
   balanceStatus: LlmRuntimeStatus
   user: AgentPlatformUser
+  workspaceTheme: WorkspaceThemeId
+  workspaceThemeOptions: readonly WorkspaceThemeOption[]
 }>()
 
 const emit = defineEmits<{
   openNavigation: []
   refreshBalance: []
+  updateWorkspaceTheme: [value: WorkspaceThemeId]
 }>()
 
 const balanceToneClass = computed(() => {
@@ -36,7 +41,7 @@ const { t } = useI18n()
 </script>
 
 <template>
-  <header class="flex h-14 shrink-0 items-center justify-between gap-3 bg-agent-surface/82 px-3 backdrop-blur-[2px] lg:h-16 lg:gap-4 lg:px-7">
+  <header class="flex h-14 shrink-0 items-center justify-between gap-3 bg-transparent px-3 lg:h-16 lg:gap-4 lg:px-7">
     <div class="flex min-w-0 items-center gap-2.5 lg:gap-3">
       <Button
         type="button"
@@ -50,17 +55,15 @@ const { t } = useI18n()
         <AppIcon name="tabler:layout-sidebar-left-expand" :size="21" />
       </Button>
 
-      <div class="min-w-0">
-        <h1 class="truncate text-base font-extrabold text-agent-ink sm:text-lg">
-          {{ t('common.appName') }}
-        </h1>
-        <p class="hidden text-xs font-semibold text-agent-ink-muted sm:block">
-          {{ t('common.appSubtitle') }}
-        </p>
-      </div>
     </div>
 
     <div class="flex shrink-0 items-center gap-1.5 sm:gap-2 lg:gap-3">
+      <WorkspaceThemeSwitcher
+        :model-value="workspaceTheme"
+        :options="workspaceThemeOptions"
+        @update:model-value="emit('updateWorkspaceTheme', $event)"
+      />
+
       <LanguageSwitcher />
 
       <Badge

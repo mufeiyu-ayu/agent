@@ -17,6 +17,60 @@ export const messages = {
         closeAlert: '关闭提示',
       },
     },
+    home: {
+      header: {
+        logoAria: '返回 SEO Agent 首页',
+      },
+      navigation: {
+        ariaLabel: '首页导航',
+        product: '产品',
+        workflow: '工作流',
+        useCases: '使用场景',
+        pricing: '价格',
+        resources: '资源',
+      },
+      workflow: {
+        ariaLabel: 'SEO Agent 工作流示意',
+      },
+      hero: {
+        title: '把页面变成可搜索的 SEO 简报',
+        description: '一个面向页面诊断、关键词和内容规划的 AI 工作台，让输出始终基于真实页面上下文。',
+      },
+      actions: {
+        openWorkspace: '打开工作台',
+        openWorkspaceAria: '打开 AI SEO 工作台',
+        analyze: '分析页面',
+        analyzeAria: '在 SEO Agent 工作台分析页面',
+        viewExample: '查看示例',
+      },
+      suggestions: {
+        ariaLabel: '示例任务',
+        hint: '从一个示例开始：',
+        audit: {
+          label: '诊断落地页 SEO',
+          prompt: '帮我诊断这个落地页的 SEO：重点看 title、description、页面结构和关键词覆盖。',
+        },
+        keywords: {
+          label: '生成关键词想法',
+          prompt: '基于我的产品页生成 SEO 关键词想法：核心词、长尾词和不同搜索意图。',
+        },
+        content: {
+          label: '规划内容结构',
+          prompt: '帮我规划这个页面的内容结构：H1、H2/H3、FAQ 和转化段落。',
+        },
+      },
+      form: {
+        ariaLabel: 'SEO Agent 静态输入示例',
+        topicLabel: '页面主题',
+        placeholder: '粘贴 URL 或描述你要优化的页面...',
+        animatedPrompts: {
+          url: '粘贴产品页 URL，开始一次页面诊断...',
+          brief: '描述落地页，生成可执行的 SEO 简报...',
+          keywords: '输入关键词目标，规划内容结构和优化方向...',
+        },
+        submit: '提交示例',
+      },
+    },
     navigation: {
       pageAudit: '页面诊断',
       keywordIdeas: '关键词想法',
@@ -41,6 +95,20 @@ export const messages = {
         open: '打开导航',
         title: '导航',
         description: '主导航和最近对话',
+      },
+      themeSwitcher: {
+        ariaLabel: '切换工作台颜色主题',
+        placeholder: '主题',
+        themes: {
+          warmLedger: {
+            label: '经典浅色',
+            shortLabel: '浅色',
+          },
+          oliveEmber: {
+            label: '橄榄余烬',
+            shortLabel: '余烬',
+          },
+        },
       },
       settings: {
         trigger: '用户设置',
@@ -88,9 +156,6 @@ export const messages = {
       reset: '重置当前对话',
       send: '发送消息',
     },
-    validation: {
-      messageRequired: '请输入你想和 SEO Agent 讨论的问题。',
-    },
     runtime: {
       balance: {
         loading: '正在读取余额',
@@ -120,6 +185,60 @@ export const messages = {
         closeAlert: 'Close alert',
       },
     },
+    home: {
+      header: {
+        logoAria: 'Back to SEO Agent home',
+      },
+      navigation: {
+        ariaLabel: 'Home navigation',
+        product: 'Product',
+        workflow: 'How it works',
+        useCases: 'Use cases',
+        pricing: 'Pricing',
+        resources: 'Resources',
+      },
+      workflow: {
+        ariaLabel: 'SEO Agent workflow visual',
+      },
+      hero: {
+        title: 'Turn pages into search-ready briefs',
+        description: 'An AI workspace for audits, keywords, and content plans that stays grounded in page context.',
+      },
+      actions: {
+        openWorkspace: 'Open workspace',
+        openWorkspaceAria: 'Open AI SEO workspace',
+        analyze: 'Analyze a page',
+        analyzeAria: 'Analyze a page in SEO Agent workspace',
+        viewExample: 'View example',
+      },
+      suggestions: {
+        ariaLabel: 'Example tasks',
+        hint: 'Start from an example:',
+        audit: {
+          label: 'Audit landing page SEO',
+          prompt: 'Audit this landing page for SEO — focus on title, description, page structure, and keyword coverage.',
+        },
+        keywords: {
+          label: 'Generate keyword ideas',
+          prompt: 'Generate SEO keyword ideas for my product page: head terms, long-tail variants, and different search intents.',
+        },
+        content: {
+          label: 'Plan content structure',
+          prompt: 'Plan the content structure for this page: H1, H2/H3, FAQ, and conversion sections.',
+        },
+      },
+      form: {
+        ariaLabel: 'SEO Agent static input example',
+        topicLabel: 'Page topic',
+        placeholder: 'Drop a URL or describe the page...',
+        animatedPrompts: {
+          url: 'Paste a product page URL for an audit...',
+          brief: 'Describe a landing page to shape the SEO brief...',
+          keywords: 'Ask for keywords, fixes, or content angles...',
+        },
+        submit: 'Submit static example',
+      },
+    },
     navigation: {
       pageAudit: 'Page audit',
       keywordIdeas: 'Keyword ideas',
@@ -144,6 +263,20 @@ export const messages = {
         open: 'Open navigation',
         title: 'Navigation',
         description: 'Main navigation and recent chats',
+      },
+      themeSwitcher: {
+        ariaLabel: 'Switch workspace color theme',
+        placeholder: 'Theme',
+        themes: {
+          warmLedger: {
+            label: 'Classic light',
+            shortLabel: 'Light',
+          },
+          oliveEmber: {
+            label: 'Olive ember',
+            shortLabel: 'Ember',
+          },
+        },
       },
       settings: {
         trigger: 'User settings',
@@ -190,9 +323,6 @@ export const messages = {
       modelPlaceholder: 'DeepSeek model',
       reset: 'Reset current chat',
       send: 'Send message',
-    },
-    validation: {
-      messageRequired: 'Enter the question you want to discuss with the SEO Agent.',
     },
     runtime: {
       balance: {

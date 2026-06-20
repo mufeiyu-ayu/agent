@@ -3,7 +3,7 @@ import type { AgentNavigationItem, AgentRecentChat } from '../../types/agent-pla
 
 import { useI18n } from 'vue-i18n'
 
-import brandLogoUrl from '@/assets/brand-logo.png'
+import brandLogoUrl from '@/assets/logo.webp'
 import AppIcon from '@/components/common/AppIcon.vue'
 
 defineProps<{

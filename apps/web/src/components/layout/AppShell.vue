@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { AgentNavigationItem, AgentPlatformUser, AgentRecentChat } from '../../types/agent-platform'
 import type { LlmRuntimeStatus } from '../../types/llm'
+import type { WorkspaceThemeId, WorkspaceThemeOption } from '../../types/workspace-theme'
 
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -23,12 +24,15 @@ const props = defineProps<{
   navigationItems: AgentNavigationItem[]
   recentChats: AgentRecentChat[]
   user: AgentPlatformUser
+  workspaceTheme: WorkspaceThemeId
+  workspaceThemeOptions: readonly WorkspaceThemeOption[]
   workspaceBackground?: AppShellWorkspaceBackground
 }>()
 
 const emit = defineEmits<{
   newChat: []
   refreshBalance: []
+  updateWorkspaceTheme: [value: WorkspaceThemeId]
 }>()
 
 const sidebarCollapsed = ref(false)
@@ -59,6 +63,7 @@ function handleNewChat() {
   <main
     class="grid h-screen w-full overflow-hidden bg-agent-canvas text-agent-ink transition-[grid-template-columns] duration-300"
     :class="desktopGridClass"
+    :data-agent-workspace-theme="props.workspaceTheme"
   >
     <AppSidebar
       :collapsed="sidebarCollapsed"
@@ -109,8 +114,11 @@ function handleNewChat() {
           :balance-label="props.balanceLabel"
           :balance-status="props.balanceStatus"
           :user="props.user"
+          :workspace-theme="props.workspaceTheme"
+          :workspace-theme-options="props.workspaceThemeOptions"
           @open-navigation="mobileSidebarOpen = true"
           @refresh-balance="emit('refreshBalance')"
+          @update-workspace-theme="emit('updateWorkspaceTheme', $event)"
         />
 
         <slot />

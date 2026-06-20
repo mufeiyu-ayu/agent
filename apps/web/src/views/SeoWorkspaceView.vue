@@ -1,5 +1,8 @@
 <script setup lang="ts">
-import workspaceBgAiBalancedUrl from '../assets/workspace-backgrounds/workspace-bg-ai-balanced.png'
+import { computed } from 'vue'
+
+import workspaceBgOliveEmberDeepUrl from '../assets/bg-olive.webp'
+import workspaceBgAiBalancedUrl from '../assets/bg-warm.webp'
 import AgentConversation from '../components/agent/AgentConversation.vue'
 import AppMessage from '../components/common/AppMessage.vue'
 import AppShell from '../components/layout/AppShell.vue'
@@ -7,12 +10,19 @@ import SeoChatComposer from '../components/seo/SeoChatComposer.vue'
 import { useLlmRuntime } from '../hooks/useLlmRuntime'
 import { useMockAgentPlatform } from '../hooks/useMockAgentPlatform'
 import { useSeoWorkspace } from '../hooks/useSeoWorkspace'
+import { useWorkspaceTheme } from '../hooks/useWorkspaceTheme'
 
-const workspaceBackground = {
-  imageUrl: workspaceBgAiBalancedUrl,
+const {
+  workspaceTheme,
+  workspaceThemeOptions,
+  updateWorkspaceTheme,
+} = useWorkspaceTheme()
+
+const workspaceBackground = computed(() => ({
+  imageUrl: workspaceTheme.value === 'olive-ember' ? workspaceBgOliveEmberDeepUrl : workspaceBgAiBalancedUrl,
   position: 'center center',
-  opacity: '0.2',
-} as const
+  opacity: workspaceTheme.value === 'olive-ember' ? '0.78' : '0.2',
+}))
 
 const {
   navigationItems,
@@ -33,7 +43,6 @@ const {
   message,
   status,
   lastGeneratedAt,
-  validationErrors,
   appMessage,
   conversationTurns,
   messageCharacterCount,
@@ -56,8 +65,11 @@ function applySuggestedPrompt(prompt: string) {
     :recent-chats="recentChats"
     :user="user"
     :workspace-background="workspaceBackground"
+    :workspace-theme="workspaceTheme"
+    :workspace-theme-options="workspaceThemeOptions"
     @new-chat="resetWorkspace"
     @refresh-balance="refreshBalance"
+    @update-workspace-theme="updateWorkspaceTheme"
   >
     <div class="relative flex min-h-0 flex-1 flex-col overflow-hidden">
       <AppMessage
@@ -81,7 +93,6 @@ function applySuggestedPrompt(prompt: string) {
           :models="models"
           :status="status"
           :message-character-count="messageCharacterCount"
-          :validation-errors="validationErrors"
           @send="sendMessage(selectedModel)"
           @reset="resetWorkspace"
         />

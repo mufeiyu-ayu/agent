@@ -1,8 +1,8 @@
 import type { ApiErrorResponse } from '../api/http'
-import type { AppMessageState, AppMessageType, GenerationStatus, SeoChatRequest, SeoChatResponse, SeoConversationTurn, SeoInputValidationErrors } from '../types/seo'
+import type { AppMessageState, AppMessageType, GenerationStatus, SeoChatRequest, SeoChatResponse, SeoConversationTurn } from '../types/seo'
 
 import { isAxiosError } from 'axios'
-import { computed, ref, watch } from 'vue'
+import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import { chatWithSeoAgent } from '../api/seo'
@@ -14,12 +14,11 @@ const ERROR_MESSAGE_TIMEOUT_MS = 6400
 const MAX_CONVERSATION_TURNS = 12
 
 export function useSeoWorkspace() {
-  const { locale, t } = useI18n()
+  const { t } = useI18n()
   const message = ref('')
   const status = ref<GenerationStatus>('empty')
   const lastGeneratedAt = ref('--:--')
   const errorMessage = ref('')
-  const validationErrors = ref<SeoInputValidationErrors>({})
   const conversationTurns = ref<SeoConversationTurn[]>([])
   const appMessage = ref<AppMessageState>({
     visible: false,
@@ -37,19 +36,12 @@ export function useSeoWorkspace() {
     conversationTurns.value = []
     status.value = 'empty'
     errorMessage.value = ''
-    validationErrors.value = {}
     hideMessage()
     lastGeneratedAt.value = '--:--'
     activeTurnId = null
   }
 
   async function sendMessage(model?: string) {
-    if (!validateBeforeSend()) {
-      status.value = 'empty'
-      errorMessage.value = ''
-      return
-    }
-
     if (!canStartChatRequest())
       return
 
@@ -128,18 +120,6 @@ export function useSeoWorkspace() {
     })
   }
 
-  function validateBeforeSend(): boolean {
-    const nextErrors: SeoInputValidationErrors = {}
-
-    if (!message.value.trim()) {
-      nextErrors.message = t('validation.messageRequired')
-    }
-
-    validationErrors.value = nextErrors
-
-    return Object.keys(nextErrors).length === 0
-  }
-
   function canStartChatRequest(): boolean {
     if (status.value === 'loading')
       return false
@@ -152,16 +132,6 @@ export function useSeoWorkspace() {
     lastChatRequestedAt = now
 
     return true
-  }
-
-  function clearValidationError(field: keyof SeoInputValidationErrors) {
-    if (!validationErrors.value[field])
-      return
-
-    const nextErrors = { ...validationErrors.value }
-
-    delete nextErrors[field]
-    validationErrors.value = nextErrors
   }
 
   function applyChatResponse(turnId: string, response: SeoChatResponse) {
@@ -231,27 +201,11 @@ export function useSeoWorkspace() {
     return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`
   }
 
-  watch(message, (value) => {
-    if (value.trim())
-      clearValidationError('message')
-  })
-
-  watch(locale, () => {
-    if (!validationErrors.value.message)
-      return
-
-    validationErrors.value = {
-      ...validationErrors.value,
-      message: t('validation.messageRequired'),
-    }
-  })
-
   return {
     message,
     status,
     lastGeneratedAt,
     errorMessage,
-    validationErrors,
     appMessage,
     conversationTurns,
     messageCharacterCount,

@@ -83,6 +83,62 @@
   --sidebar-ring: var(--agent-focus);
 }
 
+:root[data-agent-workspace-theme='olive-ember'],
+[data-agent-workspace-theme='olive-ember'] {
+  --agent-canvas: oklch(0.196 0.010 125);
+  --agent-sidebar: oklch(0.206 0.012 115);
+  --agent-surface: oklch(0.206 0.012 115);
+  --agent-surface-raised: oklch(0.233 0.016 85);
+  --agent-surface-sunken: oklch(0.175 0.008 119);
+  --agent-ink: oklch(0.905 0.024 86);
+  --agent-ink-soft: oklch(0.848 0.029 85);
+  --agent-ink-muted: oklch(0.718 0.043 83);
+  --agent-ink-faint: oklch(0.624 0.036 84);
+  --agent-border: oklch(0.331 0.033 82);
+  --agent-border-soft: oklch(0.294 0.026 81);
+  --agent-border-subtle: oklch(0.265 0.022 92);
+  --agent-primary: oklch(0.468 0.082 62);
+  --agent-primary-hover: oklch(0.519 0.092 60);
+  --agent-accent: oklch(0.632 0.109 61);
+  --agent-accent-soft: oklch(0.238 0.024 72);
+  --agent-moss: oklch(0.618 0.056 126);
+  --agent-moss-soft: oklch(0.255 0.028 135);
+  --agent-copper: oklch(0.632 0.109 61);
+  --agent-copper-soft: oklch(0.238 0.024 72);
+  --agent-focus: oklch(0.632 0.109 61);
+  --agent-user-bubble: oklch(0.245 0.017 87);
+  --agent-user-bubble-text: var(--agent-ink);
+  --agent-user-bubble-border: oklch(0.331 0.033 82);
+  --background: var(--agent-canvas);
+  --foreground: var(--agent-ink);
+  --card: var(--agent-surface-raised);
+  --card-foreground: var(--agent-ink);
+  --popover: var(--agent-surface-raised);
+  --popover-foreground: var(--agent-ink);
+  --primary: var(--agent-primary);
+  --primary-foreground: oklch(0.985 0.003 245);
+  --secondary: var(--agent-surface);
+  --secondary-foreground: var(--agent-ink);
+  --muted: var(--agent-surface-sunken);
+  --muted-foreground: var(--agent-ink-muted);
+  --accent: var(--agent-accent-soft);
+  --accent-foreground: var(--agent-ink);
+  --border: var(--agent-border);
+  --input: var(--agent-border);
+  --ring: var(--agent-focus);
+  --chart-1: var(--agent-accent);
+  --chart-2: var(--agent-moss);
+  --chart-3: var(--agent-copper);
+  --sidebar: var(--agent-sidebar);
+  --sidebar-foreground: var(--agent-ink);
+  --sidebar-primary: var(--agent-primary);
+  --sidebar-primary-foreground: oklch(0.985 0.003 245);
+  --sidebar-accent: var(--agent-surface-raised);
+  --sidebar-accent-foreground: var(--agent-ink);
+  --sidebar-border: var(--agent-border);
+  --sidebar-ring: var(--agent-focus);
+}
+
 * {
   box-sizing: border-box;
 }

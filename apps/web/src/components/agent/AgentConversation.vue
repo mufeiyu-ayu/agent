@@ -1,16 +1,17 @@
 <script setup lang="ts">
 import type { SeoConversationTurn } from '../../types/seo'
 
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import AppIcon from '@/components/common/AppIcon.vue'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { useAgentConversationScroll } from '@/hooks/useAgentConversationScroll'
 
 import AgentAssistantReply from './AgentAssistantReply.vue'
 import AgentMessage from './AgentMessage.vue'
 
-defineProps<{
+const props = defineProps<{
   turns: SeoConversationTurn[]
   lastGeneratedAt: string
 }>()
@@ -20,6 +21,40 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
+const conversationRootRef = ref<HTMLElement | null>(null)
+
+const activeTurnId = computed(() => {
+  if (props.turns.length <= 1)
+    return undefined
+
+  return props.turns[props.turns.length - 1]?.id
+})
+
+const activeTurnSignature = computed(() => {
+  const activeTurn = props.turns[props.turns.length - 1]
+
+  if (!activeTurn || props.turns.length <= 1)
+    return ''
+
+  return [
+    activeTurn.id,
+    activeTurn.status,
+    activeTurn.generatedAt ?? '',
+    activeTurn.reply?.length ?? 0,
+    activeTurn.errorMessage?.length ?? 0,
+  ].join(':')
+})
+
+const {
+  activeTopSpacerHeight,
+  activeTopSpacerStyle,
+  activeBottomSpacerHeight,
+  activeBottomSpacerStyle,
+} = useAgentConversationScroll({
+  containerRef: conversationRootRef,
+  activeTurnId,
+  activeTurnSignature,
+})
 
 const starterPrompts = computed(() => [
   {
@@ -47,7 +82,10 @@ const starterPrompts = computed(() => [
 </script>
 
 <template>
-  <section class="mx-auto flex min-h-0 w-full max-w-[920px] flex-1 flex-col px-4 pt-5 sm:pt-6">
+  <section
+    ref="conversationRootRef"
+    class="mx-auto flex min-h-0 w-full max-w-[920px] flex-1 flex-col px-4 pt-5 sm:pt-6"
+  >
     <div
       v-if="turns.length === 0"
       class="flex min-h-0 flex-1 items-center justify-center px-1 pb-7 pt-5 sm:px-4 sm:pb-9 lg:pb-10"
@@ -96,44 +134,59 @@ const starterPrompts = computed(() => [
         >
           {{ t('conversation.lastReply', { time: lastGeneratedAt }) }}
         </div>
-        <div class="space-y-6 pb-14 sm:space-y-7 sm:pb-16">
-          <template
-            v-for="turn in turns"
-            :key="turn.id"
-          >
-            <AgentMessage
-              role="user"
+        <div class="pb-14 sm:pb-16">
+          <div
+            v-if="activeTopSpacerHeight > 0"
+            :style="activeTopSpacerStyle"
+            aria-hidden="true"
+          />
+
+          <div class="space-y-6 sm:space-y-7">
+            <template
+              v-for="turn in turns"
+              :key="turn.id"
             >
-              <div class="max-w-[720px] whitespace-pre-wrap rounded-2xl bg-agent-user-bubble px-5 py-3.5 text-[15px] font-semibold leading-7 text-agent-user-bubble-text ring-1 ring-agent-user-bubble-border">
-                {{ turn.userMessage }}
-              </div>
-            </AgentMessage>
-
-            <AgentMessage
-              role="agent"
-            >
-              <div
-                v-if="turn.status === 'loading'"
-                class="inline-flex items-center gap-2 rounded-2xl border border-agent-border bg-agent-surface-raised px-5 py-4 text-sm font-bold text-agent-ink-muted"
+              <AgentMessage
+                role="user"
               >
-                <AppIcon name="tabler:loader-2" :size="18" class="animate-spin text-agent-ink-muted" />
-                {{ t('conversation.loading') }}
-              </div>
+                <div class="max-w-[720px] whitespace-pre-wrap rounded-2xl bg-agent-user-bubble px-5 py-3.5 text-[17px] font-semibold leading-7 text-agent-user-bubble-text ring-1 ring-agent-user-bubble-border">
+                  {{ turn.userMessage }}
+                </div>
+              </AgentMessage>
 
-              <div
-                v-else-if="turn.status === 'error'"
-                class="inline-flex max-w-[620px] items-start gap-2.5 rounded-2xl border border-agent-copper/30 bg-agent-copper-soft px-4 py-3 text-sm font-semibold leading-6 text-agent-ink-soft"
+              <AgentMessage
+                role="agent"
+                data-agent-active-turn-anchor="true"
+                :data-agent-turn-id="turn.id"
               >
-                <AppIcon name="tabler:alert-triangle" :size="18" class="mt-0.5 shrink-0 text-agent-copper" />
-                <span>{{ turn.errorMessage || t('conversation.fallbackError') }}</span>
-              </div>
+                <div
+                  v-if="turn.status === 'loading'"
+                  class="inline-flex h-10 items-center justify-center text-agent-ink-muted"
+                >
+                  <AppIcon name="tabler:loader-2" :size="18" class="animate-spin" />
+                </div>
 
-              <AgentAssistantReply
-                v-else
-                :text="turn.reply || ''"
-              />
-            </AgentMessage>
-          </template>
+                <div
+                  v-else-if="turn.status === 'error'"
+                  class="inline-flex max-w-[620px] items-start gap-2.5 rounded-2xl border border-agent-copper/30 bg-agent-copper-soft px-4 py-3 text-sm font-semibold leading-6 text-agent-ink-soft"
+                >
+                  <AppIcon name="tabler:alert-triangle" :size="18" class="mt-0.5 shrink-0 text-agent-copper" />
+                  <span>{{ turn.errorMessage || t('conversation.fallbackError') }}</span>
+                </div>
+
+                <AgentAssistantReply
+                  v-else
+                  :text="turn.reply || ''"
+                />
+              </AgentMessage>
+            </template>
+          </div>
+
+          <div
+            v-if="activeBottomSpacerHeight > 0"
+            :style="activeBottomSpacerStyle"
+            aria-hidden="true"
+          />
         </div>
       </div>
     </ScrollArea>
