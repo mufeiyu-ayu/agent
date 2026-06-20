@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { SeoCenterNodeConfig } from '@/types/seo-flow'
 
-import AppIcon from '@/components/common/AppIcon.vue'
+import aiAvatarHomeCoreSoftUrl from '@/assets/ai-avatar-variants/ai-avatar-home-core-soft.webp'
 
 defineProps<{
   node: SeoCenterNodeConfig
@@ -12,19 +12,26 @@ defineProps<{
   <div
     class="relative flex size-[108px] items-center justify-center min-[1800px]:size-[128px]"
     :aria-label="`${node.label} ${node.description}`"
-    :data-seo-center-node="node.id"
   >
-    <span class="absolute inset-0 rounded-full border border-[#d7b18a]/60" aria-hidden="true" />
-    <span class="absolute inset-2 rounded-full border border-[#d7b18a]/32" aria-hidden="true" />
-    <span class="absolute -inset-2 rounded-full bg-[#d7a372]/10 blur-xl" aria-hidden="true" />
-
     <span
-      class="absolute inset-0 rounded-full bg-[conic-gradient(from_135deg,rgba(215,177,138,0.0),rgba(215,177,138,0.52),rgba(137,163,118,0.18),rgba(215,177,138,0.0))] opacity-70"
+      class="absolute -inset-5 rounded-full bg-[#d7a372]/8 blur-3xl"
+      aria-hidden="true"
+    />
+    <span
+      class="absolute -inset-2 bg-[radial-gradient(circle_at_50%_50%,rgba(137,163,118,0.12),transparent_68%)] blur-2xl"
       aria-hidden="true"
     />
 
-    <div class="relative flex size-[82px] items-center justify-center rounded-full border border-white/[0.12] bg-[#1c1815]/96 text-[#f1d2ae] shadow-[0_20px_58px_rgb(0_0_0/36%),inset_0_1px_0_rgba(255,255,255,0.08)] min-[1800px]:size-[96px]">
-      <AppIcon name="tabler:sparkles" :size="42" />
+    <div
+      class="relative flex size-[94px] items-center justify-center min-[1800px]:size-[110px]"
+      :data-seo-center-node="node.id"
+    >
+      <img
+        :src="aiAvatarHomeCoreSoftUrl"
+        alt=""
+        class="pointer-events-none size-[118px] max-w-none object-contain opacity-95 drop-shadow-[0_18px_38px_rgba(0,0,0,0.28)] min-[1800px]:size-[138px]"
+        aria-hidden="true"
+      >
     </div>
   </div>
 </template>
