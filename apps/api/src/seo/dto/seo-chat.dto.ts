@@ -1,5 +1,6 @@
 import {
   IsIn,
+  IsNotEmpty,
   IsOptional,
   IsString,
   MaxLength,
@@ -9,6 +10,7 @@ import { SUPPORTED_DEEPSEEK_MODELS } from '../../llm/llm.types.js'
 
 export class SeoChatDto {
   @IsString()
+  @IsNotEmpty()
   @MaxLength(2000)
   message!: string
 

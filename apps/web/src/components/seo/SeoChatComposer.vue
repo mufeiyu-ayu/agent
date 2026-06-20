@@ -39,17 +39,10 @@ const canReset = computed(() => {
 })
 
 function submitComposer() {
-  if (props.status === 'loading')
+  if (props.status === 'loading' || !props.message.trim())
     return
 
   emit('send')
-}
-
-function submitComposerFromKeyboard() {
-  if (!props.message.trim())
-    return
-
-  submitComposer()
 }
 
 function updateMessage(value: string | number) {
@@ -79,7 +72,7 @@ function updateSelectedModel(value: unknown) {
           class="max-h-40 min-h-[72px] resize-none border-0 bg-transparent px-3 pb-2 pt-2 text-[15px] font-medium leading-6 text-agent-ink shadow-none focus-visible:ring-0 sm:min-h-24 sm:px-4 sm:pt-3 placeholder:font-medium placeholder:text-agent-ink-muted"
           :placeholder="hasConversation ? '' : t('composer.placeholder')"
           @update:model-value="updateMessage"
-          @keydown.enter.exact.prevent="submitComposerFromKeyboard"
+          @keydown.enter.exact.prevent="submitComposer"
         />
 
         <div class="flex items-center justify-between gap-2 pt-1">
@@ -126,7 +119,7 @@ function updateSelectedModel(value: unknown) {
               :title="t('composer.send')"
               :aria-label="t('composer.send')"
               class="size-10 rounded-full bg-agent-primary text-white shadow-none hover:bg-agent-primary-hover disabled:bg-agent-border sm:size-11"
-              :disabled="status === 'loading'"
+              :disabled="status === 'loading' || !message.trim()"
               @click="submitComposer"
             >
               <AppIcon v-if="status === 'loading'" name="tabler:loader-2" :size="19" class="animate-spin" />
