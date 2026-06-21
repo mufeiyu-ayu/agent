@@ -9,12 +9,4 @@ export class AppController {
       service: 'api',
     }
   }
-
-  @Get('api/demo')
-  getDemo() {
-    return {
-      message: 'Hello from Nest API',
-      timestamp: new Date().toISOString(),
-    }
-  }
 }
