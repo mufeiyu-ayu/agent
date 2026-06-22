@@ -36,6 +36,7 @@ export default antfu({
   ignores: [
     '**/dist',
     '**/node_modules',
+    'apps/api/src/generated/prisma',
   ],
   rules: {
     'no-console': ['error', {

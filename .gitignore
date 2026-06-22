@@ -7,3 +7,5 @@ tmp/
 .impeccable/
 .playwright-mcp/
 .agents
+
+/apps/api/src/generated/prisma

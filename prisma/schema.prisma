@@ -1,0 +1,12 @@
+// Prisma 数据模型入口。
+// 阶段 2 会在这里定义 Conversation / Message 表结构。
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../apps/api/src/generated/prisma"
+  moduleFormat = "esm"
+}
+
+datasource db {
+  provider = "postgresql"
+}

@@ -1,7 +1,7 @@
 # 项目工作记录
 | 类型 | 当前记录 | 下一步 |
 | --- | --- | --- |
-| 当前状态 | Vue + Nest + pnpm workspace，主接口为 `POST /api/seo/chat` | 继续 T19-A |
+| 当前状态 | Vue + Nest + pnpm workspace，阶段 2 已开始，Prisma + OrbStack PostgreSQL 已可连接 | 定义 `Conversation` / `Message` 数据模型并实现会话 CRUD |
 | 最新转向 | `fb4152a` 将固定字段 SEO 生成器简化为普通 SEO Agent 聊天链路 | 加入受控 history |
 | 组件现状 | `df4a928` 接入 `shadcn-vue`，复杂交互用组件库，强定制布局继续手写 | 不为了统一强行替换 |
 | UI 整体 | Web 端首页与工作台 UI polish 已完成；首页已接入中英文切换，并完成首轮无视觉差性能优化；工作台新增暖色 / 橄榄余烬双主题 | 后续继续 T19-A 受控 history |
@@ -14,3 +14,4 @@
 | --- | --- | --- | --- | --- | --- |
 | 2026-06-20 | e174401 | UI polish | 首页与工作台样式打磨：暗色品牌 hero、中英文语言切换、工作台暖色 / 橄榄余烬双主题切换（持久化到 `localStorage`）、对话区 Markdown 渲染、首页动态 placeholder，以及一轮无视觉差的首屏性能优化（路由动态导入、动画降帧）。同步替换头像/背景图资产，新增 `gsap`、`markdown-it` 依赖 | `apps/web/src/components/seo/SeoHomeHero.vue`、`apps/web/src/components/layout/WorkspaceThemeSwitcher.vue`、`apps/web/src/hooks/useWorkspaceTheme.ts`、`apps/web/src/components/agent/AgentMarkdownContent.vue`、`apps/web/src/router/index.ts`、`DESIGN.md` 等 | `pnpm --filter @agent/web typecheck` / `lint` / `build` 通过 |
 | 2026-06-20 | 待提交 | fix | 修复 `e174401` 引入的回归：去掉前端空值校验后，点击发送按钮可把空消息发给后端。`submitComposer` 源头补空值守卫、发送按钮空输入时置灰，后端 `SeoChatDto` 恢复 `@IsNotEmpty` 兜底 | `apps/web/src/components/seo/SeoChatComposer.vue`、`apps/api/src/seo/dto/seo-chat.dto.ts` | 前后端 `typecheck` / `lint` 通过 |
+| 2026-06-22 | 待提交 | 架构迁移 | 按 NestJS Prisma recipe 安装 Prisma 7：root 添加 Prisma CLI / `dotenv`，API 添加 `@prisma/client`、PostgreSQL adapter 和 `pg`；初始化 `prisma/schema.prisma`、`prisma.config.ts`，新增 `PrismaModule` / `PrismaService`；新增 OrbStack / Docker Compose 本地 PostgreSQL，并对齐 `.env` 的 `DATABASE_URL` | `docker-compose.yml`、`package.json`、`apps/api/package.json`、`tsconfig.json`、`prisma/schema.prisma`、`prisma.config.ts`、`apps/api/src/prisma/prisma.service.ts`、`apps/api/src/prisma/prisma.module.ts`、`.env.example`、`eslint.config.mjs` | `docker compose ps postgres` 显示 healthy；`pg_isready` 通过；`pnpm exec prisma db execute` 可连接；`pnpm prisma:generate`、`pnpm exec prisma validate`、`pnpm exec tsc --noEmit -p tsconfig.json`、`pnpm typecheck` 通过；`pnpm lint` 通过但保留既有 `AppHeader.vue` 模板换行 warning |
