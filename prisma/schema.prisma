@@ -10,3 +10,38 @@ generator client {
 datasource db {
   provider = "postgresql"
 }
+
+enum MessageRole {
+  USER
+  ASSISTANT
+}
+
+enum MessageStatus {
+  PENDING
+  STREAMING
+  COMPLETED
+  FAILED
+}
+
+model Conversation {
+  id        String    @id @default(cuid())
+  title     String
+  messages  Message[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([updatedAt])
+}
+
+model Message {
+  id             String        @id @default(cuid())
+  conversationId String
+  conversation   Conversation  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  role           MessageRole
+  content        String
+  status         MessageStatus @default(COMPLETED)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@index([conversationId, createdAt])
+}

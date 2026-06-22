@@ -3,11 +3,12 @@ import { Module } from '@nestjs/common'
 
 import { AppController } from './app.controller.js'
 import { RequestIdMiddleware } from './common/middleware/request-id.middleware.js'
+import { ConversationsModule } from './conversations/conversations.module.js'
 import { LlmModule } from './llm/llm.module.js'
 import { SeoModule } from './seo/seo.module.js'
 
 @Module({
-  imports: [LlmModule, SeoModule],
+  imports: [LlmModule, SeoModule, ConversationsModule],
   controllers: [AppController],
 })
 export class AppModule implements NestModule {
