@@ -1,6 +1,7 @@
 import { Body, Controller, Inject, Post } from '@nestjs/common'
 
-import { createAppValidationPipe } from '../common/pipes/app-validation.pipe.js'
+// DTO classes are required at runtime for Nest decorator metadata.
+// eslint-disable-next-line ts/consistent-type-imports
 import { SeoChatDto } from './dto/seo-chat.dto.js'
 import { SeoService } from './seo.service.js'
 
@@ -13,8 +14,7 @@ export class SeoController {
 
   @Post('chat')
   chat(
-    @Body(createAppValidationPipe({ expectedType: SeoChatDto }))
-    body: SeoChatDto,
+    @Body() body: SeoChatDto,
   ) {
     return this.seoService.chat(body)
   }

@@ -280,6 +280,15 @@ Controller 只做 HTTP 边界：
 - 调用 Service
 - 返回响应
 
+修改 Controller 前先检查 `apps/api/src/common/bootstrap/register-app-globals.ts`。已经注册到全局层的横切能力不要在每个 Controller 方法里重复写。
+
+当前项目的 Controller 约束：
+
+- 全局 `createAppValidationPipe()` 已负责 DTO 校验，普通参数写 `@Body() body: XxxDto`、`@Param() params: XxxParamDto`，不要重复写 `@Body(createAppValidationPipe(...))` / `@Param(createAppValidationPipe(...))`。
+- 全局 `ResponseTransformInterceptor` 已负责成功响应包装，Controller 返回业务数据即可，不要手动返回 `{ success, code, message, data }`。
+- 全局 `AllExceptionsFilter` 已负责异常响应包装，Controller 不要写重复的统一 `try/catch`。
+- DTO class 在 Controller 中要保留运行时值导入，不要因为 lint 提示随手改成 `import type`；NestJS `ValidationPipe` 需要 decorator metadata 获取 DTO class。
+
 Controller 不应该：
 
 - 直接写 prompt
@@ -287,6 +296,7 @@ Controller 不应该：
 - 直接解析模型 JSON
 - 直接写 SEO 检查算法
 - 堆积复杂 try/catch 流程
+- 重复实现已经放到全局 pipe / interceptor / filter 的能力
 
 ### 5.3 Service 职责
 
@@ -470,6 +480,8 @@ utils/seo-check.ts
 ```txt
 是否仍然把接口请求写在组件里？
 是否仍然把模型调用写在 Controller 里？
+是否在 Controller 里重复写了全局 pipe / interceptor / filter 已经处理的逻辑？
+Controller 的 DTO class 是否被错误改成了 `import type`，导致 NestJS 运行时 metadata 丢失？
 是否新增了没有必要的 common 抽象？
 是否有 API Key 或敏感地址进入仓库？
 是否存在 any 滥用？

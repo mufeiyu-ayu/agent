@@ -1,7 +1,8 @@
 import { Body, Controller, Delete, Get, Inject, Param, Post } from '@nestjs/common'
 
-import { createAppValidationPipe } from '../common/pipes/app-validation.pipe.js'
 import { ConversationsService } from './conversations.service.js'
+// DTO classes are required at runtime for Nest decorator metadata.
+// eslint-disable-next-line ts/consistent-type-imports
 import { ConversationIdParamDto, CreateConversationDto } from './dto/conversation.dto.js'
 
 @Controller('api/conversations')
@@ -13,8 +14,7 @@ export class ConversationsController {
 
   @Post()
   create(
-    @Body(createAppValidationPipe({ expectedType: CreateConversationDto }))
-    body: CreateConversationDto,
+    @Body() body: CreateConversationDto,
   ) {
     return this.conversationsService.create(body)
   }
@@ -26,8 +26,7 @@ export class ConversationsController {
 
   @Delete(':conversationId')
   delete(
-    @Param(createAppValidationPipe({ expectedType: ConversationIdParamDto }))
-    params: ConversationIdParamDto,
+    @Param() params: ConversationIdParamDto,
   ) {
     return this.conversationsService.delete(params.conversationId)
   }

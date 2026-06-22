@@ -296,6 +296,26 @@ Repository / Prisma Service
 
 不要把模型调用、prompt、工具函数、数据库操作全部写在一个文件里。
 
+### 11.1 NestJS Controller 全局能力约束
+
+修改 `apps/api` 下 NestJS Controller 前，先检查 `apps/api/src/common/bootstrap/register-app-globals.ts` 已经注册了哪些全局能力。
+
+当前这些能力属于后端全局横切层，普通 Controller 不要重复手动实现：
+
+- `app.useGlobalPipes(createAppValidationPipe())`
+  - 不要在 Controller 参数上重复写 `@Body(createAppValidationPipe(...))` 或 `@Param(createAppValidationPipe(...))`。
+  - 默认写 `@Body() body: XxxDto`、`@Param() params: XxxParamDto`，把 DTO 校验交给全局 pipe。
+- `app.useGlobalInterceptors(new ResponseTransformInterceptor())`
+  - 不要在 Controller 里手动包装 `{ success, code, message, data }`。
+  - Controller 返回业务数据即可，由全局 interceptor 统一包装成功响应。
+- `app.useGlobalFilters(new AllExceptionsFilter())`
+  - 不要在 Controller 里写重复的统一 `try/catch` 错误包装。
+  - 业务异常交给 service 抛出，HTTP 异常和未知异常交给全局 filter 统一转换。
+
+如果 Controller 使用 DTO 作为 `@Body()` / `@Param()` 参数类型，DTO class 必须保留运行时值导入，不要随手改成 `import type`。NestJS 的 `ValidationPipe` 依赖 decorator metadata 获取 DTO class；如果被改成 type-only import，可能导致全局校验丢失 metatype。
+
+验证全局校验是否生效时，要注意当前运行器是否保留 decorator metadata。不要为了弥补某个 dev runner 的 metadata 问题，把局部 pipe 又写回每个 Controller；应优先修复运行方式或全局层配置。
+
 当实现 Tool Calling 时，应明确区分：
 
 ~~~txt
