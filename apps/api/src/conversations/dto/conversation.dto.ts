@@ -1,3 +1,4 @@
+import type { CreateConversationRequest } from '@agent/contracts'
 import {
   IsNotEmpty,
   IsOptional,
@@ -5,7 +6,7 @@ import {
   MaxLength,
 } from 'class-validator'
 
-export class CreateConversationDto {
+export class CreateConversationDto implements CreateConversationRequest {
   @IsOptional()
   @IsString()
   @MaxLength(80)

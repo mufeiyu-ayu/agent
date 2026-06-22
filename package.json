@@ -17,8 +17,9 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
-    "typecheck": "pnpm typecheck:apps",
+    "typecheck": "pnpm typecheck:workspaces",
     "typecheck:apps": "pnpm --recursive --filter './apps/*' typecheck",
+    "typecheck:workspaces": "pnpm --recursive --filter './apps/*' --filter './packages/*' typecheck",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix"
   },

@@ -31,9 +31,17 @@ UI = 展示层
 
 这是 Agent 应用 Memory Layer 的第一步。
 
+## 当前进度
+
+- Task 1-4 已完成：数据模型、PostgreSQL / Prisma 持久化、Conversation CRUD、Message 持久化。
+- Task 5-7 已完成：前端状态改为 conversation / message 数据源驱动，真实 chat 入口携带 `conversationId`，后端按当前 conversation 读取最近 12 条 messages 作为受控上下文。
+- 下一步进入 Task 8：阶段 2 回归验收，重点验证多会话切换、刷新恢复、删除同步和长历史截断。
+
 ## 任务列表
 
 ### Task 1：定义 Conversation / Message 数据模型
+
+状态：已完成。
 
 #### 核心要完成
 
@@ -68,6 +76,8 @@ Message：
 - 前后端使用同一套核心字段理解数据
 
 ### Task 2：确定数据库持久化方案
+
+状态：已完成。
 
 #### 核心要完成
 
@@ -109,6 +119,8 @@ Conversation 1 -> N Message
 
 ### Task 3：实现 Conversation 基础 CRUD
 
+状态：已完成。
+
 #### 核心要完成
 
 - 创建 conversation
@@ -138,6 +150,8 @@ Conversation 1 -> N Message
 
 ### Task 4：实现 Message 持久化
 
+状态：已完成。
+
 #### 核心要完成
 
 - 创建 user message
@@ -166,6 +180,8 @@ Conversation 1 -> N Message
 
 ### Task 5：改造前端 Chat 状态结构
 
+状态：已完成。
+
 #### 核心要完成
 
 - 增加 activeConversationId
@@ -187,6 +203,8 @@ Conversation 1 -> N Message
 - 刷新后能恢复默认或最近 conversation
 
 ### Task 6：Session 驱动 Chat Flow
+
+状态：已完成。
 
 #### 核心要完成
 
@@ -223,6 +241,8 @@ Conversation 1 -> N Message
 
 ### Task 7：控制 History 成本
 
+状态：已完成。
+
 #### 核心要完成
 
 - 只取最近 N 轮 user / assistant messages
@@ -245,6 +265,8 @@ Conversation 1 -> N Message
 - history 规则能在代码中明确找到
 
 ### Task 8：阶段 2 回归验收
+
+状态：待开始。
 
 #### 核心要完成
 

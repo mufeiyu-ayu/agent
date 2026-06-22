@@ -1,4 +1,1 @@
-export interface SeoChatResult {
-  reply: string
-  generatedAt: string
-}
+export type { SeoChatResponse as SeoChatResult } from '@agent/contracts'

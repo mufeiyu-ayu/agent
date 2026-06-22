@@ -1,3 +1,4 @@
+import type { ConversationMessage } from '@agent/contracts'
 import type { Message, MessageRole as PrismaMessageRole } from '../generated/prisma/client.js'
 import type { CreateMessageDto } from './dto/message.dto.js'
 import { Inject, Injectable, NotFoundException } from '@nestjs/common'
@@ -12,10 +13,10 @@ export class MessagesService {
     private readonly prismaService: PrismaService,
   ) {}
 
-  async listMessages(conversationId: string): Promise<Message[]> {
+  async listMessages(conversationId: string): Promise<ConversationMessage[]> {
     await this.assertConversationExists(conversationId)
 
-    return this.prismaService.message.findMany({
+    const messages = await this.prismaService.message.findMany({
       where: {
         conversationId,
       },
@@ -23,19 +24,21 @@ export class MessagesService {
         createdAt: 'asc',
       },
     })
+
+    return messages.map(toConversationMessageResponse)
   }
 
   async createUserMessage(
     conversationId: string,
     input: CreateMessageDto,
-  ): Promise<Message> {
+  ): Promise<ConversationMessage> {
     return this.createMessage(conversationId, MessageRole.USER, input)
   }
 
   async createAssistantMessage(
     conversationId: string,
     input: CreateMessageDto,
-  ): Promise<Message> {
+  ): Promise<ConversationMessage> {
     return this.createMessage(conversationId, MessageRole.ASSISTANT, input)
   }
 
@@ -43,7 +46,7 @@ export class MessagesService {
     conversationId: string,
     role: PrismaMessageRole,
     input: CreateMessageDto,
-  ): Promise<Message> {
+  ): Promise<ConversationMessage> {
     return this.prismaService.$transaction(async (prisma) => {
       await this.assertConversationExists(conversationId, prisma)
 
@@ -64,7 +67,7 @@ export class MessagesService {
         },
       })
 
-      return message
+      return toConversationMessageResponse(message)
     })
   }
 
@@ -84,5 +87,17 @@ export class MessagesService {
     if (!conversation) {
       throw new NotFoundException('会话不存在或已被删除')
     }
+  }
+}
+
+function toConversationMessageResponse(message: Message): ConversationMessage {
+  return {
+    id: message.id,
+    conversationId: message.conversationId,
+    role: message.role,
+    content: message.content,
+    status: message.status,
+    createdAt: message.createdAt.toISOString(),
+    updatedAt: message.updatedAt.toISOString(),
   }
 }

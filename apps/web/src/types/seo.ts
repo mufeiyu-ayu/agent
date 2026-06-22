@@ -1,16 +1,11 @@
+export type {
+  SeoChatRequest,
+  SeoChatResponse,
+} from '@agent/contracts'
+
 export type GenerationStatus = 'empty' | 'loading' | 'success' | 'error'
 
 export type SeoConversationTurnStatus = 'loading' | 'success' | 'error'
-
-export interface SeoChatRequest {
-  message: string
-  model?: string
-}
-
-export interface SeoChatResponse {
-  reply: string
-  generatedAt: string
-}
 
 export interface SeoConversationTurn {
   id: string

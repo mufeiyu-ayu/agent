@@ -30,8 +30,10 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
+  deleteChat: [chatId: string]
   newChat: []
   refreshBalance: []
+  selectChat: [chatId: string]
   updateWorkspaceTheme: [value: WorkspaceThemeId]
 }>()
 
@@ -57,6 +59,16 @@ function handleNewChat() {
   emit('newChat')
   closeMobileSidebar()
 }
+
+function handleSelectChat(chatId: string) {
+  emit('selectChat', chatId)
+  closeMobileSidebar()
+}
+
+function handleDeleteChat(chatId: string) {
+  emit('deleteChat', chatId)
+  closeMobileSidebar()
+}
 </script>
 
 <template>
@@ -69,7 +81,9 @@ function handleNewChat() {
       :collapsed="sidebarCollapsed"
       :navigation-items="props.navigationItems"
       :recent-chats="props.recentChats"
+      @delete-chat="handleDeleteChat"
       @new-chat="handleNewChat"
+      @select-chat="handleSelectChat"
       @toggle-sidebar="toggleSidebar"
     />
 
@@ -90,7 +104,9 @@ function handleNewChat() {
           :navigation-items="props.navigationItems"
           :recent-chats="props.recentChats"
           mobile
+          @delete-chat="handleDeleteChat"
           @new-chat="handleNewChat"
+          @select-chat="handleSelectChat"
           @toggle-sidebar="closeMobileSidebar"
         />
       </SheetContent>

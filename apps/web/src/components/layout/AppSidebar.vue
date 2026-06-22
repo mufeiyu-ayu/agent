@@ -14,7 +14,9 @@ defineProps<{
 }>()
 
 const emit = defineEmits<{
+  deleteChat: [chatId: string]
   newChat: []
+  selectChat: [chatId: string]
   toggleSidebar: []
 }>()
 
@@ -142,24 +144,37 @@ const { t } = useI18n()
       </div>
 
       <div v-else class="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
-        <button
+        <div
           v-for="chat in recentChats"
           :key="chat.id"
-          type="button"
-          class="flex w-full items-start gap-3 rounded-2xl px-3 py-3 text-left transition focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-agent-focus/40"
+          class="flex items-start gap-1 rounded-2xl transition"
           :class="chat.active ? 'bg-agent-surface-raised text-agent-ink ring-1 ring-agent-border-soft' : 'text-agent-ink-soft hover:bg-agent-surface-raised'"
         >
-          <AppIcon name="tabler:message-circle" :size="18" class="mt-0.5 text-agent-ink-muted" />
-          <span class="min-w-0 flex-1">
-            <span class="block truncate text-sm font-bold">
-              {{ chat.title }}
+          <button
+            type="button"
+            class="flex min-w-0 flex-1 items-start gap-3 rounded-2xl px-3 py-3 text-left transition focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-agent-focus/40"
+            @click="emit('selectChat', chat.id)"
+          >
+            <AppIcon name="tabler:message-circle" :size="18" class="mt-0.5 shrink-0 text-agent-ink-muted" />
+            <span class="min-w-0 flex-1">
+              <span class="block truncate text-sm font-bold">
+                {{ chat.title }}
+              </span>
+              <span class="mt-1 block text-xs font-semibold text-agent-ink-muted">
+                {{ chat.updatedAt }}
+              </span>
             </span>
-            <span class="mt-1 block text-xs font-semibold text-agent-ink-muted">
-              {{ chat.updatedAt }}
-            </span>
-          </span>
-          <AppIcon v-if="chat.active" name="tabler:dots-vertical" :size="17" class="mt-0.5 text-agent-ink-muted" />
-        </button>
+          </button>
+          <button
+            type="button"
+            :title="t('layout.sidebar.deleteChat')"
+            :aria-label="t('layout.sidebar.deleteChat')"
+            class="mr-2 mt-2.5 grid size-7 shrink-0 place-items-center rounded-lg text-agent-ink-muted opacity-70 transition hover:bg-agent-surface-sunken hover:text-agent-copper focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-agent-focus/40"
+            @click="emit('deleteChat', chat.id)"
+          >
+            <AppIcon name="tabler:trash" :size="16" />
+          </button>
+        </div>
       </div>
     </div>
 
@@ -172,6 +187,7 @@ const { t } = useI18n()
         :aria-label="chat.title"
         class="grid size-11 place-items-center rounded-xl text-agent-ink-muted transition hover:bg-agent-surface-raised hover:text-agent-ink focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-agent-focus/40"
         :class="{ 'bg-agent-surface-raised text-agent-accent ring-1 ring-agent-border-soft': chat.active }"
+        @click="emit('selectChat', chat.id)"
       >
         <AppIcon name="tabler:message-circle" :size="18" />
       </button>

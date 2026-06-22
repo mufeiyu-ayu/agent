@@ -1,4 +1,8 @@
-import type { Conversation } from '../generated/prisma/client.js'
+import type {
+  Conversation,
+  DeleteConversationResponse,
+} from '@agent/contracts'
+import type { Conversation as PrismaConversation } from '../generated/prisma/client.js'
 import type { CreateConversationDto } from './dto/conversation.dto.js'
 import { Inject, Injectable, NotFoundException } from '@nestjs/common'
 
@@ -16,22 +20,26 @@ export class ConversationsService {
   async create(input: CreateConversationDto): Promise<Conversation> {
     const title = normalizeConversationTitle(input.title)
 
-    return this.prismaService.conversation.create({
+    const conversation = await this.prismaService.conversation.create({
       data: {
         title,
       },
     })
+
+    return toConversationResponse(conversation)
   }
 
   async list(): Promise<Conversation[]> {
-    return this.prismaService.conversation.findMany({
+    const conversations = await this.prismaService.conversation.findMany({
       orderBy: {
         updatedAt: 'desc',
       },
     })
+
+    return conversations.map(toConversationResponse)
   }
 
-  async delete(conversationId: string): Promise<{ deleted: true, id: string }> {
+  async delete(conversationId: string): Promise<DeleteConversationResponse> {
     const conversation = await this.prismaService.conversation.findUnique({
       where: {
         id: conversationId,
@@ -62,4 +70,13 @@ function normalizeConversationTitle(title: string | undefined): string {
   const nextTitle = title?.trim()
 
   return nextTitle || DEFAULT_CONVERSATION_TITLE
+}
+
+function toConversationResponse(conversation: PrismaConversation): Conversation {
+  return {
+    id: conversation.id,
+    title: conversation.title,
+    createdAt: conversation.createdAt.toISOString(),
+    updatedAt: conversation.updatedAt.toISOString(),
+  }
 }

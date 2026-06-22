@@ -1,4 +1,4 @@
-import type { AgentNavigationItem, AgentPlatformUser, AgentRecentChat } from '../types/agent-platform'
+import type { AgentNavigationItem, AgentPlatformUser } from '../types/agent-platform'
 
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -11,10 +11,6 @@ const navigationConfig = [
   { id: 'history', labelKey: 'navigation.history', icon: 'tabler:history' },
   { id: 'settings', labelKey: 'navigation.settings', icon: 'tabler:settings' },
 ] as const
-
-const recentChats: AgentRecentChat[] = [
-
-]
 
 const user: AgentPlatformUser = {
   name: 'Demo User',
@@ -35,7 +31,6 @@ export function useMockAgentPlatform() {
 
   return {
     navigationItems,
-    recentChats,
     user,
     productIcon: 'tabler:sparkles',
   }

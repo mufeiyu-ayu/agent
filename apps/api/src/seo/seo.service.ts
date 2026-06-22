@@ -1,28 +1,127 @@
+import type { Message, MessageRole as PrismaMessageRole } from '../generated/prisma/client.js'
+import type { ChatMessage } from '../llm/llm.types.js'
 import type { SeoChatDto } from './dto/seo-chat.dto.js'
 import type { SeoChatResult } from './types/seo.types.js'
-import { Inject, Injectable } from '@nestjs/common'
+import { Inject, Injectable, NotFoundException } from '@nestjs/common'
 
+import { MessageRole } from '../generated/prisma/client.js'
 import { LLMService } from '../llm/llm.service.js'
+import { PrismaService } from '../prisma/prisma.service.js'
 import { buildSeoAgentChatMessages } from './prompts/seo-agent.prompt.js'
+
+const CHAT_HISTORY_LIMIT = 12
 
 @Injectable()
 export class SeoService {
   constructor(
     @Inject(LLMService)
     private readonly llmService: LLMService,
+
+    @Inject(PrismaService)
+    private readonly prismaService: PrismaService,
   ) {}
 
   async chat(input: SeoChatDto): Promise<SeoChatResult> {
-    const messages = buildSeoAgentChatMessages(input)
-    const reply = await this.llmService.chat(messages, {
+    await this.assertConversationExists(input.conversationId)
+
+    await this.createMessageAndTouchConversation(
+      input.conversationId,
+      MessageRole.USER,
+      input.message.trim(),
+    )
+
+    const historyMessages = await this.listRecentChatMessages(input.conversationId)
+    const llmMessages = buildSeoAgentChatMessages(
+      historyMessages.map(message => this.toLlmMessage(message)),
+    )
+
+    const reply = await this.llmService.chat(llmMessages, {
       ...(input.model ? { model: input.model } : {}),
       temperature: 0.4,
       maxTokens: 1200,
     })
 
+    const assistantMessage = await this.createMessageAndTouchConversation(
+      input.conversationId,
+      MessageRole.ASSISTANT,
+      reply,
+    )
+
     return {
       reply,
-      generatedAt: new Date().toISOString(),
+      generatedAt: assistantMessage.createdAt.toISOString(),
+    }
+  }
+
+  private async listRecentChatMessages(conversationId: string): Promise<Message[]> {
+    const messages = await this.prismaService.message.findMany({
+      where: {
+        conversationId,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+      take: CHAT_HISTORY_LIMIT,
+    })
+
+    return messages.reverse()
+  }
+
+  private async createMessageAndTouchConversation(
+    conversationId: string,
+    role: PrismaMessageRole,
+    content: string,
+  ): Promise<Message> {
+    return this.prismaService.$transaction(async (prisma) => {
+      const message = await prisma.message.create({
+        data: {
+          conversationId,
+          role,
+          content,
+        },
+      })
+
+      await prisma.conversation.update({
+        where: {
+          id: conversationId,
+        },
+        data: {
+          updatedAt: new Date(),
+        },
+      })
+
+      return message
+    })
+  }
+
+  private toLlmMessage(message: Message): ChatMessage {
+    return {
+      role: this.toLlmRole(message.role),
+      content: message.content,
+    }
+  }
+
+  private toLlmRole(role: PrismaMessageRole): ChatMessage['role'] {
+    switch (role) {
+      case MessageRole.USER:
+        return 'user'
+      case MessageRole.ASSISTANT:
+        return 'assistant'
+    }
+  }
+
+  private async assertConversationExists(conversationId: string): Promise<void> {
+    const conversation = await this.prismaService.conversation.findUnique({
+      where: {
+        id: conversationId,
+      },
+      select: {
+        id: true,
+      },
+    })
+
+    if (!conversation) {
+      throw new NotFoundException('会话不存在或已被删除')
     }
   }
 }

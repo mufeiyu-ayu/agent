@@ -26,7 +26,6 @@ const workspaceBackground = computed(() => ({
 
 const {
   navigationItems,
-  recentChats,
   user,
 } = useMockAgentPlatform()
 
@@ -44,9 +43,12 @@ const {
   status,
   lastGeneratedAt,
   appMessage,
+  recentChats,
   conversationTurns,
   messageCharacterCount,
   resetWorkspace,
+  selectConversation,
+  deleteConversationById,
   sendMessage,
   hideMessage,
 } = useSeoWorkspace()
@@ -67,8 +69,10 @@ function applySuggestedPrompt(prompt: string) {
     :workspace-background="workspaceBackground"
     :workspace-theme="workspaceTheme"
     :workspace-theme-options="workspaceThemeOptions"
+    @delete-chat="deleteConversationById"
     @new-chat="resetWorkspace"
     @refresh-balance="refreshBalance"
+    @select-chat="selectConversation"
     @update-workspace-theme="updateWorkspaceTheme"
   >
     <div class="relative flex min-h-0 flex-1 flex-col overflow-hidden">

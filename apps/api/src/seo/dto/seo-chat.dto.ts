@@ -1,3 +1,4 @@
+import type { SeoChatRequest } from '@agent/contracts'
 import {
   IsIn,
   IsNotEmpty,
@@ -8,7 +9,12 @@ import {
 
 import { SUPPORTED_DEEPSEEK_MODELS } from '../../llm/llm.types.js'
 
-export class SeoChatDto {
+export class SeoChatDto implements SeoChatRequest {
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(128)
+  conversationId!: string
+
   @IsString()
   @IsNotEmpty()
   @MaxLength(2000)

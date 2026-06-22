@@ -1,28 +1,7 @@
+import type { ApiSuccessResponse as ApiSuccessResponseContract } from '@agent/contracts'
 import axios from 'axios'
 
-export interface ApiSuccessResponse<T> {
-  success: true
-  code: 0
-  message: string
-  data: T | null
-  timestamp: string
-  path: string
-  requestId?: string
-}
-
-export interface ApiErrorResponse {
-  success: false
-  code: number
-  message: string
-  error: {
-    statusCode: number
-    error: string
-    details?: unknown
-  }
-  timestamp: string
-  path: string
-  requestId?: string
-}
+export type { ApiErrorResponse, ApiSuccessResponse } from '@agent/contracts'
 
 export const http = axios.create({
   timeout: 10000,
@@ -38,7 +17,7 @@ http.interceptors.response.use((response) => {
   return response
 })
 
-function isApiSuccessResponse<T>(value: unknown): value is ApiSuccessResponse<T> {
+function isApiSuccessResponse<T>(value: unknown): value is ApiSuccessResponseContract<T> {
   return (
     typeof value === 'object'
     && value !== null
