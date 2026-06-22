@@ -388,7 +388,11 @@ docs/prompt-notes.md
 
 文档应服务于用户理解和后续复盘，不要为了形式写大量空泛内容。
 
-`docs/development-task-plan.md` 记录项目完成路径和业务任务状态，是后续判断“下一步做什么”的主看板；`docs/learning-log.md` 只记录 Agent 概念学习以及项目 agent 架构经验，禁止提交跟 agent 无关的内容；`docs/work-log.md` 记录项目推进、commit 上下文、关键决策和验证结果。更新工作记录时，优先使用项目内 skill `.codex/skills/update-project-work-log`。
+`docs/development-task-plan.md` 记录项目完成路径和业务任务状态，是后续判断“下一步做什么”的主看板；`docs/learning-log.md` 只记录 Agent 概念学习以及项目 agent 架构经验，禁止提交跟 agent 无关的内容；`docs/work-log.md` 记录项目推进、commit 上下文、关键决策和验证结果。
+
+默认不要在每次功能实现、排查或阶段性推进完成后立即更新 `docs/work-log.md`。只有在用户明确要求记录项目进度、更新工作记录，或准备执行 commit / git commit 流程时，才更新 `docs/work-log.md`。更新前需要先和用户说明拟写入的记录范围、核心完成和验证结果，得到确认后再落盘。
+
+更新工作记录时，优先使用项目内 skill `.codex/skills/update-project-work-log`。
 
 当用户要求提交代码、commit 或 git commit 时，优先使用项目内 skill `.codex/skills/git-commit`：提交前检查并按需更新 `docs/development-task-plan.md`，更新 `docs/work-log.md`，如涉及 Agent 概念学习再更新 `docs/learning-log.md`，验证通过后再创建 commit。
 

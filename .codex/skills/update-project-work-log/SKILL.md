@@ -1,13 +1,15 @@
 ---
 name: update-project-work-log
-description: 更新项目工作记录和 commit 上下文。Use when the user asks to 更新项目工作记录、记录这次 commit、记录项目进度、写工作日志、保存 Codex 项目记忆, or after a meaningful project change that should be captured in docs/work-log.md.
+description: 更新项目工作记录和 commit 上下文。Use only when the user asks to 更新项目工作记录、记录这次 commit、记录项目进度、写工作日志、保存 Codex 项目记忆, or during an explicit commit / git commit workflow after confirming the planned log entry with the user.
 ---
 
 # 更新项目工作记录
 
 ## 概述
 
-维护项目内的 `docs/work-log.md`，记录每次阶段性开发、重要讨论或 commit 的项目上下文。这个 skill 关注“项目做了什么”，不替代 `docs/learning-log.md` 的 Agent 概念学习记录。
+维护项目内的 `docs/work-log.md`，记录用户明确要求保存的项目进度或 commit 上下文。这个 skill 关注“项目做了什么”，不替代 `docs/learning-log.md` 的 Agent 概念学习记录。
+
+不要因为刚完成了一个功能、排查或阶段性任务就自动更新 `docs/work-log.md`。默认只在用户明确要求记录，或进入 commit / git commit 流程时更新；更新前先向用户说明拟写入的记录范围、核心完成和验证结果，得到确认后再改文件。
 
 ## 默认流程
 
@@ -20,12 +22,16 @@ description: 更新项目工作记录和 commit 上下文。Use when the user as
    - 错误排查
    - 重要讨论或技术决策
    - commit 总结
-4. 更新 `docs/work-log.md`：
+4. 更新前先和用户确认拟写入内容：
+   - 说明要更新的“当前项目状态”和“工作记录”摘要。
+   - 说明会记录哪些关键文件和验证结果。
+   - 用户确认后再修改 `docs/work-log.md`。
+5. 更新 `docs/work-log.md`：
    - 如果文件不存在，创建包含“当前项目状态”“工作记录”“记录规则”的最小模板。
-   - 每次有项目推进时，在“工作记录”表格追加一行。
+   - 只有用户确认记录本次项目推进时，才在“工作记录”表格追加一行。
    - 如果项目状态变化，同步更新“当前项目状态”表格。
    - 如果记录发生在 commit 前，`提交` 写 `待提交`；如果已经 commit，写短 hash 和提交信息。
-5. 更新后轻量自审，确认记录具体、真实、可复盘，没有泄露敏感信息。
+6. 更新后轻量自审，确认记录具体、真实、可复盘，没有泄露敏感信息。
 
 ## 表格字段
 
