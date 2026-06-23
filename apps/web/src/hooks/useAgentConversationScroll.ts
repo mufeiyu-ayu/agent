@@ -6,6 +6,7 @@ interface UseAgentConversationScrollOptions {
   containerRef: Ref<HTMLElement | null>
   activeTurnId: ComputedRef<string | undefined>
   activeTurnSignature: ComputedRef<string>
+  enabled: ComputedRef<boolean>
 }
 
 interface ConversationScrollMetrics {
@@ -40,6 +41,11 @@ export function useAgentConversationScroll(options: UseAgentConversationScrollOp
   let observedViewport: HTMLElement | undefined
 
   async function alignActiveTurn() {
+    if (!options.enabled.value) {
+      resetSpacers()
+      return
+    }
+
     const activeTurnId = options.activeTurnId.value
 
     if (!activeTurnId) {
@@ -143,7 +149,7 @@ export function useAgentConversationScroll(options: UseAgentConversationScrollOp
   }
 
   function isCurrentAlignment(runId: number) {
-    return runId === alignmentRunId && Boolean(options.activeTurnId.value)
+    return runId === alignmentRunId && options.enabled.value && Boolean(options.activeTurnId.value)
   }
 
   function isContentScrollable(metrics: ConversationScrollMetrics) {
@@ -164,6 +170,7 @@ export function useAgentConversationScroll(options: UseAgentConversationScrollOp
   watch(
     [
       () => options.activeTurnSignature.value,
+      () => options.enabled.value,
       () => options.containerRef.value,
     ],
     () => {

@@ -7,6 +7,7 @@ import { useI18n } from 'vue-i18n'
 import AppIcon from '@/components/common/AppIcon.vue'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useAgentConversationScroll } from '@/hooks/useAgentConversationScroll'
+import { useConversationScrollMemory } from '@/hooks/useConversationScrollMemory'
 
 import AgentAssistantReply from './AgentAssistantReply.vue'
 import AgentMessage from './AgentMessage.vue'
@@ -14,6 +15,10 @@ import AgentMessage from './AgentMessage.vue'
 const props = defineProps<{
   turns: SeoConversationTurn[]
   lastGeneratedAt: string
+  isLoadingMessages: boolean
+  showEmptyState: boolean
+  conversationId: string | null
+  anchorLatestTurn: boolean
 }>()
 
 const emit = defineEmits<{
@@ -24,13 +29,16 @@ const { t } = useI18n()
 const conversationRootRef = ref<HTMLElement | null>(null)
 
 const activeTurnId = computed(() => {
-  if (props.turns.length <= 1)
+  if (!props.anchorLatestTurn || props.turns.length <= 1)
     return undefined
 
   return props.turns[props.turns.length - 1]?.id
 })
 
 const activeTurnSignature = computed(() => {
+  if (!props.anchorLatestTurn)
+    return ''
+
   const activeTurn = props.turns[props.turns.length - 1]
 
   if (!activeTurn || props.turns.length <= 1)
@@ -54,6 +62,15 @@ const {
   containerRef: conversationRootRef,
   activeTurnId,
   activeTurnSignature,
+  enabled: computed(() => props.anchorLatestTurn),
+})
+
+const {
+  isRestoringScroll,
+} = useConversationScrollMemory({
+  containerRef: conversationRootRef,
+  conversationId: computed(() => props.conversationId),
+  canRestore: computed(() => props.turns.length > 0 && !props.anchorLatestTurn),
 })
 
 const starterPrompts = computed(() => [
@@ -87,7 +104,7 @@ const starterPrompts = computed(() => [
     class="mx-auto flex min-h-0 w-full max-w-[920px] flex-1 flex-col px-4 pt-5 sm:pt-6"
   >
     <div
-      v-if="turns.length === 0"
+      v-if="turns.length === 0 && showEmptyState"
       class="flex min-h-0 flex-1 items-center justify-center px-1 pb-7 pt-5 sm:px-4 sm:pb-9 lg:pb-10"
     >
       <div class="w-full max-w-2xl text-center">
@@ -123,9 +140,16 @@ const starterPrompts = computed(() => [
       </div>
     </div>
 
+    <div
+      v-else-if="turns.length === 0"
+      class="min-h-0 flex-1"
+      :aria-busy="isLoadingMessages ? 'true' : undefined"
+    />
+
     <ScrollArea
       v-else
       class="min-h-0 flex-1 pr-1"
+      :class="isRestoringScroll ? 'invisible' : undefined"
     >
       <div class="py-5 sm:py-6">
         <div

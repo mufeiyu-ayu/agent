@@ -44,6 +44,7 @@ export function useSeoWorkspace() {
   const isLoadingConversations = ref(false)
   const isLoadingMoreConversations = ref(false)
   const isLoadingMessages = ref(false)
+  const shouldAnchorLatestTurn = ref(false)
   const hasMoreConversations = ref(false)
   const conversationError = ref('')
   const localTurnErrors = ref<Record<string, string>>({})
@@ -58,6 +59,7 @@ export function useSeoWorkspace() {
   let activeTurnId: string | null = null
   let messageLoadRunId = 0
   let conversationNextCursor: string | null = null
+  const conversationMessagesCache = new Map<string, ConversationMessage[]>()
 
   const messageCharacterCount = computed(() => message.value.length)
 
@@ -118,8 +120,9 @@ export function useSeoWorkspace() {
     if (conversationId === activeConversationId.value)
       return
 
+    shouldAnchorLatestTurn.value = false
     activeConversationId.value = conversationId
-    clearActiveMessages()
+    applyCachedMessagesForConversation(conversationId)
     resetComposerState()
     await loadMessagesForConversation(conversationId)
   }
@@ -133,6 +136,7 @@ export function useSeoWorkspace() {
       conversationError.value = ''
 
       await deleteConversation(conversationId)
+      conversationMessagesCache.delete(conversationId)
 
       const nextConversations = conversations.value.filter(item => item.id !== conversationId)
 
@@ -144,6 +148,7 @@ export function useSeoWorkspace() {
       const nextActiveConversationId = nextConversations[0]?.id ?? null
 
       activeConversationId.value = nextActiveConversationId
+      shouldAnchorLatestTurn.value = false
       clearActiveMessages()
       resetComposerState()
 
@@ -189,6 +194,7 @@ export function useSeoWorkspace() {
 
     status.value = 'loading'
     errorMessage.value = ''
+    shouldAnchorLatestTurn.value = true
 
     try {
       if (!targetConversationId) {
@@ -328,6 +334,7 @@ export function useSeoWorkspace() {
       if (runId !== messageLoadRunId || conversationId !== activeConversationId.value)
         return
 
+      cacheMessagesForConversation(conversationId, nextMessages)
       messages.value = nextMessages
       status.value = nextMessages.length > 0 ? 'success' : 'empty'
     }
@@ -360,10 +367,13 @@ export function useSeoWorkspace() {
   }
 
   function appendMessage(nextMessage: ConversationMessage) {
-    messages.value = [
+    const nextMessages = [
       ...messages.value.filter(item => item.id !== nextMessage.id),
       nextMessage,
     ].sort(compareMessagesByCreatedAt)
+
+    messages.value = nextMessages
+    cacheMessagesForConversation(nextMessage.conversationId, nextMessages)
   }
 
   function upsertConversation(conversation: Conversation) {
@@ -418,6 +428,23 @@ export function useSeoWorkspace() {
       : normalizedContent
   }
 
+  function applyCachedMessagesForConversation(conversationId: string) {
+    messageLoadRunId += 1
+    localTurnErrors.value = {}
+    activeTurnId = null
+
+    const cachedMessages = conversationMessagesCache.get(conversationId)
+
+    messages.value = cachedMessages ? [...cachedMessages] : []
+  }
+
+  function cacheMessagesForConversation(
+    conversationId: string,
+    nextMessages: ConversationMessage[],
+  ) {
+    conversationMessagesCache.set(conversationId, [...nextMessages])
+  }
+
   function clearActiveMessages() {
     messageLoadRunId += 1
     messages.value = []
@@ -431,6 +458,7 @@ export function useSeoWorkspace() {
     errorMessage.value = ''
     hideMessage()
     activeTurnId = null
+    shouldAnchorLatestTurn.value = false
   }
 
   function canStartChatRequest(): boolean {
@@ -517,6 +545,7 @@ export function useSeoWorkspace() {
     isLoadingConversations,
     isLoadingMoreConversations,
     isLoadingMessages,
+    shouldAnchorLatestTurn,
     hasMoreConversations,
     conversationError,
     recentChats,

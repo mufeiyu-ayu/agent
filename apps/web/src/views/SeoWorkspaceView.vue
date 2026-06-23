@@ -46,6 +46,9 @@ const {
   recentChats,
   hasMoreConversations,
   isLoadingMoreConversations,
+  isLoadingMessages,
+  shouldAnchorLatestTurn,
+  activeConversationId,
   conversationTurns,
   messageCharacterCount,
   resetWorkspace,
@@ -56,6 +59,10 @@ const {
   sendMessage,
   hideMessage,
 } = useSeoWorkspace()
+
+const showConversationEmptyState = computed(() => {
+  return !activeConversationId.value && conversationTurns.value.length === 0 && !isLoadingMessages.value
+})
 
 function applySuggestedPrompt(prompt: string) {
   message.value = prompt
@@ -93,7 +100,11 @@ function applySuggestedPrompt(prompt: string) {
 
       <div class="relative z-10 flex min-h-0 flex-1 flex-col">
         <AgentConversation
+          :anchor-latest-turn="shouldAnchorLatestTurn"
+          :conversation-id="activeConversationId"
+          :is-loading-messages="isLoadingMessages"
           :last-generated-at="lastGeneratedAt"
+          :show-empty-state="showConversationEmptyState"
           :turns="conversationTurns"
           @prompt-selected="applySuggestedPrompt"
         />
