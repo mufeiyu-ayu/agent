@@ -5,7 +5,7 @@ import { Body, Controller, Inject, Post } from '@nestjs/common'
 import { SeoChatDto } from './dto/seo-chat.dto.js'
 import { SeoService } from './seo.service.js'
 
-@Controller('api/seo')
+@Controller('seo')
 export class SeoController {
   constructor(
     @Inject(SeoService)

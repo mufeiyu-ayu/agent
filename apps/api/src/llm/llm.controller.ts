@@ -2,7 +2,7 @@ import { Controller, Get, Inject } from '@nestjs/common'
 
 import { LLMService } from './llm.service.js'
 
-@Controller('api/llm')
+@Controller('llm')
 export class LLMController {
   constructor(
     @Inject(LLMService)

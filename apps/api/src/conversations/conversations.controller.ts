@@ -5,7 +5,7 @@ import { ConversationsService } from './conversations.service.js'
 // eslint-disable-next-line ts/consistent-type-imports
 import { ConversationIdParamDto, CreateConversationDto, ListConversationsQueryDto, UpdateConversationDto } from './dto/conversation.dto.js'
 
-@Controller('api/conversations')
+@Controller('conversations')
 export class ConversationsController {
   constructor(
     @Inject(ConversationsService)

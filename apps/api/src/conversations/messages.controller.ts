@@ -5,7 +5,7 @@ import { Controller, Get, Inject, Param } from '@nestjs/common'
 import { ConversationIdParamDto } from './dto/conversation.dto.js'
 import { MessagesService } from './messages.service.js'
 
-@Controller('api/conversations')
+@Controller('conversations')
 export class MessagesController {
   constructor(
     @Inject(MessagesService)
