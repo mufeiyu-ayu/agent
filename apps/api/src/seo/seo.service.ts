@@ -1,3 +1,4 @@
+import type { SeoChatResponse } from '@agent/contracts'
 import type {
   Message,
   MessageRole as PrismaMessageRole,
@@ -5,7 +6,6 @@ import type {
 } from '../generated/prisma/client.js'
 import type { ChatMessage } from '../llm/llm.types.js'
 import type { SeoChatDto } from './dto/seo-chat.dto.js'
-import type { SeoChatResult } from './types/seo.types.js'
 import { Inject, Injectable, NotFoundException } from '@nestjs/common'
 
 import { MessageRole, MessageStatus } from '../generated/prisma/client.js'
@@ -25,7 +25,7 @@ export class SeoService {
     private readonly prismaService: PrismaService,
   ) {}
 
-  async chat(input: SeoChatDto): Promise<SeoChatResult> {
+  async chat(input: SeoChatDto): Promise<SeoChatResponse> {
     await this.assertConversationExists(input.conversationId)
 
     await this.createMessageAndTouchConversation(

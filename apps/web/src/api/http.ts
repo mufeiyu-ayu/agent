@@ -1,8 +1,6 @@
 import type { ApiSuccessResponse as ApiSuccessResponseContract } from '@agent/contracts'
 import axios from 'axios'
 
-export type { ApiErrorResponse, ApiSuccessResponse } from '@agent/contracts'
-
 export const http = axios.create({
   timeout: 10000,
 })

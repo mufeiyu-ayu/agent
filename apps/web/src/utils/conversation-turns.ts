@@ -1,4 +1,4 @@
-import type { Conversation, ConversationMessage } from '../types/conversation'
+import type { Conversation, ConversationMessage } from '@agent/contracts'
 import type { SeoConversationTurn } from '../types/seo'
 
 interface MapConversationMessagesOptions {

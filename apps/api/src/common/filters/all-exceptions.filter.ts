@@ -1,5 +1,5 @@
+import type { ApiErrorResponse } from '@agent/contracts'
 import type { ArgumentsHost, ExceptionFilter } from '@nestjs/common'
-import type { ApiErrorResponse } from '../types/api-response.type.js'
 import type { HttpResponseLike, RequestWithId } from '../utils/http-request.util.js'
 import { Catch, HttpException, HttpStatus, Logger } from '@nestjs/common'
 

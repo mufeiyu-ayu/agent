@@ -1,4 +1,4 @@
-import type { SeoChatRequest, SeoChatResponse } from '../types/seo'
+import type { SeoChatRequest, SeoChatResponse } from '@agent/contracts'
 
 import { http } from './http'
 

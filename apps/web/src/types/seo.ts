@@ -1,8 +1,3 @@
-export type {
-  SeoChatRequest,
-  SeoChatResponse,
-} from '@agent/contracts'
-
 export type GenerationStatus = 'empty' | 'loading' | 'success' | 'error'
 
 export type SeoConversationTurnStatus = 'loading' | 'success' | 'error'

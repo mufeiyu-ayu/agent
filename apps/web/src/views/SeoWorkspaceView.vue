@@ -1,5 +1,8 @@
 <script setup lang="ts">
+import type { AgentNavigationItem, AgentPlatformUser } from '../types/agent-platform'
+
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 import workspaceBgOliveEmberDeepUrl from '../assets/bg-olive.webp'
 import workspaceBgAiBalancedUrl from '../assets/bg-warm.webp'
@@ -8,9 +11,24 @@ import AppMessage from '../components/common/AppMessage.vue'
 import AppShell from '../components/layout/AppShell.vue'
 import SeoChatComposer from '../components/seo/SeoChatComposer.vue'
 import { useLlmRuntime } from '../hooks/useLlmRuntime'
-import { useMockAgentPlatform } from '../hooks/useMockAgentPlatform'
 import { useSeoWorkspace } from '../hooks/useSeoWorkspace'
 import { useWorkspaceTheme } from '../hooks/useWorkspaceTheme'
+
+const navigationConfig = [
+  { id: 'page-audit', labelKey: 'navigation.pageAudit', icon: 'tabler:file-search', active: true },
+  { id: 'keyword-ideas', labelKey: 'navigation.keywordIdeas', icon: 'tabler:bulb' },
+  { id: 'content-plan', labelKey: 'navigation.contentPlan', icon: 'tabler:article' },
+  { id: 'seo-checklist', labelKey: 'navigation.seoChecklist', icon: 'tabler:checklist' },
+  { id: 'history', labelKey: 'navigation.history', icon: 'tabler:history' },
+  { id: 'settings', labelKey: 'navigation.settings', icon: 'tabler:settings' },
+] as const
+
+const user: AgentPlatformUser = {
+  name: 'Demo User',
+  initials: 'D',
+}
+
+const { t } = useI18n()
 
 const {
   workspaceTheme,
@@ -24,10 +42,14 @@ const workspaceBackground = computed(() => ({
   opacity: workspaceTheme.value === 'olive-ember' ? '0.78' : '0.2',
 }))
 
-const {
-  navigationItems,
-  user,
-} = useMockAgentPlatform()
+const navigationItems = computed<AgentNavigationItem[]>(() => {
+  return navigationConfig.map(item => ({
+    id: item.id,
+    label: t(item.labelKey),
+    icon: item.icon,
+    active: 'active' in item ? item.active : undefined,
+  }))
+})
 
 const {
   models,

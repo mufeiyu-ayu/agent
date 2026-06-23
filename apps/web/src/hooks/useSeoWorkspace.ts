@@ -1,11 +1,9 @@
-import type { ApiErrorResponse } from '../api/http'
+import type { ApiErrorResponse, Conversation, ConversationMessage, SeoChatRequest } from '@agent/contracts'
 import type { AgentRecentChat } from '../types/agent-platform'
-import type { Conversation, ConversationMessage } from '../types/conversation'
 import type {
   AppMessageState,
   AppMessageType,
   GenerationStatus,
-  SeoChatRequest,
 } from '../types/seo'
 
 import { isAxiosError } from 'axios'

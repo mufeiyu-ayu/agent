@@ -1,6 +1,6 @@
+import type { ApiSuccessResponse } from '@agent/contracts'
 import type { CallHandler, ExecutionContext, NestInterceptor } from '@nestjs/common'
 import type { Observable } from 'rxjs'
-import type { ApiSuccessResponse } from '../types/api-response.type.js'
 import type { RequestWithId } from '../utils/http-request.util.js'
 import { Injectable } from '@nestjs/common'
 import { map } from 'rxjs'

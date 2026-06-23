@@ -1,22 +1,22 @@
 import type {
   Conversation,
   ConversationMessage,
-  CreateConversationPayload,
-  DeleteConversationResult,
-  ListConversationsParams,
+  CreateConversationRequest,
+  DeleteConversationResponse,
+  ListConversationsRequest,
   ListConversationsResponse,
-  UpdateConversationPayload,
-} from '../types/conversation'
+  UpdateConversationRequest,
+} from '@agent/contracts'
 
 import { http } from './http'
 
-export async function listConversations(params: ListConversationsParams = {}): Promise<ListConversationsResponse> {
+export async function listConversations(params: ListConversationsRequest = {}): Promise<ListConversationsResponse> {
   const response = await http.get<ListConversationsResponse>('/api/conversations', { params })
 
   return response.data
 }
 
-export async function createConversation(payload: CreateConversationPayload = {}): Promise<Conversation> {
+export async function createConversation(payload: CreateConversationRequest = {}): Promise<Conversation> {
   const response = await http.post<Conversation>('/api/conversations', payload)
 
   return response.data
@@ -24,15 +24,15 @@ export async function createConversation(payload: CreateConversationPayload = {}
 
 export async function updateConversation(
   conversationId: string,
-  payload: UpdateConversationPayload,
+  payload: UpdateConversationRequest,
 ): Promise<Conversation> {
   const response = await http.patch<Conversation>(`/api/conversations/${conversationId}`, payload)
 
   return response.data
 }
 
-export async function deleteConversation(conversationId: string): Promise<DeleteConversationResult> {
-  const response = await http.delete<DeleteConversationResult>(`/api/conversations/${conversationId}`)
+export async function deleteConversation(conversationId: string): Promise<DeleteConversationResponse> {
+  const response = await http.delete<DeleteConversationResponse>(`/api/conversations/${conversationId}`)
 
   return response.data
 }

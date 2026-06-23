@@ -1,4 +1,4 @@
-import type { ApiErrorResponse } from '../api/http'
+import type { ApiErrorResponse } from '@agent/contracts'
 import type { LlmBalanceInfo, LlmBalanceState, LlmModelOption, LlmRuntimeStatus } from '../types/llm'
 
 import { isAxiosError } from 'axios'
