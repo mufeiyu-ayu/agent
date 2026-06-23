@@ -1,9 +1,9 @@
-import { Body, Controller, Delete, Get, Inject, Param, Post } from '@nestjs/common'
+import { Body, Controller, Delete, Get, Inject, Param, Patch, Post, Query } from '@nestjs/common'
 
 import { ConversationsService } from './conversations.service.js'
 // DTO classes are required at runtime for Nest decorator metadata.
 // eslint-disable-next-line ts/consistent-type-imports
-import { ConversationIdParamDto, CreateConversationDto } from './dto/conversation.dto.js'
+import { ConversationIdParamDto, CreateConversationDto, ListConversationsQueryDto, UpdateConversationDto } from './dto/conversation.dto.js'
 
 @Controller('api/conversations')
 export class ConversationsController {
@@ -20,8 +20,18 @@ export class ConversationsController {
   }
 
   @Get()
-  list() {
-    return this.conversationsService.list()
+  list(
+    @Query() query: ListConversationsQueryDto,
+  ) {
+    return this.conversationsService.list(query)
+  }
+
+  @Patch(':conversationId')
+  update(
+    @Param() params: ConversationIdParamDto,
+    @Body() body: UpdateConversationDto,
+  ) {
+    return this.conversationsService.update(params.conversationId, body)
   }
 
   @Delete(':conversationId')

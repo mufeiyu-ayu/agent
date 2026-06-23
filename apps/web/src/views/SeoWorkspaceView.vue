@@ -44,11 +44,15 @@ const {
   lastGeneratedAt,
   appMessage,
   recentChats,
+  hasMoreConversations,
+  isLoadingMoreConversations,
   conversationTurns,
   messageCharacterCount,
   resetWorkspace,
   selectConversation,
   deleteConversationById,
+  renameConversationById,
+  loadMoreConversations,
   sendMessage,
   hideMessage,
 } = useSeoWorkspace()
@@ -63,6 +67,8 @@ function applySuggestedPrompt(prompt: string) {
     :balance-available="balanceAvailable"
     :balance-label="balanceLabel"
     :balance-status="balanceStatus"
+    :has-more-recent-chats="hasMoreConversations"
+    :is-loading-more-recent-chats="isLoadingMoreConversations"
     :navigation-items="navigationItems"
     :recent-chats="recentChats"
     :user="user"
@@ -70,8 +76,10 @@ function applySuggestedPrompt(prompt: string) {
     :workspace-theme="workspaceTheme"
     :workspace-theme-options="workspaceThemeOptions"
     @delete-chat="deleteConversationById"
+    @load-more-chats="loadMoreConversations"
     @new-chat="resetWorkspace"
     @refresh-balance="refreshBalance"
+    @rename-chat="renameConversationById"
     @select-chat="selectConversation"
     @update-workspace-theme="updateWorkspaceTheme"
   >

@@ -1,21 +1,32 @@
 import type {
   Conversation,
   ConversationMessage,
-  CreateConversationMessagePayload,
   CreateConversationPayload,
   DeleteConversationResult,
+  ListConversationsParams,
+  ListConversationsResponse,
+  UpdateConversationPayload,
 } from '../types/conversation'
 
 import { http } from './http'
 
-export async function listConversations(): Promise<Conversation[]> {
-  const response = await http.get<Conversation[]>('/api/conversations')
+export async function listConversations(params: ListConversationsParams = {}): Promise<ListConversationsResponse> {
+  const response = await http.get<ListConversationsResponse>('/api/conversations', { params })
 
-  return response.data ?? []
+  return response.data
 }
 
 export async function createConversation(payload: CreateConversationPayload = {}): Promise<Conversation> {
   const response = await http.post<Conversation>('/api/conversations', payload)
+
+  return response.data
+}
+
+export async function updateConversation(
+  conversationId: string,
+  payload: UpdateConversationPayload,
+): Promise<Conversation> {
+  const response = await http.patch<Conversation>(`/api/conversations/${conversationId}`, payload)
 
   return response.data
 }
@@ -30,28 +41,4 @@ export async function listConversationMessages(conversationId: string): Promise<
   const response = await http.get<ConversationMessage[]>(`/api/conversations/${conversationId}/messages`)
 
   return response.data ?? []
-}
-
-export async function createUserMessage(
-  conversationId: string,
-  payload: CreateConversationMessagePayload,
-): Promise<ConversationMessage> {
-  const response = await http.post<ConversationMessage>(
-    `/api/conversations/${conversationId}/messages/user`,
-    payload,
-  )
-
-  return response.data
-}
-
-export async function createAssistantMessage(
-  conversationId: string,
-  payload: CreateConversationMessagePayload,
-): Promise<ConversationMessage> {
-  const response = await http.post<ConversationMessage>(
-    `/api/conversations/${conversationId}/messages/assistant`,
-    payload,
-  )
-
-  return response.data
 }

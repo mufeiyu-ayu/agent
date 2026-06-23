@@ -54,7 +54,6 @@ const { t } = useI18n()
       >
         <AppIcon name="tabler:layout-sidebar-left-expand" :size="21" />
       </Button>
-
     </div>
 
     <div class="flex shrink-0 items-center gap-1.5 sm:gap-2 lg:gap-3">

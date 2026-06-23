@@ -1,10 +1,14 @@
-import type { Message, MessageRole as PrismaMessageRole } from '../generated/prisma/client.js'
+import type {
+  Message,
+  MessageRole as PrismaMessageRole,
+  MessageStatus as PrismaMessageStatus,
+} from '../generated/prisma/client.js'
 import type { ChatMessage } from '../llm/llm.types.js'
 import type { SeoChatDto } from './dto/seo-chat.dto.js'
 import type { SeoChatResult } from './types/seo.types.js'
 import { Inject, Injectable, NotFoundException } from '@nestjs/common'
 
-import { MessageRole } from '../generated/prisma/client.js'
+import { MessageRole, MessageStatus } from '../generated/prisma/client.js'
 import { LLMService } from '../llm/llm.service.js'
 import { PrismaService } from '../prisma/prisma.service.js'
 import { buildSeoAgentChatMessages } from './prompts/seo-agent.prompt.js'
@@ -35,11 +39,25 @@ export class SeoService {
       historyMessages.map(message => this.toLlmMessage(message)),
     )
 
-    const reply = await this.llmService.chat(llmMessages, {
-      ...(input.model ? { model: input.model } : {}),
-      temperature: 0.4,
-      maxTokens: 1200,
-    })
+    let reply: string
+
+    try {
+      reply = await this.llmService.chat(llmMessages, {
+        ...(input.model ? { model: input.model } : {}),
+        temperature: 0.4,
+        maxTokens: 1200,
+      })
+    }
+    catch (error) {
+      await this.createMessageAndTouchConversation(
+        input.conversationId,
+        MessageRole.ASSISTANT,
+        '模型服务暂时没有返回结果，请稍后重试。',
+        MessageStatus.FAILED,
+      )
+
+      throw error
+    }
 
     const assistantMessage = await this.createMessageAndTouchConversation(
       input.conversationId,
@@ -71,6 +89,7 @@ export class SeoService {
     conversationId: string,
     role: PrismaMessageRole,
     content: string,
+    status: PrismaMessageStatus = MessageStatus.COMPLETED,
   ): Promise<Message> {
     return this.prismaService.$transaction(async (prisma) => {
       const message = await prisma.message.create({
@@ -78,6 +97,7 @@ export class SeoService {
           conversationId,
           role,
           content,
+          status,
         },
       })
 

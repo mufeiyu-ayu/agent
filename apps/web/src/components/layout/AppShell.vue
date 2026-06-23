@@ -21,6 +21,8 @@ const props = defineProps<{
   balanceAvailable: boolean
   balanceLabel: string
   balanceStatus: LlmRuntimeStatus
+  hasMoreRecentChats: boolean
+  isLoadingMoreRecentChats: boolean
   navigationItems: AgentNavigationItem[]
   recentChats: AgentRecentChat[]
   user: AgentPlatformUser
@@ -31,8 +33,10 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   deleteChat: [chatId: string]
+  loadMoreChats: []
   newChat: []
   refreshBalance: []
+  renameChat: [chatId: string, title: string]
   selectChat: [chatId: string]
   updateWorkspaceTheme: [value: WorkspaceThemeId]
 }>()
@@ -69,6 +73,10 @@ function handleDeleteChat(chatId: string) {
   emit('deleteChat', chatId)
   closeMobileSidebar()
 }
+
+function handleRenameChat(chatId: string, title: string) {
+  emit('renameChat', chatId, title)
+}
 </script>
 
 <template>
@@ -79,10 +87,14 @@ function handleDeleteChat(chatId: string) {
   >
     <AppSidebar
       :collapsed="sidebarCollapsed"
+      :has-more-recent-chats="props.hasMoreRecentChats"
+      :is-loading-more-recent-chats="props.isLoadingMoreRecentChats"
       :navigation-items="props.navigationItems"
       :recent-chats="props.recentChats"
       @delete-chat="handleDeleteChat"
+      @load-more-chats="emit('loadMoreChats')"
       @new-chat="handleNewChat"
+      @rename-chat="handleRenameChat"
       @select-chat="handleSelectChat"
       @toggle-sidebar="toggleSidebar"
     />
@@ -101,11 +113,15 @@ function handleDeleteChat(chatId: string) {
         </SheetDescription>
         <AppSidebar
           :collapsed="false"
+          :has-more-recent-chats="props.hasMoreRecentChats"
+          :is-loading-more-recent-chats="props.isLoadingMoreRecentChats"
           :navigation-items="props.navigationItems"
           :recent-chats="props.recentChats"
           mobile
           @delete-chat="handleDeleteChat"
+          @load-more-chats="emit('loadMoreChats')"
           @new-chat="handleNewChat"
+          @rename-chat="handleRenameChat"
           @select-chat="handleSelectChat"
           @toggle-sidebar="closeMobileSidebar"
         />

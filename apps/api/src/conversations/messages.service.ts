@@ -1,9 +1,7 @@
 import type { ConversationMessage } from '@agent/contracts'
-import type { Message, MessageRole as PrismaMessageRole } from '../generated/prisma/client.js'
-import type { CreateMessageDto } from './dto/message.dto.js'
+import type { Message } from '../generated/prisma/client.js'
 import { Inject, Injectable, NotFoundException } from '@nestjs/common'
 
-import { MessageRole } from '../generated/prisma/client.js'
 import { PrismaService } from '../prisma/prisma.service.js'
 
 @Injectable()
@@ -26,49 +24,6 @@ export class MessagesService {
     })
 
     return messages.map(toConversationMessageResponse)
-  }
-
-  async createUserMessage(
-    conversationId: string,
-    input: CreateMessageDto,
-  ): Promise<ConversationMessage> {
-    return this.createMessage(conversationId, MessageRole.USER, input)
-  }
-
-  async createAssistantMessage(
-    conversationId: string,
-    input: CreateMessageDto,
-  ): Promise<ConversationMessage> {
-    return this.createMessage(conversationId, MessageRole.ASSISTANT, input)
-  }
-
-  private async createMessage(
-    conversationId: string,
-    role: PrismaMessageRole,
-    input: CreateMessageDto,
-  ): Promise<ConversationMessage> {
-    return this.prismaService.$transaction(async (prisma) => {
-      await this.assertConversationExists(conversationId, prisma)
-
-      const message = await prisma.message.create({
-        data: {
-          conversationId,
-          role,
-          content: input.content,
-        },
-      })
-
-      await prisma.conversation.update({
-        where: {
-          id: conversationId,
-        },
-        data: {
-          updatedAt: new Date(),
-        },
-      })
-
-      return toConversationMessageResponse(message)
-    })
   }
 
   private async assertConversationExists(

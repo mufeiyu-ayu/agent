@@ -8,11 +8,13 @@ export type {
 export type {
   Conversation,
   ConversationMessage,
-  CreateConversationMessageRequest,
   CreateConversationRequest,
   DeleteConversationResponse,
+  ListConversationsRequest,
+  ListConversationsResponse,
   MessageRole,
   MessageStatus,
+  UpdateConversationRequest,
 } from './conversation.js'
 export type {
   SeoChatRequest,

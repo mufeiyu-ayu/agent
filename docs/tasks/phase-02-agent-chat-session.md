@@ -35,7 +35,7 @@ UI = 展示层
 
 - Task 1-4 已完成：数据模型、PostgreSQL / Prisma 持久化、Conversation CRUD、Message 持久化。
 - Task 5-7 已完成：前端状态改为 conversation / message 数据源驱动，真实 chat 入口携带 `conversationId`，后端按当前 conversation 读取最近 12 条 messages 作为受控上下文。
-- 下一步进入 Task 8：阶段 2 回归验收，重点验证多会话切换、刷新恢复、删除同步和长历史截断。
+- Task 8 进行中：已补齐会话列表分页、空会话隐藏、旧会话恢复进入、会话重命名和错误提示体验；下一步继续完整回归长历史截断与多会话不串。
 
 ## 任务列表
 
@@ -266,7 +266,7 @@ Conversation 1 -> N Message
 
 ### Task 8：阶段 2 回归验收
 
-状态：待开始。
+状态：进行中。
 
 #### 核心要完成
 
@@ -280,6 +280,15 @@ Conversation 1 -> N Message
 4. 刷新页面并确认数据仍在
 5. 删除 conversation 并确认消息同步处理
 6. 确认长历史不会全部传给模型
+
+#### 当前已处理
+
+- 会话列表改为分页加载，前端滚动到底部继续请求下一页。
+- 空 conversation 不再进入列表，并已清理本地历史空数据。
+- 已有 conversation 可重新进入并恢复历史 messages。
+- 会话列表支持重命名和删除菜单，默认不常驻删除按钮。
+- 模型失败后落库失败态 assistant message，前端可恢复显示错误。
+- 全局错误提示改为自适应宽度、长文案省略、错误红色语义。
 
 #### 最终验收条件
 

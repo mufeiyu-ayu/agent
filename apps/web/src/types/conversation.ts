@@ -3,7 +3,9 @@ export type {
   ConversationMessage,
   MessageRole as ConversationMessageRole,
   MessageStatus as ConversationMessageStatus,
-  CreateConversationMessageRequest as CreateConversationMessagePayload,
   CreateConversationRequest as CreateConversationPayload,
   DeleteConversationResponse as DeleteConversationResult,
+  ListConversationsRequest as ListConversationsParams,
+  ListConversationsResponse,
+  UpdateConversationRequest as UpdateConversationPayload,
 } from '@agent/contracts'

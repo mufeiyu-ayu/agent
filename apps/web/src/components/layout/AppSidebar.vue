@@ -6,8 +6,12 @@ import { useI18n } from 'vue-i18n'
 import brandLogoUrl from '@/assets/logo.webp'
 import AppIcon from '@/components/common/AppIcon.vue'
 
+import ConversationList from './ConversationList.vue'
+
 defineProps<{
   collapsed: boolean
+  hasMoreRecentChats: boolean
+  isLoadingMoreRecentChats: boolean
   mobile?: boolean
   navigationItems: AgentNavigationItem[]
   recentChats: AgentRecentChat[]
@@ -15,7 +19,9 @@ defineProps<{
 
 const emit = defineEmits<{
   deleteChat: [chatId: string]
+  loadMoreChats: []
   newChat: []
+  renameChat: [chatId: string, title: string]
   selectChat: [chatId: string]
   toggleSidebar: []
 }>()
@@ -143,39 +149,16 @@ const { t } = useI18n()
         </p>
       </div>
 
-      <div v-else class="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
-        <div
-          v-for="chat in recentChats"
-          :key="chat.id"
-          class="flex items-start gap-1 rounded-2xl transition"
-          :class="chat.active ? 'bg-agent-surface-raised text-agent-ink ring-1 ring-agent-border-soft' : 'text-agent-ink-soft hover:bg-agent-surface-raised'"
-        >
-          <button
-            type="button"
-            class="flex min-w-0 flex-1 items-start gap-3 rounded-2xl px-3 py-3 text-left transition focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-agent-focus/40"
-            @click="emit('selectChat', chat.id)"
-          >
-            <AppIcon name="tabler:message-circle" :size="18" class="mt-0.5 shrink-0 text-agent-ink-muted" />
-            <span class="min-w-0 flex-1">
-              <span class="block truncate text-sm font-bold">
-                {{ chat.title }}
-              </span>
-              <span class="mt-1 block text-xs font-semibold text-agent-ink-muted">
-                {{ chat.updatedAt }}
-              </span>
-            </span>
-          </button>
-          <button
-            type="button"
-            :title="t('layout.sidebar.deleteChat')"
-            :aria-label="t('layout.sidebar.deleteChat')"
-            class="mr-2 mt-2.5 grid size-7 shrink-0 place-items-center rounded-lg text-agent-ink-muted opacity-70 transition hover:bg-agent-surface-sunken hover:text-agent-copper focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-agent-focus/40"
-            @click="emit('deleteChat', chat.id)"
-          >
-            <AppIcon name="tabler:trash" :size="16" />
-          </button>
-        </div>
-      </div>
+      <ConversationList
+        v-else
+        :has-more="hasMoreRecentChats"
+        :is-loading-more="isLoadingMoreRecentChats"
+        :recent-chats="recentChats"
+        @delete-chat="emit('deleteChat', $event)"
+        @load-more="emit('loadMoreChats')"
+        @rename-chat="(chatId, title) => emit('renameChat', chatId, title)"
+        @select-chat="emit('selectChat', $event)"
+      />
     </div>
 
     <div v-else class="mt-8 flex flex-1 flex-col items-center gap-2">
@@ -186,7 +169,7 @@ const { t } = useI18n()
         :title="chat.title"
         :aria-label="chat.title"
         class="grid size-11 place-items-center rounded-xl text-agent-ink-muted transition hover:bg-agent-surface-raised hover:text-agent-ink focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-agent-focus/40"
-        :class="{ 'bg-agent-surface-raised text-agent-accent ring-1 ring-agent-border-soft': chat.active }"
+        :class="{ 'bg-agent-surface-sunken/45 text-agent-accent ring-1 ring-agent-border-soft': chat.active }"
         @click="emit('selectChat', chat.id)"
       >
         <AppIcon name="tabler:message-circle" :size="18" />

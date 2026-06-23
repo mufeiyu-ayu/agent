@@ -5,8 +5,22 @@ export interface Conversation {
   updatedAt: string
 }
 
+export interface ListConversationsRequest {
+  cursor?: string
+  limit?: number
+}
+
+export interface ListConversationsResponse {
+  items: Conversation[]
+  nextCursor: string | null
+}
+
 export interface CreateConversationRequest {
   title?: string
+}
+
+export interface UpdateConversationRequest {
+  title: string
 }
 
 export interface DeleteConversationResponse {
@@ -26,8 +40,4 @@ export interface ConversationMessage {
   status: MessageStatus
   createdAt: string
   updatedAt: string
-}
-
-export interface CreateConversationMessageRequest {
-  content: string
 }

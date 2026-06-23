@@ -17,6 +17,7 @@ import {
   deleteConversation,
   listConversationMessages,
   listConversations,
+  updateConversation,
 } from '../api/conversations'
 import { chatWithSeoAgent } from '../api/seo'
 import {
@@ -29,6 +30,8 @@ import { formatGeneratedTime } from '../utils/seo-format'
 const CHAT_REQUEST_INTERVAL_MS = 800
 const DEFAULT_MESSAGE_TIMEOUT_MS = 3600
 const ERROR_MESSAGE_TIMEOUT_MS = 6400
+const CONVERSATION_PAGE_SIZE = 20
+const CONVERSATION_TITLE_MAX_LENGTH = 28
 
 export function useSeoWorkspace() {
   const { t } = useI18n()
@@ -39,7 +42,9 @@ export function useSeoWorkspace() {
   const activeConversationId = ref<string | null>(null)
   const messages = ref<ConversationMessage[]>([])
   const isLoadingConversations = ref(false)
+  const isLoadingMoreConversations = ref(false)
   const isLoadingMessages = ref(false)
+  const hasMoreConversations = ref(false)
   const conversationError = ref('')
   const localTurnErrors = ref<Record<string, string>>({})
   const appMessage = ref<AppMessageState>({
@@ -52,6 +57,7 @@ export function useSeoWorkspace() {
   let lastChatRequestedAt = 0
   let activeTurnId: string | null = null
   let messageLoadRunId = 0
+  let conversationNextCursor: string | null = null
 
   const messageCharacterCount = computed(() => message.value.length)
 
@@ -77,7 +83,6 @@ export function useSeoWorkspace() {
     return conversations.value.map(conversation => ({
       id: conversation.id,
       title: conversation.title,
-      updatedAt: formatGeneratedTime(new Date(conversation.updatedAt)),
       active: conversation.id === activeConversationId.value,
     }))
   })
@@ -100,30 +105,13 @@ export function useSeoWorkspace() {
     clearActiveMessages()
   }
 
-  async function resetWorkspace() {
+  function resetWorkspace() {
     if (status.value === 'loading')
       return
 
-    try {
-      isLoadingConversations.value = true
-      conversationError.value = ''
-
-      const conversation = await createConversation()
-
-      conversations.value = sortConversationsByUpdatedAt([
-        conversation,
-        ...conversations.value.filter(item => item.id !== conversation.id),
-      ])
-      activeConversationId.value = conversation.id
-      clearActiveMessages()
-      resetComposerState()
-    }
-    catch (error) {
-      handleWorkspaceError(error)
-    }
-    finally {
-      isLoadingConversations.value = false
-    }
+    activeConversationId.value = null
+    clearActiveMessages()
+    resetComposerState()
   }
 
   async function selectConversation(conversationId: string) {
@@ -171,6 +159,26 @@ export function useSeoWorkspace() {
     }
   }
 
+  async function renameConversationById(conversationId: string, title: string) {
+    const nextTitle = title.trim()
+
+    if (!nextTitle)
+      return
+
+    try {
+      conversationError.value = ''
+
+      const conversation = await updateConversation(conversationId, {
+        title: nextTitle,
+      })
+
+      upsertConversation(conversation)
+    }
+    catch (error) {
+      handleWorkspaceError(error)
+    }
+  }
+
   async function sendMessage(model?: string) {
     if (!canStartChatRequest())
       return
@@ -184,12 +192,11 @@ export function useSeoWorkspace() {
 
     try {
       if (!targetConversationId) {
-        const conversation = await createConversation()
+        const conversation = await createConversation({
+          title: createConversationTitle(messageContent),
+        })
 
-        conversations.value = sortConversationsByUpdatedAt([
-          conversation,
-          ...conversations.value.filter(item => item.id !== conversation.id),
-        ])
+        upsertConversation(conversation)
         activeConversationId.value = conversation.id
         targetConversationId = conversation.id
       }
@@ -198,7 +205,7 @@ export function useSeoWorkspace() {
       pendingMessage = createPendingUserMessage(targetConversationId, request.message)
       activeTurnId = pendingMessage.id
 
-      if (targetConversationId === activeConversationId.value) {
+      if (targetConversationId && targetConversationId === activeConversationId.value) {
         appendMessage(pendingMessage)
       }
 
@@ -230,6 +237,13 @@ export function useSeoWorkspace() {
 
       showMessage(nextErrorMessage, 'error')
       activeTurnId = null
+
+      const failedConversationId = targetConversationId
+
+      if (failedConversationId && failedConversationId === activeConversationId.value) {
+        await loadMessagesForConversation(failedConversationId)
+        await refreshConversationList()
+      }
     }
   }
 
@@ -237,7 +251,14 @@ export function useSeoWorkspace() {
     try {
       isLoadingConversations.value = true
       conversationError.value = ''
-      conversations.value = sortConversationsByUpdatedAt(await listConversations())
+
+      const response = await listConversations({
+        limit: CONVERSATION_PAGE_SIZE,
+      })
+
+      conversations.value = response.items
+      conversationNextCursor = response.nextCursor
+      hasMoreConversations.value = Boolean(response.nextCursor)
     }
     catch (error) {
       handleWorkspaceError(error)
@@ -249,7 +270,13 @@ export function useSeoWorkspace() {
 
   async function refreshConversationList() {
     try {
-      conversations.value = sortConversationsByUpdatedAt(await listConversations())
+      const response = await listConversations({
+        limit: Math.max(conversations.value.length, CONVERSATION_PAGE_SIZE),
+      })
+
+      conversations.value = response.items
+      conversationNextCursor = response.nextCursor
+      hasMoreConversations.value = Boolean(response.nextCursor)
 
       if (
         activeConversationId.value
@@ -260,6 +287,31 @@ export function useSeoWorkspace() {
     }
     catch (error) {
       handleWorkspaceError(error)
+    }
+  }
+
+  async function loadMoreConversations() {
+    if (!conversationNextCursor || isLoadingMoreConversations.value || isLoadingConversations.value)
+      return
+
+    try {
+      isLoadingMoreConversations.value = true
+      conversationError.value = ''
+
+      const response = await listConversations({
+        cursor: conversationNextCursor,
+        limit: CONVERSATION_PAGE_SIZE,
+      })
+
+      conversations.value = mergeConversations(conversations.value, response.items)
+      conversationNextCursor = response.nextCursor
+      hasMoreConversations.value = Boolean(response.nextCursor)
+    }
+    catch (error) {
+      handleWorkspaceError(error)
+    }
+    finally {
+      isLoadingMoreConversations.value = false
     }
   }
 
@@ -314,6 +366,26 @@ export function useSeoWorkspace() {
     ].sort(compareMessagesByCreatedAt)
   }
 
+  function upsertConversation(conversation: Conversation) {
+    conversations.value = sortConversationsByUpdatedAt([
+      conversation,
+      ...conversations.value.filter(item => item.id !== conversation.id),
+    ])
+  }
+
+  function mergeConversations(
+    currentConversations: Conversation[],
+    nextConversations: Conversation[],
+  ): Conversation[] {
+    const conversationMap = new Map<string, Conversation>()
+
+    for (const conversation of [...currentConversations, ...nextConversations]) {
+      conversationMap.set(conversation.id, conversation)
+    }
+
+    return [...conversationMap.values()]
+  }
+
   function createPendingUserMessage(
     conversationId: string,
     content: string,
@@ -333,6 +405,17 @@ export function useSeoWorkspace() {
 
   function createClientMessageId(): string {
     return `local-${crypto.randomUUID()}`
+  }
+
+  function createConversationTitle(content: string): string {
+    const normalizedContent = content.replace(/\s+/g, ' ').trim()
+
+    if (!normalizedContent)
+      return '新的 SEO 会话'
+
+    return normalizedContent.length > CONVERSATION_TITLE_MAX_LENGTH
+      ? `${normalizedContent.slice(0, CONVERSATION_TITLE_MAX_LENGTH)}...`
+      : normalizedContent
   }
 
   function clearActiveMessages() {
@@ -432,7 +515,9 @@ export function useSeoWorkspace() {
     activeConversationId,
     messages,
     isLoadingConversations,
+    isLoadingMoreConversations,
     isLoadingMessages,
+    hasMoreConversations,
     conversationError,
     recentChats,
     appMessage,
@@ -441,6 +526,8 @@ export function useSeoWorkspace() {
     resetWorkspace,
     selectConversation,
     deleteConversationById,
+    renameConversationById,
+    loadMoreConversations,
     sendMessage,
     hideMessage,
   }

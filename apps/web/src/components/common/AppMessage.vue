@@ -22,32 +22,12 @@ const { t } = useI18n()
 
 const messageClass = computed(() => {
   if (props.type === 'success')
-    return 'border-agent-moss/25 bg-agent-moss-soft text-agent-ink shadow-[0_8px_18px_rgb(61_92_70/9%)]'
+    return 'border-agent-moss/25 bg-agent-moss-soft text-agent-moss shadow-[0_8px_18px_rgb(61_92_70/9%)]'
 
   if (props.type === 'info')
-    return 'border-agent-accent/25 bg-agent-accent-soft text-agent-ink shadow-[0_8px_18px_rgb(111_70_52/9%)]'
+    return 'border-agent-accent/25 bg-agent-accent-soft text-agent-accent shadow-[0_8px_18px_rgb(111_70_52/9%)]'
 
-  return 'border-agent-copper/30 bg-agent-copper-soft text-agent-ink shadow-[0_8px_18px_rgb(116_86_45/9%)]'
-})
-
-const messageIconName = computed(() => {
-  if (props.type === 'success')
-    return 'tabler:circle-check'
-
-  if (props.type === 'info')
-    return 'tabler:info-circle'
-
-  return 'tabler:alert-triangle'
-})
-
-const messageIconClass = computed(() => {
-  if (props.type === 'success')
-    return 'text-agent-moss'
-
-  if (props.type === 'info')
-    return 'text-agent-accent'
-
-  return 'text-agent-copper'
+  return 'border-destructive/20 bg-destructive/10 text-destructive shadow-[0_8px_18px_rgb(154_52_48/10%)]'
 })
 </script>
 
@@ -62,21 +42,15 @@ const messageIconClass = computed(() => {
   >
     <div
       v-if="visible && text"
-      class="pointer-events-none fixed left-1/2 top-4 z-50 w-[calc(100%-24px)] max-w-[720px] -translate-x-1/2 sm:top-5 sm:w-[calc(100%-40px)]"
+      class="pointer-events-none fixed left-1/2 top-4 z-50 max-w-[calc(100vw-32px)] -translate-x-1/2 sm:top-5 sm:max-w-[520px]"
       role="status"
       aria-live="polite"
     >
       <Alert
-        class="pointer-events-auto flex min-h-10 items-center gap-2.5 rounded-xl px-3 py-2 text-[13px] font-semibold leading-5 sm:gap-3 sm:px-3.5"
+        class="pointer-events-auto flex min-h-10 w-auto max-w-full items-center gap-2.5 rounded-xl px-3 py-2 text-[13px] font-semibold leading-5 sm:px-3.5"
         :class="messageClass"
       >
-        <AppIcon
-          :name="messageIconName"
-          :size="17"
-          class="shrink-0"
-          :class="messageIconClass"
-        />
-        <p class="min-w-0 flex-1 text-pretty text-agent-ink-soft">
+        <p class="min-w-0 flex-1 truncate whitespace-nowrap">
           {{ text }}
         </p>
         <Button

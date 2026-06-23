@@ -10,7 +10,6 @@ export interface AgentNavigationItem {
 export interface AgentRecentChat {
   id: string
   title: string
-  updatedAt: string
   active?: boolean
 }
 

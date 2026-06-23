@@ -4,7 +4,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "predev": "pnpm --workspace-root prisma:generate",
     "dev": "tsx --env-file-if-exists=../../.env src/main.ts",
+    "predev:watch": "pnpm --workspace-root prisma:generate",
     "dev:watch": "tsx watch --env-file-if-exists=../../.env src/main.ts",
     "start": "node dist/main.js",
     "pretypecheck": "pnpm --workspace-root prisma:generate",
