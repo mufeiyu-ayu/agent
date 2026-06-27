@@ -38,7 +38,14 @@ request -> stream chunks -> incremental UI update -> final message commit
 
 ## 任务列表
 
+### 本次已完成
+
+- 完成阶段 3 Step 1 / Step 2 的基础能力：定义 `ChatStreamEvent`、补充 `MessageStatus.ABORTED`，并让后端 `LLMService.chatStream()` 具备模型流式读取能力；本次不新增后端 stream API，不改前端发送流程。
+- 引入 OpenAI SDK 替换原生 `fetch` + SSE 解析，把 OpenAI-compatible 调用下沉到 LLM client 适配层，上层只接收 `string` delta。
+
 ### Task 1：确定 Streaming 协议和事件格式
+
+状态：已完成（Step 1：协议和共享类型已定义；后端 stream API 和前端发送流程尚未实现）。
 
 #### 核心要完成
 
@@ -47,12 +54,21 @@ request -> stream chunks -> incremental UI update -> final message commit
 - 明确后端每次发送什么数据
 - 明确 start / delta / done / error 的表达方式
 
+#### 当前协议选择
+
+- 统一采用 HTTP Streaming + NDJSON：后端返回 `application/x-ndjson`，每一行都是一个 JSON 序列化后的 `ChatStreamEvent`。
+- 前端后续使用 `fetch` + `ReadableStream` 读取响应体，再用 `TextDecoder` 按行解析事件。
+- 后端只向前端输出业务事件，不暴露 DeepSeek / OpenAI-compatible SDK 原始 chunk。
+- 暂不使用 WebSocket，也不同时支持 SSE / NDJSON 多套协议。
+- 共享类型定义在 `packages/contracts/src/seo.ts`，由 `@agent/contracts` 统一导出。
+
 #### 推荐事件类型
 
-- start：生成开始
+- start：后端已创建 user message 和 assistant message
 - delta：模型输出片段
-- done：生成完成
+- done：生成完成，assistant message 已完成落库
 - error：生成失败
+- aborted：用户主动停止
 
 #### 关键约束
 

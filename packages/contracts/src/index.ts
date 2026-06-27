@@ -17,6 +17,14 @@ export type {
   UpdateConversationRequest,
 } from './conversation.js'
 export type {
+  ChatStreamAbortedEvent,
+  ChatStreamDeltaEvent,
+  ChatStreamDoneEvent,
+  ChatStreamErrorEvent,
+  ChatStreamEvent,
+  ChatStreamEventType,
+  ChatStreamProtocol,
+  ChatStreamStartEvent,
   SeoChatRequest,
   SeoChatResponse,
 } from './seo.js'

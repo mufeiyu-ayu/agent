@@ -1,4 +1,5 @@
 import { Global, Module } from '@nestjs/common'
+import { OpenAICompatibleClient } from './clients/openai-compatible.client.js'
 import { LLMController } from './llm.controller.js'
 import { LLMService } from './llm.service.js'
 
@@ -9,7 +10,7 @@ import { LLMService } from './llm.service.js'
 @Global()
 @Module({
   controllers: [LLMController],
-  providers: [LLMService],
+  providers: [OpenAICompatibleClient, LLMService],
   exports: [LLMService],
 })
 export class LlmModule {}

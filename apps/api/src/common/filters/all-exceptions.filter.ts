@@ -12,7 +12,7 @@ import {
   LLMNetworkError,
   LLMRateLimitError,
   LLMServerError,
-} from '../../llm/llm.types.js'
+} from '../../llm/llm.errors.js'
 import { getRequestId, getRequestPath } from '../utils/http-request.util.js'
 
 interface HttpExceptionResponse {

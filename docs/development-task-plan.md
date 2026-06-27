@@ -10,7 +10,7 @@
 | --- | --- | --- | --- |
 | 阶段 1 | LLM + Chat 基础能力 | 已完成 | 不再单独维护 |
 | 阶段 2 | Agent Chat Session + 数据持久化系统 | 进行中 | [phase-02-agent-chat-session.md](./tasks/phase-02-agent-chat-session.md) |
-| 阶段 3 | 流式输出 + ChatGPT 级交互体验 | 待开始 | [phase-03-streaming-chat-experience.md](./tasks/phase-03-streaming-chat-experience.md) |
+| 阶段 3 | 流式输出 + ChatGPT 级交互体验 | 进行中 | [phase-03-streaming-chat-experience.md](./tasks/phase-03-streaming-chat-experience.md) |
 
 ## 任务维护方式
 

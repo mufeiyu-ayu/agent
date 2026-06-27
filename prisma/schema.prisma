@@ -21,6 +21,7 @@ enum MessageStatus {
   STREAMING
   COMPLETED
   FAILED
+  ABORTED
 }
 
 model Conversation {
