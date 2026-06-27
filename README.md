@@ -7,7 +7,7 @@
 ```txt
 apps/api  -> NestJS 后端
 apps/web  -> Vue + Vite 前端
-docs/     -> 学习日志
+docs/     -> 项目任务与工作记录
 context/  -> 项目规划和上下文
 ```
 
@@ -75,9 +75,3 @@ context/ai-seo-agent-plan.md
 ```
 
 后续开发优先以 `docs/development-task-plan.md` 作为任务基线。
-
-学习过程记录在：
-
-```txt
-docs/learning-log.md
-```

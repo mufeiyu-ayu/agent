@@ -25,7 +25,8 @@
 
 - `README.md`：项目定位、启动方式、当前阶段
 - `context/ai-seo-agent-plan.md`：AI SEO Agent 的 MVP 边界
-- `docs/learning-log.md`：用户已经学过什么、当前推进到哪里
+- `docs/development-task-plan.md`：当前阶段任务和下一步
+- `docs/work-log.md`：项目推进、commit 上下文和关键决策
 - `apps/api/package.json`、`apps/web/package.json`：前后端依赖和脚本
 - 当前任务涉及的相邻源码文件
 

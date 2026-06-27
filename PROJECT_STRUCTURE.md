@@ -36,7 +36,9 @@
 ├── context/
 │   └── ai-seo-agent-plan.md
 └── docs/
-    └── learning-log.md
+    ├── development-task-plan.md
+    ├── tasks/
+    └── work-log.md
 ```
 
 ## `apps/api`
@@ -76,4 +78,6 @@ pnpm dev:web
 ## 文档目录
 
 - `context/ai-seo-agent-plan.md`：AI SEO Agent 项目规划。
-- `docs/learning-log.md`：Agent 学习日志。
+- `docs/development-task-plan.md`：项目阶段任务主看板。
+- `docs/tasks/`：阶段任务拆解。
+- `docs/work-log.md`：项目推进、commit 上下文和关键决策。

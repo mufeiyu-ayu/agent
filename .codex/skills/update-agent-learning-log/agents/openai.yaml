@@ -1,4 +1,0 @@
-interface:
-  display_name: "更新 Agent 学习日志"
-  short_description: "只记录 Agent 概念学习、阶段复盘和下一步练习"
-  default_prompt: "Use $update-agent-learning-log to record this Agent concept learning session, excluding normal project progress or commit context."
