@@ -1,4 +1,4 @@
-import type { SeoChatResponse } from '@agent/contracts'
+import type { ChatStreamEvent, SeoChatResponse } from '@agent/contracts'
 import type {
   Message,
   MessageRole as PrismaMessageRole,
@@ -14,6 +14,10 @@ import { PrismaService } from '../prisma/prisma.service.js'
 import { buildSeoAgentChatMessages } from './prompts/seo-agent.prompt.js'
 
 const CHAT_HISTORY_LIMIT = 12
+
+interface SeoChatStreamOptions {
+  signal?: AbortSignal
+}
 
 @Injectable()
 export class SeoService {
@@ -71,6 +75,111 @@ export class SeoService {
     }
   }
 
+  async* chatStream(
+    input: SeoChatDto,
+    options: SeoChatStreamOptions = {},
+  ): AsyncGenerator<ChatStreamEvent> {
+    let assistantMessage: Message | undefined
+    let content = ''
+
+    try {
+      await this.assertConversationExists(input.conversationId)
+
+      const userMessage = await this.createMessageAndTouchConversation(
+        input.conversationId,
+        MessageRole.USER,
+        input.message.trim(),
+      )
+
+      const historyMessages = await this.listRecentChatMessages(input.conversationId)
+      const llmMessages = buildSeoAgentChatMessages(
+        historyMessages.map(message => this.toLlmMessage(message)),
+      )
+
+      assistantMessage = await this.createMessageAndTouchConversation(
+        input.conversationId,
+        MessageRole.ASSISTANT,
+        '',
+        MessageStatus.STREAMING,
+      )
+
+      yield {
+        type: 'start',
+        conversationId: input.conversationId,
+        userMessageId: userMessage.id,
+        assistantMessageId: assistantMessage.id,
+      }
+
+      for await (const contentDelta of this.llmService.chatStream(llmMessages, {
+        ...(input.model ? { model: input.model } : {}),
+        temperature: 0.4,
+        maxTokens: 1200,
+        ...(options.signal ? { signal: options.signal } : {}),
+      })) {
+        content += contentDelta
+
+        yield {
+          type: 'delta',
+          conversationId: input.conversationId,
+          assistantMessageId: assistantMessage.id,
+          contentDelta,
+        }
+      }
+
+      const completedMessage = await this.updateMessageAndTouchConversation(
+        assistantMessage.id,
+        input.conversationId,
+        content,
+        MessageStatus.COMPLETED,
+      )
+
+      yield {
+        type: 'done',
+        conversationId: input.conversationId,
+        assistantMessageId: assistantMessage.id,
+        content,
+        generatedAt: completedMessage.updatedAt.toISOString(),
+      }
+    }
+    catch (error) {
+      if (assistantMessage && options.signal?.aborted) {
+        await this.updateMessageAndTouchConversation(
+          assistantMessage.id,
+          input.conversationId,
+          content,
+          MessageStatus.ABORTED,
+        )
+
+        yield {
+          type: 'aborted',
+          conversationId: input.conversationId,
+          assistantMessageId: assistantMessage.id,
+          content,
+        }
+
+        return
+      }
+
+      const errorMessage = this.toChatStreamErrorMessage(error)
+
+      if (assistantMessage) {
+        await this.updateMessageAndTouchConversation(
+          assistantMessage.id,
+          input.conversationId,
+          content || errorMessage,
+          MessageStatus.FAILED,
+        )
+      }
+
+      yield {
+        type: 'error',
+        conversationId: input.conversationId,
+        ...(assistantMessage ? { assistantMessageId: assistantMessage.id } : {}),
+        message: errorMessage,
+      }
+    }
+  }
+
   private async listRecentChatMessages(conversationId: string): Promise<Message[]> {
     const messages = await this.prismaService.message.findMany({
       where: {
@@ -96,6 +205,36 @@ export class SeoService {
         data: {
           conversationId,
           role,
+          content,
+          status,
+        },
+      })
+
+      await prisma.conversation.update({
+        where: {
+          id: conversationId,
+        },
+        data: {
+          updatedAt: new Date(),
+        },
+      })
+
+      return message
+    })
+  }
+
+  private async updateMessageAndTouchConversation(
+    messageId: string,
+    conversationId: string,
+    content: string,
+    status: PrismaMessageStatus,
+  ): Promise<Message> {
+    return this.prismaService.$transaction(async (prisma) => {
+      const message = await prisma.message.update({
+        where: {
+          id: messageId,
+        },
+        data: {
           content,
           status,
         },
@@ -143,5 +282,12 @@ export class SeoService {
     if (!conversation) {
       throw new NotFoundException('会话不存在或已被删除')
     }
+  }
+
+  private toChatStreamErrorMessage(error: unknown): string {
+    if (error instanceof NotFoundException)
+      return error.message
+
+    return '模型服务暂时没有返回结果，请稍后重试。'
   }
 }

@@ -40,12 +40,14 @@ request -> stream chunks -> incremental UI update -> final message commit
 
 ### 本次已完成
 
-- 完成阶段 3 Step 1 / Step 2 的基础能力：定义 `ChatStreamEvent`、补充 `MessageStatus.ABORTED`，并让后端 `LLMService.chatStream()` 具备模型流式读取能力；本次不新增后端 stream API，不改前端发送流程。
+- 完成阶段 3 Step 1 / Step 2 的基础能力：定义 `ChatStreamEvent`、补充 `MessageStatus.ABORTED`，并让后端 `LLMService.chatStream()` 具备模型流式读取能力。
 - 引入 OpenAI SDK 替换原生 `fetch` + SSE 解析，把 OpenAI-compatible 调用下沉到 LLM client 适配层，上层只接收 `string` delta。
+- 新增后端 `POST /api/seo/chat/stream` NDJSON stream API，并接入 `llmService.chatStream()` 输出 `start / delta / done / error / aborted` 业务事件。
+- 新增前端 `streamChatWithSeoAgent()`，只实现 `fetch + ReadableStream + TextDecoder` NDJSON 解析能力，暂不替换现有发送流程和 UI。
 
 ### Task 1：确定 Streaming 协议和事件格式
 
-状态：已完成（Step 1：协议和共享类型已定义；后端 stream API 和前端发送流程尚未实现）。
+状态：已完成（Step 1：协议和共享类型已定义；后端 stream API 与前端 stream client 已实现，前端发送流程尚未切换）。
 
 #### 核心要完成
 
@@ -85,6 +87,8 @@ request -> stream chunks -> incremental UI update -> final message commit
 
 ### Task 2：后端支持 Streaming Response
 
+状态：已完成基础版（已新增 `POST /api/seo/chat/stream`，输出 NDJSON 业务事件）。
+
 #### 核心要完成
 
 - 新增或改造 chat stream API
@@ -110,6 +114,8 @@ request -> stream chunks -> incremental UI update -> final message commit
 - 出错时前端能识别 error
 
 ### Task 3：前端支持逐 chunk 接收
+
+状态：已完成 client 能力（已新增 stream API client，尚未接入 `useSeoWorkspace` 和 UI）。
 
 #### 核心要完成
 
