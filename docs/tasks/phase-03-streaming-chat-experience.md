@@ -44,10 +44,12 @@ request -> stream chunks -> incremental UI update -> final message commit
 - 引入 OpenAI SDK 替换原生 `fetch` + SSE 解析，把 OpenAI-compatible 调用下沉到 LLM client 适配层，上层只接收 `string` delta。
 - 新增后端 `POST /api/seo/chat/stream` NDJSON stream API，并接入 `llmService.chatStream()` 输出 `start / delta / done / error / aborted` 业务事件。
 - 新增前端 `streamChatWithSeoAgent()`，只实现 `fetch + ReadableStream + TextDecoder` NDJSON 解析能力，暂不替换现有发送流程和 UI。
+- 前端 `useSeoWorkspace.sendMessage()` 已切换到 `streamChatWithSeoAgent()`，支持 `start / delta / done / error / aborted` 事件驱动的本地消息更新。
+- `AgentConversation` 已支持 assistant 内容逐 chunk 增长展示，并补齐 `thinking / generating / done / error / aborted` 状态映射；停止生成按钮仍留到 Task 6。
 
 ### Task 1：确定 Streaming 协议和事件格式
 
-状态：已完成（Step 1：协议和共享类型已定义；后端 stream API 与前端 stream client 已实现，前端发送流程尚未切换）。
+状态：已完成（Step 1：协议和共享类型已定义；后端 stream API、前端 stream client 与前端发送流程均已接入）。
 
 #### 核心要完成
 
@@ -115,7 +117,7 @@ request -> stream chunks -> incremental UI update -> final message commit
 
 ### Task 3：前端支持逐 chunk 接收
 
-状态：已完成 client 能力（已新增 stream API client，尚未接入 `useSeoWorkspace` 和 UI）。
+状态：已完成（已新增 stream API client，并接入 `useSeoWorkspace` 消费流式事件）。
 
 #### 核心要完成
 
@@ -140,6 +142,8 @@ request -> stream chunks -> incremental UI update -> final message commit
 - error 时能停止当前生成
 
 ### Task 4：assistant message 渐进式生成
+
+状态：已完成基础版（assistant message 可随 delta 实时增长，完成后写入 `COMPLETED` 展示态）。
 
 #### 核心要完成
 
@@ -170,6 +174,8 @@ message 状态变为 done
 - 刷新页面后能看到最终内容
 
 ### Task 5：运行状态设计
+
+状态：已完成基础版（已接入 `thinking / generating / done / error / aborted`；停止按钮与 AbortController 留到 Task 6）。
 
 #### 核心要完成
 

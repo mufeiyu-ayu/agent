@@ -1,5 +1,5 @@
 import type { Conversation, ConversationMessage } from '@agent/contracts'
-import type { SeoConversationTurn } from '../types/seo'
+import type { SeoConversationTurn, SeoConversationTurnStatus } from '../types/seo'
 
 interface MapConversationMessagesOptions {
   activeTurnId: string | null
@@ -10,7 +10,7 @@ interface MapConversationMessagesOptions {
  * 将后端 Message 列表转换为当前聊天 UI 使用的 turn 列表。
  *
  * @param messages - 后端按时间正序返回的消息列表。
- * @param options - 当前 loading 的 user message id 和本地错误映射。
+ * @param options - 当前正在处理的 user message id 和本地错误映射。
  * @returns 可以直接传给 `AgentConversation` 的 turn 列表。
  */
 export function mapMessagesToConversationTurns(
@@ -37,12 +37,14 @@ export function mapMessagesToConversationTurns(
     if (!currentTurn || currentTurn.reply)
       return turns
 
+    const errorMessage = options.turnErrors[item.id]
+
     currentTurn.reply = item.content
-    currentTurn.generatedAt = item.createdAt
-    currentTurn.status = item.status === 'FAILED' ? 'error' : 'success'
+    currentTurn.generatedAt = item.updatedAt
+    currentTurn.status = mapAssistantMessageStatus(item.status)
 
     if (item.status === 'FAILED') {
-      currentTurn.errorMessage = item.content
+      currentTurn.errorMessage = errorMessage ?? item.content
     }
 
     return turns
@@ -84,7 +86,25 @@ function getUserMessageTurnStatus(
     return 'error'
 
   if (messageId === activeTurnId)
-    return 'loading'
+    return 'thinking'
 
   return 'success'
+}
+
+function mapAssistantMessageStatus(
+  status: ConversationMessage['status'],
+): SeoConversationTurnStatus {
+  switch (status) {
+    case 'STREAMING':
+      return 'generating'
+    case 'FAILED':
+      return 'error'
+    case 'ABORTED':
+      return 'aborted'
+    case 'PENDING':
+      return 'thinking'
+    case 'COMPLETED':
+    default:
+      return 'success'
+  }
 }

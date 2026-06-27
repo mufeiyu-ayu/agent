@@ -129,6 +129,7 @@ export const messages = {
       emptyDescription: '直接输入页面主题、目标关键词或产品信息。AI SEO Agent 会围绕页面诊断、关键词、内容结构和转化建议继续追问。',
       lastReply: '上次回复 {time}',
       loading: '正在分析 SEO 任务...',
+      aborted: '已停止生成',
       fallbackError: '模型服务暂时没有返回结果，你的输入已保留，可以稍后重试。',
       actions: {
         copyReply: '复制',
@@ -300,6 +301,7 @@ export const messages = {
       emptyDescription: 'Enter a page topic, target keywords, or product details. The AI SEO Agent will ask follow-up questions around page audits, keywords, content structure, and conversion ideas.',
       lastReply: 'Last reply {time}',
       loading: 'Analyzing the SEO task...',
+      aborted: 'Generation stopped',
       fallbackError: 'The model service did not return a response. Your input is still here, so you can try again later.',
       actions: {
         copyReply: 'Copy',

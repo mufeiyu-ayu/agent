@@ -38,8 +38,12 @@ const canReset = computed(() => {
   return props.hasConversation || props.message.trim().length > 0
 })
 
+const isGenerationInProgress = computed(() => {
+  return props.status === 'thinking' || props.status === 'generating'
+})
+
 function submitComposer() {
-  if (props.status === 'loading' || !props.message.trim())
+  if (isGenerationInProgress.value || !props.message.trim())
     return
 
   emit('send')
@@ -108,7 +112,7 @@ function updateSelectedModel(value: unknown) {
               :title="t('composer.reset')"
               :aria-label="t('composer.reset')"
               class="size-9 rounded-lg bg-transparent text-agent-ink-muted shadow-none hover:bg-agent-surface-sunken hover:text-agent-ink disabled:text-agent-ink-faint sm:size-10"
-              :disabled="!canReset || status === 'loading'"
+              :disabled="!canReset || isGenerationInProgress"
               @click="emit('reset')"
             >
               <AppIcon name="tabler:rotate-clockwise" :size="18" />
@@ -119,10 +123,10 @@ function updateSelectedModel(value: unknown) {
               :title="t('composer.send')"
               :aria-label="t('composer.send')"
               class="size-10 rounded-full bg-agent-primary text-white shadow-none hover:bg-agent-primary-hover disabled:bg-agent-border sm:size-11"
-              :disabled="status === 'loading' || !message.trim()"
+              :disabled="isGenerationInProgress || !message.trim()"
               @click="submitComposer"
             >
-              <AppIcon v-if="status === 'loading'" name="tabler:loader-2" :size="19" class="animate-spin" />
+              <AppIcon v-if="isGenerationInProgress" name="tabler:loader-2" :size="19" class="animate-spin" />
               <AppIcon v-else name="tabler:arrow-up" :size="20" />
             </Button>
           </div>

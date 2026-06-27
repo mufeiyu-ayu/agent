@@ -1,4 +1,10 @@
-import type { ApiErrorResponse, Conversation, ConversationMessage, SeoChatRequest } from '@agent/contracts'
+import type {
+  ApiErrorResponse,
+  ChatStreamEvent,
+  Conversation,
+  ConversationMessage,
+  SeoChatRequest,
+} from '@agent/contracts'
 import type { AgentRecentChat } from '../types/agent-platform'
 import type {
   AppMessageState,
@@ -17,7 +23,7 @@ import {
   listConversations,
   updateConversation,
 } from '../api/conversations'
-import { chatWithSeoAgent } from '../api/seo'
+import { streamChatWithSeoAgent } from '../api/seo'
 import {
   compareMessagesByCreatedAt,
   mapMessagesToConversationTurns,
@@ -57,6 +63,7 @@ export function useSeoWorkspace() {
   let activeTurnId: string | null = null
   let messageLoadRunId = 0
   let conversationNextCursor: string | null = null
+  let activeStreamConversationId: string | null = null
   const conversationMessagesCache = new Map<string, ConversationMessage[]>()
 
   const messageCharacterCount = computed(() => message.value.length)
@@ -106,7 +113,7 @@ export function useSeoWorkspace() {
   }
 
   function resetWorkspace() {
-    if (status.value === 'loading')
+    if (isGenerationInProgress())
       return
 
     activeConversationId.value = null
@@ -126,7 +133,7 @@ export function useSeoWorkspace() {
   }
 
   async function deleteConversationById(conversationId: string) {
-    if (status.value === 'loading')
+    if (isGenerationInProgress())
       return
 
     try {
@@ -189,8 +196,10 @@ export function useSeoWorkspace() {
     const messageContent = message.value.trim()
     let targetConversationId = activeConversationId.value
     let pendingMessage: ConversationMessage | undefined
+    let assistantMessageId: string | undefined
+    let hasFinalStreamEvent = false
 
-    status.value = 'loading'
+    status.value = 'thinking'
     errorMessage.value = ''
     shouldAnchorLatestTurn.value = true
 
@@ -208,46 +217,88 @@ export function useSeoWorkspace() {
       const request = buildChatRequest(targetConversationId, messageContent, model)
       pendingMessage = createPendingUserMessage(targetConversationId, request.message)
       activeTurnId = pendingMessage.id
+      activeStreamConversationId = targetConversationId
 
-      if (targetConversationId && targetConversationId === activeConversationId.value) {
-        appendMessage(pendingMessage)
+      upsertMessageInConversation(pendingMessage)
+
+      for await (const event of streamChatWithSeoAgent(request)) {
+        if (event.conversationId !== targetConversationId)
+          continue
+
+        if (event.type === 'start') {
+          assistantMessageId = event.assistantMessageId
+          handleStreamStartEvent(event, pendingMessage)
+          message.value = ''
+          status.value = 'generating'
+          continue
+        }
+
+        if (event.type === 'delta') {
+          handleStreamDeltaEvent(event)
+          status.value = 'generating'
+          continue
+        }
+
+        if (event.type === 'done') {
+          hasFinalStreamEvent = true
+          handleStreamDoneEvent(event)
+          activeTurnId = null
+          activeStreamConversationId = null
+          setStatusAfterStreamCompletion(event.conversationId, 'done')
+          await refreshConversationList()
+          continue
+        }
+
+        if (event.type === 'error') {
+          hasFinalStreamEvent = true
+          errorMessage.value = event.message
+          handleStreamErrorEvent(event, pendingMessage)
+          activeTurnId = null
+          activeStreamConversationId = null
+          setStatusAfterStreamError(event.conversationId)
+          showMessage(event.message, 'error')
+          await refreshConversationList()
+          continue
+        }
+
+        hasFinalStreamEvent = true
+        handleStreamAbortedEvent(event)
+        activeTurnId = null
+        activeStreamConversationId = null
+        setStatusAfterStreamCompletion(event.conversationId, 'aborted')
+        await refreshConversationList()
       }
 
-      await chatWithSeoAgent(request)
-      message.value = ''
-      activeTurnId = null
-
-      if (targetConversationId === activeConversationId.value) {
-        await loadMessagesForConversation(targetConversationId)
+      if (!hasFinalStreamEvent) {
+        throw new Error('流式响应提前结束，请稍后重试')
       }
-      else {
-        status.value = messages.value.length > 0 ? 'success' : 'empty'
-      }
-
-      await refreshConversationList()
     }
     catch (error) {
       const nextErrorMessage = getRequestErrorMessage(error)
 
-      status.value = 'error'
       errorMessage.value = nextErrorMessage
 
-      if (pendingMessage) {
-        localTurnErrors.value = {
-          ...localTurnErrors.value,
-          [pendingMessage.id]: nextErrorMessage,
-        }
+      if (assistantMessageId && targetConversationId) {
+        setLocalTurnError(assistantMessageId, nextErrorMessage)
+        markAssistantMessageFailed(targetConversationId, assistantMessageId, nextErrorMessage)
+      }
+      else if (pendingMessage) {
+        setLocalTurnError(pendingMessage.id, nextErrorMessage)
       }
 
       showMessage(nextErrorMessage, 'error')
       activeTurnId = null
+      activeStreamConversationId = null
 
       const failedConversationId = targetConversationId
 
-      if (failedConversationId && failedConversationId === activeConversationId.value) {
-        await loadMessagesForConversation(failedConversationId)
+      if (failedConversationId) {
+        setStatusAfterStreamError(failedConversationId)
         await refreshConversationList()
+        return
       }
+
+      status.value = 'error'
     }
   }
 
@@ -325,16 +376,25 @@ export function useSeoWorkspace() {
     try {
       isLoadingMessages.value = true
       conversationError.value = ''
-      localTurnErrors.value = {}
 
       const nextMessages = await listConversationMessages(conversationId)
 
       if (runId !== messageLoadRunId || conversationId !== activeConversationId.value)
         return
 
-      cacheMessagesForConversation(conversationId, nextMessages)
-      messages.value = nextMessages
-      status.value = nextMessages.length > 0 ? 'success' : 'empty'
+      if (activeStreamConversationId === conversationId) {
+        const cachedMessages = conversationMessagesCache.get(conversationId)
+
+        if (cachedMessages)
+          messages.value = [...cachedMessages]
+
+        return
+      }
+
+      setMessagesForConversation(conversationId, nextMessages)
+
+      if (!isGenerationInProgress())
+        status.value = getSettledWorkspaceStatus()
     }
     catch (error) {
       if (runId !== messageLoadRunId)
@@ -364,14 +424,205 @@ export function useSeoWorkspace() {
     }
   }
 
-  function appendMessage(nextMessage: ConversationMessage) {
-    const nextMessages = [
-      ...messages.value.filter(item => item.id !== nextMessage.id),
-      nextMessage,
-    ].sort(compareMessagesByCreatedAt)
+  function handleStreamStartEvent(
+    event: Extract<ChatStreamEvent, { type: 'start' }>,
+    pendingMessage: ConversationMessage,
+  ) {
+    const now = createMessageTimestamp()
 
-    messages.value = nextMessages
-    cacheMessagesForConversation(nextMessage.conversationId, nextMessages)
+    replaceMessageInConversation(pendingMessage.conversationId, pendingMessage.id, {
+      ...pendingMessage,
+      id: event.userMessageId,
+      status: 'COMPLETED',
+      updatedAt: now,
+    })
+    clearLocalTurnError(pendingMessage.id)
+    activeTurnId = event.userMessageId
+
+    upsertMessageInConversation(createStreamingAssistantMessage(
+      event.conversationId,
+      event.assistantMessageId,
+      now,
+    ))
+  }
+
+  function handleStreamDeltaEvent(event: Extract<ChatStreamEvent, { type: 'delta' }>) {
+    const hasUpdatedMessage = updateMessageById(
+      event.conversationId,
+      event.assistantMessageId,
+      currentMessage => ({
+        ...currentMessage,
+        content: `${currentMessage.content}${event.contentDelta}`,
+        status: 'STREAMING',
+        updatedAt: createMessageTimestamp(),
+      }),
+    )
+
+    if (!hasUpdatedMessage) {
+      upsertMessageInConversation({
+        ...createStreamingAssistantMessage(event.conversationId, event.assistantMessageId),
+        content: event.contentDelta,
+      })
+    }
+  }
+
+  function handleStreamDoneEvent(event: Extract<ChatStreamEvent, { type: 'done' }>) {
+    const hasUpdatedMessage = updateMessageById(
+      event.conversationId,
+      event.assistantMessageId,
+      currentMessage => ({
+        ...currentMessage,
+        content: event.content,
+        status: 'COMPLETED',
+        updatedAt: event.generatedAt,
+      }),
+    )
+
+    if (!hasUpdatedMessage) {
+      upsertMessageInConversation({
+        id: event.assistantMessageId,
+        conversationId: event.conversationId,
+        role: 'ASSISTANT',
+        content: event.content,
+        status: 'COMPLETED',
+        createdAt: event.generatedAt,
+        updatedAt: event.generatedAt,
+      })
+    }
+  }
+
+  function handleStreamErrorEvent(
+    event: Extract<ChatStreamEvent, { type: 'error' }>,
+    pendingMessage: ConversationMessage | undefined,
+  ) {
+    if (event.assistantMessageId) {
+      setLocalTurnError(event.assistantMessageId, event.message)
+      markAssistantMessageFailed(event.conversationId, event.assistantMessageId, event.message)
+      return
+    }
+
+    if (pendingMessage)
+      setLocalTurnError(pendingMessage.id, event.message)
+  }
+
+  function handleStreamAbortedEvent(event: Extract<ChatStreamEvent, { type: 'aborted' }>) {
+    const hasUpdatedMessage = updateMessageById(
+      event.conversationId,
+      event.assistantMessageId,
+      currentMessage => ({
+        ...currentMessage,
+        content: event.content,
+        status: 'ABORTED',
+        updatedAt: createMessageTimestamp(),
+      }),
+    )
+
+    if (!hasUpdatedMessage) {
+      const now = createMessageTimestamp()
+
+      upsertMessageInConversation({
+        id: event.assistantMessageId,
+        conversationId: event.conversationId,
+        role: 'ASSISTANT',
+        content: event.content,
+        status: 'ABORTED',
+        createdAt: now,
+        updatedAt: now,
+      })
+    }
+  }
+
+  function markAssistantMessageFailed(
+    conversationId: string,
+    assistantMessageId: string,
+    nextErrorMessage: string,
+  ) {
+    const hasUpdatedMessage = updateMessageById(
+      conversationId,
+      assistantMessageId,
+      currentMessage => ({
+        ...currentMessage,
+        content: currentMessage.content || nextErrorMessage,
+        status: 'FAILED',
+        updatedAt: createMessageTimestamp(),
+      }),
+    )
+
+    if (!hasUpdatedMessage) {
+      const now = createMessageTimestamp()
+
+      upsertMessageInConversation({
+        id: assistantMessageId,
+        conversationId,
+        role: 'ASSISTANT',
+        content: nextErrorMessage,
+        status: 'FAILED',
+        createdAt: now,
+        updatedAt: now,
+      })
+    }
+  }
+
+  function upsertMessageInConversation(nextMessage: ConversationMessage) {
+    const currentMessages = getMessagesForConversation(nextMessage.conversationId)
+    const nextMessages = [
+      ...currentMessages.filter(item => item.id !== nextMessage.id),
+      nextMessage,
+    ]
+
+    setMessagesForConversation(nextMessage.conversationId, nextMessages)
+  }
+
+  function replaceMessageInConversation(
+    conversationId: string,
+    oldMessageId: string,
+    nextMessage: ConversationMessage,
+  ) {
+    const currentMessages = getMessagesForConversation(conversationId)
+    const nextMessages = [
+      ...currentMessages.filter(item => item.id !== oldMessageId && item.id !== nextMessage.id),
+      nextMessage,
+    ]
+
+    setMessagesForConversation(conversationId, nextMessages)
+  }
+
+  function updateMessageById(
+    conversationId: string,
+    messageId: string,
+    updater: (message: ConversationMessage) => ConversationMessage,
+  ): boolean {
+    const currentMessages = getMessagesForConversation(conversationId)
+    const messageIndex = currentMessages.findIndex(item => item.id === messageId)
+
+    if (messageIndex < 0)
+      return false
+
+    const nextMessages = [...currentMessages]
+
+    nextMessages[messageIndex] = updater(currentMessages[messageIndex])
+    setMessagesForConversation(conversationId, nextMessages)
+
+    return true
+  }
+
+  function getMessagesForConversation(conversationId: string): ConversationMessage[] {
+    if (conversationId === activeConversationId.value)
+      return messages.value
+
+    return conversationMessagesCache.get(conversationId) ?? []
+  }
+
+  function setMessagesForConversation(
+    conversationId: string,
+    nextMessages: ConversationMessage[],
+  ) {
+    const sortedMessages = [...nextMessages].sort(compareMessagesByCreatedAt)
+
+    cacheMessagesForConversation(conversationId, sortedMessages)
+
+    if (conversationId === activeConversationId.value)
+      messages.value = [...sortedMessages]
   }
 
   function upsertConversation(conversation: Conversation) {
@@ -398,7 +649,7 @@ export function useSeoWorkspace() {
     conversationId: string,
     content: string,
   ): ConversationMessage {
-    const now = new Date().toISOString()
+    const now = createMessageTimestamp()
 
     return {
       id: createClientMessageId(),
@@ -409,6 +660,26 @@ export function useSeoWorkspace() {
       createdAt: now,
       updatedAt: now,
     }
+  }
+
+  function createStreamingAssistantMessage(
+    conversationId: string,
+    assistantMessageId: string,
+    createdAt = createMessageTimestamp(),
+  ): ConversationMessage {
+    return {
+      id: assistantMessageId,
+      conversationId,
+      role: 'ASSISTANT',
+      content: '',
+      status: 'STREAMING',
+      createdAt,
+      updatedAt: createdAt,
+    }
+  }
+
+  function createMessageTimestamp(): string {
+    return new Date().toISOString()
   }
 
   function createClientMessageId(): string {
@@ -428,8 +699,9 @@ export function useSeoWorkspace() {
 
   function applyCachedMessagesForConversation(conversationId: string) {
     messageLoadRunId += 1
-    localTurnErrors.value = {}
-    activeTurnId = null
+
+    if (!isGenerationInProgress())
+      activeTurnId = null
 
     const cachedMessages = conversationMessagesCache.get(conversationId)
 
@@ -451,16 +723,22 @@ export function useSeoWorkspace() {
   }
 
   function resetComposerState() {
+    const shouldKeepGenerationStatus = isGenerationInProgress()
+
     message.value = ''
-    status.value = messages.value.length > 0 ? 'success' : 'empty'
+    if (!shouldKeepGenerationStatus)
+      status.value = getSettledWorkspaceStatus()
+
     errorMessage.value = ''
     hideMessage()
-    activeTurnId = null
+    if (!shouldKeepGenerationStatus)
+      activeTurnId = null
+
     shouldAnchorLatestTurn.value = false
   }
 
   function canStartChatRequest(): boolean {
-    if (status.value === 'loading')
+    if (isGenerationInProgress())
       return false
 
     if (!message.value.trim())
@@ -474,6 +752,49 @@ export function useSeoWorkspace() {
     lastChatRequestedAt = now
 
     return true
+  }
+
+  function isGenerationInProgress(): boolean {
+    return activeStreamConversationId !== null
+      || status.value === 'thinking'
+      || status.value === 'generating'
+  }
+
+  function getSettledWorkspaceStatus(): GenerationStatus {
+    return messages.value.length > 0 ? 'idle' : 'empty'
+  }
+
+  function setStatusAfterStreamCompletion(
+    conversationId: string,
+    nextStatus: Extract<GenerationStatus, 'done' | 'aborted'>,
+  ) {
+    status.value = conversationId === activeConversationId.value
+      ? nextStatus
+      : getSettledWorkspaceStatus()
+  }
+
+  function setStatusAfterStreamError(conversationId: string) {
+    status.value = conversationId === activeConversationId.value
+      ? 'error'
+      : getSettledWorkspaceStatus()
+  }
+
+  function setLocalTurnError(messageId: string, nextErrorMessage: string) {
+    localTurnErrors.value = {
+      ...localTurnErrors.value,
+      [messageId]: nextErrorMessage,
+    }
+  }
+
+  function clearLocalTurnError(messageId: string) {
+    if (!(messageId in localTurnErrors.value))
+      return
+
+    const nextLocalTurnErrors = { ...localTurnErrors.value }
+
+    delete nextLocalTurnErrors[messageId]
+
+    localTurnErrors.value = nextLocalTurnErrors
   }
 
   function handleWorkspaceError(error: unknown) {

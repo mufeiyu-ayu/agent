@@ -184,19 +184,37 @@ const starterPrompts = computed(() => [
                 :data-agent-turn-id="turn.id"
               >
                 <div
-                  v-if="turn.status === 'loading'"
+                  v-if="(turn.status === 'thinking' || turn.status === 'generating') && !turn.reply"
                   class="inline-flex h-10 items-center justify-center text-agent-ink-muted"
                 >
                   <AppIcon name="tabler:loader-2" :size="18" class="animate-spin" />
                 </div>
 
-                <div
-                  v-else-if="turn.status === 'error'"
-                  class="inline-flex max-w-[620px] items-start gap-2.5 rounded-2xl border border-agent-copper/30 bg-agent-copper-soft px-4 py-3 text-sm font-semibold leading-6 text-agent-ink-soft"
-                >
-                  <AppIcon name="tabler:alert-triangle" :size="18" class="mt-0.5 shrink-0 text-agent-copper" />
-                  <span>{{ turn.errorMessage || t('conversation.fallbackError') }}</span>
-                </div>
+                <template v-else-if="turn.status === 'error'">
+                  <AgentAssistantReply
+                    v-if="turn.reply && turn.reply !== turn.errorMessage"
+                    :text="turn.reply"
+                  />
+                  <div
+                    class="mt-2 inline-flex max-w-[620px] items-start gap-2.5 rounded-2xl border border-agent-copper/30 bg-agent-copper-soft px-4 py-3 text-sm font-semibold leading-6 text-agent-ink-soft"
+                  >
+                    <AppIcon name="tabler:alert-triangle" :size="18" class="mt-0.5 shrink-0 text-agent-copper" />
+                    <span>{{ turn.errorMessage || t('conversation.fallbackError') }}</span>
+                  </div>
+                </template>
+
+                <template v-else-if="turn.status === 'aborted'">
+                  <AgentAssistantReply
+                    v-if="turn.reply"
+                    :text="turn.reply"
+                  />
+                  <div
+                    class="mt-2 inline-flex max-w-[620px] items-center gap-2 rounded-xl border border-agent-border bg-agent-surface px-3 py-2 text-xs font-bold text-agent-ink-muted"
+                  >
+                    <AppIcon name="tabler:player-stop" :size="15" class="shrink-0" />
+                    <span>{{ t('conversation.aborted') }}</span>
+                  </div>
+                </template>
 
                 <AgentAssistantReply
                   v-else

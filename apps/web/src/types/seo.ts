@@ -1,6 +1,6 @@
-export type GenerationStatus = 'empty' | 'loading' | 'success' | 'error'
+export type GenerationStatus = 'empty' | 'idle' | 'thinking' | 'generating' | 'done' | 'error' | 'aborted'
 
-export type SeoConversationTurnStatus = 'loading' | 'success' | 'error'
+export type SeoConversationTurnStatus = 'thinking' | 'generating' | 'success' | 'error' | 'aborted'
 
 export interface SeoConversationTurn {
   id: string
