@@ -63,7 +63,10 @@ export function useSeoWorkspace() {
   let activeTurnId: string | null = null
   let messageLoadRunId = 0
   let conversationNextCursor: string | null = null
+  let activeAbortController: AbortController | null = null
+  let activeStreamRequestId: string | null = null
   let activeStreamConversationId: string | null = null
+  let activeStreamAssistantMessageId: string | null = null
   const conversationMessagesCache = new Map<string, ConversationMessage[]>()
 
   const messageCharacterCount = computed(() => message.value.length)
@@ -198,35 +201,46 @@ export function useSeoWorkspace() {
     let pendingMessage: ConversationMessage | undefined
     let assistantMessageId: string | undefined
     let hasFinalStreamEvent = false
+    const streamRequestId = createClientMessageId()
+    const abortController = new AbortController()
 
     status.value = 'thinking'
     errorMessage.value = ''
     shouldAnchorLatestTurn.value = true
+    activeAbortController = abortController
+    activeStreamRequestId = streamRequestId
+    activeStreamConversationId = targetConversationId
+    activeStreamAssistantMessageId = null
 
     try {
       if (!targetConversationId) {
         const conversation = await createConversation({
           title: createConversationTitle(messageContent),
+        }, {
+          signal: abortController.signal,
         })
 
         upsertConversation(conversation)
         activeConversationId.value = conversation.id
         targetConversationId = conversation.id
+        activeStreamConversationId = conversation.id
       }
 
       const request = buildChatRequest(targetConversationId, messageContent, model)
       pendingMessage = createPendingUserMessage(targetConversationId, request.message)
       activeTurnId = pendingMessage.id
-      activeStreamConversationId = targetConversationId
 
       upsertMessageInConversation(pendingMessage)
 
-      for await (const event of streamChatWithSeoAgent(request)) {
+      for await (const event of streamChatWithSeoAgent(request, {
+        signal: abortController.signal,
+      })) {
         if (event.conversationId !== targetConversationId)
           continue
 
         if (event.type === 'start') {
           assistantMessageId = event.assistantMessageId
+          activeStreamAssistantMessageId = event.assistantMessageId
           handleStreamStartEvent(event, pendingMessage)
           message.value = ''
           status.value = 'generating'
@@ -243,7 +257,7 @@ export function useSeoWorkspace() {
           hasFinalStreamEvent = true
           handleStreamDoneEvent(event)
           activeTurnId = null
-          activeStreamConversationId = null
+          clearActiveStreamState(streamRequestId)
           setStatusAfterStreamCompletion(event.conversationId, 'done')
           await refreshConversationList()
           continue
@@ -254,7 +268,7 @@ export function useSeoWorkspace() {
           errorMessage.value = event.message
           handleStreamErrorEvent(event, pendingMessage)
           activeTurnId = null
-          activeStreamConversationId = null
+          clearActiveStreamState(streamRequestId)
           setStatusAfterStreamError(event.conversationId)
           showMessage(event.message, 'error')
           await refreshConversationList()
@@ -264,7 +278,7 @@ export function useSeoWorkspace() {
         hasFinalStreamEvent = true
         handleStreamAbortedEvent(event)
         activeTurnId = null
-        activeStreamConversationId = null
+        clearActiveStreamState(streamRequestId)
         setStatusAfterStreamCompletion(event.conversationId, 'aborted')
         await refreshConversationList()
       }
@@ -274,6 +288,12 @@ export function useSeoWorkspace() {
       }
     }
     catch (error) {
+      if (isAbortError(error)) {
+        markGenerationAborted(targetConversationId, assistantMessageId, streamRequestId)
+        await refreshConversationList()
+        return
+      }
+
       const nextErrorMessage = getRequestErrorMessage(error)
 
       errorMessage.value = nextErrorMessage
@@ -288,7 +308,7 @@ export function useSeoWorkspace() {
 
       showMessage(nextErrorMessage, 'error')
       activeTurnId = null
-      activeStreamConversationId = null
+      clearActiveStreamState(streamRequestId)
 
       const failedConversationId = targetConversationId
 
@@ -300,6 +320,18 @@ export function useSeoWorkspace() {
 
       status.value = 'error'
     }
+  }
+
+  function stopGeneration() {
+    if (!isGenerationInProgress())
+      return
+
+    const streamRequestId = activeStreamRequestId
+    const conversationId = activeStreamConversationId
+    const assistantMessageId = activeStreamAssistantMessageId
+
+    activeAbortController?.abort()
+    markGenerationAborted(conversationId, assistantMessageId, streamRequestId)
   }
 
   async function loadConversationList() {
@@ -506,30 +538,69 @@ export function useSeoWorkspace() {
   }
 
   function handleStreamAbortedEvent(event: Extract<ChatStreamEvent, { type: 'aborted' }>) {
+    markAssistantMessageAborted(event.conversationId, event.assistantMessageId, event.content)
+  }
+
+  function markGenerationAborted(
+    conversationId: string | null,
+    assistantMessageId: string | null | undefined,
+    streamRequestId: string | null,
+  ) {
+    const shouldUpdateWorkspaceStatus = shouldUpdateActiveStreamState(streamRequestId)
+
+    if (!conversationId) {
+      if (shouldUpdateWorkspaceStatus) {
+        status.value = 'aborted'
+        activeTurnId = null
+        clearActiveStreamState(streamRequestId)
+      }
+
+      return
+    }
+
+    if (assistantMessageId) {
+      markAssistantMessageAborted(conversationId, assistantMessageId)
+    }
+    else {
+      upsertMessageInConversation(createAbortedAssistantMessage(conversationId))
+    }
+
+    if (shouldUpdateWorkspaceStatus) {
+      activeTurnId = null
+      setStatusAfterStreamCompletion(conversationId, 'aborted')
+      clearActiveStreamState(streamRequestId)
+    }
+  }
+
+  function markAssistantMessageAborted(
+    conversationId: string,
+    assistantMessageId: string,
+    content?: string,
+  ) {
+    const now = createMessageTimestamp()
     const hasUpdatedMessage = updateMessageById(
-      event.conversationId,
-      event.assistantMessageId,
+      conversationId,
+      assistantMessageId,
       currentMessage => ({
         ...currentMessage,
-        content: event.content,
+        content: content ?? currentMessage.content,
         status: 'ABORTED',
-        updatedAt: createMessageTimestamp(),
+        updatedAt: now,
       }),
     )
 
-    if (!hasUpdatedMessage) {
-      const now = createMessageTimestamp()
+    if (hasUpdatedMessage)
+      return
 
-      upsertMessageInConversation({
-        id: event.assistantMessageId,
-        conversationId: event.conversationId,
-        role: 'ASSISTANT',
-        content: event.content,
-        status: 'ABORTED',
-        createdAt: now,
-        updatedAt: now,
-      })
-    }
+    upsertMessageInConversation({
+      id: assistantMessageId,
+      conversationId,
+      role: 'ASSISTANT',
+      content: content ?? '',
+      status: 'ABORTED',
+      createdAt: now,
+      updatedAt: now,
+    })
   }
 
   function markAssistantMessageFailed(
@@ -678,6 +749,20 @@ export function useSeoWorkspace() {
     }
   }
 
+  function createAbortedAssistantMessage(conversationId: string): ConversationMessage {
+    const now = createMessageTimestamp()
+
+    return {
+      id: createClientMessageId(),
+      conversationId,
+      role: 'ASSISTANT',
+      content: '',
+      status: 'ABORTED',
+      createdAt: now,
+      updatedAt: now,
+    }
+  }
+
   function createMessageTimestamp(): string {
     return new Date().toISOString()
   }
@@ -760,6 +845,22 @@ export function useSeoWorkspace() {
       || status.value === 'generating'
   }
 
+  function clearActiveStreamState(streamRequestId: string | null) {
+    if (streamRequestId && activeStreamRequestId !== streamRequestId)
+      return
+
+    activeAbortController = null
+    activeStreamRequestId = null
+    activeStreamConversationId = null
+    activeStreamAssistantMessageId = null
+  }
+
+  function shouldUpdateActiveStreamState(streamRequestId: string | null): boolean {
+    return !streamRequestId
+      || activeStreamRequestId === streamRequestId
+      || activeStreamRequestId === null
+  }
+
   function getSettledWorkspaceStatus(): GenerationStatus {
     return messages.value.length > 0 ? 'idle' : 'empty'
   }
@@ -823,6 +924,14 @@ export function useSeoWorkspace() {
     return t('conversation.fallbackError')
   }
 
+  function isAbortError(error: unknown): boolean {
+    return (
+      (isAxiosError(error) && error.code === 'ERR_CANCELED')
+      || (typeof DOMException !== 'undefined' && error instanceof DOMException && error.name === 'AbortError')
+      || (error instanceof Error && error.name === 'AbortError')
+    )
+  }
+
   function showMessage(text: string, type: AppMessageType = 'info') {
     if (messageTimer !== undefined) {
       window.clearTimeout(messageTimer)
@@ -877,6 +986,7 @@ export function useSeoWorkspace() {
     renameConversationById,
     loadMoreConversations,
     sendMessage,
+    stopGeneration,
     hideMessage,
   }
 }

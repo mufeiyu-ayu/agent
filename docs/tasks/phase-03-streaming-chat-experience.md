@@ -45,7 +45,7 @@ request -> stream chunks -> incremental UI update -> final message commit
 - 新增后端 `POST /api/seo/chat/stream` NDJSON stream API，并接入 `llmService.chatStream()` 输出 `start / delta / done / error / aborted` 业务事件。
 - 新增前端 `streamChatWithSeoAgent()`，只实现 `fetch + ReadableStream + TextDecoder` NDJSON 解析能力，暂不替换现有发送流程和 UI。
 - 前端 `useSeoWorkspace.sendMessage()` 已切换到 `streamChatWithSeoAgent()`，支持 `start / delta / done / error / aborted` 事件驱动的本地消息更新。
-- `AgentConversation` 已支持 assistant 内容逐 chunk 增长展示，并补齐 `thinking / generating / done / error / aborted` 状态映射；停止生成按钮仍留到 Task 6。
+- `AgentConversation` 已支持 assistant 内容逐 chunk 增长展示，并补齐 `thinking / generating / done / error / aborted` 状态映射；Composer 停止按钮与前端 `AbortController` 基础链路已接入。
 
 ### Task 1：确定 Streaming 协议和事件格式
 
@@ -175,7 +175,7 @@ message 状态变为 done
 
 ### Task 5：运行状态设计
 
-状态：已完成基础版（已接入 `thinking / generating / done / error / aborted`；停止按钮与 AbortController 留到 Task 6）。
+状态：已完成基础版（已接入 `thinking / generating / done / error / aborted`；停止按钮与 AbortController 已在 Task 6 前端基础版落地）。
 
 #### 核心要完成
 
@@ -200,6 +200,8 @@ message 状态变为 done
 - 状态不会卡死在 thinking 或 generating
 
 ### Task 6：请求可中断
+
+状态：已完成前端基础版（`AbortController` 已接入前端 stream 请求，Composer 已支持停止按钮；后端真实中断和 aborted 持久化一致性后续继续完善）。
 
 #### 核心要完成
 

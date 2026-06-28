@@ -30,6 +30,7 @@ const emit = defineEmits<{
   'update:selectedModel': [value: LlmModelOption['id']]
   'send': []
   'reset': []
+  'stop': []
 }>()
 
 const { t } = useI18n()
@@ -47,6 +48,15 @@ function submitComposer() {
     return
 
   emit('send')
+}
+
+function triggerPrimaryAction() {
+  if (isGenerationInProgress.value) {
+    emit('stop')
+    return
+  }
+
+  submitComposer()
 }
 
 function updateMessage(value: string | number) {
@@ -120,13 +130,14 @@ function updateSelectedModel(value: unknown) {
             <Button
               type="button"
               size="icon-lg"
-              :title="t('composer.send')"
-              :aria-label="t('composer.send')"
-              class="size-10 rounded-full bg-agent-primary text-white shadow-none hover:bg-agent-primary-hover disabled:bg-agent-border sm:size-11"
-              :disabled="isGenerationInProgress || !message.trim()"
-              @click="submitComposer"
+              :title="isGenerationInProgress ? t('composer.stop') : t('composer.send')"
+              :aria-label="isGenerationInProgress ? t('composer.stop') : t('composer.send')"
+              class="size-10 rounded-full text-white shadow-none disabled:bg-agent-border sm:size-11"
+              :class="isGenerationInProgress ? 'bg-agent-copper hover:bg-agent-copper' : 'bg-agent-primary hover:bg-agent-primary-hover'"
+              :disabled="!isGenerationInProgress && !message.trim()"
+              @click="triggerPrimaryAction"
             >
-              <AppIcon v-if="isGenerationInProgress" name="tabler:loader-2" :size="19" class="animate-spin" />
+              <AppIcon v-if="isGenerationInProgress" name="tabler:player-stop" :size="19" />
               <AppIcon v-else name="tabler:arrow-up" :size="20" />
             </Button>
           </div>

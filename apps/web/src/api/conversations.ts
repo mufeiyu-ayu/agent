@@ -10,14 +10,23 @@ import type {
 
 import { http } from './http'
 
+interface ConversationRequestOptions {
+  signal?: AbortSignal
+}
+
 export async function listConversations(params: ListConversationsRequest = {}): Promise<ListConversationsResponse> {
   const response = await http.get<ListConversationsResponse>('/api/conversations', { params })
 
   return response.data
 }
 
-export async function createConversation(payload: CreateConversationRequest = {}): Promise<Conversation> {
-  const response = await http.post<Conversation>('/api/conversations', payload)
+export async function createConversation(
+  payload: CreateConversationRequest = {},
+  options: ConversationRequestOptions = {},
+): Promise<Conversation> {
+  const response = await http.post<Conversation>('/api/conversations', payload, {
+    ...(options.signal ? { signal: options.signal } : {}),
+  })
 
   return response.data
 }

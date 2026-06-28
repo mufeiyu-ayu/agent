@@ -159,6 +159,7 @@ export const messages = {
       modelPlaceholder: 'DeepSeek 模型',
       reset: '重置当前对话',
       send: '发送消息',
+      stop: '停止生成',
     },
     runtime: {
       balance: {
@@ -331,6 +332,7 @@ export const messages = {
       modelPlaceholder: 'DeepSeek model',
       reset: 'Reset current chat',
       send: 'Send message',
+      stop: 'Stop generation',
     },
     runtime: {
       balance: {

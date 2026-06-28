@@ -79,6 +79,7 @@ const {
   renameConversationById,
   loadMoreConversations,
   sendMessage,
+  stopGeneration,
   hideMessage,
 } = useSeoWorkspace()
 
@@ -139,6 +140,7 @@ function applySuggestedPrompt(prompt: string) {
           :status="status"
           :message-character-count="messageCharacterCount"
           @send="sendMessage(selectedModel)"
+          @stop="stopGeneration"
           @reset="resetWorkspace"
         />
       </div>
