@@ -81,6 +81,7 @@ export class SeoService {
   ): AsyncGenerator<ChatStreamEvent> {
     let assistantMessage: Message | undefined
     let content = ''
+    let hasFinalMessageStatus = false
 
     try {
       await this.assertConversationExists(input.conversationId)
@@ -126,12 +127,32 @@ export class SeoService {
         }
       }
 
+      if (this.isAbortSignalTriggered(options.signal)) {
+        await this.updateMessageAndTouchConversation(
+          assistantMessage.id,
+          input.conversationId,
+          content,
+          MessageStatus.ABORTED,
+        )
+        hasFinalMessageStatus = true
+
+        yield {
+          type: 'aborted',
+          conversationId: input.conversationId,
+          assistantMessageId: assistantMessage.id,
+          content,
+        }
+
+        return
+      }
+
       const completedMessage = await this.updateMessageAndTouchConversation(
         assistantMessage.id,
         input.conversationId,
         content,
         MessageStatus.COMPLETED,
       )
+      hasFinalMessageStatus = true
 
       yield {
         type: 'done',
@@ -142,13 +163,14 @@ export class SeoService {
       }
     }
     catch (error) {
-      if (assistantMessage && options.signal?.aborted) {
+      if (assistantMessage && this.isAbortSignalTriggered(options.signal)) {
         await this.updateMessageAndTouchConversation(
           assistantMessage.id,
           input.conversationId,
           content,
           MessageStatus.ABORTED,
         )
+        hasFinalMessageStatus = true
 
         yield {
           type: 'aborted',
@@ -169,6 +191,7 @@ export class SeoService {
           content || errorMessage,
           MessageStatus.FAILED,
         )
+        hasFinalMessageStatus = true
       }
 
       yield {
@@ -176,6 +199,20 @@ export class SeoService {
         conversationId: input.conversationId,
         ...(assistantMessage ? { assistantMessageId: assistantMessage.id } : {}),
         message: errorMessage,
+      }
+    }
+    finally {
+      if (
+        assistantMessage
+        && !hasFinalMessageStatus
+        && this.isAbortSignalTriggered(options.signal)
+      ) {
+        await this.updateMessageAndTouchConversation(
+          assistantMessage.id,
+          input.conversationId,
+          content,
+          MessageStatus.ABORTED,
+        )
       }
     }
   }
@@ -289,5 +326,9 @@ export class SeoService {
       return error.message
 
     return '模型服务暂时没有返回结果，请稍后重试。'
+  }
+
+  private isAbortSignalTriggered(signal: AbortSignal | undefined): boolean {
+    return signal?.aborted ?? false
   }
 }

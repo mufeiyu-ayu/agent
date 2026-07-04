@@ -54,8 +54,10 @@ export class SeoController {
       for await (const event of this.seoService.chatStream(body, {
         signal: abortController.signal,
       })) {
-        if (response.destroyed)
+        if (response.destroyed) {
+          abortController.abort()
           break
+        }
 
         writeNdjsonEvent(response, event)
       }

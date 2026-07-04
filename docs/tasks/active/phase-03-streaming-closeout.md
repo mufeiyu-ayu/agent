@@ -34,24 +34,24 @@
 
 ## Red：先定义失败用例
 
-- [ ] 用户点击停止生成后，数据库里 assistant message 不应残留 `STREAMING`。
-- [ ] 模型调用失败后，assistant message 应为 `FAILED`。
-- [ ] 正常完成后，assistant message 应为 `COMPLETED`。
-- [ ] A 会话生成中切到 B，会话内容不能串。
-- [ ] 刷新页面后，完成、失败、中断状态都能恢复展示。
+- [x] 用户点击停止生成后，数据库里 assistant message 不应残留 `STREAMING`。
+- [x] 模型调用失败后，assistant message 应为 `FAILED`。
+- [x] 正常完成后，assistant message 应为 `COMPLETED`。
+- [x] A 会话生成中切到 B，会话内容不能串。
+- [x] 刷新页面后，完成、失败、中断状态都能恢复展示。
 
 ## Green：最小实现
 
-- [ ] 确认 HTTP close 会触发 `AbortController.abort()`。
-- [ ] 确认 LLM SDK 调用收到 `AbortSignal`。
-- [ ] 在 catch/finally 中按 signal 和错误类型写入最终状态。
-- [ ] 保留 aborted 时已经生成的 partial content。
-- [ ] 前端只把 event 写入对应 `conversationId` 的消息缓存。
+- [x] 确认 HTTP close 会触发 `AbortController.abort()`。
+- [x] 确认 LLM SDK 调用收到 `AbortSignal`。
+- [x] 在 catch/finally 中按 signal 和错误类型写入最终状态。
+- [x] 保留 aborted 时已经生成的 partial content。
+- [x] 前端只把 event 写入对应 `conversationId` 的消息缓存。
 
 ## Refactor：整理边界
 
-- [ ] 把状态判断收敛成清晰的小函数，避免多处判断 `signal.aborted`。
-- [ ] 保持 `SeoService.chatStream()` 行为稳定，为阶段 4 抽 runtime 做准备。
+- [x] 把状态判断收敛成清晰的小函数，避免多处判断 `signal.aborted`。
+- [x] 保持 `SeoService.chatStream()` 行为稳定，为阶段 4 抽 runtime 做准备。
 
 ## 验证命令
 
@@ -69,13 +69,13 @@ pnpm exec prisma validate
 
 ## 验收标准
 
-- [ ] 正常生成：最终状态是 `COMPLETED`。
-- [ ] 模型错误：最终状态是 `FAILED`。
-- [ ] 用户停止：最终状态是 `ABORTED`。
-- [ ] 不存在永久停留在 `STREAMING` 的 assistant message。
-- [ ] 多会话切换不会串消息。
-- [ ] 刷新页面后能恢复最终状态。
+- [x] 正常生成：最终状态是 `COMPLETED`。
+- [x] 模型错误：最终状态是 `FAILED`。
+- [x] 用户停止：最终状态是 `ABORTED`。
+- [x] 不存在永久停留在 `STREAMING` 的 assistant message。
+- [x] 多会话切换不会串消息。
+- [x] 刷新页面后能恢复最终状态。
 
 ## 完成状态
 
-状态：进行中。
+状态：已完成。
