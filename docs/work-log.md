@@ -6,9 +6,9 @@
 
 | 类型 | 当前记录 | 下一步 |
 | --- | --- | --- |
-| 当前阶段 | 阶段 4 Agent Runtime 已完成 Task 4：`SeoContextBuilder` 已抽出，SEO Agent model messages 构造边界已独立 | 下一步拆分阶段 5 最小 Tool Calling，只做低风险只读工具 |
-| 文档结构 | docs 已重组为 `roadmap`、`tasks`、`research`、`work-log` 四类入口；当前任务以 `docs/tasks/README.md` 的 Active 状态为准 | 后续 commit 按 task docs 和 work-log 分工更新 |
-| 任务规范 | 新任务使用 TDD 风格模板；阶段 4 Task 4 已完成 checklist 和静态验证记录 | 后续任务继续按 Red / Green / Refactor 推进 |
+| 当前阶段 | 阶段 4 Agent Runtime 基础已完成：`AgentRun` / `AgentStep`、`AgentRuntimeService`、`AgentRuntimeEvent`、`SeoContextBuilder` 已形成基础边界 | 下一步拆分阶段 5 最小 Tool Calling，只做低风险只读工具 |
+| 文档结构 | docs 已重组为 `roadmap`、`tasks`、`research`、`work-log` 四类入口；当前任务以 `docs/tasks/README.md` 为准 | 后续 commit 按 task docs 和 work-log 分工更新 |
+| 任务规范 | 新任务使用 TDD 风格模板；阶段 4 四个任务均已完成 checklist 和静态验证记录 | 后续任务继续按 Red / Green / Refactor 推进 |
 | Codex 研究 | Codex 架构研究资料已精简迁移到 `docs/research/codex/` | 只作为架构参考，不直接当执行任务 |
 | 提交规范 | `AGENTS.md`、`git-commit`、`update-project-work-log` 已对齐新 docs 结构 | commit 时按改动范围同步对应 docs |
 
@@ -16,7 +16,7 @@
 
 | 日期 | 提交 | 类型 | 核心完成 | 关键文件 | 验证结果 |
 | --- | --- | --- | --- | --- | --- |
-| 2026-07-04 | 待提交 | refactor / 阶段 4 | 抽出 `SeoContextBuilder`，让 `SeoService` 通过 builder 构造 SEO Agent model messages；`AgentRuntimeService` 仍只接收通用 `buildModelMessages` 函数，不依赖 SEO 目录，不改变 stream 协议和 run/step 落库 | `apps/api/src/seo/seo-context-builder.service.ts`、`apps/api/src/seo/seo.module.ts`、`apps/api/src/seo/seo.service.ts`、`docs/tasks/phase-04-agent-runtime/task-04-seo-context-builder.md` | `pnpm --filter @agent/api typecheck`、`pnpm typecheck`、`pnpm lint`、`git diff --check` 通过 |
+| 2026-07-04 | bf7309f refactor: 抽出 SeoContextBuilder 上下文构造 | refactor / 阶段 4 | 抽出 `SeoContextBuilder`，让 `SeoService` 通过 builder 构造 SEO Agent model messages；`AgentRuntimeService` 仍只接收通用 `buildModelMessages` 函数，不依赖 SEO 目录，不改变 stream 协议和 run/step 落库 | `apps/api/src/seo/seo-context-builder.service.ts`、`apps/api/src/seo/seo.module.ts`、`apps/api/src/seo/seo.service.ts`、`docs/tasks/phase-04-agent-runtime/task-04-seo-context-builder.md` | `pnpm --filter @agent/api typecheck`、`pnpm typecheck`、`pnpm lint`、`git diff --check` 通过 |
 | 2026-07-04 | 5c0f54f refactor: 解耦 AgentRuntimeEvent 与 ChatStreamEvent | refactor / 阶段 4 | 定义内部 `AgentRuntimeEvent`，让 `AgentRuntimeService.runTurnStream()` 产出 `run_started` / `assistant_delta` / `run_completed` / `run_failed` / `run_aborted`；新增 SEO mapper 将 runtime event 转回现有 `ChatStreamEvent`，不暴露 `runId`，不改变前端协议 | `apps/api/src/agent-runtime/agent-runtime.types.ts`、`apps/api/src/agent-runtime/agent-runtime.service.ts`、`apps/api/src/seo/seo-chat-stream-event.mapper.ts`、`apps/api/src/seo/seo.service.ts`、`docs/tasks/phase-04-agent-runtime/task-03-agent-runtime-event.md` | `pnpm --filter @agent/api typecheck`、`pnpm typecheck`、`pnpm lint`、`git diff --check` 通过 |
 | 2026-07-04 | docs: add AgentRuntimeEvent task | docs / 阶段 4 | 收口 Task 2 文档状态，创建 Task 3 TDD 任务文档；明确下一步先定义内部 `AgentRuntimeEvent`，再映射到现有 `ChatStreamEvent`，暂不进入 Tool Calling | `docs/tasks/README.md`、`docs/tasks/phase-04-agent-runtime/README.md`、`docs/tasks/phase-04-agent-runtime/task-03-agent-runtime-event.md`、`docs/roadmap.md`、`docs/work-log.md` | 文档更新，无代码验证要求 |
 | 2026-07-04 | 8728ed7 refactor: 抽出 AgentRuntimeService 运行时编排 | refactor / 阶段 4 | 抽出 `AgentRuntimeService.runTurnStream()`，让 runtime 负责一次 stream turn 的消息落库、history 加载、LLM stream、run/step 收口；`SeoService.chatStream()` 收敛为 SEO agent 参数注入，不改变 `ChatStreamEvent` 协议 | `apps/api/src/agent-runtime/agent-runtime.service.ts`、`apps/api/src/agent-runtime/agent-runtime.types.ts`、`apps/api/src/agent-runtime/agent-runtime.module.ts`、`apps/api/src/seo/seo.service.ts`、`docs/tasks/phase-04-agent-runtime/task-02-agent-runtime-service.md` | `pnpm --filter @agent/api typecheck`、`pnpm typecheck`、`pnpm lint` 通过 |
