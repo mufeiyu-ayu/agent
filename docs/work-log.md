@@ -6,9 +6,9 @@
 
 | 类型 | 当前记录 | 下一步 |
 | --- | --- | --- |
-| 当前阶段 | 阶段 4 Agent Runtime 已完成 Task 1，并完成一次 GitHub review 修正；Task 2 已创建为当前任务 | 让 Codex 先重跑验证，再开始 `AgentRuntimeService.runTurnStream()` |
+| 当前阶段 | 阶段 4 Agent Runtime 已完成 Task 2：`AgentRuntimeService.runTurnStream()` 已成为 stream turn 主编排入口 | 下一步定义内部 `AgentRuntimeEvent` 并映射到 `ChatStreamEvent` |
 | 文档结构 | docs 已重组为 `roadmap`、`tasks`、`research`、`work-log` 四类入口；当前任务以 `docs/tasks/README.md` 的 Active 状态为准 | 后续 commit 按 task docs 和 work-log 分工更新 |
-| 任务规范 | 新任务使用 TDD 风格模板；阶段 4 Task 2 已写入 `docs/tasks/phase-04-agent-runtime/task-02-agent-runtime-service.md` | 代码实现时按 Red / Green / Refactor 推进 |
+| 任务规范 | 新任务使用 TDD 风格模板；阶段 4 Task 2 已完成 checklist 和静态验证记录 | 后续任务继续按 Red / Green / Refactor 推进 |
 | Codex 研究 | Codex 架构研究资料已精简迁移到 `docs/research/codex/` | 只作为架构参考，不直接当执行任务 |
 | 提交规范 | `AGENTS.md`、`git-commit`、`update-project-work-log` 已对齐新 docs 结构 | commit 时按改动范围同步对应 docs |
 
@@ -16,6 +16,7 @@
 
 | 日期 | 提交 | 类型 | 核心完成 | 关键文件 | 验证结果 |
 | --- | --- | --- | --- | --- | --- |
+| 2026-07-04 | 待提交 | refactor / 阶段 4 | 抽出 `AgentRuntimeService.runTurnStream()`，让 runtime 负责一次 stream turn 的消息落库、history 加载、LLM stream、run/step 收口；`SeoService.chatStream()` 收敛为 SEO agent 参数注入，不改变 `ChatStreamEvent` 协议 | `apps/api/src/agent-runtime/agent-runtime.service.ts`、`apps/api/src/agent-runtime/agent-runtime.types.ts`、`apps/api/src/agent-runtime/agent-runtime.module.ts`、`apps/api/src/seo/seo.service.ts`、`docs/tasks/phase-04-agent-runtime/task-02-agent-runtime-service.md` | `pnpm --filter @agent/api typecheck`、`pnpm typecheck`、`pnpm lint` 通过 |
 | 2026-07-04 | GitHub review follow-up | fix / docs | 收紧 Task 1 实现边界：移除 LLM stream options 的 runtime 回调；`OpenAICompatibleClient` 不再调用业务观测 callback；`completeRun()` 不再把未完成 step 静默改成 `COMPLETED`；`SeoService` 在首次 delta 或无 delta 正常结束时切换 `call_llm` -> `stream_assistant_reply`；新增 Task 2 TDD 文档并设为 Active | `apps/api/src/llm/llm.types.ts`、`apps/api/src/llm/clients/openai-compatible.client.ts`、`apps/api/src/agent-runtime/agent-run-recorder.service.ts`、`apps/api/src/seo/seo.service.ts`、`docs/tasks/phase-04-agent-runtime/task-02-agent-runtime-service.md`、`docs/tasks/README.md`、`docs/roadmap.md` | 通过 GitHub `fetch_file` 复查关键文件；本轮为远程直接修正，需 Codex 本地重跑 `pnpm typecheck`、`pnpm lint` |
 | 2026-07-04 | feat: 实现 AgentRun 和 AgentStep 基础模型 | feat / 阶段 4 | 新增 `AgentRun` / `AgentStep` Prisma 模型、共享 contracts 和 recorder service；stream chat 保存 user message 后创建 run，预建 4 个基础 step，assistant message 创建后回填 `assistantMessageId`，done/error/aborted 路径同步收口 run/step 状态 | `prisma/schema.prisma`、`prisma/migrations/20260704082435_add_agent_run_step/migration.sql`、`packages/contracts/src/agent-run.ts`、`apps/api/src/agent-runtime/**`、`apps/api/src/seo/seo.service.ts` | `pnpm prisma:generate`、`pnpm exec prisma validate`、`pnpm typecheck`、`pnpm lint`、`git diff --check` 通过 |
 | 2026-07-04 | fix: 收口流式聊天最终态一致性 | fix / 阶段收口 | 收口阶段 3 Streaming Chat 最终态一致性：HTTP stream close 时显式触发 abort；`SeoService.chatStream()` 在 done/error/aborted 路径写入 `COMPLETED` / `FAILED` / `ABORTED`，并用 `finally` 兜底避免 assistant message 长期停留 `STREAMING`；同步完成阶段 3 任务 checklist 和路线状态 | `apps/api/src/seo/seo.controller.ts`、`apps/api/src/seo/seo.service.ts`、`docs/tasks/completed/phase-03-streaming-closeout.md`、`docs/tasks/README.md`、`docs/roadmap.md` | service-level smoke 覆盖 `COMPLETED` / `FAILED` / generator 提前关闭后的 `ABORTED`；`pnpm typecheck`、`pnpm lint`、`git diff --check` 通过 |

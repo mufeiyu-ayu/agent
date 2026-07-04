@@ -87,45 +87,45 @@ return this.agentRuntimeService.runTurnStream({
 
 实现前先确认当前问题：
 
-- [ ] `SeoService.chatStream()` 同时包含业务入口和 runtime 编排。
-- [ ] run/step 状态切换散落在 SEO service 里。
-- [ ] 后续 Tool Calling 如果直接加进 `SeoService`，会让该 service 继续膨胀。
-- [ ] 当前没有一个明确的 `runTurnStream()` 边界来承载未来 tool loop / approval / runtime event。
+- [x] `SeoService.chatStream()` 同时包含业务入口和 runtime 编排。
+- [x] run/step 状态切换散落在 SEO service 里。
+- [x] 后续 Tool Calling 如果直接加进 `SeoService`，会让该 service 继续膨胀。
+- [x] 当前没有一个明确的 `runTurnStream()` 边界来承载未来 tool loop / approval / runtime event。
 
 ## Green：最小实现
 
 ### 1. Service 边界
 
-- [ ] 新增 `AgentRuntimeService`。
-- [ ] 在 `AgentRuntimeModule` 中注册并导出 `AgentRuntimeService`。
-- [ ] `AgentRuntimeService` 依赖：
+- [x] 新增 `AgentRuntimeService`。
+- [x] 在 `AgentRuntimeModule` 中注册并导出 `AgentRuntimeService`。
+- [x] `AgentRuntimeService` 依赖：
   - `PrismaService`
   - `LLMService`
   - `AgentRunRecorderService`
-- [ ] `SeoService` 注入 `AgentRuntimeService`。
+- [x] `SeoService` 注入 `AgentRuntimeService`。
 
 ### 2. 迁移 stream 编排
 
-- [ ] `runTurnStream()` 内部负责创建 user message。
-- [ ] `runTurnStream()` 内部负责创建 assistant streaming message。
-- [ ] `runTurnStream()` 内部负责加载 history。
-- [ ] `runTurnStream()` 内部负责调用 `LLMService.chatStream()`。
-- [ ] `runTurnStream()` 内部负责 done/error/aborted 的 message 和 run/step 收口。
-- [ ] `SeoService.chatStream()` 只传入 SEO 相关参数和 model messages 构造函数。
+- [x] `runTurnStream()` 内部负责创建 user message。
+- [x] `runTurnStream()` 内部负责创建 assistant streaming message。
+- [x] `runTurnStream()` 内部负责加载 history。
+- [x] `runTurnStream()` 内部负责调用 `LLMService.chatStream()`。
+- [x] `runTurnStream()` 内部负责 done/error/aborted 的 message 和 run/step 收口。
+- [x] `SeoService.chatStream()` 只传入 SEO 相关参数和 model messages 构造函数。
 
 ### 3. 行为保持
 
-- [ ] 前端收到的 `start/delta/done/error/aborted` event 字段不变。
-- [ ] `assistantMessage.status` 最终态不变。
-- [ ] `AgentRun.status` 最终态不变。
-- [ ] `AgentStep` 四个基础 step 仍按 Task 04-01 规则记录。
+- [x] 前端收到的 `start/delta/done/error/aborted` event 字段不变。
+- [x] `assistantMessage.status` 最终态不变。
+- [x] `AgentRun.status` 最终态不变。
+- [x] `AgentStep` 四个基础 step 仍按 Task 04-01 规则记录。
 
 ## Refactor：整理边界
 
-- [ ] `AgentRunRecorderService` 只做持久化记录，不承载 LLM 调用。
-- [ ] `AgentRuntimeService` 承载一次 turn 的执行编排。
-- [ ] `SeoService` 承载 SEO agent 入口和 prompt/context 注入。
-- [ ] 不把 SEO 专用逻辑写进 `agent-runtime` 目录。
+- [x] `AgentRunRecorderService` 只做持久化记录，不承载 LLM 调用。
+- [x] `AgentRuntimeService` 承载一次 turn 的执行编排。
+- [x] `SeoService` 承载 SEO agent 入口和 prompt/context 注入。
+- [x] 不把 SEO 专用逻辑写进 `agent-runtime` 目录。
 
 ## 验证命令
 
@@ -147,12 +147,18 @@ pnpm lint
 
 ## 验收标准
 
-- [ ] `SeoService.chatStream()` 明显变薄。
-- [ ] `AgentRuntimeService.runTurnStream()` 成为一次 stream turn 的主编排入口。
-- [ ] 当前 UI 行为不变。
-- [ ] 当前数据库 run/step 行为不变。
-- [ ] `typecheck`、`lint` 通过。
+- [x] `SeoService.chatStream()` 明显变薄。
+- [x] `AgentRuntimeService.runTurnStream()` 成为一次 stream turn 的主编排入口。
+- [x] 当前 UI 行为不变。
+- [x] 当前数据库 run/step 行为不变。
+- [x] `typecheck`、`lint` 通过。
 
 ## 完成状态
 
-状态：待实现。
+状态：已完成实现与静态验证。
+
+本次验证：
+
+- `pnpm --filter @agent/api typecheck`
+- `pnpm typecheck`
+- `pnpm lint`
