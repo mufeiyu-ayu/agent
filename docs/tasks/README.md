@@ -7,6 +7,7 @@
 | 区域 | 状态 | 文档 | 说明 |
 | --- | --- | --- | --- |
 | 阶段 4 Agent Runtime | Active | [phase-04-agent-runtime/README.md](./phase-04-agent-runtime/README.md) | 从 Chat 进入可观测 Agent Run |
+| 阶段 4 Task 2 | Active | [phase-04-agent-runtime/task-02-agent-runtime-service.md](./phase-04-agent-runtime/task-02-agent-runtime-service.md) | 抽出 `AgentRuntimeService.runTurnStream()` |
 | 阶段 4 Task 1 | Completed | [phase-04-agent-runtime/task-01-agent-run-step-model.md](./phase-04-agent-runtime/task-01-agent-run-step-model.md) | `AgentRun` / `AgentStep` 基础模型 |
 | 阶段 3 收口 | Completed | [completed/phase-03-streaming-closeout.md](./completed/phase-03-streaming-closeout.md) | 已收口 `done/error/aborted` 最终态一致性 |
 | 阶段 2 | Completed | [completed/phase-02-agent-chat-session.md](./completed/phase-02-agent-chat-session.md) | 多会话和消息持久化已完成 |
