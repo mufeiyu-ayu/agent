@@ -7,6 +7,7 @@
 | 区域 | 状态 | 文档 | 说明 |
 | --- | --- | --- | --- |
 | 阶段 4 Agent Runtime | Active | [phase-04-agent-runtime/README.md](./phase-04-agent-runtime/README.md) | 从 Chat 进入可观测 Agent Run |
+| 阶段 4 Task 4 | Completed | [phase-04-agent-runtime/task-04-seo-context-builder.md](./phase-04-agent-runtime/task-04-seo-context-builder.md) | 抽出 `SeoContextBuilder`，整理 SEO model messages 构造边界 |
 | 阶段 4 Task 3 | Completed | [phase-04-agent-runtime/task-03-agent-runtime-event.md](./phase-04-agent-runtime/task-03-agent-runtime-event.md) | 定义内部 `AgentRuntimeEvent` 并映射到 `ChatStreamEvent` |
 | 阶段 4 Task 2 | Completed | [phase-04-agent-runtime/task-02-agent-runtime-service.md](./phase-04-agent-runtime/task-02-agent-runtime-service.md) | 抽出 `AgentRuntimeService.runTurnStream()` |
 | 阶段 4 Task 1 | Completed | [phase-04-agent-runtime/task-01-agent-run-step-model.md](./phase-04-agent-runtime/task-01-agent-run-step-model.md) | `AgentRun` / `AgentStep` 基础模型 |

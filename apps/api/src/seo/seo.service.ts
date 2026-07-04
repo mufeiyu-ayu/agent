@@ -12,8 +12,8 @@ import { AgentRuntimeService } from '../agent-runtime/agent-runtime.service.js'
 import { MessageRole, MessageStatus } from '../generated/prisma/client.js'
 import { LLMService } from '../llm/llm.service.js'
 import { PrismaService } from '../prisma/prisma.service.js'
-import { buildSeoAgentChatMessages } from './prompts/seo-agent.prompt.js'
 import { toChatStreamEvent } from './seo-chat-stream-event.mapper.js'
+import { SeoContextBuilder } from './seo-context-builder.service.js'
 
 const CHAT_HISTORY_LIMIT = 12
 
@@ -32,6 +32,9 @@ export class SeoService {
 
     @Inject(AgentRuntimeService)
     private readonly agentRuntimeService: AgentRuntimeService,
+
+    @Inject(SeoContextBuilder)
+    private readonly seoContextBuilder: SeoContextBuilder,
   ) {}
 
   async chat(input: SeoChatDto): Promise<SeoChatResponse> {
@@ -44,9 +47,9 @@ export class SeoService {
     )
 
     const historyMessages = await this.listRecentChatMessages(input.conversationId)
-    const llmMessages = buildSeoAgentChatMessages(
-      historyMessages.map(message => this.toLlmMessage(message)),
-    )
+    const llmMessages = this.seoContextBuilder.buildModelMessages({
+      historyMessages: historyMessages.map(message => this.toLlmMessage(message)),
+    })
 
     let reply: string
 
@@ -92,7 +95,8 @@ export class SeoService {
       historyLimit: CHAT_HISTORY_LIMIT,
       temperature: 0.4,
       maxTokens: 1200,
-      buildModelMessages: buildSeoAgentChatMessages,
+      buildModelMessages: historyMessages =>
+        this.seoContextBuilder.buildModelMessages({ historyMessages }),
     })
 
     for await (const event of runtimeEvents) {
