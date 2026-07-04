@@ -137,7 +137,7 @@ AgentRun 1 -> N AgentStep
 - [x] 加载 history 前创建 `load_conversation_history` step。
 - [x] history 加载成功后标记该 step `COMPLETED`。
 - [x] 调用 LLM 前创建 `call_llm` step。
-- [x] 收到首个 delta 或模型 stream 建立后，将 `call_llm` 标记 `COMPLETED`。
+- [x] 收到首个 delta，或模型正常结束但无 delta 时，将 `call_llm` 标记 `COMPLETED`。
 - [x] 创建 `stream_assistant_reply` step 并在生成过程中保持 `RUNNING`。
 - [x] done 时将 `stream_assistant_reply` 和 `AgentRun` 标记为 `COMPLETED`。
 - [x] error 时将当前 step 和 `AgentRun` 标记为 `FAILED`。
@@ -149,6 +149,8 @@ AgentRun 1 -> N AgentStep
 - [x] 保持 `SeoService.chatStream()` 可读，不在本任务里抽完整 runtime。
 - [x] 命名统一使用 `run`，不要同时混用 `turn` 字段名。
 - [x] `AgentRun.id` 可以在后续作为 stream event 的 `runId`。
+- [x] LLM client 不暴露 runtime 业务回调，step 切换留在业务编排层。
+- [x] `completeRun()` 不静默把未完成 step 改成 `COMPLETED`；如有异常未完成 step，只记录日志。
 
 ## 验证命令
 
@@ -197,9 +199,9 @@ pnpm prisma:migrate --name add_agent_run_step
 
 ## 完成状态
 
-状态：已完成实现与静态验证。
+状态：已完成实现；后续 GitHub review 修正已提交。
 
-本次验证：
+初次验证：
 
 - `pnpm prisma:generate`
 - `pnpm exec prisma validate`
@@ -208,3 +210,11 @@ pnpm prisma:migrate --name add_agent_run_step
 - `pnpm --filter @agent/api typecheck`
 - `pnpm typecheck`
 - `pnpm lint`
+
+后续 review 修正：
+
+- 移除 LLM stream options 的 runtime 回调。
+- 将 `call_llm` -> `stream_assistant_reply` 的 step 切换保留在 `SeoService` 编排层。
+- `completeRun()` 不再修改未完成 step 为 `COMPLETED`。
+
+本轮 GitHub 直接提交后，需要在本地重新运行 `pnpm typecheck` 和 `pnpm lint`。
