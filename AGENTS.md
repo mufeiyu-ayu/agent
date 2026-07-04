@@ -1,5 +1,8 @@
 # AGENTS.md
 
+## codex 必须遵守的规则!
+- DO NOT send optional commentary ！！！！
+
 ## 1. 项目定位
 
 本项目用于学习并实践 Agent 应用开发。目标不是只把代码写完，而是通过一个 Vue + NestJS + TypeScript 的 AI SEO Agent 项目，逐步掌握：
