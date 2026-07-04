@@ -1,60 +1,66 @@
 ---
 name: git-commit
-description: 执行项目提交前的固定流程。Use when the user asks to commit、提交代码、git commit、帮我提交、提交当前改动, or when a commit should update docs/work-log.md before creating the git commit.
+description: 执行项目 commit 前的固定流程。Use when the user asks to commit、提交代码、git commit、帮我提交、提交当前改动, or when a commit should synchronize concise project docs before creating the git commit.
 ---
 
 # Git Commit 工作流
 
-## 概述
+## 目标
 
-本 skill 规范本项目的提交流程。目标是让每次 commit 不只是保存代码，也同步保存项目上下文，方便后续 Codex 快速恢复记忆。
+让每次 commit 保持三件事一致：
 
-注意：skill 不能像函数一样真正“调用另一个 skill”。当本 skill 被触发时，Codex 必须按下面流程主动检查并更新必要的项目记录。
+1. 代码改动范围清楚。
+2. 必要验证已运行或说明原因。
+3. 与本次改动相关的 docs 已同步，但不写重复长文。
 
 ## 默认流程
 
-1. 读取当前状态：
+1. 检查改动范围：
    - `git status --short`
    - `git diff --stat`
-   - 必要时读取关键 diff 或关键文件
-2. 判断是否需要更新记录：
-   - 总是检查是否需要更新 `docs/work-log.md`，但写入前必须先和用户确认拟记录内容，记录本次 commit 的项目推进、核心完成、验证结果和下一步。
-   - 总是检查 `docs/development-task-plan.md`。如果本次提交推进了业务任务，必须更新对应任务的 `状态`、`验收标准` 或 `下一步`；如果新增了不属于现有行的业务能力，先新增任务行。
-   - 普通工程搭建、依赖安装、UI 调整、后端基础设施、commit 上下文和项目管理信息只写 `docs/work-log.md`；不要写进 `docs/development-task-plan.md`，除非它们直接改变业务任务的完成状态。
-3. 更新记录前和用户确认：
-   - 说明准备写入 `docs/work-log.md` 的记录摘要、关键文件、验证结果和下一步。
-   - 用户确认后再修改 `docs/work-log.md`。
-4. 提交前验证：
-   - 优先运行与本次改动相关的最小验证。
-   - 常规工程改动默认运行 `pnpm lint`。
-   - 涉及 TypeScript / Vue / Nest 代码时，运行 `pnpm typecheck`。
-   - 涉及前端构建或 Vite 配置时，运行 `pnpm --filter @agent/web build`。
-   - 如果某项验证无法运行，要在最终回复和 `docs/work-log.md` 里说明原因。
-5. 暂存文件：
-   - 使用 `git add` 暂存本次相关改动。
-   - 不要还原用户已有改动。
-   - 如果发现明显无关或敏感文件，先停下说明。
-6. 创建 commit：
+   - 必要时读取关键 diff。
+2. 判断本次改动属于哪个任务：
+   - 优先查看 `docs/tasks/README.md`。
+   - 当前任务看 `docs/tasks/active/`。
+   - 阶段 4 看 `docs/tasks/phase-04-agent-runtime/`。
+   - 不再把 `docs/development-task-plan.md` 当主看板。
+3. 按需同步 docs：
+
+| 情况 | 更新位置 |
+| --- | --- |
+| 推进任务 checklist、状态、验收 | 对应 `docs/tasks/**` 任务文档 |
+| 阶段状态变化 | `docs/roadmap.md`、`docs/tasks/README.md` |
+| 阶段完成 | 精简归档到 `docs/tasks/completed/` |
+| 重要架构决策、commit 上下文、验证结果 | `docs/work-log.md` |
+| 小修、样式微调、纯 typo | 通常不需要更新 docs |
+
+4. 更新 `docs/work-log.md` 的规则：
+   - commit workflow 中如果本次改动有明确项目推进，可以直接追加简洁记录。
+   - 如果记录范围不确定，先向用户确认。
+   - 记录只写事实：目标、核心完成、关键文件、验证结果、下一步。
+   - 不记录长篇解释，不复制任务文档内容。
+5. 运行验证：
+   - 常规默认：`pnpm lint`。
+   - 涉及 TS / Vue / Nest：`pnpm typecheck`。
+   - 涉及前端构建或 Vite：`pnpm --filter @agent/web build`。
+   - 涉及 Prisma：`pnpm prisma:generate`、`pnpm exec prisma validate`。
+   - 验证失败先修；无法运行则说明原因。
+6. 暂存文件：
+   - 只 `git add` 本次相关文件。
+   - 不提交 `.env`、密钥、无关大文件。
+   - 不还原用户已有改动。
+7. 创建 commit：
    - 提交信息使用中文。
-   - 格式建议：`type: 简短说明`
-   - 常用 type：`feat`、`fix`、`docs`、`refactor`、`chore`、`test`
-7. 提交后更新记录：
-   - 获取短 hash：`git rev-parse --short HEAD`
-   - 如果 `docs/work-log.md` 中本次记录的 `提交` 仍是 `待提交`，将其改为短 hash 和提交信息。
-   - 如果只修改了 `docs/work-log.md` 中的提交 hash，创建第二个 `docs` commit；除非用户明确要求“只要一个 commit”，则提交前先把 commit 信息写入为“待提交”，最终回复中说明 hash。
+   - 格式：`type: 简短说明`。
+   - 常用 type：`feat`、`fix`、`docs`、`refactor`、`chore`、`test`。
 8. 最终回复：
-   - 说明 commit hash 和提交信息。
-   - 说明执行过的验证。
-   - 说明是否更新了 `docs/work-log.md`。
-
-## 记录职责
-
-- `docs/development-task-plan.md`：记录项目完成路径和业务任务状态，是后续判断“下一步做什么”的主看板。
-- `docs/work-log.md`：记录项目推进、commit 上下文、关键决策、验证结果、下一步。
+   - commit hash。
+   - commit message。
+   - 执行过的验证。
+   - 是否同步 docs。
 
 ## 安全规则
 
-- 不提交 `.env`、API Key、token、密码、私有服务密钥。
+- 不自动 `git push`，除非用户明确要求。
 - 不执行 `git reset --hard`、`git clean -fd`、`git checkout --` 等破坏性命令，除非用户明确要求。
-- 不自动 `git push`，除非用户明确说推送。
-- 如果 git 工作区包含明显无关的大量改动，先说明范围，再只提交本次相关文件。
+- 如果工作区包含明显无关改动，先说明提交范围，再只提交本次相关文件。
