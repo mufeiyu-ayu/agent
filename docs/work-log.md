@@ -7,7 +7,7 @@
 | 类型 | 当前记录 | 下一步 |
 | --- | --- | --- |
 | 当前阶段 | 阶段 3 Streaming Chat 最终态一致性已收口，阶段 4 Agent Runtime 已准备任务文档 | 下一步开始实现 `AgentRun` / `AgentStep` |
-| 文档结构 | docs 已重组为 `roadmap`、`tasks`、`research`、`work-log` 四类入口 | 后续 commit 按 task docs 和 work-log 分工更新 |
+| 文档结构 | docs 已重组为 `roadmap`、`tasks`、`research`、`work-log` 四类入口；当前任务以 `docs/tasks/README.md` 的 Active 状态为准 | 后续 commit 按 task docs 和 work-log 分工更新 |
 | 任务规范 | 新任务使用 TDD 风格模板，当前阶段 4 Task 1 已写入 `docs/tasks/phase-04-agent-runtime/task-01-agent-run-step-model.md` | 代码实现时按 Red / Green / Refactor 推进 |
 | Codex 研究 | Codex 架构研究资料已精简迁移到 `docs/research/codex/` | 只作为架构参考，不直接当执行任务 |
 | 提交规范 | `AGENTS.md`、`git-commit`、`update-project-work-log` 已对齐新 docs 结构 | commit 时按改动范围同步对应 docs |
@@ -16,7 +16,7 @@
 
 | 日期 | 提交 | 类型 | 核心完成 | 关键文件 | 验证结果 |
 | --- | --- | --- | --- | --- | --- |
-| 2026-07-04 | fix: 收口流式聊天最终态一致性 | fix / 阶段收口 | 收口阶段 3 Streaming Chat 最终态一致性：HTTP stream close 时显式触发 abort；`SeoService.chatStream()` 在 done/error/aborted 路径写入 `COMPLETED` / `FAILED` / `ABORTED`，并用 `finally` 兜底避免 assistant message 长期停留 `STREAMING`；同步完成 active 任务 checklist 和路线状态 | `apps/api/src/seo/seo.controller.ts`、`apps/api/src/seo/seo.service.ts`、`docs/tasks/active/phase-03-streaming-closeout.md`、`docs/tasks/README.md`、`docs/roadmap.md` | service-level smoke 覆盖 `COMPLETED` / `FAILED` / generator 提前关闭后的 `ABORTED`；`pnpm typecheck`、`pnpm lint`、`git diff --check` 通过 |
+| 2026-07-04 | fix: 收口流式聊天最终态一致性 | fix / 阶段收口 | 收口阶段 3 Streaming Chat 最终态一致性：HTTP stream close 时显式触发 abort；`SeoService.chatStream()` 在 done/error/aborted 路径写入 `COMPLETED` / `FAILED` / `ABORTED`，并用 `finally` 兜底避免 assistant message 长期停留 `STREAMING`；同步完成阶段 3 任务 checklist 和路线状态 | `apps/api/src/seo/seo.controller.ts`、`apps/api/src/seo/seo.service.ts`、`docs/tasks/completed/phase-03-streaming-closeout.md`、`docs/tasks/README.md`、`docs/roadmap.md` | service-level smoke 覆盖 `COMPLETED` / `FAILED` / generator 提前关闭后的 `ABORTED`；`pnpm typecheck`、`pnpm lint`、`git diff --check` 通过 |
 | 2026-07-03 | 本次 GitHub docs 更新 | docs / 流程治理 | 精简 `AGENTS.md`，更新 commit 和 work-log skill，使后续 commit 按 `docs/tasks`、`docs/roadmap.md`、`docs/work-log.md` 分工同步；明确不再向 `docs/development-task-plan.md` 写新任务 | `AGENTS.md`、`.codex/skills/git-commit/SKILL.md`、`.codex/skills/update-project-work-log/SKILL.md`、`docs/work-log.md` | 通过 GitHub `fetch_file` 复查新规则内容；仅文档治理改动，未运行代码 typecheck/lint |
 | 2026-07-03 | docs 目录重组 | docs / 架构治理 | 重组 docs 目录：新增 `docs/README.md`、`docs/roadmap.md`、TDD 任务模板、阶段 3 收口任务、阶段 4 Agent Runtime 任务；归档阶段 2，精简 Codex 研究资料并迁移到 `docs/research/codex/` | `docs/README.md`、`docs/roadmap.md`、`docs/tasks/**`、`docs/research/codex/**` | 通过 GitHub `fetch_file` 验证新入口可读，旧 `docs/tasks/index.md` 和旧 `docs/codex-architecture-study/README.md` 已移除 |
 | 2026-06-30 | 428690f docs: 新增 Codex 架构学习资料 | docs / 架构研究 | 深度研究 Codex 开源项目主链路，提炼 Thread / Turn / Session、Streaming、Tool Calling、权限、Context、Persistence 等架构思想，并映射到当前 AI SEO Agent 学习路线 | `docs/codex-architecture-study/*`、`docs/codex-learning-roadmap.md` | `rg` 路径检查和 `git diff --check` 通过；后续已迁移到 `docs/research/codex/` 精简保留 |
