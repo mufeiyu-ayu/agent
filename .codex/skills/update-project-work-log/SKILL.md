@@ -1,61 +1,76 @@
 ---
 name: update-project-work-log
-description: 更新项目工作记录和 commit 上下文。Use only when the user asks to 更新项目工作记录、记录这次 commit、记录项目进度、写工作日志、保存 Codex 项目记忆, or during an explicit commit / git commit workflow after confirming the planned log entry with the user.
+description: 更新 docs/work-log.md 的项目进展或 commit 上下文。Use only when the user asks to 更新项目工作记录、记录这次 commit、记录项目进度、写工作日志、保存 Codex 项目记忆, or during an explicit commit / git commit workflow.
 ---
 
 # 更新项目工作记录
 
-## 概述
+## 目标
 
-维护项目内的 `docs/work-log.md`，记录用户明确要求保存的项目进度或 commit 上下文。这个 skill 关注“项目做了什么”，不替代 `docs/learning-log.md` 的 Agent 概念学习记录。
+维护 `docs/work-log.md`，让后续 Codex 能快速理解项目最近做了什么、验证了什么、下一步是什么。
 
-不要因为刚完成了一个功能、排查或阶段性任务就自动更新 `docs/work-log.md`。默认只在用户明确要求记录，或进入 commit / git commit 流程时更新；更新前先向用户说明拟写入的记录范围、核心完成和验证结果，得到确认后再改文件。
+`work-log` 只记录项目事实，不替代：
+
+- `docs/roadmap.md`：阶段路线。
+- `docs/tasks/README.md`：任务看板。
+- `docs/tasks/**`：具体任务和验收。
+- `docs/research/**`：研究资料。
+
+## 使用时机
+
+| 场景 | 是否更新 |
+| --- | --- |
+| 用户明确要求记录进度 | 更新 |
+| commit / git commit workflow | 按需更新 |
+| 重要架构决策 | 更新 |
+| 阶段完成或任务状态明显变化 | 更新，并同步对应 task docs |
+| 小修、typo、纯样式微调 | 通常不更新 |
 
 ## 默认流程
 
-1. 确认当前目录是本项目根目录或其子目录；必要时定位 `docs/work-log.md`。
-2. 读取 `AGENTS.md`、已有 `docs/work-log.md`、`git status --short`，并按需要读取 `git diff --stat`、最近提交和本次涉及的关键文件。
-3. 判断本次记录类型：
-   - 架构迁移
+1. 读取：
+   - `docs/work-log.md`
+   - `docs/tasks/README.md`
+   - 当前相关任务文档
+   - `git status --short`
+   - 必要时读取 `git diff --stat`
+2. 判断本次记录类型：
    - 功能开发
-   - 接口联调
-   - 错误排查
-   - 重要讨论或技术决策
+   - 架构迁移
+   - 错误修复
+   - 文档整理
+   - 技术决策
    - commit 总结
-4. 更新前先和用户确认拟写入内容：
-   - 说明要更新的“当前项目状态”和“工作记录”摘要。
-   - 说明会记录哪些关键文件和验证结果。
-   - 用户确认后再修改 `docs/work-log.md`。
-5. 更新 `docs/work-log.md`：
-   - 如果文件不存在，创建包含“当前项目状态”“工作记录”“记录规则”的最小模板。
-   - 只有用户确认记录本次项目推进时，才在“工作记录”表格追加一行。
-   - 如果项目状态变化，同步更新“当前项目状态”表格。
-   - 如果记录发生在 commit 前，`提交` 写 `待提交`；如果已经 commit，写短 hash 和提交信息。
-6. 更新后轻量自审，确认记录具体、真实、可复盘，没有泄露敏感信息。
+3. 写入内容保持简洁：
+   - 日期：`YYYY-MM-DD`
+   - 提交：commit 前写 `待提交`，commit 后可写短 hash
+   - 类型
+   - 核心完成
+   - 关键文件
+   - 验证结果
+   - 下一步
+4. 如果本次处于 commit workflow，记录范围明确时可以直接写入；不确定时先问用户。
+5. 记录不得包含 API Key、token、数据库密码、完整敏感报错。
 
-## 表格字段
+## 当前状态表规则
 
-“工作记录”表格使用这些字段：
+`docs/work-log.md` 顶部的当前状态只在项目阶段或下一步明显变化时更新。
 
-- `日期`：使用 `YYYY-MM-DD`。
-- `提交`：写短 hash 和提交信息；未提交时写 `待提交`。
-- `类型`：如架构迁移、功能开发、接口联调、错误排查、技术决策。
-- `目标`：本次要解决的问题。
-- `核心完成`：实际完成的核心事项。
-- `业务进度`：项目功能推进到哪里。
-- `讨论与决策`：记录重要取舍，例如技术栈、目录结构、接口边界。
-- `关键文件`：写项目相对路径。
-- `验证结果`：写执行过的命令、接口结果或未验证原因。
-- `下一步`：写一个具体、可执行的下一步。
+不要每次 commit 都重写当前状态。
 
-## 记录原则
+## 写作原则
 
-- 用简体中文记录。
-- 只记录真实发生的项目事实，不替用户补不存在的结论。
-- 保持简洁，优先服务后续 Codex 快速恢复上下文。
-- 不记录 API Key、token、密码、私有服务密钥、完整敏感报错。
-- 如果本次只是概念学习，优先更新 `docs/learning-log.md`；如果既学习又推动项目，可以两个文档都更新，但内容职责要分开。
+- 简体中文。
+- 只写真实发生的事实。
+- 一次记录尽量短。
+- 不复制任务文档的大段内容。
+- 不把研究总结写进 work-log；研究资料放 `docs/research/`。
+- 如果改动推进了任务 checklist，同时更新对应 `docs/tasks/**`。
 
 ## 输出方式
 
-完成更新后，简短告诉用户新增或修改了哪条记录，并给出 `docs/work-log.md` 的位置。只有在用户要求时才粘贴完整日志内容。
+完成后只需简短说明：
+
+- 是否更新 `docs/work-log.md`。
+- 新增或修改了哪条记录。
+- 是否同步了对应任务文档。
