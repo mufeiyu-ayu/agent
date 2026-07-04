@@ -33,6 +33,8 @@ export interface ChatOptions {
 export interface ChatStreamOptions extends ChatOptions {
   /** 外部中止信号，用于后续支持用户主动停止生成。 */
   signal?: AbortSignal
+  /** 模型侧 stream 建立后触发，用于业务层记录运行阶段。 */
+  onStreamReady?: () => Promise<void> | void
 }
 
 export const SUPPORTED_DEEPSEEK_MODELS = [

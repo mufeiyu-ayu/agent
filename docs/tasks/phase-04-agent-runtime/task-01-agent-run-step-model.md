@@ -107,48 +107,48 @@ AgentRun 1 -> N AgentStep
 
 实现前先确认当前系统不具备这些能力：
 
-- [ ] 发送一条 stream chat 后，数据库中没有 `AgentRun` 记录。
-- [ ] 无法查询一次回答经历了哪些 step。
-- [ ] 用户停止生成后，没有 run 级别的 `ABORTED` 记录。
-- [ ] 模型失败后，无法知道失败发生在 `call_llm` 还是 `stream_assistant_reply`。
-- [ ] contracts 中没有可复用的 `AgentRun` / `AgentStep` 类型。
+- [x] 发送一条 stream chat 后，数据库中没有 `AgentRun` 记录。
+- [x] 无法查询一次回答经历了哪些 step。
+- [x] 用户停止生成后，没有 run 级别的 `ABORTED` 记录。
+- [x] 模型失败后，无法知道失败发生在 `call_llm` 还是 `stream_assistant_reply`。
+- [x] contracts 中没有可复用的 `AgentRun` / `AgentStep` 类型。
 
 ## Green：最小实现
 
 ### 1. Prisma schema
 
-- [ ] 新增 `AgentRunStatus` enum。
-- [ ] 新增 `AgentStepStatus` enum。
-- [ ] 新增 `AgentRun` model。
-- [ ] 新增 `AgentStep` model。
-- [ ] 添加必要索引：`conversationId`、`userMessageId`、`assistantMessageId`、`runId`、`status`、`createdAt`。
-- [ ] 生成 migration。
+- [x] 新增 `AgentRunStatus` enum。
+- [x] 新增 `AgentStepStatus` enum。
+- [x] 新增 `AgentRun` model。
+- [x] 新增 `AgentStep` model。
+- [x] 添加必要索引：`conversationId`、`userMessageId`、`assistantMessageId`、`runId`、`status`、`createdAt`。
+- [x] 生成 migration。
 
 ### 2. Contracts
 
-- [ ] 在 `packages/contracts` 中新增 `agent-run` 相关类型。
-- [ ] 导出 `AgentRunStatus`、`AgentStepStatus`。
-- [ ] 导出 `AgentRun`、`AgentStep`。
+- [x] 在 `packages/contracts` 中新增 `agent-run` 相关类型。
+- [x] 导出 `AgentRunStatus`、`AgentStepStatus`。
+- [x] 导出 `AgentRun`、`AgentStep`。
 
 ### 3. 后端最小接入
 
-- [ ] 保存 user message 后创建 `AgentRun(status=RUNNING)`。
-- [ ] 创建 `receive_user_message` step 并标记 `COMPLETED`。
-- [ ] 加载 history 前创建 `load_conversation_history` step。
-- [ ] history 加载成功后标记该 step `COMPLETED`。
-- [ ] 调用 LLM 前创建 `call_llm` step。
-- [ ] 收到首个 delta 或模型 stream 建立后，将 `call_llm` 标记 `COMPLETED`。
-- [ ] 创建 `stream_assistant_reply` step 并在生成过程中保持 `RUNNING`。
-- [ ] done 时将 `stream_assistant_reply` 和 `AgentRun` 标记为 `COMPLETED`。
-- [ ] error 时将当前 step 和 `AgentRun` 标记为 `FAILED`。
-- [ ] aborted 时将当前 step 和 `AgentRun` 标记为 `ABORTED`。
+- [x] 保存 user message 后创建 `AgentRun(status=RUNNING)`。
+- [x] 创建 `receive_user_message` step 并标记 `COMPLETED`。
+- [x] 加载 history 前创建 `load_conversation_history` step。
+- [x] history 加载成功后标记该 step `COMPLETED`。
+- [x] 调用 LLM 前创建 `call_llm` step。
+- [x] 收到首个 delta 或模型 stream 建立后，将 `call_llm` 标记 `COMPLETED`。
+- [x] 创建 `stream_assistant_reply` step 并在生成过程中保持 `RUNNING`。
+- [x] done 时将 `stream_assistant_reply` 和 `AgentRun` 标记为 `COMPLETED`。
+- [x] error 时将当前 step 和 `AgentRun` 标记为 `FAILED`。
+- [x] aborted 时将当前 step 和 `AgentRun` 标记为 `ABORTED`。
 
 ## Refactor：整理边界
 
-- [ ] 不要把 step 创建逻辑散落到过多位置，优先收敛成小的 service/helper。
-- [ ] 保持 `SeoService.chatStream()` 可读，不在本任务里抽完整 runtime。
-- [ ] 命名统一使用 `run`，不要同时混用 `turn` 字段名。
-- [ ] `AgentRun.id` 可以在后续作为 stream event 的 `runId`。
+- [x] 不要把 step 创建逻辑散落到过多位置，优先收敛成小的 service/helper。
+- [x] 保持 `SeoService.chatStream()` 可读，不在本任务里抽完整 runtime。
+- [x] 命名统一使用 `run`，不要同时混用 `turn` 字段名。
+- [x] `AgentRun.id` 可以在后续作为 stream event 的 `runId`。
 
 ## 验证命令
 
@@ -177,14 +177,14 @@ pnpm prisma:migrate --name add_agent_run_step
 
 ## 验收标准
 
-- [ ] 每次 stream chat 都会创建一条 `AgentRun`。
-- [ ] 每条 run 绑定 `conversationId` 和 `userMessageId`。
-- [ ] `assistantMessageId` 可以在 assistant message 创建后回填。
-- [ ] 每条 run 至少有 4 个基础 step。
-- [ ] done/error/aborted 会更新 run 最终状态和 `endedAt`。
-- [ ] step 的最终状态能反映失败或中断位置。
-- [ ] 不改变当前 UI 行为。
-- [ ] `typecheck`、`lint` 通过。
+- [x] 每次 stream chat 都会创建一条 `AgentRun`。
+- [x] 每条 run 绑定 `conversationId` 和 `userMessageId`。
+- [x] `assistantMessageId` 可以在 assistant message 创建后回填。
+- [x] 每条 run 至少有 4 个基础 step。
+- [x] done/error/aborted 会更新 run 最终状态和 `endedAt`。
+- [x] step 的最终状态能反映失败或中断位置。
+- [x] 不改变当前 UI 行为。
+- [x] `typecheck`、`lint` 通过。
 
 ## 风险点
 
@@ -197,4 +197,14 @@ pnpm prisma:migrate --name add_agent_run_step
 
 ## 完成状态
 
-状态：进行中（当前准备执行）。
+状态：已完成实现与静态验证。
+
+本次验证：
+
+- `pnpm prisma:generate`
+- `pnpm exec prisma validate`
+- `pnpm prisma:migrate --name add_agent_run_step`
+- `pnpm --filter @agent/contracts typecheck`
+- `pnpm --filter @agent/api typecheck`
+- `pnpm typecheck`
+- `pnpm lint`

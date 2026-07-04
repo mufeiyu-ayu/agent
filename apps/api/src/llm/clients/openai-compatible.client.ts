@@ -1,4 +1,5 @@
 import type {
+  ChatCompletionChunk,
   ChatCompletionCreateParamsNonStreaming,
   ChatCompletionMessageParam,
 } from 'openai/resources/chat/completions'
@@ -99,15 +100,24 @@ export class OpenAICompatibleClient {
       ...(options?.signal ? { signal: options.signal } : {}),
     }
 
+    let stream: AsyncIterable<ChatCompletionChunk>
+
     try {
-      const stream = await client.chat.completions.create(
+      stream = await client.chat.completions.create(
         {
           ...this.buildBaseChatCompletionParams(messages, options),
           stream: true,
         },
         requestOptions,
       )
+    }
+    catch (cause) {
+      throw this.toLLMError(cause)
+    }
 
+    await options?.onStreamReady?.()
+
+    try {
       for await (const chunk of stream) {
         const contentDelta = chunk.choices[0]?.delta.content
 

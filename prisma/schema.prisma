@@ -24,25 +24,86 @@ enum MessageStatus {
   ABORTED
 }
 
+enum AgentRunStatus {
+  RUNNING
+  COMPLETED
+  FAILED
+  ABORTED
+}
+
+enum AgentStepStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+  ABORTED
+}
+
 model Conversation {
-  id        String    @id @default(cuid())
+  id        String     @id @default(cuid())
   title     String
   messages  Message[]
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  agentRuns AgentRun[]
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
 
   @@index([updatedAt])
 }
 
 model Message {
-  id             String        @id @default(cuid())
-  conversationId String
-  conversation   Conversation  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  role           MessageRole
-  content        String
-  status         MessageStatus @default(COMPLETED)
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
+  id                    String     @id @default(cuid())
+  conversationId        String
+  conversation          Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  role                  MessageRole
+  content               String
+  status                MessageStatus @default(COMPLETED)
+  userAgentRuns         AgentRun[] @relation("AgentRunUserMessage")
+  assistantAgentRuns    AgentRun[] @relation("AgentRunAssistantMessage")
+  createdAt             DateTime   @default(now())
+  updatedAt             DateTime   @updatedAt
 
   @@index([conversationId, createdAt])
+}
+
+model AgentRun {
+  id                 String         @id @default(cuid())
+  conversationId     String
+  conversation       Conversation   @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  userMessageId      String
+  userMessage        Message        @relation("AgentRunUserMessage", fields: [userMessageId], references: [id], onDelete: Cascade)
+  assistantMessageId String?
+  assistantMessage   Message?       @relation("AgentRunAssistantMessage", fields: [assistantMessageId], references: [id], onDelete: SetNull)
+  status             AgentRunStatus @default(RUNNING)
+  startedAt          DateTime       @default(now())
+  endedAt            DateTime?
+  steps              AgentStep[]
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+
+  @@index([conversationId])
+  @@index([userMessageId])
+  @@index([assistantMessageId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model AgentStep {
+  id           String          @id @default(cuid())
+  runId        String
+  run          AgentRun        @relation(fields: [runId], references: [id], onDelete: Cascade)
+  type         String
+  title        String
+  status       AgentStepStatus @default(PENDING)
+  input        Json?
+  output       Json?
+  errorMessage String?
+  startedAt    DateTime?
+  endedAt      DateTime?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  @@index([runId])
+  @@index([runId, type])
+  @@index([status])
+  @@index([createdAt])
 }

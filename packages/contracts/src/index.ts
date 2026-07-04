@@ -1,4 +1,11 @@
 export type {
+  AgentRun,
+  AgentRunStatus,
+  AgentStep,
+  AgentStepJsonValue,
+  AgentStepStatus,
+} from './agent-run.js'
+export type {
   ApiErrorPayload,
   ApiErrorResponse,
   ApiResponse,
