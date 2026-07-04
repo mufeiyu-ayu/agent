@@ -1,40 +1,22 @@
 # AI SEO Agent Development Task Plan
 
-本目录用于维护 AI SEO Agent 的阶段任务规划。
+本文件保留为旧入口兼容。当前路线和任务入口已经收敛到：
 
-当前项目已经完成第一阶段基础能力练习，后续不再继续扩展固定字段 SEO 生成器，而是转向自然语言驱动的 SEO Agent 聊天助手。
-
-## 当前路线
-
-| 阶段 | 主题 | 状态 | 任务文档 |
-| --- | --- | --- | --- |
-| 阶段 1 | LLM + Chat 基础能力 | 已完成 | 不再单独维护 |
-| 阶段 2 | Agent Chat Session + 数据持久化系统 | 进行中 | [phase-02-agent-chat-session.md](./tasks/phase-02-agent-chat-session.md) |
-| 阶段 3 | 流式输出 + ChatGPT 级交互体验 | 进行中 | [phase-03-streaming-chat-experience.md](./tasks/phase-03-streaming-chat-experience.md) |
-
-## 任务维护方式
-
-- `docs/development-task-plan.md` 只作为总入口和路线说明。
-- `docs/tasks/index.md` 维护所有阶段任务索引。
-- 每个阶段单独维护一个任务文档。
-- 阶段任务文档需要包含目标、任务拆解、推荐实现顺序、验收条件和本阶段不做的内容。
+- [docs/README.md](./README.md)：文档总入口
+- [docs/roadmap.md](./roadmap.md)：阶段路线
+- [docs/tasks/README.md](./tasks/README.md)：当前任务看板
 
 ## 当前主线
 
-从固定字段 SEO 生成器升级为自然语言 SEO Agent 聊天助手。
+| 阶段 | 状态 | 说明 |
+| --- | --- | --- |
+| 阶段 2：Session Chat 持久化 | 已完成 | 已归档到 `docs/tasks/completed/` |
+| 阶段 3：Streaming Chat | 收口中 | 重点验证 `done/error/aborted` 最终态一致性 |
+| 阶段 4：Agent Runtime | 下一步 | 使用 TDD 任务文档推进 `AgentRun` / `AgentStep` 和 runtime 边界 |
 
-接下来优先完成：
+## 维护规则
 
-1. 阶段 2：让 Chat 系统具备多会话、数据持久化和 session 上下文能力。
-2. 阶段 3：让 Chat 系统具备流式输出、实时渲染和可中断能力。
-
-## 暂不进入的方向
-
-- Tool Calling
-- RAG
-- Multi-agent
-- 外部搜索
-- 复杂工作流
-- 生产级部署
-
-这些能力会在阶段 2 和阶段 3 稳定后再评估。
+- 新任务不再写入本文件。
+- 具体执行任务统一写入 `docs/tasks/`。
+- Codex 深度研究资料统一放入 `docs/research/codex/`。
+- 已完成阶段只保留简洁归档，不再占用当前任务入口。
