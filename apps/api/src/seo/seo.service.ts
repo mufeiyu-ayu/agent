@@ -108,11 +108,12 @@ export class SeoService {
         userMessageId: userMessage.id,
         userMessageLength: normalizedMessage.length,
       })
+      const currentAgentRunId = agentRun.id
 
-      agentRunId = agentRun.id
+      agentRunId = currentAgentRunId
       activeAgentStepType = AGENT_STEP_TYPES.loadConversationHistory
       await this.agentRunRecorderService.startStep(
-        agentRunId,
+        currentAgentRunId,
         AGENT_STEP_TYPES.loadConversationHistory,
         {
           input: {
@@ -123,7 +124,7 @@ export class SeoService {
 
       const historyMessages = await this.listRecentChatMessages(input.conversationId)
       await this.agentRunRecorderService.completeStep(
-        agentRunId,
+        currentAgentRunId,
         AGENT_STEP_TYPES.loadConversationHistory,
         {
           output: {
@@ -145,7 +146,7 @@ export class SeoService {
       const assistantMessageId = assistantMessage.id
 
       await this.agentRunRecorderService.attachAssistantMessage(
-        agentRunId,
+        currentAgentRunId,
         assistantMessageId,
       )
 
@@ -158,7 +159,7 @@ export class SeoService {
 
       activeAgentStepType = AGENT_STEP_TYPES.callLlm
       await this.agentRunRecorderService.startStep(
-        agentRunId,
+        currentAgentRunId,
         AGENT_STEP_TYPES.callLlm,
         {
           input: {
@@ -168,28 +169,35 @@ export class SeoService {
         },
       )
 
+      let hasStartedAssistantReplyStep = false
+      const startAssistantReplyStep = async (): Promise<void> => {
+        if (hasStartedAssistantReplyStep)
+          return
+
+        await this.agentRunRecorderService.completeStep(
+          currentAgentRunId,
+          AGENT_STEP_TYPES.callLlm,
+        )
+        activeAgentStepType = AGENT_STEP_TYPES.streamAssistantReply
+        await this.agentRunRecorderService.startStep(
+          currentAgentRunId,
+          AGENT_STEP_TYPES.streamAssistantReply,
+          {
+            input: {
+              assistantMessageId,
+            },
+          },
+        )
+        hasStartedAssistantReplyStep = true
+      }
+
       for await (const contentDelta of this.llmService.chatStream(llmMessages, {
         ...(input.model ? { model: input.model } : {}),
         temperature: 0.4,
         maxTokens: 1200,
         ...(options.signal ? { signal: options.signal } : {}),
-        onStreamReady: async () => {
-          await this.agentRunRecorderService.completeStep(
-            agentRun.id,
-            AGENT_STEP_TYPES.callLlm,
-          )
-          activeAgentStepType = AGENT_STEP_TYPES.streamAssistantReply
-          await this.agentRunRecorderService.startStep(
-            agentRun.id,
-            AGENT_STEP_TYPES.streamAssistantReply,
-            {
-              input: {
-                assistantMessageId,
-              },
-            },
-          )
-        },
       })) {
+        await startAssistantReplyStep()
         content += contentDelta
 
         yield {
@@ -207,7 +215,7 @@ export class SeoService {
           content,
           MessageStatus.ABORTED,
         )
-        await this.agentRunRecorderService.abortRun(agentRunId)
+        await this.agentRunRecorderService.abortRun(currentAgentRunId)
         hasFinalMessageStatus = true
 
         yield {
@@ -220,6 +228,7 @@ export class SeoService {
         return
       }
 
+      await startAssistantReplyStep()
       const completedMessage = await this.updateMessageAndTouchConversation(
         assistantMessageId,
         input.conversationId,
@@ -227,7 +236,7 @@ export class SeoService {
         MessageStatus.COMPLETED,
       )
       await this.agentRunRecorderService.completeStep(
-        agentRunId,
+        currentAgentRunId,
         AGENT_STEP_TYPES.streamAssistantReply,
         {
           output: {
@@ -235,7 +244,7 @@ export class SeoService {
           },
         },
       )
-      await this.agentRunRecorderService.completeRun(agentRunId)
+      await this.agentRunRecorderService.completeRun(currentAgentRunId)
       hasFinalMessageStatus = true
 
       yield {
