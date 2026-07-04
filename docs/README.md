@@ -21,12 +21,6 @@
 | `tasks/completed/` | 已完成阶段的简洁归档 |
 | `research/` | 深度研究资料和外部项目分析 |
 
-## 关于 active 目录
-
-当前不再使用 `tasks/active/` 作为真实任务存放目录。
-
-原因：当前项目更适合按阶段目录维护任务，例如 `tasks/phase-04-agent-runtime/`。是否 Active 由 `tasks/README.md` 和对应阶段 README 的状态字段表达，避免同一个任务在 active / phase 目录之间来回移动。
-
 ## 维护原则
 
 - 当前可执行任务放在对应阶段目录中，并在 `tasks/README.md` 标记状态。
