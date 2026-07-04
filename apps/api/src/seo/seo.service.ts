@@ -13,6 +13,7 @@ import { MessageRole, MessageStatus } from '../generated/prisma/client.js'
 import { LLMService } from '../llm/llm.service.js'
 import { PrismaService } from '../prisma/prisma.service.js'
 import { buildSeoAgentChatMessages } from './prompts/seo-agent.prompt.js'
+import { toChatStreamEvent } from './seo-chat-stream-event.mapper.js'
 
 const CHAT_HISTORY_LIMIT = 12
 
@@ -79,11 +80,11 @@ export class SeoService {
     }
   }
 
-  chatStream(
+  async* chatStream(
     input: SeoChatDto,
     options: SeoChatStreamOptions = {},
   ): AsyncGenerator<ChatStreamEvent> {
-    return this.agentRuntimeService.runTurnStream({
+    const runtimeEvents = this.agentRuntimeService.runTurnStream({
       conversationId: input.conversationId,
       userContent: input.message,
       ...(input.model ? { model: input.model } : {}),
@@ -93,6 +94,10 @@ export class SeoService {
       maxTokens: 1200,
       buildModelMessages: buildSeoAgentChatMessages,
     })
+
+    for await (const event of runtimeEvents) {
+      yield toChatStreamEvent(event)
+    }
   }
 
   private async listRecentChatMessages(conversationId: string): Promise<Message[]> {

@@ -7,7 +7,7 @@
 | 区域 | 状态 | 文档 | 说明 |
 | --- | --- | --- | --- |
 | 阶段 4 Agent Runtime | Active | [phase-04-agent-runtime/README.md](./phase-04-agent-runtime/README.md) | 从 Chat 进入可观测 Agent Run |
-| 阶段 4 Task 3 | Active | [phase-04-agent-runtime/task-03-agent-runtime-event.md](./phase-04-agent-runtime/task-03-agent-runtime-event.md) | 定义内部 `AgentRuntimeEvent` 并映射到 `ChatStreamEvent` |
+| 阶段 4 Task 3 | Completed | [phase-04-agent-runtime/task-03-agent-runtime-event.md](./phase-04-agent-runtime/task-03-agent-runtime-event.md) | 定义内部 `AgentRuntimeEvent` 并映射到 `ChatStreamEvent` |
 | 阶段 4 Task 2 | Completed | [phase-04-agent-runtime/task-02-agent-runtime-service.md](./phase-04-agent-runtime/task-02-agent-runtime-service.md) | 抽出 `AgentRuntimeService.runTurnStream()` |
 | 阶段 4 Task 1 | Completed | [phase-04-agent-runtime/task-01-agent-run-step-model.md](./phase-04-agent-runtime/task-01-agent-run-step-model.md) | `AgentRun` / `AgentStep` 基础模型 |
 | 阶段 3 收口 | Completed | [completed/phase-03-streaming-closeout.md](./completed/phase-03-streaming-closeout.md) | 已收口 `done/error/aborted` 最终态一致性 |

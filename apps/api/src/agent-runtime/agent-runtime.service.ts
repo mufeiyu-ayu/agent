@@ -1,4 +1,3 @@
-import type { ChatStreamEvent } from '@agent/contracts'
 import type {
   Message,
   MessageRole as PrismaMessageRole,
@@ -6,7 +5,10 @@ import type {
 } from '../generated/prisma/client.js'
 import type { ChatMessage } from '../llm/llm.types.js'
 import type { AgentStepType } from './agent-run-recorder.service.js'
-import type { RunTurnStreamInput } from './agent-runtime.types.js'
+import type {
+  AgentRuntimeEvent,
+  RunTurnStreamInput,
+} from './agent-runtime.types.js'
 import { Inject, Injectable, NotFoundException } from '@nestjs/common'
 
 import { MessageRole, MessageStatus } from '../generated/prisma/client.js'
@@ -30,7 +32,7 @@ export class AgentRuntimeService {
     private readonly agentRunRecorderService: AgentRunRecorderService,
   ) {}
 
-  async* runTurnStream(input: RunTurnStreamInput): AsyncGenerator<ChatStreamEvent> {
+  async* runTurnStream(input: RunTurnStreamInput): AsyncGenerator<AgentRuntimeEvent> {
     let assistantMessage: Message | undefined
     let agentRunId: string | undefined
     let activeAgentStepType: AgentStepType | undefined
@@ -98,7 +100,8 @@ export class AgentRuntimeService {
       )
 
       yield {
-        type: 'start',
+        type: 'run_started',
+        runId: currentAgentRunId,
         conversationId: input.conversationId,
         userMessageId: userMessage.id,
         assistantMessageId,
@@ -148,7 +151,8 @@ export class AgentRuntimeService {
         content += contentDelta
 
         yield {
-          type: 'delta',
+          type: 'assistant_delta',
+          runId: currentAgentRunId,
           conversationId: input.conversationId,
           assistantMessageId,
           contentDelta,
@@ -166,7 +170,8 @@ export class AgentRuntimeService {
         hasFinalMessageStatus = true
 
         yield {
-          type: 'aborted',
+          type: 'run_aborted',
+          runId: currentAgentRunId,
           conversationId: input.conversationId,
           assistantMessageId,
           content,
@@ -195,7 +200,8 @@ export class AgentRuntimeService {
       hasFinalMessageStatus = true
 
       yield {
-        type: 'done',
+        type: 'run_completed',
+        runId: currentAgentRunId,
         conversationId: input.conversationId,
         assistantMessageId,
         content,
@@ -220,7 +226,8 @@ export class AgentRuntimeService {
 
         if (assistantMessage) {
           yield {
-            type: 'aborted',
+            type: 'run_aborted',
+            ...(agentRunId ? { runId: agentRunId } : {}),
             conversationId: input.conversationId,
             assistantMessageId: assistantMessage.id,
             content,
@@ -251,7 +258,8 @@ export class AgentRuntimeService {
       }
 
       yield {
-        type: 'error',
+        type: 'run_failed',
+        ...(agentRunId ? { runId: agentRunId } : {}),
         conversationId: input.conversationId,
         ...(assistantMessage ? { assistantMessageId: assistantMessage.id } : {}),
         message: errorMessage,

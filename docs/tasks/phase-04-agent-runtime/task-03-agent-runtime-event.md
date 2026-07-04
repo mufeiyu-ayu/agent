@@ -206,48 +206,48 @@ export function toChatStreamEvent(event: AgentRuntimeEvent): ChatStreamEvent {
 
 实现前先确认当前问题：
 
-- [ ] `AgentRuntimeService` 直接 import `ChatStreamEvent`。
-- [ ] `runTurnStream()` 直接产出前端协议事件。
-- [ ] Runtime 内部没有独立事件类型承载未来 tool/approval/step event。
-- [ ] SEO 层没有明确的 runtime event -> chat stream event 映射边界。
+- [x] `AgentRuntimeService` 直接 import `ChatStreamEvent`。
+- [x] `runTurnStream()` 直接产出前端协议事件。
+- [x] Runtime 内部没有独立事件类型承载未来 tool/approval/step event。
+- [x] SEO 层没有明确的 runtime event -> chat stream event 映射边界。
 
 ## Green：最小实现
 
 ### 1. 类型定义
 
-- [ ] 在 `agent-runtime.types.ts` 中新增 `AgentRuntimeEvent` union。
-- [ ] 新增 `run_started` event。
-- [ ] 新增 `assistant_delta` event。
-- [ ] 新增 `run_completed` event。
-- [ ] 新增 `run_failed` event。
-- [ ] 新增 `run_aborted` event。
-- [ ] `RunTurnStreamInput` 保持在同一文件中。
+- [x] 在 `agent-runtime.types.ts` 中新增 `AgentRuntimeEvent` union。
+- [x] 新增 `run_started` event。
+- [x] 新增 `assistant_delta` event。
+- [x] 新增 `run_completed` event。
+- [x] 新增 `run_failed` event。
+- [x] 新增 `run_aborted` event。
+- [x] `RunTurnStreamInput` 保持在同一文件中。
 
 ### 2. Runtime 改造
 
-- [ ] `AgentRuntimeService` 不再 import `ChatStreamEvent`。
-- [ ] `runTurnStream()` 返回 `AsyncGenerator<AgentRuntimeEvent>`。
-- [ ] 原本 yield `start` 的位置改为 yield `run_started`。
-- [ ] 原本 yield `delta` 的位置改为 yield `assistant_delta`。
-- [ ] 原本 yield `done` 的位置改为 yield `run_completed`。
-- [ ] 原本 yield `error` 的位置改为 yield `run_failed`。
-- [ ] 原本 yield `aborted` 的位置改为 yield `run_aborted`。
-- [ ] run/step/message 状态收口逻辑保持不变。
+- [x] `AgentRuntimeService` 不再 import `ChatStreamEvent`。
+- [x] `runTurnStream()` 返回 `AsyncGenerator<AgentRuntimeEvent>`。
+- [x] 原本 yield `start` 的位置改为 yield `run_started`。
+- [x] 原本 yield `delta` 的位置改为 yield `assistant_delta`。
+- [x] 原本 yield `done` 的位置改为 yield `run_completed`。
+- [x] 原本 yield `error` 的位置改为 yield `run_failed`。
+- [x] 原本 yield `aborted` 的位置改为 yield `run_aborted`。
+- [x] run/step/message 状态收口逻辑保持不变。
 
 ### 3. SEO 映射层
 
-- [ ] 新增 `apps/api/src/seo/seo-chat-stream-event.mapper.ts`。
-- [ ] 实现 `toChatStreamEvent(event: AgentRuntimeEvent): ChatStreamEvent`。
-- [ ] `SeoService.chatStream()` 内部消费 `AgentRuntimeEvent`，yield 映射后的 `ChatStreamEvent`。
-- [ ] `SeoController` 不需要修改。
+- [x] 新增 `apps/api/src/seo/seo-chat-stream-event.mapper.ts`。
+- [x] 实现 `toChatStreamEvent(event: AgentRuntimeEvent): ChatStreamEvent`。
+- [x] `SeoService.chatStream()` 内部消费 `AgentRuntimeEvent`，yield 映射后的 `ChatStreamEvent`。
+- [x] `SeoController` 不需要修改。
 
 ## Refactor：边界要求
 
-- [ ] `agent-runtime` 目录不依赖 `@agent/contracts` 的 `ChatStreamEvent`。
-- [ ] `agent-runtime` 目录不依赖 `seo/prompts`。
-- [ ] `SeoService` 继续是 SEO agent 的 API service。
-- [ ] mapper 是纯函数，不访问数据库，不调用 LLM。
-- [ ] 前端收到的 NDJSON 字段完全不变。
+- [x] `agent-runtime` 目录不依赖 `@agent/contracts` 的 `ChatStreamEvent`。
+- [x] `agent-runtime` 目录不依赖 `seo/prompts`。
+- [x] `SeoService` 继续是 SEO agent 的 API service。
+- [x] mapper 是纯函数，不访问数据库，不调用 LLM。
+- [x] 前端收到的 NDJSON 字段完全不变。
 
 ## 验证命令
 
@@ -271,13 +271,20 @@ git diff --check
 
 ## 验收标准
 
-- [ ] `AgentRuntimeService.runTurnStream()` 返回内部 `AgentRuntimeEvent`。
-- [ ] `AgentRuntimeService` 不再直接产出 `ChatStreamEvent`。
-- [ ] `SeoService.chatStream()` 仍返回 `AsyncGenerator<ChatStreamEvent>`。
-- [ ] 当前前端 stream 行为不变。
-- [ ] 当前 run/step 落库行为不变。
-- [ ] `typecheck`、`lint` 通过。
+- [x] `AgentRuntimeService.runTurnStream()` 返回内部 `AgentRuntimeEvent`。
+- [x] `AgentRuntimeService` 不再直接产出 `ChatStreamEvent`。
+- [x] `SeoService.chatStream()` 仍返回 `AsyncGenerator<ChatStreamEvent>`。
+- [x] 当前前端 stream 行为不变。
+- [x] 当前 run/step 落库行为不变。
+- [x] `typecheck`、`lint` 通过。
 
 ## 完成状态
 
-状态：待实现。
+状态：已完成实现与静态验证。
+
+本次验证：
+
+- `pnpm --filter @agent/api typecheck`
+- `pnpm typecheck`
+- `pnpm lint`
+- `git diff --check`

@@ -29,7 +29,7 @@ AgentRuntimeEvent：Runtime 内部事件
 | --- | --- | --- | --- |
 | Task 1 | Completed | [task-01-agent-run-step-model.md](./task-01-agent-run-step-model.md) | 新增 `AgentRun` / `AgentStep` 基础模型，并接入当前 stream chat |
 | Task 2 | Completed | [task-02-agent-runtime-service.md](./task-02-agent-runtime-service.md) | 抽出 `AgentRuntimeService.runTurnStream()` |
-| Task 3 | Active | [task-03-agent-runtime-event.md](./task-03-agent-runtime-event.md) | 定义内部 `AgentRuntimeEvent` 并映射到 `ChatStreamEvent` |
+| Task 3 | Completed | [task-03-agent-runtime-event.md](./task-03-agent-runtime-event.md) | 定义内部 `AgentRuntimeEvent` 并映射到 `ChatStreamEvent` |
 | Task 4 | Planned | 待创建 | 抽出 `SeoContextBuilder`，整理 model messages 构造 |
 
 ## 本阶段不做
