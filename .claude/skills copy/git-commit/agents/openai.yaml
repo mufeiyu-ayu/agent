@@ -1,0 +1,4 @@
+interface:
+  display_name: "Git Commit 工作流"
+  short_description: "提交前更新项目工作记录和必要的学习日志，再执行验证与 commit"
+  default_prompt: "Use $git-commit to update project logs, run validation, and commit the current changes."

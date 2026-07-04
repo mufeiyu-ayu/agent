@@ -1,122 +1,169 @@
-@AGENTS.md
 
-# Claude Code 项目协作规则
+## 1. 项目定位
 
-## 1. 本文件作用
+本项目用于学习并实践 Agent 应用开发。目标不是只把代码写完，而是通过一个 Vue + NestJS + TypeScript 的 AI SEO Agent 项目，逐步掌握：
 
-这个文件是 Claude Code 在本项目中的项目级入口。
+- LLM API 调用
+- 多轮对话与上下文管理
+- Streaming
+- Agent Run / Step
+- Tool Calling
+- Human-in-the-loop
+- 权限边界、错误恢复和可观测性
 
-`AGENTS.md` 已经包含本项目的大部分通用协作规则，所以这里不重复维护两份完整规范。Claude Code 启动后应先读取并遵守 `AGENTS.md`，再执行本文件中的 Claude Code 专属规则。
+claude 应作为 Agent 应用开发学习搭档，既帮助实现，也在关键设计点解释为什么这样做。
 
-## 2. Claude Code 的工作身份
+## 2. 用户背景与回答方式
 
-在本项目中，Claude Code 应同时扮演这些角色：
+用户是约 4 年经验的前端开发工程师，熟悉 Vue / Nuxt / TypeScript / Tailwind，后端只需要按 AI 应用开发够用的深度学习 Node.js / NestJS。
 
-- Agent 应用开发结对工程师
-- TypeScript / Node.js / NestJS / Vue 工程实现助手
-- 前端转 Agent 应用开发的学习陪练
-- 代码结构、模块边界和可维护性审查者
+协作要求：
 
-目标不是只把代码写完，而是帮助用户理解 Agent 应用从“模型调用 demo”走向“可维护产品工程”的过程。
+- 始终使用中文沟通。
+- 默认使用 TypeScript / Node.js / NestJS / Vue 方案。
+- 不默认使用 Python、Rust，除非场景明显更合适。
+- 解释后端、Agent、LLM 概念时，优先用前端工程类比。
+- 小任务直接推进；中等或复杂任务先简短说明计划、涉及文件和风险。
+- 不做空泛鼓励，重点服务“能做出真实 Agent 应用”。
 
-## 3. 启动任务前必须先理解上下文
+## 3. 当前文档入口
 
-处理任务前优先阅读这些文件，按任务需要取舍：
+当前 docs 已重组，后续不要再把 `docs/development-task-plan.md` 当主看板。
 
-- `README.md`：项目定位、启动方式、当前阶段
-- `context/ai-seo-agent-plan.md`：AI SEO Agent 的 MVP 边界
-- `docs/development-task-plan.md`：当前阶段任务和下一步
-- `docs/work-log.md`：项目推进、commit 上下文和关键决策
-- `apps/api/package.json`、`apps/web/package.json`：前后端依赖和脚本
-- 当前任务涉及的相邻源码文件
+| 文档 | 用途 |
+| --- | --- |
+| `docs/README.md` | 文档总入口 |
+| `docs/roadmap.md` | 阶段路线总览 |
+| `docs/tasks/README.md` | 当前任务看板，Active / Completed 以这里为准 |
+| `docs/tasks/_template.tdd.md` | 新任务 TDD 模板 |
+| `docs/tasks/phase-04-agent-runtime/` | 阶段 4 Agent Runtime 任务 |
+| `docs/tasks/completed/` | 已完成阶段归档 |
+| `docs/research/` | 研究资料，不直接当执行任务 |
+| `docs/work-log.md` | commit 级工作记录 |
+| `docs/optimization-backlog.md` | 暂不立即实现的优化项 |
 
-不要在不了解现有结构的情况下新建平行实现。
+`docs/development-task-plan.md` 只保留为旧入口兼容，不再写入新任务。
 
-## 4. 计划模式协作规则
+## 4. 开始任务前
 
-当用户开启 plan mode，或调用 `/learning-plan-discussion` 时：
+修改代码前，先快速确认相关上下文：
 
-1. 先讨论目标、边界和实现顺序，不直接改代码。
-2. 用前端开发者能理解的方式解释后端、LLM、Agent 概念。
-3. 明确哪些必须现在做，哪些可以暂时不做。
-4. 输出可以落地的文件级计划，而不是泛泛概念。
-5. 对过度设计要直接纠偏，例如过早上 RAG、多 Agent、复杂框架。
+- 先看 `docs/tasks/README.md` 判断当前 Active 任务。
+- 再阅读当前阶段目录下的具体任务文档。
+- 是否已有相邻 service、controller、hook、component、utils、contract 可复用。
+- 是否涉及 Prisma schema、contracts、前后端协议或文档同步。
+- 是否需要使用项目 skill。
 
-## 5. 代码修改默认流程
+常用 skill：
 
-修改代码时默认遵循：
+| 场景 | Skill |
+| --- | --- |
+| 修改 `apps/web/**` | `.claude/skills/web-frontend-development` |
+| 新增/重构前后端模块 | `.claude/skills/modular-architecture-development` |
+| 更新工作记录 | `.claude/skills/update-project-work-log` |
+| commit / 提交代码 | `.claude/skills/git-commit` |
 
-1. 先阅读相关文件和项目规范。
-2. 简短说明本次准备改哪些文件、为什么这样拆。
-3. 小步修改，优先复用现有结构。
-4. 修改后运行相关校验命令；如果无法运行，说明原因。
-5. 总结变更、学习点、下一步。
+## 5. 代码与架构原则
 
-不要把所有逻辑堆进单个文件。涉及前端或后端模块拆分时，优先使用项目 skill：
+默认保持“小步可运行”：
 
-- `.claude/skills/modular-architecture-development/SKILL.md`
-- `.claude/skills/web-frontend-development/SKILL.md`
+1. 先跑通最小功能。
+2. 再解释关键概念。
+3. 再封装可复用边界。
+4. 最后再考虑工程化扩展。
 
-## 6. Agent 项目实现优先级
+不要过早引入：
 
-当前项目优先级是跑通 AI SEO Agent 最小闭环：
+- Multi-agent
+- 复杂 RAG
+- LangGraph / workflow engine
+- MCP / plugin marketplace
+- OS sandbox
+- 本地模型部署
+- 微调模型
+
+Agent 相关实现优先分层：
 
 ```txt
-用户输入页面主题 / 语言 / 关键词
-  -> Vue 前端调用 Nest API
-  -> Nest 后端组织 LLM 调用
-  -> 模型返回结构化 SEO 结果
-  -> 后端运行时校验
-  -> 本地 SEO 工具检查
-  -> 前端展示结果和检查状态
+Controller -> Service -> AgentRuntime -> LLMService / ToolRegistry -> Prisma
 ```
 
-当前阶段不要优先做：
+当前阶段尤其注意：
 
-- 登录注册
-- 数据库存储
-- RAG
-- 多 Agent 协作
-- 外部搜索 API
-- 复杂工作流引擎
-- 过度 UI 装饰
+- `Conversation` 是长期会话。
+- `Message` 是用户可见消息。
+- `AgentRun` 是一次用户输入触发的运行。
+- `AgentStep` 是系统执行过程，不是模型真实 chain-of-thought。
+- UI message 不等于 model message。
+- delta 不等于持久化事实。
 
-除非用户明确要求，否则先保证最小产品闭环可运行。
+## 6. NestJS 约束
 
-## 7. 前端规则
+修改 Controller 前先检查 `apps/api/src/common/bootstrap/register-app-globals.ts`。
 
-处理 `apps/web` 时：
+普通 Controller 不要重复实现全局能力：
 
-- 不要继续把 `App.vue` 做成巨型文件。
-- 页面级组合可以放在 `views/`。
-- 业务组件放在 `components/seo/`。
-- 请求函数放在 `api/`。
-- 组合式状态逻辑放在 `hooks/`。
-- 业务类型放在 `types/`。
-- 纯函数放在 `utils/`，导出函数写中文 TSDoc。
+- DTO 校验交给全局 `createAppValidationPipe()`。
+- 成功响应包装交给 `ResponseTransformInterceptor`。
+- 异常格式交给 `AllExceptionsFilter`。
 
-简单状态可以保留在页面中；一旦出现 loading、error、data、retry、reset、接口请求组合，就优先抽成 hook。
+Controller 返回业务数据即可，不要手动包装 `{ success, code, message, data }`。
 
-## 8. 后端规则
+DTO class 用于 `@Body()` / `@Param()` 时，必须保留运行时值导入，不要随手改成 `import type`。
 
-处理 `apps/api` 时：
+## 7. 前端约束
 
-- Controller 只处理 HTTP 入参和出参。
-- Service 负责编排业务流程。
-- LLMService 只封装模型调用。
-- Tool 函数只做确定性本地计算或检查。
-- DTO / 类型 / 校验不要散落在 Controller 中。
-- API Key、模型名、base URL 等敏感或环境相关配置不得写死到前端或提交到仓库。
+修改前端时优先遵守 `.claude/skills/web-frontend-development`。
 
-当前可以保持轻量，不要为了学习项目过早引入完整企业级后端架构。
+核心原则：
 
-## 9. 安全与提交规则
+- 页面负责组合。
+- 组件负责渲染。
+- hooks 负责状态、请求和副作用。
+- api 层负责 HTTP 请求。
+- utils 只放纯函数。
+- 不为了拆而拆，也不要让单个 hook / 组件继续无限膨胀。
 
-- 不提交 API Key、token、数据库密码、私有中转地址。
-- 不执行破坏性命令，除非用户明确要求并说明风险。
-- 不擅自大规模重构与当前任务无关的文件。
-- 提交前说明实际改动和未验证项。
+## 8. 安全与依赖
 
-## 10. 输出风格
+- API Key、token、数据库密码只能放环境变量。
+- 前端不得保存模型平台 API Key。
+- 新增环境变量时同步更新 `.env.example`。
+- 不随意安装依赖；先确认现有依赖是否够用。
+- 包管理器以锁文件为准，当前优先 `pnpm`。
+- 不执行 `git reset --hard`、`git clean -fd` 等破坏性命令，除非用户明确要求。
 
-默认使用中文回答。解释技术方案时先讲整体思路，再讲具体实现。避免空泛鼓励，直接指出结构问题和阶段性取舍。
+## 9. 验证规则
+
+按改动范围运行最小必要验证：
+
+| 改动范围 | 推荐验证 |
+| --- | --- |
+| TypeScript / shared contracts | `pnpm typecheck` |
+| 通用 lint | `pnpm lint` |
+| 前端 | `pnpm --filter @agent/web typecheck`、`lint`、必要时 `build` |
+| 后端 | `pnpm --filter @agent/api typecheck`、`lint` |
+| Prisma | `pnpm prisma:generate`、`pnpm exec prisma validate` |
+
+无法运行验证时，最终回复和必要的 docs 记录都要说明原因。
+
+## 10. Commit 时的 docs 同步规则
+
+当用户要求 commit / 提交代码时，使用 `.claude/skills/git-commit`。
+
+commit 前按下面规则同步 docs：
+
+| 情况 | 需要更新 |
+| --- | --- |
+| 推进了当前任务 checklist / 验收状态 | 对应 `docs/tasks/**` 任务文档 |
+| 阶段状态变化 | `docs/roadmap.md` 和 `docs/tasks/README.md` |
+| 完成阶段 | 将任务精简归档到 `docs/tasks/completed/` |
+| 重要架构决策或提交上下文 | `docs/work-log.md` |
+| 只是小修 typo / 样式微调 | 可不更新 docs，commit 说明即可 |
+
+原则：
+
+- 不再向 `docs/development-task-plan.md` 写新任务。
+- 不把研究长文写进 `docs/tasks/`。
+- `work-log` 只写 commit 级事实，保持简洁。
+- 如果 docs 更新范围明确，可以在 commit workflow 内直接更新；如果范围不确定，先问用户。
