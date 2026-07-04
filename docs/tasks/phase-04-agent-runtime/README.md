@@ -10,6 +10,7 @@
 Conversation：长期会话
 Message：用户可见消息
 AgentRun / AgentStep：一次 Agent 执行过程
+AgentRuntimeEvent：Runtime 内部事件
 ```
 
 ## 当前前置条件
@@ -28,7 +29,7 @@ AgentRun / AgentStep：一次 Agent 执行过程
 | --- | --- | --- | --- |
 | Task 1 | Completed | [task-01-agent-run-step-model.md](./task-01-agent-run-step-model.md) | 新增 `AgentRun` / `AgentStep` 基础模型，并接入当前 stream chat |
 | Task 2 | Completed | [task-02-agent-runtime-service.md](./task-02-agent-runtime-service.md) | 抽出 `AgentRuntimeService.runTurnStream()` |
-| Task 3 | Planned | 待创建 | 定义内部 `AgentRuntimeEvent` 并映射到 `ChatStreamEvent` |
+| Task 3 | Active | [task-03-agent-runtime-event.md](./task-03-agent-runtime-event.md) | 定义内部 `AgentRuntimeEvent` 并映射到 `ChatStreamEvent` |
 | Task 4 | Planned | 待创建 | 抽出 `SeoContextBuilder`，整理 model messages 构造 |
 
 ## 本阶段不做
@@ -46,6 +47,7 @@ AgentRun / AgentStep：一次 Agent 执行过程
 - 一次 run 内至少记录基础 step。
 - `AgentRun.status` 与本次 stream 的最终状态一致。
 - `AgentStep` 能定位失败或中断发生在哪个阶段。
+- Runtime 内部事件与前端 stream 协议解耦。
 - 当前 Chat UI 行为不被破坏。
 - `typecheck`、`lint` 通过。
 
