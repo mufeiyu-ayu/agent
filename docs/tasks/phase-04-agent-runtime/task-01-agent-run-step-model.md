@@ -197,4 +197,4 @@ pnpm prisma:migrate --name add_agent_run_step
 
 ## 完成状态
 
-状态：未开始。
+状态：进行中（当前准备执行）。
