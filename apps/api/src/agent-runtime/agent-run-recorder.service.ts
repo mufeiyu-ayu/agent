@@ -1,5 +1,5 @@
 import type { AgentRun, Prisma } from '../generated/prisma/client.js'
-import { Inject, Injectable } from '@nestjs/common'
+import { Inject, Injectable, Logger } from '@nestjs/common'
 
 import { AgentRunStatus, AgentStepStatus } from '../generated/prisma/client.js'
 import { PrismaService } from '../prisma/prisma.service.js'
@@ -38,6 +38,8 @@ interface StepUpdatePayload {
 
 @Injectable()
 export class AgentRunRecorderService {
+  private readonly logger = new Logger(AgentRunRecorderService.name)
+
   constructor(
     @Inject(PrismaService)
     private readonly prismaService: PrismaService,
@@ -134,17 +136,13 @@ export class AgentRunRecorderService {
   async completeRun(runId: string): Promise<void> {
     const now = new Date()
 
-    await this.prismaService.$transaction(async (prisma) => {
-      await prisma.agentStep.updateMany({
+    const unfinishedStepCount = await this.prismaService.$transaction(async (prisma) => {
+      const count = await prisma.agentStep.count({
         where: {
           runId,
           status: {
             in: UNFINISHED_STEP_STATUSES,
           },
-        },
-        data: {
-          status: AgentStepStatus.COMPLETED,
-          endedAt: now,
         },
       })
 
@@ -157,7 +155,15 @@ export class AgentRunRecorderService {
           endedAt: now,
         },
       })
+
+      return count
     })
+
+    if (unfinishedStepCount > 0) {
+      this.logger.warn(
+        `AgentRun ${runId} completed with ${unfinishedStepCount} unfinished step(s). Check step state transitions.`,
+      )
+    }
   }
 
   async failRun(
