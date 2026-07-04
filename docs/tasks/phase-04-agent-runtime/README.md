@@ -14,7 +14,7 @@ AgentRun / AgentStep：一次 Agent 执行过程
 
 ## 当前前置条件
 
-进入本阶段前，阶段 3 需要基本满足：
+阶段 3 已完成收口：
 
 - `done` 后 assistant message 是 `COMPLETED`。
 - `error` 后 assistant message 是 `FAILED`。
@@ -26,7 +26,7 @@ AgentRun / AgentStep：一次 Agent 执行过程
 
 | 任务 | 状态 | 文档 | 目标 |
 | --- | --- | --- | --- |
-| Task 1 | Next | [task-01-agent-run-step-model.md](./task-01-agent-run-step-model.md) | 新增 `AgentRun` / `AgentStep` 基础模型，并接入当前 stream chat |
+| Task 1 | Active | [task-01-agent-run-step-model.md](./task-01-agent-run-step-model.md) | 新增 `AgentRun` / `AgentStep` 基础模型，并接入当前 stream chat |
 | Task 2 | Planned | 待创建 | 抽出 `AgentRuntimeService.runTurnStream()` |
 | Task 3 | Planned | 待创建 | 定义内部 `AgentRuntimeEvent` 并映射到 `ChatStreamEvent` |
 | Task 4 | Planned | 待创建 | 抽出 `SeoContextBuilder`，整理 model messages 构造 |
