@@ -4,7 +4,7 @@
 
 ## 当前判断
 
-项目已经完成从固定字段 SEO 生成器到 Session Chat 的迁移，并完成流式输出最终态一致性收口。阶段 4 已完成 `AgentRun` / `AgentStep` 基础模型，接下来继续抽 Runtime 边界，不要直接跳到 RAG 或多 Agent。
+项目已经完成从固定字段 SEO 生成器到 Session Chat 的迁移，并完成流式输出最终态一致性收口。阶段 4 已完成 `AgentRun` / `AgentStep` 基础模型，当前进入 `AgentRuntimeService.runTurnStream()` 边界抽取，不要直接跳到 RAG 或多 Agent。
 
 ## 阶段路线
 
