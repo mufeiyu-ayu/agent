@@ -1,5 +1,12 @@
 // Prisma 数据模型入口。
-// 阶段 2 会在这里定义 Conversation / Message 表结构。
+// 阶段 2 定义了 Conversation / Message；阶段 4 增加了 AgentRun / AgentStep。
+//
+// 核心概念（初学重点，先理解这四层再看字段）：
+//   Conversation 长期会话（一个聊天窗口，长期存在）
+//   Message      用户可见消息（页面上的气泡）
+//   AgentRun     一次用户输入触发的运行（按一次发送 = 一个 run）
+//   AgentStep    一次 run 内部的系统执行步骤（加载历史 / 调模型 / 流式回复）
+//                注意：AgentStep 是「系统执行过程」，不是模型真实的思考链。
 
 generator client {
   provider     = "prisma-client"
@@ -8,35 +15,46 @@ generator client {
 }
 
 datasource db {
+  // 数据库方言的唯一权威来源。这里是 PostgreSQL，
+  // DATABASE_URL 也必须是 postgresql:// 开头。
   provider = "postgresql"
 }
 
+// 消息发送方。只区分用户与助手；system 提示词不落库为 Message。
 enum MessageRole {
   USER
   ASSISTANT
 }
 
+// 单条「用户可见消息」的生命周期状态。
+// 关注点：这条气泡当前该怎么渲染。
 enum MessageStatus {
-  PENDING
-  STREAMING
-  COMPLETED
-  FAILED
-  ABORTED
+  PENDING // 已创建但还没产出内容（占位）
+  STREAMING // 正在流式接收内容，前端逐字追加
+  COMPLETED // 正常结束，内容完整
+  FAILED // 出错结束，content 里通常是兜底错误文案
+  ABORTED // 用户主动停止，保留已生成的部分内容
 }
 
+// 一次 AgentRun 的整体状态。
+// 与 MessageStatus 的区别：这里关注「整次运行成没成」，
+// 所以没有 PENDING / STREAMING，用 RUNNING 表示进行中。
 enum AgentRunStatus {
-  RUNNING
-  COMPLETED
-  FAILED
-  ABORTED
+  RUNNING // 进行中（创建 run 时的默认值）
+  COMPLETED // 本次运行成功结束
+  FAILED // 本次运行因异常结束
+  ABORTED // 本次运行被用户中断
 }
 
+// 单个 AgentStep 的状态。
+// 比 AgentRunStatus 多一个 PENDING：step 常先被创建占位，
+// 真正开始执行时才从 PENDING 变为 RUNNING。
 enum AgentStepStatus {
-  PENDING
-  RUNNING
-  COMPLETED
-  FAILED
-  ABORTED
+  PENDING // 已登记但还没开始执行
+  RUNNING // 正在执行
+  COMPLETED // 执行成功
+  FAILED // 执行失败（errorMessage 记录原因）
+  ABORTED // 因整次 run 被中断而未完成
 }
 
 model Conversation {
@@ -47,34 +65,53 @@ model Conversation {
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
 
+  // 会话列表按「最近活跃」排序，给 updatedAt 加索引。
   @@index([updatedAt])
 }
 
 model Message {
   id                    String     @id @default(cuid())
   conversationId        String
+  // 消息属于某个会话；会话删除时其下消息一并删除（级联）。
   conversation          Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   role                  MessageRole
   content               String
   status                MessageStatus @default(COMPLETED)
+  // 同一条 Message 可能被 AgentRun 从两个角度引用：
+  //   作为「用户输入」-> userAgentRuns
+  //   作为「助手回复」-> assistantAgentRuns
+  // 因为指向同一张表有两条外键，Prisma 无法自动区分，
+  // 必须用具名关系 @relation("名字") 在两侧一一对应。
   userAgentRuns         AgentRun[] @relation("AgentRunUserMessage")
   assistantAgentRuns    AgentRun[] @relation("AgentRunAssistantMessage")
   createdAt             DateTime   @default(now())
   updatedAt             DateTime   @updatedAt
 
+  // 「取某会话最近消息并按时间排序」是高频查询，用复合索引覆盖。
   @@index([conversationId, createdAt])
 }
 
 model AgentRun {
   id                 String         @id @default(cuid())
   conversationId     String
+  // 所属会话，会话删除则级联删除本次运行记录。
   conversation       Conversation   @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  // 触发本次运行的用户消息。必填（没有用户输入就没有这次 run）。
+  // 用户消息删除时级联删除该 run。关系名要与 Message 侧完全一致。
   userMessageId      String
   userMessage        Message        @relation("AgentRunUserMessage", fields: [userMessageId], references: [id], onDelete: Cascade)
+
+  // 本次运行产出的助手消息。可空（String?）：
+  // run 先创建、assistant 消息稍后才建，创建 run 那一刻它还不存在。
+  // 删除策略用 SetNull 而非 Cascade：即使助手消息被删，
+  // 「这次运行发生过」的事实仍要保留，只把引用置空。
   assistantMessageId String?
   assistantMessage   Message?       @relation("AgentRunAssistantMessage", fields: [assistantMessageId], references: [id], onDelete: SetNull)
+
   status             AgentRunStatus @default(RUNNING)
   startedAt          DateTime       @default(now())
+  // 结束时间：运行中为空，进入终态（完成/失败/中断）时写入。
   endedAt            DateTime?
   steps              AgentStep[]
   createdAt          DateTime       @default(now())
@@ -83,6 +120,7 @@ model AgentRun {
   @@index([conversationId])
   @@index([userMessageId])
   @@index([assistantMessageId])
+  // 便于按状态筛选，例如排查残留在 RUNNING 的运行。
   @@index([status])
   @@index([createdAt])
 }
@@ -90,19 +128,33 @@ model AgentRun {
 model AgentStep {
   id           String          @id @default(cuid())
   runId        String
+  // 步骤隶属于某次运行，run 删除则级联删除其所有步骤。
   run          AgentRun        @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  // 步骤类型用字符串而非枚举：步骤种类会随功能演进不断新增
+  // （未来加 Tool Calling 等），用 String 避免频繁改 schema/迁移。
+  // 取值由后端常量 AGENT_STEP_TYPES 统一约束。
   type         String
+  // 给人看的步骤标题，如「加载会话历史」。
   title        String
   status       AgentStepStatus @default(PENDING)
+
+  // 步骤的输入 / 输出快照，用 Json 存半结构化数据（不同步骤字段不同）。
+  // 例如 loadConversationHistory 的 input 记 limit、output 记 messageCount。
   input        Json?
   output       Json?
+  // 仅失败步骤填写，记录错误摘要。
   errorMessage String?
+
+  // 步骤真正开始 / 结束的时间。PENDING 阶段两者都为空，
+  // 与 createdAt（行创建时间）区分：createdAt 一定有，startedAt 不一定。
   startedAt    DateTime?
   endedAt      DateTime?
   createdAt    DateTime        @default(now())
   updatedAt    DateTime        @updatedAt
 
   @@index([runId])
+  // 按「某次 run 的某类步骤」查询，用复合索引。
   @@index([runId, type])
   @@index([status])
   @@index([createdAt])
