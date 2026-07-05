@@ -38,4 +38,4 @@
 
 进入阶段 4：Agent Runtime 基础。
 
-下一任务：`docs/tasks/phase-04-agent-runtime/task-01-agent-run-step-model.md`。
+阶段 4 后续已完成并归档到 `docs/tasks/completed/phase-04-agent-runtime.md`。

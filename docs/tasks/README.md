@@ -6,11 +6,8 @@
 
 | 区域 | 状态 | 文档 | 说明 |
 | --- | --- | --- | --- |
-| 阶段 4 Agent Runtime | Completed | [phase-04-agent-runtime/README.md](./phase-04-agent-runtime/README.md) | 从 Chat 进入可观测 Agent Run 的基础阶段已完成 |
-| 阶段 4 Task 4 | Completed | [phase-04-agent-runtime/task-04-seo-context-builder.md](./phase-04-agent-runtime/task-04-seo-context-builder.md) | 抽出 `SeoContextBuilder`，整理 SEO model messages 构造边界 |
-| 阶段 4 Task 3 | Completed | [phase-04-agent-runtime/task-03-agent-runtime-event.md](./phase-04-agent-runtime/task-03-agent-runtime-event.md) | 定义内部 `AgentRuntimeEvent` 并映射到 `ChatStreamEvent` |
-| 阶段 4 Task 2 | Completed | [phase-04-agent-runtime/task-02-agent-runtime-service.md](./phase-04-agent-runtime/task-02-agent-runtime-service.md) | 抽出 `AgentRuntimeService.runTurnStream()` |
-| 阶段 4 Task 1 | Completed | [phase-04-agent-runtime/task-01-agent-run-step-model.md](./phase-04-agent-runtime/task-01-agent-run-step-model.md) | `AgentRun` / `AgentStep` 基础模型 |
+| 阶段 5 最小 Tool Calling | Planned | [phase-05-tool-calling/README.md](./phase-05-tool-calling/README.md) | 准备低风险只读工具闭环的任务拆分 |
+| 阶段 4 Agent Runtime | Completed | [completed/phase-04-agent-runtime.md](./completed/phase-04-agent-runtime.md) | 已归档为可观测 Agent Run 的基础阶段 |
 | 阶段 3 收口 | Completed | [completed/phase-03-streaming-closeout.md](./completed/phase-03-streaming-closeout.md) | 已收口 `done/error/aborted` 最终态一致性 |
 | 阶段 2 | Completed | [completed/phase-02-agent-chat-session.md](./completed/phase-02-agent-chat-session.md) | 多会话和消息持久化已完成 |
 

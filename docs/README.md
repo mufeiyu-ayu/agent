@@ -1,12 +1,12 @@
 # AI SEO Agent Docs
 
-这里是项目文档入口。当前文档主线已经从普通 Chat 应用推进到 Agent Runtime 学习阶段。
+这里是项目文档入口。当前文档主线已经从 Agent Runtime 基础推进到最小 Tool Calling 学习阶段。
 
 ## 当前状态
 
 | 方向 | 状态 | 入口 |
 | --- | --- | --- |
-| 总路线 | 当前主线是阶段 4 Agent Runtime | [roadmap.md](./roadmap.md) |
+| 总路线 | 当前主线是阶段 5 最小 Tool Calling | [roadmap.md](./roadmap.md) |
 | 当前任务 | 使用 TDD 风格描述任务、测试和验收 | [tasks/README.md](./tasks/README.md) |
 | Codex 研究资料 | 作为架构参考资料，不直接当执行任务 | [research/codex/README.md](./research/codex/README.md) |
 | 工作记录 | 记录历史提交和阶段进展 | [work-log.md](./work-log.md) |
@@ -17,7 +17,7 @@
 | 目录 | 用途 |
 | --- | --- |
 | `tasks/README.md` | 当前任务看板，Active / Completed 以这里为准 |
-| `tasks/phase-04-agent-runtime/` | 阶段 4 Agent Runtime 的 TDD 任务 |
+| `tasks/phase-05-tool-calling/` | 阶段 5 最小 Tool Calling 的任务入口 |
 | `tasks/completed/` | 已完成阶段的简洁归档 |
 | `research/` | 深度研究资料和外部项目分析 |
 

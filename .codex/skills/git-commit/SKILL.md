@@ -22,7 +22,7 @@ description: 执行项目 commit 前的固定流程。Use when the user asks to 
 2. 判断本次改动属于哪个任务：
    - 优先查看 `docs/tasks/README.md`。
    - 以 `docs/tasks/README.md` 标记的 Active 任务为准。
-   - 具体任务文档放在对应阶段目录，例如 `docs/tasks/phase-04-agent-runtime/`。
+   - 具体任务文档放在对应阶段目录，例如 `docs/tasks/phase-05-tool-calling/`。
    - 不再把 `docs/development-task-plan.md` 当主看板。
 3. 按需同步 docs：
 
