@@ -1,50 +1,86 @@
-# Codex 架构研究
+# Codex Agent 架构研究
 
-本文档是对 OpenAI Codex 开源项目的研究入口。这里保留架构结论和当前项目可迁移的设计思想，具体执行任务放在 `docs/tasks/`。
+本目录研究的是 Codex 作为一个成熟 Agent 系统的架构思想，而不是 Rust 语法，也不是桌面 UI 的仿制教程。
 
 ## 一句话结论
 
-Codex 不是一个简单 CLI，而是一个事件驱动的 Agent Runtime：多个入口把用户输入转换成标准协议请求，core runtime 负责 thread、turn、model streaming、tool calling、approval、context 和 persistence。
+Codex 的价值不在于“会调用很多工具”，而在于它把一次 Agent 工作拆成了可组合、可中断、可恢复、可观察、受约束的运行系统：
 
-```txt
-Entrypoint
-  -> protocol facade
-  -> thread / turn runtime
-  -> model stream
-  -> tool execution
-  -> observation
-  -> final response / persistence
+```text
+Client / SDK / CLI
+  -> stable protocol facade
+  -> Thread lifecycle
+  -> Turn + Task runtime
+  -> model sampling
+  -> tool routing and execution
+  -> observation back to model history
+  -> follow-up sampling
+  -> event stream + durable facts
 ```
 
-## 配套资料
+当前 AI SEO Agent 应学习这些边界，但要将“本地客户端 Agent”翻译成“服务端云 Agent”：
 
-| 文档 | 用途 |
+- `app-server JSON-RPC` 的思想，翻译为稳定的 Nest API / stream contract。
+- 本地 `Thread` 的思想，翻译为带所有权和租户边界的 `Conversation`。
+- `Turn / Task / Item / Event` 的分层思想，按职责映射到 `AgentRun / runner / model items / AgentStep / RuntimeEvent`，而不是一一改名。
+- shell sandbox 的思想，先翻译为业务工具权限、参数校验、超时和审计。
+- rollout 的思想，翻译为 PostgreSQL 中可恢复的关键事实和事件投影。
+- 多入口共享 runtime 的思想，翻译为 Web、定时任务、Webhook 都复用同一个 Agent application service。
+
+## 架构总览
+
+```mermaid
+flowchart LR
+  A["CLI / App / IDE / SDK"] --> B["app-server / exec / SDK facade"]
+  B --> C["ThreadManager"]
+  C --> D["Session submission queue"]
+  D --> E["Task"]
+  E --> F["run_turn"]
+  F --> G["ModelClientSession"]
+  G --> H{"model output"}
+  H -->|"assistant message"| I["event + final response"]
+  H -->|"tool call"| J["ToolRouter"]
+  J --> K["ToolRegistry"]
+  K --> L["handler / runtime"]
+  L -. "sandboxable local runtimes" .-> P["ToolOrchestrator"]
+  L --> M["tool observation"]
+  M --> F
+  F --> N["ContextManager"]
+  F --> O["Rollout / ThreadStore"]
+```
+
+## 研究文档
+
+| 文档 | 重点 |
 | --- | --- |
-| [source-map.md](./source-map.md) | 记录本次研究覆盖的 Codex 核心模块 |
-| [main-flows.md](./main-flows.md) | 按运行链路理解 Codex 的主流程 |
-| [agent-migration-roadmap.md](./agent-migration-roadmap.md) | 映射到当前 AI SEO Agent 的落地路线 |
-| [mindmap-codex-runtime.md](./mindmap-codex-runtime.md) | Codex Runtime 架构图 |
-| [mindmap-ai-seo-migration.md](./mindmap-ai-seo-migration.md) | AI SEO Agent 迁移路线图 |
+| [research-method.md](./research-method.md) | 证据范围、可靠性等级和维护方法 |
+| [architecture-report.md](./architecture-report.md) | 宏观架构、核心主链、设计动机和迁移结论 |
+| [architecture-learning-checklist.md](./architecture-learning-checklist.md) | 完整学习清单，可用于逐项打勾 |
+| [source-reading-map.md](./source-reading-map.md) | 真实源码入口和推荐阅读顺序 |
+| [current-project-gap-analysis.md](./current-project-gap-analysis.md) | 当前项目不是“缺什么功能”，而是缺哪些运行系统能力 |
+| [cloud-agent-mapping.md](./cloud-agent-mapping.md) | 客户端概念到云端 NestJS 架构的转换规则 |
+| [terminology-map.md](./terminology-map.md) | Thread、Turn、Item、Run、Step 等概念对照 |
 
-## 当前项目最该吸收的思想
+## 最值得优先学习的十项能力
 
-| Codex 思想 | 当前项目落点 |
-| --- | --- |
-| Thread / Turn 分层 | `Conversation` 是长期会话，`AgentRun` 是一次运行 |
-| Event-driven runtime | 当前 NDJSON stream 是最小事件流 |
-| Tool spec / runtime 分离 | 后续做 `ToolDefinition`、`ToolExecutor`、`ToolRegistry` |
-| UI message != model history | 后续抽 `SeoContextBuilder` |
-| Delta != persistence | 不保存所有 delta，只保存最终事实和关键过程 |
-| Approval != sandbox | 当前先做人类确认，不做 OS sandbox |
+1. 稳定协议与内部事件分离。
+2. Thread、Turn、Task、Item 的生命周期分层。
+3. 模型输出驱动的 Tool Loop，而不是业务代码硬编码流程。
+4. Tool spec、router、registry、runtime、policy 分层。
+5. UI transcript、model history、runtime event、durable log 分离。
+6. 中断、失败、重试、续跑和幂等的明确语义。
+7. 只持久化可恢复事实，不把每个文本 delta 都当数据库事实。
+8. Approval、permission、sandbox 三个概念分开。
+9. 核心 runtime 被多个入口复用，而不是每个入口复制一套 Agent loop。
+10. 测试围绕协议、状态机和失败边界，而不仅是 happy path。
 
-## 当前不深入的内容
+## 明确不照搬的内容
 
-- Rust 语法细节。
-- TUI 终端渲染。
-- MCP 完整协议。
-- Plugin marketplace。
-- OS sandbox 底层实现。
-- Multi-agent。
-- Remote compaction。
+- Rust 实现语言和 crate 拆分粒度。
+- TUI 渲染细节和终端进程管理。
+- 操作系统级 shell sandbox 的具体实现。
+- Codex 专属的代码编辑、Git diff 和本地文件工具。
+- 当前阶段直接引入 MCP、插件市场或 Multi-agent。
+- 把 Codex 的 `Item` 类型一比一复制进当前数据库。
 
-这些不是不重要，而是当前 AI SEO Agent 还没到那个复杂度。
+学习目标是掌握设计约束，再用 TypeScript、NestJS、PostgreSQL 和 Vue 做出适合云端业务 Agent 的版本。

@@ -9,13 +9,14 @@
 | 当前阶段 | 阶段 4 Agent Runtime 基础已归档；阶段 5 最小 Tool Calling 入口已准备 | 下一步拆分阶段 5 的首个 TDD 任务，只做低风险只读工具 |
 | 文档结构 | docs 已重组为 `roadmap`、`tasks`、`research`、`work-log` 四类入口；当前任务以 `docs/tasks/README.md` 为准 | 后续 commit 按 task docs 和 work-log 分工更新 |
 | 任务规范 | 新任务使用 TDD 风格模板；已完成阶段保留在 `docs/tasks/completed/`，当前任务目录只保留可执行阶段入口 | 后续任务继续按 Red / Green / Refactor 推进 |
-| Codex 研究 | Codex 架构研究资料已精简迁移到 `docs/research/codex/` | 只作为架构参考，不直接当执行任务 |
+| Codex 研究 | 已基于本地 Codex fork 与当前 Agent 源码重建 `docs/research/`：形成架构报告、学习清单、云端映射和 14 个分阶段学习目录 | 作为阶段 5 及后续任务的研究依据；真实执行状态仍以 `docs/tasks/` 为准 |
 | 提交规范 | `AGENTS.md`、`git-commit`、`update-project-work-log` 已对齐新 docs 结构 | commit 时按改动范围同步对应 docs |
 
 ## 近期工作记录
 
 | 日期 | 提交 | 类型 | 核心完成 | 关键文件 | 验证结果 |
 | --- | --- | --- | --- | --- | --- |
+| 2026-07-10 | docs: 重建 Codex 架构研究与学习路线 | docs / 架构研究 | 删除旧 Codex research 摘要并从本地源码重新取证；建立详细架构报告、完整学习清单、当前项目差距与云端映射；规划 Phase 00-13，每阶段独立提供设计、源码阅读、实践与验收文档，并经三轮独立审计修正 Tool contract、恢复、扩展安全和生产化门槛 | `docs/research/README.md`、`docs/research/codex/**`、`docs/research/learning-roadmap/**` | docs-only；55 份 Markdown、14 个阶段目录、42 份阶段文档；相对链接、源码路径、H1、代码围栏和尾随空白检查 0 错误；`git diff --check` 通过 |
 | 2026-07-05 | docs-only 阶段归档 | docs / 阶段归档 | 将阶段 4 Agent Runtime 从当前任务区压缩归档到 completed，删除阶段 4 当前任务目录，并准备阶段 5 最小 Tool Calling 的 README 入口；同步任务看板、路线图和文档入口 | `docs/tasks/completed/phase-04-agent-runtime.md`、`docs/tasks/phase-05-tool-calling/README.md`、`docs/tasks/README.md`、`docs/roadmap.md`、`docs/README.md`、`docs/work-log.md`、`AGENTS.md` | docs-only；`git diff --check` 通过 |
 | 2026-07-04 | bf7309f refactor: 抽出 SeoContextBuilder 上下文构造 | refactor / 阶段 4 | 抽出 `SeoContextBuilder`，让 `SeoService` 通过 builder 构造 SEO Agent model messages；`AgentRuntimeService` 仍只接收通用 `buildModelMessages` 函数，不依赖 SEO 目录，不改变 stream 协议和 run/step 落库 | `apps/api/src/seo/seo-context-builder.service.ts`、`apps/api/src/seo/seo.module.ts`、`apps/api/src/seo/seo.service.ts`、`docs/tasks/completed/phase-04-agent-runtime.md` | `pnpm --filter @agent/api typecheck`、`pnpm typecheck`、`pnpm lint`、`git diff --check` 通过 |
 | 2026-07-04 | 5c0f54f refactor: 解耦 AgentRuntimeEvent 与 ChatStreamEvent | refactor / 阶段 4 | 定义内部 `AgentRuntimeEvent`，让 `AgentRuntimeService.runTurnStream()` 产出 `run_started` / `assistant_delta` / `run_completed` / `run_failed` / `run_aborted`；新增 SEO mapper 将 runtime event 转回现有 `ChatStreamEvent`，不暴露 `runId`，不改变前端协议 | `apps/api/src/agent-runtime/agent-runtime.types.ts`、`apps/api/src/agent-runtime/agent-runtime.service.ts`、`apps/api/src/seo/seo-chat-stream-event.mapper.ts`、`apps/api/src/seo/seo.service.ts`、`docs/tasks/completed/phase-04-agent-runtime.md` | `pnpm --filter @agent/api typecheck`、`pnpm typecheck`、`pnpm lint`、`git diff --check` 通过 |
