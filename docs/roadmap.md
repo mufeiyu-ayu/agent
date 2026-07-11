@@ -4,7 +4,7 @@
 
 ## 当前判断
 
-项目已经完成从固定字段 SEO 生成器到 Session Chat 的迁移，并完成流式输出最终态一致性收口。阶段 4 Agent Runtime 基础已归档；当前进入阶段 5 最小 Tool Calling 的任务入口准备期，只做低风险只读工具闭环，不要直接跳到 RAG 或多 Agent。
+项目已经完成从固定字段 SEO 生成器到 Session Chat 的迁移，并完成流式输出最终态一致性收口。阶段 4 Agent Runtime 基础已归档；阶段 5 已准备 68 篇中英文文章 Demo 数据，下一步定义最小 Tool runtime 边界，只做低风险只读工具闭环，不要直接跳到 RAG 或多 Agent。
 
 ## 阶段路线
 
@@ -23,7 +23,7 @@
 
 | 优先级 | 任务 | 说明 |
 | --- | --- | --- |
-| P0 | 阶段 5 任务拆分 | 基于 `docs/tasks/phase-05-tool-calling/README.md` 规划最小 Tool Calling，只做低风险只读工具 |
+| P0 | 阶段 5 Task 1 | 定义最小 `ToolDefinition` / `ToolRegistry` / `ToolExecutor` 边界 |
 | P1 | Tool runtime 边界 | 先定义工具注册、执行、结果回填，不做复杂权限和 UI |
 | P2 | Context 管理增强 | 后续再加入页面数据、关键词、工具 observation 和预算规则 |
 

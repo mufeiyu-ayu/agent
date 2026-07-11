@@ -8,6 +8,7 @@ export default defineConfig({
   schema: 'prisma/schema.prisma',
   migrations: {
     path: 'prisma/migrations',
+    seed: 'pnpm --filter @agent/api exec tsx scripts/seed.ts',
   },
   datasource: databaseUrl ? { url: databaseUrl } : {},
 })

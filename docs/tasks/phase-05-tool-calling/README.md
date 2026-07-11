@@ -15,11 +15,13 @@
 - `AgentRuntimeService.runTurnStream()` 已成为 runtime 主编排入口。
 - `AgentRuntimeEvent` 已与前端 `ChatStreamEvent` 解耦。
 - `SeoContextBuilder` 已承接 SEO Agent 的 model messages 构造。
+- 已准备 68 篇文章 Demo 数据：优先使用 `zh-cn`，缺少简体中文时回退到 `en`。
 
 ## 任务入口
 
 | 任务 | 状态 | 目标 |
 | --- | --- | --- |
+| Task 0 | Completed | 新增 `Article` 表并导入 68 篇文章 Demo 数据（15 篇 `zh-cn`、53 篇 `en`） |
 | Task 1 | Planned | 定义最小 `ToolDefinition` / `ToolRegistry` / `ToolExecutor` 边界 |
 | Task 2 | Planned | 实现一个低风险只读 SEO 工具 |
 | Task 3 | Planned | 让 runtime 识别模型 tool call、执行工具并回填 observation |

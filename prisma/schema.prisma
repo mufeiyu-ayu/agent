@@ -159,3 +159,20 @@ model AgentStep {
   @@index([status])
   @@index([createdAt])
 }
+
+// 阶段 5 Tool Calling 的只读演示数据。
+// sourceId 保留来源系统文章 ID，便于固定数据重复导入时幂等更新。
+model Article {
+  id             String   @id @default(cuid())
+  sourceId       Int      @unique
+  slug           String   @unique
+  languageCode   String
+  title          String
+  content        String
+  seoTitle       String?
+  seoDescription String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([title])
+}
