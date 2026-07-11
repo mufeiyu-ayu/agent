@@ -6,7 +6,7 @@
 
 | 区域 | 状态 | 文档 | 说明 |
 | --- | --- | --- | --- |
-| 阶段 5 最小 Tool Calling | Planned | [phase-05-tool-calling/README.md](./phase-05-tool-calling/README.md) | 68 篇文章 Demo 数据已准备，下一步定义最小 Tool runtime 边界 |
+| 阶段 5 最小 Tool Calling | In Progress | [phase-05-tool-calling/README.md](./phase-05-tool-calling/README.md) | Task 0 文章数据已完成；下一步执行 Task 1，将纯文本模型流升级为 `ModelStreamEvent` |
 | 阶段 4 Agent Runtime | Completed | [completed/phase-04-agent-runtime.md](./completed/phase-04-agent-runtime.md) | 已归档为可观测 Agent Run 的基础阶段 |
 | 阶段 3 收口 | Completed | [completed/phase-03-streaming-closeout.md](./completed/phase-03-streaming-closeout.md) | 已收口 `done/error/aborted` 最终态一致性 |
 | 阶段 2 | Completed | [completed/phase-02-agent-chat-session.md](./completed/phase-02-agent-chat-session.md) | 多会话和消息持久化已完成 |

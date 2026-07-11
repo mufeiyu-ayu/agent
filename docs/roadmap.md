@@ -4,7 +4,7 @@
 
 ## 当前判断
 
-项目已经完成从固定字段 SEO 生成器到 Session Chat 的迁移，并完成流式输出最终态一致性收口。阶段 4 Agent Runtime 基础已归档；阶段 5 已准备 68 篇中英文文章 Demo 数据，下一步定义最小 Tool runtime 边界，只做低风险只读工具闭环，不要直接跳到 RAG 或多 Agent。
+项目已经完成从固定字段 SEO 生成器到 Session Chat 的迁移，并完成流式输出最终态一致性收口。阶段 4 Agent Runtime 基础已归档；阶段 5 正在进行，Task 0 已准备 68 篇中英文文章 Demo 数据。下一步先将纯文本模型流升级为 provider-neutral `ModelStreamEvent`，再进入 Tool Contract、只读工具和单 Agent Tool Loop，不要直接跳到 RAG 或多 Agent。
 
 ## 阶段路线
 
@@ -14,7 +14,7 @@
 | 阶段 2：Session Chat 持久化 | 已完成 | 多会话、消息落库、受控 history | `Conversation`、`Message` | 刷新不丢、多会话不串 |
 | 阶段 3：Streaming Chat | 已完成 | 流式输出、停止生成、最终态一致 | NDJSON stream、`ABORTED` 状态 | `done/error/aborted` 不残留 `STREAMING` |
 | 阶段 4：Agent Runtime 基础 | 已完成 | 记录一次 Agent 运行过程并抽 runtime 边界 | `AgentRun`、`AgentStep`、`AgentRuntimeService`、`AgentRuntimeEvent`、`SeoContextBuilder` | 每次发送都有 run/step，runtime event 与前端协议解耦，SEO 上下文构造有独立边界 |
-| 阶段 5：最小 Tool Calling | 计划中 | 让模型请求只读 SEO 工具，后端执行 | `ToolDefinition`、`ToolExecutor`、`ToolRegistry` | 工具 observation 能回到模型 |
+| 阶段 5：最小 Tool Calling | 进行中 | 让模型请求只读 SEO 工具，后端执行并继续生成最终回答 | `ModelStreamEvent`、`ToolDefinition`、`ToolRegistry`、`search_articles`、单 Agent Tool Loop | Runtime 能识别 Tool Call，工具 Observation 能回到模型，前端 stream 协议保持稳定 |
 | 阶段 6：Human-in-the-loop | 后续 | 中风险工具执行前需要用户确认 | `approval_required`、确认接口 | 拒绝不执行，确认才执行 |
 | 阶段 7：Context 管理 | 后续 | 区分 UI message、model message、runtime event | `SeoContextBuilder`、预算规则 | 上下文可控，不污染 UI |
 | 阶段 8：可观测性与作品集 | 后续 | 把项目沉淀为可展示 Agent 应用 | run/step 日志、错误分类、技术文档 | 能解释一次 Agent 如何运行 |
@@ -23,9 +23,9 @@
 
 | 优先级 | 任务 | 说明 |
 | --- | --- | --- |
-| P0 | 阶段 5 Task 1 | 定义最小 `ToolDefinition` / `ToolRegistry` / `ToolExecutor` 边界 |
-| P1 | Tool runtime 边界 | 先定义工具注册、执行、结果回填，不做复杂权限和 UI |
-| P2 | Context 管理增强 | 后续再加入页面数据、关键词、工具 observation 和预算规则 |
+| P0 | 阶段 5 Task 1 | 将纯文本模型流升级为 provider-neutral `ModelStreamEvent`，让 Runtime 能识别文本、Tool Call 和 sampling 结束原因 |
+| P1 | 阶段 5 Task 2-5 | 依次完成 Tool Contract、`search_articles`、单 Agent Tool Loop 和 `AgentStep` 记录 |
+| P2 | Context 管理增强 | 阶段 5 稳定后再加入页面数据、关键词、工具 Observation 和预算规则 |
 
 ## 现在暂不做
 
