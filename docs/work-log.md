@@ -6,7 +6,7 @@
 
 | 类型 | 当前记录 | 下一步 |
 | --- | --- | --- |
-| 当前阶段 | 阶段 4 Agent Runtime 基础已归档；阶段 5 进行中，Task 0 文章 Demo 数据准备已完成 | 下一步执行阶段 5 Task 1，将纯文本模型流升级为 provider-neutral `ModelStreamEvent` |
+| 当前阶段 | 阶段 4 Agent Runtime 基础已归档；阶段 5 进行中，Task 0-1 已完成 | 下一步执行阶段 5 Task 2，定义最小 Tool Contract、Registry、参数验证与执行边界 |
 | 文档结构 | docs 已重组为 `roadmap`、`tasks`、`research`、`work-log` 四类入口；当前任务以 `docs/tasks/README.md` 为准 | 后续 commit 按 task docs 和 work-log 分工更新 |
 | 任务规范 | 新任务使用 TDD 风格模板；已完成阶段保留在 `docs/tasks/completed/`，当前任务目录只保留可执行阶段入口 | 后续任务继续按 Red / Green / Refactor 推进 |
 | Codex 研究 | 已基于本地 Codex fork 与当前 Agent 源码重建 `docs/research/`：形成架构报告、学习清单、云端映射和 14 个分阶段学习目录 | 作为阶段 5 及后续任务的研究依据；真实执行状态仍以 `docs/tasks/` 为准 |
@@ -16,6 +16,7 @@
 
 | 日期 | 提交 | 类型 | 核心完成 | 关键文件 | 验证结果 |
 | --- | --- | --- | --- | --- | --- |
+| 2026-07-11 | feat: 实现结构化模型流事件 | feat / Tool Calling | 完成阶段 5 Task 1：新增 provider-neutral `ModelStreamEvent`、OpenAI-compatible stream adapter 与 Tool Call 分片累积器；LLM stream 支持 text/tool/usage/completed，Runtime 对 Tool Call 临时 fail-fast，前端协议保持不变；补充 Node 原生最小回归测试 | `apps/api/src/llm/model-stream.types.ts`、`apps/api/src/llm/clients/openai-compatible-*.ts`、`apps/api/src/agent-runtime/agent-runtime.{errors,service}.ts`、对应测试文件、`apps/api/package.json` | 12 个模型流与 Runtime 测试通过；API lint、workspace typecheck、`git diff --check` 通过；全仓 lint 被既有 research Markdown 的 97 个错误阻断 |
 | 2026-07-11 | 3a77519 docs: refine phase 5 tool calling plan | docs / 技术决策 | 细化阶段 5 学习主线与任务顺序：先建立 provider-neutral `ModelStreamEvent`，再完成 Tool Contract、`search_articles`、单 Agent Tool Loop 和 `AgentStep` 记录；明确 sampling、Tool Call、Observation 与前端协议边界 | `docs/tasks/phase-05-tool-calling/README.md` | docs-only；未涉及代码验证 |
 | 2026-07-11 | feat: 准备 Tool Calling 文章数据 | feat / Tool Calling 前置 | 新增 `Article` 数据模型、migration 和幂等 Seed；导入 68 篇文章，优先使用 `zh-cn`，缺失时回退到 `en`，为后续只读文章列表 Tool 提供稳定数据源 | `prisma/schema.prisma`、`prisma/migrations/**`、`prisma/fixtures/articles.json`、`apps/api/scripts/seed.ts`、`docs/tasks/phase-05-tool-calling/README.md` | Prisma generate / validate / migrate deploy / db seed / migrate status 通过；数据库验证 68 篇；`pnpm typecheck`、本次文件定向 lint、`git diff --check` 通过；全仓 lint 被既有 research Markdown 的 97 个错误阻断 |
 | 2026-07-10 | docs: 重建 Codex 架构研究与学习路线 | docs / 架构研究 | 删除旧 Codex research 摘要并从本地源码重新取证；建立详细架构报告、完整学习清单、当前项目差距与云端映射；规划 Phase 00-13，每阶段独立提供设计、源码阅读、实践与验收文档，并经三轮独立审计修正 Tool contract、恢复、扩展安全和生产化门槛 | `docs/research/README.md`、`docs/research/codex/**`、`docs/research/learning-roadmap/**` | docs-only；55 份 Markdown、14 个阶段目录、42 份阶段文档；相对链接、源码路径、H1、代码围栏和尾随空白检查 0 错误；`git diff --check` 通过 |

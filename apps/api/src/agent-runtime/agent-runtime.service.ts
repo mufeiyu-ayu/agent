@@ -4,6 +4,10 @@ import type {
   MessageStatus as PrismaMessageStatus,
 } from '../generated/prisma/client.js'
 import type { ChatMessage } from '../llm/llm.types.js'
+import type {
+  ModelFinishReason,
+  UnvalidatedModelToolCall,
+} from '../llm/model-stream.types.js'
 import type { AgentStepType } from './agent-run-recorder.service.js'
 import type {
   AgentRuntimeEvent,
@@ -18,6 +22,10 @@ import {
   AGENT_STEP_TYPES,
   AgentRunRecorderService,
 } from './agent-run-recorder.service.js'
+import {
+  ModelSamplingIncompleteError,
+  ToolLoopNotImplementedError,
+} from './agent-runtime.errors.js'
 
 @Injectable()
 export class AgentRuntimeService {
@@ -141,21 +149,46 @@ export class AgentRuntimeService {
         hasStartedAssistantReplyStep = true
       }
 
-      for await (const contentDelta of this.llmService.chatStream(llmMessages, {
+      const modelToolCalls: UnvalidatedModelToolCall[] = []
+      let modelFinishReason: ModelFinishReason | undefined
+
+      for await (const event of this.llmService.chatStream(llmMessages, {
         ...(input.model ? { model: input.model } : {}),
         temperature: input.temperature,
         maxTokens: input.maxTokens,
         ...(input.signal ? { signal: input.signal } : {}),
       })) {
-        await startAssistantReplyStep()
-        content += contentDelta
+        if (modelFinishReason) {
+          throw new ModelSamplingIncompleteError(
+            '模型在 response_completed 之后仍返回了额外事件。',
+          )
+        }
 
-        yield {
-          type: 'assistant_delta',
-          runId: currentAgentRunId,
-          conversationId: input.conversationId,
-          assistantMessageId,
-          contentDelta,
+        switch (event.type) {
+          case 'text_delta':
+            await startAssistantReplyStep()
+            content += event.delta
+
+            yield {
+              type: 'assistant_delta',
+              runId: currentAgentRunId,
+              conversationId: input.conversationId,
+              assistantMessageId,
+              contentDelta: event.delta,
+            }
+            break
+
+          case 'tool_call_completed':
+            modelToolCalls.push(event.toolCall)
+            break
+
+          case 'usage':
+            // Task 1 只保留内部语义；usage 持久化归入后续运行记录任务。
+            break
+
+          case 'response_completed':
+            modelFinishReason = event.finishReason
+            break
         }
       }
 
@@ -179,6 +212,8 @@ export class AgentRuntimeService {
 
         return
       }
+
+      this.assertSamplingCanCompleteRun(modelFinishReason, modelToolCalls)
 
       await startAssistantReplyStep()
       const completedMessage = await this.updateMessageAndTouchConversation(
@@ -395,8 +430,39 @@ export class AgentRuntimeService {
   private toChatStreamErrorMessage(error: unknown): string {
     if (error instanceof NotFoundException)
       return error.message
+    if (
+      error instanceof ToolLoopNotImplementedError
+      || error instanceof ModelSamplingIncompleteError
+    ) {
+      return error.message
+    }
 
     return '模型服务暂时没有返回结果，请稍后重试。'
+  }
+
+  private assertSamplingCanCompleteRun(
+    finishReason: ModelFinishReason | undefined,
+    toolCalls: UnvalidatedModelToolCall[],
+  ): void {
+    if (!finishReason) {
+      throw new ModelSamplingIncompleteError(
+        '模型流缺少 response_completed，当前回答未被标记为成功。',
+      )
+    }
+
+    if (finishReason === 'tool_calls') {
+      throw new ToolLoopNotImplementedError(toolCalls.map(toolCall => toolCall.name))
+    }
+
+    if (toolCalls.length > 0) {
+      throw new ModelSamplingIncompleteError(
+        `模型返回了 Tool Call，但 finish reason 为 ${finishReason}。`,
+      )
+    }
+
+    if (finishReason !== 'stop') {
+      throw ModelSamplingIncompleteError.fromFinishReason(finishReason)
+    }
   }
 
   private isAbortSignalTriggered(signal: AbortSignal | undefined): boolean {

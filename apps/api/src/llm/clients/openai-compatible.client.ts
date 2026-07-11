@@ -9,6 +9,7 @@ import type {
   DeepSeekBalanceResponse,
   DeepSeekModelsResponse,
 } from '../llm.types.js'
+import type { ModelStreamEvent } from '../model-stream.types.js'
 import process from 'node:process'
 import { Injectable } from '@nestjs/common'
 import OpenAI, {
@@ -34,6 +35,7 @@ import {
   LLMRateLimitError,
   LLMServerError,
 } from '../llm.errors.js'
+import { adaptOpenAICompatibleStream } from './openai-compatible-stream.adapter.js'
 
 type ChatCompletionBaseParams = Pick<
   ChatCompletionCreateParamsNonStreaming,
@@ -92,7 +94,7 @@ export class OpenAICompatibleClient {
   async* chatStream(
     messages: ChatMessage[],
     options?: ChatStreamOptions,
-  ): AsyncGenerator<string> {
+  ): AsyncGenerator<ModelStreamEvent> {
     const client = this.createClient()
     const requestOptions = {
       timeout: LLM_STREAM_TIMEOUT_MS,
@@ -104,16 +106,14 @@ export class OpenAICompatibleClient {
         {
           ...this.buildBaseChatCompletionParams(messages, options),
           stream: true,
+          stream_options: {
+            include_usage: true,
+          },
         },
         requestOptions,
       )
 
-      for await (const chunk of stream) {
-        const contentDelta = chunk.choices[0]?.delta.content
-
-        if (contentDelta)
-          yield contentDelta
-      }
+      yield* adaptOpenAICompatibleStream(stream)
     }
     catch (cause) {
       throw this.toLLMError(cause)

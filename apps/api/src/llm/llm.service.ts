@@ -5,6 +5,7 @@ import type {
   DeepSeekBalanceResponse,
   DeepSeekModelsResponse,
 } from './llm.types.js'
+import type { ModelStreamEvent } from './model-stream.types.js'
 import { Inject, Injectable } from '@nestjs/common'
 
 import { OpenAICompatibleClient } from './clients/openai-compatible.client.js'
@@ -37,18 +38,18 @@ export class LLMService {
   }
 
   /**
-   * 发送一次 streaming chat 请求，逐段返回模型输出文本。
+   * 发送一次 streaming chat 请求，逐条返回项目内部模型事件。
    *
    * 该方法只适配模型侧 OpenAI-compatible SSE，不暴露原始 chunk 给业务层。
    *
    * @param messages - 消息数组（system / user / assistant）
    * @param options  - 可选：覆盖模型参数，并可传入 AbortSignal 中止读取
-   * @returns 按模型输出顺序 yield 的文本 delta
+   * @returns 按模型输出顺序 yield 的文本、Tool Call、usage 和完成事件
    */
   chatStream(
     messages: ChatMessage[],
     options?: ChatStreamOptions,
-  ): AsyncGenerator<string> {
+  ): AsyncGenerator<ModelStreamEvent> {
     return this.llmClient.chatStream(messages, options)
   }
 }

@@ -39,11 +39,21 @@
 | 任务 | 状态 | 核心目标 |
 | --- | --- | --- |
 | Task 0 | Completed | 新增 `Article` 表并导入文章 Demo 数据，为只读工具提供稳定数据源 |
-| Task 1 | Planned | 将纯文本模型流升级为 provider-neutral `ModelStreamEvent`，让 Runtime 能识别文本、Tool Call 和本次 sampling 的结束原因 |
+| Task 1 | Completed | 将纯文本模型流升级为 provider-neutral `ModelStreamEvent`，让 Runtime 能识别文本、Tool Call 和本次 sampling 的结束原因 |
 | Task 2 | Planned | 定义最小 `ToolDefinition`、`ToolRegistry`、参数验证、执行与结果边界 |
 | Task 3 | Planned | 实现第一只只读工具 `search_articles`，查询并返回精简文章信息 |
 | Task 4 | Planned | 实现单 Agent Tool Loop：模型请求工具、后端执行、Observation 回填、模型继续生成最终回答 |
 | Task 5 | Planned | 将模型调用、工具执行和工具结果记录到 `AgentStep`，保持当前前端 stream 协议稳定 |
+
+## Task 1 完成结果
+
+- 新增 provider-neutral `ModelStreamEvent`，覆盖文本、未验证 Tool Call、usage 和 sampling 完成语义。
+- OpenAI-compatible adapter 会按 index 拼装 Tool Call 分片，归一化 finish reason，并处理 `choices=[]` 的 usage-only chunk。
+- `LLMService.chatStream()` 已从 `AsyncGenerator<string>` 升级为 `AsyncGenerator<ModelStreamEvent>`，Provider SDK 类型没有泄漏到 Runtime。
+- Runtime 保持现有文本流行为；Tool Loop 接入前收到 Tool Call 会明确 fail-fast，不会静默保存空的成功回复。
+- Provider error 和 Abort 继续只通过 async iterator throw 传播，前端 `ChatStreamEvent` 保持不变。
+- 使用现有 `tsx` 和 Node 原生 `node:test` 增加 12 个最小回归用例，没有新增依赖。
+- `pnpm --filter @agent/api test:model-stream`、`pnpm --filter @agent/api lint`、`pnpm typecheck`、`git diff --check` 通过；全仓 `pnpm lint` 仍被既有 research Markdown 的 97 个错误阻断。
 
 ## 关键边界
 
@@ -57,7 +67,7 @@
 
 ## 本阶段不做
 
-- 不建设完整自动化测试体系，当前使用固定场景进行手工验证。
+- 不建设完整自动化测试体系；Task 1 只保留关键模型流和 Runtime 回归测试，其余使用固定场景手工验证。
 - 不做写操作工具。
 - 不做用户审批和 Human-in-the-loop。
 - 不做复杂权限策略。

@@ -4,7 +4,7 @@
 
 ## 当前判断
 
-项目已经完成从固定字段 SEO 生成器到 Session Chat 的迁移，并完成流式输出最终态一致性收口。阶段 4 Agent Runtime 基础已归档；阶段 5 正在进行，Task 0 已准备 68 篇中英文文章 Demo 数据。下一步先将纯文本模型流升级为 provider-neutral `ModelStreamEvent`，再进入 Tool Contract、只读工具和单 Agent Tool Loop，不要直接跳到 RAG 或多 Agent。
+项目已经完成从固定字段 SEO 生成器到 Session Chat 的迁移，并完成流式输出最终态一致性收口。阶段 4 Agent Runtime 基础已归档；阶段 5 正在进行，Task 0 已准备 68 篇中英文文章 Demo 数据，Task 1 已完成 provider-neutral `ModelStreamEvent` 与 Runtime 适配。下一步进入最小 Tool Contract 与 Registry，不要直接跳到工具实现、RAG 或多 Agent。
 
 ## 阶段路线
 
@@ -23,8 +23,8 @@
 
 | 优先级 | 任务 | 说明 |
 | --- | --- | --- |
-| P0 | 阶段 5 Task 1 | 将纯文本模型流升级为 provider-neutral `ModelStreamEvent`，让 Runtime 能识别文本、Tool Call 和 sampling 结束原因 |
-| P1 | 阶段 5 Task 2-5 | 依次完成 Tool Contract、`search_articles`、单 Agent Tool Loop 和 `AgentStep` 记录 |
+| P0 | 阶段 5 Task 2 | 定义最小 `ToolDefinition`、`ToolRegistry`、参数验证、执行与结果边界 |
+| P1 | 阶段 5 Task 3-5 | 依次完成 `search_articles`、单 Agent Tool Loop 和 `AgentStep` 记录 |
 | P2 | Context 管理增强 | 阶段 5 稳定后再加入页面数据、关键词、工具 Observation 和预算规则 |
 
 ## 现在暂不做
