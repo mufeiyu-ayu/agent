@@ -1,0 +1,4 @@
+interface:
+  display_name: "GitHub Issue 任务工作流"
+  short_description: "实现 Issue，并处理验收收口、合并和分支清理"
+  default_prompt: "Use $github-issue-workflow to implement or close out GitHub Issue #N under the project's acceptance rules."

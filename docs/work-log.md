@@ -10,7 +10,7 @@
 | 文档结构 | docs 已重组为 `roadmap`、`tasks`、`research`、`work-log` 四类入口；当前任务以 `docs/tasks/README.md` 为准 | 后续 commit 按 task docs 和 work-log 分工更新 |
 | 任务规范 | 新任务使用 TDD 风格模板；已完成阶段保留在 `docs/tasks/completed/`，当前任务目录只保留可执行阶段入口 | 后续任务继续按 Red / Green / Refactor 推进 |
 | Codex 研究 | 已基于本地 Codex fork 与当前 Agent 源码重建 `docs/research/`：形成架构报告、学习清单、云端映射和 14 个分阶段学习目录 | 作为阶段 5 及后续任务的研究依据；真实执行状态仍以 `docs/tasks/` 为准 |
-| 提交规范 | `AGENTS.md`、`git-commit`、`update-project-work-log` 已对齐新 docs 结构 | commit 时按改动范围同步对应 docs |
+| GitHub 工作流 | 正式任务由 Issue 工作流负责实现、Draft PR、GPT / 用户验收收口与合并后分支清理；Review 由独立修复流程处理 | 普通学习和本地小改动保持自由模式；低风险改动可在用户明确授权后直接提交 master |
 
 ## 近期工作记录
 

@@ -1,0 +1,4 @@
+interface:
+  display_name: "GitHub PR Review 修复"
+  short_description: "读取 PR Review，讲解后在本地修复并推送"
+  default_prompt: "Use $github-pr-review-fix to inspect and address Codex Review findings on PR #N."
