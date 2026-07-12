@@ -6,7 +6,7 @@
 
 | 类型 | 当前记录 | 下一步 |
 | --- | --- | --- |
-| 当前阶段 | 阶段 4 Agent Runtime 基础已归档；阶段 5 进行中，Task 0-1 已完成 | 下一步执行阶段 5 Task 2，定义最小 Tool Contract、Registry、参数验证与执行边界 |
+| 当前阶段 | 阶段 4 Agent Runtime 基础已归档；阶段 5 进行中，Task 0-2 已完成，Task 2 已通过验收 | Task 3 保持 Planned，尚未开始 |
 | 文档结构 | docs 已重组为 `roadmap`、`tasks`、`research`、`work-log` 四类入口；当前任务以 `docs/tasks/README.md` 为准 | 后续 commit 按 task docs 和 work-log 分工更新 |
 | 任务规范 | 新任务使用 TDD 风格模板；已完成阶段保留在 `docs/tasks/completed/`，当前任务目录只保留可执行阶段入口 | 后续任务继续按 Red / Green / Refactor 推进 |
 | Codex 研究 | 已基于本地 Codex fork 与当前 Agent 源码重建 `docs/research/`：形成架构报告、学习清单、云端映射和 14 个分阶段学习目录 | 作为阶段 5 及后续任务的研究依据；真实执行状态仍以 `docs/tasks/` 为准 |
@@ -16,6 +16,8 @@
 
 | 日期 | 提交 | 类型 | 核心完成 | 关键文件 | 验证结果 |
 | --- | --- | --- | --- | --- | --- |
+| 2026-07-12 | PR #2 验收收口 | docs / Tool Calling | GPT 与用户确认 Issue #1 验收通过；Task 2 标记为 Completed，阶段 5 保持 In Progress，Task 3 保持 Planned；记录 Abort 前后检查、低风险 fail-closed 修复，以及 `timeoutMs` 仅保留 metadata、超时执行逻辑留待后续的范围裁定 | `docs/tasks/phase-05-tool-calling/README.md`、`docs/tasks/README.md`、`docs/roadmap.md`、`docs/work-log.md` | docs 结构与状态一致性检查、`git diff --check` 通过 |
+| 2026-07-12 | 9825394、a6bc873 / Draft PR #2 | feat / Tool Calling | 完成 Issue #1 的最小 Tool Contract、Registry、参数验证、统一执行结果和 provider-neutral `ModelToolSpec` 映射；Review 后补齐 Abort 前后检查与低风险 fail-closed；实施状态已实现，验收状态已通过 | `apps/api/src/tools/**`、`apps/api/src/llm/model-tool-spec.types.ts`、`apps/api/src/app.module.ts`、`apps/api/package.json`、`docs/tasks/phase-05-tool-calling/README.md` | 13 个 tools 测试、12 个 model stream 回归、API typecheck/lint、workspace typecheck、`git diff --check` 通过；全仓 lint 仍被既有 research Markdown 的 97 个错误阻断 |
 | 2026-07-11 | feat: 实现结构化模型流事件 | feat / Tool Calling | 完成阶段 5 Task 1：新增 provider-neutral `ModelStreamEvent`、OpenAI-compatible stream adapter 与 Tool Call 分片累积器；LLM stream 支持 text/tool/usage/completed，Runtime 对 Tool Call 临时 fail-fast，前端协议保持不变；补充 Node 原生最小回归测试 | `apps/api/src/llm/model-stream.types.ts`、`apps/api/src/llm/clients/openai-compatible-*.ts`、`apps/api/src/agent-runtime/agent-runtime.{errors,service}.ts`、对应测试文件、`apps/api/package.json` | 12 个模型流与 Runtime 测试通过；API lint、workspace typecheck、`git diff --check` 通过；全仓 lint 被既有 research Markdown 的 97 个错误阻断 |
 | 2026-07-11 | 3a77519 docs: refine phase 5 tool calling plan | docs / 技术决策 | 细化阶段 5 学习主线与任务顺序：先建立 provider-neutral `ModelStreamEvent`，再完成 Tool Contract、`search_articles`、单 Agent Tool Loop 和 `AgentStep` 记录；明确 sampling、Tool Call、Observation 与前端协议边界 | `docs/tasks/phase-05-tool-calling/README.md` | docs-only；未涉及代码验证 |
 | 2026-07-11 | feat: 准备 Tool Calling 文章数据 | feat / Tool Calling 前置 | 新增 `Article` 数据模型、migration 和幂等 Seed；导入 68 篇文章，优先使用 `zh-cn`，缺失时回退到 `en`，为后续只读文章列表 Tool 提供稳定数据源 | `prisma/schema.prisma`、`prisma/migrations/**`、`prisma/fixtures/articles.json`、`apps/api/scripts/seed.ts`、`docs/tasks/phase-05-tool-calling/README.md` | Prisma generate / validate / migrate deploy / db seed / migrate status 通过；数据库验证 68 篇；`pnpm typecheck`、本次文件定向 lint、`git diff --check` 通过；全仓 lint 被既有 research Markdown 的 97 个错误阻断 |
