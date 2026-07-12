@@ -1,6 +1,6 @@
 # 阶段 5：最小 Tool Calling
 
-状态：进行中。Task 2 已实现，待验收。
+状态：进行中。Task 2 已完成并通过验收，Task 3 尚未开始。
 
 ## 阶段目标
 
@@ -40,7 +40,7 @@
 | --- | --- | --- |
 | Task 0 | Completed | 新增 `Article` 表并导入文章 Demo 数据，为只读工具提供稳定数据源 |
 | Task 1 | Completed | 将纯文本模型流升级为 provider-neutral `ModelStreamEvent`，让 Runtime 能识别文本、Tool Call 和本次 sampling 的结束原因 |
-| Task 2 | Implemented / Pending Acceptance | 定义最小 `ToolDefinition`、`ToolRegistry`、参数验证、执行与结果边界 |
+| Task 2 | Completed | 定义最小 `ToolDefinition`、`ToolRegistry`、参数验证、执行与结果边界 |
 | Task 3 | Planned | 实现第一只只读工具 `search_articles`，查询并返回精简文章信息 |
 | Task 4 | Planned | 实现单 Agent Tool Loop：模型请求工具、后端执行、Observation 回填、模型继续生成最终回答 |
 | Task 5 | Planned | 将模型调用、工具执行和工具结果记录到 `AgentStep`，保持当前前端 stream 协议稳定 |
@@ -55,14 +55,16 @@
 - 使用现有 `tsx` 和 Node 原生 `node:test` 增加 12 个最小回归用例，没有新增依赖。
 - `pnpm --filter @agent/api test:model-stream`、`pnpm --filter @agent/api lint`、`pnpm typecheck`、`git diff --check` 通过；全仓 `pnpm lint` 仍被既有 research Markdown 的 97 个错误阻断。
 
-## Task 2 实现结果（待验收）
+## Task 2 完成结果
 
 - 新增一级 `tools` 模块，明确 `ToolDefinition`、输入契约、Registry、已验证调用、Executor、执行上下文和 `ToolResult` 边界。
 - `ToolRegistryService` 对非法名称、重复注册和未知工具 fail fast，并按名称稳定列出 definitions。
-- `ToolInvocationService` 依次完成工具查找、JSON 解析、工具专属运行时验证和执行；参数失败不调用 Executor，普通异常转换为安全结果，Abort 继续向上抛出。
+- `ToolInvocationService` 依次完成工具查找、JSON 解析、工具专属运行时验证和执行；参数失败不调用 Executor，普通异常转换为安全结果。
+- Abort 在调用入口和 Executor 返回后检查，已取消调用不会被记录成工具失败；当前阶段对需审批、非低风险、有副作用或联网工具统一 fail closed。
 - 新增 provider-neutral `ModelToolSpec` 与纯映射，只暴露名称、描述和输入 Schema。
-- 使用无网络、无副作用的测试专用 `echo` 工具覆盖 11 个 Registry、Invocation、Mapper 和 NestJS 模块回归用例；未接入 Runtime Tool Loop，也未实现正式业务工具。
-- 实施状态：已实现；验收状态：待验收。Task 3 尚未开始。
+- 使用无网络、无副作用的测试专用 `echo` 工具覆盖 13 个 Registry、Invocation、Mapper 和 NestJS 模块回归用例；未接入 Runtime Tool Loop，也未实现正式业务工具。
+- `timeoutMs` 当前只保留为 server-owned metadata；工具超时执行逻辑按 Issue #1 明确留待后续任务，不阻塞 Task 2 验收。
+- 实施状态：已实现；验收状态：已通过；任务状态：Completed。Task 3 保持 Planned，尚未开始。
 
 ## 关键边界
 
