@@ -1,13 +1,13 @@
 ---
 name: github-pr-review-fix
-description: 获取并处理本项目 GitHub Pull Request 的 Codex Review findings，先讲解问题，再按用户确认在本地修复、验证、commit 并 push 回原 PR。Use when the user says 处理 PR #N 的 Review、修复 PR #N 的审查问题、读取远程 review 问题, or asks to continue a Draft PR after automated review. Do not use for creating a new Issue, opening the initial PR, or changing final task acceptance status.
+description: 获取并处理本项目 GitHub Pull Request 的 Codex Review findings，先讲解问题，再按用户确认在本地修复、验证、commit 并 push 回原 PR。Use when the user says 处理 PR #N 的 Review、修复 PR #N 的审查问题、读取远程 review 问题, or asks to continue a PR after automated review. Do not use for creating a new Issue, opening the initial PR, or changing final task acceptance status.
 ---
 
 # GitHub PR Review 修复工作流
 
 ## 完成边界
 
-默认只读取并解释问题，不立即修改。用户确认具体 finding 后，才在本地修复并推送到原 PR；不创建新 PR、不转为 Ready、不合并。
+默认只读取并解释问题，不立即修改。用户确认具体 finding 后，才在本地修复并推送到原 PR；不创建新 PR、不改变 Ready 状态、不合并。
 
 ## 1. 获取远程状态
 
@@ -29,6 +29,7 @@ description: 获取并处理本项目 GitHub Pull Request 的 Codex Review findi
 3. 运行受影响的最小必要验证，并补充 Review 指出的缺失测试。
 4. 只暂存本轮修复文件，使用中文 `fix: 简短说明` 创建 commit。
 5. push 到原 PR 分支，更新 PR 说明或评论中的验证结果。
+6. 修改了功能代码或重要边界时，push 后使用 `@codex review` 触发复审；仅回复、resolve thread 或 docs 收口时不重复触发 Review。
 
 ## 4. 云端修复边界
 
@@ -45,9 +46,9 @@ description: 获取并处理本项目 GitHub Pull Request 的 Codex Review findi
 - 已修复和未修复的问题；
 - 新 commit 与 push 状态；
 - 验证结果和剩余风险；
-- PR 是否仍为 Draft。
+- PR 是否仍为 Ready。
 
-Review 修复完成只代表问题已处理，不代表任务验收通过。保持 `验收状态：待验收`；未经用户明确确认，不转为 Ready、不合并、不写入 Completed。
+Review 修复完成只代表问题已处理，不代表任务验收通过。保持 Ready 和 `验收状态：待验收`；未经用户明确确认，不合并、不写入 Completed。
 
 ## 停止条件
 
