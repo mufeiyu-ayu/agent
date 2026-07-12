@@ -10,6 +10,7 @@
     "dev:watch": "tsx watch --env-file-if-exists=../../.env src/main.ts",
     "start": "node dist/main.js",
     "test:model-stream": "tsx --test src/llm/clients/openai-compatible-stream.adapter.test.ts src/agent-runtime/agent-runtime.service.test.ts",
+    "test:tools": "tsx --test src/tools/**/*.test.ts",
     "pretypecheck": "pnpm --workspace-root prisma:generate",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src",

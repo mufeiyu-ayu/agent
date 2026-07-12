@@ -6,9 +6,10 @@ import { RequestIdMiddleware } from './common/middleware/request-id.middleware.j
 import { ConversationsModule } from './conversations/conversations.module.js'
 import { LlmModule } from './llm/llm.module.js'
 import { SeoModule } from './seo/seo.module.js'
+import { ToolsModule } from './tools/tools.module.js'
 
 @Module({
-  imports: [LlmModule, SeoModule, ConversationsModule],
+  imports: [LlmModule, SeoModule, ConversationsModule, ToolsModule],
   controllers: [AppController],
 })
 export class AppModule implements NestModule {
