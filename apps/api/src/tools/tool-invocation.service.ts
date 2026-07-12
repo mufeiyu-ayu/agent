@@ -19,6 +19,8 @@ export class ToolInvocationService {
     envelope: UnvalidatedToolCallEnvelope,
     context: ToolExecutionContext,
   ): Promise<ToolResult> {
+    context.signal.throwIfAborted()
+
     const tool = this.registry.get(envelope.toolName)
 
     if (!tool) {
@@ -26,6 +28,20 @@ export class ToolInvocationService {
         ok: false,
         code: 'unknown_tool',
         modelContent: `工具 ${envelope.toolName} 不存在。`,
+        retryable: false,
+      }
+    }
+
+    if (
+      tool.definition.requiresApproval
+      || tool.definition.risk.level !== 'low'
+      || tool.definition.risk.sideEffect !== 'none'
+      || tool.definition.risk.network
+    ) {
+      return {
+        ok: false,
+        code: 'execution_failed',
+        modelContent: `工具 ${envelope.toolName} 当前不允许执行。`,
         retryable: false,
       }
     }
@@ -52,10 +68,10 @@ export class ToolInvocationService {
       input,
     }
 
-    context.signal.throwIfAborted()
-
     try {
-      return await tool.executor.execute(invocation, context)
+      const result = await tool.executor.execute(invocation, context)
+      context.signal.throwIfAborted()
+      return result
     }
     catch (error) {
       if (context.signal.aborted || isAbortError(error))

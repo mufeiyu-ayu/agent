@@ -157,7 +157,43 @@ describe('ToolInvocationService', () => {
     assert.doesNotMatch(result.modelContent, /password|secret/)
   })
 
-  it('已触发的 AbortSignal 不执行工具，并继续抛出 Abort', async () => {
+  it('拒绝当前阶段不支持的风险和审批配置，且不执行工具', async () => {
+    let executionCount = 0
+    const execute: ToolExecutor<EchoInput, EchoOutput>['execute'] = async () => {
+      executionCount += 1
+      return { ok: true, data: { echoed: 'unexpected' }, modelContent: 'unexpected' }
+    }
+    const approvalTool = createEchoTool('approval_tool', execute)
+    const mediumRiskTool = createEchoTool('medium_risk_tool', execute)
+    const writeTool = createEchoTool('write_tool', execute)
+    const networkTool = createEchoTool('network_tool', execute)
+    approvalTool.definition.requiresApproval = true
+    mediumRiskTool.definition.risk.level = 'medium'
+    writeTool.definition.risk.sideEffect = 'external_write'
+    networkTool.definition.risk.network = true
+
+    const registry = new ToolRegistryService()
+    const tools = [approvalTool, mediumRiskTool, writeTool, networkTool]
+
+    for (const tool of tools)
+      registry.register(tool)
+
+    const service = new ToolInvocationService(registry)
+
+    for (const tool of tools) {
+      const result = await service.invoke(
+        createEnvelope(tool.definition.name),
+        createContext(),
+      )
+
+      assert.equal(result.ok, false)
+      assert.equal(result.ok ? undefined : result.code, 'execution_failed')
+    }
+
+    assert.equal(executionCount, 0)
+  })
+
+  it('已触发的 AbortSignal 优先于工具查找和参数验证，且不执行工具', async () => {
     let executionCount = 0
     const registry = new ToolRegistryService()
     registry.register(createEchoTool('echo', async () => {
@@ -168,11 +204,35 @@ describe('ToolInvocationService', () => {
     const abortController = new AbortController()
     abortController.abort()
 
+    const envelopes = [
+      createEnvelope('missing_tool'),
+      { ...createEnvelope(), rawArgumentsJson: '{' },
+      createEnvelope(),
+    ]
+
+    for (const envelope of envelopes) {
+      await assert.rejects(
+        service.invoke(envelope, createContext(abortController.signal)),
+        { name: 'AbortError' },
+      )
+    }
+
+    assert.equal(executionCount, 0)
+  })
+
+  it('Executor 返回期间触发的 AbortSignal 仍继续抛出 Abort', async () => {
+    const abortController = new AbortController()
+    const registry = new ToolRegistryService()
+    registry.register(createEchoTool('echo', async () => {
+      abortController.abort()
+      return { ok: true, data: { echoed: 'unexpected' }, modelContent: 'unexpected' }
+    }))
+    const service = new ToolInvocationService(registry)
+
     await assert.rejects(
       service.invoke(createEnvelope(), createContext(abortController.signal)),
       { name: 'AbortError' },
     )
-    assert.equal(executionCount, 0)
   })
 
   it('Executor 抛出的 AbortError 继续向上抛出', async () => {
