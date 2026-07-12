@@ -7,7 +7,7 @@ description: 获取并处理本项目 GitHub Pull Request 的 Codex Review findi
 
 ## 完成边界
 
-默认只读取并解释问题，不立即修改。用户确认具体 finding 后，才在本地修复并推送到原 PR；不创建新 PR、不改变 Ready 状态、不合并。
+默认只读取并解释问题，不立即修改。用户确认具体 finding 后，才在本地修复并推送到原 PR；不创建新 PR、不改变 PR 原有的 Draft / Ready 状态、不合并。
 
 ## 1. 获取远程状态
 
@@ -46,9 +46,9 @@ description: 获取并处理本项目 GitHub Pull Request 的 Codex Review findi
 - 已修复和未修复的问题；
 - 新 commit 与 push 状态；
 - 验证结果和剩余风险；
-- PR 是否仍为 Ready。
+- PR 当前的 Draft / Ready 状态。
 
-Review 修复完成只代表问题已处理，不代表任务验收通过。保持 Ready 和 `验收状态：待验收`；未经用户明确确认，不合并、不写入 Completed。
+Review 修复完成只代表问题已处理，不代表实现完成或任务验收通过。保持 PR 原有的 Draft / Ready 状态和任务验收状态；Draft PR 只有完成实现、通过必要验证并更新为“已实现、待验收”后，才能由 Issue 工作流转为 Ready。未经用户明确确认，不合并、不写入 Completed。
 
 ## 停止条件
 
