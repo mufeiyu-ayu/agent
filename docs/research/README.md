@@ -87,6 +87,9 @@
 | [codex/code-mode-runtime.md](./codex/code-mode-runtime.md) | V8代码编排、Nested Tool权限复用、跨Turn Cell、远程Host与资源预算专题 |
 | [codex/skill-discovery-supply-chain.md](./codex/skill-discovery-supply-chain.md) | Skill多来源扫描、版本/正文一致性、Prompt激活与包导入供应链专题 |
 | [codex/skill-multi-authority-runtime.md](./codex/skill-multi-authority-runtime.md) | Host/Executor/Orchestrator资源所有权、package handle、generation与读取边界专题 |
+| [codex/remote-plugin-install-transaction.md](./codex/remote-plugin-install-transaction.md) | Remote Plugin目录、账号installed、本地Bundle Store、对账与跨介质安装事务专题 |
+| [codex/realtime-conversation-handoff-runtime.md](./codex/realtime-conversation-handoff-runtime.md) | Realtime音频/文本队列、WebSocket/WebRTC、Transcript与后台Agent Handoff专题 |
+| [codex/shell-snapshot-lifecycle.md](./codex/shell-snapshot-lifecycle.md) | Shell rc捕获、Snapshot制品、命令重写、环境覆盖、清理与跨进程边界专题 |
 | [codex/current-project-gap-analysis.md](./codex/current-project-gap-analysis.md) | 当前项目能力、证据和缺口 |
 | [codex/cloud-agent-mapping.md](./codex/cloud-agent-mapping.md) | 客户端 Codex 思想如何翻译为云端 NestJS Agent |
 | [codex/terminology-map.md](./codex/terminology-map.md) | Codex、当前项目和中文助记名的概念对照 |

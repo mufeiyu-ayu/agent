@@ -96,6 +96,9 @@ flowchart LR
 | [code-mode-runtime.md](./code-mode-runtime.md) | Fresh V8 isolate、Nested Tool治理复用、Cell状态机、远程Host与资源隔离边界 |
 | [skill-discovery-supply-chain.md](./skill-discovery-supply-chain.md) | 多来源Skill发现、Frontmatter/Policy、Prompt注入、缓存一致性与远程包供应链 |
 | [skill-multi-authority-runtime.md](./skill-multi-authority-runtime.md) | Host/Executor/Orchestrator统一Catalog、opaque resource、代际缓存与读取权限 |
+| [remote-plugin-install-transaction.md](./remote-plugin-install-transaction.md) | Remote目录/installed/Bundle三状态域、Store提交、后台对账与安装Saga |
+| [realtime-conversation-handoff-runtime.md](./realtime-conversation-handoff-runtime.md) | Realtime session、音频背压、Transcript、Agent Handoff与关闭恢复 |
+| [shell-snapshot-lifecycle.md](./shell-snapshot-lifecycle.md) | 用户Shell状态捕获、可执行Snapshot发布、重放优先级与清理恢复 |
 | [current-project-gap-analysis.md](./current-project-gap-analysis.md) | 当前项目不是“缺什么功能”，而是缺哪些运行系统能力 |
 | [cloud-agent-mapping.md](./cloud-agent-mapping.md) | 客户端概念到云端 NestJS 架构的转换规则 |
 | [terminology-map.md](./terminology-map.md) | Thread、Turn、Item、Run、Step 等概念对照 |
