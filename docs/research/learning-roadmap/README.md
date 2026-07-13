@@ -106,3 +106,11 @@ flowchart LR
 - 研究扩展：11；只有基线问题明确时再读 12。
 
 学习方法见 [learning-method.md](./learning-method.md)，架构域映射见 [checklist-phase-matrix.md](./checklist-phase-matrix.md)，个人证据记录见 [progress-tracker.md](./progress-tracker.md)。
+
+## 6. 横切学习实验
+
+| 专题 | 分类 | 适合何时阅读 |
+| --- | --- | --- |
+| [Operation Identity](./operation-identity-lab.md) | Advanced | 学习异步竞态、写副作用、幂等重试、跨连接恢复时 |
+
+横切实验不会增加新的实施Phase。它们用多个Codex案例提炼一个可复用不变量，并通过纯TypeScript小实验验证理解。

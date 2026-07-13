@@ -124,12 +124,15 @@
 | 90 | Codex Doctor canonical report、并发诊断、fallback与privacy projection | 新增独立专题页；补统一Report/Check/Issue evidence模型、summary不缩水、Config失败继续fallback、severity lattice、stdout与progress隔离、passive daemon probe等优质实现，并确认secret-redacted不等于匿名、human headline未统一redact、字符串启发式绕过、duplicate check ID覆盖、async wrapper无deadline、sync child阻塞且无统一cap、read-mostly仍有network/process副作用、静态human group漏新category及process::exit析构边界 | 82% / 81% |
 | 91 | Rollout事件事实与State DB查询投影的read-only对账 | 新增独立专题页；补audit query不init/migrate、path+Thread ID双重identity、scan completeness先于否定结论、差异分类、恢复建议服从真实backfill语义、5条样本/8类summary/source coarsening等优质模式；同时确认candidate cap不限制目录entry、每个rollout完整解析、DB fetch_all无cap、sample不稳定、roots外现存DB path逃检、跨存储非快照、canonical fallback置信度、parse error与recovery integrity混淆及filesystem key覆盖 | 81% / 81% |
 | 92 | 分层Config的typed path、source span、strict validation与安全诊断 | 新增独立专题页；补serde类型语义+serde_path_to_error业务路径+toml_edit source span、真实relative base重放、raw enterprise provenance、单调fallback、type error优先和opaque namespace等优质实现，并确认lowest-first不等于causal provenance、flatten segment跳过误定位、feature粗粒度、Unicode/tab caret单位、source reread TOCTOU、thread-local guard非nested-safe、单错循环、source line secret/control泄漏、synthetic path类型混淆和重复parse无budget | 81% / 81% |
+| 93 | Operation identity横切学习实验 | 新增learning-roadmap独立实验页；以Feedback、reset credit、owner nudge、status probe、assistant branch observation和request-user-input为源码对照，区分entity/request/operation/idempotency/generation/attempt/receipt七种身份，提供operation envelope、状态机、纯TS ABA/ambiguous commit/body conflict/owner drift实验与测试矩阵，并明确当前阶段只理解、不提前实现workflow框架 | 81% / 81% |
+| 94 | Review Mode隔离evaluator、交付拓扑与结果可信度 | 新增独立专题页；补四类target、base merge SHA预解析、inline/detached共核、产品历史继承与sampling history隔离、不可steer队列恢复、自定义review model、child event过滤等优质实现；同时确认target未绑定完整snapshot、spawn早于Entered的生命周期窗口、注释称禁view_image但实际工具计划仍加入、继承permission/MCP使read-only主要靠prompt、rubric允许priority省略但协议必填、未启用structured output且缺后置校验、brace substring脆弱、reviewer结果被提升为未转义user-role上下文，以及deliver-before-materialize无durable receipt | 81% / 81% |
+| 95 | Thread fork、append-only rollback、replay与world-state边界 | 新增独立专题页；补rollback marker保留原始审计、reverse replay按真实instruction-turn计数并同步恢复settings/reference/world/window、active Turn拒绝、per-thread pending slot、TUI确认后才trim且带Thread guard、source byte不变、canonical terminal Turn prefix、mid-turn显式Interrupted、response/notification负载分工等优质实现；同时确认rollback只改history不撤文件/外部副作用、count target无revision CAS、内存先提交且marker flush失败仍发成功、deprecated仅对TUI隐藏、fork按当前config层重新求值、history与world state错位、绝对path可读scope外合法rollout、excludeTurns只省wire projection而非端到端廉价，以及ephemeral不可恢复 | 80% / 80% |
 
 ## 最近检查
 
 - 命令：`python3 "$HOME/.local/bin/codex-weekly-usage.py"`
-- 读数：已用 19%，剩余 81%
-- 采样时间：`2026-07-13 13:52:44 CST`
+- 读数：已用 20%，剩余 80%
+- 采样时间：`2026-07-13 14:02:29 CST`
 - 判断：高于 50%；按用户明确停止条件继续做源码深挖，不能以首轮闭环或 PR 已创建为由停止。
 
 ## 下一批次

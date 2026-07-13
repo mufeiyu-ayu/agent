@@ -55,6 +55,8 @@
 | [codex/doctor-diagnostics.md](./codex/doctor-diagnostics.md) | Doctor canonical report、并发诊断、降级与隐私投影专题 |
 | [codex/rollout-state-reconciliation.md](./codex/rollout-state-reconciliation.md) | Rollout 事件事实与 SQLite 查询投影的对账专题 |
 | [codex/config-diagnostics.md](./codex/config-diagnostics.md) | 分层配置、typed path、源码 span 与敏感错误渲染专题 |
+| [codex/review-mode.md](./codex/review-mode.md) | Review evaluator 隔离、能力收缩、输出契约与持久化语义专题 |
+| [codex/thread-fork-rollback-and-replay.md](./codex/thread-fork-rollback-and-replay.md) | Thread fork、append-only rollback、replay 与副作用补偿边界专题 |
 | [codex/current-project-gap-analysis.md](./codex/current-project-gap-analysis.md) | 当前项目能力、证据和缺口 |
 | [codex/cloud-agent-mapping.md](./codex/cloud-agent-mapping.md) | 客户端 Codex 思想如何翻译为云端 NestJS Agent |
 | [codex/terminology-map.md](./codex/terminology-map.md) | Codex、当前项目和中文助记名的概念对照 |
@@ -68,6 +70,7 @@
 | [learning-roadmap/progress-tracker.md](./learning-roadmap/progress-tracker.md) | 已读调用链、Teach-back、实验与未知问题 |
 | [learning-roadmap/learning-method.md](./learning-roadmap/learning-method.md) | 从源码事实到可验证理解的方法 |
 | [learning-roadmap/checklist-phase-matrix.md](./learning-roadmap/checklist-phase-matrix.md) | 架构域、学习模块、源码文档、建议深度与项目需要 |
+| [learning-roadmap/operation-identity-lab.md](./learning-roadmap/operation-identity-lab.md) | 从Codex竞态案例学习operation、generation、idempotency与receipt |
 
 每个兼容 `phase-*` 路径代表一个学习模块，并固定包含：
 
