@@ -127,12 +127,15 @@
 | 93 | Operation identity横切学习实验 | 新增learning-roadmap独立实验页；以Feedback、reset credit、owner nudge、status probe、assistant branch observation和request-user-input为源码对照，区分entity/request/operation/idempotency/generation/attempt/receipt七种身份，提供operation envelope、状态机、纯TS ABA/ambiguous commit/body conflict/owner drift实验与测试矩阵，并明确当前阶段只理解、不提前实现workflow框架 | 81% / 81% |
 | 94 | Review Mode隔离evaluator、交付拓扑与结果可信度 | 新增独立专题页；补四类target、base merge SHA预解析、inline/detached共核、产品历史继承与sampling history隔离、不可steer队列恢复、自定义review model、child event过滤等优质实现；同时确认target未绑定完整snapshot、spawn早于Entered的生命周期窗口、注释称禁view_image但实际工具计划仍加入、继承permission/MCP使read-only主要靠prompt、rubric允许priority省略但协议必填、未启用structured output且缺后置校验、brace substring脆弱、reviewer结果被提升为未转义user-role上下文，以及deliver-before-materialize无durable receipt | 81% / 81% |
 | 95 | Thread fork、append-only rollback、replay与world-state边界 | 新增独立专题页；补rollback marker保留原始审计、reverse replay按真实instruction-turn计数并同步恢复settings/reference/world/window、active Turn拒绝、per-thread pending slot、TUI确认后才trim且带Thread guard、source byte不变、canonical terminal Turn prefix、mid-turn显式Interrupted、response/notification负载分工等优质实现；同时确认rollback只改history不撤文件/外部副作用、count target无revision CAS、内存先提交且marker flush失败仍发成功、deprecated仅对TUI隐藏、fork按当前config层重新求值、history与world state错位、绝对path可读scope外合法rollout、excludeTurns只省wire projection而非端到端廉价，以及ephemeral不可恢复 | 80% / 80% |
+| 96 | Thread/Turn/Item分页、cursor与live/durable投影 | 新增独立专题页；补NotLoaded/Summary/Full三档完整度、首user+末assistant语义summary、25/100 cap、next排除anchor与backwards重含anchor、rollback后anchor fail-closed、active snapshot按ID替换、stale in-progress归Interrupted、resume initial page减少RTT、paginated ordinal fail-closed等优质实现；同时确认turns/list每页仍全量replay导致O(P×R)、Full仅是有损持久投影、cursor是未绑定thread/query/revision的可改JSON且错误全量回显、persisted/status/active非同代、Core按instruction turn而App builder按projected turn截rollback可能在compaction-only场景分叉，以及Paginated模式的store list ports尚未接入、本地items/list未实现、metadata可见却resume/turns不可用 | 80% / 80% |
+| 97 | Thread archive/unarchive/delete的subtree与跨存储提交 | 新增独立专题页；补进程内list mutation permit、persistent+live spawn subtree去重、containment+filename ID校验、delete child-first且graph/thread rows最后删、active/archive/plain/zstd全形态清理、主DB事务内job cancel/requeue与tool/edge cleanup、missing file幂等继续等优质实现；同时确认remove manager后shutdown失败/10秒超时仍继续导致旧Arc副作用窗口、archive destination无no-replace可覆盖、metadata mark失败静默、subtree archive partial success却空response、unarchive rename后touch/read失败造成ambiguous commit、跨logs/memory/goals/main DB非原子、delete失败前已删资源无notification、成功无tombstone receipt，以及delete不补偿workspace/远端副作用 | 80% / 80% |
+| 98 | Thread raw history injection的信任、并发与提交语义 | 新增独立专题页；补indexed serde error、fresh Thread先物化标准环境上下文、无假user Turn boundary、统一图片/ID/turn ID/history/rollout/raw event边界、remote image fail-closed、active Regular通过pending queue在step边界生效等优质实现；同时确认任意role和provider item只做结构校验、调用者ID/turn ID原样保留、tool pair在prompt阶段才repair/drop导致persisted fact与model-effective input分叉、无item/text/data URL总budget、无operation/history version/expected Turn、active时flush不证明queued item持久化、Review/Compact admission绕过、ephemeral同样空response、retry重复append且缺origin/trust/audit receipt | 80% / 79% |
 
 ## 最近检查
 
 - 命令：`python3 "$HOME/.local/bin/codex-weekly-usage.py"`
-- 读数：已用 20%，剩余 80%
-- 采样时间：`2026-07-13 14:02:29 CST`
+- 读数：已用 21%，剩余 79%
+- 采样时间：`2026-07-13 14:14:47 CST`
 - 判断：高于 50%；按用户明确停止条件继续做源码深挖，不能以首轮闭环或 PR 已创建为由停止。
 
 ## 下一批次

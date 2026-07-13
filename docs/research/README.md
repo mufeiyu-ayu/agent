@@ -57,6 +57,9 @@
 | [codex/config-diagnostics.md](./codex/config-diagnostics.md) | 分层配置、typed path、源码 span 与敏感错误渲染专题 |
 | [codex/review-mode.md](./codex/review-mode.md) | Review evaluator 隔离、能力收缩、输出契约与持久化语义专题 |
 | [codex/thread-fork-rollback-and-replay.md](./codex/thread-fork-rollback-and-replay.md) | Thread fork、append-only rollback、replay 与副作用补偿边界专题 |
+| [codex/thread-history-pagination.md](./codex/thread-history-pagination.md) | Thread/Turn/Item 分页、cursor、live merge 与投影完整度专题 |
+| [codex/thread-archive-delete-lifecycle.md](./codex/thread-archive-delete-lifecycle.md) | Archive/unarchive/delete 的 subtree、跨存储提交与可重试清理专题 |
+| [codex/thread-history-injection.md](./codex/thread-history-injection.md) | Raw model history 注入的角色信任、并发归属、幂等与审计专题 |
 | [codex/current-project-gap-analysis.md](./codex/current-project-gap-analysis.md) | 当前项目能力、证据和缺口 |
 | [codex/cloud-agent-mapping.md](./codex/cloud-agent-mapping.md) | 客户端 Codex 思想如何翻译为云端 NestJS Agent |
 | [codex/terminology-map.md](./codex/terminology-map.md) | Codex、当前项目和中文助记名的概念对照 |

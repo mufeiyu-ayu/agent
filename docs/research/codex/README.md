@@ -66,6 +66,9 @@ flowchart LR
 | [config-diagnostics.md](./config-diagnostics.md) | Layer provenance、typed config path、TOML span与安全渲染 |
 | [review-mode.md](./review-mode.md) | Review target、inline/detached、隔离 evaluator、结果可信度与 durable receipt |
 | [thread-fork-rollback-and-replay.md](./thread-fork-rollback-and-replay.md) | Append-only rollback、历史重放、terminal-ID fork 与 world-state 边界 |
+| [thread-history-pagination.md](./thread-history-pagination.md) | Turns/Items 分页、双向 cursor、live/durable merge 与 projection completeness |
+| [thread-archive-delete-lifecycle.md](./thread-archive-delete-lifecycle.md) | Thread archive/delete subtree、跨存储partial commit与删除回执 |
+| [thread-history-injection.md](./thread-history-injection.md) | Raw history injection、角色信任、active task竞态、幂等与提交回执 |
 | [current-project-gap-analysis.md](./current-project-gap-analysis.md) | 当前项目不是“缺什么功能”，而是缺哪些运行系统能力 |
 | [cloud-agent-mapping.md](./cloud-agent-mapping.md) | 客户端概念到云端 NestJS 架构的转换规则 |
 | [terminology-map.md](./terminology-map.md) | Thread、Turn、Item、Run、Step 等概念对照 |
