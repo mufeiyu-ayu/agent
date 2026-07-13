@@ -97,12 +97,15 @@
 | 63 | Rollout Budget共享记账、提醒与恢复语义 | 补Completed后才计费导致已耗尽仍发请求、输出/history副作用不回滚、只信server usage且无attempt去重、f64权重与zero weights、per-thread/window提醒自耗、compaction计费后不安装、rollback不退款，以及live child共享但fork/cold resume从0重置 | 86% / 86% |
 | 64 | Hook command trust、timeout、输出与spill资源边界 | 补config hash后才做env替换且不含shell/PATH/rc/script内容、host全权限继承env执行、stdin write在timeout外可挂死、wait_with_output无界内存、只kill direct child、event stdout/exit语义分裂，以及2500-token spill发生太晚且temp文件无private mode/cleanup、HookCompleted仍可保留全量 | 86% / 86% |
 | 65 | MCP OAuth多store authority、refresh transaction与删除恢复 | 补Auto启动时resolve并生命周期pin、跨process仍可能File/Keyring分叉、store key漏resource/scope/client/headers且URL不规范、File direct write后chmod非原子、aggregate/per-credential双lock、Direct keyring跨CODEX_HOME失配、caller取消后refresh继续、persist-before-install及delete失败先丢内存retry intent | 86% / 86% |
+| 66 | MCP OAuth callback、PKCE与端到端登录事务 | 补默认loopback与custom non-loopback自动0.0.0.0、确定性callback id、method/Host不校验、error无需state可抢先终止、成功页早于state/token/save、timeout只包callback等待、handle drop不取消，以及OAuth HTTP 1 MiB body与redirect/header策略下沉 | 86% / 85% |
+| 67 | Skill root、symlink、canonical identity与正文generation | 补User/Repo/Admin目录symlink可越root而System忽略、visible alias绕hidden、bounded walk partial inventory只进日志、canonical first-wins ownership、file检查TOCTOU、metadata snapshot但Turn late-read可组合A/B generation、完整读取后才8 KiB截断、policy metadata fail-open、disabled path漂移与asset仅lexical containment | 85% / 85% |
+| 68 | ExecPolicy shell lowering、safe/dangerous heuristics与sandbox边界 | 补word-only多segment与heredoc复杂标记、显式Allow全覆盖才bypass、basename safelist不绑定binary、Git transitive helper与读数据不等于保密、Unix dangerous只识别窄`rm -f/-rf`导致等价语法漂移、approval/profile完整矩阵、conflicting rules取最严、单个parse error丢弃全部普通rules，以及disk-first amendment partial state | 85% / 85% |
 
 ## 最近检查
 
 - 命令：`python3 "$HOME/.local/bin/codex-weekly-usage.py"`
-- 读数：已用 14%，剩余 86%
-- 采样时间：`2026-07-13 12:52:13 CST`
+- 读数：已用 15%，剩余 85%
+- 采样时间：`2026-07-13 12:59:08 CST`
 - 判断：高于 50%；按用户明确停止条件继续做源码深挖，不能以首轮闭环或 PR 已创建为由停止。
 
 ## 下一批次

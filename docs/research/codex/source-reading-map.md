@@ -1480,3 +1480,72 @@ previous model先InvalidRequest，current model再失败，比较用户收到的
 并发两个refresh，控制第一个rotation后caller cancel、provider timeout和persist失败；第二个lock后必须rereadwinner。Direct keyring跨CODEX_HOME缺同一lock，应单独验证。
 
 最后让AuthorizationManager credential变None且durable delete失败，重复persist_if_needed并重启；当前last_credentials已take导致不再重试。生产删除必须tombstone+retry，logout成功要以所有authority不可再恢复为准。
+
+## 75. 路线七十二：PKCE为何仍挡不住本地OAuth callback被抢先终止
+
+按listener、redirect identity、callback parser、授权交换和HTTP transport阅读：
+
+- `rmcp-client/src/perform_oauth_login.rs`：三种登录入口、listener guard、callback id/path、parser、timeout和token save顺序。
+- `rmcp-client/src/oauth_http_client.rs`：default/request header覆盖、redirect policy、timeout与1 MiB response上限。
+- `app-server/src/request_processors/mcp_processor.rs`：return-url handle、后台completion与protocol notification。
+- `cli/src/mcp_cmd.rs`、`core/src/mcp_skill_dependencies.rs`、plugin login：browser/silent调用和scope retry。
+- config callback URL/port定义与tests：自定义redirect的预期部署模型。
+- callback/parser/App Server executor tests：state、token exchange、notification与固定client id。
+
+先对默认、localhost、IPv6、外部HTTPS、非HTTP scheme与host不含端口的callback URL记录advertised redirect URI、实际listen address和path；验证非loopback host自动扩大为0.0.0.0，却不证明流量真的被转发到该port。
+
+计算已知server URL的callback id，从同机/LAN在浏览器redirect前发送`?error=access_denied`和错误state的code；观察oneshot一次性终结、listener退出以及合法callback无法恢复。再用随机path对比，明确PKCE只保护token exchange，不保护flow availability。
+
+构造duplicate code/state、code+error、percent-encoded key、无`=`参数、POST/HEAD和任意Host；记录手写parser的last-write与success优先语义。生产callback parser应使用标准form-url-encoded decoder并把method/host/body/query限制写入协议。
+
+让state validation、token endpoint和credential store分别失败，比较浏览器已返回的“complete”与App Server最终失败notification。成功页必须位于durable commit之后，或改成“callback received，等待客户端确认”。
+
+分别延迟metadata discovery、dynamic registration、callback、token exchange与keyring/file save；证明timeout只包callback receiver。用0、负数、极大i64检查静默clamp和无上限后台驻留，handle drop也要测试是否真正取消。
+
+最后让OAuth endpoint跨origin redirect并配置Authorization/custom header，抓底层HTTP client行为；adapter只映射Follow/Stop，没有自己剥离敏感header。生产安全测试要固定跨origin重定向策略，而不是依赖通用transport默认值。
+
+## 76. 路线七十三：Skill snapshot冻结的是目录还是正文
+
+按root ownership、bounded walk、canonical identity、late read和cache generation阅读：
+
+- `core-skills/src/loader.rs`：root来源/去重、scope symlink policy、canonicalization、frontmatter/metadata与asset路径。
+- `core-skills/src/loader/discovery.rs`、`file-system/src/lib.rs`：BFS、排序、cycle identity、depth/directory/entry/response bounds和partial inventory。
+- `core-skills/src/root_loader.rs`、`model.rs`：first-wins merge、path→filesystem映射与所谓immutable HostSkillsSnapshot。
+- `core-skills/src/injection.rs`、`ext/skills/src/provider/host.rs`、`extension.rs`/`render.rs`：Turn late read、完整分配后8000-byte截断。
+- `config_rules.rs`、`invocation_utils.rs`：disabled selector与implicit command usage的best-effort canonicalization。
+- loader/service/executor authority tests：目录/file symlink、hidden alias、cycle、namespace和remote filesystem身份。
+
+在Repo/User/Admin/System四种scope分别放指向root外的directory symlink和file symlink；记录walk、canonical path、scope、namespace与最终filesystem。特别验证Repo标签不等于target仍属于repo。
+
+让两个不同root alias指向同一target并交换root顺序，比较first-wins的scope/plugin id；root只在canonicalize前按文本dedupe，所以同target仍重复scan。给scan前部制造2000目录/20000 entries，检查后部skill缺失是否只出tracing日志。
+
+在catalog生成后、Turn选择前把`SKILL.md`原子替换、改symlink target或只改正文；比较snapshot name/description/policy与实际注入body。加入digest后应拒绝generation不一致，而不是静默组合A metadata+B body。
+
+制造几十MiB正文，测量host read峰值；当前8 KiB限制发生在完整String之后。统一Host/Executor/Orchestrator的流式上限，并把truncation语义放在provider contract而非consumer末端。
+
+让`openai.yaml`声明禁止implicit后变invalid/不可读，验证policy回到默认允许；再让disabled path在config load时不存在、之后创建symlink。安全开关应与展示metadata区分fail-closed/fail-open。
+
+最后在`assets/`内放外链symlink，把icon absolute path通过App Server交给client；loader的lexical prefix不证明real target containment，consumer必须按package capability重新读取和限流。
+
+## 77. 路线七十四：为什么known-safe命令仍不能当安全边界
+
+按shell lowering、显式rule、heuristic三态、approval矩阵与sandbox bypass阅读：
+
+- `shell-command/src/bash.rs`：tree-sitter word-only sequence、quote/concatenation和heredoc prefix。
+- `command_safety/is_safe_command.rs`：basename safelist与find/rg/base64/git参数过滤。
+- `command_safety/is_dangerous_command.rs`及Windows variants：窄dangerous枚举与wrapper解析。
+- `core/src/exec_policy.rs`：commands lowering、unmatched decision matrix、rule aggregate和bypass条件。
+- `execpolicy/src/policy.rs`/`rule.rs`：exact prefix、absolute host executable映射与最严格Decision。
+- `command_canonicalization.rs`、`execpolicy/src/amend.rs`：approval key和持久化规则更新。
+
+创建PATH前置fake `cat`与直接`/tmp/cat`，在UnlessTrusted+Managed和Disabled profile分别观察approval与sandbox；basename判safe不等于binary可信。下一步把binary在审批后替换，验证canonical cache没有inode/digest。
+
+用`rm -rf`、`rm -fr`、`rm -r -f`、long options、绝对path、sudo额外flag、env wrapper和find-delete跑完整approval矩阵。dangerous提示必须被描述为best-effort UX，不是破坏性操作denylist。
+
+在repo config/env注册Git fsmonitor/pager/textconv/external helper，再执行被判safe的status/log/diff/show；确认过滤command-line flags没有覆盖transitive executable closure。生产可选择clean env+safe config或不把Git特判为纯读。
+
+给`cat`读取workspace、home secret与系统路径，区分command side effect和data confidentiality；只有PermissionProfile/sandbox能决定真实读边界，safe classification本身没有path policy。
+
+组合pipeline与多条conflicting rules，确认每segment分别匹配、最终取最严格Decision，且只有每段显式Allow才bypass sandbox。对复杂shell和heredoc检查原wrapper/argv prefix如何进入rule与approval cache。
+
+最后破坏任一低优先级`.rules`，验证所有普通rules被丢弃、只保留requirements；再模拟append成功但memory update失败。policy loader要有last-known-good generation和逐文件可见错误，不能静默回到更宽heuristics。

@@ -3027,6 +3027,173 @@ Direct keyring coordination does not cross CODEX_HOME.
 
 映射到当前项目：tenant connector credential用单一durable authority record，key包含canonical endpoint+resource+client+scope set+tenant，backend selection也持久化。secret document原子rename/fsync/0600-before-publish并校验内部audience。refresh用分布式lease+fencing token和idempotency/rotation journal；delete写tombstone并持续retry，不能先忘记内存intent。短暂provider error与invalid_grant必须typed区分。
 
+### 4.77 MCP OAuth Login：PKCE保护授权码交换，但本地callback仍是可抢先终止的控制面
+
+MCP OAuth登录先在本机创建`tiny_http::Server`，默认绑定`127.0.0.1:0`，再把实际端口组成`http://127.0.0.1:<port>/callback`。若配置固定port，0被拒绝；若配置callback URL，只验证`Url::parse`成功，不限制scheme、userinfo、host、port或fragment，也不验证它是否能路由回刚创建的listener。
+
+每个server URL去掉fragment后做SHA-256，取前9 bytes并base64url为12字符callback id，追加到redirect URI path。它把不同MCP server的callback path分开，却是确定性namespace，不是随机secret；server URL通常也可由配置观察。query/路径大小写/默认端口仍参与hash，同一逻辑endpoint的文本差异会改变path。
+
+自定义callback host是localhost、127.0.0.1、::1或无host时仍绑定127.0.0.1；任何其他host都绑定`0.0.0.0`。listener地址与advertised callback URL没有一致性检查：配置`https://example.com/cb`时，本机监听的是任意IPv4地址上的另一个port，除非外部反向代理/端口配置恰好转发，否则provider redirect无法到达；同时LAN暴露面被扩大。
+
+callback server在`spawn_blocking`线程串行`recv`，不检查HTTP method、Host、Origin或来源地址，只比较URL path。错误path返回400后继续等待；合法success或provider error都立即响应并终止server。没有连接数、header/query大小或单位时间请求上限，具体上限下沉给tiny_http。
+
+query parser手工按`&`和首个`=`切分，只URL-decode value，不decode key；重复字段last-write。只要最终同时有code和state就优先判Success，即使也带error；provider error只要有error或description即可，不要求state。合法path上的`?error=access_denied`因此无需知道CSRF state就能抢先结束flow。
+
+PKCE/CSRF验证仍由RMCP的`OAuthState.handle_callback(code, state)`负责，所以攻击者不知道state时不能把自己的authorization code安装为credential。但callback thread在把code/state交给它**之前**就向浏览器返回“Authentication complete”；state错误、token exchange失败、credential缺失或持久化失败都会在页面宣称成功之后发生。
+
+更实际的边界是availability：同机任意process，或自定义非本机host导致0.0.0.0监听时同LAN可达者，只要知道确定性callback path，就可先发无state provider error令oneshot终结。即使伪造Success，错误state也会关闭listener，合法浏览器redirect随后无法完成。PKCE防credential injection，不防callback race DoS。
+
+默认等待300秒；return-url调用者可传i64 timeout，但实现只做`.max(1)`，负数和0静默变1秒，没有最大值。超大i64可让后台登录task和listener存在数百年。`OauthLoginHandle`被调用者丢弃不会取消spawn出的flow；只有timeout、callback或进程退出收口。
+
+普通与silent登录都会自动打开browser，silent只是成功打开时不打印URL；return-url版本才不launch browser，而是先返回authorization URL并后台等待。browser launch失败只打印提示，不影响等待。授权初始化发生在返回URL之前，metadata discovery/DCR或固定client配置失败时listener guard随flow构造失败而unblock。
+
+没有显式client id时走RMCP discovery/dynamic registration；有非空client id时仍先discover metadata，再配置client并生成authorization URL。`resource`不是交给AuthorizationManager结构化绑定，而是在最终auth URL上追加query；credential store identity却不包含resource/scopes/client id，这与上一节的跨audience复用风险相连。
+
+OAuth HTTP adapter把配置default headers与每个OAuth请求headers合并，请求值覆盖默认同名header。它接受RMCP的Follow/Stop redirect policy并下沉通用exec-server HTTP client；因此redirect时敏感header是否跨origin保留取决于底层实现，不在adapter重新约束。request id只是process内AtomicU64序号，不是OAuth transaction id。
+
+response body流式读取但累计到Vec，硬上限1 MiB；超限在读到越界chunk后报错。请求timeout由RMCP传入并至少1ms，callback总等待timeout却不覆盖前置metadata discovery、client registration、authorization URL构建、browser launch、callback后的token exchange和credential save，因此“300秒OAuth timeout”不是端到端deadline。
+
+收到合法callback后依次执行state/PKCE处理、取client id+credential、计算expires_at、保存durable token；只有save成功flow才Ok。browser page、App Server的auth URL notification、provider token状态和local durable store之间没有共同transaction。provider已rotation/颁发token但本地save失败时，用户看到完成，服务端也可能保留已授权grant，本机却要求重新登录。
+
+guard Drop调用`server.unblock()`，callback thread在recv error后退出；没有显式join，所以flow result返回只保证发出unblock，不保证blocking task已退出。快速重复登录可短暂存在旧新listener/thread；固定port下旧server释放时机由操作系统和tiny_http控制。
+
+```text
+bind callback listener
+  default: 127.0.0.1:ephemeral
+  custom non-loopback URL: 0.0.0.0:configured/ephemeral
+        |
+discover/register client -> PKCE/state -> authorization URL
+        |
+any HTTP method, exact deterministic path
+  error(no state required) -----> terminate flow
+  code+state -------------------> browser says complete
+                                    -> validate state / exchange token
+                                    -> persist credential
+
+PKCE protects token installation.
+It does not protect callback availability or success-page truthfulness.
+```
+
+关键测试：
+
+- callback parser tests：默认/custom/id path、wrong path和provider error；还应补duplicate、code+error、encoded key、无state error与method/Host。
+- callback routing tests：localhost/IPv6/non-loopback bind、custom URL端口不一致、非HTTP scheme与deterministic id。
+- race tests：伪造error/错误state先到、合法redirect后到，以及多个并发login固定port。
+- timeout tests：0/负数/极大值、slow discovery、slow token endpoint和slow store，区分callback wait与端到端deadline。
+- UX tests：state mismatch、token exchange/save失败时浏览器页面与App Server最终notification是否一致。
+- HTTP adapter tests：1 MiB边界、redirect跨origin header、default/request header覆盖与stream cancellation。
+
+映射到当前项目：callback只绑定loopback，外部回调通过显式受信任broker实现，不因URL host自动改成0.0.0.0。每次flow生成随机高熵path nonce，provider error也必须校验state，并在验证/交换/持久化全部成功后才显示成功页。使用单一端到端deadline覆盖discovery、callback、exchange和save；handle drop能cancel并join listener。自定义redirect URI校验https/loopback规则、advertised/listener一致性和allowed origins；credential key纳入issuer/resource/scopes/client identity。
+
+### 4.78 Skill Filesystem Identity：canonical path统一去重，却没有冻结已审查的内容
+
+host skills先组装Repo/User/System/Admin、plugin与extra roots；root只按原始`AbsolutePathBuf`去重，然后逐个canonicalize。两个alias root指向同一target时仍会重复walk，最后按canonical `SKILL.md` path first-wins。root优先级因此既决定重复工作的成本，也决定同一skill最终的scope、plugin id和ExecutorFileSystem ownership。
+
+User、Repo和Admin scope显式follow directory symlink，System才ignore。follow不要求canonical target仍在scan root之下：repo的`.agents/skills`或`.codex/skills`可通过目录symlink导入workspace外任意可读目录；测试还明确允许visible alias进入hidden directory。它是共享skills能力，也意味着“Repo scope”描述配置入口，而不证明内容由repo拥有。
+
+walk是BFS、目录entry按名字排序，限制depth 6、directories 2000、entries 20000，并用canonical directory identity避免symlink cycle。达到limit只返回partial inventory并记录warning；host loader把warning写tracing error，却不放进`SkillLoadOutcome.errors`，所以catalog consumer通常看不到“列表不完整”。攻击者可用排序靠前的大目录消耗配额，稳定饿死后面的skills。
+
+file symlink在walk时被忽略，即使follow directory symlink；但这是`get_metadata`到后续canonicalize/read之间的路径时刻检查，不是descriptor级保证。普通file可在检查后替换成symlink；canonicalize失败时又fallback原path，仍继续读取。整个发现过程没有root-relative open、`O_NOFOLLOW`、inode/dev快照或canonical containment assertion。
+
+发现的`SKILL.md`随后canonicalize为实际target path，并以它做skill identity、config disabled匹配、dedupe和后续read。外部symlink target因此不再保留alias provenance；用户看到的是host绝对target path。namespace resolver专门处理alias target与scan root关系，避免把外部plain directory误继承plugin namespace，但安全ownership仍没有被编码。
+
+最关键的“snapshot”只冻结metadata与`path -> filesystem`映射，不冻结正文。加载时读取一次frontmatter得到name、description、policy；Turn明确选择skill时，Host provider再从同一个path读取当前全文，最多在**完整读取之后**截断到8000 bytes注入。两次读取之间文件可被编辑、原子替换或symlink retarget：模型看见的正文不一定含当初解析出的frontmatter/policy。
+
+这形成catalog-to-body TOCTOU。一个skill可在列表时声明安全description和`allow_implicit_invocation:false`，选择后正文被换成另一套指令；反过来optional `openai.yaml`读取/解析失败时fail-open为空metadata，implicit invocation默认true、product restriction也为空。可选UI metadata不应成为安全policy的唯一来源。
+
+host `read_file_text`没有byte上限；8000-byte截断只发生在string完整分配之后。巨大`SKILL.md`可在每次selected Turn消耗内存和I/O。Orchestrator provider另有1 MiB resource limit，三种authority的资源budget并不一致。legacy injection也直接完整读取，迁移期需确认最终只走有上限的路径。
+
+explicit structured skill选择按绝对path与snapshot exact match，不重新canonicalize输入；text mention按唯一name。disabled path config在解析时“存在则canonicalize，不存在则保留原path”，之后skill创建、symlink出现或target变化会导致rule与canonical loaded path不匹配。name rule能覆盖，但同名/namespace变化会改变作用集合。
+
+implicit usage detection又在建索引和每次command时best-effort canonicalize。不存在的`scripts`目录先以lexical path入表，后来创建为指向别处的symlink时command candidate按canonical target计算，可能不再命中；相反替换现有路径会改变归因。该机制是analytics/usage detection，不是执行授权，不能把“识别为skill script”当capability边界。
+
+optional icon只做lexical containment：普通skill必须以`assets/`开头，plugin允许`..`但lexically落在plugin-level assets；没有canonicalize、existence/type/size检查。assets内部symlink仍可指向外部，absolute path会通过App Server协议下发。若GUI直接读取这些path，还需在consumer处重新做受控file read，不能信任loader的lexical check等于真实containment。
+
+PluginSkillSnapshots复用plugin load时的metadata snapshot，之后SkillsService cache又按roots/config或cwd缓存；两层都没有file generation/content hash。watcher clear cache只能让下一snapshot重扫，已创建Turn/Thread持有旧catalog仍会late-read新正文。metadata版本和正文版本跨代组合是正常可发生的状态。
+
+```text
+configured alias root
+  -> canonical root identity
+  -> bounded walk (directory symlinks may escape root)
+  -> canonical SKILL.md path
+  -> parse metadata A
+  -> cache immutable metadata/path/fs snapshot
+                         |
+                         +-- later Turn reads path again -> body B
+                                                   -> full allocation
+                                                   -> 8 KiB truncation
+
+Path identity is stable-ish; content identity is not captured.
+```
+
+关键测试：
+
+- loader symlink tests：User/Repo/Admin follow、System ignore、file symlink ignore、cycle和visible-to-hidden alias。
+- bounds tests：depth/directory/entry/response-byte truncation、lexicographic starvation与warning是否到达catalog/UI。
+- TOCTOU tests：metadata读取后原子replace、file→symlink、symlink retarget、canonicalize error fallback和Turn late read。
+- cache tests：plugin preload、cwd/config snapshot、watch invalidation与旧Turn并存时的body generation。
+- policy tests：`openai.yaml`缺失/invalid/read error时implicit/product fail-open，以及disabled nonexistent/alias path。
+- asset tests：`assets/link -> /outside`、plugin shared asset、non-file/huge icon和client消费路径。
+- size tests：超大host SKILL正文、8000-byte边界、legacy/extension/orchestrator不同authority的一致性。
+
+映射到当前项目：把skill package当不可变artifact加载：在单次受限读取中校验real path、owner root、size与content digest，metadata和body绑定同一digest/generation；Turn注入从snapshot bytes或content-addressed store读。Repo symlink默认不得越workspace，确需共享时声明external root并显示provenance。安全policy解析失败fail-closed；UI metadata可fail-open。所有authority使用一致的streaming byte limit，scan truncation必须进入用户可见catalog warning。icon/resource读取在consumer处用同一package root capability和nofollows规则。
+
+### 4.79 ExecPolicy Heuristics：safe/dangerous是审批提示分类，不是命令安全证明
+
+ExecPolicy先把可解析的`bash|zsh|sh -c/-lc` word-only脚本拆成多个argv segment；每个segment匹配显式prefix rules，没有匹配才走heuristics。多segment和多rule的最终Decision取最严格的`Allow < Prompt < Forbidden`。显式Allow只有覆盖**每个**segment时才可`bypass_sandbox=true`，heuristic Allow永远不会单独绕过sandbox。
+
+word-only parser基于tree-sitter，只接受plain command、quoted literal、concatenation和`&& || ; |`；拒绝变量/command substitution、redirect、subshell、control flow等。pipeline每段分别评估。单command heredoc另有prefix parser，但标`used_complex_parsing=true`，不会因known-safe自动Allow，也不会自动生成持久化amendment；显式rule仍可匹配它的argv prefix。
+
+known-safe Unix名单主要是cat/grep/ls/stat等读/格式化工具，再特判base64、find、rg、git和严格`sed -n Np`。判定第一项只取path basename：`/tmp/cat`、`./ls`或PATH里被替换的`rg`与系统binary同样命中。没有在判定与exec之间绑定resolved executable inode/digest；`MatchOptions.resolve_host_executables`只帮助**绝对路径**匹配已登记basename rule，不会把heuristic bare command解析到可信binary。
+
+因此safe代表“按这个工具名和参数形状推测只读”，不是实际可执行闭包。即使binary真实，Git safe子命令仍继承repo/system config、environment、pager/fsmonitor/textconv/external helper等transitive behavior；代码屏蔽`-c`、`--exec-path`、`--paginate`、`--ext-diff`、`--textconv`等显式开关，却没有冻结已有配置与环境。`git status`也可能更新index/stat cache，read-only是产品近似语义。
+
+safe还不代表confidentiality-safe。`cat ~/.ssh/id_rsa`、`grep`扫描home、`find`遍历外部路径都可在UnlessTrusted下不弹审批；是否可读完全交给sandbox permission。若profile允许广泛读取，输出会进入模型上下文。审批标签应区分“无写副作用”“可读数据范围”和“可执行来源可信”。
+
+dangerous classifier与safe并非互补。Unix只识别argv第一个正好为`rm`且第二个正好是`-f`或`-rf`，以及没有额外选项的递归`sudo <cmd>`。`/bin/rm -rf`、`rm -fr`、`rm -r -f`、`rm --recursive --force`、`sudo -n rm -rf`、`env rm -rf`、`find -delete`、`dd`等都不是dangerous；其中部分也不是safe，而是unknown。
+
+unknown如何处理取决于approval+filesystem policy。UnlessTrusted会Prompt；OnRequest/Granular在restricted sandbox且不请求override时Allow，在Unrestricted/External也直接Allow；Never通常Allow并依赖sandbox。dangerous才会Prompt，Never+Managed时Forbidden，但Never+Disabled/External又因用户明确关闭sandbox而Allow。于是dangerous只是少量“即使通常just run也额外提醒”的UX规则，绝不能承担阻止破坏性命令的安全责任。
+
+这也意味着等价语法能改变OnRequest unrestricted环境是否弹窗：`rm -rf`被识别，`rm -fr`不识别。prompt injection无需突破parser，只需选择未枚举的同义选项。若产品把dangerous提示当最后防线，这个枚举模型不可维护；真正强制边界仍必须是sandbox、capability和显式deny policy。
+
+UnlessTrusted下basename伪装虽然heuristic Skip不绕过managed sandbox，但PermissionProfile Disabled/External没有outer sandbox，假`cat`可直接执行任意行为。即使managed sandbox存在，它仍可破坏writable roots或读取已允许secret。信任命令名的风险不能用“仍在sandbox”完全消除。
+
+显式prefix rule按exact token前缀匹配；同一command的所有matching rules保留，最严格者获胜，不是“后加载覆盖前加载”。policy layer按低到高收集文件的注释容易让人误以为最后写入覆盖，但Decision aggregation与网络rule的last-write实现不同，两个domain需要分别理解。
+
+任意一个`.rules`语法错误会放弃本轮所有普通System/Admin/User/Project rules，仅保留requirements policy并返回warning；文件read/read_dir错误则是fatal。一个低优先级坏文件可让其他普通Forbidden规则一起消失，然后落回heuristics。requirements仍是上界，但普通用户安全规则不是partial salvage或last-known-good。
+
+审批“记住”规则先在`$CODEX_HOME/rules/default.rules`用advisory flock读全文件去重并append，再更新ArcSwap内存Policy。append没有atomic rename/fsync/private-mode/nofollow；进程内Semaphore加file lock能协调合作writer，但disk成功、memory add失败会产生当前进程未生效而重启后生效的partial state。反向memory成功/disk失败被disk-first顺序避免。
+
+prefix suggestion有手工banned list，禁止建议`python`、shell、git、env、sudo、node等过宽prefix；但只拒绝**完全等于**某个banned token vector，用户/客户端仍可显式配置，或建议带额外宽泛参数。它是UX护栏，不是rule language约束。
+
+approval cache另做command canonicalization：单个plain shell command降为argv，复杂script保留特殊prefix+原script文本。它稳定bash绝对路径差异，却不包含resolved executable、PATH/env/cwd/config generation。相同canonical command在runtime closure变化后仍可能复用approval，必须靠sandbox与rule scope兜底。
+
+```text
+shell argv
+  -> conservative parse into segments (or opaque wrapper)
+  -> explicit prefix rules per segment
+       no match -> heuristic safe / dangerous / unknown
+  -> aggregate max(Allow, Prompt, Forbidden)
+  -> approval policy maps prompt/reject
+  -> sandbox decision
+
+heuristic Allow != explicit Allow:
+  it never grants bypass_sandbox by itself.
+heuristic dangerous != exhaustive denylist.
+```
+
+关键测试：
+
+- Bash parser tests：operators、quotes/concatenation、redirect/substitution拒绝、heredoc complex标记和多segment聚合。
+- safe-list tests：find/rg/base64/git危险options、git subcommand识别、full path/PATH shadow与fake basename executable。
+- dangerous tests：`rm -f/-rf`、sudo，以及所有等价option order/long form/wrapper负例。
+- policy matrix tests：四种approval、Managed/Disabled/External、restricted/unrestricted、sandbox override与Windows backend disabled。
+- rule tests：exact/absolute-host mapping、多个冲突rule、layer顺序、every-segment explicit Allow才bypass。
+- load tests：单文件parse error时requirements-only fallback、read error fatal和last-known-good缺失。
+- amendment tests：并发process、symlink policy file、partial append/fsync和disk-memory generation。
+
+映射到当前项目：把命令准入分成三层：解析后的effect capability（read/write/network/process）、可信executable identity、sandbox enforcement；“known safe”只用于减少提示。危险操作用默认deny capability与sandbox syscall/filesystem约束，不用同义词枚举。审批key包含resolved binary digest、cwd、env allowlist、policy/sandbox generation；Git等可扩展工具清空危险env/config或仍按通用process capability处理。rules加载采用per-file诊断+last-known-good，requirements fail-closed；UI明确显示heuristic判断与强制边界的区别。
+
 ## 5. 当前项目最应该吸收的架构原则
 
 ### 原则一：对外协议稳定，内部事件可演进
