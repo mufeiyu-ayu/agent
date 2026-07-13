@@ -108,6 +108,9 @@ flowchart LR
 | [config-write-and-runtime-refresh.md](./config-write-and-runtime-refresh.md) | Config写入、Layer origin/version、Runtime Refresh、Thread/Turn snapshot与MCP边界 |
 | [exec-server-session-recovery.md](./exec-server-session-recovery.md) | Exec Server会话租约、连接generation、进程输出重放、stdin幂等与断线恢复边界 |
 | [exec-server-noise-rendezvous-security.md](./exec-server-noise-rendezvous-security.md) | Exec Server Registry/Relay/Noise分权、Hybrid IK、multiplexing、presence与远程恢复 |
+| [exec-environment-resolution-and-capability-snapshot.md](./exec-environment-resolution-and-capability-snapshot.md) | Exec Environment来源、Thread Selection、Step快照、Capability Root与MCP绑定一致性 |
+| [exec-http-capability-and-streaming.md](./exec-http-capability-and-streaming.md) | Local/Remote HTTP统一接口、bodyDelta流、背压预算、网络authority与MCP重试 |
+| [environment-filesystem-sandbox-and-streaming.md](./environment-filesystem-sandbox-and-streaming.md) | Environment Filesystem、portable permission、Sandbox Helper、文件流与递归操作预算 |
 | [current-project-gap-analysis.md](./current-project-gap-analysis.md) | 当前项目不是“缺什么功能”，而是缺哪些运行系统能力 |
 | [cloud-agent-mapping.md](./cloud-agent-mapping.md) | 客户端概念到云端 NestJS 架构的转换规则 |
 | [terminology-map.md](./terminology-map.md) | Thread、Turn、Item、Run、Step 等概念对照 |
