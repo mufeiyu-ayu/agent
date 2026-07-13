@@ -84,6 +84,9 @@
 | [codex/model-catalog-consistency.md](./codex/model-catalog-consistency.md) | 模型能力目录的多源合成、缓存代际、Run快照、实际模型receipt与reroute专题 |
 | [codex/local-log-database.md](./codex/local-log-database.md) | 诊断日志的非阻塞采集、分区预算、查询导出、隐私与durability专题 |
 | [codex/app-server-daemon-lifecycle.md](./codex/app-server-daemon-lifecycle.md) | 后台进程ownership、PID ABA、协议readiness、graceful restart与自动更新专题 |
+| [codex/code-mode-runtime.md](./codex/code-mode-runtime.md) | V8代码编排、Nested Tool权限复用、跨Turn Cell、远程Host与资源预算专题 |
+| [codex/skill-discovery-supply-chain.md](./codex/skill-discovery-supply-chain.md) | Skill多来源扫描、版本/正文一致性、Prompt激活与包导入供应链专题 |
+| [codex/skill-multi-authority-runtime.md](./codex/skill-multi-authority-runtime.md) | Host/Executor/Orchestrator资源所有权、package handle、generation与读取边界专题 |
 | [codex/current-project-gap-analysis.md](./codex/current-project-gap-analysis.md) | 当前项目能力、证据和缺口 |
 | [codex/cloud-agent-mapping.md](./codex/cloud-agent-mapping.md) | 客户端 Codex 思想如何翻译为云端 NestJS Agent |
 | [codex/terminology-map.md](./codex/terminology-map.md) | Codex、当前项目和中文助记名的概念对照 |

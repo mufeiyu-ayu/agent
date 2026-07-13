@@ -93,6 +93,9 @@ flowchart LR
 | [model-catalog-consistency.md](./model-catalog-consistency.md) | Bundled/Remote/Cache模型目录、能力快照、ETag刷新与Server reroute一致性 |
 | [local-log-database.md](./local-log-database.md) | 本地Tracing的bounded queue、SQLite分区retention、Feedback导出与丢失语义 |
 | [app-server-daemon-lifecycle.md](./app-server-daemon-lifecycle.md) | Unix后台App Server的PID generation、Control Socket readiness、重启与Updater供应链 |
+| [code-mode-runtime.md](./code-mode-runtime.md) | Fresh V8 isolate、Nested Tool治理复用、Cell状态机、远程Host与资源隔离边界 |
+| [skill-discovery-supply-chain.md](./skill-discovery-supply-chain.md) | 多来源Skill发现、Frontmatter/Policy、Prompt注入、缓存一致性与远程包供应链 |
+| [skill-multi-authority-runtime.md](./skill-multi-authority-runtime.md) | Host/Executor/Orchestrator统一Catalog、opaque resource、代际缓存与读取权限 |
 | [current-project-gap-analysis.md](./current-project-gap-analysis.md) | 当前项目不是“缺什么功能”，而是缺哪些运行系统能力 |
 | [cloud-agent-mapping.md](./cloud-agent-mapping.md) | 客户端概念到云端 NestJS 架构的转换规则 |
 | [terminology-map.md](./terminology-map.md) | Thread、Turn、Item、Run、Step 等概念对照 |
