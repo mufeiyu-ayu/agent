@@ -112,5 +112,6 @@ flowchart LR
 | 专题 | 分类 | 适合何时阅读 |
 | --- | --- | --- |
 | [Operation Identity](./operation-identity-lab.md) | Advanced | 学习异步竞态、写副作用、幂等重试、跨连接恢复时 |
+| [Turn Admission Race](./turn-admission-race-lab.md) | Advanced | 学习Run准入、active steer、cancel/completion竞态和输入回执时 |
 
 横切实验不会增加新的实施Phase。它们用多个Codex案例提炼一个可复用不变量，并通过纯TypeScript小实验验证理解。

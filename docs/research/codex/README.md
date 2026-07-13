@@ -69,6 +69,9 @@ flowchart LR
 | [thread-history-pagination.md](./thread-history-pagination.md) | Turns/Items 分页、双向 cursor、live/durable merge 与 projection completeness |
 | [thread-archive-delete-lifecycle.md](./thread-archive-delete-lifecycle.md) | Thread archive/delete subtree、跨存储partial commit与删除回执 |
 | [thread-history-injection.md](./thread-history-injection.md) | Raw history injection、角色信任、active task竞态、幂等与提交回执 |
+| [turn-input-admission-and-cancellation.md](./turn-input-admission-and-cancellation.md) | Turn start/steer/interrupt admission、身份归属、pending queue与取消竞态 |
+| [thread-metadata-projection.md](./thread-metadata-projection.md) | Name/title/preview/Git/recency多源投影、repair与dual-write边界 |
+| [server-request-routing.md](./server-request-routing.md) | 反向JSON-RPC、responder authority、pending replay、resolved tombstone与Turn清理 |
 | [current-project-gap-analysis.md](./current-project-gap-analysis.md) | 当前项目不是“缺什么功能”，而是缺哪些运行系统能力 |
 | [cloud-agent-mapping.md](./cloud-agent-mapping.md) | 客户端概念到云端 NestJS 架构的转换规则 |
 | [terminology-map.md](./terminology-map.md) | Thread、Turn、Item、Run、Step 等概念对照 |

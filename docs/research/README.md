@@ -60,6 +60,9 @@
 | [codex/thread-history-pagination.md](./codex/thread-history-pagination.md) | Thread/Turn/Item 分页、cursor、live merge 与投影完整度专题 |
 | [codex/thread-archive-delete-lifecycle.md](./codex/thread-archive-delete-lifecycle.md) | Archive/unarchive/delete 的 subtree、跨存储提交与可重试清理专题 |
 | [codex/thread-history-injection.md](./codex/thread-history-injection.md) | Raw model history 注入的角色信任、并发归属、幂等与审计专题 |
+| [codex/turn-input-admission-and-cancellation.md](./codex/turn-input-admission-and-cancellation.md) | Start/Steer/Interrupt 的队列准入、Run身份与取消结果专题 |
+| [codex/thread-metadata-projection.md](./codex/thread-metadata-projection.md) | Thread name/title/preview/Git/recency 查询投影与修复专题 |
+| [codex/server-request-routing.md](./codex/server-request-routing.md) | Agent反向请求客户端时的路由、抢答、重连与收口专题 |
 | [codex/current-project-gap-analysis.md](./codex/current-project-gap-analysis.md) | 当前项目能力、证据和缺口 |
 | [codex/cloud-agent-mapping.md](./codex/cloud-agent-mapping.md) | 客户端 Codex 思想如何翻译为云端 NestJS Agent |
 | [codex/terminology-map.md](./codex/terminology-map.md) | Codex、当前项目和中文助记名的概念对照 |
@@ -74,6 +77,7 @@
 | [learning-roadmap/learning-method.md](./learning-roadmap/learning-method.md) | 从源码事实到可验证理解的方法 |
 | [learning-roadmap/checklist-phase-matrix.md](./learning-roadmap/checklist-phase-matrix.md) | 架构域、学习模块、源码文档、建议深度与项目需要 |
 | [learning-roadmap/operation-identity-lab.md](./learning-roadmap/operation-identity-lab.md) | 从Codex竞态案例学习operation、generation、idempotency与receipt |
+| [learning-roadmap/turn-admission-race-lab.md](./learning-roadmap/turn-admission-race-lab.md) | 用纯TypeScript验证Run准入、Steer归属与取消竞态 |
 
 每个兼容 `phase-*` 路径代表一个学习模块，并固定包含：
 
