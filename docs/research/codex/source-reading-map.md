@@ -906,3 +906,120 @@ submission_loop (serialized control)
 让Phase 2在同步文件后、Agent完成前丢global lease；再分别制造invalid `memory_summary.md`和baseline reset失败。记录DB selection marker、workspace diff和git baseline能否前移。特别比较parent permission profile为Managed、Disabled和External三种情况，不要笼统声称consolidator总是no-network sandbox。
 
 读取侧先只启用summary injection，再打开dedicated tools。用`../`、hidden path、中间symlink、超长read和search cursor攻击scoped backend；随后让模型输出合法/部分畸形citation，验证visible answer、结构化citation、usage count和Turn metric。最后触发`memory/reset`目录删除失败，说明为何“DB已清、文件未清”需要可重试删除状态。
+
+## 43. 路线四十：Patch 返回失败时磁盘是否真的没变
+
+按intent、policy、mutation、projection四层阅读：
+
+- `apply-patch/src/parser.rs`、`streaming_parser.rs`与`invocation.rs`：freeform语法、增量preview、shell heredoc识别、cwd/environment绑定。
+- `invocation.rs::try_verify_apply_patch_args`：全量路径解析、旧内容读取和预计算action。
+- Core `safety.rs`与handler permission helpers：source/destination、writable root、hardlink、profile、additional permission和foreign PathUri。
+- `apply-patch/src/lib.rs::apply_hunks_to_files`：顺序Add/Delete/Update/Move、overwrite、父目录创建、partial failure和exactness。
+- `tools/runtimes/apply_patch.rs`与orchestrator：approval cache、sandbox retry、committed delta跨attempt累积。
+- `turn_diff_tracker.rs`与ToolEmitter：磁盘事实如何投影成事件和Turn净diff。
+
+先让模型分三段stream一个patch，在500ms节流窗口中记录UI preview；随后PreToolUse hook改掉destination，证明preview不是审计事实。再在verification与runtime之间修改source文件，确认执行重新匹配当前内容而非盲写预计算new content。
+
+构造四hunk：Add成功、Move destination写成功但source删除失败、Delete未执行、最后Update context错误。逐项记录磁盘、`AppliedPatchDelta.changes`、`exact`、tool exit和TurnDiffTracker。再让第一次sandbox attempt提交prefix后触发denied并重试，观察哪些操作不具备自然幂等性。
+
+最后用project内hardlink指向root外文件、move到root外、foreign environment PathUri和granular禁止sandbox approval四组安全输入，画出auto approve、ask、reject与platform sandbox的决策。结论必须明确：一个patch call的approval覆盖意图，不提供跨文件事务保证。
+
+## 44. 路线四十一：长目标为什么要拆成多个普通 Turn
+
+按persistent state、accounting、continuation和product ordering阅读：
+
+- state `model/thread_goal.rs`与`runtime/goals.rs`：goal generation、六种status、expected id CAS和usage update。
+- `ext/goal/src/extension.rs`：Thread/Turn/tool/token lifecycle如何挂接runtime。
+- `accounting.rs`：token baseline、non-cached算法、wall clock和progress semaphore。
+- `runtime.rs`与`steering.rs`：budget steering、idle continuation、external mutation lock和error/usage-limit stop。
+- `tool.rs`与`spec.rs`：Agent可创建/读取/终结的权限边界，以及三轮blocked规则的性质。
+- App Server `thread_goal_processor.rs`与listener command：set/clear/resume的response、snapshot、notification与runtime effect顺序。
+
+创建带budget的goal，让一个Turn并行执行三个tool并多次收到累计token snapshot。逐个计算cached input、output和wall time在每个tool finish/turn stop的delta，证明accounting semaphore不会重复收费；随后在最后flush前crash，标出DB必然缺失的usage窗口。
+
+让token delta一次跨过budget，记录actual used、status、steering和当前Turn何时真正结束；再比较provider usage limit与普通turn error，确认分别进入usage_limited和blocked。检查“三次相同阻塞”是否由数据库字段验证，区分prompt contract与host invariant。
+
+并发模拟idle callback读到active时，用户pause/replace/clear。验证goal-state lock和goal_id generation分别关闭哪类竞态；让旧Turn迟到上报usage和complete，确认不能修改replacement。最后重放resume：客户端必须先看到resume response与goal snapshot，再看到automatic continuation的新Turn。
+
+## 45. 路线四十二：模型选择器里显示的名字是否就是实际执行模型
+
+按catalog、snapshot、transport fact三层阅读：
+
+- `models-manager/src/manager.rs`、`cache.rs`：bundled/remote/cache、auth merge、TTL/ETag和static/dynamic fallback。
+- `model_info.rs`与protocol `openai_models.rs`：slug匹配、unknown fallback、capability字段和config override。
+- App Server `models.rs`、catalog processor和refresh worker：picker投影、hidden/pagination与后台刷新。
+- Core `TurnContext`构建：每Turn如何冻结ModelInfo、reasoning、service tier和tool capability。
+- SSE/WS transport到`ResponseEvent::{ServerModel,ModelsEtag,ModelVerifications}`：后端事实来源。
+- Core mismatch/verification处理与App Server notification映射：一次性去重和typed事件。
+
+让bundled、cache和remote各声明同slug但不同context/tool能力，分别用ChatGPT、API key和custom static provider启动，写出最终picker和Turn metadata。再切换provider但复用同`CODEX_HOME`，验证当前cache eligibility没有provider identity，评估错误能力继承窗口。
+
+在一个Turn streaming期间收到新ETag并让models endpoint延迟，测量后续delta消费是否暂停；refresh完成后确认本Turn tool spec不变、下一Turn才用新catalog。随后请求unknown namespaced/longest-prefix slug，列出实际发给API的slug与继承metadata来源。
+
+最后让backend分别因cyber、capacity和model retirement返回不同actual model。沿当前源码确认三者是否都被标成HighRiskCyberActivity，并把它列为协议扩展风险；再单独发送verification metadata，证明它既不等于reroute，也不应进入模型history。
+
+## 46. 路线四十三：一个 StateRuntime 为什么不能提供跨功能事务
+
+按物理文件、migration、恢复和重建阅读：
+
+- `state/src/runtime.rs`与`paths.rs`：五个DB owner、pool/WAL/synchronous/busy timeout、init顺序和maintenance。
+- 各`*_migrations`与`migrations.rs`：独立history、ignore future version、known checksum和recency定点repair。
+- goals/memories/thread metadata调用链：找出一次用户动作跨两个DB或DB+rollout的提交顺序。
+- `runtime/recovery.rs`：error provenance、code/message分类、main/wal/shm定点备份。
+- App Server/TUI/CLI startup recovery：哪些入口自动fresh start、哪些只报错，notice如何送达。
+- `audit.rs`、`sqlite_integrity_check`与doctor：只读取证为何不能复用正常init。
+
+让五库处于不同migration版本，并模拟旧/新两个binary同时启动。验证future migration只忽略未知version，known checksum变更仍失败；再让memories migration失败，记录此前三个库已经发生的schema变化和所有pool关闭顺序。
+
+构造一个跨state+memories或goal DB+rollout的操作，在每个提交点kill进程，列出权威事实和reconcile来源。目标不是强行加分布式事务，而是证明每种partial state都能被识别，或明确当前缺口。
+
+最后分别注入locked、NOTADB、malformed schema和路径名含`corrupt`四种错误。确认只有真实corruption进入定点backup；再让第二个sidecar rename失败，检查partial backup。用doctor的read-only路径取证，确保检查本身不创建或迁移数据库。
+
+## 47. 路线四十四：App 卡片显示出来为何仍不一定能调用
+
+按directory、access、policy和auth recovery四层阅读：
+
+- `connectors/src/lib.rs`、`directory_cache.rs`：public/workspace分页、merge、identity cache key、内存TTL与stale disk snapshot。
+- `accessible.rs`和Core connector discovery：host-owned MCP tool metadata如何投影已连接App与ready状态。
+- `snapshot.rs`、`merge.rs`和plugin declarations：package connector dependency为何不是安装或授权事实。
+- `app_tool_policy.rs`与`mcp_tool_exposure.rs`：managed/user enablement、approval、风险hint和direct/deferred exposure。
+- App Server `apps_processor.rs`：cache interim、双异步load、force refetch和最终response。
+- `codex-mcp/auth_elicitation.rs`与Core MCP call：可信metadata、URL elicitation、refresh和manual retry。
+
+建立四个同id状态：directory only、plugin-declared only、accessible但disabled、accessible/enabled。分别记录App list、tool suggest、ToolRouter和model search结果；再撤销账户链接但保留stale disk/memory cache，确认真正call failure覆盖展示快照。
+
+让workspace directory失败、workspace plugin setting失败、codex_apps startup超时和force refresh失败依次发生，明确哪些路径fail-open、哪些退cache、哪些最终error。检查企业策略是否能接受workspace setting读取失败仍允许Apps。
+
+最后伪造tool result中的connector name、id和install URL。验证Core只接受与可信ToolInfo id一致的auth failure，并自己构造URL/name；用户Accept后观察原call仍是error、tools cache刷新和下一次显式retry。对副作用工具说明为何自动重放会产生重复写。
+
+## 48. 路线四十五：为什么文件变化事件只能触发重新读取
+
+按OS watch、订阅owner和domain invalidation阅读：
+
+- `file-watcher/src/lib.rs`：requested/matched/actual path、ref count、missing fallback、RAII和event routing。
+- `ThrottledWatchReceiver`与`DebouncedWatchReceiver`：窗口、积累和shutdown flush差异。
+- App Server `fs_watch.rs`：connection-scoped id、unwatch barrier、changed path与outgoing等待。
+- `skills_watcher.rs`和Thread listener：root计算、local/remote、plugin排除、10秒cache clear和registration寿命。
+- plugin/config/models/MCP各自refresh路径：哪些变化根本不是filesystem event。
+
+同时注册`/var/...`和canonical `/private/var/...`、recursive/non-recursive重复watch，再逐个drop guard，记录OS watch mode和subscriber-visible path。对一个尚不存在的深层SKILL.md逐层创建/删除，验证actual watch迁移且不会递归监听整个祖先树。
+
+让200ms内连续写10次，再持续每100ms写5秒，比较debounce与throttle的输出批次；随后在有pending path时drop sender，确认flush。模拟OS watcher构造失败/noop，说明watch RPC成功不能证明后续通知可靠。
+
+最后从第二个connection尝试unwatch第一个订阅，并让原connection慢消费/断开；验证owner清理和显式unwatch barrier。做权限审计：尝试watch workspace外敏感文件，若协议路径没有scope gate，就把变更时序侧信道列入App Server/Remote Control能力模型。
+
+## 49. 路线四十六：配置锁为何不能替代权限和运行时状态快照
+
+按输入层、解析值、校验时点和后续漂移阅读：
+
+- `core/src/config_lock.rs`：lock metadata、load layer、debug controls 清理、strict comparison 与 compact diff。
+- `core/src/config/mod.rs::ConfigBuilder::build`：load path 如何替换普通层栈、保留 requirements，并递归构建 replay config。
+- `core/src/session/config_lock.rs`：effective layer 起点、Session/Config resolved fields、feature materialization、输入字段剔除和 TOML round-trip。
+- `core/src/session/session.rs`：Agents/skills warmup、title lookup、root validation/export 与 Session 发布顺序。
+- `config/src/config_toml.rs`和两组 tests：schema version、debug options、compatibility 与失败消息。
+
+先用 profile、prompt include、model catalog 和 feature alias 生成 Session，导出 lock 后删除原文件并重放；确认 lock 依靠已解析值而不再读取生成输入。随后改变 managed requirements，观察它仍参与 replay normalization，并由最终 diff 暴露行为变化。
+
+分别切换 `save_fields_resolved_from_model_catalog` 与 `allow_codex_version_mismatch`：前者改变 lock 覆盖面，后者只能忽略 Codex 版本，不能吞掉 config drift。再加入旧 compatibility feature，验证只有明确登记的 removed entry 被清理，未知字段/schema version 仍拒绝。
+
+最后在导出写入中途终止进程，并在 Session 建立后动态修改 model、permission profile、MCP catalog 与 child role。证明当前普通写文件可能留下不可解析 lock，且启动时 root lock validation 不覆盖后续 Turn/child 漂移。设计 Run 级复现时，把行为快照与当前安全策略交集、tool/prompt hash和原子持久化分开建模。

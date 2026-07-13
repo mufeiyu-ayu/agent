@@ -1542,6 +1542,284 @@ external-context pollution ----------> global Phase 2 lease
 
 映射到当前项目：短期不要做跨会话自动memory。需要时先把“候选事实抽取”“管理员/用户确认”“运行时检索”“删除/遗忘”分成可审计状态；按tenant加密和过滤，citation必须指向canonical Conversation/Message版本。外部网页参与过的Run不应直接沉淀为可信偏好，删除操作用后台job跨数据库、向量索引与对象存储收敛。
 
+### 4.45 Apply Patch：预览可以是推测，已提交 Delta 必须是事实
+
+Codex同时支持模型原生freeform `apply_patch`工具和从shell/exec命令中拦截的兼容形式。兼容parser只接受直接`apply_patch <body>`，或shell中唯一顶层statement为heredoc（可选`cd ... &&`）；把裸patch当命令会明确报`ImplicitInvocation`，`apply_patch || ...`、pipe、额外命令不会被误当成结构化patch。多environment模式还把`environment_id`放在patch envelope中，路径必须在目标environment自己的filesystem/PathUri语义下解析。
+
+模型参数流式到达时，`StreamingPatchParser`每500ms最多发一份`PatchApplyUpdated`，给UI显示最新结构化changes；最后argument完成会flush pending并验证parser结束。这个事件只代表“目前看起来模型想改什么”，不是权限批准、更不是文件事实。真正执行前，PreToolUse hook还可以重写整个patch；因此approval、runtime和post-hook必须使用重写后的input，UI不能把早期preview当最终审计记录。
+
+验证阶段会解析全部hunk、把相对路径绑定effective cwd，读取delete/update的旧内容并预计算update的新内容与unified diff，形成`ApplyPatchAction`。这让Core freeform路径能在任何写入前发现多数missing file/context错误，并给approval展示精确Add/Delete/Update。但验证与执行之间filesystem仍可变化；runtime会重新解析patch和重新读取旧内容，不把预计算结果当写入CAS。
+
+权限决策覆盖source与move destination全部路径。落在当前effective writable roots内的patch可自动批准，但managed profile仍在platform sandbox执行，因为硬链接可能把看似安全的路径指向root外文件。Disabled/External profile明确不加Codex outer sandbox。root外写入会请求按`(environment_id, path)`缓存的approval并可生成临时additional write roots；Never或granular禁止sandbox escalation时直接拒绝。foreign PathUri当前跳过本地path matching，但managed模式依赖目标平台sandbox fail-closed，这是显式兼容缺口。
+
+真正文件写入**不是事务**。hunk按patch顺序执行：Add可覆盖现有文件；Update写整文件并补结尾换行；Move先写destination（可覆盖），再删除source；Delete只允许文件、非递归。后续hunk失败不会回滚前面已成功的add/update/delete，独立CLI fixture就固定了“先创建文件、后续missing update失败但created仍存在”的语义。原子性不能从一个tool call或一个approval推导出来。
+
+为避免失败被错误显示成“什么都没改”，writer同步累积`AppliedPatchDelta`。每项记录旧/新内容、覆盖目标和move path；失败也随`ApplyPatchFailure`返回已经确定提交的prefix。若write可能先truncate再报ENOSPC、读取旧值失败、symlink/非普通文件或remove结果无法确认，`exact=false`。Runtime在sandbox retry/escalation之间继续append delta；handler无论成功失败都把committed delta交给ToolEmitter和TurnDiffTracker。
+
+这个retry行为尤其需要谨慎：第一次sandbox attempt可能已提交前几个hunk后因权限失败，orchestrator随后审批并重跑完整patch。Add/Update往往幂等地覆盖，但Delete或Move的第二次执行可能因source已经不存在而失败；runtime记录事实，却没有通用rollback或resume-from-hunk机制。审批系统应尽可能在执行前覆盖全部path，不能把“sandbox denied后重试”当无副作用。
+
+TurnDiffTracker不重新读取workspace，而是把精确delta归并成Turn baseline→current净diff，按environment区分同名路径，识别rename与覆盖，并用revision cache避免重复diff。单个diff计算超过100ms会走content-exact粗粒度fallback；任何delta `exact=false`就使tracker整体invalid并不再展示可能错误的净diff。最终diff是UI便利投影，不替代git status或磁盘验收。
+
+```text
+argument deltas -> provisional PatchApplyUpdated
+       -> pre-hook may rewrite -> parse/read/verify complete action
+       -> path policy + approval + sandbox attempt
+       -> sequential filesystem mutations
+       -> success OR failure + committed prefix delta (+ exact flag)
+       -> tool event / turn net-diff projection / post-hook
+```
+
+关键测试：
+
+- `apply-patch/tests/suite` scenarios：多operation、context匹配、覆盖、move、目录拒绝、Unicode、结尾换行，以及失败后partial success保留。
+- `invocation.rs` tests：direct/heredoc/optional cd、implicit body、额外shell statement、Windows path convention和environment id。
+- Core safety/runtime tests：writable root、hardlink防护、Never/granular、permission grant、sandbox denial retry和partial delta传播。
+- handler tests：streaming preview节流/final flush、hook rewrite、remote environment、approval事件和PostToolUse响应。
+- `turn_diff_tracker_tests.rs`：连续edit折叠、rename/overwrite、多environment、inexact invalidation与diff timeout fallback。
+
+映射到当前项目：SEO Agent暂不需要任意文件patch。未来若让Agent编辑站点内容，应把preview、approved intent和committed mutations三层分开；数据库更新用真正事务或每步幂等saga，失败响应必须列出已提交部分。单凭tool返回error就回滚前端乐观状态，会掩盖真实副作用。
+
+### 4.46 Goals：持久目标靠 Idle Turn 续跑，不是一个永不结束的 Turn
+
+Goal是Thread旁挂的持久状态行，不是AgentRun本身。每个Thread至多一条，`goal_id`充当generation：新建只在没有目标或旧目标`complete`时成功；外部API可替换/编辑现有目标，替换生成新id并把usage清零。所有迟到的status update和usage accounting都可携带`expected_goal_id`，旧generation即使在并发中完成，也不能收费或终结新目标。
+
+状态分为`active / paused / blocked / usage_limited / budget_limited / complete`。只有active会自动续跑；budget_limited和complete在state model中算terminal，paused/blocked/usage_limited则是可由用户恢复的stopped状态。Agent自己只能用`update_goal`标记complete或blocked，pause/resume/预算/平台usage limit由用户或系统控制；`create_goal`又明确要求用户或system/developer显式请求，避免普通长任务被模型擅自升级成无限续跑。
+
+Goal工具只在有持久Thread state且不是review subagent时可见，ephemeral Thread在App Server接口也直接拒绝。Feature config refresh可以隐藏工具并停止runtime自动续跑，但DB goal仍存在；恢复feature或Thread后，runtime重新读DB，只有active goal重新标为idle-active。Plan mode Turn虽然能看现有会话，却明确不计goal token并清除当前Turn的active binding，防止规划阶段被当作执行预算。
+
+一次goal执行仍是普通Turn。Turn开始把当前active/budget-limited goal id绑定到accounting state；模型token usage snapshot持续更新内存。每个真正执行过handler的tool完成/失败后，以及Turn stop/abort时，runtime在per-Thread semaphore内取“上次已记账→当前”的delta，带expected goal id原子写SQLite，然后移动内存baseline。被policy blocked、未进handler、aborted tool和`update_goal`自身不触发中途收费，避免approval等待/重复终态工具造成额外切点。
+
+token charge只计算`non-cached input + output`，不把cached input重复收费，也未单独加入reasoning字段；wall time用monotonic `Instant`从上次accounting计算整秒。并发tool finish共享accounting permit，防止同一token/time delta记两次。进程崩溃会丢失尚未flush的内存delta，恢复后无法从DB精确重建每个Turn的未记账usage，因此这些计数是控制/产品指标，不是账单级事实。
+
+达到token budget时，SQLite同一次usage update把status切为budget_limited；阈值是`tokens_used + delta >= budget`，所以最后一次会超出预算而不是硬截断在精确token。tool finish后首次发现budget limited，会向仍在运行的Turn注入一次internal steering，要求尽快收尾；同goal id用`budget_limit_reported_goal_id`去重。Turn stop则清active binding，不再自动开下一Turn。预算是soft stop，不是模型流的实时kill switch。
+
+若Turn正常结束而goal仍active，Thread进入idle lifecycle；Goal runtime持有goal-state semaphore，从DB再次确认同一状态仍active，再调用`try_start_turn_if_idle`注入内部continuation item。它不把旧Turn永远挂住，且若用户输入、external mutation或其他idle work已占位，启动会被拒绝。set/clear同样持锁覆盖“先读goal、再启动continuation”的窗口，并先flush当前/idle usage，避免用户暂停时漏掉最后一段耗时。
+
+非retryable Turn error或重试耗尽把active goal标为blocked，平台usage limit标为usage_limited；如果token budget已先触发，usage limit仍可把budget_limited升级为usage_limited。普通模型语义上的“遇到困难”不会由runtime自动判断blocked，工具说明要求同一阻塞连续三轮且真正无路可走才允许Agent标记。这条三轮规则是prompt policy，不是SQLite计数器强制验证，host不能把模型调用本身当形式证明。
+
+App Server对goal set/clear的response、notification和resume snapshot有额外顺序协议。外部set先reconcile rollout→持锁写DB→尽力append `ThreadGoalUpdated` rollout item→先回RPC response→通过Thread listener FIFO发notification→最后应用runtime effect/可能continue；resume先发response与goal snapshot，再触发idle continuation。rollout append失败只warning，DB已成功，因此SQLite是当前goal权威源，JSONL event是历史投影，不能反过来覆盖更新的DB generation。
+
+```text
+active goal row (goal_id generation)
+      -> ordinary Turn -> token/tool snapshots -> serialized usage CAS
+             | active at stop                 | budget/error/limit
+             v                                v
+        idle lifecycle                   stopped status
+             |
+       re-read under goal lock
+             -> inject continuation -> next ordinary Turn
+```
+
+关键测试：
+
+- state `runtime/goals.rs` tests：insert-only-unless-complete、replace generation、expected id、预算即时/累计切换和各accounting mode。
+- `ext/goal/tests/accounting.rs`：cached token排除、并发tool flush、time delta、budget steering去重和Turn baseline。
+- extension backend tests：idle continuation、external pause/clear race、resume、feature toggle、review/ephemeral工具不可见和turn error/usage limit。
+- App Server goal suite：response/notification/listener FIFO、resume snapshot先于continuation、live rollout append与SQLite reconcile。
+- TUI goal validation/menu snapshots：状态可操作性、预算/用量显示、ESC pause和完成后的replace确认。
+
+映射到当前项目：如果未来支持“持续SEO巡检”，应建独立Job/Run调度，不要保持一个HTTP stream或AgentRun永久active。每轮都用generation id、幂等usage checkpoint和soft budget；用户pause/replace与自动调度必须共享锁。运行计数要承认crash窗口，真正计费另用provider账单或append-only ledger。
+
+### 4.47 Model Catalog：可选模型、请求模型与服务端实际模型不是同一个事实
+
+ModelsManager管理的是模型能力metadata，不直接保证后端接受某个slug。OpenAI manager启动时先载入bundled `models.json`，可再从5分钟disk cache或远端`/models`更新；Static manager则把provider给定catalog视为权威。Picker list按priority排序、auth过滤和visibility投影；`includeHidden`只控制App Server是否把隐藏项返回，隐藏不等于不可请求。
+
+默认模型选择也按manager类型不同。动态OpenAI manager只要调用方显式给model就原样保留，`allow_provider_model_fallback`目前不替换它；Static provider在允许fallback时会检查requested model是否存在，不存在则选catalog default/first。这个差异是provider contract，不应在上层UI假设所有provider都用同一fallback语义。
+
+远端刷新只有当前auth可用Codex backend或endpoint具备command auth时执行。`Offline`只尝试fresh cache，`OnlineIfUncached`先cache后network，`Online`强制network；失败保留已有内存catalog并只记录error。App Server另有每3分钟Online worker，drop时cancel。响应流还可能携带`x-models-etag`：相同ETag只续cache TTL，不同则立即Online refresh。
+
+ETag refresh当前在Turn的ResponseEvent消费循环中`await`，因此慢`/models`请求会暂停后续stream event处理；它不应影响已经发送给模型的本次request metadata，却可能增加当前Turn完成延迟和transport buffer压力。更稳妥的实现应把catalog刷新放到generation任务，流循环只提交信号，下一Turn再捕获新snapshot。
+
+ChatGPT auth下，远端只要包含至少一个`visibility=List`模型，就整体替换bundled catalog；空列表或全hidden列表则按slug覆盖/追加到bundled。API key/其他auth也走merge。这既避免异常空响应清空picker，也意味着“服务端想只返回hidden模型并删除旧列表”无法表达。cache文件只验证完整client version和TTL，源码TODO明确尚未把provider identity纳入eligibility；同一`CODEX_HOME`切provider可能在5分钟内复用另一个provider的fresh catalog。
+
+disk cache保存`fetched_at/etag/client_version/models`，普通`fs::write`而非tempfile replace；损坏JSON会被当cache miss，网络可用时恢复。ETag相同会重写整个cache以续TTL；cache写失败不回滚已更新的内存catalog。内存models与disk durability是两个状态，不能从一次`model/list`成功推断重启后仍相同。
+
+Turn构建时用requested slug查metadata：先在当前catalog做最长prefix匹配，再允许恰好一个简单namespace segment（`provider/model`）后重试；命中后保留完整requested slug用于API request，但继承base candidate的context window、tools、instructions等能力。完全未知则使用保守fallback metadata：272k context、95% effective、无parallel/search、10k bytes tool truncation，并标`used_fallback_model_metadata`触发warning。最长prefix方便dated/variant slug，却可能把名称碰巧同前缀的模型错误归类，provider自定义catalog应提供精确条目。
+
+配置override最后应用：context window只能被`max_context_window`封顶，auto compact/tool output limit可改；自定义base instructions会清personality instruction template，禁用personality也清相关message。Thread/Turn实际持有解析后的`ModelInfo` snapshot，所以后台catalog刷新不会在一个Turn中途改变tool spec或budget；新Turn重新构建context时才取得新metadata。
+
+服务端实际执行模型来自Responses header或`response.created.headers.OpenAI-Model`事件。若与requested slug大小写无关比较后不同，Core每Turn只发一次`ModelReroute`和warning；当前reason固定映射为`HighRiskCyberActivity`并写死trusted-access文案。这依赖后端“任何model mismatch都只代表cyber downgrade”的强约定，若未来有容量/区域/退役fallback，必须让backend传typed reason，不能继续从不等推断安全原因。
+
+`ModelVerification`是另一条独立server metadata，当前只有`TrustedAccessForCyber`等typed值；每Turn只发一次，不产生warning、reroute或history user item。verification描述账户/请求校验结果，不代表本次实际模型；reroute描述实际model mismatch，不代表用户已经/未完成verification。产品层应分别展示，不能合成一个布尔“模型安全状态”。
+
+```text
+bundled catalog + fresh disk cache + remote catalog
+                    -> auth/visibility picker presets
+                    -> Turn-time requested slug -> capability metadata snapshot
+Responses request ---------------------------------------> backend
+                    <- actual ServerModel / verification / models ETag
+                         | reroute event      | next catalog generation
+```
+
+关键测试：
+
+- `models-manager/manager_tests.rs`：三种refresh、remote-only/merge、cache TTL/version、static/dynamic fallback、longest prefix/namespace和auth visibility。
+- `model_info_*_tests.rs`：unknown fallback、context cap、tool truncation、personality/base instruction override。
+- App Server `models_refresh_worker_tests.rs`与model list tests：周期生命周期、hidden/pagination/default/reasoning/service tier投影。
+- Core `safety_check_downgrade.rs`：header/response model、大小写、每Turn一次reroute，以及verification不产生warning。
+- transport SSE/WS tests：`x-models-etag`和server model如何转为ResponseEvent。
+
+映射到当前项目：Provider adapter需要把“配置选择”“本次请求”“实际执行”分别记录到AgentRun。模型目录cache key必须含provider/account/region和schema version，并用原子写；能力metadata按Run snapshot固定。实际fallback必须由provider给typed reason，不能仅比较model字符串后猜测安全事件。
+
+### 4.48 State DB：拆库降低锁竞争，也放弃跨域原子事务
+
+Codex本地状态不是一个SQLite文件。当前runtime列出state、logs、goals、memories和paginated thread-history五个DB；`StateRuntime::init`同步打开前四个，thread-history由paginated projector自行接管。每库独立migration和WAL，logs/history拆分的直接目的就是减少高频写与Thread metadata互相争锁。
+
+通用连接参数是WAL、`synchronous=NORMAL`、5秒busy timeout、每pool最多5连接，新库启用incremental auto-vacuum。NORMAL WAL是在崩溃耐久和交互延迟之间取舍，不等于每次提交都fsync；auto-vacuum也不会在启动时对旧库强制full VACUUM，避免前台启动与大维护争用。任何需要账单/安全审计级耐久的事实不应无条件复用这组参数。
+
+初始化按state→logs→goals→memories顺序；任一open/migrate/post-init query失败会关闭此前pools并整体返回错误。logs startup maintenance是例外，失败只warning继续。backfill singleton row和Thread时间high-water mark在所有业务DB迁移后建立；这些步骤不是跨库transaction，因此进程可留下“前几库已升级、后几库未升级”的合法中间状态，下次启动依靠各库migration history继续。
+
+拆库意味着一次逻辑动作跨域时没有ACID。例如goal的SQLite row与rollout event、memory DB selection与state DB Thread mode、Thread metadata与logs都可能一边成功一边失败。代码用generation、reconciliation、idempotent upsert或best-effort telemetry收敛，而不是分布式事务。设计评审必须逐条指定哪一个库是权威源，不能把`StateRuntime`这个Rust对象名误认为单事务边界。
+
+runtime migrator设置`ignore_missing=true`，允许旧Codex binary打开已被并行新binary迁移到更高version的DB；它仍校验自己认识的migration checksum，只放宽“数据库比我新”。这提高桌面多版本并行容忍度，却不保证旧binary理解新schema语义；迁移必须保持旧查询依赖的表/列兼容，至少覆盖支持窗口。另有定点修复：旧发行曾把recency migration作为version 38写入，当前根据checksum把它改登记为39，避免重复执行。
+
+状态读审计与正常runtime刻意分开：`read_thread_state_audit_rows`、`sqlite_integrity_check`使用`create_if_missing=false + read_only`且单连接，不创建、不迁移、不repair。`codex doctor`遍历五库执行`PRAGMA integrity_check`并报告每行；缺文件只记skipped。诊断工具若复用普通`StateRuntime::init`反而可能修改现场，因此只读入口本身是取证边界。
+
+open/migrate错误被包装成带DB label、operation和精确path的`RuntimeDbInitError`。corruption识别优先SQLx database error code 11/26，再匹配一组明确message；仅仅路径中含`corrupt`不会触发。`database is locked/busy`单独分类，不自动搬走文件，CLI提示先关闭其他Codex。把锁竞争误判成损坏会丢掉一个健康数据库，这个分类是恢复安全的核心。
+
+App Server遇到真正corruption或SQLite home本身被普通文件占住时，会把**仅失败的DB**及`-wal/-shm`rename到时间戳+序号的唯一backup目录，然后循环重启初始化；若下一库也坏再单独备份，每个path最多尝试一次。未损坏的state/logs/goals/memories不会一起清空。SQLite home是文件时则把整个blocking file移到同级`.db-backups`再重建目录。
+
+“备份后fresh start”不是页级修复。它保留坏文件供人工恢复，但新库只会从migration建空schema；Thread state可随后从rollout backfill，logs通常不可恢复，goals/memories能否重建取决于各自投影/pipeline。恢复notice必须告诉用户具体database path和backup folder。自动恢复前也没有先跑完整integrity check；通常是在open/migrate已经返回可识别corruption后触发。
+
+备份动作自身也不是多文件事务：按main、wal、shm顺序rename，中途I/O失败可能已移动prefix；下一次人工处理需检查返回的backup目录和原目录，而不能假设三文件要么全在要么全走。正常运行的进程仍持有DB时强行搬sidecar更危险，所以lock error明确不走此路径。
+
+```text
+state.sqlite   logs.sqlite   goals.sqlite   memories.sqlite   thread_history.sqlite
+   |              |              |               |                    |
+ independent WAL/pool/migrations; no cross-file transaction
+   \______________ init failure identifies one exact DB ______________/
+                                  |
+                        corruption only -> move db+wal+shm
+                                  -> fresh schema + domain reconciliation
+```
+
+关键测试：
+
+- `state/src/runtime.rs` tests：各init phase telemetry、future migration容忍、known checksum、integrity check与pool收口。
+- `migrations_tests.rs`：recency migration backfill/trigger以及38→39 history修复。
+- `runtime/recovery_tests.rs`：只搬指定DB、main/wal/shm、blocking home、corruption/lock分类和path provenance。
+- App Server/TUI/CLI recovery tests：逐库循环、notice、非TTY继续、lock指导与一次尝试上限。
+- `codex doctor` tests：五库read-only integrity、缺失/失败detail和rollout inventory。
+
+映射到当前项目：PostgreSQL当前足够，不应按Codex照搬拆库。若未来把Run、审计日志和向量索引分离，先明确canonical DB与outbox/rebuild路径。任何“自动修复”都必须区分锁、schema不兼容和corruption，先保留原数据并给可定位的恢复证据。
+
+### 4.49 Apps / Connectors：目录可见、账户已连接、配置启用与本轮调用是四个状态
+
+Codex connector不是plugin本体，也不是普通MCP server name。Directory API提供“可安装/可发现”的全量AppInfo；host-owned `codex_apps` MCP实际列出的tool metadata证明当前账户“可访问”；plugin manifest只声明它依赖哪些connector id；Apps config再决定某个app/tool是否启用和如何审批。四者按稳定connector id合并，不能靠display name关联。
+
+Directory先遍历public分页，workspace账户再best-effort追加workspace列表；workspace endpoint失败被当空，不拖垮public结果。同id重复条目按字段规则合并、过滤hidden、规范化name/description并补ChatGPT install URL。一个进程只有单项内存cache，但key包含base URL、account id、ChatGPT user id和workspace flag；TTL一小时。disk cache按同一key的SHA-1分文件并带schema version，却不保存时间，重启后可作为任意陈旧snapshot读取；live fetch成功才让内存entry获得TTL。
+
+“accessible”不是从directory字段推断，而是从当前`codex_apps` MCP tools按connector id归并。发现流程若已有缓存直接返回；否则只启动host-owned server，startup tools为空才最多等配置timeout（默认30秒），ready或拿到非空tools后更新cache。force refetch调用hard refresh；失败退回startup/cache tools。accessible cache也绑定account/base/workspace身份，但仍可能在链接刚撤销后短暂陈旧，真正tool call的401/metadata才是最终事实。
+
+App Server `apps/list`同时异步加载directory和accessible两条线，最长90秒。若有cache先发`app/list/updated` interim notification；每条线完成后再发变化，最终两者都完成才回原RPC response。force refetch期间若新directory尚未回来，会用旧directory搭配新的accessible，避免UI短暂丢卡；一旦all directory已加载，会丢弃“不在directory但声称accessible”的未知id。plugin声明的connector可生成placeholder用于展示，但runtime tool exposure仍只保留实际accessible的id。
+
+Apps还有三道总门：feature必须对当前auth开放；workspace `codex_plugins_enabled`允许；thread-specific list会沿用该Thread捕获的Apps feature。workspace setting读取失败当前fail-open为允许，这偏向可用性而非企业fail-closed；若它承担强合规禁用，错误策略应反过来。`is_accessible`与`is_enabled`分开返回：已连接但管理员/用户禁用的App不应被建议为“尚未安装”。
+
+每次构建ToolRouter时从Step MCP snapshot重新枚举tool，要求model-visible、含connector id、connector位于当前accessible/plugin合并集合，并应用不可变config layer policy。policy优先级是managed per-tool approval→user per-tool name/title→app default→global default；managed requirements可强制app disabled。tool enablement先看精确tool、app default，再按destructive/open-world hints；缺hint默认按`true`处理，因此当用户关闭高风险类别时未知tool会保守隐藏。若无任何配置，默认enabled且approval Auto。
+
+Tool Search打开时，所有合格MCP/App tools不直接塞给模型，而放入deferred index，模型先search再解析具体tool；关闭时直接暴露。tool-suggest列的是plugin声明但尚不可访问的connector，并排除所有accessible connector——即使它被config disabled，也不误导为需要重新安装。显式`app://`/skill mention会注入本轮guidance并在Session task内累计connector selection，用于把后续实际调用analytics标记为Explicit；它不会绕过accessibility、enablement或approval。新Task开始会清空selection，避免上轮mention污染归因。
+
+Tool call请求给host-owned server附加call id、resource URI等`_codex_apps` metadata以及当前Thread id；MCP返回的普通content始终是不可信tool data。若结果`is_error=true`且meta声明connector auth failure，Core只在以下条件弹URL elicitation：确为host-owned server、AuthElicitation feature开、approval不是Never且granular允许MCP elicitation。它使用可信tool metadata中的connector id/name构造install URL，并要求result里可选connector id与之相同；不会相信result自报的“Untrusted Calendar”名字。
+
+用户Accept只表示已同意打开/完成ChatGPT认证流程。Core随后hard-refresh tools和accessible cache，把原tool result替换为仍然`is_error=true`的“认证已请求并接受，请重试”文本；不会自动重放原副作用调用，避免认证前后重复create/update。Decline/Cancel/refresh失败则保留原始错误。UI必须区分“elicitation accepted”“tools refresh observed”“retry succeeded”三步。
+
+```text
+directory catalog -----------+--> App card (known/install URL)
+plugin connector declaration +
+codex_apps MCP tools --------+--> accessible/account linked
+config + managed policy -----+--> enabled + approval
+Turn tool exposure/search ---+--> model can discover/call
+auth-failure elicitation ----+--> refresh tools; original call still failed
+```
+
+关键测试：
+
+- `connectors` directory/cache/snapshot/merge tests：分页、workspace fallback、account key、disk schema、同id合并和plugin provenance。
+- `app_tool_policy_tests.rs`：managed disable/approval、title fallback、destructive/open hints缺失和层级优先级。
+- Core connector/MCP exposure tests：accessible-only、disabled、direct/deferred、tool suggest去重和explicit mention analytics寿命。
+- App Server apps suite：cached interim notification、双加载完成、force-refetch、timeout、workspace gate和pagination。
+- `mcp_tool_call_tests.rs` / `auth_elicitation` tests：host ownership、policy gate、id mismatch、URL/message可信字段、accept后refresh与显式retry。
+
+映射到当前项目：第三方SEO数据源至少拆为CatalogEntry、TenantCredential/Connection、ToolPolicy和RunInvocation。安装/登录不能自动授权所有工具；tool metadata缺风险标注时默认高风险。OAuth完成后只刷新能力并要求用户/Agent重新发起幂等调用，绝不自动重放未确认副作用。
+
+### 4.50 File Watch：变化通知是缓存失效提示，不是可重放事实流
+
+`codex-file-watcher`在单个OS `RecommendedWatcher`上实现多subscriber复用。每个subscriber有独立path集合和channel；全局按实际OS path维护recursive/non-recursive ref count，只要任一消费者要求recursive就升级watch，最后一个recursive guard drop后可降级。`FileWatcherSubscriber`和`WatchRegistration`都是RAII owner，任一drop都会准确减少引用并unwatch，不依赖调用方记得手工清理。
+
+注册保留三种路径身份：调用方原始requested、用于匹配OS事件的canonical matched、真正交给OS的actual。这样macOS可能返回`/private/var`时仍能向客户端回`/var`命名空间。目标不存在时不递归watch宽泛祖先，而是选择最近现存directory做non-recursive fallback；create/delete发生后把事件归一为requested path，并逐步把actual watch迁到新出现的更近节点。
+
+底层只转发Create/Modify/Remove，忽略Open等Access事件；每个subscriber的changed path进入`BTreeSet`去重排序。它没有event id、mtime、内容hash或sequence，也不持久化。OS watcher错误只warning继续，构造失败甚至降级为noop watcher，App Server API仍可能返回watch success但永远没有notification。因此任何事件都只能触发“重新读取权威状态”，不能直接当文件变化日志；没有事件也不能证明文件没变。
+
+两个合并器语义不同。`DebouncedWatchReceiver`从首个事件起固定等待200ms，把窗口内burst合成一次，适合客户端`fs/changed`；持续写不会无限延长deadline。`ThrottledWatchReceiver`首个立即发，此后至少10秒才发下一批，等待期间底层Set继续累积，适合Skills全量cache invalidation。shutdown时两者都会flush已经排队的paths，再返回closed。
+
+App Server `fs/watch`只允许non-recursive单path，key是`(ConnectionId, watchId)`：同connection重复id拒绝，不同connection可复用同id；foreign unwatch是no-op。显式unwatch先移除entry，再通过oneshot等watch task完全退出，保证response之后不再发该watch notification。connection teardown直接drop该connection全部entry，保留其他connection。这是典型resource ownership，不应把watchId当全局身份。
+
+`fs/changed`在发送前把底层相对/归一path重新join到请求root并排序，然后等待目标connection的outgoing完成；慢连接会拖住该watch task，但不阻塞共享OS watcher给其他subscriber收集事件。当前watch接口只校验协议的absolute path，所读manager未见permission profile/workspace root限制；任意已获App Server connection权限的client可观察任意本机path的变更时序和文件名，虽不读内容，仍是信息泄露面。Remote Control已等同完整control plane时尤其需要显式scope。
+
+SkillsWatcher是另一消费者。Thread listener启动时只看第一environment；remote environment直接跳过local watch。它根据当前config/plugin outcome计算所有skill roots，但排除plugin roots——plugin install/uninstall自行clear cache；host/runtime extra roots用一个可替换registration管理。每10秒最多一次收到任意变更后，直接清整个SkillsService cache并广播无path的`skills/changed`。
+
+这个广播不热改正在运行的Turn：Turn已经持有skills snapshot和注入正文，cache clear只让下一次catalog/load看到新文件。Thread listener持有对应WatchRegistration，idle unload或listener generation替换时自动drop。若watcher不可用，用户仍可显式list/refresh重新读取；产品不能把“没有skills/changed”作为继续使用旧权限/指令的安全证明。
+
+plugin、config、model和MCP并未统一走同一个watch truth。plugin lifecycle用显式generation/cache clear，config write主动刷新，models用timer/ETag，MCP用runtime generation。强行把所有变化塞进filesystem watcher会丢失远端、账户和事务语义；Watcher只适合本地文件hint。
+
+```text
+OS events -> shared path ref-count matcher -> per-subscriber sorted set
+                       |                         |
+              canonical/requested map     debounce or throttle
+                                                 |
+                        fs/changed(client) OR skills cache clear
+                                                 -> consumer rereads truth
+```
+
+关键测试：
+
+- `file_watcher_tests.rs`：ref-count升级/降级、RAII drop、canonical namespace、missing ancestor迁移、create/delete、recursive边界和mutating filter。
+- receiver tests：throttle/debounce时序、去重和shutdown flush。
+- App Server `fs_watch.rs` tests：connection owner、duplicate id、foreign unwatch、connection close和unwatch后notification barrier。
+- Skills watcher/thread lifecycle tests：unknown/remote environment、plugin root排除、registration替换、cache clear和listener unload。
+
+映射到当前项目：Web端若未来watch爬虫产物，应优先用数据库outbox/SSE cursor；本地fs watch只能触发refetch。每个订阅绑定用户/tenant/connection并限制root，返回sequence或snapshot version。任何权限/配置变更都不能只靠“文件事件应该到了”来生效。
+
+### 4.51 Config Lock：锁定的是可重放的有效配置，不是原始配置文件快照
+
+Config lock 位于 debug 能力而非普通用户配置主线。首次会话可把有效配置导出成 `<thread-id>.config.lock.toml`；重放时先读取并校验 `version`，把 lock 中的 `config` 作为唯一用户层重新走完整 `Config::load_config_with_layer_stack`，随后在 Session 完成模型、prompt、feature 和环境相关解析后，再把新生成的 lock 与原 lock 做严格比较。它验证的是“当前 binary 是否重建出同一行为配置”，而不是两份输入 TOML 是否文本相同。
+
+导出从原 `config_layer_stack.effective_config()` 开始，再覆盖两类运行时解析结果。Session 级字段包括最终 model、reasoning、service tier、base/developer/compact prompt、personality、approval policy；Config 级字段包括 provider、web search、instructions 开关、后台终端 timeout、memories、agents、skills/orchestrator 以及所有 feature 的显式 enabled 状态和结构化参数。后者通过 TOML round-trip 验证不能无损表达就直接失败，防止序列化悄悄丢字段。
+
+模型目录解析字段由 `save_fields_resolved_from_model_catalog` 控制，默认开启。关闭后 model、prompt、approval 等 Session 字段不写入，适合刻意允许 catalog 演进的调试，但重放保证也相应变弱。feature alias 会物化成当前规范 key；Multi-agent V2 启用时不再同时保存 legacy `agents.max_threads`，避免两个所有者产生伪差异。已移除的 compatibility feature 在比较前清理，属于明确的 schema 兼容窗口。
+
+lock 会主动丢弃生成过程输入：profile/profiles、debug lock 控制、prompt/catalog 文件路径、sandbox/default permissions、permissions 和 legacy unified-exec 开关。profile 与 include path 已被解析成值，不应再依赖原机器文件；sandbox/permissions 被排除则说明该锁**不是安全策略快照**，重放环境仍需独立施加 managed requirements 和 invocation permission boundary。把 config lock 当作“可携带权限授权”会越权。
+
+load path 一旦配置，普通层栈不再参与有效配置；但原层栈的 requirements 与 requirements TOML 被保留，并与 lock layer 重新组合。这样用户偏好可冻结，管理员强约束仍能在新环境重新归一化。代价是 requirements 演进可能使当前有效配置不同，最终 strict diff 会让 Session 初始化失败，而不是静默接受 drift。
+
+验证发生在 plugins/skills warmup、Agents instructions refresh 和 thread title lookup 之后、`SessionState` 建立与 Session 对外可用之前。root Session 会校验并可导出；non-root agent 跳过校验，避免每个 child 用继承/role 派生配置与 root lock 冲突。这也意味着 lock 只证明 root 起点，不能证明后续 `SessionSettingsUpdate`、权限动态变化、catalog refresh 后下一 Turn 或 child role 的配置一直相同。
+
+metadata 当前只含 lock schema `version=1` 与 Codex package version。schema version 不匹配总是拒绝；Codex version 默认也拒绝，可用 `allow_codex_version_mismatch` 仅忽略 binary 版本字段，实际 config 仍逐字段比较。差异用 compact unified diff 报告。文件读取、解析、metadata、重建、序列化、比较或导出目录/写入任一步失败都会阻止 Session 启动；导出使用普通 `tokio::fs::write`，没有临时文件 + rename，因此崩溃可能留下截断 lock，下次 load 会明确 parse failure。
+
+```text
+original layers -> effective ConfigToml -> runtime/session resolved values
+                         |                         |
+                         +------ materialize -----+
+                                      |
+                           drop generation inputs
+                                      |
+                       versioned config.lock.toml
+                                      |
+replay: lock as sole user layer + current managed requirements
+                                      |
+                         rebuild SessionConfiguration
+                                      |
+                       strict regenerated-lock diff
+```
+
+关键测试：
+
+- `core/src/session/config_lock.rs`：prompt/model/feature materialization、关闭 catalog resolved fields、config diff、removed compatibility entry 与 Codex version mismatch。
+- `core/src/config/config_tests.rs`：nested debug 设置、相对 export path 解析、load path 替换普通层并保留 replay flags。
+- Session 构建顺序：校验/导出在 Session 发布前失败，且只对 root source 生效。
+
+映射到当前项目：若未来需要 AgentRun 可复现性，应保存版本化 `RunExecutionSnapshot`，内容是 model/provider、tool schema hash、prompt/template version、feature flags 与 tenant policy revision；API key、动态授权和管理员策略不能被快照赋权。重放先重新执行当前安全策略，再比较行为快照；快照写入必须原子化并绑定 Run，而不是依赖一份可被覆盖的全局配置文件。
+
 ## 5. 当前项目最应该吸收的架构原则
 
 ### 原则一：对外协议稳定，内部事件可演进

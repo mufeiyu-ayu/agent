@@ -65,12 +65,19 @@
 | 31 | Remote Control pairing、virtual connection 与 relay recovery | 补managed/SQLite/desired-state三门、账户绑定enrollment与短寿命server token、pairing身份复核、client/stream映射、seq/segment/ack重放、buffer背压、完整控制面授权和relay明文信任边界 | 91% / 91% |
 | 32 | Config mutation、乐观并发与runtime refresh | 补active user layer唯一写边界、canonical TOML fingerprint、Replace/Upsert/null语义、raw/requirements/effective三重验证、DocumentMut保格式与atomic replace、override metadata、cache/Thread刷新分层和版本检查TOCTOU窗口 | 91% / 91% |
 | 33 | Memories生成、使用反馈与遗忘边界 | 补startup资格和额度fail-open、Phase 1 lease/过滤/并行/结构化抽取、Phase 2全局锁/usage selection/git diff/受限Agent、读路径scoped tools与citation反馈、external context pollution和reset非原子删除 | 91% / 90% |
+| 34 | Apply Patch预览、权限与partial commit | 补freeform/shell拦截、streaming provisional preview、hook后全量verification、source/destination权限与hardlink sandbox、顺序非事务写入、失败committed delta/exactness、sandbox retry副作用和Turn净diff失效策略 | 90% / 90% |
+| 35 | Goals持久状态、usage accounting与idle continuation | 补goal_id generation、六状态控制权、普通Turn记账、non-cached token与wall time、并发flush、soft budget steering、idle自动续跑锁、error/usage-limit停止和App Server response/snapshot/notification顺序 | 90% / 90% |
+| 36 | Model catalog、Turn能力快照与服务端reroute | 补bundled/cache/remote合并、auth/visibility、dynamic/static fallback差异、ETag同步刷新背压、provider cache-key缺口、longest-prefix fallback metadata、Turn snapshot、actual model mismatch与verification独立语义 | 90% / 90% |
+| 37 | 多SQLite state runtime、migration兼容与定点恢复 | 补五库ownership、WAL/NORMAL/pool参数、顺序init与跨库非原子边界、future migration兼容/checksum、只读审计、corruption/lock分类、单DB main/wal/shm备份、fresh schema重建和partial backup风险 | 90% / 90% |
+| 38 | Apps目录、connector access、tool policy与auth elicitation | 补directory/access/plugin/config四态、account-keyed stale cache、双异步App list、workspace fail-open、风险hint与managed policy、direct/deferred exposure、mention仅作归因、可信auth failure校验和Accept后手动retry | 90% / 89% |
+| 39 | File watcher路径身份、订阅ownership与cache invalidation | 补shared ref count、requested/canonical/actual三路径、missing ancestor迁移、mutating-only粗事件、debounce/throttle、connection-scoped watch/unwatch barrier、noop可靠性、workspace外观察风险和Skills next-Turn失效语义 | 89% / 89% |
+| 40 | Config lock有效配置物化、严格重放与安全边界 | 补effective layer→resolved Session/Config字段、feature规范化、生成输入剔除、load时普通层替换但requirements保留、root发布前strict diff、版本兼容开关、non-root/后续动态状态覆盖缺口和非原子导出风险 | 89% / 89% |
 
 ## 最近检查
 
 - 命令：`python3 "$HOME/.local/bin/codex-weekly-usage.py"`
-- 读数：已用 10%，剩余 90%
-- 采样时间：`2026-07-13 12:07:39 CST`
+- 读数：已用 11%，剩余 89%
+- 采样时间：`2026-07-13 12:17:09 CST`
 - 判断：高于 50%；按用户明确停止条件继续做源码深挖，不能以首轮闭环或 PR 已创建为由停止。
 
 ## 下一批次
