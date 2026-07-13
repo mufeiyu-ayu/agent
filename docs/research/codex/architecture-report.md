@@ -1820,6 +1820,183 @@ replay: lock as sole user layer + current managed requirements
 
 映射到当前项目：若未来需要 AgentRun 可复现性，应保存版本化 `RunExecutionSnapshot`，内容是 model/provider、tool schema hash、prompt/template version、feature flags 与 tenant policy revision；API key、动态授权和管理员策略不能被快照赋权。重放先重新执行当前安全策略，再比较行为快照；快照写入必须原子化并绑定 Run，而不是依赖一份可被覆盖的全局配置文件。
 
+### 4.52 AGENTS.md：指令是 Thread 创建快照，路径来源与模型可见正文必须分开
+
+Codex 把全局用户指令与项目指令组装成一个 user-role world-state section，而不是 system/developer 指令。root Thread 启动时，`UserInstructionsProvider`先从`CODEX_HOME`按`AGENTS.override.md -> AGENTS.md`选第一个非空普通文件；每个已选择Environment再从project root到cwd逐目录读取项目文件。全局正文在前，首次进入项目正文时插入`--- project-doc ---`边界；来源路径单独保留给App Server `instructionSources`。
+
+project root由向上查找配置marker决定，默认`.git`；空marker列表只看cwd，找到最近marker后不再越界。用于决定marker的配置刻意排除所有Project config layer，因此仓库自己的`.codex/config`不能把搜索根扩到父目录、吸入本不属于该仓库的指令。这是“内容可以由项目提供，但项目不能定义自己的信任/发现边界”的重要不变量。
+
+每个目录只选一个候选，优先`AGENTS.override.md`、再`AGENTS.md`、再用户配置fallback；目录/FIFO等非普通文件忽略。祖先目录metadata probe并发但用`buffered`保持root→cwd结果顺序，最多256个并发。symlink cwd保留调用方命名空间，不canonicalize成另一条展示路径；remote Environment通过ExecutorFileSystem和PathUri使用远端原生路径。
+
+正文读取不经过工具sandbox参数（`sandbox=None`），因为它是Session启动能力而非模型工具调用；权限边界依赖Environment filesystem本身。metadata/read permission error对单Environment记error并跳过该Environment，其他Environment和全局指令仍可用；发现后文件消失被视为无内容。产品因此偏fail-open可用性：指令加载失败不会阻止Thread启动。安全规则不能只放AGENTS.md，真正权限仍必须由host policy执行。
+
+`project_doc_max_bytes`是每个Environment各自的总预算，不含host全局指令；按root→cwd消耗，后面的更具体文件可能被截断甚至完全丢弃。截断按byte而非UTF-8边界，随后`from_utf8_lossy`，可能在边界产生替换字符；没有“文件已截断”的模型可见标记。多Environment可合计超过单Environment上限，正文按environment id/cwd分组标注，避免把两个工作区的局部规则误认为同一目录层级。
+
+`AgentsMdManager`缓存key只有Environment selections，不含文件mtime/hash、config revision或provider generation。普通Turn永远复用创建时snapshot；即使原路径内容改变，`instructionSources`仍返回原路径、模型仍看旧正文。Deferred Executor模式会在Step capture调用refresh，但只要selection相同也直接return，因此它解决Environment切换，不是文件热重载。当前Skills watcher不会使AGENTS cache失效。
+
+这份冻结语义保证同一Thread可复现并避免中途仓库文件悄悄改写行为。cold resume和root fork会重新调用provider并重新发现项目文件；如果历史已有旧world state，新快照不同则追加一次明确replacement，文件消失则追加removal notice。后续Turn靠persisted world-state baseline避免重复插入。旧rollout没有world-state snapshot时以Unknown处理，宁可补replacement/removal，不能假设历史没带旧指令。
+
+non-root child不重新读全局provider，而从仍存活的parent Thread继承`UserInstructions` snapshot；full-history child连同旧结构化历史使用同一份指令，避免父子在一次协作中被磁盘变化分叉。若parent runtime已不可用，child不能从Thread id恢复provider正文，按当前实现以None启动。这里依赖live runtime而非持久化source provenance，是冷启动子任务的明确缺口。
+
+world-state持久化只保存渲染后的directory/text，不保存filesystem provenance；`instructionSources`来自本次live discovery而非rollout历史。这能避免把陈旧路径冒充当前存在来源，却意味着审计者不能只靠rollout精确证明旧正文来自哪个文件版本。源码也没有内容hash、inode/URI版本或签名；仓库写权限等同于影响下一次root/cold resume模型行为，AGENTS.md必须作为prompt供应链输入审计。
+
+```text
+host provider snapshot -----------------------+
+                                               |
+each Environment: trusted root markers         |
+  root -> ... -> cwd, one candidate per dir ---+--> LoadedAgentsMd
+                                                     | text -> user world state
+                                                     | paths -> instructionSources
+                                                     |
+                                  same live Thread: frozen snapshot
+                         cold resume/root fork: rediscover + diff notice
+                         child: inherit live parent provider snapshot
+```
+
+关键测试：
+
+- `agents_md_tests.rs`：root→cwd顺序、override/fallback、project layer不能改root marker、byte budget、invalid UTF-8、并发probe、symlink与multi-Environment标签。
+- `core/tests/suite/agents_md.rs`：普通Turn保持创建快照、cold resume removal/replacement、fork只注入一次、child继承parent以及instruction source顺序。
+- `context/world_state/agents_md_tests.rs`：Known/Unknown/Absent baseline下replacement/removal exactly-once。
+- App Server thread start/resume tests：running resume沿用cache，cold resume返回新live source列表。
+
+映射到当前项目：SEO Agent若引入租户级/项目级prompt文件，应把“发现边界”留在服务器可信配置，仓库内容只能作为user级上下文；保存正文hash、来源URI、版本和截断标记到AgentRun。运行中采用显式snapshot，变更只影响新Run或用户确认的refresh；租户权限、安全和副作用政策不能依赖可编辑prompt文件。
+
+### 4.53 Log DB：低开销 tracing sink 以可观测性丢失换取前台不阻塞
+
+Codex 用一个 `tracing_subscriber::Layer`把本地事件异步写进独立`logs.sqlite`。`on_event`同步完成field/span格式化与thread id提取，然后对容量512的MPSC执行`try_send`；队列满或receiver关闭时新日志被静默丢弃，不阻塞产生日志的runtime。这个选择保护主循环，但当前没有drop counter、warning或health state，因此“DB没有记录”既可能是事件没发生，也可能是队列背压丢失。
+
+后台单consumer按128条或2秒一批写入；首次timer tick先消费，避免启动立即空flush。显式`flush`用普通`send`排在此前已成功入队的Entry之后，必要时会等待queue容量，再等oneshot ack，所以形成“accepted-before-flush都已被inserter处理”的FIFO barrier。它不覆盖此前`try_send`已经drop的事件。
+
+更关键的是，inserter把`insert_logs`错误直接丢弃，然后照常回复flush；API只返回`()`。因此feedback上传、thread删除前的flush只保证尝试顺序，不保证SQLite durable success。receiver全部drop时后台会flush buffer，但进程崩溃、abort task或最后一次DB错误都会丢失最多一个buffer。日志不能作为Run/审批/计费等canonical审计事实。
+
+每条event保存timestamp、level、target、module/file/line、process UUID、可选thread id和`feedback_log_body`。thread id优先事件显式field，否则从root→leaf span取最后一个非空值。feedback body把整个span链的名字与formatted fields、再加event全部formatted fields拼成文本；不是只存`message`。默认filter虽排除bridged `log`、OTEL专用target和高频WS timing，并压低部分依赖日志，但对Codex target默认允许TRACE。
+
+这意味着隐私边界在**调用方是否把敏感值写进tracing field**，LogDb层没有通用字段级脱敏、allowlist或长度上限。account id/ChatGPT user id甚至在feedback前主动写为`feedback_tags` tracing event，以便被同一flush收集。任何prompt、tool arguments、token、filesystem path若被debug/trace记录，都可能进入本地DB并在用户选择include logs后上传；“OTEL trace-safe”过滤不等同于本地Log DB安全。
+
+batch insert与prune在同一SQLite transaction。每个thread独立限制约10 MiB且最多1000行；无thread日志按process UUID独立分区，NULL UUID另算一组。超过任一限制后用newest-first window cumulative bytes/row number删除旧suffix之外的行；单条本身超过10 MiB时连新行也会被删。estimated bytes只计算正文与若干metadata字符串，不是SQLite真实页大小。
+
+另有10天时间保留，但只在StateRuntime启动maintenance时删除，随后执行PASSIVE WAL checkpoint；长时间不重启的进程不会按日持续清理。logs DB启用incremental auto-vacuum，却不代表每次delete都会立即归还文件空间。per-partition cap控制可读内容，不是全库上限：大量thread和process仍可让DB线性增长。
+
+feedback查询先显式flush，再选root加最多7个最新UUIDv7 descendant；每个请求thread同时关联该thread最新一条日志所指向的process UUID，从而带上相同进程的threadless日志。多thread和threadless行全局按新到旧累计最多10 MiB，再以完整格式化行做第二次精确byte cap，最后翻回时间正序。它不会带上旧process的threadless日志，这减少噪音，也可能丢失跨重启故障前因。
+
+thread删除先flush，再逐thread分别删除logs、memory、goal，最后才在state DB transaction删spawn edge/thread。这个顺序保留可重试的subtree身份，却不是跨库事务；若日志删除成功、memory失败，retry仍能继续，但诊断证据已经先消失。合规删除与可诊断性需要明确优先级，不能借用这一实现假设原子性。
+
+```text
+tracing event -> format full span/event fields -> try_send(512)
+                    | queue full: silent drop
+                    v
+             single inserter buffer
+              128 rows OR 2 sec
+                    v
+        SQLite tx: insert + partition prune
+                    | error swallowed
+                    v
+       flush ack means "processed", not durable success
+```
+
+关键测试：
+
+- `state/src/log_db.rs`：batch size/timer、queue满drop、flush等待queue与receiver顺序、span/thread id格式化。
+- `log_db_filter_tests.rs`：OTEL低级事件和WS timing过滤、普通Codex TRACE保留。
+- `runtime/logs.rs` tests：专用DB/migration、10 MiB/1000行分区prune、oversized row、process隔离、feedback newest suffix和时间正序。
+- Feedback与thread delete processors：flush、agent subtree最多8个Thread、threadless process关联以及跨库删除顺序。
+
+映射到当前项目：AgentRun/Step与审批必须结构化事务持久化，不能靠应用日志。异步诊断sink应暴露dropped/error counters，flush返回durable结果；采用字段allowlist、敏感字段redaction和单event上限。反馈上传应展示范围并二次脱敏，租户/Run分区保留策略要有全局容量上限和持续maintenance。
+
+### 4.54 Agent Jobs：持久化item状态不等于已有独立可恢复调度器
+
+`spawn_agents_on_csv`是建立在Multi-agent之上的实验性批处理工具：只支持恰好一个local Environment，从cwd读取整份CSV，把每行转成state DB中的一个job item，再在当前tool call内运行一个调度循环。它不是App Server后台job service，也没有独立进程/启动扫描器；当前源码里`run_agent_job_loop`只从这次tool handler调用。因此外层Turn、Session或进程终止后，数据库虽保留running/pending状态，却没有自动owner继续推进。
+
+job与全部items在state.sqlite同一transaction创建：job先是pending，每行保存row JSON、稳定row index、可选source id和去重item id。重复source id通过`-2/-3`本地后缀消歧；空行跳过、header必须唯一、行字段数必须完全一致。输入路径与输出路径保存为host绝对字符串，不是PathUri，所以明确拒绝remote/multi-Environment。
+
+调度并发默认16、硬上限64，再受当前Multi-agent版本的effective thread limit约束。feature `SpawnCsv`和collab tools同时打开才暴露主工具；worker-only `report_agent_job_result`还要求SessionSource label以`agent_job:`开头。这个exposure防普通root模型误用，但真正结果写入还用`assigned_thread_id` CAS校验报告者，模型即使猜到job/item id也不能替别的worker提交。
+
+pending item的claim顺序值得注意：loop先spawn child，成功后才执行`pending -> running + assigned_thread_id + attempt_count` CAS；CAS失败会shutdown刚建child。这样避免数据库先claim后spawn失败留下幽灵running，但进程若在spawn成功与CAS之间崩溃，会留下数据库pending和一个可能仍执行的orphan child；恢复后可能为同一item再spawn。若反过来先claim则需lease/requeue，两种顺序都必须有显式补偿。
+
+worker prompt直接插值CSV字段到instruction模板，并附完整row JSON、output schema和job/item id。`{{`/`}}`只是literal brace escape；CSV内容是外部不可信数据，可能在模板位置形成prompt injection。output schema当前只展示给模型，源码TODO明确未做JSON Schema/structured output校验；host只验证`result`顶层是object。因此“Expected schema”是软约束，不是持久化invariant。
+
+worker报告使用单条条件UPDATE：必须item仍running且assigned thread完全匹配，才写result、reported/completed时间并清owner；重复调用返回`accepted=false`，形成自然幂等。`stop=true`只在结果已accepted后把job从pending/running CAS成cancelled。runner随后停止派发新item，等待已running child结束；pending保留pending并一起导出，不被改成item cancelled，因为item状态枚举本身没有cancelled。
+
+worker最终状态与业务结果分离：child线程结束时若item已由report tool完成则只shutdown；若仍running但有result可补mark completed，否则标记“finished without calling report”。结果提交发生在child最后一轮中，runner的250ms poll/watch可能先看到Thread final，但数据库CAS保证不会把已completed item覆盖为failed。status watch不可用时回退poll。
+
+每item默认30分钟timeout，可由job覆盖。live loop用`Instant`；读取已有running item时把数据库`updated_at`年龄换算回Instant。超时先把item running→failed、清owner，再best-effort shutdown child。系统时钟向未来跳导致negative age时视为不stale，向过去/长暂停则可立即失败；没有heartbeat续租，worker正常长任务的`updated_at`不会刷新。
+
+`recover_running_items`能处理同一runner启动时已有items：缺失/非法thread id、超时或final child会收口，live child重新订阅。但没有代码在应用启动时枚举running jobs并调用它，也没有公开resume job入口；所以它是loop级恢复helper，不是crash recovery闭环。job的`attempt_count`虽存在，当前失败item不会自动回pending重试；只有AgentLimitReached分支尝试running→pending，但该item通常还未被mark running，更新会返回false且未检查，实际仍pending是因为初始状态没变。
+
+循环无pending/running后先导出CSV，再把job completed。auto-export使用普通`create_dir_all + write`，不是atomic rename；失败把job标failed并返回Ok给runner，handler随后若文件不存在会再尝试一次export，但不会把failed job改回completed。进程在文件写成与job completed之间崩溃会留下完整CSV+running job；反向partial write则可能被“path exists”检查误认为无需重导出。
+
+job删除也与Thread subtree耦合：删除worker Thread时会把仍running的item重排pending；若runner与worker一并删除则job直接cancel，避免没有consumer的item被requeue。该操作与logs/memories/goals删除分属不同DB步骤，仍不是跨域事务。
+
+```text
+CSV -> tx(job pending + N items pending) -> job running
+                  |
+       current tool-call scheduler only
+                  |
+        spawn child -> CAS assign item
+                  |
+       report result(owner CAS) OR timeout/finalize
+                  |
+       no pending/running -> export CSV -> job completed
+
+process/Turn dies: DB state remains, but no startup scheduler resumes it
+```
+
+关键测试：
+
+- `state/runtime/agent_jobs.rs`：create transaction、状态CAS、owner-bound report、progress和final transitions。
+- `core/tools/handlers/agent_jobs_tests.rs`：CSV parsing/template、concurrency、spawn limit、timeout、report exactly-once、cancel和export。
+- tool spec tests：主/worker tool exposure与result object/stop contract。
+- `state/runtime/threads.rs` tests：删除runner/worker时cancel或requeue的顺序。
+
+映射到当前项目：批量SEO任务应由NestJS独立Job service领取`pending -> running` lease，带owner token、heartbeat、lease expiry和启动reconciler；AgentRun只是worker执行记录。输入数据永远作为结构化user/tool data，不直接拼developer prompt；结果必须服务端schema校验。导出用临时文件+atomic rename，并保存artifact state/hash，job terminal只能在items与artifact一致后提交。
+
+### 4.55 Graceful Restart：等待的是assistant Turn归零，不是立即停止接单
+
+App Server的signal shutdown只在多连接Unix socket/WebSocket模式启用；stdio是single-client，连接EOF后按另一条生命周期退出。Unix上Ctrl-C/SIGTERM是forceable，SIGHUP是graceful-only。首次信号只把`ShutdownState.requested=true`并继续accept connection、读取消息和处理RPC，日志明确写“requests still accepted until no assistant turns are running”。它不是常见的先关acceptor、再drain已有请求。
+
+drain判定依赖`ThreadWatchManager`维护的running assistant Turn数量：Turn started设true，completed/interrupted/system error/thread shutdown清false。pending approval/user-input有独立counter但不进入该watch count。只有`forced=true`或running count变0时，主loop才cancel transport acceptors并向outbound router发送DisconnectAll。
+
+因此首次signal时若已经0个running Turn，会在下一loop顶部立即断开；若大于0，客户端在等待期间仍可提交普通RPC甚至启动新Turn，count可以增加，restart没有固定deadline。活跃/恶意客户端可让graceful drain长期不收敛。第二次Ctrl-C/SIGTERM把forced设true，下一轮无视Turn数退出；重复SIGHUP刻意不会force，测试要求仍等待。
+
+force只改变App Server teardown，不向正在跑的Turn发可观察的interrupt收口。forced路径cancel transport、DisconnectAll后跳过connection RPC drain、background drain和thread shutdown，并直接abort cleanup tasks；随后等待processor/outbound/acceptor task退出、关闭OTEL。进程退出会依赖rollout writer自身已写入的prefix和下次resume修复，不能把forced restart视作Turn正常terminal。
+
+graceful路径先断开outbound clients，再对仍在`connections` map的每个ConnectionRpcGate执行`shutdown`：gate原子close，迟到handler future不再poll，已拿token的handler继续到结束。这里在顶层`join_all`没有timeout；单个卡死的非Turn RPC可能让进程在running Turn已归零后无限等待，而且主signal select loop已经退出，第二信号无法再切forced路径。
+
+日常connection close走不同函数：每个gate drain有固定timeout，超时后仍继续清outgoing/fs/exec/thread connection resources。顶层graceful restart没有复用这个bounded helper，而是先无限gate wait，之后才`connection_cleanup_tasks.drain()`。这是“正常断线有界、全局优雅退出反而可能无界”的不对称风险。
+
+RPC drain之后，ThreadProcessor先close background task tracker并最多等10秒，再调用ThreadManager对所有Thread bounded shutdown 10秒。background timeout只warning继续；thread submit failure/timeout也只warning。换言之graceful保证是best effort bounded thread flush，不是所有Thread必定ShutdownComplete。Models/apps/skills workers用CancellationToken停止，但不是所有task都join到成功结果。
+
+outbound router对DisconnectAll调用每个connection的disconnect token并立即clear route map；已经排在`outgoing_rx`但尚未路由的消息随后找不到目标连接，会丢弃。restart没有协议级“server draining/reconnect token”notification barrier；客户端观察到的是socket断开，恢复依赖Thread持久化与resume/list。运行Turn归零只说明Core发过terminal事件并被watcher观察，不证明最后notification已被远端client收到。
+
+acceptor、processor和outbound三组task最终分别join；transport cancellation也在processor join后再次执行以幂等收口。JSON shutdown日志记录exit reason、remaining connection count和forced flag，便于区分正常断线、transport channel关闭与signal restart，但它不是客户端可确认的ack。
+
+```text
+first SIGINT/SIGTERM/SIGHUP
+        |
+requested=true; acceptor/RPC still open
+        |
+watch running assistant turns (new turns still allowed)
+        |
+count==0 --------------------------- second SIGINT/TERM
+  |                                        |
+cancel acceptor + DisconnectAll        forced=true
+  |                                        |
+graceful: wait RPC gates (unbounded)    skip drains/Thread shutdown
+  -> background <=10s
+  -> Thread shutdown <=10s
+  -> task joins / OTEL shutdown
+```
+
+关键测试：
+
+- `connection_handling_websocket_unix.rs`：首次Ctrl-C/SIGTERM等待Turn、第二次force、重复SIGHUP仍graceful。
+- `connection_rpc_gate.rs`：close后late future不poll、started handler必须完成、TaskTracker ownership。
+- `thread_processor.rs`与ThreadManager tests：background 10秒、all-thread bounded shutdown和失败报告。
+- logging suite：shutdown event的forced/exit reason字段。
+
+映射到当前项目：NestJS部署drain应先把实例标unready并拒绝新AgentRun，再等已领取Run到terminal/lease handoff；HTTP/WebSocket请求和AgentRun要分别计数。所有阶段都有总deadline，二次signal或平台termination共享同一个force token。断连前发送带resume cursor的draining事件并flush有界outbox；force后依靠持久化Run状态与启动reconciler恢复。
+
 ## 5. 当前项目最应该吸收的架构原则
 
 ### 原则一：对外协议稳定，内部事件可演进

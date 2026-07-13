@@ -72,12 +72,16 @@
 | 38 | Apps目录、connector access、tool policy与auth elicitation | 补directory/access/plugin/config四态、account-keyed stale cache、双异步App list、workspace fail-open、风险hint与managed policy、direct/deferred exposure、mention仅作归因、可信auth failure校验和Accept后手动retry | 90% / 89% |
 | 39 | File watcher路径身份、订阅ownership与cache invalidation | 补shared ref count、requested/canonical/actual三路径、missing ancestor迁移、mutating-only粗事件、debounce/throttle、connection-scoped watch/unwatch barrier、noop可靠性、workspace外观察风险和Skills next-Turn失效语义 | 89% / 89% |
 | 40 | Config lock有效配置物化、严格重放与安全边界 | 补effective layer→resolved Session/Config字段、feature规范化、生成输入剔除、load时普通层替换但requirements保留、root发布前strict diff、版本兼容开关、non-root/后续动态状态覆盖缺口和非原子导出风险 | 89% / 89% |
+| 41 | AGENTS.md发现边界、Thread快照与恢复差异 | 补host/project user级组装、Project layer不可改root marker、override/primary/fallback、remote/multi-Environment、byte截断、selection-only cache、普通Turn冻结、cold resume/fork world-state replacement、child live继承和source hash审计缺口 | 89% / 89% |
+| 42 | Log DB异步队列、durability与feedback隐私边界 | 补try_send静默drop、batch/timer、flush FIFO但DB错误仍ack、full span/event field保存、无通用脱敏、thread/process分区保留、startup-only 10天清理、feedback subtree/process关联和跨库删除非原子顺序 | 89% / 89% |
+| 43 | Agent Jobs批处理调度、owner CAS与crash恢复缺口 | 补CSV/job transaction、local-only路径、并发上限、spawn-before-claim补偿窗口、worker-only exposure+assigned thread CAS、schema软约束、timeout无heartbeat、cancel遗留pending、loop helper非startup recovery和CSV非原子artifact提交 | 89% / 89% |
+| 44 | App Server graceful restart准入、drain与force边界 | 补首次signal继续accept/RPC、新Turn可延迟归零、assistant Turn计数不含普通RPC、二次Ctrl-C/TERM force而SIGHUP不force、DisconnectAll前后、顶层RPC gate无timeout、background/Thread各10秒best effort和terminal通知未必送达 | 89% / 88% |
 
 ## 最近检查
 
 - 命令：`python3 "$HOME/.local/bin/codex-weekly-usage.py"`
-- 读数：已用 11%，剩余 89%
-- 采样时间：`2026-07-13 12:17:09 CST`
+- 读数：已用 12%，剩余 88%
+- 采样时间：`2026-07-13 12:21:32 CST`
 - 判断：高于 50%；按用户明确停止条件继续做源码深挖，不能以首轮闭环或 PR 已创建为由停止。
 
 ## 下一批次

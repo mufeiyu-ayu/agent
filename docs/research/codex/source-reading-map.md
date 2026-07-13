@@ -1023,3 +1023,68 @@ submission_loop (serialized control)
 分别切换 `save_fields_resolved_from_model_catalog` 与 `allow_codex_version_mismatch`：前者改变 lock 覆盖面，后者只能忽略 Codex 版本，不能吞掉 config drift。再加入旧 compatibility feature，验证只有明确登记的 removed entry 被清理，未知字段/schema version 仍拒绝。
 
 最后在导出写入中途终止进程，并在 Session 建立后动态修改 model、permission profile、MCP catalog 与 child role。证明当前普通写文件可能留下不可解析 lock，且启动时 root lock validation 不覆盖后续 Turn/child 漂移。设计 Run 级复现时，把行为快照与当前安全策略交集、tool/prompt hash和原子持久化分开建模。
+
+## 50. 路线四十七：AGENTS.md 改了为何当前 Thread 仍按旧规则运行
+
+按发现边界、内容组装、缓存和恢复阅读：
+
+- `core/src/agents_md.rs`：root marker、Project layer排除、候选优先级、并发probe、byte budget、provenance和多Environment渲染。
+- `codex-home/src/instructions/mod.rs`与extension API：root Thread的host provider、warning和source path限制。
+- `core/src/agents_md_manager.rs`与`capture_step_context`：selection-keyed cache以及Deferred Executor refresh的真实边界。
+- `context/world_state/agents_md.rs`：snapshot、Known/Unknown/Absent与replacement/removal notice。
+- `thread_manager.rs::user_instructions_for_spawn`：root fresh load、running/cold resume、fork和child继承。
+- Core/App Server agents_md suites：source列表、普通Turn冻结、cold resume/fork exactly-once与multi-Environment。
+
+在root、nested cwd和两个Environment分别放override/primary/fallback，并让Project config试图更改root marker；记录每目录winner、读取顺序、PathUri和最终正文标签。把总byte budget卡在多字节字符中间，确认具体文件被截断的位置与lossy replacement。
+
+Thread建立后原地改全局与项目文件，再跑普通Turn、Deferred Executor Step、running resume、cold resume和root fork。证明selection不变时cache冻结；cold边界重新发现并通过world-state diff只注入一次replacement/removal。
+
+最后在parent运行时新增全局override并spawn child，再让parent被卸载后尝试按id派生。区分live继承与provider reload；审计rollout只保存text/directory而没有source hash的证据缺口。把仓库prompt当供应链输入，设计可信发现根、Run级hash和显式refresh。
+
+## 51. 路线四十八：flush 完成为什么不代表日志已可靠落盘
+
+按同步producer、异步queue、SQLite retention和feedback读取：
+
+- `state/src/log_db.rs`：default filter、span/event field formatting、try_send、batch/timer、flush command和错误处理。
+- `state/src/runtime/logs.rs`：batch transaction、estimated bytes、thread/process partitions、time maintenance与feedback query。
+- `state/src/runtime.rs`：logs pool、incremental auto-vacuum、startup maintenance和五库ownership。
+- App Server `feedback_processor.rs`与`thread_delete.rs`：何时flush、subtree选择、include logs和删除顺序。
+- log DB/runtime suites：queue full、flush barrier、oversized row、process correlation和retention边界。
+
+把queue设为1并暂停receiver，连续发事件后插入flush；分别统计generated、accepted、processed、committed和query-visible数量。再注入SQLite write error，确认flush仍ack，证明现有API不能给durability证据。
+
+在root span写secret-like field、event只写普通message，检查feedback body是否包含完整span field；依次通过default filter和feedback include logs，画出本地保留与上传路径。验证当前没有通用redaction/长度限制，要求生产日志调用点自行遵守敏感度契约。
+
+最后制造1001行、单条11 MiB、多个thread、多个process UUID和运行超过10天不重启的库。区分partition content cap、startup-only age cleanup和全库增长。删除agent subtree时在logs/memories/goals/state每个边界注入失败，记录可重试身份与已永久消失的诊断证据。
+
+## 52. 路线四十九：数据库里有 running job 为何重启后不会自动继续
+
+按tool入口、item CAS、child lifecycle与artifact提交阅读：
+
+- `tools/handlers/agent_jobs/spawn_agents_on_csv.rs`：local CSV读取、job创建、runner调用和最终返回。
+- `tools/handlers/agent_jobs.rs`：并发归一、spawn/assign顺序、watch/poll、timeout、recover helper、finalize和CSV export。
+- `report_agent_job_result.rs`与tool spec plan：worker exposure、owner CAS、stop语义和schema软约束。
+- `state/model/agent_job.rs`与`runtime/agent_jobs.rs`：job/item状态枚举、transaction创建、attempt/owner/timestamp与条件UPDATE。
+- `runtime/threads.rs`：worker/runner Thread删除时requeue/cancel。
+
+在spawn child成功后、item assign前kill runner，再在assign后、report前、report后和CSV write各kill一次。重启整个App Server，确认没有startup scan自动调用run loop；区分数据库可读状态与真正有owner的任务。
+
+让两个worker同时报告同item、错误worker猜中id、同worker重复报告以及accepted后stop。验证assigned thread CAS只接受一次；记录pending item在job cancelled后为何仍pending。再让worker结束事件与result UPDATE竞速，检查finalize不会覆盖completed。
+
+最后让CSV字段包含指令文本、result违反展示的output schema、系统时间跳变、output文件partial exists。验证prompt/data混合、schema未强制、无heartbeat timeout和exists-based导出恢复缺口。设计lease、reconciler、server-side schema和artifact commit状态机。
+
+## 53. 路线五十：收到退出信号后为何还可以创建新 Turn
+
+按signal state、Turn计数、connection gate和teardown阶段阅读：
+
+- `app-server/src/lib.rs::ShutdownState`与主select loop：forceable/graceful-only信号、acceptor时点、DisconnectAll和forced分支。
+- `thread_status.rs`：running assistant Turn watch与approval/user-input counter差异。
+- `connection_rpc_gate.rs`及`MessageProcessor::connection_closed`：close/token/wait、late future和日常有界drain。
+- `ThreadProcessor::drain_background_tasks`、`shutdown_threads`：两个10秒边界及warning-only结果。
+- WebSocket Unix signal与logging suites：真实进程退出、二次signal和forced telemetry。
+
+启动一个3秒Turn后发首次SIGTERM，同时从原连接和新连接继续发RPC/Turn。记录acceptor、running count和退出时点；持续制造Turn证明graceful restart可被延后，再用第二次SIGTERM验证force跳过Thread shutdown。
+
+让running count归零但一个非Turn RPC永不返回。比较顶层`join_all(rpc_gate.shutdown)`与日常connection close timeout，确认第二信号此时是否仍被主loop接收。把它列为全局shutdown缺少总deadline的风险。
+
+最后在terminal notification已生成但outbound writer很慢时触发DisconnectAll，检查client是否收到最后事件；forced路径kill在rollout不同flush点，再cold resume核对durable prefix。设计readiness→stop admission→bounded drain→force→reconcile的云端状态机。
