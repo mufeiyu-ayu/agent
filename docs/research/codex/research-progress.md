@@ -80,12 +80,15 @@
 | 46 | 图像输入prepare、缓存、权限与resume漂移 | 补LocalImage host read与octet defer、history前统一decode/resize、remote/low/invalid逐项placeholder、High/Original dimension+patch预算、format/ICC/EXIF、SHA-1+mode 64MiB LRU、view_image sandbox差异和legacy rollout不回写导致算法版本漂移 | 88% / 88% |
 | 47 | Code Mode V8能力、nested tool dispatch与process host | 补无Node/import的V8编排、nested call回到当前Turn ToolRouter、cell-ready gate、yield/wait/observer、completion-time KV commit、truncate前无界内存、共享child process V1 handshake、NotFound-only fallback、host crash丢live cell/KV和shutdown/open状态机 | 88% / 88% |
 | 48 | 外部Agent Session检测、lossy投影与导入提交 | 补30天/50个mtime候选、canonical root validation后的symlink TOCTOU、SHA-256 ledger、只保留user/assistant并文本化tool、synthetic Legacy Turn、current Codex config/model、ThreadStore多步partial state、ledger非原子导致重复和import id后台通知语义 | 88% / 88% |
+| 49 | Managed Network Proxy配置上界、执行归因与SSRF决策 | 补full-access不投影但保留代理对象、Environment独立listener、env+sandbox同snapshot、execution attribution token、deny→local/private→allowlist→decider不可逆顺序、Limited method/CONNECT/UDP、constraints热更上界、reload失败保留旧state和handle收口 | 88% / 88% |
+| 50 | Credential Broker、MITM Hook与CA信任边界 | 补GitHub/OpenAI provider host binding、shape-preserving random dummy、唯一dummy才注入、DetectTls避免非TLS泄密、plaintext危险开关、hooked host no-match硬拒绝、matcher/body未支持、broker后hook覆盖顺序、进程内CA私钥与hash trust bundle | 88% / 87% |
+| 51 | Deferred Executor starting投影、显式等待与handle一致性 | 补shared resolution future、non-blocking ready/starting、每sampling Step重捕获、wait只等当前snapshot且下一Step才扩展能力、pending/upsert Arc replacement、首次失败终态与运行中reconnect差异、capability passive/lazy/exact-handle三语义 | 87% / 87% |
 
 ## 最近检查
 
 - 命令：`python3 "$HOME/.local/bin/codex-weekly-usage.py"`
-- 读数：已用 12%，剩余 88%
-- 采样时间：`2026-07-13 12:27:28 CST`
+- 读数：已用 13%，剩余 87%
+- 采样时间：`2026-07-13 12:32:13 CST`
 - 判断：高于 50%；按用户明确停止条件继续做源码深挖，不能以首轮闭环或 PR 已创建为由停止。
 
 ## 下一批次

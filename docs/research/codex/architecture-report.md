@@ -2180,6 +2180,151 @@ No cross-step transaction; source path is re-canonicalized after validation.
 
 映射到当前项目：导入第三方Agent历史时只接受上传asset id或服务端已检测的immutable file handle，不接受稍后重解引用的path。先建ImportJob与source hash/version，再在数据库事务/幂等key下创建Conversation/Message；明确哪些tool/role被降级为不可信文本。原模型/prompt仅作provenance，不直接成为当前system权限。完成状态必须在目标数据与ledger/outbox同事务后发布。
 
+### 4.60 Managed Network Proxy：环境变量只是导流入口，真正权限由代理状态机执行
+
+Codex 的 managed network 不是给子进程设置一组可选代理变量，而是 Session 所有的安全边界。Session 根据 `NetworkProxySpec` 与 requirements 物化代理，叠加 exec policy 的 network rules 后启动 HTTP 与可选 SOCKS5 listener；Codex-managed 模式在非 Windows 平台直接预留随机 loopback 端口，避免配置端口被抢占。`network.enabled=false`只产生 noop handle，不启动监听。
+
+代理只在有 sandbox 的 permission profile 中投影给 Turn：`PermissionProfile::Disabled`就是 danger-full-access，SessionConfigured不暴露代理地址，TurnContext也不挂代理；切回workspace-write等profile时才启用。代理对象本身可在full-access Session启动时保留，并在profile变化后重算/热换策略，这避免每次切sandbox都丢掉decider与observer。用户主动执行的shell任务固定使用Disabled profile，因此不会误继承Agent Turn的managed proxy。
+
+对子进程的强制不是只写`HTTP_PROXY`。`prepare_for_optional_environment`从同一runtime snapshot同时产出：覆盖后的HTTP/HTTPS/ALL_PROXY环境变量、可选MITM CA变量、凭据虚拟化、execution attribution token，以及sandbox允许访问的loopback proxy端口和`allow_local_binding`。环境变量和sandbox projection一起返回，防止“代理指向端口A、sandbox只放行端口B”的时间差。
+
+每个Environment按需预留独立loopback listener并缓存地址，HTTP/SOCKS handler携带environment id进入policy decider；execution-scoped代理还校验请求的environment id必须与scope一致。Linux bridge可以在TCP前缀发送魔数与最多128字节token，3秒内解析；未知token或environment不匹配直接拒绝，无前缀才回落到base Session state。token同时通过`CODEX_NETWORK_PROXY_ATTRIBUTION`注入子进程，使一次execution的网络审计与审批不会错归到同Thread的另一条命令。
+
+域名决策顺序是硬边界：显式deny优先；随后做local/private SSRF检查；最后才匹配allowlist。`*.example.com`不包含apex；runtime用户allowlist可用`*`允许所有public host，但deny仍胜出。`allow_local_binding=false`时，local IP literal必须被精确allowlist；hostname即使allowlisted，只要DNS解析到非public地址仍拒绝。解析有2秒上限，避免检查无限卡住。policy decider只处理普通`NotAllowed`，不能覆盖显式deny或`NotAllowedLocal`；其Allow是policy override，Ask/Deny都以拒绝返回，并保留decision source。
+
+Limited模式也不是“少几个域名”：它只允许HTTP GET/HEAD/OPTIONS；HTTPS CONNECT只有启用MITM、能看到内部method时才可能放行；UDP和非HTTPS SOCKS TCP直接禁止。Full模式才允许一般method、CONNECT tunnel与配置的SOCKS路径。MITM、method guard、host policy和upstream connector会重复检查目标，防止CONNECT后DNS/目标变化绕过前置判断。
+
+managed requirements是代理配置的上界，而非普通默认值。候选配置不能把managed `enabled=false`开成true，不能从Limited升到Full，也不能擅自打开upstream、非loopback绑定、unix socket或local binding。allowlist expansion关闭时必须精确等于managed baseline减去显式deny；开放时仍必须保留managed allow项。deny baseline不能被移除。运行时add allow/deny也先对新state做同一constraints校验，再用revision式重试提交；不是“审批一次就永久改任意配置”。
+
+热重载保留上一个可用state：reload失败只warning，继续处理请求；credential broker enablement不能在运行中改变，listener地址、SOCKS开关和enabled也不能通过`replace_config_state`修改。blocked request用最多200条ring保存近期样本，同时total单调累计并通知observer；换config时这两者保留。代理handle正常wait/shutdown或Drop都会abort主listener和所有Environment子代理，但Drop依赖当前Tokio runtime异步收口，不是跨进程durable资源管理。
+
+每次domain decision都发结构化OTEL审计，包含user/account/email/model、host/method/client、environment/execution id与是否policy override。这个审计解释“为什么允许/拒绝”，blocked ring解释“最近拒绝了什么”，二者都不是业务事实数据库；进程退出后不能据此恢复审批或证明所有请求都被记录。
+
+```text
+Session config + managed requirements + exec-policy network rules
+                         |
+                 NetworkProxyState
+                  /             \
+       base loopback listeners   per-Environment listeners
+                  \             /
+     env proxy override + sandbox loopback allowlist + attribution token
+                         |
+                  child execution
+                         |
+deny -> local/private SSRF -> allowlist -> decider(only ordinary miss)
+                         |
+              method/mode/connect guards
+                         |
+            upstream network or structured deny/audit
+```
+
+关键测试：
+
+- Core Session/network spec tests：danger-full-access不向Turn暴露managed proxy、切回workspace-write后复用decider，以及managed allow/deny baseline和expansion规则。
+- `network-proxy` runtime/network policy tests：deny优先、global wildcard、local/private解析、decider不可覆盖local deny、execution id与audit事件。
+- proxy/attribution tests：随机loopback预留、Environment env与sandbox端口一致、bounded attribution frame、未知token和scope mismatch拒绝。
+- HTTP/SOCKS/MITM tests：Limited method/CONNECT/UDP、unix socket、二次private target检查与hooked write。
+- reload/handle tests：credential broker不可热切换、失败保留旧配置、blocked ring/total保留和listener abort。
+
+映射到当前项目：SEO Agent接入抓取工具时，不应只靠工具代码里的URL校验或`fetch`封装。应把`RunNetworkPolicySnapshot`作为AgentRun输入，执行器只拿短寿命execution token并强制走服务端egress gateway；gateway按deny→SSRF→allow→审批顺序决策，DNS解析后再检查目标IP。域名临时放行绑定tenant/run/execution并有过期时间，审计与业务Step分开写但共享关联id；danger-full-access这类逃逸能力只能由可信host显式授予，不能由prompt或tool argument开启。
+
+### 4.61 Credential Broker 与 MITM Hook：子进程拿到的是使用能力，不是明文Secret
+
+Credential Broker把父环境中的GitHub/OpenAI凭据替换为**形状相似但随机的dummy token**。dummy保留已知prefix、长度与非字母数字分隔符，兼容会按token格式预检的CLI；真实值只保存在代理进程内的`CredentialBrokerState`。每个broker实例生成新dummy，同一实例对相同provider/host binding/real value复用记录，因此它是Session进程内capability，不是可持久化credential id。
+
+虚拟化只识别静态provider目录。当前GitHub cloud绑定`github.com`、`api.github.com`和`.ghe.com`后缀；enterprise token必须有`GH_HOST`且绑定精确host；OpenAI key只绑定`api.openai.com`。未绑定的enterprise token保留原值而不是虚拟化，因为代理不知道合法目标；这也是安全缺口——“不支持broker”不等于自动删除secret，调用方仍需环境最小化。
+
+代理注入真实值同时要求三件事：目标host匹配、请求Authorization中包含某个已登记dummy、匹配结果唯一。没有dummy、多个候选歧义、用户把header换成显式token或host不匹配时都不注入。它不会看到host就把某个Session secret盲写进去。子环境还有active marker与JSON marker；清理辅助函数把marker当不可信输入，只接受支持的key且当前env仍等于记录dummy，用户覆盖后的值不会被误删。
+
+HTTPS路径为有brokered credential的host选择`DetectTls`：CONNECT到非标准端口时先peek协议，真正TLS才MITM，SSH等非TLS流量继续tunnel且拿不到真实token。MITM解密inner request后先完成host/method/hook policy，再把dummy换成real header。普通明文HTTP默认不注入；必须另开名字明确危险的`dangerously_allow_plaintext_credential_injection`，否则dummy原样发送并认证失败。credential broker本身强制要求MITM开启，且运行中不能热切换enablement，避免旧child dummy突然失去或获得新语义。
+
+MITM Hook是比broker更精确的请求级capability。每个hook绑定**精确host**，再匹配method、path prefix/glob、query和header；首个匹配生效。host存在hooks但没有任何hook匹配时，不是放行原请求，而是`HookedHostNoMatch`硬拒绝。这让配置可以表达“只允许对GitHub某路径做POST并注入token”，而不是只凭域名放行所有写操作。
+
+pattern语义必须显式写`pattern:`；普通字符串中的`*`、`[`等按literal处理。path glob不跨`/`segment；query经form-urlencoded解码后按同名任一value匹配；header name规范化。body matcher虽出现在schema结构中，但当前验证直接拒绝，不能误以为JSON body已经被约束。hook要求MITM=true、methods与paths非空，所有secret/header在代理启动或reload编译阶段解析，缺secret使整个新ConfigState构建失败。
+
+注入header必须在`secret_env_var`与absolute `secret_file`中恰选一个，可加prefix。secret file读取后trim；值必须能构造合法HeaderValue。actions先strip指定header，再inject resolved secret；它在credential broker注入之后执行，因此hook可以覆盖同名Authorization。resolved action对象内含真实HeaderValue，debug/日志若错误打印整个对象会泄密；当前审计应只记录`SecretSource`元数据，不能序列化值。
+
+MITM证书是进程级内存私钥+磁盘公钥证书。Codex在`CODEX_HOME/proxy`生成CA，私钥不持久化；按host动态签leaf证书。trust bundle合并平台roots、启动时自定义CA文件/目录和managed CA，并通过10个常见TLS env key注入child。bundle文件名带内容hash，写入采用create-new/原子路径并拒绝symlink复用；CA证书有lease lock，进程会prune非活跃artifact。
+
+这个trust注入是best-effort兼容集，不覆盖所有TLS实现；child在代理启动后自己覆盖CA变量时，代码为避免覆盖command-scoped选择可能保留它，结果是TLS interception失败而不是静默降级到不检查。反过来，能够读取managed bundle的任意同权限进程都可信任该进程CA公钥，但没有私钥就不能签新证书；真正信任边界仍是代理进程内私钥和child sandbox。
+
+MITM还对CONNECT内层Host再次和外层target比对，防止借已批准tunnel转向另一host；再做DNS rebinding local/private复查。hook policy早于mode method guard，随后才注入credential并构造固定https upstream URI。request/response body inspection是单独开关与byte cap，和hook body matcher无关；不能把日志inspection当成请求授权。
+
+```text
+parent env real secret
+       |
+provider host binding -> broker record(real, random dummy)
+       |                         |
+child env gets dummy       proxy process keeps real
+       |                         |
+request carries dummy -- host + unique-dummy match
+       |                         |
+TLS detect -> MITM -> host/hook/method policy
+                         |
+              broker inject real header
+                         |
+       hook strip/inject may narrow and override
+                         |
+                    upstream HTTPS
+```
+
+关键测试：
+
+- credential broker tests：fresh dummy、shape、同Session多credential、缺dummy/歧义/显式header不覆盖、GitHub cloud/enterprise与OpenAI host binding。
+- HTTP/SOCKS tests：brokered host按TLS检测启用MITM、非TLS tunnel不注入、plaintext injection显式危险开关。
+- MITM hook tests：精确host、literal/glob、query/header、hooked-host no-match拒绝、strip后inject、secret env/file和非法配置。
+- MITM integration：CONNECT/inner Host mismatch、DNS rebinding、Limited method与hooked write组合。
+- cert tests：私钥不落盘、内容hash bundle、startup CA合并、stale bundle/symlink拒绝和artifact lease/prune。
+
+映射到当前项目：第三方SEO API凭据不应进入Agent tool env或模型arguments。为每次Run签发provider/tenant/host/path/method绑定的opaque capability，egress gateway在请求已通过策略后才从vault取secret并注入；歧义或策略不匹配fail closed。不要复刻通用MITM作为第一版，可让工具提交结构化`HttpRequestIntent`给gateway；只有必须兼容现成CLI时才用dummy env+代理，并把CA、capability、secret与审计寿命显式建模。
+
+### 4.62 Deferred Executor：等待环境是显式Tool Step，不应冻结整个Turn启动
+
+旧模式在Thread创建与TurnContext构造时等待选中Environment ready，随后整个Turn复用同一环境快照。Deferred Executor把Thread选择和连接完成拆开：`ThreadEnvironments`为每个selection保存一个shared resolution future，non-blocking snapshot把未完成项投影为`StartingTurnEnvironment`，模型先看到环境world state并可继续不依赖该环境的工作。
+
+选择更新用ArcSwap一次替换列表；environment id重复项只保留第一个。若selection完全相同且旧resolution未终态失败就复用future，避免每次配置刷新重复连接；cwd变化被视为新selection，即使environment id相同也重新建立TurnEnvironment和shell snapshot。未知id直接warning并从列表丢弃，当前没有持久的“unknown selection”占位。
+
+resolution先等Environment首次连接，再取remote `EnvironmentInfo`推导shell；shell info失败不让environment整体失败，只让shell=None。随后异步构建shell snapshot并把shared future挂到TurnEnvironment；环境ready和shell snapshot ready是两个时点。工具可开始执行时shell snapshot仍可能后台构建，消费方必须显式await自己的依赖。
+
+每次模型sampling Step调用`capture_step_context`重新snapshot当前环境；同一个Step的world state、tool specs、MCP runtime、selected capability roots和实际tool dispatch共享这一个`StepContext`。模型执行`wait_for_environment(id)`只等待该Step中捕获的starting future，成功输出ready；它不会修改旧Step对象。下一轮sampling重新capture后，环境才进入ready列表、相关工具/MCP/capability才可见，并写world-state diff。
+
+`wait_for_environment`即使环境已经ready也幂等返回；若id既不ready也不在starting，给模型可恢复错误；startup失败也转成“continue without it”，不是Fatal Turn。工具没有timeout参数，最终上限来自底层connect timeout/cancellation；若pending registration从不complete且底层没有有界时限，模型调用会占住该tool future直到Turn被取消。
+
+Deferred feature启用时wait工具始终暴露，不仅在当前确有starting项时暴露。这样schema稳定且环境可能在下一Step加入，但模型也可能对任意id试探；handler只允许当前Step snapshot中的id，不能借此等待未选中的registry环境。Starting state是模型可见协调事实，不等于获得execution capability。
+
+EnvironmentManager注册pending environment时立即插入一个共享`PendingWebSocketUrl`future并开始连接，调用方持有one-shot `PendingEnvironmentRegistration`完成URL或terminal error。complete前先验证远端URL；receiver已失活会返回Disconnected。upsert同id直接替换registry中的Arc，没有等待旧Environment关闭；已经被某个Step捕获的旧Arc仍可继续执行，新的Step按Thread selection resolution复用规则也不一定立刻换到新Arc，stable id与process-local handle必须分开。
+
+初次startup使用OnceCell：所有调用者共享一次连接结果，首次失败永久保存在该Environment对象，不自动重试。成功后的断线不同：WebSocket/Pending/Noise transport允许reconnect；同一outage的并发调用共享一个reconnect attempt，失败完成后清掉attempt，下一次操作可再试。stdio不能reconnect，且为了不提前spawn process，manager warmup不会启动它，首次实际use才连接。
+
+selected capability roots有两条读取路径。catalog inspection是passive/fail-fast：不启动、不等待starting/recovering，只返回ready roots与missing/terminal warnings。Step resolution用captured environments map：ready项携带**当步精确Arc handle**，starting为None直接省略；未被Turn环境捕获的root只触发lazy start供以后Step，不在当前Step突然变ready。这防止“检查的是registry旧实例、执行却拿到upsert新实例”的TOCTOU。
+
+AGENTS.md、MCP与skills/plugin capability也随Step刷新，但各自缓存语义不同。Deferred只保证在采样边界重新观察，不保证文件热更新；例如AGENTS manager selection相同仍复用正文。world state只在Step间做diff，环境在一次并行tool execution中断线/reconnect不会重写已经发送给模型的当步事实。
+
+```text
+Thread selections -> shared resolution futures
+             | snapshot(non-blocking)
+             +--> ready TurnEnvironment(handle, cwd, shell snapshot future)
+             +--> StartingTurnEnvironment(selection, same future)
+                              |
+Step N: world state + wait_for_environment + ready-only tools
+                              |
+                 model calls wait(id)
+                              |
+Step N+1 recapture -> exact ready handle + new tools/MCP/capabilities
+
+registry upsert may replace Arc; already captured Step keeps old Arc alive.
+```
+
+关键测试：
+
+- `environment_selection` tests：non-blocking starting、shared resolution、selection复用/替换、重复/unknown id、失败省略与shell snapshot。
+- Core remote environment integration：starting world state、wait tool成功/失败、下一sampling工具变化和Deferred关闭时旧blocking语义。
+- resolved capability tests：passive inspection不启动、captured handle优先、starting省略、lazy root只为后续Step启动。
+- EnvironmentManager tests：pending registration、URL验证、同id upsert、stdio lazy start与startup terminal failure。
+- Lazy client/recovery tests：OnceCell共享初次连接、同outage共享reconnect、失败后可再次reconnect和fail-fast filesystem。
+
+映射到当前项目：远程浏览器/抓取worker若需要冷启动，应把Run中的WorkerSelection和Step中的WorkerLease分开。模型可以先规划，再通过显式`wait_for_worker`形成可观测Step；下一次LLM采样才扩展tool catalog。lease必须包含worker generation/connection handle，不能只存稳定worker id；首次provision失败、运行中断线和被管理员replace是三类不同恢复策略，任何catalog读取都不应隐式阻塞或启动高成本资源。
+
 ## 5. 当前项目最应该吸收的架构原则
 
 ### 原则一：对外协议稳定，内部事件可演进

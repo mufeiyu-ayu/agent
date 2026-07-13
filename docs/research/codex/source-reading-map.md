@@ -1153,3 +1153,57 @@ Thread建立后原地改全局与项目文件，再跑普通Turn、Deferred Exec
 在validation canonicalize后替换projects内symlink，再进入blocking prepare，检查第二次canonical是否仍强制root containment。若未强制，把canonical file handle贯穿任务作为修复方向，不依赖两次字符串path校验。
 
 最后在create/append/metadata/persist/shutdown/ledger save每一步注入失败，再断线/重启读取import history。区分partial Thread、重复导入和notification丢失；设计ImportJob、target transaction、idempotency hash与outbox terminal。
+
+## 58. 路线五十五：设置代理环境变量为什么还不能证明网络被约束
+
+按配置上界、Session投影、execution归因与请求决策阅读：
+
+- `network-proxy/src/{config,state,runtime}.rs`：mode/method、requirements constraints、reload、deny/SSRF/allowlist顺序与blocked ring。
+- `network-proxy/src/{proxy,attribution,network_policy}.rs`：listener reservation、Environment代理、env+sandbox共同投影、execution token和decider/audit。
+- `network-proxy/src/{http_proxy,socks5,mitm,connect_policy}.rs`：HTTP/CONNECT/SOCKS/UDP/MITM各层二次检查。
+- Core `config/network_proxy_spec*`与`session/{mod,session,turn_context}.rs`：普通config、managed requirements、exec-policy合并、permission profile切换和Turn可见性。
+- Session、runtime、policy、proxy、attribution与MITM测试：full access、热换、local/private、scope mismatch、shutdown。
+
+分别以danger-full-access与workspace-write创建Turn，观察SessionConfigured地址、Turn env和sandbox loopback端口。切换profile后确认代理策略重算但decider仍存活；再运行user shell，证明它不会误用Agent Turn代理。
+
+对同一host组合deny、allow、wildcard与decider override，并让allowlisted hostname解析到loopback/private地址。验证显式deny和local SSRF都不能被动态decider覆盖，只有普通allowlist miss进入Ask/Allow流程；记录DNS timeout与审计关联id。
+
+为两个Environment并发准备执行，核对各自listener与environment id；交换attribution token、提供未知token和超长/超时preface，确认没有跨execution借用策略。随后在请求中途reload失败、切credential broker和改listener地址，区分保留旧state与禁止热换的字段。
+
+最后分别Drop、shutdown与强杀进程，检查主listener、Environment listener、blocked ring和审计的寿命。迁移到业务系统时把egress gateway、短寿命execution capability、DNS后SSRF检查和durable approval/outbox分开设计，不能把代理env视作安全证据。
+
+## 59. 路线五十六：如何让CLI使用API Key却永远拿不到真实值
+
+按provider binding、dummy capability、协议检测、hook与CA信任阅读：
+
+- `network-proxy/src/credential_broker.rs`与`providers/{github,openai}.rs`：env识别、随机shape dummy、host binding、唯一dummy选择与marker防伪。
+- `network-proxy/src/{http_proxy,socks5,mitm}.rs`：DetectTls、plaintext危险开关、inner request注入顺序与DNS/Host复查。
+- `network-proxy/src/mitm_hook.rs`：exact host、method/path/query/header matcher、no-match拒绝、secret解析和actions。
+- `network-proxy/src/certs.rs`：进程内私钥、动态leaf、平台/startup roots、bundle hash、原子写与artifact lease。
+- broker/hook/MITM/cert tests：歧义、override、非TLS、body matcher未支持、symlink和stale bundle。
+
+在两个broker实例和同一实例的两个child中虚拟化同一key，比较dummy复用边界。让请求缺dummy、带两个候选、改显式Authorization、换host或用未绑定GH enterprise token，确认真实secret不会因“目标看起来像GitHub”而自动注入。
+
+把brokered CONNECT发往443、22和自定义端口，分别传TLS与SSH前缀；证明DetectTls只解密TLS。再用HTTP绝对URI发送dummy，比较危险plaintext开关前后header，确认默认失败方式不会泄露真实值。
+
+为一个host配置两条hook，只允许特定POST/path/query/header；测试首条匹配、同host无匹配硬拒绝、literal星号与`pattern:`差异。让hook和broker同时写Authorization，核对strip/inject最终覆盖顺序，并验证body配置目前是启动错误而非运行时检查。
+
+最后读取CA artifact的mode、hash与lock行为，确认私钥未落盘；覆盖child CA env、使用不识别managed bundle的TLS client并重启代理，区分“安全拒绝”“兼容失败”和“旧bundle失效”。业务迁移优先结构化egress intent+vault late injection，不因CLI兼容方案引入不必要MITM。
+
+## 60. 路线五十七：远程环境没启动完时为什么模型仍能先工作
+
+按selection future、Step快照、显式等待和连接恢复阅读：
+
+- Core `environment_selection.rs`：ArcSwap selections、shared resolution、ready/starting双投影、shell snapshot异步构建。
+- Core `session::{turn,mod}.rs`与`tools/handlers/wait_for_environment.rs`：每sampling recapture、world-state diff、wait语义和下一Step工具变化。
+- `exec-server/src/{environment,client,resolved_capability}.rs`：pending/upsert、OnceCell startup、reconnect、fail-fast inspection与exact handle。
+- `context/world_state/environment.rs`、MCP/skills/plugin路径：starting渲染与ready-only能力投影。
+- remote_env、environment selection/manager/client/capability tests：成功、失败、replacement与并发连接。
+
+让pending Environment在首轮sampling前不complete，确认模型仍能拿到starting world state与wait工具，但拿不到其shell/MCP/capability。模型调用wait后完成URL，验证工具返回本身不改变旧Step，下一次sampling才出现ready能力。
+
+用同id不同cwd、同selection重复提交和重复id列表测试future复用规则；在Step捕获后upsert同id新Arc，分别让旧Step与新Thread执行，证明稳定id不能替代generation/handle。
+
+分别制造首次connect失败、成功后断线、并发reconnect失败再成功与stdio环境。记录哪些错误永久封存在OnceCell、哪些下一次操作可重试，以及passive catalog inspection为何不能意外触发昂贵启动。
+
+最后让wait无限pending并中断Turn，检查future/task资源是否释放；让环境ready但shell snapshot/info失败，确认工具可用性与shell metadata降级。业务实现应把WorkerSelection、ProvisionJob、Step Lease和Reconnect状态分层，而不是在Run启动入口同步等待全部远程依赖。
