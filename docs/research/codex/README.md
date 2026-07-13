@@ -90,6 +90,9 @@ flowchart LR
 | [goal-runtime-lifecycle.md](./goal-runtime-lifecycle.md) | 持久Goal的generation、增量usage记账、Idle Continuation、预算与停止authority |
 | [managed-network-proxy.md](./managed-network-proxy.md) | 受管理网络出口的域名策略、Sandbox loopback、MITM、归因与凭据Broker |
 | [mcp-oauth-transaction.md](./mcp-oauth-transaction.md) | MCP OAuth discovery、callback correlation、credential store pinning与refresh fencing |
+| [model-catalog-consistency.md](./model-catalog-consistency.md) | Bundled/Remote/Cache模型目录、能力快照、ETag刷新与Server reroute一致性 |
+| [local-log-database.md](./local-log-database.md) | 本地Tracing的bounded queue、SQLite分区retention、Feedback导出与丢失语义 |
+| [app-server-daemon-lifecycle.md](./app-server-daemon-lifecycle.md) | Unix后台App Server的PID generation、Control Socket readiness、重启与Updater供应链 |
 | [current-project-gap-analysis.md](./current-project-gap-analysis.md) | 当前项目不是“缺什么功能”，而是缺哪些运行系统能力 |
 | [cloud-agent-mapping.md](./cloud-agent-mapping.md) | 客户端概念到云端 NestJS 架构的转换规则 |
 | [terminology-map.md](./terminology-map.md) | Thread、Turn、Item、Run、Step 等概念对照 |

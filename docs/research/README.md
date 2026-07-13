@@ -81,6 +81,9 @@
 | [codex/goal-runtime-lifecycle.md](./codex/goal-runtime-lifecycle.md) | 跨Turn持久目标、状态authority、usage accounting、自动续跑与错误熔断专题 |
 | [codex/managed-network-proxy.md](./codex/managed-network-proxy.md) | 网络Tool的唯一出口、硬约束、SSRF guard、动态审批、MITM与secret virtualization专题 |
 | [codex/mcp-oauth-transaction.md](./codex/mcp-oauth-transaction.md) | OAuth登录操作、callback身份、token authority、多进程refresh与ambiguous commit专题 |
+| [codex/model-catalog-consistency.md](./codex/model-catalog-consistency.md) | 模型能力目录的多源合成、缓存代际、Run快照、实际模型receipt与reroute专题 |
+| [codex/local-log-database.md](./codex/local-log-database.md) | 诊断日志的非阻塞采集、分区预算、查询导出、隐私与durability专题 |
+| [codex/app-server-daemon-lifecycle.md](./codex/app-server-daemon-lifecycle.md) | 后台进程ownership、PID ABA、协议readiness、graceful restart与自动更新专题 |
 | [codex/current-project-gap-analysis.md](./codex/current-project-gap-analysis.md) | 当前项目能力、证据和缺口 |
 | [codex/cloud-agent-mapping.md](./codex/cloud-agent-mapping.md) | 客户端 Codex 思想如何翻译为云端 NestJS Agent |
 | [codex/terminology-map.md](./codex/terminology-map.md) | Codex、当前项目和中文助记名的概念对照 |
