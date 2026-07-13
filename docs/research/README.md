@@ -78,6 +78,9 @@
 | [codex/rollout-budget-accounting.md](./codex/rollout-budget-accounting.md) | 多Agent共享预算、加权usage、提醒投递、并发overshoot与耐久账本专题 |
 | [codex/agent-jobs-batch-runtime.md](./codex/agent-jobs-batch-runtime.md) | 批处理Agent的持久队列、worker lease、结果提交、取消和artifact专题 |
 | [codex/memory-pipeline-lifecycle.md](./codex/memory-pipeline-lifecycle.md) | 长期Memory的异步抽取、source revision、artifact generation、读取凭证与遗忘专题 |
+| [codex/goal-runtime-lifecycle.md](./codex/goal-runtime-lifecycle.md) | 跨Turn持久目标、状态authority、usage accounting、自动续跑与错误熔断专题 |
+| [codex/managed-network-proxy.md](./codex/managed-network-proxy.md) | 网络Tool的唯一出口、硬约束、SSRF guard、动态审批、MITM与secret virtualization专题 |
+| [codex/mcp-oauth-transaction.md](./codex/mcp-oauth-transaction.md) | OAuth登录操作、callback身份、token authority、多进程refresh与ambiguous commit专题 |
 | [codex/current-project-gap-analysis.md](./codex/current-project-gap-analysis.md) | 当前项目能力、证据和缺口 |
 | [codex/cloud-agent-mapping.md](./codex/cloud-agent-mapping.md) | 客户端 Codex 思想如何翻译为云端 NestJS Agent |
 | [codex/terminology-map.md](./codex/terminology-map.md) | Codex、当前项目和中文助记名的概念对照 |

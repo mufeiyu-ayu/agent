@@ -87,6 +87,9 @@ flowchart LR
 | [rollout-budget-accounting.md](./rollout-budget-accounting.md) | Root/child共享加权token账本、window提醒、超额顺序、compaction与恢复漂移 |
 | [agent-jobs-batch-runtime.md](./agent-jobs-batch-runtime.md) | CSV批次、Job/Item状态机、worker归属CAS、并发调度、取消与crash recovery |
 | [memory-pipeline-lifecycle.md](./memory-pipeline-lifecycle.md) | 长期Memory的租约抽取、Git基线合并、scoped读取、引用反馈与遗忘边界 |
+| [goal-runtime-lifecycle.md](./goal-runtime-lifecycle.md) | 持久Goal的generation、增量usage记账、Idle Continuation、预算与停止authority |
+| [managed-network-proxy.md](./managed-network-proxy.md) | 受管理网络出口的域名策略、Sandbox loopback、MITM、归因与凭据Broker |
+| [mcp-oauth-transaction.md](./mcp-oauth-transaction.md) | MCP OAuth discovery、callback correlation、credential store pinning与refresh fencing |
 | [current-project-gap-analysis.md](./current-project-gap-analysis.md) | 当前项目不是“缺什么功能”，而是缺哪些运行系统能力 |
 | [cloud-agent-mapping.md](./cloud-agent-mapping.md) | 客户端概念到云端 NestJS 架构的转换规则 |
 | [terminology-map.md](./terminology-map.md) | Thread、Turn、Item、Run、Step 等概念对照 |
