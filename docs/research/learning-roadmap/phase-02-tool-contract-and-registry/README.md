@@ -1,5 +1,7 @@
 # Phase 02：Tool Contract 与 Registry
 
+> 模块分类：**Core**。当前项目近期需要最小内置工具 contract；MCP、动态发现和插件化不在本模块实施范围。
+
 ## 1. 阶段问题
 
 Phase 01 已让 runtime 看见完整的 model-side tool call candidate，但系统仍不知道：工具是否存在、参数是否合法、谁有权执行、输出如何回给模型。
@@ -267,13 +269,13 @@ NestJS 组装时，`ToolsModule` 对 runtime 导出 registry/router；built-in t
 
 ### Codex
 
-- `/Users/ayu/Desktop/codex/codex-rs/tools/src/tool_spec.rs`
-- `/Users/ayu/Desktop/codex/codex-rs/core/src/tools/router.rs`
-- `/Users/ayu/Desktop/codex/codex-rs/core/src/tools/registry.rs`
-- `/Users/ayu/Desktop/codex/codex-rs/core/src/tools/context.rs`
-- `/Users/ayu/Desktop/codex/codex-rs/core/src/tools/spec_plan.rs`
-- `/Users/ayu/Desktop/codex/codex-rs/core/src/tools/registry_tests.rs`
-- `/Users/ayu/Desktop/codex/codex-rs/core/src/tools/router_tests.rs`
+- `/Users/lihaoran/Desktop/codex/codex-rs/tools/src/tool_spec.rs`
+- `/Users/lihaoran/Desktop/codex/codex-rs/core/src/tools/router.rs`
+- `/Users/lihaoran/Desktop/codex/codex-rs/core/src/tools/registry.rs`
+- `/Users/lihaoran/Desktop/codex/codex-rs/core/src/tools/context.rs`
+- `/Users/lihaoran/Desktop/codex/codex-rs/core/src/tools/spec_plan.rs`
+- `/Users/lihaoran/Desktop/codex/codex-rs/core/src/tools/registry_tests.rs`
+- `/Users/lihaoran/Desktop/codex/codex-rs/core/src/tools/router_tests.rs`
 
 ## 12. 复盘问题
 

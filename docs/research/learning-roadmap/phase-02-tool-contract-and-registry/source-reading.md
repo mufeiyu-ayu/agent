@@ -18,7 +18,7 @@
 
 ### Step 1：ToolSpec 是模型契约
 
-文件：`/Users/ayu/Desktop/codex/codex-rs/tools/src/tool_spec.rs`
+文件：`/Users/lihaoran/Desktop/codex/codex-rs/tools/src/tool_spec.rs`
 
 定位 `ToolSpec`：Codex 支持 Function、Namespace、ToolSearch、WebSearch、Freeform 等多种 spec。当前项目只需要 function-like 工具。
 
@@ -30,13 +30,13 @@
 
 ### Step 2：ResponseItem 保留 raw arguments
 
-文件：`/Users/ayu/Desktop/codex/codex-rs/protocol/src/models.rs`
+文件：`/Users/lihaoran/Desktop/codex/codex-rs/protocol/src/models.rs`
 
 定位 `ResponseItem::FunctionCall` / `FunctionCallOutput`。注释说明 arguments 是 JSON string，并保留 `call_id`。记录 call/output 配对字段。raw string 被装进结构体后仍是不可信 wire payload，不代表已按业务 schema 验证。
 
 ### Step 3：ToolRouter 负责翻译，不执行业务
 
-文件：`/Users/ayu/Desktop/codex/codex-rs/core/src/tools/router.rs`
+文件：`/Users/lihaoran/Desktop/codex/codex-rs/core/src/tools/router.rs`
 
 定位：
 
@@ -51,7 +51,7 @@
 
 ### Step 4：Registry 是确定性 dispatch 表
 
-文件：`/Users/ayu/Desktop/codex/codex-rs/core/src/tools/registry.rs`
+文件：`/Users/lihaoran/Desktop/codex/codex-rs/core/src/tools/registry.rs`
 
 定位 `ToolRegistry` 与注册/dispatch 方法。记录：
 
@@ -66,7 +66,7 @@
 
 ### Step 5：组装计划
 
-文件：`/Users/ayu/Desktop/codex/codex-rs/core/src/tools/spec_plan.rs`
+文件：`/Users/lihaoran/Desktop/codex/codex-rs/core/src/tools/spec_plan.rs`
 
 只看 tool router 如何由 context/config 组装。学习“显式 composition”而非具体 feature flags。当前项目可以在 Nest module 组装 built-ins，不需要动态 feature matrix。
 
@@ -74,8 +74,8 @@
 
 文件：
 
-- `/Users/ayu/Desktop/codex/codex-rs/core/src/tools/registry_tests.rs`
-- `/Users/ayu/Desktop/codex/codex-rs/core/src/tools/router_tests.rs`
+- `/Users/lihaoran/Desktop/codex/codex-rs/core/src/tools/registry_tests.rs`
+- `/Users/lihaoran/Desktop/codex/codex-rs/core/src/tools/router_tests.rs`
 
 优先看：
 

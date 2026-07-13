@@ -1,5 +1,7 @@
 # Phase 12：Multi-agent 有界实验
 
+> 模块分类：**Optional**。当前项目不实现；只有单 Agent 基线、恢复、安全和预算都可测时才做对照实验。
+
 ## 阶段文件
 
 - [README.md](./README.md)：实验边界、child contract、调度、继承与 GO/NO-GO 标准。

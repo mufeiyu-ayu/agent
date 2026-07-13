@@ -210,12 +210,12 @@ Assistant Message
 
 ### Codex 对照
 
-- `/Users/ayu/Desktop/codex/codex-rs/core/src/tools/orchestrator.rs`
-- `/Users/ayu/Desktop/codex/codex-rs/core/src/tools/parallel.rs`
-- `/Users/ayu/Desktop/codex/codex-rs/rollout/src/policy.rs`
-- `/Users/ayu/Desktop/codex/codex-rs/rollout/src/recorder.rs`
-- `/Users/ayu/Desktop/codex/codex-rs/rollout/src/recorder_tests.rs`
-- `/Users/ayu/Desktop/codex/codex-rs/core/src/context_manager/history.rs`
+- `/Users/lihaoran/Desktop/codex/codex-rs/core/src/tools/orchestrator.rs`
+- `/Users/lihaoran/Desktop/codex/codex-rs/core/src/tools/parallel.rs`
+- `/Users/lihaoran/Desktop/codex/codex-rs/rollout/src/policy.rs`
+- `/Users/lihaoran/Desktop/codex/codex-rs/rollout/src/recorder.rs`
+- `/Users/lihaoran/Desktop/codex/codex-rs/rollout/src/recorder_tests.rs`
+- `/Users/lihaoran/Desktop/codex/codex-rs/core/src/context_manager/history.rs`
 
 ## 11. 复盘问题
 

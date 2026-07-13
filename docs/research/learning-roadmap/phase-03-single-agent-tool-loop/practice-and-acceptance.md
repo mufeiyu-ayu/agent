@@ -202,10 +202,10 @@ start -> delta('这个 URL ') -> delta('结构清晰。') -> done
 
 ### Codex 对照
 
-- `/Users/ayu/Desktop/codex/codex-rs/core/src/session/turn.rs`
-- `/Users/ayu/Desktop/codex/codex-rs/core/src/stream_events_utils.rs`
-- `/Users/ayu/Desktop/codex/codex-rs/core/src/context_manager/history.rs`
-- `/Users/ayu/Desktop/codex/codex-rs/core/tests/suite/tool_harness.rs`
+- `/Users/lihaoran/Desktop/codex/codex-rs/core/src/session/turn.rs`
+- `/Users/lihaoran/Desktop/codex/codex-rs/core/src/stream_events_utils.rs`
+- `/Users/lihaoran/Desktop/codex/codex-rs/core/src/context_manager/history.rs`
+- `/Users/lihaoran/Desktop/codex/codex-rs/core/tests/suite/tool_harness.rs`
 
 ## 11. 复盘问题
 

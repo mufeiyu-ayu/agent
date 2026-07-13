@@ -11,7 +11,9 @@
 - hook 如何定义生命周期、匹配、并发、顺序和失败策略？
 - 当前云端项目应该只复制哪些稳定边界？
 
-本路线基于 `/Users/ayu/Desktop/codex@626147f728`。Codex 扩展系统仍在演进，阅读时记录职责和不变量，并在笔记中注明快照。
+本路线基于 `/Users/lihaoran/Desktop/codex@ab6a7eb87c`。Codex 扩展系统仍在演进，阅读时记录职责和不变量，并在笔记中注明快照。
+
+当前快照先读 `codex-rs/ext/extension-api/src/registry.rs`、`codex-rs/ext/extension-api/src/contributors.rs` 与 `codex-rs/ext/extension-api/tests/registry.rs`。`ExtensionRegistryBuilder` 以 typed contributor 限制 thread/turn lifecycle、context/world state、MCP、tool、turn item、approval review 等贡献面，并保留注册顺序；这是理解 MCP/Skill/Plugin/Hook 如何汇入同一 host-controlled Runtime 的总入口。
 
 ## 2. 阅读前术语测验
 

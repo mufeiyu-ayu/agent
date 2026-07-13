@@ -11,7 +11,7 @@ Capstone 阶段不再按单一能力阅读，而是纵向回答：
 5. 生产级测试如何覆盖 thread/turn/tool/interrupt/recovery 的组合？
 6. 当前项目距离“别人能运行、能证明、能运维”的交付还缺什么？
 
-源码基于 `/Users/ayu/Desktop/codex@626147f728`。不要试图读完整仓库；沿四条交付链取证。
+源码基于 `/Users/lihaoran/Desktop/codex@ab6a7eb87c`。不要试图读完整仓库；沿四条交付链取证。
 
 ## 2. 路线 A：协议门面与 Runtime 分离
 

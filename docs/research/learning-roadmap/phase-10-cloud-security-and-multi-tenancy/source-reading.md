@@ -10,7 +10,7 @@
 
 然后回到当前项目，用 NestJS、Prisma 和云端 ActorContext 完成二次设计。
 
-本路线基于本地 fork：`/Users/ayu/Desktop/codex`，快照 `626147f728`。路径是取证入口；若源码演进，应优先追踪符号职责，不机械依赖行号。
+本路线基于本地 fork：`/Users/lihaoran/Desktop/codex`，快照 `ab6a7eb87c`。路径是取证入口；若源码演进，应优先追踪符号职责，不机械依赖行号。
 
 ## 2. 阅读前先写假设
 

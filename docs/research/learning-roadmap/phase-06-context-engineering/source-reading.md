@@ -10,14 +10,16 @@
 
 ```sh
 rg -n "record_items|for_prompt|estimate_token_count|normalize_history" \
-  /Users/ayu/Desktop/codex/codex-rs/core/src/context_manager
+  /Users/lihaoran/Desktop/codex/codex-rs/core/src/context_manager
 
 rg -n "run_auto_compact|run_inline_auto_compact_task|build_compacted_history" \
-  /Users/ayu/Desktop/codex/codex-rs/core/src/session/turn.rs \
-  /Users/ayu/Desktop/codex/codex-rs/core/src/compact.rs
+  /Users/lihaoran/Desktop/codex/codex-rs/core/src/session/turn.rs \
+  /Users/lihaoran/Desktop/codex/codex-rs/core/src/compact.rs
 ```
 
-研究基线：Codex fork `626147f72`。
+研究基线：Codex fork `ab6a7eb87`。
+
+当前快照新增的优先入口是 `codex-rs/core/src/compact_token_budget.rs`：manual 与 inline auto-compaction 都被建模为 `ContextCompaction` 生命周期，运行 compact hooks 并建立新 window。配套读 `core/tests/suite/token_budget.rs` 的 mid-turn follow-up 与 `compact_resume_fork.rs` 的 model-history-view 一致性，避免把 compaction 误解为“删除旧消息”。
 
 ## 3. 第一条链：历史如何进入模型
 
@@ -123,7 +125,7 @@ runtime canonical items
 
 ```sh
 rg -n "orphan|tool|function|normalize|truncate|image|drop|rollback" \
-  /Users/ayu/Desktop/codex/codex-rs/core/src/context_manager/history_tests.rs
+  /Users/lihaoran/Desktop/codex/codex-rs/core/src/context_manager/history_tests.rs
 ```
 
 至少选取：

@@ -6,6 +6,8 @@
 
 本阶段不要求通读整个 OpenTelemetry crate。先读语义、边界和测试，再决定当前 TypeScript 项目用什么库落地。
 
+当前快照新增一个产品级取证入口：`codex-rs/analytics/src/reducer.rs` 从 app-server notification 生成 analytics facts，但不拥有 runtime 状态。把它与 `app-server-protocol/src/protocol/thread_history_projection.rs` 对照阅读，可以区分 telemetry/analytics projection、实时 UI projection 与 durable history projection。
+
 ## 2. 总体阅读地图
 
 | 主题 | Codex 源码 |
@@ -24,7 +26,7 @@
 
 ```sh
 rg -n "trace_span|instrument|inference_trace|stream_request|receiving_stream" \
-  /Users/ayu/Desktop/codex/codex-rs/core/src/session/turn.rs
+  /Users/lihaoran/Desktop/codex/codex-rs/core/src/session/turn.rs
 ```
 
 重点位置：
@@ -208,7 +210,7 @@ rg -n "trace_span|instrument|inference_trace|stream_request|receiving_stream" \
 ### 9.5 测试盘点
 
 ```sh
-rg --files /Users/ayu/Desktop/agent \
+rg --files /Users/lihaoran/Desktop/agent \
   | rg '(spec|test)\.(ts|tsx|js)$|vitest|jest|playwright'
 ```
 

@@ -12,7 +12,7 @@
 
 ## 3. Codex 阅读路线 A：ToolOrchestrator
 
-文件：`/Users/ayu/Desktop/codex/codex-rs/core/src/tools/orchestrator.rs`
+文件：`/Users/lihaoran/Desktop/codex/codex-rs/core/src/tools/orchestrator.rs`
 
 定位 `ToolOrchestrator` 和执行主方法。按注释/代码顺序记录：
 
@@ -47,7 +47,7 @@ validate + risk gate
 
 ## 4. Codex 阅读路线 B：Cancellation 与并发
 
-文件：`/Users/ayu/Desktop/codex/codex-rs/core/src/tools/parallel.rs`
+文件：`/Users/lihaoran/Desktop/codex/codex-rs/core/src/tools/parallel.rs`
 
 即使当前不做并行，也要观察 ToolCallRuntime 如何携带 cancellation token、如何等待 in-flight calls、如何把 output 返回 sampling。重点记录“一次 run 的 cancellation 必须进入工具”的不变量。
 
@@ -57,7 +57,7 @@ validate + risk gate
 
 ### C1. 持久化策略
 
-文件：`/Users/ayu/Desktop/codex/codex-rs/rollout/src/policy.rs`
+文件：`/Users/lihaoran/Desktop/codex/codex-rs/rollout/src/policy.rs`
 
 定位：
 
@@ -68,13 +68,13 @@ validate + risk gate
 
 ### C2. Recorder
 
-文件：`/Users/ayu/Desktop/codex/codex-rs/rollout/src/recorder.rs`
+文件：`/Users/lihaoran/Desktop/codex/codex-rs/rollout/src/recorder.rs`
 
 只读 record/flush/canonical item 相关方法。观察 recorder 与 policy 分离，以及写入失败如何处理。
 
 ### C3. Recorder tests
 
-文件：`/Users/ayu/Desktop/codex/codex-rs/rollout/src/recorder_tests.rs`
+文件：`/Users/lihaoran/Desktop/codex/codex-rs/rollout/src/recorder_tests.rs`
 
 选择三个测试：
 
@@ -86,7 +86,7 @@ validate + risk gate
 
 ## 6. Codex 阅读路线 D：Output 与 history
 
-文件：`/Users/ayu/Desktop/codex/codex-rs/core/src/context_manager/history.rs`
+文件：`/Users/lihaoran/Desktop/codex/codex-rs/core/src/context_manager/history.rs`
 
 搜索 truncation、tool output、normalize。记录：
 

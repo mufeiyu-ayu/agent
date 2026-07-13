@@ -1,5 +1,7 @@
 # Phase 04：工具可靠性与运行记录
 
+> 模块分类：**Core**。timeout、cancel、error 与审计思想需要迁移；Codex 本地进程细节不照搬。
+
 ## 1. 阶段问题
 
 Phase 03 证明了最小 Agent loop，但“跑通一次”不等于可靠：工具可能超时、被用户中止、返回超大结果、抛出敏感异常；同一 Run 也可能有多次 sampling 和多次同类型 step，而当前 recorder 在 run 创建时只预建一组固定步骤，并按 `runId + type` 批量更新。
@@ -345,14 +347,14 @@ Phase 04 **不实现自动 tool retry**。原因是单进程 `catch -> 再执行
 
 ### Codex
 
-- `/Users/ayu/Desktop/codex/codex-rs/core/src/tools/orchestrator.rs`
-- `/Users/ayu/Desktop/codex/codex-rs/core/src/tools/parallel.rs`
-- `/Users/ayu/Desktop/codex/codex-rs/core/src/tools/context.rs`
-- `/Users/ayu/Desktop/codex/codex-rs/core/src/tools/tool_dispatch_trace.rs`
-- `/Users/ayu/Desktop/codex/codex-rs/rollout/src/policy.rs`
-- `/Users/ayu/Desktop/codex/codex-rs/rollout/src/recorder.rs`
-- `/Users/ayu/Desktop/codex/codex-rs/rollout/src/recorder_tests.rs`
-- `/Users/ayu/Desktop/codex/codex-rs/core/src/context_manager/history.rs`
+- `/Users/lihaoran/Desktop/codex/codex-rs/core/src/tools/orchestrator.rs`
+- `/Users/lihaoran/Desktop/codex/codex-rs/core/src/tools/parallel.rs`
+- `/Users/lihaoran/Desktop/codex/codex-rs/core/src/tools/context.rs`
+- `/Users/lihaoran/Desktop/codex/codex-rs/core/src/tools/tool_dispatch_trace.rs`
+- `/Users/lihaoran/Desktop/codex/codex-rs/rollout/src/policy.rs`
+- `/Users/lihaoran/Desktop/codex/codex-rs/rollout/src/recorder.rs`
+- `/Users/lihaoran/Desktop/codex/codex-rs/rollout/src/recorder_tests.rs`
+- `/Users/lihaoran/Desktop/codex/codex-rs/core/src/context_manager/history.rs`
 
 ## 12. 复盘问题
 

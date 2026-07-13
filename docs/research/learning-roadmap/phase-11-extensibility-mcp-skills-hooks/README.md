@@ -1,5 +1,7 @@
 # Phase 11：MCP、Skills 与 Hooks 扩展架构
 
+> 模块分类：**Optional**。当前项目只需理解 typed extension 与信任边界，内置 Tool loop 稳定前不实施。
+
 ## 阶段文件
 
 - [README.md](./README.md)：扩展术语、信任边界、目标架构与最小 PoC。

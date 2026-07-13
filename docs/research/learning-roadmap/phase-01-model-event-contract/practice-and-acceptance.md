@@ -198,11 +198,11 @@ fixture suite 是默认验收；另外保留一条**人工显式启用、默认 
 
 ### Codex 对照
 
-- `/Users/ayu/Desktop/codex/codex-rs/codex-api/src/common.rs`
-- `/Users/ayu/Desktop/codex/codex-rs/core/src/client_common.rs`
-- `/Users/ayu/Desktop/codex/codex-rs/core/src/client.rs`
-- `/Users/ayu/Desktop/codex/codex-rs/protocol/src/models.rs`
-- `/Users/ayu/Desktop/codex/codex-rs/core/src/client_tests.rs`
+- `/Users/lihaoran/Desktop/codex/codex-rs/codex-api/src/common.rs`
+- `/Users/lihaoran/Desktop/codex/codex-rs/core/src/client_common.rs`
+- `/Users/lihaoran/Desktop/codex/codex-rs/core/src/client.rs`
+- `/Users/lihaoran/Desktop/codex/codex-rs/protocol/src/models.rs`
+- `/Users/lihaoran/Desktop/codex/codex-rs/core/src/client_tests.rs`
 
 ## 11. 复盘问题
 

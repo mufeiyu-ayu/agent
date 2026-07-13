@@ -1,5 +1,7 @@
 # Phase 07：Durable Execution、幂等与崩溃恢复
 
+> 模块分类：**Advanced**。长任务、worker 或副作用恢复需求出现前先理解，不要求当前项目立即实现。
+
 ## 1. 阶段问题
 
 > 当 API 进程在模型调用、工具执行、Observation 写入或最终 Message 落库之间崩溃时，系统如何从 PostgreSQL 判断“已经发生了什么、下一步能否安全继续、哪些动作绝不能重做”？

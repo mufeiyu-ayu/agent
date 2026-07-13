@@ -1,5 +1,7 @@
 # Agent 架构术语对照
 
+Codex 列以 `ab6a7eb87cc8a816c88b86c44cf291e251ed2136` 为源码事实；当前项目列以 `5f2ad11f2c65425e84392e81048364d55ec626ef` 为证据起点。“计划/后续”均为迁移建议，不是已实现事实。
+
 ## 1. 核心对象
 
 | 中文助记 | Codex | 当前项目 | 边界说明 |
@@ -22,6 +24,11 @@
 | 工具观察结果 | function/custom tool output | `ToolObservation`（后续） | 回填模型历史的结构化执行结果 |
 | 长期事实日志 | rollout / thread store | PostgreSQL run/step/message | 支持查询、恢复和审计的事实，不保存所有 delta |
 | 上下文管理器 | `ContextManager` | `SeoContextBuilder`（当前很薄） | 负责 model history、预算、裁剪和压缩 |
+| 模型传输会话 | `ModelClientSession` | 尚无同等对象 | Turn 内复用 WebSocket/sticky state，不能跨 Turn 泄漏 previous response state |
+| 单次采样能力快照 | `StepContext` | 尚无同等对象 | 固定本次 sampling 的 environments、capability roots、MCP/tool 与 AGENTS.md；不等于 `AgentStep` |
+| 扩展贡献注册表 | `ExtensionRegistry` | 尚无 | host-controlled typed contributors，不等于插件市场 |
+| Agent 控制面 | `AgentControl` | 尚无 | 管理独立 child Threads、通信、容量和生命周期 |
+| 长期目标 | `ThreadGoal` / GoalExtension | 当前 `/goal` 仅是产品级长期任务能力，不是业务表 | 跨 Turn 的 objective/status/budget/usage；不等于 Turn、Task 或思维链 |
 
 ## 2. 容易混淆的区别
 
@@ -73,6 +80,16 @@
 - Sandbox：即使代码有 bug 或恶意，也从运行环境限制其能力。
 
 当前云端 SEO Agent 应先实现前两层；只有引入通用代码执行或不可信工具时，才评估 OS sandbox。
+
+### Plugin、Skill、MCP、Hook、App 不等价
+
+- Plugin：组合与分发单元。
+- Skill：按需加载的指令/资源。
+- MCP：外部工具与资源协议。
+- Hook：生命周期拦截，可阻断或在受控 contract 内改写输入。
+- App / Environment：由产品或环境提供的能力来源。
+
+它们最终可通过 extension/tool/context 边界汇入 Runtime，但不能互相授予权限。
 
 ### ToolDefinition 不等于 ToolExecutor
 

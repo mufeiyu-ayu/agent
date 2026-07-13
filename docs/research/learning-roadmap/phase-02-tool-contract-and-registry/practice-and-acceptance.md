@@ -238,11 +238,11 @@
 
 ### Codex 对照
 
-- `/Users/ayu/Desktop/codex/codex-rs/tools/src/tool_spec.rs`
-- `/Users/ayu/Desktop/codex/codex-rs/core/src/tools/router.rs`
-- `/Users/ayu/Desktop/codex/codex-rs/core/src/tools/registry.rs`
-- `/Users/ayu/Desktop/codex/codex-rs/core/src/tools/registry_tests.rs`
-- `/Users/ayu/Desktop/codex/codex-rs/core/src/tools/router_tests.rs`
+- `/Users/lihaoran/Desktop/codex/codex-rs/tools/src/tool_spec.rs`
+- `/Users/lihaoran/Desktop/codex/codex-rs/core/src/tools/router.rs`
+- `/Users/lihaoran/Desktop/codex/codex-rs/core/src/tools/registry.rs`
+- `/Users/lihaoran/Desktop/codex/codex-rs/core/src/tools/registry_tests.rs`
+- `/Users/lihaoran/Desktop/codex/codex-rs/core/src/tools/router_tests.rs`
 
 ## 10. 复盘问题
 

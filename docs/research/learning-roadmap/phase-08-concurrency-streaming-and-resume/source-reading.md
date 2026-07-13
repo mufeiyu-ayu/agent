@@ -6,6 +6,8 @@
 
 本阶段只迁移 interrupt/cancel、resume observation 和并发控制思想，不实现 steer/fork。
 
+当前快照还应配套阅读 `core/src/session/input_queue.rs`、`core/src/tasks/mod.rs` 与 `core/src/tools/parallel.rs`：Session 同时最多一个 active Task，steer/mailbox 进入 `TurnInputQueue`，并行工具用 ordered futures 和 child cancellation。`app-server/tests/suite/v2/thread_unsubscribe.rs` 证明断开订阅不取消 active Turn；不要把连接生命周期当运行生命周期。
+
 ## 2. 第一条链：请求为什么进入 submission queue
 
 | Codex 文件 | 重点 | 阅读问题 |

@@ -14,7 +14,7 @@
 
 ### Step 1：先看 canonical provider event
 
-文件：`/Users/ayu/Desktop/codex/codex-rs/codex-api/src/common.rs`
+文件：`/Users/lihaoran/Desktop/codex/codex-rs/codex-api/src/common.rs`
 
 定位 `ResponseEvent`，把 variant 分为四组：
 
@@ -29,7 +29,7 @@
 
 ### Step 2：看流容器，不看具体 HTTP
 
-文件：`/Users/ayu/Desktop/codex/codex-rs/core/src/client_common.rs`
+文件：`/Users/lihaoran/Desktop/codex/codex-rs/core/src/client_common.rs`
 
 定位：
 
@@ -43,7 +43,7 @@
 
 ### Step 3：看 provider 映射与 terminal
 
-文件：`/Users/ayu/Desktop/codex/codex-rs/core/src/client.rs`
+文件：`/Users/lihaoran/Desktop/codex/codex-rs/core/src/client.rs`
 
 只搜索：`ResponseEvent::Completed`、`OutputItemDone`、`RESPONSE_STREAM_CHANNEL_CAPACITY`。不要通读模型配置与认证。
 
@@ -58,7 +58,7 @@
 
 ### Step 4：看 runtime 如何消费
 
-文件：`/Users/ayu/Desktop/codex/codex-rs/core/src/session/turn.rs`
+文件：`/Users/lihaoran/Desktop/codex/codex-rs/core/src/session/turn.rs`
 
 定位约 `1987` 附近的 `match ResponseEvent`，只读以下分支：
 
@@ -71,7 +71,7 @@
 
 ### Step 5：看完整 ResponseItem
 
-文件：`/Users/ayu/Desktop/codex/codex-rs/protocol/src/models.rs`
+文件：`/Users/lihaoran/Desktop/codex/codex-rs/protocol/src/models.rs`
 
 定位 `ResponseItem::FunctionCall` 与 `FunctionCallOutput`：
 

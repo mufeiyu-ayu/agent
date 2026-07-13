@@ -1,17 +1,31 @@
 # Codex 可学习 Agent 架构清单
 
-本清单用于回答“Codex 中有哪些 Agent 架构知识值得系统学习”。它不是一次性开发任务；每一项都需要源码阅读、当前项目映射、最小练习和验收证据。
+本清单用于回答“Codex 中有哪些 Agent 架构知识值得系统学习”。它基于 `ab6a7eb87cc8a816c88b86c44cf291e251ed2136`，不是一次性开发任务，也不表示当前 Agent 项目已实现。
 
-优先级：
+建议深度：
 
-- **P0**：当前 Tool Calling 闭环的直接前置。
-- **P1**：单 Agent 可靠运行的必要能力。
-- **P2**：云端生产化能力。
-- **P3**：稳定后再学的扩展能力。
+- **Core**：理解成熟单 Agent Runtime 的必要边界。
+- **Advanced**：理解恢复、并发、云端治理和产品化取舍。
+- **Optional**：真实需求出现后再实验的扩展能力。
+
+## 导航矩阵
+
+| 清单域 | 架构报告 | 源码阅读路线 | 学习模块 |
+| --- | --- | --- | --- |
+| A-B 系统与生命周期 | [3、4.1-4.4](./architecture-report.md) | [路线 1-2](./source-reading-map.md) | 00、08 |
+| C 模型与循环 | [4.5](./architecture-report.md) | [路线 3](./source-reading-map.md) | 01、03 |
+| D Tool Calling | [4.6-4.7](./architecture-report.md) | [路线 4-5](./source-reading-map.md) | 02-05 |
+| E Context | [4.9-4.10](./architecture-report.md) | [路线 6](./source-reading-map.md) | 06 |
+| F-G 持久化与并发 | [4.11-4.12](./architecture-report.md) | [路线 7-8](./source-reading-map.md) | 07-08 |
+| H-I 安全与韧性 | [4.13](./architecture-report.md) | [路线 5](./source-reading-map.md) | 04-05、10 |
+| J-K 质量 | [4.17-4.18](./architecture-report.md) | [路线 12-13](./source-reading-map.md) | 00、09 |
+| L 扩展 | [4.14](./architecture-report.md) | [路线 9](./source-reading-map.md) | 11 |
+| M Multi-agent | [4.15](./architecture-report.md) | [路线 10](./source-reading-map.md) | 12 |
+| N-O 云端与表达 | [5-7](./architecture-report.md) | [当前项目反向地图](./source-reading-map.md) | 10、13 |
 
 ## A. 系统边界与协议
 
-### A1. 多入口共享 Core Runtime（P1）
+### A1. 多入口共享 Core Runtime（Core）
 
 - [ ] 能解释 CLI、App、IDE、SDK 为什么不应各自实现 Agent loop。
 - [ ] 能区分 entrypoint、protocol facade、application runtime、provider adapter。
@@ -19,7 +33,7 @@
 - [ ] 能设计未来 cron / webhook 复用 `AgentRuntimeService` 的调用方式。
 - [ ] 能用测试证明新入口不会绕过 run/step 持久化。
 
-### A2. 稳定协议与内部类型分离（P0）
+### A2. 稳定协议与内部类型分离（Core）
 
 - [ ] 能解释 Codex app-server request / response / notification 的区别。
 - [ ] 能解释 `ResponseEvent`、`EventMsg`、app-server notification、TurnItem 的层次。
@@ -29,7 +43,7 @@
 - [ ] 对外协议升级有兼容策略，不因内部新增 step 强制改前端。
 - [ ] NDJSON parser 对未知/非法事件有明确失败行为和测试。
 
-### A3. Capability negotiation 与版本演进（P3）
+### A3. Capability negotiation 与版本演进（Optional）
 
 - [ ] 理解 Codex 为什么在 initialize 阶段协商 capability。
 - [ ] 能判断当前项目何时才需要 stream protocol version。
@@ -38,7 +52,7 @@
 
 ## B. 生命周期模型
 
-### B1. Thread / Conversation（P1）
+### B1. Thread / Conversation（Core）
 
 - [ ] 能解释长期会话与一次执行的区别。
 - [ ] Conversation 具有明确所有权和访问边界设计。
@@ -46,7 +60,7 @@
 - [ ] 能定义会话加载、恢复和并发写入策略。
 - [ ] 能解释删除 Conversation 对 Message / AgentRun / ToolCall 的级联影响。
 
-### B2. Turn / AgentRun（P0）
+### B2. Turn / AgentRun（Core）
 
 - [ ] 能用“一次回复任务”解释 AgentRun。
 - [ ] 每次用户发送最多创建一个 canonical AgentRun。
@@ -55,14 +69,14 @@
 - [ ] Run 记录模型、配置版本、触发来源和必要的 trace metadata。
 - [ ] 能识别服务崩溃后残留 RUNNING 的 Run。
 
-### B3. Task / Runner（P1）
+### B3. Task / Runner（Core）
 
 - [ ] 能区分数据库 AgentRun 与执行它的 runner/service。
 - [ ] 能说明 Task 为何适合封装调度和 cancellation。
 - [ ] 当前 runtime 变复杂时，能识别拆分 `AgentTurnRunner` 的触发条件。
 - [ ] 不为了模仿 Codex 提前引入空壳 Task 抽象。
 
-### B4. Item / AgentStep（P0）
+### B4. Item / AgentStep（Core）
 
 - [ ] 能解释 Codex Item 与当前 AgentStep 不是一对一关系。
 - [ ] AgentStep 只记录可观察系统步骤，不记录 chain-of-thought。
@@ -71,9 +85,17 @@
 - [ ] 重试是覆盖 step、创建 attempt，还是新 step，有明确规则。
 - [ ] UI 是否显示 step 与 step 是否持久化相互独立。
 
+### B5. Goal / 长期目标（Advanced）
+
+- [ ] 能区分 Thread identity、Goal objective/status/budget 与一次 Turn execution。
+- [ ] 能沿 `ThreadGoalRequestProcessor -> GoalService -> GoalExtension` 解释 set/get/clear 与计量。
+- [ ] 能解释 Goal 为什么是 durable state，而不是隐藏 prompt 或 chain-of-thought。
+- [ ] 能说明 Paused、Blocked、UsageLimited、BudgetLimited、Complete 的转换所有者。
+- [ ] 当前项目没有真实长期目标/预算需求时只理解，不新增 Goal 表或后台循环。
+
 ## C. Agent loop 与模型适配
 
-### C1. 结构化 ModelStreamEvent（P0）
+### C1. 结构化 ModelStreamEvent（Core）
 
 - [ ] LLM 层不再只返回 `string` delta。
 - [ ] 项目定义 provider-neutral 的文本、tool call、usage、completed **value events**；provider/network/abort 只走 async iterator throw，不同时再产 error value。
@@ -83,7 +105,7 @@
 - [ ] AbortError / network error / provider error 保持可分类。
 - [ ] 流请求显式启用 `include_usage`，能处理 `choices=[]` usage-only chunk，并保证 usage 在唯一 completed 之前。
 
-### C2. 采样循环（P0）
+### C2. 采样循环（Core）
 
 - [ ] Runtime 能区分“最终回答”和“需要执行工具后继续”。
 - [ ] 每轮 sampling 有上限，避免无限 tool loop。
@@ -92,14 +114,14 @@
 - [ ] 没有 tool call 时正常完成最终回答。
 - [ ] 模型连续请求同一工具时有防失控策略或预算保护。
 
-### C3. Step Context 快照（P1）
+### C3. Step Context 快照（Core）
 
 - [ ] 每次 sampling 使用一致的 model、tools、context 和权限视图。
 - [ ] 运行中配置变化是否影响当前 Run 有明确规则。
 - [ ] 工具可见集合与实际可执行集合不会意外不一致。
 - [ ] 能记录足够 metadata 复盘某次模型为何看到这些工具。
 
-### C4. Provider session 与重试（P2）
+### C4. Provider session 与重试（Advanced）
 
 - [ ] 能区分业务 Run 重试和 HTTP SDK 自动重试。
 - [ ] 流式响应断开后的重试不会重复外部副作用。
@@ -108,7 +130,7 @@
 
 ## D. Tool Calling 分层
 
-### D1. ToolDefinition / ToolSpec（P0）
+### D1. ToolDefinition / ToolSpec（Core）
 
 - [ ] 工具名称稳定、唯一、可读。
 - [ ] 描述说明何时使用和何时不要使用。
@@ -117,7 +139,7 @@
 - [ ] metadata 至少包含 version、sideEffect、riskLevel、timeoutMs、requiresApproval、idempotent。
 - [ ] 工具定义不导入 SEO controller 或数据库实现。
 
-### D2. Unvalidated envelope / Validated invocation（P0）
+### D2. Unvalidated envelope / Validated invocation（Core）
 
 - [ ] provider adapter 先产含 callId/toolName/rawArgumentsJson 的 candidate；sampling reducer 再加入 server-owned samplingAttemptId，形成 `UnvalidatedToolCallEnvelope`。
 - [ ] 只有 registry lookup、JSON parse、对应 tool version schema validation 全通过，才构造 typed `ValidatedToolInvocation`。
@@ -128,7 +150,7 @@
 - [ ] 未注册工具不会执行任意动态代码。
 - [ ] 模型不可伪造用户身份、tenantId 或权限字段。
 
-### D3. ToolRegistry（P0）
+### D3. ToolRegistry（Core）
 
 - [ ] 重复工具名启动时失败或显式报错。
 - [ ] registry 能列出模型可见 definition。
@@ -136,7 +158,7 @@
 - [ ] 工具 enable/disable 规则与注册本身分开。
 - [ ] 测试可注入 fake tool，而不访问真实外部服务。
 
-### D4. ToolExecutor（P0）
+### D4. ToolExecutor（Core）
 
 - [ ] schema validator 在 executor 前完成 untrusted JSON 校验；executor 只接受 validated invocation，并可再做业务约束校验。
 - [ ] 业务逻辑不信任模型提供的鉴权上下文。
@@ -147,7 +169,7 @@
 - [ ] 返回结构化 result，不把异常堆栈直接喂给模型。
 - [ ] 只读工具也记录耗时和结果摘要。
 
-### D5. ToolRouter（P0）
+### D5. ToolRouter（Core）
 
 - [ ] Provider output 到 unvalidated envelope 的转换，以及 envelope 到 validated invocation 的转换，各有唯一集中边界。
 - [ ] Router 不执行真实业务逻辑。
@@ -155,7 +177,7 @@
 - [ ] 非工具 item 不被误路由。
 - [ ] Router 有纯单元测试。
 
-### D6. Observation（P0）
+### D6. Observation（Core）
 
 - [ ] Observation 同时服务模型回填和系统审计，但两者视图可不同。
 - [ ] 结果过大时有截断或引用策略。
@@ -164,7 +186,7 @@
 - [ ] call/output 配对不变量有测试。
 - [ ] observation 被视为不可信数据；其中的命令式文本不会升级成 system/developer instruction，也不能修改 server-side permission/approval policy。
 
-### D7. 工具并行（P2）
+### D7. 工具并行（Advanced）
 
 - [ ] 只有声明可并行的只读工具才能并行。
 - [ ] 并行数量有上限。
@@ -172,9 +194,17 @@
 - [ ] 任一调用取消时不会留下不可控后台任务。
 - [ ] 第一版保持顺序执行，直到单工具闭环稳定。
 
+### D8. Tool Search 与参数流预览（Optional）
+
+- [ ] 能解释 deferred tool catalog 如何减少 prompt tool schema 体积。
+- [ ] ToolSearchOutput 只影响后续 sampling，不允许动态工具绕过 registry/policy。
+- [ ] argument delta consumer 只发预览事件，副作用等待完整 `OutputItemDone`。
+- [ ] catalog provenance、版本与当前 StepContext snapshot 可追踪。
+- [ ] 当前工具数量很少时不实现 tool search 或通用 argument streaming。
+
 ## E. Context 工程
 
-### E1. 数据分层（P1）
+### E1. 数据分层（Core）
 
 - [ ] UI transcript、model history、runtime event、persistent fact 四层有明确类型。
 - [ ] `Message` 不再被直接等同于所有 model message。
@@ -182,7 +212,7 @@
 - [ ] 同轮 mixed assistant text + tool call 在 model history 中完整保留，即使中间文本不进入 UI transcript。
 - [ ] system / developer prompt 不作为用户消息落库。
 
-### E2. ContextBuilder（P1）
+### E2. ContextBuilder（Core）
 
 - [ ] SeoContextBuilder 接收结构化 context，而不是只接 ChatMessage[]。
 - [ ] prompt、历史、业务数据、tool observations 有确定顺序。
@@ -191,7 +221,7 @@
 - [ ] 同步和 streaming 路径不使用两套不同 context 规则。
 - [ ] 同步 endpoint 复用同一 turn runner 并收集 final，或在 tool mode 明确禁用；不保留 direct LLM 旁路。
 
-### E3. Token 预算（P1）
+### E3. Token 预算（Core）
 
 - [ ] 不再只用“最近 12 条”作为唯一规则。
 - [ ] 为 system prompt、history、tool output、current input、completion 分配预算。
@@ -199,7 +229,7 @@
 - [ ] 记录本次请求实际或估算 token 使用。
 - [ ] tool output 大小在进入模型前受限。
 
-### E4. 历史规范化（P1）
+### E4. 历史规范化（Core）
 
 - [ ] 每个 tool call 有对应 observation。
 - [ ] 孤立 observation 被拒绝或修复。
@@ -207,7 +237,7 @@
 - [ ] 失败或 aborted 的 assistant placeholder 是否进入 history 有明确规则。
 - [ ] history 构造不会把当前用户消息重复加入。
 
-### E5. Compaction / Summary（P2）
+### E5. Compaction / Summary（Advanced）
 
 - [ ] 先定义触发阈值，再选择摘要算法。
 - [ ] 摘要与原始消息分离存储。
@@ -217,21 +247,21 @@
 
 ## F. 持久化与恢复
 
-### F1. Canonical facts（P1）
+### F1. Canonical facts（Core）
 
 - [ ] 明确哪些对象是恢复所需事实。
 - [ ] 不为每个文本 token 创建数据库行。
 - [ ] Tool call、observation、approval、run terminal status 有持久化策略。
 - [ ] 大结果采用摘要、对象存储或引用，而不是无限 JSON。
 
-### F2. 幂等（P1）
+### F2. 幂等（Core）
 
 - [ ] send message 请求支持 clientRequestId / idempotency key。
 - [ ] 同一请求重放不会重复创建用户消息和 Run。
 - [ ] 写操作工具具有独立幂等键。
 - [ ] 重试 observation 不会关联错误的 callId。
 
-### F3. Crash recovery（P2）
+### F3. Crash recovery（Advanced）
 
 - [ ] 启动或定时任务能识别超时 RUNNING。
 - [ ] 能把不可恢复 Run 标为 FAILED / INTERRUPTED，并记录原因。
@@ -239,7 +269,7 @@
 - [ ] 进程重启后客户端能重新查询 canonical state。
 - [ ] 不依赖内存 AbortController 作为唯一真实状态。
 
-### F4. Store boundary（P2）
+### F4. Store boundary（Advanced）
 
 - [ ] Runtime 不直接散落 Prisma 查询。
 - [ ] 何时需要 repository/store 抽象有明确触发条件。
@@ -248,28 +278,28 @@
 
 ## G. 中断、并发与背压
 
-### G1. Cancellation（P1）
+### G1. Cancellation（Core）
 
 - [ ] 浏览器断开能传递到 provider 和 tool executor。
 - [ ] Abort 后 Message / Run / Step 都进入一致终态。
 - [ ] cancellation 是预期控制流，不被记录成普通系统错误。
 - [ ] 长工具定期检查 signal 或使用可取消 API。
 
-### G2. Conversation 并发（P2）
+### G2. Conversation 并发（Advanced）
 
 - [ ] 同一 Conversation 是否允许多个 active Run 有明确策略。
 - [ ] 数据库层或应用层能防止不允许的并发。
 - [ ] 客户端重复点击和网络重试不会产生竞态。
 - [ ] 多实例部署时不依赖单进程全局变量。
 
-### G3. Queue 与背压（P2）
+### G3. Queue 与背压（Advanced）
 
 - [ ] 只有真实负载需要时才引入队列。
 - [ ] 队列前先定义任务状态、幂等和取消语义。
 - [ ] 每租户/用户并发上限可配置。
 - [ ] 超载时返回可重试错误和 Retry-After 语义。
 
-### G4. Steer / Resume / Fork（P3）
+### G4. Steer / Resume / Fork（Optional）
 
 - [ ] 能分别解释四种语义，不用一个 continue 代替。
 - [ ] 先实现可靠 resume，再考虑 in-flight steer。
@@ -278,13 +308,13 @@
 
 ## H. Human-in-the-loop 与安全
 
-### H1. Risk metadata（P1）
+### H1. Risk metadata（Core）
 
 - [ ] 工具有只读/写入/外部副作用分类。
 - [ ] 风险等级由系统定义，模型不能自行降低。
 - [ ] 参数范围会影响风险时，策略能基于解析后的参数判断。
 
-### H2. Approval（P1）
+### H2. Approval（Core）
 
 - [ ] approval request 有 runId、callId、工具名、参数摘要和过期时间。
 - [ ] WAITING_APPROVAL 是明确运行状态或 step 状态。
@@ -292,14 +322,14 @@
 - [ ] 批准只对本次具体调用有效，除非用户明确建立规则。
 - [ ] 重复提交 approval decision 保持幂等。
 
-### H3. Authentication / Authorization（P2）
+### H3. Authentication / Authorization（Advanced）
 
 - [ ] 每个 Conversation、Run、Message 查询都绑定用户/租户。
 - [ ] 工具访问资源时重新校验 server-side identity。
 - [ ] 前端提供的 userId 不作为权威身份。
 - [ ] 管理接口和普通用户接口分开。
 
-### H4. Isolation（P2）
+### H4. Isolation（Advanced）
 
 - [ ] 模型 API Key 只存在服务端。
 - [ ] 不同租户凭证和数据隔离。
@@ -309,7 +339,7 @@
 
 ## I. 错误、重试与韧性
 
-### I1. Error taxonomy（P1）
+### I1. Error taxonomy（Core）
 
 - [ ] provider、tool、validation、permission、timeout、cancellation、persistence 错误分层。
 - [ ] 用户文案与内部诊断信息分开。
@@ -317,7 +347,7 @@
 - [ ] error event 有稳定 code，而不只是一段中文字符串。
 - [ ] raw Error/cause/stack 即使只进 server log，也经过 allowlist、限长与脱敏；测试同时检查 DB、observation 和 logger sink。
 
-### I2. Retry policy（P2）
+### I2. Retry policy（Advanced）
 
 - [ ] 只对明确可重试错误重试。
 - [ ] 使用有上限的指数退避和 jitter。
@@ -326,7 +356,7 @@
 - [ ] 用户主动取消不会触发重试。
 - [ ] provider transport retry、sampling follow-up、tool execution retry 的所有者分开；Phase 04 不自动重试工具，Phase 07 基于 durable outcome 决策。
 
-### I3. Partial failure（P2）
+### I3. Partial failure（Advanced）
 
 - [ ] 模型成功但持久化失败时有补偿或明确失败状态。
 - [ ] 工具成功但 observation 写回失败时不会盲目重做副作用。
@@ -334,14 +364,14 @@
 
 ## J. 可观测性与评测
 
-### J1. Trace model（P1）
+### J1. Trace model（Core）
 
 - [ ] requestId、conversationId、runId、stepId、callId 可关联。
 - [ ] 每个 sampling 和 tool execution 有 duration。
 - [ ] 记录 model、token usage、tool name、result status，不记录秘密。
 - [ ] trace/span 与业务数据库 ID 的关系明确。
 
-### J2. Metrics（P2）
+### J2. Metrics（Advanced）
 
 - [ ] Run 成功率、失败率、取消率。
 - [ ] 首 token 延迟、总耗时、tool 耗时。
@@ -349,7 +379,7 @@
 - [ ] Context token 与 compaction 次数。
 - [ ] 每租户成本和限额。
 
-### J3. Evaluation（P2）
+### J3. Evaluation（Advanced）
 
 - [ ] 建立固定 SEO 任务集。
 - [ ] 分开评估最终答案质量和工具选择正确性。
@@ -359,13 +389,13 @@
 
 ## K. 测试架构
 
-### K1. Unit tests（P0）
+### K1. Unit tests（Core）
 
 - [ ] Tool schema、registry、router、context builder 纯单元测试。
 - [ ] 错误分类与 mapper 测试。
 - [ ] call/output normalization 测试。
 
-### K2. Runtime integration tests（P0）
+### K2. Runtime integration tests（Core）
 
 - [ ] Fake LLM 先返回 tool call，再返回 final answer。
 - [ ] Fake tool 成功、失败、超时、取消。
@@ -376,7 +406,7 @@
 - [ ] mixed text + tool call 的文本进入 model history、不进入 UI Message。
 - [ ] uncooperative executor/late settlement 的 timeout race。
 
-### K3. Contract tests（P1）
+### K3. Contract tests（Core）
 
 - [ ] NDJSON start/delta/done/error/aborted。
 - [ ] 非法流事件和提前 EOF。
@@ -384,14 +414,14 @@
 - [ ] 未来工具事件的兼容性。
 - [ ] 若 buffer 到 terminal 才输出 final chunks，验收只称 schema/content compatible，并明确首 token/实时性行为变化。
 
-### K4. Recovery tests（P2）
+### K4. Recovery tests（Advanced）
 
 - [ ] 服务重启前后的 RUNNING recovery。
 - [ ] 幂等请求重放。
 - [ ] approval 决策重放。
 - [ ] 并发发送和取消竞态。
 
-### K5. Opt-in live provider smoke（P1）
+### K5. Opt-in live provider smoke（Core）
 
 - [ ] 默认 CI 仍完全使用 fixture/fake；真实 provider smoke 只有显式环境开关才运行。
 - [ ] smoke 使用低成本只读工具、`parallel_tool_calls=false`，验证真实 envelope -> observation -> final 闭环。
@@ -399,27 +429,27 @@
 
 ## L. 扩展架构
 
-### L1. Built-in tools（P0）
+### L1. Built-in tools（Core）
 
 - [ ] 先完成一个纯只读 SEO 工具。
 - [ ] 再增加第二个工具验证 registry 不是为单例硬编码。
 - [ ] 内置工具与 provider adapter 解耦。
 
-### L2. MCP（P3）
+### L2. MCP（Optional）
 
 - [ ] 理解 MCP 解决外部工具发现/调用，不解决内部权限。
 - [ ] 本地 Tool contract 稳定后再写 MCP adapter。
 - [ ] MCP server auth、timeout、tool trust 有边界。
 - [ ] 不让外部 tool description 绕过系统 policy。
 
-### L3. Skills / Plugins / Hooks（P3）
+### L3. Skills / Plugins / Hooks（Optional）
 
 - [ ] 能区分可复用指令、可执行工具、生命周期 hook、分发包。
 - [ ] 没有真实复用需求时不创建插件市场。
 - [ ] hook 失败是否阻断主流程有策略。
 - [ ] 扩展有版本、来源和启用状态。
 
-## M. Multi-agent（P3）
+## M. Multi-agent（Optional）
 
 - [ ] 子 Agent 有独立 Run / Thread，而不是同一 prompt 的角色扮演。
 - [ ] 父任务向子任务传递最小上下文。
@@ -431,27 +461,27 @@
 
 ## N. 云端生产化
 
-### N1. 多租户（P2）
+### N1. 多租户（Advanced）
 
 - [ ] schema 有用户/租户归属。
 - [ ] 所有查询带 scope。
 - [ ] 资源配额和成本可按租户统计。
 - [ ] 数据导出、删除、保留策略明确。
 
-### N2. Worker 与执行位置（P2）
+### N2. Worker 与执行位置（Advanced）
 
 - [ ] Web API 与长任务 worker 的边界有触发条件。
 - [ ] 不在尚无负载时过早引入分布式系统。
 - [ ] 迁移 worker 前先完成幂等、状态机和恢复。
 
-### N3. Rate limit 与成本（P2）
+### N3. Rate limit 与成本（Advanced）
 
 - [ ] 用户、租户、provider 三层限额分开。
 - [ ] 预算在请求前检查，运行中持续累计。
 - [ ] 达到上限有稳定错误与恢复时间。
 - [ ] 工具和模型成本都能归因到 Run。
 
-### N4. Deployment safety（P2）
+### N4. Deployment safety（Advanced）
 
 - [ ] schema migration 与旧实例兼容。
 - [ ] graceful shutdown 能终止或交接 active Run。
@@ -472,4 +502,4 @@
 1. 每个学习阶段只选择与当前范围对应的条目。
 2. 完成条目必须附源码、测试或运行截图/日志等证据。
 3. “理解了”不能替代可执行练习。
-4. P3 条目不能挤占 P0/P1 的单 Agent 稳定性工作。
+4. Optional 条目不能挤占 Core 单 Agent 稳定性学习与正式任务。

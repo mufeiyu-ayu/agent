@@ -1,5 +1,7 @@
 # Phase 01：结构化模型事件契约
 
+> 模块分类：**Core**。当前项目近期需要 provider-neutral 事件边界；本文是学习指南，不自动创建正式任务。
+
 ## 1. 阶段问题
 
 当前 `LLMService.chatStream()` 的返回类型是 `AsyncGenerator<string>`。这对纯文本聊天足够，但它会丢失 tool call、finish reason、usage、响应标识等结构。Runtime 只看见字符串，就无法判断模型是在回答用户，还是在请求系统执行工具。
@@ -291,12 +293,12 @@ Runtime 处理 `text_delta` 时继续：
 
 ### Codex
 
-- `/Users/ayu/Desktop/codex/codex-rs/codex-api/src/common.rs`：`ResponseEvent`。
-- `/Users/ayu/Desktop/codex/codex-rs/core/src/client_common.rs`：`Prompt` 与 `ResponseStream`。
-- `/Users/ayu/Desktop/codex/codex-rs/core/src/client.rs`：provider stream 映射与 terminal 处理。
-- `/Users/ayu/Desktop/codex/codex-rs/protocol/src/models.rs`：`ResponseItem`。
-- `/Users/ayu/Desktop/codex/codex-rs/core/src/session/turn.rs`：消费 `ResponseEvent`，不要在本阶段通读整个文件。
-- `/Users/ayu/Desktop/codex/codex-rs/core/src/client_tests.rs`：adapter/stream tests。
+- `/Users/lihaoran/Desktop/codex/codex-rs/codex-api/src/common.rs`：`ResponseEvent`。
+- `/Users/lihaoran/Desktop/codex/codex-rs/core/src/client_common.rs`：`Prompt` 与 `ResponseStream`。
+- `/Users/lihaoran/Desktop/codex/codex-rs/core/src/client.rs`：provider stream 映射与 terminal 处理。
+- `/Users/lihaoran/Desktop/codex/codex-rs/protocol/src/models.rs`：`ResponseItem`。
+- `/Users/lihaoran/Desktop/codex/codex-rs/core/src/session/turn.rs`：消费 `ResponseEvent`，不要在本阶段通读整个文件。
+- `/Users/lihaoran/Desktop/codex/codex-rs/core/src/client_tests.rs`：adapter/stream tests。
 
 ## 12. 复盘问题
 

@@ -10,17 +10,17 @@
 
 ## 2. 源码快照与定位方法
 
-- Codex fork：`/Users/ayu/Desktop/codex`，研究基线 `626147f72`。
-- 当前项目：`/Users/ayu/Desktop/agent`。
+- Codex fork：`/Users/lihaoran/Desktop/codex`，研究基线 `ab6a7eb87`。
+- 当前项目：`/Users/lihaoran/Desktop/agent`。
 - 若源码更新导致行号漂移，使用下面的符号重新定位：
 
 ```sh
 rg -n "request_approval|ExecApprovalRequirement|ApprovalCtx" \
-  /Users/ayu/Desktop/codex/codex-rs/core/src/tools
+  /Users/lihaoran/Desktop/codex/codex-rs/core/src/tools
 
 rg -n "ExecApprovalRequestEvent|ReviewDecision|notify_approval" \
-  /Users/ayu/Desktop/codex/codex-rs/core/src \
-  /Users/ayu/Desktop/codex/codex-rs/protocol/src
+  /Users/lihaoran/Desktop/codex/codex-rs/core/src \
+  /Users/lihaoran/Desktop/codex/codex-rs/protocol/src
 ```
 
 只读取本地源码，不需要联网。

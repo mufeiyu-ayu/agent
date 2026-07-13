@@ -14,7 +14,7 @@
 
 ### Step 1：从函数注释理解 loop
 
-文件：`/Users/ayu/Desktop/codex/codex-rs/core/src/session/turn.rs`
+文件：`/Users/lihaoran/Desktop/codex/codex-rs/core/src/session/turn.rs`
 
 定位 `run_turn`（当前快照约 142 行）。函数前注释已经给出核心模型：
 
@@ -49,13 +49,13 @@
 
 ### Step 4：看工具结果怎样回 history
 
-文件：`/Users/ayu/Desktop/codex/codex-rs/core/src/stream_events_utils.rs`
+文件：`/Users/lihaoran/Desktop/codex/codex-rs/core/src/stream_events_utils.rs`
 
 搜索 tool call item 的处理、tool output record 和 `needs_follow_up`。记录：完整 response item 被记录进 conversation history，tool future 完成后 output 也记录，因此下一轮 prompt 能看到配对。若 assistant item 同时含文本与 function call，文本属于该 model-visible item；“不展示给 UI”不等于“从 model history 删除”。
 
 ### Step 5：看配对不变量
 
-文件：`/Users/ayu/Desktop/codex/codex-rs/core/src/context_manager/history.rs`
+文件：`/Users/lihaoran/Desktop/codex/codex-rs/core/src/context_manager/history.rs`
 
 只搜索 function call/output、normalize、orphan。重点不是 compaction，而是：
 
@@ -65,7 +65,7 @@
 
 ### Step 6：用测试证明第二轮请求
 
-文件：`/Users/ayu/Desktop/codex/codex-rs/core/tests/suite/tool_harness.rs`
+文件：`/Users/lihaoran/Desktop/codex/codex-rs/core/tests/suite/tool_harness.rs`
 
 读当前快照第一个测试 `shell_command_tool_executes_command_and_streams_output`：第一轮 mock Responses SSE 返回 `shell_command` function call，Codex 运行已注册的真实 shell handler，第二轮 mock response 返回 assistant；测试捕获第二轮 request，并用 `call_output()` 检查同 `call_id` 的 `function_call_output` 和内容格式。它不是“纯 fake executor 单元测试”，而是 mock provider + runtime/handler integration。当前项目迁移的是“按次响应 + 捕获第二轮 request”的验收形状，不复制 shell 副作用。
 

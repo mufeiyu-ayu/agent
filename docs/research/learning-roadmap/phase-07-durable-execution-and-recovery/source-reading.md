@@ -6,15 +6,19 @@
 
 目标是学习“从事实重建”，不是复制 rollout JSONL 或本地文件布局。
 
+当前快照同时存在 `ThreadHistoryMode::Legacy` 与 `Paginated`。除 rollout/store 外，必须阅读 `codex-rs/app-server-protocol/src/protocol/thread_history_projection.rs` 及 tests：paginated history 从 durable `TurnStarted` / `TurnComplete` / `TurnAborted` / `ItemCompleted(TurnItem)` 无状态投影，实时 notification 不是 canonical history。
+
+可选高级阅读：`codex-rs/ext/goal/src/api.rs`、`runtime.rs` 与 `tests/goal_extension_backend.rs` 展示 Thread 级 Goal 如何把 objective/status/budget/usage 存入 state，并在 resume 后重建运行计量。它适合学习 durable long-running intent，但当前项目没有真实需求时不实现。
+
 ## 2. 定位命令
 
 ```sh
 rg -n "is_persisted_rollout_item|persisted_rollout_items" \
-  /Users/ayu/Desktop/codex/codex-rs/rollout/src \
-  /Users/ayu/Desktop/codex/codex-rs/thread-store/src
+  /Users/lihaoran/Desktop/codex/codex-rs/rollout/src \
+  /Users/lihaoran/Desktop/codex/codex-rs/thread-store/src
 
 rg -n "resume_thread_from_rollout|resume_thread_with_history|flush_rollout" \
-  /Users/ayu/Desktop/codex/codex-rs/core/src/thread_manager.rs
+  /Users/lihaoran/Desktop/codex/codex-rs/core/src/thread_manager.rs
 ```
 
 ## 3. 第一条链：哪些 item 值得持久化

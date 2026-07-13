@@ -11,7 +11,9 @@
 - child 完成、失败、卸载、恢复时，控制面如何找到它？
 - 哪些能力对当前“一次性 page audit child Run”过重？
 
-源码快照：`/Users/ayu/Desktop/codex@626147f728`。
+源码快照：`/Users/lihaoran/Desktop/codex@ab6a7eb87c`。
+
+当前快照新增/强化的取证入口包括 `codex-rs/core/src/agent_communication.rs`、`codex-rs/core/src/agent/control/execution.rs`、`codex-rs/core/src/agent/control/residency.rs` 与 `codex-rs/core/src/tools/handlers/multi_agents_v2/`。重点验证：`InterAgentCommunication` 可以只入队也可以触发 Turn；execution capacity 与 loaded residency 是两种限制；fork 前必须 materialize/flush 父 rollout 并清洗 usage hints。边界测试集中在 `codex-rs/core/src/agent/control_tests.rs`、`codex-rs/core/src/agent/control/execution_tests.rs`、`codex-rs/core/src/agent/control/residency_tests.rs` 和 `codex-rs/core/tests/suite/pending_input.rs`。
 
 ## 2. 阅读前先固定当前项目结论
 

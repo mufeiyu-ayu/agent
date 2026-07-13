@@ -54,12 +54,18 @@ flowchart LR
 | 文档 | 重点 |
 | --- | --- |
 | [research-method.md](./research-method.md) | 证据范围、可靠性等级和维护方法 |
+| [research-progress.md](./research-progress.md) | 13 个架构域的批次覆盖状态和额度检查 |
 | [architecture-report.md](./architecture-report.md) | 宏观架构、核心主链、设计动机和迁移结论 |
 | [architecture-learning-checklist.md](./architecture-learning-checklist.md) | 完整学习清单，可用于逐项打勾 |
 | [source-reading-map.md](./source-reading-map.md) | 真实源码入口和推荐阅读顺序 |
 | [current-project-gap-analysis.md](./current-project-gap-analysis.md) | 当前项目不是“缺什么功能”，而是缺哪些运行系统能力 |
 | [cloud-agent-mapping.md](./cloud-agent-mapping.md) | 客户端概念到云端 NestJS 架构的转换规则 |
 | [terminology-map.md](./terminology-map.md) | Thread、Turn、Item、Run、Step 等概念对照 |
+| [research-closeout.md](./research-closeout.md) | 快照、覆盖范围、图表、校验和剩余问题（收尾时生成） |
+
+## 当前研究快照
+
+本知识库以 `main@ab6a7eb87cc8a816c88b86c44cf291e251ed2136` 为事实基线。完整 commit 元数据、周额度协议和证据分级见 [研究方法](./research-method.md)，本轮完成度见 [研究进度](./research-progress.md)。旧快照 `626147f72` 只作为历史比较点，不再支撑“当前实现”结论。
 
 ## 最值得优先学习的十项能力
 

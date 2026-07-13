@@ -1,5 +1,7 @@
 # Phase 03：单 Agent Tool Loop
 
+> 模块分类：**Core**。当前项目近期需要这条最小 Agent 闭环；它不是 Multi-agent 或工作流引擎路线。
+
 ## 1. 阶段问题
 
 到 Phase 02 为止，系统能看见模型提出的 tool call，也能独立验证和执行工具，但两者还没有组成 Agent。真正的分界线是：**工具结果进入下一次模型输入，模型基于 observation 继续生成最终回答。**
@@ -329,12 +331,12 @@ Tool output 来自网页、外部服务或其他不可信来源。即使 observa
 
 ### Codex
 
-- `/Users/ayu/Desktop/codex/codex-rs/core/src/session/turn.rs`
-- `/Users/ayu/Desktop/codex/codex-rs/core/src/stream_events_utils.rs`
-- `/Users/ayu/Desktop/codex/codex-rs/core/src/tools/router.rs`
-- `/Users/ayu/Desktop/codex/codex-rs/core/src/tools/parallel.rs`
-- `/Users/ayu/Desktop/codex/codex-rs/core/src/context_manager/history.rs`
-- `/Users/ayu/Desktop/codex/codex-rs/core/tests/suite/tool_harness.rs`
+- `/Users/lihaoran/Desktop/codex/codex-rs/core/src/session/turn.rs`
+- `/Users/lihaoran/Desktop/codex/codex-rs/core/src/stream_events_utils.rs`
+- `/Users/lihaoran/Desktop/codex/codex-rs/core/src/tools/router.rs`
+- `/Users/lihaoran/Desktop/codex/codex-rs/core/src/tools/parallel.rs`
+- `/Users/lihaoran/Desktop/codex/codex-rs/core/src/context_manager/history.rs`
+- `/Users/lihaoran/Desktop/codex/codex-rs/core/tests/suite/tool_harness.rs`
 
 ## 12. 复盘问题
 

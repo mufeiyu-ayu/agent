@@ -1,157 +1,75 @@
-# 学习路线进度与证据追踪
+# 学习证据追踪
 
-本文件只登记学习路线的证据，不替代 `docs/tasks/README.md` 的执行状态。
+本文件只记录学习者已经读过、能解释或亲自验证的证据，不记录当前 Agent 项目任务状态。空白是正常状态；不要因为研究文档已经写好而替学习者勾选。
 
-## 总进度
+## 状态与证据
 
-| Phase | 状态 | 核心证据 | 最近复盘 |
-| --- | --- | --- | --- |
-| 00 基线与测试基座 | Not Started | - | - |
-| 01 结构化模型事件 | Not Started | - | - |
-| 02 Tool Contract 与 Registry | Not Started | - | - |
-| 03 单 Agent Tool Loop | Not Started | - | - |
-| 04 工具可靠性与运行记录 | Not Started | - | - |
-| 05 Human-in-the-loop | Not Started | - | - |
-| 06 Context 工程 | Not Started | - | - |
-| 07 Durable Execution | Not Started | - | - |
-| 08 并发、流式重连与 Resume | Not Started | - | - |
-| 09 可观测性、评测与测试 | Not Started | - | - |
-| 10 云端安全与多租户 | Not Started | - | - |
-| 11 MCP、Skills 与 Hooks | Not Started | - | - |
-| 12 Multi-agent 实验 | Not Started | - | - |
-| 13 生产化作品集收口 | Not Started | - | - |
+状态只允许：`Not Started`、`Reading`、`Teach-back Ready`、`Experimented`。
 
-状态只允许：`Not Started`、`Learning`、`Implementing`、`Verifying`、`Completed`。
+| 模块 | 分类 | 状态 | 已读调用链/测试 | Teach-back 或实验链接 | 仍不确定的问题 |
+| --- | --- | --- | --- | --- | --- |
+| 00 测试与基线 | Core | Not Started | - | - | - |
+| 01 模型事件 | Core | Not Started | - | - | - |
+| 02 Tool Contract | Core | Not Started | - | - | - |
+| 03 Tool Loop | Core | Not Started | - | - | - |
+| 04 Tool 可靠性 | Core | Not Started | - | - | - |
+| 05 HITL | Core | Not Started | - | - | - |
+| 06 Context | Core | Not Started | - | - | - |
+| 07 Durable Recovery | Advanced | Not Started | - | - | - |
+| 08 并发 / Resume | Advanced | Not Started | - | - | - |
+| 09 观测 / Eval / Tests | Advanced | Not Started | - | - | - |
+| 10 云端安全 | Advanced | Not Started | - | - | - |
+| 11 扩展体系 | Optional | Not Started | - | - | - |
+| 12 Multi-agent | Optional | Not Started | - | - | - |
+| 13 Capstone | Advanced | Not Started | - | - | - |
 
-## Phase 00 证据
+## 每次学习记录模板
 
-- [ ] 测试框架已选定并有理由。
-- [ ] 至少一个现有纯函数测试。
-- [ ] AgentRuntime fake model 测试基座。
-- [ ] 当前 happy/error/abort 状态机基线。
-- [ ] 验证命令与输出记录。
+```md
+### YYYY-MM-DD — 模块 XX / 架构问题
 
-## Phase 01 证据
+- Codex 快照：ab6a7eb87cc8a816c88b86c44cf291e251ed2136
+- 入口与调用链：
+- 状态所有者：
+- 副作用所有者：
+- 正常测试：
+- 失败/取消/恢复测试：
+- 我能解释的不变量：
+- TypeScript / Vue 类比：
+- 小型实验（可选）：
+- 当前项目是否需要：现在 / 触发后 / 不照搬
+- 仍不确定：
+```
 
-- [ ] ModelStreamEvent 类型。
-- [ ] provider chunk adapter tests。
-- [ ] 现有文本 stream contract 未破坏。
-- [ ] tool call arguments 跨 chunk 测试。
-- [ ] `include_usage`、空 choices usage chunk、completed/usage 顺序与中断缺失语义。
-- [ ] 成功事件流与 typed provider/abort error channel 的唯一所有权。
+## 核心 Teach-back 清单
 
-## Phase 02 证据
+- [ ] 不看文档画出 `turn/start → submission_loop → RegularTask → run_turn → ModelClientSession`。
+- [ ] 解释 Thread、Turn、Task、Item、Event、Session、Step Context 的边界。
+- [ ] 解释 ToolSpec、Router、Runtime、Registry、Handler、Orchestrator 为什么不能合并。
+- [ ] 解释 call/output 配对、tool output 截断和 compaction 后的历史合法性。
+- [ ] 解释 permission、approval、sandbox、exec policy 与 Guardian 的控制权。
+- [ ] 解释 resume、fork、steer、interrupt 对 ID、历史与终态的不同影响。
+- [ ] 解释实时 notification、durable rollout 和 UI state 为什么不是同一事实。
 
-- [ ] ToolDefinition、raw call envelope、validated invocation、ToolResult 分层。
-- [ ] timeout/approval/idempotency/version/attempt 等执行 metadata。
-- [ ] 输入 schema runtime validation。
-- [ ] duplicate registry test。
-- [ ] unknown tool test。
-- [ ] 一个只读 SEO tool。
+## Advanced / Optional Teach-back
 
-## Phase 03 证据
+- [ ] 说明 submission/tool/agent 三种并发限制分别解决什么问题。
+- [ ] 说明 ExtensionRegistry 如何限制贡献面和保存 host 控制权。
+- [ ] 区分 MCP、Skill、Plugin、Hook、App 与 Environment。
+- [ ] 说明 child Thread 与工具并行的状态、成本和恢复差异。
+- [ ] 指出 Codex 测试 harness 如何复现 provider、tool、cancel 与 recovery 顺序。
 
-- [ ] first sampling -> tool call。
-- [ ] executor -> observation。
-- [ ] observation -> second sampling。
-- [ ] final answer -> completed。
-- [ ] loop upper bound。
-- [ ] mixed text + tool call 的 model-history 与 UI 可见策略有明确 contract。
-- [ ] 同步 `/seo/chat` 的支持、禁用或统一 runtime 策略明确。
+## 小型实验记录
 
-## Phase 04 证据
+实验不要求进入项目主分支。每个实验只验证一个问题：
 
-- [ ] tool step 持久化。
-- [ ] orchestrator 主动 race executor / timeout / abort，并覆盖不响应 signal 的 executor。
-- [ ] structured error taxonomy。
-- [ ] oversized/sensitive output strategy。
-- [ ] 完整阶段 5 收口证据。
-
-## Phase 05 证据
-
-- [ ] risk policy。
-- [ ] approval request persistence。
-- [ ] approve/reject/expire/cancel。
-- [ ] decision idempotency。
-- [ ] 前端 confirmation UX。
-- [ ] 明确 Approval 在跨进程执行权与副作用 crash window 上仍由 Phase 07 收口。
-
-## Phase 06 证据
-
-- [ ] model history 独立类型。
-- [ ] token budget policy。
-- [ ] call/output normalization。
-- [ ] 可从数据库重建的 ToolCall/Observation canonical item stream 与顺序。
-- [ ] tool output truncation。
-- [ ] compaction experiment。
-
-## Phase 07 证据
-
-- [ ] request idempotency。
-- [ ] retry-safe tool contract。
-- [ ] stale RUNNING recovery。
-- [ ] checkpoint/resume boundary。
-- [ ] crash simulation test。
-- [ ] unknown side-effect outcome 的 manual-review durable 状态、释放规则与人工决议。
-
-## Phase 08 证据
-
-- [ ] active run concurrency policy。
-- [ ] reconnect/query final state。
-- [ ] persisted cancellation design。
-- [ ] resume semantics。
-- [ ] race tests。
-- [ ] 若启用 replay，canonical transition + RunEvent outbox + sequence 同事务。
-
-## Phase 09 证据
-
-- [ ] trace correlation。
-- [ ] latency/token/tool metrics。
-- [ ] SEO eval dataset。
-- [ ] runtime fixture、scorer fixture、live-model eval 三层分开。
-- [ ] execution-attempt spans/links；长审批和整体 Run 时长由 durable timestamps 计算。
-- [ ] regression command。
-- [ ] failure dashboard or report。
-
-## Phase 10 证据
-
-- [ ] 真实 authentication adapter（或明确仍是 single-user demo），含 token/session 验证与 service actor replay protection。
-- [ ] tenant-scoped queries。
-- [ ] tool authorization。
-- [ ] secret/output redaction。
-- [ ] per-tenant quota/cost usage ledger；并发 reservation 满足可测硬上限。
-
-## Phase 11 证据
-
-- [ ] MCP adapter proof-of-concept。
-- [ ] 受控 HTTPS/平台固定 stdio、SSRF/redirect/DNS/tenant cache 隔离等 external tool trust policy。
-- [ ] skill instruction boundary。
-- [ ] hook lifecycle experiment。
-- [ ] hook rewrite 在 authorization/risk/approval 前完成，或使旧 approval 失效后全量重验。
-- [ ] 保持 built-in tool path 可用。
-
-## Phase 12 证据
-
-- [ ] 单 Agent baseline。
-- [ ] child run contract。
-- [ ] parent-child persistence。
-- [ ] durable READY/outbox dispatch，覆盖 commit 后 enqueue 前崩溃。
-- [ ] concurrency/cost limits 与 paired statistical comparison。
-- [ ] evidenceRefs 解析到同 tenant/task/attempt 的 canonical evidence。
-- [ ] 实验证明比单 Agent 有价值。
-
-## Phase 13 证据
-
-- [ ] 一键运行与验证说明。
-- [ ] 完整架构图。
-- [ ] 可查看 Run/Step/Tool/Approval 证据。
-- [ ] 关键失败演示。
-- [ ] TLS/trusted proxy/CORS/auth storage/CSRF/stream proxy buffering 与真实部署入口 smoke。
-- [ ] 技术复盘和取舍报告。
+| 日期 | 问题 | 最小输入 | 断言 | 结果 | 后续是否值得正式任务化 |
+| --- | --- | --- | --- | --- | --- |
+| - | - | - | - | - | - |
 
 ## 更新规则
 
-- 勾选项后必须在同一阶段目录记录证据路径。
-- 只有全部退出标准满足才标 Completed。
-- 手动演示只能作为补充，不能替代自动化测试。
-- 如果实现范围改变，先更新阶段 README，再更新任务文档。
+- “读过文件”不等于 `Teach-back Ready`；必须能讲清调用链、失败路径和不变量。
+- `Experimented` 需要可复现命令、测试或最小代码，不要求生产实现。
+- 项目代码是否已完成只能引用 `docs/tasks/**`，不能在这里推断。
+- 源码更新后先核对完整 SHA；符号或语义变化时重新验证相关记录。
