@@ -59,6 +59,7 @@ flowchart LR
 | [architecture-learning-checklist.md](./architecture-learning-checklist.md) | 完整学习清单，可用于逐项打勾 |
 | [source-reading-map.md](./source-reading-map.md) | 真实源码入口和推荐阅读顺序 |
 | [feedback-and-diagnostics.md](./feedback-and-diagnostics.md) | Feedback consent、诊断 enrich、artifact 上传与隐私边界 |
+| [feedback-export-manifest-and-receipt.md](./feedback-export-manifest-and-receipt.md) | Feedback Preview/Discovery/Envelope三Manifest、SQLite scope、artifact授权与上传回执 |
 | [assistant-directives.md](./assistant-directives.md) | Assistant magic directives、产品投影与 Git metadata 观察边界 |
 | [workspace-command-and-git-status.md](./workspace-command-and-git-status.md) | Workspace command port、Git/PR probe、缓存与远端一致性 |
 | [doctor-diagnostics.md](./doctor-diagnostics.md) | Doctor report模型、并发check、fallback、redaction与support artifact |
@@ -100,11 +101,13 @@ flowchart LR
 | [realtime-conversation-handoff-runtime.md](./realtime-conversation-handoff-runtime.md) | Realtime session、音频背压、Transcript、Agent Handoff与关闭恢复 |
 | [shell-snapshot-lifecycle.md](./shell-snapshot-lifecycle.md) | 用户Shell状态捕获、可执行Snapshot发布、重放优先级与清理恢复 |
 | [image-input-preparation-and-history.md](./image-input-preparation-and-history.md) | 图片输入authority、解码/Resize/Metadata、缓存、History与模型投影 |
+| [image-generation-artifact-lifecycle.md](./image-generation-artifact-lifecycle.md) | Image Generation输入权限、host artifact、base64多投影、history引用与清理边界 |
 | [plugin-marketplace-lifecycle.md](./plugin-marketplace-lifecycle.md) | Marketplace Source add/upgrade/remove、Git制品、Config CAS与Plugin Cache |
 | [app-server-thread-listener-lifecycle.md](./app-server-thread-listener-lifecycle.md) | App Server Thread listener、订阅扇出、重连恢复、请求所有权与卸载状态机 |
 | [tui-composer-attachment-lifecycle.md](./tui-composer-attachment-lifecycle.md) | TUI Composer富输入、附件placeholder、large paste、queue/steer与临时图片生命周期 |
 | [config-write-and-runtime-refresh.md](./config-write-and-runtime-refresh.md) | Config写入、Layer origin/version、Runtime Refresh、Thread/Turn snapshot与MCP边界 |
 | [exec-server-session-recovery.md](./exec-server-session-recovery.md) | Exec Server会话租约、连接generation、进程输出重放、stdin幂等与断线恢复边界 |
+| [exec-server-noise-rendezvous-security.md](./exec-server-noise-rendezvous-security.md) | Exec Server Registry/Relay/Noise分权、Hybrid IK、multiplexing、presence与远程恢复 |
 | [current-project-gap-analysis.md](./current-project-gap-analysis.md) | 当前项目不是“缺什么功能”，而是缺哪些运行系统能力 |
 | [cloud-agent-mapping.md](./cloud-agent-mapping.md) | 客户端概念到云端 NestJS 架构的转换规则 |
 | [terminology-map.md](./terminology-map.md) | Thread、Turn、Item、Run、Step 等概念对照 |

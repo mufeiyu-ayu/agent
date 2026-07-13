@@ -50,6 +50,7 @@
 | [codex/architecture-learning-checklist.md](./codex/architecture-learning-checklist.md) | 值得学习的完整架构清单和检查项 |
 | [codex/source-reading-map.md](./codex/source-reading-map.md) | 按调用链阅读 Codex 源码的地图 |
 | [codex/feedback-and-diagnostics.md](./codex/feedback-and-diagnostics.md) | Feedback consent、诊断、附件上传与隐私边界专题 |
+| [codex/feedback-export-manifest-and-receipt.md](./codex/feedback-export-manifest-and-receipt.md) | Feedback三阶段附件清单、SQLite日志范围、导出authority与delivery receipt专题 |
 | [codex/assistant-directives.md](./codex/assistant-directives.md) | Assistant 文本指令、产品投影与 claim→observe→persist 专题 |
 | [codex/workspace-command-and-git-status.md](./codex/workspace-command-and-git-status.md) | Remote-capable workspace command、Git/PR 状态探测与一致性专题 |
 | [codex/doctor-diagnostics.md](./codex/doctor-diagnostics.md) | Doctor canonical report、并发诊断、降级与隐私投影专题 |
@@ -91,11 +92,13 @@
 | [codex/realtime-conversation-handoff-runtime.md](./codex/realtime-conversation-handoff-runtime.md) | Realtime音频/文本队列、WebSocket/WebRTC、Transcript与后台Agent Handoff专题 |
 | [codex/shell-snapshot-lifecycle.md](./codex/shell-snapshot-lifecycle.md) | Shell rc捕获、Snapshot制品、命令重写、环境覆盖、清理与跨进程边界专题 |
 | [codex/image-input-preparation-and-history.md](./codex/image-input-preparation-and-history.md) | Local/Inline/Tool图片的读取权限、规范化、视觉预算、缓存和持久化专题 |
+| [codex/image-generation-artifact-lifecycle.md](./codex/image-generation-artifact-lifecycle.md) | 生成图片的Extension gate、Turn权限、host制品、模型/App/rollout投影和retention专题 |
 | [codex/plugin-marketplace-lifecycle.md](./codex/plugin-marketplace-lifecycle.md) | Marketplace Git/Local来源、staging activation、config提交、rollback和runtime生效专题 |
 | [codex/app-server-thread-listener-lifecycle.md](./codex/app-server-thread-listener-lifecycle.md) | Thread单listener、多客户端订阅、resume快照接续、request replay与延迟卸载专题 |
 | [codex/tui-composer-attachment-lifecycle.md](./codex/tui-composer-attachment-lifecycle.md) | TUI图片/大粘贴占位符、富Draft、排队合并、失败恢复与临时制品专题 |
 | [codex/config-write-and-runtime-refresh.md](./codex/config-write-and-runtime-refresh.md) | Config Layer写入、版本CAS、原子发布、live Thread受限刷新与运行代际专题 |
 | [codex/exec-server-session-recovery.md](./codex/exec-server-session-recovery.md) | Exec Server Session attach/detach、短期进程保活、序号恢复与ambiguous commit专题 |
+| [codex/exec-server-noise-rendezvous-security.md](./codex/exec-server-noise-rendezvous-security.md) | Registry authority、Noise Hybrid IK、Rendezvous多路复用、presence和远程安全恢复专题 |
 | [codex/current-project-gap-analysis.md](./codex/current-project-gap-analysis.md) | 当前项目能力、证据和缺口 |
 | [codex/cloud-agent-mapping.md](./codex/cloud-agent-mapping.md) | 客户端 Codex 思想如何翻译为云端 NestJS Agent |
 | [codex/terminology-map.md](./codex/terminology-map.md) | Codex、当前项目和中文助记名的概念对照 |
