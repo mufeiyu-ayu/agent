@@ -115,12 +115,15 @@
 | 81 | Clipboard backend、image decode与artifact ownership | 补OSC仅100 KiB而native/helper无统一cap、attempt被提示成delivery、SSH/tmux/WSL env heuristic误选authority、PATH helper无timeout/stdio cap阻塞UI、macOS全进程stderr suppression丢并发日志、clipboard file/raw image无bytes/pixels/decode budget且同步阻塞event loop、PNG Vec+disk峰值、keep temp删除/提交/退出均不cleanup、WSL `.tmp/.png`双残留与mutable path TOCTOU、attachments无总量上限 | 83% / 83% |
 | 82 | Terminal hyperlink semantic ranges、click trust与wire amplification | 补语义range与visible layout分离、HTTP(S)+host/control filter及local target替换label的优点，control删除而非reject、bidi/userinfo/private host与label spoof、terminal click绕过Codex policy/audit、live buffer每cell重复完整OSC导致cells×URL bytes放大而scrollback按range、URL扫描/remap超线性、per-link临时Buffer与u16 row边界、字符串重映射可能串destination及width parser只懂BEL OSC | 83% / 83% |
 | 83 | Terminal title canonicalization、ownership与privacy surface | 补独立control/bidi sanitizer、typed item与preview rollback优点，raw cache不等于sanitized emitted title导致重复写、segment grapheme与final char/bytes/display单位漂移、combining-only与curated Unicode policy缺口、默认project及可选cwd/thread/branch/usage/id外泄、tmux共享title authority、100ms后台动画、持续write失败无backoff、退出只clear不restore、外部writer使cache分叉，以及full UUID被32字符截断 | 83% / 83% |
+| 84 | Workspace headline remote fetch、negative cache与view generation | 补5分钟poll+双层timeout/request id优点，backend full body/read-error吞空且message count/body无cap、全列表跨RPC而TUI只取首headline、任一坏timestamp阻断全部、无archived/sort/id/version语义、remote body仅trim无control/Unicode policy、404永久negative cache、普通error无限保留旧headline无stale TTL、ChatWidget重建id从0导致旧task/newowner ABA，以及多client无singleflight/ETag | 83% / 82% |
+| 85 | Rate-limit reset credit idempotency、account binding与durable receipt | 补per-option UUID和retry复用/AlreadyRedeemed优点，但key仅popup内存导致close/crash/rebuild后ambiguous operation换key、generic fallback可二次消费，App Server只验非空且处理时读current account造成A picker→B consume，widget id从0且finish不核对key/account/phase形成ABA，双层timeout后无status query，坏credit row让全部details降为generic、Unknown type仍可消费、remote list/title无budget、windows_reset被丢弃且无durable account receipt | 83% / 82% |
+| 86 | Workspace owner nudge email confirmation、correlation与spam boundary | 补TUI默认No明确确认和429 cooldown优点，但App Server RPC可绕过UI直接external communication、POST无idempotency导致commit后error盲重试、两层均无timeout且slot永久挂起、current auth使A prompt可发给B workspace、Finished event无id/type/account且widget slot None默认Credits/旧新请求乱序错投、guard不在dispatch admission、response无recipient/message id/cooldownUntil、body无cap/redaction，以及多client防spam全靠backend 429且无durable account audit | 83% / 82% |
 
 ## 最近检查
 
 - 命令：`python3 "$HOME/.local/bin/codex-weekly-usage.py"`
-- 读数：已用 17%，剩余 83%
-- 采样时间：`2026-07-13 13:30:44 CST`
+- 读数：已用 18%，剩余 82%
+- 采样时间：`2026-07-13 13:36:09 CST`
 - 判断：高于 50%；按用户明确停止条件继续做源码深挖，不能以首轮闭环或 PR 已创建为由停止。
 
 ## 下一批次

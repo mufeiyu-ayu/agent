@@ -3950,6 +3950,172 @@ cache identity != emitted canonical title != current terminal title.
 
 映射到当前项目：浏览器`document.title`同样是外泄到历史/标签/截图的surface；默认只显示产品名+非敏感状态，项目/客户名需用户选择。统一`canonicalizeTitle`返回实际emitted value并以grapheme/display-width/bytes限额，cache只去重emitted值。页面卸载不应假装能恢复其他应用状态；多tab用owner id/visibility降低动画，后台tab停更。稳定Run/Thread id通过专门copy action提供，不塞进截断title当审计键。
 
+### 4.95 Workspace Headline：远端公告轮询缺少content budget、cache generation与staleness语义
+
+用户可把Enterprise workspace headline加入TUI status line。启用后widget立即通过App Server `account/workspaceMessages/read`请求backend，取返回列表中第一个非空Headline，之后每5分钟刷新。TUI有2秒outer timeout，App Server有1秒backend timeout，异步结果带u64 request id；account更新会清cache，stale id被拒绝。这是合理的non-blocking UI fetch骨架。
+
+Backend request携带account auth/header并设置`Cache-Control: no-store`，但App Server没有account-scoped cache、ETag或singleflight。每个TUI实例/connection都独立每5分钟打远端，App Server公开RPC也可被其他client重复调用。workspace announcement本是低频数据，却使用poll-per-widget而非共享snapshot/push invalidation。
+
+transport对success/error都`res.text()`完整读入String，没有body byte cap；read error被`unwrap_or_default()`吞成空body，再表现为decode error。1秒timeout限制wall time但不能限制高速返回的巨大body。随后完整JSON创建所有message body，App Server clone/map为protocol对象，TUI其实只需要首个headline的一小段文本。
+
+response schema对messages数量、message_body长度和timestamp字符串没有本地budget。远端可返回数万announcement/超长body，所有内容先decode/跨JSON-RPC，再由TUI丢弃。status line最终按viewport截断，只限制显示结果，不限制网络、decode和内存成本；“render看见一行”不能倒推上游payload很小。
+
+任一message的created_at/archived_at不是RFC3339，`workspace_message_from_backend`就让**整个列表**失败，即使坏项是TUI不关心的Announcement，且前面已有合法Headline。一个辅助metadata parse error阻断主要正文。解析应逐项隔离，或让timestamp保持opaque/optional warning。
+
+TUI选择“backend顺序中的第一个非空Headline”，不按created_at排序、不按archived_at过滤，也不保存message_id。它假设endpoint只返回active且排序正确；如果backend返回旧/archived或顺序变化，status line可倒退。客户端无法做dedupe、确认或解释当前headline来自哪个message/version。
+
+远端message body只`trim()`，没有控制字符、bidi/default-ignorable、newline、grapheme/display width或byte canonicalization。它直接成为Ratatui Span，再由footer width truncation裁剪。terminal title使用了专门untrusted-text sanitizer，这里却依赖通用layout对异常字符的偶然行为；至少会有视觉重排/空白/多行与昂贵width计算风险，是否能把ESC保留进Cell还需要作为terminal injection regression test明确锁定。
+
+404被定义为`feature_enabled=false`，TUI收到后设置`workspace_messages_disabled=true`，之后本进程不再轮询，直到account状态变化或用户先移除再添加该item。临时部署404、错误base URL、代理路由404与真实feature absence不可区分；一次瞬态结果变成永久negative cache，服务后来上线也不会发现。
+
+其他error则保留旧headline并5分钟后重试，没有stale TTL/last-updated indicator。若管理员紧急撤销错误公告而client网络持续失败，旧内容可无限显示；若从未成功则静默空白。对“工作区运维/安全通知”，stale数据与no data必须可区分，不能只保留String。
+
+request id只在单个ChatWidget内单调递增，constructor从0开始。Thread切换会替换widget，而旧widget启动的tokio task仍通过全局AppEventSender回传；新widget若也发出id=0请求，旧结果就可能命中新pending id并被接受。id没有widget/thread/account generation，局部防stale在owner重建后发生ABA碰撞。
+
+同一widget禁用item会清pending id，旧结果会被拒绝；重新启用使用递增id，这是正确的。但widget replacement没有转移`next_status_line_workspace_headline_request_id`或取消旧task。Thread无关的account数据更适合由App级store拥有，widget只订阅，避免每次导航重置identity/cache并重复fetch。
+
+pending id在task正常timeout/error时会被event清掉；若task panic、AppEvent channel关闭或widget销毁且没有匹配结果，旧owner状态无恢复意义，新owner重新开始。这里进一步说明请求lifecycle不该藏在短命view对象里。backend account/workspace/generation才是正确cache key。
+
+双层timeout也没有形成统一deadline：TUI 2秒包住App Server RPC，server再用1秒包backend；transport自身可能在future drop时取消，但pending callback/HTTP connection cleanup依赖各层实现。error只变String，TUI无法区分auth、feature absent、timeout、decode、oversize或malformed timestamp，重试/negative-cache策略只能粗糙分叉。
+
+```text
+per ChatWidget (request_id starts at 0)
+  -> every 5m account/workspaceMessages/read
+     -> App Server -> backend GET no-store
+        -> full unbounded body + all messages
+        -> fail whole response on any bad timestamp
+  -> first non-empty Headline, body.trim only
+  -> cached String in short-lived widget
+
+old widget id=0 task ----\
+new widget id=0 pending --+--> stale result can satisfy new owner
+```
+
+关键测试：
+
+- capacity：巨大body、message count/body/timestamps、fast response within1秒和JSON-RPC复制峰值。
+- isolation：合法headline+坏announcement timestamp/unknown type，逐项错误不阻断主结果。
+- selection：多headline乱序、相同created_at、archived item、message id/version与backend reorder。
+- text：ESC/BEL/ST/newline、bidi/default-ignorable、combining、超长Unicode和Ratatui Cell实际symbol bytes。
+- negative cache：真实feature 404、瞬态deploy/proxy/custom base 404、server随后恢复及retry TTL。
+- stale：成功后网络失败、管理员撤回、headline过期，UI显示last-updated/stale/no-data。
+- ownership：旧widget request id=0后切Thread，新widget id=0；account切换、快速导航、task cancel和ABA。
+- fanout：多TUI/connection同时poll、App Server singleflight/cache、ETag/304和push invalidation。
+- timeout：TUI 2秒/App Server 1秒/HTTP drop、callback cleanup及typed error classification。
+
+映射到当前项目：workspace公告由后端按tenant/account缓存，使用ETag/version或push；前端组件不直接轮询。Response只返回当前active headline的bounded DTO `{id, revision, body, createdAt, expiresAt}`，入口限body/count且逐项容错。UI保存`fresh|stale|unavailable|disabled`状态，不把旧String无限当真。异步结果绑定store generation+account id，页面重建不重置request identity；所有remote display text走同一Unicode/control canonicalizer。
+
+### 4.96 Rate-limit Reset Credit：内存idempotency key保护了重试，却保护不了crash、view ABA与account切换
+
+TUI允许用户消耗earned reset credit来重置usage window。picker先读rate limits与credit details，按expiry排序available credits；每个option创建UUID idempotency key。点击后POST到App Server/backend，error页的Try again复用**同一个key**；backend还返回AlreadyRedeemed，TUI按success处理并刷新rate limits。这是正确识别“POST timeout不代表没提交”的设计。
+
+但idempotency key只存在selection closure和error popup内存。若consume在10秒App Server timeout/15秒TUI timeout前已被backend commit，UI显示失败后正常Try again仍安全；一旦用户关闭popup、切Thread、widget重建、进程crash或重新打开picker，旧key丢失，新option生成新UUID。同一模糊结果可能用新key再消耗一枚generic credit。
+
+这个风险在`credit_id=None` fallback最明显。details fetch失败/任一credit timestamp parse失败时，系统退化为只有available_count的“Use a reset”，让backend选择next credit。第一次ambiguous POST可能已消费A，第二个新key会合法消费B；backend无法知道用户只是重试同一意图。idempotency必须持久化到operation ledger，而不是绑UI closure寿命。
+
+App Server只验证idempotencyKey/creditId非空，不限制UUID格式、长度、字符或二者绑定。任意连接client可并发调用account side effect，用巨大key/id增加body/log/backend压力；也可复用同一key配不同creditId，语义完全交给backend。协议文档只“推荐UUID”，本地没有enforcement或operation hash。
+
+request也不携expected account id/generation。picker可能在account A读取credit，用户点击前/请求排队时切换到B；App Server处理consume时重新从`auth_manager.auth()`读取**当前**auth并构建BackendClient。specific credit大概率在B返回NoCredit，但generic `credit_id=None`会直接消耗B的next credit。UI account更新虽清pending view，只能丢弃response，不能撤销已经发生的跨account副作用。
+
+同样的view generation ABA再次出现：ChatWidget的`next_rate_limit_reset_request_id`从0开始，Thread切换会创建新widget；旧consume task与新consume都可能是request id 0。AppEvent带idempotency key/credit id，但`finish_rate_limit_reset_consume`只用u64 pending id判关联，不核对expected key/account。旧结果可被新popup接受，error retry closure甚至被装入旧operation key，success又触发以同一id标记的新refresh。
+
+单widget内success path刻意保留pending id，等consume response后用相同id发rate-limit refresh，最后才clear。这形成两阶段UI transaction：consume committed→refresh snapshot。做法合理；但同一个裸u64同时标识picker fetch、consume和post-refresh多个phase，type不区分。乱序/重复event若id碰撞，phase不匹配没有编译时或runtime检查。
+
+popup在consume/refresh时`allow_cancel=false`，降低用户重复点击；它不是server-side admission lock。重复AppEvent、另一个TUI/App Server client或两台设备可用不同UUID并发consume。credit_id specific时backend应CAS status，generic时必须有account-level single-consume transaction；本地没有in-flight registry或跨client协调。
+
+backend POST使用通用`exec_request`：完整读取无cap body，body read error吞成空字符串；server 10秒timeout drop future。commit后response丢失正是idempotency需要覆盖的路径，但App Server没有按key查询operation status的RPC，只能重新POST。若backend的dedupe retention短于用户retry/crash恢复窗口，local也没有证据提醒。
+
+detail fetch与usage fetch并行，details自身5秒timeout；任一credit的granted_at/expires_at非法会丢弃**全部details**并fallback count。这样一个坏row不仅隐藏其他可选credit，还把操作从specific credit降级为backend-selected generic credit，扩大副作用不确定性。应逐项隔离并在有任何可靠specific row时保留它们。
+
+Unknown reset_type与Available status仍被展示成当前scope推导出的“Full reset”；未来backend新增只重置某类window的credit，旧client可能用错误文案诱导用户执行。forward-compatible enum对读取没问题，对不可逆/稀缺credit的消费应fail closed或显示“unsupported credit type”。
+
+available_count来自i64，details/list/title无count/string budget。UI用count转usize作为take limit，实际受credits Vec长度约束，但远端可给巨大available list，构造同等数量SelectionItems和每项UUID。title直接作为option name，仅trim判断，不做control/Unicode/length policy；description虽传到protocol却被UI忽略，用户可能缺少backend给出的关键限制说明。
+
+consume response含`windows_reset`，BackendClient反序列化后App Server丢弃，仅投影四态outcome。TUI显示通用“Usage reset”，无法说明实际重置了几个/哪些window。随后refresh失败仍显示success（这是比否认commit更安全），但没有durable receipt、account、credit id、operation key或window list供审计。
+
+整个account side effect不进入Thread rollout；这是对的，因为它不属于某个Agent conversation，但也意味着本地没有独立account operation history。用户只能依赖瞬时popup/backend状态。至少应在account store记`pending/committed/unknown` receipt，不能把“不写Thread历史”误解为“不需审计”。
+
+```text
+picker under account A
+  option -> UUID K (memory closure only), credit C or generic
+  -> App Server reads CURRENT account at handling time
+  -> POST(redeem_request_id=K, credit_id=C?)
+       backend may commit before timeout
+  <- response lost => popup retry keeps K          # safe
+
+close/rebuild/crash -> K lost
+reopen -> new K2 -> may consume another generic credit
+
+widget A request_id=0 result can collide with widget B request_id=0.
+```
+
+关键测试：
+
+- ambiguity：backend commit后delay/close/malformed body，Try again同key、关闭重开新key及generic多credit消耗数。
+- durability：TUI crash/restart、Thread switch、popup close、app-server restart后按operation key恢复status。
+- account race：A fetch→切B→specific/generic consume、response回来后pending被clear及实际被扣account。
+- ABA：旧widget/newwidget id=0 consume和refresh乱序，必须同时核对view generation、phase、key和account。
+- concurrency：两个TUI/设备/connection不同keys消费same specific/generic pool，backend CAS与local receipt。
+- input：非UUID/超长key、超长/未知credit id、same key different body与dedupe retention。
+- details：一坏timestamp+多好credit、巨大count/list/title/description、Unknown type与未来reset scope。
+- receipt：windows_reset、实际window ids、credit id、account、outcome/unknown在refresh失败和resume后的展示。
+- lifecycle：consume success→refresh fail、refresh乱序/重复、popup不存在及typed phase transition。
+
+映射到当前项目：所有有成本/配额副作用的用户操作创建durable Operation row，key由server签发并绑定tenant/account/body hash；UI retry、重开、crash恢复都复用它。请求带expected account generation，处理时CAS验证。side effect完成后保存provider receipt，ambiguous状态只能poll/reconcile，不能自动换key重做。specific resource优先，fallback generic必须再次明确确认；未知resource type fail closed。view request id只负责展示，不能充当业务operation identity。
+
+### 4.97 Owner Nudge Email：TUI有明确确认，App Server副作用却无idempotency、timeout与response identity
+
+当workspace member因credits或usage limit受阻时，TUI先显示错误，再弹“Notify owner?”/“Request increase?”选择；默认选No，只有用户选Yes才发AppEvent。这是对外部沟通副作用正确的human confirmation。Backend以429表示近期已通知，TUI映射为CooldownActive而非error，也避免用户误以为必须继续重试。
+
+但confirmation只存在官方TUI。App Server公开`account/sendAddCreditsNudgeEmail`，任何已连接client传一个两值creditType就立即POST backend；没有approval、interactive-user proof、origin connection capability或managed policy。App Server WebSocket本来就是高权限surface，但“发邮件给另一个人”应在协议中显式归类为external communication，而不是普通account query。
+
+这条POST没有idempotency key。backend若邮件已排队/发送后response丢失，App Server返回error，TUI提示“Please try again”；再次Yes会创建全新请求并可能再发邮件。429 cooldown是rate limit，不是对同一logical intent的dedupe receipt；窗口前后、不同credit type或backend故障均可能重复骚扰workspace owner。
+
+App Server和TUI都没有timeout。`send_add_credits_nudge_email_inner`直接await BackendClient，background task也直接await App Server request；与相邻workspace headline、reset credit的双层timeout不同。TCP/body挂起会让`add_credits_nudge_email_in_flight=Some`永久存在，同一widget以后连prompt都不再打开，用户也没有cancel/unknown状态。
+
+请求没有绑定触发rate-limit error时的workspace/account。popup只捕获creditType；App Server处理时从`auth_manager.auth()`读取当前account。用户在错误发生后切换account再点Yes，或请求排队期间切换，邮件会发给**当前workspace owner**，不一定是被限流workspace。TUI account update没有expected account CAS。
+
+response correlation更脆弱：AppEvent::AddCreditsNudgeEmailFinished只带`Result<Status>`，没有request id、credit type、account或workspace。finish从widget的单个`add_credits_nudge_email_in_flight`取type；若None就默认Credits。旧widget task在Thread切换后返回，新widget没有in-flight，就会把UsageLimit结果显示成“Workspace owner notified”。
+
+若旧UsageLimit result与新widget当前Credits request交错，旧result会take/clear新in-flight并按Credits解释；真正的新result稍后又在None fallback下解释成Credits。单slot防同widget并发，却不能跨view generation或全局AppEvent乱序。结果identity必须随event端到端回显，不能从当前UI状态猜。
+
+`start_add_credits_nudge_email_request`无条件覆盖slot并总返回true；event dispatcher虽由正常prompt路径调用，重复AppEvent/未来其他入口可启动第二个request。in-flight guard放在`open_workspace_owner_nudge_prompt`而非start/dispatch admission，检查与写入不在同一原子位置。
+
+backend client把任意success status的完整body读完后丢弃，没有message/operation id、recipient domain、workspace、sentAt或cooldownUntil。App Server response只剩Sent/CooldownActive；429也不解析Retry-After。UI无法告诉用户通知发给谁、何时可再请求，审计只能看瞬时generic文案。
+
+transport error包含完整backend error body，App Server再拼进internal error，TUI warning记录字符串；邮件endpoint可能返回workspace/owner信息。既没有body cap也没有error redaction。success body虽业务上不需要，仍完整读取，远端可用大body拖延无timeout请求。
+
+多个TUI/connection/device没有共享local throttle。每个都能绕过单widget slot并调用RPC；真正防spam全靠backend 429。若backend cooldown按endpoint而非account+workspace+type，语义可能过宽/过窄；client完全不知。对外communication的rate limit与idempotency需要作为协议contract暴露。
+
+TUI最终用`add_to_history`插入“owner notified/limit requested”info cell，但这是terminal/UI history，不是Core Thread rollout或account operation store。它可能出现在与触发错误不同的新Thread，resume后也不可靠。Account-level side effect不应污染conversation，但应进入独立durable audit/notification center。
+
+```text
+rate-limit error under account A
+  -> TUI prompt (default No)
+  -> Yes: AppEvent(type only)
+  -> App Server reads CURRENT account B
+  -> POST without operation/idempotency key, no timeout
+  <- Result(status only)
+  -> global AppEvent(result only)
+  -> current widget guesses type from one mutable slot
+
+Old/new widget or account transitions break both target and message identity.
+```
+
+关键测试：
+
+- ambiguity：backend sends email then close/delay；UI error→retry产生多少封，429窗口前后行为。
+- timeout：connect/TLS/header/body永久挂起、large body、cancel/shutdown及in-flight slot恢复。
+- account：A错误→B点击/处理、B logout、workspace membership变化和expected account CAS。
+- correlation：UsageLimit旧widget response、新widget Credits request、乱序/duplicate/None slot，文案必须按request identity。
+- admission：两个App Server clients直接RPC、无TUI confirmation、managed policy与external communication audit。
+- concurrency：同widget重复event、多widget/device、backend cooldown key(account/workspace/type)和Retry-After。
+- receipt：recipient/workspace、message/operation id、sentAt/cooldownUntil、status query和resume。
+- privacy：巨大/敏感error body在BackendClient/App Server/TUI logs中的cap/redaction。
+- lifecycle：Thread switch、account update、process crash、request成功但UI销毁和独立account history。
+
+映射到当前项目：任何“替用户发邮件/消息”走独立CommunicationOperation：server生成idempotency key，绑定tenant/account/recipient/template/reason hash，要求官方UI或policy签发的短寿命confirmation token。请求有总deadline但timeout落`unknown`并按operation id查询，不能提示盲重试。response回显完整identity/receipt，前端按generation关联。记录写account audit log而非conversation；跨client共享cooldown并展示recipient与nextAllowedAt。
+
 ## 5. 当前项目最应该吸收的架构原则
 
 ### 原则一：对外协议稳定，内部事件可演进
