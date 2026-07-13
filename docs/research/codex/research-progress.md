@@ -106,12 +106,15 @@
 | 72 | Standalone Image Generation输入authority、base64复制与artifact提交 | 补provider/model双gate、first Environment读权限、recent images非稳定引用、pre-start失败与cancel缺terminal、response无image-specific cap、first data/空b64、base64跨item/output/hook/rollout重复、sanitize path碰撞、无sandbox/nofollow/atomic write、save失败仍completed及mobile resume局部redaction | 84% / 84% |
 | 73 | Safety Buffering远端metadata、ephemeral UI与非事务重试 | 补enabled=false不gate/object总show、SSE/WS treatment时机、每帧重复通知无去重、requested/actual/retry model混淆、不持久化无法resume、仅visible text关闭retry导致tool副作用可重放、interrupt→rollback latest→start无CAS、三阶段partial failure及stale click静默修改未来model/effort | 84% / 84% |
 | 74 | Legacy notify payload、host process authority与delivery语义 | 补完整sampling history而非当前prompt、secret/无界JSON进argv与ARG_MAX、shell `$0`调用差异、process cwd和继承env/sandbox缺口、spawn-only成功不wait/timeout/reap、child失败不可见、session-static配置、project layer剔除及Guardian显式清理 | 84% / 84% |
+| 75 | TUI desktop notification正文信任、OSC9编码与attention queue | 补默认focus/Auto backend、单pending priority slot丢并发提醒、模型/MCP/path多信任源、grapheme截断不移除control、plain OSC9 raw BEL/ST注入、tmux仅double ESC仍可BEL终止、同步stdout错误后永久disable不降级及完成通知的续跑抑制语义 | 84% / 84% |
+| 76 | Unix shell escalation capability、敌对framing与env闭包 | 补共享继承datagram fd可伪造/洪泛、unbounded handler与u32近4GiB allocation、无request deadline、共享Stopwatch一项审批冻结全shell且pause非RAII、policy/UI漏完整env、任意SuperExec destination fds/dup2不校验、direct-child kill、detached handler及Run继续传播socket capability | 84% / 84% |
+| 77 | EndpointSession generic retry、operation identity与body/log budget | 补request retries实际值+1、POST ambiguous outcome可重复副作用、unary完整body error重试、无Retry-After/max delay/total deadline、unary/stream重建identity差异、auth transient计入network attempt、raw HashMap query拼接、custom auth可替换wire request、TRACE完整JSON与error headers/body泄漏 | 84% / 84% |
 
 ## 最近检查
 
 - 命令：`python3 "$HOME/.local/bin/codex-weekly-usage.py"`
 - 读数：已用 16%，剩余 84%
-- 采样时间：`2026-07-13 13:12:07 CST`
+- 采样时间：`2026-07-13 13:17:34 CST`
 - 判断：高于 50%；按用户明确停止条件继续做源码深挖，不能以首轮闭环或 PR 已创建为由停止。
 
 ## 下一批次

@@ -3492,6 +3492,151 @@ final sampling input = complete normalized prompt history
 
 映射到当前项目：不要用host command作为Agent业务通知主路径。Run完成后写durable outbox，由受限worker按notification id异步投递；payload默认只含run id、状态和短摘要，正文按租户授权再取。若保留本地developer hook，使用bounded stdin、清理env、固定cwd、sandbox、timeout、process group和wait status，并把delivery结果作为独立事件；config source必须是user/admin，repo不得启用。
 
+### 4.86 TUI Desktop Notification：200个grapheme的预览仍能携带终端控制序列
+
+TUI通知与legacy notify是两套系统。TUI默认启用，condition默认Unfocused，method Auto会对Ghostty/iTerm2/Kitty/Warp/WezTerm选OSC 9，其他terminal退回BEL；用户也可强制Osc9/Bel。FocusGained/Lost只更新一个进程内AtomicBool，启动默认focused；终端不报告focus时，Unfocused模式可能永不通知，而Always绕过该判断。
+
+ChatWidget把通知先收敛成单个`pending_notification`，redraw时才写terminal。Agent完成优先级0，approval/elicitation/plan优先级1；较高优先级会压住后来的完成通知，同优先级则last-write替换。它避免同一frame的噪声，却没有queue、dedupe key或ack，多项并发审批只留下最后一条桌面提醒。
+
+通知正文来自多个信任域：模型最终回复最多200 graphemes；模型生成的exec command最多30 graphemes；patch path、MCP server name和plan title则有不同甚至无长度限制。`split_whitespace`和grapheme truncation只改善展示，不删除C0/C1 control、ESC、BEL、OSC terminator或bidi controls。MCP server和模型都可以影响最终terminal bytes。
+
+plain OSC 9直接输出`ESC ] 9 ; {message} BEL`，对message完全不escape。只要正文含BEL即可提前结束通知，后续ESC sequence被terminal继续解释；含`ESC \\`也可用ST结束OSC。于是“桌面通知预览”成为terminal escape injection sink，截断到30/200 graphemes不改变安全性。
+
+tmux passthrough只把message中的ESC翻倍，再包`DCS tmux; ... ST`；它没有处理BEL。BEL仍可结束内层OSC，随后双ESC经tmux unescape后到达outer terminal，攻击者可继续发title、clipboard、hyperlink或其他terminal-specific sequence。现有test只证明ESC被double，没有测试BEL/ST/control stripping和最终terminal parser语义。
+
+BEL backend忽略message，只写单字节BEL，因此没有message injection，但也丢掉审批主体。Auto根据terminal name静态白名单决定OSC9，而terminal/multiplexer实际支持、远程SSH链路和安全策略可能不同；tmux只影响passthrough wrapping，不改变正文信任。
+
+AgentTurnComplete先解析visible markdown再用whitespace normalization，citation/hidden plan被剥离；但外部tool文本如果被模型复述仍进入通知。approval command用shlex join，quote是shell可读性而非terminal escaping。Elicitation直接插入`server_name`，plan title也直接format；每个producer各自截断无法替代统一sink sanitizer。
+
+terminal write同步发生在TUI主流程的`maybe_post_pending_notification`。首次I/O错误会把backend设None，当前session后续通知永久禁用，只写tracing warning；没有UI banner、retry或降级到BEL。`execute!(stdout())`与ratatui使用同一terminal，成功写入恶意/畸形control后也可能扰乱TUI状态，返回Ok并不会触发禁用。
+
+通知只在Turn真等待用户时发送完成提醒：若queued follow-up、pending steer或active goal会立即续跑，则跳过，这是正确的attention语义。approval/elicitation则在对应UI request处理时发。但pending slot跨类型last-write意味着“真正需要人”的多个request仍无法逐一通知，UI queue和desktop notification queue的ownership不一致。
+
+```text
+untrusted model / MCP / path text
+  -> optional whitespace normalization + grapheme truncation
+  -> one pending priority slot
+  -> if focus condition allows:
+       OSC9: ESC ]9; RAW_MESSAGE BEL
+       tmux: DCS wrapper + ESC doubling only
+       BEL: message discarded
+
+Display truncation != terminal control escaping.
+```
+
+关键测试：
+
+- injection：BEL、ESC `]52`、ST、CSI、newline、C1 controls、bidi/zero-width在所有Notification variants。
+- tmux：BEL终止、double ESC经passthrough后的outer bytes、nested tmux与SSH remote terminal。
+- size：超长server name/path/title、grapheme combining/emoji、truncate正好切在control附近。
+- coalescing：多个approval、approval后TurnComplete、同priority替换和redraw延迟。
+- focus：不支持focus events、启动已unfocused、rapid focus race、Always与alt screen切换。
+- failure：stdout closed/partial write、首次错误后的BEL降级、恶意sequence返回Ok但破坏terminal状态。
+- attention：queued follow-up、goal continuation、side Thread与多个pending user requests。
+
+映射到当前项目：Web端用浏览器Notification API的结构化title/body，不拼terminal协议；仍需正文长度、control/bidi规范化和敏感内容最小化。若实现CLI OSC通知，在唯一sink删除所有C0/C1/ESC/BEL/ST和双向控制，或按terminal协议做严格编码；producer不得自行“截断即安全”。通知采用bounded queue和request id，用户点击能定位具体Approval；投递失败可观测并安全降级。
+
+### 4.87 Shell Escalation：继承socket是capability，但没有frame/并发/env预算的capability会反噬host
+
+ZshFork用patched zsh的`EXEC_WRAPPER`拦截每次exec。sandboxed shell及其descendants继承一个AF_UNIX datagram fd；wrapper发送一个带per-request stream socket fd的handshake，再在stream上发file/argv/workdir/env。host policy返回Run（wrapper在原sandbox内execv）、Escalate（host复建进程）或Deny。per-request response socket解决并发关联，是比全局request id更稳的object-capability设计。
+
+但共享datagram fd不仅被官方wrapper持有，sandbox内任意代码都能直接使用。server对handshake payload内容完全忽略，只要求SCM_RIGHTS恰有一个fd，然后无上限`tokio::spawn`handler；没有peer credentials、nonce、session request count、in-flight上限或rate limit。持有fd的恶意进程可以制造大量socketpair、保持stream不发送完整request，让host堆积task和FD。
+
+stream framing是u32 little-endian length；sender只拒绝超过u32，receiver对声明长度没有更小上限，读完header就`vec![MaybeUninit; message_len]`。恶意sandbox peer发送`0xffffffff`前缀即可尝试让host一次分配近4 GiB，再永久不发payload。每个handshake都能重复这个动作。datagram有8192 bytes和最多16个FD限制，无法保护后续stream allocation。
+
+frame header/payload read、response send和SuperExec等待没有per-request deadline；只select parent/session cancellation。approval期间Stopwatch暂停active timeout，manual approval又可无限等待。多个并发exec请求共享同一Stopwatch，任一pause都会增加active_pauses，直到**全部**审批结束才恢复整个shell command的timeout；一个无人回答的伪造request可以冻结其他真实子命令和父shell租约。
+
+`pause_for`用`pause(); fut.await; resume()`实现，没有Drop guard。若future在pending期间被select cancellation/drop，resume不会执行，计数泄漏。当前父/session cancellation往往同时结束整个session，掩盖了问题；若未来复用policy/stopwatch或单request取消，剩余request会永久停表。active pause应是RAII lease而非await后的手工对称调用。
+
+EscalateRequest的file相对workdir解析成absolute，policy只看program、argv和workdir；完整env不进入EscalationPolicy、PermissionRequest、Guardian或人工approval UI。批准后env原样进入`prepare_escalated_exec`，Unsandboxed路径只剥离managed proxy标记，保留LD_PRELOAD、DYLD、GIT_EXTERNAL_DIFF、PYTHONPATH、PATH等transitive behavior controls。审批看到“允许的binary+args”，host实际执行效果可被未展示env改写。
+
+这与显式prefix rule组合尤其危险：UseDefault在unsandbox允许且命中真实rule Allow时可选择Unsandboxed。sandbox进程可伪造一个表面命中allow rule的safe command，再用env加载helper/library或改变config；executable path解析再精确也没有覆盖execution closure。env至少要进入policy identity、UI diff和clean allowlist。
+
+server先发Escalate response，再等`SuperExecMessage`。恶意client可拿到批准后不继续，handler无限等；也可声明最多16个任意destination fd整数。server只检查JSON列表长度等于SCM_RIGHTS数量，不限制恰为`[0,1,2]`、唯一/非负，也不检查`dup2`返回值。pre_exec可能覆盖非stdio fd或静默失败，破坏Command内部约定；官方wrapper虽固定0/1/2，host不能把peer诚实当验证。
+
+SCM control parser预分配16-FD空间，却不检查MSG_CTRUNC/异常cmsg长度；`extract_fds`对`cmsg_len - CMSG_LEN(0)`直接做usize减法并据此读取。正常kernel消息受本地socket约束，但面对被sandbox peer构造的ancillary data，truncation、多个cmsg、边界长度和received FD cleanup必须作为host parser fuzz面。
+
+Escalated child用host `Command`、current_dir/env及转移的stdio启动，kill_on_drop；parent/session取消只`start_kill` direct child并wait，不建process group/job。child已经fork出的descendant可继续持有host权限/FD。server每个request task又是detached spawn，不被EscalationSession JoinHandle直接管理；它们依赖shared cancellation自行走到select，正在未包select的send或pre_exec/spawn阶段没有统一join barrier。
+
+Run路径用`execv`保持wrapper当前environment。虽然发给server的env map过滤了`CODEX_ESCALATE_SOCKET`与`EXEC_WRAPPER`，进程自身没有unset；client fd还被设为非CLOEXEC。因此实际命令继续继承escalation capability和wrapper配置，任意非shell child也可直接伪造handshake。这个设计支持descendant exec interception，但扩大了capability传播范围，必须靠fd lifecycle和protocol admission兜底。
+
+```text
+sandboxed process tree owns shared datagram capability fd
+  -> unlimited handshakes + one arbitrary stream fd each
+     -> host detached task
+        -> u32 frame length -> unbounded allocation
+        -> policy(program, argv, cwd)    # env omitted
+        -> [approval pauses shared active-time stopwatch]
+        -> Escalate
+           -> arbitrary env + destination fd map
+           -> host child, direct-child cancellation only
+```
+
+关键测试：
+
+- framing：0/1/8192/巨大u32、partial header/payload、never-finish、malformed JSON和allocation failure。
+- admission：数千handshakes、no/multiple/truncated FDs、same peer flood、task/FD/memory limits及session shutdown join。
+- timeout：并发两个approval、一项永久pending、cancel during pause和RAII pause cleanup。
+- env closure：LD_PRELOAD/DYLD/Git/Python/PATH/config env对allow rule、Guardian和UI展示的影响。
+- forged request：任意workdir/file/argv、批准后不发SuperExec、非`[0,1,2]`/duplicate/negative/huge destination fd。
+- process tree：escalated child fork descendant、signal forwarding、cancel、timeout和fd inheritance。
+- capability lifetime：Run后ordinary child直接使用socket、shell exit/session Drop、parent copy close与CLOEXEC组合。
+- parser fuzz：ancillary truncation、多个SCM_RIGHTS、奇异cmsg_len和FD cleanup。
+
+映射到当前项目：当前SEO Agent不应引入任意shell escalation。未来若需要executor，capability channel必须有authenticated session/operation id、bounded frame、in-flight semaphore、deadline和structured cancellation；host对peer输入按不可信RPC处理。审批identity覆盖binary digest、argv、cwd、clean env和permission generation，执行只从server-side frozen environment构造。stdio映射固定schema，所有dup错误fail-closed；child用process group/job object，session拥有并join全部handler与descendant cleanup。
+
+### 4.88 EndpointSession：统一retry了transport，却没有统一operation identity与body budget
+
+Codex API的Images/Search/Models/Memories/Responses HTTP客户端共享`EndpointSession`：Provider拼URL/default headers/query，extra headers覆盖，request body挂到Request，auth在每次attempt发送前应用，transport执行；`run_with_request_telemetry`包住generic retry。抽象统一了mechanics，但它不知道endpoint的副作用、幂等性和payload敏感度。
+
+Provider配置字段叫`request_max_retries`，默认4、硬上限100；转换后却存到`RetryPolicy.max_attempts`。retry loop是`for attempt in 0..=max_attempts`，所以默认实际最多**5次HTTP尝试**，配置100最多101次。内部命名和用户语义相差一次，telemetry attempt又从0开始，容量/计费审计必须明确“retries还是total attempts”。
+
+retry条件只看429、5xx、timeout和network；普通provider固定429=false、5xx=true、transport=true。它不看HTTP method、endpoint类型、request body或idempotency key，因此所有POST同样重试。Images generation/edit、search和其他写/计费请求若server已处理但response body中断，client会再次POST，可能生成多份artifact、重复计费或重复副作用。
+
+Reqwest unary transport先等status，再完整`resp.bytes()`；success body和error body都没有Endpoint级byte cap。读取成功status后的body network error被映射TransportError::Network并重试，正是“远端可能已commit”的ambiguous outcome。非success也完整读text后才判断retry，每个5xx可返回巨大body；最后错误把完整body保存在TransportError并沿ApiError Display传播。
+
+Generic retry不读取`Retry-After`，只用200ms指数退避和±10%随机jitter。attempt n的delay指数增长，无per-delay cap和总deadline；配置100在持续5xx下会很快进入极长sleep，语义接近永久挂起。Responses SSE另有上层Retry-After解析，导致不同endpoint对相同429/5xx遵循不同backoff协议。
+
+backoff sleep没有显式cancellation token，但future drop可取消；EndpointSession本身也没有operation deadline。Request.timeout默认None，依赖所构造Reqwest client的全局默认；provider只有stream idle timeout。调用方如果在human pause、goal continuation或background refresh中持有future，重试总wall time没有统一预算字段可审计。
+
+unary execute每次attempt重新运行`make_request`和configure closure，再由auth.apply_auth；body保留Serde Value，transport每次重新serialize。configure若生成request id/timestamp或读可变状态，不同retry会成为不同identity。stream path则先`into_prepared()`一次、clone相同encoded bytes，再每次auth；同一抽象在unary/stream的“重试是否重建request”语义不一致。
+
+Transient AuthError被映射成TransportError::Network，因此在retry_transport=true时也消耗attempt和backoff，即使一次网络请求都没发；Build auth error不重试。telemetry把auth transient和真实network归为同一类attempt，若不另记`sent=false`，无法判断远端是否可能执行，也难以安全决定幂等补偿。
+
+Provider URL不是用URL query builder：先把`base_url.trim_end('/') + '/' + path`字符串拼接，再把HashMap以未percent-encode的`k=v&...`追加。HashMap iteration顺序不稳定，key/value中的`&`, `=`, `#`, `%`可改变query结构；base URL若本身含query/fragment，path也会拼到错误位置。对AWS/request signing、cache key和测试重放而言，canonical URL不稳定。
+
+extra headers直接extend provider headers，auth provider随后可查看并替换完整request。默认header auth一般再插Authorization，但reserved header precedence没有在Endpoint contract声明。自定义request-signing auth甚至可替换URL/body，它是可信adapter；telemetry span却只记录原method/path，未必是最终wire destination。
+
+Reqwest transport在TRACE记录**完整JSON/EncodedJson request body**，无长度或字段redaction；图像data URL、完整conversation、tool args和metadata都会进入日志。compression开启且TRACE时还特意保留一份uncompressed trace bytes。DEBUG HttpClient记录完整URL和全部response headers；auth endpoint可选关闭logging，但普通model/custom provider流量默认开启。
+
+错误响应的URL、headers、body都进入TransportError Debug/Display；header可能含cookie/internal routing，body可能回显prompt。正常success body虽不直接trace，具体endpoint decode失败常把serde error转String，但内存预算已消耗。transport logging、error exposure和API output budget应是同一个data classification设计，而不是每个consumer补丁。
+
+```text
+semantic POST operation
+  -> Provider string-built URL + headers + body
+  -> attempts 0..=request_max_retries
+     -> configure [per attempt for unary]
+     -> apply_auth [per attempt]
+     -> send + read full body
+        ambiguous body/network failure -> retry same semantic operation
+     -> exponential sleep, no total deadline / Retry-After
+
+Transport retry cannot infer operation idempotency.
+```
+
+关键测试：
+
+- count：request_max_retries 0/1/4/100的total attempts、telemetry numbering和文档一致性。
+- ambiguity：server commit后close body、timeout/read error，image/search/write endpoint重复次数和计费。
+- idempotency：POST/GET分类、稳定operation key、provider支持/不支持dedupe及retry禁止策略。
+- backoff：429 Retry-After、5xx、jitter、极大attempt、总deadline和future cancellation。
+- request identity：unary configure动态header、stream prepared body、auth transient before-send与sent-after-failure区分。
+- URL：existing query/fragment、reserved chars、Unicode、HashMap order、signing/cache canonicalization。
+- payload：巨大success/error body、response headers、TRACE conversation/image、compression保留副本和redaction。
+- header/destination：provider/extra/auth冲突、自定义signer替换URL/body与telemetry最终wire事实。
+
+映射到当前项目：provider adapter声明每个operation的`idempotencyClass`、stable operation id、max attempts、per-attempt/total timeout、retryable status和body limits；默认POST不自动重试ambiguous outcome。远端工具用Run/Step id做幂等key，数据库/outbox记录attempt与`sent/accepted/committed/unknown`。URL用标准builder和canonical query，reserved headers分层。日志只记allowlisted metadata、body digest/size；success/error response都在stream读取层强制byte cap。
+
 ## 5. 当前项目最应该吸收的架构原则
 
 ### 原则一：对外协议稳定，内部事件可演进

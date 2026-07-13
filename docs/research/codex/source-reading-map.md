@@ -1693,3 +1693,76 @@ buffer期间断线、切Thread和resume；EventMsg不持久化且TUI忽略initia
 从project/user/managed层分别配置notify，并在runtime reload后修改；project会被剔除，现有Thread又保留旧notify。source trust与runtime generation都应在诊断里可见。
 
 最后启动Guardian、thread-spawn child和其他internal sessions，确认哪些clone清notify。生产默认只允许root user Turn投递，内部代理如需通知必须显式声明而非继承。
+
+## 84. 路线八十一：桌面通知的grapheme截断为何挡不住terminal injection
+
+按producer、coalescing、focus gate、terminal encoder和failure fallback阅读：
+
+- `tui/src/chatwidget/notifications.rs`：五类正文、优先级单slot、200/30 grapheme截断。
+- `turn_runtime.rs`、`tool_requests.rs`：模型回复、命令、path、MCP server和plan title来源。
+- `tui/src/notifications/osc9.rs`/`bel.rs`：raw OSC9、tmux DCS wrapping和BEL discard。
+- `tui/src/tui.rs`/`event_stream.rs`：focus condition、同步stdout写、首次错误永久disable。
+- `config/src/types.rs`：默认enabled/unfocused/auto与custom type allowlist。
+- notification/TUI tests：当前只覆盖普通文本、ESC double和优先级行为。
+
+对每类Notification注入BEL、ST、OSC52、CSI title、newline、C1和bidi controls；抓最终bytes而不只看Rust String。plain路径完全raw，tmux路径只double ESC而未处理BEL。
+
+把同一payload送过nested tmux和SSH，记录tmux de-escape后outer terminal真正看见的sequence。安全测试必须验证终端parser边界，而不是“字符串里ESC数量增加”。
+
+连续产生两个approval、elicitation、plan prompt和TurnComplete，在redraw前后观察pending slot。高优先级压低优先级、同级last-write，桌面提醒和实际UI request queue并不一一对应。
+
+使用不发送FocusLost的terminal、启动时窗口已失焦和rapid focus切换；默认Atomic=true会导致漏通知。focus是体验hint，不能控制安全或durable delivery。
+
+关闭stdout或制造write error，确认backend被永久None且不降级；再发送语法有效但有害的escape，它返回Ok所以不会自愈。生产应统一sanitize，并把I/O降级显式展示。
+
+最后比较queued follow-up/active goal时完成通知被抑制的正确语义，与side Thread/多审批的缺口。attention routing要绑定request id和owner Thread。
+
+## 85. 路线八十二：sandbox继承的escalation socket为何必须按敌对RPC设计
+
+按capability传播、framing、policy identity、FD transfer和process cleanup阅读：
+
+- `shell-escalation/README.md`与`unix/mod.rs`：patched zsh、Run/Escalate/Deny和共享fd拓扑。
+- `escalate_client.rs`/protocol：完整env、per-request stream、stdio SCM_RIGHTS和Run execv。
+- `socket.rs`：8192 datagram、16 FD、u32 stream frame、无receiver上限和ancillary parser。
+- `escalate_server.rs`：unbounded handshake spawn、detached handler、response-before-SuperExec及host child。
+- `stopwatch.rs`：shared active-time pause和非RAII `pause_for`。
+- Core `unix_escalation.rs`：execpolicy/approval只看program+argv+cwd、env落入Unsandboxed/新sandbox和direct-child cancel。
+
+从sandbox内绕过官方wrapper，直接在继承datagram fd发送带stream fd的handshake；stream只写`0xffffffff`长度或partial JSON。记录host allocation、task/FD数量和session cancel能否全部join。
+
+并发制造大量request，其中一个进入人工approval永久不答，另一个正常执行；共享Stopwatch直到所有pause清空才恢复。取消pending future，检查`pause_for`没有Drop guard导致的active count。
+
+给一个allowlisted absolute command注入LD_PRELOAD、Git/Python helper、PATH/config env；比较policy、Guardian、人工UI都看不到env，而prepare执行保留。command identity必须包含transitive environment。
+
+批准后不发SuperExec，或发送destination fds为重复、负数、巨大值及非stdio；当前只校验数量相等且忽略dup2失败。host必须只接受固定0/1/2映射。
+
+构造超过16 FD、MSG_CTRUNC、多个SCM_RIGHTS和异常control长度，做parser fuzz与FD leak检查。局部Unix socket也要按敌对输入验证unsafe边界。
+
+让host child fork后台descendant再取消parent；direct kill不收process tree。然后走Run路径，让ordinary child读取仍继承的socket/env，证明capability传播超过wrapper瞬间。
+
+最后比较EscalationSession只abort主loop、per-request task detached的shutdown行为；用JoinSet/TaskTracker拥有全部handler并在drop时有界join。
+
+## 86. 路线八十三：transport retry为什么不能替代业务幂等协议
+
+按request construction、auth、retry、body read和logging阅读：
+
+- `codex-api/src/endpoint/session.rs`：unary/stream make-request差异、per-attempt auth和telemetry。
+- `codex-api/src/provider.rs`、model-provider-info：URL/query拼接、默认4 retries与100 cap。
+- `codex-client/src/retry.rs`：inclusive loop、retry条件、指数jitter和无总deadline。
+- `http-client/src/transport.rs`：full success/error body、status映射和TRACE完整JSON。
+- `http-client/src/default_client.rs`：URL/response headers DEBUG logging和auth专用关闭路径。
+- Images/Search/Memories/Responses clients及tests：POST endpoints、prepared stream body与flaky auth/transport。
+
+设置request_max_retries为0/1/4并让transport恒失败，确认total attempts为值+1、attempt从0记录。API字段和实现命名应统一，避免SLO/成本配置误读。
+
+让测试server收到POST并commit后，在response body中途断开；对image generation、edit、search和写endpoint数实际副作用。没有idempotency key时，ambiguous failure不应由generic transport自动重放。
+
+返回429带Retry-After和连续5xx，对比generic 200ms指数退避与Responses上层parser；再配置100观察无max delay/total deadline。每个operation要有可取消总预算。
+
+在unary configure closure递增header，在stream configure同样操作；抓retry wire requests。前者每attempt重建，后者只prepare一次，稳定operation id不能靠调用方偶然closure语义。
+
+让auth第一次Transient、第二次成功，记录telemetry attempt虽没有首个wire send；再模拟send后network error。`sent`状态必须单独存在，不能都叫network retry。
+
+给base URL现有query/fragment，query_params放`&`, `=`, `#`, Unicode并多次运行；当前raw HashMap join不canonical。标准URL builder和稳定排序是签名/缓存前置条件。
+
+最后打开TRACE，发送conversation和image data URL；让server返回巨大error body/敏感headers。验证完整正文和headers进入日志/error，建立统一byte cap与field allowlist。
