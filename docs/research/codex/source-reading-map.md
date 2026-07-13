@@ -1354,3 +1354,66 @@ Thread建立后原地改全局与项目文件，再跑普通Turn、Deferred Exec
 让Responses ETag refresh延迟数秒，同时服务器继续发送tool call/completed，测量事件循环阻塞。生产设计应将header作为异步invalidate信号，用singleflight刷新并保留Turn自己的ModelInfo快照。
 
 最后在分页第1页与第2页之间刷新catalog/切auth，验证offset cursor重复或漏项。修复应让cursor绑定catalog generation/etag，或一次响应返回稳定快照。
+
+## 69. 路线六十六：Initialize成功后哪些状态才真正可见
+
+按session commit、outbound发布、连接级过滤和process identity阅读：
+
+- `app-server/src/request_processors/initialize_processor.rs`：name校验、OnceLock提交、global originator/UA、response与warning顺序。
+- `message_processor.rs`：Request初始化门、experimental gate、connection metadata向Thread/hook/remote-control传播。
+- `lib.rs`、`in_process.rs`：WebSocket两阶段ready和in-process提前发布的差异。
+- `transport.rs`：broadcast ready gate、experimental notification/approval投影与opt-out exact match。
+- `login/src/auth/default_client.rs`：first-write originator、last-write USER_AGENT_SUFFIX和UA sanitize。
+- initialize/experimental/transport/multi-connection tests：重复、非法name、跨client capability与通知顺序。
+
+并发连接两个不同name/version客户端，控制Initialize完成顺序，读取每个InitializeResponse和后续HTTP User-Agent；验证originator first-write、suffix last-write会形成混合identity。再用daemon/backend保留名与超长字段，区分路由身份、可信principal和纯telemetry label。
+
+在session OnceLock提交、response enqueue、warning发送、capability登记与ready store逐点断开连接/填满outbound queue；观察客户端没收到成功response但server拒绝重试的partial initialize，以及broadcast是否越过发布屏障。
+
+让experimental和stable client共同订阅同一Thread，由前者修改memory/settings/realtime/dynamic tools；列出后者虽不收experimental notification仍能观察的共享副作用。定义共享资源到底用owner、交集还是instance-global capability。
+
+给opt-out传unknown、重复和关键terminal method，验证它只exact-match notification、不影响server request/response。新增experimental字段时检查生成schema标记、入站gate和出站strip/drop三处是否同时登记。
+
+最后让未Initialize连接发送Notification、Response/Error与普通Request，核验只有Request有统一gate、server request callback又是否绑定目标connection。生产协议应在transport dispatcher最外层拒绝所有未协商message，并把callback key改为`(connectionId, requestId)`。
+
+## 70. 路线六十七：Remote Compaction V2究竟提交了什么
+
+按prompt构建、Responses stream、fallback、retention与checkpoint安装阅读：
+
+- `compact_remote_v2_attempt.rs`：history clone、尾部tool output rewrite、Step tool schema与CompactionTrigger。
+- `compact_remote_v2.rs`：exactly-one output、每transport retry、64k retained messages、window推进与replacement install。
+- `compact_remote.rs`共享函数：user/hook retention、developer/system过滤、initial context/world state reinjection。
+- `responses_retry.rs`：WS retry预算、HTTPS fallback重置与UI warning。
+- `session/turn.rs`：pre-turn comp-hash/downshift、previous→current model fallback条件和inline client session复用。
+- compact remote/parity/rollout-budget/reconstruction tests：trigger、图片、错误、hook和cold resume。
+
+构造history尾部为user message、前面含巨大tool output，和尾部连续多个tool output两组输入；验证reverse loop的break只重写连续suffix。不要把它误写成任意超限tool history清理器。
+
+让Responses依次返回compaction后断流、0个、2个、1个+tool call、Completed无usage；计数实际请求数和最终安装。再让WS耗尽2个retry后切HTTPS，确认总attempt budget跨transport被重置。
+
+previous model先InvalidRequest，current model再失败，比较用户收到的原error与telemetry里的fallback error。对非InvalidRequest错误确认不会换模型，以免把server不兼容与网络故障混为一谈。
+
+用64k文本、多图片、image-only message和单条混合content测试retention实际token/byte大小；图片0 token但message最低1的heuristic可被附件规模绕过。生产budget必须按prepared image patch/token和serialized byte双限制。
+
+最后在ContextCompaction started、budget record、window advance、replacement persist、completed和post hook各点终止。冷恢复核对哪个window生效；post hook stop之后history已提交，不应在产品层显示“compaction canceled”。
+
+## 71. 路线六十八：Responses Metadata为何会在同一Turn中变化
+
+按canonical payload、兼容投影、动态状态与数据外发阅读：
+
+- `responses_metadata.rs`：request kind identity、reserved keys、ASCII JSON、flat client metadata和headers。
+- `turn_metadata.rs`：frozen IDs、三组mutable state、Git enrichment与Memory同步metadata。
+- `session/turn.rs`、sampling retry：每Step构造、同request retry复用和tool follow-up更新。
+- `client.rs`：HTTP body、WS response.create、handshake compatibility headers与连接复用。
+- `git-utils/src/info.rs`：5秒command timeout、raw `git remote -v`解析和另有但未使用的canonicalizer。
+- turn/client/MCP metadata tests：reserved覆盖、Unicode、workspace与compaction overlay。
+
+让Git enrichment分别在首个请求前/后完成，比较同Turn两次Responses metadata；再制造retry，确认同一次request对象不因后台完成而改变。区分progressive enrichment和request snapshot。
+
+用复用WebSocket跨两个window/parent thread发送请求，抓握手header和每个response.create client_metadata；证明握手兼容值可陈旧，canonical per-request blob才有当前generation。
+
+在remote URL放HTTPS userinfo/token、SSH username和internal hostname，检查raw metadata；本机repo root也会作为map key。生产前必须做credential stripping、path pseudonymization和policy consent。
+
+给client extra传reserved keys、大小写变体、model/reasoning/workspace_kind、超长Unicode value和大量keys；比较canonical JSON、MCP meta与实际request body model。手工reserved list和header复制需要schema自动生成与总大小上限。
+
+最后在一个in-flight request期间连续steer两条带不同metadata的input，验证last-write map与pending input合并不具消息绑定。若业务要归因，metadata必须和每条Input/Step ID一起入队。

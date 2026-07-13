@@ -2724,6 +2724,152 @@ No singleflight, generation snapshot, atomic disk replace, or provider cache key
 
 映射到当前项目：模型/工具catalog使用`CatalogSnapshot { generation, source, fetchedAt, stale, items }`原子替换，singleflight合并并发refresh；磁盘key包含provider/tenant/auth scope/schema version并原子rename。上游ETag只触发后台refresh，不阻塞Step事件循环；分页cursor签入generation。失败继续提供last-known-good，但响应必须显式标stale与last error，不能把best-effort cache伪装成权威状态。
 
+### 4.71 Initialize Capability：连接级协商无法约束共享Thread的全局副作用
+
+每个App Server connection有独立`ConnectionSessionState`，用OnceLock从未初始化单向提交为初始化；第二次Initialize返回`-32600 Already initialized`。除Initialize外的Request在dispatch前必须已初始化。capabilities缺失时全部默认false/None，当前四项是experimental API、attestation server request、MCP OpenAI form elicitation和notification method opt-out。
+
+Initialize不是事务。它先校验`clientInfo.name`可成为HTTP HeaderValue，再把完整session state写入OnceLock，随后才更新process-global identity/analytics/residency、enqueue response。若后续outgoing queue关闭，connection仍被视为initialized，重试Initialize只会被拒绝；send_response只确认消息进入内部channel，不确认socket write完成。
+
+WebSocket transport为避免初始化时序泄漏做了两阶段发布。shared handler不直接设outbound initialized；顶层loop在Initialize处理返回后，把opt-out和experimental capability镜像到writer state，定向发送config warnings与remote-control status，登记attestation capability，最后Release-store `outbound_initialized=true`。Broadcast只投递这个flag为true的connection，确保普通广播不会抢在初始化通知前；定向response/warning不受flag限制。
+
+这个镜像不是一个原子结构，而是RwLock opt-out、AtomicBool experimental、ThreadState capability和AtomicBool ready的顺序更新。当前单connection event loop让Initialize路径串行，但跨组件观察仍只能依靠最后ready flag作为发布屏障；任何绕过ready检查的定向sender可看到中间状态。in-process transport又走`Some(outbound_initialized)`分支，在shared handler内更早置ready，之后才登记Thread capability，两个transport并非完全同一时序。
+
+`experimental_api`是连接级请求/输出门，不是共享资源授权。入站experimental method只检查发起connection；它可以修改共享Thread memory/realtime/settings，另一个没opt-in的订阅者仍观察到由共享状态引起的非experimental变化。源码TODO明确承认cross-client odd behavior并考虑instance-global first-write-wins/mismatch rejection。
+
+出站experimental notification对未opt-in connection整体drop；CommandExecutionRequestApproval则只strip experimental fields后继续发送。当前过滤器只专门改写这一种ServerRequest，能力演进若新增带experimental字段的其他request，需要登记或可能泄漏。capability是兼容协商，不是安全权限：声明true不要求client版本、签名或产品身份。
+
+`optOutNotificationMethods`只是任意字符串的exact-match HashSet。它只过滤AppServerNotification，不过滤ServerRequest/Response/Error；未知method、重复值和关键生命周期notification都可被client静默屏蔽，没有服务器侧allow/deny分类。RwLock若poison，读取失败选择fail-open继续发送。客户端因此必须把opt-out当显示/性能偏好，不能靠它建立状态机正确性。
+
+client identity也有Connection/Process双重寿命。session保存每个connection自报的name/version，供tracing、notify hook、remote-control pairing persistence key等使用；transport认证只证明能连接，不证明这个name真实。任意client还可自称`codex_app_server_daemon`或`codex-backend`进入“non-originating”例外，这只是避免probe污染全局identity，不构成保留身份。
+
+process-global originator由第一个成功的普通Initialize通过RwLock只写一次；环境变量override优先。`USER_AGENT_SUFFIX`却是每个普通Initialize都可覆盖的Mutex值，所以多客户端会形成“first originator + last suffix(name; version)”混合User-Agent。InitializeResponse返回的UA取决于并发先后，后续所有默认HTTP client也共享该全局suffix。代码注释原本假设“一进程只有一个MCP server/client”，与多connection App Server现实存在张力。
+
+只有name被header语法校验，version/title没有长度或字符约束；UA读取时会把非ASCII/control替换为`_`，而session、analytics和hook仍保存原值。超长合法name/version能放大内存、日志、analytics和HTTP header，当前未见Initialize payload/field级上限。错误消息还原样包含非法name，日志/客户端展示需处理控制字符。
+
+更深的边界是：Request路径有Initialize gate，入站Notification只log，Response/Error则直接按全局server request id解析，不检查session是否initialized，也不验证响应来自原定目标connection。callback map的key只有RequestId。因而“连接尚未Initialize”并不代表它对所有控制面消息无影响；安全必须在transport认证和server-request responder binding补齐，不能只依赖Request gate。
+
+```text
+connection Request Initialize
+  -> validate client name
+  -> commit OnceLock session
+  -> mutate process identity (first originator / last UA suffix)
+  -> enqueue response
+  -> mirror outbound filters
+  -> send init notifications
+  -> register attestation capability
+  -> publish outbound_initialized
+
+Per-connection capability gates requests and projections.
+Shared Thread/process state can still be changed by another connection.
+```
+
+关键测试：
+
+- initialize suite：client name→originator、daemon/backend例外、env override、非法header name和notification opt-out。
+- experimental API suite：method gate、experimental notification drop和approval字段strip。
+- transport tests：未初始化不收broadcast、ready后投递、slow connection断开与per-connection过滤。
+- multi-connection Thread tests：不同capability连接共享订阅、listener和动态tool/realtime状态。
+- outgoing callback tests：server request id、response/error、disconnect cleanup和错误responder边界。
+
+映射到当前项目：Initialize产出不可变`ConnectionCapabilities`并带协议版本、认证后的client principal和payload上限；共享Run/Thread的能力取交集、owner policy或创建时固定，不能由任一订阅者单方面升级。全局HTTP identity从进程配置产生，不接受任意connection覆盖。Initialize response必须有write-ack后才发布ready，server request callback绑定connection id，未初始化连接的所有message kind都拒绝。
+
+### 4.72 Remote Compaction V2：普通Responses流承载重写checkpoint，失败不能视为无副作用
+
+V2不是调用旧`/responses/compact` unary endpoint，而是在普通Responses prompt末尾追加一个`CompactionTrigger {}`，保留当前base instructions、model-visible tool specs和parallel flag，再等待流中恰好一个`ResponseItem::Compaction`。同一个流可以产生其他OutputItemDone，但Codex全部忽略、不执行tool；只有compaction item计数必须为1。
+
+请求构建前clone live history，并尝试把过大的function/custom/tool-search output改成固定truncated placeholder。但逆序扫描遇到第一个不可重写item就`break`，不是continue：只有从history尾部连续可重写的output有机会被缩短；尾部是普通assistant/user/compaction时，即使更早有巨型tool output也完全不处理。它是狭窄的suffix修复器，不是全历史压缩保证。
+
+发送给模型的是`history.for_prompt(input_modalities)`之后的prompt input，trace另存rewrite后的raw history。CompactionTrigger不写入原历史，只存在本次请求。tool registry通过当前StepContext重新构建，但传入一个全新的、永不主动cancel的CancellationToken；工具只作为schema提示，不会在这个compaction loop被dispatch。
+
+收流直到`response.completed`。流先产出一个合法compaction item后断开仍算失败并重试整个请求；已生成/计费输出不会局部提交。Completed前0个或2个以上compaction最终是Fatal且不retry；额外assistant/tool items允许存在但只计入`output_item_count`诊断，最终丢弃。Completed携带的token usage用于rollout budget和analytics，缺失usage不阻止安装。
+
+stream retry上限是provider配置与2的min。每个transport可先做initial attempt再最多2次backoff retry；WebSocket额度耗尽后还能切HTTPS、retries归零，再走一轮。因此“max=2”不是整个compaction最多2次请求，而是单transport retry budget；最坏可多次完整发送同一巨大history。首个release WS retry通知被隐藏，compaction可能看似卡住。
+
+previous-model compaction只在旧模型返回`InvalidRequest`时尝试current-model fallback，其他retryable/stream/fatal错误不会模型fallback。若current fallback也失败，外层返回**原旧模型错误**，fallback error只进telemetry；用户诊断会丢失最后失败原因。成功fallback后用fallback TurnContext处理新history和context baseline，但共享同一ModelClientSession transport。
+
+安装侧不保留模型看到的完整prompt。V2从原prompt input中先筛Message role为user/developer/system，再套共享retention predicate：developer/system最终全删，user只保留能解析为真实UserMessage或HookPrompt的内容。assistant、reasoning、tool call/output、旧compaction都删掉，最后追加新encrypted Compaction item。结果是“最近用户事实 + opaque summary”，不是模型返回的完整transcript。
+
+保留消息文本预算固定64,000 approximate tokens，从最新message向旧message取；消息内部却从第一个content part向后截，可能保留较早文本、丢后部文本。InputImage计数为0 tokens，但每条message最少charge 1；一条混合message即使文本用尽仍保留其所有图片。因此大量/巨型data URL image可让实际history远超64k预算，预算只是text heuristic。新compaction item自身也不计入这64k。
+
+安装前先把server token usage计入rollout budget；随后构造retained history、advance auto-compact window、重新注入必要initial context/world-state baseline，再`replace_compacted_history`落replacement history，recompute usage，最后发ContextCompaction completed。ContextCompaction started早在网络调用前发出；任一请求/fallback/budget错误都会留下started而没有对应completed item，靠Turn Error/Abort收口而不是item exactly-once。
+
+post-compact hook在history已替换、completed item已发出后才运行。若hook返回Stopped，调用者得到TurnAborted，但compaction不会rollback；analytics使用此前成功result计算出的Success状态。这里的“abort”只阻止后续Turn工作，不表示checkpoint未提交。
+
+manual standalone compaction自己capture fresh Step、发TurnStarted并新建ModelClientSession；owned session保留到lifecycle完成，Drop后才回存WS session。inline pre/mid-turn则复用正在sampling的client session，compaction成功后继续下一次sampling。两条路径的transport/cache寿命不同，但安装history契约相同。
+
+window generation在replacement write之前先递增；当前后续函数大多无可返回错误，但process crash窗口仍存在“内存窗口已前进、durable CompactedItem未落盘”。冷恢复以rollout replacement history/window字段为准，不信任丢失的内存增量。
+
+```text
+clone live history
+  -> rewrite only trailing contiguous oversized tool outputs
+  -> for_prompt + current tool schemas + CompactionTrigger
+  -> Responses stream (WS retries, then optional HTTPS retries)
+  -> require response.completed + exactly one Compaction item
+  -> retain newest real user/hook messages under text-only 64k heuristic
+  -> append opaque compaction item
+  -> advance window -> persist replacement history -> recompute usage
+
+Started item may exist without Completed on failure.
+Post-hook abort occurs after checkpoint commit.
+```
+
+关键测试：
+
+- V2 unit tests：只保留真实user/hook、新est-first 64k截断、图片保留/计数和extra output item容忍。
+- parity/integration tests：prompt末尾恰好一个trigger、beta feature、replacement history与cold resume一致。
+- stream tests：Completed缺失、0/多compaction、retry、WS→HTTPS fallback和token usage。
+- previous-model tests：comp-hash/model downshift、InvalidRequest才current-model fallback及错误选择。
+- hook/rollout budget tests：pre stop、post stop、budget记账、window id与replacement reconstruction。
+
+映射到当前项目：Compaction应是显式`ContextCheckpoint`事务：request attempt有idempotency key，retry总预算跨transport统一；输出schema只允许一个checkpoint，不携带无用tool specs。安装用generation CAS并在同一durable transaction写history/window/budget。保留预算必须计图片/附件真实成本；started失败发terminal failed item。post hook若能veto就必须在commit前，若在commit后只能叫notification failure，不能返回“已取消”混淆事实。
+
+### 4.73 Responses Metadata：同一事实有canonical blob与兼容投影，动态富化会让同Turn请求不同
+
+`CodexResponsesMetadata`是一次上游请求的值快照，内部包含installation/session/thread/turn/window、fork/parent/subagent、thread source、sandbox、workspace Git状态、request kind和client extra。canonical形式是`client_metadata["x-codex-turn-metadata"]`里的ASCII JSON；flat client_metadata keys和HTTP/WS handshake headers都是兼容投影，不应再作为独立事实源。
+
+但投影有意不完全相同。flat client metadata无条件带installation、session、thread、window，另带turn/subagent/parent；canonical JSON按request kind决定identity：Turn/Prewarm/Compaction带完整请求身份，Memory blob省略installation/session/thread/turn/window，只留request_kind和workspace/sandbox。真实memory写路径仍传入非空IDs，所以其**flat**client_metadata继续携带这些身份；“Memory omits turn identity”只对canonical blob成立。
+
+HTTP request body携flat metadata，compatibility headers再带window、turn-metadata JSON、parent与subagent；installation/session/thread还会经其他header helper重复。WebSocket连接握手也带compatibility headers，但连接可跨Turn复用，因此握手上的window/parent/turn metadata可能属于建连时的prewarm/旧Turn；每个`response.create` payload自己的client_metadata才会更新。源码因此明确指定canonical per-request client metadata为新消费者入口。
+
+TurnMetadataState在Turn构造时冻结session/thread/fork/parent/source、cwd和permission profile派生的sandbox tag，却把workspace、turn started time与client extra放在独立RwLock里。每次sampling Step调用`to_responses_metadata`才clone当前值；同一request的retry复用已构造对象，不会半途变化，但下一次tool follow-up可能获得更新后的metadata。
+
+Git enrichment在单一local Environment的TurnContext创建后后台spawn，同时并行执行HEAD、`git remote -v`和dirty检查，每条命令5秒timeout。首个sampling可能还没有workspaces，后续sampling才出现；Turn结束/abort只abort尚存task，不等待结果。它是渐进式telemetry enrichment，不是Turn开始时的原子repo snapshot。
+
+workspace map的key是本机absolute repo root，value含raw fetch remote URLs、HEAD和has_changes。`git remote -v`解析没有调用现有`canonicalize_git_remote_url`，会保留HTTPS userinfo/token、SSH username、internal hostname和完整path。该数据随后进入上游model request metadata；这是明确的数据外发边界，不能只当无害可观测性。Memory任务甚至同步等待这三项再发请求。
+
+`responsesapi_client_metadata`由App Server调用者提供，进入Turn时先过滤reserved keys，再flatten进canonical JSON；它并不是literal top-level client_metadata。过滤表手工列出Core-owned字段与兼容header名，exact且case-sensitive。`model`、`reasoning_effort`、`workspace_kind`当前不在reserved表，所以client可让Responses metadata显示与request body实际model不同的标签；MCP meta路径会另行覆盖model/reasoning，但上游Responses不会。
+
+客户端extra没有key/value数量、长度或总serialized size上限。ASCII JSON会把非ASCII转成`\uXXXX`，可能放大体积；同一blob又进入body和header。HeaderValue只检查字节合法性，不限制常见代理/server header上限，超大metadata可使请求在transport层400/431，而body本可接受。reserved表若未来新增canonical字段却漏同步，还可能出现flatten重复key/语义歧义。
+
+extra更新是replace，不是merge。初始UserInput带Some时覆盖整张map；active Turn steer若带Some也直接替换，None则保留旧值。metadata不与某个queued input item绑定：in-flight request已经持旧snapshot，steer输入排队后，下一次sampling可能带新metadata；连续多个steer最后一次metadata会描述合并后的多个pending inputs。它是Turn mutable label，不是消息级provenance。
+
+`workspace_kind`直接从client extra读取并进入内部Turn telemetry/analytics分支，仍是client-asserted。`user_input_requested_during_turn`则只在MCP tool meta动态加入，一旦置true不复位；它表示“该Turn曾请求过”，不是当前正在等待。不同consumer拿到的metadata schema和时间点因此必须明确版本化。
+
+turn start timestamp在task start时写入，早于实际model request；prewarm若发生更早可能没有。Git workspace、timestamp、extra分别加锁读取，构造template没有单一generation，理论上可组合来自相邻更新时刻的字段。BTreeMap保证JSON排序稳定，却不等于状态原子。
+
+```text
+TurnMetadataState
+  frozen: ids/source/cwd-derived sandbox
+  mutable: started_at, client extra, async Git workspace
+       |
+       +-- per-Step clone --> canonical ASCII turn-metadata JSON
+                            + flat client_metadata compatibility keys
+                            + direct HTTP / WS-handshake headers
+
+WS handshake projection may be old when the socket is reused.
+Per-request client_metadata is the intended authority.
+```
+
+关键测试：
+
+- turn metadata tests：ASCII JSON、Memory identity omission、reserved filtering、client extra与compaction overlay。
+- client tests：WS client_metadata与compatibility header的window/parent/subagent一致性。
+- MCP metadata tests：actual model/reasoning override与user-input-requested标记。
+- Git enrichment tests：clean/dirty repo、non-ASCII root、async eventually-present与empty omission。
+- sampling/retry tests：同request retry复用metadata、下一Step重新snapshot。
+
+映射到当前项目：定义单一versioned `RequestProvenance` body字段，兼容header只传短digest/generation，不复制大JSON。所有client extra使用namespace、schema、size limit和reserved-prefix，消息级标签随Input入队而不是Turn last-write。repo metadata先脱敏/canonicalize remote，绝不发送userinfo与本机绝对路径；需用户/tenant policy允许。动态富化产生新generation并明确只对后续Step生效。
+
 ## 5. 当前项目最应该吸收的架构原则
 
 ### 原则一：对外协议稳定，内部事件可演进

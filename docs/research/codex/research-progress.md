@@ -91,12 +91,15 @@
 | 57 | Unix Control Socket权限、stale清理、startup lock与连接背压 | 补默认0700目录/0600 socket承担认证、custom父目录被强制chmod、startup flock跨SQLite初始化且无timeout、connect-refused后只删真实socket、Guard按path非inode导致replacement unlink、每连接handshake task无显式上限、Request queue满返回-32001而其他event await和shutdown path不等于连接收口 | 87% / 87% |
 | 58 | Attestation能力协商、客户端证明与header失败语义 | 补ChatGPT auth在ModelClient构造期冻结能力、custom provider目的地边界、Thread订阅者按最小ConnectionId单选且无fallback、请求参数无thread/request binding、100ms关键路径、迟到response只删callback、opaque token不验证与`{v,s,t}`区分无参与/生成失败 | 87% / 86% |
 | 59 | Models refresh worker、ETag触发与cache原子性 | 补立即Online+完成后3分钟fixed-delay、shutdown不取消in-flight、5分钟cache仅绑client version且漏provider/future timestamp、direct write无锁、memory→etag→disk非原子、Responses ETag同步阻塞sampling、无singleflight导致旧请求晚回覆盖与offset cursor不绑generation | 86% / 86% |
+| 60 | App Server Initialize提交、能力协商与全局身份漂移 | 补OnceLock先提交后response的partial init、WebSocket两阶段ready与in-process差异、experimental门只约束connection不约束共享Thread、opt-out exact notification过滤、first originator+last UA suffix混合身份、自报client name非principal，以及未初始化Response/Error仍可触达全局callback边界 | 86% / 86% |
+| 61 | Remote Compaction V2 stream、retention与checkpoint提交 | 补普通Responses+CompactionTrigger而非compact endpoint、只重写连续尾部tool outputs、单transport最多2 retry但WS→HTTP重置、exactly-one compaction且extra items丢弃、InvalidRequest模型fallback返回原error、64k仅计文本/图片近零成本、started无failed terminal和post-hook abort发生在提交后 | 86% / 86% |
+| 62 | Responses Metadata canonical投影、动态富化与隐私边界 | 补Memory仅在canonical blob省略identity但flat metadata仍带ID、WS握手兼容header跨Turn陈旧、Git enrichment让同Turn后续Step渐进变化、raw remote URL与绝对repo path外发、client extra手工reserved/无size上限、steer replace-last-write不绑定Input，以及多RwLock无generation快照 | 86% / 86% |
 
 ## 最近检查
 
 - 命令：`python3 "$HOME/.local/bin/codex-weekly-usage.py"`
 - 读数：已用 14%，剩余 86%
-- 采样时间：`2026-07-13 12:43:08 CST`
+- 采样时间：`2026-07-13 12:47:54 CST`
 - 判断：高于 50%；按用户明确停止条件继续做源码深挖，不能以首轮闭环或 PR 已创建为由停止。
 
 ## 下一批次
