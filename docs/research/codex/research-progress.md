@@ -100,12 +100,15 @@
 | 66 | MCP OAuth callback、PKCE与端到端登录事务 | 补默认loopback与custom non-loopback自动0.0.0.0、确定性callback id、method/Host不校验、error无需state可抢先终止、成功页早于state/token/save、timeout只包callback等待、handle drop不取消，以及OAuth HTTP 1 MiB body与redirect/header策略下沉 | 86% / 85% |
 | 67 | Skill root、symlink、canonical identity与正文generation | 补User/Repo/Admin目录symlink可越root而System忽略、visible alias绕hidden、bounded walk partial inventory只进日志、canonical first-wins ownership、file检查TOCTOU、metadata snapshot但Turn late-read可组合A/B generation、完整读取后才8 KiB截断、policy metadata fail-open、disabled path漂移与asset仅lexical containment | 85% / 85% |
 | 68 | ExecPolicy shell lowering、safe/dangerous heuristics与sandbox边界 | 补word-only多segment与heredoc复杂标记、显式Allow全覆盖才bypass、basename safelist不绑定binary、Git transitive helper与读数据不等于保密、Unix dangerous只识别窄`rm -f/-rf`导致等价语法漂移、approval/profile完整矩阵、conflicting rules取最严、单个parse error丢弃全部普通rules，以及disk-first amendment partial state | 85% / 85% |
+| 69 | MCP Elicitation active-time、router lease与兼容降级 | 补RMCP/client与Core/session双pause层、manual response无wall-clock TTL、event send失败/router取消不清理、runtime共享public id与active Turn原id两条路由、empty form policy/Guardian顺序、Xcode 26.4同一auto-deny对raw请求Decline却对内部审批Accept、typed Form forward-compat cancel、response不做schema验证及URL consumer二次校验 | 85% / 85% |
+| 70 | Fuzzy File Search root authority、渐进index与session背压 | 补任意host roots不经workspace/permission、hidden+symlink越界、无entry/memory/session/query queue上限、detached worker不join、1024-entry取消延迟、panic可令Condvar永久等待、cancel partial仍伪装成功、completion缺query generation、single-walk后filesystem漂移、multi-root重复/lexical ownership及non-UTF8/error静默遗漏 | 85% / 85% |
+| 71 | Standalone Web Search双实现、远端session与审计投影 | 补hosted/standalone gate、custom provider数据边界、recent conversation裁剪、non-strict commands与server-only domains、并发调用复用level id、Code Mode仍标Direct、encrypted output忽略、max tokens无本地截断、started失败无terminal及WebSearchItem有损action | 85% / 84% |
 
 ## 最近检查
 
 - 命令：`python3 "$HOME/.local/bin/codex-weekly-usage.py"`
-- 读数：已用 15%，剩余 85%
-- 采样时间：`2026-07-13 12:59:08 CST`
+- 读数：已用 16%，剩余 84%
+- 采样时间：`2026-07-13 13:06:52 CST`
 - 判断：高于 50%；按用户明确停止条件继续做源码深挖，不能以首轮闭环或 PR 已创建为由停止。
 
 ## 下一批次

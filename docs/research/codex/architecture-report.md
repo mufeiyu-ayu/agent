@@ -3194,6 +3194,171 @@ heuristic dangerous != exhaustive denylist.
 
 映射到当前项目：把命令准入分成三层：解析后的effect capability（read/write/network/process）、可信executable identity、sandbox enforcement；“known safe”只用于减少提示。危险操作用默认deny capability与sandbox syscall/filesystem约束，不用同义词枚举。审批key包含resolved binary digest、cwd、env allowlist、policy/sandbox generation；Git等可扩展工具清空危险env/config或仍按通用process capability处理。rules加载采用per-file诊断+last-known-good，requirements fail-closed；UI明确显示heuristic判断与强制边界的区别。
 
+### 4.80 MCP Elicitation：暂停active timeout避免误超时，也把无人回答变成无限资源租约
+
+MCP server发起elicitation时，RMCP client service先进入per-client `ElicitationPauseState`，再调用Codex sender。所有受timeout保护的service operation用`active_time_timeout`：pause期间operation仍可完成，但elapsed不扣剩余timeout；多个并发elicitation用AtomicUsize计数，最后一个guard Drop才恢复计时。
+
+Core另有session级`ElicitationService`，用Mutex i64 count+watch channel给Unified Exec和Code Mode使用：exec yield/post-exit deadlines在pause期间整体顺延，code execute/wait在返回已捕获结果前等待全部elicitation清空。两层pause解决“工具等待人类时被30秒timeout杀掉”和terminal result越过审批UI的问题，但它们不是同一个状态源，覆盖的consumer与开始时刻不同。
+
+manual MCP elicitation没有wall-clock或租约上限。manager把oneshot sender插入router、发Event后直接`rx.await`；App Server向前端发送server request后也无timeout等待response。active-time timeout又刻意排除这段时间，所以用户保持连接但永不回答时，tool call、Turn、MCP request、router entry、pause guard和可能的child process可以无限存活。
+
+event channel send结果被忽略。若`tx_event.send`失败，router仍持有sender，receiver会永久等待；取消外层future只drop receiver，map里的sender仍保留到有人用正确id resolve。没有Drop cleanup/tombstone/TTL。resolve先从map remove再send，若receiver已消失就返回error且不可重试，语义是exactly-once consume而非at-least-once。
+
+server原始request id不直接暴露给UI。manager生成process-wide递增的`codex-mcp-elicitation-N` public id，并以`(server_name, public id)`路由；router由Thread历代MCP runtime共享，因此refresh前后仍能回答旧client，且不同runtime复用原server id不会碰撞。id可预测但不是authorization token；真正隔离依赖router只在对应Thread内可达。
+
+另一条Core内部`request_mcp_server_elicitation`路径直接用调用方给的`(server, request_id)`放进active TurnState。重复key会覆盖旧sender，旧waiter立即得到None，而两个UI request可能都已出现；无active Turn时sender未保存，事件仍可发出但future很快返回None。call id唯一性和active Turn是隐含前置条件，没有类型保证。
+
+policy顺序是：compat auto-deny、空表单auto-accept、approval policy reject、可选Guardian reviewer、最后人工UI。普通server Form只有schema properties为空，且`mcp_permission_prompt_is_auto_approved`为true时才自动Accept空对象；后者要求tool mode显式Approve，或approval=Never且filesystem完全开放/Disabled/External。URL与OpenAI Form永不走该empty auto-accept。
+
+`auto_deny`存在一个明显的双语义。server-origin sender看到true会Decline；但Core内部`request_mcp_server_elicitation`看到同一个manager flag会**Accept `{}`**，不检查request类型/schema，并且tests明确叫`auto_accepts_when_auto_deny_is_enabled`。该flag仅为`Xcode`版本前缀`26.4`自动设置，注释却称旧客户端“auto-denied”。
+
+内部路径的callers包括MCP tool approval、plugin/connector安装建议和auth URL elicitation。ToolCallMcpElicitation已stable且默认开启；因此Xcode 26.4 compatibility state下，原本需要用户确认的Core-generated请求会被当作Accept，而真实MCP server发来的请求被Decline。这不是简单“旧客户端不显示UI”，而是source-dependent的反向决策，必须被视作显式兼容风险。
+
+Guardian只拦截meta声明`request_type=approval_request`且`approval_kind=mcp_tool_call`的标准空Form；URL若伪装approval、非空schema、错误kind/params会fail-closed Decline，普通form/OpenAI form则继续人工UI。tool name、arguments、connector描述来自server meta，但Guardian看到完整provenance后决定；Approved返回Accept空对象，Denied/Timeout带auto-review meta和message，Abort返回Cancel。
+
+RMCP把JSON-RPC context `_meta`重新合并回elicitation，先删除`progressToken`，再让context meta覆盖request meta同名key。OpenAI Form自己的meta若不是JSON object，context meta无法extend而被静默丢弃；原非object值仍保留。message/schema/meta没有本地总大小限制，大image picker data URL可沿RMCP→Core Event→App Server复制多次。
+
+标准Form在App Server protocol被收窄成typed、`deny_unknown_fields`的2025-11-25 schema。未来MCP新增字段或当前RMCP表达超出该union时，Core→App Server转换失败并自动向server回Cancel；OpenAI Form则保持raw JSON。这是稳定安全投影，但也是显式forward-compatibility断点。
+
+客户端Accept的`content`和`_meta`没有在Core/App Server按requested schema重新验证，就直接返回MCP server；Accept也可缺content。server最终应自行验证，但Codex UI可能产生与schema不一致的数据，且恶意/buggy App Server client可伪造任意JSON。response meta通过custom result保留，普通RMCP typed转换辅助函数反而会drop meta，两个调用路径不能混用。
+
+App Server先给ThreadWatch标permission requested，推送connection-scoped server request；typed conversion失败立即submit Cancel。正常response不论反序列化失败、client error、channel关闭都转为Decline，只有Turn transition类错误转Cancel。连接断开会取消pending request，但连接保持活跃而无response没有自动收口。
+
+URL elicitation在TUI消费端再次校验：只允许有host、无userinfo的HTTPS；`codex_apps`还限制chatgpt.com/staging及子域，其他server可打开任意HTTPS但UI显示server且需用户动作。完成外部动作只代表用户点击“I finished”并Accept，不证明远端操作或认证实际成功；后续tool refresh/retry仍是独立阶段。
+
+OpenAI Form capability取自启动Turn的App Server connection并写进RMCP client info extension。共享Thread被不同能力connection resume并不自动赋权；test确保由支持者启动的Turn仍把request发回该connection。能力属于Turn routing context，不应升级为Thread永久能力。
+
+```text
+MCP service operation timeout (active time only)
+  -> server elicitation
+     -> RMCP per-client pause guard
+     -> policy / guardian / manual route
+        -> session pause guard (manual UI path)
+        -> router sender + App Server request
+        -> [no wall-clock expiry]
+     <- response / cancel / disconnect
+  -> resume remaining active timeout
+
+Raw server request + auto_deny = Decline
+Core-generated request + same flag = Accept {}
+```
+
+关键测试：
+
+- RMCP active-time tests：单/多pause、operation先完成、watch sender关闭和remaining耗尽边界。
+- router tests：runtime refresh、同server原id复用、event channel关闭、future cancellation、late response和map cleanup。
+- Core holder tests：重复key覆盖、无active Turn、abort/steer/finish与session pause count。
+- policy matrix：empty/nonempty Form、URL/OpenAI Form、Never/Granular、full/read-only permissions与Guardian。
+- Xcode 26.4 tests：raw server Decline、tool approval/plugin install/auth internal Accept的差异及版本prefix伪装。
+- App Server tests：typed schema conversion cancel、client error/turn transition、disconnect与connected-no-response。
+- payload tests：超大message/schema/meta/image data、response schema mismatch与custom result meta。
+- URL tests：https/userinfo/IDN/ChatGPT suffix、generic phishing展示与“完成”不等于远端验证。
+
+映射到当前项目：将elicitation建模为durable、带`thread/turn/tool-call/server/original-request/generation`的租约；有最大wall-clock TTL、heartbeat/用户延期与Drop cleanup。pause只延长相关operation，不冻结整个session其他结果。policy outcome使用单一枚举，禁止`auto_deny`在不同入口变Accept；兼容降级必须fail-closed并可观测。请求/响应做schema、byte、URL和meta namespace校验；事件发布失败立即Cancel/Decline并清router。外部动作Accept仅记录用户声明，工具必须显式retry/verify。
+
+### 4.81 Fuzzy File Search：一次walk复用所有query，却没有root capability与filesystem generation
+
+file-search session启动两个长期native threads：一个`ignore::WalkBuilder`并行遍历所有roots，把每个path注入Nucleo；一个matcher消费unbounded work channel、增量reparse query并每10ms debounce top-N snapshot。query变化只重算matcher，不重新walk，适合composer逐字输入，但catalog是session创建时的单次渐进快照。
+
+walker默认允许hidden、follow directory symlink、respect gitignore；`require_git(true)`只让`.gitignore`按真实Git repo边界生效，避免home上层`.gitignore '*'`清空非repo搜索。关闭respect时连git global/exclude、`.ignore`和parent规则一起关掉。symlink target无需仍在root内，搜索结果可以透过workspace alias枚举外部目录。
+
+App Server RPC直接接受任意字符串roots，转成PathBuf后用local host filesystem walk，没有canonical containment、workspace list、PermissionProfile、sandbox或connection capability检查。已能访问App Server的client可搜索进程账户可读的任意绝对路径、hidden目录与symlink target；返回值还回显absolute root。这是host inspection API，不是“当前Thread workspace搜索”。
+
+没有roots数量、总path entries、depth、query length、walk wall time或Nucleo memory上限。每个path同时保存full UTF-8 path Arc、UTF-32 relative matcher column和索引结构；巨大树可吃完整内存。App Server每session最多使用12 walker threads，但session数量不受限，每个又额外有matcher thread；创建大量不同session id即可放大CPU、FD和内存。
+
+`thread::spawn`的join handle被丢弃，Drop只设AtomicBool并send Shutdown，不join。walker每个worker累计1024 entries才检查cancel/shutdown，matcher最多约100ms检查；快速start同id会map replace并drop旧session，但旧线程仍短暂运行。连续replace可堆积detached workers，process shutdown也没有集中join barrier。
+
+work channel是unbounded。App Server每次sessionUpdate都clone完整query并enqueue，没有coalesce或队列上限；reporter会丢弃snapshot.query不等于latest的旧结果，却不能免除matcher顺序处理所有已排队query。高频/超长update可制造内存和CPU背压，而RPC立即返回成功。
+
+one-shot `run()`用Condvar等`on_complete`。若matcher thread在调用complete前panic或异常退出，join result无人观察，Condvar可能永久等待，外层`spawn_blocking`也永久占用worker。`matcher_worker`的`anyhow::Result`同样被线程入口忽略。接口没有deadline或panic propagation。
+
+cancel flag不是取消result类型。walker/matcher退出时仍调用`on_complete`，one-shot返回最后一个snapshot（可能空、partial、walk_complete=false）作为正常成功；App Server不暴露scanned count、walk_complete或cancelled。旧request被新同token请求取消后，客户端无法区分完整0 results与未扫描完成。
+
+legacy cancellation token只是map key：新request持相同token时set旧flag并替换；cleanup用Arc ptr equality避免旧请求删掉新flag。没有单独cancel RPC，token=None的请求无法被后来用其JSON-RPC request id取消。map只在handler正常返回时cleanup，若run永久挂起会残留。
+
+session snapshot含query、matches、matched count、item count与walk_complete，但App Server只发送query+files；completed notification只有sessionId，没有query/generation。rapid query A→B时，A的completion task可能在B update后到达，client无法知道它完成的是哪个query；update/complete各自`runtime.spawn`，跨task enqueue顺序也没有显式barrier。
+
+SessionReporter用latest query过滤stale update，这是正确的last-write显示语义；TUI本地再用wrapping `session_token`隔离drop/recreate后的旧reporter。但App Server session id由client提供、只校验非空，同一id start直接replace；没有generation返回给client。旧完成notification与新同id session在协议上不可区分。
+
+walk error被静默忽略，非UTF-8 full/relative path也直接skip。权限拒绝、symlink loop、I/O故障与真实无匹配都落成相同结果。`scanned_file_count`实际取Nucleo `item_count`，包含directory/root等entry，命名不精确；App Server又不传它，无法做完整性诊断。
+
+multi-root path attribution用lexical `strip_prefix`选择component最深的root。重叠roots会被WalkBuilder分别遍历，同一full path可能注入多次，没有dedupe；symlink alias也可产生不同full path指向同inode。结果top-N可被重复项占满，root ownership由最深lexical prefix而非实际walk origin决定。
+
+match_type不是walk时冻结，而在每次snapshot用`Path::is_dir()`重新stat full path；删除、替换或symlink retarget后，非目录一律标File，即使已不存在。结果只携root+relative path，没有inode/generation；用户选择时必须重新resolve并做权限检查，不能相信搜索结果仍指向同一文件。
+
+exclude patterns用第一个root构造OverrideBuilder，再应用于multi-root walker。它们的anchoring/absolute semantics以primary root为基准，其他root与重叠root需要专门测试；当前API却只给一份exclude，无root namespace。App Server固定用默认exclude空列表，调用者不能缩小敏感目录。
+
+CLI无pattern时Unix会直接spawn `ls -al`并继承stdio，Windows用`cmd /c <search_directory>`，这不是search library的纯查询语义；嵌入方目前不走该路径，但CLI threat model需单独考虑PATH/command shell。
+
+```text
+session start(roots)
+  -> detached parallel walker --follow-links, hidden included
+      -> inject every UTF-8 path into in-memory Nucleo
+  -> detached matcher thread <- unbounded QueryUpdated queue
+      -> progressive snapshots(query, partial/full inventory)
+      -> stale query filtered only at reporter
+
+No root capability, entry/memory budget, filesystem generation, or joined teardown.
+```
+
+关键测试：
+
+- root boundary：workspace外absolute root、directory symlink escape、hidden、permission errors与non-UTF8 paths。
+- resource：百万entries、深树、多roots、超长query、数百sessions和rapid same-id replacement。
+- cancellation：1024-entry latency、matcher panic、partial snapshot、token reuse与None token。
+- ordering：A→B rapid update、updated/completed task reorder、same id restart和generation confusion。
+- consistency：scan后create/delete/rename/symlink retarget，match_type和selected path复核。
+- multi-root：nested/duplicate/symlink alias roots、top-N duplicate与exclude anchoring。
+- ignore：repo/non-repo `.gitignore`、global ignore、`.ignore`及respect=false的完整关闭。
+
+映射到当前项目：search roots必须来自Turn的resolved workspace/capability handles，不接受裸host path；canonical target不得越授权root。每connection限制session数、每session限制entries/bytes/threads/query queue和wall time，用coalescing latest-query channel。返回`sessionGeneration/queryGeneration/inventoryGeneration/complete/cancelled/errors`，completion绑定query。worker受JoinSet监督，Drop取消并join；选中结果按inode/digest或重新open+containment验证。大目录可用持久增量index，但索引同样要按tenant/root隔离。
+
+### 4.82 Standalone Web Search：同一搜索能力有两种协议投影，服务端策略不是客户端安全边界
+
+Codex有两条互斥的网页搜索实现。Hosted Responses路径把`web_search`直接声明给模型，由模型服务执行；standalone路径由extension注册namespace tool `web.run`，Core把调用POST到provider的`alpha/search`。当standalone已启用且executor确实存在时，tool planner会隐藏hosted工具；Responses Lite不发送hosted tools，并可按模型能力强制走standalone。于是“是否支持搜索”同时依赖model family、provider身份、feature、mode和extension安装，不只是一个布尔配置。
+
+Standalone extension只在provider是OpenAI或使用OpenAI actor auth，且search mode不为Disabled时注册。Cached映射`external_web_access=false`，Indexed映射字符串`indexed`，Live映射true；PermissionProfile为Disabled时通常偏向Live，但仍受managed constrained allowlist约束，read-only则优先保留配置值或Cached。模式决定的是发给远端的settings，不在本地构成网络执行策略。
+
+每次`web.run`都会新建`SearchClient`和Reqwest client，POST `<provider base>/alpha/search`。请求带当前model、commands、`max_output_tokens`、同一Thread session store的`level_id`、近两条真实user文本，以及上条user之后最多约1000 tokens的assistant文本；system/developer/tool/contextual user被过滤，图片被丢弃，但user文本本身没有本地长度上限，internal metadata仍透传。若配置了具有OpenAI actor auth语义的custom provider，这些对话片段、近似位置和搜索命令会发往其base URL，数据边界由provider配置而非固定OpenAI域名决定。
+
+schema是non-strict，`SearchCommands`没有`deny_unknown_fields`，未知字段会被Serde忽略；search/image/open/click/find/screenshot/finance/weather/sports/time等数组没有客户端数量、字符串或组合上限。用户位置、context size、allowed domains和external mode只作为settings送到backend；blocked domains固定None，本地不会把每条query domains与managed allowlist求交，也不校验open/click指向的URL scheme。真正的域名、来源和检索策略都依赖`alpha/search`实现。
+
+工具声明`supports_parallel_tool_calls=true`，但同一Thread的所有并发调用都复用相同`SearchRequest.id=level_id`。如果backend用该id保存search/open/click的reference state，并发search/open或两个query可能竞争同一远端session；request没有call id/generation用于隔离。代码模式也能把`web.run`当nested tool调用，但settings仍固定`allowed_callers=["direct"]`，测试明确验证这一值，远端审计看不出Direct和Code Mode来源差异。
+
+backend response先完整读取和JSON decode，只使用plaintext `output`；可选`encrypted_output`被忽略。`max_output_tokens`只是请求参数，`SearchOutput`会clone完整字符串进入FunctionCallOutput，通用`ToolOutput`没有自动截断，Code Mode结果也由同一完整item转换。因此若backend不守预算，超大响应仍会占内存、rollout和下一轮model context；新建HTTP client还失去跨调用connection pool复用。
+
+事件生命周期也不对称。handler在解析后、认证和网络之前就发送`WebSearchItem::started`，其query为空、action为None；只有HTTP成功并解析出output后才发送completed并返回工具结果。auth、网络或decode失败走Fatal，extension自身没有failed/aborted terminal item，consumer可能只看见started。completed item可以冷恢复，但只是“远端请求返回成功”，不证明commands中每个操作都执行。
+
+completed action是对请求的有损投影：优先取第一条`search_query`，否则第一条`image_query`，否则只识别第一条literal URL open，再否则第一条find；click、screenshot、finance、weather、sports、time以及非literal ref-id open都变成Other。混合commands只展示最高优先级的一项，`literal_url`只要求URL parser接受，不限制HTTP(S)。持久化/UI审计条目因此不能还原实际发给backend的完整操作集合。
+
+搜索输出正确标记`contains_external_context=true`，可污染Thread memory eligibility，telemetry preview也只写固定占位而不泄漏正文；但正文仍作为普通FunctionCallOutput进入历史和模型。两种保护作用不同：前者阻止后续memory生成，后者减少日志泄漏，都没有对prompt injection、引用真实性或输出体积做本地验证。
+
+```text
+tool planning
+  hosted available ----------------> Responses web_search
+  standalone enabled + web.run ----> local extension
+                                      -> POST provider/alpha/search
+                                         id = shared thread level_id
+                                         recent conversation + location/settings
+                                      <- full plaintext output
+                                      -> FunctionCallOutput + lossy WebSearchItem
+
+Backend max_output_tokens/domain settings are requests, not local enforcement.
+Parallel calls share the same remote session identity.
+```
+
+关键测试：
+
+- gate matrix：hosted/standalone、Responses Lite、feature on/off、Disabled/Cached/Indexed/Live、OpenAI/custom provider与extension缺失。
+- data boundary：两条超大user消息、assistant截断、metadata、location、custom base URL及system/tool过滤。
+- schema/policy：unknown fields、混合commands、超大数组、per-query domains、non-HTTP open和backend忽略allowed domains。
+- concurrency：同一level id并发search/open/click、reference id碰撞、Code Mode与Direct混用及remote caller attribution。
+- output：backend超大plaintext、encrypted-only response、max token不遵守、memory/rollout/context大小与HTTP body上限。
+- lifecycle：auth/network/decode failure、cancel、started无terminal、冷恢复和成功HTTP但partial command execution。
+- audit：所有command types、混合优先级、ref-id open、literal non-HTTPS URL与完整request对照。
+
+映射到当前项目：第一版只保留一种server-owned Search Tool contract，provider adapter不改变tool身份；每次调用使用`thread/run/step/tool-call`唯一operation id，远端cursor显式绑定operation或串行session。用户内容、位置和域名策略先在本地按tenant capability裁剪，再发给受信provider；请求/响应都有byte、item、token、timeout上限。持久化保存完整规范化command摘要和`started/succeeded/failed/cancelled`终态，UI投影只是派生视图。外部网页正文保持untrusted observation，做引用、prompt-injection隔离和memory污染标记，但不能把“禁用memory”误当输入安全检查。
+
 ## 5. 当前项目最应该吸收的架构原则
 
 ### 原则一：对外协议稳定，内部事件可演进
