@@ -1,6 +1,6 @@
 ---
 name: github-issue-workflow
-description: 执行本项目 GitHub Issue 的实现、验收收口与合并后分支清理工作流。Use when the user says 完成 Issue #N、读取 Issue #N 并实现、GPT 已确认 Issue #N 验收通过且用户确认收口、合并 PR #N 并清理分支, or asks to submit the current Issue as a PR. Do not use for ordinary learning conversations, inspection-only work, local experiments, or small changes unless the user explicitly promotes them into an Issue workflow.
+description: 执行本项目 GitHub Issue 的实现、验收收口与合并后分支清理工作流。Use when the user says 完成 Issue #N、读取 Issue #N 并实现、GPT 已确认 Issue #N 验收通过且用户确认收口、合并 PR #N 并清理分支, or asks to submit the current Issue as a PR. Do not use for ordinary learning conversations, inspection-only work, local experiments, GPT 轻量 docs PR, or small changes unless the user explicitly promotes them into an Issue workflow.
 ---
 
 # GitHub Issue 任务工作流
@@ -89,6 +89,8 @@ Ready PR 创建后说明：
 3. 只有此时才允许完成最终 checklist、更新 `docs/tasks/README.md` / `docs/roadmap.md`、归档已完成阶段以及记录必要的 `docs/work-log.md`。
 4. 在原 PR 分支 commit 并 push 收口改动；除非用户同时明确授权，PR 仍保持 Ready，不合并。
 
+如果用户已授权 GPT 完成远程收口说明或轻量 docs 更新，本 skill 不重复执行同一远程提交；Codex 只处理用户明确要求的本地同步或后续本地工作。
+
 ## 8. 合并与分支清理
 
 只有用户明确授权合并 PR 时执行：
@@ -96,10 +98,22 @@ Ready PR 创建后说明：
 1. 再次确认 PR 的 `验收状态：已通过` 且远程分支没有变化；未通过则停止，不得合并。
 2. Ready PR 直接合并到 `master`，正常流程不需要状态转换。PR 若仍为 Draft，则停止合并并返回实现流程：完成实现和验证、更新为“已实现、待验收”、转为 Ready 接受 Review，再等待 GPT 验收和用户合并授权。
 3. fast-forward 同步本地 `master`，确认合并内容已落入主分支。
-4. 删除远程 Issue 分支；如果 GitHub 已自动删除，则视为已完成。
+4. 删除远程 Issue 分支；如果 GitHub 已自动删除或 GPT 已删除，则视为已完成，不重复执行。
 5. 使用安全删除清理本地 Issue 分支。
 6. 禁止强制删除未合并分支；如果安全删除失败，停止并说明原因。
 7. 尚未合并的分支继续保留；放弃任务的分支只有用户确认后才删除。
+
+如果用户已授权 GPT 完成远程合并和远程分支删除，本 skill 只负责本地 `master` 同步、本地分支清理或用户明确要求的本地检查；不得重复合并或重复删除远程分支。
+
+## 9. research / 学习 docs 边界
+
+`research` 或学习 docs 沉淀任务可以写入 `docs/research/**`，也可以作为后续正式 Issue 的背景材料。默认规则：
+
+- 用户确认后可以沉淀学习路线、技术方案、阶段总结和项目复盘。
+- 学习 docs 沉淀不等于正式任务状态变化。
+- 不把计划写成已完成事实。
+- 不自动修改 `docs/tasks/**`、`docs/roadmap.md` 或 `docs/work-log.md` 的正式状态。
+- 当学习计划转为功能、修复、重构、数据库、API、Agent Runtime、Tool Calling 或权限任务时，再进入正式 Issue 工作流。
 
 ## 停止条件
 
@@ -109,3 +123,4 @@ Ready PR 创建后说明：
 - 必要验证失败且尚未解释。
 - 用户未明确确认 GPT 验收结论，却要求写入 Completed 状态。
 - 用户未授权合并或删除未合并分支。
+- GPT 已完成远程合并 / 删除时，用户未要求 Codex 做本地同步或本地清理。
