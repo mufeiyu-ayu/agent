@@ -1279,3 +1279,78 @@ Thread建立后原地改全局与项目文件，再跑普通Turn、Deferred Exec
 让workspace attempt带managed proxy后升级到full access，再重试；检查proxy、managed CA、用户CA、GIT_SSH和credential dummy的最终map。证明env展示标签与真正sandbox/network policy不能互相替代。
 
 最后开启`experimental_use_profile`并搜索/执行runtime，确认当前字段无消费方；比较warm Thread、cold resume和subagent的父process env漂移。业务实现应保存policy revision/env key provenance，而不是持久化secret value或假设同Thread环境恒定。
+
+## 65. 路线六十二：有PID文件为何仍不能说App Server一定可用
+
+按operation lock、PID identity、socket ready、desired state和Updater阅读：
+
+- `app-server-daemon/src/lib.rs`与README：start/restart/stop/bootstrap、unmanaged socket保护、10秒probe和JSON契约。
+- `backend/pid.rs`：reservation flock、empty Starting、PID+start time、setsid、60秒grace/70秒stop和stderr tail。
+- `settings.rs`：remote-control desired state普通JSON写入与restart顺序。
+- `update_loop.rs`、`managed_install.rs`：5分钟/1小时、install.sh执行、binary digest、server-first restart和updater reexec。
+- daemon/PID/update/remote-control tests：crash、Busy、stale、legacy fallback与partial success。
+
+并发发起start/restart/stop，验证daemon.lock与pid.lock分别保护什么；在空pid reservation的lock持有者crash前后读取状态。复用同PID但改变start time，确认不会误杀。
+
+让socket由手工进程占用、managed PID活着但未ready、socket文件陈旧和Initialize失败；区分AlreadyRunning、等待、拒绝与timeout诊断。检查stderr tail是否可能携带secret。
+
+在settings write、old stop、new spawn、Updater start和ready probe各点注入失败，列出desired/actual/PID/socket/updater五层partial state。证明bootstrap输出只在全成功时成立，不是事务commit。
+
+最后让install.sh下载错误、脚本执行失败、binary内容变但版本不变、version变但内容身份关系异常，并让operation lock长期Busy。生产迁移优先成熟supervisor与签名更新；若保留应用daemon，必须持久化generation journal和恢复器。
+
+## 66. 路线六十三：0600 Socket为何仍可能被旧进程误删
+
+按path准备、startup lock、bind权限、connection admission与cleanup阅读：
+
+- `app-server-transport/src/transport/{mod,unix_socket,websocket}.rs`：URL解析、默认path、flock范围、stale检测、guard和共享连接队列。
+- `uds/src/lib.rs`：Unix 0700/0600语义、symlink_metadata与Windows shim差异。
+- App Server `lib.rs`：startup lock从prepare跨SQLite/config直到listener bind的寿命。
+- `stdio-to-uds`：透明byte relay、half-close与协议不转换边界。
+- UDS/transport/integration tests：mode、stale、overload、shutdown与并发startup。
+
+用两个同CODEX_HOME不同socket、两个不同home同socket并发启动，确认startup lock与bind分别覆盖哪个竞态。让state DB初始化卡住，观察第二个startup lock无timeout等待。
+
+对custom父目录设置0770、替换为regular/symlink/socket和在prepare/bind间rename，记录chmod副作用与拒绝/删除行为。Windows只验证功能，不沿用Unix权限结论。
+
+在旧listener运行时unlink并绑定replacement，再让旧acceptor Drop；检查pathname guard会否删除新socket。修复方向是private generation directory或inode/ownership比对。
+
+最后打开大量不完成WebSocket握手的UDS连接，填满transport/outbound queue并混发Request/Notification/invalid JSON/binary。区分admission、backpressure和parse error语义；本地可信不应等于无需资源上限。
+
+## 67. 路线六十四：谁真正为上游请求生成Attestation
+
+按provider能力快照、Thread订阅选择、server request callback和header注入阅读：
+
+- `core/src/attestation.rs`、`core/src/client.rs`：host回调边界、Thread-only context、Responses/compaction/realtime/WS注入点与ModelClient寿命。
+- `model-provider/src/{provider,auth}.rs`：ChatGPT auth判定、provider-scoped AuthManager和custom base URL信任边界。
+- `app-server/src/attestation.rs`：100ms请求、opaque token、`{v,s,t}`失败envelope和HeaderValue转换。
+- `app-server/src/thread_state.rs`、`outgoing_message.rs`：capable subscriber最小ConnectionId、callback ownership、发送失败、timeout cancel与迟到response。
+- protocol Initialize capability与attestation integration/client tests：默认关闭、桌面opt-in、WS handshake和非ChatGPT省略。
+
+用两个支持attestation的client和一个不支持client订阅同一Thread，改变连接顺序、断开最小ConnectionId并让首选client超时。确认选择稳定但没有同请求fallback；再让client只连接不订阅Thread，区分“无header”和失败状态header。
+
+分别对Responses HTTP、remote compaction、realtime create、WS prewarm/重连计数，确认哪些操作触发新token、哪些复用连接。登录/登出或auth revision变化后复用同ModelClient，检查`include_attestation`构造期快照漂移。
+
+让client返回超长token、控制字符、错误、malformed JSON和100ms后迟到response；记录HeaderValue、callback map、日志与上游`s=0..4`结果。证明App Server只验证response形状，不验证token真实性、freshness或request binding。
+
+最后配置复用ChatGPT auth的custom `requires_openai_auth=true` provider和非官方base URL，核验Bearer与attestation的实际目的地。生产设计必须把host allowlist/audience、request digest、nonce、expiry、签发者校验与tenant identity同时绑定，不能把布尔capability升级为授权。
+
+## 68. 路线六十五：模型列表为什么可能回退却不报错
+
+按worker寿命、cache资格、ETag触发、发布顺序和分页读取：
+
+- `app-server/src/models_refresh_worker.rs`：立即Online、完成后3分钟sleep、Weak manager和cancel不打断in-flight fetch。
+- `models-manager/src/manager.rs`：三种RefreshStrategy、auth准入、remote-only/merge、双RwLock与memory→etag→disk顺序。
+- `models-manager/src/cache.rs`：5分钟TTL、whole client version、直接JSON写入和future timestamp语义。
+- `core/src/session/turn.rs`、API SSE/WS endpoint：`X-Models-Etag`进入sampling事件循环并同步refresh。
+- App Server `models.rs`/catalog processor：OnlineIfUncached、hidden filter与offset cursor。
+- worker/manager/models-cache-TTL/models-etag tests：失败继续、cache命中、ETag续期和串行去重。
+
+让worker fetch、两个Thread收到相同mismatch ETag和两个model/list同时发生，并控制旧请求晚于新请求返回；记录最终models、etag、disk是否来自同一generation。当前没有singleflight或CAS，测试应把last-completion-wins暴露出来。
+
+在memory publish、etag publish和disk write分别注入失败/crash，并用两个进程共享CODEX_HOME并发写cache。验证API仍返回last-known内存但不带stale标记，partial JSON在下次读取只退化为miss。
+
+切换provider/base URL、ChatGPT/API-key auth、account和系统时钟；复用fresh cache，检查client version是当前唯一资格key、future timestamp可延长freshness、auth变化会改变filter与下一次apply projection。
+
+让Responses ETag refresh延迟数秒，同时服务器继续发送tool call/completed，测量事件循环阻塞。生产设计应将header作为异步invalidate信号，用singleflight刷新并保留Turn自己的ModelInfo快照。
+
+最后在分页第1页与第2页之间刷新catalog/切auth，验证offset cursor重复或漏项。修复应让cursor绑定catalog generation/etag，或一次响应返回稳定快照。

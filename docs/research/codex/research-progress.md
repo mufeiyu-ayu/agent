@@ -87,12 +87,16 @@
 | 53 | App Server WebSocket入口认证、Origin与连接撤权边界 | 补non-loopback无auth硬拒绝和旧unsafe flag删除、capability SHA-256常量时比较、HS256 exp/nbf/iss/aud、Origin对全路由403、health无Bearer、官方client拒绝non-loopback明文token、auth后仍是全RPC surface、startup secret snapshot与已连接socket不撤权 | 87% / 87% |
 | 54 | Shell Snapshot捕获、wrapper优先级与Secret落盘风险 | 补login rc真实副作用、functions/options/aliases/all exports物化、10秒capture+validation、temp rename但无显式0600/nofollow/hash、exact cwd+peek导致同Turn渐进启用、source失败静默、policy/proxy/profile/PATH二次恢复、Drop与rollout-mtime cleanup及cold resume漂移 | 87% / 87% |
 | 55 | Shell Environment Policy投影顺序、runtime mutation与误配置 | 补默认All且ignore excludes=true导致secret继承、KEY/SECRET/TOKEN黑名单漏报误报、配置文档称regex但实际case-insensitive WildMatch、exclude→set→include顺序、thread/profile仅标签、PATH/proxy/CA按attempt重算、Windows PATHEXT和experimental_use_profile当前无runtime消费 | 87% / 87% |
+| 56 | App Server Daemon PID身份、服务ready与自动更新partial state | 补daemon/pid双flock、空PID reservation、PID+start time抗复用、unmanaged socket拒绝、SIGTERM 60秒后SIGKILL/70秒上限、Initialize才ready、settings先写后restart非原子、bootstrap多进程partial state、install.sh直接执行供应链、binary digest驱动server-first restart与updater reexec | 87% / 87% |
+| 57 | Unix Control Socket权限、stale清理、startup lock与连接背压 | 补默认0700目录/0600 socket承担认证、custom父目录被强制chmod、startup flock跨SQLite初始化且无timeout、connect-refused后只删真实socket、Guard按path非inode导致replacement unlink、每连接handshake task无显式上限、Request queue满返回-32001而其他event await和shutdown path不等于连接收口 | 87% / 87% |
+| 58 | Attestation能力协商、客户端证明与header失败语义 | 补ChatGPT auth在ModelClient构造期冻结能力、custom provider目的地边界、Thread订阅者按最小ConnectionId单选且无fallback、请求参数无thread/request binding、100ms关键路径、迟到response只删callback、opaque token不验证与`{v,s,t}`区分无参与/生成失败 | 87% / 86% |
+| 59 | Models refresh worker、ETag触发与cache原子性 | 补立即Online+完成后3分钟fixed-delay、shutdown不取消in-flight、5分钟cache仅绑client version且漏provider/future timestamp、direct write无锁、memory→etag→disk非原子、Responses ETag同步阻塞sampling、无singleflight导致旧请求晚回覆盖与offset cursor不绑generation | 86% / 86% |
 
 ## 最近检查
 
 - 命令：`python3 "$HOME/.local/bin/codex-weekly-usage.py"`
-- 读数：已用 13%，剩余 87%
-- 采样时间：`2026-07-13 12:37:06 CST`
+- 读数：已用 14%，剩余 86%
+- 采样时间：`2026-07-13 12:43:08 CST`
 - 判断：高于 50%；按用户明确停止条件继续做源码深挖，不能以首轮闭环或 PR 已创建为由停止。
 
 ## 下一批次

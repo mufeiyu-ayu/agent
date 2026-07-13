@@ -2523,6 +2523,207 @@ No step above grants filesystem/network permission by itself.
 
 映射到当前项目：Agent Tool环境默认用allowlist/None起步，只注入PATH/LANG与每Step短寿命capability；不要用变量名黑名单假装secret治理。配置schema应把glob明确叫glob并提供dry-run预览。最终执行记录env key列表和policy revision，不记录value；cold resume重新签发secret。环境标签只做可观测性，所有权限在执行器按tenant/run policy再次强制。
 
+### 4.67 App Server Daemon：PID记录解决进程身份，不解决服务状态事务
+
+Daemon是Unix-only的实验性生命周期层，用固定`CODEX_HOME/packages/standalone/current/codex`启动App Server Unix control socket。start/restart/stop/bootstrap与remote-control配置变更都在`CODEX_HOME/app-server-daemon/daemon.lock`上flock串行，最多等75秒；version/probe是只读旁路，不拿operation lock。并发调用不会互相spawn两份managed process，但外部非daemon进程仍可能占socket。
+
+start先probe Unix socket完成真实Initialize握手；若可用就返回AlreadyRunning，并再判断是否有managed PID。probe失败但PID backend处于Starting/Running时，不重复spawn，而最多等10秒ready。PID不存在/失活才从managed path启动。restart/stop若发现socket可用但没有匹配managed PID，明确拒绝操作，避免误杀用户手工启动的App Server。
+
+PID文件不是只写数字，而是`{pid, processStartTime}`。判断active先`kill(pid,0)`，再调用`ps -p <pid> -o lstart=`比对start time，降低PID复用误杀。`ps`输出字符串是平台格式而非内核boot id；查询失败且process仍存在会报错，而不是冒险判stale。这是比裸PID安全的best effort，不是强身份handle/pidfd。
+
+启动用两级锁。per-backend `.pid.lock`先flock，再`create_new`空pid文件作为Starting reservation；空文件且lock仍被占表示初始化中，空文件但能拿锁视为crash遗留并删除。spawn后进程`setsid()`脱离终端，stdout/null、stderr截断写独立log；拿到PID与start time后先写固定`.pid.tmp`再rename发布record，最后释放reservation lock。
+
+`.pid.tmp`、settings和stderr文件都没有显式mode/fsync/nofollow；同一CODEX_HOME账户边界内存在symlink/替换风险。固定temp名在operation+reservation lock保护daemon协作者，但不能防不可信同账户进程。PID publish失败会SIGTERM child并清理，然而终止后不等待进程确实退出再返回，短窗口内可能留untracked process。
+
+stop先SIGTERM，轮询active identity；60秒后若仍存活发SIGKILL，总上限70秒。App Server本身把第一次SIGTERM解释为可force的graceful restart信号，所以60秒窗口允许Turn drain；daemon没有调用协议shutdown。App Server只kill单PID，不killprocess group，其子进程清理由App Server自己的teardown/OS继承负责；Updater强杀则对负PID发SIGKILL整个process group，避免留下installer shell。
+
+ready定义为socket probe完成Initialize并返回server version，不只是socket文件存在。10秒超时错误会附managed binary path/version和最多4KiB stderr tail；tail从中间截断时丢到下一换行，避免半行。每次新start会truncate旧stderr，所以只保留最近一次启动诊断，且日志内容未经脱敏会进入CLI错误上下文。
+
+remote-control desired state单独写`settings.json`。变更值先保存，再对正在运行的managed backend执行stop/start；restart失败会留下“desired新值、actual旧进程可能已停”的partial state。若值未变但backend在跑，daemon仍通过RPC enable/disable校正live状态。settings用普通pretty JSON `fs::write`，无temp rename；crash截断会使后续所有lifecycle load失败，而不是回退默认。
+
+bootstrap先保存settings，停止旧managed backend，启动App Server，再确保旧Updater停掉并启动新Updater，最后才等App Server ready。任一步都不是跨进程事务：例如Updater已启动但App Server未ready，命令失败却留下更新循环；反之App Server启动成功、Updater失败则bootstrap失败但服务可用。输出状态只能描述命令成功路径。
+
+Updater不是system service，重启机器后不会恢复；bootstrap才启动detached pid loop。它先等5分钟，此后每小时用HTTPS下载`https://chatgpt.com/codex/install.sh` bytes，直接pipe给`/bin/sh -s`，stdout/stderr丢弃。源码没有固定script digest、签名或内容类型校验，供应链信任完全落在TLS/domain与install script；失败也被主loop吞掉，下一小时重试，缺少持久last-error状态。
+
+更新后canonicalize managed binary并读取完整文件算SHA-256，与当前Updater executable内容比较。若内容相同，只按`--version`字符串决定是否重启App Server；若内容不同，即使版本字符串相同也Always restart，然后`exec()`新managed binary替换Updater自身。顺序保证先让App Server使用新binary且ready，再更新守护循环；reexec失败时旧Updater返回error并由loop继续，下一小时重试。
+
+Updater尝试restart用nonblocking operation lock；Busy每50ms重试且没有独立deadline，直到拿锁或收到SIGTERM。因为用户stop最多70秒而operation lock command最多75秒，这通常最终收敛，但一个卡在lock内超过约定的bug会让Updater无限spin。NotReady时不重启，避免在未知socket状态下先杀；下一小时再尝试，不做短周期健康修复。
+
+自动更新只对已经running managed App Server生效；NotRunning不会因为新binary自动start。它比较CLI reported app-server version与managed binary `--version`，这两个字符串可能来自不同binary image/解析路径。内容digest只用于Updater自身是否陈旧，不持久化为安装审计记录。
+
+```text
+daemon.lock (mutating commands)
+   |
+socket probe ---- available + no managed PID -> refuse to kill unmanaged service
+   |
+pid.lock + empty pid reservation
+   -> setsid spawn managed codex app-server
+   -> record pid + process start time
+   -> Initialize probe = ready
+
+bootstrap additionally starts non-persistent updater:
+  5m / hourly -> fetch install.sh -> /bin/sh
+  -> hash managed binary
+  -> lock -> restart running server -> ready -> exec new updater
+
+No transaction spans settings, PID files, socket readiness, and updater state.
+```
+
+关键测试：
+
+- daemon lifecycle tests：idempotent start、unmanaged socket拒绝、10秒ready、remote-control settings与JSON output。
+- PID backend tests：locked/unlocked empty reservation、stale PID、PID start-time reuse、concurrent start、SIGTERM→SIGKILL与stderr tail。
+- bootstrap/update tests：Updater启动顺序、Busy/NotReady/NotRunning、version vs executable digest和reexec条件。
+- managed install tests：canonical path、`--version`解析与binary content identity。
+- remote-control client tests：Initialize、legacy invalid-params fallback、connected notification和10秒ready timeout。
+
+映射到当前项目：生产Agent worker/控制服务应由systemd/Kubernetes等成熟supervisor管理，不在应用里重造PID daemon。若确需自管理，使用pidfd/service manager identity、原子fsync settings、desired/observed generation和可恢复operation journal；更新包必须签名验证并保存版本/digest/last-error。服务ready、配置已持久化、进程已启动和Updater已运行是四个状态，API不能用一个“started”布尔值折叠。
+
+### 4.68 Unix Control Socket：文件权限承担认证，启动锁只覆盖Bind之前
+
+App Server Unix transport仍在byte stream上跑WebSocket framing，再复用与TCP WebSocket相同的connection reader/writer。它没有HTTP Upgrade header认证、Origin middleware或Bearer；连接者一旦能打开socket，就进入完整App Server initialize/RPC面。身份边界完全依赖filesystem path、目录mode与本机账户隔离。
+
+默认path是`CODEX_HOME/app-server-control/app-server-control.sock`，startup lock在同目录的`app-server-startup.lock`。`unix://`用默认path；`unix://PATH`相对当前cwd解析为absolute。无论用户选择哪个custom socket，startup lock仍按CODEX_HOME默认位置，因此同一home下不同path的启动会短暂互斥，不同CODEX_HOME即使指向同一custom path则不共享锁，最终靠socket bind/prepare冲突。
+
+启动先拿blocking file lock，再在持锁期间prepare socket path、初始化SQLite/requirements/telemetry等大部分App Server状态，直到listener成功bind才释放。这样两个合作进程不会同时把同一个stale socket都删掉；代价是state DB卡顿也长期占startup lock。这个lock没有timeout，`file.lock()`会在spawn_blocking线程无限等待；与Daemon自己的75秒operation lock是不同锁层。
+
+`prepare_private_socket_directory`新建目录时0700；已有目录用`symlink_metadata`要求真directory并**强制chmod精确0700**。对custom `unix:///shared/path/codex.sock`，这会修改用户指定父目录权限，可能破坏原本组共享用途；不是只检查安全后拒绝。默认目录因此owner-only，即使socket bind到chmod之间存在短窗口，其他用户也无法穿过父目录。
+
+bind后socket本身再chmod 0600。Windows uds shim只create_dir_all且socket permission setter是no-op，安全语义依赖Windows实现/ACL，不能把Unix 0600结论跨平台复用。测试覆盖Unix private mode，但没有对Windows ACL等价性证明。
+
+stale处理先尝试connect：成功就AddrInUse，不管对端是否真是Codex；NotFound直接可bind；ConnectionRefused才继续检查path。path存在时只删除`symlink_metadata.file_type().is_socket()`为真的对象；regular file或symlink都拒绝AlreadyExists，不会任意unlink。这比“connect失败就rm”安全，但无法区分同一账户另一个协议的stale socket。
+
+prepare在App Server顶层拿lock时执行一次，`start_control_socket_acceptor`内部又执行一次再bind，是防御性复查。仍存在prepare检查到bind间的标准path TOCTOU；bind若被抢会失败，不会覆盖。`codex_uds::UnixListener::bind`没有openat/dirfd identity，custom父目录在检查后被rename/symlink替换的边界依赖OS path解析。
+
+listener存活期间`ControlSocketFileGuard`持有path，accept loop退出/handle drop时同步`remove_file(path)`。Guard不保存bound socket inode/file identity；若同权限进程在旧listener存活时unlink path并绑定replacement，旧Guard drop会按字符串删除replacement。这是经典stale cleanup TOCTOU，应在删除前lstat比对inode或让private dir ownership阻止非合作替换。
+
+accept loop对ConnectionAborted/Reset/Interrupted立即继续，其他accept error每秒重试，不让瞬时错误终止server。每个accepted stream无上限spawn一个task做`accept_async` WebSocket handshake；没有显式handshake timeout或connection admission limit。能访问socket的恶意同账户进程可开大量半握手连接占task/fd。
+
+连接升级后与普通WebSocket共享32768 outbound queue、Ping control与128 transport event queue。Incoming合法Request在transport queue满时用`try_send`返回JSON-RPC `-32001 Server overloaded`；若该connection outbound也满则连overload response都drop但保持连接。Notification/Response等非Request event在queue满时反而await全局queue，可能让该connection reader背压；不同消息类型有意选择不同丢弃/等待语义。
+
+JSON解析错误只log并继续，不向client返回JSON-RPC parse error；binary frame丢弃。UDS上的WebSocket framing让现有client/tool复用方便，却意味着原始stdio-to-uds只是透明byte copy：它不会做WebSocket handshake或JSON framing转换，调用者必须本来就说socket协议。`stdio-to-uds`双向copy在stdin EOF后half-close writer、继续读到socket EOF，NotConnected shutdown竞态被忽略。
+
+transport shutdown token只停止accept loop；已spawn connection tasks持自己的stream和transport channels，是否结束取决于App Server后续DisconnectAll/connection cleanup。socket path在acceptor退出时被删，不代表所有已连接client已收尾，也不代表旧listener fd立刻无法服务已有连接。
+
+```text
+CODEX_HOME startup flock (unbounded wait)
+  -> chmod/create parent 0700
+  -> probe existing path
+       connected: refuse
+       refused + true socket: delete stale
+       regular/symlink: refuse
+  -> bind -> chmod socket 0600 -> release startup lock
+  -> accept each stream -> WebSocket handshake task -> full RPC connection
+
+Socket path permissions are the auth policy.
+Guard later removes by pathname, not bound inode identity.
+```
+
+关键测试：
+
+- UDS transport tests：默认/custom URL、startup lock串行、WebSocket text/Ping转发、shutdown删path与0600。
+- `codex-uds` tests：0700目录修正、non-directory拒绝、regular vs socket stale判断和Windows shim。
+- App Server startup tests：lock跨state DB初始化持有、重复prepare与custom path。
+- transport queue tests：Request overload error、notification await、outbound-full drop与ConnectionClosed。
+- stdio-to-uds integration：双向copy、EOF half-close和NotConnected竞态。
+
+映射到当前项目：本地Agent control socket可用OS权限认证，但要用专属0700目录，拒绝而不是chmod用户共享目录；保存listener inode并在cleanup前比对，handshake/连接数/消息大小设上限。启动锁只保护端口发布，服务ready另有generation record。若跨用户或容器边界，改用带peer credential检查或mTLS的transport，不能只相信path字符串。
+
+### 4.69 Attestation：客户端声明能力不等于服务端验证信任
+
+Attestation不是Core自己生成的证明，而是一个host integration回调。`ModelClient`创建时把当前provider的`supports_attestation()`结果冻结为`include_attestation`；Configured provider只检查其AuthManager缓存中的认证是否为ChatGPT auth，默认false。判断不绑定官方hostname或具体endpoint，因此一个`requires_openai_auth=true`、自定义`base_url`且复用全局ChatGPT auth的provider也会进入attestation路径。它与Bearer token发送边界共享同一provider配置供应链风险。
+
+Core只给provider一个`AttestationContext { thread_id }`。每次Responses HTTP请求、remote compaction、realtime call和WebSocket新握手准备header时都可单独调用；WS连接复用后不会每个frame重签，但重连/prewarm会再次调用。上下文没有method、URL、body hash、model、turn id或nonce，客户端不能从该RPC参数把token密码学绑定到即将发出的具体上游请求；Core也不解析或验证token语义。
+
+App Server provider先从Thread订阅者中筛`initialize.capabilities.requestAttestation=true`的connection，再稳定选择最小`ConnectionId`。这避免HashSet遍历漂移，也意味着多客户端共享Thread时由最早仍订阅且声明支持的client成为证明者；声明本身没有额外身份校验。另一个支持client不会做quorum或fallback，首选client超时/返回错误时本次请求直接降级，不会尝试下一位。
+
+发送的是connection-scoped `attestation/generate {}`，payload没有thread id；thread id只用于服务端先选connection，而且PendingCallback的`thread_id`被故意设为None。因此Turn切换时的per-thread pending-request清理不会取消它；只有100ms timeout、全局shutdown或response结束callback。client在多个Thread并发请求时只能靠JSON-RPC request id区分，无法知道请求属于哪个Thread。
+
+100ms timeout位于上游请求/握手的关键路径。超时后App Server从callback map删除request，但没有向client发送cancel notification；迟到response只产生“找不到callback”警告。connection在选择后关闭、outbound发送失败或global callback被取消时，oneshot关闭会被编码成RequestCanceled。`send_request_to_connections`若排队失败会先删callback，接收端同样观察到canceled，而不是独立的delivery failure状态。
+
+App Server不会把失败简单变成“无header”。只要找到了capable connection，就把结果序列化为版本化JSON envelope：成功`{v:1,s:0,t:opaque}`，timeout/request failed/canceled/malformed分别是`s=1..4`且无`t`。没有capable subscriber、Weak sender已释放或最终HeaderValue字节非法才完全省略header。于是上游可以区分“客户端没参与”和“参与但生成失败”；这也是额外的运行状态泄露，需要作为协议契约而非日志细节管理。
+
+token被当作不透明字符串放入JSON再转HTTP HeaderValue。JSON序列化会转义控制字符，所以正常envelope通常可成为header；若最终字节仍不合法，`.ok()`静默变None，没有专门状态。响应反序列化只校验`{token: string}`形状，不限制长度、格式、签发者、expiry或重放；大token还可能触发上游/header stack限制。客户端返回的JSON-RPC error message与malformed详情会进入server日志，不能假设可信或已脱敏。
+
+Initialize capability默认false，exec/TUI host实现也明确返回attestation unavailable；App Server client默认同样不申请。只有支持server request并主动opt-in的桌面类客户端能完成链路。能力登记发生在connection initialize提交后，Thread订阅又是第二个条件：只连接但没resume/start/subscribe该Thread的client不会被选中。
+
+`include_attestation`是在ModelClient构造时读取cached auth，不随同一client后续登录/登出即时重算；auth refresh可改变发送credential，却不会改变这个布尔快照。Thread cold rebuild/new ModelClient才自然重新判定。认证与证明能力在不同生命周期冻结，是需要显式测试的状态漂移边界。
+
+```text
+ModelClient creation
+  -> cached auth is ChatGPT? freeze include_attestation
+
+upstream request / WS handshake
+  -> thread subscribers ∩ requestAttestation capability
+  -> minimum ConnectionId
+  -> attestation/generate {} -- 100ms --> opaque token/error
+  -> JSON envelope {v, s, t?}
+  -> x-oai-attestation header
+
+No request hash/URL/model/turn nonce is passed to the generating client.
+No validation or second-client fallback occurs in App Server.
+```
+
+关键测试：
+
+- Core client tests：ChatGPT auth的WS握手调用一次provider，非ChatGPT provider对response/compaction/realtime均不调用。
+- App Server integration：声明capability的桌面client收到server request，返回opaque token后header出现在Responses WS handshake。
+- ThreadState tests：只从该Thread订阅者选capable connection，并按最小ConnectionId稳定选择。
+- Attestation unit tests：opaque payload封装，以及timeout/request failed/canceled/malformed的`s=1..4`状态。
+- Outgoing callback tests：发送失败、取消、迟到response和connection teardown时callback map的收口。
+
+映射到当前项目：若SEO Agent需要设备/客户端证明，应由服务端下发包含audience、request digest、nonce、expiry与tenant/run/thread identity的challenge，客户端签名后由可信verifier校验；capability只是路由协商，不能作为信任。多客户端要定义owner或明确fallback策略，token设长度上限，失败码与日志脱敏。证明能力、认证revision和实际请求必须在同一Step快照中绑定，不能分别缓存。
+
+### 4.70 Models Refresh Worker：ETag降低重复请求，但没有形成单飞与原子快照
+
+OpenAI ModelsManager启动时只把bundled catalog放进内存，ETag为空；磁盘`models_cache.json`并不会在constructor立即加载。第一次`OnlineIfUncached`才按cache判定，App Server另起后台worker立刻执行一次`Online`，此后每次请求完成后sleep 3分钟。它是“完成后固定延迟”而非墙钟fixed interval，慢请求会整体推后周期。
+
+worker持ModelsManager Weak，manager销毁时自然退出；Drop/shutdown只cancel token。cancel只在fetch前和sleep select检查，正在await的`list_models(Online)`不会被abort，JoinHandle也不await/abort，因此shutdown不保证网络请求已结束。测试明确让第二次fetch阻塞、drop worker后释放它，证明不会发第三次；没有证明drop能取消第二次。
+
+`Online`不是HTTP conditional GET：只要`uses_codex_backend()`或command auth允许refresh，就每次完整fetch `/models?client_version=...`。worker的3分钟短于cache TTL 5分钟，所以App Server在线期间通常由worker主动更新；`model/list`使用`OnlineIfUncached`，fresh cache才避免网络。没有auth时worker的Online直接no-op，且不会顺带加载磁盘cache；Offline/OnlineIfUncached才会在不可refresh时尝试cache。
+
+cache freshness只绑定whole client version和`fetched_at <= now + TTL`，源码TODO明确缺provider identity。切换provider仍可能复用另一个provider的新鲜catalog。未来时间戳的age为负也满足`age <= TTL`，可以在本机时钟回拨或恶意cache下长期新鲜；没有`age >= 0`约束。cache也没有catalog schema/version、auth account/workspace、base URL或feature revision键。
+
+磁盘保存是pretty JSON直接`fs::write(models_cache.json)`，没有temp rename、file lock、fsync、create-new/nofollow或显式mode。跨进程/并发manager写同一CODEX_HOME可互相truncate/覆盖；读取遇到partial JSON只log并当miss，随后online fetch。cache不是durable transaction，只是best-effort加速层。
+
+一次成功fetch的发布顺序是：先`apply_remote_models`改内存，再写内存ETag，最后写磁盘cache；persist错误被内部吞掉且refresh仍返回Ok。进程在三步之间crash可形成新models+旧etag、新内存+旧disk等组合。`remote_models`与`etag`是两个独立RwLock，读者没有generation一致性快照。
+
+ChatGPT auth且远端至少一个List-visible model时，远端列表整体替换bundled；否则以bundled为底按slug覆盖/追加。保存到disk的却始终是原始远端列表，不是内存合并结果；restart从同一cache根据**当时**auth重新apply，可能得到不同projection。auth状态改变后已有内存不会自动重新merge，只在下一次cache apply/fetch时收敛；picker的auth filter倒是每次读取当前AuthManager，两个阶段寿命不同。
+
+Responses SSE/WS header里的`X-Models-Etag`走另一条刷新路径。若与当前非空ETag相同，只把cache文件`fetched_at`重写为now，不请求`/models`；若不同或当前ETag为空，就同步执行Online fetch。这个await位于ResponseEvent处理循环中，会延迟后续tool call/completed等事件，而不是后台排队。匹配ETag的TTL renewal同样直接重写整个cache文件，且renew函数不重新校验version/provider/etag一致性。
+
+ETag check、network fetch与publish之间没有singleflight mutex或CAS。worker、多个Thread的Responses header和多个`model/list`都可同时看到旧ETag并并发fetch；完成顺序决定最终memory、etag和disk，较旧请求晚返回可以覆盖较新结果。现有“同一Turn第二个response header不重复fetch”测试只覆盖串行事件，因为第一个refresh在继续sampling前已经await完成。
+
+`model/list`分页cursor只是当前排序数组的十进制offset。每页调用都会重新`OnlineIfUncached`并重新build/filter；后台refresh、auth切换或visibility变化可在两页之间改变列表，产生重复/漏项。response没有catalog generation/etag，cursor也不绑定snapshot。
+
+刷新失败只记录error，API仍返回当前内存catalog，保证可用性但没有stale标记。worker循环继续，客户端也没有通用`models/updated`通知；需要主动再次`model/list`才看到变化。空catalog的default model还能退化为空字符串，调用方不能把“请求成功”解释为“catalog新鲜且有效”。
+
+```text
+constructor: bundled models + etag=None
+
+App Server worker:
+  Online fetch immediately
+  publish memory -> etag -> best-effort disk
+  sleep 3m after completion
+
+model/list: OnlineIfUncached -> fresh 5m cache or network
+responses X-Models-Etag:
+  equal non-empty -> rewrite fetched_at
+  mismatch/unknown -> await full Online fetch in event loop
+
+No singleflight, generation snapshot, atomic disk replace, or provider cache key.
+```
+
+关键测试：
+
+- worker test：立即refresh、失败后继续、完成后周期，以及Drop后不再开启下一次fetch。
+- manager tests：Online/Offline/OnlineIfUncached、TTL/version miss、ChatGPT remote-only与bundled merge、auth切换过滤。
+- Core ETag integration：mismatch只刷新一次，后续相同header不重复；matching ETag只续TTL且offline仍可用。
+- cache tests：stale、version缺失/不匹配、TTL zero与JSON读写。
+- model/list tests：hidden filtering、offset cursor、limit与invalid cursor。
+
+映射到当前项目：模型/工具catalog使用`CatalogSnapshot { generation, source, fetchedAt, stale, items }`原子替换，singleflight合并并发refresh；磁盘key包含provider/tenant/auth scope/schema version并原子rename。上游ETag只触发后台refresh，不阻塞Step事件循环；分页cursor签入generation。失败继续提供last-known-good，但响应必须显式标stale与last error，不能把best-effort cache伪装成权威状态。
+
 ## 5. 当前项目最应该吸收的架构原则
 
 ### 原则一：对外协议稳定，内部事件可演进
