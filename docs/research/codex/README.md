@@ -81,6 +81,9 @@ flowchart LR
 | [deferred-tool-discovery.md](./deferred-tool-discovery.md) | Registry/Catalog/模型可见性分离、Deferred exposure、BM25发现与Dynamic Tool host边界 |
 | [sqlite-corruption-recovery.md](./sqlite-corruption-recovery.md) | 多DB故障隔离、corruption分类、backup/fresh start、backfill gate与恢复回执 |
 | [exec-policy-decision-engine.md](./exec-policy-decision-engine.md) | Exec规则合成、命令降级、最严Decision、批准缓存、amendment与sandbox分权 |
+| [context-compaction-transaction.md](./context-compaction-transaction.md) | Pre/Mid/Manual触发、Local/Remote/Reset实现、窗口lineage、历史替换与checkpoint提交 |
+| [hook-runtime-contract.md](./hook-runtime-contract.md) | Hook多源发现与信任、并发聚合、Tool改写、host命令、输出spill与副作用回执 |
+| [typed-extension-runtime.md](./typed-extension-runtime.md) | 不可变Registry、Session/Thread/Turn Store、Contributor权限与资源级merge语义 |
 | [current-project-gap-analysis.md](./current-project-gap-analysis.md) | 当前项目不是“缺什么功能”，而是缺哪些运行系统能力 |
 | [cloud-agent-mapping.md](./cloud-agent-mapping.md) | 客户端概念到云端 NestJS 架构的转换规则 |
 | [terminology-map.md](./terminology-map.md) | Thread、Turn、Item、Run、Step 等概念对照 |
