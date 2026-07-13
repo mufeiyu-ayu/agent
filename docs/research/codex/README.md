@@ -61,6 +61,9 @@ flowchart LR
 | [feedback-and-diagnostics.md](./feedback-and-diagnostics.md) | Feedback consent、诊断 enrich、artifact 上传与隐私边界 |
 | [assistant-directives.md](./assistant-directives.md) | Assistant magic directives、产品投影与 Git metadata 观察边界 |
 | [workspace-command-and-git-status.md](./workspace-command-and-git-status.md) | Workspace command port、Git/PR probe、缓存与远端一致性 |
+| [doctor-diagnostics.md](./doctor-diagnostics.md) | Doctor report模型、并发check、fallback、redaction与support artifact |
+| [rollout-state-reconciliation.md](./rollout-state-reconciliation.md) | Rollout/State DB双索引、read-only audit与partial scan语义 |
+| [config-diagnostics.md](./config-diagnostics.md) | Layer provenance、typed config path、TOML span与安全渲染 |
 | [current-project-gap-analysis.md](./current-project-gap-analysis.md) | 当前项目不是“缺什么功能”，而是缺哪些运行系统能力 |
 | [cloud-agent-mapping.md](./cloud-agent-mapping.md) | 客户端概念到云端 NestJS 架构的转换规则 |
 | [terminology-map.md](./terminology-map.md) | Thread、Turn、Item、Run、Step 等概念对照 |

@@ -52,6 +52,9 @@
 | [codex/feedback-and-diagnostics.md](./codex/feedback-and-diagnostics.md) | Feedback consent、诊断、附件上传与隐私边界专题 |
 | [codex/assistant-directives.md](./codex/assistant-directives.md) | Assistant 文本指令、产品投影与 claim→observe→persist 专题 |
 | [codex/workspace-command-and-git-status.md](./codex/workspace-command-and-git-status.md) | Remote-capable workspace command、Git/PR 状态探测与一致性专题 |
+| [codex/doctor-diagnostics.md](./codex/doctor-diagnostics.md) | Doctor canonical report、并发诊断、降级与隐私投影专题 |
+| [codex/rollout-state-reconciliation.md](./codex/rollout-state-reconciliation.md) | Rollout 事件事实与 SQLite 查询投影的对账专题 |
+| [codex/config-diagnostics.md](./codex/config-diagnostics.md) | 分层配置、typed path、源码 span 与敏感错误渲染专题 |
 | [codex/current-project-gap-analysis.md](./codex/current-project-gap-analysis.md) | 当前项目能力、证据和缺口 |
 | [codex/cloud-agent-mapping.md](./codex/cloud-agent-mapping.md) | 客户端 Codex 思想如何翻译为云端 NestJS Agent |
 | [codex/terminology-map.md](./codex/terminology-map.md) | Codex、当前项目和中文助记名的概念对照 |

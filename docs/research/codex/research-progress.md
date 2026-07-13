@@ -121,12 +121,15 @@
 | 87 | Feedback consent、诊断、artifact上传与隐私边界 | 新增独立专题页；补TUI两阶段选择和origin Thread回投、doctor best-effort enrich与reserved tag等优质实现，并确认process-global TRACE ring跨Thread混合、`extraLogFiles`绕过`includeLogs`且可读取任意PathBuf、proxy凭据原样上传、附件无总budget/immutable identity、Sentry flush无durable receipt等边界 | 82% / 82% |
 | 88 | Assistant markdown directives、产品投影与Git metadata事实采集 | 新增独立专题页；确认五类git action只作为文本语法被解析，TUI仅对最后一个CreateBranch cwd执行只读branch probe且持久化实际checkout，提炼claim→observe→persist、replay禁副作用、argv/timeout/output cap等优质模式；同时记录malformed/unknown静默隐藏、Markdown语境不感知、streaming-final闪现、model cwd越界、同Thread陈旧异步覆盖和metadata无服务端预算 | 82% / 82% |
 | 89 | Workspace command port、Git/PR status probe与remote一致性 | 新增独立专题页；补location-transparent executor、argv/timeout/output cap、verified default ref、parent-first PR fallback、partial availability等优质实现，并确认`git remote show`隐含网络/credential副作用、cwd-only ABA、branch/PR/diff跨HEAD快照、cache同cwd无限stale、per-command而非query总budget、numstat截断伪精确、URL/domain validation缺口，以及project root仍读TUI本地filesystem破坏remote一致性 | 82% / 82% |
+| 90 | Codex Doctor canonical report、并发诊断、fallback与privacy projection | 新增独立专题页；补统一Report/Check/Issue evidence模型、summary不缩水、Config失败继续fallback、severity lattice、stdout与progress隔离、passive daemon probe等优质实现，并确认secret-redacted不等于匿名、human headline未统一redact、字符串启发式绕过、duplicate check ID覆盖、async wrapper无deadline、sync child阻塞且无统一cap、read-mostly仍有network/process副作用、静态human group漏新category及process::exit析构边界 | 82% / 81% |
+| 91 | Rollout事件事实与State DB查询投影的read-only对账 | 新增独立专题页；补audit query不init/migrate、path+Thread ID双重identity、scan completeness先于否定结论、差异分类、恢复建议服从真实backfill语义、5条样本/8类summary/source coarsening等优质模式；同时确认candidate cap不限制目录entry、每个rollout完整解析、DB fetch_all无cap、sample不稳定、roots外现存DB path逃检、跨存储非快照、canonical fallback置信度、parse error与recovery integrity混淆及filesystem key覆盖 | 81% / 81% |
+| 92 | 分层Config的typed path、source span、strict validation与安全诊断 | 新增独立专题页；补serde类型语义+serde_path_to_error业务路径+toml_edit source span、真实relative base重放、raw enterprise provenance、单调fallback、type error优先和opaque namespace等优质实现，并确认lowest-first不等于causal provenance、flatten segment跳过误定位、feature粗粒度、Unicode/tab caret单位、source reread TOCTOU、thread-local guard非nested-safe、单错循环、source line secret/control泄漏、synthetic path类型混淆和重复parse无budget | 81% / 81% |
 
 ## 最近检查
 
 - 命令：`python3 "$HOME/.local/bin/codex-weekly-usage.py"`
-- 读数：已用 18%，剩余 82%
-- 采样时间：`2026-07-13 13:45:16 CST`
+- 读数：已用 19%，剩余 81%
+- 采样时间：`2026-07-13 13:52:44 CST`
 - 判断：高于 50%；按用户明确停止条件继续做源码深挖，不能以首轮闭环或 PR 已创建为由停止。
 
 ## 下一批次
