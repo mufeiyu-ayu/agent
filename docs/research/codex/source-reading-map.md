@@ -811,3 +811,98 @@ submission_loop (serialized control)
 建立四个同名skill：repo、plugin、remote executor和orchestrator。分别用plain `$name`、filesystem link、`skill://` opaque id和structured UserInput选择，记录谁被选中、由哪个filesystem/provider读取，以及哪些正文被去重。结论必须把name、path、package id与authority分别列出，不能统称skill id。
 
 再做更新实验：当前Turn捕获host snapshot后修改文件、executor断线重连、MCP generation刷新。说明当前Turn、下一Turn、当前Thread executor catalog和新orchestrator generation分别看到哪个版本。最后制造12 KiB main prompt，确认catalog metadata可见不代表正文完整；根据warning和locator继续读取尾部，而不是把8 KiB注入当完整执行说明。
+
+## 37. 路线三十四：终端里已经显示的字为什么不能随意改
+
+先区分三种状态所有者：
+
+- `tui/src/app_event.rs`与`app/event_dispatch.rs`：widget意图、App进程动作和退出顺序。
+- `app/app_server_event_targets.rs`、`app_server_events.rs`、`thread_routing.rs`：server event的Thread/App/Global路由和active/inactive channel。
+- `app/thread_events.rs`与`pending_interactive_replay.rs`：snapshot、bounded buffer、composer、active turn和interactive request重放。
+- `chatwidget.rs`与`history_cell/mod.rs`：committed transcript、mutable active cell和overlay revision。
+- `streaming/controller.rs`、`table_holdback.rs`、`chunking.rs`、`commit_tick.rs`：raw source、stable queue、mutable tail、resize和显示背压。
+- `thread_transcript.rs`：持久化ThreadItem如何重建source-backed history cell。
+
+做一次三Thread实验：A正在stream，B等待approval，C已完成。切到B、回答、再切回A；列出每个store的receiver、buffer、pending replay、active turn和composer。随后模拟session refresh，确认canonical turns替换哪些buffer事件，hook/approval为何需要单独保留或过滤。
+
+对一个含Markdown table的回答按任意delta边界输入，记录`raw_source / rendered / enqueued / emitted / tail`五个长度。中途resize并触发CatchUp，最终结果必须与一次性full render等价且无重复。最后模拟AppServer `Lagged`：列出哪些UI状态能由Thread snapshot恢复，哪些旁路状态没有sequence补读，作为新增notification的可靠性检查清单。
+
+## 38. 路线三十五：Plugin 已下载为何还不等于已启用
+
+按三次决策阅读：
+
+- `core-plugins/src/marketplace*.rs`与`marketplace_add/*`：source发现、requirements allow-list、staging clone和config登记。
+- `manager.rs::resolve_installable_plugin/install_resolved_plugin`：product/install/auth policy、source materialize、Store与enabled config顺序。
+- `store.rs`：plugin id/version布局、atomic copy/backup/rollback和active version选择。
+- `manifest.rs`与`plugin/src/provider.rs`：资源路径限定、Host/Executor authority和inert descriptor。
+- `remote_bundle.rs`与`plugin_bundle_archive.rs`：HTTPS、下载/解压cap、tar traversal/link防护和本地物化。
+- App Server `request_processors/plugins.rs`：remote detail→local bundle→backend enable→cache refresh，以及install后的auth流程。
+
+构造四个状态：catalog可见未安装、cache已存在未enabled、enabled但auth route不可用、当前Thread已捕获旧plugin snapshot。逐一列出UI、Config、磁盘、skills/MCP/apps/hooks看到什么。再让config写入、backend enable或cache clear分别失败，验证不会把其中一个层的成功误报成全部成功。
+
+安全练习包含三个输入：允许host上的floating Git branch、HTTPS remote bundle、带`../`或symlink的tar。指出source policy、transport安全、archive结构验证各自防什么、不防什么；检查当前路径是否验证digest/signature。若答案只写“来自HTTPS所以可信”，说明还没有完成供应链审计。
+
+## 39. 路线三十六：语音何时变成普通 Agent Turn
+
+按control plane、media loop和handoff三条线阅读：
+
+- App Server `turn_processor.rs::thread_realtime_*`与protocol `v2/realtime.rs`：feature/listener gate、RPC accepted与异步notification。
+- `core/realtime_conversation.rs::RealtimeConversationManager`：单实例generation、bounded channels、start/stop和fanout ownership。
+- 同文件input loop/event handler：audio drop、text backpressure、response.create queue、barge-in truncate和V1/V2 outbound映射。
+- `handle_start_inner`与handoff helpers：realtime event如何路由成regular Turn，后台输出如何回流。
+- `realtime_context.rs`：当前Thread、recent work、workspace tree的来源、预算与日志。
+- App Server realtime集成测试：WebRTC sideband、active response、steer、tool call和关闭顺序。
+
+画两个并行状态机：realtime transport generation与regular Agent Turn。让语音Session发handoff，Agent执行shell期间继续收audio；随后第二次handoff变成steer，旧Agent progress迟到。标明active handoff id、response create pending、fanout task和Thread Run分别由谁拥有。
+
+再压满四个channel，解释audio为何drop而text/handoff/event为何backpressure。模拟用户barge-in，按sample rate/channels算truncate毫秒。最后审计startup context：列出包含和排除的数据、各section预算、日志级别与租户边界；“内容有token cap”不能替代隐私分析。
+
+## 40. 路线三十七：配对成功到底授权了什么
+
+从enable门到virtual connection逐层阅读：
+
+- App Server startup与`remote_control_processor.rs`：managed policy、SQLite依赖、persisted/ephemeral desired state。
+- transport `remote_control/mod.rs`、`desired_state.rs`、state runtime：URL/account/client-name三元持久化和并发锁。
+- `auth.rs`、`server_api.rs`、`enroll.rs`：ChatGPT account header、server enrollment/token refresh和pairing identity复核。
+- `protocol.rs`、`websocket.rs`、`client_tracker.rs`：client/stream→ConnectionId、seq/cursor/ack、reconnect、idle close与背压。
+- `segment.rs`：大JSONRPC分段、重组cap、乱序/重复处理。
+- clients/pairing/transport tests：账户切换、撤销、stale enrollment和重放。
+
+先列四个身份：account、installation/server、paired client、stream/Connection。让用户在pair HTTP等待期间切换account，再让WebSocket 401、404和普通断线依次发生，说明哪些token刷新、哪些enrollment替换、哪些Connection重建。
+
+然后发送一个超过150 KiB的响应并在第三段后断线，记录server seq、segment id、ack、outbound buffer和subscribe cursor。最后做权限审计：从remote initialize开始沿普通App Server dispatch列出该client能调用的方法；若没有method-level scope，就明确“配对=完整控制面”，并检查relay能否看到JSONRPC正文以及100 MiB重组cap的DoS成本。
+
+## 41. 路线三十八：配置写成功为什么仍可能没有生效
+
+按read model、mutation和runtime refresh三层阅读：
+
+- `config/src/state.rs`、`fingerprint.rs`和loader README：layer precedence、active user layer、canonical TOML fingerprint与origin。
+- `app-server/src/config_manager_service.rs::apply_edits`：writable path、expected version、merge、raw/effective/requirements验证和override metadata。
+- `core/src/config/edit.rs`与`utils/path-utils`：`DocumentMut`保格式、batch edit、symlink target、no-op和tempfile persist。
+- protocol `v2/config.rs`：Replace/Upsert、WriteStatus、错误码、`reloadUserConfig`契约。
+- `request_processors/config_processor.rs`：plugin event、skills/plugins cache clear和loaded Thread refresh。
+- `config_manager_service_tests.rs`：comment/order、version conflict、profile path、managed override、merge和validation失败。
+
+先读取同时含system、user profile、project、session和managed层的配置，记录每个key的origin与user layer version。仅改注释/空白后验证version不变，再改语义值验证SHA-256 fingerprint变化。用旧version写入，确认冲突发生在任何落盘之前。
+
+在同一batch中先Upsert table、再clear子path、最后写一个违反requirements的值，证明整批不落盘；移除坏edit后检查注释与顺序仍保留。然后让managed layer覆盖写入key，区分user文件中的stored value、effective value、`OkOverridden`和first-only metadata。
+
+最后安排两个进程：A通过version check后暂停，B写入，再让A继续。沿源码确认持久化层没有第二次fingerprint CAS，解释为何atomic rename只防半文件，不能防lost update。再测试`reloadUserConfig=true`时一个Thread刷新失败：配置已提交、cache已失效和每个Thread已采用新配置必须作为三个状态记录。
+
+## 42. 路线三十九：记忆何时生成、何时使用、何时必须遗忘
+
+把写、读、反馈、删除拆开追踪：
+
+- `memories/write/src/start.rs`与`guard.rs`：root/ephemeral/subagent/state DB门和额度fail-open。
+- `phase1.rs`、`prompts.rs`与state memories startup claim：source/idle/history/mode筛选、lease、并行、rollout过滤、预算和secret redaction。
+- `phase2.rs`、`storage.rs`、`workspace.rs`：全局lease、usage selection、git diff、受限Agent、heartbeat、artifact验证与baseline commit。
+- `ext/memories`：Thread config snapshot、developer summary、dedicated tools、scoped path和ad-hoc note。
+- `memories/read/citations.rs`、Core `stream_events_utils.rs`与`memory_usage.rs`：隐藏citation、usage回写和shell telemetry。
+- Core tool/MCP路径与state `mark_thread_memory_mode_polluted`：external context如何触发forgetting consolidation。
+- App Server memory reset：DB与两个目录的非原子清理。
+
+建立五个Thread：当前root、旧interactive legacy、paginated、subagent和被external tool污染的Thread。推演谁触发pipeline、谁可被Phase 1 claim、谁会从Phase 2 selection被排除。让两个启动并发claim同一rollout，再让worker过lease后回写，检查ownership token是否阻止迟到结果冒充成功。
+
+让Phase 2在同步文件后、Agent完成前丢global lease；再分别制造invalid `memory_summary.md`和baseline reset失败。记录DB selection marker、workspace diff和git baseline能否前移。特别比较parent permission profile为Managed、Disabled和External三种情况，不要笼统声称consolidator总是no-network sandbox。
+
+读取侧先只启用summary injection，再打开dedicated tools。用`../`、hidden path、中间symlink、超长read和search cursor攻击scoped backend；随后让模型输出合法/部分畸形citation，验证visible answer、结构化citation、usage count和Turn metric。最后触发`memory/reset`目录删除失败，说明为何“DB已清、文件未清”需要可重试删除状态。

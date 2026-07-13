@@ -59,12 +59,18 @@
 | 25 | Auth snapshot、401 recovery 与账户身份边界 | 补缓存/revision与存储形态、reload→refresh有限状态机、account guard、并发refresh与永久失败隔离、external provider、HTTP/WS恢复位置和重建header | 91% / 91% |
 | 26 | Agent Role discovery、Config layer 与 fork inheritance | 补role metadata/config双层、声明与目录发现、跨layer字段继承、SessionFlags重载和requirements重应用、sticky runtime设置、full-history fork拒绝覆盖与role供应链边界 | 91% / 91% |
 | 27 | Skills catalog、authority、snapshot 与按需正文 | 补多来源root/namespace、metadata与policy、config-aware cache、Host/Executor/Orchestrator不同寿命、路径化选择、catalog/main prompt预算、watch invalidation和双注入迁移边界 | 91% / 91% |
+| 28 | TUI thread projection、interactive replay 与 streaming render | 补AppEvent/AppCommand分层、thread-scoped buffer和snapshot rebase、pending prompt精确重放、committed/active cell、stable/tail streaming、table/resize、显示背压与Lagged恢复边界 | 91% / 91% |
+| 29 | Plugin marketplace admission、atomic store 与 supply-chain boundary | 补catalog/install/enable三态、requirements source policy、staging与rollback、manifest/resource containment、remote bundle大小/路径防护、local→backend事务顺序、无内容签名风险和cache generation | 91% / 91% |
+| 30 | Realtime media session、handoff 与 backpressure | 补Thread旁路生命周期、WS/WebRTC gate、媒体/文本不同队列策略、response.create合并、barge-in truncate、普通Agent handoff/steer、generation收口、startup context预算与敏感日志风险 | 91% / 91% |
+| 31 | Remote Control pairing、virtual connection 与 relay recovery | 补managed/SQLite/desired-state三门、账户绑定enrollment与短寿命server token、pairing身份复核、client/stream映射、seq/segment/ack重放、buffer背压、完整控制面授权和relay明文信任边界 | 91% / 91% |
+| 32 | Config mutation、乐观并发与runtime refresh | 补active user layer唯一写边界、canonical TOML fingerprint、Replace/Upsert/null语义、raw/requirements/effective三重验证、DocumentMut保格式与atomic replace、override metadata、cache/Thread刷新分层和版本检查TOCTOU窗口 | 91% / 91% |
+| 33 | Memories生成、使用反馈与遗忘边界 | 补startup资格和额度fail-open、Phase 1 lease/过滤/并行/结构化抽取、Phase 2全局锁/usage selection/git diff/受限Agent、读路径scoped tools与citation反馈、external context pollution和reset非原子删除 | 91% / 90% |
 
 ## 最近检查
 
 - 命令：`python3 "$HOME/.local/bin/codex-weekly-usage.py"`
-- 读数：已用 9%，剩余 91%
-- 采样时间：`2026-07-13 11:57:44 CST`
+- 读数：已用 10%，剩余 90%
+- 采样时间：`2026-07-13 12:07:39 CST`
 - 判断：高于 50%；按用户明确停止条件继续做源码深挖，不能以首轮闭环或 PR 已创建为由停止。
 
 ## 下一批次
