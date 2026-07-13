@@ -720,3 +720,94 @@ submission_loop (serialized control)
 用同一个environment id做三代状态：首次连接pending、首次失败、首次成功后断线。分别说明`wait_until_ready`是否重试、普通filesystem call是否reconnect、fail-fast inspection会返回什么。再在Step A捕获handle后upsert同名environment，确认A不能转用新handle，后续Step何时才能看到新实例。
 
 最后构造两个selected capability roots指向同一starting environment。检查本Step为何两个都omit但只启动一次；下一Stepready后为何两个都绑定同一Arc。把cwd改成非本机`PathUri`，列出哪些消费者仍可能错误fallback到host path，作为迁移审计点。
+
+## 31. 路线二十八：一次 exec 返回后命令为什么还活着
+
+按身份与事实流阅读：
+
+- `codex-rs/core/src/tools/handlers/unified_exec/exec_command.rs`、`write_stdin.rs`：call id、process id、chunk id与环境/权限解析。
+- `codex-rs/core/src/unified_exec/process_manager.rs`：reservation、sandbox attempt、yield/poll、store、network approval和LRU。
+- `codex-rs/core/src/unified_exec/process.rs`、`process_state.rs`：local/remote handle统一、output/state signal。
+- `head_tail_buffer.rs` 与 `async_watcher.rs`：response chunk、delta、terminal aggregate三条输出投影。
+- `codex-rs/exec-server/src/local_process.rs`：Starting/Running、seq、read/write/terminate、retention。
+- `codex-rs/exec-server/src/client.rs` 与 `client_recovery.rs`：ordered events、resume补读与stdin idempotency。
+- `codex-rs/app-server/src/thread_history.rs`：跨Turn迟到ExecCommandEnd如何归属原item。
+
+构造一个命令：100ms内输出head，初次yield后继续大量输出，期间断开remote transport，重连后写一次stdin，最终在新Turn开始后退出。逐项写出三种id、每次`after_seq`、write id、HeadTailBuffer内容、delta/terminal item和process store变化。
+
+再做两个失败练习：Exited比最后output早到；write已经进入child stdin但response在网络上丢失。前者靠seq gap/read与close barrier恢复，后者靠同write id server dedupe恢复。若方案只是“断线后重发RPC”，会分别造成丢输出和重复输入。
+
+## 32. 路线二十九：同一个 Tool Result 会被送到哪些观测系统
+
+先分三条管线，不要从某个`tracing!`调用推断全部遥测：
+
+- `codex-rs/otel/src/events/shared.rs`、`targets.rs`、`provider.rs`：log-only/trace-safe routing和signal exporter。
+- `otel/src/events/session_telemetry.rs`：同一事件的content版与shape版，以及metrics tag。
+- `core/src/config/otel.rs`、`otel_init.rs`：默认开关、Statsig debug差异、span attributes/tracestate。
+- `codex-rs/analytics/src/{facts,reducer,events,client}.rs`：协议fact、join条件、lossy queue与HTTP payload。
+- `codex-rs/feedback/src/lib.rs`、`feedback_diagnostics.rs`：full-fidelity ring、tags、attachments和Sentry upload。
+- `app-server/src/request_processors/feedback_processor.rs` 与TUI feedback流程：consent、Thread子树与路径附件。
+
+选一个包含shell arguments、stdout和error的Tool call，逐字段列出：OTEL log、OTEL trace、metric、Analytics event、Feedback ring分别看到什么。再关闭`log_user_prompt`、analytics和include_logs，确认三个开关只影响各自管线，不能互相代替。
+
+最后做威胁建模：远程App Server client传入`extra_log_files=/path/to/secret`，以及开发者把token写进普通span field。指出现有边界为何不会自动阻止，并给出server-side artifact id、trace field allow-list等修复方向。可观测性审计必须包含“没有发送什么”，不能只验证事件存在。
+
+## 33. 路线三十：没有 `/v2` endpoint 的协议如何演进
+
+从wire envelope到schema逐层读：
+
+- `codex-rs/app-server-protocol/src/rpc.rs`：实际JSONRPC方言与四种message shape。
+- `protocol/common.rs` 的request/notification宏和登记表：method、params、response、experimental、serialization scope一次声明。
+- `protocol/v1.rs`、`protocol/v2/mod.rs`：类型分区与同一union中的新旧API。
+- `experimental_api.rs` 与derive macro使用点：method、field、nested collection判定。
+- `app-server/src/message_processor.rs::deserialize_client_request` 与dispatch gate：raw→typed→capability。
+- `app-server/src/transport.rs`：outbound experimental notification drop与approval字段strip。
+- `app-server-protocol/src/export.rs`、`schema_fixtures.rs`：stable schema post-process、孤儿type清理与fixture闭环。
+
+练习一：给稳定`thread/start`新增optional experimental字段，分别构造None、Some(empty)、nested stable和nested experimental值，写出runtime与stable schema结果。练习二：给approval notification新增同类字段，决定旧client应drop whole message还是strip，并说明审批语义为何影响选择。
+
+最后模拟删除deprecated method：除了Rust variant，还检查response payload特例、Analytics reducer、serialization scope、TS/JSON fixture与旧client wire test。若只从schema移除而binary仍接受，它是“停止广告”；若从binary删除，则是breaking change，二者不能混称。
+
+## 34. 路线三十一：401 后为什么先重载再刷新
+
+先从认证所有者而不是HTTP client开始：
+
+- `codex-rs/login/src/auth/manager.rs`：`AuthManager`缓存、revision、refresh semaphore、永久失败snapshot与`UnauthorizedRecovery`状态机。
+- `codex-rs/login/src/auth.rs`及storage实现：credential变体、effective/API mode、file/keyring/ephemeral和logout/revoke。
+- `codex-rs/core/src/client.rs::stream_responses_api`：一个请求如何创建recovery、每轮重建`ClientSetup`并把phase写入下一attempt遥测。
+- 同文件`stream_responses_websocket`：建连401、upgrade fallback与已建连stream error的不同边界。
+- `login/tests/suite/auth_refresh.rs`：磁盘变化、account mismatch、permanent/transient failure。
+- `login/src/auth/auth_tests.rs`和`core/tests/suite/client.rs::provider_auth_command_refreshes_after_401`：external provider、workspace restriction和真实header替换。
+
+画managed状态机：旧token请求401，第一次只guarded reload并重试，第二次才authority refresh，第三次401终止。分别让磁盘token变更、账户id变更和另一个并发refresh先完成，记录每一步是否访问authority、是否更新cache、下一请求用哪个header。
+
+再把两类重试叠在一张图上：401发生在建流前，SSE断流发生在已经得到response后。说明为什么前者可以重建完整request，而后者必须考虑response id/已消费output；检查WebSocket只在connect阶段恢复认证，不能把任意mid-stream错误自动重放。最后审计新credential类型：若只把它映射为“ChatGPT”产品模式，却没有明确storage、workspace identity和unauthorized recovery能力，会在哪一层产生错误授权。
+
+## 35. 路线三十二：Agent Role 到底锁住了什么
+
+先把metadata discovery与spawn-time config application分开阅读：
+
+- `core/src/config/agent_roles.rs`：逐layer声明/目录发现、role file metadata、字段继承、warning降级与nickname校验。
+- `core/src/agent/role.rs`：built-in/user resolve、tool spec、SessionFlags插层、完整Config reload与sticky runtime choice。
+- `core/src/tools/handlers/multi_agents/{spawn.rs}`和`multi_agents_v2/spawn.rs`：caller override、role、service tier、runtime override的实际顺序。
+- `core/src/agent/control/spawn.rs`与`control.rs::prepare_thread_spawn`：nickname reservation、Thread config、environment/exec-policy继承和resume metadata。
+- config/role/multi-agent tests：跨层merge、skills/sandbox、full-history fork拒绝覆盖。
+
+构造三层同名`researcher`：user层给description和config file，project层standalone file只给nickname与developer instructions，session请求另一个model。推演最终metadata、实际role file、model和requirements约束；再让file内部name改成`auditor`，检查duplicate判定发生在声明key还是resolved name。
+
+然后比较三种spawn：无fork、last-N fork、full-history fork。前两者可在新child config上应用role；full-history必须继承父agent type/model/reasoning。把role file中的skills disable与sandbox写根加入练习，确认它们必须走完整Config loader且仍受managed requirements限制。最后把role文件当供应链输入做威胁建模：展示description之前可以只解析metadata，真正启用完整Config前必须建立信任和审计。
+
+## 36. 路线三十三：为什么看见 Skill 不等于读过 Skill
+
+按metadata→catalog→snapshot→body四层阅读：
+
+- `core-skills/src/loader.rs`与`root_loader.rs`：来源root、symlink/hidden、canonical identity、frontmatter、namespace与optional metadata。
+- `service.rs`与`config_rules.rs`：config-aware cache、product filter、enable/disable和immutable host snapshot。
+- `ext/skills/src/catalog.rs`、`sources.rs`、`provider/*`：Host/Executor/Orchestrator authority、opaque package/resource和list/read路由。
+- `ext/skills/src/state.rs`：executor root的Thread缓存、orchestrator MCP generation与bounded resource cache。
+- `extension.rs`、`selection.rs`、`render.rs`：Thread/Turn/Step投影、explicit mention、8 KiB预算和双注入抑制。
+- `core/session/turn_context.rs`、`turn.rs`与App Server `skills_watcher.rs`：每Turn host snapshot、legacy dependency/analytics路径和watch invalidation。
+
+建立四个同名skill：repo、plugin、remote executor和orchestrator。分别用plain `$name`、filesystem link、`skill://` opaque id和structured UserInput选择，记录谁被选中、由哪个filesystem/provider读取，以及哪些正文被去重。结论必须把name、path、package id与authority分别列出，不能统称skill id。
+
+再做更新实验：当前Turn捕获host snapshot后修改文件、executor断线重连、MCP generation刷新。说明当前Turn、下一Turn、当前Thread executor catalog和新orchestrator generation分别看到哪个版本。最后制造12 KiB main prompt，确认catalog metadata可见不代表正文完整；根据warning和locator继续读取尾部，而不是把8 KiB注入当完整执行说明。

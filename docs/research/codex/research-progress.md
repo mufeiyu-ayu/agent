@@ -53,12 +53,18 @@
 | 19 | MCP Runtime generation、refresh 与 exposure | 补Step级不可变snapshot、catalog多来源解析、无效环境变化复用manager、新旧runtime共存、required/cache/reconnect、tool可见性、elicitation跨refresh路由 | 92% / 92% |
 | 20 | Config layers、requirements composition 与 constraints | 补普通偏好/强制约束双管线、精确precedence/provenance、领域合并规则、normalize/fallback/fatal、permission重物化和refresh重建边界 | 92% / 92% |
 | 21 | Environment selection、reconnect 与 capability snapshot | 补Manager/Thread/Step三层、initial失败与reconnect差异、Deferred Executor starting/wait、fail-fast inspection、handle-bound capability root和PathUri兼容风险 | 92% / 92% |
+| 22 | Unified Exec process、output 与 remote recovery | 补call/process/chunk三身份、yield后后台存活、三条输出投影、seq乱序补读、stdin幂等、Exited/Closed barrier、LRU和network approval寿命 | 92% / 92% |
+| 23 | OTEL、Analytics 与 Feedback 数据边界 | 补signal/敏感度分流、trace-safe限制、lossy typed reducer、完整上下文join、feedback consent/附件边界，以及任意PathBuf与大附件风险 | 92% / 91% |
+| 24 | App Server protocol evolution 与 schema contract | 补非标准JSONRPC方言、v1/v2同union、宏登记表、field-level experimental运行/生成双门、outbound降级选择、fixture陈旧文件检查 | 91% / 91% |
+| 25 | Auth snapshot、401 recovery 与账户身份边界 | 补缓存/revision与存储形态、reload→refresh有限状态机、account guard、并发refresh与永久失败隔离、external provider、HTTP/WS恢复位置和重建header | 91% / 91% |
+| 26 | Agent Role discovery、Config layer 与 fork inheritance | 补role metadata/config双层、声明与目录发现、跨layer字段继承、SessionFlags重载和requirements重应用、sticky runtime设置、full-history fork拒绝覆盖与role供应链边界 | 91% / 91% |
+| 27 | Skills catalog、authority、snapshot 与按需正文 | 补多来源root/namespace、metadata与policy、config-aware cache、Host/Executor/Orchestrator不同寿命、路径化选择、catalog/main prompt预算、watch invalidation和双注入迁移边界 | 91% / 91% |
 
 ## 最近检查
 
 - 命令：`python3 "$HOME/.local/bin/codex-weekly-usage.py"`
-- 读数：已用 8%，剩余 92%
-- 采样时间：`2026-07-13 11:49:42 CST`
+- 读数：已用 9%，剩余 91%
+- 采样时间：`2026-07-13 11:57:44 CST`
 - 判断：高于 50%；按用户明确停止条件继续做源码深挖，不能以首轮闭环或 PR 已创建为由停止。
 
 ## 下一批次
