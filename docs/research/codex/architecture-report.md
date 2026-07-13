@@ -3637,6 +3637,164 @@ Transport retry cannot infer operation idempotency.
 
 映射到当前项目：provider adapter声明每个operation的`idempotencyClass`、stable operation id、max attempts、per-attempt/total timeout、retryable status和body limits；默认POST不自动重试ambiguous outcome。远端工具用Run/Step id做幂等key，数据库/outbox记录attempt与`sent/accepted/committed/unknown`。URL用标准builder和canonical query，reserved headers分层。日志只记allowlisted metadata、body digest/size；success/error response都在stream读取层强制byte cap。
 
+### 4.89 Apps File Params：工具approval之后的本地文件上传绕过了Turn filesystem sandbox
+
+Host-owned `codex_apps` MCP tool可在meta声明`openai/fileParams`。inventory把原provided-file object schema改写成模型可填的local path string/array；tool获批后，Core读取这些路径、先向ChatGPT `/files`创建记录，再把文件stream PUT到server返回的upload URL，轮询`/files/{id}/uploaded`，最后把`file_id/download_url`重写进真实MCP arguments。
+
+custom MCP被显式禁止使用这项能力，只有server名为`codex_apps`才保留file metadata，缩小了直接攻击面。但host-owned Apps目录和其远端tool descriptor仍决定哪些字段触发上传；这是backend-supplied egress capability，不是本地静态tool code。descriptor供应链被攻破或tool标注错误时，模型看到的是“填本地路径”，实际发生云端复制。
+
+最关键的边界缺口是文件读：Core选择primary Turn Environment、用cwd.join(file_path)解析，然后`get_metadata(..., sandbox=None)`和`read_file_stream(..., sandbox=None)`。它没有传Turn的filesystem sandbox context、PermissionProfile、workspace roots或denied-read globs。absolute path可替换base，relative `../../`也可越cwd；模型/App tool可把进程账户能读的任意host文件上传到OpenAI storage。
+
+MCP tool approval发生在rewrite之前，approval UI可能显示原始path，但是否提示由app annotations/policy/Guardian决定；被标read-only或auto-approved的tool仍会执行本地数据egress。tool side effect分类只描述远端业务动作，没有把“读取并上传本地文件”合并进risk。即使filesystem profile禁止读`.env`，fileParams path也不经过那条强制边界。
+
+schema rewrite会`object.clear()`，只保留description以及string或array-of-string，丢弃原schema的maxItems/minItems/pattern/format/enum/oneOf和item constraints。file数组因此没有客户端count/total bytes上限；每个文件只限制512 MiB。一个调用可顺序上传任意多文件，总量、耗时和云端成本无界。
+
+数组/多个fields逐个串行上传，不做transaction。前几个文件已创建+PUT+finalize后，后一个失败会令整个argument rewrite报错、MCP tool不执行，但已上传对象没有delete/rollback或orphan ledger。Turn cancel、network error和process crash同样留下不可关联的cloud files；retry模型再次发tool call会创建新file ids。
+
+如果fileParams数组里任一item不是string，rewrite返回None而不是schema error；parent保持原field。若其他字段也未改，**原始local paths会直接发给远端Codex Apps MCP tool**；若其他字段成功改写，混合字段仍保留原值一起发送。失败类型从“本地验证失败”退化为“把host路径文本泄露给远端”。
+
+metadata先检查is_file和size，再另开read stream，期间没有stable file handle/inode/digest；symlink target或文件可在TOCTOU窗口替换。Content-Length固定为旧metadata.size，但stream本身不按该长度take/verify。更短/更长/替换后的内容会产生upload错误或上传与用户批准时不同的bytes；512 MiB检查也可被swap绕过。
+
+create response的`upload_url`只解析host用于日志，实际Reqwest会对server提供的任意URL直接PUT完整本地文件；没有HTTPS、userinfo、port、DNS/private IP或Azure blob domain allowlist。受信ChatGPT backend通常返回signed blob URL，但一旦响应被错误代理/custom `chatgpt_base_url`/compromised service控制，就成为server-directed SSRF和file exfiltration sink。PUT不带ChatGPT auth，但file bytes本身就是敏感资产。
+
+server提供的`file_id`也直接字符串插入`{base}/files/{file_id}/uploaded`，未做path-segment percent encoding；slash、`..`、`?`、`#`可改变带auth finalize request的目标path/query。`download_url`不验证后直接交给Apps tool，`sediment://{file_id}`同样raw拼接。所有server-generated identifiers都应按opaque segment处理。
+
+Create/finalize每次都新建route-aware Reqwest client；finalize loop每250ms一次，可能在30秒内构建约百个client/PAC route。30秒不是hard deadline：检查只在收到`status=retry`后，单个finalize request自己的timeout是60秒，最后一次还可跨过边界，总wall time远超30秒。它不尊重Retry-After，也没有jitter。
+
+create/finalize用`.text().await.unwrap_or_default()`吞掉body read error，再表现为JSON Decode；success/error body都无byte cap。PUT用metadata size作Content-Length，60秒timeout后不重试/不finalize/delete，ambiguous blob state直接报错。route-client在ReqwestDefault构建失败时fallback plain `reqwest::Client::new()`，诊断只warning。
+
+authorized request只调用sync `auth.add_auth_headers`，不走EndpointSession的async `apply_auth`；request-signing/refreshing auth provider无法检查最终URL/body。当前入口又要求Codex backend auth，现实多为headers，但通用AuthProvider contract在这里被缩窄，未来auth类型扩展时会静默缺能力。
+
+```text
+approved Codex Apps tool(local path args)
+  -> primary env cwd join
+  -> metadata/read stream WITHOUT sandbox
+  -> POST authenticated ChatGPT /files
+  <- arbitrary upload_url + file_id
+  -> PUT local bytes to arbitrary returned URL
+  -> poll authenticated /files/{raw file_id}/uploaded
+  -> rewrite MCP args to download_url/file_id
+
+Partial uploads survive later rewrite/tool failure.
+```
+
+关键测试：
+
+- permission：absolute `/etc`/home secret、`../../`、denied-read glob、workspace symlink和non-primary Environment。
+- approval：read-only/destructive annotations、auto-approve/Guardian和UI是否明确列出local egress bytes/target。
+- schema：原maxItems/pattern/ref/oneOf、缺失property、超大数组、mixed non-string item和原path远端泄漏。
+- TOCTOU：metadata后replace/truncate/grow/symlink retarget，Content-Length与实际stream、inode/digest一致性。
+- transaction：第N个文件失败、cancel/crash、PUT成功response丢失、finalize timeout和orphan cleanup。
+- SSRF：HTTP/userinfo/custom port、localhost/private/link-local/DNS rebinding、非blob host与custom ChatGPT base。
+- identifier：file_id含slash/`..`/query/fragment/Unicode，download_url scheme/host和URI encoding。
+- budgets：512 MiB单项、总bytes/count、body read cap、finalize实际wall time/client builds与Retry-After。
+- auth：async signer/refresh、route policy build failure和最终URL签名。
+
+映射到当前项目：工具上传文件必须引用前端先创建的tenant-scoped artifact id，Agent model不能直接提交host path。若支持server-side path，读取用Turn capability handle+same sandbox、open-once stable fd、size/hash stream budget；approval展示artifact名/bytes/egress provider。批量上传有总count/bytes和transaction/outbox，失败对象进入durable cleanup。Signed upload URL只接受HTTPS与固定provider allowlist并做DNS/IP约束；opaque ids用URL builder编码。文件egress作为独立Tool Step持久化，不能藏在arguments rewrite里。
+
+### 4.90 Request User Input：UI支持队列，Core却只有每Turn一个等待槽
+
+`request_user_input`把模型的一组短问题投影成App Server request，再由TUI或其他client回传answer map，Core把它序列化为tool output继续sampling。它正确限制了non-root agent、按collaboration mode暴露，并用elicitation guard暂停相关执行；但schema、路由identity、deadline和持久化分别属于不同层，尚未形成一个可恢复的人类输入事务。
+
+工具描述要求1–3题、每题2–3个互斥选项、header不超过12字符、id为snake_case、label 1–5词；实际JSON Schema没有`minItems/maxItems`、`minLength/maxLength`、pattern或unique约束，且`strict=false`。runtime normalization只拒绝缺少/空options、强制`isOther=true`并把autoResolutionMs夹到60–240秒。空questions、任意多题/选项、重复question id/label和无界字符串都可通过。
+
+protocol还定义`isSecret`与`isOther`，但model-facing schema没有这两个字段；普通模型调用只能由runtime强制Other，不能声明Secret。MCP兼容/内部路径仍能构造secret question。TUI history会把secret answer渲染成星号，这是显示层保护；原答案仍作为`RequestUserInputResponse`完整回到Core并成为模型tool output。secret并不表示不发给模型、不中转client或不驻留进程内存。
+
+最严重的不变量冲突发生在identity。Event同时带Responses call id和Turn id，但`Session::request_user_input`把oneshot sender以**Turn sub_id**存入`pending_user_input`。同一Turn第二个并发调用会覆盖第一项并仅记warning；第一个receiver立即cancel。回答Op同样只携Turn id，Core移除该Turn唯一sender，因此哪个client response先到，就交给当时map里最后注册的等待者，而不一定属于同一call。
+
+与此同时App Server为每个event发独立JSON-RPC request并spawn独立response task；TUI还显式按Turn维护FIFO `VecDeque`、按call id dismiss并逐个展示。这些consumer假设“一个Turn可有多个prompt”，Core却实现“每Turn一个slot”。并行tool dispatch时，两个prompt都可能显示，但第一份回答可能唤醒第二个tool，另一份回答只得到“No pending”；问题与答案发生静默错配。
+
+response也没有server-side semantic validation。类型只是`HashMap<String, {answers: Vec<String>}>`；Core不检查key是否来自本次questions、必答项是否齐全、答案是否匹配option、长度/数量或secret policy。任意client可返回未知/缺失key和无界字符串。TUI用question id插HashMap，重复id会让后题覆盖前题；两个不同UI问题最终只剩一个答案。
+
+TUI把freeform note编码成普通answer字符串`user_note: {text}`，再靠prefix拆回展示；真实option若恰好同prefix会被误当note，多个note取最后一个。结构化的option id、note和resolution status被压扁成字符串数组，模型无法区分用户选择、自由文本、自动跳过和client故障。
+
+App Server client显式报错、oneshot channel断开或response JSON反序列化失败时，handler都会向Core提交空answer map；只有turn-transition类错误直接返回。TUI自动解决也提交同一个空map。于是“用户选择不回答”“计时到期”“client bug/malformed response”和“connection teardown”在模型侧完全相同，不能据此做安全降级或审计。
+
+autoResolutionMs的数值也不是统一runtime contract。Core只夹到60–240秒并透传；TUI把`Some`仅当enable flag，固定先隐藏60秒、再显示60秒倒计时，总计120秒，完全忽略模型提供的具体值。任何按键/粘贴都会永久snooze当前request的自动解决。其他client可自行解释同一字段，同一个tool call因前端不同而拥有不同deadline。
+
+deadline完全属于live client，不是Core/server状态。没有autoResolutionMs时可无限等待；有值时若client断开、重启、后台或不实现timer，Core仍无wall-clock TTL。RequestUserInput Event在rollout policy明确属于transient、non-durable，cold resume无法恢复prompt、deadline或已填草稿；Turn cleanup只clear sender，让tool得到cancel error。TUI中断也有TODO，已commit答案与interrupted result尚不能可靠持久化。
+
+空questions可通过normalization。TUI会显示“No questions”，没有current question/answer；按键虽会snoozetimer，却没有自然的最后一题submit路径，只有固定auto timer、interrupt或外部dismiss能结束。无timer时就是模型可以制造的永久人工等待。即使非空，大量问题/选项和超长文本也没有protocol budget，会直接成为UI布局与内存压力。
+
+```text
+parallel tool calls in one Turn
+  call A -> Event(call=A, turn=T) -> pending[T] = sender A
+  call B -> Event(call=B, turn=T) -> pending[T] = sender B  # A cancelled
+
+App Server/TUI queue: [A, B]
+  answer A -> Op::UserInputAnswer(id=T)
+           -> remove pending[T]
+           -> wakes B with A's answer
+  answer B -> no pending waiter
+
+call id exists at the edges but is discarded at the Core rendezvous.
+```
+
+关键测试：
+
+- schema：0/1/3/4题、1/4/万级options、重复id/label、非法snake_case、超长header/question/description和严格schema行为。
+- concurrency：同Turn并行两个request、A/B不同回答顺序、client FIFO/乱序、dismiss、interrupt和late response；断言call id端到端一致。
+- response：未知/missing/duplicate key、非option label、多个notes、`user_note:`碰撞、巨大answer与secret question。
+- status：user submit、unanswered submit、auto timeout、client error、malformed JSON、disconnect和Turn transition都应得到不同typed terminal reason。
+- timer：60/90/240秒在TUI与其他client一致、任意key snooze、queued request起点、app suspend/restart及server wall deadline。
+- lifecycle：无client订阅、empty questions、永久不答、Turn cancel、cold resume、TUI committed partial answers和rollout恢复。
+- privacy：secret在overlay、history、raw lines、App Server wire、tool output、rollout/telemetry和crash dump各层的明确可见范围。
+- capacity：问题/选项/文本/answer总budget、render latency、JSON-RPC body和pending request上限。
+
+映射到当前项目：Human-in-the-loop Step使用`requestId/callId`作唯一rendezvous key，Turn id只作父级索引；每个请求有server-owned状态机`pending -> answered|expired|cancelled|client_failed`、durable deadline和generation。questions/answers在API入口做精确schema与总量限制，option用稳定id，freeform note独立字段。UI可排队但不能改变Core deadline语义；恢复时从数据库重建pending prompt。secret必须说明“只在UI遮罩”还是“不得送回模型”，若后者需走opaque credential/capability通道，不能复用普通tool output。
+
+### 4.91 Final Output Schema：上游structured output约束不是本地已验证的类型契约
+
+App Server `turn/start`允许client提交任意JSON `outputSchema`。它被塞进新TurnContext，Core在每次sampling构造Prompt时复制为`output_schema`，HTTP/Responses WebSocket request再投影成`text.format={type:"json_schema", name:"codex_output_schema", strict, schema}`。普通Turn strict=true；Guardian reviewer例外为false并在本地另做typed parse。
+
+入口没有验证它“确实是JSON Schema”，也不限制dialect、关键字、深度、节点数、字符串长度或serialized bytes。App Server只对`input`文本总字符做上限检查，`outputSchema`不计入。一个巨大schema会先驻留JSON-RPC Value、TurnContext和Prompt，再在同一Turn的每个tool follow-up/retry请求中重新serialize并发送，形成乘以Step数的内存、CPU和网络放大。
+
+无效schema不是在`turn/start`同步拒绝，而是在用户输入已被接受、Turn已创建并进入sampling后由远端provider返回错误。client先拿到Turn start成功，再收到failed Turn；用户消息和相关事件可能已经进入history/rollout。把本可本地确定的configuration error延迟成model execution failure，会污染会话、计费/重试指标和用户对“请求已开始”的理解。
+
+`Value`也没有做provider capability negotiation。OpenAI与custom Responses-compatible provider收到同一`text.format`；custom endpoint可能拒绝、只支持部分dialect、忽略strict，或把未知schema keyword作不同解释。Core只区分OpenAI来清理内部message metadata，并不据此关闭output schema；所以“请求带了schema”不能推出“wire provider强制了schema”。
+
+更关键的是response回到Core后不做通用本地validation。SSE/WS仍把output text当普通AgentMessage delta/item，TUI显示原始JSON文本，App Server Turn item也只是文本；没有parse、schema validator、typed result或`validated=true`证据。远端返回非JSON、额外字段或不满足schema时，只要stream协议本身有效，Turn仍可完成。
+
+因此`outputSchema`目前是provider-side generation control，而不是Codex-side postcondition。对普通client而言，最终数据要再次`JSON.parse`并按同一schema验证；否则下游把AgentMessage直接反序列化成业务对象，会把provider兼容差异、stream corruption或未来fallback当成可信结构。Guardian之所以更稳，是它还会反序列化`GuardianAssessmentPayload`；这个局部消费层校验没有被抽象成通用契约。
+
+schema是Turn-scoped snapshot，对正常tool loop是好事：每次follow-up沿用同一TurnContext，不会被thread config热更新改变。但`turn/start`在已有Regular Turn运行时会先构建一个带新schema的`current_context`，随后`steer_input`只把user input/additional context/metadata排进**现有active Turn**；output schema不在pending input中，也不会修改active TurnContext。这个新schema于是静默丢失，输入仍按旧Turn的schema（或无schema）生成。
+
+这一点与App Server表面语义冲突：caller使用`turn/start(outputSchema=B)`，如果当前Turn可steer，实际返回/继续的是active Turn A，B既没被拒绝也没生效。若A已有schema A，新增输入还会继续被A约束；若B预期不同业务result type，下游很可能按B解析却收到A。schema改变应强制new Turn、显式拒绝steer，或把expected active schema digest纳入CAS，而不是静默选择旧值。
+
+App Server `Turn` snapshot只含id/items/status/error/timestamps，不包含output schema、schema id/digest、provider strict/capability或validation result；rollout也不持久化`final_output_json_schema`。事后thread/read、resume、export和审计无法回答某个AgentMessage是按哪个schema请求的，更无法区分“provider宣称strict”与“本地验证通过”。
+
+schema固定name为`codex_output_schema`，没有caller提供的semantic name/version；多个不同schema在telemetry/provider日志上同名。schema本身也没有hash进入Turn metadata/prompt cache identity的显式可观测字段。即使request body改变足以影响远端cache，应用审计仍难把失败聚合到具体contract version。
+
+structured output与流式UI还存在表示层差异：JSON delta在完成前必然是invalid/incomplete document，却作为普通AgentMessageContentDelta实时投影。任何client若边流边parse就会反复失败；若把半截JSON渲染为业务状态又会产生provisional事实。协议应把raw text delta与最终validated value分开，完成前只允许buffer/preview。
+
+```text
+turn/start(input, outputSchema=S)
+  -> no local schema/budget validation
+  -> TurnContext.final_output_json_schema = S
+  -> each sampling step sends text.format(schema=S, strict=true)
+  <- ordinary output_text deltas + AgentMessage text
+  -> no local JSON/schema validation
+  -> Turn completed
+
+If a Regular Turn is already active:
+  new context(schema=S) is built
+  input is steered into active context(schema=A)
+  S is silently discarded.
+```
+
+关键测试：
+
+- admission：scalar/null/array、invalid keywords、unsupported dialect、external/recursive refs、极深/巨大schema及serialized byte上限。
+- provider：OpenAI、custom兼容端、Responses Lite、HTTP/WS、strict支持/忽略/拒绝和model capability matrix。
+- lifecycle：invalid schema远端400前后哪些UserMessage/Turn/rollout事实已提交，retry与错误分类是否正确。
+- postcondition：provider返回invalid JSON、valid JSON但schema不符、额外字段、Unicode/number边界和truncated stream；Turn必须标出validation结果。
+- steer：active A无schema/有schema A时提交B，断言拒绝、创建新Turn或显式采用哪一份；不能静默丢B。
+- multi-step：tool call前后、pending user input、auto compaction和transport retry始终绑定同一schema digest。
+- streaming：任意切分的JSON delta、cancel/断线、最终parse一次和provisional UI不进入业务state。
+- recovery：thread/read/resume/fork/export能恢复schema id/version/hash、strict、provider capability及validated terminal artifact。
+
+映射到当前项目：不要把模型“按JSON格式回答”直接当API DTO。Run创建时把版本化schema保存为immutable contract artifact，先本地编译/限深/限bytes，再连同hash传provider。最终文本只在stream完成后parse并由server验证，成功才写`StructuredResult`；失败进入可观测repair/failed Step，不能伪装completed。新用户输入若要求不同schema必须新建Run。前端delta只作文本preview，业务组件只订阅validated artifact。
+
 ## 5. 当前项目最应该吸收的架构原则
 
 ### 原则一：对外协议稳定，内部事件可演进

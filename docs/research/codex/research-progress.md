@@ -109,12 +109,15 @@
 | 75 | TUI desktop notification正文信任、OSC9编码与attention queue | 补默认focus/Auto backend、单pending priority slot丢并发提醒、模型/MCP/path多信任源、grapheme截断不移除control、plain OSC9 raw BEL/ST注入、tmux仅double ESC仍可BEL终止、同步stdout错误后永久disable不降级及完成通知的续跑抑制语义 | 84% / 84% |
 | 76 | Unix shell escalation capability、敌对framing与env闭包 | 补共享继承datagram fd可伪造/洪泛、unbounded handler与u32近4GiB allocation、无request deadline、共享Stopwatch一项审批冻结全shell且pause非RAII、policy/UI漏完整env、任意SuperExec destination fds/dup2不校验、direct-child kill、detached handler及Run继续传播socket capability | 84% / 84% |
 | 77 | EndpointSession generic retry、operation identity与body/log budget | 补request retries实际值+1、POST ambiguous outcome可重复副作用、unary完整body error重试、无Retry-After/max delay/total deadline、unary/stream重建identity差异、auth transient计入network attempt、raw HashMap query拼接、custom auth可替换wire request、TRACE完整JSON与error headers/body泄漏 | 84% / 84% |
+| 78 | Apps fileParams filesystem authority、hidden egress与upload transaction | 补仅host-owned apps gate但descriptor驱动、approval后sandbox=None读取absolute/`..`/symlink、schema clear丢maxItems等约束、mixed array原path泄漏、无总count/bytes、串行partial upload无cleanup、metadata-stream TOCTOU、server-returned upload URL SSRF、raw file_id拼auth path、软finalize timeout及sync-only auth | 84% / 83% |
+| 79 | Request User Input schema、call identity、deadline与恢复 | 补描述性1–3题/2–3选项约束未进schema/runtime、secret仅UI遮罩、Core按Turn单slot而App Server/TUI按call排队导致覆盖错投、response无semantic validation、重复id HashMap覆盖、note字符串扁平化、client error/auto timeout同为空map、TUI忽略具体duration固定120秒、任意key永久snooze、transient event无法cold resume及空questions可永久等待 | 84% / 83% |
+| 80 | Final Output Schema准入、provider约束与本地postcondition | 补任意JsonValue无dialect/depth/bytes校验且input limit漏算、巨大schema按每Step复制发送、invalid schema延迟成已启动Turn的remote error、custom provider无capability gate、AgentMessage无本地parse/schema验证、active Turn时新schema随steer静默丢失并沿用旧schema、Turn/rollout不保留contract hash/strict/validation证据，以及流式JSON prefix不是业务完成态 | 84% / 83% |
 
 ## 最近检查
 
 - 命令：`python3 "$HOME/.local/bin/codex-weekly-usage.py"`
-- 读数：已用 16%，剩余 84%
-- 采样时间：`2026-07-13 13:17:34 CST`
+- 读数：已用 17%，剩余 83%
+- 采样时间：`2026-07-13 13:24:59 CST`
 - 判断：高于 50%；按用户明确停止条件继续做源码深挖，不能以首轮闭环或 PR 已创建为由停止。
 
 ## 下一批次
