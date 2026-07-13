@@ -83,12 +83,16 @@
 | 49 | Managed Network Proxy配置上界、执行归因与SSRF决策 | 补full-access不投影但保留代理对象、Environment独立listener、env+sandbox同snapshot、execution attribution token、deny→local/private→allowlist→decider不可逆顺序、Limited method/CONNECT/UDP、constraints热更上界、reload失败保留旧state和handle收口 | 88% / 88% |
 | 50 | Credential Broker、MITM Hook与CA信任边界 | 补GitHub/OpenAI provider host binding、shape-preserving random dummy、唯一dummy才注入、DetectTls避免非TLS泄密、plaintext危险开关、hooked host no-match硬拒绝、matcher/body未支持、broker后hook覆盖顺序、进程内CA私钥与hash trust bundle | 88% / 87% |
 | 51 | Deferred Executor starting投影、显式等待与handle一致性 | 补shared resolution future、non-blocking ready/starting、每sampling Step重捕获、wait只等当前snapshot且下一Step才扩展能力、pending/upsert Arc replacement、首次失败终态与运行中reconnect差异、capability passive/lazy/exact-handle三语义 | 87% / 87% |
+| 52 | Remote Exec Noise Relay身份、授权、多路复用与背压 | 补Registry双bundle、hybrid IK pinned key、prologue绑定、encrypted短授权后二次Registry验证、128流/32验证/8失败上限、validation/instance id抗复用、seq先重排后decrypt、60KiB record/64MiB message、单流try_send隔离和registration reconnect语义 | 87% / 87% |
+| 53 | App Server WebSocket入口认证、Origin与连接撤权边界 | 补non-loopback无auth硬拒绝和旧unsafe flag删除、capability SHA-256常量时比较、HS256 exp/nbf/iss/aud、Origin对全路由403、health无Bearer、官方client拒绝non-loopback明文token、auth后仍是全RPC surface、startup secret snapshot与已连接socket不撤权 | 87% / 87% |
+| 54 | Shell Snapshot捕获、wrapper优先级与Secret落盘风险 | 补login rc真实副作用、functions/options/aliases/all exports物化、10秒capture+validation、temp rename但无显式0600/nofollow/hash、exact cwd+peek导致同Turn渐进启用、source失败静默、policy/proxy/profile/PATH二次恢复、Drop与rollout-mtime cleanup及cold resume漂移 | 87% / 87% |
+| 55 | Shell Environment Policy投影顺序、runtime mutation与误配置 | 补默认All且ignore excludes=true导致secret继承、KEY/SECRET/TOKEN黑名单漏报误报、配置文档称regex但实际case-insensitive WildMatch、exclude→set→include顺序、thread/profile仅标签、PATH/proxy/CA按attempt重算、Windows PATHEXT和experimental_use_profile当前无runtime消费 | 87% / 87% |
 
 ## 最近检查
 
 - 命令：`python3 "$HOME/.local/bin/codex-weekly-usage.py"`
 - 读数：已用 13%，剩余 87%
-- 采样时间：`2026-07-13 12:32:13 CST`
+- 采样时间：`2026-07-13 12:37:06 CST`
 - 判断：高于 50%；按用户明确停止条件继续做源码深挖，不能以首轮闭环或 PR 已创建为由停止。
 
 ## 下一批次

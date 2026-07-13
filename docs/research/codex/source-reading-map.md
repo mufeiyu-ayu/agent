@@ -1207,3 +1207,75 @@ Thread建立后原地改全局与项目文件，再跑普通Turn、Deferred Exec
 分别制造首次connect失败、成功后断线、并发reconnect失败再成功与stdio环境。记录哪些错误永久封存在OnceCell、哪些下一次操作可重试，以及passive catalog inspection为何不能意外触发昂贵启动。
 
 最后让wait无限pending并中断Turn，检查future/task资源是否释放；让环境ready但shell snapshot/info失败，确认工具可用性与shell metadata降级。业务实现应把WorkerSelection、ProvisionJob、Step Lease和Reconnect状态分层，而不是在Run启动入口同步等待全部远程依赖。
+
+## 61. 路线五十八：不可信Relay为何无法读取或伪造远程执行RPC
+
+按Registry bundle、hybrid IK、multiplex、record ordering与reconnect阅读：
+
+- `exec-server/src/{remote,environment_registry}.rs`：executor注册、harness connect/validation、auth脱敏与fresh reconnect bundle。
+- `exec-server/src/noise_channel.rs`：X25519+ML-KEM-768 hybrid IK、pinned responder、encrypted authorization、prologue与AES-GCM transport。
+- `exec-server/src/relay.rs`：protobuf control frame、128 active/32 validation/8 failure、validation id与stream instance id。
+- `exec-server/src/noise_relay/{harness,executor_stream,ordered_ciphertext,message_framing}.rs`：60KiB record、64MiB message、seq/reorder、队列隔离和Pong deadline。
+- Noise/relay/remote recovery tests：tamper、splice、reuse、overload、registration rejection和reconnect。
+
+让relay替换executor key、environment/registration/stream prologue或握手response，证明Harness不会fallback plaintext。把已捕获IK首包路由到另一个stream/registration，确认transcript binding失败。
+
+让Registry validation慢于10秒、返回false、回显authorization错误，并并发33个pending/129个active/8个密码学失败。检查何时只Reset单流、何时关闭物理relay，以及日志是否泄露auth body。
+
+乱序发送0/2/1、duplicate、gap 65、累计超过1MiB、seq耗尽和超过64MiB长度前缀；确认先重排再decrypt，且坏流不会阻塞同WebSocket其他流。填满一个virtual inbound queue，验证`try_send`隔离。
+
+最后断开rendezvous并分别返回server error与client error，观察executor复用registration或重新注册；Harness每次获取fresh bundle。业务实现若无需128路复用，应删减复杂度，但不能删掉generation绑定、短寿命授权、端到端加密和per-stream backpressure边界。
+
+## 62. 路线五十九：WebSocket握手通过后客户端到底获得了多大权限
+
+按listener准入、Upgrade认证、browser防线、连接寿命与客户端自保阅读：
+
+- `app-server-transport/src/transport/{auth,websocket}.rs`：non-loopback硬门、capability digest、HS256 claims、Origin拒绝、health与队列。
+- CLI/App Server main：auth flag组合、旧insecure flag删除和policy启动时物化。
+- `app-server-client/src/{lib,remote}.rs`：Bearer header与non-loopback明文ws拒绝。
+- App Server connection/RPC dispatch：认证后是否存在token scope或method ACL。
+- WebSocket auth/connection integration tests：token、JWT、Origin、disconnect、large frame和slow client。
+
+分别绑定127.0.0.1与0.0.0.0，在无auth/capability/JWT下启动；验证旧unsafe flag无法解析。修改token/secret文件但不重启，比较新连接与已连接socket，证明policy是startup snapshot且无即时撤权。
+
+构造过期、未来nbf、错iss、aud array、错签名和clock skew边界JWT；随后用同一有效token调用多个高权限RPC，确认claims不含scope enforcement。业务迁移必须把入口认证与RPC授权拆开。
+
+对health、未知path和upgrade分别加Origin/Bearer，记录middleware顺序；从第三方client向non-loopback ws明文发送token，对比官方client提前拒绝，证明server端仍需要TLS终止策略。
+
+最后填满业务outbound与control queue、发送binary/invalid text、半关闭reader/writer并轮换token。区分frame write ack、远端处理ack与连接撤权；补per-connection rate/size/expiry设计，不能把32768缓冲当流量治理。
+
+## 63. 路线六十：为什么加速Shell启动会把API Key写进可执行快照
+
+按capture、validation、wrapper precedence与cleanup阅读：
+
+- Core `shell_snapshot.rs`：login rc执行、函数/options/alias/export展开、10秒timeout、temp/rename、Drop与3天cleanup。
+- `session/turn_context.rs`与`environment_selection.rs`：local-only shared future、exact cwd和peek不等待。
+- `tools/runtimes/mod.rs`：`-lc`改写、best-effort source、runtime/proxy/profile/PATH恢复顺序。
+- user shell、shell/unified exec runtime：普通Agent命令与full-access `/shell`如何消费snapshot。
+- shell snapshot/wrapper/cleanup tests：quoting、secret-like env、文件消失、stale rollout与remote环境。
+
+在`.zshrc/.bashrc`中加入可观察副作用、slow command、stdout噪音和失败分支，确认创建阶段真实执行且marker前内容被丢弃。比较每条原始login shell与snapshot wrapper的TTY/conditional语义差异。
+
+设置API key、PWD/OLDPWD和多种proxy/CA/PATH/profile变量后检查磁盘文件，区分被排除、被snapshot冻结与每次执行恢复的字段。检查目录/file mode，并在validate后替换/修改snapshot，确认使用时没有hash/owner复验。
+
+让首条tool早于shared future完成、切换cwd、删除snapshot和source时出错，观察何时静默no-op；验证后续命令可能开始使用，不能把同一Turn所有命令假设为相同shell environment。
+
+最后模拟正常Arc Drop、进程crash、无rollout、旧rollout、active thread与state DB不可用。把性能缓存和secret lifecycle分开审计；业务系统优先结构化allowlist env，避免持久化任意shell代码与完整export。
+
+## 64. 路线六十一：删掉TOKEN变量为何仍不能证明工具没有凭据
+
+按六步env投影、runtime mutation、attempt重算与持久化边界阅读：
+
+- `protocol/src/{config_types,shell_environment}.rs`：All/Core/None、WildMatch、默认exclude、set/include/thread id顺序。
+- Config `types.rs`与Core `exec_env.rs`：TOML conversion、permission profile标签和默认值。
+- Core `tools/runtimes/{mod,shell,unified_exec}.rs`：PATH、snapshot、proxy strip/reapply与sandbox attempt。
+- `exec.rs`、user shell/review路径：env_clear launch、full-access escape和派生Turn policy。
+- exec_env/runtime/shell/config tests：Windows case/PATHEXT、glob误读、retry和managed proxy。
+
+用包含KEY/SECRET/TOKEN/PASSWORD/AUTH和无关MONKEY的env比较默认policy与显式default excludes，证明变量名黑名单既漏报又误报。把exclude写成regex语法与glob语法，记录实际匹配。
+
+组合exclude同名、set重新加入、include_only再删除和thread/profile标签，验证精确顺序；在Windows混用Path/PATH和缺PATHEXT，确认跨平台差异。
+
+让workspace attempt带managed proxy后升级到full access，再重试；检查proxy、managed CA、用户CA、GIT_SSH和credential dummy的最终map。证明env展示标签与真正sandbox/network policy不能互相替代。
+
+最后开启`experimental_use_profile`并搜索/执行runtime，确认当前字段无消费方；比较warm Thread、cold resume和subagent的父process env漂移。业务实现应保存policy revision/env key provenance，而不是持久化secret value或假设同Thread环境恒定。

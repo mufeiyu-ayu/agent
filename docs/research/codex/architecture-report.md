@@ -2325,6 +2325,204 @@ registry upsert may replace Arc; already captured Step keeps old Arc alive.
 
 映射到当前项目：远程浏览器/抓取worker若需要冷启动，应把Run中的WorkerSelection和Step中的WorkerLease分开。模型可以先规划，再通过显式`wait_for_worker`形成可观测Step；下一次LLM采样才扩展tool catalog。lease必须包含worker generation/connection handle，不能只存稳定worker id；首次provision失败、运行中断线和被管理员replace是三类不同恢复策略，任何catalog读取都不应隐式阻塞或启动高成本资源。
 
+### 4.63 Remote Exec Noise Relay：路由服务只看stream id，执行权限还要双向密钥与Registry授权
+
+远程Exec不是“带Bearer token连一个WebSocket”。Executor先向Environment Registry注册process-lifetime Noise public key，得到environment id、executor registration id和rendezvous URL；Harness另向Registry提交自己的Noise public key，得到同一registration的executor public key、短寿命harness-key authorization与URL。两端随后通过不可信rendezvous转发protobuf frame，但应用JSON-RPC始终在Noise transport内。
+
+Noise suite是hybrid IK：X25519 + ML-KEM-768、AES-GCM、SHA-256。Harness在发首字节前pin Registry返回的executor两种公钥；Executor解析首个IK消息后才拿到已密码学认证的harness static key。握手prologue把domain、environment id、executor registration id与随机stream id按长度前缀绑定，避免捕获的握手被拼接到另一注册或虚拟流。
+
+短寿命authorization放在首个**加密握手payload**中，不暴露给relay。Executor不能只相信Noise证明“对方持有某个key”，还要拿该key+authorization回Registry独立验证；成功前`PendingResponderHandshake`不能finalize，也不会交给JSON-RPC processor。验证上限10秒、并发最多32，authorization最多4096 bytes且必须UTF-8。验证错误日志刻意不带error body，避免回显token。
+
+物理Executor WebSocket承载最多128个已认证虚拟流。每个新stream先Resume声明路由，再发Handshake；已有active id、重复pending id、容量满或提前Data都会generic Reset。pending validation带单调`validation_id`，若stream id在异步Registry调用期间被复用，旧结果变stale不能完成新握手。active writer关闭通知同样带instance id，防止迟到cleanup删掉复用后的新stream。
+
+一次物理连接最多容忍8次计费的失败握手，之后整体断开，限制未授权peer消耗hybrid crypto与Registry请求。并不是所有无效frame都计费：版本/body格式错误通常drop；真正进入密码学、重复pending、authorization无效或提前Data取消pending才消耗budget。容量拒绝不计失败，避免合法过载触发全连接熔断。
+
+relay frame的stream id、seq、Resume/Reset等路由控制是明文，rendezvous可观察流数量、时序和ciphertext大小。Reset reason也未认证：Harness只向上暴露固定文案，Executor不记录对端reason，避免不可信relay把任意文本注入诊断。系统保证机密性/端点认证，不隐藏流量元数据，也不把relay控制面当可信事实。
+
+Noise transport nonce是隐式递增的，所以ciphertext必须先按显式u32 seq重排再解密。乱序窗口最多64、pending最多1MiB；重复/旧seq忽略，gap过大或buffer满终止该虚拟流。seq绝不wrap，耗尽即协议错误；重试不能重新加密同一logical record，否则nonce与ciphertext语义变化。这个约束解释了为什么resume/ack字段存在于relay protocol，却不能简单拿明文层重发逻辑替代端到端记录状态。
+
+JSON-RPC单消息最多64MiB，先把4字节big-endian长度前缀和JSON一起加密，再拆成60KiB Noise plaintext records。接收端只在认证后读取length，并同时限制单record、declared length和incomplete reassembly buffer；一个record可结束多条消息，一条消息可跨多record。WebSocket层先限256KiB，阻止在protobuf/Noise校验前分配任意大frame。
+
+Executor一个物理read loop服务所有virtual streams，因此inbound交付使用`try_send`：某个虚拟流queue满/closed就单独Reset，不允许它await并拖死其他流。Outbound每个virtual stream有独立writer task，但最终进入bounded physical queue；握手reply必须`try_send`成功才激活stream，避免“本地已开放processor、对端永远没收到完成握手”的half-open状态。
+
+Harness把read/write合在一个select loop，因为WebSocket sink/stream不能并行借用；大JSON拆成record，每条之间形成调度点处理Ping/Pong和入站控制。Pong deadline到期后最多排空32个已queued frames给迟到Pong机会，随后断线；单次record write仍可能跨deadline，被当作backpressure失败。Keepalive保障的是物理relay活性，不证明每个虚拟JSON-RPC调用完成。
+
+Executor process identity跨rendezvous reconnect复用；registration和URL也复用，只有连接收到client-error拒绝才重新注册。Harness每次reconnect通过provider重新向Registry取URL、executor key与authorization；不会复用旧短寿命授权。Executor reconnect指数退避1到30秒且无限循环，属于服务驻留逻辑，不是某个AgentRun的恢复承诺。
+
+```text
+Registry                    untrusted rendezvous                 Executor
+  | register executor key -------->| routing URL                    |
+  |<-- connect bundle: executor key, auth, registration ------------|
+Harness                                                                |
+  | Resume(stream id) ------------ clear routing -------------------->|
+  | Noise IK #1[encrypted auth; pinned executor key] ---------------->|
+  |                                      authenticate harness key     |
+  |                         Executor -> Registry validate(key, auth)   |
+  |<----------------------- Noise IK #2 only after authorization ------|
+  |<========== encrypted, sequenced JSON-RPC records =================>|
+
+Relay sees ids/seq/size/timing, not JSON-RPC plaintext or private keys.
+```
+
+关键测试：
+
+- Noise channel tests：hybrid key decode、wrong pinned key、prologue registration/stream binding、payload/record length、tamper与nonce顺序。
+- relay Noise tests：Registry授权前无processor、timeout/并发/失败budget、duplicate/reused stream和generic Reset。
+- ordered ciphertext/framing tests：乱序/duplicate/gap/1MiB、seq exhaustion、60KiB record与64MiB reassembly边界。
+- virtual stream tests：queue overload只断单流、instance-id cleanup、handshake reply backpressure和writer Reset。
+- harness/remote tests：早期Data拒绝、untrusted reset reason、Pong/backpressure、registration rejection重注册与fresh reconnect bundle。
+
+映射到当前项目：若未来把SEO抓取/浏览器执行搬到远端worker，至少分离Registry身份控制面、rendezvous路由面与端到端任务通道。每个worker注册generation key，每个Run/Step拿短寿命授权并绑定worker generation+stream；relay不能解密tool args/results。记录大小、乱序、队列和失败握手必须有硬上限，单租户流背压只隔离该流。第一版若没有多路复用需求，优先一Run一连接的简单协议，但仍保持端点认证与授权晚绑定。
+
+### 4.64 App Server WebSocket Auth：网络入口认证不等于RPC方法授权
+
+App Server WebSocket默认只允许无认证loopback监听；任何non-loopback bind若没有auth policy会在`TcpListener::bind`前直接报InvalidInput。旧的`--allow-unauthenticated-non-loopback-ws`参数已从CLI删除，不能通过隐藏兼容flag绕开。loopback无认证是本机信任假设，产品提示远程访问优先SSH port-forwarding。
+
+两种认证模式只作用于HTTP Upgrade。Capability token可从absolute file读取明文或直接配置64位hex SHA-256；启动时明文trim后只把digest留在policy，upgrade时hash Bearer并用32-byte constant-time compare。token file不会每连接重读，轮换文件内容不影响已启动进程；digest参数则完全避免server读取原token文件，但部署者负责安全传递hash与client token。
+
+Signed bearer使用HS256共享secret，secret file必须absolute、trim后至少32 bytes。policy同样只在启动时读取。jsonwebtoken先校验签名与alg，再由Codex手动检查exp、可选nbf、可选iss/aud和clock skew；exp是必需claims字段。aud支持string或array。issuer/audience配置空白会normalize为None，即不要求该claim；默认clock skew 30秒，可显式改但必须能转成i64。
+
+所有auth模式都只接受单个`Authorization: Bearer <token>`，scheme大小写不敏感，空/非法UTF-8/格式错误都401。错误响应与warning给出固定分类文案，不回显token。Capability token是持有即拥有全部WebSocket入口能力；JWT当前也不读取subject、scope、jti或method claims，只证明“由共享secret签发且时间/issuer/audience满足”。
+
+因此Upgrade认证不是App Server authorization layer。连接成功后客户端仍可调用同一整套Thread、config、account、MCP、filesystem和审批RPC，能力由server初始化协商与内部handler边界决定，没有按token scope缩小method set。把Signed bearer换成Capability token只改变token发行/过期方式，不改变连接内权限。
+
+所有HTTP请求，包括`/readyz`与`/healthz`，先经过Origin middleware；只要含`Origin`就403。这是主动拒绝浏览器来源，防止网页借用户本机loopback无认证服务发WebSocket/health请求。它不是可配置CORS allowlist，也不验证Host/DNS rebinding；非浏览器客户端通常不发Origin。认证正确但带Origin仍在auth handler前被拒。
+
+健康端点不要求Bearer，只要没有Origin就返回200，即使listener配置auth。这会暴露服务存活与端口，但不开放WebSocket RPC。fallback对任意其他path尝试WebSocket upgrade，没有固定`/ws`路径；部署反向代理时应限制path与health暴露，不能假设未知URL自动404。
+
+传输本身是明文`ws://`或TLS由外部终止。server允许带auth的0.0.0.0 ws监听，所以网络上token可能明文传输；与之配套的RemoteAppServerClient拒绝把auth token发到non-loopback `ws://`，只允许`wss://`或loopback ws。这是**客户端自保**，第三方客户端仍可做不安全连接，server没有TLS强制。
+
+连接建立后分成inbound/outbound两个task；任一结束就cancel并abort另一边，再发ConnectionClosed。outbound业务queue容量32768，远高于内部channel，用于吸收Turn burst；Ping/Pong走独立小control queue并`try_send`，queue满直接断线，避免心跳响应被业务backpressure无限延迟。binary frame只warning丢弃，text才进入JSONRPC parser。
+
+业务消息写成功后才回复可选`write_complete` oneshot，这能表示WebSocket sink接受了frame，不表示远端应用处理。outbound queue满的行为由上游发送策略决定，认证层没有per-client rate limit、连接数上限或消息大小配置的显式业务配额；暴露到非loopback时，auth token泄露后的DoS面仍需外围限流。
+
+JWT没有key id、多secret rotation或asymmetric verification；换shared secret必须重启server并同步所有issuer。Capability token也没有内建expiry/revocation/connection踢出：policy只在upgrade检查，已连接socket在文件轮换后继续有效。若需要即时撤权，必须显式断开连接或在每RPC再检查session capability。
+
+```text
+HTTP request
+  | Origin present -> 403 (also health)
+  | /readyz,/healthz -> 200 without bearer
+  | any other path -> WebSocket upgrade
+             |
+     capability digest OR HS256(exp/nbf/iss/aud)
+             |
+       authenticated connection
+             |
+       full App Server RPC surface
+       (no token scope/method ACL)
+
+Credential rotation affects new upgrades only; existing sockets remain open.
+```
+
+关键测试：
+
+- auth unit tests：mode-specific CLI互斥、absolute/empty/short secret、digest constant-time路径、JWT tamper/exp/nbf/issuer/audience/clock skew。
+- WebSocket integration：non-loopback无auth启动失败、旧insecure flag parse失败、missing/wrong/valid capability token与signed token。
+- Origin tests：loopback无auth正常native连接，但任意browser Origin 403。
+- app-server-client tests：auth header、wss/loopback ws允许、non-loopback ws发送token前拒绝。
+- transport tests：Ping control queue、binary drop、任一half关闭导致ConnectionClosed和write-complete边界。
+
+映射到当前项目：Agent后台若提供WebSocket控制面，默认loopback/内网不应直接等于可信；生产使用TLS与短寿命非对称JWT，至少验证tenant、subject、audience、jti和scope，并在RPC dispatch再做method/resource授权。health endpoint单独路由与限流；Origin拒绝可作为浏览器防线但不能代替Host/TLS/auth。token rotation需要key ring与连接session过期机制，而不是只在Upgrade检查一次。
+
+### 4.65 Shell Snapshot：复用交互式Shell语义，也会冻结环境Secret与启动脚本副作用
+
+Shell Snapshot为每个local TurnEnvironment在Thread启动阶段运行一次login shell，捕获函数、shell options、aliases和exported env，生成可source脚本。后续模型shell的标准`[shell, -lc, script]`会被重写为“用用户shell非login启动→best-effort source snapshot→恢复Codex运行时覆盖→exec原shell `-c`原脚本”，从而避免每条命令重复执行慢的`.zshrc/.bashrc`。
+
+捕获不是读取配置文件文本。Zsh显式source`$ZDOTDIR/.zshrc`或`$HOME/.zshrc`；Bash在没有`BASH_ENV`时source`.bashrc`；sh只在`ENV`存在时source。随后打印**当前进程展开后的**functions/options/aliases/exports，因此条件分支、插件初始化与动态PATH已物化。启动脚本里的任意副作用在snapshot创建时真实执行一次，不受模型tool approval；这是host在Session初始化阶段主动授予的用户配置能力。
+
+每次捕获和validation各有10秒timeout，子进程stdin=null、独立process group、kill_on_drop。先写`<thread>.tmp-<nanos>`，要求stdout包含`# Snapshot file` marker并丢弃前导噪音，再用同shell非login执行`set -e; . snapshot`验证；成功才rename到`<thread>.<nanos>.sh`。写/验证失败只记录metric与warning，Turn继续且不使用snapshot。
+
+这里不是严格原子安全文件协议：`tokio::fs::write`没有显式create-new、nofollow或0600 mode，temp/final名字虽有纳秒nonce但目录中的同权限进程可能竞态替换；rename也未fsync文件/父目录。snapshot内容包含几乎所有exported env，只排除`PWD`与`OLDPWD`，包括API key、token、proxy credential和自定义secret。安全依赖`CODEX_HOME/shell_snapshots`目录权限与本机账户边界，源码本身没有字段脱敏或加密。
+
+快照脚本是可执行代码，不是数据格式。函数body、alias与export value按各shell原生命令输出，validation只能证明“此刻能source”，不能证明无副作用或之后仍安全。恶意/变化的shell function会在每条wrapped命令source时重复定义/执行其顶层语句。文件若在创建后被同权限进程修改，wrapper不会重验hash或owner/mode。
+
+wrapper只处理Unix、命令长度至少3、flag精确`-lc`且snapshot仍存在的情况；Windows直接no-op，PowerShell/Cmd当前创建路径也明确不支持。snapshot必须与TurnEnvironment原cwd精确相同；命令换cwd就不复用。更细的竞态是调用方用shared future的`peek()`拿snapshot，若后台还没完成就本次命令no-op，不等待；后续命令可能开始使用。
+
+source失败被`if . snapshot >/dev/null 2>&1; then :; fi`吞掉，随后仍执行原命令。这保证可用性，但用户看不到环境初始化部分失败；validation成功到使用之间的文件删除/损坏只造成静默fallback。原命令从login `-lc`变成snapshot后`-c`，语义等价依赖snapshot覆盖完整，未捕获的login hook、TTY检测与进程状态会不同。
+
+snapshot里的env不能覆盖当前安全状态。wrapper在source前把explicit policy env、`CODEX_THREAD_ID`、permission profile、代理/CA/GIT_SSH相关变量和runtime PATH prepends先藏到临时变量，source后再恢复。permission profile即使当前不存在也显式unset，防止旧snapshot复活；用户显式PATH覆盖优先，再重放Codex-owned prepend。override值不直接插进argv，减少process list泄密与shell quoting风险。
+
+但快照仍能包含其他后来应撤销的环境变量；恢复allowlist是针对已知Codex runtime字段，不是一般secret revocation机制。尤其Credential Broker在execution prepare阶段才虚拟化credential，而snapshot创建更早，若wrapper source出真实key后proxy prepare顺序不正确会破坏broker假设；当前大量proxy env测试就是在守这个组合边界。
+
+`ShellSnapshotFile`最后一个Arc Drop同步remove final file；进程崩溃会遗留。每次创建都detached启动cleanup：删不符合命名的普通文件、无对应rollout的orphan、或rollout mtime超过3天的snapshot；当前active thread豁免。cleanup依据rollout存在/mtime而非snapshot自身age，且扫描时错误可跳过；它是空间清理，不是secret即时销毁保证。
+
+remote Environment完全不创建host shell snapshot，避免把host shell状态投影到远端；remote自己的shell info只决定command shell类型。fork/inherited Environment可能复用仍存活的snapshot Arc，但cold process resume会重新构建，因而同Thread跨进程执行环境可能漂移，rollout不保存snapshot内容/hash。
+
+```text
+Session local environment
+   -> run login shell + source rc (real side effects, 10s)
+   -> print expanded functions/options/aliases/all exports
+   -> temp file -> source validation -> rename final
+                                      |
+model shell [sh,-lc,cmd] + exact cwd --+--> wrapper
+ capture live policy/proxy/path vars
+ best-effort source executable snapshot
+ restore live vars; exec original shell -c cmd
+
+Snapshot is ephemeral executable state, not persisted Run provenance.
+```
+
+关键测试：
+
+- shell snapshot tests：zsh/bash/sh函数、alias/options/export、preamble噪音、timeout/failure、validation与unsupported shell。
+- runtime wrapper tests：quote/trailing args、explicit env优先、thread/profile、proxy/CA/GIT_SSH、PATH prepend和不把override value放argv。
+- environment tests：exact cwd、background future peek、remote no snapshot与Deferred readiness。
+- cleanup tests：active保留、orphan/invalid/stale rollout删除和state DB/path fallback。
+- user shell/unified exec tests：`-lc`识别、full-access user shell去managed proxy与snapshot组合。
+
+映射到当前项目：不要为SEO Agent复刻任意shell profile snapshot。若工具需要稳定环境，保存经过allowlist筛选的`ExecutionEnvironmentSnapshot`（版本、PATH片段、tool binary digest），secret只在每Step从vault late inject且不落盘。若必须兼容用户shell，snapshot文件用0700目录、0600 create-new/nofollow、内容hash和明确生命周期；把rc执行视为host code execution并单独授权，不能把它包装成无害性能优化。
+
+### 4.66 Shell Environment Policy：环境变量过滤是数据投影，不是Sandbox权限
+
+每个shell-like tool先从Codex父进程env派生一个全新的HashMap，最终process launch必须`env_clear()`后只注入该map，避免Command默认偷偷继承遗漏变量。策略顺序固定为inherit → default excludes → custom exclude → set → include_only → `CODEX_THREAD_ID`；顺序本身就是契约，交换任意两步都会改变安全语义。
+
+inherit有All、Core、None。Unix Core只保留PATH/SHELL/TMPDIR/TEMP/TMP/HOME/LANG/LC*/LOGNAME/USER；Windows Core还保留COMSPEC、SYSTEMROOT/DRIVE、用户profile、Program Files/AppData与PowerShell hints，匹配大小写不敏感。Windows最终若没有PATHEXT还会强制补`.COM;.EXE;.BAT;.CMD`，所以inherit=None也不是绝对空env。
+
+最容易误读的是默认值：`inherit=All`且`ignore_default_excludes=true`。也就是说默认**不应用**`*KEY*/*SECRET*/*TOKEN*`过滤，父进程中的OPENAI_API_KEY/GITHUB_TOKEN等会进入普通shell env。字段名是“ignore excludes”，默认true是兼容优先而非secret-by-default。只有显式设false才按变量名大小写不敏感过滤；它仍会漏掉`PASSWORD`、`CREDENTIAL`、`AUTH`等未命名模式，也可能误删`MONKEY`这类包含KEY的无关变量。
+
+config注释把exclude/include_only称为“regular expressions”，实际类型是WildMatch：`*`与`?`通配且case-insensitive，不是regex。把`^FOO$`当regex会按字面字符匹配并失效。无效/意外pattern不会得到regex编译错误。文档与运行语义偏差本身是配置安全风险。
+
+custom exclude先删继承值，随后`set`可以重新加入同名变量；include_only最后又可能删掉set值。因此set不是无条件强制，除非它也匹配include_only。`CODEX_THREAD_ID`在include_only之后注入，永远保留；active named permission profile又在Core层随后注入并先移除任何继承/config伪造值。两者只是信息标签，源码明确说明child可覆盖，不能作为enforcement证明。
+
+`set`值来自config并直接进入child env；如果用它放secret，会进入effective config、debug结构、shell snapshot和可能的子进程诊断，不具备vault语义。更合理用途是LANG、tool flags等非敏感稳定值。requirements当前没有为ShellEnvironmentPolicy建立类似network constraints的管理员上界，项目/用户可写config layer的信任边界必须另行审计。
+
+环境投影完成后还有runtime mutation。Codex为package tools与zsh fork向PATH前置目录，去空项并去重，避免空PATH segment代表cwd；remote Environment不加host package path。managed network再覆盖proxy/CA/credential dummy；sandbox escalation若不再受managed network约束，会剥离所有proxy keys、仅当CA值确认是Codex managed bundle时剥离CA，并识别macOS Codex GIT_SSH marker。用户自带CA/proxy变量的保留规则因此不是简单删同名字段。
+
+执行重试也必须重新计算env。普通Shell Runtime先按本次sandbox permissions决定是否strip proxy，再加runtime PATH，构造snapshot wrapper，最后由SandboxAttempt注入managed network。Unified Exec为了把env和sandbox loopback ports从同一proxy snapshot得到，会更早调用`prepare_for_optional_environment`，再做PATH/snapshot；两条路径顺序不同但目标不变量相同：最终sandbox实际放行的网络能力必须和env一致。
+
+permission escalation不是“原env加几个变量”。当attempt变为requires escalated且原env有proxy active marker，managed proxy整体移除，防止full-access进程误以为仍被egress gateway约束。反过来，普通workspace attempt的proxy变量覆盖用户同名值，不能靠用户env绕过。`CODEX_PERMISSION_PROFILE`只标识named profile，不表示danger-full-access/workspace-write的实际所有细节。
+
+`experimental_use_profile`会被解析进`ShellEnvironmentPolicy.use_profile`，但当前源码除结构、conversion和测试构造外没有runtime读取；实际profile复用由独立ShellSnapshot feature实现。把该配置打开不会按字段名预期自动加载profile。这是一个明显的兼容/死配置信号，文档与UI不应承诺行为。
+
+review/guardian等派生Turn显式复制parent shell environment policy，避免审查子模型突然看到不同env；但subagent是否继承整个per-turn config还取决于role/config layer。env snapshot不持久化到rollout，冷resume重新从当前Codex process env派生；同一Thread跨启动可能获得不同secret/PATH。
+
+环境过滤也不控制文件、网络、进程或系统调用。移除API key能降低偶然泄露，却不能阻止child读取`~/.config`里的credential；保留一个token也不自动授权其目标host。真正边界仍是filesystem sandbox、managed network、exec policy与credential broker。
+
+```text
+parent process env
+  -> inherit All/Core/None
+  -> optional default wildcard excludes
+  -> custom wildcard excludes
+  -> config set
+  -> include_only
+  -> inject thread/profile informational tags
+  -> runtime PATH + managed proxy/credential projection
+  -> sandbox-attempt-specific strip/reapply
+  -> env_clear + envs(final map)
+
+No step above grants filesystem/network permission by itself.
+```
+
+关键测试：
+
+- protocol/core exec_env tests：All/Core/None、default exclude默认关闭、custom/set/include顺序、thread id与Windows PATHEXT/case。
+- config type tests：TOML默认、case-insensitive WildMatch与`experimental_use_profile`解析。
+- runtime env tests：PATH empty/dedupe、package/zsh prepend、proxy/CA/GIT_SSH strip与snapshot后恢复。
+- shell/unified exec attempt tests：workspace→escalated retry的proxy移除、managed env与sandbox context一致。
+- user shell/review tests：full-access escape不继承managed proxy、派生review复制policy和标签不作为授权。
+
+映射到当前项目：Agent Tool环境默认用allowlist/None起步，只注入PATH/LANG与每Step短寿命capability；不要用变量名黑名单假装secret治理。配置schema应把glob明确叫glob并提供dry-run预览。最终执行记录env key列表和policy revision，不记录value；cold resume重新签发secret。环境标签只做可观测性，所有权限在执行器按tenant/run policy再次强制。
+
 ## 5. 当前项目最应该吸收的架构原则
 
 ### 原则一：对外协议稳定，内部事件可演进
