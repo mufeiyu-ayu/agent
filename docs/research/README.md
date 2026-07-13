@@ -75,6 +75,9 @@
 | [codex/context-compaction-transaction.md](./codex/context-compaction-transaction.md) | Context压缩的触发预算、模型兼容、替代历史、窗口checkpoint与崩溃恢复专题 |
 | [codex/hook-runtime-contract.md](./codex/hook-runtime-contract.md) | Hook catalog信任、并发merge、typed输出、host执行隔离和资源治理专题 |
 | [codex/typed-extension-runtime.md](./codex/typed-extension-runtime.md) | Typed Extension的注册代际、状态寿命、Contributor合并和失败隔离专题 |
+| [codex/rollout-budget-accounting.md](./codex/rollout-budget-accounting.md) | 多Agent共享预算、加权usage、提醒投递、并发overshoot与耐久账本专题 |
+| [codex/agent-jobs-batch-runtime.md](./codex/agent-jobs-batch-runtime.md) | 批处理Agent的持久队列、worker lease、结果提交、取消和artifact专题 |
+| [codex/memory-pipeline-lifecycle.md](./codex/memory-pipeline-lifecycle.md) | 长期Memory的异步抽取、source revision、artifact generation、读取凭证与遗忘专题 |
 | [codex/current-project-gap-analysis.md](./codex/current-project-gap-analysis.md) | 当前项目能力、证据和缺口 |
 | [codex/cloud-agent-mapping.md](./codex/cloud-agent-mapping.md) | 客户端 Codex 思想如何翻译为云端 NestJS Agent |
 | [codex/terminology-map.md](./codex/terminology-map.md) | Codex、当前项目和中文助记名的概念对照 |

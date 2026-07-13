@@ -84,6 +84,9 @@ flowchart LR
 | [context-compaction-transaction.md](./context-compaction-transaction.md) | Pre/Mid/Manual触发、Local/Remote/Reset实现、窗口lineage、历史替换与checkpoint提交 |
 | [hook-runtime-contract.md](./hook-runtime-contract.md) | Hook多源发现与信任、并发聚合、Tool改写、host命令、输出spill与副作用回执 |
 | [typed-extension-runtime.md](./typed-extension-runtime.md) | 不可变Registry、Session/Thread/Turn Store、Contributor权限与资源级merge语义 |
+| [rollout-budget-accounting.md](./rollout-budget-accounting.md) | Root/child共享加权token账本、window提醒、超额顺序、compaction与恢复漂移 |
+| [agent-jobs-batch-runtime.md](./agent-jobs-batch-runtime.md) | CSV批次、Job/Item状态机、worker归属CAS、并发调度、取消与crash recovery |
+| [memory-pipeline-lifecycle.md](./memory-pipeline-lifecycle.md) | 长期Memory的租约抽取、Git基线合并、scoped读取、引用反馈与遗忘边界 |
 | [current-project-gap-analysis.md](./current-project-gap-analysis.md) | 当前项目不是“缺什么功能”，而是缺哪些运行系统能力 |
 | [cloud-agent-mapping.md](./cloud-agent-mapping.md) | 客户端概念到云端 NestJS 架构的转换规则 |
 | [terminology-map.md](./terminology-map.md) | Thread、Turn、Item、Run、Step 等概念对照 |
