@@ -75,6 +75,9 @@ flowchart LR
 | [tool-call-execution-pipeline.md](./tool-call-execution-pipeline.md) | Tool Call识别、Step快照、并发/顺序Observation、hook、取消与唯一终态 |
 | [tool-argument-streaming.md](./tool-argument-streaming.md) | Custom tool参数增量解析、provisional preview、节流、最终校验与恢复边界 |
 | [tool-output-contract.md](./tool-output-contract.md) | Tool结果的模型/telemetry/hook/Code Mode四视图、截断与provenance |
+| [model-transport-attempts.md](./model-transport-attempts.md) | ModelClient/Turn/推理/传输attempt分层、增量WebSocket、partial stream重试与HTTP降级 |
+| [rollout-write-durability.md](./rollout-write-durability.md) | LiveThread到JSONL/SQLite投影的queue、flush、torn write、recovery与durability边界 |
+| [request-permissions-lifecycle.md](./request-permissions-lifecycle.md) | Typed capability请求、Core求交、Turn/Session grant、环境隔离与后续sandbox消费 |
 | [current-project-gap-analysis.md](./current-project-gap-analysis.md) | 当前项目不是“缺什么功能”，而是缺哪些运行系统能力 |
 | [cloud-agent-mapping.md](./cloud-agent-mapping.md) | 客户端概念到云端 NestJS 架构的转换规则 |
 | [terminology-map.md](./terminology-map.md) | Thread、Turn、Item、Run、Step 等概念对照 |
