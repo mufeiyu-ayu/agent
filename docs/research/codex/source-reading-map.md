@@ -1088,3 +1088,68 @@ Thread建立后原地改全局与项目文件，再跑普通Turn、Deferred Exec
 让running count归零但一个非Turn RPC永不返回。比较顶层`join_all(rpc_gate.shutdown)`与日常connection close timeout，确认第二信号此时是否仍被主loop接收。把它列为全局shutdown缺少总deadline的风险。
 
 最后在terminal notification已生成但outbound writer很慢时触发DisconnectAll，检查client是否收到最后事件；forced路径kill在rollout不同flush点，再cold resume核对durable prefix。设计readiness→stop admission→bounded drain→force→reconcile的云端状态机。
+
+## 54. 路线五十一：自动时间提示与 sleep 为什么是两种状态
+
+按clock authority、delivery gate、history和input interruption阅读：
+
+- `core/src/current_time.rs`：System/External provider选择、ThreadId与drop-cancel sleep契约。
+- `session/time_reminder.rs`：window、interval、user/tool boundary flag与Fatal路径。
+- `context/current_time_reminder.rs`和`turn.rs`：developer role、持久化位置及sampling前顺序。
+- `tools/handlers/current_time.rs`、`sleep.rs`和spec plan：主动查询、code mode、12小时上限、Sleep item和activity watch。
+- `session/input_queue.rs`：subscribe后pending检查、Steer/Mailbox来源和lost-wakeup防护。
+- Current time/pending input suites：倒退时钟、compaction、provider失败与中断竞态。
+
+用可控external clock在interval到期前后、向后跳和interval=0时连续采样；在AfterUserOrToolOutput模式让boundary出现但尚未到期，再发纯assistant continuation。确认boundary被消费而不会在稍后自动补发。
+
+执行compaction/cold resume并检查history中的旧提醒与新window强制提醒；紧接自动提醒调用clock.curr_time，验证它不会更新auto delivery state。注入provider read failure，确认模型HTTP请求为0。
+
+最后让用户steer/mailbox分别发生在sleep订阅前、订阅后和watch关闭时，核对started/completed、wall time与pending input。kill进程后证明Sleep item不能恢复剩余等待，设计durable wakeAt任务替代长sleep。
+
+## 55. 路线五十二：本地图片何时才变成模型真正收到的bytes
+
+按协议输入、权限读取、统一prepare、缓存和恢复阅读：
+
+- `protocol/src/user_input.rs`与`models.rs`：Image/LocalImage、Process/Defer、path标签、读取失败placeholder。
+- `core/image_preparation.rs`与Session history boundary：scheme/detail policy、逐项降级和persist前顺序。
+- `utils/image/src/lib.rs`：magic decode、format preservation、ICC/EXIF、dimension/patch math、1 GiB guard和64 MiB LRU。
+- `tools/handlers/view_image.rs`与image detail helpers：Step Environment、sandbox read、model modality/original capability和Item事件。
+- Session/image/view/TUI suites：live write、legacy resume、失败替换和UI reattach。
+
+从App Server提交workspace内/外LocalImage、http URL、非http scheme、伪MIME、animated GIF、CMYK JPEG与超大dimension图。记录host read权限、真正MIME、输出format/尺寸、model-visible placeholder和rollout内容。
+
+用同bytes不同path、同path改bytes、不同detail重复处理，观察cache key和64 MiB eviction；构造SHA-1 collision仅作威胁建模，明确它不是内容完整性hash。比较High与Original的dimension/patch实际ceil值。
+
+最后用旧binary写未prepared rollout，再在修改limits后的binary cold resume两次，确认旧rollout不回写且in-memory derivative可漂移。为云端设计immutable asset、derivative algorithm version与tenant scope，禁止服务器local path输入。
+
+## 56. 路线五十三：Code Mode 脚本为什么不能直接绕过工具审批
+
+按V8能力、delegate、cell lifecycle和process host阅读：
+
+- `code-mode/runtime/{globals,module_loader,callbacks}.rs`：删减全局、import拒绝、tools promise、timers、store/load和输出事件。
+- `cell_actor`与`session_runtime`：observer frontier、yield/terminate、callback drain、completion+stored writes原子commit和registry ownership。
+- Core `tools/code_mode/{mod,delegate,execute_handler,wait_handler}.rs`：nested specs、ready gate、当前Turn ToolRuntime、trace、elicitation和结果截断。
+- `remote_session.rs`及connection driver：共享process、V1 handshake、session generation、fallback、reconnect和shutdown。
+- feature/config/tool-mode tests：CodeModeHost默认、CodeMode under-development、excluded/direct-only namespace和model capability warning。
+
+让脚本尝试import fs、访问process/console/WebAssembly、自调用exec和传错function/freeform参数；确认只有enabled tools可以产生外部能力，且nested call仍触发hook/approval/sandbox。yield后改变permission profile/tool catalog，再wait，核对实际dispatch使用哪个Turn snapshot。
+
+并发启动cells写同一store key，分别正常完成、throw error和terminate，记录completion顺序与KV可见性。让cell在没有Turn worker时notify/tool call，并大量text输出，测量unbounded broker/event/content buffer在model-side truncate前的峰值。
+
+最后kill共享host，观察多个Thread cell、logical session generation和stored values；分别模拟host binary NotFound与handshake mismatch，验证只有前者fallback in-process。设计真正隔离时补OS sandbox、heap/CPU/queue硬限和durable Run recovery。
+
+## 57. 路线五十四：外部Agent历史导入后为何不能证明原执行过程
+
+按detect/validation、lossy projection、Thread提交和ledger阅读：
+
+- `external-agent-sessions/{detect,records,export,ledger}.rs`：30天/50个、JSONL容错、内容选择、synthetic rollout、hash与mtime shortcut。
+- `config/external_agent_config.rs::external_agent_session_source_path`：canonical containment与请求path边界。
+- `external_agent_config_processor.rs`：import id、同步/后台拆分、progress/completed和history。
+- `external_agent_session_import.rs`：batch semaphore、5并发、current config/model、ThreadStore提交与补偿。
+- 外部迁移/ThreadStore integration tests：duplicate、restart、partial failure和可见投影。
+
+创建超过50个session、保留mtime改内容、invalid lines、sidechain/thinking/tool blocks和首个user前assistant，记录detect与最终Codex Turn差异。证明Imported历史只保存可见文本，不能恢复原tool权限/usage/reasoning/model。
+
+在validation canonicalize后替换projects内symlink，再进入blocking prepare，检查第二次canonical是否仍强制root containment。若未强制，把canonical file handle贯穿任务作为修复方向，不依赖两次字符串path校验。
+
+最后在create/append/metadata/persist/shutdown/ledger save每一步注入失败，再断线/重启读取import history。区分partial Thread、重复导入和notification丢失；设计ImportJob、target transaction、idempotency hash与outbox terminal。

@@ -76,12 +76,16 @@
 | 42 | Log DB异步队列、durability与feedback隐私边界 | 补try_send静默drop、batch/timer、flush FIFO但DB错误仍ack、full span/event field保存、无通用脱敏、thread/process分区保留、startup-only 10天清理、feedback subtree/process关联和跨库删除非原子顺序 | 89% / 89% |
 | 43 | Agent Jobs批处理调度、owner CAS与crash恢复缺口 | 补CSV/job transaction、local-only路径、并发上限、spawn-before-claim补偿窗口、worker-only exposure+assigned thread CAS、schema软约束、timeout无heartbeat、cancel遗留pending、loop helper非startup recovery和CSV非原子artifact提交 | 89% / 89% |
 | 44 | App Server graceful restart准入、drain与force边界 | 补首次signal继续accept/RPC、新Turn可延迟归零、assistant Turn计数不含普通RPC、二次Ctrl-C/TERM force而SIGHUP不force、DisconnectAll前后、顶层RPC gate无timeout、background/Thread各10秒best effort和terminal通知未必送达 | 89% / 88% |
+| 45 | Current Time authority、提醒窗口与可中断sleep | 补System/External Thread-aware provider、sampling前Fatal、developer提醒持久化、window/interval/boundary消费、compaction强制刷新、主动curr_time不改delivery state、sleep pending-check防lost wakeup、steer/mailbox中断和进程内等待不可恢复 | 88% / 88% |
+| 46 | 图像输入prepare、缓存、权限与resume漂移 | 补LocalImage host read与octet defer、history前统一decode/resize、remote/low/invalid逐项placeholder、High/Original dimension+patch预算、format/ICC/EXIF、SHA-1+mode 64MiB LRU、view_image sandbox差异和legacy rollout不回写导致算法版本漂移 | 88% / 88% |
+| 47 | Code Mode V8能力、nested tool dispatch与process host | 补无Node/import的V8编排、nested call回到当前Turn ToolRouter、cell-ready gate、yield/wait/observer、completion-time KV commit、truncate前无界内存、共享child process V1 handshake、NotFound-only fallback、host crash丢live cell/KV和shutdown/open状态机 | 88% / 88% |
+| 48 | 外部Agent Session检测、lossy投影与导入提交 | 补30天/50个mtime候选、canonical root validation后的symlink TOCTOU、SHA-256 ledger、只保留user/assistant并文本化tool、synthetic Legacy Turn、current Codex config/model、ThreadStore多步partial state、ledger非原子导致重复和import id后台通知语义 | 88% / 88% |
 
 ## 最近检查
 
 - 命令：`python3 "$HOME/.local/bin/codex-weekly-usage.py"`
 - 读数：已用 12%，剩余 88%
-- 采样时间：`2026-07-13 12:21:32 CST`
+- 采样时间：`2026-07-13 12:27:28 CST`
 - 判断：高于 50%；按用户明确停止条件继续做源码深挖，不能以首轮闭环或 PR 已创建为由停止。
 
 ## 下一批次

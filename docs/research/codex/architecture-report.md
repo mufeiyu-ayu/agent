@@ -1997,6 +1997,189 @@ graceful: wait RPC gates (unbounded)    skip drains/Thread shutdown
 
 映射到当前项目：NestJS部署drain应先把实例标unready并拒绝新AgentRun，再等已领取Run到terminal/lease handoff；HTTP/WebSocket请求和AgentRun要分别计数。所有阶段都有总deadline，二次signal或平台termination共享同一个force token。断连前发送带resume cursor的draining事件并flush有界outbox；force后依靠持久化Run状态与启动reconciler恢复。
 
+### 4.56 Current Time：时间提示是持久化上下文事实，sleep则是可被输入打断的等待
+
+CurrentTimeReminder feature把“当前时间”拆成三层：`TimeProvider`负责取时/等待，Session state决定何时注入，`clock.curr_time`/`clock.sleep`提供模型主动调用。默认provider是系统UTC；配置external却没有host provider时Session构建失败。external provider所有调用都带ThreadId，可映射远端环境/虚拟时钟，而不是读取Codex host时间。
+
+提醒在每次model inference之前执行，早于构造sampling input；provider错误转成Fatal，当前Turn在发任何模型请求前结束。这不是best-effort装饰。成功时生成developer-role消息`It is YYYY-MM-DD HH:MM:SS UTC.`并走正常`record_conversation_items`，因此进入Context与rollout历史，后续请求会看到旧提醒序列，而不只是替换一条临时header。
+
+Session内状态只保存`last_delivery_time`、`last_window_id`和一个pending boundary flag。默认interval 1秒、delivery `AnyInference`：新context window强制注入，否则只有与上次成功delivery相差至少interval才注入。系统时间向后跳会让正interval长期不满足；interval=0则每次合格边界都注入，即使时间倒退。
+
+`AfterUserOrToolOutput`只允许在新window或刚记录user boundary/function/custom/tool-search output之后注入。boundary flag在检查时先被`take`消费，即使interval尚未到也不会保留到下一次inference；这避免一个旧tool output在多个内部采样里反复触发，但也意味着“边界发生时未到期，稍后到期”不会自动补提醒，必须等下一user/tool boundary。纯assistant continuation不会触发。
+
+compaction创建新的window id，所以下次inference无视长interval强制新提醒；旧window中的提醒被summary/rewrite后不当作当前时间事实。CurrentTimeReminderState本身不持久化，cold Session也会把首个观察window视为new并补一条；rollout历史仍保留旧提醒，时间演进可审计但会消耗context。
+
+`clock.curr_time`在feature启用时总暴露，直接再次调用同一provider并以tool output返回最新值；它不更新reminder的last delivery state，所以主动查询与自动提醒可以紧邻重复。code mode返回结构化`current_time`，普通tool output仍是相同自然语言developer片段文本。
+
+`clock.sleep`还需`sleep_tool=true`，duration严格在1毫秒到12小时。它先发Sleep item started，再拿当前active Turn的input activity watch；subscribe后立即检查pending steer/mailbox，消除“输入刚好发生在订阅窗口”的lost wakeup。已有或新到用户steer/agent mailbox都会drop sleep future并返回“interrupted”，不是只响应键盘输入。
+
+provider sleep future的取消契约是drop即cancel；如果activity watch sender关闭，handler不会误判interrupted，而是继续await原sleep完成。完成/中断都先发Sleep item completed，再回传真实host `Instant` wall time和success=true。被输入打断不是tool error，模型会在下一轮拿到observation并处理pending input。
+
+Sleep item生命周期不等于等待持久化可恢复：进程在started后崩溃不会在重启后继续剩余duration，rollout恢复只能把未闭合Item修复/展示。external clock可实现虚拟sleep立即完成，而wall time仍衡量本地future实际等待，因此requested clock duration与observed wall time是两个事实。
+
+```text
+before inference -> provider.current_time(thread)
+       | error -> Fatal before model request
+       v
+new window OR eligible boundary + interval due
+       |
+persist developer reminder into history
+
+clock.sleep -> emit started -> subscribe + pending check
+       | provider finishes        | steer/mailbox activity
+       v                          v
+  completed normally        drop wait, completed as interrupted
+```
+
+关键测试：
+
+- `core/tests/suite/current_time_reminder.rs`：interval/history、time倒退、user/tool-only、compaction new window、provider fatal、curr_time和external sleep。
+- `pending_input.rs`：sleep被已有/新steer或mailbox打断、Item生命周期与pending input交接。
+- config/spec plan tests：feature config materialization、external source与sleep tool exposure。
+
+映射到当前项目：定时SEO Agent应由服务器scheduler提供tenant-aware clock，Run中持久化`observedAt/source/timezone`，但不要把每次时钟读数无限追加prompt。等待任务使用durable `wakeAt + status + lease`，新用户输入通过事件取消；进程内sleep只适合单Run短等待。provider故障是否阻止Run必须按业务定义，不能默认把时间当无害装饰。
+
+### 4.57 Image Preparation：持久化前统一处理，失败降级为文本而不是让采样随机失败
+
+Codex图像输入有三条来源：用户`Image`携带URL/data URL、`LocalImage`携带host路径、工具输出携带multimodal content items。最终都在`prepare_conversation_items_for_history`这一durable history boundary调用同一个`prepare_response_items`，先解码/resize/替换错误，再加Turn/Item id、写Context与rollout。模型看到的、resume重建的与持久化的新rollout因而使用同一份prepared事实。
+
+LocalImage在协议转换时同步`std::fs::read`，先以`application/octet-stream` data URL包装原bytes并加`<image N path=...>`标签；真正MIME识别和处理延后到history insertion。读取失败不会拒绝整个用户Turn，而是在原位置生成带路径的文本placeholder。该读取不走tool sandbox，因为它被视为host/client提交的用户输入；App Server/Remote Control本来就是本机control plane，但任何降权客户端若也能提交LocalImage path，就形成任意文件读取/发送给模型的权限面。
+
+统一prepare显式拒绝http/https remote URL，替换为固定文本；非data、非http(s) scheme当前原样通过，依赖backend后续解释。data URL必须含base64标志，payload与decoded bytes分别受1 GiB sanity cap，再用内容magic猜format，不信任声明MIME。支持PNG/JPEG/GIF/WebP解码；PNG/JPEG/WebP在不需resize时可保留原bytes，GIF等会解码后重新编码PNG，动画不会原样发送。
+
+detail策略不是API名字直译。None/Auto/High都使用max dimension 2048、最多2500个32x32 patch；例如2048方图受patch预算缩到1600方。Original允许max dimension 6000、最多10000 patch。Low当前明确不支持并变成actionable文本。`view_image original`还必须ModelInfo声明`supports_image_detail_original`，否则降为默认High；其他MCP/tool output的Original也在进入history前按model能力sanitize。
+
+resize先按最大边缩放，再按patch area计算scale并向下修正整数patch grid，确保实际ceil patch数不超限。Triangle filter用于缩放；重编码保留安全的RGB ICC profile与EXIF（含orientation），拒绝把CMYK/YCCK源profile错误标到RGB输出。编码后没有额外远低于1 GiB的上传target cap，1 GiB只是病态输入防线，不代表适合模型请求。
+
+处理缓存是进程级blocking LRU：key为原bytes SHA-1 + mode，不含path/MIME，最多32项且总encoded bytes不超过64 MiB；单结果大于64 MiB不缓存。相同内容跨Thread复用，修改同path会因digest变化miss。SHA-1在这里仅作缓存key，不作安全完整性；理论碰撞会造成错误内容复用，虽然非对抗本地图片场景风险较低。
+
+处理失败只替换失败的那一个image，保留同一message/tool output里的其他text/image和success metadata。模型可见placeholder分为remote unsupported、low unsupported、too large和generic processing error；具体base64/decode细节只进warning日志，避免把内部异常/超长输入反射到prompt。tool log preview也省略data URL，仅记字节数。
+
+新写rollout保存processed data URL或placeholder，避免每次采样重复解码。cold resume/fork对重建出的整份history再次prepare，专门兼容旧rollout中未处理的remote/invalid/original bytes；代码注释明确不回写旧rollout，因此每次未来重建仍可能再处理一次。若resize实现/limits随版本变化，同一旧rollout在新binary重建出的in-memory图像可能改变，Config lock也没有锁住image algorithm version。
+
+`view_image`与LocalImage权限模型不同：模型调用view_image先确认本Turn model支持image、解析Step Environment/PathUri，并用当前filesystem sandbox做metadata/read；只接受普通file。它发ImageView started/completed，然后把octet bytes作为tool output交给统一prepare。这样模型不能借view_image绕过read policy，但用户/App client提供的LocalImage仍是host-authorized输入路径。
+
+```text
+LocalImage path --host read--> octet-stream data URL --+
+User data URL / tool image -----------------------------+
+                                                        v
+history boundary: scheme policy -> base64 cap -> decode -> resize/encode
+                                     | error -> bounded text placeholder
+                                     v
+                         Context + new rollout + model input
+
+cold resume legacy rollout -> reconstruct -> prepare in memory (no rollout rewrite)
+```
+
+关键测试：
+
+- `core/image_preparation_tests.rs`：remote/invalid/low placeholders、High/Original patch预算、只替换失败项与metadata保留。
+- `utils/image/image_tests.rs`：format pass-through/reencode、resize尺寸、data URL、cache与size guard。
+- `session/tests.rs`：在history/ID/persistence前prepare，以及resume legacy history处理。
+- `view_image.rs` tests：model modality、Environment选择、sandbox filesystem read、original capability与log preview。
+- protocol/TUI history tests：LocalImage path、detail和编辑重挂载投影。
+
+映射到当前项目：Web上传图像应先落对象存储并病毒/类型/像素/字节校验，Run只引用tenant-scoped asset id与immutable hash；不要让客户端提交服务器本地路径。prepared derivative保存algorithm version、dimensions、MIME与hash，模型请求引用受限signed URL或有大小上限的bytes。失败作为结构化Attachment状态展示，不要悄悄把安全错误混成普通用户文本。
+
+### 4.58 Code Mode：V8只负责编排，真实能力仍回到当前Turn的ToolRouter
+
+Code Mode把模型的多次tool调用包装进一段ES module脚本。模型只直接看到freeform `exec`和JSON `wait`，脚本通过全局`tools`对象调用本Turn允许的nested tools，并可`text/image/generatedImage/notify/store/load/yield_control/exit`。V8环境主动删除console、Atomics、SharedArrayBuffer和WebAssembly，所有static/dynamic import都拒绝；没有Node `fs/process/net`。因此脚本本身不是另一个shell，外部副作用只能经host delegate。
+
+每次nested call携带cell id、runtime tool call id、规范ToolName、function/freeform kind和JSON input，通过Core的`ToolCallRuntime`重新进入同一Step snapshot的ToolRouter。它继续执行schema解析、approval、hook、sandbox、cancellation、telemetry和TurnDiffTracker；`exec`自调用被明确拒绝。Code Mode是调用语法/编排层，不应成为绕过工具安全策略的后门。
+
+可暴露nested tool集合从当次`nested_tool_specs`生成；config可按exact namespace排除，或标记direct-only让高交互工具仍由模型顶层调用。function tool必须传object/None，freeform必须传string，类型不对在host边界拒绝。脚本只获得工具name/description metadata与调用函数，不直接拿Rust handler对象。
+
+Core `CodeModeService`是Thread Session级lazy OnceCell。每个Turn只有在effective tool mode为CodeMode/CodeModeOnly时启动一个dispatch worker，绑定该Turn的router、StepContext和diff tracker。cell可yield跨模型轮次继续存在；下一次wait恢复时由当前Turn worker承接nested calls。因此长期cell的能力会以每次实际dispatch所在Turn snapshot为准，而不是永久绑定创建时router。
+
+dispatch broker使用Session级unbounded channel；cell在execute刚启动时可能先发nested call，Core先建立trace再`mark_cell_ready_for_dispatch`，gate在此之前缓存/等待，避免工具事件先于parent exec可观察身份。worker drop停止消费但不关闭整个broker；yielded cell暂停在V8 pending frontier，后续wait/新Turn恢复。若大量message在没有worker时进入unbounded queue，仍存在内存背压风险。
+
+每个cell有独立V8 Isolate与OS thread。脚本同步CPU死循环可由IsolateHandle `terminate_execution`打断；async tool/timer通过command channel回填promise。actor用biased select统一runtime event、observer、termination和callback tasks；一次只能有一个active observer，其他wait返回Busy。yield返回当前content但cell继续，terminal result/terminate后cell进入tombstone并从registry删除；之后wait得到MissingCell普通结果。
+
+脚本output先在cell内无界累积，直到yield/result才在Core按max output tokens截断；这保护模型context，却不限制V8/event channel/actor buffer内存。`text()`循环或大image在truncate前仍可造成峰值。runtime event与dispatch部分使用unbounded channel，IPC host层才是128容量bounded channel。
+
+`store/load`是Code Mode Session内跨cell的JSON KV，不进rollout/SQLite。每个cell开始clone当前stored values，写入先留在cell；completion时在同一CellState phase锁下把writes与terminal event原子commit，避免terminate竞态。即使脚本以error_text结束，之前store writes仍commit；显式terminate/cancellation会reject completion并不提交。并发cells是completion-time last write wins，没有version/CAS。
+
+normal completion先drain notification tasks，再cancel并drain仍在跑的nested tool tasks，随后commit terminal；terminate则先cancel全部callbacks。`notify`把文本以CustomToolCallOutput注入**当前仍running的Turn**，无active turn就失败warning；它不是durable跨Turn消息队列。Tool output成功/错误转换成JSON resolve/reject，script error最终作为`success=false`的exec observation，而不是Core Fatal。
+
+CodeModeHost feature默认stable且开启：ThreadManager通常给所有logical Sessions共享一个lazy child process，stdio framed protocol V1、10秒handshake、process group + kill-on-drop。每个Thread仍有独立remote session id/generation和delegate。host binary仅在NotFound时永久降级in-process；spawn存在但handshake/运行错误不会静默fallback，避免协议错配被掩盖。
+
+独立process主要隔离V8 crash/内存故障，不是OS security sandbox：child继承进程环境，未见额外sandbox profile，只是JS runtime没有相应host API。一个host process服务多个Thread，host崩溃会同时使其Sessions失联；下次call可spawn新connection并开新generation，但remote stored values和live cells不会迁移。cleanup handle确保旧generation/session在shutdown时等待收口，仍不提供crash状态恢复。
+
+Session shutdown先设atomic flag，OnceCell若正在初始化则join；若从未使用不会为shutdown反向启动host。remote session状态机New/Opening/Open/Closing/Closed把并发open与shutdown串行化，并保留dead connection的retired cleanup。Core exec/wait在返回模型前还等待pending elicitation清空，避免approval UI与script terminal顺序交错。
+
+```text
+model -> exec(JavaScript module) -> V8 cell
+                                  | tools.foo(input)
+                                  v
+                    session broker + cell-ready gate
+                                  v
+ current Turn worker -> ToolCallRuntime -> normal policy/hook/sandbox/tool
+                                  |
+                           JSON response/reject
+                                  v
+                    V8 resumes -> yield/result
+                                  v
+                 truncate for model + CodeCell trace
+
+process host crash: logical session can reopen, live cells/KV are lost
+```
+
+关键测试：
+
+- `code-mode` runtime/cell actor suites：import/global限制、CPU terminate、pending pause、observer Busy、callback drain、panic与completion commit。
+- service contract/remote session/connection driver suites：lazy host、V1 handshake、generation、caller cancellation、host death和shutdown/open竞态。
+- Core `tools/code_mode` tests：payload kind、自调用拒绝、dispatch readiness、nested ToolRouter、output truncation、image detail和trace terminal。
+- Core code mode integration：yield/wait、hooks/approval、stored values、tool mode exposure与Session shutdown。
+
+映射到当前项目：当前SEO Agent不应引入通用V8编排；先完成服务端单tool loop。未来若需要用户脚本，脚本runtime只拿capability-scoped RPC，不给Node原生能力；每次调用仍过tenant/approval/policy。为CPU、heap、输出/队列、tool并发和总wall time设置硬上限，state用版本化durable KV或明确标注ephemeral，host crash由Run reconciler收口。
+
+### 4.59 External Session Import：迁移的是可见对话投影，不是原Agent运行语义
+
+External Agent迁移协议把config/skills/AGENTS/plugins/MCP/subagents/hooks/commands/sessions分成独立item type。`import`先返回一个`import_id`，同步项目立即发progress；plugin/session在detached background task并行处理，最终广播completed notification并best-effort写state DB history。RPC成功只表示任务已接收，不表示迁移成功，客户端必须按import id等待terminal notification或查询history。
+
+Session detection只扫描external home下`projects/<project>/*.jsonl`两层，限制最近30天、最多50个mtime最新文件。目录项/metadata/canonicalize/单项目read错误多为skip，ledger根错误才让整体detect失败。候选用mtime纳秒与ledger做cheap skip；mtime没变就不重新hash，所以内容被改但保留mtime可能不会重新出现。50个上限也意味着旧但未导入session在高活跃目录永久不展示，除非它重新变新。
+
+请求不能任意导入jsonl：processor先canonicalize source和external `projects` root，要求扩展名jsonl且canonical path位于root，再按canonical path去重。这里有一个TOCTOU细节：校验得到的canonical path只放入HashSet，传给background importer的仍是请求原始path；prepare阶段会再次canonicalize却不再检查root。若攻击者能在两步之间替换projects内symlink，理论上可让第二次解析指向root外jsonl。应把已验证canonical handle/path作为后续唯一输入，或open后校验file identity。
+
+prepare在blocking thread重新读取源文件，一边parse一边计算SHA-256；ledger去重键是canonical path + content hash。已有同内容记录则skip，内容变化可再次导入成新Thread。parse后还要求源session声明的cwd当前确为directory；它不要求cwd仍位于external project root，之后Codex会以该cwd加载当前config，故源文件可影响导入Thread的workspace/config发现范围。
+
+外部JSONL不是当Codex rollout照抄。解析只保留user/assistant消息：meta、sidechain与thinking忽略；tool_use压成最多2,000字符的标记文本，tool_result压成最多4,000字符的标记文本；未知content block变成unsupported note。不会重放外部tool、权限、reasoning、usage、model或sandbox事实，降低迁移时副作用与协议伪造风险。
+
+投影器为每个user message创建synthetic `external-import-turn-N`，下一个user会先complete前Turn；首个user之前的assistant丢弃。每条可见消息同时生成legacy EventMsg和ResponseItem，末尾追加`<EXTERNAL SESSION IMPORTED>`展示marker、近似token count和最后TurnComplete。token用累计message bytes近似，且只有assistant分支更新last visible count，不是provider账单。
+
+持久化使用**当前Codex**在external cwd加载出的config、offline default model metadata、base instructions、provider和memory setting；创建一个Legacy/V1、无dynamic tools/capability roots的新Thread。外部session的model/system prompt不继承，导入历史也没有AGENTS world-state来源。这使“继续对话”采用当前产品策略，但不具备原会话可复现性。
+
+ThreadStore提交不是单事务：先create_thread，再append filtered legacy items；append失败会best-effort discard。随后update metadata、persist和shutdown任一步失败都没有统一discard补偿，可能留下未记ledger的partial Thread。成功imports最后批量写`external_agent_session_imports.json`；ledger用普通`fs::write`非原子。若Thread已成功但ledger写失败，下次会重复导入；ledger截断/invalid JSON则后续detect/import history路径整体报InvalidData。
+
+Session importer全局Semaphore只允许一个session import batch，但batch内部最多5个并发；不同session完成顺序不确定，success列表按完成顺序。plugin imports与session batch并行，且config同步迁移/refresh已经先发生，所以session的current config可能包含本轮刚导入的设置，但与并行plugin安装完成时点存在差异。Imported Thread不绑定一个完整migration transaction snapshot。
+
+源path/content hash只在ledger写入时记录，Thread metadata本身没有external source hash/format version；ledger records也不清理旧content版本。审计必须关联两处，且删除Imported Thread不会自动删ledger，之后同源内容仍被视为已导入。这符合避免误重复的产品选择，但“重新导入已删会话”需要显式控制。
+
+```text
+detect: recent external jsonl -> mtime/ledger filter -> migration choices
+                                      |
+request validation: canonical under projects root
+                                      |
+background prepare: parse visible text + SHA-256 + cwd exists
+                                      |
+create Codex Thread with current config/model
+   -> append synthetic Legacy rollout
+   -> metadata -> persist -> shutdown
+                                      |
+write separate import ledger + completed notification
+
+No cross-step transaction; source path is re-canonicalized after validation.
+```
+
+关键测试：
+
+- `external-agent-sessions` detect/records/export suites：30天/50个、title、meta/sidechain/thinking过滤、tool note截断、synthetic Turn与token projection。
+- ledger tests：canonical path+SHA-256、mtime refresh、source删除与重复content。
+- App Server external config tests：path containment、请求选择、progress/completed、session/plugin并发和history记录。
+- Thread import integration：append失败discard、current config/model metadata与restart后可读Imported Thread。
+
+映射到当前项目：导入第三方Agent历史时只接受上传asset id或服务端已检测的immutable file handle，不接受稍后重解引用的path。先建ImportJob与source hash/version，再在数据库事务/幂等key下创建Conversation/Message；明确哪些tool/role被降级为不可信文本。原模型/prompt仅作provenance，不直接成为当前system权限。完成状态必须在目标数据与ledger/outbox同事务后发布。
+
 ## 5. 当前项目最应该吸收的架构原则
 
 ### 原则一：对外协议稳定，内部事件可演进
