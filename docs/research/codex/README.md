@@ -102,6 +102,9 @@ flowchart LR
 | [image-input-preparation-and-history.md](./image-input-preparation-and-history.md) | 图片输入authority、解码/Resize/Metadata、缓存、History与模型投影 |
 | [plugin-marketplace-lifecycle.md](./plugin-marketplace-lifecycle.md) | Marketplace Source add/upgrade/remove、Git制品、Config CAS与Plugin Cache |
 | [app-server-thread-listener-lifecycle.md](./app-server-thread-listener-lifecycle.md) | App Server Thread listener、订阅扇出、重连恢复、请求所有权与卸载状态机 |
+| [tui-composer-attachment-lifecycle.md](./tui-composer-attachment-lifecycle.md) | TUI Composer富输入、附件placeholder、large paste、queue/steer与临时图片生命周期 |
+| [config-write-and-runtime-refresh.md](./config-write-and-runtime-refresh.md) | Config写入、Layer origin/version、Runtime Refresh、Thread/Turn snapshot与MCP边界 |
+| [exec-server-session-recovery.md](./exec-server-session-recovery.md) | Exec Server会话租约、连接generation、进程输出重放、stdin幂等与断线恢复边界 |
 | [current-project-gap-analysis.md](./current-project-gap-analysis.md) | 当前项目不是“缺什么功能”，而是缺哪些运行系统能力 |
 | [cloud-agent-mapping.md](./cloud-agent-mapping.md) | 客户端概念到云端 NestJS 架构的转换规则 |
 | [terminology-map.md](./terminology-map.md) | Thread、Turn、Item、Run、Step 等概念对照 |
