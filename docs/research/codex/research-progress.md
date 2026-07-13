@@ -39,14 +39,21 @@
 | 5 | 收尾、全量索引与验收校验 | 新增 closeout；55 个原路径、57 个 Markdown、17 个 Mermaid 与变更范围校验通过 | 96% / 95% |
 | 6 | 完成性补审 | 补 Goal、StepContext、tool search/argument streaming；82 个 literal / 240 个全量 Codex 路径 token 校验通过 | 95% / 95% |
 | 7 | PR 交付 | commit `60401fb` 推送并创建 Ready PR #7；远程 head/mergeability/范围复核通过 | 95% / 94% |
+| 8 | App Server RPC 并发、能力协商与重连原子性 | 补资源级 shared/exclusive 序列化、ConnectionRpcGate、listener command、resume/subscribe 与 idle unload 不变量 | 94% / 94% |
+| 9 | Model adapter 传输与恢复 | 补 Session/Turn/attempt 三种寿命、WS 增量等价、prewarm trace、401/stream retry/HTTP fallback 与断流事实边界 | 94% / 94% |
+| 10 | Rollout writer、ordinal 与 state DB 恢复 | 补 deferred materialization、pending suffix/reopen barrier、逆向 ordinal、leased backfill、DB 定点备份与 filesystem fallback | 94% / 93% |
+| 11 | Hook、动态权限、Sandbox、Network 与 Guardian 组合 | 补 hook fail-open/结果过滤边界、权限交集与 scope、二次 sandbox review、网络归因 key、Guardian 隔离与拒绝熔断 | 93% / 93% |
+| 12 | Typed Extension 的状态寿命与合并规则 | 补不可变 registry、Session/Thread/Turn attachment、all/first-claim/last-write 合并、失败隔离与流式 Item 延迟成本 | 93% / 93% |
+| 13 | Multi-agent V2 control plane | 补 root-scoped control、身份/驻留/执行三容量、fork flush/filter、V2 reload 限制、mailbox answer boundary 与 V1/V2 差异 | 93% / 93% |
+| 14 | Context normalization 与 compaction rewrite | 补 pair-aware repair、rollback/context baseline、world-state diff、tail token 估算、Total/BodyAfterPrefix、三类 compaction 与位置不变量 | 93% / 93% |
 
 ## 最近检查
 
 - 命令：`python3 "$HOME/.local/bin/codex-weekly-usage.py"`
-- 读数：已用 6%，剩余 94%
-- 采样时间：`2026-07-13 11:23:18 CST`
-- 判断：高于 50%；研究范围已闭环，进入 PR 交付，不再扩展新领域。
+- 读数：已用 7%，剩余 93%
+- 采样时间：`2026-07-13 11:39:19 CST`
+- 判断：高于 50%；按用户明确停止条件继续做源码深挖，不能以首轮闭环或 PR 已创建为由停止。
 
 ## 下一批次
 
-提交当前研究分支，推送并创建 Ready PR；等待自动 Codex Review、GPT 验收和用户确认，不自行合并。
+继续从模型传输、持久化修复、安全决策和扩展容量四个横切面补“失败顺序—状态所有者—恢复不变量”；每批落盘并复查额度。只有周额度剩余低于 50% 后，才进入最终校验和 PR 收尾。

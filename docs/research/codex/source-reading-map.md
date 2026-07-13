@@ -430,3 +430,165 @@ durable RolloutLine
 | Frontend stream | `apps/web/src/api/seo.ts`、`useSeoWorkspace.ts` |
 
 每次只回答一个具体差距：“Codex 在这里保护了哪个不变量？当前项目最小应增加什么？”
+
+## 17. 路线十四：App Server 如何避免重连与 RPC 竞态
+
+先读协议中的资源作用域，再读队列实现，最后读 Thread listener；不要一开始钻进单个 request processor：
+
+```text
+protocol/common.rs::ClientRequest::serialization_scope
+  -> request_serialization.rs::RequestSerializationQueues
+  -> message_processor.rs::dispatch_initialized_client_request
+  -> thread_state.rs::ThreadListenerCommand
+  -> request_processors/thread_lifecycle.rs
+```
+
+源码入口：
+
+- `codex-rs/app-server-protocol/src/protocol/common.rs`
+- `codex-rs/app-server-protocol/src/protocol/v1.rs::InitializeCapabilities`
+- `codex-rs/app-server/src/request_serialization.rs`
+- `codex-rs/app-server/src/message_processor.rs`
+- `codex-rs/app-server/src/thread_state.rs`
+- `codex-rs/app-server/src/request_processors/thread_lifecycle.rs`
+
+配套测试优先找这些断言：同资源 exclusive 顺序、配置 shared read、无 scope 并发、未 initialize/未启用 experimental 的拒绝、运行中 resume 的 active turn、pending approval 重放、unsubscribe 后 Turn 继续，以及 idle 且无订阅者才 unload。
+
+阅读完成后应能解释：为什么请求序列化键有些包含 `connection_id`、有些跨连接共享；为什么 resume response 与 subscription 必须在 listener 顺序中成为一个操作；为什么 notification opt-out 不能改变 canonical history。
+
+## 18. 路线十五：模型传输何时可以安全复用
+
+```text
+session::turn::run_sampling_request
+  -> ModelClientSession::stream
+      -> Responses WebSocket / HTTP SSE
+      -> map_response_events
+  -> retryable error decision
+      -> WS retry
+      -> session-scoped HTTP fallback
+      -> terminal error
+```
+
+按顺序阅读：
+
+- `codex-rs/core/src/client.rs` 顶部寿命说明、`ModelClientSession`、`responses_request_properties_match`、`prepare_websocket_request`、`map_response_events`。
+- `codex-rs/core/src/responses_retry.rs`：统一 retry/fallback 决策。
+- `codex-rs/core/src/session/turn.rs::run_sampling_request` 与 `try_run_sampling_request`：业务错误短路、attempt 重建和 `ResponseEvent` 消费。
+- `codex-rs/codex-api/src/endpoint/responses.rs`、`responses_websocket.rs`：HTTP SSE / WS 传输层。
+- `codex-rs/core/tests/suite/client_websockets.rs` 与 `client.rs`：prefix、字段变化、失败清理、401、断流、rate limit 和历史去重。
+
+必须做三个反例推演：上次请求只收到 delta 未收到 Completed；instructions 在第二次 sampling 改变；WS 失败后下一请求改走 HTTP。分别回答哪些缓存必须失效、哪些逻辑历史仍保留、错误由哪一层决定重试。
+
+## 19. 路线十六：一次 append 何时才算持久化成功
+
+从 live append 顺着 barrier 读，不要先看数据库 schema：
+
+```text
+thread-store/local/live_writer.rs::append_items
+  -> RolloutRecorder::record_canonical_items
+  -> RolloutWriterState::pending_items
+  -> flush / reopen retry
+  -> LiveThread metadata update
+  -> state DB backfill/list projection
+```
+
+源码入口：
+
+- `codex-rs/thread-store/src/local/live_writer.rs`
+- `codex-rs/rollout/src/recorder.rs`
+- `codex-rs/rollout/src/ordinal.rs`
+- `codex-rs/rollout/src/reverse_jsonl_scanner.rs`
+- `codex-rs/rollout/src/state_db.rs`
+- `codex-rs/rollout/src/metadata.rs`
+- `codex-rs/state/src/runtime/backfill.rs`
+- `codex-rs/state/src/runtime/recovery.rs`
+- `codex-rs/app-server/src/lib.rs` 的 state DB recovery 入口
+
+用四个故障验证理解：目录暂时不可写；写到一半后 handle 失效；paginated 文件末尾是不完整 JSON；SQLite metadata DB 损坏但 goals DB 正常。对每个故障写出保留的 canonical facts、允许重试的 barrier、需要重建的 projection 和不能删除的数据。
+
+## 20. 路线十七：一个工具动作如何获得最终执行权
+
+按决策顺序读，而不是按目录读：
+
+1. `core/src/tools/registry.rs` 与 `core/src/hook_runtime.rs`：pre/post hook 在 handler 两侧的位置。
+2. `hooks/src/events/pre_tool_use.rs`、`post_tool_use.rs`、`engine/output_parser.rs`：block、rewrite、invalid output 语义。
+3. `core/src/tools/handlers/request_permissions.rs` 与 `session/mod.rs`：请求、pending response、交集和 Turn/Session scope。
+4. `core/src/tools/orchestrator.rs`、`sandboxing.rs`、`approvals.rs`：approval → sandbox → denial escalation。
+5. `core/src/tools/network_approval.rs` 与 `network_policy_decision.rs`：执行级网络归因。
+6. `core/src/guardian/mod.rs`、`review.rs`、`review_session.rs`：隔离 reviewer、fail-closed 与 rejection circuit breaker。
+
+阅读时做一张“谁能扩大权限”的表。正确答案应非常少：模型和 hook 只能提出候选，客户端/Guardian 的授权仍受原请求交集限制，Orchestrator 只按已解析 policy 选择 attempt，真正的 I/O 上限由 PermissionProfile、sandbox 和 managed proxy 执行。
+
+## 21. 路线十八：扩展为何不能拿到整个 Runtime
+
+先读 API 契约，再看 Core 如何调用：
+
+- `codex-rs/ext/extension-api/src/registry.rs`
+- `codex-rs/ext/extension-api/src/state.rs`
+- `codex-rs/ext/extension-api/src/contributors.rs`
+- `codex-rs/ext/extension-api/src/contributors/context.rs`
+- `codex-rs/ext/extension-api/src/contributors/mcp.rs`
+- `codex-rs/ext/extension-api/src/contributors/tool_lifecycle.rs`
+- `codex-rs/ext/extension-api/src/contributors/turn_lifecycle.rs`
+- `codex-rs/core/src/session/session.rs` 的 Thread store 创建与 lifecycle gate
+- `codex-rs/core/src/session/turn_context.rs`、`turn.rs` 的 Turn store
+- `codex-rs/core/src/stream_events_utils.rs` 的 TurnItem post-processing
+
+逐类标注合并规则：all-in-order、first-claim、last-write-by-name、observer-only 或 mutate-in-order。然后标注失败策略：忽略并 warning、短路、阻止启动或返回 host。若无法回答这两项，就还没有理解该扩展点的真实权力。
+
+最后用一个反例检验：某扩展需要把外部 CRM 摘要加到 prompt、记录 token usage，并在 Thread resume 后恢复缓存。正确实现应是三个 typed contributor 共享 Thread attachment/外部持久化，而不是获得一个 `Session` 指针后在任意事件里改历史。
+
+## 22. 路线十九：Multi-agent 的三个“并发上限”
+
+```text
+root-scoped AgentControl
+  -> AgentRegistry        identity/tree
+  -> V2Residency          loaded threads
+  -> AgentExecutionLimiter active child turns
+  -> RolloutBudget        shared cost
+```
+
+阅读顺序：
+
+- `codex-rs/core/src/agent/control.rs`
+- `codex-rs/core/src/agent/registry.rs`
+- `codex-rs/core/src/agent/control/spawn.rs`
+- `codex-rs/core/src/agent/control/residency.rs`
+- `codex-rs/core/src/agent/control/execution.rs`
+- `codex-rs/core/src/tools/handlers/multi_agents_v2/spawn.rs`
+- `codex-rs/core/src/tools/handlers/multi_agents_v2/message_tool.rs`
+- `codex-rs/core/src/tools/handlers/multi_agents_v2/wait.rs`
+- `codex-rs/core/src/session/input_queue.rs`
+
+先画一名 child 的状态迁移：reserved → loaded/running → completed resident → evicted → reloaded → follow-up running。每条边分别标出 registry、residency、execution guard 和 rollout 的变化。再对 queue-only message、trigger-turn followup、interrupt、final answer 后迟到 mail 做时序推演。
+
+最后对照 V1 tests，明确列出不能沿用到 V2 的假设：depth limit、完成 watcher、显式 close/resume 与 target id 形状。V2 仍在快速演进，应把这些差异记录为快照事实而非通用 Agent 定律。
+
+## 23. 路线二十：Context rewrite 后哪些缓存必须失效
+
+```text
+record_items
+  -> raw ResponseItem history
+  -> for_prompt normalization
+  -> provider request
+
+history rewrite
+  -> history_version++
+  -> world_state_baseline = None
+  -> conditionally clear reference_context_item
+  -> next turn full reinjection
+```
+
+阅读入口：
+
+- `codex-rs/core/src/context_manager/history.rs`
+- `codex-rs/core/src/context_manager/normalize.rs`
+- `codex-rs/core/src/context_manager/updates.rs`
+- `codex-rs/core/src/context/world_state/mod.rs`
+- `codex-rs/core/src/session/world_state.rs`
+- `codex-rs/core/src/session/context_window.rs`
+- `codex-rs/core/src/compact.rs`
+- `codex-rs/core/src/compact_token_budget.rs`
+- `codex-rs/core/src/session/turn.rs` 的 pre-sampling / inline compact 分支
+
+练习一：构造 call 无 output、orphan output、旧模型支持 image 而新模型不支持 image 三种 history，写出 `for_prompt` 结果。练习二：分别模拟 pre-turn、mid-turn 和 rollback，标出 summary、initial context、last user 与 reference baseline 的位置/状态。练习三：解释 `BodyAfterPrefix` 为什么仍必须检查 full context window。
