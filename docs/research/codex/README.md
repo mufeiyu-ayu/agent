@@ -78,6 +78,9 @@ flowchart LR
 | [model-transport-attempts.md](./model-transport-attempts.md) | ModelClient/Turn/推理/传输attempt分层、增量WebSocket、partial stream重试与HTTP降级 |
 | [rollout-write-durability.md](./rollout-write-durability.md) | LiveThread到JSONL/SQLite投影的queue、flush、torn write、recovery与durability边界 |
 | [request-permissions-lifecycle.md](./request-permissions-lifecycle.md) | Typed capability请求、Core求交、Turn/Session grant、环境隔离与后续sandbox消费 |
+| [deferred-tool-discovery.md](./deferred-tool-discovery.md) | Registry/Catalog/模型可见性分离、Deferred exposure、BM25发现与Dynamic Tool host边界 |
+| [sqlite-corruption-recovery.md](./sqlite-corruption-recovery.md) | 多DB故障隔离、corruption分类、backup/fresh start、backfill gate与恢复回执 |
+| [exec-policy-decision-engine.md](./exec-policy-decision-engine.md) | Exec规则合成、命令降级、最严Decision、批准缓存、amendment与sandbox分权 |
 | [current-project-gap-analysis.md](./current-project-gap-analysis.md) | 当前项目不是“缺什么功能”，而是缺哪些运行系统能力 |
 | [cloud-agent-mapping.md](./cloud-agent-mapping.md) | 客户端概念到云端 NestJS 架构的转换规则 |
 | [terminology-map.md](./terminology-map.md) | Thread、Turn、Item、Run、Step 等概念对照 |

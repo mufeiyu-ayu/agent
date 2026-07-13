@@ -69,6 +69,9 @@
 | [codex/model-transport-attempts.md](./codex/model-transport-attempts.md) | Turn、逻辑推理、HTTP传输attempt、WebSocket增量与fallback预算专题 |
 | [codex/rollout-write-durability.md](./codex/rollout-write-durability.md) | Canonical rollout写入、metadata投影、flush/fsync、坏行恢复与提交回执专题 |
 | [codex/request-permissions-lifecycle.md](./codex/request-permissions-lifecycle.md) | 权限Tool的请求、批准、实际grant、scope、审计与sandbox消费专题 |
+| [codex/deferred-tool-discovery.md](./codex/deferred-tool-discovery.md) | 大Tool Catalog的延迟暴露、搜索、schema预算、执行host与恢复专题 |
+| [codex/sqlite-corruption-recovery.md](./codex/sqlite-corruption-recovery.md) | 本地多DB损坏隔离、备份、fresh rebuild、backfill与跨进程恢复专题 |
+| [codex/exec-policy-decision-engine.md](./codex/exec-policy-decision-engine.md) | Exec Policy的规则层、命令解析、批准、持久授权与Sandbox能力边界专题 |
 | [codex/current-project-gap-analysis.md](./codex/current-project-gap-analysis.md) | 当前项目能力、证据和缺口 |
 | [codex/cloud-agent-mapping.md](./codex/cloud-agent-mapping.md) | 客户端 Codex 思想如何翻译为云端 NestJS Agent |
 | [codex/terminology-map.md](./codex/terminology-map.md) | Codex、当前项目和中文助记名的概念对照 |
