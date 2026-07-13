@@ -103,12 +103,15 @@
 | 69 | MCP Elicitation active-time、router lease与兼容降级 | 补RMCP/client与Core/session双pause层、manual response无wall-clock TTL、event send失败/router取消不清理、runtime共享public id与active Turn原id两条路由、empty form policy/Guardian顺序、Xcode 26.4同一auto-deny对raw请求Decline却对内部审批Accept、typed Form forward-compat cancel、response不做schema验证及URL consumer二次校验 | 85% / 85% |
 | 70 | Fuzzy File Search root authority、渐进index与session背压 | 补任意host roots不经workspace/permission、hidden+symlink越界、无entry/memory/session/query queue上限、detached worker不join、1024-entry取消延迟、panic可令Condvar永久等待、cancel partial仍伪装成功、completion缺query generation、single-walk后filesystem漂移、multi-root重复/lexical ownership及non-UTF8/error静默遗漏 | 85% / 85% |
 | 71 | Standalone Web Search双实现、远端session与审计投影 | 补hosted/standalone gate、custom provider数据边界、recent conversation裁剪、non-strict commands与server-only domains、并发调用复用level id、Code Mode仍标Direct、encrypted output忽略、max tokens无本地截断、started失败无terminal及WebSearchItem有损action | 85% / 84% |
+| 72 | Standalone Image Generation输入authority、base64复制与artifact提交 | 补provider/model双gate、first Environment读权限、recent images非稳定引用、pre-start失败与cancel缺terminal、response无image-specific cap、first data/空b64、base64跨item/output/hook/rollout重复、sanitize path碰撞、无sandbox/nofollow/atomic write、save失败仍completed及mobile resume局部redaction | 84% / 84% |
+| 73 | Safety Buffering远端metadata、ephemeral UI与非事务重试 | 补enabled=false不gate/object总show、SSE/WS treatment时机、每帧重复通知无去重、requested/actual/retry model混淆、不持久化无法resume、仅visible text关闭retry导致tool副作用可重放、interrupt→rollback latest→start无CAS、三阶段partial failure及stale click静默修改未来model/effort | 84% / 84% |
+| 74 | Legacy notify payload、host process authority与delivery语义 | 补完整sampling history而非当前prompt、secret/无界JSON进argv与ARG_MAX、shell `$0`调用差异、process cwd和继承env/sandbox缺口、spawn-only成功不wait/timeout/reap、child失败不可见、session-static配置、project layer剔除及Guardian显式清理 | 84% / 84% |
 
 ## 最近检查
 
 - 命令：`python3 "$HOME/.local/bin/codex-weekly-usage.py"`
 - 读数：已用 16%，剩余 84%
-- 采样时间：`2026-07-13 13:06:52 CST`
+- 采样时间：`2026-07-13 13:12:07 CST`
 - 判断：高于 50%；按用户明确停止条件继续做源码深挖，不能以首轮闭环或 PR 已创建为由停止。
 
 ## 下一批次

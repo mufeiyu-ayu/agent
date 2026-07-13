@@ -3359,6 +3359,139 @@ Parallel calls share the same remote session identity.
 
 映射到当前项目：第一版只保留一种server-owned Search Tool contract，provider adapter不改变tool身份；每次调用使用`thread/run/step/tool-call`唯一operation id，远端cursor显式绑定operation或串行session。用户内容、位置和域名策略先在本地按tenant capability裁剪，再发给受信provider；请求/响应都有byte、item、token、timeout上限。持久化保存完整规范化command摘要和`started/succeeded/failed/cancelled`终态，UI投影只是派生视图。外部网页正文保持untrusted observation，做引用、prompt-injection隔离和memory污染标记，但不能把“禁用memory”误当输入安全检查。
 
+### 4.83 Standalone Image Generation：图像本身同时成为API响应、历史、事件和host artifact
+
+image-generation extension在Thread start/config change时保存provider和save root，并为每次tools()重建backend。extension的粗gate接受OpenAI、requires OpenAI auth或actor auth provider；Core model-visible gate更窄，还要求当前auth真走Codex backend、provider capability声明image generation、model input modality含Image、namespace tools和feature都开启。注册成功不等于模型可见，provider/auth/model任一漂移都可能在下一Step改变能力。
+
+工具严格反序列化三个参数：prompt、最多5个absolute referenced paths，或1—5张recent conversation images。prompt没有字符/token上限。固定调用`gpt-image-2`、background/quality/size均Auto，忽略当前对话模型；generation走`images/generations`，edit走`images/edits`。每次调用新建ImagesClient/Reqwest transport，没有extension级连接池或request telemetry。
+
+absolute path edit只取`environments.first()`的ExecutorFileSystem与sandbox context读取，之后用Original模式完整处理成data URL。sandbox负责真实读权限，这是正确边界；但多Environment时“第一项”是隐式authority选择，路径没有environment id。文件读取和图像decode仍先分配完整bytes，再做既有图像预算，prompt与五张data URL会整体序列化进JSON request。
+
+pathless edit从完整conversation history倒序找最近图片，再恢复时间顺序。它收集所有FunctionCall/CustomToolCall id后，接受任何同id output中的InputImage，也接受任意role Message的InputImage和legacy ImageGenerationCall result。call/output不要求局部相邻或唯一；call id碰撞可让旧/无关output通过。注释已承认没有stable reference时“最近N张”可能包含更新但无关图片，选择是便利fallback而非可审计用户指代。
+
+参数、file read和image preprocess都发生在`emit_started`之前，这些失败只形成通用tool error，没有ImageGenerationItem。远端请求前才发in_progress；backend/API/no data失败会发一个status=`failed`的completed item并RespondToModel。若Turn cancellation恰好发生在started之后、future被drop，或process crash，extension没有Drop/finally补failed/cancelled，仍可留下in-progress。
+
+API response body完整加载并反序列化，取`data`第一项的`b64_json`，忽略created、实际background/quality/size、usage和额外images。空字符串也被视为有data的成功。没有image-specific response byte上限、base64上限、MIME/magic/dimensions验证；backend若返回巨大或非PNG base64，内存会先保存完整String，artifact仍固定命名`.png`。
+
+成功后同一base64至少进入completed ImageGenerationItem、GeneratedImageOutput和FunctionCallOutput；这些步骤都有clone。paginated/legacy事件、rollout、App Server live notification和下一轮model context可能再序列化。telemetry只写`[generated image]`，但PostToolUse默认fallback可把model-facing image data交给hook。移动端remote client只在特定`thread/resume`响应中删除ImageGeneration item；persisted rollout、model resume history、live event和其他API不变，所以这不是通用payload/privacy policy。
+
+保存artifact时先把完整base64再decode成另一份bytes，创建`$CODEX_HOME/generated_images/<sanitized-thread>/<sanitized-call>.png`并直接write；create/write显式不传sandbox。sanitize把所有非ASCII alnum/`-_`变成`_`，没有hash或长度界限，因此`a/b`与`a_b`等不同id碰撞，超长id导致路径失败。现有目录/文件可被同账户预置为symlink，write没有nofollow或atomic create，可能覆盖root外target；并发碰撞也last-writer-wins。
+
+artifact bytes不验证PNG，write非原子，crash可留下partial file。保存失败只warning并把`saved_path=None`，工具/item仍status completed且完整base64返回；保存不是成功事务的一部分。成功的saved_path是host absolute path，既进App Server item又通过最多1024-byte output hint进入模型，暴露CODEX_HOME布局；超长hint被整体省略而不是用opaque artifact id。
+
+GeneratedImageOutput对普通模型返回InputImage data URL，对Code Mode返回`{image_url, output_hint}`给`generatedImage()`。两条路径都携带完整base64，没有“已保存时只返回artifact handle”的去重。model不支持Image时，Context normalization会清空legacy ImageGenerationCall或把tool image换placeholder，但原始rollout仍保留；能力变化后的cold resume只是prompt投影变小，不会收回已落盘敏感payload。
+
+```text
+prompt / absolute paths / recent history images
+  -> read+decode before item started
+  -> POST images/generations|edits (fixed gpt-image-2)
+  <- full base64 string, first data item only
+     -> extension completed item (base64 + absolute saved_path)
+     -> FunctionCallOutput InputImage (base64)
+     -> optional host write without sandbox/nofollow/atomicity
+     -> rollout / live client / next model step / hooks
+```
+
+关键测试：
+
+- gate matrix：OpenAI API key/Codex auth/actor auth/custom provider、capability、feature、namespace与text-only/image model。
+- input authority：多Environment、workspace外path、symlink、五张超大图片、corrupt/animated/ICC/EXIF和prompt超长。
+- recent history：重复call id、orphan/远距output、assistant/system-like message image、无关新图、compaction/rollback后count。
+- lifecycle：parse/read/preprocess/backend/decode/save各阶段失败，started后cancel/crash和terminal exactly-once。
+- response budget：空b64、非法base64、非PNG、超大body、多data、usage/actual metadata与内存复制峰值。
+- artifact：sanitize碰撞、超长id、existing symlink/file、并发同path、partial write、permission failure和restart cleanup。
+- projection：legacy/paginated、live/resume/mobile redaction、PostToolUse、Code Mode与model modality变化。
+
+映射到当前项目：图像工具返回`artifactId + signed/read capability + verified metadata`，不在Run/Step/Event反复内嵌base64；对象存储用tenant/thread/tool-call唯一key、content hash和原子publish。输入引用必须是已授权artifact id，recent fallback也要落成用户可见的稳定选择。服务端在调用前限制prompt和总input bytes，在响应stream/body层限制bytes，再验证MIME、magic、dimensions和decode成本。artifact写入与Step成功要么同一提交协议，要么明确区分`model_succeeded/artifact_failed`；所有started路径都有durable terminal。
+
+### 4.84 Safety Buffering：名字像本地安全闸，实际是远端状态提示与非事务重试
+
+Responses SSE/WS里的`safety_buffering`不是客户端缓冲模型输出的实现。API parser只把远端payload投影成`ResponseEvent::SafetyBuffering`，Core立即发EventMsg，正常text/reasoning/tool events仍按原顺序继续流动。真正“多想一会儿”的行为发生在服务端；本地仅展示状态并允许用户中断、回滚、换模型重试。
+
+HTTP response headers可给`x-codex-safety-buffering-faster-model` fallback；若wire payload明确含`retry_model`，包括null，就覆盖header。名为`x-codex-safety-buffering-enabled`的header只检查是否存在，不解析true/false，也不控制显示；测试明确证明值为false仍产生treatment。任何成功反序列化的object payload都被强制`show_buffering_ui=true`，wire boolean false只会解析失败而无事件。因此当前transport没有从Responses wire发“隐藏已显示UI”的对称语义。
+
+WS每个response loop从default treatment开始，但任意event top-level headers都可更新fallback，随后同event的payload立即使用；SSE则在HTTP响应开始时冻结header treatment。两条transport对header更新时机不同。wire payload可挂在created、delta、completed等任何event上，parser会先发送SafetyBuffering、再发送原ResponseEvent；同一response重复payload会重复通知，无Core去重。
+
+use_cases、reasons和retry_model来自远端，没有客户端条目数/字符串长度或catalog验证。Core把`model`字段填成请求的`turn_context.model_info.slug`，不是已经可能由ServerModel事件确认的actual model；通知因此可同时携带“请求模型A”和“建议模型B”，而真正触发buffering的server reroute模型可能是C。
+
+SafetyBuffering EventMsg不写rollout；App Server只实时转发`model/safetyBuffering/updated`。断线重连和cold resume不能重建等待状态，TUI也显式忽略initial resume replay；长buffer期间客户端切换/重连只能等服务端再发新通知。它是ephemeral presence，不是Turn durable state。
+
+TUI只在当前active Thread、当前running Turn且非初始replay时接受通知。它保存成功提交的原始`AppCommand::UserTurn` clone，server给出faster_model时提供一次“Retry”菜单；重复相同能力通知不重建popup。隐藏通知在App Server协议里能清UI，但Responses parser永远制造不出false，这条分支主要服务手工/未来producer。
+
+“还可重试”的唯一activity guard是`agent_message_started=false`。非空assistant text delta才把它设true；reasoning delta只保持buffering status，tool call、exec、patch、MCP或其他side effect也不一定改变该flag。若模型在可见文本前已调用工具，用户仍能点Retry；后续`thread/rollback`只删除历史，不撤销外部写入，重跑原Turn可能重复发邮件、写文件或执行命令。
+
+点击Retry后的事务顺序是：把clone里的model改成server字符串、effort强制Low并改collaboration mode；`turn/interrupt(turn_id)`；`thread/rollback(numTurns=1)`；本地应用rollback；再`turn/start`原始输入。rollback只按“最近一个user turn数量”操作，不带expected turn id/generation。另一个connection若在interrupt和rollback之间启动Turn，或队列状态变化，可能回滚错误的最新Turn。
+
+interrupt成功但rollback失败时，原Turn已被终止，UI只显示错误；没有原子补偿或自动恢复。rollback成功但resubmit失败时，本地prepare已finalize旧Turn，随后尽量把prompt恢复到composer，但原Turn durable history已删除。整个重试是三个跨进程RPC加本地投影，不是compare-and-swap transaction。
+
+如果用户点击时assistant text已经开始，`can_retry`失败，TUI不再中断当前Turn，却**仍把全局model和reasoning effort更新为建议模型+Low**。用户选择的是“重试这个Turn”，竞态后却悄悄变成“修改未来默认设置”，且当前Turn继续原模型。这个fallback改变了操作语义，应该明确确认而非静默执行。
+
+原AppCommand可以包含local image/path引用和其他运行时输入。rollback再提交时会重新读取当前filesystem、config、skills、provider capability和外部状态，不能保证与第一次相同；即使模型/effort是唯一显式改动，实际world state已经变化。Safety retry应被视为新Run关联旧Run的补偿操作，而不是同一Run透明重放。
+
+```text
+server stream event + safety_buffering metadata
+  -> local notification only; normal stream still flows
+  -> TUI waits while no visible assistant text
+     -> user Retry
+        interrupt(turn id)
+        rollback(last 1 user turn)   # no expected generation
+        start(cloned input, server model, low effort)
+
+No durable buffering state, no side-effect rollback, no atomic retry transaction.
+```
+
+关键测试：
+
+- wire matrix：header absent/true/false/invalid、payload absent/false/object、retry_model omitted/null/string及SSE/WS更新时机。
+- flood/bounds：每delta重复metadata、超大use_cases/reasons/model，consumer backpressure与通知去重。
+- model identity：requested、ServerModel reroute、retry_model三者不同时的UI和审计。
+- reconnect：buffer中断线、thread switch、snapshot/initial resume和server不重发。
+- activity gate：reasoning、tool call、patch/MCP side effect、空/非空assistant delta后点击Retry。
+- transaction race：interrupt失败、rollback失败、resubmit失败、另一connection插入Turn和expected turn mismatch。
+- stale click：popup打开后response text开始，确认当前实现只改未来model/effort且不重试。
+- replay drift：文件、图片、skills/config/provider和外部tool state在两次start之间变化。
+
+映射到当前项目：把服务端审核/缓冲建模为Run状态`WAITING_POLICY`，有durable started/cleared/failed和resume snapshot；客户端只渲染。重试API由服务端原子执行`retryRun(expectedRunId, expectedGeneration, targetModel)`，旧Run终止与新Run创建同事务，不能让客户端组合interrupt+rollback+start。任何tool dispatch前即关闭“无副作用快速重试”，已发生副作用则要求幂等key或显式补偿。新Run冻结输入artifact/config snapshot并记录parentRunId；竞态失败返回stale，不静默修改未来默认模型。
+
+### 4.85 Legacy Notify：fire-and-forget进程把整段用户历史塞进argv，却把spawn成功当通知成功
+
+`notify = [program, args...]`被转换成一个legacy `AfterAgent` hook。它不受CodexHooks feature开关控制：只要session构造时config.notify非空就注册；普通runtime config refresh把notify列为session-static，修改用户配置不会影响现有Thread。project-local config里的notify会被显式剔除并警告，避免仓库代码静默注册host command，这是重要的source trust边界。
+
+AfterAgent只在最终sampling不再需要follow-up、Stop hook未要求继续/停止之后运行。payload不是只含“本轮prompt”：Core把最后一次sampling request的**完整model-visible history**逐项parse，收集其中所有UserMessage文本，再加最后assistant message、thread/turn id、cwd和client。长会话会重复把历代用户输入交给每次notify进程，context compaction/normalization决定实际集合，而不是一个明确current-turn字段。
+
+last assistant message会走现有可见文本提取、剥离citation/plan hidden markup；user messages则直接使用TurnItem projection。工具结果不直接加入payload，但用户贴入的token、密钥、个人数据和之前多轮内容都会进入。没有字段级redaction、总byte/message count上限或opt-in sensitivity分类。
+
+legacy serializer把完整JSON作为**最后一个命令行参数**追加，不走stdin。Unix上argv可被同账户process inspection、审计工具和crash report观察；payload还受ARG_MAX和单参数长度限制。会话越长，通知越可能在最需要它时spawn失败。配置若用`sh -c script`，追加JSON先成为shell的`$0`而非预期stdin/`$1`，调用约定还取决于program argv语义。
+
+Command只设置program/args，并把stdin/stdout/stderr都接到null；没有`current_dir(turn cwd)`、env清理、sandbox、network policy或process group。子进程继承Codex host环境与进程cwd，payload里的cwd只是数据，实际相对路径可能在另一个目录解释。user-level notify本来就是受信自动化，但它拥有比通知所需更大的secret/filesystem/network权限。
+
+hook只调用`command.spawn()`，不wait、不读exit status、不设timeout、不持有Child。只要fork/exec阶段返回Ok就立刻报告HookResult::Success；脚本随后exit 1、崩溃或完全没发送通知都不可见。stdout/stderr又被丢弃，用户没有诊断证据。持续Turn可堆积长寿命通知进程，它们能越过Turn完成、Thread关闭乃至Codex graceful shutdown继续运行。
+
+spawn error是FailedContinue，Core只tracing warning，Turn仍正常完成；legacy hook不会FailedAbort。反过来，spawn成功但child失败被误记成功且无Warning Event。它既不参与HookStarted/HookCompleted的新版可观察事件，也没有delivery id、retry、dedupe或ack，因此不能作为可靠业务通知。
+
+相同Hooks registry里的新版Claude-style hooks有source hash/trust、timeout、output parser和hook events，legacy notify绕过这些能力。Guardian review session显式清`notify=None`，证明内部子会话若继承它会重复外发敏感review内容；其他internal/subagent session是否继承要按各自config clone路径逐一审计，不能假设“通知只在用户主Turn”。
+
+```text
+final sampling input = complete normalized prompt history
+  -> collect every visible UserMessage
+  -> JSON(thread, turn, cwd, client, all inputs, last assistant)
+  -> append as argv[-1]
+  -> spawn inherited-env host process, stdio=null
+  -> immediately report success; child is no longer observed
+```
+
+关键测试：
+
+- scope：多轮history、compaction、rollback、steer、tool follow-up后payload究竟含哪些UserMessage。
+- privacy：secret、超长prompt、Unicode/NUL边界、argv可见性、ARG_MAX和crash reporter。
+- command contract：direct executable、`sh -c`、empty argv、relative executable/PATH shadow与payload参数位置。
+- authority：process cwd vs payload cwd、env secrets、filesystem/network访问、project layer剔除和user/managed source。
+- lifecycle：exit 1、hang、fork child、Codex shutdown、高频Turn与process/zombie数量。
+- observability：spawn failure、child failure、stdout/stderr、Hook events、delivery ack/retry/dedupe。
+- inheritance：root、thread-spawn child、internal Guardian/compaction/memory session和config refresh。
+
+映射到当前项目：不要用host command作为Agent业务通知主路径。Run完成后写durable outbox，由受限worker按notification id异步投递；payload默认只含run id、状态和短摘要，正文按租户授权再取。若保留本地developer hook，使用bounded stdin、清理env、固定cwd、sandbox、timeout、process group和wait status，并把delivery结果作为独立事件；config source必须是user/admin，repo不得启用。
+
 ## 5. 当前项目最应该吸收的架构原则
 
 ### 原则一：对外协议稳定，内部事件可演进

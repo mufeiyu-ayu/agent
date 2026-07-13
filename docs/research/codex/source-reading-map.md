@@ -1620,3 +1620,76 @@ previous model先InvalidRequest，current model再失败，比较用户收到的
 分别在auth、connect、HTTP status和JSON decode阶段失败，观察started item与terminal event。生产协议必须让每个started都落到succeeded/failed/cancelled，且失败审计保存阶段，不只依赖通用tool error。
 
 最后让backend违反allowed domains、external mode和location预期，验证客户端没有二次强制。把这些字段定义为remote policy request；真正安全边界仍需本地egress proxy、URL normalization、tenant allowlist和response budget。
+
+## 81. 路线七十八：图像生成结果为什么不应在每层重复内嵌base64
+
+按能力gate、输入authority、API body、artifact提交和恢复投影阅读：
+
+- `ext/image-generation/src/extension.rs`与`core/src/tools/spec_plan.rs`：provider粗gate、model/auth/capability细gate及config refresh。
+- `tool.rs`：严格args、recent image selection、started时机、fixed model、response clone与artifact write。
+- `backend.rs`、`codex-api/src/images.rs`和endpoint：fresh client、JSON edit data URLs、完整response decode及first data selection。
+- `stream_events_utils.rs`、`context/image_generation_instructions.rs`：sanitized host path、绝对路径hint和1024-byte omission。
+- `ext/items/src/image_generation.rs`、rollout policy、context normalization：base64 item、模型投影和持久化。
+- App Server `thread_resume_redaction.rs`及extension tests：特定remote client的response-only删除与saved path透传。
+
+逐项切换provider/auth/capability/model modality/feature/namespace，比较extension executor存在与模型实际看见tool。能力必须在Step快照里解释，不能只检查registry里是否注册。
+
+用两个不同Environment和同一absolute path验证只取first authority；再测workspace外path、symlink和五张超大图片。读取由Executor sandbox约束是关键优点，但authority选择、总bytes和decode预算仍要显式。
+
+构造重复call id、远距pair、orphan output、不同role Message和新但无关图片，调用`num_last_images_to_include`。recent不是稳定reference；生产UI应先解析成artifact ids并让用户可确认。
+
+让API返回空b64、非法base64、非PNG、巨大body和多个data，记录Item、FunctionOutput、hook、rollout和内存中的复制份数。当前只取第一项，直到save才验证base64，而且即使save失败也返回completed。
+
+为thread/call id使用`a/b`与`a_b`、超长字符串，并预置generated_images目录或目标文件symlink；观察sanitize碰撞、nofollow缺失和非原子overwrite。opaque id必须通过hash映射，host path不能由不可信id直接塑形。
+
+在parse/read/preprocess、HTTP、JSON decode、started后cancel、base64 decode和write分别失败。确认哪些根本无ImageGenerationItem、哪些failed、哪些仍completed；建立覆盖整个tool transaction的terminal状态机。
+
+最后比较paginated/legacy rollout、下一轮model、Code Mode、live App Server与mobile thread/resume。response-only redaction不会减少持久化或live payload，真正的容量边界应是一次存储、多处引用。
+
+## 82. 路线七十九：Safety Buffering为什么不是本地安全buffer
+
+按transport metadata、Core透传、TUI状态和retry transaction阅读：
+
+- `codex-api/src/safety_buffering.rs`、`common.rs`：header treatment、false不gate和payload字段。
+- SSE `responses.rs`与WS endpoint：event提取顺序、header snapshot/update、重复通知和正常ResponseEvent并行。
+- `core/src/session/turn.rs`、rollout policy：requested model投影、实时EventMsg与不持久化。
+- App Server bespoke mapping/protocol：thread/turn关联和`showBufferingUi`通知。
+- TUI `chatwidget/safety_buffering.rs`、`streaming.rs`：current Turn guard、visible text activity和popup状态。
+- `app/event_dispatch.rs`、`thread_routing.rs`：interrupt→rollback→resubmit及失败补偿。
+
+组合header enabled absent/true/false、fallback model和wire retry_model omitted/null/string；对SSE和WS分别抓事件。当前enabled值不参与判断，object payload总被强制show=true，名称不能当语义。
+
+把safety payload附在created、每个delta和completed，并放超大数组/字符串；观察每次都先发SafetyBuffering再发原事件，Core没有dedupe。生产状态应按run+revision upsert，而不是把每帧metadata当新通知。
+
+让server实际reroute为C、Turn请求A、retry建议B；检查Core通知model仍是A。所有模型字段要分成requested/actual/retryTarget，避免审计混淆。
+
+buffer期间断线、切Thread和resume；EventMsg不持久化且TUI忽略initial replay。若产品承诺“仍在审核”，状态必须由server snapshot恢复，而不是等一次性stream metadata。
+
+在没有assistant text前依次产生reasoning、shell/patch/MCP side effect，再点Retry；当前guard仍允许。rollback history不等于回滚外部世界，重试必须依赖tool idempotency或在首次tool dispatch后禁用快捷重试。
+
+在interrupt后、rollback前由另一connection启动Turn；再分别令三个RPC失败。通用`rollback(1)`缺expected turn id，三个步骤无法提供原子性，服务端应提供CAS retry endpoint。
+
+最后让popup显示后马上到达text delta再点击；当前分支不重试，却更新未来默认model+Low effort。stale action应返回“响应已开始，重试不可用”，不得改变其他设置。
+
+## 83. 路线八十：Legacy notify为何既不是可靠hook也不是安全outbox
+
+按config source、payload范围、process authority和delivery结果阅读：
+
+- `hooks/src/legacy_notify.rs`：历史wire shape、argv append、null stdio和spawn-only成功。
+- `hooks/src/registry.rs`：不依赖CodexHooks feature的注册与plain Command构造。
+- `core/src/hook_runtime.rs`：从完整sampling input收集UserMessage和AfterAgent失败处理。
+- `core/src/session/turn.rs`：Stop hook之后、final Turn之前的触发顺序。
+- config loader project-key过滤与session refresh tests：repo notify拒绝、notify session-static。
+- Guardian review config和user notification integration tests：internal session清理与目前只验证spawn副作用。
+
+运行三轮用户输入后抓最后argv，确认它包含完整normalized history而非current prompt；再做compaction、rollback、steer和tool follow-up，记录历史集合如何变化。契约应直接命名`all_visible_input_messages`，或更合理地只发run id。
+
+把密钥和超长文本放入旧消息，使用同账户process读取child argv并逐步逼近ARG_MAX。argv不适合承载敏感/无界JSON，应该用有权限和长度限制的stdin或opaque lookup id。
+
+分别配置direct script、`sh -c`、PATH basename和relative program；检查JSON在shell里成为`$0/$1`的差异、实际process cwd和继承env。payload声明cwd并不会改变命令执行目录。
+
+让脚本exit 1、sleep forever、spawn descendant和连续大量Turn；当前spawn Ok立即等于Hook成功，stdio被null且Child未wait。需要测试process reaping、shutdown和并发上限，而不只等一个touch file。
+
+从project/user/managed层分别配置notify，并在runtime reload后修改；project会被剔除，现有Thread又保留旧notify。source trust与runtime generation都应在诊断里可见。
+
+最后启动Guardian、thread-spawn child和其他internal sessions，确认哪些clone清notify。生产默认只允许root user Turn投递，内部代理如需通知必须显式声明而非继承。
