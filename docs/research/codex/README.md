@@ -99,6 +99,9 @@ flowchart LR
 | [remote-plugin-install-transaction.md](./remote-plugin-install-transaction.md) | Remote目录/installed/Bundle三状态域、Store提交、后台对账与安装Saga |
 | [realtime-conversation-handoff-runtime.md](./realtime-conversation-handoff-runtime.md) | Realtime session、音频背压、Transcript、Agent Handoff与关闭恢复 |
 | [shell-snapshot-lifecycle.md](./shell-snapshot-lifecycle.md) | 用户Shell状态捕获、可执行Snapshot发布、重放优先级与清理恢复 |
+| [image-input-preparation-and-history.md](./image-input-preparation-and-history.md) | 图片输入authority、解码/Resize/Metadata、缓存、History与模型投影 |
+| [plugin-marketplace-lifecycle.md](./plugin-marketplace-lifecycle.md) | Marketplace Source add/upgrade/remove、Git制品、Config CAS与Plugin Cache |
+| [app-server-thread-listener-lifecycle.md](./app-server-thread-listener-lifecycle.md) | App Server Thread listener、订阅扇出、重连恢复、请求所有权与卸载状态机 |
 | [current-project-gap-analysis.md](./current-project-gap-analysis.md) | 当前项目不是“缺什么功能”，而是缺哪些运行系统能力 |
 | [cloud-agent-mapping.md](./cloud-agent-mapping.md) | 客户端概念到云端 NestJS 架构的转换规则 |
 | [terminology-map.md](./terminology-map.md) | Thread、Turn、Item、Run、Step 等概念对照 |

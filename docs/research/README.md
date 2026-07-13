@@ -90,6 +90,9 @@
 | [codex/remote-plugin-install-transaction.md](./codex/remote-plugin-install-transaction.md) | Remote Plugin目录、账号installed、本地Bundle Store、对账与跨介质安装事务专题 |
 | [codex/realtime-conversation-handoff-runtime.md](./codex/realtime-conversation-handoff-runtime.md) | Realtime音频/文本队列、WebSocket/WebRTC、Transcript与后台Agent Handoff专题 |
 | [codex/shell-snapshot-lifecycle.md](./codex/shell-snapshot-lifecycle.md) | Shell rc捕获、Snapshot制品、命令重写、环境覆盖、清理与跨进程边界专题 |
+| [codex/image-input-preparation-and-history.md](./codex/image-input-preparation-and-history.md) | Local/Inline/Tool图片的读取权限、规范化、视觉预算、缓存和持久化专题 |
+| [codex/plugin-marketplace-lifecycle.md](./codex/plugin-marketplace-lifecycle.md) | Marketplace Git/Local来源、staging activation、config提交、rollback和runtime生效专题 |
+| [codex/app-server-thread-listener-lifecycle.md](./codex/app-server-thread-listener-lifecycle.md) | Thread单listener、多客户端订阅、resume快照接续、request replay与延迟卸载专题 |
 | [codex/current-project-gap-analysis.md](./codex/current-project-gap-analysis.md) | 当前项目能力、证据和缺口 |
 | [codex/cloud-agent-mapping.md](./codex/cloud-agent-mapping.md) | 客户端 Codex 思想如何翻译为云端 NestJS Agent |
 | [codex/terminology-map.md](./codex/terminology-map.md) | Codex、当前项目和中文助记名的概念对照 |
