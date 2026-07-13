@@ -46,12 +46,19 @@
 | 12 | Typed Extension 的状态寿命与合并规则 | 补不可变 registry、Session/Thread/Turn attachment、all/first-claim/last-write 合并、失败隔离与流式 Item 延迟成本 | 93% / 93% |
 | 13 | Multi-agent V2 control plane | 补 root-scoped control、身份/驻留/执行三容量、fork flush/filter、V2 reload 限制、mailbox answer boundary 与 V1/V2 差异 | 93% / 93% |
 | 14 | Context normalization 与 compaction rewrite | 补 pair-aware repair、rollback/context baseline、world-state diff、tail token 估算、Total/BodyAfterPrefix、三类 compaction 与位置不变量 | 93% / 93% |
+| 15 | Tool parallel admission、ordered observation 与 cancellation | 补 RwLock read/write gate、StepContext 快照、FuturesOrdered、argument preview、terminal exactly-once、cleanup wait 与 timing 分解 | 93% / 93% |
+| 16 | Submission loop 与 ActiveTurn ownership | 补单消费者控制面、task=None reservation、steer/replaced、finish/abort 双屏障、100ms cleanup、identity recheck 与 idle work 竞态 | 93% / 93% |
+| 17 | Legacy ThreadHistory 与 Paginated projector | 补双投影边界、implicit/explicit Turn、late event归属、snapshot upsert、ChangeSet dedupe/rollback 与 Error status保护 | 93% / 92% |
+| 18 | App Server connection ownership 与 teardown | 补processor/outbound双状态、initialize提交顺序、RPC gate与资源queue正交、入站/出站request id、pending approval重放、慢连接断开和responder校验边界 | 92% / 92% |
+| 19 | MCP Runtime generation、refresh 与 exposure | 补Step级不可变snapshot、catalog多来源解析、无效环境变化复用manager、新旧runtime共存、required/cache/reconnect、tool可见性、elicitation跨refresh路由 | 92% / 92% |
+| 20 | Config layers、requirements composition 与 constraints | 补普通偏好/强制约束双管线、精确precedence/provenance、领域合并规则、normalize/fallback/fatal、permission重物化和refresh重建边界 | 92% / 92% |
+| 21 | Environment selection、reconnect 与 capability snapshot | 补Manager/Thread/Step三层、initial失败与reconnect差异、Deferred Executor starting/wait、fail-fast inspection、handle-bound capability root和PathUri兼容风险 | 92% / 92% |
 
 ## 最近检查
 
 - 命令：`python3 "$HOME/.local/bin/codex-weekly-usage.py"`
-- 读数：已用 7%，剩余 93%
-- 采样时间：`2026-07-13 11:39:19 CST`
+- 读数：已用 8%，剩余 92%
+- 采样时间：`2026-07-13 11:49:42 CST`
 - 判断：高于 50%；按用户明确停止条件继续做源码深挖，不能以首轮闭环或 PR 已创建为由停止。
 
 ## 下一批次

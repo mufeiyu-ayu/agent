@@ -592,3 +592,131 @@ history rewrite
 - `codex-rs/core/src/session/turn.rs` 的 pre-sampling / inline compact 分支
 
 练习一：构造 call 无 output、orphan output、旧模型支持 image 而新模型不支持 image 三种 history，写出 `for_prompt` 结果。练习二：分别模拟 pre-turn、mid-turn 和 rollback，标出 summary、initial context、last user 与 reference baseline 的位置/状态。练习三：解释 `BodyAfterPrefix` 为什么仍必须检查 full context window。
+
+## 24. 路线二十一：并行 Tool 为何不会打乱模型历史
+
+```text
+ResponseEvent::OutputItemDone(tool call)
+  -> persist call immediately
+  -> ToolCallRuntime + RwLock admission
+  -> FuturesOrdered
+  -> persist output in call order
+  -> next sampling
+```
+
+源码入口：
+
+- `codex-rs/core/src/stream_events_utils.rs::handle_output_item_done`
+- `codex-rs/core/src/tools/parallel.rs`
+- `codex-rs/core/src/tools/router.rs`
+- `codex-rs/core/src/tools/registry.rs`
+- `codex-rs/core/src/session/turn.rs::drain_in_flight`
+- `codex-rs/core/src/tools/lifecycle.rs`
+
+构造三个工具：两个 read-only 快工具和一个 exclusive 慢工具，分别改变 emission/completion 顺序，验证 gate 与 history 顺序。再在“等待 gate”“handler 中”“handler 已返回但 finish observer 未完成”三个时间点取消，检查 response pair、terminal lifecycle 和 timing attribution。
+
+特别区分三种顺序：provider 发出 call 的顺序、真实副作用完成的顺序、observation 回填 model history 的顺序。只有第三种必须严格确定；若业务要求副作用也有序，就不应给 handler parallel opt-in。
+
+## 25. 路线二十二：谁拥有 Active Turn 的终止权
+
+```text
+submission_loop (serialized control)
+  -> start/steer/interrupt/approval
+  -> RunningTask (background work)
+  -> TurnState (pending holders/input/grants)
+  -> on_task_finished OR handle_task_abort
+  -> terminal event + flush
+```
+
+源码入口：
+
+- `codex-rs/core/src/session/handlers.rs::submission_loop`
+- `codex-rs/core/src/tasks/mod.rs`
+- `codex-rs/core/src/tasks/regular.rs`
+- `codex-rs/core/src/state/turn.rs`
+- `codex-rs/core/src/session/input_queue.rs`
+- `codex-rs/core/src/session/inject.rs`
+- `codex-rs/core/src/session/mod.rs::steer_input`
+
+画出 ActiveTurn 的 `None → reserved(task=None) → running → finishing(task=None) → None`，以及 running → abort-owned → None。每次跨 `await` 后找 identity recheck。特别观察：pending approvals何时清、terminal event前后各为何需要 flush、cancel token与handle abort谁先发生。
+
+用三个竞态测试理解：旧 task finish与新 task start并发；extension idle reservation期间trigger mail到达；用户在process cleanup和tool lifecycle finish之间interrupt。能说明最终哪个 Turn收到input、谁发terminal、是否会双发，才算读懂。
+
+## 26. 路线二十三：Legacy replay 与 Paginated projection 的分界
+
+先并排阅读：
+
+- `codex-rs/app-server-protocol/src/protocol/thread_history.rs`
+- `codex-rs/app-server-protocol/src/protocol/thread_history_projection.rs`
+- `codex-rs/app-server-protocol/src/protocol/thread_history_projection_tests.rs`
+- `codex-rs/app-server/src/thread_state.rs` 的 live `ThreadHistoryBuilder`
+- `codex-rs/app-server/src/request_processors/thread_lifecycle.rs` 的 active snapshot resume
+
+建立一张输入分类表：Turn lifecycle、ItemStarted/Completed、legacy begin/end、raw ResponseItem、Compacted、TurnContext/WorldState。分别标出 legacy builder与paginated projector是否消费，以及产出 Turn metadata、item snapshot还是忽略。
+
+用乱序序列验证：Turn A start → exec begin A → Turn B start → exec end A → Turn A complete → Turn B complete。检查A的item更新、B的active状态和change set。再把A id删掉，对比stateful legacy fallback与stateless paginated ignore，理解“兼容猜测”为什么不能进入新格式。
+
+## 27. 路线二十四：连接断开后哪些工作还能继续
+
+先把一条 App Server connection画成两个并行状态机：processor侧的 initialize/session/RPC gate，与 outbound侧的 writer/capability filter/disconnect token。然后按以下顺序阅读：
+
+- `codex-rs/app-server/src/lib.rs` 的 `TransportEvent` loop、`OutboundControlEvent` 和 shutdown收口。
+- `codex-rs/app-server/src/transport.rs` 的 `route_outgoing_envelope`、notification filter与慢连接策略。
+- `codex-rs/app-server/src/message_processor.rs` 的 `ConnectionSessionState`、initialize/dispatch与 `connection_closed`。
+- `codex-rs/app-server/src/request_processors/initialize_processor.rs`：OnceLock提交、process-global client identity和outbound-ready分工。
+- `codex-rs/app-server/src/connection_rpc_gate.rs` 与 `request_serialization.rs`：连接 admission和资源 serialization的正交关系。
+- `codex-rs/app-server/src/outgoing_message.rs`：`ConnectionRequestId`、pending callback、Thread重放/取消与write completion。
+- `codex-rs/app-server/src/request_processors/thread_lifecycle.rs`：running Thread resume如何重放 pending approval。
+
+做四个时序练习：initialize response排队但capability尚未镜像；已进入handler时断连；请求还在Thread serialization queue时断连；approval重放到新连接后旧连接迟到响应。分别写出 gate、queue、writer、callback和durable Thread的状态。
+
+最后审计 request id所有权：入站 client request为何必须带ConnectionId，出站 server request为何当前只按全局id first-response-wins。把“不可信多租户共享同一进程”代入，判断现有 responder校验是否足够。这个结论是部署边界，不应被JSON-RPC类型安全掩盖。
+
+## 28. 路线二十五：MCP refresh 为什么不能原地替换 client map
+
+按“投影输入 → Runtime generation → Step snapshot → tool call”阅读：
+
+- `codex-rs/core/src/mcp.rs`：config/plugin/extension/compatibility catalog合并。
+- `codex-rs/core/src/session/mcp.rs`：projection lock、environment key比较、refresh/publication和elicitation holder。
+- `codex-rs/core/src/session/mcp_runtime.rs`：一个Step实际冻结的边界。
+- `codex-rs/codex-mcp/src/connection_manager.rs`：startup聚合、required validation、cache/reconnect、resource pagination、shutdown/Drop。
+- `codex-rs/codex-mcp/src/rmcp_client.rs`：transport startup future、cached tools与Codex Apps reconnect。
+- `codex-rs/core/src/mcp_tool_exposure.rs`：model visibility、connector policy和direct/deferred exposure。
+- `codex-rs/core/src/tools/handlers/mcp.rs` 与 `mcp_tool_call.rs`：命名空间、并行声明、approval、argument/meta rewrite和结果清洗。
+
+构造两代Runtime：Step A已经拿到server-v1，配置refresh发布server-v2，Step B随后开始。验证A的spec、manager、cwd和call都来自v1，B全部来自v2；最后一个A引用释放后v1 startup/process才可cancel。再只改变一个与任何MCP server无关的environment id，确认manager应复用而不是重启。
+
+继续做三个失败练习：required server失败、optional Codex Apps失败但有cache、resources/list重复cursor。分别说明Session是否还能启动、模型能看到哪些工具、聚合结果保留哪些server。最后检查elicitation在refresh前发出、refresh后响应时，为什么必须复用router而不能只查新manager的本地map。
+
+## 29. 路线二十六：为什么 managed config 仍可能被用户覆盖
+
+先明确普通config与requirements是两条输入，不要从最终`Config`倒推：
+
+- `codex-rs/config/src/config_layer_source.rs`：每类普通layer的明确precedence。
+- `codex-rs/config/src/state.rs`：stack排序、project祖先链、profile user layer、effective config和origins。
+- `codex-rs/config/src/merge.rs`：table递归、array/scalar替换、alias/domain normalization。
+- `codex-rs/config/src/cloud_config_bundle.rs` 与 `cloud_config_layers.rs`：cloud fragment进入两条stack的方向。
+- `codex-rs/config/src/requirements_layers/stack.rs`：regular requirements merge与source attribution。
+- `requirements_layers/{rules,hooks,permissions}.rs`：append/union/fail-closed的领域规则。
+- `codex-rs/config/src/constraint.rs` 与 `config_requirements.rs`：validator、normalizer、allow-only和source。
+- `codex-rs/core/src/config/mod.rs::from_config_with_base`：最终fallback/fatal、permission重新物化和MCP disable。
+
+练习一：依次给system、enterprise、user、project、session设置同一scalar和一个array，写出winner；再把同一限制写进requirements，解释为什么结果不同。练习二：两层requirements分别添加hook目录、hook event和deny-read，推演哪些append、哪些union、哪些冲突启动失败。
+
+最后模拟一次配置编辑：只修改active profile的model字段。列出写回磁盘的内容、保留但不写回的非user layer，以及必须重新应用的requirements。若实现方案是把`effective_config()`整份写到`config.toml`，说明它会怎样破坏provenance和后续managed更新。
+
+## 30. 路线二十七：Environment ID、连接与 Step handle 如何分工
+
+阅读顺序：
+
+- `codex-rs/exec-server/src/environment_provider.rs` 与 `environment_toml.rs`：可用列表、default、local injection和disabled。
+- `codex-rs/exec-server/src/environment.rs`：registry、upsert/pending/Noise、Environment backend组合与startup task。
+- `codex-rs/exec-server/src/client.rs::LazyRemoteExecServerClient`：初次OnceCell、current client、single reconnect与fail-fast。
+- `codex-rs/core/src/environment_selection.rs`：Thread selection、shared resolution与blocking/non-blocking snapshot。
+- `codex-rs/exec-server/src/resolved_capability.rs`：passive inspect和Step-bound resolve。
+- `codex-rs/core/src/session/mod.rs::capture_step_context`：environment、AGENTS.md、capability root和MCP的一次性快照。
+- `codex-rs/core/src/tools/handlers/wait_for_environment.rs`、`tools/spec_plan.rs` 与 `context/world_state/environment.rs`：模型如何看见starting并等待。
+
+用同一个environment id做三代状态：首次连接pending、首次失败、首次成功后断线。分别说明`wait_until_ready`是否重试、普通filesystem call是否reconnect、fail-fast inspection会返回什么。再在Step A捕获handle后upsert同名environment，确认A不能转用新handle，后续Step何时才能看到新实例。
+
+最后构造两个selected capability roots指向同一starting environment。检查本Step为何两个都omit但只启动一次；下一Stepready后为何两个都绑定同一Arc。把cwd改成非本机`PathUri`，列出哪些消费者仍可能错误fallback到host path，作为迁移审计点。
