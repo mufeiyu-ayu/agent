@@ -118,12 +118,15 @@
 | 84 | Workspace headline remote fetch、negative cache与view generation | 补5分钟poll+双层timeout/request id优点，backend full body/read-error吞空且message count/body无cap、全列表跨RPC而TUI只取首headline、任一坏timestamp阻断全部、无archived/sort/id/version语义、remote body仅trim无control/Unicode policy、404永久negative cache、普通error无限保留旧headline无stale TTL、ChatWidget重建id从0导致旧task/newowner ABA，以及多client无singleflight/ETag | 83% / 82% |
 | 85 | Rate-limit reset credit idempotency、account binding与durable receipt | 补per-option UUID和retry复用/AlreadyRedeemed优点，但key仅popup内存导致close/crash/rebuild后ambiguous operation换key、generic fallback可二次消费，App Server只验非空且处理时读current account造成A picker→B consume，widget id从0且finish不核对key/account/phase形成ABA，双层timeout后无status query，坏credit row让全部details降为generic、Unknown type仍可消费、remote list/title无budget、windows_reset被丢弃且无durable account receipt | 83% / 82% |
 | 86 | Workspace owner nudge email confirmation、correlation与spam boundary | 补TUI默认No明确确认和429 cooldown优点，但App Server RPC可绕过UI直接external communication、POST无idempotency导致commit后error盲重试、两层均无timeout且slot永久挂起、current auth使A prompt可发给B workspace、Finished event无id/type/account且widget slot None默认Credits/旧新请求乱序错投、guard不在dispatch admission、response无recipient/message id/cooldownUntil、body无cap/redaction，以及多client防spam全靠backend 429且无durable account audit | 83% / 82% |
+| 87 | Feedback consent、诊断、artifact上传与隐私边界 | 新增独立专题页；补TUI两阶段选择和origin Thread回投、doctor best-effort enrich与reserved tag等优质实现，并确认process-global TRACE ring跨Thread混合、`extraLogFiles`绕过`includeLogs`且可读取任意PathBuf、proxy凭据原样上传、附件无总budget/immutable identity、Sentry flush无durable receipt等边界 | 82% / 82% |
+| 88 | Assistant markdown directives、产品投影与Git metadata事实采集 | 新增独立专题页；确认五类git action只作为文本语法被解析，TUI仅对最后一个CreateBranch cwd执行只读branch probe且持久化实际checkout，提炼claim→observe→persist、replay禁副作用、argv/timeout/output cap等优质模式；同时记录malformed/unknown静默隐藏、Markdown语境不感知、streaming-final闪现、model cwd越界、同Thread陈旧异步覆盖和metadata无服务端预算 | 82% / 82% |
+| 89 | Workspace command port、Git/PR status probe与remote一致性 | 新增独立专题页；补location-transparent executor、argv/timeout/output cap、verified default ref、parent-first PR fallback、partial availability等优质实现，并确认`git remote show`隐含网络/credential副作用、cwd-only ABA、branch/PR/diff跨HEAD快照、cache同cwd无限stale、per-command而非query总budget、numstat截断伪精确、URL/domain validation缺口，以及project root仍读TUI本地filesystem破坏remote一致性 | 82% / 82% |
 
 ## 最近检查
 
 - 命令：`python3 "$HOME/.local/bin/codex-weekly-usage.py"`
 - 读数：已用 18%，剩余 82%
-- 采样时间：`2026-07-13 13:36:09 CST`
+- 采样时间：`2026-07-13 13:45:16 CST`
 - 判断：高于 50%；按用户明确停止条件继续做源码深挖，不能以首轮闭环或 PR 已创建为由停止。
 
 ## 下一批次

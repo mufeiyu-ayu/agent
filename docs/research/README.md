@@ -49,6 +49,9 @@
 | [codex/architecture-report.md](./codex/architecture-report.md) | Codex Agent 架构详细报告 |
 | [codex/architecture-learning-checklist.md](./codex/architecture-learning-checklist.md) | 值得学习的完整架构清单和检查项 |
 | [codex/source-reading-map.md](./codex/source-reading-map.md) | 按调用链阅读 Codex 源码的地图 |
+| [codex/feedback-and-diagnostics.md](./codex/feedback-and-diagnostics.md) | Feedback consent、诊断、附件上传与隐私边界专题 |
+| [codex/assistant-directives.md](./codex/assistant-directives.md) | Assistant 文本指令、产品投影与 claim→observe→persist 专题 |
+| [codex/workspace-command-and-git-status.md](./codex/workspace-command-and-git-status.md) | Remote-capable workspace command、Git/PR 状态探测与一致性专题 |
 | [codex/current-project-gap-analysis.md](./codex/current-project-gap-analysis.md) | 当前项目能力、证据和缺口 |
 | [codex/cloud-agent-mapping.md](./codex/cloud-agent-mapping.md) | 客户端 Codex 思想如何翻译为云端 NestJS Agent |
 | [codex/terminology-map.md](./codex/terminology-map.md) | Codex、当前项目和中文助记名的概念对照 |
