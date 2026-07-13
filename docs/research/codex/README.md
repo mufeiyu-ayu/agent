@@ -111,6 +111,8 @@ flowchart LR
 | [exec-environment-resolution-and-capability-snapshot.md](./exec-environment-resolution-and-capability-snapshot.md) | Exec Environment来源、Thread Selection、Step快照、Capability Root与MCP绑定一致性 |
 | [exec-http-capability-and-streaming.md](./exec-http-capability-and-streaming.md) | Local/Remote HTTP统一接口、bodyDelta流、背压预算、网络authority与MCP重试 |
 | [environment-filesystem-sandbox-and-streaming.md](./environment-filesystem-sandbox-and-streaming.md) | Environment Filesystem、portable permission、Sandbox Helper、文件流与递归操作预算 |
+| [exec-process-launch-and-control.md](./exec-process-launch-and-control.md) | Exec Process ID、目标环境、Sandbox launch、PTY/Pipe、stdin幂等与终态边界 |
+| [exec-server-rpc-admission-and-tracing.md](./exec-server-rpc-admission-and-tracing.md) | Typed RPC registry、1024+1准入、串行server、framing、取消与trace传播边界 |
 | [current-project-gap-analysis.md](./current-project-gap-analysis.md) | 当前项目不是“缺什么功能”，而是缺哪些运行系统能力 |
 | [cloud-agent-mapping.md](./cloud-agent-mapping.md) | 客户端概念到云端 NestJS 架构的转换规则 |
 | [terminology-map.md](./terminology-map.md) | Thread、Turn、Item、Run、Step 等概念对照 |

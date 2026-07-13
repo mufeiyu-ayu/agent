@@ -102,6 +102,8 @@
 | [codex/exec-environment-resolution-and-capability-snapshot.md](./codex/exec-environment-resolution-and-capability-snapshot.md) | Environment Provider/Registry/Thread/Step分层、Capability绑定、generation与local/remote选择专题 |
 | [codex/exec-http-capability-and-streaming.md](./codex/exec-http-capability-and-streaming.md) | Environment-owned HTTP、remote streaming、背压、SSRF、credential与重试边界专题 |
 | [codex/environment-filesystem-sandbox-and-streaming.md](./codex/environment-filesystem-sandbox-and-streaming.md) | PathUri文件能力、OS Sandbox Helper、remote handle、bounded walk与mutation边界专题 |
+| [codex/exec-process-launch-and-control.md](./codex/exec-process-launch-and-control.md) | Target-host环境合成、process generation、TTY/stdin、sandbox与控制回执专题 |
+| [codex/exec-server-rpc-admission-and-tracing.md](./codex/exec-server-rpc-admission-and-tracing.md) | Exec Server typed RPC路由、并发准入、transport framing、取消与W3C trace边界专题 |
 | [codex/current-project-gap-analysis.md](./codex/current-project-gap-analysis.md) | 当前项目能力、证据和缺口 |
 | [codex/cloud-agent-mapping.md](./codex/cloud-agent-mapping.md) | 客户端 Codex 思想如何翻译为云端 NestJS Agent |
 | [codex/terminology-map.md](./codex/terminology-map.md) | Codex、当前项目和中文助记名的概念对照 |
