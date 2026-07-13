@@ -1,98 +1,82 @@
 # Agent 架构研究与学习路线
 
-本目录是 AI SEO Agent 的长期架构研究区。它不直接充当当前任务看板，而是回答三个问题：
+本目录是 AI SEO Agent 的长期架构研究区。它不直接充当当前任务看板，而是服务于三个目标：
 
-1. OpenAI Codex 作为成熟 Agent 产品，哪些架构思想值得学习？
-2. 这些思想如何转换为当前 NestJS + Vue 云端 Agent 的实现边界？
-3. 从当前阶段 5 开始，应该按什么顺序学习、实现和验证？
+1. 把 Codex 源码中值得长期借鉴的 Agent Runtime 设计沉淀为可复用知识库。
+2. 把这些设计翻译成当前 NestJS + Vue 云端 Agent 项目的工程边界。
+3. 在后续讨论 `agent` 项目的具体任务时，让 GPT 能按问题快速定位对应的 Codex 参考，而不是每次重新从源码开始。
 
 ## 当前结论
 
-当前项目已经完成 Session Chat、消息持久化、NDJSON Streaming、停止生成、`AgentRun` / `AgentStep`、内部 `AgentRuntimeEvent` 和 `SeoContextBuilder`。下一步不是复制 Codex，而是沿着下面的主线继续演进：
+当前项目已经不是模型 API Demo。`master@5f2ad11f2c65425e84392e81048364d55ec626ef` 已经具备：
+
+- Session Chat、消息持久化、NDJSON Streaming 与停止生成。
+- `Conversation` / `Message` / `AgentRun` / `AgentStep` 的最小持久化边界。
+- 内部 `AgentRuntimeEvent` 与外部 `ChatStreamEvent` 的分层。
+- provider-neutral `ModelStreamEvent`，可以表达文本、tool call、usage 与 response terminal。
+- 最小 `ToolDefinition` / `ToolRegistry` / `ToolInvocation` / `ToolResult` 边界。
+- `test:model-stream` 与 `test:tools` 两组 Node 原生测试。
+
+因此当前最近主线不是“从零建立 Tool Contract”，而是：
 
 ```text
-测试基座与现有状态机基线
-  -> Provider-neutral 模型事件
-  -> 最小 Tool Contract
-  -> 模型 Tool Call 解析
-  -> Tool 执行与 Observation 回填
-  -> Human-in-the-loop
-  -> Context 预算与压缩
-  -> 可恢复执行与幂等
-  -> 可观测性、评测和测试
-  -> 云端权限、多租户和资源治理
-  -> 扩展协议
-  -> 最后才考虑 Multi-agent
+复盘已完成的模型事件与工具契约
+  -> 单 Agent Tool Loop：tool call -> execute -> observation -> second sampling -> final answer
+  -> Tool 可靠性：timeout / cancel / error / recording / terminal exactly-once
+  -> Context：model-visible history、observation 截断、token budget
+  -> Durable recovery：crash reconciliation、idempotency、operation receipt
+  -> Human-in-the-loop / 权限 / 多租户
+  -> 扩展协议和 Multi-agent 只在单 Agent 稳定后评估
 ```
 
 ## 证据基线
 
-| 对象 | 本次研究快照 | 用途 |
+| 对象 | 本次基线 | 用途 |
 | --- | --- | --- |
-| 当前项目 | `/Users/ayu/Desktop/agent`，`master@0a0b835` | 判断已经完成什么、真实缺口是什么 |
-| Codex fork | `/Users/ayu/Desktop/codex`，`main@626147f72` | 阅读生产级客户端 Agent 的真实源码 |
-| 官方文档 | [Codex App Server](https://developers.openai.com/codex/app-server)、[Codex SDK](https://developers.openai.com/codex/sdk) | 校准公开术语和协议语义 |
+| 当前项目 | `mufeiyu-ayu/agent`，`master@5f2ad11f2c65425e84392e81048364d55ec626ef` | 判断已经完成什么、真实缺口是什么 |
+| Codex 源码 | 用户上传 `codex-main-ab6a7eb87.zip` | 提取成熟 Agent 系统的可迁移设计 |
+| 本轮整理 | GPT 受托整理到 `docs/research/codex-reference/**` | 后续技术讨论的优先参考入口 |
 
-源码会继续演进。文档中的路径和行号只对上述本地快照负责；架构结论优先引用稳定职责，不把某个临时类型名当成永恒设计。
+源码会继续演进。本文档中的 Codex 路径对上述 zip 快照负责；后续升级 Codex 快照时，应优先校验稳定符号和调用链，而不是盲目复用旧行号。
 
-## 文档索引
+## 优先阅读入口
 
-### Codex 架构研究
+### 后续讨论 Agent 项目时优先使用
 
-| 文档 | 回答的问题 |
+| 入口 | 用途 |
 | --- | --- |
-| [codex/README.md](./codex/README.md) | 研究入口、推荐阅读顺序和总览 |
-| [codex/research-method.md](./codex/research-method.md) | 本次研究如何取证、如何区分事实与迁移建议 |
-| [codex/architecture-report.md](./codex/architecture-report.md) | Codex Agent 架构详细报告 |
-| [codex/architecture-learning-checklist.md](./codex/architecture-learning-checklist.md) | 值得学习的完整架构清单和检查项 |
-| [codex/source-reading-map.md](./codex/source-reading-map.md) | 按调用链阅读 Codex 源码的地图 |
-| [codex/current-project-gap-analysis.md](./codex/current-project-gap-analysis.md) | 当前项目能力、证据和缺口 |
-| [codex/cloud-agent-mapping.md](./codex/cloud-agent-mapping.md) | 客户端 Codex 思想如何翻译为云端 NestJS Agent |
-| [codex/terminology-map.md](./codex/terminology-map.md) | Codex、当前项目和中文助记名的概念对照 |
+| [codex-reference/README.md](./codex-reference/README.md) | 新 Codex 参考知识库总入口 |
+| [codex-reference/how-to-use.md](./codex-reference/how-to-use.md) | GPT / 用户后续如何按问题查资料 |
+| [codex-reference/current-agent-baseline.md](./codex-reference/current-agent-baseline.md) | 当前项目真实能力、缺口和近期路线 |
+| [codex-reference/discussion-playbook.md](./codex-reference/discussion-playbook.md) | 以后做方案讨论时的检索表和决策模板 |
 
-### 分阶段学习路线
+### Codex 架构核心专题
 
-| 文档 | 用途 |
+| 专题 | 适合什么时候看 |
 | --- | --- |
-| [learning-roadmap/README.md](./learning-roadmap/README.md) | 总路线、阶段依赖、学习顺序 |
-| [learning-roadmap/progress-tracker.md](./learning-roadmap/progress-tracker.md) | 跨阶段进度与验收证据登记 |
-| [learning-roadmap/learning-method.md](./learning-roadmap/learning-method.md) | 每个阶段统一采用的学习与 TDD 方法 |
-| [learning-roadmap/checklist-phase-matrix.md](./learning-roadmap/checklist-phase-matrix.md) | 架构清单条目由哪个阶段建立、强化和收口 |
+| [core-runtime.md](./codex-reference/core-runtime.md) | 讨论 Thread / Turn / Task / StepContext / Runtime loop |
+| [tool-loop.md](./codex-reference/tool-loop.md) | 讨论 Tool Calling、Observation 回填、第二轮 sampling |
+| [context-history.md](./codex-reference/context-history.md) | 讨论 model history、UI transcript、token budget、compaction |
+| [durability-recovery.md](./codex-reference/durability-recovery.md) | 讨论持久化、恢复、幂等、crash reconciliation |
+| [safety-permission.md](./codex-reference/safety-permission.md) | 讨论权限、审批、sandbox、恶意 observation |
+| [extensibility-and-multi-agent.md](./codex-reference/extensibility-and-multi-agent.md) | 讨论 MCP、Plugin、Skill、Hook、Multi-agent；当前只作为未来参考 |
 
-每个学习阶段都有独立目录，并固定包含：
+### 旧研究资料
 
-- `README.md`：阶段目标、边界、架构设计和任务拆解。
-- `source-reading.md`：Codex 与当前项目的源码阅读路径。
-- `practice-and-acceptance.md`：练习、测试矩阵、验收证据和复盘问题。
+旧的 [codex/](./codex/README.md) 与 [learning-roadmap/](./learning-roadmap/README.md) 仍保留历史价值，但如果它们与 `codex-reference/**` 或当前代码事实冲突，优先使用：
 
-## 推荐阅读路径
-
-### 第一次阅读
-
-1. [Codex 架构详细报告](./codex/architecture-report.md)
-2. [当前项目差距分析](./codex/current-project-gap-analysis.md)
-3. [云端架构映射](./codex/cloud-agent-mapping.md)
-4. [学习路线总览](./learning-roadmap/README.md)
-5. 当前阶段目录
-
-### 准备实现某一阶段
-
-1. 阅读阶段 `README.md`，先确认范围和不做什么。
-2. 按 `source-reading.md` 沿一条真实调用链阅读。
-3. 在 `practice-and-acceptance.md` 中先写 Red 验证，再做最小实现。
-4. 把实现任务落到 `docs/tasks/`，不要直接把研究文档当任务单。
-
-### 阶段收口
-
-1. 用真实测试和运行结果填写验收证据。
-2. 更新 [progress-tracker.md](./learning-roadmap/progress-tracker.md)。
-3. 再同步 `docs/tasks/README.md`、`docs/roadmap.md` 和必要的工作记录。
+```text
+当前代码事实
+  > codex-reference/**
+  > 旧 research 文档
+  > PR 或 Codex 自述
+```
 
 ## Research 与 Tasks 的边界
 
 | 目录 | 负责什么 | 不负责什么 |
 | --- | --- | --- |
-| `docs/research/` | 研究结论、架构地图、长期学习路线 | 宣称当前代码已经实现 |
+| `docs/research/` | 研究结论、源码地图、学习路线、设计参考 | 宣称当前代码已经实现 |
 | `docs/tasks/` | 当前可执行任务、TDD 步骤和验收状态 | 存放长篇外部项目研究 |
 | `docs/roadmap.md` | 项目阶段状态总览 | 展开每个架构主题的细节 |
 
