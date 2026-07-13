@@ -1417,3 +1417,66 @@ previous model先InvalidRequest，current model再失败，比较用户收到的
 给client extra传reserved keys、大小写变体、model/reasoning/workspace_kind、超长Unicode value和大量keys；比较canonical JSON、MCP meta与实际request body model。手工reserved list和header复制需要schema自动生成与总大小上限。
 
 最后在一个in-flight request期间连续steer两条带不同metadata的input，验证last-write map与pending input合并不具消息绑定。若业务要归因，metadata必须和每条Input/Step ID一起入队。
+
+## 72. 路线六十九：Rollout Budget为什么耗尽后仍会继续花费
+
+按shared state、reminder、Completed记账、fork/resume和错误副作用阅读：
+
+- `rollout_budget.rs`：OnceLock config、f64加权总数、per-thread/window delivery。
+- `session/rollout_budget.rs`、`session/turn.rs`：sampling前注入与Completed后record。
+- `agent/control.rs`、ThreadManager spawn/fork/resume：live child共享和新AgentControl重置边界。
+- compaction local/V2：usage先记、budget error早于checkpoint安装。
+- config resolver：threshold/weight校验与允许zero weights。
+- rollout_budget tests：当前/后续超限、child共享、rollback不退款与window重述。
+
+先耗尽预算后继续发多个Turn并抓网络，证明没有preflight admission；给response加入assistant/tool output，检查budget error前哪些history/UI副作用已提交。产品文案不能叫“请求被预算拒绝”。
+
+模拟断流后retry、Completed无usage、重复Completed/response id和provider错误cached count，比较真实请求数与本地weighted usage。财务账本必须按attempt/reservation记，不信任只有terminal usage的best effort计数。
+
+并发root和多个child在接近limit时同时请求，观察所有请求先通过再串行record而集体overshoot。硬limit设计需reserve最大输出/预估prefill并在完成后settle。
+
+在live spawn、history fork、cold resume三种路径读取reminder；验证只有live child共享旧usage，fork/resume从0重新配置。若要session quota，usage event必须持久化并在重建AgentControl时replay。
+
+最后测试fraction weights、zero weights、重复/乱序threshold、多window/多child提醒自耗。软提醒单独计策略成本，避免每个分支都用同一开发者消息消耗有限预算。
+
+## 73. 路线七十：Hook被信任后实际执行的还是同一段代码吗
+
+按discovery hash、command launch、stdin/timeout、输出解析和spill阅读：
+
+- `hooks/src/engine/discovery.rs`：normalized config hash、hash后env替换、Managed/bypass与positional key。
+- `command_runner.rs`：login shell、继承env、timeout范围、kill_on_drop和wait_with_output。
+- `dispatcher.rs`：并发执行、completion order与config-order聚合。
+- `events/*`、`output_parser.rs`：每类event的stdout/stderr/exit code和“universal”字段差异。
+- `output_spill.rs`：2500-token preview、temp path、普通write与无cleanup。
+- discovery/parser/spill/Core/TUI tests：trust、阻断、长输出和事件投影。
+
+先信任含`${SCRIPT}`的command，再只改变source.env替换值；比较current hash和最终执行command。继续替换PATH、SHELL、rc与被command引用脚本内容，证明config hash不覆盖transitive executable closure。
+
+让hook完全不读stdin，传超过pipe容量的tool payload；验证timeout尚未开始。再持续输出stdout/stderr和spawn后台descendant，观察内存、timeout后direct child与descendant状态。生产runner要从spawn前开始deadline并使用process group/job object。
+
+对每种event组合exit 0/2、plain stdout、JSON-looking invalid、合法JSON加日志前缀、stderr reason；列出哪些成为prompt、block、warning或被丢弃。不要把schema字段名“universal”理解为全事件统一语义。
+
+输出超大additionalContext，比较model outcome preview、HookCompleted entries、rollout和temp file；spiller发生在capture后且event可能保留全量。测试thread dir symlink、umask、file替换和cold resume旧path。
+
+最后把hook command视为Tool执行面做同样的权限审计：env secret、cwd文件、网络、shell rc和子进程。只有source trust，没有runtime capability，不足以满足多租户Agent边界。
+
+## 74. 路线七十一：MCP refresh token为什么必须固定存储authority
+
+按policy resolution、aggregate lock、refresh transaction和删除恢复阅读：
+
+- `rmcp-client/src/oauth.rs`：Stored tokens、File/Keyring save/delete、identity key、expiry与persistor。
+- `oauth/resolved_store.rs`：Auto keyring-first、backend error/lock failure分流和client-lifecycle pin。
+- `oauth/store_lock.rs`：File/Secrets aggregate flock、同步60秒轮询。
+- `oauth/refresh_lock.rs`、`refresh_transaction.rs`：per-credential序列化、45秒provider request、owned task与persist-before-install。
+- config store mode resolver：local dev强制File、managed override和Auto默认。
+- unit/multiprocess/streamable HTTP tests：authority、rotation、timeout和startup。
+
+让keyring初次不可用后恢复，和另一个不同CODEX_HOME process同时启动；比较各自pin到File/Keyring及refresh最终写向。证明pin解决单client热切换，不解决跨process多authority。
+
+对URL做case、尾斜线、default port、query变化，再改变resource/scopes/client_id/headers；记录store key。credential audience identity必须覆盖OAuth语义，而不是只hash原始URL字符串。
+
+在File直接write、chmod、Secrets更新、keyring save、fallback cleanup逐点crash/失败；检查旧File是否能在后续Auto fallback复活。用symlink和宽umask验证0600发生在publish之后。
+
+并发两个refresh，控制第一个rotation后caller cancel、provider timeout和persist失败；第二个lock后必须rereadwinner。Direct keyring跨CODEX_HOME缺同一lock，应单独验证。
+
+最后让AuthorizationManager credential变None且durable delete失败，重复persist_if_needed并重启；当前last_credentials已take导致不再重试。生产删除必须tombstone+retry，logout成功要以所有authority不可再恢复为准。

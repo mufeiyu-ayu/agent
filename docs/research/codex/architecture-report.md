@@ -2870,6 +2870,163 @@ Per-request client_metadata is the intended authority.
 
 映射到当前项目：定义单一versioned `RequestProvenance` body字段，兼容header只传短digest/generation，不复制大JSON。所有client extra使用namespace、schema、size limit和reserved-prefix，消息级标签随Input入队而不是Turn last-write。repo metadata先脱敏/canonicalize remote，绝不发送userinfo与本机绝对路径；需用户/tenant policy允许。动态富化产生新generation并明确只对后续Step生效。
 
+### 4.74 Rollout Budget：这是响应后熔断与模型提醒，不是请求前硬配额
+
+RolloutBudget挂在root Thread的`AgentControl`上，Multi-agent child clone同一个Arc，因此root/child所有Completed usage进入同一Mutex。计费公式是`max(output,0)*sampling_weight + max(input-max(cached,0),0)*prefill_weight`，cached input免费；reasoning没有单独权重，是否包含取决于provider的output_tokens定义。
+
+配置要求正limit、每个threshold在`(0, limit)`内、weight有限且非负；不要求threshold排序/去重，也允许两个weight都为0。内部用f64累加，remaining取`max(limit-used,0).floor()`，fraction会向下显示；长期大数存在浮点精度边界。重复threshold会增加reminder index，却不会产生不同文案层级。
+
+最关键的是record发生在`ResponseEvent::Completed`，而不是发请求前。即使之前已经exhausted，下一Turn仍会发完整上游请求、接收完成、再次累计usage，随后才返回`SessionBudgetExceeded`。集成测试明确为“current and later turns”各准备了一次response。它阻止的是本次Completed之后继续tool/follow-up，不是阻止费用继续发生；用户可持续提交并反复超预算。
+
+模型输出item通常在Completed前已流式写入history/UI；budget error不会回滚这些item，只把Turn以Error/Complete收口。对compaction，usage先计费，若达到limit则在replacement history安装前返回错误：远端请求成本已发生、ContextCompaction started已发，但新checkpoint不安装，也不retry。预算耗尽因此可能留下可见/持久副作用，并非原子拒绝。
+
+只信任server返回的TokenUsage。断流/retry attempt若没有Completed usage，本地完全不计，即使provider已收费；Completed缺usage也免费。反之同一response被错误重复处理会重复累计，没有response id dedupe。预算不是billing ledger，不能用于财务或强制租户限额。
+
+提醒在每轮sampling前检查。每个Thread+window记录上次`reminder_index`；初次即使尚未跨threshold也会注入一条full remainder developer fragment。一次大usage跨过多个threshold只注入当前remaining的一条消息，但index直接跳到累计crossed数。每个child Thread都各自收到当前共享余额，新window也会restatement。
+
+注入顺序是pending input hooks/record之后、capture Step之前，写进conversation history并标delivery。标记在history insertion之后，取消发生在此前可下轮重试；但record helper不返回持久化成功状态，rollout writer异步失败时仍可能标已送达。提醒自身增加下一请求prefill token并消耗共享预算，child/window越多自耗越多。
+
+compaction推进window自然使delivery.window_id不同而重发；rollback明确删除该Thread delivery再发当前余额，但**不退款**已记录usage。这符合“成本不可逆、history可逆”。fork却通过`agent_control_for_config`创建全新RolloutBudget，从0开始；cold resume同样重建进程内AgentControl，没有从rollout重放weighted usage。Multi-agent spawn共享，历史fork/进程恢复重置，所谓“shared session tree”只对live control graph成立。
+
+RolloutBudget用OnceLock configure，第一次config永久生效；同一AgentControl后续配置更新不会改limit/weights。child的per-turn config即使不同也不能重配置共享budget。状态没有公开generation、used明细、response ids或durable event，只保留f64总数与per-thread delivery map。
+
+预算错误发生在token info已更新、extension token contributors已收到usage之后；这是正确的观测顺序，却再次说明Error不代表请求没计入。达到恰好limit用`>=`立即失败，最后一个合法response也被标budget exceeded，而不是允许它成功并仅拒绝下一请求。
+
+```text
+before sampling:
+  pending reminder(thread, window)
+  -> persist developer message
+  -> mark delivered
+  -> send request (even when already exhausted)
+
+response.completed:
+  update token info
+  -> weighted f64 usage += server-reported usage
+  -> notify extensions
+  -> if used >= limit: SessionBudgetExceeded
+
+Live subagents share. Fork/resume rebuild from zero.
+No admission check, durable ledger, or response-id dedupe.
+```
+
+关键测试：
+
+- rollout budget integration：weighted cached/noncached、initial/threshold reminders、root+child共享。
+- exhausted test：当前和后续Turn都实际发请求后报SessionBudgetExceeded。
+- compaction tests：local/remote V2达到limit不retry且不安装。
+- compaction/rollback reminder tests：新window重述，rollback重述但不退款。
+- config tests：正limit、threshold范围、finite/nonnegative weights与config lock导出。
+
+映射到当前项目：硬配额必须在请求准入前reserve预计上限，Completed按实际settle/refund，所有attempt以request id写durable ledger并跨resume/fork继承；并发child用原子reservation避免集体越界。模型提醒是独立软策略，不能和enforcement共用一个“budget”名字。达到limit的最终response应有明确“已完成但后续禁用”语义，不把成功输出伪装成请求失败。
+
+### 4.75 Hook Command Runtime：信任hash覆盖配置文本，却不覆盖实际执行闭包
+
+所有匹配的command hooks用`FuturesUnordered`并发启动，每个都收到同一份input JSON clone；收集时记录completion order，最终再按configured order排序，以保证决策聚合稳定。相同command配置不会dedupe，多个matcher group可并行执行相同副作用；alias匹配只保证“同一handler对一个tool call执行一次”。
+
+Unix默认通过当前`$SHELL -lc <command>`执行，Windows用COMSPEC `/C`；自定义CommandShell则program+args+command。cwd是Turn cwd。child继承Codex完整process environment，再叠handler env，没有`env_clear`、ShellEnvironmentPolicy、sandbox、managed network attempt或approval。login shell还会执行用户rc。Hook安全完全依赖source trust，不继承Tool权限边界。
+
+trust hash序列化event name、matcher和normalized handler command/timeout/status等配置，但在hash完成**之后**才用`source.env`对`${KEY}`做字符串替换。env value可带shell metacharacter并改变最终command，trusted_hash却不变；CommandShell program/args、`$SHELL`、PATH解析结果、rc文件和command引用的脚本内容同样不在hash中。它证明“配置字符串未变”，不证明实际可执行代码未变。
+
+非managed handler只有hash匹配才Trusted；managed来源一律Managed。`bypass_hook_trust`允许enabled的Untrusted/Modified直接执行。hook state key还依赖source path+event+group/handler positional index，插入/重排配置会迁移key并需要重新审查；源码TODO承认缺durable hook id。
+
+configured timeout默认600秒、只做`.max(1)`没有最大值。更重要的是timeout从`child.wait_with_output()`开始，spawn后的stdin `write_all(input_json)`发生在timeout外；若hook不读stdin且payload超过pipe容量，可无限挂住，配置timeout无效。spawn本身也无异步deadline。
+
+`wait_with_output`把stdout和stderr完整读进Vec再转lossy UTF-8，没有byte/token上限。恶意hook可在600秒内输出到内存耗尽；timeout只在未来drop时借`kill_on_drop(true)`终止直接child，不显式等待，也不kill新process group/descendants。shell脚本后台子进程可能继续运行、继承文件/网络能力。
+
+exit 0的stdout按event有多套语义：SessionStart/UserPromptSubmit的plain text可成为model context；Pre/PostTool/Compact plain text多半忽略；以`{`或`[`开头却schema无效则Failed。exit 2在PreTool/Permission/PostTool/Stop等把stderr当block/feedback；其他非零只记code而丢stdout/stderr内容。Hook作者若把日志写stdout，可能意外变prompt或破坏JSON协议。
+
+universal output字段并非普遍通用。PreTool/Permission拒绝`continue:false`、stopReason、suppressOutput；PostTool拒绝suppressOutput；SessionStart读取continue，SubagentStart忽略；多处代码显式`let _ = suppress_output`。generated schema能接受字段不代表该event运行语义支持，parser会将部分组合标invalid/fail-open。
+
+模型可见additional context/feedback/continuation超过约2500 approximate tokens时，才在所有handlers**执行和解析完成后**spill到OS temp的`hook_outputs/<thread_id>/<uuid>.txt`，用head/tail preview+绝对path替换。它不能保护command capture阶段的内存。更细的差异是HookCompleted event entries在spill前已经clone完整context，engine只替换outcome里的model fragments；协议/UI/rollout仍可携带巨量原文。
+
+spill目录/file用`create_dir_all`与普通`fs::write`，没有0700/0600、create_new/nofollow、fsync或cleanup。top-level temp目录跨用户共享语义依赖umask/OS；已存在的thread directory可以是symlink。UUID降低预创建file的可预测性，但不验证parent identity。文件长期残留可能保存secret，preview还把host绝对路径暴露给模型。
+
+spiller串行写多个texts；失败则只返回2500-token截断而不保存全量。成功也没有digest/expiry/owner metadata，模型若之后读path拿到的是可变外部文件，不是不可变artifact。cold resume中的历史preview可能指向已清理或被替换的temp path。
+
+HookCompleted entries、analytics和UI事件会保留source path、status、时长和部分输出；source path本身可暴露本机目录。stdout/stderr原文虽然不是全部默认进入entry，但block reason/additional context/system message会进入。任何hook output都应当视为不可信、可能含secret的数据源。
+
+```text
+trusted config hash
+  (event + matcher + command text + timeout...)
+        |
+        +-- AFTER hash: ${ENV} substitution
+        +-- runtime: $SHELL -lc, PATH, rc, referenced scripts
+        v
+full-access inherited-env child
+  stdin write (NO timeout)
+  wait_with_output (timeout, UNBOUNDED stdout/stderr)
+  parse event-specific protocol
+  spill only selected model text after capture (>2500 tokens)
+
+Trust identity != executable closure identity.
+```
+
+关键测试：
+
+- discovery tests：Managed/Trusted/Modified/Untrusted、bypass、disabled、positional key和async skip。
+- dispatcher tests：并发completion但config-order aggregation、alias match once与duplicate handlers。
+- event parser tests：exit 0/2/other、plain vs JSON-looking、invalid universal fields和block reason。
+- output spill tests：small passthrough、large preview/footer、write failure truncation。
+- Core/TUI integration：HookStarted/Completed、full transcript path、long context显示和Turn abort。
+
+映射到当前项目：hook放入独立低权限worker/sandbox，env allowlist、network/filesystem capability显式声明；timeout覆盖spawn/stdin/read全过程并kill process group。stdout/stderr流式限bytes，超限终止或写受控artifact。trust digest必须包含替换后的argv/env key policy、shell/runtime identity及引用脚本content digest。artifact在private run dir原子create、0600、有TTL/digest，历史只保存immutable artifact id与安全preview。
+
+### 4.76 MCP OAuth Store：生命周期pin避免旧refresh token切换，却留下多authority恢复难题
+
+MCP OAuth支持Auto/File/Keyring三种policy。Auto在client启动时先查keyring，未找到或普通backend error才查`CODEX_HOME/.credentials.json`；Secrets aggregate-store lock失败被视为协调异常，禁止fallback。解析出credential后把具体File或Keyring backend固定在`ResolvedOAuthCredentialStore`，整个client生命周期的reread/refresh/save/delete都只走该authority。
+
+pin是为rotating refresh token设计：keyring中旧token与file中新token不能在中途backend抖动时来回切换。但它不是durable选择。另一个process若keyring可用性不同，可同时把同一server解析到另一store；源码TODO明确承认。File-pinned client即使keyring恢复也继续写file，直到新client生命周期重新resolve。
+
+credential identity是`server_name | first 16 hex SHA-256(JSON{type:http,url,headers:{}})`，等价约64-bit URL digest。URL不canonicalize，尾斜线、case/default port/query差异产生不同entry；反过来OAuth resource、requested scopes、client_id、实际auth headers都不在key里，配置变化可能复用不兼容或过权token。server name可读地进入direct keyring account，Secrets name再hash成128-bit大写hex。
+
+direct keyring按credential独立保存；Secrets和File都是多server aggregate document，用`CODEX_HOME/mcp-oauth-locks/{secrets-store,file-store}.lock`做完整read-modify-write flock，最多同步轮询60秒。这个acquire内部`std::thread::sleep(50ms)`，从async调用链使用时会阻塞runtime worker thread。lock文件创建无private mode/nofollow，但flock只协调合作process，不承担secret保密。
+
+File保存access/refresh token、client_id、scopes与expires_at明文。写入是直接`fs::write(.credentials.json)`后才chmod 0600：新建到chmod之间mode取决于umask，crash可留下较宽权限；现有symlink会跟随。没有temp rename/fsync，crash可截断整个aggregate，之后所有server credential parse失败。flock避免合作process lost update，不能提供durability或抵御同账户替换。
+
+Auto保存时先写keyring并best-effort删File；普通keyring失败才写File。lock failure不fallback，避免在authority切换期制造新旧颠倒。Keyring save成功但File cleanup失败仍返回Ok，只warning，旧File token继续潜伏；未来keyring不可用的新process可能复活它。显式delete通常尝试keyring+file，但Auto/Keyring下keyring delete error会提前返回，File也不删。
+
+File load不直接按map key取值，而遍历values、用entry内部server_name/url重算key比较；这兼容key变化，却允许aggregate存在多个同identity entry时按BTree key顺序选其中一个。Direct keyring从requested key加载后只反序列化StoredOAuthTokens，不再次验证内部server_name/url与请求匹配；损坏/手工替换entry可能把token装到另一个requested endpoint。
+
+expires_at是wall-clock毫秒，提前30秒视为需refresh。缺expires_at就永不主动refresh，直到request失败路径处理；已过期但有非空refresh token的status仍报告Usable，含义是“可恢复”而非access token当前有效。clock回拨会延迟refresh。
+
+refresh transaction另拿per-credential lock：对store key再SHA-256形成lock path，60秒获取；lock持有期间reread pinned authority、最多45秒请求provider、持久化并安装。锁按CODEX_HOME命名，Direct keyring却可能跨多个CODEX_HOME共享同OS keyring，所以不同home不会互斥，源码也有TODO。
+
+refresh在owned tokio task中运行，caller取消后仍继续，防止provider已rotation而持久化被中断。AuthorizationManager Mutex从stage旧credential开始跨provider HTTP和disk/keyring persist一直持有，期间同client其他认证请求阻塞。provider timeout后结果未知，旧refresh token可能已经失效；lock释放后允许后续retry，只能best effort恢复。
+
+RMCP当前把definitive `invalid_grant`和瞬时token endpoint失败都折叠成`TokenRefreshFailed(String)`，Codex为兼容把这整类映射成AuthorizationRequired，可能在暂时网络/5xx时过早要求用户登录。其他错误保留普通startup failure。
+
+provider返回不含refresh token/scopes时会从旧response继承。新token先持久化到pinned store，再install到AuthorizationManager；persist失败就恢复旧in-memory并fail closed，但若refresh token已rotation，恢复值已不可用。persist成功而install失败则durable已新、当前client失败，下一client有机会恢复。
+
+`persist_if_needed`处理RMCP内部credential消失时，先`last_credentials.take()`再delete store；delete失败只warning且函数最终Ok，内存marker已经None，后续调用不会再次尝试删除。durable token可残留并在重启复活。这是删除路径不具retry intent的具体partial state。
+
+```text
+client startup policy resolve:
+  Auto -> keyring first -> file fallback
+              |
+              +-- pin concrete store for client lifetime
+
+refresh when expiry <= 30s:
+  per-credential flock (60s)
+  -> reread pinned authority
+  -> hold AuthorizationManager mutex
+  -> provider refresh (45s)
+  -> persist new rotating token
+  -> install in memory
+
+Aggregate File/Secrets have separate store locks.
+Direct keyring coordination does not cross CODEX_HOME.
+```
+
+关键测试：
+
+- resolved store tests：Auto keyring-first、missing/error fallback、lock failure禁止fallback与lifecycle pin。
+- store lock multiprocess tests：File/Secrets read-modify-write互斥和60秒边界。
+- refresh lock/transaction tests：winner reread、rotating token、caller cancel、provider timeout、persist rollback与concurrent processes。
+- persistor tests：partial refresh response继承、expiry、credential removal与backend errors。
+- streamable HTTP startup tests：store pin贯穿transport recipe和401/refresh。
+
+映射到当前项目：tenant connector credential用单一durable authority record，key包含canonical endpoint+resource+client+scope set+tenant，backend selection也持久化。secret document原子rename/fsync/0600-before-publish并校验内部audience。refresh用分布式lease+fencing token和idempotency/rotation journal；delete写tombstone并持续retry，不能先忘记内存intent。短暂provider error与invalid_grant必须typed区分。
+
 ## 5. 当前项目最应该吸收的架构原则
 
 ### 原则一：对外协议稳定，内部事件可演进

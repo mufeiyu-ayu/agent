@@ -94,12 +94,15 @@
 | 60 | App Server Initialize提交、能力协商与全局身份漂移 | 补OnceLock先提交后response的partial init、WebSocket两阶段ready与in-process差异、experimental门只约束connection不约束共享Thread、opt-out exact notification过滤、first originator+last UA suffix混合身份、自报client name非principal，以及未初始化Response/Error仍可触达全局callback边界 | 86% / 86% |
 | 61 | Remote Compaction V2 stream、retention与checkpoint提交 | 补普通Responses+CompactionTrigger而非compact endpoint、只重写连续尾部tool outputs、单transport最多2 retry但WS→HTTP重置、exactly-one compaction且extra items丢弃、InvalidRequest模型fallback返回原error、64k仅计文本/图片近零成本、started无failed terminal和post-hook abort发生在提交后 | 86% / 86% |
 | 62 | Responses Metadata canonical投影、动态富化与隐私边界 | 补Memory仅在canonical blob省略identity但flat metadata仍带ID、WS握手兼容header跨Turn陈旧、Git enrichment让同Turn后续Step渐进变化、raw remote URL与绝对repo path外发、client extra手工reserved/无size上限、steer replace-last-write不绑定Input，以及多RwLock无generation快照 | 86% / 86% |
+| 63 | Rollout Budget共享记账、提醒与恢复语义 | 补Completed后才计费导致已耗尽仍发请求、输出/history副作用不回滚、只信server usage且无attempt去重、f64权重与zero weights、per-thread/window提醒自耗、compaction计费后不安装、rollback不退款，以及live child共享但fork/cold resume从0重置 | 86% / 86% |
+| 64 | Hook command trust、timeout、输出与spill资源边界 | 补config hash后才做env替换且不含shell/PATH/rc/script内容、host全权限继承env执行、stdin write在timeout外可挂死、wait_with_output无界内存、只kill direct child、event stdout/exit语义分裂，以及2500-token spill发生太晚且temp文件无private mode/cleanup、HookCompleted仍可保留全量 | 86% / 86% |
+| 65 | MCP OAuth多store authority、refresh transaction与删除恢复 | 补Auto启动时resolve并生命周期pin、跨process仍可能File/Keyring分叉、store key漏resource/scope/client/headers且URL不规范、File direct write后chmod非原子、aggregate/per-credential双lock、Direct keyring跨CODEX_HOME失配、caller取消后refresh继续、persist-before-install及delete失败先丢内存retry intent | 86% / 86% |
 
 ## 最近检查
 
 - 命令：`python3 "$HOME/.local/bin/codex-weekly-usage.py"`
 - 读数：已用 14%，剩余 86%
-- 采样时间：`2026-07-13 12:47:54 CST`
+- 采样时间：`2026-07-13 12:52:13 CST`
 - 判断：高于 50%；按用户明确停止条件继续做源码深挖，不能以首轮闭环或 PR 已创建为由停止。
 
 ## 下一批次
