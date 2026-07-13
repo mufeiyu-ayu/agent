@@ -72,6 +72,9 @@ flowchart LR
 | [turn-input-admission-and-cancellation.md](./turn-input-admission-and-cancellation.md) | Turn start/steer/interrupt admission、身份归属、pending queue与取消竞态 |
 | [thread-metadata-projection.md](./thread-metadata-projection.md) | Name/title/preview/Git/recency多源投影、repair与dual-write边界 |
 | [server-request-routing.md](./server-request-routing.md) | 反向JSON-RPC、responder authority、pending replay、resolved tombstone与Turn清理 |
+| [tool-call-execution-pipeline.md](./tool-call-execution-pipeline.md) | Tool Call识别、Step快照、并发/顺序Observation、hook、取消与唯一终态 |
+| [tool-argument-streaming.md](./tool-argument-streaming.md) | Custom tool参数增量解析、provisional preview、节流、最终校验与恢复边界 |
+| [tool-output-contract.md](./tool-output-contract.md) | Tool结果的模型/telemetry/hook/Code Mode四视图、截断与provenance |
 | [current-project-gap-analysis.md](./current-project-gap-analysis.md) | 当前项目不是“缺什么功能”，而是缺哪些运行系统能力 |
 | [cloud-agent-mapping.md](./cloud-agent-mapping.md) | 客户端概念到云端 NestJS 架构的转换规则 |
 | [terminology-map.md](./terminology-map.md) | Thread、Turn、Item、Run、Step 等概念对照 |

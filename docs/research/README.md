@@ -63,6 +63,9 @@
 | [codex/turn-input-admission-and-cancellation.md](./codex/turn-input-admission-and-cancellation.md) | Start/Steer/Interrupt 的队列准入、Run身份与取消结果专题 |
 | [codex/thread-metadata-projection.md](./codex/thread-metadata-projection.md) | Thread name/title/preview/Git/recency 查询投影与修复专题 |
 | [codex/server-request-routing.md](./codex/server-request-routing.md) | Agent反向请求客户端时的路由、抢答、重连与收口专题 |
+| [codex/tool-call-execution-pipeline.md](./codex/tool-call-execution-pipeline.md) | 模型Tool Call到Observation回填、并发、hook与取消专题 |
+| [codex/tool-argument-streaming.md](./codex/tool-argument-streaming.md) | Tool参数流式预览、provisional状态与最终执行校验专题 |
+| [codex/tool-output-contract.md](./codex/tool-output-contract.md) | Tool输出的模型、日志、Hook、Code Mode多投影与截断专题 |
 | [codex/current-project-gap-analysis.md](./codex/current-project-gap-analysis.md) | 当前项目能力、证据和缺口 |
 | [codex/cloud-agent-mapping.md](./codex/cloud-agent-mapping.md) | 客户端 Codex 思想如何翻译为云端 NestJS Agent |
 | [codex/terminology-map.md](./codex/terminology-map.md) | Codex、当前项目和中文助记名的概念对照 |

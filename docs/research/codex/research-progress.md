@@ -134,12 +134,15 @@
 | 100 | Turn admission与cancel race横切学习实验 | 新增learning-roadmap独立实验页；把Codex Start自动Steer、accepted≠running、pending input和interrupt terminal barrier翻译为纯TypeScript Run/Input reducer，提供Conflict/Queue/显式Steer三种产品策略、override同代、queued→recorded→consumed、cancel-vs-complete、stale expected Run与ABA实验，以及Vitest骨架和迁移门；明确只在项目实现并发Run/stream steer/cancel时再正式落地 | 79% / 79% |
 | 101 | Thread metadata多源投影、name/Git dual-write与recency | 新增独立专题页；补LiveThread append后同序observe、pending patch generation ack、空Thread与resume repair延迟物化、preview/first message/title职责、absent/null/value Git patch、observed metadata DB failure best-effort、missing row从canonical SessionMeta修复、updatedAt与recencyAt分离、touch节流不吞事实等优质实现；同时确认显式name与derived title复用SQLite列、name/Git跨SQLite/rollout/legacy index partial commit、name仅trim而Git不验SHA/ref/URL/provenance、Paginated暂拒兼容写、list后置name查询非快照、DB-only completeness未显式回传，以及rg全文搜索候选/扫描/读取无统一总budget | 79% / 79% |
 | 102 | App Server反向ServerRequest路由、抢答与生命周期收口 | 新增独立专题页；补发送前登记callback、process-global request ID、Thread-scoped原请求保存、first-response-wins、resume向新订阅者重放同ID、resolved tombstone经listener有序先于后续事件、Turn start/complete/abort批量撤销、不同approval/elicitation fail-closed等优质实现；同时确认同一request广播给所有订阅连接且response不绑定connection/权限、partial多连接send失败会删除已投递callback、pending只在进程内、listener缺失时其他UI收不到resolved、raw result先消费后分散typed解析、generic routing无deadline/count/bytes cap、connection close不判断唯一responder，以及request ID重启/极端wrap的ABA/collision边界 | 79% / 79% |
+| 103 | Tool Call识别、并发执行、顺序Observation与唯一终态 | 新增独立专题页；补StepContext同时冻结model-visible specs与registry、raw call先持久再执行、unknown/业务错误RespondToModel、per-tool parallel能力经RwLock shared/exclusive admission、FuturesOrdered并发执行但按call顺序写history、pre-hook block/rewrite、post-hook只改结果不撤副作用、AtomicBool仲裁normal/cancel唯一terminal、runtime teardown与aborted output等优质实现；同时确认provider call ID未验空/重复、ToolSearch早期parse error丢原call identity并生成空ID FunctionOutput、单response in-flight无call/weight/deadline cap、顺序drain扩大已完成副作用未持久output窗口，以及call fact不解决外部副作用幂等/crash receipt | 79% / 79% |
+| 104 | Custom Tool参数流式解析与provisional preview | 新增独立专题页；补provider delta只作临时输入、tool-specific consumer能力、consumer绑定Step registry generation、call ID匹配/缺失fallback、apply_patch增量状态机、500ms节流合并最新结构化快照、finish flush、最终完整handler重新严格parse、App Server映射fileChange/patchUpdated、rollout明确不持久化preview等优质实现；同时确认单active consumer依赖item不交错、itemId在Core匹配被忽略、任意OutputItemDone都会finish当前consumer、增量/finish parse错误被静默忽略、preview早于hook/approval/permission/执行却缺专用clear、call ID复用item identity，以及parser/hunk/snapshot无bytes/count预算 | 79% / 78% |
+| 105 | ToolOutput的模型、Telemetry、Hook、Code Mode多视图 | 新增独立专题页；补ToolOutput将model observation/log preview/success/post-hook/code-mode/provenance分离、Function/Custom wire后绑定、单文本与structured items自适应、2KiB/64行telemetry cap、Exec collection+model双层truncation marker、MCP wall-time/image detail、PostToolUse feedback保留原日志与code result、external-context污染memory等优质实现；同时确认success None默认true与nonzero exit层级混淆、Direct受Turn budget但MCP/Exec Code Mode可拿raw大结果、hook数据面可能大于模型面、external context是易遗漏的fail-open boolean且provenance不随output持久化、history再次截断形成多层不可解释，以及redaction与preview budget正交 | 78% / 78% |
 
 ## 最近检查
 
 - 命令：`python3 "$HOME/.local/bin/codex-weekly-usage.py"`
-- 读数：已用 21%，剩余 79%
-- 采样时间：`2026-07-13 14:23:59 CST`
+- 读数：已用 22%，剩余 78%
+- 采样时间：`2026-07-13 14:31:43 CST`
 - 判断：高于 50%；按用户明确停止条件继续做源码深挖，不能以首轮闭环或 PR 已创建为由停止。
 
 ## 下一批次
