@@ -3795,6 +3795,161 @@ If a Regular Turn is already active:
 
 映射到当前项目：不要把模型“按JSON格式回答”直接当API DTO。Run创建时把版本化schema保存为immutable contract artifact，先本地编译/限深/限bytes，再连同hash传provider。最终文本只在stream完成后parse并由server验证，成功才写`StructuredResult`；失败进入可观测repair/failed Step，不能伪装completed。新用户输入若要求不同schema必须新建Run。前端delta只作文本preview，业务组件只订阅validated artifact。
 
+### 4.92 Clipboard：显式用户动作仍需要资源租约、artifact ownership与process deadline
+
+TUI把文字copy和图片paste分成两条独立路径。copy会从transcript取最近一次agent raw markdown：SSH优先tmux/OSC52，本地优先arboard，WSL再尝试PowerShell；paste则同步读取system clipboard，优先file list中的首个可解码图片，否则取raw RGBA，统一编码PNG并附到composer。功能是用户显式触发，授权边界比自动tool安全，但资源和生命周期仍不完整。
+
+OSC52路径做了100,000 raw bytes上限并先base64，避免模型文本直接终止terminal control sequence；tmux wrapper也只包编码结果。这比desktop notification的raw OSC9安全得多。可是同一份copy在native arboard、tmux `load-buffer -w -`和WSL PowerShell路径没有统一上限；backend fallback会改变容量语义，100 KiB以上在本地可成功、SSH/OSC却失败。
+
+copy成功只意味着backend call/write成功，不意味着local terminal实际允许OSC52、tmux已把内容送到outer clipboard或用户之后仍能paste。OSC52写`/dev/tty`失败才fallback stdout；terminal静默忽略sequence仍返回Ok。tmux只检查`set-clipboard != off`和`info`不含`Ms: [missing]`，无法确认outer terminal接收。UI统一提示“Copied”，把attempt当delivery acknowledgement。
+
+SSH/WSL/tmux识别只依赖环境变量存在：`SSH_TTY|SSH_CONNECTION`、`TMUX|TMUX_PANE`与WSL heuristic。stale/injected env、nested ssh、mosh/container和multiplexer代理会选择错误authority：可能写remote native clipboard、outer local clipboard或不存在的terminal。clipboard target属于用户设备拓扑，不能从三个env bit可靠证明。
+
+tmux和PowerShell fallback都用PATH解析外部程序、继承host env、同步写stdin并`wait_with_output`，没有timeout或cancellation。伪造PATH binary、hung tmux/PowerShell或不读stdin的child会阻塞TUI事件线程；stderr完整buffer进内存并拼到用户错误。copy payload虽通过stdin避免shell injection，process execution closure仍未固定。
+
+macOS arboard初始化期间会用process-global `dup2`把fd 2临时指向`/dev/null`。mutex只序列化clipboard调用，不能暂停其他线程写stderr；并发Core/TUI日志在窗口内被静默丢弃。Drop忽略restore `dup2`失败，极端情况下进程后续stderr永久消失。为了UI不被NSLog污染而修改全进程fd，是跨线程可观测性副作用。
+
+图片paste的容量风险更直接。clipboard file list中的路径交给`image::open`完整解码，raw clipboard也将width/height和全部RGBA装入内存；没有source file bytes、pixel count、dimensions、decode time或PNG output上限。随后PNG先完整写入Vec，再`std::fs::write`到tempfile，峰值至少包括decoded pixels、encoded Vec和filesystem cache。压缩炸弹或超大截图可在一次快捷键中触发OOM。
+
+这整个过程在`ChatWidget::handle_key_event`同步执行，包括arboard、file decode、PNG encode、temp I/O和WSL subprocess。TUI event/render loop被阻塞，用户无法看到progress或发送cancel；外部hung PowerShell会让界面永久冻结。显式用户操作不等于可以没有时间/内存预算。
+
+成功的native paste用private tempfile builder创建`codex-clipboard-*.png`，但随后`keep()`把生命周期从RAII临时文件变成永久PathBuf。AttachmentState只是clone/take/drop路径：删除placeholder、取消draft、提交、rollback或退出都不remove file。连续paste会在系统temp长期积累图像，且没有启动清扫、age policy或ownership标记。
+
+WSL fallback更松：PowerShell `GetTempFileName()`先创建`.tmp`，再只把扩展改为`.png`并保存，原`.tmp`也未删除；Codex把Windows路径转换成WSL path后直接返回，不复制进自己拥有的artifact。后续真正读取/编码发生在提交阶段，存在clipboard时刻与send时刻的TOCTOU；其他Windows进程可替换文件。两份temp都没有cleanup责任人。
+
+attachment list也没有数量/总pixels/总bytes上限。每次paste生成新文件并插placeholder；即使Core后续image preprocessing/cache有单项行为，TUI在进入那层之前已经承担全部decode与磁盘成本。被用户删掉但未提交的图像尤其不会经过任何Core收口。
+
+copy source由`last_agent_markdown`的内存ring管理，最多保留固定response数并在rollback按visible user turn截断，这是正确的UI一致性意识。但它不是durable artifact：resume replay、plan/item事件与TurnComplete fallback谁最后记录会影响copy内容；复制提示不带Turn/item id或长度。对敏感结果，用户无法确认“复制了哪次响应、到哪个clipboard backend”。
+
+```text
+Ctrl/Alt+V on TUI event thread
+  -> arboard file list -> image::open arbitrary clipboard path
+     OR raw RGBA allocation
+  -> full decode -> full PNG Vec -> persistent temp path
+  -> AttachmentState keeps only PathBuf
+  -> delete/submit/exit drops reference, not file
+
+WSL:
+  -> inherited PATH PowerShell, no timeout
+  -> Windows .tmp + .png
+  -> mutable cross-OS path used later
+```
+
+关键测试：
+
+- capacity：巨大dimensions、压缩炸弹、超大raw RGBA、PNG expansion、成百attachments和峰值RSS/disk。
+- responsiveness：slow file/network mount、hung PowerShell/tmux、stdin不读、encode耗时、cancel和render heartbeat。
+- lifecycle：paste后删除placeholder、clear、rollback、submit success/failure、process crash/restart和age-based temp cleanup。
+- WSL：`.tmp/.png`双残留、path转换、输出多行/巨大stdout、文件替换/删除、三个PowerShell候选累积deadline。
+- copy backend：native/tmux/OSC52/PowerShell容量一致性、terminal silent ignore、nested SSH/tmux/mosh和stale env authority。
+- process trust：PATH劫持、继承env、stderr巨大/secret、child descendant和shutdown。
+- fd：macOS suppression期间并发日志、panic/restore失败、fd复用与TUI stdout/stderr完整性。
+- provenance：rollback/resume/plan/final reply的copy item id、backend、bytes和delivery status展示。
+
+映射到当前项目：前端clipboard image先进入受限worker做magic/dimensions/pixels/bytes校验和可取消转码，再上传为tenant-scoped Artifact；composer只持artifact id与preview URL。临时文件由RAII lease/outbox拥有，删除草稿、Run终结和crash sweeper都有清理路径。文字copy是UI本地显式动作，统一字节上限并显示来源item与目标backend；任何外部helper都用固定binary、clean env、bounded stdio、process group和deadline。
+
+### 4.93 Terminal Hyperlinks：语义与布局分离是对的，但每cell重复OSC会放大不可信URL
+
+TUI没有把OSC8 bytes直接塞进markdown文字后再测宽，而是用`HyperlinkLine { line, hyperlinks[{columns,destination}] }`分离可见内容与链接语义。prefix、wrap、table和scroll分别变换column ranges，直到buffer/scrollback输出前才装饰OSC8。`web_destination`只接受可解析、带host的HTTP/HTTPS并移除control characters；local file link不生成OSC。这是比“在富文本里混入terminal escape”更可靠的基本结构。
+
+markdown explicit web link同时让label和随后显示的`(destination)`可点击；local path link反而丢弃任意label，使用destination经percent decode/路径归一化后的真实target作可见文本。后者避免模型把`/etc/passwd`伪装成`README.md`，且不让terminal直接打开file://。安全显示优先于markdown作者的label，是值得保留的决策。
+
+但active link最终由terminal emulator处理，不经过Codex click handler。模型生成的任何HTTP(S) host，包括localhost、private/link-local地址、带userinfo、非标准port和lookalike Unicode domain，都可成为click target；Codex没有确认、origin badge、审计或network policy。显式用户click降低风险，却不等于链接是可信的，尤其browser可能携带本地登录态访问内网GET endpoint。
+
+`web_destination`先**删除**control chars再parse，而不是发现任何control就拒绝，并返回未canonicalize的原始安全字符串。这样一个非法wire destination可在清洗后变成另一个有效URL；UI suffix仍来自原`link.destination`。BEL/ESC通常不可见，删除前后肉眼很难发现语义变化。Unicode bidi/default-ignorable并非`char::is_control()`，仍进入visible text和OSC payload，可扰乱terminal status bar里的host显示。
+
+显式link虽附加真实destination，label本身也绑定相同OSC。窄窗口、table折行或屏幕边缘可能先显示/点击伪装label，真实suffix在下一行或viewport之外。`[https://trusted.example](https://trusted.example@evil.example)`会把第一段看似可信文字直接连到evil host；“稍后展示目标”不是强身份提示。更稳妥的是只让canonical destination文本可点击，或在hover/click前由应用确认origin。
+
+最大的实现级容量问题是buffer decoration。`mark_buffer_hyperlinks`先为每个logical line创建第二个临时Ratatui Buffer重做wrap，然后对link覆盖的每个visible cell分别调用`osc8_hyperlink(destination, cell.symbol())`。每个cell都重复完整open OSC+destination+close OSC，而不是每个连续range/row一对sequence。
+
+因此输出bytes近似`visible_link_cells × destination_length`。一个2 KiB URL显示2 KiB字符，可制造数MiB OSC bytes；每帧重绘、pager和transcript overlay都会重复。`mark_url_hyperlink`对区域内所有underlined cell做同样处理。destination没有长度上限，terminal write与previous buffer又保存膨胀symbol，内存/CPU/TTY带宽都由模型文本二次放大。
+
+scrollback `decorate_spans`做得更好：它按active range合并，一段连续链接只发一对OSC。live buffer与history因此有不同wire complexity，同一消息在滚动落盘后突然变轻。渲染层应共享row-range encoder，而不是为了cell diff convenience把destination复制N次。
+
+URL发现与wrap映射也有潜在超线性路径。`web_links_in_text`对每个ASCII-whitespace token从剩余text再find，并每次计算`text[..start].width()`；大量短URL可趋近O(n²)。trailing punctuation会反复统计成对delimiter；`remap_wrapped_line`对每个wrapped fragment寻找matching suffix，逐char又线性find hyperlink range。在resize/reflow/streaming每帧执行时，长模型输出会放大CPU。
+
+`mark_buffer_hyperlinks`为每个有link的logical line按`rendered_height`分配临时buffer，height转换到u16时最大65,535，但logical calculation仍用usize。极窄terminal+超长链接可让单行产生巨大buffer；没有per-line/per-frame cell budget。scrollback `physical_rows`则直接`as u16`，超过范围会截断计数，cursor清理/viewport bookkeeping可能错位。
+
+range remap依赖可见source text和wrapped output的suffix-prefix匹配，忽略行首whitespace。常规wrap测试充足，但如果renderer转换/省略了内容导致一次match失败，source cursor不前进，后续相同文本可能继承错误destination。链接identity应跟随结构化text runs切分，而不是渲染后用字符串相似性重建。
+
+custom terminal为修正几何会扫描cell symbol并剥`ESC ] ... BEL`后计算width。parser只理解BEL终止的OSC，不理解ST终止或其他escape；当前内部OSC8固定BEL所以成立，但一旦其他producer把不同OSC放进symbol，width contract会再次漂移。terminal control encoder与width sanitizer必须是同一个typed module，不应接受任意symbol escape。
+
+```text
+markdown text
+  -> visible Ratatui Line + semantic column ranges
+  -> wrap/remap
+  -> live buffer: for each linked cell
+       symbol = OSC8(full destination) + glyph + OSC8 close
+     # O(link cells * URL bytes) terminal output
+  -> scrollback: one OSC8 pair per contiguous span
+
+Terminal handles activation outside Codex policy/audit.
+```
+
+关键测试：
+
+- destination：controls、bidi/default-ignorable、userinfo、Unicode/punycode、localhost/private/link-local、ports和超长URL。
+- spoof：trusted label→evil target、narrow/table/offscreen suffix、redirect和terminal hover status的canonical host。
+- amplification：URL长度×label cells×frames，live buffer、pager、resize和scrollback实际TTY bytes/RSS。
+- complexity：十万短tokens/URLs、长尾括号、重复相同片段、极窄width和reflow CPU profile。
+- geometry：wide/combining/zero-width/bidi chars、65,535+ rows、u16 conversion和cell.skip。
+- remap：prefix、table、trim、hard/soft breaks、source transformation失败和相同substring多link不串线。
+- terminal：BEL/ST两种OSC终止、tmux/screen/zellij、unsupported OSC8、diff buffer与click range。
+- policy：model/MCP/error中URL、user明确click、origin confirmation、audit和internal-network navigation边界。
+
+映射到当前项目：Web UI链接用结构化`{label,url,source}`，server先canonicalize scheme/host/port并标出external/internal风险；前端显示实际origin，危险scheme/private host默认不可点。不要从Agent markdown直接产生具有应用权限的action。渲染budget按link count、destination bytes和总DOM/text nodes限制；若将来终端化，OSC encoder按连续range输出且URL只存一次引用。
+
+### 4.94 Terminal Title：终端escape已安全，剩余问题是title ownership、Unicode canonical state与隐私外泄
+
+Terminal title使用独立`set_terminal_title`边界，在写OSC0前移除control、Trojan-Source bidi及一批invisible format字符，折叠whitespace并限制240 Rust chars。相比desktop notification直接插raw OSC9，这条路径明确把project、thread、branch和model文本都当不可信。BEL/ESC无法逃逸title sequence，安全基线明显更完整。
+
+上层又把title分成可配置typed items：默认只有activity+project；运行时值逐项截断、缺失则省略，最终按稳定separator组合。setup preview先保存原config，取消/持久化失败会回滚，确认后才结束preview transaction。branch异步结果带cwd并拒绝stale completion。这些都是“显示状态也要有generation/rollback”的好实践。
+
+不过低层返回的只有Applied/NoVisibleContent，不返回**实际sanitized title**。上层`last_terminal_title`缓存和比较的是输入raw title；两个raw值若只在被删除的control/bidi、折叠whitespace或240-char尾部不同，terminal收到相同title，Codex仍重复写OSC。反过来cache里也不是屏幕事实，调试无法知道实际显示内容。
+
+长度限制按Unicode scalar char，而segment先按grapheme截断，两个层级单位不一致。最终sanitizer可能在grapheme中间截断；combining marks没有被通用禁止，240个combining codepoint可以在一个base上堆叠，combining-only string也会被视为“visible content”并写入。四字节codepoint使240 chars接近960 bytes；所谓“为OSC framing留headroom”并不是byte bound。
+
+curated invisible集合也不等于Unicode Default_Ignorable_Code_Point全集，Hangul filler/其他format或confusable仍可能造成视觉空白/仿冒；与此同时它主动删除ZWJ与variation selector，会破坏合法emoji grapheme。安全canonicalizer需要明确Unicode版本、display width/grapheme/bytes三重预算和可测试policy，不能靠手写range长期漂移。
+
+title是OS/window manager/tmux/tab bar/screen recording可见的旁路元数据。默认project name会把repo/customer名称带出终端正文；用户还可选择cwd、thread title、Git branch、rate-limit、token count和thread id。它们不进入模型，却可能进入桌面截图、窗口日志、远程会议和shell integration。配置UI把这些当便利字段，没有逐项privacy提示。
+
+tmux/screen/zellij/SSH下OSC0的实际owner不一定是当前Codex pane：multiplexer可能改共享window name、阻止、或转发到outer terminal。代码只判断stdout is TTY，不检测title authority或multiplexer policy。一个pane的10Hz spinner可能持续重命名多人共享tmux window，影响其他pane/user。
+
+默认spinner每100ms调度frame并重写title；action-required每秒blink。即使viewport没有其他变化、窗口后台或terminal不展示spinner，也持续唤醒render loop和TTY。`last_terminal_title`能去重静态值，但动画故意绕过去重；没有focus/power/reduced-motion之外的rate adaptation。animations=false会关闭，这是用户级总开关，不是surface-specific budget。
+
+若stdout仍被`is_terminal`判真但write持续失败，上层只debug log、不缓存失败也不disable/backoff；下一次pre-draw/animation继续尝试，形成100ms错误循环。notification backend首次I/O失败会永久disable，title则无限retry；两个terminal side channel缺统一failure policy。
+
+Codex退出时若曾写title，只发送空title，无法恢复启动前shell/IDE title。源码明确承认terminal title不可移植读取。清空不是归还ownership：某些terminal会留下空tab名，直到下一prompt hook刷新。更麻烦的是`last_terminal_title`假设Codex独占；外部shell/plugin/另一实例改变title后，只要Codex计算出的raw值没变，它会因cache相等而不重写，cache和terminal已分叉。
+
+Thread切换会把旧widget的`last_terminal_title`转移给新widget以避免flicker，这是同一进程内合理优化，却进一步把“last attempted by Codex”当“currently displayed”。没有terminal generation/lease，任何外部writer都会破坏不变量。对不可读设备状态，cache名称应是`last_emitted_canonical_title`，并接受best-effort而非声称current。
+
+title fields的语义也有小漂移：SessionId说明是full thread UUID，实际又经过32-grapheme截断；完整UUID通常36 chars，会变成带ellipsis的前缀。Thread title可fallback id并截48。作为显示足够，但不能用于复制、关联日志或唯一识别；status surface需要把display label和stable identity分开。
+
+```text
+runtime fields (project/thread/branch/usage/...)
+  -> per-segment grapheme truncation
+  -> raw composed title
+  -> compare/cache RAW string
+  -> low-level char sanitizer + 240-char truncation
+  -> OSC 0 to stdout / multiplexer
+  -> terminal state cannot be read back
+
+cache identity != emitted canonical title != current terminal title.
+```
+
+关键测试：
+
+- canonical cache：raw值只差control/bidi/whitespace/截断尾，断言只写一次且cache保存emitted值。
+- Unicode：combining-only/超长cluster、emoji ZWJ/variation、default-ignorables、confusables、CJK width和四字节bytes。
+- budgets：chars/graphemes/display columns/UTF-8 bytes分别到边界，10Hz实际TTY bytes/CPU/电量。
+- topology：tmux多pane/shared window、screen/zellij/SSH、allow-rename关闭、stdout TTY但outer title不可写。
+- failure：短写/flush error、broken TTY、连续animation retry、backoff/disable和恢复。
+- ownership：启动前title、外部中途改title、另一个Codex实例竞争、Thread switch、exit/panic/SIGTERM恢复。
+- privacy：默认project及可选cwd/thread/branch/usage/id在OS task switcher、录屏和远端multiplexer的暴露。
+- identity：full UUID描述与32-char显示、重复prefix、copy/debug时是否有独立stable id。
+
+映射到当前项目：浏览器`document.title`同样是外泄到历史/标签/截图的surface；默认只显示产品名+非敏感状态，项目/客户名需用户选择。统一`canonicalizeTitle`返回实际emitted value并以grapheme/display-width/bytes限额，cache只去重emitted值。页面卸载不应假装能恢复其他应用状态；多tab用owner id/visibility降低动画，后台tab停更。稳定Run/Thread id通过专门copy action提供，不塞进截断title当审计键。
+
 ## 5. 当前项目最应该吸收的架构原则
 
 ### 原则一：对外协议稳定，内部事件可演进

@@ -1846,3 +1846,81 @@ metadata读取后替换file/symlink target或改变大小，验证旧Content-Len
 thread/read/resume/fork后检查Turn只保留items/status/time，没有schema/version/hash/strict/validation evidence。生产审计要能证明“请求了哪个contract”和“谁验证通过”。
 
 最后比较Guardian：它在provider约束之外还parse成Rust payload。把这条“双重验证”抽象成所有structured result共用的Run/Step后置条件。
+
+## 90. 路线八十七：Clipboard为什么需要artifact lease而不只是PathBuf
+
+按copy source、backend选择、external process、image decode、temp ownership和composer lifecycle阅读：
+
+- `tui/src/clipboard_copy.rs`：SSH/tmux/WSL heuristic、native lease、OSC52 100 KiB、PATH helper和process-global stderr suppression。
+- `chatwidget/interaction.rs`、`transcript.rs`：快捷键同步执行、last agent markdown ring与rollback一致性。
+- `clipboard_paste.rs`：file/raw image读取、full PNG encode、temp keep和WSL PowerShell双临时文件。
+- `bottom_pane/chat_composer/attachment_state.rs`：PathBuf-only attachment、placeholder prune/take/remove与无file cleanup。
+- Core image prepare/cache路径：提交后才出现的decode/budget不能保护TUI paste阶段。
+
+分别在local、SSH、tmux、WSL走copy，发送99/101 KiB文本；native/helper与OSC容量不同。让terminal静默丢OSC52、tmux接受load-buffer但不转发，观察UI仍提示Copied；区分attempt和delivery。
+
+用stale `SSH_TTY`、伪造TMUX、nested ssh/mosh/container测试backend target。clipboard authority应显示给用户或由显式配置决定，不能只靠env存在。
+
+在PATH放fake tmux/PowerShell，让它不读stdin、输出巨大stderr、fork descendant；当前同步wait无deadline，会冻结TUI。helper按host process执行，必须固定路径/clean env/限流。
+
+并发其他线程写stderr时触发macOS native copy；全进程fd 2被dup2到devnull，非clipboard日志也丢失。用subprocess capture或库配置代替global fd mutation。
+
+把巨大/压缩炸弹图片作为clipboard file或raw RGBA，记录decode+PNG Vec+write峰值和render停顿。读取在UI event thread且无pixels/bytes/time上限。
+
+paste后删除placeholder、clear draft、提交失败、rollback和exit，扫描`codex-clipboard-*.png`；`keep()`后没有owner cleanup。Attachment应持RAII artifact lease而不是裸PathBuf。
+
+在WSL检查`GetTempFileName`的原`.tmp`和改扩展`.png`都残留；保存后替换mapped file再提交，验证TOCTOU。应立即复制到Codex-owned immutable artifact并删除Windows临时对象。
+
+最后连续paste成百图片，确认attachment无count/total budget且未提交文件永不进入Core image limit。预算必须在生成第一份temp之前执行。
+
+## 91. 路线八十八：Terminal hyperlink为何不能按cell复制完整destination
+
+按semantic range、markdown link、wrap remap、live buffer、scrollback writer和terminal activation阅读：
+
+- `tui/src/terminal_hyperlinks.rs`：HTTP(S) gate、control过滤、bare URL扫描、column ranges、wrap remap和per-cell OSC8。
+- `markdown_render.rs`：web label+destination、local target替换label、percent decode和table annotation。
+- `history_cell`/`pager_overlay`：live buffer mark与scroll offset。
+- `insert_history.rs`：scrollback contiguous-span decoration、wrap policy和u16 row bookkeeping。
+- `custom_terminal.rs`：忽略BEL-terminated OSC的cell width与buffer diff。
+- onboarding/MCP/app link producers：可信与远端URL共用同一encoder。
+
+构造control、bidi、userinfo、punycode/lookalike、localhost/private host和超长URL；比较visible suffix、terminal hover与实际click target。control应reject而不是删除后改变URL，host应canonical显示。
+
+用`[https://trusted](https://trusted@evil)`放在窄窗口和table最后一列，观察label可点而真实suffix换行/出viewport。只给canonical destination区域链接，或click前确认origin。
+
+测量1/100/2000字节destination覆盖1/100/2000 cells时live frame bytes；当前每cell重复完整OSC，而scrollback只按range一对。以destination intern id和row range encoder消除乘法。
+
+输入大量短bare URLs、重复substring、长括号尾并连续resize，profile `web_links_in_text`、`trailing_url_end`和`remap_wrapped_line`。渲染算法也需要per-frame work budget。
+
+把单行放在width=1并制造65,535+ physical rows；live临时Buffer和scrollback `as u16`走不同overflow语义。所有height/bytes/cells转换要checked并有hard cap。
+
+给wide CJK、combining mark、zero-width/bidi和wrap transformation failure，断言range不会串到相邻link。最佳方案是在layout pipeline保持run id，不做事后字符串匹配。
+
+最后在支持/不支持OSC8及tmux/screen/zellij测试BEL/ST终止。width parser与encoder应共享typed grammar；terminal click在Codex外完成，必须把不可审计性列入安全模型。
+
+## 92. 路线八十九：Terminal title的cache为何不等于terminal state
+
+按sanitizer、item composition、animation、config preview、Thread切换和退出清理阅读：
+
+- `tui/src/terminal_title.rs`：control/bidi/invisible过滤、240-char cap、OSC0与clear语义。
+- `chatwidget/status_surfaces.rs`：默认activity+project、raw cache、per-item截断、100ms spinner和action-required。
+- `bottom_pane/title_setup.rs`、`status_controls.rs`：typed ids、preview snapshot、confirm/cancel。
+- App event config edit：persist成功才commit，失败回滚preview。
+- `app/session_lifecycle.rs`与exit：widget cache转移、clear而非restore。
+- branch/thread/rate-limit producers：title的多信任源与隐私内容。
+
+让两个title只差BEL/bidi/多空格或第241字符，抓OSC次数；low-level输出相同但raw cache不同会重复写。sanitizer应返回canonical emitted string给cache。
+
+输入combining-only、超长grapheme、emoji ZWJ/variation selector、default-ignorables、四字节字符与CJK；比较segment grapheme cap、final char cap、display width和bytes。四种单位不能混称“title length”。
+
+在tmux多pane/screen/zellij/SSH里开默认10Hz spinner，观察共享window/outer title实际owner。stdout是TTY不代表当前pane独占title capability。
+
+模拟write持续失败并保持Working；当前每100ms重试且只debug。terminal side effects要有统一backoff、failure status和可恢复probe。
+
+启动前设shell title，运行Codex再正常/异常退出；当前只清空，不恢复。再由外部进程中途改title，raw cache仍认为旧值在屏幕上。把cache语义降级为last emitted，不声称current。
+
+打开setup逐项preview、令config persist失败/取消/确认，验证rollback正确；再在preview期间切Thread/退出，检查original snapshot与managed title谁收口。
+
+选择project/cwd/thread/branch/rate limits/session id并在OS task switcher、tmux status、录屏查看。每项配置说明应标出terminal外部可见性。
+
+最后检查SessionId的full UUID说明与32-grapheme截断；display id不可用作审计或copy identity，稳定id另走结构化action。

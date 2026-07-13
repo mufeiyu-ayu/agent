@@ -112,12 +112,15 @@
 | 78 | Apps fileParams filesystem authority、hidden egress与upload transaction | 补仅host-owned apps gate但descriptor驱动、approval后sandbox=None读取absolute/`..`/symlink、schema clear丢maxItems等约束、mixed array原path泄漏、无总count/bytes、串行partial upload无cleanup、metadata-stream TOCTOU、server-returned upload URL SSRF、raw file_id拼auth path、软finalize timeout及sync-only auth | 84% / 83% |
 | 79 | Request User Input schema、call identity、deadline与恢复 | 补描述性1–3题/2–3选项约束未进schema/runtime、secret仅UI遮罩、Core按Turn单slot而App Server/TUI按call排队导致覆盖错投、response无semantic validation、重复id HashMap覆盖、note字符串扁平化、client error/auto timeout同为空map、TUI忽略具体duration固定120秒、任意key永久snooze、transient event无法cold resume及空questions可永久等待 | 84% / 83% |
 | 80 | Final Output Schema准入、provider约束与本地postcondition | 补任意JsonValue无dialect/depth/bytes校验且input limit漏算、巨大schema按每Step复制发送、invalid schema延迟成已启动Turn的remote error、custom provider无capability gate、AgentMessage无本地parse/schema验证、active Turn时新schema随steer静默丢失并沿用旧schema、Turn/rollout不保留contract hash/strict/validation证据，以及流式JSON prefix不是业务完成态 | 84% / 83% |
+| 81 | Clipboard backend、image decode与artifact ownership | 补OSC仅100 KiB而native/helper无统一cap、attempt被提示成delivery、SSH/tmux/WSL env heuristic误选authority、PATH helper无timeout/stdio cap阻塞UI、macOS全进程stderr suppression丢并发日志、clipboard file/raw image无bytes/pixels/decode budget且同步阻塞event loop、PNG Vec+disk峰值、keep temp删除/提交/退出均不cleanup、WSL `.tmp/.png`双残留与mutable path TOCTOU、attachments无总量上限 | 83% / 83% |
+| 82 | Terminal hyperlink semantic ranges、click trust与wire amplification | 补语义range与visible layout分离、HTTP(S)+host/control filter及local target替换label的优点，control删除而非reject、bidi/userinfo/private host与label spoof、terminal click绕过Codex policy/audit、live buffer每cell重复完整OSC导致cells×URL bytes放大而scrollback按range、URL扫描/remap超线性、per-link临时Buffer与u16 row边界、字符串重映射可能串destination及width parser只懂BEL OSC | 83% / 83% |
+| 83 | Terminal title canonicalization、ownership与privacy surface | 补独立control/bidi sanitizer、typed item与preview rollback优点，raw cache不等于sanitized emitted title导致重复写、segment grapheme与final char/bytes/display单位漂移、combining-only与curated Unicode policy缺口、默认project及可选cwd/thread/branch/usage/id外泄、tmux共享title authority、100ms后台动画、持续write失败无backoff、退出只clear不restore、外部writer使cache分叉，以及full UUID被32字符截断 | 83% / 83% |
 
 ## 最近检查
 
 - 命令：`python3 "$HOME/.local/bin/codex-weekly-usage.py"`
 - 读数：已用 17%，剩余 83%
-- 采样时间：`2026-07-13 13:24:59 CST`
+- 采样时间：`2026-07-13 13:30:44 CST`
 - 判断：高于 50%；按用户明确停止条件继续做源码深挖，不能以首轮闭环或 PR 已创建为由停止。
 
 ## 下一批次
