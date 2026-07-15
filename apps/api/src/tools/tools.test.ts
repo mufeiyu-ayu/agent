@@ -9,7 +9,9 @@ import assert from 'node:assert/strict'
 // eslint-disable-next-line test/no-import-node-test
 import { describe, it } from 'node:test'
 
+import { PrismaModule } from '../prisma/prisma.module.js'
 import { toModelToolSpec } from './model-tool-spec.mapper.js'
+import { SearchArticlesTool } from './search-articles.tool.js'
 import { ToolInvocationService } from './tool-invocation.service.js'
 import { ToolRegistryService } from './tool-registry.service.js'
 import { ToolRegistryError } from './tool.errors.js'
@@ -261,10 +263,16 @@ describe('模型映射与 NestJS 模块', () => {
   })
 
   it('ToolsModule 提供并导出 Registry 与 InvocationService', () => {
+    const imports = Reflect.getMetadata('imports', ToolsModule)
     const providers = Reflect.getMetadata('providers', ToolsModule)
     const exports = Reflect.getMetadata('exports', ToolsModule)
 
-    assert.deepEqual(providers, [ToolRegistryService, ToolInvocationService])
+    assert.deepEqual(imports, [PrismaModule])
+    assert.deepEqual(providers, [
+      ToolRegistryService,
+      ToolInvocationService,
+      SearchArticlesTool,
+    ])
     assert.deepEqual(exports, [ToolRegistryService, ToolInvocationService])
   })
 })

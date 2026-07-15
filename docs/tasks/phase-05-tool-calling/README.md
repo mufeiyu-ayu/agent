@@ -1,6 +1,6 @@
 # 阶段 5：最小 Tool Calling
 
-状态：进行中。Task 2 已完成并通过验收，Task 3 尚未开始。
+状态：进行中。Task 2 已完成并通过验收；Task 3 已实现、待验收，尚未标记 Completed。
 
 ## 阶段目标
 
@@ -41,7 +41,7 @@
 | Task 0 | Completed | 新增 `Article` 表并导入文章 Demo 数据，为只读工具提供稳定数据源 |
 | Task 1 | Completed | 将纯文本模型流升级为 provider-neutral `ModelStreamEvent`，让 Runtime 能识别文本、Tool Call 和本次 sampling 的结束原因 |
 | Task 2 | Completed | 定义最小 `ToolDefinition`、`ToolRegistry`、参数验证、执行与结果边界 |
-| Task 3 | Planned | 实现第一只只读工具 `search_articles`，查询并返回精简文章信息 |
+| Task 3 | 已实现，待验收 | 实现第一只只读工具 `search_articles`，查询并返回精简文章信息 |
 | Task 4 | Planned | 实现单 Agent Tool Loop：模型请求工具、后端执行、Observation 回填、模型继续生成最终回答 |
 | Task 5 | Planned | 将模型调用、工具执行和工具结果记录到 `AgentStep`，保持当前前端 stream 协议稳定 |
 
@@ -64,7 +64,16 @@
 - 新增 provider-neutral `ModelToolSpec` 与纯映射，只暴露名称、描述和输入 Schema。
 - 使用无网络、无副作用的测试专用 `echo` 工具覆盖 13 个 Registry、Invocation、Mapper 和 NestJS 模块回归用例；未接入 Runtime Tool Loop，也未实现正式业务工具。
 - `timeoutMs` 当前只保留为 server-owned metadata；工具超时执行逻辑按 Issue #1 明确留待后续任务，不阻塞 Task 2 验收。
-- 实施状态：已实现；验收状态：已通过；任务状态：Completed。Task 3 保持 Planned，尚未开始。
+- 实施状态：已实现；验收状态：已通过；任务状态：Completed。
+
+## Task 3 实现结果
+
+- 新增低风险、只读、无外部网络且无需审批的 `search_articles`，通过现有输入契约校验 `query`、`languageCode` 和 `limit`。
+- 工具查询 `Article` 表并稳定返回匹配总数与最多 10 条精简结果；单条结果只包含 `sourceId`、`slug`、`languageCode`、`title`、`seoTitle`、`seoDescription` 和截断后的 `excerpt`，不返回完整 `content`。
+- `ToolsModule` 显式注册工具并引入 `PrismaModule`；合法调用继续通过 `ToolRegistryService`、`ToolInvocationService` 和 `ToolExecutor` 边界执行。
+- `modelContent` 提供有结果或无结果的受控查询说明，可供后续 Task 4 作为 Observation 使用；本任务未接入 Runtime Tool Loop、Observation 回填或第二轮 sampling。
+- `test:tools` 覆盖 Registry、模型 spec、参数校验、查询参数、精简输出、无结果和风险边界；既有模型流回归、API typecheck/lint 与 workspace typecheck 通过。
+- 实施状态：已实现；验收状态：待验收。Task 3 未标记 Completed，Task 4 保持 Planned。
 
 ## 关键边界
 
