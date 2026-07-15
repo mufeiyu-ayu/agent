@@ -4,7 +4,7 @@
 
 ## 当前判断
 
-项目已经完成从固定字段 SEO 生成器到 Session Chat 的迁移，并完成流式输出最终态一致性收口。阶段 4 Agent Runtime 基础已归档；阶段 5 继续进行，Task 0-2 已完成并通过验收，最小 Tool Contract、Registry、参数验证与执行边界已经建立。Task 3 的第一只只读工具 `search_articles` 已实现、待验收，尚未标记 Completed；下一步先完成 GPT / 用户验收，不推进 Task 4、RAG 或多 Agent。
+项目已经完成从固定字段 SEO 生成器到 Session Chat 的迁移，并完成流式输出最终态一致性收口。阶段 4 Agent Runtime 基础已归档；阶段 5 继续进行，Task 0-3 已完成并通过验收，最小 Tool Contract、Registry、参数验证与第一只只读工具 `search_articles` 已建立。下一步再进入 Task 4：单 Agent Tool Loop，不直接跳到 RAG 或多 Agent。
 
 ## 阶段路线
 
@@ -23,8 +23,8 @@
 
 | 优先级 | 任务 | 说明 |
 | --- | --- | --- |
-| P0 | 阶段 5 Task 3（已实现，待验收） | `search_articles` 已实现；下一步由 GPT / 用户验收，不自行标记 Completed |
-| P1 | 阶段 5 Task 4-5 | 保持 Planned；Task 3 验收收口后再依次完成单 Agent Tool Loop 和 `AgentStep` 记录 |
+| P0 | 阶段 5 Task 4（Planned） | 下一步实现单 Agent Tool Loop：模型请求工具、后端执行、Observation 回填、模型继续生成最终回答 |
+| P1 | 阶段 5 Task 5（Planned） | Task 4 验收收口后，再将模型调用、工具执行和工具结果记录到 `AgentStep` |
 | P2 | Context 管理增强 | 阶段 5 稳定后再加入页面数据、关键词、工具 Observation 和预算规则 |
 
 ## 现在暂不做
