@@ -71,14 +71,15 @@ export class SearchArticlesTool implements ToolExecutor<SearchArticlesInput, Sea
     invocation: ValidatedToolInvocation<SearchArticlesInput>,
   ) {
     const { languageCode, limit, query } = invocation.input
+    const queryPattern = query.replace(/[\\%_]/g, '\\$&')
     const where: Prisma.ArticleWhereInput = {
       ...(languageCode ? { languageCode } : {}),
       OR: [
-        { title: { contains: query, mode: 'insensitive' } },
-        { slug: { contains: query, mode: 'insensitive' } },
-        { seoTitle: { contains: query, mode: 'insensitive' } },
-        { seoDescription: { contains: query, mode: 'insensitive' } },
-        { content: { contains: query, mode: 'insensitive' } },
+        { title: { contains: queryPattern, mode: 'insensitive' } },
+        { slug: { contains: queryPattern, mode: 'insensitive' } },
+        { seoTitle: { contains: queryPattern, mode: 'insensitive' } },
+        { seoDescription: { contains: queryPattern, mode: 'insensitive' } },
+        { content: { contains: queryPattern, mode: 'insensitive' } },
       ],
     }
 

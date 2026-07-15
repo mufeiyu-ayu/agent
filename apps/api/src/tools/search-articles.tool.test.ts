@@ -57,7 +57,7 @@ describe('search_articles', () => {
     const { invocationService } = createTools(fakePrisma)
 
     const result = await invocationService.invoke(
-      createEnvelope({ query: '  Alpha  ', languageCode: ' ZH-CN ', limit: 3 }),
+      createEnvelope({ query: '  Alpha%_\\  ', languageCode: ' ZH-CN ', limit: 3 }),
       createContext(),
     )
 
@@ -67,13 +67,23 @@ describe('search_articles', () => {
       fakePrisma.findManyArguments[0]?.where,
     )
     assert.equal(fakePrisma.findManyArguments[0]?.take, 3)
-    assert.equal(fakePrisma.findManyArguments[0]?.where.languageCode, 'zh-cn')
+    assert.deepEqual(fakePrisma.findManyArguments[0]?.where, {
+      languageCode: 'zh-cn',
+      OR: [
+        { title: { contains: 'Alpha\\%\\_\\\\', mode: 'insensitive' } },
+        { slug: { contains: 'Alpha\\%\\_\\\\', mode: 'insensitive' } },
+        { seoTitle: { contains: 'Alpha\\%\\_\\\\', mode: 'insensitive' } },
+        { seoDescription: { contains: 'Alpha\\%\\_\\\\', mode: 'insensitive' } },
+        { content: { contains: 'Alpha\\%\\_\\\\', mode: 'insensitive' } },
+      ],
+    })
 
     if (!result.ok)
       return
 
     const data = result.data as SearchArticlesOutput
 
+    assert.equal(data.query, 'Alpha%_\\')
     assert.equal(data.total, 12)
     assert.deepEqual(data.articles.map(({ excerpt, ...article }) => article), [{
       sourceId: 7,
