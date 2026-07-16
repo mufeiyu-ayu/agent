@@ -1,6 +1,6 @@
 # 阶段 5：最小 Tool Calling
 
-状态：进行中。Task 0-3 已完成并通过验收；Task 4 已实现、待验收；Task 5 保持 Planned。
+状态：进行中。Task 0-4 已完成并通过验收；Task 5 保持 Planned。
 
 ## 阶段目标
 
@@ -42,7 +42,7 @@
 | Task 1 | Completed | 将纯文本模型流升级为 provider-neutral `ModelStreamEvent`，让 Runtime 能识别文本、Tool Call 和本次 sampling 的结束原因 |
 | Task 2 | Completed | 定义最小 `ToolDefinition`、`ToolRegistry`、参数验证、执行与结果边界 |
 | Task 3 | Completed | 实现第一只只读工具 `search_articles`，查询并返回精简文章信息 |
-| Task 4 | 已实现，待验收 | 实现单 Agent Tool Loop：模型请求工具、后端执行、Observation 回填、模型继续生成最终回答 |
+| Task 4 | Completed | 实现单 Agent Tool Loop：模型请求工具、后端执行、Observation 回填、模型继续生成最终回答 |
 | Task 5 | Planned | 将模型调用、工具执行和工具结果记录到 `AgentStep`，保持当前前端 stream 协议稳定 |
 
 ## Task 1 完成结果
@@ -76,20 +76,21 @@
 - Codex Review 提出的 LIKE 通配符问题已修复并复审通过；PR #10 已合并，Issue #9 已关闭。
 - 实施状态：已实现；验收状态：已通过；任务状态：Completed。Task 4 保持 Planned。
 
-## Task 4 实现结果
+## Task 4 完成结果
 
 - 新增内部 `ModelInputItem`，分离普通消息、`assistant_tool_call` 与 `tool_result`；Provider adapter 将其映射为 OpenAI-compatible messages。
 - Runtime 只向模型暴露现有 `search_articles`，并通过 `ToolInvocationService.invoke()` 执行模型提出的唯一工具调用。
 - 单轮 sampling 判断显式拒绝缺失完成事件、结束原因冲突、同轮多个 Tool Call 和非完整回答；Tool Loop 最多执行一次工具、最多进行两轮 sampling。
 - `ToolResult.modelContent` 与同一 `callId` 的 Tool Call 配对后作为 Observation 回填；`ToolResult.data`、工具 JSON 和第一轮中间文本不会写入用户可见 `Message`。
 - unknown tool、invalid arguments 和低风险工具安全失败会作为脱敏 Observation 进入第二轮；Abort 在 sampling、工具执行和第二轮前后保持 `ABORTED` 终态。
-- OpenAI-compatible 请求携带模型工具定义并设置 `parallel_tool_calls: false`，Runtime 同时兜底拒绝多个 Tool Call。
+- OpenAI-compatible 请求携带模型工具定义；最终合并版本不发送 DeepSeek 文档未声明的 `parallel_tool_calls` 字段，Runtime 继续兜底拒绝多个 Tool Call。
 - 前端 `ChatStreamEvent` 仍为 `start / delta / done / error / aborted`；普通回答和工具后的第二轮最终回答都会在模型 `text_delta` 到达时实时产出 `assistant_delta`，不再等待 `response_completed` 后回放。
 - SEO Agent system prompt 明确：用户查询站内已有文章时调用 `search_articles`；单纯询问数据库或工具能力时只解释、不调用，也不为举例自动查询；该工具只做关键词查询而不是 RAG；有结果时基于 Observation 回答，无结果时明确说明且不得编造文章。工具调用前不得先输出说明文字；若模型先输出最终文本又请求工具，Runtime 会拒绝该不安全混合响应。
 - `test:tool-loop` 补充普通回答、第二轮最终回答在 `response_completed` 前产出 delta 的时序测试，以及 SEO Agent 工具说明边界测试。
 - `test:tool-loop` 14 个用例、`test:model-stream` 22 个用例、`test:tools` 17 个用例，以及 API typecheck/lint、workspace typecheck、`git diff --check` 通过。
 - 使用当前 DeepSeek 配置进行本地真实流验证：“你能查数据库吗？请简短回答。”只产生实时文本并以 `done` 结束；SP Himeko 查询实际返回 1 篇中文文章，工具后的最终回答实时输出。临时会话已删除。
-- 实施状态：已实现；验收状态：待验收；任务状态：不得标记 Completed。Task 5 保持 Planned。
+- GPT 结合 Issue #11、PR #12 diff、Codex Review、测试结果和前端手工反馈完成验收；用户授权后 PR #12 已合并到 `master`，merge commit `390d8497`。
+- 实施状态：已实现；验收状态：已通过；任务状态：Completed。Task 5 保持 Planned。
 
 ### Task 4 手工验收问题
 
