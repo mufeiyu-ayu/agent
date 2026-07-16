@@ -10,7 +10,6 @@ import { ModelSamplingIncompleteError } from './agent-runtime.errors.js'
 export type SamplingDecision
   = | {
     type: 'final_answer'
-    textChunks: string[]
   }
   | {
     type: 'tool_call'
@@ -18,62 +17,56 @@ export type SamplingDecision
     intermediateText: string
   }
 
-export class ModelSamplingInterruptedError extends Error {
-  constructor(
-    readonly cause: unknown,
-    readonly textChunks: string[],
-    readonly hasToolCall: boolean,
-  ) {
-    super('模型 sampling 在完成前中断。', { cause })
-    this.name = 'ModelSamplingInterruptedError'
-  }
-}
-
-/** 收集一轮 sampling，并只接受完整最终回答或单个完整 Tool Call。 */
-export async function collectModelSampling(
+/** 实时转发最终回答文本，并只接受完整最终回答或单个完整 Tool Call。 */
+export async function* streamModelSampling(
   events: AsyncIterable<ModelStreamEvent>,
   samplingAttemptId: string,
-): Promise<SamplingDecision> {
-  const textChunks: string[] = []
+): AsyncGenerator<string, SamplingDecision> {
+  const intermediateTextChunks: string[] = []
   const toolCalls: UnvalidatedModelToolCall[] = []
+  let outputMode: 'final_answer' | 'tool_call' | undefined
   let finishReason: ModelFinishReason | undefined
 
-  try {
-    for await (const event of events) {
-      if (finishReason) {
-        throw new ModelSamplingIncompleteError(
-          '模型在 response_completed 之后仍返回了额外事件。',
-        )
-      }
-
-      switch (event.type) {
-        case 'text_delta':
-          textChunks.push(event.delta)
-          break
-
-        case 'tool_call_completed':
-          toolCalls.push(event.toolCall)
-          break
-
-        case 'usage':
-          // Task 4 只做 Tool Loop；usage 持久化留给后续运行记录任务。
-          break
-
-        case 'response_completed':
-          finishReason = event.finishReason
-          break
-      }
+  for await (const event of events) {
+    if (finishReason) {
+      throw new ModelSamplingIncompleteError(
+        '模型在 response_completed 之后仍返回了额外事件。',
+      )
     }
-  }
-  catch (cause) {
-    if (cause instanceof ModelSamplingIncompleteError)
-      throw cause
 
-    throw new ModelSamplingInterruptedError(
-      cause,
-      textChunks,
-      toolCalls.length > 0,
-    )
+    switch (event.type) {
+      case 'text_delta':
+        if (!outputMode)
+          outputMode = 'final_answer'
+
+        if (outputMode === 'final_answer') {
+          // ponytail: 已发送的前端 delta 无法撤回；工具调用必须先于文本出现，否则本轮失败。
+          yield event.delta
+        }
+        else {
+          intermediateTextChunks.push(event.delta)
+        }
+        break
+
+      case 'tool_call_completed':
+        if (outputMode === 'final_answer') {
+          throw new ModelSamplingIncompleteError(
+            '模型在最终回答文本之后又返回了 Tool Call，当前流协议无法安全执行该调用。',
+          )
+        }
+
+        outputMode = 'tool_call'
+        toolCalls.push(event.toolCall)
+        break
+
+      case 'usage':
+        // Task 4 只做 Tool Loop；usage 持久化留给后续运行记录任务。
+        break
+
+      case 'response_completed':
+        finishReason = event.finishReason
+        break
+    }
   }
 
   if (!finishReason) {
@@ -97,7 +90,7 @@ export async function collectModelSampling(
     return {
       type: 'tool_call',
       call: toToolCallEnvelope(toolCalls[0]!, samplingAttemptId),
-      intermediateText: textChunks.join(''),
+      intermediateText: intermediateTextChunks.join(''),
     }
   }
 
@@ -113,7 +106,6 @@ export async function collectModelSampling(
 
   return {
     type: 'final_answer',
-    textChunks,
   }
 }
 

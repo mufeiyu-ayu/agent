@@ -27,6 +27,7 @@ import {
   MessageRole,
   MessageStatus,
 } from '../generated/prisma/client.js'
+import { buildSeoAgentChatMessages } from '../seo/prompts/seo-agent.prompt.js'
 import { AgentRuntimeService } from './agent-runtime.service.js'
 
 describe('AgentRuntimeService model stream', () => {
@@ -57,11 +58,39 @@ describe('AgentRuntimeService model stream', () => {
     )
   })
 
+  it('在 response_completed 前实时产出普通回答 delta', async () => {
+    const completionGate = createDeferred()
+    const harness = createHarness(() => delayedCompletionModelStream(
+      '实时回答',
+      completionGate.promise,
+    ))
+    const stream = harness.run()
+
+    assert.equal((await stream.next()).value?.type, 'run_started')
+
+    const deltaPromise = stream.next()
+    const yieldedBeforeCompletion = await Promise.race([
+      deltaPromise.then(() => true),
+      new Promise<false>(resolve => setImmediate(() => resolve(false))),
+    ])
+
+    completionGate.resolve()
+    const delta = await deltaPromise
+    const remainingEvents = await collectEvents(stream)
+
+    assert.equal(yieldedBeforeCompletion, true)
+    assert.equal(delta.value?.type, 'assistant_delta')
+    assert.equal(
+      delta.value?.type === 'assistant_delta' ? delta.value.contentDelta : undefined,
+      '实时回答',
+    )
+    assert.deepEqual(remainingEvents.map(event => event.type), ['run_completed'])
+  })
+
   it('执行一次工具并把 Observation 回填第二轮模型输入', async () => {
     const streams: ModelStreamEvent[][] = [
       [
-        { type: 'text_delta', delta: '我先查一下。' },
-        toolCallEvent('call-1', 'search_articles', '{"query":"seo"}'),
+        toolCallEvent('call-1', 'search_articles', '{"query":"SP Himeko"}'),
         { type: 'response_completed', finishReason: 'tool_calls' },
       ],
       [
@@ -84,7 +113,7 @@ describe('AgentRuntimeService model stream', () => {
     assert.deepEqual(harness.toolInvocations, [{
       callId: 'call-1',
       toolName: 'search_articles',
-      rawArgumentsJson: '{"query":"seo"}',
+      rawArgumentsJson: '{"query":"SP Himeko"}',
       samplingAttemptId: 'run-1:sampling-1',
     }])
     assert.equal(harness.llmCalls.length, 2)
@@ -93,8 +122,7 @@ describe('AgentRuntimeService model stream', () => {
         type: 'assistant_tool_call',
         callId: 'call-1',
         name: 'search_articles',
-        rawArgumentsJson: '{"query":"seo"}',
-        content: '我先查一下。',
+        rawArgumentsJson: '{"query":"SP Himeko"}',
       },
       {
         type: 'tool_result',
@@ -107,6 +135,43 @@ describe('AgentRuntimeService model stream', () => {
     assert.equal(harness.assistantMessage()?.content, '找到相关文章。')
     assert.equal(harness.assistantMessage()?.status, MessageStatus.COMPLETED)
     assert.doesNotMatch(harness.assistantMessage()?.content ?? '', /sourceId|article-1/)
+  })
+
+  it('在 response_completed 前实时产出第二轮最终回答 delta', async () => {
+    const completionGate = createDeferred()
+    const harness = createHarness((_, __, callIndex) => callIndex === 0
+      ? toModelStream([
+          toolCallEvent(
+            'call-1',
+            'search_articles',
+            '{"query":"Silver Wolf","languageCode":"zh-cn","limit":3}',
+          ),
+          { type: 'response_completed', finishReason: 'tool_calls' },
+        ])
+      : delayedCompletionModelStream('找到 1 篇文章。', completionGate.promise))
+    const stream = harness.run()
+
+    assert.equal((await stream.next()).value?.type, 'run_started')
+
+    const deltaPromise = stream.next()
+    const yieldedBeforeCompletion = await Promise.race([
+      deltaPromise.then(() => true),
+      new Promise<false>(resolve => setImmediate(() => resolve(false))),
+    ])
+
+    completionGate.resolve()
+    const delta = await deltaPromise
+    const remainingEvents = await collectEvents(stream)
+
+    assert.equal(yieldedBeforeCompletion, true)
+    assert.equal(delta.value?.type, 'assistant_delta')
+    assert.equal(
+      delta.value?.type === 'assistant_delta' ? delta.value.contentDelta : undefined,
+      '找到 1 篇文章。',
+    )
+    assert.deepEqual(remainingEvents.map(event => event.type), ['run_completed'])
+    assert.equal(harness.llmCalls.length, 2)
+    assert.equal(harness.toolInvocations.length, 1)
   })
 
   it('把工具安全失败作为 Observation 交给第二轮解释', async () => {
@@ -312,6 +377,26 @@ describe('AgentRuntimeService model stream', () => {
     assert.equal(harness.llmCalls.length, 1)
     assert.equal(harness.assistantMessage()?.status, MessageStatus.ABORTED)
     assert.deepEqual(harness.recorder.abortedRunIds, ['run-1'])
+  })
+})
+
+describe('SEO Agent tool guidance', () => {
+  it('明确站内文章查询和无结果回答边界', () => {
+    const systemMessage = buildSeoAgentChatMessages([])[0]
+
+    assert.equal(systemMessage?.role, 'system')
+    for (const instruction of [
+      'search_articles',
+      '不要先输出说明文字',
+      '只解释能力，不调用 search_articles',
+      '不要为了举例自动执行查询',
+      '关键词查询',
+      '不是 RAG',
+      'Observation',
+      '不要编造文章',
+    ]) {
+      assert.match(systemMessage?.content ?? '', new RegExp(instruction))
+    }
   })
 })
 
@@ -531,6 +616,15 @@ async function* toModelStream(
   yield* events
 }
 
+async function* delayedCompletionModelStream(
+  content: string,
+  completionGate: Promise<void>,
+): AsyncGenerator<ModelStreamEvent> {
+  yield { type: 'text_delta', delta: content }
+  await completionGate
+  yield { type: 'response_completed', finishReason: 'stop' }
+}
+
 async function* failingModelStream(): AsyncGenerator<ModelStreamEvent> {
   yield { type: 'text_delta', delta: '部分' }
   throw new Error('provider unavailable')
@@ -569,4 +663,16 @@ async function collectEvents(
     events.push(event)
 
   return events
+}
+
+function createDeferred(): {
+  promise: Promise<void>
+  resolve: () => void
+} {
+  let resolve!: () => void
+  const promise = new Promise<void>((done) => {
+    resolve = done
+  })
+
+  return { promise, resolve }
 }

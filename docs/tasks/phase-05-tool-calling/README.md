@@ -84,9 +84,28 @@
 - `ToolResult.modelContent` 与同一 `callId` 的 Tool Call 配对后作为 Observation 回填；`ToolResult.data`、工具 JSON 和第一轮中间文本不会写入用户可见 `Message`。
 - unknown tool、invalid arguments 和低风险工具安全失败会作为脱敏 Observation 进入第二轮；Abort 在 sampling、工具执行和第二轮前后保持 `ABORTED` 终态。
 - OpenAI-compatible 请求携带模型工具定义并设置 `parallel_tool_calls: false`，Runtime 同时兜底拒绝多个 Tool Call。
-- 前端 `ChatStreamEvent` 仍为 `start / delta / done / error / aborted`；发生工具调用时，首个 `delta` 会等到第二轮最终回答完成判断后再回放。
-- `test:tool-loop` 11 个用例、`test:model-stream` 19 个用例、`test:tools` 17 个用例，以及 API typecheck/lint、workspace typecheck、`git diff --check` 通过。
+- 前端 `ChatStreamEvent` 仍为 `start / delta / done / error / aborted`；普通回答和工具后的第二轮最终回答都会在模型 `text_delta` 到达时实时产出 `assistant_delta`，不再等待 `response_completed` 后回放。
+- SEO Agent system prompt 明确：用户查询站内已有文章时调用 `search_articles`；单纯询问数据库或工具能力时只解释、不调用，也不为举例自动查询；该工具只做关键词查询而不是 RAG；有结果时基于 Observation 回答，无结果时明确说明且不得编造文章。工具调用前不得先输出说明文字；若模型先输出最终文本又请求工具，Runtime 会拒绝该不安全混合响应。
+- `test:tool-loop` 补充普通回答、第二轮最终回答在 `response_completed` 前产出 delta 的时序测试，以及 SEO Agent 工具说明边界测试。
+- `test:tool-loop` 14 个用例、`test:model-stream` 22 个用例、`test:tools` 17 个用例，以及 API typecheck/lint、workspace typecheck、`git diff --check` 通过。
+- 使用当前 DeepSeek 配置进行本地真实流验证：“你能查数据库吗？请简短回答。”只产生实时文本并以 `done` 结束；SP Himeko 查询实际返回 1 篇中文文章，工具后的最终回答实时输出。临时会话已删除。
 - 实施状态：已实现；验收状态：待验收；任务状态：不得标记 Completed。Task 5 保持 Planned。
+
+### Task 4 手工验收问题
+
+以下问题基于 `prisma/fixtures/articles.json` 当前 68 条真实 seed，并按 `search_articles` 的不区分大小写关键词包含查询验证：
+
+| 问题 | `zh-cn` 预期匹配数 | 验收重点 |
+| --- | ---: | --- |
+| 查一下 zh-cn 里关于 SP Himeko 的文章，最多 3 条 | 1 | 调用工具并基于 sourceId 24 的 Observation 回答 |
+| 查一下 zh-cn 里关于 Honkai: Star Rail 的文章 | 2 | 标题、slug、SEO 字段或正文任一字段包含关键词都可命中 |
+| 查一下 zh-cn 里关于 Silver Wolf 的文章 | 1 | 命中 sourceId 24 的正文关键词 |
+| 查一下 zh-cn 里关于 4.4 更新的文章 | 1 | 命中 sourceId 24 的 SEO 描述或正文关键词 |
+| 查一下 zh-cn 里关于 completely-not-exist-xyz 的文章 | 0 | 明确说明没有找到，不编造文章 |
+
+普通流式回归可使用“请用三点说明网站内容审计的基本思路”；验收时应看到回答逐步到达，而不是整段一次出现。默认手工验收不再使用当前 seed 无匹配的“图片优化”“sitemap”“SEO title”等问题。
+
+能力边界回归可询问“你能查数据库吗”：预期只说明可以按关键词查询站内文章，不实际调用工具，也不出现晚到 Tool Call 的协议错误。
 
 ## 关键边界
 

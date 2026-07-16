@@ -29,10 +29,7 @@ import {
   AgentRunRecorderService,
 } from './agent-run-recorder.service.js'
 import { ModelSamplingIncompleteError } from './agent-runtime.errors.js'
-import {
-  collectModelSampling,
-  ModelSamplingInterruptedError,
-} from './model-sampling-decision.js'
+import { streamModelSampling } from './model-sampling-decision.js'
 
 @Injectable()
 export class AgentRuntimeService {
@@ -175,44 +172,35 @@ export class AgentRuntimeService {
         tools: modelTools,
       }
 
-      let finalAnswer: Extract<SamplingDecision, { type: 'final_answer' }> | undefined
+      let hasFinalAnswer = false
 
       for (const samplingAttempt of [1, 2]) {
         runSignal.throwIfAborted()
-        let samplingDecision: SamplingDecision
+        const sampling = streamModelSampling(
+          this.llmService.chatStream(modelInputItems, chatStreamOptions),
+          `${currentAgentRunId}:sampling-${samplingAttempt}`,
+        )
+        let samplingResult = await sampling.next()
 
-        try {
-          samplingDecision = await collectModelSampling(
-            this.llmService.chatStream(modelInputItems, chatStreamOptions),
-            `${currentAgentRunId}:sampling-${samplingAttempt}`,
-          )
-        }
-        catch (error) {
-          if (error instanceof ModelSamplingInterruptedError) {
-            if (!error.hasToolCall) {
-              for (const textChunk of error.textChunks) {
-                await startAssistantReplyStep()
-                content += textChunk
-                yield {
-                  type: 'assistant_delta',
-                  runId: currentAgentRunId,
-                  conversationId: input.conversationId,
-                  assistantMessageId,
-                  contentDelta: textChunk,
-                }
-              }
-            }
-
-            throw error.cause
+        while (!samplingResult.done) {
+          runSignal.throwIfAborted()
+          await startAssistantReplyStep()
+          content += samplingResult.value
+          yield {
+            type: 'assistant_delta',
+            runId: currentAgentRunId,
+            conversationId: input.conversationId,
+            assistantMessageId,
+            contentDelta: samplingResult.value,
           }
-
-          throw error
+          samplingResult = await sampling.next()
         }
+        const samplingDecision: SamplingDecision = samplingResult.value
 
         runSignal.throwIfAborted()
 
         if (samplingDecision.type === 'final_answer') {
-          finalAnswer = samplingDecision
+          hasFinalAnswer = true
           break
         }
 
@@ -240,24 +228,10 @@ export class AgentRuntimeService {
         )
       }
 
-      if (!finalAnswer) {
+      if (!hasFinalAnswer) {
         throw new ModelSamplingIncompleteError(
           'Tool Loop 未产生最终回答。',
         )
-      }
-
-      for (const textChunk of finalAnswer.textChunks) {
-        runSignal.throwIfAborted()
-        await startAssistantReplyStep()
-        content += textChunk
-
-        yield {
-          type: 'assistant_delta',
-          runId: currentAgentRunId,
-          conversationId: input.conversationId,
-          assistantMessageId,
-          contentDelta: textChunk,
-        }
       }
 
       runSignal.throwIfAborted()
