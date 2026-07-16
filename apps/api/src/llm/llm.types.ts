@@ -1,3 +1,5 @@
+import type { ModelToolSpec } from './model-tool-spec.types.js'
+
 /**
  * LLM 调用相关类型定义
  *
@@ -33,6 +35,8 @@ export interface ChatOptions {
 export interface ChatStreamOptions extends ChatOptions {
   /** 外部中止信号，用于后续支持用户主动停止生成。 */
   signal?: AbortSignal
+  /** 只包含模型可见字段的工具说明。 */
+  tools?: ModelToolSpec[]
 }
 
 export const SUPPORTED_DEEPSEEK_MODELS = [

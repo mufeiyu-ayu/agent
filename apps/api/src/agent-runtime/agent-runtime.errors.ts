@@ -1,15 +1,5 @@
 import type { ModelFinishReason } from '../llm/model-stream.types.js'
 
-/** Tool Loop 尚未接入时，阻止模型 Tool Call 被静默当作成功回答。 */
-export class ToolLoopNotImplementedError extends Error {
-  constructor(toolNames: string[]) {
-    const names = [...new Set(toolNames)].join(', ') || '未知工具'
-
-    super(`模型请求了工具（${names}），但当前 Tool Loop 尚未实现。`)
-    this.name = 'ToolLoopNotImplementedError'
-  }
-}
-
 /** 当前 sampling 无法作为一条完整助手回答结束。 */
 export class ModelSamplingIncompleteError extends Error {
   constructor(message: string) {

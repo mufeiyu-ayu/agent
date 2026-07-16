@@ -1,6 +1,7 @@
 import type {
   ChatCompletionCreateParamsNonStreaming,
   ChatCompletionMessageParam,
+  ChatCompletionTool,
 } from 'openai/resources/chat/completions'
 import type {
   ChatMessage,
@@ -9,7 +10,9 @@ import type {
   DeepSeekBalanceResponse,
   DeepSeekModelsResponse,
 } from '../llm.types.js'
+import type { ModelInputItem } from '../model-input.types.js'
 import type { ModelStreamEvent } from '../model-stream.types.js'
+import type { ModelToolSpec } from '../model-tool-spec.types.js'
 import process from 'node:process'
 import { Injectable } from '@nestjs/common'
 import OpenAI, {
@@ -73,7 +76,10 @@ export class OpenAICompatibleClient {
   async chat(messages: ChatMessage[], options?: ChatOptions): Promise<string> {
     return await this.runWithLLMErrorHandling(async () => {
       const completion = await this.createClient().chat.completions.create(
-        this.buildBaseChatCompletionParams(messages, options),
+        this.buildBaseChatCompletionParams(
+          messages.map(toOpenAIChatMessage),
+          options,
+        ),
         {
           timeout: LLM_REQUEST_TIMEOUT_MS,
         },
@@ -92,7 +98,7 @@ export class OpenAICompatibleClient {
   }
 
   async* chatStream(
-    messages: ChatMessage[],
+    messages: ModelInputItem[],
     options?: ChatStreamOptions,
   ): AsyncGenerator<ModelStreamEvent> {
     const client = this.createClient()
@@ -104,7 +110,11 @@ export class OpenAICompatibleClient {
     try {
       const stream = await client.chat.completions.create(
         {
-          ...this.buildBaseChatCompletionParams(messages, options),
+          ...this.buildBaseChatCompletionParams(
+            messages.map(toOpenAIModelInputItem),
+            options,
+          ),
+          ...toOpenAIChatTools(options?.tools),
           stream: true,
           stream_options: {
             include_usage: true,
@@ -158,12 +168,12 @@ export class OpenAICompatibleClient {
   }
 
   private buildBaseChatCompletionParams(
-    messages: ChatMessage[],
+    messages: ChatCompletionMessageParam[],
     options?: ChatOptions,
   ): ChatCompletionBaseParams {
     const params: ChatCompletionBaseParams = {
       model: this.getModel(options),
-      messages: messages.map(toOpenAIChatMessage),
+      messages,
       temperature: options?.temperature ?? DEFAULT_CHAT_TEMPERATURE,
       max_tokens: options?.maxTokens ?? DEFAULT_CHAT_MAX_TOKENS,
     }
@@ -234,4 +244,65 @@ function toOpenAIChatMessage(message: ChatMessage): ChatCompletionMessageParam {
     role: message.role,
     content: message.content,
   }
+}
+
+export function toOpenAIModelInputItem(
+  item: ModelInputItem,
+): ChatCompletionMessageParam {
+  switch (item.type) {
+    case 'message':
+      return {
+        role: item.role,
+        content: item.content,
+      }
+
+    case 'assistant_tool_call':
+      return {
+        role: 'assistant',
+        content: item.content ?? null,
+        tool_calls: [{
+          id: item.callId,
+          type: 'function',
+          function: {
+            name: item.name,
+            arguments: item.rawArgumentsJson,
+          },
+        }],
+      }
+
+    case 'tool_result':
+      return {
+        role: 'tool',
+        tool_call_id: item.callId,
+        content: item.content,
+      }
+  }
+}
+
+export function toOpenAIChatTool(tool: ModelToolSpec): ChatCompletionTool {
+  return {
+    type: 'function',
+    function: {
+      name: tool.name,
+      description: tool.description,
+      parameters: {
+        type: tool.inputSchema.type,
+        properties: tool.inputSchema.properties,
+        required: tool.inputSchema.required,
+        additionalProperties: tool.inputSchema.additionalProperties,
+      },
+    },
+  }
+}
+
+export function toOpenAIChatTools(tools: ModelToolSpec[] | undefined): {
+  tools?: ChatCompletionTool[]
+  parallel_tool_calls?: false
+} {
+  return tools?.length
+    ? {
+        tools: tools.map(toOpenAIChatTool),
+        parallel_tool_calls: false,
+      }
+    : {}
 }

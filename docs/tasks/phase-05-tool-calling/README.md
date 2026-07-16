@@ -1,6 +1,6 @@
 # 阶段 5：最小 Tool Calling
 
-状态：进行中。Task 0-3 已完成并通过验收，Task 4 保持 Planned。
+状态：进行中。Task 0-3 已完成并通过验收；Task 4 已实现、待验收；Task 5 保持 Planned。
 
 ## 阶段目标
 
@@ -42,7 +42,7 @@
 | Task 1 | Completed | 将纯文本模型流升级为 provider-neutral `ModelStreamEvent`，让 Runtime 能识别文本、Tool Call 和本次 sampling 的结束原因 |
 | Task 2 | Completed | 定义最小 `ToolDefinition`、`ToolRegistry`、参数验证、执行与结果边界 |
 | Task 3 | Completed | 实现第一只只读工具 `search_articles`，查询并返回精简文章信息 |
-| Task 4 | Planned | 实现单 Agent Tool Loop：模型请求工具、后端执行、Observation 回填、模型继续生成最终回答 |
+| Task 4 | 已实现，待验收 | 实现单 Agent Tool Loop：模型请求工具、后端执行、Observation 回填、模型继续生成最终回答 |
 | Task 5 | Planned | 将模型调用、工具执行和工具结果记录到 `AgentStep`，保持当前前端 stream 协议稳定 |
 
 ## Task 1 完成结果
@@ -75,6 +75,18 @@
 - `test:tools` 覆盖 Registry、模型 spec、参数校验、查询参数、精简输出、无结果和风险边界；既有模型流回归、API typecheck/lint 与 workspace typecheck 通过。
 - Codex Review 提出的 LIKE 通配符问题已修复并复审通过；PR #10 已合并，Issue #9 已关闭。
 - 实施状态：已实现；验收状态：已通过；任务状态：Completed。Task 4 保持 Planned。
+
+## Task 4 实现结果
+
+- 新增内部 `ModelInputItem`，分离普通消息、`assistant_tool_call` 与 `tool_result`；Provider adapter 将其映射为 OpenAI-compatible messages。
+- Runtime 只向模型暴露现有 `search_articles`，并通过 `ToolInvocationService.invoke()` 执行模型提出的唯一工具调用。
+- 单轮 sampling 判断显式拒绝缺失完成事件、结束原因冲突、同轮多个 Tool Call 和非完整回答；Tool Loop 最多执行一次工具、最多进行两轮 sampling。
+- `ToolResult.modelContent` 与同一 `callId` 的 Tool Call 配对后作为 Observation 回填；`ToolResult.data`、工具 JSON 和第一轮中间文本不会写入用户可见 `Message`。
+- unknown tool、invalid arguments 和低风险工具安全失败会作为脱敏 Observation 进入第二轮；Abort 在 sampling、工具执行和第二轮前后保持 `ABORTED` 终态。
+- OpenAI-compatible 请求携带模型工具定义并设置 `parallel_tool_calls: false`，Runtime 同时兜底拒绝多个 Tool Call。
+- 前端 `ChatStreamEvent` 仍为 `start / delta / done / error / aborted`；发生工具调用时，首个 `delta` 会等到第二轮最终回答完成判断后再回放。
+- `test:tool-loop` 11 个用例、`test:model-stream` 19 个用例、`test:tools` 17 个用例，以及 API typecheck/lint、workspace typecheck、`git diff --check` 通过。
+- 实施状态：已实现；验收状态：待验收；任务状态：不得标记 Completed。Task 5 保持 Planned。
 
 ## 关键边界
 
