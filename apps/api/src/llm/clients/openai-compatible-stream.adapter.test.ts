@@ -12,7 +12,7 @@ import {
 } from './openai-compatible.client.js'
 
 describe('OpenAI-compatible request mapping', () => {
-  it('映射 Tool Call、Tool Result 和单工具执行偏好', () => {
+  it('映射 Tool Call、Tool Result 和工具定义', () => {
     assert.deepEqual(toOpenAIModelInputItem({
       type: 'assistant_tool_call',
       callId: 'call-1',
@@ -68,7 +68,6 @@ describe('OpenAI-compatible request mapping', () => {
           },
         },
       }],
-      parallel_tool_calls: false,
     })
   })
 })

@@ -297,12 +297,10 @@ export function toOpenAIChatTool(tool: ModelToolSpec): ChatCompletionTool {
 
 export function toOpenAIChatTools(tools: ModelToolSpec[] | undefined): {
   tools?: ChatCompletionTool[]
-  parallel_tool_calls?: false
 } {
   return tools?.length
     ? {
         tools: tools.map(toOpenAIChatTool),
-        parallel_tool_calls: false,
       }
     : {}
 }
