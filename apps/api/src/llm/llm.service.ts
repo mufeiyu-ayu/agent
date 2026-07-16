@@ -5,6 +5,7 @@ import type {
   DeepSeekBalanceResponse,
   DeepSeekModelsResponse,
 } from './llm.types.js'
+import type { ModelInputItem } from './model-input.types.js'
 import type { ModelStreamEvent } from './model-stream.types.js'
 import { Inject, Injectable } from '@nestjs/common'
 
@@ -42,12 +43,12 @@ export class LLMService {
    *
    * 该方法只适配模型侧 OpenAI-compatible SSE，不暴露原始 chunk 给业务层。
    *
-   * @param messages - 消息数组（system / user / assistant）
+   * @param messages - Runtime 组装的普通消息、Tool Call 和 Tool Result 输入
    * @param options  - 可选：覆盖模型参数，并可传入 AbortSignal 中止读取
    * @returns 按模型输出顺序 yield 的文本、Tool Call、usage 和完成事件
    */
   chatStream(
-    messages: ChatMessage[],
+    messages: ModelInputItem[],
     options?: ChatStreamOptions,
   ): AsyncGenerator<ModelStreamEvent> {
     return this.llmClient.chatStream(messages, options)

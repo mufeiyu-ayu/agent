@@ -6,6 +6,71 @@ import { describe, it } from 'node:test'
 
 import { LLMApiError } from '../llm.errors.js'
 import { adaptOpenAICompatibleStream } from './openai-compatible-stream.adapter.js'
+import {
+  toOpenAIChatTools,
+  toOpenAIModelInputItem,
+} from './openai-compatible.client.js'
+
+describe('OpenAI-compatible request mapping', () => {
+  it('映射 Tool Call、Tool Result 和工具定义', () => {
+    assert.deepEqual(toOpenAIModelInputItem({
+      type: 'assistant_tool_call',
+      callId: 'call-1',
+      name: 'search_articles',
+      rawArgumentsJson: '{"query":"seo"}',
+    }), {
+      role: 'assistant',
+      content: null,
+      tool_calls: [{
+        id: 'call-1',
+        type: 'function',
+        function: {
+          name: 'search_articles',
+          arguments: '{"query":"seo"}',
+        },
+      }],
+    })
+    assert.deepEqual(toOpenAIModelInputItem({
+      type: 'tool_result',
+      callId: 'call-1',
+      name: 'search_articles',
+      content: '找到 1 篇文章。',
+      ok: true,
+    }), {
+      role: 'tool',
+      tool_call_id: 'call-1',
+      content: '找到 1 篇文章。',
+    })
+    assert.deepEqual(toOpenAIChatTools([{
+      name: 'search_articles',
+      description: '按关键词搜索文章。',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          query: { type: 'string' },
+        },
+        required: ['query'],
+        additionalProperties: false,
+      },
+    }]), {
+      tools: [{
+        type: 'function',
+        function: {
+          name: 'search_articles',
+          description: '按关键词搜索文章。',
+          parameters: {
+            type: 'object',
+            properties: {
+              query: { type: 'string' },
+            },
+            required: ['query'],
+            additionalProperties: false,
+          },
+        },
+      }],
+    })
+  })
+})
 
 describe('adaptOpenAICompatibleStream', () => {
   it('保留文本、usage 和 stop 完成事件的顺序', async () => {

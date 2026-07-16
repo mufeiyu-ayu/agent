@@ -6,7 +6,7 @@
 
 | 类型 | 当前记录 | 下一步 |
 | --- | --- | --- |
-| 当前阶段 | 阶段 4 Agent Runtime 基础已归档；阶段 5 进行中，Task 0-3 已完成并通过验收 | 下一步进入 Task 4：单 Agent Tool Loop；Task 5 保持 Planned |
+| 当前阶段 | 阶段 4 Agent Runtime 基础已归档；阶段 5 进行中，Task 0-3 已完成并通过验收；Task 4 已实现、待验收 | 下一步由 GPT / 用户验收 Task 4；Task 5 保持 Planned |
 | 文档结构 | docs 已重组为 `roadmap`、`tasks`、`research`、`work-log` 四类入口；当前任务以 `docs/tasks/README.md` 为准 | 后续 commit 按 task docs 和 work-log 分工更新 |
 | 任务规范 | 新任务使用 TDD 风格模板；已完成阶段保留在 `docs/tasks/completed/`，当前任务目录只保留可执行阶段入口 | 后续任务继续按 Red / Green / Refactor 推进 |
 | Codex 研究 | 已基于本地 Codex fork 与当前 Agent 源码重建 `docs/research/`：形成架构报告、学习清单、云端映射和 14 个分阶段学习目录 | 作为阶段 5 及后续任务的研究依据；真实执行状态仍以 `docs/tasks/` 为准 |
@@ -16,6 +16,8 @@
 
 | 日期 | 提交 | 类型 | 核心完成 | 关键文件 | 验证结果 |
 | --- | --- | --- | --- | --- | --- |
+| 2026-07-16 | PR #12 手工验收修复 | fix / Agent Runtime / Tool Calling | 修复普通回答与工具后第二轮回答等待完整 sampling 后回放的问题，改为在 `response_completed` 前实时产出 delta；SEO Agent 增加 `search_articles` 的关键词查询、Observation、能力询问不执行工具和零结果不编造说明；手工验收问题改为基于真实 Article seed | `apps/api/src/agent-runtime/**`、`apps/api/src/seo/prompts/seo-agent.prompt.ts`、阶段 5 任务文档 | Red 测试复现 2 个时序失败和 1 个 prompt 边界失败；Green 阶段 14 个 tool loop、22 个 model stream、17 个 tools 测试通过；API typecheck/lint、workspace typecheck、`git diff --check` 通过；真实 DeepSeek 流验证能力询问无 Tool Call 错误、SP Himeko 返回 1 篇并实时输出 |
+| 2026-07-16 | Issue #11 实现 | feat / Agent Runtime / Tool Calling | 完成最多一次工具调用、最多两轮 sampling 的单 Agent Tool Loop；只暴露 `search_articles`，统一经 `ToolInvocationService.invoke()` 执行，将 `ToolResult.modelContent` 作为 Observation 回填第二轮；最终用户消息只保存最终回答，前端 stream 协议不变；Task 4 已实现、待验收，Task 5 保持 Planned | `apps/api/src/agent-runtime/**`、`apps/api/src/llm/**`、阶段 5 状态文档 | 11 个 tool loop、19 个 model stream、17 个 tools 测试通过；API typecheck/lint、workspace typecheck、`git diff --check` 通过 |
 | 2026-07-15 | PR #10 验收合并收口 | feat / Tool Calling | GPT 验收 Issue #9 / PR #10 通过，用户授权后合并到 `master` 并确认远程分支已清理；Task 3 标记为 Completed，阶段 5 保持 In Progress，Task 4 保持 Planned；新增第一只只读业务工具 `search_articles`，返回受控文章字段、截断 excerpt 与可供后续 Observation 使用的 `modelContent` | `apps/api/src/tools/search-articles.tool.ts`、对应测试、`apps/api/src/tools/tools.module.ts`、阶段 5 状态文档 | 17 个 tools 测试、12 个 model stream 回归、API typecheck/lint、workspace typecheck、`git diff --check` 通过；Codex Review 的 LIKE 通配符问题已修复并复审无 major issues；merge commit `d4a73c7` |
 | 2026-07-12 | PR #2 验收收口 | docs / Tool Calling | GPT 与用户确认 Issue #1 验收通过；Task 2 标记为 Completed，阶段 5 保持 In Progress，Task 3 保持 Planned；记录 Abort 前后检查、低风险 fail-closed 修复，以及 `timeoutMs` 仅保留 metadata、超时执行逻辑留待后续的范围裁定 | `docs/tasks/phase-05-tool-calling/README.md`、`docs/tasks/README.md`、`docs/roadmap.md`、`docs/work-log.md` | docs 结构与状态一致性检查、`git diff --check` 通过 |
 | 2026-07-12 | 9825394、a6bc873 / Draft PR #2 | feat / Tool Calling | 完成 Issue #1 的最小 Tool Contract、Registry、参数验证、统一执行结果和 provider-neutral `ModelToolSpec` 映射；Review 后补齐 Abort 前后检查与低风险 fail-closed；实施状态已实现，验收状态已通过 | `apps/api/src/tools/**`、`apps/api/src/llm/model-tool-spec.types.ts`、`apps/api/src/app.module.ts`、`apps/api/package.json`、`docs/tasks/phase-05-tool-calling/README.md` | 13 个 tools 测试、12 个 model stream 回归、API typecheck/lint、workspace typecheck、`git diff --check` 通过；全仓 lint 仍被既有 research Markdown 的 97 个错误阻断 |

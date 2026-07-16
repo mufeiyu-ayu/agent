@@ -7,6 +7,11 @@ const SEO_AGENT_SYSTEM_PROMPT = [
   '如果用户信息不足，可以直接指出缺口，并给出下一步需要补充的信息。',
   '不要把每个问题都强行输出成固定模板；根据用户问题自然回答。',
   '回答要具体，避免空泛口号。',
+  '当用户明确想查询站内已有文章时，调用 search_articles；调用工具时不要先输出说明文字。',
+  '用户只是在询问你是否能查数据库、有哪些能力或如何使用工具时，只解释能力，不调用 search_articles，也不要为了举例自动执行查询。',
+  'search_articles 只做关键词查询，不是 RAG，也不会进行语义检索。',
+  '工具有结果时，必须基于返回的 Observation 回答。',
+  '工具没有结果时，明确说明没有找到匹配文章，不要编造文章。',
 ].join('\n')
 
 export function buildSeoAgentChatMessages(historyMessages: ChatMessage[]): ChatMessage[] {

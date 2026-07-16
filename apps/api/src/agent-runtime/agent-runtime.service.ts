@@ -4,28 +4,32 @@ import type {
   MessageStatus as PrismaMessageStatus,
 } from '../generated/prisma/client.js'
 import type { ChatMessage } from '../llm/llm.types.js'
+import type { ModelInputItem } from '../llm/model-input.types.js'
 import type {
-  ModelFinishReason,
-  UnvalidatedModelToolCall,
-} from '../llm/model-stream.types.js'
+  ToolResult,
+  UnvalidatedToolCallEnvelope,
+} from '../tools/tool.types.js'
 import type { AgentStepType } from './agent-run-recorder.service.js'
 import type {
   AgentRuntimeEvent,
   RunTurnStreamInput,
 } from './agent-runtime.types.js'
+import type { SamplingDecision } from './model-sampling-decision.js'
 import { Inject, Injectable, NotFoundException } from '@nestjs/common'
 
 import { MessageRole, MessageStatus } from '../generated/prisma/client.js'
 import { LLMService } from '../llm/llm.service.js'
+import { toModelInputItems } from '../llm/model-input.types.js'
 import { PrismaService } from '../prisma/prisma.service.js'
+import { toModelToolSpec } from '../tools/model-tool-spec.mapper.js'
+import { ToolInvocationService } from '../tools/tool-invocation.service.js'
+import { ToolRegistryService } from '../tools/tool-registry.service.js'
 import {
   AGENT_STEP_TYPES,
   AgentRunRecorderService,
 } from './agent-run-recorder.service.js'
-import {
-  ModelSamplingIncompleteError,
-  ToolLoopNotImplementedError,
-} from './agent-runtime.errors.js'
+import { ModelSamplingIncompleteError } from './agent-runtime.errors.js'
+import { streamModelSampling } from './model-sampling-decision.js'
 
 @Injectable()
 export class AgentRuntimeService {
@@ -38,6 +42,12 @@ export class AgentRuntimeService {
 
     @Inject(AgentRunRecorderService)
     private readonly agentRunRecorderService: AgentRunRecorderService,
+
+    @Inject(ToolRegistryService)
+    private readonly toolRegistryService: ToolRegistryService,
+
+    @Inject(ToolInvocationService)
+    private readonly toolInvocationService: ToolInvocationService,
   ) {}
 
   async* runTurnStream(input: RunTurnStreamInput): AsyncGenerator<AgentRuntimeEvent> {
@@ -93,6 +103,11 @@ export class AgentRuntimeService {
       const llmMessages = input.buildModelMessages(
         historyMessages.map(message => this.toLlmMessage(message)),
       )
+      const modelInputItems = toModelInputItems(llmMessages)
+      const modelTools = this.toolRegistryService.listDefinitions()
+        .filter(definition => definition.name === 'search_articles')
+        .map(toModelToolSpec)
+      const runSignal = input.signal ?? new AbortController().signal
 
       assistantMessage = await this.createMessageAndTouchConversation(
         input.conversationId,
@@ -149,72 +164,77 @@ export class AgentRuntimeService {
         hasStartedAssistantReplyStep = true
       }
 
-      const modelToolCalls: UnvalidatedModelToolCall[] = []
-      let modelFinishReason: ModelFinishReason | undefined
-
-      for await (const event of this.llmService.chatStream(llmMessages, {
+      const chatStreamOptions = {
         ...(input.model ? { model: input.model } : {}),
         temperature: input.temperature,
         maxTokens: input.maxTokens,
         ...(input.signal ? { signal: input.signal } : {}),
-      })) {
-        if (modelFinishReason) {
+        tools: modelTools,
+      }
+
+      let hasFinalAnswer = false
+
+      for (const samplingAttempt of [1, 2]) {
+        runSignal.throwIfAborted()
+        const sampling = streamModelSampling(
+          this.llmService.chatStream(modelInputItems, chatStreamOptions),
+          `${currentAgentRunId}:sampling-${samplingAttempt}`,
+        )
+        let samplingResult = await sampling.next()
+
+        while (!samplingResult.done) {
+          runSignal.throwIfAborted()
+          await startAssistantReplyStep()
+          content += samplingResult.value
+          yield {
+            type: 'assistant_delta',
+            runId: currentAgentRunId,
+            conversationId: input.conversationId,
+            assistantMessageId,
+            contentDelta: samplingResult.value,
+          }
+          samplingResult = await sampling.next()
+        }
+        const samplingDecision: SamplingDecision = samplingResult.value
+
+        runSignal.throwIfAborted()
+
+        if (samplingDecision.type === 'final_answer') {
+          hasFinalAnswer = true
+          break
+        }
+
+        if (samplingAttempt === 2) {
           throw new ModelSamplingIncompleteError(
-            '模型在 response_completed 之后仍返回了额外事件。',
+            'Tool Loop 已达到最多一次工具调用、两轮 sampling 的限制。',
           )
         }
 
-        switch (event.type) {
-          case 'text_delta':
-            await startAssistantReplyStep()
-            content += event.delta
-
-            yield {
-              type: 'assistant_delta',
-              runId: currentAgentRunId,
-              conversationId: input.conversationId,
-              assistantMessageId,
-              contentDelta: event.delta,
-            }
-            break
-
-          case 'tool_call_completed':
-            modelToolCalls.push(event.toolCall)
-            break
-
-          case 'usage':
-            // Task 1 只保留内部语义；usage 持久化归入后续运行记录任务。
-            break
-
-          case 'response_completed':
-            modelFinishReason = event.finishReason
-            break
-        }
-      }
-
-      if (this.isAbortSignalTriggered(input.signal)) {
-        await this.updateMessageAndTouchConversation(
-          assistantMessageId,
-          input.conversationId,
-          content,
-          MessageStatus.ABORTED,
+        const toolResult = await this.toolInvocationService.invoke(
+          samplingDecision.call,
+          {
+            runId: currentAgentRunId,
+            conversationId: input.conversationId,
+            signal: runSignal,
+            executionAttempt: 1,
+          },
         )
-        await this.agentRunRecorderService.abortRun(currentAgentRunId)
-        hasFinalMessageStatus = true
-
-        yield {
-          type: 'run_aborted',
-          runId: currentAgentRunId,
-          conversationId: input.conversationId,
-          assistantMessageId,
-          content,
-        }
-
-        return
+        runSignal.throwIfAborted()
+        this.appendToolObservation(
+          modelInputItems,
+          samplingDecision.call,
+          samplingDecision.intermediateText,
+          toolResult,
+        )
       }
 
-      this.assertSamplingCanCompleteRun(modelFinishReason, modelToolCalls)
+      if (!hasFinalAnswer) {
+        throw new ModelSamplingIncompleteError(
+          'Tool Loop 未产生最终回答。',
+        )
+      }
 
+      runSignal.throwIfAborted()
       await startAssistantReplyStep()
       const completedMessage = await this.updateMessageAndTouchConversation(
         assistantMessageId,
@@ -430,39 +450,35 @@ export class AgentRuntimeService {
   private toChatStreamErrorMessage(error: unknown): string {
     if (error instanceof NotFoundException)
       return error.message
-    if (
-      error instanceof ToolLoopNotImplementedError
-      || error instanceof ModelSamplingIncompleteError
-    ) {
+    if (error instanceof ModelSamplingIncompleteError) {
       return error.message
     }
 
     return '模型服务暂时没有返回结果，请稍后重试。'
   }
 
-  private assertSamplingCanCompleteRun(
-    finishReason: ModelFinishReason | undefined,
-    toolCalls: UnvalidatedModelToolCall[],
+  private appendToolObservation(
+    modelInputItems: ModelInputItem[],
+    call: UnvalidatedToolCallEnvelope,
+    intermediateText: string,
+    result: ToolResult,
   ): void {
-    if (!finishReason) {
-      throw new ModelSamplingIncompleteError(
-        '模型流缺少 response_completed，当前回答未被标记为成功。',
-      )
-    }
-
-    if (finishReason === 'tool_calls') {
-      throw new ToolLoopNotImplementedError(toolCalls.map(toolCall => toolCall.name))
-    }
-
-    if (toolCalls.length > 0) {
-      throw new ModelSamplingIncompleteError(
-        `模型返回了 Tool Call，但 finish reason 为 ${finishReason}。`,
-      )
-    }
-
-    if (finishReason !== 'stop') {
-      throw ModelSamplingIncompleteError.fromFinishReason(finishReason)
-    }
+    modelInputItems.push(
+      {
+        type: 'assistant_tool_call',
+        callId: call.callId,
+        name: call.toolName,
+        rawArgumentsJson: call.rawArgumentsJson,
+        ...(intermediateText ? { content: intermediateText } : {}),
+      },
+      {
+        type: 'tool_result',
+        callId: call.callId,
+        name: call.toolName,
+        content: result.modelContent,
+        ok: result.ok,
+      },
+    )
   }
 
   private isAbortSignalTriggered(signal: AbortSignal | undefined): boolean {
