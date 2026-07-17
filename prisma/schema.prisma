@@ -47,10 +47,9 @@ enum AgentRunStatus {
 }
 
 // 单个 AgentStep 的状态。
-// 比 AgentRunStatus 多一个 PENDING：step 常先被创建占位，
-// 真正开始执行时才从 PENDING 变为 RUNNING。
+// PENDING 保留用于兼容历史数据；当前 Runtime 在真实开始时直接创建 RUNNING step。
 enum AgentStepStatus {
-  PENDING // 已登记但还没开始执行
+  PENDING // 历史占位状态；新 Runtime 不预创建未知步骤
   RUNNING // 正在执行
   COMPLETED // 执行成功
   FAILED // 执行失败（errorMessage 记录原因）
@@ -130,6 +129,8 @@ model AgentStep {
   runId        String
   // 步骤隶属于某次运行，run 删除则级联删除其所有步骤。
   run          AgentRun        @relation(fields: [runId], references: [id], onDelete: Cascade)
+  // 同一 Run 内的稳定执行顺序，从 1 开始单调递增。
+  sequence     Int
 
   // 步骤类型用字符串而非枚举：步骤种类会随功能演进不断新增
   // （未来加 Tool Calling 等），用 String 避免频繁改 schema/迁移。
@@ -146,14 +147,14 @@ model AgentStep {
   // 仅失败步骤填写，记录错误摘要。
   errorMessage String?
 
-  // 步骤真正开始 / 结束的时间。PENDING 阶段两者都为空，
-  // 与 createdAt（行创建时间）区分：createdAt 一定有，startedAt 不一定。
+  // 步骤真正开始 / 结束的时间；与行创建时间区分。
   startedAt    DateTime?
   endedAt      DateTime?
   createdAt    DateTime        @default(now())
   updatedAt    DateTime        @updatedAt
 
   @@index([runId])
+  @@unique([runId, sequence])
   // 按「某次 run 的某类步骤」查询，用复合索引。
   @@index([runId, type])
   @@index([status])
