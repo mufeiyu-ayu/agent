@@ -4,7 +4,7 @@
 
 ## 当前判断
 
-项目已经完成从固定字段 SEO 生成器到 Session Chat 的迁移，并完成流式输出最终态一致性收口。阶段 4 Agent Runtime 基础已归档；阶段 5 的 Task 0-5 已完成并通过验收，Tool Calling 可靠性与 `AgentStep` 运行记录已随 PR #15 合并到 `master`。阶段 5 暂不归档，下一步先完成 Issue #14，统一同步与流式 SEO Chat 的 Agent Runtime 路径；当前不推进 RAG 或多 Agent。
+项目已经完成从固定字段 SEO 生成器到 Session Chat 的迁移，并完成流式输出最终态一致性收口。阶段 4 Agent Runtime 基础已归档；阶段 5 的 Task 0-5 已完成并通过验收，Tool Calling 可靠性与 `AgentStep` 运行记录已随 PR #15 合并到 `master`。Issue #14 已实现、待验收：同步与流式 SEO Chat 已共享唯一 Agent Runtime 路径。阶段 5 暂不归档，当前不推进阶段 6、RAG 或多 Agent。
 
 ## 阶段路线
 
@@ -23,7 +23,7 @@
 
 | 优先级 | 任务 | 说明 |
 | --- | --- | --- |
-| P0 | Issue #14：统一同步与流式 SEO Chat Runtime | 移除同步 `/seo/chat` 绕过 Agent Runtime 的旁路，让两个入口共享 Message、Run、Step 和 Tool Loop 语义；通过验收后归档阶段 5 |
+| P0 | 验收 Issue #14：统一同步与流式 SEO Chat Runtime | 实现已完成；下一步由 GPT / 用户验证两个入口共享 Message、Run、Step 和 Tool Loop 语义，验收并明确确认后再归档阶段 5 |
 | P1 | Context 管理增强 | 阶段 5 稳定后再加入页面数据、关键词、工具 Observation 和预算规则 |
 | P2 | 阶段 6 Human-in-the-loop | 有中风险或写操作工具前，再实现用户确认与审批接口 |
 

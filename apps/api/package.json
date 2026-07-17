@@ -11,6 +11,7 @@
     "start": "node dist/main.js",
     "test:agent-recorder": "tsx --test src/agent-runtime/agent-run-recorder.service.test.ts",
     "test:model-stream": "tsx --test src/llm/clients/openai-compatible-stream.adapter.test.ts src/agent-runtime/agent-runtime.service.test.ts src/agent-runtime/model-sampling-decision.test.ts",
+    "test:seo-service": "tsx --test src/seo/seo.service.test.ts",
     "test:tool-loop": "tsx --test src/agent-runtime/agent-runtime.service.test.ts",
     "test:tools": "tsx --test src/tools/**/*.test.ts",
     "pretypecheck": "pnpm --workspace-root prisma:generate",

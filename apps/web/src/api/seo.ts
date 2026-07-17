@@ -2,19 +2,10 @@ import type {
   ApiErrorResponse,
   ChatStreamEvent,
   SeoChatRequest,
-  SeoChatResponse,
 } from '@agent/contracts'
-
-import { http } from './http'
 
 interface StreamChatWithSeoAgentOptions {
   signal?: AbortSignal
-}
-
-export async function chatWithSeoAgent(payload: SeoChatRequest): Promise<SeoChatResponse> {
-  const response = await http.post<SeoChatResponse>('/api/seo/chat', payload)
-
-  return response.data
 }
 
 export async function* streamChatWithSeoAgent(

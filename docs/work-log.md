@@ -6,7 +6,7 @@
 
 | 类型 | 当前记录 | 下一步 |
 | --- | --- | --- |
-| 当前阶段 | 阶段 4 Agent Runtime 基础已归档；阶段 5 进行中，Task 0-5 已完成并通过验收；PR #15 已合并到 `master` | 下一步处理 Issue #14，统一同步与流式 SEO Chat 的 Agent Runtime 路径；通过验收后再归档阶段 5 |
+| 当前阶段 | 阶段 4 Agent Runtime 基础已归档；阶段 5 进行中，Task 0-5 已完成并通过验收；Issue #14 已实现、待验收 | 下一步由 GPT / 用户验收 Issue #14；明确确认后再归档阶段 5，当前不推进阶段 6 |
 | 文档结构 | docs 已重组为 `roadmap`、`tasks`、`research`、`work-log` 四类入口；当前任务以 `docs/tasks/README.md` 为准 | 后续 commit 按 task docs 和 work-log 分工更新 |
 | 任务规范 | 新任务使用 TDD 风格模板；已完成阶段保留在 `docs/tasks/completed/`，当前任务目录只保留可执行阶段入口 | 后续任务继续按 Red / Green / Refactor 推进 |
 | Codex 研究 | 已基于本地 Codex fork 与当前 Agent 源码重建 `docs/research/`：形成架构报告、学习清单、云端映射和 14 个分阶段学习目录 | 作为阶段 5 及后续任务的研究依据；真实执行状态仍以 `docs/tasks/` 为准 |
@@ -16,6 +16,7 @@
 
 | 日期 | 提交 | 类型 | 核心完成 | 关键文件 | 验证结果 |
 | --- | --- | --- | --- | --- | --- |
+| 2026-07-18 | Issue #14 实现 | refactor / Agent Runtime | 保留同步与流式两个后端入口，但统一为唯一 `AgentRuntimeService.runTurnStream()`；同步入口只做安全终态聚合，删除直接 LLM / Prisma / history / Message 旁路；删除 Web 未使用的非流式 helper，Vue 主路径与 stream contract 不变；Issue #14 已实现、待验收，阶段 5 保持 In Progress | `apps/api/src/seo/seo.service.ts`、`seo.service.test.ts`、`seo.module.ts`、`apps/web/src/api/seo.ts`、阶段 5 状态文档 | 7 个 SEO Service、9 个 Recorder、19 个 Tool Loop、34 个 Model Stream、24 个 Tools 测试通过；API / Web typecheck 与 lint、Web build、workspace typecheck、`git diff --check` 通过；非流式 / 流式普通回答、Tool Loop 与 abort 的 HTTP、页面和数据库验证通过，13 个临时会话已精确清理；全仓 lint 仅被既有 research Markdown 127 errors baseline 阻断 |
 | 2026-07-17 | PR #15 验收合并收口 | docs / Tool Calling | GPT 验收 Issue #13 / PR #15 通过，用户明确确认后合并到 `master`；Task 5 标记为 Completed，动态 AgentStep、两轮 sampling 记录、工具安全摘要、真实 timeout 和 Observation 上限进入主分支；阶段 5 保持 In Progress，下一步处理 Issue #14 | `docs/tasks/phase-05-tool-calling/README.md`、`docs/tasks/README.md`、`docs/roadmap.md`、`docs/work-log.md` | 基于 PR #15 验证结果：9 个 Recorder、19 个 Tool Loop、34 个 Model Stream、24 个 Tools 测试通过；Prisma migration、API typecheck/lint、Web typecheck/build、workspace typecheck、`git diff --check` 通过；Codex Review 无 major issues；merge commit `f6985627` |
 | 2026-07-17 | Issue #13 实现 | feat / Agent Runtime / Tool Calling | 为 `AgentStep` 增加稳定 sequence migration；Recorder 改为动态 step-id 状态机；分别记录两轮 sampling 的 usage / finish reason 和工具 allowlist 摘要；实现真实 tool deadline、user abort 优先级、8,000 字符 Observation 上限及迟到结果隔离；保持前端五类 stream 事件不变；Task 5 仅更新为已实现、待验收 | `prisma/schema.prisma`、`prisma/migrations/20260717160000_add_agent_step_sequence/`、`packages/contracts/src/agent-run.ts`、`apps/api/src/agent-runtime/**`、`apps/api/src/tools/**`、阶段 5 状态文档 | Prisma generate / validate / migrate deploy / status 通过；9 个 Recorder、19 个 Tool Loop、34 个 Model Stream、24 个 Tools 测试通过；API typecheck/lint、Web typecheck/build、workspace typecheck、`git diff --check` 通过；真实普通回答、Tool Loop、零结果与 abort 场景通过，timeout 使用永不结束 fake Executor 验证 |
 | 2026-07-16 | PR #12 验收合并收口 | docs / Tool Calling | GPT 验收 Issue #11 / PR #12 通过，用户授权后合并到 `master`；Task 4 标记为 Completed，阶段 5 保持 In Progress，Task 5 保持 Planned；单 Agent Tool Loop 已进入主分支 | `docs/tasks/phase-05-tool-calling/README.md`、`docs/tasks/README.md`、`docs/roadmap.md`、`docs/work-log.md` | 基于 PR #12 验证结果：14 个 tool loop、22 个 model stream、17 个 tools 测试通过；API typecheck/lint、workspace typecheck、`git diff --check` 通过；Codex Review 复审无 major issues；merge commit `390d8497` |
