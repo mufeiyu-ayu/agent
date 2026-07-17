@@ -4,7 +4,7 @@
 
 ## 当前判断
 
-项目已经完成从固定字段 SEO 生成器到 Session Chat 的迁移，并完成流式输出最终态一致性收口。阶段 4 Agent Runtime 基础已归档；阶段 5 继续进行，Task 0-4 已完成并通过验收，Task 5 的 Tool Calling 可靠性与 `AgentStep` 运行记录已实现、待验收。当前不推进阶段 5 Completed、Issue #14、RAG 或多 Agent。
+项目已经完成从固定字段 SEO 生成器到 Session Chat 的迁移，并完成流式输出最终态一致性收口。阶段 4 Agent Runtime 基础已归档；阶段 5 的 Task 0-5 已完成并通过验收，Tool Calling 可靠性与 `AgentStep` 运行记录已随 PR #15 合并到 `master`。阶段 5 暂不归档，下一步先完成 Issue #14，统一同步与流式 SEO Chat 的 Agent Runtime 路径；当前不推进 RAG 或多 Agent。
 
 ## 阶段路线
 
@@ -23,7 +23,7 @@
 
 | 优先级 | 任务 | 说明 |
 | --- | --- | --- |
-| P0 | 阶段 5 Task 5（已实现、待验收） | 验收动态 Step、sampling / tool 安全摘要、timeout / abort 与现有前端 stream 协议兼容性；验收前不标记 Completed |
+| P0 | Issue #14：统一同步与流式 SEO Chat Runtime | 移除同步 `/seo/chat` 绕过 Agent Runtime 的旁路，让两个入口共享 Message、Run、Step 和 Tool Loop 语义；通过验收后归档阶段 5 |
 | P1 | Context 管理增强 | 阶段 5 稳定后再加入页面数据、关键词、工具 Observation 和预算规则 |
 | P2 | 阶段 6 Human-in-the-loop | 有中风险或写操作工具前，再实现用户确认与审批接口 |
 
@@ -31,10 +31,10 @@
 
 | 暂不做 | 原因 |
 | --- | --- |
-| 复杂 Tool Calling | 阶段 5 先做最小只读工具闭环 |
+| 复杂 Tool Calling | 阶段 5 仍以最小只读工具闭环和执行路径统一为收口范围 |
 | RAG / 向量数据库 | 当前主线是 Agent Runtime，不是知识库问答 |
-| Multi-agent | 单 Agent run/step/tool loop 还没稳定 |
-| MCP / 插件系统 | 先把内置工具闭环跑通 |
+| Multi-agent | 单 Agent baseline 刚完成可靠性收口，尚无产品必要性 |
+| MCP / 插件系统 | 先把内置工具与统一 Runtime 路径稳定下来 |
 | OS sandbox | 当前不执行 shell，不需要 Codex 级 sandbox |
 | Workflow engine | 目前用 TypeScript service 编排更适合学习 |
 | WebSocket 多路复用 | NDJSON 已能满足当前流式任务 |
