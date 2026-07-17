@@ -5,6 +5,7 @@ import {
   Inject,
   Injectable,
   InternalServerErrorException,
+  NotFoundException,
   RequestTimeoutException,
   ServiceUnavailableException,
 } from '@nestjs/common'
@@ -43,6 +44,10 @@ export class SeoService {
           }
 
         case 'run_failed':
+          if (event.failureReason === 'conversation_not_found') {
+            throw new NotFoundException('会话不存在或已被删除')
+          }
+
           throw new ServiceUnavailableException(
             '模型服务暂时没有返回结果，请稍后重试。',
           )

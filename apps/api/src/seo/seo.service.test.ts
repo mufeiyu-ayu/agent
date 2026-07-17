@@ -1,6 +1,7 @@
 import type { AgentRuntimeService } from '../agent-runtime/agent-runtime.service.js'
 import type {
   AgentRuntimeEvent,
+  AgentRuntimeRunFailedEvent,
   RunTurnStreamInput,
 } from '../agent-runtime/agent-runtime.types.js'
 import type { ChatMessage } from '../llm/llm.types.js'
@@ -12,6 +13,7 @@ import { describe, it } from 'node:test'
 import {
   HttpStatus,
   InternalServerErrorException,
+  NotFoundException,
   RequestTimeoutException,
   ServiceUnavailableException,
 } from '@nestjs/common'
@@ -60,6 +62,23 @@ describe('SeoService', () => {
         assert.ok(error instanceof ServiceUnavailableException)
         assert.equal(error.getStatus(), HttpStatus.SERVICE_UNAVAILABLE)
         assert.equal(error.message, '模型服务暂时没有返回结果，请稍后重试。')
+        assert.doesNotMatch(JSON.stringify(error.getResponse()), /provider|password|secret/)
+        return true
+      },
+    )
+  })
+
+  it('conversation_not_found 映射为固定 404，不伪装成模型故障', async () => {
+    const harness = createHarness([
+      runFailedEvent('provider password=secret', 'conversation_not_found'),
+    ])
+
+    await assert.rejects(
+      harness.service.chat(createInput()),
+      (error: unknown) => {
+        assert.ok(error instanceof NotFoundException)
+        assert.equal(error.getStatus(), HttpStatus.NOT_FOUND)
+        assert.equal(error.message, '会话不存在或已被删除')
         assert.doesNotMatch(JSON.stringify(error.getResponse()), /provider|password|secret/)
         return true
       },
@@ -149,7 +168,7 @@ describe('SeoService', () => {
       runStartedEvent(),
       assistantDeltaEvent('增量'),
       runCompletedEvent('最终回答'),
-      runFailedEvent('安全错误'),
+      runFailedEvent('安全错误', 'conversation_not_found'),
       runAbortedEvent('部分回答'),
     ])
 
@@ -190,7 +209,7 @@ describe('SeoService', () => {
     ])
     assert.doesNotMatch(
       JSON.stringify(events),
-      /runId|AgentStep|ToolResult|rawArgumentsJson/,
+      /runId|failureReason|conversation_not_found|AgentStep|ToolResult|rawArgumentsJson/,
     )
   })
 })
@@ -294,12 +313,16 @@ function runCompletedEvent(content: string): AgentRuntimeEvent {
   }
 }
 
-function runFailedEvent(message: string): AgentRuntimeEvent {
+function runFailedEvent(
+  message: string,
+  failureReason?: AgentRuntimeRunFailedEvent['failureReason'],
+): AgentRuntimeRunFailedEvent {
   return {
     type: 'run_failed',
     runId: 'run-1',
     conversationId: 'conversation-1',
     assistantMessageId: 'assistant-message-1',
+    ...(failureReason ? { failureReason } : {}),
     message,
   }
 }
