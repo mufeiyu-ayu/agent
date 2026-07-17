@@ -94,6 +94,24 @@ describe('AgentRuntimeService model stream', () => {
     assertNoUnfinishedSteps(harness)
   })
 
+  it('会话不存在时产出稳定失败分类且不创建 Message 或 Run', async () => {
+    const harness = createHarness(() => toModelStream([]))
+
+    harness.prisma.conversationExists = false
+
+    const events = await collectEvents(harness.run())
+
+    assert.deepEqual(events, [{
+      type: 'run_failed',
+      conversationId: 'conversation-1',
+      failureReason: 'conversation_not_found',
+      message: '会话不存在或已被删除',
+    }])
+    assert.equal(harness.prisma.messages.length, 0)
+    assert.equal(harness.recorder.steps.length, 0)
+    assert.equal(harness.llmCalls.length, 0)
+  })
+
   it('在 response_completed 前实时产出普通回答 delta', async () => {
     const completionGate = createDeferred()
     const harness = createHarness(() => delayedCompletionModelStream(
@@ -825,6 +843,7 @@ function createHarness(
 
   return {
     llmCalls,
+    prisma,
     recorder,
     toolInvocations: toolInvocationService.invocations,
     toolExecutionContexts: toolInvocationService.contexts,
@@ -867,9 +886,12 @@ class FakeToolInvocationService {
 
 class FakePrismaService {
   readonly messages: Message[] = []
+  conversationExists = true
 
   readonly conversation = {
-    findUnique: async () => ({ id: 'conversation-1' }),
+    findUnique: async () => this.conversationExists
+      ? { id: 'conversation-1' }
+      : null,
     update: async () => ({ id: 'conversation-1' }),
   }
 

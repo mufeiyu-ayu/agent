@@ -414,6 +414,9 @@ export class AgentRuntimeService {
         ...(agentRunId ? { runId: agentRunId } : {}),
         conversationId: input.conversationId,
         ...(assistantMessage ? { assistantMessageId: assistantMessage.id } : {}),
+        ...(error instanceof NotFoundException
+          ? { failureReason: 'conversation_not_found' as const }
+          : {}),
         message: errorMessage,
       }
     }

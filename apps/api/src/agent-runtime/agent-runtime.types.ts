@@ -37,6 +37,7 @@ export interface AgentRuntimeRunFailedEvent {
   runId?: string
   conversationId: string
   assistantMessageId?: string
+  failureReason?: 'conversation_not_found'
   message: string
 }
 

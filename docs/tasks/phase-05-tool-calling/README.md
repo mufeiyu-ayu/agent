@@ -1,6 +1,6 @@
 # 阶段 5：最小 Tool Calling
 
-状态：进行中。Task 0-5 已完成并通过验收；PR #15 已合并到 `master`，阶段 5 尚未归档，下一步处理 Issue #14 的同步 / 流式 Runtime 路径统一。
+状态：进行中。Task 0-5 已完成并通过验收；Issue #14 已实现、待验收，阶段 5 尚未归档。
 
 ## 阶段目标
 
@@ -105,7 +105,19 @@
 - `ChatStreamEvent` 继续只有 `start / delta / done / error / aborted`；未新增前端时间线，未暴露 Tool Call、Tool Result、raw arguments 或 `AgentStep`，用户可见 Message 仍只保存最终回答。
 - Red 阶段分别复现 Recorder、sampling、timeout / abort、Runtime 记录与迟到 terminal CAS 缺口；Green / Refactor 后 Recorder 9 个、Tool Loop 19 个、Model Stream 34 个、Tools 24 个自动化用例均通过。真实普通回答、正常 Tool Loop、零结果和停止生成场景已验证，临时会话数据已清理；工具 timeout 使用测试专用永不结束 Executor 验证。
 - GPT 结合 Issue #13、PR #15 diff、Codex Review、自动化测试和真实模型 / 数据库验证证据完成验收；用户明确确认后，PR #15 已合并到 `master`，merge commit `f6985627`，Issue #13 已关闭。
-- 实施状态：已实现；验收状态：已通过；任务状态：Completed。阶段 5 保持进行中，下一步处理 Issue #14，尚未归档。
+- 实施状态：已实现；验收状态：已通过；任务状态：Completed。阶段 5 保持进行中，尚未归档。
+
+## Issue #14 实现结果
+
+- 后端继续保留 `POST /seo/chat` 与 `POST /seo/chat/stream`；两者通过同一个 `buildRunTurnInput()` 构造配置，并且只调用 `AgentRuntimeService.runTurnStream()` 这一套 Runtime。
+- `POST /seo/chat` 已收敛为终态聚合适配器：忽略 `run_started` 与 `assistant_delta`，以 `run_completed.content` 返回最终 `SeoChatResponse`；`run_failed`、`run_aborted` 和 generator 缺少 terminal 分别映射为稳定、脱敏的确定性异常，不返回伪成功。
+- `SeoService` 已删除对 `LLMService`、`PrismaService` 的直接依赖，以及旧同步路径的会话检查、history 查询、Message 持久化和角色转换 helper；Message、AgentRun、AgentStep、Tool Loop 与错误持久化继续只由 Runtime 负责。
+- 流式入口仍只投影既有 `start / delta / done / error / aborted`，未改变 `ChatStreamEvent` 字段，也未暴露 run id、AgentStep、Tool raw arguments 或 Tool Result。
+- Vue 工作台继续只调用 `streamChatWithSeoAgent()`；Web 端未使用的 `chatWithSeoAgent()` 已删除，后端仍保留非流式能力，共享 `SeoChatResponse` contract 保持不变。
+- Red 阶段用 7 个 `SeoService` 测试复现旧同步旁路；Green / Refactor 后 7 个 SEO Service、9 个 Recorder、19 个 Tool Loop、34 个 Model Stream、24 个 Tools 测试通过。API / Web typecheck 与 lint、Web build、workspace typecheck、`git diff --check` 通过。
+- 非流式普通回答与 Tool Loop、流式普通回答与 Tool Loop、停止生成均已完成真实 HTTP / 页面 Smoke；数据库确认两种响应形式使用相同 Step 顺序、Tool execution attempt 为 1、没有重复 Message、没有非终态 Step。Computer Use 当前无法取得 Chrome 窗口，页面 Smoke 改用内置浏览器完成。
+- 本轮 13 个临时验收会话已按精确 ID 删除。全仓 `pnpm lint` 已实际运行，仍仅被既有 `docs/research/**` Markdown baseline 阻断：127 errors、0 warnings；本 Issue 未扩大范围修复。
+- Issue #14 实施状态：已实现；Issue #14 验收状态：待验收。下一步由 GPT / 用户验收 Issue #14，阶段 5 继续保持 In Progress。
 
 ### Task 4 手工验收问题
 
@@ -159,4 +171,4 @@
 
 ## 后续阶段
 
-先完成 Issue #14，统一同步与流式 SEO Chat 的 Agent Runtime 路径；该收口通过验收后，再归档阶段 5 并进入阶段 6：Human-in-the-loop。
+先由 GPT / 用户验收 Issue #14；验收通过且用户明确确认后，再归档阶段 5。当前不推进阶段 6：Human-in-the-loop。
