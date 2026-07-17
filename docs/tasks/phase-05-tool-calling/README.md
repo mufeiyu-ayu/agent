@@ -1,6 +1,6 @@
 # 阶段 5：最小 Tool Calling
 
-状态：进行中。Task 0-4 已完成并通过验收；Task 5 已实现、待验收，阶段 5 尚未完成或归档。
+状态：进行中。Task 0-5 已完成并通过验收；PR #15 已合并到 `master`，阶段 5 尚未归档，下一步处理 Issue #14 的同步 / 流式 Runtime 路径统一。
 
 ## 阶段目标
 
@@ -43,7 +43,7 @@
 | Task 2 | Completed | 定义最小 `ToolDefinition`、`ToolRegistry`、参数验证、执行与结果边界 |
 | Task 3 | Completed | 实现第一只只读工具 `search_articles`，查询并返回精简文章信息 |
 | Task 4 | Completed | 实现单 Agent Tool Loop：模型请求工具、后端执行、Observation 回填、模型继续生成最终回答 |
-| Task 5 | 已实现 / 待验收 | 将模型调用、工具执行和工具结果记录到 `AgentStep`，保持当前前端 stream 协议稳定 |
+| Task 5 | Completed | 将模型调用、工具执行和工具结果记录到 `AgentStep`，保持当前前端 stream 协议稳定 |
 
 ## Task 1 完成结果
 
@@ -92,7 +92,7 @@
 - GPT 结合 Issue #11、PR #12 diff、Codex Review、测试结果和前端手工反馈完成验收；用户授权后 PR #12 已合并到 `master`，merge commit `390d8497`。
 - 实施状态：已实现；验收状态：已通过；任务状态：Completed。Task 5 保持 Planned。
 
-## Task 5 实现结果
+## Task 5 完成结果
 
 - `AgentStep` 新增同一 Run 内从 1 开始的 `sequence`，migration 先按 `runId` 分组、按 `createdAt` 和 `id` 稳定回填旧数据，再设置 `NOT NULL` 与唯一约束。
 - `AgentRunRecorderService` 改为在真实执行时动态创建 `RUNNING` Step，并通过真实 `stepId` 和带非终态条件的更新完成 terminal transition；重复收口或迟到更新会抛出 invariant error。
@@ -104,7 +104,8 @@
 - Runtime 已按真实顺序形成普通回答的 `receive -> history -> sampling#1 -> assistant`，以及 Tool Loop 的 `receive -> history -> sampling#1 -> tool -> sampling#2 -> assistant`；工具安全失败 Step 可为 `FAILED`，Run 仍可经第二轮解释后 `COMPLETED`。
 - `ChatStreamEvent` 继续只有 `start / delta / done / error / aborted`；未新增前端时间线，未暴露 Tool Call、Tool Result、raw arguments 或 `AgentStep`，用户可见 Message 仍只保存最终回答。
 - Red 阶段分别复现 Recorder、sampling、timeout / abort、Runtime 记录与迟到 terminal CAS 缺口；Green / Refactor 后 Recorder 9 个、Tool Loop 19 个、Model Stream 34 个、Tools 24 个自动化用例均通过。真实普通回答、正常 Tool Loop、零结果和停止生成场景已验证，临时会话数据已清理；工具 timeout 使用测试专用永不结束 Executor 验证。
-- 实施状态：已实现；验收状态：待验收。Task 5 未标记为 Completed，阶段 5 保持进行中，未处理 Issue #14。
+- GPT 结合 Issue #13、PR #15 diff、Codex Review、自动化测试和真实模型 / 数据库验证证据完成验收；用户明确确认后，PR #15 已合并到 `master`，merge commit `f6985627`，Issue #13 已关闭。
+- 实施状态：已实现；验收状态：已通过；任务状态：Completed。阶段 5 保持进行中，下一步处理 Issue #14，尚未归档。
 
 ### Task 4 手工验收问题
 
@@ -134,7 +135,7 @@
 
 ## 本阶段不做
 
-- 不建设完整自动化测试体系；Task 1 只保留关键模型流和 Runtime 回归测试，其余使用固定场景手工验证。
+- 不建设全仓端到端测试或 CI 体系；保留 Agent Runtime、Tool Loop、模型流和 Tool 边界的关键回归测试与固定场景手工验证。
 - 不做写操作工具。
 - 不做用户审批和 Human-in-the-loop。
 - 不做复杂权限策略。
@@ -158,4 +159,4 @@
 
 ## 后续阶段
 
-阶段 5 稳定后，进入阶段 6：Human-in-the-loop。
+先完成 Issue #14，统一同步与流式 SEO Chat 的 Agent Runtime 路径；该收口通过验收后，再归档阶段 5 并进入阶段 6：Human-in-the-loop。
