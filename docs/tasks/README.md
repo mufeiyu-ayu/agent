@@ -4,9 +4,11 @@
 
 ## 当前看板
 
+当前没有已启动的正式实现任务。阶段 5 已完成并归档，下一步先进行源码复盘；阶段 6 尚未进入 Active。
+
 | 区域 | 状态 | 文档 | 说明 |
 | --- | --- | --- | --- |
-| 阶段 5 最小 Tool Calling | In Progress | [phase-05-tool-calling/README.md](./phase-05-tool-calling/README.md) | Task 0-5 已完成并通过验收；Issue #14 已实现、待验收，阶段尚未归档 |
+| 阶段 5 最小 Tool Calling | Completed | [completed/phase-05-tool-calling.md](./completed/phase-05-tool-calling.md) | Task 0-5 与 Issue #14 已完成并通过验收；PR #17 已合并，阶段已归档 |
 | 阶段 4 Agent Runtime | Completed | [completed/phase-04-agent-runtime.md](./completed/phase-04-agent-runtime.md) | 已归档为可观测 Agent Run 的基础阶段 |
 | 阶段 3 收口 | Completed | [completed/phase-03-streaming-closeout.md](./completed/phase-03-streaming-closeout.md) | 已收口 `done/error/aborted` 最终态一致性 |
 | 阶段 2 | Completed | [completed/phase-02-agent-chat-session.md](./completed/phase-02-agent-chat-session.md) | 多会话和消息持久化已完成 |
