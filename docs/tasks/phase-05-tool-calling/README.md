@@ -1,6 +1,6 @@
 # 阶段 5：最小 Tool Calling
 
-状态：进行中。Task 0-4 已完成并通过验收；Task 5 保持 Planned。
+状态：进行中。Task 0-4 已完成并通过验收；Task 5 已实现、待验收，阶段 5 尚未完成或归档。
 
 ## 阶段目标
 
@@ -43,7 +43,7 @@
 | Task 2 | Completed | 定义最小 `ToolDefinition`、`ToolRegistry`、参数验证、执行与结果边界 |
 | Task 3 | Completed | 实现第一只只读工具 `search_articles`，查询并返回精简文章信息 |
 | Task 4 | Completed | 实现单 Agent Tool Loop：模型请求工具、后端执行、Observation 回填、模型继续生成最终回答 |
-| Task 5 | Planned | 将模型调用、工具执行和工具结果记录到 `AgentStep`，保持当前前端 stream 协议稳定 |
+| Task 5 | 已实现 / 待验收 | 将模型调用、工具执行和工具结果记录到 `AgentStep`，保持当前前端 stream 协议稳定 |
 
 ## Task 1 完成结果
 
@@ -91,6 +91,20 @@
 - 使用当前 DeepSeek 配置进行本地真实流验证：“你能查数据库吗？请简短回答。”只产生实时文本并以 `done` 结束；SP Himeko 查询实际返回 1 篇中文文章，工具后的最终回答实时输出。临时会话已删除。
 - GPT 结合 Issue #11、PR #12 diff、Codex Review、测试结果和前端手工反馈完成验收；用户授权后 PR #12 已合并到 `master`，merge commit `390d8497`。
 - 实施状态：已实现；验收状态：已通过；任务状态：Completed。Task 5 保持 Planned。
+
+## Task 5 实现结果
+
+- `AgentStep` 新增同一 Run 内从 1 开始的 `sequence`，migration 先按 `runId` 分组、按 `createdAt` 和 `id` 稳定回填旧数据，再设置 `NOT NULL` 与唯一约束。
+- `AgentRunRecorderService` 改为在真实执行时动态创建 `RUNNING` Step，并通过真实 `stepId` 和带非终态条件的更新完成 terminal transition；重复收口或迟到更新会抛出 invariant error。
+- `completeRun()` 会拒绝仍有非终态 Step 的 Run；`failRun()` 与 `abortRun()` 在事务中收口全部 `PENDING` / `RUNNING` Step，再以 compare-and-set 方式收口 Run。
+- 每轮 `model_sampling` 分别记录 sampling 序号、稳定 attempt id、请求模型、消息数、工具数、provider-neutral usage、finish reason、文本长度、Tool Call 数和耗时；usage 缺失时保存 `null`，不伪造 token 数。
+- `tool_execution` 只保存工具名、版本、调用 id、执行次数和参数字符数等 allowlist 输入，以及状态、错误分类、Observation 长度、截断标记和耗时等 allowlist 输出；不保存完整 raw arguments、`ToolResult.data`、`modelContent`、原始异常或 stack。
+- `ToolDefinition.timeoutMs` 已成为真实 deadline：外层主动竞争 Executor 与 timeout / user abort，timeout 安全归类为 `timeout`，用户先取消时整次 Run 收口为 `ABORTED`；迟到 resolve / reject 不再改变终态，也不会产生 unhandled rejection。
+- 单条 Tool Observation 的后端固定上限为 8,000 个 Unicode code point。该额度能容纳当前最多 10 条精简文章结果及回答上下文，同时限制异常 Executor 产生的无界输入；超限内容转换为确定性的纯文本预览 envelope，不再宣称是完整 JSON。
+- Runtime 已按真实顺序形成普通回答的 `receive -> history -> sampling#1 -> assistant`，以及 Tool Loop 的 `receive -> history -> sampling#1 -> tool -> sampling#2 -> assistant`；工具安全失败 Step 可为 `FAILED`，Run 仍可经第二轮解释后 `COMPLETED`。
+- `ChatStreamEvent` 继续只有 `start / delta / done / error / aborted`；未新增前端时间线，未暴露 Tool Call、Tool Result、raw arguments 或 `AgentStep`，用户可见 Message 仍只保存最终回答。
+- Red 阶段分别复现 Recorder、sampling、timeout / abort、Runtime 记录与迟到 terminal CAS 缺口；Green / Refactor 后 Recorder 9 个、Tool Loop 19 个、Model Stream 34 个、Tools 24 个自动化用例均通过。真实普通回答、正常 Tool Loop、零结果和停止生成场景已验证，临时会话数据已清理；工具 timeout 使用测试专用永不结束 Executor 验证。
+- 实施状态：已实现；验收状态：待验收。Task 5 未标记为 Completed，阶段 5 保持进行中，未处理 Issue #14。
 
 ### Task 4 手工验收问题
 

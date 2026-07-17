@@ -34,6 +34,7 @@ export interface AgentRun {
 export interface AgentStep {
   id: string
   runId: string
+  sequence: number
   type: string
   title: string
   status: AgentStepStatus

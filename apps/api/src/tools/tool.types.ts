@@ -68,7 +68,7 @@ export type ToolResult<T = unknown>
   }
   | {
     ok: false
-    code: 'execution_failed' | 'invalid_arguments' | 'unknown_tool'
+    code: 'execution_failed' | 'invalid_arguments' | 'timeout' | 'unknown_tool'
     modelContent: string
     retryable: boolean
   }

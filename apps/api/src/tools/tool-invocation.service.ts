@@ -67,26 +67,83 @@ export class ToolInvocationService {
       samplingAttemptId: envelope.samplingAttemptId,
       input,
     }
+    const executionController = new AbortController()
+    let hasCancellationOutcome = false
+    let resolveCancellation!: (outcome: ToolInvocationOutcome) => void
+    const cancellation = new Promise<ToolInvocationOutcome>((resolve) => {
+      resolveCancellation = resolve
+    })
+    const settleCancellation = (outcome: ToolInvocationOutcome): boolean => {
+      if (hasCancellationOutcome)
+        return false
+
+      hasCancellationOutcome = true
+      resolveCancellation(outcome)
+      return true
+    }
+    const handleRunAbort = (): void => {
+      if (settleCancellation({ type: 'aborted' }))
+        executionController.abort(context.signal.reason)
+    }
+    const timeoutId = setTimeout(() => {
+      if (settleCancellation({ type: 'timeout' })) {
+        executionController.abort(
+          new DOMException('tool execution timeout', 'TimeoutError'),
+        )
+      }
+    }, tool.definition.timeoutMs)
+
+    context.signal.addEventListener('abort', handleRunAbort, { once: true })
+
+    const execution = Promise.resolve()
+      .then(() => tool.executor.execute(invocation, {
+        ...context,
+        signal: executionController.signal,
+      }))
+      .then<ToolInvocationOutcome, ToolInvocationOutcome>(
+        result => ({ type: 'result', result }),
+        () => ({ type: 'error' }),
+      )
 
     try {
-      const result = await tool.executor.execute(invocation, context)
-      context.signal.throwIfAborted()
-      return result
-    }
-    catch (error) {
-      if (context.signal.aborted || isAbortError(error))
-        throw error
+      const outcome = await Promise.race([execution, cancellation])
 
-      return {
-        ok: false,
-        code: 'execution_failed',
-        modelContent: `工具 ${envelope.toolName} 执行失败。`,
-        retryable: false,
+      switch (outcome.type) {
+        case 'aborted':
+          context.signal.throwIfAborted()
+          throw new DOMException('aborted', 'AbortError')
+
+        case 'timeout':
+          return {
+            ok: false,
+            code: 'timeout',
+            modelContent: `工具 ${envelope.toolName} 执行超时。`,
+            retryable: false,
+          }
+
+        case 'result':
+          context.signal.throwIfAborted()
+          return outcome.result
+
+        case 'error':
+          context.signal.throwIfAborted()
+          return {
+            ok: false,
+            code: 'execution_failed',
+            modelContent: `工具 ${envelope.toolName} 执行失败。`,
+            retryable: false,
+          }
       }
+    }
+    finally {
+      clearTimeout(timeoutId)
+      context.signal.removeEventListener('abort', handleRunAbort)
     }
   }
 }
 
-function isAbortError(error: unknown): boolean {
-  return error instanceof Error && error.name === 'AbortError'
-}
+type ToolInvocationOutcome
+  = | { type: 'aborted' }
+    | { type: 'error' }
+    | { type: 'result', result: ToolResult }
+    | { type: 'timeout' }

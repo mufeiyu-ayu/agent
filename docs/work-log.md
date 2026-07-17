@@ -6,7 +6,7 @@
 
 | 类型 | 当前记录 | 下一步 |
 | --- | --- | --- |
-| 当前阶段 | 阶段 4 Agent Runtime 基础已归档；阶段 5 进行中，Task 0-4 已完成并通过验收 | 下一步进入 Task 5：Tool Calling 运行记录；Task 5 保持 Planned |
+| 当前阶段 | 阶段 4 Agent Runtime 基础已归档；阶段 5 进行中，Task 0-4 已完成并通过验收；Task 5 已实现、待验收 | 等待 GPT 和用户验收 Issue #13；不提前推进 Task 5 / 阶段 5 Completed 或 Issue #14 |
 | 文档结构 | docs 已重组为 `roadmap`、`tasks`、`research`、`work-log` 四类入口；当前任务以 `docs/tasks/README.md` 为准 | 后续 commit 按 task docs 和 work-log 分工更新 |
 | 任务规范 | 新任务使用 TDD 风格模板；已完成阶段保留在 `docs/tasks/completed/`，当前任务目录只保留可执行阶段入口 | 后续任务继续按 Red / Green / Refactor 推进 |
 | Codex 研究 | 已基于本地 Codex fork 与当前 Agent 源码重建 `docs/research/`：形成架构报告、学习清单、云端映射和 14 个分阶段学习目录 | 作为阶段 5 及后续任务的研究依据；真实执行状态仍以 `docs/tasks/` 为准 |
@@ -16,6 +16,7 @@
 
 | 日期 | 提交 | 类型 | 核心完成 | 关键文件 | 验证结果 |
 | --- | --- | --- | --- | --- | --- |
+| 2026-07-17 | Issue #13 实现 | feat / Agent Runtime / Tool Calling | 为 `AgentStep` 增加稳定 sequence migration；Recorder 改为动态 step-id 状态机；分别记录两轮 sampling 的 usage / finish reason 和工具 allowlist 摘要；实现真实 tool deadline、user abort 优先级、8,000 字符 Observation 上限及迟到结果隔离；保持前端五类 stream 事件不变；Task 5 仅更新为已实现、待验收 | `prisma/schema.prisma`、`prisma/migrations/20260717160000_add_agent_step_sequence/`、`packages/contracts/src/agent-run.ts`、`apps/api/src/agent-runtime/**`、`apps/api/src/tools/**`、阶段 5 状态文档 | Prisma generate / validate / migrate deploy / status 通过；9 个 Recorder、19 个 Tool Loop、34 个 Model Stream、24 个 Tools 测试通过；API typecheck/lint、Web typecheck/build、workspace typecheck、`git diff --check` 通过；真实普通回答、Tool Loop、零结果与 abort 场景通过，timeout 使用永不结束 fake Executor 验证 |
 | 2026-07-16 | PR #12 验收合并收口 | docs / Tool Calling | GPT 验收 Issue #11 / PR #12 通过，用户授权后合并到 `master`；Task 4 标记为 Completed，阶段 5 保持 In Progress，Task 5 保持 Planned；单 Agent Tool Loop 已进入主分支 | `docs/tasks/phase-05-tool-calling/README.md`、`docs/tasks/README.md`、`docs/roadmap.md`、`docs/work-log.md` | 基于 PR #12 验证结果：14 个 tool loop、22 个 model stream、17 个 tools 测试通过；API typecheck/lint、workspace typecheck、`git diff --check` 通过；Codex Review 复审无 major issues；merge commit `390d8497` |
 | 2026-07-16 | PR #12 手工验收修复 | fix / Agent Runtime / Tool Calling | 修复普通回答与工具后第二轮回答等待完整 sampling 后回放的问题，改为在 `response_completed` 前实时产出 delta；SEO Agent 增加 `search_articles` 的关键词查询、Observation、能力询问不执行工具和零结果不编造说明；手工验收问题改为基于真实 Article seed | `apps/api/src/agent-runtime/**`、`apps/api/src/seo/prompts/seo-agent.prompt.ts`、阶段 5 任务文档 | Red 测试复现 2 个时序失败和 1 个 prompt 边界失败；Green 阶段 14 个 tool loop、22 个 model stream、17 个 tools 测试通过；API typecheck/lint、workspace typecheck、`git diff --check` 通过；真实 DeepSeek 流验证能力询问无 Tool Call 错误、SP Himeko 返回 1 篇并实时输出 |
 | 2026-07-16 | Issue #11 实现 | feat / Agent Runtime / Tool Calling | 完成最多一次工具调用、最多两轮 sampling 的单 Agent Tool Loop；只暴露 `search_articles`，统一经 `ToolInvocationService.invoke()` 执行，将 `ToolResult.modelContent` 作为 Observation 回填第二轮；最终用户消息只保存最终回答，前端 stream 协议不变；Task 4 已实现、待验收，Task 5 保持 Planned | `apps/api/src/agent-runtime/**`、`apps/api/src/llm/**`、阶段 5 状态文档 | 11 个 tool loop、19 个 model stream、17 个 tools 测试通过；API typecheck/lint、workspace typecheck、`git diff --check` 通过 |

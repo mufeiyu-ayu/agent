@@ -9,12 +9,14 @@ import type {
   ToolResult,
   UnvalidatedToolCallEnvelope,
 } from '../tools/tool.types.js'
-import type { AgentStepType } from './agent-run-recorder.service.js'
 import type {
   AgentRuntimeEvent,
   RunTurnStreamInput,
 } from './agent-runtime.types.js'
-import type { SamplingDecision } from './model-sampling-decision.js'
+import type {
+  ModelSamplingSummary,
+  SamplingDecision,
+} from './model-sampling-decision.js'
 import { Inject, Injectable, NotFoundException } from '@nestjs/common'
 
 import { MessageRole, MessageStatus } from '../generated/prisma/client.js'
@@ -23,12 +25,16 @@ import { toModelInputItems } from '../llm/model-input.types.js'
 import { PrismaService } from '../prisma/prisma.service.js'
 import { toModelToolSpec } from '../tools/model-tool-spec.mapper.js'
 import { ToolInvocationService } from '../tools/tool-invocation.service.js'
+import { normalizeToolObservation } from '../tools/tool-observation.js'
 import { ToolRegistryService } from '../tools/tool-registry.service.js'
 import {
   AGENT_STEP_TYPES,
   AgentRunRecorderService,
 } from './agent-run-recorder.service.js'
-import { ModelSamplingIncompleteError } from './agent-runtime.errors.js'
+import {
+  MessageTerminalTransitionError,
+  ModelSamplingIncompleteError,
+} from './agent-runtime.errors.js'
 import { streamModelSampling } from './model-sampling-decision.js'
 
 @Injectable()
@@ -53,7 +59,6 @@ export class AgentRuntimeService {
   async* runTurnStream(input: RunTurnStreamInput): AsyncGenerator<AgentRuntimeEvent> {
     let assistantMessage: Message | undefined
     let agentRunId: string | undefined
-    let activeAgentStepType: AgentStepType | undefined
     let content = ''
     let hasFinalMessageStatus = false
 
@@ -67,32 +72,37 @@ export class AgentRuntimeService {
         normalizedMessage,
       )
 
-      const agentRun = await this.agentRunRecorderService.createRunWithInitialSteps({
+      const agentRun = await this.agentRunRecorderService.createRun({
         conversationId: input.conversationId,
         userMessageId: userMessage.id,
-        userMessageLength: normalizedMessage.length,
       })
       const currentAgentRunId = agentRun.id
 
       agentRunId = currentAgentRunId
-      activeAgentStepType = AGENT_STEP_TYPES.loadConversationHistory
-      await this.agentRunRecorderService.startStep(
-        currentAgentRunId,
-        AGENT_STEP_TYPES.loadConversationHistory,
-        {
-          input: {
-            limit: input.historyLimit,
-          },
+      const receiveUserMessageStep = await this.agentRunRecorderService.startStep({
+        runId: currentAgentRunId,
+        type: AGENT_STEP_TYPES.receiveUserMessage,
+        input: {
+          messageId: userMessage.id,
+          messageLength: normalizedMessage.length,
         },
-      )
+      })
+      await this.agentRunRecorderService.completeStep(receiveUserMessageStep.id)
+
+      const loadHistoryStep = await this.agentRunRecorderService.startStep({
+        runId: currentAgentRunId,
+        type: AGENT_STEP_TYPES.loadConversationHistory,
+        input: {
+          limit: input.historyLimit,
+        },
+      })
 
       const historyMessages = await this.listRecentChatMessages(
         input.conversationId,
         input.historyLimit,
       )
       await this.agentRunRecorderService.completeStep(
-        currentAgentRunId,
-        AGENT_STEP_TYPES.loadConversationHistory,
+        loadHistoryStep.id,
         {
           output: {
             messageCount: historyMessages.length,
@@ -104,9 +114,9 @@ export class AgentRuntimeService {
         historyMessages.map(message => this.toLlmMessage(message)),
       )
       const modelInputItems = toModelInputItems(llmMessages)
-      const modelTools = this.toolRegistryService.listDefinitions()
+      const toolDefinitions = this.toolRegistryService.listDefinitions()
         .filter(definition => definition.name === 'search_articles')
-        .map(toModelToolSpec)
+      const modelTools = toolDefinitions.map(toModelToolSpec)
       const runSignal = input.signal ?? new AbortController().signal
 
       assistantMessage = await this.createMessageAndTouchConversation(
@@ -130,38 +140,19 @@ export class AgentRuntimeService {
         assistantMessageId,
       }
 
-      activeAgentStepType = AGENT_STEP_TYPES.callLlm
-      await this.agentRunRecorderService.startStep(
-        currentAgentRunId,
-        AGENT_STEP_TYPES.callLlm,
-        {
-          input: {
-            messageCount: llmMessages.length,
-            model: input.model ?? null,
-          },
-        },
-      )
-
-      let hasStartedAssistantReplyStep = false
-      const startAssistantReplyStep = async (): Promise<void> => {
-        if (hasStartedAssistantReplyStep)
+      let assistantOutputStepId: string | undefined
+      const startAssistantOutputStep = async (): Promise<void> => {
+        if (assistantOutputStepId)
           return
 
-        await this.agentRunRecorderService.completeStep(
-          currentAgentRunId,
-          AGENT_STEP_TYPES.callLlm,
-        )
-        activeAgentStepType = AGENT_STEP_TYPES.streamAssistantReply
-        await this.agentRunRecorderService.startStep(
-          currentAgentRunId,
-          AGENT_STEP_TYPES.streamAssistantReply,
-          {
-            input: {
-              assistantMessageId,
-            },
+        const step = await this.agentRunRecorderService.startStep({
+          runId: currentAgentRunId,
+          type: AGENT_STEP_TYPES.assistantOutput,
+          input: {
+            assistantMessageId,
           },
-        )
-        hasStartedAssistantReplyStep = true
+        })
+        assistantOutputStepId = step.id
       }
 
       const chatStreamOptions = {
@@ -176,26 +167,64 @@ export class AgentRuntimeService {
 
       for (const samplingAttempt of [1, 2]) {
         runSignal.throwIfAborted()
-        const sampling = streamModelSampling(
-          this.llmService.chatStream(modelInputItems, chatStreamOptions),
-          `${currentAgentRunId}:sampling-${samplingAttempt}`,
-        )
-        let samplingResult = await sampling.next()
+        const samplingAttemptId = `${currentAgentRunId}:sampling-${samplingAttempt}`
+        const samplingStep = await this.agentRunRecorderService.startStep({
+          runId: currentAgentRunId,
+          type: AGENT_STEP_TYPES.modelSampling,
+          input: {
+            samplingIndex: samplingAttempt,
+            samplingAttemptId,
+            requestedModel: input.model ?? null,
+            messageCount: modelInputItems.length,
+            toolCount: modelTools.length,
+          },
+        })
+        const samplingStartedAt = Date.now()
+        let samplingDecision: SamplingDecision
 
-        while (!samplingResult.done) {
-          runSignal.throwIfAborted()
-          await startAssistantReplyStep()
-          content += samplingResult.value
-          yield {
-            type: 'assistant_delta',
-            runId: currentAgentRunId,
-            conversationId: input.conversationId,
-            assistantMessageId,
-            contentDelta: samplingResult.value,
+        try {
+          const sampling = streamModelSampling(
+            this.llmService.chatStream(modelInputItems, chatStreamOptions),
+            samplingAttemptId,
+          )
+          let samplingResult = await sampling.next()
+
+          while (!samplingResult.done) {
+            runSignal.throwIfAborted()
+            await startAssistantOutputStep()
+            content += samplingResult.value
+            yield {
+              type: 'assistant_delta',
+              runId: currentAgentRunId,
+              conversationId: input.conversationId,
+              assistantMessageId,
+              contentDelta: samplingResult.value,
+            }
+            samplingResult = await sampling.next()
           }
-          samplingResult = await sampling.next()
+          samplingDecision = samplingResult.value
+
+          runSignal.throwIfAborted()
+          await this.agentRunRecorderService.completeStep(samplingStep.id, {
+            output: this.toSamplingStepOutput(
+              samplingDecision.summary,
+              Date.now() - samplingStartedAt,
+            ),
+          })
         }
-        const samplingDecision: SamplingDecision = samplingResult.value
+        catch (error) {
+          if (!runSignal.aborted) {
+            await this.agentRunRecorderService.failStep(samplingStep.id, {
+              errorMessage: this.toChatStreamErrorMessage(error),
+              output: this.toFailedSamplingStepOutput(
+                error,
+                Date.now() - samplingStartedAt,
+              ),
+            })
+          }
+
+          throw error
+        }
 
         runSignal.throwIfAborted()
 
@@ -210,21 +239,83 @@ export class AgentRuntimeService {
           )
         }
 
-        const toolResult = await this.toolInvocationService.invoke(
-          samplingDecision.call,
-          {
-            runId: currentAgentRunId,
-            conversationId: input.conversationId,
-            signal: runSignal,
-            executionAttempt: 1,
-          },
+        const toolDefinition = toolDefinitions.find(
+          definition => definition.name === samplingDecision.call.toolName,
         )
+        const toolStep = await this.agentRunRecorderService.startStep({
+          runId: currentAgentRunId,
+          type: AGENT_STEP_TYPES.toolExecution,
+          input: {
+            callId: samplingDecision.call.callId,
+            toolName: samplingDecision.call.toolName,
+            toolVersion: toolDefinition?.version ?? null,
+            samplingAttemptId: samplingDecision.call.samplingAttemptId,
+            executionAttempt: 1,
+            rawArgumentsChars: [...samplingDecision.call.rawArgumentsJson].length,
+          },
+        })
+        const toolStartedAt = Date.now()
+        let toolResult: ToolResult
+
+        try {
+          toolResult = await this.toolInvocationService.invoke(
+            samplingDecision.call,
+            {
+              runId: currentAgentRunId,
+              conversationId: input.conversationId,
+              signal: runSignal,
+              executionAttempt: 1,
+            },
+          )
+          runSignal.throwIfAborted()
+        }
+        catch (error) {
+          if (!runSignal.aborted) {
+            await this.agentRunRecorderService.failStep(toolStep.id, {
+              errorMessage: '工具执行未能安全完成。',
+              output: {
+                durationMs: Date.now() - toolStartedAt,
+              },
+            })
+          }
+
+          throw error
+        }
+
+        const observation = normalizeToolObservation(toolResult.modelContent)
+        const toolStepOutput = {
+          ok: toolResult.ok,
+          ...(toolResult.ok
+            ? {}
+            : {
+                code: toolResult.code,
+                retryable: toolResult.retryable,
+              }),
+          originalChars: observation.originalChars,
+          observationChars: observation.observationChars,
+          truncated: observation.truncated,
+          durationMs: Date.now() - toolStartedAt,
+        }
+
+        if (toolResult.ok) {
+          await this.agentRunRecorderService.completeStep(toolStep.id, {
+            output: toolStepOutput,
+          })
+        }
+        else {
+          await this.agentRunRecorderService.failStep(toolStep.id, {
+            errorMessage: `工具 ${samplingDecision.call.toolName} 返回 ${toolResult.code}。`,
+            output: toolStepOutput,
+          })
+        }
+
         runSignal.throwIfAborted()
         this.appendToolObservation(
           modelInputItems,
           samplingDecision.call,
           samplingDecision.intermediateText,
-          toolResult,
+          observation.content,
+          toolResult.ok,
         )
       }
 
@@ -235,16 +326,27 @@ export class AgentRuntimeService {
       }
 
       runSignal.throwIfAborted()
-      await startAssistantReplyStep()
-      const completedMessage = await this.updateMessageAndTouchConversation(
+      await startAssistantOutputStep()
+      runSignal.throwIfAborted()
+      const completedMessageTransition = await this.updateMessageAndTouchConversation(
         assistantMessageId,
         input.conversationId,
         content,
         MessageStatus.COMPLETED,
+        runSignal,
       )
+
+      if (!completedMessageTransition.transitioned) {
+        hasFinalMessageStatus = true
+        throw new MessageTerminalTransitionError(assistantMessageId)
+      }
+
+      const completedMessage = completedMessageTransition.message
+
+      // Message 的 COMPLETED CAS 是正常完成路径的终态所有权边界；之后到达的 abort 属于迟到信号。
+      hasFinalMessageStatus = true
       await this.agentRunRecorderService.completeStep(
-        currentAgentRunId,
-        AGENT_STEP_TYPES.streamAssistantReply,
+        assistantOutputStepId!,
         {
           output: {
             contentLength: content.length,
@@ -252,7 +354,6 @@ export class AgentRuntimeService {
         },
       )
       await this.agentRunRecorderService.completeRun(currentAgentRunId)
-      hasFinalMessageStatus = true
 
       yield {
         type: 'run_completed',
@@ -265,7 +366,7 @@ export class AgentRuntimeService {
     }
     catch (error) {
       if (this.isAbortSignalTriggered(input.signal)) {
-        if (assistantMessage) {
+        if (assistantMessage && !hasFinalMessageStatus) {
           await this.updateMessageAndTouchConversation(
             assistantMessage.id,
             input.conversationId,
@@ -294,7 +395,7 @@ export class AgentRuntimeService {
 
       const errorMessage = this.toChatStreamErrorMessage(error)
 
-      if (assistantMessage) {
+      if (assistantMessage && !hasFinalMessageStatus) {
         await this.updateMessageAndTouchConversation(
           assistantMessage.id,
           input.conversationId,
@@ -305,11 +406,7 @@ export class AgentRuntimeService {
       }
 
       if (agentRunId) {
-        await this.agentRunRecorderService.failRun(
-          agentRunId,
-          errorMessage,
-          activeAgentStepType,
-        )
+        await this.agentRunRecorderService.failRun(agentRunId, errorMessage)
       }
 
       yield {
@@ -391,11 +488,16 @@ export class AgentRuntimeService {
     conversationId: string,
     content: string,
     status: PrismaMessageStatus,
-  ): Promise<Message> {
+    signal?: AbortSignal,
+  ): Promise<{ message: Message, transitioned: boolean }> {
     return this.prismaService.$transaction(async (prisma) => {
-      const message = await prisma.message.update({
+      signal?.throwIfAborted()
+      const result = await prisma.message.updateMany({
         where: {
           id: messageId,
+          status: {
+            in: [MessageStatus.PENDING, MessageStatus.STREAMING],
+          },
         },
         data: {
           content,
@@ -403,16 +505,30 @@ export class AgentRuntimeService {
         },
       })
 
-      await prisma.conversation.update({
-        where: {
-          id: conversationId,
-        },
-        data: {
-          updatedAt: new Date(),
-        },
+      if (result.count === 1) {
+        await prisma.conversation.update({
+          where: {
+            id: conversationId,
+          },
+          data: {
+            updatedAt: new Date(),
+          },
+        })
+      }
+
+      // 在事务提交前再次仲裁；若 abort 已先到达，抛错会回滚刚才的 Message 更新。
+      signal?.throwIfAborted()
+
+      const message = await prisma.message.findUniqueOrThrow({
+        where: { id: messageId },
       })
 
-      return message
+      signal?.throwIfAborted()
+
+      return {
+        message,
+        transitioned: result.count === 1,
+      }
     })
   }
 
@@ -457,11 +573,47 @@ export class AgentRuntimeService {
     return '模型服务暂时没有返回结果，请稍后重试。'
   }
 
+  private toSamplingStepOutput(
+    summary: ModelSamplingSummary,
+    durationMs: number,
+  ) {
+    return {
+      samplingAttemptId: summary.samplingAttemptId,
+      finishReason: summary.finishReason,
+      usage: summary.usage
+        ? {
+            ...(summary.usage.inputTokens === undefined
+              ? {}
+              : { inputTokens: summary.usage.inputTokens }),
+            ...(summary.usage.outputTokens === undefined
+              ? {}
+              : { outputTokens: summary.usage.outputTokens }),
+            ...(summary.usage.totalTokens === undefined
+              ? {}
+              : { totalTokens: summary.usage.totalTokens }),
+          }
+        : null,
+      toolCallCount: summary.toolCallCount,
+      textChars: summary.textChars,
+      intermediateTextChars: summary.intermediateTextChars,
+      durationMs,
+    }
+  }
+
+  private toFailedSamplingStepOutput(error: unknown, durationMs: number) {
+    if (error instanceof ModelSamplingIncompleteError && error.summary) {
+      return this.toSamplingStepOutput(error.summary, durationMs)
+    }
+
+    return { durationMs }
+  }
+
   private appendToolObservation(
     modelInputItems: ModelInputItem[],
     call: UnvalidatedToolCallEnvelope,
     intermediateText: string,
-    result: ToolResult,
+    content: string,
+    ok: boolean,
   ): void {
     modelInputItems.push(
       {
@@ -475,8 +627,8 @@ export class AgentRuntimeService {
         type: 'tool_result',
         callId: call.callId,
         name: call.toolName,
-        content: result.modelContent,
-        ok: result.ok,
+        content,
+        ok,
       },
     )
   }
