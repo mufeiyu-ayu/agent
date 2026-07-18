@@ -70,6 +70,7 @@ export class SearchArticlesTool implements ToolExecutor<SearchArticlesInput, Sea
   async execute(
     invocation: ValidatedToolInvocation<SearchArticlesInput>,
   ) {
+    // 零结果属于正常查询结果；未捕获的数据库或执行异常由 ToolInvocationService 统一兜底。
     const { languageCode, limit, query } = invocation.input
     const queryPattern = query.replace(/[\\%_]/g, '\\$&')
     const where: Prisma.ArticleWhereInput = {

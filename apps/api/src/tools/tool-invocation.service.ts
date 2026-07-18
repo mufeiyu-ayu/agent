@@ -19,6 +19,7 @@ export class ToolInvocationService {
     envelope: UnvalidatedToolCallEnvelope,
     context: ToolExecutionContext,
   ): Promise<ToolResult> {
+    // 工具调用开始前先响应已触发的外部中断，避免继续查找、校验或执行工具。
     context.signal.throwIfAborted()
 
     const tool = this.registry.get(envelope.toolName)
@@ -46,6 +47,7 @@ export class ToolInvocationService {
       }
     }
 
+    // 将模型返回的 arguments JSON 解析为对象，再通过工具输入契约校验并规范化。
     let input: unknown
 
     try {
@@ -60,6 +62,7 @@ export class ToolInvocationService {
       }
     }
 
+    // 将校验后的输入与服务端工具元数据组装为执行器唯一允许接收的可信调用。
     const invocation: ValidatedToolInvocation = {
       callId: envelope.callId,
       toolName: tool.definition.name,
@@ -73,6 +76,8 @@ export class ToolInvocationService {
     const cancellation = new Promise<ToolInvocationOutcome>((resolve) => {
       resolveCancellation = resolve
     })
+
+    // 一次性仲裁超时与外部中断，只有先到达的取消原因生效。
     const settleCancellation = (outcome: ToolInvocationOutcome): boolean => {
       if (hasCancellationOutcome)
         return false
