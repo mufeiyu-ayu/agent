@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { TableColumnsType } from 'ant-design-vue'
-import type { RunFilters, RunListItem, RunStatus } from '@/features/runs/run.model'
+import type { RunListItem, RunStatus } from '@/features/runs/run.model'
 import {
   BarsOutlined,
   CheckCircleOutlined,
@@ -23,17 +23,17 @@ import {
   Table,
   Tooltip,
 } from 'ant-design-vue'
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 
 import PageContainer from '@/components/common/PageContainer.vue'
 import PageHeader from '@/components/common/PageHeader.vue'
 import StatusBadge from '@/components/common/StatusBadge.vue'
 import RunStatusTag from '@/features/runs/components/RunStatusTag.vue'
+import { useRunListStore } from '@/features/runs/run-list.store'
 import { mockRunList, mockRunModels } from '@/features/runs/run.mocks'
 import {
   computeRunSummary,
-  defaultRunFilters,
   filterRuns,
   formatDuration,
   formatShortDateTime,
@@ -54,6 +54,7 @@ const columns: TableColumnsType<RunListItem> = [
   { title: '', key: 'action', width: 54, fixed: 'right', align: 'center' },
 ]
 const router = useRouter()
+const runListStore = useRunListStore()
 
 const statusOptions: Array<{ label: string, value: RunStatus }> = [
   { label: 'RUNNING', value: 'RUNNING' },
@@ -62,43 +63,22 @@ const statusOptions: Array<{ label: string, value: RunStatus }> = [
   { label: 'ABORTED', value: 'ABORTED' },
 ]
 
-const draftFilters = reactive<RunFilters>({ ...defaultRunFilters })
-const appliedFilters = ref<RunFilters>({ ...defaultRunFilters })
-const dateRange = ref<[string, string] | undefined>()
-const currentPage = ref(1)
-const pageSize = ref(8)
-
 const summary = computed(() => computeRunSummary(mockRunList))
-const filteredRuns = computed(() => filterRuns(mockRunList, appliedFilters.value))
+const filteredRuns = computed(() => filterRuns(mockRunList, runListStore.appliedFilters))
 const pagedRuns = computed(() => paginateRuns(
   filteredRuns.value,
-  currentPage.value,
-  pageSize.value,
+  runListStore.currentPage,
+  runListStore.pageSize,
 ))
 
-watch(pageSize, () => {
-  currentPage.value = 1
-})
+watch([filteredRuns, () => runListStore.pageSize], ([runs]) => {
+  runListStore.normalizePageAfterFilter(runs.length)
+}, { immediate: true })
 
-watch(filteredRuns, (runs) => {
-  const lastPage = Math.max(1, Math.ceil(runs.length / pageSize.value))
-  currentPage.value = Math.min(currentPage.value, lastPage)
-})
-
-function applyFilters() {
-  appliedFilters.value = {
-    ...draftFilters,
-    dateFrom: dateRange.value?.[0] ?? '',
-    dateTo: dateRange.value?.[1] ?? '',
-  }
-  currentPage.value = 1
-}
-
-function resetFilters() {
-  Object.assign(draftFilters, defaultRunFilters)
-  dateRange.value = undefined
-  appliedFilters.value = { ...defaultRunFilters }
-  currentPage.value = 1
+function handlePageChange(page: number, pageSize: number) {
+  runListStore.setPageSize(pageSize)
+  runListStore.setCurrentPage(page)
+  runListStore.normalizePageAfterFilter(filteredRuns.value.length)
 }
 </script>
 
@@ -152,17 +132,17 @@ function resetFilters() {
     </section>
 
     <Card class="filter-card" :bordered="false">
-      <Form class="run-filters" layout="vertical" @submit.prevent="applyFilters">
+      <Form class="run-filters" layout="vertical" @submit.prevent="runListStore.applyFilters">
         <FormItem label="Run ID / user question">
           <Input
-            v-model:value="draftFilters.query"
+            v-model:value="runListStore.draftFilters.query"
             allow-clear
             placeholder="Search Demo Runs"
           />
         </FormItem>
         <FormItem label="Status">
           <Select
-            v-model:value="draftFilters.status"
+            v-model:value="runListStore.draftFilters.status"
             allow-clear
             :options="statusOptions"
             placeholder="All statuses"
@@ -170,7 +150,7 @@ function resetFilters() {
         </FormItem>
         <FormItem label="Model">
           <Select
-            v-model:value="draftFilters.model"
+            v-model:value="runListStore.draftFilters.model"
             allow-clear
             :options="mockRunModels.map(model => ({ label: model, value: model }))"
             placeholder="All models"
@@ -178,7 +158,7 @@ function resetFilters() {
         </FormItem>
         <FormItem label="Date Range">
           <RangePicker
-            v-model:value="dateRange"
+            v-model:value="runListStore.dateRange"
             class="run-filters__range"
             value-format="YYYY-MM-DD"
             :placeholder="['From', 'To']"
@@ -191,7 +171,7 @@ function resetFilters() {
             </template>
             Search
           </Button>
-          <Button @click="resetFilters">
+          <Button @click="runListStore.resetFilters">
             <template #icon>
               <RedoOutlined />
             </template>
@@ -263,12 +243,13 @@ function resetFilters() {
           Showing {{ pagedRuns.length }} of {{ filteredRuns.length }} Demo Runs
         </span>
         <Pagination
-          v-model:current="currentPage"
-          v-model:page-size="pageSize"
+          :current="runListStore.currentPage"
+          :page-size="runListStore.pageSize"
           :total="filteredRuns.length"
           :page-size-options="['5', '8']"
           show-size-changer
           size="small"
+          @change="handlePageChange"
         />
       </footer>
     </Card>

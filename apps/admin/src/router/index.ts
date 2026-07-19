@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 
 declare module 'vue-router' {
   interface RouteMeta {
+    activeMenu?: string
     parentPath?: string
     parentTitle?: string
     title?: string
@@ -34,6 +35,7 @@ export const router = createRouter({
           name: 'run-detail',
           component: () => import('@/views/RunDetailView.vue'),
           meta: {
+            activeMenu: '/runs',
             title: 'Run Detail',
             tab: true,
             parentTitle: 'Runs',

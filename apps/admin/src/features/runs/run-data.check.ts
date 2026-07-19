@@ -1,8 +1,11 @@
 import assert from 'node:assert/strict'
+import { createPinia, setActivePinia } from 'pinia'
 
+import { defaultRunListPageSize, useRunListStore } from './run-list.store'
 import { getMockRunDetail, mockRunList } from './run.mocks'
 import {
   computeRunSummary,
+  defaultRunFilters,
   filterRuns,
   formatDuration,
   formatTokens,
@@ -62,6 +65,40 @@ assert.equal(filterRuns(mockRunList, {
   dateFrom: '2026-07-16',
   dateTo: '2026-07-16',
 }).length, 1)
+
+setActivePinia(createPinia())
+const runListStore = useRunListStore()
+runListStore.setPageSize(5)
+runListStore.setCurrentPage(2)
+
+const restoredRunListStore = useRunListStore()
+assert.equal(restoredRunListStore, runListStore)
+assert.equal(restoredRunListStore.pageSize, 5)
+assert.equal(restoredRunListStore.currentPage, 2)
+restoredRunListStore.normalizePageAfterFilter(8)
+assert.equal(restoredRunListStore.currentPage, 2)
+
+runListStore.resetFilters()
+runListStore.draftFilters.status = 'COMPLETED'
+runListStore.dateRange = ['2026-07-16', '2026-07-19']
+runListStore.applyFilters()
+assert.equal(useRunListStore().appliedFilters.status, 'COMPLETED')
+assert.deepEqual(useRunListStore().dateRange, ['2026-07-16', '2026-07-19'])
+assert.equal(filterRuns(mockRunList, runListStore.appliedFilters).length, 5)
+assert.equal(runListStore.currentPage, 1)
+
+runListStore.setPageSize(5)
+runListStore.setCurrentPage(4)
+runListStore.normalizePageAfterFilter(8)
+assert.equal(runListStore.currentPage, 2)
+
+runListStore.resetFilters()
+assert.deepEqual(runListStore.draftFilters, defaultRunFilters)
+assert.deepEqual(runListStore.appliedFilters, defaultRunFilters)
+assert.equal(runListStore.dateRange, undefined)
+assert.equal(runListStore.currentPage, 1)
+assert.equal(runListStore.pageSize, defaultRunListPageSize)
+assert.equal(filterRuns(mockRunList, runListStore.appliedFilters).length, 8)
 
 assert.equal(paginateRuns(mockRunList, 1, 5).length, 5)
 assert.equal(paginateRuns(mockRunList, 2, 5).length, 3)

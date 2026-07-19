@@ -186,6 +186,15 @@ Task 0 已 Completed 并进入 `master`。
 - [x] `RUNNING` 的未知 endedAt / duration / usage 保持 `null`，终态 duration 与 startedAt / endedAt 一致。
 - [x] 宽布局按真实 Chrome 视口流式占满主栏，列表表格卡片和分页在剩余高度内贴底展示。
 
+### Review finding 修复记录
+
+2026-07-20 根据 GPT 验收与 Codex Review 修复三个交互问题：
+
+- Route Tabs 在统一纯函数中为 `run-detail` 生成 `Run · …<Run ID 后 11 位>` 标题，普通路由继续使用 `meta.title`；Tab 文本、切换按钮和关闭按钮使用同一可辨识标题，路径去重规则保持不变。
+- `run-detail` 通过 `meta.activeMenu: '/runs'` 声明业务导航上下文，Sidebar 统一解析激活路径；详情页在 Sidebar 展开和折叠状态下都高亮 `Runs`。
+- 新增会话级 Run List Pinia Store，保存 draft / applied filters、日期范围、页码和 page size；Back、Breadcrumb、Route Tab 与浏览器后退返回列表时复用状态，Reset 恢复默认 8 条、第一页和 `8 / page`，越界页码自动收敛。
+- 用户已确认保留的 Agent Runtime 注释位于既有提交 `f9bc0b0`；本轮未修改、回退或重写该提交，修复代码仍只涉及 Admin Console 与任务记录。
+
 ### 验证记录
 
 2026-07-20 完成以下自动验证，全部通过：
@@ -209,6 +218,15 @@ git diff --check
 - 筛选实操结果：`Status=COMPLETED` 得 5 条，`Model=gpt-4o` 得 2 条，`2026-07-16` 同日 Date Range 得 1 条；每次 Reset 均恢复 8 条。
 - 补充响应式回归覆盖 `1440 × 900` 与 `1280 × 900`：两档都无页面级水平溢出或 console error / warning；`1280px` 下仅表格内部水平滚动 `48px`，Trace 仍保持可交互双栏。
 - 截图：[亮色 Run List](../assets/admin-console/issue-21-real-chrome-light-run-list.jpg)、[暗色 Run List](../assets/admin-console/issue-21-real-chrome-dark-run-list.jpg)、[亮色 Run Detail](../assets/admin-console/issue-21-real-chrome-light-run-detail.jpg)、[暗色 Run Detail](../assets/admin-console/issue-21-real-chrome-dark-run-detail.jpg)、[Sidebar 折叠](../assets/admin-console/issue-21-real-chrome-collapsed-run-list.jpg)。
+
+Review 修复后重新完成自动与真实浏览器验证：
+
+- Admin 状态自检新增两个 Run Detail 标题可区分、普通路由标题回退，以及 `/overview`、`/runs`、Run Detail 菜单激活路径断言。
+- Run 数据自检新增 Pinia Store 会话状态复用、Reset、默认 8 条结果和越界页码修正断言；既有 Tool Calling 顺序、安全 allowlist 与运行状态断言继续通过。
+- 真实 Chrome `2560 × 1213` CSS 视口、DPR 2 下同时保留两个详情 Tab：`Run · …20260718_06` 与 `Run · …20260719_01`；详情页 `Runs` 在 Sidebar 展开 / 折叠时均保持 `aria-current="page"` 和高亮。
+- 分页场景：`5 / page`、第 2 页进入详情，通过 Back 返回后仍为第 2 页；筛选场景：`COMPLETED` 得 5 条，分别通过 Breadcrumb、Route Tab 和浏览器后退返回后仍保留筛选结果。
+- Reset 恢复空筛选、空日期、8 条 Demo Run、第一页和 `8 / page`；`1440 × 900`、`1280 × 900` 下 Run List / Detail 均无页面级水平溢出。
+- 明暗主题均重新验证，浏览器 console error / warning 为 0；截图：[暗色双 Run Detail Tabs](../assets/admin-console/issue-21-review-two-run-tabs-dark.jpg)、[亮色 Run Detail / Sidebar 折叠](../assets/admin-console/issue-21-review-run-detail-light.jpg)。
 
 ### GitHub 交付记录
 

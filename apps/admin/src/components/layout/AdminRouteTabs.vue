@@ -4,7 +4,7 @@ import { CloseOutlined } from '@ant-design/icons-vue'
 import { ref, watch } from 'vue'
 
 import { useRoute, useRouter } from 'vue-router'
-import { routeAfterTabClose } from '@/lib/admin-state'
+import { resolveRouteTabTitle, routeAfterTabClose } from '@/lib/admin-state'
 
 const route = useRoute()
 const router = useRouter()
@@ -18,7 +18,7 @@ watch(() => route.path, () => {
 
   tabs.value.push({
     path: route.path,
-    title: route.meta.title ?? route.path,
+    title: resolveRouteTabTitle(route),
   })
 }, { immediate: true })
 
@@ -42,7 +42,12 @@ async function closeTab(tab: RouteTab) {
       class="route-tab"
       :class="{ 'is-active': route.path === tab.path }"
     >
-      <button type="button" @click="router.push(tab.path)">
+      <button
+        type="button"
+        :aria-label="`打开 ${tab.title}`"
+        :title="tab.title"
+        @click="router.push(tab.path)"
+      >
         {{ tab.title }}
       </button>
       <button
@@ -50,6 +55,7 @@ async function closeTab(tab: RouteTab) {
         class="route-tab__close"
         type="button"
         :aria-label="`关闭 ${tab.title}`"
+        :title="`关闭 ${tab.title}`"
         @click.stop="closeTab(tab)"
       >
         <CloseOutlined />

@@ -5,7 +5,10 @@ import {
   MenuUnfoldOutlined,
   ProfileOutlined,
 } from '@ant-design/icons-vue'
+import { computed } from 'vue'
+import { useRoute } from 'vue-router'
 
+import { resolveActiveMenuPath } from '@/lib/admin-state'
 import AdminLogo from './AdminLogo.vue'
 
 defineProps<{
@@ -20,6 +23,9 @@ const navigation = [
   { path: '/overview', label: 'Overview', icon: DashboardOutlined },
   { path: '/runs', label: 'Runs', icon: ProfileOutlined },
 ]
+
+const route = useRoute()
+const activeMenuPath = computed(() => resolveActiveMenuPath(route))
 </script>
 
 <template>
@@ -37,7 +43,8 @@ const navigation = [
         :key="item.path"
         :to="item.path"
         class="admin-nav__item"
-        active-class="is-active"
+        :class="{ 'is-active': activeMenuPath === item.path }"
+        :aria-current="activeMenuPath === item.path ? 'page' : undefined"
         :aria-label="collapsed ? item.label : undefined"
         :title="collapsed ? item.label : undefined"
       >
