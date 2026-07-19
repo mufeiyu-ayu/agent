@@ -6,16 +6,17 @@
 
 | 类型 | 当前记录 | 下一步 |
 | --- | --- | --- |
-| 当前阶段 | 阶段 4 Agent Runtime 基础与阶段 5 最小 Tool Calling 均已完成并归档；PR #17 已合并，Issue #14 已关闭 | 当前没有 Active 正式实现任务；先完成阶段 5 源码复盘，再决定是否启动阶段 6 Human-in-the-loop |
+| 当前阶段 | 阶段 4 Agent Runtime 基础与阶段 5 最小 Tool Calling 均已完成并归档；Admin Console Task 0 已完成并通过 PR #20 合并到 `master` | 当前没有 Active 正式实现任务；先完成阶段 5 源码复盘，或在用户确认后为 Admin Console Task 1 创建独立 Issue |
 | 文档结构 | docs 已重组为 `roadmap`、`tasks`、`research`、`work-log` 四类入口；当前任务以 `docs/tasks/README.md` 为准 | 后续 commit 按 task docs 和 work-log 分工更新 |
 | 任务规范 | 新任务使用 TDD 风格模板；已完成阶段保留在 `docs/tasks/completed/`，当前任务目录只保留可执行阶段入口 | 后续任务继续按 Red / Green / Refactor 推进 |
 | Codex 研究 | 已基于本地 Codex fork 与当前 Agent 源码重建 `docs/research/`：形成架构报告、学习清单、云端映射和 14 个分阶段学习目录 | 作为阶段 6 及后续任务的研究依据；真实执行状态仍以 `docs/tasks/` 为准 |
-| GitHub 工作流 | 正式任务由 Issue 工作流负责实现、Ready PR、自动 Codex Review、GPT / 用户验收收口与合并后分支清理；Review 由独立修复流程处理 | 当前进入学习复盘模式，不自动创建下一阶段 Issue |
+| GitHub 工作流 | 正式任务由 Issue 工作流负责实现、Ready PR、自动 Codex Review、GPT / 用户验收收口与合并后分支清理；Review 由独立修复流程处理 | Issue #19 / PR #20 已收口；不自动启动 Admin Console Task 1 或下一阶段 Issue |
 
 ## 近期工作记录
 
 | 日期 | 提交 | 类型 | 核心完成 | 关键文件 | 验证结果 |
 | --- | --- | --- | --- | --- | --- |
+| 2026-07-19 | PR #20 验收合并与 Admin Console Task 0 收口 | feat / docs / Admin Console | GPT 结合 Issue #19、最新 PR diff、Codex Review、验证记录和截图完成验收；用户明确确认并授权收口与合并。合并前复查新增 Header Sidebar 展开/折叠入口及更新截图，不改变任务边界；PR #20 转 Ready 后以 merge commit `09ab8344b772783d6c502d8502cff5a29276517b` 合并到 `master`，Issue #19 自动关闭；Task 0 标记 Completed，Task 1-4 保持 Planned | `apps/admin/**`、`docs/tasks/admin-console.md`、`docs/tasks/README.md`、`docs/roadmap.md`、`docs/work-log.md` | PR 记录的 Admin typecheck/lint/test/build、Web typecheck/build、API typecheck、workspace typecheck、`git diff --check` 均通过；1440 × 900 手工验证覆盖路由、主题、Sidebar、Route Tabs 和偏好持久化；Codex Review 未发现重大问题；当前无 GitHub Actions workflow run |
 | 2026-07-18 | PR #17 验收合并与阶段 5 归档 | docs / Agent Runtime / Tool Calling | GPT 验收 Issue #14 / PR #17 的唯一 Runtime 方案与 404 Review 修复；用户明确确认后合并到 `master`，merge commit `db7b3d1f`，Issue #14 自动关闭；阶段 5 标记为 Completed 并压缩归档，阶段 6 保持未启动 | `docs/tasks/completed/phase-05-tool-calling.md`、`docs/tasks/README.md`、`docs/roadmap.md`、`docs/README.md`、`docs/work-log.md` | 基于 PR #17 最终记录：8 个 SEO Service、9 个 Recorder、20 个 Tool Loop、35 个 Model Stream、24 个 Tools 测试通过；API / Web typecheck 与 lint、Web build、workspace typecheck、`git diff --check` 通过；全仓 lint 仍仅被既有 research Markdown 127 errors baseline 阻断 |
 | 2026-07-18 | Issue #14 实现 | refactor / Agent Runtime | 保留同步与流式两个后端入口，但统一为唯一 `AgentRuntimeService.runTurnStream()`；同步入口只做安全终态聚合，删除直接 LLM / Prisma / history / Message 旁路；删除 Web 未使用的非流式 helper，Vue 主路径与 stream contract 不变；Issue #14 已实现、待验收，阶段 5 保持 In Progress | `apps/api/src/seo/seo.service.ts`、`seo.service.test.ts`、`seo.module.ts`、`apps/web/src/api/seo.ts`、阶段 5 状态文档 | 8 个 SEO Service、9 个 Recorder、20 个 Tool Loop、35 个 Model Stream、24 个 Tools 测试通过；API / Web typecheck 与 lint、Web build、workspace typecheck、`git diff --check` 通过；缺失会话 404、非流式 / 流式普通回答、Tool Loop 与 abort 的 HTTP、页面和数据库验证通过，13 个临时会话已精确清理；全仓 lint 仅被既有 research Markdown 127 errors baseline 阻断 |
 | 2026-07-17 | PR #15 验收合并收口 | docs / Tool Calling | GPT 验收 Issue #13 / PR #15 通过，用户明确确认后合并到 `master`；Task 5 标记为 Completed，动态 AgentStep、两轮 sampling 记录、工具安全摘要、真实 timeout 和 Observation 上限进入主分支；阶段 5 保持 In Progress，下一步处理 Issue #14 | `docs/tasks/phase-05-tool-calling/README.md`、`docs/tasks/README.md`、`docs/roadmap.md`、`docs/work-log.md` | 基于 PR #15 验证结果：9 个 Recorder、19 个 Tool Loop、34 个 Model Stream、24 个 Tools 测试通过；Prisma migration、API typecheck/lint、Web typecheck/build、workspace typecheck、`git diff --check` 通过；Codex Review 无 major issues；merge commit `f6985627` |
