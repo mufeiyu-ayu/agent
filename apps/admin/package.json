@@ -9,7 +9,7 @@
     "build": "vue-tsc --noEmit -p tsconfig.json && vite build",
     "lint": "eslint src",
     "lint:fix": "eslint src --fix",
-    "test": "tsx src/lib/admin-state.check.ts"
+    "test": "tsx src/lib/admin-state.check.ts && tsx src/features/runs/run-data.check.ts"
   },
   "dependencies": {
     "@ant-design/icons-vue": "^7.0.1",

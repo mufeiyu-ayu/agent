@@ -11,6 +11,16 @@ export interface RouteTab {
   fixed?: boolean
 }
 
+interface RouteNavigationContext {
+  meta: {
+    activeMenu?: string
+    title?: string
+  }
+  name?: unknown
+  params?: Record<string, unknown>
+  path: string
+}
+
 export const defaultAdminPreferences: AdminPreferences = {
   theme: 'system',
   sidebarCollapsed: false,
@@ -52,4 +62,23 @@ export function routeAfterTabClose(
   const fallbackIndex = Math.max(0, closingIndex - 1)
 
   return remainingTabs[fallbackIndex]?.path ?? '/overview'
+}
+
+export function resolveRouteTabTitle(route: RouteNavigationContext): string {
+  const fallbackTitle = route.meta.title ?? route.path
+
+  if (route.name !== 'run-detail')
+    return fallbackTitle
+
+  const runId = route.params?.runId
+
+  if (typeof runId !== 'string' || !runId)
+    return fallbackTitle
+
+  const suffix = runId.length > 11 ? `…${runId.slice(-11)}` : runId
+  return `Run · ${suffix}`
+}
+
+export function resolveActiveMenuPath(route: RouteNavigationContext): string {
+  return route.meta.activeMenu ?? route.path
 }

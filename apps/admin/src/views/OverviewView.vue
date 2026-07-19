@@ -23,8 +23,8 @@ const foundations = [
   {
     icon: BranchesOutlined,
     label: '当前路由',
-    value: '2 routes',
-    detail: 'Overview / Runs',
+    value: '3 routes',
+    detail: 'Overview / Runs / Detail',
     tone: 'success' as const,
     status: 'Static',
   },
@@ -97,7 +97,7 @@ const foundations = [
         <div>
           <span>03</span>
           <strong>Data boundary</strong>
-          <p>不连接 Run API，不制造看似真实的运行数据。</p>
+          <p>不连接 Run API，只展示明确标注的类型化 Demo Mock。</p>
         </div>
       </div>
     </Card>

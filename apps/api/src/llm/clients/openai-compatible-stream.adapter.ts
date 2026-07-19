@@ -26,6 +26,7 @@ export async function* adaptOpenAICompatibleStream(
       const contentDelta = choice.delta.content
 
       if (contentDelta) {
+        // 普通回答按文本碎片转换，上层会继续把这些 delta 实时发送给前端。
         yield {
           type: 'text_delta',
           delta: contentDelta,
@@ -33,6 +34,7 @@ export async function* adaptOpenAICompatibleStream(
       }
 
       for (const toolCallDelta of choice.delta.tool_calls ?? []) {
+        // 工具名和 arguments 可能分多个 chunk 返回，这里只负责持续拼接碎片。
         toolCallAccumulator.append({
           index: toolCallDelta.index,
           ...(toolCallDelta.id
@@ -48,6 +50,7 @@ export async function* adaptOpenAICompatibleStream(
       }
 
       if (choice.finish_reason) {
+        // finish reason 只表示本轮模型生成结束；若为 tool_calls，工具此时尚未执行。
         finishReason = normalizeFinishReason(choice.finish_reason)
         const toolCalls = toolCallAccumulator.finalize()
 
@@ -61,6 +64,7 @@ export async function* adaptOpenAICompatibleStream(
         }
 
         for (const toolCall of toolCalls) {
+          // 输出的是已拼接完成的 Tool Call 请求，后端将在上层校验并执行它。
           yield {
             type: 'tool_call_completed',
             toolCall,
@@ -70,6 +74,7 @@ export async function* adaptOpenAICompatibleStream(
     }
 
     if (chunk.usage) {
+      // Usage 可能在结束 choice 之后单独返回，只用于记录本轮 Token 消耗。
       yield {
         type: 'usage',
         usage: toModelUsage(chunk.usage),
@@ -81,6 +86,7 @@ export async function* adaptOpenAICompatibleStream(
     throw new LLMApiError('模型流在没有 finish reason 的情况下结束')
   }
 
+  // 原始模型流结束后发出统一完成事件；tool_calls 表示工具调用请求已生成完毕，并非工具已执行。
   yield {
     type: 'response_completed',
     finishReason,
