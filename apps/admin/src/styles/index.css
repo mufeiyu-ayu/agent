@@ -1,0 +1,92 @@
+:root {
+  --admin-font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+  --admin-header-height: 50px;
+  --admin-tabs-height: 38px;
+  --admin-sidebar-width: 224px;
+  --admin-sidebar-collapsed-width: 60px;
+  --admin-radius: 8px;
+  --admin-primary: hsl(212deg 100% 45%);
+  --admin-primary-soft: hsl(212deg 100% 45% / 10%);
+  --admin-success: hsl(144deg 57% 45%);
+  --admin-success-strong: hsl(144deg 55% 31%);
+  --admin-success-soft: hsl(144deg 57% 45% / 10%);
+  --admin-bg: hsl(0deg 0% 100%);
+  --admin-bg-deep: hsl(216deg 20.1% 95.5%);
+  --admin-surface: hsl(0deg 0% 100%);
+  --admin-text: hsl(210deg 6% 21%);
+  --admin-text-muted: hsl(240deg 3.8% 43%);
+  --admin-text-subtle: hsl(217deg 10.6% 62%);
+  --admin-border: hsl(240deg 5.9% 90%);
+  --admin-border-strong: hsl(216deg 11% 83%);
+  --admin-hover: hsl(240deg 4.8% 95.9%);
+  --admin-card-shadow: 0 1px 2px rgb(15 23 42 / 3%);
+  color-scheme: light;
+  font-family: var(--admin-font-family);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+:root[data-theme='dark'] {
+  --admin-primary: hsl(212deg 100% 62%);
+  --admin-primary-soft: hsl(212deg 100% 62% / 12%);
+  --admin-success: hsl(144deg 57% 58%);
+  --admin-success-strong: hsl(144deg 57% 67%);
+  --admin-success-soft: hsl(144deg 57% 58% / 11%);
+  --admin-bg: hsl(222.3deg 10.4% 12.3%);
+  --admin-bg-deep: hsl(220deg 13.1% 9%);
+  --admin-surface: hsl(222.3deg 10.4% 12.3%);
+  --admin-text: hsl(0deg 0% 95%);
+  --admin-text-muted: hsl(240deg 5% 65%);
+  --admin-text-subtle: hsl(218deg 11% 52%);
+  --admin-border: hsl(240deg 3.7% 22%);
+  --admin-border-strong: hsl(240deg 3.7% 29%);
+  --admin-hover: hsl(216deg 5% 19%);
+  --admin-card-shadow: 0 1px 2px rgb(0 0 0 / 16%);
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-width: 1024px;
+  background: var(--admin-bg-deep);
+}
+
+body {
+  min-width: 1024px;
+  min-height: 100vh;
+  margin: 0;
+  color: var(--admin-text);
+  background: var(--admin-bg-deep);
+  font-family: var(--admin-font-family);
+  font-size: 14px;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+button:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--admin-primary);
+  outline-offset: 2px;
+}
+
+::selection {
+  color: #fff;
+  background: var(--admin-primary);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}
