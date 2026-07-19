@@ -119,6 +119,7 @@ export class AgentRuntimeService {
       const modelTools = toolDefinitions.map(toModelToolSpec)
       const runSignal = input.signal ?? new AbortController().signal
 
+      // 模型采样前先创建空的流式助手消息，后续将增量内容和最终状态写回该记录。
       assistantMessage = await this.createMessageAndTouchConversation(
         input.conversationId,
         MessageRole.ASSISTANT,
