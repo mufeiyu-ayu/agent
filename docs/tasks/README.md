@@ -4,11 +4,11 @@
 
 ## 当前看板
 
-当前 Active 正式实现任务为 Admin Console Task 0。它只建立阶段 8 可观测性 UI 所需的后台前端基础壳，不代表 Run / Step 查询能力已经完成，也不改变阶段 6、阶段 7、阶段 8 的既有状态。
+当前没有已启动的正式实现任务。Admin Console Task 0 已完成实现、通过 GPT 验收并获得用户确认；Task 1-4 仍为 Planned，不代表阶段 8 已启动或完成。
 
 | 区域 | 状态 | 文档 | 说明 |
 | --- | --- | --- | --- |
-| Admin Console Task 0 | Active | [admin-console.md](./admin-console.md) | Issue #19；初始化 `apps/admin` 基础壳，实施状态为已实现、验收状态为待验收；Task 1-4 仍为 Planned |
+| Admin Console Task 0 | Completed | [admin-console.md](./admin-console.md) | Issue #19 / PR #20；`apps/admin` 基础壳已实现并通过验收；Task 1-4 仍为 Planned |
 | 阶段 5 最小 Tool Calling | Completed | [completed/phase-05-tool-calling.md](./completed/phase-05-tool-calling.md) | Task 0-5 与 Issue #14 已完成并通过验收；PR #17 已合并，阶段已归档 |
 | 阶段 4 Agent Runtime | Completed | [completed/phase-04-agent-runtime.md](./completed/phase-04-agent-runtime.md) | 已归档为可观测 Agent Run 的基础阶段 |
 | 阶段 3 收口 | Completed | [completed/phase-03-streaming-closeout.md](./completed/phase-03-streaming-closeout.md) | 已收口 `done/error/aborted` 最终态一致性 |
