@@ -1,13 +1,34 @@
 <script setup lang="ts">
-import { UserOutlined } from '@ant-design/icons-vue'
+import {
+  MenuFoldOutlined,
+  MenuUnfoldOutlined,
+  UserOutlined,
+} from '@ant-design/icons-vue'
+import { Button } from 'ant-design-vue'
+
+import { useAdminPreferencesStore } from '@/stores/preferences'
 
 import AdminBreadcrumb from './AdminBreadcrumb.vue'
 import ThemeToggle from './ThemeToggle.vue'
+
+const preferences = useAdminPreferencesStore()
 </script>
 
 <template>
   <header class="admin-header">
-    <AdminBreadcrumb />
+    <div class="admin-header__start">
+      <Button
+        class="admin-header__sidebar-toggle"
+        type="text"
+        :aria-label="preferences.sidebarCollapsed ? '展开 Sidebar' : '折叠 Sidebar'"
+        :title="preferences.sidebarCollapsed ? '展开 Sidebar' : '折叠 Sidebar'"
+        @click="preferences.toggleSidebar"
+      >
+        <MenuUnfoldOutlined v-if="preferences.sidebarCollapsed" />
+        <MenuFoldOutlined v-else />
+      </Button>
+      <AdminBreadcrumb />
+    </div>
 
     <div class="admin-header__actions">
       <span class="admin-header__environment">
@@ -44,9 +65,23 @@ import ThemeToggle from './ThemeToggle.vue'
 }
 
 .admin-header__actions,
+.admin-header__start,
 .admin-header__user {
   display: flex;
   align-items: center;
+}
+
+.admin-header__start {
+  min-width: 0;
+  gap: 4px;
+}
+
+.admin-header__sidebar-toggle {
+  display: grid;
+  width: 34px;
+  place-items: center;
+  color: var(--admin-text-muted);
+  font-size: 16px;
 }
 
 .admin-header__actions {
