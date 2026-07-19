@@ -184,6 +184,7 @@ export class AgentRuntimeService {
         let samplingDecision: SamplingDecision
 
         try {
+          // 两层 async generator 此时只创建迭代器；首次 sampling.next() 才启动模型请求并拉取事件。
           const sampling = streamModelSampling(
             this.llmService.chatStream(modelInputItems, chatStreamOptions),
             samplingAttemptId,
