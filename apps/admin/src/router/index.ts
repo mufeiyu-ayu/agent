@@ -2,6 +2,8 @@ import { createRouter, createWebHistory } from 'vue-router'
 
 declare module 'vue-router' {
   interface RouteMeta {
+    parentPath?: string
+    parentTitle?: string
     title?: string
     tab?: boolean
   }
@@ -26,6 +28,17 @@ export const router = createRouter({
           name: 'runs',
           component: () => import('@/views/RunsView.vue'),
           meta: { title: 'Runs', tab: true },
+        },
+        {
+          path: 'runs/:runId',
+          name: 'run-detail',
+          component: () => import('@/views/RunDetailView.vue'),
+          meta: {
+            title: 'Run Detail',
+            tab: true,
+            parentTitle: 'Runs',
+            parentPath: '/runs',
+          },
         },
       ],
     },

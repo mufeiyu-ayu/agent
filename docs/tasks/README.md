@@ -4,11 +4,12 @@
 
 ## 当前看板
 
-当前没有已启动的正式实现任务。Admin Console Task 0 已完成实现、通过 GPT 验收并获得用户确认；Task 1-4 仍为 Planned，不代表阶段 8 已启动或完成。
+Admin Console Task 1 是当前 Active 正式任务，静态 Run List / Run Detail UI 已实现并完成验证，正等待 GPT 学习验收和用户确认。Task 2-4 仍为 Planned，不代表阶段 8 已启动或完成。
 
 | 区域 | 状态 | 文档 | 说明 |
 | --- | --- | --- | --- |
-| Admin Console Task 0 | Completed | [admin-console.md](./admin-console.md) | Issue #19 / PR #20；`apps/admin` 基础壳已实现并通过验收；Task 1-4 仍为 Planned |
+| Admin Console Task 1 | Active | [admin-console.md](./admin-console.md) | Issue #21；静态 Run UI 已实现、待验收；Draft PR 按 Issue 要求保持 Draft |
+| Admin Console Task 0 | Completed | [admin-console.md](./admin-console.md) | Issue #19 / PR #20；`apps/admin` 基础壳已实现并通过验收 |
 | 阶段 5 最小 Tool Calling | Completed | [completed/phase-05-tool-calling.md](./completed/phase-05-tool-calling.md) | Task 0-5 与 Issue #14 已完成并通过验收；PR #17 已合并，阶段已归档 |
 | 阶段 4 Agent Runtime | Completed | [completed/phase-04-agent-runtime.md](./completed/phase-04-agent-runtime.md) | 已归档为可观测 Agent Run 的基础阶段 |
 | 阶段 3 收口 | Completed | [completed/phase-03-streaming-closeout.md](./completed/phase-03-streaming-closeout.md) | 已收口 `done/error/aborted` 最终态一致性 |

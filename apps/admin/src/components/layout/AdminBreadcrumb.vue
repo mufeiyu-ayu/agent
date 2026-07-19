@@ -6,6 +6,9 @@ import { useRoute } from 'vue-router'
 
 const route = useRoute()
 const currentTitle = computed(() => route.meta.title ?? 'Overview')
+const parent = computed(() => route.meta.parentPath && route.meta.parentTitle
+  ? { path: route.meta.parentPath, title: route.meta.parentTitle }
+  : undefined)
 </script>
 
 <template>
@@ -13,6 +16,11 @@ const currentTitle = computed(() => route.meta.title ?? 'Overview')
     <BreadcrumbItem>
       <RouterLink to="/overview" aria-label="Overview">
         <HomeOutlined />
+      </RouterLink>
+    </BreadcrumbItem>
+    <BreadcrumbItem v-if="parent">
+      <RouterLink :to="parent.path">
+        {{ parent.title }}
       </RouterLink>
     </BreadcrumbItem>
     <BreadcrumbItem>{{ currentTitle }}</BreadcrumbItem>
