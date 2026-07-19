@@ -1,0 +1,28 @@
+{
+  "name": "@agent/admin",
+  "type": "module",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "vite",
+    "typecheck": "vue-tsc --noEmit -p tsconfig.json",
+    "build": "vue-tsc --noEmit -p tsconfig.json && vite build",
+    "lint": "eslint src",
+    "lint:fix": "eslint src --fix",
+    "test": "tsx src/lib/admin-state.check.ts"
+  },
+  "dependencies": {
+    "@ant-design/icons-vue": "^7.0.1",
+    "ant-design-vue": "^4.2.6",
+    "pinia": "^3.0.4",
+    "vue": "^3.5.25",
+    "vue-router": "^5.1.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^6.0.3",
+    "tsx": "^4.22.3",
+    "typescript": "^6.0.3",
+    "vite": "^7.2.4",
+    "vue-tsc": "^3.1.7"
+  }
+}
