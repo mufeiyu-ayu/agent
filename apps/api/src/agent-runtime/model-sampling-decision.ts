@@ -29,7 +29,11 @@ export type SamplingDecision
     summary: ModelSamplingSummary
   }
 
-/** 实时转发最终回答文本，并只接受完整最终回答或单个完整 Tool Call。 */
+/**
+ * 函数职责：实时转发最终回答文本，并只接受完整最终回答或单个完整 Tool Call。
+ *
+ * 执行方式：每轮模型请求只调用一次本函数；内部循环消费多个模型事件，文本通过 yield 分段返回，模型流结束后再通过 return 返回最终决策。
+ */
 export async function* streamModelSampling(
   events: AsyncIterable<ModelStreamEvent>,
   samplingAttemptId: string,

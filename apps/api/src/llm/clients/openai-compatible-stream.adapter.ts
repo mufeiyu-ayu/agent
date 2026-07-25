@@ -52,6 +52,13 @@ export async function* adaptOpenAICompatibleStream(
       if (choice.finish_reason) {
         // finish reason 只表示本轮模型生成结束；若为 tool_calls，工具此时尚未执行。
         finishReason = normalizeFinishReason(choice.finish_reason)
+        // 例如得到：
+        // [{
+        //   providerCallId: 'call_123',
+        //   name: 'search_articles',
+        //   argumentsJson: '{"query":"SP Himeko","limit":5}',
+        //   index: 0,
+        // }]
         const toolCalls = toolCallAccumulator.finalize()
 
         if (finishReason === 'tool_calls' && toolCalls.length === 0) {

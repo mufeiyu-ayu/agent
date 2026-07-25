@@ -244,6 +244,7 @@ export class AgentRuntimeService {
         const toolDefinition = toolDefinitions.find(
           definition => definition.name === samplingDecision.call.toolName,
         )
+        // add toolstep runing
         const toolStep = await this.agentRunRecorderService.startStep({
           runId: currentAgentRunId,
           type: AGENT_STEP_TYPES.toolExecution,
@@ -260,6 +261,16 @@ export class AgentRuntimeService {
         let toolResult: ToolResult
 
         try {
+          // 等待统一工具执行器完成，并取得 ToolResult。例如：
+          // {
+          //   ok: true,
+          //   data: {
+          //     query: 'SP Himeko',
+          //     total: 1,
+          //     articles: [/* 精简文章结果 */],
+          //   },
+          //   modelContent: '共找到 1 篇匹配文章……',
+          // }
           toolResult = await this.toolInvocationService.invoke(
             samplingDecision.call,
             {
