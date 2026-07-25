@@ -1,77 +1,194 @@
-# AI SEO Agent 学习项目
+<div align="center">
 
-这个项目用于学习 Agent 应用开发，并逐步搭建一个小型 AI SEO Agent 助手。
+# TypeScript Agent Runtime
 
-当前代码采用轻量 pnpm workspace：
+**An observable TypeScript runtime for building streaming, tool-using AI agents.**
 
-```txt
-apps/api  -> NestJS 后端
-apps/web  -> Vue + Vite 前端
-docs/     -> 项目任务与工作记录
-context/  -> 项目规划和上下文
+Explicit orchestration for model sampling, tool execution, state transitions, and durable run traces.
+
+![TypeScript](https://img.shields.io/badge/TypeScript-6.x-3178C6?style=flat-square&logo=typescript&logoColor=white)
+![NestJS](https://img.shields.io/badge/NestJS-11-E0234E?style=flat-square&logo=nestjs&logoColor=white)
+![Vue](https://img.shields.io/badge/Vue-3-42B883?style=flat-square&logo=vuedotjs&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-Prisma-4169E1?style=flat-square&logo=postgresql&logoColor=white)
+![pnpm](https://img.shields.io/badge/pnpm-10-F69220?style=flat-square&logo=pnpm&logoColor=white)
+
+</div>
+
+## Overview
+
+TypeScript Agent Runtime is a full-stack reference implementation of an explicit, inspectable agent execution loop. It keeps model messages, user-visible messages, runtime events, and persisted execution records as separate concerns.
+
+The runtime can stream a direct answer or execute a validated tool call, append the resulting observation to the model context, and perform a bounded second sampling to produce the final response.
+
+## Highlights
+
+| Capability | Implementation |
+| --- | --- |
+| Agent orchestration | Explicit model sampling, tool execution, and final-answer boundaries |
+| Streaming | Abort-aware NDJSON responses with incremental assistant deltas |
+| Tool calling | Typed definitions, registry lookup, argument validation, and executor isolation |
+| Tool safety | Risk gates, approval metadata, execution timeouts, and cancellation propagation |
+| Persistence | Conversations, messages, Agent Runs, and ordered Agent Steps in PostgreSQL |
+| Model integration | OpenAI-compatible Chat Completions client with normalized stream events |
+| Runtime traces | Durable input, output, status, timing, and error snapshots for every step |
+| User interfaces | Vue chat client and an operator console shell with trace-oriented views |
+
+## Architecture
+
+```mermaid
+flowchart LR
+    Web["Vue Client"] -->|"NDJSON"| API["NestJS API"]
+    API --> Runtime["Agent Runtime"]
+
+    Runtime --> Context["Context Builder"]
+    Runtime --> Sampling["Model Sampling"]
+    Runtime --> Tools["Tool Registry"]
+    Runtime --> Recorder["Run / Step Recorder"]
+
+    Sampling --> Provider["OpenAI-Compatible Provider"]
+    Tools --> Executor["Validated Tool Executor"]
+    Recorder --> Database[("PostgreSQL")]
+    Executor --> Database
 ```
 
-## 快速开始
+The operator console is currently backed by typed mock data while its read-only Run and Step query API is being designed.
 
-环境要求：
+## Runtime Lifecycle
 
-```txt
-Node.js 20.19.3 推荐，至少满足 ^20.19.0 || >=22.12.0
-pnpm 10.32.1
+```text
+User Input
+   │
+   ▼
+Create Agent Run ──► Load Conversation Context
+   │
+   ▼
+Model Sampling
+   ├──► Final Answer ──► Stream Response ──► Complete Run
+   │
+   └──► Tool Call
+           │
+           ▼
+       Validate & Execute
+           │
+           ▼
+       Append Observation
+           │
+           ▼
+       Second Sampling ──► Stream Final Answer ──► Complete Run
 ```
 
-如果使用 nvm：
+Every execution is represented as one `AgentRun` containing ordered `AgentStep` records such as:
 
-```sh
-nvm use
+```text
+receive_user_message
+load_conversation_history
+model_sampling
+tool_execution
+model_sampling
+assistant_output
+```
+
+## Design Principles
+
+- **Explicit control flow** — orchestration remains visible in TypeScript instead of being hidden behind a workflow engine.
+- **Untrusted model output** — tool names and arguments are validated before backend execution.
+- **Durable facts over transient deltas** — streamed events are not treated as persisted truth.
+- **Separated message layers** — UI messages, model input items, and runtime events have different contracts.
+- **Cooperative cancellation** — request aborts propagate through model sampling, tool execution, and persistence boundaries.
+- **Bounded execution** — the current tool loop allows one tool execution followed by one final model sampling.
+
+## Repository Structure
+
+```text
+apps/
+  api/        NestJS API, Agent Runtime, model adapters, and tools
+  web/        Vue chat application
+  admin/      Operator console and trace-oriented run views
+packages/
+  contracts/  Shared TypeScript contracts
+prisma/       PostgreSQL schema, migrations, and seed data
+docs/         Architecture notes, task history, and roadmap
+```
+
+## Getting Started
+
+### Requirements
+
+- Node.js `^20.19.0` or `>=22.12.0`
+- pnpm `10.32.1`
+- PostgreSQL
+- An OpenAI-compatible Chat Completions endpoint
+
+### Setup
+
+```bash
 corepack enable
-corepack install --global pnpm@10.32.1
-```
-
-```sh
 pnpm install
-pnpm dev:api
-pnpm dev:web
+cp .env.example .env
 ```
 
-然后打开：
+Configure the model provider and database connection in `.env`, then initialize Prisma:
 
-```txt
-http://localhost:5173
+```bash
+pnpm prisma:generate
+pnpm prisma:migrate
 ```
 
-前端会通过 axios 请求：
+Start all applications:
 
-```txt
-GET /api/demo
+```bash
+pnpm dev
 ```
 
-Vite 开发代理会把请求转发到 Nest：
+| Application | URL |
+| --- | --- |
+| Web client | `http://localhost:5173` |
+| Operator console | `http://localhost:5174` |
+| API | `http://localhost:3000/api` |
 
-```txt
-http://localhost:3000/api/demo
-```
+## Configuration
 
-## 常用命令
+| Variable | Required | Description |
+| --- | --- | --- |
+| `LLM_API_KEY` | Yes | API key for the configured model provider |
+| `LLM_BASE_URL` | Yes | OpenAI-compatible API base URL, including `/v1` |
+| `LLM_MODEL` | Yes | Model identifier used for chat completions |
+| `DATABASE_URL` | Yes | PostgreSQL connection string |
+| `PORT` | No | API port; defaults to `3000` |
 
-```sh
-pnpm dev          # 同时启动 api 和 web
-pnpm dev:api      # 启动 Nest API
-pnpm dev:web      # 启动 Vue 前端
-pnpm typecheck    # 检查 apps 下所有 TypeScript 项目
-pnpm lint
-pnpm lint:fix
-```
+## Development Commands
 
-## 当前阶段
+| Command | Description |
+| --- | --- |
+| `pnpm dev` | Start the API, web client, and operator console |
+| `pnpm dev:api` | Start the NestJS API |
+| `pnpm dev:api:watch` | Start the API in watch mode |
+| `pnpm dev:web` | Start the Vue chat client |
+| `pnpm dev:admin` | Start the operator console |
+| `pnpm typecheck` | Type-check all applications and packages |
+| `pnpm lint` | Lint the workspace |
+| `pnpm --filter @agent/api test:model-stream` | Test model stream adaptation and sampling |
+| `pnpm --filter @agent/api test:tools` | Test tool contracts, execution, and observation handling |
+| `pnpm --filter @agent/api test:agent-recorder` | Test Run and Step persistence invariants |
 
-第一阶段 LLM API 基础概念已完成。当前开始进入第二阶段：把模型能力接入 NestJS 后端和 Vue 前端，逐步形成可运行的小型 AI SEO Agent 产品。
+## Project Status
 
-项目规划见：
+Available now:
 
-```txt
-docs/development-task-plan.md
-context/ai-seo-agent-plan.md
-```
+- Persistent conversations and messages
+- Streaming responses and stop-generation handling
+- Agent Run and Agent Step recording
+- OpenAI-compatible stream normalization
+- A bounded tool-calling loop
+- Timeout-aware and abort-aware tool execution
+- Tool observation normalization
+- Static operator views for Run and Step traces
 
-后续开发优先以 `docs/development-task-plan.md` 作为任务基线。
+Planned:
+
+- Human-in-the-loop approval and resumable execution
+- Context budgeting and model-input policies
+- Read-only Run and Step query APIs
+- Expanded observability and evaluation
+
+See the [project roadmap](./docs/roadmap.md) and [documentation index](./docs/README.md) for implementation details.
