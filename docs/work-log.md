@@ -6,17 +6,19 @@
 
 | 类型 | 当前记录 | 下一步 |
 | --- | --- | --- |
-| 当前阶段 | 阶段 5 最小 Tool Calling 已完成并归档；阶段 6 Task 0 已通过 Issue #25 / PR #26 完成实现、验收和合并；Admin Console Task 0-1 已完成 | 基于最新 `master` 编写阶段 6 Task 1 正式规格并创建独立 Issue |
-| 阶段 6 | `get_article_detail` 已通过统一 Registry / Invocation 建立，Tool 目录已整理为 `core/ + articles/`；当前 Runtime 仍只向模型暴露并允许执行 `search_articles` | 规划有界顺序 Agent Loop、执行预算、DeepSeek continuation 与失败终态，不提前实施 Task 2 |
+| 当前阶段 | 阶段 5 最小 Tool Calling 已完成并归档；阶段 6 Task 0 已通过 Issue #25 / PR #26 完成实现、验收和合并；横向工程 Issue #27 已创建 | 先完成 Issue #27 Clarification Gate；READY 后由 Codex 独立分支实现，验收前不启动 Phase 6 Task 1 |
+| 横向工程 | Issue #27 统一用户输入、历史、DeepSeek Model Profile、模型输出、请求超时、Article excerpt 与 Tool Observation 预算 | 当前为 Next、待 Gate；不实现 Agent Loop、reasoning continuation 或 Token Context Engineering |
+| 阶段 6 | `get_article_detail` 已通过统一 Registry / Invocation 建立，Tool 目录已整理为 `core/ + articles/`；当前 Runtime 仍只向模型暴露并允许执行 `search_articles` | Issue #27 验收后，再规划有界顺序 Agent Loop、执行预算、DeepSeek continuation 与失败终态 |
 | Admin Console | 已具备独立 `apps/admin` 基础壳、静态 Run List / Run Detail、类型化 Mock、Trace、Messages、Safe Raw Data 和 Review 交互修复 | Task 2 规划只读 Run / Step 查询 API；Task 3 接真实数据；Task 4 补登录、权限和脱敏 |
 | 文档结构 | docs 以 `roadmap`、`tasks`、`research`、`work-log` 四类入口组织；正式任务状态以 `docs/tasks/**` 为准 | 不再由 `development-task-plan.md` 维护第二套路线，也不提前编号阶段 6 之后的任务 |
-| 任务规范 | 新任务使用 TDD 风格模板；一个 Issue 对应一个清晰 Task；验收通过与授权合并保持分离 | Task 1 必须基于最新代码重新形成规格并通过 Clarification Gate |
+| 任务规范 | 新任务使用 TDD 风格模板；一个 Issue 对应一个清晰 Task；验收通过与授权合并保持分离 | Issue #27 与 Phase 6 Task 1 必须独立实现、独立验收 |
 | 研究资料 | `docs/research/**` 继续保留 Context、Recovery、HITL、MCP 等长期研究，但不代表当前执行顺序 | 仅在真实业务和代码证据支持时迁移为正式 Task |
 
 ## 近期工作记录
 
 | 日期 | 提交 / 事项 | 类型 | 核心完成 | 关键文件 | 验证结果 |
 | --- | --- | --- | --- | --- | --- |
+| 2026-07-26 | Issue #27 创建：运行参数、Model Profile 与输出预算治理 | planning / configuration / cross-cutting | 基于最新 `master` 核对输入 16K、历史 12、输出 32K、普通请求 10s、Observation 8K、excerpt 200 等分散参数；确定 64K 输入、40 条 Completed 历史、DeepSeek 1M / 384K Profile、应用 65,536 / 131,072 输出、分级 Observation 预算等生产基线 | Issue #27、`docs/tasks/runtime-configuration-governance.md`、任务看板与 roadmap | 仅完成规格和 docs 同步，尚未执行 Clarification Gate、代码修改或测试；Phase 6 Task 1 保持未启动 |
 | 2026-07-26 | PR #26 合并，merge commit `d3609d3fb17780ca08724dd79741195238f91e22`；Issue #25 Closed | feat / refactor / Tool Calling / docs | 将 Tool 基础设施与 Article 业务工具整理为 `core/ + articles/`；新增严格只读 `get_article_detail`；用本轮 `toolDefinitions` 阻止全局已注册但未开放的工具被执行；Task 0 经 GPT 技术验收和用户确认后收口 | `apps/api/src/tools/**`、`apps/api/src/agent-runtime/**`、`docs/tasks/**`、`docs/roadmap.md` | Tools 30、Tool Loop 21、Model Stream 36 个测试通过；API typecheck / lint、workspace typecheck、`git diff --check` 通过；Codex 最新 Review 未发现 major issues |
 | 2026-07-26 | 阶段 6 路线重新评估并改为有界单 Agent Loop | docs / learning roadmap | 用户与 GPT 重新审查 Tool Calling 后的真实能力缺口，确认当前应学习生命周期完整、执行有界的单 Agent Loop，而不是提前建设完整 Context Budget / Truncation 系统；删除旧 Context 正式 Task 0-5，建立 `get_article_detail -> 有界 Loop -> 可靠性验收` 的阶段边界；阶段 6 后不再提前编号 | `README.md`、`docs/README.md`、`docs/roadmap.md`、`docs/tasks/**`、`docs/development-task-plan.md`、`docs/research/**`、`docs/work-log.md` | 远程 `master` 逐文件写入后重新检查入口、状态、旧目录残留和链接一致性；旧阶段 7-9 正式规划已删除；无业务代码改动 |
 | 2026-07-26 | PR #24 合并，merge commit `190fecea0bf4975e8a3740db5258bc69eaa3a7ee` | feat / fix / SEO Chat | 将聊天输入上限从 2,000 提升到 16,000 字符，将默认及 SEO 输出上限提升到 32,768 tokens，并在 streaming 阶段使用纯文本渲染避免长回复反复 Markdown 解析 | `apps/api/src/llm/**`、`apps/api/src/seo/**`、`apps/web/src/components/agent/**`、`apps/web/src/components/seo/SeoChatComposer.vue` | 以 PR #24 合并事实和 merge commit diff 为准；本轮 docs 重规划不修改这些业务代码 |
