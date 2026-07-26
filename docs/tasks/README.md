@@ -6,11 +6,11 @@
 
 阶段 5 最小 Tool Calling 已完成并归档。阶段 6 `有界单 Agent Loop` 已通过 Task 0 正式启动。
 
-当前 `Active` 正式任务为阶段 6 Task 0：Issue #25 已完成实现和本地验证，等待 PR 与后续验收；Task 1-2 仍为 `Planned`，不得提前启动。
+当前 `Active` 正式任务为阶段 6 Task 0：Issue #25 / Draft PR #26 已完成实现和本地验证，等待后续验收；Task 1-2 仍为 `Planned`，不得提前启动。
 
 | 区域 | 状态 | 文档 | 说明 |
 | --- | --- | --- | --- |
-| 阶段 6 Task 0：新增 `get_article_detail` 只读工具 | **Active** | [phase-06-bounded-agent-loop/task-00-get-article-detail-tool.md](./phase-06-bounded-agent-loop/task-00-get-article-detail-tool.md) | Issue #25；已实现、待验收；只新增工具，不修改 Runtime Loop |
+| 阶段 6 Task 0：新增 `get_article_detail` 只读工具 | **Active** | [phase-06-bounded-agent-loop/task-00-get-article-detail-tool.md](./phase-06-bounded-agent-loop/task-00-get-article-detail-tool.md) | Issue #25 / Draft PR #26；已实现、待验收；只新增工具，不修改 Runtime Loop |
 | 阶段 6 Task 1：有界顺序 Agent Loop | Planned | [phase-06-bounded-agent-loop/README.md](./phase-06-bounded-agent-loop/README.md) | 等 Task 0 验收后，根据最新代码编写正式规格 |
 | 阶段 6 Task 2：可靠性、回归与学习验收 | Planned | [phase-06-bounded-agent-loop/README.md](./phase-06-bounded-agent-loop/README.md) | 等 Task 1 验收后再展开 |
 | Admin Console Task 1 | Completed | [admin-console.md](./admin-console.md) | Issue #21 / PR #22；静态 Run List / Run Detail UI 已实现并通过验收 |

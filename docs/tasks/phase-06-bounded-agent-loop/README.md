@@ -5,7 +5,7 @@
 - 当前执行入口：Task 0
 - 实施状态：进行中
 - 验收状态：未验收
-- GitHub 状态：Task 0 Issue #25 已实现并完成本地验证，Draft PR 待创建
+- GitHub 状态：Task 0 Issue #25 / Draft PR #26 已实现并完成本地验证，等待验收
 
 ## 阶段定位
 
@@ -83,7 +83,7 @@ Runtime 不得硬编码模型必须按照固定顺序使用两个工具。模型
 
 | Task | 状态 | 目标 | 详细文档 | 前置 | Issue | PR |
 | --- | --- | --- | --- | --- | --- | --- |
-| Task 0：新增 `get_article_detail` 只读工具 | **Active（已实现、待验收）** | 建立第二个与搜索结果有依赖关系的只读动作 | [task-00-get-article-detail-tool.md](./task-00-get-article-detail-tool.md) | 阶段 5 Completed | [#25](https://github.com/mufeiyu-ayu/agent/issues/25) | 待创建 |
+| Task 0：新增 `get_article_detail` 只读工具 | **Active（已实现、待验收）** | 建立第二个与搜索结果有依赖关系的只读动作 | [task-00-get-article-detail-tool.md](./task-00-get-article-detail-tool.md) | 阶段 5 Completed | [#25](https://github.com/mufeiyu-ayu/agent/issues/25) | [#26（Draft）](https://github.com/mufeiyu-ayu/agent/pull/26) |
 | Task 1：有界顺序 Agent Loop | Planned | 将固定两轮逻辑升级为服务端受控的多轮循环 | 前置完成后再编写 | Task 0 Completed | 未创建 | 未创建 |
 | Task 2：可靠性、回归与阶段验收 | Planned | 覆盖失败、超时、Abort、超限、Trace 和学习复盘 | 前置完成后再编写 | Task 1 Completed | 未创建 | 未创建 |
 
@@ -205,4 +205,4 @@ interface AgentLoopPolicy {
 
 ## 下一步
 
-Task 0 已实现并完成本地验证，下一步仅创建 Draft PR 并进入验收；当前不创建 Task 1 / Task 2 的 Issue，也不开始修改 Runtime Loop。
+Task 0 已实现并通过 Draft PR #26 等待验收；当前不创建 Task 1 / Task 2 的 Issue，也不开始修改 Runtime Loop。

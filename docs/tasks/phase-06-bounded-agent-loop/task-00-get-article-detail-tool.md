@@ -7,7 +7,7 @@
 - 验收状态：待验收
 - Issue：[#25](https://github.com/mufeiyu-ayu/agent/issues/25)
 - 分支：`codex/issue-25-get-article-detail`
-- PR：待创建（Draft）
+- PR：[#26（Draft）](https://github.com/mufeiyu-ayu/agent/pull/26)
 
 ## 目标
 
@@ -229,6 +229,6 @@ git diff --check                          passed
 
 - Issue：[#25](https://github.com/mufeiyu-ayu/agent/issues/25)
 - 分支：`codex/issue-25-get-article-detail`
-- PR：待创建（Draft）
+- PR：[#26（Draft）](https://github.com/mufeiyu-ayu/agent/pull/26)
 - GPT 验收结论：未提供
 - 用户确认：未确认
