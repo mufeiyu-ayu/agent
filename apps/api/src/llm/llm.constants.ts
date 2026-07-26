@@ -5,4 +5,4 @@ export const LLM_STREAM_TIMEOUT_MS = 10 * 60 * 1000
 
 export const DEFAULT_CHAT_TEMPERATURE = 0.7
 
-export const DEFAULT_CHAT_MAX_TOKENS = 2048
+export const DEFAULT_CHAT_MAX_TOKENS = 32768

@@ -81,7 +81,7 @@ function updateSelectedModel(value: unknown) {
       >
         <Textarea
           :model-value="message"
-          maxlength="2000"
+          maxlength="16000"
           rows="1"
           class="max-h-40 min-h-[72px] resize-none border-0 bg-transparent px-3 pb-2 pt-2 text-[15px] font-medium leading-6 text-agent-ink shadow-none focus-visible:ring-0 sm:min-h-24 sm:px-4 sm:pt-3 placeholder:font-medium placeholder:text-agent-ink-muted"
           :placeholder="hasConversation ? '' : t('composer.placeholder')"
@@ -113,7 +113,7 @@ function updateSelectedModel(value: unknown) {
 
           <div class="flex shrink-0 items-center justify-end gap-1.5 sm:gap-2">
             <span class="hidden text-xs font-bold text-agent-ink-muted sm:inline">
-              {{ messageCharacterCount }} / 2000
+              {{ messageCharacterCount }} / 16000
             </span>
             <Button
               type="button"

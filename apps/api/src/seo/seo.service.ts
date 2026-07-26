@@ -87,7 +87,7 @@ export class SeoService {
       ...(signal ? { signal } : {}),
       historyLimit: CHAT_HISTORY_LIMIT,
       temperature: 0.4,
-      maxTokens: 1200,
+      maxTokens: 32768,
       buildModelMessages: historyMessages =>
         this.seoContextBuilder.buildModelMessages({ historyMessages }),
     }

@@ -17,7 +17,7 @@ export class SeoChatDto implements SeoChatRequest {
 
   @IsString()
   @IsNotEmpty()
-  @MaxLength(2000)
+  @MaxLength(16000)
   message!: string
 
   @IsOptional()

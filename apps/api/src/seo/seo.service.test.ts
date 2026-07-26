@@ -142,7 +142,7 @@ describe('SeoService', () => {
       model: 'deepseek-chat',
       historyLimit: 12,
       temperature: 0.4,
-      maxTokens: 1200,
+      maxTokens: 32768,
     })
     assert.deepEqual(
       withoutFunctionsAndSignal(streamInput),
