@@ -1,28 +1,26 @@
-import type { PrismaService } from '../prisma/prisma.service.js'
+import type { PrismaService } from '../../prisma/prisma.service.js'
+import type { ToolExecutionContext } from '../core/tool.types.js'
 import type { SearchArticlesOutput } from './search-articles.tool.js'
-import type { ToolExecutionContext } from './tool.types.js'
 import assert from 'node:assert/strict'
 // 项目本轮使用 Node 原生测试运行器，不引入额外测试框架。
 // eslint-disable-next-line test/no-import-node-test
 import { describe, it } from 'node:test'
 
-import { toModelToolSpec } from './model-tool-spec.mapper.js'
+import { toModelToolSpec } from '../core/model-tool-spec.mapper.js'
+import { ToolInvocationService } from '../core/tool-invocation.service.js'
+import { ToolRegistryService } from '../core/tool-registry.service.js'
 import {
   searchArticlesDefinition,
   SearchArticlesTool,
 } from './search-articles.tool.js'
-import { ToolInvocationService } from './tool-invocation.service.js'
-import { ToolRegistryService } from './tool-registry.service.js'
-import { ToolsModule } from './tools.module.js'
 
 const FULL_CONTENT = `<p>${'alpha article content '.repeat(20)}</p>`
 
 describe('search_articles', () => {
   it('注册模型可见定义，并保持低风险只读边界', () => {
-    const { registry, toolsModule } = createTools()
+    const { registry } = createTools()
     const definition = registry.require('search_articles').definition
 
-    assert.ok(toolsModule)
     assert.deepEqual(
       registry.listDefinitions().map(item => item.name),
       ['search_articles'],
@@ -34,6 +32,8 @@ describe('search_articles', () => {
       network: false,
     })
     assert.equal(definition.requiresApproval, false)
+    assert.equal(definition.idempotent, true)
+    assert.equal(definition.timeoutMs, 5_000)
     assert.deepEqual(toModelToolSpec(definition), {
       name: 'search_articles',
       description: definition.description,
@@ -57,7 +57,7 @@ describe('search_articles', () => {
     const { invocationService } = createTools(fakePrisma)
 
     const result = await invocationService.invoke(
-      createEnvelope({ query: '  Alpha%_\\  ', languageCode: ' ZH-CN ', limit: 3 }),
+      createEnvelope({ query: '  Alpha%_\\  ', languageCode: ' ZH-CN ', limit: 10 }),
       createContext(),
     )
 
@@ -66,7 +66,7 @@ describe('search_articles', () => {
       fakePrisma.countArguments[0]?.where,
       fakePrisma.findManyArguments[0]?.where,
     )
-    assert.equal(fakePrisma.findManyArguments[0]?.take, 3)
+    assert.equal(fakePrisma.findManyArguments[0]?.take, 10)
     assert.deepEqual(fakePrisma.findManyArguments[0]?.where, {
       languageCode: 'zh-cn',
       OR: [
@@ -77,6 +77,19 @@ describe('search_articles', () => {
         { content: { contains: 'Alpha\\%\\_\\\\', mode: 'insensitive' } },
       ],
     })
+    assert.deepEqual(fakePrisma.findManyArguments[0]?.select, {
+      sourceId: true,
+      slug: true,
+      languageCode: true,
+      title: true,
+      seoTitle: true,
+      seoDescription: true,
+      content: true,
+    })
+    assert.deepEqual(fakePrisma.findManyArguments[0]?.orderBy, [
+      { updatedAt: 'desc' },
+      { sourceId: 'asc' },
+    ])
 
     if (!result.ok)
       return
@@ -196,11 +209,13 @@ function createTools(fakePrisma = new FakePrismaService()) {
   const searchArticlesTool = new SearchArticlesTool(
     fakePrisma as unknown as PrismaService,
   )
-  const toolsModule = new ToolsModule(registry, searchArticlesTool)
+  registry.register({
+    definition: searchArticlesDefinition,
+    executor: searchArticlesTool,
+  })
 
   return {
     registry,
-    toolsModule,
     invocationService: new ToolInvocationService(registry),
   }
 }

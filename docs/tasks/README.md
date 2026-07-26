@@ -4,13 +4,13 @@
 
 ## 当前看板
 
-阶段 5 最小 Tool Calling 已完成并归档。当前唯一确定的下一条 Agent 主线是阶段 6 `有界单 Agent Loop`。
+阶段 5 最小 Tool Calling 已完成并归档。阶段 6 `有界单 Agent Loop` 已通过 Task 0 正式启动。
 
-当前没有 `Active` 正式实现任务。阶段 6 Task 0 已标记为 `Next`，表示它是下一项需要创建独立 Issue 的正式任务；Task 1-2 仍为 `Planned`，且只保留阶段级边界。当前尚未创建阶段 6 Issue、实现分支或 PR。
+当前 `Active` 正式任务为阶段 6 Task 0：Issue #25 已完成实现和本地验证，等待 PR 与后续验收；Task 1-2 仍为 `Planned`，不得提前启动。
 
 | 区域 | 状态 | 文档 | 说明 |
 | --- | --- | --- | --- |
-| 阶段 6 Task 0：新增 `get_article_detail` 只读工具 | **Next** | [phase-06-bounded-agent-loop/task-00-get-article-detail-tool.md](./phase-06-bounded-agent-loop/task-00-get-article-detail-tool.md) | 下一项正式任务；只新增工具，不修改 Runtime Loop |
+| 阶段 6 Task 0：新增 `get_article_detail` 只读工具 | **Active** | [phase-06-bounded-agent-loop/task-00-get-article-detail-tool.md](./phase-06-bounded-agent-loop/task-00-get-article-detail-tool.md) | Issue #25；已实现、待验收；只新增工具，不修改 Runtime Loop |
 | 阶段 6 Task 1：有界顺序 Agent Loop | Planned | [phase-06-bounded-agent-loop/README.md](./phase-06-bounded-agent-loop/README.md) | 等 Task 0 验收后，根据最新代码编写正式规格 |
 | 阶段 6 Task 2：可靠性、回归与学习验收 | Planned | [phase-06-bounded-agent-loop/README.md](./phase-06-bounded-agent-loop/README.md) | 等 Task 1 验收后再展开 |
 | Admin Console Task 1 | Completed | [admin-console.md](./admin-console.md) | Issue #21 / PR #22；静态 Run List / Run Detail UI 已实现并通过验收 |
@@ -24,14 +24,14 @@
 ## 阶段 6 任务顺序
 
 ```text
-Task 0：新增 get_article_detail 只读工具（Next）
+Task 0：新增 get_article_detail 只读工具（Active，已实现、待验收）
   -> Task 1：有界顺序 Agent Loop（Planned）
   -> Task 2：可靠性、回归与学习验收（Planned）
 ```
 
 执行规则：
 
-- Task 0 是下一项正式 Task，但只有 Issue 创建并通过 Clarification Gate 后才能进入实现。
+- Task 0 已通过 Issue #25 Clarification Gate，当前为已实现、待验收。
 - 一个 Issue 只对应一个 Task，不把 Task 0-2 合并成一个大 Issue。
 - Task 0 只新增第二个只读工具，当前 Runtime 仍只向模型暴露 `search_articles`。
 - Task 1 必须等待 Task 0 验收后再展开正式文档和 Issue。

@@ -2,11 +2,12 @@
 
 ## 任务状态
 
-- 看板状态：**Next**
-- 实施状态：未开始
-- 验收状态：未验收
-- Issue：未创建
-- PR：未创建
+- 看板状态：**Active**
+- 实施状态：已实现
+- 验收状态：待验收
+- Issue：[#25](https://github.com/mufeiyu-ayu/agent/issues/25)
+- 分支：`codex/issue-25-get-article-detail`
+- PR：待创建（Draft）
 
 ## 目标
 
@@ -23,6 +24,32 @@ Task 0 只建立工具能力和确定性测试，不让模型在生产 Runtime �
 - 统一工具边界已经存在：`ToolDefinition`、`ToolRegistryService`、`ToolInvocationService`、`ToolResult`；
 - 当前 Runtime 只筛选并暴露 `search_articles`，因此仅注册新工具不会自动改变现有模型行为；
 - `Article` 当前字段包括 `sourceId`、`slug`、`languageCode`、`title`、`content`、`seoTitle`、`seoDescription`、`createdAt`、`updatedAt`。
+
+## Issue #25 确认的目录边界
+
+```text
+apps/api/src/tools/
+├── core/
+│   ├── tool.types.ts
+│   ├── tool.errors.ts
+│   ├── tool-registry.service.ts
+│   ├── tool-invocation.service.ts
+│   ├── tool-observation.ts
+│   ├── model-tool-spec.mapper.ts
+│   └── 对应职责测试
+├── articles/
+│   ├── search-articles.tool.ts
+│   ├── search-articles.tool.test.ts
+│   ├── get-article-detail.tool.ts
+│   └── get-article-detail.tool.test.ts
+├── tools.module.ts
+└── tools.module.test.ts
+```
+
+- `core/` 只保存通用 Tool 基础设施，不依赖 Article 业务类型；
+- `articles/` 保存 Article 领域的具体工具；
+- 根目录只保留 Nest 模块组装及其测试；
+- 不新增 BaseTool、Factory、Repository、复杂 Decorator、每工具一个 Module 或 barrel `index.ts`。
 
 ## 学习重点
 
@@ -93,50 +120,50 @@ interface GetArticleDetailOutput {
 
 ## Red：先定义失败用例
 
-- [ ] `sourceId` 缺失、非整数、非正数或包含额外字段时，输入验证必须失败；
-- [ ] 存在文章时，工具必须返回完整的受控详情字段；
-- [ ] 不存在文章时，工具必须返回确定性的业务零结果，而不是抛出未处理异常；
-- [ ] 数据库异常必须走统一受控失败路径；
-- [ ] 模型可见输出不得包含未允许字段、stack 或内部错误；
-- [ ] 工具注册后，Runtime 当前暴露的模型工具列表仍只包含 `search_articles`；
-- [ ] Abort / signal 已触发时，不应产生伪造成功结果。
+- [x] `sourceId` 缺失、非整数、非正数或包含额外字段时，输入验证必须失败；
+- [x] 存在文章时，工具必须返回完整的受控详情字段；
+- [x] 不存在文章时，工具必须返回确定性的业务零结果，而不是抛出未处理异常；
+- [x] 数据库异常必须走统一受控失败路径；
+- [x] 模型可见输出不得包含未允许字段、stack 或内部错误；
+- [x] 工具注册后，Runtime 当前暴露的模型工具列表仍只包含 `search_articles`；
+- [x] Abort / signal 已触发时，不应产生伪造成功结果。
 
 ## Green：最小实现
 
-- [ ] 定义 `getArticleDetailDefinition`、输入和输出类型；
-- [ ] 实现严格 parser；
-- [ ] 实现只读 Executor 与受控字段选择；
-- [ ] 返回 `found: true / false` 的确定性业务结果；
-- [ ] 注册到现有 Tool Registry；
-- [ ] 补充工具单测和统一 Invocation 回归；
-- [ ] 保持 Agent Runtime 行为和外部 Chat 协议不变。
+- [x] 定义 `getArticleDetailDefinition`、输入和输出类型；
+- [x] 实现严格 parser；
+- [x] 实现只读 Executor 与受控字段选择；
+- [x] 返回 `found: true / false` 的确定性业务结果；
+- [x] 注册到现有 Tool Registry；
+- [x] 补充工具单测和统一 Invocation 回归；
+- [x] 保持 Agent Runtime 行为和外部 Chat 协议不变。
 
 ## Refactor：整理边界
 
-- [ ] 搜索摘要类型和详情类型命名清楚，不复用 Prisma Model 作为模型契约；
-- [ ] 输入解析、数据库查询和模型投影职责可区分；
-- [ ] 不为了两个工具建立通用 Repository、BaseTool 或复杂框架；
-- [ ] 若提取共享 helper，只限于被两个真实用例证明的逻辑。
+- [x] 搜索摘要类型和详情类型命名清楚，不复用 Prisma Model 作为模型契约；
+- [x] 输入解析、数据库查询和模型投影职责可区分；
+- [x] 不为了两个工具建立通用 Repository、BaseTool 或复杂框架；
+- [x] 未提取没有两个真实用例支撑的共享 helper。
 
 ## 建议影响范围
 
-最终路径由 Issue Clarification Gate 结合最新仓库确认，预计重点涉及：
+Issue Clarification Gate 已确认并落地：
 
 ```text
-apps/api/src/tools/get-article-detail.tool.ts
-apps/api/src/tools/get-article-detail.tool.test.ts
+apps/api/src/tools/core/**
+apps/api/src/tools/articles/**
 apps/api/src/tools/tools.module.ts
-apps/api/src/tools/tools.test.ts
+apps/api/src/tools/tools.module.test.ts
+apps/api/src/agent-runtime/agent-runtime.service.test.ts
 ```
 
-可能需要读取但原则上不修改：
+只做目录 import 迁移或只读确认：
 
 ```text
-apps/api/src/tools/search-articles.tool.ts
-apps/api/src/tools/tool.types.ts
-apps/api/src/tools/tool-invocation.service.ts
 prisma/schema.prisma
 apps/api/src/agent-runtime/agent-runtime.service.ts
+apps/api/src/agent-runtime/model-sampling-decision.ts
+apps/api/src/llm/model-tool-spec.types.ts
 ```
 
 ## 验证命令
@@ -155,17 +182,35 @@ git diff --check
 
 如果新增独立测试脚本，PR 必须记录真实命令和测试数量；不得引用不存在的命令。
 
+## 实现与验证结果
+
+- Tool 核心设施已迁移到 `core/`，Article 工具已迁移到 `articles/`，旧平铺文件未重复保留；
+- `search_articles` 生产实现除相对 import 外未改动；回归继续锁定 query、select、排序、默认 / 最大 limit、200 字符 excerpt、输出和风险元数据；
+- `get_article_detail` 使用 `sourceId` 唯一查询和显式 Prisma `select`，日期转换为 ISO 字符串，`modelContent` 使用固定 JSON 投影；
+- Runtime 测试中的 Registry 同时包含两个工具，模型两轮 sampling 仍只收到 `search_articles`；
+- `test:tools` 真实发现 7 个测试文件对应的 7 个 suite，共执行 30 个测试并全部通过。
+
+```text
+pnpm --filter @agent/api test:tools       30 passed，7 suites / 7 files
+pnpm --filter @agent/api test:tool-loop   20 passed
+pnpm --filter @agent/api test:model-stream 35 passed
+pnpm --filter @agent/api typecheck        passed
+pnpm --filter @agent/api lint             passed
+pnpm typecheck                            passed
+git diff --check                          passed
+```
+
 ## 验收标准
 
-- [ ] 存在 `get_article_detail` 的项目自有 Definition、输入 parser 和 Executor；
-- [ ] 工具只接受合法正整数 `sourceId`，拒绝额外字段；
-- [ ] 命中文章时返回受控详情字段，未命中时返回确定性 `found: false`；
-- [ ] 工具保持低风险、无副作用、不联网、无需审批和幂等；
-- [ ] 工具通过统一 Registry 与 Invocation 路径执行，不被 Controller 或 Runtime 特殊调用；
-- [ ] 不新增数据库表或 migration；
-- [ ] 当前 Runtime 模型工具列表和两轮 Tool Loop 行为不变；
-- [ ] 不持久化或暴露完整内部错误、stack、secret 或未允许字段；
-- [ ] Tools、Tool Loop、Model Stream 回归、API typecheck / lint、workspace typecheck 和 `git diff --check` 通过，或明确记录既有非阻塞基线；
+- [x] 存在 `get_article_detail` 的项目自有 Definition、输入 parser 和 Executor；
+- [x] 工具只接受合法正整数 `sourceId`，拒绝额外字段；
+- [x] 命中文章时返回受控详情字段，未命中时返回确定性 `found: false`；
+- [x] 工具保持低风险、无副作用、不联网、无需审批和幂等；
+- [x] 工具通过统一 Registry 与 Invocation 路径执行，不被 Controller 或 Runtime 特殊调用；
+- [x] 不新增数据库表或 migration；
+- [x] 当前 Runtime 模型工具列表和两轮 Tool Loop 行为不变；
+- [x] 不持久化或暴露完整内部错误、stack、secret 或未允许字段；
+- [x] Tools、Tool Loop、Model Stream 回归、API typecheck / lint、workspace typecheck 和 `git diff --check` 通过；
 - [ ] 用户能够解释搜索工具与详情工具为何拆分，以及 `sourceId` 如何成为两次模型决策之间的业务关联。
 
 ## 风险点
@@ -175,15 +220,15 @@ git diff --check
 | Task 0 顺手修改 Runtime Loop | 明确保持 Runtime 只暴露 `search_articles`，循环升级留到 Task 1 |
 | 详情工具直接返回 Prisma Model | 使用显式 select 和项目自有输出类型 |
 | 资源不存在被当作系统故障 | 返回确定性业务零结果，允许后续模型决策 |
-| 正文过大触发现有 Observation 保护上限 | 先核对当前 fixtures 与真实字段；保持结构化投影和明确截断标记，不在本 Task 建通用 Context 系统 |
+| 正文过大触发现有 Observation 保护上限 | 详情工具保留完整受控正文；不修改既有 Observation 上限，也不在本 Task 建通用 Context 系统 |
 | 为第二个工具过度抽象 | 只提取被现有搜索工具和详情工具共同证明的最小逻辑 |
 
 ## GitHub 交付记录
 
 仅在本任务进入正式实现后填写。
 
-- Issue：未创建
-- 分支：未创建
-- PR：未创建
+- Issue：[#25](https://github.com/mufeiyu-ayu/agent/issues/25)
+- 分支：`codex/issue-25-get-article-detail`
+- PR：待创建（Draft）
 - GPT 验收结论：未提供
 - 用户确认：未确认

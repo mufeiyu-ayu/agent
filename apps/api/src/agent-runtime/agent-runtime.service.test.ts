@@ -7,14 +7,14 @@ import type {
   ModelStreamEvent,
 } from '../llm/model-stream.types.js'
 import type { PrismaService } from '../prisma/prisma.service.js'
-import type { ToolInvocationService } from '../tools/tool-invocation.service.js'
-import type { ToolRegistryService } from '../tools/tool-registry.service.js'
+import type { ToolInvocationService } from '../tools/core/tool-invocation.service.js'
+import type { ToolRegistryService } from '../tools/core/tool-registry.service.js'
 import type {
   ToolDefinition,
   ToolExecutionContext,
   ToolResult,
   UnvalidatedToolCallEnvelope,
-} from '../tools/tool.types.js'
+} from '../tools/core/tool.types.js'
 import type { AgentRunRecorderService } from './agent-run-recorder.service.js'
 import type { AgentRuntimeEvent } from './agent-runtime.types.js'
 import assert from 'node:assert/strict'
@@ -211,6 +211,10 @@ describe('AgentRuntimeService model stream', () => {
       samplingAttemptId: 'run-1:sampling-1',
     }])
     assert.equal(harness.llmCalls.length, 2)
+    assert.deepEqual(
+      harness.llmCalls.map(call => call.options?.tools?.map(tool => tool.name)),
+      [['search_articles'], ['search_articles']],
+    )
     assert.deepEqual(harness.llmCalls[1]?.messages.slice(-2), [
       {
         type: 'assistant_tool_call',
@@ -800,6 +804,12 @@ const searchArticlesDefinition: ToolDefinition = {
   },
 }
 
+const getArticleDetailDefinition: ToolDefinition = {
+  ...searchArticlesDefinition,
+  name: 'get_article_detail',
+  description: '按 sourceId 读取文章详情。',
+}
+
 const successfulToolResult: ToolResult = {
   ok: true,
   data: {
@@ -864,7 +874,7 @@ function createHarness(
 
 class FakeToolRegistryService {
   listDefinitions(): ToolDefinition[] {
-    return [searchArticlesDefinition]
+    return [getArticleDetailDefinition, searchArticlesDefinition]
   }
 }
 

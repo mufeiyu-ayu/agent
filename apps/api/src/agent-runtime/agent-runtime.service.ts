@@ -8,7 +8,7 @@ import type { ModelInputItem } from '../llm/model-input.types.js'
 import type {
   ToolResult,
   UnvalidatedToolCallEnvelope,
-} from '../tools/tool.types.js'
+} from '../tools/core/tool.types.js'
 import type {
   AgentRuntimeEvent,
   RunTurnStreamInput,
@@ -23,10 +23,10 @@ import { MessageRole, MessageStatus } from '../generated/prisma/client.js'
 import { LLMService } from '../llm/llm.service.js'
 import { toModelInputItems } from '../llm/model-input.types.js'
 import { PrismaService } from '../prisma/prisma.service.js'
-import { toModelToolSpec } from '../tools/model-tool-spec.mapper.js'
-import { ToolInvocationService } from '../tools/tool-invocation.service.js'
-import { normalizeToolObservation } from '../tools/tool-observation.js'
-import { ToolRegistryService } from '../tools/tool-registry.service.js'
+import { toModelToolSpec } from '../tools/core/model-tool-spec.mapper.js'
+import { ToolInvocationService } from '../tools/core/tool-invocation.service.js'
+import { normalizeToolObservation } from '../tools/core/tool-observation.js'
+import { ToolRegistryService } from '../tools/core/tool-registry.service.js'
 import {
   AGENT_STEP_TYPES,
   AgentRunRecorderService,
