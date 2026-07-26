@@ -19,7 +19,7 @@ Admin Console 面向项目开发、调试和运行过程复盘，后续用于查
 - 真实运行数据接入；
 - 登录、权限与敏感信息脱敏系统。
 
-因此，Task 0-1 的完成不代表阶段 8“可观测性与作品集”已经启动或完成；阶段 6、阶段 7、阶段 8 的既有状态保持不变。
+因此，Task 0-1 的完成不代表阶段 9“Observability / Evaluation / Portfolio”已经启动或完成，也不推进阶段 6 Context、阶段 7 Recovery 或阶段 8 Permission / HITL。Admin Console 继续作为可并行产品支线；Task 2-4 保持 Planned，开始时分别创建独立 Issue。
 
 ## 技术基线
 
@@ -153,15 +153,10 @@ git diff --check
 - Reset 恢复 8 条 Demo Run、第一页和 `8 / page`；
 - 页面无全局水平溢出，console error / warning 为 0。
 
-截图：
+视觉证据说明：
 
-- [亮色 Run List](../assets/admin-console/issue-21-real-chrome-light-run-list.jpg)
-- [暗色 Run List](../assets/admin-console/issue-21-real-chrome-dark-run-list.jpg)
-- [亮色 Run Detail](../assets/admin-console/issue-21-real-chrome-light-run-detail.jpg)
-- [暗色 Run Detail](../assets/admin-console/issue-21-real-chrome-dark-run-detail.jpg)
-- [Sidebar 折叠 Run List](../assets/admin-console/issue-21-real-chrome-collapsed-run-list.jpg)
-- [暗色双 Run Detail Tabs](../assets/admin-console/issue-21-review-two-run-tabs-dark.jpg)
-- [亮色 Run Detail / Sidebar 折叠](../assets/admin-console/issue-21-review-run-detail-light.jpg)
+- 验收时使用真实 Chrome 覆盖亮色 / 暗色、Run List / Run Detail、Sidebar 折叠和双 Run Detail Tabs 等关键场景。
+- 对应截图文件未保留在当前仓库，因此不再维护失效的相对链接；验收事实以本节记录、PR #22 diff / Review、验证结果与 Git 历史为准。
 
 ### 验收结论
 

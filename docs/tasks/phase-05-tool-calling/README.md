@@ -6,4 +6,10 @@
 
 [docs/tasks/completed/phase-05-tool-calling.md](../completed/phase-05-tool-calling.md)
 
-本文件仅保留历史路径兼容，不再作为当前可执行任务入口。当前没有已启动的下一阶段正式任务。
+本文件仅保留历史路径兼容，不再作为当前可执行任务入口。
+
+下一阶段已经确认为：
+
+[阶段 6：Context Engineering 基础](../phase-06-context-engineering/README.md)
+
+阶段 6 当前状态为“已规划，待正式启动”；Task 0 是下一项要创建独立 Issue 的正式任务，但尚未进入实现。

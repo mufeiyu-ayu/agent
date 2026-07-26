@@ -119,7 +119,7 @@ Tool Loop：
 
 ## 源码复盘顺序
 
-建议先完成阶段复盘，再启动下一正式任务：
+阶段复盘仍是推荐学习任务，用于巩固 Tool Calling 闭环；下一正式主线已经确定为阶段 6 Context Engineering：
 
 ```text
 1. apps/web/src/hooks/useSeoWorkspace.ts
@@ -140,4 +140,8 @@ Tool Loop：
 
 ## 下一阶段交接
 
-阶段 6 `Human-in-the-loop` 尚未启动。开始前应先完成阶段 5 源码复盘，并为中风险或写操作工具确定真实产品场景、审批资源和恢复语义。
+下一阶段已经重新确认为 [`Context Engineering 基础`](../phase-06-context-engineering/README.md)，当前状态为“已规划，待正式启动”。
+
+阶段 5 的 Tool Loop 与可靠性基线已经具备，阶段 6 将继续解决 model-visible history、消息规范化、来源优先级、token budget、Tool Observation Context 策略以及同步 / 流式共享 ContextPlan。Task 0 `Context 基线、契约与测试夹具` 是下一项需要创建独立 Issue 的正式任务。
+
+Human-in-the-loop 不再作为紧接阶段 5 的下一步：当前只有低风险只读工具，缺少需要审批的真实写操作；它将在 durable facts / recovery 基础之后，围绕第一个真实写工具单独规划。RAG、Memory、完整摘要压缩也不进入阶段 6 MVP。

@@ -186,9 +186,10 @@ Available now:
 
 Planned:
 
-- Human-in-the-loop approval and resumable execution
-- Context budgeting and model-input policies
+- Context budgeting, history normalization, and model-input policies — next mainline stage
+- Durable execution facts and recovery foundations
+- A real write tool with permission policy and human approval
 - Read-only Run and Step query APIs
-- Expanded observability and evaluation
+- Expanded observability, evaluation, and portfolio documentation
 
 See the [project roadmap](./docs/roadmap.md) and [documentation index](./docs/README.md) for implementation details.
