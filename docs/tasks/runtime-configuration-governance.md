@@ -2,18 +2,20 @@
 
 ## 任务状态
 
-- 看板状态：**Active（实现完成，待验收）**
+- 看板状态：**Completed**
 - 实施状态：已实现
-- 验收状态：待验收
-- 技术验收：暂未通过（GPT 要求修改；本轮修复后待复审）
-- Issue：[#27](https://github.com/mufeiyu-ayu/agent/issues/27)
-- 分支：`codex/issue-27-runtime-configuration-governance`
-- PR：[Draft PR #28](https://github.com/mufeiyu-ayu/agent/pull/28)
-- 阶段关系：不占用 Phase 6 Task 编号；完成后再启动 Phase 6 Task 1
+- 验收状态：已通过
+- 完成日期：2026-07-26
+- Issue：[#27（Closed）](https://github.com/mufeiyu-ayu/agent/issues/27)
+- PR：[#28（Merged）](https://github.com/mufeiyu-ayu/agent/pull/28)
+- 实现分支：`codex/issue-27-runtime-configuration-governance`（已清理）
+- 最终验收提交：`575983d741b951c9d3d75c23471bd67d828bcaa3`
+- Merge commit：`4a50c18c175a345251b4d4512849a612145f3a2f`
+- 阶段关系：本任务不占用 Phase 6 Task 编号；完成后 Phase 6 Task 1 成为下一项正式主线
 
 ## 目标
 
-把当前分散在 DTO、Vue、SEO Service、LLM Client、Agent Runtime 和 Tool 中的运行参数，整理为职责清晰、可验证、接近生产使用的配置体系。
+把原先分散在 DTO、Vue、SEO Service、LLM Client、Agent Runtime 和 Tool 中的运行参数，整理为职责清晰、可验证、接近生产使用的配置体系。
 
 本任务解决：
 
@@ -25,20 +27,11 @@
 Search / Detail Tool 无法使用不同 Observation 预算
 ```
 
-本任务不是有界 Agent Loop，也不创建万能 `common/constants.ts`。
+本任务没有实现有界 Agent Loop，也没有创建万能 `common/constants.ts`。
 
-## 实施前代码事实
+## 最终生产基线
 
-- API 与 Web 分别硬编码用户输入上限 `16_000`；
-- `SeoService` 硬编码历史 `12` 条和 `maxTokens: 32_768`；
-- `llm.constants.ts` 维护另一份默认输出与超时；
-- Tool Observation 统一限制为 `8_000` 字符；
-- `search_articles` excerpt 为 `200` 字符；
-- 当前没有 typed model profile，也没有环境变量上下界关系验证。
-
-## 已确认生产基线
-
-| 参数 | 目标值 | 归属 |
+| 参数 | 最终值 | 归属 |
 | --- | ---: | --- |
 | 用户消息上限 | `64_000` 字符 | `@agent/contracts` |
 | 合格历史消息 | 最近 `40` 条 `COMPLETED` | Agent Runtime policy |
@@ -50,171 +43,106 @@ Search / Detail Tool 无法使用不同 Observation 预算
 | 元数据请求 timeout | `10_000ms` | LLM runtime config |
 | Stream timeout | `600_000ms` | LLM runtime config |
 | Search excerpt | `500` 字符 | Article Tool policy |
-| Search Observation | `16_000` 字符 | Tool policy |
-| Detail Observation | `64_000` 字符 | Tool policy |
+| Search Observation | `16_000` 字符 | Tool Definition |
+| Detail Observation | `64_000` 字符 | Tool Definition |
 | Observation 全局硬上限 | `128_000` 字符 | Tool core policy |
-| 搜索默认 / 最大条数 | 保持 `5 / 10` | Article Tool policy |
-| 本地只读 DB Tool timeout | 保持 `5_000ms` | Tool Definition |
+| 搜索默认 / 最大条数 | `5 / 10` | Article Tool policy |
+| 本地只读 DB Tool timeout | `5_000ms` | Tool Definition |
 
-Provider 能力来自 DeepSeek 官方文档，但 Provider 极限不等于应用默认值。
+Provider 能力与应用策略保持分层：Provider 的 384K 最大输出不是应用默认输出；本任务也没有建立精确 input token budget。
 
-## 架构边界
-
-```text
-packages/contracts
-  -> 前后端共享的公开产品限制
-
-apps/api/src/llm
-  -> Provider model profile
-  -> 应用默认值、硬上限、环境覆盖和校验
-
-apps/api/src/agent-runtime
-  -> 历史等非 Loop 运行策略
-
-apps/api/src/tools/core
-  -> Observation 全局硬上限和通用规范化
-
-apps/api/src/tools/articles
-  -> excerpt、结果数和工具级 Observation 预算
-```
-
-约束：
-
-- 不创建万能 constants 文件；
-- 不让 Vue、DTO 和 Service 复制同一数值；
-- 不在 Runtime 中按工具名硬编码 Observation 预算；
-- 非法环境配置必须 fail fast，不静默 clamp；
-- 公开契约和业务规则不使用运行时环境覆盖；
-- 运维型参数允许环境变量覆盖，并记录单位和默认值。
-
-## 实现范围
-
-- 在 contracts 中导出共享消息字符上限；
-- API DTO、Vue maxlength 和字符计数使用同一来源；
-- 建立 DeepSeek V4 Flash / Pro typed model profiles；
-- 建立 LLM runtime config、严格整数解析和上下界验证；
-- 分离普通 Chat、metadata 和 stream timeout；
-- 移除 `SeoService` 中历史和输出 magic number；
-- 历史默认调整为 40，并只加载 `COMPLETED` 消息；
-- Search excerpt 调整为 500，结果数仍保持 5 / 10；
-- Tool Definition 或等价工具策略声明模型可见 Observation 预算；
-- Search / Detail 使用 16K / 64K，并受 128K 全局硬上限保护；
-- 保留 Unicode code point 安全截断、Tool timeout、Abort 和错误语义；
-- 更新 `.env.example`、测试和直接相关文档。
-
-## 明确不在本次范围
-
-- 不实现有界 Agent Loop；
-- 不修改固定 `[1, 2]` sampling；
-- 不向模型开放 `get_article_detail`；
-- 不实现 `maxSamplingRounds`、`maxToolCalls` 或 Run deadline；
-- 不实现 DeepSeek `reasoning_content` continuation；
-- 不关闭 thinking mode 回避 continuation；
-- 不实现 TokenEstimator、精确 input token budget、自动历史裁剪、摘要或 Compaction；
-- 不修改 Prisma schema、Chat / NDJSON 协议；
-- 不推进 Phase 6 Task 1 实现。
-
-## 验收标准
-
-| ID | 可观察行为 | 验证方式 |
-| --- | --- | --- |
-| AC-01 | API 与 Web 共享 `64_000` 消息上限，无重复 magic number | contracts / API / Web 测试 + `rg` |
-| AC-02 | Model Profile 区分 1M / 384K Provider 能力与 65,536 / 131,072 应用策略 | Profile 单测 |
-| AC-03 | 非法环境值及上下界关系错误 fail fast | Config 单测 |
-| AC-04 | Chat / metadata / stream timeout 分别为 60s / 10s / 10min | Client 单测 |
-| AC-05 | 最近 40 条 `COMPLETED` 消息进入模型历史，非终态消息被排除且顺序稳定 | Runtime 测试 |
-| AC-06 | 当前输入在模型历史中恰好出现一次 | Runtime 测试 |
-| AC-07 | Search excerpt 为 500，结果数保持 5 / 10 | Tool 回归测试 |
-| AC-08 | Search / Detail Observation 分别执行 16K / 64K 预算，完整 data 与模型 Observation 继续分层 | Tool / Runtime 测试 |
-| AC-09 | 所有 Observation 都受 128K 全局硬上限保护 | Tool core 测试 |
-| AC-10 | Unicode 安全、截断提示和字符统计确定 | Tool core 测试 |
-| AC-11 | 当前工具 allowlist、固定两轮 Runtime、Chat / NDJSON 协议不变 | Tool Loop / Model Stream 回归 |
-| AC-12 | `.env.example`、Task 状态和 PR 证据真实一致 | docs diff |
-
-## 实现结果
-
-### 配置职责与文件结构
+## 最终架构边界
 
 ```text
 packages/contracts/src/seo.ts
-  -> SEO_CHAT_MESSAGE_MAX_CHARS（API / Web 共享运行时 export）
+  -> SEO_CHAT_MESSAGE_MAX_CHARS
+  -> API / Web 共享公开产品限制
 
 apps/api/src/llm/model-profiles.ts
-  -> DeepSeek V4 Flash / Pro Provider Profile（1M context / 384K output）
+  -> DeepSeek Provider 能力
 
 apps/api/src/llm/llm-runtime-config.ts
-  -> 代码默认值、环境覆盖、严格解析、关系校验与调用级输出校验
+  -> 应用默认值、硬上限、环境覆盖、严格解析和调用级校验
 
 apps/api/src/agent-runtime/agent-runtime.policy.ts
-  -> 最近 Completed 历史条数策略
+  -> 合格历史消息条数策略
 
 apps/api/src/tools/core/tool-observation.ts
-  -> Unicode code point 安全规范化与 128K 全局硬上限
+  -> Unicode 安全规范化与 128K 全局硬上限
 
 apps/api/src/tools/articles/*.tool.ts
   -> excerpt、结果数、Tool timeout 与工具级 Observation 预算
 ```
 
-- `@agent/contracts` 新增真实 ESM 编译产物与 package export；API 将它声明为运行时 `dependencies`，API / Web 的 dev、build 流程会先构建 contracts；
-- `LLMRuntimeConfigService` 由 `LlmModule` 直接注册，Nest 创建应用上下文时立即解析配置；`main.ts` 只有在 `NestFactory.create(AppModule)` 成功后才会执行 `listen`；
-- Provider Client 只读取已经验证的配置对象，不再在各方法中读取 `process.env`；
-- 普通 Chat、metadata 和 Stream 分别使用 60s、10s、10min，Tool timeout 继续来自各 Tool Definition；
-- Runtime 查询最近 40 条 `COMPLETED` 消息，以 `createdAt DESC, id DESC` 稳定排序；当前用户消息先持久化后纳入这 40 条且只出现一次；
-- Tool Definition 声明 Observation 预算，Runtime 不按工具名分支；通用规范化始终以 128K 为不可绕过的上限；
-- 固定 `[1, 2]` sampling、当前 `search_articles` allowlist、同步 / 流式协议和 `get_article_detail` 未开放状态保持不变。
+关键约束：
 
-### Fail-fast 与运行时依赖证据
+- 没有创建全局万能 constants 文件；
+- Vue、DTO 和 Service 不再复制同一消息上限；
+- Runtime 不按工具名硬编码 Observation 预算；
+- 非法环境配置 fail fast，不静默 clamp；
+- 公开契约和业务规则使用版本控制内的常量；
+- 运维型参数可由环境变量覆盖，并严格验证单位、范围和上下界关系。
 
-- `LlmModule` 真实组装测试覆盖缺省配置、非法整数、默认输出大于应用硬上限、应用硬上限大于 Provider 上限，均在应用上下文初始化阶段完成或失败；
-- Client 测试确认调用级非法模型 / 输出预算不会触发 Provider 请求，并确认初始化后的 `process.env` 变化不会改变请求；
-- `pnpm --filter @agent/contracts build` 生成 `dist/index.js` / `dist/seo.js`，API 编译产物保留 `@agent/contracts` 运行时 import；
-- `test:seo-service` 显式先执行 contracts build；从不存在 `packages/contracts/dist/index.js` 的状态单独运行时，pnpm v10 真实执行 build，随后 2 个文件、2 个 suite、10 个测试全部通过并生成 runtime export；
-- `pnpm --filter @agent/api deploy --legacy --prod <临时目录>/api` 后，从隔离生产依赖目录加载 API DTO 与 `@agent/contracts` 成功，输出 `{"productionDeploy":true,"dtoLoaded":true,"contractLimit":64000}`；
-- Web production build 把共享常量打包为 `64e3` 并绑定到输入 `maxlength` 与字符计数。
+## 核心实现结果
 
-### Red / Green 记录
+### 共享运行时契约
 
-- Red：新增测试首次运行时 6 个测试文件失败；除待实现模块不存在外，DTO 测试真实暴露 `ERR_PACKAGE_PATH_NOT_EXPORTED`，证明原 contracts 只有 TypeScript 类型出口；
-- Green：实现 package runtime export、配置、Runtime 和 Tool 策略后，新增与既有回归测试全部通过；
-- 实施中 `test:tools` 曾因新增 excerpt 断言使用的测试正文不足 500 字符而 1 项失败；扩大测试 fixture 后 33 / 33 通过，生产实现未为该失败降级；
-- 生产依赖隔离验证首次使用 pnpm v10 默认 deploy 模式时得到 `ERR_PNPM_DEPLOY_NONINJECTED_WORKSPACE`；按提示改用 `--legacy` 后完成 prod-only 部署与运行时 import 验证。
+- `@agent/contracts` 提供真实 ESM runtime export；
+- API 将 `@agent/contracts` 声明为运行时 dependency；
+- API DTO 与 Vue Composer 共同使用 `SEO_CHAT_MESSAGE_MAX_CHARS = 64_000`；
+- API / Web dev、build 流程会在需要时先构建 contracts；
+- prod-only deploy 验证 API DTO 可以在仅生产依赖环境中加载 contracts runtime export。
 
-### 验收追踪
+### Model Profile 与配置校验
 
-| 验收项 | 实现位置 | 当前证据 |
+- `deepseek-v4-flash` 和 `deepseek-v4-pro` 均记录 1M context、384K Provider 最大输出；
+- 应用默认输出 65,536，应用硬上限 131,072；
+- `LLMRuntimeConfigService` 在 Nest 初始化阶段解析配置；
+- 空值、0、负数、浮点数、指数、NaN、Infinity、非安全整数和越界关系均被拒绝；
+- Provider Client 只读取已验证配置对象，不在不同方法中分散读取 `process.env`；
+- 调用级非法模型或输出预算不会发起 Provider 请求。
+
+### 历史消息策略
+
+- 默认读取最近 40 条 `MessageStatus.COMPLETED`；
+- `PENDING / STREAMING / FAILED / ABORTED` 不进入模型历史；
+- 查询使用 `createdAt DESC, id DESC` 保持稳定顺序，再恢复正序交给模型；
+- 当前用户消息继续采用“先持久化、再查询”的既有语义，在模型输入中恰好出现一次。
+
+### Tool Observation 预算
+
+- `ToolDefinition` 声明服务端专用 `maxObservationChars`；
+- `search_articles` 使用 16K，`get_article_detail` 使用 64K；
+- 通用规范化层始终强制 128K 全局硬上限；
+- Unicode code point、确定性截断提示、`originalChars / observationChars / truncated` 语义保持；
+- `ToolResult.data` 与模型可见 Observation 继续分层，durable AgentStep 不保存完整正文数据。
+
+### 回归边界
+
+- 固定 `[1, 2]` sampling 结构未改变；
+- 当前 Runtime 仍只向模型暴露并允许执行 `search_articles`；
+- `get_article_detail` 已注册并声明 64K 预算，但仍未向模型开放；
+- Chat / NDJSON 协议、Abort、Tool timeout 和现有错误语义保持不变；
+- 未实现 DeepSeek `reasoning_content` continuation、TokenEstimator、自动历史裁剪、摘要或 Compaction。
+
+## 验收结果
+
+| ID | 可观察行为 | 结果 |
 | --- | --- | --- |
-| AC-01 | contracts、DTO、Vue | DTO 64K 边界测试；API / Web build；`rg` 仅共享契约保留生产 64K 定义 |
-| AC-02 | `model-profiles.ts`、`llm-runtime-config.ts` | Profile / Config 单测 |
-| AC-03 | `llm-runtime-config.ts`、`llm.module.test.ts` | 严格整数、关系校验、Nest 初始化失败测试 |
-| AC-04 | `openai-compatible.client.ts` | Client metadata / Chat / Stream timeout 测试 |
-| AC-05 | `agent-runtime.policy.ts`、Runtime 查询 | 40 条 Completed、排除非终态、稳定排序测试 |
-| AC-06 | `agent-runtime.service.test.ts` | 当前输入只出现一次测试 |
-| AC-07 | `search-articles.tool.ts` | 500 字符 excerpt、5 / 10 条数回归 |
-| AC-08 | Tool Definition、Runtime | Search 16K / Detail 64K；Step 不保存完整 data |
-| AC-09 | `tool-observation.ts` | 工具声明 256K 时仍截断到 128K |
-| AC-10 | `tool-observation.ts` | Emoji、确定性 envelope 与字符统计测试 |
-| AC-11 | Agent Runtime / Model Stream | 24 个 Tool Loop 与 37 个 Model Stream 回归 |
-| AC-12 | `.env.example`、本任务文档、看板、roadmap、work log | 文档 diff 与 `git diff --check` |
+| AC-01 | API 与 Web 共享 `64_000` 消息上限，无重复生产 magic number | PASS |
+| AC-02 | Provider Profile 与应用默认值 / 硬上限分层 | PASS |
+| AC-03 | 非法环境值及上下界关系错误 fail fast | PASS |
+| AC-04 | Chat / metadata / stream timeout 分别为 60s / 10s / 10min | PASS |
+| AC-05 | 最近 40 条 `COMPLETED` 进入模型历史，非终态消息被排除且顺序稳定 | PASS |
+| AC-06 | 当前输入在模型历史中恰好出现一次 | PASS |
+| AC-07 | Search excerpt 为 500，结果数保持 5 / 10 | PASS |
+| AC-08 | Search / Detail 分别执行 16K / 64K Observation 预算 | PASS |
+| AC-09 | 所有 Observation 受 128K 全局硬上限保护 | PASS |
+| AC-10 | Unicode 安全、截断提示和字符统计确定 | PASS |
+| AC-11 | 当前 allowlist、固定两轮 Runtime 和外部协议不变 | PASS |
+| AC-12 | `.env.example`、任务状态和交付证据一致 | PASS |
 
-## 验证命令
-
-Codex 必须先核对实际脚本，至少运行：
-
-```bash
-pnpm --filter @agent/api test:tools
-pnpm --filter @agent/api test:tool-loop
-pnpm --filter @agent/api test:model-stream
-pnpm --filter @agent/api test:seo-service
-pnpm --filter @agent/api typecheck
-pnpm --filter @agent/api lint
-pnpm --filter @agent/web typecheck
-pnpm --filter @agent/web lint
-pnpm --filter @agent/web build
-pnpm typecheck
-git diff --check
-```
-
-实际结果：
+## 最终验证证据
 
 | 命令 | 文件数 | suite 数 | test 数 | 结果 |
 | --- | ---: | ---: | ---: | --- |
@@ -222,24 +150,51 @@ git diff --check
 | `pnpm --filter @agent/api test:tools` | 7 | 7 | 33 | PASS |
 | `pnpm --filter @agent/api test:tool-loop` | 2 | 3 | 24 | PASS |
 | `pnpm --filter @agent/api test:model-stream` | 3 | 5 | 37 | PASS |
-| `pnpm --filter @agent/api test:seo-service` | 2 | 2 | 10 | PASS；清洁环境下自动先构建 contracts |
+| `pnpm --filter @agent/api test:seo-service` | 2 | 2 | 10 | PASS；清洁环境自动先构建 contracts |
 | `pnpm --filter @agent/api typecheck` | — | — | — | PASS |
 | `pnpm --filter @agent/api lint` | — | — | — | PASS |
 | `pnpm --filter @agent/web typecheck` | — | — | — | PASS |
 | `pnpm --filter @agent/web lint` | — | — | — | PASS |
-| `pnpm --filter @agent/web build` | — | — | — | PASS；仅有既有 `@vueuse/core` PURE annotation warning |
-| `pnpm typecheck` | 4 个 workspace | — | — | PASS |
+| `pnpm --filter @agent/web build` | — | — | — | PASS |
 | `pnpm --filter @agent/contracts build` | — | — | — | PASS |
 | `pnpm --filter @agent/api build` | — | — | — | PASS |
+| `pnpm typecheck` | 4 workspaces | — | — | PASS |
 | prod-only deploy + API DTO / contracts runtime import | — | — | — | PASS |
 | `git diff --check` | — | — | — | PASS |
 
-清洁环境顺序验证中，LLM Config、Tools、Tool Loop、Model Stream 在 contracts dist 不存在时均独立通过且未生成 dist；SEO 命令随后自行构建 contracts 并通过。补充运行的 `pnpm lint` 仍为既有非阻塞基线失败：101 个错误全部位于未修改的 `docs/research/**` Markdown 代码片段；本任务修改范围已分别通过 API lint、Web lint，并单独通过 contracts `tsconfig.json` lint。
+清洁环境复验确认：contracts `dist` 不存在时，LLM Config、Tools、Tool Loop 和 Model Stream 可独立运行且不会生成 `dist`；`test:seo-service` 会显式构建 contracts，然后完成 2 个文件、2 个 suite、10 个测试。
+
+全仓 `pnpm lint` 仍受既有 `docs/research/**` Markdown 代码片段基线影响；本任务修改范围的 API / Web lint、contracts 配置检查均通过。
+
+## Review 与验收记录
+
+- Codex Review 初次发现 1 个 P2：清洁 checkout 下 `test:seo-service` 依赖未声明的 contracts 预构建；
+- 修复提交 `575983d741b951c9d3d75c23471bd67d828bcaa3` 为测试命令增加显式 contracts build；
+- 原 P2 thread 已解决并过时；
+- Codex 对最新提交复审未发现 major issues；
+- GPT 基于最新提交、Issue、PR diff、Review 和测试证据完成技术验收；
+- 用户已明确授权验收、合并和 docs 收口。
+
+## 明确未做
+
+- 有界 Agent Loop 与多次 Tool Call；
+- `maxSamplingRounds`、`maxToolCalls` 和 Run deadline；
+- DeepSeek `reasoning_content` continuation 或 thinking mode 切换；
+- TokenEstimator、精确 input token budget、自动历史裁剪、摘要或 Compaction；
+- RAG、Memory、Permission、Approval、HITL；
+- 向模型开放 `get_article_detail`。
 
 ## GitHub 交付记录
 
-- Issue：[#27](https://github.com/mufeiyu-ayu/agent/issues/27)
-- 分支：`codex/issue-27-runtime-configuration-governance`
-- PR：[Draft PR #28](https://github.com/mufeiyu-ayu/agent/pull/28)
-- GPT 验收结论：需要修改；本轮修复后待复审
-- 用户确认：未确认
+- Issue：[#27（Closed）](https://github.com/mufeiyu-ayu/agent/issues/27)
+- PR：[#28（Merged）](https://github.com/mufeiyu-ayu/agent/pull/28)
+- 实现分支：`codex/issue-27-runtime-configuration-governance`（已清理）
+- 最终验收提交：`575983d741b951c9d3d75c23471bd67d828bcaa3`
+- Merge commit：`4a50c18c175a345251b4d4512849a612145f3a2f`
+- GPT 验收结论：技术验收通过
+- Codex Review：最新提交未发现 major issues，原 P2 已解决
+- 用户确认：已于 2026-07-26 明确授权验收、合并和文档收口
+
+## 下一步
+
+读取最新 `master`，为 Phase 6 Task 1「有界顺序 Agent Loop」编写正式规格并创建独立 Issue。Task 1 尚未进入实现。
