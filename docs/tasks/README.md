@@ -4,15 +4,13 @@
 
 ## 当前看板
 
-阶段 5 最小 Tool Calling 已完成并归档。阶段 6 `有界单 Agent Loop` 已完成 Task 0；在正式启动 Task 1 前，先完成独立横向工程任务 Issue #27。
-
-当前 `Active` 正式任务为横向工程 Issue #27：实现与本地验证已完成，处于“实施状态：已实现、验收状态：待验收”的 [Draft PR #28](https://github.com/mufeiyu-ayu/agent/pull/28) 交付阶段。Phase 6 Task 1 仍为 `Planned`，必须等待 Issue #27 验收收口后再编写最终规格并启动。
+阶段 5 最小 Tool Calling 已完成并归档。阶段 6 `有界单 Agent Loop` 已完成 Task 0；独立横向工程 Issue #27 也已通过验收并合并。当前没有 `Active` 正式实现任务，Phase 6 Task 1 是下一项 `Next` 任务。
 
 | 区域 | 状态 | 文档 | 说明 |
 | --- | --- | --- | --- |
-| 横向工程：Agent / LLM 运行参数与模型配置治理 | **Active（Issue #27，已实现、待验收）** | [runtime-configuration-governance.md](./runtime-configuration-governance.md) | Phase 6 Task 1 前置；Draft PR 交付，不代表验收通过 |
+| 横向工程：Agent / LLM 运行参数与模型配置治理 | **Completed** | [runtime-configuration-governance.md](./runtime-configuration-governance.md) | Issue #27 / PR #28；已验收并合并，merge commit `4a50c18c` |
 | 阶段 6 Task 0：新增 `get_article_detail` 只读工具 | **Completed** | [phase-06-bounded-agent-loop/task-00-get-article-detail-tool.md](./phase-06-bounded-agent-loop/task-00-get-article-detail-tool.md) | Issue #25 / PR #26；已验收并合并，merge commit `d3609d3f` |
-| 阶段 6 Task 1：有界顺序 Agent Loop | Planned | [phase-06-bounded-agent-loop/README.md](./phase-06-bounded-agent-loop/README.md) | 等 Issue #27 验收后，基于最新 `master` 编写正式规格并创建独立 Issue |
+| 阶段 6 Task 1：有界顺序 Agent Loop | **Next** | [phase-06-bounded-agent-loop/README.md](./phase-06-bounded-agent-loop/README.md) | 下一项正式主线；待基于最新 `master` 编写规格并创建独立 Issue |
 | 阶段 6 Task 2：可靠性、回归与学习验收 | Planned | [phase-06-bounded-agent-loop/README.md](./phase-06-bounded-agent-loop/README.md) | 等 Task 1 验收后再展开 |
 | Admin Console Task 1 | Completed | [admin-console.md](./admin-console.md) | Issue #21 / PR #22；静态 Run List / Run Detail UI 已实现并通过验收 |
 | Admin Console Task 0 | Completed | [admin-console.md](./admin-console.md) | Issue #19 / PR #20；`apps/admin` 基础壳已实现并通过验收 |
@@ -26,17 +24,16 @@
 
 ```text
 Phase 6 Task 0：新增 get_article_detail（Completed）
-  -> 横向前置 Issue #27：运行参数与模型配置治理（Active，已实现、待验收）
-  -> Phase 6 Task 1：有界顺序 Agent Loop（Planned）
+  -> 横向前置 Issue #27：运行参数与模型配置治理（Completed）
+  -> Phase 6 Task 1：有界顺序 Agent Loop（Next）
   -> Phase 6 Task 2：可靠性、回归与学习验收（Planned）
 ```
 
 执行规则：
 
-- Issue #27 是正式独立任务，不占用 Phase 6 Task 编号，也不改变阶段 6 的核心学习目标。
-- Issue #27 的 Clarification Gate 已为 `READY`，实现与本地验证已完成；当前等待 Draft PR Review 和 GPT / 用户验收。
-- Issue #27 只治理公开限制、模型 Profile、运行参数、历史基线和 Tool Observation 预算，不实现 Agent Loop。
-- Phase 6 Task 1 必须等待 Issue #27 验收收口后，再基于最新代码形成正式规格和独立 Issue。
+- Issue #27 是正式独立任务，不占用 Phase 6 Task 编号，也不改变阶段 6 的核心学习目标；当前已完成并关闭。
+- Issue #27 已统一公开限制、模型 Profile、运行参数、历史基线和 Tool Observation 预算，没有实现 Agent Loop。
+- Phase 6 Task 1 是下一项正式任务，但只有完成正式规格、创建独立 Issue 并通过 Clarification Gate 后才能进入 `Active`。
 - 一个 Issue 只对应一个明确 Task，不把配置治理、Agent Loop 和可靠性收口合并实现。
 - Phase 6 Task 2 必须等待 Task 1 验收后再展开正式文档和 Issue。
 - 阶段 6 完成前不提前编号、编写或启动后续 Agent 阶段。
