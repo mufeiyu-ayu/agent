@@ -30,6 +30,8 @@ export interface ToolDefinition<TInput = unknown> {
   description: string
   input: ToolInputContract<TInput>
   timeoutMs: number
+  /** 该工具允许发送给模型的 Observation 字符预算。 */
+  maxObservationChars: number
   requiresApproval: boolean
   idempotent: boolean
   risk: ToolRisk

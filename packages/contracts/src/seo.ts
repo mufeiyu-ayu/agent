@@ -1,3 +1,6 @@
+/** 前后端共同执行的单次 SEO Chat 用户消息字符上限。 */
+export const SEO_CHAT_MESSAGE_MAX_CHARS = 64_000
+
 export interface SeoChatRequest {
   conversationId: string
   message: string

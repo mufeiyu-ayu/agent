@@ -1,4 +1,4 @@
-export const MAX_TOOL_OBSERVATION_CHARS = 8_000
+export const TOOL_OBSERVATION_HARD_MAX_CHARS = 128_000
 
 /**
  * 工具结果经过长度限制后，提供给模型和 AgentStep 记录使用的结构。
@@ -21,18 +21,32 @@ export interface NormalizedToolObservation {
  *
  * @returns 包含最终文本、处理前后字符数及是否截断的结构。
  */
-export function normalizeToolObservation(content: string): NormalizedToolObservation {
+export function normalizeToolObservation(
+  content: string,
+  requestedMaxChars = TOOL_OBSERVATION_HARD_MAX_CHARS,
+): NormalizedToolObservation {
+  if (
+    !Number.isSafeInteger(requestedMaxChars)
+    || requestedMaxChars <= 0
+  ) {
+    throw new RangeError('Tool Observation 字符预算必须是正整数')
+  }
+
+  const maxChars = Math.min(
+    requestedMaxChars,
+    TOOL_OBSERVATION_HARD_MAX_CHARS,
+  )
   const previewCodePoints: string[] = []
   let originalChars = 0
 
   for (const codePoint of content) {
     originalChars += 1
 
-    if (previewCodePoints.length < MAX_TOOL_OBSERVATION_CHARS)
+    if (previewCodePoints.length < maxChars)
       previewCodePoints.push(codePoint)
   }
 
-  if (originalChars <= MAX_TOOL_OBSERVATION_CHARS) {
+  if (originalChars <= maxChars) {
     return {
       content,
       originalChars,
@@ -43,7 +57,22 @@ export function normalizeToolObservation(content: string): NormalizedToolObserva
 
   const prefix = `[工具 Observation 已截断，原始 ${originalChars} 字符；以下仅为预览]\n`
   const suffix = '\n[预览结束]'
-  const previewChars = MAX_TOOL_OBSERVATION_CHARS
+  const envelopeChars = [...prefix, ...suffix].length
+
+  if (envelopeChars > maxChars) {
+    const content = [...`[工具 Observation 已截断，原始 ${originalChars} 字符]`]
+      .slice(0, maxChars)
+      .join('')
+
+    return {
+      content,
+      originalChars,
+      observationChars: [...content].length,
+      truncated: true,
+    }
+  }
+
+  const previewChars = maxChars
     - [...prefix].length
     - [...suffix].length
   const normalizedContent = `${prefix}${previewCodePoints.slice(0, previewChars).join('')}${suffix}`

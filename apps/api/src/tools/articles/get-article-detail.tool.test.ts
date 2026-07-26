@@ -37,6 +37,7 @@ describe('get_article_detail', () => {
     assert.equal(definition.requiresApproval, false)
     assert.equal(definition.idempotent, true)
     assert.equal(definition.timeoutMs, 5_000)
+    assert.equal(definition.maxObservationChars, 64_000)
     assert.deepEqual(toModelToolSpec(definition), {
       name: 'get_article_detail',
       description: definition.description,

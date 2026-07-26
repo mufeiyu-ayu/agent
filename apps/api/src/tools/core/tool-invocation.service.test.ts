@@ -388,6 +388,7 @@ function createEchoTool(
         parse: parseEchoInput,
       },
       timeoutMs: 1_000,
+      maxObservationChars: 8_000,
       requiresApproval: false,
       idempotent: true,
       risk: { level: 'low', sideEffect: 'none', network: false },

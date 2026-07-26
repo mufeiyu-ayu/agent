@@ -4,8 +4,10 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "predev": "pnpm --filter @agent/contracts build",
     "dev": "vite",
     "typecheck": "vue-tsc --noEmit -p tsconfig.json",
+    "prebuild": "pnpm --filter @agent/contracts build",
     "build": "vue-tsc --noEmit -p tsconfig.json && vite build",
     "lint": "eslint src",
     "lint:fix": "eslint src --fix"

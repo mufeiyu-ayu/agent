@@ -140,9 +140,7 @@ describe('SeoService', () => {
       conversationId: 'conversation-1',
       userContent: '用户问题',
       model: 'deepseek-chat',
-      historyLimit: 12,
       temperature: 0.4,
-      maxTokens: 32768,
     })
     assert.deepEqual(
       withoutFunctionsAndSignal(streamInput),
@@ -267,9 +265,7 @@ function withoutFunctionsAndSignal(input: RunTurnStreamInput) {
     conversationId: input.conversationId,
     userContent: input.userContent,
     ...(input.model ? { model: input.model } : {}),
-    historyLimit: input.historyLimit,
     temperature: input.temperature,
-    maxTokens: input.maxTokens,
   }
 }
 

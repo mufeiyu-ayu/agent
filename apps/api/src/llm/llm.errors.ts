@@ -84,8 +84,8 @@ export class LLMInvalidRequestError extends LLMError {
 
 /** 环境变量缺失或配置格式不符合当前模型适配层要求 */
 export class LLMConfigError extends LLMInvalidRequestError {
-  constructor(configName: 'LLM_BASE_URL' | 'LLM_MODEL') {
-    const message = `请在项目根目录 .env 中设置 ${configName}`
+  constructor(configName: string, reason = '必须提供有效值') {
+    const message = `LLM 配置 ${configName} 无效：${reason}`
 
     super(400, { configName, message })
     this.name = 'LLMConfigError'

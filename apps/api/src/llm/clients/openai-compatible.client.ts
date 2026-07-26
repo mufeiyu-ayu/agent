@@ -13,8 +13,7 @@ import type {
 import type { ModelInputItem } from '../model-input.types.js'
 import type { ModelStreamEvent } from '../model-stream.types.js'
 import type { ModelToolSpec } from '../model-tool-spec.types.js'
-import process from 'node:process'
-import { Injectable } from '@nestjs/common'
+import { Inject, Injectable } from '@nestjs/common'
 import OpenAI, {
   APIConnectionError,
   APIError,
@@ -22,16 +21,16 @@ import OpenAI, {
 } from 'openai'
 
 import {
-  DEFAULT_CHAT_MAX_TOKENS,
+  LLMRuntimeConfigService,
+  resolveChatRequestConfig,
+} from '../llm-runtime-config.js'
+import {
   DEFAULT_CHAT_TEMPERATURE,
-  LLM_REQUEST_TIMEOUT_MS,
-  LLM_STREAM_TIMEOUT_MS,
 } from '../llm.constants.js'
 import {
   LLMApiError,
   LLMAuthError,
   LLMBalanceError,
-  LLMConfigError,
   LLMError,
   LLMInvalidRequestError,
   LLMNetworkError,
@@ -45,11 +44,6 @@ type ChatCompletionBaseParams = Pick<
   'messages' | 'model' | 'temperature' | 'max_tokens' | 'response_format'
 >
 
-interface LLMRuntimeConfig {
-  apiKey: string
-  baseUrl: string
-}
-
 /**
  * OpenAI-compatible 模型适配层。
  *
@@ -57,10 +51,15 @@ interface LLMRuntimeConfig {
  */
 @Injectable()
 export class OpenAICompatibleClient {
+  constructor(
+    @Inject(LLMRuntimeConfigService)
+    private readonly runtimeConfigService: LLMRuntimeConfigService,
+  ) {}
+
   async listModels(): Promise<DeepSeekModelsResponse> {
     return await this.runWithLLMErrorHandling(() =>
       this.createClient().get<DeepSeekModelsResponse>('/models', {
-        timeout: LLM_REQUEST_TIMEOUT_MS,
+        timeout: this.runtimeConfigService.value.metadataRequestTimeoutMs,
       }),
     )
   }
@@ -68,7 +67,7 @@ export class OpenAICompatibleClient {
   async getUserBalance(): Promise<DeepSeekBalanceResponse> {
     return await this.runWithLLMErrorHandling(() =>
       this.createClient().get<DeepSeekBalanceResponse>('/user/balance', {
-        timeout: LLM_REQUEST_TIMEOUT_MS,
+        timeout: this.runtimeConfigService.value.metadataRequestTimeoutMs,
       }),
     )
   }
@@ -81,7 +80,7 @@ export class OpenAICompatibleClient {
           options,
         ),
         {
-          timeout: LLM_REQUEST_TIMEOUT_MS,
+          timeout: this.runtimeConfigService.value.chatRequestTimeoutMs,
         },
       )
       const content = completion.choices[0]?.message.content
@@ -103,7 +102,7 @@ export class OpenAICompatibleClient {
   ): AsyncGenerator<ModelStreamEvent> {
     const client = this.createClient()
     const requestOptions = {
-      timeout: LLM_STREAM_TIMEOUT_MS,
+      timeout: this.runtimeConfigService.value.streamTimeoutMs,
       ...(options?.signal ? { signal: options.signal } : {}),
     }
 
@@ -131,7 +130,7 @@ export class OpenAICompatibleClient {
   }
 
   private createClient(): OpenAI {
-    const { apiKey, baseUrl } = this.getRuntimeConfig()
+    const { apiKey, baseUrl } = this.runtimeConfigService.value
 
     return new OpenAI({
       apiKey,
@@ -140,42 +139,19 @@ export class OpenAICompatibleClient {
     })
   }
 
-  private getRuntimeConfig(): LLMRuntimeConfig {
-    const apiKey = process.env.LLM_API_KEY?.trim()
-    const baseUrl = process.env.LLM_BASE_URL?.trim()
-
-    if (!apiKey) {
-      throw new LLMAuthError('请在项目根目录 .env 中设置 LLM_API_KEY')
-    }
-    if (!baseUrl) {
-      throw new LLMConfigError('LLM_BASE_URL')
-    }
-
-    return {
-      apiKey,
-      baseUrl: baseUrl.replace(/\/+$/, ''),
-    }
-  }
-
-  private getModel(options?: ChatOptions): string {
-    const model = (options?.model ?? process.env.LLM_MODEL)?.trim()
-
-    if (!model) {
-      throw new LLMConfigError('LLM_MODEL')
-    }
-
-    return model
-  }
-
   private buildBaseChatCompletionParams(
     messages: ChatCompletionMessageParam[],
     options?: ChatOptions,
   ): ChatCompletionBaseParams {
+    const requestConfig = resolveChatRequestConfig(
+      this.runtimeConfigService.value,
+      options,
+    )
     const params: ChatCompletionBaseParams = {
-      model: this.getModel(options),
+      model: requestConfig.model,
       messages,
       temperature: options?.temperature ?? DEFAULT_CHAT_TEMPERATURE,
-      max_tokens: options?.maxTokens ?? DEFAULT_CHAT_MAX_TOKENS,
+      max_tokens: requestConfig.maxOutputTokens,
     }
 
     if (options?.responseFormat) {

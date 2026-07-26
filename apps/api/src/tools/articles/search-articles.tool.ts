@@ -12,7 +12,7 @@ const DEFAULT_LIMIT = 5
 const MAX_LIMIT = 10
 const MAX_QUERY_LENGTH = 100
 const MAX_LANGUAGE_CODE_LENGTH = 20
-const EXCERPT_LENGTH = 200
+const EXCERPT_LENGTH = 500
 
 export interface SearchArticlesInput {
   query: string
@@ -55,6 +55,7 @@ export const searchArticlesDefinition: ToolDefinition<SearchArticlesInput> = {
     parse: parseSearchArticlesInput,
   },
   timeoutMs: 5_000,
+  maxObservationChars: 16_000,
   requiresApproval: false,
   idempotent: true,
   risk: { level: 'low', sideEffect: 'none', network: false },
