@@ -2,12 +2,13 @@
 
 ## 任务状态
 
-- 看板状态：**Active**
+- 看板状态：**Completed**
 - 实施状态：已实现
-- 验收状态：待验收
+- 验收状态：已通过
+- 完成日期：2026-07-26
 - Issue：[#25](https://github.com/mufeiyu-ayu/agent/issues/25)
 - 分支：`codex/issue-25-get-article-detail`
-- PR：[#26（Draft）](https://github.com/mufeiyu-ayu/agent/pull/26)
+- PR：[#26（等待合并）](https://github.com/mufeiyu-ayu/agent/pull/26)
 
 ## 目标
 
@@ -191,13 +192,13 @@ git diff --check
 - `test:tools` 真实发现 7 个测试文件对应的 7 个 suite，共执行 30 个测试并全部通过。
 
 ```text
-pnpm --filter @agent/api test:tools       30 passed，7 suites / 7 files
-pnpm --filter @agent/api test:tool-loop   21 passed
+pnpm --filter @agent/api test:tools        30 passed，7 suites / 7 files
+pnpm --filter @agent/api test:tool-loop    21 passed
 pnpm --filter @agent/api test:model-stream 36 passed
-pnpm --filter @agent/api typecheck        passed
-pnpm --filter @agent/api lint             passed
-pnpm typecheck                            passed
-git diff --check                          passed
+pnpm --filter @agent/api typecheck         passed
+pnpm --filter @agent/api lint              passed
+pnpm typecheck                             passed
+git diff --check                           passed
 ```
 
 ## 验收标准
@@ -211,7 +212,7 @@ git diff --check                          passed
 - [x] 当前 Runtime 模型工具列表和两轮 Tool Loop 行为不变，未开放工具不能因全局注册而执行；
 - [x] 不持久化或暴露完整内部错误、stack、secret 或未允许字段；
 - [x] Tools、Tool Loop、Model Stream 回归、API typecheck / lint、workspace typecheck 和 `git diff --check` 通过；
-- [ ] 用户能够解释搜索工具与详情工具为何拆分，以及 `sourceId` 如何成为两次模型决策之间的业务关联。
+- [x] 用户能够解释搜索工具与详情工具为何拆分，以及 `sourceId` 如何成为两次模型决策之间的业务关联。
 
 ## 风险点
 
@@ -225,10 +226,9 @@ git diff --check                          passed
 
 ## GitHub 交付记录
 
-仅在本任务进入正式实现后填写。
-
 - Issue：[#25](https://github.com/mufeiyu-ayu/agent/issues/25)
 - 分支：`codex/issue-25-get-article-detail`
-- PR：[#26（Draft）](https://github.com/mufeiyu-ayu/agent/pull/26)
-- GPT 验收结论：需要修改，暂不验收通过；P2 修复后等待复审
-- 用户确认：未确认
+- PR：[#26（等待合并）](https://github.com/mufeiyu-ayu/agent/pull/26)
+- GPT 验收结论：技术验收通过（最新验收提交 `27e25387dc6fa34209d8acc22e76475caf28868f`）
+- Codex Review：最新提交未发现 major issues，原 P2 thread 已解决
+- 用户确认：已于 2026-07-26 明确确认验收
