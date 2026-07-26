@@ -1,13 +1,14 @@
 # AI SEO Agent Docs
 
-这里是项目文档入口。项目已经完成 Session Chat、Streaming、Agent Runtime、最小 Tool Calling，以及阶段 6 Task 0 的第二个只读 Article Tool；当前先完成横向运行参数治理，再进入阶段 6 `有界单 Agent Loop` 的 Task 1。
+这里是项目文档入口。项目已经完成 Session Chat、Streaming、Agent Runtime、最小 Tool Calling、阶段 6 Task 0 的第二个只读 Article Tool，以及横向运行参数治理；当前 Agent 主线是阶段 6 `有界单 Agent Loop` 的 Task 1。
 
 ## 当前状态
 
 | 方向 | 状态 | 入口 |
 | --- | --- | --- |
-| 总路线 | 阶段 1-5 Completed；阶段 6 Active，Task 0 Completed；Issue #27 Next；Task 1 Planned | [roadmap.md](./roadmap.md) |
-| 当前任务 | 横向工程 Issue #27 已创建，等待 Clarification Gate | [tasks/runtime-configuration-governance.md](./tasks/runtime-configuration-governance.md) |
+| 总路线 | 阶段 1-5 Completed；阶段 6 Active，Task 0 Completed、横向前置 Completed、Task 1 Next | [roadmap.md](./roadmap.md) |
+| 当前任务 | 当前没有 Active 正式实现任务；Phase 6 Task 1 是下一项要编写规格并创建 Issue 的任务 | [tasks/README.md](./tasks/README.md) |
+| 运行参数治理 | Issue #27 / PR #28 已验收并合并 | [tasks/runtime-configuration-governance.md](./tasks/runtime-configuration-governance.md) |
 | 阶段 6 | Agent Loop、执行状态、终止条件、错误语义和行为测试 | [tasks/phase-06-bounded-agent-loop/README.md](./tasks/phase-06-bounded-agent-loop/README.md) |
 | 阶段 6 Task 0 | `get_article_detail` 与 Tool 目录重构已验收并通过 PR #26 合并 | [tasks/phase-06-bounded-agent-loop/task-00-get-article-detail-tool.md](./tasks/phase-06-bounded-agent-loop/task-00-get-article-detail-tool.md) |
 | 阶段 5 归档 | Tool Calling 最终能力、验收和源码阅读顺序 | [tasks/completed/phase-05-tool-calling.md](./tasks/completed/phase-05-tool-calling.md) |
@@ -22,8 +23,8 @@
 | --- | --- |
 | `roadmap.md` | 只维护已完成阶段、当前阶段和明确边界 |
 | `tasks/README.md` | 正式任务看板；Active / Next / Planned / Completed 以这里和对应 Task 文档为准 |
-| `tasks/runtime-configuration-governance.md` | 当前横向前置任务；运行参数、Model Profile 与 Tool Observation 预算治理 |
-| `tasks/phase-06-bounded-agent-loop/` | 当前阶段规划；Task 0 Completed，Task 1 等 Issue #27 后启动，Task 2 Planned |
+| `tasks/runtime-configuration-governance.md` | 已完成的横向前置任务；运行参数、Model Profile 与 Tool Observation 预算治理 |
+| `tasks/phase-06-bounded-agent-loop/` | 当前阶段规划；Task 0 Completed，Task 1 Next，Task 2 Planned |
 | `tasks/completed/` | 已完成阶段的简洁归档 |
 | `development-workflow.md` | 正式任务、Clarification Gate、PR、验收和授权边界 |
 | `research/` | 深度研究、外部项目分析和历史学习材料，不作为正式状态事实 |
@@ -31,15 +32,15 @@
 
 ## 当前执行说明
 
-- 阶段 6 方向仍是 `有界单 Agent Loop`，当前仍处于 Active。
+- 阶段 6 方向仍是 `有界单 Agent Loop`，当前处于 Active。
 - `Task 0：新增 get_article_detail 只读工具` 已通过 Issue #25 / PR #26 完成实现、Review、GPT 验收、用户确认与合并。
-- 横向工程 Issue #27 已创建，用于统一用户输入、历史、模型输出、请求超时、Model Profile 和 Tool Observation 预算；它不占用 Phase 6 Task 编号。
-- Issue #27 当前只是 `Next（待 Clarification Gate）`，尚未进入实现，不得直接修改正式运行代码。
+- 横向工程 Issue #27 已通过 PR #28 完成 64K 输入、40 条 Completed 历史、Model Profile、应用输出策略、三类请求超时和分级 Tool Observation 预算治理。
 - 当前 Runtime 仍保持固定两轮特例，只向模型暴露并允许执行 `search_articles`；`get_article_detail` 已注册但尚未开放给模型。
-- `Task 1：有界顺序 Agent Loop` 必须等待 Issue #27 验收后，再基于最新 `master` 编写规格、创建独立 Issue 并通过 Clarification Gate。
+- `Task 1：有界顺序 Agent Loop` 是下一项正式任务；开始实现前必须基于最新 `master` 编写规格、创建独立 Issue 并通过 Clarification Gate。
+- Task 1 需要处理多次顺序 Sampling / Tool Call、服务端执行上限、超限终态，以及 DeepSeek `reasoning_content` continuation。
 - Task 2 必须等待 Task 1 验收后，再基于真实失败路径编写正式规格。
 - 阶段 6 完成前不提前编号或编写后续 Agent 阶段。
-- 阶段 5 与 Task 0 源码复盘仍可作为自由学习模式继续，不影响正式任务状态。
+- 阶段 5、Task 0 与配置治理源码复盘仍可作为自由学习模式继续，不影响正式任务状态。
 - Admin Console 是可并行产品支线，不替代 Agent 主线。
 
 ## 维护原则
