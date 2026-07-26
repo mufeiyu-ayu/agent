@@ -1,164 +1,188 @@
-# Core Runtime：从产品入口到 run_turn
+# Core Runtime：从产品入口到有界 Agent Loop
 
 ## 1. Codex 解决的问题
 
-Codex 不是“Controller 直接调一次模型”的结构。它把一次用户请求拆成多个稳定层：
+Codex 不是“Controller 直接调用一次模型”的结构。它把一次用户任务拆成多个稳定层：
 
 ```text
 Product entry
   -> protocol facade
-  -> ThreadManager
-  -> CodexThread / Session
-  -> submission queue
-  -> Task / RegularTask
-  -> run_turn
+  -> Thread / Session
+  -> submission
+  -> Task / Turn
   -> sampling loop
+  -> tool execution
   -> events + durable facts
 ```
 
-这种分层的价值是：多个产品入口可以共享同一个 runtime，用户请求可以排队、取消、恢复、fork，工具和 context 可以在 Turn 内演进，而外部协议仍保持稳定。
+这种分层让多个产品入口共享同一个 Runtime，并使取消、恢复、工具、Context 和外部协议各自拥有明确边界。
 
-## 2. 源码事实
+当前项目不复制完整 Codex Runtime，只选择性迁移阶段 6 需要的 Loop 不变量。
+
+## 2. Codex 源码事实
 
 ### 2.1 产品入口不是 Runtime
 
 主要路径：
 
-- `codex-rs/cli/src/main.rs`
-- `codex-rs/app-server/src/message_processor.rs`
-- `codex-rs/app-server-protocol/src/protocol/common.rs`
-- `codex-rs/app-server/src/request_processors/**`
-- `codex-rs/core/src/thread_manager.rs`
+- `codex-rs/cli/src/main.rs`；
+- `codex-rs/app-server/src/message_processor.rs`；
+- `codex-rs/app-server-protocol/src/protocol/common.rs`；
+- `codex-rs/app-server/src/request_processors/**`；
+- `codex-rs/core/src/thread_manager.rs`。
 
-App Server 协议定义了 `thread/start`、`thread/resume`、`thread/fork`、`turn/start`、`turn/steer`、`turn/interrupt` 等方法。协议层负责校验、转换和回执，不直接承担 Agent loop。
+协议层负责校验、转换和回执，不直接承担 Agent Loop。当前项目已经采用相似边界：Controller / SeoService 负责 HTTP 投影，`AgentRuntimeService.runTurnStream()` 负责执行。
 
 ### 2.2 Thread 是长期工作线
 
-`ThreadManager` 负责创建、恢复、fork 和管理内存中的 threads。源码中 `ThreadManager` 持有：
+Codex `ThreadManager` 管理 Thread 创建、恢复、fork、持久化、模型和扩展能力。当前项目只具备最小映射：
 
-- loaded `CodexThread` map。
-- `ThreadStore`。
-- model manager。
-- environment manager。
-- skills / plugins / MCP manager。
-- extension registry。
-
-这说明 Thread 不只是聊天记录 ID，而是运行环境、持久化、扩展、权限和上下文的聚合边界。
-
-当前项目映射：
-
-| Codex | 当前项目 | 迁移判断 |
+| Codex | 当前项目 | 当前判断 |
 | --- | --- | --- |
-| Thread | `Conversation` | 已有最小会话身份，但缺 owner、archive、active run 投影 |
-| ThreadManager | 暂无同等对象 | 未来可由 application service + repository + runner 组合承担 |
-| ThreadStore | PostgreSQL + Prisma | 当前还没有完整 replay / resume 语义 |
+| Thread | `Conversation` | 已有最小会话身份和 Message 持久化 |
+| Turn / Task | `AgentRun` | 当前一个请求对应一个 Run |
+| Step | `AgentStep` | 记录 sampling、tool execution 等事实 |
+| ThreadStore | PostgreSQL + Prisma | 尚无 replay / resume 语义 |
+| ThreadManager | 无同等对象 | 当前不需要建立完整 manager |
 
-### 2.3 Turn 是一次工作边界
+### 2.3 一次 Run 不等于一次 Sampling
 
-`Op::UserInput` 不是直接模型请求，而是提交给 Session 的 submission queue。`turn/start` 请求会变成内部 `Op::UserInput`，再由 `submission_loop` 消费并创建 `RegularTask`。
+Codex 的 `run_turn` 会反复：
 
-核心路径：
-
-```text
-turn/start
-  -> TurnRequestProcessor
-  -> Op::UserInput
-  -> CodexThread.submit
-  -> Session submission channel
-  -> submission_loop
-  -> RegularTask::run
-  -> run_turn
-```
-
-对当前项目的启发：
-
-- HTTP request accepted 不等于 AgentRun 已经 started。
-- streaming endpoint 可以先保持同步执行，但一旦引入 queue / worker / reconnect，就要显式区分 accepted、running、terminal。
-- 同一 Conversation 是否允许并发 Run，必须成为明确策略，不能靠偶然实现。
-
-### 2.4 StepContext 是单次 sampling 的能力快照
-
-`StepContext` 包含：
-
-- `TurnContext`。
-- environment snapshot。
-- selected capability roots。
-- MCP runtime snapshot。
-- 当前 sampling 的 MCP tool list。
-- 当前环境下的 AGENTS.md。
+1. 构造本轮 model-visible input；
+2. 发起 sampling；
+3. 处理模型事件；
+4. 若有 Tool Call，执行工具并记录 Observation；
+5. 若 `needs_follow_up`，进入下一轮 sampling；
+6. 没有后续动作时完成 Turn。
 
 关键不变量：
 
+- `response_completed(tool_calls)` 只表示本轮 sampling 完成，不表示整个任务完成；
+- 一个 Turn / Run 可以有多次 sampling；
+- Tool Result 是触发下一轮决策的 Observation；
+- Runtime 而不是模型拥有最大执行次数和终止权。
+
+### 2.4 StepContext 是单次 Sampling 的能力快照
+
+Codex 的 `StepContext` 会固定本轮模型看到的模型、工具、环境和能力版本。
+
+核心约束：
+
 ```text
-model saw tool spec / environment / capability generation G
-  => returned call must execute against generation G
+model saw tool contract generation G
+  => returned call must execute against compatible generation G
 ```
 
-不能在模型输出回来后用“当前最新工具表”重新解释它。否则工具 schema、权限或环境变化会导致模型看到的 contract 与实际执行 contract 分裂。
+当前阶段不实现完整 `StepContext`，但每轮 sampling 至少要明确：
 
-当前项目最小迁移：
+- requested model；
+- tool definitions；
+- runId / conversationId；
+- samplingAttemptId；
+- AbortSignal；
+- Loop policy；
+- 之前已发生的 Tool Call / Result。
 
-- Phase 03 可以不立刻实现完整 `StepContext` 类。
-- 但每轮 sampling 应构造一个不可变 `samplingContext`，至少包含：model id、tool definitions、tool registry generation、conversationId、runId、signal。
-- 第二轮 sampling 必须显式携带前一轮 call/output，而不是重新从 UI messages 拼接。
+## 3. 当前项目现状
 
-## 3. run_turn 的核心不变量
+阶段 5 已经完成：
 
-`run_turn` 的主循环不是一次模型调用。它会：
+```text
+sampling #1
+  -> final answer
+  或
+  -> search_articles
+       -> observation
+       -> sampling #2
+       -> final answer
+```
 
-1. 运行 pre-sampling compaction。
-2. 捕获第一轮 StepContext。
-3. 记录 context updates 和 user input。
-4. 构造 model-visible input。
-5. 调用 `run_sampling_request`。
-6. 处理 response events。
-7. 如果有 tool call 或 pending input，则继续下一轮。
-8. 如果没有 follow-up，运行 stop hooks 并完成 Turn。
+代码中的固定 `[1, 2]` 循环是 Agent Loop 的最小特例，但不是可复用的多步骤 Loop。
 
-关键点：
+当前缺口：
 
-- `ModelClientSession` 是 Turn-scoped，可在 Turn 内复用 transport / sticky routing，不跨 Turn 泄漏。
-- `needs_follow_up` 是 Agent loop 的核心控制信号。
-- `response_completed(tool_calls)` 只说明本轮 sampling 结束，不说明整个 Turn 完成。
-- pending user input、tool output、auto compaction 都可能触发下一轮。
+- 只有一个模型可见工具；
+- 最多一次 Tool Call；
+- 第二轮仍请求工具时直接失败；
+- Sampling / Tool Call 上限不是独立策略对象；
+- 尚未覆盖 `search -> detail -> final`；
+- 多步骤 Trace 和超限语义尚未验证。
 
-当前项目最近应迁移的不是完整 submission queue，而是这个最小循环：
+## 4. 阶段 6 要迁移的最小循环
+
+概念结构：
 
 ```ts
-while (true) {
-  const decision = await sampleOnce(modelHistory, samplingContext)
+while (samplingRounds < policy.maxSamplingRounds) {
+  const decision = await sampleOnce(modelInput, samplingContext)
 
-  if (decision.type === 'final_answer') return final
+  if (decision.type === 'final_answer') {
+    return completeRun(decision)
+  }
+
+  assertToolCallBudget(policy)
 
   const result = await invokeTool(decision.call)
-  modelHistory = appendToolObservation(modelHistory, decision.call, result)
+  modelInput = appendToolExchange(modelInput, decision.call, result)
 }
+
+throw new AgentLoopLimitExceededError()
 ```
 
-## 4. 当前项目迁移建议
+这里真正要学习的是：
 
-### 近期要做
+- sampling 与 Tool Execution 的层级；
+- final answer 与 follow-up 的判断；
+- Sampling 上限和 Tool Call 上限；
+- timeout、Abort 和 Run deadline；
+- Expected Tool Failure 与 Runtime Fatal 的区别；
+- 所有已开始 Step 的终态收口；
+- 外部流式协议与内部循环解耦。
 
-- 抽出 `sampleOnce` 概念，即使代码仍在 `AgentRuntimeService` 内。
-- 引入 model-visible history union，支持 assistant tool call 和 tool result。
-- 为每轮 sampling 生成 server-owned `samplingAttemptId`。
-- 给 loop 设置硬上限：`maxSamplingRounds`、`maxToolCalls`。
-- 保持外部 `ChatStreamEvent` 类型不变，先只输出 final answer。
+## 5. 模型与 Runtime 的职责
 
-### 暂时不用做
+### 模型负责
 
-- 不做完整 `ThreadManager`。
-- 不做跨进程 submission queue。
-- 不做 resume / fork。
-- 不做多客户端 listener。
-- 不做 StepContext 的全部 environment / MCP / AGENTS.md 能力。
+- 选择直接回答还是调用工具；
+- 在允许工具中选择动作；
+- 生成 Tool Call 参数；
+- 根据 Observation 决定继续或结束。
 
-## 5. 验收问题
+### Runtime 负责
+
+- 决定工具是否可见；
+- 校验工具名、参数和风险；
+- 控制 timeout 和 Abort；
+- 记录 Sampling 与 Tool Execution；
+- 追加合法 Tool Result；
+- 控制最大循环次数；
+- 将失败映射为 Observation 或 Runtime Fatal；
+- 收口 Message / Run / Step；
+- 拒绝无限循环和伪造成功。
+
+## 6. 当前阶段不迁移的 Codex 能力
+
+- 完整 `ThreadManager`；
+- submission queue；
+- resume / fork / replay；
+- 多客户端 listener；
+- 完整 StepContext 环境快照；
+- MCP / Skills / Plugins；
+- 并行 Tool Call；
+- 自动 Context Compaction；
+- Multi-agent child tasks。
+
+这些能力继续作为研究资料，不自动进入后续阶段。
+
+## 7. 阶段 6 验收问题
 
 不看文档时应能回答：
 
-1. 为什么 `turn/start` 不应该直接等于模型请求？
-2. Thread、Turn、Task、StepContext 分别解决什么问题？
-3. 为什么一次 AgentRun 可以包含多次 sampling？
-4. 为什么 model saw 的 tool specs 必须和实际执行 registry 同代？
-5. 当前项目 Phase 03 为什么不需要先实现完整 queue？
+1. 为什么一个 `AgentRun` 可以包含多次 sampling？
+2. `response_completed(tool_calls)` 为什么不等于 Run 完成？
+3. 模型和 Runtime 分别拥有哪部分控制权？
+4. 为什么必须分别限制 Sampling 和 Tool Call 次数？
+5. Workflow 写死步骤与 Agent 根据 Observation 决策有什么区别？
+6. Tool timeout、用户 Abort 和 Loop Limit 为什么是不同终止原因？
+7. 为什么当前不需要复制 Codex 的完整 ThreadManager？
