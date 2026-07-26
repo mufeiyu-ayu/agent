@@ -1,166 +1,170 @@
-# 当前 Agent 项目基线与最近路线
+# 当前 Agent 项目基线与阶段 6 缺口
 
-## 1. 结论
+## 1. 当前结论
 
-以 `master@5f2ad11f2c65425e84392e81048364d55ec626ef` 为基线，当前项目已经从“文本流式 Chat Runtime”推进到“具备模型事件边界和最小工具契约的 Agent Runtime 前夜”。
-
-更准确地说：
+项目已经完成最小 Tool Calling 闭环，不再处于“Agent Runtime 前夜”。当前真实基线是：
 
 ```text
-已完成：模型事件边界 + 工具定义/注册/验证/直接执行
-未完成：模型驱动 tool call 后，把 observation 回填到第二轮 sampling
+模型可以直接回答
+或
+模型提出一次 Tool Call
+  -> 服务端验证并执行 search_articles
+  -> Observation 回填 model input
+  -> 第二轮 sampling 生成最终答案
 ```
 
-所以近期不应继续创建“从零定义 ModelStreamEvent”或“从零建立 ToolRegistry”的任务；应该复盘已完成边界，然后进入 **单 Agent Tool Loop**。
+同步与流式入口共享 `AgentRuntimeService.runTurnStream()`，Run / Step、timeout、abort、Observation 上限和安全记录均已具备基础。
+
+当前唯一确定的下一正式阶段是：
+
+```text
+阶段 6：有界单 Agent Loop
+```
+
+目标不是继续堆工具，也不是立即建设完整 Context Engineering，而是把固定的一次工具调用 / 两轮 sampling 特例升级为服务端受控的顺序循环。
 
 ## 2. 已具备能力
 
-### 2.1 会话、消息、流式输出
+### 2.1 会话与用户可见消息
 
-已具备：
-
-- `Conversation` 长期会话。
-- `Message` 用户可见消息。
-- USER / ASSISTANT role。
-- PENDING / STREAMING / COMPLETED / FAILED / ABORTED 状态。
-- PostgreSQL 持久化。
-- NDJSON streaming 与 stop generation。
-
-仍缺：
-
-- 用户 / 租户所有权。
-- archive / share / permission 等资源语义。
-- active run 并发准入规则。
-- 多实例 cancellation 路由。
+- `Conversation` 长期会话；
+- `Message` 用户可见消息；
+- USER / ASSISTANT role；
+- PENDING / STREAMING / COMPLETED / FAILED / ABORTED 状态；
+- PostgreSQL 持久化；
+- NDJSON streaming 与停止生成。
 
 ### 2.2 AgentRun / AgentStep
 
-已具备：
+- 每次用户请求创建 `AgentRun`；
+- 动态记录接收消息、加载历史、model sampling、tool execution、assistant output；
+- 状态、顺序、startedAt / endedAt、受控 input / output 摘要；
+- sampling usage、finish reason、时长和错误摘要；
+- abort、failure 和 complete 终态收口。
 
-- streaming 用户输入创建 `AgentRun`。
-- 粗粒度 `AgentStep`：接收消息、加载历史、调用模型、流式回复。
-- terminal status、startedAt / endedAt、input/output JSON snapshot。
+### 2.3 模型事件与输入
 
-仍缺：
-
-- sampling attempt 与 tool execution attempt 区分。
-- Tool call / observation / approval 的细粒度 durable record。
-- stale RUNNING recovery。
-- trace id / request id / usage metadata。
-
-### 2.3 模型事件边界
-
-已具备：
-
-- provider-neutral `ModelStreamEvent`。
-- `text_delta`、`tool_call_completed`、`usage`、`response_completed` 四类事件。
-- `ModelFinishReason`：`stop`、`tool_calls`、`length`、`content_filter`、`unknown`。
-- Tool loop 未实现时对 `tool_call_completed` fail-fast，而不是静默忽略。
-
-这意味着旧文档里“provider-neutral model event 尚无”的判断已经过期。
+- provider-neutral `ModelStreamEvent`；
+- 文本、Tool Call、usage 与 response terminal 事件；
+- `ModelInputItem` 可以表达普通消息、assistant Tool Call 和 Tool Result；
+- Tool Result 作为 Observation 回填第二轮 sampling；
+- UI Message 不保存内部 Tool Exchange。
 
 ### 2.4 Tool Contract / Registry / Invocation
 
-已具备：
+- `ToolDefinition`、`RegisteredTool`、`ToolExecutor`、`ToolResult`；
+- Registry 注册、查找、重复名称拒绝和稳定排序；
+- JSON parse、schema parse、risk gate、timeout 与 Abort；
+- 当前正式工具 `search_articles`；
+- 当前只允许低风险、无副作用、不联网、无需审批的工具；
+- 受控 `modelContent` 和 8,000 Unicode code point Observation 上限。
 
-- `ToolDefinition`、`RegisteredTool`、`ToolExecutor`、`ToolResult` 等最小工具类型。
-- `ToolRegistryService`：工具注册、查找、重复名称拒绝、稳定排序输出 definitions。
-- `ToolInvocationService`：unknown tool、JSON parse、schema parse、risk gate、validated invocation、executor 调用。
-- 低风险 / 无副作用 / 不联网 / 无审批工具才允许执行，其他 fail closed。
-- `ModelToolSpec` mapper：只暴露模型可见字段。
+### 2.5 统一 Runtime
 
-这意味着旧文档里“Tool contract 无”的判断已经过期。
-
-### 2.5 测试
-
-已具备：
-
-- `test:model-stream`。
-- `test:tools`。
-- model stream runtime 行为测试。
-- tools registry / invocation / invalid args / risk / abort 测试。
-
-仍缺：
-
-- 外部 NDJSON parser contract 测试。
-- Tool loop 的两轮 sampling 集成测试。
-- recorder transaction / AgentStep 状态测试。
-- sync endpoint 与 stream endpoint 共用 runner 的测试。
+- `POST /seo/chat` 与 `POST /seo/chat/stream` 共享 `runTurnStream()`；
+- 同步入口聚合 terminal event；
+- 流式入口映射 `start / delta / done / error / aborted`；
+- 外部协议不直接暴露 Tool Result 或 AgentStep。
 
 ## 3. 当前真实缺口
 
-| 能力 | 当前成熟度 | 目标成熟度 | 优先级 | 下一步 |
-| --- | --- | --- | --- | --- |
-| Model event | 已有基础 | provider profile + request mapper 完整 | P1 | 随 Tool loop 补 request tools / `parallel_tool_calls=false` |
-| Tool contract | 已有基础 | 可接入 Agent loop | P0 | router / executor 与 runtime loop 连接 |
-| Tool loop | 未形成闭环 | call -> observation -> second sampling -> final | P0 | Phase 03 |
-| Model history | 纯消息为主 | message + assistant_tool_call + tool_result | P0 | 定义内部 `ModelInputItem` |
-| UI transcript | 可用 | 与 model history 明确分层 | P0 | final answer 才进 UI Message |
-| Run/Step recording | 粗粒度 | sampling/tool/observation 可审计 | P1 | Phase 04 |
-| Context budget | 固定条数 | token/priority/truncation | P1 | 先做 observation byte/token 限制 |
-| Permission/HITL | risk metadata fail closed | 可持久审批和 policy | P1 | 写工具前做 |
-| Recovery | 基础持久化 | crash reconciliation | P2 | 长任务/多实例前做 |
-| MCP/Multi-agent | 无 | 可选扩展 | P3 | 单 Agent 稳定后再评估 |
+| 能力 | 当前状态 | 阶段 6 目标 |
+| --- | --- | --- |
+| 工具数量 | 只有 `search_articles` | 新增与搜索结果有依赖关系的 `get_article_detail` |
+| Sampling | 固定 `[1, 2]` 两轮 | 服务端策略控制的有限多轮 sampling |
+| Tool Call | 最多一次 | 支持多次顺序 Tool Call |
+| 终止条件 | 第二轮必须结束，否则失败 | final answer、sampling limit、tool limit、timeout、abort 均有明确语义 |
+| Loop policy | 隐含在 `for ([1, 2])` | 显式 `maxSamplingRounds`、`maxToolCalls` 等策略 |
+| 错误语义 | 已有基础失败路径 | 区分零结果、资源不存在、参数失败、系统异常、timeout、abort、超限 |
+| Trace | 可记录一次工具调用 | 可还原多个 sampling / tool execution 顺序 |
+| 测试 | 覆盖最小 Tool Loop | 覆盖直接回答、一次工具、多次工具和所有终止路径 |
 
-## 4. 最近三个里程碑
+## 4. 阶段 6 的最小闭环
 
-### 里程碑 A：单 Agent Tool Loop
-
-目标：让模型能真正驱动一个只读工具，并用工具结果生成最终回答。
-
-最小闭环：
+代表性成功路径：
 
 ```text
-sampling #1 -> tool_call_completed
-  -> ToolInvocationService 验证并执行
-  -> append tool_result observation to model history
-sampling #2 -> final text
-  -> stream / persist final assistant Message
+sampling #1
+  -> search_articles
+  -> observation #1
+sampling #2
+  -> get_article_detail
+  -> observation #2
+sampling #3
+  -> final answer
 ```
 
-验收重点：
+也必须允许：
 
-- 捕获至少两次 model sampling。
-- 第二轮输入包含同 callId 的 tool result。
-- tool JSON 不进入 UI assistant Message。
-- unknown / invalid / throw 形成结构化 observation 或明确失败。
-- abort 只能进入 ABORTED，不能被迟到完成覆盖。
+```text
+sampling #1 -> final answer
+sampling #1 -> search_articles -> sampling #2 -> final answer
+```
 
-### 里程碑 B：Tool 可靠性与记录
+Runtime 不能硬编码必须按某个固定流程使用工具。模型根据目标和 Observation 选择下一步，服务端负责验证、执行和限制。
 
-目标：把 tool call 从“运行时临时动作”变成可审计执行事实。
+## 5. 阶段 6 必须掌握的职责边界
 
-最小能力：
+### 模型负责
 
-- Tool call record / observation record。
-- timeout / cancel / execution error taxonomy。
-- output truncation。
-- AgentStep terminal exactly-once。
-- sensitive data 与大 output 策略。
+- 判断当前是否需要工具；
+- 选择已暴露工具；
+- 构造 Tool Call 参数；
+- 根据 Observation 判断继续还是给出最终答案。
 
-### 里程碑 C：Context 与恢复基础
+### Runtime 负责
 
-目标：避免 tool output 让 context 失控，并为长任务恢复做准备。
+- 决定哪些工具可见；
+- 校验工具名和参数；
+- 执行风险策略与 timeout；
+- 追加合法 Tool Call / Tool Result；
+- 控制 Sampling 和 Tool Call 上限；
+- 传播 Abort；
+- 收口 Run / Step 状态；
+- 记录安全 Trace；
+- 超限或异常时明确终止。
 
-最小能力：
+## 6. Context 在当前阶段的边界
 
-- model-visible history 与 UI transcript 分离。
-- observation byte/token budget。
-- context source / priority。
-- stale RUNNING sweep。
-- request id / trace id / operation identity。
+阶段 6 只补 Agent Loop 必需的正确性：
 
-## 5. 现在不要做什么
+- 当前用户输入恰好一次；
+- 只使用合格状态的历史消息；
+- Tool Call 在对应 Tool Result 之前；
+- `callId` 完整配对；
+- 多个 Tool Exchange 按实际顺序追加；
+- Tool Result 保持低信任数据身份；
+- 继续记录实际 Token Usage。
 
-现在可以先不用做：
+当前不建设：
 
-- MCP server 动态接入。
-- Plugin marketplace。
-- Multi-agent child thread。
-- Goal runtime。
-- Memory pipeline。
-- OS sandbox。
-- 通用 workflow engine。
-- 完整 RAG 平台。
+- 通用 `ContextPlan`；
+- TokenEstimator；
+- completion reserve / safety margin；
+- Source Priority Engine；
+- 自动 Token 裁剪；
+- 自动摘要、Compaction 或 Memory。
 
-这些能力可以在 `codex-reference` 中保留为资料，但不应进入近期实现。
+这些研究仍有长期价值，但只有出现真实容量、成本、延迟或质量问题后，才应重新评估为正式阶段。
+
+## 7. 当前不要做什么
+
+- RAG、Embedding、向量数据库；
+- 写工具、Permission、Approval、HITL；
+- Durable Recovery、跨进程 Resume；
+- 并行 Tool Call、Planner、Workflow DSL；
+- MCP、Plugin、Skill、Multi-agent；
+- 通用 Agent Framework；
+- 提前编排阶段 6 之后的 Task。
+
+## 8. 当前任务顺序
+
+```text
+Task 0：get_article_detail 只读工具
+  -> Task 1：有界顺序 Agent Loop
+  -> Task 2：可靠性、回归与学习验收
+```
+
+只有 Task 0 已有详细正式规划。Task 1、Task 2 必须等待前置任务验收后，基于最新代码重新展开。
+
+正式入口：[`../../tasks/phase-06-bounded-agent-loop/README.md`](../../tasks/phase-06-bounded-agent-loop/README.md)。
