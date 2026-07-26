@@ -14,8 +14,6 @@ import { AgentRuntimeService } from '../agent-runtime/agent-runtime.service.js'
 import { toChatStreamEvent } from './seo-chat-stream-event.mapper.js'
 import { SeoContextBuilder } from './seo-context-builder.service.js'
 
-const CHAT_HISTORY_LIMIT = 12
-
 interface SeoChatStreamOptions {
   signal?: AbortSignal
 }
@@ -85,9 +83,7 @@ export class SeoService {
       userContent: input.message,
       ...(input.model ? { model: input.model } : {}),
       ...(signal ? { signal } : {}),
-      historyLimit: CHAT_HISTORY_LIMIT,
       temperature: 0.4,
-      maxTokens: 32768,
       buildModelMessages: historyMessages =>
         this.seoContextBuilder.buildModelMessages({ historyMessages }),
     }

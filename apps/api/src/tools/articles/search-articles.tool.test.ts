@@ -14,7 +14,7 @@ import {
   SearchArticlesTool,
 } from './search-articles.tool.js'
 
-const FULL_CONTENT = `<p>${'alpha article content '.repeat(20)}</p>`
+const FULL_CONTENT = `<p>${'alpha article content '.repeat(30)}</p>`
 
 describe('search_articles', () => {
   it('注册模型可见定义，并保持低风险只读边界', () => {
@@ -34,6 +34,7 @@ describe('search_articles', () => {
     assert.equal(definition.requiresApproval, false)
     assert.equal(definition.idempotent, true)
     assert.equal(definition.timeoutMs, 5_000)
+    assert.equal(definition.maxObservationChars, 16_000)
     assert.deepEqual(toModelToolSpec(definition), {
       name: 'search_articles',
       description: definition.description,
@@ -106,7 +107,7 @@ describe('search_articles', () => {
       seoTitle: 'Alpha SEO',
       seoDescription: null,
     }])
-    assert.equal(data.articles[0]?.excerpt.length, 200)
+    assert.equal(data.articles[0]?.excerpt.length, 500)
     assert.equal(Object.hasOwn(data.articles[0] ?? {}, 'content'), false)
     assert.doesNotMatch(result.modelContent, new RegExp(FULL_CONTENT))
     assert.doesNotMatch(result.modelContent, /<p>|<\/p>/)

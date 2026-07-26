@@ -16,6 +16,7 @@ import type {
   UnvalidatedToolCallEnvelope,
 } from '../tools/core/tool.types.js'
 import type { AgentRunRecorderService } from './agent-run-recorder.service.js'
+import type { AgentRuntimePolicyService } from './agent-runtime.policy.js'
 import type { AgentRuntimeEvent } from './agent-runtime.types.js'
 import assert from 'node:assert/strict'
 // 项目本轮使用 Node 原生测试运行器，不引入 Vitest。
@@ -110,6 +111,66 @@ describe('AgentRuntimeService model stream', () => {
     assert.equal(harness.prisma.messages.length, 0)
     assert.equal(harness.recorder.steps.length, 0)
     assert.equal(harness.llmCalls.length, 0)
+  })
+
+  it('只加载最近 40 条 COMPLETED 历史，保持稳定顺序且当前输入恰好一次', async () => {
+    const harness = createHarness(() => toModelStream([
+      { type: 'response_completed', finishReason: 'stop' },
+    ]))
+
+    for (let index = 1; index <= 45; index += 1) {
+      harness.prisma.seedMessage({
+        id: `history-${String(index).padStart(2, '0')}`,
+        content: `历史消息 ${index}`,
+        status: MessageStatus.COMPLETED,
+        createdAt: new Date(`2026-01-01T00:00:${String(index).padStart(2, '0')}.000Z`),
+      })
+    }
+    for (const status of [
+      MessageStatus.PENDING,
+      MessageStatus.STREAMING,
+      MessageStatus.FAILED,
+      MessageStatus.ABORTED,
+    ]) {
+      harness.prisma.seedMessage({
+        id: `excluded-${status.toLowerCase()}`,
+        content: `不应进入模型历史 ${status}`,
+        status,
+        createdAt: new Date('2026-12-31T23:59:59.000Z'),
+      })
+    }
+
+    await collectEvents(harness.run())
+
+    assert.deepEqual(harness.prisma.findManyArguments, [{
+      where: {
+        conversationId: 'conversation-1',
+        status: MessageStatus.COMPLETED,
+      },
+      orderBy: [
+        { createdAt: 'desc' },
+        { id: 'desc' },
+      ],
+      take: 40,
+    }])
+    const firstSamplingMessages = harness.llmCalls[0]?.messages ?? []
+    const contents = firstSamplingMessages
+      .filter(item => item.type === 'message')
+      .map(item => item.content)
+
+    assert.equal(contents.length, 40)
+    assert.equal(contents.filter(content => content === '问题').length, 1)
+    assert.equal(contents[0], '历史消息 7')
+    assert.equal(contents.at(-1), '问题')
+    assert.equal(
+      contents.some(content => content.startsWith('不应进入模型历史')),
+      false,
+    )
+    assert.equal(
+      findStep(harness, 'load_conversation_history')?.input
+      && (findStep(harness, 'load_conversation_history')?.input as Record<string, unknown>).limit,
+      40,
+    )
   })
 
   it('在 response_completed 前实时产出普通回答 delta', async () => {
@@ -609,7 +670,7 @@ describe('AgentRuntimeService model stream', () => {
   })
 
   it('规范化超大 Unicode Observation，durable Step 不保存 ToolResult.data', async () => {
-    const oversizedObservation = '🚀'.repeat(8_100)
+    const oversizedObservation = '🚀'.repeat(16_100)
     const fullArticle = {
       sourceId: 24,
       content: '完整 Article JSON 不应进入 AgentStep',
@@ -642,10 +703,10 @@ describe('AgentRuntimeService model stream', () => {
     const toolOutput = findStep(harness, 'tool_execution')?.output as Record<string, unknown>
     const durableState = JSON.stringify(harness.recorder.steps)
 
-    assert.ok([...observationContent].length <= 8_000)
+    assert.ok([...observationContent].length <= 16_000)
     assert.match(observationContent, /truncated|截断/)
     assert.doesNotMatch(observationContent, /\uFFFD/)
-    assert.equal(toolOutput.originalChars, 8_100)
+    assert.equal(toolOutput.originalChars, 16_100)
     assert.equal(toolOutput.observationChars, [...observationContent].length)
     assert.equal(toolOutput.truncated, true)
     assert.doesNotMatch(durableState, /result-secret|完整 Article JSON|🚀/)
@@ -900,6 +961,7 @@ const searchArticlesDefinition: ToolDefinition = {
     parse: value => value,
   },
   timeoutMs: 1_000,
+  maxObservationChars: 16_000,
   requiresApproval: false,
   idempotent: true,
   risk: {
@@ -913,6 +975,7 @@ const getArticleDetailDefinition: ToolDefinition = {
   ...searchArticlesDefinition,
   name: 'get_article_detail',
   description: '按 sourceId 读取文章详情。',
+  maxObservationChars: 64_000,
 }
 
 const successfulToolResult: ToolResult = {
@@ -954,6 +1017,9 @@ function createHarness(
     recorder as unknown as AgentRunRecorderService,
     toolRegistryService as unknown as ToolRegistryService,
     toolInvocationService as unknown as ToolInvocationService,
+    {
+      value: { historyLimit: 40 },
+    } as AgentRuntimePolicyService,
   )
 
   return {
@@ -968,9 +1034,7 @@ function createHarness(
     run: () => service.runTurnStream({
       conversationId: 'conversation-1',
       userContent: '问题',
-      historyLimit: 12,
       temperature: 0.4,
-      maxTokens: 1200,
       ...(signal ? { signal } : {}),
       buildModelMessages: historyMessages => historyMessages,
     }),
@@ -1001,6 +1065,7 @@ class FakeToolInvocationService {
 
 class FakePrismaService {
   readonly messages: Message[] = []
+  readonly findManyArguments: FakeMessageFindManyArguments[] = []
   conversationExists = true
 
   readonly conversation = {
@@ -1028,7 +1093,20 @@ class FakePrismaService {
       this.messages.push(message)
       return message
     },
-    findMany: async (): Promise<Message[]> => [...this.messages].reverse(),
+    findMany: async (
+      arguments_: FakeMessageFindManyArguments,
+    ): Promise<Message[]> => {
+      this.findManyArguments.push(structuredClone(arguments_))
+
+      return this.messages
+        .filter(message =>
+          message.conversationId === arguments_.where.conversationId
+          && message.status === arguments_.where.status)
+        .sort((left, right) =>
+          right.createdAt.getTime() - left.createdAt.getTime()
+          || right.id.localeCompare(left.id))
+        .slice(0, arguments_.take)
+    },
     findUniqueOrThrow: async ({ where }: { where: Pick<Message, 'id'> }): Promise<Message> => {
       const message = this.messages.find(candidate => candidate.id === where.id)
 
@@ -1077,6 +1155,32 @@ class FakePrismaService {
   async $transaction<T>(operation: (prisma: FakePrismaService) => Promise<T>): Promise<T> {
     return await operation(this)
   }
+
+  seedMessage(input: {
+    id: string
+    content: string
+    status: Message['status']
+    createdAt: Date
+  }): void {
+    this.messages.push({
+      id: input.id,
+      conversationId: 'conversation-1',
+      role: MessageRole.USER,
+      content: input.content,
+      status: input.status,
+      createdAt: input.createdAt,
+      updatedAt: input.createdAt,
+    })
+  }
+}
+
+interface FakeMessageFindManyArguments {
+  where: {
+    conversationId: string
+    status: Message['status']
+  }
+  orderBy: Array<{ createdAt: 'desc' } | { id: 'desc' }>
+  take: number
 }
 
 class FakeAgentRunRecorderService {

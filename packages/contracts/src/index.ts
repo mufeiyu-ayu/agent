@@ -35,3 +35,4 @@ export type {
   SeoChatRequest,
   SeoChatResponse,
 } from './seo.js'
+export { SEO_CHAT_MESSAGE_MAX_CHARS } from './seo.js'

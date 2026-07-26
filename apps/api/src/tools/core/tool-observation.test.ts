@@ -4,8 +4,8 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
 import {
-  MAX_TOOL_OBSERVATION_CHARS,
   normalizeToolObservation,
+  TOOL_OBSERVATION_HARD_MAX_CHARS,
 } from './tool-observation.js'
 
 describe('normalizeToolObservation', () => {
@@ -22,20 +22,52 @@ describe('normalizeToolObservation', () => {
 
   it('对超限 Observation 生成确定性的文本预览 envelope', () => {
     const content = JSON.stringify({
-      articles: ['😀'.repeat(MAX_TOOL_OBSERVATION_CHARS), 'tail'],
+      articles: ['😀'.repeat(16_000), 'tail'],
     })
-    const first = normalizeToolObservation(content)
-    const second = normalizeToolObservation(content)
+    const first = normalizeToolObservation(content, 16_000)
+    const second = normalizeToolObservation(content, 16_000)
 
     assert.deepEqual(first, second)
     assert.equal(first.truncated, true)
     assert.equal(first.originalChars, [...content].length)
     assert.equal(first.observationChars, [...first.content].length)
-    assert.ok(first.observationChars <= MAX_TOOL_OBSERVATION_CHARS)
+    assert.ok(first.observationChars <= 16_000)
     assert.match(first.content, /^\[工具 Observation 已截断/)
     assert.match(first.content, /\[预览结束\]$/)
     assert.equal(hasUnpairedSurrogate(first.content), false)
     assert.throws(() => JSON.parse(first.content))
+  })
+
+  it('允许 Search 和 Detail 使用不同预算', () => {
+    const content = '文'.repeat(70_000)
+    const search = normalizeToolObservation(content, 16_000)
+    const detail = normalizeToolObservation(content, 64_000)
+
+    assert.equal(search.observationChars, 16_000)
+    assert.equal(detail.observationChars, 64_000)
+    assert.equal(search.originalChars, 70_000)
+    assert.equal(detail.originalChars, 70_000)
+    assert.equal(search.truncated, true)
+    assert.equal(detail.truncated, true)
+  })
+
+  it('工具声明超过全局硬上限时仍不超过 128K', () => {
+    const content = '🚀'.repeat(TOOL_OBSERVATION_HARD_MAX_CHARS + 1)
+    const observation = normalizeToolObservation(content, 256_000)
+
+    assert.equal(observation.originalChars, TOOL_OBSERVATION_HARD_MAX_CHARS + 1)
+    assert.equal(observation.observationChars, TOOL_OBSERVATION_HARD_MAX_CHARS)
+    assert.equal(observation.truncated, true)
+    assert.equal(hasUnpairedSurrogate(observation.content), false)
+  })
+
+  it('拒绝非法工具级预算', () => {
+    for (const limit of [0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY]) {
+      assert.throws(
+        () => normalizeToolObservation('content', limit),
+        /Observation/,
+      )
+    }
   })
 })
 

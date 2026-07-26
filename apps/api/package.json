@@ -4,15 +4,18 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "predev": "pnpm --workspace-root prisma:generate",
+    "predev": "pnpm --workspace-root prisma:generate && pnpm --filter @agent/contracts build",
     "dev": "tsx --env-file-if-exists=../../.env src/main.ts",
-    "predev:watch": "pnpm --workspace-root prisma:generate",
+    "predev:watch": "pnpm --workspace-root prisma:generate && pnpm --filter @agent/contracts build",
     "dev:watch": "tsx watch --env-file-if-exists=../../.env src/main.ts",
+    "prebuild": "pnpm --workspace-root prisma:generate && pnpm --filter @agent/contracts build",
+    "build": "tsc",
     "start": "node dist/main.js",
     "test:agent-recorder": "tsx --test src/agent-runtime/agent-run-recorder.service.test.ts",
     "test:model-stream": "tsx --test src/llm/clients/openai-compatible-stream.adapter.test.ts src/agent-runtime/agent-runtime.service.test.ts src/agent-runtime/model-sampling-decision.test.ts",
-    "test:seo-service": "tsx --test src/seo/seo.service.test.ts",
-    "test:tool-loop": "tsx --test src/agent-runtime/agent-runtime.service.test.ts",
+    "test:llm-config": "tsx --test src/llm/model-profiles.test.ts src/llm/llm-runtime-config.test.ts src/llm/llm.module.test.ts src/llm/clients/openai-compatible.client.test.ts",
+    "test:seo-service": "tsx --test src/seo/seo.service.test.ts src/seo/dto/seo-chat.dto.test.ts",
+    "test:tool-loop": "tsx --test src/agent-runtime/agent-runtime.service.test.ts src/agent-runtime/agent-runtime.policy.test.ts",
     "test:tools": "tsx --test src/tools/**/*.test.ts",
     "pretypecheck": "pnpm --workspace-root prisma:generate",
     "typecheck": "tsc --noEmit",
@@ -20,6 +23,7 @@
     "lint:fix": "eslint src --fix"
   },
   "dependencies": {
+    "@agent/contracts": "workspace:*",
     "@nestjs/common": "^11.1.9",
     "@nestjs/core": "^11.1.9",
     "@nestjs/platform-express": "^11.1.9",
@@ -33,7 +37,6 @@
     "rxjs": "^7.8.2"
   },
   "devDependencies": {
-    "@agent/contracts": "workspace:*",
     "@types/node": "^25.9.1",
     "tsx": "^4.22.3",
     "typescript": "^6.0.3"

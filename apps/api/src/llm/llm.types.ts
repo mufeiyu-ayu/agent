@@ -25,7 +25,7 @@ export interface ChatOptions {
   model?: string
   /** 生成温度 0-2，默认 0.7 */
   temperature?: number
-  /** 最大输出 token 数，默认 32768 */
+  /** 最大输出 token 数，默认由已验证的 LLM runtime config 提供 */
   maxTokens?: number
   /** JSON 输出约束（对应 OpenAI response_format） */
   responseFormat?: { type: 'json_object' } | { type: 'text' }

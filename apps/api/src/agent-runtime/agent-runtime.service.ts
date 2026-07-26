@@ -25,7 +25,10 @@ import { toModelInputItems } from '../llm/model-input.types.js'
 import { PrismaService } from '../prisma/prisma.service.js'
 import { toModelToolSpec } from '../tools/core/model-tool-spec.mapper.js'
 import { ToolInvocationService } from '../tools/core/tool-invocation.service.js'
-import { normalizeToolObservation } from '../tools/core/tool-observation.js'
+import {
+  normalizeToolObservation,
+  TOOL_OBSERVATION_HARD_MAX_CHARS,
+} from '../tools/core/tool-observation.js'
 import { ToolRegistryService } from '../tools/core/tool-registry.service.js'
 import {
   AGENT_STEP_TYPES,
@@ -35,6 +38,7 @@ import {
   MessageTerminalTransitionError,
   ModelSamplingIncompleteError,
 } from './agent-runtime.errors.js'
+import { AgentRuntimePolicyService } from './agent-runtime.policy.js'
 import { streamModelSampling } from './model-sampling-decision.js'
 
 @Injectable()
@@ -54,6 +58,9 @@ export class AgentRuntimeService {
 
     @Inject(ToolInvocationService)
     private readonly toolInvocationService: ToolInvocationService,
+
+    @Inject(AgentRuntimePolicyService)
+    private readonly runtimePolicyService: AgentRuntimePolicyService,
   ) {}
 
   async* runTurnStream(input: RunTurnStreamInput): AsyncGenerator<AgentRuntimeEvent> {
@@ -89,17 +96,19 @@ export class AgentRuntimeService {
       })
       await this.agentRunRecorderService.completeStep(receiveUserMessageStep.id)
 
+      const historyLimit = input.historyLimit
+        ?? this.runtimePolicyService.value.historyLimit
       const loadHistoryStep = await this.agentRunRecorderService.startStep({
         runId: currentAgentRunId,
         type: AGENT_STEP_TYPES.loadConversationHistory,
         input: {
-          limit: input.historyLimit,
+          limit: historyLimit,
         },
       })
 
       const historyMessages = await this.listRecentChatMessages(
         input.conversationId,
-        input.historyLimit,
+        historyLimit,
       )
       await this.agentRunRecorderService.completeStep(
         loadHistoryStep.id,
@@ -159,7 +168,9 @@ export class AgentRuntimeService {
       const chatStreamOptions = {
         ...(input.model ? { model: input.model } : {}),
         temperature: input.temperature,
-        maxTokens: input.maxTokens,
+        ...(input.maxTokens === undefined
+          ? {}
+          : { maxTokens: input.maxTokens }),
         ...(input.signal ? { signal: input.signal } : {}),
         tools: modelTools,
       }
@@ -295,7 +306,11 @@ export class AgentRuntimeService {
           throw error
         }
 
-        const observation = normalizeToolObservation(toolResult.modelContent)
+        const observation = normalizeToolObservation(
+          toolResult.modelContent,
+          toolDefinition?.maxObservationChars
+          ?? TOOL_OBSERVATION_HARD_MAX_CHARS,
+        )
         const toolStepOutput = {
           ok: toolResult.ok,
           ...(toolResult.ok
@@ -460,10 +475,12 @@ export class AgentRuntimeService {
     const messages = await this.prismaService.message.findMany({
       where: {
         conversationId,
+        status: MessageStatus.COMPLETED,
       },
-      orderBy: {
-        createdAt: 'desc',
-      },
+      orderBy: [
+        { createdAt: 'desc' },
+        { id: 'desc' },
+      ],
       take: limit,
     })
 

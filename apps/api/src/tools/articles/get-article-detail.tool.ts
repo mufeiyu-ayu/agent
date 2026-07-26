@@ -46,6 +46,7 @@ export const getArticleDetailDefinition: ToolDefinition<GetArticleDetailInput> =
     parse: parseGetArticleDetailInput,
   },
   timeoutMs: 5_000,
+  maxObservationChars: 64_000,
   requiresApproval: false,
   idempotent: true,
   risk: { level: 'low', sideEffect: 'none', network: false },

@@ -66,6 +66,9 @@ importers:
 
   apps/api:
     dependencies:
+      '@agent/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
       '@nestjs/common':
         specifier: ^11.1.9
         version: 11.1.24(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2)
@@ -100,9 +103,6 @@ importers:
         specifier: ^7.8.2
         version: 7.8.2
     devDependencies:
-      '@agent/contracts':
-        specifier: workspace:*
-        version: link:../../packages/contracts
       '@types/node':
         specifier: ^25.9.1
         version: 25.9.1

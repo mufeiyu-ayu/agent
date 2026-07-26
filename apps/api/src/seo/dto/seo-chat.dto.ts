@@ -1,4 +1,5 @@
 import type { SeoChatRequest } from '@agent/contracts'
+import { SEO_CHAT_MESSAGE_MAX_CHARS } from '@agent/contracts'
 import {
   IsIn,
   IsNotEmpty,
@@ -17,7 +18,7 @@ export class SeoChatDto implements SeoChatRequest {
 
   @IsString()
   @IsNotEmpty()
-  @MaxLength(16000)
+  @MaxLength(SEO_CHAT_MESSAGE_MAX_CHARS)
   message!: string
 
   @IsOptional()
