@@ -6,7 +6,7 @@
 
 项目已经完成从基础 LLM Chat 到 Session、Streaming、Agent Runtime 和最小 Tool Calling 的连续学习闭环。阶段 5 已证明：模型可以提出一次只读 Tool Call，服务端完成验证与执行，将 Observation 回填第二轮 sampling，并以 `AgentRun` / `AgentStep` 记录执行过程；同步与流式入口也已共享同一个 Runtime。
 
-当前 Runtime 仍是一个受限特例：只向模型提供 `search_articles`，最多执行一次工具、最多进行两轮 sampling。它能完成“模型 -> 工具 -> 模型”的最小闭环，但还不能让模型根据第一步结果继续选择第二个工具，并在明确上限内自主结束一次多步骤任务。
+阶段 6 Task 0 已新增第二个只读工具 `get_article_detail`，并把 Tool 基础设施与 Article 业务工具整理为 `core/ + articles/`。当前 Runtime 仍是受限特例：只向模型暴露并允许执行 `search_articles`，最多执行一次工具、最多进行两轮 sampling；下一步需要把它升级为服务端受控的顺序 Agent Loop。
 
 因此，当前正在推进的阶段是：
 
@@ -26,7 +26,7 @@
 | 阶段 3：Streaming Chat | Completed | 如何流式输出、停止生成并保证终态一致 | NDJSON stream、Abort | `done / error / aborted` 不残留错误状态 |
 | 阶段 4：Agent Runtime 基础 | Completed | 如何记录一次 Agent 运行及其内部步骤 | `AgentRun`、`AgentStep`、Runtime Event | Run / Step 与外部流式协议分层 |
 | 阶段 5：最小 Tool Calling | Completed | 模型如何提出一次工具调用并消费 Observation | Tool contract、Registry、`search_articles`、两轮 sampling | Tool Call、执行、Observation、第二轮回答和可靠终态 |
-| [阶段 6：有界单 Agent Loop](./tasks/phase-06-bounded-agent-loop/README.md) | **Active：Task 0 已实现、待验收** | 模型如何根据 Observation 连续决定下一步，Runtime 如何限制、记录并终止循环 | 第二个只读工具、有界顺序 Loop、执行状态与回归测试 | 直接回答、一次工具、多次工具、失败、超时、Abort 和超限均有确定语义 |
+| [阶段 6：有界单 Agent Loop](./tasks/phase-06-bounded-agent-loop/README.md) | **Active：Task 0 Completed，Task 1 Next** | 模型如何根据 Observation 连续决定下一步，Runtime 如何限制、记录并终止循环 | 第二个只读工具、有界顺序 Loop、执行状态与回归测试 | 直接回答、一次工具、多次工具、失败、超时、Abort 和超限均有确定语义 |
 
 ## 阶段 6 学什么
 
@@ -43,7 +43,7 @@
 
 ## 阶段 6 实践载体
 
-当前阶段只增加一个与现有搜索工具形成依赖关系的只读工具：
+当前阶段使用两个形成依赖关系的只读工具：
 
 ```text
 search_articles
@@ -64,23 +64,23 @@ search_articles
 ## 当前任务顺序
 
 ```text
-Task 0：新增 get_article_detail 只读工具（Active，Issue #25 / Draft PR #26，已实现、待验收）
-  -> Task 1：有界顺序 Agent Loop（Planned）
+Task 0：新增 get_article_detail 只读工具（Completed，Issue #25 / PR #26）
+  -> Task 1：有界顺序 Agent Loop（Next）
   -> Task 2：可靠性、回归与学习验收（Planned）
 ```
 
 详细入口：[`tasks/phase-06-bounded-agent-loop/README.md`](./tasks/phase-06-bounded-agent-loop/README.md)。
 
-当前只详细编写 Task 0。Task 1、Task 2 必须等待前置 Task 验收后，再基于最新代码形成正式规格和独立 Issue。
+Task 0 已验收并合并。Task 1 必须基于最新 `master` 编写正式规格和独立 Issue；Task 2 等 Task 1 真实验收后再展开。
 
 ## 当前优先级
 
 | 优先级 | 任务 | 说明 |
 | --- | --- | --- |
-| P0 | 阶段 6 Task 0：新增 `get_article_detail` 只读工具 | Issue #25 / Draft PR #26；已实现、待验收 |
-| P1 | 阶段 5 源码复盘 | 自由学习模式；继续巩固 Tool Calling 完整调用链，不创建 Issue、不改状态 |
+| P0 | 阶段 6 Task 1：有界顺序 Agent Loop | 下一项正式主线；先结合最新代码完善规格，再创建独立 Issue 并通过 Clarification Gate |
+| P1 | 阶段 5 / Task 0 源码复盘 | 自由学习模式；巩固 Tool Contract、Registry、详情工具和 Runtime allowlist，不创建 Issue、不改状态 |
 | P1 | Admin Console Task 2 规划 | 可并行产品支线；若启动，需单独创建 Issue |
-| P2 | 阶段 6 Task 1-2 | 等前置 Task 真实验收后再展开，不能预先标记 Active |
+| P2 | 阶段 6 Task 2 | 等 Task 1 真实验收后再展开，不能预先标记 Active |
 
 ## 阶段 6 明确边界
 
