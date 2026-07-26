@@ -6,12 +6,12 @@
 
 阶段 5 最小 Tool Calling 已完成并归档。阶段 6 `有界单 Agent Loop` 已完成 Task 0，并进入 Task 1 的正式规划准备。
 
-当前没有 `Active` 正式实现任务。阶段 6 Task 0 已通过 GPT 技术验收并由用户明确确认，状态为 `Completed`，PR #26 等待授权合并；Task 1 已成为下一项 `Next` 任务，但尚未创建正式规格、Issue、实现分支或 PR。
+当前没有 `Active` 正式实现任务。阶段 6 Task 0 已通过 GPT 技术验收和用户确认，并通过 PR #26 合并到 `master`；Task 1 已成为下一项 `Next` 任务，但尚未创建正式规格、Issue、实现分支或 PR。
 
 | 区域 | 状态 | 文档 | 说明 |
 | --- | --- | --- | --- |
-| 阶段 6 Task 0：新增 `get_article_detail` 只读工具 | **Completed** | [phase-06-bounded-agent-loop/task-00-get-article-detail-tool.md](./phase-06-bounded-agent-loop/task-00-get-article-detail-tool.md) | Issue #25 / PR #26；GPT 技术验收通过，用户已确认；等待合并 |
-| 阶段 6 Task 1：有界顺序 Agent Loop | **Next** | [phase-06-bounded-agent-loop/README.md](./phase-06-bounded-agent-loop/README.md) | 下一项正式主线；待基于合并后的最新 `master` 编写规格并创建独立 Issue |
+| 阶段 6 Task 0：新增 `get_article_detail` 只读工具 | **Completed** | [phase-06-bounded-agent-loop/task-00-get-article-detail-tool.md](./phase-06-bounded-agent-loop/task-00-get-article-detail-tool.md) | Issue #25 / PR #26；已验收并合并，merge commit `d3609d3f` |
+| 阶段 6 Task 1：有界顺序 Agent Loop | **Next** | [phase-06-bounded-agent-loop/README.md](./phase-06-bounded-agent-loop/README.md) | 下一项正式主线；待基于最新 `master` 编写规格并创建独立 Issue |
 | 阶段 6 Task 2：可靠性、回归与学习验收 | Planned | [phase-06-bounded-agent-loop/README.md](./phase-06-bounded-agent-loop/README.md) | 等 Task 1 验收后再展开 |
 | Admin Console Task 1 | Completed | [admin-console.md](./admin-console.md) | Issue #21 / PR #22；静态 Run List / Run Detail UI 已实现并通过验收 |
 | Admin Console Task 0 | Completed | [admin-console.md](./admin-console.md) | Issue #19 / PR #20；`apps/admin` 基础壳已实现并通过验收 |
@@ -31,7 +31,7 @@ Task 0：新增 get_article_detail 只读工具（Completed）
 
 执行规则：
 
-- Task 0 已完成实现、Codex Review、GPT 技术验收和用户确认；合并事实将在 PR #26 合并后补写。
+- Task 0 已完成实现、Codex Review、GPT 技术验收、用户确认和 PR #26 合并。
 - 一个 Issue 只对应一个 Task，不把 Task 0-2 合并成一个大 Issue。
 - Task 0 只建立第二个只读工具；当前 Runtime 仍只向模型暴露并允许执行 `search_articles`。
 - Task 1 是下一项正式任务，但只有完成正式规格、创建独立 Issue 并通过 Clarification Gate 后才能进入 `Active`。
