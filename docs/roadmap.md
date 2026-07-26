@@ -6,16 +6,17 @@
 
 项目已经完成从基础 LLM Chat 到 Session、Streaming、Agent Runtime 和最小 Tool Calling 的连续学习闭环。阶段 5 已证明：模型可以提出一次只读 Tool Call，服务端完成验证与执行，将 Observation 回填第二轮 sampling，并以 `AgentRun` / `AgentStep` 记录执行过程；同步与流式入口也已共享同一个 Runtime。
 
-阶段 6 Task 0 已新增第二个只读工具 `get_article_detail`，并把 Tool 基础设施与 Article 业务工具整理为 `core/ + articles/`。当前 Runtime 仍是固定两轮特例；独立 Issue #27 已完成用户输入、历史消息、模型输出、请求超时和 Tool Observation 等运行参数治理的实现与本地验证，当前通过 Draft PR #28 等待 Review 和验收，尚未启动多轮 Agent Loop。
+阶段 6 Task 0 已新增第二个只读工具 `get_article_detail`，并把 Tool 基础设施与 Article 业务工具整理为 `core/ + articles/`。独立横向工程 Issue #27 也已完成：用户输入、历史消息、模型输出、请求超时、Model Profile 和 Tool Observation 预算已经统一治理。当前 Runtime 仍是固定两轮特例，下一步正式主线是 Phase 6 Task 1「有界顺序 Agent Loop」。
 
-因此，当前正在推进的阶段和前置关系是：
+因此，当前正在推进的阶段是：
 
 ```text
 阶段 5：最小 Tool Calling（Completed）
   -> 阶段 6：有界单 Agent Loop（Active）
        Task 0：Completed
-       横向前置 Issue #27：Active（已实现、待验收）
-       Task 1：Planned
+       横向前置 Issue #27：Completed
+       Task 1：Next
+       Task 2：Planned
 ```
 
 Issue #27 不占用阶段 6 Task 编号，也不改变阶段 6 的核心学习目标。阶段 6 完成前，不预设或编号阶段 7 及之后的任务。
@@ -29,7 +30,7 @@ Issue #27 不占用阶段 6 Task 编号，也不改变阶段 6 的核心学习�
 | 阶段 3：Streaming Chat | Completed | 如何流式输出、停止生成并保证终态一致 | NDJSON stream、Abort | `done / error / aborted` 不残留错误状态 |
 | 阶段 4：Agent Runtime 基础 | Completed | 如何记录一次 Agent 运行及其内部步骤 | `AgentRun`、`AgentStep`、Runtime Event | Run / Step 与外部流式协议分层 |
 | 阶段 5：最小 Tool Calling | Completed | 模型如何提出一次工具调用并消费 Observation | Tool contract、Registry、`search_articles`、两轮 sampling | Tool Call、执行、Observation、第二轮回答和可靠终态 |
-| [阶段 6：有界单 Agent Loop](./tasks/phase-06-bounded-agent-loop/README.md) | **Active：Task 0 Completed；Issue #27 已实现、待验收；Task 1 Planned** | 模型如何根据 Observation 连续决定下一步，Runtime 如何限制、记录并终止循环 | 第二个只读工具、有界顺序 Loop、执行状态与回归测试 | 直接回答、一次工具、多次工具、失败、超时、Abort 和超限均有确定语义 |
+| [阶段 6：有界单 Agent Loop](./tasks/phase-06-bounded-agent-loop/README.md) | **Active：Task 0 与横向前置 Completed；Task 1 Next** | 模型如何根据 Observation 连续决定下一步，Runtime 如何限制、记录并终止循环 | 第二个只读工具、有界顺序 Loop、执行状态与回归测试 | 直接回答、一次工具、多次工具、失败、超时、Abort 和超限均有确定语义 |
 
 ## 阶段 6 学什么
 
@@ -64,26 +65,41 @@ search_articles
 
 后端不得把流程硬编码为固定的 `search -> detail -> answer`。模型根据当前目标和 Observation 选择继续或结束，服务端只提供受控能力。
 
+## 已完成的运行参数基线
+
+横向工程 Issue #27 已建立以下基础，为多轮 Loop 提供清晰边界：
+
+```text
+用户消息：64K 字符
+合格历史：最近 40 条 COMPLETED
+DeepSeek Profile：1M context / 384K provider max output
+应用输出：65,536 默认 / 131,072 硬上限
+请求超时：metadata 10s / chat 60s / stream 10min
+Search excerpt：500 字符
+Observation：Search 16K / Detail 64K / 全局硬上限 128K
+```
+
+这些配置不等于完整 Context Engineering；项目仍未实现 TokenEstimator、精确 input token budget、自动裁剪、摘要或 Compaction。
+
 ## 当前执行顺序
 
 ```text
 Phase 6 Task 0：新增 get_article_detail（Completed，Issue #25 / PR #26）
-  -> 横向前置：运行参数与模型配置治理（Issue #27，已实现、待验收）
-  -> Phase 6 Task 1：有界顺序 Agent Loop（Planned）
+  -> 横向前置：运行参数与模型配置治理（Completed，Issue #27 / PR #28）
+  -> Phase 6 Task 1：有界顺序 Agent Loop（Next）
   -> Phase 6 Task 2：可靠性、回归与学习验收（Planned）
 ```
 
-横向任务入口：[`tasks/runtime-configuration-governance.md`](./tasks/runtime-configuration-governance.md)。
+横向任务归档入口：[`tasks/runtime-configuration-governance.md`](./tasks/runtime-configuration-governance.md)。
 
-Issue #27 只治理公开限制、Model Profile、运行参数、历史基线和 Tool Observation 预算；不实现 Agent Loop。Task 1 必须等 Issue #27 验收后，再基于最新 `master` 编写正式规格和独立 Issue。
+Task 1 必须基于最新 `master` 编写正式规格、创建独立 Issue 并通过 Clarification Gate 后，才能进入实现。
 
 ## 当前优先级
 
 | 优先级 | 任务 | 说明 |
 | --- | --- | --- |
-| P0 | Issue #27：Agent / LLM 运行参数与模型配置治理 | 实现与本地验证已完成；当前等待 Draft PR Review、GPT 验收和用户确认 |
-| P1 | 阶段 6 Task 1：有界顺序 Agent Loop | 等 Issue #27 验收后再展开正式规格和 Issue |
-| P1 | 阶段 5 / Task 0 源码复盘 | 自由学习模式；巩固 Tool Contract、Registry、详情工具和 Runtime allowlist，不创建 Issue、不改状态 |
+| P0 | 阶段 6 Task 1：有界顺序 Agent Loop | 下一项正式主线；先结合最新代码、配置治理结果和 DeepSeek continuation 约束编写规格 |
+| P1 | 阶段 5 / Task 0 / Issue #27 源码复盘 | 自由学习模式；巩固 Tool Contract、Registry、Runtime allowlist、Model Profile 和 Observation 预算 |
 | P1 | Admin Console Task 2 规划 | 可并行产品支线；若启动，需单独创建 Issue |
 | P2 | 阶段 6 Task 2 | 等 Task 1 真实验收后再展开，不能预先标记 Active |
 
@@ -98,7 +114,7 @@ Issue #27 只治理公开限制、Model Profile、运行参数、历史基线和
 | Tool Call / Result 配对与顺序 | 完整 ContextPlan、Token Budget、自动摘要、Compaction |
 | Run / Step Trace 与行为测试 | MCP、Plugin、Skill、Multi-agent |
 
-Context 在本阶段只保留必要正确性：合法历史、当前输入唯一、Tool pair 完整、Tool Result 作为低信任数据、实际 Token Usage 可观测。Issue #27 会先统一已有运行参数，但不会实现 TokenEstimator、自动裁剪或 Compaction。
+Context 在本阶段只保留必要正确性：合法历史、当前输入唯一、Tool pair 完整、Tool Result 作为低信任数据、实际 Token Usage 可观测。已完成的配置治理不会替代后续 Agent Loop 或完整 Context Engineering。
 
 ## Admin Console 支线
 
