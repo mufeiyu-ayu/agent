@@ -6,9 +6,10 @@
 - 实施状态：已实现
 - 验收状态：已通过
 - 完成日期：2026-07-26
-- Issue：[#25](https://github.com/mufeiyu-ayu/agent/issues/25)
+- Issue：[#25（Closed）](https://github.com/mufeiyu-ayu/agent/issues/25)
 - 分支：`codex/issue-25-get-article-detail`
-- PR：[#26（等待合并）](https://github.com/mufeiyu-ayu/agent/pull/26)
+- PR：[#26（Merged）](https://github.com/mufeiyu-ayu/agent/pull/26)
+- Merge commit：`d3609d3fb17780ca08724dd79741195238f91e22`
 
 ## 目标
 
@@ -226,9 +227,10 @@ git diff --check                           passed
 
 ## GitHub 交付记录
 
-- Issue：[#25](https://github.com/mufeiyu-ayu/agent/issues/25)
+- Issue：[#25（Closed）](https://github.com/mufeiyu-ayu/agent/issues/25)
 - 分支：`codex/issue-25-get-article-detail`
-- PR：[#26（等待合并）](https://github.com/mufeiyu-ayu/agent/pull/26)
+- PR：[#26（Merged）](https://github.com/mufeiyu-ayu/agent/pull/26)
+- Merge commit：`d3609d3fb17780ca08724dd79741195238f91e22`
 - GPT 验收结论：技术验收通过（最新验收提交 `27e25387dc6fa34209d8acc22e76475caf28868f`）
 - Codex Review：最新提交未发现 major issues，原 P2 thread 已解决
 - 用户确认：已于 2026-07-26 明确确认验收
