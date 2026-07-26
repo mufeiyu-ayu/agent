@@ -108,18 +108,20 @@ Tool Loop：
 
 ## 当前明确未做
 
-- 写操作工具。
-- Human-in-the-loop 和审批资源。
-- 自动 Tool Retry、跨进程恢复和 durable execution。
-- RAG、向量数据库、MCP、Multi-agent。
-- 并行工具调用。
-- AgentStep 前端时间线和 Run 查询页面。
+- 第二个有依赖关系的只读工具；
+- 多次顺序 Tool Call；
+- 写操作工具；
+- Human-in-the-loop 和审批资源；
+- 自动 Tool Retry、跨进程恢复和 durable execution；
+- RAG、向量数据库、MCP、Multi-agent；
+- 并行工具调用；
+- AgentStep 真实查询 API。
 
-这些不是阶段 5 缺陷，而是后续阶段的独立能力。
+这些不是阶段 5 缺陷，而是阶段边界。
 
 ## 源码复盘顺序
 
-阶段复盘仍是推荐学习任务，用于巩固 Tool Calling 闭环；下一正式主线已经确定为阶段 6 Context Engineering：
+阶段复盘仍是推荐学习任务，用于巩固最小 Tool Calling 闭环；下一正式主线是阶段 6 有界单 Agent Loop：
 
 ```text
 1. apps/web/src/hooks/useSeoWorkspace.ts
@@ -136,12 +138,12 @@ Tool Loop：
 12. prisma/schema.prisma 与对应测试
 ```
 
-复盘完成标准：能够从一次 SP Himeko 查询还原 Vue、Controller、SeoService、Runtime、LLM、Tool、Observation、第二轮 sampling、Message / Run / Step 收口的完整链路。
+复盘完成标准：能够从一次文章查询还原 Vue、Controller、SeoService、Runtime、LLM、Tool、Observation、第二轮 sampling、Message / Run / Step 收口的完整链路，并指出当前固定两轮执行为什么仍是 Agent Loop 的最小特例。
 
 ## 下一阶段交接
 
-下一阶段已经重新确认为 [`Context Engineering 基础`](../phase-06-context-engineering/README.md)，当前状态为“已规划，待正式启动”。
+下一阶段为 [`有界单 Agent Loop`](../phase-06-bounded-agent-loop/README.md)，当前状态为“已规划，待正式启动”。
 
-阶段 5 的 Tool Loop 与可靠性基线已经具备，阶段 6 将继续解决 model-visible history、消息规范化、来源优先级、token budget、Tool Observation Context 策略以及同步 / 流式共享 ContextPlan。Task 0 `Context 基线、契约与测试夹具` 是下一项需要创建独立 Issue 的正式任务。
+阶段 6 将先新增 `get_article_detail` 只读工具，再将固定的一次工具调用 / 两轮 sampling 升级为服务端受控的顺序循环，最后完成失败、超时、Abort、超限、Trace 与行为测试收口。
 
-Human-in-the-loop 不再作为紧接阶段 5 的下一步：当前只有低风险只读工具，缺少需要审批的真实写操作；它将在 durable facts / recovery 基础之后，围绕第一个真实写工具单独规划。RAG、Memory、完整摘要压缩也不进入阶段 6 MVP。
+当前不把完整 Context Engineering、RAG、HITL、Recovery 或 Multi-agent 纳入阶段 6，也不提前编号阶段 6 之后的路线。
