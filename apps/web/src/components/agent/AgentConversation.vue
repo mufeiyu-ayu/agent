@@ -219,6 +219,7 @@ const starterPrompts = computed(() => [
                 <AgentAssistantReply
                   v-else
                   :text="turn.reply || ''"
+                  :is-streaming="turn.status === 'generating'"
                 />
               </AgentMessage>
             </template>

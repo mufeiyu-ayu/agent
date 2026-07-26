@@ -8,6 +8,7 @@ import AgentMarkdownContent from './AgentMarkdownContent.vue'
 
 const props = defineProps<{
   text: string
+  isStreaming?: boolean
 }>()
 
 const { t } = useI18n()
@@ -85,7 +86,16 @@ onUnmounted(() => {
 
 <template>
   <div class="group/reply max-w-[760px] pt-1">
-    <AgentMarkdownContent :text="text" />
+    <div
+      v-if="isStreaming"
+      class="whitespace-pre-wrap text-[17px] font-medium leading-[1.72] text-agent-ink-soft"
+    >
+      {{ text.trim() }}
+    </div>
+    <AgentMarkdownContent
+      v-else
+      :text="text"
+    />
 
     <div class="mt-2 flex h-8 items-center gap-1 opacity-0 transition-opacity duration-150 group-hover/reply:opacity-100 group-focus-within/reply:opacity-100">
       <button
