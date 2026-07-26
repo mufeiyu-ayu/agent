@@ -1,83 +1,94 @@
-# Agent 架构研究与学习路线
+# Agent 架构研究资料
 
-本目录是 AI SEO Agent 的长期架构研究区。它不直接充当当前任务看板，而是服务于三个目标：
+本目录是 AI SEO Agent 的长期架构研究区，不直接充当当前任务看板或阶段路线。
 
-1. 把 Codex 源码中值得长期借鉴的 Agent Runtime 设计沉淀为可复用知识库。
-2. 把这些设计翻译成当前 NestJS + Vue 云端 Agent 项目的工程边界。
-3. 在后续讨论 `agent` 项目的具体任务时，让 GPT 能按问题快速定位对应的 Codex 参考，而不是每次重新从源码开始。
-
-## 当前结论
-
-当前项目已经不是模型 API Demo。`master@5f2ad11f2c65425e84392e81048364d55ec626ef` 已经具备：
-
-- Session Chat、消息持久化、NDJSON Streaming 与停止生成。
-- `Conversation` / `Message` / `AgentRun` / `AgentStep` 的最小持久化边界。
-- 内部 `AgentRuntimeEvent` 与外部 `ChatStreamEvent` 的分层。
-- provider-neutral `ModelStreamEvent`，可以表达文本、tool call、usage 与 response terminal。
-- 最小 `ToolDefinition` / `ToolRegistry` / `ToolInvocation` / `ToolResult` 边界。
-- `test:model-stream` 与 `test:tools` 两组 Node 原生测试。
-
-因此当前最近主线不是“从零建立 Tool Contract”，而是：
+正式状态必须按以下顺序判断：
 
 ```text
-复盘已完成的模型事件与工具契约
-  -> 单 Agent Tool Loop：tool call -> execute -> observation -> second sampling -> final answer
-  -> Tool 可靠性：timeout / cancel / error / recording / terminal exactly-once
-  -> Context：model-visible history、observation 截断、token budget
-  -> Durable recovery：crash reconciliation、idempotency、operation receipt
-  -> Human-in-the-loop / 权限 / 多租户
-  -> 扩展协议和 Multi-agent 只在单 Agent 稳定后评估
+当前 master 代码与测试
+  -> docs/tasks/**
+  -> docs/roadmap.md
+  -> docs/work-log.md
+  -> docs/research/**
 ```
 
-## 证据基线
+研究资料可以讨论 Context、Recovery、HITL、MCP、Multi-agent 等远期能力，但不能据此宣称当前项目已经实现、必须立即实现或已经确定执行顺序。
 
-| 对象 | 本次基线 | 用途 |
-| --- | --- | --- |
-| 当前项目 | `mufeiyu-ayu/agent`，`master@5f2ad11f2c65425e84392e81048364d55ec626ef` | 判断已经完成什么、真实缺口是什么 |
-| Codex 源码 | 用户上传 `codex-main-ab6a7eb87.zip` | 提取成熟 Agent 系统的可迁移设计 |
-| 本轮整理 | GPT 受托整理到 `docs/research/codex-reference/**` | 后续技术讨论的优先参考入口 |
+## 当前项目结论
 
-源码会继续演进。本文档中的 Codex 路径对上述 zip 快照负责；后续升级 Codex 快照时，应优先校验稳定符号和调用链，而不是盲目复用旧行号。
+项目已经完成：
+
+- Session Chat、消息持久化、NDJSON Streaming 与停止生成；
+- `Conversation` / `Message` / `AgentRun` / `AgentStep` 的最小持久化边界；
+- 内部 `AgentRuntimeEvent` 与外部 `ChatStreamEvent` 分层；
+- provider-neutral `ModelStreamEvent`；
+- Tool Definition / Registry / Invocation / Result；
+- `search_articles` 只读工具；
+- 最多一次工具调用、最多两轮 sampling 的最小 Tool Calling；
+- timeout、abort、Observation 上限与动态 Run / Step 记录；
+- 同步与流式入口共享 `AgentRuntimeService.runTurnStream()`。
+
+当前唯一确定的下一正式阶段是：
+
+```text
+阶段 6：有界单 Agent Loop
+```
+
+目标是把固定的一次工具调用 / 两轮 sampling 特例，升级为服务端限制下的顺序多步骤循环。当前不把完整 Context Engineering、RAG、HITL、Recovery、MCP 或 Multi-agent 作为阶段 6，也不提前编号阶段 6 之后的路线。
+
+## 研究资料如何使用
+
+研究资料只在以下情况下迁移为正式 Task：
+
+1. 当前业务出现真实问题或产品需求；
+2. 当前代码具备必要前置能力；
+3. 能定义一个最小、可测试、可验收的边界；
+4. GPT 与用户确认其学习收益高于当前其他候选方向；
+5. 正式规格写入 `docs/tasks/**` 并创建独立 Issue。
+
+禁止按“成熟项目有这个能力，所以当前项目也应立即实现”的方式推进。
 
 ## 优先阅读入口
 
-### 后续讨论 Agent 项目时优先使用
+### 当前阶段相关
 
 | 入口 | 用途 |
 | --- | --- |
-| [codex-reference/README.md](./codex-reference/README.md) | 新 Codex 参考知识库总入口 |
-| [codex-reference/how-to-use.md](./codex-reference/how-to-use.md) | GPT / 用户后续如何按问题查资料 |
-| [codex-reference/current-agent-baseline.md](./codex-reference/current-agent-baseline.md) | 当前项目真实能力、缺口和近期路线 |
-| [codex-reference/discussion-playbook.md](./codex-reference/discussion-playbook.md) | 以后做方案讨论时的检索表和决策模板 |
+| [codex-reference/core-runtime.md](./codex-reference/core-runtime.md) | Runtime loop、Turn、Task、follow-up sampling |
+| [codex-reference/tool-loop.md](./codex-reference/tool-loop.md) | Tool Call、Observation、继续 sampling 与终止条件 |
+| [codex-reference/current-agent-baseline.md](./codex-reference/current-agent-baseline.md) | 当前项目真实能力与阶段 6 缺口 |
+| [codex-reference/how-to-use.md](./codex-reference/how-to-use.md) | 如何选择性迁移 Codex 设计 |
 
-### Codex 架构核心专题
+### 按真实问题查阅
 
-| 专题 | 适合什么时候看 |
-| --- | --- |
-| [core-runtime.md](./codex-reference/core-runtime.md) | 讨论 Thread / Turn / Task / StepContext / Runtime loop |
-| [tool-loop.md](./codex-reference/tool-loop.md) | 讨论 Tool Calling、Observation 回填、第二轮 sampling |
-| [context-history.md](./codex-reference/context-history.md) | 讨论 model history、UI transcript、token budget、compaction |
-| [durability-recovery.md](./codex-reference/durability-recovery.md) | 讨论持久化、恢复、幂等、crash reconciliation |
-| [safety-permission.md](./codex-reference/safety-permission.md) | 讨论权限、审批、sandbox、恶意 observation |
-| [extensibility-and-multi-agent.md](./codex-reference/extensibility-and-multi-agent.md) | 讨论 MCP、Plugin、Skill、Hook、Multi-agent；当前只作为未来参考 |
+| 问题 | 参考资料 | 当前状态 |
+| --- | --- | --- |
+| Tool Call / Result 如何配对 | [codex-reference/tool-loop.md](./codex-reference/tool-loop.md) | 阶段 6 横向不变量 |
+| Context 爆掉或历史失控 | [codex-reference/context-history.md](./codex-reference/context-history.md) | 研究资料，当前非正式阶段 |
+| 崩溃后如何恢复 | [codex-reference/durability-recovery.md](./codex-reference/durability-recovery.md) | 研究资料，未排期 |
+| 写操作如何审批 | [codex-reference/safety-permission.md](./codex-reference/safety-permission.md) | 研究资料，未排期 |
+| MCP / Multi-agent 何时引入 | [codex-reference/extensibility-and-multi-agent.md](./codex-reference/extensibility-and-multi-agent.md) | 研究资料，明确后置 |
 
-### 旧研究资料
+## 旧研究资料
 
-旧的 [codex/](./codex/README.md) 与 [learning-roadmap/](./learning-roadmap/README.md) 仍保留历史价值，但如果它们与 `codex-reference/**` 或当前代码事实冲突，优先使用：
+旧的 [codex/](./codex/README.md) 与 [learning-roadmap/](./learning-roadmap/README.md) 保留历史研究价值，但它们包含曾经设想的完整阶段顺序和旧项目基线，不能直接作为当前执行计划。
+
+若旧研究资料与当前代码或正式任务冲突，优先级为：
 
 ```text
 当前代码事实
+  > docs/tasks/**
+  > docs/roadmap.md
   > codex-reference/**
   > 旧 research 文档
-  > PR 或 Codex 自述
+  > PR 描述或 Codex 自述
 ```
 
 ## Research 与 Tasks 的边界
 
 | 目录 | 负责什么 | 不负责什么 |
 | --- | --- | --- |
-| `docs/research/` | 研究结论、源码地图、学习路线、设计参考 | 宣称当前代码已经实现 |
-| `docs/tasks/` | 当前可执行任务、TDD 步骤和验收状态 | 存放长篇外部项目研究 |
-| `docs/roadmap.md` | 项目阶段状态总览 | 展开每个架构主题的细节 |
-
-研究路线可以比当前任务走得更远，但任何“已完成”都必须由当前代码、测试或运行结果证明。
+| `docs/research/` | 源码研究、架构解释、长期候选能力 | 宣称当前实现、当前状态或固定执行顺序 |
+| `docs/tasks/` | 当前可执行任务、TDD 步骤和验收状态 | 存放脱离当前阶段的长期研究路线 |
+| `docs/roadmap.md` | 已完成阶段与当前唯一确定阶段 | 提前编排阶段 6 之后的任务 |
+| `docs/work-log.md` | 已真实发生的路线决策、实现、验收和合并 | 记录尚未发生的未来事实 |
