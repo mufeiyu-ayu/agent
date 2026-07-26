@@ -18,7 +18,9 @@ Explicit orchestration for model sampling, tool execution, state transitions, an
 
 TypeScript Agent Runtime is a full-stack reference implementation of an explicit, inspectable agent execution loop. It keeps model messages, user-visible messages, runtime events, and persisted execution records as separate concerns.
 
-The runtime can stream a direct answer or execute a validated tool call, append the resulting observation to the model context, and perform a bounded second sampling to produce the final response.
+The current runtime can stream a direct answer or execute one validated tool call, append the resulting observation to model input, and perform a bounded second sampling to produce the final response.
+
+The next mainline stage will evolve this fixed two-sampling special case into a bounded sequential single-agent loop without introducing a general workflow framework.
 
 ## Highlights
 
@@ -51,9 +53,9 @@ flowchart LR
     Executor --> Database
 ```
 
-The operator console is currently backed by typed mock data while its read-only Run and Step query API is being designed.
+The operator console is currently backed by typed mock data while its read-only Run and Step query API remains an independent planned task.
 
-## Runtime Lifecycle
+## Current Runtime Lifecycle
 
 ```text
 User Input
@@ -95,7 +97,8 @@ assistant_output
 - **Durable facts over transient deltas** — streamed events are not treated as persisted truth.
 - **Separated message layers** — UI messages, model input items, and runtime events have different contracts.
 - **Cooperative cancellation** — request aborts propagate through model sampling, tool execution, and persistence boundaries.
-- **Bounded execution** — the current tool loop allows one tool execution followed by one final model sampling.
+- **Bounded execution** — model and tool calls are always limited by server-owned policies.
+- **Evidence-driven evolution** — future Agent capabilities are planned only after the current stage produces code and test evidence.
 
 ## Repository Structure
 
@@ -179,17 +182,19 @@ Available now:
 - Streaming responses and stop-generation handling
 - Agent Run and Agent Step recording
 - OpenAI-compatible stream normalization
-- A bounded tool-calling loop
+- A bounded one-tool / two-sampling loop
 - Timeout-aware and abort-aware tool execution
 - Tool observation normalization
 - Static operator views for Run and Step traces
 
-Planned:
+Current next stage:
 
-- Context budgeting, history normalization, and model-input policies — next mainline stage
-- Durable execution facts and recovery foundations
-- A real write tool with permission policy and human approval
-- Read-only Run and Step query APIs
-- Expanded observability, evaluation, and portfolio documentation
+- Bounded sequential single-agent loop
+- A second read-only tool, `get_article_detail`
+- Server-owned sampling and tool-call limits
+- Explicit success, failure, timeout, abort, and limit terminal semantics
+- Agent behavior tests for direct, one-tool, and multi-tool paths
+
+No stage after this is pre-numbered. The next learning direction will be selected from real project evidence after the bounded Agent Loop is completed and accepted.
 
 See the [project roadmap](./docs/roadmap.md) and [documentation index](./docs/README.md) for implementation details.
