@@ -6,8 +6,8 @@
 
 | 类型 | 当前记录 | 下一步 |
 | --- | --- | --- |
-| 当前阶段 | 阶段 5 最小 Tool Calling 已完成并归档；阶段 6 已重新确认为有界单 Agent Loop；Admin Console Task 0-1 已完成 | 阶段 6 Task 0 为 Next，尚未创建 Issue、实现分支或 PR；开始实现前先创建独立 Issue 并通过 Clarification Gate |
-| 阶段 6 | 目标是学习 Agent Loop、执行状态、终止条件、错误语义和行为测试；完整 Context Engineering 已移出正式阶段 | 先新增 `get_article_detail` 只读工具；前置验收后再展开有界 Loop Task |
+| 当前阶段 | 阶段 5 最小 Tool Calling 已完成并归档；阶段 6 Task 0 已通过 Issue #25 / Draft PR #26 完成实现和本地验证；Admin Console Task 0-1 已完成 | 验收 Task 0；验收确认前不推进 Task 1 或收口阶段 6 |
+| 阶段 6 | `get_article_detail` 已通过统一 Registry / Invocation 建立，Runtime 仍只向模型暴露 `search_articles` | 等待 Draft PR #26 Review 与学习验收；通过后再展开有界 Loop Task |
 | Admin Console | 已具备独立 `apps/admin` 基础壳、静态 Run List / Run Detail、类型化 Mock、Trace、Messages、Safe Raw Data 和 Review 交互修复 | Task 2 规划只读 Run / Step 查询 API；Task 3 接真实数据；Task 4 补登录、权限和脱敏 |
 | 文档结构 | docs 以 `roadmap`、`tasks`、`research`、`work-log` 四类入口组织；正式任务状态以 `docs/tasks/**` 为准 | 不再由 `development-task-plan.md` 维护第二套路线，也不提前编号阶段 6 之后的任务 |
 | 任务规范 | 新任务使用 TDD 风格模板；一个 Issue 对应一个清晰 Task；验收通过与授权合并保持分离 | Task 1-2 必须等待前置 Task 验收后再基于最新代码展开 |
@@ -17,6 +17,7 @@
 
 | 日期 | 提交 / 事项 | 类型 | 核心完成 | 关键文件 | 验证结果 |
 | --- | --- | --- | --- | --- | --- |
+| 2026-07-26 | commit `b1942cd` / Issue #25 / Draft PR #26 | feat / refactor / Tool Calling | 将 Tool 基础设施与 Article 业务工具整理为 `core/ + articles/`，新增严格只读 `get_article_detail`，注册两个工具并保持 Runtime 仅向模型暴露 `search_articles` | `apps/api/src/tools/**`、`apps/api/src/agent-runtime/**`、阶段 6 Task 0 docs | Tools 30、Tool Loop 20、Model Stream 35 个测试通过；API typecheck / lint、workspace typecheck、`git diff --check` 通过；7 个 Tool 测试文件均被发现 |
 | 2026-07-26 | 阶段 6 路线重新评估并改为有界单 Agent Loop | docs / learning roadmap | 用户与 GPT 重新审查 Tool Calling 后的真实能力缺口，确认当前应学习生命周期完整、执行有界的单 Agent Loop，而不是提前建设完整 Context Budget / Truncation 系统；删除旧 Context 正式 Task 0-5，建立 `get_article_detail -> 有界 Loop -> 可靠性验收` 的阶段边界；阶段 6 后不再提前编号 | `README.md`、`docs/README.md`、`docs/roadmap.md`、`docs/tasks/**`、`docs/development-task-plan.md`、`docs/research/**`、`docs/work-log.md` | 远程 `master` 逐文件写入后重新检查入口、状态、旧目录残留和链接一致性；旧阶段 7-9 正式规划已删除；无业务代码改动 |
 | 2026-07-26 | PR #24 合并，merge commit `190fecea0bf4975e8a3740db5258bc69eaa3a7ee` | feat / fix / SEO Chat | 将聊天输入上限从 2,000 提升到 16,000 字符，将默认及 SEO 输出上限提升到 32,768 tokens，并在 streaming 阶段使用纯文本渲染避免长回复反复 Markdown 解析 | `apps/api/src/llm/**`、`apps/api/src/seo/**`、`apps/web/src/components/agent/**`、`apps/web/src/components/seo/SeoChatComposer.vue` | 以 PR #24 合并事实和 merge commit diff 为准；本轮 docs 重规划不修改这些业务代码 |
 | 2026-07-26 | 阶段 6 Context Engineering 路线草案 | docs / learning roadmap | 曾将阶段 6 规划为 Context Engineering Task 0-5；后续同日经用户质疑、代码约束和学习收益重新评估，确认该方案过早且范围过大，已由有界单 Agent Loop 规划替代 | 原 `docs/tasks/phase-06-context-engineering/**`、当时的 roadmap / tasks / research 入口 | 作为真实发生的历史决策保留记录，但不再代表当前路线或正式 Task 状态 |

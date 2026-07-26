@@ -1,6 +1,6 @@
 # AI SEO Agent 学习路线
 
-本文只维护已经完成的阶段与当前唯一确定的下一阶段。正式 Task 状态与执行顺序以 [`docs/tasks/README.md`](./tasks/README.md) 为准。
+本文只维护已经完成的阶段与当前阶段。正式 Task 状态与执行顺序以 [`docs/tasks/README.md`](./tasks/README.md) 为准。
 
 ## 当前判断
 
@@ -8,11 +8,11 @@
 
 当前 Runtime 仍是一个受限特例：只向模型提供 `search_articles`，最多执行一次工具、最多进行两轮 sampling。它能完成“模型 -> 工具 -> 模型”的最小闭环，但还不能让模型根据第一步结果继续选择第二个工具，并在明确上限内自主结束一次多步骤任务。
 
-因此，当前唯一确定的下一阶段是：
+因此，当前正在推进的阶段是：
 
 ```text
 阶段 5：最小 Tool Calling（Completed）
-  -> 阶段 6：有界单 Agent Loop（Next）
+  -> 阶段 6：有界单 Agent Loop（Active）
 ```
 
 阶段 6 完成前，不预设或编号阶段 7 及之后的任务。后续方向必须根据阶段 6 的真实代码、测试、运行数据和学习结果重新决定。
@@ -26,7 +26,7 @@
 | 阶段 3：Streaming Chat | Completed | 如何流式输出、停止生成并保证终态一致 | NDJSON stream、Abort | `done / error / aborted` 不残留错误状态 |
 | 阶段 4：Agent Runtime 基础 | Completed | 如何记录一次 Agent 运行及其内部步骤 | `AgentRun`、`AgentStep`、Runtime Event | Run / Step 与外部流式协议分层 |
 | 阶段 5：最小 Tool Calling | Completed | 模型如何提出一次工具调用并消费 Observation | Tool contract、Registry、`search_articles`、两轮 sampling | Tool Call、执行、Observation、第二轮回答和可靠终态 |
-| [阶段 6：有界单 Agent Loop](./tasks/phase-06-bounded-agent-loop/README.md) | **Next：已规划，待启动** | 模型如何根据 Observation 连续决定下一步，Runtime 如何限制、记录并终止循环 | 第二个只读工具、有界顺序 Loop、执行状态与回归测试 | 直接回答、一次工具、多次工具、失败、超时、Abort 和超限均有确定语义 |
+| [阶段 6：有界单 Agent Loop](./tasks/phase-06-bounded-agent-loop/README.md) | **Active：Task 0 已实现、待验收** | 模型如何根据 Observation 连续决定下一步，Runtime 如何限制、记录并终止循环 | 第二个只读工具、有界顺序 Loop、执行状态与回归测试 | 直接回答、一次工具、多次工具、失败、超时、Abort 和超限均有确定语义 |
 
 ## 阶段 6 学什么
 
@@ -64,7 +64,7 @@ search_articles
 ## 当前任务顺序
 
 ```text
-Task 0：新增 get_article_detail 只读工具（Next）
+Task 0：新增 get_article_detail 只读工具（Active，Issue #25 / Draft PR #26，已实现、待验收）
   -> Task 1：有界顺序 Agent Loop（Planned）
   -> Task 2：可靠性、回归与学习验收（Planned）
 ```
@@ -77,7 +77,7 @@ Task 0：新增 get_article_detail 只读工具（Next）
 
 | 优先级 | 任务 | 说明 |
 | --- | --- | --- |
-| P0 | 阶段 6 Task 0：新增 `get_article_detail` 只读工具 | 下一项正式主线；先创建独立 Issue 并通过 Clarification Gate |
+| P0 | 阶段 6 Task 0：新增 `get_article_detail` 只读工具 | Issue #25 / Draft PR #26；已实现、待验收 |
 | P1 | 阶段 5 源码复盘 | 自由学习模式；继续巩固 Tool Calling 完整调用链，不创建 Issue、不改状态 |
 | P1 | Admin Console Task 2 规划 | 可并行产品支线；若启动，需单独创建 Issue |
 | P2 | 阶段 6 Task 1-2 | 等前置 Task 真实验收后再展开，不能预先标记 Active |

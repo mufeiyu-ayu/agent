@@ -1,12 +1,12 @@
-import type { Prisma } from '../generated/prisma/client.js'
+import type { Prisma } from '../../generated/prisma/client.js'
 import type {
   ToolDefinition,
   ToolExecutor,
   ValidatedToolInvocation,
-} from './tool.types.js'
+} from '../core/tool.types.js'
 import { Inject, Injectable } from '@nestjs/common'
 
-import { PrismaService } from '../prisma/prisma.service.js'
+import { PrismaService } from '../../prisma/prisma.service.js'
 
 const DEFAULT_LIMIT = 5
 const MAX_LIMIT = 10

@@ -7,14 +7,14 @@ import type {
   ModelStreamEvent,
 } from '../llm/model-stream.types.js'
 import type { PrismaService } from '../prisma/prisma.service.js'
-import type { ToolInvocationService } from '../tools/tool-invocation.service.js'
-import type { ToolRegistryService } from '../tools/tool-registry.service.js'
+import type { ToolInvocationService } from '../tools/core/tool-invocation.service.js'
+import type { ToolRegistryService } from '../tools/core/tool-registry.service.js'
 import type {
   ToolDefinition,
   ToolExecutionContext,
   ToolResult,
   UnvalidatedToolCallEnvelope,
-} from '../tools/tool.types.js'
+} from '../tools/core/tool.types.js'
 import type { AgentRunRecorderService } from './agent-run-recorder.service.js'
 import type { AgentRuntimeEvent } from './agent-runtime.types.js'
 import assert from 'node:assert/strict'
@@ -211,6 +211,10 @@ describe('AgentRuntimeService model stream', () => {
       samplingAttemptId: 'run-1:sampling-1',
     }])
     assert.equal(harness.llmCalls.length, 2)
+    assert.deepEqual(
+      harness.llmCalls.map(call => call.options?.tools?.map(tool => tool.name)),
+      [['search_articles'], ['search_articles']],
+    )
     assert.deepEqual(harness.llmCalls[1]?.messages.slice(-2), [
       {
         type: 'assistant_tool_call',
@@ -383,6 +387,111 @@ describe('AgentRuntimeService model stream', () => {
       },
     )
     assert.deepEqual(harness.recorder.completedRunIds, ['run-1'])
+    assertNoUnfinishedSteps(harness)
+  })
+
+  it('拒绝执行全局已注册但本轮未开放的工具', async () => {
+    const articleContent = '不应回填给模型的完整文章正文'
+    let detailExecutorCalls = 0
+    let articleQueryCalls = 0
+    const streams: ModelStreamEvent[][] = [
+      [
+        toolCallEvent('call-detail', 'get_article_detail', '{"sourceId":25}'),
+        { type: 'response_completed', finishReason: 'tool_calls' },
+      ],
+      [
+        { type: 'text_delta', delta: '当前无法使用该工具。' },
+        { type: 'response_completed', finishReason: 'stop' },
+      ],
+    ]
+    const harness = createHarness(
+      (_, __, callIndex) => toModelStream(streams[callIndex] ?? []),
+      undefined,
+      async () => {
+        detailExecutorCalls += 1
+        articleQueryCalls += 1
+
+        return {
+          ok: true,
+          data: { content: articleContent },
+          modelContent: articleContent,
+        }
+      },
+    )
+
+    const runtimeEvents = await collectEvents(harness.run())
+    const chatEvents = runtimeEvents.map(toChatStreamEvent)
+
+    assert.deepEqual(
+      harness.llmCalls.map(call => call.options?.tools?.map(tool => tool.name)),
+      [['search_articles'], ['search_articles']],
+    )
+    assert.equal(harness.toolInvocations.length, 0)
+    assert.equal(detailExecutorCalls, 0)
+    assert.equal(articleQueryCalls, 0)
+    assert.deepEqual(harness.llmCalls[1]?.messages.slice(-2), [
+      {
+        type: 'assistant_tool_call',
+        callId: 'call-detail',
+        name: 'get_article_detail',
+        rawArgumentsJson: '{"sourceId":25}',
+      },
+      {
+        type: 'tool_result',
+        callId: 'call-detail',
+        name: 'get_article_detail',
+        content: '工具 get_article_detail 不存在。',
+        ok: false,
+      },
+    ])
+    assert.doesNotMatch(
+      JSON.stringify({ runtimeEvents, chatEvents, llmCalls: harness.llmCalls }),
+      new RegExp(articleContent),
+    )
+    assert.deepEqual(runtimeEvents.map(event => event.type), [
+      'run_started',
+      'assistant_delta',
+      'run_completed',
+    ])
+    assert.deepEqual(chatEvents.map(event => event.type), ['start', 'delta', 'done'])
+    assert.equal(harness.assistantMessage()?.status, MessageStatus.COMPLETED)
+    assert.deepEqual(harness.recorder.completedRunIds, ['run-1'])
+    assert.deepEqual(harness.recorder.failedRunIds, [])
+    assert.deepEqual(harness.recorder.steps.map(step => step.type), [
+      'receive_user_message',
+      'load_conversation_history',
+      'model_sampling',
+      'tool_execution',
+      'model_sampling',
+      'assistant_output',
+    ])
+    assert.deepEqual(harness.recorder.steps.map(step => step.status), [
+      AgentStepStatus.COMPLETED,
+      AgentStepStatus.COMPLETED,
+      AgentStepStatus.COMPLETED,
+      AgentStepStatus.FAILED,
+      AgentStepStatus.COMPLETED,
+      AgentStepStatus.COMPLETED,
+    ])
+    const toolStep = findStep(harness, 'tool_execution')
+
+    assert.equal(toolStep?.status, AgentStepStatus.FAILED)
+    assert.deepEqual(toolStep?.input, {
+      callId: 'call-detail',
+      toolName: 'get_article_detail',
+      toolVersion: null,
+      samplingAttemptId: 'run-1:sampling-1',
+      executionAttempt: 1,
+      rawArgumentsChars: 15,
+    })
+    assert.deepEqual(withoutDuration(toolStep?.output), {
+      ok: false,
+      code: 'unknown_tool',
+      retryable: false,
+      originalChars: 26,
+      observationChars: 26,
+      truncated: false,
+    })
     assertNoUnfinishedSteps(harness)
   })
 
@@ -800,6 +909,12 @@ const searchArticlesDefinition: ToolDefinition = {
   },
 }
 
+const getArticleDetailDefinition: ToolDefinition = {
+  ...searchArticlesDefinition,
+  name: 'get_article_detail',
+  description: '按 sourceId 读取文章详情。',
+}
+
 const successfulToolResult: ToolResult = {
   ok: true,
   data: {
@@ -864,7 +979,7 @@ function createHarness(
 
 class FakeToolRegistryService {
   listDefinitions(): ToolDefinition[] {
-    return [searchArticlesDefinition]
+    return [getArticleDetailDefinition, searchArticlesDefinition]
   }
 }
 

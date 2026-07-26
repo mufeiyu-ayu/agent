@@ -8,7 +8,7 @@ import type { ModelInputItem } from '../llm/model-input.types.js'
 import type {
   ToolResult,
   UnvalidatedToolCallEnvelope,
-} from '../tools/tool.types.js'
+} from '../tools/core/tool.types.js'
 import type {
   AgentRuntimeEvent,
   RunTurnStreamInput,
@@ -23,10 +23,10 @@ import { MessageRole, MessageStatus } from '../generated/prisma/client.js'
 import { LLMService } from '../llm/llm.service.js'
 import { toModelInputItems } from '../llm/model-input.types.js'
 import { PrismaService } from '../prisma/prisma.service.js'
-import { toModelToolSpec } from '../tools/model-tool-spec.mapper.js'
-import { ToolInvocationService } from '../tools/tool-invocation.service.js'
-import { normalizeToolObservation } from '../tools/tool-observation.js'
-import { ToolRegistryService } from '../tools/tool-registry.service.js'
+import { toModelToolSpec } from '../tools/core/model-tool-spec.mapper.js'
+import { ToolInvocationService } from '../tools/core/tool-invocation.service.js'
+import { normalizeToolObservation } from '../tools/core/tool-observation.js'
+import { ToolRegistryService } from '../tools/core/tool-registry.service.js'
 import {
   AGENT_STEP_TYPES,
   AgentRunRecorderService,
@@ -261,25 +261,25 @@ export class AgentRuntimeService {
         let toolResult: ToolResult
 
         try {
-          // 等待统一工具执行器完成，并取得 ToolResult。例如：
-          // {
-          //   ok: true,
-          //   data: {
-          //     query: 'SP Himeko',
-          //     total: 1,
-          //     articles: [/* 精简文章结果 */],
-          //   },
-          //   modelContent: '共找到 1 篇匹配文章……',
-          // }
-          toolResult = await this.toolInvocationService.invoke(
-            samplingDecision.call,
-            {
-              runId: currentAgentRunId,
-              conversationId: input.conversationId,
-              signal: runSignal,
-              executionAttempt: 1,
-            },
-          )
+          if (!toolDefinition) {
+            toolResult = {
+              ok: false,
+              code: 'unknown_tool',
+              modelContent: `工具 ${samplingDecision.call.toolName} 不存在。`,
+              retryable: false,
+            }
+          }
+          else {
+            toolResult = await this.toolInvocationService.invoke(
+              samplingDecision.call,
+              {
+                runId: currentAgentRunId,
+                conversationId: input.conversationId,
+                signal: runSignal,
+                executionAttempt: 1,
+              },
+            )
+          }
           runSignal.throwIfAborted()
         }
         catch (error) {
