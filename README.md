@@ -18,9 +18,9 @@ Explicit orchestration for model sampling, tool execution, state transitions, an
 
 TypeScript Agent Runtime is a full-stack reference implementation of an explicit, inspectable agent execution loop. It keeps model messages, user-visible messages, runtime events, and persisted execution records as separate concerns.
 
-The current runtime can stream a direct answer or execute one validated tool call, append the resulting observation to model input, and perform a bounded second sampling to produce the final response.
+The current runtime can stream a direct answer or execute one validated tool call, append the resulting observation to model input, and perform a bounded second sampling to produce the final response. The Tool Registry now contains two read-only Article tools, `search_articles` and `get_article_detail`, while the current Runtime only exposes and allows `search_articles` during model-driven execution.
 
-The next mainline stage will evolve this fixed two-sampling special case into a bounded sequential single-agent loop without introducing a general workflow framework.
+The next mainline task will evolve this fixed two-sampling special case into a bounded sequential single-agent loop without introducing a general workflow framework.
 
 ## Highlights
 
@@ -28,7 +28,7 @@ The next mainline stage will evolve this fixed two-sampling special case into a 
 | --- | --- |
 | Agent orchestration | Explicit model sampling, tool execution, and final-answer boundaries |
 | Streaming | Abort-aware NDJSON responses with incremental assistant deltas |
-| Tool calling | Typed definitions, registry lookup, argument validation, and executor isolation |
+| Tool calling | Typed definitions, registry lookup, argument validation, executor isolation, and per-run allowlisting |
 | Tool safety | Risk gates, approval metadata, execution timeouts, and cancellation propagation |
 | Persistence | Conversations, messages, Agent Runs, and ordered Agent Steps in PostgreSQL |
 | Model integration | OpenAI-compatible Chat Completions client with normalized stream events |
@@ -185,12 +185,14 @@ Available now:
 - A bounded one-tool / two-sampling loop
 - Timeout-aware and abort-aware tool execution
 - Tool observation normalization
+- Two registered read-only Article tools: `search_articles` and `get_article_detail`
+- Per-run tool allowlisting that prevents globally registered but unexposed tools from executing
 - Static operator views for Run and Step traces
 
-Current next stage:
+Current next task:
 
 - Bounded sequential single-agent loop
-- A second read-only tool, `get_article_detail`
+- Model-driven `search_articles -> get_article_detail -> final answer` execution
 - Server-owned sampling and tool-call limits
 - Explicit success, failure, timeout, abort, and limit terminal semantics
 - Agent behavior tests for direct, one-tool, and multi-tool paths
