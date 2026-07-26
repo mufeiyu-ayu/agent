@@ -2,10 +2,10 @@
 
 - 阶段状态：**Active**
 - 决策日期：2026-07-26
-- 当前执行入口：Task 0
+- 当前执行入口：Task 1（Next，待编写正式规格）
 - 实施状态：进行中
 - 验收状态：未验收
-- GitHub 状态：Task 0 Issue #25 / Draft PR #26 已实现并完成本地验证，等待验收
+- GitHub 状态：Task 0 已通过 Issue #25 / PR #26 完成验收并合并，merge commit `d3609d3f`
 
 ## 阶段定位
 
@@ -83,15 +83,15 @@ Runtime 不得硬编码模型必须按照固定顺序使用两个工具。模型
 
 | Task | 状态 | 目标 | 详细文档 | 前置 | Issue | PR |
 | --- | --- | --- | --- | --- | --- | --- |
-| Task 0：新增 `get_article_detail` 只读工具 | **Active（已实现、待验收）** | 建立第二个与搜索结果有依赖关系的只读动作 | [task-00-get-article-detail-tool.md](./task-00-get-article-detail-tool.md) | 阶段 5 Completed | [#25](https://github.com/mufeiyu-ayu/agent/issues/25) | [#26（Draft）](https://github.com/mufeiyu-ayu/agent/pull/26) |
-| Task 1：有界顺序 Agent Loop | Planned | 将固定两轮逻辑升级为服务端受控的多轮循环 | 前置完成后再编写 | Task 0 Completed | 未创建 | 未创建 |
+| Task 0：新增 `get_article_detail` 只读工具 | **Completed** | 建立第二个与搜索结果有依赖关系的只读动作 | [task-00-get-article-detail-tool.md](./task-00-get-article-detail-tool.md) | 阶段 5 Completed | [#25（Closed）](https://github.com/mufeiyu-ayu/agent/issues/25) | [#26（Merged）](https://github.com/mufeiyu-ayu/agent/pull/26) |
+| Task 1：有界顺序 Agent Loop | **Next** | 将固定两轮逻辑升级为服务端受控的多轮循环 | 待基于最新 `master` 编写 | Task 0 Completed | 未创建 | 未创建 |
 | Task 2：可靠性、回归与阶段验收 | Planned | 覆盖失败、超时、Abort、超限、Trace 和学习复盘 | 前置完成后再编写 | Task 1 Completed | 未创建 | 未创建 |
 
-### 为什么只详细编写 Task 0
+### 为什么 Task 1 现在才展开
 
-Task 1 会直接依赖 Task 0 完成后的工具注册方式、模型 Tool Spec、Runtime 调用链和测试基线；Task 2 又依赖 Task 1 暴露出的真实失败路径。现在提前写死所有实现细节，容易再次形成脱离代码的计划。
+Task 1 直接依赖 Task 0 落地后的真实工具目录、Registry 注册方式、模型 Tool Spec、Runtime allowlist 和测试基线；Task 2 又依赖 Task 1 暴露出的真实失败路径。
 
-因此本阶段只固定任务边界和顺序，每完成并验收一个 Task，再结合最新 `master` 展开下一个 Task 的正式规格。
+Task 0 已经完成并合并，因此下一步应读取最新 `master`，结合现有两个 Article Tool 和固定两轮 Runtime 编写 Task 1 的正式规格。当前只把 Task 1 标记为 `Next`，在独立 Issue 和 Clarification Gate 完成前不得进入实现。
 
 ## 阶段级强制不变量
 
@@ -172,7 +172,7 @@ interface AgentLoopPolicy {
 
 阶段级验收至少包括：
 
-- [ ] `get_article_detail` 可通过统一 Tool Contract、Registry 和 Invocation 安全执行；
+- [x] `get_article_detail` 可通过统一 Tool Contract、Registry 和 Invocation 安全执行；
 - [ ] Runtime 不再依赖固定 `[1, 2]` sampling 特例；
 - [ ] 直接回答、一次工具和 `search -> detail -> final` 均可完成；
 - [ ] 零结果、资源不存在、参数无效、工具失败、timeout、Abort 和超限均有测试；
@@ -206,4 +206,4 @@ interface AgentLoopPolicy {
 
 ## 下一步
 
-Task 0 已实现并通过 Draft PR #26 等待验收；当前不创建 Task 1 / Task 2 的 Issue，也不开始修改 Runtime Loop。
+读取合并后的最新 `master`，为 Task 1 编写正式规格并创建独立 Issue。当前不创建 Task 2 的 Issue，也不开始修改 Runtime Loop。
