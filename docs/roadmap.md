@@ -6,7 +6,7 @@
 
 项目已经完成从基础 LLM Chat 到 Session、Streaming、Agent Runtime 和最小 Tool Calling 的连续学习闭环。阶段 5 已证明：模型可以提出一次只读 Tool Call，服务端完成验证与执行，将 Observation 回填第二轮 sampling，并以 `AgentRun` / `AgentStep` 记录执行过程；同步与流式入口也已共享同一个 Runtime。
 
-阶段 6 Task 0 已新增第二个只读工具 `get_article_detail`，并把 Tool 基础设施与 Article 业务工具整理为 `core/ + articles/`。当前 Runtime 仍是固定两轮特例；独立 Issue #27 已完成用户输入、历史消息、模型输出、请求超时和 Tool Observation 等运行参数治理的实现与本地验证，当前等待 Draft PR Review 和验收，尚未启动多轮 Agent Loop。
+阶段 6 Task 0 已新增第二个只读工具 `get_article_detail`，并把 Tool 基础设施与 Article 业务工具整理为 `core/ + articles/`。当前 Runtime 仍是固定两轮特例；独立 Issue #27 已完成用户输入、历史消息、模型输出、请求超时和 Tool Observation 等运行参数治理的实现与本地验证，当前通过 Draft PR #28 等待 Review 和验收，尚未启动多轮 Agent Loop。
 
 因此，当前正在推进的阶段和前置关系是：
 

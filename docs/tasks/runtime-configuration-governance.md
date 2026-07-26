@@ -7,7 +7,7 @@
 - 验收状态：待验收
 - Issue：[#27](https://github.com/mufeiyu-ayu/agent/issues/27)
 - 分支：`codex/issue-27-runtime-configuration-governance`
-- PR：待创建 Draft PR
+- PR：[Draft PR #28](https://github.com/mufeiyu-ayu/agent/pull/28)
 - 阶段关系：不占用 Phase 6 Task 编号；完成后再启动 Phase 6 Task 1
 
 ## 目标
@@ -238,6 +238,6 @@ git diff --check
 
 - Issue：[#27](https://github.com/mufeiyu-ayu/agent/issues/27)
 - 分支：`codex/issue-27-runtime-configuration-governance`
-- PR：待创建 Draft PR
+- PR：[Draft PR #28](https://github.com/mufeiyu-ayu/agent/pull/28)
 - GPT 验收结论：未提供
 - 用户确认：未确认

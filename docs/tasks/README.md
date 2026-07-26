@@ -6,7 +6,7 @@
 
 阶段 5 最小 Tool Calling 已完成并归档。阶段 6 `有界单 Agent Loop` 已完成 Task 0；在正式启动 Task 1 前，先完成独立横向工程任务 Issue #27。
 
-当前 `Active` 正式任务为横向工程 Issue #27：实现与本地验证已完成，处于“实施状态：已实现、验收状态：待验收”的 Draft PR 交付阶段。Phase 6 Task 1 仍为 `Planned`，必须等待 Issue #27 验收收口后再编写最终规格并启动。
+当前 `Active` 正式任务为横向工程 Issue #27：实现与本地验证已完成，处于“实施状态：已实现、验收状态：待验收”的 [Draft PR #28](https://github.com/mufeiyu-ayu/agent/pull/28) 交付阶段。Phase 6 Task 1 仍为 `Planned`，必须等待 Issue #27 验收收口后再编写最终规格并启动。
 
 | 区域 | 状态 | 文档 | 说明 |
 | --- | --- | --- | --- |
