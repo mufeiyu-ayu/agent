@@ -125,7 +125,7 @@ interface GetArticleDetailOutput {
 - [x] 不存在文章时，工具必须返回确定性的业务零结果，而不是抛出未处理异常；
 - [x] 数据库异常必须走统一受控失败路径；
 - [x] 模型可见输出不得包含未允许字段、stack 或内部错误；
-- [x] 工具注册后，Runtime 当前暴露的模型工具列表仍只包含 `search_articles`；
+- [x] 工具注册后，Runtime 当前暴露和允许执行的模型工具仍只包含 `search_articles`；
 - [x] Abort / signal 已触发时，不应产生伪造成功结果。
 
 ## Green：最小实现
@@ -187,13 +187,13 @@ git diff --check
 - Tool 核心设施已迁移到 `core/`，Article 工具已迁移到 `articles/`，旧平铺文件未重复保留；
 - `search_articles` 生产实现除相对 import 外未改动；回归继续锁定 query、select、排序、默认 / 最大 limit、200 字符 excerpt、输出和风险元数据；
 - `get_article_detail` 使用 `sourceId` 唯一查询和显式 Prisma `select`，日期转换为 ISO 字符串，`modelContent` 使用固定 JSON 投影；
-- Runtime 测试中的 Registry 同时包含两个工具，模型两轮 sampling 仍只收到 `search_articles`；
+- Runtime 以本轮 `toolDefinitions` 作为执行 allowlist；Registry 同时包含两个工具时，模型两轮 sampling 仍只收到 `search_articles`，异常返回的 `get_article_detail` 不进入 Invocation / Executor；
 - `test:tools` 真实发现 7 个测试文件对应的 7 个 suite，共执行 30 个测试并全部通过。
 
 ```text
 pnpm --filter @agent/api test:tools       30 passed，7 suites / 7 files
-pnpm --filter @agent/api test:tool-loop   20 passed
-pnpm --filter @agent/api test:model-stream 35 passed
+pnpm --filter @agent/api test:tool-loop   21 passed
+pnpm --filter @agent/api test:model-stream 36 passed
 pnpm --filter @agent/api typecheck        passed
 pnpm --filter @agent/api lint             passed
 pnpm typecheck                            passed
@@ -208,7 +208,7 @@ git diff --check                          passed
 - [x] 工具保持低风险、无副作用、不联网、无需审批和幂等；
 - [x] 工具通过统一 Registry 与 Invocation 路径执行，不被 Controller 或 Runtime 特殊调用；
 - [x] 不新增数据库表或 migration；
-- [x] 当前 Runtime 模型工具列表和两轮 Tool Loop 行为不变；
+- [x] 当前 Runtime 模型工具列表和两轮 Tool Loop 行为不变，未开放工具不能因全局注册而执行；
 - [x] 不持久化或暴露完整内部错误、stack、secret 或未允许字段；
 - [x] Tools、Tool Loop、Model Stream 回归、API typecheck / lint、workspace typecheck 和 `git diff --check` 通过；
 - [ ] 用户能够解释搜索工具与详情工具为何拆分，以及 `sourceId` 如何成为两次模型决策之间的业务关联。
@@ -217,7 +217,7 @@ git diff --check                          passed
 
 | 风险 | 应对 |
 | --- | --- |
-| Task 0 顺手修改 Runtime Loop | 明确保持 Runtime 只暴露 `search_articles`，循环升级留到 Task 1 |
+| Task 0 顺手修改 Runtime Loop | 保持固定两轮结构，只用本轮 `toolDefinitions` 拒绝未开放工具；循环升级留到 Task 1 |
 | 详情工具直接返回 Prisma Model | 使用显式 select 和项目自有输出类型 |
 | 资源不存在被当作系统故障 | 返回确定性业务零结果，允许后续模型决策 |
 | 正文过大触发现有 Observation 保护上限 | 详情工具保留完整受控正文；不修改既有 Observation 上限，也不在本 Task 建通用 Context 系统 |
@@ -230,5 +230,5 @@ git diff --check                          passed
 - Issue：[#25](https://github.com/mufeiyu-ayu/agent/issues/25)
 - 分支：`codex/issue-25-get-article-detail`
 - PR：[#26（Draft）](https://github.com/mufeiyu-ayu/agent/pull/26)
-- GPT 验收结论：未提供
+- GPT 验收结论：需要修改，暂不验收通过；P2 修复后等待复审
 - 用户确认：未确认

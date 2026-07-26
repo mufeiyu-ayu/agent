@@ -187,13 +187,14 @@ interface AgentLoopPolicy {
 1. apps/api/src/agent-runtime/agent-runtime.service.ts
 2. apps/api/src/agent-runtime/agent-runtime.types.ts
 3. apps/api/src/agent-runtime/model-sampling-decision.ts
-4. apps/api/src/tools/search-articles.tool.ts
-5. apps/api/src/tools/tool.types.ts
-6. apps/api/src/tools/tool-registry.service.ts
-7. apps/api/src/tools/tool-invocation.service.ts
-8. apps/api/src/tools/tool-observation.ts
-9. apps/api/src/agent-runtime/agent-run-recorder.service.ts
-10. prisma/schema.prisma 与相关测试
+4. apps/api/src/tools/articles/search-articles.tool.ts
+5. apps/api/src/tools/articles/get-article-detail.tool.ts
+6. apps/api/src/tools/core/tool.types.ts
+7. apps/api/src/tools/core/tool-registry.service.ts
+8. apps/api/src/tools/core/tool-invocation.service.ts
+9. apps/api/src/tools/core/tool-observation.ts
+10. apps/api/src/agent-runtime/agent-run-recorder.service.ts
+11. prisma/schema.prisma 与相关测试
 ```
 
 ## 研究依据

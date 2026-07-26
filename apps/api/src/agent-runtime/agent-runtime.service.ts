@@ -261,25 +261,25 @@ export class AgentRuntimeService {
         let toolResult: ToolResult
 
         try {
-          // 等待统一工具执行器完成，并取得 ToolResult。例如：
-          // {
-          //   ok: true,
-          //   data: {
-          //     query: 'SP Himeko',
-          //     total: 1,
-          //     articles: [/* 精简文章结果 */],
-          //   },
-          //   modelContent: '共找到 1 篇匹配文章……',
-          // }
-          toolResult = await this.toolInvocationService.invoke(
-            samplingDecision.call,
-            {
-              runId: currentAgentRunId,
-              conversationId: input.conversationId,
-              signal: runSignal,
-              executionAttempt: 1,
-            },
-          )
+          if (!toolDefinition) {
+            toolResult = {
+              ok: false,
+              code: 'unknown_tool',
+              modelContent: `工具 ${samplingDecision.call.toolName} 不存在。`,
+              retryable: false,
+            }
+          }
+          else {
+            toolResult = await this.toolInvocationService.invoke(
+              samplingDecision.call,
+              {
+                runId: currentAgentRunId,
+                conversationId: input.conversationId,
+                signal: runSignal,
+                executionAttempt: 1,
+              },
+            )
+          }
           runSignal.throwIfAborted()
         }
         catch (error) {
