@@ -5,7 +5,7 @@
 请使用以下事实来源：
 
 - [docs/README.md](./README.md)：文档总入口；
-- [docs/roadmap.md](./roadmap.md)：已完成阶段与当前唯一确定的下一阶段；
+- [docs/roadmap.md](./roadmap.md)：已完成阶段与当前阶段；
 - [docs/tasks/README.md](./tasks/README.md)：正式任务看板与执行顺序；
 - [docs/development-workflow.md](./development-workflow.md)：Issue、Clarification Gate、Draft PR、验收和授权流程；
 - [docs/tasks/phase-06-bounded-agent-loop/README.md](./tasks/phase-06-bounded-agent-loop/README.md)：当前阶段 6 规划。
@@ -14,7 +14,9 @@
 
 ```text
 阶段 1-5：Completed
-阶段 6：有界单 Agent Loop（Next，尚未启动实现）
+阶段 6：有界单 Agent Loop（Active）
+  Task 0：Completed（Issue #25 / PR #26）
+  Task 1：Next（待编写正式规格并创建 Issue）
 ```
 
 本文件不再复制 Task 表格，也不提前编写阶段 6 之后的任务。若本文件与 `docs/tasks/**` 或 `docs/roadmap.md` 冲突，以 `docs/tasks/**` 为正式状态事实来源。
