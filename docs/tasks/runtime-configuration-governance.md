@@ -5,6 +5,7 @@
 - 看板状态：**Active（实现完成，待验收）**
 - 实施状态：已实现
 - 验收状态：待验收
+- 技术验收：暂未通过（GPT 要求修改；本轮修复后待复审）
 - Issue：[#27](https://github.com/mufeiyu-ayu/agent/issues/27)
 - 分支：`codex/issue-27-runtime-configuration-governance`
 - PR：[Draft PR #28](https://github.com/mufeiyu-ayu/agent/pull/28)
@@ -167,6 +168,7 @@ apps/api/src/tools/articles/*.tool.ts
 - `LlmModule` 真实组装测试覆盖缺省配置、非法整数、默认输出大于应用硬上限、应用硬上限大于 Provider 上限，均在应用上下文初始化阶段完成或失败；
 - Client 测试确认调用级非法模型 / 输出预算不会触发 Provider 请求，并确认初始化后的 `process.env` 变化不会改变请求；
 - `pnpm --filter @agent/contracts build` 生成 `dist/index.js` / `dist/seo.js`，API 编译产物保留 `@agent/contracts` 运行时 import；
+- `test:seo-service` 显式先执行 contracts build；从不存在 `packages/contracts/dist/index.js` 的状态单独运行时，pnpm v10 真实执行 build，随后 2 个文件、2 个 suite、10 个测试全部通过并生成 runtime export；
 - `pnpm --filter @agent/api deploy --legacy --prod <临时目录>/api` 后，从隔离生产依赖目录加载 API DTO 与 `@agent/contracts` 成功，输出 `{"productionDeploy":true,"dtoLoaded":true,"contractLimit":64000}`；
 - Web production build 把共享常量打包为 `64e3` 并绑定到输入 `maxlength` 与字符计数。
 
@@ -220,7 +222,7 @@ git diff --check
 | `pnpm --filter @agent/api test:tools` | 7 | 7 | 33 | PASS |
 | `pnpm --filter @agent/api test:tool-loop` | 2 | 3 | 24 | PASS |
 | `pnpm --filter @agent/api test:model-stream` | 3 | 5 | 37 | PASS |
-| `pnpm --filter @agent/api test:seo-service` | 2 | 2 | 10 | PASS |
+| `pnpm --filter @agent/api test:seo-service` | 2 | 2 | 10 | PASS；清洁环境下自动先构建 contracts |
 | `pnpm --filter @agent/api typecheck` | — | — | — | PASS |
 | `pnpm --filter @agent/api lint` | — | — | — | PASS |
 | `pnpm --filter @agent/web typecheck` | — | — | — | PASS |
@@ -232,12 +234,12 @@ git diff --check
 | prod-only deploy + API DTO / contracts runtime import | — | — | — | PASS |
 | `git diff --check` | — | — | — | PASS |
 
-补充运行的 `pnpm lint` 仍为既有非阻塞基线失败：101 个错误全部位于未修改的 `docs/research/**` Markdown 代码片段；本任务修改范围已分别通过 API lint、Web lint，并单独通过 contracts `tsconfig.json` lint。
+清洁环境顺序验证中，LLM Config、Tools、Tool Loop、Model Stream 在 contracts dist 不存在时均独立通过且未生成 dist；SEO 命令随后自行构建 contracts 并通过。补充运行的 `pnpm lint` 仍为既有非阻塞基线失败：101 个错误全部位于未修改的 `docs/research/**` Markdown 代码片段；本任务修改范围已分别通过 API lint、Web lint，并单独通过 contracts `tsconfig.json` lint。
 
 ## GitHub 交付记录
 
 - Issue：[#27](https://github.com/mufeiyu-ayu/agent/issues/27)
 - 分支：`codex/issue-27-runtime-configuration-governance`
 - PR：[Draft PR #28](https://github.com/mufeiyu-ayu/agent/pull/28)
-- GPT 验收结论：未提供
+- GPT 验收结论：需要修改；本轮修复后待复审
 - 用户确认：未确认

@@ -14,7 +14,7 @@
     "test:agent-recorder": "tsx --test src/agent-runtime/agent-run-recorder.service.test.ts",
     "test:model-stream": "tsx --test src/llm/clients/openai-compatible-stream.adapter.test.ts src/agent-runtime/agent-runtime.service.test.ts src/agent-runtime/model-sampling-decision.test.ts",
     "test:llm-config": "tsx --test src/llm/model-profiles.test.ts src/llm/llm-runtime-config.test.ts src/llm/llm.module.test.ts src/llm/clients/openai-compatible.client.test.ts",
-    "test:seo-service": "tsx --test src/seo/seo.service.test.ts src/seo/dto/seo-chat.dto.test.ts",
+    "test:seo-service": "pnpm --filter @agent/contracts build && tsx --test src/seo/seo.service.test.ts src/seo/dto/seo-chat.dto.test.ts",
     "test:tool-loop": "tsx --test src/agent-runtime/agent-runtime.service.test.ts src/agent-runtime/agent-runtime.policy.test.ts",
     "test:tools": "tsx --test src/tools/**/*.test.ts",
     "pretypecheck": "pnpm --workspace-root prisma:generate",
