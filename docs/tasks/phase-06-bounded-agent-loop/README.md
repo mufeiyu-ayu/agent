@@ -1,9 +1,11 @@
 # 阶段 6：有界单 Agent Loop
 
 - 阶段状态：**Active**
-- 当前执行入口：Task 2（Next，尚未启动）
-- Task 1：**Completed**
-- PR #30：Draft，已验收，尚未合并
+- 当前执行入口：Task 1（Active，已实现，待验收）
+- 实施状态：**已实现**
+- 验收状态：**待验收**
+- PR #30：Draft，尚未合并
+- Task 2：Planned，尚未启动
 
 ## 阶段目标
 
@@ -30,8 +32,8 @@
 | --- | --- | --- | --- |
 | Task 0：新增 `get_article_detail` | Completed | Issue #25 / PR #26 | 第二个只读 Article Tool 与 `core/ + articles/` 分层已完成并合并 |
 | 横向前置：运行参数治理 | Completed | Issue #27 / PR #28 | 输入、历史、Model Profile、输出、timeout 与 Observation 预算已完成并合并 |
-| Task 1：有界顺序 Agent Loop | **Completed** | Issue #29 / Draft PR #30 | GPT 最终技术验收通过，用户已确认收口；PR 尚未合并 |
-| Task 2：可靠性、回归与阶段学习验收 | **Next** | 未创建 | 等 PR #30 合并后再基于最新 `master` 编写规格 |
+| Task 1：有界顺序 Agent Loop | **Active** | Issue #29 / Draft PR #30 | 已实现并完成本轮 Review 修复，待重新验收；PR 尚未合并 |
+| Task 2：可靠性、回归与阶段学习验收 | **Planned** | 未创建 | 待 Task 1 验收并合并后再基于最新 `master` 编写规格 |
 
 ## Task 1 已建立的能力
 
@@ -46,9 +48,9 @@
 - DeepSeek Tool Call 的 `reasoning_content` 只作为当前 Run 内部 continuation data，不进入 UI Message、Runtime Event 或 Safe Raw Data；
 - 同步与流式入口继续共享唯一 `AgentRuntimeService.runTurnStream()`。
 
-## Task 1 验收基线
+## Task 1 验证基线
 
-最终验收基于 PR #30 head `f40b2926c689d52970833d2d2ada9d39c3fe0e22`。
+本轮 Review 修复后已重新执行以下完整验证；最终 commit 见 PR #30。
 
 Codex 在 PR 中记录的最新验证：
 
@@ -67,7 +69,7 @@ workspace typecheck  PASS
 git diff --check     PASS
 ```
 
-GPT 已核对 Issue #29、最新 diff、关键测试、Runtime 状态机、DeepSeek continuation 与 P2 修复，未发现新的阻塞问题；用户随后明确确认收口。
+本轮补齐了 DeepSeek assistant Tool Call 的非 null `content`、SEO Prompt 的双工具选择指引，并保持零 Tool Budget 修复；技术验收待重新确认。
 
 说明：GitHub 当前没有对应 Actions CI，因此上述命令结果属于 PR 中记录的 Codex 本地验证证据，不表述为 GitHub CI 结果。
 
@@ -136,4 +138,4 @@ Task 2 尚未创建 Issue，以上只是阶段方向，不是最终实现规格�
 
 ## 下一步
 
-当前不启动 Task 2。先等待用户单独授权 PR #30 转 Ready / 合并；合并后再从最新 `master` 为 Task 2 建立正式规格和 Issue。
+当前不启动 Task 2。先等待 Task 1 重新验收；验收通过且用户单独授权 PR #30 转 Ready / 合并后，再从最新 `master` 为 Task 2 建立正式规格和 Issue。

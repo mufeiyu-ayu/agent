@@ -15,8 +15,8 @@
 阶段 6：有界单 Agent Loop（Active）
   Task 0：Completed
   横向配置治理：Completed
-  Task 1：Completed（Issue #29 / Draft PR #30，已验收，尚未合并）
-  Task 2：Next（待 PR #30 合并后再创建正式 Issue）
+  Task 1：Active（Issue #29 / Draft PR #30，已实现，待验收）
+  Task 2：Planned（待 Task 1 验收并合并后再创建正式 Issue）
 ```
 
 ## 阶段路线
@@ -46,11 +46,11 @@
 ```text
 Task 0：get_article_detail（Completed）
   -> 横向配置治理 Issue #27（Completed）
-  -> Task 1：有界顺序 Agent Loop（Completed，PR #30 尚未合并）
-  -> Task 2：可靠性、回归与阶段学习验收（Next）
+  -> Task 1：有界顺序 Agent Loop（Active；已实现，待验收）
+  -> Task 2：可靠性、回归与阶段学习验收（Planned）
 ```
 
-Task 2 现在只是下一项任务，不代表已经启动。只有 PR #30 合并到 `master` 后，才基于最新代码编写 Task 2 正式规格、创建独立 Issue 并执行 Clarification Gate。
+Task 2 现在只是计划方向，不代表已经启动。只有 Task 1 验收通过且 PR #30 合并到 `master` 后，才基于最新代码编写 Task 2 正式规格、创建独立 Issue 并执行 Clarification Gate。
 
 ## 阶段 6 边界
 

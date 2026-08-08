@@ -6,8 +6,8 @@
 
 | 区域 | 状态 | 文档 | 说明 |
 | --- | --- | --- | --- |
-| 阶段 6 Task 1：有界顺序 Agent Loop | **Completed** | [phase-06-bounded-agent-loop/README.md](./phase-06-bounded-agent-loop/README.md) | Issue #29 / Draft PR #30；GPT 最终技术验收通过，用户已确认收口；PR 尚未合并 |
-| 阶段 6 Task 2：可靠性、回归与阶段学习验收 | **Next** | [phase-06-bounded-agent-loop/README.md](./phase-06-bounded-agent-loop/README.md) | 等 PR #30 合并后基于最新 `master` 编写规格并创建独立 Issue |
+| 阶段 6 Task 1：有界顺序 Agent Loop | **Active** | [phase-06-bounded-agent-loop/README.md](./phase-06-bounded-agent-loop/README.md) | Issue #29 / Draft PR #30；已实现，待验收；PR 尚未合并 |
+| 阶段 6 Task 2：可靠性、回归与阶段学习验收 | **Planned** | [phase-06-bounded-agent-loop/README.md](./phase-06-bounded-agent-loop/README.md) | 待 Task 1 验收并合并后基于最新 `master` 编写规格、创建独立 Issue |
 | 阶段 6 Task 0：`get_article_detail` | Completed | [phase-06-bounded-agent-loop/task-00-get-article-detail-tool.md](./phase-06-bounded-agent-loop/task-00-get-article-detail-tool.md) | Issue #25 / PR #26 已验收并合并 |
 | 横向运行参数治理 | Completed | [runtime-configuration-governance.md](./runtime-configuration-governance.md) | Issue #27 / PR #28 已验收并合并 |
 | Admin Console Task 0-1 | Completed | [admin-console.md](./admin-console.md) | 基础壳与静态 Run UI 已完成 |
@@ -22,13 +22,13 @@
 ```text
 Phase 6 Task 0（Completed）
   -> 横向 Issue #27（Completed）
-  -> Phase 6 Task 1（Completed；PR #30 尚未合并）
-  -> Phase 6 Task 2（Next；尚未启动）
+  -> Phase 6 Task 1（Active；已实现，待验收）
+  -> Phase 6 Task 2（Planned；尚未启动）
 ```
 
-Task 1 的验收确认与 PR 合并是不同动作。当前只完成了实现、GPT 技术验收和用户确认；PR #30 仍保持 Draft，未获得转 Ready / 合并授权。
+Task 1 的实现、验收确认与 PR 合并是不同动作。当前只完成了实现和 Review 修复，仍待重新验收；PR #30 保持 Draft，未获得转 Ready / 合并授权。
 
-Task 2 不能因为状态变为 `Next` 就直接实现。必须先等 PR #30 合并到 `master`，再创建正式规格与独立 Issue，并通过 Clarification Gate。
+Task 2 保持 `Planned`，不能直接实现。必须先完成 Task 1 验收并等 PR #30 合并到 `master`，再创建正式规格与独立 Issue，并通过 Clarification Gate。
 
 ## 状态定义
 

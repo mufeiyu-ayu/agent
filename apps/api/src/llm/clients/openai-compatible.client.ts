@@ -241,7 +241,7 @@ export function toOpenAIModelInputItem(
     case 'assistant_tool_call': {
       const message: DeepSeekAssistantToolCallMessageParam = {
         role: 'assistant',
-        content: item.content ?? null,
+        content: item.content ?? '',
         reasoning_content: item.reasoningContent,
         tool_calls: [{
           id: item.callId,

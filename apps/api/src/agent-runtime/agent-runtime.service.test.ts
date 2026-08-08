@@ -1275,12 +1275,14 @@ describe('AgentRuntimeService model stream', () => {
 })
 
 describe('SEO Agent tool guidance', () => {
-  it('明确站内文章查询和无结果回答边界', () => {
+  it('明确站内文章搜索、详情读取和无结果回答边界', () => {
     const systemMessage = buildSeoAgentChatMessages([])[0]
 
     assert.equal(systemMessage?.role, 'system')
     for (const instruction of [
       'search_articles',
+      'get_article_detail',
+      'sourceId',
       '不要先输出说明文字',
       '只解释能力，不调用 search_articles',
       '不要为了举例自动执行查询',

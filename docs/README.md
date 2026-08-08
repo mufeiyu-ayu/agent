@@ -9,8 +9,8 @@
 阶段 6：有界单 Agent Loop（Active）
   Task 0：Completed
   横向配置治理：Completed
-  Task 1：Completed（Issue #29 / Draft PR #30，已验收，尚未合并）
-  Task 2：Next（待 PR #30 合并后再创建正式 Issue）
+  Task 1：Active（Issue #29 / Draft PR #30，已实现，待验收）
+  Task 2：Planned（待 Task 1 验收并合并后再创建正式 Issue）
 ```
 
 ## 文档入口

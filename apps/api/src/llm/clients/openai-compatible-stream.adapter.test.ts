@@ -21,7 +21,7 @@ describe('OpenAI-compatible request mapping', () => {
       reasoningContent: '需要先查询相关文章。',
     }), {
       role: 'assistant',
-      content: null,
+      content: '',
       reasoning_content: '需要先查询相关文章。',
       tool_calls: [{
         id: 'call-1',

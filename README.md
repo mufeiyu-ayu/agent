@@ -215,9 +215,9 @@ Available now:
 
 Current task status:
 
-- Phase 6 Task 1 has passed GPT technical acceptance and user confirmation in [Draft PR #30](https://github.com/mufeiyu-ayu/agent/pull/30); the PR is **not merged yet**.
+- Phase 6 Task 1 is implemented and awaiting renewed technical acceptance in [Draft PR #30](https://github.com/mufeiyu-ayu/agent/pull/30); the PR is **not merged yet**.
 - Phase 6 remains Active.
-- Phase 6 Task 2 is the next task, but it will not start until PR #30 is merged and a new Issue passes Clarification Gate.
+- Phase 6 Task 2 remains Planned and will not start until Task 1 is accepted and merged, then a new Issue passes Clarification Gate.
 
 No stage after Phase 6 is pre-numbered. The next learning direction will be selected from real project evidence only after Phase 6 is completed and closed.
 
