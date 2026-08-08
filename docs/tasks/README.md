@@ -6,8 +6,8 @@
 
 | 区域 | 状态 | 文档 | 说明 |
 | --- | --- | --- | --- |
-| 阶段 6 Task 1：有界顺序 Agent Loop | **Completed** | [phase-06-bounded-agent-loop/README.md](./phase-06-bounded-agent-loop/README.md) | Issue #29 / PR #30；GPT 技术验收通过，用户确认收口；PR 等待合并 |
-| 阶段 6 Task 2：可靠性、回归与阶段学习验收 | **Next** | [phase-06-bounded-agent-loop/README.md](./phase-06-bounded-agent-loop/README.md) | PR #30 合并后基于最新 `master` 编写规格并创建独立 Issue |
+| 阶段 6 Task 1：有界顺序 Agent Loop | **Completed** | [phase-06-bounded-agent-loop/README.md](./phase-06-bounded-agent-loop/README.md) | Issue #29 Closed / PR #30 Merged，merge commit `904b011d` |
+| 阶段 6 Task 2：可靠性、回归与阶段学习验收 | **Next** | [phase-06-bounded-agent-loop/README.md](./phase-06-bounded-agent-loop/README.md) | 基于最新 `master` 编写规格并创建独立 Issue |
 | 阶段 6 Task 0：`get_article_detail` | Completed | [phase-06-bounded-agent-loop/task-00-get-article-detail-tool.md](./phase-06-bounded-agent-loop/task-00-get-article-detail-tool.md) | Issue #25 / PR #26 已验收并合并 |
 | 横向运行参数治理 | Completed | [runtime-configuration-governance.md](./runtime-configuration-governance.md) | Issue #27 / PR #28 已验收并合并 |
 | Admin Console Task 0-1 | Completed | [admin-console.md](./admin-console.md) | 基础壳与静态 Run UI 已完成 |
@@ -22,15 +22,13 @@
 ```text
 Phase 6 Task 0（Completed）
   -> 横向 Issue #27（Completed）
-  -> Phase 6 Task 1（Completed；PR #30 等待合并）
+  -> Phase 6 Task 1（Completed；Issue #29 Closed / PR #30 Merged）
   -> Phase 6 Task 2（Next；尚未启动）
 ```
 
-Task 1 的验收与 PR 合并是不同动作。当前 Task 1 已完成技术验收和用户确认，PR #30 等待合并。
+Task 2 现在是下一项正式主线，但还没有启动。必须先基于最新 `master` 编写正式规格、创建独立 Issue 并通过 Clarification Gate。
 
-Task 2 目前只是 `Next`，不代表已启动。必须先将 PR #30 合并到 `master`，再基于最新代码创建正式规格、独立 Issue 并通过 Clarification Gate。
-
-最新 Review 中关于 Prisma / Recorder 数据库等待不受 Run deadline 主动取消的问题已接受为 Task 2 输入，不作为 Issue #29 的阻塞项。具体记录见 Phase 6 README。
+Task 1 最新 Review 中关于 Prisma / Recorder 数据库等待不受 Run deadline 主动取消的问题已接受为 Task 2 输入，不作为 Issue #29 的阻塞项。具体记录见 Phase 6 README。
 
 ## 状态定义
 
@@ -39,7 +37,7 @@ Task 2 目前只是 `Next`，不代表已启动。必须先将 PR #30 合并到 
 | Next | 已确认是下一项正式任务，但尚未启动 |
 | Active | 已创建 Issue 且 Gate 为 READY，正在实现或待验收 |
 | Planned | 方向已记录，前置条件尚未满足 |
-| Completed | 已实现、GPT 技术验收通过，并由用户明确确认收口；不等于已经合并 |
+| Completed | 已实现、GPT 技术验收通过，并由用户明确确认收口；合并状态另行记录 |
 
 ## 新任务规则
 
