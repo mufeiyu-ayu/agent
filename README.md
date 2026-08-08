@@ -12,7 +12,7 @@ Explicit orchestration for model sampling, tool execution, state transitions, an
 
 TypeScript Agent Runtime is a full-stack reference implementation of an explicit, inspectable Agent execution loop. It keeps model messages, user-visible messages, runtime events, and persisted execution records as separate concerns.
 
-The runtime now uses a policy-driven bounded sequential loop. A Run can directly answer or execute up to two validated Tool Calls across at most three model samplings by default. The current Run allowlist exposes the two read-only Article tools `search_articles` and `get_article_detail` without hard-coding their execution order.
+The runtime uses a policy-driven bounded sequential loop. A Run can directly answer or execute up to two validated Tool Calls across at most three model samplings by default. The current Run allowlist exposes the two read-only Article tools `search_articles` and `get_article_detail` without hard-coding their execution order.
 
 DeepSeek thinking Tool Calls preserve required `reasoning_content` only as internal continuation data. Assistant Tool Call requests use non-null `content`, and reasoning is not exposed as user-visible content.
 
@@ -152,8 +152,8 @@ Available now:
 
 Current mainline status:
 
-- **Phase 6 Task 1 is Completed**: Issue #29 / PR #30 passed GPT technical acceptance and user confirmation; PR #30 is waiting to be merged.
+- **Phase 6 Task 1 is Completed and merged**: Issue #29 is closed and PR #30 merged with commit `904b011d64e1aec7e36f706150fb8ef5ef89a761`.
 - **Phase 6 remains Active** because Task 2 reliability / regression / learning acceptance is still outstanding.
-- **Task 2 is Next**, but it starts only after PR #30 is merged and a new Issue passes Clarification Gate.
+- **Task 2 is Next**, but it starts only after a new Issue is created and its Clarification Gate is READY.
 
 See [`docs/roadmap.md`](./docs/roadmap.md) and [`docs/README.md`](./docs/README.md).
