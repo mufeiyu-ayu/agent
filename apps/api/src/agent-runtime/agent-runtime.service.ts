@@ -155,7 +155,9 @@ export class AgentRuntimeService {
 
         return definition ? [definition] : []
       })
-      const modelTools = toolDefinitions.map(toModelToolSpec)
+      const modelTools = runtimePolicy.maxToolCalls === 0
+        ? []
+        : toolDefinitions.map(toModelToolSpec)
 
       // 模型采样前先创建空的流式助手消息，后续将增量内容和最终状态写回该记录。
       assistantMessage = await this.createMessageAndTouchConversation(

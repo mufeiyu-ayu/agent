@@ -98,6 +98,40 @@ describe('AgentRuntimeService model stream', () => {
     assertNoUnfinishedSteps(harness)
   })
 
+  it('零 Tool Budget 时不向模型暴露 Tool 并正常完成', async () => {
+    const harness = createHarness(
+      () => toModelStream([
+        { type: 'text_delta', delta: '纯模型回答' },
+        { type: 'response_completed', finishReason: 'stop' },
+      ]),
+      undefined,
+      undefined,
+      {
+        maxSamplingRounds: 1,
+        maxToolCalls: 0,
+      },
+    )
+
+    const events = await collectEvents(harness.run())
+
+    assert.deepEqual(events.map(event => event.type), [
+      'run_started',
+      'assistant_delta',
+      'run_completed',
+    ])
+    assert.equal(harness.llmCalls.length, 1)
+    assert.deepEqual(harness.llmCalls[0]?.options?.tools, [])
+    assert.equal(harness.toolInvocations.length, 0)
+    assert.equal(harness.assistantMessage()?.content, '纯模型回答')
+    assert.equal(harness.assistantMessage()?.status, MessageStatus.COMPLETED)
+    assert.deepEqual(harness.recorder.completedRunIds, ['run-1'])
+    assert.deepEqual(harness.recorder.failedRunIds, [])
+    assert.deepEqual(harness.recorder.abortedRunIds, [])
+    assert.equal(findStep(harness, 'model_sampling')?.input
+      && (findStep(harness, 'model_sampling')?.input as Record<string, unknown>).toolCount, 0)
+    assertNoUnfinishedSteps(harness)
+  })
+
   it('会话不存在时产出稳定失败分类且不创建 Message 或 Run', async () => {
     const harness = createHarness(() => toModelStream([]))
 
