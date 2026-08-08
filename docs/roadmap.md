@@ -6,7 +6,7 @@
 
 项目已经完成从基础 LLM Chat 到 Session、Streaming、Agent Runtime、最小 Tool Calling 的连续学习闭环。当前处于阶段 6 `有界单 Agent Loop`。
 
-Task 1 已建立核心 Agent Loop：Runtime 由服务端 policy 控制 sampling、Tool Call 与终止；当前 Run 可动态使用 `search_articles` 和 `get_article_detail`，并支持 DeepSeek thinking Tool Call continuation。
+Task 1 已完成并合入 `master`：Runtime 由服务端 policy 控制 sampling、Tool Call 与终止；当前 Run 可动态使用 `search_articles` 和 `get_article_detail`，并支持 DeepSeek thinking Tool Call continuation。
 
 当前状态：
 
@@ -15,8 +15,8 @@ Task 1 已建立核心 Agent Loop：Runtime 由服务端 policy 控制 sampling�
 阶段 6：有界单 Agent Loop（Active）
   Task 0：Completed
   横向配置治理：Completed
-  Task 1：Completed（Issue #29 / PR #30，等待合并）
-  Task 2：Next（PR #30 合并后再创建正式 Issue）
+  Task 1：Completed（Issue #29 Closed / PR #30 Merged）
+  Task 2：Next（尚未启动）
 ```
 
 ## 阶段路线
@@ -46,11 +46,11 @@ Task 1 已建立核心 Agent Loop：Runtime 由服务端 policy 控制 sampling�
 ```text
 Task 0：get_article_detail（Completed）
   -> 横向配置治理 Issue #27（Completed）
-  -> Task 1：有界顺序 Agent Loop（Completed；PR #30 等待合并）
+  -> Task 1：有界顺序 Agent Loop（Completed；PR #30 已合并）
   -> Task 2：可靠性、回归与阶段学习验收（Next）
 ```
 
-Task 2 尚未启动。PR #30 合并到 `master` 后，再基于最新代码编写正式规格、创建独立 Issue 并执行 Clarification Gate。
+Task 2 尚未启动。下一步应基于当前最新 `master` 编写正式规格、创建独立 Issue 并执行 Clarification Gate。
 
 ## Task 2 已知输入
 
