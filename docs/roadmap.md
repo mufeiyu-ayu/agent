@@ -1,125 +1,72 @@
 # AI SEO Agent 学习路线
 
-本文只维护已经完成的阶段与当前阶段。正式 Task 状态与执行顺序以 [`docs/tasks/README.md`](./tasks/README.md) 为准。
+本文只维护阶段级路线。正式 Task 状态与执行顺序以 [`docs/tasks/README.md`](./tasks/README.md) 为准。
 
 ## 当前判断
 
-项目已经完成从基础 LLM Chat 到 Session、Streaming、Agent Runtime 和最小 Tool Calling 的连续学习闭环。阶段 5 已证明：模型可以提出一次只读 Tool Call，服务端完成验证与执行，将 Observation 回填第二轮 sampling，并以 `AgentRun` / `AgentStep` 记录执行过程；同步与流式入口也已共享同一个 Runtime。
+项目已经完成从基础 LLM Chat 到 Session、Streaming、Agent Runtime、最小 Tool Calling 的连续学习闭环。当前仍处于阶段 6 `有界单 Agent Loop`。
 
-阶段 6 Task 0 已新增第二个只读工具 `get_article_detail`，并把 Tool 基础设施与 Article 业务工具整理为 `core/ + articles/`。独立横向工程 Issue #27 也已完成：用户输入、历史消息、模型输出、请求超时、Model Profile 和 Tool Observation 预算已经统一治理。Phase 6 Task 1 已在 Draft PR #30 将固定两轮特例升级为 policy 驱动的有界顺序 Loop，并补齐 DeepSeek thinking continuation；当前等待验收。
+阶段 6 的核心 Agent Loop 已通过 Task 1 建立：Runtime 不再依赖固定两轮特例，而是由服务端 policy 控制 sampling、Tool Call、Run deadline 与终止；当前 Run 可动态使用 `search_articles` 和 `get_article_detail`，并支持 DeepSeek thinking Tool Call 的 continuation。
 
-因此，当前正在推进的阶段是：
+当前状态：
 
 ```text
-阶段 5：最小 Tool Calling（Completed）
-  -> 阶段 6：有界单 Agent Loop（Active）
-       Task 0：Completed
-       横向前置 Issue #27：Completed
-       Task 1：Active（已实现，待验收）
-       Task 2：Planned
+阶段 1-5：Completed
+阶段 6：有界单 Agent Loop（Active）
+  Task 0：Completed
+  横向配置治理：Completed
+  Task 1：Completed（Issue #29 / Draft PR #30，已验收，尚未合并）
+  Task 2：Next（待 PR #30 合并后再创建正式 Issue）
 ```
-
-Issue #27 不占用阶段 6 Task 编号，也不改变阶段 6 的核心学习目标。阶段 6 完成前，不预设或编号阶段 7 及之后的任务。
 
 ## 阶段路线
 
-| 阶段 | 状态 | 核心学习问题 | 主要产物 | 验收重点 |
-| --- | --- | --- | --- | --- |
-| 阶段 1：LLM + Chat 基础 | Completed | 如何完成一次基础模型问答 | 基础 Chat 链路 | 能完成一次稳定问答 |
-| 阶段 2：Session Chat 持久化 | Completed | 如何保存多会话与用户可见消息 | `Conversation`、`Message` | 刷新不丢、多会话不串 |
-| 阶段 3：Streaming Chat | Completed | 如何流式输出、停止生成并保证终态一致 | NDJSON stream、Abort | `done / error / aborted` 不残留错误状态 |
-| 阶段 4：Agent Runtime 基础 | Completed | 如何记录一次 Agent 运行及其内部步骤 | `AgentRun`、`AgentStep`、Runtime Event | Run / Step 与外部流式协议分层 |
-| 阶段 5：最小 Tool Calling | Completed | 模型如何提出一次工具调用并消费 Observation | Tool contract、Registry、`search_articles`、两轮 sampling | Tool Call、执行、Observation、第二轮回答和可靠终态 |
-| [阶段 6：有界单 Agent Loop](./tasks/phase-06-bounded-agent-loop/README.md) | **Active：Task 1 已实现，待验收** | 模型如何根据 Observation 连续决定下一步，Runtime 如何限制、记录并终止循环 | 第二个只读工具、有界顺序 Loop、DeepSeek continuation、执行状态与回归测试 | 直接回答、一次工具、多次工具、失败、超时、Abort、超限与 reasoning 安全均有确定语义 |
+| 阶段 | 状态 | 核心能力 |
+| --- | --- | --- |
+| 阶段 1：LLM + Chat 基础 | Completed | 基础模型问答 |
+| 阶段 2：Session Chat 持久化 | Completed | Conversation / Message 持久化 |
+| 阶段 3：Streaming Chat | Completed | NDJSON 流式输出、Abort 与终态一致性 |
+| 阶段 4：Agent Runtime 基础 | Completed | `AgentRun` / `AgentStep` 与 Runtime Event |
+| 阶段 5：最小 Tool Calling | Completed | 单次 Tool Call、Observation 与第二轮 sampling |
+| [阶段 6：有界单 Agent Loop](./tasks/phase-06-bounded-agent-loop/README.md) | **Active** | 多轮顺序决策、执行预算、终止语义与 Agent 行为测试 |
 
-## 阶段 6 学什么
+## 阶段 6 已建立
 
-阶段 6 不以“增加工具数量”为目标，也不建设通用 Agent 框架。学习重点是：
-
-1. Tool Calling 与 Agent Loop 的区别。
-2. 固定 Workflow 与模型动态决策的区别。
-3. 一个 `AgentRun` 为什么可以包含多次 model sampling 与多次 Tool Execution。
-4. 模型负责提出下一步动作，服务端负责验证、执行、限制和终止的职责边界。
-5. 如何通过 `maxSamplingRounds`、`maxToolCalls`、timeout 和 Abort 防止无限循环。
-6. 如何区分零结果、参数错误、业务失败、系统异常、超时、取消和超限。
-7. 如何通过 `AgentStep` 与自动化测试还原一次多步骤执行链。
-8. 如何保证最小 Context 正确性，而不提前建设复杂 Token Budget 或截断系统。
-
-## 阶段 6 实践载体
-
-当前阶段使用两个形成依赖关系的只读工具：
-
-```text
-search_articles
-  -> get_article_detail
-```
-
-代表性任务：
-
-```text
-查找与某个关键词相关的文章
-  -> 模型根据搜索结果选择候选文章
-  -> 读取该文章详情
-  -> 基于真实内容输出 SEO 优化建议
-```
-
-后端不得把流程硬编码为固定的 `search -> detail -> answer`。模型根据当前目标和 Observation 选择继续或结束，服务端只提供受控能力。
-
-## 已完成的运行参数基线
-
-横向工程 Issue #27 已建立以下基础，为多轮 Loop 提供清晰边界：
-
-```text
-用户消息：64K 字符
-合格历史：最近 40 条 COMPLETED
-DeepSeek Profile：1M context / 384K provider max output
-应用输出：65,536 默认 / 131,072 硬上限
-请求超时：metadata 10s / chat 60s / stream 10min
-Search excerpt：500 字符
-Observation：Search 16K / Detail 64K / 全局硬上限 128K
-```
-
-这些配置不等于完整 Context Engineering；项目仍未实现 TokenEstimator、精确 input token budget、自动裁剪、摘要或 Compaction。
+- 第二个只读 Article Tool：`get_article_detail`；
+- Tool 基础设施与 Article 业务工具分层；
+- 用户输入、历史、模型 Profile、输出、timeout 与 Observation 预算治理；
+- policy 驱动的 bounded sequential Agent Loop；
+- 默认 `3` 次 sampling / `2` 次 Tool Call / `600s` Run deadline；
+- `search_articles` 与 `get_article_detail` 的 Run allowlist；
+- DeepSeek `reasoning_content` 仅作为内部 continuation data；
+- direct final、一次 Tool、两次顺序 Tool、超限、deadline、Abort 与终态测试。
 
 ## 当前执行顺序
 
 ```text
-Phase 6 Task 0：新增 get_article_detail（Completed，Issue #25 / PR #26）
-  -> 横向前置：运行参数与模型配置治理（Completed，Issue #27 / PR #28）
-  -> Phase 6 Task 1：有界顺序 Agent Loop（Active：已实现，待验收；Issue #29 / Draft PR #30）
-  -> Phase 6 Task 2：可靠性、回归与学习验收（Planned）
+Task 0：get_article_detail（Completed）
+  -> 横向配置治理 Issue #27（Completed）
+  -> Task 1：有界顺序 Agent Loop（Completed，PR #30 尚未合并）
+  -> Task 2：可靠性、回归与阶段学习验收（Next）
 ```
 
-横向任务归档入口：[`tasks/runtime-configuration-governance.md`](./tasks/runtime-configuration-governance.md)。
+Task 2 现在只是下一项任务，不代表已经启动。只有 PR #30 合并到 `master` 后，才基于最新代码编写 Task 2 正式规格、创建独立 Issue 并执行 Clarification Gate。
 
-Task 1 已基于最新 `master` 完成正式规格、Issue #29、Clarification Gate 与实现；验收和用户确认前不得标记 Completed，也不得启动 Task 2。
-
-## 当前优先级
-
-| 优先级 | 任务 | 说明 |
-| --- | --- | --- |
-| P0 | 阶段 6 Task 1：有界顺序 Agent Loop | Draft PR #30 已实现；当前等待技术与学习验收 |
-| P1 | 阶段 5 / Task 0 / Issue #27 源码复盘 | 自由学习模式；巩固 Tool Contract、Registry、Runtime allowlist、Model Profile 和 Observation 预算 |
-| P1 | Admin Console Task 2 规划 | 可并行产品支线；若启动，需单独创建 Issue |
-| P2 | 阶段 6 Task 2 | 等 Task 1 真实验收后再展开，不能预先标记 Active |
-
-## 阶段 6 明确边界
+## 阶段 6 边界
 
 | 本阶段包含 | 本阶段不包含 |
 | --- | --- |
-| 第二个只读详情工具 | RAG、Embedding、向量数据库 |
-| 多次顺序 Sampling / Tool Execution | 写工具、Permission、Approval、HITL |
-| 最大 Sampling / Tool Call 次数 | Durable Recovery、跨进程 Resume |
-| Timeout、Abort、超限终止 | 并行 Tool Call、Planner、Workflow DSL |
-| Tool Call / Result 配对与顺序 | 完整 ContextPlan、Token Budget、自动摘要、Compaction |
-| Run / Step Trace 与行为测试 | MCP、Plugin、Skill、Multi-agent |
-
-Context 在本阶段只保留必要正确性：合法历史、当前输入唯一、Tool pair 完整、Tool Result 作为低信任数据、实际 Token Usage 可观测。已完成的配置治理不会替代后续 Agent Loop 或完整 Context Engineering。
+| 顺序 Agent Loop 与 Tool Execution | 并行 Tool Call、Planner、Workflow DSL |
+| Sampling / Tool Call / Run 执行预算 | Durable Recovery、跨进程 Resume |
+| Tool Call / Result 配对与顺序 | 完整 ContextPlan、自动摘要、Compaction |
+| Timeout、Abort、超限终止 | 写工具、Permission、Approval、HITL |
+| Run / Step Trace 与行为测试 | RAG、Embedding、Memory |
+| DeepSeek thinking continuation | MCP、Plugin、Skill、Multi-agent |
 
 ## Admin Console 支线
 
-Admin Console Task 0 与 Task 1 已完成。Task 2-4 仍是可并行产品支线，不替代阶段 6 主线，也不映射为任何提前编号的后续阶段。具体状态以 [`tasks/admin-console.md`](./tasks/admin-console.md) 为准。
+Admin Console Task 0-1 已完成，Task 2-4 仍为 Planned。它是可并行产品支线，不替代阶段 6 主线。具体状态见 [`tasks/admin-console.md`](./tasks/admin-console.md)。
 
 ## 阶段 6 之后
 
-阶段 6 完成并由用户确认收口后，再根据真实项目证据讨论下一阶段。候选能力可以来自 RAG、写工具与审批、Context、Recovery、Evaluation、MCP 等方向，但当前文档不编号、不承诺顺序，也不提前创建正式 Task。
+阶段 6 完成并由用户确认收口后，再根据真实项目证据选择下一学习方向。当前不预设阶段 7 及之后的编号或正式任务。
