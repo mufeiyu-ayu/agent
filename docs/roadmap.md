@@ -4,9 +4,9 @@
 
 ## 当前判断
 
-项目已经完成从基础 LLM Chat 到 Session、Streaming、Agent Runtime、最小 Tool Calling 的连续学习闭环。当前仍处于阶段 6 `有界单 Agent Loop`。
+项目已经完成从基础 LLM Chat 到 Session、Streaming、Agent Runtime、最小 Tool Calling 的连续学习闭环。当前处于阶段 6 `有界单 Agent Loop`。
 
-阶段 6 的核心 Agent Loop 已通过 Task 1 建立：Runtime 不再依赖固定两轮特例，而是由服务端 policy 控制 sampling、Tool Call、Run deadline 与终止；当前 Run 可动态使用 `search_articles` 和 `get_article_detail`，并支持 DeepSeek thinking Tool Call 的 continuation。
+Task 1 已建立核心 Agent Loop：Runtime 由服务端 policy 控制 sampling、Tool Call 与终止；当前 Run 可动态使用 `search_articles` 和 `get_article_detail`，并支持 DeepSeek thinking Tool Call continuation。
 
 当前状态：
 
@@ -15,8 +15,8 @@
 阶段 6：有界单 Agent Loop（Active）
   Task 0：Completed
   横向配置治理：Completed
-  Task 1：Active（Issue #29 / Draft PR #30，已实现，待验收）
-  Task 2：Planned（待 Task 1 验收并合并后再创建正式 Issue）
+  Task 1：Completed（Issue #29 / PR #30，等待合并）
+  Task 2：Next（PR #30 合并后再创建正式 Issue）
 ```
 
 ## 阶段路线
@@ -37,8 +37,8 @@
 - 用户输入、历史、模型 Profile、输出、timeout 与 Observation 预算治理；
 - policy 驱动的 bounded sequential Agent Loop；
 - 默认 `3` 次 sampling / `2` 次 Tool Call / `600s` Run deadline；
-- `search_articles` 与 `get_article_detail` 的 Run allowlist；
-- DeepSeek `reasoning_content` 仅作为内部 continuation data；
+- `search_articles` 与 `get_article_detail` Run allowlist；
+- DeepSeek `reasoning_content` continuation 与非 null assistant Tool Call content；
 - direct final、一次 Tool、两次顺序 Tool、超限、deadline、Abort 与终态测试。
 
 ## 当前执行顺序
@@ -46,11 +46,15 @@
 ```text
 Task 0：get_article_detail（Completed）
   -> 横向配置治理 Issue #27（Completed）
-  -> Task 1：有界顺序 Agent Loop（Active；已实现，待验收）
-  -> Task 2：可靠性、回归与阶段学习验收（Planned）
+  -> Task 1：有界顺序 Agent Loop（Completed；PR #30 等待合并）
+  -> Task 2：可靠性、回归与阶段学习验收（Next）
 ```
 
-Task 2 现在只是计划方向，不代表已经启动。只有 Task 1 验收通过且 PR #30 合并到 `master` 后，才基于最新代码编写 Task 2 正式规格、创建独立 Issue 并执行 Clarification Gate。
+Task 2 尚未启动。PR #30 合并到 `master` 后，再基于最新代码编写正式规格、创建独立 Issue 并执行 Clarification Gate。
+
+## Task 2 已知输入
+
+Task 1 最新 Review 确认了一个后续可靠性问题：Run deadline 当前能主动取消 model sampling / Tool Execution，但 Prisma query、transaction 与 Recorder 数据库等待还没有统一的 query/statement timeout 和剩余预算传播。该问题不阻塞 Task 1，但必须作为 Task 2 的正式输入。
 
 ## 阶段 6 边界
 
