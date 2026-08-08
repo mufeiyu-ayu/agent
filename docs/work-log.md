@@ -10,7 +10,7 @@
 | Task 1 | Issue #29 Closed / PR #30 Merged；merge commit `904b011d64e1aec7e36f706150fb8ef5ef89a761` | 已收口 |
 | Task 2 | Next，尚未创建 Issue | 基于最新 `master` 编写规格并执行 Clarification Gate |
 | Admin Console | Task 0-1 Completed；Task 2-4 Planned | 作为可并行产品支线按需启动 |
-| 文档结构 | `roadmap`、`tasks`、`research`、`work-log` 四类入口；旧 `development-task-plan.md` 已删除 | 避免重复维护第二套状态与路线 |
+| 文档结构 | `roadmap`、`tasks`、`research`、`work-log` 为主入口；`development-task-plan.md` 仅保留兼容重定向 | 避免重复维护第二套状态与路线 |
 
 ## 近期关键记录
 
@@ -19,8 +19,8 @@
 | 2026-08-08 | PR #30 合并 / Issue #29 自动关闭 | Phase 6 Task 1 正式收口；merge commit `904b011d64e1aec7e36f706150fb8ef5ef89a761` |
 | 2026-08-08 | PR #30 最终重新验收基线 `be9c0649bdfe0ebe670014b40952d4dfbe6cbb82` | 补齐 DeepSeek assistant Tool Call 非 null `content` 与 SEO 双工具指引；Tool Loop 34、Model Stream 49、Tools 33、SEO 10、Recorder 9、LLM Config 17 个测试记录通过；API / Web / workspace typecheck、API lint、`git diff --check` PASS |
 | 2026-08-08 | Review 风险收口 | Prisma / Recorder 数据库等待暂不受 Run deadline 主动取消；不使用 `Promise.race` 伪修；该问题作为 Task 2 输入，不阻塞 Issue #29 |
-| 2026-08-08 | GPT 最终重新验收 + 用户确认收口 | Task 1 更新为 Completed；Review thread 全部收口；用户授权 Ready / Merge |
-| 2026-08-08 | PR #30 分支执行 docs 精简 | 简化文档入口与任务状态；删除已废弃的 `docs/development-task-plan.md` |
+| 2026-08-08 | GPT 最终重新验收 + 用户确认收口 | Task 1 更新为 Completed；用户授权 Ready / Merge |
+| 2026-08-08 | docs 精简与兼容修复 | 主文档入口已精简；按 `AGENTS.md` 要求恢复 `docs/development-task-plan.md` 极简兼容页，不再维护第二套路线 |
 | 2026-07-26 | PR #28 合并，Issue #27 Closed | 统一 64K 输入、40 条 Completed 历史、DeepSeek Model Profile、应用输出策略、请求超时和分级 Tool Observation 预算 |
 | 2026-07-26 | PR #26 合并，Issue #25 Closed | Tool 目录整理为 `core/ + articles/`，新增 `get_article_detail` |
 | 2026-07-26 | 阶段 6 路线确定为有界单 Agent Loop | 明确 `get_article_detail -> bounded loop -> 可靠性/学习验收` 的阶段边界 |
