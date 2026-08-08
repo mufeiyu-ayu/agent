@@ -3,7 +3,8 @@
 - 阶段状态：**Active**
 - 当前执行入口：Task 2（Next，尚未启动）
 - Task 1：**Completed**
-- Issue #29 / PR #30：Task 1 已验收，PR 等待合并
+- Issue #29：Closed
+- PR #30：Merged，merge commit `904b011d64e1aec7e36f706150fb8ef5ef89a761`
 
 ## 阶段目标
 
@@ -28,8 +29,8 @@
 | --- | --- | --- | --- |
 | Task 0：新增 `get_article_detail` | Completed | Issue #25 / PR #26 | 第二个只读 Article Tool 与 `core/ + articles/` 分层已完成并合并 |
 | 横向前置：运行参数治理 | Completed | Issue #27 / PR #28 | 输入、历史、Model Profile、输出、timeout 与 Observation 预算已完成并合并 |
-| Task 1：有界顺序 Agent Loop | **Completed** | Issue #29 / PR #30 | 已实现，GPT 技术验收通过，用户确认收口；PR 等待合并 |
-| Task 2：可靠性、回归与阶段学习验收 | **Next** | 未创建 | PR #30 合并后基于最新 `master` 编写正式规格 |
+| Task 1：有界顺序 Agent Loop | **Completed** | Issue #29 / PR #30 | 已验收并合并，merge commit `904b011d` |
+| Task 2：可靠性、回归与阶段学习验收 | **Next** | 未创建 | 基于当前最新 `master` 编写正式规格并创建独立 Issue |
 
 ## Task 1 已建立的能力
 
@@ -48,9 +49,9 @@
 
 ## Task 1 验收基线
 
-最终重新验收基于 PR #30 head `be9c0649bdfe0ebe670014b40952d4dfbe6cbb82`。
+最终重新验收基于业务代码 commit `be9c0649bdfe0ebe670014b40952d4dfbe6cbb82`，后续仅追加 docs 收口并合入 `master`。
 
-Codex 在该分支记录的最新验证：
+Codex 在分支记录的最新验证：
 
 ```text
 Tool Loop       34 tests
@@ -67,18 +68,18 @@ workspace typecheck  PASS
 git diff --check     PASS
 ```
 
-GitHub 当前没有对应 Actions CI，因此以上属于 Codex 本地验证证据。
+GitHub 没有对应 Actions CI，因此以上属于 Codex 本地验证证据。
 
 ## 已接受的后续风险：数据库等待与 Run deadline
 
-最新 Review 指出：`AGENT_RUN_DEADLINE_MS` 可以主动取消 in-flight model sampling 和 Tool Execution，但 Prisma query / transaction / Recorder 数据库等待目前不接受同一个 `AbortSignal`，因此数据库阻塞可能使 wall-clock 超过 Run deadline。
+`AGENT_RUN_DEADLINE_MS` 可以主动取消 in-flight model sampling 和 Tool Execution，但 Prisma query / transaction / Recorder 数据库等待目前不接受同一个 `AbortSignal`，数据库阻塞仍可能使 wall-clock 超过 Run deadline。
 
-该风险真实存在，但不阻塞 Issue #29：Issue #29 的 AC-03 明确验收的是对 model sampling / Tool Execution 的主动取消。本 Task 不使用 `Promise.race` 伪装数据库取消，因为底层 Prisma 操作仍可能继续执行并产生 late result / late write。
+该风险不阻塞 Issue #29：AC-03 明确验收的是 model sampling / Tool Execution 的主动取消。本 Task 没有使用 `Promise.race` 伪装数据库取消，因为底层 Prisma 操作仍可能继续并产生 late result / late write。
 
-Task 2 在制定正式规格时必须把以下问题作为输入：
+Task 2 必须把以下问题作为正式输入：
 
 - PostgreSQL statement / query timeout；
-- 剩余 Run deadline budget 如何传播到数据库层；
+- 剩余 Run deadline budget 传播；
 - Prisma timeout / cancellation 错误映射；
 - deadline 后 late query / late write 的终态一致性；
 - Recorder 数据库等待的超时与恢复语义。
@@ -88,7 +89,7 @@ Task 2 在制定正式规格时必须把以下问题作为输入：
 - 模型可以直接回答，不被强迫调用工具；
 - 每轮最多一个 Tool Call，不支持并行；
 - Sampling / Tool Call 数量由服务端控制；
-- Tool Call 在对应 Tool Result 之前，且 `callId` 完整配对；
+- Tool Call 与 Tool Result 按 `callId` 配对；
 - Tool Result 始终是低信任数据；
 - `PENDING / STREAMING / FAILED / ABORTED` 不进入可靠聊天历史；
 - 当前用户输入恰好出现一次；
@@ -98,12 +99,12 @@ Task 2 在制定正式规格时必须把以下问题作为输入：
 
 ## Task 2 方向
 
-Task 2 只负责阶段级可靠性、回归和学习验收，不重新设计 Agent Loop。PR #30 合并后再基于最新 `master` 建立正式 Issue。
+Task 2 只负责阶段级可靠性、回归和学习验收，不重新设计 Agent Loop。正式规格应基于当前最新 `master` 单独创建 Issue。
 
 重点输入包括：
 
 - 失败、timeout、Abort、deadline、loop limit 的阶段级回归矩阵；
-- 上述数据库 deadline / late result 风险；
+- 数据库 deadline / late result 风险；
 - Run / Step Trace 是否完整还原多步骤执行；
 - sync / streaming 行为一致性；
 - 必要的真实 Provider / 数据链路验证；
@@ -119,23 +120,6 @@ Task 2 只负责阶段级可靠性、回归和学习验收，不重新设计 Age
 - MCP、Plugin、Skill、Hook、Multi-agent；
 - 通用 Agent Framework 或 LangGraph 类抽象层。
 
-## 建议源码阅读顺序
-
-```text
-1. apps/api/src/agent-runtime/agent-runtime.service.ts
-2. apps/api/src/agent-runtime/agent-runtime.policy.ts
-3. apps/api/src/agent-runtime/model-sampling-decision.ts
-4. apps/api/src/llm/model-input.types.ts
-5. apps/api/src/llm/model-stream.types.ts
-6. apps/api/src/llm/clients/openai-compatible-stream.adapter.ts
-7. apps/api/src/llm/clients/openai-compatible.client.ts
-8. apps/api/src/tools/core/tool-invocation.service.ts
-9. apps/api/src/tools/articles/search-articles.tool.ts
-10. apps/api/src/tools/articles/get-article-detail.tool.ts
-11. apps/api/src/agent-runtime/agent-run-recorder.service.ts
-12. 对应 Runtime / Model Stream / Tool 测试
-```
-
 ## 下一步
 
-先合并 PR #30。合并后从最新 `master` 编写 Task 2 正式规格、创建独立 Issue并执行 Clarification Gate；在此之前不启动 Task 2 实现。
+基于最新 `master` 为 Task 2 编写正式规格、创建独立 Issue 并执行 Clarification Gate；在 Issue 建立和 Gate READY 之前不开始 Task 2 实现。
