@@ -2,10 +2,10 @@
 
 - 阶段状态：**Active**
 - 决策日期：2026-07-26
-- 当前执行入口：Task 1（Next，待编写正式规格）
-- 实施状态：进行中
-- 验收状态：未验收
-- GitHub 状态：Task 0 已通过 Issue #25 / PR #26 完成；横向配置治理已通过 Issue #27 / PR #28 完成；Task 1 尚未创建 Issue
+- 当前执行入口：Task 1（Issue #29 / Draft PR #30）
+- 实施状态：已实现
+- 验收状态：待验收
+- GitHub 状态：Task 0 已通过 Issue #25 / PR #26 完成；横向配置治理已通过 Issue #27 / PR #28 完成；Task 1 已在 Draft PR #30 实现，尚未验收或合并
 
 ## 阶段定位
 
@@ -112,14 +112,20 @@ Runtime 不得硬编码模型必须按照固定顺序使用两个工具。模型
 | --- | --- | --- | --- | --- | --- | --- |
 | Task 0：新增 `get_article_detail` 只读工具 | **Completed** | 建立第二个与搜索结果有依赖关系的只读动作 | [task-00-get-article-detail-tool.md](./task-00-get-article-detail-tool.md) | 阶段 5 Completed | [#25（Closed）](https://github.com/mufeiyu-ayu/agent/issues/25) | [#26（Merged）](https://github.com/mufeiyu-ayu/agent/pull/26) |
 | 横向前置：运行参数与模型配置治理 | **Completed** | 统一模型能力、应用策略、历史和 Observation 预算 | [../runtime-configuration-governance.md](../runtime-configuration-governance.md) | Task 0 Completed | [#27（Closed）](https://github.com/mufeiyu-ayu/agent/issues/27) | [#28（Merged）](https://github.com/mufeiyu-ayu/agent/pull/28) |
-| Task 1：有界顺序 Agent Loop | **Next** | 将固定两轮逻辑升级为服务端受控的多轮循环 | 待基于最新 `master` 编写 | 前置均 Completed | 未创建 | 未创建 |
+| Task 1：有界顺序 Agent Loop | **Active：已实现，待验收** | 将固定两轮逻辑升级为服务端受控的多轮循环 | 本文与 [Issue #29](https://github.com/mufeiyu-ayu/agent/issues/29) | 前置均 Completed | [#29（Open）](https://github.com/mufeiyu-ayu/agent/issues/29) | [#30（Draft）](https://github.com/mufeiyu-ayu/agent/pull/30) |
 | Task 2：可靠性、回归与阶段验收 | Planned | 覆盖失败、超时、Abort、超限、Trace 和学习复盘 | 前置完成后再编写 | Task 1 Completed | 未创建 | 未创建 |
 
-## 为什么 Task 1 现在才展开
+## Task 1 当前状态
 
-Task 1 依赖两个 Article Tool、Registry 注册方式、模型 Tool Spec、Runtime allowlist、有效历史策略、Model Profile 和分级 Observation 预算。Task 2 又依赖 Task 1 暴露出的真实失败路径。
+Task 1 已基于 `master@c5fddfeb17a7ed57f16692e0b79e60040ae827b5` 完成 Clarification Gate，并在 Draft PR #30 实现：
 
-这些前置已经完成，因此下一步应读取最新 `master`，编写 Task 1 的正式规格并创建独立 Issue。当前只把 Task 1 标记为 `Next`，在独立 Issue 和 Clarification Gate 完成前不得进入实现。
+- policy 驱动的 3 轮 sampling / 2 次 Tool Call 顺序 Loop；
+- 600 秒 Run deadline 与用户 Abort 的 first-cause 取消语义；
+- 当前 Run 显式开放 `search_articles` 与 `get_article_detail`；
+- DeepSeek thinking Tool Call 的 `reasoning_content` 采集、绑定和下一轮完整回传；
+- 直接回答、一次工具、`search -> detail -> final`、超限、deadline、Abort 与 continuation 安全回归。
+
+实现提交为 `3d6340bbf500432d2afaee45bb62566c3b03b2f3`。当前只等待技术与学习验收；未标记 Completed，未启动 Task 2。
 
 ## 阶段级强制不变量
 
@@ -214,11 +220,11 @@ Task 1 必须处理 DeepSeek thinking mode 下的多轮 Tool Calling continuatio
 
 - [x] `get_article_detail` 可通过统一 Tool Contract、Registry 和 Invocation 安全执行；
 - [x] 运行参数、模型 Profile、合格历史和分级 Observation 预算已完成治理；
-- [ ] Runtime 不再依赖固定 `[1, 2]` sampling 特例；
-- [ ] 直接回答、一次工具和 `search -> detail -> final` 均可完成；
-- [ ] 零结果、资源不存在、参数无效、工具失败、timeout、Abort 和超限均有测试；
-- [ ] Run / Step 顺序和终态可从数据库记录还原；
-- [ ] 同步与流式入口行为一致；
+- [x] Runtime 不再依赖固定 `[1, 2]` sampling 特例；
+- [x] 直接回答、一次工具和 `search -> detail -> final` 均可完成；
+- [x] 零结果、资源不存在、参数无效、工具失败、timeout、Abort 和超限均有测试；
+- [x] Run / Step 顺序和终态可从数据库记录还原；
+- [x] 同步与流式入口行为一致；
 - [ ] 用户可以不看文档解释 Agent Loop、执行预算、状态机和错误语义；
 - [ ] 用户确认阶段收口后，再重新讨论下一学习方向。
 
@@ -250,4 +256,4 @@ Task 1 必须处理 DeepSeek thinking mode 下的多轮 Tool Calling continuatio
 
 ## 下一步
 
-读取最新 `master`，为 Task 1 编写正式规格并创建独立 Issue。当前不创建 Task 2 的 Issue，也不开始修改 Runtime Loop。
+等待 Draft PR #30 的技术与学习验收。验收与用户确认前不转 Ready、不合并、不把 Task 1 标记 Completed，也不创建或启动 Task 2。
