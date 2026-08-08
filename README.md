@@ -9,7 +9,7 @@ Explicit orchestration for model sampling, tool execution, state transitions, an
 ![TypeScript](https://img.shields.io/badge/TypeScript-6.x-3178C6?style=flat-square&logo=typescript&logoColor=white)
 ![NestJS](https://img.shields.io/badge/NestJS-11-E0234E?style=flat-square&logo=nestjs&logoColor=white)
 ![Vue](https://img.shields.io/badge/Vue-3-42B883?style=flat-square&logo=vue.js&logoColor=white)
-![PostgreSQL](https://img.shields.io/badge/PostgreSQL-Prisma-4169E1?style=flat-square&logo=postgresql&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-Prisma-4169E1?style=flat-square&logo=postgresql)
 ![pnpm](https://img.shields.io/badge/pnpm-10-F69220?style=flat-square&logo=pnpm&logoColor=white)
 
 </div>
@@ -76,15 +76,18 @@ Model Sampling
            ▼
        Append Observation
            │
-           ▼
-       Second Sampling ──► Stream Final Answer ──► Complete Run
+           └──────────────► Model Sampling
 ```
+
+The loop is bounded by server-owned policy. By default one Run allows at most three model samplings and two Tool Calls, with a whole-Run deadline of 600 seconds. `AGENT_MAX_TOOL_CALLS=0` disables Tool exposure for that Run.
 
 Every execution is represented as one `AgentRun` containing ordered `AgentStep` records such as:
 
 ```text
 receive_user_message
 load_conversation_history
+model_sampling
+tool_execution
 model_sampling
 tool_execution
 model_sampling
@@ -112,7 +115,7 @@ apps/
 packages/
   contracts/  Shared TypeScript contracts and runtime product limits
 prisma/       PostgreSQL schema, migrations, and seed data
-docs/         Architecture notes, task history, and roadmap
+docs/         Roadmap, task state, workflow, research, and work log
 ```
 
 ## Getting Started
@@ -212,9 +215,10 @@ Available now:
 
 Current task status:
 
-- Phase 6 Task 1 is implemented in [Draft PR #30](https://github.com/mufeiyu-ayu/agent/pull/30) and remains **pending acceptance**.
-- Phase 6 remains Active; Task 1 is not Completed or merged, and Task 2 remains Planned.
+- Phase 6 Task 1 has passed GPT technical acceptance and user confirmation in [Draft PR #30](https://github.com/mufeiyu-ayu/agent/pull/30); the PR is **not merged yet**.
+- Phase 6 remains Active.
+- Phase 6 Task 2 is the next task, but it will not start until PR #30 is merged and a new Issue passes Clarification Gate.
 
-No stage after Phase 6 is pre-numbered. The next learning direction will be selected from real project evidence only after the bounded Agent Loop is accepted and the phase is closed.
+No stage after Phase 6 is pre-numbered. The next learning direction will be selected from real project evidence only after Phase 6 is completed and closed.
 
 See the [project roadmap](./docs/roadmap.md) and [documentation index](./docs/README.md) for implementation details.
