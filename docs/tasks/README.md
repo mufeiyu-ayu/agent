@@ -1,97 +1,53 @@
 # Tasks
 
-本目录只放当前可执行任务、当前阶段规划和已完成阶段归档。研究资料不放在这里。
+本目录是正式任务状态事实来源。研究资料不放在这里。
 
 ## 当前看板
 
-阶段 5 最小 Tool Calling 已完成并归档。阶段 6 `有界单 Agent Loop` 已完成 Task 0；独立横向工程 Issue #27 也已通过验收并合并。Phase 6 Task 1 已通过 Clarification Gate 并在 Draft PR #30 实现，当前为 `Active：已实现，待验收`。
-
 | 区域 | 状态 | 文档 | 说明 |
 | --- | --- | --- | --- |
-| 横向工程：Agent / LLM 运行参数与模型配置治理 | **Completed** | [runtime-configuration-governance.md](./runtime-configuration-governance.md) | Issue #27 / PR #28；已验收并合并，merge commit `4a50c18c` |
-| 阶段 6 Task 0：新增 `get_article_detail` 只读工具 | **Completed** | [phase-06-bounded-agent-loop/task-00-get-article-detail-tool.md](./phase-06-bounded-agent-loop/task-00-get-article-detail-tool.md) | Issue #25 / PR #26；已验收并合并，merge commit `d3609d3f` |
-| 阶段 6 Task 1：有界顺序 Agent Loop | **Active：已实现，待验收** | [phase-06-bounded-agent-loop/README.md](./phase-06-bounded-agent-loop/README.md) | Issue #29 / Draft PR #30；等待技术与学习验收，尚未 Completed 或合并 |
-| 阶段 6 Task 2：可靠性、回归与学习验收 | Planned | [phase-06-bounded-agent-loop/README.md](./phase-06-bounded-agent-loop/README.md) | 等 Task 1 验收后再展开 |
-| Admin Console Task 1 | Completed | [admin-console.md](./admin-console.md) | Issue #21 / PR #22；静态 Run List / Run Detail UI 已实现并通过验收 |
-| Admin Console Task 0 | Completed | [admin-console.md](./admin-console.md) | Issue #19 / PR #20；`apps/admin` 基础壳已实现并通过验收 |
-| Admin Console Task 2-4 | Planned | [admin-console.md](./admin-console.md) | 可并行产品支线；开始时分别创建独立 Issue |
-| 阶段 5 最小 Tool Calling | Completed | [completed/phase-05-tool-calling.md](./completed/phase-05-tool-calling.md) | Task 0-5 与收口 Issue 已完成并通过验收 |
-| 阶段 4 Agent Runtime | Completed | [completed/phase-04-agent-runtime.md](./completed/phase-04-agent-runtime.md) | 已归档为可观测 Agent Run 的基础阶段 |
-| 阶段 3 Streaming 收口 | Completed | [completed/phase-03-streaming-closeout.md](./completed/phase-03-streaming-closeout.md) | 已收口 `done / error / aborted` 最终态一致性 |
-| 阶段 2 Session Chat | Completed | [completed/phase-02-agent-chat-session.md](./completed/phase-02-agent-chat-session.md) | 多会话和消息持久化已完成 |
+| 阶段 6 Task 1：有界顺序 Agent Loop | **Completed** | [phase-06-bounded-agent-loop/README.md](./phase-06-bounded-agent-loop/README.md) | Issue #29 / Draft PR #30；GPT 最终技术验收通过，用户已确认收口；PR 尚未合并 |
+| 阶段 6 Task 2：可靠性、回归与阶段学习验收 | **Next** | [phase-06-bounded-agent-loop/README.md](./phase-06-bounded-agent-loop/README.md) | 等 PR #30 合并后基于最新 `master` 编写规格并创建独立 Issue |
+| 阶段 6 Task 0：`get_article_detail` | Completed | [phase-06-bounded-agent-loop/task-00-get-article-detail-tool.md](./phase-06-bounded-agent-loop/task-00-get-article-detail-tool.md) | Issue #25 / PR #26 已验收并合并 |
+| 横向运行参数治理 | Completed | [runtime-configuration-governance.md](./runtime-configuration-governance.md) | Issue #27 / PR #28 已验收并合并 |
+| Admin Console Task 0-1 | Completed | [admin-console.md](./admin-console.md) | 基础壳与静态 Run UI 已完成 |
+| Admin Console Task 2-4 | Planned | [admin-console.md](./admin-console.md) | 可并行产品支线，启动时分别创建 Issue |
+| 阶段 5 最小 Tool Calling | Completed | [completed/phase-05-tool-calling.md](./completed/phase-05-tool-calling.md) | 已归档 |
+| 阶段 4 Agent Runtime | Completed | [completed/phase-04-agent-runtime.md](./completed/phase-04-agent-runtime.md) | 已归档 |
+| 阶段 3 Streaming | Completed | [completed/phase-03-streaming-closeout.md](./completed/phase-03-streaming-closeout.md) | 已归档 |
+| 阶段 2 Session Chat | Completed | [completed/phase-02-agent-chat-session.md](./completed/phase-02-agent-chat-session.md) | 已归档 |
 
 ## 当前执行顺序
 
 ```text
-Phase 6 Task 0：新增 get_article_detail（Completed）
-  -> 横向前置 Issue #27：运行参数与模型配置治理（Completed）
-  -> Phase 6 Task 1：有界顺序 Agent Loop（Active：已实现，待验收）
-  -> Phase 6 Task 2：可靠性、回归与学习验收（Planned）
+Phase 6 Task 0（Completed）
+  -> 横向 Issue #27（Completed）
+  -> Phase 6 Task 1（Completed；PR #30 尚未合并）
+  -> Phase 6 Task 2（Next；尚未启动）
 ```
 
-执行规则：
+Task 1 的验收确认与 PR 合并是不同动作。当前只完成了实现、GPT 技术验收和用户确认；PR #30 仍保持 Draft，未获得转 Ready / 合并授权。
 
-- Issue #27 是正式独立任务，不占用 Phase 6 Task 编号，也不改变阶段 6 的核心学习目标；当前已完成并关闭。
-- Issue #27 已统一公开限制、模型 Profile、运行参数、历史基线和 Tool Observation 预算，没有实现 Agent Loop。
-- Phase 6 Task 1 已通过 Issue #29 的 Clarification Gate，并在 Draft PR #30 完成实现；验收与用户确认前保持 `Active`，不得标记 Completed。
-- 一个 Issue 只对应一个明确 Task，不把配置治理、Agent Loop 和可靠性收口合并实现。
-- Phase 6 Task 2 必须等待 Task 1 验收后再展开正式文档和 Issue。
-- 阶段 6 完成前不提前编号、编写或启动后续 Agent 阶段。
-
-## 阶段 6 学习边界
-
-本阶段学习：
-
-- Tool Calling 与 Agent Loop 的区别；
-- 多次顺序 Sampling 与 Tool Execution；
-- 模型决策与 Runtime 控制权边界；
-- 最大 Sampling / Tool Call 次数；
-- Timeout、Abort、超限与终态；
-- Tool Call / Tool Result 配对和顺序；
-- Run / Step Trace；
-- Agent 行为测试；
-- 仅为 Loop 服务的最小 Context 正确性。
-
-本阶段不做：
-
-- 完整 Context Engineering、Token Budget、自动截断和 Compaction；
-- RAG、Embedding、Memory；
-- 写工具、Permission、Approval、HITL；
-- Durable Recovery、跨进程 Resume；
-- 并行 Tool Call、Planner、Workflow Engine；
-- MCP、Plugin、Skill、Multi-agent。
+Task 2 不能因为状态变为 `Next` 就直接实现。必须先等 PR #30 合并到 `master`，再创建正式规格与独立 Issue，并通过 Clarification Gate。
 
 ## 状态定义
 
 | 状态 | 含义 |
 | --- | --- |
-| Next | 已确认是下一项正式任务；尚未实现，不等于 Active |
-| Active | 已创建正式 Issue，Clarification Gate 为 READY，正在实现或待验收 |
-| Planned | 方向已记录但前置条件未满足，不能开始实现 |
-| Completed | 实施状态已实现、验收状态已通过，并已由用户确认收口 |
+| Next | 已确认是下一项正式任务，但尚未启动 |
+| Active | 已创建 Issue 且 Gate 为 READY，正在实现或待验收 |
+| Planned | 方向已记录，前置条件尚未满足 |
+| Completed | 已实现、GPT 技术验收通过，并由用户明确确认收口；不等于已经合并 |
 
-## 任务写法
+## 新任务规则
 
-新任务统一使用 TDD 风格模板：[_template.tdd.md](./_template.tdd.md)。
+新任务使用 [_template.tdd.md](./_template.tdd.md)，至少写清：
 
-每个正式 Task 必须写清：
-
-- 目标；
-- 背景与当前代码事实；
-- 学习重点；
+- 目标、背景与当前代码事实；
 - 范围与明确非目标；
 - Red / Green / Refactor；
-- 验证命令；
-- 可观察验收标准；
-- 风险点；
-- GitHub 交付和双状态。
+- 可观察验收标准和验证命令；
+- 风险与失败语义；
+- GitHub 交付与双状态。
 
-## 当前原则
-
-- `docs/tasks/**` 是正式任务设计与状态事实来源。
-- 当前任务区只放准备执行的任务，不存放长篇研究资料。
-- 不因为某项能力在成熟框架中存在，就默认当前项目立即实现。
-- 不为未来尚未验证的能力提前创建完整 Task 树。
-- Codex 实现完成只能记录“实施状态：已实现、验收状态：待验收”。
-- GPT 技术验收通过后仍需用户确认；确认后才能更新为“验收状态：已通过”。
-- 验收确认、任务状态收口、Draft 转 Ready、合并和开始下一 Task 是不同动作，不自动推导。
+完整协作流程见 [`../development-workflow.md`](../development-workflow.md)。
