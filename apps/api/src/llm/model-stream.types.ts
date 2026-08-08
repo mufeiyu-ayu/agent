@@ -32,8 +32,12 @@ export type ModelStreamEvent
     delta: string
   }
   | {
+    type: 'tool_call_started'
+  }
+  | {
     type: 'tool_call_completed'
     toolCall: UnvalidatedModelToolCall
+    reasoningContent: string
   }
   | {
     type: 'usage'

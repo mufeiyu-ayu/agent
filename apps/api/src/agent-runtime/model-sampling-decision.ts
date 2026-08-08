@@ -26,6 +26,7 @@ export type SamplingDecision
     type: 'tool_call'
     call: UnvalidatedToolCallEnvelope
     intermediateText: string
+    reasoningContent: string
     summary: ModelSamplingSummary
   }
 
@@ -39,7 +40,10 @@ export async function* streamModelSampling(
   samplingAttemptId: string,
 ): AsyncGenerator<string, SamplingDecision> {
   const intermediateTextChunks: string[] = []
-  const toolCalls: UnvalidatedModelToolCall[] = []
+  const toolCalls: Array<{
+    toolCall: UnvalidatedModelToolCall
+    reasoningContent: string
+  }> = []
   let outputMode: 'final_answer' | 'tool_call' | undefined
   let finishReason: ModelFinishReason | undefined
   let usage: ModelUsage | null = null
@@ -82,6 +86,16 @@ export async function* streamModelSampling(
           }
           break
 
+        case 'tool_call_started':
+          if (outputMode === 'final_answer') {
+            throw incomplete(
+              '模型在最终回答文本之后又返回了 Tool Call，当前流协议无法安全执行该调用。',
+            )
+          }
+
+          outputMode = 'tool_call'
+          break
+
         case 'tool_call_completed':
           if (outputMode === 'final_answer') {
             throw incomplete(
@@ -90,7 +104,10 @@ export async function* streamModelSampling(
           }
 
           outputMode = 'tool_call'
-          toolCalls.push(event.toolCall)
+          toolCalls.push({
+            toolCall: event.toolCall,
+            reasoningContent: event.reasoningContent,
+          })
           break
 
         case 'usage':
@@ -127,16 +144,22 @@ export async function* streamModelSampling(
         '当前只支持同轮一个 Tool Call，不支持并行工具调用。',
       )
     }
+    if (!toolCalls[0]!.reasoningContent) {
+      throw incomplete(
+        'Tool Call 缺少必需的 thinking continuation。',
+      )
+    }
 
     return {
       type: 'tool_call',
-      call: toToolCallEnvelope(toolCalls[0]!, samplingAttemptId),
+      call: toToolCallEnvelope(toolCalls[0]!.toolCall, samplingAttemptId),
       intermediateText: intermediateTextChunks.join(''),
+      reasoningContent: toolCalls[0]!.reasoningContent,
       summary: buildSummary(),
     }
   }
 
-  if (toolCalls.length > 0) {
+  if (outputMode === 'tool_call') {
     throw incomplete(
       `模型返回了 Tool Call，但 finish reason 为 ${finishReason}。`,
     )

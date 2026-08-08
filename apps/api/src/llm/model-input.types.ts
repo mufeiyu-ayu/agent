@@ -12,6 +12,7 @@ export type ModelInputItem
     callId: string
     name: string
     rawArgumentsJson: string
+    reasoningContent: string
     content?: string
   }
   | {

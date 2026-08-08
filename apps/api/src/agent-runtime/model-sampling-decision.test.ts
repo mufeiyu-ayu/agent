@@ -75,8 +75,14 @@ describe('streamModelSampling', () => {
 
   it('返回 tool_calls 汇总，并只统计不对 UI yield 的中间文本', async () => {
     const { decision, deltas } = await collectSampling([
-      toolCallEvent('call-1', 'search_articles', '{"query":"seo"}'),
+      { type: 'tool_call_started' },
       { type: 'text_delta', delta: '查询中' },
+      toolCallEvent(
+        'call-1',
+        'search_articles',
+        '{"query":"seo"}',
+        '先搜索站内文章。',
+      ),
       { type: 'usage', usage: { totalTokens: 8 } },
       { type: 'response_completed', finishReason: 'tool_calls' },
     ], 'run-1:sampling-2')
@@ -91,6 +97,7 @@ describe('streamModelSampling', () => {
         samplingAttemptId: 'run-1:sampling-2',
       },
       intermediateText: '查询中',
+      reasoningContent: '先搜索站内文章。',
       summary: {
         samplingAttemptId: 'run-1:sampling-2',
         finishReason: 'tool_calls',
@@ -100,6 +107,39 @@ describe('streamModelSampling', () => {
         intermediateTextChars: 3,
       },
     })
+  })
+
+  it('拒绝缺失必需 reasoning continuation 的 Tool Call', async () => {
+    await assert.rejects(
+      collectSampling([
+        { type: 'tool_call_started' },
+        toolCallEvent('call-1', 'search_articles', '{"query":"seo"}', ''),
+        { type: 'response_completed', finishReason: 'tool_calls' },
+      ]),
+      (error) => {
+        assert.ok(error instanceof ModelSamplingIncompleteError)
+        assert.match(error.message, /continuation/)
+        assert.doesNotMatch(error.message, /call-1|search_articles|seo/)
+        return true
+      },
+    )
+  })
+
+  it('保持先向 UI 发送文本后拒绝迟到 Tool Call 的 fail-safe', async () => {
+    await assert.rejects(
+      collectSampling([
+        { type: 'text_delta', delta: '已发送' },
+        { type: 'tool_call_started' },
+        toolCallEvent(
+          'call-1',
+          'search_articles',
+          '{"query":"seo"}',
+          '不得泄漏的推理',
+        ),
+        { type: 'response_completed', finishReason: 'tool_calls' },
+      ]),
+      ModelSamplingIncompleteError,
+    )
   })
 
   it('缺少 response_completed 时携带不含原文的 partial summary', async () => {
@@ -216,9 +256,11 @@ function toolCallEvent(
   providerCallId: string,
   name: string,
   argumentsJson: string,
+  reasoningContent = `reasoning for ${providerCallId}`,
 ): ModelStreamEvent {
   return {
     type: 'tool_call_completed',
+    reasoningContent,
     toolCall: {
       providerCallId,
       name,
