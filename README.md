@@ -18,9 +18,9 @@ Explicit orchestration for model sampling, tool execution, state transitions, an
 
 TypeScript Agent Runtime is a full-stack reference implementation of an explicit, inspectable agent execution loop. It keeps model messages, user-visible messages, runtime events, and persisted execution records as separate concerns.
 
-The current runtime can stream a direct answer or execute one validated tool call, append the resulting observation to model input, and perform a bounded second sampling to produce the final response. The Tool Registry contains two read-only Article tools, `search_articles` and `get_article_detail`, while the current Runtime only exposes and allows `search_articles` during model-driven execution.
+The current runtime uses a policy-driven bounded sequential loop: it can stream a direct answer or execute up to two validated Tool Calls across at most three model samplings. The current Run explicitly exposes and allows the two read-only Article tools, `search_articles` and `get_article_detail`, without hard-coding their execution order.
 
-Runtime configuration is now separated into shared product limits, typed provider model profiles, validated application defaults and hard limits, Agent history policy, and per-tool Observation budgets. The next mainline task will evolve the fixed two-sampling special case into a bounded sequential single-agent loop without introducing a general workflow framework.
+Runtime configuration is separated into shared product limits, typed provider model profiles, validated application defaults and hard limits, Agent Loop and history policy, and per-tool Observation budgets. DeepSeek thinking Tool Calls preserve their required `reasoning_content` only as internal continuation data; it is never exposed as user-visible content.
 
 ## Highlights
 
@@ -30,9 +30,9 @@ Runtime configuration is now separated into shared product limits, typed provide
 | Streaming | Abort-aware NDJSON responses with incremental assistant deltas |
 | Tool calling | Typed definitions, registry lookup, argument validation, executor isolation, and per-run allowlisting |
 | Tool safety | Risk gates, approval metadata, execution timeouts, cancellation propagation, and per-tool Observation budgets |
-| Runtime configuration | Typed DeepSeek profiles, fail-fast environment validation, application output limits, and stable history policy |
+| Runtime configuration | Typed DeepSeek profiles, fail-fast environment validation, application output limits, and bounded Loop/history policy |
 | Persistence | Conversations, messages, Agent Runs, and ordered Agent Steps in PostgreSQL |
-| Model integration | OpenAI-compatible Chat Completions client with normalized stream events |
+| Model integration | OpenAI-compatible Chat Completions client with normalized stream events and DeepSeek thinking continuation |
 | Runtime traces | Durable input, output, status, timing, and error snapshots for every step |
 | User interfaces | Vue chat client and an operator console shell with trace-oriented views |
 
@@ -163,10 +163,13 @@ pnpm dev
 | `LLM_DEFAULT_MAX_OUTPUT_TOKENS` | No | `65536` | Default application output budget |
 | `LLM_APPLICATION_MAX_OUTPUT_TOKENS` | No | `131072` | Application hard limit for output tokens |
 | `SEO_CHAT_HISTORY_LIMIT` | No | `40` | Number of recent `COMPLETED` messages loaded into model history |
+| `AGENT_MAX_SAMPLING_ROUNDS` | No | `3` | Positive safe-integer limit for real model sampling requests in one Agent Run |
+| `AGENT_MAX_TOOL_CALLS` | No | `2` | Non-negative safe-integer Tool Call limit; may be `0` and must remain below the sampling limit |
+| `AGENT_RUN_DEADLINE_MS` | No | `600000` | Whole-Run deadline in the range `1-2147483647`, separate from each provider stream timeout |
 | `DATABASE_URL` | Yes | — | PostgreSQL connection string |
 | `PORT` | No | `3000` | API port |
 
-Optional numeric environment values must be strict positive decimal integers. Invalid values or inconsistent output limits fail during application initialization rather than being silently clamped.
+Optional numeric environment values must be strict positive decimal integers, except `AGENT_MAX_TOOL_CALLS`, which may be zero. Invalid values, inconsistent output limits, or `AGENT_MAX_TOOL_CALLS >= AGENT_MAX_SAMPLING_ROUNDS` fail during application initialization rather than being silently clamped.
 
 ## Development Commands
 
@@ -180,9 +183,9 @@ Optional numeric environment values must be strict positive decimal integers. In
 | `pnpm typecheck` | Type-check all applications and packages |
 | `pnpm lint` | Lint the workspace |
 | `pnpm --filter @agent/api test:llm-config` | Test model profiles, runtime config, fail-fast assembly, and provider request limits |
-| `pnpm --filter @agent/api test:model-stream` | Test model stream adaptation and sampling |
+| `pnpm --filter @agent/api test:model-stream` | Test model stream adaptation, sampling decisions, and DeepSeek continuation |
 | `pnpm --filter @agent/api test:tools` | Test tool contracts, execution, and observation handling |
-| `pnpm --filter @agent/api test:tool-loop` | Test the current bounded one-tool runtime behavior and history policy |
+| `pnpm --filter @agent/api test:tool-loop` | Test bounded sequential Agent Loop paths, budgets, deadlines, aborts, and history policy |
 | `pnpm --filter @agent/api test:seo-service` | Build shared contracts and test SEO service plus DTO limits |
 | `pnpm --filter @agent/api test:agent-recorder` | Test Run and Step persistence invariants |
 
@@ -194,10 +197,12 @@ Available now:
 - Streaming responses and stop-generation handling
 - Agent Run and Agent Step recording
 - OpenAI-compatible stream normalization
-- A bounded one-tool / two-sampling loop
+- A policy-driven bounded sequential loop with three sampling rounds and two Tool Calls by default
 - Timeout-aware and abort-aware tool execution
-- Two registered read-only Article tools: `search_articles` and `get_article_detail`
+- Two registered and Run-allowlisted read-only Article tools: `search_articles` and `get_article_detail`
 - Per-run tool allowlisting that prevents globally registered but unexposed tools from executing
+- DeepSeek thinking continuation across sequential Tool Calls without exposing reasoning to UI messages or runtime events
+- A whole-Run deadline distinct from each provider stream and Tool timeout
 - Shared 64K user-message limit for API and Web
 - Stable history loading of the latest 40 `COMPLETED` messages
 - Typed DeepSeek model profiles and fail-fast runtime configuration
@@ -205,15 +210,11 @@ Available now:
 - Per-tool Observation budgets: Search 16K, Detail 64K, global hard limit 128K
 - Static operator views for Run and Step traces
 
-Current next task:
+Current task status:
 
-- Bounded sequential single-agent loop
-- Model-driven `search_articles -> get_article_detail -> final answer` execution
-- Server-owned sampling and tool-call limits
-- DeepSeek thinking-mode continuation across tool calls
-- Explicit success, failure, timeout, abort, and limit terminal semantics
-- Agent behavior tests for direct, one-tool, and multi-tool paths
+- Phase 6 Task 1 is implemented in [Draft PR #30](https://github.com/mufeiyu-ayu/agent/pull/30) and remains **pending acceptance**.
+- Phase 6 remains Active; Task 1 is not Completed or merged, and Task 2 remains Planned.
 
-No stage after this is pre-numbered. The next learning direction will be selected from real project evidence after the bounded Agent Loop is completed and accepted.
+No stage after Phase 6 is pre-numbered. The next learning direction will be selected from real project evidence only after the bounded Agent Loop is accepted and the phase is closed.
 
 See the [project roadmap](./docs/roadmap.md) and [documentation index](./docs/README.md) for implementation details.

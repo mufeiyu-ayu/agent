@@ -110,7 +110,6 @@ export class AgentRuntimeService {
       )
       const runSignal = runCancellation.signal
 
-      runSignal.throwIfAborted()
       const receiveUserMessageStep = await this.agentRunRecorderService.startStep({
         runId: currentAgentRunId,
         type: AGENT_STEP_TYPES.receiveUserMessage,

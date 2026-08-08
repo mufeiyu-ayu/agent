@@ -1061,6 +1061,30 @@ describe('AgentRuntimeService model stream', () => {
     assertNoUnfinishedSteps(harness)
   })
 
+  it('请求开始前已 Abort 时仍产出 start / run_aborted 并收口状态', async () => {
+    const abortController = new AbortController()
+
+    abortController.abort()
+    const harness = createHarness(
+      () => toModelStream([
+        { type: 'response_completed', finishReason: 'stop' },
+      ]),
+      abortController.signal,
+    )
+
+    const events = await collectEvents(harness.run())
+
+    assert.deepEqual(events.map(event => event.type), [
+      'run_started',
+      'run_aborted',
+    ])
+    assert.equal(harness.llmCalls.length, 0)
+    assert.equal(harness.assistantMessage()?.status, MessageStatus.ABORTED)
+    assert.deepEqual(harness.recorder.abortedRunIds, ['run-1'])
+    assert.deepEqual(harness.recorder.failedRunIds, [])
+    assertNoUnfinishedSteps(harness)
+  })
+
   it('工具执行期间 abort 后不启动第二轮 sampling', async () => {
     const abortController = new AbortController()
     const harness = createHarness(
