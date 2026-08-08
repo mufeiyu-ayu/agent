@@ -1,4 +1,5 @@
 import type {
+  ChatCompletionAssistantMessageParam,
   ChatCompletionCreateParamsNonStreaming,
   ChatCompletionMessageParam,
   ChatCompletionTool,
@@ -43,6 +44,11 @@ type ChatCompletionBaseParams = Pick<
   ChatCompletionCreateParamsNonStreaming,
   'messages' | 'model' | 'temperature' | 'max_tokens' | 'response_format'
 >
+
+type DeepSeekAssistantToolCallMessageParam
+  = ChatCompletionAssistantMessageParam & {
+    reasoning_content: string
+  }
 
 /**
  * OpenAI-compatible 模型适配层。
@@ -232,10 +238,11 @@ export function toOpenAIModelInputItem(
         content: item.content,
       }
 
-    case 'assistant_tool_call':
-      return {
+    case 'assistant_tool_call': {
+      const message: DeepSeekAssistantToolCallMessageParam = {
         role: 'assistant',
         content: item.content ?? null,
+        reasoning_content: item.reasoningContent,
         tool_calls: [{
           id: item.callId,
           type: 'function',
@@ -245,6 +252,9 @@ export function toOpenAIModelInputItem(
           },
         }],
       }
+
+      return message
+    }
 
     case 'tool_result':
       return {

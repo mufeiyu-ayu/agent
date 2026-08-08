@@ -8,11 +8,17 @@ import type {
 import { LLMApiError } from '../llm.errors.js'
 import { OpenAICompatibleToolCallAccumulator } from './openai-compatible-tool-call-accumulator.js'
 
+type DeepSeekChatCompletionDelta = ChatCompletionChunk.Choice.Delta & {
+  reasoning_content?: string | null
+}
+
 /** 将 OpenAI-compatible SDK chunk 转换为项目内部模型事件。 */
 export async function* adaptOpenAICompatibleStream(
   chunks: AsyncIterable<ChatCompletionChunk>,
 ): AsyncGenerator<ModelStreamEvent> {
   const toolCallAccumulator = new OpenAICompatibleToolCallAccumulator()
+  const reasoningContentChunks: string[] = []
+  let hasStartedToolCall = false
   let finishReason: ModelFinishReason | undefined
 
   for await (const chunk of chunks) {
@@ -23,17 +29,17 @@ export async function* adaptOpenAICompatibleStream(
         throw new LLMApiError('模型在 finish reason 之后仍返回了 choice 数据')
       }
 
-      const contentDelta = choice.delta.content
+      const providerDelta = choice.delta as DeepSeekChatCompletionDelta
+      const reasoningContentDelta = providerDelta.reasoning_content
+      const contentDelta = providerDelta.content
 
-      if (contentDelta) {
-        // 普通回答按文本碎片转换，上层会继续把这些 delta 实时发送给前端。
-        yield {
-          type: 'text_delta',
-          delta: contentDelta,
-        }
+      if (reasoningContentDelta) {
+        reasoningContentChunks.push(reasoningContentDelta)
       }
 
-      for (const toolCallDelta of choice.delta.tool_calls ?? []) {
+      const toolCallDeltas = providerDelta.tool_calls ?? []
+
+      for (const toolCallDelta of toolCallDeltas) {
         // 工具名和 arguments 可能分多个 chunk 返回，这里只负责持续拼接碎片。
         toolCallAccumulator.append({
           index: toolCallDelta.index,
@@ -49,6 +55,19 @@ export async function* adaptOpenAICompatibleStream(
         })
       }
 
+      if (!hasStartedToolCall && toolCallDeltas.length > 0) {
+        hasStartedToolCall = true
+        yield { type: 'tool_call_started' }
+      }
+
+      if (contentDelta) {
+        // 同一 chunk 已先标记 Tool Call，避免把随后的 assistant content 当成最终回答。
+        yield {
+          type: 'text_delta',
+          delta: contentDelta,
+        }
+      }
+
       if (choice.finish_reason) {
         // finish reason 只表示本轮模型生成结束；若为 tool_calls，工具此时尚未执行。
         finishReason = normalizeFinishReason(choice.finish_reason)
@@ -60,9 +79,15 @@ export async function* adaptOpenAICompatibleStream(
         //   index: 0,
         // }]
         const toolCalls = toolCallAccumulator.finalize()
+        const reasoningContent = reasoningContentChunks.join('')
 
         if (finishReason === 'tool_calls' && toolCalls.length === 0) {
           throw new LLMApiError('模型以 tool_calls 结束，但没有返回完整 Tool Call')
+        }
+        if (finishReason === 'tool_calls' && reasoningContent.length === 0) {
+          throw new LLMApiError(
+            'DeepSeek thinking Tool Call 缺少必需的 reasoning_content continuation',
+          )
         }
         if (finishReason !== 'tool_calls' && toolCalls.length > 0) {
           throw new LLMApiError(
@@ -75,6 +100,7 @@ export async function* adaptOpenAICompatibleStream(
           yield {
             type: 'tool_call_completed',
             toolCall,
+            reasoningContent,
           }
         }
       }

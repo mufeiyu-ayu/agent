@@ -35,11 +35,26 @@ import {
   AgentRunRecorderService,
 } from './agent-run-recorder.service.js'
 import {
+  AgentLoopLimitExceededError,
+  AgentRunDeadlineExceededError,
   MessageTerminalTransitionError,
   ModelSamplingIncompleteError,
 } from './agent-runtime.errors.js'
 import { AgentRuntimePolicyService } from './agent-runtime.policy.js'
 import { streamModelSampling } from './model-sampling-decision.js'
+
+const AGENT_RUN_TOOL_NAMES = [
+  'search_articles',
+  'get_article_detail',
+] as const
+
+type RunCancellationSource = 'user' | 'deadline'
+
+interface RunCancellation {
+  signal: AbortSignal
+  source?: RunCancellationSource
+  dispose: () => void
+}
 
 @Injectable()
 export class AgentRuntimeService {
@@ -68,6 +83,7 @@ export class AgentRuntimeService {
     let agentRunId: string | undefined
     let content = ''
     let hasFinalMessageStatus = false
+    let runCancellation: RunCancellation | undefined
 
     try {
       await this.assertConversationExists(input.conversationId)
@@ -86,6 +102,15 @@ export class AgentRuntimeService {
       const currentAgentRunId = agentRun.id
 
       agentRunId = currentAgentRunId
+      const runtimePolicy = this.runtimePolicyService.value
+
+      runCancellation = createRunCancellation(
+        input.signal,
+        runtimePolicy.runDeadlineMs,
+      )
+      const runSignal = runCancellation.signal
+
+      runSignal.throwIfAborted()
       const receiveUserMessageStep = await this.agentRunRecorderService.startStep({
         runId: currentAgentRunId,
         type: AGENT_STEP_TYPES.receiveUserMessage,
@@ -97,7 +122,7 @@ export class AgentRuntimeService {
       await this.agentRunRecorderService.completeStep(receiveUserMessageStep.id)
 
       const historyLimit = input.historyLimit
-        ?? this.runtimePolicyService.value.historyLimit
+        ?? runtimePolicy.historyLimit
       const loadHistoryStep = await this.agentRunRecorderService.startStep({
         runId: currentAgentRunId,
         type: AGENT_STEP_TYPES.loadConversationHistory,
@@ -123,10 +148,15 @@ export class AgentRuntimeService {
         historyMessages.map(message => this.toLlmMessage(message)),
       )
       const modelInputItems = toModelInputItems(llmMessages)
-      const toolDefinitions = this.toolRegistryService.listDefinitions()
-        .filter(definition => definition.name === 'search_articles')
+      const registeredToolDefinitions = this.toolRegistryService.listDefinitions()
+      const toolDefinitions = AGENT_RUN_TOOL_NAMES.flatMap((name) => {
+        const definition = registeredToolDefinitions.find(
+          candidate => candidate.name === name,
+        )
+
+        return definition ? [definition] : []
+      })
       const modelTools = toolDefinitions.map(toModelToolSpec)
-      const runSignal = input.signal ?? new AbortController().signal
 
       // 模型采样前先创建空的流式助手消息，后续将增量内容和最终状态写回该记录。
       assistantMessage = await this.createMessageAndTouchConversation(
@@ -171,13 +201,18 @@ export class AgentRuntimeService {
         ...(input.maxTokens === undefined
           ? {}
           : { maxTokens: input.maxTokens }),
-        ...(input.signal ? { signal: input.signal } : {}),
+        signal: runSignal,
         tools: modelTools,
       }
 
       let hasFinalAnswer = false
+      let toolCallCount = 0
 
-      for (const samplingAttempt of [1, 2]) {
+      for (
+        let samplingAttempt = 1;
+        samplingAttempt <= runtimePolicy.maxSamplingRounds;
+        samplingAttempt += 1
+      ) {
         runSignal.throwIfAborted()
         const samplingAttemptId = `${currentAgentRunId}:sampling-${samplingAttempt}`
         const samplingStep = await this.agentRunRecorderService.startStep({
@@ -246,11 +281,10 @@ export class AgentRuntimeService {
           break
         }
 
-        if (samplingAttempt === 2) {
-          throw new ModelSamplingIncompleteError(
-            'Tool Loop 已达到最多一次工具调用、两轮 sampling 的限制。',
-          )
-        }
+        if (toolCallCount >= runtimePolicy.maxToolCalls)
+          throw new AgentLoopLimitExceededError()
+
+        toolCallCount += 1
 
         const toolDefinition = toolDefinitions.find(
           definition => definition.name === samplingDecision.call.toolName,
@@ -342,15 +376,14 @@ export class AgentRuntimeService {
           modelInputItems,
           samplingDecision.call,
           samplingDecision.intermediateText,
+          samplingDecision.reasoningContent,
           observation.content,
           toolResult.ok,
         )
       }
 
       if (!hasFinalAnswer) {
-        throw new ModelSamplingIncompleteError(
-          'Tool Loop 未产生最终回答。',
-        )
+        throw new AgentLoopLimitExceededError()
       }
 
       runSignal.throwIfAborted()
@@ -382,6 +415,7 @@ export class AgentRuntimeService {
         },
       )
       await this.agentRunRecorderService.completeRun(currentAgentRunId)
+      runCancellation.dispose()
 
       yield {
         type: 'run_completed',
@@ -393,7 +427,12 @@ export class AgentRuntimeService {
       }
     }
     catch (error) {
-      if (this.isAbortSignalTriggered(input.signal)) {
+      const userAborted = runCancellation?.source === 'user'
+        || (!runCancellation && this.isAbortSignalTriggered(input.signal))
+
+      runCancellation?.dispose()
+
+      if (userAborted) {
         if (assistantMessage && !hasFinalMessageStatus) {
           await this.updateMessageAndTouchConversation(
             assistantMessage.id,
@@ -421,7 +460,10 @@ export class AgentRuntimeService {
         return
       }
 
-      const errorMessage = this.toChatStreamErrorMessage(error)
+      const failure = runCancellation?.source === 'deadline'
+        ? runCancellation.signal.reason
+        : error
+      const errorMessage = this.toChatStreamErrorMessage(failure)
 
       if (assistantMessage && !hasFinalMessageStatus) {
         await this.updateMessageAndTouchConversation(
@@ -449,10 +491,15 @@ export class AgentRuntimeService {
       }
     }
     finally {
+      runCancellation?.dispose()
+
       if (
         assistantMessage
         && !hasFinalMessageStatus
-        && this.isAbortSignalTriggered(input.signal)
+        && (
+          runCancellation?.source === 'user'
+          || (!runCancellation && this.isAbortSignalTriggered(input.signal))
+        )
       ) {
         await this.updateMessageAndTouchConversation(
           assistantMessage.id,
@@ -599,7 +646,11 @@ export class AgentRuntimeService {
   private toChatStreamErrorMessage(error: unknown): string {
     if (error instanceof NotFoundException)
       return error.message
-    if (error instanceof ModelSamplingIncompleteError) {
+    if (
+      error instanceof ModelSamplingIncompleteError
+      || error instanceof AgentLoopLimitExceededError
+      || error instanceof AgentRunDeadlineExceededError
+    ) {
       return error.message
     }
 
@@ -645,6 +696,7 @@ export class AgentRuntimeService {
     modelInputItems: ModelInputItem[],
     call: UnvalidatedToolCallEnvelope,
     intermediateText: string,
+    reasoningContent: string,
     content: string,
     ok: boolean,
   ): void {
@@ -654,6 +706,7 @@ export class AgentRuntimeService {
         callId: call.callId,
         name: call.toolName,
         rawArgumentsJson: call.rawArgumentsJson,
+        reasoningContent,
         ...(intermediateText ? { content: intermediateText } : {}),
       },
       {
@@ -669,4 +722,42 @@ export class AgentRuntimeService {
   private isAbortSignalTriggered(signal: AbortSignal | undefined): boolean {
     return signal?.aborted ?? false
   }
+}
+
+function createRunCancellation(
+  userSignal: AbortSignal | undefined,
+  deadlineMs: number,
+): RunCancellation {
+  const controller = new AbortController()
+  const cancellation: RunCancellation = {
+    signal: controller.signal,
+    dispose: () => {},
+  }
+  const abort = (
+    source: RunCancellationSource,
+    reason: unknown,
+  ): void => {
+    if (cancellation.source)
+      return
+
+    cancellation.source = source
+    controller.abort(reason)
+  }
+  const handleUserAbort = (): void => abort('user', userSignal?.reason)
+  const deadlineId = setTimeout(
+    () => abort('deadline', new AgentRunDeadlineExceededError()),
+    deadlineMs,
+  )
+
+  if (userSignal?.aborted)
+    handleUserAbort()
+  else
+    userSignal?.addEventListener('abort', handleUserAbort, { once: true })
+
+  cancellation.dispose = () => {
+    clearTimeout(deadlineId)
+    userSignal?.removeEventListener('abort', handleUserAbort)
+  }
+
+  return cancellation
 }
