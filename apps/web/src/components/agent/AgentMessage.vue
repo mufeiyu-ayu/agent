@@ -40,7 +40,7 @@ const agentAvatarUrl = computed(() => {
 
     <div
       class="min-w-0"
-      :class="role === 'user' ? 'max-w-[78%]' : 'max-w-[920px] flex-1'"
+      :class="role === 'user' ? 'max-w-[78%]' : 'max-w-[840px] flex-1'"
     >
       <slot />
     </div>

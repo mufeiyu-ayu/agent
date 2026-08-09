@@ -95,7 +95,7 @@ function deleteChat() {
       ref="renameInputRef"
       v-model="titleDraft"
       maxlength="80"
-      class="h-9 w-full rounded-lg border border-agent-border bg-agent-sidebar px-3 pr-9 text-sm font-semibold text-agent-ink outline-none transition focus:border-agent-accent focus:ring-3 focus:ring-agent-focus/35"
+      class="h-9 w-full rounded-lg border border-agent-border bg-agent-sidebar px-3 pr-9 text-sm font-normal text-agent-ink outline-none transition focus:border-agent-accent focus:ring-3 focus:ring-agent-focus/35"
       :aria-label="t('layout.sidebar.renameChat')"
       @blur="submitRename"
       @click.stop
@@ -106,7 +106,7 @@ function deleteChat() {
     <button
       v-else
       type="button"
-      class="flex h-9 w-full min-w-0 items-center rounded-lg px-3 pr-9 text-left text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-agent-focus/40"
+      class="flex h-9 w-full min-w-0 items-center rounded-lg px-3 pr-9 text-left text-sm font-normal transition focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-agent-focus/40"
       :class="chat.active ? 'text-agent-ink' : 'text-agent-ink-soft'"
       @click="selectChat"
     >
@@ -138,7 +138,7 @@ function deleteChat() {
       >
         <button
           type="button"
-          class="flex h-9 w-full items-center gap-2 rounded-lg px-2.5 text-left text-sm font-semibold text-agent-ink-soft transition hover:bg-agent-surface-sunken hover:text-agent-ink"
+          class="flex h-9 w-full items-center gap-2 rounded-lg px-2.5 text-left text-sm font-normal text-agent-ink-soft transition hover:bg-agent-surface-sunken hover:text-agent-ink"
           @click="startRename"
         >
           <AppIcon name="tabler:pencil" :size="17" />
@@ -146,7 +146,7 @@ function deleteChat() {
         </button>
         <button
           type="button"
-          class="flex h-9 w-full items-center gap-2 rounded-lg px-2.5 text-left text-sm font-semibold text-agent-copper transition hover:bg-agent-copper-soft"
+          class="flex h-9 w-full items-center gap-2 rounded-lg px-2.5 text-left text-sm font-normal text-agent-copper transition hover:bg-agent-copper-soft"
           @click="deleteChat"
         >
           <AppIcon name="tabler:trash" :size="17" />

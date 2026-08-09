@@ -47,8 +47,8 @@ const { t } = useI18n()
 
 const desktopGridClass = computed(() => {
   return sidebarCollapsed.value
-    ? 'lg:grid-cols-[76px_minmax(0,1fr)]'
-    : 'lg:grid-cols-[292px_minmax(0,1fr)]'
+    ? 'min-[960px]:grid-cols-[68px_minmax(0,1fr)]'
+    : 'min-[960px]:grid-cols-[264px_minmax(0,1fr)]'
 })
 
 function toggleSidebar() {
@@ -81,7 +81,7 @@ function handleRenameChat(chatId: string, title: string) {
 
 <template>
   <main
-    class="grid h-screen w-full overflow-hidden bg-agent-canvas text-agent-ink transition-[grid-template-columns] duration-300"
+    class="grid h-screen w-full grid-rows-1 overflow-hidden bg-agent-canvas text-agent-ink transition-[grid-template-columns] duration-300"
     :class="desktopGridClass"
     :data-agent-workspace-theme="props.workspaceTheme"
   >
@@ -102,7 +102,7 @@ function handleRenameChat(chatId: string, title: string) {
     <Sheet v-model:open="mobileSidebarOpen">
       <SheetContent
         side="left"
-        class="w-[288px] max-w-[calc(100vw-28px)] gap-0 border-r border-agent-border bg-agent-sidebar p-0 shadow-[20px_0_48px_rgb(61_49_36/10%)] duration-300 ease-[cubic-bezier(.22,1,.36,1)] will-change-transform data-[side=left]:data-[state=open]:slide-in-from-left-12 data-[side=left]:data-[state=closed]:slide-out-to-left-12 lg:hidden"
+        class="w-[288px] max-w-[calc(100vw-28px)] gap-0 border-r border-agent-border bg-agent-sidebar p-0 shadow-[20px_0_48px_rgb(61_49_36/10%)] duration-300 ease-[cubic-bezier(.22,1,.36,1)] will-change-transform data-[side=left]:data-[state=open]:slide-in-from-left-12 data-[side=left]:data-[state=closed]:slide-out-to-left-12 min-[960px]:hidden"
         :show-close-button="false"
       >
         <SheetTitle class="sr-only">

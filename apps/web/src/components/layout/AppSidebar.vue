@@ -31,10 +31,10 @@ const { t } = useI18n()
 
 <template>
   <aside
-    class="relative flex h-full shrink-0 flex-col border-r border-agent-border bg-agent-sidebar py-5 transition-[width,padding] duration-300"
+    class="relative flex h-full shrink-0 flex-col border-r border-agent-border bg-agent-sidebar py-5 font-sans text-sm transition-[width,padding] duration-300"
     :class="[
-      collapsed ? 'w-[76px] px-3' : 'w-[292px] px-5',
-      mobile ? 'flex' : 'hidden lg:flex',
+      mobile ? 'flex w-full px-5' : collapsed ? 'w-[68px] px-3' : 'w-[264px] px-4',
+      mobile ? undefined : 'hidden min-[960px]:flex',
     ]"
   >
     <div
@@ -62,10 +62,10 @@ const { t } = useI18n()
           >
         </div>
         <div class="min-w-0">
-          <h1 class="truncate text-lg font-extrabold tracking-normal text-agent-ink">
+          <h1 class="truncate text-lg font-semibold tracking-normal text-agent-ink">
             SEO Agent
           </h1>
-          <p class="text-xs font-semibold text-agent-ink-muted">
+          <p class="text-xs font-normal text-agent-ink-muted">
             {{ t('layout.sidebar.productSubtitle') }}
           </p>
         </div>
@@ -88,7 +88,7 @@ const { t } = useI18n()
       type="button"
       :title="collapsed ? t('layout.sidebar.newChat') : undefined"
       :aria-label="collapsed ? t('layout.sidebar.newChat') : undefined"
-      class="mb-6 inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-agent-primary px-4 text-sm font-bold text-white transition hover:bg-agent-primary-hover focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-agent-focus/55"
+      class="mb-6 inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-agent-primary px-4 text-sm font-medium text-white transition hover:bg-agent-primary-hover focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-agent-focus/55"
       :class="{ 'px-0': collapsed }"
       @click="emit('newChat')"
     >
@@ -103,7 +103,7 @@ const { t } = useI18n()
         type="button"
         :title="collapsed ? item.label : undefined"
         :aria-label="collapsed ? item.label : undefined"
-        class="flex h-11 w-full items-center rounded-xl text-sm font-semibold text-agent-ink-muted transition hover:bg-agent-surface-raised hover:text-agent-ink focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-agent-focus/40"
+        class="flex h-11 w-full items-center rounded-xl text-sm font-normal text-agent-ink-muted transition hover:bg-agent-surface-raised hover:text-agent-ink focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-agent-focus/40"
         :class="[
           collapsed ? 'justify-center px-0' : 'gap-3 px-3',
           item.active ? 'bg-agent-accent-soft text-agent-ink ring-1 ring-agent-border-soft' : '',
@@ -123,7 +123,7 @@ const { t } = useI18n()
       class="mt-8 flex min-h-0 flex-1 flex-col"
     >
       <div class="mb-3 flex items-center justify-between gap-3">
-        <h2 class="text-xs font-bold tracking-normal text-agent-ink-muted">
+        <h2 class="text-xs font-medium tracking-normal text-agent-ink-muted">
           {{ t('layout.sidebar.recentChats') }}
         </h2>
         <button
@@ -141,10 +141,10 @@ const { t } = useI18n()
         v-if="recentChats.length === 0"
         class="rounded-2xl border border-dashed border-agent-border bg-agent-surface/72 px-3.5 py-4"
       >
-        <p class="text-sm font-semibold leading-5 text-agent-ink-soft">
+        <p class="text-sm font-medium leading-5 text-agent-ink-soft">
           {{ t('layout.sidebar.emptyRecentTitle') }}
         </p>
-        <p class="mt-1 text-xs font-medium leading-5 text-agent-ink-muted">
+        <p class="mt-1 text-xs font-normal leading-5 text-agent-ink-muted">
           {{ t('layout.sidebar.emptyRecentDescription') }}
         </p>
       </div>

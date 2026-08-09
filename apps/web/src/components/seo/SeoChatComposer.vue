@@ -75,16 +75,16 @@ function updateSelectedModel(value: unknown) {
 </script>
 
 <template>
-  <section class="relative z-10 shrink-0 px-3 pb-3 pt-4 sm:px-4 sm:pb-4 sm:pt-5">
-    <div class="mx-auto w-full max-w-[760px]">
+  <section class="relative z-10 shrink-0 px-3 pb-3 pt-3 sm:px-4 sm:pb-4">
+    <div class="mx-auto w-full max-w-[700px]">
       <div
-        class="rounded-2xl border border-agent-border bg-agent-surface-raised p-2 shadow-[0_4px_8px_rgb(61_49_36/5%)] sm:p-3"
+        class="rounded-2xl border border-agent-border bg-agent-surface-raised p-2.5 shadow-[0_4px_8px_rgb(61_49_36/5%)]"
       >
         <Textarea
           :model-value="message"
           :maxlength="SEO_CHAT_MESSAGE_MAX_CHARS"
           rows="1"
-          class="max-h-40 min-h-[72px] resize-none border-0 bg-transparent px-3 pb-2 pt-2 text-[15px] font-medium leading-6 text-agent-ink shadow-none focus-visible:ring-0 sm:min-h-24 sm:px-4 sm:pt-3 placeholder:font-medium placeholder:text-agent-ink-muted"
+          class="max-h-40 min-h-16 resize-none border-0 bg-transparent px-3 pb-2 pt-2 text-base font-medium leading-6 text-agent-ink shadow-none focus-visible:ring-0 min-[960px]:min-h-20 min-[960px]:text-[15px] sm:px-4 sm:pt-3 placeholder:font-medium placeholder:text-agent-ink-muted"
           :placeholder="hasConversation ? '' : t('composer.placeholder')"
           @update:model-value="updateMessage"
           @keydown.enter.exact.prevent="submitComposer"
@@ -97,7 +97,7 @@ function updateSelectedModel(value: unknown) {
           >
             <SelectTrigger
               :aria-label="t('composer.modelSelectAria')"
-              class="h-9 max-w-[calc(100vw-148px)] min-w-0 overflow-hidden rounded-full border-agent-border bg-agent-surface px-3 text-[14px] font-medium tracking-normal text-agent-ink-soft shadow-none hover:border-agent-border hover:bg-agent-surface-raised focus:ring-agent-focus/35 sm:h-10 sm:max-w-none sm:min-w-[210px]"
+              class="h-11 max-w-[calc(100vw-148px)] min-w-0 overflow-hidden rounded-full border-agent-border bg-agent-surface px-3 text-[14px] font-medium tracking-normal text-agent-ink-soft shadow-none hover:border-agent-border hover:bg-agent-surface-raised focus:ring-agent-focus/35 sm:max-w-none sm:min-w-[190px] min-[960px]:h-9"
             >
               <SelectValue :placeholder="t('composer.modelPlaceholder')" />
             </SelectTrigger>
@@ -122,7 +122,7 @@ function updateSelectedModel(value: unknown) {
               size="icon-lg"
               :title="t('composer.reset')"
               :aria-label="t('composer.reset')"
-              class="size-9 rounded-lg bg-transparent text-agent-ink-muted shadow-none hover:bg-agent-surface-sunken hover:text-agent-ink disabled:text-agent-ink-faint sm:size-10"
+              class="size-11 rounded-lg bg-transparent text-agent-ink-muted shadow-none hover:bg-agent-surface-sunken hover:text-agent-ink disabled:text-agent-ink-faint min-[960px]:size-10"
               :disabled="!canReset || isGenerationInProgress"
               @click="emit('reset')"
             >
@@ -133,7 +133,7 @@ function updateSelectedModel(value: unknown) {
               size="icon-lg"
               :title="isGenerationInProgress ? t('composer.stop') : t('composer.send')"
               :aria-label="isGenerationInProgress ? t('composer.stop') : t('composer.send')"
-              class="size-10 rounded-full text-white shadow-none disabled:bg-agent-border sm:size-11"
+              class="size-11 rounded-full text-white shadow-none disabled:bg-agent-border min-[960px]:size-10"
               :class="isGenerationInProgress ? 'bg-agent-copper hover:bg-agent-copper' : 'bg-agent-primary hover:bg-agent-primary-hover'"
               :disabled="!isGenerationInProgress && !message.trim()"
               @click="triggerPrimaryAction"
