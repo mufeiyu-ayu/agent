@@ -17,7 +17,7 @@ const BOTTOM_THRESHOLD_PX = 96
 export function useAgentConversationScroll(options: UseAgentConversationScrollOptions) {
   let alignmentRunId = 0
   let shouldFollowLatest = true
-  let ignoreScrollEvents = false
+  let lastScrollTop = 0
   let observedViewport: HTMLElement | undefined
   let removeScrollListener: (() => void) | undefined
 
@@ -33,11 +33,17 @@ export function useAgentConversationScroll(options: UseAgentConversationScrollOp
     if (!viewport)
       return
 
-    const handleScroll = () => {
-      if (ignoreScrollEvents)
-        return
+    lastScrollTop = viewport.scrollTop
 
-      shouldFollowLatest = isNearBottom(viewport)
+    const handleScroll = () => {
+      const nextScrollTop = viewport.scrollTop
+
+      if (nextScrollTop < lastScrollTop)
+        shouldFollowLatest = false
+      else if (isNearBottom(viewport))
+        shouldFollowLatest = true
+
+      lastScrollTop = nextScrollTop
     }
 
     viewport.addEventListener('scroll', handleScroll, { passive: true })
@@ -93,12 +99,8 @@ export function useAgentConversationScroll(options: UseAgentConversationScrollOp
   }
 
   function scrollViewport(viewport: HTMLElement, top: number) {
-    ignoreScrollEvents = true
     viewport.scrollTo({ top, behavior: 'auto' })
-
-    window.requestAnimationFrame(() => {
-      ignoreScrollEvents = false
-    })
+    lastScrollTop = viewport.scrollTop
   }
 
   function findUserTurnAnchor(viewport: HTMLElement | null, activeTurnId: string) {
