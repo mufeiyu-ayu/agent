@@ -41,20 +41,21 @@ Codex 应作为 Agent 应用开发学习搭档，既帮助实现，也在关键�
 | `docs/tasks/README.md` | 当前任务看板，Active / Completed 以这里为准 |
 | `docs/tasks/_template.tdd.md` | 新任务 TDD 模板 |
 | `docs/development-workflow.md` | GPT、Issue、Codex、PR、Review、学习 docs 与受托执行规范 |
-| `docs/tasks/phase-05-tool-calling/` | 阶段 5 最小 Tool Calling 任务入口 |
+| `docs/tasks/completed/phase-06-bounded-agent-loop.md` | 已完成 Phase 6 的最终归档入口 |
 | `docs/tasks/completed/` | 已完成阶段归档 |
 | `docs/research/` | 研究资料、学习路线、技术方案和复盘沉淀 |
-| `docs/work-log.md` | commit 级工作记录 |
-| `docs/optimization-backlog.md` | 暂不立即实现的优化项 |
+| `docs/work-log.md` | 近期真实推进与收口记录 |
 
 `docs/development-task-plan.md` 只保留为旧入口兼容，不再写入新任务。
+
+当前 Agent 主线状态：Phase 1-6 已 Completed；当前无 Active Agent Task；下一正式阶段尚未定案。
 
 ## 4. 关键目录与任务入口
 
 修改代码前，先快速确认相关上下文：
 
 - 先看 `docs/tasks/README.md` 判断当前 Active 任务。
-- 再阅读当前阶段目录下的具体任务文档。
+- 再阅读当前阶段目录下的具体任务文档；如果当前无 Active Task，不得从旧 research 路线自行选择任务。
 - 是否已有相邻 service、controller、hook、component、utils、contract 可复用。
 - 是否涉及 Prisma schema、contracts、前后端协议或文档同步。
 
@@ -123,7 +124,7 @@ Agent 相关实现优先分层：
 Controller -> Service -> AgentRuntime -> LLMService / ToolRegistry -> Prisma
 ```
 
-当前阶段尤其注意：
+当前 Runtime 尤其注意：
 
 - `Conversation` 是长期会话。
 - `Message` 是用户可见消息。
@@ -200,6 +201,6 @@ DTO class 用于 `@Body()` / `@Param()` 时，必须保留运行时值导入，�
 - 不再向 `docs/development-task-plan.md` 写新任务。
 - 不把研究长文写进 `docs/tasks/`。
 - 不把计划写成已完成事实。
-- `work-log` 只写 commit 级事实，保持简洁。
+- `work-log` 只写真实已发生事实，保持简洁。
 - 阶段状态变化、Completed 和归档只在 GPT 验收且用户明确确认后写入。
 - 如果 docs 更新范围明确，可以在当前工作流内直接更新；如果范围不确定，先问用户。
