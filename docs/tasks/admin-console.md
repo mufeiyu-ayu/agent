@@ -1,8 +1,8 @@
 # Admin Console
 
-本文记录 Agent Runtime Console 的独立 Observability 支线。Task 0-2 已完成；Task 3 已实现、待验收；Task 4 保持 Planned。
+本文记录 Agent Runtime Console 的独立 Observability 支线。Task 0-3 已完成；Task 4 保持 Planned。
 
-Phase 6 Agent Runtime 主线已经完成。Admin Console 不等于下一 Agent 学习阶段；当前先建立真实 Observability Baseline，再根据后续 Agent 主线需要持续扩展 Inspector。
+Phase 6 Agent Runtime 主线已经完成。Admin Console 不等于下一 Agent 学习阶段；当前已经建立真实 Observability Baseline，后续根据 Agent 主线能力增量扩展 Inspector。
 
 ## 产品目标
 
@@ -10,17 +10,18 @@ Admin Console 面向项目开发、调试和运行过程复盘，长期用于查
 
 - `AgentRun` 与 `AgentStep`；
 - model sampling；
-- Tool Call、Tool Execution 与 Observation 的安全投影；
+- Tool Call / Tool Execution / Observation 的安全投影；
 - 用户可见 `Message`；
 - 受控错误、时长和 Token Usage；
 - 后续 Context / Retrieval / Approval / Recovery 等新增运行事实的安全投影。
 
 ## 技术基线
 
-- `apps/admin`：独立 Vue 3 / Vite / TypeScript / Pinia / Ant Design Vue Console；
-- `apps/api`：NestJS 服务端，同时提供用户侧 API 与只读 Admin Observability API；
+- `apps/admin`：Vue 3 / Vite / TypeScript / Pinia / Ant Design Vue；
+- `apps/api`：NestJS 服务端，同时提供用户 API 与只读 Admin Observability API；
 - `packages/contracts`：Admin 前后端共享 Read Contract；
-- `prisma`：`Conversation / Message / AgentRun / AgentStep` 持久化事实源；
+- Prisma：`Conversation / Message / AgentRun / AgentStep` 持久化事实源；
+- Admin View Model 与 Prisma Model 分层；
 - Vben 只作为视觉语言参考，不引入 `@vben/*` / `@vben-core/*` 运行时依赖。
 
 ## 当前任务看板
@@ -29,33 +30,9 @@ Admin Console 面向项目开发、调试和运行过程复盘，长期用于查
 | --- | --- | --- | --- | --- | --- |
 | Task 0 | Completed | 初始化 Admin 前端基础壳 | 本文归档 | #19 | #20 |
 | Task 1 | Completed | 静态 Run List / Run Detail UI | 本文归档 | #21 | #22 |
-| Task 2 | **Completed** | 真实 Run / Step 只读查询 API | [task-02-run-query-api.md](./admin-console/task-02-run-query-api.md) | #33 | #34 |
-| Task 3 | **Active** | 后台接入真实 Run Trace | [task-03-real-trace-ui.md](./admin-console/task-03-real-trace-ui.md) | #35 | #36（Draft） |
+| Task 2 | Completed | 真实 Run / Step 只读查询 API | [task-02-run-query-api.md](./admin-console/task-02-run-query-api.md) | #33 | #34 |
+| Task 3 | **Completed** | 后台接入真实 Run Trace | [task-03-real-trace-ui.md](./admin-console/task-03-real-trace-ui.md) | #35 | #36 |
 | Task 4 | Planned | 登录、权限、敏感信息脱敏 | 待启动时补独立 Task 文档 | 未创建 | 未创建 |
-
-## 当前执行顺序
-
-```text
-Task 2：Admin Run Query API      Completed
-  -> Task 3：Real Trace UI       Active / 已实现 / 待验收
-  -> 建立 Observability Baseline
-  -> 再讨论下一 Agent 主线阶段
-```
-
-Issue #35 的 Clarification Gate 已返回 `READY`。Task 3 已完成实现、自动验证、Computer Use 开发侧自验收和截图证据，当前等待 Draft PR 的 Codex Review、GPT 验收和用户确认。Task 4 不在 Task 3 范围内。
-
-## 已确认架构边界
-
-1. `apps/admin` 是管理后台前端，Admin API 仍位于 `apps/api`；
-2. Admin Read Model / view model 与 Prisma Model 分层，不把 ORM Entity 直接当 API Contract；
-3. Task 2 已建立 `@agent/contracts` Admin Run Read Contract，Task 3 不重新解析 raw Step JSON；
-4. `AgentRun` 生命周期、durable `AgentStep` 和用户可见 `Message` 使用不同 UI 投影；
-5. Safe Raw Data 只展示 allowlist projection，不包含完整 prompt、Tool raw arguments / result、Observation、stack、secret 或 chain-of-thought；
-6. 服务端负责真实分页、筛选、稳定排序与 Trace projection；Task 3 的 Pinia / route state 只维护用户查询上下文；
-7. 当前 Recorder 没有可靠保存 provider resolved model；Admin 不做 model filter，也不把 `requestedModel=null` 猜成具体模型；
-8. Timeline 必须支持 unknown future Step 的 generic safe projection / Inspector；
-9. 当前 Admin API 无认证，Task 3 只面向本地或受控开发环境；Task 4 才处理登录、权限和公网安全；
-10. 后续 Context / RAG / HITL / Recovery 等能力只增量增加对应 Inspector，不为了后台展示反向修改 Runtime Domain Model。
 
 ## Task 0：后台前端基础壳
 
@@ -67,30 +44,13 @@ Issue #19 / PR #20，Completed。
 
 Issue #21 / PR #22，Completed。
 
-核心交付：
+核心交付：静态 Run List / Detail、Trace / Messages / Safe Raw UI、确定性 Mock、列表会话状态、light / dark 和常见桌面尺寸适配。
 
-- `/runs` 静态 Run List、汇总、筛选和分页；
-- `/runs/:runId` 的 Overview、Trace、Messages、Safe Raw Data；
-- ordinary success、tool success、running、failed、aborted Mock；
-- 列表会话级筛选 / 分页状态；
-- light / dark 和常见桌面尺寸适配。
-
-Task 1 Mock 只是 UI 产品结构基线，不再作为真实 API 事实源。
+Task 1 Mock 只作为早期 UI 产品结构基线，不再作为真实数据源。
 
 ## Task 2：真实 Run / Step 只读查询 API
 
-正式任务文档：[`admin-console/task-02-run-query-api.md`](./admin-console/task-02-run-query-api.md)。
-
-最终状态：
-
-```text
-Issue #33：Closed / Completed
-PR #34：Merged
-merge commit：997d6b84341ad3a53e42786490361ea3f984bf7e
-GPT 技术验收：通过
-用户验收：已确认
-看板：Completed
-```
+Issue #33 / PR #34，merge commit `997d6b84341ad3a53e42786490361ea3f984bf7e`。
 
 最终建立：
 
@@ -101,47 +61,53 @@ GPT 技术验收：通过
 - server-side pagination / filters / stable ordering；
 - 五类 Phase 6 Step typed projection；
 - unknown / malformed Step generic safe projection；
-- 真实 PostgreSQL HTTP smoke；
 - 不改 Prisma schema / Runtime；
 - 不伪造 resolved model。
 
 ## Task 3：真实 Run Trace UI
 
-正式任务文档：[`admin-console/task-03-real-trace-ui.md`](./admin-console/task-03-real-trace-ui.md)。
+Issue #35 / PR #36，merge commit `4c689c4c8a8d3975192d13eb3f5a1c24463fcd7b`。
 
-当前状态：
+最终完成：
+
+- `/runs` 从 Mock 切换到真实 server list / summary / pagination / filters；
+- `/runs/:runId` 使用真实 Run / Step / Message / Safe Raw projection；
+- loading / empty / error / retry / 404；
+- RUNNING / COMPLETED / FAILED / ABORTED；
+- 五类已知 Step 专用 Inspector + Generic Inspector；
+- `requestedModel=null` 保持明确未知语义；
+- 返回列表保留 query / page / pageSize 上下文；
+- AbortController + request / route identity fencing 防止 stale response；
+- Admin Vite `/api` proxy；
+- API `dev` / `dev:watch` 修复 decorator metadata 与开发重启链路；
+- Computer Use 使用真实 Nest API + Vite + Chrome 完成主验收；
+- 4 张关键截图证据已提交。
+
+Task 3 GPT 技术验收通过，用户已明确确认并授权合并；Issue #35 Closed / Completed，PR #36 Merged。
+
+## 当前 Observability Baseline
 
 ```text
-Issue #35：Open
-Clarification Gate：READY
-看板：Active
-实施状态：已实现
-验收状态：待验收
+Agent Runtime durable trace
+        ↓
+Admin Read Contract / Query API
+        ↓
+Run List / Run Detail
+        ↓
+Timeline / Typed Inspector / Generic Inspector
+        ↓
+Computer Use 可验证的开发者 Console
 ```
 
-核心目标：
-
-- `/runs` 从 Mock 切换为真实 server list；
-- `/runs/:runId` 从 Mock 切换为真实 Run Detail；
-- server-side pagination / filters；
-- loading / empty / error / 404 / retry；
-- RUNNING partial trace；
-- known Step Inspector + Generic Inspector；
-- Safe Raw / Messages 直接消费服务端安全 projection；
-- 保留筛选、分页、路由返回上下文；
-- 处理快速查询 / 路由切换的 stale response；
-- 使用 Computer Use 做真实浏览器验收；
-- 至少 4 张关键截图随 PR 提供。
-
-Computer Use 主验收已使用真实 Nest API、Admin Vite dev server 与真实 Chrome 执行，并提交 4 张截图；自动测试未替代该过程。当前结论仍是“已实现、待验收”，不得自行转 Ready 或标记 Completed。
+这套基线后续用于承接 Agent 主线的新能力，而不是为了后台展示反向污染 Runtime Domain Model。
 
 ## Task 4：登录、权限与敏感信息脱敏
 
-保持 Planned。Task 3 完成仍不代表 Admin Console 已具备公网安全边界。
+保持 Planned。Task 0-3 完成不代表 Admin Console 已具备公网安全边界。
 
 ## 后续演进原则
 
-Task 3 完成后，Admin Console 作为 Agent Runtime 的开发者 Observability Console 随主线增量演进：
+后续 Agent Phase 可按需增量增加：
 
 ```text
 Context Engineering -> Context Inspector
@@ -151,4 +117,4 @@ Recovery             -> Attempt / Checkpoint Inspector
 MCP / Tool           -> Tool / MCP Inspector
 ```
 
-每个 Agent Phase 只增加对应安全 projection / Inspector，不为了后台展示反向污染 Runtime Domain Model。
+每个能力只增加对应安全 projection / Inspector；下一 Agent 主线阶段需要基于最新 `master` 重新讨论。
