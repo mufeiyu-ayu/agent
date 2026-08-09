@@ -12,7 +12,7 @@
 阶段 1-6：Completed
 当前 Agent 主线：无 Active Task
 下一正式 Agent 阶段：尚未定案
-Admin Observability：Task 2 Completed；Task 3 Next
+Admin Observability：Task 2 Completed；Task 3 Next / Issue #35 / Gate pending
 ```
 
 阶段 6 已于 2026-08-09 完成最终技术验收并合入 `master`。最终归档见 [`tasks/completed/phase-06-bounded-agent-loop.md`](./tasks/completed/phase-06-bounded-agent-loop.md)。
@@ -78,11 +78,13 @@ Admin Console 不是 Phase 7，也不会改变 Agent 主线仍“无 Active Task
 Task 0：Admin 基础壳                 Completed
 Task 1：静态 Run List / Detail       Completed
 Task 2：真实 Run / Step Query API    Completed / #33 / #34 / merge 997d6b84
-Task 3：真实 Run Trace UI            Next
+Task 3：真实 Run Trace UI            Next / Issue #35 / Gate pending
 Task 4：登录 / 权限 / 脱敏           Planned
 ```
 
-Task 2 已建立真实 Read API 和安全 Admin Contract。Task 3 的目标是把现有 Mock UI 接到真实运行数据，并建立 Observability Baseline；真实浏览器验收必须使用 Computer Use，关键页面需要截图证据。
+Task 2 已建立真实 Read API 和安全 Admin Contract。Issue #35 已创建；Codex Clarification Gate 返回 `READY` 后 Task 3 才进入 Active。
+
+Task 3 的目标是把现有 Mock UI 接到真实运行数据并建立 Observability Baseline；真实浏览器主验收必须使用 Computer Use，关键页面至少提供 4 张截图证据。
 
 Task 2 / 3 正式文档：
 
