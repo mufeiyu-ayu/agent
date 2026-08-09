@@ -34,6 +34,7 @@ export function useAgentConversationScroll(options: UseAgentConversationScrollOp
       return
 
     lastScrollTop = viewport.scrollTop
+    let lastTouchY: number | undefined
 
     const handleScroll = () => {
       const nextScrollTop = viewport.scrollTop
@@ -46,8 +47,42 @@ export function useAgentConversationScroll(options: UseAgentConversationScrollOp
       lastScrollTop = nextScrollTop
     }
 
+    const handleWheel = (event: WheelEvent) => {
+      if (event.deltaY < 0)
+        shouldFollowLatest = false
+    }
+
+    const handleTouchStart = (event: TouchEvent) => {
+      lastTouchY = event.touches[0]?.clientY
+    }
+
+    const handleTouchMove = (event: TouchEvent) => {
+      const nextTouchY = event.touches[0]?.clientY
+
+      if (lastTouchY !== undefined && nextTouchY !== undefined && nextTouchY > lastTouchY)
+        shouldFollowLatest = false
+
+      lastTouchY = nextTouchY
+    }
+
+    const handleTouchEnd = () => {
+      lastTouchY = undefined
+    }
+
     viewport.addEventListener('scroll', handleScroll, { passive: true })
-    removeScrollListener = () => viewport.removeEventListener('scroll', handleScroll)
+    viewport.addEventListener('wheel', handleWheel, { passive: true })
+    viewport.addEventListener('touchstart', handleTouchStart, { passive: true })
+    viewport.addEventListener('touchmove', handleTouchMove, { passive: true })
+    viewport.addEventListener('touchend', handleTouchEnd, { passive: true })
+    viewport.addEventListener('touchcancel', handleTouchEnd, { passive: true })
+    removeScrollListener = () => {
+      viewport.removeEventListener('scroll', handleScroll)
+      viewport.removeEventListener('wheel', handleWheel)
+      viewport.removeEventListener('touchstart', handleTouchStart)
+      viewport.removeEventListener('touchmove', handleTouchMove)
+      viewport.removeEventListener('touchend', handleTouchEnd)
+      viewport.removeEventListener('touchcancel', handleTouchEnd)
+    }
   }
 
   async function alignActiveTurn() {
