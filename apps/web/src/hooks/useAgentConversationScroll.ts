@@ -48,19 +48,33 @@ export function useAgentConversationScroll(options: UseAgentConversationScrollOp
     }
 
     const handleWheel = (event: WheelEvent) => {
+      if (event.ctrlKey)
+        return
+
       if (event.deltaY < 0)
         shouldFollowLatest = false
+      else if (event.deltaY > 0 && isNearBottom(viewport))
+        shouldFollowLatest = true
     }
 
     const handleTouchStart = (event: TouchEvent) => {
-      lastTouchY = event.touches[0]?.clientY
+      lastTouchY = event.touches.length === 1 ? event.touches[0]?.clientY : undefined
     }
 
     const handleTouchMove = (event: TouchEvent) => {
+      if (event.touches.length !== 1) {
+        lastTouchY = undefined
+        return
+      }
+
       const nextTouchY = event.touches[0]?.clientY
 
-      if (lastTouchY !== undefined && nextTouchY !== undefined && nextTouchY > lastTouchY)
-        shouldFollowLatest = false
+      if (lastTouchY !== undefined && nextTouchY !== undefined) {
+        if (nextTouchY > lastTouchY)
+          shouldFollowLatest = false
+        else if (nextTouchY < lastTouchY && isNearBottom(viewport))
+          shouldFollowLatest = true
+      }
 
       lastTouchY = nextTouchY
     }
