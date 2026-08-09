@@ -30,19 +30,19 @@ Admin Console 面向项目开发、调试和运行过程复盘，长期用于查
 | Task 0 | Completed | 初始化 Admin 前端基础壳 | 本文归档 | #19 | #20 |
 | Task 1 | Completed | 静态 Run List / Run Detail UI | 本文归档 | #21 | #22 |
 | Task 2 | **Completed** | 真实 Run / Step 只读查询 API | [task-02-run-query-api.md](./admin-console/task-02-run-query-api.md) | #33 | #34 |
-| Task 3 | **Next** | 后台接入真实 Run Trace | [task-03-real-trace-ui.md](./admin-console/task-03-real-trace-ui.md) | 待创建 | 待创建 |
+| Task 3 | **Next** | 后台接入真实 Run Trace | [task-03-real-trace-ui.md](./admin-console/task-03-real-trace-ui.md) | #35 | 未创建 |
 | Task 4 | Planned | 登录、权限、敏感信息脱敏 | 待启动时补独立 Task 文档 | 未创建 | 未创建 |
 
 ## 当前执行顺序
 
 ```text
 Task 2：Admin Run Query API      Completed
-  -> Task 3：Real Trace UI       Next
+  -> Task 3：Real Trace UI       Next / Issue #35 / Gate pending
   -> 建立 Observability Baseline
   -> 再讨论下一 Agent 主线阶段
 ```
 
-Task 3 必须使用 Computer Use 做真实浏览器验收，并提交关键状态截图证据。Task 4 不在 Task 3 范围内。
+Issue #35 已创建；Codex Clarification Gate 返回 `READY` 后 Task 3 才进入 Active。Task 3 必须使用 Computer Use 做真实浏览器验收，并提交关键状态截图证据。Task 4 不在 Task 3 范围内。
 
 ## 已确认架构边界
 
@@ -109,7 +109,15 @@ GPT 技术验收：通过
 
 正式任务文档：[`admin-console/task-03-real-trace-ui.md`](./admin-console/task-03-real-trace-ui.md)。
 
-当前状态：**Next**。
+当前状态：
+
+```text
+Issue #35：Open
+Clarification Gate：等待 Codex
+看板：Next
+实施状态：未开始
+验收状态：未验收
+```
 
 核心目标：
 
