@@ -6,16 +6,19 @@
 
 | 类型 | 当前记录 | 下一步 |
 | --- | --- | --- |
-| Agent 主线 | 阶段 1-6 Completed；当前无 Active Agent Task | 基于最新 `master` 重新讨论下一正式阶段 |
+| Agent 主线 | 阶段 1-6 Completed；当前无 Active Agent Task | 完成 Observability 基线后再讨论下一正式 Agent 阶段 |
 | Phase 6 | 已完成并归档 | 见 `docs/tasks/completed/phase-06-bounded-agent-loop.md` |
-| Task 2 | Issue #31 Closed / PR #32 Merged；merge commit `691efbcd927682d2a435c2bd6125225ae27a18fb` | 已收口 |
-| Admin Console | Task 0-1 Completed；Task 2-4 Planned | 独立产品支线，按需启动 |
+| Phase 6 Task 2 | Issue #31 Closed / PR #32 Merged；merge commit `691efbcd927682d2a435c2bd6125225ae27a18fb` | 已收口 |
+| Admin Console | Task 0-1 Completed；Task 2 Active / Issue #33；Task 3-4 Planned | 先完成 Task 2 只读 Run Query API，再启动 Task 3 Real Trace UI |
 | 文档结构 | `roadmap`、`tasks`、`research`、`work-log` 为主入口；Completed 阶段统一归档 | 不维护第二套阶段状态 |
 
 ## 近期关键记录
 
 | 日期 | 事项 | 结果 |
 | --- | --- | --- |
+| 2026-08-09 | Admin Console Task 2 / 3 任务拆分 | 在 `docs/tasks/admin-console/` 新增两个独立 TDD 任务：Task 2 真实 Run / Step 查询 API、Task 3 真实 Trace UI；明确 Task 2 -> Task 3 顺序，不合并实现 |
+| 2026-08-09 | Admin Console Issue #33 创建 | Task 2 `真实 Run / Step 只读查询 API` 进入 Active；Clarification Gate READY；Task 3 继续 Planned |
+| 2026-08-09 | Admin Observability 架构决策 | Admin Read Model 与 Prisma Model 分层；第一版不伪造 resolved model、不做 model filter；Timeline 支持 unknown future Step generic safe projection；Task 2-3 不修改 Runtime / Prisma schema |
 | 2026-08-09 | Issue #31 Closed | Phase 6 Task 2 GitHub 交付流程正式结束 |
 | 2026-08-09 | PR #32 最终技术验收 | GPT 基于最新 head `76f82a42`、Issue #31、完整 diff、测试与 PostgreSQL 实证验收通过；无阻塞 P0 / P1 / P2 finding |
 | 2026-08-09 | PR #32 合并 | Phase 6 Task 2 Runtime reliability 合入 `master`；merge commit `691efbcd927682d2a435c2bd6125225ae27a18fb` |
@@ -32,6 +35,15 @@
 ## 当前阶段边界
 
 Phase 6 已完成，不再继续向该阶段追加新 Agent 能力。
+
+当前 Admin Console Task 2-3 是独立 Observability 支线：
+
+```text
+Task 2：Read API -> Active / Issue #33
+Task 3：Real Trace UI -> Planned
+```
+
+它们不会自动成为 Phase 7，也不改变 Agent 主线当前“无 Active Task”的状态。
 
 以下能力若后续启动，需要重新创建独立 Task / Issue，而不是作为 Phase 6 尾项继续扩张：
 
