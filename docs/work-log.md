@@ -8,7 +8,7 @@
 | --- | --- | --- |
 | Agent 主线 | 阶段 1-6 Completed；当前无 Active Agent Task | 基于最新 `master` 重新讨论下一正式阶段 |
 | Phase 6 | 已完成并归档 | 见 `docs/tasks/completed/phase-06-bounded-agent-loop.md` |
-| Task 2 | 技术验收通过，PR #32 已合并；merge commit `691efbcd927682d2a435c2bd6125225ae27a18fb` | 关闭 Issue #31 后结束交付流程 |
+| Task 2 | Issue #31 Closed / PR #32 Merged；merge commit `691efbcd927682d2a435c2bd6125225ae27a18fb` | 已收口 |
 | Admin Console | Task 0-1 Completed；Task 2-4 Planned | 独立产品支线，按需启动 |
 | 文档结构 | `roadmap`、`tasks`、`research`、`work-log` 为主入口；Completed 阶段统一归档 | 不维护第二套阶段状态 |
 
@@ -16,11 +16,12 @@
 
 | 日期 | 事项 | 结果 |
 | --- | --- | --- |
+| 2026-08-09 | Issue #31 Closed | Phase 6 Task 2 GitHub 交付流程正式结束 |
 | 2026-08-09 | PR #32 最终技术验收 | GPT 基于最新 head `76f82a42`、Issue #31、完整 diff、测试与 PostgreSQL 实证验收通过；无阻塞 P0 / P1 / P2 finding |
 | 2026-08-09 | PR #32 合并 | Phase 6 Task 2 Runtime reliability 合入 `master`；merge commit `691efbcd927682d2a435c2bd6125225ae27a18fb` |
 | 2026-08-09 | Task 2 DB reliability | Tool Loop 39、Model Stream 54、Recorder 14、Tools 40、SEO 10、DB Reliability 11 项全部记录通过；API / Web / workspace typecheck、API lint、`git diff --check` PASS |
 | 2026-08-09 | Task 2 关键可靠性收口 | 单一 Run deadline、remaining-budget DB boundary、PostgreSQL statement / lock timeout、late-result fencing、原子 completion / terminalization 与 COMMIT outcome unknown 语义建立 |
-| 2026-08-09 | Phase 6 文档归档 | Task 0、横向配置治理、Task 1、Task 2 合并为 `docs/tasks/completed/phase-06-bounded-agent-loop.md`，active tasks 区不再保留重复状态 |
+| 2026-08-09 | Phase 6 文档归档 | Task 0、横向配置治理、Task 1、Task 2 合并为 `docs/tasks/completed/phase-06-bounded-agent-loop.md`；active tasks 区仅保留旧链接兼容入口 |
 | 2026-08-08 | PR #30 合并 / Issue #29 Closed | Phase 6 Task 1 正式收口；merge commit `904b011d64e1aec7e36f706150fb8ef5ef89a761` |
 | 2026-08-08 | PR #30 最终重新验收 | 补齐 DeepSeek assistant Tool Call 非 null `content` 与 SEO 双工具指引；Tool Loop 34、Model Stream 49、Tools 33、SEO 10、Recorder 9、LLM Config 17 个测试记录通过 |
 | 2026-07-26 | PR #28 合并，Issue #27 Closed | 统一 64K 输入、40 条 Completed 历史、DeepSeek Model Profile、应用输出策略、请求超时和分级 Tool Observation 预算 |
