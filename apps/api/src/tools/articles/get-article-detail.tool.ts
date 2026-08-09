@@ -69,20 +69,32 @@ export class GetArticleDetailTool implements ToolExecutor<
     context.signal.throwIfAborted()
 
     const { sourceId } = invocation.input
-    const record = await this.prismaService.article.findUnique({
-      where: { sourceId },
-      select: {
-        sourceId: true,
-        slug: true,
-        languageCode: true,
-        title: true,
-        content: true,
-        seoTitle: true,
-        seoDescription: true,
-        createdAt: true,
-        updatedAt: true,
+    const record = await this.prismaService.withDeadlineTransaction(
+      context.databaseDeadline,
+      async (transaction) => {
+        context.signal.throwIfAborted()
+        const record = await transaction.execute(prisma =>
+          prisma.article.findUnique({
+            where: { sourceId },
+            select: {
+              sourceId: true,
+              slug: true,
+              languageCode: true,
+              title: true,
+              content: true,
+              seoTitle: true,
+              seoDescription: true,
+              createdAt: true,
+              updatedAt: true,
+            },
+          }))
+
+        context.signal.throwIfAborted()
+        return record
       },
-    })
+    )
+
+    context.signal.throwIfAborted()
 
     if (!record) {
       const data: GetArticleDetailOutput = {

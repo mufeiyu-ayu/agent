@@ -1,4 +1,7 @@
-import type { PrismaService } from '../../prisma/prisma.service.js'
+import type {
+  DatabaseOperationDeadline,
+  PrismaService,
+} from '../../prisma/prisma.service.js'
 import type {
   ToolExecutionContext,
   ValidatedToolInvocation,
@@ -64,12 +67,15 @@ describe('get_article_detail', () => {
       },
     })
     const { invocationService } = createTools(fakePrisma)
+    const context = createContext()
 
     const result = await invocationService.invoke(
       createEnvelope({ sourceId: 25 }),
-      createContext(),
+      context,
     )
 
+    assert.deepEqual(fakePrisma.transactionDeadlines, [context.databaseDeadline])
+    assert.equal(fakePrisma.executeCount, 1)
     assert.deepEqual(fakePrisma.findUniqueArguments, [{
       where: { sourceId: 25 },
       select: {
@@ -180,6 +186,7 @@ describe('get_article_detail', () => {
       () => getArticleDetailDefinition.input.parse({ sourceId: Number.NaN }),
       /invalid get_article_detail sourceId/,
     )
+    assert.equal(fakePrisma.transactionDeadlines.length, 0)
     assert.equal(fakePrisma.findUniqueArguments.length, 0)
   })
 
@@ -218,7 +225,47 @@ describe('get_article_detail', () => {
       ),
       { name: 'AbortError' },
     )
+    assert.equal(fakePrisma.transactionDeadlines.length, 0)
     assert.equal(fakePrisma.findUniqueArguments.length, 0)
+  })
+
+  it('late transaction start 后重新检查 Tool signal，且不开始详情查询', async () => {
+    const abortController = new AbortController()
+    const fakePrisma = new FakePrismaService({
+      beforeTransactionCallback: () => abortController.abort(),
+    })
+    const tool = new GetArticleDetailTool(fakePrisma as unknown as PrismaService)
+    const context = createContext(abortController.signal)
+
+    await assert.rejects(
+      tool.execute(
+        createValidatedInvocation({ sourceId: 25 }),
+        context,
+      ),
+      { name: 'AbortError' },
+    )
+    assert.deepEqual(fakePrisma.transactionDeadlines, [context.databaseDeadline])
+    assert.equal(fakePrisma.executeCount, 0)
+    assert.equal(fakePrisma.findUniqueArguments.length, 0)
+  })
+
+  it('详情查询返回后重新检查 Tool signal，不返回迟到正常结果', async () => {
+    const abortController = new AbortController()
+    const fakePrisma = new FakePrismaService({
+      record: createFakeArticleRecord(),
+      afterFindUnique: () => abortController.abort(),
+    })
+    const tool = new GetArticleDetailTool(fakePrisma as unknown as PrismaService)
+
+    await assert.rejects(
+      tool.execute(
+        createValidatedInvocation({ sourceId: 25 }),
+        createContext(abortController.signal),
+      ),
+      { name: 'AbortError' },
+    )
+    assert.equal(fakePrisma.executeCount, 1)
+    assert.equal(fakePrisma.findUniqueArguments.length, 1)
   })
 })
 
@@ -239,22 +286,55 @@ interface FakeArticleRecord {
 interface FakePrismaOptions {
   record?: FakeArticleRecord
   error?: Error
+  beforeTransactionCallback?: () => void
+  afterFindUnique?: () => void
 }
 
 class FakePrismaService {
   readonly findUniqueArguments: FakeFindUniqueArguments[] = []
-  readonly article = {
-    findUnique: async (arguments_: FakeFindUniqueArguments) => {
-      this.findUniqueArguments.push(arguments_)
+  readonly transactionDeadlines: DatabaseOperationDeadline[] = []
+  executeCount = 0
+  private readonly transactionClient: FakeTransactionClient = {
+    article: {
+      findUnique: async (arguments_: FakeFindUniqueArguments) => {
+        this.findUniqueArguments.push(arguments_)
 
-      if (this.options.error)
-        throw this.options.error
+        if (this.options.error)
+          throw this.options.error
 
-      return this.options.record ?? null
+        this.options.afterFindUnique?.()
+        return this.options.record ?? null
+      },
+    },
+  }
+
+  private readonly transaction = {
+    execute: async <T>(
+      operation: (prisma: FakeTransactionClient) => Promise<T>,
+    ): Promise<T> => {
+      this.executeCount += 1
+      return await operation(this.transactionClient)
     },
   }
 
   constructor(private readonly options: FakePrismaOptions = {}) {}
+
+  async withDeadlineTransaction<T>(
+    deadline: DatabaseOperationDeadline,
+    callback: (transaction: typeof this.transaction) => Promise<T>,
+  ): Promise<T> {
+    this.transactionDeadlines.push(deadline)
+    this.options.beforeTransactionCallback?.()
+    return await callback(this.transaction)
+  }
+}
+
+interface FakeTransactionClient {
+  article: {
+    findUnique: (
+      arguments_: FakeFindUniqueArguments,
+    ) => Promise<FakeArticleRecord | null>
+  }
 }
 
 interface FakeFindUniqueArguments {
@@ -305,7 +385,32 @@ function createContext(
   return {
     runId: 'run-1',
     conversationId: 'conversation-1',
+    databaseDeadline: createDatabaseDeadline(signal),
     signal,
     executionAttempt: 1,
+  }
+}
+
+function createDatabaseDeadline(signal: AbortSignal): DatabaseOperationDeadline {
+  return {
+    deadlineAt: Date.now() + 60_000,
+    signal,
+    createTimeoutError: () => new Error('test database deadline exceeded'),
+  }
+}
+
+function createFakeArticleRecord(): FakeArticleRecord {
+  return {
+    id: 'internal-database-id',
+    sourceId: 25,
+    slug: 'complete-article',
+    languageCode: 'zh-cn',
+    title: '完整文章',
+    content: LONG_CONTENT,
+    seoTitle: '受控 SEO 标题',
+    seoDescription: null,
+    createdAt: new Date('2026-01-02T03:04:05.000Z'),
+    updatedAt: new Date('2026-06-07T08:09:10.000Z'),
+    internalSecret: 'database password: secret',
   }
 }

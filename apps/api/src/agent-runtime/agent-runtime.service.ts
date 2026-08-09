@@ -1,10 +1,12 @@
 import type {
   Message,
+  Prisma,
   MessageRole as PrismaMessageRole,
   MessageStatus as PrismaMessageStatus,
 } from '../generated/prisma/client.js'
 import type { ChatMessage } from '../llm/llm.types.js'
 import type { ModelInputItem } from '../llm/model-input.types.js'
+import type { DatabaseOperationDeadline } from '../prisma/prisma.service.js'
 import type {
   ToolResult,
   UnvalidatedToolCallEnvelope,
@@ -22,7 +24,11 @@ import { Inject, Injectable, NotFoundException } from '@nestjs/common'
 import { MessageRole, MessageStatus } from '../generated/prisma/client.js'
 import { LLMService } from '../llm/llm.service.js'
 import { toModelInputItems } from '../llm/model-input.types.js'
-import { PrismaService } from '../prisma/prisma.service.js'
+import {
+  DatabaseCommitOutcomeUnknownError,
+  DatabaseOperationDeadlineExceededError,
+  PrismaService,
+} from '../prisma/prisma.service.js'
 import { toModelToolSpec } from '../tools/core/model-tool-spec.mapper.js'
 import { ToolInvocationService } from '../tools/core/tool-invocation.service.js'
 import {
@@ -37,7 +43,7 @@ import {
 import {
   AgentLoopLimitExceededError,
   AgentRunDeadlineExceededError,
-  MessageTerminalTransitionError,
+  AgentRunTerminalizationError,
   ModelSamplingIncompleteError,
 } from './agent-runtime.errors.js'
 import { AgentRuntimePolicyService } from './agent-runtime.policy.js'
@@ -48,12 +54,28 @@ const AGENT_RUN_TOOL_NAMES = [
   'get_article_detail',
 ] as const
 
-type RunCancellationSource = 'user' | 'deadline'
+const TERMINALIZATION_DEADLINE_MS = 5_000
+
+type RunTerminationSource = 'completed' | 'completing' | 'deadline' | 'failure' | 'user'
 
 interface RunCancellation {
+  databaseDeadline: DatabaseOperationDeadline
+  reason?: unknown
   signal: AbortSignal
-  source?: RunCancellationSource
+  source?: RunTerminationSource
+  claimCompletion: () => void
+  claimCompleted: () => void
+  claimCompletionFailure: (source: 'deadline' | 'failure', reason: unknown) => void
+  claimDeadline: (reason?: AgentRunDeadlineExceededError) => void
+  claimFailure: (reason: unknown) => void
+  throwIfUnavailable: () => void
   dispose: () => void
+}
+
+interface TerminalStepFailure {
+  id: string
+  errorMessage: string
+  output?: Prisma.InputJsonValue
 }
 
 @Injectable()
@@ -82,8 +104,8 @@ export class AgentRuntimeService {
     let assistantMessage: Message | undefined
     let agentRunId: string | undefined
     let content = ''
-    let hasFinalMessageStatus = false
     let runCancellation: RunCancellation | undefined
+    let terminalStepFailure: TerminalStepFailure | undefined
 
     try {
       await this.assertConversationExists(input.conversationId)
@@ -109,6 +131,7 @@ export class AgentRuntimeService {
         runtimePolicy.runDeadlineMs,
       )
       const runSignal = runCancellation.signal
+      const databaseDeadline = runCancellation.databaseDeadline
 
       const receiveUserMessageStep = await this.agentRunRecorderService.startStep({
         runId: currentAgentRunId,
@@ -117,8 +140,11 @@ export class AgentRuntimeService {
           messageId: userMessage.id,
           messageLength: normalizedMessage.length,
         },
-      })
-      await this.agentRunRecorderService.completeStep(receiveUserMessageStep.id)
+      }, databaseDeadline)
+      await this.agentRunRecorderService.completeStep(
+        receiveUserMessageStep.id,
+        databaseDeadline,
+      )
 
       const historyLimit = input.historyLimit
         ?? runtimePolicy.historyLimit
@@ -128,14 +154,16 @@ export class AgentRuntimeService {
         input: {
           limit: historyLimit,
         },
-      })
+      }, databaseDeadline)
 
       const historyMessages = await this.listRecentChatMessages(
         input.conversationId,
         historyLimit,
+        databaseDeadline,
       )
       await this.agentRunRecorderService.completeStep(
         loadHistoryStep.id,
+        databaseDeadline,
         {
           output: {
             messageCount: historyMessages.length,
@@ -159,19 +187,13 @@ export class AgentRuntimeService {
         ? []
         : toolDefinitions.map(toModelToolSpec)
 
-      // 模型采样前先创建空的流式助手消息，后续将增量内容和最终状态写回该记录。
-      assistantMessage = await this.createMessageAndTouchConversation(
+      // 创建助手消息与 Run 关联必须同事务提交，避免 deadline 下留下未关联的 late Message。
+      assistantMessage = await this.agentRunRecorderService.createAssistantMessage(
+        currentAgentRunId,
         input.conversationId,
-        MessageRole.ASSISTANT,
-        '',
-        MessageStatus.STREAMING,
+        databaseDeadline,
       )
       const assistantMessageId = assistantMessage.id
-
-      await this.agentRunRecorderService.attachAssistantMessage(
-        currentAgentRunId,
-        assistantMessageId,
-      )
 
       yield {
         type: 'run_started',
@@ -192,7 +214,7 @@ export class AgentRuntimeService {
           input: {
             assistantMessageId,
           },
-        })
+        }, databaseDeadline)
         assistantOutputStepId = step.id
       }
 
@@ -214,7 +236,7 @@ export class AgentRuntimeService {
         samplingAttempt <= runtimePolicy.maxSamplingRounds;
         samplingAttempt += 1
       ) {
-        runSignal.throwIfAborted()
+        runCancellation.throwIfUnavailable()
         const samplingAttemptId = `${currentAgentRunId}:sampling-${samplingAttempt}`
         const samplingStep = await this.agentRunRecorderService.startStep({
           runId: currentAgentRunId,
@@ -226,7 +248,7 @@ export class AgentRuntimeService {
             messageCount: modelInputItems.length,
             toolCount: modelTools.length,
           },
-        })
+        }, databaseDeadline)
         const samplingStartedAt = Date.now()
         let samplingDecision: SamplingDecision
 
@@ -239,7 +261,7 @@ export class AgentRuntimeService {
           let samplingResult = await sampling.next()
 
           while (!samplingResult.done) {
-            runSignal.throwIfAborted()
+            runCancellation.throwIfUnavailable()
             await startAssistantOutputStep()
             content += samplingResult.value
             yield {
@@ -253,29 +275,32 @@ export class AgentRuntimeService {
           }
           samplingDecision = samplingResult.value
 
-          runSignal.throwIfAborted()
-          await this.agentRunRecorderService.completeStep(samplingStep.id, {
-            output: this.toSamplingStepOutput(
-              samplingDecision.summary,
-              Date.now() - samplingStartedAt,
-            ),
-          })
-        }
-        catch (error) {
-          if (!runSignal.aborted) {
-            await this.agentRunRecorderService.failStep(samplingStep.id, {
-              errorMessage: this.toChatStreamErrorMessage(error),
-              output: this.toFailedSamplingStepOutput(
-                error,
+          runCancellation.throwIfUnavailable()
+          await this.agentRunRecorderService.completeStep(
+            samplingStep.id,
+            databaseDeadline,
+            {
+              output: this.toSamplingStepOutput(
+                samplingDecision.summary,
                 Date.now() - samplingStartedAt,
               ),
-            })
+            },
+          )
+        }
+        catch (error) {
+          terminalStepFailure = {
+            id: samplingStep.id,
+            errorMessage: this.toChatStreamErrorMessage(error),
+            output: this.toFailedSamplingStepOutput(
+              error,
+              Date.now() - samplingStartedAt,
+            ),
           }
-
+          claimRunTermination(runCancellation, error)
           throw error
         }
 
-        runSignal.throwIfAborted()
+        runCancellation.throwIfUnavailable()
 
         if (samplingDecision.type === 'final_answer') {
           hasFinalAnswer = true
@@ -302,7 +327,7 @@ export class AgentRuntimeService {
             executionAttempt: 1,
             rawArgumentsChars: [...samplingDecision.call.rawArgumentsJson].length,
           },
-        })
+        }, databaseDeadline)
         const toolStartedAt = Date.now()
         let toolResult: ToolResult
 
@@ -322,22 +347,22 @@ export class AgentRuntimeService {
                 runId: currentAgentRunId,
                 conversationId: input.conversationId,
                 signal: runSignal,
+                databaseDeadline,
                 executionAttempt: 1,
               },
             )
           }
-          runSignal.throwIfAborted()
+          runCancellation.throwIfUnavailable()
         }
         catch (error) {
-          if (!runSignal.aborted) {
-            await this.agentRunRecorderService.failStep(toolStep.id, {
-              errorMessage: '工具执行未能安全完成。',
-              output: {
-                durationMs: Date.now() - toolStartedAt,
-              },
-            })
+          terminalStepFailure = {
+            id: toolStep.id,
+            errorMessage: '工具执行未能安全完成。',
+            output: {
+              durationMs: Date.now() - toolStartedAt,
+            },
           }
-
+          claimRunTermination(runCancellation, error)
           throw error
         }
 
@@ -361,18 +386,24 @@ export class AgentRuntimeService {
         }
 
         if (toolResult.ok) {
-          await this.agentRunRecorderService.completeStep(toolStep.id, {
-            output: toolStepOutput,
-          })
+          await this.agentRunRecorderService.completeStep(
+            toolStep.id,
+            databaseDeadline,
+            { output: toolStepOutput },
+          )
         }
         else {
-          await this.agentRunRecorderService.failStep(toolStep.id, {
-            errorMessage: `工具 ${samplingDecision.call.toolName} 返回 ${toolResult.code}。`,
-            output: toolStepOutput,
-          })
+          await this.agentRunRecorderService.failStep(
+            toolStep.id,
+            databaseDeadline,
+            {
+              errorMessage: `工具 ${samplingDecision.call.toolName} 返回 ${toolResult.code}。`,
+              output: toolStepOutput,
+            },
+          )
         }
 
-        runSignal.throwIfAborted()
+        runCancellation.throwIfUnavailable()
         this.appendToolObservation(
           modelInputItems,
           samplingDecision.call,
@@ -387,35 +418,24 @@ export class AgentRuntimeService {
         throw new AgentLoopLimitExceededError()
       }
 
-      runSignal.throwIfAborted()
+      runCancellation.throwIfUnavailable()
       await startAssistantOutputStep()
-      runSignal.throwIfAborted()
-      const completedMessageTransition = await this.updateMessageAndTouchConversation(
-        assistantMessageId,
-        input.conversationId,
-        content,
-        MessageStatus.COMPLETED,
-        runSignal,
-      )
-
-      if (!completedMessageTransition.transitioned) {
-        hasFinalMessageStatus = true
-        throw new MessageTerminalTransitionError(assistantMessageId)
-      }
-
-      const completedMessage = completedMessageTransition.message
-
-      // Message 的 COMPLETED CAS 是正常完成路径的终态所有权边界；之后到达的 abort 属于迟到信号。
-      hasFinalMessageStatus = true
-      await this.agentRunRecorderService.completeStep(
-        assistantOutputStepId!,
+      runCancellation.throwIfUnavailable()
+      const completedMessage = await this.agentRunRecorderService.completeRun(
         {
+          runId: currentAgentRunId,
+          conversationId: input.conversationId,
+          assistantMessageId,
+          assistantOutputStepId: assistantOutputStepId!,
+          content,
           output: {
             contentLength: content.length,
           },
         },
+        databaseDeadline,
+        runCancellation.claimCompletion,
       )
-      await this.agentRunRecorderService.completeRun(currentAgentRunId)
+      runCancellation.claimCompleted()
       runCancellation.dispose()
 
       yield {
@@ -428,24 +448,47 @@ export class AgentRuntimeService {
       }
     }
     catch (error) {
+      if (
+        runCancellation?.source === 'completing'
+        && error instanceof DatabaseCommitOutcomeUnknownError
+      ) {
+        throw new AgentRunTerminalizationError(error, error)
+      }
+
+      if (runCancellation) {
+        claimRunTermination(runCancellation, error)
+
+        if (runCancellation.source === 'completed')
+          throw error
+      }
+
       const userAborted = runCancellation?.source === 'user'
         || (!runCancellation && this.isAbortSignalTriggered(input.signal))
+      const runCause = runCancellation?.reason ?? error
 
       runCancellation?.dispose()
 
       if (userAborted) {
-        if (assistantMessage && !hasFinalMessageStatus) {
-          await this.updateMessageAndTouchConversation(
-            assistantMessage.id,
-            input.conversationId,
-            content,
-            MessageStatus.ABORTED,
-          )
-          hasFinalMessageStatus = true
-        }
-
         if (agentRunId) {
-          await this.agentRunRecorderService.abortRun(agentRunId)
+          try {
+            await this.agentRunRecorderService.abortRun(
+              agentRunId,
+              createTerminalizationDeadline(),
+              assistantMessage
+                ? {
+                    id: assistantMessage.id,
+                    conversationId: input.conversationId,
+                    content,
+                  }
+                : undefined,
+            )
+          }
+          catch (terminalizationCause) {
+            throw new AgentRunTerminalizationError(
+              runCause,
+              terminalizationCause,
+            )
+          }
         }
 
         if (assistantMessage) {
@@ -461,23 +504,30 @@ export class AgentRuntimeService {
         return
       }
 
-      const failure = runCancellation?.source === 'deadline'
-        ? runCancellation.signal.reason
-        : error
-      const errorMessage = this.toChatStreamErrorMessage(failure)
-
-      if (assistantMessage && !hasFinalMessageStatus) {
-        await this.updateMessageAndTouchConversation(
-          assistantMessage.id,
-          input.conversationId,
-          content || errorMessage,
-          MessageStatus.FAILED,
-        )
-        hasFinalMessageStatus = true
-      }
+      const errorMessage = this.toChatStreamErrorMessage(runCause)
 
       if (agentRunId) {
-        await this.agentRunRecorderService.failRun(agentRunId, errorMessage)
+        try {
+          await this.agentRunRecorderService.failRun(
+            agentRunId,
+            errorMessage,
+            createTerminalizationDeadline(),
+            assistantMessage
+              ? {
+                  id: assistantMessage.id,
+                  conversationId: input.conversationId,
+                  content: content || errorMessage,
+                }
+              : undefined,
+            terminalStepFailure,
+          )
+        }
+        catch (terminalizationCause) {
+          throw new AgentRunTerminalizationError(
+            runCause,
+            terminalizationCause,
+          )
+        }
       }
 
       yield {
@@ -493,44 +543,28 @@ export class AgentRuntimeService {
     }
     finally {
       runCancellation?.dispose()
-
-      if (
-        assistantMessage
-        && !hasFinalMessageStatus
-        && (
-          runCancellation?.source === 'user'
-          || (!runCancellation && this.isAbortSignalTriggered(input.signal))
-        )
-      ) {
-        await this.updateMessageAndTouchConversation(
-          assistantMessage.id,
-          input.conversationId,
-          content,
-          MessageStatus.ABORTED,
-        )
-
-        if (agentRunId) {
-          await this.agentRunRecorderService.abortRun(agentRunId)
-        }
-      }
     }
   }
 
   private async listRecentChatMessages(
     conversationId: string,
     limit: number,
+    databaseDeadline: DatabaseOperationDeadline,
   ): Promise<Message[]> {
-    const messages = await this.prismaService.message.findMany({
-      where: {
-        conversationId,
-        status: MessageStatus.COMPLETED,
-      },
-      orderBy: [
-        { createdAt: 'desc' },
-        { id: 'desc' },
-      ],
-      take: limit,
-    })
+    const messages = await this.prismaService.withDeadlineTransaction(
+      databaseDeadline,
+      transaction => transaction.execute(prisma => prisma.message.findMany({
+        where: {
+          conversationId,
+          status: MessageStatus.COMPLETED,
+        },
+        orderBy: [
+          { createdAt: 'desc' },
+          { id: 'desc' },
+        ],
+        take: limit,
+      })),
+    )
 
     return messages.reverse()
   }
@@ -561,55 +595,6 @@ export class AgentRuntimeService {
       })
 
       return message
-    })
-  }
-
-  private async updateMessageAndTouchConversation(
-    messageId: string,
-    conversationId: string,
-    content: string,
-    status: PrismaMessageStatus,
-    signal?: AbortSignal,
-  ): Promise<{ message: Message, transitioned: boolean }> {
-    return this.prismaService.$transaction(async (prisma) => {
-      signal?.throwIfAborted()
-      const result = await prisma.message.updateMany({
-        where: {
-          id: messageId,
-          status: {
-            in: [MessageStatus.PENDING, MessageStatus.STREAMING],
-          },
-        },
-        data: {
-          content,
-          status,
-        },
-      })
-
-      if (result.count === 1) {
-        await prisma.conversation.update({
-          where: {
-            id: conversationId,
-          },
-          data: {
-            updatedAt: new Date(),
-          },
-        })
-      }
-
-      // 在事务提交前再次仲裁；若 abort 已先到达，抛错会回滚刚才的 Message 更新。
-      signal?.throwIfAborted()
-
-      const message = await prisma.message.findUniqueOrThrow({
-        where: { id: messageId },
-      })
-
-      signal?.throwIfAborted()
-
-      return {
-        message,
-        transitioned: result.count === 1,
-      }
     })
   }
 
@@ -686,9 +671,8 @@ export class AgentRuntimeService {
   }
 
   private toFailedSamplingStepOutput(error: unknown, durationMs: number) {
-    if (error instanceof ModelSamplingIncompleteError && error.summary) {
+    if (error instanceof ModelSamplingIncompleteError && error.summary)
       return this.toSamplingStepOutput(error.summary, durationMs)
-    }
 
     return { durationMs }
   }
@@ -730,23 +714,93 @@ function createRunCancellation(
   deadlineMs: number,
 ): RunCancellation {
   const controller = new AbortController()
-  const cancellation: RunCancellation = {
-    signal: controller.signal,
-    dispose: () => {},
-  }
-  const abort = (
-    source: RunCancellationSource,
+  const deadlineAt = Date.now() + deadlineMs
+  let cancellation!: RunCancellation
+  let deadlineId!: NodeJS.Timeout
+  let pendingTermination: {
+    source: 'deadline' | 'user'
+    reason: unknown
+  } | undefined
+  const deadlineError = (): AgentRunDeadlineExceededError => (
+    new AgentRunDeadlineExceededError()
+  )
+  const claim = (
+    source: 'deadline' | 'failure' | 'user',
     reason: unknown,
   ): void => {
+    if (cancellation.source === 'completing') {
+      if (
+        !pendingTermination
+        && (source === 'deadline' || source === 'user')
+      ) {
+        pendingTermination = { source, reason }
+      }
+      return
+    }
+
     if (cancellation.source)
       return
 
     cancellation.source = source
+    cancellation.reason = reason
     controller.abort(reason)
   }
-  const handleUserAbort = (): void => abort('user', userSignal?.reason)
-  const deadlineId = setTimeout(
-    () => abort('deadline', new AgentRunDeadlineExceededError()),
+  const handleUserAbort = (): void => claim('user', userSignal?.reason)
+
+  cancellation = {
+    databaseDeadline: {
+      deadlineAt,
+      signal: controller.signal,
+      createTimeoutError: () => new DatabaseOperationDeadlineExceededError(),
+    },
+    signal: controller.signal,
+    claimCompletion: () => {
+      cancellation.throwIfUnavailable()
+      cancellation.source = 'completing'
+    },
+    claimCompleted: () => {
+      if (cancellation.source !== 'completing')
+        throw new Error('Agent Run 尚未取得 completion commit ownership')
+      cancellation.source = 'completed'
+      pendingTermination = undefined
+    },
+    claimCompletionFailure: (source, reason) => {
+      if (cancellation.source !== 'completing') {
+        claim(source, reason)
+        return
+      }
+
+      const firstCause = pendingTermination ?? { source, reason }
+      cancellation.source = firstCause.source
+      cancellation.reason = firstCause.reason
+      controller.abort(firstCause.reason)
+      pendingTermination = undefined
+    },
+    claimDeadline: (reason = deadlineError()) => {
+      claim('deadline', reason)
+    },
+    claimFailure: (reason) => {
+      claim('failure', reason)
+    },
+    throwIfUnavailable: () => {
+      if (!cancellation.source && Date.now() >= deadlineAt)
+        cancellation.claimDeadline()
+
+      if (
+        cancellation.source === 'user'
+        || cancellation.source === 'deadline'
+        || cancellation.source === 'failure'
+      ) {
+        controller.signal.throwIfAborted()
+      }
+    },
+    dispose: () => {
+      clearTimeout(deadlineId)
+      userSignal?.removeEventListener('abort', handleUserAbort)
+    },
+  }
+  deadlineId = setTimeout(
+    () => claim('deadline', deadlineError()),
     deadlineMs,
   )
 
@@ -755,10 +809,35 @@ function createRunCancellation(
   else
     userSignal?.addEventListener('abort', handleUserAbort, { once: true })
 
-  cancellation.dispose = () => {
-    clearTimeout(deadlineId)
-    userSignal?.removeEventListener('abort', handleUserAbort)
+  return cancellation
+}
+
+function claimRunTermination(
+  cancellation: RunCancellation,
+  error: unknown,
+): void {
+  if (error instanceof DatabaseOperationDeadlineExceededError) {
+    if (cancellation.source === 'completing') {
+      cancellation.claimCompletionFailure(
+        'deadline',
+        new AgentRunDeadlineExceededError(),
+      )
+    }
+    else {
+      cancellation.claimDeadline()
+    }
+    return
   }
 
-  return cancellation
+  if (cancellation.source === 'completing')
+    cancellation.claimCompletionFailure('failure', error)
+  else
+    cancellation.claimFailure(error)
+}
+
+function createTerminalizationDeadline(): DatabaseOperationDeadline {
+  return {
+    deadlineAt: Date.now() + TERMINALIZATION_DEADLINE_MS,
+    createTimeoutError: () => new Error('Agent Run 终态收口超过数据库等待上限。'),
+  }
 }

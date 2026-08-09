@@ -6,6 +6,7 @@ import type {
 } from './tool.types.js'
 import { Inject, Injectable } from '@nestjs/common'
 
+import { DatabaseOperationDeadlineExceededError } from '../../prisma/prisma.service.js'
 import { ToolRegistryService } from './tool-registry.service.js'
 
 @Injectable()
@@ -107,10 +108,11 @@ export class ToolInvocationService {
       }))
       .then<ToolInvocationOutcome, ToolInvocationOutcome>(
         result => ({ type: 'result', result }),
-        () => ({ type: 'error' }),
+        error => ({ type: 'error', error }),
       )
 
     try {
+      // 这里只仲裁调用方的返回结果；若 Executor 忽略 signal，Promise.race 不代表底层工作已停止。
       const outcome = await Promise.race([execution, cancellation])
 
       switch (outcome.type) {
@@ -132,6 +134,10 @@ export class ToolInvocationService {
 
         case 'error':
           context.signal.throwIfAborted()
+
+          if (outcome.error instanceof DatabaseOperationDeadlineExceededError)
+            throw outcome.error
+
           return {
             ok: false,
             code: 'execution_failed',
@@ -149,6 +155,6 @@ export class ToolInvocationService {
 
 type ToolInvocationOutcome
   = | { type: 'aborted' }
-    | { type: 'error' }
+    | { type: 'error', error: unknown }
     | { type: 'result', result: ToolResult }
     | { type: 'timeout' }

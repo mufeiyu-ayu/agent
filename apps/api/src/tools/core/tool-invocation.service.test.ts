@@ -1,3 +1,4 @@
+import type { DatabaseOperationDeadline } from '../../prisma/prisma.service.js'
 import type {
   RegisteredTool,
   ToolExecutionContext,
@@ -10,6 +11,7 @@ import assert from 'node:assert/strict'
 // eslint-disable-next-line test/no-import-node-test
 import { describe, it } from 'node:test'
 
+import { DatabaseOperationDeadlineExceededError } from '../../prisma/prisma.service.js'
 import { ToolInvocationService } from './tool-invocation.service.js'
 import { ToolRegistryService } from './tool-registry.service.js'
 
@@ -97,6 +99,7 @@ describe('ToolInvocationService', () => {
     assert.ok(receivedContext)
     assert.equal(receivedContext.runId, context.runId)
     assert.equal(receivedContext.conversationId, context.conversationId)
+    assert.equal(receivedContext.databaseDeadline, context.databaseDeadline)
     assert.equal(receivedContext.executionAttempt, 1)
     assert.notEqual(receivedContext.signal, context.signal)
     assert.equal(receivedContext.signal.aborted, false)
@@ -114,6 +117,21 @@ describe('ToolInvocationService', () => {
     assert.equal(result.ok, false)
     assert.equal(result.ok ? undefined : result.code, 'execution_failed')
     assert.doesNotMatch(result.modelContent, /password|secret/)
+  })
+
+  it('保留数据库 deadline 错误并交回 Runtime 归因', async () => {
+    const deadlineError = new DatabaseOperationDeadlineExceededError()
+    const registry = new ToolRegistryService()
+
+    registry.register(createEchoTool('echo', async () => {
+      throw deadlineError
+    }))
+    const service = new ToolInvocationService(registry)
+
+    await assert.rejects(
+      service.invoke(createEnvelope(), createContext()),
+      error => error === deadlineError,
+    )
   })
 
   it('拒绝当前阶段不支持的风险和审批配置，且不执行工具', async () => {
@@ -212,7 +230,7 @@ describe('ToolInvocationService', () => {
     )
   })
 
-  it('Executor 忽略 signal 且永不结束时按 deadline 返回 timeout，且不重试', async () => {
+  it('Executor 忽略 signal 时调用方仍按 Tool timeout 返回，但不声称底层工作已停止', async () => {
     let executionCount = 0
     const registry = new ToolRegistryService()
     const tool = createEchoTool('echo', async () => {
@@ -432,8 +450,17 @@ function createContext(signal = new AbortController().signal): ToolExecutionCont
   return {
     runId: 'run-1',
     conversationId: 'conversation-1',
+    databaseDeadline: createDatabaseDeadline(signal),
     signal,
     executionAttempt: 1,
+  }
+}
+
+function createDatabaseDeadline(signal: AbortSignal): DatabaseOperationDeadline {
+  return {
+    deadlineAt: Date.now() + 60_000,
+    signal,
+    createTimeoutError: () => new DatabaseOperationDeadlineExceededError(),
   }
 }
 

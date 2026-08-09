@@ -17,6 +17,17 @@ export class AgentRunDeadlineExceededError extends Error {
   }
 }
 
+/** 终态持久化失败；原始 Run 原因不能被 cleanup 错误覆盖。 */
+export class AgentRunTerminalizationError extends Error {
+  constructor(
+    readonly runCause: unknown,
+    readonly terminalizationCause: unknown,
+  ) {
+    super('Agent Run 终态未能可靠持久化。')
+    this.name = 'AgentRunTerminalizationError'
+  }
+}
+
 /** 当前 sampling 无法作为一条完整助手回答结束。 */
 export class ModelSamplingIncompleteError extends Error {
   constructor(
@@ -54,13 +65,5 @@ export class ModelSamplingIncompleteError extends Error {
           summary,
         )
     }
-  }
-}
-
-/** 用户可见 Message 已由另一条终态路径收口，当前路径不得继续推进 Run。 */
-export class MessageTerminalTransitionError extends Error {
-  constructor(messageId: string) {
-    super(`Message ${messageId} 已进入终态，拒绝迟到更新`)
-    this.name = 'MessageTerminalTransitionError'
   }
 }

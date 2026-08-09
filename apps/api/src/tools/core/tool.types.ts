@@ -1,3 +1,5 @@
+import type { DatabaseOperationDeadline } from '../../prisma/prisma.service.js'
+
 /** 当前工具输入需要的最小 JSON Schema 子集。 */
 export type JsonSchemaProperty
   = | { type: 'boolean', description?: string }
@@ -58,6 +60,7 @@ export interface ValidatedToolInvocation<TInput = unknown> {
 export interface ToolExecutionContext {
   runId: string
   conversationId: string
+  databaseDeadline: DatabaseOperationDeadline
   signal: AbortSignal
   executionAttempt: number
 }

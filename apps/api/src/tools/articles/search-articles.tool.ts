@@ -1,6 +1,7 @@
 import type { Prisma } from '../../generated/prisma/client.js'
 import type {
   ToolDefinition,
+  ToolExecutionContext,
   ToolExecutor,
   ValidatedToolInvocation,
 } from '../core/tool.types.js'
@@ -70,7 +71,10 @@ export class SearchArticlesTool implements ToolExecutor<SearchArticlesInput, Sea
 
   async execute(
     invocation: ValidatedToolInvocation<SearchArticlesInput>,
+    context: ToolExecutionContext,
   ) {
+    context.signal.throwIfAborted()
+
     // 零结果属于正常查询结果；未捕获的数据库或执行异常由 ToolInvocationService 统一兜底。
     const { languageCode, limit, query } = invocation.input
     const queryPattern = query.replace(/[\\%_]/g, '\\$&')
@@ -85,26 +89,39 @@ export class SearchArticlesTool implements ToolExecutor<SearchArticlesInput, Sea
       ],
     }
 
-    const [total, records] = await Promise.all([
-      this.prismaService.article.count({ where }),
-      this.prismaService.article.findMany({
-        where,
-        select: {
-          sourceId: true,
-          slug: true,
-          languageCode: true,
-          title: true,
-          seoTitle: true,
-          seoDescription: true,
-          content: true,
-        },
-        orderBy: [
-          { updatedAt: 'desc' },
-          { sourceId: 'asc' },
-        ],
-        take: limit,
-      }),
-    ])
+    const { total, records } = await this.prismaService.withDeadlineTransaction(
+      context.databaseDeadline,
+      async (transaction) => {
+        context.signal.throwIfAborted()
+        const total = await transaction.execute(prisma =>
+          prisma.article.count({ where }))
+
+        context.signal.throwIfAborted()
+        const records = await transaction.execute(prisma =>
+          prisma.article.findMany({
+            where,
+            select: {
+              sourceId: true,
+              slug: true,
+              languageCode: true,
+              title: true,
+              seoTitle: true,
+              seoDescription: true,
+              content: true,
+            },
+            orderBy: [
+              { updatedAt: 'desc' },
+              { sourceId: 'asc' },
+            ],
+            take: limit,
+          }))
+
+        context.signal.throwIfAborted()
+        return { total, records }
+      },
+    )
+
+    context.signal.throwIfAborted()
     const articles = records.map(({ content, ...article }) => ({
       ...article,
       excerpt: toExcerpt(content),
