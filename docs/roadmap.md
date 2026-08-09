@@ -11,7 +11,8 @@
 ```text
 阶段 1-6：Completed
 当前 Agent 主线：无 Active Task
-下一正式阶段：尚未定案
+下一正式 Agent 阶段：尚未定案
+Admin Observability 支线：Task 2 Active / Issue #33
 ```
 
 阶段 6 已于 2026-08-09 完成最终技术验收并合入 `master`。最终归档见 [`tasks/completed/phase-06-bounded-agent-loop.md`](./tasks/completed/phase-06-bounded-agent-loop.md)。
@@ -75,17 +76,34 @@ Task 0：get_article_detail
 | DeepSeek thinking continuation | MCP、Plugin、Skill、Multi-agent |
 | statement / lock wait 真实 DB timeout | per-operation pool waiter 物理取消 |
 
-这些后置项不是 Phase 6 未完成事项。只有后续出现真实产品需求、可靠性问题或明确学习目标时，才重新评估为正式 Task。
+这些后置项不是 Phase 6 未完成事项。只有后续出现真实产品需求、可靠性问题或明确学习目标时，才重新评估为正式 Agent Task。
 
-## Admin Console 支线
+## Admin Console Observability 支线
 
-Admin Console Task 0-1 已完成，Task 2-4 仍为 Planned。它是独立产品支线，不自动成为下一 Agent 学习阶段。具体状态见 [`tasks/admin-console.md`](./tasks/admin-console.md)。
+Admin Console 不是 Phase 7，也不会改变 Agent 主线仍“无 Active Task”的事实。
 
-## 下一阶段如何决定
+当前执行顺序已经确定：
+
+```text
+Task 0：Admin 基础壳                 Completed
+Task 1：静态 Run List / Detail       Completed
+Task 2：真实 Run / Step Query API    Active / Issue #33
+Task 3：真实 Run Trace UI            Planned
+Task 4：登录 / 权限 / 脱敏           Planned
+```
+
+Task 2 / 3 的正式文档：
+
+- [`tasks/admin-console/task-02-run-query-api.md`](./tasks/admin-console/task-02-run-query-api.md)
+- [`tasks/admin-console/task-03-real-trace-ui.md`](./tasks/admin-console/task-03-real-trace-ui.md)
+
+本支线的近期目标是先建立真实 Observability Baseline。Task 2 验收完成后再启动 Task 3；Task 3 完成后，后台作为后续 Agent 能力的开发者控制台增量演进，例如 Context Inspector、Retrieval Inspector、Approval Inspector 或 Recovery Inspector。
+
+## 下一 Agent 阶段如何决定
 
 当前不预设 Phase 7，也不从 `docs/research/**` 自动选择下一阶段。
 
-下一次主线规划应先重新读取最新 `master`，再根据以下证据选择一个最小可验收方向：
+完成当前 Admin Observability 基线不等于自动启动某个 Agent Phase。下一次主线规划仍应基于当时最新 `master`，再根据以下证据选择一个最小可验收方向：
 
 1. 当前 Runtime 暴露出的真实工程瓶颈；
 2. 产品需要新增的 Agent 能力；
