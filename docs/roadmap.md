@@ -4,20 +4,17 @@
 
 ## 当前判断
 
-项目已经完成从基础 LLM Chat 到 Session、Streaming、Agent Runtime、最小 Tool Calling 的连续学习闭环。当前处于阶段 6 `有界单 Agent Loop`。
-
-Task 1 已完成并合入 `master`：Runtime 由服务端 policy 控制 sampling、Tool Call 与终止；当前 Run 可动态使用 `search_articles` 和 `get_article_detail`，并支持 DeepSeek thinking Tool Call continuation。
+项目已经完成从基础 LLM Chat 到 Session、Streaming、Agent Runtime、最小 Tool Calling，再到 bounded sequential Agent Loop 与 Runtime reliability 的连续学习闭环。
 
 当前状态：
 
 ```text
-阶段 1-5：Completed
-阶段 6：有界单 Agent Loop（Active）
-  Task 0：Completed
-  横向配置治理：Completed
-  Task 1：Completed（Issue #29 Closed / PR #30 Merged）
-  Task 2：Next（尚未启动）
+阶段 1-6：Completed
+当前 Agent 主线：无 Active Task
+下一正式阶段：尚未定案
 ```
+
+阶段 6 已于 2026-08-09 完成最终技术验收并合入 `master`。最终归档见 [`tasks/completed/phase-06-bounded-agent-loop.md`](./tasks/completed/phase-06-bounded-agent-loop.md)。
 
 ## 阶段路线
 
@@ -28,49 +25,71 @@ Task 1 已完成并合入 `master`：Runtime 由服务端 policy 控制 sampling
 | 阶段 3：Streaming Chat | Completed | NDJSON 流式输出、Abort 与终态一致性 |
 | 阶段 4：Agent Runtime 基础 | Completed | `AgentRun` / `AgentStep` 与 Runtime Event |
 | 阶段 5：最小 Tool Calling | Completed | 单次 Tool Call、Observation 与第二轮 sampling |
-| [阶段 6：有界单 Agent Loop](./tasks/phase-06-bounded-agent-loop/README.md) | **Active** | 多轮顺序决策、执行预算、终止语义与 Agent 行为测试 |
+| [阶段 6：有界单 Agent Loop](./tasks/completed/phase-06-bounded-agent-loop.md) | **Completed** | 多轮顺序决策、执行预算、DeepSeek continuation、DB deadline 与终态可靠性 |
 
-## 阶段 6 已建立
+## 阶段 6 最终建立
 
 - 第二个只读 Article Tool：`get_article_detail`；
 - Tool 基础设施与 Article 业务工具分层；
-- 用户输入、历史、模型 Profile、输出、timeout 与 Observation 预算治理；
-- policy 驱动的 bounded sequential Agent Loop；
+- 用户输入、历史、Model Profile、输出、timeout 与 Observation 预算治理；
+- policy 驱动 bounded sequential Agent Loop；
 - 默认 `3` 次 sampling / `2` 次 Tool Call / `600s` Run deadline；
 - `search_articles` 与 `get_article_detail` Run allowlist；
 - DeepSeek `reasoning_content` continuation 与非 null assistant Tool Call content；
-- direct final、一次 Tool、两次顺序 Tool、超限、deadline、Abort 与终态测试。
+- direct final、一次 Tool、两次顺序 Tool、loop limit、Tool timeout、Run deadline、Abort 的确定性行为；
+- 单一 Run `deadlineAt` 与 remaining-budget 传播；
+- PostgreSQL transaction-local `statement_timeout` / `lock_timeout`；
+- bounded pool acquisition 与 late acquisition / late result ownership fencing；
+- Message / assistant Step / AgentRun 的原子 completion 与 bounded terminalization；
+- COMMIT outcome unknown 的显式语义，不伪造成功或失败；
+- 真实 PostgreSQL reliability 验证与阶段级回归矩阵。
 
-## 当前执行顺序
+## 阶段 6 最终交付顺序
 
 ```text
-Task 0：get_article_detail（Completed）
-  -> 横向配置治理 Issue #27（Completed）
-  -> Task 1：有界顺序 Agent Loop（Completed；PR #30 已合并）
-  -> Task 2：可靠性、回归与阶段学习验收（Next）
+Task 0：get_article_detail
+  -> 横向配置治理 Issue #27
+  -> Task 1：有界顺序 Agent Loop
+  -> Task 2：Runtime reliability / regression
+  -> Phase 6 Completed
 ```
 
-Task 2 尚未启动。下一步应基于当前最新 `master` 编写正式规格、创建独立 Issue 并执行 Clarification Gate。
+关键交付：
 
-## Task 2 已知输入
+| 工作项 | Issue / PR | Merge commit |
+| --- | --- | --- |
+| Task 0 | #25 / #26 | `d3609d3f` |
+| 横向配置治理 | #27 / #28 | `4a50c18c` |
+| Task 1 | #29 / #30 | `904b011d` |
+| Task 2 | #31 / #32 | `691efbcd` |
 
-Task 1 最新 Review 确认了一个后续可靠性问题：Run deadline 当前能主动取消 model sampling / Tool Execution，但 Prisma query、transaction 与 Recorder 数据库等待还没有统一的 query/statement timeout 和剩余预算传播。该问题不阻塞 Task 1，但必须作为 Task 2 的正式输入。
+## 阶段 6 已接受的能力边界
 
-## 阶段 6 边界
-
-| 本阶段包含 | 本阶段不包含 |
+| 已完成 | 明确后置 |
 | --- | --- |
 | 顺序 Agent Loop 与 Tool Execution | 并行 Tool Call、Planner、Workflow DSL |
 | Sampling / Tool Call / Run 执行预算 | Durable Recovery、跨进程 Resume |
 | Tool Call / Result 配对与顺序 | 完整 ContextPlan、自动摘要、Compaction |
-| Timeout、Abort、超限终止 | 写工具、Permission、Approval、HITL |
-| Run / Step Trace 与行为测试 | RAG、Embedding、Memory |
+| Model / Tool / DB timeout 与 Abort 语义 | 写工具、Permission、Approval、HITL |
+| Run / Step Trace 与终态一致性 | RAG、Embedding、长期 Memory |
 | DeepSeek thinking continuation | MCP、Plugin、Skill、Multi-agent |
+| statement / lock wait 真实 DB timeout | per-operation pool waiter 物理取消 |
+
+这些后置项不是 Phase 6 未完成事项。只有后续出现真实产品需求、可靠性问题或明确学习目标时，才重新评估为正式 Task。
 
 ## Admin Console 支线
 
-Admin Console Task 0-1 已完成，Task 2-4 仍为 Planned。它是可并行产品支线，不替代阶段 6 主线。具体状态见 [`tasks/admin-console.md`](./tasks/admin-console.md)。
+Admin Console Task 0-1 已完成，Task 2-4 仍为 Planned。它是独立产品支线，不自动成为下一 Agent 学习阶段。具体状态见 [`tasks/admin-console.md`](./tasks/admin-console.md)。
 
-## 阶段 6 之后
+## 下一阶段如何决定
 
-阶段 6 完成并由用户确认收口后，再根据真实项目证据选择下一学习方向。当前不预设阶段 7 及之后的编号或正式任务。
+当前不预设 Phase 7，也不从 `docs/research/**` 自动选择下一阶段。
+
+下一次主线规划应先重新读取最新 `master`，再根据以下证据选择一个最小可验收方向：
+
+1. 当前 Runtime 暴露出的真实工程瓶颈；
+2. 产品需要新增的 Agent 能力；
+3. 对 Agent 应用开发能力提升的学习收益；
+4. 能否定义清晰的代码范围、失败边界和验收标准。
+
+在完成这一步之前，Agent 主线保持“无 Active Task”。
