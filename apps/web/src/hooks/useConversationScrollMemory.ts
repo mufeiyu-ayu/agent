@@ -3,7 +3,7 @@ import type { ComputedRef, Ref } from 'vue'
 import { nextTick, onUnmounted, ref, watch } from 'vue'
 
 interface UseConversationScrollMemoryOptions {
-  containerRef: Ref<HTMLElement | null>
+  viewportRef: Ref<HTMLElement | null>
   conversationId: ComputedRef<string | null>
   canRestore: ComputedRef<boolean>
 }
@@ -92,7 +92,7 @@ export function useConversationScrollMemory(options: UseConversationScrollMemory
   }
 
   function getScrollViewport() {
-    return options.containerRef.value?.querySelector<HTMLElement>('[data-slot="scroll-area-viewport"]') ?? null
+    return options.viewportRef.value
   }
 
   function isCurrentRestore(runId: number) {
@@ -138,7 +138,7 @@ export function useConversationScrollMemory(options: UseConversationScrollMemory
     [
       () => options.conversationId.value,
       () => options.canRestore.value,
-      () => options.containerRef.value,
+      () => options.viewportRef.value,
     ],
     () => {
       void restoreScrollPosition()

@@ -61,9 +61,16 @@ function setTokenAttr(token: Token, name: string, value: string) {
 <style scoped>
 .agent-markdown-content {
   color: var(--agent-ink-soft);
-  font-size: 17px;
+  font-size: 16px;
   font-weight: 500;
-  line-height: 1.72;
+  line-height: 1.7;
+}
+
+@media (min-width: 960px) {
+  .agent-markdown-content {
+    font-size: 15px;
+    line-height: 1.65;
+  }
 }
 
 .agent-markdown-content :deep(*) {

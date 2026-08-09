@@ -85,10 +85,10 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="group/reply max-w-[760px] pt-1">
+  <div class="group/reply max-w-[700px] pt-1">
     <div
       v-if="isStreaming"
-      class="whitespace-pre-wrap text-[17px] font-medium leading-[1.72] text-agent-ink-soft"
+      class="whitespace-pre-wrap text-base font-medium leading-[1.7] text-agent-ink-soft min-[960px]:text-[15px] min-[960px]:leading-[1.65]"
     >
       {{ text.trim() }}
     </div>

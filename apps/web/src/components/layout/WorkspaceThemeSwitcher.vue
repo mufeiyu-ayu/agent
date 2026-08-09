@@ -52,11 +52,11 @@ function updateTheme(value: unknown) {
   >
     <SelectTrigger
       :aria-label="t('layout.themeSwitcher.ariaLabel')"
-      class="group h-9 w-9 overflow-hidden rounded-full border-agent-border bg-agent-surface-raised px-0 text-agent-ink-soft shadow-none hover:border-agent-border hover:bg-agent-surface focus:ring-agent-focus/35 sm:w-[92px] sm:px-3 lg:h-10 lg:w-[112px]"
+      class="group h-9 w-9 overflow-hidden rounded-full border-agent-border bg-agent-surface-raised px-0 text-agent-ink-soft shadow-none hover:border-agent-border hover:bg-agent-surface focus:ring-agent-focus/35 sm:w-[92px] sm:px-3 min-[960px]:w-[100px]"
     >
       <AppIcon :name="selectedTheme.icon" :size="17" class="shrink-0 text-agent-ink-muted transition group-hover:text-agent-ink" />
       <SelectValue :placeholder="t('layout.themeSwitcher.placeholder')">
-        <span class="hidden truncate text-xs font-bold sm:inline lg:text-sm">
+        <span class="hidden truncate text-xs font-bold sm:inline">
           {{ t(selectedTheme.shortLabelKey) }}
         </span>
       </SelectValue>

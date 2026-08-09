@@ -1,163 +1,122 @@
-import type { ComputedRef, CSSProperties, Ref } from 'vue'
+import type { ComputedRef, Ref } from 'vue'
 
-import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
+import { nextTick, onUnmounted, watch } from 'vue'
 
 interface UseAgentConversationScrollOptions {
-  containerRef: Ref<HTMLElement | null>
+  viewportRef: Ref<HTMLElement | null>
   activeTurnId: ComputedRef<string | undefined>
   activeTurnSignature: ComputedRef<string>
   enabled: ComputedRef<boolean>
 }
 
-interface ConversationScrollMetrics {
-  anchorTop: number
-  baseScrollHeight: number
-  viewport: HTMLElement
-}
-
-const ACTIVE_TURN_TOP_RATIO = 0.42
-const SCROLLABLE_TOLERANCE_PX = 2
+const BOTTOM_THRESHOLD_PX = 96
 
 /**
- * 将最新一轮 AI 回复区域锚定在对话视口中部偏上的位置。
- *
- * 这个 hook 只负责展示层滚动：首次对话保持自然布局；历史内容溢出后，
- * 最新一轮 loading、成功、错误状态共用同一个 active turn 锚点。
+ * 新一轮开始时定位到用户消息；流式输出只在用户仍停留在底部时自动跟随。
  */
 export function useAgentConversationScroll(options: UseAgentConversationScrollOptions) {
-  const activeTopSpacerHeight = ref(0)
-  const activeBottomSpacerHeight = ref(0)
-
-  const activeTopSpacerStyle = computed<CSSProperties>(() => ({
-    height: `${activeTopSpacerHeight.value}px`,
-  }))
-
-  const activeBottomSpacerStyle = computed<CSSProperties>(() => ({
-    height: `${activeBottomSpacerHeight.value}px`,
-  }))
-
   let alignmentRunId = 0
-  let resizeObserver: ResizeObserver | undefined
+  let shouldFollowLatest = true
+  let ignoreScrollEvents = false
   let observedViewport: HTMLElement | undefined
+  let removeScrollListener: (() => void) | undefined
+
+  function bindScrollListener() {
+    const viewport = options.viewportRef.value
+
+    if (observedViewport === viewport)
+      return
+
+    removeScrollListener?.()
+    observedViewport = viewport ?? undefined
+
+    if (!viewport)
+      return
+
+    const handleScroll = () => {
+      if (ignoreScrollEvents)
+        return
+
+      shouldFollowLatest = isNearBottom(viewport)
+    }
+
+    viewport.addEventListener('scroll', handleScroll, { passive: true })
+    removeScrollListener = () => viewport.removeEventListener('scroll', handleScroll)
+  }
 
   async function alignActiveTurn() {
-    if (!options.enabled.value) {
-      resetSpacers()
-      return
-    }
-
     const activeTurnId = options.activeTurnId.value
 
-    if (!activeTurnId) {
-      resetSpacers()
+    if (!options.enabled.value || !activeTurnId)
       return
-    }
 
     const runId = ++alignmentRunId
 
     await waitForLayout()
 
-    if (!isCurrentAlignment(runId))
+    if (!isCurrentAlignment(runId, activeTurnId))
       return
 
-    const metrics = readMetrics(activeTurnId)
+    bindScrollListener()
 
-    if (!metrics)
-      return
-
-    bindViewportResizeObserver(metrics.viewport)
-
-    if (!isContentScrollable(metrics)) {
-      resetSpacers()
-      return
-    }
-
-    const targetTop = metrics.viewport.clientHeight * ACTIVE_TURN_TOP_RATIO
-    const nextTopSpacerHeight = Math.max(0, targetTop - metrics.anchorTop)
-    const adjustedAnchorTop = metrics.anchorTop + nextTopSpacerHeight
-    const adjustedScrollHeight = metrics.baseScrollHeight + nextTopSpacerHeight
-    const adjustedMaxScrollTop = Math.max(0, adjustedScrollHeight - metrics.viewport.clientHeight)
-    const targetScrollTop = Math.max(0, adjustedAnchorTop - targetTop)
-    const nextBottomSpacerHeight = Math.max(0, targetScrollTop - adjustedMaxScrollTop)
-    const finalMaxScrollTop = adjustedMaxScrollTop + nextBottomSpacerHeight
-
-    activeTopSpacerHeight.value = Math.ceil(nextTopSpacerHeight)
-    activeBottomSpacerHeight.value = Math.ceil(nextBottomSpacerHeight)
-    await waitForLayout()
-
-    if (!isCurrentAlignment(runId))
-      return
-
-    const finalTargetScrollTop = clampScrollTop(targetScrollTop, finalMaxScrollTop)
-
-    metrics.viewport.scrollTo({
-      top: finalTargetScrollTop,
-      behavior: 'auto',
-    })
-  }
-
-  function readMetrics(activeTurnId: string): ConversationScrollMetrics | null {
-    const viewport = getScrollViewport()
-    const anchor = getActiveTurnAnchor(activeTurnId)
+    const viewport = options.viewportRef.value
+    const anchor = findUserTurnAnchor(viewport, activeTurnId)
 
     if (!viewport || !anchor)
-      return null
+      return
 
     const viewportRect = viewport.getBoundingClientRect()
     const anchorRect = anchor.getBoundingClientRect()
-    const currentTopSpacerHeight = activeTopSpacerHeight.value
-    const currentBottomSpacerHeight = activeBottomSpacerHeight.value
-    const anchorTop = anchorRect.top - viewportRect.top + viewport.scrollTop - currentTopSpacerHeight
+    const targetTop = viewport.scrollTop + anchorRect.top - viewportRect.top - 16
 
-    return {
-      anchorTop,
-      baseScrollHeight: Math.max(0, viewport.scrollHeight - currentTopSpacerHeight - currentBottomSpacerHeight),
-      viewport,
-    }
+    shouldFollowLatest = true
+    scrollViewport(viewport, targetTop)
   }
 
-  function getScrollViewport() {
-    return options.containerRef.value?.querySelector<HTMLElement>('[data-slot="scroll-area-viewport"]') ?? null
+  async function followActiveTurn() {
+    const activeTurnId = options.activeTurnId.value
+
+    if (!options.enabled.value || !activeTurnId || !shouldFollowLatest)
+      return
+
+    const runId = alignmentRunId
+
+    await waitForLayout()
+
+    if (!isCurrentAlignment(runId, activeTurnId) || !shouldFollowLatest)
+      return
+
+    const viewport = options.viewportRef.value
+
+    if (viewport)
+      scrollViewport(viewport, viewport.scrollHeight)
   }
 
-  function getActiveTurnAnchor(activeTurnId: string) {
+  function scrollViewport(viewport: HTMLElement, top: number) {
+    ignoreScrollEvents = true
+    viewport.scrollTo({ top, behavior: 'auto' })
+
+    window.requestAnimationFrame(() => {
+      ignoreScrollEvents = false
+    })
+  }
+
+  function findUserTurnAnchor(viewport: HTMLElement | null, activeTurnId: string) {
     const anchors = Array.from(
-      options.containerRef.value?.querySelectorAll<HTMLElement>('[data-agent-active-turn-anchor="true"]') ?? [],
+      viewport?.querySelectorAll<HTMLElement>('[data-agent-user-turn-id]') ?? [],
     )
 
-    return anchors.find(anchor => anchor.dataset.agentTurnId === activeTurnId) ?? null
+    return anchors.find(anchor => anchor.dataset.agentUserTurnId === activeTurnId) ?? null
   }
 
-  function bindViewportResizeObserver(viewport: HTMLElement) {
-    if (!('ResizeObserver' in window))
-      return
-
-    if (observedViewport === viewport)
-      return
-
-    resizeObserver?.disconnect()
-    observedViewport = viewport
-    resizeObserver = new ResizeObserver(() => {
-      void alignActiveTurn()
-    })
-    resizeObserver.observe(viewport)
+  function isCurrentAlignment(runId: number, activeTurnId: string) {
+    return runId === alignmentRunId
+      && options.enabled.value
+      && options.activeTurnId.value === activeTurnId
   }
 
-  function resetSpacers() {
-    activeTopSpacerHeight.value = 0
-    activeBottomSpacerHeight.value = 0
-  }
-
-  function isCurrentAlignment(runId: number) {
-    return runId === alignmentRunId && options.enabled.value && Boolean(options.activeTurnId.value)
-  }
-
-  function isContentScrollable(metrics: ConversationScrollMetrics) {
-    return metrics.baseScrollHeight - metrics.viewport.clientHeight > SCROLLABLE_TOLERANCE_PX
-  }
-
-  function clampScrollTop(value: number, maxScrollTop: number) {
-    return Math.min(Math.max(0, value), maxScrollTop)
+  function isNearBottom(viewport: HTMLElement) {
+    return viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight <= BOTTOM_THRESHOLD_PX
   }
 
   async function waitForLayout() {
@@ -169,29 +128,26 @@ export function useAgentConversationScroll(options: UseAgentConversationScrollOp
 
   watch(
     [
-      () => options.activeTurnSignature.value,
+      () => options.activeTurnId.value,
       () => options.enabled.value,
-      () => options.containerRef.value,
+      () => options.viewportRef.value,
     ],
     () => {
+      bindScrollListener()
       void alignActiveTurn()
     },
-    {
-      flush: 'post',
-      immediate: true,
-    },
+    { flush: 'post', immediate: true },
+  )
+
+  watch(
+    () => options.activeTurnSignature.value,
+    () => void followActiveTurn(),
+    { flush: 'post' },
   )
 
   onUnmounted(() => {
-    resizeObserver?.disconnect()
+    removeScrollListener?.()
     observedViewport = undefined
     alignmentRunId += 1
   })
-
-  return {
-    activeTopSpacerHeight,
-    activeTopSpacerStyle,
-    activeBottomSpacerHeight,
-    activeBottomSpacerStyle,
-  }
 }

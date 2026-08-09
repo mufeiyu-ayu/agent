@@ -5,7 +5,6 @@ import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import AppIcon from '@/components/common/AppIcon.vue'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import { useAgentConversationScroll } from '@/hooks/useAgentConversationScroll'
 import { useConversationScrollMemory } from '@/hooks/useConversationScrollMemory'
 
@@ -26,10 +25,10 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
-const conversationRootRef = ref<HTMLElement | null>(null)
+const conversationViewportRef = ref<HTMLElement | null>(null)
 
 const activeTurnId = computed(() => {
-  if (!props.anchorLatestTurn || props.turns.length <= 1)
+  if (!props.anchorLatestTurn)
     return undefined
 
   return props.turns[props.turns.length - 1]?.id
@@ -41,7 +40,7 @@ const activeTurnSignature = computed(() => {
 
   const activeTurn = props.turns[props.turns.length - 1]
 
-  if (!activeTurn || props.turns.length <= 1)
+  if (!activeTurn)
     return ''
 
   return [
@@ -53,13 +52,8 @@ const activeTurnSignature = computed(() => {
   ].join(':')
 })
 
-const {
-  activeTopSpacerHeight,
-  activeTopSpacerStyle,
-  activeBottomSpacerHeight,
-  activeBottomSpacerStyle,
-} = useAgentConversationScroll({
-  containerRef: conversationRootRef,
+useAgentConversationScroll({
+  viewportRef: conversationViewportRef,
   activeTurnId,
   activeTurnSignature,
   enabled: computed(() => props.anchorLatestTurn),
@@ -68,7 +62,7 @@ const {
 const {
   isRestoringScroll,
 } = useConversationScrollMemory({
-  containerRef: conversationRootRef,
+  viewportRef: conversationViewportRef,
   conversationId: computed(() => props.conversationId),
   canRestore: computed(() => props.turns.length > 0 && !props.anchorLatestTurn),
 })
@@ -100,12 +94,11 @@ const starterPrompts = computed(() => [
 
 <template>
   <section
-    ref="conversationRootRef"
-    class="mx-auto flex min-h-0 w-full max-w-[920px] flex-1 flex-col px-4 pt-5 sm:pt-6"
+    class="relative flex min-h-0 w-full flex-1 flex-col"
   >
     <div
       v-if="turns.length === 0 && showEmptyState"
-      class="flex min-h-0 flex-1 items-center justify-center px-1 pb-7 pt-5 sm:px-4 sm:pb-9 lg:pb-10"
+      class="flex min-h-0 flex-1 items-center justify-center overflow-y-auto px-5 pb-8 pt-[72px] sm:px-8"
     >
       <div class="w-full max-w-2xl text-center">
         <div class="mx-auto mb-4 inline-flex items-center justify-center text-agent-accent">
@@ -146,42 +139,38 @@ const starterPrompts = computed(() => [
       :aria-busy="isLoadingMessages ? 'true' : undefined"
     />
 
-    <ScrollArea
+    <div
       v-else
-      class="min-h-0 flex-1 pr-1"
+      ref="conversationViewportRef"
+      data-agent-conversation-viewport
+      class="min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-y-contain"
       :class="isRestoringScroll ? 'invisible' : undefined"
     >
-      <div class="py-5 sm:py-6">
+      <div class="mx-auto flex min-h-full w-full max-w-[840px] flex-col px-4 pb-10 pt-[72px] sm:px-5 sm:pb-12">
         <div
           v-if="lastGeneratedAt !== '--:--'"
           class="pb-3 text-right text-xs font-semibold text-agent-ink-muted"
         >
           {{ t('conversation.lastReply', { time: lastGeneratedAt }) }}
         </div>
-        <div class="pb-14 sm:pb-16">
-          <div
-            v-if="activeTopSpacerHeight > 0"
-            :style="activeTopSpacerStyle"
-            aria-hidden="true"
-          />
-
+        <div>
           <div class="space-y-6 sm:space-y-7">
             <template
-              v-for="turn in turns"
+              v-for="(turn, turnIndex) in turns"
               :key="turn.id"
             >
               <AgentMessage
                 role="user"
+                :data-agent-user-turn-id="turn.id"
               >
-                <div class="max-w-[720px] whitespace-pre-wrap rounded-2xl bg-agent-user-bubble px-5 py-3.5 text-[17px] font-semibold leading-7 text-agent-user-bubble-text ring-1 ring-agent-user-bubble-border">
+                <div class="max-w-[660px] whitespace-pre-wrap rounded-2xl bg-agent-user-bubble px-4 py-3 text-base font-semibold leading-7 text-agent-user-bubble-text ring-1 ring-agent-user-bubble-border min-[960px]:text-[15px] min-[960px]:leading-6">
                   {{ turn.userMessage }}
                 </div>
               </AgentMessage>
 
               <AgentMessage
                 role="agent"
-                data-agent-active-turn-anchor="true"
-                :data-agent-turn-id="turn.id"
+                :class="anchorLatestTurn && turnIndex === turns.length - 1 ? 'min-h-[40dvh]' : undefined"
               >
                 <div
                   v-if="(turn.status === 'thinking' || turn.status === 'generating') && !turn.reply"
@@ -224,14 +213,8 @@ const starterPrompts = computed(() => [
               </AgentMessage>
             </template>
           </div>
-
-          <div
-            v-if="activeBottomSpacerHeight > 0"
-            :style="activeBottomSpacerStyle"
-            aria-hidden="true"
-          />
         </div>
       </div>
-    </ScrollArea>
+    </div>
   </section>
 </template>

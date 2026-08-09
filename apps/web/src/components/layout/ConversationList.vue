@@ -37,7 +37,7 @@ function handleScroll(event: Event) {
 
 <template>
   <div
-    class="min-h-0 flex-1 space-y-1 overflow-y-auto pr-1"
+    class="min-h-0 flex-1 space-y-1 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
     @scroll="handleScroll"
   >
     <ConversationListItem
