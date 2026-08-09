@@ -10,7 +10,7 @@
 | 阶段 6：有界单 Agent Loop | Completed | [completed/phase-06-bounded-agent-loop.md](./completed/phase-06-bounded-agent-loop.md) | Task 0、横向配置治理、Task 1、Task 2 均已验收并合并 |
 | Admin Console Task 0-1 | Completed | [admin-console.md](./admin-console.md) | 基础壳与静态 Run UI 已完成 |
 | Admin Console Task 2 | **Completed** | [task-02-run-query-api.md](./admin-console/task-02-run-query-api.md) | Issue #33 / PR #34；merge `997d6b84`；真实 Run / Step 只读 API 已完成 |
-| Admin Console Task 3 | **Next** | [task-03-real-trace-ui.md](./admin-console/task-03-real-trace-ui.md) | 下一正式任务；接入真实 Trace UI；要求 Computer Use + 截图证据 |
+| Admin Console Task 3 | **Next** | [task-03-real-trace-ui.md](./admin-console/task-03-real-trace-ui.md) | Issue #35 已创建，等待 Codex Clarification Gate；要求 Computer Use + 截图证据 |
 | Admin Console Task 4 | Planned | [admin-console.md](./admin-console.md) | 登录、权限与敏感信息脱敏；当前不启动 |
 | 阶段 5：最小 Tool Calling | Completed | [completed/phase-05-tool-calling.md](./completed/phase-05-tool-calling.md) | 已归档 |
 | 阶段 4：Agent Runtime | Completed | [completed/phase-04-agent-runtime.md](./completed/phase-04-agent-runtime.md) | 已归档 |
@@ -31,25 +31,23 @@
 下一阶段：尚未定案
 ```
 
-Phase 6 最终交付包括 policy 驱动的 bounded sequential Agent Loop、双 Article Tool、DeepSeek thinking continuation、Run deadline、数据库 remaining-budget / statement timeout、late-result ownership fencing 与原子终态收口。
-
 下一项正式 Agent 主线任务仍必须重新基于最新 `master`、学习收益和产品需求讨论后确定；`docs/research/**` 的候选路线不会自动变成正式 Agent Phase。
 
 ## Admin Console 当前顺序
 
 ```text
 Task 2：真实 Run / Step Query API   Completed / Issue #33 / PR #34
-  -> Task 3：真实 Run Trace UI      Next
+  -> Task 3：真实 Run Trace UI      Next / Issue #35 / Gate pending
   -> 建立 Observability Baseline
 ```
 
-Task 3 的真实浏览器验收必须使用 Computer Use，关键状态需要截图证据。Task 3 与 Task 4 仍是独立 Task，不因为 Observability 支线推进而自动改变 Agent 主线阶段编号。
+Task 3 的真实浏览器验收必须使用 Computer Use，关键状态需要截图证据。Issue 已创建不等于 Active；Codex Clarification Gate 返回 `READY` 后才进入 Active。
 
 ## 状态定义
 
 | 状态 | 含义 |
 | --- | --- |
-| Next | 已确认是下一项正式任务，但尚未启动 |
+| Next | 已确认是下一项正式任务，但尚未启动，或 Issue 已创建但仍等待 Clarification Gate |
 | Active | 已创建 Issue 且 Clarification Gate 为 READY，正在实现或待验收 |
 | Planned | 方向已记录，前置条件或启动决策尚未满足 |
 | Completed | 已实现、GPT 技术验收通过，并由用户明确确认收口；合并状态另行记录 |
