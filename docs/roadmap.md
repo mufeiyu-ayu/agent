@@ -12,7 +12,7 @@
 阶段 1-6：Completed
 当前 Agent 主线：无 Active Task
 下一正式 Agent 阶段：尚未定案
-Admin Observability 支线：Task 2 Active / Issue #33
+Admin Observability：Task 2 Completed；Task 3 Next
 ```
 
 阶段 6 已于 2026-08-09 完成最终技术验收并合入 `master`。最终归档见 [`tasks/completed/phase-06-bounded-agent-loop.md`](./tasks/completed/phase-06-bounded-agent-loop.md)。
@@ -36,24 +36,14 @@ Admin Observability 支线：Task 2 Active / Issue #33
 - policy 驱动 bounded sequential Agent Loop；
 - 默认 `3` 次 sampling / `2` 次 Tool Call / `600s` Run deadline；
 - `search_articles` 与 `get_article_detail` Run allowlist；
-- DeepSeek `reasoning_content` continuation 与非 null assistant Tool Call content；
+- DeepSeek `reasoning_content` continuation；
 - direct final、一次 Tool、两次顺序 Tool、loop limit、Tool timeout、Run deadline、Abort 的确定性行为；
 - 单一 Run `deadlineAt` 与 remaining-budget 传播；
-- PostgreSQL transaction-local `statement_timeout` / `lock_timeout`；
-- bounded pool acquisition 与 late acquisition / late result ownership fencing；
-- Message / assistant Step / AgentRun 的原子 completion 与 bounded terminalization；
-- COMMIT outcome unknown 的显式语义，不伪造成功或失败；
-- 真实 PostgreSQL reliability 验证与阶段级回归矩阵。
-
-## 阶段 6 最终交付顺序
-
-```text
-Task 0：get_article_detail
-  -> 横向配置治理 Issue #27
-  -> Task 1：有界顺序 Agent Loop
-  -> Task 2：Runtime reliability / regression
-  -> Phase 6 Completed
-```
+- PostgreSQL transaction-local statement / lock timeout；
+- late-result ownership fencing；
+- Message / AgentStep / AgentRun 原子终态收口；
+- COMMIT outcome unknown 的显式语义；
+- 真实 PostgreSQL reliability 验证。
 
 关键交付：
 
@@ -82,28 +72,30 @@ Task 0：get_article_detail
 
 Admin Console 不是 Phase 7，也不会改变 Agent 主线仍“无 Active Task”的事实。
 
-当前执行顺序已经确定：
+当前执行顺序：
 
 ```text
 Task 0：Admin 基础壳                 Completed
 Task 1：静态 Run List / Detail       Completed
-Task 2：真实 Run / Step Query API    Active / Issue #33
-Task 3：真实 Run Trace UI            Planned
+Task 2：真实 Run / Step Query API    Completed / #33 / #34 / merge 997d6b84
+Task 3：真实 Run Trace UI            Next
 Task 4：登录 / 权限 / 脱敏           Planned
 ```
 
-Task 2 / 3 的正式文档：
+Task 2 已建立真实 Read API 和安全 Admin Contract。Task 3 的目标是把现有 Mock UI 接到真实运行数据，并建立 Observability Baseline；真实浏览器验收必须使用 Computer Use，关键页面需要截图证据。
+
+Task 2 / 3 正式文档：
 
 - [`tasks/admin-console/task-02-run-query-api.md`](./tasks/admin-console/task-02-run-query-api.md)
 - [`tasks/admin-console/task-03-real-trace-ui.md`](./tasks/admin-console/task-03-real-trace-ui.md)
 
-本支线的近期目标是先建立真实 Observability Baseline。Task 2 验收完成后再启动 Task 3；Task 3 完成后，后台作为后续 Agent 能力的开发者控制台增量演进，例如 Context Inspector、Retrieval Inspector、Approval Inspector 或 Recovery Inspector。
+Task 3 完成后，后台作为后续 Agent 能力的开发者控制台增量演进，例如 Context Inspector、Retrieval Inspector、Approval Inspector 或 Recovery Inspector。
 
 ## 下一 Agent 阶段如何决定
 
 当前不预设 Phase 7，也不从 `docs/research/**` 自动选择下一阶段。
 
-完成当前 Admin Observability 基线不等于自动启动某个 Agent Phase。下一次主线规划仍应基于当时最新 `master`，再根据以下证据选择一个最小可验收方向：
+完成 Admin Observability Baseline 不等于自动启动某个 Agent Phase。下一次主线规划仍应基于当时最新 `master`，再根据以下证据选择一个最小可验收方向：
 
 1. 当前 Runtime 暴露出的真实工程瓶颈；
 2. 产品需要新增的 Agent 能力；
