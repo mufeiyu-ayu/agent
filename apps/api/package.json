@@ -4,10 +4,10 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "predev": "pnpm --workspace-root prisma:generate && pnpm --filter @agent/contracts build",
-    "dev": "tsx --env-file-if-exists=../../.env src/main.ts",
-    "predev:watch": "pnpm --workspace-root prisma:generate && pnpm --filter @agent/contracts build",
-    "dev:watch": "tsx watch --env-file-if-exists=../../.env src/main.ts",
+    "predev": "pnpm --workspace-root prisma:generate && pnpm --filter @agent/contracts build && tsc",
+    "dev": "node --env-file-if-exists=../../.env dist/main.js",
+    "predev:watch": "pnpm --workspace-root prisma:generate && pnpm --filter @agent/contracts build && tsc",
+    "dev:watch": "node scripts/dev-watch.mjs",
     "prebuild": "pnpm --workspace-root prisma:generate && pnpm --filter @agent/contracts build",
     "build": "tsc",
     "start": "node dist/main.js",
@@ -21,8 +21,8 @@
     "test:tools": "tsx --test src/tools/**/*.test.ts",
     "pretypecheck": "pnpm --workspace-root prisma:generate",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint src",
-    "lint:fix": "eslint src --fix"
+    "lint": "eslint src scripts",
+    "lint:fix": "eslint src scripts --fix"
   },
   "dependencies": {
     "@agent/contracts": "workspace:*",

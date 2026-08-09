@@ -249,6 +249,7 @@ docs/assets/admin-console/task-03-error-or-404.jpg
 - 五类已知 Step 使用专用 Inspector，unknown Step 使用 Generic Inspector；
 - `requestedModel=null` 显示为 `Default request`，不猜测实际模型；
 - list / detail 使用 AbortController 与 request identity / route identity fencing；
+- API 开发入口改为 `tsc` 产物运行，保留 Nest DTO decorator metadata；`dev:watch` 使用 Node 标准库同时管理编译监听与服务重启；
 - 删除生产路径 Mock 数据源，不修改 Runtime、Prisma schema 或 Task 2 API Contract。
 
 自动验证全部通过：
@@ -259,10 +260,15 @@ pnpm --filter @agent/admin test         PASS
 pnpm --filter @agent/admin typecheck    PASS
 pnpm --filter @agent/admin lint         PASS
 pnpm --filter @agent/admin build        PASS
+pnpm --filter @agent/api test:admin-runs PASS（15/15）
 pnpm --filter @agent/api typecheck      PASS
+pnpm --filter @agent/api lint           PASS
+pnpm --filter @agent/api build          PASS
 pnpm typecheck                          PASS
 git diff --check                        PASS
 ```
+
+真实 `dev:watch` 启动链路另在隔离端口完成 HTTP smoke：`page=1&pageSize=8` 返回 `200` 且 pagination 中 `pageSize` 为数字 `8`，`pageSize=abc` 返回 `400`；修改源码后 TypeScript 增量编译与 Nest 自动重启，合法请求仍返回 `200`；`Ctrl+C` 后编译、watch 与服务子进程均退出且端口释放。
 
 Computer Use 自验收使用真实 Nest API、Admin Vite dev server 和真实 Chrome，覆盖：
 
