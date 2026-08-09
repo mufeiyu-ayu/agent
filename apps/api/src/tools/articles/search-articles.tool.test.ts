@@ -1,6 +1,15 @@
-import type { PrismaService } from '../../prisma/prisma.service.js'
-import type { ToolExecutionContext } from '../core/tool.types.js'
-import type { SearchArticlesOutput } from './search-articles.tool.js'
+import type {
+  DatabaseOperationDeadline,
+  PrismaService,
+} from '../../prisma/prisma.service.js'
+import type {
+  ToolExecutionContext,
+  ValidatedToolInvocation,
+} from '../core/tool.types.js'
+import type {
+  SearchArticlesInput,
+  SearchArticlesOutput,
+} from './search-articles.tool.js'
 import assert from 'node:assert/strict'
 // 项目本轮使用 Node 原生测试运行器，不引入额外测试框架。
 // eslint-disable-next-line test/no-import-node-test
@@ -56,13 +65,26 @@ describe('search_articles', () => {
       }],
     })
     const { invocationService } = createTools(fakePrisma)
+    const context = createContext()
 
     const result = await invocationService.invoke(
       createEnvelope({ query: '  Alpha%_\\  ', languageCode: ' ZH-CN ', limit: 10 }),
-      createContext(),
+      context,
     )
 
     assert.equal(result.ok, true)
+    assert.equal(fakePrisma.transactionDeadlines.length, 1)
+    assert.ok(
+      fakePrisma.transactionDeadlines[0]!.deadlineAt
+      < context.databaseDeadline.deadlineAt,
+    )
+    assert.notEqual(
+      fakePrisma.transactionDeadlines[0]!.signal,
+      context.databaseDeadline.signal,
+    )
+    assert.equal(fakePrisma.executeCount, 2)
+    assert.deepEqual(fakePrisma.queryOrder, ['count', 'findMany'])
+    assert.equal(fakePrisma.findManyStartedBeforeCountCompleted, false)
     assert.deepEqual(
       fakePrisma.countArguments[0]?.where,
       fakePrisma.findManyArguments[0]?.where,
@@ -156,6 +178,63 @@ describe('search_articles', () => {
       modelContent: '没有找到与“missing”匹配的文章。',
     })
   })
+
+  it('Executor 在 transaction acquisition 前响应已触发的 Tool signal', async () => {
+    const fakePrisma = new FakePrismaService()
+    const tool = new SearchArticlesTool(fakePrisma as unknown as PrismaService)
+    const abortController = new AbortController()
+
+    abortController.abort()
+
+    await assert.rejects(
+      tool.execute(
+        createValidatedInvocation({ query: 'seo', limit: 5 }),
+        createContext(abortController.signal),
+      ),
+      { name: 'AbortError' },
+    )
+    assert.equal(fakePrisma.transactionDeadlines.length, 0)
+    assert.deepEqual(fakePrisma.queryOrder, [])
+  })
+
+  it('late transaction start 后重新检查 Tool signal，且不开始第一条查询', async () => {
+    const abortController = new AbortController()
+    const fakePrisma = new FakePrismaService({
+      beforeTransactionCallback: () => abortController.abort(),
+    })
+    const tool = new SearchArticlesTool(fakePrisma as unknown as PrismaService)
+    const context = createContext(abortController.signal)
+
+    await assert.rejects(
+      tool.execute(
+        createValidatedInvocation({ query: 'seo', limit: 5 }),
+        context,
+      ),
+      { name: 'AbortError' },
+    )
+    assert.deepEqual(fakePrisma.transactionDeadlines, [context.databaseDeadline])
+    assert.equal(fakePrisma.executeCount, 0)
+    assert.deepEqual(fakePrisma.queryOrder, [])
+  })
+
+  it('第一条查询返回后重新检查 Tool signal，且不开始第二条查询', async () => {
+    const abortController = new AbortController()
+    const fakePrisma = new FakePrismaService({
+      afterCount: () => abortController.abort(),
+    })
+    const tool = new SearchArticlesTool(fakePrisma as unknown as PrismaService)
+
+    await assert.rejects(
+      tool.execute(
+        createValidatedInvocation({ query: 'seo', limit: 5 }),
+        createContext(abortController.signal),
+      ),
+      { name: 'AbortError' },
+    )
+    assert.equal(fakePrisma.executeCount, 1)
+    assert.deepEqual(fakePrisma.queryOrder, ['count'])
+    assert.equal(fakePrisma.findManyArguments.length, 0)
+  })
 })
 
 interface FakeArticleRecord {
@@ -171,23 +250,63 @@ interface FakeArticleRecord {
 interface FakePrismaOptions {
   total?: number
   records?: FakeArticleRecord[]
+  beforeTransactionCallback?: () => void
+  afterCount?: () => void
 }
 
 class FakePrismaService {
   readonly countArguments: FakeCountArguments[] = []
   readonly findManyArguments: FakeFindManyArguments[] = []
-  readonly article = {
-    count: async (arguments_: FakeCountArguments) => {
-      this.countArguments.push(arguments_)
-      return this.options.total ?? 0
+  readonly queryOrder: Array<'count' | 'findMany'> = []
+  readonly transactionDeadlines: DatabaseOperationDeadline[] = []
+  executeCount = 0
+  findManyStartedBeforeCountCompleted = false
+  private countCompleted = false
+  private readonly transactionClient: FakeTransactionClient = {
+    article: {
+      count: async (arguments_: FakeCountArguments) => {
+        this.queryOrder.push('count')
+        this.countArguments.push(arguments_)
+        await Promise.resolve()
+        this.countCompleted = true
+        this.options.afterCount?.()
+        return this.options.total ?? 0
+      },
+      findMany: async (arguments_: FakeFindManyArguments) => {
+        this.queryOrder.push('findMany')
+        this.findManyStartedBeforeCountCompleted = !this.countCompleted
+        this.findManyArguments.push(arguments_)
+        return this.options.records ?? []
+      },
     },
-    findMany: async (arguments_: FakeFindManyArguments) => {
-      this.findManyArguments.push(arguments_)
-      return this.options.records ?? []
+  }
+
+  private readonly transaction = {
+    execute: async <T>(
+      operation: (prisma: FakeTransactionClient) => Promise<T>,
+    ): Promise<T> => {
+      this.executeCount += 1
+      return await operation(this.transactionClient)
     },
   }
 
   constructor(private readonly options: FakePrismaOptions = {}) {}
+
+  async withDeadlineTransaction<T>(
+    deadline: DatabaseOperationDeadline,
+    callback: (transaction: typeof this.transaction) => Promise<T>,
+  ): Promise<T> {
+    this.transactionDeadlines.push(deadline)
+    this.options.beforeTransactionCallback?.()
+    return await callback(this.transaction)
+  }
+}
+
+interface FakeTransactionClient {
+  article: {
+    count: (arguments_: FakeCountArguments) => Promise<number>
+    findMany: (arguments_: FakeFindManyArguments) => Promise<FakeArticleRecord[]>
+  }
 }
 
 interface FakeWhere {
@@ -230,11 +349,34 @@ function createEnvelope(input: Record<string, unknown>) {
   }
 }
 
-function createContext(): ToolExecutionContext {
+function createValidatedInvocation(
+  input: SearchArticlesInput,
+): ValidatedToolInvocation<SearchArticlesInput> {
+  return {
+    callId: 'call-search-1',
+    toolName: 'search_articles',
+    toolVersion: '1',
+    samplingAttemptId: 'sampling-1',
+    input,
+  }
+}
+
+function createContext(
+  signal = new AbortController().signal,
+): ToolExecutionContext {
   return {
     runId: 'run-1',
     conversationId: 'conversation-1',
-    signal: new AbortController().signal,
+    databaseDeadline: createDatabaseDeadline(signal),
+    signal,
     executionAttempt: 1,
+  }
+}
+
+function createDatabaseDeadline(signal: AbortSignal): DatabaseOperationDeadline {
+  return {
+    deadlineAt: Date.now() + 60_000,
+    signal,
+    createTimeoutError: () => new Error('test database deadline exceeded'),
   }
 }

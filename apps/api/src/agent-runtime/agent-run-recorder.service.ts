@@ -1,7 +1,16 @@
-import type { AgentRun, AgentStep, Prisma } from '../generated/prisma/client.js'
+import type { AgentRun, AgentStep, Message, Prisma } from '../generated/prisma/client.js'
+import type {
+  DatabaseOperationDeadline,
+  DeadlineTransaction,
+} from '../prisma/prisma.service.js'
 import { Inject, Injectable } from '@nestjs/common'
 
-import { AgentRunStatus, AgentStepStatus } from '../generated/prisma/client.js'
+import {
+  AgentRunStatus,
+  AgentStepStatus,
+  MessageRole,
+  MessageStatus,
+} from '../generated/prisma/client.js'
 import { PrismaService } from '../prisma/prisma.service.js'
 
 export const AGENT_STEP_TYPES = {
@@ -50,6 +59,27 @@ interface AbortAgentStepInput extends CompleteAgentStepInput {
   errorMessage?: string
 }
 
+interface CompleteAgentRunInput {
+  runId: string
+  conversationId: string
+  assistantMessageId: string
+  assistantOutputStepId: string
+  content: string
+  output?: Prisma.InputJsonValue
+}
+
+interface CloseAssistantMessageInput {
+  id: string
+  conversationId: string
+  content: string
+}
+
+interface CloseAgentStepInput {
+  id: string
+  errorMessage: string
+  output?: Prisma.InputJsonValue
+}
+
 export class RecorderInvariantError extends Error {
   constructor(message: string) {
     super(message)
@@ -77,27 +107,59 @@ export class AgentRunRecorderService {
     })
   }
 
-  async attachAssistantMessage(runId: string, assistantMessageId: string): Promise<void> {
-    const result = await this.prismaService.agentRun.updateMany({
-      where: {
-        id: runId,
-        status: AgentRunStatus.RUNNING,
-      },
-      data: {
-        assistantMessageId,
-      },
-    })
+  async createAssistantMessage(
+    runId: string,
+    conversationId: string,
+    deadline: DatabaseOperationDeadline,
+  ): Promise<Message> {
+    return await this.prismaService.withDeadlineTransaction(deadline, async (transaction) => {
+      const run = await this.assertRunningRunLocked(transaction, runId)
 
-    this.assertSingleUpdate(result.count, `AgentRun ${runId} 无法关联助手消息`)
+      if (run.conversationId !== conversationId || run.assistantMessageId !== null) {
+        throw new RecorderInvariantError(
+          `AgentRun ${runId} 的会话不匹配或已关联助手消息`,
+        )
+      }
+
+      const message = await transaction.execute(prisma => prisma.message.create({
+        data: {
+          conversationId,
+          role: MessageRole.ASSISTANT,
+          content: '',
+          status: MessageStatus.STREAMING,
+        },
+      }))
+      const result = await transaction.execute(prisma => prisma.agentRun.updateMany({
+        where: {
+          id: runId,
+          status: AgentRunStatus.RUNNING,
+        },
+        data: {
+          assistantMessageId: message.id,
+        },
+      }))
+
+      this.assertSingleUpdate(result.count, `AgentRun ${runId} 无法关联助手消息`)
+
+      await transaction.execute(prisma => prisma.conversation.update({
+        where: { id: conversationId },
+        data: { updatedAt: new Date() },
+      }))
+
+      return message
+    })
   }
 
-  async startStep(input: StartAgentStepInput): Promise<AgentStep> {
-    return await this.prismaService.$transaction(async (prisma) => {
-      await this.assertRunningRunLocked(prisma, input.runId)
-      const sequence = await this.nextStepSequence(prisma, input.runId)
+  async startStep(
+    input: StartAgentStepInput,
+    deadline: DatabaseOperationDeadline,
+  ): Promise<AgentStep> {
+    return await this.prismaService.withDeadlineTransaction(deadline, async (transaction) => {
+      await this.assertRunningRunLocked(transaction, input.runId)
+      const sequence = await this.nextStepSequence(transaction, input.runId)
       const now = new Date()
 
-      return await prisma.agentStep.create({
+      return await transaction.execute(prisma => prisma.agentStep.create({
         data: {
           runId: input.runId,
           sequence,
@@ -107,83 +169,178 @@ export class AgentRunRecorderService {
           ...(input.input === undefined ? {} : { input: input.input }),
           startedAt: now,
         },
-      })
+      }))
     })
   }
 
   async completeStep(
     stepId: string,
+    deadline: DatabaseOperationDeadline,
     input: CompleteAgentStepInput = {},
   ): Promise<void> {
-    await this.transitionStep(stepId, AgentStepStatus.COMPLETED, input)
+    await this.transitionStep(stepId, AgentStepStatus.COMPLETED, deadline, input)
   }
 
-  async failStep(stepId: string, input: FailAgentStepInput): Promise<void> {
-    await this.transitionStep(stepId, AgentStepStatus.FAILED, input)
+  async failStep(
+    stepId: string,
+    deadline: DatabaseOperationDeadline,
+    input: FailAgentStepInput,
+  ): Promise<void> {
+    await this.transitionStep(stepId, AgentStepStatus.FAILED, deadline, input)
   }
 
   async abortStep(
     stepId: string,
+    deadline: DatabaseOperationDeadline,
     input: AbortAgentStepInput = {},
   ): Promise<void> {
-    await this.transitionStep(stepId, AgentStepStatus.ABORTED, input)
+    await this.transitionStep(stepId, AgentStepStatus.ABORTED, deadline, input)
   }
 
-  async completeRun(runId: string): Promise<void> {
-    await this.prismaService.$transaction(async (prisma) => {
-      await this.assertRunningRunLocked(prisma, runId)
-      const unfinishedStepCount = await prisma.agentStep.count({
+  async completeRun(
+    input: CompleteAgentRunInput,
+    deadline: DatabaseOperationDeadline,
+    onCommitOwned: () => void = () => {},
+  ): Promise<Message> {
+    return await this.prismaService.withDeadlineTransaction(deadline, async (transaction) => {
+      const run = await this.assertRunningRunLocked(transaction, input.runId)
+
+      if (
+        run.conversationId !== input.conversationId
+        || run.assistantMessageId !== input.assistantMessageId
+      ) {
+        throw new RecorderInvariantError(
+          `AgentRun ${input.runId} 的会话或助手消息不匹配`,
+        )
+      }
+
+      const messageResult = await transaction.execute(prisma => prisma.message.updateMany({
         where: {
-          runId,
+          id: input.assistantMessageId,
+          conversationId: input.conversationId,
+          role: MessageRole.ASSISTANT,
+          status: {
+            in: [MessageStatus.PENDING, MessageStatus.STREAMING],
+          },
+        },
+        data: {
+          content: input.content,
+          status: MessageStatus.COMPLETED,
+        },
+      }))
+
+      this.assertSingleUpdate(
+        messageResult.count,
+        `Message ${input.assistantMessageId} 已进入终态或不存在`,
+      )
+
+      await transaction.execute(prisma => prisma.conversation.update({
+        where: { id: input.conversationId },
+        data: { updatedAt: new Date() },
+      }))
+
+      const now = new Date()
+      const stepResult = await transaction.execute(prisma => prisma.agentStep.updateMany({
+        where: {
+          id: input.assistantOutputStepId,
+          runId: input.runId,
+          type: AGENT_STEP_TYPES.assistantOutput,
+          status: AgentStepStatus.RUNNING,
+        },
+        data: {
+          status: AgentStepStatus.COMPLETED,
+          ...(input.output === undefined ? {} : { output: input.output }),
+          endedAt: now,
+        },
+      }))
+
+      this.assertSingleUpdate(
+        stepResult.count,
+        `AgentStep ${input.assistantOutputStepId} 已进入终态或尚未开始`,
+      )
+
+      const unfinishedStepCount = await transaction.execute(prisma => prisma.agentStep.count({
+        where: {
+          runId: input.runId,
           status: {
             in: UNFINISHED_STEP_STATUSES,
           },
         },
-      })
+      }))
 
       if (unfinishedStepCount > 0) {
         throw new RecorderInvariantError(
-          `AgentRun ${runId} 仍有 ${unfinishedStepCount} 条非终态 Step，不能完成`,
+          `AgentRun ${input.runId} 仍有 ${unfinishedStepCount} 条非终态 Step，不能完成`,
         )
       }
 
-      await this.transitionRun(prisma, runId, AgentRunStatus.COMPLETED)
-    })
+      const message = await transaction.execute(prisma => prisma.message.findUniqueOrThrow({
+        where: { id: input.assistantMessageId },
+      }))
+
+      await this.transitionRun(
+        transaction,
+        input.runId,
+        AgentRunStatus.COMPLETED,
+        now,
+      )
+
+      return message
+    }, onCommitOwned)
   }
 
-  async failRun(runId: string, errorMessage: string): Promise<void> {
+  async failRun(
+    runId: string,
+    errorMessage: string,
+    deadline: DatabaseOperationDeadline,
+    assistantMessage?: CloseAssistantMessageInput,
+    failedStep?: CloseAgentStepInput,
+  ): Promise<void> {
     await this.closeRunAndUnfinishedSteps(
       runId,
       AgentRunStatus.FAILED,
       AgentStepStatus.FAILED,
+      MessageStatus.FAILED,
+      deadline,
       errorMessage,
+      assistantMessage,
+      failedStep,
     )
   }
 
-  async abortRun(runId: string): Promise<void> {
+  async abortRun(
+    runId: string,
+    deadline: DatabaseOperationDeadline,
+    assistantMessage?: CloseAssistantMessageInput,
+  ): Promise<void> {
     await this.closeRunAndUnfinishedSteps(
       runId,
       AgentRunStatus.ABORTED,
       AgentStepStatus.ABORTED,
+      MessageStatus.ABORTED,
+      deadline,
+      undefined,
+      assistantMessage,
     )
   }
 
   private async transitionStep(
     stepId: string,
     status: typeof AgentStepStatus.COMPLETED | typeof AgentStepStatus.FAILED | typeof AgentStepStatus.ABORTED,
+    deadline: DatabaseOperationDeadline,
     input: CompleteAgentStepInput & { errorMessage?: string },
   ): Promise<void> {
-    await this.prismaService.$transaction(async (prisma) => {
-      const step = await prisma.agentStep.findUnique({
+    await this.prismaService.withDeadlineTransaction(deadline, async (transaction) => {
+      const step = await transaction.execute(prisma => prisma.agentStep.findUnique({
         where: { id: stepId },
         select: { runId: true },
-      })
+      }))
 
       if (!step)
         throw new RecorderInvariantError(`AgentStep ${stepId} 不存在`)
 
-      await this.assertRunningRunLocked(prisma, step.runId)
-      const result = await prisma.agentStep.updateMany({
+      await this.assertRunningRunLocked(transaction, step.runId)
+      const result = await transaction.execute(prisma => prisma.agentStep.updateMany({
         where: {
           id: stepId,
           status: AgentStepStatus.RUNNING,
@@ -194,7 +351,7 @@ export class AgentRunRecorderService {
           ...(input.errorMessage === undefined ? {} : { errorMessage: input.errorMessage }),
           endedAt: new Date(),
         },
-      })
+      }))
 
       this.assertSingleUpdate(result.count, `AgentStep ${stepId} 已进入终态或尚未开始`)
     })
@@ -204,13 +361,100 @@ export class AgentRunRecorderService {
     runId: string,
     runStatus: typeof AgentRunStatus.FAILED | typeof AgentRunStatus.ABORTED,
     stepStatus: typeof AgentStepStatus.FAILED | typeof AgentStepStatus.ABORTED,
+    messageStatus: typeof MessageStatus.FAILED | typeof MessageStatus.ABORTED,
+    deadline: DatabaseOperationDeadline,
     errorMessage?: string,
+    assistantMessage?: CloseAssistantMessageInput,
+    failedStep?: CloseAgentStepInput,
   ): Promise<void> {
-    await this.prismaService.$transaction(async (prisma) => {
-      await this.assertRunningRunLocked(prisma, runId)
+    await this.prismaService.withDeadlineTransaction(deadline, async (transaction) => {
+      const run = await this.assertRunningRunLocked(transaction, runId)
       const now = new Date()
 
-      await prisma.agentStep.updateMany({
+      const assistantMessageId = assistantMessage?.id ?? run.assistantMessageId
+
+      if (assistantMessageId) {
+        if (
+          (
+            assistantMessage
+            && run.conversationId !== assistantMessage.conversationId
+          )
+          || (
+            run.assistantMessageId !== null
+            && run.assistantMessageId !== assistantMessageId
+          )
+        ) {
+          throw new RecorderInvariantError(
+            `AgentRun ${runId} 的会话或助手消息不匹配`,
+          )
+        }
+
+        const messageResult = await transaction.execute(prisma => prisma.message.updateMany({
+          where: {
+            id: assistantMessageId,
+            conversationId: run.conversationId,
+            role: MessageRole.ASSISTANT,
+            status: {
+              in: [MessageStatus.PENDING, MessageStatus.STREAMING],
+            },
+          },
+          data: {
+            content: assistantMessage?.content ?? errorMessage ?? '',
+            status: messageStatus,
+          },
+        }))
+
+        this.assertSingleUpdate(
+          messageResult.count,
+          `Message ${assistantMessageId} 已进入终态或不存在`,
+        )
+
+        await transaction.execute(prisma => prisma.conversation.update({
+          where: { id: run.conversationId },
+          data: { updatedAt: now },
+        }))
+      }
+
+      if (failedStep) {
+        const existingStep = await transaction.execute(prisma => prisma.agentStep.findUnique({
+          where: { id: failedStep.id },
+          select: { runId: true, status: true },
+        }))
+
+        if (!existingStep || existingStep.runId !== runId) {
+          throw new RecorderInvariantError(
+            `AgentStep ${failedStep.id} 不属于 AgentRun ${runId}`,
+          )
+        }
+
+        if (
+          existingStep.status === AgentStepStatus.PENDING
+          || existingStep.status === AgentStepStatus.RUNNING
+        ) {
+          const failedStepResult = await transaction.execute(prisma => prisma.agentStep.updateMany({
+            where: {
+              id: failedStep.id,
+              runId,
+              status: {
+                in: UNFINISHED_STEP_STATUSES,
+              },
+            },
+            data: {
+              status: stepStatus,
+              errorMessage: failedStep.errorMessage,
+              ...(failedStep.output === undefined ? {} : { output: failedStep.output }),
+              endedAt: now,
+            },
+          }))
+
+          this.assertSingleUpdate(
+            failedStepResult.count,
+            `AgentStep ${failedStep.id} 已并发进入终态`,
+          )
+        }
+      }
+
+      await transaction.execute(prisma => prisma.agentStep.updateMany({
         where: {
           runId,
           status: {
@@ -222,19 +466,26 @@ export class AgentRunRecorderService {
           ...(errorMessage === undefined ? {} : { errorMessage }),
           endedAt: now,
         },
-      })
+      }))
 
-      await this.transitionRun(prisma, runId, runStatus, now)
+      await this.transitionRun(
+        transaction,
+        runId,
+        runStatus,
+        now,
+        assistantMessage?.id,
+      )
     })
   }
 
   private async transitionRun(
-    prisma: Prisma.TransactionClient,
+    transaction: DeadlineTransaction,
     runId: string,
     status: typeof AgentRunStatus.COMPLETED | typeof AgentRunStatus.FAILED | typeof AgentRunStatus.ABORTED,
     endedAt = new Date(),
+    assistantMessageId?: string,
   ): Promise<void> {
-    const result = await prisma.agentRun.updateMany({
+    const result = await transaction.execute(prisma => prisma.agentRun.updateMany({
       where: {
         id: runId,
         status: AgentRunStatus.RUNNING,
@@ -242,35 +493,41 @@ export class AgentRunRecorderService {
       data: {
         status,
         endedAt,
+        ...(assistantMessageId === undefined ? {} : { assistantMessageId }),
       },
-    })
+    }))
 
     this.assertSingleUpdate(result.count, `AgentRun ${runId} 已进入终态或不存在`)
   }
 
   private async assertRunningRunLocked(
-    prisma: Prisma.TransactionClient,
+    transaction: DeadlineTransaction,
     runId: string,
-  ): Promise<void> {
-    const runs = await prisma.$queryRaw<Array<Pick<AgentRun, 'id' | 'status'>>>`
-      SELECT "id", "status"
+  ): Promise<Pick<AgentRun, 'id' | 'status' | 'conversationId' | 'assistantMessageId'>> {
+    const runs = await transaction.execute(prisma => prisma.$queryRaw<Array<Pick<
+      AgentRun,
+      'id' | 'status' | 'conversationId' | 'assistantMessageId'
+    >>>`
+      SELECT "id", "status", "conversationId", "assistantMessageId"
       FROM "AgentRun"
       WHERE "id" = ${runId}
       FOR UPDATE
-    `
+    `)
 
     if (runs[0]?.status !== AgentRunStatus.RUNNING)
       throw new RecorderInvariantError(`AgentRun ${runId} 已进入终态或不存在`)
+
+    return runs[0]
   }
 
   private async nextStepSequence(
-    prisma: Prisma.TransactionClient,
+    transaction: DeadlineTransaction,
     runId: string,
   ): Promise<number> {
-    const result = await prisma.agentStep.aggregate({
+    const result = await transaction.execute(prisma => prisma.agentStep.aggregate({
       where: { runId },
       _max: { sequence: true },
-    })
+    }))
 
     return (result._max.sequence ?? 0) + 1
   }

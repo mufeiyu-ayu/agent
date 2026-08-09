@@ -6,7 +6,11 @@ import type {
   ModelFinishReason,
   ModelStreamEvent,
 } from '../llm/model-stream.types.js'
-import type { PrismaService } from '../prisma/prisma.service.js'
+import type {
+  DatabaseOperationDeadline,
+  DeadlineTransaction,
+  PrismaService,
+} from '../prisma/prisma.service.js'
 import type { ToolInvocationService } from '../tools/core/tool-invocation.service.js'
 import type { ToolRegistryService } from '../tools/core/tool-registry.service.js'
 import type {
@@ -32,8 +36,13 @@ import {
   MessageRole,
   MessageStatus,
 } from '../generated/prisma/client.js'
+import {
+  DatabaseCommitOutcomeUnknownError,
+  DatabaseOperationDeadlineExceededError,
+} from '../prisma/prisma.service.js'
 import { buildSeoAgentChatMessages } from '../seo/prompts/seo-agent.prompt.js'
 import { toChatStreamEvent } from '../seo/seo-chat-stream-event.mapper.js'
+import { AgentRunTerminalizationError } from './agent-runtime.errors.js'
 import { AgentRuntimeService } from './agent-runtime.service.js'
 
 describe('AgentRuntimeService model stream', () => {
@@ -1019,7 +1028,7 @@ describe('AgentRuntimeService model stream', () => {
     assertNoUnfinishedSteps(harness)
   })
 
-  it('Message 已进入 ABORTED 后拒绝迟到 completion 推进 Step 和 Run', async () => {
+  it('Message 已进入 ABORTED 后拒绝迟到 completion 且不伪造收口成功', async () => {
     const harness = createHarness(() => toModelStream([
       { type: 'text_delta', delta: '迟到回答' },
       { type: 'response_completed', finishReason: 'stop' },
@@ -1035,15 +1044,15 @@ describe('AgentRuntimeService model stream', () => {
     assistantMessage.status = MessageStatus.ABORTED
     assistantMessage.content = '已停止'
 
-    const remainingEvents = await collectEvents(stream)
-
-    assert.deepEqual(remainingEvents.map(event => event.type), ['run_failed'])
+    await assert.rejects(
+      stream.next(),
+      AgentRunTerminalizationError,
+    )
     assert.equal(harness.assistantMessage()?.status, MessageStatus.ABORTED)
     assert.equal(harness.assistantMessage()?.content, '已停止')
     assert.deepEqual(harness.recorder.completedRunIds, [])
-    assert.deepEqual(harness.recorder.failedRunIds, ['run-1'])
-    assert.equal(findStep(harness, 'assistant_output')?.status, AgentStepStatus.FAILED)
-    assertNoUnfinishedSteps(harness)
+    assert.deepEqual(harness.recorder.failedRunIds, [])
+    assert.equal(findStep(harness, 'assistant_output')?.status, AgentStepStatus.RUNNING)
   })
 
   it('不把 length、content_filter 或 unknown 当作完整回答', async () => {
@@ -1095,7 +1104,7 @@ describe('AgentRuntimeService model stream', () => {
     assertNoUnfinishedSteps(harness)
   })
 
-  it('请求开始前已 Abort 时仍产出 start / run_aborted 并收口状态', async () => {
+  it('请求开始前已 Abort 时不再开始 normal DB / sampling 并收口 Run', async () => {
     const abortController = new AbortController()
 
     abortController.abort()
@@ -1108,14 +1117,12 @@ describe('AgentRuntimeService model stream', () => {
 
     const events = await collectEvents(harness.run())
 
-    assert.deepEqual(events.map(event => event.type), [
-      'run_started',
-      'run_aborted',
-    ])
+    assert.deepEqual(events, [])
     assert.equal(harness.llmCalls.length, 0)
-    assert.equal(harness.assistantMessage()?.status, MessageStatus.ABORTED)
+    assert.equal(harness.assistantMessage(), undefined)
     assert.deepEqual(harness.recorder.abortedRunIds, ['run-1'])
     assert.deepEqual(harness.recorder.failedRunIds, [])
+    assert.deepEqual(harness.recorder.steps, [])
     assertNoUnfinishedSteps(harness)
   })
 
@@ -1249,7 +1256,52 @@ describe('AgentRuntimeService model stream', () => {
     assertNoUnfinishedSteps(harness)
   })
 
-  it('Message COMPLETED CAS 后到达的用户 Abort 不覆盖正常完成', async () => {
+  it('Run-budget DB timeout 归因为 deadline 且不开始 sampling', async () => {
+    const harness = createHarness(() => toModelStream([
+      { type: 'response_completed', finishReason: 'stop' },
+    ]))
+
+    harness.prisma.deadlineTransactionError
+      = new DatabaseOperationDeadlineExceededError()
+    const events = await collectEvents(harness.run())
+    const failure = events.at(-1)
+
+    assert.equal(failure?.type, 'run_failed')
+    assert.match(
+      failure?.type === 'run_failed' ? failure.message : '',
+      /执行时限/,
+    )
+    assert.equal(harness.llmCalls.length, 0)
+    assert.deepEqual(harness.recorder.failedRunIds, ['run-1'])
+    assertNoUnfinishedSteps(harness)
+  })
+
+  it('普通 DB failure 先发生时不被随后 Run deadline 改写', async () => {
+    const harness = createHarness(
+      () => toModelStream([
+        { type: 'response_completed', finishReason: 'stop' },
+      ]),
+      undefined,
+      undefined,
+      { runDeadlineMs: 5 },
+    )
+
+    harness.prisma.deadlineTransactionError = new Error('ordinary database failure')
+    harness.recorder.failRunDelayMs = 15
+    const events = await collectEvents(harness.run())
+    const failure = events.at(-1)
+
+    assert.equal(failure?.type, 'run_failed')
+    assert.doesNotMatch(
+      failure?.type === 'run_failed' ? failure.message : '',
+      /执行时限/,
+    )
+    assert.equal(harness.llmCalls.length, 0)
+    assert.deepEqual(harness.recorder.failedRunIds, ['run-1'])
+    assertNoUnfinishedSteps(harness)
+  })
+
+  it('terminal transaction 提交后到达的用户 Abort 不覆盖正常完成', async () => {
     const abortController = new AbortController()
     const harness = createHarness(
       () => toModelStream([
@@ -1258,19 +1310,90 @@ describe('AgentRuntimeService model stream', () => {
       ]),
       abortController.signal,
     )
-    const stream = harness.run()
+    const events = await collectEvents(harness.run())
 
-    assert.equal((await stream.next()).value?.type, 'run_started')
-    assert.equal((await stream.next()).value?.type, 'assistant_delta')
-    harness.prisma.afterTransaction = () => abortController.abort()
-
-    const events = await collectEvents(stream)
-
-    assert.deepEqual(events.map(event => event.type), ['run_completed'])
+    abortController.abort()
+    assert.equal(events.at(-1)?.type, 'run_completed')
     assert.equal(harness.assistantMessage()?.status, MessageStatus.COMPLETED)
     assert.deepEqual(harness.recorder.completedRunIds, ['run-1'])
     assert.deepEqual(harness.recorder.abortedRunIds, [])
     assertNoUnfinishedSteps(harness)
+  })
+
+  it('completion commit ownership 已取得时，提交期间 Abort 不覆盖正常完成', async () => {
+    const abortController = new AbortController()
+    const commitGate = createDeferred()
+    const harness = createHarness(
+      () => toModelStream([
+        { type: 'text_delta', delta: '已完成' },
+        { type: 'response_completed', finishReason: 'stop' },
+      ]),
+      abortController.signal,
+    )
+    harness.recorder.completeRunCommitGate = commitGate.promise
+
+    const eventsPromise = collectEvents(harness.run())
+    await harness.recorder.completionOwnership.promise
+    abortController.abort()
+    commitGate.resolve()
+    const events = await eventsPromise
+
+    assert.equal(events.at(-1)?.type, 'run_completed')
+    assert.equal(harness.assistantMessage()?.status, MessageStatus.COMPLETED)
+    assert.deepEqual(harness.recorder.completedRunIds, ['run-1'])
+    assert.deepEqual(harness.recorder.abortedRunIds, [])
+    assertNoUnfinishedSteps(harness)
+  })
+
+  it('completion commit 失败时恢复提交期间最先到达的 deadline', async () => {
+    const commitGate = createDeferred()
+    const harness = createHarness(
+      () => toModelStream([
+        { type: 'text_delta', delta: '未提交' },
+        { type: 'response_completed', finishReason: 'stop' },
+      ]),
+      undefined,
+      undefined,
+      { runDeadlineMs: 20 },
+    )
+    harness.recorder.completeRunCommitGate = commitGate.promise
+    harness.recorder.completeRunCommitError = new Error('commit failed')
+
+    const eventsPromise = collectEvents(harness.run())
+    await harness.recorder.completionOwnership.promise
+    await new Promise(resolve => setTimeout(resolve, 30))
+    commitGate.resolve()
+    const events = await eventsPromise
+
+    assert.equal(events.at(-1)?.type, 'run_failed')
+    assert.equal(harness.assistantMessage()?.status, MessageStatus.FAILED)
+    assert.deepEqual(harness.recorder.completedRunIds, [])
+    assert.deepEqual(harness.recorder.failedRunIds, ['run-1'])
+    assertNoUnfinishedSteps(harness)
+  })
+
+  it('completion commit 结果未知时不伪造失败收口或启动 cleanup', async () => {
+    const outcomeUnknown = new DatabaseCommitOutcomeUnknownError()
+    const harness = createHarness(() => toModelStream([
+      { type: 'text_delta', delta: '结果未知' },
+      { type: 'response_completed', finishReason: 'stop' },
+    ]))
+    harness.recorder.completeRunCommitError = outcomeUnknown
+
+    await assert.rejects(
+      collectEvents(harness.run()),
+      error => (
+        error instanceof AgentRunTerminalizationError
+        && error.runCause === outcomeUnknown
+        && error.terminalizationCause === outcomeUnknown
+      ),
+    )
+
+    assert.equal(harness.assistantMessage()?.status, MessageStatus.STREAMING)
+    assert.deepEqual(harness.recorder.completedRunIds, [])
+    assert.deepEqual(harness.recorder.failedRunIds, [])
+    assert.deepEqual(harness.recorder.abortedRunIds, [])
+    assert.equal(findStep(harness, 'assistant_output')?.status, AgentStepStatus.RUNNING)
   })
 })
 
@@ -1361,7 +1484,7 @@ function createHarness(
   policy: Partial<AgentRuntimePolicy> = {},
 ) {
   const prisma = new FakePrismaService()
-  const recorder = new FakeAgentRunRecorderService()
+  const recorder = new FakeAgentRunRecorderService(prisma)
   const llmCalls: Array<{
     messages: ModelInputItem[]
     options: ChatStreamOptions | undefined
@@ -1442,7 +1565,7 @@ class FakePrismaService {
   readonly messages: Message[] = []
   readonly findManyArguments: FakeMessageFindManyArguments[] = []
   conversationExists = true
-  afterTransaction: (() => void) | undefined
+  deadlineTransactionError: unknown
 
   readonly conversation = {
     findUnique: async () => this.conversationExists
@@ -1529,11 +1652,37 @@ class FakePrismaService {
   }
 
   async $transaction<T>(operation: (prisma: FakePrismaService) => Promise<T>): Promise<T> {
-    const result = await operation(this)
-    const afterTransaction = this.afterTransaction
+    return await operation(this)
+  }
 
-    this.afterTransaction = undefined
-    afterTransaction?.()
+  async withDeadlineTransaction<T>(
+    deadline: DatabaseOperationDeadline,
+    callback: (transaction: DeadlineTransaction) => Promise<T>,
+  ): Promise<T> {
+    if (this.deadlineTransactionError !== undefined) {
+      const error = this.deadlineTransactionError
+
+      this.deadlineTransactionError = undefined
+      throw error
+    }
+
+    const assertAvailable = (): void => {
+      deadline.signal?.throwIfAborted()
+      if (Date.now() >= deadline.deadlineAt)
+        throw deadline.createTimeoutError()
+    }
+    const transaction: DeadlineTransaction = {
+      execute: async (operation) => {
+        assertAvailable()
+        const result = await operation(this as never)
+        assertAvailable()
+        return result
+      },
+    }
+
+    assertAvailable()
+    const result = await callback(transaction)
+    assertAvailable()
     return result
   }
 
@@ -1569,6 +1718,12 @@ class FakeAgentRunRecorderService {
   readonly failedRunIds: string[] = []
   readonly abortedRunIds: string[] = []
   readonly steps: RecordedAgentStep[] = []
+  readonly completionOwnership = createDeferred()
+  completeRunCommitError: Error | undefined
+  completeRunCommitGate: Promise<void> | undefined
+  failRunDelayMs = 0
+
+  constructor(private readonly prisma: FakePrismaService) {}
 
   async createRun(input: {
     conversationId: string
@@ -1589,13 +1744,28 @@ class FakeAgentRunRecorderService {
     }
   }
 
-  async attachAssistantMessage(): Promise<void> {}
+  async createAssistantMessage(
+    _runId: string,
+    conversationId: string,
+    deadline: DatabaseOperationDeadline,
+  ): Promise<Message> {
+    this.assertDeadline(deadline)
+    return await this.prisma.message.create({
+      data: {
+        conversationId,
+        role: MessageRole.ASSISTANT,
+        content: '',
+        status: MessageStatus.STREAMING,
+      },
+    })
+  }
 
   async startStep(input: {
     runId: string
     type: string
     input?: unknown
-  }): Promise<RecordedAgentStep> {
+  }, deadline: DatabaseOperationDeadline): Promise<RecordedAgentStep> {
+    this.assertDeadline(deadline)
     const now = new Date()
     const step: RecordedAgentStep = {
       id: `step-${this.steps.length + 1}`,
@@ -1614,40 +1784,129 @@ class FakeAgentRunRecorderService {
     return step
   }
 
-  async completeStep(stepId: string, input: { output?: unknown } = {}): Promise<void> {
+  async completeStep(
+    stepId: string,
+    _deadline: DatabaseOperationDeadline,
+    input: { output?: unknown } = {},
+  ): Promise<void> {
+    this.assertDeadline(_deadline)
     this.transitionStep(stepId, AgentStepStatus.COMPLETED, input)
   }
 
   async failStep(
     stepId: string,
+    _deadline: DatabaseOperationDeadline,
     input: { errorMessage: string, output?: unknown },
   ): Promise<void> {
+    this.assertDeadline(_deadline)
     this.transitionStep(stepId, AgentStepStatus.FAILED, input)
   }
 
   async abortStep(
     stepId: string,
+    _deadline: DatabaseOperationDeadline,
     input: { errorMessage?: string, output?: unknown } = {},
   ): Promise<void> {
+    this.assertDeadline(_deadline)
     this.transitionStep(stepId, AgentStepStatus.ABORTED, input)
   }
 
-  async completeRun(runId: string): Promise<void> {
+  async completeRun(
+    input: {
+      runId: string
+      assistantMessageId: string
+      assistantOutputStepId: string
+      content: string
+      output?: unknown
+    },
+    _deadline: DatabaseOperationDeadline,
+    onCommitOwned: () => void = () => {},
+  ): Promise<Message> {
+    this.assertDeadline(_deadline)
+    const message = this.prisma.messages.find(
+      candidate => candidate.id === input.assistantMessageId,
+    )
+
+    assert.ok(message)
+    if (
+      message.status !== MessageStatus.PENDING
+      && message.status !== MessageStatus.STREAMING
+    ) {
+      throw new Error(`Message ${message.id} 已进入终态`)
+    }
+
+    onCommitOwned()
+    this.completionOwnership.resolve()
+    if (this.completeRunCommitGate)
+      await this.completeRunCommitGate
+
+    if (this.completeRunCommitError)
+      throw this.completeRunCommitError
+
+    this.transitionStep(
+      input.assistantOutputStepId,
+      AgentStepStatus.COMPLETED,
+      { output: input.output },
+    )
     assert.equal(
-      this.steps.some(step => step.runId === runId && isUnfinishedStep(step)),
+      this.steps.some(step => step.runId === input.runId && isUnfinishedStep(step)),
       false,
     )
-    this.completedRunIds.push(runId)
+    message.content = input.content
+    message.status = MessageStatus.COMPLETED
+    message.updatedAt = new Date()
+    this.completedRunIds.push(input.runId)
+    return message
   }
 
-  async failRun(runId: string, errorMessage: string): Promise<void> {
+  async failRun(
+    runId: string,
+    errorMessage: string,
+    _deadline: DatabaseOperationDeadline,
+    assistantMessage?: { id: string, content: string },
+    failedStep?: { id: string, errorMessage: string, output?: unknown },
+  ): Promise<void> {
+    if (this.failRunDelayMs > 0) {
+      await new Promise(resolve => setTimeout(resolve, this.failRunDelayMs))
+    }
+    this.closeMessage(assistantMessage, MessageStatus.FAILED)
+    if (failedStep) {
+      this.transitionStep(failedStep.id, AgentStepStatus.FAILED, failedStep)
+    }
     this.closeUnfinishedSteps(runId, AgentStepStatus.FAILED, errorMessage)
     this.failedRunIds.push(runId)
   }
 
-  async abortRun(runId: string): Promise<void> {
+  async abortRun(
+    runId: string,
+    _deadline: DatabaseOperationDeadline,
+    assistantMessage?: { id: string, content: string },
+  ): Promise<void> {
+    this.closeMessage(assistantMessage, MessageStatus.ABORTED)
     this.closeUnfinishedSteps(runId, AgentStepStatus.ABORTED)
     this.abortedRunIds.push(runId)
+  }
+
+  private closeMessage(
+    input: { id: string, content: string } | undefined,
+    status: typeof MessageStatus.FAILED | typeof MessageStatus.ABORTED,
+  ): void {
+    if (!input)
+      return
+
+    const message = this.prisma.messages.find(candidate => candidate.id === input.id)
+
+    if (!message)
+      throw new Error(`Message ${input.id} 不存在`)
+    if (
+      message.status !== MessageStatus.PENDING
+      && message.status !== MessageStatus.STREAMING
+    ) {
+      throw new Error(`Message ${input.id} 已进入终态`)
+    }
+    message.content = input.content
+    message.status = status
+    message.updatedAt = new Date()
   }
 
   private transitionStep(
@@ -1678,6 +1937,12 @@ class FakeAgentRunRecorderService {
       step.errorMessage = errorMessage ?? null
       step.endedAt = new Date()
     }
+  }
+
+  private assertDeadline(deadline: DatabaseOperationDeadline): void {
+    deadline.signal?.throwIfAborted()
+    if (Date.now() >= deadline.deadlineAt)
+      throw deadline.createTimeoutError()
   }
 }
 
