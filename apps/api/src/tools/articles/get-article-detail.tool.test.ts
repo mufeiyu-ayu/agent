@@ -74,7 +74,15 @@ describe('get_article_detail', () => {
       context,
     )
 
-    assert.deepEqual(fakePrisma.transactionDeadlines, [context.databaseDeadline])
+    assert.equal(fakePrisma.transactionDeadlines.length, 1)
+    assert.ok(
+      fakePrisma.transactionDeadlines[0]!.deadlineAt
+      < context.databaseDeadline.deadlineAt,
+    )
+    assert.notEqual(
+      fakePrisma.transactionDeadlines[0]!.signal,
+      context.databaseDeadline.signal,
+    )
     assert.equal(fakePrisma.executeCount, 1)
     assert.deepEqual(fakePrisma.findUniqueArguments, [{
       where: { sourceId: 25 },

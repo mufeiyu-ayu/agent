@@ -73,7 +73,15 @@ describe('search_articles', () => {
     )
 
     assert.equal(result.ok, true)
-    assert.deepEqual(fakePrisma.transactionDeadlines, [context.databaseDeadline])
+    assert.equal(fakePrisma.transactionDeadlines.length, 1)
+    assert.ok(
+      fakePrisma.transactionDeadlines[0]!.deadlineAt
+      < context.databaseDeadline.deadlineAt,
+    )
+    assert.notEqual(
+      fakePrisma.transactionDeadlines[0]!.signal,
+      context.databaseDeadline.signal,
+    )
     assert.equal(fakePrisma.executeCount, 2)
     assert.deepEqual(fakePrisma.queryOrder, ['count', 'findMany'])
     assert.equal(fakePrisma.findManyStartedBeforeCountCompleted, false)

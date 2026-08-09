@@ -1,3 +1,4 @@
+import type { DatabaseOperationDeadline } from '../../prisma/prisma.service.js'
 import type {
   ToolExecutionContext,
   ToolResult,
@@ -72,6 +73,12 @@ export class ToolInvocationService {
       input,
     }
     const executionController = new AbortController()
+    const toolDeadlineAt = Date.now() + tool.definition.timeoutMs
+    const databaseDeadline = createToolDatabaseDeadline(
+      context.databaseDeadline,
+      executionController.signal,
+      toolDeadlineAt,
+    )
     let hasCancellationOutcome = false
     let resolveCancellation!: (outcome: ToolInvocationOutcome) => void
     const cancellation = new Promise<ToolInvocationOutcome>((resolve) => {
@@ -97,13 +104,17 @@ export class ToolInvocationService {
           new DOMException('tool execution timeout', 'TimeoutError'),
         )
       }
-    }, tool.definition.timeoutMs)
+    }, Math.max(0, toolDeadlineAt - Date.now()))
 
-    context.signal.addEventListener('abort', handleRunAbort, { once: true })
+    if (context.signal.aborted)
+      handleRunAbort()
+    else
+      context.signal.addEventListener('abort', handleRunAbort, { once: true })
 
     const execution = Promise.resolve()
       .then(() => tool.executor.execute(invocation, {
         ...context,
+        databaseDeadline,
         signal: executionController.signal,
       }))
       .then<ToolInvocationOutcome, ToolInvocationOutcome>(
@@ -135,6 +146,15 @@ export class ToolInvocationService {
         case 'error':
           context.signal.throwIfAborted()
 
+          if (outcome.error instanceof ToolDatabaseDeadlineExceededError) {
+            return {
+              ok: false,
+              code: 'timeout',
+              modelContent: `工具 ${envelope.toolName} 执行超时。`,
+              retryable: false,
+            }
+          }
+
           if (outcome.error instanceof DatabaseOperationDeadlineExceededError)
             throw outcome.error
 
@@ -158,3 +178,26 @@ type ToolInvocationOutcome
     | { type: 'error', error: unknown }
     | { type: 'result', result: ToolResult }
     | { type: 'timeout' }
+
+class ToolDatabaseDeadlineExceededError extends Error {
+  constructor() {
+    super('工具数据库操作超过可用 timeout budget')
+    this.name = 'ToolDatabaseDeadlineExceededError'
+  }
+}
+
+function createToolDatabaseDeadline(
+  runDeadline: DatabaseOperationDeadline,
+  signal: AbortSignal,
+  toolDeadlineAt: number,
+): DatabaseOperationDeadline {
+  const toolDeadlineIsFirst = toolDeadlineAt < runDeadline.deadlineAt
+
+  return {
+    deadlineAt: Math.min(runDeadline.deadlineAt, toolDeadlineAt),
+    signal,
+    createTimeoutError: toolDeadlineIsFirst
+      ? () => new ToolDatabaseDeadlineExceededError()
+      : runDeadline.createTimeoutError,
+  }
+}

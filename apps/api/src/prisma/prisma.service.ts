@@ -7,7 +7,7 @@ import { PrismaPg } from '@prisma/adapter-pg'
 import { PrismaClient } from '../generated/prisma/client.js'
 
 const PG_POOL_ACQUISITION_TIMEOUT_MS = 2_000
-const PG_STATEMENT_TIMEOUT_LEAD_MS = 25
+const PG_STATEMENT_TIMEOUT_LEAD_MS = 50
 const PG_LOCK_TIMEOUT_LEAD_MS = 25
 const PRISMA_TRANSACTION_START_TIMEOUT_MS = 8_000
 const DATABASE_COMMIT_OUTCOME_TIMEOUT_MS = 5_000
@@ -30,8 +30,11 @@ export class DatabaseOperationDeadlineExceededError extends Error {
 }
 
 export class DatabaseCommitOutcomeUnknownError extends Error {
-  constructor(message = '数据库事务 COMMIT 在内部等待上界内未返回，结果未知') {
-    super(message)
+  constructor(
+    message = '数据库事务 COMMIT 在内部等待上界内未返回，结果未知',
+    options?: ErrorOptions,
+  ) {
+    super(message, options)
     this.name = 'DatabaseCommitOutcomeUnknownError'
   }
 }
@@ -345,9 +348,73 @@ function waitForDeadline<T>(
           reject(error)
         }
       }),
-      error => finish(() => reject(error)),
+      error => finish(() => reject(
+        commitResultOwnsCompletion
+        && commitState.started
+        && isCommitTransportFailure(error)
+          ? new DatabaseCommitOutcomeUnknownError(
+              '数据库事务 COMMIT 的连接响应不确定，结果未知',
+              { cause: error },
+            )
+          : error,
+      )),
     )
   })
+}
+
+function isCommitTransportFailure(error: unknown): boolean {
+  return hasCommitTransportFailure(error, new Set())
+}
+
+function hasCommitTransportFailure(
+  value: unknown,
+  seen: Set<object>,
+): boolean {
+  if (typeof value !== 'object' || value === null || seen.has(value))
+    return false
+
+  seen.add(value)
+  const candidate = value as {
+    cause?: unknown
+    code?: unknown
+    kind?: unknown
+    meta?: { driverAdapterError?: unknown }
+    originalCode?: unknown
+  }
+  const transportCodes = new Set([
+    'P1001',
+    'P1002',
+    'P1008',
+    'P1017',
+    'CONNECTIONCLOSED',
+    'SOCKETTIMEOUT',
+    'ECONNRESET',
+    'ECONNABORTED',
+    'ETIMEDOUT',
+    'EPIPE',
+    'ERR_STREAM_PREMATURE_CLOSE',
+  ])
+  const hasTransportCode = [candidate.code, candidate.originalCode].some(code => (
+    typeof code === 'string'
+    && (
+      transportCodes.has(code.toUpperCase())
+      || /^08[A-Z0-9]{3}$/i.test(code)
+    )
+  ))
+
+  if (hasTransportCode)
+    return true
+
+  if (
+    candidate.kind === 'ConnectionClosed'
+    || candidate.kind === 'SocketTimeout'
+    || candidate.kind === 'DatabaseNotReachable'
+  ) {
+    return true
+  }
+
+  return hasCommitTransportFailure(candidate.cause, seen)
+    || hasCommitTransportFailure(candidate.meta?.driverAdapterError, seen)
 }
 
 interface CommitState {

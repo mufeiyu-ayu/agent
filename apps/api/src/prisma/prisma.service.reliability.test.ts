@@ -1,4 +1,5 @@
 import type { Prisma } from '../generated/prisma/client.js'
+import type { DeadlineTransaction } from './prisma.service.js'
 import assert from 'node:assert/strict'
 import { createRequire } from 'node:module'
 import process from 'node:process'
@@ -422,12 +423,97 @@ describe('PrismaService database deadline reliability', () => {
       assert.equal(commitOwned, true)
       assert.ok(elapsedMs >= 180)
       assert.ok(!(failure instanceof DatabaseOperationDeadlineExceededError))
+      assert.ok(!(failure instanceof DatabaseCommitOutcomeUnknownError))
       assert.match(errorDetail(failure), /issue31 forced commit failure/)
       assert.equal(result[0]!.count, 0)
       assert.notEqual(activity[0]?.state, 'idle in transaction')
     }
     finally {
       await dropCommitProbe(prisma, probe.schema)
+    }
+  })
+
+  it('durable COMMIT 后 adapter response-loss 映射为 outcome unknown', async () => {
+    const probe = await createWriteProbe(prisma)
+    const pool = new Pool({ connectionString, max: 1, connectionTimeoutMillis: 2_000 })
+    const originalConnect = pool.connect.bind(pool)
+    const directPrisma = new PrismaClient({
+      adapter: new RollbackSafePrismaPg(
+        pool as unknown as ConstructorParameters<typeof RollbackSafePrismaPg>[0],
+      ),
+    })
+    let commitResponseLost = false
+    let commitOwned = false
+    let backendPid: number | undefined
+
+    pool.connect = async () => {
+      const client = await originalConnect()
+      const rawClient = client as unknown as {
+        query: (...args: unknown[]) => Promise<unknown>
+      }
+      const originalQuery = rawClient.query.bind(client)
+
+      rawClient.query = async (...args: unknown[]): Promise<unknown> => {
+        const sql = queryText(args[0])
+        const result = await originalQuery(...args)
+
+        if (normalizedSql(sql) === 'COMMIT' && !commitResponseLost) {
+          // PostgreSQL 已返回 durable COMMIT；随后注入 adapter response-loss。
+          commitResponseLost = true
+          throw Object.assign(new Error('read ECONNRESET'), {
+            code: 'ECONNRESET',
+            errno: -54,
+            syscall: 'read',
+          })
+        }
+
+        return result
+      }
+
+      return client
+    }
+
+    try {
+      await directPrisma.$connect()
+      const failure = await captureFailure(() => (
+        PrismaService.prototype.withDeadlineTransaction.call(
+          directPrisma,
+          createDeadline(500),
+          async (transaction: DeadlineTransaction) => {
+            const rows = await transaction.execute(client =>
+              client.$queryRawUnsafe<Array<{ pid: number }>>(
+                'SELECT pg_backend_pid()::int AS pid',
+              ))
+            backendPid = rows[0]!.pid
+            await transaction.execute(client => client.$executeRawUnsafe(
+              `INSERT INTO ${probe.table}(value) VALUES (1)`,
+            ))
+          },
+          () => {
+            commitOwned = true
+          },
+        )
+      ))
+      const result = await prisma.$queryRawUnsafe<Array<{ count: number }>>(
+        `SELECT count(*)::int AS count FROM ${probe.table}`,
+      )
+      const activity = await prisma.$queryRawUnsafe<Array<{ state: string }>>(
+        'SELECT state FROM pg_stat_activity WHERE pid = $1',
+        backendPid!,
+      )
+
+      assert.equal(commitOwned, true)
+      assert.equal(commitResponseLost, true)
+      assert.ok(failure instanceof DatabaseCommitOutcomeUnknownError)
+      assert.match(errorDetail(failure.cause), /ConnectionClosed/)
+      assert.equal(result[0]!.count, 1)
+      assert.notEqual(activity[0]?.state, 'idle in transaction')
+    }
+    finally {
+      pool.connect = originalConnect
+      await directPrisma.$disconnect()
+      await pool.end()
+      await dropProbe(prisma, probe.schema)
     }
   })
 
@@ -551,7 +637,7 @@ async function createCommitProbe(
   const schema = `issue31_reliability_${process.pid}_${commitProbeSequence}`
   const table = `"${schema}"."commit_probe"`
   const failure = failOnCommit
-    ? 'RAISE EXCEPTION \'issue31 forced commit failure\';'
+    ? 'RAISE EXCEPTION \'issue31 forced commit failure: connection closed P1017 ECONNRESET 08006\';'
     : ''
 
   await prisma.$executeRawUnsafe(`CREATE SCHEMA "${schema}"`)
