@@ -7,7 +7,6 @@ import { PrismaPg } from '@prisma/adapter-pg'
 import { PrismaClient } from '../generated/prisma/client.js'
 
 const PG_POOL_ACQUISITION_TIMEOUT_MS = 2_000
-const PG_SESSION_STATEMENT_TIMEOUT_MS = 5_000
 const PG_STATEMENT_TIMEOUT_LEAD_MS = 25
 const PG_LOCK_TIMEOUT_LEAD_MS = 25
 const PRISMA_TRANSACTION_START_TIMEOUT_MS = 8_000
@@ -62,10 +61,6 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
     const adapter = new RollbackSafePrismaPg({
       connectionString,
       connectionTimeoutMillis: PG_POOL_ACQUISITION_TIMEOUT_MS,
-      // Prisma 7.8 adapter 不把 per-operation timeout 传给 startTransaction。
-      // 因此 BEGIN / 首条 timeout setup 只能由固定 session 上界约束；这不是
-      // dynamic remaining-budget cancellation，迟到结果仍必须依赖 ownership fence。
-      statement_timeout: PG_SESSION_STATEMENT_TIMEOUT_MS,
     })
 
     super({ adapter })
@@ -97,8 +92,9 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
             statementTimeoutMs - PG_LOCK_TIMEOUT_LEAD_MS,
           )}ms`
 
-          // 此 setup statement 自身仍受上面的固定 session timeout 约束；只有它
-          // 成功返回后的 business statement 才具有 dynamic remaining-budget 上界。
+          // 这条 timeout setup 属于 transaction bootstrap/control-plane；不宣称
+          // 它本身获得 dynamic cancellation。成功返回并复核 ownership 后，
+          // 后续 business statement 才具有 dynamic remaining-budget 上界。
           await prisma.$queryRaw`
             SELECT
               set_config('statement_timeout', ${statementTimeout}, true),
@@ -131,7 +127,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
       commitState.onStarted?.()
       return result
     }, {
-      // 固定 acquisition + session statement 上界通常先于 maxWait；极端迟到
+      // pg acquisition 与 Prisma transaction start 都有固定等待上界；极端迟到
       // 仍由 RollbackSafePrismaPg 在 Prisma discard 路径真实发出 ROLLBACK。
       maxWait: PRISMA_TRANSACTION_START_TIMEOUT_MS,
       timeout: transactionTimeoutMs,

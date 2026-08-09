@@ -1,3 +1,4 @@
+import type { Prisma } from '../generated/prisma/client.js'
 import assert from 'node:assert/strict'
 import { createRequire } from 'node:module'
 import process from 'node:process'
@@ -15,6 +16,12 @@ import {
 
 interface PgQueryResult<Row> {
   rows: Row[]
+}
+
+interface TimeoutSettings {
+  lock_timeout: string
+  pid: number
+  statement_timeout: string
 }
 
 interface PgQueryable {
@@ -59,39 +66,29 @@ describe('PrismaService database deadline reliability', () => {
     await prisma.$disconnect()
   })
 
-  it('transaction setup 使用固定 session bound，SET LOCAL 后恢复 baseline', async () => {
-    const localSettings = await prisma.withDeadlineTransaction(
+  it('SET LOCAL 在 commit / rollback 后恢复原 pooled session baseline', async () => {
+    const before = await readTimeoutSettings(prisma)
+    const committedLocal = await prisma.withDeadlineTransaction(
       createDeadline(500),
-      transaction => transaction.execute(client => client.$queryRawUnsafe<Array<{
-        lock_timeout: string
-        pid: number
-        statement_timeout: string
-      }>>(`
-        SELECT
-          pg_backend_pid()::int AS pid,
-          current_setting('statement_timeout') AS statement_timeout,
-          current_setting('lock_timeout') AS lock_timeout
-      `)),
+      transaction => transaction.execute(readTimeoutSettings),
     )
+    const afterCommit = await readTimeoutSettings(prisma)
+    let rolledBackLocal: TimeoutSettings | undefined
+    const rollbackFailure = await captureFailure(() => prisma.withDeadlineTransaction(
+      createDeadline(500),
+      async (transaction) => {
+        rolledBackLocal = await transaction.execute(readTimeoutSettings)
+        throw new Error('issue31 forced rollback')
+      },
+    ))
+    const afterRollback = await readTimeoutSettings(prisma)
 
-    assert.notEqual(localSettings[0]!.statement_timeout, '5s')
-    assert.notEqual(localSettings[0]!.lock_timeout, '0')
-
-    const baseline = await prisma.$queryRawUnsafe<Array<{
-      lock_timeout: string
-      pid: number
-      statement_timeout: string
-    }>>(`
-      SELECT
-        pg_backend_pid()::int AS pid,
-        current_setting('statement_timeout') AS statement_timeout,
-        current_setting('lock_timeout') AS lock_timeout
-    `)
-    assert.deepEqual(baseline[0], {
-      lock_timeout: '0',
-      pid: localSettings[0]!.pid,
-      statement_timeout: '5s',
-    })
+    assertDynamicTimeoutSettings(committedLocal)
+    assert.ok(rolledBackLocal)
+    assertDynamicTimeoutSettings(rolledBackLocal)
+    assert.match(errorDetail(rollbackFailure), /issue31 forced rollback/)
+    assert.deepEqual(afterCommit, before)
+    assert.deepEqual(afterRollback, before)
   })
 
   it('statement_timeout 由 PostgreSQL 取消 pg_sleep', async () => {
@@ -213,7 +210,8 @@ describe('PrismaService database deadline reliability', () => {
       ),
     })
     let beginDelayed = false
-    let rollbackObserved = false
+    let rollbackCount = 0
+    let releaseCount = 0
     let callbackInvoked = false
     let backendPid: number | undefined
 
@@ -223,6 +221,12 @@ describe('PrismaService database deadline reliability', () => {
         query: (...args: unknown[]) => Promise<unknown>
       }
       const originalQuery = rawClient.query.bind(client)
+      const originalRelease = client.release.bind(client)
+
+      client.release = () => {
+        releaseCount += 1
+        originalRelease()
+      }
 
       rawClient.query = async (...args: unknown[]): Promise<unknown> => {
         const sql = queryText(args[0])
@@ -235,7 +239,7 @@ describe('PrismaService database deadline reliability', () => {
           await sleep(80)
         }
         if (normalizedSql(sql) === 'ROLLBACK')
-          rollbackObserved = true
+          rollbackCount += 1
 
         return result
       }
@@ -252,8 +256,10 @@ describe('PrismaService database deadline reliability', () => {
 
       assert.equal((failure as { code?: unknown }).code, 'P2028')
       assert.equal(callbackInvoked, false)
-      await waitUntil(() => rollbackObserved)
+      await waitUntil(() => rollbackCount > 0)
       assert.equal(beginDelayed, true)
+      assert.equal(rollbackCount, 1)
+      assert.equal(releaseCount, 1)
       assert.ok(backendPid !== undefined)
 
       pool.connect = originalConnect
@@ -495,6 +501,30 @@ function createDeadline(timeoutMs: number) {
     deadlineAt: Date.now() + timeoutMs,
     createTimeoutError: () => new DatabaseOperationDeadlineExceededError(),
   }
+}
+
+async function readTimeoutSettings(
+  prisma: PrismaService | Prisma.TransactionClient,
+): Promise<TimeoutSettings> {
+  const settings = await prisma.$queryRawUnsafe<TimeoutSettings[]>(`
+    SELECT
+      pg_backend_pid()::int AS pid,
+      current_setting('statement_timeout') AS statement_timeout,
+      current_setting('lock_timeout') AS lock_timeout
+  `)
+
+  return settings[0]!
+}
+
+function assertDynamicTimeoutSettings(settings: TimeoutSettings): void {
+  assert.match(settings.statement_timeout, /^\d+ms$/)
+  assert.match(settings.lock_timeout, /^\d+ms$/)
+
+  const statementTimeoutMs = Number.parseInt(settings.statement_timeout, 10)
+  const lockTimeoutMs = Number.parseInt(settings.lock_timeout, 10)
+
+  assert.ok(statementTimeoutMs > 0 && statementTimeoutMs < 500)
+  assert.ok(lockTimeoutMs > 0 && lockTimeoutMs < statementTimeoutMs)
 }
 
 let commitProbeSequence = 0
