@@ -287,7 +287,7 @@ RUNNING、unknown Step、分页和状态组合使用受控安全 fixture，经�
 
 - Issue：#35 `Admin Console Task 3：接入真实 Run Trace UI 与 Computer Use 验收`（Open）
 - 分支：`codex/issue-35-admin-real-trace-ui`
-- PR：Draft，待创建后回填
+- PR：#36（Draft）
 - GPT 验收结论：未提供
 - 用户确认：用户已确认 Task 3 为下一任务；尚未确认最终验收
 

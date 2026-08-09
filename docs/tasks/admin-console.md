@@ -30,7 +30,7 @@ Admin Console 面向项目开发、调试和运行过程复盘，长期用于查
 | Task 0 | Completed | 初始化 Admin 前端基础壳 | 本文归档 | #19 | #20 |
 | Task 1 | Completed | 静态 Run List / Run Detail UI | 本文归档 | #21 | #22 |
 | Task 2 | **Completed** | 真实 Run / Step 只读查询 API | [task-02-run-query-api.md](./admin-console/task-02-run-query-api.md) | #33 | #34 |
-| Task 3 | **Active** | 后台接入真实 Run Trace | [task-03-real-trace-ui.md](./admin-console/task-03-real-trace-ui.md) | #35 | Draft 待创建 |
+| Task 3 | **Active** | 后台接入真实 Run Trace | [task-03-real-trace-ui.md](./admin-console/task-03-real-trace-ui.md) | #35 | #36（Draft） |
 | Task 4 | Planned | 登录、权限、敏感信息脱敏 | 待启动时补独立 Task 文档 | 未创建 | 未创建 |
 
 ## 当前执行顺序
