@@ -121,23 +121,23 @@ RUNNING 必须容忍 `endedAt=null`、部分 token unknown、assistant output �
 
 ### Green
 
-- [ ] 新增 API client、contracts 依赖和 `/api` proxy；
-- [ ] list/detail 切换到真实 API；
-- [ ] server pagination / filters 接入；
-- [ ] loading / empty / error / 404 / retry 完成；
-- [ ] RUNNING partial trace 正确；
-- [ ] known Step Inspector + Generic Inspector；
-- [ ] Safe Raw / Messages 使用服务端 projection；
-- [ ] 生产路径不再依赖 Mock；
-- [ ] stale response 有确定性处理。
+- [x] 新增 API client、contracts 依赖和 `/api` proxy；
+- [x] list/detail 切换到真实 API；
+- [x] server pagination / filters 接入；
+- [x] loading / empty / error / 404 / retry 完成；
+- [x] RUNNING partial trace 正确；
+- [x] known Step Inspector + Generic Inspector；
+- [x] Safe Raw / Messages 使用服务端 projection；
+- [x] 生产路径不再依赖 Mock；
+- [x] stale response 有确定性处理。
 
 ### Refactor
 
-- [ ] API client、query state、presentation components 分层；
-- [ ] 删除无意义 Mock-only derivation；
-- [ ] View 不同时承担 URL、fetch、Contract 解析和全部展示；
-- [ ] Timeline shell 不依赖固定 Step 数；
-- [ ] watch / route 切换无重复请求和竞态覆盖。
+- [x] API client、query state、presentation components 分层；
+- [x] 删除无意义 Mock-only derivation；
+- [x] View 不同时承担 URL、fetch、Contract 解析和全部展示；
+- [x] Timeline shell 不依赖固定 Step 数；
+- [x] watch / route 切换无重复请求和竞态覆盖。
 
 ## 自动验证
 
@@ -216,6 +216,8 @@ docs/assets/admin-console/task-03-error-or-404.jpg
 
 ## 验收标准
 
+以下清单保留待 GPT / 用户正式验收确认；Codex 的实现与自验收证据见后文。
+
 - [ ] 生产路径不再使用静态 Mock；
 - [ ] list 使用真实 server pagination / filters / summary；
 - [ ] detail 使用真实 Run / Step / Message projection；
@@ -234,20 +236,67 @@ docs/assets/admin-console/task-03-error-or-404.jpg
 - [ ] 未修改 Runtime / Prisma schema / Task 2 API Contract；
 - [ ] 后续 Agent Phase 未在本 Task 实现。
 
+## 实现与自验收记录
+
+2026-08-09，Clarification Gate 结论为 `READY`，已在独立分支完成实现。当前记录仅表示 Codex 已实现并完成开发侧自验收，不代表 GPT / 用户最终验收通过。
+
+关键实现：
+
+- Admin 使用 `@agent/contracts` 与相对 `/api/admin/runs`、`/api/admin/runs/:runId`；
+- Vite `/api` proxy 使用 `VITE_API_PROXY_TARGET ?? http://localhost:3000`；
+- Run List 接入服务端 summary、query / status / date、page / pageSize；
+- Run Detail 接入真实 Run / Step / Message / Safe Raw projection；
+- 五类已知 Step 使用专用 Inspector，unknown Step 使用 Generic Inspector；
+- `requestedModel=null` 显示为 `Default request`，不猜测实际模型；
+- list / detail 使用 AbortController 与 request identity / route identity fencing；
+- 删除生产路径 Mock 数据源，不修改 Runtime、Prisma schema 或 Task 2 API Contract。
+
+自动验证全部通过：
+
+```text
+pnpm --filter @agent/contracts build    PASS
+pnpm --filter @agent/admin test         PASS
+pnpm --filter @agent/admin typecheck    PASS
+pnpm --filter @agent/admin lint         PASS
+pnpm --filter @agent/admin build        PASS
+pnpm --filter @agent/api typecheck      PASS
+pnpm typecheck                          PASS
+git diff --check                        PASS
+```
+
+Computer Use 自验收使用真实 Nest API、Admin Vite dev server 和真实 Chrome，覆盖：
+
+- 真实 Run List、query / status / date、page / pageSize、loading / empty；
+- direct-final、多 sampling / 多 Tool、COMPLETED / FAILED / ABORTED / RUNNING；
+- 404、真实 API error + 页面 Retry、Generic Inspector；
+- Back / Breadcrumb / Route Tab / browser back 返回列表并保留 query state；
+- 快速连续切换 Run，最终 route 未被旧响应覆盖；
+- light / dark、精确 `1440 × 900` / `1280 × 900`；
+- DevTools Console 无阻塞 error / warning；列表和终态 Detail 的 `scrollWidth === clientWidth` 为 `true`。
+
+RUNNING、unknown Step、分页和状态组合使用受控安全 fixture，经真实 Task 2 API 返回；正常列表和终态 Detail 同样走真实 Task 2 API。截图完成后已精确删除本次创建的 fixture Conversation（删除前 1、删除后 0）。
+
+截图证据：
+
+- [`task-03-real-run-list-light.jpg`](../../assets/admin-console/task-03-real-run-list-light.jpg)：AC-02、AC-14；
+- [`task-03-real-tool-trace-dark.jpg`](../../assets/admin-console/task-03-real-tool-trace-dark.jpg)：AC-03、AC-04、AC-11、AC-14；
+- [`task-03-running-trace.jpg`](../../assets/admin-console/task-03-running-trace.jpg)：AC-05、AC-14；
+- [`task-03-error-or-404.jpg`](../../assets/admin-console/task-03-error-or-404.jpg)：AC-06、AC-14。
+
 ## GitHub 交付记录
 
 - Issue：#35 `Admin Console Task 3：接入真实 Run Trace UI 与 Computer Use 验收`（Open）
-- 分支：未创建
-- PR：未创建
+- 分支：`codex/issue-35-admin-real-trace-ui`
+- PR：Draft，待创建后回填
 - GPT 验收结论：未提供
 - 用户确认：用户已确认 Task 3 为下一任务；尚未确认最终验收
 
 ## 任务状态
 
-- 看板状态：**Next**
-- Clarification Gate：等待 Codex 开发前确认
+- 看板状态：**Active**
+- Clarification Gate：**READY**
 - 前置任务：Admin Console Task 2 Completed
-- 实施状态：未开始
-- 验收状态：未验收
+- 实施状态：**已实现**
+- 验收状态：**待验收**
 
-Codex Gate 返回 `READY` 后进入 Active；返回 `BLOCKED` 时停止实现并等待用户 / GPT 决策。
+当前等待 Draft PR 的 Codex Review、GPT 验收和用户确认；不得自行转 Ready、标记 Completed、合并、删除分支或启动 Task 4 / 后续 Agent Phase。

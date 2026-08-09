@@ -12,11 +12,12 @@ import {
   Descriptions,
   DescriptionsItem,
   Result,
+  Skeleton,
   TabPane,
   Tabs,
   Tag,
 } from 'ant-design-vue'
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import PageContainer from '@/components/common/PageContainer.vue'
@@ -25,10 +26,11 @@ import StatusBadge from '@/components/common/StatusBadge.vue'
 import RunEventDetail from '@/features/runs/components/RunEventDetail.vue'
 import RunStatusTag from '@/features/runs/components/RunStatusTag.vue'
 import RunTimeline from '@/features/runs/components/RunTimeline.vue'
-import { getMockRunDetail } from '@/features/runs/run.mocks'
+import { createRunDetailState } from '@/features/runs/run-detail.state'
 import {
   formatDateTime,
   formatDuration,
+  formatRequestedModel,
   formatTokens,
   getDefaultTimelineItem,
 } from '@/features/runs/run.utils'
@@ -40,7 +42,15 @@ const { message } = AntApp.useApp()
 const activeTab = ref('trace')
 const selectedTimelineId = ref<string>()
 const runId = computed(() => String(route.params.runId ?? ''))
-const run = computed(() => getMockRunDetail(runId.value))
+const runDetailState = createRunDetailState(() => runId.value)
+const {
+  cancel: cancelRunLoad,
+  error: loadError,
+  load: loadRun,
+  loading,
+  notFound,
+  run,
+} = runDetailState
 const selectedTimelineItem = computed(() => run.value?.timeline.find(
   item => item.id === selectedTimelineId.value,
 ))
@@ -52,6 +62,12 @@ watch(run, (detail) => {
     ? getDefaultTimelineItem(detail.timeline)?.id
     : undefined
 }, { immediate: true })
+
+watch(runId, () => {
+  void loadRun()
+}, { immediate: true })
+
+onBeforeUnmount(cancelRunLoad)
 
 async function copySafeRawData() {
   try {
@@ -66,7 +82,27 @@ async function copySafeRawData() {
 
 <template>
   <PageContainer wide>
-    <template v-if="run">
+    <template v-if="loading">
+      <PageHeader
+        eyebrow="Run inspector"
+        title="Loading Run"
+        description="正在读取真实 AgentRun、AgentStep 与 Message 安全投影。"
+      >
+        <template #actions>
+          <Button @click="router.push('/runs')">
+            <template #icon>
+              <ArrowLeftOutlined />
+            </template>
+            Back to Runs
+          </Button>
+        </template>
+      </PageHeader>
+      <Card class="overview-card" :bordered="false">
+        <Skeleton active :paragraph="{ rows: 8 }" />
+      </Card>
+    </template>
+
+    <template v-else-if="run">
       <PageHeader
         eyebrow="Run inspector"
         title="Run Detail"
@@ -81,7 +117,7 @@ async function copySafeRawData() {
               Back to Runs
             </Button>
             <StatusBadge tone="info">
-              Demo / Mock
+              Live API
             </StatusBadge>
           </div>
         </template>
@@ -98,7 +134,7 @@ async function copySafeRawData() {
 
         <Descriptions size="small" :column="4">
           <DescriptionsItem label="Model">
-            {{ run.model }}
+            {{ formatRequestedModel(run.requestedModel) }}
           </DescriptionsItem>
           <DescriptionsItem label="Duration">
             {{ formatDuration(run.durationMs) }}
@@ -197,7 +233,7 @@ async function copySafeRawData() {
               <header>
                 <div>
                   <CheckOutlined />
-                  <span>Safe Mock JSON</span>
+                  <span>Safe API JSON</span>
                 </div>
                 <Button size="small" @click="copySafeRawData">
                   <template #icon>
@@ -214,13 +250,32 @@ async function copySafeRawData() {
     </template>
 
     <Result
-      v-else
+      v-else-if="notFound"
       status="404"
-      title="Demo Run not found"
-      sub-title="该 Run ID 不在本地类型化 Mock 集合中。"
+      title="Run not found"
+      sub-title="该 Run ID 不存在或已被删除。"
     >
       <template #extra>
+        <Button @click="loadRun">
+          Retry
+        </Button>
         <Button type="primary" @click="router.push('/runs')">
+          Back to Runs
+        </Button>
+      </template>
+    </Result>
+
+    <Result
+      v-else
+      status="error"
+      title="Unable to load Run"
+      :sub-title="loadError || '请求失败，请稍后重试。'"
+    >
+      <template #extra>
+        <Button type="primary" @click="loadRun">
+          Retry
+        </Button>
+        <Button @click="router.push('/runs')">
           Back to Runs
         </Button>
       </template>
@@ -289,6 +344,7 @@ async function copySafeRawData() {
   color: var(--admin-text);
   font-size: 11px;
   font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
 }
 
 .detail-tabs-card {
@@ -382,11 +438,13 @@ async function copySafeRawData() {
 }
 
 .message-card.is-user {
-  border-left: 3px solid var(--admin-primary);
+  border-color: color-mix(in srgb, var(--admin-primary) 24%, var(--admin-border));
+  background: color-mix(in srgb, var(--admin-primary-soft) 45%, var(--admin-surface));
 }
 
 .message-card.is-assistant {
-  border-left: 3px solid var(--admin-success);
+  border-color: color-mix(in srgb, var(--admin-success) 24%, var(--admin-border));
+  background: color-mix(in srgb, var(--admin-success-soft) 45%, var(--admin-surface));
 }
 
 .message-card header,
@@ -423,6 +481,7 @@ async function copySafeRawData() {
   color: var(--admin-text);
   font-size: 12px;
   line-height: 1.75;
+  overflow-wrap: anywhere;
 }
 
 .message-card code {

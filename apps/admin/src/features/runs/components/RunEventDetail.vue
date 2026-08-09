@@ -8,7 +8,13 @@ import {
 } from 'ant-design-vue'
 import { computed } from 'vue'
 
-import { formatDateTime, formatDuration, formatTokens } from '../run.utils'
+import {
+  formatDateTime,
+  formatDuration,
+  formatRequestedModel,
+  formatTokens,
+  getTimelineInspectorLabel,
+} from '../run.utils'
 import RunStatusTag from './RunStatusTag.vue'
 
 interface DetailSection {
@@ -25,112 +31,110 @@ const props = defineProps<{
   item: RunTimelineItem | undefined
 }>()
 
+const inspectorLabel = computed(() => getTimelineInspectorLabel(props.item))
+
 const sections = computed<DetailSection[]>(() => {
   const item = props.item
 
   if (!item)
     return []
 
+  const common: DetailSection = {
+    title: 'Step metadata',
+    items: [
+      { label: 'Sequence', value: item.sequence },
+      { label: 'Started At', value: formatDateTime(item.startedAt) },
+      { label: 'Ended At', value: formatDateTime(item.endedAt) },
+      { label: 'Duration', value: formatDuration(item.durationMs) },
+      { label: 'Has Error', value: yesNo(item.hasError) },
+    ],
+  }
+
+  if (item.kind === 'generic')
+    return [common]
+
   switch (item.type) {
-    case 'run_lifecycle':
-      return [{
-        title: 'Run lifecycle',
-        items: [
-          { label: 'Event', value: item.event },
-          { label: 'Source', value: 'AgentRun-derived UI event' },
-          { label: 'Occurred At', value: formatDateTime(item.startedAt) },
-          { label: 'Durable Step', value: 'No' },
-        ],
-      }]
     case 'receive_user_message':
-      return [{
+      return [common, {
         title: 'Message intake',
         items: [
-          { label: 'Message ID', value: item.messageId },
-          { label: 'Content Length', value: `${item.contentLength} chars` },
-          { label: 'Created At', value: formatDateTime(item.createdAt) },
-          { label: 'Duration', value: formatDuration(item.durationMs) },
+          { label: 'Message ID', value: show(item.messageId) },
+          { label: 'Message Length', value: chars(item.messageLength) },
         ],
       }]
     case 'load_conversation_history':
-      return [{
+      return [common, {
         title: 'History projection',
         items: [
-          { label: 'History Limit', value: item.historyLimit },
-          { label: 'Message Count', value: item.messageCount },
-          { label: 'Truncated', value: yesNo(item.truncated) },
-          { label: 'Duration', value: formatDuration(item.durationMs) },
+          { label: 'History Limit', value: show(item.historyLimit) },
+          { label: 'Message Count', value: show(item.messageCount) },
         ],
       }]
     case 'model_sampling':
       return [
+        common,
         {
           title: 'Sampling request',
           items: [
-            { label: 'Sampling Index', value: item.samplingIndex },
-            { label: 'Attempt ID', value: item.samplingAttemptId },
-            { label: 'Requested Model', value: item.requestedModel },
-            { label: 'Message Count', value: item.messageCount },
-            { label: 'Tool Declarations', value: item.toolCount },
-            { label: 'Finish Reason', value: item.finishReason ?? 'Unavailable' },
+            { label: 'Sampling Index', value: show(item.samplingIndex) },
+            { label: 'Attempt ID', value: show(item.samplingAttemptId) },
+            { label: 'Requested Model', value: formatRequestedModel(item.requestedModel) },
+            { label: 'Message Count', value: show(item.messageCount) },
+            { label: 'Tool Declarations', value: show(item.toolCount) },
           ],
         },
         {
           title: 'Usage & output',
           items: [
-            { label: 'Input Tokens', value: formatTokens(item.inputTokens) },
-            { label: 'Output Tokens', value: formatTokens(item.outputTokens) },
-            { label: 'Total Tokens', value: formatTokens(item.totalTokens) },
-            { label: 'Text Chars', value: item.textChars },
-            { label: 'Duration', value: formatDuration(item.durationMs) },
+            { label: 'Finish Reason', value: show(item.finishReason) },
+            { label: 'Input Tokens', value: formatTokens(item.usage?.inputTokens ?? null) },
+            { label: 'Output Tokens', value: formatTokens(item.usage?.outputTokens ?? null) },
+            { label: 'Total Tokens', value: formatTokens(item.usage?.totalTokens ?? null) },
+            { label: 'Tool Calls', value: show(item.toolCallCount) },
+            { label: 'Text Chars', value: chars(item.textChars) },
+            { label: 'Intermediate Text', value: chars(item.intermediateTextChars) },
+            { label: 'Recorded Duration', value: formatDuration(item.recordedDurationMs) },
           ],
         },
       ]
     case 'tool_execution':
       return [
+        common,
         {
           title: 'Tool invocation',
           items: [
-            { label: 'Call ID', value: item.callId },
-            { label: 'Tool', value: item.toolName },
-            { label: 'Version', value: item.toolVersion ?? 'Unavailable' },
-            { label: 'Sampling Attempt', value: item.samplingAttemptId },
-            { label: 'Execution Attempt', value: item.executionAttempt },
-            { label: 'Validation', value: item.validation },
+            { label: 'Call ID', value: show(item.callId) },
+            { label: 'Tool', value: show(item.toolName) },
+            { label: 'Version', value: show(item.toolVersion) },
+            { label: 'Sampling Attempt', value: show(item.samplingAttemptId) },
+            { label: 'Execution Attempt', value: show(item.executionAttempt) },
+            { label: 'Raw Arguments', value: chars(item.rawArgumentsChars) },
           ],
         },
         {
           title: 'Safe result summary',
           items: [
-            { label: 'OK', value: item.ok === null ? 'Unavailable' : yesNo(item.ok) },
-            { label: 'Code', value: item.code ?? '—' },
-            {
-              label: 'Retryable',
-              value: item.retryable === null ? 'Unavailable' : yesNo(item.retryable),
-            },
-            { label: 'Raw Arguments', value: `${item.rawArgumentsChars} chars only` },
-            { label: 'Observation', value: `${item.observationChars} chars only` },
-            { label: 'Truncated', value: yesNo(item.truncated) },
-            { label: 'Duration', value: formatDuration(item.durationMs) },
+            { label: 'OK', value: showBoolean(item.ok) },
+            { label: 'Code', value: show(item.code) },
+            { label: 'Retryable', value: showBoolean(item.retryable) },
+            { label: 'Original', value: chars(item.originalChars) },
+            { label: 'Observation', value: chars(item.observationChars) },
+            { label: 'Truncated', value: showBoolean(item.truncated) },
+            { label: 'Recorded Duration', value: formatDuration(item.recordedDurationMs) },
           ],
         },
       ]
     case 'assistant_output':
-      return [{
+      return [common, {
         title: 'User-visible output',
         items: [
-          { label: 'Assistant Message ID', value: item.assistantMessageId },
-          {
-            label: 'Content Length',
-            value: item.contentLength === null ? 'Unavailable' : `${item.contentLength} chars`,
-          },
-          { label: 'Completed At', value: formatDateTime(item.completedAt) },
-          { label: 'Duration', value: formatDuration(item.durationMs) },
+          { label: 'Assistant Message ID', value: show(item.assistantMessageId) },
+          { label: 'Content Length', value: chars(item.contentLength) },
         ],
       }]
   }
 
-  return []
+  return [common]
 })
 
 const previews = computed<DetailPreview[]>(() => {
@@ -139,36 +143,27 @@ const previews = computed<DetailPreview[]>(() => {
   if (!item)
     return []
 
-  switch (item.type) {
-    case 'run_lifecycle':
-      return [{ label: 'Derivation note', text: item.summary }]
-    case 'receive_user_message':
-      return [{ label: 'Safe content preview', text: item.contentPreview }]
-    case 'load_conversation_history':
-      return [{
-        label: 'Projection note',
-        text: '这里只展示 history limit、消息数量和是否截断，不展示 system prompt 或完整历史正文。',
-      }]
-    case 'model_sampling':
-      return [
-        { label: 'Safe input summary', text: item.inputSummary },
-        { label: 'Safe output summary', text: item.outputSummary },
-      ]
-    case 'tool_execution':
-      return [
-        { label: 'Safe invocation summary', text: item.inputSummary },
-        { label: 'Safe observation summary', text: item.outputSummary },
-      ]
-    case 'assistant_output':
-      return [{
-        label: item.contentPreview ? 'User-visible answer preview' : 'Durable output note',
-        text: item.contentPreview
-          ?? '当前 Step 没有终态 output payload；局部用户可见内容只在 Messages 中展示。',
-      }]
-  }
-
-  return []
+  return [
+    item.inputSummary
+      ? { label: 'Safe input summary', text: item.inputSummary }
+      : undefined,
+    item.outputSummary
+      ? { label: 'Safe output summary', text: item.outputSummary }
+      : undefined,
+  ].filter((preview): preview is DetailPreview => preview !== undefined)
 })
+
+function chars(value: number | null): string {
+  return value === null ? '—' : `${value} chars`
+}
+
+function show(value: string | number | null): string | number {
+  return value ?? '—'
+}
+
+function showBoolean(value: boolean | null): string {
+  return value === null ? '—' : yesNo(value)
+}
 
 function yesNo(value: boolean): string {
   return value ? 'Yes' : 'No'
@@ -179,15 +174,13 @@ function yesNo(value: boolean): string {
   <div v-if="item" class="event-detail">
     <header class="event-detail__header">
       <div>
-        <span>
-          {{ item.kind === 'derived_lifecycle' ? 'AgentRun-derived lifecycle' : 'Durable AgentStep' }}
-        </span>
+        <span>{{ inspectorLabel }}</span>
         <h3>{{ item.title }}</h3>
         <code>{{ item.type }}</code>
       </div>
       <div class="event-detail__badges">
-        <Tag v-if="item.kind === 'derived_lifecycle'">
-          Derived
+        <Tag v-if="item.kind === 'generic'">
+          Generic
         </Tag>
         <RunStatusTag :status="item.status" />
       </div>
@@ -231,6 +224,10 @@ function yesNo(value: boolean): string {
   border-bottom: 1px solid var(--admin-border);
 }
 
+.event-detail__header > div:first-child {
+  min-width: 0;
+}
+
 .event-detail__header span {
   color: var(--admin-text-subtle);
   font-size: 10px;
@@ -244,12 +241,14 @@ function yesNo(value: boolean): string {
   color: var(--admin-text);
   font-size: 15px;
   font-weight: 650;
+  overflow-wrap: anywhere;
 }
 
 .event-detail__header code {
   color: var(--admin-text-muted);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 10px;
+  overflow-wrap: anywhere;
 }
 
 .event-detail__badges {
@@ -319,6 +318,7 @@ function yesNo(value: boolean): string {
   color: var(--admin-text-muted);
   font-size: 11px;
   line-height: 1.65;
+  overflow-wrap: anywhere;
 }
 
 @media (max-width: 1180px) {

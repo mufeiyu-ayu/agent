@@ -8,13 +8,14 @@
 | --- | --- | --- |
 | Agent 主线 | 阶段 1-6 Completed；当前无 Active Agent Task | 完成 Observability Baseline 后再讨论下一正式 Agent 阶段 |
 | Phase 6 | 已完成并归档 | 见 `docs/tasks/completed/phase-06-bounded-agent-loop.md` |
-| Admin Console | Task 0-2 Completed；Task 3 Next / Issue #35 / Gate pending；Task 4 Planned | Codex 先完成 Issue #35 Clarification Gate |
+| Admin Console | Task 0-2 Completed；Task 3 Active / 已实现 / 待验收；Task 4 Planned | 创建 Draft PR，等待 Codex Review、GPT 验收和用户确认 |
 | 文档结构 | `roadmap`、`tasks`、`research`、`work-log` 为主入口；Completed 阶段统一归档 | 不维护第二套阶段状态 |
 
 ## 近期关键记录
 
 | 日期 | 事项 | 结果 |
 | --- | --- | --- |
+| 2026-08-09 | Admin Console Task 3 实现与开发侧自验收 | Issue #35 Gate READY；真实 Run List / Detail、server filter / pagination、五类 Inspector + Generic、stale response、完整失败态已实现；规定自动命令全部通过；Computer Use 使用真实 API、Vite 与 Chrome 覆盖主要场景并提交 4 张安全截图；状态保持“已实现、待验收” |
 | 2026-08-09 | Admin Console Issue #35 创建 | Task 3 `真实 Run Trace UI 与 Computer Use 验收` 正式 Issue 已创建；当前等待 Codex Clarification Gate，尚未进入 Active |
 | 2026-08-09 | Admin Console Task 3 定案 | Task 3 提升为 Next；真实浏览器验收强制使用 Computer Use，至少提供 4 张关键截图；Task 3 不修改 Task 2 API Contract、Runtime 或 Prisma schema |
 | 2026-08-09 | Admin Console Task 2 最终验收 | GPT 基于 PR #34 最新 head `f03507f7cc`、Issue #33、完整 diff、15 项测试、真实 PostgreSQL HTTP smoke 与 Codex Review 验收通过；用户明确确认验收 |
@@ -37,11 +38,11 @@ Phase 6 已完成，不再继续向该阶段追加新 Agent 能力。
 
 ```text
 Task 2：Read API       Completed
-Task 3：Real Trace UI  Next / Issue #35 / Gate pending
+Task 3：Real Trace UI  Active / 已实现 / 待验收
 Task 4：Auth / RBAC    Planned
 ```
 
-Task 3 的 Computer Use 浏览器验收和截图证据是正式验收的一部分；自动测试不能替代这一项。Issue 创建不等于 Active，必须先通过 Codex Clarification Gate。
+Task 3 已完成 Computer Use 开发侧自验收和截图证据；自动测试没有替代该过程。实现、验收、Draft 转 Ready、合并与任务收口仍是不同动作，当前不得推进 Task 4 或后续 Agent Phase。
 
 Admin 支线不会自动成为 Phase 7，也不改变 Agent 主线当前“无 Active Task”的状态。
 
