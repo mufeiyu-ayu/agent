@@ -301,7 +301,7 @@ git diff --check
 
 - Issue：#33 `Admin Console Task 2：实现真实 Run / Step 只读查询 API`
 - 分支：`codex/issue-33-admin-run-query-api`
-- PR：未创建
+- PR：#34 `feat: 实现 Admin Run 只读查询 API`（Ready）
 - GPT 验收结论：未提供
 - 用户确认：用户已确认启动 Task 2；尚未确认最终验收
 
