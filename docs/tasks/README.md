@@ -9,8 +9,8 @@
 | Agent 主线 | **无 Active Task** | [roadmap.md](../roadmap.md) | 阶段 1-6 已完成；下一正式 Agent 阶段尚未确定 |
 | 阶段 6：有界单 Agent Loop | Completed | [completed/phase-06-bounded-agent-loop.md](./completed/phase-06-bounded-agent-loop.md) | Task 0、横向配置治理、Task 1、Task 2 均已验收并合并 |
 | Admin Console Task 0-1 | Completed | [admin-console.md](./admin-console.md) | 基础壳与静态 Run UI 已完成 |
-| Admin Console Task 2 | **Active** | [task-02-run-query-api.md](./admin-console/task-02-run-query-api.md) | Issue #33 / PR #34；已实现、待验收；Clarification Gate READY |
-| Admin Console Task 3 | Planned | [task-03-real-trace-ui.md](./admin-console/task-03-real-trace-ui.md) | 等 Task 2 Completed 后创建 Issue；接入真实 Trace UI |
+| Admin Console Task 2 | **Completed** | [task-02-run-query-api.md](./admin-console/task-02-run-query-api.md) | Issue #33 / PR #34；merge `997d6b84`；真实 Run / Step 只读 API 已完成 |
+| Admin Console Task 3 | **Next** | [task-03-real-trace-ui.md](./admin-console/task-03-real-trace-ui.md) | 下一正式任务；接入真实 Trace UI；要求 Computer Use + 截图证据 |
 | Admin Console Task 4 | Planned | [admin-console.md](./admin-console.md) | 登录、权限与敏感信息脱敏；当前不启动 |
 | 阶段 5：最小 Tool Calling | Completed | [completed/phase-05-tool-calling.md](./completed/phase-05-tool-calling.md) | 已归档 |
 | 阶段 4：Agent Runtime | Completed | [completed/phase-04-agent-runtime.md](./completed/phase-04-agent-runtime.md) | 已归档 |
@@ -33,20 +33,17 @@
 
 Phase 6 最终交付包括 policy 驱动的 bounded sequential Agent Loop、双 Article Tool、DeepSeek thinking continuation、Run deadline、数据库 remaining-budget / statement timeout、late-result ownership fencing 与原子终态收口。
 
-阶段 6 的详细事实统一查看 [`completed/phase-06-bounded-agent-loop.md`](./completed/phase-06-bounded-agent-loop.md)，不再在 active tasks 区维护 Task 0、Task 1、Task 2 或横向配置治理的重复状态。
-
 下一项正式 Agent 主线任务仍必须重新基于最新 `master`、学习收益和产品需求讨论后确定；`docs/research/**` 的候选路线不会自动变成正式 Agent Phase。
 
 ## Admin Console 当前顺序
 
 ```text
-Task 2：真实 Run / Step Query API   Active / 已实现、待验收 / Issue #33 / PR #34
-  -> 验收与收口
-  -> Task 3：真实 Run Trace UI      Planned
+Task 2：真实 Run / Step Query API   Completed / Issue #33 / PR #34
+  -> Task 3：真实 Run Trace UI      Next
   -> 建立 Observability Baseline
 ```
 
-Admin Console 是独立 Observability 支线，不自动改写 Agent 主线阶段编号。Task 2 与 Task 3 必须分别使用独立 Issue / PR；Task 2 未 Completed 前不得启动 Task 3。
+Task 3 的真实浏览器验收必须使用 Computer Use，关键状态需要截图证据。Task 3 与 Task 4 仍是独立 Task，不因为 Observability 支线推进而自动改变 Agent 主线阶段编号。
 
 ## 状态定义
 
