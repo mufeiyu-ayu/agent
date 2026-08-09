@@ -12,6 +12,7 @@
     "test": "tsx src/lib/admin-state.check.ts && tsx src/features/runs/run-data.check.ts"
   },
   "dependencies": {
+    "@agent/contracts": "workspace:*",
     "@ant-design/icons-vue": "^7.0.1",
     "ant-design-vue": "^4.2.6",
     "pinia": "^3.0.4",

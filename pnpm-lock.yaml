@@ -32,6 +32,9 @@ importers:
 
   apps/admin:
     dependencies:
+      '@agent/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
       '@ant-design/icons-vue':
         specifier: ^7.0.1
         version: 7.0.1(vue@3.5.35(typescript@6.0.3))

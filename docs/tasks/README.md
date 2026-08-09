@@ -10,7 +10,7 @@
 | 阶段 6：有界单 Agent Loop | Completed | [completed/phase-06-bounded-agent-loop.md](./completed/phase-06-bounded-agent-loop.md) | Task 0、横向配置治理、Task 1、Task 2 均已验收并合并 |
 | Admin Console Task 0-1 | Completed | [admin-console.md](./admin-console.md) | 基础壳与静态 Run UI 已完成 |
 | Admin Console Task 2 | **Completed** | [task-02-run-query-api.md](./admin-console/task-02-run-query-api.md) | Issue #33 / PR #34；merge `997d6b84`；真实 Run / Step 只读 API 已完成 |
-| Admin Console Task 3 | **Next** | [task-03-real-trace-ui.md](./admin-console/task-03-real-trace-ui.md) | Issue #35 已创建，等待 Codex Clarification Gate；要求 Computer Use + 截图证据 |
+| Admin Console Task 3 | **Active** | [task-03-real-trace-ui.md](./admin-console/task-03-real-trace-ui.md) | Issue #35 / Draft PR #36；Gate READY；已实现、待验收 |
 | Admin Console Task 4 | Planned | [admin-console.md](./admin-console.md) | 登录、权限与敏感信息脱敏；当前不启动 |
 | 阶段 5：最小 Tool Calling | Completed | [completed/phase-05-tool-calling.md](./completed/phase-05-tool-calling.md) | 已归档 |
 | 阶段 4：Agent Runtime | Completed | [completed/phase-04-agent-runtime.md](./completed/phase-04-agent-runtime.md) | 已归档 |
@@ -37,11 +37,11 @@
 
 ```text
 Task 2：真实 Run / Step Query API   Completed / Issue #33 / PR #34
-  -> Task 3：真实 Run Trace UI      Next / Issue #35 / Gate pending
+  -> Task 3：真实 Run Trace UI      Active / 已实现 / 待验收
   -> 建立 Observability Baseline
 ```
 
-Task 3 的真实浏览器验收必须使用 Computer Use，关键状态需要截图证据。Issue 已创建不等于 Active；Codex Clarification Gate 返回 `READY` 后才进入 Active。
+Task 3 的 Clarification Gate 已返回 `READY`；实现、自动验证、Computer Use 开发侧自验收和 4 张截图证据已完成。当前等待 Draft PR 的 Codex Review、GPT 验收和用户确认，不等于 Completed。
 
 ## 状态定义
 

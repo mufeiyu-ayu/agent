@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import type { RunMessageStatus, RunStatus, RunStepStatus } from '../run.model'
+import type { AgentRunStatus, AgentStepStatus, MessageStatus } from '@agent/contracts'
 import { Tag } from 'ant-design-vue'
 import { computed } from 'vue'
 
 const props = defineProps<{
-  status: RunStatus | RunStepStatus | RunMessageStatus
+  status: AgentRunStatus | AgentStepStatus | MessageStatus
 }>()
 
 const color = computed(() => ({

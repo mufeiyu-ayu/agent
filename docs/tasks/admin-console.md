@@ -1,6 +1,6 @@
 # Admin Console
 
-本文记录 Agent Runtime Console 的独立 Observability 支线。Task 0-2 已完成；Task 3 是下一正式任务；Task 4 保持 Planned。
+本文记录 Agent Runtime Console 的独立 Observability 支线。Task 0-2 已完成；Task 3 已实现、待验收；Task 4 保持 Planned。
 
 Phase 6 Agent Runtime 主线已经完成。Admin Console 不等于下一 Agent 学习阶段；当前先建立真实 Observability Baseline，再根据后续 Agent 主线需要持续扩展 Inspector。
 
@@ -30,19 +30,19 @@ Admin Console 面向项目开发、调试和运行过程复盘，长期用于查
 | Task 0 | Completed | 初始化 Admin 前端基础壳 | 本文归档 | #19 | #20 |
 | Task 1 | Completed | 静态 Run List / Run Detail UI | 本文归档 | #21 | #22 |
 | Task 2 | **Completed** | 真实 Run / Step 只读查询 API | [task-02-run-query-api.md](./admin-console/task-02-run-query-api.md) | #33 | #34 |
-| Task 3 | **Next** | 后台接入真实 Run Trace | [task-03-real-trace-ui.md](./admin-console/task-03-real-trace-ui.md) | #35 | 未创建 |
+| Task 3 | **Active** | 后台接入真实 Run Trace | [task-03-real-trace-ui.md](./admin-console/task-03-real-trace-ui.md) | #35 | #36（Draft） |
 | Task 4 | Planned | 登录、权限、敏感信息脱敏 | 待启动时补独立 Task 文档 | 未创建 | 未创建 |
 
 ## 当前执行顺序
 
 ```text
 Task 2：Admin Run Query API      Completed
-  -> Task 3：Real Trace UI       Next / Issue #35 / Gate pending
+  -> Task 3：Real Trace UI       Active / 已实现 / 待验收
   -> 建立 Observability Baseline
   -> 再讨论下一 Agent 主线阶段
 ```
 
-Issue #35 已创建；Codex Clarification Gate 返回 `READY` 后 Task 3 才进入 Active。Task 3 必须使用 Computer Use 做真实浏览器验收，并提交关键状态截图证据。Task 4 不在 Task 3 范围内。
+Issue #35 的 Clarification Gate 已返回 `READY`。Task 3 已完成实现、自动验证、Computer Use 开发侧自验收和截图证据，当前等待 Draft PR 的 Codex Review、GPT 验收和用户确认。Task 4 不在 Task 3 范围内。
 
 ## 已确认架构边界
 
@@ -113,10 +113,10 @@ GPT 技术验收：通过
 
 ```text
 Issue #35：Open
-Clarification Gate：等待 Codex
-看板：Next
-实施状态：未开始
-验收状态：未验收
+Clarification Gate：READY
+看板：Active
+实施状态：已实现
+验收状态：待验收
 ```
 
 核心目标：
@@ -133,7 +133,7 @@ Clarification Gate：等待 Codex
 - 使用 Computer Use 做真实浏览器验收；
 - 至少 4 张关键截图随 PR 提供。
 
-Computer Use 主验收不能被自动测试或 Playwright 脚本替代；若 Codex 执行环境没有 Computer Use，本 Task 不得伪报浏览器验收通过，PR 应保持 Draft 并报告阻塞。
+Computer Use 主验收已使用真实 Nest API、Admin Vite dev server 与真实 Chrome 执行，并提交 4 张截图；自动测试未替代该过程。当前结论仍是“已实现、待验收”，不得自行转 Ready 或标记 Completed。
 
 ## Task 4：登录、权限与敏感信息脱敏
 

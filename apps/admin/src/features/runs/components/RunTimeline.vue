@@ -4,15 +4,12 @@ import type { RunTimelineItem } from '../run.model'
 import {
   CheckCircleOutlined,
   ClockCircleOutlined,
-  CloseCircleOutlined,
   DatabaseOutlined,
   MessageOutlined,
-  PlayCircleOutlined,
   RobotOutlined,
-  StopOutlined,
   ToolOutlined,
 } from '@ant-design/icons-vue'
-import { Tag } from 'ant-design-vue'
+import { Empty, Tag } from 'ant-design-vue'
 
 import { formatDuration, formatTime } from '../run.utils'
 
@@ -26,15 +23,10 @@ defineEmits<{
 }>()
 
 function timelineIcon(item: RunTimelineItem): Component {
+  if (item.kind === 'generic')
+    return ClockCircleOutlined
+
   switch (item.type) {
-    case 'run_lifecycle':
-      if (item.event === 'run_started')
-        return PlayCircleOutlined
-      if (item.event === 'run_failed')
-        return CloseCircleOutlined
-      if (item.event === 'run_aborted')
-        return StopOutlined
-      return CheckCircleOutlined
     case 'receive_user_message':
       return MessageOutlined
     case 'load_conversation_history':
@@ -53,13 +45,14 @@ function timelineIcon(item: RunTimelineItem): Component {
 
 <template>
   <div class="run-timeline" aria-label="Execution Timeline">
+    <Empty v-if="!items.length" description="尚无持久化 Step" />
     <div
       v-for="item in items"
       :key="item.id"
       class="run-timeline__row"
       :class="[
         `is-${item.status.toLowerCase()}`,
-        { 'is-derived': item.kind === 'derived_lifecycle' },
+        { 'is-generic': item.kind === 'generic' },
       ]"
     >
       <span class="run-timeline__marker">
@@ -78,8 +71,8 @@ function timelineIcon(item: RunTimelineItem): Component {
           <time>{{ formatTime(item.startedAt) }}</time>
         </span>
         <span class="run-timeline__meta">
-          <Tag v-if="item.kind === 'derived_lifecycle'">Derived</Tag>
-          <code v-else>#{{ item.sequence }} · {{ item.type }}</code>
+          <code>#{{ item.sequence }} · {{ item.type }}</code>
+          <Tag v-if="item.kind === 'generic'">Generic</Tag>
           <small v-if="item.durationMs !== null">
             {{ formatDuration(item.durationMs) }}
           </small>
@@ -113,7 +106,7 @@ function timelineIcon(item: RunTimelineItem): Component {
   content: '';
 }
 
-.run-timeline__row.is-derived:not(:last-child)::before {
+.run-timeline__row.is-generic:not(:last-child)::before {
   border-left-style: dashed;
 }
 

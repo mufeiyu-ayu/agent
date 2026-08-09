@@ -5,12 +5,13 @@ import {
   BarsOutlined,
   CheckCircleOutlined,
   ClockCircleOutlined,
+  CloseCircleOutlined,
   EyeOutlined,
-  NumberOutlined,
   RedoOutlined,
   SearchOutlined,
 } from '@ant-design/icons-vue'
 import {
+  Alert,
   Button,
   Card,
   Empty,
@@ -20,10 +21,11 @@ import {
   Pagination,
   RangePicker,
   Select,
+  Skeleton,
   Table,
   Tooltip,
 } from 'ant-design-vue'
-import { computed, watch } from 'vue'
+import { onBeforeUnmount, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 
 import PageContainer from '@/components/common/PageContainer.vue'
@@ -31,21 +33,18 @@ import PageHeader from '@/components/common/PageHeader.vue'
 import StatusBadge from '@/components/common/StatusBadge.vue'
 import RunStatusTag from '@/features/runs/components/RunStatusTag.vue'
 import { useRunListStore } from '@/features/runs/run-list.store'
-import { mockRunList, mockRunModels } from '@/features/runs/run.mocks'
 import {
-  computeRunSummary,
-  filterRuns,
   formatDuration,
+  formatRequestedModel,
   formatShortDateTime,
   formatTokens,
-  paginateRuns,
 } from '@/features/runs/run.utils'
 
 const columns: TableColumnsType<RunListItem> = [
   { title: 'Run ID', dataIndex: 'id', key: 'id', width: 176, fixed: 'left' },
   { title: 'User question', dataIndex: 'questionPreview', key: 'question', width: 220 },
   { title: 'Status', dataIndex: 'status', key: 'status', width: 92 },
-  { title: 'Model', dataIndex: 'model', key: 'model', width: 104 },
+  { title: 'Requested model', dataIndex: 'requestedModel', key: 'requestedModel', width: 132 },
   { title: 'Tools', dataIndex: 'toolCallCount', key: 'tools', width: 62, align: 'center' },
   { title: 'Samples', dataIndex: 'samplingCount', key: 'samplings', width: 72, align: 'center' },
   { title: 'Tokens', dataIndex: 'totalTokens', key: 'tokens', width: 78, align: 'right' },
@@ -63,22 +62,23 @@ const statusOptions: Array<{ label: string, value: RunStatus }> = [
   { label: 'ABORTED', value: 'ABORTED' },
 ]
 
-const summary = computed(() => computeRunSummary(mockRunList))
-const filteredRuns = computed(() => filterRuns(mockRunList, runListStore.appliedFilters))
-const pagedRuns = computed(() => paginateRuns(
-  filteredRuns.value,
-  runListStore.currentPage,
-  runListStore.pageSize,
-))
+onMounted(() => void runListStore.load())
+onBeforeUnmount(runListStore.cancel)
 
-watch([filteredRuns, () => runListStore.pageSize], ([runs]) => {
-  runListStore.normalizePageAfterFilter(runs.length)
-}, { immediate: true })
+function getRunDetailLocation(runId: string) {
+  return {
+    name: 'run-detail',
+    params: { runId },
+  }
+}
 
 function handlePageChange(page: number, pageSize: number) {
-  runListStore.setPageSize(pageSize)
-  runListStore.setCurrentPage(page)
-  runListStore.normalizePageAfterFilter(filteredRuns.value.length)
+  if (pageSize !== runListStore.pageSize) {
+    void runListStore.setPageSize(pageSize)
+    return
+  }
+
+  void runListStore.setPage(page)
 }
 </script>
 
@@ -87,11 +87,11 @@ function handlePageChange(page: number, pageSize: number) {
     <PageHeader
       eyebrow="Observability"
       title="Agent Runs"
-      description="浏览确定性 Demo Run，检查状态、Token 使用与 AgentStep 轨迹；数据来自本地类型化 Mock。"
+      description="浏览真实 Agent Run，使用服务端筛选与分页检查状态、Token 使用和 AgentStep 轨迹。"
     >
       <template #actions>
-        <StatusBadge tone="info">
-          Demo / Mock data
+        <StatusBadge tone="success">
+          Live / Task 2 API
         </StatusBadge>
       </template>
     </PageHeader>
@@ -101,32 +101,37 @@ function handlePageChange(page: number, pageSize: number) {
         <span class="summary-card__icon is-blue"><BarsOutlined /></span>
         <div>
           <small>Total Runs</small>
-          <strong>{{ summary.totalRuns }}</strong>
-          <p>当前 Mock 集合</p>
+          <strong>{{ runListStore.summary.totalRuns }}</strong>
+          <p>匹配当前服务端筛选</p>
         </div>
       </Card>
       <Card class="summary-card" :bordered="false">
         <span class="summary-card__icon is-green"><CheckCircleOutlined /></span>
         <div>
-          <small>Success Rate</small>
-          <strong>{{ summary.successRate }}%</strong>
-          <p>COMPLETED / 全部 Run</p>
+          <small>Completed</small>
+          <strong>{{ runListStore.summary.statusCounts.COMPLETED }}</strong>
+          <p>已正常结束</p>
         </div>
       </Card>
       <Card class="summary-card" :bordered="false">
         <span class="summary-card__icon is-amber"><ClockCircleOutlined /></span>
         <div>
-          <small>Avg Duration</small>
-          <strong>{{ formatDuration(summary.avgDurationMs) }}</strong>
-          <p>仅统计已结束 Run</p>
+          <small>Running</small>
+          <strong>{{ runListStore.summary.statusCounts.RUNNING }}</strong>
+          <p>仍在执行</p>
         </div>
       </Card>
       <Card class="summary-card" :bordered="false">
-        <span class="summary-card__icon is-violet"><NumberOutlined /></span>
+        <span class="summary-card__icon is-red"><CloseCircleOutlined /></span>
         <div>
-          <small>Total Tokens</small>
-          <strong>{{ formatTokens(summary.totalTokens) }}</strong>
-          <p>仅汇总已知 usage</p>
+          <small>Failed / Aborted</small>
+          <strong>
+            {{ runListStore.summary.statusCounts.FAILED + runListStore.summary.statusCounts.ABORTED }}
+          </strong>
+          <p>
+            {{ runListStore.summary.statusCounts.FAILED }} failed ·
+            {{ runListStore.summary.statusCounts.ABORTED }} aborted
+          </p>
         </div>
       </Card>
     </section>
@@ -137,7 +142,7 @@ function handlePageChange(page: number, pageSize: number) {
           <Input
             v-model:value="runListStore.draftFilters.query"
             allow-clear
-            placeholder="Search Demo Runs"
+            placeholder="Search Run ID or question"
           />
         </FormItem>
         <FormItem label="Status">
@@ -146,14 +151,6 @@ function handlePageChange(page: number, pageSize: number) {
             allow-clear
             :options="statusOptions"
             placeholder="All statuses"
-          />
-        </FormItem>
-        <FormItem label="Model">
-          <Select
-            v-model:value="runListStore.draftFilters.model"
-            allow-clear
-            :options="mockRunModels.map(model => ({ label: model, value: model }))"
-            placeholder="All models"
           />
         </FormItem>
         <FormItem label="Date Range">
@@ -171,7 +168,7 @@ function handlePageChange(page: number, pageSize: number) {
             </template>
             Search
           </Button>
-          <Button @click="runListStore.resetFilters">
+          <Button html-type="button" @click="runListStore.resetFilters">
             <template #icon>
               <RedoOutlined />
             </template>
@@ -182,19 +179,47 @@ function handlePageChange(page: number, pageSize: number) {
     </Card>
 
     <Card class="table-card" :bordered="false">
+      <Alert
+        v-if="runListStore.error"
+        class="table-error"
+        type="error"
+        show-icon
+        message="Run 列表加载失败"
+        :description="runListStore.error"
+      >
+        <template #action>
+          <Button
+            size="small"
+            :loading="runListStore.loading"
+            @click="runListStore.retry"
+          >
+            Retry
+          </Button>
+        </template>
+      </Alert>
+
+      <Skeleton
+        v-else-if="runListStore.loading && !runListStore.items.length"
+        active
+        class="table-skeleton"
+        :paragraph="{ rows: 6 }"
+      />
+
       <Table
+        v-else
         class="runs-table"
         :columns="columns"
-        :data-source="pagedRuns"
+        :data-source="runListStore.items"
+        :loading="runListStore.loading"
         :pagination="false"
         row-key="id"
         size="small"
-        :scroll="{ x: 1_062 }"
+        :scroll="{ x: 1_090 }"
       >
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'id'">
             <Tooltip :title="record.id">
-              <RouterLink class="run-id" :to="`/runs/${record.id}`">
+              <RouterLink class="run-id" :to="getRunDetailLocation(record.id)">
                 {{ record.id }}
               </RouterLink>
             </Tooltip>
@@ -206,6 +231,13 @@ function handlePageChange(page: number, pageSize: number) {
           </template>
           <template v-else-if="column.key === 'status'">
             <RunStatusTag :status="record.status" />
+          </template>
+          <template v-else-if="column.key === 'requestedModel'">
+            <Tooltip :title="record.requestedModel ?? '未显式请求具体模型；实际模型未知'">
+              <span class="requested-model" :class="{ 'is-default': record.requestedModel === null }">
+                {{ formatRequestedModel(record.requestedModel) }}
+              </span>
+            </Tooltip>
           </template>
           <template v-else-if="column.key === 'tokens'">
             <span class="numeric-cell">{{ formatTokens(record.totalTokens) }}</span>
@@ -223,7 +255,7 @@ function handlePageChange(page: number, pageSize: number) {
                 shape="circle"
                 size="small"
                 :aria-label="`查看 ${record.id}`"
-                @click="router.push(`/runs/${record.id}`)"
+                @click="router.push(getRunDetailLocation(record.id))"
               >
                 <template #icon>
                   <EyeOutlined />
@@ -234,19 +266,22 @@ function handlePageChange(page: number, pageSize: number) {
         </template>
 
         <template #emptyText>
-          <Empty description="没有匹配的 Demo Run，请调整筛选条件。" />
+          <Empty
+            v-if="!runListStore.loading && !runListStore.error"
+            description="没有匹配的 Run，请调整筛选条件。"
+          />
         </template>
       </Table>
 
-      <footer class="table-card__footer">
+      <footer v-if="!runListStore.error" class="table-card__footer">
         <span>
-          Showing {{ pagedRuns.length }} of {{ filteredRuns.length }} Demo Runs
+          Showing {{ runListStore.items.length }} of {{ runListStore.pagination.totalItems }} Runs
         </span>
         <Pagination
           :current="runListStore.currentPage"
           :page-size="runListStore.pageSize"
-          :total="filteredRuns.length"
-          :page-size-options="['5', '8']"
+          :total="runListStore.pagination.totalItems"
+          :page-size-options="['8', '20', '50']"
           show-size-changer
           size="small"
           @change="handlePageChange"
@@ -310,9 +345,9 @@ function handlePageChange(page: number, pageSize: number) {
   background: rgb(245 158 11 / 12%);
 }
 
-.summary-card__icon.is-violet {
-  color: #7950c7;
-  background: rgb(121 80 199 / 12%);
+.summary-card__icon.is-red {
+  color: #cf1322;
+  background: rgb(207 19 34 / 10%);
 }
 
 .summary-card small,
@@ -353,9 +388,8 @@ function handlePageChange(page: number, pageSize: number) {
 .run-filters {
   display: grid;
   grid-template-columns:
-    minmax(180px, 1.25fr)
+    minmax(210px, 1.25fr)
     minmax(120px, 0.72fr)
-    minmax(130px, 0.78fr)
     minmax(230px, 1.2fr)
     auto;
   align-items: end;
@@ -400,6 +434,14 @@ function handlePageChange(page: number, pageSize: number) {
   padding: 0;
 }
 
+.table-error {
+  margin: 12px 14px 0;
+}
+
+.table-skeleton {
+  padding: 22px 18px;
+}
+
 .runs-table :deep(.ant-table) {
   border-radius: 8px 8px 0 0;
 }
@@ -437,6 +479,19 @@ function handlePageChange(page: number, pageSize: number) {
   white-space: nowrap;
 }
 
+.requested-model {
+  display: block;
+  overflow: hidden;
+  color: var(--admin-text-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.requested-model.is-default {
+  color: var(--admin-text-subtle);
+  font-style: italic;
+}
+
 .numeric-cell,
 .date-cell {
   color: var(--admin-text-muted);
@@ -466,11 +521,10 @@ function handlePageChange(page: number, pageSize: number) {
   }
 
   .run-filters {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .run-filters__actions {
-    grid-column: span 2;
     justify-content: flex-end;
   }
 }
