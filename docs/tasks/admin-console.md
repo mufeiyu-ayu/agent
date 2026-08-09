@@ -22,7 +22,7 @@ Admin Console 面向项目开发、调试和运行过程复盘，长期用于查
 - 类型化 Mock、Trace、Messages 与 Safe Raw Data；
 - 明暗主题、Sidebar、Route Tabs 和列表会话状态。
 
-当前正在进行：
+当前已实现、待验收：
 
 - Task 2：真实 Run / Step 只读查询 API。
 
@@ -118,14 +118,14 @@ Task 1 的静态 Mock 是当时的展示基线，不代表当前 Phase 6 Runtime
 Issue #33：Open
 Clarification Gate：READY
 看板：Active
-实施状态：未开始
-验收状态：未验收
+实施状态：已实现
+验收状态：待验收
 ```
 
 核心边界：
 
-- `GET /admin/runs`；
-- `GET /admin/runs/:runId`；
+- `GET /api/admin/runs`；
+- `GET /api/admin/runs/:runId`；
 - `@agent/contracts` 共享 Admin Read Contract；
 - `AgentRun + AgentStep + Message` 安全聚合；
 - server-side pagination / filters / stable ordering；
