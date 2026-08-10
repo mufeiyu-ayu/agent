@@ -6,7 +6,7 @@
 
 项目已经完成从基础 LLM Chat 到 Session、Streaming、Agent Runtime、最小 Tool Calling，再到 bounded sequential Agent Loop 与 Runtime reliability 的连续学习闭环；Admin Console 的真实 Observability Baseline 也已经建立。
 
-经过基于最新 `master` 的阶段讨论，下一正式 Agent 主线已经定案为 **Phase 7：Context Engineering**。当前只完成阶段与 Task 规划，尚未创建 Task 0 Issue，因此没有 Active Agent Task。
+经过基于最新 `master` 的阶段讨论，下一正式 Agent 主线已经定案为 **Phase 7：Context Engineering**。Task 0 的正式 Issue #40 已创建；首轮 Clarification Gate 因 Draft / Ready PR 规则和 docs 状态漂移返回 `BLOCKED`，对应阻塞决策与流程文档已经同步。Task 0 在重新 Gate 为 `READY` 前仍保持 `Next`，因此当前没有 Active Agent Task。
 
 当前状态：
 
@@ -15,6 +15,8 @@
 阶段 7：Context Engineering / Next
 当前 Agent 主线：无 Active Task
 下一正式 Task：Phase 7 Task 0 / Context Boundary & Snapshot / Next
+Issue：#40 已创建
+Gate：首轮 BLOCKED；阻塞决策已同步，等待重新 Gate
 Admin Observability：Task 0-3 Completed
 Admin Task 4：Planned
 ```
@@ -82,7 +84,7 @@ Admin Task 4：Planned
 当前规划：
 
 ```text
-Task 0：Context Boundary & Snapshot                   Next
+Task 0：Context Boundary & Snapshot                   Next / Issue #40 / 待重新 Gate
 Task 1：Model-aware Budget & Dynamic History          Planned
 Task 2：Loop-aware Context & Observation Governance   Planned
 Task 3：Context Inspector & Phase Baseline            Planned
@@ -92,6 +94,8 @@ Compaction：Gated Follow-up                           不自动启动
 ### Task 0
 
 先建立独立 Context boundary 和安全 Snapshot，保持当前 `historyLimit = 40`、Observation 上限、Chat / NDJSON 协议与数据库行为不变。目的只是把散落的 model input assembly 收敛成一个明确边界，并锁定 direct-final / Tool Loop 的 Context 不变量。
+
+Task 0 已创建正式 Issue #40。首轮 Gate 返回 `BLOCKED` 后，GPT 已明确两项决策：正式功能 PR 采用 Draft 生命周期；Task 0 在 Gate `READY` 前仍为 `Next`，不得因 Issue 已创建提前写成 Active。对应协作规范与 task / roadmap 状态已经同步，下一动作是重新执行 Gate。
 
 ### Task 1
 
@@ -173,4 +177,4 @@ Phase 7 Baseline 收口后，再基于最新 `master`、真实产品需求和学
 6. Multi-agent；
 7. 若 Context 证据充分，再决定 Minimal Compaction 是否需要单独收口。
 
-当前没有 Active Agent Task。下一正式动作是为 Phase 7 Task 0 创建 Issue，并执行 Codex Clarification Gate。
+当前没有 Active Agent Task。下一正式动作是让 Codex 针对 Issue #40 重新执行 Clarification Gate；只有 Gate 为 `READY` 后，Task 0 才进入 Active。
