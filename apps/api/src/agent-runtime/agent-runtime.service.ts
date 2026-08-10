@@ -5,12 +5,8 @@ import type {
   MessageStatus as PrismaMessageStatus,
 } from '../generated/prisma/client.js'
 import type { ChatMessage } from '../llm/llm.types.js'
-import type { ModelInputItem } from '../llm/model-input.types.js'
 import type { DatabaseOperationDeadline } from '../prisma/prisma.service.js'
-import type {
-  ToolResult,
-  UnvalidatedToolCallEnvelope,
-} from '../tools/core/tool.types.js'
+import type { ToolResult } from '../tools/core/tool.types.js'
 import type {
   AgentRuntimeEvent,
   RunTurnStreamInput,
@@ -23,7 +19,6 @@ import { Inject, Injectable, NotFoundException } from '@nestjs/common'
 
 import { MessageRole, MessageStatus } from '../generated/prisma/client.js'
 import { LLMService } from '../llm/llm.service.js'
-import { toModelInputItems } from '../llm/model-input.types.js'
 import {
   DatabaseCommitOutcomeUnknownError,
   DatabaseOperationDeadlineExceededError,
@@ -47,6 +42,7 @@ import {
   ModelSamplingIncompleteError,
 } from './agent-runtime.errors.js'
 import { AgentRuntimePolicyService } from './agent-runtime.policy.js'
+import { ModelContext } from './model-context.js'
 import { streamModelSampling } from './model-sampling-decision.js'
 
 const AGENT_RUN_TOOL_NAMES = [
@@ -171,10 +167,10 @@ export class AgentRuntimeService {
         },
       )
 
-      const llmMessages = input.buildModelMessages(
+      const modelContext = ModelContext.fromHistory(
         historyMessages.map(message => this.toLlmMessage(message)),
+        messages => input.buildModelMessages(messages),
       )
-      const modelInputItems = toModelInputItems(llmMessages)
       const registeredToolDefinitions = this.toolRegistryService.listDefinitions()
       const toolDefinitions = AGENT_RUN_TOOL_NAMES.flatMap((name) => {
         const definition = registeredToolDefinitions.find(
@@ -238,6 +234,7 @@ export class AgentRuntimeService {
       ) {
         runCancellation.throwIfUnavailable()
         const samplingAttemptId = `${currentAgentRunId}:sampling-${samplingAttempt}`
+        const contextSnapshot = modelContext.snapshot(samplingAttempt)
         const samplingStep = await this.agentRunRecorderService.startStep({
           runId: currentAgentRunId,
           type: AGENT_STEP_TYPES.modelSampling,
@@ -245,7 +242,7 @@ export class AgentRuntimeService {
             samplingIndex: samplingAttempt,
             samplingAttemptId,
             requestedModel: input.model ?? null,
-            messageCount: modelInputItems.length,
+            messageCount: contextSnapshot.itemCount,
             toolCount: modelTools.length,
           },
         }, databaseDeadline)
@@ -255,7 +252,10 @@ export class AgentRuntimeService {
         try {
           // 两层 async generator 此时只创建迭代器；首次 sampling.next() 才启动模型请求并拉取事件。
           const sampling = streamModelSampling(
-            this.llmService.chatStream(modelInputItems, chatStreamOptions),
+            this.llmService.chatStream(
+              modelContext.forSampling(),
+              chatStreamOptions,
+            ),
             samplingAttemptId,
           )
           let samplingResult = await sampling.next()
@@ -404,14 +404,13 @@ export class AgentRuntimeService {
         }
 
         runCancellation.throwIfUnavailable()
-        this.appendToolObservation(
-          modelInputItems,
-          samplingDecision.call,
-          samplingDecision.intermediateText,
-          samplingDecision.reasoningContent,
-          observation.content,
-          toolResult.ok,
-        )
+        modelContext.appendToolExchange({
+          call: samplingDecision.call,
+          intermediateText: samplingDecision.intermediateText,
+          reasoningContent: samplingDecision.reasoningContent,
+          observationContent: observation.content,
+          ok: toolResult.ok,
+        })
       }
 
       if (!hasFinalAnswer) {
@@ -675,33 +674,6 @@ export class AgentRuntimeService {
       return this.toSamplingStepOutput(error.summary, durationMs)
 
     return { durationMs }
-  }
-
-  private appendToolObservation(
-    modelInputItems: ModelInputItem[],
-    call: UnvalidatedToolCallEnvelope,
-    intermediateText: string,
-    reasoningContent: string,
-    content: string,
-    ok: boolean,
-  ): void {
-    modelInputItems.push(
-      {
-        type: 'assistant_tool_call',
-        callId: call.callId,
-        name: call.toolName,
-        rawArgumentsJson: call.rawArgumentsJson,
-        reasoningContent,
-        ...(intermediateText ? { content: intermediateText } : {}),
-      },
-      {
-        type: 'tool_result',
-        callId: call.callId,
-        name: call.toolName,
-        content,
-        ok,
-      },
-    )
   }
 
   private isAbortSignalTriggered(signal: AbortSignal | undefined): boolean {

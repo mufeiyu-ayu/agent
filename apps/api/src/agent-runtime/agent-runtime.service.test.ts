@@ -44,6 +44,7 @@ import { buildSeoAgentChatMessages } from '../seo/prompts/seo-agent.prompt.js'
 import { toChatStreamEvent } from '../seo/seo-chat-stream-event.mapper.js'
 import { AgentRunTerminalizationError } from './agent-runtime.errors.js'
 import { AgentRuntimeService } from './agent-runtime.service.js'
+import { ModelContext } from './model-context.js'
 
 describe('AgentRuntimeService model stream', () => {
   it('保持普通文本流的现有完成行为', async () => {
@@ -66,6 +67,11 @@ describe('AgentRuntimeService model stream', () => {
     assert.equal(harness.assistantMessage()?.status, MessageStatus.COMPLETED)
     assert.deepEqual(harness.recorder.completedRunIds, ['run-1'])
     assert.equal(harness.llmCalls.length, 1)
+    assert.deepEqual(harness.llmCalls[0]?.messages, [{
+      type: 'message',
+      role: 'user',
+      content: '问题',
+    }])
     assert.equal(harness.toolInvocations.length, 0)
     assert.deepEqual(
       harness.llmCalls[0]?.options?.tools?.map(tool => tool.name),
@@ -325,7 +331,12 @@ describe('AgentRuntimeService model stream', () => {
         ['search_articles', 'get_article_detail'],
       ],
     )
-    assert.deepEqual(harness.llmCalls[1]?.messages.slice(-2), [
+    assert.deepEqual(harness.llmCalls[1]?.messages, [
+      {
+        type: 'message',
+        role: 'user',
+        content: '问题',
+      },
       {
         type: 'assistant_tool_call',
         callId: 'call-1',
@@ -484,7 +495,12 @@ describe('AgentRuntimeService model stream', () => {
         samplingAttemptId: 'run-1:sampling-2',
       },
     ])
-    assert.deepEqual(harness.llmCalls[2]?.messages.slice(-4), [
+    assert.deepEqual(harness.llmCalls[2]?.messages, [
+      {
+        type: 'message',
+        role: 'user',
+        content: '问题',
+      },
       {
         type: 'assistant_tool_call',
         callId: 'call-search',
@@ -1394,6 +1410,216 @@ describe('AgentRuntimeService model stream', () => {
     assert.deepEqual(harness.recorder.failedRunIds, [])
     assert.deepEqual(harness.recorder.abortedRunIds, [])
     assert.equal(findStep(harness, 'assistant_output')?.status, AgentStepStatus.RUNNING)
+  })
+})
+
+describe('ModelContext', () => {
+  it('保持 direct-final、一次 Tool 和两次顺序 Tool 的 items 与安全 Snapshot', () => {
+    const context = ModelContext.fromHistory(
+      [{ role: 'user', content: 'USER' }],
+      historyMessages => [
+        { role: 'system', content: 'SYS' },
+        ...historyMessages,
+      ],
+    )
+
+    assert.deepEqual(context.forSampling(), [
+      { type: 'message', role: 'system', content: 'SYS' },
+      { type: 'message', role: 'user', content: 'USER' },
+    ])
+    assert.deepEqual(context.snapshot(1), {
+      samplingIndex: 1,
+      itemCount: 2,
+      characterCount: 7,
+      hasToolExchange: false,
+      toolExchangeCount: 0,
+      items: [
+        {
+          source: 'instructions',
+          category: 'system_message',
+          characterCount: 3,
+        },
+        {
+          source: 'conversation',
+          category: 'user_message',
+          characterCount: 4,
+        },
+      ],
+    })
+
+    context.appendToolExchange({
+      call: {
+        callId: 'c1',
+        toolName: 't1',
+        rawArgumentsJson: 'A',
+        samplingAttemptId: 's1',
+      },
+      intermediateText: 'I',
+      reasoningContent: 'R',
+      observationContent: 'O',
+      ok: true,
+    })
+
+    assert.deepEqual(context.forSampling().slice(-2), [
+      {
+        type: 'assistant_tool_call',
+        callId: 'c1',
+        name: 't1',
+        rawArgumentsJson: 'A',
+        reasoningContent: 'R',
+        content: 'I',
+      },
+      {
+        type: 'tool_result',
+        callId: 'c1',
+        name: 't1',
+        content: 'O',
+        ok: true,
+      },
+    ])
+    assert.deepEqual(context.snapshot(2), {
+      samplingIndex: 2,
+      itemCount: 4,
+      characterCount: 17,
+      hasToolExchange: true,
+      toolExchangeCount: 1,
+      items: [
+        {
+          source: 'instructions',
+          category: 'system_message',
+          characterCount: 3,
+        },
+        {
+          source: 'conversation',
+          category: 'user_message',
+          characterCount: 4,
+        },
+        {
+          source: 'tool_exchange',
+          category: 'assistant_tool_call',
+          characterCount: 7,
+        },
+        {
+          source: 'tool_exchange',
+          category: 'tool_result',
+          characterCount: 3,
+        },
+      ],
+    })
+
+    context.appendToolExchange({
+      call: {
+        callId: 'c2',
+        toolName: 't2',
+        rawArgumentsJson: 'B',
+        samplingAttemptId: 's2',
+      },
+      intermediateText: 'J',
+      reasoningContent: 'S',
+      observationContent: 'P',
+      ok: false,
+    })
+
+    assert.deepEqual(context.snapshot(3), {
+      samplingIndex: 3,
+      itemCount: 6,
+      characterCount: 27,
+      hasToolExchange: true,
+      toolExchangeCount: 2,
+      items: [
+        {
+          source: 'instructions',
+          category: 'system_message',
+          characterCount: 3,
+        },
+        {
+          source: 'conversation',
+          category: 'user_message',
+          characterCount: 4,
+        },
+        {
+          source: 'tool_exchange',
+          category: 'assistant_tool_call',
+          characterCount: 7,
+        },
+        {
+          source: 'tool_exchange',
+          category: 'tool_result',
+          characterCount: 3,
+        },
+        {
+          source: 'tool_exchange',
+          category: 'assistant_tool_call',
+          characterCount: 7,
+        },
+        {
+          source: 'tool_exchange',
+          category: 'tool_result',
+          characterCount: 3,
+        },
+      ],
+    })
+  })
+
+  it('Snapshot whitelist 不暴露 prompt、reasoning、raw arguments、data 或 Observation', () => {
+    const systemPrompt = 'system-secret'
+    const rawArgumentsJson = '{"token":"raw-secret"}'
+    const reasoningContent = 'reasoning-secret'
+    const observationContent = 'observation-secret'
+    const toolResult: ToolResult = {
+      ok: true,
+      data: { password: 'data-secret' },
+      modelContent: observationContent,
+    }
+    const context = ModelContext.fromHistory(
+      [{ role: 'user', content: 'user-secret' }],
+      historyMessages => [
+        { role: 'system', content: systemPrompt },
+        ...historyMessages,
+      ],
+    )
+
+    context.appendToolExchange({
+      call: {
+        callId: 'call-secret',
+        toolName: 'search_articles',
+        rawArgumentsJson,
+        samplingAttemptId: 'run-secret:sampling-1',
+      },
+      intermediateText: 'intermediate-secret',
+      reasoningContent,
+      observationContent: toolResult.modelContent,
+      ok: toolResult.ok,
+    })
+
+    const snapshot = context.snapshot(2)
+    const serialized = JSON.stringify(snapshot)
+
+    assert.deepEqual(Object.keys(snapshot), [
+      'samplingIndex',
+      'itemCount',
+      'characterCount',
+      'hasToolExchange',
+      'toolExchangeCount',
+      'items',
+    ])
+    assert.equal(snapshot.items.every(item => (
+      Object.keys(item).join(',') === 'source,category,characterCount'
+    )), true)
+    for (const secret of [
+      systemPrompt,
+      'user-secret',
+      'call-secret',
+      'search_articles',
+      rawArgumentsJson,
+      reasoningContent,
+      'intermediate-secret',
+      observationContent,
+      'data-secret',
+      'run-secret',
+    ]) {
+      assert.doesNotMatch(serialized, new RegExp(secret))
+    }
   })
 })
 
