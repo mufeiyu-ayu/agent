@@ -6,9 +6,10 @@
 
 | 类型 | 当前记录 | 下一步 |
 | --- | --- | --- |
-| Agent 主线 | 阶段 1-6 Completed；当前无 Active Agent Task | 基于最新 `master` 讨论下一正式 Agent 阶段 |
+| Agent 主线 | 阶段 1-6 Completed；Phase 7 Context Engineering 已确认 Next；当前无 Active Agent Task | 为 Phase 7 Task 0 建立 Issue 级规格并创建正式 Issue |
 | Phase 6 | 已完成并归档 | 见 `docs/tasks/completed/phase-06-bounded-agent-loop.md` |
-| Admin Console | Task 0-3 Completed；Observability Baseline 已建立；Task 4 Planned | 后续按 Agent 主线能力增量扩展 Inspector |
+| Phase 7 | Context Engineering；Task 0 Next，Task 1-3 Planned，Compaction Gated | 先做 Context Boundary & Snapshot，不直接启动完整 Budget / Compaction |
+| Admin Console | Task 0-3 Completed；Observability Baseline 已建立；Task 4 Planned | Phase 7 Task 3 再按需增量增加 Context Inspector |
 | Web Chat | 会话滚动跟随与响应式 UI follow-up 已完成 | 后续仅在出现真实 UX 问题时继续迭代 |
 | 文档结构 | `roadmap`、`tasks`、`research`、`work-log` 为主入口 | 不维护第二套阶段状态 |
 
@@ -16,6 +17,7 @@
 
 | 日期 | 事项 | 结果 |
 | --- | --- | --- |
+| 2026-08-10 | Phase 7 Context Engineering 路线定案 | 基于 Phase 6 Runtime 与现有 Context 限制，确认 Context Engineering 为下一 Agent 主线；Task 0 Context Boundary & Snapshot 为 Next；Task 1-3 Planned；Minimal Compaction 仅作为有证据才启动的 Gated follow-up；当前仍无 Active Task |
 | 2026-08-10 | PR #38 / Issue #37 收口 | Web Chat 会话滚动跟随、原生 viewport、scroll memory 与响应式布局 follow-up 合入 `master`；merge commit `415d740507a29ee4bd9b6a4aa26d9c4fbb9668c1`；Issue #37 Closed |
 | 2026-08-10 | PR #36 / Issue #35 收口 | Admin Console Task 3 合入 `master`；merge commit `4c689c4c8a8d3975192d13eb3f5a1c24463fcd7b`；真实 Run Trace UI、Computer Use 验收与截图证据完成；Issue #35 Closed |
 | 2026-08-10 | PR #36 范围整理 | 最新分支中混入的独立 Web UI / scroll 改动从 Admin Task 3 中拆出并保留到独立分支，避免一个 PR 同时承载两个 Task；Admin PR 仅保留 Task 3 + 必要 API dev-mode 修复 |
@@ -33,6 +35,22 @@
 
 Phase 6 已完成，不再继续向该阶段追加新 Agent 能力。
 
+Phase 7 当前状态：
+
+```text
+Phase 7：Context Engineering          Next
+Task 0：Context Boundary & Snapshot   Next / Issue 未创建
+Task 1：Model-aware Budget            Planned
+Task 2：Loop-aware Context            Planned
+Task 3：Context Inspector             Planned
+Compaction                            Gated
+Active Agent Task                     无
+```
+
+Phase 7 的核心目标是让 model-visible context 从“固定 History 条数 + 各 Tool 局部字符限制”升级为统一 Context boundary、model-aware budget、动态 History Selection、多轮 Loop Context Governance 和安全 Inspector。
+
+Minimal Compaction 不自动启动；只有 Task 1-3 的真实指标证明动态选择不足以维持长会话连续性、成本、延迟或质量时，才重新讨论独立 Task / Issue。
+
 Admin Console 当前状态：
 
 ```text
@@ -43,17 +61,7 @@ Task 3：Real Trace UI    Completed
 Task 4：Auth / RBAC      Planned
 ```
 
-Task 2 + Task 3 已建立真实 Observability Baseline。Task 4 不自动启动，Admin 支线也不自动成为 Phase 7。
-
-当前 Agent 主线保持“无 Active Task”。下一阶段需要重新基于最新 `master` 评估：
-
-- Context Engineering / ContextPlan / Compaction；
-- RAG / Embedding / Hybrid Retrieval；
-- 写工具、Permission、Approval、HITL；
-- Durable Recovery / Resume；
-- MCP / Plugin / Skill；
-- Planner / Workflow / 并行 Tool Call；
-- Multi-agent。
+Task 2 + Task 3 已建立真实 Observability Baseline。Phase 7 Task 3 可以在这个基线上增加 Context Inspector，但 Admin Task 4 不自动启动。
 
 ## 记录规则
 
