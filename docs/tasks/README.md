@@ -6,8 +6,8 @@
 
 | 区域 | 状态 | 文档 | 说明 |
 | --- | --- | --- | --- |
-| Agent 主线 | **Phase 7 Next / 无 Active Task** | [roadmap.md](../roadmap.md) | 阶段 1-6 已完成；Phase 7 Context Engineering 已确认是下一主线 |
-| Phase 7：Context Engineering | **Next** | [phase-07-context-engineering/README.md](./phase-07-context-engineering/README.md) | Task 0 已创建 Issue #40；首轮 Gate BLOCKED，阻塞决策已同步，等待重新 Gate；Task 1-3 Planned；Compaction 为 Gated follow-up |
+| Agent 主线 | **Phase 7 Active / Task 0 待验收** | [roadmap.md](../roadmap.md) | 阶段 1-6 已完成；Task 0 Issue #40 已实现并通过本地验证 |
+| Phase 7：Context Engineering | **Active** | [phase-07-context-engineering/README.md](./phase-07-context-engineering/README.md) | Task 0 已实现、待验收；Task 1-3 Planned；Compaction 为 Gated follow-up |
 | 阶段 6：有界单 Agent Loop | Completed | [completed/phase-06-bounded-agent-loop.md](./completed/phase-06-bounded-agent-loop.md) | Task 0、横向配置治理、Task 1、Task 2 均已验收并合并 |
 | Admin Console Task 0-1 | Completed | [admin-console.md](./admin-console.md) | 基础壳与静态 Run UI 已完成 |
 | Admin Console Task 2 | **Completed** | [task-02-run-query-api.md](./admin-console/task-02-run-query-api.md) | Issue #33 / PR #34；merge `997d6b84` |
@@ -23,20 +23,19 @@
 
 ```text
 阶段 1-6：Completed
-阶段 7：Context Engineering / Next
-当前：无 Active Agent Task
-下一正式 Task：Phase 7 Task 0 / Context Boundary & Snapshot / Next
+阶段 7：Context Engineering / Active
+当前：Task 0 / Context Boundary & Snapshot / 已实现，待验收
 Issue：#40 已创建
-Gate：首轮 BLOCKED；阻塞决策已同步，等待重新 Gate
+Gate：首轮 BLOCKED；D-05 / D-06 同步后第二轮 READY
 ```
 
-Phase 7 已经完成阶段级与 Task 级规划，Task 0 的正式 Issue #40 已创建。首轮 Clarification Gate 因 Draft / Ready PR 规则和 docs 状态漂移返回 `BLOCKED`；对应流程规则与状态事实已由 GPT 同步到 `master`。在 Codex 重新 Gate 为 `READY` 前，Task 0 仍保持 `Next`，当前仍没有 Active Agent Task。
+Task 0 的第二轮 Clarification Gate 已为 `READY`，独立分支中的 Context Boundary、Snapshot 与回归测试已经实现并通过本地验证。当前正式状态为“实施状态：已实现 / 验收状态：待验收”；Phase 7 保持 Active，不推进 Task 1。
 
 ## Phase 7 当前任务
 
 | Task | 状态 | 核心边界 |
 | --- | --- | --- |
-| Task 0：Context Boundary & Snapshot | **Next / Issue #40 / 待重新 Gate** | 收敛 model input assembly；建立安全 Context Snapshot；不改变 40 条 History 与现有 Observation 行为 |
+| Task 0：Context Boundary & Snapshot | **Active / Issue #40 / 已实现，待验收** | 收敛 model input assembly；建立安全 Context Snapshot；不改变 40 条 History 与现有 Observation 行为 |
 | Task 1：Model-aware Budget & Dynamic History | Planned | 让 `contextWindowTokens` 进入真实预算；History 从固定条数升级为 token-budget 驱动 |
 | Task 2：Loop-aware Context & Observation Governance | Planned | 多轮 Tool Loop 的 Context Budget、Tool Call / Result pairing 与 Observation 最终裁剪 |
 | Task 3：Context Inspector & Phase Baseline | Planned | 安全 Context summary + Admin Inspector + 阶段回归 |
@@ -44,7 +43,7 @@ Phase 7 已经完成阶段级与 Task 级规划，Task 0 的正式 Issue #40 已
 
 阶段完整规格见 [`phase-07-context-engineering/README.md`](./phase-07-context-engineering/README.md)。
 
-下一动作是让 Codex 重新读取 Issue #40、最新 `master` 和协作规范，重新执行 Clarification Gate。只有 Gate 结论为 `READY` 后，Task 0 才进入 `Active` 并创建独立实现分支。
+下一动作是让 Issue #40 的 Draft PR 接受 Codex Review 和 GPT 技术验收。只有 GPT 验收通过且用户明确确认、授权后，才允许收口状态、转 Ready 或合并。
 
 ## Admin Console 当前状态
 

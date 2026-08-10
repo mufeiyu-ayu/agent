@@ -1,8 +1,8 @@
 # Phase 7：Context Engineering
 
-状态：**Next / Task 0 Issue #40 已创建 / 待重新 Gate**。
+状态：**Active / Task 0 Issue #40 已实现，待验收**。
 
-本阶段已经由 GPT 与用户确认作为 Phase 6 之后的下一条 Agent 主线。Task 0 已创建正式 Issue #40；首轮 Clarification Gate 因 Draft / Ready PR 规则与 docs 状态漂移返回 `BLOCKED`。GPT 已按最新协作规范完成决策与 docs 同步；在 Codex 重新 Gate 为 `READY` 前，Phase 7 仍没有 Active Task。
+本阶段已经由 GPT 与用户确认作为 Phase 6 之后的下一条 Agent 主线。Task 0 已创建正式 Issue #40；首轮 Clarification Gate 的阻塞决策同步后，第二轮 Gate 为 `READY`。Task 0 已完成实现和本地验证，当前等待 Draft PR Review、GPT 技术验收与用户确认；Task 1-3 未启动。
 
 ## 1. 阶段目标
 
@@ -93,7 +93,7 @@ Phase 7 Baseline 不把自动 Summary / Compaction 作为必做项。先完成 C
 
 | Task | 状态 | 目标 |
 | --- | --- | --- |
-| Task 0：Context Boundary & Snapshot | **Next / Issue #40 / 待重新 Gate** | 把当前 model input 组装收敛到独立 Context 边界，并建立不改变现有行为的 Context Snapshot |
+| Task 0：Context Boundary & Snapshot | **Active / Issue #40 / 已实现，待验收** | 把当前 model input 组装收敛到独立 Context 边界，并建立不改变现有行为的 Context Snapshot |
 | Task 1：Model-aware Budget & Dynamic History | Planned | 让模型 Context Window 参与预算，历史选择从固定条数升级为 token-budget 驱动 |
 | Task 2：Loop-aware Context & Observation Governance | Planned | 统一管理后续 sampling 的 Tool Exchange、剩余 Context Budget 与 Observation 裁剪 |
 | Task 3：Context Inspector & Phase Baseline | Planned | 将 Context 决策做成安全可观察的 Runtime / Admin Inspector，并完成阶段回归 |
@@ -105,7 +105,10 @@ Phase 7 Baseline 不把自动 Summary / Compaction 作为必做项。先完成 C
 
 # Task 0：Context Boundary & Snapshot
 
-状态：**Next / Issue #40 已创建 / 首轮 Gate BLOCKED，阻塞决策已同步，待重新 Gate**。
+状态：**Active / Issue #40 / 已实现，待验收**。
+
+- 实施状态：已实现
+- 验收状态：待验收
 
 ## 目标
 
@@ -139,34 +142,48 @@ Task 0 是结构基线，不负责优化 History 数量，也不实现 token-bud
 
 ## Red：先定义失败用例
 
-- [ ] 当前 model input assembly 没有单一 Context 边界，测试应能暴露初始 History 与 Tool Exchange 分散拼装；
-- [ ] direct-final、一次 Tool、两次 Tool 的 Provider-facing items 没有统一 Snapshot；
-- [ ] Tool Call / Result pairing、当前用户消息恰好一次、UI Message 不含 Tool Exchange 等不变量必须先锁定。
+- [x] 当前 model input assembly 没有单一 Context 边界，测试应能暴露初始 History 与 Tool Exchange 分散拼装；
+- [x] direct-final、一次 Tool、两次 Tool 的 Provider-facing items 没有统一 Snapshot；
+- [x] Tool Call / Result pairing、当前用户消息恰好一次、UI Message 不含 Tool Exchange 等不变量必须先锁定。
 
 ## Green：最小实现
 
-- [ ] 建立内部 Context assembly / state 边界；
-- [ ] 让初始 Context 与后续 Tool Exchange 通过同一边界维护；
-- [ ] 输出只含安全元数据的 Context Snapshot；
-- [ ] 保持当前 Context 选择和请求行为不变。
+- [x] 建立内部 Context assembly / state 边界；
+- [x] 让初始 Context 与后续 Tool Exchange 通过同一边界维护；
+- [x] 输出只含安全元数据的 Context Snapshot；
+- [x] 保持当前 Context 选择和请求行为不变。
 
 ## 验收标准
 
-- [ ] direct final、一次 Tool、两次顺序 Tool 的最终 Provider input 与现有语义一致；
-- [ ] 当前用户输入在初始 model context 中恰好一次；
-- [ ] Tool Call / Result 按 callId 配对且顺序稳定；
-- [ ] Context Snapshot 不包含 reasoning、完整 Prompt、raw arguments 或 ToolResult.data；
-- [ ] 外部 Chat / NDJSON、Prisma schema、Admin Contract 无行为变更；
-- [ ] 现有 Phase 6 关键回归继续通过。
+- [x] direct final、一次 Tool、两次顺序 Tool 的最终 Provider input 与现有语义一致；
+- [x] 当前用户输入在初始 model context 中恰好一次；
+- [x] Tool Call / Result 按 callId 配对且顺序稳定；
+- [x] Context Snapshot 不包含 reasoning、完整 Prompt、raw arguments 或 ToolResult.data；
+- [x] 外部 Chat / NDJSON、Prisma schema、Admin Contract 无行为变更；
+- [x] 现有 Phase 6 关键回归继续通过。
 
 ## GitHub 交付状态
 
 - Issue：#40 `[Phase 7][Task 0] 建立 Context Boundary 与安全 Context Snapshot`
-- Clarification Gate：首轮 `BLOCKED`
-- 阻塞决策：已由 GPT 按最新协作规范定案并同步到 `master`
-- 当前状态：`Next`，等待 Codex 重新 Gate
-- Active 条件：重新 Gate 结论为 `READY`
-- PR：未创建
+- Clarification Gate：首轮 `BLOCKED`；D-05 / D-06 同步后第二轮 `READY`
+- 当前状态：`Active / 已实现，待验收`
+- 分支：`codex/issue-40-context-boundary`
+- PR：[Draft PR #41](https://github.com/mufeiyu-ayu/agent/pull/41)
+
+## 实现与验证证据
+
+- 新增单次 Run 内存 `ModelContext`，统一初始 model input assembly、Tool Exchange 成对追加与 sampling Snapshot；
+- Snapshot 只投影 source、category、item / Tool Exchange 数量和字符规模，不包含任何原始 Context；
+- Runtime 继续拥有 History 查询、Observation 上限、Tool 执行、Abort、deadline 与 terminalization；
+- direct-final、一次 Tool、两次顺序 Tool 的完整 `ModelInputItem[]` 已加入回归断言。
+
+| 命令 | 结果 |
+| --- | --- |
+| `pnpm --filter @agent/api test:tool-loop` | 通过，41 tests |
+| `pnpm --filter @agent/api test:model-stream` | 通过，56 tests |
+| `pnpm --filter @agent/api typecheck` | 通过 |
+| `pnpm --filter @agent/api lint` | 通过 |
+| `pnpm typecheck` | 通过，4 个 workspace project |
 
 ---
 
@@ -344,12 +361,12 @@ Minimal Compaction 不属于默认完成条件；是否加入 Phase 7 收口范�
 
 ## 7. 当前 GitHub 交付状态
 
-- Phase 7：Next
-- Task 0：Next / Issue #40 / 首轮 Gate BLOCKED / 阻塞决策已同步 / 待重新 Gate
+- Phase 7：Active
+- Task 0：Active / Issue #40 / 已实现，待验收
 - Task 1：Planned
 - Task 2：Planned
 - Task 3：Planned
 - Minimal Compaction：Gated
-- Active Agent Task：无
+- Active Agent Task：Task 0 / Issue #40
 
-下一正式动作：让 Codex 重新读取 Issue #40、最新 `master` 与协作规范并重新执行 Clarification Gate；只有 Gate 为 `READY` 后，Task 0 才进入 Active。
+下一正式动作：Draft PR #41 接受 Codex Review 与 GPT 技术验收；未经用户明确授权，不转 Ready、不合并、不清理分支，也不启动 Task 1。

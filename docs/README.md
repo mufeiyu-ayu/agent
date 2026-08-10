@@ -6,12 +6,17 @@
 
 ```text
 阶段 1-6：Completed
-阶段 7：Context Engineering / Next
-当前 Agent 主线：无 Active Task
-下一正式 Task：Phase 7 Task 0 / Context Boundary & Snapshot / Next
+阶段 7：Context Engineering / Active
+Active Agent Task：Task 0 / Context Boundary & Snapshot
+Issue：#40
+Gate：第二轮 READY
+实施状态：已实现
+验收状态：待验收
+PR：#41 / Draft
+Task 1-3：Planned
 ```
 
-Phase 6 已完成并统一归档到 `docs/tasks/completed/**`，不再在 active tasks 区保留兼容目录。Phase 7 已完成阶段级规划，但 Task 0 尚未创建正式 Issue，因此当前仍无 Active Agent Task。
+Phase 6 已完成并统一归档到 `docs/tasks/completed/**`，不再在 active tasks 区保留兼容目录。Phase 7 当前为 Active；Task 0 已通过第二轮 Gate 并完成实现，正在 Draft PR #41 等待验收。Task 1-3 仍为 Planned，均未启动。
 
 ## 文档入口
 
