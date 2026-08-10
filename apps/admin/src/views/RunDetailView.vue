@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import {
-  ArrowLeftOutlined,
   CheckOutlined,
   CopyOutlined,
 } from '@ant-design/icons-vue'
@@ -18,11 +17,10 @@ import {
   Tag,
 } from 'ant-design-vue'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 
 import PageContainer from '@/components/common/PageContainer.vue'
-import PageHeader from '@/components/common/PageHeader.vue'
-import StatusBadge from '@/components/common/StatusBadge.vue'
 import RunEventDetail from '@/features/runs/components/RunEventDetail.vue'
 import RunStatusTag from '@/features/runs/components/RunStatusTag.vue'
 import RunTimeline from '@/features/runs/components/RunTimeline.vue'
@@ -38,6 +36,7 @@ import {
 const route = useRoute()
 const router = useRouter()
 const { message } = AntApp.useApp()
+const { locale, t } = useI18n()
 
 const activeTab = ref('trace')
 const selectedTimelineId = ref<string>()
@@ -72,57 +71,27 @@ onBeforeUnmount(cancelRunLoad)
 async function copySafeRawData() {
   try {
     await navigator.clipboard.writeText(safeRawJson.value)
-    message.success('Safe Raw Data copied')
+    message.success(t('runDetail.copied'))
   }
   catch {
-    message.error('Copy failed，请手动选择 JSON 文本。')
+    message.error(t('runDetail.copyFailed'))
   }
 }
 </script>
 
 <template>
   <PageContainer wide>
+    <h1 class="sr-only">
+      {{ t('runDetail.title') }}
+    </h1>
+
     <template v-if="loading">
-      <PageHeader
-        eyebrow="Run inspector"
-        title="Loading Run"
-        description="正在读取真实 AgentRun、AgentStep 与 Message 安全投影。"
-      >
-        <template #actions>
-          <Button @click="router.push('/runs')">
-            <template #icon>
-              <ArrowLeftOutlined />
-            </template>
-            Back to Runs
-          </Button>
-        </template>
-      </PageHeader>
       <Card class="overview-card" :bordered="false">
         <Skeleton active :paragraph="{ rows: 8 }" />
       </Card>
     </template>
 
     <template v-else-if="run">
-      <PageHeader
-        eyebrow="Run inspector"
-        title="Run Detail"
-        description="检查 AgentRun 生命周期、durable AgentStep、用户可见 Messages 与安全 allowlist 投影。"
-      >
-        <template #actions>
-          <div class="detail-header__actions">
-            <Button @click="router.push('/runs')">
-              <template #icon>
-                <ArrowLeftOutlined />
-              </template>
-              Back to Runs
-            </Button>
-            <StatusBadge tone="info">
-              Live API
-            </StatusBadge>
-          </div>
-        </template>
-      </PageHeader>
-
       <Card class="overview-card" :bordered="false">
         <div class="overview-card__heading">
           <div>
@@ -133,46 +102,46 @@ async function copySafeRawData() {
         </div>
 
         <Descriptions size="small" :column="4">
-          <DescriptionsItem label="Model">
-            {{ formatRequestedModel(run.requestedModel) }}
+          <DescriptionsItem :label="t('runDetail.fields.model')">
+            {{ formatRequestedModel(run.requestedModel, t('runs.defaultModel')) }}
           </DescriptionsItem>
-          <DescriptionsItem label="Duration">
+          <DescriptionsItem :label="t('runDetail.fields.duration')">
             {{ formatDuration(run.durationMs) }}
           </DescriptionsItem>
-          <DescriptionsItem label="Tool Calls">
+          <DescriptionsItem :label="t('runDetail.fields.toolCalls')">
             {{ run.toolCallCount }}
           </DescriptionsItem>
-          <DescriptionsItem label="Samplings">
+          <DescriptionsItem :label="t('runDetail.fields.samplings')">
             {{ run.samplingCount }}
           </DescriptionsItem>
-          <DescriptionsItem label="Created">
-            {{ formatDateTime(run.createdAt) }}
+          <DescriptionsItem :label="t('runDetail.fields.created')">
+            {{ formatDateTime(run.createdAt, locale) }}
           </DescriptionsItem>
-          <DescriptionsItem label="Started">
-            {{ formatDateTime(run.startedAt) }}
+          <DescriptionsItem :label="t('runDetail.fields.started')">
+            {{ formatDateTime(run.startedAt, locale) }}
           </DescriptionsItem>
-          <DescriptionsItem label="Ended" :span="2">
-            {{ formatDateTime(run.endedAt) }}
+          <DescriptionsItem :label="t('runDetail.fields.ended')" :span="2">
+            {{ formatDateTime(run.endedAt, locale) }}
           </DescriptionsItem>
-          <DescriptionsItem label="Total Tokens">
-            {{ formatTokens(run.totalTokens) }}
+          <DescriptionsItem :label="t('runDetail.fields.totalTokens')">
+            {{ formatTokens(run.totalTokens, locale) }}
           </DescriptionsItem>
-          <DescriptionsItem label="Input Tokens">
-            {{ formatTokens(run.inputTokens) }}
+          <DescriptionsItem :label="t('runDetail.fields.inputTokens')">
+            {{ formatTokens(run.inputTokens, locale) }}
           </DescriptionsItem>
-          <DescriptionsItem label="Output Tokens" :span="2">
-            {{ formatTokens(run.outputTokens) }}
+          <DescriptionsItem :label="t('runDetail.fields.outputTokens')" :span="2">
+            {{ formatTokens(run.outputTokens, locale) }}
           </DescriptionsItem>
         </Descriptions>
       </Card>
 
       <Card class="detail-tabs-card" :bordered="false">
         <Tabs v-model:active-key="activeTab" class="detail-tabs">
-          <TabPane key="trace" tab="Trace">
+          <TabPane key="trace" :tab="t('runDetail.tabs.trace')">
             <div class="trace-grid">
-              <Card class="trace-panel trace-panel--timeline" :bordered="false" title="Execution Timeline">
+              <Card class="trace-panel trace-panel--timeline" :bordered="false" :title="t('runDetail.timeline')">
                 <template #extra>
-                  <Tag>{{ run.timeline.length }} items</Tag>
+                  <Tag>{{ t('common.items', { count: run.timeline.length }) }}</Tag>
                 </template>
                 <RunTimeline
                   :items="run.timeline"
@@ -181,19 +150,19 @@ async function copySafeRawData() {
                 />
               </Card>
 
-              <Card class="trace-panel" :bordered="false" title="Event Detail">
+              <Card class="trace-panel" :bordered="false" :title="t('runDetail.eventDetail')">
                 <RunEventDetail :item="selectedTimelineItem" />
               </Card>
             </div>
           </TabPane>
 
-          <TabPane key="messages" tab="Messages">
+          <TabPane key="messages" :tab="t('runDetail.tabs.messages')">
             <Alert
               class="tab-notice"
               type="info"
               show-icon
-              message="User-visible transcript only"
-              description="这里不展示 system prompt、Tool Observation 或内部 sampling message。"
+              :message="t('runDetail.transcriptOnly')"
+              :description="t('runDetail.transcriptDescription')"
             />
 
             <div class="message-list">
@@ -210,8 +179,8 @@ async function copySafeRawData() {
                     </Tag>
                     <RunStatusTag :status="item.status" />
                   </div>
-                  <time :title="`Created ${formatDateTime(item.createdAt)}`">
-                    Updated {{ formatDateTime(item.updatedAt) }}
+                  <time :title="t('runDetail.messageCreated', { time: formatDateTime(item.createdAt, locale) })">
+                    {{ t('runDetail.messageUpdated', { time: formatDateTime(item.updatedAt, locale) }) }}
                   </time>
                 </header>
                 <p>{{ item.contentPreview }}</p>
@@ -220,26 +189,26 @@ async function copySafeRawData() {
             </div>
           </TabPane>
 
-          <TabPane key="safe-raw" tab="Safe Raw Data">
+          <TabPane key="safe-raw" :tab="t('runDetail.tabs.safeRaw')">
             <Alert
               class="tab-notice"
               type="warning"
               show-icon
-              message="Allowlist projection, not provider raw payload"
-              description="不包含完整 prompt、完整 Tool arguments、Tool Result、Observation、stack、secret、Authorization 或 chain-of-thought。"
+              :message="t('runDetail.safeRawTitle')"
+              :description="t('runDetail.safeRawDescription')"
             />
 
             <section class="safe-raw-panel">
               <header>
                 <div>
                   <CheckOutlined />
-                  <span>Safe API JSON</span>
+                  <span>{{ t('runDetail.safeApiJson') }}</span>
                 </div>
                 <Button size="small" @click="copySafeRawData">
                   <template #icon>
                     <CopyOutlined />
                   </template>
-                  Copy
+                  {{ t('common.actions.copy') }}
                 </Button>
               </header>
               <pre>{{ safeRawJson }}</pre>
@@ -252,15 +221,15 @@ async function copySafeRawData() {
     <Result
       v-else-if="notFound"
       status="404"
-      title="Run not found"
-      sub-title="该 Run ID 不存在或已被删除。"
+      :title="t('runDetail.notFoundTitle')"
+      :sub-title="t('runDetail.notFoundDescription')"
     >
       <template #extra>
         <Button @click="loadRun">
-          Retry
+          {{ t('common.actions.retry') }}
         </Button>
         <Button type="primary" @click="router.push('/runs')">
-          Back to Runs
+          {{ t('common.actions.backToRuns') }}
         </Button>
       </template>
     </Result>
@@ -268,15 +237,15 @@ async function copySafeRawData() {
     <Result
       v-else
       status="error"
-      title="Unable to load Run"
-      :sub-title="loadError || '请求失败，请稍后重试。'"
+      :title="t('runDetail.loadFailedTitle')"
+      :sub-title="loadError || t('errors.generic')"
     >
       <template #extra>
         <Button type="primary" @click="loadRun">
-          Retry
+          {{ t('common.actions.retry') }}
         </Button>
         <Button @click="router.push('/runs')">
-          Back to Runs
+          {{ t('common.actions.backToRuns') }}
         </Button>
       </template>
     </Result>
@@ -284,12 +253,6 @@ async function copySafeRawData() {
 </template>
 
 <style scoped>
-.detail-header__actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
 .overview-card,
 .detail-tabs-card,
 .trace-panel {

@@ -6,6 +6,7 @@ import {
   ProfileOutlined,
 } from '@ant-design/icons-vue'
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 
 import { resolveActiveMenuPath } from '@/lib/admin-state'
@@ -20,11 +21,12 @@ defineEmits<{
 }>()
 
 const navigation = [
-  { path: '/overview', label: 'Overview', icon: DashboardOutlined },
-  { path: '/runs', label: 'Runs', icon: ProfileOutlined },
+  { path: '/overview', labelKey: 'navigation.overview', icon: DashboardOutlined },
+  { path: '/runs', labelKey: 'navigation.runs', icon: ProfileOutlined },
 ]
 
 const route = useRoute()
+const { t } = useI18n()
 const activeMenuPath = computed(() => resolveActiveMenuPath(route))
 </script>
 
@@ -32,12 +34,12 @@ const activeMenuPath = computed(() => resolveActiveMenuPath(route))
   <aside
     class="admin-sidebar"
     :class="{ 'is-collapsed': collapsed }"
-    aria-label="后台主导航"
+    :aria-label="t('navigation.main')"
   >
     <AdminLogo :collapsed="collapsed" />
 
     <nav class="admin-nav">
-      <span v-if="!collapsed" class="admin-nav__section">Workspace</span>
+      <span v-if="!collapsed" class="admin-nav__section">{{ t('navigation.workspace') }}</span>
       <RouterLink
         v-for="item in navigation"
         :key="item.path"
@@ -45,23 +47,23 @@ const activeMenuPath = computed(() => resolveActiveMenuPath(route))
         class="admin-nav__item"
         :class="{ 'is-active': activeMenuPath === item.path }"
         :aria-current="activeMenuPath === item.path ? 'page' : undefined"
-        :aria-label="collapsed ? item.label : undefined"
-        :title="collapsed ? item.label : undefined"
+        :aria-label="collapsed ? t(item.labelKey) : undefined"
+        :title="collapsed ? t(item.labelKey) : undefined"
       >
         <component :is="item.icon" class="admin-nav__icon" />
-        <span v-if="!collapsed">{{ item.label }}</span>
+        <span v-if="!collapsed">{{ t(item.labelKey) }}</span>
       </RouterLink>
     </nav>
 
     <button
       class="admin-sidebar__toggle"
       type="button"
-      :aria-label="collapsed ? '展开 Sidebar' : '折叠 Sidebar'"
+      :aria-label="t(collapsed ? 'navigation.expandSidebar' : 'navigation.collapseSidebar')"
       @click="$emit('toggle')"
     >
       <MenuUnfoldOutlined v-if="collapsed" />
       <MenuFoldOutlined v-else />
-      <span v-if="!collapsed">收起菜单</span>
+      <span v-if="!collapsed">{{ t('navigation.collapseMenu') }}</span>
     </button>
   </aside>
 </template>

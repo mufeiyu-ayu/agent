@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { ArrowLeftOutlined } from '@ant-design/icons-vue'
 import { Button, Result } from 'ant-design-vue'
+import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 
 const router = useRouter()
+const { t } = useI18n()
 </script>
 
 <template>
@@ -11,14 +13,14 @@ const router = useRouter()
     <Result
       status="404"
       title="404"
-      sub-title="你访问的页面不存在，或尚未纳入 Agent Console。"
+      :sub-title="t('notFound.description')"
     >
       <template #extra>
         <Button type="primary" @click="router.push('/overview')">
           <template #icon>
             <ArrowLeftOutlined />
           </template>
-          返回 Overview
+          {{ t('notFound.back') }}
         </Button>
       </template>
     </Result>

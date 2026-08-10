@@ -4,6 +4,7 @@ import type {
   AgentRunStatus,
   ApiSuccessResponse,
 } from '@agent/contracts'
+import { i18n } from '@/i18n'
 
 export interface AdminRunListQuery {
   page?: number
@@ -18,14 +19,27 @@ export interface AdminRunFetchOptions {
   signal?: AbortSignal
 }
 
+type AdminRunErrorMessage = string | (() => string)
+
 export class AdminRunApiError extends Error {
   constructor(
     readonly status: number,
-    message: string,
+    readonly messageSource: AdminRunErrorMessage,
+    options?: ErrorOptions,
   ) {
-    super(message)
+    super(typeof messageSource === 'string' ? messageSource : messageSource(), options)
     this.name = 'AdminRunApiError'
   }
+}
+
+export function formatAdminRunError(error: unknown): string {
+  if (error instanceof AdminRunApiError) {
+    return typeof error.messageSource === 'string'
+      ? error.messageSource
+      : error.messageSource()
+  }
+
+  return error instanceof Error ? error.message : i18n.global.t('errors.generic')
 }
 
 export function serializeAdminRunQuery(query: AdminRunListQuery): string {
@@ -86,7 +100,7 @@ function toShanghaiDayBoundary(
   boundary: 'start' | 'end',
 ): string {
   if (!isCalendarDate(date))
-    throw new RangeError(`无效日期：${date}`)
+    throw new RangeError(i18n.global.t('errors.invalidDate', { date }))
 
   return boundary === 'start'
     ? `${date}T00:00:00+08:00`
@@ -121,7 +135,8 @@ async function requestAdminRun<T>(
 
     throw new AdminRunApiError(
       0,
-      error instanceof Error ? error.message : '无法连接 Admin API。',
+      () => i18n.global.t('errors.apiUnavailable'),
+      { cause: error },
     )
   }
 
@@ -130,7 +145,7 @@ async function requestAdminRun<T>(
   if (!response.ok || !isSuccessResponse<T>(payload)) {
     throw new AdminRunApiError(
       response.status,
-      getErrorMessage(payload, response),
+      getErrorMessageSource(payload, response),
     )
   }
 
@@ -157,7 +172,7 @@ function isSuccessResponse<T>(value: unknown): value is ApiSuccessResponse<T> & 
   )
 }
 
-function getErrorMessage(payload: unknown, response: Response): string {
+function getErrorMessageSource(payload: unknown, response: Response): AdminRunErrorMessage {
   if (
     typeof payload === 'object'
     && payload !== null
@@ -169,8 +184,8 @@ function getErrorMessage(payload: unknown, response: Response): string {
   }
 
   return response.ok
-    ? 'Admin API 返回了无效响应。'
-    : `Admin API 请求失败（HTTP ${response.status}）。`
+    ? () => i18n.global.t('errors.invalidResponse')
+    : () => i18n.global.t('errors.requestFailed', { status: response.status })
 }
 
 function isAbortError(error: unknown): boolean {

@@ -1,13 +1,16 @@
 import type { AdminRunDetail } from '@agent/contracts'
-import { ref } from 'vue'
+import { computed, ref, shallowRef } from 'vue'
 
-import { AdminRunApiError, fetchAdminRunDetail } from './run-api'
+import { AdminRunApiError, fetchAdminRunDetail, formatAdminRunError } from './run-api'
 
 export function createRunDetailState(getRunId: () => string) {
   const run = ref<AdminRunDetail>()
   const loading = ref(false)
   const notFound = ref(false)
-  const error = ref('')
+  const errorCause = shallowRef<unknown>()
+  const error = computed(() => (
+    errorCause.value === undefined ? '' : formatAdminRunError(errorCause.value)
+  ))
   let activeController: AbortController | undefined
   let activeRequestId = 0
 
@@ -18,7 +21,7 @@ export function createRunDetailState(getRunId: () => string) {
 
     run.value = undefined
     notFound.value = false
-    error.value = ''
+    errorCause.value = undefined
     loading.value = true
 
     if (!targetRunId) {
@@ -44,7 +47,7 @@ export function createRunDetailState(getRunId: () => string) {
       if (cause instanceof AdminRunApiError && cause.status === 404)
         notFound.value = true
       else
-        error.value = cause instanceof Error ? cause.message : '请求失败，请稍后重试。'
+        errorCause.value = cause
     }
     finally {
       if (isCurrentRequest())

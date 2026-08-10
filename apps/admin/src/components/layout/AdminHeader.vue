@@ -5,13 +5,16 @@ import {
   UserOutlined,
 } from '@ant-design/icons-vue'
 import { Button } from 'ant-design-vue'
+import { useI18n } from 'vue-i18n'
 
 import { useAdminPreferencesStore } from '@/stores/preferences'
 
 import AdminBreadcrumb from './AdminBreadcrumb.vue'
+import LanguageSwitcher from './LanguageSwitcher.vue'
 import ThemeToggle from './ThemeToggle.vue'
 
 const preferences = useAdminPreferencesStore()
+const { t } = useI18n()
 </script>
 
 <template>
@@ -20,8 +23,8 @@ const preferences = useAdminPreferencesStore()
       <Button
         class="admin-header__sidebar-toggle"
         type="text"
-        :aria-label="preferences.sidebarCollapsed ? '展开 Sidebar' : '折叠 Sidebar'"
-        :title="preferences.sidebarCollapsed ? '展开 Sidebar' : '折叠 Sidebar'"
+        :aria-label="t(preferences.sidebarCollapsed ? 'navigation.expandSidebar' : 'navigation.collapseSidebar')"
+        :title="t(preferences.sidebarCollapsed ? 'navigation.expandSidebar' : 'navigation.collapseSidebar')"
         @click="preferences.toggleSidebar"
       >
         <MenuUnfoldOutlined v-if="preferences.sidebarCollapsed" />
@@ -33,16 +36,17 @@ const preferences = useAdminPreferencesStore()
     <div class="admin-header__actions">
       <span class="admin-header__environment">
         <i />
-        Local
+        {{ t('common.local') }}
       </span>
+      <LanguageSwitcher />
       <ThemeToggle />
-      <div class="admin-header__user" aria-label="当前用户：Developer">
+      <div class="admin-header__user" :aria-label="t('common.currentUser', { name: t('common.developer') })">
         <span class="admin-header__avatar">
           <UserOutlined />
         </span>
         <span>
-          <strong>Developer</strong>
-          <small>Console user</small>
+          <strong>{{ t('common.developer') }}</strong>
+          <small>{{ t('common.consoleUser') }}</small>
         </span>
       </div>
     </div>

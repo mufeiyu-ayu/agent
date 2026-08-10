@@ -5,9 +5,9 @@ import type {
 } from '@agent/contracts'
 import type { RunFilters } from './run.model'
 import { defineStore } from 'pinia'
-import { reactive, ref } from 'vue'
+import { computed, reactive, ref, shallowRef } from 'vue'
 
-import { fetchAdminRuns } from './run-api'
+import { fetchAdminRuns, formatAdminRunError } from './run-api'
 
 export const defaultRunListPageSize = 8
 
@@ -21,7 +21,10 @@ export const useRunListStore = defineStore('run-list', () => {
   const summary = ref<AdminRunSummary>(createEmptySummary())
   const pagination = ref<AdminRunPagination>(createEmptyPagination())
   const loading = ref(false)
-  const error = ref('')
+  const errorCause = shallowRef<unknown>()
+  const error = computed(() => (
+    errorCause.value === undefined ? '' : formatAdminRunError(errorCause.value)
+  ))
   let activeController: AbortController | undefined
   let activeRequestId = 0
 
@@ -63,7 +66,7 @@ export const useRunListStore = defineStore('run-list', () => {
     const controller = new AbortController()
     activeController = controller
     loading.value = true
-    error.value = ''
+    errorCause.value = undefined
 
     try {
       const result = await fetchAdminRuns({
@@ -96,9 +99,7 @@ export const useRunListStore = defineStore('run-list', () => {
       if (controller.signal.aborted || requestId !== activeRequestId)
         return
 
-      error.value = cause instanceof Error
-        ? cause.message
-        : '请求失败，请稍后重试。'
+      errorCause.value = cause
     }
     finally {
       if (requestId === activeRequestId)

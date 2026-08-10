@@ -6,49 +6,53 @@ import {
   EyeOutlined,
 } from '@ant-design/icons-vue'
 import { Card } from 'ant-design-vue'
+import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 import PageContainer from '@/components/common/PageContainer.vue'
 import PageHeader from '@/components/common/PageHeader.vue'
 import StatusBadge from '@/components/common/StatusBadge.vue'
 
-const foundations = [
+const { t } = useI18n()
+
+const foundations = computed(() => [
   {
     icon: AppstoreOutlined,
-    label: '应用边界',
-    value: 'apps/admin',
-    detail: '独立 Vue + Vite 应用',
+    label: t('overview.cards.appBoundary'),
+    value: t('overview.cards.appValue'),
+    detail: t('overview.cards.appDetail'),
     tone: 'info' as const,
-    status: 'Ready',
+    status: t('overview.cards.ready'),
   },
   {
     icon: BranchesOutlined,
-    label: '当前路由',
-    value: '3 routes',
-    detail: 'Overview / Runs / Detail',
+    label: t('overview.cards.routes'),
+    value: t('overview.cards.routesValue'),
+    detail: t('overview.cards.routesDetail'),
     tone: 'success' as const,
-    status: 'Static',
+    status: t('overview.cards.ready'),
   },
   {
     icon: ApiOutlined,
-    label: 'Runtime API',
-    value: 'Not connected',
-    detail: '后续 Task 再接入',
-    tone: 'neutral' as const,
-    status: 'Planned',
+    label: t('overview.cards.runtimeApi'),
+    value: t('overview.cards.apiValue'),
+    detail: t('overview.cards.apiDetail'),
+    tone: 'success' as const,
+    status: t('overview.cards.live'),
   },
-]
+])
 </script>
 
 <template>
   <PageContainer>
     <PageHeader
-      eyebrow="Runtime workspace"
-      title="Overview"
-      description="用于后续观察 AgentRun、AgentStep 与 Tool Execution 的后台入口。当前任务只建立可靠、克制的前端基础壳。"
+      :eyebrow="t('overview.eyebrow')"
+      :title="t('overview.title')"
+      :description="t('overview.description')"
     >
       <template #actions>
         <StatusBadge tone="success">
-          Foundation online
+          {{ t('overview.foundationOnline') }}
         </StatusBadge>
       </template>
     </PageHeader>
@@ -78,26 +82,26 @@ const foundations = [
       <div class="scope-card__heading">
         <span class="scope-card__icon"><EyeOutlined /></span>
         <div>
-          <h2>Console foundation</h2>
-          <p>Task 0 建立视觉与状态边界，真实可观测数据仍保持明确隔离。</p>
+          <h2>{{ t('overview.foundationTitle') }}</h2>
+          <p>{{ t('overview.foundationDescription') }}</p>
         </div>
       </div>
 
       <div class="scope-list">
         <div>
           <span>01</span>
-          <strong>Shell</strong>
-          <p>Sidebar、Header、Breadcrumb、Route Tabs 和 Page Content。</p>
+          <strong>{{ t('overview.scope.shell') }}</strong>
+          <p>{{ t('overview.scope.shellDetail') }}</p>
         </div>
         <div>
           <span>02</span>
-          <strong>Preferences</strong>
-          <p>明暗 / 系统主题与 Sidebar 折叠状态保存在本地。</p>
+          <strong>{{ t('overview.scope.preferences') }}</strong>
+          <p>{{ t('overview.scope.preferencesDetail') }}</p>
         </div>
         <div>
           <span>03</span>
-          <strong>Data boundary</strong>
-          <p>不连接 Run API，只展示明确标注的类型化 Demo Mock。</p>
+          <strong>{{ t('overview.scope.data') }}</strong>
+          <p>{{ t('overview.scope.dataDetail') }}</p>
         </div>
       </div>
     </Card>

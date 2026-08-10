@@ -64,7 +64,10 @@ export function routeAfterTabClose(
   return remainingTabs[fallbackIndex]?.path ?? '/overview'
 }
 
-export function resolveRouteTabTitle(route: RouteNavigationContext): string {
+export function resolveRouteTabTitle(
+  route: RouteNavigationContext,
+  formatRunTitle: (runId: string) => string = runId => `Run · ${runId}`,
+): string {
   const fallbackTitle = route.meta.title ?? route.path
 
   if (route.name !== 'run-detail')
@@ -76,7 +79,7 @@ export function resolveRouteTabTitle(route: RouteNavigationContext): string {
     return fallbackTitle
 
   const suffix = runId.length > 11 ? `…${runId.slice(-11)}` : runId
-  return `Run · ${suffix}`
+  return formatRunTitle(suffix)
 }
 
 export function resolveActiveMenuPath(route: RouteNavigationContext): string {
