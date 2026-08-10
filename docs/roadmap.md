@@ -17,7 +17,7 @@ Task 0：Context Boundary & Snapshot / Completed
 Issue #40：Closed
 PR #41：Merged / 415e866a
 当前 Agent 主线：Task 1 / Model-aware Budget & Dynamic History / Active
-Issue #42：已实现，待验收
+Issue #42 / Draft PR #43：已实现，待验收
 Admin Observability：Task 0-3 Completed
 Admin Task 4：Planned
 ```
@@ -86,7 +86,7 @@ Admin Task 4：Planned
 
 ```text
 Task 0：Context Boundary & Snapshot                   Completed / #40 / #41 / 415e866a
-Task 1：Model-aware Budget & Dynamic History          Active / #42 / 已实现，待验收
+Task 1：Model-aware Budget & Dynamic History          Active / #42 / Draft PR #43 / 已实现，待验收
 Task 2：Loop-aware Context & Observation Governance   Planned
 Task 3：Context Inspector & Phase Baseline            Planned
 Compaction：Gated Follow-up                           不自动启动
@@ -180,4 +180,4 @@ Phase 7 Baseline 收口后，再基于最新 `master`、真实产品需求和学
 6. Multi-agent；
 7. 若 Context 证据充分，再决定 Minimal Compaction 是否需要单独收口。
 
-当前 Active Agent Task 为 Phase 7 Task 1 / Issue #42。下一正式动作是完成 Draft PR 技术验收；未经验收与用户确认，不得标记 Completed 或启动 Task 2。
+当前 Active Agent Task 为 Phase 7 Task 1 / Issue #42 / Draft PR #43。下一正式动作是完成技术验收；未经验收与用户确认，不得标记 Completed 或启动 Task 2。
