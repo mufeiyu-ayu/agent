@@ -27,6 +27,7 @@ Phase 6 reliability work also binds Run remaining budget to database business st
 | Tool calling | Typed definitions, registry lookup, validation, executor isolation, per-run allowlisting |
 | Tool safety | Risk gates, Tool timeout, cancellation propagation, per-tool Observation budgets |
 | Runtime policy | Typed sampling / Tool Call limits, history policy, Run deadline and fail-fast configuration |
+| Context boundary | Per-Run `ModelContext` with ordered Tool Exchange handling and safe structural Context Snapshot metadata |
 | Database reliability | Remaining-budget DB boundary, PostgreSQL statement / lock timeout, late-result fencing |
 | Persistence | Conversations, Messages, Agent Runs, and ordered Agent Steps in PostgreSQL |
 | Model integration | OpenAI-compatible Chat Completions + DeepSeek thinking continuation |
@@ -166,6 +167,7 @@ Available now:
 - `search_articles` and `get_article_detail` Tool Calling;
 - Tool allowlisting, validation, timeout and Observation budgets;
 - DeepSeek thinking continuation without reasoning leakage;
+- per-Run `ModelContext` boundary and safe Context Snapshot baseline;
 - Run-level deadline and database remaining-budget propagation;
 - PostgreSQL statement / lock timeout and late-result ownership fencing;
 - atomic normal completion / failure / Abort terminalization where commit succeeds;
@@ -176,7 +178,7 @@ Current mainline status:
 
 - **Phase 1-6 are Completed.**
 - Phase 6 final archive is [`docs/tasks/completed/phase-06-bounded-agent-loop.md`](./docs/tasks/completed/phase-06-bounded-agent-loop.md).
-- **Phase 7: Context Engineering is Next.** Task 0 is `Context Boundary & Snapshot`.
-- **There is currently no Active Agent mainline Task** because Phase 7 Task 0 has not created a formal Issue or passed Clarification Gate yet.
+- **Phase 7: Context Engineering is Active.** Task 0 `Context Boundary & Snapshot` is Completed via Issue #40 / PR #41, merge `415e866a`.
+- **There is currently no Active Agent mainline Task.** Task 1 `Model-aware Budget & Dynamic History` is Next and has not created a formal Issue yet.
 
 See [`docs/roadmap.md`](./docs/roadmap.md), [`docs/tasks/README.md`](./docs/tasks/README.md), the [Phase 7 plan](./docs/tasks/phase-07-context-engineering/README.md), and the [Phase 6 archive](./docs/tasks/completed/phase-06-bounded-agent-loop.md).
