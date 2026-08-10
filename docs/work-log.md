@@ -6,9 +6,9 @@
 
 | 类型 | 当前记录 | 下一步 |
 | --- | --- | --- |
-| Agent 主线 | 阶段 1-6 Completed；Phase 7 Context Engineering Active；Task 0 已实现、待验收 | Issue #40 Draft PR Review、GPT 技术验收与用户确认 |
+| Agent 主线 | 阶段 1-6 Completed；Phase 7 Context Engineering Active；Task 0 Completed；当前无 Active Task | 准备 Task 1 / Model-aware Budget & Dynamic History 的 Issue 级规格 |
 | Phase 6 | 已完成并归档 | 见 `docs/tasks/completed/phase-06-bounded-agent-loop.md` |
-| Phase 7 | Context Engineering；Task 0 Active / 已实现、待验收；Task 1-3 Planned；Compaction Gated | 验收 Task 0，不提前启动 Budget / Compaction |
+| Phase 7 | Task 0 Completed；Task 1 Next；Task 2-3 Planned；Compaction Gated | Task 1 创建 Issue 并通过 Gate 后再进入 Active |
 | Admin Console | Task 0-3 Completed；Observability Baseline 已建立；Task 4 Planned | Phase 7 Task 3 再按需增量增加 Context Inspector |
 | Web Chat | 会话滚动跟随与响应式 UI follow-up 已完成 | 后续仅在出现真实 UX 问题时继续迭代 |
 | 文档结构 | `roadmap`、`tasks`、`research`、`work-log` 为主入口 | 不维护第二套阶段状态 |
@@ -17,8 +17,9 @@
 
 | 日期 | 事项 | 结果 |
 | --- | --- | --- |
-| 2026-08-10 | Issue #40 / Phase 7 Task 0 实现 | 第二轮 Clarification Gate 为 READY；新增单次 Run 内存 Context Boundary 与 whitelist 安全 Snapshot，锁定 direct-final、一次 Tool、两次顺序 Tool 的 Provider-facing input；Issue 指定测试、API lint/typecheck 与 workspace typecheck 全部通过；Draft PR #41 已创建；当前已实现、待验收 |
-| 2026-08-10 | Phase 7 Context Engineering 路线定案 | 基于 Phase 6 Runtime 与现有 Context 限制，确认 Context Engineering 为下一 Agent 主线；Task 0 Context Boundary & Snapshot 为 Next；Task 1-3 Planned；Minimal Compaction 仅作为有证据才启动的 Gated follow-up；当前仍无 Active Task |
+| 2026-08-10 | PR #41 / Issue #40 收口 | Phase 7 Task 0 `Context Boundary & Snapshot` 经 GPT 技术验收通过，用户明确确认验收；Codex Review 两项 finding 均完成处理；PR #41 按授权转 Ready 并合入 `master`，merge commit `415e866af4d4007b6bed43cd1f6e3df590575706`；Issue #40 Closed；Task 0 Completed |
+| 2026-08-10 | Issue #40 / Phase 7 Task 0 实现 | 第二轮 Clarification Gate 为 READY；新增单次 Run 内存 Context Boundary 与 whitelist 安全 Snapshot，锁定 direct-final、一次 Tool、两次顺序 Tool 的 Provider-facing input；Issue 指定测试、API lint/typecheck 与 workspace typecheck 全部通过；PR #41 创建并进入待验收状态 |
+| 2026-08-10 | Phase 7 Context Engineering 路线定案 | 基于 Phase 6 Runtime 与现有 Context 限制，确认 Context Engineering 为下一 Agent 主线；Task 0 Context Boundary & Snapshot 为 Next；Task 1-3 Planned；Minimal Compaction 仅作为有证据才启动的 Gated follow-up |
 | 2026-08-10 | PR #38 / Issue #37 收口 | Web Chat 会话滚动跟随、原生 viewport、scroll memory 与响应式布局 follow-up 合入 `master`；merge commit `415d740507a29ee4bd9b6a4aa26d9c4fbb9668c1`；Issue #37 Closed |
 | 2026-08-10 | PR #36 / Issue #35 收口 | Admin Console Task 3 合入 `master`；merge commit `4c689c4c8a8d3975192d13eb3f5a1c24463fcd7b`；真实 Run Trace UI、Computer Use 验收与截图证据完成；Issue #35 Closed |
 | 2026-08-10 | PR #36 范围整理 | 最新分支中混入的独立 Web UI / scroll 改动从 Admin Task 3 中拆出并保留到独立分支，避免一个 PR 同时承载两个 Task；Admin PR 仅保留 Task 3 + 必要 API dev-mode 修复 |
@@ -40,15 +41,17 @@ Phase 7 当前状态：
 
 ```text
 Phase 7：Context Engineering          Active
-Task 0：Context Boundary & Snapshot   Active / Issue #40 / 已实现，待验收
-Task 1：Model-aware Budget            Planned
+Task 0：Context Boundary & Snapshot   Completed / #40 / #41 / merge 415e866a
+Task 1：Model-aware Budget            Next / Issue 未创建
 Task 2：Loop-aware Context            Planned
 Task 3：Context Inspector             Planned
 Compaction                            Gated
-Active Agent Task                     Task 0 / Issue #40
+Active Agent Task                     无
 ```
 
 Phase 7 的核心目标是让 model-visible context 从“固定 History 条数 + 各 Tool 局部字符限制”升级为统一 Context boundary、model-aware budget、动态 History Selection、多轮 Loop Context Governance 和安全 Inspector。
+
+Task 1 当前只是 Next，不代表已经启动。只有创建正式 Issue 并通过 Clarification Gate 后，才进入 Active。
 
 Minimal Compaction 不自动启动；只有 Task 1-3 的真实指标证明动态选择不足以维持长会话连续性、成本、延迟或质量时，才重新讨论独立 Task / Issue。
 
