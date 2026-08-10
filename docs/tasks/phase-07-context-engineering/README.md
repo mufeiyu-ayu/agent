@@ -1,8 +1,8 @@
 # Phase 7：Context Engineering
 
-状态：**Active / Task 0 Completed / Task 1 Next**。
+状态：**Active / Task 0 Completed / Task 1 Active**。
 
-本阶段已经由 GPT 与用户确认作为 Phase 6 之后的 Agent 主线。Task 0 `Context Boundary & Snapshot` 已完成 GPT 技术验收、用户确认验收，并通过 PR #41 合入 `master`；Issue #40 已关闭。当前没有 Active Task，Task 1 `Model-aware Budget & Dynamic History` 为下一正式任务，但尚未创建 Issue。
+本阶段已经由 GPT 与用户确认作为 Phase 6 之后的 Agent 主线。Task 0 `Context Boundary & Snapshot` 已完成 GPT 技术验收、用户确认验收，并通过 PR #41 合入 `master`；Issue #40 已关闭。Task 1 `Model-aware Budget & Dynamic History` 已通过 Clarification Gate，并按 Issue #42 完成实现，当前等待技术验收。
 
 ## 1. 阶段目标
 
@@ -94,12 +94,12 @@ Phase 7 Baseline 不把自动 Summary / Compaction 作为必做项。先完成 C
 | Task | 状态 | 目标 |
 | --- | --- | --- |
 | Task 0：Context Boundary & Snapshot | **Completed / #40 / #41 / merge `415e866a`** | 把当前 model input 组装收敛到独立 Context 边界，并建立不改变现有行为的 Context Snapshot |
-| Task 1：Model-aware Budget & Dynamic History | **Next / Issue 未创建** | 让模型 Context Window 参与预算，历史选择从固定条数升级为 token-budget 驱动 |
+| Task 1：Model-aware Budget & Dynamic History | **Active / #42 / 已实现，待验收** | 让模型 Context Window 参与预算，历史选择从固定条数升级为 token-budget 驱动 |
 | Task 2：Loop-aware Context & Observation Governance | Planned | 统一管理后续 sampling 的 Tool Exchange、剩余 Context Budget 与 Observation 裁剪 |
 | Task 3：Context Inspector & Phase Baseline | Planned | 将 Context 决策做成安全可观察的 Runtime / Admin Inspector，并完成阶段回归 |
 | Gated Follow-up：Minimal Compaction | Gated | 只有 Task 1-3 的真实证据证明需要时，才单独设计最小 Compaction |
 
-正式实现仍遵守“一 Issue = 一明确 Task”。Task 1 只是 Next，不代表已经启动；Task 2-3 不会因为本文存在而自动启动。
+正式实现仍遵守“一 Issue = 一明确 Task”。Task 1 当前只记录“已实现、待验收”；Task 2-3 不会因为本文存在而自动启动。
 
 ---
 
@@ -194,7 +194,12 @@ Task 0 是结构基线，不负责优化 History 数量，也不实现 token-bud
 
 # Task 1：Model-aware Budget & Dynamic History
 
-状态：**Next / Issue 未创建**。
+状态：**Active / Issue #42 / 已实现，待验收**。
+
+- 实施状态：已实现
+- 验收状态：待验收
+- Clarification Gate：READY
+- Draft PR：待创建
 
 ## 目标
 
@@ -214,7 +219,7 @@ Task 0 是结构基线，不负责优化 History 数量，也不实现 token-bud
 - History 从最新可靠消息向前选择，直到满足预算，再恢复模型需要的时间顺序；
 - 只允许 `COMPLETED` Message 进入可靠 History；
 - 当前用户输入保持恰好一次；
-- 现有 `SEO_CHAT_HISTORY_LIMIT` 不再作为最终 Context 语义；若继续保留，只能明确作为 candidate query / safety cap，具体迁移策略在 Task 1 Issue 中定案；
+- `SEO_CHAT_HISTORY_LIMIT` 不再读取；candidate policy 使用 `SEO_CHAT_HISTORY_CANDIDATE_BATCH_SIZE=50` 与 `SEO_CHAT_HISTORY_CANDIDATE_HARD_LIMIT=1000`；
 - Context Snapshot 增加 estimated usage、budget、included / excluded reason。
 
 ## 不做什么
@@ -227,12 +232,31 @@ Task 0 是结构基线，不负责优化 History 数量，也不实现 token-bud
 
 ## 验收标准
 
-- [ ] 短消息会话可以在预算允许时选择超过 40 条可靠 History；
-- [ ] 超长消息会话可以在预算约束下选择少于 40 条；
-- [ ] 同一输入和模型 profile 下 Context Selection 结果确定性稳定；
-- [ ] 任何 selected input 都不超过应用定义的 input budget；
-- [ ] model profile 改变时预算随之变化，不再由固定 40 条决定；
-- [ ] direct final 与 Tool Loop 回归行为不被 History Selection 破坏。
+- [x] 短消息会话可以在预算允许时选择超过 40 条可靠 History；
+- [x] 超长消息会话可以在预算约束下选择少于 40 条；
+- [x] 同一输入和模型 profile 下 Context Selection 结果确定性稳定；
+- [x] 任何 selected input 都不超过应用定义的 input budget；
+- [x] model profile 改变时预算随之变化，不再由固定 40 条决定；
+- [x] direct final 与 Tool Loop 回归行为不被 History Selection 破坏。
+
+## 实现与验证证据
+
+- Context Budget：应用输入上限 `262_144`、固定 safety margin `16_384`，复用 resolved model / max output 配置结果；mandatory context 超预算时在 Provider 调用前 fail closed。
+- TokenEstimator：本地固定 DeepSeek V4 Pro tokenizer artifact，通过 `@huggingface/tokenizers` 加载；ASCII、CJK、emoji、V4 special token 与 Tool Definition 向量同官方 Python encoding 结果一致。
+- History Selection：只读取 previous `COMPLETED` Message，按 `(createdAt, id)` newest-first keyset 分页；默认 batch `50`、hard limit `1000`；recency-first、whole-message、遇到首个不可容纳消息即停止。
+- 安全摘要：只持久化 model、预算、估算 token 数、candidate / selected / excluded 数量与安全原因，不记录原始 Prompt、Message、reasoning 或 Tool payload。
+
+| 命令 | 结果 |
+| --- | --- |
+| `pnpm --filter @agent/api test:context` | 通过，8 tests |
+| `pnpm --filter @agent/api test:tool-loop` | 通过，45 tests |
+| `pnpm --filter @agent/api test:model-stream` | 通过，58 tests |
+| `pnpm --filter @agent/api test:seo-service` | 通过，10 tests |
+| `pnpm --filter @agent/api test:llm-config` | 通过，17 tests |
+| `pnpm --filter @agent/api test:admin-runs` | 通过，15 tests |
+| `pnpm --filter @agent/api typecheck` | 通过 |
+| `pnpm --filter @agent/api lint` | 通过 |
+| `pnpm typecheck` | 通过，4 个 workspace project |
 
 ---
 
@@ -368,10 +392,10 @@ Minimal Compaction 不属于默认完成条件；是否加入 Phase 7 收口范�
 
 - Phase 7：Active
 - Task 0：Completed / Issue #40 Closed / PR #41 Merged / `415e866a`
-- Task 1：Next / Issue 未创建
+- Task 1：Active / Issue #42 / 已实现，待验收
 - Task 2：Planned
 - Task 3：Planned
 - Minimal Compaction：Gated
-- Active Agent Task：无
+- Active Agent Task：Task 1
 
-下一正式动作：准备 Task 1 的 Issue 级规格并创建独立 Issue；只有 Task 1 的 Clarification Gate 为 `READY` 后才进入 Active。
+下一正式动作：创建 Draft PR，并由 GPT 按 Issue #42 验收；未经验收与用户确认，不得标记 Completed 或启动 Task 2。

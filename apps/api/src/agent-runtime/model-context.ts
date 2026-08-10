@@ -1,6 +1,7 @@
 import type { ChatMessage } from '../llm/llm.types.js'
 import type { ModelInputItem } from '../llm/model-input.types.js'
 import type { UnvalidatedToolCallEnvelope } from '../tools/core/tool.types.js'
+import type { InitialContextSelectionSummary } from './initial-context-selection.js'
 
 import { toModelInputItems } from '../llm/model-input.types.js'
 
@@ -22,18 +23,24 @@ export interface ModelContextSnapshot {
   hasToolExchange: boolean
   toolExchangeCount: number
   items: ModelContextSnapshotItem[]
+  initialSelection?: InitialContextSelectionSummary
 }
 
 /** 单次 Run 内的 model-visible context；不负责选择、预算或生命周期。 */
 export class ModelContext {
-  private constructor(private readonly items: ModelInputItem[]) {}
+  private constructor(
+    private readonly items: ModelInputItem[],
+    private readonly initialSelection?: InitialContextSelectionSummary,
+  ) {}
 
   static fromHistory(
     historyMessages: ChatMessage[],
     buildModelMessages: (historyMessages: ChatMessage[]) => ChatMessage[],
+    initialSelection?: InitialContextSelectionSummary,
   ): ModelContext {
     return new ModelContext(
       toModelInputItems(buildModelMessages(historyMessages)),
+      initialSelection,
     )
   }
 
@@ -83,6 +90,9 @@ export class ModelContext {
       hasToolExchange: toolExchangeCount > 0,
       toolExchangeCount,
       items,
+      ...(this.initialSelection
+        ? { initialSelection: this.initialSelection }
+        : {}),
     }
   }
 }
