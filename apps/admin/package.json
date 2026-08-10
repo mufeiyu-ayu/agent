@@ -9,7 +9,7 @@
     "build": "vue-tsc --noEmit -p tsconfig.json && vite build",
     "lint": "eslint src",
     "lint:fix": "eslint src --fix",
-    "test": "tsx src/lib/admin-state.check.ts && tsx src/features/runs/run-data.check.ts"
+    "test": "tsx src/lib/admin-state.check.ts && tsx src/i18n/i18n.check.ts && tsx src/features/runs/run-data.check.ts"
   },
   "dependencies": {
     "@agent/contracts": "workspace:*",
@@ -17,6 +17,7 @@
     "ant-design-vue": "^4.2.6",
     "pinia": "^3.0.4",
     "vue": "^3.5.25",
+    "vue-i18n": "^11.4.6",
     "vue-router": "^5.1.0"
   },
   "devDependencies": {

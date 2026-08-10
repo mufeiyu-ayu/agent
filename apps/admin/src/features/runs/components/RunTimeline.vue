@@ -10,8 +10,9 @@ import {
   ToolOutlined,
 } from '@ant-design/icons-vue'
 import { Empty, Tag } from 'ant-design-vue'
+import { useI18n } from 'vue-i18n'
 
-import { formatDuration, formatTime } from '../run.utils'
+import { formatDuration, formatTime, knownTimelineTitleKeys } from '../run.utils'
 
 defineProps<{
   items: RunTimelineItem[]
@@ -21,6 +22,8 @@ defineProps<{
 defineEmits<{
   select: [itemId: string]
 }>()
+
+const { locale, t } = useI18n()
 
 function timelineIcon(item: RunTimelineItem): Component {
   if (item.kind === 'generic')
@@ -41,11 +44,15 @@ function timelineIcon(item: RunTimelineItem): Component {
       return ClockCircleOutlined
   }
 }
+
+function getTimelineTitle(item: RunTimelineItem): string {
+  return item.kind === 'known' ? t(knownTimelineTitleKeys[item.type]) : item.title
+}
 </script>
 
 <template>
-  <div class="run-timeline" aria-label="Execution Timeline">
-    <Empty v-if="!items.length" description="尚无持久化 Step" />
+  <div class="run-timeline" :aria-label="t('runDetail.timeline')">
+    <Empty v-if="!items.length" :description="t('timeline.empty')" />
     <div
       v-for="item in items"
       :key="item.id"
@@ -67,12 +74,12 @@ function timelineIcon(item: RunTimelineItem): Component {
         @click="$emit('select', item.id)"
       >
         <span class="run-timeline__heading">
-          <strong>{{ item.title }}</strong>
-          <time>{{ formatTime(item.startedAt) }}</time>
+          <strong>{{ getTimelineTitle(item) }}</strong>
+          <time>{{ formatTime(item.startedAt, locale) }}</time>
         </span>
         <span class="run-timeline__meta">
           <code>#{{ item.sequence }} · {{ item.type }}</code>
-          <Tag v-if="item.kind === 'generic'">Generic</Tag>
+          <Tag v-if="item.kind === 'generic'">{{ t('common.generic') }}</Tag>
           <small v-if="item.durationMs !== null">
             {{ formatDuration(item.durationMs) }}
           </small>

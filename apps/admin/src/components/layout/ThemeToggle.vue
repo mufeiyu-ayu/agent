@@ -8,15 +8,17 @@ import {
 import { Button, Dropdown, Tooltip } from 'ant-design-vue'
 
 import { computed, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useAdminPreferencesStore } from '@/stores/preferences'
 
 const preferences = useAdminPreferencesStore()
+const { t } = useI18n()
 const menuOpen = ref(false)
 
 const currentLabel = computed(() => ({
-  dark: '暗色主题',
-  light: '亮色主题',
-  system: '跟随系统',
+  dark: t('theme.dark'),
+  light: t('theme.light'),
+  system: t('theme.system'),
 })[preferences.theme])
 
 const currentIcon = computed(() => ({
@@ -40,7 +42,7 @@ function selectTheme(value: AdminTheme) {
     </Tooltip>
 
     <template #overlay>
-      <div class="theme-menu" role="menu" aria-label="主题模式">
+      <div class="theme-menu" role="menu" :aria-label="t('theme.menu')">
         <button
           type="button"
           role="menuitemradio"
@@ -48,7 +50,7 @@ function selectTheme(value: AdminTheme) {
           @click="selectTheme('light')"
         >
           <BulbOutlined />
-          <span>亮色主题</span>
+          <span>{{ t('theme.light') }}</span>
         </button>
         <button
           type="button"
@@ -57,7 +59,7 @@ function selectTheme(value: AdminTheme) {
           @click="selectTheme('dark')"
         >
           <HighlightOutlined />
-          <span>暗色主题</span>
+          <span>{{ t('theme.dark') }}</span>
         </button>
         <button
           type="button"
@@ -66,7 +68,7 @@ function selectTheme(value: AdminTheme) {
           @click="selectTheme('system')"
         >
           <DesktopOutlined />
-          <span>跟随系统</span>
+          <span>{{ t('theme.system') }}</span>
         </button>
       </div>
     </template>

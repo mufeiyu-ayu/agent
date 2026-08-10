@@ -7,13 +7,15 @@ import {
   Tag,
 } from 'ant-design-vue'
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 import {
   formatDateTime,
   formatDuration,
   formatRequestedModel,
   formatTokens,
-  getTimelineInspectorLabel,
+  knownTimelineInspectorKeys,
+  knownTimelineTitleKeys,
 } from '../run.utils'
 import RunStatusTag from './RunStatusTag.vue'
 
@@ -31,7 +33,17 @@ const props = defineProps<{
   item: RunTimelineItem | undefined
 }>()
 
-const inspectorLabel = computed(() => getTimelineInspectorLabel(props.item))
+const { locale, t } = useI18n()
+const inspectorLabel = computed(() => {
+  const item = props.item
+  return item?.kind === 'known'
+    ? t(knownTimelineInspectorKeys[item.type])
+    : t('timeline.inspectors.generic')
+})
+const timelineTitle = computed(() => {
+  const item = props.item
+  return item?.kind === 'known' ? t(knownTimelineTitleKeys[item.type]) : item?.title
+})
 
 const sections = computed<DetailSection[]>(() => {
   const item = props.item
@@ -40,13 +52,13 @@ const sections = computed<DetailSection[]>(() => {
     return []
 
   const common: DetailSection = {
-    title: 'Step metadata',
+    title: t('eventDetail.sections.metadata'),
     items: [
-      { label: 'Sequence', value: item.sequence },
-      { label: 'Started At', value: formatDateTime(item.startedAt) },
-      { label: 'Ended At', value: formatDateTime(item.endedAt) },
-      { label: 'Duration', value: formatDuration(item.durationMs) },
-      { label: 'Has Error', value: yesNo(item.hasError) },
+      { label: t('eventDetail.fields.sequence'), value: item.sequence },
+      { label: t('eventDetail.fields.startedAt'), value: formatDateTime(item.startedAt, locale.value) },
+      { label: t('eventDetail.fields.endedAt'), value: formatDateTime(item.endedAt, locale.value) },
+      { label: t('eventDetail.fields.duration'), value: formatDuration(item.durationMs) },
+      { label: t('eventDetail.fields.hasError'), value: yesNo(item.hasError) },
     ],
   }
 
@@ -56,44 +68,44 @@ const sections = computed<DetailSection[]>(() => {
   switch (item.type) {
     case 'receive_user_message':
       return [common, {
-        title: 'Message intake',
+        title: t('eventDetail.sections.messageIntake'),
         items: [
-          { label: 'Message ID', value: show(item.messageId) },
-          { label: 'Message Length', value: chars(item.messageLength) },
+          { label: t('eventDetail.fields.messageId'), value: show(item.messageId) },
+          { label: t('eventDetail.fields.messageLength'), value: chars(item.messageLength) },
         ],
       }]
     case 'load_conversation_history':
       return [common, {
-        title: 'History projection',
+        title: t('eventDetail.sections.historyProjection'),
         items: [
-          { label: 'History Limit', value: show(item.historyLimit) },
-          { label: 'Message Count', value: show(item.messageCount) },
+          { label: t('eventDetail.fields.historyLimit'), value: show(item.historyLimit) },
+          { label: t('eventDetail.fields.messageCount'), value: show(item.messageCount) },
         ],
       }]
     case 'model_sampling':
       return [
         common,
         {
-          title: 'Sampling request',
+          title: t('eventDetail.sections.samplingRequest'),
           items: [
-            { label: 'Sampling Index', value: show(item.samplingIndex) },
-            { label: 'Attempt ID', value: show(item.samplingAttemptId) },
-            { label: 'Requested Model', value: formatRequestedModel(item.requestedModel) },
-            { label: 'Message Count', value: show(item.messageCount) },
-            { label: 'Tool Declarations', value: show(item.toolCount) },
+            { label: t('eventDetail.fields.samplingIndex'), value: show(item.samplingIndex) },
+            { label: t('eventDetail.fields.attemptId'), value: show(item.samplingAttemptId) },
+            { label: t('eventDetail.fields.requestedModel'), value: formatRequestedModel(item.requestedModel, t('runs.defaultModel')) },
+            { label: t('eventDetail.fields.messageCount'), value: show(item.messageCount) },
+            { label: t('eventDetail.fields.toolDeclarations'), value: show(item.toolCount) },
           ],
         },
         {
-          title: 'Usage & output',
+          title: t('eventDetail.sections.usageOutput'),
           items: [
-            { label: 'Finish Reason', value: show(item.finishReason) },
-            { label: 'Input Tokens', value: formatTokens(item.usage?.inputTokens ?? null) },
-            { label: 'Output Tokens', value: formatTokens(item.usage?.outputTokens ?? null) },
-            { label: 'Total Tokens', value: formatTokens(item.usage?.totalTokens ?? null) },
-            { label: 'Tool Calls', value: show(item.toolCallCount) },
-            { label: 'Text Chars', value: chars(item.textChars) },
-            { label: 'Intermediate Text', value: chars(item.intermediateTextChars) },
-            { label: 'Recorded Duration', value: formatDuration(item.recordedDurationMs) },
+            { label: t('eventDetail.fields.finishReason'), value: show(item.finishReason) },
+            { label: t('eventDetail.fields.inputTokens'), value: formatTokens(item.usage?.inputTokens ?? null, locale.value) },
+            { label: t('eventDetail.fields.outputTokens'), value: formatTokens(item.usage?.outputTokens ?? null, locale.value) },
+            { label: t('eventDetail.fields.totalTokens'), value: formatTokens(item.usage?.totalTokens ?? null, locale.value) },
+            { label: t('eventDetail.fields.toolCalls'), value: show(item.toolCallCount) },
+            { label: t('eventDetail.fields.textChars'), value: chars(item.textChars) },
+            { label: t('eventDetail.fields.intermediateText'), value: chars(item.intermediateTextChars) },
+            { label: t('eventDetail.fields.recordedDuration'), value: formatDuration(item.recordedDurationMs) },
           ],
         },
       ]
@@ -101,35 +113,35 @@ const sections = computed<DetailSection[]>(() => {
       return [
         common,
         {
-          title: 'Tool invocation',
+          title: t('eventDetail.sections.toolInvocation'),
           items: [
-            { label: 'Call ID', value: show(item.callId) },
-            { label: 'Tool', value: show(item.toolName) },
-            { label: 'Version', value: show(item.toolVersion) },
-            { label: 'Sampling Attempt', value: show(item.samplingAttemptId) },
-            { label: 'Execution Attempt', value: show(item.executionAttempt) },
-            { label: 'Raw Arguments', value: chars(item.rawArgumentsChars) },
+            { label: t('eventDetail.fields.callId'), value: show(item.callId) },
+            { label: t('eventDetail.fields.tool'), value: show(item.toolName) },
+            { label: t('eventDetail.fields.version'), value: show(item.toolVersion) },
+            { label: t('eventDetail.fields.samplingAttempt'), value: show(item.samplingAttemptId) },
+            { label: t('eventDetail.fields.executionAttempt'), value: show(item.executionAttempt) },
+            { label: t('eventDetail.fields.rawArguments'), value: chars(item.rawArgumentsChars) },
           ],
         },
         {
-          title: 'Safe result summary',
+          title: t('eventDetail.sections.safeResult'),
           items: [
-            { label: 'OK', value: showBoolean(item.ok) },
-            { label: 'Code', value: show(item.code) },
-            { label: 'Retryable', value: showBoolean(item.retryable) },
-            { label: 'Original', value: chars(item.originalChars) },
-            { label: 'Observation', value: chars(item.observationChars) },
-            { label: 'Truncated', value: showBoolean(item.truncated) },
-            { label: 'Recorded Duration', value: formatDuration(item.recordedDurationMs) },
+            { label: t('eventDetail.fields.ok'), value: showBoolean(item.ok) },
+            { label: t('eventDetail.fields.code'), value: show(item.code) },
+            { label: t('eventDetail.fields.retryable'), value: showBoolean(item.retryable) },
+            { label: t('eventDetail.fields.original'), value: chars(item.originalChars) },
+            { label: t('eventDetail.fields.observation'), value: chars(item.observationChars) },
+            { label: t('eventDetail.fields.truncated'), value: showBoolean(item.truncated) },
+            { label: t('eventDetail.fields.recordedDuration'), value: formatDuration(item.recordedDurationMs) },
           ],
         },
       ]
     case 'assistant_output':
       return [common, {
-        title: 'User-visible output',
+        title: t('eventDetail.sections.assistantOutput'),
         items: [
-          { label: 'Assistant Message ID', value: show(item.assistantMessageId) },
-          { label: 'Content Length', value: chars(item.contentLength) },
+          { label: t('eventDetail.fields.assistantMessageId'), value: show(item.assistantMessageId) },
+          { label: t('eventDetail.fields.contentLength'), value: chars(item.contentLength) },
         ],
       }]
   }
@@ -145,16 +157,16 @@ const previews = computed<DetailPreview[]>(() => {
 
   return [
     item.inputSummary
-      ? { label: 'Safe input summary', text: item.inputSummary }
+      ? { label: t('eventDetail.safeInput'), text: item.inputSummary }
       : undefined,
     item.outputSummary
-      ? { label: 'Safe output summary', text: item.outputSummary }
+      ? { label: t('eventDetail.safeOutput'), text: item.outputSummary }
       : undefined,
   ].filter((preview): preview is DetailPreview => preview !== undefined)
 })
 
 function chars(value: number | null): string {
-  return value === null ? '—' : `${value} chars`
+  return value === null ? '—' : t('common.chars', { count: value })
 }
 
 function show(value: string | number | null): string | number {
@@ -166,7 +178,7 @@ function showBoolean(value: boolean | null): string {
 }
 
 function yesNo(value: boolean): string {
-  return value ? 'Yes' : 'No'
+  return value ? t('common.yes') : t('common.no')
 }
 </script>
 
@@ -175,12 +187,12 @@ function yesNo(value: boolean): string {
     <header class="event-detail__header">
       <div>
         <span>{{ inspectorLabel }}</span>
-        <h3>{{ item.title }}</h3>
+        <h3>{{ timelineTitle }}</h3>
         <code>{{ item.type }}</code>
       </div>
       <div class="event-detail__badges">
         <Tag v-if="item.kind === 'generic'">
-          Generic
+          {{ t('common.generic') }}
         </Tag>
         <RunStatusTag :status="item.status" />
       </div>
@@ -207,7 +219,7 @@ function yesNo(value: boolean): string {
     </section>
   </div>
 
-  <Empty v-else description="选择一个 Timeline 节点查看详情" />
+  <Empty v-else :description="t('eventDetail.selectPrompt')" />
 </template>
 
 <style scoped>

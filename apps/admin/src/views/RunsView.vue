@@ -25,12 +25,11 @@ import {
   Table,
   Tooltip,
 } from 'ant-design-vue'
-import { onBeforeUnmount, onMounted } from 'vue'
+import { computed, onBeforeUnmount, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 
 import PageContainer from '@/components/common/PageContainer.vue'
-import PageHeader from '@/components/common/PageHeader.vue'
-import StatusBadge from '@/components/common/StatusBadge.vue'
 import RunStatusTag from '@/features/runs/components/RunStatusTag.vue'
 import { useRunListStore } from '@/features/runs/run-list.store'
 import {
@@ -40,20 +39,22 @@ import {
   formatTokens,
 } from '@/features/runs/run.utils'
 
-const columns: TableColumnsType<RunListItem> = [
-  { title: 'Run ID', dataIndex: 'id', key: 'id', width: 176, fixed: 'left' },
-  { title: 'User question', dataIndex: 'questionPreview', key: 'question', width: 220 },
-  { title: 'Status', dataIndex: 'status', key: 'status', width: 92 },
-  { title: 'Requested model', dataIndex: 'requestedModel', key: 'requestedModel', width: 132 },
-  { title: 'Tools', dataIndex: 'toolCallCount', key: 'tools', width: 62, align: 'center' },
-  { title: 'Samples', dataIndex: 'samplingCount', key: 'samplings', width: 72, align: 'center' },
-  { title: 'Tokens', dataIndex: 'totalTokens', key: 'tokens', width: 78, align: 'right' },
-  { title: 'Duration', dataIndex: 'durationMs', key: 'duration', width: 78, align: 'right' },
-  { title: 'Created At', dataIndex: 'createdAt', key: 'createdAt', width: 126 },
-  { title: '', key: 'action', width: 54, fixed: 'right', align: 'center' },
-]
 const router = useRouter()
 const runListStore = useRunListStore()
+const { locale, t } = useI18n()
+
+const columns = computed<TableColumnsType<RunListItem>>(() => [
+  { title: t('runs.columns.runId'), dataIndex: 'id', key: 'id', width: 176, fixed: 'left' },
+  { title: t('runs.columns.question'), dataIndex: 'questionPreview', key: 'question', width: 220 },
+  { title: t('runs.columns.status'), dataIndex: 'status', key: 'status', width: 92 },
+  { title: t('runs.columns.model'), dataIndex: 'requestedModel', key: 'requestedModel', width: 132 },
+  { title: t('runs.columns.tools'), dataIndex: 'toolCallCount', key: 'tools', width: 62, align: 'center' },
+  { title: t('runs.columns.samples'), dataIndex: 'samplingCount', key: 'samplings', width: 72, align: 'center' },
+  { title: t('runs.columns.tokens'), dataIndex: 'totalTokens', key: 'tokens', width: 78, align: 'right' },
+  { title: t('runs.columns.duration'), dataIndex: 'durationMs', key: 'duration', width: 78, align: 'right' },
+  { title: t('runs.columns.createdAt'), dataIndex: 'createdAt', key: 'createdAt', width: 126 },
+  { title: '', key: 'action', width: 54, fixed: 'right', align: 'center' },
+])
 
 const statusOptions: Array<{ label: string, value: RunStatus }> = [
   { label: 'RUNNING', value: 'RUNNING' },
@@ -84,53 +85,47 @@ function handlePageChange(page: number, pageSize: number) {
 
 <template>
   <PageContainer wide class="runs-page">
-    <PageHeader
-      eyebrow="Observability"
-      title="Agent Runs"
-      description="浏览真实 Agent Run，使用服务端筛选与分页检查状态、Token 使用和 AgentStep 轨迹。"
-    >
-      <template #actions>
-        <StatusBadge tone="success">
-          Live / Task 2 API
-        </StatusBadge>
-      </template>
-    </PageHeader>
+    <h1 class="sr-only">
+      {{ t('runs.title') }}
+    </h1>
 
-    <section class="summary-grid" aria-label="Run summary">
+    <section class="summary-grid" :aria-label="t('runs.summaryLabel')">
       <Card class="summary-card" :bordered="false">
         <span class="summary-card__icon is-blue"><BarsOutlined /></span>
         <div>
-          <small>Total Runs</small>
+          <small>{{ t('runs.summary.total') }}</small>
           <strong>{{ runListStore.summary.totalRuns }}</strong>
-          <p>匹配当前服务端筛选</p>
+          <p>{{ t('runs.summary.totalHint') }}</p>
         </div>
       </Card>
       <Card class="summary-card" :bordered="false">
         <span class="summary-card__icon is-green"><CheckCircleOutlined /></span>
         <div>
-          <small>Completed</small>
+          <small>{{ t('runs.summary.completed') }}</small>
           <strong>{{ runListStore.summary.statusCounts.COMPLETED }}</strong>
-          <p>已正常结束</p>
+          <p>{{ t('runs.summary.completedHint') }}</p>
         </div>
       </Card>
       <Card class="summary-card" :bordered="false">
         <span class="summary-card__icon is-amber"><ClockCircleOutlined /></span>
         <div>
-          <small>Running</small>
+          <small>{{ t('runs.summary.running') }}</small>
           <strong>{{ runListStore.summary.statusCounts.RUNNING }}</strong>
-          <p>仍在执行</p>
+          <p>{{ t('runs.summary.runningHint') }}</p>
         </div>
       </Card>
       <Card class="summary-card" :bordered="false">
         <span class="summary-card__icon is-red"><CloseCircleOutlined /></span>
         <div>
-          <small>Failed / Aborted</small>
+          <small>{{ t('runs.summary.failed') }}</small>
           <strong>
             {{ runListStore.summary.statusCounts.FAILED + runListStore.summary.statusCounts.ABORTED }}
           </strong>
           <p>
-            {{ runListStore.summary.statusCounts.FAILED }} failed ·
-            {{ runListStore.summary.statusCounts.ABORTED }} aborted
+            {{ t('runs.summary.failedHint', {
+              failed: runListStore.summary.statusCounts.FAILED,
+              aborted: runListStore.summary.statusCounts.ABORTED,
+            }) }}
           </p>
         </div>
       </Card>
@@ -138,27 +133,27 @@ function handlePageChange(page: number, pageSize: number) {
 
     <Card class="filter-card" :bordered="false">
       <Form class="run-filters" layout="vertical" @submit.prevent="runListStore.applyFilters">
-        <FormItem label="Run ID / user question">
+        <FormItem :label="t('runs.filters.query')">
           <Input
             v-model:value="runListStore.draftFilters.query"
             allow-clear
-            placeholder="Search Run ID or question"
+            :placeholder="t('runs.filters.queryPlaceholder')"
           />
         </FormItem>
-        <FormItem label="Status">
+        <FormItem :label="t('runs.filters.status')">
           <Select
             v-model:value="runListStore.draftFilters.status"
             allow-clear
             :options="statusOptions"
-            placeholder="All statuses"
+            :placeholder="t('runs.filters.allStatuses')"
           />
         </FormItem>
-        <FormItem label="Date Range">
+        <FormItem :label="t('runs.filters.dateRange')">
           <RangePicker
             v-model:value="runListStore.dateRange"
             class="run-filters__range"
             value-format="YYYY-MM-DD"
-            :placeholder="['From', 'To']"
+            :placeholder="[t('runs.filters.from'), t('runs.filters.to')]"
           />
         </FormItem>
         <div class="run-filters__actions">
@@ -166,13 +161,13 @@ function handlePageChange(page: number, pageSize: number) {
             <template #icon>
               <SearchOutlined />
             </template>
-            Search
+            {{ t('common.actions.search') }}
           </Button>
           <Button html-type="button" @click="runListStore.resetFilters">
             <template #icon>
               <RedoOutlined />
             </template>
-            Reset
+            {{ t('common.actions.reset') }}
           </Button>
         </div>
       </Form>
@@ -184,7 +179,7 @@ function handlePageChange(page: number, pageSize: number) {
         class="table-error"
         type="error"
         show-icon
-        message="Run 列表加载失败"
+        :message="t('runs.loadFailed')"
         :description="runListStore.error"
       >
         <template #action>
@@ -193,7 +188,7 @@ function handlePageChange(page: number, pageSize: number) {
             :loading="runListStore.loading"
             @click="runListStore.retry"
           >
-            Retry
+            {{ t('common.actions.retry') }}
           </Button>
         </template>
       </Alert>
@@ -233,28 +228,28 @@ function handlePageChange(page: number, pageSize: number) {
             <RunStatusTag :status="record.status" />
           </template>
           <template v-else-if="column.key === 'requestedModel'">
-            <Tooltip :title="record.requestedModel ?? '未显式请求具体模型；实际模型未知'">
+            <Tooltip :title="record.requestedModel ?? t('runs.defaultModelHint')">
               <span class="requested-model" :class="{ 'is-default': record.requestedModel === null }">
-                {{ formatRequestedModel(record.requestedModel) }}
+                {{ formatRequestedModel(record.requestedModel, t('runs.defaultModel')) }}
               </span>
             </Tooltip>
           </template>
           <template v-else-if="column.key === 'tokens'">
-            <span class="numeric-cell">{{ formatTokens(record.totalTokens) }}</span>
+            <span class="numeric-cell">{{ formatTokens(record.totalTokens, locale) }}</span>
           </template>
           <template v-else-if="column.key === 'duration'">
             <span class="numeric-cell">{{ formatDuration(record.durationMs) }}</span>
           </template>
           <template v-else-if="column.key === 'createdAt'">
-            <span class="date-cell">{{ formatShortDateTime(record.createdAt) }}</span>
+            <span class="date-cell">{{ formatShortDateTime(record.createdAt, locale) }}</span>
           </template>
           <template v-else-if="column.key === 'action'">
-            <Tooltip title="Inspect Run">
+            <Tooltip :title="t('runs.inspect')">
               <Button
                 type="text"
                 shape="circle"
                 size="small"
-                :aria-label="`查看 ${record.id}`"
+                :aria-label="t('runs.inspectAria', { id: record.id })"
                 @click="router.push(getRunDetailLocation(record.id))"
               >
                 <template #icon>
@@ -268,14 +263,17 @@ function handlePageChange(page: number, pageSize: number) {
         <template #emptyText>
           <Empty
             v-if="!runListStore.loading && !runListStore.error"
-            description="没有匹配的 Run，请调整筛选条件。"
+            :description="t('runs.empty')"
           />
         </template>
       </Table>
 
       <footer v-if="!runListStore.error" class="table-card__footer">
         <span>
-          Showing {{ runListStore.items.length }} of {{ runListStore.pagination.totalItems }} Runs
+          {{ t('runs.showing', {
+            count: runListStore.items.length,
+            total: runListStore.pagination.totalItems,
+          }) }}
         </span>
         <Pagination
           :current="runListStore.currentPage"

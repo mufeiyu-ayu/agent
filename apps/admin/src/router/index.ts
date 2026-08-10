@@ -5,7 +5,9 @@ declare module 'vue-router' {
     activeMenu?: string
     parentPath?: string
     parentTitle?: string
+    parentTitleKey?: string
     title?: string
+    titleKey?: string
     tab?: boolean
   }
 }
@@ -22,13 +24,13 @@ export const router = createRouter({
           path: 'overview',
           name: 'overview',
           component: () => import('@/views/OverviewView.vue'),
-          meta: { title: 'Overview', tab: true },
+          meta: { title: 'Overview', titleKey: 'navigation.overview', tab: true },
         },
         {
           path: 'runs',
           name: 'runs',
           component: () => import('@/views/RunsView.vue'),
-          meta: { title: 'Runs', tab: true },
+          meta: { title: 'Runs', titleKey: 'navigation.runs', tab: true },
         },
         {
           path: 'runs/:runId',
@@ -37,8 +39,10 @@ export const router = createRouter({
           meta: {
             activeMenu: '/runs',
             title: 'Run Detail',
+            titleKey: 'navigation.runDetail',
             tab: true,
             parentTitle: 'Runs',
+            parentTitleKey: 'navigation.runs',
             parentPath: '/runs',
           },
         },
@@ -48,17 +52,11 @@ export const router = createRouter({
       path: '/404',
       name: 'not-found',
       component: () => import('@/views/NotFoundView.vue'),
-      meta: { title: '页面不存在' },
+      meta: { title: 'Page not found', titleKey: 'navigation.notFound' },
     },
     {
       path: '/:pathMatch(.*)*',
       redirect: '/404',
     },
   ],
-})
-
-router.afterEach((route) => {
-  document.title = route.meta.title
-    ? `${route.meta.title} · Agent Console`
-    : 'Agent Console'
 })

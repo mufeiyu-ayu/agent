@@ -10,10 +10,12 @@ import assert from 'node:assert/strict'
 import { existsSync, readFileSync } from 'node:fs'
 import { createPinia, setActivePinia } from 'pinia'
 
+import { i18n } from '@/i18n'
 import {
   AdminRunApiError,
   fetchAdminRunDetail,
   fetchAdminRuns,
+  formatAdminRunError,
   serializeAdminRunQuery,
 } from './run-api'
 import { createRunDetailState } from './run-detail.state'
@@ -21,6 +23,7 @@ import { defaultRunListPageSize, useRunListStore } from './run-list.store'
 import {
   formatDateTime,
   formatRequestedModel,
+  formatTime,
   formatTokens,
   getDefaultTimelineItem,
   getTimelineInspectorLabel,
@@ -54,6 +57,7 @@ function checkPartialTraceAndInspectors(): void {
   assert.equal(formatDateTime(detail.endedAt), '—')
   assert.equal(formatTokens(detail.totalTokens), '—')
   assert.equal(formatRequestedModel(detail.requestedModel), 'Default request')
+  assert.equal(formatTime('2026-08-09T16:00:00.000Z', 'en-US'), '00:00:00')
   assert.equal(detail.messages.length, 1)
   assert.equal(sampling.status, 'RUNNING')
   assert.equal(sampling.endedAt, null)
@@ -143,15 +147,21 @@ async function checkApiErrors(): Promise<void> {
   )
 
   globalThis.fetch = async () => new Response('not-json', { status: 500 })
+  let localError: unknown
   await assert.rejects(
     fetchAdminRuns({}),
     (error: unknown) => {
+      localError = error
       assert.ok(error instanceof AdminRunApiError)
       assert.equal(error.status, 500)
       assert.match(error.message, /HTTP 500/)
       return true
     },
   )
+
+  i18n.global.locale.value = 'en-US'
+  assert.equal(formatAdminRunError(localError), 'Admin API request failed (HTTP 500).')
+  i18n.global.locale.value = 'zh-CN'
 }
 
 async function checkListStateAndRaceFencing(): Promise<void> {

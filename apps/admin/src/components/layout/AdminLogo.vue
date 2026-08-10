@@ -1,19 +1,22 @@
 <script setup lang="ts">
 import { CodeOutlined } from '@ant-design/icons-vue'
+import { useI18n } from 'vue-i18n'
 
 defineProps<{
   collapsed: boolean
 }>()
+
+const { t } = useI18n()
 </script>
 
 <template>
-  <RouterLink class="admin-logo" to="/overview" aria-label="返回 Overview">
+  <RouterLink class="admin-logo" to="/overview" :aria-label="t('navigation.backToOverview')">
     <span class="admin-logo__mark">
       <CodeOutlined />
     </span>
     <span v-if="!collapsed" class="admin-logo__copy">
-      <strong>Agent Console</strong>
-      <small>Runtime workspace</small>
+      <strong>{{ t('common.appName') }}</strong>
+      <small>{{ t('overview.eyebrow') }}</small>
     </span>
   </RouterLink>
 </template>

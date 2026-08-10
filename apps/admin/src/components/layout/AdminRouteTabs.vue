@@ -2,12 +2,14 @@
 import type { RouteTab } from '@/lib/admin-state'
 import { CloseOutlined } from '@ant-design/icons-vue'
 import { ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 import { useRoute, useRouter } from 'vue-router'
 import { resolveRouteTabTitle, routeAfterTabClose } from '@/lib/admin-state'
 
 const route = useRoute()
 const router = useRouter()
+const { t } = useI18n()
 const tabs = ref<RouteTab[]>([
   { path: '/overview', title: 'Overview', fixed: true },
 ])
@@ -32,10 +34,20 @@ async function closeTab(tab: RouteTab) {
   if (tab.path === route.path)
     await router.push(nextPath)
 }
+
+function getTabTitle(tab: RouteTab): string {
+  const resolved = router.resolve(tab.path)
+
+  if (resolved.name === 'run-detail') {
+    return resolveRouteTabTitle(resolved, runId => t('navigation.runTab', { id: runId }))
+  }
+
+  return resolved.meta.titleKey ? t(resolved.meta.titleKey) : tab.title
+}
 </script>
 
 <template>
-  <div class="route-tabs" aria-label="已访问页面">
+  <div class="route-tabs" :aria-label="t('navigation.visited')">
     <div
       v-for="tab in tabs"
       :key="tab.path"
@@ -44,18 +56,18 @@ async function closeTab(tab: RouteTab) {
     >
       <button
         type="button"
-        :aria-label="`打开 ${tab.title}`"
-        :title="tab.title"
+        :aria-label="t('common.actions.open', { name: getTabTitle(tab) })"
+        :title="getTabTitle(tab)"
         @click="router.push(tab.path)"
       >
-        {{ tab.title }}
+        {{ getTabTitle(tab) }}
       </button>
       <button
         v-if="!tab.fixed"
         class="route-tab__close"
         type="button"
-        :aria-label="`关闭 ${tab.title}`"
-        :title="`关闭 ${tab.title}`"
+        :aria-label="t('common.actions.close', { name: getTabTitle(tab) })"
+        :title="t('common.actions.close', { name: getTabTitle(tab) })"
         @click.stop="closeTab(tab)"
       >
         <CloseOutlined />
