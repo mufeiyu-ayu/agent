@@ -25,8 +25,9 @@ export class AdminRunApiError extends Error {
   constructor(
     readonly status: number,
     readonly messageSource: AdminRunErrorMessage,
+    options?: ErrorOptions,
   ) {
-    super(typeof messageSource === 'string' ? messageSource : messageSource())
+    super(typeof messageSource === 'string' ? messageSource : messageSource(), options)
     this.name = 'AdminRunApiError'
   }
 }
@@ -134,7 +135,8 @@ async function requestAdminRun<T>(
 
     throw new AdminRunApiError(
       0,
-      error instanceof Error ? error.message : i18n.global.t('errors.apiUnavailable'),
+      () => i18n.global.t('errors.apiUnavailable'),
+      { cause: error },
     )
   }
 

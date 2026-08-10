@@ -134,6 +134,25 @@ async function checkQuerySerialization(): Promise<void> {
 }
 
 async function checkApiErrors(): Promise<void> {
+  globalThis.fetch = async () => {
+    throw new TypeError('Failed to fetch')
+  }
+  let networkError: unknown
+  await assert.rejects(
+    fetchAdminRuns({}),
+    (error: unknown) => {
+      networkError = error
+      assert.ok(error instanceof AdminRunApiError)
+      assert.equal(error.status, 0)
+      assert.ok(error.cause instanceof TypeError)
+      return true
+    },
+  )
+  i18n.global.locale.value = 'en-US'
+  assert.equal(formatAdminRunError(networkError), 'Unable to connect to the Admin API.')
+  i18n.global.locale.value = 'zh-CN'
+  assert.equal(formatAdminRunError(networkError), '无法连接 Admin API。')
+
   globalThis.fetch = async () => jsonResponse(errorEnvelope(404, 'Agent Run 不存在'), 404)
 
   await assert.rejects(

@@ -1,6 +1,7 @@
 import { createI18n } from 'vue-i18n'
 
 import { messages } from './messages'
+import 'dayjs/locale/zh-cn'
 
 export type AdminLocale = keyof typeof messages
 
