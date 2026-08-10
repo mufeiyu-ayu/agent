@@ -16,10 +16,10 @@
 
 | 用户表达 | 默认执行者 | 默认完成点 |
 | --- | --- | --- |
-| “完成 Issue #N”“读取 Issue #N 并实现” | 本地 Codex | Ready PR、自动 Review、验证结果、学习交接；状态为已实现、待验收 |
+| “完成 Issue #N”“读取 Issue #N 并实现” | 本地 Codex | Draft PR、Review、验证结果、学习交接；状态为已实现、待验收 |
 | “处理 PR #N 的 Review” | 本地 Codex | 解释 findings；用户确认后修复并 push 原 PR |
 | “GPT 已确认 Issue #N 验收通过，我也确认通过，请收口” | Codex 或 GPT | 更新允许范围内的正式任务状态 |
-| “合并 PR #N 并清理分支” | Codex 或 GPT | 按授权合并、删除远程分支；本地清理由 Codex / 用户完成 |
+| “将 PR #N 转 Ready 并合并、清理分支” | Codex 或 GPT | 按授权转 Ready、合并、删除远程分支；本地清理由 Codex / 用户完成 |
 
 正式 Issue 与 task 文档存在会改变实现方向的冲突时，必须由用户决定。一个 Issue 只对应一个任务单元，不顺手推进后续 Task。
 
@@ -33,8 +33,8 @@
 用户与 GPT 讨论学习内容
 -> GPT 总结可写入 docs 的内容
 -> 用户确认沉淀
--> GPT 通过轻量分支更新 docs
--> 创建 Ready PR，或在用户明确授权时直接提交允许的 docs-only 改动
+-> GPT 更新允许范围内的 docs-only 内容
+-> 用户明确授权时可直接提交 master；否则使用轻量 docs 分支 / PR
 ```
 
 推荐写入位置：
@@ -48,15 +48,7 @@
 
 ### GPT 受托实现模式
 
-当用户明确说“你直接实现”“你来改项目”“不用 Codex”时，GPT 可以通过 GitHub 连接器创建远程分支、修改文件、commit 并创建 Ready PR。
-
-默认规则：
-
-- 正式功能仍使用独立分支和 PR，不直接提交 `master`。
-- 修改范围必须按用户授权保持最小。
-- 业务代码、API、数据库、Agent Runtime、Tool Calling、权限改动必须写清影响范围、验证方式和剩余风险。
-- Ready PR 不代表验收通过或允许合并。
-- 合并仍需要用户明确授权；用户也可以提前授权“如果你验收通过就合并”。
+正式功能默认仍由本地 Codex 按 Issue 实现。GPT 负责需求讨论、任务拆分、Issue、交接 Prompt 和最终验收；除非项目规范另有明确授权，不用 GPT 直接替代 Codex 实现正式功能代码。
 
 ### GPT / Codex 受托收口模式
 
@@ -64,7 +56,9 @@
 
 GPT 可以在用户明确授权后执行：
 
-- 远程合并已验收通过的 Ready PR；
+- 收口已经由 GPT 技术验收、且用户明确确认通过的正式任务 docs 状态；
+- 将已验收 Draft PR 转为 Ready；
+- 远程合并已明确授权合并的 PR；
 - 关闭用户确认放弃的 PR；
 - 删除已合并 PR 的远程分支；
 - 在 GitHub 上补充验收或收口说明。
@@ -76,9 +70,18 @@ Codex / 用户本地负责：
 - 处理本地未提交工作区；
 - 继续执行需要本地验证或本地环境的工作。
 
-### 明确授权的直接 master 模式
+### 明确授权的 docs 直接 master 模式
 
-用户明确说“直接在 master 提交并 push”时，低风险 typo、文案、样式微调和不改变正式状态的普通 docs 修正可以绕过 Issue / PR。
+用户明确授权 GPT “更新 docs 并写入 master”“直接改 docs”“收口任务状态”或含义等价的指令时，允许范围内的 docs-only 变更可以直接提交 `master`，不为文档修改单独创建 Issue 或 PR。
+
+允许范围包括：
+
+- `README.md`、`docs/README.md` 的项目进度和入口说明；
+- `docs/research/**` 的学习路线、研究材料、架构分析和复盘；
+- `docs/tasks/**` 的规划、Next / Active / 已实现 / 待验收 / Completed 状态同步和归档；
+- `docs/roadmap.md` 的阶段顺序和状态同步；
+- `docs/work-log.md` 已真实发生事项的记录；
+- 协作规范、开发流程、typo、格式和纯 Markdown 调整。
 
 以下改动不得使用该捷径：
 
@@ -86,26 +89,36 @@ Codex / 用户本地负责：
 - 数据库、migration 或 seed；
 - Agent Runtime、Streaming、Tool Calling；
 - 依赖、环境变量、安全或权限；
-- 正式 task / roadmap 状态和阶段归档；
-- 影响范围无法确定的改动。
+- 前后端业务代码与测试代码；
+- 任何虽然是 Markdown、但会影响运行时行为的生成规格或策略。
 
 ## 2. 角色与事实来源
 
 | 角色 | 职责 |
 | --- | --- |
-| GPT | 讨论需求、制定学习路线、沉淀 docs、拆分任务、创建 Issue、验收 PR；用户授权后可远程合并 PR、关闭放弃 PR、删除远程分支 |
+| GPT | 讨论需求、制定学习路线、沉淀 docs、拆分任务、创建 Issue、生成 Codex 开工 Prompt、验收 PR；用户授权后可收口 docs、转 Ready、远程合并 PR、关闭放弃 PR、删除远程分支 |
 | `docs/tasks/**` | 保存任务边界和正式状态，是项目事实来源 |
 | `docs/research/**` | 保存学习路线、研究材料、方案草案和复盘沉淀 |
-| GitHub Issue | 保存一次准备实施的任务快照，并引用 task 文档 |
-| 本地 Codex | 读取 Issue、创建分支、实现、验证、提交、Ready PR、Review 修复、本地同步和本地分支清理 |
-| 云端 Codex Review | PR 创建后自动检查高风险问题 |
-| 用户 | 最终确认验收、修复范围、合并、关闭、分支清理和开始下一任务；可将执行动作委托给 GPT 或 Codex |
+| GitHub Issue | 保存一次准备实施的任务规格、验收标准及澄清与决策记录 |
+| 本地 Codex | 读取 Issue、执行 Clarification Gate、创建分支、实现、验证、提交、Draft PR、Review 修复、本地同步和本地分支清理 |
+| 云端 Codex Review | PR 创建后独立检查实现正确性、边界、回归风险和安全问题 |
+| 用户 | 最终确认需求取舍、验收、任务收口、Draft 转 Ready、合并、关闭、分支清理和开始下一任务；可将执行动作委托给 GPT 或 Codex |
 
-GPT 的验收意见不是自动写状态或自动合并授权；只有用户明确确认或提前授权时，才执行对应收口动作。
+事实来源顺序：
 
-## 3. GPT 创建 Issue
+1. 当前代码、Issue、PR、Review、commit 和 CI 以 GitHub 实时状态为准；
+2. 最新 Issue 正文与用户确认的澄清与决策记录共同构成本 Task 的实现规格；
+3. 正式任务状态以 `docs/tasks/**` 为准；
+4. 完整开发工作流以本文为准；
+5. 路线总览以 `docs/roadmap.md` 为准；
+6. 真实发生的项目记录写入 `docs/work-log.md`；
+7. 学习和研究材料优先写入 `docs/research/**`。
 
-Issue 建议包含：
+用户最新明确决定高于已有假设。Issue、`docs/tasks/**`、本文、当前代码或用户最新决定发生会影响正式实现的冲突时，停止实现，由 GPT 明确冲突并同步规格后重新执行 Gate。
+
+## 3. GPT 创建 Issue 与正式交接
+
+Issue 至少应包含：
 
 ```md
 ## 任务类型
@@ -114,9 +127,13 @@ feature / fix / refactor / docs-task / phase-closeout / research
 
 ## 目标
 
+## 当前代码事实
+
 ## 实现范围
 
 ## 不在本任务范围
+
+## 边界与失败行为
 
 ## 验收标准
 
@@ -125,46 +142,75 @@ feature / fix / refactor / docs-task / phase-closeout / research
 ## 需要同步的项目文档
 
 ## 相关任务文档
+
+## 澄清与决策记录
 ```
 
 一个 Issue 只对应一个任务单元。Issue 不应顺手包含下一阶段、下一 Task 或无关优化。
 
-## 4. 本地 Codex 实现 Issue
+Issue 创建完成只表示任务规格已建立，不表示已经完成向 Codex 的交接。GPT 必须同时提供任务专属 Codex 开工 Prompt，明确：
+
+- 需要读取的 Issue、`docs/tasks/**`、相关代码、schema、契约和测试；
+- 本 Task 的高风险决策点、兼容风险和长链路集成点；
+- Gate 为 `READY` / `BLOCKED` 时分别如何处理；
+- Draft PR、验证、状态和收口限制。
+
+## 4. Clarification Gate 与本地 Codex 实现 Issue
+
+Codex 修改代码前必须先读取 Issue 最新正文 / 评论、对应 `docs/tasks/**`、本文、相关代码、公共类型、数据库 schema、API 契约和测试，并输出开发前确认。
+
+推荐结构：
 
 ```text
-读取 Issue、task 文档和相邻代码
-  -> 同步 master
-  -> 创建 codex/issue-N-* 分支
-  -> 实现代码或文档
-  -> 运行最小必要验证
+Gate 结论：READY / BLOCKED
+已确认需求：R-xx
+当前假设：A-xx
+阻塞性歧义：Q-xx
+边界情况：E-xx
+不在本次范围：N-xx
+验收映射计划：AC-xx -> 实现位置 -> 验证方式
+```
+
+Gate 决策规则：
+
+- Issue、代码和规范已经给出唯一答案时，直接 `READY`，不得为了展示流程制造问题；
+- `BLOCKED` 时立即停止，不创建实现分支、commit 或 PR，不修改正式任务状态；
+- 阻塞问题由 GPT 压缩成真正需要决策的事项，用户确认后回写 Issue / docs，再重新 Gate；
+- 非阻塞的内部实现选择可遵循现有项目惯例，但必须记录为假设；
+- 开发过程中若发现新的阻塞性歧义，停止相关实现并重新返回 `BLOCKED`。
+
+Gate 为 `READY` 后：
+
+```text
+读取最新 Issue / task / master
+  -> 创建 codex/issue-N-* 独立分支
+  -> 按验收映射实现
+  -> 运行必要验证
   -> 记录实现证据：已实现、待验收
   -> commit
   -> push
-  -> 创建 Ready PR
-  -> 自动 Codex Review
-  -> 学习交接
+  -> 创建 Draft PR
+  -> Codex Review
+  -> GPT 技术验收
+  -> 用户确认验收
+  -> docs 状态收口
+  -> 用户明确授权 Draft 转 Ready / 合并 / 分支清理
 ```
-
-“完成 Issue #N”默认授权到 Ready PR，但不授权合并或最终任务收口。Ready 只表示 PR 可以接受 Review，不表示验收通过或允许合并。
 
 实现阶段可以更新 checklist、验证结果和交付链接，但不得：
 
 - 把任务或阶段标记为 Completed；
+- 自行宣称 GPT 或用户验收通过；
+- 自行将 Draft 转 Ready；
+- 自行合并 PR 或删除分支；
 - 推进下一任务或把 roadmap 写成已完成；
-- 归档阶段；
 - 把 Codex 自己的实现判断当成最终验收结论。
 
-只有实现完成且必要验证通过后，才能把任务文档更新为“实施状态：已实现、验收状态：待验收”。实现未完成、验证失败、任务受阻或等待用户确认时使用 Draft，保留原任务状态并记录阻塞原因。
-
-Draft 恢复顺序：
+Codex 实现完成后的正式状态最多为：
 
 ```text
-完成实现
-  -> 通过必要验证
-  -> 更新为已实现、待验收
-  -> 转为 Ready
-  -> 自动 Codex Review
-  -> GPT 与用户验收
+实施状态：已实现
+验收状态：待验收
 ```
 
 ## 5. 双状态模型
@@ -176,68 +222,65 @@ Draft 恢复顺序：
 | 实施状态 | 未开始 / 进行中 / 已实现 |
 | 验收状态 | 未验收 / 待验收 / 需要修改 / 已通过 |
 
-只有“实施状态：已实现”且“验收状态：已通过”时，任务才可以进入 Completed。
+只有“实施状态：已实现”且“验收状态：已通过”时，任务才可以进入 Completed；其中“已通过”必须有 GPT 基于最新 PR / commit 的技术验收和用户明确确认。
 
 ## 6. Review 修复
 
-PR 创建后，Codex Review 的问题在 GitHub PR 页面查看。当前主流程不要求 GitHub Actions；验证以本地最小必要检查为准。
+Draft PR 可以接受云端 Codex Review 和 GPT 验收，不需要先转 Ready。
 
 ```text
 读取未解决 Review findings
+  -> 判断 finding 是否属于当前 Issue
   -> 解释触发场景、影响和建议修复
-  -> 等待用户确认修复范围
-  -> 在原 PR 分支本地修复
-  -> 运行受影响验证
+  -> 按当前授权修复范围内问题
+  -> 在原 PR 分支运行受影响验证
   -> commit
-  -> push 原 PR
-  -> 功能代码或重要边界有变化时使用 @codex review 复审
-  -> 保持原有 Draft / Ready 状态和任务验收状态
+  -> push 原 Draft PR
+  -> 功能代码或重要边界有变化时请求复审
+  -> 保持已实现、待验收
 ```
 
-commit、push 和 Review trigger 是独立动作。Ready PR 创建后优先依靠自动 Review；仅在自动审核未触发，或功能代码、重要边界修复后需要复审时手动触发。只有回复、resolve thread 或 docs 收口时，不重复触发 Review。
-
-只有用户明确选择时才允许云端修复。禁止本地和云端同时修改同一 PR；云端 push 后，本地继续工作前必须同步远程分支。
+- 范围内问题按授权修复；
+- 超出范围的问题记录为后续 Task，不顺手扩项；
+- 修复如果改变 API、数据、权限、交互或验收标准，必须先更新规格并重新 Gate；
+- 禁止本地和云端同时修改同一 PR；云端 push 后，本地继续工作前必须同步远程分支。
 
 ## 7. GPT 与用户验收
 
-Review 问题处理完后，GPT 结合以下信息给出验收意见：
+Review 问题处理完后，GPT 至少结合以下证据给出技术验收结论：
 
-- Issue 目标和验收标准；
-- PR diff；
+- Issue 最新规格和澄清决策；
+- PR 最新 head commit 与 diff；
+- 每条验收标准的通过 / 失败 / 未验证状态；
 - Codex Review findings 及处理结果；
-- 本地验证结果；
-- 用户对关键调用链和设计边界的学习确认。
+- 验证命令、环境和真实结果；
+- 边界、失败路径和长链路集成；
+- 剩余风险或后续 Task。
 
-如果 GPT 认为需要修改，用户可让本地 Codex、云端 Codex 或 GPT 继续处理。GPT 认为通过后，用户可以选择：
+代码“看起来合理”或测试命令返回成功都不能单独构成完整验收证据。
 
-```text
-GPT 已确认 Issue #N 验收通过，我也确认通过，请收口任务状态。
-```
+GPT 技术验收通过后，仍需用户明确确认验收。只有用户确认后，GPT（或用户指定的 Codex）才能把任务状态收口为“验收已通过”或 Completed。
 
-或：
-
-```text
-如果你验收通过，就直接收口、合并 PR #N，并删除远程分支。
-```
-
-状态收口不等于合并授权，除非用户同时明确授权。
+状态收口不等于 Draft 转 Ready 或合并授权。用户可以在同一句指令中一并授权，但没有明确授权时不得自动推导。
 
 ## 8. 合并与分支处理
 
 合并前必须满足：
 
-- GPT 已给出验收通过结论，或用户已明确接受当前 PR；
-- 用户已明确授权合并；
+- GPT 已基于 PR 最新 commit 给出技术验收通过结论；
+- 用户已明确确认验收；
+- 用户已明确授权 Draft 转 Ready 和合并；
 - PR base 是 `master`；
-- PR 不是 Draft；
-- 没有未处理的 P0 / P1 Review finding；
-- 验证失败项若存在，已明确为既有基线或用户接受的非阻塞问题；
-- 合并不会推进未授权的任务状态或下一任务。
+- PR 已按授权从 Draft 转为 Ready；
+- 没有未处理的 P0 / P1 Review finding，或被用户明确接受为非阻塞风险；
+- 验收标准均有验证证据；
+- 合并不会推进未授权的下一任务。
 
 GPT 远程合并流程：
 
 ```text
-确认 PR 状态和 head SHA
+确认 PR 最新 head SHA 与验收状态
+  -> 按用户授权将 Draft 转 Ready
   -> 合并到 master
   -> 确认 PR merged
   -> 删除已合并 PR 的远程分支，或说明当前连接器无法删除
@@ -247,7 +290,8 @@ GPT 远程合并流程：
 Codex 本地合并流程：
 
 ```text
-确认 PR 和验收状态
+确认 PR 最新 head SHA、验收状态和用户授权
+  -> 将 Draft 转 Ready
   -> 合并到 master
   -> fast-forward 同步本地 master
   -> 确认合并内容已落入主分支
@@ -255,23 +299,24 @@ Codex 本地合并流程：
   -> 安全删除本地 Issue 分支
 ```
 
-PR 若仍为 Draft，停止合并并返回实现流程。放弃任务的 PR / 分支只有用户确认后才关闭或删除。PR 描述使用 `Closes #N` 时，Issue 会在 PR 合并后自动关闭。
+PR 若仍为 Draft且没有转 Ready 授权，停止合并。放弃任务的 PR / 分支只有用户确认后才关闭或删除。PR 描述使用 `Closes #N` 时，Issue 会在 PR 合并后自动关闭。
 
 ## 9. ChatGPT 直接修改远程仓库
 
-连接 GitHub 后，GPT 可以直接创建远程分支、commit 和 PR，不需要 Codex Cloud。
+连接 GitHub 后，GPT 可以按本规范执行远程 Issue、docs、PR 验收和收尾动作。
 
-- 正式任务状态、roadmap、`AGENTS.md` 或 skills 变更：优先轻量分支和 Ready PR；是否创建 Issue 由用户决定。
-- 普通研究草稿、学习资料、文案或 typo，且不改变正式状态：可以不建 Issue，直接创建远程分支和 PR。
-- GPT 的远程修改不会自动出现在本地；本地继续工作前需要同步远程。
-- 当前连接器如果不支持删除远程分支，GPT 需要明确说明，不能假装已完成。
+- 允许范围内的 docs-only 变更在用户明确授权后可以直接提交 `master`；
+- 正式功能默认仍由 Codex 按 Issue 实现，不使用 docs 直写模式绕过正式开发流程；
+- GPT 的远程修改不会自动出现在用户本地；本地继续工作前需要同步远程；
+- 当前连接器如果不支持某项远程分支清理动作，GPT 需要明确说明，不能假装已完成。
 
 ## 10. 当前仓库约定
 
 - 主分支：`master`。
 - Issue 分支：`codex/issue-<number>-<short-slug>`。
-- GPT 轻量 docs 分支：`docs/<short-slug>`。
+- GPT 轻量 docs 分支：`docs/<short-slug>`（仅在不使用授权的 docs 直写模式时需要）。
 - 一个 Issue 对应一个任务单元和一个 PR。
-- PR 默认以 Ready 创建，目标分支为 `master`；Draft 仅用于实现未完成、验证失败、任务受阻或等待用户确认。
+- 正式功能 PR 默认以 Draft 创建，目标分支为 `master`。
+- Draft PR 可以接受 Review 和 GPT 技术验收；只有用户明确授权后才转 Ready、合并和清理分支。
 - 当前仓库未配置 GitHub Actions，也没有部署流程；不把 CI 当成当前必经步骤。
-- 自动 Codex Review 与本地验证是当前主要质量检查。
+- Codex Review 与本地验证是当前主要质量检查。
