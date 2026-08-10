@@ -121,7 +121,7 @@ Tool Loop：
 
 ## 源码复盘顺序
 
-阶段复盘仍是推荐学习任务，用于巩固最小 Tool Calling 闭环；下一正式主线是阶段 6 有界单 Agent Loop：
+阶段复盘仍是推荐学习任务，用于巩固最小 Tool Calling 闭环；后续阶段 6 已将固定两轮执行升级为有界单 Agent Loop：
 
 ```text
 1. apps/web/src/hooks/useSeoWorkspace.ts
@@ -138,12 +138,10 @@ Tool Loop：
 12. prisma/schema.prisma 与对应测试
 ```
 
-复盘完成标准：能够从一次文章查询还原 Vue、Controller、SeoService、Runtime、LLM、Tool、Observation、第二轮 sampling、Message / Run / Step 收口的完整链路，并指出当前固定两轮执行为什么仍是 Agent Loop 的最小特例。
+复盘完成标准：能够从一次文章查询还原 Vue、Controller、SeoService、Runtime、LLM、Tool、Observation、第二轮 sampling、Message / Run / Step 收口的完整链路，并指出固定两轮执行为什么只是 Agent Loop 的最小特例。
 
 ## 下一阶段交接
 
-下一阶段为 [`有界单 Agent Loop`](../phase-06-bounded-agent-loop/README.md)，当前状态为“已规划，待正式启动”。
+阶段 6「有界单 Agent Loop」已经完成并归档，最终事实见 [`phase-06-bounded-agent-loop.md`](./phase-06-bounded-agent-loop.md)。
 
-阶段 6 将先新增 `get_article_detail` 只读工具，再将固定的一次工具调用 / 两轮 sampling 升级为服务端受控的顺序循环，最后完成失败、超时、Abort、超限、Trace 与行为测试收口。
-
-当前不把完整 Context Engineering、RAG、HITL、Recovery 或 Multi-agent 纳入阶段 6，也不提前编号阶段 6 之后的路线。
+阶段 6 已完成第二个只读工具、bounded sequential Agent Loop、DeepSeek thinking continuation、Runtime / DB deadline 与终态可靠性收口；后续正式主线以 `docs/tasks/README.md` 和 `docs/roadmap.md` 为准。
