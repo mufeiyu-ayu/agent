@@ -1,8 +1,8 @@
 # Phase 7：Context Engineering
 
-状态：**Next / 尚未启动实现**。
+状态：**Next / Task 0 Issue #40 已创建 / 待重新 Gate**。
 
-本阶段已经由 GPT 与用户确认作为 Phase 6 之后的下一条 Agent 主线，但当前尚未创建正式 Issue，也没有 Active Task。Task 0 创建 Issue 并通过 Clarification Gate 后，Phase 7 才进入 Active。
+本阶段已经由 GPT 与用户确认作为 Phase 6 之后的下一条 Agent 主线。Task 0 已创建正式 Issue #40；首轮 Clarification Gate 因 Draft / Ready PR 规则与 docs 状态漂移返回 `BLOCKED`。GPT 已按最新协作规范完成决策与 docs 同步；在 Codex 重新 Gate 为 `READY` 前，Phase 7 仍没有 Active Task。
 
 ## 1. 阶段目标
 
@@ -93,7 +93,7 @@ Phase 7 Baseline 不把自动 Summary / Compaction 作为必做项。先完成 C
 
 | Task | 状态 | 目标 |
 | --- | --- | --- |
-| Task 0：Context Boundary & Snapshot | **Next** | 把当前 model input 组装收敛到独立 Context 边界，并建立不改变现有行为的 Context Snapshot |
+| Task 0：Context Boundary & Snapshot | **Next / Issue #40 / 待重新 Gate** | 把当前 model input 组装收敛到独立 Context 边界，并建立不改变现有行为的 Context Snapshot |
 | Task 1：Model-aware Budget & Dynamic History | Planned | 让模型 Context Window 参与预算，历史选择从固定条数升级为 token-budget 驱动 |
 | Task 2：Loop-aware Context & Observation Governance | Planned | 统一管理后续 sampling 的 Tool Exchange、剩余 Context Budget 与 Observation 裁剪 |
 | Task 3：Context Inspector & Phase Baseline | Planned | 将 Context 决策做成安全可观察的 Runtime / Admin Inspector，并完成阶段回归 |
@@ -105,7 +105,7 @@ Phase 7 Baseline 不把自动 Summary / Compaction 作为必做项。先完成 C
 
 # Task 0：Context Boundary & Snapshot
 
-状态：**Next / Issue 未创建**。
+状态：**Next / Issue #40 已创建 / 首轮 Gate BLOCKED，阻塞决策已同步，待重新 Gate**。
 
 ## 目标
 
@@ -158,6 +158,15 @@ Task 0 是结构基线，不负责优化 History 数量，也不实现 token-bud
 - [ ] Context Snapshot 不包含 reasoning、完整 Prompt、raw arguments 或 ToolResult.data；
 - [ ] 外部 Chat / NDJSON、Prisma schema、Admin Contract 无行为变更；
 - [ ] 现有 Phase 6 关键回归继续通过。
+
+## GitHub 交付状态
+
+- Issue：#40 `[Phase 7][Task 0] 建立 Context Boundary 与安全 Context Snapshot`
+- Clarification Gate：首轮 `BLOCKED`
+- 阻塞决策：已由 GPT 按最新协作规范定案并同步到 `master`
+- 当前状态：`Next`，等待 Codex 重新 Gate
+- Active 条件：重新 Gate 结论为 `READY`
+- PR：未创建
 
 ---
 
@@ -336,11 +345,11 @@ Minimal Compaction 不属于默认完成条件；是否加入 Phase 7 收口范�
 ## 7. 当前 GitHub 交付状态
 
 - Phase 7：Next
-- Task 0：Next / Issue 未创建
+- Task 0：Next / Issue #40 / 首轮 Gate BLOCKED / 阻塞决策已同步 / 待重新 Gate
 - Task 1：Planned
 - Task 2：Planned
 - Task 3：Planned
 - Minimal Compaction：Gated
 - Active Agent Task：无
 
-下一正式动作：为 Task 0 完成 Issue 级规格审查，创建独立 Issue，并生成任务专属 Codex Clarification Gate Prompt。
+下一正式动作：让 Codex 重新读取 Issue #40、最新 `master` 与协作规范并重新执行 Clarification Gate；只有 Gate 为 `READY` 后，Task 0 才进入 Active。
