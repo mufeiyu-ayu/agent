@@ -31,7 +31,7 @@ Phase 6 reliability work also binds Run remaining budget to database business st
 | Persistence | Conversations, Messages, Agent Runs, and ordered Agent Steps in PostgreSQL |
 | Model integration | OpenAI-compatible Chat Completions + DeepSeek thinking continuation |
 | Runtime traces | Persisted input, output, status, timing, and error snapshots for every step |
-| User interfaces | Vue chat client and an operator console shell |
+| User interfaces | Vue chat client and a real-data operator console for Run / Step observability |
 
 ## Runtime lifecycle
 
@@ -170,12 +170,13 @@ Available now:
 - PostgreSQL statement / lock timeout and late-result ownership fencing;
 - atomic normal completion / failure / Abort terminalization where commit succeeds;
 - typed Provider profiles and runtime configuration;
-- static operator Run / Step views.
+- real Admin Run / Step query API and Run Trace UI observability baseline.
 
 Current mainline status:
 
 - **Phase 1-6 are Completed.**
-- Phase 6 Task 2 was merged through PR #32 with merge commit `691efbcd927682d2a435c2bd6125225ae27a18fb`.
-- **There is currently no Active Agent mainline Task.** The next formal stage will be chosen from the latest code and learning/product needs rather than inherited from an old roadmap.
+- Phase 6 final archive is [`docs/tasks/completed/phase-06-bounded-agent-loop.md`](./docs/tasks/completed/phase-06-bounded-agent-loop.md).
+- **Phase 7: Context Engineering is Next.** Task 0 is `Context Boundary & Snapshot`.
+- **There is currently no Active Agent mainline Task** because Phase 7 Task 0 has not created a formal Issue or passed Clarification Gate yet.
 
-See [`docs/roadmap.md`](./docs/roadmap.md), [`docs/tasks/README.md`](./docs/tasks/README.md), and the [Phase 6 archive](./docs/tasks/completed/phase-06-bounded-agent-loop.md).
+See [`docs/roadmap.md`](./docs/roadmap.md), [`docs/tasks/README.md`](./docs/tasks/README.md), the [Phase 7 plan](./docs/tasks/phase-07-context-engineering/README.md), and the [Phase 6 archive](./docs/tasks/completed/phase-06-bounded-agent-loop.md).
