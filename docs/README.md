@@ -6,11 +6,12 @@
 
 ```text
 阶段 1-6：Completed
+阶段 7：Context Engineering / Next
 当前 Agent 主线：无 Active Task
-下一正式阶段：尚未定案
+下一正式 Task：Phase 7 Task 0 / Context Boundary & Snapshot / Next
 ```
 
-Phase 6 已完成并归档，不再继续在 active tasks 区维护 Task 0 / Task 1 / Task 2 的重复状态。
+Phase 6 已完成并统一归档到 `docs/tasks/completed/**`，不再在 active tasks 区保留兼容目录。Phase 7 已完成阶段级规划，但 Task 0 尚未创建正式 Issue，因此当前仍无 Active Agent Task。
 
 ## 文档入口
 
@@ -18,6 +19,7 @@ Phase 6 已完成并归档，不再继续在 active tasks 区维护 Task 0 / Tas
 | --- | --- |
 | [roadmap.md](./roadmap.md) | 已完成阶段、当前主线状态与阶段边界 |
 | [tasks/README.md](./tasks/README.md) | 正式任务看板、状态与启动规则 |
+| [tasks/phase-07-context-engineering/README.md](./tasks/phase-07-context-engineering/README.md) | Phase 7 Context Engineering 阶段规划与 Task 边界 |
 | [tasks/completed/phase-06-bounded-agent-loop.md](./tasks/completed/phase-06-bounded-agent-loop.md) | Phase 6 最终能力、交付、验证和已接受边界 |
 | [tasks/admin-console.md](./tasks/admin-console.md) | Admin Console 独立产品支线 |
 | [development-workflow.md](./development-workflow.md) | Issue、Clarification Gate、Draft PR、验收和合并授权流程 |
@@ -39,6 +41,6 @@ Phase 6 已完成并归档，不再继续在 active tasks 区维护 Task 0 / Tas
 
 - `docs/README.md` 只做入口，不维护第二套任务看板。
 - 当前 Task 细节写在对应 `docs/tasks/**`；已完成阶段统一压缩归档到 `docs/tasks/completed/**`。
-- 完成阶段不继续在 active tasks 区保留长篇 Task 规格；详细历史由 Completed 归档、Issue / PR 和 Git 历史共同承担。
+- 完成阶段不继续在 active tasks 区保留兼容目录或长篇 Task 规格；详细历史由 Completed 归档、Issue / PR 和 Git 历史共同承担。
 - `work-log.md` 只保留近期关键事实。
-- 下一 Agent 阶段必须重新基于最新代码和学习目标定案，不能直接从 `docs/research/**` 的旧路线自动推进。
+- Phase 7 当前仅为 Next；Task 0 创建 Issue 并通过 Clarification Gate 后才进入 Active，后续阶段仍必须重新基于最新代码和学习目标定案。
