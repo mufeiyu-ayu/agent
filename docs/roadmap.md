@@ -6,16 +6,18 @@
 
 项目已经完成从基础 LLM Chat 到 Session、Streaming、Agent Runtime、最小 Tool Calling，再到 bounded sequential Agent Loop 与 Runtime reliability 的连续学习闭环；Admin Console 的真实 Observability Baseline 也已经建立。
 
-经过基于最新 `master` 的阶段讨论，下一正式 Agent 主线已经定案为 **Phase 7：Context Engineering**。Task 0 的正式 Issue #40 在阻塞决策同步后重新 Gate 为 `READY`，Context Boundary 与安全 Snapshot 已完成实现和本地验证，当前等待 Draft PR Review、GPT 技术验收与用户确认。
+Phase 7：Context Engineering 当前为 **Active**。Task 0 `Context Boundary & Snapshot` 已完成 GPT 技术验收、用户确认验收，并通过 PR #41 合入 `master`；Issue #40 已关闭。当前没有 Active Agent Task，下一正式 Task 为 **Task 1：Model-aware Budget & Dynamic History / Next**，尚未创建 Issue。
 
 当前状态：
 
 ```text
 阶段 1-6：Completed
 阶段 7：Context Engineering / Active
-当前 Agent 主线：Task 0 / Context Boundary & Snapshot / 已实现，待验收
-Issue：#40 已创建
-Gate：首轮 BLOCKED；D-05 / D-06 同步后第二轮 READY
+Task 0：Context Boundary & Snapshot / Completed
+Issue #40：Closed
+PR #41：Merged / 415e866a
+当前 Agent 主线：无 Active Task
+下一正式 Task：Task 1 / Model-aware Budget & Dynamic History / Next
 Admin Observability：Task 0-3 Completed
 Admin Task 4：Planned
 ```
@@ -83,8 +85,8 @@ Admin Task 4：Planned
 当前规划：
 
 ```text
-Task 0：Context Boundary & Snapshot                   Active / 已实现，待验收
-Task 1：Model-aware Budget & Dynamic History          Planned
+Task 0：Context Boundary & Snapshot                   Completed / #40 / #41 / 415e866a
+Task 1：Model-aware Budget & Dynamic History          Next
 Task 2：Loop-aware Context & Observation Governance   Planned
 Task 3：Context Inspector & Phase Baseline            Planned
 Compaction：Gated Follow-up                           不自动启动
@@ -94,11 +96,13 @@ Compaction：Gated Follow-up                           不自动启动
 
 先建立独立 Context boundary 和安全 Snapshot，保持当前 `historyLimit = 40`、Observation 上限、Chat / NDJSON 协议与数据库行为不变。目的只是把散落的 model input assembly 收敛成一个明确边界，并锁定 direct-final / Tool Loop 的 Context 不变量。
 
-Task 0 已创建正式 Issue #40。首轮 Gate 的 D-05 / D-06 决策同步后，第二轮 Gate 为 `READY`；独立分支已完成 Context Boundary、安全 Snapshot 和 Provider-facing input 回归，当前状态为已实现、待验收。Task 1 不会因此自动启动。
+Task 0 已完成：Issue #40、PR #41；GPT 基于最新实现、AC-01～AC-09、Codex Review 和验证结果完成技术验收，用户于 2026-08-10 明确确认通过；PR #41 已合入 `master`，merge commit `415e866af4d4007b6bed43cd1f6e3df590575706`，Issue #40 已关闭。
 
 ### Task 1
 
 让现有 `ModelProfile.contextWindowTokens` 真正进入输入预算；History 从固定条数策略升级为 token-budget 驱动的动态选择。`SEO_CHAT_HISTORY_LIMIT` 若保留，只作为候选查询 / safety cap，不再代表最终模型 Context 的语义。
+
+Task 1 当前为 **Next**，但尚未创建正式 Issue，也未进入 Active。启动前仍需将阶段级规划压缩为 Issue 级规格、编号验收标准与验证命令，并执行 Clarification Gate。
 
 ### Task 2
 
@@ -176,4 +180,4 @@ Phase 7 Baseline 收口后，再基于最新 `master`、真实产品需求和学
 6. Multi-agent；
 7. 若 Context 证据充分，再决定 Minimal Compaction 是否需要单独收口。
 
-当前 Active Agent Task 是 Issue #40 / Task 0。下一正式动作是 Draft PR Review、GPT 技术验收与用户确认；未经明确授权，不转 Ready、不合并，也不启动 Task 1。
+当前没有 Active Agent Task。下一正式动作是准备 Phase 7 Task 1 的 Issue 级规格并创建正式 Issue；只有 Task 1 的 Clarification Gate 为 `READY` 后，Task 1 才进入 Active。
