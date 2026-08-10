@@ -15,7 +15,7 @@
 - Human-in-the-loop
 - 权限边界、错误恢复和可观测性
 
-Codex 应作为 Agent 应用开发学习搭档，既帮助实现，也在关键设计点解释为什么这样做。GPT 是学习导师、任务规划者、PR 验收者，并可在用户明确授权后作为 GitHub 远程受托执行者。
+Codex 应作为 Agent 应用开发学习搭档，负责按正式 Issue 实现、验证和创建 Draft PR，并在关键设计点解释为什么这样做。GPT 是学习导师、任务规划者、Issue 创建者和 PR 验收者，并可在用户明确授权后处理 docs-only 收口、Draft 转 Ready、远程合并等 GitHub 收尾动作。
 
 ## 2. 用户背景与回答方式
 
@@ -48,14 +48,14 @@ Codex 应作为 Agent 应用开发学习搭档，既帮助实现，也在关键�
 
 `docs/development-task-plan.md` 只保留为旧入口兼容，不再写入新任务。
 
-当前 Agent 主线状态：Phase 1-6 已 Completed；当前无 Active Agent Task；下一正式阶段尚未定案。
+当前 Agent 主线状态：Phase 1-6 已 Completed；Phase 7 Context Engineering 为 Active；Task 0 `Context Boundary & Snapshot` 已 Completed；当前无 Active Agent Task；Task 1 `Model-aware Budget & Dynamic History` 为 Next，但尚未创建 Issue。
 
 ## 4. 关键目录与任务入口
 
 修改代码前，先快速确认相关上下文：
 
-- 先看 `docs/tasks/README.md` 判断当前 Active 任务。
-- 再阅读当前阶段目录下的具体任务文档；如果当前无 Active Task，不得从旧 research 路线自行选择任务。
+- 先看 `docs/tasks/README.md` 判断当前 Active / Next 任务。
+- 再阅读当前阶段目录下的具体任务文档；如果当前无 Active Task，不得因为某个 Task 为 Next 就自行实现，必须先有正式 Issue 并通过 Clarification Gate。
 - 是否已有相邻 service、controller、hook、component、utils、contract 可复用。
 - 是否涉及 Prisma schema、contracts、前后端协议或文档同步。
 
@@ -73,31 +73,34 @@ Codex 应作为 Agent 应用开发学习搭档，既帮助实现，也在关键�
 
 ## 5. 工作方式与 Skill 触发
 
-本项目同时支持 Codex 本地执行和 GPT 远程受托执行。以用户本轮明确指令为准。
+本项目同时支持 Codex 本地执行和 GPT 远程受托收口。正式功能默认由 Codex 按 Issue 实现，以用户本轮明确指令为准。
 
 | 用户意图 | 默认执行方式 |
 | --- | --- |
 | “完成 Issue #N”“读取 Issue #N 并实现” | `.codex/skills/github-issue-workflow` |
 | “处理 PR #N 的 Review” | `.codex/skills/github-pr-review-fix` |
-| “创建 Issue / 规划任务” | GPT 创建 Issue 或任务草案 |
-| “把学习路线 / 技术方案 / 总结写入 docs” | GPT 可更新 `docs/research/**` 或合适 docs |
-| “你直接实现 / 你来改项目” | GPT 可创建远程分支、commit、Ready PR |
-| “验收通过后你直接合并 / 删除远程分支” | GPT 可执行远程合并和远程分支删除 |
+| “创建 Issue / 规划任务” | GPT 创建 Issue 与任务专属 Clarification Gate Prompt |
+| “把学习路线 / 技术方案 / 总结写入 docs” | GPT 可更新 `docs/research/**` 或合适 docs；用户明确授权时可直接写入 `master` |
+| “GPT 已确认验收通过，我也确认，请收口” | GPT 或用户指定的 Codex 更新正式 docs 状态 |
+| “转 Ready 并合并 / 合并 PR #N” | 只有用户明确授权后，GPT 或 Codex 才执行 Ready 转换与合并 |
 
 其他学习、讨论、inspection-only、本地实验和小改动默认自由进行，不自动切任务分支、commit、push、创建 PR 或更新任务状态。用户可以在本次指令中扩大或缩小流程。
 
 硬性规则：
 
-- `docs/tasks/**` 是任务与阶段状态的事实来源；Issue 只保存实施快照。
-- 正式代码任务必须使用独立任务分支和 PR，不直接在 `master` 上实现、提交或推送。
-- 一个 Issue / PR 只完成一个任务单元；正式 Issue 本地验证通过后默认创建 Ready PR，只记录“已实现、待验收”，并等待自动 Codex Review 和学习验收。
-- Ready 只表示 PR 可以接受 Review，不表示验收通过或允许合并；Draft 仅用于实现未完成、验证失败、任务受阻或等待用户确认的情况。
-- 只有实现完成且验证通过后，才能把任务文档更新为“已实现、待验收”；Draft、受阻或验证失败时保留原状态、记录阻塞原因，不得进入 GPT 验收。
-- 只有 GPT 给出验收通过结论且用户明确确认后，才能把任务写成已通过 / Completed、推进路线或归档阶段。
-- 用户明确授权后，GPT 可以远程合并 PR、关闭放弃 PR、删除远程分支；本地 `master` 同步和本地分支清理由用户或本地 Codex 处理。
-- Review 默认先解释、再由本地 Codex 修复；只有用户明确选择时才交给云端修复，禁止本地与云端同时修改同一 PR。
-- 当前不把 GitHub Actions 作为必需环节；以本地最小必要验证和自动 Codex Review 为主。
-- 用户明确说“直接在 master 提交并 push”时，低风险 typo、文案、样式微调或普通 docs 修正可以绕过 Issue / PR；涉及功能行为、API / contracts、数据库、Agent Runtime、Streaming、Tool Calling、依赖、环境、安全或正式任务状态时禁止绕过。
+- `docs/tasks/**` 是任务与阶段状态的事实来源；Issue 保存实现规格、验收标准和澄清决策。
+- 正式代码任务必须先创建 Issue，并使用独立任务分支和 PR，不直接在 `master` 上实现、提交或推送。
+- 一个 Issue / PR 只完成一个任务单元；Clarification Gate 为 `READY` 后才能进入实现。
+- 正式 Issue 实现并完成必要验证后，默认创建 **Draft PR**；Codex 最多记录“实施状态：已实现 / 验收状态：待验收”，不得自行标记 Completed。
+- Draft PR 可以接受 Codex Review 和 GPT 技术验收；**Draft 不代表实现未完成**。
+- Ready 是用户明确授权后的发布 / 合并前状态，不是开始 Review 的前置条件。只有 GPT 技术验收通过、用户明确确认验收，并且用户明确授权转 Ready / 合并后，才允许将 Draft 转 Ready。
+- 验收确认、docs 状态收口、Draft 转 Ready、合并和分支清理是不同动作；用户可以在同一句指令中一起授权，但不得自行推导。
+- 只有 GPT 给出验收通过结论且用户明确确认后，才能把任务写成已通过 / Completed；Phase 是否 Completed 还必须满足该阶段自己的完成条件。
+- 用户明确授权后，GPT 可以直接更新允许范围内的 docs-only 状态并提交 `master`，无需为纯文档状态同步单独创建 Issue / PR。
+- 用户明确授权后，GPT 可以远程转 Ready、合并 PR、关闭放弃 PR、删除远程分支；本地 `master` 同步和本地分支清理由用户或本地 Codex 处理。
+- Review 默认先解释再处理；finding 与最新 Issue 决策或项目规范冲突时，不得为了“通过 Review”反向违反已确认规格，应说明冲突并按事实来源解决。
+- 当前不把 GitHub Actions 作为必需环节；以与 Task 匹配的本地验证、PR diff、Codex Review 和 GPT 验收为主要质量证据。
+- 用户明确授权“更新 docs 并写入 master”“直接改 docs”“收口任务状态”等 docs-only 操作时，可以绕过 Issue / PR；业务功能、API / contracts、数据库、Agent Runtime、Streaming、Tool Calling、依赖、环境、安全或权限变更仍禁止直接写 `master`。
 
 ## 6. 代码与架构原则
 
@@ -132,6 +135,7 @@ Controller -> Service -> AgentRuntime -> LLMService / ToolRegistry -> Prisma
 - `AgentStep` 是系统执行过程，不是模型真实 chain-of-thought。
 - UI message 不等于 model message。
 - delta 不等于持久化事实。
+- model-visible context 应通过独立 Context boundary 维护，不能为了方便回填进 UI `Message`。
 
 ## 7. NestJS 约束
 
@@ -191,16 +195,18 @@ DTO class 用于 `@Body()` / `@Param()` 时，必须保留运行时值导入，�
 | 学习路线、技术方案、阶段总结、项目复盘 | 优先写入 `docs/research/**` |
 | 实现完成且验证通过后的 checklist / 验证证据 | 对应 `docs/tasks/**`，记录“已实现、待验收” |
 | 阶段状态变化 | `docs/roadmap.md` 和 `docs/tasks/README.md` |
+| 用户确认验收后的 Task 收口 | 对应 `docs/tasks/**`、`docs/roadmap.md`，必要时更新 `docs/README.md` |
 | 完成阶段 | 将任务精简归档到 `docs/tasks/completed/` |
-| 重要架构决策或提交上下文 | `docs/work-log.md` |
+| 重要架构决策、Review 决策或合并事实 | `docs/work-log.md` |
 | 只是小修 typo / 样式微调 | 可不更新 docs，commit 说明即可 |
 
 原则：
 
-- 学习 docs 沉淀不强制创建 Issue；用户确认后，GPT 可通过轻量分支和 Ready PR 写入。
+- 学习 docs 沉淀不强制创建 Issue；用户明确授权时，GPT 可直接提交允许范围内的 docs-only 变更到 `master`。
 - 不再向 `docs/development-task-plan.md` 写新任务。
 - 不把研究长文写进 `docs/tasks/`。
 - 不把计划写成已完成事实。
 - `work-log` 只写真实已发生事实，保持简洁。
 - 阶段状态变化、Completed 和归档只在 GPT 验收且用户明确确认后写入。
-- 如果 docs 更新范围明确，可以在当前工作流内直接更新；如果范围不确定，先问用户。
+- Task 完成后可以把下一项已确认的正式任务推进为 `Next`，但没有 Issue + Gate `READY` 时不得写成 `Active`。
+- 如果 docs 更新范围明确，可以在当前授权内直接更新；如果范围不确定，先确认边界。
