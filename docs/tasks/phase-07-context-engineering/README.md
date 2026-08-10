@@ -1,8 +1,8 @@
 # Phase 7：Context Engineering
 
-状态：**Active / Task 0 Issue #40 已实现，待验收**。
+状态：**Active / Task 0 Completed / Task 1 Next**。
 
-本阶段已经由 GPT 与用户确认作为 Phase 6 之后的下一条 Agent 主线。Task 0 已创建正式 Issue #40；首轮 Clarification Gate 的阻塞决策同步后，第二轮 Gate 为 `READY`。Task 0 已完成实现和本地验证，当前等待 Draft PR Review、GPT 技术验收与用户确认；Task 1-3 未启动。
+本阶段已经由 GPT 与用户确认作为 Phase 6 之后的 Agent 主线。Task 0 `Context Boundary & Snapshot` 已完成 GPT 技术验收、用户确认验收，并通过 PR #41 合入 `master`；Issue #40 已关闭。当前没有 Active Task，Task 1 `Model-aware Budget & Dynamic History` 为下一正式任务，但尚未创建 Issue。
 
 ## 1. 阶段目标
 
@@ -40,15 +40,15 @@ Instructions / Current User / History / Tool Exchange
 
 Phase 6 已经建立 bounded sequential Agent Loop、两个 Article Tool、Run / Tool / DB deadline、终态可靠性与真实 Observability Baseline。当前 Runtime 已经具备学习 Context Engineering 的必要前置条件。
 
-当前 `master` 的真实限制包括：
+Task 0 收口后，当前 `master` 已经建立独立 `ModelContext` 边界与安全 Context Snapshot，但 Phase 7 的后续限制仍包括：
 
 1. `apps/api/src/agent-runtime/agent-runtime.policy.ts` 仍使用固定 `historyLimit: 40`；
 2. `apps/api/src/llm/model-profiles.ts` 已记录模型 `contextWindowTokens`，但 Runtime 当前没有使用它分配输入 Context；
 3. `search_articles`、`get_article_detail` 与 Tool Core 主要使用字符级 Observation 上限；
-4. 初始 History 与后续 Tool Exchange 都会进入 `ModelInputItem[]`，但目前没有独立 Context 层统一解释来源、预算、优先级和裁剪原因；
-5. Agent Loop 最多 3 次 sampling / 2 次 Tool Call，后续 sampling 的 Context 会随着 Tool Exchange 增长，因此第一轮不能只按静态 History 条数考虑输入。
+4. 初始 History 与后续 Tool Exchange 已进入统一 Context boundary，但尚未建立 model-aware budget、动态选择和预算原因；
+5. Agent Loop 最多 3 次 sampling / 2 次 Tool Call，后续 sampling 的 Context 会随着 Tool Exchange 增长，因此后续还需要 Loop-aware Context Governance。
 
-这意味着当前实现已经安全可用，但仍属于 Phase 6 的“局部预算 + 硬上限”基线，还没有形成完整 Context Engineering 闭环。
+这意味着 Task 0 已完成“明确边界与可测试 Snapshot”的结构基线，但完整 Context Engineering 闭环仍需要 Task 1-3。
 
 ## 3. 本阶段要学会什么
 
@@ -93,22 +93,24 @@ Phase 7 Baseline 不把自动 Summary / Compaction 作为必做项。先完成 C
 
 | Task | 状态 | 目标 |
 | --- | --- | --- |
-| Task 0：Context Boundary & Snapshot | **Active / Issue #40 / 已实现，待验收** | 把当前 model input 组装收敛到独立 Context 边界，并建立不改变现有行为的 Context Snapshot |
-| Task 1：Model-aware Budget & Dynamic History | Planned | 让模型 Context Window 参与预算，历史选择从固定条数升级为 token-budget 驱动 |
+| Task 0：Context Boundary & Snapshot | **Completed / #40 / #41 / merge `415e866a`** | 把当前 model input 组装收敛到独立 Context 边界，并建立不改变现有行为的 Context Snapshot |
+| Task 1：Model-aware Budget & Dynamic History | **Next / Issue 未创建** | 让模型 Context Window 参与预算，历史选择从固定条数升级为 token-budget 驱动 |
 | Task 2：Loop-aware Context & Observation Governance | Planned | 统一管理后续 sampling 的 Tool Exchange、剩余 Context Budget 与 Observation 裁剪 |
 | Task 3：Context Inspector & Phase Baseline | Planned | 将 Context 决策做成安全可观察的 Runtime / Admin Inspector，并完成阶段回归 |
 | Gated Follow-up：Minimal Compaction | Gated | 只有 Task 1-3 的真实证据证明需要时，才单独设计最小 Compaction |
 
-正式实现仍遵守“一 Issue = 一明确 Task”。Task 1-3 不会因为本文存在而自动启动。
+正式实现仍遵守“一 Issue = 一明确 Task”。Task 1 只是 Next，不代表已经启动；Task 2-3 不会因为本文存在而自动启动。
 
 ---
 
 # Task 0：Context Boundary & Snapshot
 
-状态：**Active / Issue #40 / 已实现，待验收**。
+状态：**Completed / Issue #40 / PR #41 / merge `415e866a`**。
 
 - 实施状态：已实现
-- 验收状态：待验收
+- 验收状态：已通过
+- 用户确认：已确认
+- 合并状态：已合并
 
 ## 目标
 
@@ -164,18 +166,21 @@ Task 0 是结构基线，不负责优化 History 数量，也不实现 token-bud
 
 ## GitHub 交付状态
 
-- Issue：#40 `[Phase 7][Task 0] 建立 Context Boundary 与安全 Context Snapshot`
+- Issue：#40 `[Phase 7][Task 0] 建立 Context Boundary 与安全 Context Snapshot` / Closed
 - Clarification Gate：首轮 `BLOCKED`；D-05 / D-06 同步后第二轮 `READY`
-- 当前状态：`Active / 已实现，待验收`
 - 分支：`codex/issue-40-context-boundary`
-- PR：[Draft PR #41](https://github.com/mufeiyu-ayu/agent/pull/41)
+- PR：#41 `refactor: 建立 Context Boundary 与安全 Context Snapshot` / Merged
+- GPT 技术验收：通过
+- 用户确认验收：通过
+- Merge commit：`415e866af4d4007b6bed43cd1f6e3df590575706`
 
 ## 实现与验证证据
 
 - 新增单次 Run 内存 `ModelContext`，统一初始 model input assembly、Tool Exchange 成对追加与 sampling Snapshot；
 - Snapshot 只投影 source、category、item / Tool Exchange 数量和字符规模，不包含任何原始 Context；
 - Runtime 继续拥有 History 查询、Observation 上限、Tool 执行、Abort、deadline 与 terminalization；
-- direct-final、一次 Tool、两次顺序 Tool 的完整 `ModelInputItem[]` 已加入回归断言。
+- direct-final、一次 Tool、两次顺序 Tool 的完整 `ModelInputItem[]` 已加入回归断言；
+- Codex Review 的 P1 流程建议因与 D-05 冲突未采纳并完成说明；P2 文档入口状态遗漏已修复，两个 thread 均已 resolved。
 
 | 命令 | 结果 |
 | --- | --- |
@@ -189,7 +194,7 @@ Task 0 是结构基线，不负责优化 History 数量，也不实现 token-bud
 
 # Task 1：Model-aware Budget & Dynamic History
 
-状态：Planned。
+状态：**Next / Issue 未创建**。
 
 ## 目标
 
@@ -362,11 +367,11 @@ Minimal Compaction 不属于默认完成条件；是否加入 Phase 7 收口范�
 ## 7. 当前 GitHub 交付状态
 
 - Phase 7：Active
-- Task 0：Active / Issue #40 / 已实现，待验收
-- Task 1：Planned
+- Task 0：Completed / Issue #40 Closed / PR #41 Merged / `415e866a`
+- Task 1：Next / Issue 未创建
 - Task 2：Planned
 - Task 3：Planned
 - Minimal Compaction：Gated
-- Active Agent Task：Task 0 / Issue #40
+- Active Agent Task：无
 
-下一正式动作：Draft PR #41 接受 Codex Review 与 GPT 技术验收；未经用户明确授权，不转 Ready、不合并、不清理分支，也不启动 Task 1。
+下一正式动作：准备 Task 1 的 Issue 级规格并创建独立 Issue；只有 Task 1 的 Clarification Gate 为 `READY` 后才进入 Active。
