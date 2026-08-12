@@ -32,14 +32,14 @@ export function resolveAgentRuntimePolicy(
     env.SEO_CHAT_HISTORY_CANDIDATE_BATCH_SIZE,
     'SEO_CHAT_HISTORY_CANDIDATE_BATCH_SIZE',
     DEFAULT_AGENT_RUNTIME_POLICY.historyCandidateBatchSize,
-    1,
+    50,
     MAX_HISTORY_CANDIDATE_LIMIT,
   )
   const historyCandidateHardLimit = resolveInteger(
     env.SEO_CHAT_HISTORY_CANDIDATE_HARD_LIMIT,
     'SEO_CHAT_HISTORY_CANDIDATE_HARD_LIMIT',
     DEFAULT_AGENT_RUNTIME_POLICY.historyCandidateHardLimit,
-    1,
+    50,
     MAX_HISTORY_CANDIDATE_LIMIT,
   )
   const maxSamplingRounds = resolveInteger(

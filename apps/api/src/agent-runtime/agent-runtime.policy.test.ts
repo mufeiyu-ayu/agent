@@ -48,8 +48,8 @@ describe('resolveAgentRuntimePolicy', () => {
 
   it('拒绝非法十进制整数、非安全整数和超出计时器范围的 deadline', () => {
     const invalidValuesByName = {
-      SEO_CHAT_HISTORY_CANDIDATE_BATCH_SIZE: ['', '0', '-1', '1.5', '1e2', 'NaN', 'Infinity', '1001'],
-      SEO_CHAT_HISTORY_CANDIDATE_HARD_LIMIT: ['', '0', '-1', '1.5', '1e2', 'NaN', 'Infinity', '1001'],
+      SEO_CHAT_HISTORY_CANDIDATE_BATCH_SIZE: ['', '0', '1', '49', '-1', '1.5', '1e2', 'NaN', 'Infinity', '1001'],
+      SEO_CHAT_HISTORY_CANDIDATE_HARD_LIMIT: ['', '0', '1', '49', '-1', '1.5', '1e2', 'NaN', 'Infinity', '1001'],
       AGENT_MAX_SAMPLING_ROUNDS: ['', '0', '-1', '1.5', '1e2', 'NaN', 'Infinity', '9007199254740992'],
       AGENT_MAX_TOOL_CALLS: ['', '-1', '1.5', '1e2', 'NaN', 'Infinity', '9007199254740992'],
       AGENT_RUN_DEADLINE_MS: ['', '0', '-1', '1.5', '1e2', 'NaN', 'Infinity', '2147483648'],

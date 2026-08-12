@@ -48,7 +48,7 @@ Codex 应作为 Agent 应用开发学习搭档，负责按正式 Issue 实现、
 
 `docs/development-task-plan.md` 只保留为旧入口兼容，不再写入新任务。
 
-当前 Agent 主线状态：Phase 1-6 已 Completed；Phase 7 Context Engineering 为 Active；Task 0 `Context Boundary & Snapshot` 已 Completed；当前无 Active Agent Task；Task 1 `Model-aware Budget & Dynamic History` 为 Next，但尚未创建 Issue。
+当前 Agent 主线状态：Phase 1-6 已 Completed；Phase 7 `Context Engineering` 为 Active；Task 0 `Context Boundary & Snapshot` 已 Completed；Task 1 `Model-aware Budget & Dynamic History` 为 Active（Issue #42 / Draft PR #43，实施状态：已实现，验收状态：待验收）；Task 2-3 为 Planned。
 
 ## 4. 关键目录与任务入口
 

@@ -191,7 +191,10 @@ export class AgentRuntimeService {
         loadCandidates: async ({ cursor, take }) => {
           const messages = await this.listRecentChatMessageCandidates(
             input.conversationId,
-            userMessage.id,
+            {
+              id: userMessage.id,
+              createdAt: userMessage.createdAt,
+            },
             cursor,
             take,
             databaseDeadline,
@@ -592,7 +595,7 @@ export class AgentRuntimeService {
 
   private async listRecentChatMessageCandidates(
     conversationId: string,
-    currentUserMessageId: string,
+    currentUserUpperBound: HistoryCursor,
     cursor: HistoryCursor | undefined,
     take: number,
     databaseDeadline: DatabaseOperationDeadline,
@@ -603,18 +606,10 @@ export class AgentRuntimeService {
         where: {
           conversationId,
           status: MessageStatus.COMPLETED,
-          id: { not: currentUserMessageId },
-          ...(cursor
-            ? {
-                OR: [
-                  { createdAt: { lt: cursor.createdAt } },
-                  {
-                    createdAt: cursor.createdAt,
-                    id: { lt: cursor.id },
-                  },
-                ],
-              }
-            : {}),
+          AND: [
+            toStrictlyEarlierMessageWhere(currentUserUpperBound),
+            ...(cursor ? [toStrictlyEarlierMessageWhere(cursor)] : []),
+          ],
         },
         orderBy: [
           { createdAt: 'desc' },
@@ -739,6 +734,18 @@ export class AgentRuntimeService {
 
   private isAbortSignalTriggered(signal: AbortSignal | undefined): boolean {
     return signal?.aborted ?? false
+  }
+}
+
+function toStrictlyEarlierMessageWhere(bound: HistoryCursor) {
+  return {
+    OR: [
+      { createdAt: { lt: bound.createdAt } },
+      {
+        createdAt: bound.createdAt,
+        id: { lt: bound.id },
+      },
+    ],
   }
 }
 

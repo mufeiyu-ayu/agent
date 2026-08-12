@@ -209,11 +209,23 @@ describe('AgentRuntimeService model stream', () => {
 
     await collectEvents(harness.run())
 
+    const currentUser = harness.prisma.messages.find(
+      message => message.content === '问题',
+    )!
+
     assert.deepEqual(harness.prisma.findManyArguments, [{
       where: {
         conversationId: 'conversation-1',
         status: MessageStatus.COMPLETED,
-        id: { not: 'message-50' },
+        AND: [{
+          OR: [
+            { createdAt: { lt: currentUser.createdAt } },
+            {
+              createdAt: currentUser.createdAt,
+              id: { lt: currentUser.id },
+            },
+          ],
+        }],
       },
       orderBy: [
         { createdAt: 'desc' },
@@ -241,6 +253,65 @@ describe('AgentRuntimeService model stream', () => {
     )
   })
 
+  it('只加载严格早于当前 User 上界的 History', async () => {
+    const harness = createHarness(() => toModelStream([
+      { type: 'response_completed', finishReason: 'stop' },
+    ]))
+    const currentCreatedAt = new Date('2030-01-01T00:00:00.000Z')
+
+    harness.prisma.nextMessageCreatedAt = currentCreatedAt
+    harness.prisma.seedMessage({
+      id: 'history-past',
+      content: 'past-user',
+      status: MessageStatus.COMPLETED,
+      createdAt: new Date('2029-12-31T23:59:59.000Z'),
+    })
+    harness.prisma.seedMessage({
+      id: 'message-000',
+      content: 'same-time-before',
+      status: MessageStatus.COMPLETED,
+      createdAt: currentCreatedAt,
+    })
+    harness.prisma.seedMessage({
+      id: 'message-zzz',
+      content: 'same-time-after',
+      status: MessageStatus.COMPLETED,
+      createdAt: currentCreatedAt,
+    })
+    harness.prisma.seedMessage({
+      id: 'future-user',
+      content: 'future-user',
+      status: MessageStatus.COMPLETED,
+      createdAt: new Date('2030-01-01T00:00:01.000Z'),
+    })
+    harness.prisma.seedMessage({
+      id: 'future-assistant',
+      content: 'future-assistant',
+      role: MessageRole.ASSISTANT,
+      status: MessageStatus.COMPLETED,
+      createdAt: new Date('2030-01-01T00:00:02.000Z'),
+    })
+
+    await collectEvents(harness.run())
+
+    const currentUser = harness.prisma.messages.find(
+      message => message.content === '问题',
+    )!
+    const contents = (harness.llmCalls[0]?.messages ?? [])
+      .filter(item => item.type === 'message')
+      .map(item => item.content)
+
+    assert.equal(currentUser.id, 'message-6')
+    assert.deepEqual(contents, ['past-user', 'same-time-before', '问题'])
+    assert.equal(contents.filter(content => content === '问题').length, 1)
+    assert.deepEqual(harness.prisma.findManyArguments[0]?.where.AND, [{
+      OR: [
+        { createdAt: { lt: currentCreatedAt } },
+        { createdAt: currentCreatedAt, id: { lt: 'message-6' } },
+      ],
+    }])
+  })
+
   it('createdAt 相同时使用 id keyset 稳定读取下一批', async () => {
     const harness = createHarness(() => toModelStream([
       { type: 'response_completed', finishReason: 'stop' },
@@ -259,7 +330,11 @@ describe('AgentRuntimeService model stream', () => {
     await collectEvents(harness.run())
 
     assert.equal(harness.prisma.findManyArguments.length, 2)
-    assert.deepEqual(harness.prisma.findManyArguments[1]?.where.OR, [
+    assert.deepEqual(
+      harness.prisma.findManyArguments[1]?.where.AND[0],
+      harness.prisma.findManyArguments[0]?.where.AND[0],
+    )
+    assert.deepEqual(harness.prisma.findManyArguments[1]?.where.AND[1]?.OR, [
       { createdAt: { lt: createdAt } },
       { createdAt, id: { lt: 'history-011' } },
     ])
@@ -267,10 +342,10 @@ describe('AgentRuntimeService model stream', () => {
       .filter(item => item.type === 'message')
       .map(item => item.content)
 
-    assert.equal(contents.length, 61)
-    assert.equal(contents[0], '历史消息 1')
-    assert.equal(contents.at(-2), '历史消息 60')
-    assert.equal(contents.at(-1), '问题')
+    assert.deepEqual(contents, [
+      ...Array.from({ length: 60 }, (_, index) => `历史消息 ${index + 1}`),
+      '问题',
+    ])
   })
 
   it('mandatory Context 超预算时不调用 Provider', async () => {
@@ -1875,6 +1950,7 @@ class FakePrismaService {
   readonly findManyArguments: FakeMessageFindManyArguments[] = []
   conversationExists = true
   deadlineTransactionError: unknown
+  nextMessageCreatedAt: Date | undefined
 
   readonly conversation = {
     findUnique: async () => this.conversationExists
@@ -1887,7 +1963,7 @@ class FakePrismaService {
     create: async ({ data }: {
       data: Pick<Message, 'conversationId' | 'role' | 'content'> & Partial<Pick<Message, 'status'>>
     }): Promise<Message> => {
-      const now = new Date()
+      const now = this.nextMessageCreatedAt ?? new Date()
       const message: Message = {
         id: `message-${this.messages.length + 1}`,
         conversationId: data.conversationId,
@@ -1910,8 +1986,7 @@ class FakePrismaService {
         .filter(message =>
           message.conversationId === arguments_.where.conversationId
           && message.status === arguments_.where.status
-          && message.id !== arguments_.where.id.not
-          && matchesHistoryCursor(message, arguments_.where.OR))
+          && matchesHistoryBounds(message, arguments_.where.AND))
         .sort((left, right) =>
           right.createdAt.getTime() - left.createdAt.getTime()
           || right.id.localeCompare(left.id))
@@ -2000,13 +2075,14 @@ class FakePrismaService {
   seedMessage(input: {
     id: string
     content: string
+    role?: Message['role']
     status: Message['status']
     createdAt: Date
   }): void {
     this.messages.push({
       id: input.id,
       conversationId: 'conversation-1',
-      role: MessageRole.USER,
+      role: input.role ?? MessageRole.USER,
       content: input.content,
       status: input.status,
       createdAt: input.createdAt,
@@ -2019,28 +2095,30 @@ interface FakeMessageFindManyArguments {
   where: {
     conversationId: string
     status: Message['status']
-    id: { not: string }
-    OR?: [
-      { createdAt: { lt: Date } },
-      { createdAt: Date, id: { lt: string } },
-    ]
+    AND: FakeStrictBeforeWhere[]
   }
   orderBy: Array<{ createdAt: 'desc' } | { id: 'desc' }>
   take: number
 }
 
-function matchesHistoryCursor(
+interface FakeStrictBeforeWhere {
+  OR: [
+    { createdAt: { lt: Date } },
+    { createdAt: Date, id: { lt: string } },
+  ]
+}
+
+function matchesHistoryBounds(
   message: Message,
-  cursorWhere: FakeMessageFindManyArguments['where']['OR'],
+  bounds: FakeStrictBeforeWhere[],
 ): boolean {
-  if (!cursorWhere)
-    return true
+  return bounds.every(({ OR }) => {
+    const boundDate = OR[0].createdAt.lt
 
-  const cursorDate = cursorWhere[0].createdAt.lt
-
-  return message.createdAt < cursorDate
-    || (message.createdAt.getTime() === cursorDate.getTime()
-      && message.id < cursorWhere[1].id.lt)
+    return message.createdAt < boundDate
+      || (message.createdAt.getTime() === boundDate.getTime()
+        && message.id < OR[1].id.lt)
+  })
 }
 
 class TestTokenEstimator extends TokenEstimator {

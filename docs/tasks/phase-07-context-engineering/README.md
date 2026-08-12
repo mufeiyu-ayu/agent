@@ -248,9 +248,9 @@ Task 0 是结构基线，不负责优化 History 数量，也不实现 token-bud
 
 | 命令 | 结果 |
 | --- | --- |
-| `pnpm --filter @agent/api test:context` | 通过，8 tests |
-| `pnpm --filter @agent/api test:tool-loop` | 通过，45 tests |
-| `pnpm --filter @agent/api test:model-stream` | 通过，58 tests |
+| `pnpm --filter @agent/api test:context` | 通过，9 tests |
+| `pnpm --filter @agent/api test:tool-loop` | 通过，46 tests |
+| `pnpm --filter @agent/api test:model-stream` | 通过，59 tests |
 | `pnpm --filter @agent/api test:seo-service` | 通过，10 tests |
 | `pnpm --filter @agent/api test:llm-config` | 通过，17 tests |
 | `pnpm --filter @agent/api test:admin-runs` | 通过，15 tests |

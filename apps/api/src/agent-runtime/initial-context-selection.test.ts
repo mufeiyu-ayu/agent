@@ -6,6 +6,7 @@ import { describe, it } from 'node:test'
 import {
   ContextBudgetExceededError,
 } from './agent-runtime.errors.js'
+import { DEFAULT_AGENT_RUNTIME_POLICY } from './agent-runtime.policy.js'
 import { TokenEstimator } from './deepseek-v4-token-estimator.js'
 import {
   InitialContextSelectionService,
@@ -130,8 +131,12 @@ describe('InitialContextSelectionService', () => {
 
   it('达到 candidate hard limit 时停止并标记 candidate_cap', async () => {
     const candidates = Array.from(
-      { length: 6 },
-      (_, index) => createCandidate(`message-${6 - index}`, 'x', 6 - index),
+      { length: 101 },
+      (_, index) => createCandidate(
+        `message-${101 - index}`,
+        'x',
+        101 - index,
+      ),
     )
     const takes: number[] = []
     const selection = await new InitialContextSelectionService(
@@ -140,8 +145,8 @@ describe('InitialContextSelectionService', () => {
       resolvedModel: 'deepseek-v4-flash',
       contextWindowTokens: 1_000_000,
       resolvedMaxOutputTokens: 65_536,
-      candidateBatchSize: 2,
-      candidateHardLimit: 4,
+      candidateBatchSize: 50,
+      candidateHardLimit: 100,
       currentUserMessage: { role: 'user', content: 'current' },
       tools: [],
       buildModelMessages: messages => messages,
@@ -156,10 +161,49 @@ describe('InitialContextSelectionService', () => {
       assertAvailable: () => {},
     })
 
-    assert.deepEqual(takes, [2, 2])
-    assert.equal(selection.historyMessages.length, 4)
-    assert.equal(selection.summary.historyCandidateCount, 4)
+    assert.deepEqual(takes, [50, 50])
+    assert.equal(selection.historyMessages.length, 100)
+    assert.equal(selection.summary.historyCandidateCount, 100)
     assert.equal(selection.summary.excludedReason, 'candidate_cap')
+  })
+
+  it('默认最坏合法分页配置把 full-request estimate 限制在 28 次内', async () => {
+    const estimator = new BoundedFullRequestEstimator(975)
+    const candidates = Array.from(
+      { length: DEFAULT_AGENT_RUNTIME_POLICY.historyCandidateHardLimit },
+      (_, index) => createCandidate(
+        `message-${1_000 - index}`,
+        'x',
+        1_000 - index,
+      ),
+    )
+    const requestedTakes: number[] = []
+    const selection = await new InitialContextSelectionService(estimator).select({
+      resolvedModel: 'deepseek-v4-flash',
+      contextWindowTokens: 1_000_000,
+      resolvedMaxOutputTokens: 65_536,
+      candidateBatchSize:
+        DEFAULT_AGENT_RUNTIME_POLICY.historyCandidateBatchSize,
+      candidateHardLimit:
+        DEFAULT_AGENT_RUNTIME_POLICY.historyCandidateHardLimit,
+      currentUserMessage: { role: 'user', content: 'current' },
+      tools: [],
+      buildModelMessages: messages => messages,
+      loadCandidates: ({ cursor, take }) => {
+        requestedTakes.push(take)
+        const start = cursor
+          ? candidates.findIndex(candidate => candidate.id === cursor.id) + 1
+          : 0
+
+        return Promise.resolve(candidates.slice(start, start + take))
+      },
+      assertAvailable: () => {},
+    })
+
+    assert.equal(requestedTakes.length, 20)
+    assert.equal(selection.historyMessages.length, 974)
+    assert.equal(selection.summary.excludedReason, 'budget')
+    assert.ok(estimator.callCount <= 28)
   })
 
   it('较小 model window 或较大 output reserve 会选择更少 History', async () => {
@@ -234,6 +278,20 @@ class CharacterTokenEstimator extends TokenEstimator {
       (total, message) => total + message.content.length + 1,
       input.tools.length,
     )
+  }
+}
+
+class BoundedFullRequestEstimator extends TokenEstimator {
+  readonly strategyId = 'test-bounded-full-request'
+  callCount = 0
+
+  constructor(private readonly maximumMessageCount: number) {
+    super()
+  }
+
+  estimateInitialRequest(input: TokenEstimatorInput): number {
+    this.callCount += 1
+    return input.messages.length <= this.maximumMessageCount ? 1 : 300_000
   }
 }
 
