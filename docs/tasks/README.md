@@ -6,8 +6,8 @@
 
 | 区域 | 状态 | 文档 | 说明 |
 | --- | --- | --- | --- |
-| Agent 主线 | **Phase 7 Active / Task 1 Active** | [roadmap.md](../roadmap.md) | Task 0 已 Completed；Task 1 / Issue #42 / Draft PR #43 已实现，待验收 |
-| Phase 7：Context Engineering | **Active** | [phase-07-context-engineering/README.md](./phase-07-context-engineering/README.md) | Task 0 Completed；Task 1 Active；Task 2-3 Planned；Compaction 为 Gated follow-up |
+| Agent 主线 | **Phase 7 Active / Task 2 Next** | [roadmap.md](../roadmap.md) | Task 0-1 已 Completed；Task 2 为 Next，Issue 尚未创建 |
+| Phase 7：Context Engineering | **Active** | [phase-07-context-engineering/README.md](./phase-07-context-engineering/README.md) | Task 0-1 Completed；Task 2 Next；Task 3 Planned；Compaction 为 Gated follow-up |
 | 阶段 6：有界单 Agent Loop | Completed | [completed/phase-06-bounded-agent-loop.md](./completed/phase-06-bounded-agent-loop.md) | Task 0、横向配置治理、Task 1、Task 2 均已验收并合并 |
 | Admin Console Task 0-1 | Completed | [admin-console.md](./admin-console.md) | 基础壳与静态 Run UI 已完成 |
 | Admin Console Task 2 | **Completed** | [task-02-run-query-api.md](./admin-console/task-02-run-query-api.md) | Issue #33 / PR #34；merge `997d6b84` |
@@ -24,30 +24,29 @@
 ```text
 阶段 1-6：Completed
 阶段 7：Context Engineering / Active
-Task 0：Context Boundary & Snapshot / Completed
-Issue #40：Closed
-PR #41：Merged / 415e866a
-当前：Task 1 / Model-aware Budget & Dynamic History / Active
-Issue #42 / Draft PR #43：已实现，待验收
+Task 0：Context Boundary & Snapshot / Completed / #40 / #41 / 415e866a
+Task 1：Model-aware Budget & Dynamic History / Completed / #42 / #43 / 6df72f0
+当前 Active Agent Task：无
+下一任务：Task 2 / Loop-aware Context & Observation Governance / Next / Issue 未创建
 ```
 
-Task 0 已由 GPT 基于 Issue #40、PR #41 最新实现、Codex Review 和验证结果完成技术验收，并由用户明确确认通过。PR #41 已合入 `master`，Issue #40 已关闭，因此 Task 0 当前正式状态为 `Completed`。
+Task 0 已由 GPT 基于 Issue #40、PR #41 最新实现、Codex Review 和验证结果完成技术验收，并由用户明确确认通过。PR #41 已合入 `master`，Issue #40 已关闭。
 
-Task 1 已按 Issue #42 通过 Clarification Gate 并完成实现，当前状态为 `Active / 已实现 / 待验收`。未经过 GPT 技术验收与用户确认，不得标记 Completed。
+Task 1 已由 GPT 基于 Issue #42、PR #43 最新 head `620a2d0`、两轮 Codex Review 与完整验证结果完成技术验收；用户于 2026-08-12 明确确认验收并授权收口。PR #43 已合入 `master`，merge commit `6df72f02242a1b8a23920d64c471ce721ccf558b`，Issue #42 已关闭，因此 Task 1 正式状态为 `Completed`。
 
 ## Phase 7 当前任务
 
 | Task | 状态 | 核心边界 |
 | --- | --- | --- |
 | Task 0：Context Boundary & Snapshot | **Completed / #40 / #41 / merge 415e866a** | 收敛 model input assembly；建立安全 Context Snapshot；不改变 40 条 History 与现有 Observation 行为 |
-| Task 1：Model-aware Budget & Dynamic History | **Active / #42 / Draft PR #43 / 已实现，待验收** | 让 `contextWindowTokens` 进入真实预算；History 从固定条数升级为 token-budget 驱动 |
-| Task 2：Loop-aware Context & Observation Governance | Planned | 多轮 Tool Loop 的 Context Budget、Tool Call / Result pairing 与 Observation 最终裁剪 |
+| Task 1：Model-aware Budget & Dynamic History | **Completed / #42 / #43 / merge 6df72f0** | 让 `contextWindowTokens` 进入真实预算；History 从固定条数升级为 token-budget 驱动 |
+| Task 2：Loop-aware Context & Observation Governance | **Next / Issue 未创建** | 多轮 Tool Loop 的 Context Budget、Tool Call / Result pairing 与 Observation 最终裁剪 |
 | Task 3：Context Inspector & Phase Baseline | Planned | 安全 Context summary + Admin Inspector + 阶段回归 |
 | Minimal Compaction | Gated | 只有 Task 1-3 的真实证据证明需要时才另建正式 Task / Issue |
 
 阶段完整规格见 [`phase-07-context-engineering/README.md`](./phase-07-context-engineering/README.md)。
 
-下一动作是按 Issue #42 与 Draft PR #43 执行技术验收；Task 2 仍保持 Planned。
+下一动作是继续学习和讨论 Task 2，并在边界确认后创建独立 Issue；没有 Issue + Clarification Gate `READY` 前不得进入实现或标记 Active。
 
 ## Admin Console 当前状态
 
