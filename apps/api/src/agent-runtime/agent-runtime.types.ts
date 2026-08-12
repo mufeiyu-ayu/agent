@@ -54,7 +54,6 @@ export interface RunTurnStreamInput {
   userContent: string
   model?: string
   signal?: AbortSignal
-  historyLimit?: number
   temperature: number
   maxTokens?: number
   buildModelMessages: (historyMessages: ChatMessage[]) => ChatMessage[]

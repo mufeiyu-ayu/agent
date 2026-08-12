@@ -25,6 +25,7 @@ import type {
   AgentRuntimePolicyService,
 } from './agent-runtime.policy.js'
 import type { AgentRuntimeEvent } from './agent-runtime.types.js'
+import type { TokenEstimatorInput } from './deepseek-v4-token-estimator.js'
 import assert from 'node:assert/strict'
 // 项目本轮使用 Node 原生测试运行器，不引入 Vitest。
 // eslint-disable-next-line test/no-import-node-test
@@ -44,6 +45,8 @@ import { buildSeoAgentChatMessages } from '../seo/prompts/seo-agent.prompt.js'
 import { toChatStreamEvent } from '../seo/seo-chat-stream-event.mapper.js'
 import { AgentRunTerminalizationError } from './agent-runtime.errors.js'
 import { AgentRuntimeService } from './agent-runtime.service.js'
+import { TokenEstimator } from './deepseek-v4-token-estimator.js'
+import { InitialContextSelectionService } from './initial-context-selection.js'
 import { ModelContext } from './model-context.js'
 
 describe('AgentRuntimeService model stream', () => {
@@ -77,6 +80,8 @@ describe('AgentRuntimeService model stream', () => {
       harness.llmCalls[0]?.options?.tools?.map(tool => tool.name),
       ['search_articles', 'get_article_detail'],
     )
+    assert.equal(harness.llmCalls[0]?.options?.model, 'deepseek-v4-flash')
+    assert.equal(harness.llmCalls[0]?.options?.maxTokens, 65_536)
     assert.deepEqual(harness.recorder.steps.map(step => step.type), [
       'receive_user_message',
       'load_conversation_history',
@@ -88,13 +93,23 @@ describe('AgentRuntimeService model stream', () => {
       harness.recorder.steps.map(step => step.status),
       Array.from({ length: 4 }).fill(AgentStepStatus.COMPLETED),
     )
-    assert.deepEqual(harness.recorder.steps[2]?.input, {
+    const {
+      initialContext,
+      ...samplingInput
+    } = harness.recorder.steps[2]?.input as Record<string, unknown>
+
+    assert.deepEqual(samplingInput, {
       samplingIndex: 1,
       samplingAttemptId: 'run-1:sampling-1',
       requestedModel: null,
       messageCount: 1,
       toolCount: 2,
     })
+    assert.equal(
+      (initialContext as Record<string, unknown>).resolvedInputBudgetTokens,
+      262_144,
+    )
+    assert.doesNotMatch(JSON.stringify(initialContext), /问题|search_articles/)
     assert.deepEqual(
       withoutDuration(harness.recorder.steps[2]?.output),
       {
@@ -165,7 +180,7 @@ describe('AgentRuntimeService model stream', () => {
     assert.equal(harness.llmCalls.length, 0)
   })
 
-  it('只加载最近 40 条 COMPLETED 历史，保持稳定顺序且当前输入恰好一次', async () => {
+  it('分页加载 previous COMPLETED 历史，允许超过 40 条且当前输入恰好一次', async () => {
     const harness = createHarness(() => toModelStream([
       { type: 'response_completed', finishReason: 'stop' },
     ]))
@@ -194,25 +209,38 @@ describe('AgentRuntimeService model stream', () => {
 
     await collectEvents(harness.run())
 
+    const currentUser = harness.prisma.messages.find(
+      message => message.content === '问题',
+    )!
+
     assert.deepEqual(harness.prisma.findManyArguments, [{
       where: {
         conversationId: 'conversation-1',
         status: MessageStatus.COMPLETED,
+        AND: [{
+          OR: [
+            { createdAt: { lt: currentUser.createdAt } },
+            {
+              createdAt: currentUser.createdAt,
+              id: { lt: currentUser.id },
+            },
+          ],
+        }],
       },
       orderBy: [
         { createdAt: 'desc' },
         { id: 'desc' },
       ],
-      take: 40,
+      take: 50,
     }])
     const firstSamplingMessages = harness.llmCalls[0]?.messages ?? []
     const contents = firstSamplingMessages
       .filter(item => item.type === 'message')
       .map(item => item.content)
 
-    assert.equal(contents.length, 40)
+    assert.equal(contents.length, 46)
     assert.equal(contents.filter(content => content === '问题').length, 1)
-    assert.equal(contents[0], '历史消息 7')
+    assert.equal(contents[0], '历史消息 1')
     assert.equal(contents.at(-1), '问题')
     assert.equal(
       contents.some(content => content.startsWith('不应进入模型历史')),
@@ -221,7 +249,126 @@ describe('AgentRuntimeService model stream', () => {
     assert.equal(
       findStep(harness, 'load_conversation_history')?.input
       && (findStep(harness, 'load_conversation_history')?.input as Record<string, unknown>).limit,
-      40,
+      1_000,
+    )
+  })
+
+  it('只加载严格早于当前 User 上界的 History', async () => {
+    const harness = createHarness(() => toModelStream([
+      { type: 'response_completed', finishReason: 'stop' },
+    ]))
+    const currentCreatedAt = new Date('2030-01-01T00:00:00.000Z')
+
+    harness.prisma.nextMessageCreatedAt = currentCreatedAt
+    harness.prisma.seedMessage({
+      id: 'history-past',
+      content: 'past-user',
+      status: MessageStatus.COMPLETED,
+      createdAt: new Date('2029-12-31T23:59:59.000Z'),
+    })
+    harness.prisma.seedMessage({
+      id: 'message-000',
+      content: 'same-time-before',
+      status: MessageStatus.COMPLETED,
+      createdAt: currentCreatedAt,
+    })
+    harness.prisma.seedMessage({
+      id: 'message-zzz',
+      content: 'same-time-after',
+      status: MessageStatus.COMPLETED,
+      createdAt: currentCreatedAt,
+    })
+    harness.prisma.seedMessage({
+      id: 'future-user',
+      content: 'future-user',
+      status: MessageStatus.COMPLETED,
+      createdAt: new Date('2030-01-01T00:00:01.000Z'),
+    })
+    harness.prisma.seedMessage({
+      id: 'future-assistant',
+      content: 'future-assistant',
+      role: MessageRole.ASSISTANT,
+      status: MessageStatus.COMPLETED,
+      createdAt: new Date('2030-01-01T00:00:02.000Z'),
+    })
+
+    await collectEvents(harness.run())
+
+    const currentUser = harness.prisma.messages.find(
+      message => message.content === '问题',
+    )!
+    const contents = (harness.llmCalls[0]?.messages ?? [])
+      .filter(item => item.type === 'message')
+      .map(item => item.content)
+
+    assert.equal(currentUser.id, 'message-6')
+    assert.deepEqual(contents, ['past-user', 'same-time-before', '问题'])
+    assert.equal(contents.filter(content => content === '问题').length, 1)
+    assert.deepEqual(harness.prisma.findManyArguments[0]?.where.AND, [{
+      OR: [
+        { createdAt: { lt: currentCreatedAt } },
+        { createdAt: currentCreatedAt, id: { lt: 'message-6' } },
+      ],
+    }])
+  })
+
+  it('createdAt 相同时使用 id keyset 稳定读取下一批', async () => {
+    const harness = createHarness(() => toModelStream([
+      { type: 'response_completed', finishReason: 'stop' },
+    ]))
+    const createdAt = new Date('2026-01-01T00:00:00.000Z')
+
+    for (let index = 1; index <= 60; index += 1) {
+      harness.prisma.seedMessage({
+        id: `history-${String(index).padStart(3, '0')}`,
+        content: `历史消息 ${index}`,
+        status: MessageStatus.COMPLETED,
+        createdAt,
+      })
+    }
+
+    await collectEvents(harness.run())
+
+    assert.equal(harness.prisma.findManyArguments.length, 2)
+    assert.deepEqual(
+      harness.prisma.findManyArguments[1]?.where.AND[0],
+      harness.prisma.findManyArguments[0]?.where.AND[0],
+    )
+    assert.deepEqual(harness.prisma.findManyArguments[1]?.where.AND[1]?.OR, [
+      { createdAt: { lt: createdAt } },
+      { createdAt, id: { lt: 'history-011' } },
+    ])
+    const contents = (harness.llmCalls[0]?.messages ?? [])
+      .filter(item => item.type === 'message')
+      .map(item => item.content)
+
+    assert.deepEqual(contents, [
+      ...Array.from({ length: 60 }, (_, index) => `历史消息 ${index + 1}`),
+      '问题',
+    ])
+  })
+
+  it('mandatory Context 超预算时不调用 Provider', async () => {
+    const harness = createHarness(
+      () => toModelStream([{ type: 'response_completed', finishReason: 'stop' }]),
+      undefined,
+      undefined,
+      {},
+      new OverflowTokenEstimator(),
+    )
+
+    const events = await collectEvents(harness.run())
+
+    assert.deepEqual(events.map(event => event.type), ['run_failed'])
+    assert.equal(events[0]?.type, 'run_failed')
+    if (events[0]?.type !== 'run_failed')
+      assert.fail('expected run_failed')
+    assert.match(events[0].message, /Mandatory Context/)
+    assert.equal(harness.llmCalls.length, 0)
+    assert.equal(harness.assistantMessage(), undefined)
+    assert.equal(
+      findStep(harness, 'load_conversation_history')?.status,
+      AgentStepStatus.FAILED,
     )
   })
 
@@ -368,7 +515,11 @@ describe('AgentRuntimeService model stream', () => {
       step => step.type === 'model_sampling',
     )
     assert.notEqual(samplingSteps[0]?.id, samplingSteps[1]?.id)
-    assert.deepEqual(samplingSteps.map(step => step.input), [
+    assert.deepEqual(samplingSteps.map((step) => {
+      const { initialContext: _, ...input } = step.input as Record<string, unknown>
+
+      return input
+    }), [
       {
         samplingIndex: 1,
         samplingAttemptId: 'run-1:sampling-1',
@@ -1708,6 +1859,7 @@ function createHarness(
   signal?: AbortSignal,
   invokeTool: InvokeTool = async () => successfulToolResult,
   policy: Partial<AgentRuntimePolicy> = {},
+  tokenEstimator: TokenEstimator = new TestTokenEstimator(),
 ) {
   const prisma = new FakePrismaService()
   const recorder = new FakeAgentRunRecorderService(prisma)
@@ -1716,6 +1868,10 @@ function createHarness(
     options: ChatStreamOptions | undefined
   }> = []
   const llmService = {
+    resolveChatRequestConfig: (options?: { model?: string, maxTokens?: number }) => ({
+      model: options?.model ?? 'deepseek-v4-flash',
+      maxOutputTokens: options?.maxTokens ?? 65_536,
+    }),
     chatStream: (messages: ModelInputItem[], options?: ChatStreamOptions) => {
       const callIndex = llmCalls.length
 
@@ -1737,13 +1893,15 @@ function createHarness(
     toolInvocationService as unknown as ToolInvocationService,
     {
       value: {
-        historyLimit: 40,
+        historyCandidateBatchSize: 50,
+        historyCandidateHardLimit: 1_000,
         maxSamplingRounds: 3,
         maxToolCalls: 2,
         runDeadlineMs: 600_000,
         ...policy,
       },
     } as AgentRuntimePolicyService,
+    new InitialContextSelectionService(tokenEstimator),
   )
 
   return {
@@ -1792,6 +1950,7 @@ class FakePrismaService {
   readonly findManyArguments: FakeMessageFindManyArguments[] = []
   conversationExists = true
   deadlineTransactionError: unknown
+  nextMessageCreatedAt: Date | undefined
 
   readonly conversation = {
     findUnique: async () => this.conversationExists
@@ -1804,7 +1963,7 @@ class FakePrismaService {
     create: async ({ data }: {
       data: Pick<Message, 'conversationId' | 'role' | 'content'> & Partial<Pick<Message, 'status'>>
     }): Promise<Message> => {
-      const now = new Date()
+      const now = this.nextMessageCreatedAt ?? new Date()
       const message: Message = {
         id: `message-${this.messages.length + 1}`,
         conversationId: data.conversationId,
@@ -1826,7 +1985,8 @@ class FakePrismaService {
       return this.messages
         .filter(message =>
           message.conversationId === arguments_.where.conversationId
-          && message.status === arguments_.where.status)
+          && message.status === arguments_.where.status
+          && matchesHistoryBounds(message, arguments_.where.AND))
         .sort((left, right) =>
           right.createdAt.getTime() - left.createdAt.getTime()
           || right.id.localeCompare(left.id))
@@ -1915,13 +2075,14 @@ class FakePrismaService {
   seedMessage(input: {
     id: string
     content: string
+    role?: Message['role']
     status: Message['status']
     createdAt: Date
   }): void {
     this.messages.push({
       id: input.id,
       conversationId: 'conversation-1',
-      role: MessageRole.USER,
+      role: input.role ?? MessageRole.USER,
       content: input.content,
       status: input.status,
       createdAt: input.createdAt,
@@ -1934,9 +2095,49 @@ interface FakeMessageFindManyArguments {
   where: {
     conversationId: string
     status: Message['status']
+    AND: FakeStrictBeforeWhere[]
   }
   orderBy: Array<{ createdAt: 'desc' } | { id: 'desc' }>
   take: number
+}
+
+interface FakeStrictBeforeWhere {
+  OR: [
+    { createdAt: { lt: Date } },
+    { createdAt: Date, id: { lt: string } },
+  ]
+}
+
+function matchesHistoryBounds(
+  message: Message,
+  bounds: FakeStrictBeforeWhere[],
+): boolean {
+  return bounds.every(({ OR }) => {
+    const boundDate = OR[0].createdAt.lt
+
+    return message.createdAt < boundDate
+      || (message.createdAt.getTime() === boundDate.getTime()
+        && message.id < OR[1].id.lt)
+  })
+}
+
+class TestTokenEstimator extends TokenEstimator {
+  readonly strategyId = 'test-token-estimator'
+
+  estimateInitialRequest(input: TokenEstimatorInput): number {
+    return input.messages.reduce(
+      (tokens, message) => tokens + [...message.content].length + 1,
+      input.tools.length,
+    )
+  }
+}
+
+class OverflowTokenEstimator extends TokenEstimator {
+  readonly strategyId = 'test-overflow'
+
+  estimateInitialRequest(_input: TokenEstimatorInput): number {
+    return 300_000
+  }
 }
 
 class FakeAgentRunRecorderService {

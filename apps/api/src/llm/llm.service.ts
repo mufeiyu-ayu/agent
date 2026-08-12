@@ -1,3 +1,4 @@
+import type { ChatRequestConfig } from './llm-runtime-config.js'
 import type {
   ChatMessage,
   ChatOptions,
@@ -10,6 +11,10 @@ import type { ModelStreamEvent } from './model-stream.types.js'
 import { Inject, Injectable } from '@nestjs/common'
 
 import { OpenAICompatibleClient } from './clients/openai-compatible.client.js'
+import {
+  LLMRuntimeConfigService,
+  resolveChatRequestConfig,
+} from './llm-runtime-config.js'
 
 /** LLMService 是业务门面；具体模型 SDK 和协议适配放在 client 层。 */
 @Injectable()
@@ -17,7 +22,14 @@ export class LLMService {
   constructor(
     @Inject(OpenAICompatibleClient)
     private readonly llmClient: OpenAICompatibleClient,
+
+    @Inject(LLMRuntimeConfigService)
+    private readonly runtimeConfigService: LLMRuntimeConfigService,
   ) {}
+
+  resolveChatRequestConfig(options?: ChatOptions): ChatRequestConfig {
+    return resolveChatRequestConfig(this.runtimeConfigService.value, options)
+  }
 
   async listModels(): Promise<DeepSeekModelsResponse> {
     return await this.llmClient.listModels()

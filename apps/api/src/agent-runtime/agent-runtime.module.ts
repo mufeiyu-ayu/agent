@@ -5,11 +5,22 @@ import { ToolsModule } from '../tools/tools.module.js'
 import { AgentRunRecorderService } from './agent-run-recorder.service.js'
 import { AgentRuntimePolicyService } from './agent-runtime.policy.js'
 import { AgentRuntimeService } from './agent-runtime.service.js'
+import {
+  DeepSeekV4TokenEstimator,
+  TokenEstimator,
+} from './deepseek-v4-token-estimator.js'
+import { InitialContextSelectionService } from './initial-context-selection.js'
 
 @Module({
   imports: [PrismaModule, ToolsModule],
   providers: [
     AgentRuntimePolicyService,
+    DeepSeekV4TokenEstimator,
+    {
+      provide: TokenEstimator,
+      useExisting: DeepSeekV4TokenEstimator,
+    },
+    InitialContextSelectionService,
     AgentRunRecorderService,
     AgentRuntimeService,
   ],

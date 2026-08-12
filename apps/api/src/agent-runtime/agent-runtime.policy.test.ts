@@ -9,10 +9,11 @@ import {
 } from './agent-runtime.policy.js'
 
 describe('resolveAgentRuntimePolicy', () => {
-  it('缺省时使用 40 条历史、3 轮 sampling、2 次工具和 600 秒 Run deadline', () => {
+  it('缺省时使用 50/1000 candidate policy、3 轮 sampling、2 次工具和 600 秒 Run deadline', () => {
     assert.deepEqual(resolveAgentRuntimePolicy({}), DEFAULT_AGENT_RUNTIME_POLICY)
     assert.deepEqual(DEFAULT_AGENT_RUNTIME_POLICY, {
-      historyLimit: 40,
+      historyCandidateBatchSize: 50,
+      historyCandidateHardLimit: 1_000,
       maxSamplingRounds: 3,
       maxToolCalls: 2,
       runDeadlineMs: 600_000,
@@ -21,12 +22,14 @@ describe('resolveAgentRuntimePolicy', () => {
 
   it('接受合法覆盖和零次工具调用', () => {
     assert.deepEqual(resolveAgentRuntimePolicy({
-      SEO_CHAT_HISTORY_LIMIT: '1000',
+      SEO_CHAT_HISTORY_CANDIDATE_BATCH_SIZE: '100',
+      SEO_CHAT_HISTORY_CANDIDATE_HARD_LIMIT: '500',
       AGENT_MAX_SAMPLING_ROUNDS: '4',
       AGENT_MAX_TOOL_CALLS: '3',
       AGENT_RUN_DEADLINE_MS: '2147483647',
     }), {
-      historyLimit: 1_000,
+      historyCandidateBatchSize: 100,
+      historyCandidateHardLimit: 500,
       maxSamplingRounds: 4,
       maxToolCalls: 3,
       runDeadlineMs: 2_147_483_647,
@@ -35,7 +38,8 @@ describe('resolveAgentRuntimePolicy', () => {
       AGENT_MAX_SAMPLING_ROUNDS: '1',
       AGENT_MAX_TOOL_CALLS: '0',
     }), {
-      historyLimit: 40,
+      historyCandidateBatchSize: 50,
+      historyCandidateHardLimit: 1_000,
       maxSamplingRounds: 1,
       maxToolCalls: 0,
       runDeadlineMs: 600_000,
@@ -44,7 +48,8 @@ describe('resolveAgentRuntimePolicy', () => {
 
   it('拒绝非法十进制整数、非安全整数和超出计时器范围的 deadline', () => {
     const invalidValuesByName = {
-      SEO_CHAT_HISTORY_LIMIT: ['', '0', '-1', '1.5', '1e2', 'NaN', 'Infinity', '1001'],
+      SEO_CHAT_HISTORY_CANDIDATE_BATCH_SIZE: ['', '0', '1', '49', '-1', '1.5', '1e2', 'NaN', 'Infinity', '1001'],
+      SEO_CHAT_HISTORY_CANDIDATE_HARD_LIMIT: ['', '0', '1', '49', '-1', '1.5', '1e2', 'NaN', 'Infinity', '1001'],
       AGENT_MAX_SAMPLING_ROUNDS: ['', '0', '-1', '1.5', '1e2', 'NaN', 'Infinity', '9007199254740992'],
       AGENT_MAX_TOOL_CALLS: ['', '-1', '1.5', '1e2', 'NaN', 'Infinity', '9007199254740992'],
       AGENT_RUN_DEADLINE_MS: ['', '0', '-1', '1.5', '1e2', 'NaN', 'Infinity', '2147483648'],
@@ -79,5 +84,24 @@ describe('resolveAgentRuntimePolicy', () => {
           && error.message.includes('AGENT_MAX_SAMPLING_ROUNDS'),
       )
     }
+  })
+
+  it('要求 candidate batch size 不大于 hard limit', () => {
+    assert.throws(
+      () => resolveAgentRuntimePolicy({
+        SEO_CHAT_HISTORY_CANDIDATE_BATCH_SIZE: '51',
+        SEO_CHAT_HISTORY_CANDIDATE_HARD_LIMIT: '50',
+      }),
+      error => error instanceof AgentRuntimePolicyError
+        && error.message.includes('SEO_CHAT_HISTORY_CANDIDATE_BATCH_SIZE')
+        && error.message.includes('SEO_CHAT_HISTORY_CANDIDATE_HARD_LIMIT'),
+    )
+  })
+
+  it('旧 SEO_CHAT_HISTORY_LIMIT 不再参与 candidate 或最终选择配置', () => {
+    assert.deepEqual(
+      resolveAgentRuntimePolicy({ SEO_CHAT_HISTORY_LIMIT: '1' }),
+      DEFAULT_AGENT_RUNTIME_POLICY,
+    )
   })
 })

@@ -11,14 +11,16 @@ import type {
   AgentRuntimeEvent,
   RunTurnStreamInput,
 } from './agent-runtime.types.js'
+import type { HistoryCursor } from './initial-context-selection.js'
 import type {
   ModelSamplingSummary,
   SamplingDecision,
 } from './model-sampling-decision.js'
-import { Inject, Injectable, NotFoundException } from '@nestjs/common'
 
+import { Inject, Injectable, NotFoundException } from '@nestjs/common'
 import { MessageRole, MessageStatus } from '../generated/prisma/client.js'
 import { LLMService } from '../llm/llm.service.js'
+import { getModelProfile } from '../llm/model-profiles.js'
 import {
   DatabaseCommitOutcomeUnknownError,
   DatabaseOperationDeadlineExceededError,
@@ -39,9 +41,14 @@ import {
   AgentLoopLimitExceededError,
   AgentRunDeadlineExceededError,
   AgentRunTerminalizationError,
+  ContextBudgetExceededError,
+  ContextTokenEstimationError,
   ModelSamplingIncompleteError,
 } from './agent-runtime.errors.js'
 import { AgentRuntimePolicyService } from './agent-runtime.policy.js'
+import {
+  InitialContextSelectionService,
+} from './initial-context-selection.js'
 import { ModelContext } from './model-context.js'
 import { streamModelSampling } from './model-sampling-decision.js'
 
@@ -94,6 +101,9 @@ export class AgentRuntimeService {
 
     @Inject(AgentRuntimePolicyService)
     private readonly runtimePolicyService: AgentRuntimePolicyService,
+
+    @Inject(InitialContextSelectionService)
+    private readonly initialContextSelectionService: InitialContextSelectionService,
   ) {}
 
   async* runTurnStream(input: RunTurnStreamInput): AsyncGenerator<AgentRuntimeEvent> {
@@ -142,35 +152,6 @@ export class AgentRuntimeService {
         databaseDeadline,
       )
 
-      const historyLimit = input.historyLimit
-        ?? runtimePolicy.historyLimit
-      const loadHistoryStep = await this.agentRunRecorderService.startStep({
-        runId: currentAgentRunId,
-        type: AGENT_STEP_TYPES.loadConversationHistory,
-        input: {
-          limit: historyLimit,
-        },
-      }, databaseDeadline)
-
-      const historyMessages = await this.listRecentChatMessages(
-        input.conversationId,
-        historyLimit,
-        databaseDeadline,
-      )
-      await this.agentRunRecorderService.completeStep(
-        loadHistoryStep.id,
-        databaseDeadline,
-        {
-          output: {
-            messageCount: historyMessages.length,
-          },
-        },
-      )
-
-      const modelContext = ModelContext.fromHistory(
-        historyMessages.map(message => this.toLlmMessage(message)),
-        messages => input.buildModelMessages(messages),
-      )
       const registeredToolDefinitions = this.toolRegistryService.listDefinitions()
       const toolDefinitions = AGENT_RUN_TOOL_NAMES.flatMap((name) => {
         const definition = registeredToolDefinitions.find(
@@ -182,6 +163,72 @@ export class AgentRuntimeService {
       const modelTools = runtimePolicy.maxToolCalls === 0
         ? []
         : toolDefinitions.map(toModelToolSpec)
+      const resolvedRequestConfig = this.llmService.resolveChatRequestConfig({
+        ...(input.model ? { model: input.model } : {}),
+        ...(input.maxTokens === undefined
+          ? {}
+          : { maxTokens: input.maxTokens }),
+      })
+      const modelProfile = getModelProfile(resolvedRequestConfig.model)!
+      const loadHistoryStep = await this.agentRunRecorderService.startStep({
+        runId: currentAgentRunId,
+        type: AGENT_STEP_TYPES.loadConversationHistory,
+        input: {
+          limit: runtimePolicy.historyCandidateHardLimit,
+          batchSize: runtimePolicy.historyCandidateBatchSize,
+        },
+      }, databaseDeadline)
+
+      const selection = await this.initialContextSelectionService.select({
+        resolvedModel: resolvedRequestConfig.model,
+        contextWindowTokens: modelProfile.contextWindowTokens,
+        resolvedMaxOutputTokens: resolvedRequestConfig.maxOutputTokens,
+        candidateBatchSize: runtimePolicy.historyCandidateBatchSize,
+        candidateHardLimit: runtimePolicy.historyCandidateHardLimit,
+        currentUserMessage: this.toLlmMessage(userMessage),
+        tools: modelTools,
+        buildModelMessages: input.buildModelMessages,
+        loadCandidates: async ({ cursor, take }) => {
+          const messages = await this.listRecentChatMessageCandidates(
+            input.conversationId,
+            {
+              id: userMessage.id,
+              createdAt: userMessage.createdAt,
+            },
+            cursor,
+            take,
+            databaseDeadline,
+          )
+
+          return messages.map(message => ({
+            id: message.id,
+            createdAt: message.createdAt,
+            message: this.toLlmMessage(message),
+          }))
+        },
+        assertAvailable: runCancellation.throwIfUnavailable,
+      })
+      await this.agentRunRecorderService.completeStep(
+        loadHistoryStep.id,
+        databaseDeadline,
+        {
+          output: {
+            messageCount: selection.summary.historyIncludedCount,
+            candidateCount: selection.summary.historyCandidateCount,
+            excludedCount: selection.summary.historyExcludedCount,
+            excludedReason: selection.summary.excludedReason,
+          },
+        },
+      )
+
+      const modelContext = ModelContext.fromHistory(
+        [
+          ...selection.historyMessages,
+          this.toLlmMessage(userMessage),
+        ],
+        messages => input.buildModelMessages(messages),
+        selection.summary,
+      )
 
       // 创建助手消息与 Run 关联必须同事务提交，避免 deadline 下留下未关联的 late Message。
       assistantMessage = await this.agentRunRecorderService.createAssistantMessage(
@@ -215,11 +262,9 @@ export class AgentRuntimeService {
       }
 
       const chatStreamOptions = {
-        ...(input.model ? { model: input.model } : {}),
+        model: resolvedRequestConfig.model,
         temperature: input.temperature,
-        ...(input.maxTokens === undefined
-          ? {}
-          : { maxTokens: input.maxTokens }),
+        maxTokens: resolvedRequestConfig.maxOutputTokens,
         signal: runSignal,
         tools: modelTools,
       }
@@ -244,6 +289,9 @@ export class AgentRuntimeService {
             requestedModel: input.model ?? null,
             messageCount: contextSnapshot.itemCount,
             toolCount: modelTools.length,
+            ...(contextSnapshot.initialSelection
+              ? { initialContext: { ...contextSnapshot.initialSelection } }
+              : {}),
           },
         }, databaseDeadline)
         const samplingStartedAt = Date.now()
@@ -545,9 +593,11 @@ export class AgentRuntimeService {
     }
   }
 
-  private async listRecentChatMessages(
+  private async listRecentChatMessageCandidates(
     conversationId: string,
-    limit: number,
+    currentUserUpperBound: HistoryCursor,
+    cursor: HistoryCursor | undefined,
+    take: number,
     databaseDeadline: DatabaseOperationDeadline,
   ): Promise<Message[]> {
     const messages = await this.prismaService.withDeadlineTransaction(
@@ -556,16 +606,20 @@ export class AgentRuntimeService {
         where: {
           conversationId,
           status: MessageStatus.COMPLETED,
+          AND: [
+            toStrictlyEarlierMessageWhere(currentUserUpperBound),
+            ...(cursor ? [toStrictlyEarlierMessageWhere(cursor)] : []),
+          ],
         },
         orderBy: [
           { createdAt: 'desc' },
           { id: 'desc' },
         ],
-        take: limit,
+        take,
       })),
     )
 
-    return messages.reverse()
+    return messages
   }
 
   private async createMessageAndTouchConversation(
@@ -635,6 +689,8 @@ export class AgentRuntimeService {
       error instanceof ModelSamplingIncompleteError
       || error instanceof AgentLoopLimitExceededError
       || error instanceof AgentRunDeadlineExceededError
+      || error instanceof ContextBudgetExceededError
+      || error instanceof ContextTokenEstimationError
     ) {
       return error.message
     }
@@ -678,6 +734,18 @@ export class AgentRuntimeService {
 
   private isAbortSignalTriggered(signal: AbortSignal | undefined): boolean {
     return signal?.aborted ?? false
+  }
+}
+
+function toStrictlyEarlierMessageWhere(bound: HistoryCursor) {
+  return {
+    OR: [
+      { createdAt: { lt: bound.createdAt } },
+      {
+        createdAt: bound.createdAt,
+        id: { lt: bound.id },
+      },
+    ],
   }
 }
 

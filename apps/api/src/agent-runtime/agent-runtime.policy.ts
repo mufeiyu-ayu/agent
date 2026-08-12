@@ -1,18 +1,20 @@
 import process from 'node:process'
 import { Injectable } from '@nestjs/common'
 
-const MAX_HISTORY_LIMIT = 1_000
+const MAX_HISTORY_CANDIDATE_LIMIT = 1_000
 const MAX_TIMER_TIMEOUT_MS = 2_147_483_647
 
 export const DEFAULT_AGENT_RUNTIME_POLICY = {
-  historyLimit: 40,
+  historyCandidateBatchSize: 50,
+  historyCandidateHardLimit: 1_000,
   maxSamplingRounds: 3,
   maxToolCalls: 2,
   runDeadlineMs: 600_000,
 } as const
 
 export interface AgentRuntimePolicy {
-  historyLimit: number
+  historyCandidateBatchSize: number
+  historyCandidateHardLimit: number
   maxSamplingRounds: number
   maxToolCalls: number
   runDeadlineMs: number
@@ -26,12 +28,19 @@ export class AgentRuntimePolicyService {
 export function resolveAgentRuntimePolicy(
   env: NodeJS.ProcessEnv,
 ): AgentRuntimePolicy {
-  const historyLimit = resolveInteger(
-    env.SEO_CHAT_HISTORY_LIMIT,
-    'SEO_CHAT_HISTORY_LIMIT',
-    DEFAULT_AGENT_RUNTIME_POLICY.historyLimit,
-    1,
-    MAX_HISTORY_LIMIT,
+  const historyCandidateBatchSize = resolveInteger(
+    env.SEO_CHAT_HISTORY_CANDIDATE_BATCH_SIZE,
+    'SEO_CHAT_HISTORY_CANDIDATE_BATCH_SIZE',
+    DEFAULT_AGENT_RUNTIME_POLICY.historyCandidateBatchSize,
+    50,
+    MAX_HISTORY_CANDIDATE_LIMIT,
+  )
+  const historyCandidateHardLimit = resolveInteger(
+    env.SEO_CHAT_HISTORY_CANDIDATE_HARD_LIMIT,
+    'SEO_CHAT_HISTORY_CANDIDATE_HARD_LIMIT',
+    DEFAULT_AGENT_RUNTIME_POLICY.historyCandidateHardLimit,
+    50,
+    MAX_HISTORY_CANDIDATE_LIMIT,
   )
   const maxSamplingRounds = resolveInteger(
     env.AGENT_MAX_SAMPLING_ROUNDS,
@@ -60,9 +69,15 @@ export function resolveAgentRuntimePolicy(
       'AGENT_MAX_TOOL_CALLS 必须小于 AGENT_MAX_SAMPLING_ROUNDS',
     )
   }
+  if (historyCandidateBatchSize > historyCandidateHardLimit) {
+    throw new AgentRuntimePolicyError(
+      'SEO_CHAT_HISTORY_CANDIDATE_BATCH_SIZE 不得大于 SEO_CHAT_HISTORY_CANDIDATE_HARD_LIMIT',
+    )
+  }
 
   return {
-    historyLimit,
+    historyCandidateBatchSize,
+    historyCandidateHardLimit,
     maxSamplingRounds,
     maxToolCalls,
     runDeadlineMs,
