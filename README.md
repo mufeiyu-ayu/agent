@@ -4,19 +4,21 @@
 
 **An observable TypeScript runtime for building streaming, tool-using AI agents.**
 
-Explicit orchestration for model sampling, tool execution, state transitions, database deadlines, and durable run traces.
+Explicit orchestration for model sampling, tool execution, context budgeting, state transitions, database deadlines, and durable run traces.
 
 </div>
 
 ## Overview
 
-TypeScript Agent Runtime is a full-stack reference implementation of an explicit, inspectable Agent execution loop. It keeps model messages, user-visible messages, runtime events, provider continuation data, and persisted execution records as separate concerns.
+TypeScript Agent Runtime is a full-stack reference implementation of an explicit, inspectable Agent execution loop. It keeps model-visible context, user-visible messages, runtime events, provider continuation data, and persisted execution records as separate concerns.
 
 The runtime uses a policy-driven bounded sequential loop. A Run can directly answer or execute up to two validated Tool Calls across at most three model samplings by default. The current Run allowlist exposes the two read-only Article tools `search_articles` and `get_article_detail` without hard-coding their execution order.
 
 DeepSeek thinking Tool Calls preserve required `reasoning_content` only as internal continuation data. Reasoning is not exposed as user-visible content.
 
-Phase 6 reliability work also binds Run remaining budget to database business statements, fences late database results, and atomically closes Message / AgentStep / AgentRun terminal state where the database can commit the terminalization transaction.
+Phase 6 reliability work binds Run remaining budget to database business statements, fences late database results, and atomically closes Message / AgentStep / AgentRun terminal state where the database can commit the terminalization transaction.
+
+Phase 7 Context Engineering adds a per-Run `ModelContext`, model-aware initial input budgeting, a locally loaded DeepSeek V4 tokenizer, and token-budget-driven Dynamic History Selection. The current User Message remains mandatory and causally bounds previous History by `(createdAt, id)`.
 
 ## Highlights
 
@@ -26,12 +28,15 @@ Phase 6 reliability work also binds Run remaining budget to database business st
 | Streaming | Abort-aware NDJSON responses with incremental assistant deltas |
 | Tool calling | Typed definitions, registry lookup, validation, executor isolation, per-run allowlisting |
 | Tool safety | Risk gates, Tool timeout, cancellation propagation, per-tool Observation budgets |
-| Runtime policy | Typed sampling / Tool Call limits, history policy, Run deadline and fail-fast configuration |
+| Runtime policy | Typed sampling / Tool Call limits, History candidate policy, Run deadline and fail-fast configuration |
 | Context boundary | Per-Run `ModelContext` with ordered Tool Exchange handling and safe structural Context Snapshot metadata |
+| Context budget | Model-aware initial input budget with application cap, output reserve and safety margin |
+| Dynamic History | `COMPLETED`-only causal keyset pagination, recency-first whole-message selection and candidate hard limit |
+| Token estimation | Local DeepSeek V4 tokenizer artifact behind a replaceable `TokenEstimator` boundary |
 | Database reliability | Remaining-budget DB boundary, PostgreSQL statement / lock timeout, late-result fencing |
 | Persistence | Conversations, Messages, Agent Runs, and ordered Agent Steps in PostgreSQL |
 | Model integration | OpenAI-compatible Chat Completions + DeepSeek thinking continuation |
-| Runtime traces | Persisted input, output, status, timing, and error snapshots for every step |
+| Runtime traces | Persisted input, output, status, timing, error and safe Context decision metadata |
 | User interfaces | Vue chat client and a real-data operator console for Run / Step observability |
 
 ## Runtime lifecycle
@@ -39,7 +44,8 @@ Phase 6 reliability work also binds Run remaining budget to database business st
 ```text
 User Input
   -> Create Agent Run
-  -> Load Conversation Context
+  -> Resolve Model / Output Budget
+  -> Select Initial Context within Budget
   -> Model Sampling
        -> Final Answer --------------------> atomic terminal completion
        -> Tool Call
@@ -52,13 +58,18 @@ User Input
 Default server-owned bounds:
 
 ```text
-historyLimit        = 40 completed messages
-maxSamplingRounds   = 3
-maxToolCalls        = 2
-runDeadlineMs       = 600000
+applicationInputCapTokens       = 262144
+contextSafetyMarginTokens       = 16384
+historyCandidateBatchSize       = 50
+historyCandidateHardLimit       = 1000
+maxSamplingRounds               = 3
+maxToolCalls                    = 2
+runDeadlineMs                   = 600000
 ```
 
 `AGENT_MAX_TOOL_CALLS=0` disables Tool exposure for that Run.
+
+Task 1 governs the initial Context before Tool Exchange growth. Per-sampling re-budgeting and Observation governance remain the next Phase 7 task.
 
 ### Deadline model
 
@@ -82,6 +93,8 @@ If a completion COMMIT result is genuinely indeterminate, the runtime exposes th
 - **Explicit control flow** — orchestration stays visible in TypeScript rather than behind a workflow engine.
 - **Untrusted model output** — Tool names and arguments are validated before backend execution.
 - **Separated message layers** — UI messages, model input items, runtime events, provider continuation data and durable traces have different contracts.
+- **Budgeted model context** — Provider capacity is an upper bound; application policy decides what the model actually sees.
+- **Causal History** — only previous reliable messages may enter the current Turn; the current User Message is mandatory and appears exactly once.
 - **Bounded execution** — sampling, Tool Calls, Tool timeout and Run deadline are constrained by server-owned policy.
 - **Terminal ownership** — late aborts, deadlines and database results cannot silently overwrite an established terminal state.
 - **Evidence-driven evolution** — new Agent capabilities are planned after the current behavior is implemented and tested.
@@ -132,14 +145,17 @@ pnpm dev
 | `LLM_MODEL` | Yes | — | Supported model identifier |
 | `LLM_CHAT_REQUEST_TIMEOUT_MS` | No | `60000` | Non-streaming model request timeout |
 | `LLM_STREAM_TIMEOUT_MS` | No | `600000` | Streaming model request timeout |
-| `LLM_DEFAULT_MAX_OUTPUT_TOKENS` | No | `65536` | Default output budget |
+| `LLM_DEFAULT_MAX_OUTPUT_TOKENS` | No | `65536` | Default output reserve |
 | `LLM_APPLICATION_MAX_OUTPUT_TOKENS` | No | `131072` | Application output hard limit |
-| `SEO_CHAT_HISTORY_LIMIT` | No | `40` | Recent `COMPLETED` messages loaded into model history |
+| `SEO_CHAT_HISTORY_CANDIDATE_BATCH_SIZE` | No | `50` | Number of reliable History candidates read per keyset page; valid range `50-1000` |
+| `SEO_CHAT_HISTORY_CANDIDATE_HARD_LIMIT` | No | `1000` | Maximum candidates scanned per Run; valid range `50-1000` and not below batch size |
 | `AGENT_MAX_SAMPLING_ROUNDS` | No | `3` | Maximum model sampling requests per Run |
 | `AGENT_MAX_TOOL_CALLS` | No | `2` | Maximum Tool Calls per Run; may be `0` and must remain below sampling limit |
 | `AGENT_RUN_DEADLINE_MS` | No | `600000` | Agent Run execution deadline |
 | `DATABASE_URL` | Yes | — | PostgreSQL connection string |
 | `PORT` | No | `3000` | API port |
+
+The initial Context policy currently uses an application input cap of `262144` tokens and a fixed safety margin of `16384` tokens. These are typed application policy constants rather than environment variables.
 
 ## Development commands
 
@@ -148,10 +164,11 @@ pnpm dev
 | `pnpm dev` | Start API, Web and Admin |
 | `pnpm typecheck` | Type-check all workspaces |
 | `pnpm lint` | Lint workspaces |
+| `pnpm --filter @agent/api test:context` | DeepSeek V4 tokenizer and initial Context Selection tests |
 | `pnpm --filter @agent/api test:llm-config` | LLM profile/config tests |
 | `pnpm --filter @agent/api test:model-stream` | Model stream and continuation tests |
 | `pnpm --filter @agent/api test:tools` | Tool contract/execution tests |
-| `pnpm --filter @agent/api test:tool-loop` | Agent Loop, budget, deadline and Abort tests |
+| `pnpm --filter @agent/api test:tool-loop` | Agent Loop, Context, budget, deadline and Abort tests |
 | `pnpm --filter @agent/api test:agent-recorder` | Run / Step persistence tests |
 | `pnpm --filter @agent/api test:db-reliability` | Real PostgreSQL deadline / terminalization reliability tests |
 | `pnpm --filter @agent/api test:seo-service` | SEO Service and prompt tests |
@@ -168,6 +185,9 @@ Available now:
 - Tool allowlisting, validation, timeout and Observation budgets;
 - DeepSeek thinking continuation without reasoning leakage;
 - per-Run `ModelContext` boundary and safe Context Snapshot baseline;
+- model-aware initial Context Budget with mandatory-context fail-closed behavior;
+- local DeepSeek V4 tokenizer-based pre-request estimation;
+- causal, `COMPLETED`-only, token-budget-driven Dynamic History Selection;
 - Run-level deadline and database remaining-budget propagation;
 - PostgreSQL statement / lock timeout and late-result ownership fencing;
 - atomic normal completion / failure / Abort terminalization where commit succeeds;
@@ -178,7 +198,9 @@ Current mainline status:
 
 - **Phase 1-6 are Completed.**
 - Phase 6 final archive is [`docs/tasks/completed/phase-06-bounded-agent-loop.md`](./docs/tasks/completed/phase-06-bounded-agent-loop.md).
-- **Phase 7: Context Engineering is Active.** Task 0 `Context Boundary & Snapshot` is Completed via Issue #40 / PR #41, merge `415e866a`.
-- **There is currently no Active Agent mainline Task.** Task 1 `Model-aware Budget & Dynamic History` is Next and has not created a formal Issue yet.
+- **Phase 7: Context Engineering is Active.**
+- Task 0 `Context Boundary & Snapshot` is Completed via Issue #40 / PR #41, merge `415e866a`.
+- Task 1 `Model-aware Budget & Dynamic History` is Completed via Issue #42 / PR #43, merge `6df72f0`.
+- **There is currently no Active Agent mainline Task.** Task 2 `Loop-aware Context & Observation Governance` is Next and has not created a formal Issue yet.
 
 See [`docs/roadmap.md`](./docs/roadmap.md), [`docs/tasks/README.md`](./docs/tasks/README.md), the [Phase 7 plan](./docs/tasks/phase-07-context-engineering/README.md), and the [Phase 6 archive](./docs/tasks/completed/phase-06-bounded-agent-loop.md).
