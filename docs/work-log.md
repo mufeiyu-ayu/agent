@@ -6,9 +6,9 @@
 
 | 类型 | 当前记录 | 下一步 |
 | --- | --- | --- |
-| Agent 主线 | 阶段 1-6 Completed；Phase 7 Context Engineering Active；Task 0 Completed；Task 1 Active / 已实现，待验收 | 验收 Issue #42 / Draft PR #43 |
+| Agent 主线 | 阶段 1-6 Completed；Phase 7 Context Engineering Active；Task 0-1 Completed；Task 2 Next | 学习和讨论 Task 2，确认边界后再创建 Issue |
 | Phase 6 | 已完成并归档 | 见 `docs/tasks/completed/phase-06-bounded-agent-loop.md` |
-| Phase 7 | Task 0 Completed；Task 1 Active；Task 2-3 Planned；Compaction Gated | Task 1 验收前不启动 Task 2 |
+| Phase 7 | Task 0-1 Completed；Task 2 Next；Task 3 Planned；Compaction Gated | Task 2 未创建 Issue，不进入实现 |
 | Admin Console | Task 0-3 Completed；Observability Baseline 已建立；Task 4 Planned | Phase 7 Task 3 再按需增量增加 Context Inspector |
 | Web Chat | 会话滚动跟随与响应式 UI follow-up 已完成 | 后续仅在出现真实 UX 问题时继续迭代 |
 | 文档结构 | `roadmap`、`tasks`、`research`、`work-log` 为主入口 | 不维护第二套阶段状态 |
@@ -17,7 +17,9 @@
 
 | 日期 | 事项 | 结果 |
 | --- | --- | --- |
-| 2026-08-10 | Issue #42 / Draft PR #43 / Phase 7 Task 1 实现 | Q-01～Q-03 全部回写后 Clarification Gate 为 READY；完成 model-aware initial Context Budget、DeepSeek V4 官方 encoding 一致性验证、动态 History keyset 分页与安全 Context summary；指定回归、API lint/typecheck 与 workspace typecheck 通过；Draft PR #43 已创建，当前实施状态已实现、验收状态待验收 |
+| 2026-08-12 | PR #43 / Issue #42 收口 | Phase 7 Task 1 `Model-aware Budget & Dynamic History` 经 GPT 技术验收通过，用户明确确认验收；第一轮 Codex Review 的 3 个 P2 已在 `620a2d0` 修复并全部 resolved，第二轮 Review 未发现新的主要问题；PR #43 按授权转 Ready 并合入 `master`，merge commit `6df72f02242a1b8a23920d64c471ce721ccf558b`；Issue #42 Closed；Task 1 Completed；Task 2 仅推进为 Next |
+| 2026-08-12 | PR #43 Review finding 收口 | 增加 current User `(createdAt, id)` initial causal upper bound；同步根 `AGENTS.md`；candidate batch 最小值收紧为 50，并用测试将最坏合法配置的 full-request estimate 次数限制在 28 次以内；完整回归、build、lint、typecheck 与 `git diff --check` 通过 |
+| 2026-08-10 | Issue #42 / Draft PR #43 / Phase 7 Task 1 实现 | Q-01～Q-03 全部回写后 Clarification Gate 为 READY；完成 model-aware initial Context Budget、DeepSeek V4 官方 encoding 一致性验证、动态 History keyset 分页与安全 Context summary；指定回归、API lint/typecheck 与 workspace typecheck 通过；Draft PR #43 已创建，实施状态已实现、验收状态待验收 |
 | 2026-08-10 | PR #41 / Issue #40 收口 | Phase 7 Task 0 `Context Boundary & Snapshot` 经 GPT 技术验收通过，用户明确确认验收；Codex Review 两项 finding 均完成处理；PR #41 按授权转 Ready 并合入 `master`，merge commit `415e866af4d4007b6bed43cd1f6e3df590575706`；Issue #40 Closed；Task 0 Completed |
 | 2026-08-10 | Issue #40 / Phase 7 Task 0 实现 | 第二轮 Clarification Gate 为 READY；新增单次 Run 内存 Context Boundary 与 whitelist 安全 Snapshot，锁定 direct-final、一次 Tool、两次顺序 Tool 的 Provider-facing input；Issue 指定测试、API lint/typecheck 与 workspace typecheck 全部通过；PR #41 创建并进入待验收状态 |
 | 2026-08-10 | Phase 7 Context Engineering 路线定案 | 基于 Phase 6 Runtime 与现有 Context 限制，确认 Context Engineering 为下一 Agent 主线；Task 0 Context Boundary & Snapshot 为 Next；Task 1-3 Planned；Minimal Compaction 仅作为有证据才启动的 Gated follow-up |
@@ -43,16 +45,16 @@ Phase 7 当前状态：
 ```text
 Phase 7：Context Engineering          Active
 Task 0：Context Boundary & Snapshot   Completed / #40 / #41 / merge 415e866a
-Task 1：Model-aware Budget            Active / #42 / Draft PR #43 / 已实现，待验收
-Task 2：Loop-aware Context            Planned
+Task 1：Model-aware Budget            Completed / #42 / #43 / merge 6df72f0
+Task 2：Loop-aware Context            Next / Issue 未创建
 Task 3：Context Inspector             Planned
 Compaction                            Gated
-Active Agent Task                     Task 1 / #42 / Draft PR #43
+Active Agent Task                     无
 ```
 
 Phase 7 的核心目标是让 model-visible context 从“固定 History 条数 + 各 Tool 局部字符限制”升级为统一 Context boundary、model-aware budget、动态 History Selection、多轮 Loop Context Governance 和安全 Inspector。
 
-Task 1 已通过 Clarification Gate 并完成实现，当前等待 Draft PR 技术验收；未经验收与用户确认，不标记 Completed。
+Task 1 已验收并合入 `master`。Task 2 当前只是 Next；未创建 Issue、未执行 Clarification Gate，也未进入实现。
 
 Minimal Compaction 不自动启动；只有 Task 1-3 的真实指标证明动态选择不足以维持长会话连续性、成本、延迟或质量时，才重新讨论独立 Task / Issue。
 
