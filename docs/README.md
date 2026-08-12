@@ -7,15 +7,14 @@
 ```text
 阶段 1-6：Completed
 阶段 7：Context Engineering / Active
+Task 0：Context Boundary & Snapshot / Completed / #40 / #41 / 415e866a
+Task 1：Model-aware Budget & Dynamic History / Completed / #42 / #43 / 6df72f0
 Active Agent Task：无
-Task 0：Context Boundary & Snapshot / Completed
-Issue：#40 / Closed
-PR：#41 / Merged / 415e866a
-下一正式 Task：Task 1 / Model-aware Budget & Dynamic History / Next
-Task 2-3：Planned
+下一正式 Task：Task 2 / Loop-aware Context & Observation Governance / Next / Issue 未创建
+Task 3：Planned
 ```
 
-Phase 6 已完成并统一归档到 `docs/tasks/completed/**`，不再在 active tasks 区保留兼容目录。Phase 7 当前为 Active；Task 0 已完成 GPT 技术验收、用户确认验收并合入 `master`。Task 1 已推进为 Next，但尚未创建 Issue，也未进入 Active；Task 2-3 仍为 Planned。
+Phase 6 已完成并统一归档到 `docs/tasks/completed/**`，不再在 active tasks 区保留兼容目录。Phase 7 当前为 Active；Task 0-1 已完成 GPT 技术验收、用户确认验收并合入 `master`。Task 2 已推进为 Next，但尚未创建 Issue，也未进入 Active；Task 3 仍为 Planned。
 
 ## 文档入口
 
@@ -47,4 +46,4 @@ Phase 6 已完成并统一归档到 `docs/tasks/completed/**`，不再在 active
 - 当前 Task 细节写在对应 `docs/tasks/**`；已完成阶段统一压缩归档到 `docs/tasks/completed/**`。
 - 完成阶段不继续在 active tasks 区保留兼容目录或长篇 Task 规格；详细历史由 Completed 归档、Issue / PR 和 Git 历史共同承担。
 - `work-log.md` 只保留近期关键事实。
-- Phase 7 当前为 Active；Task 0 已 Completed，Task 1 为 Next。Task 1 只有创建正式 Issue 并通过 Clarification Gate 后才进入 Active，后续 Task 仍按既定前置条件逐项推进。
+- Phase 7 当前为 Active；Task 0-1 已 Completed，Task 2 为 Next。Task 2 只有创建正式 Issue 并通过 Clarification Gate 后才进入 Active，后续 Task 仍按既定前置条件逐项推进。
