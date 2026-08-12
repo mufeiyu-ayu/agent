@@ -1,8 +1,8 @@
 # Phase 7：Context Engineering
 
-状态：**Active / Task 0 Completed / Task 1 Active**。
+状态：**Active / Task 0-1 Completed / Task 2 Next**。
 
-本阶段已经由 GPT 与用户确认作为 Phase 6 之后的 Agent 主线。Task 0 `Context Boundary & Snapshot` 已完成 GPT 技术验收、用户确认验收，并通过 PR #41 合入 `master`；Issue #40 已关闭。Task 1 `Model-aware Budget & Dynamic History` 已通过 Clarification Gate，并按 Issue #42 完成实现，当前等待技术验收。
+本阶段已经由 GPT 与用户确认作为 Phase 6 之后的 Agent 主线。Task 0 `Context Boundary & Snapshot` 与 Task 1 `Model-aware Budget & Dynamic History` 均已完成 GPT 技术验收、用户确认验收并合入 `master`。Task 2 `Loop-aware Context & Observation Governance` 为 Next，尚未创建 Issue。
 
 ## 1. 阶段目标
 
@@ -40,15 +40,15 @@ Instructions / Current User / History / Tool Exchange
 
 Phase 6 已经建立 bounded sequential Agent Loop、两个 Article Tool、Run / Tool / DB deadline、终态可靠性与真实 Observability Baseline。当前 Runtime 已经具备学习 Context Engineering 的必要前置条件。
 
-Task 0 收口后，当前 `master` 已经建立独立 `ModelContext` 边界与安全 Context Snapshot，但 Phase 7 的后续限制仍包括：
+Task 0 建立独立 `ModelContext` 边界与安全 Context Snapshot；Task 1 进一步让模型 Context Window 参与真实预算，建立 DeepSeek V4 TokenEstimator、动态 History Selection 与安全 initial Context summary。Phase 7 后续仍需要：
 
-1. `apps/api/src/agent-runtime/agent-runtime.policy.ts` 仍使用固定 `historyLimit: 40`；
-2. `apps/api/src/llm/model-profiles.ts` 已记录模型 `contextWindowTokens`，但 Runtime 当前没有使用它分配输入 Context；
-3. `search_articles`、`get_article_detail` 与 Tool Core 主要使用字符级 Observation 上限；
-4. 初始 History 与后续 Tool Exchange 已进入统一 Context boundary，但尚未建立 model-aware budget、动态选择和预算原因；
-5. Agent Loop 最多 3 次 sampling / 2 次 Tool Call，后续 sampling 的 Context 会随着 Tool Exchange 增长，因此后续还需要 Loop-aware Context Governance。
+1. 把 Context Budget 从 initial History 扩展到完整 Tool Loop；
+2. 统一治理 Tool Call / Tool Result 追加后的 remaining budget；
+3. 让 Observation 的字符级上限继续作为 safety ceiling，而不是唯一 Context 策略；
+4. 把 Context 决策安全投影到 Admin Context Inspector；
+5. 基于真实数据决定是否需要 Minimal Compaction。
 
-这意味着 Task 0 已完成“明确边界与可测试 Snapshot”的结构基线，但完整 Context Engineering 闭环仍需要 Task 1-3。
+这意味着 Task 0-1 已完成 Context Boundary 与 initial Context Budget 基线，但完整 Context Engineering 闭环仍需要 Task 2-3。
 
 ## 3. 本阶段要学会什么
 
@@ -94,12 +94,12 @@ Phase 7 Baseline 不把自动 Summary / Compaction 作为必做项。先完成 C
 | Task | 状态 | 目标 |
 | --- | --- | --- |
 | Task 0：Context Boundary & Snapshot | **Completed / #40 / #41 / merge `415e866a`** | 把当前 model input 组装收敛到独立 Context 边界，并建立不改变现有行为的 Context Snapshot |
-| Task 1：Model-aware Budget & Dynamic History | **Active / #42 / Draft PR #43 / 已实现，待验收** | 让模型 Context Window 参与预算，历史选择从固定条数升级为 token-budget 驱动 |
-| Task 2：Loop-aware Context & Observation Governance | Planned | 统一管理后续 sampling 的 Tool Exchange、剩余 Context Budget 与 Observation 裁剪 |
+| Task 1：Model-aware Budget & Dynamic History | **Completed / #42 / #43 / merge `6df72f0`** | 让模型 Context Window 参与预算，历史选择从固定条数升级为 token-budget 驱动 |
+| Task 2：Loop-aware Context & Observation Governance | **Next / Issue 未创建** | 统一管理后续 sampling 的 Tool Exchange、剩余 Context Budget 与 Observation 裁剪 |
 | Task 3：Context Inspector & Phase Baseline | Planned | 将 Context 决策做成安全可观察的 Runtime / Admin Inspector，并完成阶段回归 |
 | Gated Follow-up：Minimal Compaction | Gated | 只有 Task 1-3 的真实证据证明需要时，才单独设计最小 Compaction |
 
-正式实现仍遵守“一 Issue = 一明确 Task”。Task 1 当前只记录“已实现、待验收”；Task 2-3 不会因为本文存在而自动启动。
+正式实现仍遵守“一 Issue = 一明确 Task”。Task 2 当前只是 Next，不代表已经启动；Task 3 不会因为本文存在而自动启动。
 
 ---
 
@@ -194,12 +194,14 @@ Task 0 是结构基线，不负责优化 History 数量，也不实现 token-bud
 
 # Task 1：Model-aware Budget & Dynamic History
 
-状态：**Active / Issue #42 / 已实现，待验收**。
+状态：**Completed / Issue #42 / PR #43 / merge `6df72f0`**。
 
 - 实施状态：已实现
-- 验收状态：待验收
+- GPT 技术验收：已通过
+- 用户确认验收：已确认
+- 合并状态：已合并
 - Clarification Gate：READY
-- Draft PR：#43
+- Merge commit：`6df72f02242a1b8a23920d64c471ce721ccf558b`
 
 ## 目标
 
@@ -217,8 +219,8 @@ Task 0 是结构基线，不负责优化 History 数量，也不实现 token-bud
 - 建立可替换、可测试的 token estimation / accounting 边界；
 - 基于 resolved model profile、resolved output budget 和安全余量计算本轮可用 input budget；
 - History 从最新可靠消息向前选择，直到满足预算，再恢复模型需要的时间顺序；
-- 只允许 `COMPLETED` Message 进入可靠 History；
-- 当前用户输入保持恰好一次；
+- 只允许 previous `COMPLETED` Message 进入可靠 History；
+- 当前用户输入保持完整且恰好一次；
 - `SEO_CHAT_HISTORY_LIMIT` 不再读取；candidate policy 使用 `SEO_CHAT_HISTORY_CANDIDATE_BATCH_SIZE=50` 与 `SEO_CHAT_HISTORY_CANDIDATE_HARD_LIMIT=1000`；
 - Context Snapshot 增加 estimated usage、budget、included / excluded reason。
 
@@ -228,7 +230,7 @@ Task 0 是结构基线，不负责优化 History 数量，也不实现 token-bud
 - 不做 RAG；
 - 不做自动摘要；
 - 不为了“利用 1M Context”主动填满无关历史；
-- 不要求自研 tokenizer 算法。
+- 不提前实现 Task 2 的 loop-aware re-budget。
 
 ## 验收标准
 
@@ -243,8 +245,10 @@ Task 0 是结构基线，不负责优化 History 数量，也不实现 token-bud
 
 - Context Budget：应用输入上限 `262_144`、固定 safety margin `16_384`，复用 resolved model / max output 配置结果；mandatory context 超预算时在 Provider 调用前 fail closed。
 - TokenEstimator：本地固定 DeepSeek V4 Pro tokenizer artifact，通过 `@huggingface/tokenizers` 加载；ASCII、CJK、emoji、V4 special token 与 Tool Definition 向量同官方 Python encoding 结果一致。
-- History Selection：只读取 previous `COMPLETED` Message，按 `(createdAt, id)` newest-first keyset 分页；默认 batch `50`、hard limit `1000`；recency-first、whole-message、遇到首个不可容纳消息即停止。
+- History Selection：只读取严格早于 current User `(createdAt, id)` 的 previous `COMPLETED` Message；按 `(createdAt, id)` newest-first keyset 分页；recency-first、whole-message、遇到首个不可容纳消息即停止。
+- 性能边界：candidate batch 合法最小值为 50；默认最坏合法配置下 full-request estimate 次数不超过 28。
 - 安全摘要：只持久化 model、预算、估算 token 数、candidate / selected / excluded 数量与安全原因，不记录原始 Prompt、Message、reasoning 或 Tool payload。
+- Review：第一轮 3 个 P2 已在 `620a2d0` 修复并全部 resolved；第二轮 Codex Review 未发现新的主要问题。
 
 | 命令 | 结果 |
 | --- | --- |
@@ -254,15 +258,17 @@ Task 0 是结构基线，不负责优化 History 数量，也不实现 token-bud
 | `pnpm --filter @agent/api test:seo-service` | 通过，10 tests |
 | `pnpm --filter @agent/api test:llm-config` | 通过，17 tests |
 | `pnpm --filter @agent/api test:admin-runs` | 通过，15 tests |
+| `pnpm --filter @agent/api build` | 通过 |
 | `pnpm --filter @agent/api typecheck` | 通过 |
 | `pnpm --filter @agent/api lint` | 通过 |
 | `pnpm typecheck` | 通过，4 个 workspace project |
+| `git diff --check` | 通过 |
 
 ---
 
 # Task 2：Loop-aware Context & Observation Governance
 
-状态：Planned。
+状态：**Next / Issue 未创建**。
 
 ## 目标
 
@@ -301,6 +307,8 @@ Task 0 是结构基线，不负责优化 History 数量，也不实现 token-bud
 - [ ] 现有 16K / 64K / global hard max 仍作为 safety ceiling 生效；
 - [ ] malicious Tool Observation 仍处于低信任 tool context，不能升级指令优先级；
 - [ ] Context overflow 有明确、可测试的失败语义。
+
+Task 2 当前只进入 Next；需要先完成学习讨论、创建独立 Issue 并通过 Clarification Gate，之后才允许标记 Active 或开始实现。
 
 ---
 
@@ -392,10 +400,10 @@ Minimal Compaction 不属于默认完成条件；是否加入 Phase 7 收口范�
 
 - Phase 7：Active
 - Task 0：Completed / Issue #40 Closed / PR #41 Merged / `415e866a`
-- Task 1：Active / Issue #42 / Draft PR #43 / 已实现，待验收
-- Task 2：Planned
+- Task 1：Completed / Issue #42 Closed / PR #43 Merged / `6df72f0`
+- Task 2：Next / Issue 未创建
 - Task 3：Planned
 - Minimal Compaction：Gated
-- Active Agent Task：Task 1
+- Active Agent Task：无
 
-下一正式动作：由 GPT 按 Issue #42 与 Draft PR #43 验收；未经验收与用户确认，不得标记 Completed 或启动 Task 2。
+下一正式动作：学习和讨论 Task 2；确认边界后创建独立 Issue，只有 Clarification Gate 为 `READY` 才进入 Active。
