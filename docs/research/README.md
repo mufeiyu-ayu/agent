@@ -12,11 +12,11 @@
   -> docs/research/**
 ```
 
-研究资料可以讨论 Context、Recovery、HITL、MCP、Multi-agent 等候选能力，但不能据此宣称当前项目已经实现、必须立即实现或已经确定执行顺序。
+研究资料可以讨论 Context、RAG、Recovery、HITL、MCP、Multi-agent 等候选能力，但不能据此宣称当前项目已经实现、必须立即实现或已经确定执行顺序。
 
 ## 当前项目结论
 
-项目已经完成阶段 1-6，包括：
+项目已经完成阶段 1-7，包括：
 
 - Session Chat、消息持久化、NDJSON Streaming 与停止生成；
 - `Conversation` / `Message` / `AgentRun` / `AgentStep` 持久化边界；
@@ -29,11 +29,26 @@
 - Tool / Run timeout、Abort、Observation 预算与 Trace；
 - Run remaining-budget 数据库边界、PostgreSQL statement / lock timeout；
 - late acquisition / late result ownership fencing；
-- Message / AgentStep / AgentRun 的原子终态收口与 COMMIT outcome unknown 语义。
+- Message / AgentStep / AgentRun 的原子终态收口与 COMMIT outcome unknown 语义；
+- 单 Run `ModelContext`、model-aware input budget 与 DeepSeek V4 本地 TokenEstimator；
+- token-budget Dynamic History Selection、逐轮 Context Plan 与 Observation Governance；
+- 安全 Admin Context Inspector 与真实 Run / Step Observability Baseline。
 
-Phase 6 已归档到 [`../tasks/completed/phase-06-bounded-agent-loop.md`](../tasks/completed/phase-06-bounded-agent-loop.md)。
+阶段归档：
 
-**当前没有已经定案的下一 Agent 正式阶段。** 后续方向必须基于最新代码、真实产品需求和学习收益重新讨论，不能从研究路线自动推进。
+- Phase 6：[`../tasks/completed/phase-06-bounded-agent-loop.md`](../tasks/completed/phase-06-bounded-agent-loop.md)；
+- Phase 7：[`../tasks/completed/phase-07-context-engineering.md`](../tasks/completed/phase-07-context-engineering.md)。
+
+当前状态：
+
+```text
+阶段 1-7：Completed
+Active Agent Task：无
+Minimal Compaction：Gated
+下一正式阶段：尚未定案
+```
+
+后续方向必须基于最新代码、真实产品需求和学习收益重新讨论，不能从研究路线自动推进。
 
 ## 研究资料如何迁移为正式 Task
 
@@ -49,21 +64,23 @@ Phase 6 已归档到 [`../tasks/completed/phase-06-bounded-agent-loop.md`](../ta
 
 ## 优先阅读入口
 
-### 当前 Runtime 相关
+### 当前 Runtime 与 Context 基线
 
 | 入口 | 用途 |
 | --- | --- |
+| [codex-reference/current-agent-baseline.md](./codex-reference/current-agent-baseline.md) | 当前 Phase 1-7 能力、状态与归档指针 |
 | [codex-reference/core-runtime.md](./codex-reference/core-runtime.md) | Runtime loop、Turn、Task、follow-up sampling |
 | [codex-reference/tool-loop.md](./codex-reference/tool-loop.md) | Tool Call、Observation、继续 sampling 与终止条件 |
-| [codex-reference/current-agent-baseline.md](./codex-reference/current-agent-baseline.md) | 兼容入口：Phase 6 启动前历史基线与当前归档指针 |
+| [codex-reference/context-history.md](./codex-reference/context-history.md) | model-visible history、Context 治理与 Compaction 研究 |
 | [codex-reference/how-to-use.md](./codex-reference/how-to-use.md) | 如何选择性迁移 Codex 设计 |
 
 ### 按真实问题查阅
 
 | 问题 | 参考资料 | 当前状态 |
 | --- | --- | --- |
-| Tool Call / Result 如何配对 | [codex-reference/tool-loop.md](./codex-reference/tool-loop.md) | Phase 6 已实现，资料用于复盘 |
-| Context 爆掉或历史失控 | [codex-reference/context-history.md](./codex-reference/context-history.md) | 研究资料，未排期 |
+| Tool Call / Result 如何配对 | [codex-reference/tool-loop.md](./codex-reference/tool-loop.md) | Phase 6 已实现，资料用于复盘与后续扩展 |
+| Context Budget、History 与 Observation 如何治理 | [codex-reference/context-history.md](./codex-reference/context-history.md) | Phase 7 已建立 Baseline；Minimal Compaction 继续 Gated |
+| RAG / Retrieval 如何进入低信任 Context | [codex-reference/context-history.md](./codex-reference/context-history.md)、[codex-reference/how-to-use.md](./codex-reference/how-to-use.md) | 尚未进入正式 Task |
 | 崩溃后如何恢复 | [codex-reference/durability-recovery.md](./codex-reference/durability-recovery.md) | 研究资料，未排期 |
 | 写操作如何审批 | [codex-reference/safety-permission.md](./codex-reference/safety-permission.md) | 研究资料，未排期 |
 | MCP / Multi-agent 何时引入 | [codex-reference/extensibility-and-multi-agent.md](./codex-reference/extensibility-and-multi-agent.md) | 研究资料，未排期 |
