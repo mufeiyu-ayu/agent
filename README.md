@@ -18,7 +18,7 @@ DeepSeek thinking Tool Calls preserve required `reasoning_content` only as inter
 
 Phase 6 reliability work binds Run remaining budget to database business statements, fences late database results, and atomically closes Message / AgentStep / AgentRun terminal state where the database can commit the terminalization transaction.
 
-Phase 7 Context Engineering adds a per-Run `ModelContext`, model-aware input budgeting, a locally loaded DeepSeek V4 tokenizer, token-budget-driven Dynamic History Selection, per-sampling Tool Loop Context planning, and a safe Admin Context Inspector. The current User Message remains mandatory and causally bounds previous History by `(createdAt, id)`.
+Phase 7 Context Engineering adds a per-Run `ModelContext`, model-aware input budgeting, a locally loaded DeepSeek V4 tokenizer, token-budget-driven Dynamic History Selection, per-sampling Tool Loop Context planning, Observation governance, and a safe Admin Context Inspector. The current User Message remains mandatory and causally bounds previous History by `(createdAt, id)`.
 
 ## Highlights
 
@@ -70,7 +70,7 @@ runDeadlineMs                   = 600000
 
 `AGENT_MAX_TOOL_CALLS=0` disables Tool exposure for that Run.
 
-Task 1 governs initial History selection. Task 2 applies the same resolved input budget before every sampling, preserving Tool Exchange pairing while governing follow-up History and Observation growth.
+Initial selection governs reliable History within the resolved input budget. The same budget is enforced before every sampling while preserving Tool Exchange pairing and governing follow-up History and Observation growth.
 
 ### Deadline model
 
@@ -199,13 +199,14 @@ Available now:
 
 Current mainline status:
 
-- **Phase 1-6 are Completed.**
+- **Phase 1-7 are Completed.**
 - Phase 6 final archive is [`docs/tasks/completed/phase-06-bounded-agent-loop.md`](./docs/tasks/completed/phase-06-bounded-agent-loop.md).
-- **Phase 7: Context Engineering is Active.**
+- Phase 7 final archive is [`docs/tasks/completed/phase-07-context-engineering.md`](./docs/tasks/completed/phase-07-context-engineering.md).
 - Task 0 `Context Boundary & Snapshot` is Completed via Issue #40 / PR #41, merge `415e866a`.
 - Task 1 `Model-aware Budget & Dynamic History` is Completed via Issue #42 / PR #43, merge `6df72f0`.
 - Task 2 `Loop-aware Context & Observation Governance` is Completed via Issue #44 / PR #45, merge `2f06355c`.
-- **Task 3 `Context Inspector & Phase Baseline` is the Active Agent mainline Task.** Issue #46 is implemented on its task branch and awaits acceptance.
-- Phase 7 remains Active; GPT has not yet made the Phase Baseline or Minimal Compaction decision.
+- Task 3 `Context Inspector & Phase Baseline` is Completed via Issue #46 / PR #47, merge `caf3d25b`.
+- There is currently no Active Agent Task.
+- Minimal Compaction remains Gated; the next stage has not been selected.
 
-See [`docs/roadmap.md`](./docs/roadmap.md), [`docs/tasks/README.md`](./docs/tasks/README.md), the [Phase 7 plan](./docs/tasks/phase-07-context-engineering/README.md), and the [Phase 6 archive](./docs/tasks/completed/phase-06-bounded-agent-loop.md).
+See [`docs/roadmap.md`](./docs/roadmap.md), [`docs/tasks/README.md`](./docs/tasks/README.md), the [Phase 7 archive](./docs/tasks/completed/phase-07-context-engineering.md), and the [Phase 6 archive](./docs/tasks/completed/phase-06-bounded-agent-loop.md).

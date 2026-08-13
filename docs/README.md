@@ -5,23 +5,21 @@
 ## 当前主线
 
 ```text
-阶段 1-6：Completed
-阶段 7：Context Engineering / Active
-Task 0：Context Boundary & Snapshot / Completed / #40 / #41 / 415e866a
-Task 1：Model-aware Budget & Dynamic History / Completed / #42 / #43 / 6df72f0
-Task 2：Loop-aware Context & Observation Governance / Completed / #44 / #45 / 2f06355c
-Task 3：Context Inspector & Phase Baseline / Active / #46 / 已实现、待验收
+阶段 1-7：Completed
+Active Agent Task：无
+Minimal Compaction：Gated
+下一阶段：尚未定案
 ```
 
-Phase 6 已完成并统一归档到 `docs/tasks/completed/**`，不再在 active tasks 区保留兼容目录。Phase 7 当前为 Active；Task 0-2 均已完成 GPT 技术验收、用户确认验收并合入 `master`。Task 3 对应 Issue #46，Clarification Gate 为 `READY`，实施状态为已实现、验收状态为待验收；Phase 7 尚未收口，Minimal Compaction 仍保持 `Gated`。
+Phase 7 `Context Engineering` 已完成 GPT 技术验收、用户确认验收，并通过 Issue #46 / PR #47 合入 `master`，merge commit 为 `caf3d25b7af0e5b30ae47d3c96faab4138fbdb9e`。Task 0-3 均已 Completed；阶段最终能力和验收证据已归档到 `docs/tasks/completed/**`。Minimal Compaction 当前没有足够证据进入正式实现，继续保持 `Gated`。
 
 ## 文档入口
 
 | 文档 | 用途 |
 | --- | --- |
-| [roadmap.md](./roadmap.md) | 已完成阶段、当前主线状态与阶段边界 |
+| [roadmap.md](./roadmap.md) | 已完成阶段、当前主线状态与后续候选方向 |
 | [tasks/README.md](./tasks/README.md) | 正式任务看板、状态与启动规则 |
-| [tasks/phase-07-context-engineering/README.md](./tasks/phase-07-context-engineering/README.md) | Phase 7 Context Engineering 阶段规划与 Task 边界 |
+| [tasks/completed/phase-07-context-engineering.md](./tasks/completed/phase-07-context-engineering.md) | Phase 7 最终能力、交付、验证和已接受边界 |
 | [tasks/completed/phase-06-bounded-agent-loop.md](./tasks/completed/phase-06-bounded-agent-loop.md) | Phase 6 最终能力、交付、验证和已接受边界 |
 | [tasks/admin-console.md](./tasks/admin-console.md) | Admin Console 独立产品支线 |
 | [development-workflow.md](./development-workflow.md) | Issue、Clarification Gate、Draft PR、验收和合并授权流程 |
@@ -41,8 +39,8 @@ Phase 6 已完成并统一归档到 `docs/tasks/completed/**`，不再在 active
 
 ## 维护原则
 
-- `docs/README.md` 只做入口，不维护第二套任务看板。
-- 当前 Task 细节写在对应 `docs/tasks/**`；已完成阶段统一压缩归档到 `docs/tasks/completed/**`。
-- 完成阶段不继续在 active tasks 区保留兼容目录或长篇 Task 规格；详细历史由 Completed 归档、Issue / PR 和 Git 历史共同承担。
-- `work-log.md` 只保留近期关键事实。
-- Phase 7 当前为 Active；Task 0-2 已 Completed。Task 3 已按 Issue #46 实现并等待 GPT 技术验收；不得提前标记 Task 3 或 Phase 7 Completed。
+- `docs/README.md` 只做入口，不维护第二套任务看板；
+- 当前 Task 细节写在对应 `docs/tasks/**`；已完成阶段统一压缩归档到 `docs/tasks/completed/**`；
+- 完成阶段不继续在 active tasks 区保留兼容目录或长篇 Task 规格；详细历史由 Completed 归档、Issue / PR 和 Git 历史共同承担；
+- `docs/work-log.md` 只保留近期关键事实；
+- 当前没有 Active Agent Task；任何下一阶段都必须重新讨论、建立正式 Task / Issue 并通过 Clarification Gate 后才能进入 Active。

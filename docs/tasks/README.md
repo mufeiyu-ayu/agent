@@ -6,51 +6,46 @@
 
 | 区域 | 状态 | 文档 | 说明 |
 | --- | --- | --- | --- |
-| Agent 主线 | **Phase 7 Active / Task 3 已实现、待验收** | [roadmap.md](../roadmap.md) | Task 0-2 已 Completed；Task 3 对应 Issue #46 |
-| Phase 7：Context Engineering | **Active** | [phase-07-context-engineering/README.md](./phase-07-context-engineering/README.md) | Task 0-2 Completed；Task 3 实施完成、等待验收；Compaction 为 Gated follow-up |
-| 阶段 6：有界单 Agent Loop | Completed | [completed/phase-06-bounded-agent-loop.md](./completed/phase-06-bounded-agent-loop.md) | Task 0、横向配置治理、Task 1、Task 2 均已验收并合并 |
+| Agent 主线 | **Phase 1-7 Completed / 无 Active Task** | [roadmap.md](../roadmap.md) | Phase 7 已完成验收并合入 `master`；下一阶段尚未定案 |
+| Phase 7：Context Engineering | **Completed** | [completed/phase-07-context-engineering.md](./completed/phase-07-context-engineering.md) | Task 0-3 Completed；merge `caf3d25b`；Minimal Compaction 继续 Gated |
+| Phase 6：有界单 Agent Loop | Completed | [completed/phase-06-bounded-agent-loop.md](./completed/phase-06-bounded-agent-loop.md) | Task 0、横向配置治理、Task 1、Task 2 均已验收并合并 |
 | Admin Console Task 0-1 | Completed | [admin-console.md](./admin-console.md) | 基础壳与静态 Run UI 已完成 |
 | Admin Console Task 2 | **Completed** | [task-02-run-query-api.md](./admin-console/task-02-run-query-api.md) | Issue #33 / PR #34；merge `997d6b84` |
 | Admin Console Task 3 | **Completed** | [task-03-real-trace-ui.md](./admin-console/task-03-real-trace-ui.md) | Issue #35 / PR #36；merge `4c689c4c`；真实 Observability UI 基线已建立 |
 | Admin Console Task 4 | Planned | [admin-console.md](./admin-console.md) | 登录、权限与敏感信息脱敏；当前不启动 |
 | Web Chat Scroll / UI Follow-up | **Completed** | [work-log.md](../work-log.md) | Issue #37 / PR #38；merge `415d7405` |
-| 阶段 5：最小 Tool Calling | Completed | [completed/phase-05-tool-calling.md](./completed/phase-05-tool-calling.md) | 已归档 |
-| 阶段 4：Agent Runtime | Completed | [completed/phase-04-agent-runtime.md](./completed/phase-04-agent-runtime.md) | 已归档 |
-| 阶段 3：Streaming | Completed | [completed/phase-03-streaming-closeout.md](./completed/phase-03-streaming-closeout.md) | 已归档 |
-| 阶段 2：Session Chat | Completed | [completed/phase-02-agent-chat-session.md](./completed/phase-02-agent-chat-session.md) | 已归档 |
+| Phase 5：最小 Tool Calling | Completed | [completed/phase-05-tool-calling.md](./completed/phase-05-tool-calling.md) | 已归档 |
+| Phase 4：Agent Runtime | Completed | [completed/phase-04-agent-runtime.md](./completed/phase-04-agent-runtime.md) | 已归档 |
+| Phase 3：Streaming | Completed | [completed/phase-03-streaming-closeout.md](./completed/phase-03-streaming-closeout.md) | 已归档 |
+| Phase 2：Session Chat | Completed | [completed/phase-02-agent-chat-session.md](./completed/phase-02-agent-chat-session.md) | 已归档 |
 
 ## Agent 主线状态
 
 ```text
-阶段 1-6：Completed
-阶段 7：Context Engineering / Active
-Task 0：Context Boundary & Snapshot / Completed / #40 / #41 / 415e866a
-Task 1：Model-aware Budget & Dynamic History / Completed / #42 / #43 / 6df72f0
-Task 2：Loop-aware Context & Observation Governance / Completed / #44 / #45 / 2f06355c
-当前任务：Task 3 / Context Inspector & Phase Baseline / Active / #46 / 已实现、待验收
+阶段 1-7：Completed
+Active Agent Task：无
+Minimal Compaction：Gated
+下一阶段：尚未定案
 ```
 
-Task 0 已由 GPT 基于 Issue #40、PR #41 最新实现、Codex Review 和验证结果完成技术验收，并由用户明确确认通过。PR #41 已合入 `master`，Issue #40 已关闭。
+Phase 7 最终交付：
 
-Task 1 已由 GPT 基于 Issue #42、PR #43 最新 head `620a2d0`、两轮 Codex Review 与完整验证结果完成技术验收；用户于 2026-08-12 明确确认验收并授权收口。PR #43 已合入 `master`，merge commit `6df72f02242a1b8a23920d64c471ce721ccf558b`，Issue #42 已关闭，因此 Task 1 正式状态为 `Completed`。
+| Task | 状态 | Issue / PR | Merge commit | 核心结果 |
+| --- | --- | --- | --- | --- |
+| Task 0：Context Boundary & Snapshot | Completed | #40 / #41 | `415e866a` | 单 Run `ModelContext`、Tool Exchange 成对维护与安全 Context Snapshot |
+| Task 1：Model-aware Budget & Dynamic History | Completed | #42 / #43 | `6df72f0` | model-aware input budget、DeepSeek V4 TokenEstimator、token-budget Dynamic History |
+| Task 2：Loop-aware Context & Observation Governance | Completed | #44 / #45 | `2f06355c` | per-sampling Context Plan、follow-up History exclusion、Observation 双层治理 |
+| Task 3：Context Inspector & Phase Baseline | Completed | #46 / #47 | `caf3d25b` | 安全 Context Read Model、Admin Inspector、领域不变量与阶段验收基线 |
 
-Task 2 已由 GPT 基于 Issue #44、PR #45 最新 head `810b4b717ad65c950ee6b7b51de70e6f41fb83da`、Review finding 修复、新增回归、独立 Codex Review 与完整验证记录完成技术验收；用户于 2026-08-13 明确确认按 Completed 状态收口。PR #45 已合入 `master`，merge commit `2f06355ccfbe86d5b7492d770250b776e5da79f1`，Issue #44 已关闭，因此 Task 2 正式状态为 `Completed`。
+Task 3 已由 GPT 基于 Issue #46、PR #47 最新 head `e0eaa33e449486a5b30a0a87ba654460fe62fbaf`、上一轮 P2 修复、自动测试、最终 Codex Review 和真实 API / PostgreSQL / 浏览器证据完成技术验收。用户于 2026-08-13 明确确认验收并授权 Draft 转 Ready、合并和关闭；PR #47 已合入 `master`，merge commit 为 `caf3d25b7af0e5b30ae47d3c96faab4138fbdb9e`，Issue #46 已关闭。
 
-Task 3 已按 Issue #46 完成 `READY` Clarification Gate、Context Inspector Read Model、最小安全 estimator failure 枚举、Admin API / Contract / UI、自动回归与真实 API + 本地 PostgreSQL 浏览器证据。实施状态为已实现，验收状态为待验收；Task 3 和 Phase 7 均不得在 GPT 技术验收与用户确认前标记 Completed。
+因此：
 
-## Phase 7 当前任务
-
-| Task | 状态 | 核心边界 |
-| --- | --- | --- |
-| Task 0：Context Boundary & Snapshot | **Completed / #40 / #41 / merge 415e866a** | 收敛 model input assembly；建立安全 Context Snapshot；不改变 40 条 History 与现有 Observation 行为 |
-| Task 1：Model-aware Budget & Dynamic History | **Completed / #42 / #43 / merge 6df72f0** | 让 `contextWindowTokens` 进入真实预算；History 从固定条数升级为 token-budget 驱动 |
-| Task 2：Loop-aware Context & Observation Governance | **Completed / #44 / #45 / merge 2f06355c** | 多轮 Tool Loop 的 Context Budget、Tool Call / Result pairing 与 Observation 最终裁剪 |
-| Task 3：Context Inspector & Phase Baseline | **Active / #46 / 已实现、待验收** | 安全 Context Read Model + Admin Inspector + 阶段回归与浏览器证据 |
-| Minimal Compaction | Gated | 只有 Task 1-3 的真实证据证明需要时才另建正式 Task / Issue |
-
-阶段完整规格见 [`phase-07-context-engineering/README.md`](./phase-07-context-engineering/README.md)。
-
-下一动作是由 GPT 基于 Issue #46、Draft PR、自动验证、真实 Run 与浏览器证据完成 Task 3 技术验收，并决定 Phase 7 Baseline 是否可收口；Minimal Compaction 不自动启动。
+- Task 3 正式状态为 `Completed`；
+- Phase 7 正式状态为 `Completed`；
+- Phase 7 active 规格已压缩归档到 [`completed/phase-07-context-engineering.md`](./completed/phase-07-context-engineering.md)；
+- 当前没有 Active Agent Task；
+- Minimal Compaction 没有被自动启动，继续保持 `Gated`。
 
 ## Admin Console 当前状态
 
@@ -62,9 +57,23 @@ Task 3：真实 Run Trace UI          Completed
 Task 4：Auth / RBAC / 脱敏         Planned
 ```
 
-Task 2 + Task 3 已建立真实 Observability Baseline：服务端安全 Read Model、真实 Run / Step Query API、server pagination / filters、Run Trace UI、Generic Inspector、失败态、stale response fencing、Computer Use 浏览器验收与截图证据均已完成。
+Admin Task 2 + Task 3 已建立真实 Observability Baseline：服务端安全 Read Model、真实 Run / Step Query API、server pagination / filters、Run Trace UI、Typed / Generic Inspector、失败态、stale-response fencing、Computer Use 浏览器验收与截图证据均已完成。
 
-Admin Console 是独立 Observability 支线。Phase 7 Task 3 只基于现有基线增量加入 Context Inspector，不自动启动 Admin Task 4。
+Phase 7 Task 3 已在该基线上增加 Context Inspector，但不自动启动 Admin Task 4。
+
+## 下一正式动作
+
+下一阶段必须基于最新 `master`、真实产品需求、学习收益和作品集价值重新讨论。候选方向包括：
+
+1. RAG / Embedding / Hybrid Retrieval；
+2. Permission / Approval / Human-in-the-loop；
+3. Durable Recovery / Resume；
+4. MCP / Plugin / Skill；
+5. Planner / Workflow / 并行 Tool Call；
+6. Multi-agent；
+7. 有真实 Context 压力证据时再讨论 Minimal Compaction。
+
+任何候选都不会因为路线或研究资料已经存在而自动进入正式实现。只有创建明确 Task / Issue 并通过 Clarification Gate `READY` 后，才允许写成 Active。
 
 ## 状态定义
 

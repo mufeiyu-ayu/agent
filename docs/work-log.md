@@ -6,78 +6,57 @@
 
 | 类型 | 当前记录 | 下一步 |
 | --- | --- | --- |
-| Agent 主线 | 阶段 1-6 Completed；Phase 7 Context Engineering Active；Task 0-2 Completed；Task 3 已实现、待验收 | GPT 验收 Issue #46 / Draft PR，并判断 Phase 7 Baseline 是否可收口 |
-| Phase 6 | 已完成并归档 | 见 `docs/tasks/completed/phase-06-bounded-agent-loop.md` |
-| Phase 7 | Task 0-2 Completed；Task 3 Active / #46 / 已实现、待验收；Compaction Gated | 不提前标记 Task 3 或 Phase 7 Completed |
-| Admin Console | Task 0-3 Completed；Observability Baseline 已建立；Task 4 Planned | Phase 7 Task 3 再按需增量增加 Context Inspector |
-| Web Chat | 会话滚动跟随与响应式 UI follow-up 已完成 | 后续仅在出现真实 UX 问题时继续迭代 |
-| 文档结构 | `roadmap`、`tasks`、`research`、`work-log` 为主入口 | 不维护第二套阶段状态 |
+| Agent 主线 | 阶段 1-7 Completed；当前无 Active Agent Task | 基于最新 `master` 重新讨论下一阶段 |
+| Phase 6 | Completed / 已归档 | `docs/tasks/completed/phase-06-bounded-agent-loop.md` |
+| Phase 7 | Completed / merge `caf3d25b` | `docs/tasks/completed/phase-07-context-engineering.md` |
+| Minimal Compaction | Gated | 只有真实 Context 压力证据满足触发条件后才讨论 |
+| Admin Console | Task 0-3 Completed；Observability Baseline + Context Inspector 已建立；Task 4 Planned | 不自动启动 Auth / RBAC |
+| Web Chat | 会话滚动跟随与响应式 UI follow-up 已完成 | 出现真实 UX 问题时再迭代 |
 
 ## 近期关键记录
 
 | 日期 | 事项 | 结果 |
 | --- | --- | --- |
-| 2026-08-13 | PR #47 GPT Review P2 修复 | 收紧 Context Inspector initial budget、Observation、fail-closed outcome 与跨 sampling Domain invariants；矛盾 metadata 只降级 Inspector，不把已知 Sampling Step 退化为 Generic；修正 two-tool `4 / 6 / 7` 与真实 PostgreSQL fixture，重新生成正常路径截图并完成 scoped tests、build、typecheck、lint 与 workspace typecheck；实施状态仍为已实现、验收状态仍为待验收 |
-| 2026-08-13 | Issue #46 / Phase 7 Task 3 实现 | Clarification Gate 为 `READY`；完成 per-sampling Context Inspector Read Model、sampling estimator failure 安全枚举、legacy / partial fallback、Budget / Sources / Adjustments UI、自动回归与真实 Admin API + PostgreSQL 浏览器证据；实施状态已实现、验收状态待验收；Phase 7 与 Minimal Compaction 均未收口 |
-| 2026-08-13 | PR #45 / Issue #44 / Phase 7 Task 2 最终收口 | GPT 基于最新 head `810b4b7`、Issue #44、完整 PR diff、Review finding 修复、新增回归、独立 Codex Review 与验证记录完成技术验收并给出通过结论；用户明确确认按 Completed 状态收口；PR #45 已合入 `master`，merge commit `2f06355ccfbe86d5b7492d770250b776e5da79f1`；Issue #44 Closed；Task 2 Completed；Task 3 推进为 Next 但未启动 |
-| 2026-08-13 | PR #45 GPT Review finding 修复 | 修正每轮最终 Provider item count、累计 Task 1 与 Loop History 排除统计，并同步 `AGENTS.md`、根 README 与 docs 入口；完整验证通过，实施状态仍为已实现、验收状态仍为待验收 |
-| 2026-08-13 | Issue #44 / Draft PR #45 / Phase 7 Task 2 实现 | Clarification Gate 为 READY；完成 DeepSeek V4 full-request estimator、逐轮 Sampling Context Plan、History 再选择、Observation 双层治理、安全 Context Plan 摘要与 fail-closed 终态；指定回归、build、lint、typecheck 与 diff-check 通过；Draft PR #45 已创建，实施状态已实现、验收状态待验收 |
-| 2026-08-12 | PR #43 / Issue #42 收口 | Phase 7 Task 1 `Model-aware Budget & Dynamic History` 经 GPT 技术验收通过，用户明确确认验收；第一轮 Codex Review 的 3 个 P2 已在 `620a2d0` 修复并全部 resolved，第二轮 Review 未发现新的主要问题；PR #43 按授权转 Ready 并合入 `master`，merge commit `6df72f02242a1b8a23920d64c471ce721ccf558b`；Issue #42 Closed；Task 1 Completed；Task 2 仅推进为 Next |
-| 2026-08-12 | PR #43 Review finding 收口 | 增加 current User `(createdAt, id)` initial causal upper bound；同步根 `AGENTS.md`；candidate batch 最小值收紧为 50，并用测试将最坏合法配置的 full-request estimate 次数限制在 28 次以内；完整回归、build、lint、typecheck 与 `git diff --check` 通过 |
-| 2026-08-10 | Issue #42 / Draft PR #43 / Phase 7 Task 1 实现 | Q-01～Q-03 全部回写后 Clarification Gate 为 READY；完成 model-aware initial Context Budget、DeepSeek V4 官方 encoding 一致性验证、动态 History keyset 分页与安全 Context summary；指定回归、API lint/typecheck 与 workspace typecheck 通过；Draft PR #43 已创建，实施状态已实现、验收状态待验收 |
-| 2026-08-10 | PR #41 / Issue #40 收口 | Phase 7 Task 0 `Context Boundary & Snapshot` 经 GPT 技术验收通过，用户明确确认验收；Codex Review 两项 finding 均完成处理；PR #41 按授权转 Ready 并合入 `master`，merge commit `415e866af4d4007b6bed43cd1f6e3df590575706`；Issue #40 Closed；Task 0 Completed |
-| 2026-08-10 | Issue #40 / Phase 7 Task 0 实现 | 第二轮 Clarification Gate 为 READY；新增单次 Run 内存 Context Boundary 与 whitelist 安全 Snapshot，锁定 direct-final、一次 Tool、两次顺序 Tool 的 Provider-facing input；Issue 指定测试、API lint/typecheck 与 workspace typecheck 全部通过；PR #41 创建并进入待验收状态 |
-| 2026-08-10 | Phase 7 Context Engineering 路线定案 | 基于 Phase 6 Runtime 与现有 Context 限制，确认 Context Engineering 为下一 Agent 主线；Task 0 Context Boundary & Snapshot 为 Next；Task 1-3 Planned；Minimal Compaction 仅作为有证据才启动的 Gated follow-up |
-| 2026-08-10 | PR #38 / Issue #37 收口 | Web Chat 会话滚动跟随、原生 viewport、scroll memory 与响应式布局 follow-up 合入 `master`；merge commit `415d740507a29ee4bd9b6a4aa26d9c4fbb9668c1`；Issue #37 Closed |
-| 2026-08-10 | PR #36 / Issue #35 收口 | Admin Console Task 3 合入 `master`；merge commit `4c689c4c8a8d3975192d13eb3f5a1c24463fcd7b`；真实 Run Trace UI、Computer Use 验收与截图证据完成；Issue #35 Closed |
-| 2026-08-10 | PR #36 范围整理 | 最新分支中混入的独立 Web UI / scroll 改动从 Admin Task 3 中拆出并保留到独立分支，避免一个 PR 同时承载两个 Task；Admin PR 仅保留 Task 3 + 必要 API dev-mode 修复 |
-| 2026-08-09 | Admin Task 3 Computer Use 自验收 | 真实 Nest API + Admin Vite + Chrome 覆盖真实列表、终态/运行中 Trace、filters、pagination、404、API error、Generic Inspector、stale response、light/dark、常见桌面尺寸；4 张截图已提交 |
-| 2026-08-09 | Admin Task 3 实现 | 真实 Run List / Detail、server filter / pagination、五类 Inspector + Generic、失败态与 stale response fencing 完成；自动验证通过 |
-| 2026-08-09 | PR #34 / Issue #33 收口 | Task 2 真实 Run / Step Query API 合入 `master`；merge commit `997d6b84341ad3a53e42786490361ea3f984bf7e` |
-| 2026-08-09 | PR #32 / Issue #31 收口 | Phase 6 Runtime reliability 合入 `master`；merge commit `691efbcd927682d2a435c2bd6125225ae27a18fb` |
-| 2026-08-08 | PR #30 / Issue #29 收口 | Phase 6 bounded sequential Agent Loop 合入 `master`；merge commit `904b011d64e1aec7e36f706150fb8ef5ef89a761` |
-| 2026-07-26 | PR #28 / Issue #27 收口 | 输入、历史、Model Profile、输出 / timeout / Observation 预算治理完成 |
-| 2026-07-26 | PR #26 / Issue #25 收口 | Tool 目录整理为 `core/ + articles/`，新增 `get_article_detail` |
-| 2026-07-20 | PR #22 合并 | Admin Console Task 1 完成 |
-| 2026-07-19 | PR #20 合并 | Admin Console Task 0 完成 |
+| 2026-08-13 | Phase 7 / Task 3 最终收口 | GPT 基于 Issue #46、PR #47 最新 head `e0eaa33`、P2 修复、自动验证、最终 Codex Review 与真实 API / PostgreSQL / 浏览器证据完成技术验收；用户确认验收并授权 Ready、合并与关闭；PR #47 合入 `master`，merge `caf3d25b7af0e5b30ae47d3c96faab4138fbdb9e`，Issue #46 Closed；Task 3 与 Phase 7 Completed；Minimal Compaction 继续 Gated |
+| 2026-08-13 | PR #47 GPT Review P2 修复 | 收紧 initial budget、Observation、fail-closed outcome 与跨 sampling Domain invariants；修正 two-tool pre-plan `4 / 6 / 7`、Provider `4 / 5 / 7`、真实 fixture 和截图并复跑验证 |
+| 2026-08-13 | Issue #46 / Task 3 实现 | 完成 Context Inspector Read Model、sampling estimator failure 安全枚举、legacy / partial fallback、Budget / Sources / Adjustments UI、自动回归与真实浏览器证据 |
+| 2026-08-13 | Phase 7 Task 2 收口 | Issue #44 / PR #45，merge `2f06355c`；Loop Context、History 再选择、Observation 双层治理与 fail-closed 完成 |
+| 2026-08-12 | Phase 7 Task 1 收口 | Issue #42 / PR #43，merge `6df72f0`；model-aware budget、DeepSeek V4 TokenEstimator 与 Dynamic History 完成 |
+| 2026-08-10 | Phase 7 Task 0 收口 | Issue #40 / PR #41，merge `415e866a`；单 Run `ModelContext` 与安全 Context Snapshot 完成 |
+| 2026-08-10 | Phase 7 路线定案 | Context Engineering 成为 Phase 6 后主线；Task 0-3 分阶段实施；Minimal Compaction 为 Gated follow-up |
+| 2026-08-10 | Web Chat UI 收口 | Issue #37 / PR #38，merge `415d7405`；滚动跟随、scroll memory 与响应式布局完成 |
+| 2026-08-10 | Admin Task 3 收口 | Issue #35 / PR #36，merge `4c689c4c`；真实 Run Trace UI 与浏览器验收完成 |
+| 2026-08-09 | Admin Task 2 收口 | Issue #33 / PR #34，merge `997d6b84`；真实 Run / Step Query API 完成 |
+| 2026-08-09 | Phase 6 reliability 收口 | Issue #31 / PR #32，merge `691efbcd`；DB deadline、late-result fencing 与原子 terminalization 完成 |
+| 2026-08-08 | Phase 6 Agent Loop 收口 | Issue #29 / PR #30，merge `904b011d`；bounded sequential Agent Loop 完成 |
 
 ## 当前阶段边界
 
-Phase 6 已完成，不再继续向该阶段追加新 Agent 能力。
-
-Phase 7 当前状态：
-
 ```text
-Phase 7：Context Engineering          Active
-Task 0：Context Boundary & Snapshot   Completed / #40 / #41 / merge 415e866a
-Task 1：Model-aware Budget            Completed / #42 / #43 / merge 6df72f0
-Task 2：Loop-aware Context            Completed / #44 / #45 / merge 2f06355c
-Task 3：Context Inspector             Active / #46 / 已实现、待验收
-Compaction                            Gated
-Active Agent Task                     Task 3 / Issue #46
+阶段 1-7            Completed
+Active Agent Task   无
+Minimal Compaction  Gated
+下一阶段            尚未定案
 ```
 
-Phase 7 的核心目标是让 model-visible context 从“固定 History 条数 + 各 Tool 局部字符限制”升级为统一 Context boundary、model-aware budget、动态 History Selection、多轮 Loop Context Governance 和安全 Inspector。
-
-Task 0-2 均已验收并合入 `master`。Task 3 `Context Inspector & Phase Baseline` 已通过 Issue #46 Clarification Gate 并完成实现，当前等待 GPT 技术验收。
-
-Minimal Compaction 不自动启动；只有 Task 1-3 的真实指标证明动态选择不足以维持长会话连续性、成本、延迟或质量时，才重新讨论独立 Task / Issue。
-
-Admin Console 当前状态：
+Phase 7 已完成：
 
 ```text
-Task 0：Admin shell      Completed
-Task 1：Static Trace UI  Completed
-Task 2：Read API         Completed
-Task 3：Real Trace UI    Completed
-Task 4：Auth / RBAC      Planned
+ModelContext Boundary
+  -> model-aware input budget
+  -> Dynamic History Selection
+  -> per-sampling Loop Context Plan
+  -> Observation Governance
+  -> durable safe metadata
+  -> Admin Context Inspector
 ```
 
-Admin Task 2 + Task 3 已建立真实 Observability Baseline；Phase 7 Task 3 已在这个基线上增加 Context Inspector，但 Admin Task 4 不自动启动。
+Minimal Compaction 不自动启动。只有真实 Inspector 数据证明旧 Context 被频繁驱逐，并对连续性、质量、成本或延迟造成可复现影响时，才创建独立 Task / Issue。
 
 ## 记录规则
 
 - 只记录已经真实发生的事项；
 - 实现、验收、Task 收口、合并与开始下一 Task 是不同动作；
 - 长期研究进入 `docs/research/**`；
-- 旧阶段细节不在这里重复维护。
+- 旧阶段细节不在这里重复维护；
+- 当前无 Active Agent Task，任何后续方向必须先重新讨论并进入正式 Issue 流程。
