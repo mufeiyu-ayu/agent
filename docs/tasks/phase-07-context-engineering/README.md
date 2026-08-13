@@ -1,8 +1,8 @@
 # Phase 7：Context Engineering
 
-状态：**Active / Task 0-1 Completed / Task 2 Next**。
+状态：**Active / Task 0-1 Completed / Task 2 已实现待验收 / Draft PR #45**。
 
-本阶段已经由 GPT 与用户确认作为 Phase 6 之后的 Agent 主线。Task 0 `Context Boundary & Snapshot` 与 Task 1 `Model-aware Budget & Dynamic History` 均已完成 GPT 技术验收、用户确认验收并合入 `master`。Task 2 `Loop-aware Context & Observation Governance` 为 Next，尚未创建 Issue。
+本阶段已经由 GPT 与用户确认作为 Phase 6 之后的 Agent 主线。Task 0 `Context Boundary & Snapshot` 与 Task 1 `Model-aware Budget & Dynamic History` 均已完成 GPT 技术验收、用户确认验收并合入 `master`。Task 2 `Loop-aware Context & Observation Governance` 已按 Issue #44 实现，当前等待技术验收；Task 3 未启动。
 
 ## 1. 阶段目标
 
@@ -95,11 +95,11 @@ Phase 7 Baseline 不把自动 Summary / Compaction 作为必做项。先完成 C
 | --- | --- | --- |
 | Task 0：Context Boundary & Snapshot | **Completed / #40 / #41 / merge `415e866a`** | 把当前 model input 组装收敛到独立 Context 边界，并建立不改变现有行为的 Context Snapshot |
 | Task 1：Model-aware Budget & Dynamic History | **Completed / #42 / #43 / merge `6df72f0`** | 让模型 Context Window 参与预算，历史选择从固定条数升级为 token-budget 驱动 |
-| Task 2：Loop-aware Context & Observation Governance | **Next / Issue 未创建** | 统一管理后续 sampling 的 Tool Exchange、剩余 Context Budget 与 Observation 裁剪 |
+| Task 2：Loop-aware Context & Observation Governance | **已实现 / 待验收 / #44 / Draft PR #45** | 统一管理后续 sampling 的 Tool Exchange、剩余 Context Budget 与 Observation 裁剪 |
 | Task 3：Context Inspector & Phase Baseline | Planned | 将 Context 决策做成安全可观察的 Runtime / Admin Inspector，并完成阶段回归 |
 | Gated Follow-up：Minimal Compaction | Gated | 只有 Task 1-3 的真实证据证明需要时，才单独设计最小 Compaction |
 
-正式实现仍遵守“一 Issue = 一明确 Task”。Task 2 当前只是 Next，不代表已经启动；Task 3 不会因为本文存在而自动启动。
+正式实现仍遵守“一 Issue = 一明确 Task”。Task 2 当前等待验收；Task 3 不会因为本文存在而自动启动。
 
 ---
 
@@ -268,7 +268,12 @@ Task 0 是结构基线，不负责优化 History 数量，也不实现 token-bud
 
 # Task 2：Loop-aware Context & Observation Governance
 
-状态：**Next / Issue 未创建**。
+状态：**Active / Issue #44 / Draft PR #45 / 已实现待验收**。
+
+- 实施状态：已实现
+- 验收状态：待验收
+- 分支：`codex/issue-44-loop-context-governance`
+- Draft PR：#45
 
 ## 目标
 
@@ -301,14 +306,35 @@ Task 0 是结构基线，不负责优化 History 数量，也不实现 token-bud
 
 ## 验收标准
 
-- [ ] direct final、一次 Tool、两次 Tool 每轮 input 均受 Context Budget 约束；
-- [ ] Tool Call / Result pairing 在裁剪后仍完整；
-- [ ] 超大 Observation 不会仅依赖 Tool 自己的固定字符上限决定最终模型输入；
-- [ ] 现有 16K / 64K / global hard max 仍作为 safety ceiling 生效；
-- [ ] malicious Tool Observation 仍处于低信任 tool context，不能升级指令优先级；
-- [ ] Context overflow 有明确、可测试的失败语义。
+- [x] direct final、一次 Tool、两次 Tool 每轮 input 均受 Context Budget 约束；
+- [x] Tool Call / Result pairing 在裁剪后仍完整；
+- [x] 超大 Observation 不会仅依赖 Tool 自己的固定字符上限决定最终模型输入；
+- [x] 现有 16K / 64K / global hard max 仍作为 safety ceiling 生效；
+- [x] malicious Tool Observation 仍处于低信任 tool context，不能升级指令优先级；
+- [x] Context overflow 有明确、可测试的失败语义。
 
-Task 2 当前只进入 Next；需要先完成学习讨论、创建独立 Issue 并通过 Clarification Gate，之后才允许标记 Active 或开始实现。
+## 实现与验证证据
+
+- Full-request estimator：initial、一次 Tool、两次顺序 Tool 共用 DeepSeek V4 provider-aware 编码；固定向量来自官方 `encoding_dsv4.py@b5968e9`，生产只读取仓库本地 tokenizer，不使用近似 fallback。
+- Per-sampling plan：每轮 Provider 调用前完整重估；超预算时先排除最旧 initial History，再按旧到新缩减 Observation，成功结果在当前 Run 内单调收缩。
+- Tool continuation：callId、name、raw arguments、`reasoning_content`、intermediate assistant content 和 Tool Result 配对顺序保持不变；仅 `tool_result.content` 可受控缩减。
+- Observation：继续先应用 16K / 64K / 128K ceiling；Context marker 同时记录 `tool_ceiling` / `context_budget`，Unicode-safe，且二次缩减不会突破原 Tool ceiling。
+- 失败与安全：最小结构仍超预算或 estimator 失败时，对应 Provider 调用不发生，Sampling Step / Assistant Message / Run 稳定收口；Step 只保存数字、布尔和枚举型 Context Plan 摘要。
+
+| 命令 | 结果 |
+| --- | --- |
+| `pnpm --filter @agent/api test:context` | 通过，24 tests |
+| `pnpm --filter @agent/api test:tool-loop` | 通过，51 tests |
+| `pnpm --filter @agent/api test:model-stream` | 通过，64 tests |
+| `pnpm --filter @agent/api test:tools` | 通过，40 tests |
+| `pnpm --filter @agent/api test:seo-service` | 通过，10 tests |
+| `pnpm --filter @agent/api test:llm-config` | 通过，17 tests |
+| `pnpm --filter @agent/api test:admin-runs` | 通过，16 tests |
+| `pnpm --filter @agent/api build` | 通过 |
+| `pnpm --filter @agent/api typecheck` | 通过 |
+| `pnpm --filter @agent/api lint` | 通过 |
+| `pnpm typecheck` | 通过 |
+| `git diff --check` | 通过 |
 
 ---
 
@@ -401,9 +427,9 @@ Minimal Compaction 不属于默认完成条件；是否加入 Phase 7 收口范�
 - Phase 7：Active
 - Task 0：Completed / Issue #40 Closed / PR #41 Merged / `415e866a`
 - Task 1：Completed / Issue #42 Closed / PR #43 Merged / `6df72f0`
-- Task 2：Next / Issue 未创建
+- Task 2：Issue #44 / Draft PR #45 / 已实现 / 待验收
 - Task 3：Planned
 - Minimal Compaction：Gated
-- Active Agent Task：无
+- Active Agent Task：Task 2 / #44 / 待验收
 
-下一正式动作：学习和讨论 Task 2；确认边界后创建独立 Issue，只有 Clarification Gate 为 `READY` 才进入 Active。
+下一正式动作：对 Task 2 的 Draft PR 做技术验收；Task 3 仍为 Planned，不自动启动。

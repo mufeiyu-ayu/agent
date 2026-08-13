@@ -2,6 +2,7 @@ import type { ChatMessage } from '../llm/llm.types.js'
 import type { ModelToolSpec } from '../llm/model-tool-spec.types.js'
 import { Inject, Injectable } from '@nestjs/common'
 
+import { toModelInputItems } from '../llm/model-input.types.js'
 import { ContextBudgetExceededError } from './agent-runtime.errors.js'
 import { TokenEstimator } from './deepseek-v4-token-estimator.js'
 
@@ -78,11 +79,11 @@ export class InitialContextSelectionService {
         .map(candidate => candidate.message)
         .reverse()
 
-      return this.tokenEstimator.estimateInitialRequest({
-        messages: input.buildModelMessages([
+      return this.tokenEstimator.estimateRequest({
+        items: toModelInputItems(input.buildModelMessages([
           ...historyMessages,
           input.currentUserMessage,
-        ]),
+        ])),
         tools: input.tools,
       })
     }

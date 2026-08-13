@@ -43,11 +43,15 @@ import {
 } from '../prisma/prisma.service.js'
 import { buildSeoAgentChatMessages } from '../seo/prompts/seo-agent.prompt.js'
 import { toChatStreamEvent } from '../seo/seo-chat-stream-event.mapper.js'
-import { AgentRunTerminalizationError } from './agent-runtime.errors.js'
+import {
+  AgentRunTerminalizationError,
+  ContextTokenEstimationError,
+} from './agent-runtime.errors.js'
 import { AgentRuntimeService } from './agent-runtime.service.js'
 import { TokenEstimator } from './deepseek-v4-token-estimator.js'
 import { InitialContextSelectionService } from './initial-context-selection.js'
 import { ModelContext } from './model-context.js'
+import { SamplingContextPlanner } from './sampling-context-planner.js'
 
 describe('AgentRuntimeService model stream', () => {
   it('保持普通文本流的现有完成行为', async () => {
@@ -102,7 +106,7 @@ describe('AgentRuntimeService model stream', () => {
       samplingIndex: 1,
       samplingAttemptId: 'run-1:sampling-1',
       requestedModel: null,
-      messageCount: 1,
+      candidateMessageCount: 1,
       toolCount: 2,
     })
     assert.equal(
@@ -114,6 +118,7 @@ describe('AgentRuntimeService model stream', () => {
       withoutDuration(harness.recorder.steps[2]?.output),
       {
         samplingAttemptId: 'run-1:sampling-1',
+        messageCount: 1,
         finishReason: 'stop',
         usage: null,
         toolCallCount: 0,
@@ -524,20 +529,21 @@ describe('AgentRuntimeService model stream', () => {
         samplingIndex: 1,
         samplingAttemptId: 'run-1:sampling-1',
         requestedModel: null,
-        messageCount: 1,
+        candidateMessageCount: 1,
         toolCount: 2,
       },
       {
         samplingIndex: 2,
         samplingAttemptId: 'run-1:sampling-2',
         requestedModel: null,
-        messageCount: 3,
+        candidateMessageCount: 3,
         toolCount: 2,
       },
     ])
     assert.deepEqual(samplingSteps.map(step => withoutDuration(step.output)), [
       {
         samplingAttemptId: 'run-1:sampling-1',
+        messageCount: 1,
         finishReason: 'tool_calls',
         usage: { inputTokens: 10, outputTokens: 2, totalTokens: 12 },
         toolCallCount: 1,
@@ -546,6 +552,7 @@ describe('AgentRuntimeService model stream', () => {
       },
       {
         samplingAttemptId: 'run-1:sampling-2',
+        messageCount: 3,
         finishReason: 'stop',
         usage: { inputTokens: 20, outputTokens: 4, totalTokens: 24 },
         toolCallCount: 0,
@@ -575,6 +582,300 @@ describe('AgentRuntimeService model stream', () => {
       truncated: false,
     })
     assert.equal(typeof (toolStep?.output as Record<string, unknown>)?.durationMs, 'number')
+    assertNoUnfinishedSteps(harness)
+  })
+
+  it('第二轮 sampling 重新估算完整请求，并按 Context Budget 缩减 Observation', async () => {
+    const observation = '🚀'.repeat(16_000)
+    const estimator = new BaseCostTokenEstimator(250_000)
+    const harness = createHarness(
+      (_, __, callIndex) => toModelStream(callIndex === 0
+        ? [
+            toolCallEvent('call-budget', 'search_articles', '{"query":"seo"}'),
+            { type: 'response_completed', finishReason: 'tool_calls' },
+          ]
+        : [
+            { type: 'text_delta', delta: '已按预算处理。' },
+            { type: 'response_completed', finishReason: 'stop' },
+          ]),
+      undefined,
+      async () => ({
+        ok: true,
+        data: {},
+        modelContent: observation,
+      }),
+      {},
+      estimator,
+    )
+
+    const events = await collectEvents(harness.run())
+    const followUpItems = harness.llmCalls[1]?.messages ?? []
+    const plannedObservation = followUpItems.find(
+      item => item.type === 'tool_result',
+    )
+
+    assert.equal(events.at(-1)?.type, 'run_completed')
+    assert.equal(harness.llmCalls.length, 2)
+    assert.equal(plannedObservation?.type, 'tool_result')
+    if (plannedObservation?.type !== 'tool_result')
+      assert.fail('expected tool_result')
+    assert.ok([...plannedObservation.content].length < [...observation].length)
+    assert.ok([...plannedObservation.content].length <= 16_000)
+    assert.match(plannedObservation.content, /Context Budget|context_budget|上下文预算/i)
+    assert.ok(estimator.estimateRequest({
+      items: followUpItems,
+      tools: harness.llmCalls[1]?.options?.tools ?? [],
+    }) <= 262_144)
+    assert.ok(estimator.inputs.some(input => input.items.some(
+      item => item.type === 'tool_result',
+    )))
+    const contextPlan = harness.recorder.steps
+      .filter(step => step.type === 'model_sampling')[1]
+      ?.output as Record<string, unknown>
+
+    assert.deepEqual(
+      Object.keys(contextPlan.contextPlan as Record<string, unknown>),
+      [
+        'samplingIndex',
+        'resolvedInputBudgetTokens',
+        'estimatedInputTokens',
+        'historyCandidateCount',
+        'historyIncludedCount',
+        'historyExcludedCount',
+        'toolExchangeCount',
+        'observations',
+        'overflowReason',
+        'estimatorStrategyId',
+      ],
+    )
+    assert.doesNotMatch(JSON.stringify(contextPlan.contextPlan), /🚀/)
+    assertNoUnfinishedSteps(harness)
+  })
+
+  it('follow-up 超预算时先排除最旧 initial History，且不修改数据库 Message', async () => {
+    const historyContent = '旧'.repeat(8_000)
+    const observationContent = '新'.repeat(8_000)
+    const harness = createHarness(
+      (_, __, callIndex) => toModelStream(callIndex === 0
+        ? [
+            toolCallEvent('call-history', 'search_articles', '{"query":"seo"}'),
+            { type: 'response_completed', finishReason: 'tool_calls' },
+          ]
+        : [
+            { type: 'text_delta', delta: '完成。' },
+            { type: 'response_completed', finishReason: 'stop' },
+          ]),
+      undefined,
+      async () => ({
+        ok: true,
+        data: {},
+        modelContent: observationContent,
+      }),
+      {},
+      new BaseCostTokenEstimator(250_000),
+    )
+    const createdAt = new Date('2026-01-01T00:00:00.000Z')
+
+    harness.prisma.seedMessage({
+      id: 'history-oldest',
+      content: historyContent,
+      status: MessageStatus.COMPLETED,
+      createdAt,
+    })
+
+    await collectEvents(harness.run())
+
+    assert.equal(harness.llmCalls[0]?.messages.some(
+      item => item.type === 'message' && item.content === historyContent,
+    ), true)
+    assert.equal(harness.llmCalls[1]?.messages.some(
+      item => item.type === 'message' && item.content === historyContent,
+    ), false)
+    assert.equal(harness.llmCalls[1]?.messages.some(
+      item => item.type === 'tool_result' && item.content === observationContent,
+    ), true)
+    assert.equal(
+      harness.prisma.messages.find(message => message.id === 'history-oldest')?.content,
+      historyContent,
+    )
+    const followUpSamplingStep = harness.recorder.steps.filter(
+      step => step.type === 'model_sampling',
+    )[1]
+    const persistedSamplingMessageCount = (
+      followUpSamplingStep?.output as Record<string, unknown>
+    )?.messageCount
+
+    assert.equal(
+      persistedSamplingMessageCount,
+      harness.llmCalls[1]?.messages.length,
+    )
+    assert.equal(
+      (followUpSamplingStep?.input as Record<string, unknown>)
+        ?.candidateMessageCount,
+      4,
+    )
+    assert.equal(persistedSamplingMessageCount, 3)
+    assertNoUnfinishedSteps(harness)
+  })
+
+  it('第三轮超预算时优先缩减较旧 Observation，保留最新 Observation', async () => {
+    const olderObservation = '旧'.repeat(8_000)
+    const latestObservation = '新'.repeat(8_000)
+    const streams: ModelStreamEvent[][] = [
+      [
+        toolCallEvent('call-old', 'search_articles', '{"query":"seo"}'),
+        { type: 'response_completed', finishReason: 'tool_calls' },
+      ],
+      [
+        toolCallEvent('call-new', 'get_article_detail', '{"sourceId":24}'),
+        { type: 'response_completed', finishReason: 'tool_calls' },
+      ],
+      [
+        { type: 'text_delta', delta: '完成。' },
+        { type: 'response_completed', finishReason: 'stop' },
+      ],
+    ]
+    const estimator = new BaseCostTokenEstimator(249_000)
+    const harness = createHarness(
+      (_, __, callIndex) => toModelStream(streams[callIndex] ?? []),
+      undefined,
+      async envelope => ({
+        ok: true,
+        data: {},
+        modelContent: envelope.callId === 'call-old'
+          ? olderObservation
+          : latestObservation,
+      }),
+      {},
+      estimator,
+    )
+
+    await collectEvents(harness.run())
+
+    const thirdRoundResults = (harness.llmCalls[2]?.messages ?? []).filter(
+      item => item.type === 'tool_result',
+    )
+
+    assert.equal(harness.llmCalls.length, 3)
+    assert.equal(thirdRoundResults.length, 2)
+    assert.equal(thirdRoundResults[0]?.type, 'tool_result')
+    assert.equal(thirdRoundResults[1]?.type, 'tool_result')
+    if (
+      thirdRoundResults[0]?.type !== 'tool_result'
+      || thirdRoundResults[1]?.type !== 'tool_result'
+    ) {
+      assert.fail('expected paired tool results')
+    }
+    assert.ok([...thirdRoundResults[0].content].length < [...olderObservation].length)
+    assert.equal(thirdRoundResults[1].content, latestObservation)
+    assert.deepEqual(thirdRoundResults.map(item => item.callId), [
+      'call-old',
+      'call-new',
+    ])
+    assert.equal(harness.llmCalls.every(call => estimator.estimateRequest({
+      items: call.messages,
+      tools: call.options?.tools ?? [],
+    }) <= 262_144), true)
+    assertNoUnfinishedSteps(harness)
+  })
+
+  it('最小 Tool Exchange 仍超预算时阻止对应轮次 Provider 调用并稳定失败', async () => {
+    const observationSecret = 'overflow-observation-secret'
+    const harness = createHarness(
+      (_, __, callIndex) => toModelStream(callIndex === 0
+        ? [
+            toolCallEvent('call-overflow', 'search_articles', '{"query":"seo"}'),
+            { type: 'response_completed', finishReason: 'tool_calls' },
+          ]
+        : [
+            { type: 'text_delta', delta: '不应调用' },
+            { type: 'response_completed', finishReason: 'stop' },
+          ]),
+      undefined,
+      async () => ({
+        ok: true,
+        data: {},
+        modelContent: `无法容纳的 Observation ${observationSecret}`,
+      }),
+      {},
+      new FollowUpOverflowTokenEstimator(),
+    )
+
+    const events = await collectEvents(harness.run())
+    const failedEvent = events.at(-1)
+    const samplingSteps = harness.recorder.steps.filter(
+      step => step.type === 'model_sampling',
+    )
+
+    assert.equal(failedEvent?.type, 'run_failed')
+    assert.match(
+      failedEvent?.type === 'run_failed' ? failedEvent.message : '',
+      /Context|上下文|预算/,
+    )
+    assert.equal(harness.llmCalls.length, 1)
+    assert.equal(samplingSteps.length, 2)
+    assert.equal(samplingSteps[1]?.status, AgentStepStatus.FAILED)
+    assert.equal(
+      (samplingSteps[1]?.output as Record<string, unknown>)?.messageCount,
+      0,
+    )
+    assert.equal(
+      ((samplingSteps[1]?.output as Record<string, unknown>)
+        ?.contextPlan as Record<string, unknown>)?.overflowReason,
+      'minimum_context',
+    )
+    assert.equal(harness.assistantMessage()?.status, MessageStatus.FAILED)
+    assert.deepEqual(harness.recorder.failedRunIds, ['run-1'])
+    assert.doesNotMatch(JSON.stringify({
+      events,
+      steps: harness.recorder.steps,
+      message: harness.assistantMessage(),
+    }), new RegExp(observationSecret))
+    assertNoUnfinishedSteps(harness)
+  })
+
+  it('follow-up estimator 失败时不调用对应轮次 Provider，且不泄露 cause', async () => {
+    const harness = createHarness(
+      (_, __, callIndex) => toModelStream(callIndex === 0
+        ? [
+            toolCallEvent('call-estimator', 'search_articles', '{"query":"seo"}'),
+            { type: 'response_completed', finishReason: 'tool_calls' },
+          ]
+        : [
+            { type: 'text_delta', delta: '不应调用' },
+            { type: 'response_completed', finishReason: 'stop' },
+          ]),
+      undefined,
+      async () => ({
+        ok: true,
+        data: {},
+        modelContent: '普通 Observation',
+      }),
+      {},
+      new FollowUpFailingTokenEstimator(),
+    )
+
+    const events = await collectEvents(harness.run())
+    const serialized = JSON.stringify({
+      events,
+      steps: harness.recorder.steps,
+      message: harness.assistantMessage(),
+    })
+
+    assert.equal(events.at(-1)?.type, 'run_failed')
+    assert.equal(harness.llmCalls.length, 1)
+    assert.equal(
+      harness.recorder.steps.filter(step => step.type === 'model_sampling')[1]?.status,
+      AgentStepStatus.FAILED,
+    )
+    assert.equal(
+      (harness.recorder.steps.filter(
+        step => step.type === 'model_sampling',
+      )[1]?.output as Record<string, unknown>)?.messageCount,
+      0,
+    )
+    assert.doesNotMatch(serialized, /estimator-secret/)
+    assert.match(serialized, /TokenEstimator/)
     assertNoUnfinishedSteps(harness)
   })
 
@@ -928,7 +1229,7 @@ describe('AgentRuntimeService model stream', () => {
   it('把无效参数结果作为脱敏 Observation 交给第二轮解释', async () => {
     const streams: ModelStreamEvent[][] = [
       [
-        toolCallEvent('call-1', 'search_articles', '{'),
+        toolCallEvent('call-1', 'search_articles', '{"sourceId":1.5}'),
         { type: 'response_completed', finishReason: 'tool_calls' },
       ],
       [
@@ -1185,6 +1486,7 @@ describe('AgentRuntimeService model stream', () => {
     assert.equal(samplingStep?.status, AgentStepStatus.FAILED)
     assert.deepEqual(withoutDuration(samplingStep?.output), {
       samplingAttemptId: 'run-1:sampling-1',
+      messageCount: 1,
       finishReason: null,
       usage: null,
       toolCallCount: 0,
@@ -1566,13 +1868,11 @@ describe('AgentRuntimeService model stream', () => {
 
 describe('ModelContext', () => {
   it('保持 direct-final、一次 Tool 和两次顺序 Tool 的 items 与安全 Snapshot', () => {
-    const context = ModelContext.fromHistory(
-      [{ role: 'user', content: 'USER' }],
-      historyMessages => [
-        { role: 'system', content: 'SYS' },
-        ...historyMessages,
-      ],
-    )
+    const context = ModelContext.fromHistory({
+      instructions: [{ role: 'system', content: 'SYS' }],
+      initialHistory: [],
+      currentUserMessage: { role: 'user', content: 'USER' },
+    })
 
     assert.deepEqual(context.forSampling(), [
       { type: 'message', role: 'system', content: 'SYS' },
@@ -1607,7 +1907,12 @@ describe('ModelContext', () => {
       },
       intermediateText: 'I',
       reasoningContent: 'R',
-      observationContent: 'O',
+      observation: {
+        content: 'O',
+        originalChars: 1,
+        observationChars: 1,
+        truncated: false,
+      },
       ok: true,
     })
 
@@ -1667,7 +1972,12 @@ describe('ModelContext', () => {
       },
       intermediateText: 'J',
       reasoningContent: 'S',
-      observationContent: 'P',
+      observation: {
+        content: 'P',
+        originalChars: 1,
+        observationChars: 1,
+        truncated: false,
+      },
       ok: false,
     })
 
@@ -1722,13 +2032,11 @@ describe('ModelContext', () => {
       data: { password: 'data-secret' },
       modelContent: observationContent,
     }
-    const context = ModelContext.fromHistory(
-      [{ role: 'user', content: 'user-secret' }],
-      historyMessages => [
-        { role: 'system', content: systemPrompt },
-        ...historyMessages,
-      ],
-    )
+    const context = ModelContext.fromHistory({
+      instructions: [{ role: 'system', content: systemPrompt }],
+      initialHistory: [],
+      currentUserMessage: { role: 'user', content: 'user-secret' },
+    })
 
     context.appendToolExchange({
       call: {
@@ -1739,7 +2047,12 @@ describe('ModelContext', () => {
       },
       intermediateText: 'intermediate-secret',
       reasoningContent,
-      observationContent: toolResult.modelContent,
+      observation: {
+        content: toolResult.modelContent,
+        originalChars: observationContent.length,
+        observationChars: observationContent.length,
+        truncated: false,
+      },
       ok: toolResult.ok,
     })
 
@@ -1902,6 +2215,7 @@ function createHarness(
       },
     } as AgentRuntimePolicyService,
     new InitialContextSelectionService(tokenEstimator),
+    new SamplingContextPlanner(tokenEstimator),
   )
 
   return {
@@ -2124,9 +2438,9 @@ function matchesHistoryBounds(
 class TestTokenEstimator extends TokenEstimator {
   readonly strategyId = 'test-token-estimator'
 
-  estimateInitialRequest(input: TokenEstimatorInput): number {
-    return input.messages.reduce(
-      (tokens, message) => tokens + [...message.content].length + 1,
+  estimateRequest(input: TokenEstimatorInput): number {
+    return input.items.reduce(
+      (tokens, item) => tokens + countModelInputCharacters(item) + 1,
       input.tools.length,
     )
   }
@@ -2135,8 +2449,62 @@ class TestTokenEstimator extends TokenEstimator {
 class OverflowTokenEstimator extends TokenEstimator {
   readonly strategyId = 'test-overflow'
 
-  estimateInitialRequest(_input: TokenEstimatorInput): number {
+  estimateRequest(_input: TokenEstimatorInput): number {
     return 300_000
+  }
+}
+
+class BaseCostTokenEstimator extends TokenEstimator {
+  readonly strategyId = 'test-base-cost'
+  readonly inputs: TokenEstimatorInput[] = []
+
+  constructor(private readonly baseTokens: number) {
+    super()
+  }
+
+  estimateRequest(input: TokenEstimatorInput): number {
+    this.inputs.push(structuredClone(input))
+
+    return input.items.reduce(
+      (tokens, item) => tokens + countModelInputCharacters(item) + 1,
+      this.baseTokens + input.tools.length,
+    )
+  }
+}
+
+class FollowUpOverflowTokenEstimator extends TokenEstimator {
+  readonly strategyId = 'test-follow-up-overflow'
+
+  estimateRequest(input: TokenEstimatorInput): number {
+    return input.items.some(item => item.type === 'tool_result') ? 300_000 : 1
+  }
+}
+
+class FollowUpFailingTokenEstimator extends TokenEstimator {
+  readonly strategyId = 'test-follow-up-failure'
+
+  estimateRequest(input: TokenEstimatorInput): number {
+    if (input.items.some(item => item.type === 'tool_result')) {
+      throw new ContextTokenEstimationError(new Error('estimator-secret'))
+    }
+
+    return 1
+  }
+}
+
+function countModelInputCharacters(item: ModelInputItem): number {
+  switch (item.type) {
+    case 'message':
+    case 'tool_result':
+      return [...item.content].length
+    case 'assistant_tool_call':
+      return [
+        item.callId,
+        item.name,
+        item.rawArgumentsJson,
+        item.reasoningContent,
+        item.content ?? '',
+      ].reduce((total, value) => total + [...value].length, 0)
   }
 }
 
@@ -2406,7 +2774,11 @@ function withoutDuration(value: unknown): unknown {
   if (typeof value !== 'object' || value === null || Array.isArray(value))
     return value
 
-  const { durationMs: _, ...rest } = value as Record<string, unknown>
+  const {
+    durationMs: _,
+    contextPlan: __,
+    ...rest
+  } = value as Record<string, unknown>
   return rest
 }
 

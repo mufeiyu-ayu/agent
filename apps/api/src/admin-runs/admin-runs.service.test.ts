@@ -29,6 +29,7 @@ describe('Admin Run projector', () => {
     const secondSampling = record.steps.find(step => step.sequence === 5)!
     secondSampling.output = {
       samplingAttemptId: 'run-1:sampling-2',
+      messageCount: 4,
       finishReason: 'tool_calls',
       usage: {
         inputTokens: 20,
@@ -79,6 +80,15 @@ describe('Admin Run projector', () => {
       /DO_NOT_LEAK|rawArgumentsJson|observationBody|providerPayload|reasoning/,
     )
     assert.doesNotMatch(serialized, /"input"|"output"/)
+    const secondSampling = detail.timeline.find(item => item.sequence === 5)
+
+    assert.equal(
+      secondSampling?.kind === 'known'
+      && secondSampling.type === 'model_sampling'
+        ? secondSampling.messageCount
+        : null,
+      4,
+    )
   })
 
   it('Run 四种状态都能投影且只有终态计算 duration', () => {
@@ -106,8 +116,17 @@ describe('Admin Run projector', () => {
     runningSampling.endedAt = null
 
     const runningDetail = projectAdminRunDetail(running)
-    assert.equal(runningDetail.timeline.at(-1)?.kind, 'known')
-    assert.equal(runningDetail.timeline.at(-1)?.status, 'RUNNING')
+    const runningSamplingProjection = runningDetail.timeline.at(-1)
+
+    assert.equal(runningSamplingProjection?.kind, 'known')
+    assert.equal(runningSamplingProjection?.status, 'RUNNING')
+    assert.equal(
+      runningSamplingProjection?.kind === 'known'
+      && runningSamplingProjection.type === 'model_sampling'
+        ? runningSamplingProjection.messageCount
+        : undefined,
+      null,
+    )
     assert.equal(runningDetail.messages.at(-1)?.status, 'STREAMING')
 
     const failed = createRunRecord()
@@ -115,7 +134,11 @@ describe('Admin Run projector', () => {
     failed.steps = failed.steps.filter(step => step.sequence <= 3)
     const failedSamplingStep = failed.steps.find(step => step.sequence === 3)!
     failedSamplingStep.status = 'FAILED'
-    failedSamplingStep.output = { durationMs: 500 }
+    failedSamplingStep.output = {
+      durationMs: 500,
+      messageCount: 0,
+      contextPlan: safeContextPlan('minimum_context'),
+    }
     failedSamplingStep.errorMessage = '安全错误摘要'
 
     const failedDetail = projectAdminRunDetail(failed)
@@ -192,6 +215,27 @@ describe('Admin Run projector', () => {
     assert.equal(item.outputTokens, null)
     assert.equal(item.totalTokens, null)
     assert.doesNotMatch(JSON.stringify({ detail, item }), /MALFORMED_SECRET/)
+  })
+
+  it('兼容旧版 input-only messageCount，并把实际 Provider 数量标为未知', () => {
+    const record = createRunRecord()
+    const sampling = record.steps.find(step => step.sequence === 3)!
+    const input = sampling.input as Record<string, unknown>
+    const output = sampling.output as Record<string, unknown>
+
+    input.messageCount = input.candidateMessageCount
+    delete input.candidateMessageCount
+    delete output.messageCount
+
+    const projected = projectAdminRunDetail(record).timeline.find(
+      item => item.sequence === 3,
+    )
+
+    assert.equal(projected?.kind, 'known')
+    assert.equal(
+      projected?.type === 'model_sampling' ? projected.messageCount : null,
+      null,
+    )
   })
 
   it('Message 固定按 Run 的 user / assistant 关系排序，不用同毫秒 ID 猜顺序', () => {
@@ -339,12 +383,13 @@ function createRunRecord() {
           samplingIndex: 3,
           samplingAttemptId: 'run-1:sampling-3',
           requestedModel: null,
-          messageCount: 6,
+          candidateMessageCount: 6,
           toolCount: 2,
           reasoning: 'DO_NOT_LEAK',
         },
         output: {
           samplingAttemptId: 'run-1:sampling-3',
+          messageCount: 6,
           finishReason: 'stop',
           usage: { inputTokens: 30, outputTokens: 10, totalTokens: 40 },
           toolCallCount: 0,
@@ -381,12 +426,13 @@ function createRunRecord() {
           samplingIndex: 2,
           samplingAttemptId: 'run-1:sampling-2',
           requestedModel: null,
-          messageCount: 4,
+          candidateMessageCount: 5,
           toolCount: 2,
           reasoning: 'DO_NOT_LEAK',
         },
         output: {
           samplingAttemptId: 'run-1:sampling-2',
+          messageCount: 4,
           finishReason: 'tool_calls',
           usage: { inputTokens: 20, outputTokens: 8, totalTokens: 28 },
           toolCallCount: 1,
@@ -420,12 +466,13 @@ function createRunRecord() {
           samplingIndex: 1,
           samplingAttemptId: 'run-1:sampling-1',
           requestedModel: null,
-          messageCount: 2,
+          candidateMessageCount: 2,
           toolCount: 2,
           reasoning: 'DO_NOT_LEAK',
         },
         output: {
           samplingAttemptId: 'run-1:sampling-1',
+          messageCount: 2,
           finishReason: 'tool_calls',
           usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
           toolCallCount: 1,
@@ -467,6 +514,30 @@ function step(
     startedAt: new Date(`2026-08-09T00:00:0${Math.min(sequence, 9)}.000Z`) as Date | null,
     endedAt: new Date(`2026-08-09T00:00:0${Math.min(sequence, 9)}.100Z`) as Date | null,
     ...overrides,
+  }
+}
+
+function safeContextPlan(
+  overflowReason: 'minimum_context' | null,
+): Record<string, unknown> {
+  return {
+    samplingIndex: 1,
+    resolvedInputBudgetTokens: 262_144,
+    estimatedInputTokens: 262_145,
+    historyCandidateCount: 0,
+    historyIncludedCount: 0,
+    historyExcludedCount: 0,
+    toolExchangeCount: 1,
+    observations: [{
+      exchangeIndex: 0,
+      originalChars: 100,
+      toolCeilingChars: 80,
+      finalChars: 64,
+      toolCeilingTruncated: true,
+      contextBudgetTruncated: true,
+    }],
+    overflowReason,
+    estimatorStrategyId: 'deepseek-v4-official-b5968e9',
   }
 }
 

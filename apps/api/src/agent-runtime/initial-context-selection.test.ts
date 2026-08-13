@@ -253,8 +253,8 @@ describe('InitialContextSelectionService', () => {
 class MessageCountTokenEstimator extends TokenEstimator {
   readonly strategyId = 'test-message-count'
 
-  estimateInitialRequest(input: TokenEstimatorInput): number {
-    return input.messages.length * 10
+  estimateRequest(input: TokenEstimatorInput): number {
+    return input.items.length * 10
   }
 }
 
@@ -265,7 +265,7 @@ class FixedTokenEstimator extends TokenEstimator {
     super()
   }
 
-  estimateInitialRequest(_input: TokenEstimatorInput): number {
+  estimateRequest(_input: TokenEstimatorInput): number {
     return this.tokens
   }
 }
@@ -273,9 +273,9 @@ class FixedTokenEstimator extends TokenEstimator {
 class CharacterTokenEstimator extends TokenEstimator {
   readonly strategyId = 'test-character-count'
 
-  estimateInitialRequest(input: TokenEstimatorInput): number {
-    return input.messages.reduce(
-      (total, message) => total + message.content.length + 1,
+  estimateRequest(input: TokenEstimatorInput): number {
+    return input.items.reduce(
+      (total, item) => total + ('content' in item ? item.content.length : 0) + 1,
       input.tools.length,
     )
   }
@@ -289,9 +289,9 @@ class BoundedFullRequestEstimator extends TokenEstimator {
     super()
   }
 
-  estimateInitialRequest(input: TokenEstimatorInput): number {
+  estimateRequest(input: TokenEstimatorInput): number {
     this.callCount += 1
-    return input.messages.length <= this.maximumMessageCount ? 1 : 300_000
+    return input.items.length <= this.maximumMessageCount ? 1 : 300_000
   }
 }
 

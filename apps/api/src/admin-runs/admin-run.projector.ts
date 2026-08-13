@@ -238,7 +238,11 @@ function projectModelSampling(
   const samplingIndex = readPositiveInteger(input, 'samplingIndex')
   const samplingAttemptId = readString(input, 'samplingAttemptId')
   const requestedModel = readString(input, 'requestedModel')
-  const messageCount = readNonNegativeInteger(input, 'messageCount')
+  const candidateMessageCount = readNonNegativeInteger(
+    input,
+    'candidateMessageCount',
+  ) ?? readNonNegativeInteger(input, 'messageCount')
+  const messageCount = readNonNegativeInteger(output, 'messageCount')
   const toolCount = readNonNegativeInteger(input, 'toolCount')
   const finishReason = readAllowedString(output, 'finishReason', MODEL_FINISH_REASONS)
   const usage = projectTokenUsage(output)
@@ -265,7 +269,7 @@ function projectModelSampling(
       ['samplingIndex', samplingIndex],
       ['samplingAttemptId', samplingAttemptId],
       ['requestedModel', requestedModel],
-      ['messageCount', messageCount],
+      ['candidateMessageCount', candidateMessageCount],
       ['toolCount', toolCount],
     ]),
     outputSummary: summarize([
@@ -404,7 +408,8 @@ function isValidModelSampling(
     || !isRequiredPositiveInteger(input, 'samplingIndex')
     || !isRequiredString(input, 'samplingAttemptId')
     || !isRequiredNullableString(input, 'requestedModel')
-    || !isRequiredNonNegativeInteger(input, 'messageCount')
+    || (!isRequiredNonNegativeInteger(input, 'candidateMessageCount')
+      && !isRequiredNonNegativeInteger(input, 'messageCount'))
     || !isRequiredNonNegativeInteger(input, 'toolCount')
   ) {
     return false
@@ -433,8 +438,19 @@ function isValidFailedModelOutput(
   if (!object)
     return false
 
-  if (Object.keys(object).every(key => key === 'durationMs'))
+  if (Object.keys(object).every(
+    key => [
+      'durationMs',
+      'messageCount',
+      'contextPlan',
+    ].includes(key),
+  )) {
     return isRequiredNonNegativeInteger(object, 'durationMs')
+      && (isRequiredNonNegativeInteger(object, 'messageCount')
+        || isLegacySamplingInput(input))
+      && (!Object.hasOwn(object, 'contextPlan')
+        || isValidContextPlanSummary(object.contextPlan))
+  }
 
   return isValidFullModelOutput(input, object, MODEL_FINISH_REASONS, true)
 }
@@ -454,6 +470,8 @@ function isValidFullModelOutput(
   return object !== null
     && isRequiredString(object, 'samplingAttemptId')
     && object.samplingAttemptId === input.samplingAttemptId
+    && (isRequiredNonNegativeInteger(object, 'messageCount')
+      || isLegacySamplingInput(input))
     && isAllowedFinishReason
     && Object.hasOwn(object, 'usage')
     && isOptionalUsage(object, 'usage')
@@ -461,6 +479,64 @@ function isValidFullModelOutput(
     && isRequiredNonNegativeInteger(object, 'textChars')
     && isRequiredNonNegativeInteger(object, 'intermediateTextChars')
     && isRequiredNonNegativeInteger(object, 'durationMs')
+    && (!Object.hasOwn(object, 'contextPlan')
+      || isValidContextPlanSummary(object.contextPlan))
+}
+
+function isLegacySamplingInput(input: Record<string, unknown>): boolean {
+  return !Object.hasOwn(input, 'candidateMessageCount')
+    && isRequiredNonNegativeInteger(input, 'messageCount')
+}
+
+function isValidContextPlanSummary(value: unknown): boolean {
+  const object = readObject(value)
+  if (!object)
+    return false
+
+  const observations = object.observations
+  return Object.keys(object).every(key => [
+    'samplingIndex',
+    'resolvedInputBudgetTokens',
+    'estimatedInputTokens',
+    'historyCandidateCount',
+    'historyIncludedCount',
+    'historyExcludedCount',
+    'toolExchangeCount',
+    'observations',
+    'overflowReason',
+    'estimatorStrategyId',
+  ].includes(key))
+  && isRequiredPositiveInteger(object, 'samplingIndex')
+  && isRequiredPositiveInteger(object, 'resolvedInputBudgetTokens')
+  && isRequiredNonNegativeInteger(object, 'estimatedInputTokens')
+  && isRequiredNonNegativeInteger(object, 'historyCandidateCount')
+  && isRequiredNonNegativeInteger(object, 'historyIncludedCount')
+  && isRequiredNonNegativeInteger(object, 'historyExcludedCount')
+  && isRequiredNonNegativeInteger(object, 'toolExchangeCount')
+  && Array.isArray(observations)
+  && observations.every(isValidContextObservationSummary)
+  && (object.overflowReason === null
+    || object.overflowReason === 'minimum_context')
+  && isRequiredString(object, 'estimatorStrategyId')
+}
+
+function isValidContextObservationSummary(value: unknown): boolean {
+  const object = readObject(value)
+  return object !== null
+    && Object.keys(object).every(key => [
+      'exchangeIndex',
+      'originalChars',
+      'toolCeilingChars',
+      'finalChars',
+      'toolCeilingTruncated',
+      'contextBudgetTruncated',
+    ].includes(key))
+    && isRequiredNonNegativeInteger(object, 'exchangeIndex')
+    && isRequiredNonNegativeInteger(object, 'originalChars')
+    && isRequiredNonNegativeInteger(object, 'toolCeilingChars')
+    && isRequiredNonNegativeInteger(object, 'finalChars')
+    && typeof object.toolCeilingTruncated === 'boolean'
+    && typeof object.contextBudgetTruncated === 'boolean'
 }
 
 function isValidToolExecution(

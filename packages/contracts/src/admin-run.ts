@@ -105,6 +105,7 @@ export interface AdminModelSamplingStep extends AdminRunKnownTimelineItemBase {
   samplingIndex: number | null
   samplingAttemptId: string | null
   requestedModel: string | null
+  /** 最终 Provider-facing ModelInputItem 数量；Plan 失败为 0，未记录为 null。 */
   messageCount: number | null
   toolCount: number | null
   finishReason: AdminModelFinishReason | null
