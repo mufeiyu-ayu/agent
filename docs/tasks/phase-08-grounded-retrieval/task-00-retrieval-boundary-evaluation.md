@@ -99,7 +99,7 @@ git diff --cached --check
 
 - Issue：[#48](https://github.com/mufeiyu-ayu/agent/issues/48)
 - 分支：`codex/issue-48-retrieval-baseline`
-- PR：待创建 Draft PR
+- PR：[Draft PR #49](https://github.com/mufeiyu-ayu/agent/pull/49)
 - GPT 验收结论：未提供
 - 用户确认：未确认
 
