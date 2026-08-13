@@ -1,8 +1,8 @@
 # Phase 7：Context Engineering
 
-状态：**Active / Task 0-1 Completed / Task 2 已实现待验收 / Draft PR #45**。
+状态：**Active / Task 0-2 Completed / Task 3 Next**。
 
-本阶段已经由 GPT 与用户确认作为 Phase 6 之后的 Agent 主线。Task 0 `Context Boundary & Snapshot` 与 Task 1 `Model-aware Budget & Dynamic History` 均已完成 GPT 技术验收、用户确认验收并合入 `master`。Task 2 `Loop-aware Context & Observation Governance` 已按 Issue #44 实现，当前等待技术验收；Task 3 未启动。
+本阶段已经由 GPT 与用户确认作为 Phase 6 之后的 Agent 主线。Task 0 `Context Boundary & Snapshot`、Task 1 `Model-aware Budget & Dynamic History` 与 Task 2 `Loop-aware Context & Observation Governance` 均已完成 GPT 技术验收、用户确认验收并合入 `master`。Task 3 `Context Inspector & Phase Baseline` 现在是下一项主线任务，但尚未创建正式 Issue、尚未启动。
 
 ## 1. 阶段目标
 
@@ -40,15 +40,14 @@ Instructions / Current User / History / Tool Exchange
 
 Phase 6 已经建立 bounded sequential Agent Loop、两个 Article Tool、Run / Tool / DB deadline、终态可靠性与真实 Observability Baseline。当前 Runtime 已经具备学习 Context Engineering 的必要前置条件。
 
-Task 0 建立独立 `ModelContext` 边界与安全 Context Snapshot；Task 1 进一步让模型 Context Window 参与真实预算，建立 DeepSeek V4 TokenEstimator、动态 History Selection 与安全 initial Context summary。Phase 7 后续仍需要：
+Task 0 建立独立 `ModelContext` 边界与安全 Context Snapshot；Task 1 进一步让模型 Context Window 参与真实预算，建立 DeepSeek V4 TokenEstimator、动态 History Selection 与安全 initial Context summary；Task 2 已把预算治理扩展到完整 bounded Agent Loop，建立 full-request estimator、逐轮 Sampling Context Plan、follow-up History 再选择与 Observation Governance。Phase 7 Baseline 现在只剩 Task 3：
 
-1. 把 Context Budget 从 initial History 扩展到完整 Tool Loop；
-2. 统一治理 Tool Call / Tool Result 追加后的 remaining budget；
-3. 让 Observation 的字符级上限继续作为 safety ceiling，而不是唯一 Context 策略；
-4. 把 Context 决策安全投影到 Admin Context Inspector；
-5. 基于真实数据决定是否需要 Minimal Compaction。
+1. 把 Context 决策安全投影到 Admin Context Inspector；
+2. 建立 direct-final / Tool Loop / History exclusion / Observation truncation 的可观察证据；
+3. 完成 Phase 7 自动回归与浏览器验收基线；
+4. 基于真实数据决定是否需要 Minimal Compaction。
 
-这意味着 Task 0-1 已完成 Context Boundary 与 initial Context Budget 基线，但完整 Context Engineering 闭环仍需要 Task 2-3。
+这意味着 Task 0-2 已完成 Context Boundary、initial Context Budget 与完整 Loop Context Governance；Phase 7 还需要 Task 3 才形成完整可观察闭环。
 
 ## 3. 本阶段要学会什么
 
@@ -95,11 +94,11 @@ Phase 7 Baseline 不把自动 Summary / Compaction 作为必做项。先完成 C
 | --- | --- | --- |
 | Task 0：Context Boundary & Snapshot | **Completed / #40 / #41 / merge `415e866a`** | 把当前 model input 组装收敛到独立 Context 边界，并建立不改变现有行为的 Context Snapshot |
 | Task 1：Model-aware Budget & Dynamic History | **Completed / #42 / #43 / merge `6df72f0`** | 让模型 Context Window 参与预算，历史选择从固定条数升级为 token-budget 驱动 |
-| Task 2：Loop-aware Context & Observation Governance | **已实现 / 待验收 / #44 / Draft PR #45** | 统一管理后续 sampling 的 Tool Exchange、剩余 Context Budget 与 Observation 裁剪 |
-| Task 3：Context Inspector & Phase Baseline | Planned | 将 Context 决策做成安全可观察的 Runtime / Admin Inspector，并完成阶段回归 |
+| Task 2：Loop-aware Context & Observation Governance | **Completed / #44 / #45 / merge `2f06355c`** | 统一管理后续 sampling 的 Tool Exchange、剩余 Context Budget 与 Observation 裁剪 |
+| Task 3：Context Inspector & Phase Baseline | **Next / 未启动** | 将 Context 决策做成安全可观察的 Runtime / Admin Inspector，并完成阶段回归 |
 | Gated Follow-up：Minimal Compaction | Gated | 只有 Task 1-3 的真实证据证明需要时，才单独设计最小 Compaction |
 
-正式实现仍遵守“一 Issue = 一明确 Task”。Task 2 当前等待验收；Task 3 不会因为本文存在而自动启动。
+正式实现仍遵守“一 Issue = 一明确 Task”。Task 2 已完成收口；Task 3 是下一项正式任务，但不会因为本文存在而自动进入 Active，仍需先创建 Issue 并通过 Clarification Gate。
 
 ---
 
@@ -268,12 +267,14 @@ Task 0 是结构基线，不负责优化 History 数量，也不实现 token-bud
 
 # Task 2：Loop-aware Context & Observation Governance
 
-状态：**Active / Issue #44 / Draft PR #45 / 已实现待验收**。
+状态：**Completed / Issue #44 / PR #45 / merge `2f06355c`**。
 
 - 实施状态：已实现
-- 验收状态：待验收
-- 分支：`codex/issue-44-loop-context-governance`
-- Draft PR：#45
+- GPT 技术验收：已通过
+- 用户确认验收：已确认
+- 合并状态：已合并
+- Clarification Gate：READY
+- Merge commit：`2f06355ccfbe86d5b7492d770250b776e5da79f1`
 
 ## 目标
 
@@ -320,6 +321,7 @@ Task 0 是结构基线，不负责优化 History 数量，也不实现 token-bud
 - Tool continuation：callId、name、raw arguments、`reasoning_content`、intermediate assistant content 和 Tool Result 配对顺序保持不变；仅 `tool_result.content` 可受控缩减。
 - Observation：继续先应用 16K / 64K / 128K ceiling；Context marker 同时记录 `tool_ceiling` / `context_budget`，Unicode-safe，且二次缩减不会突破原 Tool ceiling。
 - 失败与安全：最小结构仍超预算或 estimator 失败时，对应 Provider 调用不发生，Sampling Step / Assistant Message / Run 稳定收口；Step 只保存数字、布尔和枚举型 Context Plan 摘要。
+- Review：首轮 GPT Review 的 3 个 P2 已在 `810b4b7` 修复；独立 Codex Review 针对最新 head 未发现 major issue；GPT 随后基于最新 diff 与完整验证记录完成技术验收。
 
 | 命令 | 结果 |
 | --- | --- |
@@ -336,11 +338,20 @@ Task 0 是结构基线，不负责优化 History 数量，也不实现 token-bud
 | `pnpm typecheck` | 通过 |
 | `git diff --check` | 通过 |
 
+## GitHub 交付状态
+
+- Issue：#44 `[Phase 7][Task 2] 建立 Loop-aware Context Budget 与 Observation Governance` / Closed
+- Clarification Gate：READY
+- PR：#45 `feat: 建立多轮 Context Budget 与 Observation 治理` / Merged
+- GPT 技术验收：通过
+- 用户确认验收：通过
+- Merge commit：`2f06355ccfbe86d5b7492d770250b776e5da79f1`
+
 ---
 
 # Task 3：Context Inspector & Phase Baseline
 
-状态：Planned。
+状态：**Next / 未启动**。
 
 ## 目标
 
@@ -427,9 +438,9 @@ Minimal Compaction 不属于默认完成条件；是否加入 Phase 7 收口范�
 - Phase 7：Active
 - Task 0：Completed / Issue #40 Closed / PR #41 Merged / `415e866a`
 - Task 1：Completed / Issue #42 Closed / PR #43 Merged / `6df72f0`
-- Task 2：Issue #44 / Draft PR #45 / 已实现 / 待验收
-- Task 3：Planned
+- Task 2：Completed / Issue #44 Closed / PR #45 Merged / `2f06355c`
+- Task 3：Next / 未启动 / 尚未创建正式 Issue
 - Minimal Compaction：Gated
-- Active Agent Task：Task 2 / #44 / 待验收
+- Active Agent Task：无
 
-下一正式动作：对 Task 2 的 Draft PR 做技术验收；Task 3 仍为 Planned，不自动启动。
+下一正式动作：讨论并固化 Task 3 `Context Inspector & Phase Baseline` 的任务边界；确认规格后再创建正式 Issue 并进入 Clarification Gate。
