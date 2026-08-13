@@ -82,16 +82,6 @@ Admin Task 2 + Task 3 已建立真实 Run / Step Read API、Run List / Detail、
 
 Issue #37 / PR #38 已完成并合入 `master`，merge commit `415d740507a29ee4bd9b6a4aa26d9c4fbb9668c1`。该独立任务完成了 Chat 原生滚动 viewport、流式跟随、用户上滚暂停、scroll memory 和响应式布局。
 
-## 下一阶段如何决定
+## 当前正式动作
 
-当前没有 Active Agent Task，也不提前锁死下一阶段号。后续应基于最新 `master`、真实产品价值、学习收益和作品集完整度重新比较：
-
-1. RAG / Embedding / Hybrid Retrieval；
-2. Permission / Approval / Human-in-the-loop；
-3. Durable Recovery / Resume；
-4. MCP / Plugin / Skill；
-5. Planner / Workflow / 并行 Tool Call；
-6. Multi-agent；
-7. 有真实 Context 压力证据时再讨论 Minimal Compaction。
-
-任何候选方向都不会因为 `docs/research/**` 已经存在相关资料而自动进入正式任务。必须先完成需求讨论、任务规格、Issue 和 Clarification Gate。
+Phase 8 Task 0 已通过 Issue #48 的 Clarification Gate，当前为 Active，实施状态为已实现、验收状态为待验收。Task 1 未启动；Minimal Compaction 继续保持 Gated。

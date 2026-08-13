@@ -27,9 +27,17 @@ describe('Retrieval evaluation', () => {
       createCase('zero', 2, [8]),
     ]
     const results: Record<string, ArticleRetrievalResult> = {
-      'partial': createResult([createHit(3, 1), createHit(9, 2)], 3),
-      'rank-two': createResult([createHit(7, 1), createHit(4, 2)], 2),
-      'zero': createResult([], 0),
+      'partial': createResult(
+        { query: 'partial', limit: 2 },
+        [createHit(3, 1), createHit(9, 2)],
+        3,
+      ),
+      'rank-two': createResult(
+        { query: 'rank-two', limit: 2 },
+        [createHit(7, 1), createHit(4, 2)],
+        2,
+      ),
+      'zero': createResult({ query: 'zero', limit: 2 }, [], 0),
     }
     const report = await evaluateArticleRetrieval(
       createScriptedRetriever(query => results[query.query]!),
@@ -97,9 +105,21 @@ describe('Retrieval evaluation', () => {
 
   it('拒绝 duplicate sourceId、不连续 rank 和 total 小于 hits 数量', async () => {
     const invalidResults = [
-      createResult([createHit(1, 1), createHit(1, 2)], 2),
-      createResult([createHit(1, 1), createHit(2, 3)], 2),
-      createResult([createHit(1, 1), createHit(2, 2)], 1),
+      createResult(
+        { query: 'case', limit: 2 },
+        [createHit(1, 1), createHit(1, 2)],
+        2,
+      ),
+      createResult(
+        { query: 'case', limit: 2 },
+        [createHit(1, 1), createHit(2, 3)],
+        2,
+      ),
+      createResult(
+        { query: 'case', limit: 2 },
+        [createHit(1, 1), createHit(2, 2)],
+        1,
+      ),
     ]
 
     for (const result of invalidResults) {
@@ -111,6 +131,59 @@ describe('Retrieval evaluation', () => {
         /invalid retrieval result/,
       )
     }
+  })
+
+  it('拒绝与当前 case 不一致的 query、languageCode、limit 和超出 limit 的 hits', async () => {
+    const evaluationCase = {
+      id: 'case',
+      query: '  Case  ',
+      languageCode: ' EN ',
+      k: 2,
+      relevantSourceIds: [1],
+    }
+    const expectedQuery = { query: 'Case', languageCode: 'en', limit: 2 }
+    const invalidResults = [
+      createResult({ ...expectedQuery, query: 'other' }, [], 0),
+      createResult({ ...expectedQuery, languageCode: 'zh-cn' }, [], 0),
+      createResult({ ...expectedQuery, limit: 1 }, [], 0),
+      createResult(
+        expectedQuery,
+        [createHit(1, 1), createHit(2, 2), createHit(3, 3)],
+        3,
+      ),
+    ]
+
+    for (const result of invalidResults) {
+      await assert.rejects(
+        evaluateArticleRetrieval(
+          createScriptedRetriever(() => result),
+          { datasetVersion: 'query-binding-v1', cases: [evaluationCase] },
+        ),
+        /invalid retrieval result/,
+      )
+    }
+  })
+
+  it('拒绝同一次 evaluation 中变化的 strategy', async () => {
+    let callCount = 0
+    const retriever: ArticleRetriever = {
+      retrieve: async input => ({
+        ...createResult(
+          { query: input.query, limit: input.limit ?? 2 },
+          [],
+          0,
+        ),
+        strategy: { name: 'test_lexical', version: String(++callCount) },
+      }),
+    }
+
+    await assert.rejects(
+      evaluateArticleRetrieval(retriever, {
+        datasetVersion: 'strategy-v1',
+        cases: [createCase('first'), createCase('second')],
+      }),
+      /strategy changed within one evaluation run/,
+    )
   })
 
   it('向调用方传播 Retriever 执行错误', async () => {
@@ -219,11 +292,12 @@ function createHit(sourceId: number, rank: number): ArticleRetrievalHit {
 }
 
 function createResult(
+  query: ArticleRetrievalResult['query'],
   hits: ArticleRetrievalHit[],
   total: number,
 ): ArticleRetrievalResult {
   return {
-    query: { query: 'ignored', limit: 2 },
+    query,
     strategy: { name: 'test_lexical', version: '1' },
     total,
     hits,

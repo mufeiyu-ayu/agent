@@ -6,7 +6,7 @@
 
 | 类型 | 当前记录 | 下一步 |
 | --- | --- | --- |
-| Agent 主线 | 阶段 1-7 Completed；当前无 Active Agent Task | 基于最新 `master` 重新讨论下一阶段 |
+| Agent 主线 | 阶段 1-7 Completed；Phase 8 Task 0 Active / 已实现、待验收 | 等待 Draft PR #49 再次验收；不启动 Task 1 |
 | Phase 6 | Completed / 已归档 | `docs/tasks/completed/phase-06-bounded-agent-loop.md` |
 | Phase 7 | Completed / merge `caf3d25b` | `docs/tasks/completed/phase-07-context-engineering.md` |
 | Minimal Compaction | Gated | 只有真实 Context 压力证据满足触发条件后才讨论 |
@@ -17,6 +17,7 @@
 
 | 日期 | 事项 | 结果 |
 | --- | --- | --- |
+| 2026-08-14 | Issue #48 / PR #49 GPT 验收修复 | 统一生产 Retriever 契约、补齐 Evaluation case 绑定校验，并同步 Phase 8 Task 0 当前状态；实施状态保持已实现、验收状态待验收 |
 | 2026-08-13 | Phase 7 / Task 3 最终收口 | GPT 基于 Issue #46、PR #47 最新 head `e0eaa33`、P2 修复、自动验证、最终 Codex Review 与真实 API / PostgreSQL / 浏览器证据完成技术验收；用户确认验收并授权 Ready、合并与关闭；PR #47 合入 `master`，merge `caf3d25b7af0e5b30ae47d3c96faab4138fbdb9e`，Issue #46 Closed；Task 3 与 Phase 7 Completed；Minimal Compaction 继续 Gated |
 | 2026-08-13 | PR #47 GPT Review P2 修复 | 收紧 initial budget、Observation、fail-closed outcome 与跨 sampling Domain invariants；修正 two-tool pre-plan `4 / 6 / 7`、Provider `4 / 5 / 7`、真实 fixture 和截图并复跑验证 |
 | 2026-08-13 | Issue #46 / Task 3 实现 | 完成 Context Inspector Read Model、sampling estimator failure 安全枚举、legacy / partial fallback、Budget / Sources / Adjustments UI、自动回归与真实浏览器证据 |
@@ -34,9 +35,9 @@
 
 ```text
 阶段 1-7            Completed
-Active Agent Task   无
+Phase 8 Task 0      Active / 已实现、待验收
 Minimal Compaction  Gated
-下一阶段            尚未定案
+Task 1              未启动
 ```
 
 Phase 7 已完成：
@@ -59,4 +60,4 @@ Minimal Compaction 不自动启动。只有真实 Inspector 数据证明旧 Cont
 - 实现、验收、Task 收口、合并与开始下一 Task 是不同动作；
 - 长期研究进入 `docs/research/**`；
 - 旧阶段细节不在这里重复维护；
-- 当前无 Active Agent Task，任何后续方向必须先重新讨论并进入正式 Issue 流程。
+- Phase 8 Task 0 当前为 Active；Task 1 未启动，任何后续任务仍须先进入正式 Issue 流程。

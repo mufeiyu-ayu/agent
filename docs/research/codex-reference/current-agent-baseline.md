@@ -45,16 +45,21 @@ Observability：
   Typed / Generic Inspector
   Context Inspector
 
-当前 Agent 主线：无 Active Task
+Retrieval：
+  Article Retrieval Boundary
+  Prisma lexical adapter
+  确定性离线 corpus 与 Evaluation Baseline
+
+当前 Agent 主线：Phase 8 Task 0 Active / 已实现、待验收
 Minimal Compaction：Gated
-下一正式阶段：尚未定案
+Task 1：未启动
 ```
 
 ## 当前能力边界
 
 以下仍未进入正式实现：
 
-- RAG、Embedding、Hybrid Retrieval 与检索评估；
+- Chunking、Embedding、Vector Search、Hybrid Retrieval、rerank 与 citation；
 - Permission、Approval、Human-in-the-loop 与写操作审计；
 - Durable Recovery、Resume、operation receipt 与跨进程重放；
 - MCP、Plugin、Skill、Hook；

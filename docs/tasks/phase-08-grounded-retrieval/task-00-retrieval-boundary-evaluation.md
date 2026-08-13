@@ -18,7 +18,7 @@ Clarification Gate 于 2026-08-13 判定 `READY`：Issue、`master@cbc20e61bd4f2
 
 ## 范围
 
-- 建立 Article Retrieval query、execution context、ordered hits、total、rank 和 strategy/version 契约。
+- 建立可按 execution context 类型检查的 Article Retrieval query、ordered hits、total、rank 和 strategy/version 契约。
 - 提取现有 Prisma lexical 查询，并保持 Tool 外部行为兼容。
 - 建立版本化离线 corpus、fixture adapter、Recall@K / reciprocal rank / Mean Recall@K / MRR 评估器。
 - 新增 `test:retrieval` 和 `eval:retrieval-baseline`。
@@ -44,6 +44,8 @@ Clarification Gate 于 2026-08-13 判定 `READY`：Issue、`master@cbc20e61bd4f2
 ## Refactor：整理边界
 
 - [x] query / language / limit 规范化与 excerpt 只保留一个实现。
+- [x] 生产 Prisma adapter 显式实现带数据库 context 的统一 `ArticleRetriever` 契约；fixture 继续使用无数据库 context 的同一契约。
+- [x] Evaluation 校验 Retriever 回传 query 与当前 normalized case 一致，且 hits 不超过 case limit。
 - [x] Retrieval 层不依赖 ToolDefinition、Registry、Tool call ID、LLM role、Prompt、`modelContent` 或 ChatStreamEvent。
 
 ## Baseline 结果
@@ -100,7 +102,7 @@ git diff --cached --check
 - Issue：[#48](https://github.com/mufeiyu-ayu/agent/issues/48)
 - 分支：`codex/issue-48-retrieval-baseline`
 - PR：[Draft PR #49](https://github.com/mufeiyu-ayu/agent/pull/49)
-- GPT 验收结论：未提供
+- GPT 验收结论：需要修改；findings 已修复，待再次验收
 - 用户确认：未确认
 
 ## 任务状态

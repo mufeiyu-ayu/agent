@@ -44,7 +44,7 @@ Task 3 已由 GPT 基于 Issue #46、PR #47 最新 head `e0eaa33e449486a5b30a0a8
 - Task 3 正式状态为 `Completed`；
 - Phase 7 正式状态为 `Completed`；
 - Phase 7 active 规格已压缩归档到 [`completed/phase-07-context-engineering.md`](./completed/phase-07-context-engineering.md)；
-- 当前没有 Active Agent Task；
+- Phase 7 收口当时没有 Active Agent Task；Phase 8 Task 0 现已进入 Active；
 - Minimal Compaction 没有被自动启动，继续保持 `Gated`。
 
 ## Admin Console 当前状态

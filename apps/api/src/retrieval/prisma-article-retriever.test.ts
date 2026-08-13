@@ -2,6 +2,10 @@ import type {
   DatabaseOperationDeadline,
   PrismaService,
 } from '../prisma/prisma.service.js'
+import type {
+  ArticleRetriever,
+  DatabaseArticleRetrievalExecutionContext,
+} from './article-retrieval.js'
 import assert from 'node:assert/strict'
 // 项目本轮使用 Node 原生测试运行器，不引入额外测试框架。
 // eslint-disable-next-line test/no-import-node-test
@@ -12,6 +16,21 @@ import { PrismaArticleRetriever } from './prisma-article-retriever.js'
 const FULL_CONTENT = `<p>${'alpha article content 🚀 '.repeat(30)}</p>`
 
 describe('PrismaArticleRetriever', () => {
+  it('在编译期符合包含 databaseDeadline 的 Retrieval Contract', () => {
+    const retriever = new PrismaArticleRetriever(
+      new FakePrismaService() as unknown as PrismaService,
+    )
+    const contract: ArticleRetriever<DatabaseArticleRetrievalExecutionContext> = retriever
+
+    // @ts-expect-error 生产 Retriever 的 context 必须包含 databaseDeadline。
+    const missingDeadline: Parameters<typeof contract.retrieve>[1] = {
+      signal: new AbortController().signal,
+    }
+
+    assert.equal(contract, retriever)
+    assert.ok(missingDeadline.signal)
+  })
+
   it('保持 lexical 查询条件、顺序、deadline、excerpt 和稳定 rank', async () => {
     const fakePrisma = new FakePrismaService({
       total: 12,

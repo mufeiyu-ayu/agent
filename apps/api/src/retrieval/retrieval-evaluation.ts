@@ -124,7 +124,7 @@ export async function evaluateArticleRetrieval(
 
   for (const item of cases) {
     const retrieval = await retriever.retrieve(item.normalizedQuery, { signal })
-    validateRetrievalResult(retrieval)
+    validateRetrievalResult(retrieval, item.normalizedQuery)
 
     if (
       strategy
@@ -181,7 +181,10 @@ export async function evaluateArticleRetrieval(
   }
 }
 
-function validateRetrievalResult(result: ArticleRetrievalResult): void {
+function validateRetrievalResult(
+  result: ArticleRetrievalResult,
+  expectedQuery: NormalizedArticleRetrievalQuery,
+): void {
   if (
     typeof result !== 'object'
     || result === null
@@ -195,6 +198,19 @@ function validateRetrievalResult(result: ArticleRetrievalResult): void {
   ) {
     throw invalidResult('total or strategy is invalid')
   }
+
+  if (
+    typeof result.query !== 'object'
+    || result.query === null
+    || result.query.query !== expectedQuery.query
+    || result.query.languageCode !== expectedQuery.languageCode
+    || result.query.limit !== expectedQuery.limit
+  ) {
+    throw invalidResult('query does not match the evaluation case')
+  }
+
+  if (result.hits.length > expectedQuery.limit)
+    throw invalidResult('hits exceed the evaluation case limit')
 
   const sourceIds = new Set<number>()
 

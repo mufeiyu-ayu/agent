@@ -1,4 +1,8 @@
-import type { NormalizedArticleRetrievalQuery } from '../../retrieval/article-retrieval.js'
+import type {
+  ArticleRetriever,
+  DatabaseArticleRetrievalExecutionContext,
+  NormalizedArticleRetrievalQuery,
+} from '../../retrieval/article-retrieval.js'
 import type {
   ToolDefinition,
   ToolExecutionContext,
@@ -57,7 +61,7 @@ export const searchArticlesDefinition: ToolDefinition<SearchArticlesInput> = {
 export class SearchArticlesTool implements ToolExecutor<SearchArticlesInput, SearchArticlesOutput> {
   constructor(
     @Inject(PrismaArticleRetriever)
-    private readonly articleRetriever: PrismaArticleRetriever,
+    private readonly articleRetriever: ArticleRetriever<DatabaseArticleRetrievalExecutionContext>,
   ) {}
 
   async execute(

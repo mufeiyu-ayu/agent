@@ -2,6 +2,7 @@ import type { Prisma } from '../generated/prisma/client.js'
 import type {
   ArticleRetrievalInput,
   ArticleRetrievalResult,
+  ArticleRetriever,
   DatabaseArticleRetrievalExecutionContext,
 } from './article-retrieval.js'
 import { Inject, Injectable } from '@nestjs/common'
@@ -18,7 +19,7 @@ export const PRISMA_LEXICAL_STRATEGY = {
 } as const
 
 @Injectable()
-export class PrismaArticleRetriever {
+export class PrismaArticleRetriever implements ArticleRetriever<DatabaseArticleRetrievalExecutionContext> {
   constructor(
     @Inject(PrismaService)
     private readonly prismaService: PrismaService,

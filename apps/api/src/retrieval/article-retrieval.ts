@@ -47,10 +47,12 @@ export interface ArticleRetrievalResult {
   hits: ArticleRetrievalHit[]
 }
 
-export interface ArticleRetriever {
+export interface ArticleRetriever<
+  TContext extends ArticleRetrievalExecutionContext = ArticleRetrievalExecutionContext,
+> {
   retrieve: (
     input: ArticleRetrievalInput,
-    context: ArticleRetrievalExecutionContext,
+    context: TContext,
   ) => Promise<ArticleRetrievalResult>
 }
 
