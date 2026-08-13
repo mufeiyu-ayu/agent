@@ -42,13 +42,14 @@ Codex 应作为 Agent 应用开发学习搭档，负责按正式 Issue 实现、
 | `docs/tasks/_template.tdd.md` | 新任务 TDD 模板 |
 | `docs/development-workflow.md` | GPT、Issue、Codex、PR、Review、学习 docs 与受托执行规范 |
 | `docs/tasks/completed/phase-06-bounded-agent-loop.md` | 已完成 Phase 6 的最终归档入口 |
+| `docs/tasks/completed/phase-07-context-engineering.md` | 已完成 Phase 7 的最终归档入口 |
 | `docs/tasks/completed/` | 已完成阶段归档 |
 | `docs/research/` | 研究资料、学习路线、技术方案和复盘沉淀 |
 | `docs/work-log.md` | 近期真实推进与收口记录 |
 
 `docs/development-task-plan.md` 只保留为旧入口兼容，不再写入新任务。
 
-当前 Agent 主线状态：Phase 1-6 已 Completed；Phase 7 `Context Engineering` 为 Active；Task 0-2 已 Completed；当前 Active Agent Task 为 Task 3 `Context Inspector & Phase Baseline`，Issue #46，实施状态已实现、验收状态待验收；Phase 7 收口与 Minimal Compaction 判断仍待 GPT 验收。
+当前 Agent 主线状态：Phase 1-7 已 Completed；当前无 Active Agent Task；Minimal Compaction 继续保持 Gated；下一正式阶段尚未定案。任何后续方向都必须先经过需求讨论、任务文档、独立 Issue 与 Clarification Gate。
 
 ## 4. 关键目录与任务入口
 
