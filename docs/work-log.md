@@ -17,6 +17,7 @@
 
 | 日期 | 事项 | 结果 |
 | --- | --- | --- |
+| 2026-08-13 | PR #47 GPT Review P2 修复 | 收紧 Context Inspector initial budget、Observation、fail-closed outcome 与跨 sampling Domain invariants；矛盾 metadata 只降级 Inspector，不把已知 Sampling Step 退化为 Generic；修正 two-tool `4 / 6 / 7` 与真实 PostgreSQL fixture，重新生成正常路径截图并完成 scoped tests、build、typecheck、lint 与 workspace typecheck；实施状态仍为已实现、验收状态仍为待验收 |
 | 2026-08-13 | Issue #46 / Phase 7 Task 3 实现 | Clarification Gate 为 `READY`；完成 per-sampling Context Inspector Read Model、sampling estimator failure 安全枚举、legacy / partial fallback、Budget / Sources / Adjustments UI、自动回归与真实 Admin API + PostgreSQL 浏览器证据；实施状态已实现、验收状态待验收；Phase 7 与 Minimal Compaction 均未收口 |
 | 2026-08-13 | PR #45 / Issue #44 / Phase 7 Task 2 最终收口 | GPT 基于最新 head `810b4b7`、Issue #44、完整 PR diff、Review finding 修复、新增回归、独立 Codex Review 与验证记录完成技术验收并给出通过结论；用户明确确认按 Completed 状态收口；PR #45 已合入 `master`，merge commit `2f06355ccfbe86d5b7492d770250b776e5da79f1`；Issue #44 Closed；Task 2 Completed；Task 3 推进为 Next 但未启动 |
 | 2026-08-13 | PR #45 GPT Review finding 修复 | 修正每轮最终 Provider item count、累计 Task 1 与 Loop History 排除统计，并同步 `AGENTS.md`、根 README 与 docs 入口；完整验证通过，实施状态仍为已实现、验收状态仍为待验收 |

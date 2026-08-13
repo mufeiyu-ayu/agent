@@ -165,9 +165,11 @@ export function projectAdminRunListItem(
 export function projectAdminRunDetail(
   run: AdminRunDetailProjectionRecord,
 ): AdminRunDetail {
-  const timeline = [...run.steps]
-    .sort(compareSteps)
-    .map(projectTimelineItem)
+  const timeline = enforceContextSequenceInvariants(
+    [...run.steps]
+      .sort(compareSteps)
+      .map(projectTimelineItem),
+  )
 
   return {
     ...projectAdminRunListItem(run),
@@ -300,7 +302,7 @@ function projectModelSampling(
     textChars,
     intermediateTextChars,
     recordedDurationMs,
-    contextInspector: projectContextInspector(input, output),
+    contextInspector: projectContextInspector(input, output, step.status),
     inputSummary: summarize([
       ['samplingIndex', samplingIndex],
       ['samplingAttemptId', samplingAttemptId],
@@ -322,11 +324,18 @@ function projectModelSampling(
 function projectContextInspector(
   input: Record<string, unknown> | null,
   output: Record<string, unknown> | null,
+  status: AgentStepStatus,
 ): AdminContextInspector {
+  const hasInitialContext = input !== null
+    && Object.hasOwn(input, 'initialContext')
+  const hasContextPlan = output !== null
+    && Object.hasOwn(output, 'contextPlan')
+  const hasContextFailureReason = output !== null
+    && Object.hasOwn(output, 'contextFailureReason')
   const initialContext = readInitialContextMetadata(input?.initialContext)
   const samplingIndex = readPositiveInteger(input, 'samplingIndex')
   const parsedContextPlan = readSamplingContextPlanMetadata(output?.contextPlan)
-  const contextPlan = isCompatibleContextPlan(
+  const compatibleContextPlan = isCompatibleContextPlan(
     initialContext,
     parsedContextPlan,
     samplingIndex,
@@ -338,13 +347,36 @@ function projectContextInspector(
     'contextFailureReason',
     [...CONTEXT_FAILURE_REASONS],
   )
-  const contradictoryOutcome = contextFailureReason !== null
-    && contextPlan !== null
-  const usableContextPlan = contradictoryOutcome ? null : contextPlan
+  const prePlanItemCount = readNonNegativeInteger(
+    input,
+    'candidateMessageCount',
+  )
+  const providerItemCount = readNonNegativeInteger(output, 'messageCount')
+  const contradictoryMetadata = (
+    (hasInitialContext && initialContext === null)
+    || (hasContextPlan && compatibleContextPlan === null)
+    || (hasContextFailureReason && contextFailureReason === null)
+    || (contextFailureReason !== null && hasContextPlan)
+    || !isCompatibleContextOutcome({
+      contextFailureReason,
+      contextPlan: compatibleContextPlan,
+      hasContextPlan,
+      initialContext,
+      prePlanItemCount,
+      providerItemCount,
+      status,
+    })
+  )
+  const usableContextPlan = contradictoryMetadata
+    ? null
+    : compatibleContextPlan
+  const usableContextFailureReason = contradictoryMetadata
+    ? null
+    : contextFailureReason
   const hasContextMetadata = (
-    (input !== null && Object.hasOwn(input, 'initialContext'))
-    || (output !== null && Object.hasOwn(output, 'contextPlan'))
-    || (output !== null && Object.hasOwn(output, 'contextFailureReason'))
+    hasInitialContext
+    || hasContextPlan
+    || hasContextFailureReason
   )
   const samplingHistoryExcludedCount
     = initialContext && usableContextPlan
@@ -363,7 +395,7 @@ function projectContextInspector(
       : hasContextMetadata
         ? 'partial'
         : 'unavailable',
-    outcome: contextFailureReason === 'estimator_failure' && !contradictoryOutcome
+    outcome: usableContextFailureReason === 'estimator_failure'
       ? 'estimator_failure'
       : usableContextPlan?.overflowReason === 'minimum_context'
         ? 'minimum_context_overflow'
@@ -387,8 +419,8 @@ function projectContextInspector(
       && estimatedInputTokens !== null
       ? estimatedInputTokens / resolvedInputBudgetTokens
       : null,
-    prePlanItemCount: readNonNegativeInteger(input, 'candidateMessageCount'),
-    providerItemCount: readNonNegativeInteger(output, 'messageCount'),
+    prePlanItemCount,
+    providerItemCount,
     historyCandidateCount: usableContextPlan?.historyCandidateCount ?? null,
     historyIncludedCount: usableContextPlan?.historyIncludedCount ?? null,
     historyExcludedCount: usableContextPlan?.historyExcludedCount ?? null,
@@ -439,6 +471,11 @@ function readInitialContextMetadata(value: unknown): InitialContextMetadata | nu
         INITIAL_HISTORY_EXCLUDED_REASONS,
       )
   const estimatorStrategyId = readString(object, 'estimatorStrategyId')
+  const modelInputCapacity = contextWindowTokens !== null
+    && resolvedMaxOutputTokens !== null
+    && safetyMarginTokens !== null
+    ? contextWindowTokens - resolvedMaxOutputTokens - safetyMarginTokens
+    : null
 
   if (
     resolvedModel === null
@@ -455,6 +492,13 @@ function readInitialContextMetadata(value: unknown): InitialContextMetadata | nu
     || (object.excludedReason !== null && excludedReason === null)
     || estimatorStrategyId === null
     || !isRequiredString(object, 'estimatorStrategyId')
+    || modelInputCapacity === null
+    || !Number.isSafeInteger(modelInputCapacity)
+    || modelInputCapacity <= 0
+    || resolvedInputBudgetTokens !== Math.min(
+      applicationInputCapTokens,
+      modelInputCapacity,
+    )
     || historyCandidateCount
     !== historyIncludedCount + historyExcludedCount
   ) {
@@ -530,6 +574,7 @@ function readSamplingContextPlanMetadata(
     || historyCandidateCount
     !== historyIncludedCount + historyExcludedCount
     || observations.length !== toolExchangeCount
+    || toolExchangeCount !== samplingIndex - 1
     || observations.some((observation, index) => (
       observation.exchangeIndex !== index
     ))
@@ -575,6 +620,9 @@ function readContextObservationSummaries(
       || finalChars === null
       || toolCeilingTruncated === null
       || contextBudgetTruncated === null
+      || toolCeilingChars > originalChars
+      || toolCeilingTruncated !== (toolCeilingChars < originalChars)
+      || (!contextBudgetTruncated && finalChars !== toolCeilingChars)
     ) {
       return null
     }
@@ -608,6 +656,236 @@ function isCompatibleContextPlan(
     && contextPlan.historyCandidateCount
     === initialContext.historyCandidateCount
     && contextPlan.historyIncludedCount <= initialContext.historyIncludedCount
+}
+
+function isCompatibleContextOutcome(input: {
+  contextFailureReason: (typeof CONTEXT_FAILURE_REASONS)[number] | null
+  contextPlan: SamplingContextPlanMetadata | null
+  hasContextPlan: boolean
+  initialContext: InitialContextMetadata | null
+  prePlanItemCount: number | null
+  providerItemCount: number | null
+  status: AgentStepStatus
+}): boolean {
+  if (input.contextFailureReason === 'estimator_failure') {
+    return input.status === 'FAILED'
+      && !input.hasContextPlan
+      && input.initialContext !== null
+      && input.providerItemCount === 0
+  }
+
+  if (!input.contextPlan)
+    return true
+
+  if (input.contextPlan.overflowReason === 'minimum_context') {
+    return input.status === 'FAILED'
+      && input.providerItemCount === 0
+  }
+
+  return input.prePlanItemCount !== null
+    && input.prePlanItemCount > 0
+    && input.providerItemCount !== null
+    && input.providerItemCount > 0
+    && input.providerItemCount <= input.prePlanItemCount
+}
+
+function enforceContextSequenceInvariants(
+  timeline: AdminRunTimelineItem[],
+): AdminRunTimelineItem[] {
+  let previousSampling: AdminModelSamplingStep | undefined
+
+  return timeline.map((item) => {
+    if (item.type !== AGENT_STEP_TYPES.modelSampling)
+      return item
+
+    if (
+      item.kind !== 'known'
+      || item.contextInspector.availability !== 'available'
+      || item.contextInspector.outcome === 'unavailable'
+    ) {
+      previousSampling = undefined
+      return item
+    }
+
+    if (!isCompatibleContextSequence(previousSampling, item)) {
+      previousSampling = undefined
+      return {
+        ...item,
+        contextInspector: downgradeContextInspector(item.contextInspector),
+      }
+    }
+
+    previousSampling = item
+    return item
+  })
+}
+
+function isCompatibleContextSequence(
+  previous: AdminModelSamplingStep | undefined,
+  current: AdminModelSamplingStep,
+): boolean {
+  const inspector = current.contextInspector
+  const samplingIndex = current.samplingIndex
+  const samplingHistoryExcludedCount = inspector.samplingHistoryExcludedCount
+
+  if (
+    samplingIndex === null
+    || inspector.prePlanItemCount === null
+    || inspector.providerItemCount === null
+    || inspector.historyCandidateCount === null
+    || inspector.historyIncludedCount === null
+    || inspector.historyExcludedCount === null
+    || samplingHistoryExcludedCount === null
+    || inspector.toolExchangeCount !== samplingIndex - 1
+    || inspector.observations === null
+  ) {
+    return false
+  }
+
+  if (samplingIndex === 1) {
+    return previous === undefined
+      && inspector.prePlanItemCount
+      > inspector.historyIncludedCount + samplingHistoryExcludedCount
+      && isCompatibleProviderCount(
+        inspector,
+        samplingHistoryExcludedCount,
+      )
+  }
+
+  const previousInspector = previous?.contextInspector
+  const previousSamplingIndex = previous?.samplingIndex
+  const previousProviderItemCount = previous?.providerItemCount
+  const previousHistoryCandidateCount
+    = previousInspector?.historyCandidateCount
+  const previousHistoryIncludedCount = previousInspector?.historyIncludedCount
+  const previousHistoryExcludedCount = previousInspector?.historyExcludedCount
+  const previousSamplingHistoryExcludedCount
+    = previousInspector?.samplingHistoryExcludedCount
+  const previousToolExchangeCount = previousInspector?.toolExchangeCount
+  const previousObservations = previousInspector?.observations
+
+  if (
+    !previous
+    || !previousInspector
+    || previousSamplingIndex === null
+    || previousSamplingIndex === undefined
+    || previousProviderItemCount === null
+    || previousProviderItemCount === undefined
+    || previous.finishReason !== 'tool_calls'
+    || previousInspector.outcome !== 'success'
+    || previousHistoryCandidateCount === null
+    || previousHistoryCandidateCount === undefined
+    || previousHistoryIncludedCount === null
+    || previousHistoryIncludedCount === undefined
+    || previousHistoryExcludedCount === null
+    || previousHistoryExcludedCount === undefined
+    || previousSamplingHistoryExcludedCount === null
+    || previousSamplingHistoryExcludedCount === undefined
+    || previousToolExchangeCount === null
+    || previousToolExchangeCount === undefined
+    || previousObservations === null
+    || previousObservations === undefined
+  ) {
+    return false
+  }
+
+  const newlyExcludedHistoryCount = samplingHistoryExcludedCount
+    - previousSamplingHistoryExcludedCount
+
+  return samplingIndex === previousSamplingIndex + 1
+    && inspector.toolExchangeCount === previousToolExchangeCount + 1
+    && inspector.prePlanItemCount === previousProviderItemCount + 2
+    && inspector.historyCandidateCount
+    === previousHistoryCandidateCount
+    && inspector.historyIncludedCount
+    <= previousHistoryIncludedCount
+    && inspector.historyExcludedCount
+    >= previousHistoryExcludedCount
+    && newlyExcludedHistoryCount >= 0
+    && sameInitialContext(inspector, previousInspector)
+    && areCommittedObservationsCompatible(
+      previousObservations,
+      inspector.observations,
+    )
+    && isCompatibleProviderCount(inspector, newlyExcludedHistoryCount)
+}
+
+function isCompatibleProviderCount(
+  inspector: AdminContextInspector,
+  newlyExcludedHistoryCount: number,
+): boolean {
+  if (inspector.outcome === 'minimum_context_overflow')
+    return inspector.providerItemCount === 0
+
+  return inspector.outcome === 'success'
+    && inspector.prePlanItemCount !== null
+    && inspector.providerItemCount
+    === inspector.prePlanItemCount - newlyExcludedHistoryCount
+}
+
+function sameInitialContext(
+  current: AdminContextInspector,
+  previous: AdminContextInspector,
+): boolean {
+  return current.resolvedModel === previous.resolvedModel
+    && current.requestedModel === previous.requestedModel
+    && current.contextWindowTokens === previous.contextWindowTokens
+    && current.applicationInputCapTokens === previous.applicationInputCapTokens
+    && current.outputReserveTokens === previous.outputReserveTokens
+    && current.safetyMarginTokens === previous.safetyMarginTokens
+    && current.resolvedInputBudgetTokens
+    === previous.resolvedInputBudgetTokens
+    && current.estimatorStrategyId === previous.estimatorStrategyId
+    && current.initialHistoryExcludedReason
+    === previous.initialHistoryExcludedReason
+    && current.historyIncludedCount !== null
+    && current.samplingHistoryExcludedCount !== null
+    && previous.historyIncludedCount !== null
+    && previous.samplingHistoryExcludedCount !== null
+    && current.historyIncludedCount + current.samplingHistoryExcludedCount
+    === previous.historyIncludedCount
+    + previous.samplingHistoryExcludedCount
+}
+
+function areCommittedObservationsCompatible(
+  previous: AdminContextObservationSummary[],
+  current: AdminContextObservationSummary[],
+): boolean {
+  if (current.length !== previous.length + 1)
+    return false
+
+  return previous.every((observation, index) => {
+    const next = current[index]
+
+    return next !== undefined
+      && next.exchangeIndex === observation.exchangeIndex
+      && next.originalChars === observation.originalChars
+      && next.toolCeilingChars === observation.toolCeilingChars
+      && next.toolCeilingTruncated === observation.toolCeilingTruncated
+      && (!observation.contextBudgetTruncated
+        || (
+          next.contextBudgetTruncated
+          && next.finalChars <= observation.finalChars
+        ))
+  })
+}
+
+function downgradeContextInspector(
+  inspector: AdminContextInspector,
+): AdminContextInspector {
+  return {
+    ...inspector,
+    availability: 'partial',
+    outcome: 'unavailable',
+    estimatedInputTokens: null,
+    budgetUsageRatio: null,
+    historyCandidateCount: null,
+    historyIncludedCount: null,
+    historyExcludedCount: null,
+    samplingHistoryExcludedCount: null,
+    toolExchangeCount: null,
+    observations: null,
+  }
 }
 
 function projectToolExecution(

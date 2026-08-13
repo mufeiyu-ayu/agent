@@ -111,7 +111,7 @@ describe('Admin Run projector', () => {
         : null),
       [4, 5, 7],
     )
-    assert.deepEqual(inspectors.map(item => item.prePlanItemCount), [4, 6, 8])
+    assert.deepEqual(inspectors.map(item => item.prePlanItemCount), [4, 6, 7])
     assert.deepEqual(inspectors.map(item => item.toolExchangeCount), [0, 1, 2])
     assert.deepEqual(
       inspectors.map(item => item.availability),
@@ -130,6 +130,24 @@ describe('Admin Run projector', () => {
     )
     assert.equal(inspectors[1]?.observations?.[0]?.toolCeilingTruncated, true)
     assert.equal(inspectors[1]?.observations?.[0]?.contextBudgetTruncated, false)
+    assert.deepEqual(inspectors[2]?.observations, [
+      {
+        exchangeIndex: 0,
+        originalChars: 100,
+        toolCeilingChars: 80,
+        finalChars: 64,
+        toolCeilingTruncated: true,
+        contextBudgetTruncated: true,
+      },
+      {
+        exchangeIndex: 1,
+        originalChars: 101,
+        toolCeilingChars: 101,
+        finalChars: 101,
+        toolCeilingTruncated: false,
+        contextBudgetTruncated: false,
+      },
+    ])
     assert.doesNotMatch(
       JSON.stringify(detail),
       /DO_NOT_LEAK|prompt|observationBody|reasoning/,
@@ -226,6 +244,138 @@ describe('Admin Run projector', () => {
     }
   })
 
+  it('initial budget 不符合唯一公式时只降级 Context Inspector', () => {
+    for (const mutate of [
+      (initial: Record<string, unknown>) => {
+        initial.resolvedInputBudgetTokens = 262_143
+      },
+      (initial: Record<string, unknown>) => {
+        initial.contextWindowTokens = 70_000
+      },
+    ]) {
+      const record = createRunRecord()
+      attachContextMetadata(record)
+      const firstSampling = record.steps.find(step => step.sequence === 3)!
+      const initialContext = (firstSampling.input as Record<string, unknown>)
+        .initialContext as Record<string, unknown>
+
+      mutate(initialContext)
+      assertContextUnavailable(record, 3)
+    }
+  })
+
+  it('Observation chars 与截断 flags 冲突时只降级 Context Inspector', () => {
+    const toolCeilingConflict = createRunRecord()
+    attachContextMetadata(toolCeilingConflict)
+    const secondPlan = contextPlanAt(toolCeilingConflict, 5)
+    const secondObservation = (secondPlan.observations as Array<
+      Record<string, unknown>
+    >)[0]!
+    secondObservation.toolCeilingTruncated = false
+    assertContextUnavailable(toolCeilingConflict, 5)
+
+    const contextBudgetConflict = createRunRecord()
+    attachContextMetadata(contextBudgetConflict)
+    const thirdPlan = contextPlanAt(contextBudgetConflict, 7)
+    const thirdObservation = (thirdPlan.observations as Array<
+      Record<string, unknown>
+    >)[0]!
+    thirdObservation.contextBudgetTruncated = false
+    assertContextUnavailable(contextBudgetConflict, 7)
+
+    const markerExpansion = createRunRecord()
+    attachContextMetadata(markerExpansion)
+    const previousMarkerPlan = contextPlanAt(markerExpansion, 5)
+    const previousMarkerObservation = (previousMarkerPlan.observations as Array<
+      Record<string, unknown>
+    >)[0]!
+    previousMarkerObservation.originalChars = 24
+    previousMarkerObservation.toolCeilingChars = 24
+    previousMarkerObservation.finalChars = 24
+    previousMarkerObservation.toolCeilingTruncated = false
+    previousMarkerObservation.contextBudgetTruncated = false
+    const markerPlan = contextPlanAt(markerExpansion, 7)
+    const markerObservation = (markerPlan.observations as Array<
+      Record<string, unknown>
+    >)[0]!
+    markerObservation.originalChars = 24
+    markerObservation.toolCeilingChars = 24
+    markerObservation.finalChars = 96
+    markerObservation.toolCeilingTruncated = false
+    markerObservation.contextBudgetTruncated = true
+
+    const markerProjection = projectAdminRunDetail(markerExpansion).timeline.find(
+      item => item.sequence === 7,
+    )
+    assert.equal(markerProjection?.kind, 'known')
+    assert.equal(
+      markerProjection?.type === 'model_sampling'
+        ? markerProjection.contextInspector.availability
+        : null,
+      'available',
+    )
+  })
+
+  it('fail-closed outcome 带正数 Provider item 时只降级 Context Inspector', () => {
+    const estimatorFailure = createRunRecord()
+    estimatorFailure.status = 'FAILED'
+    estimatorFailure.steps = estimatorFailure.steps.filter(step => step.sequence <= 3)
+    const estimatorStep = estimatorFailure.steps.find(step => step.sequence === 3)!
+    estimatorStep.status = 'FAILED'
+    estimatorStep.input = {
+      ...(estimatorStep.input as Record<string, unknown>),
+      candidateMessageCount: 4,
+      initialContext: safeInitialContext(),
+    }
+    estimatorStep.output = {
+      durationMs: 25,
+      messageCount: 1,
+      contextFailureReason: 'estimator_failure',
+    }
+    assertContextUnavailable(estimatorFailure, 3)
+
+    const minimumOverflow = createRunRecord()
+    minimumOverflow.status = 'FAILED'
+    minimumOverflow.steps = minimumOverflow.steps.filter(step => step.sequence <= 3)
+    const overflowStep = minimumOverflow.steps.find(step => step.sequence === 3)!
+    overflowStep.status = 'FAILED'
+    overflowStep.input = {
+      ...(overflowStep.input as Record<string, unknown>),
+      candidateMessageCount: 4,
+      initialContext: safeInitialContext(),
+    }
+    overflowStep.output = {
+      durationMs: 25,
+      messageCount: 1,
+      contextPlan: safeContextPlan('minimum_context'),
+    }
+    assertContextUnavailable(minimumOverflow, 3)
+  })
+
+  it('跨 sampling pre-plan 与已提交 History 矛盾时只降级当前 Inspector', () => {
+    const stalePrePlan = createRunRecord()
+    attachContextMetadata(stalePrePlan)
+    const staleInput = stalePrePlan.steps.find(step => step.sequence === 7)!
+      .input as Record<string, unknown>
+    staleInput.candidateMessageCount = 8
+    assertContextUnavailable(stalePrePlan, 7)
+
+    const restoredHistory = createRunRecord()
+    attachContextMetadata(restoredHistory)
+    const restoredPlan = contextPlanAt(restoredHistory, 7)
+    restoredPlan.historyIncludedCount = 2
+    restoredPlan.historyExcludedCount = 0
+    assertContextUnavailable(restoredHistory, 7)
+
+    const missingMandatoryContext = createRunRecord()
+    attachContextMetadata(missingMandatoryContext)
+    const firstInput = missingMandatoryContext.steps.find(
+      step => step.sequence === 3,
+    )!.input as Record<string, unknown>
+    firstInput.candidateMessageCount = 2
+    assertContextUnavailable(missingMandatoryContext, 3)
+  })
+
   it('Run 四种状态都能投影且只有终态计算 duration', () => {
     for (const status of ['RUNNING', 'COMPLETED', 'FAILED', 'ABORTED'] as const) {
       const record = createRunRecord()
@@ -269,6 +419,11 @@ describe('Admin Run projector', () => {
     failed.steps = failed.steps.filter(step => step.sequence <= 3)
     const failedSamplingStep = failed.steps.find(step => step.sequence === 3)!
     failedSamplingStep.status = 'FAILED'
+    failedSamplingStep.input = {
+      ...(failedSamplingStep.input as Record<string, unknown>),
+      candidateMessageCount: 4,
+      initialContext: safeInitialContext(),
+    }
     failedSamplingStep.output = {
       durationMs: 500,
       messageCount: 0,
@@ -697,7 +852,7 @@ function attachContextMetadata(record: ReturnType<typeof createRunRecord>): void
   const samplings = record.steps
     .filter(step => step.type === 'model_sampling')
     .sort((left, right) => left.sequence - right.sequence)
-  const prePlanItemCounts = [4, 6, 8]
+  const prePlanItemCounts = [4, 6, 7]
   const providerItemCounts = [4, 5, 7]
   const estimatedInputTokens = [120_000, 180_000, 220_000]
 
@@ -722,20 +877,61 @@ function attachContextMetadata(record: ReturnType<typeof createRunRecord>): void
       historyIncludedCount,
       historyExcludedCount: 2 - historyIncludedCount,
       toolExchangeCount,
-      observations: Array.from({ length: toolExchangeCount }, (_, exchangeIndex) => ({
-        exchangeIndex,
-        originalChars: 100 + exchangeIndex,
-        toolCeilingChars: 80 + exchangeIndex,
-        finalChars: 64 + exchangeIndex,
-        toolCeilingTruncated: exchangeIndex === 0,
-        contextBudgetTruncated: exchangeIndex === 1,
-        observationBody: 'DO_NOT_LEAK',
-      })),
+      observations: Array.from({ length: toolExchangeCount }, (_, exchangeIndex) => {
+        const originalChars = 100 + exchangeIndex
+        const toolCeilingTruncated = exchangeIndex === 0
+        const toolCeilingChars = toolCeilingTruncated ? 80 : originalChars
+        const contextBudgetTruncated = samplingIndex === 3
+          && exchangeIndex === 0
+
+        return {
+          exchangeIndex,
+          originalChars,
+          toolCeilingChars,
+          finalChars: contextBudgetTruncated ? 64 : toolCeilingChars,
+          toolCeilingTruncated,
+          contextBudgetTruncated,
+          observationBody: 'DO_NOT_LEAK',
+        }
+      }),
       overflowReason: null,
       estimatorStrategyId: 'deepseek-v4-official-b5968e9',
       futureSafeField: true,
     }
   }
+}
+
+function contextPlanAt(
+  record: ReturnType<typeof createRunRecord>,
+  sequence: number,
+): Record<string, unknown> {
+  const sampling = record.steps.find(step => step.sequence === sequence)!
+
+  return (sampling.output as Record<string, unknown>)
+    .contextPlan as Record<string, unknown>
+}
+
+function assertContextUnavailable(
+  record: ReturnType<typeof createRunRecord>,
+  sequence: number,
+): void {
+  const projection = projectAdminRunDetail(record).timeline.find(
+    item => item.sequence === sequence,
+  )
+
+  assert.equal(projection?.kind, 'known')
+  assert.equal(
+    projection?.type === 'model_sampling'
+      ? projection.contextInspector.availability
+      : null,
+    'partial',
+  )
+  assert.equal(
+    projection?.type === 'model_sampling'
+      ? projection.contextInspector.outcome
+      : null,
+    'unavailable',
+  )
 }
 
 function safeInitialContext(): Record<string, unknown> {
@@ -764,18 +960,11 @@ function safeContextPlan(
     samplingIndex: 1,
     resolvedInputBudgetTokens: 262_144,
     estimatedInputTokens: 262_145,
-    historyCandidateCount: 0,
+    historyCandidateCount: 2,
     historyIncludedCount: 0,
-    historyExcludedCount: 0,
-    toolExchangeCount: 1,
-    observations: [{
-      exchangeIndex: 0,
-      originalChars: 100,
-      toolCeilingChars: 80,
-      finalChars: 64,
-      toolCeilingTruncated: true,
-      contextBudgetTruncated: true,
-    }],
+    historyExcludedCount: 2,
+    toolExchangeCount: 0,
+    observations: [],
     overflowReason,
     estimatorStrategyId: 'deepseek-v4-official-b5968e9',
   }

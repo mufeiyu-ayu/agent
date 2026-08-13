@@ -401,6 +401,7 @@ Task 0 是结构基线，不负责优化 History 数量，也不实现 token-bud
 - Admin Read Projection 从 `initialContext`、`contextPlan` 与最终 `messageCount` 投影 Context Inspector；Budget、Sources、Adjustments / Outcome 由 Contract 统一下发，UI 不解析 Prisma JSON。
 - Read Model 明确区分 pre-plan item、Provider-facing item 与 History candidate；two-tool 代表记录按 sampling 显示 Tool Exchange `0 / 1 / 2`。
 - strict core Step 校验与可选 Context metadata 解耦；legacy、partial、unknown metadata 只降级 Context Inspector，不使已知 Step 或 Run Detail 整体退化 / 500。
+- GPT 最新 Review 指出的跨字段不变量已收紧：initial budget 使用唯一公式，Observation chars 与截断 flags 保持一致，fail-closed outcome 的 Provider item 固定为 `0`，并按上一轮 `commitPlan` 后的真实 Context 校验跨 sampling pre-plan / Provider / History / Observation 序列；矛盾 metadata 只把 Inspector 降级为 partial / unavailable，已知 Sampling Step 仍保持 typed。
 - API、UI、fixture 与截图只包含安全数字、布尔、枚举和标识；不包含 Prompt、reasoning、raw Tool arguments 或完整 Observation。
 - 未新增依赖、环境变量、Prisma schema 或 migration；未改变 Chat / NDJSON contract 与 Context selection policy。
 
@@ -409,7 +410,7 @@ Task 0 是结构基线，不负责优化 History 数量，也不实现 token-bud
 | `pnpm --filter @agent/api test:context` | PASS，24 tests |
 | `pnpm --filter @agent/api test:tool-loop` | PASS，52 tests |
 | `pnpm --filter @agent/api test:model-stream` | PASS，65 tests |
-| `pnpm --filter @agent/api test:admin-runs` | PASS，18 tests |
+| `pnpm --filter @agent/api test:admin-runs` | PASS，22 tests |
 | `pnpm --filter @agent/api build` | PASS |
 | `pnpm --filter @agent/api typecheck` | PASS |
 | `pnpm --filter @agent/api lint` | PASS |
@@ -418,13 +419,14 @@ Task 0 是结构基线，不负责优化 History 数量，也不实现 token-bud
 | `pnpm --filter @agent/admin typecheck` | PASS |
 | `pnpm --filter @agent/admin lint` | PASS |
 | `pnpm typecheck` | PASS，4 个 workspace project |
+| `git diff --check` | PASS |
 | `pnpm lint` | FAIL，106 个既有 `docs/research/**` 代码块 / Markdown lint baseline 问题；本 Task 的 API / Admin scoped lint 均 PASS |
 
 过程性失败均已修复并复跑通过：Contract export / 测试 fixture 选择错误、Admin union narrowing，以及 API lint 的单处缩进。API 本地启动仍输出 Nest `LegacyRouteConverter` 既有 warning，与本 Task 无关。
 
-Codex Review 首轮发现 2 个 P2：short failed output 可能误信任额外 `usage`，以及矛盾的 budget / overflow metadata 可能被投影为成功；均已收紧 allowlist / invariant 并补回归，复审无 finding。
+Codex Review 首轮发现 2 个 P2：short failed output 可能误信任额外 `usage`，以及矛盾的 budget / overflow metadata 可能被投影为成功；均已收紧 allowlist / invariant 并补回归，复审无 finding。GPT 最新 Review 继续发现跨字段 Domain invariants 与正常 fixture 矛盾，本轮已补 initial budget、Observation、fail-closed outcome、Provider count 和跨 sampling 序列回归。修复后的独立 Codex Review 又识别出首次加入 `context_budget` marker 时字符数可能合法增长，以及首轮 pre-plan 必须保留非 History mandatory Context；两项均已补回归，最终复审无可操作问题，当前等待 GPT 重新验收。
 
-浏览器验收使用 1440×1000 应用内浏览器，通过真实 Admin 页面 → Vite proxy → Nest API → 本地 PostgreSQL 链路读取受控安全 Run fixture；验收后 fixture 已清理。证据：
+浏览器验收通过真实 Admin 页面 → Vite proxy → Nest API → 本地 PostgreSQL 链路读取受控安全 Run fixture。本轮 Review 修复后使用 1280×720 应用内浏览器重新校验 two-tool pre-plan `4 / 6 / 7`、Observation `100 → 80 → 80` 与 `100 → 80 → 64`、对应截断 flags，并重新生成 5 张正常路径全页截图；验收后 fixture 已清理，数据库与本地服务已恢复到验收前状态。证据：
 
 - `docs/assets/admin-console/phase-07-context-inspector/direct-final-light.png`
 - `docs/assets/admin-console/phase-07-context-inspector/one-tool-sampling-2-light.png`
