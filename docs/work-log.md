@@ -17,7 +17,7 @@
 
 | 日期 | 事项 | 结果 |
 | --- | --- | --- |
-| 2026-08-13 | Issue #44 / Phase 7 Task 2 实现 | Clarification Gate 为 READY；完成 DeepSeek V4 full-request estimator、逐轮 Sampling Context Plan、History 再选择、Observation 双层治理、安全 Context Plan 摘要与 fail-closed 终态；指定回归、build、lint、typecheck 与 diff-check 通过；实施状态已实现、验收状态待验收 |
+| 2026-08-13 | Issue #44 / Draft PR #45 / Phase 7 Task 2 实现 | Clarification Gate 为 READY；完成 DeepSeek V4 full-request estimator、逐轮 Sampling Context Plan、History 再选择、Observation 双层治理、安全 Context Plan 摘要与 fail-closed 终态；指定回归、build、lint、typecheck 与 diff-check 通过；Draft PR #45 已创建，实施状态已实现、验收状态待验收 |
 | 2026-08-12 | PR #43 / Issue #42 收口 | Phase 7 Task 1 `Model-aware Budget & Dynamic History` 经 GPT 技术验收通过，用户明确确认验收；第一轮 Codex Review 的 3 个 P2 已在 `620a2d0` 修复并全部 resolved，第二轮 Review 未发现新的主要问题；PR #43 按授权转 Ready 并合入 `master`，merge commit `6df72f02242a1b8a23920d64c471ce721ccf558b`；Issue #42 Closed；Task 1 Completed；Task 2 仅推进为 Next |
 | 2026-08-12 | PR #43 Review finding 收口 | 增加 current User `(createdAt, id)` initial causal upper bound；同步根 `AGENTS.md`；candidate batch 最小值收紧为 50，并用测试将最坏合法配置的 full-request estimate 次数限制在 28 次以内；完整回归、build、lint、typecheck 与 `git diff --check` 通过 |
 | 2026-08-10 | Issue #42 / Draft PR #43 / Phase 7 Task 1 实现 | Q-01～Q-03 全部回写后 Clarification Gate 为 READY；完成 model-aware initial Context Budget、DeepSeek V4 官方 encoding 一致性验证、动态 History keyset 分页与安全 Context summary；指定回归、API lint/typecheck 与 workspace typecheck 通过；Draft PR #43 已创建，实施状态已实现、验收状态待验收 |
@@ -47,7 +47,7 @@ Phase 7 当前状态：
 Phase 7：Context Engineering          Active
 Task 0：Context Boundary & Snapshot   Completed / #40 / #41 / merge 415e866a
 Task 1：Model-aware Budget            Completed / #42 / #43 / merge 6df72f0
-Task 2：Loop-aware Context            已实现 / 待验收 / #44
+Task 2：Loop-aware Context            已实现 / 待验收 / #44 / Draft PR #45
 Task 3：Context Inspector             Planned
 Compaction                            Gated
 Active Agent Task                     Task 2 / #44 / 待验收

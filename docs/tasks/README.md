@@ -40,7 +40,7 @@ Task 1 已由 GPT 基于 Issue #42、PR #43 最新 head `620a2d0`、两轮 Codex
 | --- | --- | --- |
 | Task 0：Context Boundary & Snapshot | **Completed / #40 / #41 / merge 415e866a** | 收敛 model input assembly；建立安全 Context Snapshot；不改变 40 条 History 与现有 Observation 行为 |
 | Task 1：Model-aware Budget & Dynamic History | **Completed / #42 / #43 / merge 6df72f0** | 让 `contextWindowTokens` 进入真实预算；History 从固定条数升级为 token-budget 驱动 |
-| Task 2：Loop-aware Context & Observation Governance | **已实现 / 待验收 / #44** | 多轮 Tool Loop 的 Context Budget、Tool Call / Result pairing 与 Observation 最终裁剪 |
+| Task 2：Loop-aware Context & Observation Governance | **已实现 / 待验收 / #44 / Draft PR #45** | 多轮 Tool Loop 的 Context Budget、Tool Call / Result pairing 与 Observation 最终裁剪 |
 | Task 3：Context Inspector & Phase Baseline | Planned | 安全 Context summary + Admin Inspector + 阶段回归 |
 | Minimal Compaction | Gated | 只有 Task 1-3 的真实证据证明需要时才另建正式 Task / Issue |
 

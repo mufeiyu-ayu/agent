@@ -86,7 +86,7 @@ Admin Task 4：Planned
 ```text
 Task 0：Context Boundary & Snapshot                   Completed / #40 / #41 / 415e866a
 Task 1：Model-aware Budget & Dynamic History          Completed / #42 / #43 / 6df72f0
-Task 2：Loop-aware Context & Observation Governance   已实现 / 待验收 / #44
+Task 2：Loop-aware Context & Observation Governance   已实现 / 待验收 / #44 / Draft PR #45
 Task 3：Context Inspector & Phase Baseline            Planned
 Compaction：Gated Follow-up                           不自动启动
 ```
@@ -107,7 +107,7 @@ Task 1 已完成：Issue #42、PR #43；建立 `262_144` application input cap�
 
 把 Context Budget 扩展到完整 bounded Agent Loop。Tool Call / Result 按配对单元维护，每轮 sampling 前重新核对 Context usage；现有 per-tool Observation 字符上限与 global hard max 继续作为 safety ceiling，而不是唯一 Context 策略。
 
-Task 2 已按 Issue #44 完成 Clarification Gate、实现与验证，当前等待 Draft PR 技术验收；不得自行标记 Completed。
+Task 2 已按 Issue #44 完成 Clarification Gate、实现与验证，Draft PR #45 当前等待技术验收；不得自行标记 Completed。
 
 ### Task 3
 
