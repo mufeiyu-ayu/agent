@@ -6,7 +6,8 @@
 
 | 区域 | 状态 | 文档 | 说明 |
 | --- | --- | --- | --- |
-| Agent 主线 | **Phase 1-7 Completed / 无 Active Task** | [roadmap.md](../roadmap.md) | Phase 7 已完成验收并合入 `master`；下一阶段尚未定案 |
+| Agent 主线 | **Phase 8 Task 0 Active** | [roadmap.md](../roadmap.md) | Issue #48；Retrieval Boundary 与离线 Evaluation Baseline 已实现、待验收 |
+| Phase 8：Grounded Retrieval / RAG Baseline | **Active** | [task-00-retrieval-boundary-evaluation.md](./phase-08-grounded-retrieval/task-00-retrieval-boundary-evaluation.md) | Task 0 已实现、待验收；不提前启动 Task 1 |
 | Phase 7：Context Engineering | **Completed** | [completed/phase-07-context-engineering.md](./completed/phase-07-context-engineering.md) | Task 0-3 Completed；merge `caf3d25b`；Minimal Compaction 继续 Gated |
 | Phase 6：有界单 Agent Loop | Completed | [completed/phase-06-bounded-agent-loop.md](./completed/phase-06-bounded-agent-loop.md) | Task 0、横向配置治理、Task 1、Task 2 均已验收并合并 |
 | Admin Console Task 0-1 | Completed | [admin-console.md](./admin-console.md) | 基础壳与静态 Run UI 已完成 |
@@ -23,9 +24,8 @@
 
 ```text
 阶段 1-7：Completed
-Active Agent Task：无
+Phase 8 Task 0：Active / 已实现、待验收
 Minimal Compaction：Gated
-下一阶段：尚未定案
 ```
 
 Phase 7 最终交付：
@@ -61,19 +61,9 @@ Admin Task 2 + Task 3 已建立真实 Observability Baseline：服务端安全 R
 
 Phase 7 Task 3 已在该基线上增加 Context Inspector，但不自动启动 Admin Task 4。
 
-## 下一正式动作
+## 当前正式动作
 
-下一阶段必须基于最新 `master`、真实产品需求、学习收益和作品集价值重新讨论。候选方向包括：
-
-1. RAG / Embedding / Hybrid Retrieval；
-2. Permission / Approval / Human-in-the-loop；
-3. Durable Recovery / Resume；
-4. MCP / Plugin / Skill；
-5. Planner / Workflow / 并行 Tool Call；
-6. Multi-agent；
-7. 有真实 Context 压力证据时再讨论 Minimal Compaction。
-
-任何候选都不会因为路线或研究资料已经存在而自动进入正式实现。只有创建明确 Task / Issue 并通过 Clarification Gate `READY` 后，才允许写成 Active。
+Phase 8 Task 0 已通过 Issue #48 的 Clarification Gate，并完成本地实现与验证，等待 Draft PR 技术验收。Task 1 尚未创建正式 Issue，不得提前启动。
 
 ## 状态定义
 
