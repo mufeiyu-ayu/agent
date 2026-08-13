@@ -97,6 +97,15 @@ export function formatTokens(tokens: number | null, locale = 'en-US'): string {
   return tokens.toLocaleString(locale)
 }
 
+export function formatPercentage(value: number | null, locale = 'en-US'): string {
+  return value === null
+    ? '—'
+    : new Intl.NumberFormat(locale, {
+        style: 'percent',
+        maximumFractionDigits: 1,
+      }).format(value)
+}
+
 export function formatDateTime(value: string | null, locale = 'zh-CN'): string {
   return value ? new Intl.DateTimeFormat(locale, dateTimeOptions).format(new Date(value)) : '—'
 }

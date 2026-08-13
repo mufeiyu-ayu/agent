@@ -1,4 +1,5 @@
 import type {
+  AdminContextInspector,
   AdminRunDetail,
   AdminRunListItem,
   AdminRunListResponse,
@@ -22,6 +23,7 @@ import { createRunDetailState } from './run-detail.state'
 import { defaultRunListPageSize, useRunListStore } from './run-list.store'
 import {
   formatDateTime,
+  formatPercentage,
   formatRequestedModel,
   formatTime,
   formatTokens,
@@ -61,6 +63,12 @@ function checkPartialTraceAndInspectors(): void {
   assert.equal(detail.messages.length, 1)
   assert.equal(sampling.status, 'RUNNING')
   assert.equal(sampling.endedAt, null)
+  assert.equal(
+    sampling.kind === 'known' && sampling.type === 'model_sampling'
+      ? sampling.contextInspector.availability
+      : null,
+    'partial',
+  )
   assert.equal(getDefaultTimelineItem(detail.timeline)?.id, sampling.id)
   assert.equal(getTimelineInspectorLabel(generic), 'Generic Inspector')
 
@@ -82,6 +90,12 @@ function checkPartialTraceAndInspectors(): void {
   const safeRaw = JSON.stringify(detail.safeRawData)
   assert.doesNotMatch(safeRaw, /"(?:input|output)":/)
   assert.doesNotMatch(safeRaw, /reasoning|authorization|api[_-]?key/i)
+
+  const directFinal = createContextInspector()
+  assert.equal(directFinal.toolExchangeCount, 0)
+  assert.deepEqual(directFinal.observations, [])
+  assert.equal(formatPercentage(0, 'en-US'), '0%')
+  assert.equal(formatPercentage(null, 'en-US'), '—')
 }
 
 function checkProductionSources(): void {
@@ -405,7 +419,7 @@ function createRunningDetail(): AdminRunDetail {
     samplingIndex: 1,
     samplingAttemptId: 'sampling-running-1',
     requestedModel: null,
-    messageCount: 1,
+    providerItemCount: null,
     toolCount: 1,
     finishReason: null,
     usage: null,
@@ -413,6 +427,19 @@ function createRunningDetail(): AdminRunDetail {
     textChars: null,
     intermediateTextChars: null,
     recordedDurationMs: null,
+    contextInspector: createContextInspector({
+      availability: 'partial',
+      outcome: 'unavailable',
+      estimatedInputTokens: null,
+      budgetUsageRatio: null,
+      providerItemCount: null,
+      historyCandidateCount: null,
+      historyIncludedCount: null,
+      historyExcludedCount: null,
+      samplingHistoryExcludedCount: null,
+      toolExchangeCount: null,
+      observations: null,
+    }),
   }
 
   return {
@@ -467,6 +494,35 @@ function createRunningDetail(): AdminRunDetail {
         hasError: item.hasError,
       })),
     },
+  }
+}
+
+function createContextInspector(
+  overrides: Partial<AdminContextInspector> = {},
+): AdminContextInspector {
+  return {
+    availability: 'available',
+    outcome: 'success',
+    resolvedModel: 'deepseek-v4-flash',
+    requestedModel: null,
+    estimatorStrategyId: 'deepseek-v4-official-b5968e9',
+    contextWindowTokens: 1_000_000,
+    applicationInputCapTokens: 262_144,
+    outputReserveTokens: 65_536,
+    safetyMarginTokens: 16_384,
+    resolvedInputBudgetTokens: 262_144,
+    estimatedInputTokens: 0,
+    budgetUsageRatio: 0,
+    prePlanItemCount: 1,
+    providerItemCount: 1,
+    historyCandidateCount: 0,
+    historyIncludedCount: 0,
+    historyExcludedCount: 0,
+    initialHistoryExcludedReason: null,
+    samplingHistoryExcludedCount: 0,
+    toolExchangeCount: 0,
+    observations: [],
+    ...overrides,
   }
 }
 

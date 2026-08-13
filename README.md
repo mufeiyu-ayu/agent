@@ -18,7 +18,7 @@ DeepSeek thinking Tool Calls preserve required `reasoning_content` only as inter
 
 Phase 6 reliability work binds Run remaining budget to database business statements, fences late database results, and atomically closes Message / AgentStep / AgentRun terminal state where the database can commit the terminalization transaction.
 
-Phase 7 Context Engineering adds a per-Run `ModelContext`, model-aware input budgeting, a locally loaded DeepSeek V4 tokenizer, token-budget-driven Dynamic History Selection, and per-sampling Tool Loop Context planning. The current User Message remains mandatory and causally bounds previous History by `(createdAt, id)`.
+Phase 7 Context Engineering adds a per-Run `ModelContext`, model-aware input budgeting, a locally loaded DeepSeek V4 tokenizer, token-budget-driven Dynamic History Selection, per-sampling Tool Loop Context planning, and a safe Admin Context Inspector. The current User Message remains mandatory and causally bounds previous History by `(createdAt, id)`.
 
 ## Highlights
 
@@ -33,6 +33,7 @@ Phase 7 Context Engineering adds a per-Run `ModelContext`, model-aware input bud
 | Context budget | Model-aware initial and per-sampling input budget with application cap, output reserve and safety margin |
 | Dynamic History | `COMPLETED`-only causal keyset pagination, recency-first whole-message selection and candidate hard limit |
 | Token estimation | Local DeepSeek V4 full-request estimation behind a replaceable `TokenEstimator` boundary |
+| Context Inspector | Per-sampling Budget, Sources, History / Observation adjustments and outcome from durable safe metadata |
 | Database reliability | Remaining-budget DB boundary, PostgreSQL statement / lock timeout, late-result fencing |
 | Persistence | Conversations, Messages, Agent Runs, and ordered Agent Steps in PostgreSQL |
 | Model integration | OpenAI-compatible Chat Completions + DeepSeek thinking continuation |
@@ -189,6 +190,7 @@ Available now:
 - local DeepSeek V4 tokenizer-based pre-request estimation;
 - causal, `COMPLETED`-only, token-budget-driven Dynamic History Selection;
 - per-sampling Context planning with deterministic History exclusion and Observation governance;
+- per-sampling Admin Context Inspector with legacy / partial fallback and no raw Context exposure;
 - Run-level deadline and database remaining-budget propagation;
 - PostgreSQL statement / lock timeout and late-result ownership fencing;
 - atomic normal completion / failure / Abort terminalization where commit succeeds;
@@ -202,7 +204,8 @@ Current mainline status:
 - **Phase 7: Context Engineering is Active.**
 - Task 0 `Context Boundary & Snapshot` is Completed via Issue #40 / PR #41, merge `415e866a`.
 - Task 1 `Model-aware Budget & Dynamic History` is Completed via Issue #42 / PR #43, merge `6df72f0`.
-- **Task 2 `Loop-aware Context & Observation Governance` is the Active Agent mainline Task.** It is implemented via Issue #44 / Draft PR #45 and awaits acceptance.
-- Task 3 `Context Inspector & Phase Baseline` remains Planned.
+- Task 2 `Loop-aware Context & Observation Governance` is Completed via Issue #44 / PR #45, merge `2f06355c`.
+- **Task 3 `Context Inspector & Phase Baseline` is the Active Agent mainline Task.** Issue #46 is implemented on its task branch and awaits acceptance.
+- Phase 7 remains Active; GPT has not yet made the Phase Baseline or Minimal Compaction decision.
 
 See [`docs/roadmap.md`](./docs/roadmap.md), [`docs/tasks/README.md`](./docs/tasks/README.md), the [Phase 7 plan](./docs/tasks/phase-07-context-engineering/README.md), and the [Phase 6 archive](./docs/tasks/completed/phase-06-bounded-agent-loop.md).

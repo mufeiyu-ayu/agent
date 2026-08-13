@@ -85,10 +85,295 @@ describe('Admin Run projector', () => {
     assert.equal(
       secondSampling?.kind === 'known'
       && secondSampling.type === 'model_sampling'
-        ? secondSampling.messageCount
+        ? secondSampling.providerItemCount
         : null,
       4,
     )
+  })
+
+  it('按 Sampling 投影安全 Context Inspector，并区分三种 item count 与 Tool Exchange 0/1/2', () => {
+    const record = createRunRecord()
+    attachContextMetadata(record)
+
+    const detail = projectAdminRunDetail(record)
+    const samplings = detail.timeline.filter(item => (
+      item.kind === 'known' && item.type === 'model_sampling'
+    ))
+    const inspectors = samplings.map((item) => {
+      if (item.type !== 'model_sampling')
+        assert.fail('expected model_sampling')
+      return item.contextInspector
+    })
+
+    assert.deepEqual(
+      samplings.map(item => item.type === 'model_sampling'
+        ? item.providerItemCount
+        : null),
+      [4, 5, 7],
+    )
+    assert.deepEqual(inspectors.map(item => item.prePlanItemCount), [4, 6, 7])
+    assert.deepEqual(inspectors.map(item => item.toolExchangeCount), [0, 1, 2])
+    assert.deepEqual(
+      inspectors.map(item => item.availability),
+      ['available', 'available', 'available'],
+    )
+    assert.deepEqual(
+      inspectors.map(item => item.outcome),
+      ['success', 'success', 'success'],
+    )
+    assert.equal(inspectors[0]?.resolvedModel, 'deepseek-v4-flash')
+    assert.equal(inspectors[0]?.requestedModel, null)
+    assert.equal(inspectors[0]?.budgetUsageRatio, 120_000 / 262_144)
+    assert.deepEqual(
+      inspectors.map(item => item.samplingHistoryExcludedCount),
+      [0, 1, 1],
+    )
+    assert.equal(inspectors[1]?.observations?.[0]?.toolCeilingTruncated, true)
+    assert.equal(inspectors[1]?.observations?.[0]?.contextBudgetTruncated, false)
+    assert.deepEqual(inspectors[2]?.observations, [
+      {
+        exchangeIndex: 0,
+        originalChars: 100,
+        toolCeilingChars: 80,
+        finalChars: 64,
+        toolCeilingTruncated: true,
+        contextBudgetTruncated: true,
+      },
+      {
+        exchangeIndex: 1,
+        originalChars: 101,
+        toolCeilingChars: 101,
+        finalChars: 101,
+        toolCeilingTruncated: false,
+        contextBudgetTruncated: false,
+      },
+    ])
+    assert.doesNotMatch(
+      JSON.stringify(detail),
+      /DO_NOT_LEAK|prompt|observationBody|reasoning/,
+    )
+  })
+
+  it('sampling estimator failure 使用安全枚举，且 Context metadata 不一致只降级 Inspector', () => {
+    const estimatorFailure = createRunRecord()
+    estimatorFailure.status = 'FAILED'
+    estimatorFailure.steps = estimatorFailure.steps.filter(step => step.sequence <= 3)
+    const failedSampling = estimatorFailure.steps.find(step => step.sequence === 3)!
+    failedSampling.status = 'FAILED'
+    failedSampling.input = {
+      ...(failedSampling.input as Record<string, unknown>),
+      initialContext: safeInitialContext(),
+    }
+    failedSampling.output = {
+      durationMs: 25,
+      messageCount: 0,
+      contextFailureReason: 'estimator_failure',
+    }
+
+    const failedProjection = projectAdminRunDetail(estimatorFailure).timeline.at(-1)
+
+    assert.equal(failedProjection?.kind, 'known')
+    assert.equal(
+      failedProjection?.type === 'model_sampling'
+        ? failedProjection.contextInspector.availability
+        : null,
+      'partial',
+    )
+    assert.equal(
+      failedProjection?.type === 'model_sampling'
+        ? failedProjection.contextInspector.outcome
+        : null,
+      'estimator_failure',
+    )
+    assert.equal(
+      failedProjection?.type === 'model_sampling'
+        ? failedProjection.providerItemCount
+        : null,
+      0,
+    )
+    assert.doesNotMatch(JSON.stringify(failedProjection), /DO_NOT_LEAK/)
+
+    const mismatched = createRunRecord()
+    attachContextMetadata(mismatched)
+    const secondSampling = mismatched.steps.find(step => step.sequence === 5)!
+    const contextPlan = (
+      secondSampling.output as Record<string, unknown>
+    ).contextPlan as Record<string, unknown>
+    contextPlan.samplingIndex = 3
+
+    const mismatchedProjection = projectAdminRunDetail(mismatched).timeline.find(
+      item => item.sequence === 5,
+    )
+
+    assert.equal(mismatchedProjection?.kind, 'known')
+    assert.equal(
+      mismatchedProjection?.type === 'model_sampling'
+        ? mismatchedProjection.contextInspector.availability
+        : null,
+      'partial',
+    )
+    assert.equal(
+      mismatchedProjection?.type === 'model_sampling'
+        ? mismatchedProjection.contextInspector.outcome
+        : null,
+      'unavailable',
+    )
+
+    for (const [estimatedInputTokens, overflowReason] of [
+      [262_145, null],
+      [262_144, 'minimum_context'],
+    ] as const) {
+      const contradictoryBudget = createRunRecord()
+      attachContextMetadata(contradictoryBudget)
+      const step = contradictoryBudget.steps.find(item => item.sequence === 5)!
+      const plan = (step.output as Record<string, unknown>)
+        .contextPlan as Record<string, unknown>
+      plan.estimatedInputTokens = estimatedInputTokens
+      plan.overflowReason = overflowReason
+
+      const projection = projectAdminRunDetail(contradictoryBudget).timeline.find(
+        item => item.sequence === 5,
+      )
+      assert.equal(projection?.kind, 'known')
+      assert.equal(
+        projection?.type === 'model_sampling'
+          ? projection.contextInspector.outcome
+          : null,
+        'unavailable',
+      )
+    }
+  })
+
+  it('initial budget 不符合唯一公式时只降级 Context Inspector', () => {
+    for (const mutate of [
+      (initial: Record<string, unknown>) => {
+        initial.resolvedInputBudgetTokens = 262_143
+      },
+      (initial: Record<string, unknown>) => {
+        initial.contextWindowTokens = 70_000
+      },
+    ]) {
+      const record = createRunRecord()
+      attachContextMetadata(record)
+      const firstSampling = record.steps.find(step => step.sequence === 3)!
+      const initialContext = (firstSampling.input as Record<string, unknown>)
+        .initialContext as Record<string, unknown>
+
+      mutate(initialContext)
+      assertContextUnavailable(record, 3)
+    }
+  })
+
+  it('Observation chars 与截断 flags 冲突时只降级 Context Inspector', () => {
+    const toolCeilingConflict = createRunRecord()
+    attachContextMetadata(toolCeilingConflict)
+    const secondPlan = contextPlanAt(toolCeilingConflict, 5)
+    const secondObservation = (secondPlan.observations as Array<
+      Record<string, unknown>
+    >)[0]!
+    secondObservation.toolCeilingTruncated = false
+    assertContextUnavailable(toolCeilingConflict, 5)
+
+    const contextBudgetConflict = createRunRecord()
+    attachContextMetadata(contextBudgetConflict)
+    const thirdPlan = contextPlanAt(contextBudgetConflict, 7)
+    const thirdObservation = (thirdPlan.observations as Array<
+      Record<string, unknown>
+    >)[0]!
+    thirdObservation.contextBudgetTruncated = false
+    assertContextUnavailable(contextBudgetConflict, 7)
+
+    const markerExpansion = createRunRecord()
+    attachContextMetadata(markerExpansion)
+    const previousMarkerPlan = contextPlanAt(markerExpansion, 5)
+    const previousMarkerObservation = (previousMarkerPlan.observations as Array<
+      Record<string, unknown>
+    >)[0]!
+    previousMarkerObservation.originalChars = 24
+    previousMarkerObservation.toolCeilingChars = 24
+    previousMarkerObservation.finalChars = 24
+    previousMarkerObservation.toolCeilingTruncated = false
+    previousMarkerObservation.contextBudgetTruncated = false
+    const markerPlan = contextPlanAt(markerExpansion, 7)
+    const markerObservation = (markerPlan.observations as Array<
+      Record<string, unknown>
+    >)[0]!
+    markerObservation.originalChars = 24
+    markerObservation.toolCeilingChars = 24
+    markerObservation.finalChars = 96
+    markerObservation.toolCeilingTruncated = false
+    markerObservation.contextBudgetTruncated = true
+
+    const markerProjection = projectAdminRunDetail(markerExpansion).timeline.find(
+      item => item.sequence === 7,
+    )
+    assert.equal(markerProjection?.kind, 'known')
+    assert.equal(
+      markerProjection?.type === 'model_sampling'
+        ? markerProjection.contextInspector.availability
+        : null,
+      'available',
+    )
+  })
+
+  it('fail-closed outcome 带正数 Provider item 时只降级 Context Inspector', () => {
+    const estimatorFailure = createRunRecord()
+    estimatorFailure.status = 'FAILED'
+    estimatorFailure.steps = estimatorFailure.steps.filter(step => step.sequence <= 3)
+    const estimatorStep = estimatorFailure.steps.find(step => step.sequence === 3)!
+    estimatorStep.status = 'FAILED'
+    estimatorStep.input = {
+      ...(estimatorStep.input as Record<string, unknown>),
+      candidateMessageCount: 4,
+      initialContext: safeInitialContext(),
+    }
+    estimatorStep.output = {
+      durationMs: 25,
+      messageCount: 1,
+      contextFailureReason: 'estimator_failure',
+    }
+    assertContextUnavailable(estimatorFailure, 3)
+
+    const minimumOverflow = createRunRecord()
+    minimumOverflow.status = 'FAILED'
+    minimumOverflow.steps = minimumOverflow.steps.filter(step => step.sequence <= 3)
+    const overflowStep = minimumOverflow.steps.find(step => step.sequence === 3)!
+    overflowStep.status = 'FAILED'
+    overflowStep.input = {
+      ...(overflowStep.input as Record<string, unknown>),
+      candidateMessageCount: 4,
+      initialContext: safeInitialContext(),
+    }
+    overflowStep.output = {
+      durationMs: 25,
+      messageCount: 1,
+      contextPlan: safeContextPlan('minimum_context'),
+    }
+    assertContextUnavailable(minimumOverflow, 3)
+  })
+
+  it('跨 sampling pre-plan 与已提交 History 矛盾时只降级当前 Inspector', () => {
+    const stalePrePlan = createRunRecord()
+    attachContextMetadata(stalePrePlan)
+    const staleInput = stalePrePlan.steps.find(step => step.sequence === 7)!
+      .input as Record<string, unknown>
+    staleInput.candidateMessageCount = 8
+    assertContextUnavailable(stalePrePlan, 7)
+
+    const restoredHistory = createRunRecord()
+    attachContextMetadata(restoredHistory)
+    const restoredPlan = contextPlanAt(restoredHistory, 7)
+    restoredPlan.historyIncludedCount = 2
+    restoredPlan.historyExcludedCount = 0
+    assertContextUnavailable(restoredHistory, 7)
+
+    const missingMandatoryContext = createRunRecord()
+    attachContextMetadata(missingMandatoryContext)
+    const firstInput = missingMandatoryContext.steps.find(
+      step => step.sequence === 3,
+    )!.input as Record<string, unknown>
+    firstInput.candidateMessageCount = 2
+    assertContextUnavailable(missingMandatoryContext, 3)
   })
 
   it('Run 四种状态都能投影且只有终态计算 duration', () => {
@@ -123,7 +408,7 @@ describe('Admin Run projector', () => {
     assert.equal(
       runningSamplingProjection?.kind === 'known'
       && runningSamplingProjection.type === 'model_sampling'
-        ? runningSamplingProjection.messageCount
+        ? runningSamplingProjection.providerItemCount
         : undefined,
       null,
     )
@@ -134,6 +419,11 @@ describe('Admin Run projector', () => {
     failed.steps = failed.steps.filter(step => step.sequence <= 3)
     const failedSamplingStep = failed.steps.find(step => step.sequence === 3)!
     failedSamplingStep.status = 'FAILED'
+    failedSamplingStep.input = {
+      ...(failedSamplingStep.input as Record<string, unknown>),
+      candidateMessageCount: 4,
+      initialContext: safeInitialContext(),
+    }
     failedSamplingStep.output = {
       durationMs: 500,
       messageCount: 0,
@@ -150,6 +440,18 @@ describe('Admin Run projector', () => {
         ? failedSampling.recordedDurationMs
         : null,
       500,
+    )
+    assert.equal(
+      failedSampling?.type === 'model_sampling'
+        ? failedSampling.contextInspector.outcome
+        : null,
+      'minimum_context_overflow',
+    )
+    assert.equal(
+      failedSampling?.type === 'model_sampling'
+        ? failedSampling.contextInspector.providerItemCount
+        : null,
+      0,
     )
 
     const aborted = createRunRecord()
@@ -215,6 +517,27 @@ describe('Admin Run projector', () => {
     assert.equal(item.outputTokens, null)
     assert.equal(item.totalTokens, null)
     assert.doesNotMatch(JSON.stringify({ detail, item }), /MALFORMED_SECRET/)
+
+    const shortFailedOutput = createRunRecord()
+    shortFailedOutput.status = 'FAILED'
+    shortFailedOutput.steps = shortFailedOutput.steps.filter(
+      step => step.sequence <= 3,
+    )
+    const shortFailedSampling = shortFailedOutput.steps.find(
+      step => step.sequence === 3,
+    )!
+    shortFailedSampling.status = 'FAILED'
+    shortFailedSampling.output = {
+      durationMs: 10,
+      messageCount: 0,
+      usage: { inputTokens: 999, outputTokens: 999, totalTokens: 1_998 },
+    }
+
+    assert.equal(
+      projectAdminRunDetail(shortFailedOutput).timeline.at(-1)?.kind,
+      'generic',
+    )
+    assert.equal(projectAdminRunListItem(shortFailedOutput).totalTokens, null)
   })
 
   it('兼容旧版 input-only messageCount，并把实际 Provider 数量标为未知', () => {
@@ -233,8 +556,16 @@ describe('Admin Run projector', () => {
 
     assert.equal(projected?.kind, 'known')
     assert.equal(
-      projected?.type === 'model_sampling' ? projected.messageCount : null,
+      projected?.type === 'model_sampling'
+        ? projected.providerItemCount
+        : null,
       null,
+    )
+    assert.equal(
+      projected?.type === 'model_sampling'
+        ? projected.contextInspector.availability
+        : null,
+      'unavailable',
     )
   })
 
@@ -517,6 +848,111 @@ function step(
   }
 }
 
+function attachContextMetadata(record: ReturnType<typeof createRunRecord>): void {
+  const samplings = record.steps
+    .filter(step => step.type === 'model_sampling')
+    .sort((left, right) => left.sequence - right.sequence)
+  const prePlanItemCounts = [4, 6, 7]
+  const providerItemCounts = [4, 5, 7]
+  const estimatedInputTokens = [120_000, 180_000, 220_000]
+
+  for (const [index, sampling] of samplings.entries()) {
+    const input = sampling.input as Record<string, unknown>
+    const output = sampling.output as Record<string, unknown>
+    const samplingIndex = index + 1
+    const toolExchangeCount = index
+    const historyIncludedCount = index === 0 ? 2 : 1
+
+    input.candidateMessageCount = prePlanItemCounts[index]
+    input.initialContext = {
+      ...safeInitialContext(),
+      prompt: 'DO_NOT_LEAK',
+    }
+    output.messageCount = providerItemCounts[index]
+    output.contextPlan = {
+      samplingIndex,
+      resolvedInputBudgetTokens: 262_144,
+      estimatedInputTokens: estimatedInputTokens[index],
+      historyCandidateCount: 2,
+      historyIncludedCount,
+      historyExcludedCount: 2 - historyIncludedCount,
+      toolExchangeCount,
+      observations: Array.from({ length: toolExchangeCount }, (_, exchangeIndex) => {
+        const originalChars = 100 + exchangeIndex
+        const toolCeilingTruncated = exchangeIndex === 0
+        const toolCeilingChars = toolCeilingTruncated ? 80 : originalChars
+        const contextBudgetTruncated = samplingIndex === 3
+          && exchangeIndex === 0
+
+        return {
+          exchangeIndex,
+          originalChars,
+          toolCeilingChars,
+          finalChars: contextBudgetTruncated ? 64 : toolCeilingChars,
+          toolCeilingTruncated,
+          contextBudgetTruncated,
+          observationBody: 'DO_NOT_LEAK',
+        }
+      }),
+      overflowReason: null,
+      estimatorStrategyId: 'deepseek-v4-official-b5968e9',
+      futureSafeField: true,
+    }
+  }
+}
+
+function contextPlanAt(
+  record: ReturnType<typeof createRunRecord>,
+  sequence: number,
+): Record<string, unknown> {
+  const sampling = record.steps.find(step => step.sequence === sequence)!
+
+  return (sampling.output as Record<string, unknown>)
+    .contextPlan as Record<string, unknown>
+}
+
+function assertContextUnavailable(
+  record: ReturnType<typeof createRunRecord>,
+  sequence: number,
+): void {
+  const projection = projectAdminRunDetail(record).timeline.find(
+    item => item.sequence === sequence,
+  )
+
+  assert.equal(projection?.kind, 'known')
+  assert.equal(
+    projection?.type === 'model_sampling'
+      ? projection.contextInspector.availability
+      : null,
+    'partial',
+  )
+  assert.equal(
+    projection?.type === 'model_sampling'
+      ? projection.contextInspector.outcome
+      : null,
+    'unavailable',
+  )
+}
+
+function safeInitialContext(): Record<string, unknown> {
+  return {
+    resolvedModel: 'deepseek-v4-flash',
+    contextWindowTokens: 1_000_000,
+    applicationInputCapTokens: 262_144,
+    resolvedInputBudgetTokens: 262_144,
+    resolvedMaxOutputTokens: 65_536,
+    safetyMarginTokens: 16_384,
+    estimatedMandatoryTokens: 100,
+    historyBudgetTokens: 262_044,
+    estimatedInputTokens: 200,
+    historyCandidateCount: 2,
+    historyIncludedCount: 2,
+    historyExcludedCount: 0,
+    excludedReason: null,
+    estimatorStrategyId: 'deepseek-v4-official-b5968e9',
+  }
+}
+
 function safeContextPlan(
   overflowReason: 'minimum_context' | null,
 ): Record<string, unknown> {
@@ -524,18 +960,11 @@ function safeContextPlan(
     samplingIndex: 1,
     resolvedInputBudgetTokens: 262_144,
     estimatedInputTokens: 262_145,
-    historyCandidateCount: 0,
+    historyCandidateCount: 2,
     historyIncludedCount: 0,
-    historyExcludedCount: 0,
-    toolExchangeCount: 1,
-    observations: [{
-      exchangeIndex: 0,
-      originalChars: 100,
-      toolCeilingChars: 80,
-      finalChars: 64,
-      toolCeilingTruncated: true,
-      contextBudgetTruncated: true,
-    }],
+    historyExcludedCount: 2,
+    toolExchangeCount: 0,
+    observations: [],
     overflowReason,
     estimatorStrategyId: 'deepseek-v4-official-b5968e9',
   }

@@ -6,7 +6,7 @@
 
 项目已经完成从基础 LLM Chat 到 Session、Streaming、Agent Runtime、最小 Tool Calling，再到 bounded sequential Agent Loop 与 Runtime reliability 的连续学习闭环；Admin Console 的真实 Observability Baseline 也已经建立。
 
-Phase 7：Context Engineering 当前为 **Active**。Task 0 `Context Boundary & Snapshot`、Task 1 `Model-aware Budget & Dynamic History` 与 Task 2 `Loop-aware Context & Observation Governance` 均已完成 GPT 技术验收、用户确认验收并合入 `master`。Task 3 `Context Inspector & Phase Baseline` 现在是下一项 Agent 主线任务，但尚未创建正式 Issue、尚未启动。
+Phase 7：Context Engineering 当前为 **Active**。Task 0 `Context Boundary & Snapshot`、Task 1 `Model-aware Budget & Dynamic History` 与 Task 2 `Loop-aware Context & Observation Governance` 均已完成 GPT 技术验收、用户确认验收并合入 `master`。Task 3 `Context Inspector & Phase Baseline` 已按 Issue #46 实现，当前等待 GPT 技术验收；Phase 7 尚未收口。
 
 当前状态：
 
@@ -16,7 +16,7 @@ Phase 7：Context Engineering 当前为 **Active**。Task 0 `Context Boundary & 
 Task 0：Context Boundary & Snapshot / Completed / #40 / #41 / 415e866a
 Task 1：Model-aware Budget & Dynamic History / Completed / #42 / #43 / 6df72f0
 Task 2：Loop-aware Context & Observation Governance / Completed / #44 / #45 / 2f06355c
-下一任务：Task 3 / Context Inspector & Phase Baseline / Next / 未启动
+当前任务：Task 3 / Context Inspector & Phase Baseline / Active / #46 / 已实现、待验收
 Admin Observability：Task 0-3 Completed
 Admin Task 4：Planned
 ```
@@ -87,7 +87,7 @@ Admin Task 4：Planned
 Task 0：Context Boundary & Snapshot                   Completed / #40 / #41 / 415e866a
 Task 1：Model-aware Budget & Dynamic History          Completed / #42 / #43 / 6df72f0
 Task 2：Loop-aware Context & Observation Governance   Completed / #44 / #45 / 2f06355c
-Task 3：Context Inspector & Phase Baseline            Next / 未启动
+Task 3：Context Inspector & Phase Baseline            Active / #46 / 已实现、待验收
 Compaction：Gated Follow-up                           不自动启动
 ```
 
@@ -113,7 +113,7 @@ Task 2 已完成：Issue #44、PR #45；建立 DeepSeek V4 full-request estimato
 
 把 Context 预算和选择结果安全投影到现有 Observability Baseline，建立 Context Inspector。展示预算、估算使用量、来源、included / excluded / truncated reason，不展示完整 Prompt、reasoning、raw Tool payload 或敏感数据。
 
-Task 3 现在是 Phase 7 下一项 Agent 主线任务，但尚未创建正式 Issue。启动前需要先讨论任务边界、写入正式 Task 规格、创建 Issue，并按 Clarification Gate 进入实现。
+Task 3 已按 Issue #46 完成 `READY` Clarification Gate 与实现：现有 durable safe metadata 经 Admin Read Projection 形成 per-sampling Context Inspector，并以自动回归和真实 API / Run 浏览器证据验证。实施状态为已实现，验收状态为待验收。
 
 ### Compaction 边界
 
@@ -183,4 +183,4 @@ Phase 7 Baseline 收口后，再基于最新 `master`、真实产品需求和学
 6. Multi-agent；
 7. 若 Context 证据充分，再决定 Minimal Compaction 是否需要单独收口。
 
-当前没有 Active Agent Task。Phase 7 Task 2 已 Completed；Task 3 `Context Inspector & Phase Baseline` 为 Next，但尚未创建正式 Issue、尚未通过 Clarification Gate，因此不得视为 Active。
+当前 Active Agent Task 为 Phase 7 Task 3 `Context Inspector & Phase Baseline`。Issue #46 已实现、待验收；Task 3 与 Phase 7 仍不得视为 Completed，Minimal Compaction 继续保持 `Gated`。

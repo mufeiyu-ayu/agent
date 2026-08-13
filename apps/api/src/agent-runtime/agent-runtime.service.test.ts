@@ -130,6 +130,11 @@ describe('AgentRuntimeService model stream', () => {
       typeof (harness.recorder.steps[2]?.output as Record<string, unknown>)?.durationMs,
       'number',
     )
+    assert.equal(
+      (((harness.recorder.steps[2]?.output as Record<string, unknown>)
+        .contextPlan as Record<string, unknown>).toolExchangeCount),
+      0,
+    )
     assertNoUnfinishedSteps(harness)
   })
 
@@ -377,6 +382,33 @@ describe('AgentRuntimeService model stream', () => {
     )
   })
 
+  it('initial Context estimator 失败时不伪造 model_sampling Step', async () => {
+    const harness = createHarness(
+      () => toModelStream([{ type: 'response_completed', finishReason: 'stop' }]),
+      undefined,
+      undefined,
+      {},
+      new AlwaysFailingTokenEstimator(),
+    )
+
+    const events = await collectEvents(harness.run())
+    const serialized = JSON.stringify({ events, steps: harness.recorder.steps })
+
+    assert.deepEqual(events.map(event => event.type), ['run_failed'])
+    assert.equal(harness.llmCalls.length, 0)
+    assert.equal(harness.assistantMessage(), undefined)
+    assert.equal(
+      harness.recorder.steps.some(step => step.type === 'model_sampling'),
+      false,
+    )
+    assert.equal(
+      findStep(harness, 'load_conversation_history')?.status,
+      AgentStepStatus.FAILED,
+    )
+    assert.match(serialized, /TokenEstimator/)
+    assert.doesNotMatch(serialized, /initial-estimator-secret/)
+  })
+
   it('在 response_completed 前实时产出普通回答 delta', async () => {
     const completionGate = createDeferred()
     const harness = createHarness(() => delayedCompletionModelStream(
@@ -566,6 +598,11 @@ describe('AgentRuntimeService model stream', () => {
       ),
       true,
     )
+    assert.deepEqual(
+      samplingSteps.map(step => (((step.output as Record<string, unknown>)
+        .contextPlan as Record<string, unknown>).toolExchangeCount)),
+      [0, 1],
+    )
     const toolStep = harness.recorder.steps[3]
     assert.deepEqual(toolStep?.input, {
       callId: 'call-1',
@@ -715,6 +752,12 @@ describe('AgentRuntimeService model stream', () => {
       4,
     )
     assert.equal(persistedSamplingMessageCount, 3)
+    const followUpContextPlan = (
+      followUpSamplingStep?.output as Record<string, unknown>
+    ).contextPlan as Record<string, unknown>
+    assert.equal(followUpContextPlan.historyCandidateCount, 1)
+    assert.equal(followUpContextPlan.historyIncludedCount, 0)
+    assert.equal(followUpContextPlan.historyExcludedCount, 1)
     assertNoUnfinishedSteps(harness)
   })
 
@@ -874,6 +917,12 @@ describe('AgentRuntimeService model stream', () => {
       )[1]?.output as Record<string, unknown>)?.messageCount,
       0,
     )
+    assert.equal(
+      (harness.recorder.steps.filter(
+        step => step.type === 'model_sampling',
+      )[1]?.output as Record<string, unknown>)?.contextFailureReason,
+      'estimator_failure',
+    )
     assert.doesNotMatch(serialized, /estimator-secret/)
     assert.match(serialized, /TokenEstimator/)
     assertNoUnfinishedSteps(harness)
@@ -995,6 +1044,13 @@ describe('AgentRuntimeService model stream', () => {
     assert.deepEqual(
       harness.recorder.steps.map(step => step.sequence),
       [1, 2, 3, 4, 5, 6, 7, 8],
+    )
+    assert.deepEqual(
+      harness.recorder.steps
+        .filter(step => step.type === 'model_sampling')
+        .map(step => (((step.output as Record<string, unknown>)
+          .contextPlan as Record<string, unknown>).toolExchangeCount)),
+      [0, 1, 2],
     )
     assert.equal(harness.assistantMessage()?.content, '已基于文章详情生成 SEO 建议。')
     assert.equal(events.at(-1)?.type, 'run_completed')
@@ -2451,6 +2507,16 @@ class OverflowTokenEstimator extends TokenEstimator {
 
   estimateRequest(_input: TokenEstimatorInput): number {
     return 300_000
+  }
+}
+
+class AlwaysFailingTokenEstimator extends TokenEstimator {
+  readonly strategyId = 'test-initial-failure'
+
+  estimateRequest(_input: TokenEstimatorInput): number {
+    throw new ContextTokenEstimationError(
+      new Error('initial-estimator-secret'),
+    )
   }
 }
 
