@@ -25,41 +25,48 @@
   -> Session / Streaming
   -> Agent Run / Step
   -> Tool Contract / Registry / Invocation
-  -> search_articles
-  -> 一次 Tool Call + Observation + 第二轮 sampling
-  -> timeout / abort / recording / 统一 Runtime
+  -> search_articles + get_article_detail
+  -> bounded sequential Agent Loop
+  -> timeout / abort / database deadline / terminal reliability
+  -> ModelContext Boundary
+  -> model-aware Budget + Dynamic History
+  -> per-sampling Context Plan + Observation Governance
+  -> Admin Run Trace + Context Inspector
 ```
 
-当前唯一确定的下一阶段是：
+当前正式状态：
 
 ```text
-阶段 6：有界单 Agent Loop
+阶段 1-7：Completed
+Active Agent Task：无
+Minimal Compaction：Gated
+下一正式阶段：尚未定案
 ```
 
-它要学习多次顺序 Sampling / Tool Execution、服务端执行上限、终止条件、错误语义和 Agent 行为测试。
-
-完整 Context Engineering、Recovery、HITL、MCP 和 Multi-agent 继续保留为研究专题，但当前未排期，也不作为阶段 6。
+Context Engineering、Runtime reliability 与真实 Observability Baseline 已经建立。RAG、Permission / HITL、Durable Recovery、MCP / Skill、Planner / Workflow 和 Multi-agent 仍是候选方向，不因本知识库存在相关专题而自动排期。
 
 ## 阅读顺序
 
-### 当前阶段优先
+### 当前基线优先
 
 1. [how-to-use.md](./how-to-use.md)：如何选择性使用这套资料；
-2. [current-agent-baseline.md](./current-agent-baseline.md)：当前项目真实能力和阶段 6 缺口；
+2. [current-agent-baseline.md](./current-agent-baseline.md)：当前 Phase 1-7 真实能力、状态和归档指针；
 3. [core-runtime.md](./core-runtime.md)：Thread / Turn / Task / Runtime loop；
-4. [tool-loop.md](./tool-loop.md)：Tool Call、Observation 与 follow-up sampling。
+4. [tool-loop.md](./tool-loop.md)：Tool Call、Observation 与 follow-up sampling；
+5. [context-history.md](./context-history.md)：Context、History、normalization 与 Compaction 研究。
 
 ### 按问题查阅
 
 | 问题 | 先看 | 当前定位 |
 | --- | --- | --- |
-| 如何从固定两轮升级为有界 Loop | [core-runtime.md](./core-runtime.md)、[tool-loop.md](./tool-loop.md) | 阶段 6 核心 |
-| 工具结果是否进入 UI Message | [tool-loop.md](./tool-loop.md)、[context-history.md](./context-history.md) | 阶段 6 输入正确性 |
-| 工具失败是否终止 Run | [tool-loop.md](./tool-loop.md) | 阶段 6 错误语义 |
-| Context 长度失控怎么办 | [context-history.md](./context-history.md) | 研究资料，按真实压力启动 |
+| 有界单 Agent Loop 如何控制执行 | [core-runtime.md](./core-runtime.md)、[tool-loop.md](./tool-loop.md) | Phase 6 已实现，资料用于复盘与扩展 |
+| 工具结果是否进入 UI Message | [tool-loop.md](./tool-loop.md)、[context-history.md](./context-history.md) | 当前已按 UI / model / runtime / durable facts 分层 |
+| Tool 失败、Abort 与终态如何收口 | [tool-loop.md](./tool-loop.md)、[durability-recovery.md](./durability-recovery.md) | Phase 6 已建立同步执行可靠性；跨进程恢复未实现 |
+| Context 长度、History 与 Observation 如何治理 | [context-history.md](./context-history.md) | Phase 7 已建立 Budget / Selection / Inspector；Compaction Gated |
+| RAG / Retrieval 如何进入 Agent | [context-history.md](./context-history.md)、[how-to-use.md](./how-to-use.md) | 候选方向，尚未进入正式 Task |
 | 如何做跨进程恢复 | [durability-recovery.md](./durability-recovery.md) | 研究资料，未排期 |
 | 写操作工具如何保护 | [safety-permission.md](./safety-permission.md) | 研究资料，未排期 |
-| 什么时候做 MCP / Multi-agent | [extensibility-and-multi-agent.md](./extensibility-and-multi-agent.md) | 明确后置 |
+| 什么时候做 MCP / Multi-agent | [extensibility-and-multi-agent.md](./extensibility-and-multi-agent.md) | 明确后置，需证明真实必要性 |
 | 如何把讨论变成正式 Task | [discussion-playbook.md](./discussion-playbook.md) | 规格与决策辅助 |
 
 ## 文档索引
@@ -68,7 +75,7 @@
 | --- | --- |
 | [how-to-use.md](./how-to-use.md) | 后续 GPT / 用户如何使用本知识库 |
 | [source-snapshot.md](./source-snapshot.md) | 源码快照、取证方法和路径地图 |
-| [current-agent-baseline.md](./current-agent-baseline.md) | 当前项目真实能力与近期缺口 |
+| [current-agent-baseline.md](./current-agent-baseline.md) | 当前项目真实能力、状态与近期缺口 |
 | [core-runtime.md](./core-runtime.md) | 产品入口、协议、Thread、Turn、Task、Runtime loop |
 | [tool-loop.md](./tool-loop.md) | ToolRouter、ToolRegistry、Tool Call、Observation、follow-up sampling |
 | [context-history.md](./context-history.md) | model-visible history、UI transcript、normalization、compaction |
@@ -79,14 +86,16 @@
 
 ## 当前迁移原则
 
-阶段 6 只迁移与有界单 Agent Loop 直接相关的不变量：
+当前项目已经迁移并验证的核心不变量：
 
 - 模型输出是请求，不是执行授权；
-- Tool Call / Tool Result 必须完整配对；
+- Tool Call / Tool Result 必须完整配对并保持顺序；
 - 下一轮 sampling 消费前一轮 Observation；
-- Runtime 拥有最大 Sampling / Tool Call 次数；
-- timeout、abort 和 limit exceeded 必须有明确终态；
-- UI Message、model input、runtime event、durable Step 分层；
-- 测试验证调用顺序、次数和状态。
+- Runtime 拥有最大 Sampling / Tool Call 次数、deadline、Abort 与终态；
+- UI Message、model input、runtime event、provider continuation 与 durable Step 分层；
+- model-visible Context 受模型容量、应用输入上限、输出预留和安全余量共同约束；
+- History、Tool / Retrieval 数据按来源与信任级别进入 Context，无法安全组装时 fail closed；
+- Context 与执行决策通过安全元数据和 Inspector 观察，不暴露 Prompt、reasoning 或 raw Tool payload；
+- 新能力必须由真实问题、前置条件和可验收边界驱动。
 
-当前不迁移 Codex 的完整 ContextManager、Rollout Recovery、Sandbox、MCP、Skills 或 Multi-agent 实现。
+当前不自动迁移 Codex 的完整 Rollout Recovery、Sandbox、MCP、Skills、Planner、Multi-agent 或自动 Compaction 实现。
