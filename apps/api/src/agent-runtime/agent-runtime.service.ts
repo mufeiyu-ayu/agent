@@ -777,6 +777,9 @@ export class AgentRuntimeService {
     return {
       durationMs,
       messageCount,
+      ...(error instanceof ContextTokenEstimationError
+        ? { contextFailureReason: 'estimator_failure' as const }
+        : {}),
       ...(failedContextPlan
         ? {
             contextPlan:

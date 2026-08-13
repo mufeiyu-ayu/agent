@@ -1,8 +1,8 @@
 # Phase 7：Context Engineering
 
-状态：**Active / Task 0-2 Completed / Task 3 Next**。
+状态：**Active / Task 0-2 Completed / Task 3 已实现、待验收**。
 
-本阶段已经由 GPT 与用户确认作为 Phase 6 之后的 Agent 主线。Task 0 `Context Boundary & Snapshot`、Task 1 `Model-aware Budget & Dynamic History` 与 Task 2 `Loop-aware Context & Observation Governance` 均已完成 GPT 技术验收、用户确认验收并合入 `master`。Task 3 `Context Inspector & Phase Baseline` 现在是下一项主线任务，但尚未创建正式 Issue、尚未启动。
+本阶段已经由 GPT 与用户确认作为 Phase 6 之后的 Agent 主线。Task 0 `Context Boundary & Snapshot`、Task 1 `Model-aware Budget & Dynamic History` 与 Task 2 `Loop-aware Context & Observation Governance` 均已完成 GPT 技术验收、用户确认验收并合入 `master`。Task 3 `Context Inspector & Phase Baseline` 已按 Issue #46 实现，当前等待 GPT 技术验收；Phase 7 尚未收口。
 
 ## 1. 阶段目标
 
@@ -40,14 +40,14 @@ Instructions / Current User / History / Tool Exchange
 
 Phase 6 已经建立 bounded sequential Agent Loop、两个 Article Tool、Run / Tool / DB deadline、终态可靠性与真实 Observability Baseline。当前 Runtime 已经具备学习 Context Engineering 的必要前置条件。
 
-Task 0 建立独立 `ModelContext` 边界与安全 Context Snapshot；Task 1 进一步让模型 Context Window 参与真实预算，建立 DeepSeek V4 TokenEstimator、动态 History Selection 与安全 initial Context summary；Task 2 已把预算治理扩展到完整 bounded Agent Loop，建立 full-request estimator、逐轮 Sampling Context Plan、follow-up History 再选择与 Observation Governance。Phase 7 Baseline 现在只剩 Task 3：
+Task 0 建立独立 `ModelContext` 边界与安全 Context Snapshot；Task 1 进一步让模型 Context Window 参与真实预算，建立 DeepSeek V4 TokenEstimator、动态 History Selection 与安全 initial Context summary；Task 2 已把预算治理扩展到完整 bounded Agent Loop，建立 full-request estimator、逐轮 Sampling Context Plan、follow-up History 再选择与 Observation Governance。Task 3 已完成以下实现，Phase 7 Baseline 现在等待其验收判断：
 
 1. 把 Context 决策安全投影到 Admin Context Inspector；
 2. 建立 direct-final / Tool Loop / History exclusion / Observation truncation 的可观察证据；
 3. 完成 Phase 7 自动回归与浏览器验收基线；
 4. 基于真实数据决定是否需要 Minimal Compaction。
 
-这意味着 Task 0-2 已完成 Context Boundary、initial Context Budget 与完整 Loop Context Governance；Phase 7 还需要 Task 3 才形成完整可观察闭环。
+这意味着 Task 0-2 已完成 Context Boundary、initial Context Budget 与完整 Loop Context Governance；Task 3 已补齐可观察闭环，但 Phase 7 仍需 GPT 验收后才能判断是否收口。
 
 ## 3. 本阶段要学会什么
 
@@ -95,10 +95,10 @@ Phase 7 Baseline 不把自动 Summary / Compaction 作为必做项。先完成 C
 | Task 0：Context Boundary & Snapshot | **Completed / #40 / #41 / merge `415e866a`** | 把当前 model input 组装收敛到独立 Context 边界，并建立不改变现有行为的 Context Snapshot |
 | Task 1：Model-aware Budget & Dynamic History | **Completed / #42 / #43 / merge `6df72f0`** | 让模型 Context Window 参与预算，历史选择从固定条数升级为 token-budget 驱动 |
 | Task 2：Loop-aware Context & Observation Governance | **Completed / #44 / #45 / merge `2f06355c`** | 统一管理后续 sampling 的 Tool Exchange、剩余 Context Budget 与 Observation 裁剪 |
-| Task 3：Context Inspector & Phase Baseline | **Next / 未启动** | 将 Context 决策做成安全可观察的 Runtime / Admin Inspector，并完成阶段回归 |
+| Task 3：Context Inspector & Phase Baseline | **Active / #46 / 已实现、待验收** | 将 Context 决策做成安全可观察的 Runtime / Admin Inspector，并完成阶段回归 |
 | Gated Follow-up：Minimal Compaction | Gated | 只有 Task 1-3 的真实证据证明需要时，才单独设计最小 Compaction |
 
-正式实现仍遵守“一 Issue = 一明确 Task”。Task 2 已完成收口；Task 3 是下一项正式任务，但不会因为本文存在而自动进入 Active，仍需先创建 Issue 并通过 Clarification Gate。
+正式实现仍遵守“一 Issue = 一明确 Task”。Task 3 已通过 Issue #46 Clarification Gate 并完成实现；在 GPT 技术验收和用户确认前仍不得标记 Completed。
 
 ---
 
@@ -351,7 +351,12 @@ Task 0 是结构基线，不负责优化 History 数量，也不实现 token-bud
 
 # Task 3：Context Inspector & Phase Baseline
 
-状态：**Next / 未启动**。
+状态：**Active / Issue #46 / 已实现、待验收**。
+
+- 实施状态：已实现
+- 验收状态：待验收
+- Clarification Gate：READY
+- 分支：`codex/issue-46-context-inspector`
 
 ## 目标
 
@@ -382,11 +387,55 @@ Task 0 是结构基线，不负责优化 History 数量，也不实现 token-bud
 
 ## 验收标准
 
-- [ ] 开发者可以解释某次 sampling 为什么包含 / 排除某类 Context；
-- [ ] Inspector 可看到预算与估算使用量，而无需暴露原始敏感 Context；
-- [ ] Context 数据与 Run / Sampling Step 一一对应，不出现跨 Run stale 数据；
-- [ ] Admin 继续满足现有 loading / error / retry / stale-response 边界；
-- [ ] Phase 6 Agent Loop 与外部 Chat 协议完整回归通过。
+- [x] 开发者可以解释某次 sampling 为什么包含 / 排除某类 Context；
+- [x] Inspector 可看到预算与估算使用量，而无需暴露原始敏感 Context；
+- [x] Context 数据与 Run / Sampling Step 一一对应，不出现跨 Run stale 数据；
+- [x] Admin 继续满足现有 loading / error / retry / stale-response 边界；
+- [x] Phase 6 Agent Loop 与外部 Chat 协议完整回归通过。
+
+以上 checklist 表示实现与自验证已完成，不代表 GPT 技术验收或用户验收已经通过。
+
+## 实现与验证证据
+
+- Runtime 只新增 `contextFailureReason = estimator_failure` 安全枚举，用于区分已创建 Sampling Step 后的 estimator failure；不保存 raw cause，不改变 Step 时序。
+- Admin Read Projection 从 `initialContext`、`contextPlan` 与最终 `messageCount` 投影 Context Inspector；Budget、Sources、Adjustments / Outcome 由 Contract 统一下发，UI 不解析 Prisma JSON。
+- Read Model 明确区分 pre-plan item、Provider-facing item 与 History candidate；two-tool 代表记录按 sampling 显示 Tool Exchange `0 / 1 / 2`。
+- strict core Step 校验与可选 Context metadata 解耦；legacy、partial、unknown metadata 只降级 Context Inspector，不使已知 Step 或 Run Detail 整体退化 / 500。
+- API、UI、fixture 与截图只包含安全数字、布尔、枚举和标识；不包含 Prompt、reasoning、raw Tool arguments 或完整 Observation。
+- 未新增依赖、环境变量、Prisma schema 或 migration；未改变 Chat / NDJSON contract 与 Context selection policy。
+
+| 命令 | 最终结果 |
+| --- | --- |
+| `pnpm --filter @agent/api test:context` | PASS，24 tests |
+| `pnpm --filter @agent/api test:tool-loop` | PASS，52 tests |
+| `pnpm --filter @agent/api test:model-stream` | PASS，65 tests |
+| `pnpm --filter @agent/api test:admin-runs` | PASS，18 tests |
+| `pnpm --filter @agent/api build` | PASS |
+| `pnpm --filter @agent/api typecheck` | PASS |
+| `pnpm --filter @agent/api lint` | PASS |
+| `pnpm --filter @agent/admin test` | PASS，state / i18n / Run data 3 项检查 |
+| `pnpm --filter @agent/admin build` | PASS |
+| `pnpm --filter @agent/admin typecheck` | PASS |
+| `pnpm --filter @agent/admin lint` | PASS |
+| `pnpm typecheck` | PASS，4 个 workspace project |
+| `pnpm lint` | FAIL，106 个既有 `docs/research/**` 代码块 / Markdown lint baseline 问题；本 Task 的 API / Admin scoped lint 均 PASS |
+
+过程性失败均已修复并复跑通过：Contract export / 测试 fixture 选择错误、Admin union narrowing，以及 API lint 的单处缩进。API 本地启动仍输出 Nest `LegacyRouteConverter` 既有 warning，与本 Task 无关。
+
+Codex Review 首轮发现 2 个 P2：short failed output 可能误信任额外 `usage`，以及矛盾的 budget / overflow metadata 可能被投影为成功；均已收紧 allowlist / invariant 并补回归，复审无 finding。
+
+浏览器验收使用 1440×1000 应用内浏览器，通过真实 Admin 页面 → Vite proxy → Nest API → 本地 PostgreSQL 链路读取受控安全 Run fixture；验收后 fixture 已清理。证据：
+
+- `docs/assets/admin-console/phase-07-context-inspector/direct-final-light.png`
+- `docs/assets/admin-console/phase-07-context-inspector/one-tool-sampling-2-light.png`
+- `docs/assets/admin-console/phase-07-context-inspector/two-tool-sampling-1-light.png`
+- `docs/assets/admin-console/phase-07-context-inspector/two-tool-sampling-2-history-tool-ceiling-light.png`
+- `docs/assets/admin-console/phase-07-context-inspector/two-tool-sampling-3-context-budget-dark.png`
+- `docs/assets/admin-console/phase-07-context-inspector/legacy-unavailable-dark.png`
+- `docs/assets/admin-console/phase-07-context-inspector/unknown-generic-dark.png`
+- `docs/assets/admin-console/phase-07-context-inspector/loading-dark.png`
+- `docs/assets/admin-console/phase-07-context-inspector/api-error-retry-dark.png`
+- `docs/assets/admin-console/phase-07-context-inspector/retry-success-dark.png`
 
 ---
 
@@ -439,8 +488,8 @@ Minimal Compaction 不属于默认完成条件；是否加入 Phase 7 收口范�
 - Task 0：Completed / Issue #40 Closed / PR #41 Merged / `415e866a`
 - Task 1：Completed / Issue #42 Closed / PR #43 Merged / `6df72f0`
 - Task 2：Completed / Issue #44 Closed / PR #45 Merged / `2f06355c`
-- Task 3：Next / 未启动 / 尚未创建正式 Issue
+- Task 3：Active / Issue #46 / 已实现、待验收
 - Minimal Compaction：Gated
-- Active Agent Task：无
+- Active Agent Task：Task 3 / Issue #46 / 已实现、待验收
 
-下一正式动作：讨论并固化 Task 3 `Context Inspector & Phase Baseline` 的任务边界；确认规格后再创建正式 Issue 并进入 Clarification Gate。
+下一正式动作：GPT 基于 Issue #46、Draft PR、自动验证、Context Inspector 数据与浏览器证据完成技术验收，并决定 Phase 7 Baseline 是否可以收口；Minimal Compaction 不自动启动。

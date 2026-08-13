@@ -1,6 +1,11 @@
 export type {
   AdminAssistantOutputStep,
+  AdminContextInspector,
+  AdminContextInspectorAvailability,
+  AdminContextInspectorOutcome,
+  AdminContextObservationSummary,
   AdminGenericStep,
+  AdminInitialHistoryExcludedReason,
   AdminLoadConversationHistoryStep,
   AdminModelFinishReason,
   AdminModelSamplingStep,

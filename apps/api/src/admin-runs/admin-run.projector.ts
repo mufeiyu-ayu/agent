@@ -1,6 +1,9 @@
 import type {
   AdminAssistantOutputStep,
+  AdminContextInspector,
+  AdminContextObservationSummary,
   AdminGenericStep,
+  AdminInitialHistoryExcludedReason,
   AdminLoadConversationHistoryStep,
   AdminModelFinishReason,
   AdminModelSamplingStep,
@@ -41,6 +44,11 @@ const TOOL_RESULT_CODES: AdminToolResultCode[] = [
   'timeout',
   'unknown_tool',
 ]
+const INITIAL_HISTORY_EXCLUDED_REASONS: AdminInitialHistoryExcludedReason[] = [
+  'budget',
+  'candidate_cap',
+]
+const CONTEXT_FAILURE_REASONS = ['estimator_failure'] as const
 
 interface AdminRunProjectionStepRecord {
   id?: string
@@ -94,6 +102,33 @@ interface AdminRunDetailProjectionRecord extends AdminRunProjectionRecord {
   userMessage: AdminRunDetailMessageRecord
   assistantMessage: AdminRunDetailMessageRecord | null
   steps: AdminRunDetailProjectionStepRecord[]
+}
+
+interface InitialContextMetadata {
+  resolvedModel: string
+  contextWindowTokens: number
+  applicationInputCapTokens: number
+  resolvedInputBudgetTokens: number
+  resolvedMaxOutputTokens: number
+  safetyMarginTokens: number
+  historyCandidateCount: number
+  historyIncludedCount: number
+  historyExcludedCount: number
+  excludedReason: AdminInitialHistoryExcludedReason | null
+  estimatorStrategyId: string
+}
+
+interface SamplingContextPlanMetadata {
+  samplingIndex: number
+  resolvedInputBudgetTokens: number
+  estimatedInputTokens: number
+  historyCandidateCount: number
+  historyIncludedCount: number
+  historyExcludedCount: number
+  toolExchangeCount: number
+  observations: AdminContextObservationSummary[]
+  overflowReason: 'minimum_context' | null
+  estimatorStrategyId: string
 }
 
 export function projectAdminRunListItem(
@@ -242,7 +277,7 @@ function projectModelSampling(
     input,
     'candidateMessageCount',
   ) ?? readNonNegativeInteger(input, 'messageCount')
-  const messageCount = readNonNegativeInteger(output, 'messageCount')
+  const providerItemCount = readNonNegativeInteger(output, 'messageCount')
   const toolCount = readNonNegativeInteger(input, 'toolCount')
   const finishReason = readAllowedString(output, 'finishReason', MODEL_FINISH_REASONS)
   const usage = projectTokenUsage(output)
@@ -257,7 +292,7 @@ function projectModelSampling(
     samplingIndex,
     samplingAttemptId,
     requestedModel,
-    messageCount,
+    providerItemCount,
     toolCount,
     finishReason,
     usage,
@@ -265,6 +300,7 @@ function projectModelSampling(
     textChars,
     intermediateTextChars,
     recordedDurationMs,
+    contextInspector: projectContextInspector(input, output),
     inputSummary: summarize([
       ['samplingIndex', samplingIndex],
       ['samplingAttemptId', samplingAttemptId],
@@ -273,6 +309,7 @@ function projectModelSampling(
       ['toolCount', toolCount],
     ]),
     outputSummary: summarize([
+      ['providerItemCount', providerItemCount],
       ['finishReason', finishReason],
       ['toolCallCount', toolCallCount],
       ['textChars', textChars],
@@ -280,6 +317,297 @@ function projectModelSampling(
       ['durationMs', recordedDurationMs],
     ]),
   }
+}
+
+function projectContextInspector(
+  input: Record<string, unknown> | null,
+  output: Record<string, unknown> | null,
+): AdminContextInspector {
+  const initialContext = readInitialContextMetadata(input?.initialContext)
+  const samplingIndex = readPositiveInteger(input, 'samplingIndex')
+  const parsedContextPlan = readSamplingContextPlanMetadata(output?.contextPlan)
+  const contextPlan = isCompatibleContextPlan(
+    initialContext,
+    parsedContextPlan,
+    samplingIndex,
+  )
+    ? parsedContextPlan
+    : null
+  const contextFailureReason = readAllowedString(
+    output,
+    'contextFailureReason',
+    [...CONTEXT_FAILURE_REASONS],
+  )
+  const contradictoryOutcome = contextFailureReason !== null
+    && contextPlan !== null
+  const usableContextPlan = contradictoryOutcome ? null : contextPlan
+  const hasContextMetadata = (
+    (input !== null && Object.hasOwn(input, 'initialContext'))
+    || (output !== null && Object.hasOwn(output, 'contextPlan'))
+    || (output !== null && Object.hasOwn(output, 'contextFailureReason'))
+  )
+  const samplingHistoryExcludedCount
+    = initialContext && usableContextPlan
+      ? initialContext.historyIncludedCount
+      - usableContextPlan.historyIncludedCount
+      : null
+  const resolvedInputBudgetTokens
+    = usableContextPlan?.resolvedInputBudgetTokens
+      ?? initialContext?.resolvedInputBudgetTokens
+      ?? null
+  const estimatedInputTokens = usableContextPlan?.estimatedInputTokens ?? null
+
+  return {
+    availability: initialContext && usableContextPlan
+      ? 'available'
+      : hasContextMetadata
+        ? 'partial'
+        : 'unavailable',
+    outcome: contextFailureReason === 'estimator_failure' && !contradictoryOutcome
+      ? 'estimator_failure'
+      : usableContextPlan?.overflowReason === 'minimum_context'
+        ? 'minimum_context_overflow'
+        : usableContextPlan
+          ? 'success'
+          : 'unavailable',
+    resolvedModel: initialContext?.resolvedModel ?? null,
+    requestedModel: readString(input, 'requestedModel'),
+    estimatorStrategyId: usableContextPlan?.estimatorStrategyId
+      ?? initialContext?.estimatorStrategyId
+      ?? null,
+    contextWindowTokens: initialContext?.contextWindowTokens ?? null,
+    applicationInputCapTokens:
+      initialContext?.applicationInputCapTokens ?? null,
+    outputReserveTokens: initialContext?.resolvedMaxOutputTokens ?? null,
+    safetyMarginTokens: initialContext?.safetyMarginTokens ?? null,
+    resolvedInputBudgetTokens,
+    estimatedInputTokens,
+    budgetUsageRatio: resolvedInputBudgetTokens !== null
+      && resolvedInputBudgetTokens > 0
+      && estimatedInputTokens !== null
+      ? estimatedInputTokens / resolvedInputBudgetTokens
+      : null,
+    prePlanItemCount: readNonNegativeInteger(input, 'candidateMessageCount'),
+    providerItemCount: readNonNegativeInteger(output, 'messageCount'),
+    historyCandidateCount: usableContextPlan?.historyCandidateCount ?? null,
+    historyIncludedCount: usableContextPlan?.historyIncludedCount ?? null,
+    historyExcludedCount: usableContextPlan?.historyExcludedCount ?? null,
+    initialHistoryExcludedReason: initialContext?.excludedReason ?? null,
+    samplingHistoryExcludedCount,
+    toolExchangeCount: usableContextPlan?.toolExchangeCount ?? null,
+    observations: usableContextPlan?.observations ?? null,
+  }
+}
+
+function readInitialContextMetadata(value: unknown): InitialContextMetadata | null {
+  const object = readObject(value)
+  if (!object)
+    return null
+
+  const resolvedModel = readString(object, 'resolvedModel')
+  const contextWindowTokens = readPositiveInteger(object, 'contextWindowTokens')
+  const applicationInputCapTokens = readPositiveInteger(
+    object,
+    'applicationInputCapTokens',
+  )
+  const resolvedInputBudgetTokens = readPositiveInteger(
+    object,
+    'resolvedInputBudgetTokens',
+  )
+  const resolvedMaxOutputTokens = readPositiveInteger(
+    object,
+    'resolvedMaxOutputTokens',
+  )
+  const safetyMarginTokens = readNonNegativeInteger(object, 'safetyMarginTokens')
+  const historyCandidateCount = readNonNegativeInteger(
+    object,
+    'historyCandidateCount',
+  )
+  const historyIncludedCount = readNonNegativeInteger(
+    object,
+    'historyIncludedCount',
+  )
+  const historyExcludedCount = readNonNegativeInteger(
+    object,
+    'historyExcludedCount',
+  )
+  const excludedReason = object.excludedReason === null
+    ? null
+    : readAllowedString(
+        object,
+        'excludedReason',
+        INITIAL_HISTORY_EXCLUDED_REASONS,
+      )
+  const estimatorStrategyId = readString(object, 'estimatorStrategyId')
+
+  if (
+    resolvedModel === null
+    || !isRequiredString(object, 'resolvedModel')
+    || contextWindowTokens === null
+    || applicationInputCapTokens === null
+    || resolvedInputBudgetTokens === null
+    || resolvedMaxOutputTokens === null
+    || safetyMarginTokens === null
+    || historyCandidateCount === null
+    || historyIncludedCount === null
+    || historyExcludedCount === null
+    || !Object.hasOwn(object, 'excludedReason')
+    || (object.excludedReason !== null && excludedReason === null)
+    || estimatorStrategyId === null
+    || !isRequiredString(object, 'estimatorStrategyId')
+    || historyCandidateCount
+    !== historyIncludedCount + historyExcludedCount
+  ) {
+    return null
+  }
+
+  return {
+    resolvedModel,
+    contextWindowTokens,
+    applicationInputCapTokens,
+    resolvedInputBudgetTokens,
+    resolvedMaxOutputTokens,
+    safetyMarginTokens,
+    historyCandidateCount,
+    historyIncludedCount,
+    historyExcludedCount,
+    excludedReason,
+    estimatorStrategyId,
+  }
+}
+
+function readSamplingContextPlanMetadata(
+  value: unknown,
+): SamplingContextPlanMetadata | null {
+  const object = readObject(value)
+  if (!object)
+    return null
+
+  const samplingIndex = readPositiveInteger(object, 'samplingIndex')
+  const resolvedInputBudgetTokens = readPositiveInteger(
+    object,
+    'resolvedInputBudgetTokens',
+  )
+  const estimatedInputTokens = readNonNegativeInteger(
+    object,
+    'estimatedInputTokens',
+  )
+  const historyCandidateCount = readNonNegativeInteger(
+    object,
+    'historyCandidateCount',
+  )
+  const historyIncludedCount = readNonNegativeInteger(
+    object,
+    'historyIncludedCount',
+  )
+  const historyExcludedCount = readNonNegativeInteger(
+    object,
+    'historyExcludedCount',
+  )
+  const toolExchangeCount = readNonNegativeInteger(object, 'toolExchangeCount')
+  const observations = readContextObservationSummaries(object.observations)
+  const overflowReason = object.overflowReason === null
+    ? null
+    : object.overflowReason === 'minimum_context'
+      ? 'minimum_context'
+      : undefined
+  const estimatorStrategyId = readString(object, 'estimatorStrategyId')
+
+  if (
+    samplingIndex === null
+    || resolvedInputBudgetTokens === null
+    || estimatedInputTokens === null
+    || historyCandidateCount === null
+    || historyIncludedCount === null
+    || historyExcludedCount === null
+    || toolExchangeCount === null
+    || observations === null
+    || overflowReason === undefined
+    || estimatorStrategyId === null
+    || !isRequiredString(object, 'estimatorStrategyId')
+    || (estimatedInputTokens > resolvedInputBudgetTokens)
+    !== (overflowReason === 'minimum_context')
+    || historyCandidateCount
+    !== historyIncludedCount + historyExcludedCount
+    || observations.length !== toolExchangeCount
+    || observations.some((observation, index) => (
+      observation.exchangeIndex !== index
+    ))
+  ) {
+    return null
+  }
+
+  return {
+    samplingIndex,
+    resolvedInputBudgetTokens,
+    estimatedInputTokens,
+    historyCandidateCount,
+    historyIncludedCount,
+    historyExcludedCount,
+    toolExchangeCount,
+    observations,
+    overflowReason,
+    estimatorStrategyId,
+  }
+}
+
+function readContextObservationSummaries(
+  value: unknown,
+): AdminContextObservationSummary[] | null {
+  if (!Array.isArray(value))
+    return null
+
+  const summaries: AdminContextObservationSummary[] = []
+
+  for (const candidate of value) {
+    const object = readObject(candidate)
+    const exchangeIndex = readNonNegativeInteger(object, 'exchangeIndex')
+    const originalChars = readNonNegativeInteger(object, 'originalChars')
+    const toolCeilingChars = readNonNegativeInteger(object, 'toolCeilingChars')
+    const finalChars = readNonNegativeInteger(object, 'finalChars')
+    const toolCeilingTruncated = readBoolean(object, 'toolCeilingTruncated')
+    const contextBudgetTruncated = readBoolean(object, 'contextBudgetTruncated')
+
+    if (
+      exchangeIndex === null
+      || originalChars === null
+      || toolCeilingChars === null
+      || finalChars === null
+      || toolCeilingTruncated === null
+      || contextBudgetTruncated === null
+    ) {
+      return null
+    }
+
+    summaries.push({
+      exchangeIndex,
+      originalChars,
+      toolCeilingChars,
+      finalChars,
+      toolCeilingTruncated,
+      contextBudgetTruncated,
+    })
+  }
+
+  return summaries
+}
+
+function isCompatibleContextPlan(
+  initialContext: InitialContextMetadata | null,
+  contextPlan: SamplingContextPlanMetadata | null,
+  samplingIndex: number | null,
+): contextPlan is SamplingContextPlanMetadata {
+  if (!contextPlan || samplingIndex === null || contextPlan.samplingIndex !== samplingIndex)
+    return false
+  if (!initialContext)
+    return true
+
+  return contextPlan.resolvedInputBudgetTokens
+    === initialContext.resolvedInputBudgetTokens
+    && contextPlan.estimatorStrategyId === initialContext.estimatorStrategyId
+    && contextPlan.historyCandidateCount
+    === initialContext.historyCandidateCount
+    && contextPlan.historyIncludedCount <= initialContext.historyIncludedCount
 }
 
 function projectToolExecution(
@@ -438,18 +766,15 @@ function isValidFailedModelOutput(
   if (!object)
     return false
 
-  if (Object.keys(object).every(
-    key => [
-      'durationMs',
-      'messageCount',
-      'contextPlan',
-    ].includes(key),
-  )) {
+  if (Object.keys(object).every(key => [
+    'durationMs',
+    'messageCount',
+    'contextPlan',
+    'contextFailureReason',
+  ].includes(key))) {
     return isRequiredNonNegativeInteger(object, 'durationMs')
       && (isRequiredNonNegativeInteger(object, 'messageCount')
         || isLegacySamplingInput(input))
-      && (!Object.hasOwn(object, 'contextPlan')
-        || isValidContextPlanSummary(object.contextPlan))
   }
 
   return isValidFullModelOutput(input, object, MODEL_FINISH_REASONS, true)
@@ -479,64 +804,11 @@ function isValidFullModelOutput(
     && isRequiredNonNegativeInteger(object, 'textChars')
     && isRequiredNonNegativeInteger(object, 'intermediateTextChars')
     && isRequiredNonNegativeInteger(object, 'durationMs')
-    && (!Object.hasOwn(object, 'contextPlan')
-      || isValidContextPlanSummary(object.contextPlan))
 }
 
 function isLegacySamplingInput(input: Record<string, unknown>): boolean {
   return !Object.hasOwn(input, 'candidateMessageCount')
     && isRequiredNonNegativeInteger(input, 'messageCount')
-}
-
-function isValidContextPlanSummary(value: unknown): boolean {
-  const object = readObject(value)
-  if (!object)
-    return false
-
-  const observations = object.observations
-  return Object.keys(object).every(key => [
-    'samplingIndex',
-    'resolvedInputBudgetTokens',
-    'estimatedInputTokens',
-    'historyCandidateCount',
-    'historyIncludedCount',
-    'historyExcludedCount',
-    'toolExchangeCount',
-    'observations',
-    'overflowReason',
-    'estimatorStrategyId',
-  ].includes(key))
-  && isRequiredPositiveInteger(object, 'samplingIndex')
-  && isRequiredPositiveInteger(object, 'resolvedInputBudgetTokens')
-  && isRequiredNonNegativeInteger(object, 'estimatedInputTokens')
-  && isRequiredNonNegativeInteger(object, 'historyCandidateCount')
-  && isRequiredNonNegativeInteger(object, 'historyIncludedCount')
-  && isRequiredNonNegativeInteger(object, 'historyExcludedCount')
-  && isRequiredNonNegativeInteger(object, 'toolExchangeCount')
-  && Array.isArray(observations)
-  && observations.every(isValidContextObservationSummary)
-  && (object.overflowReason === null
-    || object.overflowReason === 'minimum_context')
-  && isRequiredString(object, 'estimatorStrategyId')
-}
-
-function isValidContextObservationSummary(value: unknown): boolean {
-  const object = readObject(value)
-  return object !== null
-    && Object.keys(object).every(key => [
-      'exchangeIndex',
-      'originalChars',
-      'toolCeilingChars',
-      'finalChars',
-      'toolCeilingTruncated',
-      'contextBudgetTruncated',
-    ].includes(key))
-    && isRequiredNonNegativeInteger(object, 'exchangeIndex')
-    && isRequiredNonNegativeInteger(object, 'originalChars')
-    && isRequiredNonNegativeInteger(object, 'toolCeilingChars')
-    && isRequiredNonNegativeInteger(object, 'finalChars')
-    && typeof object.toolCeilingTruncated === 'boolean'
-    && typeof object.contextBudgetTruncated === 'boolean'
 }
 
 function isValidToolExecution(

@@ -70,6 +70,54 @@ export type AdminToolResultCode
     | 'timeout'
     | 'unknown_tool'
 
+export type AdminContextInspectorAvailability
+  = | 'available'
+    | 'partial'
+    | 'unavailable'
+
+export type AdminContextInspectorOutcome
+  = | 'success'
+    | 'minimum_context_overflow'
+    | 'estimator_failure'
+    | 'unavailable'
+
+export type AdminInitialHistoryExcludedReason
+  = | 'budget'
+    | 'candidate_cap'
+
+export interface AdminContextObservationSummary {
+  exchangeIndex: number
+  originalChars: number
+  toolCeilingChars: number
+  finalChars: number
+  toolCeilingTruncated: boolean
+  contextBudgetTruncated: boolean
+}
+
+export interface AdminContextInspector {
+  availability: AdminContextInspectorAvailability
+  outcome: AdminContextInspectorOutcome
+  resolvedModel: string | null
+  requestedModel: string | null
+  estimatorStrategyId: string | null
+  contextWindowTokens: number | null
+  applicationInputCapTokens: number | null
+  outputReserveTokens: number | null
+  safetyMarginTokens: number | null
+  resolvedInputBudgetTokens: number | null
+  estimatedInputTokens: number | null
+  budgetUsageRatio: number | null
+  prePlanItemCount: number | null
+  providerItemCount: number | null
+  historyCandidateCount: number | null
+  historyIncludedCount: number | null
+  historyExcludedCount: number | null
+  initialHistoryExcludedReason: AdminInitialHistoryExcludedReason | null
+  samplingHistoryExcludedCount: number | null
+  toolExchangeCount: number | null
+  observations: AdminContextObservationSummary[] | null
+}
+
 interface AdminRunTimelineItemBase {
   id: string
   sequence: number
@@ -106,7 +154,7 @@ export interface AdminModelSamplingStep extends AdminRunKnownTimelineItemBase {
   samplingAttemptId: string | null
   requestedModel: string | null
   /** 最终 Provider-facing ModelInputItem 数量；Plan 失败为 0，未记录为 null。 */
-  messageCount: number | null
+  providerItemCount: number | null
   toolCount: number | null
   finishReason: AdminModelFinishReason | null
   usage: AdminRunTokenUsage | null
@@ -114,6 +162,7 @@ export interface AdminModelSamplingStep extends AdminRunKnownTimelineItemBase {
   textChars: number | null
   intermediateTextChars: number | null
   recordedDurationMs: number | null
+  contextInspector: AdminContextInspector
 }
 
 export interface AdminToolExecutionStep extends AdminRunKnownTimelineItemBase {
