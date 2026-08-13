@@ -2,15 +2,29 @@
 
 > 兼容入口：本文件不再维护独立任务路线或状态。
 
-请使用以下当前事实来源：
+## 当前事实来源
 
-- [docs/README.md](./README.md)：文档总入口；
-- [docs/roadmap.md](./roadmap.md)：阶段级路线；
-- [docs/tasks/README.md](./tasks/README.md)：正式 Task 状态事实来源；
-- [docs/development-workflow.md](./development-workflow.md)：Issue、Clarification Gate、PR、验收与合并规范。
+| 文档 | 用途 |
+| --- | --- |
+| [docs/README.md](./README.md) | 文档总入口 |
+| [docs/roadmap.md](./roadmap.md) | 阶段级路线 |
+| [docs/tasks/README.md](./tasks/README.md) | 正式 Task 状态 |
+| [docs/development-workflow.md](./development-workflow.md) | Issue、Clarification Gate、PR、验收与合并规范 |
 
-当前 Agent 主线：**Phase 1-6 已 Completed；当前无 Active Agent Task；下一正式阶段尚未定案。**
+## 当前快照
 
-Phase 6 最终归档：[`docs/tasks/completed/phase-06-bounded-agent-loop.md`](./tasks/completed/phase-06-bounded-agent-loop.md)。
+```text
+Phase 1-7：Completed
+Active Agent Task：无
+Minimal Compaction：Gated
+下一正式阶段：尚未定案
+```
 
-本文件仅用于兼容旧链接。若与 `docs/tasks/**`、`docs/roadmap.md` 或 GitHub 当前事实冲突，以 `docs/tasks/**` 和 GitHub 当前状态为准。
+## 已完成阶段归档
+
+- Phase 6：[`docs/tasks/completed/phase-06-bounded-agent-loop.md`](./tasks/completed/phase-06-bounded-agent-loop.md)；
+- Phase 7：[`docs/tasks/completed/phase-07-context-engineering.md`](./tasks/completed/phase-07-context-engineering.md)。
+
+RAG、Permission / HITL、Durable Recovery、MCP / Skill、Planner / Workflow 和 Multi-agent 仍是候选方向，尚未形成下一正式 Task。
+
+本文件仅保留旧链接兼容。当前状态以 `docs/tasks/**`、`docs/roadmap.md` 与 GitHub 实时事实为准。
