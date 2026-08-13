@@ -83,7 +83,7 @@ export class ModelContext {
     return new ModelContext(
       toMessageInputItems(input.instructions),
       initialHistory,
-      initialHistory.length,
+      input.initialSelection?.historyCandidateCount ?? initialHistory.length,
       toMessageInputItem(input.currentUserMessage),
       input.initialSelection,
     )

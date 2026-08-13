@@ -1,5 +1,6 @@
 import type { ModelInputItem } from '../llm/model-input.types.js'
 import type { ModelToolSpec } from '../llm/model-tool-spec.types.js'
+import type { InitialContextSelectionSummary } from './initial-context-selection.js'
 import assert from 'node:assert/strict'
 // eslint-disable-next-line test/no-import-node-test
 import { describe, it } from 'node:test'
@@ -100,9 +101,51 @@ describe('SamplingContextPlanner', () => {
     assert.equal(plan.summary.historyCandidateCount, 2)
     assert.equal(plan.summary.historyIncludedCount, 1)
     assert.equal(plan.summary.historyExcludedCount, 1)
+    assert.equal(
+      plan.summary.historyCandidateCount,
+      plan.summary.historyIncludedCount + plan.summary.historyExcludedCount,
+    )
     assert.deepEqual(
       plan.items.filter(item => item.type === 'message').map(item => item.content),
       ['instructions', 'B'.repeat(10), 'current-user'],
+    )
+  })
+
+  it('累计 Task 1 initial selection 与 follow-up planning 排除的 History', () => {
+    const estimator = new CharacterTokenEstimator()
+    const planner = new SamplingContextPlanner(estimator)
+    const context = createContext({
+      history: [
+        { role: 'user', content: 'A'.repeat(20) },
+        { role: 'assistant', content: 'B'.repeat(10) },
+      ],
+      historyCandidateCount: 5,
+    })
+    const withoutOldest = context.forSampling().filter(item => (
+      item.type !== 'message' || item.content !== 'A'.repeat(20)
+    ))
+    const plan = planner.plan({
+      samplingIndex: 2,
+      context,
+      tools: NO_TOOLS,
+      resolvedInputBudgetTokens: estimator.estimateRequest({
+        items: withoutOldest,
+        tools: NO_TOOLS,
+      }),
+    })
+
+    assert.deepEqual({
+      candidate: plan.summary.historyCandidateCount,
+      included: plan.summary.historyIncludedCount,
+      excluded: plan.summary.historyExcludedCount,
+    }, {
+      candidate: 5,
+      included: 1,
+      excluded: 4,
+    })
+    assert.equal(
+      plan.summary.historyCandidateCount,
+      plan.summary.historyIncludedCount + plan.summary.historyExcludedCount,
     )
   })
 
@@ -327,12 +370,45 @@ describe('SamplingContextPlanner', () => {
 
 function createContext(input: {
   history?: Array<{ role: 'user' | 'assistant', content: string }>
+  historyCandidateCount?: number
 } = {}): ModelContext {
+  const history = input.history ?? []
+
   return ModelContext.fromHistory({
     instructions: [{ role: 'system', content: 'instructions' }],
-    initialHistory: input.history ?? [],
+    initialHistory: history,
     currentUserMessage: { role: 'user', content: 'current-user' },
+    ...(input.historyCandidateCount === undefined
+      ? {}
+      : {
+          initialSelection: initialSelectionSummary(
+            input.historyCandidateCount,
+            history.length,
+          ),
+        }),
   })
+}
+
+function initialSelectionSummary(
+  historyCandidateCount: number,
+  historyIncludedCount: number,
+): InitialContextSelectionSummary {
+  return {
+    resolvedModel: 'test-model',
+    contextWindowTokens: 1_000,
+    applicationInputCapTokens: 1_000,
+    resolvedInputBudgetTokens: 800,
+    resolvedMaxOutputTokens: 100,
+    safetyMarginTokens: 100,
+    estimatedMandatoryTokens: 10,
+    historyBudgetTokens: 790,
+    estimatedInputTokens: 20,
+    historyCandidateCount,
+    historyIncludedCount,
+    historyExcludedCount: historyCandidateCount - historyIncludedCount,
+    excludedReason: 'budget',
+    estimatorStrategyId: 'test-initial-estimator',
+  }
 }
 
 function appendExchange(

@@ -106,7 +106,7 @@ describe('AgentRuntimeService model stream', () => {
       samplingIndex: 1,
       samplingAttemptId: 'run-1:sampling-1',
       requestedModel: null,
-      messageCount: 1,
+      candidateMessageCount: 1,
       toolCount: 2,
     })
     assert.equal(
@@ -118,6 +118,7 @@ describe('AgentRuntimeService model stream', () => {
       withoutDuration(harness.recorder.steps[2]?.output),
       {
         samplingAttemptId: 'run-1:sampling-1',
+        messageCount: 1,
         finishReason: 'stop',
         usage: null,
         toolCallCount: 0,
@@ -528,20 +529,21 @@ describe('AgentRuntimeService model stream', () => {
         samplingIndex: 1,
         samplingAttemptId: 'run-1:sampling-1',
         requestedModel: null,
-        messageCount: 1,
+        candidateMessageCount: 1,
         toolCount: 2,
       },
       {
         samplingIndex: 2,
         samplingAttemptId: 'run-1:sampling-2',
         requestedModel: null,
-        messageCount: 3,
+        candidateMessageCount: 3,
         toolCount: 2,
       },
     ])
     assert.deepEqual(samplingSteps.map(step => withoutDuration(step.output)), [
       {
         samplingAttemptId: 'run-1:sampling-1',
+        messageCount: 1,
         finishReason: 'tool_calls',
         usage: { inputTokens: 10, outputTokens: 2, totalTokens: 12 },
         toolCallCount: 1,
@@ -550,6 +552,7 @@ describe('AgentRuntimeService model stream', () => {
       },
       {
         samplingAttemptId: 'run-1:sampling-2',
+        messageCount: 3,
         finishReason: 'stop',
         usage: { inputTokens: 20, outputTokens: 4, totalTokens: 24 },
         toolCallCount: 0,
@@ -695,6 +698,23 @@ describe('AgentRuntimeService model stream', () => {
       harness.prisma.messages.find(message => message.id === 'history-oldest')?.content,
       historyContent,
     )
+    const followUpSamplingStep = harness.recorder.steps.filter(
+      step => step.type === 'model_sampling',
+    )[1]
+    const persistedSamplingMessageCount = (
+      followUpSamplingStep?.output as Record<string, unknown>
+    )?.messageCount
+
+    assert.equal(
+      persistedSamplingMessageCount,
+      harness.llmCalls[1]?.messages.length,
+    )
+    assert.equal(
+      (followUpSamplingStep?.input as Record<string, unknown>)
+        ?.candidateMessageCount,
+      4,
+    )
+    assert.equal(persistedSamplingMessageCount, 3)
     assertNoUnfinishedSteps(harness)
   })
 
@@ -796,6 +816,10 @@ describe('AgentRuntimeService model stream', () => {
     assert.equal(samplingSteps.length, 2)
     assert.equal(samplingSteps[1]?.status, AgentStepStatus.FAILED)
     assert.equal(
+      (samplingSteps[1]?.output as Record<string, unknown>)?.messageCount,
+      0,
+    )
+    assert.equal(
       ((samplingSteps[1]?.output as Record<string, unknown>)
         ?.contextPlan as Record<string, unknown>)?.overflowReason,
       'minimum_context',
@@ -843,6 +867,12 @@ describe('AgentRuntimeService model stream', () => {
     assert.equal(
       harness.recorder.steps.filter(step => step.type === 'model_sampling')[1]?.status,
       AgentStepStatus.FAILED,
+    )
+    assert.equal(
+      (harness.recorder.steps.filter(
+        step => step.type === 'model_sampling',
+      )[1]?.output as Record<string, unknown>)?.messageCount,
+      0,
     )
     assert.doesNotMatch(serialized, /estimator-secret/)
     assert.match(serialized, /TokenEstimator/)
@@ -1456,6 +1486,7 @@ describe('AgentRuntimeService model stream', () => {
     assert.equal(samplingStep?.status, AgentStepStatus.FAILED)
     assert.deepEqual(withoutDuration(samplingStep?.output), {
       samplingAttemptId: 'run-1:sampling-1',
+      messageCount: 1,
       finishReason: null,
       usage: null,
       toolCallCount: 0,

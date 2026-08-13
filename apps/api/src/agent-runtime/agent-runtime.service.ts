@@ -293,7 +293,7 @@ export class AgentRuntimeService {
             samplingIndex: samplingAttempt,
             samplingAttemptId,
             requestedModel: input.model ?? null,
-            messageCount: contextSnapshot.itemCount,
+            candidateMessageCount: contextSnapshot.itemCount,
             toolCount: modelTools.length,
             ...(contextSnapshot.initialSelection
               ? { initialContext: { ...contextSnapshot.initialSelection } }
@@ -303,6 +303,7 @@ export class AgentRuntimeService {
         const samplingStartedAt = Date.now()
         let samplingDecision: SamplingDecision
         let contextPlanSummary: SamplingContextPlanSummary | undefined
+        let plannedMessageCount = 0
 
         try {
           const contextPlan = this.samplingContextPlanner.plan({
@@ -313,6 +314,7 @@ export class AgentRuntimeService {
               selection.summary.resolvedInputBudgetTokens,
           })
           contextPlanSummary = contextPlan.summary
+          plannedMessageCount = contextPlan.items.length
 
           runCancellation.throwIfUnavailable()
           // 两层 async generator 此时只创建迭代器；首次 sampling.next() 才启动模型请求并拉取事件。
@@ -348,6 +350,7 @@ export class AgentRuntimeService {
               output: this.toSamplingStepOutput(
                 samplingDecision.summary,
                 Date.now() - samplingStartedAt,
+                plannedMessageCount,
                 contextPlanSummary,
               ),
             },
@@ -360,6 +363,7 @@ export class AgentRuntimeService {
             output: this.toFailedSamplingStepOutput(
               error,
               Date.now() - samplingStartedAt,
+              plannedMessageCount,
               contextPlanSummary,
             ),
           }
@@ -720,10 +724,12 @@ export class AgentRuntimeService {
   private toSamplingStepOutput(
     summary: ModelSamplingSummary,
     durationMs: number,
+    messageCount: number,
     contextPlan?: SamplingContextPlanSummary,
   ) {
     return {
       samplingAttemptId: summary.samplingAttemptId,
+      messageCount,
       finishReason: summary.finishReason,
       usage: summary.usage
         ? {
@@ -751,6 +757,7 @@ export class AgentRuntimeService {
   private toFailedSamplingStepOutput(
     error: unknown,
     durationMs: number,
+    messageCount: number,
     contextPlan?: SamplingContextPlanSummary,
   ) {
     const failedContextPlan = contextPlan
@@ -762,12 +769,14 @@ export class AgentRuntimeService {
       return this.toSamplingStepOutput(
         error.summary,
         durationMs,
+        messageCount,
         failedContextPlan,
       )
     }
 
     return {
       durationMs,
+      messageCount,
       ...(failedContextPlan
         ? {
             contextPlan:

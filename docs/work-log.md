@@ -17,6 +17,7 @@
 
 | 日期 | 事项 | 结果 |
 | --- | --- | --- |
+| 2026-08-13 | PR #45 GPT Review finding 修复 | 修正每轮最终 Provider item count、累计 Task 1 与 Loop History 排除统计，并同步 `AGENTS.md`、根 README 与 docs 入口；完整验证通过，实施状态仍为已实现、验收状态仍为待验收 |
 | 2026-08-13 | Issue #44 / Draft PR #45 / Phase 7 Task 2 实现 | Clarification Gate 为 READY；完成 DeepSeek V4 full-request estimator、逐轮 Sampling Context Plan、History 再选择、Observation 双层治理、安全 Context Plan 摘要与 fail-closed 终态；指定回归、build、lint、typecheck 与 diff-check 通过；Draft PR #45 已创建，实施状态已实现、验收状态待验收 |
 | 2026-08-12 | PR #43 / Issue #42 收口 | Phase 7 Task 1 `Model-aware Budget & Dynamic History` 经 GPT 技术验收通过，用户明确确认验收；第一轮 Codex Review 的 3 个 P2 已在 `620a2d0` 修复并全部 resolved，第二轮 Review 未发现新的主要问题；PR #43 按授权转 Ready 并合入 `master`，merge commit `6df72f02242a1b8a23920d64c471ce721ccf558b`；Issue #42 Closed；Task 1 Completed；Task 2 仅推进为 Next |
 | 2026-08-12 | PR #43 Review finding 收口 | 增加 current User `(createdAt, id)` initial causal upper bound；同步根 `AGENTS.md`；candidate batch 最小值收紧为 50，并用测试将最坏合法配置的 full-request estimate 次数限制在 28 次以内；完整回归、build、lint、typecheck 与 `git diff --check` 通过 |

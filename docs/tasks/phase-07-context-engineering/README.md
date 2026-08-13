@@ -323,13 +323,13 @@ Task 0 是结构基线，不负责优化 History 数量，也不实现 token-bud
 
 | 命令 | 结果 |
 | --- | --- |
-| `pnpm --filter @agent/api test:context` | 通过，23 tests |
+| `pnpm --filter @agent/api test:context` | 通过，24 tests |
 | `pnpm --filter @agent/api test:tool-loop` | 通过，51 tests |
 | `pnpm --filter @agent/api test:model-stream` | 通过，64 tests |
 | `pnpm --filter @agent/api test:tools` | 通过，40 tests |
 | `pnpm --filter @agent/api test:seo-service` | 通过，10 tests |
 | `pnpm --filter @agent/api test:llm-config` | 通过，17 tests |
-| `pnpm --filter @agent/api test:admin-runs` | 通过，15 tests |
+| `pnpm --filter @agent/api test:admin-runs` | 通过，16 tests |
 | `pnpm --filter @agent/api build` | 通过 |
 | `pnpm --filter @agent/api typecheck` | 通过 |
 | `pnpm --filter @agent/api lint` | 通过 |
