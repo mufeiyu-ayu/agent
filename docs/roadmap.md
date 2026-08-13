@@ -4,7 +4,7 @@
 
 ## 当前判断
 
-项目已经完成从基础 LLM Chat 到 Session、Streaming、Agent Runtime、最小 Tool Calling、bounded sequential Agent Loop、Runtime reliability，再到 Context Engineering 的连续学习闭环；Admin Console 的真实 Observability Baseline 与安全 Context Inspector 也已经建立。
+项目已经完成从基础 LLM Chat 到 Context Engineering 的连续学习闭环；Phase 8 Task 0 现已建立 Article Retrieval Boundary 与确定性离线 Evaluation Baseline，处于已实现、待验收状态。
 
 Phase 7 `Context Engineering` 已完成 GPT 技术验收、用户确认验收，并通过 Issue #46 / PR #47 合入 `master`。Task 0-3 均已 Completed，最终 merge commit 为 `caf3d25b7af0e5b30ae47d3c96faab4138fbdb9e`。
 
@@ -12,11 +12,10 @@ Phase 7 `Context Engineering` 已完成 GPT 技术验收、用户确认验收，
 
 ```text
 阶段 1-7：Completed
-Active Agent Task：无
+Phase 8 Task 0：Active / 已实现、待验收
 Minimal Compaction：Gated
 Admin Observability：Task 0-3 Completed
 Admin Task 4：Planned
-下一阶段：尚未定案
 ```
 
 ## 阶段路线
@@ -30,6 +29,7 @@ Admin Task 4：Planned
 | 阶段 5：最小 Tool Calling | Completed | 单次 Tool Call、Observation 与第二轮 sampling |
 | [阶段 6：有界单 Agent Loop](./tasks/completed/phase-06-bounded-agent-loop.md) | **Completed** | 多轮顺序决策、执行预算、DeepSeek continuation、DB deadline 与终态可靠性 |
 | [阶段 7：Context Engineering](./tasks/completed/phase-07-context-engineering.md) | **Completed** | Context 边界、model-aware budget、Dynamic History、Loop Context Governance、Context Inspector |
+| [阶段 8：Grounded Retrieval / RAG Baseline](./tasks/phase-08-grounded-retrieval/task-00-retrieval-boundary-evaluation.md) | **Active** | Task 0：Retrieval Boundary、Prisma lexical adapter、离线 corpus 与 metrics；已实现、待验收 |
 
 ## Phase 7 最终交付
 

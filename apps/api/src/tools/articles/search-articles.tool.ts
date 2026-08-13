@@ -1,4 +1,4 @@
-import type { Prisma } from '../../generated/prisma/client.js'
+import type { NormalizedArticleRetrievalQuery } from '../../retrieval/article-retrieval.js'
 import type {
   ToolDefinition,
   ToolExecutionContext,
@@ -7,19 +7,10 @@ import type {
 } from '../core/tool.types.js'
 import { Inject, Injectable } from '@nestjs/common'
 
-import { PrismaService } from '../../prisma/prisma.service.js'
+import { normalizeArticleRetrievalInput } from '../../retrieval/article-retrieval.js'
+import { PrismaArticleRetriever } from '../../retrieval/prisma-article-retriever.js'
 
-const DEFAULT_LIMIT = 5
-const MAX_LIMIT = 10
-const MAX_QUERY_LENGTH = 100
-const MAX_LANGUAGE_CODE_LENGTH = 20
-const EXCERPT_LENGTH = 500
-
-export interface SearchArticlesInput {
-  query: string
-  languageCode?: string
-  limit: number
-}
+export type SearchArticlesInput = NormalizedArticleRetrievalQuery
 
 export interface SearchArticleSummary {
   sourceId: number
@@ -65,8 +56,8 @@ export const searchArticlesDefinition: ToolDefinition<SearchArticlesInput> = {
 @Injectable()
 export class SearchArticlesTool implements ToolExecutor<SearchArticlesInput, SearchArticlesOutput> {
   constructor(
-    @Inject(PrismaService)
-    private readonly prismaService: PrismaService,
+    @Inject(PrismaArticleRetriever)
+    private readonly articleRetriever: PrismaArticleRetriever,
   ) {}
 
   async execute(
@@ -76,60 +67,18 @@ export class SearchArticlesTool implements ToolExecutor<SearchArticlesInput, Sea
     context.signal.throwIfAborted()
 
     // 零结果属于正常查询结果；未捕获的数据库或执行异常由 ToolInvocationService 统一兜底。
-    const { languageCode, limit, query } = invocation.input
-    const queryPattern = query.replace(/[\\%_]/g, '\\$&')
-    const where: Prisma.ArticleWhereInput = {
-      ...(languageCode ? { languageCode } : {}),
-      OR: [
-        { title: { contains: queryPattern, mode: 'insensitive' } },
-        { slug: { contains: queryPattern, mode: 'insensitive' } },
-        { seoTitle: { contains: queryPattern, mode: 'insensitive' } },
-        { seoDescription: { contains: queryPattern, mode: 'insensitive' } },
-        { content: { contains: queryPattern, mode: 'insensitive' } },
-      ],
-    }
-
-    const { total, records } = await this.prismaService.withDeadlineTransaction(
-      context.databaseDeadline,
-      async (transaction) => {
-        context.signal.throwIfAborted()
-        const total = await transaction.execute(prisma =>
-          prisma.article.count({ where }))
-
-        context.signal.throwIfAborted()
-        const records = await transaction.execute(prisma =>
-          prisma.article.findMany({
-            where,
-            select: {
-              sourceId: true,
-              slug: true,
-              languageCode: true,
-              title: true,
-              seoTitle: true,
-              seoDescription: true,
-              content: true,
-            },
-            orderBy: [
-              { updatedAt: 'desc' },
-              { sourceId: 'asc' },
-            ],
-            take: limit,
-          }))
-
-        context.signal.throwIfAborted()
-        return { total, records }
-      },
-    )
+    const retrieval = await this.articleRetriever.retrieve(invocation.input, {
+      databaseDeadline: context.databaseDeadline,
+      signal: context.signal,
+    })
 
     context.signal.throwIfAborted()
-    const articles = records.map(({ content, ...article }) => ({
-      ...article,
-      excerpt: toExcerpt(content),
-    }))
+    const { languageCode, query } = retrieval.query
+    const articles = retrieval.hits.map(({ rank: _rank, ...article }) => article)
     const data: SearchArticlesOutput = {
       query,
       ...(languageCode ? { languageCode } : {}),
-      total,
+      total: retrieval.total,
       articles,
     }
 
@@ -138,68 +87,11 @@ export class SearchArticlesTool implements ToolExecutor<SearchArticlesInput, Sea
       data,
       modelContent: articles.length === 0
         ? `没有找到与“${query}”匹配的文章。`
-        : `共找到 ${total} 篇匹配文章，以下是 ${articles.length} 条精简结果：\n${JSON.stringify(articles)}`,
+        : `共找到 ${retrieval.total} 篇匹配文章，以下是 ${articles.length} 条精简结果：\n${JSON.stringify(articles)}`,
     }
   }
 }
 
 function parseSearchArticlesInput(value: unknown): SearchArticlesInput {
-  if (typeof value !== 'object' || value === null || Array.isArray(value))
-    throw new Error('invalid search_articles input')
-
-  const record = value as Record<string, unknown>
-  const allowedKeys = new Set(['query', 'languageCode', 'limit'])
-
-  if (Object.keys(record).some(key => !allowedKeys.has(key)))
-    throw new Error('invalid search_articles input')
-
-  if (typeof record.query !== 'string')
-    throw new Error('invalid search_articles query')
-
-  const query = record.query.trim()
-
-  if (query.length === 0 || query.length > MAX_QUERY_LENGTH)
-    throw new Error('invalid search_articles query')
-
-  let languageCode: string | undefined
-
-  if (Object.hasOwn(record, 'languageCode')) {
-    if (typeof record.languageCode !== 'string')
-      throw new Error('invalid search_articles languageCode')
-
-    languageCode = record.languageCode.trim().toLowerCase()
-
-    if (languageCode.length === 0 || languageCode.length > MAX_LANGUAGE_CODE_LENGTH)
-      throw new Error('invalid search_articles languageCode')
-  }
-
-  let limit = DEFAULT_LIMIT
-
-  if (Object.hasOwn(record, 'limit')) {
-    if (
-      typeof record.limit !== 'number'
-      || !Number.isInteger(record.limit)
-      || record.limit < 1
-      || record.limit > MAX_LIMIT
-    ) {
-      throw new Error('invalid search_articles limit')
-    }
-
-    limit = record.limit
-  }
-
-  return {
-    query,
-    ...(languageCode ? { languageCode } : {}),
-    limit,
-  }
-}
-
-function toExcerpt(content: string): string {
-  const plainText = content
-    .replace(/<[^>]*>/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-
-  return [...plainText].slice(0, EXCERPT_LENGTH).join('')
+  return normalizeArticleRetrievalInput(value)
 }
