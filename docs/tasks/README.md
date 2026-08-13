@@ -6,8 +6,8 @@
 
 | 区域 | 状态 | 文档 | 说明 |
 | --- | --- | --- | --- |
-| Agent 主线 | **Phase 7 Active / Task 2 Next** | [roadmap.md](../roadmap.md) | Task 0-1 已 Completed；Task 2 为 Next，Issue 尚未创建 |
-| Phase 7：Context Engineering | **Active** | [phase-07-context-engineering/README.md](./phase-07-context-engineering/README.md) | Task 0-1 Completed；Task 2 Next；Task 3 Planned；Compaction 为 Gated follow-up |
+| Agent 主线 | **Phase 7 Active / Task 2 待验收** | [roadmap.md](../roadmap.md) | Task 0-1 已 Completed；Task 2 已按 Issue #44 实现，等待验收 |
+| Phase 7：Context Engineering | **Active** | [phase-07-context-engineering/README.md](./phase-07-context-engineering/README.md) | Task 0-1 Completed；Task 2 已实现待验收；Task 3 Planned；Compaction 为 Gated follow-up |
 | 阶段 6：有界单 Agent Loop | Completed | [completed/phase-06-bounded-agent-loop.md](./completed/phase-06-bounded-agent-loop.md) | Task 0、横向配置治理、Task 1、Task 2 均已验收并合并 |
 | Admin Console Task 0-1 | Completed | [admin-console.md](./admin-console.md) | 基础壳与静态 Run UI 已完成 |
 | Admin Console Task 2 | **Completed** | [task-02-run-query-api.md](./admin-console/task-02-run-query-api.md) | Issue #33 / PR #34；merge `997d6b84` |
@@ -26,8 +26,8 @@
 阶段 7：Context Engineering / Active
 Task 0：Context Boundary & Snapshot / Completed / #40 / #41 / 415e866a
 Task 1：Model-aware Budget & Dynamic History / Completed / #42 / #43 / 6df72f0
-当前 Active Agent Task：无
-下一任务：Task 2 / Loop-aware Context & Observation Governance / Next / Issue 未创建
+当前 Active Agent Task：Task 2 / Loop-aware Context & Observation Governance / #44 / 已实现待验收
+下一任务：Task 3 / Context Inspector & Phase Baseline / Planned / 未启动
 ```
 
 Task 0 已由 GPT 基于 Issue #40、PR #41 最新实现、Codex Review 和验证结果完成技术验收，并由用户明确确认通过。PR #41 已合入 `master`，Issue #40 已关闭。
@@ -40,13 +40,13 @@ Task 1 已由 GPT 基于 Issue #42、PR #43 最新 head `620a2d0`、两轮 Codex
 | --- | --- | --- |
 | Task 0：Context Boundary & Snapshot | **Completed / #40 / #41 / merge 415e866a** | 收敛 model input assembly；建立安全 Context Snapshot；不改变 40 条 History 与现有 Observation 行为 |
 | Task 1：Model-aware Budget & Dynamic History | **Completed / #42 / #43 / merge 6df72f0** | 让 `contextWindowTokens` 进入真实预算；History 从固定条数升级为 token-budget 驱动 |
-| Task 2：Loop-aware Context & Observation Governance | **Next / Issue 未创建** | 多轮 Tool Loop 的 Context Budget、Tool Call / Result pairing 与 Observation 最终裁剪 |
+| Task 2：Loop-aware Context & Observation Governance | **已实现 / 待验收 / #44** | 多轮 Tool Loop 的 Context Budget、Tool Call / Result pairing 与 Observation 最终裁剪 |
 | Task 3：Context Inspector & Phase Baseline | Planned | 安全 Context summary + Admin Inspector + 阶段回归 |
 | Minimal Compaction | Gated | 只有 Task 1-3 的真实证据证明需要时才另建正式 Task / Issue |
 
 阶段完整规格见 [`phase-07-context-engineering/README.md`](./phase-07-context-engineering/README.md)。
 
-下一动作是继续学习和讨论 Task 2，并在边界确认后创建独立 Issue；没有 Issue + Clarification Gate `READY` 前不得进入实现或标记 Active。
+下一动作是对 Task 2 的 Draft PR 做技术验收；Task 3 仍为 Planned，不因 Task 2 已实现而自动启动。
 
 ## Admin Console 当前状态
 

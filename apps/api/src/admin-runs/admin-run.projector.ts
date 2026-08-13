@@ -433,8 +433,13 @@ function isValidFailedModelOutput(
   if (!object)
     return false
 
-  if (Object.keys(object).every(key => key === 'durationMs'))
+  if (Object.keys(object).every(
+    key => key === 'durationMs' || key === 'contextPlan',
+  )) {
     return isRequiredNonNegativeInteger(object, 'durationMs')
+      && (!Object.hasOwn(object, 'contextPlan')
+        || isValidContextPlanSummary(object.contextPlan))
+  }
 
   return isValidFullModelOutput(input, object, MODEL_FINISH_REASONS, true)
 }
@@ -461,6 +466,59 @@ function isValidFullModelOutput(
     && isRequiredNonNegativeInteger(object, 'textChars')
     && isRequiredNonNegativeInteger(object, 'intermediateTextChars')
     && isRequiredNonNegativeInteger(object, 'durationMs')
+    && (!Object.hasOwn(object, 'contextPlan')
+      || isValidContextPlanSummary(object.contextPlan))
+}
+
+function isValidContextPlanSummary(value: unknown): boolean {
+  const object = readObject(value)
+  if (!object)
+    return false
+
+  const observations = object.observations
+  return Object.keys(object).every(key => [
+    'samplingIndex',
+    'resolvedInputBudgetTokens',
+    'estimatedInputTokens',
+    'historyCandidateCount',
+    'historyIncludedCount',
+    'historyExcludedCount',
+    'toolExchangeCount',
+    'observations',
+    'overflowReason',
+    'estimatorStrategyId',
+  ].includes(key))
+  && isRequiredPositiveInteger(object, 'samplingIndex')
+  && isRequiredPositiveInteger(object, 'resolvedInputBudgetTokens')
+  && isRequiredNonNegativeInteger(object, 'estimatedInputTokens')
+  && isRequiredNonNegativeInteger(object, 'historyCandidateCount')
+  && isRequiredNonNegativeInteger(object, 'historyIncludedCount')
+  && isRequiredNonNegativeInteger(object, 'historyExcludedCount')
+  && isRequiredNonNegativeInteger(object, 'toolExchangeCount')
+  && Array.isArray(observations)
+  && observations.every(isValidContextObservationSummary)
+  && (object.overflowReason === null
+    || object.overflowReason === 'minimum_context')
+  && isRequiredString(object, 'estimatorStrategyId')
+}
+
+function isValidContextObservationSummary(value: unknown): boolean {
+  const object = readObject(value)
+  return object !== null
+    && Object.keys(object).every(key => [
+      'exchangeIndex',
+      'originalChars',
+      'toolCeilingChars',
+      'finalChars',
+      'toolCeilingTruncated',
+      'contextBudgetTruncated',
+    ].includes(key))
+    && isRequiredNonNegativeInteger(object, 'exchangeIndex')
+    && isRequiredNonNegativeInteger(object, 'originalChars')
+    && isRequiredNonNegativeInteger(object, 'toolCeilingChars')
+    && isRequiredNonNegativeInteger(object, 'finalChars')
+    && typeof object.toolCeilingTruncated === 'boolean'
+    && typeof object.contextBudgetTruncated === 'boolean'
 }
 
 function isValidToolExecution(

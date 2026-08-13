@@ -16,6 +16,7 @@ import type {
   ModelSamplingSummary,
   SamplingDecision,
 } from './model-sampling-decision.js'
+import type { SamplingContextPlanSummary } from './sampling-context-planner.js'
 
 import { Inject, Injectable, NotFoundException } from '@nestjs/common'
 import { MessageRole, MessageStatus } from '../generated/prisma/client.js'
@@ -51,6 +52,10 @@ import {
 } from './initial-context-selection.js'
 import { ModelContext } from './model-context.js'
 import { streamModelSampling } from './model-sampling-decision.js'
+import {
+  SamplingContextBudgetExceededError,
+  SamplingContextPlanner,
+} from './sampling-context-planner.js'
 
 const AGENT_RUN_TOOL_NAMES = [
   'search_articles',
@@ -104,6 +109,9 @@ export class AgentRuntimeService {
 
     @Inject(InitialContextSelectionService)
     private readonly initialContextSelectionService: InitialContextSelectionService,
+
+    @Inject(SamplingContextPlanner)
+    private readonly samplingContextPlanner: SamplingContextPlanner,
   ) {}
 
   async* runTurnStream(input: RunTurnStreamInput): AsyncGenerator<AgentRuntimeEvent> {
@@ -221,14 +229,12 @@ export class AgentRuntimeService {
         },
       )
 
-      const modelContext = ModelContext.fromHistory(
-        [
-          ...selection.historyMessages,
-          this.toLlmMessage(userMessage),
-        ],
-        messages => input.buildModelMessages(messages),
-        selection.summary,
-      )
+      const modelContext = ModelContext.fromHistory({
+        instructions: input.buildModelMessages([]),
+        initialHistory: selection.historyMessages,
+        currentUserMessage: this.toLlmMessage(userMessage),
+        initialSelection: selection.summary,
+      })
 
       // 创建助手消息与 Run 关联必须同事务提交，避免 deadline 下留下未关联的 late Message。
       assistantMessage = await this.agentRunRecorderService.createAssistantMessage(
@@ -296,12 +302,23 @@ export class AgentRuntimeService {
         }, databaseDeadline)
         const samplingStartedAt = Date.now()
         let samplingDecision: SamplingDecision
+        let contextPlanSummary: SamplingContextPlanSummary | undefined
 
         try {
+          const contextPlan = this.samplingContextPlanner.plan({
+            samplingIndex: samplingAttempt,
+            context: modelContext,
+            tools: modelTools,
+            resolvedInputBudgetTokens:
+              selection.summary.resolvedInputBudgetTokens,
+          })
+          contextPlanSummary = contextPlan.summary
+
+          runCancellation.throwIfUnavailable()
           // 两层 async generator 此时只创建迭代器；首次 sampling.next() 才启动模型请求并拉取事件。
           const sampling = streamModelSampling(
             this.llmService.chatStream(
-              modelContext.forSampling(),
+              contextPlan.items,
               chatStreamOptions,
             ),
             samplingAttemptId,
@@ -331,6 +348,7 @@ export class AgentRuntimeService {
               output: this.toSamplingStepOutput(
                 samplingDecision.summary,
                 Date.now() - samplingStartedAt,
+                contextPlanSummary,
               ),
             },
           )
@@ -342,6 +360,7 @@ export class AgentRuntimeService {
             output: this.toFailedSamplingStepOutput(
               error,
               Date.now() - samplingStartedAt,
+              contextPlanSummary,
             ),
           }
           claimRunTermination(runCancellation, error)
@@ -456,7 +475,7 @@ export class AgentRuntimeService {
           call: samplingDecision.call,
           intermediateText: samplingDecision.intermediateText,
           reasoningContent: samplingDecision.reasoningContent,
-          observationContent: observation.content,
+          observation,
           ok: toolResult.ok,
         })
       }
@@ -701,6 +720,7 @@ export class AgentRuntimeService {
   private toSamplingStepOutput(
     summary: ModelSamplingSummary,
     durationMs: number,
+    contextPlan?: SamplingContextPlanSummary,
   ) {
     return {
       samplingAttemptId: summary.samplingAttemptId,
@@ -722,14 +742,39 @@ export class AgentRuntimeService {
       textChars: summary.textChars,
       intermediateTextChars: summary.intermediateTextChars,
       durationMs,
+      ...(contextPlan
+        ? { contextPlan: contextPlan as unknown as Prisma.InputJsonValue }
+        : {}),
     }
   }
 
-  private toFailedSamplingStepOutput(error: unknown, durationMs: number) {
-    if (error instanceof ModelSamplingIncompleteError && error.summary)
-      return this.toSamplingStepOutput(error.summary, durationMs)
+  private toFailedSamplingStepOutput(
+    error: unknown,
+    durationMs: number,
+    contextPlan?: SamplingContextPlanSummary,
+  ) {
+    const failedContextPlan = contextPlan
+      ?? (error instanceof SamplingContextBudgetExceededError
+        ? error.summary
+        : undefined)
 
-    return { durationMs }
+    if (error instanceof ModelSamplingIncompleteError && error.summary) {
+      return this.toSamplingStepOutput(
+        error.summary,
+        durationMs,
+        failedContextPlan,
+      )
+    }
+
+    return {
+      durationMs,
+      ...(failedContextPlan
+        ? {
+            contextPlan:
+              failedContextPlan as unknown as Prisma.InputJsonValue,
+          }
+        : {}),
+    }
   }
 
   private isAbortSignalTriggered(signal: AbortSignal | undefined): boolean {

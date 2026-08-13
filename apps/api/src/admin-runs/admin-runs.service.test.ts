@@ -115,7 +115,10 @@ describe('Admin Run projector', () => {
     failed.steps = failed.steps.filter(step => step.sequence <= 3)
     const failedSamplingStep = failed.steps.find(step => step.sequence === 3)!
     failedSamplingStep.status = 'FAILED'
-    failedSamplingStep.output = { durationMs: 500 }
+    failedSamplingStep.output = {
+      durationMs: 500,
+      contextPlan: safeContextPlan('minimum_context'),
+    }
     failedSamplingStep.errorMessage = '安全错误摘要'
 
     const failedDetail = projectAdminRunDetail(failed)
@@ -467,6 +470,30 @@ function step(
     startedAt: new Date(`2026-08-09T00:00:0${Math.min(sequence, 9)}.000Z`) as Date | null,
     endedAt: new Date(`2026-08-09T00:00:0${Math.min(sequence, 9)}.100Z`) as Date | null,
     ...overrides,
+  }
+}
+
+function safeContextPlan(
+  overflowReason: 'minimum_context' | null,
+): Record<string, unknown> {
+  return {
+    samplingIndex: 1,
+    resolvedInputBudgetTokens: 262_144,
+    estimatedInputTokens: 262_145,
+    historyCandidateCount: 0,
+    historyIncludedCount: 0,
+    historyExcludedCount: 0,
+    toolExchangeCount: 1,
+    observations: [{
+      exchangeIndex: 0,
+      originalChars: 100,
+      toolCeilingChars: 80,
+      finalChars: 64,
+      toolCeilingTruncated: true,
+      contextBudgetTruncated: true,
+    }],
+    overflowReason,
+    estimatorStrategyId: 'deepseek-v4-official-b5968e9',
   }
 }
 

@@ -10,6 +10,7 @@ import {
   TokenEstimator,
 } from './deepseek-v4-token-estimator.js'
 import { InitialContextSelectionService } from './initial-context-selection.js'
+import { SamplingContextPlanner } from './sampling-context-planner.js'
 
 @Module({
   imports: [PrismaModule, ToolsModule],
@@ -21,6 +22,7 @@ import { InitialContextSelectionService } from './initial-context-selection.js'
       useExisting: DeepSeekV4TokenEstimator,
     },
     InitialContextSelectionService,
+    SamplingContextPlanner,
     AgentRunRecorderService,
     AgentRuntimeService,
   ],

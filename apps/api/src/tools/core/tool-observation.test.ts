@@ -31,6 +31,10 @@ describe('normalizeToolObservation', () => {
     assert.equal(first.truncated, true)
     assert.equal(first.originalChars, [...content].length)
     assert.equal(first.observationChars, [...first.content].length)
+    assert.equal(
+      [...(first.previewContent ?? '')].length,
+      16_000 - [...first.content.replace(first.previewContent ?? '', '')].length,
+    )
     assert.ok(first.observationChars <= 16_000)
     assert.match(first.content, /^\[工具 Observation 已截断/)
     assert.match(first.content, /\[预览结束\]$/)
@@ -49,6 +53,8 @@ describe('normalizeToolObservation', () => {
     assert.equal(detail.originalChars, 70_000)
     assert.equal(search.truncated, true)
     assert.equal(detail.truncated, true)
+    assert.doesNotMatch(search.previewContent ?? '', /Observation 已截断/)
+    assert.doesNotMatch(detail.previewContent ?? '', /Observation 已截断/)
   })
 
   it('工具声明超过全局硬上限时仍不超过 128K', () => {

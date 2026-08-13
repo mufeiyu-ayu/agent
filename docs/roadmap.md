@@ -6,7 +6,7 @@
 
 项目已经完成从基础 LLM Chat 到 Session、Streaming、Agent Runtime、最小 Tool Calling，再到 bounded sequential Agent Loop 与 Runtime reliability 的连续学习闭环；Admin Console 的真实 Observability Baseline 也已经建立。
 
-Phase 7：Context Engineering 当前为 **Active**。Task 0 `Context Boundary & Snapshot` 与 Task 1 `Model-aware Budget & Dynamic History` 均已完成 GPT 技术验收、用户确认验收并合入 `master`。下一项是 Task 2 `Loop-aware Context & Observation Governance`，当前为 Next，Issue 尚未创建。
+Phase 7：Context Engineering 当前为 **Active**。Task 0 `Context Boundary & Snapshot` 与 Task 1 `Model-aware Budget & Dynamic History` 均已完成 GPT 技术验收、用户确认验收并合入 `master`。Task 2 `Loop-aware Context & Observation Governance` 已按 Issue #44 实现，当前等待验收；Task 3 未启动。
 
 当前状态：
 
@@ -15,8 +15,8 @@ Phase 7：Context Engineering 当前为 **Active**。Task 0 `Context Boundary & 
 阶段 7：Context Engineering / Active
 Task 0：Context Boundary & Snapshot / Completed / #40 / #41 / 415e866a
 Task 1：Model-aware Budget & Dynamic History / Completed / #42 / #43 / 6df72f0
-当前 Active Agent Task：无
-下一任务：Task 2 / Loop-aware Context & Observation Governance / Next / Issue 未创建
+当前 Active Agent Task：Task 2 / Loop-aware Context & Observation Governance / #44 / 已实现待验收
+下一任务：Task 3 / Context Inspector & Phase Baseline / Planned / 未启动
 Admin Observability：Task 0-3 Completed
 Admin Task 4：Planned
 ```
@@ -86,7 +86,7 @@ Admin Task 4：Planned
 ```text
 Task 0：Context Boundary & Snapshot                   Completed / #40 / #41 / 415e866a
 Task 1：Model-aware Budget & Dynamic History          Completed / #42 / #43 / 6df72f0
-Task 2：Loop-aware Context & Observation Governance   Next / Issue 未创建
+Task 2：Loop-aware Context & Observation Governance   已实现 / 待验收 / #44
 Task 3：Context Inspector & Phase Baseline            Planned
 Compaction：Gated Follow-up                           不自动启动
 ```
@@ -107,7 +107,7 @@ Task 1 已完成：Issue #42、PR #43；建立 `262_144` application input cap�
 
 把 Context Budget 扩展到完整 bounded Agent Loop。Tool Call / Result 按配对单元维护，每轮 sampling 前重新核对 Context usage；现有 per-tool Observation 字符上限与 global hard max 继续作为 safety ceiling，而不是唯一 Context 策略。
 
-Task 2 当前只是 Next，尚未创建 Issue，也未执行 Clarification Gate，不得自动进入实现。
+Task 2 已按 Issue #44 完成 Clarification Gate、实现与验证，当前等待 Draft PR 技术验收；不得自行标记 Completed。
 
 ### Task 3
 
@@ -181,4 +181,4 @@ Phase 7 Baseline 收口后，再基于最新 `master`、真实产品需求和学
 6. Multi-agent；
 7. 若 Context 证据充分，再决定 Minimal Compaction 是否需要单独收口。
 
-当前没有 Active Agent Task。下一正式动作是学习和讨论 Phase 7 Task 2；确认边界后创建独立 Issue，只有 Clarification Gate 为 `READY` 才进入 Active。
+当前 Active Agent Task 为 Phase 7 Task 2，实施状态已实现、验收状态待验收。Task 3 仍为 Planned，只有 Task 2 完成验收收口并另行启动后才进入实现。
