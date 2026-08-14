@@ -32,6 +32,7 @@ import {
   createRunTraceProjection,
   filterTraceRecords,
   getVisibleTraceRecords,
+  resolveTraceRequestModel,
   resolveTraceSelection,
 } from './trace/run-trace.presenter'
 
@@ -114,6 +115,10 @@ function checkRunTraceProjection(): void {
       : null,
     'deepseek-v4-flash',
   )
+  assert.equal(
+    resolveTraceRequestModel(directProjection.requestGroups[0]!, 'Unavailable'),
+    'deepseek-v4-flash',
+  )
   assert.deepEqual(
     directSamplingRecord.item.kind === 'known'
     && directSamplingRecord.item.type === 'model_sampling'
@@ -142,6 +147,30 @@ function checkRunTraceProjection(): void {
     oneToolProjection.overviewSpans.find(span => span.recordId === 'trace-tool-1')?.lane,
     'tools',
   )
+
+  const modelFallbackCases = [
+    { availability: 'available', requestedModel: 'requested-only' },
+    { availability: 'available', requestedModel: null },
+    { availability: 'partial', requestedModel: 'partial-request' },
+    { availability: 'unavailable', requestedModel: 'legacy-request' },
+  ] as const
+  for (const modelCase of modelFallbackCases) {
+    const detail = createTraceDetail(0)
+    const sampling = detail.timeline.find(item => item.id === 'trace-model-1')!
+    if (sampling.kind === 'known' && sampling.type === 'model_sampling') {
+      sampling.requestedModel = modelCase.requestedModel
+      sampling.contextInspector.resolvedModel = null
+      sampling.contextInspector.requestedModel = modelCase.requestedModel
+      sampling.contextInspector.availability = modelCase.availability
+    }
+    assert.equal(
+      resolveTraceRequestModel(
+        createRunTraceProjection(detail).requestGroups[0]!,
+        'Unavailable',
+      ),
+      'Unavailable',
+    )
+  }
 
   const twoTool = createTraceDetail(2)
   const twoToolProjection = createRunTraceProjection(twoTool)
@@ -207,14 +236,31 @@ function checkRunTraceProjection(): void {
   )!
   if (unmatchedTool.kind === 'known' && unmatchedTool.type === 'tool_execution')
     unmatchedTool.samplingAttemptId = 'orphan-attempt'
-  const unmatchedProjection = createRunTraceProjection(unmatchedAssociation)
-  const projectedUnmatchedTool = unmatchedProjection.records.find(
-    record => record.id === unmatchedTool.id,
-  )
-  assert.deepEqual(
-    [projectedUnmatchedTool?.requestId, projectedUnmatchedTool?.unlinked],
-    [null, true],
-  )
+  assertFirstToolUnlinked(unmatchedAssociation)
+
+  const nullAssociation = createTraceDetail(1)
+  const nullTool = nullAssociation.timeline.find(item => item.id === 'trace-tool-1')!
+  if (nullTool.kind === 'known' && nullTool.type === 'tool_execution')
+    nullTool.samplingAttemptId = null
+  assertFirstToolUnlinked(nullAssociation)
+
+  const beforeAssociation = createTraceDetail(1)
+  const beforeTool = beforeAssociation.timeline.find(item => item.id === 'trace-tool-1')!
+  const owningSampling = beforeAssociation.timeline.find(item => item.id === 'trace-model-1')!
+  beforeTool.sequence = owningSampling.sequence - 1
+  assertFirstToolUnlinked(beforeAssociation)
+
+  const crossedAssociation = createTraceDetail(1)
+  const crossedTool = crossedAssociation.timeline.find(item => item.id === 'trace-tool-1')!
+  const nextSampling = crossedAssociation.timeline.find(item => item.id === 'trace-model-2')!
+  crossedTool.sequence = nextSampling.sequence + 1
+  assertFirstToolUnlinked(crossedAssociation)
+
+  const equalAssociation = createTraceDetail(1)
+  const equalTool = equalAssociation.timeline.find(item => item.id === 'trace-tool-1')!
+  const equalSampling = equalAssociation.timeline.find(item => item.id === 'trace-model-1')!
+  equalTool.sequence = equalSampling.sequence
+  assertFirstToolUnlinked(equalAssociation)
 
   const partialTiming = createTraceDetail(1)
   partialTiming.status = 'RUNNING'
@@ -299,6 +345,16 @@ function checkRunTraceProjection(): void {
   )
 }
 
+function assertFirstToolUnlinked(detail: AdminRunDetail): void {
+  const projection = createRunTraceProjection(detail)
+  const tool = projection.records.find(record => record.id === 'trace-tool-1')
+
+  assert.deepEqual(
+    [tool?.requestId, tool?.unlinked, projection.requestGroups[0]?.toolRecordIds],
+    [null, true, []],
+  )
+}
+
 function checkProductionSources(): void {
   const sources = [
     new URL('../../views/RunsView.vue', import.meta.url),
@@ -310,6 +366,26 @@ function checkProductionSources(): void {
 
   for (const source of sources)
     assert.doesNotMatch(source, /run\.mocks|mockRunList|getMockRunDetail/)
+
+  const requestInspectorSource = readFileSync(
+    new URL('./trace/inspectors/RequestInspector.vue', import.meta.url),
+    'utf8',
+  )
+  assert.match(requestInspectorSource, /runTrace\.inspector\.tabs\.safeIo/)
+  assert.match(requestInspectorSource, /props\.item\.inputSummary/)
+  assert.match(requestInspectorSource, /props\.item\.outputSummary/)
+  assert.doesNotMatch(requestInspectorSource, /props\.item\.(?:input|output)\b/)
+  assert.doesNotMatch(
+    requestInspectorSource,
+    /props\.item\.(?:prompt|reasoning|rawArguments|observationBody)\b/,
+  )
+
+  const ledgerSource = readFileSync(
+    new URL('./trace/RunTraceLedger.vue', import.meta.url),
+    'utf8',
+  )
+  assert.match(ledgerSource, /resolveTraceRequestModel/)
+  assert.doesNotMatch(ledgerSource, /sampling\.requestedModel|formatRequestedModel/)
 
   assert.equal(existsSync(new URL('./run.mocks.ts', import.meta.url)), false)
 }

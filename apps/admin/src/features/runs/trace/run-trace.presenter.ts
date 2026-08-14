@@ -55,6 +55,15 @@ export function createRunTraceProjection(run: AdminRunDetail): RunTraceProjectio
     }
 
     const group = matchingGroups[0]!
+    const nextSampling = requestGroups[group.number]?.sampling
+    if (
+      record.item.sequence <= group.sampling.sequence
+      || (nextSampling && record.item.sequence >= nextSampling.sequence)
+    ) {
+      record.unlinked = true
+      continue
+    }
+
     record.requestId = group.id
     record.requestNumber = group.number
     group.toolRecordIds.push(record.id)
@@ -79,6 +88,13 @@ export function createRunTraceProjection(run: AdminRunDetail): RunTraceProjectio
     timelineEndMs: timelinePoints.length ? Math.max(...timelinePoints) : null,
     defaultSelectionId: samplingRecords[0]?.id ?? records[0]?.id,
   }
+}
+
+export function resolveTraceRequestModel(
+  group: TraceRequestGroup,
+  unavailable: string,
+): string {
+  return group.sampling.contextInspector.resolvedModel ?? unavailable
 }
 
 export function filterTraceRecords(

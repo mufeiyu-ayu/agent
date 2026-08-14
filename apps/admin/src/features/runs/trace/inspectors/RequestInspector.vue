@@ -106,6 +106,11 @@ const timingFields = computed(() => [
   { label: t('eventDetail.fields.recordedDuration'), value: duration(props.item.recordedDurationMs) },
 ])
 
+const safeIoFields = computed(() => [
+  { label: t('eventDetail.safeInput'), value: show(props.item.inputSummary) },
+  { label: t('eventDetail.safeOutput'), value: show(props.item.outputSummary) },
+])
+
 function show(value: string | number | null): string | number {
   return value ?? unavailable.value
 }
@@ -194,6 +199,10 @@ function formatObservation(observation: AdminContextObservationSummary): string 
 
     <TabPane key="timing" :tab="t('runTrace.inspector.tabs.timing')">
       <InspectorFieldList :items="timingFields" />
+    </TabPane>
+
+    <TabPane key="safe-io" :tab="t('runTrace.inspector.tabs.safeIo')">
+      <InspectorFieldList :items="safeIoFields" />
     </TabPane>
   </Tabs>
 </template>

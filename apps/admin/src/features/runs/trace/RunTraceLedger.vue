@@ -10,9 +10,9 @@ import { useI18n } from 'vue-i18n'
 
 import {
   formatDuration,
-  formatRequestedModel,
   knownTimelineTitleKeys,
 } from '../run.utils'
+import { resolveTraceRequestModel } from './run-trace.presenter'
 
 type LedgerRow
   = | { kind: 'request', group: TraceRequestGroup }
@@ -66,10 +66,7 @@ function recordTitle(record: TraceRecord): string {
 }
 
 function requestModel(group: TraceRequestGroup): string {
-  return formatRequestedModel(
-    group.sampling.contextInspector.resolvedModel ?? group.sampling.requestedModel,
-    t('runs.defaultModel'),
-  )
+  return resolveTraceRequestModel(group, t('runTrace.inspector.unavailable'))
 }
 
 function requestLabel(group: TraceRequestGroup): string {

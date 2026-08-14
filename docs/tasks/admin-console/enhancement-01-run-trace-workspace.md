@@ -12,7 +12,7 @@ PR 状态：Draft
 - 实现基线：`master@6af71d3b90e496377913c31e47c2aacb98eee509`
 - 实现分支：`codex/issue-51-run-trace-workspace`
 - Clarification Gate：`READY`
-- Codex Review：本地 Review 唯一 P2（Overview 提示字段不完整）已修复
+- Review：GPT 最新技术验收提出的 3 项 P2 已修复，等待复验
 - PR：[#53](https://github.com/mufeiyu-ayu/agent/pull/53) / Draft
 
 本任务是 Admin Observability 的独立 UX Enhancement，不是新的 Agent Phase，也不改变 Phase 8 Task 0-1 Completed、Task 2-3 Planned 或 Admin Task 4 Planned 的状态。
@@ -33,10 +33,10 @@ Compact Run Header
 
 - 紧凑 Run Header 与 Duration / Requests / Calls / Tokens 统计；
 - 三 Lane Duration Overview，使用真实 timing，支持点击选择与 0-duration / open marker；
-- 每个 `model_sampling` 对应一个 UI Request Boundary，Tool 仅按 `samplingAttemptId` 归属；
+- 每个 `model_sampling` 对应一个 UI Request Boundary，Tool 仅在 `samplingAttemptId` 唯一匹配且 sequence 位于当前与下一次 Sampling 之间时归属；
 - Event / Content Ledger、搜索、Request 折叠 / 展开、可预测选择回退与键盘操作；
 - Request、Tool、Message、Generic 分类型 Inspector；
-- Context、Usage、Timing 等渐进式 Tabs，并保留 Phase 7 Context Inspector 语义；
+- Context、Usage、Timing、Safe I/O 等渐进式 Tabs，并保留 Phase 7 Context Inspector 语义；
 - 保留 Messages、Safe Raw、loading、empty、404、error / retry 与 stale-response fencing；
 - light / dark、桌面与紧凑宽度布局。
 
@@ -77,7 +77,7 @@ DeepSeek 的 Session Trajectory 聚合多个 Turn；本项目只展示一个 `Ag
 | --- | --- |
 | D-01 | 保持单 Run Workspace 语义，不生成 `Turn N`。 |
 | D-02 | 仅消费现有 Contract；未记录遥测明确为 unavailable。 |
-| D-03 | `model_sampling` 建立 Request，Tool 仅按 `samplingAttemptId` 归属；重复 / 未匹配项保持 unlinked。 |
+| D-03 | `model_sampling` 建立 Request；Tool 仅在 attempt ID 唯一且 `owningSampling.sequence < tool.sequence < nextSampling.sequence` 时归属，重复、未匹配、空 ID 或越界项保持 unlinked。 |
 | D-04 | 不修改 Runtime、Admin API、共享 Contract 或 Prisma。 |
 | D-05 | Overview 只做三 Lane、真实 timing、点击选择与 marker，不做范围、缩放或平移。 |
 | D-06 | 主列表、搜索和 Inspector 继续遵守 Admin 安全投影。 |
@@ -92,13 +92,13 @@ DeepSeek 的 Session Trajectory 聚合多个 Turn；本项目只展示一个 `Ag
 | --- | --- | --- |
 | AC-01 | Trace 生产路径已切换为紧凑 Workspace，旧主布局不并存。 | Admin build 与真实浏览器通过 |
 | AC-02 | `AdminRunDetail -> RunTraceProjection` 映射集中在纯前端 presenter。 | Admin data checks 通过 |
-| AC-03 | Request 与 Tool 使用稳定 `samplingAttemptId` 关联，异常关联 fail safe。 | 自动断言与 one / two-tool 浏览器通过 |
+| AC-03 | Request 与 Tool 使用唯一 `samplingAttemptId` 和严格 sequence 开区间关联，异常关联 fail safe 且不重排事实。 | before / crossed / equal、normal one / two-tool、duplicate / unmatched / null 自动断言通过；真实 one-tool 浏览器分组通过 |
 | AC-04 | 三 Lane Overview 使用真实 timing、完整时序提示，并与 Ledger / Inspector 选择同步。 | 自动断言、Review 修复与 Overview 点击通过 |
 | AC-05 | Ledger 已实现搜索、折叠、选中回退、键盘操作和长文本约束。 | 自动断言；浏览器搜索 / 折叠通过 |
-| AC-06 | Request / Tool / Message / Generic Inspector 采用渐进 Tabs。 | typed / generic 浏览器检查通过 |
+| AC-06 | Request / Tool / Message / Generic Inspector 采用渐进 Tabs；Request Safe I/O 展示 allowlist `inputSummary / outputSummary`。 | production source assertion 与真实浏览器 Safe I/O 检查通过 |
 | AC-07 | Context Budget / Sources / Adjustments / Outcome 语义保留。 | Context available 浏览器检查通过 |
-| AC-08 | 未推算缺失遥测，0 与 null 分离。 | Admin data checks 通过 |
-| AC-09 | 搜索、Inspector 与截图只使用安全投影。 | 安全 JSON 解析与字段排除检查通过 |
+| AC-08 | Request Header / ARIA 只使用 resolved model；缺失时显示 unavailable，requested override 只在 Inspector 独立展示；未推算缺失遥测，0 与 null 分离。 | resolved、requested-only、双 null、partial / legacy 自动断言与真实 legacy 浏览器检查通过 |
+| AC-09 | 搜索、Inspector 与截图只使用安全投影；Request Safe I/O 不读取 raw input / output。 | 安全 JSON、production source assertion 与字段排除检查通过 |
 | AC-10 | 非正常状态、错误 / retry 与 stale-response fencing 沿用既有边界。 | RUNNING / FAILED / Generic 与快速切换通过 |
 | AC-11 | Messages、Safe Raw 与返回列表 query context 保留。 | 浏览器标签回归通过 |
 | AC-12 | 已提供 light / dark 与紧凑宽度降级布局。 | 1440×900、1280×900、Sidebar 双态通过 |
@@ -123,6 +123,8 @@ DeepSeek 的 Session Trajectory 聚合多个 Turn；本项目只展示一个 `Ag
 | `git diff --check` | PASS |
 | `git diff --cached --check` | PASS |
 
+注：一次并行复跑让 `api typecheck` 与其他命令的 `prisma generate` 竞争，瞬时缺少生成文件；改为串行执行后 PASS，workspace `typecheck` 同样 PASS。
+
 ## 浏览器与截图证据
 
 已使用真实 Nest API、Admin Vite 与独立 Chromium 完成验收；临时安全 fixture 只写入 allowlist 数据，截图后已删除，API 回查为 `404`。证据路径：
@@ -142,6 +144,8 @@ DeepSeek 的 Session Trajectory 聚合多个 Turn；本项目只展示一个 `Ag
 - light / dark、1440×900、1280×900、Sidebar 展开 / 收起；两种宽度均无全局水平溢出；
 - two-tool 与 direct-final 快速切换后最终 Run ID、Request 和 Tool 数量一致；
 - 浏览器 console `warn / error` 为空。
+
+本轮 3 项 P2 修复后重新使用本地真实 API 与 Admin 页面复查：Request Safe I/O 可查看；旧记录虽有 requested model，Request Header / ARIA 仍明确显示“未记录”；真实 one-tool 的两次 Request 分组正常。Search、Collapse、Overview 点击与 Inspector 联动均正常；1280×800 的 light / dark 均无水平溢出或明显布局问题，console `warn / error` 为空。当前真实数据库没有 two-tool Run，因此本轮 two-tool 回归由确定性 presenter 自动断言覆盖，未为浏览器检查写入或重排服务端事实。
 
 ## 学习结论
 

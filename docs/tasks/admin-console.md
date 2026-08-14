@@ -90,7 +90,7 @@ Task 3 GPT 技术验收通过，用户已明确确认并授权合并；Issue #35
 
 Issue #51 已在独立分支完成实现，当前保持“已实现、待验收”。它只重构单个 Run 的 Admin 前端信息架构：用 Compact Header、三 Lane Duration Overview、Request Boundary、Event / Content Ledger 和分类型 Inspector 替换旧卡片式 Trace 主布局，并保留 Messages、Safe Raw、安全投影与 stale-response fencing。
 
-实现实际阅读了本地 DeepSeek Harness `47f943859bef60e4160492346772ded9b24f765a`，只借鉴 projection、Request Boundary、Lane、Ledger、选择、搜索 / 折叠和渐进 Inspector；不迁移 Session 多 Turn、虚拟列表、历史补页、TTFT 或 raw payload 能力。规定自动验证与真实 Chromium 验收均已通过，五张安全截图已提交；本地 Codex Review 唯一 P2 已修复，PR #53 保持 Draft，详见[任务文档](./admin-console/enhancement-01-run-trace-workspace.md)。
+实现实际阅读了本地 DeepSeek Harness `47f943859bef60e4160492346772ded9b24f765a`，只借鉴 projection、Request Boundary、Lane、Ledger、选择、搜索 / 折叠和渐进 Inspector；不迁移 Session 多 Turn、虚拟列表、历史补页、TTFT 或 raw payload 能力。规定自动验证与真实 Chromium 验收均已通过，五张安全截图已提交；GPT 最新技术验收提出的 3 项 P2 已修复并等待复验，PR #53 保持 Draft，详见[任务文档](./admin-console/enhancement-01-run-trace-workspace.md)。
 
 ## 当前 Observability Baseline
 
