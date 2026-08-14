@@ -1,6 +1,6 @@
 # Phase 8 Task 2A：Vector / Hybrid Retrieval & Evaluation
 
-状态：**Next / 待创建 Issue / Gate 未执行**。
+状态：**Next / Issue #54 Open / Gate 未执行**。
 
 本 Task 是原“Task 2：Hybrid Retrieval & Agent Tool Integration”拆分后的第一部分，只建立真实 Vector / Hybrid Retrieval 与可验证 Evaluation，不接入 Agent Tool。Task 2B 在本 Task Completed 后才能启动。
 
@@ -170,7 +170,8 @@ hybrid RRF strategy
 
 ## GitHub 交付状态
 
-- Issue：待创建
+- Issue：#54 / Open
+- Issue 地址：https://github.com/mufeiyu-ayu/agent/issues/54
 - 分支：未创建
 - PR：未创建
 - Clarification Gate：未执行
@@ -183,4 +184,4 @@ hybrid RRF strategy
 验收状态：未验收
 ```
 
-Task 2A 是当前下一项正式 Agent Task。Issue 创建后仍保持 `Next`；只有 Clarification Gate 返回 `READY` 后才能进入 `Active` / 实现。
+Task 2A 是当前下一项正式 Agent Task。Issue 已创建，但只有 Clarification Gate 返回 `READY` 后才能进入 `Active` / 实现。
