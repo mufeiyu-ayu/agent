@@ -6,7 +6,7 @@
 
 ```text
 阶段 1-7：Completed
-Phase 8：Active / Task 0-1 Completed / Task 2A Next / Task 2B 与 Task 3 Planned
+Phase 8：Active / Task 0-1 Completed / Task 2A Next (#54) / Task 2B 与 Task 3 Planned
 Active Agent Task：无
 Minimal Compaction：Gated
 Admin Enhancement 1：Completed
@@ -16,7 +16,7 @@ Admin Enhancement 1：Completed
 
 | 区域 | 状态 | 文档 | 说明 |
 | --- | --- | --- | --- |
-| Agent 主线 | **Phase 8 Active / 当前无 Active Task** | [roadmap.md](../roadmap.md) | Task 0-1 Completed；Task 2A Next；Task 2B / Task 3 Planned |
+| Agent 主线 | **Phase 8 Active / 当前无 Active Task** | [roadmap.md](../roadmap.md) | Task 0-1 Completed；Task 2A Next / #54；Task 2B / Task 3 Planned |
 | Phase 8：Grounded Retrieval / RAG Baseline | **Active** | [Phase 8 总览](./phase-08-grounded-retrieval/README.md) | 原 Task 2 已拆为 2A 检索评估与 2B Agent 接入 |
 | Phase 7：Context Engineering | **Completed** | [completed/phase-07-context-engineering.md](./completed/phase-07-context-engineering.md) | Task 0-3 Completed；merge `caf3d25b`；Minimal Compaction 继续 Gated |
 | Phase 6：有界单 Agent Loop | **Completed** | [completed/phase-06-bounded-agent-loop.md](./completed/phase-06-bounded-agent-loop.md) | 有界顺序 Loop、配置治理、数据库可靠性与终态收口均已完成 |
@@ -35,7 +35,7 @@ Admin Enhancement 1：Completed
 | --- | --- | --- | --- | --- |
 | Task 0：Retrieval Boundary & Offline Evaluation Baseline | **Completed** | Phase 7 | `ArticleRetriever` Contract、Prisma lexical adapter、离线 corpus、Recall@K / MRR baseline | [Task 0](./phase-08-grounded-retrieval/task-00-retrieval-boundary-evaluation.md) |
 | Task 1：Article Chunking & Embedding Index | **Completed** | Task 0 | 确定性 Chunk、stable identity、Embedding boundary、pgvector active index 与幂等 CLI | [Task 1](./phase-08-grounded-retrieval/task-01-article-chunking-embedding-index.md) |
-| Task 2A：Vector / Hybrid Retrieval & Evaluation | **Next** | Task 1 | 真实 pgvector 验证、Query Embedding、exact vector search、article aggregation、RRF、quality-v2 Evaluation | [Task 2A](./phase-08-grounded-retrieval/task-02-hybrid-retrieval-tool.md) |
+| Task 2A：Vector / Hybrid Retrieval & Evaluation | **Next / #54 Open** | Task 1 | 真实 pgvector 验证、Query Embedding、exact vector search、article aggregation、RRF、quality-v2 Evaluation | [Task 2A](./phase-08-grounded-retrieval/task-02-hybrid-retrieval-tool.md) |
 | Task 2B：Retrieval Tool & Agent Integration | **Planned** | Task 2A | 专用 Retrieval Tool、受控 Observation、Agent Loop / Context Budget 集成 | [Task 2B](./phase-08-grounded-retrieval/task-02b-retrieval-tool-agent-integration.md) |
 | Task 3：Grounded Answer & Retrieval Inspector | **Planned** | Task 2B | 结构化来源引用、Web 来源展示、安全 Retrieval Inspector 与端到端证据 | [Task 3](./phase-08-grounded-retrieval/task-03-grounded-answer-retrieval-inspector.md) |
 
@@ -81,7 +81,7 @@ Enhancement 1 将单 Run Detail 重构为紧凑 Run Trace Workspace，建立 Com
 
 ## 当前正式动作
 
-Task 2A 已确定为下一项正式任务，当前状态为 `Next`。下一步为 Task 2A 创建独立 Issue 并执行 Clarification Gate；Gate `READY` 前仍没有 Active Agent Task，也不得修改正式代码。
+Task 2A 已创建独立 Issue #54，当前状态为 `Next / Gate 未执行`。下一步由 Codex 针对 Issue #54 执行 Clarification Gate；Gate `READY` 前仍没有 Active Agent Task，也不得修改正式代码。
 
 Task 2A 必须先在 pgvector-capable PostgreSQL 16 环境补齐 Task 1 的真实 DB integration / concurrency 与真实 OpenAI Embedding smoke，再实现 Query Embedding、exact vector retrieval、Chunk -> Article aggregation、RRF 与 quality-v2 Evaluation。
 
