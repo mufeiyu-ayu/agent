@@ -6,7 +6,7 @@
 
 ```text
 阶段 1-7：Completed
-Phase 8：Active / Task 0-1 Completed / Task 2A Next (#54) / Task 2B 与 Task 3 Planned
+Phase 8：Active / Task 0-1 Completed / Task 2A Next (#54，Gemini 规格已更新、Gate 待重跑) / Task 2B 与 Task 3 Planned
 Active Agent Task：无
 Minimal Compaction：Gated
 Admin Enhancement 1：Completed
@@ -17,7 +17,7 @@ Admin Enhancement 1：Completed
 | 区域 | 状态 | 文档 | 说明 |
 | --- | --- | --- | --- |
 | Agent 主线 | **Phase 8 Active / 当前无 Active Task** | [roadmap.md](../roadmap.md) | Task 0-1 Completed；Task 2A Next / #54；Task 2B / Task 3 Planned |
-| Phase 8：Grounded Retrieval / RAG Baseline | **Active** | [Phase 8 总览](./phase-08-grounded-retrieval/README.md) | 原 Task 2 已拆为 2A 检索评估与 2B Agent 接入 |
+| Phase 8：Grounded Retrieval / RAG Baseline | **Active** | [Phase 8 总览](./phase-08-grounded-retrieval/README.md) | Task 2A active Embedding Provider 已从 OpenAI 规格改为 Gemini；需重新 Gate |
 | Phase 7：Context Engineering | **Completed** | [completed/phase-07-context-engineering.md](./completed/phase-07-context-engineering.md) | Task 0-3 Completed；merge `caf3d25b`；Minimal Compaction 继续 Gated |
 | Phase 6：有界单 Agent Loop | **Completed** | [completed/phase-06-bounded-agent-loop.md](./completed/phase-06-bounded-agent-loop.md) | 有界顺序 Loop、配置治理、数据库可靠性与终态收口均已完成 |
 | Admin Console Task 0-3 | **Completed** | [admin-console.md](./admin-console.md) | 真实 Run / Step API、Run Trace、Typed / Generic / Context Inspector 已建立 |
@@ -34,12 +34,12 @@ Admin Enhancement 1：Completed
 | Task | 状态 | 依赖 | 核心结果 | 文档 |
 | --- | --- | --- | --- | --- |
 | Task 0：Retrieval Boundary & Offline Evaluation Baseline | **Completed** | Phase 7 | `ArticleRetriever` Contract、Prisma lexical adapter、离线 corpus、Recall@K / MRR baseline | [Task 0](./phase-08-grounded-retrieval/task-00-retrieval-boundary-evaluation.md) |
-| Task 1：Article Chunking & Embedding Index | **Completed** | Task 0 | 确定性 Chunk、stable identity、Embedding boundary、pgvector active index 与幂等 CLI | [Task 1](./phase-08-grounded-retrieval/task-01-article-chunking-embedding-index.md) |
-| Task 2A：Vector / Hybrid Retrieval & Evaluation | **Next / #54 Open** | Task 1 | 真实 pgvector 验证、Query Embedding、exact vector search、article aggregation、RRF、quality-v2 Evaluation | [Task 2A](./phase-08-grounded-retrieval/task-02-hybrid-retrieval-tool.md) |
+| Task 1：Article Chunking & Embedding Index | **Completed** | Task 0 | 确定性 Chunk、stable identity、Embedding boundary、pgvector active index 与幂等 CLI；当时 OpenAI-specific profile 未完成真实 smoke | [Task 1](./phase-08-grounded-retrieval/task-01-article-chunking-embedding-index.md) |
+| Task 2A：Vector / Hybrid Retrieval & Evaluation | **Next / #54 Open / Gate 待重跑** | Task 1 | OpenAI→Gemini Provider 迁移、真实 pgvector / Gemini smoke、Query Embedding、exact vector search、article aggregation、RRF、quality-v2 Evaluation | [Task 2A](./phase-08-grounded-retrieval/task-02-hybrid-retrieval-tool.md) |
 | Task 2B：Retrieval Tool & Agent Integration | **Planned** | Task 2A | 专用 Retrieval Tool、受控 Observation、Agent Loop / Context Budget 集成 | [Task 2B](./phase-08-grounded-retrieval/task-02b-retrieval-tool-agent-integration.md) |
 | Task 3：Grounded Answer & Retrieval Inspector | **Planned** | Task 2B | 结构化来源引用、Web 来源展示、安全 Retrieval Inspector 与端到端证据 | [Task 3](./phase-08-grounded-retrieval/task-03-grounded-answer-retrieval-inspector.md) |
 
-原 Task 2 被拆成两个独立 Task，是为了避免一个 Issue 同时跨越数据库 / Retrieval / Evaluation 与 Tool / Agent Runtime 两个工程边界。Task 2A 只证明检索层，Task 2B 才接入 Agent。
+原 Task 2 被拆成两个独立 Task，是为了避免一个 Issue 同时跨越数据库 / Provider / Retrieval / Evaluation 与 Tool / Agent Runtime 两个工程边界。Task 2A 只证明检索层，Task 2B 才接入 Agent。
 
 ## Phase 8 Task 0 收口事实
 
@@ -62,9 +62,33 @@ Task 0 建立的是 Retrieval 工程边界与 lexical 离线评估基线，不�
 - GPT 技术验收：通过；
 - 用户确认验收：已确认；
 - 远程任务分支：保留，未执行清理；
-- 已接受边界：真实 OpenAI smoke 与真实 pgvector integration/concurrency 未执行，不得倒写为 PASS。
+- 已接受边界：真实 OpenAI smoke 与真实 pgvector integration / concurrency 未执行，不得倒写为 PASS。
 
-Task 1 建立的是确定性 Chunk、Embedding Provider、pgvector active index、幂等 CLI 和索引可靠性边界；它不包含 Vector Search、Hybrid Ranking、Tool 接入或 Citation。
+Task 1 建立的是确定性 Chunk、Embedding Provider、pgvector active index、幂等 CLI 和索引可靠性边界；它不包含 Vector Search、Hybrid Ranking、Tool 接入或 Citation。Task 2A 后续切换 active Provider 不改变 Task 1 当时的历史交付事实。
+
+## Phase 8 Task 2A 最新决策
+
+用户没有 OpenAI API 服务，已创建 Gemini API Key。Issue #54 和 Task 文档已将 active profile 改为：
+
+```text
+provider: google
+model: gemini-embedding-2
+dimensions: 1536
+embeddingVersion: google:gemini-embedding-2:1536:search-result-v1
+```
+
+关键边界：
+
+- DeepSeek 继续负责 Chat / Agent LLM；
+- Embedding 只读取 `GEMINI_API_KEY`，不回退到 `LLM_*`；
+- Query 使用 `task: search result | query: ...`；Document 使用 `title: ... | text: ...`；
+- Gemini Embedding 2 不使用 `taskType`，formatter 与 provider profile 共同版本化；
+- 多个 Chunk 必须各自产生独立向量，不能被聚合为一条；
+- 旧 OpenAI profile 与 Gemini profile 不混查；
+- 现有 `vector(1536)` schema 保留，但必须在隔离 pgvector 环境执行真实 Gemini smoke 与 full reindex；
+- Task 2A 仍不接 Tool / Agent。
+
+上一轮 Codex Gate 基于旧 OpenAI 规格，已不再适用于最新 Issue。当前必须重新 Gate，不能直接从旧 `BLOCKED` 或旧假设继续实现。
 
 ## Admin Console Enhancement 1 收口事实
 
@@ -81,9 +105,9 @@ Enhancement 1 将单 Run Detail 重构为紧凑 Run Trace Workspace，建立 Com
 
 ## 当前正式动作
 
-Task 2A 已创建独立 Issue #54，当前状态为 `Next / Gate 未执行`。下一步由 Codex 针对 Issue #54 执行 Clarification Gate；Gate `READY` 前仍没有 Active Agent Task，也不得修改正式代码。
+Task 2A 已创建独立 Issue #54，最新状态为 `Next / Gemini 规格已更新 / Gate 待重新执行`。
 
-Task 2A 必须先在 pgvector-capable PostgreSQL 16 环境补齐 Task 1 的真实 DB integration / concurrency 与真实 OpenAI Embedding smoke，再实现 Query Embedding、exact vector retrieval、Chunk -> Article aggregation、RRF 与 quality-v2 Evaluation。
+下一步由 Codex重新读取 Issue #54、Task 2A 文档、`docs/development-workflow.md`、最新 `master` 与相关代码，重新执行 Clarification Gate。Gate `READY` 前仍没有 Active Agent Task，也不得修改正式代码。
 
 Task 2B、Task 3 不得越过 Task 2A 提前启动。Minimal Compaction 继续保持 `Gated`，不属于 Phase 8 默认任务。
 
@@ -101,6 +125,7 @@ Task 2B、Task 3 不得越过 Task 2A 提前启动。Minimal Compaction 继续�
 
 - 一个 Issue 只对应一个明确 Task；
 - Planned / Next 文档不能替代正式 Issue；
+- Issue 发生实质性规格变化后必须重新 Gate；
 - Gate `READY` 前不得修改正式代码；
 - Codex 实现后只能写“已实现、待验收”；
 - Completed 必须同时具备 GPT 技术验收和用户确认；
