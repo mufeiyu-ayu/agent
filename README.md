@@ -206,7 +206,8 @@ Current mainline status:
 - Task 1 `Model-aware Budget & Dynamic History` is Completed via Issue #42 / PR #43, merge `6df72f0`.
 - Task 2 `Loop-aware Context & Observation Governance` is Completed via Issue #44 / PR #45, merge `2f06355c`.
 - Task 3 `Context Inspector & Phase Baseline` is Completed via Issue #46 / PR #47, merge `caf3d25b`.
-- Phase 8 Task 0 `Retrieval Boundary & Offline Evaluation Baseline` is Active: implementation complete, acceptance pending.
-- Minimal Compaction remains Gated; Task 1 has not started.
+- Phase 8 Task 0 `Retrieval Boundary & Offline Evaluation Baseline` is Completed via Issue #48 / PR #49, merge `4c2f7950`.
+- Phase 8 remains Active, but there is currently no Active Agent Task; Task 1 has not started.
+- Minimal Compaction remains Gated.
 
 See [`docs/roadmap.md`](./docs/roadmap.md), [`docs/tasks/README.md`](./docs/tasks/README.md), the [Phase 7 archive](./docs/tasks/completed/phase-07-context-engineering.md), and the [Phase 6 archive](./docs/tasks/completed/phase-06-bounded-agent-loop.md).
