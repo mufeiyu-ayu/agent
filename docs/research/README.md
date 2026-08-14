@@ -43,9 +43,9 @@
 
 ```text
 阶段 1-7：Completed
-Active Agent Task：无
+Phase 8 Task 0：Active / 已实现、待验收
 Minimal Compaction：Gated
-下一正式阶段：尚未定案
+Task 1：未启动
 ```
 
 后续方向必须基于最新代码、真实产品需求和学习收益重新讨论，不能从研究路线自动推进。
@@ -80,7 +80,7 @@ Minimal Compaction：Gated
 | --- | --- | --- |
 | Tool Call / Result 如何配对 | [codex-reference/tool-loop.md](./codex-reference/tool-loop.md) | Phase 6 已实现，资料用于复盘与后续扩展 |
 | Context Budget、History 与 Observation 如何治理 | [codex-reference/context-history.md](./codex-reference/context-history.md) | Phase 7 已建立 Baseline；Minimal Compaction 继续 Gated |
-| RAG / Retrieval 如何进入低信任 Context | [codex-reference/context-history.md](./codex-reference/context-history.md)、[codex-reference/how-to-use.md](./codex-reference/how-to-use.md) | 尚未进入正式 Task |
+| RAG / Retrieval 如何进入低信任 Context | [codex-reference/context-history.md](./codex-reference/context-history.md)、[codex-reference/how-to-use.md](./codex-reference/how-to-use.md) | Phase 8 Task 0 已建立 Retrieval Boundary 与离线 Evaluation Baseline；后续能力未启动 |
 | 崩溃后如何恢复 | [codex-reference/durability-recovery.md](./codex-reference/durability-recovery.md) | 研究资料，未排期 |
 | 写操作如何审批 | [codex-reference/safety-permission.md](./codex-reference/safety-permission.md) | 研究资料，未排期 |
 | MCP / Multi-agent 何时引入 | [codex-reference/extensibility-and-multi-agent.md](./codex-reference/extensibility-and-multi-agent.md) | 研究资料，未排期 |

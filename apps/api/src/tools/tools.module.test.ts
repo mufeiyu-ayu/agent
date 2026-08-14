@@ -4,6 +4,7 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
 import { PrismaModule } from '../prisma/prisma.module.js'
+import { PrismaArticleRetriever } from '../retrieval/prisma-article-retriever.js'
 import { GetArticleDetailTool } from './articles/get-article-detail.tool.js'
 import { SearchArticlesTool } from './articles/search-articles.tool.js'
 import { ToolInvocationService } from './core/tool-invocation.service.js'
@@ -29,6 +30,7 @@ describe('ToolsModule', () => {
     assert.deepEqual(providers, [
       ToolRegistryService,
       ToolInvocationService,
+      PrismaArticleRetriever,
       SearchArticlesTool,
       GetArticleDetailTool,
     ])

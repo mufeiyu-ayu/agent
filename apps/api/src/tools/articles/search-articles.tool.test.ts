@@ -15,6 +15,7 @@ import assert from 'node:assert/strict'
 // eslint-disable-next-line test/no-import-node-test
 import { describe, it } from 'node:test'
 
+import { PrismaArticleRetriever } from '../../retrieval/prisma-article-retriever.js'
 import { toModelToolSpec } from '../core/model-tool-spec.mapper.js'
 import { ToolInvocationService } from '../core/tool-invocation.service.js'
 import { ToolRegistryService } from '../core/tool-registry.service.js'
@@ -131,6 +132,10 @@ describe('search_articles', () => {
     }])
     assert.equal(data.articles[0]?.excerpt.length, 500)
     assert.equal(Object.hasOwn(data.articles[0] ?? {}, 'content'), false)
+    assert.equal(
+      result.modelContent,
+      `共找到 12 篇匹配文章，以下是 1 条精简结果：\n${JSON.stringify(data.articles)}`,
+    )
     assert.doesNotMatch(result.modelContent, new RegExp(FULL_CONTENT))
     assert.doesNotMatch(result.modelContent, /<p>|<\/p>/)
   })
@@ -181,7 +186,7 @@ describe('search_articles', () => {
 
   it('Executor 在 transaction acquisition 前响应已触发的 Tool signal', async () => {
     const fakePrisma = new FakePrismaService()
-    const tool = new SearchArticlesTool(fakePrisma as unknown as PrismaService)
+    const tool = new SearchArticlesTool(createRetriever(fakePrisma))
     const abortController = new AbortController()
 
     abortController.abort()
@@ -202,7 +207,7 @@ describe('search_articles', () => {
     const fakePrisma = new FakePrismaService({
       beforeTransactionCallback: () => abortController.abort(),
     })
-    const tool = new SearchArticlesTool(fakePrisma as unknown as PrismaService)
+    const tool = new SearchArticlesTool(createRetriever(fakePrisma))
     const context = createContext(abortController.signal)
 
     await assert.rejects(
@@ -222,7 +227,7 @@ describe('search_articles', () => {
     const fakePrisma = new FakePrismaService({
       afterCount: () => abortController.abort(),
     })
-    const tool = new SearchArticlesTool(fakePrisma as unknown as PrismaService)
+    const tool = new SearchArticlesTool(createRetriever(fakePrisma))
 
     await assert.rejects(
       tool.execute(
@@ -327,7 +332,7 @@ interface FakeFindManyArguments {
 function createTools(fakePrisma = new FakePrismaService()) {
   const registry = new ToolRegistryService()
   const searchArticlesTool = new SearchArticlesTool(
-    fakePrisma as unknown as PrismaService,
+    createRetriever(fakePrisma),
   )
   registry.register({
     definition: searchArticlesDefinition,
@@ -338,6 +343,10 @@ function createTools(fakePrisma = new FakePrismaService()) {
     registry,
     invocationService: new ToolInvocationService(registry),
   }
+}
+
+function createRetriever(fakePrisma: FakePrismaService): PrismaArticleRetriever {
+  return new PrismaArticleRetriever(fakePrisma as unknown as PrismaService)
 }
 
 function createEnvelope(input: Record<string, unknown>) {

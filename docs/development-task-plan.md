@@ -15,9 +15,9 @@
 
 ```text
 Phase 1-7：Completed
-Active Agent Task：无
+Phase 8 Task 0：Active / 已实现、待验收
 Minimal Compaction：Gated
-下一正式阶段：尚未定案
+Task 1：未启动
 ```
 
 ## 已完成阶段归档
@@ -25,6 +25,6 @@ Minimal Compaction：Gated
 - Phase 6：[`docs/tasks/completed/phase-06-bounded-agent-loop.md`](./tasks/completed/phase-06-bounded-agent-loop.md)；
 - Phase 7：[`docs/tasks/completed/phase-07-context-engineering.md`](./tasks/completed/phase-07-context-engineering.md)。
 
-RAG、Permission / HITL、Durable Recovery、MCP / Skill、Planner / Workflow 和 Multi-agent 仍是候选方向，尚未形成下一正式 Task。
+Phase 8 Task 0 已通过 Issue #48 进入正式流程；Task 1 未启动。
 
 本文件仅保留旧链接兼容。当前状态以 `docs/tasks/**`、`docs/roadmap.md` 与 GitHub 实时事实为准。

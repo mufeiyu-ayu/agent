@@ -4,7 +4,7 @@
 
 ## 当前判断
 
-项目已经完成从基础 LLM Chat 到 Session、Streaming、Agent Runtime、最小 Tool Calling、bounded sequential Agent Loop、Runtime reliability，再到 Context Engineering 的连续学习闭环；Admin Console 的真实 Observability Baseline 与安全 Context Inspector 也已经建立。
+项目已经完成从基础 LLM Chat 到 Context Engineering 的连续学习闭环；Phase 8 Task 0 现已建立 Article Retrieval Boundary 与确定性离线 Evaluation Baseline，处于已实现、待验收状态。
 
 Phase 7 `Context Engineering` 已完成 GPT 技术验收、用户确认验收，并通过 Issue #46 / PR #47 合入 `master`。Task 0-3 均已 Completed，最终 merge commit 为 `caf3d25b7af0e5b30ae47d3c96faab4138fbdb9e`。
 
@@ -12,11 +12,10 @@ Phase 7 `Context Engineering` 已完成 GPT 技术验收、用户确认验收，
 
 ```text
 阶段 1-7：Completed
-Active Agent Task：无
+Phase 8 Task 0：Active / 已实现、待验收
 Minimal Compaction：Gated
 Admin Observability：Task 0-3 Completed
 Admin Task 4：Planned
-下一阶段：尚未定案
 ```
 
 ## 阶段路线
@@ -30,6 +29,7 @@ Admin Task 4：Planned
 | 阶段 5：最小 Tool Calling | Completed | 单次 Tool Call、Observation 与第二轮 sampling |
 | [阶段 6：有界单 Agent Loop](./tasks/completed/phase-06-bounded-agent-loop.md) | **Completed** | 多轮顺序决策、执行预算、DeepSeek continuation、DB deadline 与终态可靠性 |
 | [阶段 7：Context Engineering](./tasks/completed/phase-07-context-engineering.md) | **Completed** | Context 边界、model-aware budget、Dynamic History、Loop Context Governance、Context Inspector |
+| [阶段 8：Grounded Retrieval / RAG Baseline](./tasks/phase-08-grounded-retrieval/task-00-retrieval-boundary-evaluation.md) | **Active** | Task 0：Retrieval Boundary、Prisma lexical adapter、离线 corpus 与 metrics；已实现、待验收 |
 
 ## Phase 7 最终交付
 
@@ -82,16 +82,6 @@ Admin Task 2 + Task 3 已建立真实 Run / Step Read API、Run List / Detail、
 
 Issue #37 / PR #38 已完成并合入 `master`，merge commit `415d740507a29ee4bd9b6a4aa26d9c4fbb9668c1`。该独立任务完成了 Chat 原生滚动 viewport、流式跟随、用户上滚暂停、scroll memory 和响应式布局。
 
-## 下一阶段如何决定
+## 当前正式动作
 
-当前没有 Active Agent Task，也不提前锁死下一阶段号。后续应基于最新 `master`、真实产品价值、学习收益和作品集完整度重新比较：
-
-1. RAG / Embedding / Hybrid Retrieval；
-2. Permission / Approval / Human-in-the-loop；
-3. Durable Recovery / Resume；
-4. MCP / Plugin / Skill；
-5. Planner / Workflow / 并行 Tool Call；
-6. Multi-agent；
-7. 有真实 Context 压力证据时再讨论 Minimal Compaction。
-
-任何候选方向都不会因为 `docs/research/**` 已经存在相关资料而自动进入正式任务。必须先完成需求讨论、任务规格、Issue 和 Clarification Gate。
+Phase 8 Task 0 已通过 Issue #48 的 Clarification Gate，当前为 Active，实施状态为已实现、验收状态为待验收。Task 1 未启动；Minimal Compaction 继续保持 Gated。

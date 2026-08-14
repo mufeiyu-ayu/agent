@@ -38,12 +38,12 @@
 
 ```text
 阶段 1-7：Completed
-Active Agent Task：无
+Phase 8 Task 0：Active / 已实现、待验收
 Minimal Compaction：Gated
-下一正式阶段：尚未定案
+Task 1：未启动
 ```
 
-Context Engineering、Runtime reliability 与真实 Observability Baseline 已经建立。RAG、Permission / HITL、Durable Recovery、MCP / Skill、Planner / Workflow 和 Multi-agent 仍是候选方向，不因本知识库存在相关专题而自动排期。
+Context Engineering、Runtime reliability 与真实 Observability Baseline 已经建立。Phase 8 Task 0 已建立 Retrieval Boundary 与离线 Evaluation Baseline；后续 Retrieval 能力、Permission / HITL、Durable Recovery、MCP / Skill、Planner / Workflow 和 Multi-agent 不因本知识库存在相关专题而自动排期。
 
 ## 阅读顺序
 
@@ -63,7 +63,7 @@ Context Engineering、Runtime reliability 与真实 Observability Baseline 已�
 | 工具结果是否进入 UI Message | [tool-loop.md](./tool-loop.md)、[context-history.md](./context-history.md) | 当前已按 UI / model / runtime / durable facts 分层 |
 | Tool 失败、Abort 与终态如何收口 | [tool-loop.md](./tool-loop.md)、[durability-recovery.md](./durability-recovery.md) | Phase 6 已建立同步执行可靠性；跨进程恢复未实现 |
 | Context 长度、History 与 Observation 如何治理 | [context-history.md](./context-history.md) | Phase 7 已建立 Budget / Selection / Inspector；Compaction Gated |
-| RAG / Retrieval 如何进入 Agent | [context-history.md](./context-history.md)、[how-to-use.md](./how-to-use.md) | 候选方向，尚未进入正式 Task |
+| RAG / Retrieval 如何进入 Agent | [context-history.md](./context-history.md)、[how-to-use.md](./how-to-use.md) | Phase 8 Task 0 Active；仅完成 Retrieval Boundary 与离线 Evaluation Baseline |
 | 如何做跨进程恢复 | [durability-recovery.md](./durability-recovery.md) | 研究资料，未排期 |
 | 写操作工具如何保护 | [safety-permission.md](./safety-permission.md) | 研究资料，未排期 |
 | 什么时候做 MCP / Multi-agent | [extensibility-and-multi-agent.md](./extensibility-and-multi-agent.md) | 明确后置，需证明真实必要性 |

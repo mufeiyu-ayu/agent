@@ -6,9 +6,9 @@
 
 ```text
 阶段 1-7：Completed
-Active Agent Task：无
+Phase 8 Task 0：Active / 已实现、待验收
 Minimal Compaction：Gated
-下一正式阶段：尚未定案
+Task 1：未启动
 ```
 
 最新能力与边界见 [current-agent-baseline.md](./current-agent-baseline.md)。正式任务状态见 [`../../tasks/README.md`](../../tasks/README.md)，阶段路线见 [`../../roadmap.md`](../../roadmap.md)。
@@ -30,7 +30,7 @@ Minimal Compaction：Gated
 | --- | --- | --- |
 | Runtime / Agent Loop | [core-runtime.md](./core-runtime.md)、[tool-loop.md](./tool-loop.md) | Phase 6 已完成有界顺序 Loop 与同步执行可靠性 |
 | Context Engineering | [context-history.md](./context-history.md) | Phase 7 已完成 Budget、Dynamic History、逐轮治理与 Inspector |
-| RAG / Retrieval / Memory | [context-history.md](./context-history.md)、[extensibility-and-multi-agent.md](./extensibility-and-multi-agent.md) | 候选方向，尚未进入正式 Task |
+| RAG / Retrieval / Memory | [context-history.md](./context-history.md)、[extensibility-and-multi-agent.md](./extensibility-and-multi-agent.md) | Phase 8 Task 0 Active；后续 Retrieval 与 Memory 能力未启动 |
 | Permission / Approval / HITL | [safety-permission.md](./safety-permission.md) | 候选方向，尚未进入正式 Task |
 | Durable Recovery / Resume | [durability-recovery.md](./durability-recovery.md) | 候选方向，当前没有跨进程恢复与 operation receipt |
 | MCP / Plugin / Skill / Multi-agent | [extensibility-and-multi-agent.md](./extensibility-and-multi-agent.md) | 研究专题，不代表已经排期 |
