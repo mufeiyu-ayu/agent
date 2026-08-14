@@ -6,27 +6,27 @@
 
 ```text
 阶段 1-7：Completed
-Phase 8：Active / Task 0-1 Completed / Task 2A Next (#54) / Task 2B 与 Task 3 Planned
+Phase 8：Active / Task 0-1 Completed / Task 2A Next (#54，Gemini 规格已更新、Gate 待重跑) / Task 2B 与 Task 3 Planned
 Active Agent Task：无
 Minimal Compaction：Gated
 ```
 
 Phase 8 Task 0 已通过 Issue #48 / PR #49 完成验收并合入 `master`，merge commit 为 `4c2f795084e7bccac205509d8c31b56dbe7ccf0b`。
 
-Phase 8 Task 1 已通过 Issue #50 / PR #52 完成 GPT 技术验收和用户确认，并合入 `master`，merge commit 为 `76d66abf7af426e2a26f9b5765d1eb7a72382007`。
+Phase 8 Task 1 已通过 Issue #50 / PR #52 完成 GPT 技术验收和用户确认，并合入 `master`，merge commit 为 `76d66abf7af426e2a26f9b5765d1eb7a72382007`。Task 1 当时建立的是 OpenAI-specific Embedding baseline，但真实 OpenAI smoke 与真实 pgvector integration / concurrency 未执行。
 
-原 Task 2 已拆为 Task 2A 与 Task 2B。Task 2A `Vector / Hybrid Retrieval & Evaluation` 已创建 Issue #54，当前为 `Next / Gate 未执行`；Task 2B 与 Task 3 仍为 Planned。当前没有 Active Agent Task。
+原 Task 2 已拆为 Task 2A 与 Task 2B。Task 2A Issue #54 已根据用户没有 OpenAI API、已创建 Gemini API Key这一事实完成实质性规格更新：DeepSeek 继续负责 Chat / Agent，Embedding active profile 改为 `google:gemini-embedding-2:1536:search-result-v1`。上一轮 Gate 基于旧 OpenAI 规格，当前需重新执行；Task 2B 与 Task 3 仍为 Planned。
 
 ## 文档入口
 
 | 文档 | 用途 |
 | --- | --- |
-| [roadmap.md](./roadmap.md) | 阶段路线、Phase 8 Task 编排与当前正式动作 |
+| [roadmap.md](./roadmap.md) | 阶段路线、Gemini Embedding 决策、Phase 8 Task 编排与当前正式动作 |
 | [tasks/README.md](./tasks/README.md) | 正式任务看板、状态和启动规则 |
 | [tasks/phase-08-grounded-retrieval/README.md](./tasks/phase-08-grounded-retrieval/README.md) | Phase 8 完整目标、Task 0 / 1 / 2A / 2B / 3、阶段不变量与完成条件 |
 | [tasks/phase-08-grounded-retrieval/task-00-retrieval-boundary-evaluation.md](./tasks/phase-08-grounded-retrieval/task-00-retrieval-boundary-evaluation.md) | Completed：Retrieval Boundary 与 lexical 离线评估基线 |
-| [tasks/phase-08-grounded-retrieval/task-01-article-chunking-embedding-index.md](./tasks/phase-08-grounded-retrieval/task-01-article-chunking-embedding-index.md) | Completed：确定性 Chunking、Embedding 与幂等 pgvector Index |
-| [tasks/phase-08-grounded-retrieval/task-02-hybrid-retrieval-tool.md](./tasks/phase-08-grounded-retrieval/task-02-hybrid-retrieval-tool.md) | Next / #54：Vector / Hybrid Retrieval 与 quality-v2 Evaluation，不接 Agent Tool |
+| [tasks/phase-08-grounded-retrieval/task-01-article-chunking-embedding-index.md](./tasks/phase-08-grounded-retrieval/task-01-article-chunking-embedding-index.md) | Completed：确定性 Chunking、Embedding 与幂等 pgvector Index 的历史交付 |
+| [tasks/phase-08-grounded-retrieval/task-02-hybrid-retrieval-tool.md](./tasks/phase-08-grounded-retrieval/task-02-hybrid-retrieval-tool.md) | Next / #54：OpenAI→Gemini Provider 迁移、Vector / Hybrid Retrieval 与 quality-v2 Evaluation，不接 Agent Tool |
 | [tasks/phase-08-grounded-retrieval/task-02b-retrieval-tool-agent-integration.md](./tasks/phase-08-grounded-retrieval/task-02b-retrieval-tool-agent-integration.md) | Planned：专用 Retrieval Tool 与 Agent Integration |
 | [tasks/phase-08-grounded-retrieval/task-03-grounded-answer-retrieval-inspector.md](./tasks/phase-08-grounded-retrieval/task-03-grounded-answer-retrieval-inspector.md) | Planned：来源引用、Web 展示与 Retrieval Inspector |
 | [tasks/completed/phase-07-context-engineering.md](./tasks/completed/phase-07-context-engineering.md) | Phase 7 最终能力、验证和已接受边界 |
@@ -54,6 +54,7 @@ Phase 8 Task 1 已通过 Issue #50 / PR #52 完成 GPT 技术验收和用户确�
 - 每个 Task 使用独立文档，一个正式 Issue 只对应一个 Task；
 - Planned 不代表 Next 或 Active，不能据此直接实现；
 - `Next` 表示下一项正式任务或 Issue 已创建但 Gate 尚未 READY；
+- Issue / Task 规格发生实质性变化后，旧 Gate 结论失效，必须重新 Gate；
 - 已完成阶段统一归档到 `docs/tasks/completed/**`；当前 Phase 8 仍 Active，因此其已完成 Task 保留在阶段目录；
 - `docs/work-log.md` 只记录真实发生的事项；
-- 当前下一步是让 Codex 针对 Issue #54 执行 Clarification Gate；Gate `READY` 前不得实现。Task 2B 与 Task 3 不得提前启动。
+- 当前下一步是让 Codex 基于 Issue #54 最新 Gemini 规格重新执行 Clarification Gate；Gate `READY` 前不得实现。Task 2B 与 Task 3 不得提前启动。
