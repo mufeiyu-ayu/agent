@@ -6,12 +6,13 @@
 
 ```text
 阶段 1-7：Completed
-Phase 8 Task 0：Active / 已实现、待验收
+Phase 8：Active / Task 0 Completed
+Active Agent Task：无
 Minimal Compaction：Gated
 Task 1：未启动
 ```
 
-Phase 7 `Context Engineering` 已完成 GPT 技术验收、用户确认验收，并通过 Issue #46 / PR #47 合入 `master`，merge commit 为 `caf3d25b7af0e5b30ae47d3c96faab4138fbdb9e`。Task 0-3 均已 Completed；阶段最终能力和验收证据已归档到 `docs/tasks/completed/**`。Minimal Compaction 当前没有足够证据进入正式实现，继续保持 `Gated`。
+Phase 7 `Context Engineering` 已 Completed。Phase 8 Task 0 已通过 Issue #48 / PR #49 完成验收并合入 `master`，merge commit 为 `4c2f795084e7bccac205509d8c31b56dbe7ccf0b`。Phase 8 继续保持 Active，但当前没有 Active Agent Task；Task 1 未启动。Minimal Compaction 继续保持 `Gated`。
 
 ## 文档入口
 
@@ -43,4 +44,4 @@ Phase 7 `Context Engineering` 已完成 GPT 技术验收、用户确认验收，
 - 当前 Task 细节写在对应 `docs/tasks/**`；已完成阶段统一压缩归档到 `docs/tasks/completed/**`；
 - 完成阶段不继续在 active tasks 区保留兼容目录或长篇 Task 规格；详细历史由 Completed 归档、Issue / PR 和 Git 历史共同承担；
 - `docs/work-log.md` 只保留近期关键事实；
-- Phase 8 Task 0 当前为 Active；Task 1 未启动，仍须建立正式 Issue 并通过 Clarification Gate 后才能进入 Active。
+- Phase 8 Task 0 已 Completed；当前无 Active Agent Task。Task 1 未启动，仍须建立正式 Issue 并通过 Clarification Gate 后才能进入 Active。
