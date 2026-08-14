@@ -21,7 +21,7 @@ Admin Enhancement 1：已实现 / 待验收
 | Phase 7：Context Engineering | **Completed** | [completed/phase-07-context-engineering.md](./completed/phase-07-context-engineering.md) | Task 0-3 Completed；merge `caf3d25b`；Minimal Compaction 继续 Gated |
 | Phase 6：有界单 Agent Loop | **Completed** | [completed/phase-06-bounded-agent-loop.md](./completed/phase-06-bounded-agent-loop.md) | 有界顺序 Loop、配置治理、数据库可靠性与终态收口均已完成 |
 | Admin Console Task 0-3 | **Completed** | [admin-console.md](./admin-console.md) | 真实 Run / Step API、Run Trace、Typed / Generic / Context Inspector 已建立 |
-| Admin Console Enhancement 1 | **已实现 / 待验收** | [enhancement-01-run-trace-workspace.md](./admin-console/enhancement-01-run-trace-workspace.md) | Issue #51；紧凑 Run Trace Workspace；不得标记 Completed |
+| Admin Console Enhancement 1 | **已实现 / 待验收** | [enhancement-01-run-trace-workspace.md](./admin-console/enhancement-01-run-trace-workspace.md) | Issue #51 / Draft PR #53；紧凑 Run Trace Workspace；不得标记 Completed |
 | Admin Console Task 4 | Planned | [admin-console.md](./admin-console.md) | Auth / RBAC / 脱敏；当前不启动 |
 | Web Chat Scroll / UI Follow-up | **Completed** | [work-log.md](../work-log.md) | Issue #37 / PR #38；merge `415d7405` |
 | Phase 5：最小 Tool Calling | **Completed** | [completed/phase-05-tool-calling.md](./completed/phase-05-tool-calling.md) | 已归档 |

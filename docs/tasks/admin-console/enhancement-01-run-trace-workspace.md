@@ -5,6 +5,7 @@
 ```text
 实施状态：已实现
 验收状态：待验收
+PR 状态：Draft
 ```
 
 - Issue：#51 `[Admin Console][Enhancement 1] 将 Run Detail 重构为紧凑 Run Trace Workspace`
@@ -12,7 +13,7 @@
 - 实现分支：`codex/issue-51-run-trace-workspace`
 - Clarification Gate：`READY`
 - Codex Review：本地 Review 唯一 P2（Overview 提示字段不完整）已修复
-- PR：待创建 Draft
+- PR：[#53](https://github.com/mufeiyu-ayu/agent/pull/53) / Draft
 
 本任务是 Admin Observability 的独立 UX Enhancement，不是新的 Agent Phase，也不改变 Phase 8 Task 0-1 Completed、Task 2-3 Planned 或 Admin Task 4 Planned 的状态。
 
