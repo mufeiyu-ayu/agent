@@ -1,6 +1,6 @@
 # Phase 8：Grounded Retrieval / RAG Baseline
 
-状态：**Active / Task 0-1 Completed / Task 2A Next / Task 2B 与 Task 3 Planned / 当前无 Active Task**。
+状态：**Active / Task 0-1 Completed / Task 2A Next (#54) / Task 2B 与 Task 3 Planned / 当前无 Active Task**。
 
 本文件是 Phase 8 的阶段总览与任务编排入口。正式实现状态以各 Task 文档、对应 Issue / PR 和 GitHub 实时事实为准。
 
@@ -63,11 +63,11 @@ Phase 7 已完成 Context Boundary、model-aware Budget、Dynamic History、逐�
 | --- | --- | --- | --- |
 | Task 0：Retrieval Boundary & Offline Evaluation Baseline | **Completed** | 解耦 Retrieval 与 Tool，固化 Prisma lexical 行为和离线评估基线 | [Task 0](./task-00-retrieval-boundary-evaluation.md) |
 | Task 1：Article Chunking & Embedding Index | **Completed** | 建立确定性 Chunk、稳定身份、Embedding 边界与幂等索引 | [Task 1](./task-01-article-chunking-embedding-index.md) |
-| Task 2A：Vector / Hybrid Retrieval & Evaluation | **Next** | 真实 pgvector 验证、Query Embedding、exact vector retrieval、article aggregation、RRF 与 quality-v2 Evaluation | [Task 2A](./task-02-hybrid-retrieval-tool.md) |
+| Task 2A：Vector / Hybrid Retrieval & Evaluation | **Next / #54 Open** | 真实 pgvector 验证、Query Embedding、exact vector retrieval、article aggregation、RRF 与 quality-v2 Evaluation | [Task 2A](./task-02-hybrid-retrieval-tool.md) |
 | Task 2B：Retrieval Tool & Agent Integration | **Planned** | 将稳定 Hybrid Retrieval 通过专用 Tool 接入 Agent，并治理 Observation / Context | [Task 2B](./task-02b-retrieval-tool-agent-integration.md) |
 | Task 3：Grounded Answer & Retrieval Inspector | **Planned** | 建立结构化引用、Grounded Answer、Web 来源展示与安全 Retrieval Inspector | [Task 3](./task-03-grounded-answer-retrieval-inspector.md) |
 
-当前没有 Active Agent Task。Task 2A 是下一项正式任务；Issue 创建后仍保持 `Next`，只有 Clarification Gate `READY` 后才进入 `Active`。
+当前没有 Active Agent Task。Task 2A 的 Issue #54 已创建，但只有 Clarification Gate `READY` 后才进入 `Active`。
 
 ## 4. 推荐执行顺序
 
@@ -76,7 +76,7 @@ Task 0   Retrieval Boundary + Evaluation Baseline        Completed
   ↓
 Task 1   Chunking + Embedding Index                      Completed
   ↓
-Task 2A  Vector / Hybrid Retrieval + Evaluation          Next
+Task 2A  Vector / Hybrid Retrieval + Evaluation          Next / #54
   ↓
 Task 2B  Retrieval Tool + Agent Integration              Planned
   ↓
@@ -98,7 +98,7 @@ Task 3   Grounded Answer + Citation + Inspector          Planned
 - 不预设 similarity threshold，先通过评估观察正负样本分布；
 - Task 2A 不新增 / 修改 Agent Tool，不改 Agent Loop。
 
-完整规格见 [Task 2A](./task-02-hybrid-retrieval-tool.md)。
+完整规格见 [Task 2A](./task-02-hybrid-retrieval-tool.md) 与 Issue #54。
 
 ## 6. 阶段不变量
 
@@ -141,11 +141,11 @@ Phase 8 当前不包含：
 Phase 8：Active
 Task 0：Completed
 Task 1：Completed / Issue #50 / PR #52 / merge 76d66abf
-Task 2A：Next / 待创建 Issue / Gate 未执行
+Task 2A：Next / Issue #54 Open / Gate 未执行
 Task 2B：Planned
 Task 3：Planned
 Active Agent Task：无
 Minimal Compaction：Gated
 ```
 
-下一步创建 Task 2A 独立 Issue，并执行 Clarification Gate。Gate `READY` 前不得修改正式代码。Task 2B、Task 3 与 Minimal Compaction 均不得提前启动。
+下一步由 Codex 针对 Issue #54 执行 Clarification Gate。Gate `READY` 前不得修改正式代码。Task 2B、Task 3 与 Minimal Compaction 均不得提前启动。
