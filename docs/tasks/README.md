@@ -6,8 +6,8 @@
 
 | 区域 | 状态 | 文档 | 说明 |
 | --- | --- | --- | --- |
-| Agent 主线 | **Phase 8 Task 0 Active** | [roadmap.md](../roadmap.md) | Issue #48；Retrieval Boundary 与离线 Evaluation Baseline 已实现、待验收 |
-| Phase 8：Grounded Retrieval / RAG Baseline | **Active** | [task-00-retrieval-boundary-evaluation.md](./phase-08-grounded-retrieval/task-00-retrieval-boundary-evaluation.md) | Task 0 已实现、待验收；不提前启动 Task 1 |
+| Agent 主线 | **Phase 8 Active / 无 Active Task** | [roadmap.md](../roadmap.md) | Task 0 已验收并合并；Task 1 未启动 |
+| Phase 8：Grounded Retrieval / RAG Baseline | **Active / Task 0 Completed** | [task-00-retrieval-boundary-evaluation.md](./phase-08-grounded-retrieval/task-00-retrieval-boundary-evaluation.md) | Issue #48 / PR #49；merge `4c2f7950`；Task 1 未启动 |
 | Phase 7：Context Engineering | **Completed** | [completed/phase-07-context-engineering.md](./completed/phase-07-context-engineering.md) | Task 0-3 Completed；merge `caf3d25b`；Minimal Compaction 继续 Gated |
 | Phase 6：有界单 Agent Loop | Completed | [completed/phase-06-bounded-agent-loop.md](./completed/phase-06-bounded-agent-loop.md) | Task 0、横向配置治理、Task 1、Task 2 均已验收并合并 |
 | Admin Console Task 0-1 | Completed | [admin-console.md](./admin-console.md) | 基础壳与静态 Run UI 已完成 |
@@ -24,8 +24,10 @@
 
 ```text
 阶段 1-7：Completed
-Phase 8 Task 0：Active / 已实现、待验收
+Phase 8：Active / Task 0 Completed
+Active Agent Task：无
 Minimal Compaction：Gated
+Task 1：未启动
 ```
 
 Phase 7 最终交付：
@@ -44,7 +46,7 @@ Task 3 已由 GPT 基于 Issue #46、PR #47 最新 head `e0eaa33e449486a5b30a0a8
 - Task 3 正式状态为 `Completed`；
 - Phase 7 正式状态为 `Completed`；
 - Phase 7 active 规格已压缩归档到 [`completed/phase-07-context-engineering.md`](./completed/phase-07-context-engineering.md)；
-- Phase 7 收口当时没有 Active Agent Task；Phase 8 Task 0 现已进入 Active；
+- Phase 7 收口当时没有 Active Agent Task；Phase 8 已启动，Task 0 现已 Completed；
 - Minimal Compaction 没有被自动启动，继续保持 `Gated`。
 
 ## Admin Console 当前状态
@@ -61,9 +63,17 @@ Admin Task 2 + Task 3 已建立真实 Observability Baseline：服务端安全 R
 
 Phase 7 Task 3 已在该基线上增加 Context Inspector，但不自动启动 Admin Task 4。
 
+## Phase 8 当前交付
+
+| Task | 状态 | Issue / PR | Merge commit | 核心结果 |
+| --- | --- | --- | --- | --- |
+| Task 0：Retrieval Boundary & Offline Evaluation Baseline | **Completed** | #48 / #49 | `4c2f7950` | Article Retrieval Contract、Prisma lexical adapter、确定性离线 corpus、Recall@K / MRR baseline |
+
+GPT 已基于 PR #49 最终 head `79c6f44b45a64f3590321fe681e2d9141a919dc8`、修复后的测试、Codex Review 与完整 diff 完成技术验收。用户于 2026-08-14 明确确认验收并授权转 Ready、合并和关闭；PR #49 已合入 `master`，merge commit 为 `4c2f795084e7bccac205509d8c31b56dbe7ccf0b`，Issue #48 已关闭。
+
 ## 当前正式动作
 
-Phase 8 Task 0 已通过 Issue #48 的 Clarification Gate，并完成本地实现与验证，等待 Draft PR 技术验收。Task 1 尚未创建正式 Issue，不得提前启动。
+当前没有 Active Agent Task。Task 1 尚未创建正式 Issue，也没有被自动启动；后续必须先完成需求讨论、任务规格、Issue 与 Clarification Gate。
 
 ## 状态定义
 
