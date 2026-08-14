@@ -94,6 +94,7 @@ Query:
 固定工程边界：
 
 - 只读取 `GEMINI_API_KEY`，不回退到 DeepSeek `LLM_*` 或旧 `EMBEDDING_API_KEY`；
+- 普通 `index:articles` 只读取 `DATABASE_URL`；隔离验证必须使用只读取 `ARTICLE_INDEX_TEST_DATABASE_URL` 的显式 `index:articles:integration` 入口，变量缺失或两个 URL 完全相同时 fail closed；
 - Gemini Embedding 2 不使用 `taskType`；
 - Query / Document formatter 与 provider profile 共同版本化；
 - 多个 Chunk 必须各自产生独立向量，不能聚合为一条；
@@ -181,4 +182,4 @@ Clarification Gate：READY（2026-08-15）
 下一步：对 Draft PR #55 进行技术验收
 ```
 
-shared Gemini Provider、隔离 pgvector、exact cosine Retrieval、article aggregation、独立 lexical strategy、RRF 与 quality-v2 已实现；真实 smoke 和 DB suites 已通过。确定性 corpus 为 2044 Chunks，当前 Gemini free-tier Embed Content 日配额为 1000，因此 full indexing 与 production quality-v2 尚未通过，不能记录为 PASS 或据此设置 threshold。Task 2B、Task 3、Admin Task 4 与 Minimal Compaction 均不得提前实现。
+shared Gemini Provider、隔离 pgvector、exact cosine Retrieval、article aggregation、独立 lexical strategy、RRF 与 quality-v2 已实现；真实 smoke 和 DB suites 已通过。确定性 corpus 为 2044 Chunks，当前 Gemini free-tier Embed Content 日配额为 1000；AC-05 保持 FAILED，AC-09 / AC-11 保持 PARTIAL。留存 tool-call 日志与隔离库中的 539 个 Gemini Chunks 可证明此前 partial full indexing 连接隔离库；但 PR 旧验证命令本身不能复现该行为，已改为显式 integration 入口。需要足够合法配额后重新执行。Task 2B、Task 3、Admin Task 4 与 Minimal Compaction 均不得提前实现。

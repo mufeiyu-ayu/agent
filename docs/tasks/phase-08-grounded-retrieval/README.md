@@ -82,7 +82,7 @@ DeepSeek 继续作为 Chat / Agent LLM。Task 2A 不把 DeepSeek Key 用作 Embe
 | Task 2B：Retrieval Tool & Agent Integration | **Planned** | 将稳定 Hybrid Retrieval 通过专用 Tool 接入 Agent，并治理 Observation / Context | [Task 2B](./task-02b-retrieval-tool-agent-integration.md) |
 | Task 3：Grounded Answer & Retrieval Inspector | **Planned** | 建立结构化引用、Grounded Answer、Web 来源展示与安全 Retrieval Inspector | [Task 3](./task-03-grounded-answer-retrieval-inspector.md) |
 
-当前 Active Agent Task 为 Task 2A。Clarification Gate 已于 2026-08-15 基于最新 Issue、docs 与 `origin/master@eee795bd` 得出 `READY`；实现与自动验证已完成，真实 full indexing / production quality-v2 因当前 Gemini free-tier Embed Content 日配额不足仍未通过，等待技术验收。
+当前 Active Agent Task 为 Task 2A。Clarification Gate 已于 2026-08-15 基于最新 Issue、docs 与 `origin/master@eee795bd` 得出 `READY`；实现与自动验证已完成，AC-05 保持 FAILED，AC-09 / AC-11 保持 PARTIAL，等待技术验收。留存 tool-call 日志与隔离库中的 539 个 Gemini Chunks 可证明此前 partial full indexing 连接隔离库；PR 旧验证命令本身无效，已由显式 integration 入口替换。
 
 ## 4. 推荐执行顺序
 
@@ -106,6 +106,7 @@ Task 3   Grounded Answer + Citation + Inspector          Planned
 
 - DeepSeek 保持 Chat / Agent LLM；
 - Embedding 使用 `GEMINI_API_KEY`，不回退到 `LLM_*` 或旧 `EMBEDDING_API_KEY`；
+- 普通 `index:articles` 只读取 `DATABASE_URL`；隔离 full indexing 必须使用显式 `index:articles:integration` 入口，只读取 `ARTICLE_INDEX_TEST_DATABASE_URL`，缺失、回退或与开发 URL 完全相同都必须 fail closed；
 - active model 为 `gemini-embedding-2`，输出 1536 维；
 - Query formatter：`task: search result | query: {normalized query}`；
 - Document formatter：`title: {article title} | text: {section path + normalized chunk text}`；
@@ -180,4 +181,4 @@ Active Agent Task：Task 2A
 Minimal Compaction：Gated
 ```
 
-下一步为对 Draft PR #55 进行技术验收。Task 2A 当前不能标记 Completed：真实 full indexing 与 production quality-v2 尚受 Gemini free-tier Embed Content 日配额阻塞。Task 2B、Task 3 与 Minimal Compaction 均不得提前启动。
+下一步为对 Draft PR #55 进行技术验收。Task 2A 当前不能标记 Completed：需要足够合法 Gemini 配额后，通过修复后的显式 integration 入口重新执行隔离 full indexing，再生成 production quality-v2 与正负样本距离分布。Task 2B、Task 3 与 Minimal Compaction 均不得提前启动。

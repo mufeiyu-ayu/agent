@@ -1,7 +1,7 @@
 import type { OnModuleDestroy, OnModuleInit } from '@nestjs/common'
 import type { Prisma } from '../generated/prisma/client.js'
 import process from 'node:process'
-import { Injectable } from '@nestjs/common'
+import { Inject, Injectable, Optional } from '@nestjs/common'
 import { PrismaPg } from '@prisma/adapter-pg'
 
 import { PrismaClient } from '../generated/prisma/client.js'
@@ -11,6 +11,7 @@ const PG_STATEMENT_TIMEOUT_LEAD_MS = 50
 const PG_LOCK_TIMEOUT_LEAD_MS = 25
 const PRISMA_TRANSACTION_START_TIMEOUT_MS = 8_000
 const DATABASE_COMMIT_OUTCOME_TIMEOUT_MS = 5_000
+const PRISMA_CONNECTION_STRING = Symbol('PRISMA_CONNECTION_STRING')
 
 export interface DatabaseOperationDeadline {
   deadlineAt: number
@@ -54,8 +55,14 @@ export class RollbackSafePrismaPg extends PrismaPg {
 
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
-  constructor() {
-    const connectionString = process.env.DATABASE_URL?.trim()
+  constructor(
+    @Optional()
+    @Inject(PRISMA_CONNECTION_STRING)
+    connectionStringOverride?: string,
+  ) {
+    const connectionString = connectionStringOverride === undefined
+      ? process.env.DATABASE_URL?.trim()
+      : connectionStringOverride.trim()
 
     if (!connectionString) {
       throw new Error('请在项目根目录 .env 中设置 DATABASE_URL')

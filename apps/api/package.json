@@ -17,6 +17,7 @@
     "test:article-indexing-db": "node --import tsx --env-file-if-exists=../../.env --test src/article-indexing/article-indexing.db.test.ts",
     "smoke:embedding": "node --import tsx --env-file-if-exists=../../.env src/embeddings/embedding-smoke.cli.ts",
     "index:articles": "node --import tsx --env-file-if-exists=../../.env src/article-indexing/article-indexing.cli.ts",
+    "index:articles:integration": "node --import tsx --env-file-if-exists=../../.env src/article-indexing/article-indexing.cli.ts --database-scope=integration",
     "test:retrieval": "tsx --test src/retrieval/article-retrieval.test.ts src/retrieval/prisma-article-retriever.test.ts src/retrieval/retrieval-evaluation.test.ts src/retrieval/postgres-article-retrieval.repository.test.ts src/retrieval/vector-hybrid-article-retriever.test.ts src/retrieval/evaluation/article-retrieval-quality-v2.test.ts",
     "test:retrieval-db": "node --import tsx --env-file-if-exists=../../.env --test src/retrieval/retrieval.db.test.ts",
     "eval:retrieval-baseline": "tsx src/retrieval/retrieval-baseline.cli.ts",

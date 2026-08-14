@@ -117,6 +117,8 @@ title: {article title} | text: {section path + normalized chunk text}
 - 通过 `ArticleIndexState.embeddingVersion` 与 `ArticleChunk.embeddingVersion` 显式隔离；
 - 真实 Gemini smoke 通过后，在隔离 pgvector 环境执行一次 full indexing；
 - full indexing 使用 Gemini document formatter，并输出脱敏 summary；
+- 普通入口 `pnpm --filter @agent/api index:articles -- --mode=full` 只读取 `DATABASE_URL`；
+- 隔离验证必须使用 `pnpm --filter @agent/api index:articles:integration -- --mode=full`，该入口只读取 `ARTICLE_INDEX_TEST_DATABASE_URL`；变量缺失时 fail closed，不回退 `DATABASE_URL`，且拒绝与 `DATABASE_URL` 完全相同的 URL；
 - 不做 OpenAI / Gemini 双读、fallback、在线迁移或双 active provider。
 
 ### 6. Vector Retrieval
@@ -237,11 +239,13 @@ RRF constant：60
 - Clarification Gate 基于 Issue #54 最新正文、唯一澄清评论与 `origin/master@eee795bd0eb5d2e9995c8e880f39dfb406a6c555` 完成，结论为 `READY`；实现分支为 `codex/issue-54-gemini-hybrid-retrieval`；
 - 已建立 shared Gemini Embedding boundary、固定 Query / Document formatter、隔离 pgvector integration profile、exact cosine repository、Chunk -> Article 聚合、独立 lexical strategy、RRF 与 quality-v2；未修改 Tool / Agent Runtime 或 legacy `PrismaArticleRetriever`；
 - `gemini-embedding-2` 真实 smoke 成功返回 1 条 1536 维非零向量；脱敏输出仅包含 provider、model、数量、维度、norm、请求 / 重试计数与耗时；
-- Task 1 pgvector DB suite 7/7、Retrieval DB suite 5/5，均为 0 skip；Article Indexing unit 49/49、Retrieval unit 30/30、Tools 40/40、Tool Loop 52/52 通过；legacy `article-retrieval-baseline-v1` 保持可重复；
+- Task 1 pgvector DB suite 7/7、Retrieval DB suite 5/5，均为 0 skip；Article Indexing unit 55/55、Retrieval unit 30/30、Tools 40/40、Tool Loop 52/52 通过；legacy `article-retrieval-baseline-v1` 保持可重复；
 - API build、API / workspace typecheck、API lint、Prisma validate 与 `git diff --check` 已按当前 head 重跑通过；
-- AC-05 当前**未通过**：确定性 corpus 为 68 篇 / 2044 Chunks，Google AI Studio 当前项目的 `gemini-embedding-2` free-tier Embed Content 日配额为 1000；2044 个独立 Chunk 输入超过该上限，真实 full indexing 以 `embedding_rate_limit` 退出，未记录为 PASS，也未切换 fallback；
-- AC-09 的真实 Gemini vector / hybrid 比较与 AC-11 的正负样本距离分布当前**不可用**：隔离库没有完整 Gemini active index，quality-v2 production CLI 安全退出；threshold 保持未启用。单元级 evaluator / 指标契约已通过，但不能替代真实质量报告；
-- 隔离环境使用独立 database、端口与 `postgres-vector-test-data`；现有开发数据库和 `postgres-data` 未删除、reset、覆盖或挂载。
+- AC-05 当前保持 **FAILED**：确定性 corpus 为 68 篇 / 2044 Chunks，Google AI Studio 当前项目的 `gemini-embedding-2` free-tier Embed Content 日配额为 1000；2044 个独立 Chunk 输入超过该上限，full indexing 以 `embedding_rate_limit` 退出，未记录为 PASS，也未切换 fallback；
+- AC-09 当前保持 **PARTIAL**：没有可证明来自完整隔离 Gemini active index 的 production quality-v2 vector / hybrid 指标；单元级 evaluator / 指标契约已通过，但不能替代真实质量报告；
+- AC-11 当前保持 **PARTIAL**：没有完整正负样本 cosine distance / similarity 分布，threshold 保持未启用；
+- 独立 Docker integration profile 使用独立 database、端口与 `postgres-vector-test-data`，DB suites 已在该环境通过；现有开发数据库和 `postgres-data` 未删除、reset、覆盖或挂载；
+- 复核留存 tool-call 日志确认：此前真实执行在同一 shell 将 `DATABASE_URL` 与 `ARTICLE_INDEX_TEST_DATABASE_URL` 都显式指向 `127.0.0.1:5433/agent_ai_seo_integration`；隔离库当前存在 539 个 `google / gemini-embedding-2` Chunks，而开发库没有 `ArticleChunk` 表，因此可证明该次 partial full indexing 连接隔离库；但 PR 旧验证命令仅设置后一个变量，不能复现该行为，命令本身无效，已由显式 `index:articles:integration` 入口替换。
 
 ## GitHub 交付状态
 
@@ -259,4 +263,4 @@ RRF constant：60
 Clarification Gate：READY（2026-08-15）
 ```
 
-Task 2A 当前保持 Active。真实 full indexing 与 production quality-v2 仍受 Gemini free-tier 日配额阻塞，不能标记 Completed；Task 2B 不得提前启动。
+Task 2A 当前保持 Active。AC-05 保持 FAILED，AC-09 / AC-11 保持 PARTIAL；隔离 full indexing 与 production quality-v2 需要在修复后的显式 integration 入口和足够合法 Gemini 配额下补跑。Task 2A 不能标记 Completed，Task 2B 不得提前启动。
