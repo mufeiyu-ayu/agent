@@ -6,7 +6,7 @@
 
 ```text
 阶段 1-7：Completed
-Phase 8：Active / Task 0-1 Completed / Task 2-3 Planned
+Phase 8：Active / Task 0-1 Completed / Task 2A Next / Task 2B 与 Task 3 Planned
 Active Agent Task：无
 Minimal Compaction：Gated
 Admin Enhancement 1：Completed
@@ -16,8 +16,8 @@ Admin Enhancement 1：Completed
 
 | 区域 | 状态 | 文档 | 说明 |
 | --- | --- | --- | --- |
-| Agent 主线 | **Phase 8 Active / 当前无 Active Task** | [roadmap.md](../roadmap.md) | Task 0-1 Completed；Task 2-3 Planned |
-| Phase 8：Grounded Retrieval / RAG Baseline | **Active / Task 0-1 Completed / Task 2-3 Planned** | [Phase 8 总览](./phase-08-grounded-retrieval/README.md) | 完整阶段目标、Task 编排、不变量与完成条件 |
+| Agent 主线 | **Phase 8 Active / 当前无 Active Task** | [roadmap.md](../roadmap.md) | Task 0-1 Completed；Task 2A Next；Task 2B / Task 3 Planned |
+| Phase 8：Grounded Retrieval / RAG Baseline | **Active** | [Phase 8 总览](./phase-08-grounded-retrieval/README.md) | 原 Task 2 已拆为 2A 检索评估与 2B Agent 接入 |
 | Phase 7：Context Engineering | **Completed** | [completed/phase-07-context-engineering.md](./completed/phase-07-context-engineering.md) | Task 0-3 Completed；merge `caf3d25b`；Minimal Compaction 继续 Gated |
 | Phase 6：有界单 Agent Loop | **Completed** | [completed/phase-06-bounded-agent-loop.md](./completed/phase-06-bounded-agent-loop.md) | 有界顺序 Loop、配置治理、数据库可靠性与终态收口均已完成 |
 | Admin Console Task 0-3 | **Completed** | [admin-console.md](./admin-console.md) | 真实 Run / Step API、Run Trace、Typed / Generic / Context Inspector 已建立 |
@@ -35,10 +35,11 @@ Admin Enhancement 1：Completed
 | --- | --- | --- | --- | --- |
 | Task 0：Retrieval Boundary & Offline Evaluation Baseline | **Completed** | Phase 7 | `ArticleRetriever` Contract、Prisma lexical adapter、离线 corpus、Recall@K / MRR baseline | [Task 0](./phase-08-grounded-retrieval/task-00-retrieval-boundary-evaluation.md) |
 | Task 1：Article Chunking & Embedding Index | **Completed** | Task 0 | 确定性 Chunk、stable identity、Embedding boundary、pgvector active index 与幂等 CLI | [Task 1](./phase-08-grounded-retrieval/task-01-article-chunking-embedding-index.md) |
-| Task 2：Hybrid Retrieval & Agent Tool Integration | **Planned** | Task 1 | vector + lexical retrieval、融合排序、baseline 对比、受控 Tool 接入 | [Task 2](./phase-08-grounded-retrieval/task-02-hybrid-retrieval-tool.md) |
-| Task 3：Grounded Answer & Retrieval Inspector | **Planned** | Task 2 | 结构化来源引用、Web 来源展示、安全 Retrieval Inspector 与端到端证据 | [Task 3](./phase-08-grounded-retrieval/task-03-grounded-answer-retrieval-inspector.md) |
+| Task 2A：Vector / Hybrid Retrieval & Evaluation | **Next** | Task 1 | 真实 pgvector 验证、Query Embedding、exact vector search、article aggregation、RRF、quality-v2 Evaluation | [Task 2A](./phase-08-grounded-retrieval/task-02-hybrid-retrieval-tool.md) |
+| Task 2B：Retrieval Tool & Agent Integration | **Planned** | Task 2A | 专用 Retrieval Tool、受控 Observation、Agent Loop / Context Budget 集成 | [Task 2B](./phase-08-grounded-retrieval/task-02b-retrieval-tool-agent-integration.md) |
+| Task 3：Grounded Answer & Retrieval Inspector | **Planned** | Task 2B | 结构化来源引用、Web 来源展示、安全 Retrieval Inspector 与端到端证据 | [Task 3](./phase-08-grounded-retrieval/task-03-grounded-answer-retrieval-inspector.md) |
 
-Task 2-3 的 Planned 文档不构成开工授权。Task 2 必须先讨论真实 pgvector 前置验证、Vector Retrieval、fusion strategy、评估门槛和 Tool 契约，再创建独立 Issue 并执行 Clarification Gate。
+原 Task 2 被拆成两个独立 Task，是为了避免一个 Issue 同时跨越数据库 / Retrieval / Evaluation 与 Tool / Agent Runtime 两个工程边界。Task 2A 只证明检索层，Task 2B 才接入 Agent。
 
 ## Phase 8 Task 0 收口事实
 
@@ -80,11 +81,11 @@ Enhancement 1 将单 Run Detail 重构为紧凑 Run Trace Workspace，建立 Com
 
 ## 当前正式动作
 
-当前没有 Active Agent Task。下一步只讨论 Phase 8 Task 2，不自动创建 Issue、不自动进入实现。Admin Enhancement 1 已完成，不改变 Agent 主线状态，也不启动 Admin Task 4。
+Task 2A 已确定为下一项正式任务，当前状态为 `Next`。下一步为 Task 2A 创建独立 Issue 并执行 Clarification Gate；Gate `READY` 前仍没有 Active Agent Task，也不得修改正式代码。
 
-在 Task 2 依赖真实 Vector Retrieval 结果前，或第一次真实执行 Article indexing 前，应在 pgvector-capable PostgreSQL 上运行 Task 1 已建立的 integration suite，并记录真实结果。
+Task 2A 必须先在 pgvector-capable PostgreSQL 16 环境补齐 Task 1 的真实 DB integration / concurrency 与真实 OpenAI Embedding smoke，再实现 Query Embedding、exact vector retrieval、Chunk -> Article aggregation、RRF 与 quality-v2 Evaluation。
 
-Task 3 不得越过 Task 2 提前启动。Minimal Compaction 继续保持 `Gated`，不属于 Phase 8 默认任务。
+Task 2B、Task 3 不得越过 Task 2A 提前启动。Minimal Compaction 继续保持 `Gated`，不属于 Phase 8 默认任务。
 
 ## 状态定义
 
@@ -99,7 +100,7 @@ Task 3 不得越过 Task 2 提前启动。Minimal Compaction 继续保持 `Gated
 ## 新任务规则
 
 - 一个 Issue 只对应一个明确 Task；
-- Planned 文档不能替代正式 Issue；
+- Planned / Next 文档不能替代正式 Issue；
 - Gate `READY` 前不得修改正式代码；
 - Codex 实现后只能写“已实现、待验收”；
 - Completed 必须同时具备 GPT 技术验收和用户确认；
