@@ -4,16 +4,20 @@
 
 ```text
 实施状态：已实现
-验收状态：待验收
-PR 状态：Draft
+GPT 技术验收：通过
+用户确认验收：已确认
+任务状态：Completed
+PR 状态：Merged
 ```
 
-- Issue：#51 `[Admin Console][Enhancement 1] 将 Run Detail 重构为紧凑 Run Trace Workspace`
+- Issue：[#51](https://github.com/mufeiyu-ayu/agent/issues/51) / Closed（Completed）
 - 实现基线：`master@6af71d3b90e496377913c31e47c2aacb98eee509`
-- 实现分支：`codex/issue-51-run-trace-workspace`
+- 最终验收 head：`b31aa0395eac005ea41fe8d04129a683cc5747f4`
+- Merge commit：`159e964cafa081df218284b53f246a0da9edd04e`
+- 实现分支：`codex/issue-51-run-trace-workspace`（保留，未执行清理）
 - Clarification Gate：`READY`
-- Review：GPT 最新技术验收提出的 3 项 P2 已修复，等待复验
-- PR：[#53](https://github.com/mufeiyu-ayu/agent/pull/53) / Draft
+- Review：上轮 3 项 P2 已修复；最新 Codex Review 未发现主要问题；GPT 技术验收通过
+- PR：[#53](https://github.com/mufeiyu-ayu/agent/pull/53) / Merged
 
 本任务是 Admin Observability 的独立 UX Enhancement，不是新的 Agent Phase，也不改变 Phase 8 Task 0-1 Completed、Task 2-3 Planned 或 Admin Task 4 Planned 的状态。
 
@@ -104,7 +108,7 @@ DeepSeek 的 Session Trajectory 聚合多个 Turn；本项目只展示一个 `Ag
 | AC-12 | 已提供 light / dark 与紧凑宽度降级布局。 | 1440×900、1280×900、Sidebar 双态通过 |
 | AC-13 | 实现范围限定在 Admin 前端与本任务文档 / 截图。 | diff scope 已确认 |
 | AC-14 | 定向测试与规定命令全部通过。 | PASS |
-| AC-15 | 文档仅记录“已实现、待验收”。 | 已满足 |
+| AC-15 | GPT 技术验收、用户确认、Issue / PR 关闭和 merge 事实均已完成收口。 | Completed |
 
 ## 自动验证
 
@@ -124,6 +128,8 @@ DeepSeek 的 Session Trajectory 聚合多个 Turn；本项目只展示一个 `Ag
 | `git diff --cached --check` | PASS |
 
 注：一次并行复跑让 `api typecheck` 与其他命令的 `prisma generate` 竞争，瞬时缺少生成文件；改为串行执行后 PASS，workspace `typecheck` 同样 PASS。
+
+仓库未配置该 head 的 GitHub Actions workflow/check run，因此上述结果属于 Codex 本地验证证据，不是 CI 独立结果。
 
 ## 浏览器与截图证据
 
@@ -154,6 +160,17 @@ DeepSeek 的 Session Trajectory 聚合多个 Turn；本项目只展示一个 `Ag
 - `estimatedInputTokens` 是 Context 规划估算，Provider usage 是实际回传；TTFT 需要 first-token 时间戳，不能从总时长推导；
 - 安全 Read Contract 与前端 projection 分层，使 UI 可以重组诊断信息而不接触 raw Runtime payload。
 
-## 后续限制
+## 最终收口事实
 
-本任务保持 Draft / 待验收。只有 GPT 技术验收通过、用户明确确认并授权后，才能转 Ready、合并、关闭 Issue 或标记 Completed。
+```text
+Issue #51：Closed / Completed
+PR #53：Merged
+最终验收 head：b31aa0395eac005ea41fe8d04129a683cc5747f4
+Merge commit：159e964cafa081df218284b53f246a0da9edd04e
+GPT 技术验收：通过
+用户确认验收：已确认
+任务状态：Completed
+远程任务分支：保留，未执行清理
+```
+
+本任务完成不代表 Admin Task 4 或 Phase 8 Task 2 / Task 3 已启动。
