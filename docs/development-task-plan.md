@@ -14,11 +14,13 @@
 
 ```text
 Phase 1-7：Completed
-Phase 8：Active / Task 0 Completed / Task 1-3 Planned
+Phase 8：Active / Task 0-1 Completed / Task 2-3 Planned
 Active Agent Task：无
 Minimal Compaction：Gated
 ```
 
-Phase 8 Task 0 已通过 Issue #48 / PR #49 完成并合并。Task 1-3 只处于 Planned，均未进入实现。
+Phase 8 Task 0 已通过 Issue #48 / PR #49 完成并合并，merge `4c2f7950`。
+
+Phase 8 Task 1 已通过 Issue #50 / PR #52 完成 GPT 技术验收和用户确认，并合入 `master`，merge `76d66abf`。Task 2-3 仍处于 Planned，均未进入实现。
 
 本文件仅保留旧链接兼容。当前状态以 `docs/tasks/**`、`docs/roadmap.md` 与 GitHub 实时事实为准。

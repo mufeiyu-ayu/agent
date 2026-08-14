@@ -6,8 +6,8 @@
 
 ```text
 阶段 1-7：Completed
-Phase 8：Active / Task 0 Completed / Task 1 Active（已实现、待验收）/ Task 2-3 Planned
-Active Agent Task：Task 1 / Issue #50
+Phase 8：Active / Task 0-1 Completed / Task 2-3 Planned
+Active Agent Task：无
 Minimal Compaction：Gated
 Admin Observability：Task 0-3 Completed
 Admin Task 4：Planned
@@ -43,12 +43,27 @@ Article Source
 
 ### Task 编排
 
-| Task | 状态 | 核心目标 | 启动条件 |
+| Task | 状态 | 核心目标 | 启动条件 / 收口事实 |
 | --- | --- | --- | --- |
-| Task 0：Retrieval Boundary & Offline Evaluation Baseline | **Completed** | 解耦 Retrieval 与 Tool，固化 Prisma lexical 行为和 Recall@K / MRR baseline | 已完成：#48 / #49 / merge `4c2f7950` |
-| Task 1：Article Chunking & Embedding Index | **Active / 已实现 / 待验收** | 确定性 Chunk、stable identity、Embedding boundary 与幂等索引 | Issue #50 / Draft PR #52；等待技术验收 |
-| Task 2：Hybrid Retrieval & Agent Tool Integration | **Planned** | vector + lexical retrieval、融合排序、同基线评估和 Tool 接入 | Task 1 Completed 后才能启动 |
-| Task 3：Grounded Answer & Retrieval Inspector | **Planned** | 来源引用、Web 来源展示、安全 Inspector 和端到端证据 | Task 2 Completed 后才能启动；必要时在 Issue 前拆分范围 |
+| Task 0：Retrieval Boundary & Offline Evaluation Baseline | **Completed** | 解耦 Retrieval 与 Tool，固化 Prisma lexical 行为和 Recall@K / MRR baseline | #48 / #49 / merge `4c2f7950` |
+| Task 1：Article Chunking & Embedding Index | **Completed** | 确定性 Chunk、stable identity、Embedding boundary、pgvector active index 与幂等 CLI | #50 / #52 / merge `76d66abf` |
+| Task 2：Hybrid Retrieval & Agent Tool Integration | **Planned** | vector + lexical retrieval、融合排序、同基线评估和 Tool 接入 | 先讨论真实索引前置验证、检索策略、评估门槛和 Tool 契约，再创建 Issue |
+| Task 3：Grounded Answer & Retrieval Inspector | **Planned** | 来源引用、Web 来源展示、安全 Inspector 和端到端证据 | Task 2 Completed 后才能启动；必要时在 Issue 前拆分后端与 UI 范围 |
+
+### Task 1 已建立的索引基线
+
+```text
+Article rich HTML
+  -> Cheerio canonical structural blocks
+  -> cl100k_base chunks (600 / 800 / 80)
+  -> stable sourceHash / chunk IDs / versions
+  -> OpenAI EmbeddingProvider (1536 dimensions)
+  -> PostgreSQL pgvector active index
+  -> incremental / full CLI
+  -> stale fencing + advisory lock + atomic replacement
+```
+
+Task 1 的真实 OpenAI smoke 与真实 pgvector integration/concurrency 未执行。该环境验证缺口已在验收时保留记录；在 Task 2 依赖真实 Vector Retrieval 结果前，或第一次真实执行 indexing 前，应运行现有 integration suite。
 
 ### Phase 8 完成条件
 
@@ -92,4 +107,12 @@ Phase 7 已在 Admin Observability 基线上增加 Context Inspector。Phase 8 T
 
 ## 当前正式动作
 
-当前 Active Agent Task 为 Phase 8 Task 1 / Issue #50。Clarification Gate 为 `READY`，实现状态为“已实现”，验收状态为“待验收”；下一步是 Draft PR 技术验收。Task 2、Task 3 与 Minimal Compaction 均不得提前实现。
+当前没有 Active Agent Task。下一步只讨论 Phase 8 Task 2：
+
+- 真实 pgvector migration / transaction / concurrency 前置验证；
+- Vector distance、exact search 与是否需要 ANN；
+- lexical / vector candidate 数量与 fusion strategy；
+- 与 Task 0 lexical baseline 的质量、延迟和成本比较门槛；
+- Retrieval Result 与 Agent Tool / Observation / Context Budget 的边界。
+
+讨论定案后，GPT 才创建 Task 2 独立 Issue 和任务专属 Codex 开工 Prompt。Task 3 与 Minimal Compaction 均不得提前实现。
