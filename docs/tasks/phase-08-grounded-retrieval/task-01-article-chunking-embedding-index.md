@@ -79,7 +79,7 @@ PASS  git diff --check
 - Issue：[mufeiyu-ayu/agent#50](https://github.com/mufeiyu-ayu/agent/issues/50)
 - Gate：`READY`
 - 分支：`codex/issue-50-article-embedding-index`
-- PR：待创建 Draft PR
+- PR：[mufeiyu-ayu/agent#52](https://github.com/mufeiyu-ayu/agent/pull/52)（Draft）
 
 ## 任务状态
 

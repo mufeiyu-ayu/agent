@@ -46,7 +46,7 @@ Article Source
 | Task | 状态 | 核心目标 | 启动条件 |
 | --- | --- | --- | --- |
 | Task 0：Retrieval Boundary & Offline Evaluation Baseline | **Completed** | 解耦 Retrieval 与 Tool，固化 Prisma lexical 行为和 Recall@K / MRR baseline | 已完成：#48 / #49 / merge `4c2f7950` |
-| Task 1：Article Chunking & Embedding Index | **Active / 已实现 / 待验收** | 确定性 Chunk、stable identity、Embedding boundary 与幂等索引 | Issue #50；等待 Draft PR 技术验收 |
+| Task 1：Article Chunking & Embedding Index | **Active / 已实现 / 待验收** | 确定性 Chunk、stable identity、Embedding boundary 与幂等索引 | Issue #50 / Draft PR #52；等待技术验收 |
 | Task 2：Hybrid Retrieval & Agent Tool Integration | **Planned** | vector + lexical retrieval、融合排序、同基线评估和 Tool 接入 | Task 1 Completed 后才能启动 |
 | Task 3：Grounded Answer & Retrieval Inspector | **Planned** | 来源引用、Web 来源展示、安全 Inspector 和端到端证据 | Task 2 Completed 后才能启动；必要时在 Issue 前拆分范围 |
 
