@@ -9,6 +9,7 @@
 Phase 8：Active / Task 0-1 Completed / Task 2-3 Planned
 Active Agent Task：无
 Minimal Compaction：Gated
+Admin Enhancement 1：已实现 / 待验收
 ```
 
 ## 当前看板
@@ -20,6 +21,7 @@ Minimal Compaction：Gated
 | Phase 7：Context Engineering | **Completed** | [completed/phase-07-context-engineering.md](./completed/phase-07-context-engineering.md) | Task 0-3 Completed；merge `caf3d25b`；Minimal Compaction 继续 Gated |
 | Phase 6：有界单 Agent Loop | **Completed** | [completed/phase-06-bounded-agent-loop.md](./completed/phase-06-bounded-agent-loop.md) | 有界顺序 Loop、配置治理、数据库可靠性与终态收口均已完成 |
 | Admin Console Task 0-3 | **Completed** | [admin-console.md](./admin-console.md) | 真实 Run / Step API、Run Trace、Typed / Generic / Context Inspector 已建立 |
+| Admin Console Enhancement 1 | **已实现 / 待验收** | [enhancement-01-run-trace-workspace.md](./admin-console/enhancement-01-run-trace-workspace.md) | Issue #51 / Draft PR #53；紧凑 Run Trace Workspace；不得标记 Completed |
 | Admin Console Task 4 | Planned | [admin-console.md](./admin-console.md) | Auth / RBAC / 脱敏；当前不启动 |
 | Web Chat Scroll / UI Follow-up | **Completed** | [work-log.md](../work-log.md) | Issue #37 / PR #38；merge `415d7405` |
 | Phase 5：最小 Tool Calling | **Completed** | [completed/phase-05-tool-calling.md](./completed/phase-05-tool-calling.md) | 已归档 |
@@ -65,7 +67,7 @@ Task 1 建立的是确定性 Chunk、Embedding Provider、pgvector active index�
 
 ## 当前正式动作
 
-当前没有 Active Agent Task。下一步只讨论 Phase 8 Task 2，不自动创建 Issue、不自动进入实现。
+当前没有 Active Agent Task。下一步只讨论 Phase 8 Task 2，不自动创建 Issue、不自动进入实现。独立 Admin Enhancement 1 已实现、待 GPT 技术验收；它不改变 Agent 主线状态，也不启动 Admin Task 4。
 
 在 Task 2 依赖真实 Vector Retrieval 结果前，或第一次真实执行 Article indexing 前，应在 pgvector-capable PostgreSQL 上运行 Task 1 已建立的 integration suite，并记录真实结果。
 

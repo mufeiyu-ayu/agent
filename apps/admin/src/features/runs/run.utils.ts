@@ -1,4 +1,4 @@
-import type { RunFilters, RunTimelineItem } from './run.model'
+import type { RunFilters } from './run.model'
 
 const dateTimeOptions: Intl.DateTimeFormatOptions = {
   timeZone: 'Asia/Shanghai',
@@ -49,24 +49,6 @@ export const defaultRunFilters: RunFilters = {
   status: undefined,
   dateFrom: '',
   dateTo: '',
-}
-
-export function getDefaultTimelineItem(items: RunTimelineItem[]): RunTimelineItem | undefined {
-  return items.find(item => item.kind === 'known' && item.type === 'model_sampling')
-    ?? items[0]
-}
-
-export function getTimelineInspectorLabel(item: RunTimelineItem | undefined): string {
-  if (!item || item.kind === 'generic')
-    return 'Generic Inspector'
-
-  return ({
-    assistant_output: 'Assistant Output Inspector',
-    load_conversation_history: 'Conversation History Inspector',
-    model_sampling: 'Model Sampling Inspector',
-    receive_user_message: 'User Message Inspector',
-    tool_execution: 'Tool Execution Inspector',
-  })[item.type]
 }
 
 export function formatRequestedModel(model: string | null, fallback = 'Default request'): string {
