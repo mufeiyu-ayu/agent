@@ -15,7 +15,8 @@
 
 ```text
 Phase 1-7：Completed
-Phase 8 Task 0：Active / 已实现、待验收
+Phase 8：Active / Task 0 Completed
+Active Agent Task：无
 Minimal Compaction：Gated
 Task 1：未启动
 ```
@@ -25,6 +26,6 @@ Task 1：未启动
 - Phase 6：[`docs/tasks/completed/phase-06-bounded-agent-loop.md`](./tasks/completed/phase-06-bounded-agent-loop.md)；
 - Phase 7：[`docs/tasks/completed/phase-07-context-engineering.md`](./tasks/completed/phase-07-context-engineering.md)。
 
-Phase 8 Task 0 已通过 Issue #48 进入正式流程；Task 1 未启动。
+Phase 8 Task 0 已通过 Issue #48 / PR #49 完成验收并合入 `master`，merge `4c2f7950`；Task 1 未启动。
 
 本文件仅保留旧链接兼容。当前状态以 `docs/tasks/**`、`docs/roadmap.md` 与 GitHub 实时事实为准。
