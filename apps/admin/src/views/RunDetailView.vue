@@ -8,8 +8,6 @@ import {
   App as AntApp,
   Button,
   Card,
-  Descriptions,
-  DescriptionsItem,
   Result,
   Skeleton,
   TabPane,
@@ -21,17 +19,10 @@ import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 
 import PageContainer from '@/components/common/PageContainer.vue'
-import RunEventDetail from '@/features/runs/components/RunEventDetail.vue'
 import RunStatusTag from '@/features/runs/components/RunStatusTag.vue'
-import RunTimeline from '@/features/runs/components/RunTimeline.vue'
 import { createRunDetailState } from '@/features/runs/run-detail.state'
-import {
-  formatDateTime,
-  formatDuration,
-  formatRequestedModel,
-  formatTokens,
-  getDefaultTimelineItem,
-} from '@/features/runs/run.utils'
+import { formatDateTime } from '@/features/runs/run.utils'
+import RunTraceWorkspace from '@/features/runs/trace/RunTraceWorkspace.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -39,7 +30,6 @@ const { message } = AntApp.useApp()
 const { locale, t } = useI18n()
 
 const activeTab = ref('trace')
-const selectedTimelineId = ref<string>()
 const runId = computed(() => String(route.params.runId ?? ''))
 const runDetailState = createRunDetailState(() => runId.value)
 const {
@@ -50,16 +40,10 @@ const {
   notFound,
   run,
 } = runDetailState
-const selectedTimelineItem = computed(() => run.value?.timeline.find(
-  item => item.id === selectedTimelineId.value,
-))
 const safeRawJson = computed(() => JSON.stringify(run.value?.safeRawData ?? {}, null, 2))
 
-watch(run, (detail) => {
+watch(run, () => {
   activeTab.value = 'trace'
-  selectedTimelineId.value = detail
-    ? getDefaultTimelineItem(detail.timeline)?.id
-    : undefined
 }, { immediate: true })
 
 watch(runId, () => {
@@ -92,68 +76,10 @@ async function copySafeRawData() {
     </template>
 
     <template v-else-if="run">
-      <Card class="overview-card" :bordered="false">
-        <div class="overview-card__heading">
-          <div>
-            <span>Run ID</span>
-            <code>{{ run.id }}</code>
-          </div>
-          <RunStatusTag :status="run.status" />
-        </div>
-
-        <Descriptions size="small" :column="4">
-          <DescriptionsItem :label="t('runDetail.fields.model')">
-            {{ formatRequestedModel(run.requestedModel, t('runs.defaultModel')) }}
-          </DescriptionsItem>
-          <DescriptionsItem :label="t('runDetail.fields.duration')">
-            {{ formatDuration(run.durationMs) }}
-          </DescriptionsItem>
-          <DescriptionsItem :label="t('runDetail.fields.toolCalls')">
-            {{ run.toolCallCount }}
-          </DescriptionsItem>
-          <DescriptionsItem :label="t('runDetail.fields.samplings')">
-            {{ run.samplingCount }}
-          </DescriptionsItem>
-          <DescriptionsItem :label="t('runDetail.fields.created')">
-            {{ formatDateTime(run.createdAt, locale) }}
-          </DescriptionsItem>
-          <DescriptionsItem :label="t('runDetail.fields.started')">
-            {{ formatDateTime(run.startedAt, locale) }}
-          </DescriptionsItem>
-          <DescriptionsItem :label="t('runDetail.fields.ended')" :span="2">
-            {{ formatDateTime(run.endedAt, locale) }}
-          </DescriptionsItem>
-          <DescriptionsItem :label="t('runDetail.fields.totalTokens')">
-            {{ formatTokens(run.totalTokens, locale) }}
-          </DescriptionsItem>
-          <DescriptionsItem :label="t('runDetail.fields.inputTokens')">
-            {{ formatTokens(run.inputTokens, locale) }}
-          </DescriptionsItem>
-          <DescriptionsItem :label="t('runDetail.fields.outputTokens')" :span="2">
-            {{ formatTokens(run.outputTokens, locale) }}
-          </DescriptionsItem>
-        </Descriptions>
-      </Card>
-
       <Card class="detail-tabs-card" :bordered="false">
         <Tabs v-model:active-key="activeTab" class="detail-tabs">
           <TabPane key="trace" :tab="t('runDetail.tabs.trace')">
-            <div class="trace-grid">
-              <Card class="trace-panel trace-panel--timeline" :bordered="false" :title="t('runDetail.timeline')">
-                <template #extra>
-                  <Tag>{{ t('common.items', { count: run.timeline.length }) }}</Tag>
-                </template>
-                <RunTimeline
-                  :items="run.timeline"
-                  :selected-id="selectedTimelineId"
-                  @select="selectedTimelineId = $event"
-                />
-              </Card>
-
-              <Card class="trace-panel" :bordered="false" :title="t('runDetail.eventDetail')">
-                <RunEventDetail :item="selectedTimelineItem" />
-              </Card>
-            </div>
+            <RunTraceWorkspace :run="run" />
           </TabPane>
 
           <TabPane key="messages" :tab="t('runDetail.tabs.messages')">
@@ -254,142 +180,53 @@ async function copySafeRawData() {
 
 <style scoped>
 .overview-card,
-.detail-tabs-card,
-.trace-panel {
+.detail-tabs-card {
   border: 1px solid var(--admin-border);
   background: var(--admin-surface);
   box-shadow: var(--admin-card-shadow);
 }
 
-.overview-card :deep(.ant-card-body) {
-  padding: 15px 18px 10px;
-}
-
-.overview-card__heading {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 13px;
-  padding-bottom: 12px;
-  border-bottom: 1px solid var(--admin-border);
-}
-
-.overview-card__heading > div {
-  display: grid;
-  min-width: 0;
-  gap: 4px;
-}
-
-.overview-card__heading span {
-  color: var(--admin-text-subtle);
-  font-size: 9px;
-  font-weight: 650;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.overview-card__heading code {
-  overflow: hidden;
-  color: var(--admin-text);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 12px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.overview-card :deep(.ant-descriptions-item-label) {
-  color: var(--admin-text-subtle);
-  font-size: 10px;
-}
-
-.overview-card :deep(.ant-descriptions-item-content) {
-  color: var(--admin-text);
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-  overflow-wrap: anywhere;
-}
-
 .detail-tabs-card {
   min-width: 0;
-  margin-top: 12px;
 }
 
 .detail-tabs-card :deep(> .ant-card-body) {
   min-width: 0;
-  padding: 0 14px 14px;
+  padding: 0;
 }
 
 .detail-tabs :deep(.ant-tabs-nav) {
-  margin-bottom: 12px;
+  margin: 0;
+  padding: 0 18px;
 }
 
 .detail-tabs :deep(.ant-tabs-tab) {
-  padding: 12px 4px 10px;
-  font-size: 11px;
+  padding: 14px 4px 12px;
+  font-size: 13px;
   font-weight: 600;
 }
 
-.trace-grid {
-  display: grid;
-  grid-template-columns: minmax(290px, 340px) minmax(0, 1fr);
-  gap: 12px;
+.detail-tabs :deep(.ant-tabs-content-holder) {
   min-width: 0;
-}
-
-.trace-panel {
-  min-width: 0;
-  box-shadow: none;
-}
-
-.trace-panel :deep(.ant-card-head) {
-  min-height: 42px;
-  padding: 0 14px;
-  border-bottom-color: var(--admin-border);
-}
-
-.trace-panel :deep(.ant-card-head-title) {
-  padding: 11px 0;
-  color: var(--admin-text);
-  font-size: 11px;
-  font-weight: 650;
-}
-
-.trace-panel :deep(.ant-card-extra) {
-  padding: 8px 0;
-}
-
-.trace-panel :deep(.ant-card-extra .ant-tag) {
-  margin: 0;
-  font-size: 9px;
-}
-
-.trace-panel :deep(.ant-card-body) {
-  min-width: 0;
-  padding: 14px;
-}
-
-.trace-panel--timeline :deep(.ant-card-body) {
-  max-height: 570px;
-  overflow-y: auto;
 }
 
 .tab-notice {
-  margin-bottom: 12px;
+  margin: 14px 14px 12px;
 }
 
 .tab-notice :deep(.ant-alert-message) {
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 650;
 }
 
 .tab-notice :deep(.ant-alert-description) {
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .message-list {
   display: grid;
   gap: 10px;
+  padding: 0 14px 14px;
 }
 
 .message-card {
@@ -435,7 +272,7 @@ async function copySafeRawData() {
 .message-card time,
 .message-card code {
   color: var(--admin-text-subtle);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: monospace;
   font-size: 9px;
 }
 
@@ -453,6 +290,7 @@ async function copySafeRawData() {
 
 .safe-raw-panel {
   min-width: 0;
+  margin: 0 14px 14px;
   overflow: hidden;
   border: 1px solid var(--admin-border);
   border-radius: 8px;
@@ -483,15 +321,9 @@ async function copySafeRawData() {
   padding: 16px;
   overflow: auto;
   color: var(--admin-text-muted);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: monospace;
   font-size: 10px;
   line-height: 1.65;
   tab-size: 2;
-}
-
-@media (max-width: 1120px) {
-  .trace-grid {
-    grid-template-columns: 1fr;
-  }
 }
 </style>

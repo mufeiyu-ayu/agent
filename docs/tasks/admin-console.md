@@ -1,6 +1,6 @@
 # Admin Console
 
-本文记录 Agent Runtime Console 的独立 Observability 支线。Task 0-3 已完成；Task 4 保持 Planned。
+本文记录 Agent Runtime Console 的独立 Observability 支线。Task 0-3 已完成；Enhancement 1 已实现、待验收；Task 4 保持 Planned。
 
 Phase 6 Agent Runtime 主线已经完成。Admin Console 不等于下一 Agent 学习阶段；当前已经建立真实 Observability Baseline，后续根据 Agent 主线能力增量扩展 Inspector。
 
@@ -32,6 +32,7 @@ Admin Console 面向项目开发、调试和运行过程复盘，长期用于查
 | Task 1 | Completed | 静态 Run List / Run Detail UI | 本文归档 | #21 | #22 |
 | Task 2 | Completed | 真实 Run / Step 只读查询 API | [task-02-run-query-api.md](./admin-console/task-02-run-query-api.md) | #33 | #34 |
 | Task 3 | **Completed** | 后台接入真实 Run Trace | [task-03-real-trace-ui.md](./admin-console/task-03-real-trace-ui.md) | #35 | #36 |
+| Enhancement 1 | **已实现 / 待验收** | 紧凑 Run Trace Workspace | [enhancement-01-run-trace-workspace.md](./admin-console/enhancement-01-run-trace-workspace.md) | #51 | Draft 待创建 |
 | Task 4 | Planned | 登录、权限、敏感信息脱敏 | 待启动时补独立 Task 文档 | 未创建 | 未创建 |
 
 ## Task 0：后台前端基础壳
@@ -85,6 +86,12 @@ Issue #35 / PR #36，merge commit `4c689c4c8a8d3975192d13eb3f5a1c24463fcd7b`。
 
 Task 3 GPT 技术验收通过，用户已明确确认并授权合并；Issue #35 Closed / Completed，PR #36 Merged。
 
+## Enhancement 1：Run Trace Workspace
+
+Issue #51 已在独立分支完成实现，当前保持“已实现、待验收”。它只重构单个 Run 的 Admin 前端信息架构：用 Compact Header、三 Lane Duration Overview、Request Boundary、Event / Content Ledger 和分类型 Inspector 替换旧卡片式 Trace 主布局，并保留 Messages、Safe Raw、安全投影与 stale-response fencing。
+
+实现实际阅读了本地 DeepSeek Harness `47f943859bef60e4160492346772ded9b24f765a`，只借鉴 projection、Request Boundary、Lane、Ledger、选择、搜索 / 折叠和渐进 Inspector；不迁移 Session 多 Turn、虚拟列表、历史补页、TTFT 或 raw payload 能力。规定自动验证与真实 Chromium 验收均已通过，五张安全截图已提交；本地 Codex Review 唯一 P2 已修复，Draft PR 待创建，详见[任务文档](./admin-console/enhancement-01-run-trace-workspace.md)。
+
 ## 当前 Observability Baseline
 
 ```text
@@ -94,7 +101,7 @@ Admin Read Contract / Query API
         ↓
 Run List / Run Detail
         ↓
-Timeline / Typed Inspector / Generic Inspector
+Run Trace Workspace / Typed Inspector / Generic Inspector
         ↓
 Computer Use 可验证的开发者 Console
 ```

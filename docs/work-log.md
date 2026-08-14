@@ -9,12 +9,13 @@
 | Agent 主线 | 阶段 1-7 Completed；Phase 8 Active；Task 0-1 Completed；Task 2-3 Planned；当前无 Active Agent Task | 讨论 Task 2，不自动启动 |
 | Phase 8 | Retrieval baseline 与 Article Chunk / Embedding Index 已建立 | `docs/tasks/phase-08-grounded-retrieval/README.md` |
 | Minimal Compaction | Gated | 只有真实 Context 压力证据满足触发条件后才讨论 |
-| Admin Console | Task 0-3 Completed；Task 4 Planned | 不自动启动 Auth / RBAC |
+| Admin Console | Task 0-3 Completed；Enhancement 1 已实现、待验收；Task 4 Planned | 创建 #51 Draft PR 并等待 GPT 技术验收，不自动启动 Auth / RBAC |
 
 ## 近期关键记录
 
 | 日期 | 事项 | 结果 |
 | --- | --- | --- |
+| 2026-08-14 | Admin Enhancement 1 实现 | Issue #51 Clarification Gate `READY`；基于 `master@6af71d3b` 将单 Run Detail 重构为 Compact Header、三 Lane Duration Overview、Request Boundary、Event / Content Ledger 与分类型 Inspector；实际参考只读 DeepSeek Harness `47f943859b`，未复制源码或迁移 Session / raw payload 能力；规定自动验证、RUNNING / FAILED 真实 Chromium 交互与五张安全截图已通过，临时 fixture 已清理；本地 Codex Review 唯一 P2 已修复；实施状态已实现、验收状态待验收，Draft PR 待创建 |
 | 2026-08-14 | Phase 8 Task 1 最终收口 | Issue #50 / PR #52；最终 head `32598c738e`；GPT 完成独立技术验收，用户明确确认验收并授权转 Ready、合并、关闭 Issue 和 docs 收口；PR #52 合入 `master`，merge `76d66abf7af426e2a26f9b5765d1eb7a72382007`；Issue #50 Closed；Task 1 Completed；真实 OpenAI smoke 与真实 pgvector integration/concurrency 未执行，作为已接受环境验证边界保留记录 |
 | 2026-08-14 | Phase 8 Task 1 实现 | Clarification Gate `READY`；实现 deterministic HTML chunking、D-09 canonical source hash、OpenAI EmbeddingProvider、pgvector active index、幂等 CLI、stale fencing 与 advisory lock；Article Indexing 46/46、Retrieval 18/18、Tools 40/40、Tool Loop 52/52；68 篇 fixture 生成 2044 Chunks，最大 600 tokens |
 | 2026-08-14 | Phase 8 完整任务规划补齐 | 新增阶段 README，并建立 Task 1 Chunking / Embedding、Task 2 Hybrid Retrieval / Tool、Task 3 Grounded Answer / Inspector 的 Planned 文档；同步 tasks 看板、roadmap 与 docs 入口 |

@@ -10,7 +10,6 @@ export type {
   AgentRunStatus as RunStatus,
   AgentStepStatus as RunStepStatus,
   AdminRunSummary as RunSummary,
-  AdminRunTimelineItem as RunTimelineItem,
 } from '@agent/contracts'
 
 export interface RunFilters {
