@@ -10,7 +10,7 @@ Phase 8：Active / Task 0-1 Completed / Task 2-3 Planned
 Active Agent Task：无
 Minimal Compaction：Gated
 Admin Observability：Task 0-3 Completed
-Admin Enhancement 1：已实现 / 待验收
+Admin Enhancement 1：Completed
 Admin Task 4：Planned
 ```
 
@@ -101,11 +101,11 @@ Task 0：Admin 基础壳                 Completed
 Task 1：静态 Run List / Detail       Completed
 Task 2：真实 Run / Step Query API    Completed / #33 / #34 / 997d6b84
 Task 3：真实 Run Trace UI            Completed / #35 / #36 / 4c689c4c
-Enhancement 1：Run Trace Workspace   已实现 / 待验收 / #51 / Draft #53
+Enhancement 1：Run Trace Workspace   Completed / #51 / #53 / 159e964c
 Task 4：登录 / 权限 / 脱敏           Planned
 ```
 
-Phase 7 已在 Admin Observability 基线上增加 Context Inspector。Issue #51 已将单 Run Trace 重构为紧凑 Workspace，当前等待 GPT 技术验收，不改变 Agent 主线状态。Phase 8 Task 3 计划增加 Retrieval Inspector，但不会自动启动 Admin Task 4。
+Phase 7 已在 Admin Observability 基线上增加 Context Inspector。Enhancement 1 已将单 Run Trace 重构为紧凑 Workspace，并在 `159e964c` 合入 `master`；它不改变 Agent 主线状态。Phase 8 Task 3 计划增加 Retrieval Inspector，但不会自动启动 Admin Task 4。
 
 ## 当前正式动作
 
@@ -119,4 +119,4 @@ Phase 7 已在 Admin Observability 基线上增加 Context Inspector。Issue #51
 
 讨论定案后，GPT 才创建 Task 2 独立 Issue 和任务专属 Codex 开工 Prompt。Task 3 与 Minimal Compaction 均不得提前实现。
 
-Admin Enhancement 1 另行保持待验收；未获用户明确授权前不得转 Ready、合并、标记 Completed 或启动 Admin Task 4。
+Admin Enhancement 1 已 Completed；这不构成启动 Admin Task 4、Phase 8 Task 2 或 Task 3 的授权。
