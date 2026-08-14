@@ -6,8 +6,8 @@
 
 ```text
 阶段 1-7：Completed
-Phase 8：Active / Task 0 Completed / Task 1-3 Planned
-Active Agent Task：无
+Phase 8：Active / Task 0 Completed / Task 1 Active（已实现、待验收）/ Task 2-3 Planned
+Active Agent Task：Task 1 / Issue #50
 Minimal Compaction：Gated
 Admin Observability：Task 0-3 Completed
 Admin Task 4：Planned
@@ -46,7 +46,7 @@ Article Source
 | Task | 状态 | 核心目标 | 启动条件 |
 | --- | --- | --- | --- |
 | Task 0：Retrieval Boundary & Offline Evaluation Baseline | **Completed** | 解耦 Retrieval 与 Tool，固化 Prisma lexical 行为和 Recall@K / MRR baseline | 已完成：#48 / #49 / merge `4c2f7950` |
-| Task 1：Article Chunking & Embedding Index | **Planned** | 确定性 Chunk、stable identity、Embedding boundary 与幂等索引 | 先讨论数据模型、provider、pgvector 和重建语义，再创建 Issue |
+| Task 1：Article Chunking & Embedding Index | **Active / 已实现 / 待验收** | 确定性 Chunk、stable identity、Embedding boundary 与幂等索引 | Issue #50；等待 Draft PR 技术验收 |
 | Task 2：Hybrid Retrieval & Agent Tool Integration | **Planned** | vector + lexical retrieval、融合排序、同基线评估和 Tool 接入 | Task 1 Completed 后才能启动 |
 | Task 3：Grounded Answer & Retrieval Inspector | **Planned** | 来源引用、Web 来源展示、安全 Inspector 和端到端证据 | Task 2 Completed 后才能启动；必要时在 Issue 前拆分范围 |
 
@@ -92,13 +92,4 @@ Phase 7 已在 Admin Observability 基线上增加 Context Inspector。Phase 8 T
 
 ## 当前正式动作
 
-当前没有 Active Agent Task。下一步只讨论 Phase 8 Task 1：
-
-- Article Chunk 数据模型；
-- Chunk size / overlap / HTML 清理；
-- Embedding provider、model、dimension 与版本；
-- PostgreSQL / pgvector 存储；
-- 全量与增量 index；
-- 幂等、重试、部分失败和索引同步。
-
-讨论定案后，GPT 才创建 Task 1 独立 Issue 和任务专属 Codex 开工 Prompt。Task 2、Task 3 与 Minimal Compaction 均不得提前实现。
+当前 Active Agent Task 为 Phase 8 Task 1 / Issue #50。Clarification Gate 为 `READY`，实现状态为“已实现”，验收状态为“待验收”；下一步是 Draft PR 技术验收。Task 2、Task 3 与 Minimal Compaction 均不得提前实现。

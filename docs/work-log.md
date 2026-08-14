@@ -6,8 +6,8 @@
 
 | 类型 | 当前记录 | 下一步 |
 | --- | --- | --- |
-| Agent 主线 | 阶段 1-7 Completed；Phase 8 Active；Task 0 Completed；Task 1-3 Planned；当前无 Active Agent Task | 讨论 Task 1，但不自动启动 |
-| Phase 8 | 完整任务编排已建立 | `docs/tasks/phase-08-grounded-retrieval/README.md` |
+| Agent 主线 | 阶段 1-7 Completed；Phase 8 Active；Task 0 Completed；Task 1 Active（已实现、待验收）；Task 2-3 Planned | 验收 Task 1 Draft PR，不启动 Task 2 |
+| Phase 8 | Task 1 / Issue #50 实现已完成 | `docs/tasks/phase-08-grounded-retrieval/task-01-article-chunking-embedding-index.md` |
 | Minimal Compaction | Gated | 只有真实 Context 压力证据满足触发条件后才讨论 |
 | Admin Console | Task 0-3 Completed；Task 4 Planned | 不自动启动 Auth / RBAC |
 
@@ -15,6 +15,7 @@
 
 | 日期 | 事项 | 结果 |
 | --- | --- | --- |
+| 2026-08-14 | Phase 8 Task 1 实现 | Issue #50 Clarification Gate `READY`；基于 `master@3c45219e` 实现 deterministic HTML chunking、D-09 canonical source hash、OpenAI EmbeddingProvider、pgvector active index、幂等 CLI、stale fencing 与 advisory lock；实施状态已实现，验收状态待验收；真实 OpenAI / pgvector integration 未验证 |
 | 2026-08-14 | Phase 8 完整任务规划补齐 | 新增阶段 README，并建立 Task 1 Chunking / Embedding、Task 2 Hybrid Retrieval / Tool、Task 3 Grounded Answer / Inspector 的 Planned 文档；同步 tasks 看板、roadmap 与 docs 入口；Task 1-3 均未启动 |
 | 2026-08-14 | Phase 8 Task 0 最终收口 | Issue #48 / PR #49；最终 head `79c6f44b45`；merge `4c2f795084e7bccac205509d8c31b56dbe7ccf0b`；GPT 技术验收与用户确认完成；Issue / PR 已关闭；远程任务分支已由用户删除 |
 | 2026-08-14 | PR #49 验收修复 | 统一生产 Retriever 契约、补齐 Evaluation case 绑定校验；最终 Codex Review 无主要 finding |
@@ -34,8 +35,9 @@
 阶段 1-7            Completed
 Phase 8             Active
 Task 0              Completed
-Task 1-3            Planned
-Active Agent Task   无
+Task 1              Active / 已实现 / 待验收
+Task 2-3            Planned
+Active Agent Task   Task 1 / Issue #50
 Minimal Compaction  Gated
 ```
 
@@ -44,18 +46,18 @@ Phase 8 当前执行顺序：
 ```text
 Task 0  Retrieval Boundary + Offline Evaluation       Completed
   ↓
-Task 1  Article Chunking + Embedding Index             Planned
+Task 1  Article Chunking + Embedding Index             Active / 已实现 / 待验收
   ↓
 Task 2  Hybrid Retrieval + Agent Tool Integration      Planned
   ↓
 Task 3  Grounded Answer + Retrieval Inspector          Planned
 ```
 
-Task 1-3 只是阶段级规划。任何 Task 都必须先创建独立 Issue 并通过 Clarification Gate，不能因为文档已存在就自动进入实现。
+Task 1 已由 Issue #50 正式定案并通过 Clarification Gate；Task 2-3 仍只是阶段级规划，不得自动进入实现。
 
 ## 记录规则
 
 - 只记录已经真实发生的事项；
 - 实现、验收、Task 收口、合并与开始下一 Task 是不同动作；
 - Planned 不代表 Next 或 Active；
-- 当前无 Active Agent Task，下一步只讨论 Task 1。
+- 当前 Active Agent Task 是 Task 1；下一步只做 Draft PR 技术验收与受托收口。
