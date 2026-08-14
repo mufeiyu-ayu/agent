@@ -1,6 +1,6 @@
 # Phase 8 Task 2A：Vector / Hybrid Retrieval & Evaluation
 
-状态：**Active / Issue #54 Open / 已实现 / 待验收 / Draft PR 待创建**。
+状态：**Active / Issue #54 Open / Draft PR #55 / 已实现 / 待验收**。
 
 本 Task 是原“Task 2：Hybrid Retrieval & Agent Tool Integration”拆分后的第一部分，只建立真实 Embedding Provider、Vector / Hybrid Retrieval 与可验证 Evaluation，不接入 Agent Tool。Task 2B 在本 Task Completed 后才能启动。
 
@@ -247,7 +247,7 @@ RRF constant：60
 
 - Issue：[#54](https://github.com/mufeiyu-ayu/agent/issues/54) / Open
 - 分支：`codex/issue-54-gemini-hybrid-retrieval`
-- PR：Draft 待创建
+- PR：[#55](https://github.com/mufeiyu-ayu/agent/pull/55) / Draft
 - Clarification Gate：`READY`（2026-08-15）
 
 ## 任务状态

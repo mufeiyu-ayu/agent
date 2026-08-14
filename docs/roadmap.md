@@ -48,7 +48,7 @@ Article Source
 | --- | --- | --- | --- |
 | Task 0：Retrieval Boundary & Offline Evaluation Baseline | **Completed** | 解耦 Retrieval 与 Tool，固化 Prisma lexical 行为和 Recall@K / MRR baseline | #48 / #49 / merge `4c2f7950` |
 | Task 1：Article Chunking & Embedding Index | **Completed** | 确定性 Chunk、stable identity、Embedding boundary、pgvector active index 与幂等 CLI | #50 / #52 / merge `76d66abf`；当时 OpenAI profile 未完成真实 smoke |
-| Task 2A：Vector / Hybrid Retrieval & Evaluation | **Active / 已实现、待验收** | OpenAI→Gemini Provider 迁移、真实 pgvector / Gemini smoke、Query Embedding、exact vector search、article aggregation、RRF 与 quality-v2 Evaluation | Issue #54 Open；Gate READY；Draft PR 待创建 |
+| Task 2A：Vector / Hybrid Retrieval & Evaluation | **Active / 已实现、待验收** | OpenAI→Gemini Provider 迁移、真实 pgvector / Gemini smoke、Query Embedding、exact vector search、article aggregation、RRF 与 quality-v2 Evaluation | Issue #54 Open；Draft PR #55；Gate READY |
 | Task 2B：Retrieval Tool & Agent Integration | **Planned** | 将稳定 Hybrid Retrieval 通过专用 Tool 接入 Agent，并治理 Observation / Context | Task 2A Completed 后再定案并创建 Issue |
 | Task 3：Grounded Answer & Retrieval Inspector | **Planned** | 来源引用、Web 来源展示、安全 Inspector 和端到端证据 | Task 2B Completed 后才能启动；必要时在 Issue 前拆分后端与 UI 范围 |
 
@@ -174,11 +174,11 @@ Phase 7 已在 Admin Observability 基线上增加 Context Inspector。Enhanceme
 当前 Active Agent Task 为 Task 2A，状态为：
 
 ```text
-Task 2A：Active / 已实现 / 待验收
+Task 2A：Active / Draft PR #55 / 已实现 / 待验收
 Issue #54：Open
 Active Provider：Gemini
 Clarification Gate：READY（2026-08-15）
-下一步：创建 Draft PR 并进行技术验收
+下一步：对 Draft PR #55 进行技术验收
 ```
 
 shared Gemini Provider、隔离 pgvector、exact cosine Retrieval、article aggregation、独立 lexical strategy、RRF 与 quality-v2 已实现；真实 smoke 和 DB suites 已通过。确定性 corpus 为 2044 Chunks，当前 Gemini free-tier Embed Content 日配额为 1000，因此 full indexing 与 production quality-v2 尚未通过，不能记录为 PASS 或据此设置 threshold。Task 2B、Task 3、Admin Task 4 与 Minimal Compaction 均不得提前实现。

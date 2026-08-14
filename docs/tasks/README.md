@@ -16,7 +16,7 @@ Admin Enhancement 1：Completed
 
 | 区域 | 状态 | 文档 | 说明 |
 | --- | --- | --- | --- |
-| Agent 主线 | **Phase 8 Active / Task 2A Active** | [roadmap.md](../roadmap.md) | Task 0-1 Completed；Task 2A 已实现、待验收；Task 2B / Task 3 Planned |
+| Agent 主线 | **Phase 8 Active / Task 2A Active** | [roadmap.md](../roadmap.md) | Task 0-1 Completed；Task 2A Draft #55 已实现、待验收；Task 2B / Task 3 Planned |
 | Phase 8：Grounded Retrieval / RAG Baseline | **Active** | [Phase 8 总览](./phase-08-grounded-retrieval/README.md) | Task 2A 已完成 Gemini Retrieval 实现；真实 full indexing / quality-v2 受 Embed Content 日配额阻塞 |
 | Phase 7：Context Engineering | **Completed** | [completed/phase-07-context-engineering.md](./completed/phase-07-context-engineering.md) | Task 0-3 Completed；merge `caf3d25b`；Minimal Compaction 继续 Gated |
 | Phase 6：有界单 Agent Loop | **Completed** | [completed/phase-06-bounded-agent-loop.md](./completed/phase-06-bounded-agent-loop.md) | 有界顺序 Loop、配置治理、数据库可靠性与终态收口均已完成 |
@@ -35,7 +35,7 @@ Admin Enhancement 1：Completed
 | --- | --- | --- | --- | --- |
 | Task 0：Retrieval Boundary & Offline Evaluation Baseline | **Completed** | Phase 7 | `ArticleRetriever` Contract、Prisma lexical adapter、离线 corpus、Recall@K / MRR baseline | [Task 0](./phase-08-grounded-retrieval/task-00-retrieval-boundary-evaluation.md) |
 | Task 1：Article Chunking & Embedding Index | **Completed** | Task 0 | 确定性 Chunk、stable identity、Embedding boundary、pgvector active index 与幂等 CLI；当时 OpenAI-specific profile 未完成真实 smoke | [Task 1](./phase-08-grounded-retrieval/task-01-article-chunking-embedding-index.md) |
-| Task 2A：Vector / Hybrid Retrieval & Evaluation | **Active / #54 Open / 已实现、待验收** | Task 1 | OpenAI→Gemini Provider 迁移、真实 pgvector / Gemini smoke、Query Embedding、exact vector search、article aggregation、RRF、quality-v2 Evaluation | [Task 2A](./phase-08-grounded-retrieval/task-02-hybrid-retrieval-tool.md) |
+| Task 2A：Vector / Hybrid Retrieval & Evaluation | **Active / #54 / Draft #55 / 已实现、待验收** | Task 1 | OpenAI→Gemini Provider 迁移、真实 pgvector / Gemini smoke、Query Embedding、exact vector search、article aggregation、RRF、quality-v2 Evaluation | [Task 2A](./phase-08-grounded-retrieval/task-02-hybrid-retrieval-tool.md) |
 | Task 2B：Retrieval Tool & Agent Integration | **Planned** | Task 2A | 专用 Retrieval Tool、受控 Observation、Agent Loop / Context Budget 集成 | [Task 2B](./phase-08-grounded-retrieval/task-02b-retrieval-tool-agent-integration.md) |
 | Task 3：Grounded Answer & Retrieval Inspector | **Planned** | Task 2B | 结构化来源引用、Web 来源展示、安全 Retrieval Inspector 与端到端证据 | [Task 3](./phase-08-grounded-retrieval/task-03-grounded-answer-retrieval-inspector.md) |
 
@@ -105,9 +105,9 @@ Enhancement 1 将单 Run Detail 重构为紧凑 Run Trace Workspace，建立 Com
 
 ## 当前正式动作
 
-Task 2A 已创建独立 Issue #54，最新状态为 `Active / 已实现 / 待验收`。
+Task 2A 已创建独立 Issue #54 与 Draft PR #55，最新状态为 `Active / 已实现 / 待验收`。
 
-下一步为创建 Draft PR 并进行技术验收；配额可用后补跑 full indexing 与 production quality-v2。Task 2A 未完成这些真实证据前不得标记 Completed。
+下一步为对 Draft PR #55 进行技术验收；配额可用后补跑 full indexing 与 production quality-v2。Task 2A 未完成这些真实证据前不得标记 Completed。
 
 Task 2B、Task 3 不得越过 Task 2A 提前启动。Minimal Compaction 继续保持 `Gated`，不属于 Phase 8 默认任务。
 

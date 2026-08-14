@@ -78,7 +78,7 @@ DeepSeek 继续作为 Chat / Agent LLM。Task 2A 不把 DeepSeek Key 用作 Embe
 | --- | --- | --- | --- |
 | Task 0：Retrieval Boundary & Offline Evaluation Baseline | **Completed** | 解耦 Retrieval 与 Tool，固化 Prisma lexical 行为和离线评估基线 | [Task 0](./task-00-retrieval-boundary-evaluation.md) |
 | Task 1：Article Chunking & Embedding Index | **Completed** | 建立确定性 Chunk、稳定身份、Embedding 边界与幂等索引 | [Task 1](./task-01-article-chunking-embedding-index.md) |
-| Task 2A：Vector / Hybrid Retrieval & Evaluation | **Active / #54 Open / 已实现、待验收** | OpenAI→Gemini Provider 迁移、真实 pgvector / Gemini smoke、exact vector retrieval、article aggregation、RRF 与 quality-v2 Evaluation | [Task 2A](./task-02-hybrid-retrieval-tool.md) |
+| Task 2A：Vector / Hybrid Retrieval & Evaluation | **Active / #54 / Draft #55 / 已实现、待验收** | OpenAI→Gemini Provider 迁移、真实 pgvector / Gemini smoke、exact vector retrieval、article aggregation、RRF 与 quality-v2 Evaluation | [Task 2A](./task-02-hybrid-retrieval-tool.md) |
 | Task 2B：Retrieval Tool & Agent Integration | **Planned** | 将稳定 Hybrid Retrieval 通过专用 Tool 接入 Agent，并治理 Observation / Context | [Task 2B](./task-02b-retrieval-tool-agent-integration.md) |
 | Task 3：Grounded Answer & Retrieval Inspector | **Planned** | 建立结构化引用、Grounded Answer、Web 来源展示与安全 Retrieval Inspector | [Task 3](./task-03-grounded-answer-retrieval-inspector.md) |
 
@@ -173,11 +173,11 @@ Phase 8 当前不包含：
 Phase 8：Active
 Task 0：Completed
 Task 1：Completed / Issue #50 / PR #52 / merge 76d66abf
-Task 2A：Active / Issue #54 Open / 已实现 / 待验收
+Task 2A：Active / Issue #54 Open / Draft PR #55 / 已实现 / 待验收
 Task 2B：Planned
 Task 3：Planned
 Active Agent Task：Task 2A
 Minimal Compaction：Gated
 ```
 
-下一步为创建 Draft PR 并进行技术验收。Task 2A 当前不能标记 Completed：真实 full indexing 与 production quality-v2 尚受 Gemini free-tier Embed Content 日配额阻塞。Task 2B、Task 3 与 Minimal Compaction 均不得提前启动。
+下一步为对 Draft PR #55 进行技术验收。Task 2A 当前不能标记 Completed：真实 full indexing 与 production quality-v2 尚受 Gemini free-tier Embed Content 日配额阻塞。Task 2B、Task 3 与 Minimal Compaction 均不得提前启动。
