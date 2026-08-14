@@ -6,7 +6,7 @@
 
 ```text
 阶段 1-7：Completed
-Phase 8：Active / Task 0-1 Completed / Task 2A Next / Task 2B 与 Task 3 Planned
+Phase 8：Active / Task 0-1 Completed / Task 2A Next (#54) / Task 2B 与 Task 3 Planned
 Active Agent Task：无
 Minimal Compaction：Gated
 Admin Observability：Task 0-3 Completed
@@ -48,7 +48,7 @@ Article Source
 | --- | --- | --- | --- |
 | Task 0：Retrieval Boundary & Offline Evaluation Baseline | **Completed** | 解耦 Retrieval 与 Tool，固化 Prisma lexical 行为和 Recall@K / MRR baseline | #48 / #49 / merge `4c2f7950` |
 | Task 1：Article Chunking & Embedding Index | **Completed** | 确定性 Chunk、stable identity、Embedding boundary、pgvector active index 与幂等 CLI | #50 / #52 / merge `76d66abf` |
-| Task 2A：Vector / Hybrid Retrieval & Evaluation | **Next** | 真实 pgvector 验证、Query Embedding、exact vector search、article aggregation、RRF 与 quality-v2 Evaluation | 当前下一项正式任务；创建独立 Issue 后先过 Clarification Gate |
+| Task 2A：Vector / Hybrid Retrieval & Evaluation | **Next** | 真实 pgvector 验证、Query Embedding、exact vector search、article aggregation、RRF 与 quality-v2 Evaluation | Issue #54 Open；下一步 Clarification Gate |
 | Task 2B：Retrieval Tool & Agent Integration | **Planned** | 将稳定 Hybrid Retrieval 通过专用 Tool 接入 Agent，并治理 Observation / Context | Task 2A Completed 后再定案并创建 Issue |
 | Task 3：Grounded Answer & Retrieval Inspector | **Planned** | 来源引用、Web 来源展示、安全 Inspector 和端到端证据 | Task 2B Completed 后才能启动；必要时在 Issue 前拆分后端与 UI 范围 |
 
@@ -138,9 +138,9 @@ Phase 7 已在 Admin Observability 基线上增加 Context Inspector。Enhanceme
 
 ## 当前正式动作
 
-当前没有 Active Agent Task。Task 2A 已确认是下一项正式任务，状态为 `Next`。
+当前没有 Active Agent Task。Task 2A 已创建 Issue #54，状态为 `Next / Gate 未执行`。
 
-下一步创建 Task 2A 独立 Issue，并要求 Codex 先执行 Clarification Gate，重点核对：
+下一步由 Codex 对 Issue #54 执行 Clarification Gate，重点核对：
 
 - pgvector-capable PostgreSQL 16 环境与既有数据 volume 保护；
 - Task 1 真实 DB integration / concurrency 和 OpenAI smoke 是否可执行；
