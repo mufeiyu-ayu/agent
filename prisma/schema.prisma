@@ -174,6 +174,52 @@ model Article {
   seoDescription String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
+  chunks         ArticleChunk[]
+  indexState     ArticleIndexState?
 
   @@index([title])
+}
+
+// Task 1 只保留每篇 Article 的一个 active embedding index。
+// Prisma 尚不能原生读写 pgvector，embedding 仅由 ArticleIndexRepository
+// 通过参数化 raw SQL 写入。
+model ArticleChunk {
+  id                  String                      @id
+  articleId           String
+  article             Article                     @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  ordinal             Int
+  languageCode        String
+  sectionPath         String
+  content             String
+  tokenCount          Int
+  contentHash         String
+  embeddingInputHash  String
+  chunkerVersion      String
+  embeddingProvider   String
+  embeddingModel      String
+  embeddingDimensions Int
+  embeddingVersion    String
+  embedding           Unsupported("vector(1536)")
+  createdAt           DateTime                    @default(now())
+  updatedAt           DateTime                    @updatedAt
+
+  @@unique([articleId, ordinal])
+  @@index([articleId, chunkerVersion, embeddingVersion])
+  @@index([languageCode])
+  @@index([embeddingVersion])
+}
+
+model ArticleIndexState {
+  articleId        String   @id
+  article          Article  @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  sourceHash       String
+  sourceUpdatedAt  DateTime
+  chunkerVersion   String
+  embeddingVersion String
+  chunkCount       Int
+  indexedAt        DateTime
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([chunkerVersion, embeddingVersion])
 }

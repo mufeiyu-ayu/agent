@@ -1,6 +1,6 @@
 # Phase 8：Grounded Retrieval / RAG Baseline
 
-状态：**Active / Task 0 Completed / Task 1-3 Planned / 当前无 Active Task**。
+状态：**Active / Task 0 Completed / Task 1 Active（已实现、待验收）/ Task 2-3 Planned**。
 
 本文件是 Phase 8 的阶段总览与任务编排入口。正式实现状态仍以各 Task 文档、对应 Issue / PR 和 GitHub 实时事实为准。
 
@@ -48,18 +48,18 @@ Task 0 最终交付：Issue #48 / PR #49 / merge `4c2f7950`。
 | Task | 状态 | 核心目标 | 文档 |
 | --- | --- | --- | --- |
 | Task 0：Retrieval Boundary & Offline Evaluation Baseline | **Completed** | 解耦 Retrieval 与 Tool，固化 Prisma lexical 行为和离线评估基线 | [task-00-retrieval-boundary-evaluation.md](./task-00-retrieval-boundary-evaluation.md) |
-| Task 1：Article Chunking & Embedding Index | **Planned** | 建立确定性 Chunk、稳定身份、Embedding 边界与幂等索引 | [task-01-article-chunking-embedding-index.md](./task-01-article-chunking-embedding-index.md) |
+| Task 1：Article Chunking & Embedding Index | **Active / 已实现 / 待验收** | 建立确定性 Chunk、稳定身份、Embedding 边界与幂等索引 | [task-01-article-chunking-embedding-index.md](./task-01-article-chunking-embedding-index.md) |
 | Task 2：Hybrid Retrieval & Agent Tool Integration | **Planned** | 在同一评估基线上实现 vector + lexical 检索、融合排序与受控 Tool 接入 | [task-02-hybrid-retrieval-tool.md](./task-02-hybrid-retrieval-tool.md) |
 | Task 3：Grounded Answer & Retrieval Inspector | **Planned** | 建立结构化来源引用、Grounded Answer、前端来源展示与安全 Retrieval Inspector | [task-03-grounded-answer-retrieval-inspector.md](./task-03-grounded-answer-retrieval-inspector.md) |
 
-当前没有 Active Agent Task。Task 1-3 只是阶段规划，不代表已经创建 Issue、通过 Clarification Gate 或授权实现。
+Task 1 已由 Issue #50 正式定案，Clarification Gate 为 `READY`，实现已完成并等待验收。Task 2-3 仍只是阶段规划。
 
 ## 4. 推荐执行顺序
 
 ```text
 Task 0  Retrieval Boundary + Evaluation Baseline       Completed
   ↓
-Task 1  Chunking + Embedding Index                     Planned
+Task 1  Chunking + Embedding Index                     Active / 已实现 / 待验收
   ↓
 Task 2  Hybrid Retrieval + Tool Integration            Planned
   ↓
@@ -110,9 +110,10 @@ Phase 8 当前不包含：
 ```text
 Phase 8：Active
 Task 0：Completed
-Task 1-3：Planned
-Active Agent Task：无
+Task 1：Active / 已实现 / 待验收 / Issue #50
+Task 2-3：Planned
+Active Agent Task：Task 1
 Minimal Compaction：Gated
 ```
 
-下一步应先讨论 Task 1 的数据模型、Chunk 策略、Embedding provider、索引重建与幂等边界；未创建 Issue 前不得进入实现。
+下一步是对 Task 1 Draft PR 做技术验收；验收、转 Ready、合并和状态收口仍需分别授权。Task 2、Task 3 与 Minimal Compaction 不得提前启动。
