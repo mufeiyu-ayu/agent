@@ -99,6 +99,7 @@ Codex 应作为 Agent 应用开发学习搭档，负责按正式 Issue 实现、
 - 只有 GPT 给出验收通过结论且用户明确确认后，才能把任务写成已通过 / Completed；Phase 是否 Completed 还必须满足该阶段自己的完成条件。
 - 用户明确授权后，GPT 可以直接更新允许范围内的 docs-only 状态并提交 `master`，无需为纯文档状态同步单独创建 Issue / PR。
 - 用户明确授权后，GPT 可以远程转 Ready、合并 PR、关闭放弃 PR、删除远程分支；本地 `master` 同步和本地分支清理由用户或本地 Codex 处理。
+- 正式 GitHub 交付前必须先用 `gh auth status --hostname github.com` 和 `git push --dry-run origin HEAD` 预检凭据，且不得输出 token。若认证失效、凭据缺失、权限不足或 dry-run 因凭据失败，必须立即停止当前任务并告知用户；不得自行改用 GitHub API、Connector 或手工上传 blob / tree / commit / ref 绕过失败。只有用户修复凭据或在知情后明确授权替代方案，才可继续。
 - Review 默认先解释再处理；finding 与最新 Issue 决策或项目规范冲突时，不得为了“通过 Review”反向违反已确认规格，应说明冲突并按事实来源解决。
 - 当前不把 GitHub Actions 作为必需环节；以与 Task 匹配的本地验证、PR diff、Codex Review 和 GPT 验收为主要质量证据。
 - 用户明确授权“更新 docs 并写入 master”“直接改 docs”“收口任务状态”等 docs-only 操作时，可以绕过 Issue / PR；业务功能、API / contracts、数据库、Agent Runtime、Streaming、Tool Calling、依赖、环境、安全或权限变更仍禁止直接写 `master`。
