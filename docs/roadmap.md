@@ -4,7 +4,7 @@
 
 ## 当前判断
 
-项目已经完成从基础 LLM Chat 到 Context Engineering 的连续学习闭环；Phase 8 Task 0 现已建立 Article Retrieval Boundary 与确定性离线 Evaluation Baseline，处于已实现、待验收状态。
+项目已经完成从基础 LLM Chat 到 Context Engineering 的连续学习闭环；Phase 8 Task 0 已建立 Article Retrieval Boundary 与确定性离线 Evaluation Baseline，并完成技术验收、用户确认与合并。
 
 Phase 7 `Context Engineering` 已完成 GPT 技术验收、用户确认验收，并通过 Issue #46 / PR #47 合入 `master`。Task 0-3 均已 Completed，最终 merge commit 为 `caf3d25b7af0e5b30ae47d3c96faab4138fbdb9e`。
 
@@ -12,8 +12,10 @@ Phase 7 `Context Engineering` 已完成 GPT 技术验收、用户确认验收，
 
 ```text
 阶段 1-7：Completed
-Phase 8 Task 0：Active / 已实现、待验收
+Phase 8：Active / Task 0 Completed
+Active Agent Task：无
 Minimal Compaction：Gated
+Task 1：未启动
 Admin Observability：Task 0-3 Completed
 Admin Task 4：Planned
 ```
@@ -29,7 +31,7 @@ Admin Task 4：Planned
 | 阶段 5：最小 Tool Calling | Completed | 单次 Tool Call、Observation 与第二轮 sampling |
 | [阶段 6：有界单 Agent Loop](./tasks/completed/phase-06-bounded-agent-loop.md) | **Completed** | 多轮顺序决策、执行预算、DeepSeek continuation、DB deadline 与终态可靠性 |
 | [阶段 7：Context Engineering](./tasks/completed/phase-07-context-engineering.md) | **Completed** | Context 边界、model-aware budget、Dynamic History、Loop Context Governance、Context Inspector |
-| [阶段 8：Grounded Retrieval / RAG Baseline](./tasks/phase-08-grounded-retrieval/task-00-retrieval-boundary-evaluation.md) | **Active** | Task 0：Retrieval Boundary、Prisma lexical adapter、离线 corpus 与 metrics；已实现、待验收 |
+| [阶段 8：Grounded Retrieval / RAG Baseline](./tasks/phase-08-grounded-retrieval/task-00-retrieval-boundary-evaluation.md) | **Active / Task 0 Completed** | Retrieval Boundary、Prisma lexical adapter、离线 corpus 与 Recall@K / MRR baseline；merge `4c2f7950`；Task 1 未启动 |
 
 ## Phase 7 最终交付
 
@@ -82,6 +84,22 @@ Admin Task 2 + Task 3 已建立真实 Run / Step Read API、Run List / Detail、
 
 Issue #37 / PR #38 已完成并合入 `master`，merge commit `415d740507a29ee4bd9b6a4aa26d9c4fbb9668c1`。该独立任务完成了 Chat 原生滚动 viewport、流式跟随、用户上滚暂停、scroll memory 和响应式布局。
 
+## Phase 8 当前交付
+
+```text
+Task 0：Retrieval Boundary & Offline Evaluation Baseline  Completed / #48 / #49 / 4c2f7950
+Task 1                                                      未启动
+Minimal Compaction                                           Gated
+```
+
+Task 0 最终建立：
+
+- 与 Tool / LLM 解耦、按 execution context 类型约束的 `ArticleRetriever` Contract；
+- 保持既有查询、排序、excerpt、Abort 与 database deadline 语义的 Prisma lexical adapter；
+- 无 LLM、无网络、无真实数据库依赖的版本化离线 corpus；
+- Recall@K、reciprocal rank、Mean Recall@K、MRR 与非法结果校验；
+- 可重复运行且逐字稳定的 baseline JSON 输出。
+
 ## 当前正式动作
 
-Phase 8 Task 0 已通过 Issue #48 的 Clarification Gate，当前为 Active，实施状态为已实现、验收状态为待验收。Task 1 未启动；Minimal Compaction 继续保持 Gated。
+Phase 8 保持 Active，但当前没有 Active Agent Task。Task 1 未启动；是否进入 Task 1 必须重新讨论并创建独立 Issue，通过 Clarification Gate 后才能实现。Minimal Compaction 继续保持 Gated。
