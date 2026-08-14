@@ -61,10 +61,11 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
       throw new Error('请在项目根目录 .env 中设置 DATABASE_URL')
     }
 
+    const schema = new URL(connectionString).searchParams.get('schema')?.trim()
     const adapter = new RollbackSafePrismaPg({
       connectionString,
       connectionTimeoutMillis: PG_POOL_ACQUISITION_TIMEOUT_MS,
-    })
+    }, schema ? { schema } : undefined)
 
     super({ adapter })
   }

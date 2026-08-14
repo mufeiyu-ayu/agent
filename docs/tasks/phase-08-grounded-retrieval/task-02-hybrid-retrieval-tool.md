@@ -1,6 +1,6 @@
 # Phase 8 Task 2A：Vector / Hybrid Retrieval & Evaluation
 
-状态：**Next / Issue #54 Open / 规格已更新 / Gate 待重新执行**。
+状态：**Active / Issue #54 Open / 已实现 / 待验收 / Draft PR 待创建**。
 
 本 Task 是原“Task 2：Hybrid Retrieval & Agent Tool Integration”拆分后的第一部分，只建立真实 Embedding Provider、Vector / Hybrid Retrieval 与可验证 Evaluation，不接入 Agent Tool。Task 2B 在本 Task Completed 后才能启动。
 
@@ -232,20 +232,31 @@ RRF constant：60
 | AC-12 | Task 2A 不接 Tool / Agent，外部行为不退化 | `search_articles@1` 兼容；不泄露 embedding | Tool / Loop regression |
 | AC-13 | build、typecheck、lint 与受影响测试通过 | 真实失败不得由文档覆盖 | 真实命令结果 |
 
+## 实现与验证记录（2026-08-15）
+
+- Clarification Gate 基于 Issue #54 最新正文、唯一澄清评论与 `origin/master@eee795bd0eb5d2e9995c8e880f39dfb406a6c555` 完成，结论为 `READY`；实现分支为 `codex/issue-54-gemini-hybrid-retrieval`；
+- 已建立 shared Gemini Embedding boundary、固定 Query / Document formatter、隔离 pgvector integration profile、exact cosine repository、Chunk -> Article 聚合、独立 lexical strategy、RRF 与 quality-v2；未修改 Tool / Agent Runtime 或 legacy `PrismaArticleRetriever`；
+- `gemini-embedding-2` 真实 smoke 成功返回 1 条 1536 维非零向量；脱敏输出仅包含 provider、model、数量、维度、norm、请求 / 重试计数与耗时；
+- Task 1 pgvector DB suite 7/7、Retrieval DB suite 5/5，均为 0 skip；Article Indexing unit 49/49、Retrieval unit 30/30、Tools 40/40、Tool Loop 52/52 通过；legacy `article-retrieval-baseline-v1` 保持可重复；
+- API build、API / workspace typecheck、API lint、Prisma validate 与 `git diff --check` 已按当前 head 重跑通过；
+- AC-05 当前**未通过**：确定性 corpus 为 68 篇 / 2044 Chunks，Google AI Studio 当前项目的 `gemini-embedding-2` free-tier Embed Content 日配额为 1000；2044 个独立 Chunk 输入超过该上限，真实 full indexing 以 `embedding_rate_limit` 退出，未记录为 PASS，也未切换 fallback；
+- AC-09 的真实 Gemini vector / hybrid 比较与 AC-11 的正负样本距离分布当前**不可用**：隔离库没有完整 Gemini active index，quality-v2 production CLI 安全退出；threshold 保持未启用。单元级 evaluator / 指标契约已通过，但不能替代真实质量报告；
+- 隔离环境使用独立 database、端口与 `postgres-vector-test-data`；现有开发数据库和 `postgres-data` 未删除、reset、覆盖或挂载。
+
 ## GitHub 交付状态
 
 - Issue：[#54](https://github.com/mufeiyu-ayu/agent/issues/54) / Open
-- 分支：未创建
-- PR：未创建
-- Clarification Gate：上一轮 `BLOCKED` 已因 Provider 规格变化失效，需基于 Issue 最新正文重新执行
+- 分支：`codex/issue-54-gemini-hybrid-retrieval`
+- PR：Draft 待创建
+- Clarification Gate：`READY`（2026-08-15）
 
 ## 任务状态
 
 ```text
-规划状态：Next
-实施状态：未开始
-验收状态：未验收
-Clarification Gate：待重新执行
+规划状态：Active
+实施状态：已实现
+验收状态：待验收
+Clarification Gate：READY（2026-08-15）
 ```
 
-Task 2A 是当前下一项正式 Agent Task。只有 Codex 重新读取最新 Issue / docs 并返回 `READY` 后，才进入 `Active` / 实现。
+Task 2A 当前保持 Active。真实 full indexing 与 production quality-v2 仍受 Gemini free-tier 日配额阻塞，不能标记 Completed；Task 2B 不得提前启动。

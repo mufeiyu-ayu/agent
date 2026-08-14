@@ -5,13 +5,13 @@ import { readFileSync } from 'node:fs'
 // eslint-disable-next-line test/no-import-node-test
 import { describe, it } from 'node:test'
 
+import { ACTIVE_EMBEDDING_PROFILE } from '../embeddings/embedding-provider.js'
 import {
   ARTICLE_CHUNKER_PROFILE,
   canonicalizeArticleSource,
   chunkCanonicalArticle,
   countArticleTokens,
 } from './article-chunking.js'
-import { ACTIVE_EMBEDDING_PROFILE } from './embedding-provider.js'
 
 const STRUCTURAL_HTML = `
   <script>ignore me</script>
@@ -110,10 +110,10 @@ describe('deterministic Article chunking', () => {
       contentHash: chunk.contentHash,
       embeddingInputHash: chunk.embeddingInputHash,
     })), [{
-      id: 'dbcbb1c4dcb46614f0899b36ec858ff7dd91561fc66588d2e204beeee4389cd7',
-      tokenCount: 120,
+      id: '5cbdfdf128575e11e18cc4edacf84c80be1652908594299453554efc036bbc5a',
+      tokenCount: 116,
       contentHash: '615e28226026a674b8d4b225a024077be61754e4014c52947fa9fb382063cdbf',
-      embeddingInputHash: '4adc0d525d983bb4a580ee5faab7e73567b16f0d79847b9b7a31faef5c88f1f7',
+      embeddingInputHash: 'd46c785fc39570fa326d22b9c2373f9857001c172c660bc6d1e7fe3c5c10b5af',
     }])
   })
 

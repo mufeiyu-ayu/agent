@@ -35,6 +35,13 @@ export interface ArticleRetrievalHit {
   seoDescription: string | null
   excerpt: string
   rank: number
+  evidence?: ArticleRetrievalEvidence
+}
+
+export interface ArticleRetrievalEvidence {
+  chunkId: string
+  sectionPath: string
+  cosineDistance: number
 }
 
 export interface ArticleRetrievalResult {

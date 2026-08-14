@@ -61,8 +61,8 @@ describe('Article indexing CLI', () => {
 
   it('pnpm 文档命令透传的参数分隔符可到达 mode 校验', () => {
     const result = spawnSync(
-      'pnpm',
-      ['--filter', '@agent/api', 'index:articles', '--', '--mode=invalid'],
+      'corepack',
+      ['pnpm', '--filter', '@agent/api', 'index:articles', '--', '--mode=invalid'],
       {
         cwd: fileURLToPath(new URL('../../../../', import.meta.url)),
         encoding: 'utf8',

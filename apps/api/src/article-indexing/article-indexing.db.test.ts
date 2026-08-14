@@ -8,6 +8,7 @@ import process from 'node:process'
 // 项目使用 Node 原生测试运行器，不引入额外测试框架。
 // eslint-disable-next-line test/no-import-node-test
 import { after, before, describe, it } from 'node:test'
+import { ACTIVE_EMBEDDING_PROFILE } from '../embeddings/embedding-provider.js'
 import { PrismaService } from '../prisma/prisma.service.js'
 import {
   canonicalizeArticleSource,
@@ -17,7 +18,6 @@ import {
   ArticleIndexRepository,
   createArticleIndexPool,
 } from './article-index.repository.js'
-import { ACTIVE_EMBEDDING_PROFILE } from './embedding-provider.js'
 
 const testDatabaseUrl = process.env.ARTICLE_INDEX_TEST_DATABASE_URL?.trim()
 const integrationDescribe = testDatabaseUrl ? describe : describe.skip
@@ -274,6 +274,103 @@ integrationDescribe('Article indexing PostgreSQL / pgvector integration', {
     )
   })
 
+  it('canonical no-op 更新只刷新 sourceUpdatedAt，不重写 active chunks', async () => {
+    const article = await createArticle(
+      104,
+      '<p style="color:red">Canonical content</p>',
+    )
+    const source = canonicalizeArticleSource(article)
+    const chunks = chunkCanonicalArticle(source, ACTIVE_EMBEDDING_PROFILE.version)
+    await repository.replaceArticleIndex({
+      source,
+      chunks,
+      vectors: chunks.map(() => vector(1)),
+      embeddingProfile: ACTIVE_EMBEDDING_PROFILE,
+      signal: new AbortController().signal,
+    })
+    const originalChunkIds = chunks.map(chunk => chunk.id)
+    const refreshedAt = new Date('2026-08-15T00:00:00.000Z')
+    const updated = await prisma.article.update({
+      where: { id: article.id },
+      data: {
+        content: '<div class="layout"><p>Canonical content</p></div>',
+        updatedAt: refreshedAt,
+      },
+      select: articleSelect,
+    })
+    const canonicalNoop = canonicalizeArticleSource(updated)
+    assert.equal(canonicalNoop.sourceHash, source.sourceHash)
+
+    const beforeRefresh = await repository.getIndexStatus(
+      canonicalNoop,
+      new AbortController().signal,
+    )
+    assert.equal(beforeRefresh?.sourceUpdatedAt.getTime(), article.updatedAt.getTime())
+    assert.equal(
+      await repository.refreshIndexSourceUpdatedAt(
+        canonicalNoop,
+        new AbortController().signal,
+      ),
+      true,
+    )
+
+    const state = await prisma.articleIndexState.findUniqueOrThrow({
+      where: { articleId: article.id },
+    })
+    const storedChunks = await prisma.articleChunk.findMany({
+      where: { articleId: article.id },
+      select: { id: true },
+      orderBy: { ordinal: 'asc' },
+    })
+    assert.equal(state.sourceUpdatedAt.getTime(), refreshedAt.getTime())
+    assert.deepEqual(storedChunks.map(chunk => chunk.id), originalChunkIds)
+  })
+
+  it('canonical no-op freshness 在 declared/actual count 不一致时拒绝刷新', async () => {
+    const article = await createArticle(105, '<p>Count protected content</p>')
+    const source = canonicalizeArticleSource(article)
+    const chunks = chunkCanonicalArticle(source, ACTIVE_EMBEDDING_PROFILE.version)
+    await repository.replaceArticleIndex({
+      source,
+      chunks,
+      vectors: chunks.map(() => vector(1)),
+      embeddingProfile: ACTIVE_EMBEDDING_PROFILE,
+      signal: new AbortController().signal,
+    })
+    await prisma.articleIndexState.update({
+      where: { articleId: article.id },
+      data: { chunkCount: chunks.length + 1 },
+    })
+    const originalState = await prisma.articleIndexState.findUniqueOrThrow({
+      where: { articleId: article.id },
+    })
+    const updated = await prisma.article.update({
+      where: { id: article.id },
+      data: {
+        content: '<div><p class="layout">Count protected content</p></div>',
+        updatedAt: new Date('2026-08-16T00:00:00.000Z'),
+      },
+      select: articleSelect,
+    })
+    const canonicalNoop = canonicalizeArticleSource(updated)
+    assert.equal(canonicalNoop.sourceHash, source.sourceHash)
+
+    assert.equal(
+      await repository.refreshIndexSourceUpdatedAt(
+        canonicalNoop,
+        new AbortController().signal,
+      ),
+      false,
+    )
+    const state = await prisma.articleIndexState.findUniqueOrThrow({
+      where: { articleId: article.id },
+    })
+    assert.equal(
+      state.sourceUpdatedAt.getTime(),
+      originalState.sourceUpdatedAt.getTime(),
+    )
+  })
+
   it('并发 Article update 在 FOR UPDATE fence 后判 stale，不写过期结果', async () => {
     const article = await createArticle(103, '<p>Before concurrent update</p>')
     const oldSource = canonicalizeArticleSource(article)
@@ -346,7 +443,7 @@ function vector(value: number): number[] {
 
 function withSearchPath(connectionString: string, schema: string): string {
   const url = new URL(connectionString)
-  url.searchParams.delete('schema')
+  url.searchParams.set('schema', schema)
   url.searchParams.set('options', `-c search_path=${schema},public`)
   return url.toString()
 }

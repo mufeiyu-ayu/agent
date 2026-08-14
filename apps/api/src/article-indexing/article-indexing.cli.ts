@@ -5,6 +5,11 @@ import type {
 import process from 'node:process'
 
 import { pathToFileURL } from 'node:url'
+import {
+  EmbeddingError,
+  resolveEmbeddingRuntimeConfig,
+} from '../embeddings/embedding-provider.js'
+import { GeminiEmbeddingProvider } from '../embeddings/gemini-embedding.provider.js'
 import { PrismaService } from '../prisma/prisma.service.js'
 import {
   ArticleIndexRepository,
@@ -15,11 +20,6 @@ import {
   createArticleIndexSummary,
   isArticleIndexSummarySuccessful,
 } from './article-indexer.js'
-import {
-  EmbeddingError,
-  resolveEmbeddingRuntimeConfig,
-} from './embedding-provider.js'
-import { OpenAIEmbeddingProvider } from './openai-embedding.provider.js'
 
 interface ParsedArticleIndexCliArgs {
   mode: ArticleIndexMode
@@ -141,7 +141,7 @@ async function createProductionRuntime(): Promise<ArticleIndexCliRuntime> {
   }
 
   const repository = new ArticleIndexRepository(prisma, pool)
-  const provider = new OpenAIEmbeddingProvider(embeddingConfig)
+  const provider = new GeminiEmbeddingProvider(embeddingConfig)
 
   return {
     indexer: new ArticleIndexer(repository, provider),
