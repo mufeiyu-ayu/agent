@@ -1,5 +1,9 @@
 # Phase 8 Task 0：Retrieval Boundary 与离线 Evaluation Baseline
 
+状态：**Completed**。
+
+完成日期：2026-08-14（Asia/Shanghai）。
+
 ## 目标
 
 为现有 Article 关键词检索建立与 Tool / LLM 解耦的内部边界，并用无 LLM、无网络、无需真实数据库的版本化 fixture 固化第一份离线评估基线。
@@ -87,7 +91,7 @@ git diff --cached --check
 - [x] baseline 可离线重复执行并输出稳定 JSON。
 - [x] 仍只注册两个 Article Tool，Agent Loop 与外部协议不变。
 - [x] 无 schema、migration、API、contracts、前端、依赖或环境变量改动。
-- [x] 状态仅记录为已实现、待验收。
+- [x] GPT 已基于最新 PR head、测试、Codex Review 和边界检查完成技术验收；用户已明确确认验收。
 
 ## 风险点
 
@@ -99,13 +103,20 @@ git diff --cached --check
 
 ## GitHub 交付记录
 
-- Issue：[#48](https://github.com/mufeiyu-ayu/agent/issues/48)
-- 分支：`codex/issue-48-retrieval-baseline`
-- PR：[Draft PR #49](https://github.com/mufeiyu-ayu/agent/pull/49)
-- GPT 验收结论：需要修改；findings 已修复，待再次验收
-- 用户确认：未确认
+- Issue：[#48](https://github.com/mufeiyu-ayu/agent/issues/48) / Closed（Completed）
+- 分支：`codex/issue-48-retrieval-baseline`（远程分支未在本次授权中删除）
+- PR：[#49](https://github.com/mufeiyu-ayu/agent/pull/49) / Merged
+- 最终验收 head：`79c6f44b45a64f3590321fe681e2d9141a919dc8`
+- Merge commit：`4c2f795084e7bccac205509d8c31b56dbe7ccf0b`
+- GPT 技术验收：通过
+- 用户确认验收：已确认
+- 合并授权：已授权并执行
 
 ## 任务状态
 
 - 实施状态：已实现
-- 验收状态：待验收
+- GPT 技术验收：已通过
+- 用户确认验收：已确认
+- 合并状态：已合并
+- 正式状态：Completed
+- Phase 8 状态：Active；Task 1 未启动
