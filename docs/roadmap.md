@@ -1,21 +1,14 @@
 # AI SEO Agent 学习路线
 
-本文只维护阶段级路线。正式 Task 状态与执行顺序以 [`docs/tasks/README.md`](./tasks/README.md) 为准。
+本文维护阶段级路线。正式 Task 状态与执行顺序以 [`docs/tasks/README.md`](./tasks/README.md) 为准；Phase 8 的完整编排见 [`docs/tasks/phase-08-grounded-retrieval/README.md`](./tasks/phase-08-grounded-retrieval/README.md)。
 
-## 当前判断
-
-项目已经完成从基础 LLM Chat 到 Context Engineering 的连续学习闭环；Phase 8 Task 0 已建立 Article Retrieval Boundary 与确定性离线 Evaluation Baseline，并完成技术验收、用户确认与合并。
-
-Phase 7 `Context Engineering` 已完成 GPT 技术验收、用户确认验收，并通过 Issue #46 / PR #47 合入 `master`。Task 0-3 均已 Completed，最终 merge commit 为 `caf3d25b7af0e5b30ae47d3c96faab4138fbdb9e`。
-
-当前状态：
+## 当前状态
 
 ```text
 阶段 1-7：Completed
-Phase 8：Active / Task 0 Completed
+Phase 8：Active / Task 0 Completed / Task 1-3 Planned
 Active Agent Task：无
 Minimal Compaction：Gated
-Task 1：未启动
 Admin Observability：Task 0-3 Completed
 Admin Task 4：Planned
 ```
@@ -28,47 +21,64 @@ Admin Task 4：Planned
 | 阶段 2：Session Chat 持久化 | Completed | Conversation / Message 持久化 |
 | 阶段 3：Streaming Chat | Completed | NDJSON 流式输出、Abort 与终态一致性 |
 | 阶段 4：Agent Runtime 基础 | Completed | `AgentRun` / `AgentStep` 与 Runtime Event |
-| 阶段 5：最小 Tool Calling | Completed | 单次 Tool Call、Observation 与第二轮 sampling |
+| 阶段 5：最小 Tool Calling | Completed | Tool Call、Observation 与 follow-up sampling |
 | [阶段 6：有界单 Agent Loop](./tasks/completed/phase-06-bounded-agent-loop.md) | **Completed** | 多轮顺序决策、执行预算、DeepSeek continuation、DB deadline 与终态可靠性 |
-| [阶段 7：Context Engineering](./tasks/completed/phase-07-context-engineering.md) | **Completed** | Context 边界、model-aware budget、Dynamic History、Loop Context Governance、Context Inspector |
-| [阶段 8：Grounded Retrieval / RAG Baseline](./tasks/phase-08-grounded-retrieval/task-00-retrieval-boundary-evaluation.md) | **Active / Task 0 Completed** | Retrieval Boundary、Prisma lexical adapter、离线 corpus 与 Recall@K / MRR baseline；merge `4c2f7950`；Task 1 未启动 |
+| [阶段 7：Context Engineering](./tasks/completed/phase-07-context-engineering.md) | **Completed** | Context Boundary、model-aware Budget、Dynamic History、Loop Context Governance、Context Inspector |
+| [阶段 8：Grounded Retrieval / RAG Baseline](./tasks/phase-08-grounded-retrieval/README.md) | **Active** | Retrieval evaluation、Chunk / Embedding Index、Hybrid Retrieval、Grounded Answer 与 Retrieval Inspector |
 
-## Phase 7 最终交付
+## Phase 8：Grounded Retrieval / RAG Baseline
+
+Phase 8 不以“接入向量数据库”为完成标准，而是建立一条可验证的 Grounded Retrieval 链路：
 
 ```text
-Task 0：Context Boundary & Snapshot                   Completed / #40 / #41 / 415e866a
-Task 1：Model-aware Budget & Dynamic History          Completed / #42 / #43 / 6df72f0
-Task 2：Loop-aware Context & Observation Governance   Completed / #44 / #45 / 2f06355c
-Task 3：Context Inspector & Phase Baseline            Completed / #46 / #47 / caf3d25b
-Minimal Compaction                                    Gated
+Article Source
+  -> deterministic Chunking
+  -> Embedding / Index
+  -> Lexical + Vector Retrieval
+  -> Hybrid Ranking
+  -> Context-safe Observation
+  -> Grounded Answer + Citation
+  -> Retrieval Inspector / Evaluation
 ```
 
-Phase 7 最终建立：
+### Task 编排
 
-- 单 Run `ModelContext`，明确区分 UI transcript、model-visible context、runtime events 与 durable AgentStep；
-- 由 Context Window、输出预留、安全余量和应用输入上限共同决定 input budget；
-- DeepSeek V4 官方 tokenizer、本地 full-request token estimation 与 fail-closed；
-- 可靠 `COMPLETED` History 的因果上界、keyset candidate read 与 token-budget Dynamic History Selection；
-- 每轮 sampling 前重新规划 Context，先排除最旧 History，再治理较旧 Observation；
-- `tool_ceiling` 与 `context_budget` 双层 Observation Governance；
-- Tool Call / Result pairing、顺序、DeepSeek continuation 与低信任 Tool Context 不变量；
-- 安全 Admin Context Inspector，展示 Budget、Sources、Adjustments / Outcome；
-- legacy、partial、unknown 或矛盾 metadata 安全降级，不暴露 Prompt、reasoning、raw arguments 或完整 Observation。
+| Task | 状态 | 核心目标 | 启动条件 |
+| --- | --- | --- | --- |
+| Task 0：Retrieval Boundary & Offline Evaluation Baseline | **Completed** | 解耦 Retrieval 与 Tool，固化 Prisma lexical 行为和 Recall@K / MRR baseline | 已完成：#48 / #49 / merge `4c2f7950` |
+| Task 1：Article Chunking & Embedding Index | **Planned** | 确定性 Chunk、stable identity、Embedding boundary 与幂等索引 | 先讨论数据模型、provider、pgvector 和重建语义，再创建 Issue |
+| Task 2：Hybrid Retrieval & Agent Tool Integration | **Planned** | vector + lexical retrieval、融合排序、同基线评估和 Tool 接入 | Task 1 Completed 后才能启动 |
+| Task 3：Grounded Answer & Retrieval Inspector | **Planned** | 来源引用、Web 来源展示、安全 Inspector 和端到端证据 | Task 2 Completed 后才能启动；必要时在 Issue 前拆分范围 |
 
-最终归档：[`tasks/completed/phase-07-context-engineering.md`](./tasks/completed/phase-07-context-engineering.md)。
+### Phase 8 完成条件
 
-## Minimal Compaction 边界
+Phase 8 只有在以下条件全部满足后才能标记 Completed：
 
-Minimal Compaction 没有被纳入 Phase 7 默认完成条件。当前证据不足以证明必须立即实现 Summary / Compaction，因此继续保持 `Gated`。
+1. Task 0-3 均完成 GPT 技术验收和用户确认；
+2. Article 内容能够通过确定性 Chunk 与幂等索引进入 Embedding 存储；
+3. Hybrid Retrieval 使用同一版本化数据集与 lexical baseline 比较；
+4. Agent 消费受控 Retrieval Observation，不破坏 Tool / Context 不变量；
+5. 最终回答提供可验证来源，Web 与 Admin 能安全展示检索证据；
+6. 关键失败路径、自动测试、评估结果和阶段边界完成归档。
 
-只有真实 Inspector 数据持续证明以下问题时，才另建正式 Task / Issue：
+### 当前明确不做
 
-- 旧 Context 被频繁驱逐并破坏长任务连续性；
-- 相同信息反复重新获取，明显增加成本或延迟；
-- Dynamic History 与 Observation 缩减仍无法维持质量；
-- 产品明确需要跨长会话保留结构化任务状态。
+- 文件上传、PDF / Office 解析和通用知识库；
+- 多租户文档 ACL 与外部数据源连接器；
+- 长期 Memory、MCP、Multi-agent；
+- 复杂 Agentic Retrieval、训练模型或自动 Compaction；
+- 因为进入 RAG 阶段就默认引入 LangChain / LangGraph 或独立 Vector DB。
 
-## Admin Console Observability 支线
+## 已完成阶段归档
+
+| 阶段 | 归档 | 关键 merge |
+| --- | --- | --- |
+| Phase 6：有界单 Agent Loop | [phase-06-bounded-agent-loop.md](./tasks/completed/phase-06-bounded-agent-loop.md) | `904b011d`、`691efbcd` 等 |
+| Phase 7：Context Engineering | [phase-07-context-engineering.md](./tasks/completed/phase-07-context-engineering.md) | Task 0 `415e866a`、Task 1 `6df72f0`、Task 2 `2f06355c`、Task 3 `caf3d25b` |
+
+Phase 7 的 Minimal Compaction 没有进入默认完成条件，当前继续保持 `Gated`。只有真实 Inspector 数据证明长期连续性、质量、成本或延迟受到可复现影响时，才另建正式 Task。
+
+## Admin Console 支线
 
 ```text
 Task 0：Admin 基础壳                 Completed
@@ -78,28 +88,17 @@ Task 3：真实 Run Trace UI            Completed / #35 / #36 / 4c689c4c
 Task 4：登录 / 权限 / 脱敏           Planned
 ```
 
-Admin Task 2 + Task 3 已建立真实 Run / Step Read API、Run List / Detail、Execution Timeline、Typed / Generic Inspector、错误边界和浏览器验收。Phase 7 Task 3 已在该基线上增加 Context Inspector，但 Admin Task 4 不自动启动。
-
-## Web Chat UI Follow-up
-
-Issue #37 / PR #38 已完成并合入 `master`，merge commit `415d740507a29ee4bd9b6a4aa26d9c4fbb9668c1`。该独立任务完成了 Chat 原生滚动 viewport、流式跟随、用户上滚暂停、scroll memory 和响应式布局。
-
-## Phase 8 当前交付
-
-```text
-Task 0：Retrieval Boundary & Offline Evaluation Baseline  Completed / #48 / #49 / 4c2f7950
-Task 1                                                      未启动
-Minimal Compaction                                           Gated
-```
-
-Task 0 最终建立：
-
-- 与 Tool / LLM 解耦、按 execution context 类型约束的 `ArticleRetriever` Contract；
-- 保持既有查询、排序、excerpt、Abort 与 database deadline 语义的 Prisma lexical adapter；
-- 无 LLM、无网络、无真实数据库依赖的版本化离线 corpus；
-- Recall@K、reciprocal rank、Mean Recall@K、MRR 与非法结果校验；
-- 可重复运行且逐字稳定的 baseline JSON 输出。
+Phase 7 已在 Admin Observability 基线上增加 Context Inspector。Phase 8 Task 3 计划增加 Retrieval Inspector，但不会自动启动 Admin Task 4。
 
 ## 当前正式动作
 
-Phase 8 保持 Active，但当前没有 Active Agent Task。Task 1 未启动；是否进入 Task 1 必须重新讨论并创建独立 Issue，通过 Clarification Gate 后才能实现。Minimal Compaction 继续保持 Gated。
+当前没有 Active Agent Task。下一步只讨论 Phase 8 Task 1：
+
+- Article Chunk 数据模型；
+- Chunk size / overlap / HTML 清理；
+- Embedding provider、model、dimension 与版本；
+- PostgreSQL / pgvector 存储；
+- 全量与增量 index；
+- 幂等、重试、部分失败和索引同步。
+
+讨论定案后，GPT 才创建 Task 1 独立 Issue 和任务专属 Codex 开工 Prompt。Task 2、Task 3 与 Minimal Compaction 均不得提前实现。
