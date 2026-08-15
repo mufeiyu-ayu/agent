@@ -20,7 +20,7 @@ Phase 6 reliability work binds Run remaining budget to database business stateme
 
 Phase 7 Context Engineering adds a per-Run `ModelContext`, model-aware input budgeting, a locally loaded DeepSeek V4 tokenizer, token-budget-driven Dynamic History Selection, per-sampling Tool Loop Context planning, Observation governance, and a safe Admin Context Inspector. The current User Message remains mandatory and causally bounds previous History by `(createdAt, id)`.
 
-Phase 8 Task 0 establishes a retrieval boundary and deterministic lexical evaluation baseline. Task 1 adds deterministic HTML Chunking, a replaceable Embedding Provider, pgvector-backed active Article indexes, explicit incremental / full indexing commands, stale fencing, advisory locking, and atomic per-Article replacement. Task 2A has implemented the Gemini Embedding migration, exact vector retrieval, Article aggregation, hybrid RRF, and quality-v2 evaluation in Draft PR #55; it remains Active and pending acceptance. Retrieval Tool / Agent integration remains planned for Task 2B.
+Phase 8 Task 0 establishes a retrieval boundary and deterministic lexical evaluation baseline. Task 1 adds deterministic HTML Chunking, a replaceable Embedding Provider, pgvector-backed active Article indexes, explicit incremental / full indexing commands, stale fencing, advisory locking, and atomic per-Article replacement. Task 2A has completed the Gemini Embedding migration, exact vector retrieval, Article aggregation, hybrid RRF, isolated full indexing, and production quality-v2 evaluation via Issue #54 / PR #55. Retrieval Tool / Agent integration is the next planned capability in Task 2B.
 
 ## Highlights
 
@@ -38,6 +38,8 @@ Phase 8 Task 0 establishes a retrieval boundary and deterministic lexical evalua
 | Context Inspector | Per-sampling Budget, Sources, History / Observation adjustments and outcome from durable safe metadata |
 | Retrieval boundary | Replaceable `ArticleRetriever`, deterministic lexical corpus, Recall@K and MRR evaluation |
 | Grounded indexing | Canonical HTML blocks, deterministic Chunk identity, Gemini Embedding boundary, pgvector active index and idempotent CLI |
+| Vector retrieval | Exact cosine search, active-profile filtering, Chunk-to-Article aggregation and evidence identity |
+| Hybrid retrieval | Versioned lexical candidates, RRF fusion and production quality-v2 comparison |
 | Database reliability | Remaining-budget DB boundary, PostgreSQL statement / lock timeout, late-result fencing |
 | Persistence | Conversations, Messages, Agent Runs, ordered Agent Steps, Article Chunks and Article Index State in PostgreSQL |
 | Model integration | OpenAI-compatible Chat Completions + DeepSeek thinking continuation |
@@ -105,6 +107,20 @@ Article rich HTML
 ```
 
 The indexing command is explicit. It is not run during API startup, migrations, Article writes, cron, or queues. A PostgreSQL session advisory lock prevents concurrent indexing commands. Normal indexing reads only `DATABASE_URL`; isolated verification uses the dedicated `index:articles:integration` entry, which reads only `ARTICLE_INDEX_TEST_DATABASE_URL`, fails closed when it is missing, and rejects the same URL as `DATABASE_URL`.
+
+### Retrieval lifecycle
+
+```text
+Normalized Query
+  -> Gemini Query Embedding
+  -> exact cosine Chunk candidates
+  -> unique Article aggregation
+  -> versioned lexical candidates
+  -> RRF(k=60)
+  -> article-level top-k + best evidence
+```
+
+Task 2A deliberately keeps Retrieval internal. Agent-visible Tool integration, Observation budgeting and grounded answer behavior remain Task 2B / Task 3 work.
 
 ## Design principles
 
@@ -201,9 +217,12 @@ The initial Context policy currently uses an application input cap of `262144` t
 | `pnpm --filter @agent/api test:db-reliability` | Real PostgreSQL deadline / terminalization reliability tests |
 | `pnpm --filter @agent/api test:seo-service` | SEO Service and prompt tests |
 | `pnpm --filter @agent/api test:retrieval` | Retrieval contract, lexical adapter and evaluation tests |
+| `pnpm --filter @agent/api test:retrieval-db` | Real PostgreSQL / pgvector retrieval, filtering, cancellation and deadline tests |
 | `pnpm --filter @agent/api eval:retrieval-baseline` | Deterministic offline lexical baseline report |
+| `pnpm --filter @agent/api eval:retrieval-quality` | Production quality-v2 lexical / vector / hybrid report against the isolated index |
 | `pnpm --filter @agent/api test:article-indexing` | Chunking, Embedding Provider, Indexer and CLI unit tests |
 | `pnpm --filter @agent/api test:article-indexing-db` | Real PostgreSQL / pgvector migration, transaction, stale and lock tests |
+| `pnpm --filter @agent/api smoke:embedding` | Safe real Gemini Embedding smoke |
 | `pnpm --filter @agent/api index:articles -- --mode=incremental` | Build or repair changed Article active indexes |
 | `pnpm --filter @agent/api index:articles -- --mode=full` | Rebuild all active Article indexes using only `DATABASE_URL` |
 | `pnpm --filter @agent/api index:articles:integration -- --mode=full` | Rebuild in the isolated verification database using only `ARTICLE_INDEX_TEST_DATABASE_URL` |
@@ -232,7 +251,7 @@ Available now:
 - real Admin Run / Step query API and Run Trace UI observability baseline;
 - replaceable Article Retrieval boundary and deterministic lexical evaluation baseline;
 - deterministic Article Chunking, Gemini Embedding Provider, pgvector active index and explicit idempotent indexing CLI;
-- exact cosine Retrieval, Chunk-to-Article aggregation, hybrid RRF and quality-v2 evaluation implemented in Draft PR #55 and pending acceptance.
+- exact cosine Retrieval, Chunk-to-Article aggregation, hybrid RRF and quality-v2 evaluation.
 
 Current mainline status:
 
@@ -245,9 +264,9 @@ Current mainline status:
 - Phase 7 Task 3 `Context Inspector & Phase Baseline` is Completed via Issue #46 / PR #47, merge `caf3d25b`.
 - Phase 8 Task 0 `Retrieval Boundary & Offline Evaluation Baseline` is Completed via Issue #48 / PR #49, merge `4c2f7950`.
 - Phase 8 Task 1 `Article Chunking & Embedding Index` is Completed via Issue #50 / PR #52, merge `76d66abf`.
-- Phase 8 remains Active; Task 2A is Active in Draft PR #55 with implementation complete and acceptance pending. It is not Completed.
-- AC-05 isolated full indexing passed on 2026-08-15 with sufficient Gemini quota (68 articles, 2044 chunks, exit 0); AC-09 production quality-v2 metrics are complete for lexical / vector / hybrid; AC-11 positive / negative distance distributions are complete and support keeping the similarity threshold at `null` (distributions overlap; no stable boundary). No-answer accuracy is 0 across the three no-answer cases and is reported as a real failure mode, not masked. Acceptance remains pending.
-- Task 2B and Task 3 remain Planned.
+- Phase 8 Task 2A `Vector / Hybrid Retrieval & Evaluation` is Completed via Issue #54 / PR #55, merge `3abdcb8a`.
+- Task 2A's isolated full indexing completed 68 Articles and 2044 Gemini Chunks with no failed or stale records. production quality-v2 completed lexical / vector / hybrid comparison. Vector / Hybrid improve answerable-query recall but return nearest candidates for no-answer queries; positive and negative distance distributions overlap, so the similarity threshold remains `null`.
+- Phase 8 remains Active. Task 2B is Next but has no Issue or active implementation. Task 3 remains Planned. There is currently no Active Agent Task.
 - Minimal Compaction remains Gated.
 
 See [`docs/roadmap.md`](./docs/roadmap.md), [`docs/tasks/README.md`](./docs/tasks/README.md), the [Phase 8 overview](./docs/tasks/phase-08-grounded-retrieval/README.md), the [Phase 7 archive](./docs/tasks/completed/phase-07-context-engineering.md), and the [Phase 6 archive](./docs/tasks/completed/phase-06-bounded-agent-loop.md).
