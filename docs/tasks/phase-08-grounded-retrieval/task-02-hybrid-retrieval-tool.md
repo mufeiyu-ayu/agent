@@ -1,20 +1,27 @@
 # Phase 8 Task 2A：Vector / Hybrid Retrieval & Evaluation
 
-状态：**Active / Issue #54 Open / Draft PR #55 / 已实现 / 待验收**。
+状态：**Completed**。
 
-本 Task 是原“Task 2：Hybrid Retrieval & Agent Tool Integration”拆分后的第一部分，只建立真实 Embedding Provider、Vector / Hybrid Retrieval 与可验证 Evaluation，不接入 Agent Tool。Task 2B 在本 Task Completed 后才能启动。
+本 Task 是原“Task 2：Hybrid Retrieval & Agent Tool Integration”拆分后的第一部分。它只负责 Embedding Provider 迁移、Vector / Hybrid Retrieval 与可验证 Evaluation，不接入 Agent Tool；Tool / Agent Runtime 集成留给 Task 2B。
 
-正式实现规格以 [Issue #54](https://github.com/mufeiyu-ayu/agent/issues/54) 最新正文和澄清与决策记录为准。
+## GitHub 交付事实
 
-## 目标
+- Issue：[#54](https://github.com/mufeiyu-ayu/agent/issues/54) / Closed（Completed）
+- PR：[#55](https://github.com/mufeiyu-ayu/agent/pull/55) / Merged
+- 最终验收 head：`32ff344349aa2116bf14414d90e48c814686531a`
+- Merge commit：`3abdcb8afd5626f0b8fda90c98095bf529d165fd`
+- Clarification Gate：`READY`（2026-08-15）
+- GPT 技术验收：通过
+- 用户确认验收：已确认
+- 合并授权：已授权并执行
 
-在 Task 0 的 `ArticleRetriever` / Evaluation Boundary 与 Task 1 的 pgvector index 基础上，将 active Embedding Provider 从未真实执行过的 OpenAI baseline 切换为 Google Gemini，并完成：
+## 最终目标与链路
 
 ```text
 Article Chunk
   -> Gemini document formatter
   -> shared GeminiEmbeddingProvider
-  -> vector(1536) active index
+  -> PostgreSQL + pgvector active index
 
 User Query
   -> Gemini query formatter
@@ -28,35 +35,7 @@ User Query
   -> quality-v2 evaluation
 ```
 
-本 Task 的完成标准不是“SQL 能返回向量结果”，而是建立一条可复现、可比较、可解释的在线检索能力，为 Task 2B 的 Tool / Agent Integration 提供稳定内部契约。
-
-## 当前事实
-
-- Task 0 已建立文章级 `ArticleRetriever` Contract、Prisma lexical adapter 与 `article-retrieval-baseline-v1`；
-- 当前 Retrieval Result 要求 `sourceId` 唯一且 rank 连续，因此 Chunk 检索结果必须聚合回 article-level result；
-- Task 1 已建立确定性 Chunk、Embedding Provider boundary、`ArticleChunk` / `ArticleIndexState` 与 pgvector migration；
-- Task 1 当时固定了 `openai:text-embedding-3-small:1536:v1`，但真实 OpenAI smoke 与真实 pgvector integration / concurrency 均未执行；
-- 用户没有 OpenAI API 服务，已创建 Google AI Studio Gemini API Key；
-- active profile 已决定切换为 `google:gemini-embedding-2:1536:search-result-v1`，DeepSeek 继续负责 Chat / Agent LLM；
-- PostgreSQL 字段仍为 `vector(1536)`，不需要因 provider 切换改变维度 schema；
-- 当前默认 `docker-compose.yml` 使用普通 PostgreSQL 16 镜像，本 Task 必须建立隔离的 pgvector-capable integration 环境；
-- 当前 `EmbeddingProvider` 和 `.env.example` 仍是 OpenAI-specific，需要在本 Task 正式迁移；
-- 当前 Prisma lexical adapter 的稳定排序主要不是 relevance ranking，因此继续作为 legacy baseline；Hybrid lexical candidate ranking 独立定义并版本化。
-
-## 已定技术方案
-
-### 1. pgvector 环境与 Task 1 前置验证
-
-- PostgreSQL 大版本保持 16；
-- integration 环境使用明确包含 pgvector 的 PostgreSQL 16 镜像，第一版建议 `pgvector/pgvector:0.8.6-pg16-bookworm`；
-- 使用独立 container、端口、database 与全新 named volume；
-- `ARTICLE_INDEX_TEST_DATABASE_URL` 不得指向现有开发库；
-- 不删除、reset、覆盖或挂载现有 `postgres-data`；
-- 本 Task 不迁移原 Alpine 开发数据库；
-- 正式实现 Vector Retrieval 前，必须真实运行 Task 1 已存在的 migration / transaction / rollback / advisory lock / stale fencing / concurrency integration suite；
-- integration 被 skip、0 tests、加载失败或环境不可用均不能记录为 PASS。
-
-### 2. Active Gemini Embedding Profile
+最终 active Embedding profile：
 
 ```text
 provider: google
@@ -65,220 +44,181 @@ dimensions: 1536
 embeddingVersion: google:gemini-embedding-2:1536:search-result-v1
 ```
 
-配置边界：
+DeepSeek 继续负责 Chat / Agent LLM。Embedding 只读取 `GEMINI_API_KEY`，不回退到 `LLM_*` 或旧 `EMBEDDING_API_KEY`。
 
-- 只读取 `GEMINI_API_KEY`；
-- 不读取或回退到 `LLM_API_KEY`、`LLM_*` 或旧 `EMBEDDING_API_KEY`；
-- 普通 API 启动不得因为缺少 Gemini Key 而失败；
-- 只有显式 Embedding smoke、indexing 或真实 retrieval runtime 才解析 Key；
-- `.env.example` 改为 Gemini 配置，移除 OpenAI-specific 文案；
-- Key、raw embedding、原始 provider payload 和敏感输入不得进入日志、Issue、PR 或测试输出。
+## 最终实现
 
-### 3. Gemini Query / Document Formatter
+### 1. Shared Gemini Embedding Boundary
 
-`gemini-embedding-2` 的文本检索任务使用官方推荐的 asymmetric prompt format，不使用 `taskType` 参数。
+- Indexing 与 Query Retrieval 共用同一 `EmbeddingProvider`、active profile、formatter 和 Gemini adapter；
+- Query formatter：`task: search result | query: {normalized query}`；
+- Document formatter：`title: {article title} | text: {section path + normalized chunk text}`；
+- 不使用 `taskType`；每个 Query / Chunk 各自产生一条独立向量；
+- 固定 `outputDimensionality = 1536`；
+- 校验 cardinality、顺序、维度、有限数值和非零向量；
+- 显式治理 timeout、retry、Abort、错误分类和脱敏；
+- 真实 smoke 不输出 Key、输入、raw embedding 或 Provider payload。
 
-Query：
+### 2. 隔离 pgvector 环境与索引
 
-```text
-task: search result | query: {normalized query}
-```
+- PostgreSQL 16 + `pgvector/pgvector:0.8.6-pg16-bookworm`；
+- 独立 container、端口 `127.0.0.1:5433`、database 和 named volume；
+- 普通 `index:articles` 只读取 `DATABASE_URL`；
+- 隔离入口 `index:articles:integration` 只读取 `ARTICLE_INDEX_TEST_DATABASE_URL`；
+- Integration URL 缺失、回退或与开发 URL 相同时 fail closed；
+- 不删除、reset、覆盖或挂载现有 `postgres-data`；
+- 旧 OpenAI profile 与 Gemini profile 通过 `embeddingVersion` 显式隔离，不做双读、fallback 或在线迁移。
 
-Document：
+### 3. Vector / Hybrid Retrieval
 
-```text
-title: {article title} | text: {section path + normalized chunk text}
-```
-
-约束：
-
-- Query / Document formatter 集中维护；
-- formatter 是 embedding version 的组成部分，任何变化必须升级 version；
-- document input 继续包含 Article title、section path 与规范化 Chunk 文本；
-- 多个 Chunk 必须得到多条独立向量，不能作为多个 parts 聚合成一条 embedding；
-- batch 必须验证返回数量、顺序、维度、有限数值与非零向量；
-- `outputDimensionality` 固定 1536；Gemini Embedding 2 会自动归一化该截断维度，运行时不做无依据二次变换，但 smoke / tests 可记录 norm 标量验证。
-
-### 4. 共享 Embedding Boundary 与 Adapter
-
-- Indexing 与 Query Retrieval 共用同一 Provider contract、active profile、formatter 与 Gemini adapter；
-- 不新增第二套 Query client；
-- 优先使用官方 `@google/genai`，禁止 legacy `@google/generative-ai`；
-- 如官方 SDK 无法满足真实 Abort、timeout 或 batch cardinality 契约，可使用官方 Gemini REST API + `fetch`，但必须在 PR 中说明；
-- 保留显式 timeout、retry、Abort、response validation、错误分类和脱敏语义；
-- SDK 隐式重试不得与项目显式重试叠加；
-- Gemini 迁移后若 `openai` dependency 无剩余调用方，应删除；否则说明保留原因；
-- provider tests 调整为 provider-neutral contract tests + Gemini adapter tests。
-
-### 5. Provider 迁移与全量重建
-
-- OpenAI 与 Gemini 向量空间不兼容，即使同为 1536 维也不能比较或混查；
-- 旧 `openai:text-embedding-3-small:1536:v1` 索引不得被 Gemini Query Retrieval 视为 compatible；
-- 通过 `ArticleIndexState.embeddingVersion` 与 `ArticleChunk.embeddingVersion` 显式隔离；
-- 真实 Gemini smoke 通过后，在隔离 pgvector 环境执行一次 full indexing；
-- full indexing 使用 Gemini document formatter，并输出脱敏 summary；
-- 普通入口 `pnpm --filter @agent/api index:articles -- --mode=full` 只读取 `DATABASE_URL`；
-- 隔离验证必须使用 `pnpm --filter @agent/api index:articles:integration -- --mode=full`，该入口只读取 `ARTICLE_INDEX_TEST_DATABASE_URL`；变量缺失时 fail closed，不回退 `DATABASE_URL`，且拒绝与 `DATABASE_URL` 完全相同的 URL；
-- 不做 OpenAI / Gemini 双读、fallback、在线迁移或双 active provider。
-
-### 6. Vector Retrieval
-
-- 第一版使用 pgvector cosine distance；
-- 第一版使用 exact nearest-neighbor search，不创建 HNSW / IVFFlat；
-- query 必须过滤 active index / embeddingVersion，并支持 `languageCode`；
-- Vector SQL 只存在于 Retrieval repository boundary；
-- raw vector 不进入 Retrieval Result、日志或模型上下文；
-- deadline / Abort 必须通过真实 PostgreSQL integration test 证明 query 实际终止、连接释放且 pool 后续仍可用。
-
-### 7. Chunk -> Article 聚合
-
-- Vector Search 最多取 40 个 Chunk candidates；
-- 按稳定顺序聚合为最多 10 个 Article candidates；
-- 最终每个 `sourceId` 只出现一次；
-- 每篇 Article 只保留最佳一个 evidence chunk；
-- evidence 保留真实 `chunkId` / `sectionPath`；
-- 最终重新生成从 1 连续的 rank。
-
-### 8. Hybrid Fusion
-
-第一版固定采用 Reciprocal Rank Fusion：
-
-```text
-RRF score = 1 / (60 + lexicalRank) + 1 / (60 + vectorRank)
-```
-
-固定候选规模：
-
-```text
-lexical candidates：10 articles
-vector candidates：40 chunks
-vector aggregation：最多 10 articles
-final top-k：normalized retrieval limit，默认 5、最大 10
-RRF constant：60
-```
-
-- 单通道 Article 只累加存在通道的分量；
-- 必须定义 deterministic tie-break；
-- 不直接混合 lexical raw score 与 cosine similarity；
-- 正式运算符始终为加法 `+`。
-
-### 9. Lexical Candidate Strategy
-
-- 保留 `PrismaArticleRetriever` 作为 legacy baseline，不改既有行为；
-- Hybrid 使用独立版本化 lexical candidate strategy；
-- 最小优先级：title exact > title / slug / seoTitle contains > seoDescription > content；
-- 同级稳定 tie-break；
-- `%`、`_`、`\` 按 literal query 处理并有测试；
-- 不引入 Elasticsearch、`pg_trgm`、复杂 BM25 或多语言全文搜索系统。
-
-### 10. Evaluation
-
-- 保留 `article-retrieval-baseline-v1`，不得改写旧结果；
-- 新增 `article-retrieval-quality-v2`；
-- 至少覆盖 exact keyword、semantic paraphrase、multiple relevant、language filter、no-answer、irrelevant nearest-neighbor、duplicate chunk、stable ordering、special characters 与 zero result；
-- 至少比较 legacy lexical、Gemini vector exact cosine、hybrid RRF；
-- 报告包含 Mean Recall@K、MRR、Precision@K、no-answer / false-positive、zero-hit、query embedding latency、vector SQL latency、end-to-end latency、strategy/version 和 dataset version；
-- no-answer 使用显式语义，不继续只依赖虚构 relevant sourceId；
-- latency 是运行证据，不作为跨环境 golden correctness 常量。
-
-### 11. Similarity Threshold
-
-- 不预设 `MIN_SIMILARITY`；
-- 先观察 quality-v2 正负样本 cosine distance / similarity 分布；
-- 只有证据支持稳定边界时才启用并版本化 threshold；
-- 证据不足则保持无 threshold 并记录限制。
-
-## 实现范围
-
-- 独立 pgvector PostgreSQL 16 integration 环境；
-- Task 1 真实 DB integration / concurrency；
-- OpenAI-specific profile 迁移为 Gemini active profile；
-- `GEMINI_API_KEY`、Gemini runtime config 与 `.env.example`；
-- shared Embedding module、formatter 与 Gemini adapter；
-- 真实 Gemini smoke；
-- Gemini profile full Article indexing；
-- exact cosine vector repository / retriever；
-- Chunk -> Article aggregation；
-- Hybrid lexical strategy、RRF 与 deterministic ranking；
-- quality-v2 dataset、metrics、CLI / tests；
-- provider、ranking、filter、zero-hit、no-answer、duplicate、deadline、Abort、strategy/version 自动测试。
-
-## 明确不做
-
-- 不新增或修改 Agent Tool、Tool Registry、Agent Loop、Prompt 或 model-visible Observation；
-- 不修改 `search_articles@1` 外部契约；
-- 不实现 Citation、Grounded Answer、Web Citation UI 或 Admin Retrieval Inspector；
+- pgvector cosine distance + exact nearest-neighbor search；
 - 不创建 HNSW / IVFFlat；
-- 不做 rerank、Query Rewrite、HyDE 或 Agentic Retrieval；
-- 不做文件上传、通用知识库、多租户 ACL、外部数据源；
-- 不引入 LangChain / LangGraph 或独立 Vector DB；
-- 不切换 DeepSeek Chat / Agent LLM；
-- 不实现 OpenAI fallback、双 active provider或旧向量在线迁移；
-- 不启动 Task 2B 或 Task 3。
+- Vector SQL 只存在于 Retrieval repository boundary；
+- 过滤 active profile、chunker / embedding version、language、stale timestamp 和 Chunk count 一致性；
+- 固定最多 40 个 Chunk candidates；
+- 聚合为最多 10 个唯一 Article，每篇保留最佳一个 evidence chunk；
+- evidence 保留真实 `chunkId`、`sectionPath` 与 cosine distance；
+- rank 连续且稳定；
+- 独立 lexical strategy：title exact > title / slug / seoTitle contains > seoDescription > content；
+- `%`、`_`、`\` 按 literal query 处理；
+- Hybrid 使用 RRF：`1 / (60 + lexicalRank) + 1 / (60 + vectorRank)`；
+- 单通道只累加存在分量，同分按 `sourceId` 稳定排序；
+- DB deadline / Abort 通过真实 PostgreSQL integration test 证明 query 终止、连接释放和 pool 后续可复用。
 
-## 预期验收标准
+### 4. quality-v2 Evaluation
 
-| ID | 可观察行为 | 边界 / 失败行为 | 验证方式 |
-| --- | --- | --- | --- |
-| AC-01 | 独立 pgvector PostgreSQL 16 环境真实运行 Task 1 DB suite | 不删除旧 volume；skip / 0 tests 不算 PASS | integration evidence |
-| AC-02 | `gemini-embedding-2` smoke 返回 1 条合法 1536 维向量 | 不打印 Key、输入、raw vector 或 payload | smoke + adapter tests |
-| AC-03 | active profile 为 `google:gemini-embedding-2:1536:search-result-v1`，Indexing 与 Query 共用 Provider | 不回退 `LLM_*` / 旧 Key；普通 API 启动不要求 Gemini Key | config / unit / type tests |
-| AC-04 | Query / Document formatter 使用版本化 asymmetric format | 不用 `taskType`；多输入不聚合成一条向量 | formatter / cardinality tests |
-| AC-05 | Gemini profile 在隔离 DB 完成 full indexing，旧 OpenAI version 不兼容 | 不混用向量空间；summary 脱敏 | indexing integration |
-| AC-06 | exact cosine Retrieval 返回稳定 active Gemini Chunk candidates | version / language / deadline / Abort / connection release 正确 | PostgreSQL integration |
-| AC-07 | 多 Chunk 聚合后 sourceId 唯一并保留最佳 evidence | rank 连续、identity 可追溯 | retrieval tests |
-| AC-08 | Hybrid 使用版本化 RRF 与确定性 tie-break | 公式使用 `+`，不混合 raw score | ranking tests |
-| AC-09 | legacy baseline 保持可重复，quality-v2 比较 lexical / Gemini vector / hybrid | 不改写旧 dataset | eval CLI + assertions |
-| AC-10 | quality-v2 包含 Recall@K、MRR、Precision@K、no-answer / false-positive、zero-hit 与 latency | no-answer 显式表达 | evaluator tests |
-| AC-11 | threshold 只在证据支持时启用并版本化 | 无证据则保持无 threshold | report + strategy assertions |
-| AC-12 | Task 2A 不接 Tool / Agent，外部行为不退化 | `search_articles@1` 兼容；不泄露 embedding | Tool / Loop regression |
-| AC-13 | build、typecheck、lint 与受影响测试通过 | 真实失败不得由文档覆盖 | 真实命令结果 |
+新增 `article-retrieval-quality-v2`，覆盖：
 
-## 实现与验证记录（2026-08-15）
+- exact keyword；
+- semantic paraphrase；
+- multiple relevant；
+- language filter；
+- explicit no-answer；
+- irrelevant nearest-neighbor；
+- duplicate chunks → one Article；
+- stable ordering；
+- special characters / zero result。
 
-- Clarification Gate 基于 Issue #54 最新正文、唯一澄清评论与 `origin/master@eee795bd0eb5d2e9995c8e880f39dfb406a6c555` 完成，结论为 `READY`；实现分支为 `codex/issue-54-gemini-hybrid-retrieval`；
-- 已建立 shared Gemini Embedding boundary、固定 Query / Document formatter、隔离 pgvector integration profile、exact cosine repository、Chunk -> Article 聚合、独立 lexical strategy、RRF 与 quality-v2；未修改 Tool / Agent Runtime 或 legacy `PrismaArticleRetriever`；
-- `gemini-embedding-2` 真实 smoke 成功返回 1 条 1536 维非零向量；脱敏输出仅包含 provider、model、数量、维度、norm、请求 / 重试计数与耗时；
-- Task 1 pgvector DB suite 7/7、Retrieval DB suite 5/5，均为 0 skip；Article Indexing unit 55/55、Retrieval unit 30/30、Tools 40/40、Tool Loop 52/52 通过；legacy `article-retrieval-baseline-v1` 保持可重复；
-- API build、API / workspace typecheck、API lint、Prisma validate 与 `git diff --check` 已按当前 head 重跑通过；
-- AC-05 当前保持 **FAILED**：确定性 corpus 为 68 篇 / 2044 Chunks，Google AI Studio 当前项目的 `gemini-embedding-2` free-tier Embed Content 日配额为 1000；2044 个独立 Chunk 输入超过该上限，full indexing 以 `embedding_rate_limit` 退出，未记录为 PASS，也未切换 fallback（历史诊断，2026-08-15 上午）；
-- AC-09 当前保持 **PARTIAL**：没有可证明来自完整隔离 Gemini active index 的 production quality-v2 vector / hybrid 指标；单元级 evaluator / 指标契约已通过，但不能替代真实质量报告（历史诊断，2026-08-15 上午）；
-- AC-11 当前保持 **PARTIAL**：没有完整正负样本 cosine distance / similarity 分布，threshold 保持未启用（历史诊断，2026-08-15 上午）；
-- 独立 Docker integration profile 使用独立 database、端口与 `postgres-vector-test-data`，DB suites 已在该环境通过；现有开发数据库和 `postgres-data` 未删除、reset、覆盖或挂载；
-- 复核留存 tool-call 日志确认：此前真实执行在同一 shell 将 `DATABASE_URL` 与 `ARTICLE_INDEX_TEST_DATABASE_URL` 都显式指向 `127.0.0.1:5433/agent_ai_seo_integration`；隔离库当前存在 539 个 `google / gemini-embedding-2` Chunks，而开发库没有 `ArticleChunk` 表，因此可证明该次 partial full indexing 连接隔离库；但 PR 旧验证命令仅设置后一个变量，不能复现该行为，命令本身无效，已由显式 `index:articles:integration` 入口替换（历史诊断）。
+报告包含 Recall@5、Precision@5、MRR、no-answer accuracy、false-positive、zero-hit、Query Embedding / Vector SQL / end-to-end latency、Provider 请求 / 重试计数及正负样本距离分布。
 
-## 完整配额下补跑记录（2026-08-15 午后）
+## 真实运行证据
 
-Gemini 项目配额已足以覆盖 2044 个独立 Embed Content 输入后，通过显式 integration 入口在同一隔离库重跑：
-
-- `smoke:embedding`：`google / gemini-embedding-2 / 1 × 1536`，norm 0.9999998165464739，providerRequests 1、retryCount 0、elapsedMs 955，无 auth / quota / rate_limit / timeout 错误；
-- `index:articles:integration -- --mode=full`：exit code 0；scanned 68、indexed 68、skippedUnchanged 0、skippedEmpty 0、stale 0、failed 0、chunksWritten 2044、providerRequests 68、retryCount 0、aborted false、fatal null、errors []；active profile 为 `google:gemini-embedding-2:1536:search-result-v1`；
-- 隔离库最终只读审计：ArticleIndexState 68/68（全部 Gemini embeddingVersion、当前 chunkerVersion、sourceHash 存在）；declared / actual chunkCount 不一致 0；ArticleChunk 2044 全部 `google / gemini-embedding-2 / 1536 / search-result-v1`，vector_dims 全为 1536，无空 / 零维向量，无 OpenAI 混入，ordinal 无断档；
-- 开发库未污染证据：开发库（`agent_ai_seo`）不存在 `ArticleChunk` / `ArticleIndexState` 表（Task 1 migration 从未在开发库执行），仅 68 篇 `Article`；`postgres-data` volume 未触碰；
-- `eval:retrieval-quality`（production quality-v2）：exit code 0，三策略完整指标见 PR #55；lexical hit@5 0.2 / recall 0.2 / MRR 0.2、vector hit@5 1.0 / recall 1.0 / MRR 1.0、hybrid hit@5 1.0 / recall 1.0 / MRR 1.0；三个 no-answer case 三策略均返回结果（vector / hybrid 各 15 个 false-positive hit），no-answer accuracy 0，作为真实失败模式保留，不修改策略掩盖；
-- 正负样本距离分布（vector / hybrid 一致）：positive 6 条 cosineDistance min 0.1335 / median 0.1556 / max 0.2685（similarity 0.7315 ~ 0.8665）；negative 23 条 cosineDistance min 0.1533 / median 0.3866 / max 0.4885（similarity 0.5115 ~ 0.8467）；区间明显重叠，无稳定可解释分界；
-- Similarity threshold 决定：保持 `null`（方案 A）。正负样本分布重叠（negative min distance 0.153 < positive max distance 0.269），任何单一阈值都会明显损失正样本召回或放行负样本；当前 evidence 不足以支持生产 threshold，threshold = null 是证据驱动的决定，不是遗漏；本轮不提交 threshold 代码。
-
-基于以上真实证据：
-
-- AC-05：由 FAILED（配额）更新为 **PASS**（完整隔离 full indexing exit 0，2044 Chunks 与 deterministic chunking 一致，旧 OpenAI version 不兼容）；
-- AC-09：由 PARTIAL 更新为 **PASS**（production quality-v2 完整跑通，lexical / vector / hybrid 三策略指标齐全，legacy baseline 保持可重复）；
-- AC-11：由 PARTIAL 更新为 **PASS**（完整正负样本分布支撑 threshold 保持 null 的决策）。
-
-## GitHub 交付状态
-
-- Issue：[#54](https://github.com/mufeiyu-ayu/agent/issues/54) / Open
-- 分支：`codex/issue-54-gemini-hybrid-retrieval`
-- PR：[#55](https://github.com/mufeiyu-ayu/agent/pull/55) / Draft
-- Clarification Gate：`READY`（2026-08-15）
-
-## 任务状态
+### Gemini smoke
 
 ```text
-规划状态：Active
-实施状态：已实现
-验收状态：待验收
-Clarification Gate：READY（2026-08-15）
+provider: google
+model: gemini-embedding-2
+vectorCount: 1
+dimensions: 1536
+norm: 0.9999998165464739
+providerRequests: 1
+retryCount: 0
+elapsedMs: 955
 ```
 
-Task 2A 当前保持 Active。AC-01 ~ AC-13 已按真实运行证据更新（AC-05 / AC-09 / AC-11 已由完整配额下的隔离 full indexing、production quality-v2 与完整正负样本分布支撑 PASS；no-answer accuracy 0 与正负分布重叠作为真实质量证据保留，不修改策略掩盖）。任务整体仍保持"已实现、待验收"；Task 2A 不能标记 Completed，Task 2B 不得提前启动。
+### 隔离 Full Indexing
+
+```text
+command: index:articles:integration -- --mode=full
+exit code: 0
+scanned: 68
+indexed: 68
+skippedUnchanged: 0
+skippedEmpty: 0
+stale: 0
+failed: 0
+chunksWritten: 2044
+providerRequests: 68
+retryCount: 0
+aborted: false
+fatal: null
+errors: []
+```
+
+最终只读审计：
+
+- `ArticleIndexState`：68 / 68，全部为当前 Gemini profile；
+- `ArticleChunk`：2044，全部为 `google / gemini-embedding-2 / 1536 / search-result-v1`；
+- declared / actual Chunk count 不一致：0；
+- 无 stale、无 OpenAI 混入、无空 / 零维向量、无 ordinal 断档；
+- 开发库不存在 `ArticleChunk` / `ArticleIndexState` 表，未被本次隔离索引污染。
+
+### production quality-v2
+
+| Strategy | Hit@5 | Mean Recall@5 | Mean Precision@5 | MRR | No-answer Acc | FP query / hit | Zero-hit |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| legacy lexical | 0.2 | 0.2 | 0.04 | 0.2 | 1.0 | 0 / 0 | 7 |
+| Gemini vector exact cosine | 1.0 | 1.0 | 0.24 | 1.0 | 0 | 3 / 15 | 0 |
+| hybrid RRF | 1.0 | 1.0 | 0.24 | 1.0 | 0 | 3 / 15 | 0 |
+
+关键 case-level 事实：
+
+- exact keyword：三策略均 rank 1 命中 #46；
+- semantic paraphrase：只有 vector / hybrid 命中 #25；
+- multiple relevant：#49 / #52 均进入 top 5；
+- language filter：只返回目标 `zh-cn` #41；
+- duplicate chunks：聚合为一个 Article，并保留最佳 evidence；
+- 三个 no-answer case 中，legacy lexical 均返回空；vector / hybrid 每个 case 均返回 5 个近邻候选，各产生 15 个 false-positive hits。
+
+### Similarity Threshold 决策
+
+```text
+Positive cosine distance：
+count 6
+min 0.1335
+median 0.1556
+max 0.2685
+
+Negative cosine distance：
+count 23
+min 0.1533
+median 0.3866
+max 0.4885
+```
+
+正负分布明显重叠：negative min distance 小于 positive max distance。单一 threshold 无法同时保留正样本召回并拒绝全部负样本，因此最终保持：
+
+```text
+similarity threshold = null
+```
+
+这是证据驱动的决定，不是遗漏。本 Task 不提交拍脑袋阈值。
+
+## 验收结果
+
+| AC | 结果 | 证据摘要 |
+| --- | --- | --- |
+| AC-01 | PASS | 独立 pgvector PostgreSQL 16；Task 1 DB 7/7、0 skip |
+| AC-02 | PASS | 真实 Gemini smoke：1 × 1536，安全输出 |
+| AC-03 | PASS | Shared Provider、active profile、lazy Key config |
+| AC-04 | PASS | 版本化 asymmetric formatter 与 cardinality 校验 |
+| AC-05 | PASS | 隔离 full indexing：68 / 68、2044 Chunks、exit 0 |
+| AC-06 | PASS | exact cosine、filter、Abort / deadline、连接释放；DB 5/5 |
+| AC-07 | PASS | unique Article 聚合、最佳 evidence、连续 rank |
+| AC-08 | PASS | RRF 加法、`k=60`、单通道与确定性 tie-break |
+| AC-09 | PASS | legacy baseline 可重复；三策略 production quality-v2 完整比较 |
+| AC-10 | PASS | 指标、no-answer、false-positive、zero-hit 与 latency 完整输出 |
+| AC-11 | PASS | 正负分布重叠，证据支持 threshold 保持 `null` |
+| AC-12 | PASS | 未接 Tool / Agent；Tools 40/40、Tool Loop 52/52 |
+| AC-13 | PASS | build、typecheck、lint、Prisma validate 与受影响测试通过 |
+
+## 已知边界
+
+- Vector / Hybrid 对 answerable query 的语义召回明显高于 lexical baseline；
+- Vector / Hybrid 目前会把“最近候选”返回给 no-answer query，不能等价为“已确认存在答案”；
+- 正负距离分布重叠，不能靠一个简单 similarity threshold 稳定解决拒答；
+- Task 2B 在设计 Retrieval Tool 时必须保留 evidence 为未验证候选的语义，并决定 Agent 如何表达“资料不足”；
+- 本 Task 不包含 Tool、Agent Loop、Citation、Grounded Answer、Web / Admin Retrieval Inspector、rerank、Query Rewrite、HyDE 或 Agentic Retrieval。
+
+## 最终任务状态
+
+```text
+规划状态：Completed
+实施状态：已实现
+验收状态：已通过
+Issue：#54 Closed
+PR：#55 Merged
+Merge commit：3abdcb8afd5626f0b8fda90c98095bf529d165fd
+```
+
+Task 2A 已完成。Task 2B 进入 `Next`，但尚未创建正式 Issue，也未启动实现。
