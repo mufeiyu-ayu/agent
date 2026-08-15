@@ -1,174 +1,214 @@
 # Phase 8 Task 2B：Retrieval Tool & Agent Integration
 
-状态：**Active / 已实现 / 待验收**。
+状态：**Completed**。
 
-本 Task 是原“Task 2：Hybrid Retrieval & Agent Tool Integration”拆分后的第二部分。它只在 Task 2A 完成并通过 GPT 技术验收、用户确认后启动。
+本 Task 是原“Task 2：Hybrid Retrieval & Agent Tool Integration”拆分后的第二部分，负责把 Task 2A 已稳定、已评估的 Hybrid Retrieval 通过受控 Tool Boundary 接入 Agent Runtime。
 
-## 目标
+## GitHub 交付事实
 
-将 Task 2A 已稳定、已评估的 Hybrid Retrieval 能力通过明确 Tool Boundary 接入 Agent Runtime，使模型可以按需检索受控 Article evidence，同时继续遵守 Tool validation、timeout、Abort、Observation Governance 与 Phase 7 Context Budget。
+- Issue：[#56](https://github.com/mufeiyu-ayu/agent/issues/56) / Closed（Completed）
+- PR：[#57](https://github.com/mufeiyu-ayu/agent/pull/57) / Merged
+- Clarification Gate：`READY`
+- 最终验收 head：`9008c7be9176d4d8f322a31b96e7f0fef753f727`
+- Merge commit：`4f3ba1c109e8b0ade2328abeed24a72c295acd6d`
+- GPT 第二轮技术验收：通过，AC-01～AC-16 全部 PASS
+- 用户确认验收：已确认
+- 合并授权：已授权并执行
+- 云端 Codex Review：已请求，但因 code review 额度耗尽未产生 Review；不得表述为 Review 通过
+- 远程任务分支：保留，未执行清理
 
-## 前置条件
+## 最终链路
 
-- Task 2A Completed；
-- Hybrid Retrieval strategy / version、Result contract、quality-v2 evaluation 与真实 pgvector 证据已经稳定；
-- 不在本 Task 内重新设计 Vector Ranking 或通过改 Tool 来掩盖 Retrieval 质量问题。
+```text
+用户问题
+  -> DeepSeek sampling
+  -> retrieve_article_context@1 Tool Call
+  -> Tool validation / trusted-provider policy
+  -> Gemini Query Embedding
+  -> PostgreSQL lexical + pgvector exact retrieval
+  -> hybrid_rrf@1
+  -> 安全候选 Observation
+  -> Phase 7 Context Planner
+  -> follow-up sampling
+  -> 最终回答
+```
 
-## 已定方向
+## 最终实现
 
-- 保留现有 `search_articles@1` 兼容行为，不静默改造成 RAG Tool；
-- 第一版新增专用 Retrieval Tool，建议命名 `retrieve_article_context@1`；
-- Tool 输入继续使用受控 query / language / limit，不暴露数据库、embedding、内部 score 调参能力；
-- Tool 输出投影为安全 source + best evidence chunk，不包含原始 embedding、完整正文、未裁剪候选列表或内部错误栈；
-- 默认只允许少量最终来源，每篇 Article 第一版最多一个 evidence chunk；
-- Retrieval Observation 属于低信任内容，不能提升为 system / developer policy；
-- Model-visible Observation 继续通过 Tool ceiling 与 Context Planner 二次治理；
-- Retrieval 只由 Agent 在需要时调用，不在每轮 sampling 前无条件自动注入。
+### 1. Retrieval Tool
 
-## 计划范围
+新增 `retrieve_article_context@1`：
 
-- 新增 `retrieve_article_context@1` ToolDefinition / parser / executor；
-- 将 Task 2A Hybrid Retriever 注入 Tool 层，不把 SQL / ranking 搬进 Tool；
-- 定义安全 Tool Result / modelContent projection；
-- 将真实 `sourceId`、slug、title、languageCode、chunkId、sectionPath、excerpt、rank 与 strategy/version 保留到受控结果中；
-- 设置明确的来源数、单 chunk excerpt 与总 Observation 预算；
-- 对低信任 Retrieval 内容增加明确 envelope / provenance 语义；
-- 接入 Tool Registry 与 Agent Loop；
-- 验证 Tool Call / Result pairing、timeout、Abort、deadline、retry / failure propagation 与 Context Budget；
-- 保持现有 streaming protocol、Run / Step 终态与 `search_articles@1` 回归行为。
+- 输入：`query`、可选 `languageCode`、可选 `limit`；
+- `query` 最多 100 字符；
+- `limit` 默认 3，范围 1～5；
+- Tool Boundary 自身再次执行 `hits.slice(0, limit)`；
+- `timeoutMs = 30_000`；
+- `maxObservationChars = 8_000`；
+- Tool 只依赖 `ArticleRetriever`，不复制 Vector SQL、Embedding ranking、Article aggregation 或 RRF。
 
-## 明确不做
-
-- 不重新实现 Task 2A 的 Vector SQL、RRF 或 Evaluation；
-- 不修改 `search_articles@1` 的既有外部语义；
-- 不实现最终 Citation 格式、Grounded Answer enforcement、Web Citation UI；
-- 不实现 Admin Retrieval Inspector；
-- 不做 Query Rewrite、rerank、Agentic Retrieval、多轮自动检索；
-- 不做文件上传、通用知识库、Memory、MCP、Multi-agent；
-- 不把 Retrieval 结果直接写入 system prompt；
-- 不将检索分数用于权限或 Tool execution 决策。
-
-## 预期安全结果
-
-第一版结果形态以以下语义为基线，最终字段在 Issue 创建前结合 Task 2A 实际 contract 定案：
+结果语义：
 
 ```ts
-{
+interface RetrieveArticleContextOutput {
+  kind: 'article_retrieval_candidates'
   query: string
+  status: 'candidates_returned' | 'no_candidates'
+  answerStatus: 'unverified'
   strategy: {
     name: string
     version: string
   }
+  sourceCount: number
   sources: Array<{
     sourceId: number
     slug: string
     title: string
     languageCode: string
-    chunkId: string
-    sectionPath: string
-    excerpt: string
     rank: number
-    matchType: 'hybrid' | 'lexical' | 'vector'
+    excerpt: string
+    evidence?: {
+      chunkId: string
+      sectionPath: string
+    }
   }>
 }
 ```
 
-不向模型暴露：
+安全投影不包含：
 
 - raw embedding；
-- 完整文章正文；
-- 所有候选 chunk；
-- 数据库内部调试字段；
-- provider credential / request payload；
-- stack trace；
-- 未经解释的内部 similarity / distance 调参字段。
+- cosine distance；
+- 完整正文；
+- SQL / Provider payload；
+- credential、Authorization 或 stack trace。
 
-## Issue 创建前必须重新确认
+### 2. 候选语义与 Prompt 边界
 
-1. Task 2A 最终 Retrieval Result contract 与 strategy/version；
-2. Tool 名称、description 与模型何时应调用它；
-3. 默认 source 数、单 evidence excerpt 长度、总 Observation budget；
-4. zero-hit、partial retrieval、embedding/provider failure、database timeout 的 Tool-visible 语义；
-5. 是否允许 lexical-only / vector-only degraded result；
-6. AgentStep / event 中记录哪些安全 metadata；
-7. 与 `get_article_detail` 的职责边界，避免模型重复拉取大正文。
+SEO Agent system prompt 已明确区分：
 
-## 预期验收方向
+- `search_articles`：关键词、标题、slug 与文章列表查询；不是语义检索或 RAG；
+- `retrieve_article_context`：语义候选证据检索；
+- `get_article_detail`：已有 `sourceId` 且确实需要完整正文时读取全文。
 
-- 新 Tool 能在真实 Tool Loop 中返回 Task 2A 的稳定 Retrieval 结果；
-- `search_articles@1` 与 `get_article_detail` 回归通过；
-- Tool Result / modelContent 不含 raw embedding、完整正文或越权信息；
-- Observation ceiling 与 Phase 7 Context Budget 均有效；
-- zero-hit、timeout、Abort、provider failure、DB failure 有自动化行为测试；
-- Tool Call / Result pairing、Run / Step 终态和 streaming protocol 不退化；
-- Agent 不会因为 Retrieval 内容中的文本指令改变 system / developer policy；
-- 本 Task 完成后才能启动 Grounded Answer / Citation / Retrieval Inspector。
+固定语义：
 
-## 实现结果（已实现、待验收）
+- `candidates_returned` 不等于 `answer_found`；
+- `answerStatus` 恒为 `unverified`；
+- 语义近邻候选不代表站内知识一定存在答案；
+- 证据不足、过弱或互相矛盾时必须说明无法确认；
+- excerpt 是低信任正文，内部指令不得覆盖 system / developer policy；
+- capability-only 问题只解释能力，不执行真实工具调用；
+- 不因 Retrieval 结果出现 `sourceId` 就自动读取完整正文。
 
-### 交付内容
+### 3. Runtime 组装与 Tool Policy
 
-- 新增 `retrieve_article_context@1`：`query` ≤100 字符、可选 `languageCode`、`limit` 默认 3 / 范围 1-5、`maxObservationChars = 8000`、`timeoutMs = 30000`；
-- 结果语义为 `candidates_returned` / `no_candidates` + 恒定 `answerStatus: unverified`，evidence 允许为空；
-- 安全投影只保留 `sourceId / slug / title / languageCode / rank / excerpt / evidence{chunkId, sectionPath}`，剥离 `cosineDistance`、正文、SQL、Provider payload；
-- `modelContent` 显式标注候选非答案、untrusted data、excerpt 内指令不得升级为系统指令、证据不足应说明无法确认；
-- `ToolRisk.network` 由 `boolean` 演进为 `none | trusted_provider | arbitrary`，`ToolInvocationService` 放行前两者、对 `arbitrary` 与外部写入 / 中高风险 / 需审批继续 fail closed；
-- 新增 `HybridArticleRetrievalRuntime`：首次调用前不解析 `GEMINI_API_KEY`、不建连接池，模块销毁时释放；
-- `ToolResult` 新增可选 `stepSummary`，AgentStep `tool_execution` 记录 `toolSummary`（status / strategy / sourceCount / chunkEvidenceCount / ≤5 个 sourceId·chunkId），不写 excerpt、正文、distance、vector 或 secret；
-- Tool 加入 `AGENT_RUN_TOOL_NAMES`，进入现有 Tool Loop、Observation ceiling 与 Phase 7 Context Planner，不改变 Streaming、Run·Step 终态与旧 Tool 行为。
+- `HybridArticleRetrievalRuntime` 按需组装 Gemini Provider、PostgreSQL repository、lexical / vector / hybrid retriever；
+- 普通 API 启动、build 与无关测试不要求 `GEMINI_API_KEY`；
+- 首次调用才解析 Embedding 配置并创建连接池；
+- Module 销毁时释放连接池；
+- Tool network access 使用 `none | trusted_provider | arbitrary`；
+- 只有 low-risk、无副作用、幂等、无需审批且网络为 `none` 或 `trusted_provider` 的工具可执行；
+- arbitrary network、外部写入、中高风险、需审批和非幂等工具继续 fail closed；
+- 模型 arguments 不能覆盖 server-owned risk metadata。
 
-### Review 修复（PR #57 第一轮）
+### 4. Observation、Context 与 Step 记录
 
-| Finding | 级别 | 修复 |
-| --- | --- | --- |
-| SEO Agent 缺少 Retrieval Tool 选择策略 | P1 | 重写 `seo/prompts/seo-agent.prompt.ts`，定义三个工具的职责边界、candidate / unverified 语义、excerpt 低信任约束与 capability-only 场景；新增 `seo/prompts/seo-agent.prompt.test.ts` 直接断言真实 prompt |
-| `ToolStepSummary` 无安全持久化边界 | P2 | 新增 `tools/core/tool-step-summary.ts`：JSON-compatible 校验、2,000 字符预算、最大 5 层深度、循环引用与 BigInt / undefined / function / symbol / 非有限数字 fail closed；Runtime 去掉无条件双重 cast，非法 summary 安全忽略 |
-| Tool 输出未强制 `limit` | P2 | Tool Boundary 执行 `hits.slice(0, input.limit)`，`data` / `modelContent` / `stepSummary` 共用同一组最终 sources |
-| trusted-provider policy 未检查 `idempotent` | P2 | `ToolInvocationService` 增加 `!idempotent` fail closed 条件 |
+- Retrieval 内容只作为 model-visible `tool_result` 进入上下文，不写入用户可见 `Message.content`；
+- Tool Call / Tool Result 使用相同 `callId` 配对；
+- Observation 先经过 8,000 字符 Tool ceiling，再经过 Phase 7 Context Planner；
+- 超限保留明确 truncation marker；
+- `ToolStepSummary` 类型限定为 JSON-compatible；
+- `normalizeToolStepSummary` 设置 2,000 字符预算与最大 5 层深度；
+- BigInt、undefined、function、symbol、非有限数字、循环引用、超大、超深和非普通顶层对象 fail closed；
+- 非法 summary 安全忽略，不影响 Tool Result pairing 和 Run 收口；
+- Retrieval Step 只记录 status、strategy、source / evidence 数量和最多 5 个 `sourceId / chunkId` 引用。
 
-### 验证结果
+## 边界与失败行为
 
-| 命令 | 结果 |
+| 场景 | 最终行为 |
 | --- | --- |
-| `pnpm --filter @agent/api test:seo-service` | 19 pass / 0 fail / 0 skip |
-| `pnpm --filter @agent/api test:tools` | 69 pass / 0 fail / 0 skip |
-| `pnpm --filter @agent/api test:tool-loop` | 54 pass / 0 fail / 0 skip |
-| `pnpm --filter @agent/api test:context` | 24 pass / 0 fail / 0 skip |
-| `pnpm --filter @agent/api test:retrieval` | 35 pass / 0 fail / 0 skip |
-| `pnpm --filter @agent/api test:retrieval-db` | 9 pass / 0 fail / 0 skip |
-| `pnpm --filter @agent/api test:model-stream` | 67 pass / 0 fail / 0 skip |
-| `pnpm --filter @agent/api typecheck` / `lint` / `build` | 通过 |
-| `pnpm typecheck` | 通过 |
+| 参数非法 | `invalid_arguments`，Retriever / DB / Provider 不执行 |
+| zero-hit | `ok: true`、`no_candidates`、`sources: []` |
+| 近邻候选但证据不足 | `answerStatus: unverified`，不得宣称答案存在 |
+| Gemini 配置缺失 / Provider 失败 | 脱敏 `execution_failed` |
+| 数据库失败 / pgvector 结构缺失 | 安全失败，不伪装成 zero-hit，不自动执行 migration |
+| lexical 或 vector 单通道失败 | 整体失败，不静默降级 |
+| Tool timeout | `timeout` |
+| 外部 Abort | 沿用 Run cancellation 所有权，收口为 ABORTED |
+| prompt injection excerpt | 始终保持低信任 Tool data |
+| Observation 超预算 | 截断并保持 call/result pairing |
 
-真实 integration smoke（`pnpm --filter @agent/api smoke:retrieval-tool`，隔离 pgvector active index + 真实 Gemini query embedding）：
+## 验收结果
+
+| AC | 结果 | 证据摘要 |
+| --- | --- | --- |
+| AC-01 | PASS | Tool 注册、Agent 可见、lazy config |
+| AC-02 | PASS | query / language / limit parser 与非法输入前置拒绝 |
+| AC-03 | PASS | 复用 Hybrid Retriever boundary，无 SQL / RRF 复制 |
+| AC-04 | PASS | 安全候选投影、optional evidence、Tool Boundary limit |
+| AC-05 | PASS | candidate / unverified / untrusted 与 injection 边界 |
+| AC-06 | PASS | zero-hit 成功空结果 |
+| AC-07 | PASS | Provider / DB / missing-config 脱敏失败且无静默降级 |
+| AC-08 | PASS | timeout / Abort / deadline 所有权 |
+| AC-09 | PASS | trusted-provider + idempotent fail-closed policy |
+| AC-10 | PASS | 8,000 字符 ceiling、marker、Context Planner、pairing |
+| AC-11 | PASS | 两轮 sampling、同 callId、UI Message 只保存最终回答 |
+| AC-12 | PASS | 安全 Step summary；非法 summary 安全忽略 |
+| AC-13 | PASS | `search_articles@1` / `get_article_detail@1` 回归 |
+| AC-14 | PASS | Streaming、Run / Step 终态和 model stream 回归 |
+| AC-15 | PASS | 真实 Gemini + 隔离 pgvector Retrieval Tool smoke |
+| AC-16 | PASS | typecheck、lint、build、workspace typecheck |
+
+## 最终验证
 
 ```text
-tool=retrieve_article_context@1
-embeddingProfile=google / gemini-embedding-2 / 1536 / google:gemini-embedding-2:1536:search-result-v1
-ok=true, status=candidates_returned, answerStatus=unverified, strategy=hybrid_rrf@1
-sourceCount=3, chunkEvidenceCount=3
-observation: originalChars=1772, observationChars=1772, truncated=false
-untrustedMarked=true, unverifiedMarked=true
+pnpm --filter @agent/api test:seo-service    19 pass / 0 fail / 0 skip
+pnpm --filter @agent/api test:tools          69 pass / 0 fail / 0 skip
+pnpm --filter @agent/api test:tool-loop      54 pass / 0 fail / 0 skip
+pnpm --filter @agent/api test:context        24 pass / 0 fail / 0 skip
+pnpm --filter @agent/api test:retrieval      35 pass / 0 fail / 0 skip
+pnpm --filter @agent/api test:retrieval-db    9 pass / 0 fail / 0 skip
+pnpm --filter @agent/api test:model-stream   67 pass / 0 fail / 0 skip
+pnpm --filter @agent/api typecheck           PASS
+pnpm --filter @agent/api lint                PASS
+pnpm --filter @agent/api build               PASS
+pnpm typecheck                               PASS
+```
+
+最新真实 smoke：
+
+```text
+status=candidates_returned
+answerStatus=unverified
+strategy=hybrid_rrf@1
+sourceCount=3
+chunkEvidenceCount=3
+observationChars=1772
+truncated=false
 elapsedMs=986
 ```
 
-Review 修复触及 Tool output 与 Tool policy 执行路径，因此重跑了该 smoke；结果与修复前一致。
+Smoke 只输出脱敏状态、计数和 source / chunk 引用，不输出 Key、raw vector、完整正文、Provider payload 或完整 Observation。
 
-未重新执行 full indexing，未新增或重写 migration，未更换默认数据库镜像。
+## 已接受边界
 
-## GitHub 交付状态
+- Task 2A 的 no-answer false positive 基线保持不变；本 Task 只把结果明确标记为未验证候选，不引入拍脑袋 similarity threshold；
+- `ToolStepSummary` 的结构、大小和深度由 Runtime 强制，字段语义仍由具体 Tool 的白名单 projector 负责；
+- Prompt 测试锁定文本契约，不等价于真实模型 Tool 选择准确率评估；
+- Grounded Answer enforcement、Citation contract、Web 来源卡片和 Admin Retrieval Inspector 留给 Task 3；
+- 不涉及生产数据库、部署拓扑、rerank、Query Rewrite、通用知识库、Memory、MCP 或 Multi-agent。
 
-- Issue：#56
-- 分支：`codex/issue-56-retrieval-tool-agent-integration`
-- PR：Draft
-- Clarification Gate：READY
-
-## 任务状态
+## 最终任务状态
 
 ```text
-规划状态：Active
+规划状态：Completed
 实施状态：已实现
-验收状态：待验收
+验收状态：已通过
+Issue：#56 Closed（Completed）
+PR：#57 Merged
+最终验收 head：9008c7be9176d4d8f322a31b96e7f0fef753f727
+Merge commit：4f3ba1c109e8b0ade2328abeed24a72c295acd6d
 ```
 
-Task 2B 不得与 Task 2A 合并为同一个 Issue。Task 3 仍未启动。
+Task 2B 已完成。Task 3 进入 `Next / 未启动`，尚未创建 Issue 或执行 Clarification Gate。
