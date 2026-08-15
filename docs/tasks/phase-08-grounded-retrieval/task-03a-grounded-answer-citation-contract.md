@@ -1,6 +1,6 @@
 # Phase 8 Task 3A：Grounded Answer 与 Citation Backend Contract
 
-状态：**Next / Issue 未创建 / Gate 未执行**。
+状态：**Active / Issue #58 / Gate READY / 实施状态：已实现 / 验收状态：待验收**。
 
 ## 1. 目标
 
@@ -285,11 +285,47 @@ Issue 创建时必须把每条 AC 映射到具体测试命令、环境和证据�
 
 ## 10. GitHub 交付状态
 
-- Issue：未创建
-- 分支：未创建
-- PR：未创建
-- Clarification Gate：未执行
-- 实施状态：未开始
-- 验收状态：未验收
+- Issue：[#58](https://github.com/mufeiyu-ayu/agent/issues/58)
+- 分支：`codex/issue-58-grounded-answer-citation-contract`
+- PR：Draft
+- Clarification Gate：`READY`
+- 实施状态：已实现
+- 验收状态：待验收
 
-下一步是创建一个只覆盖 Task 3A 的正式 Issue，并交给 Codex 执行 Clarification Gate。
+### 10.1 验证结果
+
+全部命令均在本地真实执行：
+
+| 命令 | 结果 |
+| --- | --- |
+| `pnpm --filter @agent/api test:grounding` | pass 86 / fail 0 |
+| `pnpm --filter @agent/api test:grounding-db` | pass 8 / fail 0 / skipped 0 |
+| `pnpm --filter @agent/api test:agent-recorder` | pass 14 / fail 0 |
+| `pnpm --filter @agent/api test:tool-loop` | pass 54 / fail 0 |
+| `pnpm --filter @agent/api test:model-stream` | pass 67 / fail 0 |
+| `pnpm --filter @agent/api test:tools` | pass 80 / fail 0 |
+| `pnpm --filter @agent/api test:seo-service` | pass 22 / fail 0 |
+| `pnpm --filter @agent/api test:context` | pass 24 / fail 0 |
+| `pnpm --filter @agent/api test:retrieval` | pass 35 / fail 0 |
+| `pnpm --filter @agent/api test:retrieval-db` | pass 9 / fail 0 / skipped 0 |
+| `pnpm --filter @agent/api test:db-reliability` | pass 11 / fail 0 / skipped 0 |
+| `pnpm --filter @agent/web test:seo-stream` | pass 11 / fail 0 |
+| `pnpm --filter @agent/web typecheck` / `lint` / `build` | pass |
+| `pnpm --filter @agent/api typecheck` / `lint` / `build` | pass |
+| `pnpm typecheck` | pass |
+| `pnpm --filter @agent/api smoke:grounded-answer` | answered 与 insufficient 两条路径均 `run_completed` |
+
+数据库范围：`test:grounding-db` 与 smoke 均只连接 `ARTICLE_INDEX_TEST_DATABASE_URL`
+指向的隔离 PostgreSQL + pgvector；`20260815160000_add_message_grounding` 只在该隔离库
+执行过 `prisma migrate deploy`，开发库未被改动。
+
+`pnpm lint`（workspace 根）仍有 122 个错误，其中 115 个在本分支创建前的 `master`
+上就已存在（全部位于 `docs/**` Markdown）；本次新增的 7 个已全部修复，`@agent/api`
+与 `@agent/web` 的 lint 均为 0 错误。
+
+### 10.2 已知限制
+
+真实 smoke 的两条 query 必须显式要求「只做一次语义检索」。原因是既有 Agent Loop
+只接受同轮单个 Tool Call，而 DeepSeek 对开放式检索问题会并行返回多个 Tool Call
+并触发既有保护。这是 Phase 6 既有协议约束，不属于 Task 3A 引入的问题，也未在本
+Task 中修改。

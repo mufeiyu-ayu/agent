@@ -45,6 +45,8 @@ describe('search_articles', () => {
     assert.equal(definition.idempotent, true)
     assert.equal(definition.timeoutMs, 5_000)
     assert.equal(definition.maxObservationChars, 16_000)
+    // 关键词发现结果永远不是回答证据，不进入 Run Evidence Registry。
+    assert.equal(definition.evidencePolicy, 'discovery_only')
     assert.deepEqual(toModelToolSpec(definition), {
       name: 'search_articles',
       description: definition.description,

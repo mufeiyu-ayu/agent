@@ -4,6 +4,7 @@ import type {
   DatabaseArticleRetrievalExecutionContext,
   NormalizedArticleRetrievalQuery,
 } from '../../retrieval/article-retrieval.js'
+import type { ToolEvidenceRef } from '../core/tool-evidence.js'
 import type {
   ToolDefinition,
   ToolExecutionContext,
@@ -77,6 +78,8 @@ export const retrieveArticleContextDefinition: ToolDefinition<RetrieveArticleCon
   idempotent: true,
   // 网络访问目标固定为服务端配置的 Gemini Embedding Provider，模型 arguments 无法改变它。
   risk: { level: 'low', sideEffect: 'none', network: 'trusted_provider' },
+  // 语义检索候选是回答证据的主要来源；零候选属于成功但无证据。
+  evidencePolicy: 'eligible',
 }
 
 @Injectable()
@@ -126,7 +129,29 @@ export class RetrieveArticleContextTool implements ToolExecutor<
       data,
       modelContent: toModelContent(data),
       stepSummary: toStepSummary(data),
+      evidence: {
+        refs: data.sources.map(source => toEvidenceRef(source, data.strategy)),
+      },
     }
+  }
+}
+
+/** 候选来源到证据引用的一一投影；没有 chunk evidence 时保持 article 粒度。 */
+function toEvidenceRef(
+  source: RetrievedArticleSource,
+  strategy: RetrieveArticleContextOutput['strategy'],
+): ToolEvidenceRef {
+  return {
+    sourceId: source.sourceId,
+    chunkId: source.evidence?.chunkId ?? null,
+    granularity: source.evidence ? 'chunk' : 'article',
+    title: source.title,
+    slug: source.slug,
+    languageCode: source.languageCode,
+    sectionPath: source.evidence?.sectionPath ?? null,
+    excerpt: source.excerpt,
+    rank: source.rank,
+    strategy: { ...strategy },
   }
 }
 

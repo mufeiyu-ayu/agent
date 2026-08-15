@@ -1,3 +1,5 @@
+import type { MessageGroundingV1 } from './grounding.js'
+
 /** 前后端共同执行的单次 SEO Chat 用户消息字符上限。 */
 export const SEO_CHAT_MESSAGE_MAX_CHARS = 64_000
 
@@ -47,6 +49,13 @@ export interface ChatStreamDoneEvent {
   assistantMessageId: string
   content: string
   generatedAt: string
+  /**
+   * Evidence-backed 回答的引用事实；普通回答不携带该字段。
+   *
+   * 与 Messages API 使用同一份 durable safe projection，页面重载后可以得到一致结果。
+   * 这里刻意不新增 top-level event type，legacy consumer 忽略未知字段即可继续工作。
+   */
+  grounding?: MessageGroundingV1
 }
 
 export interface ChatStreamErrorEvent {

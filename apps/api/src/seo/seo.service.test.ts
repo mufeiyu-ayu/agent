@@ -1,3 +1,4 @@
+import type { MessageGroundingV1 } from '@agent/contracts'
 import type { AgentRuntimeService } from '../agent-runtime/agent-runtime.service.js'
 import type {
   AgentRuntimeEvent,
@@ -18,6 +19,7 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common'
 
+import { toConversationMessageResponse } from '../conversations/messages.service.js'
 import { SeoService } from './seo.service.js'
 
 const GENERATED_AT = '2026-07-18T08:00:00.000Z'
@@ -228,6 +230,125 @@ class FakeAgentRuntimeService {
   }
 }
 
+describe('SeoService grounding 投影', () => {
+  const grounding: MessageGroundingV1 = {
+    schemaVersion: 1,
+    evidenceAvailability: 'available',
+    outcome: 'answered',
+    citationIntegrity: 'validated',
+    faithfulnessStatus: 'not_evaluated',
+    citations: [{
+      citationId: 'cit_0123456789abcdef0123456789abcdef',
+      sourceId: 301,
+      chunkId: 'article-301-chunk-0',
+      granularity: 'chunk',
+      title: 'SEO 基础',
+      slug: 'seo-basics',
+      languageCode: 'zh-cn',
+      sectionPath: 'Section 0',
+      excerpt: '候选片段',
+      rank: 1,
+      href: null,
+      strategy: { name: 'hybrid_rrf', version: '1' },
+    }],
+  }
+
+  it('done 事件携带 grounding，且与 Messages API 的 durable 投影完全一致', async () => {
+    const harness = createHarness([
+      runStartedEvent(),
+      runCompletedEvent('基于站内资料的回答。', grounding),
+    ])
+
+    const events = await collectEvents(harness.service.chatStream(createInput()))
+    const doneEvent = events.at(-1)!
+
+    assert.equal(doneEvent.type, 'done')
+
+    const streamedGrounding = doneEvent.type === 'done'
+      ? doneEvent.grounding
+      : undefined
+    // 同一条持久化记录经 Messages API 投影后必须给出同一份事实。
+    const persistedProjection = toConversationMessageResponse({
+      id: 'assistant-message-1',
+      conversationId: 'conversation-1',
+      role: 'ASSISTANT',
+      content: '基于站内资料的回答。',
+      status: 'COMPLETED',
+      createdAt: new Date(GENERATED_AT),
+      updatedAt: new Date(GENERATED_AT),
+      grounding: {
+        messageId: 'assistant-message-1',
+        schemaVersion: 1,
+        evidenceAvailability: 'available',
+        outcome: 'answered',
+        citationIntegrity: 'validated',
+        faithfulnessStatus: 'not_evaluated',
+        citations: grounding.citations,
+        createdAt: new Date(GENERATED_AT),
+        updatedAt: new Date(GENERATED_AT),
+      },
+    } as never)
+
+    assert.deepEqual(streamedGrounding, persistedProjection.grounding)
+    assert.doesNotMatch(JSON.stringify(events), /evk_/)
+  })
+
+  it('普通回答的 done 事件不携带 grounding，legacy Message 投影为 null', async () => {
+    const harness = createHarness([
+      runStartedEvent(),
+      runCompletedEvent('普通回答'),
+    ])
+
+    const events = await collectEvents(harness.service.chatStream(createInput()))
+    const doneEvent = events.at(-1)!
+
+    assert.equal(doneEvent.type, 'done')
+    assert.equal(
+      doneEvent.type === 'done' ? Object.hasOwn(doneEvent, 'grounding') : true,
+      false,
+    )
+
+    const legacyProjection = toConversationMessageResponse({
+      id: 'assistant-message-1',
+      conversationId: 'conversation-1',
+      role: 'ASSISTANT',
+      content: '普通回答',
+      status: 'COMPLETED',
+      createdAt: new Date(GENERATED_AT),
+      updatedAt: new Date(GENERATED_AT),
+      grounding: null,
+    } as never)
+
+    assert.equal(legacyProjection.grounding, null)
+  })
+
+  it('持久化 Grounding 损坏时 Messages API fail closed，不透传原始 JSON', () => {
+    const projection = toConversationMessageResponse({
+      id: 'assistant-message-1',
+      conversationId: 'conversation-1',
+      role: 'ASSISTANT',
+      content: '基于站内资料的回答。',
+      status: 'COMPLETED',
+      createdAt: new Date(GENERATED_AT),
+      updatedAt: new Date(GENERATED_AT),
+      grounding: {
+        messageId: 'assistant-message-1',
+        schemaVersion: 1,
+        evidenceAvailability: 'available',
+        outcome: 'answered',
+        citationIntegrity: 'validated',
+        faithfulnessStatus: 'not_evaluated',
+        citations: [{ leaked: 'SELECT * FROM "ArticleChunk"' }],
+        createdAt: new Date(GENERATED_AT),
+        updatedAt: new Date(GENERATED_AT),
+      },
+    } as never)
+
+    assert.equal(projection.grounding, null)
+    assert.doesNotMatch(JSON.stringify(projection), /SELECT|leaked/)
+  })
+})
+
 class FakeSeoContextBuilder {
   readonly historyCalls: ChatMessage[][] = []
 
@@ -298,7 +419,10 @@ function assistantDeltaEvent(contentDelta: string): AgentRuntimeEvent {
   }
 }
 
-function runCompletedEvent(content: string): AgentRuntimeEvent {
+function runCompletedEvent(
+  content: string,
+  grounding?: MessageGroundingV1,
+): AgentRuntimeEvent {
   return {
     type: 'run_completed',
     runId: 'run-1',
@@ -306,6 +430,7 @@ function runCompletedEvent(content: string): AgentRuntimeEvent {
     assistantMessageId: 'assistant-message-1',
     content,
     generatedAt: GENERATED_AT,
+    ...(grounding ? { grounding } : {}),
   }
 }
 

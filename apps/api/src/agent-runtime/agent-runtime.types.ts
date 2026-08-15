@@ -1,3 +1,4 @@
+import type { MessageGroundingV1 } from '@agent/contracts'
 import type { ChatMessage } from '../llm/llm.types.js'
 
 export type AgentRuntimeEvent
@@ -30,6 +31,8 @@ export interface AgentRuntimeRunCompletedEvent {
   assistantMessageId: string
   content: string
   generatedAt: string
+  /** 仅 Evidence-backed 回答携带；普通回答没有 Grounding。 */
+  grounding?: MessageGroundingV1
 }
 
 export interface AgentRuntimeRunFailedEvent {

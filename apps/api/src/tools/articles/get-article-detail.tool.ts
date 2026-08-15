@@ -50,7 +50,15 @@ export const getArticleDetailDefinition: ToolDefinition<GetArticleDetailInput> =
   requiresApproval: false,
   idempotent: true,
   risk: { level: 'low', sideEffect: 'none', network: 'none' },
+  // 命中时可以作为 article 粒度证据；not found 属于成功但无证据。
+  evidencePolicy: 'eligible',
 }
+
+/** Article Detail 只声明整篇文章身份，不伪造 chunk / sectionPath / rank。 */
+const ARTICLE_DETAIL_EVIDENCE_STRATEGY = {
+  name: 'article_detail',
+  version: '1',
+} as const
 
 @Injectable()
 export class GetArticleDetailTool implements ToolExecutor<
@@ -131,6 +139,21 @@ export class GetArticleDetailTool implements ToolExecutor<
       ok: true as const,
       data,
       modelContent: JSON.stringify(data),
+      // 只投影可引用的来源身份与展示快照；完整正文留在 Observation，不进 Registry。
+      evidence: {
+        refs: [{
+          sourceId: article.sourceId,
+          chunkId: null,
+          granularity: 'article' as const,
+          title: article.title,
+          slug: article.slug,
+          languageCode: article.languageCode,
+          sectionPath: null,
+          excerpt: null,
+          rank: null,
+          strategy: { ...ARTICLE_DETAIL_EVIDENCE_STRATEGY },
+        }],
+      },
     }
   }
 }

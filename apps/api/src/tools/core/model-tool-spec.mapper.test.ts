@@ -26,6 +26,7 @@ describe('toModelToolSpec', () => {
       requiresApproval: false,
       idempotent: true,
       risk: { level: 'low', sideEffect: 'none', network: 'none' },
+      evidencePolicy: 'discovery_only',
     }
 
     assert.deepEqual(toModelToolSpec(definition), {

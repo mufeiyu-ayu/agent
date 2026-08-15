@@ -1,3 +1,4 @@
+import type { MessageGroundingV1 } from '@agent/contracts'
 import type { AgentRun, AgentStep, Message, Prisma } from '../generated/prisma/client.js'
 import type {
   DatabaseOperationDeadline,
@@ -18,6 +19,7 @@ export const AGENT_STEP_TYPES = {
   loadConversationHistory: 'load_conversation_history',
   modelSampling: 'model_sampling',
   toolExecution: 'tool_execution',
+  groundedFinalization: 'grounded_finalization',
   assistantOutput: 'assistant_output',
 } as const
 
@@ -28,6 +30,7 @@ const AGENT_STEP_TITLES: Record<AgentStepType, string> = {
   load_conversation_history: '加载会话上下文',
   model_sampling: '模型采样',
   tool_execution: '执行工具',
+  grounded_finalization: '校验回答引用',
   assistant_output: '生成助手回复',
 }
 
@@ -66,6 +69,13 @@ interface CompleteAgentRunInput {
   assistantOutputStepId: string
   content: string
   output?: Prisma.InputJsonValue
+  /**
+   * Evidence-backed 回答的引用事实。
+   *
+   * 只能与 COMPLETED assistant Message 在同一事务提交：Message 内容、Grounding、
+   * Step 与 Run 终态要么一起生效，要么一起回滚，不允许出现半完成 Grounding。
+   */
+  grounding?: MessageGroundingV1
 }
 
 interface CloseAssistantMessageInput {
@@ -233,6 +243,22 @@ export class AgentRunRecorderService {
         messageResult.count,
         `Message ${input.assistantMessageId} 已进入终态或不存在`,
       )
+
+      if (input.grounding) {
+        // 与 Message 转 COMPLETED 处于同一事务：回滚后不会留下孤立 Grounding。
+        await transaction.execute(prisma => prisma.messageGrounding.create({
+          data: {
+            messageId: input.assistantMessageId,
+            schemaVersion: input.grounding!.schemaVersion,
+            evidenceAvailability: input.grounding!.evidenceAvailability,
+            outcome: input.grounding!.outcome,
+            citationIntegrity: input.grounding!.citationIntegrity,
+            faithfulnessStatus: input.grounding!.faithfulnessStatus,
+            citations: input.grounding!
+              .citations as unknown as Prisma.InputJsonValue,
+          },
+        }))
+      }
 
       await transaction.execute(prisma => prisma.conversation.update({
         where: { id: input.conversationId },

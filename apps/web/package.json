@@ -10,7 +10,8 @@
     "prebuild": "pnpm --filter @agent/contracts build",
     "build": "vue-tsc --noEmit -p tsconfig.json && vite build",
     "lint": "eslint src",
-    "lint:fix": "eslint src --fix"
+    "lint:fix": "eslint src --fix",
+    "test:seo-stream": "pnpm --filter @agent/contracts build && tsx --test src/api/seo.stream.test.ts"
   },
   "dependencies": {
     "@agent/contracts": "workspace:*",

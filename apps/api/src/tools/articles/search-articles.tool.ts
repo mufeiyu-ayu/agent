@@ -55,6 +55,8 @@ export const searchArticlesDefinition: ToolDefinition<SearchArticlesInput> = {
   requiresApproval: false,
   idempotent: true,
   risk: { level: 'low', sideEffect: 'none', network: 'none' },
+  // 关键词发现结果不是回答证据：它没有语义相关性判断，也没有可引用的片段。
+  evidencePolicy: 'discovery_only',
 }
 
 @Injectable()
