@@ -1,12 +1,12 @@
 # Phase 8：Grounded Retrieval / RAG Baseline
 
-状态：**Active / Task 0-1 Completed / Task 2A Active（#54，已实现、待验收）/ Task 2B 与 Task 3 Planned**。
+状态：**Active / Task 0、Task 1、Task 2A Completed / Task 2B Next / Task 3 Planned**。
 
-本文件是 Phase 8 的阶段总览与任务编排入口。正式实现状态以各 Task 文档、对应 Issue / PR 和 GitHub 实时事实为准。
+本文件是 Phase 8 的阶段总览与任务编排入口。正式任务状态以各 Task 文档、Issue / PR 和 GitHub 实时事实为准。
 
 ## 1. 阶段目标
 
-Phase 8 的目标不是堆叠一个“向量数据库 Demo”，而是把现有 Article 关键词查询逐步升级为可评估、可索引、可检索、可引用和可观察的 Grounded Retrieval 能力：
+Phase 8 的目标不是堆叠一个“向量数据库 Demo”，而是建立一条可评估、可索引、可检索、可引用和可观察的 Grounded Retrieval 链路：
 
 ```text
 Article Source
@@ -21,45 +21,66 @@ Article Source
 
 阶段结束后，系统应能够回答：
 
-- 检索的数据来自哪里；
+- 检索数据来自哪里；
 - 为什么返回这些结果；
 - 与 lexical baseline 相比是否有可验证提升；
 - 哪些 Chunk 真正进入模型上下文；
 - 最终回答引用了哪些来源；
 - 检索失败、低召回或上下文裁剪发生在哪里。
 
-## 2. 当前基线
+## 2. 已完成基线
 
-Phase 7 已完成 Context Boundary、model-aware Budget、Dynamic History、逐轮 Context Governance 与安全 Context Inspector。
+### Task 0：Retrieval Boundary & Offline Evaluation Baseline
 
-### Task 0 已完成：Retrieval Boundary & Offline Evaluation Baseline
+已完成：
 
 - 与 Tool / LLM 解耦的 `ArticleRetriever` Contract；
-- 保持现有行为的 Prisma lexical adapter；
-- query / language / limit 的单一规范化边界；
+- 保持既有行为的 Prisma lexical adapter；
+- query / language / limit 的规范化边界；
 - 确定性离线 corpus；
 - Recall@K、reciprocal rank、Mean Recall@K 与 MRR；
 - 可重复运行的 lexical baseline。
 
-交付：Issue #48 / PR #49 / merge `4c2f7950`。
+交付：Issue #48 / PR #49 / merge `4c2f795084e7bccac205509d8c31b56dbe7ccf0b`。
 
-### Task 1 已完成：Article Chunking & Embedding Index
+### Task 1：Article Chunking & Embedding Index
+
+已完成：
 
 - Cheerio canonical structural block stream；
 - `cl100k_base` 确定性 Chunking，固定 `600 / 800 / 80` profile；
-- D-09 canonical `sourceHash`、stable Chunk identity 与版本化 hash；
-- 当时建立了 OpenAI-specific `EmbeddingProvider` baseline，固定 `text-embedding-3-small / 1536`；
+- stable `sourceHash`、Chunk identity 与版本化 hash；
 - PostgreSQL `ArticleChunk`、`ArticleIndexState` 与 pgvector `vector(1536)` migration；
 - incremental / full 幂等 CLI；
 - advisory lock、stale fencing、原子替换、Abort 与脱敏 summary。
 
-交付：Issue #50 / PR #52 / merge `76d66abf`。
+交付：Issue #50 / PR #52 / merge `76d66abf7af426e2a26f9b5765d1eb7a72382007`。
 
-Task 1 的真实 OpenAI smoke 与真实 pgvector integration / concurrency 从未执行。该历史事实保持不变，不能倒写成 PASS。
+Task 1 当时建立的是 OpenAI-specific Embedding baseline；真实 OpenAI smoke 与真实 pgvector integration / concurrency 当时未执行。该历史事实保持不变。
 
-### Task 2A 已更新：Gemini Embedding + Vector / Hybrid Retrieval
+### Task 2A：Gemini Embedding + Vector / Hybrid Retrieval
 
-用户没有 OpenAI API 服务，已创建 Google AI Studio Gemini API Key。Issue #54 与 Task 2A 文档已正式将 active Embedding Provider 切换为：
+已完成：
+
+```text
+Article Chunk
+  -> Gemini document formatter
+  -> shared GeminiEmbeddingProvider
+  -> vector(1536) active index
+
+User Query
+  -> Gemini query formatter
+  -> shared GeminiEmbeddingProvider
+  -> exact cosine vector search
+  -> Chunk candidates
+  -> Article aggregation
+  -> lexical candidates
+  -> RRF fusion
+  -> article-level top-k
+  -> quality-v2 evaluation
+```
+
+Active Embedding profile：
 
 ```text
 provider: google
@@ -68,9 +89,7 @@ dimensions: 1536
 embeddingVersion: google:gemini-embedding-2:1536:search-result-v1
 ```
 
-DeepSeek 继续作为 Chat / Agent LLM。Task 2A 不把 DeepSeek Key 用作 Embedding Key，也不保留 OpenAI fallback。
-
-现有 `vector(1536)` schema 可以复用，但旧 OpenAI profile 与新 Gemini profile 属于不同向量空间，必须通过 embeddingVersion 隔离并在隔离 pgvector 环境全量重建。
+交付：Issue #54 / PR #55 / merge `3abdcb8afd5626f0b8fda90c98095bf529d165fd`。
 
 ## 3. Task 看板
 
@@ -78,11 +97,11 @@ DeepSeek 继续作为 Chat / Agent LLM。Task 2A 不把 DeepSeek Key 用作 Embe
 | --- | --- | --- | --- |
 | Task 0：Retrieval Boundary & Offline Evaluation Baseline | **Completed** | 解耦 Retrieval 与 Tool，固化 Prisma lexical 行为和离线评估基线 | [Task 0](./task-00-retrieval-boundary-evaluation.md) |
 | Task 1：Article Chunking & Embedding Index | **Completed** | 建立确定性 Chunk、稳定身份、Embedding 边界与幂等索引 | [Task 1](./task-01-article-chunking-embedding-index.md) |
-| Task 2A：Vector / Hybrid Retrieval & Evaluation | **Active / #54 / Draft #55 / 已实现、待验收** | OpenAI→Gemini Provider 迁移、真实 pgvector / Gemini smoke、exact vector retrieval、article aggregation、RRF 与 quality-v2 Evaluation | [Task 2A](./task-02-hybrid-retrieval-tool.md) |
-| Task 2B：Retrieval Tool & Agent Integration | **Planned** | 将稳定 Hybrid Retrieval 通过专用 Tool 接入 Agent，并治理 Observation / Context | [Task 2B](./task-02b-retrieval-tool-agent-integration.md) |
+| Task 2A：Vector / Hybrid Retrieval & Evaluation | **Completed** | Gemini Provider、真实 pgvector / Gemini smoke、exact vector retrieval、Article aggregation、RRF 与 quality-v2 Evaluation | [Task 2A](./task-02-hybrid-retrieval-tool.md) |
+| Task 2B：Retrieval Tool & Agent Integration | **Next / 未启动** | 将稳定 Hybrid Retrieval 通过专用 Tool 接入 Agent，并治理 Observation / Context | [Task 2B](./task-02b-retrieval-tool-agent-integration.md) |
 | Task 3：Grounded Answer & Retrieval Inspector | **Planned** | 建立结构化引用、Grounded Answer、Web 来源展示与安全 Retrieval Inspector | [Task 3](./task-03-grounded-answer-retrieval-inspector.md) |
 
-当前 Active Agent Task 为 Task 2A。Clarification Gate 已于 2026-08-15 基于最新 Issue、docs 与 `origin/master@eee795bd` 得出 `READY`；实现与自动验证已完成，等待技术验收。2026-08-15 午后在 Gemini 项目配额足够后，经显式 integration 入口在同一隔离库完成 full indexing（exit 0、68/68、2044 Chunks、failed 0）并跑通 production quality-v2（lexical / vector / hybrid 三策略指标齐全）与完整正负样本分布（threshold 保持 null），AC-05 / AC-09 / AC-11 按真实证据更新为 PASS；开发库未污染（无 `ArticleChunk` / `ArticleIndexState` 表）。留存 tool-call 日志与隔离库历史 539 个 Gemini Chunks 可证明此前 partial full indexing 连接隔离库；PR 旧验证命令本身无效，已由显式 integration 入口替换。
+当前没有 Active Agent Task。Task 2B 是下一项正式任务，但尚未创建 Issue，也未执行 Clarification Gate。
 
 ## 4. 推荐执行顺序
 
@@ -91,56 +110,64 @@ Task 0   Retrieval Boundary + Evaluation Baseline        Completed
   ↓
 Task 1   Chunking + Embedding Index                      Completed
   ↓
-Task 2A  Gemini Embedding + Vector / Hybrid Retrieval    Active / 已实现 / 待验收
+Task 2A  Gemini Embedding + Vector / Hybrid Retrieval    Completed
   ↓
-Task 2B  Retrieval Tool + Agent Integration              Planned
+Task 2B  Retrieval Tool + Agent Integration              Next / 未启动
   ↓
 Task 3   Grounded Answer + Citation + Inspector          Planned
 ```
 
-原 Task 2 被拆分，是为了避免一个 Issue 同时跨越数据库环境 / Provider / Vector SQL / Ranking / Evaluation 与 Tool / Agent Runtime 两个工程边界。Task 2A 先证明检索能力稳定，再由 Task 2B 接入 Agent。
+原 Task 2 被拆分，是为了避免一个 Issue 同时跨越数据库环境 / Provider / Vector SQL / Ranking / Evaluation 与 Tool / Agent Runtime 两个工程边界。Task 2A 先证明检索能力；Task 2B 才负责 Agent 接入。
 
-## 5. Task 2A 已定边界
+## 5. Task 2A 最终基线
 
-### Provider 与输入格式
+### Provider 与索引
 
-- DeepSeek 保持 Chat / Agent LLM；
-- Embedding 使用 `GEMINI_API_KEY`，不回退到 `LLM_*` 或旧 `EMBEDDING_API_KEY`；
-- 普通 `index:articles` 只读取 `DATABASE_URL`；隔离 full indexing 必须使用显式 `index:articles:integration` 入口，只读取 `ARTICLE_INDEX_TEST_DATABASE_URL`，缺失、回退或与开发 URL 完全相同都必须 fail closed；
-- active model 为 `gemini-embedding-2`，输出 1536 维；
+- DeepSeek 继续作为 Chat / Agent LLM；
+- Embedding 只读取 `GEMINI_API_KEY`，不回退到 `LLM_*` 或旧 `EMBEDDING_API_KEY`；
 - Query formatter：`task: search result | query: {normalized query}`；
 - Document formatter：`title: {article title} | text: {section path + normalized chunk text}`；
-- 不使用 `taskType`；
-- 多个 Chunk 必须各自得到独立向量，不能聚合成一条；
-- Query / Document formatter 与 provider profile 共同版本化；
-- 旧 OpenAI profile 与 Gemini profile 不混查，真实 smoke 后在隔离 DB full reindex。
+- 不使用 `taskType`；每个 Query / Chunk 分别获得一条独立向量；
+- 普通 `index:articles` 只读取 `DATABASE_URL`；
+- 隔离 `index:articles:integration` 只读取 `ARTICLE_INDEX_TEST_DATABASE_URL`，缺失、回退或与开发 URL 相同时 fail closed；
+- 旧 OpenAI 与 Gemini 向量空间不混查；
+- 隔离 full indexing：68 / 68 Article、2044 Chunks、exit 0、failed 0；
+- 最终 active index 全部为当前 Gemini profile，开发库未污染。
 
 ### Retrieval 与 Evaluation
 
-- PostgreSQL 大版本保持 16，integration 环境必须具备 pgvector extension并与旧开发 volume 隔离；
-- Task 1 的真实 DB integration / concurrency 必须先补证据；
-- Query Embedding 与 Article Indexing 共用 shared Provider boundary；
-- Vector 第一版使用 cosine + exact search，不创建 HNSW / IVFFlat；
-- Chunk candidates 聚合为 unique Article hits，每篇只保留最佳一个 evidence chunk；
-- Hybrid 使用 RRF，常数 60，正式公式使用加法 `+`；
-- lexical candidates 10 articles，vector candidates 40 chunks，vector aggregation 最多 10 articles，最终 top-k 沿用现有 limit（默认 5、最大 10）；
-- 保留 legacy Prisma lexical baseline；Hybrid lexical candidate strategy 独立版本化；
-- 保留 `article-retrieval-baseline-v1`，新增 quality-v2；
-- 不预设 similarity threshold，先观察正负样本分布；
-- Task 2A 不新增 / 修改 Agent Tool，不改 Agent Loop。
+- PostgreSQL 16 + pgvector 独立 integration 环境；
+- cosine + exact search，不创建 HNSW / IVFFlat；
+- lexical candidates 10 Articles；
+- vector candidates 40 Chunks；
+- vector aggregation 最多 10 Articles；
+- 每篇 Article 只保留最佳一个 evidence Chunk；
+- RRF 常数 60，正式公式使用加法 `+`；
+- 保留 legacy Prisma lexical baseline；
+- quality-v2 完整比较 lexical / vector / hybrid；
+- 正负距离分布重叠，因此 similarity threshold 保持 `null`；
+- Task 2A 未接 Tool / Agent。
 
-完整规格见 [Task 2A](./task-02-hybrid-retrieval-tool.md) 与 Issue #54。
+production quality-v2：
+
+| Strategy | Hit@5 | Recall@5 | Precision@5 | MRR | No-answer Acc | FP query / hit |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| legacy lexical | 0.2 | 0.2 | 0.04 | 0.2 | 1.0 | 0 / 0 |
+| Gemini vector exact cosine | 1.0 | 1.0 | 0.24 | 1.0 | 0 | 3 / 15 |
+| hybrid RRF | 1.0 | 1.0 | 0.24 | 1.0 | 0 | 3 / 15 |
+
+已知边界：Vector / Hybrid 对 answerable query 的语义召回明显增强，但会为 no-answer query 返回近邻候选。正负距离分布重叠，不能依赖一个简单 similarity threshold 稳定解决拒答。
 
 ## 6. 阶段不变量
 
-- Retrieval 是内部数据能力，Tool 是 Agent 调用与 Observation 适配边界；两者不能重新耦合成一个大文件；
-- Chat LLM 与 Embedding Provider 可以来自不同厂商，但 Indexing 与 Query Embedding 必须使用完全一致的 provider / model / dimensions / input format / version；
+- Retrieval 是内部数据能力，Tool 是 Agent 调用与 Observation 适配边界；
+- Chat LLM 与 Embedding Provider 可以来自不同厂商，但 Indexing 与 Query Embedding 必须使用一致的 provider / model / dimensions / input format / version；
 - Tool / Retrieval 数据始终是低信任 Context，不能升级为 system / developer policy；
-- Context Window 是容量上限；检索结果仍须经过 Phase 7 的 Context Budget 与 Observation Governance；
+- 检索结果仍须经过 Phase 7 Context Budget 与 Observation Governance；
 - Chunk、Embedding 和 Index 必须具备稳定版本与幂等重建语义；
 - 新策略必须使用版本化 corpus 和明确指标与 lexical baseline 比较；
-- Citation 必须追溯到真实 source / chunk，不能由模型自行生成不存在的来源；
-- Inspector 只展示安全元数据、来源摘要和决策结果，不暴露完整 Prompt、reasoning、原始 Embedding 或敏感正文；
+- Citation 必须追溯到真实 source / chunk，不能由模型生成不存在的来源；
+- Inspector 不暴露完整 Prompt、reasoning、raw Embedding 或敏感正文；
 - 不因为进入 RAG 阶段就自动引入 LangChain、LangGraph、独立 Vector DB 或通用知识库框架。
 
 ## 7. 当前明确后置的能力
@@ -174,11 +201,11 @@ Phase 8 当前不包含：
 Phase 8：Active
 Task 0：Completed
 Task 1：Completed / Issue #50 / PR #52 / merge 76d66abf
-Task 2A：Active / Issue #54 Open / Draft PR #55 / 已实现 / 待验收
-Task 2B：Planned
+Task 2A：Completed / Issue #54 Closed / PR #55 Merged / merge 3abdcb8a
+Task 2B：Next / Issue 未创建 / Gate 未执行
 Task 3：Planned
-Active Agent Task：Task 2A
+Active Agent Task：无
 Minimal Compaction：Gated
 ```
 
-下一步为对 Draft PR #55 进行技术验收。Task 2A 当前不能标记 Completed：需要足够合法 Gemini 配额后，通过修复后的显式 integration 入口重新执行隔离 full indexing，再生成 production quality-v2 与正负样本距离分布。Task 2B、Task 3 与 Minimal Compaction 均不得提前启动。
+下一步是讨论 Task 2B 的 Tool 契约、no-answer / candidate 语义、Observation 预算和 Agent 接入边界。没有正式 Issue 和 Gate `READY` 前不得实现 Task 2B。
