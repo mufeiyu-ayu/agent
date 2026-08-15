@@ -229,7 +229,13 @@ describe('retrieve_article_context', () => {
     if (!result.ok)
       return
 
-    const refs = normalizeToolEvidenceProjection(result.evidence)
+    const projection = normalizeToolEvidenceProjection(result.evidence)
+
+    assert.equal(projection.ok, true)
+    if (!projection.ok)
+      return
+
+    const refs = projection.refs
 
     assert.equal(refs.length, 2)
     assert.equal(refs[0]?.granularity, 'chunk')
@@ -246,7 +252,7 @@ describe('retrieve_article_context', () => {
     assert.doesNotMatch(JSON.stringify(refs), /cosineDistance|0\.1234/)
   })
 
-  it('零候选时不提交任何证据引用', async () => {
+  it('零候选时提交的是合法空投影，而不是缺失投影', async () => {
     const { invocationService } = createTools(new FakeRetriever({ hits: [] }))
 
     const result = await invocationService.invoke(
@@ -255,9 +261,10 @@ describe('retrieve_article_context', () => {
     )
 
     assert.equal(result.ok, true)
+    // 合法零命中必须能与「projector 故障」区分开。
     assert.deepEqual(
       normalizeToolEvidenceProjection(result.ok ? result.evidence : undefined),
-      [],
+      { ok: true, refs: [] },
     )
   })
 

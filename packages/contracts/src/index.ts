@@ -58,6 +58,7 @@ export type {
 export {
   MESSAGE_GROUNDING_MAX_CITATIONS,
   MESSAGE_GROUNDING_SCHEMA_VERSION,
+  parseMessageGroundingV1,
 } from './grounding.js'
 export type {
   ChatStreamAbortedEvent,

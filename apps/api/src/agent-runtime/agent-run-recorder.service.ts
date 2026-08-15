@@ -76,6 +76,17 @@ interface CompleteAgentRunInput {
    * Step 与 Run 终态要么一起生效，要么一起回滚，不允许出现半完成 Grounding。
    */
   grounding?: MessageGroundingV1
+  /**
+   * grounded finalization Step。
+   *
+   * 它必须和 assistant_output Step、Message、Grounding、Run 在同一事务里终态化：
+   * 否则 replay 期间 Abort 或最终事务回滚后，数据库会留下一个 COMPLETED 的
+   * finalization Step，而 Run / Message 却是 ABORTED / FAILED 且没有 Grounding。
+   */
+  finalizationStep?: {
+    id: string
+    output?: Prisma.InputJsonValue
+  }
 }
 
 interface CloseAssistantMessageInput {
@@ -284,6 +295,35 @@ export class AgentRunRecorderService {
         stepResult.count,
         `AgentStep ${input.assistantOutputStepId} 已进入终态或尚未开始`,
       )
+
+      const finalizationStep = input.finalizationStep
+
+      if (finalizationStep) {
+        // finalization Step 在 delta replay 期间一直保持 RUNNING，只有走到这里
+        // 才与 Message / Grounding / Run 一起进入终态。
+        const finalizationResult = await transaction.execute(
+          prisma => prisma.agentStep.updateMany({
+            where: {
+              id: finalizationStep.id,
+              runId: input.runId,
+              type: AGENT_STEP_TYPES.groundedFinalization,
+              status: AgentStepStatus.RUNNING,
+            },
+            data: {
+              status: AgentStepStatus.COMPLETED,
+              ...(finalizationStep.output === undefined
+                ? {}
+                : { output: finalizationStep.output }),
+              endedAt: now,
+            },
+          }),
+        )
+
+        this.assertSingleUpdate(
+          finalizationResult.count,
+          `AgentStep ${finalizationStep.id} 已进入终态或尚未开始`,
+        )
+      }
 
       const unfinishedStepCount = await transaction.execute(prisma => prisma.agentStep.count({
         where: {

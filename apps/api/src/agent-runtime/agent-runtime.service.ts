@@ -53,6 +53,7 @@ import { AgentRuntimePolicyService } from './agent-runtime.policy.js'
 import { submitGroundedAnswerToolSpec } from './grounding/grounded-answer.contract.js'
 import {
   GroundedFinalizationFailedError,
+  GroundedFinalizationSamplingError,
   runGroundedFinalization,
 } from './grounding/grounded-answer.finalizer.js'
 import { toMessageGroundingV1 } from './grounding/message-grounding.projector.js'
@@ -511,9 +512,9 @@ export class AgentRuntimeService {
           evidenceRegistry.recordEligibleToolOutcome({
             toolName: toolDefinition.name,
             ok: toolResult.ok,
-            ...(toolResult.ok && toolResult.evidence
-              ? { evidence: toolResult.evidence }
-              : {}),
+            // 始终原样传入：缺失投影本身就是需要被记录为 evidence failure 的事实，
+            // 不能在这里先过滤掉再让 Registry 误判成合法零命中。
+            evidence: toolResult.ok ? toolResult.evidence : undefined,
           })
         }
 
@@ -534,6 +535,10 @@ export class AgentRuntimeService {
       runCancellation.throwIfUnavailable()
 
       let grounding: MessageGroundingV1 | undefined
+      let finalizationCommit: {
+        id: string
+        output: Prisma.InputJsonValue
+      } | undefined
 
       if (evidenceRegistry) {
         const finalizationStep = await this.agentRunRecorderService.startStep({
@@ -573,18 +578,16 @@ export class AgentRuntimeService {
           }
 
           grounding = projected
-          runCancellation.throwIfUnavailable()
-          await this.agentRunRecorderService.completeStep(
-            finalizationStep.id,
-            databaseDeadline,
-            {
-              output: this.toFinalizationStepOutput(
-                registry,
-                finalization.attempts,
-                grounding,
-              ),
-            },
-          )
+          // finalization Step 在 replay 期间保持 RUNNING：只有 replay 全部完成、
+          // 终态事务提交成功，它才和 Message / Grounding / Run 一起变成 COMPLETED。
+          finalizationCommit = {
+            id: finalizationStep.id,
+            output: this.toFinalizationStepOutput(
+              registry,
+              finalization.attempts,
+              grounding,
+            ),
+          }
 
           runCancellation.throwIfUnavailable()
           await startAssistantOutputStep()
@@ -639,6 +642,7 @@ export class AgentRuntimeService {
             contentLength: content.length,
           },
           ...(grounding ? { grounding } : {}),
+          ...(finalizationCommit ? { finalizationStep: finalizationCommit } : {}),
         },
         databaseDeadline,
         runCancellation.claimCompletion,
@@ -985,7 +989,13 @@ export class AgentRuntimeService {
       ...(error instanceof GroundedFinalizationFailedError
         ? { failureReason: 'validation_failed', rejectionCode: error.rejectionCode }
         : {}),
-      ...(error !== undefined && !(error instanceof GroundedFinalizationFailedError)
+      // Provider 流不完整与「模型说错了」必须能在审计里区分开。
+      ...(error instanceof GroundedFinalizationSamplingError
+        ? { failureReason: 'sampling_incomplete', samplingFailure: error.failure }
+        : {}),
+      ...(error !== undefined
+        && !(error instanceof GroundedFinalizationFailedError)
+        && !(error instanceof GroundedFinalizationSamplingError)
         ? { failureReason: 'finalization_incomplete' }
         : {}),
     }

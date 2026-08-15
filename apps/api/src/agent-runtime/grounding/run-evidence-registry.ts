@@ -43,13 +43,16 @@ export interface RunEvidenceRegistrySummary {
   registryTruncated: boolean
   eligibleToolCallCount: number
   eligibleToolFailureCount: number
+  /** 其中因 evidence projection 缺失 / 损坏而计入失败的次数。 */
+  evidenceProjectionFailureCount: number
   evidenceAvailability: MessageEvidenceAvailability
 }
 
 interface RecordEligibleToolOutcomeInput {
   toolName: string
   ok: boolean
-  evidence?: unknown
+  /** 必填而非可选：调用方必须显式传入，缺失本身就是要记录的事实。 */
+  evidence: unknown
 }
 
 export class RunEvidenceRegistry {
@@ -58,12 +61,17 @@ export class RunEvidenceRegistry {
   private readonly seenIdentities = new Set<string>()
   private eligibleToolCallCount = 0
   private eligibleToolFailureCount = 0
+  private evidenceProjectionFailureCount = 0
   private truncated = false
 
   /**
    * 记录一次 evidence-eligible Tool 的执行结果。
    *
-   * 失败调用不携带证据，但必须计入：它决定 `partial` 与 `unavailable` 的区别。
+   * 三种结果必须区分开：
+   * - Tool 执行失败：证据通道不可用，计入 failure；
+   * - Tool 成功但 evidence projection 缺失 / 损坏：同样是服务端故障，计入 failure，
+   *   否则用户会看到「站内没有证据」，而真实原因是 projector 坏了；
+   * - Tool 成功且投影合法（含 `{ refs: [] }`）：这才是真实的零命中 / not found。
    */
   recordEligibleToolOutcome(input: RecordEligibleToolOutcomeInput): void {
     this.eligibleToolCallCount += 1
@@ -73,10 +81,18 @@ export class RunEvidenceRegistry {
       return
     }
 
+    // Tool 的类型断言在这里不被信任：整份投影 fail closed 校验后才可能进入 Registry。
+    const projection = normalizeToolEvidenceProjection(input.evidence)
+
+    if (!projection.ok) {
+      this.eligibleToolFailureCount += 1
+      this.evidenceProjectionFailureCount += 1
+      return
+    }
+
     const toolSequence = this.eligibleToolCallCount
 
-    // Tool 的类型断言在这里不被信任：逐条 fail closed 校验后才可能进入 Registry。
-    for (const ref of normalizeToolEvidenceProjection(input.evidence)) {
+    for (const ref of projection.refs) {
       const identity = toEvidenceIdentity(ref)
 
       // 同一 source/chunk 稳定去重：先到先得，后到者不覆盖也不提升优先级。
@@ -140,6 +156,7 @@ export class RunEvidenceRegistry {
       registryTruncated: this.truncated,
       eligibleToolCallCount: this.eligibleToolCallCount,
       eligibleToolFailureCount: this.eligibleToolFailureCount,
+      evidenceProjectionFailureCount: this.evidenceProjectionFailureCount,
       evidenceAvailability: this.evidenceAvailability(),
     }
   }

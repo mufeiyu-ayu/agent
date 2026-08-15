@@ -89,8 +89,52 @@ describe('NDJSON 协议兼容', () => {
     assert.deepEqual(parsed.type === 'done' ? parsed.grounding : undefined, GROUNDING)
   })
 
-  it('done 上的 grounding 损坏时只丢弃该字段，回答本身仍然可用', () => {
+  it('语义合法的其它组合同样被接受', () => {
+    const [firstCitation] = GROUNDING.citations
+    const validGroundings = [
+      // zero-hit：none + insufficient + 0 citation
+      {
+        ...GROUNDING,
+        evidenceAvailability: 'none',
+        outcome: 'insufficient_evidence',
+        citations: [],
+      },
+      // partial + answered
+      { ...GROUNDING, evidenceAvailability: 'partial' },
+      // 有候选但不足以回答
+      { ...GROUNDING, outcome: 'insufficient_evidence' },
+      // conflicting + 两个不同 source
+      {
+        ...GROUNDING,
+        outcome: 'conflicting_evidence',
+        citations: [
+          firstCitation,
+          {
+            ...firstCitation,
+            citationId: 'cit_ffffffffffffffffffffffffffffffff',
+            sourceId: 302,
+            chunkId: 'article-302-chunk-0',
+          },
+        ],
+      },
+    ]
+
+    for (const grounding of validGroundings) {
+      const parsed = parseChatStreamEventLine(JSON.stringify({
+        ...LEGACY_EVENTS[2],
+        grounding,
+      }))
+
+      assert.ok(parsed)
+      assert.equal(parsed.type === 'done' ? Object.hasOwn(parsed, 'grounding') : false, true)
+    }
+  })
+
+  it('done 上的 grounding 损坏或语义非法时只丢弃该字段，回答本身仍然可用', () => {
+    const [firstCitation] = GROUNDING.citations
+
     for (const invalidGrounding of [
+      // 结构非法
       null,
       'grounding',
       { ...GROUNDING, schemaVersion: 2 },
@@ -98,7 +142,64 @@ describe('NDJSON 协议兼容', () => {
       { ...GROUNDING, faithfulnessStatus: 'verified' },
       { ...GROUNDING, citations: 'not-an-array' },
       { ...GROUNDING, citations: [{ citationId: 'cit_1' }] },
-      { ...GROUNDING, citations: [{ ...GROUNDING.citations[0], strategy: null }] },
+      { ...GROUNDING, citations: [{ ...firstCitation, strategy: null }] },
+      { ...GROUNDING, extra: 'field' },
+      // 枚举非法
+      { ...GROUNDING, evidenceAvailability: 'maybe' },
+      { ...GROUNDING, outcome: 'answered_maybe' },
+      // 语义非法：outcome × availability 组合
+      { ...GROUNDING, evidenceAvailability: 'none', citations: [] },
+      { ...GROUNDING, evidenceAvailability: 'unavailable', citations: [] },
+      {
+        ...GROUNDING,
+        evidenceAvailability: 'none',
+        outcome: 'insufficient_evidence',
+      },
+      // answered 但没有 Citation
+      { ...GROUNDING, citations: [] },
+      // conflicting 但只有一个 source
+      {
+        ...GROUNDING,
+        outcome: 'conflicting_evidence',
+        citations: [
+          firstCitation,
+          { ...firstCitation, citationId: 'cit_2', chunkId: 'article-301-chunk-1' },
+        ],
+      },
+      // Citation 超过 5 条
+      {
+        ...GROUNDING,
+        citations: Array.from({ length: 6 }, (_, index) => ({
+          ...firstCitation,
+          citationId: `cit_${index}`,
+          sourceId: 400 + index,
+          chunkId: `article-${400 + index}-chunk-0`,
+        })),
+      },
+      // citationId 重复
+      {
+        ...GROUNDING,
+        outcome: 'conflicting_evidence',
+        citations: [
+          firstCitation,
+          { ...firstCitation, sourceId: 302, chunkId: 'article-302-chunk-0' },
+        ],
+      },
+      // v1 的 href 必须为 null
+      {
+        ...GROUNDING,
+        citations: [{ ...firstCitation, href: '/articles/seo-basics' }],
+      },
+      // 非安全整数与字段长度
+      {
+        ...GROUNDING,
+        citations: [{ ...firstCitation, sourceId: Number.MAX_SAFE_INTEGER + 2 }],
+      },
+      { ...GROUNDING, citations: [{ ...firstCitation, rank: -1 }] },
+      { ...GROUNDING, citations: [{ ...firstCitation, title: '标'.repeat(301) }] },
+      // article / chunk 一致性
+      { ...GROUNDING, citations: [{ ...firstCitation, granularity: 'article' }] },
+      { ...GROUNDING, citations: [{ ...firstCitation, chunkId: null }] },
     ]) {
       const parsed = parseChatStreamEventLine(JSON.stringify({
         ...LEGACY_EVENTS[2],

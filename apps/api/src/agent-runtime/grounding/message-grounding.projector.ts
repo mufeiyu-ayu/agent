@@ -1,21 +1,15 @@
-import type {
-  MessageCitationGranularity,
-  MessageCitationV1,
-  MessageEvidenceAvailability,
-  MessageGroundingOutcome,
-  MessageGroundingV1,
-} from '@agent/contracts'
+import type { MessageGroundingV1 } from '@agent/contracts'
 
-import {
-  MESSAGE_GROUNDING_MAX_CITATIONS,
-  MESSAGE_GROUNDING_SCHEMA_VERSION,
-} from '@agent/contracts'
+import { parseMessageGroundingV1 } from '@agent/contracts'
 
 /**
  * 持久化 Grounding 到公共 contract 的唯一安全投影。
  *
  * `done.grounding` 与 Messages API 都必须经过这里，页面重载后才能得到与实时
- * 流一致的结果。持久化数据一旦损坏（人为改写、契约漂移、部分写入），一律
+ * 流一致的结果。语义校验完全复用 `@agent/contracts` 的 `parseMessageGroundingV1`，
+ * Web parser 使用同一个函数，两侧不会对「什么是合法 Grounding」给出不同答案。
+ *
+ * 持久化数据一旦损坏（人为改写、契约漂移、部分写入、语义非法组合），一律
  * fail closed 返回 null，绝不把原始 JSON 透传给客户端。
  */
 
@@ -29,32 +23,11 @@ export interface PersistedMessageGrounding {
   citations: unknown
 }
 
-const EVIDENCE_AVAILABILITIES = new Set<MessageEvidenceAvailability>([
-  'available',
-  'partial',
-  'none',
-  'unavailable',
-])
-const OUTCOMES = new Set<MessageGroundingOutcome>([
-  'answered',
-  'insufficient_evidence',
-  'conflicting_evidence',
-])
-const GRANULARITIES = new Set<MessageCitationGranularity>(['article', 'chunk'])
-const CITATION_KEYS = new Set([
-  'citationId',
-  'sourceId',
-  'chunkId',
-  'granularity',
-  'title',
-  'slug',
-  'languageCode',
-  'sectionPath',
-  'excerpt',
-  'rank',
-  'href',
-  'strategy',
-])
+/** 投影 Grounding 前必须复核的 Message 归属条件。 */
+export interface GroundingOwnerMessage {
+  role: string
+  status: string
+}
 
 /**
  * 把持久化行投影为公共 Grounding。
@@ -67,152 +40,29 @@ export function toMessageGroundingV1(
   if (!persisted)
     return null
 
-  if (persisted.schemaVersion !== MESSAGE_GROUNDING_SCHEMA_VERSION)
-    return null
-
-  if (!isEvidenceAvailability(persisted.evidenceAvailability))
-    return null
-
-  if (!isOutcome(persisted.outcome))
-    return null
-
-  // v1 只承认这两个固定值；出现别的取值说明数据来自未知契约版本。
-  if (persisted.citationIntegrity !== 'validated')
-    return null
-
-  if (persisted.faithfulnessStatus !== 'not_evaluated')
-    return null
-
-  if (!Array.isArray(persisted.citations))
-    return null
-
-  if (persisted.citations.length > MESSAGE_GROUNDING_MAX_CITATIONS)
-    return null
-
-  const citations: MessageCitationV1[] = []
-
-  for (const candidate of persisted.citations) {
-    const citation = toMessageCitationV1(candidate)
-
-    // 单条 Citation 损坏就整份 fail closed：不返回「少了一条来源」的半份事实。
-    if (!citation)
-      return null
-
-    citations.push(citation)
-  }
-
-  return {
-    schemaVersion: MESSAGE_GROUNDING_SCHEMA_VERSION,
+  return parseMessageGroundingV1({
+    schemaVersion: persisted.schemaVersion,
     evidenceAvailability: persisted.evidenceAvailability,
     outcome: persisted.outcome,
-    citationIntegrity: 'validated',
-    faithfulnessStatus: 'not_evaluated',
-    citations,
-  }
+    citationIntegrity: persisted.citationIntegrity,
+    faithfulnessStatus: persisted.faithfulnessStatus,
+    citations: persisted.citations,
+  })
 }
 
-function toMessageCitationV1(candidate: unknown): MessageCitationV1 | undefined {
-  if (!isPlainObject(candidate))
-    return undefined
+/**
+ * 只为「已完成的助手消息」投影 Grounding。
+ *
+ * completed Grounding 只属于 COMPLETED assistant Message（D-25）。即便有人绕过
+ * Runtime 往 STREAMING / FAILED / ABORTED 或用户消息上插入 Grounding 行，
+ * 公共 API 也不会把它当成一份成立的引用事实。
+ */
+export function toOwnedMessageGroundingV1(
+  message: GroundingOwnerMessage,
+  persisted: PersistedMessageGrounding | null | undefined,
+): MessageGroundingV1 | null {
+  if (message.role !== 'ASSISTANT' || message.status !== 'COMPLETED')
+    return null
 
-  const keys = Object.keys(candidate)
-
-  if (keys.length !== CITATION_KEYS.size || keys.some(key => !CITATION_KEYS.has(key)))
-    return undefined
-
-  const {
-    citationId,
-    sourceId,
-    chunkId,
-    granularity,
-    title,
-    slug,
-    languageCode,
-    sectionPath,
-    excerpt,
-    rank,
-    href,
-    strategy,
-  } = candidate
-
-  if (typeof citationId !== 'string' || citationId.length === 0)
-    return undefined
-
-  if (!Number.isSafeInteger(sourceId) || (sourceId as number) <= 0)
-    return undefined
-
-  if (!isNullableString(chunkId))
-    return undefined
-
-  if (typeof granularity !== 'string' || !GRANULARITIES.has(granularity as MessageCitationGranularity))
-    return undefined
-
-  // article 粒度不得携带 chunk identity；chunk 粒度必须带。
-  if (granularity === 'article' && chunkId !== null)
-    return undefined
-  if (granularity === 'chunk' && typeof chunkId !== 'string')
-    return undefined
-
-  if (typeof title !== 'string' || typeof slug !== 'string' || typeof languageCode !== 'string')
-    return undefined
-
-  if (!isNullableString(sectionPath) || !isNullableString(excerpt) || !isNullableString(href))
-    return undefined
-
-  if (rank !== null && (!Number.isSafeInteger(rank) || (rank as number) < 0))
-    return undefined
-
-  if (!isPlainObject(strategy))
-    return undefined
-
-  const strategyKeys = Object.keys(strategy)
-
-  if (
-    strategyKeys.length !== 2
-    || typeof strategy.name !== 'string'
-    || typeof strategy.version !== 'string'
-  ) {
-    return undefined
-  }
-
-  return {
-    citationId,
-    sourceId: sourceId as number,
-    chunkId: chunkId as string | null,
-    granularity: granularity as MessageCitationGranularity,
-    title,
-    slug,
-    languageCode,
-    sectionPath: sectionPath as string | null,
-    excerpt: excerpt as string | null,
-    rank: rank as number | null,
-    href: href as string | null,
-    strategy: {
-      name: strategy.name,
-      version: strategy.version,
-    },
-  }
-}
-
-function isEvidenceAvailability(
-  value: string,
-): value is MessageEvidenceAvailability {
-  return EVIDENCE_AVAILABILITIES.has(value as MessageEvidenceAvailability)
-}
-
-function isOutcome(value: string): value is MessageGroundingOutcome {
-  return OUTCOMES.has(value as MessageGroundingOutcome)
-}
-
-function isNullableString(value: unknown): boolean {
-  return value === null || typeof value === 'string'
-}
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  if (typeof value !== 'object' || value === null || Array.isArray(value))
-    return false
-
-  const prototype = Object.getPrototypeOf(value)
-
-  return prototype === Object.prototype || prototype === null
+  return toMessageGroundingV1(persisted)
 }

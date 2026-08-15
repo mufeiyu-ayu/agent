@@ -73,6 +73,7 @@ describe('RunEvidenceRegistry availability', () => {
     registry.recordEligibleToolOutcome({
       toolName: 'retrieve_article_context',
       ok: false,
+      evidence: undefined,
     })
 
     assert.equal(registry.evidenceAvailability(), 'unavailable')
@@ -86,6 +87,7 @@ describe('RunEvidenceRegistry availability', () => {
     registry.recordEligibleToolOutcome({
       toolName: 'get_article_detail',
       ok: false,
+      evidence: undefined,
     })
 
     assert.equal(registry.evidenceAvailability(), 'partial')
@@ -248,7 +250,7 @@ describe('RunEvidenceRegistry 模型投影', () => {
     )
   })
 
-  it('非法投影整条丢弃，但不影响同批次的合法证据', () => {
+  it('同批次出现非法 ref 时整份投影作废，不做部分放行', () => {
     const registry = new RunEvidenceRegistry()
 
     registry.recordEligibleToolOutcome({
@@ -262,14 +264,11 @@ describe('RunEvidenceRegistry 模型投影', () => {
       },
     })
 
-    assert.deepEqual(
-      registry.list().map(entry => entry.sourceId),
-      [306],
-    )
-    assert.equal(registry.evidenceAvailability(), 'available')
+    assert.deepEqual(registry.list(), [])
+    assert.equal(registry.evidenceAvailability(), 'unavailable')
   })
 
-  it('完全非法的投影使该次调用成为「成功但无证据」', () => {
+  it('完全非法的投影是 evidence failure，不是合法零命中', () => {
     const registry = new RunEvidenceRegistry()
 
     registry.recordEligibleToolOutcome({
@@ -278,7 +277,84 @@ describe('RunEvidenceRegistry 模型投影', () => {
       evidence: { refs: [{ sourceId: 'not-a-number' }] },
     })
 
-    assert.equal(registry.summary().refCount, 0)
-    assert.equal(registry.evidenceAvailability(), 'none')
+    const summary = registry.summary()
+
+    assert.equal(summary.refCount, 0)
+    // projector 坏了不能对用户说「站内没有证据」。
+    assert.equal(summary.evidenceAvailability, 'unavailable')
+    assert.equal(summary.eligibleToolFailureCount, 1)
+    assert.equal(summary.evidenceProjectionFailureCount, 1)
+  })
+})
+
+describe('RunEvidenceRegistry projection 失败与合法零命中', () => {
+  it('合法空投影是 zero-hit，得到 none', () => {
+    const registry = new RunEvidenceRegistry()
+
+    registry.recordEligibleToolOutcome({
+      toolName: 'retrieve_article_context',
+      ok: true,
+      evidence: { refs: [] },
+    })
+
+    const summary = registry.summary()
+
+    assert.equal(summary.evidenceAvailability, 'none')
+    assert.equal(summary.eligibleToolFailureCount, 0)
+    assert.equal(summary.evidenceProjectionFailureCount, 0)
+  })
+
+  it('成功但完全没有提交投影时计为 evidence failure', () => {
+    const registry = new RunEvidenceRegistry()
+
+    registry.recordEligibleToolOutcome({
+      toolName: 'retrieve_article_context',
+      ok: true,
+      evidence: undefined,
+    })
+
+    const summary = registry.summary()
+
+    assert.equal(summary.evidenceAvailability, 'unavailable')
+    assert.equal(summary.evidenceProjectionFailureCount, 1)
+  })
+
+  it('部分非法 ref 不会被静默标记为完全 available', () => {
+    const registry = new RunEvidenceRegistry()
+
+    registry.recordEligibleToolOutcome({
+      toolName: 'retrieve_article_context',
+      ok: true,
+      evidence: {
+        refs: [
+          chunkRef(),
+          { ...chunkRef({ sourceId: 302, chunkId: 'c-302' }), cosineDistance: 0.1 },
+        ],
+      },
+    })
+
+    const summary = registry.summary()
+
+    // 整份投影作废：既没有 ref，也必须体现为 evidence failure。
+    assert.equal(summary.refCount, 0)
+    assert.equal(summary.evidenceAvailability, 'unavailable')
+    assert.equal(summary.evidenceProjectionFailureCount, 1)
+  })
+
+  it('一次合法投影 + 一次 projection 失败得到 partial', () => {
+    const registry = new RunEvidenceRegistry()
+
+    retrieval(registry, [chunkRef()])
+    registry.recordEligibleToolOutcome({
+      toolName: 'get_article_detail',
+      ok: true,
+      evidence: { refs: 'not-an-array' },
+    })
+
+    const summary = registry.summary()
+
+    assert.equal(summary.refCount, 1)
+    assert.equal(summary.evidenceAvailability, 'partial')
+    assert.equal(summary.evidenceProjectionFailureCount, 1)
   })
 })

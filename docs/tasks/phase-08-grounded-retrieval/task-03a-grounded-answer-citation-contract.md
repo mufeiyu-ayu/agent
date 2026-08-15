@@ -294,38 +294,60 @@ Issue 创建时必须把每条 AC 映射到具体测试命令、环境和证据�
 
 ### 10.1 验证结果
 
-全部命令均在本地真实执行：
+全部命令均在本地真实执行（数据为 GPT Review 修复后的最新一轮）：
 
 | 命令 | 结果 |
 | --- | --- |
-| `pnpm --filter @agent/api test:grounding` | pass 86 / fail 0 |
-| `pnpm --filter @agent/api test:grounding-db` | pass 8 / fail 0 / skipped 0 |
+| `pnpm --filter @agent/api test:grounding` | pass 148 / fail 0 |
+| `pnpm --filter @agent/api test:grounding-db` | pass 9 / fail 0 / skipped 0 |
 | `pnpm --filter @agent/api test:agent-recorder` | pass 14 / fail 0 |
 | `pnpm --filter @agent/api test:tool-loop` | pass 54 / fail 0 |
 | `pnpm --filter @agent/api test:model-stream` | pass 67 / fail 0 |
-| `pnpm --filter @agent/api test:tools` | pass 80 / fail 0 |
-| `pnpm --filter @agent/api test:seo-service` | pass 22 / fail 0 |
+| `pnpm --filter @agent/api test:tools` | pass 86 / fail 0 |
+| `pnpm --filter @agent/api test:seo-service` | pass 24 / fail 0 |
 | `pnpm --filter @agent/api test:context` | pass 24 / fail 0 |
 | `pnpm --filter @agent/api test:retrieval` | pass 35 / fail 0 |
 | `pnpm --filter @agent/api test:retrieval-db` | pass 9 / fail 0 / skipped 0 |
 | `pnpm --filter @agent/api test:db-reliability` | pass 11 / fail 0 / skipped 0 |
-| `pnpm --filter @agent/web test:seo-stream` | pass 11 / fail 0 |
+| `pnpm --filter @agent/api test:admin-runs` | pass 27 / fail 0 |
+| `pnpm --filter @agent/api test:llm-config` | pass 17 / fail 0 |
+| `pnpm --filter @agent/web test:seo-stream` | pass 12 / fail 0 |
+| `pnpm --filter @agent/contracts typecheck` | pass |
 | `pnpm --filter @agent/web typecheck` / `lint` / `build` | pass |
 | `pnpm --filter @agent/api typecheck` / `lint` / `build` | pass |
 | `pnpm typecheck` | pass |
-| `pnpm --filter @agent/api smoke:grounded-answer` | answered 与 insufficient 两条路径均 `run_completed` |
+| `pnpm --filter @agent/api smoke:grounded-answer` | answered 与 insufficient 两条路径均 `run_completed`，exit 0 |
 
 数据库范围：`test:grounding-db` 与 smoke 均只连接 `ARTICLE_INDEX_TEST_DATABASE_URL`
 指向的隔离 PostgreSQL + pgvector；`20260815160000_add_message_grounding` 只在该隔离库
 执行过 `prisma migrate deploy`，开发库未被改动。
 
-`pnpm lint`（workspace 根）仍有 122 个错误，其中 115 个在本分支创建前的 `master`
-上就已存在（全部位于 `docs/**` Markdown）；本次新增的 7 个已全部修复，`@agent/api`
-与 `@agent/web` 的 lint 均为 0 错误。
+`pnpm lint`（workspace 根）仍有 115 个错误，与本分支创建前的 `master` 完全一致
+（全部位于 `docs/**` Markdown，本分支未新增任何一条）；`@agent/api` 与
+`@agent/web` 的 lint 均为 0 错误。
 
 ### 10.2 已知限制
 
 真实 smoke 的两条 query 必须显式要求「只做一次语义检索」。原因是既有 Agent Loop
 只接受同轮单个 Tool Call，而 DeepSeek 对开放式检索问题会并行返回多个 Tool Call
 并触发既有保护。这是 Phase 6 既有协议约束，不属于 Task 3A 引入的问题，也未在本
-Task 中修改。
+Task 中修改；是否支持并行 Tool Call 建议作为独立任务评估。
+
+### 10.3 GPT Review 修复记录
+
+第一轮 GPT 技术验收结论为「需要修改」，已按 P1-01～P2-04 全部修复：
+
+| ID | 修复要点 |
+| --- | --- |
+| P1-01 | finalization 的 `system` 只保留服务端规则与派生标量；Evidence 投影与 hidden draft 移入标注 `[untrusted_data:*]` 的低信任 user message，并新增 prompt-injection fixture |
+| P1-02 | finalization Step 在 delta replay 期间保持 `RUNNING`，与 Message / Grounding / assistant_output Step / Run 在同一事务终态化；replay Abort 为 `ABORTED`，真实 DB 失败注入后不留下 `COMPLETED` |
+| P1-03 | 终态 sampling 建立严格状态机；Provider 流不完整、错误 finish reason、多调用、未知调用、completion 后额外事件、连接异常均为 sampling failure，不消耗 correction |
+| P2-01 | `normalizeToolEvidenceProjection` 返回 discriminated result；`{ refs: [] }` 才是合法零命中，缺失 / 损坏计为 evidence failure；`get_article_detail` not-found 显式返回合法空投影 |
+| P2-02 | 语义校验抽到 `@agent/contracts` 的 `parseMessageGroundingV1`，服务端与 Web 共用；Messages API 只为 COMPLETED assistant Message 投影 Grounding |
+| P2-03 | finalization attempts 与 usage 计入 Admin 的 `samplingCount` 与 Token 汇总，metadata 损坏时 fail closed |
+| P2-04 | `smoke:grounded-answer` 增加脱敏结构断言，不满足预期时 exit 1 |
+
+修复过程中真实 smoke 还暴露出一个由 P2-02 引入的缺陷：真实语料存在 `sectionPath`
+为空字符串的 chunk，被严格校验误判为损坏投影，导致 availability 退化为
+`unavailable`。已修正为「空字符串等价于无内容并归一化为 `null`」，必填展示字段
+仍不接受空串，并补充了两侧回归测试。

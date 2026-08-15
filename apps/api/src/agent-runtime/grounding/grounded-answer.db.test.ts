@@ -438,6 +438,86 @@ describe('Grounded Answer PostgreSQL integration', { concurrency: 1 }, () => {
     const run = await requireRun(conversationId)
 
     assert.equal(run.status, AgentRunStatus.ABORTED)
+
+    const steps = await listSteps(run.id)
+    const finalizationStep = steps.find(
+      step => step.type === 'grounded_finalization',
+    )
+
+    // finalization Step 在 replay 期间保持 RUNNING，中断后由统一收口变成 ABORTED；
+    // 绝不能留下一个 COMPLETED 的 finalization Step 配上 ABORTED 的 Run。
+    assert.ok(finalizationStep)
+    assert.equal(finalizationStep.status, AgentStepStatus.ABORTED)
+    assert.equal(
+      steps.some(step => step.status === AgentStepStatus.RUNNING),
+      false,
+    )
+  })
+
+  it('终态事务失败时整组终态回滚，不留下 COMPLETED finalization Step', async () => {
+    const conversationId = await createConversation()
+    // 真实数据库层面的失败注入：加一条必然违反的 CHECK 约束，让终态事务里的
+    // Grounding INSERT 真的失败。Message、Grounding、两个 Step 与 Run 必须一起
+    // 回滚，任何一项单独生效都说明它们不在同一个事务里。
+    assert.match(schema, /^grounding_test_[a-f\d]+$/)
+    await adminPool.query(
+      // NOT VALID：只拦截新写入，不回头校验前面用例已经写好的合法行。
+      `ALTER TABLE "${schema}"."MessageGrounding"
+       ADD CONSTRAINT "tmp_reject_grounding_write"
+       CHECK ("schemaVersion" < 0) NOT VALID`,
+    )
+
+    try {
+      const harness = createHarness(conversationId, [
+        () => toModelStream([
+          toolCallEvent('call-1', 'retrieve_article_context', '{"query":"SEO 是什么"}'),
+          { type: 'response_completed', finishReason: 'tool_calls' },
+        ]),
+        () => toModelStream([
+          { type: 'text_delta', delta: '草稿' },
+          { type: 'response_completed', finishReason: 'stop' },
+        ]),
+        keys => toModelStream([
+          submitGroundedAnswerEvent({
+            answer: '这条回答不应该被提交。',
+            outcome: 'answered',
+            citationKeys: [keys[0]!],
+          }),
+          { type: 'response_completed', finishReason: 'tool_calls' },
+        ]),
+      ])
+
+      const events = await collectEvents(harness.run())
+
+      assert.notEqual(events.at(-1)?.type, 'run_completed')
+
+      const message = await requireAssistantMessage(conversationId)
+
+      assert.notEqual(message.status, MessageStatus.COMPLETED)
+      assert.equal(await findGrounding(message.id), null)
+
+      const run = await requireRun(conversationId)
+
+      assert.notEqual(run.status, AgentRunStatus.COMPLETED)
+
+      const steps = await listSteps(run.id)
+      const finalizationStep = steps.find(
+        step => step.type === 'grounded_finalization',
+      )
+
+      assert.ok(finalizationStep)
+      assert.notEqual(finalizationStep.status, AgentStepStatus.COMPLETED)
+      assert.equal(
+        steps.some(step => step.status === AgentStepStatus.RUNNING),
+        false,
+      )
+    }
+    finally {
+      await adminPool.query(
+        `ALTER TABLE "${schema}"."MessageGrounding"
+         DROP CONSTRAINT IF EXISTS "tmp_reject_grounding_write"`,
+      )
+    }
   })
 
   it('持久化 citations 被改坏时 API 投影 fail closed，不透传原始 JSON', async () => {

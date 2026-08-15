@@ -240,10 +240,122 @@ async function runSmokeCase(
   }
 }
 
+/**
+ * 输出里绝不允许出现的内容。
+ *
+ * 这是最后一道防线：即便上游投影出错，也不能把 Key、Prompt、reasoning、
+ * 向量、距离或 SQL 打到标准输出上。
+ */
+const FORBIDDEN_OUTPUT_PATTERNS: ReadonlyArray<[string, RegExp]> = [
+  ['apiKey', /\bsk-[A-Z0-9]/i],
+  ['citationKey', /evk_/],
+  ['prompt', /untrusted_data:|submit_grounded_answer@1 提交/],
+  ['reasoning', /reasoning/i],
+  ['embedding', /embedding|cosineDistance/i],
+  ['sql', /\bSELECT\b|\bINSERT\b/],
+  ['connectionString', /postgresql:\/\//],
+]
+
+/** smoke 未达到预期结果；用于让命令 exit 1，而不是打印一份好看的失败摘要。 */
+export class GroundedAnswerSmokeAssertionError extends Error {
+  constructor(readonly violations: string[]) {
+    super('grounded answer smoke 未达到预期结果')
+    this.name = 'GroundedAnswerSmokeAssertionError'
+  }
+}
+
+/**
+ * 对脱敏 summary 执行结构断言。
+ *
+ * 只依赖状态、枚举和计数，不依赖任何回答正文，因此既能当门禁，又不会因为
+ * 模型措辞变化而误报。
+ *
+ * @throws GroundedAnswerSmokeAssertionError 任一预期不满足。
+ */
+export function assertGroundedAnswerSmoke(
+  summary: GroundedAnswerSmokeSummary,
+): void {
+  const violations: string[] = []
+  const scenarios = summary.cases.map(item => item.scenario)
+
+  for (const scenario of ['answerable', 'unanswerable'] as const) {
+    if (!scenarios.includes(scenario))
+      violations.push(`缺少 ${scenario} 场景`)
+  }
+
+  for (const item of summary.cases) {
+    const at = `[${item.scenario}]`
+
+    if (item.runOutcome !== 'run_completed') {
+      violations.push(`${at} runOutcome=${item.runOutcome}，期望 run_completed`)
+      continue
+    }
+
+    if (!item.groundingSessionEstablished)
+      violations.push(`${at} 未建立 Grounding Session`)
+
+    if (!item.replayMatchesFinalContent)
+      violations.push(`${at} delta 重放结果与最终内容不一致`)
+
+    if (!item.grounding.present) {
+      violations.push(`${at} 缺少 Grounding`)
+      continue
+    }
+
+    if (item.grounding.schemaVersion !== 1)
+      violations.push(`${at} schemaVersion=${item.grounding.schemaVersion}`)
+
+    if (item.grounding.citationIntegrity !== 'validated')
+      violations.push(`${at} citationIntegrity=${item.grounding.citationIntegrity}`)
+
+    if (item.grounding.faithfulnessStatus !== 'not_evaluated')
+      violations.push(`${at} faithfulnessStatus=${item.grounding.faithfulnessStatus}`)
+
+    const citationCount = item.grounding.citationCount ?? 0
+
+    if (item.scenario === 'answerable') {
+      if (item.grounding.outcome !== 'answered')
+        violations.push(`${at} outcome=${item.grounding.outcome}，期望 answered`)
+      if (citationCount < 1)
+        violations.push(`${at} answered 但没有有效 Citation`)
+      if (item.grounding.sourceIds?.some(sourceId => !Number.isSafeInteger(sourceId) || sourceId <= 0))
+        violations.push(`${at} Citation 的 sourceId 非法`)
+    }
+
+    if (item.scenario === 'unanswerable') {
+      if (item.grounding.outcome !== 'insufficient_evidence') {
+        violations.push(
+          `${at} outcome=${item.grounding.outcome}，期望 insufficient_evidence`,
+        )
+      }
+    }
+  }
+
+  const serialized = JSON.stringify(summary)
+
+  for (const [name, pattern] of FORBIDDEN_OUTPUT_PATTERNS) {
+    if (pattern.test(serialized))
+      violations.push(`输出包含不允许的敏感内容：${name}`)
+  }
+
+  if (violations.length > 0)
+    throw new GroundedAnswerSmokeAssertionError(violations)
+}
+
 export function safeSmokeFailure(error: unknown): {
   error: string
   message: string
+  violations?: string[]
 } {
+  if (error instanceof GroundedAnswerSmokeAssertionError) {
+    return {
+      error: 'grounded_answer_smoke_assertion_failed',
+      message: 'grounded answer smoke 未达到预期结果',
+      // violations 只包含场景名、枚举值和计数，本身已经是脱敏文本。
+      violations: error.violations,
+    }
+  }
+
   return {
     error: error instanceof Error && error.name === 'AbortError'
       ? 'grounded_answer_smoke_aborted'
@@ -282,7 +394,9 @@ async function main(): Promise<void> {
       { ...process.env, DATABASE_URL: connectionString },
     )
 
+    // 先输出脱敏摘要，再断言：结果不符合预期时仍然留下可读证据，但命令 exit 1。
     process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`)
+    assertGroundedAnswerSmoke(summary)
   }
   catch (error) {
     process.stderr.write(`${JSON.stringify(safeSmokeFailure(error))}\n`)

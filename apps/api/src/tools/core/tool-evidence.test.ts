@@ -38,112 +38,61 @@ function articleRef(overrides: Partial<ToolEvidenceRef> = {}): ToolEvidenceRef {
   })
 }
 
-describe('normalizeToolEvidenceProjection', () => {
+function assertMalformed(projection: unknown): void {
+  const result = normalizeToolEvidenceProjection(projection)
+
+  assert.deepEqual(result, { ok: false, reason: 'malformed' })
+}
+
+describe('normalizeToolEvidenceProjection 合法投影', () => {
   it('放行合法的 chunk 与 article 粒度证据', () => {
-    const refs = normalizeToolEvidenceProjection({
+    const result = normalizeToolEvidenceProjection({
       refs: [chunkRef(), articleRef({ sourceId: 302, slug: 'sitemap' })],
     })
 
-    assert.equal(refs.length, 2)
-    assert.equal(refs[0]?.granularity, 'chunk')
-    assert.equal(refs[0]?.chunkId, 'article-301-chunk-0')
-    assert.equal(refs[1]?.granularity, 'article')
-    assert.equal(refs[1]?.chunkId, null)
+    assert.equal(result.ok, true)
+    if (!result.ok)
+      return
+
+    assert.equal(result.refs.length, 2)
+    assert.equal(result.refs[0]?.granularity, 'chunk')
+    assert.equal(result.refs[0]?.chunkId, 'article-301-chunk-0')
+    assert.equal(result.refs[1]?.granularity, 'article')
+    assert.equal(result.refs[1]?.chunkId, null)
   })
 
-  it('undefined / 非对象 / 多余顶层字段一律返回空数组', () => {
-    assert.deepEqual(normalizeToolEvidenceProjection(undefined), [])
-    assert.deepEqual(normalizeToolEvidenceProjection(null), [])
-    assert.deepEqual(normalizeToolEvidenceProjection('refs'), [])
-    assert.deepEqual(normalizeToolEvidenceProjection([chunkRef()]), [])
-    assert.deepEqual(normalizeToolEvidenceProjection({ refs: chunkRef() }), [])
+  it('`{ refs: [] }` 是合法的零命中，不是失败', () => {
     assert.deepEqual(
-      normalizeToolEvidenceProjection({ refs: [chunkRef()], extra: 1 }),
-      [],
+      normalizeToolEvidenceProjection({ refs: [] }),
+      { ok: true, refs: [] },
     )
   })
 
-  it('字段 allowlist 之外的内部信号整条 fail closed', () => {
-    const refs = normalizeToolEvidenceProjection({
-      refs: [
-        { ...chunkRef(), cosineDistance: 0.12 },
-        { ...chunkRef(), embedding: [0.1, 0.2] },
-        chunkRef({ sourceId: 303 }),
-      ],
+  it('空 sectionPath / excerpt 是合法的「没有这项内容」，归一化为 null', () => {
+    // 真实语料里确实存在没有标题层级的 chunk，不能被当成损坏投影。
+    const result = normalizeToolEvidenceProjection({
+      refs: [chunkRef({ sectionPath: '', excerpt: '' })],
     })
 
-    assert.equal(refs.length, 1)
-    assert.equal(refs[0]?.sourceId, 303)
-    assert.doesNotMatch(JSON.stringify(refs), /cosineDistance|embedding/)
+    assert.equal(result.ok, true)
+    if (!result.ok)
+      return
+
+    assert.equal(result.refs[0]?.sectionPath, null)
+    assert.equal(result.refs[0]?.excerpt, null)
   })
 
-  it('缺字段的 ref 同样 fail closed', () => {
-    const { excerpt: _excerpt, ...missingExcerpt } = chunkRef()
-
-    assert.deepEqual(
-      normalizeToolEvidenceProjection({ refs: [missingExcerpt] }),
-      [],
-    )
+  it('必填展示字段仍然不接受空字符串', () => {
+    assertMalformed({ refs: [chunkRef({ title: '' })] })
+    assertMalformed({ refs: [chunkRef({ slug: '' })] })
+    assertMalformed({ refs: [chunkRef({ languageCode: '' })] })
+    assertMalformed({ refs: [chunkRef({ chunkId: '' })] })
   })
 
-  it('article 粒度不得携带 chunkId，chunk 粒度必须有 chunkId', () => {
-    assert.deepEqual(
-      normalizeToolEvidenceProjection({
-        refs: [articleRef({ chunkId: 'forged-chunk' })],
-      }),
-      [],
-    )
-    assert.deepEqual(
-      normalizeToolEvidenceProjection({
-        refs: [chunkRef({ chunkId: null })],
-      }),
-      [],
-    )
-  })
-
-  it('拒绝非法 sourceId、rank 与 strategy', () => {
-    assert.deepEqual(
-      normalizeToolEvidenceProjection({ refs: [chunkRef({ sourceId: 0 })] }),
-      [],
-    )
-    assert.deepEqual(
-      normalizeToolEvidenceProjection({ refs: [chunkRef({ sourceId: 1.5 })] }),
-      [],
-    )
-    assert.deepEqual(
-      normalizeToolEvidenceProjection({ refs: [chunkRef({ rank: -1 })] }),
-      [],
-    )
-    assert.deepEqual(
-      normalizeToolEvidenceProjection({
-        refs: [{
-          ...chunkRef(),
-          strategy: { name: 'hybrid_rrf', version: '1', extra: 'x' },
-        }],
-      }),
-      [],
-    )
-  })
-
-  it('超长 excerpt 与超体积 ref 被丢弃', () => {
-    assert.deepEqual(
-      normalizeToolEvidenceProjection({
-        refs: [chunkRef({ excerpt: '正'.repeat(501) })],
-      }),
-      [],
-    )
-    assert.deepEqual(
-      normalizeToolEvidenceProjection({
-        refs: [chunkRef({ title: '标'.repeat(TOOL_EVIDENCE_REF_MAX_CHARS) })],
-      }),
-      [],
-    )
-  })
-
-  it('单次调用最多接受固定数量 ref', () => {
-    const refs = normalizeToolEvidenceProjection({
+  it('允许刚好达到单次调用上限的 ref 数量', () => {
+    const result = normalizeToolEvidenceProjection({
       refs: Array.from(
-        { length: TOOL_EVIDENCE_MAX_REFS_PER_CALL + 3 },
+        { length: TOOL_EVIDENCE_MAX_REFS_PER_CALL },
         (_, index) => chunkRef({
           sourceId: 400 + index,
           chunkId: `article-${400 + index}-chunk-0`,
@@ -151,6 +100,91 @@ describe('normalizeToolEvidenceProjection', () => {
       ),
     })
 
-    assert.equal(refs.length, TOOL_EVIDENCE_MAX_REFS_PER_CALL)
+    assert.equal(result.ok, true)
+    assert.equal(result.ok ? result.refs.length : 0, TOOL_EVIDENCE_MAX_REFS_PER_CALL)
+  })
+})
+
+describe('normalizeToolEvidenceProjection 缺失与损坏', () => {
+  it('完全没有提交投影时为 missing，而不是合法零命中', () => {
+    assert.deepEqual(
+      normalizeToolEvidenceProjection(undefined),
+      { ok: false, reason: 'missing' },
+    )
+    assert.deepEqual(
+      normalizeToolEvidenceProjection(null),
+      { ok: false, reason: 'missing' },
+    )
+  })
+
+  it('顶层结构非法时为 malformed', () => {
+    assertMalformed('refs')
+    assertMalformed([chunkRef()])
+    assertMalformed({ refs: chunkRef() })
+    assertMalformed({ refs: [chunkRef()], extra: 1 })
+    assertMalformed({})
+  })
+
+  it('单条非法 ref 会让整份投影 malformed，不做部分放行', () => {
+    // 只保留合法部分会把一次部分失败说成完全可用的证据链。
+    assertMalformed({
+      refs: [
+        { ...chunkRef(), cosineDistance: 0.12 },
+        chunkRef({ sourceId: 303, chunkId: 'article-303-chunk-0' }),
+      ],
+    })
+    assertMalformed({
+      refs: [
+        chunkRef({ sourceId: 303, chunkId: 'article-303-chunk-0' }),
+        { ...chunkRef(), embedding: [0.1, 0.2] },
+      ],
+    })
+  })
+
+  it('字段 allowlist 之外的内部信号被拒绝', () => {
+    assertMalformed({ refs: [{ ...chunkRef(), cosineDistance: 0.12 }] })
+    assertMalformed({ refs: [{ ...chunkRef(), embedding: [0.1] }] })
+  })
+
+  it('缺字段的 ref 同样被拒绝', () => {
+    const { excerpt: _excerpt, ...missingExcerpt } = chunkRef()
+
+    assertMalformed({ refs: [missingExcerpt] })
+  })
+
+  it('article 粒度不得携带 chunkId，chunk 粒度必须有 chunkId', () => {
+    assertMalformed({ refs: [articleRef({ chunkId: 'forged-chunk' })] })
+    assertMalformed({ refs: [chunkRef({ chunkId: null })] })
+  })
+
+  it('拒绝非法 sourceId、rank 与 strategy', () => {
+    assertMalformed({ refs: [chunkRef({ sourceId: 0 })] })
+    assertMalformed({ refs: [chunkRef({ sourceId: 1.5 })] })
+    assertMalformed({ refs: [chunkRef({ rank: -1 })] })
+    assertMalformed({
+      refs: [{
+        ...chunkRef(),
+        strategy: { name: 'hybrid_rrf', version: '1', extra: 'x' },
+      }],
+    })
+  })
+
+  it('超长 excerpt 与超体积 ref 被拒绝', () => {
+    assertMalformed({ refs: [chunkRef({ excerpt: '正'.repeat(501) })] })
+    assertMalformed({
+      refs: [chunkRef({ title: '标'.repeat(TOOL_EVIDENCE_REF_MAX_CHARS) })],
+    })
+  })
+
+  it('超出单次调用 ref 上限时整份 malformed，不静默截断', () => {
+    assertMalformed({
+      refs: Array.from(
+        { length: TOOL_EVIDENCE_MAX_REFS_PER_CALL + 1 },
+        (_, index) => chunkRef({
+          sourceId: 500 + index,
+          chunkId: `article-${500 + index}-chunk-0`,
+        }),
+      ),
+    })
   })
 })

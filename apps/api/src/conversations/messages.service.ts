@@ -2,7 +2,7 @@ import type { ConversationMessage } from '@agent/contracts'
 import type { Message, MessageGrounding } from '../generated/prisma/client.js'
 import { Inject, Injectable, NotFoundException } from '@nestjs/common'
 
-import { toMessageGroundingV1 } from '../agent-runtime/grounding/message-grounding.projector.js'
+import { toOwnedMessageGroundingV1 } from '../agent-runtime/grounding/message-grounding.projector.js'
 import { PrismaService } from '../prisma/prisma.service.js'
 
 type MessageWithGrounding = Message & {
@@ -64,8 +64,9 @@ export function toConversationMessageResponse(
     status: message.status,
     createdAt: message.createdAt.toISOString(),
     updatedAt: message.updatedAt.toISOString(),
-    // 与 done.grounding 共用同一个 projector：页面重载得到的是同一份事实；
-    // legacy Message 没有 Grounding 行，损坏数据在投影层 fail closed，都返回 null。
-    grounding: toMessageGroundingV1(message.grounding),
+    // 与 done.grounding 共用同一个 projector：页面重载得到的是同一份事实。
+    // legacy Message 没有 Grounding 行；损坏数据、语义非法组合，以及挂在非
+    // COMPLETED assistant Message 上的 Grounding，都在投影层 fail closed 返回 null。
+    grounding: toOwnedMessageGroundingV1(message, message.grounding),
   }
 }

@@ -322,6 +322,83 @@ describe('SeoService grounding 投影', () => {
     assert.equal(legacyProjection.grounding, null)
   })
 
+  it('Messages API 只为 COMPLETED assistant Message 投影 Grounding', () => {
+    const persistedGrounding = {
+      messageId: 'assistant-message-1',
+      schemaVersion: 1,
+      evidenceAvailability: 'available',
+      outcome: 'answered',
+      citationIntegrity: 'validated',
+      faithfulnessStatus: 'not_evaluated',
+      citations: grounding.citations,
+      createdAt: new Date(GENERATED_AT),
+      updatedAt: new Date(GENERATED_AT),
+    }
+    const project = (role: string, status: string) =>
+      toConversationMessageResponse({
+        id: 'assistant-message-1',
+        conversationId: 'conversation-1',
+        role,
+        content: '回答',
+        status,
+        createdAt: new Date(GENERATED_AT),
+        updatedAt: new Date(GENERATED_AT),
+        grounding: persistedGrounding,
+      } as never)
+
+    assert.ok(project('ASSISTANT', 'COMPLETED').grounding)
+
+    // 绕过 Runtime 写到非终态 / 失败消息或用户消息上的 Grounding 不得外泄。
+    for (const status of ['PENDING', 'STREAMING', 'FAILED', 'ABORTED']) {
+      assert.equal(project('ASSISTANT', status).grounding, null, status)
+    }
+    assert.equal(project('USER', 'COMPLETED').grounding, null)
+  })
+
+  it('语义非法的持久化 Grounding 在 Messages API fail closed', () => {
+    const project = (overrides: Record<string, unknown>) =>
+      toConversationMessageResponse({
+        id: 'assistant-message-1',
+        conversationId: 'conversation-1',
+        role: 'ASSISTANT',
+        content: '回答',
+        status: 'COMPLETED',
+        createdAt: new Date(GENERATED_AT),
+        updatedAt: new Date(GENERATED_AT),
+        grounding: {
+          messageId: 'assistant-message-1',
+          schemaVersion: 1,
+          evidenceAvailability: 'available',
+          outcome: 'answered',
+          citationIntegrity: 'validated',
+          faithfulnessStatus: 'not_evaluated',
+          citations: grounding.citations,
+          createdAt: new Date(GENERATED_AT),
+          updatedAt: new Date(GENERATED_AT),
+          ...overrides,
+        },
+      } as never)
+
+    // none / unavailable 不允许 answered，也不允许挂引用。
+    assert.equal(
+      project({ evidenceAvailability: 'none', citations: [] }).grounding,
+      null,
+    )
+    assert.equal(
+      project({ evidenceAvailability: 'unavailable', outcome: 'insufficient_evidence' }).grounding,
+      null,
+    )
+    // answered 必须至少一条引用。
+    assert.equal(project({ citations: [] }).grounding, null)
+    // v1 的 href 必须为 null。
+    assert.equal(
+      project({
+        citations: [{ ...grounding.citations[0], href: '/articles/seo-basics' }],
+      }).grounding,
+      null,
+    )
+  })
+
   it('持久化 Grounding 损坏时 Messages API fail closed，不透传原始 JSON', () => {
     const projection = toConversationMessageResponse({
       id: 'assistant-message-1',

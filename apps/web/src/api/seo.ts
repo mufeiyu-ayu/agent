@@ -1,10 +1,10 @@
 import type {
   ApiErrorResponse,
   ChatStreamEvent,
-  MessageCitationV1,
-  MessageGroundingV1,
   SeoChatRequest,
 } from '@agent/contracts'
+
+import { parseMessageGroundingV1 } from '@agent/contracts'
 
 interface StreamChatWithSeoAgentOptions {
   signal?: AbortSignal
@@ -104,56 +104,26 @@ export function parseChatStreamEventLine(line: string): ChatStreamEvent | null {
 /**
  * 保留已知事件语义，并安全接受 `done` 上可选的 grounding。
  *
- * 服务端投影层已经 fail closed；客户端这里再做一次形状校验，语义不合法时只丢弃
- * 这个可选字段，不让 UI / 审计元数据拖垮整条回答流。本 Task 不渲染来源卡片。
+ * 语义校验直接复用 `@agent/contracts` 的 `parseMessageGroundingV1`，与服务端
+ * durable projector 是同一份实现：availability / outcome 枚举、outcome × availability
+ * 组合、Citation 数量与来源约束、安全整数、字段长度、article/chunk 一致性、
+ * href 必须为 null、citationId 唯一，两侧结论完全一致。
+ *
+ * 与服务端的唯一区别是失败处理：这里只丢弃这个可选字段，不让 UI / 审计元数据
+ * 拖垮整条回答流。本 Task 不渲染来源卡片。
  */
 function sanitizeChatStreamEvent(event: ChatStreamEvent): ChatStreamEvent {
   if (event.type !== 'done' || event.grounding === undefined)
     return event
 
-  if (isMessageGroundingV1(event.grounding))
-    return event
+  const grounding = parseMessageGroundingV1(event.grounding)
+
+  if (grounding)
+    return { ...event, grounding }
 
   const { grounding: _grounding, ...rest } = event
 
   return rest
-}
-
-function isMessageGroundingV1(value: unknown): value is MessageGroundingV1 {
-  if (!isRecord(value))
-    return false
-
-  return (
-    value.schemaVersion === 1
-    && typeof value.evidenceAvailability === 'string'
-    && typeof value.outcome === 'string'
-    && value.citationIntegrity === 'validated'
-    && value.faithfulnessStatus === 'not_evaluated'
-    && Array.isArray(value.citations)
-    && value.citations.every(isMessageCitationV1)
-  )
-}
-
-function isMessageCitationV1(value: unknown): value is MessageCitationV1 {
-  if (!isRecord(value))
-    return false
-
-  return (
-    typeof value.citationId === 'string'
-    && typeof value.sourceId === 'number'
-    && (value.chunkId === null || typeof value.chunkId === 'string')
-    && (value.granularity === 'article' || value.granularity === 'chunk')
-    && typeof value.title === 'string'
-    && typeof value.slug === 'string'
-    && typeof value.languageCode === 'string'
-    && (value.sectionPath === null || typeof value.sectionPath === 'string')
-    && (value.excerpt === null || typeof value.excerpt === 'string')
-    && (value.rank === null || typeof value.rank === 'number')
-    && (value.href === null || typeof value.href === 'string')
-    && isRecord(value.strategy)
-    && typeof value.strategy.name === 'string'
-    && typeof value.strategy.version === 'string'
-  )
 }
 
 function isChatStreamEvent(value: unknown): value is ChatStreamEvent {

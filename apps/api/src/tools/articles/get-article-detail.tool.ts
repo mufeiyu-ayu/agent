@@ -115,6 +115,9 @@ export class GetArticleDetailTool implements ToolExecutor<
         ok: true as const,
         data,
         modelContent: JSON.stringify(data),
+        // not found 是真实的「成功但没有证据」，必须显式提交合法空投影；
+        // 省略 evidence 会被 Registry 当成 projector 故障。
+        evidence: { refs: [] },
       }
     }
 

@@ -41,6 +41,24 @@ export interface ToolEvidenceProjection {
   refs: ToolEvidenceRef[]
 }
 
+/**
+ * 证据投影的校验结果。
+ *
+ * 刻意用 discriminated union 而不是「返回空数组」：
+ * 「工具成功但确实没有命中」（`{ refs: [] }`）与「工具成功但 evidence projector
+ * 缺失或损坏」是两件完全不同的事。前者应该告诉用户「站内没有可用证据」，
+ * 后者是服务端故障，必须表现为 evidence failure，不能伪装成 zero-hit。
+ */
+export type ToolEvidenceProjectionResult
+  = | { ok: true, refs: ToolEvidenceRef[] }
+    | { ok: false, reason: ToolEvidenceProjectionFailureReason }
+
+/**
+ * - `missing`：eligible Tool 成功但完全没有提交 evidence 投影。
+ * - `malformed`：提交了投影，但结构、字段、体积或数量不合法。
+ */
+export type ToolEvidenceProjectionFailureReason = 'malformed' | 'missing'
+
 /** 单次 Tool 调用最多提交的 ref 数；Registry 另有全 Run hard cap。 */
 export const TOOL_EVIDENCE_MAX_REFS_PER_CALL = 5
 
@@ -73,33 +91,44 @@ const STRATEGY_KEYS = new Set(['name', 'version'])
 /**
  * 校验工具提交的 evidence 投影是否可以安全进入 Evidence Registry。
  *
- * fail closed：单条 ref 只要类型、字段集合、长度或数值范围不合法，就丢弃该条；
- * 整个投影结构本身非法时返回空数组。拒绝原因不携带原始内容，避免把可疑数据写进日志。
+ * fail closed 且**整体**判定：只要有一条 ref 不合法，整个投影就是 `malformed`。
+ * 这里刻意不做「跳过坏的、留下好的」——那样会把一次部分失败的 projection 说成
+ * 完全可用的证据链，用户看到的 `available` 就不再成立。
  *
- * @returns 通过校验的 ref 列表；没有任何合法 ref 时为空数组。
+ * 拒绝原因不携带原始内容，避免把可疑数据再写进日志或错误消息。
+ *
+ * @returns `{ ok: true, refs }` 表示投影合法（`refs` 可以为空，表示真实零命中）；
+ *          `{ ok: false, reason }` 表示缺失或损坏，调用方必须计为 evidence failure。
  */
 export function normalizeToolEvidenceProjection(
   projection: unknown,
-): ToolEvidenceRef[] {
-  if (projection === undefined || !isPlainObject(projection))
-    return []
+): ToolEvidenceProjectionResult {
+  // eligible Tool 成功时必须显式提交投影，哪怕是 `{ refs: [] }`。
+  if (projection === undefined || projection === null)
+    return { ok: false, reason: 'missing' }
+
+  if (!isPlainObject(projection))
+    return { ok: false, reason: 'malformed' }
 
   if (Object.keys(projection).length !== 1 || !Array.isArray(projection.refs))
-    return []
+    return { ok: false, reason: 'malformed' }
+
+  // 超出单次调用预算说明 Tool 的投影逻辑有问题，不是可以静默截断的正常结果。
+  if (projection.refs.length > TOOL_EVIDENCE_MAX_REFS_PER_CALL)
+    return { ok: false, reason: 'malformed' }
 
   const refs: ToolEvidenceRef[] = []
 
   for (const candidate of projection.refs) {
-    if (refs.length >= TOOL_EVIDENCE_MAX_REFS_PER_CALL)
-      break
-
     const ref = normalizeEvidenceRef(candidate)
 
-    if (ref)
-      refs.push(ref)
+    if (!ref)
+      return { ok: false, reason: 'malformed' }
+
+    refs.push(ref)
   }
 
-  return refs
+  return { ok: true, refs }
 }
 
 function normalizeEvidenceRef(candidate: unknown): ToolEvidenceRef | undefined {
@@ -216,6 +245,7 @@ function normalizeEvidenceRef(candidate: unknown): ToolEvidenceRef | undefined {
   return ref
 }
 
+/** 必填展示字段：必须真的有内容。 */
 function normalizeString(
   value: unknown,
   maxChars: number,
@@ -226,11 +256,20 @@ function normalizeString(
   return [...value].length <= maxChars ? value : undefined
 }
 
+/**
+ * 可空展示字段：`null` 与空字符串都表示「没有这项内容」。
+ *
+ * 真实语料里确实存在没有标题层级的 chunk（`sectionPath` 为空串），那是合法数据，
+ * 不是损坏。这里统一归一化为 `null`，让下游只需要处理一种表示。
+ */
 function normalizeNullableString(
   value: unknown,
   maxChars: number,
 ): string | null | undefined {
   if (value === null)
+    return null
+
+  if (typeof value === 'string' && value.length === 0)
     return null
 
   return normalizeString(value, maxChars)

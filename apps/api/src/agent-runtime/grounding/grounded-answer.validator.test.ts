@@ -43,6 +43,7 @@ function createFailedRegistry(): RunEvidenceRegistry {
   registry.recordEligibleToolOutcome({
     toolName: 'retrieve_article_context',
     ok: false,
+    evidence: undefined,
   })
 
   return registry

@@ -5,7 +5,10 @@ import assert from 'node:assert/strict'
 // eslint-disable-next-line test/no-import-node-test
 import { describe, it } from 'node:test'
 
-import { toMessageGroundingV1 } from './message-grounding.projector.js'
+import {
+  toMessageGroundingV1,
+  toOwnedMessageGroundingV1,
+} from './message-grounding.projector.js'
 
 function citation(overrides: Partial<MessageCitationV1> = {}): MessageCitationV1 {
   return {
@@ -69,6 +72,16 @@ describe('toMessageGroundingV1 成功路径', () => {
     assert.equal(grounding.citations[0]?.chunkId, null)
   })
 
+  it('空 sectionPath / excerpt 归一化为 null，不视为损坏', () => {
+    const grounding = toMessageGroundingV1(persisted({
+      citations: [citation({ sectionPath: '', excerpt: '' })],
+    }))
+
+    assert.ok(grounding)
+    assert.equal(grounding.citations[0]?.sectionPath, null)
+    assert.equal(grounding.citations[0]?.excerpt, null)
+  })
+
   it('零引用的 insufficient_evidence 是合法事实', () => {
     const grounding = toMessageGroundingV1(persisted({
       evidenceAvailability: 'unavailable',
@@ -128,5 +141,130 @@ describe('toMessageGroundingV1 fail closed', () => {
 
     assert.equal(projected, null)
     assert.doesNotMatch(JSON.stringify(projected), /SELECT|leakedSql/)
+  })
+})
+
+describe('toMessageGroundingV1 语义 fail closed', () => {
+  const semanticCases: Array<[string, PersistedMessageGrounding]> = [
+    ['none + answered', persisted({
+      evidenceAvailability: 'none',
+      outcome: 'answered',
+      citations: [],
+    })],
+    ['unavailable + answered', persisted({
+      evidenceAvailability: 'unavailable',
+      outcome: 'answered',
+      citations: [],
+    })],
+    ['none + conflicting_evidence', persisted({
+      evidenceAvailability: 'none',
+      outcome: 'conflicting_evidence',
+      citations: [],
+    })],
+    ['unavailable 但 citations 非空', persisted({
+      evidenceAvailability: 'unavailable',
+      outcome: 'insufficient_evidence',
+      citations: [citation()],
+    })],
+    ['none 但 citations 非空', persisted({
+      evidenceAvailability: 'none',
+      outcome: 'insufficient_evidence',
+      citations: [citation()],
+    })],
+    ['answered 但 0 citation', persisted({ citations: [] })],
+    ['conflicting_evidence 但只有一个 source', persisted({
+      outcome: 'conflicting_evidence',
+      citations: [
+        citation(),
+        citation({
+          citationId: 'cit_ffffffffffffffffffffffffffffffff',
+          chunkId: 'article-301-chunk-1',
+          rank: 2,
+        }),
+      ],
+    })],
+    ['citationId 重复', persisted({
+      outcome: 'conflicting_evidence',
+      citations: [
+        citation(),
+        citation({ sourceId: 302, chunkId: 'article-302-chunk-0' }),
+      ],
+    })],
+    ['非空 href', persisted({
+      citations: [citation({ href: '/articles/seo-basics' })],
+    })],
+    ['sourceId 不是安全整数', persisted({
+      citations: [citation({ sourceId: Number.MAX_SAFE_INTEGER + 2 })],
+    })],
+    ['rank 为负数', persisted({ citations: [citation({ rank: -1 })] })],
+    ['title 超长', persisted({
+      citations: [citation({ title: '标'.repeat(301) })],
+    })],
+    ['excerpt 超长', persisted({
+      citations: [citation({ excerpt: '正'.repeat(501) })],
+    })],
+    ['title 为空字符串', persisted({ citations: [citation({ title: '' })] })],
+  ]
+
+  for (const [name, value] of semanticCases) {
+    it(`${name} 时返回 null`, () => {
+      assert.equal(toMessageGroundingV1(value), null)
+    })
+  }
+
+  it('conflicting_evidence 引用两个不同 source 时通过', () => {
+    const grounding = toMessageGroundingV1(persisted({
+      outcome: 'conflicting_evidence',
+      citations: [
+        citation(),
+        citation({
+          citationId: 'cit_ffffffffffffffffffffffffffffffff',
+          sourceId: 302,
+          chunkId: 'article-302-chunk-0',
+          rank: 2,
+        }),
+      ],
+    }))
+
+    assert.ok(grounding)
+    assert.equal(grounding.citations.length, 2)
+  })
+
+  it('partial + answered 且有引用时通过', () => {
+    const grounding = toMessageGroundingV1(persisted({
+      evidenceAvailability: 'partial',
+    }))
+
+    assert.ok(grounding)
+    assert.equal(grounding.evidenceAvailability, 'partial')
+  })
+})
+
+describe('toOwnedMessageGroundingV1 归属校验', () => {
+  it('只为 COMPLETED assistant Message 投影 Grounding', () => {
+    assert.ok(toOwnedMessageGroundingV1(
+      { role: 'ASSISTANT', status: 'COMPLETED' },
+      persisted(),
+    ))
+  })
+
+  it('非终态或失败的助手消息不返回 Grounding', () => {
+    for (const status of ['PENDING', 'STREAMING', 'FAILED', 'ABORTED']) {
+      assert.equal(
+        toOwnedMessageGroundingV1({ role: 'ASSISTANT', status }, persisted()),
+        null,
+        `${status} 不应返回 Grounding`,
+      )
+    }
+  })
+
+  it('用户消息上被人为插入的 Grounding 不会外泄', () => {
+    assert.equal(
+      toOwnedMessageGroundingV1(
+        { role: 'USER', status: 'COMPLETED' },
+        persisted(),
+      ),
+      null,
+    )
   })
 })

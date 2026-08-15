@@ -176,12 +176,14 @@ describe('get_article_detail', () => {
         found: false,
         article: null,
       }),
+      evidence: { refs: [] },
     })
     assert.equal(fakePrisma.findUniqueArguments.length, 1)
-    // not found 是「成功但没有证据」，绝不能变成一条凭空的 Citation。
+    // not found 是「成功但没有证据」：必须是合法空投影，而不是缺失投影，
+    // 否则会被 Registry 当成 projector 故障。
     assert.deepEqual(
       normalizeToolEvidenceProjection(result.ok ? result.evidence : undefined),
-      [],
+      { ok: true, refs: [] },
     )
   })
 
@@ -210,9 +212,15 @@ describe('get_article_detail', () => {
 
     assert.equal(result.ok, true)
 
-    const refs = normalizeToolEvidenceProjection(
+    const projection = normalizeToolEvidenceProjection(
       result.ok ? result.evidence : undefined,
     )
+
+    assert.equal(projection.ok, true)
+    if (!projection.ok)
+      return
+
+    const refs = projection.refs
 
     assert.deepEqual(refs, [{
       sourceId: 24,
