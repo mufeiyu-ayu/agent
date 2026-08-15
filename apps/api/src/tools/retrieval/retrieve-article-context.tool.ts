@@ -103,7 +103,11 @@ export class RetrieveArticleContextTool implements ToolExecutor<
     })
 
     context.signal.throwIfAborted()
-    const sources = retrieval.hits.map(toRetrievedArticleSource)
+    // Tool 是模型可见输出的最终边界：即便上游 Retriever 返回更多命中，
+    // 这里也只放行本次调用声明的 limit（最多 MAX_LIMIT 条）。
+    const sources = retrieval.hits
+      .slice(0, invocation.input.limit)
+      .map(toRetrievedArticleSource)
     const data: RetrieveArticleContextOutput = {
       kind: 'article_retrieval_candidates',
       query: retrieval.query.query,

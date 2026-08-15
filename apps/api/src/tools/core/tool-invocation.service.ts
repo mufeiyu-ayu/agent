@@ -35,9 +35,11 @@ export class ToolInvocationService {
       }
     }
 
-    // 服务端固定的可信 Provider 网络访问是允许的；模型可影响目标的任意外网访问继续 fail closed。
+    // 当前只放行 low-risk、无副作用、幂等、无需审批的工具；
+    // 服务端固定的可信 Provider 网络访问是允许的，模型可影响目标的任意外网访问继续 fail closed。
     if (
       tool.definition.requiresApproval
+      || !tool.definition.idempotent
       || tool.definition.risk.level !== 'low'
       || tool.definition.risk.sideEffect !== 'none'
       || (

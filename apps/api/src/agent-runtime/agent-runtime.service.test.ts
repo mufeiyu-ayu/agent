@@ -41,7 +41,6 @@ import {
   DatabaseCommitOutcomeUnknownError,
   DatabaseOperationDeadlineExceededError,
 } from '../prisma/prisma.service.js'
-import { buildSeoAgentChatMessages } from '../seo/prompts/seo-agent.prompt.js'
 import { toChatStreamEvent } from '../seo/seo-chat-stream-event.mapper.js'
 import {
   AgentRunTerminalizationError,
@@ -726,10 +725,91 @@ describe('AgentRuntimeService model stream', () => {
 
     const serializedStep = JSON.stringify(toolStep)
 
-    for (const forbidden of ['excerpt', '忽略以上指令', 'cosineDistance', 'slug'])
+    for (const forbidden of [
+      'excerpt',
+      '忽略以上指令',
+      'cosineDistance',
+      'slug',
+      'embedding',
+      'GEMINI_API_KEY',
+      'Authorization',
+      'secret',
+    ]) {
       assert.equal(serializedStep.includes(forbidden), false, `不得持久化 ${forbidden}`)
+    }
 
     assertNoUnfinishedSteps(harness)
+  })
+
+  it('非法 stepSummary 被安全忽略，不影响 Tool Result pairing 与 Run 收口', async () => {
+    const circular: Record<string, unknown> = { status: 'ok' }
+    circular.self = circular
+    const invalidSummaries: unknown[] = [
+      { value: BigInt(1) },
+      { value: undefined },
+      { value: () => {} },
+      { value: Symbol('secret') },
+      { value: Number.NaN },
+      { value: Number.POSITIVE_INFINITY },
+      circular,
+      { note: 'a'.repeat(5_000) },
+      // 超过最大嵌套深度。
+      { a: { b: { c: { d: { e: { f: 'too deep' } } } } } },
+      // 顶层不是普通对象。
+      [{ sourceId: 1 }],
+      'summary',
+    ]
+
+    for (const stepSummary of invalidSummaries) {
+      const streams: ModelStreamEvent[][] = [
+        [
+          toolCallEvent('call-bad-summary', 'retrieve_article_context', '{"query":"seo"}'),
+          { type: 'response_completed', finishReason: 'tool_calls' },
+        ],
+        [
+          { type: 'text_delta', delta: '完成' },
+          { type: 'response_completed', finishReason: 'stop' },
+        ],
+      ]
+      const harness = createHarness(
+        (_, __, callIndex) => toModelStream(streams[callIndex] ?? []),
+        undefined,
+        async () => ({
+          ok: true,
+          data: {},
+          modelContent: '候选资料。',
+          stepSummary: stepSummary as never,
+        }),
+      )
+
+      const events = await collectEvents(harness.run())
+
+      // Run 仍正常收口。
+      assert.equal(events.at(-1)?.type, 'run_completed')
+      assert.equal(harness.assistantMessage()?.content, '完成')
+
+      // Tool Call 与 Tool Result 仍成对进入第二轮模型输入。
+      const toolResultItem = harness.llmCalls[1]?.messages.at(-1)
+
+      assert.equal(toolResultItem?.type, 'tool_result')
+      assert.equal(
+        toolResultItem?.type === 'tool_result' ? toolResultItem.callId : undefined,
+        'call-bad-summary',
+      )
+
+      // AgentStep 不写入非法 summary，其余字段保持不变。
+      const toolStepOutput = harness.recorder.steps[3]?.output as Record<string, unknown>
+
+      assert.equal(
+        Object.hasOwn(toolStepOutput, 'toolSummary'),
+        false,
+        `非法 summary 不得持久化：${String(stepSummary)}`,
+      )
+      assert.equal(toolStepOutput.ok, true)
+      assert.equal(toolStepOutput.truncated, false)
+      assert.equal(harness.recorder.steps[3]?.status, AgentStepStatus.COMPLETED)
+      assertNoUnfinishedSteps(harness)
+    }
   })
 
   it('Retrieval Observation 超过 Tool ceiling 时截断并保留 marker 与 call/result 配对', async () => {
@@ -2295,27 +2375,8 @@ describe('ModelContext', () => {
   })
 })
 
-describe('SEO Agent tool guidance', () => {
-  it('明确站内文章搜索、详情读取和无结果回答边界', () => {
-    const systemMessage = buildSeoAgentChatMessages([])[0]
-
-    assert.equal(systemMessage?.role, 'system')
-    for (const instruction of [
-      'search_articles',
-      'get_article_detail',
-      'sourceId',
-      '不要先输出说明文字',
-      '只解释能力，不调用 search_articles',
-      '不要为了举例自动执行查询',
-      '关键词查询',
-      '不是 RAG',
-      'Observation',
-      '不要编造文章',
-    ]) {
-      assert.match(systemMessage?.content ?? '', new RegExp(instruction))
-    }
-  })
-})
+// SEO Agent system prompt 的工具选择策略由
+// `src/seo/prompts/seo-agent.prompt.test.ts` 直接覆盖。
 
 type CreateModelStream = (
   messages: ModelInputItem[],

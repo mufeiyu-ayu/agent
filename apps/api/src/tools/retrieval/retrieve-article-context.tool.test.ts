@@ -278,7 +278,7 @@ describe('retrieve_article_context', () => {
       status: 'candidates_returned',
       answerStatus: 'unverified',
       strategy: { name: 'hybrid_rrf', version: '1' },
-      sourceCount: 6,
+      sourceCount: 5,
       chunkEvidenceCount: 4,
       sources: [
         { sourceId: 1, chunkId: 'article-1-chunk-0' },
@@ -293,6 +293,77 @@ describe('retrieve_article_context', () => {
 
     for (const forbidden of ['excerpt', '候选正文', 'cosineDistance', 'slug'])
       assert.equal(serialized.includes(forbidden), false, `不得持久化 ${forbidden}`)
+  })
+
+  it('上游返回超出 limit 的命中时，Tool 边界自己截断到 limit', async () => {
+    const retriever = new FakeRetriever({
+      hits: Array.from({ length: 6 }, (_, index) => createHit({
+        sourceId: index + 1,
+        slug: `article-${index + 1}`,
+        rank: index + 1,
+        excerpt: `第 ${index + 1} 条候选正文`,
+        evidence: {
+          chunkId: `article-${index + 1}-chunk-0`,
+          sectionPath: 'Section',
+          cosineDistance: 0.5,
+        },
+      })),
+    })
+    const { invocationService } = createTools(retriever)
+
+    const result = await invocationService.invoke(
+      createEnvelope({ query: 'SEO', limit: 5 }),
+      createContext(),
+    )
+
+    assert.equal(result.ok, true)
+    if (!result.ok)
+      return
+
+    const data = result.data as RetrieveArticleContextOutput
+
+    assert.equal(data.sources.length, 5)
+    assert.equal(data.sourceCount, 5)
+    assert.deepEqual(data.sources.map(source => source.sourceId), [1, 2, 3, 4, 5])
+    assert.deepEqual(result.stepSummary?.sourceCount, 5)
+    assert.equal((result.stepSummary?.sources as unknown[]).length, 5)
+    assert.equal(result.stepSummary?.chunkEvidenceCount, 5)
+
+    // 第 6 条不得出现在任何一种投影里。
+    for (const projection of [
+      JSON.stringify(data),
+      result.modelContent,
+      JSON.stringify(result.stepSummary),
+    ]) {
+      assert.equal(projection.includes('article-6'), false)
+      assert.equal(projection.includes('第 6 条候选正文'), false)
+    }
+  })
+
+  it('limit=1 时只输出一条来源', async () => {
+    const retriever = new FakeRetriever({
+      hits: Array.from({ length: 4 }, (_, index) => createHit({
+        sourceId: index + 1,
+        rank: index + 1,
+      })),
+    })
+    const { invocationService } = createTools(retriever)
+
+    const result = await invocationService.invoke(
+      createEnvelope({ query: 'SEO', limit: 1 }),
+      createContext(),
+    )
+
+    assert.equal(result.ok, true)
+    if (!result.ok)
+      return
+
+    const data = result.data as RetrieveArticleContextOutput
+
+    assert.equal(data.sources.length, 1)
+    assert.equal(data.sourceCount, 1)
+    assert.equal(data.sources[0]?.sourceId, 1)
+    assert.deepEqual(result.stepSummary?.sourceCount, 1)
   })
 
   it('excerpt 超过 500 字符时在进入模型上下文前被截断', async () => {

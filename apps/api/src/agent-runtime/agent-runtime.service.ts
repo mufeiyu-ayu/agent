@@ -34,6 +34,7 @@ import {
   TOOL_OBSERVATION_HARD_MAX_CHARS,
 } from '../tools/core/tool-observation.js'
 import { ToolRegistryService } from '../tools/core/tool-registry.service.js'
+import { normalizeToolStepSummary } from '../tools/core/tool-step-summary.js'
 import {
   AGENT_STEP_TYPES,
   AgentRunRecorderService,
@@ -443,6 +444,11 @@ export class AgentRuntimeService {
           toolDefinition?.maxObservationChars
           ?? TOOL_OBSERVATION_HARD_MAX_CHARS,
         )
+        // 工具自愿提供的安全摘要；未通过 JSON / 体积 / 深度校验时整项跳过，
+        // 既不写入 AgentStep，也不影响 Tool Result 与本轮 Run 的收口。
+        const toolSummary = toolResult.ok
+          ? normalizeToolStepSummary(toolResult.stepSummary)
+          : undefined
         const toolStepOutput = {
           ok: toolResult.ok,
           ...(toolResult.ok
@@ -451,13 +457,7 @@ export class AgentRuntimeService {
                 code: toolResult.code,
                 retryable: toolResult.retryable,
               }),
-          // 工具自愿提供的安全摘要；只持久化元数据，不含 Observation 正文。
-          ...(toolResult.ok && toolResult.stepSummary
-            ? {
-                toolSummary:
-                  toolResult.stepSummary as unknown as Prisma.InputJsonValue,
-              }
-            : {}),
+          ...(toolSummary ? { toolSummary } : {}),
           originalChars: observation.originalChars,
           observationChars: observation.observationChars,
           truncated: observation.truncated,

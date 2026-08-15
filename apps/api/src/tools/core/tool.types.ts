@@ -74,13 +74,20 @@ export interface ToolExecutionContext {
   executionAttempt: number
 }
 
+export type JsonPrimitive = boolean | null | number | string
+
+export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue }
+
 /**
  * 工具自愿提供的、可安全持久化到 AgentStep 的摘要。
  *
  * 与 `data`（服务端完整结果）和 `modelContent`（模型可见文本）是三种不同投影：
  * 这里只允许放不含正文、excerpt、向量、内部距离和 credential 的元数据。
+ *
+ * 类型上限定为 JSON-compatible；运行时仍由 `normalizeToolStepSummary` 在持久化
+ * 之前 fail closed 校验，不信任任何 Tool 的类型断言。
  */
-export type ToolStepSummary = Record<string, unknown>
+export type ToolStepSummary = Record<string, JsonValue>
 
 export type ToolResult<T = unknown>
   = | {

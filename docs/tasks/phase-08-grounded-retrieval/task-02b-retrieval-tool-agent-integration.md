@@ -117,11 +117,21 @@
 - `ToolResult` 新增可选 `stepSummary`，AgentStep `tool_execution` 记录 `toolSummary`（status / strategy / sourceCount / chunkEvidenceCount / ≤5 个 sourceId·chunkId），不写 excerpt、正文、distance、vector 或 secret；
 - Tool 加入 `AGENT_RUN_TOOL_NAMES`，进入现有 Tool Loop、Observation ceiling 与 Phase 7 Context Planner，不改变 Streaming、Run·Step 终态与旧 Tool 行为。
 
+### Review 修复（PR #57 第一轮）
+
+| Finding | 级别 | 修复 |
+| --- | --- | --- |
+| SEO Agent 缺少 Retrieval Tool 选择策略 | P1 | 重写 `seo/prompts/seo-agent.prompt.ts`，定义三个工具的职责边界、candidate / unverified 语义、excerpt 低信任约束与 capability-only 场景；新增 `seo/prompts/seo-agent.prompt.test.ts` 直接断言真实 prompt |
+| `ToolStepSummary` 无安全持久化边界 | P2 | 新增 `tools/core/tool-step-summary.ts`：JSON-compatible 校验、2,000 字符预算、最大 5 层深度、循环引用与 BigInt / undefined / function / symbol / 非有限数字 fail closed；Runtime 去掉无条件双重 cast，非法 summary 安全忽略 |
+| Tool 输出未强制 `limit` | P2 | Tool Boundary 执行 `hits.slice(0, input.limit)`，`data` / `modelContent` / `stepSummary` 共用同一组最终 sources |
+| trusted-provider policy 未检查 `idempotent` | P2 | `ToolInvocationService` 增加 `!idempotent` fail closed 条件 |
+
 ### 验证结果
 
 | 命令 | 结果 |
 | --- | --- |
-| `pnpm --filter @agent/api test:tools` | 56 pass / 0 fail / 0 skip |
+| `pnpm --filter @agent/api test:seo-service` | 19 pass / 0 fail / 0 skip |
+| `pnpm --filter @agent/api test:tools` | 69 pass / 0 fail / 0 skip |
 | `pnpm --filter @agent/api test:tool-loop` | 54 pass / 0 fail / 0 skip |
 | `pnpm --filter @agent/api test:context` | 24 pass / 0 fail / 0 skip |
 | `pnpm --filter @agent/api test:retrieval` | 35 pass / 0 fail / 0 skip |
@@ -139,8 +149,10 @@ ok=true, status=candidates_returned, answerStatus=unverified, strategy=hybrid_rr
 sourceCount=3, chunkEvidenceCount=3
 observation: originalChars=1772, observationChars=1772, truncated=false
 untrustedMarked=true, unverifiedMarked=true
-elapsedMs=1115
+elapsedMs=986
 ```
+
+Review 修复触及 Tool output 与 Tool policy 执行路径，因此重跑了该 smoke；结果与修复前一致。
 
 未重新执行 full indexing，未新增或重写 migration，未更换默认数据库镜像。
 
