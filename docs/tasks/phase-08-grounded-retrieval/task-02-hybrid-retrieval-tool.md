@@ -1,6 +1,6 @@
 # Phase 8 Task 2A：Vector / Hybrid Retrieval & Evaluation
 
-状态：**Next / Issue #54 Open / 规格已更新 / Gate 待重新执行**。
+状态：**Active / Issue #54 Open / Draft PR #55 / 已实现 / 待验收**。
 
 本 Task 是原“Task 2：Hybrid Retrieval & Agent Tool Integration”拆分后的第一部分，只建立真实 Embedding Provider、Vector / Hybrid Retrieval 与可验证 Evaluation，不接入 Agent Tool。Task 2B 在本 Task Completed 后才能启动。
 
@@ -117,6 +117,8 @@ title: {article title} | text: {section path + normalized chunk text}
 - 通过 `ArticleIndexState.embeddingVersion` 与 `ArticleChunk.embeddingVersion` 显式隔离；
 - 真实 Gemini smoke 通过后，在隔离 pgvector 环境执行一次 full indexing；
 - full indexing 使用 Gemini document formatter，并输出脱敏 summary；
+- 普通入口 `pnpm --filter @agent/api index:articles -- --mode=full` 只读取 `DATABASE_URL`；
+- 隔离验证必须使用 `pnpm --filter @agent/api index:articles:integration -- --mode=full`，该入口只读取 `ARTICLE_INDEX_TEST_DATABASE_URL`；变量缺失时 fail closed，不回退 `DATABASE_URL`，且拒绝与 `DATABASE_URL` 完全相同的 URL；
 - 不做 OpenAI / Gemini 双读、fallback、在线迁移或双 active provider。
 
 ### 6. Vector Retrieval
@@ -232,20 +234,51 @@ RRF constant：60
 | AC-12 | Task 2A 不接 Tool / Agent，外部行为不退化 | `search_articles@1` 兼容；不泄露 embedding | Tool / Loop regression |
 | AC-13 | build、typecheck、lint 与受影响测试通过 | 真实失败不得由文档覆盖 | 真实命令结果 |
 
+## 实现与验证记录（2026-08-15）
+
+- Clarification Gate 基于 Issue #54 最新正文、唯一澄清评论与 `origin/master@eee795bd0eb5d2e9995c8e880f39dfb406a6c555` 完成，结论为 `READY`；实现分支为 `codex/issue-54-gemini-hybrid-retrieval`；
+- 已建立 shared Gemini Embedding boundary、固定 Query / Document formatter、隔离 pgvector integration profile、exact cosine repository、Chunk -> Article 聚合、独立 lexical strategy、RRF 与 quality-v2；未修改 Tool / Agent Runtime 或 legacy `PrismaArticleRetriever`；
+- `gemini-embedding-2` 真实 smoke 成功返回 1 条 1536 维非零向量；脱敏输出仅包含 provider、model、数量、维度、norm、请求 / 重试计数与耗时；
+- Task 1 pgvector DB suite 7/7、Retrieval DB suite 5/5，均为 0 skip；Article Indexing unit 55/55、Retrieval unit 30/30、Tools 40/40、Tool Loop 52/52 通过；legacy `article-retrieval-baseline-v1` 保持可重复；
+- API build、API / workspace typecheck、API lint、Prisma validate 与 `git diff --check` 已按当前 head 重跑通过；
+- AC-05 当前保持 **FAILED**：确定性 corpus 为 68 篇 / 2044 Chunks，Google AI Studio 当前项目的 `gemini-embedding-2` free-tier Embed Content 日配额为 1000；2044 个独立 Chunk 输入超过该上限，full indexing 以 `embedding_rate_limit` 退出，未记录为 PASS，也未切换 fallback（历史诊断，2026-08-15 上午）；
+- AC-09 当前保持 **PARTIAL**：没有可证明来自完整隔离 Gemini active index 的 production quality-v2 vector / hybrid 指标；单元级 evaluator / 指标契约已通过，但不能替代真实质量报告（历史诊断，2026-08-15 上午）；
+- AC-11 当前保持 **PARTIAL**：没有完整正负样本 cosine distance / similarity 分布，threshold 保持未启用（历史诊断，2026-08-15 上午）；
+- 独立 Docker integration profile 使用独立 database、端口与 `postgres-vector-test-data`，DB suites 已在该环境通过；现有开发数据库和 `postgres-data` 未删除、reset、覆盖或挂载；
+- 复核留存 tool-call 日志确认：此前真实执行在同一 shell 将 `DATABASE_URL` 与 `ARTICLE_INDEX_TEST_DATABASE_URL` 都显式指向 `127.0.0.1:5433/agent_ai_seo_integration`；隔离库当前存在 539 个 `google / gemini-embedding-2` Chunks，而开发库没有 `ArticleChunk` 表，因此可证明该次 partial full indexing 连接隔离库；但 PR 旧验证命令仅设置后一个变量，不能复现该行为，命令本身无效，已由显式 `index:articles:integration` 入口替换（历史诊断）。
+
+## 完整配额下补跑记录（2026-08-15 午后）
+
+Gemini 项目配额已足以覆盖 2044 个独立 Embed Content 输入后，通过显式 integration 入口在同一隔离库重跑：
+
+- `smoke:embedding`：`google / gemini-embedding-2 / 1 × 1536`，norm 0.9999998165464739，providerRequests 1、retryCount 0、elapsedMs 955，无 auth / quota / rate_limit / timeout 错误；
+- `index:articles:integration -- --mode=full`：exit code 0；scanned 68、indexed 68、skippedUnchanged 0、skippedEmpty 0、stale 0、failed 0、chunksWritten 2044、providerRequests 68、retryCount 0、aborted false、fatal null、errors []；active profile 为 `google:gemini-embedding-2:1536:search-result-v1`；
+- 隔离库最终只读审计：ArticleIndexState 68/68（全部 Gemini embeddingVersion、当前 chunkerVersion、sourceHash 存在）；declared / actual chunkCount 不一致 0；ArticleChunk 2044 全部 `google / gemini-embedding-2 / 1536 / search-result-v1`，vector_dims 全为 1536，无空 / 零维向量，无 OpenAI 混入，ordinal 无断档；
+- 开发库未污染证据：开发库（`agent_ai_seo`）不存在 `ArticleChunk` / `ArticleIndexState` 表（Task 1 migration 从未在开发库执行），仅 68 篇 `Article`；`postgres-data` volume 未触碰；
+- `eval:retrieval-quality`（production quality-v2）：exit code 0，三策略完整指标见 PR #55；lexical hit@5 0.2 / recall 0.2 / MRR 0.2、vector hit@5 1.0 / recall 1.0 / MRR 1.0、hybrid hit@5 1.0 / recall 1.0 / MRR 1.0；三个 no-answer case 三策略均返回结果（vector / hybrid 各 15 个 false-positive hit），no-answer accuracy 0，作为真实失败模式保留，不修改策略掩盖；
+- 正负样本距离分布（vector / hybrid 一致）：positive 6 条 cosineDistance min 0.1335 / median 0.1556 / max 0.2685（similarity 0.7315 ~ 0.8665）；negative 23 条 cosineDistance min 0.1533 / median 0.3866 / max 0.4885（similarity 0.5115 ~ 0.8467）；区间明显重叠，无稳定可解释分界；
+- Similarity threshold 决定：保持 `null`（方案 A）。正负样本分布重叠（negative min distance 0.153 < positive max distance 0.269），任何单一阈值都会明显损失正样本召回或放行负样本；当前 evidence 不足以支持生产 threshold，threshold = null 是证据驱动的决定，不是遗漏；本轮不提交 threshold 代码。
+
+基于以上真实证据：
+
+- AC-05：由 FAILED（配额）更新为 **PASS**（完整隔离 full indexing exit 0，2044 Chunks 与 deterministic chunking 一致，旧 OpenAI version 不兼容）；
+- AC-09：由 PARTIAL 更新为 **PASS**（production quality-v2 完整跑通，lexical / vector / hybrid 三策略指标齐全，legacy baseline 保持可重复）；
+- AC-11：由 PARTIAL 更新为 **PASS**（完整正负样本分布支撑 threshold 保持 null 的决策）。
+
 ## GitHub 交付状态
 
 - Issue：[#54](https://github.com/mufeiyu-ayu/agent/issues/54) / Open
-- 分支：未创建
-- PR：未创建
-- Clarification Gate：上一轮 `BLOCKED` 已因 Provider 规格变化失效，需基于 Issue 最新正文重新执行
+- 分支：`codex/issue-54-gemini-hybrid-retrieval`
+- PR：[#55](https://github.com/mufeiyu-ayu/agent/pull/55) / Draft
+- Clarification Gate：`READY`（2026-08-15）
 
 ## 任务状态
 
 ```text
-规划状态：Next
-实施状态：未开始
-验收状态：未验收
-Clarification Gate：待重新执行
+规划状态：Active
+实施状态：已实现
+验收状态：待验收
+Clarification Gate：READY（2026-08-15）
 ```
 
-Task 2A 是当前下一项正式 Agent Task。只有 Codex 重新读取最新 Issue / docs 并返回 `READY` 后，才进入 `Active` / 实现。
+Task 2A 当前保持 Active。AC-01 ~ AC-13 已按真实运行证据更新（AC-05 / AC-09 / AC-11 已由完整配额下的隔离 full indexing、production quality-v2 与完整正负样本分布支撑 PASS；no-answer accuracy 0 与正负分布重叠作为真实质量证据保留，不修改策略掩盖）。任务整体仍保持"已实现、待验收"；Task 2A 不能标记 Completed，Task 2B 不得提前启动。

@@ -1,21 +1,21 @@
+import type {
+  EmbeddingProvider,
+  EmbeddingResult,
+} from '../embeddings/embedding-provider.js'
 import type { ArticleSourceSnapshot } from './article-chunking.js'
 import type {
   ArticleIndexRepositoryContract,
   ArticleIndexStatus,
 } from './article-index.repository.js'
-import type {
-  EmbeddingProvider,
-  EmbeddingResult,
-} from './embedding-provider.js'
+import {
+  ACTIVE_EMBEDDING_PROFILE,
+  EmbeddingError,
+} from '../embeddings/embedding-provider.js'
 import {
   ARTICLE_CHUNKER_PROFILE,
   canonicalizeArticleSource,
   chunkCanonicalArticle,
 } from './article-chunking.js'
-import {
-  ACTIVE_EMBEDDING_PROFILE,
-  EmbeddingError,
-} from './embedding-provider.js'
 
 const ARTICLE_READ_BATCH_SIZE = 25
 
@@ -198,8 +198,18 @@ export class ArticleIndexer {
         return
       }
       if (isUnchanged(status, source.sourceHash)) {
-        summary.skippedUnchanged += 1
-        return
+        const freshnessCurrent = status.sourceUpdatedAt.getTime()
+          === status.currentSourceUpdatedAt.getTime()
+        if (
+          freshnessCurrent
+          || await this.repository.refreshIndexSourceUpdatedAt(
+            source,
+            options.signal,
+          )
+        ) {
+          summary.skippedUnchanged += 1
+          return
+        }
       }
     }
 
@@ -343,7 +353,7 @@ export function isArticleIndexSummarySuccessful(
 function isUnchanged(
   status: ArticleIndexStatus | null,
   sourceHash: string,
-): boolean {
+): status is ArticleIndexStatus {
   return status !== null
     && status.sourceHash === sourceHash
     && status.chunkerVersion === ARTICLE_CHUNKER_PROFILE.version
@@ -366,6 +376,7 @@ function validateEmbeddingResult(
     || result.vectors.some(vector => (
       vector.length !== ACTIVE_EMBEDDING_PROFILE.dimensions
       || vector.some(value => !Number.isFinite(value))
+      || !vector.some(value => value !== 0)
     ))
   ) {
     throw new EmbeddingError(

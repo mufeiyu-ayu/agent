@@ -1,3 +1,7 @@
+import type {
+  EmbeddingProvider,
+  EmbeddingResult,
+} from '../embeddings/embedding-provider.js'
 import type { ArticleChunk } from '../generated/prisma/client.js'
 import type { PrismaService } from '../prisma/prisma.service.js'
 import type { ArticleSourceSnapshot } from './article-chunking.js'
@@ -8,15 +12,16 @@ import type {
   ArticleIndexRepositoryContract,
   ArticleIndexStatus,
 } from './article-index.repository.js'
-import type {
-  EmbeddingProvider,
-  EmbeddingResult,
-} from './embedding-provider.js'
 import assert from 'node:assert/strict'
 // 项目使用 Node 原生测试运行器，不引入额外测试框架。
 // eslint-disable-next-line test/no-import-node-test
 import { describe, it } from 'node:test'
 
+import {
+  ACTIVE_EMBEDDING_PROFILE,
+  EmbeddingAbortError,
+  EmbeddingError,
+} from '../embeddings/embedding-provider.js'
 import { canonicalizeArticleSource } from './article-chunking.js'
 import {
   ArticleIndexRepository,
@@ -25,11 +30,6 @@ import {
   ArticleIndexer,
   isArticleIndexSummarySuccessful,
 } from './article-indexer.js'
-import {
-  ACTIVE_EMBEDDING_PROFILE,
-  EmbeddingAbortError,
-  EmbeddingError,
-} from './embedding-provider.js'
 
 describe('ArticleIndexer', () => {
   it('Prisma Unsupported vector 不进入 generated model 读写字段', () => {
@@ -60,6 +60,10 @@ describe('ArticleIndexer', () => {
     assert.equal(second.indexed, 0)
     assert.equal(provider.calls.length, 1)
     assert.equal(repository.replacements.length, 1)
+    assert.equal(
+      repository.statuses.get(repository.sources[0]!.id)?.sourceUpdatedAt.toISOString(),
+      '2026-08-15T00:00:00.000Z',
+    )
 
     const full = await indexer.run(options('full'))
     assert.equal(full.indexed, 1)
@@ -109,6 +113,31 @@ describe('ArticleIndexer', () => {
     assert.equal(result.stale, 1)
     assert.equal(result.indexed, 0)
     assert.equal(provider.calls.length, 2)
+  })
+
+  it('旧批次 snapshot 遇到 canonical no-op 更新会刷新当前 freshness', async () => {
+    const article = source(1, '<p style="color:red">Same content</p>')
+    const repository = new FakeRepository([article])
+    const provider = new FakeEmbeddingProvider()
+    const indexer = new ArticleIndexer(repository, provider)
+    assert.equal((await indexer.run(options('incremental'))).indexed, 1)
+
+    const updatedAt = new Date('2026-08-15T00:00:00.000Z')
+    repository.beforeStatusCheck = () => {
+      repository.sources[0] = source(1, '<div><p>Same content</p></div>', {
+        updatedAt,
+      })
+      repository.beforeStatusCheck = undefined
+    }
+    const result = await indexer.run(options('incremental'))
+
+    assert.equal(result.skippedUnchanged, 1)
+    assert.equal(result.indexed, 0)
+    assert.equal(provider.calls.length, 1)
+    assert.equal(
+      repository.statuses.get(article.id)?.sourceUpdatedAt.getTime(),
+      updatedAt.getTime(),
+    )
   })
 
   it('empty Article 不调用 provider，原子写 0 state 后可安全跳过', async () => {
@@ -209,6 +238,8 @@ describe('ArticleIndexer', () => {
     const repository = new FakeRepository([article])
     const oldStatus: ArticleIndexStatus = {
       sourceHash: 'old',
+      sourceUpdatedAt: new Date('2026-08-13T00:00:00.000Z'),
+      currentSourceUpdatedAt: new Date('2026-08-13T00:00:00.000Z'),
       chunkerVersion: 'old',
       embeddingVersion: 'old',
       declaredChunkCount: 3,
@@ -396,7 +427,34 @@ class FakeRepository implements ArticleIndexRepositoryContract {
     ) {
       return null
     }
-    return this.statuses.get(source.articleId) ?? null
+    const status = this.statuses.get(source.articleId)
+    return status
+      ? {
+          ...status,
+          currentSourceUpdatedAt: current.updatedAt,
+        }
+      : null
+  }
+
+  async refreshIndexSourceUpdatedAt(
+    source: ReturnType<typeof canonicalizeArticleSource>,
+  ): Promise<boolean> {
+    const current = this.sources.find(item => item.id === source.articleId)
+    const status = this.statuses.get(source.articleId)
+    if (
+      !current
+      || !status
+      || canonicalizeArticleSource(current).sourceHash !== source.sourceHash
+      || status.sourceHash !== source.sourceHash
+      || status.chunkerVersion !== 'article-html-cl100k-v1'
+      || status.embeddingVersion !== ACTIVE_EMBEDDING_PROFILE.version
+      || status.declaredChunkCount !== status.actualChunkCount
+    ) {
+      return false
+    }
+
+    status.sourceUpdatedAt = current.updatedAt
+    return true
   }
 
   async replaceArticleIndex(
@@ -421,6 +479,8 @@ class FakeRepository implements ArticleIndexRepositoryContract {
     this.replacements.push(input)
     this.statuses.set(input.source.articleId, {
       sourceHash: input.source.sourceHash,
+      sourceUpdatedAt: input.source.sourceUpdatedAt,
+      currentSourceUpdatedAt: input.source.sourceUpdatedAt,
       chunkerVersion: input.chunks[0]?.chunkerVersion ?? 'article-html-cl100k-v1',
       embeddingVersion: input.embeddingProfile.version,
       declaredChunkCount: input.chunks.length,
@@ -446,7 +506,7 @@ class FakeEmbeddingProvider implements EmbeddingProvider {
       await new Promise<void>(resolve => setImmediate(resolve))
     this.active -= 1
     return {
-      vectors: inputs.map((_, index) => vector(index)),
+      vectors: inputs.map((_, index) => vector(index + 1)),
       providerRequests: 1,
       retryCount: 0,
     }

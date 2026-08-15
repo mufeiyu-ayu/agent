@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto'
 import { load } from 'cheerio'
 import { getEncoding } from 'js-tiktoken'
 import cl100kBase from 'js-tiktoken/ranks/cl100k_base'
+import { formatEmbeddingDocumentInput } from '../embeddings/embedding-formatter.js'
 
 export const ARTICLE_CHUNKER_PROFILE = {
   version: 'article-html-cl100k-v1',
@@ -280,7 +281,7 @@ export function chunkCanonicalArticle(
 
     const ordinal = chunks.length
     const sectionPath = formatSectionPath(currentPath)
-    const embeddingInput = formatEmbeddingInput(
+    const embeddingInput = formatEmbeddingDocumentInput(
       source.title,
       sectionPath,
       currentBody,
@@ -380,16 +381,6 @@ export function chunkCanonicalArticle(
 
 export function countArticleTokens(value: string): number {
   return countTokens(value)
-}
-
-export function formatEmbeddingInput(
-  title: string,
-  sectionPath: string,
-  body: string,
-): string {
-  return sectionPath
-    ? `Article: ${title}\nSection: ${sectionPath}\n\n${body}`
-    : `Article: ${title}\n\n${body}`
 }
 
 function extractStructuralBlocks(content: string): CanonicalStructuralBlock[] {
@@ -1133,7 +1124,7 @@ function fitsTokenLimit(
   body: string,
   tokenLimit: number,
 ): boolean {
-  const input = formatEmbeddingInput(
+  const input = formatEmbeddingDocumentInput(
     source.title,
     formatSectionPath(headingPath),
     body,

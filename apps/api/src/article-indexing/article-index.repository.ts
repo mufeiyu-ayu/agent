@@ -4,9 +4,9 @@ import type {
   CanonicalArticleSource,
   DeterministicArticleChunk,
 } from './article-chunking.js'
-import type { ACTIVE_EMBEDDING_PROFILE } from './embedding-provider.js'
 import { createRequire } from 'node:module'
 
+import { ACTIVE_EMBEDDING_PROFILE } from '../embeddings/embedding-provider.js'
 import { Prisma } from '../generated/prisma/client.js'
 import { DatabaseOperationDeadlineExceededError } from '../prisma/prisma.service.js'
 import {
@@ -60,6 +60,8 @@ const articleSnapshotSelect = {
 
 export interface ArticleIndexStatus {
   sourceHash: string
+  sourceUpdatedAt: Date
+  currentSourceUpdatedAt: Date
   chunkerVersion: string
   embeddingVersion: string
   declaredChunkCount: number
@@ -88,6 +90,10 @@ export interface ArticleIndexRepositoryContract {
     source: CanonicalArticleSource,
     signal: AbortSignal,
   ) => Promise<ArticleIndexStatus | null>
+  refreshIndexSourceUpdatedAt: (
+    source: CanonicalArticleSource,
+    signal: AbortSignal,
+  ) => Promise<boolean>
   replaceArticleIndex: (input: ArticleIndexReplacement) => Promise<'committed' | 'stale'>
 }
 
@@ -287,6 +293,7 @@ export class ArticleIndexRepository implements ArticleIndexRepositoryContract {
             where: { articleId: source.articleId },
             select: {
               sourceHash: true,
+              sourceUpdatedAt: true,
               chunkerVersion: true,
               embeddingVersion: true,
               chunkCount: true,
@@ -302,11 +309,74 @@ export class ArticleIndexRepository implements ArticleIndexRepositoryContract {
 
         return {
           sourceHash: state.sourceHash,
+          sourceUpdatedAt: state.sourceUpdatedAt,
+          currentSourceUpdatedAt: currentSource.sourceUpdatedAt,
           chunkerVersion: state.chunkerVersion,
           embeddingVersion: state.embeddingVersion,
           declaredChunkCount: state.chunkCount,
           actualChunkCount,
         }
+      },
+    )
+  }
+
+  async refreshIndexSourceUpdatedAt(
+    source: CanonicalArticleSource,
+    signal: AbortSignal,
+  ): Promise<boolean> {
+    return await this.prisma.withDeadlineTransaction(
+      createDatabaseDeadline(signal),
+      async (transaction) => {
+        const rows = await transaction.execute(prisma => (
+          prisma.$queryRaw<LockedArticleRow[]>(Prisma.sql`
+            SELECT
+              "id",
+              "sourceId",
+              "title",
+              "languageCode",
+              "content",
+              "updatedAt"
+            FROM "Article"
+            WHERE "id" = ${source.articleId}
+            FOR UPDATE
+          `)
+        ))
+        signal.throwIfAborted()
+        const row = rows[0]
+        if (!row)
+          return false
+
+        const currentSource = canonicalizeArticleSource({
+          id: row.id,
+          sourceId: row.sourceId,
+          title: row.title,
+          languageCode: row.languageCode,
+          content: row.content,
+          updatedAt: row.updatedAt,
+        })
+        if (currentSource.sourceHash !== source.sourceHash)
+          return false
+
+        const result = await transaction.execute(prisma => (
+          prisma.$queryRaw<Array<{ refreshed: boolean }>>(Prisma.sql`
+            UPDATE "ArticleIndexState" AS state
+            SET
+              "sourceUpdatedAt" = ${row.updatedAt},
+              "updatedAt" = CURRENT_TIMESTAMP
+            WHERE state."articleId" = ${source.articleId}
+              AND state."sourceHash" = ${source.sourceHash}
+              AND state."chunkerVersion" = ${ARTICLE_CHUNKER_PROFILE.version}
+              AND state."embeddingVersion" = ${ACTIVE_EMBEDDING_PROFILE.version}
+              AND state."chunkCount" = (
+                SELECT COUNT(*)::integer
+                FROM "ArticleChunk" AS chunk
+                WHERE chunk."articleId" = state."articleId"
+              )
+            RETURNING true AS refreshed
+          `)
+        ))
+        signal.throwIfAborted()
+        return result[0]?.refreshed === true
       },
     )
   }

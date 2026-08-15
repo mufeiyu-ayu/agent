@@ -1,16 +1,11 @@
-import type { CreateEmbeddingResponse } from 'openai/resources/embeddings'
 import type {
   EmbeddingProvider,
   EmbeddingResult,
   EmbeddingRuntimeConfig,
 } from './embedding-provider.js'
-import OpenAI, {
-  APIConnectionError,
-  APIConnectionTimeoutError,
-  APIError,
-  APIUserAbortError,
-} from 'openai'
-
+import process from 'node:process'
+import { ApiError, GoogleGenAI } from '@google/genai'
+import { EnvHttpProxyAgent, setGlobalDispatcher } from 'undici'
 import {
   ACTIVE_EMBEDDING_PROFILE,
   EmbeddingAbortError,
@@ -18,43 +13,60 @@ import {
 } from './embedding-provider.js'
 
 const RETRY_BASE_DELAY_MS = 250
+const RATE_LIMIT_FALLBACK_DELAY_MS = 60_000
+const RATE_LIMIT_MAX_DELAY_MS = 60_000
+const RATE_LIMIT_SAFETY_MARGIN_MS = 1_000
+let environmentProxyConfigured = false
 
-export interface OpenAIEmbeddingClient {
-  embeddings: {
-    create: (
-      body: {
-        input: string[]
-        model: string
-        dimensions: number
-        encoding_format: 'float'
-      },
-      options: { timeout: number, signal: AbortSignal },
-    ) => Promise<CreateEmbeddingResponse>
+interface GeminiEmbeddingRequest {
+  model: string
+  contents: Array<{
+    parts: Array<{ text: string }>
+  }>
+  config: {
+    outputDimensionality: number
+    abortSignal: AbortSignal
+    httpOptions: {
+      timeout: number
+      retryOptions: { attempts: 1 }
+    }
+  }
+}
+
+interface GeminiEmbeddingResponse {
+  embeddings?: Array<{ values?: number[] }>
+}
+
+export interface GeminiEmbeddingClient {
+  models: {
+    embedContent: (
+      request: GeminiEmbeddingRequest,
+    ) => Promise<GeminiEmbeddingResponse>
   }
 }
 
 type RetrySleep = (milliseconds: number, signal: AbortSignal) => Promise<void>
 
-export class OpenAIEmbeddingProvider implements EmbeddingProvider {
+export class GeminiEmbeddingProvider implements EmbeddingProvider {
   readonly profile = ACTIVE_EMBEDDING_PROFILE
-  private readonly client: OpenAIEmbeddingClient
+  private readonly client: GeminiEmbeddingClient
 
   constructor(
     private readonly config: EmbeddingRuntimeConfig,
-    client?: OpenAIEmbeddingClient,
+    client?: GeminiEmbeddingClient,
     private readonly retrySleep: RetrySleep = sleepWithAbort,
   ) {
-    this.client = client ?? createOpenAIEmbeddingClient(config)
+    this.client = client ?? createGeminiEmbeddingClient(config)
   }
 
   async embed(
     inputs: readonly string[],
     options: { signal: AbortSignal },
   ): Promise<EmbeddingResult> {
-    options.signal.throwIfAborted()
-    if (inputs.length === 0) {
+    if (options.signal.aborted)
+      throw new EmbeddingAbortError(0, 0)
+    if (inputs.length === 0)
       return { vectors: [], providerRequests: 0, retryCount: 0 }
-    }
     if (inputs.some(input => typeof input !== 'string' || input.length === 0)) {
       throw new EmbeddingError(
         'embedding input 必须是非空字符串',
@@ -68,6 +80,8 @@ export class OpenAIEmbeddingProvider implements EmbeddingProvider {
     let retryCount = 0
 
     for (let offset = 0; offset < inputs.length; offset += this.config.batchSize) {
+      if (options.signal.aborted)
+        throw new EmbeddingAbortError(providerRequests, retryCount)
       const batch = inputs.slice(offset, offset + this.config.batchSize)
 
       try {
@@ -81,7 +95,6 @@ export class OpenAIEmbeddingProvider implements EmbeddingProvider {
           throw new EmbeddingAbortError(
             providerRequests + cause.providerRequests,
             retryCount + cause.retryCount,
-            { cause },
           )
         }
         if (cause instanceof EmbeddingError) {
@@ -91,7 +104,6 @@ export class OpenAIEmbeddingProvider implements EmbeddingProvider {
             cause.retryable,
             providerRequests + cause.providerRequests,
             retryCount + cause.retryCount,
-            { cause },
           )
         }
         throw cause
@@ -109,26 +121,39 @@ export class OpenAIEmbeddingProvider implements EmbeddingProvider {
     let retryCount = 0
 
     for (let attempt = 0; ; attempt += 1) {
-      signal.throwIfAborted()
+      if (signal.aborted)
+        throw new EmbeddingAbortError(providerRequests, retryCount)
       providerRequests += 1
 
       try {
-        const response = await this.client.embeddings.create({
-          input: inputs,
-          model: this.config.model,
-          dimensions: this.config.dimensions,
-          encoding_format: 'float',
-        }, {
-          timeout: this.config.requestTimeoutMs,
-          signal,
-        })
-        signal.throwIfAborted()
+        const requestAbort = createRequestAbort(signal)
+        let response: GeminiEmbeddingResponse
+        try {
+          response = await this.client.models.embedContent({
+            model: this.config.model,
+            contents: inputs.map(text => ({ parts: [{ text }] })),
+            config: {
+              outputDimensionality: this.config.dimensions,
+              abortSignal: requestAbort.signal,
+              httpOptions: {
+                timeout: this.config.requestTimeoutMs,
+                // The project owns retries and metrics; one SDK attempt prevents
+                // hidden retries from stacking underneath this loop.
+                retryOptions: { attempts: 1 },
+              },
+            },
+          })
+        }
+        finally {
+          requestAbort.cleanup()
+        }
+        if (signal.aborted)
+          throw new EmbeddingAbortError(providerRequests, retryCount)
 
         return {
-          vectors: validateEmbeddingResponse(
+          vectors: validateGeminiEmbeddingResponse(
             response,
             inputs.length,
-            this.config.model,
             this.config.dimensions,
           ),
           providerRequests,
@@ -136,18 +161,18 @@ export class OpenAIEmbeddingProvider implements EmbeddingProvider {
         }
       }
       catch (cause) {
-        if (signal.aborted || cause instanceof APIUserAbortError) {
+        if (cause instanceof EmbeddingAbortError)
+          throw cause
+        if (signal.aborted) {
           throw new EmbeddingAbortError(
             providerRequests,
             retryCount,
-            { cause },
           )
         }
 
         const error = classifyEmbeddingError(cause)
-        if (!error.retryable) {
+        if (!error.retryable)
           throw withMetrics(error, providerRequests, retryCount)
-        }
         if (attempt >= this.config.maxRetries) {
           throw new EmbeddingError(
             `embedding ${error.code} 重试已耗尽`,
@@ -155,14 +180,15 @@ export class OpenAIEmbeddingProvider implements EmbeddingProvider {
             false,
             providerRequests,
             retryCount,
-            { cause: error },
           )
         }
 
         retryCount += 1
         try {
           await this.retrySleep(
-            RETRY_BASE_DELAY_MS * 2 ** attempt,
+            error.code === 'rate_limit'
+              ? error.retryAfterMs
+              : RETRY_BASE_DELAY_MS * 2 ** attempt,
             signal,
           )
         }
@@ -171,7 +197,6 @@ export class OpenAIEmbeddingProvider implements EmbeddingProvider {
             throw new EmbeddingAbortError(
               providerRequests,
               retryCount,
-              { cause },
             )
           }
           throw cause
@@ -181,131 +206,154 @@ export class OpenAIEmbeddingProvider implements EmbeddingProvider {
   }
 }
 
-export function createOpenAIEmbeddingClient(
-  config: EmbeddingRuntimeConfig,
-): OpenAIEmbeddingClient {
-  return new OpenAI({
-    apiKey: config.apiKey,
-    baseURL: config.baseUrl,
-    organization: null,
-    project: null,
-    maxRetries: 0,
-    logLevel: 'off',
-  })
+function createRequestAbort(parent: AbortSignal): {
+  signal: AbortSignal
+  cleanup: () => void
+} {
+  const controller = new AbortController()
+  const abort = (): void => controller.abort(parent.reason)
+
+  if (parent.aborted)
+    abort()
+  else
+    parent.addEventListener('abort', abort, { once: true })
+
+  return {
+    signal: controller.signal,
+    cleanup: () => parent.removeEventListener('abort', abort),
+  }
 }
 
-export function validateEmbeddingResponse(
+export function createGeminiEmbeddingClient(
+  config: EmbeddingRuntimeConfig,
+): GeminiEmbeddingClient {
+  configureEnvironmentProxy()
+  const client = new GoogleGenAI({ apiKey: config.apiKey })
+
+  return {
+    models: {
+      embedContent: async request => await client.models.embedContent(request),
+    },
+  }
+}
+
+function configureEnvironmentProxy(): void {
+  if (
+    environmentProxyConfigured
+    || ![
+      'HTTPS_PROXY',
+      'https_proxy',
+      'HTTP_PROXY',
+      'http_proxy',
+    ].some(name => process.env[name]?.trim())
+  ) {
+    return
+  }
+
+  setGlobalDispatcher(new EnvHttpProxyAgent())
+  environmentProxyConfigured = true
+}
+
+export function validateGeminiEmbeddingResponse(
   response: unknown,
   expectedCount: number,
-  expectedModel: string,
   expectedDimensions: number,
 ): number[][] {
-  const record = response as {
-    data?: unknown
-    model?: unknown
-  }
+  const record = response as { embeddings?: unknown }
 
   if (
     typeof record !== 'object'
     || record === null
-    || record.model !== expectedModel
-    || !Array.isArray(record.data)
-    || record.data.length !== expectedCount
+    || !Array.isArray(record.embeddings)
+    || record.embeddings.length !== expectedCount
   ) {
-    throw protocolError('embedding response 数量或 model 不匹配')
+    throw protocolError('embedding response 数量不匹配')
   }
 
-  return record.data.map((item, position) => {
-    const embedding = item as { index?: unknown, embedding?: unknown }
+  return record.embeddings.map((item) => {
+    const embedding = item as { values?: unknown }
     if (
       typeof embedding !== 'object'
       || embedding === null
-      || embedding.index !== position
-      || !Array.isArray(embedding.embedding)
-      || embedding.embedding.length !== expectedDimensions
-      || embedding.embedding.some(value => (
+      || !Array.isArray(embedding.values)
+      || embedding.values.length !== expectedDimensions
+      || embedding.values.some(value => (
         typeof value !== 'number' || !Number.isFinite(value)
       ))
+      || !embedding.values.some(value => value !== 0)
     ) {
-      throw protocolError('embedding response index、顺序、维度或数值非法')
+      throw protocolError('embedding response 顺序、维度或数值非法')
     }
 
-    return [...embedding.embedding] as number[]
+    return [...embedding.values] as number[]
   })
 }
 
 function classifyEmbeddingError(cause: unknown): EmbeddingError {
   if (cause instanceof EmbeddingError)
     return cause
-  if (cause instanceof APIConnectionTimeoutError) {
+  if (isAbortError(cause)) {
     return new EmbeddingError(
       'embedding request timeout',
       'timeout',
       true,
-      0,
-      0,
-      { cause },
     )
   }
-  if (cause instanceof APIConnectionError) {
+  if (cause instanceof TypeError) {
     return new EmbeddingError(
       'embedding network error',
       'network',
       true,
-      0,
-      0,
-      { cause },
     )
   }
-  if (cause instanceof APIError) {
+  if (cause instanceof ApiError) {
     if (cause.status === 408) {
       return new EmbeddingError(
         'embedding request timeout',
         'timeout',
         true,
-        0,
-        0,
-        { cause },
       )
     }
     if (cause.status === 429) {
+      const dailyQuotaExceeded = /PerDay|per day|requests per day|\bRPD\b/i
+        .test(cause.message)
       return new EmbeddingError(
-        'embedding rate limited',
+        dailyQuotaExceeded
+          ? 'embedding daily quota exhausted'
+          : 'embedding rate limited',
         'rate_limit',
-        true,
+        !dailyQuotaExceeded,
         0,
         0,
-        { cause },
+        readRateLimitRetryDelayMs(cause.message),
       )
     }
-    if (typeof cause.status === 'number' && cause.status >= 500) {
+    if (cause.status >= 500) {
       return new EmbeddingError(
         'embedding server error',
         'server',
         true,
-        0,
-        0,
-        { cause },
       )
     }
-    if (cause.status === 401 || cause.status === 403) {
+    if (
+      cause.status === 401
+      || cause.status === 403
+      || (
+        cause.status === 400
+        && /API_KEY_INVALID|API key not valid/i.test(cause.message)
+      )
+    ) {
       return new EmbeddingError(
         'embedding authentication or permission error',
         'authentication',
         false,
-        0,
-        0,
-        { cause },
       )
     }
-    if (typeof cause.status === 'number' && cause.status >= 400) {
+    if (cause.status >= 400) {
       return new EmbeddingError(
         'embedding request rejected',
         'invalid_request',
         false,
-        0,
-        0,
-        { cause },
       )
     }
   }
@@ -314,9 +362,6 @@ function classifyEmbeddingError(cause: unknown): EmbeddingError {
     'embedding provider error',
     'unknown',
     false,
-    0,
-    0,
-    { cause },
   )
 }
 
@@ -335,7 +380,20 @@ function withMetrics(
     error.retryable,
     providerRequests,
     retryCount,
-    { cause: error },
+    error.retryAfterMs,
+  )
+}
+
+function readRateLimitRetryDelayMs(message: string): number {
+  const match = /(?:retry in |retryDelay\D+)(\d+(?:\.\d+)?)s/i.exec(message)
+  const seconds = Number(match?.[1])
+
+  if (!Number.isFinite(seconds) || seconds <= 0)
+    return RATE_LIMIT_FALLBACK_DELAY_MS
+
+  return Math.min(
+    RATE_LIMIT_MAX_DELAY_MS,
+    Math.ceil(seconds * 1_000) + RATE_LIMIT_SAFETY_MARGIN_MS,
   )
 }
 
@@ -343,18 +401,15 @@ async function sleepWithAbort(
   milliseconds: number,
   signal: AbortSignal,
 ): Promise<void> {
-  signal.throwIfAborted()
+  if (signal.aborted)
+    throw new DOMException('embedding retry aborted', 'AbortError')
+
   await new Promise<void>((resolve, reject) => {
     const timer = setTimeout(finish, milliseconds)
     const abort = (): void => {
       clearTimeout(timer)
       signal.removeEventListener('abort', abort)
-      try {
-        signal.throwIfAborted()
-      }
-      catch (error) {
-        reject(error)
-      }
+      reject(new DOMException('embedding retry aborted', 'AbortError'))
     }
     function finish(): void {
       signal.removeEventListener('abort', abort)

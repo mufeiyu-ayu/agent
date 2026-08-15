@@ -5,6 +5,11 @@ import type {
 import process from 'node:process'
 
 import { pathToFileURL } from 'node:url'
+import {
+  EmbeddingError,
+  resolveEmbeddingRuntimeConfig,
+} from '../embeddings/embedding-provider.js'
+import { GeminiEmbeddingProvider } from '../embeddings/gemini-embedding.provider.js'
 import { PrismaService } from '../prisma/prisma.service.js'
 import {
   ArticleIndexRepository,
@@ -15,15 +20,18 @@ import {
   createArticleIndexSummary,
   isArticleIndexSummarySuccessful,
 } from './article-indexer.js'
-import {
-  EmbeddingError,
-  resolveEmbeddingRuntimeConfig,
-} from './embedding-provider.js'
-import { OpenAIEmbeddingProvider } from './openai-embedding.provider.js'
 
 interface ParsedArticleIndexCliArgs {
   mode: ArticleIndexMode
   sourceId?: number
+  databaseScope: ArticleIndexDatabaseScope
+}
+
+type ArticleIndexDatabaseScope = 'normal' | 'integration'
+
+interface ArticleIndexDatabaseEnvironment {
+  readonly DATABASE_URL?: string
+  readonly ARTICLE_INDEX_TEST_DATABASE_URL?: string
 }
 
 interface ArticleIndexCliRuntime {
@@ -31,14 +39,21 @@ interface ArticleIndexCliRuntime {
   close: () => Promise<void>
 }
 
-type RuntimeFactory = () => Promise<ArticleIndexCliRuntime>
+type RuntimeFactory = (
+  databaseScope: ArticleIndexDatabaseScope,
+) => Promise<ArticleIndexCliRuntime>
 
 export function parseArticleIndexCliArgs(
   args: readonly string[],
 ): ParsedArticleIndexCliArgs {
   let mode: ArticleIndexMode | undefined
   let sourceId: number | undefined
-  const normalizedArgs = args[0] === '--' ? args.slice(1) : args
+  let databaseScope: ArticleIndexDatabaseScope = 'normal'
+  let databaseScopeProvided = false
+  const separatorCount = args.filter(argument => argument === '--').length
+  if (separatorCount > 1)
+    throw cliArgumentError('存在不支持参数')
+  const normalizedArgs = args.filter(argument => argument !== '--')
 
   for (const argument of normalizedArgs) {
     if (argument.startsWith('--mode=')) {
@@ -63,6 +78,17 @@ export function parseArticleIndexCliArgs(
       continue
     }
 
+    if (argument.startsWith('--database-scope=')) {
+      if (databaseScopeProvided)
+        throw cliArgumentError('--database-scope 不得重复')
+      const value = argument.slice('--database-scope='.length)
+      if (value !== 'integration')
+        throw cliArgumentError('--database-scope 只接受 integration')
+      databaseScope = value
+      databaseScopeProvided = true
+      continue
+    }
+
     throw cliArgumentError('存在不支持参数')
   }
 
@@ -72,6 +98,7 @@ export function parseArticleIndexCliArgs(
   return {
     mode,
     ...(sourceId === undefined ? {} : { sourceId }),
+    databaseScope,
   }
 }
 
@@ -82,13 +109,13 @@ export async function executeArticleIndexCli(
 ): Promise<ArticleIndexSummary> {
   // Parsing is deliberately first: invalid arguments cannot acquire a DB
   // connection or construct the provider adapter.
-  const options = parseArticleIndexCliArgs(args)
+  const { databaseScope, ...options } = parseArticleIndexCliArgs(args)
   let summary = createArticleIndexSummary(options)
   let runtime: ArticleIndexCliRuntime | undefined
 
   try {
     signal.throwIfAborted()
-    runtime = await createRuntime()
+    runtime = await createRuntime(databaseScope)
     summary = await runtime.indexer.run({ ...options, signal })
   }
   catch (error) {
@@ -122,13 +149,16 @@ export function serializeArticleIndexSummary(
   return JSON.stringify(summary, null, 2)
 }
 
-async function createProductionRuntime(): Promise<ArticleIndexCliRuntime> {
+async function createProductionRuntime(
+  databaseScope: ArticleIndexDatabaseScope,
+): Promise<ArticleIndexCliRuntime> {
+  const connectionString = resolveArticleIndexDatabaseUrl(
+    databaseScope,
+    process.env,
+  )
   const embeddingConfig = resolveEmbeddingRuntimeConfig(process.env)
-  const connectionString = process.env.DATABASE_URL?.trim()
-  if (!connectionString)
-    throw new ArticleIndexCliConfigurationError('DATABASE_URL 未配置')
 
-  const prisma = new PrismaService()
+  const prisma = new PrismaService(connectionString)
   const pool = createArticleIndexPool(connectionString)
 
   try {
@@ -141,7 +171,7 @@ async function createProductionRuntime(): Promise<ArticleIndexCliRuntime> {
   }
 
   const repository = new ArticleIndexRepository(prisma, pool)
-  const provider = new OpenAIEmbeddingProvider(embeddingConfig)
+  const provider = new GeminiEmbeddingProvider(embeddingConfig)
 
   return {
     indexer: new ArticleIndexer(repository, provider),
@@ -152,6 +182,31 @@ async function createProductionRuntime(): Promise<ArticleIndexCliRuntime> {
       ])
     },
   }
+}
+
+export function resolveArticleIndexDatabaseUrl(
+  databaseScope: ArticleIndexDatabaseScope,
+  env: ArticleIndexDatabaseEnvironment,
+): string {
+  if (databaseScope === 'normal') {
+    const connectionString = env.DATABASE_URL?.trim()
+    if (!connectionString)
+      throw new ArticleIndexCliConfigurationError('DATABASE_URL 未配置')
+    return connectionString
+  }
+
+  const connectionString = env.ARTICLE_INDEX_TEST_DATABASE_URL?.trim()
+  if (!connectionString) {
+    throw new ArticleIndexCliConfigurationError(
+      'ARTICLE_INDEX_TEST_DATABASE_URL 未配置',
+    )
+  }
+  if (connectionString === env.DATABASE_URL?.trim()) {
+    throw new ArticleIndexCliConfigurationError(
+      'ARTICLE_INDEX_TEST_DATABASE_URL 不得与 DATABASE_URL 相同',
+    )
+  }
+  return connectionString
 }
 
 class ArticleIndexCliConfigurationError extends Error {

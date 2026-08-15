@@ -181,7 +181,7 @@ export async function evaluateArticleRetrieval(
   }
 }
 
-function validateRetrievalResult(
+export function validateRetrievalResult(
   result: ArticleRetrievalResult,
   expectedQuery: NormalizedArticleRetrievalQuery,
 ): void {

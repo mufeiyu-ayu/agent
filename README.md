@@ -20,7 +20,7 @@ Phase 6 reliability work binds Run remaining budget to database business stateme
 
 Phase 7 Context Engineering adds a per-Run `ModelContext`, model-aware input budgeting, a locally loaded DeepSeek V4 tokenizer, token-budget-driven Dynamic History Selection, per-sampling Tool Loop Context planning, Observation governance, and a safe Admin Context Inspector. The current User Message remains mandatory and causally bounds previous History by `(createdAt, id)`.
 
-Phase 8 Task 0 establishes a retrieval boundary and deterministic lexical evaluation baseline. Task 1 adds deterministic HTML Chunking, a replaceable Embedding Provider, pgvector-backed active Article indexes, explicit incremental / full indexing commands, stale fencing, advisory locking, and atomic per-Article replacement. Vector retrieval and Agent Tool integration remain planned for Task 2.
+Phase 8 Task 0 establishes a retrieval boundary and deterministic lexical evaluation baseline. Task 1 adds deterministic HTML Chunking, a replaceable Embedding Provider, pgvector-backed active Article indexes, explicit incremental / full indexing commands, stale fencing, advisory locking, and atomic per-Article replacement. Task 2A has implemented the Gemini Embedding migration, exact vector retrieval, Article aggregation, hybrid RRF, and quality-v2 evaluation in Draft PR #55; it remains Active and pending acceptance. Retrieval Tool / Agent integration remains planned for Task 2B.
 
 ## Highlights
 
@@ -37,7 +37,7 @@ Phase 8 Task 0 establishes a retrieval boundary and deterministic lexical evalua
 | Token estimation | Local DeepSeek V4 full-request estimation behind a replaceable `TokenEstimator` boundary |
 | Context Inspector | Per-sampling Budget, Sources, History / Observation adjustments and outcome from durable safe metadata |
 | Retrieval boundary | Replaceable `ArticleRetriever`, deterministic lexical corpus, Recall@K and MRR evaluation |
-| Grounded indexing | Canonical HTML blocks, deterministic Chunk identity, OpenAI Embeddings boundary, pgvector active index and idempotent CLI |
+| Grounded indexing | Canonical HTML blocks, deterministic Chunk identity, Gemini Embedding boundary, pgvector active index and idempotent CLI |
 | Database reliability | Remaining-budget DB boundary, PostgreSQL statement / lock timeout, late-result fencing |
 | Persistence | Conversations, Messages, Agent Runs, ordered Agent Steps, Article Chunks and Article Index State in PostgreSQL |
 | Model integration | OpenAI-compatible Chat Completions + DeepSeek thinking continuation |
@@ -99,12 +99,12 @@ If a completion COMMIT result is genuinely indeterminate, the runtime exposes th
 Article rich HTML
   -> canonical structural block stream
   -> deterministic cl100k chunks (600 / 800 / 80)
-  -> EmbeddingProvider outside DB transaction
+  -> GeminiEmbeddingProvider outside DB transaction
   -> FOR UPDATE + sourceHash fence
   -> atomic Chunk replacement + Index State upsert
 ```
 
-The indexing command is explicit. It is not run during API startup, migrations, Article writes, cron, or queues. A PostgreSQL session advisory lock prevents concurrent indexing commands. Real OpenAI smoke and the real pgvector integration suite remain environment-dependent verification steps and are not represented as completed runtime checks.
+The indexing command is explicit. It is not run during API startup, migrations, Article writes, cron, or queues. A PostgreSQL session advisory lock prevents concurrent indexing commands. Normal indexing reads only `DATABASE_URL`; isolated verification uses the dedicated `index:articles:integration` entry, which reads only `ARTICLE_INDEX_TEST_DATABASE_URL`, fails closed when it is missing, and rejects the same URL as `DATABASE_URL`.
 
 ## Design principles
 
@@ -139,8 +139,8 @@ Requirements:
 - pnpm `10.32.1`
 - PostgreSQL
 - pgvector for Article Embedding Index migration / indexing
-- An OpenAI-compatible Chat Completions endpoint
-- An OpenAI Embeddings API key only when running `index:articles`
+- A DeepSeek or other OpenAI-compatible Chat Completions endpoint
+- A Google AI Studio Gemini API Key when running explicit Embedding smoke, indexing, or real vector retrieval
 
 ```bash
 corepack enable
@@ -168,10 +168,7 @@ pnpm dev
 | `LLM_STREAM_TIMEOUT_MS` | No | `600000` | Streaming model request timeout |
 | `LLM_DEFAULT_MAX_OUTPUT_TOKENS` | No | `65536` | Default output reserve |
 | `LLM_APPLICATION_MAX_OUTPUT_TOKENS` | No | `131072` | Application output hard limit |
-| `EMBEDDING_API_KEY` | For indexing | — | OpenAI Embeddings API key; normal API startup does not require it |
-| `EMBEDDING_BASE_URL` | No | `https://api.openai.com/v1` | Embeddings API base URL |
-| `EMBEDDING_MODEL` | No | `text-embedding-3-small` | Task 1 fixed active model; other values fail closed |
-| `EMBEDDING_DIMENSIONS` | No | `1536` | Task 1 fixed vector dimensions |
+| `GEMINI_API_KEY` | For Embedding runtime | — | Google AI Studio API Key; normal API startup does not require it and Embedding does not fall back to `LLM_*` |
 | `EMBEDDING_BATCH_SIZE` | No | `64` | Embedding batch size; valid range `1-375` |
 | `EMBEDDING_REQUEST_TIMEOUT_MS` | No | `60000` | Per-request Embedding timeout |
 | `EMBEDDING_MAX_RETRIES` | No | `2` | Project-owned retries; valid range `0-2` |
@@ -181,8 +178,10 @@ pnpm dev
 | `AGENT_MAX_TOOL_CALLS` | No | `2` | Maximum Tool Calls per Run; may be `0` and must remain below sampling limit |
 | `AGENT_RUN_DEADLINE_MS` | No | `600000` | Agent Run execution deadline |
 | `DATABASE_URL` | Yes | — | PostgreSQL connection string |
-| `ARTICLE_INDEX_TEST_DATABASE_URL` | DB tests | — | Dedicated pgvector-capable PostgreSQL used by Article indexing integration tests |
+| `ARTICLE_INDEX_TEST_DATABASE_URL` | Integration only | — | Dedicated pgvector PostgreSQL used only by explicit integration entries; required there, never falls back to `DATABASE_URL`, and must differ from it |
 | `PORT` | No | `3000` | API port |
+
+The active Embedding profile is fixed as `google:gemini-embedding-2:1536:search-result-v1`; model and dimensions are not runtime overrides. The `openai` SDK remains only for the DeepSeek / OpenAI-compatible Chat client. It is not an Embedding provider or fallback.
 
 The initial Context policy currently uses an application input cap of `262144` tokens and a fixed safety margin of `16384` tokens. These are typed application policy constants rather than environment variables.
 
@@ -206,7 +205,8 @@ The initial Context policy currently uses an application input cap of `262144` t
 | `pnpm --filter @agent/api test:article-indexing` | Chunking, Embedding Provider, Indexer and CLI unit tests |
 | `pnpm --filter @agent/api test:article-indexing-db` | Real PostgreSQL / pgvector migration, transaction, stale and lock tests |
 | `pnpm --filter @agent/api index:articles -- --mode=incremental` | Build or repair changed Article active indexes |
-| `pnpm --filter @agent/api index:articles -- --mode=full` | Explicitly rebuild all active Article indexes |
+| `pnpm --filter @agent/api index:articles -- --mode=full` | Rebuild all active Article indexes using only `DATABASE_URL` |
+| `pnpm --filter @agent/api index:articles:integration -- --mode=full` | Rebuild in the isolated verification database using only `ARTICLE_INDEX_TEST_DATABASE_URL` |
 
 ## Project status
 
@@ -231,7 +231,8 @@ Available now:
 - typed Provider profiles and runtime configuration;
 - real Admin Run / Step query API and Run Trace UI observability baseline;
 - replaceable Article Retrieval boundary and deterministic lexical evaluation baseline;
-- deterministic Article Chunking, versioned Embedding Provider, pgvector active index and explicit idempotent indexing CLI.
+- deterministic Article Chunking, Gemini Embedding Provider, pgvector active index and explicit idempotent indexing CLI;
+- exact cosine Retrieval, Chunk-to-Article aggregation, hybrid RRF and quality-v2 evaluation implemented in Draft PR #55 and pending acceptance.
 
 Current mainline status:
 
@@ -244,7 +245,9 @@ Current mainline status:
 - Phase 7 Task 3 `Context Inspector & Phase Baseline` is Completed via Issue #46 / PR #47, merge `caf3d25b`.
 - Phase 8 Task 0 `Retrieval Boundary & Offline Evaluation Baseline` is Completed via Issue #48 / PR #49, merge `4c2f7950`.
 - Phase 8 Task 1 `Article Chunking & Embedding Index` is Completed via Issue #50 / PR #52, merge `76d66abf`.
-- Phase 8 remains Active; Task 2-3 are Planned and there is currently no Active Agent Task.
+- Phase 8 remains Active; Task 2A is Active in Draft PR #55 with implementation complete and acceptance pending. It is not Completed.
+- AC-05 isolated full indexing passed on 2026-08-15 with sufficient Gemini quota (68 articles, 2044 chunks, exit 0); AC-09 production quality-v2 metrics are complete for lexical / vector / hybrid; AC-11 positive / negative distance distributions are complete and support keeping the similarity threshold at `null` (distributions overlap; no stable boundary). No-answer accuracy is 0 across the three no-answer cases and is reported as a real failure mode, not masked. Acceptance remains pending.
+- Task 2B and Task 3 remain Planned.
 - Minimal Compaction remains Gated.
 
 See [`docs/roadmap.md`](./docs/roadmap.md), [`docs/tasks/README.md`](./docs/tasks/README.md), the [Phase 8 overview](./docs/tasks/phase-08-grounded-retrieval/README.md), the [Phase 7 archive](./docs/tasks/completed/phase-07-context-engineering.md), and the [Phase 6 archive](./docs/tasks/completed/phase-06-bounded-agent-loop.md).

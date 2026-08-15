@@ -6,8 +6,8 @@
 
 ```text
 阶段 1-7：Completed
-Phase 8：Active / Task 0-1 Completed / Task 2A Next (#54，Gemini 规格已更新、Gate 待重跑) / Task 2B 与 Task 3 Planned
-Active Agent Task：无
+Phase 8：Active / Task 0-1 Completed / Task 2A Active (#54，已实现、待验收) / Task 2B 与 Task 3 Planned
+Active Agent Task：Task 2A
 Minimal Compaction：Gated
 Admin Observability：Task 0-3 Completed
 Admin Enhancement 1：Completed
@@ -48,7 +48,7 @@ Article Source
 | --- | --- | --- | --- |
 | Task 0：Retrieval Boundary & Offline Evaluation Baseline | **Completed** | 解耦 Retrieval 与 Tool，固化 Prisma lexical 行为和 Recall@K / MRR baseline | #48 / #49 / merge `4c2f7950` |
 | Task 1：Article Chunking & Embedding Index | **Completed** | 确定性 Chunk、stable identity、Embedding boundary、pgvector active index 与幂等 CLI | #50 / #52 / merge `76d66abf`；当时 OpenAI profile 未完成真实 smoke |
-| Task 2A：Vector / Hybrid Retrieval & Evaluation | **Next / Gate 待重跑** | OpenAI→Gemini Provider 迁移、真实 pgvector / Gemini smoke、Query Embedding、exact vector search、article aggregation、RRF 与 quality-v2 Evaluation | Issue #54 已实质性更新；重新 Clarification Gate |
+| Task 2A：Vector / Hybrid Retrieval & Evaluation | **Active / 已实现、待验收** | OpenAI→Gemini Provider 迁移、真实 pgvector / Gemini smoke、Query Embedding、exact vector search、article aggregation、RRF 与 quality-v2 Evaluation | Issue #54 Open；Draft PR #55；Gate READY |
 | Task 2B：Retrieval Tool & Agent Integration | **Planned** | 将稳定 Hybrid Retrieval 通过专用 Tool 接入 Agent，并治理 Observation / Context | Task 2A Completed 后再定案并创建 Issue |
 | Task 3：Grounded Answer & Retrieval Inspector | **Planned** | 来源引用、Web 来源展示、安全 Inspector 和端到端证据 | Task 2B Completed 后才能启动；必要时在 Issue 前拆分后端与 UI 范围 |
 
@@ -94,6 +94,7 @@ Query:
 固定工程边界：
 
 - 只读取 `GEMINI_API_KEY`，不回退到 DeepSeek `LLM_*` 或旧 `EMBEDDING_API_KEY`；
+- 普通 `index:articles` 只读取 `DATABASE_URL`；隔离验证必须使用只读取 `ARTICLE_INDEX_TEST_DATABASE_URL` 的显式 `index:articles:integration` 入口，变量缺失或两个 URL 完全相同时 fail closed；
 - Gemini Embedding 2 不使用 `taskType`；
 - Query / Document formatter 与 provider profile 共同版本化；
 - 多个 Chunk 必须各自产生独立向量，不能聚合为一条；
@@ -171,27 +172,14 @@ Phase 7 已在 Admin Observability 基线上增加 Context Inspector。Enhanceme
 
 ## 当前正式动作
 
-当前没有 Active Agent Task。Task 2A Issue #54 已根据用户资源条件与 Google 当前稳定 Embedding 能力完成实质性规格更新，当前为：
+当前 Active Agent Task 为 Task 2A，状态为：
 
 ```text
-Task 2A：Next
+Task 2A：Active / Draft PR #55 / 已实现 / 待验收
 Issue #54：Open
 Active Provider：Gemini
-上一轮 Gate：已失效
-下一步：重新 Clarification Gate
+Clarification Gate：READY（2026-08-15）
+下一步：对 Draft PR #55 进行技术验收
 ```
 
-Codex 下一轮重点核对：
-
-- Gemini profile、`GEMINI_API_KEY` 与普通 API lazy config boundary；
-- Query / Document formatter、batch cardinality 和 embeddingVersion；
-- pgvector-capable PostgreSQL 16 隔离环境与旧 volume 保护；
-- Task 1 真实 DB integration / concurrency 和 Gemini smoke；
-- Gemini full reindex 与旧 OpenAI version 隔离；
-- exact cosine SQL、active index / language / version filter；
-- PostgreSQL query Abort / deadline / connection release；
-- Chunk -> Article 聚合与 evidence identity；
-- Hybrid lexical ranking、RRF 加法与稳定 tie-break；
-- quality-v2 no-answer / false-positive 评估语义。
-
-Gate `READY` 前不得修改正式代码。Task 2B、Task 3、Admin Task 4 与 Minimal Compaction 均不得提前实现。
+shared Gemini Provider、隔离 pgvector、exact cosine Retrieval、article aggregation、独立 lexical strategy、RRF 与 quality-v2 已实现；真实 smoke 和 DB suites 已通过。2026-08-15 午后 Gemini 项目配额足够后，经显式 integration 入口完成隔离 full indexing（exit 0、68/68、2044 Chunks、failed 0、fatal null）与 production quality-v2（lexical / vector / hybrid 三策略指标齐全），正负样本距离分布完整且重叠，threshold 保持 null；AC-05 / AC-09 / AC-11 按真实证据更新为 PASS，任务保持已实现、待验收。此前 partial full indexing 因 free-tier 日配额（1000 < 2044 inputs）阻塞，留存 tool-call 日志与隔离库历史 539 个 Gemini Chunks 可证明连接隔离库；PR 旧验证命令已改为显式 integration 入口。Task 2B、Task 3、Admin Task 4 与 Minimal Compaction 均不得提前实现。
