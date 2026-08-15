@@ -35,11 +35,15 @@ export class ToolInvocationService {
       }
     }
 
+    // 服务端固定的可信 Provider 网络访问是允许的；模型可影响目标的任意外网访问继续 fail closed。
     if (
       tool.definition.requiresApproval
       || tool.definition.risk.level !== 'low'
       || tool.definition.risk.sideEffect !== 'none'
-      || tool.definition.risk.network
+      || (
+        tool.definition.risk.network !== 'none'
+        && tool.definition.risk.network !== 'trusted_provider'
+      )
     ) {
       return {
         ok: false,

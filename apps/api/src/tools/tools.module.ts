@@ -1,6 +1,7 @@
 import { Inject, Module } from '@nestjs/common'
 
 import { PrismaModule } from '../prisma/prisma.module.js'
+import { HybridArticleRetrievalRuntime } from '../retrieval/hybrid-article-retrieval.runtime.js'
 import { PrismaArticleRetriever } from '../retrieval/prisma-article-retriever.js'
 import {
   getArticleDetailDefinition,
@@ -12,6 +13,10 @@ import {
 } from './articles/search-articles.tool.js'
 import { ToolInvocationService } from './core/tool-invocation.service.js'
 import { ToolRegistryService } from './core/tool-registry.service.js'
+import {
+  retrieveArticleContextDefinition,
+  RetrieveArticleContextTool,
+} from './retrieval/retrieve-article-context.tool.js'
 
 @Module({
   imports: [PrismaModule],
@@ -19,8 +24,10 @@ import { ToolRegistryService } from './core/tool-registry.service.js'
     ToolRegistryService,
     ToolInvocationService,
     PrismaArticleRetriever,
+    HybridArticleRetrievalRuntime,
     SearchArticlesTool,
     GetArticleDetailTool,
+    RetrieveArticleContextTool,
   ],
   exports: [ToolRegistryService, ToolInvocationService],
 })
@@ -34,6 +41,9 @@ export class ToolsModule {
 
     @Inject(GetArticleDetailTool)
     getArticleDetailTool: GetArticleDetailTool,
+
+    @Inject(RetrieveArticleContextTool)
+    retrieveArticleContextTool: RetrieveArticleContextTool,
   ) {
     registry.register({
       definition: searchArticlesDefinition,
@@ -42,6 +52,10 @@ export class ToolsModule {
     registry.register({
       definition: getArticleDetailDefinition,
       executor: getArticleDetailTool,
+    })
+    registry.register({
+      definition: retrieveArticleContextDefinition,
+      executor: retrieveArticleContextTool,
     })
   }
 }

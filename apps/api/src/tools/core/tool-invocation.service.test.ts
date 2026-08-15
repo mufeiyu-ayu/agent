@@ -179,14 +179,14 @@ describe('ToolInvocationService', () => {
     const approvalTool = createEchoTool('approval_tool', execute)
     const mediumRiskTool = createEchoTool('medium_risk_tool', execute)
     const writeTool = createEchoTool('write_tool', execute)
-    const networkTool = createEchoTool('network_tool', execute)
+    const arbitraryNetworkTool = createEchoTool('arbitrary_network_tool', execute)
     approvalTool.definition.requiresApproval = true
     mediumRiskTool.definition.risk.level = 'medium'
     writeTool.definition.risk.sideEffect = 'external_write'
-    networkTool.definition.risk.network = true
+    arbitraryNetworkTool.definition.risk.network = 'arbitrary'
 
     const registry = new ToolRegistryService()
-    const tools = [approvalTool, mediumRiskTool, writeTool, networkTool]
+    const tools = [approvalTool, mediumRiskTool, writeTool, arbitraryNetworkTool]
 
     for (const tool of tools)
       registry.register(tool)
@@ -204,6 +204,26 @@ describe('ToolInvocationService', () => {
     }
 
     assert.equal(executionCount, 0)
+  })
+
+  it('允许服务端固定 trusted-provider 的低风险只读工具执行', async () => {
+    let executionCount = 0
+    const trustedProviderTool = createEchoTool('trusted_provider_tool', async () => {
+      executionCount += 1
+      return { ok: true, data: { echoed: 'ok' }, modelContent: 'ok' }
+    })
+    trustedProviderTool.definition.risk.network = 'trusted_provider'
+
+    const registry = new ToolRegistryService()
+    registry.register(trustedProviderTool)
+
+    const result = await new ToolInvocationService(registry).invoke(
+      createEnvelope('trusted_provider_tool'),
+      createContext(),
+    )
+
+    assert.equal(result.ok, true)
+    assert.equal(executionCount, 1)
   })
 
   it('已触发的 AbortSignal 优先于工具查找和参数验证，且不执行工具', async () => {
@@ -445,7 +465,7 @@ function createEchoTool(
       maxObservationChars: 8_000,
       requiresApproval: false,
       idempotent: true,
-      risk: { level: 'low', sideEffect: 'none', network: false },
+      risk: { level: 'low', sideEffect: 'none', network: 'none' },
     },
     executor: { execute },
   }

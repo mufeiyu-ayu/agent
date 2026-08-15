@@ -49,7 +49,7 @@ export const getArticleDetailDefinition: ToolDefinition<GetArticleDetailInput> =
   maxObservationChars: 64_000,
   requiresApproval: false,
   idempotent: true,
-  risk: { level: 'low', sideEffect: 'none', network: false },
+  risk: { level: 'low', sideEffect: 'none', network: 'none' },
 }
 
 @Injectable()

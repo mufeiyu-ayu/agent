@@ -39,7 +39,7 @@ describe('search_articles', () => {
     assert.deepEqual(definition.risk, {
       level: 'low',
       sideEffect: 'none',
-      network: false,
+      network: 'none',
     })
     assert.equal(definition.requiresApproval, false)
     assert.equal(definition.idempotent, true)

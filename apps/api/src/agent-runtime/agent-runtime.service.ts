@@ -60,6 +60,7 @@ import {
 const AGENT_RUN_TOOL_NAMES = [
   'search_articles',
   'get_article_detail',
+  'retrieve_article_context',
 ] as const
 
 const TERMINALIZATION_DEADLINE_MS = 5_000
@@ -450,6 +451,13 @@ export class AgentRuntimeService {
                 code: toolResult.code,
                 retryable: toolResult.retryable,
               }),
+          // 工具自愿提供的安全摘要；只持久化元数据，不含 Observation 正文。
+          ...(toolResult.ok && toolResult.stepSummary
+            ? {
+                toolSummary:
+                  toolResult.stepSummary as unknown as Prisma.InputJsonValue,
+              }
+            : {}),
           originalChars: observation.originalChars,
           observationChars: observation.observationChars,
           truncated: observation.truncated,
