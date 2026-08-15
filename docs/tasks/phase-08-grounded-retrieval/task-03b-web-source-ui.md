@@ -1,0 +1,126 @@
+# Phase 8 Task 3B：Web Chat Source UI
+
+状态：**Planned / 依赖 Task 3A**。
+
+## 1. 目标
+
+在不解析模型任意 Markdown 引用的前提下，让 Web Chat 消费 Task 3A 的 durable `MessageGroundingV1`，展示可靠、可访问、可重载的来源状态。
+
+本 Task 不修改 Agent finalization、Retrieval ranking、数据库 Grounding schema 或 Admin Inspector contract。
+
+## 2. 启动条件
+
+Task 3B 只有在以下条件满足后才能创建 Issue：
+
+- Task 3A 已完成 GPT 技术验收与用户确认；
+- `ConversationMessage.grounding` 与 `done.grounding` 已稳定；
+- Grounding version、outcome、Citation 字段与 malformed fallback 已定案；
+- 真实 API 能返回 answered / insufficient / conflicting / legacy fixture。
+
+## 3. 已确认交互决策
+
+| ID | 决策 | 说明 |
+| --- | --- | --- |
+| D-01 | 来源由结构化 Grounding 渲染 | 不扫描 Markdown `[1]` |
+| D-02 | 来源只在 completed answer 后出现 | 校验前不显示候选 |
+| D-03 | 来源编号由 UI 按 contract 顺序生成 | 模型不控制编号 |
+| D-04 | legacy / 普通回答保持当前 Message UI | 无 Grounding 不显示空壳 |
+| D-05 | URL 由服务端安全投影提供 | 不把模型文本拼成 href |
+| D-06 | answered / insufficient / conflicting 使用不同语义状态 | 不把“有候选”渲染成“已验证答案” |
+| D-07 | malformed Grounding 非致命 fail closed | 回答正文仍可显示，来源区域显示不可用状态或隐藏 |
+| D-08 | aborted / error 不展示 completed Grounding | 避免半完成来源 |
+
+## 4. 推荐 UI 结构
+
+```text
+Assistant Reply
+  ├─ Markdown answer
+  ├─ Grounding status badge / note
+  └─ Sources disclosure
+       ├─ Source 1 card
+       ├─ Source 2 card
+       └─ ...
+```
+
+每个来源卡片最多展示：
+
+- UI 编号；
+- title；
+- language；
+- sectionPath；
+- nullable bounded excerpt；
+- nullable server-derived href；
+- allowlisted internal source link；
+- source-level / chunk-level granularity。
+
+不展示：
+
+- sourceId / chunkId 作为普通用户主视觉；
+- retrieval score / cosine distance；
+- raw Prompt、reasoning、embedding、完整正文；
+- Provider / SQL / credential 信息。
+
+## 5. 状态行为
+
+| 状态 | Web 行为 |
+| --- | --- |
+| streaming | 只显示正文生成状态，不显示来源候选 |
+| answered | 显示“来源 N”与来源卡片；excerpt 缺失时卡片仍可读 |
+| insufficient + availability `none` | 显示“没有找到可用资料，无法确认” |
+| insufficient + availability `unavailable` | 显示“检索能力暂不可用”，不得伪装无答案 |
+| availability `partial` | 显示“部分证据链不可用”，只展示已验证来源 |
+| insufficient + availability `available` | 显示“现有资料不足以支撑结论”；有 citation 时标为“检查过的资料” |
+| conflicting_evidence | 显示冲突提示，并列出至少两个来源 |
+| legacy / no grounding | 当前 UI 不变 |
+| malformed / partial | 正文保留；来源 fail closed，不展示原始 JSON |
+| error | 使用现有错误状态，无 completed 来源 |
+| aborted | 包括 validated delta 重放期间中断；显示现有 partial content，但无 completed 来源 |
+
+## 6. 实现范围
+
+- 扩展 Web message state 保存 optional Grounding；
+- `done` 事件将 Grounding 合并到当前 assistant Message；
+- 历史消息加载后重建同一来源 UI；
+- 新增 typed Source List / Source Card；
+- 保持 Markdown renderer `html: false` 与 link safety；
+- 来源链接使用服务端提供的安全路径；
+- copy action 默认只复制回答正文，不把内部 source metadata 混入剪贴板；
+- i18n 文案同时覆盖 outcome 与 `available / partial / none / unavailable`；
+- keyboard、focus、screen reader label 与响应式布局；
+- 真实 Chromium 覆盖桌面和窄屏关键路径。
+
+## 7. 验收标准
+
+| ID | 可观察行为 | 验证方式 |
+| --- | --- | --- |
+| AC-01 | answered 完成后展示与 Grounding 顺序一致的来源卡片，支持 source-level 无 excerpt | Component + Browser |
+| AC-02 | streaming 期间不提前显示候选来源 | Browser |
+| AC-03 | 页面重载后来源与实时 done 一致 | API fixture + Browser |
+| AC-04 | legacy / 普通回答 UI 不退化 | Regression |
+| AC-05 | none、unavailable、partial、insufficient 与 conflict 使用明确不同文案和视觉状态 | Component + Browser |
+| AC-06 | aborted / error 不保留 completed Grounding | State tests |
+| AC-07 | malformed Grounding fail closed，正文仍可读 | Negative tests |
+| AC-08 | 不解析任意 `[1]` 或模型 URL | Unit tests |
+| AC-09 | source link 只能使用安全投影，危险协议不可点击 | Security tests |
+| AC-10 | 键盘、可访问名称、焦点与 disclosure 行为可验证 | Browser / accessibility |
+| AC-11 | 桌面和窄屏来源卡片可阅读、无布局溢出 | Chromium screenshots |
+| AC-12 | 现有 Chat scroll、copy、Markdown 和 conversation cache 不退化 | Existing suites + Browser |
+
+## 8. 明确不做
+
+- 修改 Task 3A backend contract；
+- claim-level inline marker；
+- Retrieval Inspector；
+- Admin Auth / RBAC；
+- 直接访问 Tool Result 或 AgentStep raw JSON；
+- 外部 URL 自动抓取或预览；
+- citation feedback / voting / analytics。
+
+## 9. GitHub 交付状态
+
+- Issue：未创建
+- 分支：未创建
+- PR：未创建
+- Clarification Gate：未执行
+- 实施状态：未开始
+- 验收状态：未验收

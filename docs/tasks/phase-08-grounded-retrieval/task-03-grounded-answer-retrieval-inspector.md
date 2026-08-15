@@ -1,74 +1,84 @@
-# Phase 8 Task 3：Grounded Answer 与 Retrieval Inspector
+# Phase 8 Task 3：Grounded Answer / Citation / Inspector 编排
 
-状态：**Next / 未启动**。
+> 本文件是 Task 3 的子任务编排入口，不再作为单一可执行 Task。正式执行状态以 Task 3A / 3B / 3C 文档、Issue、PR 和 GitHub 实时事实为准。
 
-Task 2B 已通过 Issue #56 / PR #57 完成 Retrieval Tool 与 Agent Runtime 集成，Task 3 现在是 Phase 8 的下一项正式任务。当前尚未创建 Issue，也未执行 Clarification Gate，不得直接实现。
+## 当前状态
 
-## 目标
+```text
+Task 3 研究与拆分：已定案
+Task 3A：Next / 未启动
+Task 3B：Planned / 依赖 3A
+Task 3C：Planned / 依赖 3A
+Active Agent Task：无
+```
 
-建立回答来源引用和 Retrieval 可观察闭环，让 Web Chat 展示来源，让 Admin 展示安全的检索决策元数据。
+## 为什么拆分
 
-## 已满足前置条件
+原 Task 3 同时包含：
 
-- Task 0：Retrieval Boundary 与离线 Evaluation 已 Completed；
-- Task 1：Article Chunking、Gemini Embedding 与 pgvector active index 已 Completed；
-- Task 2A：Vector / Hybrid Retrieval 与 quality-v2 Evaluation 已 Completed；
-- Task 2B：`retrieve_article_context@1`、受控 Observation 与 Agent Runtime 集成已 Completed；
-- Retrieval Result 已具备稳定 `sourceId / chunkId / sectionPath` identity；
-- Phase 7 已提供安全 Context Inspector 基线。
+- Agent Runtime finalization；
+- Citation 公共 contract；
+- 数据库持久化；
+- NDJSON / Messages API 兼容；
+- Web 来源卡片；
+- Admin Retrieval Inspector；
+- 自动测试和真实浏览器验收。
 
-## 计划范围
+这些内容跨越后端事实层、Web 产品层和 Admin 审计层。为了满足“一 Issue 一个明确 Task”，正式实现拆为：
 
-- 定义结构化来源引用 contract；
-- 将回答引用绑定到本次 Retrieval 的真实 source / chunk；
-- 明确证据不足、无结果、冲突来源和 partial 状态下的回答行为；
-- 在 Web Chat 展示来源卡片；
-- 在 Admin Run Detail 展示 strategy、version、候选数、选入数和 outcome；
-- 建立 API、Read Model、前端交互、自动测试与真实浏览器验收证据；
-- 保持 Context Budget、Tool pairing、Streaming 和 Run terminalization 不退化。
+| Task | 状态 | 目标 | 文档 |
+| --- | --- | --- | --- |
+| Task 3A：Grounded Answer & Citation Backend Contract | **Next** | 终态结构化输出、Run-scoped evidence、服务端校验、durable Grounding、API / Streaming | [Task 3A](./task-03a-grounded-answer-citation-contract.md) |
+| Task 3B：Web Source UI | Planned | Web Chat 来源卡片、状态、兼容和真实浏览器验收 | [Task 3B](./task-03b-web-source-ui.md) |
+| Task 3C：Admin Retrieval Inspector | Planned | typed safe Read Model、Retrieval / Citation 审计和真实浏览器验收 | [Task 3C](./task-03c-admin-retrieval-inspector.md) |
 
-## Issue 创建前必须定案
+研究依据见：
 
-1. Task 3 是否拆分为后端 Grounded Answer / Citation 与 Web / Admin UI 两个独立 Task；
-2. 外部 Citation contract 与旧客户端兼容方式；
-3. 模型回答中的 citation marker 与服务端 source / chunk 绑定方式；
-4. 可展示的 source / chunk 字段及安全脱敏边界；
-5. 证据不足、无结果、冲突候选和 false-positive nearest candidates 的回答策略；
-6. durable metadata 的存储位置、版本和安全投影；
-7. Web 来源卡片的交互、loading、legacy、error 与 partial 状态；
-8. Admin Retrieval Inspector 的页面结构和真实浏览器验收范围。
+- [`docs/research/phase-08-grounded-answer-citation-design.md`](../../research/phase-08-grounded-answer-citation-design.md)
 
-## 不做什么
+## 共享不变量
 
-- 不展示完整 Prompt、reasoning、raw Embedding 或完整正文；
-- 不把模型自行生成的不存在来源当作 Citation；
-- 不做文件上传、PDF / Office 解析或通用知识库；
-- 不做多租户 ACL、外部连接器、Memory、MCP 或 Multi-agent；
-- 不做复杂 Agentic Retrieval、Query Rewrite 或 rerank，除非后续证据证明属于独立任务；
-- 不自动启动 Admin Auth / RBAC Task 4。
+1. Retrieval candidate 不等于 answer found；
+2. Citation identity 必须属于本次 Run 的真实 Retrieval evidence；
+3. 不把模型生成的 `[1]`、URL、sourceId 或 chunkId 直接当作已验证 Citation；
+4. Citation integrity 与 semantic faithfulness 分开表达；
+5. v1 不宣称逐断言事实核验完成；
+6. Tool Observation 继续是 untrusted model-visible data；
+7. Message Grounding 是用户可见 / 可审计的 durable fact，不自动进入未来 model-visible history；
+8. 不暴露 raw Prompt、reasoning、embedding、distance、SQL、Provider payload、完整正文或 secret；
+9. 保持 Context Budget、Tool pairing、Streaming、Abort、deadline 和 Run terminalization 不退化；
+10. Task 3B / 3C 不得在 Task 3A contract 稳定前自行发明另一套 Citation schema。
 
-## 预期验收方向
+## 依赖关系
 
-- 最终回答引用可映射到本次 Retrieval 的真实 source / chunk；
-- 不存在模型凭空生成 Citation 的成功路径；
-- 无结果、来源不足、冲突候选和兼容状态行为明确；
-- Web 与 Admin 的 loading、error、legacy 和 partial 状态可验证；
-- Context Budget、Tool pairing、Streaming 和 Run terminalization 不退化；
-- 自动测试、真实 API 数据和真实浏览器证据共同证明端到端闭环。
+```text
+Task 2B Completed
+  -> Task 3A Next
+       -> Task 3B Planned
+       -> Task 3C Planned
+  -> Phase 8 closeout
+```
 
-## GitHub 交付状态
+3B 与 3C 在 3A 完成后可以分别启动，但仍需独立 Issue 和 Clarification Gate。
 
-- Issue：未创建
+## Phase 8 Task 3 完成条件
+
+只有以下条件全部完成，Task 3 才能在阶段层面视为完成：
+
+1. Task 3A 完成 GPT 技术验收与用户确认；
+2. Task 3B 完成 GPT 技术验收与用户确认；
+3. Task 3C 完成 GPT 技术验收与用户确认；
+4. answer、Grounding、Stream、Messages API、Web 和 Admin 使用同一版本化 contract；
+5. zero-hit、weak evidence、conflict、invalid citation、legacy、error、aborted 路径均有证据；
+6. Phase 8 完成条件和阶段文档完成最终归档。
+
+## 当前 GitHub 状态
+
+- Task 3A Issue：未创建
+- Task 3B Issue：未创建
+- Task 3C Issue：未创建
 - 分支：未创建
 - PR：未创建
 - Clarification Gate：未执行
 
-## 任务状态
-
-```text
-规划状态：Next
-实施状态：未开始
-验收状态：未验收
-```
-
-下一步只允许讨论和定案 Task 3 的拆分方式、Citation contract、证据不足行为及 Web / Admin 验收边界；正式 Issue 与 Gate `READY` 前不得实现。
+当前只允许创建并启动 Task 3A；不得把 3B、3C 顺手塞入同一个 Issue。
