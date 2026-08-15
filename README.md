@@ -246,7 +246,7 @@ Current mainline status:
 - Phase 8 Task 0 `Retrieval Boundary & Offline Evaluation Baseline` is Completed via Issue #48 / PR #49, merge `4c2f7950`.
 - Phase 8 Task 1 `Article Chunking & Embedding Index` is Completed via Issue #50 / PR #52, merge `76d66abf`.
 - Phase 8 remains Active; Task 2A is Active in Draft PR #55 with implementation complete and acceptance pending. It is not Completed.
-- AC-05 real isolated full indexing remains FAILED; AC-09 production quality-v2 metrics and AC-11 positive / negative distance distributions remain PARTIAL pending sufficient Gemini quota and a new isolated run.
+- AC-05 isolated full indexing passed on 2026-08-15 with sufficient Gemini quota (68 articles, 2044 chunks, exit 0); AC-09 production quality-v2 metrics are complete for lexical / vector / hybrid; AC-11 positive / negative distance distributions are complete and support keeping the similarity threshold at `null` (distributions overlap; no stable boundary). No-answer accuracy is 0 across the three no-answer cases and is reported as a real failure mode, not masked. Acceptance remains pending.
 - Task 2B and Task 3 remain Planned.
 - Minimal Compaction remains Gated.
 

@@ -17,7 +17,7 @@ Admin Enhancement 1：Completed
 | 区域 | 状态 | 文档 | 说明 |
 | --- | --- | --- | --- |
 | Agent 主线 | **Phase 8 Active / Task 2A Active** | [roadmap.md](../roadmap.md) | Task 0-1 Completed；Task 2A Draft #55 已实现、待验收；Task 2B / Task 3 Planned |
-| Phase 8：Grounded Retrieval / RAG Baseline | **Active** | [Phase 8 总览](./phase-08-grounded-retrieval/README.md) | Task 2A 已完成 Gemini Retrieval 实现；AC-05 FAILED，AC-09 / AC-11 PARTIAL |
+| Phase 8：Grounded Retrieval / RAG Baseline | **Active** | [Phase 8 总览](./phase-08-grounded-retrieval/README.md) | Task 2A 已完成 Gemini Retrieval 实现并补跑完整配额证据：full indexing 2044 Chunks 成功、quality-v2 三策略指标齐全、threshold 保持 null；保持已实现、待验收 |
 | Phase 7：Context Engineering | **Completed** | [completed/phase-07-context-engineering.md](./completed/phase-07-context-engineering.md) | Task 0-3 Completed；merge `caf3d25b`；Minimal Compaction 继续 Gated |
 | Phase 6：有界单 Agent Loop | **Completed** | [completed/phase-06-bounded-agent-loop.md](./completed/phase-06-bounded-agent-loop.md) | 有界顺序 Loop、配置治理、数据库可靠性与终态收口均已完成 |
 | Admin Console Task 0-3 | **Completed** | [admin-console.md](./admin-console.md) | 真实 Run / Step API、Run Trace、Typed / Generic / Context Inspector 已建立 |

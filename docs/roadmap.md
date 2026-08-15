@@ -182,4 +182,4 @@ Clarification Gate：READY（2026-08-15）
 下一步：对 Draft PR #55 进行技术验收
 ```
 
-shared Gemini Provider、隔离 pgvector、exact cosine Retrieval、article aggregation、独立 lexical strategy、RRF 与 quality-v2 已实现；真实 smoke 和 DB suites 已通过。确定性 corpus 为 2044 Chunks，当前 Gemini free-tier Embed Content 日配额为 1000；AC-05 保持 FAILED，AC-09 / AC-11 保持 PARTIAL。留存 tool-call 日志与隔离库中的 539 个 Gemini Chunks 可证明此前 partial full indexing 连接隔离库；但 PR 旧验证命令本身不能复现该行为，已改为显式 integration 入口。需要足够合法配额后重新执行。Task 2B、Task 3、Admin Task 4 与 Minimal Compaction 均不得提前实现。
+shared Gemini Provider、隔离 pgvector、exact cosine Retrieval、article aggregation、独立 lexical strategy、RRF 与 quality-v2 已实现；真实 smoke 和 DB suites 已通过。2026-08-15 午后 Gemini 项目配额足够后，经显式 integration 入口完成隔离 full indexing（exit 0、68/68、2044 Chunks、failed 0、fatal null）与 production quality-v2（lexical / vector / hybrid 三策略指标齐全），正负样本距离分布完整且重叠，threshold 保持 null；AC-05 / AC-09 / AC-11 按真实证据更新为 PASS，任务保持已实现、待验收。此前 partial full indexing 因 free-tier 日配额（1000 < 2044 inputs）阻塞，留存 tool-call 日志与隔离库历史 539 个 Gemini Chunks 可证明连接隔离库；PR 旧验证命令已改为显式 integration 入口。Task 2B、Task 3、Admin Task 4 与 Minimal Compaction 均不得提前实现。
