@@ -88,7 +88,7 @@ function createEchoTool(
       maxObservationChars: 8_000,
       requiresApproval: false,
       idempotent: true,
-      risk: { level: 'low', sideEffect: 'none', network: false },
+      risk: { level: 'low', sideEffect: 'none', network: 'none' },
     },
     executor: { execute },
   }

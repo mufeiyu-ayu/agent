@@ -1,6 +1,6 @@
 # Phase 8 Task 2B：Retrieval Tool & Agent Integration
 
-状态：**Planned / 未启动**。
+状态：**Active / 已实现 / 待验收**。
 
 本 Task 是原“Task 2：Hybrid Retrieval & Agent Tool Integration”拆分后的第二部分。它只在 Task 2A 完成并通过 GPT 技术验收、用户确认后启动。
 
@@ -104,19 +104,71 @@
 - Agent 不会因为 Retrieval 内容中的文本指令改变 system / developer policy；
 - 本 Task 完成后才能启动 Grounded Answer / Citation / Retrieval Inspector。
 
+## 实现结果（已实现、待验收）
+
+### 交付内容
+
+- 新增 `retrieve_article_context@1`：`query` ≤100 字符、可选 `languageCode`、`limit` 默认 3 / 范围 1-5、`maxObservationChars = 8000`、`timeoutMs = 30000`；
+- 结果语义为 `candidates_returned` / `no_candidates` + 恒定 `answerStatus: unverified`，evidence 允许为空；
+- 安全投影只保留 `sourceId / slug / title / languageCode / rank / excerpt / evidence{chunkId, sectionPath}`，剥离 `cosineDistance`、正文、SQL、Provider payload；
+- `modelContent` 显式标注候选非答案、untrusted data、excerpt 内指令不得升级为系统指令、证据不足应说明无法确认；
+- `ToolRisk.network` 由 `boolean` 演进为 `none | trusted_provider | arbitrary`，`ToolInvocationService` 放行前两者、对 `arbitrary` 与外部写入 / 中高风险 / 需审批继续 fail closed；
+- 新增 `HybridArticleRetrievalRuntime`：首次调用前不解析 `GEMINI_API_KEY`、不建连接池，模块销毁时释放；
+- `ToolResult` 新增可选 `stepSummary`，AgentStep `tool_execution` 记录 `toolSummary`（status / strategy / sourceCount / chunkEvidenceCount / ≤5 个 sourceId·chunkId），不写 excerpt、正文、distance、vector 或 secret；
+- Tool 加入 `AGENT_RUN_TOOL_NAMES`，进入现有 Tool Loop、Observation ceiling 与 Phase 7 Context Planner，不改变 Streaming、Run·Step 终态与旧 Tool 行为。
+
+### Review 修复（PR #57 第一轮）
+
+| Finding | 级别 | 修复 |
+| --- | --- | --- |
+| SEO Agent 缺少 Retrieval Tool 选择策略 | P1 | 重写 `seo/prompts/seo-agent.prompt.ts`，定义三个工具的职责边界、candidate / unverified 语义、excerpt 低信任约束与 capability-only 场景；新增 `seo/prompts/seo-agent.prompt.test.ts` 直接断言真实 prompt |
+| `ToolStepSummary` 无安全持久化边界 | P2 | 新增 `tools/core/tool-step-summary.ts`：JSON-compatible 校验、2,000 字符预算、最大 5 层深度、循环引用与 BigInt / undefined / function / symbol / 非有限数字 fail closed；Runtime 去掉无条件双重 cast，非法 summary 安全忽略 |
+| Tool 输出未强制 `limit` | P2 | Tool Boundary 执行 `hits.slice(0, input.limit)`，`data` / `modelContent` / `stepSummary` 共用同一组最终 sources |
+| trusted-provider policy 未检查 `idempotent` | P2 | `ToolInvocationService` 增加 `!idempotent` fail closed 条件 |
+
+### 验证结果
+
+| 命令 | 结果 |
+| --- | --- |
+| `pnpm --filter @agent/api test:seo-service` | 19 pass / 0 fail / 0 skip |
+| `pnpm --filter @agent/api test:tools` | 69 pass / 0 fail / 0 skip |
+| `pnpm --filter @agent/api test:tool-loop` | 54 pass / 0 fail / 0 skip |
+| `pnpm --filter @agent/api test:context` | 24 pass / 0 fail / 0 skip |
+| `pnpm --filter @agent/api test:retrieval` | 35 pass / 0 fail / 0 skip |
+| `pnpm --filter @agent/api test:retrieval-db` | 9 pass / 0 fail / 0 skip |
+| `pnpm --filter @agent/api test:model-stream` | 67 pass / 0 fail / 0 skip |
+| `pnpm --filter @agent/api typecheck` / `lint` / `build` | 通过 |
+| `pnpm typecheck` | 通过 |
+
+真实 integration smoke（`pnpm --filter @agent/api smoke:retrieval-tool`，隔离 pgvector active index + 真实 Gemini query embedding）：
+
+```text
+tool=retrieve_article_context@1
+embeddingProfile=google / gemini-embedding-2 / 1536 / google:gemini-embedding-2:1536:search-result-v1
+ok=true, status=candidates_returned, answerStatus=unverified, strategy=hybrid_rrf@1
+sourceCount=3, chunkEvidenceCount=3
+observation: originalChars=1772, observationChars=1772, truncated=false
+untrustedMarked=true, unverifiedMarked=true
+elapsedMs=986
+```
+
+Review 修复触及 Tool output 与 Tool policy 执行路径，因此重跑了该 smoke；结果与修复前一致。
+
+未重新执行 full indexing，未新增或重写 migration，未更换默认数据库镜像。
+
 ## GitHub 交付状态
 
-- Issue：未创建
-- 分支：未创建
-- PR：未创建
-- Clarification Gate：未执行
+- Issue：#56
+- 分支：`codex/issue-56-retrieval-tool-agent-integration`
+- PR：Draft
+- Clarification Gate：READY
 
 ## 任务状态
 
 ```text
-规划状态：Planned
-实施状态：未开始
-验收状态：未验收
+规划状态：Active
+实施状态：已实现
+验收状态：待验收
 ```
 
-Task 2B 不得与 Task 2A 合并为同一个 Issue，也不得提前启动。
+Task 2B 不得与 Task 2A 合并为同一个 Issue。Task 3 仍未启动。

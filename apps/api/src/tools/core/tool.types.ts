@@ -19,10 +19,19 @@ export interface ToolInputContract<TInput> {
   parse: (value: unknown) => TInput
 }
 
+/**
+ * 工具的网络访问面。
+ *
+ * - `none`：完全不出网。
+ * - `trusted_provider`：只访问服务端固定的可信 Provider，模型 arguments 无法改变目标。
+ * - `arbitrary`：目标可由模型或输入影响，当前一律 fail closed。
+ */
+export type ToolNetworkAccess = 'arbitrary' | 'none' | 'trusted_provider'
+
 export interface ToolRisk {
   level: 'high' | 'low' | 'medium'
   sideEffect: 'external_write' | 'none'
-  network: boolean
+  network: ToolNetworkAccess
 }
 
 /** 工具的服务端定义；执行器与运行上下文不会暴露给模型。 */
@@ -65,11 +74,27 @@ export interface ToolExecutionContext {
   executionAttempt: number
 }
 
+export type JsonPrimitive = boolean | null | number | string
+
+export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue }
+
+/**
+ * 工具自愿提供的、可安全持久化到 AgentStep 的摘要。
+ *
+ * 与 `data`（服务端完整结果）和 `modelContent`（模型可见文本）是三种不同投影：
+ * 这里只允许放不含正文、excerpt、向量、内部距离和 credential 的元数据。
+ *
+ * 类型上限定为 JSON-compatible；运行时仍由 `normalizeToolStepSummary` 在持久化
+ * 之前 fail closed 校验，不信任任何 Tool 的类型断言。
+ */
+export type ToolStepSummary = Record<string, JsonValue>
+
 export type ToolResult<T = unknown>
   = | {
     ok: true
     data: T
     modelContent: string
+    stepSummary?: ToolStepSummary
   }
   | {
     ok: false

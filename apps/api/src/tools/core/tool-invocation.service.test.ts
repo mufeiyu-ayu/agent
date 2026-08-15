@@ -179,14 +179,27 @@ describe('ToolInvocationService', () => {
     const approvalTool = createEchoTool('approval_tool', execute)
     const mediumRiskTool = createEchoTool('medium_risk_tool', execute)
     const writeTool = createEchoTool('write_tool', execute)
-    const networkTool = createEchoTool('network_tool', execute)
+    const highRiskTool = createEchoTool('high_risk_tool', execute)
+    const arbitraryNetworkTool = createEchoTool('arbitrary_network_tool', execute)
+    const nonIdempotentTool = createEchoTool('non_idempotent_tool', execute)
     approvalTool.definition.requiresApproval = true
     mediumRiskTool.definition.risk.level = 'medium'
+    highRiskTool.definition.risk.level = 'high'
     writeTool.definition.risk.sideEffect = 'external_write'
-    networkTool.definition.risk.network = true
+    arbitraryNetworkTool.definition.risk.network = 'arbitrary'
+    // 非幂等工具即使只访问固定可信 Provider 也必须 fail closed。
+    nonIdempotentTool.definition.idempotent = false
+    nonIdempotentTool.definition.risk.network = 'trusted_provider'
 
     const registry = new ToolRegistryService()
-    const tools = [approvalTool, mediumRiskTool, writeTool, networkTool]
+    const tools = [
+      approvalTool,
+      mediumRiskTool,
+      highRiskTool,
+      writeTool,
+      arbitraryNetworkTool,
+      nonIdempotentTool,
+    ]
 
     for (const tool of tools)
       registry.register(tool)
@@ -204,6 +217,29 @@ describe('ToolInvocationService', () => {
     }
 
     assert.equal(executionCount, 0)
+  })
+
+  it('允许 low-risk、无副作用、幂等的 none / trusted_provider 工具执行', async () => {
+    for (const network of ['none', 'trusted_provider'] as const) {
+      let executionCount = 0
+      const tool = createEchoTool(`${network}_tool`, async () => {
+        executionCount += 1
+        return { ok: true, data: { echoed: 'ok' }, modelContent: 'ok' }
+      })
+      tool.definition.risk.network = network
+
+      const registry = new ToolRegistryService()
+      registry.register(tool)
+
+      const result = await new ToolInvocationService(registry).invoke(
+        createEnvelope(tool.definition.name),
+        createContext(),
+      )
+
+      assert.equal(result.ok, true, `network=${network} 应允许执行`)
+      assert.equal(executionCount, 1)
+      assert.equal(tool.definition.idempotent, true)
+    }
   })
 
   it('已触发的 AbortSignal 优先于工具查找和参数验证，且不执行工具', async () => {
@@ -445,7 +481,7 @@ function createEchoTool(
       maxObservationChars: 8_000,
       requiresApproval: false,
       idempotent: true,
-      risk: { level: 'low', sideEffect: 'none', network: false },
+      risk: { level: 'low', sideEffect: 'none', network: 'none' },
     },
     executor: { execute },
   }
