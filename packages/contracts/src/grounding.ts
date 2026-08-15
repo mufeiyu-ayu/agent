@@ -96,7 +96,13 @@ const GROUNDING_KEYS: readonly string[] = [
   'citations',
 ]
 
-const MAX_CITATION_ID_CHARS = 128
+/**
+ * 公开 Citation ID 的固定格式。
+ *
+ * 与内部 Run-scoped `citationKey`（`evk_<32hex>`）刻意使用不同前缀且互不派生：
+ * 公共 API 里出现 `evk_` 前缀就说明内部引用凭据泄漏了，必须 fail closed。
+ */
+const CITATION_ID_PATTERN = /^cit_[0-9a-f]{32}$/
 const MAX_CHUNK_ID_CHARS = 200
 const MAX_TITLE_CHARS = 300
 const MAX_SLUG_CHARS = 300
@@ -231,7 +237,9 @@ function parseMessageCitationV1(value: unknown): MessageCitationV1 | null {
     strategy,
   } = value
 
-  if (!isBoundedString(citationId, MAX_CITATION_ID_CHARS))
+  // citationId 必须是服务端签发的公开 ID：既拒绝内部 Run-scoped citationKey
+  // （`evk_...`），也拒绝任何自造、截断或空白的标识。
+  if (typeof citationId !== 'string' || !CITATION_ID_PATTERN.test(citationId))
     return null
 
   if (!isPositiveSafeInteger(sourceId))
@@ -240,21 +248,22 @@ function parseMessageCitationV1(value: unknown): MessageCitationV1 | null {
   if (!isOneOf(granularity, GRANULARITIES))
     return null
 
-  if (!isBoundedNullableString(chunkId, MAX_CHUNK_ID_CHARS))
+  // article 粒度不得携带 chunk identity；chunk 粒度必须有真实的非空 chunkId。
+  // chunkId 是身份字段，空字符串不能像 sectionPath / excerpt 那样归一化为 null。
+  if (granularity === 'article') {
+    if (chunkId !== null)
+      return null
+  }
+  else if (!isBoundedString(chunkId, MAX_CHUNK_ID_CHARS)) {
     return null
-
-  // article 粒度不得携带 chunk identity；chunk 粒度必须有真实 chunkId。
-  if (granularity === 'article' && chunkId !== null)
-    return null
-  if (granularity === 'chunk' && typeof chunkId !== 'string')
-    return null
+  }
 
   if (
     !isBoundedString(title, MAX_TITLE_CHARS)
     || !isBoundedString(slug, MAX_SLUG_CHARS)
     || !isBoundedString(languageCode, MAX_LANGUAGE_CODE_CHARS)
-    || !isBoundedNullableString(sectionPath, MAX_SECTION_PATH_CHARS)
-    || !isBoundedNullableString(excerpt, MAX_EXCERPT_CHARS)
+    || !isBoundedNullableDisplayString(sectionPath, MAX_SECTION_PATH_CHARS)
+    || !isBoundedNullableDisplayString(excerpt, MAX_EXCERPT_CHARS)
   ) {
     return null
   }
@@ -310,11 +319,15 @@ function isBoundedString(value: unknown, maxChars: number): value is string {
 }
 
 /**
- * 可空展示字段：`null` 与空字符串都表示「没有这项内容」。
+ * 可空**展示**字段：`null` 与空字符串都表示「没有这项内容」。
  *
  * 真实语料里存在没有标题层级的 chunk，空 `sectionPath` 是合法数据而不是损坏。
+ * 只有 `sectionPath` 与 `excerpt` 适用这条规则；`chunkId` 是身份字段，不适用。
  */
-function isBoundedNullableString(value: unknown, maxChars: number): boolean {
+function isBoundedNullableDisplayString(
+  value: unknown,
+  maxChars: number,
+): boolean {
   return value === null
     || value === ''
     || isBoundedString(value, maxChars)

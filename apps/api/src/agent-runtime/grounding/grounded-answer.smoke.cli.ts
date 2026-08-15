@@ -364,6 +364,81 @@ export function safeSmokeFailure(error: unknown): {
   }
 }
 
+/** 与真实进程解耦的输出面，便于直接断言「什么被写到了哪个流」。 */
+export interface SmokeOutputSink {
+  stdout: (line: string) => void
+  stderr: (line: string) => void
+}
+
+/**
+ * 断言并输出 smoke 结果。
+ *
+ * 顺序是安全要求而不是风格问题：**必须先断言、后输出**。
+ * summary 一旦被判定不安全（例如混入 citationKey、API Key、连接串、SQL、
+ * Prompt 标记或 reasoning），就绝不能先写进 stdout / 日志，只允许输出
+ * `safeSmokeFailure()` 的脱敏结果。
+ *
+ * @returns 进程退出码：0 表示全部达标，1 表示未达标。
+ */
+export function emitGroundedAnswerSmokeResult(
+  summary: GroundedAnswerSmokeSummary,
+  output: SmokeOutputSink,
+): number {
+  try {
+    // 断言在前：不安全或不达标的 summary 一个字节都不会进入 stdout。
+    assertGroundedAnswerSmoke(summary)
+  }
+  catch (error) {
+    output.stderr(`${JSON.stringify(safeSmokeFailure(error))}\n`)
+
+    return 1
+  }
+
+  output.stdout(`${JSON.stringify(summary, null, 2)}\n`)
+
+  return 0
+}
+
+/**
+ * 运行 smoke 并输出结果。
+ *
+ * @returns 进程退出码：0 表示全部达标，1 表示未达标或执行失败。
+ */
+export async function runGroundedAnswerSmokeCli(
+  signal: AbortSignal,
+  output: SmokeOutputSink,
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<number> {
+  try {
+    // smoke 会真实写入会话与 Run，只允许连隔离数据库。
+    const connectionString = env.ARTICLE_INDEX_TEST_DATABASE_URL?.trim()
+
+    if (!connectionString) {
+      throw new Error(
+        'ARTICLE_INDEX_TEST_DATABASE_URL 未配置，grounded answer smoke 只允许使用隔离数据库',
+      )
+    }
+
+    if (connectionString === env.DATABASE_URL?.trim()) {
+      throw new Error(
+        'ARTICLE_INDEX_TEST_DATABASE_URL 不得与 DATABASE_URL 相同',
+      )
+    }
+
+    const summary = await executeGroundedAnswerSmoke(
+      signal,
+      { ...env, DATABASE_URL: connectionString },
+    )
+
+    return emitGroundedAnswerSmokeResult(summary, output)
+  }
+  catch (error) {
+    output.stderr(`${JSON.stringify(safeSmokeFailure(error))}\n`)
+
+    return 1
+  }
+}
+
 async function main(): Promise<void> {
   const abortController = new AbortController()
   const abort = (): void => abortController.abort(
@@ -374,33 +449,13 @@ async function main(): Promise<void> {
   process.once('SIGTERM', abort)
 
   try {
-    // smoke 会真实写入会话与 Run，只允许连隔离数据库。
-    const connectionString = process.env.ARTICLE_INDEX_TEST_DATABASE_URL?.trim()
-
-    if (!connectionString) {
-      throw new Error(
-        'ARTICLE_INDEX_TEST_DATABASE_URL 未配置，grounded answer smoke 只允许使用隔离数据库',
-      )
-    }
-
-    if (connectionString === process.env.DATABASE_URL?.trim()) {
-      throw new Error(
-        'ARTICLE_INDEX_TEST_DATABASE_URL 不得与 DATABASE_URL 相同',
-      )
-    }
-
-    const summary = await executeGroundedAnswerSmoke(
+    process.exitCode = await runGroundedAnswerSmokeCli(
       abortController.signal,
-      { ...process.env, DATABASE_URL: connectionString },
+      {
+        stdout: line => process.stdout.write(line),
+        stderr: line => process.stderr.write(line),
+      },
     )
-
-    // 先输出脱敏摘要，再断言：结果不符合预期时仍然留下可读证据，但命令 exit 1。
-    process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`)
-    assertGroundedAnswerSmoke(summary)
-  }
-  catch (error) {
-    process.stderr.write(`${JSON.stringify(safeSmokeFailure(error))}\n`)
-    process.exitCode = 1
   }
   finally {
     process.removeListener('SIGINT', abort)

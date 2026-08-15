@@ -6,6 +6,7 @@ import { describe, it } from 'node:test'
 
 import {
   assertGroundedAnswerSmoke,
+  emitGroundedAnswerSmokeResult,
   GroundedAnswerSmokeAssertionError,
   safeSmokeFailure,
 } from './grounded-answer.smoke.cli.js'
@@ -240,6 +241,84 @@ describe('assertGroundedAnswerSmoke 门禁条件', () => {
       ))
 
       assert.match(violations.join('\n'), /不允许的敏感内容/)
+    }
+  })
+})
+
+describe('emitGroundedAnswerSmokeResult 输出顺序', () => {
+  function createSink() {
+    const stdout: string[] = []
+    const stderr: string[] = []
+
+    return {
+      stdout,
+      stderr,
+      sink: {
+        stdout: (line: string) => stdout.push(line),
+        stderr: (line: string) => stderr.push(line),
+      },
+    }
+  }
+
+  it('安全 summary：stdout 输出 summary，退出码 0', () => {
+    const { stdout, stderr, sink } = createSink()
+    const value = summary(answerableCase(), unanswerableCase())
+    const exitCode = emitGroundedAnswerSmokeResult(value, sink)
+
+    assert.equal(exitCode, 0)
+    assert.equal(stderr.length, 0)
+    assert.equal(stdout.length, 1)
+    assert.deepEqual(JSON.parse(stdout[0]!), value)
+  })
+
+  it('不达标 summary：stdout 完全没有输出，stderr 只有脱敏错误，退出码 1', () => {
+    const { stdout, stderr, sink } = createSink()
+    const exitCode = emitGroundedAnswerSmokeResult(
+      summary(answerableCase({ runOutcome: 'run_failed' }), unanswerableCase()),
+      sink,
+    )
+
+    assert.equal(exitCode, 1)
+    // 断言在输出之前：原始 summary 一个字节都没有进入 stdout。
+    assert.equal(stdout.length, 0)
+    assert.equal(stderr.length, 1)
+
+    const failure = JSON.parse(stderr[0]!) as Record<string, unknown>
+
+    assert.equal(failure.error, 'grounded_answer_smoke_assertion_failed')
+    assert.ok(Array.isArray(failure.violations))
+  })
+
+  it('敏感内容绝不会先写入 stdout 或日志', () => {
+    const leaks: Array<[string, string]> = [
+      ['citationKey', 'evk_0123456789abcdef0123456789abcdef'],
+      ['apiKey', 'sk-live-secret-key'],
+      ['connectionString', 'postgresql://user:pass@localhost:5432/db'],
+      ['sql', 'SELECT * FROM "ArticleChunk"'],
+      ['prompt', '[untrusted_data:evidence_registry]'],
+      ['reasoning', 'reasoning_content'],
+    ]
+
+    for (const [name, leaked] of leaks) {
+      const { stdout, stderr, sink } = createSink()
+      const exitCode = emitGroundedAnswerSmokeResult(
+        summary(
+          answerableCase({
+            grounding: { ...answerableCase().grounding, chunkIds: [leaked] },
+          }),
+          unanswerableCase(),
+        ),
+        sink,
+      )
+
+      assert.equal(exitCode, 1, name)
+      assert.equal(stdout.length, 0, `${name} 不得先输出 summary`)
+      assert.equal(stderr.length, 1, name)
+      assert.equal(
+        stderr[0]!.includes(leaked),
+        false,
+        `${name} 不得出现在 stderr`,
+      )
     }
   })
 })

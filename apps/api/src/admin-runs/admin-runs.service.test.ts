@@ -144,6 +144,72 @@ describe('Admin Run projector', () => {
     assert.equal(item.totalTokens, null)
   })
 
+  it('action sampling metadata 损坏时 Token 汇总整体为 null，不输出部分总数', () => {
+    const record = createRunRecord()
+    const secondSampling = record.steps.find(step => step.sequence === 5)!
+
+    // 破坏一条 action sampling 的 metadata，但 finalization usage 完全合法。
+    secondSampling.output = { providerPayload: 'DO_NOT_LEAK' }
+    record.steps = [
+      ...record.steps,
+      step(10, 'grounded_finalization', {
+        output: groundedFinalizationOutput([
+          { ok: true, usage: { inputTokens: 4, outputTokens: 1, totalTokens: 5 } },
+        ]),
+      }),
+    ]
+
+    const item = projectAdminRunListItem(record)
+
+    // 次数仍然正确：3 次 action sampling + 1 次 finalization。
+    assert.equal(item.samplingCount, 4)
+    // 但 Token 是 all-or-nothing：不能只报 finalization 那部分。
+    assert.equal(item.inputTokens, null)
+    assert.equal(item.outputTokens, null)
+    assert.equal(item.totalTokens, null)
+  })
+
+  it('sampling 与 finalization 都可信时才给出 Token 总数', () => {
+    const record = createRunRecord()
+
+    record.steps = [
+      ...record.steps,
+      step(10, 'grounded_finalization', {
+        output: groundedFinalizationOutput([
+          { ok: false, usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 } },
+          { ok: true, usage: { inputTokens: 2, outputTokens: 2, totalTokens: 4 } },
+        ]),
+      }),
+    ]
+
+    const item = projectAdminRunListItem(record)
+
+    assert.equal(item.samplingCount, 5)
+    assert.equal(item.totalTokens, 89)
+  })
+
+  it('采样故障的 finalization attempt 同样计入 samplingCount', () => {
+    const record = createRunRecord()
+
+    record.steps = [
+      ...record.steps,
+      step(10, 'grounded_finalization', {
+        status: 'FAILED',
+        output: {
+          ...groundedFinalizationOutput([{ ok: false, usage: null }]),
+          failureReason: 'sampling_incomplete',
+          samplingFailure: 'missing_response_completed',
+        },
+      }),
+    ]
+
+    const item = projectAdminRunListItem(record)
+
+    assert.equal(item.samplingCount, 4)
+    // usage 无法确认，整体 fail closed。
+    assert.equal(item.totalTokens, null)
+  })
+
   it('grounded finalization 在 Timeline 中安全降级，不泄漏内部 metadata', () => {
     const record = createRunRecord()
 

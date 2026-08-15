@@ -99,6 +99,12 @@ interface TerminalStepFailure {
   output?: Prisma.InputJsonValue
 }
 
+/** 失败 / 中断收口时仍需保留 output 的 Step。 */
+interface TerminalStepMetadata {
+  id: string
+  output: Prisma.InputJsonValue
+}
+
 @Injectable()
 export class AgentRuntimeService {
   constructor(
@@ -133,6 +139,10 @@ export class AgentRuntimeService {
     let content = ''
     let runCancellation: RunCancellation | undefined
     let terminalStepFailure: TerminalStepFailure | undefined
+    // finalization Step 的最新已知安全 output。一旦模型调用发生过，
+    // 无论 replay Abort、Step 启动失败还是终态事务回滚，都用它收口，
+    // 已经产生的 attempt 与 usage 不会从审计里消失。
+    let finalizationClose: TerminalStepMetadata | undefined
 
     try {
       await this.assertConversationExists(input.conversationId)
@@ -535,10 +545,7 @@ export class AgentRuntimeService {
       runCancellation.throwIfUnavailable()
 
       let grounding: MessageGroundingV1 | undefined
-      let finalizationCommit: {
-        id: string
-        output: Prisma.InputJsonValue
-      } | undefined
+      let finalizationCommit: TerminalStepMetadata | undefined
 
       if (evidenceRegistry) {
         const finalizationStep = await this.agentRunRecorderService.startStep({
@@ -552,12 +559,32 @@ export class AgentRuntimeService {
           },
         }, databaseDeadline)
         const registry = evidenceRegistry
+        // Runtime 自己持有 attempt 事实：模型调用一开始就记账，
+        // 不依赖某一种错误类型是否恰好把 attempts 带出来。
+        const finalizationAttempts: GroundedFinalizationAttemptSummary[] = []
+        const closeFinalizationStep = (error?: unknown): void => {
+          finalizationClose = {
+            id: finalizationStep.id,
+            output: this.toFinalizationStepOutput(
+              registry,
+              finalizationAttempts,
+              grounding,
+              error,
+            ),
+          }
+        }
+
+        closeFinalizationStep()
 
         try {
           const finalization = await runGroundedFinalization({
             draft: hiddenFinalDraft,
             registry,
             assertAvailable: runCancellation.throwIfUnavailable,
+            onAttempt: (summary) => {
+              finalizationAttempts.push(summary)
+              closeFinalizationStep()
+            },
             // finalization 只暴露终态输出契约，没有任何 action Tool，
             // 因此不可能借这一轮继续调用工具或扩展 action-loop 预算。
             sample: items => this.llmService.chatStream(items, {
@@ -584,10 +611,13 @@ export class AgentRuntimeService {
             id: finalizationStep.id,
             output: this.toFinalizationStepOutput(
               registry,
-              finalization.attempts,
+              finalizationAttempts,
               grounding,
             ),
           }
+          // 成功后的失败路径（replay Abort / Step 失败 / 终态事务回滚）
+          // 同样保留这份已经成立的 attempt 与 usage。
+          closeFinalizationStep()
 
           runCancellation.throwIfUnavailable()
           await startAssistantOutputStep()
@@ -609,19 +639,13 @@ export class AgentRuntimeService {
           }
         }
         catch (error) {
+          closeFinalizationStep(error)
           terminalStepFailure = {
             id: finalizationStep.id,
             errorMessage: error instanceof GroundedFinalizationFailedError
               ? error.message
               : '回答引用校验未能安全完成。',
-            output: this.toFinalizationStepOutput(
-              registry,
-              error instanceof GroundedFinalizationFailedError
-                ? error.attempts
-                : [],
-              undefined,
-              error,
-            ),
+            output: finalizationClose!.output,
           }
           claimRunTermination(runCancellation, error)
           throw error
@@ -694,6 +718,7 @@ export class AgentRuntimeService {
                     content,
                   }
                 : undefined,
+              finalizationClose,
             )
           }
           catch (terminalizationCause) {
@@ -733,6 +758,7 @@ export class AgentRuntimeService {
                 }
               : undefined,
             terminalStepFailure,
+            finalizationClose,
           )
         }
         catch (terminalizationCause) {
@@ -960,6 +986,10 @@ export class AgentRuntimeService {
         ok: attempt.ok,
         ...(attempt.rejectionCode
           ? { rejectionCode: attempt.rejectionCode }
+          : {}),
+        // 采样故障与「模型说错了」在审计里必须能逐 attempt 区分开。
+        ...(attempt.samplingFailure
+          ? { samplingFailure: attempt.samplingFailure }
           : {}),
         submittedCitationKeyCount: attempt.submittedCitationKeyCount,
         usage: attempt.usage

@@ -31,11 +31,20 @@ import { validateGroundedAnswer } from './grounded-answer.validator.js'
 /** v1 的 finalization attempt 上限：首次 + 最多一次 correction。 */
 export const GROUNDED_FINALIZATION_MAX_ATTEMPTS = 2
 
-/** 一次 finalization attempt 的可持久化审计记录；不含 Prompt、reasoning 与 draft 正文。 */
+/**
+ * 一次 finalization attempt 的可持久化审计记录；不含 Prompt、reasoning 与 draft 正文。
+ *
+ * 只要模型调用已经开始，这条记录就必须存在：它是「本 Run 到底发起过几次模型调用」
+ * 的唯一事实来源，Admin 的 samplingCount 与 Token 汇总都依赖它。
+ */
 export interface GroundedFinalizationAttemptSummary {
   attempt: number
   ok: boolean
+  /** 模型内容不合法的安全类别；只有它会消耗 correction。 */
   rejectionCode?: GroundedAnswerRejectionCode
+  /** Provider 流未完整结束的安全类别；不消耗 correction，但仍是一次真实调用。 */
+  samplingFailure?: GroundedFinalizationSamplingFailure
+  /** 无法从 Provider 确认用量时为 null，绝不补零。 */
   usage: ModelUsage | null
   submittedCitationKeyCount: number
   durationMs: number
@@ -75,7 +84,11 @@ export type GroundedFinalizationSamplingFailure
  * 不消耗 correction 预算，直接按现有失败语义收口。
  */
 export class GroundedFinalizationSamplingError extends Error {
-  constructor(readonly failure: GroundedFinalizationSamplingFailure) {
+  constructor(
+    readonly failure: GroundedFinalizationSamplingFailure,
+    /** 已经发生的 attempt 事实；调用已经开始，就不能当作没调用过。 */
+    readonly attempts: GroundedFinalizationAttemptSummary[] = [],
+  ) {
     super('回答收口采样未能完整结束。')
     this.name = 'GroundedFinalizationSamplingError'
   }
@@ -92,6 +105,13 @@ export interface RunGroundedFinalizationInput {
   sample: FinalizationSampler
   /** 每次 attempt 前复核 Run 是否仍然可用（deadline / abort）。 */
   assertAvailable: () => void
+  /**
+   * 每产生一条 attempt 事实就立即回调。
+   *
+   * 调用方据此持有最新的 attempt / usage：即便后续 replay 被 Abort、Step 启动失败
+   * 或终态事务回滚，已经发生的模型调用与用量也不会从审计里消失。
+   */
+  onAttempt?: (summary: GroundedFinalizationAttemptSummary) => void
   now?: () => number
 }
 
@@ -110,6 +130,10 @@ export async function runGroundedFinalization(
 ): Promise<GroundedFinalizationResult> {
   const now = input.now ?? (() => Date.now())
   const attempts: GroundedFinalizationAttemptSummary[] = []
+  const recordAttempt = (summary: GroundedFinalizationAttemptSummary): void => {
+    attempts.push(summary)
+    input.onAttempt?.(summary)
+  }
   let lastRejectionCode: GroundedAnswerRejectionCode = 'schema_invalid'
 
   for (
@@ -125,7 +149,21 @@ export async function runGroundedFinalization(
       registry: input.registry,
       ...(attempt > 1 ? { rejectionCode: lastRejectionCode } : {}),
     })
+    // 从这一行起，一次真实模型调用已经发起：无论后面怎么失败，attempt 事实都必须留下。
     const sampling = await consumeFinalizationSampling(input.sample(items))
+
+    if (!sampling.ok) {
+      recordAttempt({
+        attempt,
+        ok: false,
+        samplingFailure: sampling.failure,
+        usage: sampling.usage,
+        submittedCitationKeyCount: 0,
+        durationMs: Math.max(0, now() - startedAt),
+      })
+      // 采样故障不消耗 correction，直接按现有失败语义收口。
+      throw new GroundedFinalizationSamplingError(sampling.failure, attempts)
+    }
 
     input.assertAvailable()
 
@@ -136,7 +174,7 @@ export async function runGroundedFinalization(
 
       const validated = validateGroundedAnswer(submitted, input.registry)
 
-      attempts.push({
+      recordAttempt({
         attempt,
         ok: true,
         usage: sampling.usage,
@@ -147,11 +185,20 @@ export async function runGroundedFinalization(
       return { validated, attempts }
     }
     catch (error) {
-      if (!(error instanceof GroundedAnswerRejectedError))
+      if (!(error instanceof GroundedAnswerRejectedError)) {
+        // 例如 assertAvailable 抛出的 Abort：调用已经发生过，attempt 不能丢。
+        recordAttempt({
+          attempt,
+          ok: false,
+          usage: sampling.usage,
+          submittedCitationKeyCount: submitted?.citationKeys.length ?? 0,
+          durationMs: Math.max(0, now() - startedAt),
+        })
         throw error
+      }
 
       lastRejectionCode = error.code
-      attempts.push({
+      recordAttempt({
         attempt,
         ok: false,
         rejectionCode: error.code,
@@ -238,10 +285,19 @@ export function buildFinalizationInput(
   ]
 }
 
-interface FinalizationSamplingOutcome {
-  rawArgumentsJson: string
-  usage: ModelUsage | null
-}
+/**
+ * 一次 finalization 模型流的消费结果。
+ *
+ * 失败分支同样携带 `usage`：Provider 已经计费的用量不因为流不完整而消失，
+ * 无法确认时才是 null。
+ */
+type FinalizationSamplingOutcome
+  = | { ok: true, rawArgumentsJson: string, usage: ModelUsage | null }
+    | {
+      ok: false
+      failure: GroundedFinalizationSamplingFailure
+      usage: ModelUsage | null
+    }
 
 /**
  * 消费一次 finalization 模型流，并要求它完整、干净地终止。
@@ -255,10 +311,9 @@ interface FinalizationSamplingOutcome {
  * - `finishReason === 'tool_calls'`；
  * - `response_completed` 之后没有额外事件。
  *
- * 任何一条不满足都抛 `GroundedFinalizationSamplingError`：这是采样故障，
- * 不是模型内容错误，因此不消耗 correction 预算。
- *
- * @throws GroundedFinalizationSamplingError 流未完整终止或返回了非预期调用。
+ * 任何一条不满足都返回 `{ ok: false, failure, usage }`：这是采样故障，不是模型
+ * 内容错误，因此不消耗 correction 预算；但它仍然是一次真实模型调用，用量与
+ * attempt 事实必须原样交回给调用方。
  */
 async function consumeFinalizationSampling(
   events: AsyncIterable<ModelStreamEvent>,
@@ -267,21 +322,23 @@ async function consumeFinalizationSampling(
   let usage: ModelUsage | null = null
   let finishReason: ModelFinishReason | undefined
   let completed = false
+  const failed = (
+    failure: GroundedFinalizationSamplingFailure,
+  ): FinalizationSamplingOutcome => ({ ok: false, failure, usage })
 
   try {
     for await (const event of events) {
       // response_completed 之后不允许再出现任何事件，包括迟到的 usage。
-      if (completed) {
-        throw new GroundedFinalizationSamplingError('extra_event_after_completion')
-      }
+      if (completed)
+        return failed('extra_event_after_completion')
 
       switch (event.type) {
         case 'tool_call_completed':
           if (event.toolCall.name !== SUBMIT_GROUNDED_ANSWER_TOOL_NAME)
-            throw new GroundedFinalizationSamplingError('unknown_tool_call')
+            return failed('unknown_tool_call')
 
           if (rawArgumentsJson !== undefined)
-            throw new GroundedFinalizationSamplingError('multiple_submissions')
+            return failed('multiple_submissions')
 
           rawArgumentsJson = event.toolCall.argumentsJson
           break
@@ -302,24 +359,22 @@ async function consumeFinalizationSampling(
       }
     }
   }
-  catch (error) {
-    if (error instanceof GroundedFinalizationSamplingError)
-      throw error
-
-    // Provider 连接异常、超时或 adapter 抛错：Tool Call 即使已经出现也不可信。
-    throw new GroundedFinalizationSamplingError('stream_failed')
+  catch {
+    // Provider 连接异常、超时或 adapter 抛错：Tool Call 即使已经出现也不可信，
+    // 但流中断前已经收到的 usage 仍然是真实发生的。
+    return failed('stream_failed')
   }
 
   if (!completed)
-    throw new GroundedFinalizationSamplingError('missing_response_completed')
+    return failed('missing_response_completed')
 
   if (finishReason !== 'tool_calls')
-    throw new GroundedFinalizationSamplingError('unexpected_finish_reason')
+    return failed('unexpected_finish_reason')
 
   if (rawArgumentsJson === undefined)
-    throw new GroundedFinalizationSamplingError('missing_submission')
+    return failed('missing_submission')
 
-  return { rawArgumentsJson, usage }
+  return { ok: true, rawArgumentsJson, usage }
 }
 
 function mergeUsage(

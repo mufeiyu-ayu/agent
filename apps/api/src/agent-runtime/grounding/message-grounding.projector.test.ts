@@ -204,6 +204,32 @@ describe('toMessageGroundingV1 语义 fail closed', () => {
       citations: [citation({ excerpt: '正'.repeat(501) })],
     })],
     ['title 为空字符串', persisted({ citations: [citation({ title: '' })] })],
+    // 公开 citationId 必须是 server-issued 的 `cit_<32hex>`。
+    ['citationId 使用内部 citationKey 前缀', persisted({
+      citations: [citation({
+        citationId: 'evk_0123456789abcdef0123456789abcdef',
+      })],
+    })],
+    ['citationId 被截断', persisted({ citations: [citation({ citationId: 'cit_1' })] })],
+    ['citationId 为空字符串', persisted({ citations: [citation({ citationId: '' })] })],
+    ['citationId 为纯空白', persisted({ citations: [citation({ citationId: '   ' })] })],
+    ['citationId 前缀错误', persisted({
+      citations: [citation({
+        citationId: 'sid_0123456789abcdef0123456789abcdef',
+      })],
+    })],
+    ['citationId 含大写十六进制', persisted({
+      citations: [citation({
+        citationId: 'cit_0123456789ABCDEF0123456789abcdef',
+      })],
+    })],
+    // chunkId 是身份字段，空字符串不能被当成「没有这项内容」。
+    ['chunk 粒度 chunkId 为空字符串', persisted({
+      citations: [citation({ chunkId: '' })],
+    })],
+    ['chunk 粒度 chunkId 超长', persisted({
+      citations: [citation({ chunkId: 'c'.repeat(201) })],
+    })],
   ]
 
   for (const [name, value] of semanticCases) {
@@ -228,6 +254,20 @@ describe('toMessageGroundingV1 语义 fail closed', () => {
 
     assert.ok(grounding)
     assert.equal(grounding.citations.length, 2)
+  })
+
+  it('合法的 cit_<32hex> citationId 通过', () => {
+    const grounding = toMessageGroundingV1(persisted({
+      citations: [citation({
+        citationId: 'cit_abcdef0123456789abcdef0123456789',
+      })],
+    }))
+
+    assert.ok(grounding)
+    assert.equal(
+      grounding.citations[0]?.citationId,
+      'cit_abcdef0123456789abcdef0123456789',
+    )
   })
 
   it('partial + answered 且有引用时通过', () => {

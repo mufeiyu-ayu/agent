@@ -947,6 +947,7 @@ describe('Grounded finalization 终态原子性', () => {
             outcome: 'answered',
             citationKeys: [registry[0]!],
           }),
+          { type: 'usage', usage: { inputTokens: 33, outputTokens: 12, totalTokens: 45 } },
           { type: 'response_completed', finishReason: 'tool_calls' },
         ]),
       ],
@@ -985,7 +986,7 @@ describe('Grounded finalization 终态原子性', () => {
     )
   })
 
-  it('replay 期间 Abort 时 finalization Step 为 ABORTED，且没有 completed Grounding', async () => {
+  it('replay 期间 Abort 时 finalization Step 为 ABORTED，且保留 attempt 与 usage', async () => {
     const abortController = new AbortController()
     const harness = createReplayHarness({ signal: abortController.signal })
 
@@ -996,20 +997,29 @@ describe('Grounded finalization 终态原子性', () => {
 
     assert.equal(events.at(-1)?.type, 'run_aborted')
     assert.equal(harness.recorder.completedGrounding, undefined)
-    assert.equal(
-      harness.recorder.steps.find(
-        step => step.type === AGENT_STEP_TYPES.groundedFinalization,
-      )?.status,
-      'ABORTED',
+
+    const step = harness.recorder.steps.find(
+      item => item.type === AGENT_STEP_TYPES.groundedFinalization,
     )
-    assert.equal(
-      harness.recorder.steps.some(step => step.status === 'COMPLETED'
-        && step.type === AGENT_STEP_TYPES.groundedFinalization),
-      false,
-    )
+
+    assert.equal(step?.status, 'ABORTED')
+
+    // 中断发生在 finalization 之后：那次模型调用与用量是既成事实，不能丢。
+    const output = step?.output as Record<string, unknown>
+
+    assert.equal(output.attemptCount, 1)
+
+    const [attempt] = output.attempts as Array<Record<string, unknown>>
+
+    assert.equal(attempt?.ok, true)
+    assert.deepEqual(attempt?.usage, {
+      inputTokens: 33,
+      outputTokens: 12,
+      totalTokens: 45,
+    })
   })
 
-  it('终态事务失败时不留下 COMPLETED finalization Step，也没有 Grounding', async () => {
+  it('终态事务失败时不留下 COMPLETED finalization Step，但保留 attempt metadata', async () => {
     const harness = createReplayHarness()
 
     harness.recorder.completeRunFailure = new Error('terminal transaction failed')
@@ -1018,13 +1028,65 @@ describe('Grounded finalization 终态原子性', () => {
 
     assert.equal(events.at(-1)?.type, 'run_failed')
     assert.equal(harness.recorder.completedGrounding, undefined)
-    assert.equal(
-      harness.recorder.steps.find(
-        step => step.type === AGENT_STEP_TYPES.groundedFinalization,
-      )?.status,
-      'FAILED',
+
+    const step = harness.recorder.steps.find(
+      item => item.type === AGENT_STEP_TYPES.groundedFinalization,
     )
+
+    assert.equal(step?.status, 'FAILED')
     assert.equal(harness.assistantMessage()?.status, MessageStatus.FAILED)
+
+    const output = step?.output as Record<string, unknown>
+
+    assert.equal(output.attemptCount, 1)
+    assert.deepEqual(
+      (output.attempts as Array<Record<string, unknown>>)[0]?.usage,
+      { inputTokens: 33, outputTokens: 12, totalTokens: 45 },
+    )
+  })
+
+  it('模型调用开始前 Abort 时 attempt 为 0，不误计一次调用', async () => {
+    const abortController = new AbortController()
+    const harness = createHarness({
+      signal: abortController.signal,
+      modelStreams: [
+        () => toModelStream([
+          toolCallEvent('call-1', 'retrieve_article_context', '{"query":"seo"}'),
+          { type: 'response_completed', finishReason: 'tool_calls' },
+        ]),
+        () => {
+          // 草稿产出后立刻中断：finalization 的模型调用还没有发起。
+          abortController.abort()
+          return toModelStream([
+            { type: 'text_delta', delta: '草稿' },
+            { type: 'response_completed', finishReason: 'stop' },
+          ])
+        },
+      ],
+      toolResults: [{
+        ok: true,
+        data: {},
+        modelContent: '候选资料',
+        evidence: RETRIEVAL_EVIDENCE,
+      }],
+    })
+
+    const events = await collectEvents(harness.run())
+
+    assert.equal(events.at(-1)?.type, 'run_aborted')
+    // finalization 一次模型调用都没发生过。
+    assert.equal(harness.llmCalls.length, 2)
+
+    const step = harness.recorder.steps.find(
+      item => item.type === AGENT_STEP_TYPES.groundedFinalization,
+    )
+
+    if (step) {
+      const output = step.output as Record<string, unknown>
+
+      assert.equal(output.attemptCount, 0)
+      assert.deepEqual(output.attempts, [])
+    }
   })
 })
 
@@ -1071,13 +1133,14 @@ describe('Grounded finalization 终态流完整性', () => {
     return step?.output as Record<string, unknown>
   }
 
-  it('缺少 response_completed 时按采样故障收口', async () => {
+  it('缺少 response_completed 时按采样故障收口，并保留 attempt 与 usage', async () => {
     const harness = createStreamHarness(() => toModelStream([
       submitGroundedAnswerEvent({
         answer: '回答',
         outcome: 'insufficient_evidence',
         citationKeys: [],
       }),
+      { type: 'usage', usage: { inputTokens: 11, outputTokens: 4, totalTokens: 15 } },
     ]))
 
     const output = await runAndReadFailure(harness)
@@ -1086,6 +1149,50 @@ describe('Grounded finalization 终态流完整性', () => {
     assert.equal(output.samplingFailure, 'missing_response_completed')
     // 采样故障不消耗 correction：finalization 只调用了一次。
     assert.equal(harness.llmCalls.length, 3)
+    // 但那一次调用真实发生过，attempt 与已知 usage 必须留在审计里。
+    assert.equal(output.attemptCount, 1)
+
+    const [attempt] = output.attempts as Array<Record<string, unknown>>
+
+    assert.equal(attempt?.ok, false)
+    assert.equal(attempt?.samplingFailure, 'missing_response_completed')
+    assert.deepEqual(attempt?.usage, {
+      inputTokens: 11,
+      outputTokens: 4,
+      totalTokens: 15,
+    })
+  })
+
+  it('Provider 未返回 usage 时 attempt usage 为 null，不补零', async () => {
+    const harness = createStreamHarness(() => toModelStream([
+      submitGroundedAnswerEvent({
+        answer: '回答',
+        outcome: 'insufficient_evidence',
+        citationKeys: [],
+      }),
+      { type: 'response_completed', finishReason: 'stop' },
+    ]))
+
+    const output = await runAndReadFailure(harness)
+    const [attempt] = output.attempts as Array<Record<string, unknown>>
+
+    assert.equal(output.attemptCount, 1)
+    assert.equal(attempt?.samplingFailure, 'unexpected_finish_reason')
+    assert.equal(attempt?.usage, null)
+  })
+
+  it('流异常结束时保留中断前已收到的 usage', async () => {
+    const harness = createStreamHarness(async function* () {
+      yield { type: 'usage', usage: { inputTokens: 7 } }
+      throw new Error('provider connection reset')
+    })
+
+    const output = await runAndReadFailure(harness)
+    const [attempt] = output.attempts as Array<Record<string, unknown>>
+
+    assert.equal(output.attemptCount, 1)
+    assert.equal(attempt?.samplingFailure, 'stream_failed')
+    assert.deepEqual(attempt?.usage, { inputTokens: 7 })
   })
 
   for (const finishReason of ['stop', 'length', 'content_filter'] as const) {
@@ -1103,6 +1210,8 @@ describe('Grounded finalization 终态流完整性', () => {
 
       assert.equal(output.samplingFailure, 'unexpected_finish_reason')
       assert.equal(harness.llmCalls.length, 3)
+      // 采样故障仍然是一次真实调用，必须计入 attempt。
+      assert.equal(output.attemptCount, 1)
     })
   }
 
@@ -1124,6 +1233,7 @@ describe('Grounded finalization 终态流完整性', () => {
     const output = await runAndReadFailure(harness)
 
     assert.equal(output.samplingFailure, 'multiple_submissions')
+    assert.equal(output.attemptCount, 1)
   })
 
   it('返回未知 Tool Call 时按采样故障收口', async () => {
@@ -1135,6 +1245,7 @@ describe('Grounded finalization 终态流完整性', () => {
     const output = await runAndReadFailure(harness)
 
     assert.equal(output.samplingFailure, 'unknown_tool_call')
+    assert.equal(output.attemptCount, 1)
   })
 
   it('response_completed 之后出现额外事件时按采样故障收口', async () => {
@@ -1151,6 +1262,7 @@ describe('Grounded finalization 终态流完整性', () => {
     const output = await runAndReadFailure(harness)
 
     assert.equal(output.samplingFailure, 'extra_event_after_completion')
+    assert.equal(output.attemptCount, 1)
   })
 
   it('Tool Call 之后流异常结束时按采样故障收口，已出现的调用不被信任', async () => {
@@ -1167,6 +1279,7 @@ describe('Grounded finalization 终态流完整性', () => {
 
     assert.equal(output.samplingFailure, 'stream_failed')
     assert.equal(harness.llmCalls.length, 3)
+    assert.equal(output.attemptCount, 1)
   })
 
   it('schema 错误仍然消耗 correction，与采样故障区分开', async () => {
@@ -1506,10 +1619,12 @@ class FakeAgentRunRecorderService {
     _deadline: DatabaseOperationDeadline,
     assistantMessage?: { id: string, content: string },
     failedStep?: { id: string, errorMessage: string, output?: unknown },
+    metadataStep?: { id: string, output: unknown },
   ) {
     this.closeMessage(assistantMessage, MessageStatus.FAILED, errorMessage)
     if (failedStep)
       this.transition(failedStep.id, 'FAILED', failedStep)
+    this.closeMetadataStep(metadataStep, 'FAILED', failedStep?.id)
     this.closeUnfinishedSteps('FAILED')
   }
 
@@ -1517,9 +1632,28 @@ class FakeAgentRunRecorderService {
     _runId: string,
     _deadline: DatabaseOperationDeadline,
     assistantMessage?: { id: string, content: string },
+    metadataStep?: { id: string, output: unknown },
   ) {
     this.closeMessage(assistantMessage, MessageStatus.ABORTED)
+    this.closeMetadataStep(metadataStep, 'ABORTED')
     this.closeUnfinishedSteps('ABORTED')
+  }
+
+  /** 与真实 Recorder 一致：失败 / 中断收口时保留 finalization 的审计 output。 */
+  private closeMetadataStep(
+    metadataStep: { id: string, output: unknown } | undefined,
+    status: 'ABORTED' | 'FAILED',
+    failedStepId?: string,
+  ): void {
+    if (!metadataStep || metadataStep.id === failedStepId)
+      return
+
+    const step = this.steps.find(item => item.id === metadataStep.id)
+
+    if (step?.status !== 'RUNNING')
+      return
+
+    this.transition(metadataStep.id, status, { output: metadataStep.output })
   }
 
   private closeMessage(

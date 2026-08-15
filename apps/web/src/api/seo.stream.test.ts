@@ -117,6 +117,19 @@ describe('NDJSON 协议兼容', () => {
           },
         ],
       },
+      // 合法的 server-issued citationId
+      {
+        ...GROUNDING,
+        citations: [{
+          ...firstCitation,
+          citationId: 'cit_abcdef0123456789abcdef0123456789',
+        }],
+      },
+      // 空 sectionPath / excerpt 归一化为 null
+      {
+        ...GROUNDING,
+        citations: [{ ...firstCitation, sectionPath: '', excerpt: '' }],
+      },
     ]
 
     for (const grounding of validGroundings) {
@@ -200,6 +213,34 @@ describe('NDJSON 协议兼容', () => {
       // article / chunk 一致性
       { ...GROUNDING, citations: [{ ...firstCitation, granularity: 'article' }] },
       { ...GROUNDING, citations: [{ ...firstCitation, chunkId: null }] },
+      // chunkId 是身份字段，空字符串不能被当成「没有这项内容」
+      { ...GROUNDING, citations: [{ ...firstCitation, chunkId: '' }] },
+      { ...GROUNDING, citations: [{ ...firstCitation, chunkId: 'c'.repeat(201) }] },
+      // 公开 citationId 必须是 server-issued 的 cit_<32hex>
+      {
+        ...GROUNDING,
+        citations: [{
+          ...firstCitation,
+          citationId: 'evk_0123456789abcdef0123456789abcdef',
+        }],
+      },
+      { ...GROUNDING, citations: [{ ...firstCitation, citationId: 'cit_1' }] },
+      { ...GROUNDING, citations: [{ ...firstCitation, citationId: '' }] },
+      { ...GROUNDING, citations: [{ ...firstCitation, citationId: '   ' }] },
+      {
+        ...GROUNDING,
+        citations: [{
+          ...firstCitation,
+          citationId: 'sid_0123456789abcdef0123456789abcdef',
+        }],
+      },
+      {
+        ...GROUNDING,
+        citations: [{
+          ...firstCitation,
+          citationId: 'cit_0123456789ABCDEF0123456789abcdef',
+        }],
+      },
     ]) {
       const parsed = parseChatStreamEventLine(JSON.stringify({
         ...LEGACY_EVENTS[2],
