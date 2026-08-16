@@ -834,6 +834,107 @@ describe('Grounded Answer PostgreSQL integration', { concurrency: 1 }, () => {
     assert.doesNotMatch(JSON.stringify(detail), /evk_|内部草稿/)
   })
 
+  it('Admin Run Detail 不采信被改写进失败 Tool Step 的 toolSummary', async () => {
+    const conversationId = await createConversation()
+
+    await collectEvents(createAnsweredHarness(conversationId).run())
+
+    const run = await requireRun(conversationId)
+    const steps = await listSteps(run.id)
+    const toolStep = steps.find(step => step.type === 'tool_execution')!
+    const message = await requireAssistantMessage(conversationId)
+    const grounding = toMessageGroundingV1(await requireGrounding(message.id))
+    const citation = grounding!.citations[0]!
+
+    // 把真实成功调用改写成失败调用，并注入一份「看起来合法」、身份与 durable
+    // Citation 完全一致的 toolSummary：这正是数据库被改写后的最坏情况。
+    await prisma.agentStep.update({
+      where: { id: toolStep.id },
+      data: {
+        status: AgentStepStatus.FAILED,
+        output: {
+          ok: false,
+          code: 'timeout',
+          retryable: true,
+          originalChars: 0,
+          observationChars: 60,
+          truncated: false,
+          durationMs: 5_000,
+          toolSummary: {
+            status: 'candidates_returned',
+            answerStatus: 'unverified',
+            strategy: { name: 'hybrid_rrf', version: '1' },
+            sourceCount: 2,
+            chunkEvidenceCount: 2,
+            sources: [{
+              sourceId: citation.sourceId,
+              chunkId: citation.chunkId,
+            }],
+            leakedObservation: 'SELECT * FROM "ArticleChunk"',
+          },
+        },
+      },
+    })
+
+    const detail = await createAdminRunsService().getDetail(run.id)
+    const inspector = detail.retrievalInspector
+    const call = inspector.retrievalCalls[0]!
+
+    assert.equal(call.ok, false)
+    assert.equal(call.metadataTrusted, false)
+    assert.equal(call.sourceCount, null)
+    assert.equal(call.chunkEvidenceCount, null)
+    assert.equal(call.strategy, null)
+    assert.deepEqual(call.refs, [])
+    assert.equal(inspector.candidateCount, null)
+    // 伪造的身份即便与 durable Citation 完全一致，也不得形成 matched。
+    assert.equal(inspector.citations?.length, 1)
+    assert.equal(inspector.citations![0]!.correlation, 'unmatched')
+    assert.deepEqual(inspector.citations![0]!.matchedCallIds, [])
+    assert.notEqual(inspector.availability, 'available')
+    // 注入内容整体不进入响应；Citation 自身的 strategy 是 durable Grounding
+    // 的合法公开字段，不能与被改写的 Tool summary 混为一谈。
+    assert.doesNotMatch(JSON.stringify(detail), /SELECT|leakedObservation/)
+    assert.equal(
+      JSON.stringify(detail.retrievalInspector.retrievalCalls).includes('hybrid_rrf'),
+      false,
+    )
+  })
+
+  it('Admin Run Detail 把身份不完整的 Tool Step 记为 unavailable 而不是未进入检索', async () => {
+    const conversationId = await createConversation()
+
+    await collectEvents(createAnsweredHarness(conversationId).run())
+
+    const run = await requireRun(conversationId)
+    const steps = await listSteps(run.id)
+    const toolStep = steps.find(step => step.type === 'tool_execution')!
+    const finalizationStep = steps.find(
+      step => step.type === 'grounded_finalization',
+    )!
+
+    // 只保留一条身份不完整的 Tool Step：既没有 finalization，也没有 Grounding。
+    await prisma.messageGrounding.deleteMany({
+      where: { messageId: run.assistantMessageId! },
+    })
+    await prisma.agentStep.delete({ where: { id: finalizationStep.id } })
+    await prisma.agentStep.update({
+      where: { id: toolStep.id },
+      data: {
+        input: {
+          ...(toolStep.input as Record<string, unknown>),
+          toolVersion: 'unknown-version',
+        },
+      },
+    })
+
+    const detail = await createAdminRunsService().getDetail(run.id)
+
+    assert.equal(detail.retrievalInspector.availability, 'unavailable')
+    assert.deepEqual(detail.retrievalInspector.retrievalCalls, [])
+    assert.equal(detail.retrievalInspector.finalization, null)
+  })
+
   // ── 脚手架 ──────────────────────────────────────────────
 
   function createAdminRunsService(): AdminRunsService {

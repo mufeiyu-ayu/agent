@@ -189,12 +189,13 @@ Retrieval Inspector 是现有 Workspace 的一个 typed Inspector，不新建第
 ### 9.2 availability 判定规则
 
 ```text
-not_applicable  没有 evidence-eligible call、没有 finalization Step、也没有 Grounding 行
-unavailable     进入过链路，但没有任何可信事实（call / finalization / Grounding 全部损坏）
+not_applicable  没有 evidence-eligible call、没有 finalization Step、没有 Grounding 行，
+                且没有任何无法确认 Tool identity 的 tool_execution Step
+unavailable     进入过链路（含只有身份不完整的 Tool 调用），但没有任何可信事实
 available       Run COMPLETED
                 + 所有 evidence-eligible call 元数据可信且未截断
                 + 没有无法确认 Tool identity 的 tool_execution Step
-                + finalization COMPLETED 且 validation=passed
+                + finalization COMPLETED 且 validation=passed 且 failureReason=null
                 + finalization.eligibleToolCallCount == 真实 evidence-eligible Step 数量
                 + finalization.eligibleToolFailureCount >= 已明确失败的调用数
                 + 合法 durable Grounding 且全部 Citation matched
@@ -211,12 +212,19 @@ partial         其余情况
 校验规则直接来自 `runGroundedFinalization` 与 `toFinalizationStepOutput`：
 
 ```text
+非末尾 attempt     必须恰好是一次 correction rejection：ok=false + 有 rejectionCode
+                   + 无 samplingFailure。只有内容拒绝会继续下一次调用，成功、
+                   采样故障与 Abort / deadline 都会立即 return 或 throw
 成功 attempt      必然是最后一条（成功即 return），且全 Run 最多一条
 sampling 故障      必然是最后一条（立即抛 GroundedFinalizationSamplingError）
+COMPLETED Step     必然没有 failureReason：只有 completeRun 的成功提交路径才会
+                   把 Step 置为 COMPLETED
 Grounding block    只在 durable 投影成功后写入 → 最后一条 attempt 必须成功
                    citationCount <= 该次 attempt 的 submittedCitationKeyCount
                    只允许与 finalization_incomplete 共存（校验后 replay / commit 失败）
-validation_failed  无 Grounding block；最后一条 attempt 的 rejectionCode 与顶层一致；
+validation_failed  无 Grounding block；必须真正用尽 correction 预算：
+                   attempts.length == GROUNDED_FINALIZATION_MAX_ATTEMPTS，
+                   每条都是带 rejectionCode 的拒绝，最后一条与顶层一致；
                    唯一例外是 durable 投影被拒的 schema_invalid 路径，此时最后一条
                    attempt 是成功的模型调用
 sampling_incomplete 无 Grounding block；最后一条 attempt 的 samplingFailure 与顶层一致
@@ -232,7 +240,38 @@ finalization Step 的 `input` 必须完整包含 `assistantMessageId`、`evidenc
 缺失、类型非法或归属不一致时 `metadataTrusted=false`、typed timeline 回落 Generic、
 Inspector 不得为 `available`。
 
-### 9.2.3 计数的「未知」与「零」
+### 9.2.3 Tool identity 三态分类
+
+Tool 归类只依据持久化的 typed `toolName` + `toolVersion` 与 Tool Definition 的
+`evidencePolicy`，不从 summary、title、数组位置或 Observation 猜测：
+
+```text
+exact known identity + evidencePolicy=eligible   → eligible
+exact known identity + evidencePolicy!=eligible  → not_eligible（如 search_articles@1）
+toolName 缺失 / toolVersion 缺失 / 版本漂移 / 未注册工具名 → unclassifiable
+```
+
+`unclassifiable` 不是「已确认的 discovery-only」：它让「本 Run 发生了几次证据调用」
+变成未知，因此既不能计入 `not_applicable`，也不能出现在 `available` 里。
+
+### 9.2.4 失败或未知调用不采信 toolSummary
+
+Runtime 只在 `toolResult.ok === true` 时才持久化 `toolSummary`。因此：
+
+```text
+ok=true  + 合法 summary  → 可信投影
+ok=true  + 无 summary    → 可信但计数未知（legacy / 无 summary 工具）
+ok=true  + 非法 summary  → metadataTrusted=false
+ok=false + 无 summary    → 正常已知失败，metadataTrusted=true，计数为 null，refs=[]
+ok=false + 任意 summary  → metadataTrusted=false，summary 整体作废
+ok=null  + 无 summary    → 结果未记录，不伪造候选数量
+ok=null  + 任意 summary  → metadataTrusted=false
+```
+
+Citation correlation index 额外要求 `call.ok === true`：即便失败调用伪造了与
+durable Citation 完全一致的 `sourceId + chunkId`，也只能是 `unmatched`。
+
+### 9.2.5 计数的「未知」与「零」
 
 ```text
 candidateCount   任一调用的 sourceCount 无法从合法 typed summary 确认 → null
@@ -254,12 +293,12 @@ source / chunk 引用身份。只依赖该工具产生的 Citation 会按 D-12 �
 | --- | --- |
 | `corepack pnpm install --frozen-lockfile` | exit 0（pnpm 10.32.1 / Node v20.19.3 / Corepack 0.32.0） |
 | `pnpm --filter @agent/contracts build` | PASS |
-| `pnpm --filter @agent/api test:admin-runs` | 89 pass / 0 fail / 0 skip |
+| `pnpm --filter @agent/api test:admin-runs` | 113 pass / 0 fail / 0 skip |
 | `pnpm --filter @agent/api test:grounding` | 168 pass / 0 fail / 0 skip |
-| `pnpm --filter @agent/api test:grounding-db` | 15 pass / 0 fail / 0 skip（隔离 PostgreSQL） |
+| `pnpm --filter @agent/api test:grounding-db` | 17 pass / 0 fail / 0 skip（隔离 PostgreSQL） |
 | `pnpm --filter @agent/admin test` | PASS |
-| `pnpm --filter @agent/admin test:e2e` | 10 passed（Chromium） |
-| `pnpm --filter @agent/admin exec playwright test --repeat-each=3` | 30 passed |
+| `pnpm --filter @agent/admin test:e2e` | 12 passed（Chromium） |
+| `pnpm --filter @agent/admin exec playwright test --repeat-each=3` | 36 passed |
 | `pnpm --filter @agent/admin typecheck / lint / build` | PASS |
 | `pnpm --filter @agent/api typecheck / lint / build` | PASS |
 | `pnpm typecheck` | PASS |
@@ -283,6 +322,8 @@ DB integration 使用 `ARTICLE_INDEX_TEST_DATABASE_URL` 指向的隔离数据库
 - `single-column-retrieval.png`
 - `zero-hit-retrieval.png`
 - `unknown-call-result.png`
+- `unclassifiable-tool-unavailable.png`
+- `failed-summary-fail-closed.png`
 
 窄屏说明：Admin 控制台有既有全局 `min-width: 1024px`（本 Task 之前就存在，不在范围内），
 因此 320px 视口下文档级仍会横向滚动。浏览器用例如实断言了这一既有约束，并单独验证

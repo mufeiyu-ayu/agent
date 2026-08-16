@@ -132,6 +132,79 @@ export function createFailedDetail(): AdminRunDetail {
   })
 }
 
+/**
+ * 只有身份不完整的 Tool Step：既不能算 evidence-eligible，也不能说「未进入检索链路」。
+ */
+export function createUnclassifiableToolDetail(): AdminRunDetail {
+  return createDetail({
+    timeline: [
+      receiveStep(),
+      samplingStep(3, 'run-e2e-1:sampling-1', 'tool_calls'),
+      {
+        id: 'step-4',
+        kind: 'generic',
+        sequence: 4,
+        type: 'tool_execution',
+        title: '执行工具',
+        status: 'COMPLETED',
+        startedAt: START,
+        endedAt: END,
+        durationMs: 120,
+        inputSummary: '未识别 Step 的 input 已省略',
+        outputSummary: '未识别 Step 的 output 已省略',
+        hasError: false,
+      },
+    ],
+    retrievalInspector: {
+      availability: 'unavailable',
+      retrievalCalls: [],
+      callsTruncated: false,
+      candidateCount: 0,
+      evidenceRefCount: 0,
+      finalization: null,
+      citations: null,
+    },
+  })
+}
+
+/** 失败调用被改写进 toolSummary：整项 fail closed，Citation 不得 matched。 */
+export function createFailedSummaryDetail(): AdminRunDetail {
+  const inspector = createAvailableInspector()
+
+  return createDetail({
+    timeline: [
+      receiveStep(),
+      samplingStep(3, 'run-e2e-1:sampling-1', 'tool_calls'),
+      { ...toolStep(4), status: 'FAILED', hasError: true, ok: false, code: 'timeout' },
+      finalizationStep(6),
+      assistantOutputStep(7),
+    ],
+    retrievalInspector: {
+      ...inspector,
+      availability: 'partial',
+      candidateCount: null,
+      evidenceRefCount: null,
+      retrievalCalls: [{
+        ...inspector.retrievalCalls[0]!,
+        status: 'FAILED',
+        ok: false,
+        code: 'timeout',
+        sourceCount: null,
+        chunkEvidenceCount: null,
+        evidenceRefCount: null,
+        strategy: null,
+        refs: [],
+        metadataTrusted: false,
+      }],
+      citations: inspector.citations!.map(citation => ({
+        ...citation,
+        correlation: 'unmatched' as const,
+        matchedCallIds: [],
+      })),
+    },
+  })
+}
+
 /** COMPLETED zero-hit：检索成功但确实没有候选，候选数量是确定的 0。 */
 export function createZeroHitDetail(): AdminRunDetail {
   const inspector = createAvailableInspector()

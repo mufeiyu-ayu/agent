@@ -7,10 +7,12 @@ import { expect, test } from '@playwright/test'
 import {
   createAnsweredDetail,
   createFailedDetail,
+  createFailedSummaryDetail,
   createLongIdentifierDetail,
   createMalformedDetail,
   createOrdinaryDetail,
   createRunningDetail,
+  createUnclassifiableToolDetail,
   createUnknownResultDetail,
   createZeroHitDetail,
   FORBIDDEN_DOM_PATTERNS,
@@ -251,6 +253,49 @@ test.describe('状态矩阵', () => {
 
     await page.screenshot({
       path: `${SCREENSHOT_DIR}ordinary-not-applicable.png`,
+      fullPage: true,
+    })
+  })
+
+  test('AC-05 / AC-08：只有身份不完整的 Tool Step 时显示审计不可用而非未进入检索', async ({ page }) => {
+    await openRunDetail(page, createUnclassifiableToolDetail())
+    await switchToRetrieval(page)
+
+    await expect(page.locator(AVAILABILITY)).toHaveText('审计数据不可用')
+    // not_applicable 与 unavailable 的文案必须不同，不能说成「未进入检索链路」。
+    await expect(page.locator(RETRIEVAL)).not.toContainText('未进入检索链路')
+    await expect(page.locator(RETRIEVAL)).not.toContainText(
+      '本 Run 未进入 Grounding / Retrieval 链路',
+    )
+    await expect(page.locator(RETRIEVAL)).toContainText('可信的检索 / 引用数据缺失或损坏')
+    await expect(page.locator(RETRIEVAL)).toContainText('没有可投影的证据类检索调用')
+
+    await expectNoForbiddenText(page)
+    await page.screenshot({
+      path: `${SCREENSHOT_DIR}unclassifiable-tool-unavailable.png`,
+      fullPage: true,
+    })
+  })
+
+  test('AC-06 / AC-08：失败调用的 toolSummary 不产生候选、引用或 matched Citation', async ({ page }) => {
+    await openRunDetail(page, createFailedSummaryDetail())
+    await switchToRetrieval(page)
+
+    await expect(page.locator(AVAILABILITY)).toHaveText('审计不完整')
+    await expect(page.locator(CALLS)).toContainText('元数据不可信')
+    await expect(page.locator(CALL_STATUS)).toHaveAttribute('data-tone', 'error')
+    // 伪造的 candidate / strategy / refs 一律不展示。
+    await expect(readOverviewField(page, '候选数量')).toHaveText('未记录')
+    await expect(readOverviewField(page, '证据引用身份数')).toHaveText('未记录')
+    await expect(page.locator(CALLS)).toContainText('本次调用没有可投影的引用身份')
+    // Citation 全部 unmatched，不得因为伪造身份而显示可关联。
+    await expect(page.locator(CITATIONS)).not.toContainText('可关联')
+    await expect(page.locator(CITATIONS).locator('> li')).toHaveCount(2)
+    await expect(readOverviewField(page, '可关联引用')).toHaveText('0 / 2')
+
+    await expectNoForbiddenText(page)
+    await page.screenshot({
+      path: `${SCREENSHOT_DIR}failed-summary-fail-closed.png`,
       fullPage: true,
     })
   })

@@ -69,14 +69,26 @@ const MAX_LANGUAGE_CODE_CHARS = 32
  * 一旦有人改动某个工具的 policy，这份 allowlist 会自动跟随，不会出现
  * 「Admin 仍按旧 policy 归类证据调用」的静默漂移。
  */
-const EVIDENCE_ELIGIBLE_TOOLS = new Map(
-  [
-    retrieveArticleContextDefinition,
-    getArticleDetailDefinition,
-    searchArticlesDefinition,
-  ]
-    .filter(definition => definition.evidencePolicy === 'eligible')
-    .map(definition => [definition.name, definition.version] as const),
+const REGISTERED_TOOLS = [
+  retrieveArticleContextDefinition,
+  getArticleDetailDefinition,
+  searchArticlesDefinition,
+] as const
+
+/**
+ * `name@version` → evidence policy 的完整 identity map。
+ *
+ * 刻意保留 non-eligible 工具：只有 exact known identity 才能被明确判定为
+ * discovery-only；「已知工具名但版本缺失 / 漂移」不是已确认的 discovery-only，
+ * 而是 identity 不完整，必须单独归类。
+ */
+const TOOL_EVIDENCE_POLICIES = new Map(
+  REGISTERED_TOOLS.map(
+    definition => [
+      toToolIdentity(definition.name, definition.version),
+      definition.evidencePolicy,
+    ] as const,
+  ),
 )
 
 const EVIDENCE_AVAILABILITIES: MessageEvidenceAvailability[] = [
@@ -350,16 +362,28 @@ function classifyToolStep(
     ?? (typeof input?.toolName === 'string' && input.toolName.trim().length > 0
       ? input.toolName
       : null)
+  const toolVersion = known?.toolVersion
+    ?? (typeof input?.toolVersion === 'string' && input.toolVersion.trim().length > 0
+      ? input.toolVersion
+      : null)
 
-  if (toolName === null)
+  // 版本缺失、版本漂移或工具名未注册都不是「已确认的 discovery-only」，
+  // 而是 identity 不完整：不能默认按不参与证据链处理。
+  if (toolName === null || toolVersion === null)
     return 'unclassifiable'
 
-  const toolVersion = known?.toolVersion
-    ?? (typeof input?.toolVersion === 'string' ? input.toolVersion : null)
+  const policy = TOOL_EVIDENCE_POLICIES.get(
+    toToolIdentity(toolName, toolVersion),
+  )
 
-  return EVIDENCE_ELIGIBLE_TOOLS.get(toolName) === toolVersion
-    ? 'eligible'
-    : 'not_eligible'
+  if (policy === undefined)
+    return 'unclassifiable'
+
+  return policy === 'eligible' ? 'eligible' : 'not_eligible'
+}
+
+function toToolIdentity(name: string, version: string): string {
+  return `${name}@${version}`
 }
 
 function projectRetrievalCall(
@@ -372,10 +396,18 @@ function projectRetrievalCall(
     : null
   const output = readObject(step.output)
   const hasToolSummary = output !== null && Object.hasOwn(output, 'toolSummary')
-  const summary = hasToolSummary ? readToolSummary(output.toolSummary) : null
-  // 三种情况必须分开：base metadata 损坏（不可信）、成功但工具本就没有提交
-  // summary（可信但无计数）、提交了 summary 却不合法（不可信）。
-  const metadataTrusted = known !== null && (!hasToolSummary || summary !== null)
+  // Runtime 只在 `toolResult.ok === true` 时才生成并持久化 toolSummary。
+  // 失败或结果未记录的调用带着 summary，说明数据被改写过：即便结构合法也
+  // 一律不采信，否则伪造的 candidate / refs 会混进证据链。
+  const summaryAllowed = known?.ok === true
+  const summary = hasToolSummary && summaryAllowed
+    ? readToolSummary(output.toolSummary)
+    : null
+  // 四种情况必须分开：base metadata 损坏（不可信）、成功但工具本就没有提交
+  // summary（可信但无计数）、成功且 summary 合法（可信）、
+  // summary 出现在不该出现的位置或不合法（不可信）。
+  const metadataTrusted = known !== null
+    && (!hasToolSummary || (summaryAllowed && summary !== null))
   const refs = summary?.refs.slice(0, ADMIN_RETRIEVAL_MAX_REFS_PER_CALL) ?? []
 
   return {
@@ -829,6 +861,11 @@ function isConsistentFinalizationOutcome(
   const { attempts } = input
   const last = attempts.entries.at(-1)
 
+  // finalization Step 只有走 `completeRun` 的成功提交路径才会变成 COMPLETED，
+  // 而那条路径写入的 output 永远不带 failureReason。
+  if (input.status === 'COMPLETED' && input.failureReason !== null)
+    return false
+
   if (input.hasGroundingBlock) {
     // Grounding block 只可能在某次 attempt 通过校验之后写入。
     if (!last || !last.ok)
@@ -857,12 +894,16 @@ function isConsistentFinalizationOutcome(
 
   switch (input.failureReason) {
     case 'validation_failed':
-      // correction 用尽：最后一次必须是带 rejectionCode 的内容拒绝，且与顶层一致。
+      // 普通内容拒绝必须真正用尽 correction 预算才会收口：`runGroundedFinalization`
+      // 只在 for 循环跑满后才抛 GroundedFinalizationFailedError。
       return last !== undefined
-        && last.ok === false
-        && last.rejectionCode !== null
+        && attempts.entries.length === GROUNDED_FINALIZATION_MAX_ATTEMPTS
+        && attempts.entries.every(entry => (
+          entry.ok === false
+          && entry.rejectionCode !== null
+          && entry.samplingFailure === null
+        ))
         && last.rejectionCode === input.rejectionCode
-        && last.samplingFailure === null
 
     case 'sampling_incomplete':
       // 采样故障立即收口：必然是最后一次 attempt，且与顶层一致。
@@ -962,6 +1003,8 @@ function readAttempts(
       ? readAllowedString(attempt, 'samplingFailure', SAMPLING_FAILURES)
       : null
 
+    const previous = index > 0 ? entries[index - 1] : undefined
+
     if (
       (Object.hasOwn(attempt, 'rejectionCode') && rejectionCode === null)
       || (Object.hasOwn(attempt, 'samplingFailure') && samplingFailure === null)
@@ -970,10 +1013,13 @@ function readAttempts(
       // 成功 attempt 不携带任何失败类别。
       || (attempt.ok === true
         && (rejectionCode !== null || samplingFailure !== null))
-      // 成功 attempt 之后不可能再有 attempt：成功即 return。
-      || (index > 0 && entries[index - 1]?.ok === true)
-      // 采样故障立即抛出，之后同样不可能再有 attempt。
-      || (index > 0 && entries[index - 1]?.samplingFailure !== null)
+      // 只有 correction rejection 会继续下一次 attempt：成功、采样故障与
+      // Abort / deadline 都在记录 attempt 后立即 return 或 throw。因此每个
+      // 非末尾 attempt 必须恰好是一次带 rejectionCode 的内容拒绝。
+      || (previous !== undefined
+        && !(previous.ok === false
+          && previous.rejectionCode !== null
+          && previous.samplingFailure === null))
     ) {
       return null
     }
@@ -1092,7 +1138,10 @@ function projectCitations(
   const refIndex = new Map<string, string[]>()
 
   for (const call of calls) {
-    if (!call.metadataTrusted || call.callId === null)
+    // 只有明确成功的调用才可能真正向 Evidence Registry 贡献引用。
+    // 这里与 projector 的 summary 采信规则双层防守：即便未来某个 projector
+    // 漂移，失败调用伪造的 refs 也无法把 Citation 变成 matched。
+    if (!call.metadataTrusted || call.ok !== true || call.callId === null)
       continue
 
     for (const ref of call.refs) {
@@ -1171,6 +1220,9 @@ function resolveAvailability(input: AvailabilityInput): AdminRetrievalInspector[
     !input.hasEligibleCall
     && !input.hasFinalizationStep
     && !input.groundingRowPresent
+    // 存在无法确认身份的 Tool 调用时，「本 Run 是否进入过检索链路」本身就未知，
+    // 不能说成「未进入检索链路」。
+    && input.unclassifiableToolStepCount === 0
   ) {
     return 'not_applicable'
   }
@@ -1194,6 +1246,8 @@ function resolveAvailability(input: AvailabilityInput): AdminRetrievalInspector[
     && finalization.metadataTrusted
     && finalization.status === 'COMPLETED'
     && finalization.validation === 'passed'
+    // 引用校验通过之后的 replay / commit / 终态失败同样不是完整成功。
+    && finalization.failureReason === null
     && input.grounding !== null
     && input.citations !== null
     && input.citations.every(citation => citation.correlation === 'matched')
