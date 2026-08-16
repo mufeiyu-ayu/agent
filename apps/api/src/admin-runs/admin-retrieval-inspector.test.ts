@@ -1148,7 +1148,9 @@ describe('Tool identity 三态分类', () => {
       // 存在无法确认身份的调用时，不能说「未进入检索链路」。
       assert.equal(inspector.availability, 'unavailable')
       assert.deepEqual(inspector.retrievalCalls, [])
-      assert.equal(inspector.candidateCount, 0)
+      // 无法确认该调用本应贡献多少候选 / 证据，只能是未知，不能写成确定的 0。
+      assert.equal(inspector.candidateCount, null)
+      assert.equal(inspector.evidenceRefCount, null)
     })
   }
 
@@ -1183,11 +1185,14 @@ describe('Tool identity 三态分类', () => {
     const inspector = projectAdminRunDetail(run).retrievalInspector
 
     assert.equal(inspector.availability, 'partial')
-    // 不进入 call 列表，也不影响候选 / 证据统计与 correlation。
+    // 不进入 call 列表，但会让 Run 级总数变成未知：
+    // 已识别调用的 3 只是局部数字，不是全 Run 的审计总数。
     assert.equal(inspector.retrievalCalls.length, 1)
     assert.equal(inspector.retrievalCalls[0]?.callId, 'call-1')
-    assert.equal(inspector.candidateCount, 3)
-    assert.equal(inspector.evidenceRefCount, 3)
+    assert.equal(inspector.retrievalCalls[0]?.sourceCount, 3)
+    assert.equal(inspector.candidateCount, null)
+    assert.equal(inspector.evidenceRefCount, null)
+    // 已明确识别的 refs 仍可用于既有 Citation correlation。
     assert.deepEqual(inspector.citations?.map(citation => citation.matchedCallIds), [
       ['call-1'],
       ['call-1'],
@@ -1364,6 +1369,266 @@ describe('失败或未知调用的 toolSummary 不可采信', () => {
       citation => citation.matchedCallIds.every(callId => callId === 'call-1'),
     ))
     assert.equal(inspector.availability, 'partial')
+  })
+})
+
+describe('finalization 失败类别互斥', () => {
+  for (const [label, overrides] of [
+    ['validation_failed 同时带 samplingFailure', {
+      failureReason: 'validation_failed',
+      rejectionCode: 'unknown_citation_key',
+      samplingFailure: 'stream_failed',
+    }],
+    ['sampling_incomplete 同时带 rejectionCode', {
+      failureReason: 'sampling_incomplete',
+      samplingFailure: 'stream_failed',
+      rejectionCode: 'answer_empty',
+    }],
+    ['finalization_incomplete 带 rejectionCode', {
+      failureReason: 'finalization_incomplete',
+      rejectionCode: 'answer_empty',
+    }],
+    ['finalization_incomplete 带 samplingFailure', {
+      failureReason: 'finalization_incomplete',
+      samplingFailure: 'stream_failed',
+    }],
+    ['无 failureReason 却带 rejectionCode', { rejectionCode: 'answer_empty' }],
+    ['无 failureReason 却带 samplingFailure', { samplingFailure: 'stream_failed' }],
+  ] as const) {
+    it(`${label} 时不可信`, () => {
+      const inspector = projectWithFinalizationOutput(
+        () => ({
+          ...failedFinalizationOutput({
+            attempts: [{ ...attempt(1), ok: false, rejectionCode: 'answer_empty' }],
+          }),
+          ...overrides,
+        }),
+        'FAILED',
+      )
+
+      assertUntrustedFinalization(inspector)
+    })
+  }
+
+  it('正常 sampling_incomplete 是可信失败事实', () => {
+    const inspector = projectWithFinalizationOutput(() => failedFinalizationOutput({
+      failureReason: 'sampling_incomplete',
+      samplingFailure: 'missing_submission',
+      attempts: [{
+        ...attempt(1),
+        ok: false,
+        samplingFailure: 'missing_submission',
+      }],
+    }), 'FAILED')
+
+    assert.equal(inspector.finalization?.metadataTrusted, true)
+    assert.equal(inspector.finalization?.validation, 'failed')
+    assert.equal(inspector.finalization?.samplingFailure, 'missing_submission')
+    assert.equal(inspector.finalization?.rejectionCode, null)
+  })
+
+  it('一次 rejection 后第二次采样故障收口为 sampling_incomplete', () => {
+    const inspector = projectWithFinalizationOutput(() => failedFinalizationOutput({
+      failureReason: 'sampling_incomplete',
+      samplingFailure: 'stream_failed',
+      attempts: [
+        { ...attempt(1), ok: false, rejectionCode: 'answer_empty' },
+        { ...attempt(2), ok: false, samplingFailure: 'stream_failed' },
+      ],
+    }), 'FAILED')
+
+    assert.equal(inspector.finalization?.metadataTrusted, true)
+    assert.equal(inspector.finalization?.validation, 'failed')
+    assert.equal(inspector.finalization?.attemptCount, 2)
+  })
+})
+
+describe('未收口 Step 不得携带终态 output', () => {
+  for (const status of ['RUNNING', 'PENDING'] as const) {
+    for (const [label, build] of [
+      ['完整 Grounding block', (output: Record<string, unknown>) => output],
+      ['validation_failed', () => failedFinalizationOutput({
+        failureReason: 'validation_failed',
+        rejectionCode: 'unknown_citation_key',
+        attempts: [
+          { ...attempt(1), ok: false, rejectionCode: 'answer_empty' },
+          { ...attempt(2), ok: false, rejectionCode: 'unknown_citation_key' },
+        ],
+      })],
+      ['sampling_incomplete', () => failedFinalizationOutput({
+        failureReason: 'sampling_incomplete',
+        samplingFailure: 'stream_failed',
+        attempts: [{ ...attempt(1), ok: false, samplingFailure: 'stream_failed' }],
+      })],
+    ] as const) {
+      it(`${status} Step 携带${label}的 output 时不可信`, () => {
+        const run = createGroundedRun()
+        const finalizationStep = run.steps.find(
+          step => step.type === 'grounded_finalization',
+        )!
+
+        finalizationStep.output = build(
+          finalizationStep.output as Record<string, unknown>,
+        )
+        finalizationStep.status = status
+        run.status = 'RUNNING'
+        run.assistantMessage!.status = 'STREAMING'
+        run.assistantMessage!.grounding = null
+
+        const detail = projectAdminRunDetail(run)
+
+        assertUntrustedFinalization(detail.retrievalInspector)
+        assert.equal(
+          findTimelineItem(detail, 'grounded_finalization').kind,
+          'generic',
+        )
+        assert.ok(!JSON.stringify(detail).includes(SENTINEL))
+      })
+    }
+
+    it(`${status} Step 且 output 为空是合法 pending`, () => {
+      const run = createGroundedRun()
+      const finalizationStep = run.steps.find(
+        step => step.type === 'grounded_finalization',
+      )!
+
+      finalizationStep.output = null
+      finalizationStep.status = status
+      run.status = 'RUNNING'
+      run.assistantMessage!.status = 'STREAMING'
+      run.assistantMessage!.grounding = null
+
+      const detail = projectAdminRunDetail(run)
+
+      assert.equal(detail.retrievalInspector.finalization?.validation, 'pending')
+      assert.equal(detail.retrievalInspector.finalization?.outcome, null)
+      assert.equal(detail.retrievalInspector.finalization?.attemptCount, null)
+      assert.equal(detail.retrievalInspector.availability, 'partial')
+      assert.equal(
+        findTimelineItem(detail, 'grounded_finalization').kind,
+        'known',
+      )
+    })
+  }
+})
+
+describe('correction 预算与终态类别', () => {
+  it('两次 rejection 后不得伪装成 finalization_incomplete', () => {
+    // 预算已经耗尽，finalizer 必然抛 GroundedFinalizationFailedError。
+    const inspector = projectWithFinalizationOutput(() => failedFinalizationOutput({
+      failureReason: 'finalization_incomplete',
+      attempts: [
+        { ...attempt(1), ok: false, rejectionCode: 'answer_empty' },
+        { ...attempt(2), ok: false, rejectionCode: 'unknown_citation_key' },
+      ],
+    }), 'ABORTED')
+
+    assertUntrustedFinalization(inspector)
+  })
+
+  it('一次 rejection 后中断仍是可信的 finalization_incomplete', () => {
+    const inspector = projectWithFinalizationOutput(() => failedFinalizationOutput({
+      failureReason: 'finalization_incomplete',
+      attempts: [{ ...attempt(1), ok: false, rejectionCode: 'answer_empty' }],
+    }), 'ABORTED')
+
+    assert.equal(inspector.finalization?.metadataTrusted, true)
+    assert.equal(inspector.finalization?.attemptCount, 1)
+    assert.notEqual(inspector.availability, 'available')
+  })
+
+  it('一次 rejection 后第二次成功仍是可信的 answered', () => {
+    const inspector = projectWithFinalizationOutput(output => ({
+      ...output,
+      attemptCount: 2,
+      attempts: [
+        { ...attempt(1), ok: false, rejectionCode: 'answer_empty' },
+        attempt(2),
+      ],
+    }))
+
+    assert.equal(inspector.finalization?.metadataTrusted, true)
+    assert.equal(inspector.finalization?.validation, 'passed')
+    assert.equal(inspector.availability, 'available')
+  })
+
+  it('COMPLETED Step 缺少 Grounding block 时不可信', () => {
+    const inspector = projectWithFinalizationOutput(() => failedFinalizationOutput({
+      attempts: [attempt(1)],
+    }))
+
+    assertUntrustedFinalization(inspector)
+  })
+})
+
+describe('unclassifiable Tool 的 Run 级计数', () => {
+  it('正常 Retrieval 与 discovery-only 混合时计数保持真实数字', () => {
+    const run = createGroundedRun()
+
+    run.steps.push(step(6, 'tool_execution', {
+      input: {
+        callId: 'call-discovery',
+        toolName: 'search_articles',
+        toolVersion: '1',
+        samplingAttemptId: 'run-1:sampling-1',
+        executionAttempt: 1,
+        rawArgumentsChars: 20,
+      },
+      output: {
+        ok: true,
+        originalChars: 100,
+        observationChars: 100,
+        truncated: false,
+        durationMs: 30,
+      },
+    }))
+
+    const inspector = projectAdminRunDetail(run).retrievalInspector
+
+    assert.equal(inspector.availability, 'available')
+    assert.equal(inspector.candidateCount, 3)
+    assert.equal(inspector.evidenceRefCount, 3)
+  })
+
+  it('malformed failed summary 让两个 Run 级计数都变成未知', () => {
+    const run = createGroundedRun({ toolFailure: { code: 'timeout' } })
+    const toolStep = run.steps.find(step => step.type === 'tool_execution')!
+
+    ;(toolStep.output as Record<string, unknown>).toolSummary = {
+      status: 'candidates_returned',
+      strategy: RETRIEVAL_STRATEGY,
+      sourceCount: 2,
+      chunkEvidenceCount: 2,
+      sources: [{ sourceId: 11, chunkId: 'chunk-a' }],
+    }
+
+    const inspector = projectAdminRunDetail(run).retrievalInspector
+
+    assert.equal(inspector.candidateCount, null)
+    assert.equal(inspector.evidenceRefCount, null)
+  })
+
+  it('Tool timeout 时候选未知但明确失败的证据身份数仍是 0', () => {
+    const run = createGroundedRun({
+      toolFailure: { code: 'timeout' },
+      finalization: {
+        evidenceAvailability: 'unavailable',
+        registryRefCount: 0,
+        eligibleToolFailureCount: 1,
+        outcome: 'insufficient_evidence',
+        citationCount: 0,
+      },
+      citations: [],
+      groundingOverrides: {
+        evidenceAvailability: 'unavailable',
+        outcome: 'insufficient_evidence',
+      },
+    })
+    const inspector = projectAdminRunDetail(run).retrievalInspector
+
+    assert.equal(inspector.candidateCount, null)
+    assert.equal(inspector.evidenceRefCount, 0)
+    assert.equal(inspector.availability, 'available')
   })
 })
 

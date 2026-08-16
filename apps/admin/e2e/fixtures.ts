@@ -159,8 +159,9 @@ export function createUnclassifiableToolDetail(): AdminRunDetail {
       availability: 'unavailable',
       retrievalCalls: [],
       callsTruncated: false,
-      candidateCount: 0,
-      evidenceRefCount: 0,
+      // 无法确认该调用本应贡献多少候选 / 证据，只能是未知。
+      candidateCount: null,
+      evidenceRefCount: null,
       finalization: null,
       citations: null,
     },

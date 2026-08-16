@@ -933,6 +933,10 @@ describe('Grounded Answer PostgreSQL integration', { concurrency: 1 }, () => {
     assert.equal(detail.retrievalInspector.availability, 'unavailable')
     assert.deepEqual(detail.retrievalInspector.retrievalCalls, [])
     assert.equal(detail.retrievalInspector.finalization, null)
+    assert.equal(detail.retrievalInspector.citations, null)
+    // 无法确认这次调用本应贡献多少候选 / 证据：Run 级总数只能是未知。
+    assert.equal(detail.retrievalInspector.candidateCount, null)
+    assert.equal(detail.retrievalInspector.evidenceRefCount, null)
   })
 
   // ── 脚手架 ──────────────────────────────────────────────

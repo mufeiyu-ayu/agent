@@ -204,6 +204,7 @@ test.describe('状态矩阵', () => {
     await expect(page.locator(AVAILABILITY)).toHaveText('审计完整')
     // zero-hit 是「确定没有候选」，与「候选数量未知」必须显示不同。
     await expect(readOverviewField(page, '候选数量')).toHaveText('0')
+    await expect(readOverviewField(page, '证据引用身份数')).toHaveText('0')
     await expect(page.locator(RETRIEVAL)).toContainText('没有命中证据')
     await expect(page.locator(RETRIEVAL)).toContainText('证据不足')
     await expect(page.locator(RETRIEVAL)).toContainText('本次回答没有引用任何来源')
@@ -269,6 +270,9 @@ test.describe('状态矩阵', () => {
     )
     await expect(page.locator(RETRIEVAL)).toContainText('可信的检索 / 引用数据缺失或损坏')
     await expect(page.locator(RETRIEVAL)).toContainText('没有可投影的证据类检索调用')
+    // Run 级总数必须是未知，不能把「无法确认」显示成确定的 0。
+    await expect(readOverviewField(page, '候选数量')).toHaveText('未记录')
+    await expect(readOverviewField(page, '证据引用身份数')).toHaveText('未记录')
 
     await expectNoForbiddenText(page)
     await page.screenshot({

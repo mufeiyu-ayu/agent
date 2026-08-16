@@ -282,9 +282,9 @@ export interface AdminRetrievalInspector {
   availability: AdminRetrievalInspectorAvailability
   retrievalCalls: AdminRetrievalCallSummary[]
   callsTruncated: boolean
-  /** 全部可信 call 声明的候选总数；存在不可信 call 时为 null。 */
+  /** 全部可信 call 声明的候选总数；存在不可信或无法分类的 Tool Step 时为 null。 */
   candidateCount: number | null
-  /** 去重后的可投影 evidence 身份数量；存在不可信 call 时为 null。 */
+  /** 去重后的可投影 evidence 身份数量；存在不可信或无法分类的 Tool Step 时为 null。 */
   evidenceRefCount: number | null
   finalization: AdminGroundedFinalizationSummary | null
   /** 只有 COMPLETED 助手消息上的合法 Grounding 才会有值；损坏时为 null。 */

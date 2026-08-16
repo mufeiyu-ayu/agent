@@ -217,8 +217,13 @@ partial         其余情况
                    采样故障与 Abort / deadline 都会立即 return 或 throw
 成功 attempt      必然是最后一条（成功即 return），且全 Run 最多一条
 sampling 故障      必然是最后一条（立即抛 GroundedFinalizationSamplingError）
-COMPLETED Step     必然没有 failureReason：只有 completeRun 的成功提交路径才会
-                   把 Step 置为 COMPLETED
+未收口 Step        PENDING / RUNNING 必然 output = null（Recorder 的每次 output 写入
+                   都与终态 status 同一条 update）；带 output 一律 malformed
+COMPLETED Step     必然带 Grounding block 且没有 failureReason：只有 completeRun 的
+                   成功提交路径才会把 Step 置为 COMPLETED
+失败类别互斥        validation_failed 只带 rejectionCode；sampling_incomplete 只带
+                   samplingFailure；finalization_incomplete 与「无 failureReason」
+                   两者都不带。既检查必填，也检查其余类别必须为空
 Grounding block    只在 durable 投影成功后写入 → 最后一条 attempt 必须成功
                    citationCount <= 该次 attempt 的 submittedCitationKeyCount
                    只允许与 finalization_incomplete 共存（校验后 replay / commit 失败）
@@ -228,7 +233,10 @@ validation_failed  无 Grounding block；必须真正用尽 correction 预算：
                    唯一例外是 durable 投影被拒的 schema_invalid 路径，此时最后一条
                    attempt 是成功的模型调用
 sampling_incomplete 无 Grounding block；最后一条 attempt 的 samplingFailure 与顶层一致
-finalization_incomplete 可以是 0 attempt（调用前中断）；有 attempt 时最后一条不带 samplingFailure
+finalization_incomplete 可以是 0 attempt（调用前中断）；有 attempt 时最后一条必须是
+                   ok=false 且不带 samplingFailure；若最后一条是内容拒绝且预算已用尽
+                   （attempts.length >= MAX_ATTEMPTS），finalizer 必然收口为
+                   validation_failed，此时的 finalization_incomplete 是 malformed
 无 failureReason 且无 Grounding block  只有尚未收口的 Step 才允许（pending）
 ```
 
@@ -273,13 +281,21 @@ durable Citation 完全一致的 `sourceId + chunkId`，也只能是 `unmatched`
 
 ### 9.2.5 计数的「未知」与「零」
 
+Run 级 `candidateCount` / `evidenceRefCount` 在 `projectAdminRetrievalInspector()`
+里只计算一次，availability 与公共 contract 使用同一个数字：
+
 ```text
+存在无法分类的 Tool Step  两个 Run 级总数都为 null：本 Run 的 Tool 集合本身不完整，
+                          已识别调用的局部数字不是全 Run 审计总数
 candidateCount   任一调用的 sourceCount 无法从合法 typed summary 确认 → null
                  成功 zero-hit → 0
                  Tool timeout / 失败 / legacy 无 summary / malformed summary → null
 evidenceRefCount 明确失败的调用确实没有贡献引用，计 0；
                  成功但没有提交可审计引用（legacy / 无 summary 工具）→ null
 ```
+
+明确的 discovery-only 工具（`search_articles@1`）不影响任何计数，
+仅 discovery-only 的 Run 仍是 `not_applicable`。
 
 ### 9.3 已知限制
 
@@ -293,7 +309,7 @@ source / chunk 引用身份。只依赖该工具产生的 Citation 会按 D-12 �
 | --- | --- |
 | `corepack pnpm install --frozen-lockfile` | exit 0（pnpm 10.32.1 / Node v20.19.3 / Corepack 0.32.0） |
 | `pnpm --filter @agent/contracts build` | PASS |
-| `pnpm --filter @agent/api test:admin-runs` | 113 pass / 0 fail / 0 skip |
+| `pnpm --filter @agent/api test:admin-runs` | 136 pass / 0 fail / 0 skip |
 | `pnpm --filter @agent/api test:grounding` | 168 pass / 0 fail / 0 skip |
 | `pnpm --filter @agent/api test:grounding-db` | 17 pass / 0 fail / 0 skip（隔离 PostgreSQL） |
 | `pnpm --filter @agent/admin test` | PASS |

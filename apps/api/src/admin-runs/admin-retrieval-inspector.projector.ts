@@ -263,6 +263,15 @@ export function projectAdminRetrievalInspector(
 
   const callsTrusted = retrievalCalls.every(call => call.metadataTrusted)
   const refsTruncated = retrievalCalls.some(call => call.refsTruncated)
+  // Run 级总数只计算一次，availability 与公共 contract 必须看到同一个数字。
+  // 存在无法分类的 Tool Step 时，本 Run 的 Tool 集合本身就不完整：已识别调用
+  // 的局部数字不是全 Run 审计总数，只能是「未知」，不能写成确定的 0。
+  const candidateCount = unclassifiableToolStepCount > 0
+    ? null
+    : sumSourceCounts(retrievalCalls)
+  const evidenceRefCount = unclassifiableToolStepCount > 0
+    ? null
+    : countDistinctRefs(retrievalCalls)
 
   return {
     availability: resolveAvailability({
@@ -278,15 +287,15 @@ export function projectAdminRetrievalInspector(
       knownFailedEligibleCount: retrievalCalls.filter(
         call => call.ok === false,
       ).length,
-      evidenceRefCount: countDistinctRefs(retrievalCalls),
+      evidenceRefCount,
       finalization,
       grounding,
       citations,
     }),
     retrievalCalls,
     callsTruncated,
-    candidateCount: sumSourceCounts(retrievalCalls),
-    evidenceRefCount: countDistinctRefs(retrievalCalls),
+    candidateCount,
+    evidenceRefCount,
     finalization,
     citations,
   }
@@ -598,11 +607,11 @@ function readFinalizationMetadata(
   if (!registryInput)
     return untrusted
 
-  const output = readObject(step.output)
-
-  if (!output) {
-    // 进行中的 Step 还没有 output，这是合法中间态而不是数据损坏。
-    if (step.output !== null || !isUnfinishedStep(step.status))
+  // Recorder 的每一次 output 写入都与终态 status 在同一条 update 里发生
+  // （`startStep` 只写 input）。因此「尚未收口的 Step 却已经有 output」
+  // 是不可能的持久化状态，必须在解析之前就整份拒绝，而不是先解析再降级。
+  if (isUnfinishedStep(step.status)) {
+    if (step.output !== null)
       return untrusted
 
     return {
@@ -614,6 +623,11 @@ function readFinalizationMetadata(
       registryTruncated: registryInput.registryTruncated,
     }
   }
+
+  const output = readObject(step.output)
+
+  if (!output)
+    return untrusted
 
   const evidenceAvailability = readAllowedString(
     output,
@@ -737,12 +751,11 @@ function readFinalizationMetadata(
   if (
     (Object.hasOwn(output, 'rejectionCode') && rejectionCode === null)
     || (Object.hasOwn(output, 'samplingFailure') && samplingFailure === null)
-    || (failureReason === 'validation_failed' && rejectionCode === null)
-    || (failureReason === 'sampling_incomplete' && samplingFailure === null)
-    || (failureReason === 'finalization_incomplete'
-      && (rejectionCode !== null || samplingFailure !== null))
-    || (failureReason === null
-      && (rejectionCode !== null || samplingFailure !== null))
+    || !isConsistentFailureCategory({
+      failureReason,
+      rejectionCode,
+      samplingFailure,
+    })
   ) {
     return untrusted
   }
@@ -839,6 +852,32 @@ function isUnfinishedStep(status: AgentStepStatus): boolean {
   return status === 'PENDING' || status === 'RUNNING'
 }
 
+/**
+ * 顶层失败类别与其安全子类别的唯一合法矩阵。
+ *
+ * 三条收口路径互斥且各自只携带自己的类别字段：
+ * `GroundedFinalizationFailedError` 只带 rejectionCode，
+ * `GroundedFinalizationSamplingError` 只带 samplingFailure，
+ * 其它中断两者都不带。因此这里既检查必填，也检查其余类别必须为空。
+ */
+function isConsistentFailureCategory(input: {
+  failureReason: AdminGroundedFinalizationFailureReason | null
+  rejectionCode: AdminGroundedAnswerRejectionCode | null
+  samplingFailure: AdminGroundedFinalizationSamplingFailure | null
+}): boolean {
+  switch (input.failureReason) {
+    case 'validation_failed':
+      return input.rejectionCode !== null && input.samplingFailure === null
+
+    case 'sampling_incomplete':
+      return input.samplingFailure !== null && input.rejectionCode === null
+
+    case 'finalization_incomplete':
+    case null:
+      return input.rejectionCode === null && input.samplingFailure === null
+  }
+}
+
 interface FinalizationOutcomeInput {
   attempts: FinalizationAttemptAggregate
   citationCount: number | null
@@ -862,9 +901,12 @@ function isConsistentFinalizationOutcome(
   const last = attempts.entries.at(-1)
 
   // finalization Step 只有走 `completeRun` 的成功提交路径才会变成 COMPLETED，
-  // 而那条路径写入的 output 永远不带 failureReason。
-  if (input.status === 'COMPLETED' && input.failureReason !== null)
+  // 而那条路径写入的 output 必然带 Grounding block、不带 failureReason，
+  // 且对应一次成功的 attempt。
+  if (input.status === 'COMPLETED'
+    && (input.failureReason !== null || !input.hasGroundingBlock)) {
     return false
+  }
 
   if (input.hasGroundingBlock) {
     // Grounding block 只可能在某次 attempt 通过校验之后写入。
@@ -914,9 +956,18 @@ function isConsistentFinalizationOutcome(
         && last.rejectionCode === null
 
     case 'finalization_incomplete':
-      // 模型调用前中断可以是 0 attempt；调用后中断的 attempt 不带 samplingFailure。
-      return last === undefined
-        || (last.ok === false && last.samplingFailure === null)
+      // 模型调用前中断可以是 0 attempt。
+      if (last === undefined)
+        return true
+
+      // 采样故障与成功都会走各自的收口路径，不可能落到这里。
+      if (last.samplingFailure !== null || last.ok === true)
+        return false
+
+      // 最后一次是内容拒绝且预算已经用尽时，finalizer 必然抛
+      // GroundedFinalizationFailedError，唯一正确的顶层类别是 validation_failed。
+      return !(last.rejectionCode !== null
+        && attempts.entries.length >= GROUNDED_FINALIZATION_MAX_ATTEMPTS)
 
     case null:
       // 既没有结论也没有失败原因：只有尚未收口的 Step 才允许。
