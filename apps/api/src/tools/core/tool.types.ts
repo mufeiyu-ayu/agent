@@ -1,10 +1,15 @@
 import type { DatabaseOperationDeadline } from '../../prisma/prisma.service.js'
+import type {
+  ToolEvidencePolicy,
+  ToolEvidenceProjection,
+} from './tool-evidence.js'
 
 /** 当前工具输入需要的最小 JSON Schema 子集。 */
 export type JsonSchemaProperty
   = | { type: 'boolean', description?: string }
     | { type: 'integer', description?: string }
     | { type: 'string', description?: string }
+    | { type: 'array', items: { type: 'string' }, description?: string }
 
 export interface JsonObjectSchema {
   type: 'object'
@@ -46,6 +51,12 @@ export interface ToolDefinition<TInput = unknown> {
   requiresApproval: boolean
   idempotent: boolean
   risk: ToolRisk
+  /**
+   * 该工具的结果能否成为回答证据。由服务端定义，模型 arguments 无法改变。
+   *
+   * 必填而非可选：新工具漏声明时应该在 typecheck 阶段就失败，而不是默默不产生证据。
+   */
+  evidencePolicy: ToolEvidencePolicy
 }
 
 /** 模型提出、但尚未经过工具查找和参数验证的调用。 */
@@ -95,6 +106,13 @@ export type ToolResult<T = unknown>
     data: T
     modelContent: string
     stepSummary?: ToolStepSummary
+    /**
+     * 工具自愿提交的、可进入 Run Evidence Registry 的证据引用。
+     *
+     * 只有 `evidencePolicy: 'eligible'` 的工具才会被 Runtime 采纳；
+     * 运行时仍由 `normalizeToolEvidenceProjection` 逐条 fail closed 校验。
+     */
+    evidence?: ToolEvidenceProjection
   }
   | {
     ok: false

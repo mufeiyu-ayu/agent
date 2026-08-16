@@ -21,6 +21,7 @@ import { describe, it } from 'node:test'
 import { EmbeddingError } from '../../embeddings/embedding-provider.js'
 import { HYBRID_RRF_STRATEGY } from '../../retrieval/hybrid-article-retriever.js'
 import { toModelToolSpec } from '../core/model-tool-spec.mapper.js'
+import { normalizeToolEvidenceProjection } from '../core/tool-evidence.js'
 import { ToolInvocationService } from '../core/tool-invocation.service.js'
 import { ToolRegistryService } from '../core/tool-registry.service.js'
 import {
@@ -198,6 +199,73 @@ describe('retrieve_article_context', () => {
 
     for (const forbidden of ['cosineDistance', '0.1234', 'seoDescription', 'seoTitle'])
       assert.equal(serialized.includes(forbidden), false, `不得泄漏 ${forbidden}`)
+  })
+
+  it('声明 eligible evidence policy，并按 chunk / article 粒度投影可引用证据', async () => {
+    const retriever = new FakeRetriever({
+      hits: [
+        createHit({
+          sourceId: 7,
+          rank: 1,
+          evidence: {
+            chunkId: 'article-7-chunk-2',
+            sectionPath: '正文 > 核心概念',
+            cosineDistance: 0.1234,
+          },
+        }),
+        createHit({ sourceId: 9, slug: 'lexical-only', rank: 2 }),
+      ],
+    })
+    const { invocationService } = createTools(retriever)
+
+    assert.equal(retrieveArticleContextDefinition.evidencePolicy, 'eligible')
+
+    const result = await invocationService.invoke(
+      createEnvelope({ query: 'SEO', limit: 2 }),
+      createContext(),
+    )
+
+    assert.equal(result.ok, true)
+    if (!result.ok)
+      return
+
+    const projection = normalizeToolEvidenceProjection(result.evidence)
+
+    assert.equal(projection.ok, true)
+    if (!projection.ok)
+      return
+
+    const refs = projection.refs
+
+    assert.equal(refs.length, 2)
+    assert.equal(refs[0]?.granularity, 'chunk')
+    assert.equal(refs[0]?.chunkId, 'article-7-chunk-2')
+    assert.equal(refs[0]?.sectionPath, '正文 > 核心概念')
+    assert.deepEqual(refs[0]?.strategy, {
+      name: HYBRID_RRF_STRATEGY.name,
+      version: HYBRID_RRF_STRATEGY.version,
+    })
+    // 词面命中没有 chunk 证据，只能是 article 粒度，不得伪造 chunk identity。
+    assert.equal(refs[1]?.granularity, 'article')
+    assert.equal(refs[1]?.chunkId, null)
+    assert.equal(refs[1]?.sectionPath, null)
+    assert.doesNotMatch(JSON.stringify(refs), /cosineDistance|0\.1234/)
+  })
+
+  it('零候选时提交的是合法空投影，而不是缺失投影', async () => {
+    const { invocationService } = createTools(new FakeRetriever({ hits: [] }))
+
+    const result = await invocationService.invoke(
+      createEnvelope({ query: 'SEO' }),
+      createContext(),
+    )
+
+    assert.equal(result.ok, true)
+    // 合法零命中必须能与「projector 故障」区分开。
+    assert.deepEqual(
+      normalizeToolEvidenceProjection(result.ok ? result.evidence : undefined),
+      { ok: true, refs: [] },
+    )
   })
 
   it('modelContent 明确标注候选、untrusted 与 unverified 语义', async () => {

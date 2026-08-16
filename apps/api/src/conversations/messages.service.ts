@@ -1,8 +1,13 @@
 import type { ConversationMessage } from '@agent/contracts'
-import type { Message } from '../generated/prisma/client.js'
+import type { Message, MessageGrounding } from '../generated/prisma/client.js'
 import { Inject, Injectable, NotFoundException } from '@nestjs/common'
 
+import { toOwnedMessageGroundingV1 } from '../agent-runtime/grounding/message-grounding.projector.js'
 import { PrismaService } from '../prisma/prisma.service.js'
+
+type MessageWithGrounding = Message & {
+  grounding: MessageGrounding | null
+}
 
 @Injectable()
 export class MessagesService {
@@ -20,6 +25,9 @@ export class MessagesService {
       },
       orderBy: {
         createdAt: 'asc',
+      },
+      include: {
+        grounding: true,
       },
     })
 
@@ -45,7 +53,9 @@ export class MessagesService {
   }
 }
 
-function toConversationMessageResponse(message: Message): ConversationMessage {
+export function toConversationMessageResponse(
+  message: MessageWithGrounding,
+): ConversationMessage {
   return {
     id: message.id,
     conversationId: message.conversationId,
@@ -54,5 +64,9 @@ function toConversationMessageResponse(message: Message): ConversationMessage {
     status: message.status,
     createdAt: message.createdAt.toISOString(),
     updatedAt: message.updatedAt.toISOString(),
+    // 与 done.grounding 共用同一个 projector：页面重载得到的是同一份事实。
+    // legacy Message 没有 Grounding 行；损坏数据、语义非法组合，以及挂在非
+    // COMPLETED assistant Message 上的 Grounding，都在投影层 fail closed 返回 null。
+    grounding: toOwnedMessageGroundingV1(message, message.grounding),
   }
 }

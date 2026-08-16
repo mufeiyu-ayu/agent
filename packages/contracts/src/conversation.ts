@@ -1,3 +1,5 @@
+import type { MessageGroundingV1 } from './grounding.js'
+
 export interface Conversation {
   id: string
   title: string
@@ -45,4 +47,11 @@ export interface ConversationMessage {
   status: MessageStatus
   createdAt: string
   updatedAt: string
+  /**
+   * Evidence-backed 助手回答的引用事实。
+   *
+   * 普通回答与 legacy Message 没有 Grounding，此处为 null；持久化数据损坏时投影层
+   * fail closed，同样返回 null，不透传原始 JSON。
+   */
+  grounding?: MessageGroundingV1 | null
 }

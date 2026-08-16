@@ -1,3 +1,4 @@
+import type { MessageGroundingV1 } from '@agent/contracts'
 import type { AgentRun, AgentStep, Message, Prisma } from '../generated/prisma/client.js'
 import type {
   DatabaseOperationDeadline,
@@ -18,6 +19,7 @@ export const AGENT_STEP_TYPES = {
   loadConversationHistory: 'load_conversation_history',
   modelSampling: 'model_sampling',
   toolExecution: 'tool_execution',
+  groundedFinalization: 'grounded_finalization',
   assistantOutput: 'assistant_output',
 } as const
 
@@ -28,6 +30,7 @@ const AGENT_STEP_TITLES: Record<AgentStepType, string> = {
   load_conversation_history: '加载会话上下文',
   model_sampling: '模型采样',
   tool_execution: '执行工具',
+  grounded_finalization: '校验回答引用',
   assistant_output: '生成助手回复',
 }
 
@@ -66,6 +69,24 @@ interface CompleteAgentRunInput {
   assistantOutputStepId: string
   content: string
   output?: Prisma.InputJsonValue
+  /**
+   * Evidence-backed 回答的引用事实。
+   *
+   * 只能与 COMPLETED assistant Message 在同一事务提交：Message 内容、Grounding、
+   * Step 与 Run 终态要么一起生效，要么一起回滚，不允许出现半完成 Grounding。
+   */
+  grounding?: MessageGroundingV1
+  /**
+   * grounded finalization Step。
+   *
+   * 它必须和 assistant_output Step、Message、Grounding、Run 在同一事务里终态化：
+   * 否则 replay 期间 Abort 或最终事务回滚后，数据库会留下一个 COMPLETED 的
+   * finalization Step，而 Run / Message 却是 ABORTED / FAILED 且没有 Grounding。
+   */
+  finalizationStep?: {
+    id: string
+    output?: Prisma.InputJsonValue
+  }
 }
 
 interface CloseAssistantMessageInput {
@@ -78,6 +99,17 @@ interface CloseAgentStepInput {
   id: string
   errorMessage: string
   output?: Prisma.InputJsonValue
+}
+
+/**
+ * 收口失败 / 中断 Run 时仍需保留 output 的 Step。
+ *
+ * 用于 grounded finalization：模型调用一旦发生，attempt 与 usage 就是既成事实，
+ * 不能因为后续 replay 被中断或终态事务回滚而从审计里消失。
+ */
+interface CloseAgentStepMetadata {
+  id: string
+  output: Prisma.InputJsonValue
 }
 
 export class RecorderInvariantError extends Error {
@@ -234,6 +266,22 @@ export class AgentRunRecorderService {
         `Message ${input.assistantMessageId} 已进入终态或不存在`,
       )
 
+      if (input.grounding) {
+        // 与 Message 转 COMPLETED 处于同一事务：回滚后不会留下孤立 Grounding。
+        await transaction.execute(prisma => prisma.messageGrounding.create({
+          data: {
+            messageId: input.assistantMessageId,
+            schemaVersion: input.grounding!.schemaVersion,
+            evidenceAvailability: input.grounding!.evidenceAvailability,
+            outcome: input.grounding!.outcome,
+            citationIntegrity: input.grounding!.citationIntegrity,
+            faithfulnessStatus: input.grounding!.faithfulnessStatus,
+            citations: input.grounding!
+              .citations as unknown as Prisma.InputJsonValue,
+          },
+        }))
+      }
+
       await transaction.execute(prisma => prisma.conversation.update({
         where: { id: input.conversationId },
         data: { updatedAt: new Date() },
@@ -258,6 +306,35 @@ export class AgentRunRecorderService {
         stepResult.count,
         `AgentStep ${input.assistantOutputStepId} 已进入终态或尚未开始`,
       )
+
+      const finalizationStep = input.finalizationStep
+
+      if (finalizationStep) {
+        // finalization Step 在 delta replay 期间一直保持 RUNNING，只有走到这里
+        // 才与 Message / Grounding / Run 一起进入终态。
+        const finalizationResult = await transaction.execute(
+          prisma => prisma.agentStep.updateMany({
+            where: {
+              id: finalizationStep.id,
+              runId: input.runId,
+              type: AGENT_STEP_TYPES.groundedFinalization,
+              status: AgentStepStatus.RUNNING,
+            },
+            data: {
+              status: AgentStepStatus.COMPLETED,
+              ...(finalizationStep.output === undefined
+                ? {}
+                : { output: finalizationStep.output }),
+              endedAt: now,
+            },
+          }),
+        )
+
+        this.assertSingleUpdate(
+          finalizationResult.count,
+          `AgentStep ${finalizationStep.id} 已进入终态或尚未开始`,
+        )
+      }
 
       const unfinishedStepCount = await transaction.execute(prisma => prisma.agentStep.count({
         where: {
@@ -295,6 +372,7 @@ export class AgentRunRecorderService {
     deadline: DatabaseOperationDeadline,
     assistantMessage?: CloseAssistantMessageInput,
     failedStep?: CloseAgentStepInput,
+    metadataStep?: CloseAgentStepMetadata,
   ): Promise<void> {
     await this.closeRunAndUnfinishedSteps(
       runId,
@@ -305,6 +383,7 @@ export class AgentRunRecorderService {
       errorMessage,
       assistantMessage,
       failedStep,
+      metadataStep,
     )
   }
 
@@ -312,6 +391,7 @@ export class AgentRunRecorderService {
     runId: string,
     deadline: DatabaseOperationDeadline,
     assistantMessage?: CloseAssistantMessageInput,
+    metadataStep?: CloseAgentStepMetadata,
   ): Promise<void> {
     await this.closeRunAndUnfinishedSteps(
       runId,
@@ -321,6 +401,8 @@ export class AgentRunRecorderService {
       deadline,
       undefined,
       assistantMessage,
+      undefined,
+      metadataStep,
     )
   }
 
@@ -366,6 +448,7 @@ export class AgentRunRecorderService {
     errorMessage?: string,
     assistantMessage?: CloseAssistantMessageInput,
     failedStep?: CloseAgentStepInput,
+    metadataStep?: CloseAgentStepMetadata,
   ): Promise<void> {
     await this.prismaService.withDeadlineTransaction(deadline, async (transaction) => {
       const run = await this.assertRunningRunLocked(transaction, runId)
@@ -452,6 +535,25 @@ export class AgentRunRecorderService {
             `AgentStep ${failedStep.id} 已并发进入终态`,
           )
         }
+      }
+
+      // 先带 output 收口需要保留审计元数据的 Step；下面的批量收口只写状态。
+      if (metadataStep && metadataStep.id !== failedStep?.id) {
+        await transaction.execute(prisma => prisma.agentStep.updateMany({
+          where: {
+            id: metadataStep.id,
+            runId,
+            status: {
+              in: UNFINISHED_STEP_STATUSES,
+            },
+          },
+          data: {
+            status: stepStatus,
+            output: metadataStep.output,
+            ...(errorMessage === undefined ? {} : { errorMessage }),
+            endedAt: now,
+          },
+        }))
       }
 
       await transaction.execute(prisma => prisma.agentStep.updateMany({

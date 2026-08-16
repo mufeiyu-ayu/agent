@@ -49,6 +49,18 @@ export type {
   UpdateConversationRequest,
 } from './conversation.js'
 export type {
+  MessageCitationGranularity,
+  MessageCitationV1,
+  MessageEvidenceAvailability,
+  MessageGroundingOutcome,
+  MessageGroundingV1,
+} from './grounding.js'
+export {
+  MESSAGE_GROUNDING_MAX_CITATIONS,
+  MESSAGE_GROUNDING_SCHEMA_VERSION,
+  parseMessageGroundingV1,
+} from './grounding.js'
+export type {
   ChatStreamAbortedEvent,
   ChatStreamDeltaEvent,
   ChatStreamDoneEvent,

@@ -1,3 +1,4 @@
+import type { MessageGroundingV1 } from '@agent/contracts'
 import type {
   Message,
   Prisma,
@@ -11,6 +12,7 @@ import type {
   AgentRuntimeEvent,
   RunTurnStreamInput,
 } from './agent-runtime.types.js'
+import type { GroundedFinalizationAttemptSummary } from './grounding/grounded-answer.finalizer.js'
 import type { HistoryCursor } from './initial-context-selection.js'
 import type {
   ModelSamplingSummary,
@@ -48,6 +50,15 @@ import {
   ModelSamplingIncompleteError,
 } from './agent-runtime.errors.js'
 import { AgentRuntimePolicyService } from './agent-runtime.policy.js'
+import { submitGroundedAnswerToolSpec } from './grounding/grounded-answer.contract.js'
+import {
+  GroundedFinalizationFailedError,
+  GroundedFinalizationSamplingError,
+  runGroundedFinalization,
+} from './grounding/grounded-answer.finalizer.js'
+import { toMessageGroundingV1 } from './grounding/message-grounding.projector.js'
+import { RunEvidenceRegistry } from './grounding/run-evidence-registry.js'
+import { toValidatedAnswerChunks } from './grounding/validated-answer-replay.js'
 import {
   InitialContextSelectionService,
 } from './initial-context-selection.js'
@@ -88,6 +99,12 @@ interface TerminalStepFailure {
   output?: Prisma.InputJsonValue
 }
 
+/** 失败 / 中断收口时仍需保留 output 的 Step。 */
+interface TerminalStepMetadata {
+  id: string
+  output: Prisma.InputJsonValue
+}
+
 @Injectable()
 export class AgentRuntimeService {
   constructor(
@@ -122,6 +139,10 @@ export class AgentRuntimeService {
     let content = ''
     let runCancellation: RunCancellation | undefined
     let terminalStepFailure: TerminalStepFailure | undefined
+    // finalization Step 的最新已知安全 output。一旦模型调用发生过，
+    // 无论 replay Abort、Step 启动失败还是终态事务回滚，都用它收口，
+    // 已经产生的 attempt 与 usage 不会从审计里消失。
+    let finalizationClose: TerminalStepMetadata | undefined
 
     try {
       await this.assertConversationExists(input.conversationId)
@@ -279,6 +300,10 @@ export class AgentRuntimeService {
 
       let hasFinalAnswer = false
       let toolCallCount = 0
+      // Grounding Session：首次调用 evidence-eligible Tool 时建立，
+      // 此后本轮最终回答必须经过结构化 finalization，草稿不再直接流给用户。
+      let evidenceRegistry: RunEvidenceRegistry | undefined
+      let hiddenFinalDraft = ''
 
       for (
         let samplingAttempt = 1;
@@ -331,14 +356,22 @@ export class AgentRuntimeService {
 
           while (!samplingResult.done) {
             runCancellation.throwIfUnavailable()
-            await startAssistantOutputStep()
-            content += samplingResult.value
-            yield {
-              type: 'assistant_delta',
-              runId: currentAgentRunId,
-              conversationId: input.conversationId,
-              assistantMessageId,
-              contentDelta: samplingResult.value,
+
+            if (evidenceRegistry) {
+              // 已建立 Grounding Session：草稿只留在服务端内存，
+              // 校验通过前既不发 assistant_delta，也不写入 Message.content。
+              hiddenFinalDraft += samplingResult.value
+            }
+            else {
+              await startAssistantOutputStep()
+              content += samplingResult.value
+              yield {
+                type: 'assistant_delta',
+                runId: currentAgentRunId,
+                conversationId: input.conversationId,
+                assistantMessageId,
+                contentDelta: samplingResult.value,
+              }
             }
             samplingResult = await sampling.next()
           }
@@ -482,6 +515,19 @@ export class AgentRuntimeService {
           )
         }
 
+        // Evidence policy 由服务端 Tool Definition 声明，模型 arguments 无法改变；
+        // zero-hit、not found 和执行失败同样建立 Session，它们是不同的证据事实。
+        if (toolDefinition?.evidencePolicy === 'eligible') {
+          evidenceRegistry ??= new RunEvidenceRegistry()
+          evidenceRegistry.recordEligibleToolOutcome({
+            toolName: toolDefinition.name,
+            ok: toolResult.ok,
+            // 始终原样传入：缺失投影本身就是需要被记录为 evidence failure 的事实，
+            // 不能在这里先过滤掉再让 Registry 误判成合法零命中。
+            evidence: toolResult.ok ? toolResult.evidence : undefined,
+          })
+        }
+
         runCancellation.throwIfUnavailable()
         modelContext.appendToolExchange({
           call: samplingDecision.call,
@@ -497,6 +543,116 @@ export class AgentRuntimeService {
       }
 
       runCancellation.throwIfUnavailable()
+
+      let grounding: MessageGroundingV1 | undefined
+      let finalizationCommit: TerminalStepMetadata | undefined
+
+      if (evidenceRegistry) {
+        const finalizationStep = await this.agentRunRecorderService.startStep({
+          runId: currentAgentRunId,
+          type: AGENT_STEP_TYPES.groundedFinalization,
+          input: {
+            assistantMessageId,
+            evidenceAvailability: evidenceRegistry.evidenceAvailability(),
+            registryRefCount: evidenceRegistry.summary().refCount,
+            registryTruncated: evidenceRegistry.summary().registryTruncated,
+          },
+        }, databaseDeadline)
+        const registry = evidenceRegistry
+        // Runtime 自己持有 attempt 事实：模型调用一开始就记账，
+        // 不依赖某一种错误类型是否恰好把 attempts 带出来。
+        const finalizationAttempts: GroundedFinalizationAttemptSummary[] = []
+        const closeFinalizationStep = (error?: unknown): void => {
+          finalizationClose = {
+            id: finalizationStep.id,
+            output: this.toFinalizationStepOutput(
+              registry,
+              finalizationAttempts,
+              grounding,
+              error,
+            ),
+          }
+        }
+
+        closeFinalizationStep()
+
+        try {
+          const finalization = await runGroundedFinalization({
+            draft: hiddenFinalDraft,
+            registry,
+            assertAvailable: runCancellation.throwIfUnavailable,
+            onAttempt: (summary) => {
+              finalizationAttempts.push(summary)
+              closeFinalizationStep()
+            },
+            // finalization 只暴露终态输出契约，没有任何 action Tool，
+            // 因此不可能借这一轮继续调用工具或扩展 action-loop 预算。
+            sample: items => this.llmService.chatStream(items, {
+              ...chatStreamOptions,
+              tools: [submitGroundedAnswerToolSpec],
+            }),
+          })
+
+          // done 事件与 Messages API 必须来自同一个 durable safe projector：
+          // 这里先按持久化形状过一遍投影，投影不通过就 fail closed，不写库也不外发。
+          const projected = toMessageGroundingV1(finalization.validated.grounding)
+
+          if (!projected) {
+            throw new GroundedFinalizationFailedError(
+              'schema_invalid',
+              finalization.attempts,
+            )
+          }
+
+          grounding = projected
+          // finalization Step 在 replay 期间保持 RUNNING：只有 replay 全部完成、
+          // 终态事务提交成功，它才和 Message / Grounding / Run 一起变成 COMPLETED。
+          finalizationCommit = {
+            id: finalizationStep.id,
+            output: this.toFinalizationStepOutput(
+              registry,
+              finalizationAttempts,
+              grounding,
+            ),
+          }
+          // 成功后的失败路径（replay Abort / Step 失败 / 终态事务回滚）
+          // 同样保留这份已经成立的 attempt 与 usage。
+          closeFinalizationStep()
+
+          runCancellation.throwIfUnavailable()
+          await startAssistantOutputStep()
+
+          // 校验通过后才通过既有 assistant_delta 重放正文；
+          // chunks 拼接逐字符等于 persisted content 与 done.content。
+          for (const contentDelta of toValidatedAnswerChunks(
+            finalization.validated.answer,
+          )) {
+            runCancellation.throwIfUnavailable()
+            content += contentDelta
+            yield {
+              type: 'assistant_delta',
+              runId: currentAgentRunId,
+              conversationId: input.conversationId,
+              assistantMessageId,
+              contentDelta,
+            }
+          }
+        }
+        catch (error) {
+          closeFinalizationStep(error)
+          terminalStepFailure = {
+            id: finalizationStep.id,
+            errorMessage: error instanceof GroundedFinalizationFailedError
+              ? error.message
+              : '回答引用校验未能安全完成。',
+            output: finalizationClose!.output,
+          }
+          claimRunTermination(runCancellation, error)
+          throw error
+        }
+      }
+
+      runCancellation.throwIfUnavailable()
       await startAssistantOutputStep()
       runCancellation.throwIfUnavailable()
       const completedMessage = await this.agentRunRecorderService.completeRun(
@@ -509,6 +665,8 @@ export class AgentRuntimeService {
           output: {
             contentLength: content.length,
           },
+          ...(grounding ? { grounding } : {}),
+          ...(finalizationCommit ? { finalizationStep: finalizationCommit } : {}),
         },
         databaseDeadline,
         runCancellation.claimCompletion,
@@ -523,6 +681,7 @@ export class AgentRuntimeService {
         assistantMessageId,
         content,
         generatedAt: completedMessage.updatedAt.toISOString(),
+        ...(grounding ? { grounding } : {}),
       }
     }
     catch (error) {
@@ -559,6 +718,7 @@ export class AgentRuntimeService {
                     content,
                   }
                 : undefined,
+              finalizationClose,
             )
           }
           catch (terminalizationCause) {
@@ -598,6 +758,7 @@ export class AgentRuntimeService {
                 }
               : undefined,
             terminalStepFailure,
+            finalizationClose,
           )
         }
         catch (terminalizationCause) {
@@ -722,6 +883,8 @@ export class AgentRuntimeService {
       || error instanceof AgentRunDeadlineExceededError
       || error instanceof ContextBudgetExceededError
       || error instanceof ContextTokenEstimationError
+      // 引用校验失败必须与「知识库没有答案」区分开，不能伪装成 zero-hit。
+      || error instanceof GroundedFinalizationFailedError
     ) {
       return error.message
     }
@@ -793,6 +956,77 @@ export class AgentRuntimeService {
             contextPlan:
               failedContextPlan as unknown as Prisma.InputJsonValue,
           }
+        : {}),
+    }
+  }
+
+  /**
+   * finalization Step 的 bounded 审计输出。
+   *
+   * 刻意不写入 finalization Prompt、reasoning、hidden draft、证据 excerpt 全文
+   * 和 citationKey；只保留可审计的计数、状态与安全错误类别。
+   */
+  private toFinalizationStepOutput(
+    registry: RunEvidenceRegistry,
+    attempts: GroundedFinalizationAttemptSummary[],
+    grounding?: MessageGroundingV1,
+    error?: unknown,
+  ): Prisma.InputJsonValue {
+    const summary = registry.summary()
+
+    return {
+      evidenceAvailability: summary.evidenceAvailability,
+      registryRefCount: summary.refCount,
+      registryTruncated: summary.registryTruncated,
+      eligibleToolCallCount: summary.eligibleToolCallCount,
+      eligibleToolFailureCount: summary.eligibleToolFailureCount,
+      attemptCount: attempts.length,
+      attempts: attempts.map(attempt => ({
+        attempt: attempt.attempt,
+        ok: attempt.ok,
+        ...(attempt.rejectionCode
+          ? { rejectionCode: attempt.rejectionCode }
+          : {}),
+        // 采样故障与「模型说错了」在审计里必须能逐 attempt 区分开。
+        ...(attempt.samplingFailure
+          ? { samplingFailure: attempt.samplingFailure }
+          : {}),
+        submittedCitationKeyCount: attempt.submittedCitationKeyCount,
+        usage: attempt.usage
+          ? {
+              ...(attempt.usage.inputTokens === undefined
+                ? {}
+                : { inputTokens: attempt.usage.inputTokens }),
+              ...(attempt.usage.outputTokens === undefined
+                ? {}
+                : { outputTokens: attempt.usage.outputTokens }),
+              ...(attempt.usage.totalTokens === undefined
+                ? {}
+                : { totalTokens: attempt.usage.totalTokens }),
+            }
+          : null,
+        durationMs: attempt.durationMs,
+      })),
+      ...(grounding
+        ? {
+            outcome: grounding.outcome,
+            citationCount: grounding.citations.length,
+            citationIntegrity: grounding.citationIntegrity,
+            faithfulnessStatus: grounding.faithfulnessStatus,
+            schemaVersion: grounding.schemaVersion,
+          }
+        : {}),
+      ...(error instanceof GroundedFinalizationFailedError
+        ? { failureReason: 'validation_failed', rejectionCode: error.rejectionCode }
+        : {}),
+      // Provider 流不完整与「模型说错了」必须能在审计里区分开。
+      ...(error instanceof GroundedFinalizationSamplingError
+        ? { failureReason: 'sampling_incomplete', samplingFailure: error.failure }
+        : {}),
+      ...(error !== undefined
+        && !(error instanceof GroundedFinalizationFailedError)
+        && !(error instanceof GroundedFinalizationSamplingError)
+        ? { failureReason: 'finalization_incomplete' }
         : {}),
     }
   }

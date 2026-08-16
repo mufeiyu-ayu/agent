@@ -83,6 +83,8 @@ model Message {
   // 必须用具名关系 @relation("名字") 在两侧一一对应。
   userAgentRuns         AgentRun[] @relation("AgentRunUserMessage")
   assistantAgentRuns    AgentRun[] @relation("AgentRunAssistantMessage")
+  // Evidence-backed 助手回答的引用事实；普通回答与历史消息没有这条记录。
+  grounding             MessageGrounding?
   createdAt             DateTime   @default(now())
   updatedAt             DateTime   @updatedAt
 
@@ -159,6 +161,34 @@ model AgentStep {
   @@index([runId, type])
   @@index([status])
   @@index([createdAt])
+}
+
+// 阶段 8 Task 3A：assistant Message 的一对一 Grounding 事实。
+//
+// 为什么是独立一对一表而不是 Message 上的泛化 metadata：
+//   Citation 是核心产品事实，生命周期与 assistant Message 完全一致；
+//   schemaVersion 可以独立演进；v1 最多 5 条 citation，读取时整体取出。
+// 只有出现真实的「逐 citation 查询 / 统计 / 权限」需求，才升级为规范化行。
+//
+// 状态字段用 String 而不是 PostgreSQL enum：取值集合仍会随契约版本演进，
+// 与 AgentStep.type 同样由后端常量约束，并在读取时由 fail-closed projector 复核。
+model MessageGrounding {
+  // 主键即 messageId，从数据库层面保证一条 Message 最多一条 Grounding。
+  messageId            String   @id
+  message              Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  schemaVersion        Int
+  // available / partial / none / unavailable，由服务端从 Tool 执行事实派生。
+  evidenceAvailability String
+  // answered / insufficient_evidence / conflicting_evidence。
+  outcome              String
+  // v1 恒为 validated：只表示引用身份通过校验。
+  citationIntegrity    String
+  // v1 恒为 not_evaluated：没有做逐断言事实核验。
+  faithfulnessStatus   String
+  // versioned safe JSON；保存来源快照，不保存模型提供的 URL、正文、向量或距离。
+  citations            Json
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 }
 
 // 阶段 5 Tool Calling 的只读演示数据。

@@ -13,6 +13,7 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
 import { toModelToolSpec } from '../core/model-tool-spec.mapper.js'
+import { normalizeToolEvidenceProjection } from '../core/tool-evidence.js'
 import { ToolInvocationService } from '../core/tool-invocation.service.js'
 import { ToolRegistryService } from '../core/tool-registry.service.js'
 import {
@@ -41,6 +42,7 @@ describe('get_article_detail', () => {
     assert.equal(definition.idempotent, true)
     assert.equal(definition.timeoutMs, 5_000)
     assert.equal(definition.maxObservationChars, 64_000)
+    assert.equal(definition.evidencePolicy, 'eligible')
     assert.deepEqual(toModelToolSpec(definition), {
       name: 'get_article_detail',
       description: definition.description,
@@ -115,6 +117,20 @@ describe('get_article_detail', () => {
           updatedAt: updatedAt.toISOString(),
         },
       },
+      evidence: {
+        refs: [{
+          sourceId: 25,
+          chunkId: null,
+          granularity: 'article',
+          title: '完整文章',
+          slug: 'complete-article',
+          languageCode: 'zh-cn',
+          sectionPath: null,
+          excerpt: null,
+          rank: null,
+          strategy: { name: 'article_detail', version: '1' },
+        }],
+      },
       modelContent: JSON.stringify({
         sourceId: 25,
         found: true,
@@ -160,8 +176,66 @@ describe('get_article_detail', () => {
         found: false,
         article: null,
       }),
+      evidence: { refs: [] },
     })
     assert.equal(fakePrisma.findUniqueArguments.length, 1)
+    // not found 是「成功但没有证据」：必须是合法空投影，而不是缺失投影，
+    // 否则会被 Registry 当成 projector 故障。
+    assert.deepEqual(
+      normalizeToolEvidenceProjection(result.ok ? result.evidence : undefined),
+      { ok: true, refs: [] },
+    )
+  })
+
+  it('命中时投影 article 粒度证据，不伪造 chunk 与 excerpt', async () => {
+    const fakePrisma = new FakePrismaService({
+      record: {
+        id: 'internal-database-id',
+        internalSecret: 'database password: secret',
+        sourceId: 24,
+        slug: 'seo-title-guide',
+        languageCode: 'zh-cn',
+        title: 'SEO 标题指南',
+        content: '<p>完整正文不进入 Registry</p>',
+        seoTitle: 'SEO 标题',
+        seoDescription: 'SEO 描述',
+        createdAt: new Date('2026-01-02T03:04:05.000Z'),
+        updatedAt: new Date('2026-06-07T08:09:10.000Z'),
+      },
+    })
+    const { invocationService } = createTools(fakePrisma)
+
+    const result = await invocationService.invoke(
+      createEnvelope({ sourceId: 24 }),
+      createContext(),
+    )
+
+    assert.equal(result.ok, true)
+
+    const projection = normalizeToolEvidenceProjection(
+      result.ok ? result.evidence : undefined,
+    )
+
+    assert.equal(projection.ok, true)
+    if (!projection.ok)
+      return
+
+    const refs = projection.refs
+
+    assert.deepEqual(refs, [{
+      sourceId: 24,
+      chunkId: null,
+      granularity: 'article',
+      title: 'SEO 标题指南',
+      slug: 'seo-title-guide',
+      languageCode: 'zh-cn',
+      sectionPath: null,
+      excerpt: null,
+      rank: null,
+      strategy: { name: 'article_detail', version: '1' },
+    }])
+    // 完整正文与 SEO 元数据留在 Observation，不进入可引用证据。
+    assert.doesNotMatch(JSON.stringify(refs), /完整正文|SEO 描述/)
   })
 
   it('拒绝无效输入、额外字段和 NaN，且不查询数据库', async () => {

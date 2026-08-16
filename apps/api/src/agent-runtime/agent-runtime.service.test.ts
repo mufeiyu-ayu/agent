@@ -2413,6 +2413,10 @@ const searchArticlesDefinition: ToolDefinition = {
     sideEffect: 'none',
     network: 'none',
   },
+  // 本文件覆盖的是 action loop 行为，所以全部 fixture 保持 discovery_only：
+  // 真实工具的 evidence policy 由 tools 测试断言，grounded 路径由
+  // grounding/grounded-answer.runtime.test.ts 用 eligible fixture 单独覆盖。
+  evidencePolicy: 'discovery_only',
 }
 
 const getArticleDetailDefinition: ToolDefinition = {

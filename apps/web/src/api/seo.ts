@@ -4,6 +4,8 @@ import type {
   SeoChatRequest,
 } from '@agent/contracts'
 
+import { parseMessageGroundingV1 } from '@agent/contracts'
+
 interface StreamChatWithSeoAgentOptions {
   signal?: AbortSignal
 }
@@ -76,7 +78,8 @@ async function* parseChatStreamEvents(
   }
 }
 
-function parseChatStreamEventLine(line: string): ChatStreamEvent | null {
+/** 单行 NDJSON 解析入口；导出供协议回归测试直接消费。 */
+export function parseChatStreamEventLine(line: string): ChatStreamEvent | null {
   const trimmedLine = line.trim()
 
   if (!trimmedLine)
@@ -95,7 +98,32 @@ function parseChatStreamEventLine(line: string): ChatStreamEvent | null {
     throw new Error('流式响应事件格式不正确，请稍后重试')
   }
 
-  return value
+  return sanitizeChatStreamEvent(value)
+}
+
+/**
+ * 保留已知事件语义，并安全接受 `done` 上可选的 grounding。
+ *
+ * 语义校验直接复用 `@agent/contracts` 的 `parseMessageGroundingV1`，与服务端
+ * durable projector 是同一份实现：availability / outcome 枚举、outcome × availability
+ * 组合、Citation 数量与来源约束、安全整数、字段长度、article/chunk 一致性、
+ * href 必须为 null、citationId 唯一，两侧结论完全一致。
+ *
+ * 与服务端的唯一区别是失败处理：这里只丢弃这个可选字段，不让 UI / 审计元数据
+ * 拖垮整条回答流。本 Task 不渲染来源卡片。
+ */
+function sanitizeChatStreamEvent(event: ChatStreamEvent): ChatStreamEvent {
+  if (event.type !== 'done' || event.grounding === undefined)
+    return event
+
+  const grounding = parseMessageGroundingV1(event.grounding)
+
+  if (grounding)
+    return { ...event, grounding }
+
+  const { grounding: _grounding, ...rest } = event
+
+  return rest
 }
 
 function isChatStreamEvent(value: unknown): value is ChatStreamEvent {
@@ -122,6 +150,8 @@ function isChatStreamEvent(value: unknown): value is ChatStreamEvent {
         && typeof value.content === 'string'
         && typeof value.generatedAt === 'string'
       )
+    // grounding 是 done 上的可选 UI / 审计元数据，由 sanitizeChatStreamEvent 单独处理：
+    // 它损坏时不应该让整条回答流失败。
     case 'error':
       return (
         typeof value.conversationId === 'string'

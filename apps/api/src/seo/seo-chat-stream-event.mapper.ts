@@ -26,6 +26,9 @@ export function toChatStreamEvent(event: AgentRuntimeEvent): ChatStreamEvent {
         assistantMessageId: event.assistantMessageId,
         content: event.content,
         generatedAt: event.generatedAt,
+        // 只在 done 上增加可选字段，不新增 top-level event type；
+        // 普通回答与 legacy consumer 行为完全不变。
+        ...(event.grounding ? { grounding: event.grounding } : {}),
       }
 
     case 'run_failed':

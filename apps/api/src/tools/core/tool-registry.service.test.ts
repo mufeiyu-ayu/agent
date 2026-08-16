@@ -89,6 +89,7 @@ function createEchoTool(
       requiresApproval: false,
       idempotent: true,
       risk: { level: 'low', sideEffect: 'none', network: 'none' },
+      evidencePolicy: 'discovery_only',
     },
     executor: { execute },
   }

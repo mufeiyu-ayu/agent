@@ -23,6 +23,7 @@ import type {
 } from '@agent/contracts'
 
 import { AGENT_STEP_TYPES } from '../agent-runtime/agent-run-recorder.service.js'
+import { GROUNDED_FINALIZATION_MAX_ATTEMPTS } from '../agent-runtime/grounding/grounded-answer.finalizer.js'
 
 const QUESTION_PREVIEW_MAX_CHARS = 200
 const MESSAGE_PREVIEW_MAX_CHARS = 500
@@ -140,9 +141,19 @@ export function projectAdminRunListItem(
   const validSamplingSteps = samplingSteps.filter(step => (
     isValidModelSampling(readObject(step.input), step.output, step.status)
   ))
-  const trustedSamplingSteps = validSamplingSteps.length === samplingSteps.length
-    ? validSamplingSteps
-    : []
+  const samplingTrusted = validSamplingSteps.length === samplingSteps.length
+  const trustedSamplingSteps = samplingTrusted ? validSamplingSteps : []
+  // Grounded finalization 也是真实模型调用，必须计入本 Run 的采样次数与 Token；
+  // 否则使用 Grounded Answer 的 Run 会系统性少算 1～2 次调用及其 Token。
+  const finalization = aggregateGroundedFinalization(run.steps)
+  // Token 汇总是 all-or-nothing：只要 action sampling 或 finalization 任一侧的
+  // metadata 不可信，就整体返回 null，绝不给出「只统计了一部分」的总数。
+  const usages: Array<AdminRunTokenUsage | null> = samplingTrusted
+    ? [
+        ...trustedSamplingSteps.map(step => projectTokenUsage(readObject(step.output))),
+        ...finalization.usages,
+      ]
+    : [null]
 
   return {
     id: run.id,
@@ -150,11 +161,11 @@ export function projectAdminRunListItem(
     status: run.status,
     questionPreview: toPreview(run.userMessage.content, QUESTION_PREVIEW_MAX_CHARS),
     requestedModel: readRequestedModel(trustedSamplingSteps),
-    samplingCount: samplingSteps.length,
+    samplingCount: samplingSteps.length + finalization.attemptCount,
     toolCallCount: run.steps.filter(
       step => step.type === AGENT_STEP_TYPES.toolExecution,
     ).length,
-    ...aggregateSamplingUsage(trustedSamplingSteps),
+    ...aggregateSamplingUsage(usages),
     durationMs: elapsedMs(run.startedAt, run.endedAt),
     startedAt: run.startedAt.toISOString(),
     endedAt: toIsoString(run.endedAt),
@@ -1210,15 +1221,91 @@ function toSafeStepProjection(
 }
 
 function aggregateSamplingUsage(
-  steps: AdminRunProjectionStepRecord[],
+  usages: Array<AdminRunTokenUsage | null>,
 ): AdminRunTokenUsage {
-  const usages = steps.map(step => projectTokenUsage(readObject(step.output)))
-
   return {
     inputTokens: sumCompleteUsage(usages, 'inputTokens'),
     outputTokens: sumCompleteUsage(usages, 'outputTokens'),
     totalTokens: sumCompleteUsage(usages, 'totalTokens'),
   }
+}
+
+interface GroundedFinalizationAggregate {
+  attemptCount: number
+  usages: Array<AdminRunTokenUsage | null>
+}
+
+/**
+ * 汇总 grounded finalization Step 的模型调用次数与 Token。
+ *
+ * fail closed 而不是静默少算：metadata 损坏时无法知道真实 attempt 数，
+ * 此时按「至少发生过一次模型调用」计数（Step 存在就说明调用过），并把 usage
+ * 记为不可用，让整个 Run 的 Token 汇总变成 null，而不是给出偏低的假数字。
+ */
+function aggregateGroundedFinalization(
+  steps: AdminRunProjectionStepRecord[],
+): GroundedFinalizationAggregate {
+  const aggregate: GroundedFinalizationAggregate = {
+    attemptCount: 0,
+    usages: [],
+  }
+
+  for (const step of steps) {
+    if (step.type !== AGENT_STEP_TYPES.groundedFinalization)
+      continue
+
+    const attempts = readFinalizationAttempts(step.output)
+
+    if (!attempts) {
+      aggregate.attemptCount += 1
+      aggregate.usages.push(null)
+      continue
+    }
+
+    aggregate.attemptCount += attempts.length
+    for (const attempt of attempts)
+      aggregate.usages.push(projectTokenUsage(attempt))
+  }
+
+  return aggregate
+}
+
+/**
+ * 读取 finalization Step 的 attempts 元数据。
+ *
+ * @returns 合法时返回 attempt 对象列表；缺失、类型错误或超出 attempt 上限时返回 null。
+ */
+function readFinalizationAttempts(
+  output: unknown,
+): Array<Record<string, unknown>> | null {
+  const record = readObject(output)
+
+  if (!record || !Array.isArray(record.attempts))
+    return null
+
+  // v1 的 finalization attempt 上限是 2；超出说明 metadata 不可信。
+  if (record.attempts.length > GROUNDED_FINALIZATION_MAX_ATTEMPTS)
+    return null
+
+  if (
+    !isRequiredNonNegativeInteger(record, 'attemptCount')
+    || record.attemptCount !== record.attempts.length
+  ) {
+    return null
+  }
+
+  const attempts: Array<Record<string, unknown>> = []
+
+  for (const candidate of record.attempts) {
+    const attempt = readObject(candidate)
+
+    if (!attempt || typeof attempt.ok !== 'boolean')
+      return null
+
+    attempts.push(attempt)
+  }
+
+  return attempts
 }
 
 function projectTokenUsage(

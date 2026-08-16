@@ -48,6 +48,216 @@ describe('Admin Run projector', () => {
     assert.equal(item.totalTokens, null)
   })
 
+  it('grounded finalization 计入总采样次数与 Token 汇总', () => {
+    const record = createRunRecord()
+
+    record.steps = [
+      ...record.steps,
+      step(10, 'grounded_finalization', {
+        input: {
+          assistantMessageId: 'message-assistant',
+          evidenceAvailability: 'available',
+          registryRefCount: 2,
+          registryTruncated: false,
+        },
+        output: groundedFinalizationOutput([
+          { ok: false, usage: { inputTokens: 5, outputTokens: 2, totalTokens: 7 } },
+          { ok: true, usage: { inputTokens: 6, outputTokens: 3, totalTokens: 9 } },
+        ]),
+      }),
+    ]
+
+    const item = projectAdminRunListItem(record)
+
+    // 3 次 action sampling + 2 次 finalization attempt。
+    assert.equal(item.samplingCount, 5)
+    assert.equal(item.inputTokens, 60 + 11)
+    assert.equal(item.outputTokens, 23 + 5)
+    assert.equal(item.totalTokens, 83 + 16)
+  })
+
+  it('单次成功的 finalization 也计入采样次数', () => {
+    const record = createRunRecord()
+
+    record.steps = [
+      ...record.steps,
+      step(10, 'grounded_finalization', {
+        output: groundedFinalizationOutput([
+          { ok: true, usage: { inputTokens: 4, outputTokens: 1, totalTokens: 5 } },
+        ]),
+      }),
+    ]
+
+    const item = projectAdminRunListItem(record)
+
+    assert.equal(item.samplingCount, 4)
+    assert.equal(item.totalTokens, 88)
+  })
+
+  it('finalization metadata 损坏时 fail closed：Token 汇总为 null，次数不少算', () => {
+    const malformedOutputs: unknown[] = [
+      null,
+      { attemptCount: 1 },
+      { attemptCount: 1, attempts: 'not-an-array' },
+      // attemptCount 与 attempts 长度不一致
+      { attemptCount: 3, attempts: [{ ok: true, usage: null }] },
+      // 超出 v1 的 attempt 上限
+      {
+        attemptCount: 3,
+        attempts: [{ ok: true }, { ok: true }, { ok: true }],
+      },
+      // attempt 结构非法
+      { attemptCount: 1, attempts: [{ usage: null }] },
+    ]
+
+    for (const output of malformedOutputs) {
+      const record = createRunRecord()
+
+      record.steps = [
+        ...record.steps,
+        step(10, 'grounded_finalization', { output }),
+      ]
+
+      const item = projectAdminRunListItem(record)
+
+      // Step 存在就说明至少发生过一次模型调用，绝不少算成 0。
+      assert.equal(item.samplingCount, 4)
+      assert.equal(item.inputTokens, null)
+      assert.equal(item.outputTokens, null)
+      assert.equal(item.totalTokens, null)
+    }
+  })
+
+  it('finalization attempt 缺少 usage 时不伪造 Token 数字', () => {
+    const record = createRunRecord()
+
+    record.steps = [
+      ...record.steps,
+      step(10, 'grounded_finalization', {
+        output: groundedFinalizationOutput([{ ok: true, usage: null }]),
+      }),
+    ]
+
+    const item = projectAdminRunListItem(record)
+
+    assert.equal(item.samplingCount, 4)
+    assert.equal(item.totalTokens, null)
+  })
+
+  it('action sampling metadata 损坏时 Token 汇总整体为 null，不输出部分总数', () => {
+    const record = createRunRecord()
+    const secondSampling = record.steps.find(step => step.sequence === 5)!
+
+    // 破坏一条 action sampling 的 metadata，但 finalization usage 完全合法。
+    secondSampling.output = { providerPayload: 'DO_NOT_LEAK' }
+    record.steps = [
+      ...record.steps,
+      step(10, 'grounded_finalization', {
+        output: groundedFinalizationOutput([
+          { ok: true, usage: { inputTokens: 4, outputTokens: 1, totalTokens: 5 } },
+        ]),
+      }),
+    ]
+
+    const item = projectAdminRunListItem(record)
+
+    // 次数仍然正确：3 次 action sampling + 1 次 finalization。
+    assert.equal(item.samplingCount, 4)
+    // 但 Token 是 all-or-nothing：不能只报 finalization 那部分。
+    assert.equal(item.inputTokens, null)
+    assert.equal(item.outputTokens, null)
+    assert.equal(item.totalTokens, null)
+  })
+
+  it('sampling 与 finalization 都可信时才给出 Token 总数', () => {
+    const record = createRunRecord()
+
+    record.steps = [
+      ...record.steps,
+      step(10, 'grounded_finalization', {
+        output: groundedFinalizationOutput([
+          { ok: false, usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 } },
+          { ok: true, usage: { inputTokens: 2, outputTokens: 2, totalTokens: 4 } },
+        ]),
+      }),
+    ]
+
+    const item = projectAdminRunListItem(record)
+
+    assert.equal(item.samplingCount, 5)
+    assert.equal(item.totalTokens, 89)
+  })
+
+  it('采样故障的 finalization attempt 同样计入 samplingCount', () => {
+    const record = createRunRecord()
+
+    record.steps = [
+      ...record.steps,
+      step(10, 'grounded_finalization', {
+        status: 'FAILED',
+        output: {
+          ...groundedFinalizationOutput([{ ok: false, usage: null }]),
+          failureReason: 'sampling_incomplete',
+          samplingFailure: 'missing_response_completed',
+        },
+      }),
+    ]
+
+    const item = projectAdminRunListItem(record)
+
+    assert.equal(item.samplingCount, 4)
+    // usage 无法确认，整体 fail closed。
+    assert.equal(item.totalTokens, null)
+  })
+
+  it('ABORTED 的 finalization Step 同样计入 samplingCount 并保留 usage', () => {
+    const record = createRunRecord()
+
+    // 模型流已经完整结束、usage 已收到，随后 Abort 生效：
+    // 这次调用是既成事实，Run 的采样次数与 Token 都必须包含它。
+    record.steps = [
+      ...record.steps,
+      step(10, 'grounded_finalization', {
+        status: 'ABORTED',
+        output: groundedFinalizationOutput([
+          { ok: false, usage: { inputTokens: 19, outputTokens: 6, totalTokens: 25 } },
+        ]),
+      }),
+    ]
+
+    const item = projectAdminRunListItem(record)
+
+    assert.equal(item.samplingCount, 4)
+    assert.equal(item.inputTokens, 60 + 19)
+    assert.equal(item.outputTokens, 23 + 6)
+    assert.equal(item.totalTokens, 83 + 25)
+  })
+
+  it('grounded finalization 在 Timeline 中安全降级，不泄漏内部 metadata', () => {
+    const record = createRunRecord()
+
+    record.steps = [
+      ...record.steps,
+      step(10, 'grounded_finalization', {
+        input: { hiddenDraft: 'DO_NOT_LEAK' },
+        output: {
+          ...groundedFinalizationOutput([{ ok: true, usage: null }]),
+          providerPayload: 'DO_NOT_LEAK',
+        },
+      }),
+    ]
+
+    const detail = projectAdminRunDetail(record)
+    const serialized = JSON.stringify(detail)
+    const finalizationItem = detail.timeline.find(
+      item => item.type === 'grounded_finalization',
+    )
+
+    assert.ok(finalizationItem)
+    assert.equal(finalizationItem.kind, 'generic')
+    assert.doesNotMatch(serialized, /DO_NOT_LEAK/)
+  })
+
   it('普通单次采样成功不会伪造 Tool Execution', () => {
     const record = createRunRecord()
     record.steps = record.steps.filter(
@@ -825,6 +1035,35 @@ function createRunRecord() {
         },
       }),
     ],
+  }
+}
+
+/** 构造与 Runtime 一致形状的 finalization Step output。 */
+function groundedFinalizationOutput(
+  attempts: Array<{
+    ok: boolean
+    usage: { inputTokens: number, outputTokens: number, totalTokens: number } | null
+  }>,
+) {
+  return {
+    evidenceAvailability: 'available',
+    registryRefCount: 2,
+    registryTruncated: false,
+    eligibleToolCallCount: 1,
+    eligibleToolFailureCount: 0,
+    attemptCount: attempts.length,
+    attempts: attempts.map((attempt, index) => ({
+      attempt: index + 1,
+      ok: attempt.ok,
+      submittedCitationKeyCount: attempt.ok ? 1 : 0,
+      usage: attempt.usage,
+      durationMs: 100,
+    })),
+    outcome: 'answered',
+    citationCount: 1,
+    citationIntegrity: 'validated',
+    faithfulnessStatus: 'not_evaluated',
+    schemaVersion: 1,
   }
 }
 
