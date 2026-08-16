@@ -298,7 +298,7 @@ Issue 创建时必须把每条 AC 映射到具体测试命令、环境和证据�
 
 | 命令 | 结果 |
 | --- | --- |
-| `pnpm --filter @agent/api test:grounding` | pass 163 / fail 0 |
+| `pnpm --filter @agent/api test:grounding` | pass 168 / fail 0 |
 | `pnpm --filter @agent/api test:grounding-db` | pass 9 / fail 0 / skipped 0 |
 | `pnpm --filter @agent/api test:agent-recorder` | pass 14 / fail 0 |
 | `pnpm --filter @agent/api test:tool-loop` | pass 54 / fail 0 |
@@ -309,7 +309,7 @@ Issue 创建时必须把每条 AC 映射到具体测试命令、环境和证据�
 | `pnpm --filter @agent/api test:retrieval` | pass 35 / fail 0 |
 | `pnpm --filter @agent/api test:retrieval-db` | pass 9 / fail 0 / skipped 0 |
 | `pnpm --filter @agent/api test:db-reliability` | pass 11 / fail 0 / skipped 0 |
-| `pnpm --filter @agent/api test:admin-runs` | pass 30 / fail 0 |
+| `pnpm --filter @agent/api test:admin-runs` | pass 31 / fail 0 |
 | `pnpm --filter @agent/api test:llm-config` | pass 17 / fail 0 |
 | `pnpm --filter @agent/web test:seo-stream` | pass 12 / fail 0 |
 | `pnpm --filter @agent/contracts typecheck` | pass |
@@ -330,10 +330,17 @@ Issue 创建时必须把每条 AC 映射到具体测试命令、环境和证据�
 
 真实 smoke 的 answerable 场景存在模型判断波动：在 4 次真实运行中出现过 1 次
 DeepSeek 把「Wuthering Waves soft pity」判为 `insufficient_evidence` 并因此
-exit 1。已确认这不是证据链缺陷——同一 query 的 evidence projection 稳定返回
-2 条合法 ref，命中的正是标题为「What Is Soft Pity In Wuthering Waves?」的文章。
-门禁没有为此放宽：`answerable` 必须是 `answered` 且至少一条 Citation 是 AC-22
-的硬要求，这里保留为已知的 Provider 判断波动。
+exit 1。
+
+对该现象的判断依据与其边界：evidence projection 在同一 query 上稳定返回 2 条合法
+ref，稳定命中预期来源（标题为「What Is Soft Pity In Wuthering Waves?」的文章），
+证据链未发现异常，因此更可能是 Provider 判断波动。但仅凭文章标题命中并不能证明
+被截断的 excerpt 对该问题具有充分性，这一点没有被验证，也不宜据此断言「一定不是
+证据问题」。
+
+门禁没有为此放宽：`answerable` 必须是 `answered` 且至少一条 Citation 是 AC-22 的
+硬要求，不引入「重试直到 answered」，也不强制「有候选就回答」。该项保留为非阻塞的
+live-smoke 模型质量风险。
 
 
 真实 smoke 的两条 query 必须显式要求「只做一次语义检索」。原因是既有 Agent Loop
@@ -362,6 +369,13 @@ Task 中修改；是否支持并行 Tool Call 建议作为独立任务评估。
 | P2-01 | finalization 模型调用一开始就建立 attempt 事实；采样故障携带 attempt / usage / duration / failure 类别且不消耗 correction，但计入 samplingCount；replay Abort、Step 失败与终态事务失败都保留已发生的 attempt 与 usage；Admin Token 汇总改为 all-or-nothing |
 | P2-02 | 公共 `citationId` 必须匹配 `^cit_[0-9a-f]{32}$`，拒绝 `evk_` 前缀、截断值、空串与空白；chunk 粒度的 `chunkId` 必须是非空有界字符串，只有 `sectionPath` / `excerpt` 允许空串归一化为 null |
 | P2-03 | smoke 改为「先断言、后输出」，不达标时 stdout 一个字节都不写，只输出脱敏错误；输出逻辑抽为可测试的 `emitGroundedAnswerSmokeResult()` |
+
+第三轮 GPT 技术验收剩余 1 条 P2，已修复：模型流成功结束后的 post-sampling
+可用性复核原先位于 `try` 之外，若此刻 Abort / deadline 生效，attempt 事实会丢失并
+持久化成 `attemptCount: 0`。现已把该复核移入 parse / validate 的 `try` 内，
+Abort / deadline 会先记录 attempt（number、`ok: false`、已收到的 usage、duration、
+`submittedCitationKeyCount`）再原样抛出；它既不转成 `samplingFailure`，也不消耗
+correction。
 
 第一轮修复过程中真实 smoke 还暴露出一个由 P2-02 引入的缺陷：真实语料存在 `sectionPath`
 为空字符串的 chunk，被严格校验误判为损坏投影，导致 availability 退化为

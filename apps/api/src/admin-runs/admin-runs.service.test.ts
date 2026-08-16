@@ -210,6 +210,29 @@ describe('Admin Run projector', () => {
     assert.equal(item.totalTokens, null)
   })
 
+  it('ABORTED 的 finalization Step 同样计入 samplingCount 并保留 usage', () => {
+    const record = createRunRecord()
+
+    // 模型流已经完整结束、usage 已收到，随后 Abort 生效：
+    // 这次调用是既成事实，Run 的采样次数与 Token 都必须包含它。
+    record.steps = [
+      ...record.steps,
+      step(10, 'grounded_finalization', {
+        status: 'ABORTED',
+        output: groundedFinalizationOutput([
+          { ok: false, usage: { inputTokens: 19, outputTokens: 6, totalTokens: 25 } },
+        ]),
+      }),
+    ]
+
+    const item = projectAdminRunListItem(record)
+
+    assert.equal(item.samplingCount, 4)
+    assert.equal(item.inputTokens, 60 + 19)
+    assert.equal(item.outputTokens, 23 + 6)
+    assert.equal(item.totalTokens, 83 + 25)
+  })
+
   it('grounded finalization 在 Timeline 中安全降级，不泄漏内部 metadata', () => {
     const record = createRunRecord()
 

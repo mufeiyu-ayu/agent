@@ -165,11 +165,12 @@ export async function runGroundedFinalization(
       throw new GroundedFinalizationSamplingError(sampling.failure, attempts)
     }
 
-    input.assertAvailable()
-
     let submitted: SubmitGroundedAnswerInputV1 | undefined
 
     try {
+      // 这次复核必须留在 try 内：模型流已经完整结束、usage 也可能已经收到，
+      // 若此刻 Abort 或 deadline 生效，仍然要先把 attempt 事实记下来再抛出。
+      input.assertAvailable()
       submitted = parseSubmitGroundedAnswerInput(sampling.rawArgumentsJson)
 
       const validated = validateGroundedAnswer(submitted, input.registry)
@@ -186,7 +187,9 @@ export async function runGroundedFinalization(
     }
     catch (error) {
       if (!(error instanceof GroundedAnswerRejectedError)) {
-        // 例如 assertAvailable 抛出的 Abort：调用已经发生过，attempt 不能丢。
+        // Abort / deadline 这类非「模型内容错误」：调用已经发生过，attempt 不能丢。
+        // 它既不是 samplingFailure（流本身是完整的），也不消耗 correction，
+        // 记录事实后原样抛出原始错误，由既有失败 / 中断语义收口。
         recordAttempt({
           attempt,
           ok: false,

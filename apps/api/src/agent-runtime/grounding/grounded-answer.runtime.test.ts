@@ -1045,6 +1045,72 @@ describe('Grounded finalization 终态原子性', () => {
     )
   })
 
+  it('模型流结束后、校验开始前 Abort 时仍保留 attempt 与 usage', async () => {
+    const abortController = new AbortController()
+    const harness = createHarness({
+      signal: abortController.signal,
+      modelStreams: [
+        () => toModelStream([
+          toolCallEvent('call-1', 'retrieve_article_context', '{"query":"seo"}'),
+          { type: 'response_completed', finishReason: 'tool_calls' },
+        ]),
+        () => toModelStream([
+          { type: 'text_delta', delta: '草稿' },
+          { type: 'response_completed', finishReason: 'stop' },
+        ]),
+        // 终态流完整结束（含 usage），随后立刻中断：
+        // 此时 parse / validate 还没开始，但模型调用已经真实发生过。
+        registry => abortAfterStream(
+          [
+            submitGroundedAnswerEvent({
+              answer: '这条回答不会被提交。',
+              outcome: 'answered',
+              citationKeys: [registry[0]!],
+            }),
+            { type: 'usage', usage: { inputTokens: 19, outputTokens: 6, totalTokens: 25 } },
+            { type: 'response_completed', finishReason: 'tool_calls' },
+          ],
+          abortController,
+        ),
+      ],
+      toolResults: [{
+        ok: true,
+        data: {},
+        modelContent: '候选资料',
+        evidence: RETRIEVAL_EVIDENCE,
+      }],
+    })
+
+    const events = await collectEvents(harness.run())
+
+    assert.equal(events.at(-1)?.type, 'run_aborted')
+    assert.equal(events.some(event => event.type === 'assistant_delta'), false)
+    assert.equal(harness.recorder.completedGrounding, undefined)
+    // 不消耗 correction：finalization 只调用了一次。
+    assert.equal(harness.llmCalls.length, 3)
+
+    const step = harness.recorder.steps.find(
+      item => item.type === AGENT_STEP_TYPES.groundedFinalization,
+    )
+
+    assert.equal(step?.status, 'ABORTED')
+
+    const output = step?.output as Record<string, unknown>
+
+    assert.equal(output.attemptCount, 1)
+
+    const [attempt] = output.attempts as Array<Record<string, unknown>>
+
+    assert.equal(attempt?.ok, false)
+    assert.equal(attempt?.rejectionCode, undefined)
+    assert.equal(attempt?.samplingFailure, undefined)
+    assert.deepEqual(attempt?.usage, {
+      inputTokens: 19,
+      outputTokens: 6,
+      totalTokens: 25,
+    })
+  })
+
   it('模型调用开始前 Abort 时 attempt 为 0，不误计一次调用', async () => {
     const abortController = new AbortController()
     const harness = createHarness({
@@ -1706,6 +1772,17 @@ async function* toModelStream(
 ): AsyncGenerator<ModelStreamEvent> {
   for (const event of events)
     yield event
+}
+
+/** 完整产出模型流后再触发中断：用于覆盖「流已结束、校验未开始」这一窗口。 */
+async function* abortAfterStream(
+  events: ModelStreamEvent[],
+  controller: AbortController,
+): AsyncGenerator<ModelStreamEvent> {
+  for (const event of events)
+    yield event
+
+  controller.abort()
 }
 
 function toolCallEvent(
