@@ -123,6 +123,125 @@ describe('PostgresArticleRetrievalRepository', () => {
     assert.equal(client.releaseArguments[0]?.name, 'AbortError')
   })
 
+  describe('连接获取阶段的 client 所有权', () => {
+    it('connection 已 fulfilled 但成功 reaction 执行前 Abort 时只 release 一次', async () => {
+      const client = new FakePoolClient()
+      const connection = Promise.resolve<ArticleRetrievalPoolClient>(client)
+      const pool = new FakePool(connection)
+      const abortController = new AbortController()
+      // 在 helper 注册 connection reaction 之前排入一条 microtask，
+      // 让 Abort 精确落在“connection 已 fulfilled、成功回调尚未执行”的窗口里。
+      void connection.then(() => abortController.abort())
+
+      await expectNoUnhandledRejection(async () => {
+        await assert.rejects(
+          new PostgresArticleRetrievalRepository(pool).findLexicalCandidates(
+            { query: 'connection race', limit: 10 },
+            createContext(abortController.signal),
+          ),
+          { name: 'AbortError' },
+        )
+      })
+
+      assert.equal(client.releaseArguments.length, 1)
+      assert.equal(client.releaseArguments[0]?.name, 'AbortError')
+      assert.deepEqual(pool.cancelledProcessIds, [])
+    })
+
+    it('pending connect 期间 Abort 后，迟到 client 用同一个 abort error release 一次', async () => {
+      const client = new FakePoolClient()
+      const connection = createDeferredConnection()
+      const pool = new FakePool(connection.promise)
+      const abortController = new AbortController()
+
+      const pending = new PostgresArticleRetrievalRepository(pool).findLexicalCandidates(
+        { query: 'abort while connecting', limit: 10 },
+        createContext(abortController.signal),
+      )
+      abortController.abort()
+      connection.resolve(client)
+
+      const abortError = await pending.then(
+        () => assert.fail('连接被 Abort 时调用不应成功'),
+        (error: unknown) => error,
+      )
+      assert.equal((abortError as Error).name, 'AbortError')
+      assert.equal(client.releaseArguments.length, 1)
+      assert.strictEqual(client.releaseArguments[0], abortError)
+      assert.deepEqual(pool.cancelledProcessIds, [])
+    })
+
+    it('连接正常移交后 helper 不 release，late Abort 也不改变释放结果', async () => {
+      const client = new FakePoolClient()
+      const pool = new FakePool(client)
+      const abortController = new AbortController()
+
+      await new PostgresArticleRetrievalRepository(pool).findLexicalCandidates(
+        { query: 'owned transfer', limit: 10 },
+        createContext(abortController.signal),
+      )
+
+      abortController.abort()
+      await nextMacrotask()
+      // helper release 0 次，唯一一次无错误 release 来自 runOwnedReadQuery 的成功收尾。
+      assert.deepEqual(client.releaseArguments, [undefined])
+      assert.equal(pool.connectCalls, 1)
+    })
+
+    it('connection 先失败时保留原始连接错误，late Abort 不改变结果', async () => {
+      const connection = createDeferredConnection()
+      const pool = new FakePool(connection.promise)
+      const abortController = new AbortController()
+
+      const pending = new PostgresArticleRetrievalRepository(pool).findLexicalCandidates(
+        { query: 'connect failure', limit: 10 },
+        createContext(abortController.signal),
+      )
+      connection.reject(new Error('pool connect failed'))
+
+      await assert.rejects(pending, /pool connect failed/)
+      // listener 已在失败分支移除：迟到的 Abort 不会再产生任何释放或取消动作。
+      abortController.abort()
+      await nextMacrotask()
+      assert.deepEqual(pool.cancelledProcessIds, [])
+    })
+
+    it('Abort 先赢时迟到的 connection rejection 被安全观察且不产生 release', async () => {
+      const connection = createDeferredConnection()
+      const pool = new FakePool(connection.promise)
+      const abortController = new AbortController()
+
+      await expectNoUnhandledRejection(async () => {
+        const pending = new PostgresArticleRetrievalRepository(pool).findLexicalCandidates(
+          { query: 'abort then connect failure', limit: 10 },
+          createContext(abortController.signal),
+        )
+        abortController.abort()
+        connection.reject(new Error('pool connect failed after abort'))
+
+        await assert.rejects(pending, { name: 'AbortError' })
+      })
+
+      assert.deepEqual(pool.cancelledProcessIds, [])
+    })
+
+    it('signal 在调用前已 Abort 时不调用 pool.connect', async () => {
+      const pool = new FakePool(new FakePoolClient())
+      const abortController = new AbortController()
+      abortController.abort()
+
+      await assert.rejects(
+        new PostgresArticleRetrievalRepository(pool).findLexicalCandidates(
+          { query: 'pre aborted', limit: 10 },
+          createContext(abortController.signal),
+        ),
+        { name: 'AbortError' },
+      )
+
+      assert.equal(pool.connectCalls, 0)
+    })
+  })
+
   it('拒绝维度错误、非有限数值和零向量', async () => {
     const repository = new PostgresArticleRetrievalRepository(
       new FakePool(new FakePoolClient()),
@@ -185,16 +304,26 @@ class FakePoolClient implements ArticleRetrievalPoolClient {
 
   release(error?: Error): void {
     this.releaseArguments.push(error)
+    // 复刻 pg-pool `_releaseOnce()` 的一次性语义，double-release 必须在测试里立刻暴露。
+    if (this.releaseArguments.length > 1)
+      throw new Error('Release called on client which has already been released to the pool.')
   }
 }
 
 class FakePool implements ArticleRetrievalPool {
   readonly cancelledProcessIds: number[] = []
+  connectCalls = 0
 
-  constructor(private readonly client: ArticleRetrievalPoolClient) {}
+  constructor(
+    private readonly connection:
+      | ArticleRetrievalPoolClient
+      | Promise<ArticleRetrievalPoolClient>,
+  ) {}
 
-  async connect(): Promise<ArticleRetrievalPoolClient> {
-    return this.client
+  connect(): Promise<ArticleRetrievalPoolClient> {
+    this.connectCalls += 1
+    // Promise.resolve 对原生 Promise 返回同一实例，保留“connection 已 fulfilled”这一竞态前提。
+    return Promise.resolve(this.connection)
   }
 
   async cancel(processId: number): Promise<boolean> {
@@ -217,6 +346,40 @@ function createContext(signal = new AbortController().signal) {
       signal,
       createTimeoutError: () => new Error('test retrieval deadline exceeded'),
     },
+  }
+}
+
+function createDeferredConnection(): {
+  promise: Promise<ArticleRetrievalPoolClient>
+  resolve: (client: ArticleRetrievalPoolClient) => void
+  reject: (error: Error) => void
+} {
+  let resolve!: (client: ArticleRetrievalPoolClient) => void
+  let reject!: (error: Error) => void
+  const promise = new Promise<ArticleRetrievalPoolClient>((resolveFn, rejectFn) => {
+    resolve = resolveFn
+    reject = rejectFn
+  })
+  return { promise, resolve, reject }
+}
+
+// unhandledRejection 在当前 turn 结束后才派发，需要跨一次 macrotask 才能观察到。
+async function nextMacrotask(): Promise<void> {
+  await new Promise<void>(resolve => setImmediate(resolve))
+}
+
+async function expectNoUnhandledRejection(run: () => Promise<void>): Promise<void> {
+  const unhandledReasons: unknown[] = []
+  const onUnhandledRejection = (reason: unknown): number => unhandledReasons.push(reason)
+  process.on('unhandledRejection', onUnhandledRejection)
+
+  try {
+    await run()
+    await nextMacrotask()
+    assert.deepEqual(unhandledReasons, [])
+  }
+  finally {
+    process.off('unhandledRejection', onUnhandledRejection)
   }
 }
 
