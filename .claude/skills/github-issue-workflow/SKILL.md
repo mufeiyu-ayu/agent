@@ -7,7 +7,7 @@ description: 执行本项目 GitHub Issue 的实现、验收收口与合并后�
 
 ## 三种执行模式
 
-- **实现模式**：“完成 Issue #N”默认执行到 Ready PR、Claude Code Review、验证结果和学习交接。只记录“已实现、待验收”，不把任务标记为 Completed。
+- **实现模式**：“完成 Issue #N”默认执行到 commit 前 `/code-review` 自审、Ready PR、Claude Code Review、验证结果和学习交接。只记录“已实现、待验收”，不把任务标记为 Completed。
 - **验收收口模式**：只有用户明确说明 Claude 已验收且自己也确认通过，才更新正式任务状态。
 - **合并清理模式**：只有用户明确授权合并，才合并 PR、同步 `master` 并清理分支。
 
@@ -55,18 +55,26 @@ description: 执行本项目 GitHub Issue 的实现、验收收口与合并后�
 ## 5. Commit、Push 与 Ready PR
 
 1. 再次检查 diff，只暂存当前 Issue 相关文件，不夹带用户的无关改动或敏感信息。
-2. commit 标题使用中文 `type: 简短说明`；正文按需记录背景、改动、验证和风险。
-3. 推送当前任务分支，不推送或改写 `master`。
-4. 本地验证通过后，创建目标为 `master` 的 Ready PR，描述至少包含：
+2. 暂存后、commit 前，必须用 Claude Code 内置 `/code-review` 审当前暂存的改动：
+   - 审查范围是暂存区 diff。改动此时尚未 commit，findings 直接并入本次提交，不产生额外的修复 commit，也不需要 amend 或改写历史。
+   - `docs-task` 及其他 docs-only 改动跳过本步。
+   - 确认为真问题的 finding 自行修复，不为技术判断等待用户确认；修复后重新运行受影响的验证并重新暂存。
+   - 以下情况不修，在最终回复和 PR 描述里写明理由：无法本地确定性复现；修复会超出 Issue 声明范围（触及“不在本任务范围”的模块、公共 contract、schema 或依赖）；与最新 Issue 决策或项目规范冲突，此时按事实来源解决，不得为了“通过 Review”反向违反已确认规格；判断为误报。
+   - 只有缺少授权类前提时才中断并询问用户：密钥、token、权限、`gh` / git 登录、只有用户本人能提供的环境信息。不因技术意见取舍打断用户。
+   - 修复后最多复审 2 轮；仍无进展就停止 review，记录剩余问题并继续交付，交由 PR 创建后的 Claude Code Review 和 Claude 技术验收处理。
+3. 确认没有阻塞性 findings 后再 commit；标题使用中文 `type: 简短说明`，正文按需记录背景、改动、验证和风险。
+4. 推送当前任务分支，不推送或改写 `master`。
+5. 本地验证通过后，创建目标为 `master` 的 Ready PR，描述至少包含：
    - `Closes #<number>`；
    - 改动摘要和明确未做事项；
    - 验证命令与结果；
+   - commit 前 `/code-review` 的结论与处理情况；
    - 已知风险或既有失败；
    - 建议阅读顺序和真实调用链。
-5. Ready 只表示 PR 可以接受 Review，不表示验收通过或允许合并。实现未完成、验证失败、任务受阻或等待用户确认时才使用 Draft。
-6. Draft PR 恢复后，必须先完成实现和必要验证、把任务文档更新为“已实现、待验收”，再转为 Ready 接受 Review；不得从 Draft 直接进入 Claude 验收或合并。
-7. Ready PR 创建后依靠 Claude Code Review；仅在自动审核未触发或代码修复后需要复审时使用 `/code-review` skill。
-8. GitHub 连接或权限不可用时，保留本地成果并明确停止位置，不伪造远程状态。
+6. Ready 只表示 PR 可以接受 Review，不表示验收通过或允许合并。实现未完成、验证失败、任务受阻或等待用户确认时才使用 Draft。
+7. Draft PR 恢复后，必须先完成实现和必要验证、把任务文档更新为“已实现、待验收”，再转为 Ready 接受 Review；不得从 Draft 直接进入 Claude 验收或合并。
+8. PR 创建后的远程 Claude Code Review 是第二道，不替代第 2 步的 commit 前自审；自动审核未触发或代码修复后需要复审时，再次使用 `/code-review`。
+9. GitHub 连接或权限不可用时，保留本地成果并明确停止位置，不伪造远程状态。
 
 ## 6. 学习交接
 

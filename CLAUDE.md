@@ -92,6 +92,7 @@ Claude Code 应作为 Agent 应用开发学习搭档，负责按正式 Issue 实
 - `docs/tasks/**` 是任务与阶段状态的事实来源；Issue 保存实现规格、验收标准和澄清决策。
 - 正式代码任务必须先创建 Issue，并使用独立任务分支和 PR，不直接在 `master` 上实现、提交或推送。
 - 一个 Issue / PR 只完成一个任务单元；Clarification Gate 为 `READY` 后才能进入实现。
+- 正式代码任务在暂存之后、commit 之前，必须用 Claude Code 内置 `/code-review` 审暂存区 diff；确认为真问题的 finding 自行修复并入本次提交，不为技术判断等待用户确认，只有缺少密钥、权限、登录等授权类前提时才中断询问；无法复现、超出 Issue 范围或与已确认规格冲突的不修但要说明，复审最多 2 轮后停止并记录剩余问题。findings 处理结果写入 PR 描述；docs-only 改动跳过。该自审不替代 PR 创建后的 Claude Code Review 和 Claude 技术验收。
 - 正式 Issue 实现并完成必要验证后，默认创建 **Draft PR**；Claude Code 最多记录“实施状态：已实现 / 验收状态：待验收”，不得自行标记 Completed。
 - Draft PR 可以接受 Claude Code Review 和 Claude 技术验收；**Draft 不代表实现未完成**。
 - Ready 是用户明确授权后的发布 / 合并前状态，不是开始 Review 的前置条件。只有 Claude 技术验收通过、用户明确确认验收，并且用户明确授权转 Ready / 合并后，才允许将 Draft 转 Ready。
