@@ -9,7 +9,8 @@
     "build": "vue-tsc --noEmit -p tsconfig.json && vite build",
     "lint": "eslint src",
     "lint:fix": "eslint src --fix",
-    "test": "tsx src/lib/admin-state.check.ts && tsx src/i18n/i18n.check.ts && tsx src/features/runs/run-data.check.ts"
+    "test": "tsx src/lib/admin-state.check.ts && tsx src/i18n/i18n.check.ts && tsx src/features/runs/run-data.check.ts",
+    "test:e2e": "pnpm --filter @agent/contracts build && playwright test"
   },
   "dependencies": {
     "@agent/contracts": "workspace:*",
@@ -22,6 +23,7 @@
     "vue-router": "^5.1.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.1",
     "@vitejs/plugin-vue": "^6.0.3",
     "tsx": "^4.22.3",
     "typescript": "^6.0.3",

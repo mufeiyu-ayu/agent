@@ -1,6 +1,6 @@
 # Phase 8 Task 3C：Admin Retrieval Inspector
 
-状态：**Next / Task 3B Completed / Issue 未创建 / Gate 未执行**。
+状态：**Active / Issue #62 / Clarification Gate READY / 实施状态：已实现 / 验收状态：待验收**。
 
 ## 1. 目标
 
@@ -26,34 +26,37 @@ finalization outcome 与校验结果是什么
 - Admin API 已能读取真实 Run / Step，Task 3C 可在此基础上增加 typed safe projector；
 - malformed / legacy / partial 数据的 fail-closed 语义已经定义。
 
-当前只表示 Task 3C 是下一项正式任务：
+当前状态：
 
-- Issue：未创建；
-- 分支：未创建；
-- PR：未创建；
-- Clarification Gate：未执行；
-- 实施状态：未开始；
-- 验收状态：未验收。
-
-必须先由 GPT 结合当前 Admin 代码与本文件创建独立 Issue，并提供 Task 专属 Codex 开工 Prompt。`Next` 不等于 `Active`。
+- Issue：#62；
+- 分支：`codex/issue-62-admin-retrieval-inspector`；
+- Clarification Gate：已执行，结论 `READY`；
+- 实施状态：已实现；
+- 验收状态：待验收。
 
 ## 3. Inspector Read Model
 
-建议新增：
+已实现于 `packages/contracts/src/admin-run.ts`（availability 按 Issue #62 D-02 定案为四值）：
 
 ```ts
 type AdminRetrievalInspectorAvailability
   = 'available'
-  | 'partial'
-  | 'unavailable'
+    | 'partial'
+    | 'unavailable'
+    | 'not_applicable'
 
 interface AdminRetrievalInspector {
   availability: AdminRetrievalInspectorAvailability
   retrievalCalls: AdminRetrievalCallSummary[]
+  callsTruncated: boolean
+  candidateCount: number | null
+  evidenceRefCount: number | null
   finalization: AdminGroundedFinalizationSummary | null
   citations: AdminGroundedCitationSummary[] | null
 }
 ```
+
+`registryRefCount / registryTruncated` 按 Issue #62 归入 finalization 层，不再放在单个 call 上。
 
 ### 3.1 Retrieval call summary
 
@@ -126,17 +129,20 @@ Retrieval Inspector 是现有 Workspace 的一个 typed Inspector，不新建第
 
 ## 6. 状态行为
 
+下表是已实现的行为（以 §9.2 规则为准）：
+
 | 场景 | Inspector 行为 |
 | --- | --- |
-| 完整新 Run | available，展示 Retrieval + finalization + citations |
-| 只检索未完成 finalization | partial，说明 finalization 缺失 |
-| 普通未检索 Run | unavailable / not_applicable 语义由 projector 明确区分 |
-| legacy Run | unavailable，现有 timeline 仍可用 |
-| malformed Step / Grounding | partial 或 unavailable，不返回原始 JSON |
-| Tool failure | Grounding availability 为 unavailable 或 partial，并显示安全 code / timing，不展示 stack |
-| zero-hit / not found | 显示 availability none、insufficient 与 0 citations |
+| 完整新 Run | `available`，展示 Retrieval + finalization + citations |
+| 只检索未完成 finalization（RUNNING） | `partial`，finalization 为 null，不伪造 outcome |
+| 普通未检索 Run | `not_applicable`，中性文案，不显示错误或空骨架 |
+| legacy Run（call 缺少 summary） | `partial`：投影出的 evidence 身份数与 `registryRefCount` 不一致，现有 timeline 仍可用 |
+| malformed Step / Grounding | `partial` 或 `unavailable`，不返回原始 JSON |
+| Tool failure | Inspector 仍可为 `available`；Grounding availability 为 `unavailable` / `partial`，显示安全 code / timing，不展示 stack |
+| zero-hit / not found | Inspector `available`；Grounding 为 `none + insufficient_evidence + 0 citations` |
 | insufficient evidence | 显示 availability、outcome 与 0..N citations |
 | conflicting evidence | 显示至少两个 cited source |
+| 合法 Citation 但无法关联 | Citation 安全展示、correlation=`unmatched`、Inspector 降为 `partial` |
 
 ## 7. 验收标准
 
@@ -166,13 +172,85 @@ Retrieval Inspector 是现有 Workspace 的一个 typed Inspector，不新建第
 - 修改 Retrieval ranking 或 Grounding contract；
 - 新建独立 Observability 平台或引入 telemetry framework。
 
-## 9. GitHub 交付状态
+## 9. 实现结果
 
-- Issue：未创建
-- 分支：未创建
-- PR：未创建
-- Clarification Gate：未执行
-- 实施状态：未开始
-- 验收状态：未验收
+### 9.1 关键改动
 
-下一步：由 GPT 读取当前 Admin Run Detail、typed Inspector、Task 3A / 3B contract 和本文件，创建 Task 3C 独立 Issue及任务专属 Codex 开工 Prompt。
+| 层 | 文件 | 内容 |
+| --- | --- | --- |
+| Contract | `packages/contracts/src/admin-run.ts` | Run 级 `AdminRetrievalInspector` 及子类型、`AdminGroundedFinalizationStep` typed timeline item、`AdminRunDetail.retrievalInspector` |
+| API query | `apps/api/src/admin-runs/admin-runs.service.ts` | `ADMIN_RUN_DETAIL_SELECT` 增加 assistant Message 的 `grounding` 安全字段 |
+| Projector | `apps/api/src/admin-runs/admin-retrieval-inspector.projector.ts` | 严格 reader、跨字段一致性、bounded 投影、Citation correlation、availability 规则 |
+| Projector | `apps/api/src/admin-runs/admin-run.projector.ts` | `grounded_finalization` typed 投影 + Generic fallback；接入 Run 级 Inspector |
+| Admin UI | `trace/RunTraceInspector.vue`、`inspectors/RetrievalInspector.vue`、`inspectors/GroundedFinalizationInspector.vue`、`trace/retrieval-inspector.presenter.ts` | 现有 Workspace 内 `Event / Retrieval` 切换与四个区块 |
+| i18n | `apps/admin/src/i18n/messages.ts` | `retrieval.*` 与 `timeline.*.groundedFinalization`，zh-CN / en-US 同步 |
+| 浏览器 | `apps/admin/playwright.config.ts`、`apps/admin/e2e/**` | 复用仓库既有 `@playwright/test@1.62.1`，确定性 Admin API fixture |
+
+### 9.2 availability 判定规则
+
+```text
+not_applicable  没有 evidence-eligible call、没有 finalization Step、也没有 Grounding 行
+unavailable     进入过链路，但没有任何可信事实（call / finalization / Grounding 全部损坏）
+available       Run COMPLETED
+                + 所有 evidence-eligible call 元数据可信且未截断
+                + finalization COMPLETED 且 validation=passed
+                + 合法 durable Grounding 且全部 Citation matched
+                + 投影出的 evidence 身份数 == finalization.registryRefCount
+                + finalization 与 Grounding 跨字段一致
+partial         其余情况
+```
+
+`registryTruncated` 是 Run 内真实发生的证据裁剪，属于业务事实，不降低 Inspector availability；
+`callsTruncated / refsTruncated` 是投影侧不完整，降为 `partial`。
+
+### 9.3 已知限制
+
+`get_article_detail@1` 是 evidence-eligible 工具，但不提交 `stepSummary`，因此它的 call 没有可投影的
+source / chunk 引用身份。只依赖该工具产生的 Citation 会按 D-12 标为 `unmatched`，Inspector 降为
+`partial`。补齐它需要修改 Tool，属于本 Task 的明确非目标。DB integration 中有对应用例固化该行为。
+
+### 9.4 验证结果
+
+| 命令 | 结果 |
+| --- | --- |
+| `pnpm --filter @agent/contracts build` | PASS |
+| `pnpm --filter @agent/api test:admin-runs` | 54 pass / 0 fail / 0 skip |
+| `pnpm --filter @agent/api test:grounding` | 168 pass / 0 fail / 0 skip |
+| `pnpm --filter @agent/api test:grounding-db` | 13 pass / 0 fail / 0 skip（隔离 PostgreSQL） |
+| `pnpm --filter @agent/admin test` | PASS |
+| `pnpm --filter @agent/admin test:e2e` | 8 passed（Chromium） |
+| `pnpm --filter @agent/admin exec playwright test --repeat-each=3` | 24 passed |
+| `pnpm --filter @agent/admin typecheck / lint / build` | PASS |
+| `pnpm --filter @agent/api typecheck / lint / build` | PASS |
+| `pnpm typecheck` | PASS |
+| `pnpm lint`（仓库根） | FAIL：115 个既有 `docs/**` Markdown baseline 错误，本次 scoped lint 全部通过 |
+| `git diff --check` / `git diff --cached --check` | PASS |
+
+DB integration 使用 `ARTICLE_INDEX_TEST_DATABASE_URL` 指向的隔离数据库，
+每个 suite 建立一次性 schema `grounding_test_<uuid>` 并在结束后 `DROP SCHEMA ... CASCADE`；
+入口显式拒绝与 `DATABASE_URL` 相同的连接串，也不允许 skip。
+
+### 9.5 浏览器证据
+
+截图位于 `assets/task-03c/`：
+
+- `completed-answered-retrieval.png`
+- `running-partial-retrieval.png`
+- `failed-partial-retrieval.png`
+- `ordinary-not-applicable.png`
+- `malformed-fail-closed.png`
+- `narrow-320-retrieval.png`
+- `single-column-retrieval.png`
+
+窄屏说明：Admin 控制台有既有全局 `min-width: 1024px`（本 Task 之前就存在，不在范围内），
+因此 320px 视口下文档级仍会横向滚动。浏览器用例如实断言了这一既有约束，并单独验证
+Retrieval 视图的内容不会冲出自己所在的 Inspector 列，同时在单列断点（1024px）下复验。
+
+## 10. GitHub 交付状态
+
+- Issue：#62
+- 分支：`codex/issue-62-admin-retrieval-inspector`
+- PR：Draft
+- Clarification Gate：已执行，`READY`
+- 实施状态：已实现
+- 验收状态：待验收

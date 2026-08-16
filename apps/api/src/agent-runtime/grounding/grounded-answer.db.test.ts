@@ -19,6 +19,7 @@ import process from 'node:process'
 // eslint-disable-next-line test/no-import-node-test
 import { after, before, describe, it } from 'node:test'
 
+import { AdminRunsService } from '../../admin-runs/admin-runs.service.js'
 import { ARTICLE_CHUNKER_PROFILE } from '../../article-indexing/article-chunking.js'
 import { ACTIVE_EMBEDDING_PROFILE } from '../../embeddings/embedding-provider.js'
 import {
@@ -588,7 +589,187 @@ describe('Grounded Answer PostgreSQL integration', { concurrency: 1 }, () => {
     assert.equal(await findGrounding(message.id), null)
   })
 
+  // ── Admin Retrieval Inspector（Task 3C）────────────────────
+  //
+  // 这里刻意复用同一套真实 harness：Inspector 必须证明自己能读懂 Runtime 真正
+  // 写入的 Step metadata 与 MessageGrounding relation，而不是读懂测试里手写的
+  // 纯对象 fixture。
+
+  it('Admin Run Detail 从真实 Step 与 MessageGrounding relation 构建 available Inspector', async () => {
+    const conversationId = await createConversation()
+    const harness = createHarness(conversationId, [
+      () => toModelStream([
+        toolCallEvent('call-1', 'retrieve_article_context', '{"query":"SEO 是什么","limit":2}'),
+        { type: 'response_completed', finishReason: 'tool_calls' },
+      ]),
+      () => toModelStream([
+        { type: 'text_delta', delta: '内部草稿-不应落库' },
+        { type: 'response_completed', finishReason: 'stop' },
+      ]),
+      keys => toModelStream([
+        submitGroundedAnswerEvent({
+          answer: 'SEO 的核心是让搜索引擎理解页面结构。',
+          outcome: 'answered',
+          citationKeys: [keys[0]!],
+        }),
+        { type: 'response_completed', finishReason: 'tool_calls' },
+      ]),
+    ])
+
+    await collectEvents(harness.run())
+
+    const run = await requireRun(conversationId)
+    const detail = await createAdminRunsService().getDetail(run.id)
+    const inspector = detail.retrievalInspector
+
+    assert.equal(inspector.availability, 'available')
+    assert.equal(inspector.retrievalCalls.length, 1)
+
+    const call = inspector.retrievalCalls[0]!
+
+    assert.equal(call.toolName, 'retrieve_article_context')
+    assert.equal(call.toolVersion, '1')
+    assert.equal(call.ok, true)
+    assert.equal(call.metadataTrusted, true)
+    assert.ok(call.sourceCount !== null && call.sourceCount > 0)
+    assert.deepEqual(call.strategy?.name !== undefined, true)
+    assert.ok(call.refs.some(ref => ref.sourceId === 301))
+
+    const finalization = inspector.finalization!
+
+    assert.equal(finalization.metadataTrusted, true)
+    assert.equal(finalization.validation, 'passed')
+    assert.equal(finalization.evidenceAvailability, 'available')
+    assert.equal(finalization.outcome, 'answered')
+    assert.equal(finalization.citationCount, 1)
+    assert.equal(finalization.registryRefCount, inspector.evidenceRefCount)
+
+    assert.equal(inspector.citations?.length, 1)
+    assert.equal(inspector.citations![0]!.sourceId, 301)
+    assert.equal(inspector.citations![0]!.granularity, 'chunk')
+    assert.equal(inspector.citations![0]!.correlation, 'matched')
+    assert.deepEqual(inspector.citations![0]!.matchedCallIds, ['call-1'])
+
+    // typed timeline item 必须来自真实 finalization Step，而不是 Generic fallback。
+    const finalizationItem = detail.timeline.find(
+      item => item.type === 'grounded_finalization',
+    )
+
+    assert.equal(finalizationItem?.kind, 'known')
+
+    const serialized = JSON.stringify(detail)
+
+    assert.doesNotMatch(serialized, /内部草稿|evk_|SELECT|embedding|excerpt/)
+    // Observation 正文与候选摘要都留在 Step output 里，不进入 Admin 响应。
+    assert.doesNotMatch(serialized, /Sitemap 帮助搜索引擎发现页面。/)
+    assert.doesNotMatch(JSON.stringify(detail.safeRawData), /"(?:input|output)":/)
+  })
+
+  it('Admin Run Detail 对普通未检索 Run 返回 not_applicable', async () => {
+    const conversationId = await createConversation()
+    const harness = createHarness(conversationId, [
+      () => toModelStream([
+        { type: 'text_delta', delta: '直接回答，不检索。' },
+        { type: 'response_completed', finishReason: 'stop' },
+      ]),
+    ])
+
+    await collectEvents(harness.run())
+
+    const run = await requireRun(conversationId)
+    const detail = await createAdminRunsService().getDetail(run.id)
+
+    assert.equal(detail.retrievalInspector.availability, 'not_applicable')
+    assert.deepEqual(detail.retrievalInspector.retrievalCalls, [])
+    assert.equal(detail.retrievalInspector.finalization, null)
+    assert.equal(detail.retrievalInspector.citations, null)
+  })
+
+  it('Admin Run Detail 在持久化 Grounding 损坏时不返回半份 Citation', async () => {
+    const conversationId = await createConversation()
+    const harness = createHarness(conversationId, [
+      () => toModelStream([
+        toolCallEvent('call-1', 'retrieve_article_context', '{"query":"SEO 是什么"}'),
+        { type: 'response_completed', finishReason: 'tool_calls' },
+      ]),
+      () => toModelStream([
+        { type: 'text_delta', delta: '草稿' },
+        { type: 'response_completed', finishReason: 'stop' },
+      ]),
+      keys => toModelStream([
+        submitGroundedAnswerEvent({
+          answer: '回答',
+          outcome: 'answered',
+          citationKeys: [keys[0]!],
+        }),
+        { type: 'response_completed', finishReason: 'tool_calls' },
+      ]),
+    ])
+
+    await collectEvents(harness.run())
+
+    const message = await requireAssistantMessage(conversationId)
+
+    await prisma.messageGrounding.update({
+      where: { messageId: message.id },
+      data: { citations: [{ leaked: 'SELECT * FROM "ArticleChunk"' }] },
+    })
+
+    const run = await requireRun(conversationId)
+    const detail = await createAdminRunsService().getDetail(run.id)
+
+    assert.equal(detail.retrievalInspector.citations, null)
+    assert.equal(detail.retrievalInspector.availability, 'partial')
+    // Run Detail 仍然可加载，且不透传原始 JSON。
+    assert.ok(detail.timeline.length > 0)
+    assert.doesNotMatch(JSON.stringify(detail), /SELECT|leaked/)
+  })
+
+  it('Admin Run Detail 对 article detail 证据标记 unmatched 并降为 partial', async () => {
+    const conversationId = await createConversation()
+    const harness = createHarness(conversationId, [
+      () => toModelStream([
+        toolCallEvent('call-1', 'get_article_detail', '{"sourceId":301}'),
+        { type: 'response_completed', finishReason: 'tool_calls' },
+      ]),
+      () => toModelStream([
+        { type: 'text_delta', delta: '草稿' },
+        { type: 'response_completed', finishReason: 'stop' },
+      ]),
+      keys => toModelStream([
+        submitGroundedAnswerEvent({
+          answer: 'SEO 基础文章说明了页面结构的重要性。',
+          outcome: 'answered',
+          citationKeys: [keys[0]!],
+        }),
+        { type: 'response_completed', finishReason: 'tool_calls' },
+      ]),
+    ])
+
+    await collectEvents(harness.run())
+
+    const run = await requireRun(conversationId)
+    const detail = await createAdminRunsService().getDetail(run.id)
+    const inspector = detail.retrievalInspector
+
+    // get_article_detail 不提交 Step Summary：call 本身可信，但没有可投影的
+    // 引用身份，因此 Citation 只能是 unmatched，Inspector 必须降级而不是伪装完整。
+    assert.equal(inspector.retrievalCalls.length, 1)
+    assert.equal(inspector.retrievalCalls[0]?.toolName, 'get_article_detail')
+    assert.equal(inspector.retrievalCalls[0]?.metadataTrusted, true)
+    assert.deepEqual(inspector.retrievalCalls[0]?.refs, [])
+    assert.equal(inspector.citations?.length, 1)
+    assert.equal(inspector.citations![0]!.granularity, 'article')
+    assert.equal(inspector.citations![0]!.correlation, 'unmatched')
+    assert.equal(inspector.availability, 'partial')
+    assert.doesNotMatch(JSON.stringify(detail), /evk_|excerpt/)
+  })
+
   // ── 脚手架 ──────────────────────────────────────────────
+
+  function createAdminRunsService(): AdminRunsService {
+    return new AdminRunsService(prisma)
+  }
 
   function createHarness(
     conversationId: string,

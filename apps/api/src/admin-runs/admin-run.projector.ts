@@ -21,9 +21,14 @@ import type {
   MessageRole,
   MessageStatus,
 } from '@agent/contracts'
+import type { PersistedMessageGrounding } from '../agent-runtime/grounding/message-grounding.projector.js'
 
 import { AGENT_STEP_TYPES } from '../agent-runtime/agent-run-recorder.service.js'
 import { GROUNDED_FINALIZATION_MAX_ATTEMPTS } from '../agent-runtime/grounding/grounded-answer.finalizer.js'
+import {
+  projectAdminRetrievalInspector,
+  projectGroundedFinalizationStep,
+} from './admin-retrieval-inspector.projector.js'
 
 const QUESTION_PREVIEW_MAX_CHARS = 200
 const MESSAGE_PREVIEW_MAX_CHARS = 500
@@ -94,6 +99,8 @@ interface AdminRunDetailMessageRecord {
   content: string
   createdAt: Date
   updatedAt: Date
+  /** 只有助手消息可能带 Grounding；投影前仍由 projector 复核归属与合法性。 */
+  grounding?: PersistedMessageGrounding | null
 }
 
 interface AdminRunDetailProjectionRecord extends AdminRunProjectionRecord {
@@ -191,6 +198,12 @@ export function projectAdminRunDetail(
       .filter((message): message is AdminRunDetailMessageRecord => message !== null)
       .map(projectMessage),
     timeline,
+    retrievalInspector: projectAdminRetrievalInspector({
+      runStatus: run.status,
+      steps: run.steps,
+      timeline,
+      assistantMessage: run.assistantMessage,
+    }),
     safeRawData: {
       agentRun: {
         id: run.id,
@@ -231,6 +244,10 @@ function projectTimelineItem(
       return isValidToolExecution(input, step.output, step.status)
         ? projectToolExecution(step, input, output)
         : projectGenericStep(step)
+    case AGENT_STEP_TYPES.groundedFinalization:
+      // metadata 不可信时回落到既有 Generic fallback，不给出一份看起来完整的假 Step。
+      return projectGroundedFinalizationStep(step, knownStepBase(step))
+        ?? projectGenericStep(step)
     case AGENT_STEP_TYPES.assistantOutput:
       return isValidAssistantOutput(input, step.output, step.status)
         ? projectAssistantOutput(step, input, output)
@@ -1343,7 +1360,7 @@ function sumCompleteUsage(
   return total
 }
 
-function readObject(value: unknown): Record<string, unknown> | null {
+export function readObject(value: unknown): Record<string, unknown> | null {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
     ? value as Record<string, unknown>
     : null
@@ -1424,7 +1441,7 @@ function readRequestedModel(
   return readString(readObject(steps[0]?.input), 'requestedModel')
 }
 
-function readNonNegativeInteger(
+export function readNonNegativeInteger(
   object: Record<string, unknown> | null,
   key: string,
 ): number | null {
@@ -1444,7 +1461,7 @@ function readPositiveInteger(
   return value !== null && value > 0 ? value : null
 }
 
-function readAllowedString<T extends string>(
+export function readAllowedString<T extends string>(
   object: Record<string, unknown> | null,
   key: string,
   allowed: T[],
@@ -1455,7 +1472,7 @@ function readAllowedString<T extends string>(
     : null
 }
 
-function readBoolean(
+export function readBoolean(
   object: Record<string, unknown> | null,
   key: string,
 ): boolean | null {
@@ -1482,7 +1499,7 @@ function toPreview(value: string, maxChars: number): string {
     : `${characters.slice(0, maxChars - 1).join('')}…`
 }
 
-function elapsedMs(startedAt: Date | null, endedAt: Date | null): number | null {
+export function elapsedMs(startedAt: Date | null, endedAt: Date | null): number | null {
   if (!startedAt || !endedAt)
     return null
 
@@ -1490,7 +1507,7 @@ function elapsedMs(startedAt: Date | null, endedAt: Date | null): number | null 
   return Number.isFinite(duration) && duration >= 0 ? duration : null
 }
 
-function toIsoString(value: Date | null): string | null {
+export function toIsoString(value: Date | null): string | null {
   return value?.toISOString() ?? null
 }
 
