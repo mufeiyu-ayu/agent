@@ -37,9 +37,12 @@ const ADMIN_RUN_LIST_SELECT = {
   steps: {
     where: {
       type: {
+        // grounded finalization 也是真实模型调用，必须喂给 projector，
+        // 否则 Grounded Run 在列表页会系统性少算采样次数与 Token。
         in: [
           AGENT_STEP_TYPES.modelSampling,
           AGENT_STEP_TYPES.toolExecution,
+          AGENT_STEP_TYPES.groundedFinalization,
         ],
       },
     },
