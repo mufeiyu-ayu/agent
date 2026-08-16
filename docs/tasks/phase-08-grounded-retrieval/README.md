@@ -1,6 +1,6 @@
 # Phase 8：Grounded Retrieval / RAG Baseline
 
-状态：**Active / Task 0、Task 1、Task 2A、Task 2B Completed / Task 3A Next / Task 3B、3C Planned**。
+状态：**Active / Task 0、Task 1、Task 2A、Task 2B、Task 3A Completed / Task 3B Next / Task 3C Planned**。
 
 本文件是 Phase 8 的阶段总览与任务编排入口。正式 Task 状态以各 Task 文档、Issue / PR 和 GitHub 实时事实为准。
 
@@ -27,8 +27,8 @@ Article Source
 | Task 1：Article Chunking & Embedding Index | **Completed** | deterministic Chunk、stable identity、pgvector index、CLI | #50 / #52 / merge `76d66abf` |
 | Task 2A：Vector / Hybrid Retrieval & Evaluation | **Completed** | Gemini Provider、exact vector、Article aggregation、RRF、quality-v2 | #54 / #55 / merge `3abdcb8a` |
 | Task 2B：Retrieval Tool & Agent Integration | **Completed** | `retrieve_article_context@1`、受控 Observation、Agent Loop 集成 | #56 / #57 / merge `4f3ba1c1` |
-| Task 3A：Grounded Answer & Citation Backend Contract | **Next / 未启动** | structured finalization、Citation validation、durable Grounding、API / Stream | Issue 未创建 / Gate 未执行 |
-| Task 3B：Web Chat Source UI | Planned | 来源卡片、状态、legacy 与浏览器验收 | 依赖 3A |
+| Task 3A：Grounded Answer & Citation Backend Contract | **Completed** | structured finalization、Citation validation、durable Grounding、API / Stream | #58 / #59 / merge `d6df7ac1` |
+| Task 3B：Web Chat Source UI | **Next / 未启动** | 来源卡片、状态、legacy 与浏览器验收 | 依赖 3A；Issue 未创建 / Gate 未执行 |
 | Task 3C：Admin Retrieval Inspector | Planned | typed safe Inspector、candidate → citation 审计 | 依赖 3A |
 
 Task 3 不再作为单一 Issue 实现。编排见 [Task 3 总览](./task-03-grounded-answer-retrieval-inspector.md)。
@@ -109,6 +109,33 @@ Gemini Query Embedding
 - JSON / 大小 / 深度 fail-closed ToolStepSummary；
 - 真实 Gemini + 隔离 pgvector Tool smoke。
 
+### Task 3A
+
+```text
+evidence-eligible Tool outcome
+  -> Grounding Session
+  -> Run-scoped Evidence Registry
+  -> hidden final draft
+  -> submit_grounded_answer@1
+  -> server-side Citation validation
+  -> validated assistant_delta replay
+  -> Message + Grounding + finalization Step + assistant Step + Run 原子终态
+  -> optional grounding on done / Messages API
+```
+
+已建立：
+
+- Retrieval 与 Article Detail 为 evidence-eligible，Search Articles 保持 discovery-only；
+- opaque、Run-scoped `citationKey`，Registry hard cap 10；
+- `available / partial / none / unavailable` 由服务端派生；
+- structured finalization 最多 2 次 attempt，不消耗 action Tool budget；
+- hidden draft 在校验前不外发、不落库；
+- 公共 `citationId` 与内部 key 分离，malformed Grounding fail closed；
+- `citationIntegrity=validated` 与 `faithfulnessStatus=not_evaluated` 分层；
+- finalization sampling、usage、Abort、deadline 和事务失败审计不丢失；
+- `done.grounding` 与 Messages API 共享 durable safe projector；
+- 真实 DeepSeek + Gemini + 隔离 pgvector 覆盖 answered 与 insufficient。
+
 ## 4. Task 3 研究结论
 
 研究与方案定案见：
@@ -149,7 +176,8 @@ Gemini Query Embedding
 - Agentic query planning、复杂 rerank / query rewrite；
 - 自动 Compaction；
 - OpenAI / Gemini 双 active provider 或在线向量迁移；
-- Admin Auth / RBAC Task 4。
+- Admin Auth / RBAC Task 4；
+- 并行 Tool Call 支持。
 
 ## 7. Phase 8 完成条件
 
@@ -169,11 +197,11 @@ Task 0：Completed
 Task 1：Completed
 Task 2A：Completed
 Task 2B：Completed
-Task 3A：Next / Issue 未创建 / Gate 未执行
-Task 3B：Planned / 依赖 3A
+Task 3A：Completed / #58 Closed / #59 Merged / `d6df7ac1`
+Task 3B：Next / Issue 未创建 / Gate 未执行
 Task 3C：Planned / 依赖 3A
 Active Agent Task：无
 Minimal Compaction：Gated
 ```
 
-下一步只创建并启动 Task 3A。Task 3B、3C、Admin Task 4 与 Minimal Compaction 均不得自动进入实现。
+下一步只创建并启动 Task 3B。Task 3C、Admin Task 4、并行 Tool Call 与 Minimal Compaction 均不得自动进入实现。

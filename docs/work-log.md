@@ -6,8 +6,8 @@
 
 | 类型 | 当前记录 | 下一步 |
 | --- | --- | --- |
-| Agent 主线 | 阶段 1-7 Completed；Phase 8 Active；Task 0、1、2A、2B Completed；Task 3A Next；Task 3B、3C Planned；当前无 Active Agent Task | 创建 Task 3A 独立 Issue，并执行 Clarification Gate |
-| Phase 8 | Gemini full indexing 2044 Chunks、quality-v2、Hybrid Retrieval 与 Retrieval Tool 已完成；Grounded Answer / Citation 研究与拆分已定案 | `docs/tasks/phase-08-grounded-retrieval/README.md` |
+| Agent 主线 | 阶段 1-7 Completed；Phase 8 Active；Task 0、1、2A、2B、3A Completed；Task 3B Next；Task 3C Planned；当前无 Active Agent Task | 创建 Task 3B 独立 Issue，并执行 Clarification Gate |
+| Phase 8 | Gemini full indexing 2044 Chunks、quality-v2、Hybrid Retrieval、Retrieval Tool、Grounded Answer 与 Citation Backend Contract 已完成 | `docs/tasks/phase-08-grounded-retrieval/README.md` |
 | Minimal Compaction | Gated | 只有真实 Context 压力证据满足触发条件后才讨论 |
 | Admin Console | Task 0-3 与 Enhancement 1 Completed；Task 4 Planned；Retrieval Inspector 为 Phase 8 Task 3C Planned | 不自动启动 Auth / RBAC |
 
@@ -15,7 +15,10 @@
 
 | 日期 | 事项 | 结果 |
 | --- | --- | --- |
-| 2026-08-15 | Phase 8 Task 3 研究与任务拆分定案 | 结合当前 master、Codex typed item / lifecycle event 设计、OpenAI / Anthropic / Google provider-native citation、Vercel AI SDK structured sources、LangChain structured output、LlamaIndex prompt citation、Ragas 与 OpenTelemetry / OpenInference 方案完成研究；确定不解析任意 Markdown `[1]`，采用 evidence-eligible Tool policy、Grounding Session、server-derived evidence availability、Run-scoped evidence、structured finalization、server-side citation validation 与 durable Message Grounding；v1 允许 Retrieval 和 Article Detail 产生 evidence，Search Articles 保持 discovery-only；Task 3 拆为 3A Backend Contract（Next）、3B Web Source UI（Planned）、3C Admin Retrieval Inspector（Planned）；没有创建 Issue、分支或 PR，没有启动实现 |
+| 2026-08-16 | Phase 8 Task 3A 最终收口 | Issue #58 / PR #59；最终验收 head `1e7f4c7182219d3e9c0892211ecc810c1bbda904`；GPT 四轮技术验收完成，P0 / P1 / P2 均为 0，AC-01～AC-24 全部 PASS；用户明确确认验收并授权 Draft 转 Ready、合并、关闭 Issue 与 docs 收口；PR #59 merge `d6df7ac1f24137a304748d21f4bca42dcb0a6ddc`；Issue #58 Closed / Completed；远程任务分支保留，未获删除授权 |
+| 2026-08-16 | Phase 8 Task 3A 最终验证 | `test:grounding` 168、`test:grounding-db` 9、`test:admin-runs` 31、`test:agent-recorder` 14、`test:tool-loop` 54、`test:model-stream` 67、`test:tools` 86、`test:seo-service` 24、`test:context` 24、`test:retrieval` 35、`test:retrieval-db` 9、`test:db-reliability` 11、`test:llm-config` 17、`test:seo-stream` 12，均 0 fail；DB suites 0 skip；contracts / API / Web typecheck、API / Web lint + build、workspace typecheck 通过；真实 DeepSeek + Gemini + 隔离 pgvector answered / insufficient smoke 均 run_completed |
+| 2026-08-16 | Phase 8 Task 3A Review 收口 | 第一轮收紧低信任 Context、原子终态、终态流完整性、evidence projection、公共 projector、统计与 smoke 门禁；第二轮补齐 sampling failure / replay Abort 的 attempt 记账、公共 Citation identity 与安全输出顺序；第三轮发现 post-sampling availability check 的 attempt 丢失窗口；第四轮确认修复完成。最终保留 Provider 判断波动、单轮单 Tool Call、`href=null`、`faithfulnessStatus=not_evaluated` 等明确边界 |
+| 2026-08-15 | Phase 8 Task 3 研究与任务拆分定案 | 结合当前 master、Codex typed item / lifecycle event 设计、OpenAI / Anthropic / Google provider-native citation、Vercel AI SDK structured sources、LangChain structured output、LlamaIndex prompt citation、Ragas 与 OpenTelemetry / OpenInference 方案完成研究；确定不解析任意 Markdown `[1]`，采用 evidence-eligible Tool policy、Grounding Session、server-derived evidence availability、Run-scoped evidence、structured finalization、server-side citation validation 与 durable Message Grounding；Task 3 拆为 3A Backend Contract、3B Web Source UI、3C Admin Retrieval Inspector |
 | 2026-08-15 | Phase 8 Task 2B 最终收口 | Issue #56 / PR #57；最终验收 head `9008c7be9176d4d8f322a31b96e7f0fef753f727`；GPT 第二轮技术验收通过，AC-01～AC-16 全部 PASS；用户确认并授权合并与 docs 收口；PR #57 merge `4f3ba1c109e8b0ade2328abeed24a72c295acd6d`；Issue #56 Closed；远程任务分支保留 |
 | 2026-08-15 | Phase 8 Task 2B Review 修复与最终验证 | 收口 SEO Agent Tool 选择策略、ToolStepSummary 安全边界、Tool limit 和 trusted-provider idempotent；测试 `test:seo-service` 19、`test:tools` 69、`test:tool-loop` 54、`test:context` 24、`test:retrieval` 35、`test:retrieval-db` 9、`test:model-stream` 67，均 0 fail / 0 skip；typecheck / lint / build / workspace typecheck 通过；真实 Tool smoke 返回 3 candidates / 3 chunk evidence；Codex Review 因额度耗尽未产生结果 |
 | 2026-08-15 | Phase 8 Task 2B 初始实现 | Clarification Gate READY；实现 `retrieve_article_context@1`、Hybrid Retrieval lazy runtime、trusted-provider policy、受控 Observation、Agent Tool Loop 与 safe Step summary；初始 head `d11d45b18f3e439967d1f3cc33bcca8c1bdf399e` |
@@ -48,8 +51,8 @@ Task 0              Completed
 Task 1              Completed
 Task 2A             Completed
 Task 2B             Completed
-Task 3A：Next       未启动
-Task 3B：Planned    依赖 3A
+Task 3A             Completed
+Task 3B：Next       未启动
 Task 3C：Planned    依赖 3A
 Active Agent Task   无
 Minimal Compaction  Gated
@@ -58,17 +61,18 @@ Minimal Compaction  Gated
 当前执行顺序：
 
 ```text
-Task 3A Grounded Answer + Citation Backend Contract
-  ├─> Task 3B Web Chat Source UI
-  └─> Task 3C Admin Retrieval Inspector
+Task 3B Web Chat Source UI
+  -> Task 3C Admin Retrieval Inspector
+  -> Phase 8 Closeout
 ```
 
-Task 3 研究已完成以下定案：
+Task 3A 已建立以下稳定事实：
 
 - Citation 是服务端验证的结构化事实，不是任意 Markdown `[1]`；
 - Evidence-backed answer 通过 structured finalization 选择 Run-scoped opaque citationKey；
 - `citationIntegrity=validated` 与 `faithfulnessStatus=not_evaluated` 分开；
-- Message content、Grounding 与 Run terminalization 原子提交；
+- Message content、Grounding、finalization Step、assistant Step 与 Run terminalization 原子提交；
+- finalization sampling、usage、Abort、deadline 与事务失败的 attempt 事实不丢失；
 - `done` 只增加 optional Grounding，不新增 stream event type；
 - v1 使用 message-level source cards，claim-level offsets 延后；
 - Web / Admin 使用独立 Task，不在 3A 中顺手实现。
@@ -78,4 +82,5 @@ Task 3 研究已完成以下定案：
 - 只记录已经真实发生的事项；
 - 研究定案、Issue 创建、实现、验收、Task 收口和合并是不同动作；
 - Planned 不代表 Next 或 Active；
-- 当前没有 Active Agent Task；Task 3A 未创建 Issue、未执行 Gate，因此不得实现。
+- 当前没有 Active Agent Task；Task 3B 尚未创建 Issue、未执行 Gate，因此不得实现；
+- 远程 Task 3A 分支仍保留，未获得分支删除授权。

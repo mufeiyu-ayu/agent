@@ -1,6 +1,6 @@
 # Phase 8 Task 3B：Web Chat Source UI
 
-状态：**Planned / 依赖 Task 3A**。
+状态：**Next / Task 3A Completed / Issue 未创建 / Gate 未执行**。
 
 ## 1. 目标
 
@@ -10,12 +10,15 @@
 
 ## 2. 启动条件
 
-Task 3B 只有在以下条件满足后才能创建 Issue：
+Task 3B 的前置条件已经满足：
 
 - Task 3A 已完成 GPT 技术验收与用户确认；
+- Issue #58 已关闭，PR #59 已合并，merge `d6df7ac1`；
 - `ConversationMessage.grounding` 与 `done.grounding` 已稳定；
-- Grounding version、outcome、Citation 字段与 malformed fallback 已定案；
-- 真实 API 能返回 answered / insufficient / conflicting / legacy fixture。
+- Grounding version、outcome、Citation identity 与 malformed fallback 已定案；
+- 真实 API 已覆盖 answered 与 insufficient；conflicting、legacy、error 与 aborted 继续由确定性 fixture 和浏览器验收覆盖。
+
+Task 3B 仍未启动。必须先创建独立 Issue，并由 Codex 执行 Clarification Gate；Next 不等于 Active。
 
 ## 3. 已确认交互决策
 
@@ -25,7 +28,7 @@ Task 3B 只有在以下条件满足后才能创建 Issue：
 | D-02 | 来源只在 completed answer 后出现 | 校验前不显示候选 |
 | D-03 | 来源编号由 UI 按 contract 顺序生成 | 模型不控制编号 |
 | D-04 | legacy / 普通回答保持当前 Message UI | 无 Grounding 不显示空壳 |
-| D-05 | URL 由服务端安全投影提供 | 不把模型文本拼成 href |
+| D-05 | URL 由服务端安全投影提供 | 不把模型文本拼成 href；v1 `href` 当前为 null |
 | D-06 | answered / insufficient / conflicting 使用不同语义状态 | 不把“有候选”渲染成“已验证答案” |
 | D-07 | malformed Grounding 非致命 fail closed | 回答正文仍可显示，来源区域显示不可用状态或隐藏 |
 | D-08 | aborted / error 不展示 completed Grounding | 避免半完成来源 |
@@ -114,7 +117,8 @@ Assistant Reply
 - Admin Auth / RBAC；
 - 直接访问 Tool Result 或 AgentStep raw JSON；
 - 外部 URL 自动抓取或预览；
-- citation feedback / voting / analytics。
+- citation feedback / voting / analytics；
+- 并行 Tool Call 支持。
 
 ## 9. GitHub 交付状态
 
@@ -124,3 +128,5 @@ Assistant Reply
 - Clarification Gate：未执行
 - 实施状态：未开始
 - 验收状态：未验收
+
+下一步：由 GPT 基于本文件和当前 Web Chat 代码创建 Task 3B 独立 Issue，并提供任务专属 Codex 开工 Prompt。
