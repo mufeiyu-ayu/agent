@@ -16,6 +16,7 @@
 
 | 日期 | 事项 | 结果 |
 | --- | --- | --- |
+| 2026-08-16 | Phase 8 后置维护 #67 最终收口 | Issue #67 / PR #68；最终验收 head `e4a889970513b6563391545558136c6c21f834a1`；GPT 基于最新 diff、所有权语义、确定性竞态测试和独立 Node harness 确认 AC-01～AC-07 PASS；用户明确确认验收并授权转 Ready、合并与文档收口；PR #68 merge `51793f03a409a9f313584a6ddc2fba450fc33b70`；Issue #67 Closed / Completed |
 | 2026-08-16 | Phase 8 Task 3C 最终收口 | Issue #62 / PR #63；最终验收 head `aadcadf510b20ea3c958b99ad1a8bfcf363dedf7`；GPT 多轮技术验收最终确认 AC-01～AC-12 PASS；用户明确确认验收并授权关闭 Issue、转 Ready、合并与 docs 收口；PR #63 merge `20f838fb1fd5139d787f973a90f4906d7ab8ea14`；Issue #62 Closed / Completed |
 | 2026-08-16 | Phase 8 Task 3C 最终验证 | frozen install、contracts、API / Admin typecheck、lint、build、workspace typecheck 与 diff checks 通过；`test:admin-runs` 136、`test:grounding` 168、`test:grounding-db` 17，均 0 fail / 0 skip；Admin Chromium 12 / 12，repeat-each=3 为 36 / 36；根 lint 保留 113 个既有 Markdown baseline 错误 |
 | 2026-08-16 | Phase 8 完成 | deterministic Chunking、Gemini Embedding / pgvector、lexical + vector RRF、Retrieval Tool、Grounding Session、structured finalization、durable Citation、Web Source UI 和 Admin Retrieval Inspector 全部闭环；阶段完成条件全部满足，Phase 8 状态更新为 Completed |
