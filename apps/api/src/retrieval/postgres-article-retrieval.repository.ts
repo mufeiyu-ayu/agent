@@ -479,35 +479,31 @@ async function connectWithAbort(
   const connection = pool.connect()
 
   return await new Promise<ArticleRetrievalPoolClient>((resolve, reject) => {
-    let settled = false
+    // client 所有权只由下面这一条 connection reaction 仲裁，不允许出现第二条 release 路径：
+    // abortError 为空表示所有权移交调用方，由 runOwnedReadQuery 负责最终 release；
+    // abortError 已存在表示 Abort 先决定了结果，迟到的 client 仍归本函数，在这里 release 恰好一次。
+    let abortError: Error | undefined
     const handleAbort = (): void => {
-      if (settled)
-        return
-      settled = true
-      const error = abortReason(signal)
-      void connection.then(
-        client => client.release(error),
-        () => {},
-      )
-      reject(error)
+      abortError = abortReason(signal)
+      reject(abortError)
     }
     signal.addEventListener('abort', handleAbort, { once: true })
 
     void connection.then(
       (client) => {
-        if (settled) {
-          client.release(abortReason(signal))
+        // reaction 一旦执行，Abort 就不可能再改变所有权归属。
+        signal.removeEventListener('abort', handleAbort)
+        if (abortError) {
+          client.release(abortError)
           return
         }
-        settled = true
-        signal.removeEventListener('abort', handleAbort)
         resolve(client)
       },
       (error) => {
-        if (settled)
-          return
-        settled = true
         signal.removeEventListener('abort', handleAbort)
+        // Abort 已经是最终结果时，这里只负责安全观察迟到的连接失败。
+        if (abortError)
+          return
         reject(error)
       },
     )
