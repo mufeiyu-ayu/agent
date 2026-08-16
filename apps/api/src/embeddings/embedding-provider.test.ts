@@ -275,6 +275,32 @@ describe('GeminiEmbeddingProvider', () => {
     )
   })
 
+  it('未识别的普通 Error 归类为 unknown 且 fail closed', async () => {
+    let calls = 0
+    const provider = new GeminiEmbeddingProvider(
+      config(),
+      fakeClient(async () => {
+        calls += 1
+        throw new Error('generic provider failure with secret payload')
+      }),
+      async () => assert.fail('unknown error must not retry'),
+    )
+
+    await assert.rejects(
+      provider.embed(['safe input'], { signal: new AbortController().signal }),
+      error => error instanceof EmbeddingError
+        // EmbeddingAbortError 同样是 unknown / 不可重试，用 name 区分真正的分类结果。
+        && error.name === 'EmbeddingError'
+        && error.code === 'unknown'
+        && error.retryable === false
+        && error.providerRequests === 1
+        && error.retryCount === 0
+        && !/secret|payload/i.test(error.message)
+        && error.cause === undefined,
+    )
+    assert.equal(calls, 1)
+  })
+
   it('严格拒绝 partial、错误维度、非有限数字和零向量，并保留响应顺序', () => {
     const valid = {
       embeddings: [
