@@ -1,100 +1,95 @@
 # Admin Console
 
-本文记录 Agent Runtime Console 的独立 Observability 支线。Task 0-3 与 Enhancement 1 已完成；Task 4 保持 Planned。
+本文记录 Agent Runtime Console 的独立 Observability 支线。
 
-Phase 6 Agent Runtime 主线已经完成。Admin Console 不等于下一 Agent 学习阶段；当前已经建立真实 Observability Baseline，后续根据 Agent 主线能力增量扩展 Inspector。
+状态：**Task 0-3、Enhancement 1、Phase 8 Task 3C Completed；Task 4 Planned**。
+
+Admin Console 面向项目开发、调试和运行过程复盘。它是 Agent 主线事实的安全投影，不为了展示反向污染 Runtime Domain Model。
 
 ## 产品目标
 
-Admin Console 面向项目开发、调试和运行过程复盘，长期用于查看：
+长期用于查看：
 
 - `AgentRun` 与 `AgentStep`；
 - model sampling；
-- Tool Call / Tool Execution / Observation 的安全投影；
-- 用户可见 `Message`；
-- 受控错误、时长和 Token Usage；
-- 后续 Context / Retrieval / Approval / Recovery 等新增运行事实的安全投影。
+- Tool Call / Tool Execution / Observation 安全投影；
+- Context Budget 与调整；
+- Retrieval candidate / evidence / Citation；
+- Grounded finalization；
+- 用户可见 Message；
+- 错误、时长与 Token Usage；
+- 后续 Approval / Recovery 等运行事实。
 
 ## 技术基线
 
 - `apps/admin`：Vue 3 / Vite / TypeScript / Pinia / Ant Design Vue；
-- `apps/api`：NestJS 服务端，同时提供用户 API 与只读 Admin Observability API；
+- `apps/api`：NestJS 用户 API 与只读 Admin Observability API；
 - `packages/contracts`：Admin 前后端共享 Read Contract；
-- Prisma：`Conversation / Message / AgentRun / AgentStep` 持久化事实源；
+- Prisma：Conversation / Message / AgentRun / AgentStep / MessageGrounding 持久化事实；
 - Admin View Model 与 Prisma Model 分层；
-- Vben 只作为视觉语言参考，不引入 `@vben/*` / `@vben-core/*` 运行时依赖。
+- Vben 只作为视觉语言参考，不引入其运行时依赖。
 
 ## 当前任务看板
 
-| Task | 状态 | 目标 | 文档 | Issue | PR |
-| --- | --- | --- | --- | --- | --- |
-| Task 0 | Completed | 初始化 Admin 前端基础壳 | 本文归档 | #19 | #20 |
-| Task 1 | Completed | 静态 Run List / Run Detail UI | 本文归档 | #21 | #22 |
-| Task 2 | Completed | 真实 Run / Step 只读查询 API | [task-02-run-query-api.md](./admin-console/task-02-run-query-api.md) | #33 | #34 |
-| Task 3 | **Completed** | 后台接入真实 Run Trace | [task-03-real-trace-ui.md](./admin-console/task-03-real-trace-ui.md) | #35 | #36 |
-| Enhancement 1 | **Completed** | 紧凑 Run Trace Workspace | [enhancement-01-run-trace-workspace.md](./admin-console/enhancement-01-run-trace-workspace.md) | #51 / Closed | #53 / Merged / `159e964c` |
-| Task 4 | Planned | 登录、权限、敏感信息脱敏 | 待启动时补独立 Task 文档 | 未创建 | 未创建 |
+| Task | 状态 | 目标 | GitHub / 文档 |
+| --- | --- | --- | --- |
+| Task 0 | Completed | Admin 前端基础壳 | #19 / #20 |
+| Task 1 | Completed | 静态 Run List / Run Detail | #21 / #22 |
+| Task 2 | Completed | 真实 Run / Step 只读 API | #33 / #34 / [文档](./admin-console/task-02-run-query-api.md) |
+| Task 3 | Completed | 真实 Run Trace UI | #35 / #36 / [文档](./admin-console/task-03-real-trace-ui.md) |
+| Enhancement 1 | Completed | 紧凑 Run Trace Workspace | #51 / #53 / `159e964c` / [文档](./admin-console/enhancement-01-run-trace-workspace.md) |
+| Phase 8 Task 3C | Completed | Retrieval / Finalization / Citation Inspector | #62 / #63 / `20f838fb` / [文档](./phase-08-grounded-retrieval/task-03c-admin-retrieval-inspector.md) |
+| Task 4 | Planned | 登录、权限、敏感信息脱敏 | 未创建 |
 
-## Task 0：后台前端基础壳
+## 已完成基线
 
-Issue #19 / PR #20，Completed。
-
-核心交付：独立 `apps/admin`、Sidebar / Header / Breadcrumb / Route Tabs、主题、Sidebar 折叠、Overview / Runs 占位页和工程命令。
-
-## Task 1：静态 Run List / Run Detail UI
-
-Issue #21 / PR #22，Completed。
-
-核心交付：静态 Run List / Detail、Trace / Messages / Safe Raw UI、确定性 Mock、列表会话状态、light / dark 和常见桌面尺寸适配。
-
-Task 1 Mock 只作为早期 UI 产品结构基线，不再作为真实数据源。
-
-## Task 2：真实 Run / Step 只读查询 API
-
-Issue #33 / PR #34，merge commit `997d6b84341ad3a53e42786490361ea3f984bf7e`。
-
-最终建立：
+### Run Query 与 Trace
 
 - `GET /api/admin/runs`；
 - `GET /api/admin/runs/:runId`；
-- `@agent/contracts` Admin Run Read Contract；
-- `AgentRun + AgentStep + Message` 安全聚合；
 - server-side pagination / filters / stable ordering；
-- 五类 Phase 6 Step typed projection；
-- unknown / malformed Step generic safe projection；
-- 不改 Prisma schema / Runtime；
-- 不伪造 resolved model。
-
-## Task 3：真实 Run Trace UI
-
-Issue #35 / PR #36，merge commit `4c689c4c8a8d3975192d13eb3f5a1c24463fcd7b`。
-
-最终完成：
-
-- `/runs` 从 Mock 切换到真实 server list / summary / pagination / filters；
-- `/runs/:runId` 使用真实 Run / Step / Message / Safe Raw projection；
-- loading / empty / error / retry / 404；
+- known Step typed projection 与 unknown / malformed Generic fallback；
 - RUNNING / COMPLETED / FAILED / ABORTED；
-- 五类已知 Step 专用 Inspector + Generic Inspector；
-- `requestedModel=null` 保持明确未知语义；
-- 返回列表保留 query / page / pageSize 上下文；
-- AbortController + request / route identity fencing 防止 stale response；
-- Admin Vite `/api` proxy；
-- API `dev` / `dev:watch` 修复 decorator metadata 与开发重启链路；
-- Computer Use 使用真实 Nest API + Vite + Chrome 完成主验收；
-- 4 张关键截图证据已提交。
+- stale-response fencing；
+- Safe Raw bounded projection。
 
-Task 3 GPT 技术验收通过，用户已明确确认并授权合并；Issue #35 Closed / Completed，PR #36 Merged。
+### Run Trace Workspace
 
-## Enhancement 1：Run Trace Workspace
+```text
+Compact Header
+Duration Overview
+Request Boundary
+Event / Content Ledger
+Typed Inspector / Generic Inspector
+```
 
-Issue #51 / PR #53，merge commit `159e964cafa081df218284b53f246a0da9edd04e`，Completed。
+保留 Messages、搜索、折叠、选中态、Safe Raw 和桌面响应式布局。
 
-本任务只重构单个 Run 的 Admin 前端信息架构：用 Compact Header、三 Lane Duration Overview、Request Boundary、Event / Content Ledger 和分类型 Inspector 替换旧卡片式 Trace 主布局，并保留 Messages、Safe Raw、安全投影与 stale-response fencing。
+### Context Inspector
 
-实现实际阅读了本地 DeepSeek Harness `47f943859bef60e4160492346772ded9b24f765a`，只借鉴 projection、Request Boundary、Lane、Ledger、选择、搜索 / 折叠和渐进 Inspector；不迁移 Session 多 Turn、虚拟列表、历史补页、TTFT 或 raw payload 能力。
+展示每次 sampling 的 Budget、Sources、History / Observation 调整和 outcome，不暴露完整 model-visible Context。
 
-最终验收 head 为 `b31aa0395eac005ea41fe8d04129a683cc5747f4`。GPT 技术验收提出的 Safe I/O、Tool sequence 区间和 resolved model 三项 P2 已修复；最新 Codex Review 未发现主要问题。规定自动验证与真实 Chromium 验收通过，五张安全截图已提交。用户已明确确认验收并授权转 Ready、合并和关闭 Issue；Issue #51 Closed，PR #53 Merged。远程任务分支保留，未执行清理。详见[任务文档](./admin-console/enhancement-01-run-trace-workspace.md)。
+### Retrieval Inspector
+
+```text
+Run / Steps / MessageGrounding
+  -> typed bounded projector
+  -> Retrieval Overview / Calls
+  -> Grounded Finalization
+  -> Citation Ledger / correlation
+  -> Event / Retrieval switch
+```
+
+状态包括：
+
+- `available / partial / unavailable / not_applicable`；
+- zero-hit 与候选数量未知分离；
+- exact known Tool、discovery-only 和 unclassifiable Tool 分离；
+- malformed Tool summary / finalization / Grounding fail closed；
+- failed Tool refs 不参与 Citation correlation；
+- Prompt、reasoning、embedding、SQL、正文、secret 不进入 API / DOM。
+
+最终验证：Admin API tests 136、Grounding 168、DB integration 17、Chromium 12、repeat-each=3 为 36，均通过。
 
 ## 当前 Observability Baseline
 
@@ -105,27 +100,33 @@ Admin Read Contract / Query API
         ↓
 Run List / Run Detail
         ↓
-Run Trace Workspace / Typed Inspector / Generic Inspector
+Run Trace Workspace
         ↓
-Computer Use 可验证的开发者 Console
+Context / Tool / Message / Retrieval / Finalization Inspector
+        ↓
+开发者可复盘的安全 Console
 ```
-
-这套基线后续用于承接 Agent 主线的新能力，而不是为了后台展示反向污染 Runtime Domain Model。
 
 ## Task 4：登录、权限与敏感信息脱敏
 
-保持 Planned。Task 0-3 与 Enhancement 1 完成不代表 Admin Console 已具备公网安全边界。
+保持 Planned。当前 Admin Console 仍不等于可直接公网暴露的生产后台。
+
+Task 4 启动前需要重新讨论：
+
+- 登录与 Session；
+- Role / Permission；
+- 多租户边界；
+- API 权限；
+- 更严格的敏感字段治理；
+- 部署与审计要求。
 
 ## 后续演进原则
 
-后续 Agent Phase 可按需增量增加：
-
 ```text
-Context Engineering -> Context Inspector
-RAG / Retrieval      -> Retrieval Inspector
-HITL                 -> Approval Inspector
-Recovery             -> Attempt / Checkpoint Inspector
-MCP / Tool           -> Tool / MCP Inspector
+HITL       -> Approval Inspector
+Recovery   -> Attempt / Checkpoint Inspector
+MCP / Tool -> Tool / MCP Inspector
+Evaluation -> Quality / Judge Inspector
 ```
 
-每个能力只增加对应安全 projection / Inspector；下一 Agent 主线阶段需要基于最新 `master` 重新讨论。
+每个能力只增加对应安全 projection / Inspector。Phase 8 完成不自动启动 Task 4 或其它后续功能。

@@ -1,64 +1,54 @@
 # Phase 8：Grounded Retrieval / RAG Baseline
 
-状态：**Active / Task 0、Task 1、Task 2A、Task 2B、Task 3A、Task 3B Completed / Task 3C Next**。
+状态：**Completed / Task 0、1、2A、2B、3A、3B、3C 全部完成**。
 
-本文件是 Phase 8 的阶段总览与任务编排入口。正式 Task 状态以各 Task 文档、Issue / PR 和 GitHub 实时事实为准。
+本文件是 Phase 8 的阶段总览与最终归档入口。正式 Task 状态以各 Task 文档、Issue / PR 和 GitHub 实时事实为准。
 
 ## 1. 阶段目标
 
-Phase 8 的目标不是堆叠一个“向量数据库 Demo”，而是建立一条可评估、可索引、可检索、可引用和可观察的 Grounded Retrieval 链路：
+Phase 8 建立的不是“向量数据库 Demo”，而是一条可评估、可索引、可检索、可引用、可观察的 Grounded Retrieval 链路：
 
 ```text
 Article Source
   -> deterministic Chunking
-  -> Embedding / Index
+  -> Gemini Embedding / pgvector Index
   -> Lexical + Vector Retrieval
-  -> Hybrid Ranking
+  -> Hybrid RRF Ranking
   -> Context-safe Observation
-  -> Grounded Answer + Citation
+  -> Grounded Finalization + Citation Validation
+  -> durable MessageGroundingV1
   -> Web Source UI
   -> Admin Retrieval Inspector
 ```
 
 ## 2. Task 看板
 
-| Task | 状态 | 核心目标 | 交付 / 依赖 |
+| Task | 状态 | 核心结果 | GitHub |
 | --- | --- | --- | --- |
-| Task 0：Retrieval Boundary & Offline Evaluation Baseline | **Completed** | `ArticleRetriever`、lexical baseline、Recall@K / MRR | #48 / #49 / merge `4c2f7950` |
-| Task 1：Article Chunking & Embedding Index | **Completed** | deterministic Chunk、stable identity、pgvector index、CLI | #50 / #52 / merge `76d66abf` |
-| Task 2A：Vector / Hybrid Retrieval & Evaluation | **Completed** | Gemini Provider、exact vector、Article aggregation、RRF、quality-v2 | #54 / #55 / merge `3abdcb8a` |
-| Task 2B：Retrieval Tool & Agent Integration | **Completed** | `retrieve_article_context@1`、受控 Observation、Agent Loop 集成 | #56 / #57 / merge `4f3ba1c1` |
-| Task 3A：Grounded Answer & Citation Backend Contract | **Completed** | structured finalization、Citation validation、durable Grounding、API / Stream | #58 / #59 / merge `d6df7ac1` |
-| Task 3B：Web Chat Source UI | **Completed** | 来源状态、Source disclosure、legacy / malformed / abort 与浏览器验收 | #60 / #61 / merge `572ad206` |
-| Task 3C：Admin Retrieval Inspector | **Next / 未启动** | typed safe Inspector、candidate → citation 审计 | Issue 未创建 / Gate 未执行 |
+| Task 0：Retrieval Boundary & Offline Evaluation | **Completed** | `ArticleRetriever`、lexical baseline、Recall@K / MRR | #48 / #49 / `4c2f7950` |
+| Task 1：Article Chunking & Embedding Index | **Completed** | deterministic Chunk、stable identity、pgvector index、CLI | #50 / #52 / `76d66abf` |
+| Task 2A：Vector / Hybrid Retrieval & Evaluation | **Completed** | Gemini、exact vector、Article aggregation、RRF、quality-v2 | #54 / #55 / `3abdcb8a` |
+| Task 2B：Retrieval Tool & Agent Integration | **Completed** | `retrieve_article_context@1`、受控 Observation、Agent Loop | #56 / #57 / `4f3ba1c1` |
+| Task 3A：Grounded Answer & Citation Backend | **Completed** | structured finalization、Citation validation、durable Grounding | #58 / #59 / `d6df7ac1` |
+| Task 3B：Web Chat Source UI | **Completed** | Grounding 状态、Sources disclosure、Source cards | #60 / #61 / `572ad206` |
+| Task 3C：Admin Retrieval Inspector | **Completed** | typed safe audit、finalization、Citation correlation | #62 / #63 / `20f838fb` |
 
-Task 3 不再作为单一 Issue 实现。编排见 [Task 3 总览](./task-03-grounded-answer-retrieval-inspector.md)。
+Task 3 拆分与共享不变量见 [Task 3 编排](./task-03-grounded-answer-retrieval-inspector.md)。
 
 ## 3. 已完成能力
 
-### Task 0
-
-- Retrieval 与 Tool / LLM 解耦；
-- Prisma lexical adapter；
-- deterministic corpus；
-- Recall@K、Precision@K、MRR baseline。
-
-### Task 1
+### Indexing
 
 ```text
 Article rich HTML
   -> Cheerio structural blocks
-  -> cl100k_base chunks (600 / 800 / 80)
+  -> cl100k chunks (600 / 800 / 80)
   -> stable sourceHash / chunk identity
   -> PostgreSQL ArticleChunk / ArticleIndexState / vector(1536)
   -> incremental / full idempotent CLI
 ```
 
-Task 1 当时的真实 OpenAI smoke 与真实 pgvector integration / concurrency 未执行，该历史事实保持不变。
-
-### Task 2A
-
-Active embedding profile：
+Active profile：
 
 ```text
 provider: google
@@ -67,7 +57,7 @@ dimensions: 1536
 embeddingVersion: google:gemini-embedding-2:1536:search-result-v1
 ```
 
-最终检索链路：
+### Retrieval
 
 ```text
 Gemini Query Embedding
@@ -78,16 +68,11 @@ Gemini Query Embedding
   -> article-level top-k + best evidence
 ```
 
-真实收口证据：
+真实收口证据：68 / 68 Articles、2044 Chunks full indexing；Vector / Hybrid answerable Hit@5、Recall@5、MRR 均为 1.0。
 
-- 68 / 68 Article、2044 Chunks full indexing；
-- Task 1 DB integration 7 / 7；
-- Retrieval DB integration 5 / 5；
-- Vector / Hybrid Hit@5、Recall@5、MRR 均为 1.0；
-- Vector / Hybrid no-answer accuracy 为 0，各产生 15 个 false-positive hits；
-- 正负距离分布重叠，因此 threshold 保持 `null`。
+no-answer accuracy 仍为 0，正负距离分布重叠，因此没有伪造一个不可靠 threshold。
 
-### Task 2B
+### Agent Integration
 
 ```text
 用户问题
@@ -99,134 +84,107 @@ Gemini Query Embedding
   -> follow-up sampling
 ```
 
-已建立：
+已建立 Tool risk、timeout、Observation ceiling、zero-hit / Provider failure 分离、Tool pairing 与 safe `ToolStepSummary`。
 
-- 默认 3、最大 5 个来源；
-- excerpt 最大 500 字符；
-- Observation ceiling 8,000 字符；
-- zero-hit 与 Provider / DB failure 分离；
-- trusted-provider + low-risk + idempotent Tool policy；
-- Tool Call / Result pairing；
-- JSON / 大小 / 深度 fail-closed ToolStepSummary；
-- 真实 Gemini + 隔离 pgvector Tool smoke。
-
-### Task 3A
+### Grounded Answer
 
 ```text
-evidence-eligible Tool outcome
+evidence-eligible Tool invocation
   -> Grounding Session
-  -> Run-scoped Evidence Registry
-  -> hidden final draft
+  -> RunEvidenceRegistry
+  -> hidden draft
   -> submit_grounded_answer@1
-  -> server-side Citation validation
-  -> validated assistant_delta replay
-  -> Message + Grounding + finalization Step + assistant Step + Run 原子终态
-  -> optional grounding on done / Messages API
+  -> server validates citationKey
+  -> validated delta replay
+  -> atomic Message + Grounding + Steps + Run
 ```
 
 已建立：
 
-- Retrieval 与 Article Detail 为 evidence-eligible，Search Articles 保持 discovery-only；
-- opaque、Run-scoped `citationKey`，Registry hard cap 10；
-- `available / partial / none / unavailable` 由服务端派生；
-- structured finalization 最多 2 次 attempt，不消耗 action Tool budget；
-- hidden draft 在校验前不外发、不落库；
-- 公共 `citationId` 与内部 key 分离，malformed Grounding fail closed；
+- Retrieval / Article Detail evidence policy；
+- opaque Run-scoped citationKey；
+- structured finalization 最多 2 attempts；
+- server-derived evidence availability；
+- durable public citationId；
 - `citationIntegrity=validated` 与 `faithfulnessStatus=not_evaluated` 分层；
-- finalization sampling、usage、Abort、deadline 和事务失败审计不丢失；
-- `done.grounding` 与 Messages API 共享 durable safe projector；
-- 真实 DeepSeek + Gemini + 隔离 pgvector 覆盖 answered 与 insufficient。
+- Abort、deadline、sampling failure、replay 与事务失败审计。
 
-### Task 3B
+### Web Source UI
+
+实时与历史 Grounding 共用严格 parser；只有 COMPLETED assistant Message 投影 Grounding。answered、insufficient、conflict、partial、none、unavailable 使用不同产品语义，Source Card 不解析模型引用、不自行拼 URL。
+
+### Admin Retrieval Inspector
 
 ```text
-validated done.grounding / historical ConversationMessage.grounding
-  -> shared strict parser
-  -> ConversationMessage state + cache
-  -> COMPLETED-only turn projection
-  -> Grounding status
-  -> accessible Sources disclosure
-  -> ordered non-interactive Source cards
+Run / Step / MessageGrounding
+  -> typed bounded projector
+  -> Retrieval Overview / Calls
+  -> Grounded Finalization
+  -> Citation Ledger / correlation
+  -> Event / Retrieval Inspector
 ```
 
-已建立：
+已完成 ordinary、zero-hit、Tool failure、unclassifiable、legacy、malformed、FAILED、ABORTED 与窄屏验证。
 
-- 实时与历史 Grounding 共用 `parseMessageGroundingV1()`，非法 optional Grounding 只被剥离；
-- `done` 不带 Grounding 时显式归零，error / server abort / local abort 清除 completed Grounding；
-- outcome × availability 八个合法组合使用 typed presenter；
-- answered、insufficient、conflict、partial、none、unavailable 使用不同产品语义；
-- UI 编号严格按 Citation 数组顺序，不解析 `[1]`、Markdown URL 或 slug；
-- v1 Source Card 非交互，不自行拼 URL；
-- `zh-CN` / `en-US`、keyboard、focus、ARIA、copy、Markdown、scroll 与 cache 回归；
-- Chromium 9 / 9，repeat-each=3 为 27 / 27；覆盖桌面、320px answered 长内容、conflict、reload、legacy、malformed、error 与 aborted；
-- Issue #60 Closed、PR #61 Merged、final head `516dbd3f`、merge `572ad206`。
+## 4. 最终验证摘要
 
-## 4. Task 3 研究结论
+| Task | 关键证据 |
+| --- | --- |
+| Task 2A | 68 Articles / 2044 Chunks；Vector / Hybrid Hit@5、Recall@5、MRR = 1.0 |
+| Task 2B | Tool / Loop / Context / DB suites 全通过；真实 Retrieval Tool smoke |
+| Task 3A | Grounding 168；DB 9；真实 DeepSeek + Gemini answered / insufficient smoke |
+| Task 3B | Web node 43；Chromium 9；repeat 27 |
+| Task 3C | Admin 136；Grounding 168；DB 17；Chromium 12；repeat 36 |
 
-研究与方案定案见：
-
-- [Grounded Answer / Citation 架构研究](../../research/phase-08-grounded-answer-citation-design.md)
-
-核心结论：
-
-- 不解析模型任意 `[1]`；
-- evidence-eligible Tool 使用安全 projection；v1 包含 Retrieval 与 Article Detail，Search Articles 保持 discovery-only；
-- eligible Tool invocation 建立 Grounding Session；zero-hit、partial failure 与 unavailable 使用服务端派生 availability；
-- 通过 finalization structured output 选择本 Run 服务端分配的 opaque citationKey；
-- 服务端校验引用身份并原子持久化 Message Grounding；
-- `citationIntegrity=validated` 与 `faithfulnessStatus=not_evaluated` 分开；
-- v1 使用 message-level citation cards，claim-level offsets 延后；
-- `done` 只增加 optional Grounding，不新增 event type；
-- Web 与 Admin 分成独立 Task。
+根 `pnpm lint` 保留既有 Markdown baseline；各 Task 的源码 scoped lint / typecheck / build 均通过。
 
 ## 5. 阶段不变量
 
-- Retrieval 是内部数据能力，Tool 是 Agent 调用与 Observation 边界；
-- Indexing 与 Query Embedding 必须使用一致的 provider / model / dimensions / formatter / version；
-- Tool / Retrieval 内容始终是低信任 Context；
-- candidate 不等于 answer found；
-- Citation 必须追溯到本次 Run 的真实 source / optional chunk；
-- Citation identity validation 不得冒充 semantic faithfulness；
-- UI transcript、model-visible context、durable Grounding、Admin trace 分层；
-- Inspector 不暴露完整 Prompt、reasoning、raw embedding 或敏感正文；
+- Retrieval 是内部数据能力，Tool 是 Agent 调用和 Observation 边界。
+- Indexing 与 Query Embedding 使用一致 provider / model / dimensions / formatter / version。
+- candidate 不等于 answer found。
+- Tool / Retrieval 内容始终是低信任 Context。
+- Citation 必须追溯到本 Run 的真实 source / optional chunk。
+- Citation identity validation 不冒充 semantic faithfulness。
+- UI transcript、model-visible context、durable Grounding、Admin trace 分层。
+- Inspector 不暴露 Prompt、reasoning、embedding、SQL、Provider payload、完整正文或 secret。
 - 不因为进入 RAG 阶段自动引入 LangChain、LangGraph、独立 Vector DB 或通用知识库框架。
 
-## 6. 当前明确后置
+## 6. 已知边界与后置项
 
+- no-answer nearest-neighbor false positives；
 - claim-level inline citation spans；
 - 在线第二模型 judge；
-- PDF / Office 文件上传与通用知识库；
+- PDF / Office 与通用知识库；
 - 多租户 ACL、外部连接器；
-- Memory、MCP、Multi-agent；
 - Agentic query planning、复杂 rerank / query rewrite；
+- Admin Auth / RBAC；
+- Durable Recovery；
+- Memory、MCP、Multi-agent；
 - 自动 Compaction；
-- OpenAI / Gemini 双 active provider 或在线向量迁移；
-- Admin Auth / RBAC Task 4；
-- 并行 Tool Call 支持。
+- 并行 Tool Call。
 
-## 7. Phase 8 完成条件
+这些方向不得因为 Phase 8 完成而自动启动。
 
-1. Task 0、1、2A、2B、3A、3B、3C 均完成 GPT 技术验收和用户确认；
-2. Article 可通过 deterministic Chunk 与 Gemini profile 幂等进入索引；
-3. Hybrid Retrieval 在版本化评估集上与 lexical baseline 比较；
-4. Agent 消费受控 Retrieval Observation，不破坏 Tool / Context 不变量；
-5. evidence-backed answer 使用服务端验证的 durable Citation contract；
-6. Web 与 Admin 安全展示同一份 Grounding / Retrieval 事实；
-7. zero-hit、weak evidence、conflict、invalid citation、legacy、error、aborted 路径完成测试与归档。
+## 7. 完成条件核对
+
+1. Task 0、1、2A、2B、3A、3B、3C 均完成 GPT 技术验收和用户确认：**满足**。
+2. deterministic Chunk 与 Gemini profile 幂等索引：**满足**。
+3. Hybrid Retrieval 有版本化评估：**满足**。
+4. Agent 消费受控 Observation 且不破坏 Tool / Context 不变量：**满足**。
+5. evidence-backed answer 使用服务端验证的 durable Citation：**满足**。
+6. Web 与 Admin 消费同一 Grounding / Retrieval 事实：**满足**。
+7. zero-hit、conflict、invalid citation、legacy、error、aborted 路径完成归档：**满足**。
 
 ## 8. 当前正式动作
 
 ```text
-Phase 8：Active
-Task 0：Completed
-Task 1：Completed
-Task 2A：Completed
-Task 2B：Completed
-Task 3A：Completed / #58 Closed / #59 Merged / `d6df7ac1`
-Task 3B：Completed / #60 Closed / #61 Merged / `572ad206`
-Task 3C：Next / Issue 未创建 / Gate 未执行
+阶段 1-8：Completed
+Phase 8：Completed
 Active Agent Task：无
 Minimal Compaction：Gated
+Admin Task 4：Planned
+Phase 9：未定案
 ```
 
-下一步只创建并启动 Task 3C。Admin Task 4、并行 Tool Call 与 Minimal Compaction 均不得自动进入实现。
+下一步进入不创建 Issue 的 Phase 8 代码阅读、学习复盘与作品集材料整理。完成学习闭环后，再基于真实需求讨论 Phase 9；不得自动推进 Memory、MCP、Multi-agent、Admin Auth / RBAC 或 Durable Recovery。

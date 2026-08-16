@@ -1,44 +1,45 @@
 # AI SEO Agent Docs
 
-本目录只负责文档导航。正式 Task 状态以 [`docs/tasks/**`](./tasks/README.md) 为准，阶段路线以 [`roadmap.md`](./roadmap.md) 为准。
+本目录负责文档导航。正式 Task 状态以 [`docs/tasks/**`](./tasks/README.md) 为准，阶段路线以 [`roadmap.md`](./roadmap.md) 为准。
 
 ## 当前主线
 
 ```text
-阶段 1-7：Completed
-Phase 8：Active
-Task 0、1、2A、2B、3A、3B：Completed
-Task 3C：Next
+阶段 1-8：Completed
+Phase 8：Completed
 Active Agent Task：无
 Minimal Compaction：Gated
+Admin Task 4：Planned
+Phase 9：未定案
 ```
 
-Phase 8 当前已完成：
+Phase 8 已完成：
 
-- Task 0：Retrieval Boundary 与 lexical Evaluation baseline，#48 / #49 / merge `4c2f7950`；
-- Task 1：deterministic Chunking、Embedding boundary 与 pgvector index，#50 / #52 / merge `76d66abf`；
-- Task 2A：Gemini、exact vector、Article aggregation、RRF 与 quality-v2，#54 / #55 / merge `3abdcb8a`；
-- Task 2B：`retrieve_article_context@1`、受控 Observation 与 Agent Runtime 集成，#56 / #57 / merge `4f3ba1c1`；
-- Task 3A：structured finalization、Run-scoped Citation 校验、durable Message Grounding、原子终态与 API / NDJSON contract，#58 / #59 / merge `d6df7ac1`；
-- Task 3B：Web strict Grounding normalization、状态提示、Sources disclosure、非交互 Source cards 与确定性 Chromium 验收，#60 / #61 / merge `572ad206`。
+- Task 0：Retrieval Boundary 与 lexical Evaluation baseline，#48 / #49 / `4c2f7950`；
+- Task 1：deterministic Chunking、Gemini Embedding boundary 与 pgvector index，#50 / #52 / `76d66abf`；
+- Task 2A：exact vector、Article aggregation、RRF 与 quality-v2，#54 / #55 / `3abdcb8a`；
+- Task 2B：`retrieve_article_context@1`、受控 Observation 与 Agent Runtime 集成，#56 / #57 / `4f3ba1c1`；
+- Task 3A：structured finalization、Citation validation、durable Grounding 与原子终态，#58 / #59 / `d6df7ac1`；
+- Task 3B：Web Grounding 状态、Sources disclosure、Source cards 与 Chromium，#60 / #61 / `572ad206`；
+- Task 3C：Admin Retrieval / Finalization / Citation Inspector，#62 / #63 / `20f838fb`。
 
-Task 3B 已完成 GPT 技术验收和用户确认。下一项正式任务为 Task 3C Admin Retrieval Inspector；当前尚未创建 Task 3C Issue 或执行 Clarification Gate。
+下一步为 Phase 8 代码阅读与学习复盘，不创建正式 Issue。Phase 9 尚未定案。
 
 ## 文档入口
 
 | 文档 | 用途 |
 | --- | --- |
-| [roadmap.md](./roadmap.md) | 阶段路线、Phase 8 顺序与当前正式动作 |
+| [roadmap.md](./roadmap.md) | 阶段路线、学习闭环与 Phase 9 决策原则 |
 | [tasks/README.md](./tasks/README.md) | 正式任务看板和状态事实来源 |
-| [Phase 8 总览](./tasks/phase-08-grounded-retrieval/README.md) | Task 0-3C、阶段不变量与完成条件 |
-| [Task 3 编排](./tasks/phase-08-grounded-retrieval/task-03-grounded-answer-retrieval-inspector.md) | Task 3A / 3B / 3C 的依赖与共享边界 |
-| [Task 3A](./tasks/phase-08-grounded-retrieval/task-03a-grounded-answer-citation-contract.md) | Completed：Grounded Answer / Citation Backend Contract |
+| [Phase 8 总览](./tasks/phase-08-grounded-retrieval/README.md) | Completed：Task 0-3C、阶段不变量与边界 |
+| [Task 3 编排](./tasks/phase-08-grounded-retrieval/task-03-grounded-answer-retrieval-inspector.md) | Completed：3A / 3B / 3C 的依赖与共享 Contract |
+| [Task 3A](./tasks/phase-08-grounded-retrieval/task-03a-grounded-answer-citation-contract.md) | Completed：Grounded Answer / Citation Backend |
 | [Task 3B](./tasks/phase-08-grounded-retrieval/task-03b-web-source-ui.md) | Completed：Web Chat Source UI |
-| [Task 3C](./tasks/phase-08-grounded-retrieval/task-03c-admin-retrieval-inspector.md) | Next：Admin Retrieval Inspector |
-| [Grounded Answer / Citation 研究](./research/phase-08-grounded-answer-citation-design.md) | Codex、Provider 与开源社区方案对比及架构定案 |
+| [Task 3C](./tasks/phase-08-grounded-retrieval/task-03c-admin-retrieval-inspector.md) | Completed：Admin Retrieval Inspector |
+| [Grounded Answer / Citation 研究](./research/phase-08-grounded-answer-citation-design.md) | Provider、开源方案与架构定案 |
 | [Phase 7 归档](./tasks/completed/phase-07-context-engineering.md) | Context Engineering 最终能力与边界 |
 | [Phase 6 归档](./tasks/completed/phase-06-bounded-agent-loop.md) | Agent Loop、deadline、终态可靠性 |
-| [Admin Console](./tasks/admin-console.md) | Admin 独立产品支线 |
+| [Admin Console](./tasks/admin-console.md) | Admin Observability 支线 |
 | [development-workflow.md](./development-workflow.md) | Issue、Gate、Draft PR、验收和合并流程 |
 | [research/README.md](./research/README.md) | 架构研究入口，不代表实现状态 |
 | [work-log.md](./work-log.md) | 已发生里程碑 |
@@ -52,21 +53,34 @@ Task 3B 已完成 GPT 技术验收和用户确认。下一项正式任务为 Tas
   -> candidate / unverified / untrusted Observation
   -> Context Planner
   -> follow-up sampling
-  -> 普通回答：沿用实时 Streaming 路径
   -> Evidence-backed answer：
        Grounding Session
+       -> Run Evidence Registry
        -> hidden final draft
        -> submit_grounded_answer@1
-       -> server-side citation validation
+       -> server-side Citation validation
        -> validated delta replay
-       -> Message + Grounding + Step + Run 原子终态
+       -> Message + Grounding + Steps + Run 原子终态
        -> optional grounding on done / Messages API
-       -> Web strict normalization
-       -> completed-only Grounding projection
-       -> status + accessible disclosure + Source cards
+       -> Web Grounding state + Sources disclosure
+       -> Admin Retrieval / Finalization / Citation Inspector
 ```
 
-Task 3C 将只消费 Task 3A 已稳定的 Grounding / Step 事实，并在现有 Admin Run Trace Workspace 中增加 typed safe Retrieval Inspector；不会修改 Retrieval ranking、Grounding contract 或 Admin Auth / RBAC。
+## 下一步学习顺序
+
+```text
+Chunking / Indexing
+  -> Embedding / pgvector
+  -> lexical / vector / RRF
+  -> Retrieval Tool / Observation
+  -> Grounding Session / Registry
+  -> finalization / Citation validation
+  -> Stream / Messages API
+  -> Web Source UI
+  -> Admin Retrieval Inspector
+```
+
+该阶段属于讨论 / 学习模式，默认不创建 Issue、不修改正式代码。
 
 ## 事实来源
 
@@ -83,8 +97,7 @@ Task 3C 将只消费 Task 3A 已稳定的 Grounding / Step 事实，并在现有
 
 - `docs/README.md` 只做入口；
 - 一个正式 Issue 只对应一个明确 Task；
-- Next 不等于 Active；
 - Active 必须有 Issue 且 Gate READY；
 - Completed 必须有 GPT 技术验收和用户确认；
 - 研究文档不能替代任务规格；
-- 下一步只允许创建 Task 3C Issue，不得自动启动 Admin Task 4、并行 Tool Call 或 Minimal Compaction。
+- Phase 9 未定案前，不自动启动 Admin Task 4、并行 Tool Call、Memory、MCP、Multi-agent 或 Minimal Compaction。

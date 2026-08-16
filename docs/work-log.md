@@ -1,91 +1,67 @@
 # 项目工作记录
 
-本文件只记录当前状态与近期关键里程碑。旧阶段细节查看 `docs/tasks/completed/**`、对应 Issue / PR 和 Git 历史。
+本文件只记录当前状态与近期关键里程碑。旧阶段细节查看对应 Task 文档、Issue / PR 和 Git 历史。
 
 ## 当前快照
 
 | 类型 | 当前记录 | 下一步 |
 | --- | --- | --- |
-| Agent 主线 | 阶段 1-7 Completed；Phase 8 Active；Task 0、1、2A、2B、3A、3B Completed；Task 3C Next；当前无 Active Agent Task | 创建 Task 3C 独立 Issue，并执行 Clarification Gate |
-| Phase 8 | Gemini full indexing 2044 Chunks、quality-v2、Hybrid Retrieval、Retrieval Tool、Grounded Answer、durable Citation 与 Web Source UI 已完成 | `docs/tasks/phase-08-grounded-retrieval/README.md` |
+| Agent 主线 | 阶段 1-8 Completed；当前无 Active Agent Task | Phase 8 代码阅读、学习复盘与作品集整理 |
+| Phase 8 | Task 0、1、2A、2B、3A、3B、3C 全部 Completed | [阶段归档](./tasks/phase-08-grounded-retrieval/README.md) |
 | Minimal Compaction | Gated | 只有真实 Context 压力证据满足触发条件后才讨论 |
-| Admin Console | Task 0-3 与 Enhancement 1 Completed；Phase 8 Task 3C Retrieval Inspector Next；Task 4 Planned | 不自动启动 Auth / RBAC |
+| Admin Console | Task 0-3、Enhancement 1、Phase 8 Task 3C Completed；Task 4 Planned | 不自动启动 Auth / RBAC |
+| Phase 9 | 未定案 | 学习闭环后基于真实需求讨论 |
 
 ## 近期关键记录
 
 | 日期 | 事项 | 结果 |
 | --- | --- | --- |
-| 2026-08-16 | Phase 8 Task 3B 最终收口 | Issue #60 / PR #61；最终验收 head `516dbd3ffd22a0d3adc83ce3166c4f5a8225b13d`；GPT 首轮发现窄屏 answered 证据与 Task 文档事实冲突，修复后第二轮技术验收通过，AC-01～AC-12 全部 PASS；用户明确确认验收并授权 Draft 转 Ready、合并与 docs 收口；PR #61 merge `572ad206271c0089eccc83e2a307bdb7909beeb1`；Issue #60 Closed / Completed；远程任务分支保留，未获删除授权 |
-| 2026-08-16 | Phase 8 Task 3B 最终验证 | contracts build、workspace typecheck、Web lint / build 通过；`test:seo-stream` 12 / 12、Web node tests 43 / 43、Chromium 9 / 9、repeat-each=3 为 27 / 27；确定性 fixture 覆盖 desktop answered、320px answered 长来源、insufficient unavailable、conflicting partial、reload、legacy、malformed、error、server aborted 与 local abort；根 lint 的既有 Markdown 报错保留 |
-| 2026-08-16 | Phase 8 Task 3A 最终收口 | Issue #58 / PR #59；最终验收 head `1e7f4c7182219d3e9c0892211ecc810c1bbda904`；GPT 四轮技术验收完成，P0 / P1 / P2 均为 0，AC-01～AC-24 全部 PASS；用户明确确认验收并授权 Draft 转 Ready、合并、关闭 Issue 与 docs 收口；PR #59 merge `d6df7ac1f24137a304748d21f4bca42dcb0a6ddc`；Issue #58 Closed / Completed；远程任务分支保留，未获删除授权 |
-| 2026-08-16 | Phase 8 Task 3A 最终验证 | `test:grounding` 168、`test:grounding-db` 9、`test:admin-runs` 31、`test:agent-recorder` 14、`test:tool-loop` 54、`test:model-stream` 67、`test:tools` 86、`test:seo-service` 24、`test:context` 24、`test:retrieval` 35、`test:retrieval-db` 9、`test:db-reliability` 11、`test:llm-config` 17、`test:seo-stream` 12，均 0 fail；DB suites 0 skip；contracts / API / Web typecheck、API / Web lint + build、workspace typecheck 通过；真实 DeepSeek + Gemini + 隔离 pgvector answered / insufficient smoke 均 run_completed |
-| 2026-08-16 | Phase 8 Task 3A Review 收口 | 第一轮收紧低信任 Context、原子终态、终态流完整性、evidence projection、公共 projector、统计与 smoke 门禁；第二轮补齐 sampling failure / replay Abort 的 attempt 记账、公共 Citation identity 与安全输出顺序；第三轮发现 post-sampling availability check 的 attempt 丢失窗口；第四轮确认修复完成。最终保留 Provider 判断波动、单轮单 Tool Call、`href=null`、`faithfulnessStatus=not_evaluated` 等明确边界 |
-| 2026-08-15 | Phase 8 Task 3 研究与任务拆分定案 | 结合当前 master、Codex typed item / lifecycle event 设计、OpenAI / Anthropic / Google provider-native citation、Vercel AI SDK structured sources、LangChain structured output、LlamaIndex prompt citation、Ragas 与 OpenTelemetry / OpenInference 方案完成研究；确定不解析任意 Markdown `[1]`，采用 evidence-eligible Tool policy、Grounding Session、server-derived evidence availability、Run-scoped evidence、structured finalization、server-side citation validation 与 durable Message Grounding；Task 3 拆为 3A Backend Contract、3B Web Source UI、3C Admin Retrieval Inspector |
-| 2026-08-15 | Phase 8 Task 2B 最终收口 | Issue #56 / PR #57；最终验收 head `9008c7be9176d4d8f322a31b96e7f0fef753f727`；GPT 第二轮技术验收通过，AC-01～AC-16 全部 PASS；用户确认并授权合并与 docs 收口；PR #57 merge `4f3ba1c109e8b0ade2328abeed24a72c295acd6d`；Issue #56 Closed；远程任务分支保留 |
-| 2026-08-15 | Phase 8 Task 2B Review 修复与最终验证 | 收口 SEO Agent Tool 选择策略、ToolStepSummary 安全边界、Tool limit 和 trusted-provider idempotent；测试 `test:seo-service` 19、`test:tools` 69、`test:tool-loop` 54、`test:context` 24、`test:retrieval` 35、`test:retrieval-db` 9、`test:model-stream` 67，均 0 fail / 0 skip；typecheck / lint / build / workspace typecheck 通过；真实 Tool smoke 返回 3 candidates / 3 chunk evidence；Codex Review 因额度耗尽未产生结果 |
-| 2026-08-15 | Phase 8 Task 2B 初始实现 | Clarification Gate READY；实现 `retrieve_article_context@1`、Hybrid Retrieval lazy runtime、trusted-provider policy、受控 Observation、Agent Tool Loop 与 safe Step summary；初始 head `d11d45b18f3e439967d1f3cc33bcca8c1bdf399e` |
-| 2026-08-15 | Phase 8 Task 2A 最终收口 | Issue #54 / PR #55；最终 head `32ff344349aa2116bf14414d90e48c814686531a`；merge `3abdcb8afd5626f0b8fda90c98095bf529d165fd`；AC-01～AC-13 通过 |
-| 2026-08-15 | Phase 8 Task 2A 完整配额补跑 | 隔离库 full indexing：68 / 68 Article、2044 Chunks、failed 0；production quality-v2：lexical Hit@5 / Recall / MRR 为 0.2 / 0.2 / 0.2，vector 与 hybrid 为 1.0 / 1.0 / 1.0；Vector / Hybrid no-answer accuracy 为 0，各 15 false-positive hits；threshold 保持 `null` |
-| 2026-08-15 | Phase 8 Task 2A 实现 | 实现 Gemini Embedding、PostgreSQL 16 + pgvector、exact cosine、Article aggregation、lexical + vector RRF 与 quality-v2；真实 Gemini smoke、Task 1 DB 7 / 7、Retrieval DB 5 / 5 通过 |
-| 2026-08-14 | Admin Enhancement 1 最终收口 | Issue #51 / PR #53；最终 head `b31aa0395e`；merge `159e964cafa081df218284b53f246a0da9edd04e`；Issue #51 Closed |
-| 2026-08-14 | Admin Enhancement 1 实现 | Run Detail 重构为 Compact Header、Duration Overview、Request Boundary、Event / Content Ledger 与 typed Inspector；真实 Chromium RUNNING / FAILED 验收；Safe I/O、Tool sequence、resolved model findings 收口 |
-| 2026-08-14 | Phase 8 Task 1 最终收口 | Issue #50 / PR #52；final head `32598c738e`；merge `76d66abf7af426e2a26f9b5765d1eb7a72382007`；Task 1 Completed；真实 OpenAI smoke 与 pgvector integration / concurrency 当时未执行 |
-| 2026-08-14 | Phase 8 Task 1 实现 | deterministic HTML chunking、canonical source hash、EmbeddingProvider baseline、pgvector active index、幂等 CLI、stale fencing 与 advisory lock；68 fixture 生成 2044 Chunks |
-| 2026-08-14 | Phase 8 完整任务规划补齐 | 新增阶段 README 与 Task 1 / 2 / 3 文档，建立 Chunking、Retrieval、Grounded Answer / Inspector 路线 |
-| 2026-08-14 | Phase 8 Task 0 最终收口 | Issue #48 / PR #49；final head `79c6f44b45`；merge `4c2f795084e7bccac205509d8c31b56dbe7ccf0b`；GPT 技术验收与用户确认完成 |
-| 2026-08-14 | PR #49 验收修复 | 统一生产 Retriever 契约并补齐 Evaluation case 绑定校验；最终 Codex Review 无主要 finding |
-| 2026-08-13 | Phase 7 最终收口 | Issue #46 / PR #47；merge `caf3d25b`；Phase 7 Completed；Minimal Compaction Gated |
-| 2026-08-13 | Phase 7 Task 2 收口 | Issue #44 / PR #45；merge `2f06355c` |
-| 2026-08-12 | Phase 7 Task 1 收口 | Issue #42 / PR #43；merge `6df72f0` |
-| 2026-08-10 | Phase 7 Task 0 收口 | Issue #40 / PR #41；merge `415e866a` |
-| 2026-08-10 | Web Chat UI 收口 | Issue #37 / PR #38；merge `415d7405` |
-| 2026-08-10 | Admin Task 3 收口 | Issue #35 / PR #36；merge `4c689c4c` |
-| 2026-08-09 | Admin Task 2 收口 | Issue #33 / PR #34；merge `997d6b84` |
-| 2026-08-09 | Phase 6 reliability 收口 | Issue #31 / PR #32；merge `691efbcd` |
-| 2026-08-08 | Phase 6 Agent Loop 收口 | Issue #29 / PR #30；merge `904b011d` |
+| 2026-08-16 | Phase 8 Task 3C 最终收口 | Issue #62 / PR #63；最终验收 head `aadcadf510b20ea3c958b99ad1a8bfcf363dedf7`；GPT 多轮技术验收最终确认 AC-01～AC-12 PASS；用户明确确认验收并授权关闭 Issue、转 Ready、合并与 docs 收口；PR #63 merge `20f838fb1fd5139d787f973a90f4906d7ab8ea14`；Issue #62 Closed / Completed |
+| 2026-08-16 | Phase 8 Task 3C 最终验证 | frozen install、contracts、API / Admin typecheck、lint、build、workspace typecheck 与 diff checks 通过；`test:admin-runs` 136、`test:grounding` 168、`test:grounding-db` 17，均 0 fail / 0 skip；Admin Chromium 12 / 12，repeat-each=3 为 36 / 36；根 lint 保留 113 个既有 Markdown baseline 错误 |
+| 2026-08-16 | Phase 8 完成 | deterministic Chunking、Gemini Embedding / pgvector、lexical + vector RRF、Retrieval Tool、Grounding Session、structured finalization、durable Citation、Web Source UI 和 Admin Retrieval Inspector 全部闭环；阶段完成条件全部满足，Phase 8 状态更新为 Completed |
+| 2026-08-16 | Phase 8 Task 3B 最终收口 | Issue #60 / PR #61；final head `516dbd3f`；AC-01～AC-12 PASS；PR #61 merge `572ad206271c0089eccc83e2a307bdb7909beeb1`；Issue #60 Closed |
+| 2026-08-16 | Phase 8 Task 3A 最终收口 | Issue #58 / PR #59；final head `1e7f4c71`；AC-01～AC-24 PASS；PR #59 merge `d6df7ac1f24137a304748d21f4bca42dcb0a6ddc`；Issue #58 Closed |
+| 2026-08-15 | Phase 8 Task 2B 最终收口 | Issue #56 / PR #57；AC-01～AC-16 PASS；merge `4f3ba1c109e8b0ade2328abeed24a72c295acd6d` |
+| 2026-08-15 | Phase 8 Task 2A 最终收口 | Issue #54 / PR #55；68 / 68 Articles、2044 Chunks；quality-v2 完成；merge `3abdcb8afd5626f0b8fda90c98095bf529d165fd` |
+| 2026-08-14 | Phase 8 Task 1 最终收口 | Issue #50 / PR #52；deterministic Chunking、Gemini profile、pgvector index、幂等 CLI；merge `76d66abf7af426e2a26f9b5765d1eb7a72382007` |
+| 2026-08-14 | Phase 8 Task 0 最终收口 | Issue #48 / PR #49；Retrieval boundary、lexical baseline、Evaluation contract；merge `4c2f795084e7bccac205509d8c31b56dbe7ccf0b` |
+| 2026-08-14 | Admin Enhancement 1 最终收口 | Issue #51 / PR #53；Run Trace Workspace；merge `159e964cafa081df218284b53f246a0da9edd04e` |
+| 2026-08-13 | Phase 7 最终收口 | Issue #46 / PR #47；Context Engineering Completed；merge `caf3d25b`；Minimal Compaction Gated |
 
 ## 当前阶段边界
 
 ```text
-阶段 1-7            Completed
-Phase 8             Active
-Task 0              Completed
-Task 1              Completed
-Task 2A             Completed
-Task 2B             Completed
-Task 3A             Completed
-Task 3B             Completed
-Task 3C：Next       未启动
+阶段 1-8            Completed
+Phase 8             Completed
 Active Agent Task   无
 Minimal Compaction  Gated
+Admin Task 4        Planned
+Phase 9             未定案
 ```
 
 当前执行顺序：
 
 ```text
-Task 3C Admin Retrieval Inspector
-  -> Phase 8 Closeout
+Phase 8 代码阅读
+  -> 学习复盘
+  -> 作品集 / 架构文档沉淀
+  -> 再讨论 Phase 9
 ```
 
-Task 3A + 3B 已建立以下稳定事实：
+## 已稳定的 Phase 8 事实
 
-- Citation 是服务端验证的结构化事实，不是任意 Markdown `[1]`；
-- Evidence-backed answer 通过 structured finalization 选择 Run-scoped opaque citationKey；
-- `citationIntegrity=validated` 与 `faithfulnessStatus=not_evaluated` 分开；
-- Message content、Grounding、finalization Step、assistant Step 与 Run terminalization 原子提交；
-- finalization sampling、usage、Abort、deadline 与事务失败的 attempt 事实不丢失；
-- `done` 只增加 optional Grounding，不新增 stream event type；
-- Web 对实时与历史 Grounding 使用同一严格 parser；
-- 只有 COMPLETED assistant Message 投影 Grounding；
-- answered / insufficient / conflict 与 availability 状态使用明确产品语义；
-- Source Card 不解析模型引用、不自行拼 URL、不暴露内部 ID；
-- v1 使用 message-level source cards，claim-level offsets 延后；
-- Admin Retrieval Inspector 由独立 Task 3C 实现。
+- Citation 是服务端验证的结构化事实，不是任意 Markdown `[1]`。
+- Evidence-backed answer 使用 Run-scoped opaque citationKey 和 structured finalization。
+- `citationIntegrity=validated` 与 `faithfulnessStatus=not_evaluated` 分开。
+- Message、Grounding、finalization Step、assistant Step 与 Run 正常完成时原子提交。
+- finalization sampling、usage、Abort、deadline 与事务失败的 attempt 事实不丢失。
+- Web 实时与历史 Grounding 使用同一严格 parser。
+- Admin 使用 typed、bounded、fail-closed projector 审计 Retrieval、Finalization 和 Citation。
+- ordinary、zero-hit、Tool failure、unclassifiable、legacy、malformed、FAILED、ABORTED 均有明确状态。
 
 ## 记录规则
 
-- 只记录已经真实发生的事项；
-- 研究定案、Issue 创建、实现、验收、Task 收口和合并是不同动作；
-- Planned 不代表 Next 或 Active；
-- 当前没有 Active Agent Task；Task 3C 尚未创建 Issue、未执行 Gate，因此不得实现；
-- Task 3A 与 Task 3B 远程分支仍保留，未获得分支删除授权。
+- 只记录已经真实发生的事项。
+- 研究定案、Issue 创建、实现、验收、Task 收口和合并是不同动作。
+- Completed 必须有 GPT 技术验收和用户确认。
+- 下一阶段未定案前，不创建正式 Issue、不修改正式状态。
