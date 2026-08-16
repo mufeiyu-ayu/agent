@@ -11,7 +11,9 @@
     "build": "vue-tsc --noEmit -p tsconfig.json && vite build",
     "lint": "eslint src",
     "lint:fix": "eslint src --fix",
-    "test:seo-stream": "pnpm --filter @agent/contracts build && tsx --test src/api/seo.stream.test.ts"
+    "test": "pnpm --filter @agent/contracts build && tsx --test src/api/seo.stream.test.ts src/i18n/messages.test.ts src/utils/conversation-turns.test.ts src/utils/grounding-presenter.test.ts src/utils/message-grounding.test.ts",
+    "test:seo-stream": "pnpm --filter @agent/contracts build && tsx --test src/api/seo.stream.test.ts",
+    "test:e2e": "pnpm --filter @agent/contracts build && playwright test"
   },
   "dependencies": {
     "@agent/contracts": "workspace:*",
@@ -28,6 +30,7 @@
     "vue-router": "^5.1.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.1",
     "@tailwindcss/vite": "^4.3.0",
     "@types/markdown-it": "^14.1.2",
     "@vitejs/plugin-vue": "^6.0.3",

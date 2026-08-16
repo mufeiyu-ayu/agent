@@ -1,6 +1,6 @@
 # Phase 8 Task 3B：Web Chat Source UI
 
-状态：**Next / Task 3A Completed / Issue 未创建 / Gate 未执行**。
+状态：**Issue #60 / Gate READY / 实施状态：已实现 / 验收状态：待验收**。
 
 ## 1. 目标
 
@@ -18,7 +18,16 @@ Task 3B 的前置条件已经满足：
 - Grounding version、outcome、Citation identity 与 malformed fallback 已定案；
 - 真实 API 已覆盖 answered 与 insufficient；conflicting、legacy、error 与 aborted 继续由确定性 fixture 和浏览器验收覆盖。
 
-Task 3B 仍未启动。必须先创建独立 Issue，并由 Codex 执行 Clarification Gate；Next 不等于 Active。
+当前启动情况：
+
+- Issue #60 已创建；
+- Clarification Gate 已执行，结论 `READY`；
+- 分支 `codex/issue-60-web-source-ui` 已创建；
+- PR #61 已创建并保持 Draft；
+- 实施状态：已实现；
+- 验收状态：待验收。
+
+本 Task 尚未 Completed，用户尚未确认最终验收，也尚未授权 Draft 转 Ready、合并或分支清理。
 
 ## 3. 已确认交互决策
 
@@ -30,7 +39,7 @@ Task 3B 仍未启动。必须先创建独立 Issue，并由 Codex 执行 Clarifi
 | D-04 | legacy / 普通回答保持当前 Message UI | 无 Grounding 不显示空壳 |
 | D-05 | URL 由服务端安全投影提供 | 不把模型文本拼成 href；v1 `href` 当前为 null |
 | D-06 | answered / insufficient / conflicting 使用不同语义状态 | 不把“有候选”渲染成“已验证答案” |
-| D-07 | malformed Grounding 非致命 fail closed | 回答正文仍可显示，来源区域显示不可用状态或隐藏 |
+| D-07 | malformed Grounding 按「无 Grounding」处理 | 回答正文继续显示，Grounding 区域隐藏；不展示原始 JSON、解析错误、半份 Citation 或伪造的降级状态（与 Issue #60 D-05 一致） |
 | D-08 | aborted / error 不展示 completed Grounding | 避免半完成来源 |
 
 ## 4. 推荐 UI 结构
@@ -120,13 +129,63 @@ Assistant Reply
 - citation feedback / voting / analytics；
 - 并行 Tool Call 支持。
 
-## 9. GitHub 交付状态
+## 9. 实现落点
 
-- Issue：未创建
-- 分支：未创建
-- PR：未创建
-- Clarification Gate：未执行
-- 实施状态：未开始
-- 验收状态：未验收
+```text
+done.grounding（api/seo.ts 已有边界）
+Messages API（api/conversations.ts 新增边界）
+  -> utils/message-grounding.ts        normalization / done 合并 / 终态清理
+  -> hooks/useSeoWorkspace.ts          state merge
+  -> utils/conversation-turns.ts       只投影 COMPLETED assistant 的 Grounding
+  -> types/seo.ts                      SeoConversationTurn.grounding
+  -> utils/grounding-presenter.ts      outcome × availability 状态表
+  -> AgentConversation.vue -> AgentAssistantReply.vue
+       -> AgentGroundingPanel.vue      状态说明 + disclosure
+            -> AgentSourceCard.vue     非交互来源卡片
+  -> i18n/messages.ts                  zh-CN / en-US
+```
 
-下一步：由 GPT 基于本文件和当前 Web Chat 代码创建 Task 3B 独立 Issue，并提供任务专属 Codex 开工 Prompt。
+Web 侧不新增任何 Grounding 类型或校验规则，全部复用 `@agent/contracts` 的
+`MessageGroundingV1` 与 `parseMessageGroundingV1()`。
+
+## 10. 验证结果
+
+均在本地实际执行：
+
+| 命令 | exit code | 结果 |
+| --- | --- | --- |
+| `pnpm --filter @agent/contracts build` | 0 | 通过 |
+| `pnpm typecheck`（contracts / web / admin / api） | 0 | 通过 |
+| `pnpm --filter @agent/web lint` | 0 | 通过 |
+| `pnpm --filter @agent/web build` | 0 | 通过 |
+| `pnpm --filter @agent/web test:seo-stream` | 0 | 12 tests / 12 pass / 0 fail / 0 skip |
+| `pnpm --filter @agent/web test` | 0 | 43 tests / 43 pass / 0 fail / 0 skip |
+| `pnpm --filter @agent/web test:e2e`（Chromium） | 0 | 9 tests / 9 pass / 0 fail |
+| `pnpm --filter @agent/web exec playwright test --repeat-each=3` | 0 | 27 pass / 0 fail / 0 flaky |
+| `git diff --check` | 0 | 无空白问题 |
+
+仓库根 `pnpm lint` 仍然失败：exit code 1，115 errors / 0 warnings，分布在 18 个
+`docs/**` Markdown 文件。本轮未做基线对比，因此不声称「没有新增错误」；可直接
+验证的事实是：这 18 个报错文件与本 PR 改动的文件列表**没有交集**，且本 Task 的
+`apps/web` lint 单独通过（exit code 0）。
+
+浏览器证据（Chromium，`page.route()` + 受控 `fetch` 确定性 fixture，不依赖模型 Provider）：
+
+| 场景 | 截图 |
+| --- | --- |
+| desktop answered + citations | `assets/task-03b/desktop-answered-sources.png` |
+| narrow answered + long source content | `assets/task-03b/narrow-answered-long-sources.png` |
+| desktop insufficient + unavailable | `assets/task-03b/desktop-insufficient-unavailable.png` |
+| narrow conflicting + partial | `assets/task-03b/narrow-conflicting-partial.png` |
+
+reload 一致性不单独出图，由「实时 `done` 与 reload 后 status 文案、Citation 数量、
+来源区完整文本逐字相等」的 Chromium 断言提供等价证据。
+
+## 11. GitHub 交付状态
+
+- Issue：#60
+- 分支：`codex/issue-60-web-source-ui`
+- PR：Draft
+- Clarification Gate：READY
+- 实施状态：已实现
+- 验收状态：待验收

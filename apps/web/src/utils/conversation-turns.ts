@@ -43,6 +43,12 @@ export function mapMessagesToConversationTurns(
     currentTurn.generatedAt = item.updatedAt
     currentTurn.status = mapAssistantMessageStatus(item.status)
 
+    // 来源只属于已完成的回答：STREAMING / FAILED / ABORTED 上即使残留 Grounding
+    // 也不投影到 UI，避免展示半完成或已作废的来源。
+    if (item.status === 'COMPLETED' && item.grounding) {
+      currentTurn.grounding = item.grounding
+    }
+
     if (item.status === 'FAILED') {
       currentTurn.errorMessage = errorMessage ?? item.content
     }
