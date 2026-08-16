@@ -6,15 +6,17 @@
 
 | 类型 | 当前记录 | 下一步 |
 | --- | --- | --- |
-| Agent 主线 | 阶段 1-7 Completed；Phase 8 Active；Task 0、1、2A、2B、3A Completed；Task 3B Next；Task 3C Planned；当前无 Active Agent Task | 创建 Task 3B 独立 Issue，并执行 Clarification Gate |
-| Phase 8 | Gemini full indexing 2044 Chunks、quality-v2、Hybrid Retrieval、Retrieval Tool、Grounded Answer 与 Citation Backend Contract 已完成 | `docs/tasks/phase-08-grounded-retrieval/README.md` |
+| Agent 主线 | 阶段 1-7 Completed；Phase 8 Active；Task 0、1、2A、2B、3A、3B Completed；Task 3C Next；当前无 Active Agent Task | 创建 Task 3C 独立 Issue，并执行 Clarification Gate |
+| Phase 8 | Gemini full indexing 2044 Chunks、quality-v2、Hybrid Retrieval、Retrieval Tool、Grounded Answer、durable Citation 与 Web Source UI 已完成 | `docs/tasks/phase-08-grounded-retrieval/README.md` |
 | Minimal Compaction | Gated | 只有真实 Context 压力证据满足触发条件后才讨论 |
-| Admin Console | Task 0-3 与 Enhancement 1 Completed；Task 4 Planned；Retrieval Inspector 为 Phase 8 Task 3C Planned | 不自动启动 Auth / RBAC |
+| Admin Console | Task 0-3 与 Enhancement 1 Completed；Phase 8 Task 3C Retrieval Inspector Next；Task 4 Planned | 不自动启动 Auth / RBAC |
 
 ## 近期关键记录
 
 | 日期 | 事项 | 结果 |
 | --- | --- | --- |
+| 2026-08-16 | Phase 8 Task 3B 最终收口 | Issue #60 / PR #61；最终验收 head `516dbd3ffd22a0d3adc83ce3166c4f5a8225b13d`；GPT 首轮发现窄屏 answered 证据与 Task 文档事实冲突，修复后第二轮技术验收通过，AC-01～AC-12 全部 PASS；用户明确确认验收并授权 Draft 转 Ready、合并与 docs 收口；PR #61 merge `572ad206271c0089eccc83e2a307bdb7909beeb1`；Issue #60 Closed / Completed；远程任务分支保留，未获删除授权 |
+| 2026-08-16 | Phase 8 Task 3B 最终验证 | contracts build、workspace typecheck、Web lint / build 通过；`test:seo-stream` 12 / 12、Web node tests 43 / 43、Chromium 9 / 9、repeat-each=3 为 27 / 27；确定性 fixture 覆盖 desktop answered、320px answered 长来源、insufficient unavailable、conflicting partial、reload、legacy、malformed、error、server aborted 与 local abort；根 lint 的既有 Markdown 报错保留 |
 | 2026-08-16 | Phase 8 Task 3A 最终收口 | Issue #58 / PR #59；最终验收 head `1e7f4c7182219d3e9c0892211ecc810c1bbda904`；GPT 四轮技术验收完成，P0 / P1 / P2 均为 0，AC-01～AC-24 全部 PASS；用户明确确认验收并授权 Draft 转 Ready、合并、关闭 Issue 与 docs 收口；PR #59 merge `d6df7ac1f24137a304748d21f4bca42dcb0a6ddc`；Issue #58 Closed / Completed；远程任务分支保留，未获删除授权 |
 | 2026-08-16 | Phase 8 Task 3A 最终验证 | `test:grounding` 168、`test:grounding-db` 9、`test:admin-runs` 31、`test:agent-recorder` 14、`test:tool-loop` 54、`test:model-stream` 67、`test:tools` 86、`test:seo-service` 24、`test:context` 24、`test:retrieval` 35、`test:retrieval-db` 9、`test:db-reliability` 11、`test:llm-config` 17、`test:seo-stream` 12，均 0 fail；DB suites 0 skip；contracts / API / Web typecheck、API / Web lint + build、workspace typecheck 通过；真实 DeepSeek + Gemini + 隔离 pgvector answered / insufficient smoke 均 run_completed |
 | 2026-08-16 | Phase 8 Task 3A Review 收口 | 第一轮收紧低信任 Context、原子终态、终态流完整性、evidence projection、公共 projector、统计与 smoke 门禁；第二轮补齐 sampling failure / replay Abort 的 attempt 记账、公共 Citation identity 与安全输出顺序；第三轮发现 post-sampling availability check 的 attempt 丢失窗口；第四轮确认修复完成。最终保留 Provider 判断波动、单轮单 Tool Call、`href=null`、`faithfulnessStatus=not_evaluated` 等明确边界 |
@@ -52,8 +54,8 @@ Task 1              Completed
 Task 2A             Completed
 Task 2B             Completed
 Task 3A             Completed
-Task 3B：Next       未启动
-Task 3C：Planned    依赖 3A
+Task 3B             Completed
+Task 3C：Next       未启动
 Active Agent Task   无
 Minimal Compaction  Gated
 ```
@@ -61,12 +63,11 @@ Minimal Compaction  Gated
 当前执行顺序：
 
 ```text
-Task 3B Web Chat Source UI
-  -> Task 3C Admin Retrieval Inspector
+Task 3C Admin Retrieval Inspector
   -> Phase 8 Closeout
 ```
 
-Task 3A 已建立以下稳定事实：
+Task 3A + 3B 已建立以下稳定事实：
 
 - Citation 是服务端验证的结构化事实，不是任意 Markdown `[1]`；
 - Evidence-backed answer 通过 structured finalization 选择 Run-scoped opaque citationKey；
@@ -74,13 +75,17 @@ Task 3A 已建立以下稳定事实：
 - Message content、Grounding、finalization Step、assistant Step 与 Run terminalization 原子提交；
 - finalization sampling、usage、Abort、deadline 与事务失败的 attempt 事实不丢失；
 - `done` 只增加 optional Grounding，不新增 stream event type；
+- Web 对实时与历史 Grounding 使用同一严格 parser；
+- 只有 COMPLETED assistant Message 投影 Grounding；
+- answered / insufficient / conflict 与 availability 状态使用明确产品语义；
+- Source Card 不解析模型引用、不自行拼 URL、不暴露内部 ID；
 - v1 使用 message-level source cards，claim-level offsets 延后；
-- Web / Admin 使用独立 Task，不在 3A 中顺手实现。
+- Admin Retrieval Inspector 由独立 Task 3C 实现。
 
 ## 记录规则
 
 - 只记录已经真实发生的事项；
 - 研究定案、Issue 创建、实现、验收、Task 收口和合并是不同动作；
 - Planned 不代表 Next 或 Active；
-- 当前没有 Active Agent Task；Task 3B 尚未创建 Issue、未执行 Gate，因此不得实现；
-- 远程 Task 3A 分支仍保留，未获得分支删除授权。
+- 当前没有 Active Agent Task；Task 3C 尚未创建 Issue、未执行 Gate，因此不得实现；
+- Task 3A 与 Task 3B 远程分支仍保留，未获得分支删除授权。

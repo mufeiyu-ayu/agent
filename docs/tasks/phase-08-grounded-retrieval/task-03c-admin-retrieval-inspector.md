@@ -1,6 +1,6 @@
 # Phase 8 Task 3C：Admin Retrieval Inspector
 
-状态：**Planned / 依赖 Task 3A**。
+状态：**Next / Task 3B Completed / Issue 未创建 / Gate 未执行**。
 
 ## 1. 目标
 
@@ -18,10 +18,24 @@ finalization outcome 与校验结果是什么
 
 ## 2. 启动条件
 
-- Task 3A 已完成 GPT 技术验收与用户确认；
+以下技术前置已经满足：
+
+- Task 3A 已完成 GPT 技术验收与用户确认，Grounding backend contract 已稳定；
+- Task 3B 已完成 GPT 技术验收与用户确认，Issue #60 Closed、PR #61 Merged、merge `572ad206`；
 - AgentStep finalization metadata、Tool summary 和 MessageGrounding contract 已稳定；
-- Admin API 能读取真实 Run、Tool Step、assistant Message Grounding；
-- malformed / legacy / partial 数据的 projector 语义已经定义。
+- Admin API 已能读取真实 Run / Step，Task 3C 可在此基础上增加 typed safe projector；
+- malformed / legacy / partial 数据的 fail-closed 语义已经定义。
+
+当前只表示 Task 3C 是下一项正式任务：
+
+- Issue：未创建；
+- 分支：未创建；
+- PR：未创建；
+- Clarification Gate：未执行；
+- 实施状态：未开始；
+- 验收状态：未验收。
+
+必须先由 GPT 结合当前 Admin 代码与本文件创建独立 Issue，并提供 Task 专属 Codex 开工 Prompt。`Next` 不等于 `Active`。
 
 ## 3. Inspector Read Model
 
@@ -160,3 +174,5 @@ Retrieval Inspector 是现有 Workspace 的一个 typed Inspector，不新建第
 - Clarification Gate：未执行
 - 实施状态：未开始
 - 验收状态：未验收
+
+下一步：由 GPT 读取当前 Admin Run Detail、typed Inspector、Task 3A / 3B contract 和本文件，创建 Task 3C 独立 Issue及任务专属 Codex 开工 Prompt。

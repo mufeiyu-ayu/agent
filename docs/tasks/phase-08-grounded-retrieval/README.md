@@ -1,6 +1,6 @@
 # Phase 8：Grounded Retrieval / RAG Baseline
 
-状态：**Active / Task 0、Task 1、Task 2A、Task 2B、Task 3A Completed / Task 3B Next / Task 3C Planned**。
+状态：**Active / Task 0、Task 1、Task 2A、Task 2B、Task 3A、Task 3B Completed / Task 3C Next**。
 
 本文件是 Phase 8 的阶段总览与任务编排入口。正式 Task 状态以各 Task 文档、Issue / PR 和 GitHub 实时事实为准。
 
@@ -16,7 +16,8 @@ Article Source
   -> Hybrid Ranking
   -> Context-safe Observation
   -> Grounded Answer + Citation
-  -> Web Source UI / Retrieval Inspector
+  -> Web Source UI
+  -> Admin Retrieval Inspector
 ```
 
 ## 2. Task 看板
@@ -28,8 +29,8 @@ Article Source
 | Task 2A：Vector / Hybrid Retrieval & Evaluation | **Completed** | Gemini Provider、exact vector、Article aggregation、RRF、quality-v2 | #54 / #55 / merge `3abdcb8a` |
 | Task 2B：Retrieval Tool & Agent Integration | **Completed** | `retrieve_article_context@1`、受控 Observation、Agent Loop 集成 | #56 / #57 / merge `4f3ba1c1` |
 | Task 3A：Grounded Answer & Citation Backend Contract | **Completed** | structured finalization、Citation validation、durable Grounding、API / Stream | #58 / #59 / merge `d6df7ac1` |
-| Task 3B：Web Chat Source UI | **Next / 未启动** | 来源卡片、状态、legacy 与浏览器验收 | 依赖 3A；Issue 未创建 / Gate 未执行 |
-| Task 3C：Admin Retrieval Inspector | Planned | typed safe Inspector、candidate → citation 审计 | 依赖 3A |
+| Task 3B：Web Chat Source UI | **Completed** | 来源状态、Source disclosure、legacy / malformed / abort 与浏览器验收 | #60 / #61 / merge `572ad206` |
+| Task 3C：Admin Retrieval Inspector | **Next / 未启动** | typed safe Inspector、candidate → citation 审计 | Issue 未创建 / Gate 未执行 |
 
 Task 3 不再作为单一 Issue 实现。编排见 [Task 3 总览](./task-03-grounded-answer-retrieval-inspector.md)。
 
@@ -136,6 +137,30 @@ evidence-eligible Tool outcome
 - `done.grounding` 与 Messages API 共享 durable safe projector；
 - 真实 DeepSeek + Gemini + 隔离 pgvector 覆盖 answered 与 insufficient。
 
+### Task 3B
+
+```text
+validated done.grounding / historical ConversationMessage.grounding
+  -> shared strict parser
+  -> ConversationMessage state + cache
+  -> COMPLETED-only turn projection
+  -> Grounding status
+  -> accessible Sources disclosure
+  -> ordered non-interactive Source cards
+```
+
+已建立：
+
+- 实时与历史 Grounding 共用 `parseMessageGroundingV1()`，非法 optional Grounding 只被剥离；
+- `done` 不带 Grounding 时显式归零，error / server abort / local abort 清除 completed Grounding；
+- outcome × availability 八个合法组合使用 typed presenter；
+- answered、insufficient、conflict、partial、none、unavailable 使用不同产品语义；
+- UI 编号严格按 Citation 数组顺序，不解析 `[1]`、Markdown URL 或 slug；
+- v1 Source Card 非交互，不自行拼 URL；
+- `zh-CN` / `en-US`、keyboard、focus、ARIA、copy、Markdown、scroll 与 cache 回归；
+- Chromium 9 / 9，repeat-each=3 为 27 / 27；覆盖桌面、320px answered 长内容、conflict、reload、legacy、malformed、error 与 aborted；
+- Issue #60 Closed、PR #61 Merged、final head `516dbd3f`、merge `572ad206`。
+
 ## 4. Task 3 研究结论
 
 研究与方案定案见：
@@ -152,7 +177,7 @@ evidence-eligible Tool outcome
 - `citationIntegrity=validated` 与 `faithfulnessStatus=not_evaluated` 分开；
 - v1 使用 message-level citation cards，claim-level offsets 延后；
 - `done` 只增加 optional Grounding，不新增 event type；
-- Web 和 Admin 分成独立 Task。
+- Web 与 Admin 分成独立 Task。
 
 ## 5. 阶段不变量
 
@@ -198,10 +223,10 @@ Task 1：Completed
 Task 2A：Completed
 Task 2B：Completed
 Task 3A：Completed / #58 Closed / #59 Merged / `d6df7ac1`
-Task 3B：Next / Issue 未创建 / Gate 未执行
-Task 3C：Planned / 依赖 3A
+Task 3B：Completed / #60 Closed / #61 Merged / `572ad206`
+Task 3C：Next / Issue 未创建 / Gate 未执行
 Active Agent Task：无
 Minimal Compaction：Gated
 ```
 
-下一步只创建并启动 Task 3B。Task 3C、Admin Task 4、并行 Tool Call 与 Minimal Compaction 均不得自动进入实现。
+下一步只创建并启动 Task 3C。Admin Task 4、并行 Tool Call 与 Minimal Compaction 均不得自动进入实现。

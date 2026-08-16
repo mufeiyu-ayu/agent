@@ -7,9 +7,8 @@
 ```text
 阶段 1-7：Completed
 Phase 8：Active
-Task 0、1、2A、2B、3A：Completed
-Task 3B：Next
-Task 3C：Planned
+Task 0、1、2A、2B、3A、3B：Completed
+Task 3C：Next
 Active Agent Task：无
 Minimal Compaction：Gated
 Admin Observability：Task 0-3 + Enhancement 1 Completed
@@ -42,14 +41,14 @@ Task 2B Retrieval Tool + Agent Integration             Completed
   ↓
 Task 3A Grounded Answer + Citation Backend Contract    Completed
   ↓
-Task 3B Web Chat Source UI                             Next
+Task 3B Web Chat Source UI                             Completed
   ↓
-Task 3C Admin Retrieval Inspector                      Planned
+Task 3C Admin Retrieval Inspector                      Next
   ↓
 Phase 8 Closeout
 ```
 
-Task 3B 与 Task 3C 的技术依赖均已由 Task 3A 满足。当前执行顺序定为先完成用户侧 Web Source UI，再推进 Admin Retrieval Inspector。
+Task 3A 提供 durable Grounding 事实层，Task 3B 已完成用户侧 Web Source UI。当前只推进 Task 3C Admin Retrieval Inspector。
 
 ## Phase 8 已完成基线
 
@@ -68,6 +67,9 @@ Task 3B 与 Task 3C 的技术依赖均已由 Task 3A 满足。当前执行顺序
 - server-side Citation identity validation；
 - durable `MessageGroundingV1` 与原子终态；
 - optional `done.grounding` / `ConversationMessage.grounding`；
+- Web strict normalization、completed-only Grounding projection；
+- answered / insufficient / conflict / availability 状态表达；
+- accessible Sources disclosure 与 non-interactive Source cards；
 - malformed Grounding、Abort、deadline、Provider failure 与 usage 审计边界。
 
 已知质量边界：
@@ -101,27 +103,48 @@ evidence-eligible Tool invocation
 - 用户确认验收并授权合并与 docs 收口；
 - 远程任务分支保留，未获删除授权。
 
-## Task 3B 当前目标
-
-Task 3B 只消费已经稳定的 `MessageGroundingV1`，不重做后端 contract：
+## Task 3B 收口事实
 
 ```text
-completed Assistant Message
-  -> Grounding status
-  -> Sources disclosure
-  -> Source cards
-  -> reload consistency
-  -> legacy / malformed / error / aborted fallback
+validated done.grounding / historical Grounding
+  -> shared strict parser
+  -> state / cache
+  -> completed-only turn projection
+  -> status + disclosure + source cards
+  -> deterministic Chromium verification
+```
+
+- Issue #60 Closed；
+- PR #61 Merged；
+- final head `516dbd3ffd22a0d3adc83ce3166c4f5a8225b13d`；
+- merge `572ad206271c0089eccc83e2a307bdb7909beeb1`；
+- AC-01～AC-12 全部 PASS；
+- GPT 首轮发现 2 个阻塞项，修复后第二轮技术验收通过；
+- 用户确认验收并授权 Draft 转 Ready、合并与 docs 收口；
+- Chromium 9 / 9，repeat-each=3 为 27 / 27；
+- 远程任务分支保留，未获删除授权。
+
+## Task 3C 当前目标
+
+Task 3C 在现有 Admin Run Trace Workspace 中增加 typed、bounded、fail-closed 的 Retrieval / Grounding Inspector：
+
+```text
+Run / Step / Message Grounding
+  -> typed safe projector
+  -> Retrieval calls
+  -> Grounded finalization
+  -> Citation correlation
+  -> Admin Inspector
 ```
 
 重点学习与实现：
 
-- streaming 期间不提前展示候选；
-- answered、insufficient、conflicting 与 availability 状态的产品表达；
-- `done.grounding` 与历史 Messages API 的状态合并；
-- Source List / Source Card 的可访问性和响应式布局；
-- link safety、copy、scroll、Markdown 与 conversation cache 回归；
-- 真实 Chromium 桌面与窄屏验收。
+- candidate、evidence 与 cited source 的区分与关联；
+- finalization outcome、attempt、validation 与 usage 审计；
+- malformed / legacy / partial 数据 fail closed；
+- 不暴露 Prompt、reasoning、embedding、distance、SQL、Provider payload 或完整正文；
+- 现有 Context Inspector、Generic Inspector 与 Safe Raw Data 回归；
+- 真实 Chromium RUNNING / FAILED / COMPLETED 与窄屏验收。
 
 ## Phase 8 完成条件
 
@@ -155,18 +178,19 @@ Task 1：静态 Run List / Detail       Completed
 Task 2：真实 Run / Step Query API    Completed
 Task 3：真实 Run Trace UI            Completed
 Enhancement 1：Run Trace Workspace   Completed
+Phase 8 Task 3C：Retrieval Inspector Next
 Task 4：登录 / 权限 / 脱敏           Planned
 ```
 
-Phase 8 Task 3C 会增加安全 Retrieval Inspector，但不会自动启动 Admin Task 4。
+Phase 8 Task 3C 增加安全 Retrieval Inspector，但不会自动启动 Admin Task 4。
 
 ## 当前正式动作
 
 ```text
 Task 3A：Completed / #58 Closed / #59 Merged / `d6df7ac1`
-Task 3B：Next / Issue 未创建 / Gate 未执行
-Task 3C：Planned / 依赖 3A
+Task 3B：Completed / #60 Closed / #61 Merged / `572ad206`
+Task 3C：Next / Issue 未创建 / Gate 未执行
 Active Agent Task：无
 ```
 
-下一步只创建 Task 3B Issue。Task 3C、Admin Task 4、并行 Tool Call 与 Minimal Compaction 均不得自动进入实现。
+下一步只创建 Task 3C Issue，并提供任务专属 Codex 开工 Prompt。Admin Task 4、并行 Tool Call 与 Minimal Compaction 均不得自动进入实现。

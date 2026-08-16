@@ -7,8 +7,8 @@
 ```text
 Task 3 研究与拆分：已定案
 Task 3A：Completed / #58 Closed / #59 Merged / `d6df7ac1`
-Task 3B：Next / 未启动
-Task 3C：Planned / 依赖 3A
+Task 3B：Completed / #60 Closed / #61 Merged / `572ad206`
+Task 3C：Next / Issue 未创建 / Gate 未执行
 Active Agent Task：无
 ```
 
@@ -29,8 +29,8 @@ Active Agent Task：无
 | Task | 状态 | 目标 | 文档 |
 | --- | --- | --- | --- |
 | Task 3A：Grounded Answer & Citation Backend Contract | **Completed** | 终态结构化输出、Run-scoped evidence、服务端校验、durable Grounding、API / Streaming | [Task 3A](./task-03a-grounded-answer-citation-contract.md) |
-| Task 3B：Web Source UI | **Next** | Web Chat 来源卡片、状态、兼容和真实浏览器验收 | [Task 3B](./task-03b-web-source-ui.md) |
-| Task 3C：Admin Retrieval Inspector | Planned | typed safe Read Model、Retrieval / Citation 审计和真实浏览器验收 | [Task 3C](./task-03c-admin-retrieval-inspector.md) |
+| Task 3B：Web Source UI | **Completed** | Web Chat 来源卡片、状态、兼容和真实浏览器验收 | [Task 3B](./task-03b-web-source-ui.md) |
+| Task 3C：Admin Retrieval Inspector | **Next** | typed safe Read Model、Retrieval / Citation 审计和真实浏览器验收 | [Task 3C](./task-03c-admin-retrieval-inspector.md) |
 
 研究依据见：
 
@@ -72,12 +72,12 @@ MessageGroundingV1
 ```text
 Task 2B Completed
   -> Task 3A Completed
-       ├─> Task 3B Next
-       └─> Task 3C Planned
-  -> Phase 8 closeout
+       -> Task 3B Completed
+            -> Task 3C Next
+                 -> Phase 8 closeout
 ```
 
-Task 3A 完成后，3B 与 3C 的技术依赖均已满足。当前执行顺序定为先启动用户侧 Task 3B，再讨论 Task 3C；两者仍需独立 Issue 和 Clarification Gate。
+Task 3A 提供后端事实层，Task 3B 已完成用户侧消费链路。当前执行顺序只推进 Task 3C；Task 3C 仍需独立 Issue 与 Clarification Gate。
 
 ## Phase 8 Task 3 完成条件
 
@@ -92,15 +92,31 @@ Task 3A 完成后，3B 与 3C 的技术依赖均已满足。当前执行顺序�
 
 ## 当前 GitHub 状态
 
-- Task 3A Issue：#58 Closed / Completed；
-- Task 3A PR：#59 Merged；
-- Task 3A 最终 head：`1e7f4c7182219d3e9c0892211ecc810c1bbda904`；
-- Task 3A merge：`d6df7ac1f24137a304748d21f4bca42dcb0a6ddc`；
-- Task 3A GPT 技术验收：AC-01～AC-24 PASS；
-- Task 3A 用户确认：已完成；
-- Task 3A 远程分支：保留，未获删除授权；
-- Task 3B Issue：未创建；
-- Task 3C Issue：未创建；
-- Active Agent Task：无。
+### Task 3A
 
-当前只允许创建并启动 Task 3B；不得把 Task 3C、并行 Tool Call、Admin Task 4 或 Minimal Compaction 顺手塞入同一个 Issue。
+- Issue：#58 Closed / Completed；
+- PR：#59 Merged；
+- final head：`1e7f4c7182219d3e9c0892211ecc810c1bbda904`；
+- merge：`d6df7ac1f24137a304748d21f4bca42dcb0a6ddc`；
+- GPT 技术验收：AC-01～AC-24 PASS；
+- 用户确认：已完成；
+- 远程任务分支：保留，未获删除授权。
+
+### Task 3B
+
+- Issue：#60 Closed / Completed；
+- PR：#61 Merged；
+- final head：`516dbd3ffd22a0d3adc83ce3166c4f5a8225b13d`；
+- merge：`572ad206271c0089eccc83e2a307bdb7909beeb1`；
+- GPT 技术验收：两轮，AC-01～AC-12 PASS；
+- 用户确认：已完成；
+- 远程任务分支：保留，未获删除授权。
+
+### Task 3C
+
+- Issue：未创建；
+- PR：未创建；
+- Gate：未执行；
+- 状态：Next / 未启动。
+
+当前只允许创建并启动 Task 3C；不得把 Admin Task 4、并行 Tool Call 或 Minimal Compaction 顺手塞入同一个 Issue。

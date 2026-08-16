@@ -19,9 +19,8 @@
 ```text
 阶段 1-7：Completed
 Phase 8：Active
-Task 0、1、2A、2B、3A：Completed
-Task 3B：Next
-Task 3C：Planned
+Task 0、1、2A、2B、3A、3B：Completed
+Task 3C：Next
 Active Agent Task：无
 Minimal Compaction：Gated
 ```
@@ -43,6 +42,7 @@ Minimal Compaction：Gated
 - Run-scoped Evidence Registry 与 structured finalization；
 - server-validated Citation identity 与 durable `MessageGroundingV1`；
 - optional `done.grounding` / `ConversationMessage.grounding`；
+- Web strict Grounding normalization、completed-only projection、状态提示与 accessible Source cards；
 - Admin Run Trace Workspace、Context Inspector 与 finalization usage 聚合。
 
 ## 当前重点研究
@@ -80,7 +80,8 @@ evidence-eligible Tool invocation
 - Web 与 Admin 不解析 Tool 原始 Observation；
 - 不引入 LangChain / LangGraph / LlamaIndex 运行时依赖；
 - Task 3A 后端事实层已通过 #58 / #59 完成，merge `d6df7ac1`；
-- Task 3B Web Source UI 为 Next；Task 3C Admin Retrieval Inspector 保持 Planned。
+- Task 3B Web Source UI 已通过 #60 / #61 完成，merge `572ad206`；
+- Task 3C Admin Retrieval Inspector 为 Next，尚未创建 Issue 或执行 Gate。
 
 ## Research 迁移为正式 Task 的条件
 
