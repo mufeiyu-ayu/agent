@@ -64,11 +64,49 @@ export const UNAVAILABLE_GROUNDING: MessageGroundingV1 = {
   citations: [],
 }
 
-const LONG_TITLE = '面向多语言站点的落地页信息架构与关键词意图映射长标题压力测试用例标题标题标题标题标题'
-const LONG_SECTION_PATH = '内容策略 / 信息架构 / 关键词意图映射 / 长尾词分组 / 页面模板与内链结构设计'
-const LONG_EXCERPT = '在多语言站点中，同一个关键词意图往往需要按地区拆分为不同落地页；'
-  + '如果只用一套模板覆盖全部语言，标题层级、内链锚文本和结构化数据都会互相冲突，'
-  + '导致搜索引擎难以判断每个页面的主要意图，最终稀释整体排名表现。'
+/** 窄屏溢出验收使用的超长展示字段；导出供 spec 断言「完整可读」。 */
+export const LONG_SOURCE_TEXT = {
+  title: '面向多语言站点的落地页信息架构与关键词意图映射长标题压力测试用例标题标题标题标题标题',
+  sectionPath: '内容策略 / 信息架构 / 关键词意图映射 / 长尾词分组 / 页面模板与内链结构设计',
+  excerpt: '在多语言站点中，同一个关键词意图往往需要按地区拆分为不同落地页；'
+    + '如果只用一套模板覆盖全部语言，标题层级、内链锚文本和结构化数据都会互相冲突，'
+    + '导致搜索引擎难以判断每个页面的主要意图，最终稀释整体排名表现。',
+} as const
+
+const { title: LONG_TITLE, sectionPath: LONG_SECTION_PATH, excerpt: LONG_EXCERPT } = LONG_SOURCE_TEXT
+
+/**
+ * answered + available：长内容，用于窄屏 answered 布局验收。
+ *
+ * 与 `CONFLICTING_GROUNDING` 刻意分开：窄屏 answered 与窄屏非成功状态是两个
+ * 独立场景，合并成一个会丢掉其中一边的覆盖。
+ */
+export const ANSWERED_LONG_GROUNDING: MessageGroundingV1 = {
+  schemaVersion: 1,
+  evidenceAvailability: 'available',
+  outcome: 'answered',
+  citationIntegrity: 'validated',
+  faithfulnessStatus: 'not_evaluated',
+  citations: [
+    createCitation({
+      title: LONG_TITLE,
+      sectionPath: LONG_SECTION_PATH,
+      excerpt: LONG_EXCERPT,
+    }),
+    createCitation({
+      citationId: 'cit_11111111222222223333333344444444',
+      sourceId: 304,
+      chunkId: null,
+      granularity: 'article',
+      title: 'Locale-aware landing page templates',
+      slug: 'locale-aware-templates',
+      languageCode: 'en-us',
+      sectionPath: null,
+      excerpt: null,
+      rank: 2,
+    }),
+  ],
+}
 
 /** conflicting + partial：长内容，用于窄屏溢出验收。 */
 export const CONFLICTING_GROUNDING: MessageGroundingV1 = {

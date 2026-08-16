@@ -6,12 +6,14 @@ import { expect, test } from '@playwright/test'
 
 import {
   ANSWERED_GROUNDING,
+  ANSWERED_LONG_GROUNDING,
   CONFLICTING_GROUNDING,
   createAssistantMessage,
   createCitation,
   createUserMessage,
   installApiRoutes,
   installBrowserStubs,
+  LONG_SOURCE_TEXT,
   toNdjsonLines,
   toTerminalNdjsonLines,
   UNAVAILABLE_GROUNDING,
@@ -185,6 +187,71 @@ test.describe('非成功状态与布局', () => {
 
     await page.locator(GROUNDING).screenshot({
       path: `${SCREENSHOT_DIR}desktop-insufficient-unavailable.png`,
+    })
+  })
+
+  test('AC-01 / AC-11：窄屏 answered + 超长来源内容完整可读且不横向溢出', async ({ page }) => {
+    const messages = [
+      createUserMessage('user-1', '多语言落地页的信息架构怎么设计？', '2026-08-16T08:00:00.000Z'),
+      createAssistantMessage(
+        'assistant-1',
+        '按地区拆分落地页，并让每个页面的标题层级与关键词意图一一对应。',
+        '2026-08-16T08:00:01.000Z',
+        ANSWERED_LONG_GROUNDING,
+      ),
+    ]
+
+    await page.setViewportSize({ width: 320, height: 720 })
+    await installApiRoutes(page, () => messages)
+    await installBrowserStubs(page, { lines: [], holdBeforeIndex: -1 })
+    await openWorkspace(page)
+
+    // 窄屏下仍然是 answered 语义：没有 partial 补充说明，来源列表默认收起。
+    await expect(page.locator(STATUS)).toHaveText('这条回答引用了检索到的资料。')
+    await expect(page.locator(NOTE)).toHaveCount(0)
+    await expect(page.locator(TOGGLE)).toHaveText(/引用来源（2）/)
+    await expect(page.locator(SOURCES)).toBeHidden()
+
+    await page.locator(TOGGLE).click()
+
+    const cards = page.locator(`${SOURCES} > li`)
+
+    await expect(cards).toHaveCount(2)
+
+    // 展开后长字段完整可读，没有被截断成省略号或裁掉。
+    await expect(cards.nth(0)).toContainText(LONG_SOURCE_TEXT.title)
+    await expect(cards.nth(0)).toContainText(LONG_SOURCE_TEXT.sectionPath)
+    await expect(cards.nth(0)).toContainText(LONG_SOURCE_TEXT.excerpt)
+    await expect(cards.nth(1)).toContainText('Locale-aware landing page templates')
+    await expect(cards.nth(1)).toContainText('整篇文章')
+
+    // 不泄漏内部字段，也不产生可点击来源。
+    const sourcesText = await page.locator(SOURCES).textContent() ?? ''
+
+    for (const leak of ['301', '304', 'article-301-chunk-0', 'locale-aware-templates', 'hybrid_rrf']) {
+      expect(sourcesText).not.toContain(leak)
+    }
+
+    await expect(page.locator(`${SOURCES} a, ${SOURCES} button, ${SOURCES} [role="link"]`)).toHaveCount(0)
+
+    const overflow = await page.evaluate(() => {
+      const root = document.documentElement
+      const panel = document.querySelector('[data-agent-grounding]')
+      const cardElements = [...document.querySelectorAll('[data-agent-grounding-sources] > li')]
+
+      return {
+        root: root.scrollWidth > root.clientWidth,
+        panel: panel ? panel.scrollWidth > panel.clientWidth : true,
+        cards: cardElements.some(card => card.scrollWidth > card.clientWidth),
+      }
+    })
+
+    expect(overflow).toEqual({ root: false, panel: false, cards: false })
+
+    // 截 Panel 本身而不是整页：会话区是内部滚动容器，整页截图会把长 excerpt 纵向裁掉，
+    // 反而看不出「完整可读」。宽度仍受 320px 视口约束，窄屏布局照样可核验。
+    await page.locator(GROUNDING).screenshot({
+      path: `${SCREENSHOT_DIR}narrow-answered-long-sources.png`,
     })
   })
 
