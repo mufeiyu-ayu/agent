@@ -135,6 +135,27 @@ export const messages = {
         copyReply: '复制',
         copiedReply: '已复制',
       },
+      grounding: {
+        status: {
+          answered: '这条回答引用了检索到的资料。',
+          conflicting: '检索到的资料之间存在冲突，请自行核对下面的内容。',
+          insufficientWithEvidence: '检索到了相关资料，但内容不足以支撑确定结论。',
+          insufficientNone: '本次没有检索到可用资料，无法据此确认。',
+          insufficientUnavailable: '本次检索能力暂时不可用，没有取到任何资料。',
+        },
+        note: {
+          partial: '本次有部分资料链未能取到，下面只列出通过来源校验的内容。',
+        },
+        sources: {
+          answered: '引用来源（{count}）',
+          checked: '已检查的资料（{count}）',
+          conflicting: '存在冲突的资料（{count}）',
+        },
+        granularity: {
+          article: '整篇文章',
+          chunk: '文章片段',
+        },
+      },
       starterPrompts: {
         audit: {
           label: '诊断落地页 SEO',
@@ -307,6 +328,27 @@ export const messages = {
       actions: {
         copyReply: 'Copy',
         copiedReply: 'Copied',
+      },
+      grounding: {
+        status: {
+          answered: 'This reply cites material found by retrieval.',
+          conflicting: 'The retrieved material disagrees. Check the sources below yourself.',
+          insufficientWithEvidence: 'Related material was found, but it is not enough to support a firm conclusion.',
+          insufficientNone: 'No usable material was found for this question, so nothing could be confirmed.',
+          insufficientUnavailable: 'Retrieval was temporarily unavailable, so no material was fetched.',
+        },
+        note: {
+          partial: 'Part of the evidence chain could not be fetched. Only material that passed source validation is listed.',
+        },
+        sources: {
+          answered: 'Cited sources ({count})',
+          checked: 'Material checked ({count})',
+          conflicting: 'Conflicting material ({count})',
+        },
+        granularity: {
+          article: 'Full article',
+          chunk: 'Article section',
+        },
       },
       starterPrompts: {
         audit: {

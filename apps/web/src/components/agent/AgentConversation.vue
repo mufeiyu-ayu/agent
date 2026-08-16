@@ -209,6 +209,7 @@ const starterPrompts = computed(() => [
                   v-else
                   :text="turn.reply || ''"
                   :is-streaming="turn.status === 'generating'"
+                  :grounding="turn.grounding"
                 />
               </AgentMessage>
             </template>

@@ -1,6 +1,6 @@
 # Phase 8 Task 3B：Web Chat Source UI
 
-状态：**Next / Task 3A Completed / Issue 未创建 / Gate 未执行**。
+状态：**Issue #60 / Gate READY / 实施状态：已实现 / 验收状态：待验收**。
 
 ## 1. 目标
 
@@ -120,13 +120,53 @@ Assistant Reply
 - citation feedback / voting / analytics；
 - 并行 Tool Call 支持。
 
-## 9. GitHub 交付状态
+## 9. 实现落点
 
-- Issue：未创建
-- 分支：未创建
-- PR：未创建
-- Clarification Gate：未执行
-- 实施状态：未开始
-- 验收状态：未验收
+```text
+done.grounding（api/seo.ts 已有边界）
+Messages API（api/conversations.ts 新增边界）
+  -> utils/message-grounding.ts        normalization / done 合并 / 终态清理
+  -> hooks/useSeoWorkspace.ts          state merge
+  -> utils/conversation-turns.ts       只投影 COMPLETED assistant 的 Grounding
+  -> types/seo.ts                      SeoConversationTurn.grounding
+  -> utils/grounding-presenter.ts      outcome × availability 状态表
+  -> AgentConversation.vue -> AgentAssistantReply.vue
+       -> AgentGroundingPanel.vue      状态说明 + disclosure
+            -> AgentSourceCard.vue     非交互来源卡片
+  -> i18n/messages.ts                  zh-CN / en-US
+```
 
-下一步：由 GPT 基于本文件和当前 Web Chat 代码创建 Task 3B 独立 Issue，并提供任务专属 Codex 开工 Prompt。
+Web 侧不新增任何 Grounding 类型或校验规则，全部复用 `@agent/contracts` 的
+`MessageGroundingV1` 与 `parseMessageGroundingV1()`。
+
+## 10. 验证结果
+
+均在本地实际执行并通过：
+
+| 命令 | 结果 |
+| --- | --- |
+| `pnpm --filter @agent/contracts build` | 通过 |
+| `pnpm typecheck`（contracts / web / admin / api） | 通过 |
+| `pnpm --filter @agent/web lint` | 通过 |
+| `pnpm --filter @agent/web build` | 通过 |
+| `pnpm --filter @agent/web test:seo-stream` | 12 tests / 12 pass |
+| `pnpm --filter @agent/web test` | 43 tests / 43 pass |
+| `pnpm --filter @agent/web test:e2e`（Chromium） | 8 tests / 8 pass；`--repeat-each=3` 24/24 pass |
+
+仓库根 `pnpm lint` 仍有 115 个既有 `docs/**` markdown 报错，属于本 Task 之前就存在的
+基线失败，本次未触碰这些文件。
+
+浏览器证据（Chromium，`page.route()` 确定性 fixture，不依赖模型 Provider）：
+
+- `assets/task-03b/desktop-answered-sources.png`
+- `assets/task-03b/desktop-insufficient-unavailable.png`
+- `assets/task-03b/narrow-conflicting-partial.png`
+
+## 11. GitHub 交付状态
+
+- Issue：#60
+- 分支：`codex/issue-60-web-source-ui`
+- PR：Draft
+- Clarification Gate：READY
+- 实施状态：已实现
+- 验收状态：待验收

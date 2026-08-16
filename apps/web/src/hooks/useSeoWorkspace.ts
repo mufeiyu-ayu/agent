@@ -29,6 +29,10 @@ import {
   mapMessagesToConversationTurns,
   sortConversationsByUpdatedAt,
 } from '../utils/conversation-turns'
+import {
+  applyStreamDoneToMessage,
+  withoutMessageGrounding,
+} from '../utils/message-grounding'
 import { formatGeneratedTime } from '../utils/seo-format'
 
 const CHAT_REQUEST_INTERVAL_MS = 800
@@ -502,16 +506,11 @@ export function useSeoWorkspace() {
     const hasUpdatedMessage = updateMessageById(
       event.conversationId,
       event.assistantMessageId,
-      currentMessage => ({
-        ...currentMessage,
-        content: event.content,
-        status: 'COMPLETED',
-        updatedAt: event.generatedAt,
-      }),
+      currentMessage => applyStreamDoneToMessage(currentMessage, event),
     )
 
     if (!hasUpdatedMessage) {
-      upsertMessageInConversation({
+      upsertMessageInConversation(applyStreamDoneToMessage({
         id: event.assistantMessageId,
         conversationId: event.conversationId,
         role: 'ASSISTANT',
@@ -519,7 +518,7 @@ export function useSeoWorkspace() {
         status: 'COMPLETED',
         createdAt: event.generatedAt,
         updatedAt: event.generatedAt,
-      })
+      }, event))
     }
   }
 
@@ -581,7 +580,7 @@ export function useSeoWorkspace() {
     const hasUpdatedMessage = updateMessageById(
       conversationId,
       assistantMessageId,
-      currentMessage => ({
+      currentMessage => withoutMessageGrounding({
         ...currentMessage,
         content: content ?? currentMessage.content,
         status: 'ABORTED',
@@ -592,7 +591,7 @@ export function useSeoWorkspace() {
     if (hasUpdatedMessage)
       return
 
-    upsertMessageInConversation({
+    upsertMessageInConversation(withoutMessageGrounding({
       id: assistantMessageId,
       conversationId,
       role: 'ASSISTANT',
@@ -600,7 +599,7 @@ export function useSeoWorkspace() {
       status: 'ABORTED',
       createdAt: now,
       updatedAt: now,
-    })
+    }))
   }
 
   function markAssistantMessageFailed(
@@ -611,7 +610,7 @@ export function useSeoWorkspace() {
     const hasUpdatedMessage = updateMessageById(
       conversationId,
       assistantMessageId,
-      currentMessage => ({
+      currentMessage => withoutMessageGrounding({
         ...currentMessage,
         content: currentMessage.content || nextErrorMessage,
         status: 'FAILED',
@@ -622,7 +621,7 @@ export function useSeoWorkspace() {
     if (!hasUpdatedMessage) {
       const now = createMessageTimestamp()
 
-      upsertMessageInConversation({
+      upsertMessageInConversation(withoutMessageGrounding({
         id: assistantMessageId,
         conversationId,
         role: 'ASSISTANT',
@@ -630,7 +629,7 @@ export function useSeoWorkspace() {
         status: 'FAILED',
         createdAt: now,
         updatedAt: now,
-      })
+      }))
     }
   }
 
@@ -730,6 +729,7 @@ export function useSeoWorkspace() {
       status: 'PENDING',
       createdAt: now,
       updatedAt: now,
+      grounding: null,
     }
   }
 
@@ -746,6 +746,7 @@ export function useSeoWorkspace() {
       status: 'STREAMING',
       createdAt,
       updatedAt: createdAt,
+      grounding: null,
     }
   }
 
@@ -760,6 +761,7 @@ export function useSeoWorkspace() {
       status: 'ABORTED',
       createdAt: now,
       updatedAt: now,
+      grounding: null,
     }
   }
 
