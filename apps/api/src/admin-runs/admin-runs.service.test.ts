@@ -904,6 +904,58 @@ describe('AdminRunsService', () => {
     )
   })
 
+  it('列表查询只请求统计所需的三类 Step，且保留 output 字段', async () => {
+    const harness = createServiceHarness()
+
+    await harness.service.list({})
+
+    const steps = (harness.calls.findMany[0]?.select as {
+      steps?: {
+        where?: { type?: { in?: string[] } }
+        select?: Record<string, boolean>
+      }
+    }).steps
+
+    // 排序后精确比对：既证明三类必需 Step 都在，也证明没有夹带无关 Step。
+    assert.deepEqual([...(steps?.where?.type?.in ?? [])].sort(), [
+      'grounded_finalization',
+      'model_sampling',
+      'tool_execution',
+    ])
+    assert.equal(steps?.select?.output, true)
+  })
+
+  it('列表统计包含 grounded finalization 的采样次数与 Token', async () => {
+    const harness = createServiceHarness({ list: createGroundedListRecord() })
+
+    const response = await harness.service.list({})
+    const item = response.items[0]
+
+    // 3 次 action sampling + 1 次 finalization attempt。
+    assert.equal(item?.samplingCount, 4)
+    assert.equal(item?.inputTokens, 60 + 4)
+    assert.equal(item?.outputTokens, 23 + 1)
+    assert.equal(item?.totalTokens, 83 + 5)
+  })
+
+  it('finalization metadata 损坏时列表路径继续 fail closed', async () => {
+    const listRecord = createRunRecord()
+    listRecord.steps = [
+      ...listRecord.steps,
+      step(10, 'grounded_finalization', { output: null }),
+    ]
+
+    const response = await createServiceHarness({ list: listRecord })
+      .service
+      .list({})
+    const item = response.items[0]
+
+    assert.equal(item?.samplingCount, 4)
+    assert.equal(item?.inputTokens, null)
+    assert.equal(item?.outputTokens, null)
+    assert.equal(item?.totalTokens, null)
+  })
+
   it('拒绝反向日期范围', async () => {
     const harness = createServiceHarness()
 
@@ -1269,17 +1321,28 @@ function safeContextPlan(
   }
 }
 
-function createServiceHarness(options: { detail?: ReturnType<typeof createRunRecord> | null } = {}) {
+function createServiceHarness(options: {
+  detail?: ReturnType<typeof createRunRecord> | null
+  list?: ReturnType<typeof createRunRecord>
+} = {}) {
   const calls = {
     findMany: [] as Array<Record<string, unknown>>,
     groupBy: [] as Array<Record<string, unknown>>,
   }
   const record = createRunRecord()
+  const listRecord = options.list ?? record
   const prisma = {
     agentRun: {
       async findMany(args: Record<string, unknown>) {
         calls.findMany.push(args)
-        return [record]
+        // 模拟 Prisma 真实行为：只返回 list select allowlist 内的 Step。
+        // 否则 mock 会把生产查询压根不会读到的 Step 喂给 projector，
+        // 让查询—投影接缝缺陷在测试里变成假阳性。
+        const allowedTypes = readListStepTypes(args)
+        return [{
+          ...listRecord,
+          steps: listRecord.steps.filter(step => allowedTypes.includes(step.type)),
+        }]
       },
       async groupBy(args: Record<string, unknown>) {
         calls.groupBy.push(args)
@@ -1297,4 +1360,29 @@ function createServiceHarness(options: { detail?: ReturnType<typeof createRunRec
     calls,
     service: new AdminRunsService(prisma),
   }
+}
+
+function readListStepTypes(args: Record<string, unknown>): string[] {
+  const select = args.select as {
+    steps?: { where?: { type?: { in?: string[] } } }
+  } | undefined
+
+  return select?.steps?.where?.type?.in ?? []
+}
+
+/** 列表 Run 记录：追加一次成功的 finalization attempt。 */
+function createGroundedListRecord() {
+  const record = createRunRecord()
+
+  record.steps = [
+    ...record.steps,
+    step(10, 'grounded_finalization', {
+      input: groundedFinalizationInput(),
+      output: groundedFinalizationOutput([
+        { ok: true, usage: { inputTokens: 4, outputTokens: 1, totalTokens: 5 } },
+      ]),
+    }),
+  ]
+
+  return record
 }
