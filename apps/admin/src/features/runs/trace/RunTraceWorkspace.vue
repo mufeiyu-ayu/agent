@@ -192,6 +192,7 @@ function expandAll() {
           <RunTraceInspector
             :record="selectedRecord"
             :request-group="selectedRequestGroup"
+            :retrieval-inspector="run.retrievalInspector"
           />
         </div>
       </div>

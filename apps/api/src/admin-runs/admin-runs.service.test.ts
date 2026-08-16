@@ -233,13 +233,18 @@ describe('Admin Run projector', () => {
     assert.equal(item.totalTokens, 83 + 25)
   })
 
-  it('grounded finalization 在 Timeline 中安全降级，不泄漏内部 metadata', () => {
+  // Task 3C 起 grounded_finalization 有 typed 投影；metadata 合法时不再落入
+  // Generic fallback，但 allowlist 之外的字段仍然一个都不能出现在响应里。
+  it('grounded finalization 在 Timeline 中 typed 投影，不泄漏内部 metadata', () => {
     const record = createRunRecord()
 
     record.steps = [
       ...record.steps,
       step(10, 'grounded_finalization', {
-        input: { hiddenDraft: 'DO_NOT_LEAK' },
+        input: {
+          ...groundedFinalizationInput(),
+          hiddenDraft: 'DO_NOT_LEAK',
+        },
         output: {
           ...groundedFinalizationOutput([{ ok: true, usage: null }]),
           providerPayload: 'DO_NOT_LEAK',
@@ -254,8 +259,53 @@ describe('Admin Run projector', () => {
     )
 
     assert.ok(finalizationItem)
-    assert.equal(finalizationItem.kind, 'generic')
+    assert.equal(finalizationItem.kind, 'known')
     assert.doesNotMatch(serialized, /DO_NOT_LEAK/)
+  })
+
+  it('grounded finalization 缺少必备 input 事实时回落 Generic fallback', () => {
+    const record = createRunRecord()
+
+    record.steps = [
+      ...record.steps,
+      step(10, 'grounded_finalization', {
+        input: { hiddenDraft: 'DO_NOT_LEAK' },
+        output: groundedFinalizationOutput([{ ok: true, usage: null }]),
+      }),
+    ]
+
+    const finalizationItem = projectAdminRunDetail(record).timeline.find(
+      item => item.type === 'grounded_finalization',
+    )
+
+    assert.ok(finalizationItem)
+    assert.equal(finalizationItem.kind, 'generic')
+  })
+
+  it('grounded finalization metadata 损坏时仍回落 Generic fallback', () => {
+    const record = createRunRecord()
+
+    record.steps = [
+      ...record.steps,
+      step(10, 'grounded_finalization', {
+        input: groundedFinalizationInput(),
+        output: {
+          ...groundedFinalizationOutput([{ ok: true, usage: null }]),
+          // registryRefCount 与 evidenceAvailability 自相矛盾。
+          registryRefCount: 0,
+          providerPayload: 'DO_NOT_LEAK',
+        },
+      }),
+    ]
+
+    const detail = projectAdminRunDetail(record)
+    const finalizationItem = detail.timeline.find(
+      item => item.type === 'grounded_finalization',
+    )
+
+    assert.ok(finalizationItem)
+    assert.equal(finalizationItem.kind, 'generic')
+    assert.doesNotMatch(JSON.stringify(detail), /DO_NOT_LEAK/)
   })
 
   it('普通单次采样成功不会伪造 Tool Execution', () => {
@@ -1039,6 +1089,16 @@ function createRunRecord() {
 }
 
 /** 构造与 Runtime 一致形状的 finalization Step output。 */
+/** Runtime 在 startStep 就写入的完整 Registry 快照与归属事实。 */
+function groundedFinalizationInput() {
+  return {
+    assistantMessageId: 'message-assistant',
+    evidenceAvailability: 'available',
+    registryRefCount: 2,
+    registryTruncated: false,
+  }
+}
+
 function groundedFinalizationOutput(
   attempts: Array<{
     ok: boolean

@@ -196,6 +196,9 @@ function toTraceEventType(item: AdminRunTimelineItem): TraceEventType {
     receive_user_message: 'USER',
     load_conversation_history: 'HISTORY',
     model_sampling: 'MODEL',
+    // grounded finalization 也是一次真实模型调用，沿用 MODEL 事件与泳道，
+    // 不为它新造一套事件词汇。
+    grounded_finalization: 'MODEL',
     tool_execution: 'TOOL',
     assistant_output: 'OUTPUT',
   }[item.type] as TraceEventType
@@ -255,6 +258,14 @@ function createRecordContent(
         item.inputSummary,
         item.title,
       )
+    case 'grounded_finalization':
+      return joinContent(
+        item.outcome,
+        item.failureReason,
+        item.outputSummary,
+        item.inputSummary,
+        item.title,
+      )
     case 'assistant_output':
       return joinContent(item.outputSummary, item.inputSummary, item.title)
   }
@@ -285,6 +296,9 @@ function createSearchText(
   }
   else if (item.kind === 'known' && item.type === 'tool_execution') {
     values.push(item.toolName)
+  }
+  else if (item.kind === 'known' && item.type === 'grounded_finalization') {
+    values.push(item.outcome, item.validation, item.failureReason)
   }
 
   return normalizeSearchText(values.filter(value => value !== null).join(' '))
@@ -346,6 +360,7 @@ function toTraceLane(item: AdminRunTimelineItem): TraceLane | null {
     case 'load_conversation_history':
       return 'input'
     case 'model_sampling':
+    case 'grounded_finalization':
       return 'model'
     case 'tool_execution':
       return 'tools'

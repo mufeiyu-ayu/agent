@@ -1,5 +1,6 @@
 import type {
   AdminContextInspector,
+  AdminRetrievalInspector,
   AdminRunDetail,
   AdminRunListItem,
   AdminRunListResponse,
@@ -29,6 +30,12 @@ import {
   formatTokens,
 } from './run.utils'
 import {
+  createRetrievalInspectorCounts,
+  resolveAvailabilityTone,
+  resolveCallStatusTone,
+  toTagColor,
+} from './trace/retrieval-inspector.presenter'
+import {
   createRunTraceProjection,
   filterTraceRecords,
   getVisibleTraceRecords,
@@ -48,6 +55,7 @@ async function main(): Promise<void> {
     await checkDetailStateAndRaceFencing()
     checkPartialTraceAndInspectors()
     checkRunTraceProjection()
+    checkRetrievalInspector()
     checkProductionSources()
     console.log('admin run data checks passed')
   }
@@ -388,6 +396,246 @@ function checkProductionSources(): void {
   assert.doesNotMatch(ledgerSource, /sampling\.requestedModel|formatRequestedModel/)
 
   assert.equal(existsSync(new URL('./run.mocks.ts', import.meta.url)), false)
+
+  // Retrieval 视图必须只消费 typed contract：不得解析安全摘要文本或原始 JSON。
+  const retrievalInspectorSource = readFileSync(
+    new URL('./trace/inspectors/RetrievalInspector.vue', import.meta.url),
+    'utf8',
+  )
+  assert.match(retrievalInspectorSource, /inspector\.retrievalCalls/)
+  assert.match(retrievalInspectorSource, /inspector\.citations/)
+  assert.doesNotMatch(retrievalInspectorSource, /inputSummary|outputSummary|safeRawData/)
+  assert.doesNotMatch(retrievalInspectorSource, /citationKey|excerpt|slug|distance|embedding/)
+  assert.doesNotMatch(retrievalInspectorSource, /JSON\.parse|JSON\.stringify/)
+  // 三态色调必须走 presenter 纯函数，不得回到「非 false 即绿」的二元判断。
+  assert.match(retrievalInspectorSource, /resolveCallStatusTone/)
+  assert.doesNotMatch(retrievalInspectorSource, /ok === false \? 'red' : 'green'/)
+
+  const presenterSource = readFileSync(
+    new URL('./trace/retrieval-inspector.presenter.ts', import.meta.url),
+    'utf8',
+  )
+  assert.doesNotMatch(presenterSource, /inputSummary|outputSummary|safeRawData/)
+}
+
+function checkRetrievalInspector(): void {
+  const traceDetail = createTraceDetail(1)
+  const available = traceDetail.retrievalInspector
+  const counts = createRetrievalInspectorCounts(available)
+
+  assert.equal(available.availability, 'available')
+  assert.equal(resolveAvailabilityTone(available.availability), 'success')
+  // candidate、evidence 与 cited 必须分别可读，不能互相顶替。
+  assert.equal(counts.callCount, 1)
+  assert.equal(counts.candidateCount, 3)
+  assert.equal(counts.evidenceRefCount, 3)
+  assert.equal(counts.citedSourceCount, 2)
+  assert.equal(counts.citationCount, 2)
+  assert.equal(counts.matchedCitationCount, 2)
+  assert.equal(counts.unmatchedCitationCount, 0)
+  assert.equal(counts.untrustedCallCount, 0)
+  assert.equal(counts.failedCallCount, 0)
+
+  const runningInspector = createRunningDetail().retrievalInspector
+  const runningCounts = createRetrievalInspectorCounts(runningInspector)
+
+  assert.equal(runningInspector.availability, 'partial')
+  assert.equal(resolveAvailabilityTone(runningInspector.availability), 'warning')
+  assert.equal(runningInspector.finalization, null)
+  assert.equal(runningCounts.citationCount, null)
+  assert.equal(runningCounts.citedSourceCount, null)
+  assert.equal(runningCounts.matchedCitationCount, null)
+
+  const notApplicable = createRetrievalInspector({
+    availability: 'not_applicable',
+    retrievalCalls: [],
+    candidateCount: 0,
+    evidenceRefCount: 0,
+  })
+
+  assert.equal(resolveAvailabilityTone('not_applicable'), 'neutral')
+  assert.equal(resolveAvailabilityTone('unavailable'), 'error')
+  assert.equal(createRetrievalInspectorCounts(notApplicable).callCount, 0)
+
+  const unmatched = createRetrievalInspector({
+    availability: 'partial',
+    citations: [{
+      ...availableCitations()[0]!,
+      correlation: 'unmatched',
+      matchedCallIds: [],
+    }],
+  })
+  const unmatchedCounts = createRetrievalInspectorCounts(unmatched)
+
+  assert.equal(unmatchedCounts.matchedCitationCount, 0)
+  assert.equal(unmatchedCounts.unmatchedCitationCount, 1)
+
+  checkCallStatusTone()
+  checkCandidateCountRendering()
+}
+
+/**
+ * Tool 调用结果必须是三态。
+ *
+ * `ok=null` 表示结果未记录：既不能显示成功文案，也不能沿用成功色。
+ */
+function checkCallStatusTone(): void {
+  assert.equal(resolveCallStatusTone(true), 'success')
+  assert.equal(resolveCallStatusTone(false), 'error')
+  assert.equal(resolveCallStatusTone(null), 'neutral')
+
+  assert.equal(toTagColor(resolveCallStatusTone(true)), 'green')
+  assert.equal(toTagColor(resolveCallStatusTone(false)), 'red')
+  assert.equal(toTagColor(resolveCallStatusTone(null)), 'default')
+  assert.notEqual(toTagColor(resolveCallStatusTone(null)), 'green')
+}
+
+/** zero-hit 的 0 与「候选数量未知」的 null 必须走不同的展示分支。 */
+function checkCandidateCountRendering(): void {
+  const zeroHit = createRetrievalInspector({
+    candidateCount: 0,
+    evidenceRefCount: 0,
+    retrievalCalls: [{
+      ...createAvailableRetrievalInspector().retrievalCalls[0]!,
+      sourceCount: 0,
+      chunkEvidenceCount: 0,
+      evidenceRefCount: 0,
+      refs: [],
+    }],
+  })
+  const unavailable = createRetrievalInspector({
+    availability: 'partial',
+    candidateCount: null,
+    evidenceRefCount: 0,
+    retrievalCalls: [{
+      ...createAvailableRetrievalInspector().retrievalCalls[0]!,
+      ok: false,
+      code: 'timeout',
+      sourceCount: null,
+      chunkEvidenceCount: null,
+      evidenceRefCount: null,
+      strategy: null,
+      refs: [],
+    }],
+  })
+
+  assert.equal(createRetrievalInspectorCounts(zeroHit).candidateCount, 0)
+  assert.equal(createRetrievalInspectorCounts(unavailable).candidateCount, null)
+  assert.equal(createRetrievalInspectorCounts(unavailable).failedCallCount, 1)
+  assert.equal(resolveCallStatusTone(zeroHit.retrievalCalls[0]!.ok), 'success')
+  assert.equal(resolveCallStatusTone(unavailable.retrievalCalls[0]!.ok), 'error')
+}
+
+function createRetrievalInspector(
+  overrides: Partial<AdminRetrievalInspector> = {},
+): AdminRetrievalInspector {
+  return {
+    ...createAvailableRetrievalInspector(),
+    ...overrides,
+  }
+}
+
+function createAvailableRetrievalInspector(): AdminRetrievalInspector {
+  return {
+    availability: 'available',
+    callsTruncated: false,
+    candidateCount: 3,
+    evidenceRefCount: 3,
+    retrievalCalls: [{
+      stepId: 'trace-tool-1',
+      sequence: 4,
+      status: 'COMPLETED',
+      callId: 'call-1',
+      toolName: 'retrieve_article_context',
+      toolVersion: '1',
+      samplingAttemptId: 'trace-attempt-1',
+      query: null,
+      strategy: { name: 'hybrid_rrf', version: '2' },
+      ok: true,
+      code: null,
+      sourceCount: 3,
+      chunkEvidenceCount: 2,
+      evidenceRefCount: 3,
+      originalChars: 4_000,
+      observationChars: 3_000,
+      truncated: true,
+      recordedDurationMs: 420,
+      durationMs: 430,
+      refs: [
+        { sourceId: 11, chunkId: 'chunk-a' },
+        { sourceId: 12, chunkId: null },
+        { sourceId: 13, chunkId: 'chunk-c' },
+      ],
+      refsTruncated: false,
+      metadataTrusted: true,
+    }],
+    finalization: {
+      stepId: 'trace-finalization',
+      sequence: 6,
+      status: 'COMPLETED',
+      schemaVersion: 1,
+      evidenceAvailability: 'available',
+      outcome: 'answered',
+      attemptCount: 1,
+      maxAttempts: 2,
+      registryRefCount: 3,
+      registryTruncated: false,
+      eligibleToolCallCount: 1,
+      eligibleToolFailureCount: 0,
+      validation: 'passed',
+      failureReason: null,
+      rejectionCode: null,
+      samplingFailure: null,
+      citationCount: 2,
+      citationIntegrity: 'validated',
+      faithfulnessStatus: 'not_evaluated',
+      usage: { inputTokens: 30, outputTokens: 12, totalTokens: 42 },
+      recordedDurationMs: 500,
+      durationMs: 520,
+      metadataTrusted: true,
+    },
+    citations: availableCitations(),
+  }
+}
+
+function availableCitations(): NonNullable<AdminRetrievalInspector['citations']> {
+  return [
+    {
+      sequence: 1,
+      citationId: 'cit_00000000000000000000000000000001',
+      sourceId: 11,
+      chunkId: 'chunk-a',
+      granularity: 'chunk',
+      title: '示例文章 1',
+      sectionPath: '指南 / 基础',
+      languageCode: 'zh-CN',
+      strategy: { name: 'hybrid_rrf', version: '2' },
+      correlation: 'matched',
+      matchedCallIds: ['call-1'],
+    },
+    {
+      sequence: 2,
+      citationId: 'cit_00000000000000000000000000000002',
+      sourceId: 12,
+      chunkId: null,
+      granularity: 'article',
+      title: '示例文章 2',
+      sectionPath: null,
+      languageCode: 'zh-CN',
+      strategy: { name: 'hybrid_rrf', version: '2' },
+      correlation: 'matched',
+      matchedCallIds: ['call-1'],
+    },
+  ]
+}
+
+function createPartialRetrievalInspector(): AdminRetrievalInspector {
+  return {
+    ...createAvailableRetrievalInspector(),
+    availability: 'partial',
+    finalization: null,
+    citations: null,
+  }
 }
 
 async function checkQuerySerialization(): Promise<void> {
@@ -824,6 +1072,7 @@ function createTraceDetail(toolCount: 0 | 1 | 2): AdminRunDetail {
     ],
     // 反转输入，确保 presenter 而不是 fixture 顺序决定 Ledger。
     timeline: [...timeline].reverse(),
+    retrievalInspector: createAvailableRetrievalInspector(),
     safeRawData: {
       agentRun: {
         id: 'run-trace',
@@ -951,6 +1200,7 @@ function createRunningDetail(): AdminRunDetail {
       updatedAt: startedAt,
     }],
     timeline: [generic, sampling],
+    retrievalInspector: createPartialRetrievalInspector(),
     safeRawData: {
       agentRun: {
         id: 'run-running',

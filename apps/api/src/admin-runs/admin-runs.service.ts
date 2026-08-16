@@ -81,6 +81,18 @@ const ADMIN_RUN_DETAIL_SELECT = {
       content: true,
       createdAt: true,
       updatedAt: true,
+      // 只取构建 Retrieval Inspector 必需的 Grounding 字段；不读取文章正文，
+      // 归属与合法性仍由 `toOwnedMessageGroundingV1` 在投影时复核。
+      grounding: {
+        select: {
+          schemaVersion: true,
+          evidenceAvailability: true,
+          outcome: true,
+          citationIntegrity: true,
+          faithfulnessStatus: true,
+          citations: true,
+        },
+      },
     },
   },
   steps: {

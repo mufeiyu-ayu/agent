@@ -10,3 +10,4 @@ tmp/
 
 /apps/api/src/generated/prisma
 /apps/web/e2e/.artifacts
+/apps/admin/e2e/.artifacts
