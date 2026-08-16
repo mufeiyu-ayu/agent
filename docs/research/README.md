@@ -19,9 +19,8 @@
 ```text
 阶段 1-7：Completed
 Phase 8：Active
-Task 0、1、2A、2B：Completed
-Task 3A：Next
-Task 3B：Planned
+Task 0、1、2A、2B、3A：Completed
+Task 3B：Next
 Task 3C：Planned
 Active Agent Task：无
 Minimal Compaction：Gated
@@ -40,13 +39,17 @@ Minimal Compaction：Gated
 - lexical + vector + hybrid RRF；
 - Retrieval Evaluation；
 - `retrieve_article_context@1` 与 candidate / unverified / untrusted Observation；
-- Admin Run Trace Workspace 与 Context Inspector。
+- evidence-eligible Tool policy 与 Grounding Session；
+- Run-scoped Evidence Registry 与 structured finalization；
+- server-validated Citation identity 与 durable `MessageGroundingV1`；
+- optional `done.grounding` / `ConversationMessage.grounding`；
+- Admin Run Trace Workspace、Context Inspector 与 finalization usage 聚合。
 
 ## 当前重点研究
 
 | 主题 | 文档 | 与正式任务的关系 |
 | --- | --- | --- |
-| Grounded Answer / Citation | [Phase 8 Grounded Answer / Citation 架构研究](./phase-08-grounded-answer-citation-design.md) | Task 3A / 3B / 3C 的研究依据 |
+| Grounded Answer / Citation | [Phase 8 Grounded Answer / Citation 架构研究](./phase-08-grounded-answer-citation-design.md) | Task 3A / 3B / 3C 的设计依据；文内 Task 状态和“当前代码事实”是实现前研究快照，实时状态以 tasks / master 为准 |
 | 当前 Agent baseline | [codex-reference/current-agent-baseline.md](./codex-reference/current-agent-baseline.md) | 用于理解历史架构；实时状态以 tasks / master 为准 |
 | Core Runtime | [codex-reference/core-runtime.md](./codex-reference/core-runtime.md) | Runtime loop、Turn、Task、follow-up sampling |
 | Tool Loop | [codex-reference/tool-loop.md](./codex-reference/tool-loop.md) | Tool Call、Observation、继续 sampling |
@@ -55,7 +58,7 @@ Minimal Compaction：Gated
 | Permission / Approval | [codex-reference/safety-permission.md](./codex-reference/safety-permission.md) | 研究资料，未排期 |
 | MCP / Multi-agent | [codex-reference/extensibility-and-multi-agent.md](./codex-reference/extensibility-and-multi-agent.md) | 研究资料，未排期 |
 
-## Grounded Answer 研究结论
+## Grounded Answer 研究结论与落地状态
 
 Task 3 的定案不是“给 Prompt 加一句必须引用来源”，而是：
 
@@ -76,7 +79,8 @@ evidence-eligible Tool invocation
 - v1 不声称 claim-level verification；
 - Web 与 Admin 不解析 Tool 原始 Observation；
 - 不引入 LangChain / LangGraph / LlamaIndex 运行时依赖；
-- Task 3A 为 Next，3B / 3C 依赖 3A。
+- Task 3A 后端事实层已通过 #58 / #59 完成，merge `d6df7ac1`；
+- Task 3B Web Source UI 为 Next；Task 3C Admin Retrieval Inspector 保持 Planned。
 
 ## Research 迁移为正式 Task 的条件
 
