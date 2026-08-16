@@ -57,6 +57,7 @@ const MAX_QUERY_CHARS = 200
 const MAX_TITLE_CHARS = 200
 const MAX_SECTION_PATH_CHARS = 200
 const MAX_CHUNK_ID_CHARS = 200
+const MAX_IDENTIFIER_CHARS = 128
 const MAX_STRATEGY_NAME_CHARS = 64
 const MAX_STRATEGY_VERSION_CHARS = 32
 const MAX_LANGUAGE_CODE_CHARS = 32
@@ -166,6 +167,8 @@ export interface AdminRetrievalMessageRecord {
 
 export interface AdminRetrievalInspectorInput {
   runStatus: AgentRunStatus
+  /** 本 Run 真实关联的助手消息 ID；用于复核 finalization Step 的归属。 */
+  assistantMessageId: string | null
   steps: AdminRetrievalStepRecord[]
   timeline: AdminRunTimelineItem[]
   assistantMessage: AdminRetrievalMessageRecord | null
@@ -174,6 +177,9 @@ export interface AdminRetrievalInspectorInput {
 /** 解析后的 finalization metadata；`trusted` 为 false 时其余字段不可用于判定完整性。 */
 interface FinalizationMetadata {
   trusted: boolean
+  /** Step 仍在进行、尚未写入 output 的合法中间态；不是数据损坏。 */
+  pending: boolean
+  assistantMessageId: string | null
   evidenceAvailability: MessageEvidenceAvailability | null
   registryRefCount: number | null
   registryTruncated: boolean | null
@@ -196,10 +202,20 @@ export function projectAdminRetrievalInspector(
   input: AdminRetrievalInspectorInput,
 ): AdminRetrievalInspector {
   const timelineById = new Map(input.timeline.map(item => [item.id, item]))
-  const eligibleSteps = input.steps
+  const toolSteps = input.steps
     .filter(step => step.type === AGENT_STEP_TYPES.toolExecution)
-    .filter(step => isEvidenceEligibleStep(step, timelineById.get(step.id)))
     .sort((left, right) => left.sequence - right.sequence)
+  const classifications = toolSteps.map(
+    step => classifyToolStep(step, timelineById.get(step.id)),
+  )
+  // 无法安全确认 Tool identity 的 Step 会让「本 Run 到底发生了几次证据调用」
+  // 变成未知；不得为了凑数从 summary 文本或数组位置猜测。
+  const unclassifiableToolStepCount = classifications.filter(
+    classification => classification === 'unclassifiable',
+  ).length
+  const eligibleSteps = toolSteps.filter(
+    (_, index) => classifications[index] === 'eligible',
+  )
   const callsTruncated = eligibleSteps.length > ADMIN_RETRIEVAL_MAX_CALLS
   const retrievalCalls = eligibleSteps
     .slice(0, ADMIN_RETRIEVAL_MAX_CALLS)
@@ -212,7 +228,7 @@ export function projectAdminRetrievalInspector(
   const duplicatedFinalization = finalizationSteps.length > 1
   const finalizationStep = finalizationSteps.at(-1)
   const finalizationMetadata = finalizationStep
-    ? readFinalizationMetadata(finalizationStep)
+    ? readFinalizationMetadata(finalizationStep, input.assistantMessageId)
     : null
   const finalization = finalizationStep && finalizationMetadata
     ? toFinalizationSummary(
@@ -235,12 +251,6 @@ export function projectAdminRetrievalInspector(
 
   const callsTrusted = retrievalCalls.every(call => call.metadataTrusted)
   const refsTruncated = retrievalCalls.some(call => call.refsTruncated)
-  const evidenceRefCount = callsTrusted
-    ? countDistinctRefs(retrievalCalls)
-    : null
-  const candidateCount = callsTrusted
-    ? sumSourceCounts(retrievalCalls)
-    : null
 
   return {
     availability: resolveAvailability({
@@ -251,15 +261,20 @@ export function projectAdminRetrievalInspector(
       callsTrusted,
       callsTruncated,
       refsTruncated,
-      evidenceRefCount,
+      unclassifiableToolStepCount,
+      eligibleStepCount: eligibleSteps.length,
+      knownFailedEligibleCount: retrievalCalls.filter(
+        call => call.ok === false,
+      ).length,
+      evidenceRefCount: countDistinctRefs(retrievalCalls),
       finalization,
       grounding,
       citations,
     }),
     retrievalCalls,
     callsTruncated,
-    candidateCount,
-    evidenceRefCount,
+    candidateCount: sumSourceCounts(retrievalCalls),
+    evidenceRefCount: countDistinctRefs(retrievalCalls),
     finalization,
     citations,
   }
@@ -274,21 +289,19 @@ export function projectAdminRetrievalInspector(
 export function projectGroundedFinalizationStep(
   step: AdminRetrievalStepRecord,
   base: AdminGroundedFinalizationStepBase,
+  assistantMessageId: string | null,
 ): AdminGroundedFinalizationStep | null {
-  const metadata = readFinalizationMetadata(step)
+  const metadata = readFinalizationMetadata(step, assistantMessageId)
 
-  if (!metadata.trusted)
+  // 仍在进行的 Step 也是 typed 事实：input 合法就照实投影为 pending，
+  // 不与「metadata 损坏」共用 Generic fallback。
+  if (!metadata.trusted && !metadata.pending)
     return null
-
-  const input = readObject(step.input)
 
   return {
     ...base,
     type: AGENT_STEP_TYPES.groundedFinalization,
-    assistantMessageId: readBoundedString(
-      input?.assistantMessageId,
-      MAX_CHUNK_ID_CHARS,
-    ),
+    assistantMessageId: metadata.assistantMessageId,
     evidenceAvailability: metadata.evidenceAvailability,
     outcome: metadata.outcome,
     attemptCount: metadata.attemptCount,
@@ -312,33 +325,41 @@ export function projectGroundedFinalizationStep(
   }
 }
 
-function isEvidenceEligibleStep(
+type ToolStepClassification = 'eligible' | 'not_eligible' | 'unclassifiable'
+
+/**
+ * 判定一次 Tool 执行是否属于证据链。
+ *
+ * 唯一依据是持久化的 typed identity（`toolName` + `toolVersion`）与 Tool Definition
+ * 声明的 evidence policy。既不从 summary 文本、数组位置或标题猜测，也不因为
+ * Step 状态是 COMPLETED 就假设它成功产出了证据。
+ *
+ * identity 读不出来时返回 `unclassifiable`：这时「本 Run 发生了几次证据调用」
+ * 是未知的，Inspector 不能再声明审计完整。
+ */
+function classifyToolStep(
   step: AdminRetrievalStepRecord,
   item: AdminRunTimelineItem | undefined,
-): boolean {
-  // 只信任已经通过既有 tool_execution 校验的 typed item；malformed Step 的
-  // toolName 本身就不可信，不能凭它把一次调用归入证据链。
-  if (item?.kind !== 'known' || item.type !== AGENT_STEP_TYPES.toolExecution)
-    return isEligibleToolIdentity(readObject(step.input))
-
-  return isEligibleTool(item.toolName, item.toolVersion)
-}
-
-function isEligibleToolIdentity(input: Record<string, unknown> | null): boolean {
-  const toolName = typeof input?.toolName === 'string' ? input.toolName : null
-  const toolVersion = typeof input?.toolVersion === 'string'
-    ? input.toolVersion
+): ToolStepClassification {
+  const known = item?.kind === 'known'
+    && item.type === AGENT_STEP_TYPES.toolExecution
+    ? item
     : null
+  const input = readObject(step.input)
+  const toolName = known?.toolName
+    ?? (typeof input?.toolName === 'string' && input.toolName.trim().length > 0
+      ? input.toolName
+      : null)
 
-  return isEligibleTool(toolName, toolVersion)
-}
+  if (toolName === null)
+    return 'unclassifiable'
 
-function isEligibleTool(
-  toolName: string | null,
-  toolVersion: string | null,
-): boolean {
-  return toolName !== null
-    && EVIDENCE_ELIGIBLE_TOOLS.get(toolName) === toolVersion
+  const toolVersion = known?.toolVersion
+    ?? (typeof input?.toolVersion === 'string' ? input.toolVersion : null)
+
+  return EVIDENCE_ELIGIBLE_TOOLS.get(toolName) === toolVersion
+    ? 'eligible'
+    : 'not_eligible'
 }
 
 function projectRetrievalCall(
@@ -497,11 +518,30 @@ function readStrategy(
   return name !== null && version !== null ? { name, version } : undefined
 }
 
+/**
+ * 严格读取 finalization Step 的 typed metadata。
+ *
+ * 校验按真实 Runtime 状态机展开（`runGroundedFinalization` +
+ * `toFinalizationStepOutput`），而不是只做字段类型检查：
+ *
+ * - 成功 attempt 必然是最后一条（`runGroundedFinalization` 成功即 return）；
+ * - sampling 故障 attempt 必然是最后一条（立即抛 `GroundedFinalizationSamplingError`）；
+ * - Grounding block 只在 durable 投影成功后写入，此时最后一条 attempt 必须成功；
+ * - 引用校验通过后 replay / commit / terminalization 仍可能失败，
+ *   因此 Grounding block 允许与 `finalization_incomplete` 共存；
+ * - `validated` 输出未能通过 durable 投影时会以 `schema_invalid` 收口，
+ *   这是唯一一种「有成功 attempt 却仍是 validation_failed」的合法路径。
+ *
+ * 任意不变量不成立即整份 metadata 不可信，绝不静默升级成完整成功。
+ */
 function readFinalizationMetadata(
   step: AdminRetrievalStepRecord,
+  runAssistantMessageId: string | null,
 ): FinalizationMetadata {
   const untrusted: FinalizationMetadata = {
     trusted: false,
+    pending: false,
+    assistantMessageId: null,
     evidenceAvailability: null,
     registryRefCount: null,
     registryTruncated: null,
@@ -519,11 +559,29 @@ function readFinalizationMetadata(
     usage: null,
     recordedDurationMs: null,
   }
-  const output = readObject(step.output)
-  const input = readObject(step.input)
+  // Runtime 在 startStep 就写入完整 Registry 快照与归属；缺任意一项都说明这份
+  // finalization 不是当前 schema 下的真实记录。
+  const registryInput = readFinalizationInput(step.input, runAssistantMessageId)
 
-  if (!output)
+  if (!registryInput)
     return untrusted
+
+  const output = readObject(step.output)
+
+  if (!output) {
+    // 进行中的 Step 还没有 output，这是合法中间态而不是数据损坏。
+    if (step.output !== null || !isUnfinishedStep(step.status))
+      return untrusted
+
+    return {
+      ...untrusted,
+      pending: true,
+      assistantMessageId: registryInput.assistantMessageId,
+      evidenceAvailability: registryInput.evidenceAvailability,
+      registryRefCount: registryInput.registryRefCount,
+      registryTruncated: registryInput.registryTruncated,
+    }
+  }
 
   const evidenceAvailability = readAllowedString(
     output,
@@ -567,11 +625,11 @@ function readFinalizationMetadata(
   }
 
   // 启动时写入的 input 与收口时写入的 output 必须描述同一份 Registry。
-  if (input !== null && !isConsistentFinalizationInput(input, {
-    evidenceAvailability,
-    registryRefCount,
-    registryTruncated,
-  })) {
+  if (
+    registryInput.evidenceAvailability !== evidenceAvailability
+    || registryInput.registryRefCount !== registryRefCount
+    || registryInput.registryTruncated !== registryTruncated
+  ) {
     return untrusted
   }
 
@@ -657,8 +715,22 @@ function readFinalizationMetadata(
     return untrusted
   }
 
+  if (!isConsistentFinalizationOutcome({
+    attempts,
+    citationCount: hasGroundingBlock ? citationCount : null,
+    failureReason,
+    hasGroundingBlock,
+    rejectionCode,
+    samplingFailure,
+    status: step.status,
+  })) {
+    return untrusted
+  }
+
   return {
     trusted: true,
+    pending: false,
+    assistantMessageId: registryInput.assistantMessageId,
     evidenceAvailability,
     registryRefCount,
     registryTruncated,
@@ -678,24 +750,137 @@ function readFinalizationMetadata(
   }
 }
 
-function isConsistentFinalizationInput(
-  input: Record<string, unknown>,
-  output: {
-    evidenceAvailability: MessageEvidenceAvailability
-    registryRefCount: number
-    registryTruncated: boolean
-  },
+interface FinalizationInputFacts {
+  assistantMessageId: string
+  evidenceAvailability: MessageEvidenceAvailability
+  registryRefCount: number
+  registryTruncated: boolean
+}
+
+/**
+ * finalization Step 的 input 是当前 schema 下的必要事实，不是可选装饰。
+ *
+ * 缺失、类型非法或 `assistantMessageId` 不属于本 Run 时一律返回 `null`：
+ * 归属不明的 finalization 不能被当作这次 Run 的审计依据。
+ */
+function readFinalizationInput(
+  value: unknown,
+  runAssistantMessageId: string | null,
+): FinalizationInputFacts | null {
+  const input = readObject(value)
+
+  if (!input)
+    return null
+
+  const assistantMessageId = readBoundedString(
+    input.assistantMessageId,
+    MAX_IDENTIFIER_CHARS,
+  )
+  const evidenceAvailability = readAllowedString(
+    input,
+    'evidenceAvailability',
+    EVIDENCE_AVAILABILITIES,
+  )
+  const registryRefCount = readNonNegativeInteger(input, 'registryRefCount')
+  const registryTruncated = readBoolean(input, 'registryTruncated')
+
+  if (
+    assistantMessageId === null
+    || evidenceAvailability === null
+    || registryRefCount === null
+    || registryTruncated === null
+    || runAssistantMessageId === null
+    || assistantMessageId !== runAssistantMessageId
+  ) {
+    return null
+  }
+
+  return {
+    assistantMessageId,
+    evidenceAvailability,
+    registryRefCount,
+    registryTruncated,
+  }
+}
+
+function isUnfinishedStep(status: AgentStepStatus): boolean {
+  return status === 'PENDING' || status === 'RUNNING'
+}
+
+interface FinalizationOutcomeInput {
+  attempts: FinalizationAttemptAggregate
+  citationCount: number | null
+  failureReason: AdminGroundedFinalizationFailureReason | null
+  hasGroundingBlock: boolean
+  rejectionCode: AdminGroundedAnswerRejectionCode | null
+  samplingFailure: AdminGroundedFinalizationSamplingFailure | null
+  status: AgentStepStatus
+}
+
+/**
+ * attempt 状态机与顶层收口结果的一致性。
+ *
+ * 这里拦截的是「结构合法但 Runtime 不可能产生」的组合，例如 0 次 attempt 却
+ * 声称回答已通过引用校验，或唯一一次 attempt 失败却带着完整 Grounding block。
+ */
+function isConsistentFinalizationOutcome(
+  input: FinalizationOutcomeInput,
 ): boolean {
-  const keys = ['evidenceAvailability', 'registryRefCount', 'registryTruncated']
+  const { attempts } = input
+  const last = attempts.entries.at(-1)
 
-  if (!keys.some(key => Object.hasOwn(input, key)))
-    return true
+  if (input.hasGroundingBlock) {
+    // Grounding block 只可能在某次 attempt 通过校验之后写入。
+    if (!last || !last.ok)
+      return false
 
-  return readAllowedString(input, 'evidenceAvailability', EVIDENCE_AVAILABILITIES)
-    === output.evidenceAvailability
-    && readNonNegativeInteger(input, 'registryRefCount')
-    === output.registryRefCount
-    && readBoolean(input, 'registryTruncated') === output.registryTruncated
+    // 最终引用数不可能多于该次 attempt 实际提交的 citationKey 数（校验会去重）。
+    if (
+      input.citationCount !== null
+      && input.citationCount > last.submittedCitationKeyCount
+    ) {
+      return false
+    }
+
+    // 校验已经通过，之后只可能因为 replay / commit / 终态事务失败而收口。
+    return input.failureReason === null
+      || input.failureReason === 'finalization_incomplete'
+  }
+
+  // 没有 Grounding block 时，成功 attempt 只可能对应 durable 投影被拒的
+  // `schema_invalid` 路径；其余情况都不允许出现成功 attempt。
+  if (attempts.successCount > 0) {
+    return input.failureReason === 'validation_failed'
+      && input.rejectionCode === 'schema_invalid'
+      && last?.ok === true
+  }
+
+  switch (input.failureReason) {
+    case 'validation_failed':
+      // correction 用尽：最后一次必须是带 rejectionCode 的内容拒绝，且与顶层一致。
+      return last !== undefined
+        && last.ok === false
+        && last.rejectionCode !== null
+        && last.rejectionCode === input.rejectionCode
+        && last.samplingFailure === null
+
+    case 'sampling_incomplete':
+      // 采样故障立即收口：必然是最后一次 attempt，且与顶层一致。
+      return last !== undefined
+        && last.ok === false
+        && last.samplingFailure !== null
+        && last.samplingFailure === input.samplingFailure
+        && last.rejectionCode === null
+
+    case 'finalization_incomplete':
+      // 模型调用前中断可以是 0 attempt；调用后中断的 attempt 不带 samplingFailure。
+      return last === undefined
+        || (last.ok === false && last.samplingFailure === null)
+
+    case null:
+      // 既没有结论也没有失败原因：只有尚未收口的 Step 才允许。
+      return isUnfinishedStep(input.status)
+  }
 }
 
 function deriveEvidenceAvailability(
@@ -708,13 +893,29 @@ function deriveEvidenceAvailability(
   return eligibleToolFailureCount > 0 ? 'unavailable' : 'none'
 }
 
+interface FinalizationAttemptFacts {
+  attempt: number
+  ok: boolean
+  rejectionCode: AdminGroundedAnswerRejectionCode | null
+  samplingFailure: AdminGroundedFinalizationSamplingFailure | null
+  submittedCitationKeyCount: number
+}
+
 interface FinalizationAttemptAggregate {
+  entries: FinalizationAttemptFacts[]
+  successCount: number
   usage: AdminRunTokenUsage | null
   recordedDurationMs: number | null
 }
 
 /**
- * 读取 attempts 并做 all-or-nothing 聚合。
+ * 读取 attempts，校验 attempt 级状态机，并做 all-or-nothing 聚合。
+ *
+ * attempt 级不变量直接来自 `runGroundedFinalization`：
+ * - 成功 attempt 立即 return，因此最多一次成功且必然在末尾；
+ * - sampling 故障立即抛出，因此带 `samplingFailure` 的 attempt 必然在末尾；
+ * - 同一次 attempt 不可能既是内容拒绝又是采样故障；
+ * - 成功 attempt 不带任何失败类别。
  *
  * 任何一次 attempt 的 usage 不完整，整个 finalization 的 Token 汇总就是 `null`：
  * 半份 Token 数字比没有数字更危险。
@@ -729,6 +930,7 @@ function readAttempts(
   if (value.length > GROUNDED_FINALIZATION_MAX_ATTEMPTS)
     return null
 
+  const entries: FinalizationAttemptFacts[] = []
   let inputTokens = 0
   let outputTokens = 0
   let totalTokens = 0
@@ -745,8 +947,44 @@ function readAttempts(
     if (readNonNegativeInteger(attempt, 'attempt') !== index + 1)
       return null
 
-    if (readNonNegativeInteger(attempt, 'submittedCitationKeyCount') === null)
+    const submittedCitationKeyCount = readNonNegativeInteger(
+      attempt,
+      'submittedCitationKeyCount',
+    )
+
+    if (submittedCitationKeyCount === null)
       return null
+
+    const rejectionCode = Object.hasOwn(attempt, 'rejectionCode')
+      ? readAllowedString(attempt, 'rejectionCode', REJECTION_CODES)
+      : null
+    const samplingFailure = Object.hasOwn(attempt, 'samplingFailure')
+      ? readAllowedString(attempt, 'samplingFailure', SAMPLING_FAILURES)
+      : null
+
+    if (
+      (Object.hasOwn(attempt, 'rejectionCode') && rejectionCode === null)
+      || (Object.hasOwn(attempt, 'samplingFailure') && samplingFailure === null)
+      // 内容拒绝与采样故障是两条互斥路径。
+      || (rejectionCode !== null && samplingFailure !== null)
+      // 成功 attempt 不携带任何失败类别。
+      || (attempt.ok === true
+        && (rejectionCode !== null || samplingFailure !== null))
+      // 成功 attempt 之后不可能再有 attempt：成功即 return。
+      || (index > 0 && entries[index - 1]?.ok === true)
+      // 采样故障立即抛出，之后同样不可能再有 attempt。
+      || (index > 0 && entries[index - 1]?.samplingFailure !== null)
+    ) {
+      return null
+    }
+
+    entries.push({
+      attempt: index + 1,
+      ok: attempt.ok,
+      rejectionCode,
+      samplingFailure,
+      submittedCitationKeyCount,
+    })
 
     const durationMs = readNonNegativeInteger(attempt, 'durationMs')
 
@@ -775,6 +1013,8 @@ function readAttempts(
   }
 
   return {
+    entries,
+    successCount: entries.filter(entry => entry.ok).length,
     usage: usageComplete
       && Number.isSafeInteger(inputTokens)
       && Number.isSafeInteger(outputTokens)
@@ -807,7 +1047,7 @@ function toFinalizationSummary(
     registryTruncated: metadata.registryTruncated,
     eligibleToolCallCount: metadata.eligibleToolCallCount,
     eligibleToolFailureCount: metadata.eligibleToolFailureCount,
-    validation: trusted
+    validation: trusted || metadata.pending
       ? resolveValidation(metadata, step.status)
       : 'unavailable',
     failureReason: metadata.failureReason,
@@ -827,6 +1067,10 @@ function resolveValidation(
   metadata: FinalizationMetadata,
   status: AgentStepStatus,
 ): AdminGroundedFinalizationValidation {
+  // 尚未写入 output 的进行中 Step 是合法中间态，不是数据损坏。
+  if (metadata.pending)
+    return 'pending'
+
   if (!metadata.trusted)
     return 'unavailable'
 
@@ -838,7 +1082,7 @@ function resolveValidation(
   if (metadata.failureReason !== null)
     return 'failed'
 
-  return status === 'RUNNING' || status === 'PENDING' ? 'pending' : 'unavailable'
+  return isUnfinishedStep(status) ? 'pending' : 'unavailable'
 }
 
 function projectCitations(
@@ -903,6 +1147,12 @@ interface AvailabilityInput {
   callsTrusted: boolean
   callsTruncated: boolean
   refsTruncated: boolean
+  /** 无法确认 Tool identity 的 tool_execution Step 数量。 */
+  unclassifiableToolStepCount: number
+  /** 本 Run 实际识别到的 evidence-eligible Tool Step 数量（未受投影上限裁剪）。 */
+  eligibleStepCount: number
+  /** 其中已经可以明确判定为失败的调用数量。 */
+  knownFailedEligibleCount: number
   evidenceRefCount: number | null
   finalization: AdminGroundedFinalizationSummary | null
   grounding: MessageGroundingV1 | null
@@ -938,6 +1188,8 @@ function resolveAvailability(input: AvailabilityInput): AdminRetrievalInspector[
     && input.callsTrusted
     && !input.callsTruncated
     && !input.refsTruncated
+    // 存在无法分类的 Tool Step 时，「本 Run 发生了几次证据调用」就是未知的。
+    && input.unclassifiableToolStepCount === 0
     && finalization !== null
     && finalization.metadataTrusted
     && finalization.status === 'COMPLETED'
@@ -949,8 +1201,25 @@ function resolveAvailability(input: AvailabilityInput): AdminRetrievalInspector[
     // 有 call 没有提交可审计的引用（legacy 或无 summary 的工具）。
     && input.evidenceRefCount === finalization.registryRefCount
     && isConsistentWithGrounding(finalization, input.grounding)
+    && isConsistentWithToolSteps(finalization, input)
 
   return complete ? 'available' : 'partial'
+}
+
+/**
+ * finalization 自报的证据调用统计必须与真实 AgentStep 事实吻合。
+ *
+ * Registry 会把「Tool 成功但 evidence 投影缺失 / 损坏」也计成失败，因此失败数
+ * 只能要求不少于 Step 层面已经明确可判定的失败数，不能要求完全相等。
+ */
+function isConsistentWithToolSteps(
+  finalization: AdminGroundedFinalizationSummary,
+  input: AvailabilityInput,
+): boolean {
+  return finalization.eligibleToolCallCount === input.eligibleStepCount
+    && finalization.eligibleToolFailureCount !== null
+    && finalization.eligibleToolFailureCount >= input.knownFailedEligibleCount
+    && finalization.eligibleToolFailureCount <= input.eligibleStepCount
 }
 
 function isConsistentWithGrounding(
@@ -965,10 +1234,19 @@ function isConsistentWithGrounding(
     && finalization.faithfulnessStatus === grounding.faithfulnessStatus
 }
 
-function countDistinctRefs(calls: AdminRetrievalCallSummary[]): number {
+/**
+ * 去重后的 evidence 身份数量。
+ *
+ * 「成功但没有提交可审计引用」（legacy / 无 summary 的工具）与「明确失败因而
+ * 没有引用」是两件事：前者数量未知，返回 `null`；后者确实是 0，可以计入。
+ */
+function countDistinctRefs(calls: AdminRetrievalCallSummary[]): number | null {
   const identities = new Set<string>()
 
   for (const call of calls) {
+    if (!hasConfirmedRefs(call))
+      return null
+
     for (const ref of call.refs)
       identities.add(toRefIdentity(ref))
   }
@@ -976,11 +1254,31 @@ function countDistinctRefs(calls: AdminRetrievalCallSummary[]): number {
   return identities.size
 }
 
-function sumSourceCounts(calls: AdminRetrievalCallSummary[]): number {
-  return calls.reduce(
-    (total, call) => total + (call.sourceCount ?? 0),
-    0,
-  )
+/**
+ * 候选总数。
+ *
+ * 只要有一次调用的候选数量无法从合法 typed summary 确认（timeout、执行失败、
+ * legacy 无 summary、summary 损坏），整体就是未知，不能用 0 顶替。
+ */
+function sumSourceCounts(calls: AdminRetrievalCallSummary[]): number | null {
+  let total = 0
+
+  for (const call of calls) {
+    if (!call.metadataTrusted || call.sourceCount === null)
+      return null
+
+    total += call.sourceCount
+  }
+
+  return Number.isSafeInteger(total) ? total : null
+}
+
+function hasConfirmedRefs(call: AdminRetrievalCallSummary): boolean {
+  if (!call.metadataTrusted)
+    return false
+
+  // 明确失败的调用不会向 Registry 贡献任何引用，这个 0 是可确认的事实。
+  return call.sourceCount !== null || call.ok === false
 }
 
 function toRefIdentity(ref: AdminRetrievalSourceRef): string {

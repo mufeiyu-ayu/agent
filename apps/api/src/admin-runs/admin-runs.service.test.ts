@@ -241,7 +241,10 @@ describe('Admin Run projector', () => {
     record.steps = [
       ...record.steps,
       step(10, 'grounded_finalization', {
-        input: { hiddenDraft: 'DO_NOT_LEAK' },
+        input: {
+          ...groundedFinalizationInput(),
+          hiddenDraft: 'DO_NOT_LEAK',
+        },
         output: {
           ...groundedFinalizationOutput([{ ok: true, usage: null }]),
           providerPayload: 'DO_NOT_LEAK',
@@ -260,13 +263,32 @@ describe('Admin Run projector', () => {
     assert.doesNotMatch(serialized, /DO_NOT_LEAK/)
   })
 
-  it('grounded finalization metadata 损坏时仍回落 Generic fallback', () => {
+  it('grounded finalization 缺少必备 input 事实时回落 Generic fallback', () => {
     const record = createRunRecord()
 
     record.steps = [
       ...record.steps,
       step(10, 'grounded_finalization', {
         input: { hiddenDraft: 'DO_NOT_LEAK' },
+        output: groundedFinalizationOutput([{ ok: true, usage: null }]),
+      }),
+    ]
+
+    const finalizationItem = projectAdminRunDetail(record).timeline.find(
+      item => item.type === 'grounded_finalization',
+    )
+
+    assert.ok(finalizationItem)
+    assert.equal(finalizationItem.kind, 'generic')
+  })
+
+  it('grounded finalization metadata 损坏时仍回落 Generic fallback', () => {
+    const record = createRunRecord()
+
+    record.steps = [
+      ...record.steps,
+      step(10, 'grounded_finalization', {
+        input: groundedFinalizationInput(),
         output: {
           ...groundedFinalizationOutput([{ ok: true, usage: null }]),
           // registryRefCount 与 evidenceAvailability 自相矛盾。
@@ -1067,6 +1089,16 @@ function createRunRecord() {
 }
 
 /** 构造与 Runtime 一致形状的 finalization Step output。 */
+/** Runtime 在 startStep 就写入的完整 Registry 快照与归属事实。 */
+function groundedFinalizationInput() {
+  return {
+    assistantMessageId: 'message-assistant',
+    evidenceAvailability: 'available',
+    registryRefCount: 2,
+    registryTruncated: false,
+  }
+}
+
 function groundedFinalizationOutput(
   attempts: Array<{
     ok: boolean

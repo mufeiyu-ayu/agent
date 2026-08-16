@@ -330,6 +330,7 @@ export const messages = {
       call: {
         ok: '成功',
         failed: '失败',
+        unknown: '结果未记录',
         untrusted: '元数据不可信',
         noRefs: '本次调用没有可投影的引用身份。',
         refsTruncated: '引用身份超出展示上限，已显式截断。',
@@ -797,6 +798,7 @@ export const messages = {
       call: {
         ok: 'Success',
         failed: 'Failed',
+        unknown: 'Result not recorded',
         untrusted: 'Metadata untrusted',
         noRefs: 'This call submitted no projectable evidence identity.',
         refsTruncated: 'Evidence identities exceeded the display cap and were explicitly truncated.',

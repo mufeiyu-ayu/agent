@@ -108,7 +108,8 @@ export function createFailedDetail(): AdminRunDetail {
         strategy: null,
         refs: [],
       }],
-      candidateCount: 0,
+      // Tool 超时：候选数量未知，不能展示成 0。
+      candidateCount: null,
       evidenceRefCount: 0,
       finalization: {
         ...inspector.finalization!,
@@ -126,6 +127,76 @@ export function createFailedDetail(): AdminRunDetail {
         samplingFailure: 'stream_failed',
         usage: null,
       },
+      citations: null,
+    },
+  })
+}
+
+/** COMPLETED zero-hit：检索成功但确实没有候选，候选数量是确定的 0。 */
+export function createZeroHitDetail(): AdminRunDetail {
+  const inspector = createAvailableInspector()
+
+  return createDetail({
+    timeline: [
+      receiveStep(),
+      samplingStep(3, 'run-e2e-1:sampling-1', 'tool_calls'),
+      toolStep(4),
+      finalizationStep(6),
+      assistantOutputStep(7),
+    ],
+    retrievalInspector: {
+      ...inspector,
+      candidateCount: 0,
+      evidenceRefCount: 0,
+      retrievalCalls: [{
+        ...inspector.retrievalCalls[0]!,
+        sourceCount: 0,
+        chunkEvidenceCount: 0,
+        evidenceRefCount: 0,
+        refs: [],
+      }],
+      finalization: {
+        ...inspector.finalization!,
+        evidenceAvailability: 'none',
+        outcome: 'insufficient_evidence',
+        registryRefCount: 0,
+        citationCount: 0,
+      },
+      citations: [],
+    },
+  })
+}
+
+/** Tool 结果未记录：`ok` 为 null，既不是成功也不是失败。 */
+export function createUnknownResultDetail(): AdminRunDetail {
+  const inspector = createAvailableInspector()
+
+  return createDetail({
+    status: 'RUNNING',
+    endedAt: null,
+    timeline: [
+      receiveStep(),
+      samplingStep(3, 'run-e2e-1:sampling-1', 'tool_calls'),
+      { ...toolStep(4), status: 'RUNNING', endedAt: null, ok: null, truncated: null },
+    ],
+    retrievalInspector: {
+      ...inspector,
+      availability: 'partial',
+      candidateCount: null,
+      evidenceRefCount: null,
+      retrievalCalls: [{
+        ...inspector.retrievalCalls[0]!,
+        status: 'RUNNING',
+        ok: null,
+        code: null,
+        sourceCount: null,
+        chunkEvidenceCount: null,
+        evidenceRefCount: null,
+        strategy: null,
+        truncated: null,
+        refs: [],
+      }],
+      finalization: null,
       citations: null,
     },
   })

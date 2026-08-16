@@ -50,10 +50,12 @@ export function createRetrievalInspectorCounts(
   }
 }
 
+export type InspectorTone = 'success' | 'warning' | 'error' | 'neutral'
+
 /** 状态标签色；与 Grounding 的 evidenceAvailability 分层，不共用色值语义。 */
 export function resolveAvailabilityTone(
   availability: AdminRetrievalInspector['availability'],
-): 'success' | 'warning' | 'error' | 'neutral' {
+): InspectorTone {
   switch (availability) {
     case 'available':
       return 'success'
@@ -64,4 +66,27 @@ export function resolveAvailabilityTone(
     case 'not_applicable':
       return 'neutral'
   }
+}
+
+/**
+ * Tool 调用结果的三态色调。
+ *
+ * `ok` 为 `null` 表示结果未记录，既不是成功也不是失败：必须用中性色，
+ * 不能因为 Step 状态是 COMPLETED 就当成绿色的成功。
+ */
+export function resolveCallStatusTone(ok: boolean | null): InspectorTone {
+  if (ok === null)
+    return 'neutral'
+
+  return ok ? 'success' : 'error'
+}
+
+/** 把语义色调映射为 ant-design-vue Tag 的 color 值。 */
+export function toTagColor(tone: InspectorTone): string {
+  return {
+    success: 'green',
+    warning: 'orange',
+    error: 'red',
+    neutral: 'default',
+  }[tone]
 }

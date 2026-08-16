@@ -193,7 +193,10 @@ not_applicable  没有 evidence-eligible call、没有 finalization Step、也�
 unavailable     进入过链路，但没有任何可信事实（call / finalization / Grounding 全部损坏）
 available       Run COMPLETED
                 + 所有 evidence-eligible call 元数据可信且未截断
+                + 没有无法确认 Tool identity 的 tool_execution Step
                 + finalization COMPLETED 且 validation=passed
+                + finalization.eligibleToolCallCount == 真实 evidence-eligible Step 数量
+                + finalization.eligibleToolFailureCount >= 已明确失败的调用数
                 + 合法 durable Grounding 且全部 Citation matched
                 + 投影出的 evidence 身份数 == finalization.registryRefCount
                 + finalization 与 Grounding 跨字段一致
@@ -202,6 +205,42 @@ partial         其余情况
 
 `registryTruncated` 是 Run 内真实发生的证据裁剪，属于业务事实，不降低 Inspector availability；
 `callsTruncated / refsTruncated` 是投影侧不完整，降为 `partial`。
+
+### 9.2.1 finalization attempt 状态机
+
+校验规则直接来自 `runGroundedFinalization` 与 `toFinalizationStepOutput`：
+
+```text
+成功 attempt      必然是最后一条（成功即 return），且全 Run 最多一条
+sampling 故障      必然是最后一条（立即抛 GroundedFinalizationSamplingError）
+Grounding block    只在 durable 投影成功后写入 → 最后一条 attempt 必须成功
+                   citationCount <= 该次 attempt 的 submittedCitationKeyCount
+                   只允许与 finalization_incomplete 共存（校验后 replay / commit 失败）
+validation_failed  无 Grounding block；最后一条 attempt 的 rejectionCode 与顶层一致；
+                   唯一例外是 durable 投影被拒的 schema_invalid 路径，此时最后一条
+                   attempt 是成功的模型调用
+sampling_incomplete 无 Grounding block；最后一条 attempt 的 samplingFailure 与顶层一致
+finalization_incomplete 可以是 0 attempt（调用前中断）；有 attempt 时最后一条不带 samplingFailure
+无 failureReason 且无 Grounding block  只有尚未收口的 Step 才允许（pending）
+```
+
+### 9.2.2 finalization input 是必要事实
+
+finalization Step 的 `input` 必须完整包含 `assistantMessageId`、`evidenceAvailability`、
+`registryRefCount`、`registryTruncated`，且与 `output` 描述同一份 Registry、
+`assistantMessageId` 必须等于本 Run 真实的 Assistant Message ID。
+缺失、类型非法或归属不一致时 `metadataTrusted=false`、typed timeline 回落 Generic、
+Inspector 不得为 `available`。
+
+### 9.2.3 计数的「未知」与「零」
+
+```text
+candidateCount   任一调用的 sourceCount 无法从合法 typed summary 确认 → null
+                 成功 zero-hit → 0
+                 Tool timeout / 失败 / legacy 无 summary / malformed summary → null
+evidenceRefCount 明确失败的调用确实没有贡献引用，计 0；
+                 成功但没有提交可审计引用（legacy / 无 summary 工具）→ null
+```
 
 ### 9.3 已知限制
 
@@ -213,17 +252,18 @@ source / chunk 引用身份。只依赖该工具产生的 Citation 会按 D-12 �
 
 | 命令 | 结果 |
 | --- | --- |
+| `corepack pnpm install --frozen-lockfile` | exit 0（pnpm 10.32.1 / Node v20.19.3 / Corepack 0.32.0） |
 | `pnpm --filter @agent/contracts build` | PASS |
-| `pnpm --filter @agent/api test:admin-runs` | 54 pass / 0 fail / 0 skip |
+| `pnpm --filter @agent/api test:admin-runs` | 89 pass / 0 fail / 0 skip |
 | `pnpm --filter @agent/api test:grounding` | 168 pass / 0 fail / 0 skip |
-| `pnpm --filter @agent/api test:grounding-db` | 13 pass / 0 fail / 0 skip（隔离 PostgreSQL） |
+| `pnpm --filter @agent/api test:grounding-db` | 15 pass / 0 fail / 0 skip（隔离 PostgreSQL） |
 | `pnpm --filter @agent/admin test` | PASS |
-| `pnpm --filter @agent/admin test:e2e` | 8 passed（Chromium） |
-| `pnpm --filter @agent/admin exec playwright test --repeat-each=3` | 24 passed |
+| `pnpm --filter @agent/admin test:e2e` | 10 passed（Chromium） |
+| `pnpm --filter @agent/admin exec playwright test --repeat-each=3` | 30 passed |
 | `pnpm --filter @agent/admin typecheck / lint / build` | PASS |
 | `pnpm --filter @agent/api typecheck / lint / build` | PASS |
 | `pnpm typecheck` | PASS |
-| `pnpm lint`（仓库根） | FAIL：115 个既有 `docs/**` Markdown baseline 错误，本次 scoped lint 全部通过 |
+| `pnpm lint`（仓库根） | FAIL：113 个既有 `docs/**` Markdown baseline 错误，本次 scoped lint 全部通过 |
 | `git diff --check` / `git diff --cached --check` | PASS |
 
 DB integration 使用 `ARTICLE_INDEX_TEST_DATABASE_URL` 指向的隔离数据库，
@@ -241,6 +281,8 @@ DB integration 使用 `ARTICLE_INDEX_TEST_DATABASE_URL` 指向的隔离数据库
 - `malformed-fail-closed.png`
 - `narrow-320-retrieval.png`
 - `single-column-retrieval.png`
+- `zero-hit-retrieval.png`
+- `unknown-call-result.png`
 
 窄屏说明：Admin 控制台有既有全局 `min-width: 1024px`（本 Task 之前就存在，不在范围内），
 因此 320px 视口下文档级仍会横向滚动。浏览器用例如实断言了这一既有约束，并单独验证

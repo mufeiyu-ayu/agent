@@ -8,6 +8,8 @@ import { formatDuration, formatTokens } from '../../run.utils'
 import {
   createRetrievalInspectorCounts,
   resolveAvailabilityTone,
+  resolveCallStatusTone,
+  toTagColor,
 } from '../retrieval-inspector.presenter'
 import InspectorFieldList from './InspectorFieldList.vue'
 
@@ -21,15 +23,9 @@ const counts = computed(() => createRetrievalInspectorCounts(props.inspector))
 const notApplicable = computed(
   () => props.inspector.availability === 'not_applicable',
 )
-const availabilityTone = computed(
-  () => resolveAvailabilityTone(props.inspector.availability),
+const tagColor = computed(
+  () => toTagColor(resolveAvailabilityTone(props.inspector.availability)),
 )
-const tagColor = computed(() => ({
-  success: 'green',
-  warning: 'orange',
-  error: 'red',
-  neutral: 'default',
-}[availabilityTone.value]))
 
 const overviewFields = computed(() => [
   {
@@ -163,9 +159,13 @@ function yesNo(value: boolean): string {
 
 function callStatusLabel(ok: boolean | null): string {
   if (ok === null)
-    return unavailable.value
+    return t('retrieval.call.unknown')
 
   return ok ? t('retrieval.call.ok') : t('retrieval.call.failed')
+}
+
+function callStatusColor(ok: boolean | null): string {
+  return toTagColor(resolveCallStatusTone(ok))
 }
 </script>
 
@@ -205,7 +205,11 @@ function callStatusLabel(ok: boolean | null): string {
           >
             <div class="retrieval-inspector__card-head">
               <code>{{ call.toolName ?? unavailable }}@{{ call.toolVersion ?? '?' }}</code>
-              <Tag :color="call.ok === false ? 'red' : 'green'">
+              <Tag
+                :color="callStatusColor(call.ok)"
+                :data-testid="`retrieval-call-status-${call.stepId}`"
+                :data-tone="resolveCallStatusTone(call.ok)"
+              >
                 {{ callStatusLabel(call.ok) }}
               </Tag>
               <Tag v-if="!call.metadataTrusted" color="orange">

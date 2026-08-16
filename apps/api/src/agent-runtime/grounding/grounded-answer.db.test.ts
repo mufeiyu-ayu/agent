@@ -765,10 +765,101 @@ describe('Grounded Answer PostgreSQL integration', { concurrency: 1 }, () => {
     assert.doesNotMatch(JSON.stringify(detail), /evk_|excerpt/)
   })
 
+  it('Admin Run Detail 拒绝与真实 Tool Step 数量不符的 finalization 计数', async () => {
+    const conversationId = await createConversation()
+
+    await collectEvents(createAnsweredHarness(conversationId).run())
+
+    const run = await requireRun(conversationId)
+    const steps = await listSteps(run.id)
+    const finalizationStep = steps.find(
+      step => step.type === 'grounded_finalization',
+    )!
+    const eligibleToolStepCount = steps.filter(
+      step => step.type === 'tool_execution',
+    ).length
+
+    assert.equal(eligibleToolStepCount, 1)
+
+    // 只改写 finalization 自报的证据调用次数：真实 AgentStep 关系不变。
+    await prisma.agentStep.update({
+      where: { id: finalizationStep.id },
+      data: {
+        output: {
+          ...(finalizationStep.output as Record<string, unknown>),
+          eligibleToolCallCount: 99,
+        },
+      },
+    })
+
+    const detail = await createAdminRunsService().getDetail(run.id)
+
+    assert.equal(detail.retrievalInspector.retrievalCalls.length, 1)
+    assert.equal(detail.retrievalInspector.finalization?.eligibleToolCallCount, 99)
+    // 自报计数与真实 Step 不符时不得声明审计完整。
+    assert.equal(detail.retrievalInspector.availability, 'partial')
+  })
+
+  it('Admin Run Detail 拒绝归属不一致的 finalization input', async () => {
+    const conversationId = await createConversation()
+
+    await collectEvents(createAnsweredHarness(conversationId).run())
+
+    const run = await requireRun(conversationId)
+    const steps = await listSteps(run.id)
+    const finalizationStep = steps.find(
+      step => step.type === 'grounded_finalization',
+    )!
+
+    await prisma.agentStep.update({
+      where: { id: finalizationStep.id },
+      data: {
+        input: {
+          ...(finalizationStep.input as Record<string, unknown>),
+          assistantMessageId: 'message-from-another-run',
+        },
+      },
+    })
+
+    const detail = await createAdminRunsService().getDetail(run.id)
+    const finalizationItem = detail.timeline.find(
+      item => item.type === 'grounded_finalization',
+    )
+
+    assert.equal(detail.retrievalInspector.finalization?.metadataTrusted, false)
+    assert.equal(detail.retrievalInspector.finalization?.validation, 'unavailable')
+    assert.equal(detail.retrievalInspector.availability, 'partial')
+    // 归属不明的 finalization 回落 Generic，不透传原始 output。
+    assert.equal(finalizationItem?.kind, 'generic')
+    assert.doesNotMatch(JSON.stringify(detail), /evk_|内部草稿/)
+  })
+
   // ── 脚手架 ──────────────────────────────────────────────
 
   function createAdminRunsService(): AdminRunsService {
     return new AdminRunsService(prisma)
+  }
+
+  /** 一次真实的 retrieval → grounded finalization → answered Run。 */
+  function createAnsweredHarness(conversationId: string) {
+    return createHarness(conversationId, [
+      () => toModelStream([
+        toolCallEvent('call-1', 'retrieve_article_context', '{"query":"SEO 是什么","limit":2}'),
+        { type: 'response_completed', finishReason: 'tool_calls' },
+      ]),
+      () => toModelStream([
+        { type: 'text_delta', delta: '内部草稿-不应落库' },
+        { type: 'response_completed', finishReason: 'stop' },
+      ]),
+      keys => toModelStream([
+        submitGroundedAnswerEvent({
+          answer: 'SEO 的核心是让搜索引擎理解页面结构。',
+          outcome: 'answered',
+          citationKeys: [keys[0]!],
+        }),
+        { type: 'response_completed', finishReason: 'tool_calls' },
+      ]),
+    ])
   }
 
   function createHarness(

@@ -32,6 +32,8 @@ import {
 import {
   createRetrievalInspectorCounts,
   resolveAvailabilityTone,
+  resolveCallStatusTone,
+  toTagColor,
 } from './trace/retrieval-inspector.presenter'
 import {
   createRunTraceProjection,
@@ -405,6 +407,9 @@ function checkProductionSources(): void {
   assert.doesNotMatch(retrievalInspectorSource, /inputSummary|outputSummary|safeRawData/)
   assert.doesNotMatch(retrievalInspectorSource, /citationKey|excerpt|slug|distance|embedding/)
   assert.doesNotMatch(retrievalInspectorSource, /JSON\.parse|JSON\.stringify/)
+  // 三态色调必须走 presenter 纯函数，不得回到「非 false 即绿」的二元判断。
+  assert.match(retrievalInspectorSource, /resolveCallStatusTone/)
+  assert.doesNotMatch(retrievalInspectorSource, /ok === false \? 'red' : 'green'/)
 
   const presenterSource = readFileSync(
     new URL('./trace/retrieval-inspector.presenter.ts', import.meta.url),
@@ -464,6 +469,61 @@ function checkRetrievalInspector(): void {
 
   assert.equal(unmatchedCounts.matchedCitationCount, 0)
   assert.equal(unmatchedCounts.unmatchedCitationCount, 1)
+
+  checkCallStatusTone()
+  checkCandidateCountRendering()
+}
+
+/**
+ * Tool 调用结果必须是三态。
+ *
+ * `ok=null` 表示结果未记录：既不能显示成功文案，也不能沿用成功色。
+ */
+function checkCallStatusTone(): void {
+  assert.equal(resolveCallStatusTone(true), 'success')
+  assert.equal(resolveCallStatusTone(false), 'error')
+  assert.equal(resolveCallStatusTone(null), 'neutral')
+
+  assert.equal(toTagColor(resolveCallStatusTone(true)), 'green')
+  assert.equal(toTagColor(resolveCallStatusTone(false)), 'red')
+  assert.equal(toTagColor(resolveCallStatusTone(null)), 'default')
+  assert.notEqual(toTagColor(resolveCallStatusTone(null)), 'green')
+}
+
+/** zero-hit 的 0 与「候选数量未知」的 null 必须走不同的展示分支。 */
+function checkCandidateCountRendering(): void {
+  const zeroHit = createRetrievalInspector({
+    candidateCount: 0,
+    evidenceRefCount: 0,
+    retrievalCalls: [{
+      ...createAvailableRetrievalInspector().retrievalCalls[0]!,
+      sourceCount: 0,
+      chunkEvidenceCount: 0,
+      evidenceRefCount: 0,
+      refs: [],
+    }],
+  })
+  const unavailable = createRetrievalInspector({
+    availability: 'partial',
+    candidateCount: null,
+    evidenceRefCount: 0,
+    retrievalCalls: [{
+      ...createAvailableRetrievalInspector().retrievalCalls[0]!,
+      ok: false,
+      code: 'timeout',
+      sourceCount: null,
+      chunkEvidenceCount: null,
+      evidenceRefCount: null,
+      strategy: null,
+      refs: [],
+    }],
+  })
+
+  assert.equal(createRetrievalInspectorCounts(zeroHit).candidateCount, 0)
+  assert.equal(createRetrievalInspectorCounts(unavailable).candidateCount, null)
+  assert.equal(createRetrievalInspectorCounts(unavailable).failedCallCount, 1)
+  assert.equal(resolveCallStatusTone(zeroHit.retrievalCalls[0]!.ok), 'success')
+  assert.equal(resolveCallStatusTone(unavailable.retrievalCalls[0]!.ok), 'error')
 }
 
 function createRetrievalInspector(

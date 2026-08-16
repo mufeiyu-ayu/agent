@@ -186,7 +186,7 @@ export function projectAdminRunDetail(
   const timeline = enforceContextSequenceInvariants(
     [...run.steps]
       .sort(compareSteps)
-      .map(projectTimelineItem),
+      .map(step => projectTimelineItem(step, run.assistantMessageId)),
   )
 
   return {
@@ -200,6 +200,7 @@ export function projectAdminRunDetail(
     timeline,
     retrievalInspector: projectAdminRetrievalInspector({
       runStatus: run.status,
+      assistantMessageId: run.assistantMessageId,
       steps: run.steps,
       timeline,
       assistantMessage: run.assistantMessage,
@@ -223,6 +224,7 @@ export function projectAdminRunDetail(
 
 function projectTimelineItem(
   step: AdminRunDetailProjectionStepRecord,
+  assistantMessageId: string | null,
 ): AdminRunTimelineItem {
   const input = readObject(step.input)
   const output = readObject(step.output)
@@ -246,8 +248,11 @@ function projectTimelineItem(
         : projectGenericStep(step)
     case AGENT_STEP_TYPES.groundedFinalization:
       // metadata 不可信时回落到既有 Generic fallback，不给出一份看起来完整的假 Step。
-      return projectGroundedFinalizationStep(step, knownStepBase(step))
-        ?? projectGenericStep(step)
+      return projectGroundedFinalizationStep(
+        step,
+        knownStepBase(step),
+        assistantMessageId,
+      ) ?? projectGenericStep(step)
     case AGENT_STEP_TYPES.assistantOutput:
       return isValidAssistantOutput(input, step.output, step.status)
         ? projectAssistantOutput(step, input, output)

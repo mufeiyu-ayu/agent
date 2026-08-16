@@ -11,6 +11,8 @@ import {
   createMalformedDetail,
   createOrdinaryDetail,
   createRunningDetail,
+  createUnknownResultDetail,
+  createZeroHitDetail,
   FORBIDDEN_DOM_PATTERNS,
   installRunDetail,
   RUN_ID,
@@ -25,6 +27,7 @@ const SWITCH = '[data-testid="inspector-view-switch"]'
 const RETRIEVAL = '[data-testid="retrieval-inspector"]'
 const AVAILABILITY = '[data-testid="retrieval-availability"]'
 const CALLS = '[data-testid="retrieval-calls"]'
+const CALL_STATUS = '[data-testid^="retrieval-call-status-"]'
 const CITATIONS = '[data-testid="retrieval-citations"]'
 
 async function openRunDetail(page: Page, detail: AdminRunDetail): Promise<void> {
@@ -41,6 +44,15 @@ async function switchToRetrieval(page: Page): Promise<void> {
 async function switchToEvent(page: Page): Promise<void> {
   await page.locator(SWITCH).getByText('事件', { exact: true }).click()
   await expect(page.locator(RETRIEVAL)).toHaveCount(0)
+}
+
+/** 读取 Retrieval Overview 中某个字段的值单元格。 */
+function readOverviewField(page: Page, label: string) {
+  return page
+    .locator(RETRIEVAL)
+    .locator('dl')
+    .first()
+    .locator(`dt:text-is("${label}") + dd`)
 }
 
 async function expectNoForbiddenText(page: Page): Promise<void> {
@@ -172,10 +184,52 @@ test.describe('状态矩阵', () => {
     await expect(page.locator(RETRIEVAL)).toContainText('sampling_incomplete')
     await expect(page.locator(RETRIEVAL)).toContainText('stream_failed')
     await expect(page.locator(RETRIEVAL)).toContainText('证据通道不可用')
+    // 候选数量未知：必须显示「未记录」，不能显示 0。
+    await expect(readOverviewField(page, '候选数量')).toHaveText('未记录')
+    await expect(page.locator(CALL_STATUS)).toHaveAttribute('data-tone', 'error')
 
     await expectNoForbiddenText(page)
     await page.screenshot({
       path: `${SCREENSHOT_DIR}failed-partial-retrieval.png`,
+      fullPage: true,
+    })
+  })
+
+  test('AC-08：zero-hit 显示确定的候选数量 0，与 Tool 不可用的未知区分开', async ({ page }) => {
+    await openRunDetail(page, createZeroHitDetail())
+    await switchToRetrieval(page)
+
+    await expect(page.locator(AVAILABILITY)).toHaveText('审计完整')
+    // zero-hit 是「确定没有候选」，与「候选数量未知」必须显示不同。
+    await expect(readOverviewField(page, '候选数量')).toHaveText('0')
+    await expect(page.locator(RETRIEVAL)).toContainText('没有命中证据')
+    await expect(page.locator(RETRIEVAL)).toContainText('证据不足')
+    await expect(page.locator(RETRIEVAL)).toContainText('本次回答没有引用任何来源')
+    await expect(page.locator(CALL_STATUS)).toHaveAttribute('data-tone', 'success')
+
+    await expectNoForbiddenText(page)
+    await page.screenshot({
+      path: `${SCREENSHOT_DIR}zero-hit-retrieval.png`,
+      fullPage: true,
+    })
+  })
+
+  test('AC-08：Tool 结果未记录时状态标签为中性而不是成功色', async ({ page }) => {
+    await openRunDetail(page, createUnknownResultDetail())
+    await switchToRetrieval(page)
+
+    const status = page.locator(CALL_STATUS)
+
+    await expect(status).toHaveText('结果未记录')
+    await expect(status).toHaveAttribute('data-tone', 'neutral')
+    // 不得沿用成功色：既不是 ant-design 的 green Tag，也不显示成功文案。
+    await expect(status).not.toHaveClass(/ant-tag-green/)
+    await expect(status).not.toHaveText('成功')
+    await expect(readOverviewField(page, '候选数量')).toHaveText('未记录')
+
+    await expectNoForbiddenText(page)
+    await page.screenshot({
+      path: `${SCREENSHOT_DIR}unknown-call-result.png`,
       fullPage: true,
     })
   })
