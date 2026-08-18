@@ -47,3 +47,18 @@ export type ModelStreamEvent
     type: 'response_completed'
     finishReason: ModelFinishReason
   }
+
+/** 合并流式 usage 分片；没有任何已知字段时保持 null，绝不补零。 */
+export function mergeModelUsage(
+  current: ModelUsage | null,
+  next: ModelUsage,
+): ModelUsage | null {
+  const merged: ModelUsage = {
+    ...(current ?? {}),
+    ...(next.inputTokens === undefined ? {} : { inputTokens: next.inputTokens }),
+    ...(next.outputTokens === undefined ? {} : { outputTokens: next.outputTokens }),
+    ...(next.totalTokens === undefined ? {} : { totalTokens: next.totalTokens }),
+  }
+
+  return Object.keys(merged).length > 0 ? merged : null
+}

@@ -6,6 +6,7 @@ import type {
 } from '../llm/model-stream.types.js'
 import type { UnvalidatedToolCallEnvelope } from '../tools/core/tool.types.js'
 
+import { mergeModelUsage } from '../llm/model-stream.types.js'
 import { ModelSamplingIncompleteError } from './agent-runtime.errors.js'
 
 export interface ModelSamplingSummary {
@@ -176,20 +177,6 @@ export async function* streamModelSampling(
     type: 'final_answer',
     summary: buildSummary(),
   }
-}
-
-function mergeModelUsage(
-  current: ModelUsage | null,
-  next: ModelUsage,
-): ModelUsage | null {
-  const merged: ModelUsage = {
-    ...(current ?? {}),
-    ...(next.inputTokens === undefined ? {} : { inputTokens: next.inputTokens }),
-    ...(next.outputTokens === undefined ? {} : { outputTokens: next.outputTokens }),
-    ...(next.totalTokens === undefined ? {} : { totalTokens: next.totalTokens }),
-  }
-
-  return Object.keys(merged).length > 0 ? merged : null
 }
 
 function toToolCallEnvelope(

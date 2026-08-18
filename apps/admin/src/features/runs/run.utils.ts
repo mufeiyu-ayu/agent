@@ -1,5 +1,3 @@
-import type { RunFilters } from './run.model'
-
 const dateTimeOptions: Intl.DateTimeFormatOptions = {
   timeZone: 'Asia/Shanghai',
   year: 'numeric',
@@ -45,13 +43,6 @@ export const knownTimelineInspectorKeys = {
   receive_user_message: 'timeline.inspectors.receiveUserMessage',
   tool_execution: 'timeline.inspectors.toolExecution',
 } as const
-
-export const defaultRunFilters: RunFilters = {
-  query: '',
-  status: undefined,
-  dateFrom: '',
-  dateTo: '',
-}
 
 export function formatRequestedModel(model: string | null, fallback = 'Default request'): string {
   return model ?? fallback

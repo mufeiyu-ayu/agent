@@ -1,13 +1,10 @@
-<script setup lang="ts">
+<script lang="ts">
 import type Token from 'markdown-it/lib/token.mjs'
 
 import MarkdownIt from 'markdown-it'
 import { computed } from 'vue'
 
-const props = defineProps<{
-  text: string
-}>()
-
+// 解析器配置是纯静态的，放模块级共享一个实例，避免每条回复各建一个。
 const markdown = new MarkdownIt({
   breaks: true,
   html: false,
@@ -34,8 +31,6 @@ markdown.renderer.rules.link_open = (tokens, index, options, env, self) => {
   return self.renderToken(tokens, index, options)
 }
 
-const renderedContent = computed(() => markdown.render(props.text.trim()))
-
 function setTokenAttr(token: Token, name: string, value: string) {
   const attrIndex = token.attrIndex(name)
 
@@ -49,6 +44,14 @@ function setTokenAttr(token: Token, name: string, value: string) {
 
   token.attrs[attrIndex][1] = value
 }
+</script>
+
+<script setup lang="ts">
+const props = defineProps<{
+  text: string
+}>()
+
+const renderedContent = computed(() => markdown.render(props.text.trim()))
 </script>
 
 <template>
