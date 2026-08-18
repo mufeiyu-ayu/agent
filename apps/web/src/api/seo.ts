@@ -74,7 +74,18 @@ async function* parseChatStreamEvents(
     }
   }
   finally {
-    reader.releaseLock()
+    // 解析异常或消费者提前退出时必须 cancel：只 releaseLock 不会关闭底层
+    // HTTP 连接，后端会继续采样、计费并把消息持久化为 COMPLETED，与 UI
+    // 的失败状态背离。流已正常读完时 cancel 是 no-op。
+    try {
+      await reader.cancel()
+    }
+    catch {
+      // 连接可能已被 abort；取消失败无需处理。
+    }
+    finally {
+      reader.releaseLock()
+    }
   }
 }
 
