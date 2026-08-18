@@ -79,6 +79,8 @@ export type GroundedAnswerRejectionCode
     | 'malformed_json'
     | 'outcome_not_allowed_for_availability'
     | 'schema_invalid'
+    // 模型以纯文本正常 stop 结束、未调用提交工具：模型不服从，消耗 correction。
+    | 'submission_missing'
     | 'unknown_citation_key'
 
 export class GroundedAnswerRejectedError extends Error {

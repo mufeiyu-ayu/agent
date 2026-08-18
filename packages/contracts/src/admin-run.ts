@@ -210,6 +210,8 @@ export type AdminGroundedAnswerRejectionCode
     | 'malformed_json'
     | 'outcome_not_allowed_for_availability'
     | 'schema_invalid'
+    // 模型以纯文本正常 stop 结束、未调用提交工具（模型不服从）。
+    | 'submission_missing'
     | 'unknown_citation_key'
 
 /** 终态采样流未完整结束的安全类别；与「模型说错了」是两类问题。 */
