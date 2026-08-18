@@ -46,6 +46,12 @@ export class SeoService {
             throw new NotFoundException('会话不存在或已被删除')
           }
 
+          if (event.failureReason === 'terminalization_unknown') {
+            // 收口结果未知：run 可能实际已成功提交，不能引导用户重试，
+            // 否则会造成重复提问与重复计费。
+            throw new ServiceUnavailableException(event.message)
+          }
+
           throw new ServiceUnavailableException(
             '模型服务暂时没有返回结果，请稍后重试。',
           )

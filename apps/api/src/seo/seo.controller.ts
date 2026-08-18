@@ -1,5 +1,5 @@
 import type { ChatStreamEvent } from '@agent/contracts'
-import { Body, Controller, HttpStatus, Inject, Post, Res } from '@nestjs/common'
+import { Body, Controller, HttpStatus, Inject, Logger, Post, Res } from '@nestjs/common'
 
 // DTO classes are required at runtime for Nest decorator metadata.
 // eslint-disable-next-line ts/consistent-type-imports
@@ -19,6 +19,8 @@ interface StreamResponse {
 
 @Controller('seo')
 export class SeoController {
+  private readonly logger = new Logger(SeoController.name)
+
   constructor(
     @Inject(SeoService)
     private readonly seoService: SeoService,
@@ -54,16 +56,27 @@ export class SeoController {
       for await (const event of this.seoService.chatStream(body, {
         signal: abortController.signal,
       })) {
-        if (response.destroyed) {
-          abortController.abort()
-          break
+        // 断连后不能 break：break 会触发 generator.return()，让 runtime 的
+        // yield 点以 return 语义恢复、跳过 catch 收口路径。abort 信号由
+        // 'close' 监听统一触发；这里继续 drain（不再写出），让 runtime 走
+        // 正常 ABORTED 收口并产出 run_aborted 审计事件。runtime 的 finally
+        // 兜底只保障其他消费者 return() 时的 DB 终态，不能替代 drain。
+        if (!response.destroyed) {
+          writeNdjsonEvent(response, event)
         }
-
-        writeNdjsonEvent(response, event)
       }
     }
+    catch (error) {
+      // NDJSON 流已开始写出，异常不能再交给全局异常过滤器（会对已结束的
+      // response 再写 JSON）；runtime 在抛出终态化异常前已 best-effort
+      // 向流写入 error 事件，这里只记录。
+      this.logger.error(
+        'SEO chat 流式收口异常',
+        error instanceof Error ? error.stack : String(error),
+      )
+    }
     finally {
-      if (!response.destroyed) {
+      if (!response.destroyed && !response.writableEnded) {
         response.end()
       }
     }
