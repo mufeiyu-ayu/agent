@@ -6,11 +6,16 @@ import type {
 import { createRequire } from 'node:module'
 import { performance } from 'node:perf_hooks'
 
+import { Logger } from '@nestjs/common'
+
 import { ARTICLE_CHUNKER_PROFILE } from '../article-indexing/article-chunking.js'
 import { ACTIVE_EMBEDDING_PROFILE } from '../embeddings/embedding-provider.js'
 
 export const LEXICAL_ARTICLE_CANDIDATE_LIMIT = 10
 export const VECTOR_CHUNK_CANDIDATE_LIMIT = 40
+
+/** stale 排除告警的节流间隔；observability 查询不允许放大检索 QPS。 */
+export const STALE_EXCLUSION_CHECK_INTERVAL_MS = 60_000
 
 const PG_POOL_ACQUISITION_TIMEOUT_MS = 2_000
 const PG_CANCEL_TIMEOUT_MS = 2_000
@@ -68,6 +73,14 @@ export interface ArticleRetrievalPool {
   connect: () => Promise<ArticleRetrievalPoolClient>
   cancel: (processId: number) => Promise<boolean>
   query: <Row = Record<string, unknown>>(
+    text: string,
+    values?: unknown[],
+  ) => Promise<PgQueryResult<Row>>
+  /**
+   * 有界旁路查询：走独立小连接池并带 2s query/statement timeout，
+   * 供 observability 等非关键查询使用，绝不与检索主 pool 抢连接。
+   */
+  auxiliaryQuery: <Row = Record<string, unknown>>(
     text: string,
     values?: unknown[],
   ) => Promise<PgQueryResult<Row>>
@@ -214,6 +227,22 @@ const VECTOR_CANDIDATES_SQL = `
   LIMIT 40
 `
 
+// 统计「已索引但在当前 active profile 下不可被向量检索」的文章：
+// sourceUpdatedAt 过期、chunker / embedding 版本不匹配都属于同一类
+// 静默排除；chunkCount = 0 的空文章是合法状态，不计入。
+const STALE_ARTICLE_COUNT_SQL = `
+  SELECT COUNT(*)::int AS stale_article_count
+  FROM "ArticleIndexState" AS state
+  INNER JOIN "Article" AS article
+    ON article."id" = state."articleId"
+  WHERE state."chunkCount" > 0
+    AND (
+      state."chunkerVersion" <> $1::text
+      OR state."embeddingVersion" <> $2::text
+      OR state."sourceUpdatedAt" <> article."updatedAt"
+    )
+`
+
 const SET_LOCAL_TIMEOUTS_SQL = `
   SELECT
     set_config('statement_timeout', $1::text, true),
@@ -221,6 +250,9 @@ const SET_LOCAL_TIMEOUTS_SQL = `
 `
 
 export class PostgresArticleRetrievalRepository implements ArticleRetrievalRepositoryContract {
+  private readonly logger = new Logger(PostgresArticleRetrievalRepository.name)
+  private lastStaleCheckAt = 0
+
   constructor(private readonly pool: ArticleRetrievalPool) {}
 
   async findLexicalCandidates(
@@ -269,6 +301,8 @@ export class PostgresArticleRetrievalRepository implements ArticleRetrievalRepos
       onSqlLatencyMs,
     )
 
+    this.maybeWarnStaleExcludedArticles()
+
     return rows.map((row) => {
       const cosineDistance = Number(row.cosine_distance)
       if (!Number.isFinite(cosineDistance))
@@ -288,6 +322,41 @@ export class PostgresArticleRetrievalRepository implements ArticleRetrievalRepos
         cosineDistance,
       }
     })
+  }
+
+  /**
+   * freshness gate（sourceUpdatedAt = article.updatedAt）是 fail-closed 设计，
+   * 保持不变；这里只补上「静默」的另一半：存在被排除的已索引文章时告警。
+   *
+   * fire-and-forget + 节流：可观测性查询不增加检索主路径延迟，也不放大
+   * QPS；查询失败只吞掉，绝不影响检索结果。
+   */
+  private maybeWarnStaleExcludedArticles(): void {
+    const now = Date.now()
+
+    if (now - this.lastStaleCheckAt < STALE_EXCLUSION_CHECK_INTERVAL_MS)
+      return
+
+    this.lastStaleCheckAt = now
+    void this.pool
+      .auxiliaryQuery<{ stale_article_count: number }>(STALE_ARTICLE_COUNT_SQL, [
+        ARTICLE_CHUNKER_PROFILE.version,
+        ACTIVE_EMBEDDING_PROFILE.version,
+      ])
+      .then(({ rows }) => {
+        const staleCount = Number(rows[0]?.stale_article_count ?? 0)
+
+        if (staleCount > 0) {
+          this.logger.warn(
+            `${staleCount} 篇已索引文章在当前 profile 下不可被向量检索`
+            + '（版本不匹配或 sourceUpdatedAt 过期），hybrid 对它们退化为'
+            + '纯 lexical；请执行 pnpm index:articles 刷新索引。',
+          )
+        }
+      })
+      .catch(() => {
+        // 可观测性查询失败不影响检索主路径。
+      })
   }
 }
 
@@ -318,6 +387,11 @@ export function createArticleRetrievalPool(
     },
     query: async <Row>(text: string, values?: unknown[]) => (
       await queryPool.query<Row>(text, values)
+    ),
+    // cancellationPool 自带 2s query/statement timeout 且 max=1，
+    // 是现成的有界旁路，observability 查询不会拖垮检索主 pool。
+    auxiliaryQuery: async <Row>(text: string, values?: unknown[]) => (
+      await cancellationPool.query<Row>(text, values)
     ),
     end: async () => {
       await Promise.all([
