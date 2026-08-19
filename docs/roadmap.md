@@ -25,7 +25,7 @@ Phase 9：未定案
 | 阶段 5：最小 Tool Calling | Completed | Tool Call、Observation、follow-up sampling |
 | [阶段 6：有界单 Agent Loop](./tasks/completed/phase-06-bounded-agent-loop.md) | Completed | bounded loop、DeepSeek continuation、deadline、终态可靠性 |
 | [阶段 7：Context Engineering](./tasks/completed/phase-07-context-engineering.md) | Completed | ModelContext、budget、history、Observation governance、Context Inspector |
-| [阶段 8：Grounded Retrieval / RAG Baseline](./tasks/phase-08-grounded-retrieval/README.md) | **Completed** | Evaluation、Chunk / Index、Hybrid Retrieval、Agent Tool、Grounded Answer、Web Sources、Admin Inspector |
+| [阶段 8：Grounded Retrieval / RAG Baseline](./tasks/completed/phase-08-grounded-retrieval.md) | **Completed** | Evaluation、Chunk / Index、Hybrid Retrieval、Agent Tool、Grounded Answer、Web Sources、Admin Inspector |
 
 ## Phase 8 路线
 
@@ -80,7 +80,7 @@ Phase 8 Closeout                                       Completed
 
 ## 当前学习阶段
 
-正式开发暂停，进入 Phase 8 学习闭环：
+正式开发暂停，进入 Phase 8 源码阅读阶段，按以下链路回读代码：
 
 ```text
 索引入口
@@ -96,11 +96,11 @@ Phase 8 Closeout                                       Completed
   -> Admin Retrieval Inspector
 ```
 
-该阶段属于阅读、讨论、复盘和本地实验模式，默认不创建 Issue、不修改正式状态。
+该阶段属于阅读、讨论和本地实验模式，默认不创建 Issue、不修改正式状态。下一阶段学习内容暂不定义。
 
 ## Phase 9 决策原则
 
-Phase 9 尚未定案。完成 Phase 8 代码阅读后，再基于真实产品价值和能力缺口选择方向。
+Phase 9 尚未定案。完成 Phase 8 源码阅读后，再基于真实产品价值和能力缺口选择方向。
 
 候选方向包括但不限于：
 
@@ -144,8 +144,8 @@ Phase 8 Task 3C 已完成安全 Retrieval Inspector，但不自动启动 Task 4�
 ## 当前正式动作
 
 ```text
-Phase 8：Completed
-Task 3C：Completed / #62 Closed / #63 Merged / 20f838fb
+Phase 8：Completed / 已归档（docs/tasks/completed/phase-08-grounded-retrieval.md）
 Active Agent Task：无
-下一步：Phase 8 代码阅读与学习复盘
+当前阶段：Phase 8 源码阅读（学习阶段）
+下一阶段学习内容：暂不定义
 ```

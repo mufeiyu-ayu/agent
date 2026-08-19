@@ -23,7 +23,7 @@ Phase 8 已完成：
 - Task 3B：Web Grounding 状态、Sources disclosure、Source cards 与 Chromium，#60 / #61 / `572ad206`；
 - Task 3C：Admin Retrieval / Finalization / Citation Inspector，#62 / #63 / `20f838fb`。
 
-下一步为 Phase 8 代码阅读与学习复盘，不创建正式 Issue。Phase 9 尚未定案。
+当前为 Phase 8 源码阅读阶段，不创建正式 Issue；下一阶段学习内容暂不定义。Phase 9 尚未定案。
 
 ## 文档入口
 
@@ -31,11 +31,7 @@ Phase 8 已完成：
 | --- | --- |
 | [roadmap.md](./roadmap.md) | 阶段路线、学习闭环与 Phase 9 决策原则 |
 | [tasks/README.md](./tasks/README.md) | 正式任务看板和状态事实来源 |
-| [Phase 8 总览](./tasks/phase-08-grounded-retrieval/README.md) | Completed：Task 0-3C、阶段不变量与边界 |
-| [Task 3 编排](./tasks/phase-08-grounded-retrieval/task-03-grounded-answer-retrieval-inspector.md) | Completed：3A / 3B / 3C 的依赖与共享 Contract |
-| [Task 3A](./tasks/phase-08-grounded-retrieval/task-03a-grounded-answer-citation-contract.md) | Completed：Grounded Answer / Citation Backend |
-| [Task 3B](./tasks/phase-08-grounded-retrieval/task-03b-web-source-ui.md) | Completed：Web Chat Source UI |
-| [Task 3C](./tasks/phase-08-grounded-retrieval/task-03c-admin-retrieval-inspector.md) | Completed：Admin Retrieval Inspector |
+| [Phase 8 归档](./tasks/completed/phase-08-grounded-retrieval.md) | Completed：Task 0-3C 全部内容、阶段不变量与边界 |
 | [Grounded Answer / Citation 研究](./research/phase-08-grounded-answer-citation-design.md) | Provider、开源方案与架构定案 |
 | [Phase 7 归档](./tasks/completed/phase-07-context-engineering.md) | Context Engineering 最终能力与边界 |
 | [Phase 6 归档](./tasks/completed/phase-06-bounded-agent-loop.md) | Agent Loop、deadline、终态可靠性 |
@@ -66,7 +62,7 @@ Phase 8 已完成：
        -> Admin Retrieval / Finalization / Citation Inspector
 ```
 
-## 下一步学习顺序
+## 当前源码阅读顺序
 
 ```text
 Chunking / Indexing

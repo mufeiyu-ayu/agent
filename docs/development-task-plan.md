@@ -7,7 +7,7 @@
 - [docs/README.md](./README.md)：文档总入口；
 - [docs/roadmap.md](./roadmap.md)：阶段级路线；
 - [docs/tasks/README.md](./tasks/README.md)：正式 Task 状态；
-- [Phase 8 总览](./tasks/phase-08-grounded-retrieval/README.md)：Task 0-3 编排；
+- [Phase 8 归档](./tasks/completed/phase-08-grounded-retrieval.md)：Task 0-3C 最终归档；
 - [docs/development-workflow.md](./development-workflow.md)：协作规范。
 
 当前快照：

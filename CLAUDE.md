@@ -43,13 +43,14 @@ Claude Code 应作为 Agent 应用开发学习搭档，负责按正式 Issue 实
 | `docs/development-workflow.md` | GPT、Issue、Claude Code、PR、Review、学习 docs 与受托执行规范 |
 | `docs/tasks/completed/phase-06-bounded-agent-loop.md` | 已完成 Phase 6 的最终归档入口 |
 | `docs/tasks/completed/phase-07-context-engineering.md` | 已完成 Phase 7 的最终归档入口 |
+| `docs/tasks/completed/phase-08-grounded-retrieval.md` | 已完成 Phase 8 的最终归档入口 |
 | `docs/tasks/completed/` | 已完成阶段归档 |
 | `docs/research/` | 研究资料、学习路线、技术方案和复盘沉淀 |
 | `docs/work-log.md` | 近期真实推进与收口记录 |
 
 `docs/development-task-plan.md` 只保留为旧入口兼容，不再写入新任务。
 
-当前 Agent 主线状态：Phase 1-8 已 Completed（Phase 8 Task 0、1、2A、2B、3A、3B、3C 全部 Completed）；当前无 Active Agent Task；下一步为 Phase 8 代码阅读与学习复盘；Phase 9 未定案；Minimal Compaction 继续保持 Gated；Admin Task 4 保持 Planned。
+当前 Agent 主线状态：Phase 1-8 已 Completed 并归档（Phase 8 Task 0、1、2A、2B、3A、3B、3C 全部 Completed）；当前无 Active Agent Task；当前阶段为 Phase 8 源码阅读（学习阶段），下一阶段学习内容暂不定义；Phase 9 未定案；Minimal Compaction 继续保持 Gated；Admin Task 4 保持 Planned。
 
 ## 4. 关键目录与任务入口
 
