@@ -17,7 +17,6 @@ import { resolveEmbeddingRuntimeConfig } from '../../embeddings/embedding-provid
 import { GeminiEmbeddingProvider } from '../../embeddings/gemini-embedding.provider.js'
 import {
   DatabaseOperationDeadlineExceededError,
-  PrismaService,
 } from '../../prisma/prisma.service.js'
 import { HybridArticleRetriever } from '../hybrid-article-retriever.js'
 import { LexicalArticleRetriever } from '../lexical-article-retriever.js'
@@ -25,7 +24,6 @@ import {
   createArticleRetrievalPool,
   PostgresArticleRetrievalRepository,
 } from '../postgres-article-retrieval.repository.js'
-import { PrismaArticleRetriever } from '../prisma-article-retriever.js'
 import { VectorArticleRetriever } from '../vector-article-retriever.js'
 import { evaluateArticleRetrievalQualityV2 } from './article-retrieval-quality-v2.js'
 
@@ -123,26 +121,15 @@ async function createProductionRuntime(): Promise<RetrievalQualityRuntime> {
     )
   }
 
-  process.env.DATABASE_URL = connectionString
   const provider = new GeminiEmbeddingProvider(
     resolveEmbeddingRuntimeConfig(process.env),
   )
-  const prisma = new PrismaService()
   const pool = createArticleRetrievalPool(connectionString)
-
-  try {
-    await prisma.$connect()
-  }
-  catch (error) {
-    await Promise.all([
-      prisma.$disconnect().catch(() => {}),
-      pool.end().catch(() => {}),
-    ])
-    throw error
-  }
-
   const repository = new PostgresArticleRetrievalRepository(pool)
-  const lexicalRetriever = new PrismaArticleRetriever(prisma)
+  // standalone lexical 基线必须与 hybrid 内部 lexical 通道同一实现
+  // （postgres_lexical_ranked@1）：对照实验的基线与对照组组件不同源时，
+  // hybrid 的增益无法归因（旧报告用 prisma_lexical@1，口径不可直接对比）。
+  const lexicalRetriever = new LexicalArticleRetriever(repository)
 
   return {
     strategies: {
@@ -177,10 +164,7 @@ async function createProductionRuntime(): Promise<RetrievalQualityRuntime> {
       ),
     },
     close: async () => {
-      await Promise.all([
-        prisma.$disconnect(),
-        pool.end(),
-      ])
+      await pool.end()
     },
   }
 }
