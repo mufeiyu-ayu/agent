@@ -153,19 +153,25 @@ Requirements:
 
 - Node.js `^20.19.0` or `>=22.12.0`
 - pnpm `10.32.1`
-- PostgreSQL
-- pgvector for Article Embedding Index migration / indexing
+- PostgreSQL **with the pgvector extension**（`docker compose up -d postgres` 使用的镜像已内置；自装 PostgreSQL 时必须额外安装 pgvector，否则 Embedding Index migration 会失败）
 - A DeepSeek or other OpenAI-compatible Chat Completions endpoint
 - A Google AI Studio Gemini API Key when running explicit Embedding smoke, indexing, or real vector retrieval
 
 ```bash
 corepack enable
 pnpm install
-cp .env.example .env
+cp .env.example .env                                    # 填入 LLM_API_KEY / GEMINI_API_KEY
+docker compose up -d postgres                           # 启动含 pgvector 的主库
 pnpm prisma:generate
-pnpm prisma:migrate
+pnpm prisma:migrate                                     # 应用全部 migration
+node --env-file=.env --import tsx apps/api/scripts/seed.ts   # 灌入 Demo 文章（幂等）
+pnpm --filter @agent/api index:articles -- --mode=incremental # 构建向量索引（调真实 Gemini）
 pnpm dev
 ```
+
+seed 与 index 两步是 Retrieval / Grounding 链路可用的前提：跳过它们时普通聊天仍可用，但 `retrieve_article_context` 会因缺少 active index 而 fail closed。
+
+> **从旧版 `postgres:16-alpine` 升级的开发机注意**：alpine（musl）初始化的数据卷在新镜像（glibc）下会有 collation 版本告警，文本索引可能失序。开发数据都可重建，建议直接重置主库卷后重走 migrate / seed / index：`docker compose rm -sf postgres && docker volume rm <项目前缀>_postgres-data && docker compose up -d postgres`。
 
 | Application | URL |
 | --- | --- |
