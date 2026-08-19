@@ -119,6 +119,7 @@ const REJECTION_CODES: AdminGroundedAnswerRejectionCode[] = [
   'malformed_json',
   'outcome_not_allowed_for_availability',
   'schema_invalid',
+  'submission_missing',
   'unknown_citation_key',
 ]
 const SAMPLING_FAILURES: AdminGroundedFinalizationSamplingFailure[] = [

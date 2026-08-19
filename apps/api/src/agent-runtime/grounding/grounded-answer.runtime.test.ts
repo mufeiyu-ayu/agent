@@ -416,7 +416,7 @@ describe('Grounded finalization 路径', () => {
     assert.equal(output.rejectionCode, 'citation_required_for_answered')
   })
 
-  it('finalization 改输出自由文本时按采样故障收口，不伪装 zero-hit', async () => {
+  it('finalization 改输出自由文本时消耗 correction，重试仍不服从则失败收口', async () => {
     const plainText = () => toModelStream([
       { type: 'text_delta', delta: '模型改成了自由文本' },
       { type: 'response_completed', finishReason: 'stop' },
@@ -452,11 +452,14 @@ describe('Grounded finalization 路径', () => {
     )
     const output = step?.output as Record<string, unknown>
 
-    // 模型没有提交终态调用属于采样故障，不消耗 correction，也不会被记成 schema 问题。
-    assert.equal(output.failureReason, 'sampling_incomplete')
-    assert.equal(output.samplingFailure, 'unexpected_finish_reason')
-    assert.equal(output.rejectionCode, undefined)
-    assert.equal(harness.llmCalls.length, 3)
+    // 正常 stop 且没有提交调用是「模型不服从」：消耗 correction 重试一次；
+    // 两次都不服从时按校验失败收口，审计里是 rejectionCode 而非采样故障。
+    assert.equal(output.failureReason, 'validation_failed')
+    assert.equal(output.rejectionCode, 'submission_missing')
+    assert.equal(output.samplingFailure, undefined)
+    assert.equal(output.attemptCount, 2)
+    // action 2 次 + finalization 首次 + correction 1 次。
+    assert.equal(harness.llmCalls.length, 4)
   })
 
   it('eligible Tool 失败时进入 unavailable，并按 insufficient 收口', async () => {

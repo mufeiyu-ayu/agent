@@ -61,7 +61,11 @@ export class GroundedFinalizationFailedError extends Error {
     readonly rejectionCode: GroundedAnswerRejectionCode,
     readonly attempts: GroundedFinalizationAttemptSummary[] = [],
   ) {
-    super('本轮回答未能通过引用校验，已安全放弃。')
+    // submission_missing 时并没有跑过引用校验（模型根本没提交），
+    // 用户可见文案不能声称「未通过校验」。
+    super(rejectionCode === 'submission_missing'
+      ? '本轮回答未能完成结构化提交，已安全放弃。'
+      : '本轮回答未能通过引用校验，已安全放弃。')
     this.name = 'GroundedFinalizationFailedError'
   }
 }
@@ -118,9 +122,10 @@ export interface RunGroundedFinalizationInput {
 /**
  * 执行 finalization sampling，直到得到通过校验的终态输出或用尽 attempt 预算。
  *
- * 只有结构 / 引用校验失败才会消耗 correction 机会；Provider 流不完整、错误的
- * finish reason、连接异常、超时和外部中断直接向上抛出，避免把「服务故障」
- * 伪装成「模型说错了」或「知识库无答案」。
+ * 消耗 correction 的只有两类「模型说错了」：结构 / 引用校验失败，以及模型
+ * 以纯文本正常 stop 结束而未调用提交工具（submission_missing）。Provider 流
+ * 不完整、异常 finish reason、连接异常、超时和外部中断直接向上抛出，避免把
+ * 「服务故障」伪装成「模型说错了」或「知识库无答案」。
  *
  * @throws GroundedFinalizationFailedError attempt 用尽后仍未通过校验。
  * @throws GroundedFinalizationSamplingError 终态 sampling 未能完整结束。
@@ -152,7 +157,7 @@ export async function runGroundedFinalization(
     // 从这一行起，一次真实模型调用已经发起：无论后面怎么失败，attempt 事实都必须留下。
     const sampling = await consumeFinalizationSampling(input.sample(items))
 
-    if (!sampling.ok) {
+    if (!sampling.ok && sampling.kind === 'sampling_failure') {
       recordAttempt({
         attempt,
         ok: false,
@@ -171,6 +176,13 @@ export async function runGroundedFinalization(
       // 这次复核必须留在 try 内：模型流已经完整结束、usage 也可能已经收到，
       // 若此刻 Abort 或 deadline 生效，仍然要先把 attempt 事实记下来再抛出。
       input.assertAvailable()
+
+      if (!sampling.ok) {
+        // 模型不服从（正常 stop、未调用提交工具）：复用「模型说错了」的
+        // rejection 路径消耗 correction，而不是把它伪装成服务故障。
+        throw new GroundedAnswerRejectedError('submission_missing')
+      }
+
       submitted = parseSubmitGroundedAnswerInput(sampling.rawArgumentsJson)
 
       const validated = validateGroundedAnswer(submitted, input.registry)
@@ -265,7 +277,9 @@ export function buildFinalizationInput(
       ? [
           '',
           '## 上一次提交结果',
-          `上一次提交未通过服务端校验，原因类别：${options.rejectionCode}。请修正后重新提交，这是最后一次机会。`,
+          options.rejectionCode === 'submission_missing'
+            ? `上一次你直接输出了普通文本，没有调用提交工具。必须调用 ${SUBMIT_GROUNDED_ANSWER_TOOL_NAME} 工具提交结果，不要输出任何普通文本，这是最后一次机会。`
+            : `上一次提交未通过服务端校验，原因类别：${options.rejectionCode}。请修正后重新提交，这是最后一次机会。`,
         ]
       : []),
   ].join('\n')
@@ -298,7 +312,15 @@ type FinalizationSamplingOutcome
   = | { ok: true, rawArgumentsJson: string, usage: ModelUsage | null }
     | {
       ok: false
+      kind: 'sampling_failure'
       failure: GroundedFinalizationSamplingFailure
+      usage: ModelUsage | null
+    }
+    // 流本身完整（正常 stop 结束），但模型没有调用提交工具：
+    // 这是「模型不服从」，不是 Provider 故障，按校验失败语义消耗 correction。
+    | {
+      ok: false
+      kind: 'model_noncompliance'
       usage: ModelUsage | null
     }
 
@@ -314,9 +336,10 @@ type FinalizationSamplingOutcome
  * - `finishReason === 'tool_calls'`；
  * - `response_completed` 之后没有额外事件。
  *
- * 任何一条不满足都返回 `{ ok: false, failure, usage }`：这是采样故障，不是模型
- * 内容错误，因此不消耗 correction 预算；但它仍然是一次真实模型调用，用量与
- * attempt 事实必须原样交回给调用方。
+ * 任何一条不满足都返回失败分支。其中「正常 stop 结束且无提交」单独归类为
+ * `model_noncompliance`（模型不服从，由调用方按 correction 语义处理）；其余
+ * 是采样故障，不消耗 correction 预算。两类都是真实模型调用，用量与 attempt
+ * 事实必须原样交回给调用方。
  */
 async function consumeFinalizationSampling(
   events: AsyncIterable<ModelStreamEvent>,
@@ -327,7 +350,12 @@ async function consumeFinalizationSampling(
   let completed = false
   const failed = (
     failure: GroundedFinalizationSamplingFailure,
-  ): FinalizationSamplingOutcome => ({ ok: false, failure, usage })
+  ): FinalizationSamplingOutcome => ({
+    ok: false,
+    kind: 'sampling_failure',
+    failure,
+    usage,
+  })
 
   try {
     for await (const event of events) {
@@ -370,6 +398,11 @@ async function consumeFinalizationSampling(
 
   if (!completed)
     return failed('missing_response_completed')
+
+  // 正常 stop 结束且没有任何提交：典型的模型不服从（直接输出了普通文本），
+  // 与 Provider 故障区分开，交给调用方按 correction 语义处理。
+  if (finishReason === 'stop' && rawArgumentsJson === undefined)
+    return { ok: false, kind: 'model_noncompliance', usage }
 
   if (finishReason !== 'tool_calls')
     return failed('unexpected_finish_reason')

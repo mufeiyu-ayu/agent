@@ -7,6 +7,7 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
 import {
+  GroundedFinalizationFailedError,
   GroundedFinalizationSamplingError,
   runGroundedFinalization,
 } from './grounded-answer.finalizer.js'
@@ -211,5 +212,121 @@ describe('runGroundedFinalization post-sampling 可用性复核', () => {
     assert.equal(attempts.length, 1)
     assert.equal(attempts[0]?.ok, true)
     assert.equal(attempts[0]?.submittedCitationKeyCount, 1)
+  })
+})
+
+describe('runGroundedFinalization 模型不服从（正常 stop、未调用提交工具）', () => {
+  function plainTextStream(): ModelStreamEvent[] {
+    return [
+      { type: 'text_delta', delta: '我直接用普通文本回答了。' },
+      { type: 'usage', usage: { inputTokens: 5, outputTokens: 3, totalTokens: 8 } },
+      { type: 'response_completed', finishReason: 'stop' },
+    ]
+  }
+
+  it('首次不服从消耗 correction，第二次成功提交则正常返回', async () => {
+    const registry = createRegistry()
+    const citationKey = registry.list()[0]!.citationKey
+    const attempts: GroundedFinalizationAttemptSummary[] = []
+    const systemPrompts: string[] = []
+    let sampleCount = 0
+
+    const result = await runGroundedFinalization({
+      draft: '草稿',
+      registry,
+      assertAvailable: () => {},
+      onAttempt: summary => attempts.push(summary),
+      sample: (items) => {
+        sampleCount += 1
+        systemPrompts.push((items[0] as { content: string }).content)
+
+        return sampleCount === 1
+          ? toModelStream(plainTextStream())
+          : toModelStream(submissionStream([citationKey]))
+      },
+    })
+
+    assert.equal(result.validated.grounding.outcome, 'answered')
+    assert.equal(sampleCount, 2)
+    assert.equal(attempts.length, 2)
+    // 不服从是「模型说错了」：记 rejectionCode，不是 samplingFailure。
+    assert.equal(attempts[0]?.ok, false)
+    assert.equal(attempts[0]?.rejectionCode, 'submission_missing')
+    assert.equal(attempts[0]?.samplingFailure, undefined)
+    // 真实发生的调用用量不丢。
+    assert.deepEqual(attempts[0]?.usage, {
+      inputTokens: 5,
+      outputTokens: 3,
+      totalTokens: 8,
+    })
+    assert.equal(attempts[1]?.ok, true)
+    // correction prompt 必须点名「没有调用提交工具」而不是泛化的校验失败。
+    assert.match(systemPrompts[1] ?? '', /没有调用提交工具/)
+  })
+
+  it('correction 后仍不服从时按校验失败收口，保留两条 attempt', async () => {
+    const registry = createRegistry()
+    const attempts: GroundedFinalizationAttemptSummary[] = []
+    let sampleCount = 0
+
+    await assert.rejects(
+      runGroundedFinalization({
+        draft: '草稿',
+        registry,
+        assertAvailable: () => {},
+        onAttempt: summary => attempts.push(summary),
+        sample: () => {
+          sampleCount += 1
+          return toModelStream(plainTextStream())
+        },
+      }),
+      (error: unknown) => {
+        assert.ok(error instanceof GroundedFinalizationFailedError)
+        assert.equal(error.rejectionCode, 'submission_missing')
+        assert.equal(error.attempts.length, 2)
+        return true
+      },
+    )
+
+    assert.equal(sampleCount, 2)
+    assert.deepEqual(
+      attempts.map(attempt => attempt.rejectionCode),
+      ['submission_missing', 'submission_missing'],
+    )
+  })
+
+  it('stop 但存在提交调用时仍按采样故障收口，不消耗 correction', async () => {
+    const registry = createRegistry()
+    const citationKey = registry.list()[0]!.citationKey
+    const attempts: GroundedFinalizationAttemptSummary[] = []
+    let sampleCount = 0
+
+    await assert.rejects(
+      runGroundedFinalization({
+        draft: '草稿',
+        registry,
+        assertAvailable: () => {},
+        onAttempt: summary => attempts.push(summary),
+        sample: () => {
+          sampleCount += 1
+
+          const events = submissionStream([citationKey]).map(event => (
+            event.type === 'response_completed'
+              ? { ...event, finishReason: 'stop' as const }
+              : event
+          ))
+
+          return toModelStream(events)
+        },
+      }),
+      (error: unknown) => {
+        assert.ok(error instanceof GroundedFinalizationSamplingError)
+        assert.equal(error.failure, 'unexpected_finish_reason')
+        return true
+      },
+    )
+
+    assert.equal(sampleCount, 1)
+    assert.equal(attempts[0]?.samplingFailure, 'unexpected_finish_reason')
   })
 })
