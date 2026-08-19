@@ -138,6 +138,9 @@ describe('PostgresArticleRetrievalRepository', () => {
     assert.deepEqual(staleQueryValues[0], [
       'article-html-cl100k-v1',
       ACTIVE_EMBEDDING_PROFILE.version,
+      ACTIVE_EMBEDDING_PROFILE.provider,
+      ACTIVE_EMBEDDING_PROFILE.model,
+      ACTIVE_EMBEDDING_PROFILE.dimensions,
     ])
     assert.equal(warnings.length, 1)
     assert.match(warnings[0]!, /2 篇已索引文章.*不可被向量检索/)
