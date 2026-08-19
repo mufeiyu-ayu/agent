@@ -1801,6 +1801,13 @@ describe('AgentRuntimeService model stream', () => {
     assistantMessage.status = MessageStatus.ABORTED
     assistantMessage.content = '已停止'
 
+    // 终态化失败在抛出前会先 best-effort 通知流消费者，再拒绝。
+    const failureEvent = await stream.next()
+
+    assert.equal(
+      (failureEvent.value as AgentRuntimeEvent | undefined)?.type,
+      'run_failed',
+    )
     await assert.rejects(
       stream.next(),
       AgentRunTerminalizationError,
@@ -1858,6 +1865,33 @@ describe('AgentRuntimeService model stream', () => {
     assert.equal(harness.assistantMessage()?.status, MessageStatus.ABORTED)
     assert.deepEqual(harness.recorder.abortedRunIds, ['run-1'])
     assert.deepEqual(harness.recorder.failedRunIds, [])
+    assertNoUnfinishedSteps(harness)
+  })
+
+  it('消费者在 delta 后提前 return() 时兜底收口为 ABORTED', async () => {
+    const harness = createHarness(() => toModelStream([
+      { type: 'text_delta', delta: '部' },
+      { type: 'text_delta', delta: '分' },
+      { type: 'response_completed', finishReason: 'stop' },
+    ]))
+    const generator = harness.run()
+
+    const first = await generator.next()
+    assert.equal((first.value as AgentRuntimeEvent | undefined)?.type, 'run_started')
+    const second = await generator.next()
+    assert.equal((second.value as AgentRuntimeEvent | undefined)?.type, 'assistant_delta')
+
+    // for-await break 语义：触发 generator.return()，yield 点以 return
+    // 语义恢复，catch 不执行，只有 finally 兜底有机会收口。
+    await generator.return(undefined)
+
+    assert.equal(harness.assistantMessage()?.status, MessageStatus.ABORTED)
+    assert.equal(harness.assistantMessage()?.content, '部')
+    assert.deepEqual(harness.recorder.abortedRunIds, ['run-1'])
+    assert.deepEqual(harness.recorder.completedRunIds, [])
+    assert.deepEqual(harness.recorder.failedRunIds, [])
+    // 兜底收口必须同时取消在途模型请求，否则 provider 流会继续生成计费 token。
+    assert.equal(harness.llmCalls[0]?.options?.signal?.aborted, true)
     assertNoUnfinishedSteps(harness)
   })
 
@@ -2151,6 +2185,37 @@ describe('AgentRuntimeService model stream', () => {
     assert.deepEqual(harness.recorder.failedRunIds, [])
     assert.deepEqual(harness.recorder.abortedRunIds, [])
     assert.equal(findStep(harness, 'assistant_output')?.status, AgentStepStatus.RUNNING)
+  })
+
+  it('completion commit 结果未知时抛出前 best-effort 通知流消费者', async () => {
+    const outcomeUnknown = new DatabaseCommitOutcomeUnknownError()
+    const harness = createHarness(() => toModelStream([
+      { type: 'text_delta', delta: '结果未知' },
+      { type: 'response_completed', finishReason: 'stop' },
+    ]))
+    harness.recorder.completeRunCommitError = outcomeUnknown
+
+    const events: AgentRuntimeEvent[] = []
+    let caught: unknown
+
+    try {
+      for await (const event of harness.run())
+        events.push(event)
+    }
+    catch (error) {
+      caught = error
+    }
+
+    assert.ok(caught instanceof AgentRunTerminalizationError)
+    assert.equal(events.at(-1)?.type, 'run_failed')
+    assert.match(
+      (events.at(-1) as { message: string }).message,
+      /收口结果未知/,
+    )
+    // DB 终态仍不被伪造：Message 保持 STREAMING，无任何 cleanup。
+    assert.equal(harness.assistantMessage()?.status, MessageStatus.STREAMING)
+    assert.deepEqual(harness.recorder.abortedRunIds, [])
+    assert.deepEqual(harness.recorder.failedRunIds, [])
   })
 })
 

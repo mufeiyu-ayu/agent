@@ -40,7 +40,11 @@ export interface AgentRuntimeRunFailedEvent {
   runId?: string
   conversationId: string
   assistantMessageId?: string
-  failureReason?: 'conversation_not_found'
+  /**
+   * terminalization_unknown：终态收口失败或 COMMIT 结果未知，run 可能实际
+   * 已成功提交；消费者应引导「刷新确认」而不是「重试」，避免重复发送计费。
+   */
+  failureReason?: 'conversation_not_found' | 'terminalization_unknown'
   message: string
 }
 

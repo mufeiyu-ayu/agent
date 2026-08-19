@@ -20,7 +20,7 @@ import type {
 } from './model-sampling-decision.js'
 import type { SamplingContextPlanSummary } from './sampling-context-planner.js'
 
-import { Inject, Injectable, NotFoundException } from '@nestjs/common'
+import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common'
 import { MessageRole, MessageStatus } from '../generated/prisma/client.js'
 import { LLMService } from '../llm/llm.service.js'
 import { getModelProfile } from '../llm/model-profiles.js'
@@ -107,6 +107,8 @@ interface TerminalStepMetadata {
 
 @Injectable()
 export class AgentRuntimeService {
+  private readonly logger = new Logger(AgentRuntimeService.name)
+
   constructor(
     @Inject(LLMService)
     private readonly llmService: LLMService,
@@ -139,6 +141,10 @@ export class AgentRuntimeService {
     let content = ''
     let runCancellation: RunCancellation | undefined
     let terminalStepFailure: TerminalStepFailure | undefined
+    // 终态收口是否已由正常完成或 catch 接管。消费者提前 return()（如
+    // for-await break）会让 yield 点以 return 语义恢复、跳过 catch，
+    // 此时只有 finally 有机会兜底收口。
+    let terminalizationHandled = false
     // finalization Step 的最新已知安全 output。一旦模型调用发生过，
     // 无论 replay Abort、Step 启动失败还是终态事务回滚，都用它收口，
     // 已经产生的 attempt 与 usage 不会从审计里消失。
@@ -672,6 +678,7 @@ export class AgentRuntimeService {
         runCancellation.claimCompletion,
       )
       runCancellation.claimCompleted()
+      terminalizationHandled = true
       runCancellation.dispose()
 
       yield {
@@ -685,11 +692,23 @@ export class AgentRuntimeService {
       }
     }
     catch (error) {
+      // catch 一旦接管，终态收口（成功或失败）都由本块负责；finally 的
+      // 兜底只针对 catch 未执行的 return() 路径。约定：本块每条分支都必须
+      // 以「写入 DB 终态」或「向消费者交付终态事件」结束；新增早退 rethrow
+      // 分支会静默失去 finally 兜底，必须自行保证收口。
+      terminalizationHandled = true
+
       if (
         runCancellation?.source === 'completing'
         && error instanceof DatabaseCommitOutcomeUnknownError
       ) {
-        throw new AgentRunTerminalizationError(error, error)
+        yield* this.emitTerminalizationFailure({
+          conversationId: input.conversationId,
+          agentRunId,
+          assistantMessage,
+          runCause: error,
+          terminalizationCause: error,
+        })
       }
 
       if (runCancellation) {
@@ -711,21 +730,22 @@ export class AgentRuntimeService {
             await this.agentRunRecorderService.abortRun(
               agentRunId,
               createTerminalizationDeadline(),
-              assistantMessage
-                ? {
-                    id: assistantMessage.id,
-                    conversationId: input.conversationId,
-                    content,
-                  }
-                : undefined,
+              this.toAssistantMessageSnapshot(
+                assistantMessage,
+                input.conversationId,
+                content,
+              ),
               finalizationClose,
             )
           }
           catch (terminalizationCause) {
-            throw new AgentRunTerminalizationError(
+            yield* this.emitTerminalizationFailure({
+              conversationId: input.conversationId,
+              agentRunId,
+              assistantMessage,
               runCause,
               terminalizationCause,
-            )
+            })
           }
         }
 
@@ -750,22 +770,23 @@ export class AgentRuntimeService {
             agentRunId,
             errorMessage,
             createTerminalizationDeadline(),
-            assistantMessage
-              ? {
-                  id: assistantMessage.id,
-                  conversationId: input.conversationId,
-                  content: content || errorMessage,
-                }
-              : undefined,
+            this.toAssistantMessageSnapshot(
+              assistantMessage,
+              input.conversationId,
+              content || errorMessage,
+            ),
             terminalStepFailure,
             finalizationClose,
           )
         }
         catch (terminalizationCause) {
-          throw new AgentRunTerminalizationError(
+          yield* this.emitTerminalizationFailure({
+            conversationId: input.conversationId,
+            agentRunId,
+            assistantMessage,
             runCause,
             terminalizationCause,
-          )
+          })
         }
       }
 
@@ -781,8 +802,90 @@ export class AgentRuntimeService {
       }
     }
     finally {
+      // 兜底收口：只覆盖消费者提前 return() 的路径（catch 未执行）。
+      // 此时不存在进行中的数据库事务（return 只能发生在 yield 点），
+      // 按用户中断语义收口为 ABORTED，避免 Run / Message 永久 RUNNING / STREAMING。
+      if (!terminalizationHandled && agentRunId) {
+        // 先取消在途模型请求：return() 路径不经过 claimRunTermination，
+        // 不 abort 内部信号的话 provider 流会继续生成 token 直到自然结束。
+        runCancellation?.claimFailure(new Error('流消费者提前终止了本次 Run'))
+
+        try {
+          await this.agentRunRecorderService.abortRun(
+            agentRunId,
+            createTerminalizationDeadline(),
+            this.toAssistantMessageSnapshot(
+              assistantMessage,
+              input.conversationId,
+              content,
+            ),
+            finalizationClose,
+          )
+        }
+        catch (terminalizationCause) {
+          // return 路径上没有消费者能接收异常；从 finally 抛出只会
+          // 变成 return() 调用点的意外拒绝，这里记录后放弃。
+          this.logger.error(
+            `Agent Run ${agentRunId} 兜底收口失败`,
+            terminalizationCause instanceof Error
+              ? terminalizationCause.stack
+              : String(terminalizationCause),
+          )
+        }
+      }
       runCancellation?.dispose()
     }
+  }
+
+  /**
+   * 终态收口失败（含 COMMIT 结果未知）的统一出口：先记服务端日志，再
+   * best-effort 通知流消费者，最后抛出。日志必须在 yield 之前落：消费者
+   * 收到 run_failed 后可能停止拉流（触发 return()），后面的 throw 就永远
+   * 不会执行，这起最需要告警的事故不能只依赖异常传播才可见。
+   */
+  private async* emitTerminalizationFailure(input: {
+    conversationId: string
+    agentRunId: string | undefined
+    assistantMessage: Message | undefined
+    runCause: unknown
+    terminalizationCause: unknown
+  }): AsyncGenerator<AgentRuntimeEvent, never> {
+    this.logger.error(
+      `Agent Run ${input.agentRunId ?? '(未创建)'} 终态收口失败，DB 状态可能停留在非终态`,
+      input.terminalizationCause instanceof Error
+        ? input.terminalizationCause.stack
+        : String(input.terminalizationCause),
+    )
+
+    yield {
+      type: 'run_failed',
+      ...(input.agentRunId ? { runId: input.agentRunId } : {}),
+      conversationId: input.conversationId,
+      ...(input.assistantMessage
+        ? { assistantMessageId: input.assistantMessage.id }
+        : {}),
+      failureReason: 'terminalization_unknown',
+      message: '本轮回答的收口结果未知，请刷新会话查看最终状态。',
+    }
+
+    throw new AgentRunTerminalizationError(
+      input.runCause,
+      input.terminalizationCause,
+    )
+  }
+
+  private toAssistantMessageSnapshot(
+    assistantMessage: Message | undefined,
+    conversationId: string,
+    content: string,
+  ): { id: string, conversationId: string, content: string } | undefined {
+    return assistantMessage
+      ? {
+          id: assistantMessage.id,
+          conversationId,
+          content,
+        }
+      : undefined
   }
 
   private async listRecentChatMessageCandidates(
