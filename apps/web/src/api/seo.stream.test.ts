@@ -331,6 +331,66 @@ describe('streamChatWithSeoAgent', () => {
     }
   })
 
+  it('解析失败或消费者提前退出时取消底层流（关闭 HTTP 连接）', async () => {
+    const originalFetch = globalThis.fetch
+    let cancelCount = 0
+    const createOpenResponse = (lines: string[]): Response => {
+      const bytes = new TextEncoder().encode(`${lines.join('\n')}\n`)
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(bytes)
+          // 刻意不 close：模拟仍在进行中的流，只有 cancel 能关闭连接。
+          // 若实现只 releaseLock 不 cancel，后端会继续采样计费。
+        },
+        cancel() {
+          cancelCount += 1
+        },
+      })
+
+      return new Response(body, {
+        status: 200,
+        headers: { 'Content-Type': 'application/x-ndjson' },
+      })
+    }
+
+    try {
+      // 场景一：某行 JSON 损坏 → 抛错，且底层流必须被 cancel。
+      globalThis.fetch = (async () => createOpenResponse([
+        JSON.stringify(LEGACY_EVENTS[0]),
+        '{ broken',
+      ])) as typeof globalThis.fetch
+
+      await assert.rejects(
+        collect(streamChatWithSeoAgent({
+          conversationId: 'conversation-1',
+          message: '问题',
+        })),
+        /JSON 解析失败/,
+      )
+      assert.equal(cancelCount, 1)
+
+      // 场景二：消费者提前 break（触发 generator.return()）→ 同样 cancel。
+      globalThis.fetch = (async () => createOpenResponse([
+        JSON.stringify(LEGACY_EVENTS[0]),
+        JSON.stringify(LEGACY_EVENTS[1]),
+      ])) as typeof globalThis.fetch
+
+      const stream = streamChatWithSeoAgent({
+        conversationId: 'conversation-1',
+        message: '问题',
+      })
+      const first = await stream.next()
+
+      assert.equal((first.value as ChatStreamEvent | undefined)?.type, 'start')
+      // for-await break 的等价语义：显式触发 generator.return()。
+      await stream.return(undefined)
+      assert.equal(cancelCount, 2)
+    }
+    finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+
   it('HTTP 失败时抛出后端提供的安全错误消息', async () => {
     const restoreFetch = stubFetch('', {
       status: 503,

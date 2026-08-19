@@ -13,7 +13,7 @@ import type {
 } from '../types/seo'
 
 import { isAxiosError } from 'axios'
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import {
@@ -71,7 +71,19 @@ export function useSeoWorkspace() {
   let activeStreamRequestId: string | null = null
   let activeStreamConversationId: string | null = null
   let activeStreamAssistantMessageId: string | null = null
+  let isUnmounted = false
+  // start 事件前 abort 的占位消息：同一次请求只允许创建一条（stopGeneration
+  // 与 catch 的 abort 分支会先后进入 markGenerationAborted）；若排队中的
+  // start 事件随后到达，真实助手消息会取代它，占位必须移除。
+  let abortedPlaceholder: {
+    requestId: string | null
+    conversationId: string
+    messageId: string
+  } | null = null
   const conversationMessagesCache = new Map<string, ConversationMessage[]>()
+  // 每次本地消息变更（流事件、乐观更新）都会推进版本号；消息加载用它
+  // 识别「fetch 期间本地已被流终态更新」的过期快照。
+  const conversationMessagesVersion = new Map<string, number>()
 
   const messageCharacterCount = computed(() => message.value.length)
 
@@ -103,6 +115,17 @@ export function useSeoWorkspace() {
 
   onMounted(() => {
     void initializeWorkspace()
+  })
+
+  onUnmounted(() => {
+    // 与 stopGeneration 语义一致：离开工作区即中止进行中的流，
+    // 不做跨页面恢复；同时清理提示消息定时器。isUnmounted 阻止
+    // abort 之后才落地的异步续体再更新状态或重建定时器。
+    isUnmounted = true
+    activeAbortController?.abort()
+
+    if (messageTimer !== undefined)
+      window.clearTimeout(messageTimer)
   })
 
   async function initializeWorkspace() {
@@ -149,6 +172,7 @@ export function useSeoWorkspace() {
 
       await deleteConversation(conversationId)
       conversationMessagesCache.delete(conversationId)
+      conversationMessagesVersion.delete(conversationId)
 
       const nextConversations = conversations.value.filter(item => item.id !== conversationId)
 
@@ -245,6 +269,9 @@ export function useSeoWorkspace() {
         if (event.type === 'start') {
           assistantMessageId = event.assistantMessageId
           activeStreamAssistantMessageId = event.assistantMessageId
+          // stop 先于排队中的 start 到达时会先建 ABORTED 占位；真实助手
+          // 消息从这里开始接管，移除占位避免出现两条中止气泡。
+          removeAbortedPlaceholderForRequest(streamRequestId)
           handleStreamStartEvent(event, pendingMessage)
           message.value = ''
           status.value = 'generating'
@@ -292,6 +319,15 @@ export function useSeoWorkspace() {
       }
     }
     catch (error) {
+      // 组件已卸载：不再更新任何状态，也不发无人消费的刷新请求。
+      if (isUnmounted)
+        return
+
+      // done/error/aborted 已处理完终态：EOF 前的尾部异常（连接重置、
+      // 结尾残行解析失败）不能把已完成的回答翻成 FAILED。
+      if (hasFinalStreamEvent)
+        return
+
       if (isAbortError(error)) {
         markGenerationAborted(targetConversationId, assistantMessageId, streamRequestId)
         await refreshConversationList()
@@ -408,6 +444,7 @@ export function useSeoWorkspace() {
 
   async function loadMessagesForConversation(conversationId: string) {
     const runId = ++messageLoadRunId
+    const versionBeforeLoad = conversationMessagesVersion.get(conversationId) ?? 0
 
     try {
       isLoadingMessages.value = true
@@ -418,7 +455,13 @@ export function useSeoWorkspace() {
       if (runId !== messageLoadRunId || conversationId !== activeConversationId.value)
         return
 
-      if (activeStreamConversationId === conversationId) {
+      // 两种情况都保留本地事实、丢弃服务端快照：该会话仍在流式中，或
+      // fetch 期间本地消息已被流事件更新过（典型：切走再切回后 done 先到，
+      // 服务端快照是流终态之前的旧数据）。
+      const versionChanged
+        = (conversationMessagesVersion.get(conversationId) ?? 0) !== versionBeforeLoad
+
+      if (activeStreamConversationId === conversationId || versionChanged) {
         const cachedMessages = conversationMessagesCache.get(conversationId)
 
         if (cachedMessages)
@@ -560,8 +603,15 @@ export function useSeoWorkspace() {
     if (assistantMessageId) {
       markAssistantMessageAborted(conversationId, assistantMessageId)
     }
-    else {
-      upsertMessageInConversation(createAbortedAssistantMessage(conversationId))
+    else if (abortedPlaceholder?.requestId !== streamRequestId) {
+      const placeholder = createAbortedAssistantMessage(conversationId)
+
+      abortedPlaceholder = {
+        requestId: streamRequestId,
+        conversationId,
+        messageId: placeholder.id,
+      }
+      upsertMessageInConversation(placeholder)
     }
 
     if (shouldUpdateWorkspaceStatus) {
@@ -569,6 +619,19 @@ export function useSeoWorkspace() {
       setStatusAfterStreamCompletion(conversationId, 'aborted')
       clearActiveStreamState(streamRequestId)
     }
+  }
+
+  function removeAbortedPlaceholderForRequest(streamRequestId: string) {
+    if (!abortedPlaceholder || abortedPlaceholder.requestId !== streamRequestId)
+      return
+
+    const { conversationId, messageId } = abortedPlaceholder
+
+    abortedPlaceholder = null
+    setMessagesForConversation(
+      conversationId,
+      getMessagesForConversation(conversationId).filter(item => item.id !== messageId),
+    )
   }
 
   function markAssistantMessageAborted(
@@ -689,6 +752,10 @@ export function useSeoWorkspace() {
   ) {
     const sortedMessages = [...nextMessages].sort(compareMessagesByCreatedAt)
 
+    conversationMessagesVersion.set(
+      conversationId,
+      (conversationMessagesVersion.get(conversationId) ?? 0) + 1,
+    )
     cacheMessagesForConversation(conversationId, sortedMessages)
 
     if (conversationId === activeConversationId.value)
@@ -935,6 +1002,10 @@ export function useSeoWorkspace() {
   }
 
   function showMessage(text: string, type: AppMessageType = 'info') {
+    // 卸载后不再重建定时器：清理钩子已经跑过，新建的 timer 无人回收。
+    if (isUnmounted)
+      return
+
     if (messageTimer !== undefined) {
       window.clearTimeout(messageTimer)
     }
