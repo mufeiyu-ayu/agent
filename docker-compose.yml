@@ -1,6 +1,11 @@
 services:
   postgres:
-    image: postgres:16-alpine
+    # 主库必须使用含 pgvector 的镜像：Article Embedding Index migration 会执行
+    # CREATE EXTENSION vector，普通 postgres:16-alpine 缺扩展会直接失败。
+    # 版本与下方 integration 测试库保持一致。
+    # 注意：从旧 alpine 镜像迁移的已有数据卷存在 musl→glibc collation 差异，
+    # 建议重置卷后重建（开发数据可由 seed / index 重建），见 README Getting started。
+    image: pgvector/pgvector:0.8.6-pg16-bookworm
     container_name: agent-ai-seo-postgres
     restart: unless-stopped
     environment:
