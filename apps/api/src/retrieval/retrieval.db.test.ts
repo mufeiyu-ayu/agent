@@ -534,6 +534,13 @@ class TrackingPool implements ArticleRetrievalPool {
     return await this.pool.query<Row>(text, values)
   }
 
+  async auxiliaryQuery<Row>(
+    text: string,
+    values?: unknown[],
+  ): Promise<QueryResult<Row>> {
+    return await this.pool.auxiliaryQuery<Row>(text, values)
+  }
+
   async end(): Promise<void> {
     await this.pool.end()
   }

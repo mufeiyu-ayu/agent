@@ -101,6 +101,67 @@ describe('PostgresArticleRetrievalRepository', () => {
     assert.equal((query.values[0] as string).split(',').length, 1536)
   })
 
+  it('存在 stale 排除时经节流告警，无 stale 时静默', async () => {
+    const staleQueryValues: unknown[][] = []
+    let staleCount = 2
+    // owned 查询每次 connect 需要全新 client（release 是一次性的）；
+    // stale observability 走 pool.query 直查，不经过连接所有权机器。
+    const pool: ArticleRetrievalPool = {
+      connect: async () => new FakePoolClient({ vectorRows: [] }),
+      cancel: async () => true,
+      query: async () => ({ rows: [] }),
+      auxiliaryQuery: (async (text: string, values: unknown[] = []) => {
+        assert.match(text, /stale_article_count/)
+        staleQueryValues.push(values)
+        return { rows: [{ stale_article_count: staleCount }] }
+      }) as ArticleRetrievalPool['auxiliaryQuery'],
+      end: async () => {},
+    }
+
+    const repository = new PostgresArticleRetrievalRepository(pool)
+    const warnings: string[] = []
+
+    ;(repository as unknown as {
+      logger: { warn: (message: string) => void }
+    }).logger = { warn: message => warnings.push(message) }
+
+    const retrieve = async () => repository.findVectorChunkCandidates(
+      createVector(0.5),
+      { query: 'stale check', limit: 5 },
+      createContext(),
+    )
+
+    await retrieve()
+    await nextMacrotask()
+
+    assert.equal(staleQueryValues.length, 1)
+    assert.deepEqual(staleQueryValues[0], [
+      'article-html-cl100k-v1',
+      ACTIVE_EMBEDDING_PROFILE.version,
+      ACTIVE_EMBEDDING_PROFILE.provider,
+      ACTIVE_EMBEDDING_PROFILE.model,
+      ACTIVE_EMBEDDING_PROFILE.dimensions,
+    ])
+    assert.equal(warnings.length, 1)
+    assert.match(warnings[0]!, /2 篇已索引文章.*不可被向量检索/)
+
+    // 节流窗口内的第二次检索不再触发 observability 查询。
+    staleCount = 0
+    await retrieve()
+    await nextMacrotask()
+
+    assert.equal(staleQueryValues.length, 1)
+    assert.equal(warnings.length, 1)
+
+    // 无 stale 时不产生任何告警。
+    ;(repository as unknown as { lastStaleCheckAt: number }).lastStaleCheckAt = 0
+    await retrieve()
+    await nextMacrotask()
+
+    assert.equal(staleQueryValues.length, 2)
+    assert.equal(warnings.length, 1)
+  })
+
   it('Abort 时用 error release owned client 且不返回迟到查询结果', async () => {
     const client = new FakePoolClient({ hangVectorQuery: true })
     const pool = new FakePool(client)
@@ -332,6 +393,10 @@ class FakePool implements ArticleRetrievalPool {
   }
 
   async query<Row>(): Promise<{ rows: Row[] }> {
+    return { rows: [] }
+  }
+
+  async auxiliaryQuery<Row>(): Promise<{ rows: Row[] }> {
     return { rows: [] }
   }
 

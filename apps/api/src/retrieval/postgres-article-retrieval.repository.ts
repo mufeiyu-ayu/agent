@@ -6,14 +6,20 @@ import type {
 import { createRequire } from 'node:module'
 import { performance } from 'node:perf_hooks'
 
+import { Logger } from '@nestjs/common'
+
 import { ARTICLE_CHUNKER_PROFILE } from '../article-indexing/article-chunking.js'
 import { ACTIVE_EMBEDDING_PROFILE } from '../embeddings/embedding-provider.js'
 
 export const LEXICAL_ARTICLE_CANDIDATE_LIMIT = 10
 export const VECTOR_CHUNK_CANDIDATE_LIMIT = 40
 
+/** stale 排除告警的节流间隔；observability 查询不允许放大检索 QPS。 */
+const STALE_EXCLUSION_CHECK_INTERVAL_MS = 60_000
+
 const PG_POOL_ACQUISITION_TIMEOUT_MS = 2_000
 const PG_CANCEL_TIMEOUT_MS = 2_000
+const PG_AUXILIARY_TIMEOUT_MS = 2_000
 const PG_STATEMENT_TIMEOUT_LEAD_MS = 50
 const PG_LOCK_TIMEOUT_LEAD_MS = 25
 const require = createRequire(import.meta.url)
@@ -68,6 +74,14 @@ export interface ArticleRetrievalPool {
   connect: () => Promise<ArticleRetrievalPoolClient>
   cancel: (processId: number) => Promise<boolean>
   query: <Row = Record<string, unknown>>(
+    text: string,
+    values?: unknown[],
+  ) => Promise<PgQueryResult<Row>>
+  /**
+   * 有界旁路查询：走独立小连接池并带 2s query/statement timeout，
+   * 供 observability 等非关键查询使用，绝不与检索主 pool 抢连接。
+   */
+  auxiliaryQuery: <Row = Record<string, unknown>>(
     text: string,
     values?: unknown[],
   ) => Promise<PgQueryResult<Row>>
@@ -214,6 +228,39 @@ const VECTOR_CANDIDATES_SQL = `
   LIMIT 40
 `
 
+// 统计「已索引但在当前 active profile 下不可被向量检索」的文章，
+// 排除条件与 VECTOR_CANDIDATES_SQL 的守门谓词逐条对齐：state 级版本 /
+// 时间戳过期，以及 chunk 级一致性与完整性（数量不符或存在不兼容 chunk
+// 的半写 / 损坏索引同样不可达）；chunkCount = 0 的空文章是合法状态不计入。
+const STALE_ARTICLE_COUNT_SQL = `
+  SELECT COUNT(*)::int AS stale_article_count
+  FROM "ArticleIndexState" AS state
+  INNER JOIN "Article" AS article
+    ON article."id" = state."articleId"
+  WHERE state."chunkCount" > 0
+    AND (
+      state."chunkerVersion" <> $1::text
+      OR state."embeddingVersion" <> $2::text
+      OR state."sourceUpdatedAt" <> article."updatedAt"
+      OR state."chunkCount"::bigint <> (
+        SELECT COUNT(*)
+        FROM "ArticleChunk" AS chunk
+        WHERE chunk."articleId" = state."articleId"
+      )
+      OR state."chunkCount"::bigint <> (
+        SELECT COUNT(*)
+        FROM "ArticleChunk" AS chunk
+        WHERE chunk."articleId" = state."articleId"
+          AND chunk."chunkerVersion" = $1::text
+          AND chunk."embeddingVersion" = $2::text
+          AND chunk."embeddingProvider" = $3::text
+          AND chunk."embeddingModel" = $4::text
+          AND chunk."embeddingDimensions" = $5::integer
+          AND chunk."languageCode" = article."languageCode"
+      )
+    )
+`
+
 const SET_LOCAL_TIMEOUTS_SQL = `
   SELECT
     set_config('statement_timeout', $1::text, true),
@@ -221,6 +268,9 @@ const SET_LOCAL_TIMEOUTS_SQL = `
 `
 
 export class PostgresArticleRetrievalRepository implements ArticleRetrievalRepositoryContract {
+  private readonly logger = new Logger(PostgresArticleRetrievalRepository.name)
+  private lastStaleCheckAt = 0
+
   constructor(private readonly pool: ArticleRetrievalPool) {}
 
   async findLexicalCandidates(
@@ -269,6 +319,8 @@ export class PostgresArticleRetrievalRepository implements ArticleRetrievalRepos
       onSqlLatencyMs,
     )
 
+    this.maybeWarnStaleExcludedArticles()
+
     return rows.map((row) => {
       const cosineDistance = Number(row.cosine_distance)
       if (!Number.isFinite(cosineDistance))
@@ -289,6 +341,44 @@ export class PostgresArticleRetrievalRepository implements ArticleRetrievalRepos
       }
     })
   }
+
+  /**
+   * freshness gate（sourceUpdatedAt = article.updatedAt）是 fail-closed 设计，
+   * 保持不变；这里只补上「静默」的另一半：存在被排除的已索引文章时告警。
+   *
+   * fire-and-forget + 节流：可观测性查询不增加检索主路径延迟，也不放大
+   * QPS；查询失败只吞掉，绝不影响检索结果。
+   */
+  private maybeWarnStaleExcludedArticles(): void {
+    const now = Date.now()
+
+    if (now - this.lastStaleCheckAt < STALE_EXCLUSION_CHECK_INTERVAL_MS)
+      return
+
+    this.lastStaleCheckAt = now
+    void this.pool
+      .auxiliaryQuery<{ stale_article_count: number }>(STALE_ARTICLE_COUNT_SQL, [
+        ARTICLE_CHUNKER_PROFILE.version,
+        ACTIVE_EMBEDDING_PROFILE.version,
+        ACTIVE_EMBEDDING_PROFILE.provider,
+        ACTIVE_EMBEDDING_PROFILE.model,
+        ACTIVE_EMBEDDING_PROFILE.dimensions,
+      ])
+      .then(({ rows }) => {
+        const staleCount = Number(rows[0]?.stale_article_count ?? 0)
+
+        if (staleCount > 0) {
+          this.logger.warn(
+            `${staleCount} 篇已索引文章在当前 profile 下不可被向量检索`
+            + '（版本不匹配或 sourceUpdatedAt 过期），hybrid 对它们退化为'
+            + '纯 lexical；请执行 pnpm index:articles 刷新索引。',
+          )
+        }
+      })
+      .catch(() => {
+        // 可观测性查询失败不影响检索主路径。
+      })
+  }
 }
 
 export function createArticleRetrievalPool(
@@ -306,6 +396,15 @@ export function createArticleRetrievalPool(
     query_timeout: PG_CANCEL_TIMEOUT_MS,
     statement_timeout: PG_CANCEL_TIMEOUT_MS,
   })
+  // observability 专用小池：不与检索主 pool 抢连接，也不占用取消旁路
+  // （pg_cancel_backend 是 abort 语义的关键路径，不能被观测查询排队阻塞）。
+  const auxiliaryPool = new PgPool({
+    connectionString,
+    max: 1,
+    connectionTimeoutMillis: PG_POOL_ACQUISITION_TIMEOUT_MS,
+    query_timeout: PG_AUXILIARY_TIMEOUT_MS,
+    statement_timeout: PG_AUXILIARY_TIMEOUT_MS,
+  })
 
   return {
     connect: async () => await queryPool.connect(),
@@ -319,10 +418,14 @@ export function createArticleRetrievalPool(
     query: async <Row>(text: string, values?: unknown[]) => (
       await queryPool.query<Row>(text, values)
     ),
+    auxiliaryQuery: async <Row>(text: string, values?: unknown[]) => (
+      await auxiliaryPool.query<Row>(text, values)
+    ),
     end: async () => {
       await Promise.all([
         queryPool.end(),
         cancellationPool.end(),
+        auxiliaryPool.end(),
       ])
     },
   }
