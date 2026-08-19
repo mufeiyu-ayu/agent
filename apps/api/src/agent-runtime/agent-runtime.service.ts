@@ -427,7 +427,6 @@ export class AgentRuntimeService {
         const toolDefinition = toolDefinitions.find(
           definition => definition.name === samplingDecision.call.toolName,
         )
-        // add toolstep runing
         const toolStep = await this.agentRunRecorderService.startStep({
           runId: currentAgentRunId,
           type: AGENT_STEP_TYPES.toolExecution,

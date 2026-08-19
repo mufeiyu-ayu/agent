@@ -121,7 +121,7 @@ export function parseChatStreamEventLine(line: string): ChatStreamEvent | null {
  * href 必须为 null、citationId 唯一，两侧结论完全一致。
  *
  * 与服务端的唯一区别是失败处理：这里只丢弃这个可选字段，不让 UI / 审计元数据
- * 拖垮整条回答流。本 Task 不渲染来源卡片。
+ * 拖垮整条回答流；来源卡片由 UI 层按 done.grounding 渲染。
  */
 function sanitizeChatStreamEvent(event: ChatStreamEvent): ChatStreamEvent {
   if (event.type !== 'done' || event.grounding === undefined)

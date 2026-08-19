@@ -11,6 +11,7 @@ import type {
 import type { ValidatedGroundedAnswer } from './grounded-answer.validator.js'
 import type { RunEvidenceRegistry } from './run-evidence-registry.js'
 
+import { mergeModelUsage } from '../../llm/model-stream.types.js'
 import {
   GroundedAnswerRejectedError,
   parseSubmitGroundedAnswerInput,
@@ -375,7 +376,7 @@ async function consumeFinalizationSampling(
           break
 
         case 'usage':
-          usage = mergeUsage(usage, event.usage)
+          usage = mergeModelUsage(usage, event.usage)
           break
 
         case 'response_completed':
@@ -411,18 +412,4 @@ async function consumeFinalizationSampling(
     return failed('missing_submission')
 
   return { ok: true, rawArgumentsJson, usage }
-}
-
-function mergeUsage(
-  current: ModelUsage | null,
-  next: ModelUsage,
-): ModelUsage | null {
-  const merged: ModelUsage = {
-    ...(current ?? {}),
-    ...(next.inputTokens === undefined ? {} : { inputTokens: next.inputTokens }),
-    ...(next.outputTokens === undefined ? {} : { outputTokens: next.outputTokens }),
-    ...(next.totalTokens === undefined ? {} : { totalTokens: next.totalTokens }),
-  }
-
-  return Object.keys(merged).length > 0 ? merged : null
 }

@@ -162,7 +162,7 @@ const LEXICAL_CANDIDATES_SQL = String.raw`
       ELSE 4
     END ASC,
     article."sourceId" ASC
-  LIMIT 10
+  LIMIT ${LEXICAL_ARTICLE_CANDIDATE_LIMIT}
 `
 
 const VECTOR_CANDIDATES_SQL = `
@@ -225,7 +225,7 @@ const VECTOR_CANDIDATES_SQL = `
     source_id ASC,
     ordinal ASC,
     chunk_id ASC
-  LIMIT 40
+  LIMIT ${VECTOR_CHUNK_CANDIDATE_LIMIT}
 `
 
 // 统计「已索引但在当前 active profile 下不可被向量检索」的文章，

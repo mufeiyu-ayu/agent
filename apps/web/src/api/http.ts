@@ -20,6 +20,7 @@ function isApiSuccessResponse<T>(value: unknown): value is ApiSuccessResponseCon
     typeof value === 'object'
     && value !== null
     && 'success' in value
+    && value.success === true
     && 'code' in value
     && 'data' in value
   )
