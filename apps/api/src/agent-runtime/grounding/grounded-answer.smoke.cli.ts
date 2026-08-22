@@ -25,6 +25,7 @@ import {
   retrieveArticleContextDefinition,
   RetrieveArticleContextTool,
 } from '../../tools/retrieval/retrieve-article-context.tool.js'
+import { AgentRunConfigurationService } from '../agent-run-configuration.service.js'
 import { AgentRunRecorderService } from '../agent-run-recorder.service.js'
 import { AgentRuntimeService } from '../agent-runtime.service.js'
 import { DeepSeekV4TokenEstimator } from '../deepseek-v4-token-estimator.js'
@@ -112,24 +113,28 @@ export async function executeGroundedAnswerSmoke(
 
   const tokenEstimator = new DeepSeekV4TokenEstimator()
   const runtimeConfigService = new LLMRuntimeConfigService()
+  const llmService = new LLMService(
+    new OpenAICompatibleClient(runtimeConfigService),
+    runtimeConfigService,
+  )
   const runtime = new AgentRuntimeService(
-    new LLMService(
-      new OpenAICompatibleClient(runtimeConfigService),
-      runtimeConfigService,
-    ),
+    llmService,
     prisma,
     new AgentRunRecorderService(prisma),
-    registry,
     new ToolInvocationService(registry),
-    {
-      value: {
-        historyCandidateBatchSize: 50,
-        historyCandidateHardLimit: 1_000,
-        maxSamplingRounds: 4,
-        maxToolCalls: 2,
-        runDeadlineMs: 300_000,
+    new AgentRunConfigurationService(
+      {
+        value: {
+          historyCandidateBatchSize: 50,
+          historyCandidateHardLimit: 1_000,
+          maxSamplingRounds: 4,
+          maxToolCalls: 2,
+          runDeadlineMs: 300_000,
+        },
       },
-    },
+      llmService,
+      registry,
+    ),
     new InitialContextSelectionService(tokenEstimator),
     new SamplingContextPlanner(tokenEstimator),
   )

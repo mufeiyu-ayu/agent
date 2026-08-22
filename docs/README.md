@@ -7,7 +7,7 @@
 ```text
 阶段 1-8：Completed
 Phase 8：Completed
-Active Agent Task：无
+Active Agent Task：Run 配置解析边界（#92，已实现、待验收）
 Minimal Compaction：Gated
 Admin Task 4：Planned
 Phase 9：未定案
@@ -23,7 +23,7 @@ Phase 8 已完成：
 - Task 3B：Web Grounding 状态、Sources disclosure、Source cards 与 Chromium，#60 / #61 / `572ad206`；
 - Task 3C：Admin Retrieval / Finalization / Citation Inspector，#62 / #63 / `20f838fb`。
 
-当前为 Phase 8 源码阅读阶段，不创建正式 Issue；下一阶段学习内容暂不定义。Phase 9 尚未定案。
+当前为 Phase 8 源码阅读阶段；源码阅读发现的可维护性问题已立项为正式 Issue #92（[Run 配置解析边界](./tasks/agent-run-configuration.md)，已实现、待验收）。下一阶段学习内容暂不定义。Phase 9 尚未定案。
 
 ## 文档入口
 

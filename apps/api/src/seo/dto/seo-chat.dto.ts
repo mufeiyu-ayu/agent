@@ -9,7 +9,7 @@ import {
   MaxLength,
 } from 'class-validator'
 
-import { SUPPORTED_DEEPSEEK_MODELS } from '../../llm/llm.types.js'
+import { SUPPORTED_DEEPSEEK_MODELS } from '../../llm/model-profiles.js'
 
 export class SeoChatDto implements SeoChatRequest {
   @IsString()

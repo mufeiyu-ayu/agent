@@ -26,7 +26,9 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
 import { MessageRole, MessageStatus } from '../../generated/prisma/client.js'
+import { getModelProfile } from '../../llm/model-profiles.js'
 import { toChatStreamEvent } from '../../seo/seo-chat-stream-event.mapper.js'
+import { AgentRunConfigurationService } from '../agent-run-configuration.service.js'
 import { AGENT_STEP_TYPES } from '../agent-run-recorder.service.js'
 import { AgentRuntimeService } from '../agent-runtime.service.js'
 import { TokenEstimator } from '../deepseek-v4-token-estimator.js'
@@ -1399,10 +1401,21 @@ function createHarness(options: CreateHarnessOptions) {
     return [...text.matchAll(/evk_[a-f\d]{32}/g)].map(match => match[0])
   }
   const llmService = {
-    resolveChatRequestConfig: (config?: { model?: string, maxTokens?: number }) => ({
-      model: config?.model ?? 'deepseek-v4-flash',
-      maxOutputTokens: config?.maxTokens ?? 65_536,
-    }),
+    resolveChatRequestConfig: (config?: {
+      model?: string
+      temperature?: number
+      maxTokens?: number
+    }) => {
+      const model = config?.model ?? 'deepseek-v4-flash'
+
+      return {
+        model,
+        contextWindowTokens: getModelProfile(model)?.contextWindowTokens
+          ?? 1_000_000,
+        maxOutputTokens: config?.maxTokens ?? 65_536,
+        temperature: config?.temperature ?? 0.7,
+      }
+    },
     chatStream: (messages: ModelInputItem[], streamOptions?: ChatStreamOptions) => {
       const callIndex = llmCalls.length
 
@@ -1430,12 +1443,7 @@ function createHarness(options: CreateHarnessOptions) {
       }
     },
   } as unknown as ToolInvocationService
-  const service = new AgentRuntimeService(
-    llmService,
-    prisma as unknown as PrismaService,
-    recorder as unknown as AgentRunRecorderService,
-    new FakeToolRegistryService() as unknown as ToolRegistryService,
-    toolInvocationService,
+  const runConfigurationService = new AgentRunConfigurationService(
     {
       value: {
         historyCandidateBatchSize: 50,
@@ -1445,6 +1453,15 @@ function createHarness(options: CreateHarnessOptions) {
         runDeadlineMs: 600_000,
       },
     } as AgentRuntimePolicyService,
+    llmService,
+    new FakeToolRegistryService() as unknown as ToolRegistryService,
+  )
+  const service = new AgentRuntimeService(
+    llmService,
+    prisma as unknown as PrismaService,
+    recorder as unknown as AgentRunRecorderService,
+    toolInvocationService,
+    runConfigurationService,
     new InitialContextSelectionService(new TestTokenEstimator()),
     new SamplingContextPlanner(new TestTokenEstimator()),
   )
@@ -1525,6 +1542,14 @@ const discoveryDefinition: ToolDefinition = {
 class FakeToolRegistryService {
   listDefinitions(): ToolDefinition[] {
     return [discoveryDefinition, detailDefinition, eligibleDefinition]
+  }
+
+  get(name: string): { definition: ToolDefinition } | undefined {
+    const definition = this.listDefinitions().find(
+      candidate => candidate.name === name,
+    )
+
+    return definition ? { definition } : undefined
   }
 }
 

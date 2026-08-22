@@ -18,11 +18,11 @@ export const DEFAULT_AGENT_RUNTIME_POLICY = {
 } as const
 
 export interface AgentRuntimePolicy {
-  historyCandidateBatchSize: number
-  historyCandidateHardLimit: number
-  maxSamplingRounds: number
-  maxToolCalls: number
-  runDeadlineMs: number
+  readonly historyCandidateBatchSize: number
+  readonly historyCandidateHardLimit: number
+  readonly maxSamplingRounds: number
+  readonly maxToolCalls: number
+  readonly runDeadlineMs: number
 }
 
 @Injectable()

@@ -37,11 +37,13 @@ import {
   MessageRole,
   MessageStatus,
 } from '../generated/prisma/client.js'
+import { getModelProfile } from '../llm/model-profiles.js'
 import {
   DatabaseCommitOutcomeUnknownError,
   DatabaseOperationDeadlineExceededError,
 } from '../prisma/prisma.service.js'
 import { toChatStreamEvent } from '../seo/seo-chat-stream-event.mapper.js'
+import { AgentRunConfigurationService } from './agent-run-configuration.service.js'
 import {
   AgentRunTerminalizationError,
   ContextTokenEstimationError,
@@ -135,6 +137,37 @@ describe('AgentRuntimeService model stream', () => {
       0,
     )
     assertNoUnfinishedSteps(harness)
+  })
+
+  it('请求级覆盖 model / maxTokens 时 Initial Context 与 Provider 请求使用同一份 resolved 配置', async () => {
+    const harness = createHarness(() => toModelStream([
+      { type: 'text_delta', delta: '好' },
+      { type: 'response_completed', finishReason: 'stop' },
+    ]))
+
+    const events = await collectEvents(harness.service.runTurnStream({
+      conversationId: 'conversation-1',
+      userContent: '问题',
+      model: 'deepseek-v4-pro',
+      temperature: 0.4,
+      maxTokens: 4_096,
+      buildModelMessages: historyMessages => historyMessages,
+    }))
+
+    assert.equal(events.at(-1)?.type, 'run_completed')
+
+    const initialContext = (
+      harness.recorder.steps[2]?.input as Record<string, unknown>
+    ).initialContext as Record<string, unknown>
+
+    assert.equal(initialContext.resolvedModel, 'deepseek-v4-pro')
+    assert.equal(initialContext.resolvedMaxOutputTokens, 4_096)
+    assert.equal(harness.llmCalls[0]?.options?.model, initialContext.resolvedModel)
+    assert.equal(
+      harness.llmCalls[0]?.options?.maxTokens,
+      initialContext.resolvedMaxOutputTokens,
+    )
+    assert.equal(harness.llmCalls[0]?.options?.temperature, 0.4)
   })
 
   it('零 Tool Budget 时不向模型暴露 Tool 并正常完成', async () => {
@@ -2532,10 +2565,23 @@ function createHarness(
     options: ChatStreamOptions | undefined
   }> = []
   const llmService = {
-    resolveChatRequestConfig: (options?: { model?: string, maxTokens?: number }) => ({
-      model: options?.model ?? 'deepseek-v4-flash',
-      maxOutputTokens: options?.maxTokens ?? 65_536,
-    }),
+    // contextWindowTokens 取真实 Model Profile，让 context 预算测试
+    // 与生产模型能力保持锚定，不冻结在手写字面量上。
+    resolveChatRequestConfig: (options?: {
+      model?: string
+      temperature?: number
+      maxTokens?: number
+    }) => {
+      const model = options?.model ?? 'deepseek-v4-flash'
+
+      return {
+        model,
+        contextWindowTokens: getModelProfile(model)?.contextWindowTokens
+          ?? 1_000_000,
+        maxOutputTokens: options?.maxTokens ?? 65_536,
+        temperature: options?.temperature ?? 0.7,
+      }
+    },
     chatStream: (messages: ModelInputItem[], options?: ChatStreamOptions) => {
       const callIndex = llmCalls.length
 
@@ -2549,12 +2595,7 @@ function createHarness(
   } as unknown as LLMService
   const toolRegistryService = new FakeToolRegistryService()
   const toolInvocationService = new FakeToolInvocationService(invokeTool)
-  const service = new AgentRuntimeService(
-    llmService,
-    prisma as unknown as PrismaService,
-    recorder as unknown as AgentRunRecorderService,
-    toolRegistryService as unknown as ToolRegistryService,
-    toolInvocationService as unknown as ToolInvocationService,
+  const runConfigurationService = new AgentRunConfigurationService(
     {
       value: {
         historyCandidateBatchSize: 50,
@@ -2565,6 +2606,15 @@ function createHarness(
         ...policy,
       },
     } as AgentRuntimePolicyService,
+    llmService,
+    toolRegistryService as unknown as ToolRegistryService,
+  )
+  const service = new AgentRuntimeService(
+    llmService,
+    prisma as unknown as PrismaService,
+    recorder as unknown as AgentRunRecorderService,
+    toolInvocationService as unknown as ToolInvocationService,
+    runConfigurationService,
     new InitialContextSelectionService(tokenEstimator),
     new SamplingContextPlanner(tokenEstimator),
   )
@@ -2573,6 +2623,7 @@ function createHarness(
     llmCalls,
     prisma,
     recorder,
+    service,
     toolInvocations: toolInvocationService.invocations,
     toolExecutionContexts: toolInvocationService.contexts,
     assistantMessage: () => prisma.messages.find(
@@ -2596,6 +2647,14 @@ class FakeToolRegistryService {
       retrieveArticleContextDefinition,
       searchArticlesDefinition,
     ]
+  }
+
+  get(name: string): { definition: ToolDefinition } | undefined {
+    const definition = this.listDefinitions().find(
+      candidate => candidate.name === name,
+    )
+
+    return definition ? { definition } : undefined
   }
 }
 

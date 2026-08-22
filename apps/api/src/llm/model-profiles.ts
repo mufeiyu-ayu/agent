@@ -1,4 +1,16 @@
-import type { SupportedDeepSeekModel } from './llm.types.js'
+/**
+ * LLM 领域的模型注册入口：支持模型名单与模型能力 Profile 在此维护，
+ * Record 类型保证名单与 Profile 双向一致。
+ * 注意：前端另持有一份展示用名单（apps/web/src/types/llm.ts 的
+ * DeepSeekModelId / FALLBACK_DEEPSEEK_MODELS），新增模型时需同步。
+ */
+
+export const SUPPORTED_DEEPSEEK_MODELS = [
+  'deepseek-v4-flash',
+  'deepseek-v4-pro',
+] as const
+
+export type SupportedDeepSeekModel = typeof SUPPORTED_DEEPSEEK_MODELS[number]
 
 export interface ModelProfile {
   id: SupportedDeepSeekModel

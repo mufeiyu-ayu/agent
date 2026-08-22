@@ -1,4 +1,5 @@
-import type { ChatOptions, SupportedDeepSeekModel } from './llm.types.js'
+import type { ChatOptions } from './llm.types.js'
+import type { SupportedDeepSeekModel } from './model-profiles.js'
 import process from 'node:process'
 import { Injectable } from '@nestjs/common'
 
@@ -6,6 +7,9 @@ import { LLMAuthError, LLMConfigError } from './llm.errors.js'
 import { getModelProfile } from './model-profiles.js'
 
 const MAX_TIMER_TIMEOUT_MS = 2_147_483_647
+
+/** 请求未显式指定 temperature 时的默认值。 */
+const DEFAULT_CHAT_TEMPERATURE = 0.7
 
 export const DEFAULT_LLM_RUNTIME_CONFIG = {
   metadataRequestTimeoutMs: 10_000,
@@ -29,9 +33,17 @@ export interface LLMRuntimeConfig {
   captureModelIO: boolean
 }
 
-export interface ChatRequestConfig {
+/**
+ * 单次 chat 请求的完整 resolved 配置。
+ *
+ * 它是调用方继续决策所需的全部模型事实：携带 contextWindowTokens，
+ * 调用方（如 Context Selection）不需要再穿透 LLM 边界补查 Model Profile。
+ */
+export interface ResolvedChatRequestConfig {
   model: SupportedDeepSeekModel
+  contextWindowTokens: number
   maxOutputTokens: number
+  temperature: number
 }
 
 @Injectable()
@@ -113,7 +125,7 @@ function readBooleanFlag(env: NodeJS.ProcessEnv, name: string): boolean {
 export function resolveChatRequestConfig(
   runtimeConfig: LLMRuntimeConfig,
   options: ChatOptions = {},
-): ChatRequestConfig {
+): ResolvedChatRequestConfig {
   const requestedModel = (options.model ?? runtimeConfig.model).trim()
   const profile = getModelProfile(requestedModel)
 
@@ -144,7 +156,9 @@ export function resolveChatRequestConfig(
 
   return {
     model: profile.id,
+    contextWindowTokens: profile.contextWindowTokens,
     maxOutputTokens,
+    temperature: options.temperature ?? DEFAULT_CHAT_TEMPERATURE,
   }
 }
 

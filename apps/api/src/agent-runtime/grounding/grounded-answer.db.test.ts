@@ -8,6 +8,7 @@ import type { ChatStreamOptions } from '../../llm/llm.types.js'
 import type { ModelInputItem } from '../../llm/model-input.types.js'
 import type { ModelStreamEvent } from '../../llm/model-stream.types.js'
 import type { ArticleRetrievalPool } from '../../retrieval/postgres-article-retrieval.repository.js'
+import type { AgentRuntimePolicyService } from '../agent-runtime.policy.js'
 import type { AgentRuntimeEvent } from '../agent-runtime.types.js'
 import type { TokenEstimatorInput } from '../deepseek-v4-token-estimator.js'
 import assert from 'node:assert/strict'
@@ -28,6 +29,7 @@ import {
   MessageRole,
   MessageStatus,
 } from '../../generated/prisma/client.js'
+import { getModelProfile } from '../../llm/model-profiles.js'
 import { PrismaService } from '../../prisma/prisma.service.js'
 import { HybridArticleRetriever } from '../../retrieval/hybrid-article-retriever.js'
 import { LexicalArticleRetriever } from '../../retrieval/lexical-article-retriever.js'
@@ -46,6 +48,7 @@ import {
   retrieveArticleContextDefinition,
   RetrieveArticleContextTool,
 } from '../../tools/retrieval/retrieve-article-context.tool.js'
+import { AgentRunConfigurationService } from '../agent-run-configuration.service.js'
 import { AgentRunRecorderService } from '../agent-run-recorder.service.js'
 import { AgentRuntimeService } from '../agent-runtime.service.js'
 import { TokenEstimator } from '../deepseek-v4-token-estimator.js'
@@ -992,10 +995,21 @@ describe('Grounded Answer PostgreSQL integration', { concurrency: 1 }, () => {
 
     let callIndex = 0
     const llmService = {
-      resolveChatRequestConfig: () => ({
-        model: 'deepseek-v4-flash',
-        maxOutputTokens: 65_536,
-      }),
+      resolveChatRequestConfig: (options?: {
+        model?: string
+        temperature?: number
+        maxTokens?: number
+      }) => {
+        const model = options?.model ?? 'deepseek-v4-flash'
+
+        return {
+          model,
+          contextWindowTokens: getModelProfile(model)?.contextWindowTokens
+            ?? 1_000_000,
+          maxOutputTokens: options?.maxTokens ?? 65_536,
+          temperature: options?.temperature ?? 0.7,
+        }
+      },
       chatStream: (messages: ModelInputItem[], _options?: ChatStreamOptions) => {
         const createStream = modelStreams[callIndex]
 
@@ -1013,12 +1027,7 @@ describe('Grounded Answer PostgreSQL integration', { concurrency: 1 }, () => {
         )
       },
     } as unknown as LLMService
-    const service = new AgentRuntimeService(
-      llmService,
-      prisma,
-      new AgentRunRecorderService(prisma),
-      registry,
-      new ToolInvocationService(registry),
+    const runConfigurationService = new AgentRunConfigurationService(
       {
         value: {
           historyCandidateBatchSize: 50,
@@ -1027,7 +1036,16 @@ describe('Grounded Answer PostgreSQL integration', { concurrency: 1 }, () => {
           maxToolCalls: 1,
           runDeadlineMs: 60_000,
         },
-      } as never,
+      } as AgentRuntimePolicyService,
+      llmService,
+      registry,
+    )
+    const service = new AgentRuntimeService(
+      llmService,
+      prisma,
+      new AgentRunRecorderService(prisma),
+      new ToolInvocationService(registry),
+      runConfigurationService,
       new InitialContextSelectionService(new TestTokenEstimator()),
       new SamplingContextPlanner(new TestTokenEstimator()),
     )
