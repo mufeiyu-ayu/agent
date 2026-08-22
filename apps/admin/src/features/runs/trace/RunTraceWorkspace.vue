@@ -2,6 +2,7 @@
 import type { RunDetail } from '../run.model'
 import type { TraceRecord, TraceRequestGroup } from './run-trace.model'
 import { computed, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 import {
   createRunTraceProjection,
@@ -19,9 +20,34 @@ const props = defineProps<{
   run: RunDetail
 }>()
 
+const { t } = useI18n()
+
 const query = ref('')
 const collapsedRequestIds = ref<Set<string>>(new Set())
 const selectedId = ref<string>()
+
+// 检查器宽度拖拽调整；null 表示使用 CSS 默认宽度。
+const MIN_INSPECTOR_WIDTH = 300
+const MIN_LEDGER_WIDTH = 320
+const RESIZE_KEYBOARD_STEP = 16
+// CSS 默认宽度 clamp(320px, 28%, 440px) 的 28%，用作 aria 初始值。
+const DEFAULT_INSPECTOR_PERCENT = 28
+const bodyEl = ref<HTMLElement>()
+const inspectorEl = ref<HTMLElement>()
+const inspectorWidth = ref<number | null>(null)
+const resizerValuePercent = ref(DEFAULT_INSPECTOR_PERCENT)
+const resizing = ref(false)
+const activePointerId = ref<number | null>(null)
+const dragStartX = ref(0)
+const dragStartWidth = ref(0)
+
+// min() 让容器变窄时由 CSS 自动重新收紧，始终给左侧列表保留 MIN_LEDGER_WIDTH。
+const bodyStyle = computed(() => inspectorWidth.value === null
+  ? undefined
+  : {
+      gridTemplateColumns:
+        `minmax(0, 1fr) min(${inspectorWidth.value}px, calc(100% - ${MIN_LEDGER_WIDTH}px))`,
+    })
 
 const projection = computed(() => createRunTraceProjection(props.run))
 const visibleRecords = computed(() => getVisibleTraceRecords(
@@ -145,6 +171,82 @@ function collapseRequests() {
 function expandAll() {
   collapsedRequestIds.value = new Set()
 }
+
+function applyInspectorWidth(width: number) {
+  const rect = bodyEl.value?.getBoundingClientRect()
+  if (!rect)
+    return
+
+  const max = Math.max(MIN_INSPECTOR_WIDTH, rect.width - MIN_LEDGER_WIDTH)
+  const clamped = Math.min(Math.max(width, MIN_INSPECTOR_WIDTH), max)
+  inspectorWidth.value = clamped
+  resizerValuePercent.value = Math.round((clamped / rect.width) * 100)
+}
+
+function currentInspectorWidth(): number {
+  return inspectorWidth.value
+    ?? inspectorEl.value?.offsetWidth
+    ?? MIN_INSPECTOR_WIDTH
+}
+
+/** 聚焦时按真实布局同步 aria 值，修正默认 clamp 或窗口缩放造成的偏差。 */
+function syncResizerValue() {
+  const rect = bodyEl.value?.getBoundingClientRect()
+  if (!rect || rect.width === 0)
+    return
+
+  resizerValuePercent.value = Math.round(
+    (currentInspectorWidth() / rect.width) * 100,
+  )
+}
+
+function onResizerPointerDown(event: PointerEvent) {
+  // 只认第一个按下的 pointer，避免触屏第二根手指打断拖拽
+  if (activePointerId.value !== null)
+    return
+
+  event.preventDefault()
+  ;(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId)
+  activePointerId.value = event.pointerId
+  dragStartX.value = event.clientX
+  dragStartWidth.value = currentInspectorWidth()
+  resizing.value = true
+}
+
+function onResizerPointerMove(event: PointerEvent) {
+  if (!resizing.value || event.pointerId !== activePointerId.value)
+    return
+
+  // 基于按下时的宽度做相对位移，起手不跳变
+  applyInspectorWidth(
+    dragStartWidth.value + (dragStartX.value - event.clientX),
+  )
+}
+
+function onResizerPointerUp(event: PointerEvent) {
+  if (event.pointerId !== activePointerId.value)
+    return
+
+  resizing.value = false
+  activePointerId.value = null
+  ;(event.currentTarget as HTMLElement).releasePointerCapture(event.pointerId)
+}
+
+function onResizerKeydown(event: KeyboardEvent) {
+  if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight')
+    return
+
+  event.preventDefault()
+  const delta = event.key === 'ArrowLeft'
+    ? RESIZE_KEYBOARD_STEP
+    : -RESIZE_KEYBOARD_STEP
+  applyInspectorWidth(currentInspectorWidth() + delta)
+}
+
+function resetInspectorWidth() {
+  inspectorWidth.value = null
+  resizerValuePercent.value = DEFAULT_INSPECTOR_PERCENT
+}
 </script>
 
 <template>
@@ -177,7 +279,7 @@ function expandAll() {
         @select="selectRecord"
       />
 
-      <div class="run-trace-workspace__body">
+      <div ref="bodyEl" class="run-trace-workspace__body" :style="bodyStyle">
         <RunTraceLedger
           :records="visibleRecords"
           :request-groups="projection.requestGroups"
@@ -188,7 +290,23 @@ function expandAll() {
           @toggle-request="toggleRequest"
         />
 
-        <div class="run-trace-workspace__inspector">
+        <div ref="inspectorEl" class="run-trace-workspace__inspector">
+          <div
+            class="run-trace-workspace__resizer"
+            :class="{ 'run-trace-workspace__resizer--active': resizing }"
+            role="separator"
+            aria-orientation="vertical"
+            :aria-label="t('runTrace.inspector.resizerLabel')"
+            :aria-valuenow="resizerValuePercent"
+            tabindex="0"
+            @pointerdown="onResizerPointerDown"
+            @pointermove="onResizerPointerMove"
+            @pointerup="onResizerPointerUp"
+            @pointercancel="onResizerPointerUp"
+            @keydown="onResizerKeydown"
+            @focus="syncResizerValue"
+            @dblclick="resetInspectorWidth"
+          />
           <RunTraceInspector
             :record="selectedRecord"
             :request-group="selectedRequestGroup"
@@ -230,10 +348,31 @@ function expandAll() {
 }
 
 .run-trace-workspace__inspector {
+  position: relative;
   min-width: 0;
   min-height: 0;
   overflow: hidden;
   border-left: 1px solid var(--admin-border-strong);
+}
+
+.run-trace-workspace__resizer {
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  bottom: 0;
+
+  /* 检查器容器 overflow:hidden 会裁掉负偏移部分，把手必须完全落在容器内 */
+  left: 0;
+  width: 6px;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.run-trace-workspace__resizer:hover,
+.run-trace-workspace__resizer:focus-visible,
+.run-trace-workspace__resizer--active {
+  background: color-mix(in srgb, var(--trace-model) 35%, transparent);
+  outline: none;
 }
 
 @container run-trace (max-width: 900px) {
@@ -243,13 +382,18 @@ function expandAll() {
   }
 
   .run-trace-workspace__body {
-    grid-template-columns: 1fr;
+    /* 覆盖拖拽宽度的行内样式，堆叠布局下宽度调整无意义 */
+    grid-template-columns: 1fr !important;
     grid-template-rows: minmax(270px, 0.9fr) minmax(340px, 1.1fr);
   }
 
   .run-trace-workspace__inspector {
     border-top: 1px solid var(--admin-border-strong);
     border-left: 0;
+  }
+
+  .run-trace-workspace__resizer {
+    display: none;
   }
 }
 </style>

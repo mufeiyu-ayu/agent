@@ -323,6 +323,16 @@ export interface AdminLoadConversationHistoryStep extends AdminRunKnownTimelineI
   messageCount: number | null
 }
 
+/**
+ * debug 捕获的模型 I/O 原始 JSON 信封。
+ *
+ * 仅在 AGENT_DEBUG_CAPTURE_MODEL_IO 开启时产生；value 为 provider 原始 JSON，
+ * 只用于观测展示，不参与任何业务逻辑。超过截断上限时只保留 preview 字符串。
+ */
+export type AdminDebugModelIOCapture
+  = | { truncated: false, value: unknown }
+    | { truncated: true, preview: string }
+
 export interface AdminModelSamplingStep extends AdminRunKnownTimelineItemBase {
   type: 'model_sampling'
   samplingIndex: number | null
@@ -338,6 +348,10 @@ export interface AdminModelSamplingStep extends AdminRunKnownTimelineItemBase {
   intermediateTextChars: number | null
   recordedDurationMs: number | null
   contextInspector: AdminContextInspector
+  /** debug 捕获：实际发给 provider 的请求体；未开启捕获或数据缺失为 null。 */
+  debugRequestBody: AdminDebugModelIOCapture | null
+  /** debug 捕获：流式组装后的 provider 原始响应；未开启捕获或数据缺失为 null。 */
+  debugRawResponse: AdminDebugModelIOCapture | null
 }
 
 export interface AdminToolExecutionStep extends AdminRunKnownTimelineItemBase {
@@ -401,6 +415,9 @@ export interface AdminRunSafeStepProjection {
   inputSummary: string | null
   outputSummary: string | null
   hasError: boolean
+  /** debug 捕获白名单字段：仅 model_sampling 且捕获存在时出现。 */
+  debugRequestBody?: AdminDebugModelIOCapture
+  debugRawResponse?: AdminDebugModelIOCapture
 }
 
 export interface AdminRunSafeRawData {

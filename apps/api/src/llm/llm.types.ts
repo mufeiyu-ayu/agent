@@ -31,12 +31,28 @@ export interface ChatOptions {
   responseFormat?: { type: 'json_object' } | { type: 'text' }
 }
 
+/**
+ * debug 模型 I/O 捕获回调。
+ *
+ * 仅当 AGENT_DEBUG_CAPTURE_MODEL_IO 开启时由 client 调用；载荷是 provider
+ * 原始 JSON，类型刻意保持 unknown——它只用于观测落库，不进入业务逻辑，
+ * 不构成对"不暴露 OpenAI SDK 原始 response"边界的破例。
+ */
+export interface ModelIODebugCapture {
+  /** 请求真正发出前回调，body 为实际请求体（不含凭据）。 */
+  onRequest: (requestBody: unknown) => void
+  /** 模型流正常结束后回调，raw 为流式组装出的完整原始响应。 */
+  onResponse: (rawResponse: unknown) => void
+}
+
 /** chatStream() 方法的可选参数。 */
 export interface ChatStreamOptions extends ChatOptions {
   /** 外部中止信号，用于后续支持用户主动停止生成。 */
   signal?: AbortSignal
   /** 只包含模型可见字段的工具说明。 */
   tools?: ModelToolSpec[]
+  /** debug 捕获回调；未开启捕获开关时不会被调用。 */
+  debugCapture?: ModelIODebugCapture
 }
 
 export const SUPPORTED_DEEPSEEK_MODELS = [

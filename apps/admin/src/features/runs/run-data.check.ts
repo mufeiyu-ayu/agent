@@ -973,6 +973,8 @@ function createTraceDetail(toolCount: 0 | 1 | 2): AdminRunDetail {
       textChars: finishReason === 'stop' ? 12 : 0,
       intermediateTextChars: 0,
       recordedDurationMs: 50,
+      debugRequestBody: null,
+      debugRawResponse: null,
       contextInspector: createContextInspector({
         estimatedInputTokens: index * 100,
         budgetUsageRatio: index * 100 / 262_144,
@@ -1158,6 +1160,8 @@ function createRunningDetail(): AdminRunDetail {
     textChars: null,
     intermediateTextChars: null,
     recordedDurationMs: null,
+    debugRequestBody: null,
+    debugRawResponse: null,
     contextInspector: createContextInspector({
       availability: 'partial',
       outcome: 'unavailable',

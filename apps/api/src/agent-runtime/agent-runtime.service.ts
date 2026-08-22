@@ -14,6 +14,7 @@ import type {
 } from './agent-runtime.types.js'
 import type { GroundedFinalizationAttemptSummary } from './grounding/grounded-answer.finalizer.js'
 import type { HistoryCursor } from './initial-context-selection.js'
+import type { DebugModelIOCaptured } from './model-io-debug-capture.js'
 import type {
   ModelSamplingSummary,
   SamplingDecision,
@@ -63,6 +64,7 @@ import {
   InitialContextSelectionService,
 } from './initial-context-selection.js'
 import { ModelContext } from './model-context.js'
+import { toModelIODebugCaptureEnvelope } from './model-io-debug-capture.js'
 import { streamModelSampling } from './model-sampling-decision.js'
 import {
   SamplingContextBudgetExceededError,
@@ -334,6 +336,9 @@ export class AgentRuntimeService {
           },
         }, databaseDeadline)
         const samplingStartedAt = Date.now()
+        // debug 捕获暂存：只有 AGENT_DEBUG_CAPTURE_MODEL_IO 开启时 client 才会回调，
+        // 开关关闭时始终为空对象，落库输出与现状完全一致。
+        const debugModelIO: DebugModelIOCaptured = {}
         let samplingDecision: SamplingDecision
         let contextPlanSummary: SamplingContextPlanSummary | undefined
         let plannedMessageCount = 0
@@ -354,7 +359,17 @@ export class AgentRuntimeService {
           const sampling = streamModelSampling(
             this.llmService.chatStream(
               contextPlan.items,
-              chatStreamOptions,
+              {
+                ...chatStreamOptions,
+                debugCapture: {
+                  onRequest: (requestBody) => {
+                    debugModelIO.requestBody = requestBody
+                  },
+                  onResponse: (rawResponse) => {
+                    debugModelIO.rawResponse = rawResponse
+                  },
+                },
+              },
             ),
             samplingAttemptId,
           )
@@ -393,6 +408,7 @@ export class AgentRuntimeService {
                 Date.now() - samplingStartedAt,
                 plannedMessageCount,
                 contextPlanSummary,
+                debugModelIO,
               ),
             },
           )
@@ -406,6 +422,7 @@ export class AgentRuntimeService {
               Date.now() - samplingStartedAt,
               plannedMessageCount,
               contextPlanSummary,
+              debugModelIO,
             ),
           }
           claimRunTermination(runCancellation, error)
@@ -999,6 +1016,7 @@ export class AgentRuntimeService {
     durationMs: number,
     messageCount: number,
     contextPlan?: SamplingContextPlanSummary,
+    debugModelIO?: DebugModelIOCaptured,
   ) {
     return {
       samplingAttemptId: summary.samplingAttemptId,
@@ -1024,6 +1042,7 @@ export class AgentRuntimeService {
       ...(contextPlan
         ? { contextPlan: contextPlan as unknown as Prisma.InputJsonValue }
         : {}),
+      ...this.toDebugModelIOOutput(debugModelIO),
     }
   }
 
@@ -1032,6 +1051,7 @@ export class AgentRuntimeService {
     durationMs: number,
     messageCount: number,
     contextPlan?: SamplingContextPlanSummary,
+    debugModelIO?: DebugModelIOCaptured,
   ) {
     const failedContextPlan = contextPlan
       ?? (error instanceof SamplingContextBudgetExceededError
@@ -1044,6 +1064,7 @@ export class AgentRuntimeService {
         durationMs,
         messageCount,
         failedContextPlan,
+        debugModelIO,
       )
     }
 
@@ -1059,7 +1080,39 @@ export class AgentRuntimeService {
               failedContextPlan as unknown as Prisma.InputJsonValue,
           }
         : {}),
+      ...this.toDebugModelIOOutput(debugModelIO),
     }
+  }
+
+  /**
+   * 把 debug 捕获暂存收敛成落库字段；未捕获时返回空对象，输出保持现状。
+   * 序列化失败降级为不写该侧字段并记 warning，不影响采样流程。
+   */
+  private toDebugModelIOOutput(
+    debugModelIO?: DebugModelIOCaptured,
+  ): Record<string, Prisma.InputJsonValue> {
+    const output: Record<string, Prisma.InputJsonValue> = {}
+
+    for (const [capturedKey, outputKey] of [
+      ['requestBody', 'debugRequestBody'],
+      ['rawResponse', 'debugRawResponse'],
+    ] as const) {
+      const captured = debugModelIO?.[capturedKey]
+
+      if (captured === undefined)
+        continue
+
+      const envelope = toModelIODebugCaptureEnvelope(captured)
+
+      if (envelope === undefined) {
+        this.logger.warn(`模型 I/O debug 捕获序列化失败，跳过 ${outputKey}`)
+        continue
+      }
+
+      output[outputKey] = envelope as unknown as Prisma.InputJsonValue
+    }
+
+    return output
   }
 
   /**

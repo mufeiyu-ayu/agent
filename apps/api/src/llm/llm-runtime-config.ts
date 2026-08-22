@@ -13,6 +13,7 @@ export const DEFAULT_LLM_RUNTIME_CONFIG = {
   streamTimeoutMs: 600_000,
   defaultMaxOutputTokens: 65_536,
   applicationMaxOutputTokens: 131_072,
+  captureModelIO: false,
 } as const
 
 export interface LLMRuntimeConfig {
@@ -24,6 +25,8 @@ export interface LLMRuntimeConfig {
   streamTimeoutMs: number
   defaultMaxOutputTokens: number
   applicationMaxOutputTokens: number
+  /** debug 开关：是否捕获 provider 原始请求 / 响应 JSON，默认关闭。 */
+  captureModelIO: boolean
 }
 
 export interface ChatRequestConfig {
@@ -97,7 +100,14 @@ export function resolveLLMRuntimeConfig(
     streamTimeoutMs,
     defaultMaxOutputTokens,
     applicationMaxOutputTokens,
+    captureModelIO: readBooleanFlag(env, 'AGENT_DEBUG_CAPTURE_MODEL_IO'),
   }
+}
+
+function readBooleanFlag(env: NodeJS.ProcessEnv, name: string): boolean {
+  const value = env[name]?.trim().toLowerCase()
+
+  return value === '1' || value === 'true'
 }
 
 export function resolveChatRequestConfig(

@@ -38,6 +38,7 @@ import {
   LLMRateLimitError,
   LLMServerError,
 } from '../llm.errors.js'
+import { teeRawResponseCapture } from './openai-compatible-raw-capture.js'
 import { adaptOpenAICompatibleStream } from './openai-compatible-stream.adapter.js'
 
 type ChatCompletionBaseParams = Pick<
@@ -111,24 +112,37 @@ export class OpenAICompatibleClient {
       timeout: this.runtimeConfigService.value.streamTimeoutMs,
       ...(options?.signal ? { signal: options.signal } : {}),
     }
+    // debug 捕获只在开关开启且调用方提供回调时生效；请求体不含 apiKey / baseUrl
+    // 等凭据（它们只存在于 SDK client 配置里，不在请求 params 中）。
+    const debugCapture = this.runtimeConfigService.value.captureModelIO
+      ? options?.debugCapture
+      : undefined
 
     try {
-      const stream = await client.chat.completions.create(
-        {
-          ...this.buildBaseChatCompletionParams(
-            messages.map(toOpenAIModelInputItem),
-            options,
-          ),
-          ...toOpenAIChatTools(options?.tools),
-          stream: true,
-          stream_options: {
-            include_usage: true,
-          },
+      const requestParams = {
+        ...this.buildBaseChatCompletionParams(
+          messages.map(toOpenAIModelInputItem),
+          options,
+        ),
+        ...toOpenAIChatTools(options?.tools),
+        stream: true as const,
+        stream_options: {
+          include_usage: true,
         },
+      }
+
+      debugCapture?.onRequest(requestParams)
+
+      const stream = await client.chat.completions.create(
+        requestParams,
         requestOptions,
       )
 
-      yield* adaptOpenAICompatibleStream(stream)
+      yield* adaptOpenAICompatibleStream(
+        debugCapture
+          ? teeRawResponseCapture(stream, debugCapture.onResponse)
+          : stream,
+      )
     }
     catch (cause) {
       throw this.toLLMError(cause)

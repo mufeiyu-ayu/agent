@@ -204,6 +204,7 @@ export const messages = {
       inspector: {
         ariaLabel: '运行轨迹检查器',
         empty: '选择一条轨迹记录查看详情',
+        resizerLabel: '拖拽调整检查器宽度，方向键微调，双击恢复默认',
         unavailable: '未记录',
         requestLabel: '请求 #{number}',
         safeRawDescription: '仅包含 Admin 安全白名单字段。',
@@ -218,6 +219,15 @@ export const messages = {
           safeIo: '安全 I/O',
           content: '内容',
           safeRaw: '安全原始数据',
+          requestBody: '请求体',
+          rawResponse: '原始响应',
+        },
+        debugCapture: {
+          empty: '未捕获。需要在 API 环境中开启 AGENT_DEBUG_CAPTURE_MODEL_IO 后重新运行。',
+          truncated: '内容超过截断上限，仅展示前缀预览。',
+          copy: '复制 JSON',
+          copied: '已复制',
+          copyFailed: '复制失败',
         },
         fields: {
           request: '请求',
@@ -672,6 +682,7 @@ export const messages = {
       inspector: {
         ariaLabel: 'Run trace inspector',
         empty: 'Select a trace record to inspect',
+        resizerLabel: 'Drag to resize the inspector, arrow keys to fine-tune, double-click to reset',
         unavailable: 'Unavailable',
         requestLabel: 'Request #{number}',
         safeRawDescription: 'Only Admin allowlisted safe fields are shown.',
@@ -686,6 +697,15 @@ export const messages = {
           safeIo: 'Safe I/O',
           content: 'Content',
           safeRaw: 'Safe Raw',
+          requestBody: 'Request Body',
+          rawResponse: 'Raw Response',
+        },
+        debugCapture: {
+          empty: 'Not captured. Enable AGENT_DEBUG_CAPTURE_MODEL_IO in the API environment and rerun.',
+          truncated: 'Content exceeded the capture limit; only a prefix preview is shown.',
+          copy: 'Copy JSON',
+          copied: 'Copied',
+          copyFailed: 'Copy failed',
         },
         fields: {
           request: 'Request',
