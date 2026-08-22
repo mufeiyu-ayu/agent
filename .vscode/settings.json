@@ -12,6 +12,12 @@
   // Keep arbitrary values when they document exact design dimensions
   "tailwindCSS.lint.suggestCanonicalClasses": "ignore",
 
+  // 源码阅读时默认隐藏测试文件
+  "files.exclude": {
+    "**/*.test.ts": true,
+    "**/*.spec.ts": true
+  },
+
   // Silent the stylistic rules in your IDE, but still auto fix them
   "eslint.rules.customizations": [
     { "rule": "style/*", "severity": "off", "fixable": true },
