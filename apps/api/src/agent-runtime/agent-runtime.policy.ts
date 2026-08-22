@@ -5,10 +5,15 @@ const MAX_HISTORY_CANDIDATE_LIMIT = 1_000
 const MAX_TIMER_TIMEOUT_MS = 2_147_483_647
 
 export const DEFAULT_AGENT_RUNTIME_POLICY = {
+  /** 每批从数据库读取的历史候选消息数。 */
   historyCandidateBatchSize: 50,
+  /** 单次 Run 最多检查的历史候选消息总数。 */
   historyCandidateHardLimit: 1_000,
+  /** 单次 Run 最多允许发起的模型采样轮数。 */
   maxSamplingRounds: 3,
+  /** 单次 Run 最多允许执行的工具调用次数。 */
   maxToolCalls: 2,
+  /** 单次 Run 正常执行阶段的最长时间，单位为毫秒。 */
   runDeadlineMs: 600_000,
 } as const
 
