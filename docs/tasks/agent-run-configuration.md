@@ -49,4 +49,5 @@
 
 ## GitHub 交付
 
-- Draft PR：实现与验证完成后创建，链接在 PR 创建后回填；Draft 转 Ready 与合并需用户明确授权。
+- Draft PR：[#93](https://github.com/mufeiyu-ayu/agent/pull/93)；Draft 转 Ready 与合并需用户明确授权。
+- Gate READY 记录：[Issue #92 评论](https://github.com/mufeiyu-ayu/agent/issues/92#issuecomment-5380675918)。
