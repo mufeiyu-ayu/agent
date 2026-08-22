@@ -1,4 +1,10 @@
 export type {
+  AdminConversationDetail,
+  AdminConversationListItem,
+  AdminConversationListResponse,
+  AdminConversationMessage,
+} from './admin-conversation.js'
+export type {
   AdminAssistantOutputStep,
   AdminContextInspector,
   AdminContextInspectorAvailability,

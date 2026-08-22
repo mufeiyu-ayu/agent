@@ -46,6 +46,13 @@ async function copyRunId() {
         >
           <CopyOutlined aria-hidden="true" />
         </button>
+        <RouterLink
+          class="trace-header__conversation"
+          :to="{ name: 'conversation-detail', params: { conversationId: run.conversationId } }"
+          :title="run.conversationId"
+        >
+          {{ t('runTrace.header.conversation') }} · {{ run.conversationId }}
+        </RouterLink>
       </div>
       <RunStatusTag :status="run.status" />
     </div>
@@ -135,6 +142,16 @@ async function copyRunId() {
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+}
+
+.trace-header__conversation {
+  grid-column: 1 / -1;
+  overflow: hidden;
+  color: var(--admin-primary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .trace-header__run-id code {

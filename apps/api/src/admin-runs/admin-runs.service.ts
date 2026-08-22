@@ -200,6 +200,7 @@ function createRunWhere(input: ListAdminRunsQueryDto): Prisma.AgentRunWhereInput
 
   return {
     ...(input.status ? { status: input.status } : {}),
+    ...(input.conversationId ? { conversationId: input.conversationId } : {}),
     ...(query
       ? {
           OR: [

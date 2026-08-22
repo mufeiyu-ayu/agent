@@ -38,8 +38,11 @@ async function closeTab(tab: RouteTab) {
 function getTabTitle(tab: RouteTab): string {
   const resolved = router.resolve(tab.path)
 
-  if (resolved.name === 'run-detail') {
-    return resolveRouteTabTitle(resolved, runId => t('navigation.runTab', { id: runId }))
+  if (resolved.name === 'run-detail' || resolved.name === 'conversation-detail') {
+    return resolveRouteTabTitle(resolved, (routeName, id) => t(
+      routeName === 'run-detail' ? 'navigation.runTab' : 'navigation.conversationTab',
+      { id },
+    ))
   }
 
   return resolved.meta.titleKey ? t(resolved.meta.titleKey) : tab.title

@@ -64,22 +64,34 @@ export function routeAfterTabClose(
   return remainingTabs[fallbackIndex]?.path ?? '/overview'
 }
 
+/** 详情路由 → 用于 tab 标题的 id 参数名；新增详情页在这里登记即可。 */
+const DETAIL_ROUTE_ID_PARAMS = {
+  'conversation-detail': 'conversationId',
+  'run-detail': 'runId',
+} as const
+
+export type DetailRouteName = keyof typeof DETAIL_ROUTE_ID_PARAMS
+
 export function resolveRouteTabTitle(
   route: RouteNavigationContext,
-  formatRunTitle: (runId: string) => string = runId => `Run · ${runId}`,
+  formatDetailTitle: (routeName: DetailRouteName, idSuffix: string) => string
+    = (routeName, id) => `${routeName === 'run-detail' ? 'Run' : 'Conversation'} · ${id}`,
 ): string {
   const fallbackTitle = route.meta.title ?? route.path
+  const routeName = typeof route.name === 'string' && route.name in DETAIL_ROUTE_ID_PARAMS
+    ? route.name as DetailRouteName
+    : undefined
 
-  if (route.name !== 'run-detail')
+  if (!routeName)
     return fallbackTitle
 
-  const runId = route.params?.runId
+  const id = route.params?.[DETAIL_ROUTE_ID_PARAMS[routeName]]
 
-  if (typeof runId !== 'string' || !runId)
+  if (typeof id !== 'string' || !id)
     return fallbackTitle
 
-  const suffix = runId.length > 11 ? `…${runId.slice(-11)}` : runId
-  return formatRunTitle(suffix)
+  const suffix = id.length > 11 ? `…${id.slice(-11)}` : id
+  return formatDetailTitle(routeName, suffix)
 }
 
 export function resolveActiveMenuPath(route: RouteNavigationContext): string {

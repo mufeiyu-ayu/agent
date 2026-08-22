@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import {
+  CommentOutlined,
   DashboardOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
@@ -22,6 +23,7 @@ defineEmits<{
 
 const navigation = [
   { path: '/overview', labelKey: 'navigation.overview', icon: DashboardOutlined },
+  { path: '/conversations', labelKey: 'navigation.conversations', icon: CommentOutlined },
   { path: '/runs', labelKey: 'navigation.runs', icon: ProfileOutlined },
 ]
 

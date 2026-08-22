@@ -39,6 +39,7 @@ Admin Console 面向项目开发、调试和运行过程复盘。它是 Agent �
 | Task 3 | Completed | 真实 Run Trace UI | #35 / #36 / [文档](./admin-console/task-03-real-trace-ui.md) |
 | Enhancement 1 | Completed | 紧凑 Run Trace Workspace | #51 / #53 / `159e964c` / [文档](./admin-console/enhancement-01-run-trace-workspace.md) |
 | Phase 8 Task 3C | Completed | Retrieval / Finalization / Citation Inspector | #62 / #63 / `20f838fb` / [文档](./completed/phase-08-grounded-retrieval.md) |
+| Enhancement 2 | 已实现 / 待验收 | 会话记录入口（会话列表 / transcript / 会话内 runs） | #88 / [文档](./admin-console/enhancement-02-conversations-entry.md) |
 | Task 4 | Planned | 登录、权限、敏感信息脱敏 | 未创建 |
 
 ## 已完成基线
