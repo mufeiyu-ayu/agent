@@ -75,6 +75,7 @@ export const messages = {
         runCount: 'Run 次数',
         toolCalls: '调用次数',
         empty: '暂无数据',
+        emptyTools: '暂无工具调用；Agent 执行带检索或检查的任务后，这里会展示各工具的使用次数。',
       },
     },
     runs: {
@@ -590,6 +591,7 @@ export const messages = {
         runCount: 'Runs',
         toolCalls: 'Calls',
         empty: 'No data yet',
+        emptyTools: 'No tool calls yet. Once the agent runs retrieval or checks, per-tool usage shows up here.',
       },
     },
     runs: {
