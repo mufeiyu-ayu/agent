@@ -4,12 +4,17 @@
 
 ```text
 实施状态：已实现
-验收状态：待验收
+验收状态：已通过
+任务状态：Completed
+PR 状态：Merged
 ```
 
-- Issue：[#88](https://github.com/mufeiyu-ayu/agent/issues/88)
-- 实现分支：`codex/issue-88-admin-conversations`
+- Issue：[#88](https://github.com/mufeiyu-ayu/agent/issues/88) / Closed
+- PR：[#89](https://github.com/mufeiyu-ayu/agent/pull/89) / Merged
+- Merge commit：`e059cebb62c7bf074a728fe56cc114de69cdc568`
+- 实现分支：`codex/issue-88-admin-conversations`（远程与本地均已删除）
 - Clarification Gate：`READY`（澄清决策见 Issue 正文）
+- Review：commit 前 /code-review 两轮共 13 项，12 项修复、1 项记录为后续清理；用户确认验收并授权合并（2026-08-22）
 
 本任务是 Admin Observability 的独立 Enhancement，不改变 Admin Task 4 Planned 或 Agent 主线状态。
 

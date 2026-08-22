@@ -9,13 +9,14 @@
 | Agent 主线 | 阶段 1-8 Completed；当前无 Active Agent Task | Phase 8 源码阅读（学习阶段）；下一阶段学习内容暂不定义 |
 | Phase 8 | Task 0、1、2A、2B、3A、3B、3C 全部 Completed | [阶段归档](./tasks/completed/phase-08-grounded-retrieval.md) |
 | Minimal Compaction | Gated | 只有真实 Context 压力证据满足触发条件后才讨论 |
-| Admin Console | Task 0-3、Enhancement 1、Phase 8 Task 3C Completed；Task 4 Planned | 不自动启动 Auth / RBAC |
+| Admin Console | Task 0-3、Enhancement 1-2、Phase 8 Task 3C Completed；Task 4 Planned；Enhancement 3（Overview 仪表盘 #90）Next | 不自动启动 Auth / RBAC |
 | Phase 9 | 未定案 | 学习闭环后基于真实需求讨论 |
 
 ## 近期关键记录
 
 | 日期 | 事项 | 结果 |
 | --- | --- | --- |
+| 2026-08-22 | Admin Enhancement 2 会话记录入口 #88 收口 | Issue #88 / PR #89；会话列表 + 完整 transcript（会话级投影，run 级 500 字截断不变）+ runs conversationId 过滤 + 聊天气泡懒加载 UI + 路由滑动过渡；commit 前 /code-review 两轮 13 项（12 修 1 记录：runs 表格组件化留后续）；typecheck / lint / admin 检查 / api 144 测试全绿；用户确认验收并授权合并与分支清理；merge `e059cebb`，Issue #88 Closed，分支已删；同日创建 Enhancement 3 Overview 仪表盘 Issue #90（ECharts 选型与聚合方案已记录） |
 | 2026-08-20 | Phase 8 任务目录归档 | `docs/tasks/phase-08-grounded-retrieval/` 全部文档核心内容合并归档到 `docs/tasks/completed/phase-08-grounded-retrieval.md`，原目录与阶段截图删除（浏览器证据以测试与 PR 记录为准）；docs 状态同步为 Phase 8 源码阅读阶段，下一阶段学习内容暂不定义 |
 | 2026-08-19 | 开发环境自举缺陷 #84 收口 | 编写实机启动手册时实测发现：compose 主库镜像 `postgres:16-alpine` 不含 pgvector，`prisma:migrate` 必然在 Embedding Index migration 中断，本开发机主库长期仅应用 6/8 migration（缺 `ArticleChunk` / `ArticleIndexState` / `MessageGrounding`），web 前台 RAG 主链与 grounded 落库在 dev 主库上从未真正可用（Phase 8 验证均在 integration 库）；PR #85 将主库镜像对齐 `pgvector/pgvector:0.8.6-pg16-bookworm` 并补全 README quickstart（起库、seed、index 步骤与 collation 迁移注意）；本机主库重建实测：8/8 migration、seed 68 篇、index chunksWritten=2044 / failed=0、`smoke:retrieval-tool` 真实检索通过；用户确认合并，PR #85 merged，Issue #84 Closed |
 | 2026-08-19 | 全仓源码审计后置维护 #72-#77 批量收口 | 基于 2026-08-18 三路并行源码审计（Runtime 核心 / RAG 链路 / 前端契约）创建 Issue #72-#77 并全部修复：#72 Runtime 终态收口（消费者 return() 兜底 + 在途请求取消 + terminalization_unknown 流通知，PR #78）、#74 finalization 模型不服从纳入 correction（新 rejection code `submission_missing`，PR #79）、#73 Web 流边界（reader.cancel、消息版本守卫、abort 占位幂等、onUnmounted，PR #80）、#75 quality-v2 lexical 基线与 hybrid 同源（PR #81）、#76 向量通道静默排除告警 + auxiliaryQuery 独立池（PR #82）、#77 卫生批量（PR #83）；每 PR 均经暂存区 code-review 自审（累计 11 个 finding 再修复）、Claude 逐项验收（PR 留档）、冷启动独立复审放行（3 项跟进已收口）；集成态验证 workspace typecheck 0 错、api 508 项 + web 44 项测试全绿；用户授权合并，PR #78-#83 全部 merge（`5071b71`～`28d3ea5`），Issue #72-#77 Closed，远程分支已清理；明确不修事项（C5 先说话再调工具、C6 tokenizer 性能、abortRun reason 元数据等）记录于各 PR |
