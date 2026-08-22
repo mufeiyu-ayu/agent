@@ -5,7 +5,7 @@
   "private": true,
   "scripts": {
     "predev": "pnpm --workspace-root prisma:generate && pnpm --filter @agent/contracts build && tsc",
-    "dev": "node --env-file-if-exists=../../.env dist/main.js",
+    "dev": "node scripts/dev-watch.mjs",
     "predev:watch": "pnpm --workspace-root prisma:generate && pnpm --filter @agent/contracts build && tsc",
     "dev:watch": "node scripts/dev-watch.mjs",
     "prebuild": "pnpm --workspace-root prisma:generate && pnpm --filter @agent/contracts build",
