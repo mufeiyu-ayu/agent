@@ -28,6 +28,7 @@
     "eval:retrieval-quality": "node --import tsx --env-file-if-exists=../../.env src/retrieval/evaluation/article-retrieval-quality-v2.cli.ts",
     "test:admin-runs": "pnpm build && node --test dist/admin-runs/admin-runs.controller.test.js dist/admin-runs/admin-runs.service.test.js dist/admin-runs/admin-retrieval-inspector.test.js",
     "test:admin-conversations": "pnpm build && node --test dist/admin-conversations/admin-conversations.service.test.js",
+    "test:admin-overview": "pnpm build && node --test dist/admin-overview/admin-overview.service.test.js",
     "test:db-reliability": "tsx --env-file-if-exists=../../.env --test src/prisma/prisma.service.reliability.test.ts",
     "test:model-stream": "tsx --test src/llm/clients/openai-compatible-stream.adapter.test.ts src/llm/clients/openai-compatible-raw-capture.test.ts src/agent-runtime/agent-runtime.service.test.ts src/agent-runtime/model-sampling-decision.test.ts src/agent-runtime/model-io-debug-capture.test.ts",
     "test:llm-config": "tsx --test src/llm/model-profiles.test.ts src/llm/llm-runtime-config.test.ts src/llm/llm.module.test.ts src/llm/clients/openai-compatible.client.test.ts",

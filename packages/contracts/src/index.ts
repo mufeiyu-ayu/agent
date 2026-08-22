@@ -5,6 +5,14 @@ export type {
   AdminConversationMessage,
 } from './admin-conversation.js'
 export type {
+  AdminOverviewDailyPoint,
+  AdminOverviewModelUsageItem,
+  AdminOverviewStats,
+  AdminOverviewToolUsageItem,
+  AdminOverviewTotals,
+  AdminProviderBalance,
+} from './admin-overview.js'
+export type {
   AdminAssistantOutputStep,
   AdminContextInspector,
   AdminContextInspectorAvailability,
