@@ -904,6 +904,21 @@ describe('AdminRunsService', () => {
     )
   })
 
+  it('conversationId 过滤进入 where 且可与其他过滤叠加；不传时不出现在 where', async () => {
+    const harness = createServiceHarness()
+
+    await harness.service.list({ conversationId: 'conv-1', status: 'FAILED' })
+    const where = harness.calls.findMany[0]?.where as {
+      conversationId?: string
+      status?: string
+    }
+    assert.equal(where?.conversationId, 'conv-1')
+    assert.equal(where?.status, 'FAILED')
+
+    await harness.service.list({})
+    assert.equal('conversationId' in (harness.calls.findMany[1]?.where as object), false)
+  })
+
   it('列表查询只请求统计所需的三类 Step，且保留 output 字段', async () => {
     const harness = createServiceHarness()
 

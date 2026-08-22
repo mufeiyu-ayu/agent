@@ -27,6 +27,26 @@ export const router = createRouter({
           meta: { title: 'Overview', titleKey: 'navigation.overview', tab: true },
         },
         {
+          path: 'conversations',
+          name: 'conversations',
+          component: () => import('@/views/ConversationsView.vue'),
+          meta: { title: 'Conversations', titleKey: 'navigation.conversations', tab: true },
+        },
+        {
+          path: 'conversations/:conversationId',
+          name: 'conversation-detail',
+          component: () => import('@/views/ConversationDetailView.vue'),
+          meta: {
+            activeMenu: '/conversations',
+            title: 'Conversation Detail',
+            titleKey: 'navigation.conversationDetail',
+            tab: true,
+            parentTitle: 'Conversations',
+            parentTitleKey: 'navigation.conversations',
+            parentPath: '/conversations',
+          },
+        },
+        {
           path: 'runs',
           name: 'runs',
           component: () => import('@/views/RunsView.vue'),

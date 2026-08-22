@@ -49,6 +49,13 @@ export class ListAdminRunsQueryDto {
   query?: string
 
   @IsOptional()
+  @Transform(({ value }) => typeof value === 'string' ? value.trim() : value)
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(128)
+  conversationId?: string
+
+  @IsOptional()
   @IsISO8601({ strict: true, strictSeparator: true })
   @IsRFC3339({ message: 'dateFrom 必须是带时区的 ISO 8601 timestamp' })
   dateFrom?: string

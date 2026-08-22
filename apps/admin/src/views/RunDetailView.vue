@@ -45,9 +45,9 @@ watch(run, () => {
   activeTab.value = 'trace'
 }, { immediate: true })
 
-watch(runId, () => {
-  void loadRun()
-}, { immediate: true })
+// AdminLayout 以 $route.path 为 key，每个路径独立实例：setup 加载一次即可。
+// 不再 watch runId——离场过渡期间 param 变化只会让垂死实例发无效请求、闪 404。
+void loadRun()
 
 onBeforeUnmount(cancelRunLoad)
 </script>

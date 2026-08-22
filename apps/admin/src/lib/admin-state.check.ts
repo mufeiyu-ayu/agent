@@ -43,6 +43,15 @@ assert.equal(resolveRouteTabTitle(firstRunRoute), 'Run · …20260719_01')
 assert.equal(resolveRouteTabTitle(secondRunRoute), 'Run · …20260719_02')
 assert.notEqual(resolveRouteTabTitle(firstRunRoute), resolveRouteTabTitle(secondRunRoute))
 assert.equal(resolveRouteTabTitle({ path: '/runs', meta: { title: 'Runs' } }), 'Runs')
+assert.equal(
+  resolveRouteTabTitle({
+    path: '/conversations/demo_conversation_20260822',
+    name: 'conversation-detail',
+    params: { conversationId: 'demo_conversation_20260822' },
+    meta: { title: 'Conversation Detail', activeMenu: '/conversations' },
+  }),
+  'Conversation · …on_20260822',
+)
 assert.equal(resolveActiveMenuPath(firstRunRoute), '/runs')
 assert.equal(resolveActiveMenuPath({ path: '/runs', meta: { title: 'Runs' } }), '/runs')
 assert.equal(resolveActiveMenuPath({ path: '/overview', meta: { title: 'Overview' } }), '/overview')

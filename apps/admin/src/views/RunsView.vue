@@ -46,6 +46,7 @@ const { locale, t } = useI18n()
 const columns = computed<TableColumnsType<RunListItem>>(() => [
   { title: t('runs.columns.runId'), dataIndex: 'id', key: 'id', width: 176, fixed: 'left' },
   { title: t('runs.columns.question'), dataIndex: 'questionPreview', key: 'question', width: 220 },
+  { title: t('runs.columns.conversation'), dataIndex: 'conversationId', key: 'conversation', width: 150 },
   { title: t('runs.columns.status'), dataIndex: 'status', key: 'status', width: 92 },
   { title: t('runs.columns.model'), dataIndex: 'requestedModel', key: 'requestedModel', width: 132 },
   { title: t('runs.columns.tools'), dataIndex: 'toolCallCount', key: 'tools', width: 62, align: 'center' },
@@ -209,7 +210,7 @@ function handlePageChange(page: number, pageSize: number) {
         :pagination="false"
         row-key="id"
         size="small"
-        :scroll="{ x: 1_090 }"
+        :scroll="{ x: 1_240 }"
       >
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'id'">
@@ -222,6 +223,16 @@ function handlePageChange(page: number, pageSize: number) {
           <template v-else-if="column.key === 'question'">
             <Tooltip :title="record.questionPreview">
               <span class="question-preview">{{ record.questionPreview }}</span>
+            </Tooltip>
+          </template>
+          <template v-else-if="column.key === 'conversation'">
+            <Tooltip :title="record.conversationId">
+              <RouterLink
+                class="run-id"
+                :to="{ name: 'conversation-detail', params: { conversationId: record.conversationId } }"
+              >
+                {{ record.conversationId }}
+              </RouterLink>
             </Tooltip>
           </template>
           <template v-else-if="column.key === 'status'">
