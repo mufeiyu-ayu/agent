@@ -55,13 +55,6 @@ export interface ChatStreamOptions extends ChatOptions {
   debugCapture?: ModelIODebugCapture
 }
 
-export const SUPPORTED_DEEPSEEK_MODELS = [
-  'deepseek-v4-flash',
-  'deepseek-v4-pro',
-] as const
-
-export type SupportedDeepSeekModel = typeof SUPPORTED_DEEPSEEK_MODELS[number]
-
 export interface DeepSeekModelInfo {
   id: string
   object: 'model'

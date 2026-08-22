@@ -5,7 +5,7 @@ import type {
   MessageRole as PrismaMessageRole,
   MessageStatus as PrismaMessageStatus,
 } from '../generated/prisma/client.js'
-import type { ChatMessage } from '../llm/llm.types.js'
+import type { ChatMessage, ChatStreamOptions } from '../llm/llm.types.js'
 import type { DatabaseOperationDeadline } from '../prisma/prisma.service.js'
 import type { ToolResult } from '../tools/core/tool.types.js'
 import type {
@@ -24,20 +24,18 @@ import type { SamplingContextPlanSummary } from './sampling-context-planner.js'
 import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common'
 import { MessageRole, MessageStatus } from '../generated/prisma/client.js'
 import { LLMService } from '../llm/llm.service.js'
-import { getModelProfile } from '../llm/model-profiles.js'
 import {
   DatabaseCommitOutcomeUnknownError,
   DatabaseOperationDeadlineExceededError,
   PrismaService,
 } from '../prisma/prisma.service.js'
-import { toModelToolSpec } from '../tools/core/model-tool-spec.mapper.js'
 import { ToolInvocationService } from '../tools/core/tool-invocation.service.js'
 import {
   normalizeToolObservation,
   TOOL_OBSERVATION_HARD_MAX_CHARS,
 } from '../tools/core/tool-observation.js'
-import { ToolRegistryService } from '../tools/core/tool-registry.service.js'
 import { normalizeToolStepSummary } from '../tools/core/tool-step-summary.js'
+import { AgentRunConfigurationService } from './agent-run-configuration.service.js'
 import {
   AGENT_STEP_TYPES,
   AgentRunRecorderService,
@@ -50,7 +48,6 @@ import {
   ContextTokenEstimationError,
   ModelSamplingIncompleteError,
 } from './agent-runtime.errors.js'
-import { AgentRuntimePolicyService } from './agent-runtime.policy.js'
 import { submitGroundedAnswerToolSpec } from './grounding/grounded-answer.contract.js'
 import {
   GroundedFinalizationFailedError,
@@ -70,12 +67,6 @@ import {
   SamplingContextBudgetExceededError,
   SamplingContextPlanner,
 } from './sampling-context-planner.js'
-
-const AGENT_RUN_TOOL_NAMES = [
-  'search_articles',
-  'get_article_detail',
-  'retrieve_article_context',
-] as const
 
 const TERMINALIZATION_DEADLINE_MS = 5_000
 
@@ -121,14 +112,11 @@ export class AgentRuntimeService {
     @Inject(AgentRunRecorderService)
     private readonly agentRunRecorderService: AgentRunRecorderService,
 
-    @Inject(ToolRegistryService)
-    private readonly toolRegistryService: ToolRegistryService,
-
     @Inject(ToolInvocationService)
     private readonly toolInvocationService: ToolInvocationService,
 
-    @Inject(AgentRuntimePolicyService)
-    private readonly runtimePolicyService: AgentRuntimePolicyService,
+    @Inject(AgentRunConfigurationService)
+    private readonly runConfigurationService: AgentRunConfigurationService,
 
     @Inject(InitialContextSelectionService)
     private readonly initialContextSelectionService: InitialContextSelectionService,
@@ -169,7 +157,8 @@ export class AgentRuntimeService {
       const currentAgentRunId = agentRun.id
 
       agentRunId = currentAgentRunId
-      const runtimePolicy = this.runtimePolicyService.value
+      // Run deadline 必须先于请求级配置解析生效；policy 是启动期已校验的非抛错读取。
+      const runtimePolicy = this.runConfigurationService.policy
 
       runCancellation = createRunCancellation(
         input.signal,
@@ -191,24 +180,11 @@ export class AgentRuntimeService {
         databaseDeadline,
       )
 
-      const registeredToolDefinitions = this.toolRegistryService.listDefinitions()
-      const toolDefinitions = AGENT_RUN_TOOL_NAMES.flatMap((name) => {
-        const definition = registeredToolDefinitions.find(
-          candidate => candidate.name === name,
-        )
-
-        return definition ? [definition] : []
-      })
-      const modelTools = runtimePolicy.maxToolCalls === 0
-        ? []
-        : toolDefinitions.map(toModelToolSpec)
-      const resolvedRequestConfig = this.llmService.resolveChatRequestConfig({
-        ...(input.model ? { model: input.model } : {}),
-        ...(input.maxTokens === undefined
-          ? {}
-          : { maxTokens: input.maxTokens }),
-      })
-      const modelProfile = getModelProfile(resolvedRequestConfig.model)!
+      // 配置解析时机保持在 Run / receiveUserMessageStep 落库之后：请求级
+      // 配置错误仍走既有 failRun 终态化，不改变 Run 生命周期语义。
+      // 覆盖字段的规范化只在 resolve() 内做一层，这里不重复过滤。
+      const { request: resolvedRequestConfig, toolDefinitions, modelTools }
+        = this.runConfigurationService.resolve(input)
       const loadHistoryStep = await this.agentRunRecorderService.startStep({
         runId: currentAgentRunId,
         type: AGENT_STEP_TYPES.loadConversationHistory,
@@ -220,7 +196,7 @@ export class AgentRuntimeService {
 
       const selection = await this.initialContextSelectionService.select({
         resolvedModel: resolvedRequestConfig.model,
-        contextWindowTokens: modelProfile.contextWindowTokens,
+        contextWindowTokens: resolvedRequestConfig.contextWindowTokens,
         resolvedMaxOutputTokens: resolvedRequestConfig.maxOutputTokens,
         candidateBatchSize: runtimePolicy.historyCandidateBatchSize,
         candidateHardLimit: runtimePolicy.historyCandidateHardLimit,
@@ -298,9 +274,11 @@ export class AgentRuntimeService {
         assistantOutputStepId = step.id
       }
 
-      const chatStreamOptions = {
+      // Initial Context、后续 Sampling 与 Grounded finalization 共用同一份
+      // resolved 请求配置；Provider Client 端的重校验只会 fail-fast，不会漂移。
+      const chatStreamOptions: ChatStreamOptions = {
         model: resolvedRequestConfig.model,
-        temperature: input.temperature,
+        temperature: resolvedRequestConfig.temperature,
         maxTokens: resolvedRequestConfig.maxOutputTokens,
         signal: runSignal,
         tools: modelTools,

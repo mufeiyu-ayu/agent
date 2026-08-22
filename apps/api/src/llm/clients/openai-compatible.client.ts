@@ -26,9 +26,6 @@ import {
   resolveChatRequestConfig,
 } from '../llm-runtime-config.js'
 import {
-  DEFAULT_CHAT_TEMPERATURE,
-} from '../llm.constants.js'
-import {
   LLMApiError,
   LLMAuthError,
   LLMBalanceError,
@@ -170,7 +167,7 @@ export class OpenAICompatibleClient {
     const params: ChatCompletionBaseParams = {
       model: requestConfig.model,
       messages,
-      temperature: options?.temperature ?? DEFAULT_CHAT_TEMPERATURE,
+      temperature: requestConfig.temperature,
       max_tokens: requestConfig.maxOutputTokens,
     }
 

@@ -1,4 +1,4 @@
-import type { ChatRequestConfig } from './llm-runtime-config.js'
+import type { ResolvedChatRequestConfig } from './llm-runtime-config.js'
 import type {
   ChatMessage,
   ChatOptions,
@@ -27,7 +27,7 @@ export class LLMService {
     private readonly runtimeConfigService: LLMRuntimeConfigService,
   ) {}
 
-  resolveChatRequestConfig(options?: ChatOptions): ChatRequestConfig {
+  resolveChatRequestConfig(options?: ChatOptions): ResolvedChatRequestConfig {
     return resolveChatRequestConfig(this.runtimeConfigService.value, options)
   }
 

@@ -1,1 +1,0 @@
-export const DEFAULT_CHAT_TEMPERATURE = 0.7

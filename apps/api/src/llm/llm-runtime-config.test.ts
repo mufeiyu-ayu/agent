@@ -119,8 +119,28 @@ describe('resolveChatRequestConfig', () => {
 
     assert.deepEqual(resolveChatRequestConfig(runtimeConfig), {
       model: 'deepseek-v4-flash',
+      contextWindowTokens: 1_000_000,
       maxOutputTokens: 65_536,
+      temperature: 0.7,
     })
+  })
+
+  it('resolved 配置携带调用级覆盖后的完整模型事实', () => {
+    const runtimeConfig = resolveLLMRuntimeConfig(createEnv())
+
+    assert.deepEqual(
+      resolveChatRequestConfig(runtimeConfig, {
+        model: 'deepseek-v4-pro',
+        temperature: 0.4,
+        maxTokens: 4_096,
+      }),
+      {
+        model: 'deepseek-v4-pro',
+        contextWindowTokens: 1_000_000,
+        maxOutputTokens: 4_096,
+        temperature: 0.4,
+      },
+    )
   })
 
   it('拒绝不支持的调用级模型及越过应用硬上限的输出预算', () => {

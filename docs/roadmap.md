@@ -7,7 +7,7 @@
 ```text
 阶段 1-8：Completed
 Phase 8：Completed
-Active Agent Task：无
+Active Agent Task：Run 配置解析边界（#92，已实现、待验收）
 Minimal Compaction：Gated
 Admin Observability：Task 0-3、Enhancement 1、Phase 8 Task 3C Completed
 Admin Task 4：Planned
@@ -145,7 +145,7 @@ Phase 8 Task 3C 已完成安全 Retrieval Inspector，但不自动启动 Task 4�
 
 ```text
 Phase 8：Completed / 已归档（docs/tasks/completed/phase-08-grounded-retrieval.md）
-Active Agent Task：无
+Active Agent Task：Run 配置解析边界（#92，已实现、待验收）
 当前阶段：Phase 8 源码阅读（学习阶段）
 下一阶段学习内容：暂不定义
 ```

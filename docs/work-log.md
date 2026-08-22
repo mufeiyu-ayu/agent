@@ -6,7 +6,7 @@
 
 | 类型 | 当前记录 | 下一步 |
 | --- | --- | --- |
-| Agent 主线 | 阶段 1-8 Completed；当前无 Active Agent Task | Phase 8 源码阅读（学习阶段）；下一阶段学习内容暂不定义 |
+| Agent 主线 | 阶段 1-8 Completed；Active Task：Run 配置解析边界（#92，已实现、待验收） | Phase 8 源码阅读（学习阶段）；下一阶段学习内容暂不定义 |
 | Phase 8 | Task 0、1、2A、2B、3A、3B、3C 全部 Completed | [阶段归档](./tasks/completed/phase-08-grounded-retrieval.md) |
 | Minimal Compaction | Gated | 只有真实 Context 压力证据满足触发条件后才讨论 |
 | Admin Console | Task 0-3、Enhancement 1-3、Phase 8 Task 3C Completed；Task 4 Planned | 不自动启动 Auth / RBAC |
