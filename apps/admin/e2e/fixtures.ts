@@ -605,6 +605,8 @@ function samplingStep(
     textChars: 40,
     intermediateTextChars: 0,
     recordedDurationMs: 300,
+    debugRequestBody: null,
+    debugRawResponse: null,
     contextInspector: {
       availability: 'unavailable',
       outcome: 'unavailable',

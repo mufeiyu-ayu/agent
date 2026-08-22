@@ -2,6 +2,7 @@ import type {
   AdminAssistantOutputStep,
   AdminContextInspector,
   AdminContextObservationSummary,
+  AdminDebugModelIOCapture,
   AdminGenericStep,
   AdminInitialHistoryExcludedReason,
   AdminLoadConversationHistoryStep,
@@ -336,6 +337,8 @@ function projectModelSampling(
     intermediateTextChars,
     recordedDurationMs,
     contextInspector: projectContextInspector(input, output, step.status),
+    debugRequestBody: readDebugModelIOCapture(output, 'debugRequestBody'),
+    debugRawResponse: readDebugModelIOCapture(output, 'debugRawResponse'),
     inputSummary: summarize([
       ['samplingIndex', samplingIndex],
       ['samplingAttemptId', samplingAttemptId],
@@ -1239,7 +1242,42 @@ function toSafeStepProjection(
     inputSummary: item.inputSummary,
     outputSummary: item.outputSummary,
     hasError: item.hasError,
+    // debug 捕获属于白名单扩展字段：仅 model_sampling 且捕获存在时出现。
+    ...(item.kind === 'known' && item.type === 'model_sampling'
+      ? {
+          ...(item.debugRequestBody
+            ? { debugRequestBody: item.debugRequestBody }
+            : {}),
+          ...(item.debugRawResponse
+            ? { debugRawResponse: item.debugRawResponse }
+            : {}),
+        }
+      : {}),
   }
+}
+
+/**
+ * 读取落库的 debug 捕获信封；结构不符合预期时按未捕获处理（null），不报错。
+ */
+function readDebugModelIOCapture(
+  output: Record<string, unknown> | null,
+  key: 'debugRequestBody' | 'debugRawResponse',
+): AdminDebugModelIOCapture | null {
+  const envelope = readObject(output?.[key])
+
+  if (envelope === null)
+    return null
+
+  if (envelope.truncated === true) {
+    return typeof envelope.preview === 'string'
+      ? { truncated: true, preview: envelope.preview }
+      : null
+  }
+
+  if (envelope.truncated === false && 'value' in envelope)
+    return { truncated: false, value: envelope.value }
+
+  return null
 }
 
 function aggregateSamplingUsage(

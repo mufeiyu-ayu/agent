@@ -218,6 +218,15 @@ export const messages = {
           safeIo: '安全 I/O',
           content: '内容',
           safeRaw: '安全原始数据',
+          requestBody: '请求体',
+          rawResponse: '原始响应',
+        },
+        debugCapture: {
+          empty: '未捕获。需要在 API 环境中开启 AGENT_DEBUG_CAPTURE_MODEL_IO 后重新运行。',
+          truncated: '内容超过截断上限，仅展示前缀预览。',
+          copy: '复制 JSON',
+          copied: '已复制',
+          copyFailed: '复制失败',
         },
         fields: {
           request: '请求',
@@ -686,6 +695,15 @@ export const messages = {
           safeIo: 'Safe I/O',
           content: 'Content',
           safeRaw: 'Safe Raw',
+          requestBody: 'Request Body',
+          rawResponse: 'Raw Response',
+        },
+        debugCapture: {
+          empty: 'Not captured. Enable AGENT_DEBUG_CAPTURE_MODEL_IO in the API environment and rerun.',
+          truncated: 'Content exceeded the capture limit; only a prefix preview is shown.',
+          copy: 'Copy JSON',
+          copied: 'Copied',
+          copyFailed: 'Copy failed',
         },
         fields: {
           request: 'Request',

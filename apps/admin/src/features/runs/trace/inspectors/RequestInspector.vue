@@ -17,6 +17,7 @@ import {
   formatRequestedModel,
   formatTokens,
 } from '../../run.utils'
+import DebugJsonPane from './DebugJsonPane.vue'
 import InspectorFieldList from './InspectorFieldList.vue'
 
 const props = defineProps<{
@@ -203,6 +204,14 @@ function formatObservation(observation: AdminContextObservationSummary): string 
 
     <TabPane key="safe-io" :tab="t('runTrace.inspector.tabs.safeIo')">
       <InspectorFieldList :items="safeIoFields" />
+    </TabPane>
+
+    <TabPane key="request-body" :tab="t('runTrace.inspector.tabs.requestBody')">
+      <DebugJsonPane :capture="item.debugRequestBody" />
+    </TabPane>
+
+    <TabPane key="raw-response" :tab="t('runTrace.inspector.tabs.rawResponse')">
+      <DebugJsonPane :capture="item.debugRawResponse" />
     </TabPane>
   </Tabs>
 </template>

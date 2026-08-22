@@ -21,6 +21,29 @@ describe('resolveLLMRuntimeConfig', () => {
     })
   })
 
+  it('AGENT_DEBUG_CAPTURE_MODEL_IO 只接受 1 / true 为开启', () => {
+    for (const enabled of ['1', 'true', 'TRUE', ' true ']) {
+      assert.equal(
+        resolveLLMRuntimeConfig(
+          createEnv({ AGENT_DEBUG_CAPTURE_MODEL_IO: enabled }),
+        ).captureModelIO,
+        true,
+      )
+    }
+    for (const disabled of [undefined, '', '0', 'false', 'yes', 'on']) {
+      assert.equal(
+        resolveLLMRuntimeConfig(
+          createEnv(
+            disabled === undefined
+              ? {}
+              : { AGENT_DEBUG_CAPTURE_MODEL_IO: disabled },
+          ),
+        ).captureModelIO,
+        false,
+      )
+    }
+  })
+
   it('接受边界内的严格正整数覆盖', () => {
     const config = resolveLLMRuntimeConfig(createEnv({
       LLM_CHAT_REQUEST_TIMEOUT_MS: '90000',
