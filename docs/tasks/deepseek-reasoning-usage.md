@@ -4,7 +4,7 @@
 - 验收状态：待验收
 - Issue：[#94](https://github.com/mufeiyu-ayu/agent/issues/94)（Open）
 - 分支：`codex/issue-94-deepseek-reasoning-usage`
-- PR：待创建 Draft PR
+- PR：[#95](https://github.com/mufeiyu-ayu/agent/pull/95)（Draft）
 
 ## 目标
 

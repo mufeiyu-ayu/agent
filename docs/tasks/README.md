@@ -47,7 +47,7 @@ Phase 8 全部 Task 文档已合并归档到 [completed/phase-08-grounded-retrie
 
 ## 当前正式动作
 
-当前 Active Agent Task 为 DeepSeek 思考强度与 Usage 可观测闭环（#94）：已实现、待验收，Draft PR 待创建。Run 配置解析边界（#92）已于 2026-08-22 验收合并（PR #93 / `f32cd48`）。
+当前 Active Agent Task 为 DeepSeek 思考强度与 Usage 可观测闭环（#94）：已实现、待验收，Draft PR #95。Run 配置解析边界（#92）已于 2026-08-22 验收合并（PR #93 / `f32cd48`）。
 
 Phase 8 源码阅读仍是当前学习阶段；#94 是独立横向正式任务，不定义或启动 Phase 9。下一阶段学习内容暂不定义。
 

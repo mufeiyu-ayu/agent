@@ -6,7 +6,7 @@
 
 | 类型 | 当前记录 | 下一步 |
 | --- | --- | --- |
-| Agent 主线 | 阶段 1-8 Completed；#94 已实现、待验收 | Draft PR 与 GPT 技术验收；不启动 Phase 9 |
+| Agent 主线 | 阶段 1-8 Completed；#94 / Draft PR #95 已实现、待验收 | GPT 技术验收；不启动 Phase 9 |
 | Phase 8 | Task 0、1、2A、2B、3A、3B、3C 全部 Completed | [阶段归档](./tasks/completed/phase-08-grounded-retrieval.md) |
 | Minimal Compaction | Gated | 只有真实 Context 压力证据满足触发条件后才讨论 |
 | Admin Console | Task 0-3、Enhancement 1-3、Phase 8 Task 3C Completed；Task 4 Planned | 不自动启动 Auth / RBAC |
@@ -16,7 +16,7 @@
 
 | 日期 | 事项 | 结果 |
 | --- | --- | --- |
-| 2026-08-22 | DeepSeek 思考强度与 Usage #94 实现 | Web Low / High / Max 单次选择贯穿 resolved Run 配置与全部 sampling；Provider 显式 thinking / reasoning_effort 并移除 temperature；reasoning / cache Usage 持久化到 AgentStep，Admin Run Detail 按指标独立 all-or-nothing 展示；debug safe projection 剥离 reasoning_content；无 migration / 预算调整；本地确定性测试、lint、typecheck 与 Web / Admin Chromium 通过；当前待 Draft PR 与 GPT 验收 |
+| 2026-08-22 | DeepSeek 思考强度与 Usage #94 实现 | Draft PR #95；Web Low / High / Max 单次选择贯穿 resolved Run 配置与全部 sampling；Provider 显式 thinking / reasoning_effort 并移除 temperature；reasoning / cache Usage 持久化到 AgentStep，Admin Run Detail 按指标独立 all-or-nothing 展示；debug safe projection 剥离 reasoning_content；本地 Review 3 个 P2 已修复、最终 No findings；确定性测试、lint、typecheck 与 Web / Admin Chromium 通过；当前待 GPT 验收 |
 | 2026-08-22 | Run 配置解析边界 #92 收口 | Issue #92 / PR #93；源码阅读阶段发现的横向 refactor：新增 `AgentRunConfigurationService` 收敛单次 Run 配置解析（policy getter 保 deadline 时序），`ResolvedChatRequestConfig` 补全 contextWindowTokens / temperature，Runtime 消除 `getModelProfile` 穿透与 `!` 断言，模型名单与 Profile 收敛进 `model-profiles.ts`，删除单行 `llm.constants.ts`；新增 `docs/research/configuration-map.md` 配置地图；commit 前 /code-review 15 项 findings（12 类修复并入提交，不修项在 PR 记录理由，含 model:'' 既有语义按规格保留）；验证 6 套件 383 项全绿 + lint + root typecheck；AC-01～09 逐项核对通过，用户确认验收并授权合并与清理；merge `f32cd48`，Issue #92 Closed，分支已删 |
 | 2026-08-22 | Admin Enhancement 3 Overview 仪表盘 #90 收口 | Issue #90 / PR #91；stats + balance API（应用层扫 30 天窗口聚合 step JSON usage；DeepSeek 余额服务端代理复用 LLM_API_KEY）+ ECharts 按需注册前端（stat bar、双趋势图、比例条分布列表，亮暗主题联动）；/code-review 一轮 5 项全处理（含 resolvedModel 落库路径确认级 bug，实调接口验证）；视觉验收反馈一轮重构后用户确认并授权合并；实测确认 DeepSeek 官方 API 仅开放 user/balance，平台用量页无公开 API；merge `3108a5f`，Issue #90 Closed，分支已删 |
 | 2026-08-22 | Admin Enhancement 2 会话记录入口 #88 收口 | Issue #88 / PR #89；会话列表 + 完整 transcript（会话级投影，run 级 500 字截断不变）+ runs conversationId 过滤 + 聊天气泡懒加载 UI + 路由滑动过渡；commit 前 /code-review 两轮 13 项（12 修 1 记录：runs 表格组件化留后续）；typecheck / lint / admin 检查 / api 144 测试全绿；用户确认验收并授权合并与分支清理；merge `e059cebb`，Issue #88 Closed，分支已删；同日创建 Enhancement 3 Overview 仪表盘 Issue #90（ECharts 选型与聚合方案已记录） |
