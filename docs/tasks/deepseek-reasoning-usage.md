@@ -1,10 +1,10 @@
 # Task：DeepSeek 思考强度控制与 Usage 可观测闭环（Issue #94）
 
 - 实施状态：已实现
-- 验收状态：待验收
-- Issue：[#94](https://github.com/mufeiyu-ayu/agent/issues/94)（Open）
-- 分支：`codex/issue-94-deepseek-reasoning-usage`
-- PR：[#95](https://github.com/mufeiyu-ayu/agent/pull/95)（Draft）
+- 验收状态：已通过（用户 2026-08-23 确认 UI 验收；独立技术复核通过）
+- Issue：[#94](https://github.com/mufeiyu-ayu/agent/issues/94)（Closed）
+- 分支：`codex/issue-94-deepseek-reasoning-usage`（已合并删除）
+- PR：[#95](https://github.com/mufeiyu-ayu/agent/pull/95)（Merged / `2266fad`）
 
 ## 目标
 
@@ -58,8 +58,10 @@
 | `pnpm typecheck` | 通过 |
 | `git diff --check` | 通过 |
 
+合并后独立复核发现 reasoning E2E 的 `High` 定位同时匹配父菜单和子项；修正为精确匹配后，使用 `E2E_PORT=5185 pnpm --filter @agent/web test:e2e` 完整复跑 Web Chromium 10 / 10。该问题仅影响测试定位，不影响已通过用户验收的 UI 行为。
+
 数据库与真实 Provider smoke 未运行：本任务无 schema 变更，wire body、Usage 解析与完整 Runtime 路径已由确定性测试覆盖；不消耗真实模型额度。
 
-## 验收边界
+## 最终收口事实
 
-当前仅表示“已实现、待验收”。不得据此把 Task 写成 Completed、转 Ready、合并或启动 Phase 9。
+Issue #94 已关闭，PR #95 已合并；用户确认 UI 验收通过，确定性测试、完整 Web Chromium 与 Admin Chromium 均通过。Task 状态为 Completed；本任务不启动 Phase 9。

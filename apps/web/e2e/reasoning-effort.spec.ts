@@ -22,7 +22,7 @@ test('AC-01 / AC-11：默认 High，三档可选且 320px 下随本次请求发�
   await modelMenuTrigger.click()
   await page.getByRole('menuitem', { name: /思考强度/ }).click()
   await expect(page.getByRole('menuitem', { name: 'Low' })).toBeVisible()
-  await expect(page.getByRole('menuitem', { name: 'High' })).toBeVisible()
+  await expect(page.getByRole('menuitem', { name: 'High', exact: true })).toBeVisible()
   await expect(page.getByRole('menuitem', { name: 'Max' })).toBeVisible()
   await page.getByRole('menuitem', { name: 'Max' }).click()
 
