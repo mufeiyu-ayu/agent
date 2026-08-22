@@ -1,9 +1,9 @@
 # Task：单次 Run 配置解析边界与配置导航（Issue #92）
 
 - 实施状态：已实现
-- 验收状态：待验收
-- Issue：[#92](https://github.com/mufeiyu-ayu/agent/issues/92)
-- 分支：`codex/issue-92-run-config-boundary`
+- 验收状态：已通过（AC-01～09 逐项核对通过，用户 2026-08-22 确认并授权合并）
+- Issue：[#92](https://github.com/mufeiyu-ayu/agent/issues/92)（Closed）
+- 分支：`codex/issue-92-run-config-boundary`（已合并删除）
 
 ## 目标
 
@@ -49,5 +49,6 @@
 
 ## GitHub 交付
 
-- Draft PR：[#93](https://github.com/mufeiyu-ayu/agent/pull/93)；Draft 转 Ready 与合并需用户明确授权。
+- PR：[#93](https://github.com/mufeiyu-ayu/agent/pull/93)，用户授权后转 Ready 并合并，merge `f32cd48`。
 - Gate READY 记录：[Issue #92 评论](https://github.com/mufeiyu-ayu/agent/issues/92#issuecomment-5380675918)。
+- Issue #92 Closed，远程与本地任务分支已删除。

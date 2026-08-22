@@ -8,7 +8,8 @@
 阶段 1-8：Completed
 Phase 8：Completed
 Task 0、1、2A、2B、3A、3B、3C：Completed
-Active Agent Task：Run 配置解析边界（#92，已实现、待验收）
+Active Agent Task：无
+Run 配置解析边界（#92）：Completed
 Minimal Compaction：Gated
 Admin Task 4：Planned
 Phase 9：未定案
@@ -19,7 +20,7 @@ Phase 9：未定案
 | 区域 | 状态 | 文档 | 说明 |
 | --- | --- | --- | --- |
 | Agent 主线 | **阶段 1-8 Completed** | [roadmap.md](../roadmap.md) | 当前为 Phase 8 源码阅读阶段 |
-| Run 配置解析边界（#92） | **Active（已实现、待验收）** | [agent-run-configuration.md](./agent-run-configuration.md) | 横向 refactor，源码阅读阶段发现的可维护性问题 |
+| Run 配置解析边界（#92） | **Completed / #93 / `f32cd48`** | [agent-run-configuration.md](./agent-run-configuration.md) | 横向 refactor：单次 Run 配置解析入口 + 配置地图 |
 | Phase 8：Grounded Retrieval / RAG Baseline | **Completed** | [completed/phase-08-grounded-retrieval.md](./completed/phase-08-grounded-retrieval.md) | Task 0-3C 全部完成，已归档 |
 | Phase 7：Context Engineering | **Completed** | [completed/phase-07-context-engineering.md](./completed/phase-07-context-engineering.md) | Task 0-3 Completed；Minimal Compaction Gated |
 | Phase 6：有界单 Agent Loop | **Completed** | [completed/phase-06-bounded-agent-loop.md](./completed/phase-06-bounded-agent-loop.md) | bounded loop、deadline、终态可靠性 |
@@ -45,7 +46,7 @@ Phase 8 全部 Task 文档已合并归档到 [completed/phase-08-grounded-retrie
 
 ## 当前正式动作
 
-当前 Active Task：[Run 配置解析边界（#92）](./agent-run-configuration.md)，已实现、待验收；没有自动启动的下一正式 Issue。
+当前没有 Active Agent Task，也没有自动启动的下一正式 Issue。Run 配置解析边界（#92）已于 2026-08-22 验收合并（PR #93 / `f32cd48`）。
 
 当前阶段为 Phase 8 源码阅读（学习阶段）：回读 Phase 8 代码与数据链路，覆盖 Chunking、Embedding、Hybrid Retrieval、Tool、Grounding、Web Source UI 和 Admin Inspector。下一阶段学习内容暂不定义；源码阅读完成后再讨论 Phase 9。
 
