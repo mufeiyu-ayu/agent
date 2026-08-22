@@ -9,13 +9,14 @@
 | Agent 主线 | 阶段 1-8 Completed；当前无 Active Agent Task | Phase 8 源码阅读（学习阶段）；下一阶段学习内容暂不定义 |
 | Phase 8 | Task 0、1、2A、2B、3A、3B、3C 全部 Completed | [阶段归档](./tasks/completed/phase-08-grounded-retrieval.md) |
 | Minimal Compaction | Gated | 只有真实 Context 压力证据满足触发条件后才讨论 |
-| Admin Console | Task 0-3、Enhancement 1-2、Phase 8 Task 3C Completed；Task 4 Planned；Enhancement 3（Overview 仪表盘 #90）Next | 不自动启动 Auth / RBAC |
+| Admin Console | Task 0-3、Enhancement 1-3、Phase 8 Task 3C Completed；Task 4 Planned | 不自动启动 Auth / RBAC |
 | Phase 9 | 未定案 | 学习闭环后基于真实需求讨论 |
 
 ## 近期关键记录
 
 | 日期 | 事项 | 结果 |
 | --- | --- | --- |
+| 2026-08-22 | Admin Enhancement 3 Overview 仪表盘 #90 收口 | Issue #90 / PR #91；stats + balance API（应用层扫 30 天窗口聚合 step JSON usage；DeepSeek 余额服务端代理复用 LLM_API_KEY）+ ECharts 按需注册前端（stat bar、双趋势图、比例条分布列表，亮暗主题联动）；/code-review 一轮 5 项全处理（含 resolvedModel 落库路径确认级 bug，实调接口验证）；视觉验收反馈一轮重构后用户确认并授权合并；实测确认 DeepSeek 官方 API 仅开放 user/balance，平台用量页无公开 API；merge `3108a5f`，Issue #90 Closed，分支已删 |
 | 2026-08-22 | Admin Enhancement 2 会话记录入口 #88 收口 | Issue #88 / PR #89；会话列表 + 完整 transcript（会话级投影，run 级 500 字截断不变）+ runs conversationId 过滤 + 聊天气泡懒加载 UI + 路由滑动过渡；commit 前 /code-review 两轮 13 项（12 修 1 记录：runs 表格组件化留后续）；typecheck / lint / admin 检查 / api 144 测试全绿；用户确认验收并授权合并与分支清理；merge `e059cebb`，Issue #88 Closed，分支已删；同日创建 Enhancement 3 Overview 仪表盘 Issue #90（ECharts 选型与聚合方案已记录） |
 | 2026-08-20 | Phase 8 任务目录归档 | `docs/tasks/phase-08-grounded-retrieval/` 全部文档核心内容合并归档到 `docs/tasks/completed/phase-08-grounded-retrieval.md`，原目录与阶段截图删除（浏览器证据以测试与 PR 记录为准）；docs 状态同步为 Phase 8 源码阅读阶段，下一阶段学习内容暂不定义 |
 | 2026-08-19 | 开发环境自举缺陷 #84 收口 | 编写实机启动手册时实测发现：compose 主库镜像 `postgres:16-alpine` 不含 pgvector，`prisma:migrate` 必然在 Embedding Index migration 中断，本开发机主库长期仅应用 6/8 migration（缺 `ArticleChunk` / `ArticleIndexState` / `MessageGrounding`），web 前台 RAG 主链与 grounded 落库在 dev 主库上从未真正可用（Phase 8 验证均在 integration 库）；PR #85 将主库镜像对齐 `pgvector/pgvector:0.8.6-pg16-bookworm` 并补全 README quickstart（起库、seed、index 步骤与 collation 迁移注意）；本机主库重建实测：8/8 migration、seed 68 篇、index chunksWritten=2044 / failed=0、`smoke:retrieval-tool` 真实检索通过；用户确认合并，PR #85 merged，Issue #84 Closed |

@@ -2,7 +2,7 @@
 
 本文记录 Agent Runtime Console 的独立 Observability 支线。
 
-状态：**Task 0-3、Enhancement 1-2、Phase 8 Task 3C Completed；Task 4 Planned**。
+状态：**Task 0-3、Enhancement 1-3、Phase 8 Task 3C Completed；Task 4 Planned**。
 
 Admin Console 面向项目开发、调试和运行过程复盘。它是 Agent 主线事实的安全投影，不为了展示反向污染 Runtime Domain Model。
 
@@ -40,6 +40,7 @@ Admin Console 面向项目开发、调试和运行过程复盘。它是 Agent �
 | Enhancement 1 | Completed | 紧凑 Run Trace Workspace | #51 / #53 / `159e964c` / [文档](./admin-console/enhancement-01-run-trace-workspace.md) |
 | Phase 8 Task 3C | Completed | Retrieval / Finalization / Citation Inspector | #62 / #63 / `20f838fb` / [文档](./completed/phase-08-grounded-retrieval.md) |
 | Enhancement 2 | Completed | 会话记录入口（会话列表 / transcript / 会话内 runs） | #88 / #89 / `e059cebb` / [文档](./admin-console/enhancement-02-conversations-entry.md) |
+| Enhancement 3 | Completed | Overview 数据仪表盘（Token/调用/模型/工具统计 + 余额） | #90 / #91 / `3108a5f` / [文档](./admin-console/enhancement-03-overview-dashboard.md) |
 | Task 4 | Planned | 登录、权限、敏感信息脱敏 | 未创建 |
 
 ## 已完成基线
