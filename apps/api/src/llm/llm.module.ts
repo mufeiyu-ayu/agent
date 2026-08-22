@@ -12,6 +12,6 @@ import { LLMService } from './llm.service.js'
 @Module({
   controllers: [LLMController],
   providers: [LLMRuntimeConfigService, OpenAICompatibleClient, LLMService],
-  exports: [LLMService],
+  exports: [LLMService, LLMRuntimeConfigService],
 })
 export class LlmModule {}

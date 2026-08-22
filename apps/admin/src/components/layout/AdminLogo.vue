@@ -16,7 +16,7 @@ const { t } = useI18n()
     </span>
     <span v-if="!collapsed" class="admin-logo__copy">
       <strong>{{ t('common.appName') }}</strong>
-      <small>{{ t('overview.eyebrow') }}</small>
+      <small>{{ t('navigation.workspace') }}</small>
     </span>
   </RouterLink>
 </template>

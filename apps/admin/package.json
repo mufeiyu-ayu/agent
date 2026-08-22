@@ -17,8 +17,10 @@
     "@ant-design/icons-vue": "^7.0.1",
     "ant-design-vue": "^4.2.6",
     "dayjs": "^1.11.21",
+    "echarts": "^6.1.0",
     "pinia": "^3.0.4",
     "vue": "^3.5.25",
+    "vue-echarts": "^8.1.0",
     "vue-i18n": "^11.4.6",
     "vue-json-pretty": "^2.6.0",
     "vue-router": "^5.1.0"
