@@ -185,6 +185,32 @@ describe('SeoChatDto 在 App ValidationPipe 边界的行为', () => {
     assert.ok(transformed instanceof SeoChatDto)
     assert.equal(transformed.message, ' hi ')
   })
+
+  it('reasoningEffort 仅放行 low / high / max，省略保持 legacy 兼容', async () => {
+    const pipe = createAppValidationPipe({ expectedType: SeoChatDto })
+
+    for (const reasoningEffort of ['low', 'high', 'max']) {
+      const transformed = await pipe.transform({
+        ...createPayload('hi'),
+        reasoningEffort,
+      }, BODY_METADATA) as SeoChatDto
+
+      assert.equal(transformed.reasoningEffort, reasoningEffort)
+    }
+
+    const legacy = await pipe.transform(createPayload('hi'), BODY_METADATA) as SeoChatDto
+    assert.equal(legacy.reasoningEffort, undefined)
+
+    for (const reasoningEffort of ['unknown', '', ' ', 1, null, true]) {
+      await assert.rejects(
+        () => pipe.transform({
+          ...createPayload('hi'),
+          reasoningEffort,
+        }, BODY_METADATA),
+        BadRequestException,
+      )
+    }
+  })
 })
 
 function createDto(message: string, model = 'deepseek-v4-flash'): SeoChatDto {

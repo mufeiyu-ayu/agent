@@ -2,6 +2,7 @@ import type { LLMRuntimeConfigService } from '../llm-runtime-config.js'
 import assert from 'node:assert/strict'
 // eslint-disable-next-line test/no-import-node-test
 import { describe, it } from 'node:test'
+import OpenAI from 'openai'
 
 import {
   resolveLLMRuntimeConfig,
@@ -34,6 +35,63 @@ describe('OpenAICompatibleClient runtime config', () => {
     )
     assert.equal(harness.calls[2]?.params?.max_tokens, 65_536)
     assert.equal(harness.calls[3]?.params?.max_tokens, 65_536)
+    for (const call of harness.calls.slice(2)) {
+      assert.deepEqual(call.params?.thinking, { type: 'enabled' })
+      assert.equal(call.params?.reasoning_effort, 'high')
+      assert.equal(Object.hasOwn(call.params ?? {}, 'temperature'), false)
+    }
+  })
+
+  it('把调用级 Low / High / Max 原样映射到实际 DeepSeek wire body', async () => {
+    const harness = createHarness()
+
+    for (const reasoningEffort of ['low', 'high', 'max'] as const) {
+      await collectEvents(harness.client.chatStream(
+        [{ type: 'message', role: 'user', content: 'hello' }],
+        { reasoningEffort },
+      ))
+    }
+
+    assert.deepEqual(
+      harness.calls.map(call => call.params?.reasoning_effort),
+      ['low', 'high', 'max'],
+    )
+  })
+
+  it('OpenAI SDK 实际序列化后的 wire body 保留 DeepSeek 参数', async () => {
+    const harness = createHarness()
+    let wireBody: Record<string, unknown> | undefined
+    const providerClient = new OpenAI({
+      apiKey: 'test-api-key',
+      baseURL: 'https://api.deepseek.com/v1',
+      maxRetries: 0,
+      fetch: async (_input, init) => {
+        wireBody = JSON.parse(String(init?.body)) as Record<string, unknown>
+
+        return new Response([
+          'data: {"id":"response-1","choices":[{"index":0,"delta":{"content":"ok"},"finish_reason":"stop"}],"created":0,"model":"deepseek-v4-flash","object":"chat.completion.chunk"}',
+          '',
+          'data: [DONE]',
+          '',
+        ].join('\n'), {
+          status: 200,
+          headers: { 'Content-Type': 'text/event-stream' },
+        })
+      },
+    })
+
+    Object.defineProperty(harness.client, 'createClient', {
+      value: () => providerClient,
+    })
+
+    await collectEvents(harness.client.chatStream(
+      [{ type: 'message', role: 'user', content: 'hello' }],
+      { reasoningEffort: 'max' },
+    ))
+
+    assert.deepEqual(wireBody?.thinking, { type: 'enabled' })
+    assert.equal(wireBody?.reasoning_effort, 'max')
+    assert.equal(Object.hasOwn(wireBody ?? {}, 'temperature'), false)
   })
 
   it('Provider Client 只读取已验证配置对象，不读取后续 process.env 变化', async () => {
@@ -136,6 +194,7 @@ function createHarness() {
   }
 
   Object.defineProperty(client, 'createClient', {
+    configurable: true,
     value: () => providerClient,
   })
 

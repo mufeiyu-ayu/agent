@@ -333,6 +333,7 @@ export function projectGroundedFinalizationStep(
     citationCount: metadata.citationCount,
     validation: resolveValidation(metadata, step.status),
     failureReason: metadata.failureReason,
+    usage: metadata.usage,
     inputSummary: summarize([
       ['evidenceAvailability', metadata.evidenceAvailability],
       ['registryRefCount', metadata.registryRefCount],
@@ -1010,8 +1011,8 @@ interface FinalizationAttemptAggregate {
  * - 同一次 attempt 不可能既是内容拒绝又是采样故障；
  * - 成功 attempt 不带任何失败类别。
  *
- * 任何一次 attempt 的 usage 不完整，整个 finalization 的 Token 汇总就是 `null`：
- * 半份 Token 数字比没有数字更危险。
+ * 每个 Usage 指标独立 all-or-nothing：任一 attempt 缺少该指标时，该指标为 null，
+ * 其他完整指标仍可展示。
  */
 function readAttempts(
   value: unknown,
@@ -1024,10 +1025,7 @@ function readAttempts(
     return null
 
   const entries: FinalizationAttemptFacts[] = []
-  let inputTokens = 0
-  let outputTokens = 0
-  let totalTokens = 0
-  let usageComplete = value.length > 0
+  const usages: AdminRunTokenUsage[] = []
   let recordedDurationMs = 0
   let durationComplete = true
 
@@ -1091,38 +1089,82 @@ function readAttempts(
     else
       recordedDurationMs += durationMs
 
-    const usage = readObject(attempt.usage)
-    const attemptInput = readNonNegativeInteger(usage, 'inputTokens')
-    const attemptOutput = readNonNegativeInteger(usage, 'outputTokens')
-    const attemptTotal = readNonNegativeInteger(usage, 'totalTokens')
-
-    if (
-      attemptInput === null
-      || attemptOutput === null
-      || attemptTotal === null
-    ) {
-      usageComplete = false
-      continue
-    }
-
-    inputTokens += attemptInput
-    outputTokens += attemptOutput
-    totalTokens += attemptTotal
+    usages.push(projectUsage(attempt.usage))
   }
 
   return {
     entries,
     successCount: entries.filter(entry => entry.ok).length,
-    usage: usageComplete
-      && Number.isSafeInteger(inputTokens)
-      && Number.isSafeInteger(outputTokens)
-      && Number.isSafeInteger(totalTokens)
-      ? { inputTokens, outputTokens, totalTokens }
-      : null,
+    usage: usages.length > 0 ? aggregateUsage(usages) : null,
     recordedDurationMs: durationComplete && Number.isSafeInteger(recordedDurationMs)
       ? recordedDurationMs
       : null,
   }
+}
+
+function projectUsage(value: unknown): AdminRunTokenUsage {
+  const usage = readObject(value)
+  const inputTokens = readNonNegativeInteger(usage, 'inputTokens')
+  const outputTokens = readNonNegativeInteger(usage, 'outputTokens')
+  const reasoningTokens = readNonNegativeInteger(usage, 'reasoningTokens')
+  const promptCacheHitTokens = readNonNegativeInteger(
+    usage,
+    'promptCacheHitTokens',
+  )
+  const promptCacheMissTokens = readNonNegativeInteger(
+    usage,
+    'promptCacheMissTokens',
+  )
+  const cacheBreakdownValid = inputTokens === null
+    || promptCacheHitTokens === null
+    || promptCacheMissTokens === null
+    || (Number.isSafeInteger(promptCacheHitTokens + promptCacheMissTokens)
+      && promptCacheHitTokens + promptCacheMissTokens === inputTokens)
+
+  return {
+    inputTokens,
+    outputTokens,
+    totalTokens: readNonNegativeInteger(usage, 'totalTokens'),
+    reasoningTokens: outputTokens !== null
+      && reasoningTokens !== null
+      && reasoningTokens > outputTokens
+      ? null
+      : reasoningTokens,
+    promptCacheHitTokens: cacheBreakdownValid ? promptCacheHitTokens : null,
+    promptCacheMissTokens: cacheBreakdownValid ? promptCacheMissTokens : null,
+  }
+}
+
+function aggregateUsage(usages: AdminRunTokenUsage[]): AdminRunTokenUsage {
+  return {
+    inputTokens: sumCompleteUsage(usages, 'inputTokens'),
+    outputTokens: sumCompleteUsage(usages, 'outputTokens'),
+    totalTokens: sumCompleteUsage(usages, 'totalTokens'),
+    reasoningTokens: sumCompleteUsage(usages, 'reasoningTokens'),
+    promptCacheHitTokens: sumCompleteUsage(usages, 'promptCacheHitTokens'),
+    promptCacheMissTokens: sumCompleteUsage(usages, 'promptCacheMissTokens'),
+  }
+}
+
+function sumCompleteUsage(
+  usages: AdminRunTokenUsage[],
+  key: keyof AdminRunTokenUsage,
+): number | null {
+  let total = 0
+
+  for (const usage of usages) {
+    const value = usage[key]
+
+    if (value === null)
+      return null
+
+    total += value
+
+    if (!Number.isSafeInteger(total))
+      return null
+  }
+
+  return total
 }
 
 function toFinalizationSummary(

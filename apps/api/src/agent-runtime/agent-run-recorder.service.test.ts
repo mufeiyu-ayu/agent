@@ -201,11 +201,27 @@ describe('AgentRunRecorderService', () => {
         conversationId: prepared.run.conversationId,
         content: '已停止',
       },
+      {
+        id: prepared.assistantStep.id,
+        errorMessage: '采样已中止',
+        output: {
+          usage: {
+            inputTokens: 7,
+            reasoningTokens: 2,
+          },
+        },
+      },
     )
 
     assert.equal(harness.message(prepared.message.id)?.status, MessageStatus.ABORTED)
     assert.equal(harness.message(prepared.message.id)?.content, '已停止')
     assert.equal(harness.run(prepared.run.id)?.status, AgentRunStatus.ABORTED)
+    assert.deepEqual(harness.step(prepared.assistantStep.id)?.output, {
+      usage: {
+        inputTokens: 7,
+        reasoningTokens: 2,
+      },
+    })
     assert.equal(harness.unfinishedSteps(prepared.run.id).length, 0)
     for (const step of harness.steps(prepared.run.id)) {
       assert.equal(step.status, AgentStepStatus.ABORTED)

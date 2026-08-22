@@ -50,9 +50,24 @@ describe('streamModelSampling', () => {
 
   it('按 usage snapshot 合并已定义字段，不累加 token', async () => {
     const { decision } = await collectSampling([
-      { type: 'usage', usage: { inputTokens: 3, totalTokens: 3 } },
-      { type: 'usage', usage: { outputTokens: 2, totalTokens: 5 } },
-      { type: 'usage', usage: { inputTokens: 4 } },
+      {
+        type: 'usage',
+        usage: {
+          inputTokens: 3,
+          totalTokens: 3,
+          promptCacheHitTokens: 2,
+        },
+      },
+      {
+        type: 'usage',
+        usage: {
+          outputTokens: 2,
+          totalTokens: 5,
+          reasoningTokens: 1,
+          promptCacheMissTokens: 1,
+        },
+      },
+      { type: 'usage', usage: { inputTokens: 4, promptCacheHitTokens: 3 } },
       { type: 'response_completed', finishReason: 'stop' },
     ])
 
@@ -61,6 +76,9 @@ describe('streamModelSampling', () => {
       inputTokens: 4,
       outputTokens: 2,
       totalTokens: 5,
+      reasoningTokens: 1,
+      promptCacheHitTokens: 3,
+      promptCacheMissTokens: 1,
     })
   })
 

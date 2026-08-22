@@ -180,7 +180,7 @@ async function runSmokeCase(
     for await (const event of runtime.runTurnStream({
       conversationId: conversation.id,
       userContent: query,
-      temperature: 0.2,
+      reasoningEffort: 'high',
       signal,
       buildModelMessages: buildSeoAgentChatMessages,
     })) {

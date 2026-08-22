@@ -1,3 +1,4 @@
+import type { DeepSeekReasoningEffort } from '@agent/contracts'
 import type { ResolvedChatRequestConfig } from '../llm/llm-runtime-config.js'
 import type { ModelToolSpec } from '../llm/model-tool-spec.types.js'
 import type { ToolDefinition } from '../tools/core/tool.types.js'
@@ -20,7 +21,7 @@ const AGENT_RUN_TOOL_NAMES = [
 /** 请求级配置覆盖，来自单轮用户输入。 */
 export interface AgentRunRequestOverrides {
   model?: string
-  temperature?: number
+  reasoningEffort?: DeepSeekReasoningEffort
   maxTokens?: number
 }
 
@@ -93,9 +94,9 @@ export class AgentRunConfigurationService {
       : toolDefinitions.map(toModelToolSpec)
     const request = this.llmService.resolveChatRequestConfig({
       ...(overrides.model ? { model: overrides.model } : {}),
-      ...(overrides.temperature === undefined
+      ...(overrides.reasoningEffort === undefined
         ? {}
-        : { temperature: overrides.temperature }),
+        : { reasoningEffort: overrides.reasoningEffort }),
       ...(overrides.maxTokens === undefined
         ? {}
         : { maxTokens: overrides.maxTokens }),

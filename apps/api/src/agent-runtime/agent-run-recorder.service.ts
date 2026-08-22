@@ -391,6 +391,7 @@ export class AgentRunRecorderService {
     runId: string,
     deadline: DatabaseOperationDeadline,
     assistantMessage?: CloseAssistantMessageInput,
+    abortedStep?: CloseAgentStepInput,
     metadataStep?: CloseAgentStepMetadata,
   ): Promise<void> {
     await this.closeRunAndUnfinishedSteps(
@@ -401,7 +402,7 @@ export class AgentRunRecorderService {
       deadline,
       undefined,
       assistantMessage,
-      undefined,
+      abortedStep,
       metadataStep,
     )
   }

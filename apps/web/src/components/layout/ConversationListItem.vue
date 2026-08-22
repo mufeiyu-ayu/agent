@@ -88,14 +88,14 @@ function deleteChat() {
 <template>
   <div
     class="group relative rounded-lg"
-    :class="chat.active ? 'text-agent-ink' : 'text-agent-ink-soft hover:bg-agent-surface-sunken/45'"
+    :class="chat.active ? 'bg-agent-surface-sunken/60 text-agent-ink' : 'text-agent-ink-soft hover:bg-agent-surface-sunken/40'"
   >
     <input
       v-if="editing"
       ref="renameInputRef"
       v-model="titleDraft"
       maxlength="80"
-      class="h-9 w-full rounded-lg border border-agent-border bg-agent-sidebar px-3 pr-9 text-sm font-normal text-agent-ink outline-none transition focus:border-agent-accent focus:ring-3 focus:ring-agent-focus/35"
+      class="h-8 w-full rounded-lg border border-agent-border bg-agent-sidebar px-2.5 pr-8 text-[13px] font-normal text-agent-ink outline-none transition focus:border-agent-accent focus:ring-3 focus:ring-agent-focus/35"
       :aria-label="t('layout.sidebar.renameChat')"
       @blur="submitRename"
       @click.stop
@@ -106,10 +106,15 @@ function deleteChat() {
     <button
       v-else
       type="button"
-      class="flex h-9 w-full min-w-0 items-center rounded-lg px-3 pr-9 text-left text-sm font-normal transition focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-agent-focus/40"
+      class="flex h-8 w-full min-w-0 items-center gap-2 rounded-lg px-2.5 pr-8 text-left text-[13px] font-normal transition focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-agent-focus/40"
       :class="chat.active ? 'text-agent-ink' : 'text-agent-ink-soft'"
       @click="selectChat"
     >
+      <span
+        class="size-2 shrink-0 rounded-full border"
+        :class="chat.active ? 'border-agent-ink-muted' : 'border-agent-ink-faint/80'"
+        aria-hidden="true"
+      />
       <span class="truncate">
         {{ chat.title }}
       </span>
@@ -124,11 +129,11 @@ function deleteChat() {
         type="button"
         :title="t('layout.sidebar.chatOptions')"
         :aria-label="t('layout.sidebar.chatOptions')"
-        class="grid size-7 place-items-center rounded-md text-agent-ink-muted opacity-0 transition hover:bg-agent-surface-sunken hover:text-agent-ink focus:opacity-100 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-agent-focus/40 group-hover:opacity-100"
+        class="grid size-6 place-items-center rounded-md text-agent-ink-muted opacity-0 transition hover:bg-agent-surface-sunken hover:text-agent-ink focus:opacity-100 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-agent-focus/40 group-hover:opacity-100"
         :class="{ 'opacity-100': menuOpen }"
         @click.stop="toggleMenu"
       >
-        <AppIcon name="tabler:dots-vertical" :size="17" />
+        <AppIcon name="tabler:dots-vertical" :size="15" />
       </button>
 
       <div

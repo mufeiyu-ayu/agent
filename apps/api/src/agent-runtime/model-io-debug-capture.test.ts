@@ -66,4 +66,23 @@ describe('toModelIODebugCaptureEnvelope', () => {
     assert.equal(toModelIODebugCaptureEnvelope(circular), undefined)
     assert.equal(toModelIODebugCaptureEnvelope(undefined), undefined)
   })
+
+  it('递归移除 reasoning_content，避免安全 Admin projection 或 DOM 泄漏', () => {
+    const envelope = toModelIODebugCaptureEnvelope({
+      choices: [{
+        message: {
+          content: '安全回答',
+          reasoning_content: 'DO_NOT_LEAK',
+        },
+      }],
+    })
+
+    assert.deepEqual(envelope, {
+      truncated: false,
+      value: {
+        choices: [{ message: { content: '安全回答' } }],
+      },
+    })
+    assert.doesNotMatch(JSON.stringify(envelope), /DO_NOT_LEAK|reasoning_content/)
+  })
 })

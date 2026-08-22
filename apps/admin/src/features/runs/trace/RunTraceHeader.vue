@@ -88,6 +88,18 @@ async function copyRunId() {
         <dt>{{ t('runDetail.fields.outputTokens') }}</dt>
         <dd>{{ formatTokens(run.outputTokens, locale) }}</dd>
       </div>
+      <div>
+        <dt>{{ t('runDetail.fields.reasoningTokens') }}</dt>
+        <dd>{{ formatTokens(run.reasoningTokens, locale) }}</dd>
+      </div>
+      <div>
+        <dt>{{ t('runDetail.fields.promptCacheHitTokens') }}</dt>
+        <dd>{{ formatTokens(run.promptCacheHitTokens, locale) }}</dd>
+      </div>
+      <div>
+        <dt>{{ t('runDetail.fields.promptCacheMissTokens') }}</dt>
+        <dd>{{ formatTokens(run.promptCacheMissTokens, locale) }}</dd>
+      </div>
     </dl>
 
     <dl class="trace-header__times">

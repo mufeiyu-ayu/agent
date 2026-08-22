@@ -7,6 +7,7 @@ import { useI18n } from 'vue-i18n'
 import workspaceBgOliveEmberDeepUrl from '../assets/bg-olive.webp'
 import workspaceBgAiBalancedUrl from '../assets/bg-warm.webp'
 import AgentConversation from '../components/agent/AgentConversation.vue'
+import AppIcon from '../components/common/AppIcon.vue'
 import AppMessage from '../components/common/AppMessage.vue'
 import AppShell from '../components/layout/AppShell.vue'
 import SeoChatComposer from '../components/seo/SeoChatComposer.vue'
@@ -54,6 +55,7 @@ const navigationItems = computed<AgentNavigationItem[]>(() => {
 const {
   models,
   selectedModel,
+  selectedReasoningEffort,
   balanceLabel,
   balanceAvailable,
   balanceStatus,
@@ -86,6 +88,12 @@ const {
 const showConversationEmptyState = computed(() => {
   return !activeConversationId.value && conversationTurns.value.length === 0 && !isLoadingMessages.value
 })
+
+const starterPrompts = computed(() => [
+  { key: 'audit', label: t('conversation.starterPrompts.audit.label'), prompt: t('conversation.starterPrompts.audit.prompt') },
+  { key: 'keywords', label: t('conversation.starterPrompts.keywords.label'), prompt: t('conversation.starterPrompts.keywords.prompt') },
+  { key: 'content', label: t('conversation.starterPrompts.content.label'), prompt: t('conversation.starterPrompts.content.prompt') },
+])
 
 function applySuggestedPrompt(prompt: string) {
   message.value = prompt
@@ -121,25 +129,62 @@ function applySuggestedPrompt(prompt: string) {
         @close="hideMessage"
       />
 
-      <div class="relative z-10 flex min-h-0 flex-1 flex-col">
+      <div
+        v-if="showConversationEmptyState"
+        class="relative z-10 flex min-h-0 flex-1 flex-col items-center overflow-y-auto px-4 pb-6 pt-14 sm:px-6"
+      >
+        <div class="my-auto w-full max-w-[680px] pb-[8dvh]">
+          <h2 class="workspace-greeting text-center text-[28px] leading-snug text-agent-ink sm:text-[34px]">
+            <AppIcon name="tabler:asterisk" :size="26" class="mr-1.5 inline-block align-[-0.2em] text-agent-accent" />{{ t('conversation.emptyTitle') }}
+          </h2>
+
+          <SeoChatComposer
+            v-model:message="message"
+            v-model:selected-model="selectedModel"
+            v-model:selected-reasoning-effort="selectedReasoningEffort"
+            hero
+            class="mt-8"
+            :has-conversation="false"
+            :models="models"
+            :status="status"
+            :message-character-count="messageCharacterCount"
+            @send="sendMessage(selectedModel, selectedReasoningEffort)"
+            @stop="stopGeneration"
+            @reset="resetWorkspace"
+          />
+
+          <div class="mt-5 flex flex-wrap justify-center gap-2">
+            <button
+              v-for="prompt in starterPrompts"
+              :key="prompt.key"
+              type="button"
+              class="rounded-full border border-agent-border-soft bg-agent-surface-raised/70 px-3.5 py-1.5 text-[13px] font-medium text-agent-ink-soft transition hover:bg-agent-surface-raised hover:text-agent-ink focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-agent-focus/40"
+              @click="applySuggestedPrompt(prompt.prompt)"
+            >
+              {{ prompt.label }}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div v-else class="relative z-10 flex min-h-0 flex-1 flex-col">
         <AgentConversation
           :anchor-latest-turn="shouldAnchorLatestTurn"
           :conversation-id="activeConversationId"
           :is-loading-messages="isLoadingMessages"
           :last-generated-at="lastGeneratedAt"
-          :show-empty-state="showConversationEmptyState"
           :turns="conversationTurns"
-          @prompt-selected="applySuggestedPrompt"
         />
 
         <SeoChatComposer
           v-model:message="message"
           v-model:selected-model="selectedModel"
+          v-model:selected-reasoning-effort="selectedReasoningEffort"
           :has-conversation="conversationTurns.length > 0"
           :models="models"
           :status="status"
           :message-character-count="messageCharacterCount"
-          @send="sendMessage(selectedModel)"
+          @send="sendMessage(selectedModel, selectedReasoningEffort)"
           @stop="stopGeneration"
           @reset="resetWorkspace"
         />
@@ -147,3 +192,10 @@ function applySuggestedPrompt(prompt: string) {
     </div>
   </AppShell>
 </template>
+
+<style scoped>
+.workspace-greeting {
+  font-family: "Libre Baskerville", Georgia, "Songti SC", "Noto Serif SC", ui-serif, serif;
+  text-wrap: balance;
+}
+</style>

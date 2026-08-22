@@ -12,6 +12,14 @@ type DeepSeekChatCompletionDelta = ChatCompletionChunk.Choice.Delta & {
   reasoning_content?: string | null
 }
 
+type DeepSeekCompletionUsage = NonNullable<ChatCompletionChunk['usage']> & {
+  prompt_cache_hit_tokens?: number | null
+  prompt_cache_miss_tokens?: number | null
+  completion_tokens_details?: {
+    reasoning_tokens?: number | null
+  } | null
+}
+
 /** 将 OpenAI-compatible SDK chunk 转换为项目内部模型事件。 */
 export async function* adaptOpenAICompatibleStream(
   chunks: AsyncIterable<ChatCompletionChunk>,
@@ -139,11 +147,20 @@ function normalizeFinishReason(finishReason: string): ModelFinishReason {
 }
 
 function toModelUsage(
-  usage: NonNullable<ChatCompletionChunk['usage']>,
+  usage: DeepSeekCompletionUsage,
 ): ModelUsage {
   return {
     inputTokens: usage.prompt_tokens,
     outputTokens: usage.completion_tokens,
     totalTokens: usage.total_tokens,
+    ...(typeof usage.completion_tokens_details?.reasoning_tokens === 'number'
+      ? { reasoningTokens: usage.completion_tokens_details.reasoning_tokens }
+      : {}),
+    ...(typeof usage.prompt_cache_hit_tokens === 'number'
+      ? { promptCacheHitTokens: usage.prompt_cache_hit_tokens }
+      : {}),
+    ...(typeof usage.prompt_cache_miss_tokens === 'number'
+      ? { promptCacheMissTokens: usage.prompt_cache_miss_tokens }
+      : {}),
   }
 }

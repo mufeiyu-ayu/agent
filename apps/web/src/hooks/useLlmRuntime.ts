@@ -1,6 +1,7 @@
-import type { ApiErrorResponse } from '@agent/contracts'
+import type { ApiErrorResponse, DeepSeekReasoningEffort } from '@agent/contracts'
 import type { LlmBalanceInfo, LlmBalanceState, LlmModelOption, LlmRuntimeStatus } from '../types/llm'
 
+import { DEFAULT_DEEPSEEK_REASONING_EFFORT } from '@agent/contracts'
 import { isAxiosError } from 'axios'
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -12,6 +13,9 @@ export function useLlmRuntime() {
   const { locale, t } = useI18n()
   const models = ref<LlmModelOption[]>([...FALLBACK_DEEPSEEK_MODELS])
   const selectedModel = ref<LlmModelOption['id']>(FALLBACK_DEEPSEEK_MODELS[0].id)
+  const selectedReasoningEffort = ref<DeepSeekReasoningEffort>(
+    DEFAULT_DEEPSEEK_REASONING_EFFORT,
+  )
   const balance = ref<LlmBalanceState | null>(null)
   const modelStatus = ref<LlmRuntimeStatus>('idle')
   const balanceStatus = ref<LlmRuntimeStatus>('idle')
@@ -77,6 +81,7 @@ export function useLlmRuntime() {
   return {
     models,
     selectedModel,
+    selectedReasoningEffort,
     balance,
     balanceLabel,
     balanceAvailable,

@@ -131,9 +131,40 @@ describe('Admin Retrieval Inspector', () => {
       inputTokens: 30,
       outputTokens: 12,
       totalTokens: 42,
+      reasoningTokens: null,
+      promptCacheHitTokens: null,
+      promptCacheMissTokens: null,
     })
     assert.equal(finalization.recordedDurationMs, 500)
     assert.equal(finalization.metadataTrusted, true)
+  })
+
+  it('finalization Usage 投影 reasoning / cache 明细', () => {
+    const run = createGroundedRun()
+    const step = run.steps.find(item => item.type === 'grounded_finalization')!
+    const output = step.output as Record<string, unknown>
+    const attempts = output.attempts as Array<Record<string, unknown>>
+
+    attempts[0]!.usage = {
+      inputTokens: 30,
+      outputTokens: 12,
+      totalTokens: 42,
+      reasoningTokens: 8,
+      promptCacheHitTokens: 20,
+      promptCacheMissTokens: 10,
+    }
+
+    assert.deepEqual(
+      projectAdminRunDetail(run).retrievalInspector.finalization?.usage,
+      {
+        inputTokens: 30,
+        outputTokens: 12,
+        totalTokens: 42,
+        reasoningTokens: 8,
+        promptCacheHitTokens: 20,
+        promptCacheMissTokens: 10,
+      },
+    )
   })
 
   it('grounded_finalization 获得 typed timeline item 而不是 Generic fallback', () => {
@@ -142,6 +173,7 @@ describe('Admin Retrieval Inspector', () => {
 
     assert.equal(item.kind, 'known')
     assert.ok(item.kind === 'known' && item.type === 'grounded_finalization')
+    assert.deepEqual(item.usage, detail.retrievalInspector.finalization!.usage)
 
     if (item.kind !== 'known' || item.type !== 'grounded_finalization')
       return

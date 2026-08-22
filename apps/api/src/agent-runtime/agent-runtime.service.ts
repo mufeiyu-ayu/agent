@@ -6,6 +6,7 @@ import type {
   MessageStatus as PrismaMessageStatus,
 } from '../generated/prisma/client.js'
 import type { ChatMessage, ChatStreamOptions } from '../llm/llm.types.js'
+import type { ModelUsage } from '../llm/model-stream.types.js'
 import type { DatabaseOperationDeadline } from '../prisma/prisma.service.js'
 import type { ToolResult } from '../tools/core/tool.types.js'
 import type {
@@ -278,7 +279,7 @@ export class AgentRuntimeService {
       // resolved 请求配置；Provider Client 端的重校验只会 fail-fast，不会漂移。
       const chatStreamOptions: ChatStreamOptions = {
         model: resolvedRequestConfig.model,
-        temperature: resolvedRequestConfig.temperature,
+        reasoningEffort: resolvedRequestConfig.reasoningEffort,
         maxTokens: resolvedRequestConfig.maxOutputTokens,
         signal: runSignal,
         tools: modelTools,
@@ -318,6 +319,7 @@ export class AgentRuntimeService {
         // 开关关闭时始终为空对象，落库输出与现状完全一致。
         const debugModelIO: DebugModelIOCaptured = {}
         let samplingDecision: SamplingDecision
+        let completedSamplingSummary: ModelSamplingSummary | undefined
         let contextPlanSummary: SamplingContextPlanSummary | undefined
         let plannedMessageCount = 0
 
@@ -375,6 +377,7 @@ export class AgentRuntimeService {
             samplingResult = await sampling.next()
           }
           samplingDecision = samplingResult.value
+          completedSamplingSummary = samplingDecision.summary
 
           runCancellation.throwIfUnavailable()
           await this.agentRunRecorderService.completeStep(
@@ -395,13 +398,21 @@ export class AgentRuntimeService {
           terminalStepFailure = {
             id: samplingStep.id,
             errorMessage: this.toChatStreamErrorMessage(error),
-            output: this.toFailedSamplingStepOutput(
-              error,
-              Date.now() - samplingStartedAt,
-              plannedMessageCount,
-              contextPlanSummary,
-              debugModelIO,
-            ),
+            output: completedSamplingSummary
+              ? this.toSamplingStepOutput(
+                  completedSamplingSummary,
+                  Date.now() - samplingStartedAt,
+                  plannedMessageCount,
+                  contextPlanSummary,
+                  debugModelIO,
+                )
+              : this.toFailedSamplingStepOutput(
+                  error,
+                  Date.now() - samplingStartedAt,
+                  plannedMessageCount,
+                  contextPlanSummary,
+                  debugModelIO,
+                ),
           }
           claimRunTermination(runCancellation, error)
           throw error
@@ -729,6 +740,7 @@ export class AgentRuntimeService {
                 input.conversationId,
                 content,
               ),
+              terminalStepFailure,
               finalizationClose,
             )
           }
@@ -813,6 +825,7 @@ export class AgentRuntimeService {
               input.conversationId,
               content,
             ),
+            terminalStepFailure,
             finalizationClose,
           )
         }
@@ -1000,19 +1013,7 @@ export class AgentRuntimeService {
       samplingAttemptId: summary.samplingAttemptId,
       messageCount,
       finishReason: summary.finishReason,
-      usage: summary.usage
-        ? {
-            ...(summary.usage.inputTokens === undefined
-              ? {}
-              : { inputTokens: summary.usage.inputTokens }),
-            ...(summary.usage.outputTokens === undefined
-              ? {}
-              : { outputTokens: summary.usage.outputTokens }),
-            ...(summary.usage.totalTokens === undefined
-              ? {}
-              : { totalTokens: summary.usage.totalTokens }),
-          }
-        : null,
+      usage: toPersistedModelUsage(summary.usage),
       toolCallCount: summary.toolCallCount,
       textChars: summary.textChars,
       intermediateTextChars: summary.intermediateTextChars,
@@ -1125,19 +1126,7 @@ export class AgentRuntimeService {
           ? { samplingFailure: attempt.samplingFailure }
           : {}),
         submittedCitationKeyCount: attempt.submittedCitationKeyCount,
-        usage: attempt.usage
-          ? {
-              ...(attempt.usage.inputTokens === undefined
-                ? {}
-                : { inputTokens: attempt.usage.inputTokens }),
-              ...(attempt.usage.outputTokens === undefined
-                ? {}
-                : { outputTokens: attempt.usage.outputTokens }),
-              ...(attempt.usage.totalTokens === undefined
-                ? {}
-                : { totalTokens: attempt.usage.totalTokens }),
-            }
-          : null,
+        usage: toPersistedModelUsage(attempt.usage),
         durationMs: attempt.durationMs,
       })),
       ...(grounding
@@ -1167,6 +1156,16 @@ export class AgentRuntimeService {
   private isAbortSignalTriggered(signal: AbortSignal | undefined): boolean {
     return signal?.aborted ?? false
   }
+}
+
+function toPersistedModelUsage(
+  usage: ModelUsage | null,
+): Prisma.InputJsonObject | null {
+  return usage
+    ? Object.fromEntries(
+      Object.entries(usage).filter(([, value]) => value !== undefined),
+    ) as Prisma.InputJsonObject
+    : null
 }
 
 function toStrictlyEarlierMessageWhere(bound: HistoryCursor) {

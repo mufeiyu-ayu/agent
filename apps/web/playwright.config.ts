@@ -7,7 +7,10 @@ import { defineConfig, devices } from '@playwright/test'
  * 所有用例通过 `page.route()` 提供确定性 API fixture，不启动 API 进程、不连数据库、
  * 不调用模型 Provider，因此结果可重复复现，而不是依赖某次真实模型输出。
  */
-const PORT = 5174
+// 端口可用 E2E_PORT 覆盖：本机 5174 常被 apps/admin dev server 占用，
+// reuseExistingServer 会误连到错误应用导致全量失败。
+// 空串 / 非数字回落到默认端口，避免 --port 0 或 NaN 让健康检查空等。
+const PORT = Number(process.env.E2E_PORT) || 5174
 const BASE_URL = `http://127.0.0.1:${PORT}`
 
 export default defineConfig({

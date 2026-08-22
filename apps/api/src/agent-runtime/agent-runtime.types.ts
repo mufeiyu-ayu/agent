@@ -1,4 +1,4 @@
-import type { MessageGroundingV1 } from '@agent/contracts'
+import type { DeepSeekReasoningEffort, MessageGroundingV1 } from '@agent/contracts'
 import type { ChatMessage } from '../llm/llm.types.js'
 
 export type AgentRuntimeEvent
@@ -60,8 +60,8 @@ export interface RunTurnStreamInput {
   conversationId: string
   userContent: string
   model?: string
+  reasoningEffort?: DeepSeekReasoningEffort
   signal?: AbortSignal
-  temperature: number
   maxTokens?: number
   buildModelMessages: (historyMessages: ChatMessage[]) => ChatMessage[]
 }

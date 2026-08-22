@@ -86,17 +86,25 @@ function handleRenameChat(chatId: string, title: string) {
     :data-agent-workspace-theme="props.workspaceTheme"
   >
     <AppSidebar
+      :balance-available="props.balanceAvailable"
+      :balance-label="props.balanceLabel"
+      :balance-status="props.balanceStatus"
       :collapsed="sidebarCollapsed"
       :has-more-recent-chats="props.hasMoreRecentChats"
       :is-loading-more-recent-chats="props.isLoadingMoreRecentChats"
       :navigation-items="props.navigationItems"
       :recent-chats="props.recentChats"
+      :user="props.user"
+      :workspace-theme="props.workspaceTheme"
+      :workspace-theme-options="props.workspaceThemeOptions"
       @delete-chat="handleDeleteChat"
       @load-more-chats="emit('loadMoreChats')"
       @new-chat="handleNewChat"
+      @refresh-balance="emit('refreshBalance')"
       @rename-chat="handleRenameChat"
       @select-chat="handleSelectChat"
       @toggle-sidebar="toggleSidebar"
+      @update-workspace-theme="emit('updateWorkspaceTheme', $event)"
     />
 
     <Sheet v-model:open="mobileSidebarOpen">
@@ -112,18 +120,26 @@ function handleRenameChat(chatId: string, title: string) {
           {{ t('layout.mobileNavigation.description') }}
         </SheetDescription>
         <AppSidebar
+          :balance-available="props.balanceAvailable"
+          :balance-label="props.balanceLabel"
+          :balance-status="props.balanceStatus"
           :collapsed="false"
           :has-more-recent-chats="props.hasMoreRecentChats"
           :is-loading-more-recent-chats="props.isLoadingMoreRecentChats"
           :navigation-items="props.navigationItems"
           :recent-chats="props.recentChats"
+          :user="props.user"
+          :workspace-theme="props.workspaceTheme"
+          :workspace-theme-options="props.workspaceThemeOptions"
           mobile
           @delete-chat="handleDeleteChat"
           @load-more-chats="emit('loadMoreChats')"
           @new-chat="handleNewChat"
+          @refresh-balance="emit('refreshBalance')"
           @rename-chat="handleRenameChat"
           @select-chat="handleSelectChat"
           @toggle-sidebar="closeMobileSidebar"
+          @update-workspace-theme="emit('updateWorkspaceTheme', $event)"
         />
       </SheetContent>
     </Sheet>
@@ -141,17 +157,7 @@ function handleRenameChat(chatId: string, title: string) {
       />
 
       <div class="relative z-10 flex min-h-0 flex-1 flex-col">
-        <AppHeader
-          :balance-available="props.balanceAvailable"
-          :balance-label="props.balanceLabel"
-          :balance-status="props.balanceStatus"
-          :user="props.user"
-          :workspace-theme="props.workspaceTheme"
-          :workspace-theme-options="props.workspaceThemeOptions"
-          @open-navigation="mobileSidebarOpen = true"
-          @refresh-balance="emit('refreshBalance')"
-          @update-workspace-theme="emit('updateWorkspaceTheme', $event)"
-        />
+        <AppHeader @open-navigation="mobileSidebarOpen = true" />
 
         <slot />
       </div>

@@ -48,6 +48,66 @@ describe('Admin Run projector', () => {
     assert.equal(item.totalTokens, null)
   })
 
+  it('Run Detail 对 reasoning / cache Usage 按维度独立 all-or-nothing 汇总', () => {
+    const record = createRunRecord()
+    const samplings = record.steps
+      .filter(step => step.type === 'model_sampling')
+      .sort((left, right) => left.sequence - right.sequence)
+
+    for (const [index, sampling] of samplings.entries()) {
+      const output = sampling.output as Record<string, unknown>
+      const inputTokens = (output.usage as Record<string, number>).inputTokens
+
+      assert.ok(typeof inputTokens === 'number')
+      output.usage = {
+        ...(output.usage as Record<string, unknown>),
+        reasoningTokens: index + 1,
+        promptCacheHitTokens: index + 1,
+        ...(index === 1
+          ? {}
+          : { promptCacheMissTokens: inputTokens - index - 1 }),
+      }
+    }
+
+    const detail = projectAdminRunDetail(record)
+
+    assert.equal(detail.reasoningTokens, 6)
+    assert.equal(detail.promptCacheHitTokens, 6)
+    assert.equal(detail.promptCacheMissTokens, null)
+
+    const sampling = detail.timeline.find(item => item.type === 'model_sampling')
+    assert.equal(
+      sampling?.kind === 'known' && sampling.type === 'model_sampling'
+        ? sampling.usage?.reasoningTokens
+        : null,
+      1,
+    )
+  })
+
+  it('malformed reasoning / cache 明细 fail closed，但不拖垮核心 Usage', () => {
+    const record = createRunRecord()
+    const sampling = record.steps.find(step => step.sequence === 3)!
+    const output = sampling.output as Record<string, unknown>
+
+    output.usage = {
+      ...(output.usage as Record<string, unknown>),
+      reasoningTokens: 6,
+      promptCacheHitTokens: 7,
+      promptCacheMissTokens: 4,
+    }
+
+    const item = projectAdminRunDetail(record).timeline.find(
+      candidate => candidate.sequence === 3,
+    )
+
+    assert.ok(item?.kind === 'known' && item.type === 'model_sampling')
+    assert.equal(item.usage?.inputTokens, 10)
+    assert.equal(item.usage?.outputTokens, 5)
+    assert.equal(item.usage?.reasoningTokens, null)
+    assert.equal(item.usage?.promptCacheHitTokens, null)
+    assert.equal(item.usage?.promptCacheMissTokens, null)
+  })
+
   it('grounded finalization 计入总采样次数与 Token 汇总', () => {
     const record = createRunRecord()
 
@@ -126,6 +186,62 @@ describe('Admin Run projector', () => {
       assert.equal(item.outputTokens, null)
       assert.equal(item.totalTokens, null)
     }
+  })
+
+  it('重复 finalization Step 时 Header Usage fail closed，不重复汇总', () => {
+    const record = createRunRecord()
+    const output = groundedFinalizationOutput([{
+      ok: true,
+      usage: { inputTokens: 4, outputTokens: 2, totalTokens: 6 },
+    }])
+    const attempt = output.attempts[0] as unknown as Record<string, unknown>
+
+    assert.ok(attempt)
+    attempt.usage = {
+      ...(attempt.usage as Record<string, unknown>),
+      reasoningTokens: 1,
+      promptCacheHitTokens: 3,
+      promptCacheMissTokens: 1,
+    }
+    record.steps = [
+      ...record.steps,
+      step(10, 'grounded_finalization', {
+        input: groundedFinalizationInput(),
+        output,
+      }),
+      step(11, 'grounded_finalization', {
+        input: groundedFinalizationInput(),
+        output: structuredClone(output),
+      }),
+    ]
+
+    const detail = projectAdminRunDetail(record)
+
+    assert.equal(detail.samplingCount, 5)
+    assert.equal(detail.inputTokens, null)
+    assert.equal(detail.outputTokens, null)
+    assert.equal(detail.totalTokens, null)
+    assert.equal(detail.reasoningTokens, null)
+    assert.equal(detail.promptCacheHitTokens, null)
+    assert.equal(detail.promptCacheMissTokens, null)
+    assert.equal(detail.retrievalInspector.finalization?.metadataTrusted, false)
+
+    const zeroAttemptRecord = createRunRecord()
+    zeroAttemptRecord.steps = [
+      ...zeroAttemptRecord.steps,
+      step(10, 'grounded_finalization', {
+        output: { attemptCount: 0, attempts: [] },
+      }),
+      step(11, 'grounded_finalization', {
+        output: { attemptCount: 0, attempts: [] },
+      }),
+    ]
+    const zeroAttemptDetail = projectAdminRunDetail(zeroAttemptRecord)
+
+    assert.equal(zeroAttemptDetail.totalTokens, null)
+    assert.equal(zeroAttemptDetail.reasoningTokens, null)
+    assert.equal(zeroAttemptDetail.promptCacheHitTokens, null)
+    assert.equal(zeroAttemptDetail.promptCacheMissTokens, null)
   })
 
   it('finalization attempt 缺少 usage 时不伪造 Token 数字', () => {
@@ -337,7 +453,7 @@ describe('Admin Run projector', () => {
     assert.equal(detail.timeline.at(-1)?.type, 'future_retrieval')
     assert.doesNotMatch(
       serialized,
-      /DO_NOT_LEAK|rawArgumentsJson|observationBody|providerPayload|reasoning/,
+      /DO_NOT_LEAK|rawArgumentsJson|observationBody|providerPayload|reasoning_content/,
     )
     assert.doesNotMatch(serialized, /"input"|"output"/)
     const secondSampling = detail.timeline.find(item => item.sequence === 5)
@@ -410,7 +526,7 @@ describe('Admin Run projector', () => {
     ])
     assert.doesNotMatch(
       JSON.stringify(detail),
-      /DO_NOT_LEAK|prompt|observationBody|reasoning/,
+      /DO_NOT_LEAK|prompt(?!Cache)|observationBody|reasoning_content/,
     )
   })
 

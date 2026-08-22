@@ -1,6 +1,7 @@
 import type {
   ChatCompletionAssistantMessageParam,
   ChatCompletionCreateParamsNonStreaming,
+  ChatCompletionCreateParamsStreaming,
   ChatCompletionMessageParam,
   ChatCompletionTool,
 } from 'openai/resources/chat/completions'
@@ -40,8 +41,11 @@ import { adaptOpenAICompatibleStream } from './openai-compatible-stream.adapter.
 
 type ChatCompletionBaseParams = Pick<
   ChatCompletionCreateParamsNonStreaming,
-  'messages' | 'model' | 'temperature' | 'max_tokens' | 'response_format'
->
+  'messages' | 'model' | 'max_tokens' | 'response_format'
+> & {
+  thinking: { type: 'enabled' }
+  reasoning_effort: 'low' | 'high' | 'max'
+}
 
 type DeepSeekAssistantToolCallMessageParam
   = ChatCompletionAssistantMessageParam & {
@@ -82,7 +86,7 @@ export class OpenAICompatibleClient {
         this.buildBaseChatCompletionParams(
           messages.map(toOpenAIChatMessage),
           options,
-        ),
+        ) as unknown as ChatCompletionCreateParamsNonStreaming,
         {
           timeout: this.runtimeConfigService.value.chatRequestTimeoutMs,
         },
@@ -131,7 +135,7 @@ export class OpenAICompatibleClient {
       debugCapture?.onRequest(requestParams)
 
       const stream = await client.chat.completions.create(
-        requestParams,
+        requestParams as unknown as ChatCompletionCreateParamsStreaming,
         requestOptions,
       )
 
@@ -167,8 +171,9 @@ export class OpenAICompatibleClient {
     const params: ChatCompletionBaseParams = {
       model: requestConfig.model,
       messages,
-      temperature: requestConfig.temperature,
       max_tokens: requestConfig.maxOutputTokens,
+      thinking: { type: 'enabled' },
+      reasoning_effort: requestConfig.reasoningEffort,
     }
 
     if (options?.responseFormat) {

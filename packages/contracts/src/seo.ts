@@ -3,10 +3,18 @@ import type { MessageGroundingV1 } from './grounding.js'
 /** 前后端共同执行的单次 SEO Chat 用户消息字符上限。 */
 export const SEO_CHAT_MESSAGE_MAX_CHARS = 64_000
 
+/** DeepSeek Thinking Mode 对外开放的单次请求思考强度。 */
+export const DEEPSEEK_REASONING_EFFORTS = ['low', 'high', 'max'] as const
+
+export type DeepSeekReasoningEffort = typeof DEEPSEEK_REASONING_EFFORTS[number]
+
+export const DEFAULT_DEEPSEEK_REASONING_EFFORT: DeepSeekReasoningEffort = 'high'
+
 export interface SeoChatRequest {
   conversationId: string
   message: string
   model?: string
+  reasoningEffort?: DeepSeekReasoningEffort
 }
 
 export interface SeoChatResponse {
