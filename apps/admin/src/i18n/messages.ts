@@ -204,6 +204,7 @@ export const messages = {
       inspector: {
         ariaLabel: '运行轨迹检查器',
         empty: '选择一条轨迹记录查看详情',
+        resizerLabel: '拖拽调整检查器宽度，方向键微调，双击恢复默认',
         unavailable: '未记录',
         requestLabel: '请求 #{number}',
         safeRawDescription: '仅包含 Admin 安全白名单字段。',
@@ -681,6 +682,7 @@ export const messages = {
       inspector: {
         ariaLabel: 'Run trace inspector',
         empty: 'Select a trace record to inspect',
+        resizerLabel: 'Drag to resize the inspector, arrow keys to fine-tune, double-click to reset',
         unavailable: 'Unavailable',
         requestLabel: 'Request #{number}',
         safeRawDescription: 'Only Admin allowlisted safe fields are shown.',
