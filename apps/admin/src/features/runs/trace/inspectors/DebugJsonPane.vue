@@ -110,7 +110,7 @@ async function copyJson() {
   overflow: auto;
   margin: 0;
   padding: 8px;
-  border: 1px solid rgb(0 0 0 / 6%);
+  border: 1px solid var(--admin-border);
   border-radius: 6px;
   font-size: 12px;
 }
@@ -118,5 +118,12 @@ async function copyJson() {
 .debug-json-preview {
   white-space: pre-wrap;
   word-break: break-all;
+}
+
+/* 库默认写死浅蓝 #e6f7ff，暗色主题下刺眼且文字不可读，改用主题变量 */
+.debug-json-tree :deep(.vjs-tree-node:hover),
+.debug-json-tree :deep(.vjs-tree-node.is-highlight),
+.debug-json-tree :deep(.vjs-tree-node .vjs-tree-node-actions) {
+  background-color: var(--admin-hover);
 }
 </style>

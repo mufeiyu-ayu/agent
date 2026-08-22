@@ -1,11 +1,7 @@
 <script setup lang="ts">
-import {
-  CheckOutlined,
-  CopyOutlined,
-} from '@ant-design/icons-vue'
+import type { AdminDebugModelIOCapture } from '@agent/contracts'
 import {
   Alert,
-  App as AntApp,
   Button,
   Card,
   Result,
@@ -22,11 +18,11 @@ import PageContainer from '@/components/common/PageContainer.vue'
 import RunStatusTag from '@/features/runs/components/RunStatusTag.vue'
 import { createRunDetailState } from '@/features/runs/run-detail.state'
 import { formatDateTime } from '@/features/runs/run.utils'
+import DebugJsonPane from '@/features/runs/trace/inspectors/DebugJsonPane.vue'
 import RunTraceWorkspace from '@/features/runs/trace/RunTraceWorkspace.vue'
 
 const route = useRoute()
 const router = useRouter()
-const { message } = AntApp.useApp()
 const { locale, t } = useI18n()
 
 const activeTab = ref('trace')
@@ -40,7 +36,10 @@ const {
   notFound,
   run,
 } = runDetailState
-const safeRawJson = computed(() => JSON.stringify(run.value?.safeRawData ?? {}, null, 2))
+const safeRawCapture = computed<AdminDebugModelIOCapture>(() => ({
+  truncated: false,
+  value: run.value?.safeRawData ?? {},
+}))
 
 watch(run, () => {
   activeTab.value = 'trace'
@@ -51,16 +50,6 @@ watch(runId, () => {
 }, { immediate: true })
 
 onBeforeUnmount(cancelRunLoad)
-
-async function copySafeRawData() {
-  try {
-    await navigator.clipboard.writeText(safeRawJson.value)
-    message.success(t('runDetail.copied'))
-  }
-  catch {
-    message.error(t('runDetail.copyFailed'))
-  }
-}
 </script>
 
 <template>
@@ -124,21 +113,9 @@ async function copySafeRawData() {
               :description="t('runDetail.safeRawDescription')"
             />
 
-            <section class="safe-raw-panel">
-              <header>
-                <div>
-                  <CheckOutlined />
-                  <span>{{ t('runDetail.safeApiJson') }}</span>
-                </div>
-                <Button size="small" @click="copySafeRawData">
-                  <template #icon>
-                    <CopyOutlined />
-                  </template>
-                  {{ t('common.actions.copy') }}
-                </Button>
-              </header>
-              <pre>{{ safeRawJson }}</pre>
-            </section>
+            <div class="safe-raw-json">
+              <DebugJsonPane :capture="safeRawCapture" />
+            </div>
           </TabPane>
         </Tabs>
       </Card>
@@ -248,15 +225,12 @@ async function copySafeRawData() {
 }
 
 .message-card header,
-.message-card header > div,
-.safe-raw-panel header,
-.safe-raw-panel header > div {
+.message-card header > div {
   display: flex;
   align-items: center;
 }
 
-.message-card header,
-.safe-raw-panel header {
+.message-card header {
   justify-content: space-between;
   gap: 12px;
 }
@@ -288,42 +262,14 @@ async function copySafeRawData() {
   overflow-wrap: anywhere;
 }
 
-.safe-raw-panel {
+.safe-raw-json {
   min-width: 0;
   margin: 0 14px 14px;
-  overflow: hidden;
-  border: 1px solid var(--admin-border);
-  border-radius: 8px;
-  background: var(--admin-bg-deep);
 }
 
-.safe-raw-panel header {
-  min-height: 44px;
-  padding: 7px 10px 7px 14px;
-  border-bottom: 1px solid var(--admin-border);
-  background: var(--admin-surface);
-}
-
-.safe-raw-panel header > div {
-  gap: 7px;
-  color: var(--admin-success-strong);
-}
-
-.safe-raw-panel header span {
-  color: var(--admin-text);
-  font-size: 11px;
-  font-weight: 650;
-}
-
-.safe-raw-panel pre {
-  max-height: 520px;
-  margin: 0;
-  padding: 16px;
-  overflow: auto;
-  color: var(--admin-text-muted);
-  font-family: monospace;
-  font-size: 10px;
-  line-height: 1.65;
-  tab-size: 2;
+/* 详情页整页可滚动，JSON 区比检查器侧栏（60vh）给得更高 */
+.safe-raw-json :deep(.debug-json-tree),
+.safe-raw-json :deep(.debug-json-preview) {
+  max-height: 75vh;
 }
 </style>
