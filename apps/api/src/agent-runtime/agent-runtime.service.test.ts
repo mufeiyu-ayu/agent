@@ -149,7 +149,7 @@ describe('AgentRuntimeService model stream', () => {
       conversationId: 'conversation-1',
       userContent: '问题',
       model: 'deepseek-v4-pro',
-      temperature: 0.4,
+      reasoningEffort: 'max',
       maxTokens: 4_096,
       buildModelMessages: historyMessages => historyMessages,
     }))
@@ -167,7 +167,7 @@ describe('AgentRuntimeService model stream', () => {
       harness.llmCalls[0]?.options?.maxTokens,
       initialContext.resolvedMaxOutputTokens,
     )
-    assert.equal(harness.llmCalls[0]?.options?.temperature, 0.4)
+    assert.equal(harness.llmCalls[0]?.options?.reasoningEffort, 'max')
   })
 
   it('零 Tool Budget 时不向模型暴露 Tool 并正常完成', async () => {
@@ -546,6 +546,10 @@ describe('AgentRuntimeService model stream', () => {
         ['search_articles', 'get_article_detail', 'retrieve_article_context'],
         ['search_articles', 'get_article_detail', 'retrieve_article_context'],
       ],
+    )
+    assert.deepEqual(
+      harness.llmCalls.map(call => call.options?.reasoningEffort),
+      ['high', 'high'],
     )
     assert.deepEqual(harness.llmCalls[1]?.messages, [
       {
@@ -1064,6 +1068,10 @@ describe('AgentRuntimeService model stream', () => {
     )
 
     assert.equal(harness.llmCalls.length, 3)
+    assert.deepEqual(
+      harness.llmCalls.map(call => call.options?.reasoningEffort),
+      ['high', 'high', 'high'],
+    )
     assert.equal(thirdRoundResults.length, 2)
     assert.equal(thirdRoundResults[0]?.type, 'tool_result')
     assert.equal(thirdRoundResults[1]?.type, 'tool_result')
@@ -1239,6 +1247,10 @@ describe('AgentRuntimeService model stream', () => {
     const chatEvents = events.map(toChatStreamEvent)
 
     assert.equal(harness.llmCalls.length, 3)
+    assert.deepEqual(
+      harness.llmCalls.map(call => call.options?.reasoningEffort),
+      ['high', 'high', 'high'],
+    )
     assert.deepEqual(
       harness.llmCalls.map(call => call.options?.tools?.map(tool => tool.name)),
       Array.from({ length: 3 }, () => [
@@ -1809,7 +1821,14 @@ describe('AgentRuntimeService model stream', () => {
       samplingAttemptId: 'run-1:sampling-1',
       messageCount: 1,
       finishReason: null,
-      usage: null,
+      usage: {
+        inputTokens: 7,
+        outputTokens: 3,
+        totalTokens: 10,
+        reasoningTokens: 2,
+        promptCacheHitTokens: 5,
+        promptCacheMissTokens: 2,
+      },
       toolCallCount: 0,
       textChars: 2,
       intermediateTextChars: 0,
@@ -1898,6 +1917,49 @@ describe('AgentRuntimeService model stream', () => {
     assert.equal(harness.assistantMessage()?.status, MessageStatus.ABORTED)
     assert.deepEqual(harness.recorder.abortedRunIds, ['run-1'])
     assert.deepEqual(harness.recorder.failedRunIds, [])
+    assert.deepEqual(
+      (findStep(harness, 'model_sampling')?.output as Record<string, unknown>)
+        .usage,
+      {
+        inputTokens: 7,
+        outputTokens: 3,
+        totalTokens: 10,
+        reasoningTokens: 2,
+        promptCacheHitTokens: 5,
+        promptCacheMissTokens: 2,
+      },
+    )
+    assertNoUnfinishedSteps(harness)
+  })
+
+  it('Provider 完整结束后、Step 落库前 Abort 时仍保留已成立 Usage', async () => {
+    const abortController = new AbortController()
+    const harness = createHarness(
+      () => abortingAfterCompletionModelStream(abortController),
+      abortController.signal,
+    )
+
+    const events = await collectEvents(harness.run())
+    const samplingStep = findStep(harness, 'model_sampling')
+
+    assert.equal(events.at(-1)?.type, 'run_aborted')
+    assert.equal(samplingStep?.status, AgentStepStatus.ABORTED)
+    assert.deepEqual(withoutDuration(samplingStep?.output), {
+      samplingAttemptId: 'run-1:sampling-1',
+      messageCount: 1,
+      finishReason: 'stop',
+      usage: {
+        inputTokens: 7,
+        outputTokens: 3,
+        totalTokens: 10,
+        reasoningTokens: 2,
+        promptCacheHitTokens: 5,
+        promptCacheMissTokens: 2,
+      },
+      toolCallCount: 0,
+      textChars: 2,
+      intermediateTextChars: 0,
+    })
     assertNoUnfinishedSteps(harness)
   })
 
@@ -2569,7 +2631,7 @@ function createHarness(
     // 与生产模型能力保持锚定，不冻结在手写字面量上。
     resolveChatRequestConfig: (options?: {
       model?: string
-      temperature?: number
+      reasoningEffort?: 'low' | 'high' | 'max'
       maxTokens?: number
     }) => {
       const model = options?.model ?? 'deepseek-v4-flash'
@@ -2579,7 +2641,7 @@ function createHarness(
         contextWindowTokens: getModelProfile(model)?.contextWindowTokens
           ?? 1_000_000,
         maxOutputTokens: options?.maxTokens ?? 65_536,
-        temperature: options?.temperature ?? 0.7,
+        reasoningEffort: options?.reasoningEffort ?? 'high',
       }
     },
     chatStream: (messages: ModelInputItem[], options?: ChatStreamOptions) => {
@@ -2632,7 +2694,7 @@ function createHarness(
     run: () => service.runTurnStream({
       conversationId: 'conversation-1',
       userContent: '问题',
-      temperature: 0.4,
+      reasoningEffort: 'high',
       ...(signal ? { signal } : {}),
       buildModelMessages: historyMessages => historyMessages,
     }),
@@ -3101,8 +3163,16 @@ class FakeAgentRunRecorderService {
     runId: string,
     _deadline: DatabaseOperationDeadline,
     assistantMessage?: { id: string, content: string },
+    abortedStep?: { id: string, errorMessage: string, output?: unknown },
   ): Promise<void> {
     this.closeMessage(assistantMessage, MessageStatus.ABORTED)
+    if (abortedStep) {
+      this.transitionStep(
+        abortedStep.id,
+        AgentStepStatus.ABORTED,
+        abortedStep,
+      )
+    }
     this.closeUnfinishedSteps(runId, AgentStepStatus.ABORTED)
     this.abortedRunIds.push(runId)
   }
@@ -3224,6 +3294,17 @@ async function* delayedCompletionModelStream(
 
 async function* failingModelStream(): AsyncGenerator<ModelStreamEvent> {
   yield { type: 'text_delta', delta: '部分' }
+  yield {
+    type: 'usage',
+    usage: {
+      inputTokens: 7,
+      outputTokens: 3,
+      totalTokens: 10,
+      reasoningTokens: 2,
+      promptCacheHitTokens: 5,
+      promptCacheMissTokens: 2,
+    },
+  }
   throw new Error('provider unavailable')
 }
 
@@ -3231,8 +3312,38 @@ async function* abortingModelStream(
   abortController: AbortController,
 ): AsyncGenerator<ModelStreamEvent> {
   yield { type: 'text_delta', delta: '部分' }
+  yield {
+    type: 'usage',
+    usage: {
+      inputTokens: 7,
+      outputTokens: 3,
+      totalTokens: 10,
+      reasoningTokens: 2,
+      promptCacheHitTokens: 5,
+      promptCacheMissTokens: 2,
+    },
+  }
   abortController.abort()
   throw new Error('aborted')
+}
+
+async function* abortingAfterCompletionModelStream(
+  abortController: AbortController,
+): AsyncGenerator<ModelStreamEvent> {
+  yield { type: 'text_delta', delta: '完整' }
+  yield {
+    type: 'usage',
+    usage: {
+      inputTokens: 7,
+      outputTokens: 3,
+      totalTokens: 10,
+      reasoningTokens: 2,
+      promptCacheHitTokens: 5,
+      promptCacheMissTokens: 2,
+    },
+  }
+  yield { type: 'response_completed', finishReason: 'stop' }
+  abortController.abort()
 }
 
 async function* abortingWithoutDeltaModelStream(

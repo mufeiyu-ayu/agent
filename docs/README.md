@@ -7,7 +7,7 @@
 ```text
 阶段 1-8：Completed
 Phase 8：Completed
-Active Agent Task：无
+Active Agent Task：DeepSeek 思考强度与 Usage（#94，已实现 / 待验收）
 Minimal Compaction：Gated
 Admin Task 4：Planned
 Phase 9：未定案
@@ -23,7 +23,7 @@ Phase 8 已完成：
 - Task 3B：Web Grounding 状态、Sources disclosure、Source cards 与 Chromium，#60 / #61 / `572ad206`；
 - Task 3C：Admin Retrieval / Finalization / Citation Inspector，#62 / #63 / `20f838fb`。
 
-当前为 Phase 8 源码阅读阶段；源码阅读发现的可维护性问题已通过 Issue #92（[Run 配置解析边界](./tasks/agent-run-configuration.md)）完成收口。下一阶段学习内容暂不定义。Phase 9 尚未定案。
+当前仍处于 Phase 8 源码阅读阶段；独立横向任务 Issue #94（[DeepSeek 思考强度与 Usage](./tasks/deepseek-reasoning-usage.md)）已实现、待验收。下一阶段学习内容暂不定义，Phase 9 尚未定案。
 
 ## 文档入口
 
@@ -31,6 +31,7 @@ Phase 8 已完成：
 | --- | --- |
 | [roadmap.md](./roadmap.md) | 阶段路线、学习闭环与 Phase 9 决策原则 |
 | [tasks/README.md](./tasks/README.md) | 正式任务看板和状态事实来源 |
+| [DeepSeek 思考强度与 Usage](./tasks/deepseek-reasoning-usage.md) | Active：#94 已实现、待验收 |
 | [Phase 8 归档](./tasks/completed/phase-08-grounded-retrieval.md) | Completed：Task 0-3C 全部内容、阶段不变量与边界 |
 | [Grounded Answer / Citation 研究](./research/phase-08-grounded-answer-citation-design.md) | Provider、开源方案与架构定案 |
 | [Phase 7 归档](./tasks/completed/phase-07-context-engineering.md) | Context Engineering 最终能力与边界 |

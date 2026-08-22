@@ -1,3 +1,4 @@
+import type { DeepSeekReasoningEffort } from '@agent/contracts'
 import type { ModelToolSpec } from './model-tool-spec.types.js'
 
 /**
@@ -23,8 +24,8 @@ export interface ChatMessage {
 export interface ChatOptions {
   /** 模型名，默认从 LLM_MODEL 环境变量读取 */
   model?: string
-  /** 生成温度 0-2，默认 0.7 */
-  temperature?: number
+  /** DeepSeek Thinking Mode 思考强度，省略时稳定回落 high。 */
+  reasoningEffort?: DeepSeekReasoningEffort
   /** 最大输出 token 数，默认由已验证的 LLM runtime config 提供 */
   maxTokens?: number
   /** JSON 输出约束（对应 OpenAI response_format） */

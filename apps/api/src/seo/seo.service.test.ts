@@ -126,7 +126,7 @@ describe('SeoService', () => {
       [runCompletedEvent('同步回答')],
       [runCompletedEvent('流式回答')],
     )
-    const input = createInput('deepseek-chat')
+    const input = createInput('deepseek-chat', 'max')
 
     await harness.service.chat(input)
     await collectEvents(harness.service.chatStream(input, {
@@ -142,7 +142,7 @@ describe('SeoService', () => {
       conversationId: 'conversation-1',
       userContent: '用户问题',
       model: 'deepseek-chat',
-      temperature: 0.4,
+      reasoningEffort: 'max',
     })
     assert.deepEqual(
       withoutFunctionsAndSignal(streamInput),
@@ -450,11 +450,12 @@ function createHarness(...eventSequences: AgentRuntimeEvent[][]) {
   return { contextBuilder, runtime, service }
 }
 
-function createInput(model?: string) {
+function createInput(model?: string, reasoningEffort?: 'low' | 'high' | 'max') {
   return {
     conversationId: 'conversation-1',
     message: '用户问题',
     ...(model ? { model } : {}),
+    ...(reasoningEffort ? { reasoningEffort } : {}),
   }
 }
 
@@ -463,7 +464,9 @@ function withoutFunctionsAndSignal(input: RunTurnStreamInput) {
     conversationId: input.conversationId,
     userContent: input.userContent,
     ...(input.model ? { model: input.model } : {}),
-    temperature: input.temperature,
+    ...(input.reasoningEffort
+      ? { reasoningEffort: input.reasoningEffort }
+      : {}),
   }
 }
 

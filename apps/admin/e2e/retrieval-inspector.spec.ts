@@ -99,6 +99,27 @@ async function expectNoInspectorOverflow(page: Page): Promise<void> {
 }
 
 test.describe('Event / Retrieval 切换', () => {
+  test('Issue #94：Header、Sampling 与 Finalization 展示 reasoning / cache Usage', async ({ page }) => {
+    await openRunDetail(page, createAnsweredDetail())
+
+    const header = page.locator('.trace-header')
+
+    await expect(header).toContainText('推理 Token')
+    await expect(header).toContainText('缓存命中 Token')
+    await expect(header).toContainText('缓存未命中 Token')
+
+    await page.getByText('模型采样').first().click()
+    await page.getByRole('tab', { name: '用量' }).click()
+    await expect(page.locator('.run-trace-inspector')).toContainText('推理 Token')
+    await expect(page.locator('.run-trace-inspector')).toContainText('缓存命中 Token')
+    await expect(page.locator('.run-trace-inspector')).toContainText('缓存未命中 Token')
+
+    await page.getByText('校验回答引用').first().click()
+    await page.getByRole('tab', { name: '用量' }).click()
+    await expect(page.locator('.run-trace-inspector')).toContainText('推理 Token')
+    await expectNoForbiddenText(page)
+  })
+
   test('AC-01 / AC-02 / AC-10：COMPLETED answered 可切换并读到分层的检索审计', async ({ page }) => {
     await openRunDetail(page, createAnsweredDetail())
 

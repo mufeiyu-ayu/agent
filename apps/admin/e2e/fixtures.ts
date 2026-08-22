@@ -421,7 +421,14 @@ function createAvailableInspector(): AdminRetrievalInspector {
       citationCount: 2,
       citationIntegrity: 'validated',
       faithfulnessStatus: 'not_evaluated',
-      usage: { inputTokens: 30, outputTokens: 12, totalTokens: 42 },
+      usage: {
+        inputTokens: 30,
+        outputTokens: 12,
+        totalTokens: 42,
+        reasoningTokens: 8,
+        promptCacheHitTokens: 20,
+        promptCacheMissTokens: 10,
+      },
       recordedDurationMs: 500,
       durationMs: 520,
       metadataTrusted: true,
@@ -512,6 +519,9 @@ function createDetail(overrides: {
     inputTokens: 60,
     outputTokens: 24,
     totalTokens: 84,
+    reasoningTokens: 18,
+    promptCacheHitTokens: 42,
+    promptCacheMissTokens: 18,
     durationMs: endedAt === null ? null : 5_000,
     startedAt: START,
     endedAt,
@@ -600,7 +610,14 @@ function samplingStep(
     providerItemCount: 4,
     toolCount: 3,
     finishReason,
-    usage: { inputTokens: 20, outputTokens: 8, totalTokens: 28 },
+    usage: {
+      inputTokens: 20,
+      outputTokens: 8,
+      totalTokens: 28,
+      reasoningTokens: 5,
+      promptCacheHitTokens: 14,
+      promptCacheMissTokens: 6,
+    },
     toolCallCount: finishReason === 'tool_calls' ? 1 : 0,
     textChars: 40,
     intermediateTextChars: 0,
@@ -693,6 +710,16 @@ function finalizationStep(
     citationCount: status === 'FAILED' ? null : 2,
     validation: status === 'FAILED' ? 'failed' : 'passed',
     failureReason: status === 'FAILED' ? 'sampling_incomplete' : null,
+    usage: status === 'FAILED'
+      ? null
+      : {
+          inputTokens: 30,
+          outputTokens: 12,
+          totalTokens: 42,
+          reasoningTokens: 8,
+          promptCacheHitTokens: 20,
+          promptCacheMissTokens: 10,
+        },
   }
 }
 

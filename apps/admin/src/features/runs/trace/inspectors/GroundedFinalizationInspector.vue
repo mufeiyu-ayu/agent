@@ -4,7 +4,7 @@ import { TabPane, Tabs } from 'ant-design-vue'
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-import { formatDateTime, formatDuration } from '../../run.utils'
+import { formatDateTime, formatDuration, formatTokens } from '../../run.utils'
 import InspectorFieldList from './InspectorFieldList.vue'
 
 const props = defineProps<{
@@ -75,6 +75,15 @@ const timingFields = computed(() => [
   { label: t('eventDetail.fields.duration'), value: duration(props.item.durationMs) },
 ])
 
+const usageFields = computed(() => [
+  { label: t('eventDetail.fields.inputTokens'), value: tokens(props.item.usage?.inputTokens ?? null) },
+  { label: t('eventDetail.fields.outputTokens'), value: tokens(props.item.usage?.outputTokens ?? null) },
+  { label: t('eventDetail.fields.totalTokens'), value: tokens(props.item.usage?.totalTokens ?? null) },
+  { label: t('eventDetail.fields.reasoningTokens'), value: tokens(props.item.usage?.reasoningTokens ?? null) },
+  { label: t('eventDetail.fields.promptCacheHitTokens'), value: tokens(props.item.usage?.promptCacheHitTokens ?? null) },
+  { label: t('eventDetail.fields.promptCacheMissTokens'), value: tokens(props.item.usage?.promptCacheMissTokens ?? null) },
+])
+
 function show(value: string | number | null): string | number {
   return value ?? unavailable.value
 }
@@ -94,6 +103,10 @@ function dateTime(value: string | null): string {
 function duration(value: number | null): string {
   return value === null ? unavailable.value : formatDuration(value)
 }
+
+function tokens(value: number | null): string {
+  return value === null ? unavailable.value : formatTokens(value, locale.value)
+}
 </script>
 
 <template>
@@ -104,6 +117,10 @@ function duration(value: number | null): string {
 
     <TabPane key="audit" :tab="t('runTrace.inspector.tabs.safeIo')">
       <InspectorFieldList :items="auditFields" />
+    </TabPane>
+
+    <TabPane key="usage" :tab="t('runTrace.inspector.tabs.usage')">
+      <InspectorFieldList :items="usageFields" />
     </TabPane>
 
     <TabPane key="timing" :tab="t('runTrace.inspector.tabs.timing')">

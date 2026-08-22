@@ -22,7 +22,10 @@ export function toModelIODebugCaptureEnvelope(
   let json: string | undefined
 
   try {
-    json = JSON.stringify(value)
+    json = JSON.stringify(
+      value,
+      (key, child) => key === 'reasoning_content' ? undefined : child,
+    )
   }
   catch {
     return undefined

@@ -97,7 +97,12 @@ export type {
   ChatStreamEventType,
   ChatStreamProtocol,
   ChatStreamStartEvent,
+  DeepSeekReasoningEffort,
   SeoChatRequest,
   SeoChatResponse,
 } from './seo.js'
-export { SEO_CHAT_MESSAGE_MAX_CHARS } from './seo.js'
+export {
+  DEEPSEEK_REASONING_EFFORTS,
+  DEFAULT_DEEPSEEK_REASONING_EFFORT,
+  SEO_CHAT_MESSAGE_MAX_CHARS,
+} from './seo.js'

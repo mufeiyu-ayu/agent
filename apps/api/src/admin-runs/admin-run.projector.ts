@@ -143,7 +143,36 @@ interface SamplingContextPlanMetadata {
 export function projectAdminRunListItem(
   run: AdminRunProjectionRecord,
 ): AdminRunListItem {
-  const samplingSteps = run.steps
+  const sampling = aggregateRunSampling(run.steps)
+
+  return {
+    id: run.id,
+    conversationId: run.conversationId,
+    status: run.status,
+    questionPreview: toPreview(run.userMessage.content, QUESTION_PREVIEW_MAX_CHARS),
+    requestedModel: sampling.requestedModel,
+    samplingCount: sampling.count,
+    toolCallCount: run.steps.filter(
+      step => step.type === AGENT_STEP_TYPES.toolExecution,
+    ).length,
+    inputTokens: sampling.usage.inputTokens,
+    outputTokens: sampling.usage.outputTokens,
+    totalTokens: sampling.usage.totalTokens,
+    durationMs: elapsedMs(run.startedAt, run.endedAt),
+    startedAt: run.startedAt.toISOString(),
+    endedAt: toIsoString(run.endedAt),
+    createdAt: run.createdAt.toISOString(),
+  }
+}
+
+function aggregateRunSampling(
+  steps: AdminRunProjectionStepRecord[],
+): {
+  count: number
+  requestedModel: string | null
+  usage: AdminRunTokenUsage
+} {
+  const samplingSteps = steps
     .filter(step => step.type === AGENT_STEP_TYPES.modelSampling)
     .sort(compareSteps)
   const validSamplingSteps = samplingSteps.filter(step => (
@@ -153,7 +182,7 @@ export function projectAdminRunListItem(
   const trustedSamplingSteps = samplingTrusted ? validSamplingSteps : []
   // Grounded finalization 也是真实模型调用，必须计入本 Run 的采样次数与 Token；
   // 否则使用 Grounded Answer 的 Run 会系统性少算 1～2 次调用及其 Token。
-  const finalization = aggregateGroundedFinalization(run.steps)
+  const finalization = aggregateGroundedFinalization(steps)
   // Token 汇总是 all-or-nothing：只要 action sampling 或 finalization 任一侧的
   // metadata 不可信，就整体返回 null，绝不给出「只统计了一部分」的总数。
   const usages: Array<AdminRunTokenUsage | null> = samplingTrusted
@@ -164,26 +193,16 @@ export function projectAdminRunListItem(
     : [null]
 
   return {
-    id: run.id,
-    conversationId: run.conversationId,
-    status: run.status,
-    questionPreview: toPreview(run.userMessage.content, QUESTION_PREVIEW_MAX_CHARS),
+    count: samplingSteps.length + finalization.attemptCount,
     requestedModel: readRequestedModel(trustedSamplingSteps),
-    samplingCount: samplingSteps.length + finalization.attemptCount,
-    toolCallCount: run.steps.filter(
-      step => step.type === AGENT_STEP_TYPES.toolExecution,
-    ).length,
-    ...aggregateSamplingUsage(usages),
-    durationMs: elapsedMs(run.startedAt, run.endedAt),
-    startedAt: run.startedAt.toISOString(),
-    endedAt: toIsoString(run.endedAt),
-    createdAt: run.createdAt.toISOString(),
+    usage: aggregateSamplingUsage(usages),
   }
 }
 
 export function projectAdminRunDetail(
   run: AdminRunDetailProjectionRecord,
 ): AdminRunDetail {
+  const usage = aggregateRunSampling(run.steps).usage
   const timeline = enforceContextSequenceInvariants(
     [...run.steps]
       .sort(compareSteps)
@@ -192,6 +211,9 @@ export function projectAdminRunDetail(
 
   return {
     ...projectAdminRunListItem(run),
+    reasoningTokens: usage.reasoningTokens,
+    promptCacheHitTokens: usage.promptCacheHitTokens,
+    promptCacheMissTokens: usage.promptCacheMissTokens,
     userMessageId: run.userMessageId,
     assistantMessageId: run.assistantMessageId,
     updatedAt: run.updatedAt.toISOString(),
@@ -1287,6 +1309,9 @@ function aggregateSamplingUsage(
     inputTokens: sumCompleteUsage(usages, 'inputTokens'),
     outputTokens: sumCompleteUsage(usages, 'outputTokens'),
     totalTokens: sumCompleteUsage(usages, 'totalTokens'),
+    reasoningTokens: sumCompleteUsage(usages, 'reasoningTokens'),
+    promptCacheHitTokens: sumCompleteUsage(usages, 'promptCacheHitTokens'),
+    promptCacheMissTokens: sumCompleteUsage(usages, 'promptCacheMissTokens'),
   }
 }
 
@@ -1305,15 +1330,15 @@ interface GroundedFinalizationAggregate {
 function aggregateGroundedFinalization(
   steps: AdminRunProjectionStepRecord[],
 ): GroundedFinalizationAggregate {
+  const finalizationSteps = steps.filter(
+    step => step.type === AGENT_STEP_TYPES.groundedFinalization,
+  )
   const aggregate: GroundedFinalizationAggregate = {
     attemptCount: 0,
-    usages: [],
+    usages: finalizationSteps.length > 1 ? [null] : [],
   }
 
-  for (const step of steps) {
-    if (step.type !== AGENT_STEP_TYPES.groundedFinalization)
-      continue
-
+  for (const step of finalizationSteps) {
     const attempts = readFinalizationAttempts(step.output)
 
     if (!attempts) {
@@ -1375,10 +1400,34 @@ function projectTokenUsage(
   if (!usage)
     return null
 
+  const inputTokens = readNonNegativeInteger(usage, 'inputTokens')
+  const outputTokens = readNonNegativeInteger(usage, 'outputTokens')
+  const reasoningTokens = readNonNegativeInteger(usage, 'reasoningTokens')
+  const promptCacheHitTokens = readNonNegativeInteger(
+    usage,
+    'promptCacheHitTokens',
+  )
+  const promptCacheMissTokens = readNonNegativeInteger(
+    usage,
+    'promptCacheMissTokens',
+  )
+  const cacheBreakdownValid = inputTokens === null
+    || promptCacheHitTokens === null
+    || promptCacheMissTokens === null
+    || (Number.isSafeInteger(promptCacheHitTokens + promptCacheMissTokens)
+      && promptCacheHitTokens + promptCacheMissTokens === inputTokens)
+
   return {
-    inputTokens: readNonNegativeInteger(usage, 'inputTokens'),
-    outputTokens: readNonNegativeInteger(usage, 'outputTokens'),
+    inputTokens,
+    outputTokens,
     totalTokens: readNonNegativeInteger(usage, 'totalTokens'),
+    reasoningTokens: outputTokens !== null
+      && reasoningTokens !== null
+      && reasoningTokens > outputTokens
+      ? null
+      : reasoningTokens,
+    promptCacheHitTokens: cacheBreakdownValid ? promptCacheHitTokens : null,
+    promptCacheMissTokens: cacheBreakdownValid ? promptCacheMissTokens : null,
   }
 }
 

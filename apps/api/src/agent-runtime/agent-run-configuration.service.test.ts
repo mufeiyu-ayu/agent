@@ -45,7 +45,7 @@ function createService(input: {
   const llmService = {
     resolveChatRequestConfig: (options?: {
       model?: string
-      temperature?: number
+      reasoningEffort?: 'low' | 'high' | 'max'
       maxTokens?: number
     }) => {
       resolveCalls.push(options)
@@ -54,7 +54,7 @@ function createService(input: {
         model: options?.model ?? 'deepseek-v4-flash',
         contextWindowTokens: 1_000_000,
         maxOutputTokens: options?.maxTokens ?? 65_536,
-        temperature: options?.temperature ?? 0.7,
+        reasoningEffort: options?.reasoningEffort ?? 'high',
       }
     },
   } as unknown as LLMService
@@ -87,7 +87,7 @@ describe('AgentRunConfigurationService', () => {
   it('组合 resolved 请求配置与 allowlist 内 Tool，排除未列入的工具', () => {
     const { service } = createService()
 
-    const configuration = service.resolve({ temperature: 0.4 })
+    const configuration = service.resolve({ reasoningEffort: 'max' })
 
     assert.deepEqual(service.policy, DEFAULT_AGENT_RUNTIME_POLICY)
     assert.deepEqual(
@@ -102,14 +102,14 @@ describe('AgentRunConfigurationService', () => {
       model: 'deepseek-v4-flash',
       contextWindowTokens: 1_000_000,
       maxOutputTokens: 65_536,
-      temperature: 0.4,
+      reasoningEffort: 'max',
     })
   })
 
   it('maxToolCalls=0 时不向模型暴露任何 Tool，但保留服务端定义', () => {
     const { service } = createService({ policy: { maxToolCalls: 0 } })
 
-    const configuration = service.resolve({ temperature: 0.4 })
+    const configuration = service.resolve({})
 
     assert.deepEqual(configuration.modelTools, [])
     assert.equal(configuration.toolDefinitions.length, 3)
@@ -120,7 +120,7 @@ describe('AgentRunConfigurationService', () => {
       registeredToolNames: ['search_articles'],
     })
 
-    const configuration = service.resolve({ temperature: 0.4 })
+    const configuration = service.resolve({})
 
     assert.deepEqual(
       configuration.toolDefinitions.map(definition => definition.name),
@@ -137,20 +137,20 @@ describe('AgentRunConfigurationService', () => {
 
     const configuration = service.resolve({
       model: 'deepseek-v4-pro',
-      temperature: 0.4,
+      reasoningEffort: 'low',
       maxTokens: 4_096,
     })
 
     assert.deepEqual(resolveCalls[0], {
       model: 'deepseek-v4-pro',
-      temperature: 0.4,
+      reasoningEffort: 'low',
       maxTokens: 4_096,
     })
     assert.equal(configuration.request.model, 'deepseek-v4-pro')
     assert.equal(configuration.request.maxOutputTokens, 4_096)
 
     // 空字符串回落默认模型是重构前 runTurnStream 的既有语义，这里锁定现状。
-    service.resolve({ model: '', temperature: 0.4 })
-    assert.deepEqual(resolveCalls[1], { temperature: 0.4 })
+    service.resolve({ model: '' })
+    assert.deepEqual(resolveCalls[1], {})
   })
 })

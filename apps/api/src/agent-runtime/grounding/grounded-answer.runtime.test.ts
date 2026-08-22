@@ -128,6 +128,7 @@ describe('Grounded finalization 路径', () => {
   it('evidence-eligible Tool 后草稿不外发，validated 回答经 delta 重放并原子提交', async () => {
     const answer = '根据站内资料，SEO 标题应控制在 60 字符内。🌍'
     const harness = createHarness({
+      reasoningEffort: 'max',
       modelStreams: [
         () => toModelStream([
           toolCallEvent('call-1', 'retrieve_article_context', '{"query":"seo"}'),
@@ -168,6 +169,10 @@ describe('Grounded finalization 路径', () => {
     assert.equal(completed.content, answer)
     assert.equal(harness.assistantMessage()?.content, answer)
     assert.equal(harness.assistantMessage()?.status, MessageStatus.COMPLETED)
+    assert.deepEqual(
+      harness.llmCalls.map(call => call.options?.reasoningEffort),
+      ['max', 'max', 'max'],
+    )
 
     const grounding = (completed as { grounding?: MessageGroundingV1 }).grounding
 
@@ -1211,7 +1216,17 @@ describe('Grounded finalization 终态流完整性', () => {
         outcome: 'insufficient_evidence',
         citationKeys: [],
       }),
-      { type: 'usage', usage: { inputTokens: 11, outputTokens: 4, totalTokens: 15 } },
+      {
+        type: 'usage',
+        usage: {
+          inputTokens: 11,
+          outputTokens: 4,
+          totalTokens: 15,
+          reasoningTokens: 3,
+          promptCacheHitTokens: 7,
+          promptCacheMissTokens: 4,
+        },
+      },
     ]))
 
     const output = await runAndReadFailure(harness)
@@ -1231,6 +1246,9 @@ describe('Grounded finalization 终态流完整性', () => {
       inputTokens: 11,
       outputTokens: 4,
       totalTokens: 15,
+      reasoningTokens: 3,
+      promptCacheHitTokens: 7,
+      promptCacheMissTokens: 4,
     })
   })
 
@@ -1382,6 +1400,7 @@ interface CreateHarnessOptions {
   modelStreams: CreateModelStream[]
   toolResults?: ToolResult[]
   signal?: AbortSignal
+  reasoningEffort?: 'low' | 'high' | 'max'
   policy?: { maxSamplingRounds: number, maxToolCalls: number }
 }
 
@@ -1403,7 +1422,7 @@ function createHarness(options: CreateHarnessOptions) {
   const llmService = {
     resolveChatRequestConfig: (config?: {
       model?: string
-      temperature?: number
+      reasoningEffort?: 'low' | 'high' | 'max'
       maxTokens?: number
     }) => {
       const model = config?.model ?? 'deepseek-v4-flash'
@@ -1413,7 +1432,7 @@ function createHarness(options: CreateHarnessOptions) {
         contextWindowTokens: getModelProfile(model)?.contextWindowTokens
           ?? 1_000_000,
         maxOutputTokens: config?.maxTokens ?? 65_536,
-        temperature: config?.temperature ?? 0.7,
+        reasoningEffort: config?.reasoningEffort ?? 'high',
       }
     },
     chatStream: (messages: ModelInputItem[], streamOptions?: ChatStreamOptions) => {
@@ -1476,7 +1495,7 @@ function createHarness(options: CreateHarnessOptions) {
     run: () => service.runTurnStream({
       conversationId: 'conversation-1',
       userContent: '问题',
-      temperature: 0.4,
+      reasoningEffort: options.reasoningEffort ?? 'high',
       ...(options.signal ? { signal: options.signal } : {}),
       buildModelMessages: historyMessages => historyMessages,
     }),
@@ -1726,10 +1745,13 @@ class FakeAgentRunRecorderService {
     _runId: string,
     _deadline: DatabaseOperationDeadline,
     assistantMessage?: { id: string, content: string },
+    abortedStep?: { id: string, errorMessage: string, output?: unknown },
     metadataStep?: { id: string, output: unknown },
   ) {
     this.closeMessage(assistantMessage, MessageStatus.ABORTED)
-    this.closeMetadataStep(metadataStep, 'ABORTED')
+    if (abortedStep)
+      this.transition(abortedStep.id, 'ABORTED', abortedStep)
+    this.closeMetadataStep(metadataStep, 'ABORTED', abortedStep?.id)
     this.closeUnfinishedSteps('ABORTED')
   }
 

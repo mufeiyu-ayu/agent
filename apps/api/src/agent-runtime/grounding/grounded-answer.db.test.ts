@@ -997,7 +997,7 @@ describe('Grounded Answer PostgreSQL integration', { concurrency: 1 }, () => {
     const llmService = {
       resolveChatRequestConfig: (options?: {
         model?: string
-        temperature?: number
+        reasoningEffort?: 'low' | 'high' | 'max'
         maxTokens?: number
       }) => {
         const model = options?.model ?? 'deepseek-v4-flash'
@@ -1007,7 +1007,7 @@ describe('Grounded Answer PostgreSQL integration', { concurrency: 1 }, () => {
           contextWindowTokens: getModelProfile(model)?.contextWindowTokens
             ?? 1_000_000,
           maxOutputTokens: options?.maxTokens ?? 65_536,
-          temperature: options?.temperature ?? 0.7,
+          reasoningEffort: options?.reasoningEffort ?? 'high',
         }
       },
       chatStream: (messages: ModelInputItem[], _options?: ChatStreamOptions) => {
@@ -1054,7 +1054,7 @@ describe('Grounded Answer PostgreSQL integration', { concurrency: 1 }, () => {
       run: () => service.runTurnStream({
         conversationId,
         userContent: 'SEO 是什么',
-        temperature: 0.4,
+        reasoningEffort: 'high',
         ...(signal ? { signal } : {}),
         buildModelMessages: historyMessages => historyMessages,
       }),

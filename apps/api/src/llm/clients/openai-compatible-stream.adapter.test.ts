@@ -87,6 +87,11 @@ describe('adaptOpenAICompatibleStream', () => {
           prompt_tokens: 3,
           completion_tokens: 2,
           total_tokens: 5,
+          prompt_cache_hit_tokens: 2,
+          prompt_cache_miss_tokens: 1,
+          completion_tokens_details: {
+            reasoning_tokens: 1,
+          },
         },
       }),
     ])))
@@ -100,11 +105,39 @@ describe('adaptOpenAICompatibleStream', () => {
           inputTokens: 3,
           outputTokens: 2,
           totalTokens: 5,
+          reasoningTokens: 1,
+          promptCacheHitTokens: 2,
+          promptCacheMissTokens: 1,
         },
       },
       { type: 'response_completed', finishReason: 'stop' },
     ])
     assert.doesNotMatch(JSON.stringify(events), new RegExp(reasoningSecret))
+  })
+
+  it('新增 Usage 字段逐项缺失时保持 unavailable，不补假 0', async () => {
+    const events = await collectEvents(adaptOpenAICompatibleStream(toStream([
+      createChunk({
+        includeChoice: false,
+        usage: {
+          prompt_tokens: 3,
+          completion_tokens: 2,
+          total_tokens: 5,
+          prompt_cache_hit_tokens: 2,
+        },
+      }),
+      createChunk({ delta: { content: '好' }, finishReason: 'stop' }),
+    ])))
+
+    assert.deepEqual(events[0], {
+      type: 'usage',
+      usage: {
+        inputTokens: 3,
+        outputTokens: 2,
+        totalTokens: 5,
+        promptCacheHitTokens: 2,
+      },
+    })
   })
 
   it('拼装跨多个 chunk 的单个 Tool Call', async () => {
@@ -321,7 +354,11 @@ interface CreateChunkInput {
   delta?: DeepSeekChatCompletionDelta
   finishReason?: ChatCompletionChunk.Choice['finish_reason']
   includeChoice?: boolean
-  usage?: ChatCompletionChunk['usage']
+  usage?: ChatCompletionChunk['usage'] & {
+    prompt_cache_hit_tokens?: number
+    prompt_cache_miss_tokens?: number
+    completion_tokens_details?: { reasoning_tokens?: number }
+  }
 }
 
 type DeepSeekChatCompletionDelta = ChatCompletionChunk.Choice.Delta & {

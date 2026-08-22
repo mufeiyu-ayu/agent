@@ -1,8 +1,12 @@
 <script setup lang="ts">
+import type { DeepSeekReasoningEffort } from '@agent/contracts'
 import type { LlmModelOption } from '../../types/llm'
 import type { GenerationStatus } from '../../types/seo'
 
-import { SEO_CHAT_MESSAGE_MAX_CHARS } from '@agent/contracts'
+import {
+  DEEPSEEK_REASONING_EFFORTS,
+  SEO_CHAT_MESSAGE_MAX_CHARS,
+} from '@agent/contracts'
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
@@ -22,6 +26,7 @@ const props = defineProps<{
   hasConversation: boolean
   models: LlmModelOption[]
   selectedModel: LlmModelOption['id']
+  selectedReasoningEffort: DeepSeekReasoningEffort
   status: GenerationStatus
   messageCharacterCount: number
 }>()
@@ -29,6 +34,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   'update:message': [value: string]
   'update:selectedModel': [value: LlmModelOption['id']]
+  'update:selectedReasoningEffort': [value: DeepSeekReasoningEffort]
   'send': []
   'reset': []
   'stop': []
@@ -72,6 +78,13 @@ function updateSelectedModel(value: unknown) {
 
   emit('update:selectedModel', nextModel.id)
 }
+
+function updateSelectedReasoningEffort(value: unknown) {
+  if (!DEEPSEEK_REASONING_EFFORTS.includes(value as DeepSeekReasoningEffort))
+    return
+
+  emit('update:selectedReasoningEffort', value as DeepSeekReasoningEffort)
+}
 </script>
 
 <template>
@@ -90,27 +103,50 @@ function updateSelectedModel(value: unknown) {
           @keydown.enter.exact.prevent="submitComposer"
         />
 
-        <div class="flex items-center justify-between gap-2 pt-1">
-          <Select
-            :model-value="selectedModel"
-            @update:model-value="updateSelectedModel"
-          >
-            <SelectTrigger
-              :aria-label="t('composer.modelSelectAria')"
-              class="h-11 max-w-[calc(100vw-148px)] min-w-0 overflow-hidden rounded-full border-agent-border bg-agent-surface px-3 text-[14px] font-medium tracking-normal text-agent-ink-soft shadow-none hover:border-agent-border hover:bg-agent-surface-raised focus:ring-agent-focus/35 sm:max-w-none sm:min-w-[190px] min-[960px]:h-9"
+        <div class="flex flex-wrap items-center justify-between gap-2 pt-1">
+          <div class="flex min-w-0 flex-1 basis-[230px] items-center gap-2">
+            <Select
+              :model-value="selectedModel"
+              @update:model-value="updateSelectedModel"
             >
-              <SelectValue :placeholder="t('composer.modelPlaceholder')" />
-            </SelectTrigger>
-            <SelectContent class="min-w-[210px] rounded-xl">
-              <SelectItem
-                v-for="model in models"
-                :key="model.id"
-                :value="model.id"
+              <SelectTrigger
+                :aria-label="t('composer.modelSelectAria')"
+                class="h-11 min-w-0 flex-1 overflow-hidden rounded-full border-agent-border bg-agent-surface px-3 text-[14px] font-medium tracking-normal text-agent-ink-soft shadow-none hover:border-agent-border hover:bg-agent-surface-raised focus:ring-agent-focus/35 min-[960px]:h-9"
               >
-                {{ model.label }}
-              </SelectItem>
-            </SelectContent>
-          </Select>
+                <SelectValue :placeholder="t('composer.modelPlaceholder')" />
+              </SelectTrigger>
+              <SelectContent class="min-w-[210px] rounded-xl">
+                <SelectItem
+                  v-for="model in models"
+                  :key="model.id"
+                  :value="model.id"
+                >
+                  {{ model.label }}
+                </SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Select
+              :model-value="selectedReasoningEffort"
+              @update:model-value="updateSelectedReasoningEffort"
+            >
+              <SelectTrigger
+                :aria-label="t('composer.reasoningEffortSelectAria')"
+                class="h-11 w-[94px] shrink-0 rounded-full border-agent-border bg-agent-surface px-3 text-[14px] font-medium text-agent-ink-soft shadow-none hover:border-agent-border hover:bg-agent-surface-raised focus:ring-agent-focus/35 min-[960px]:h-9"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent class="min-w-[120px] rounded-xl">
+                <SelectItem
+                  v-for="effort in DEEPSEEK_REASONING_EFFORTS"
+                  :key="effort"
+                  :value="effort"
+                >
+                  {{ t(`composer.reasoningEffort.${effort}`) }}
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
 
           <div class="flex shrink-0 items-center justify-end gap-1.5 sm:gap-2">
             <span class="hidden text-xs font-bold text-agent-ink-muted sm:inline">

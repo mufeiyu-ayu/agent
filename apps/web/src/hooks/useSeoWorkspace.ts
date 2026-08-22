@@ -3,6 +3,7 @@ import type {
   ChatStreamEvent,
   Conversation,
   ConversationMessage,
+  DeepSeekReasoningEffort,
   SeoChatRequest,
 } from '@agent/contracts'
 import type { AgentRecentChat } from '../types/agent-platform'
@@ -220,7 +221,10 @@ export function useSeoWorkspace() {
     }
   }
 
-  async function sendMessage(model?: string) {
+  async function sendMessage(
+    model?: string,
+    reasoningEffort?: DeepSeekReasoningEffort,
+  ) {
     if (!canStartChatRequest())
       return
 
@@ -254,7 +258,12 @@ export function useSeoWorkspace() {
         activeStreamConversationId = conversation.id
       }
 
-      const request = buildChatRequest(targetConversationId, messageContent, model)
+      const request = buildChatRequest(
+        targetConversationId,
+        messageContent,
+        model,
+        reasoningEffort,
+      )
       pendingMessage = createPendingUserMessage(targetConversationId, request.message)
       activeTurnId = pendingMessage.id
 
@@ -493,6 +502,7 @@ export function useSeoWorkspace() {
     conversationId: string,
     messageContent: string,
     model?: string,
+    reasoningEffort?: DeepSeekReasoningEffort,
   ): SeoChatRequest {
     const nextModel = model?.trim()
 
@@ -500,6 +510,7 @@ export function useSeoWorkspace() {
       conversationId,
       message: messageContent,
       ...(nextModel ? { model: nextModel } : {}),
+      ...(reasoningEffort ? { reasoningEffort } : {}),
     }
   }
 

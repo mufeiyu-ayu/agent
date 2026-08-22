@@ -132,7 +132,14 @@ function checkRunTraceProjection(): void {
     && directSamplingRecord.item.type === 'model_sampling'
       ? directSamplingRecord.item.usage
       : null,
-    { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+    {
+      inputTokens: 0,
+      outputTokens: 0,
+      totalTokens: 0,
+      reasoningTokens: 0,
+      promptCacheHitTokens: 0,
+      promptCacheMissTokens: 0,
+    },
   )
   assert.deepEqual(
     [...new Set(directProjection.overviewSpans.map(span => span.lane))],
@@ -589,7 +596,14 @@ function createAvailableRetrievalInspector(): AdminRetrievalInspector {
       citationCount: 2,
       citationIntegrity: 'validated',
       faithfulnessStatus: 'not_evaluated',
-      usage: { inputTokens: 30, outputTokens: 12, totalTokens: 42 },
+      usage: {
+        inputTokens: 30,
+        outputTokens: 12,
+        totalTokens: 42,
+        reasoningTokens: null,
+        promptCacheHitTokens: null,
+        promptCacheMissTokens: null,
+      },
       recordedDurationMs: 500,
       durationMs: 520,
       metadataTrusted: true,
@@ -967,8 +981,22 @@ function createTraceDetail(toolCount: 0 | 1 | 2): AdminRunDetail {
       toolCount: 2,
       finishReason,
       usage: index === 1
-        ? { inputTokens: 0, outputTokens: 0, totalTokens: 0 }
-        : { inputTokens: index * 10, outputTokens: index * 2, totalTokens: index * 12 },
+        ? {
+            inputTokens: 0,
+            outputTokens: 0,
+            totalTokens: 0,
+            reasoningTokens: 0,
+            promptCacheHitTokens: 0,
+            promptCacheMissTokens: 0,
+          }
+        : {
+            inputTokens: index * 10,
+            outputTokens: index * 2,
+            totalTokens: index * 12,
+            reasoningTokens: index,
+            promptCacheHitTokens: index * 3,
+            promptCacheMissTokens: index * 7,
+          },
       toolCallCount: finishReason === 'tool_calls' ? 1 : 0,
       textChars: finishReason === 'stop' ? 12 : 0,
       intermediateTextChars: 0,
@@ -1049,6 +1077,9 @@ function createTraceDetail(toolCount: 0 | 1 | 2): AdminRunDetail {
     inputTokens: null,
     outputTokens: null,
     totalTokens: null,
+    reasoningTokens: null,
+    promptCacheHitTokens: null,
+    promptCacheMissTokens: null,
     durationMs: Date.parse(runEndedAt) - Date.parse(traceTimestamp(0)),
     startedAt: traceTimestamp(0),
     endedAt: runEndedAt,
@@ -1190,6 +1221,9 @@ function createRunningDetail(): AdminRunDetail {
     inputTokens: null,
     outputTokens: null,
     totalTokens: null,
+    reasoningTokens: null,
+    promptCacheHitTokens: null,
+    promptCacheMissTokens: null,
     durationMs: null,
     startedAt,
     endedAt: null,

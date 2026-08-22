@@ -54,6 +54,7 @@ const navigationItems = computed<AgentNavigationItem[]>(() => {
 const {
   models,
   selectedModel,
+  selectedReasoningEffort,
   balanceLabel,
   balanceAvailable,
   balanceStatus,
@@ -135,11 +136,12 @@ function applySuggestedPrompt(prompt: string) {
         <SeoChatComposer
           v-model:message="message"
           v-model:selected-model="selectedModel"
+          v-model:selected-reasoning-effort="selectedReasoningEffort"
           :has-conversation="conversationTurns.length > 0"
           :models="models"
           :status="status"
           :message-character-count="messageCharacterCount"
-          @send="sendMessage(selectedModel)"
+          @send="sendMessage(selectedModel, selectedReasoningEffort)"
           @stop="stopGeneration"
           @reset="resetWorkspace"
         />

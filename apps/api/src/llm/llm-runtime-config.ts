@@ -1,15 +1,13 @@
 import type { ChatOptions } from './llm.types.js'
 import type { SupportedDeepSeekModel } from './model-profiles.js'
 import process from 'node:process'
+import { DEFAULT_DEEPSEEK_REASONING_EFFORT } from '@agent/contracts'
 import { Injectable } from '@nestjs/common'
 
 import { LLMAuthError, LLMConfigError } from './llm.errors.js'
 import { getModelProfile } from './model-profiles.js'
 
 const MAX_TIMER_TIMEOUT_MS = 2_147_483_647
-
-/** 请求未显式指定 temperature 时的默认值。 */
-const DEFAULT_CHAT_TEMPERATURE = 0.7
 
 export const DEFAULT_LLM_RUNTIME_CONFIG = {
   metadataRequestTimeoutMs: 10_000,
@@ -43,7 +41,7 @@ export interface ResolvedChatRequestConfig {
   model: SupportedDeepSeekModel
   contextWindowTokens: number
   maxOutputTokens: number
-  temperature: number
+  reasoningEffort: NonNullable<ChatOptions['reasoningEffort']>
 }
 
 @Injectable()
@@ -158,7 +156,7 @@ export function resolveChatRequestConfig(
     model: profile.id,
     contextWindowTokens: profile.contextWindowTokens,
     maxOutputTokens,
-    temperature: options.temperature ?? DEFAULT_CHAT_TEMPERATURE,
+    reasoningEffort: options.reasoningEffort ?? DEFAULT_DEEPSEEK_REASONING_EFFORT,
   }
 }
 

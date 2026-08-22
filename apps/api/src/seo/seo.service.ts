@@ -88,8 +88,10 @@ export class SeoService {
       conversationId: input.conversationId,
       userContent: input.message,
       ...(input.model ? { model: input.model } : {}),
+      ...(input.reasoningEffort
+        ? { reasoningEffort: input.reasoningEffort }
+        : {}),
       ...(signal ? { signal } : {}),
-      temperature: 0.4,
       buildModelMessages: historyMessages =>
         this.seoContextBuilder.buildModelMessages({ historyMessages }),
     }

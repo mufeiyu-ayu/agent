@@ -8,7 +8,7 @@
 阶段 1-8：Completed
 Phase 8：Completed
 Task 0、1、2A、2B、3A、3B、3C：Completed
-Active Agent Task：无
+Active Agent Task：DeepSeek 思考强度与 Usage（#94，已实现 / 待验收）
 Run 配置解析边界（#92）：Completed
 Minimal Compaction：Gated
 Admin Task 4：Planned
@@ -20,6 +20,7 @@ Phase 9：未定案
 | 区域 | 状态 | 文档 | 说明 |
 | --- | --- | --- | --- |
 | Agent 主线 | **阶段 1-8 Completed** | [roadmap.md](../roadmap.md) | 当前为 Phase 8 源码阅读阶段 |
+| DeepSeek 思考强度与 Usage（#94） | **Active / 已实现 / 待验收** | [deepseek-reasoning-usage.md](./deepseek-reasoning-usage.md) | Web 单次选择、Run resolved config、Provider wire、Usage / Admin 闭环 |
 | Run 配置解析边界（#92） | **Completed / #93 / `f32cd48`** | [agent-run-configuration.md](./agent-run-configuration.md) | 横向 refactor：单次 Run 配置解析入口 + 配置地图 |
 | Phase 8：Grounded Retrieval / RAG Baseline | **Completed** | [completed/phase-08-grounded-retrieval.md](./completed/phase-08-grounded-retrieval.md) | Task 0-3C 全部完成，已归档 |
 | Phase 7：Context Engineering | **Completed** | [completed/phase-07-context-engineering.md](./completed/phase-07-context-engineering.md) | Task 0-3 Completed；Minimal Compaction Gated |
@@ -46,9 +47,9 @@ Phase 8 全部 Task 文档已合并归档到 [completed/phase-08-grounded-retrie
 
 ## 当前正式动作
 
-当前没有 Active Agent Task，也没有自动启动的下一正式 Issue。Run 配置解析边界（#92）已于 2026-08-22 验收合并（PR #93 / `f32cd48`）。
+当前 Active Agent Task 为 DeepSeek 思考强度与 Usage 可观测闭环（#94）：已实现、待验收，Draft PR 待创建。Run 配置解析边界（#92）已于 2026-08-22 验收合并（PR #93 / `f32cd48`）。
 
-当前阶段为 Phase 8 源码阅读（学习阶段）：回读 Phase 8 代码与数据链路，覆盖 Chunking、Embedding、Hybrid Retrieval、Tool、Grounding、Web Source UI 和 Admin Inspector。下一阶段学习内容暂不定义；源码阅读完成后再讨论 Phase 9。
+Phase 8 源码阅读仍是当前学习阶段；#94 是独立横向正式任务，不定义或启动 Phase 9。下一阶段学习内容暂不定义。
 
 Admin Task 4、并行 Tool Call、Minimal Compaction、Memory、MCP、Multi-agent 和 Durable Recovery 均不得自动进入实现。
 

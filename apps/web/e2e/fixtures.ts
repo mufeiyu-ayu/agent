@@ -235,6 +235,7 @@ declare global {
   interface Window {
     __releaseStream?: () => void
     __copiedText?: string
+    __seoRequests?: unknown[]
   }
 }
 
@@ -256,6 +257,7 @@ export async function installBrowserStubs(
       window.localStorage.setItem('agent-web-locale', appLocale)
 
       const originalFetch = window.fetch.bind(window)
+      window.__seoRequests = []
       let release: (() => void) | undefined
       // 记录「已放行」而不是只保存 resolver：测试可能在流到达挂起点之前就调用放行，
       // 只保存 resolver 会让这次放行丢失，流永远挂住。
@@ -273,6 +275,8 @@ export async function installBrowserStubs(
 
         if (!url.includes('/api/seo/chat/stream'))
           return originalFetch(input, init)
+
+        window.__seoRequests?.push(JSON.parse(String(init?.body)))
 
         const encoder = new TextEncoder()
         const body = new ReadableStream<Uint8Array>({

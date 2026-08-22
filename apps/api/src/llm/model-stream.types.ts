@@ -23,6 +23,9 @@ export interface ModelUsage {
   inputTokens?: number
   outputTokens?: number
   totalTokens?: number
+  reasoningTokens?: number
+  promptCacheHitTokens?: number
+  promptCacheMissTokens?: number
 }
 
 /** LLM 层向 Agent Runtime 暴露的 provider-neutral 流事件。 */
@@ -58,6 +61,15 @@ export function mergeModelUsage(
     ...(next.inputTokens === undefined ? {} : { inputTokens: next.inputTokens }),
     ...(next.outputTokens === undefined ? {} : { outputTokens: next.outputTokens }),
     ...(next.totalTokens === undefined ? {} : { totalTokens: next.totalTokens }),
+    ...(next.reasoningTokens === undefined
+      ? {}
+      : { reasoningTokens: next.reasoningTokens }),
+    ...(next.promptCacheHitTokens === undefined
+      ? {}
+      : { promptCacheHitTokens: next.promptCacheHitTokens }),
+    ...(next.promptCacheMissTokens === undefined
+      ? {}
+      : { promptCacheMissTokens: next.promptCacheMissTokens }),
   }
 
   return Object.keys(merged).length > 0 ? merged : null

@@ -60,6 +60,9 @@ export interface AdminRunTokenUsage {
   inputTokens: number | null
   outputTokens: number | null
   totalTokens: number | null
+  reasoningTokens: number | null
+  promptCacheHitTokens: number | null
+  promptCacheMissTokens: number | null
 }
 
 export type AdminModelFinishReason
@@ -383,6 +386,7 @@ export interface AdminGroundedFinalizationStep extends AdminRunKnownTimelineItem
   citationCount: number | null
   validation: AdminGroundedFinalizationValidation
   failureReason: AdminGroundedFinalizationFailureReason | null
+  usage: AdminRunTokenUsage | null
 }
 
 export interface AdminAssistantOutputStep extends AdminRunKnownTimelineItemBase {
@@ -436,6 +440,9 @@ export interface AdminRunSafeRawData {
 }
 
 export interface AdminRunDetail extends AdminRunListItem {
+  reasoningTokens: number | null
+  promptCacheHitTokens: number | null
+  promptCacheMissTokens: number | null
   userMessageId: string
   assistantMessageId: string | null
   updatedAt: string
