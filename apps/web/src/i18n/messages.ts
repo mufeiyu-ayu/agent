@@ -87,12 +87,10 @@ export const messages = {
         chatOptions: '对话选项',
         deleteChat: '删除对话',
         newChat: '新建对话',
-        productSubtitle: 'SEO 聊天工作台',
         recentChats: '最近对话',
         renameChat: '重命名',
         searchRecentChats: '搜索最近对话',
         emptyRecentTitle: '还没有历史任务',
-        emptyRecentDescription: '发起一次页面诊断后，这里会保留最近的 SEO 对话。',
       },
       mobileNavigation: {
         open: '打开导航',
@@ -100,7 +98,6 @@ export const messages = {
         description: '主导航和最近对话',
       },
       themeSwitcher: {
-        ariaLabel: '切换工作台颜色主题',
         placeholder: '主题',
         themes: {
           warmLedger: {
@@ -115,18 +112,11 @@ export const messages = {
       },
       settings: {
         trigger: '用户设置',
-        close: '关闭设置',
-        account: '账户信息',
-        notifications: '通知设置',
-        help: '使用帮助',
-        preferences: '偏好设置',
-        balanceTitle: 'DeepSeek 余额',
       },
     },
     conversation: {
       avatarAlt: 'AI 助手头像',
       emptyTitle: '今天要优化哪个页面？',
-      emptyDescription: '直接输入页面主题、目标关键词或产品信息。AI SEO Agent 会围绕页面诊断、关键词、内容结构和转化建议继续追问。',
       lastReply: '上次回复 {time}',
       loading: '正在分析 SEO 任务...',
       aborted: '已停止生成',
@@ -159,30 +149,31 @@ export const messages = {
       starterPrompts: {
         audit: {
           label: '诊断落地页 SEO',
-          description: 'title、description、页面结构',
           prompt: '请帮我诊断一个落地页的 SEO，重点看 title、description、页面结构和关键词覆盖。我会补充页面主题和目标关键词。',
         },
         keywords: {
           label: '生成关键词想法',
-          description: '核心词、长尾词、搜索意图',
           prompt: '请基于一个产品页面帮我生成 SEO 关键词想法，包括核心关键词、长尾关键词和不同搜索意图。我会提供产品和目标市场。',
         },
         content: {
           label: '规划内容结构',
-          description: 'H1-H3、FAQ、转化段落',
           prompt: '请帮我规划一个 SEO 页面内容结构，包括 H1、H2/H3、FAQ 和转化段落。我会提供页面主题、目标用户和关键词。',
         },
       },
     },
     composer: {
       placeholder: '输入页面主题、关键词或你想优化的 SEO 问题...',
-      modelSelectAria: '选择模型',
+      modelSelectAria: '选择模型与思考强度',
       modelPlaceholder: 'DeepSeek 模型',
-      reasoningEffortSelectAria: '选择思考强度',
+      reasoningEffortLabel: '思考强度',
       reasoningEffort: {
         low: 'Low',
         high: 'High',
         max: 'Max',
+      },
+      modelDescriptions: {
+        'deepseek-v4-flash': '响应快，适合日常 SEO 任务',
+        'deepseek-v4-pro': '推理更强，适合复杂分析',
       },
       reset: '重置当前对话',
       send: '发送消息',
@@ -287,12 +278,10 @@ export const messages = {
         chatOptions: 'Chat options',
         deleteChat: 'Delete chat',
         newChat: 'New chat',
-        productSubtitle: 'SEO chat workspace',
         recentChats: 'Recent chats',
         renameChat: 'Rename',
         searchRecentChats: 'Search recent chats',
         emptyRecentTitle: 'No history yet',
-        emptyRecentDescription: 'After you start a page audit, recent SEO chats will appear here.',
       },
       mobileNavigation: {
         open: 'Open navigation',
@@ -300,7 +289,6 @@ export const messages = {
         description: 'Main navigation and recent chats',
       },
       themeSwitcher: {
-        ariaLabel: 'Switch workspace color theme',
         placeholder: 'Theme',
         themes: {
           warmLedger: {
@@ -315,18 +303,11 @@ export const messages = {
       },
       settings: {
         trigger: 'User settings',
-        close: 'Close settings',
-        account: 'Account',
-        notifications: 'Notifications',
-        help: 'Help',
-        preferences: 'Preferences',
-        balanceTitle: 'DeepSeek balance',
       },
     },
     conversation: {
       avatarAlt: 'AI assistant avatar',
       emptyTitle: 'Which page are we optimizing today?',
-      emptyDescription: 'Enter a page topic, target keywords, or product details. The AI SEO Agent will ask follow-up questions around page audits, keywords, content structure, and conversion ideas.',
       lastReply: 'Last reply {time}',
       loading: 'Analyzing the SEO task...',
       aborted: 'Generation stopped',
@@ -359,30 +340,31 @@ export const messages = {
       starterPrompts: {
         audit: {
           label: 'Audit landing page SEO',
-          description: 'title, description, page structure',
           prompt: 'Help me audit a landing page for SEO. Focus on title, description, page structure, and keyword coverage. I will provide the page topic and target keywords.',
         },
         keywords: {
           label: 'Generate keyword ideas',
-          description: 'Seed terms, long-tail terms, search intent',
           prompt: 'Help me generate SEO keyword ideas for a product page, including seed keywords, long-tail keywords, and search intent groups. I will provide the product and target market.',
         },
         content: {
           label: 'Plan content structure',
-          description: 'H1-H3, FAQ, conversion copy',
           prompt: 'Help me plan an SEO page content structure, including H1, H2/H3, FAQ, and conversion sections. I will provide the topic, audience, and keywords.',
         },
       },
     },
     composer: {
       placeholder: 'Enter a page topic, keywords, or the SEO question you want to optimize...',
-      modelSelectAria: 'Select model',
+      modelSelectAria: 'Select model and reasoning effort',
       modelPlaceholder: 'DeepSeek model',
-      reasoningEffortSelectAria: 'Select reasoning effort',
+      reasoningEffortLabel: 'Effort',
       reasoningEffort: {
         low: 'Low',
         high: 'High',
         max: 'Max',
+      },
+      modelDescriptions: {
+        'deepseek-v4-flash': 'Fast responses for everyday SEO tasks',
+        'deepseek-v4-pro': 'Deeper reasoning for complex analysis',
       },
       reset: 'Reset current chat',
       send: 'Send message',

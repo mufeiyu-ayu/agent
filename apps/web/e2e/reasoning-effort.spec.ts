@@ -15,15 +15,16 @@ test('AC-01 / AC-11：默认 High，三档可选且 320px 下随本次请求发�
   })
   await page.goto('/workspace')
 
-  const effort = page.getByRole('combobox', { name: '选择思考强度' })
+  const modelMenuTrigger = page.getByRole('button', { name: '选择模型与思考强度' })
 
-  await expect(effort).toHaveText(/High/)
+  await expect(modelMenuTrigger).toHaveText(/High/)
   await page.setViewportSize({ width: 320, height: 720 })
-  await effort.click()
-  await expect(page.getByRole('option', { name: 'Low' })).toBeVisible()
-  await expect(page.getByRole('option', { name: 'High' })).toBeVisible()
-  await expect(page.getByRole('option', { name: 'Max' })).toBeVisible()
-  await page.getByRole('option', { name: 'Max' }).click()
+  await modelMenuTrigger.click()
+  await page.getByRole('menuitem', { name: /思考强度/ }).click()
+  await expect(page.getByRole('menuitem', { name: 'Low' })).toBeVisible()
+  await expect(page.getByRole('menuitem', { name: 'High' })).toBeVisible()
+  await expect(page.getByRole('menuitem', { name: 'Max' })).toBeVisible()
+  await page.getByRole('menuitem', { name: 'Max' }).click()
 
   await page.getByRole('textbox').first().fill('测试思考强度')
   await page.getByRole('button', { name: '发送消息' }).click()
