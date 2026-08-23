@@ -42,18 +42,28 @@ export interface InitialContextSelectionSummary {
 }
 
 interface SelectInitialContextInput {
+  /** 本次 Run 解析后的模型名：决定 token 估算策略，并写入 summary 供审计。 */
   resolvedModel: string
+  /** 模型的上下文窗口大小（token），用于计算本次可用输入预算。 */
   contextWindowTokens: number
+  /** 要给模型回答预留的输出 token 数，从上下文窗口中扣除。 */
   resolvedMaxOutputTokens: number
+  /** 每批通过 loadCandidates 拉取的历史候选条数（分批读取，而非一次全读）。 */
   candidateBatchSize: number
+  /** 本次 Run 最多翻看的历史候选总条数上限，防止无限翻页。 */
   candidateHardLimit: number
+  /** 当前这条用户消息，始终包含在给模型的上下文中。 */
   currentUserMessage: ChatMessage
+  /** 可用工具的模型描述：参与 token 估算，决定工具定义占用的上下文空间。 */
   tools: ModelToolSpec[]
+  /** 把历史消息组装成模型消息的函数（由调用方注入，保证与 Runtime 的组装方式一致）。 */
   buildModelMessages: (historyMessages: ChatMessage[]) => ChatMessage[]
+  /** 按游标拉取一批评选历史候选的回调：select 需要时才调用，实现「边选边拉」。 */
   loadCandidates: (input: {
     cursor?: HistoryCursor
     take: number
   }) => Promise<HistoryCandidate[]>
+  /** 每轮拉取前检查 Run 是否仍可用；超时 / 用户取消时抛错中止选择。 */
   assertAvailable: () => void
 }
 
