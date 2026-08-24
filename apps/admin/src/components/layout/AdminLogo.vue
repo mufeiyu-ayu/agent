@@ -42,7 +42,7 @@ const { t } = useI18n()
   color: #fff;
   background: var(--admin-primary);
   box-shadow: 0 5px 14px rgb(0 111 230 / 24%);
-  font-size: 17px;
+  font-size: var(--admin-font-lg);
 }
 
 .admin-logo__copy {
@@ -53,7 +53,7 @@ const { t } = useI18n()
 }
 
 .admin-logo__copy strong {
-  font-size: 14px;
+  font-size: var(--admin-font-md);
   font-weight: 650;
   letter-spacing: -0.01em;
 }
@@ -61,7 +61,7 @@ const { t } = useI18n()
 .admin-logo__copy small {
   margin-top: 4px;
   color: var(--admin-text-muted);
-  font-size: 10px;
+  font-size: var(--admin-font-2xs);
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }

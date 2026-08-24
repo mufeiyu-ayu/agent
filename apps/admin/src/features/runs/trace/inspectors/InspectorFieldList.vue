@@ -29,46 +29,53 @@ defineProps<{
 </template>
 
 <style scoped>
+/* 每个分组是一张浮在次级面板底色上的内容卡，边界由卡片承担，行间不再画横线。 */
+.inspector-field-list {
+  padding: 14px 16px;
+  border: 1px solid var(--admin-border);
+  border-radius: var(--admin-radius-md);
+  background: var(--admin-surface-raised);
+  box-shadow: var(--admin-shadow-sm);
+}
+
 .inspector-field-list + .inspector-field-list {
-  margin-top: 22px;
+  margin-top: 12px;
 }
 
 .inspector-field-list h4 {
-  margin: 0 0 10px;
+  margin: 0 0 8px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--admin-border);
   color: var(--admin-text-muted);
-  font-size: 11px;
+  font-size: var(--admin-font-2xs);
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.07em;
   text-transform: uppercase;
 }
 
+/* label 定宽，value 紧跟左对齐，短值不再被比例列推开 */
 .inspector-field-list dl {
+  display: grid;
   margin: 0;
-  border-top: 1px solid var(--admin-border);
+  grid-template-columns: 128px minmax(0, 1fr);
+  column-gap: 16px;
 }
 
 .inspector-field-list dl > :is(dt, dd) {
   margin: 0;
-  padding-block: 11px;
-  border-bottom: 1px solid var(--admin-border);
-}
-
-.inspector-field-list dl {
-  display: grid;
-  grid-template-columns: minmax(112px, 0.8fr) minmax(0, 1.2fr);
-  column-gap: 12px;
+  padding-block: 7px;
 }
 
 .inspector-field-list dt {
   color: var(--admin-text-muted);
-  font-size: 13px;
+  font-size: var(--admin-font-sm);
   line-height: 1.5;
 }
 
 .inspector-field-list dd {
   min-width: 0;
   color: var(--admin-text);
-  font-size: 13px;
+  font-size: var(--admin-font-sm);
   font-weight: 550;
   line-height: 1.5;
   overflow-wrap: anywhere;
@@ -76,7 +83,16 @@ defineProps<{
 }
 
 .inspector-field-list dd.is-mono {
-  font-size: 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: var(--admin-font-xs);
   font-variant-numeric: tabular-nums;
+}
+
+/* 窄面板下收紧 label 列，给长 ID / 时间戳留出值宽 */
+@container trace-inspector (max-width: 380px) {
+  .inspector-field-list dl {
+    grid-template-columns: 104px minmax(0, 1fr);
+    column-gap: 12px;
+  }
 }
 </style>

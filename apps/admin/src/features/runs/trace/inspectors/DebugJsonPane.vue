@@ -109,10 +109,12 @@ async function copyJson() {
   max-height: 60vh;
   overflow: auto;
   margin: 0;
-  padding: 8px;
+  padding: 12px;
   border: 1px solid var(--admin-border);
-  border-radius: 6px;
-  font-size: 12px;
+  border-radius: var(--admin-radius-md);
+  background: var(--admin-surface-raised);
+  box-shadow: var(--admin-shadow-sm);
+  font-size: var(--admin-font-xs);
 }
 
 .debug-json-preview {

@@ -86,7 +86,7 @@ const { locale, t } = useI18n()
   gap: 14px;
   padding: 3px 12px;
   border-bottom: 1px solid var(--admin-border);
-  background: color-mix(in srgb, var(--admin-bg-deep) 38%, var(--admin-surface));
+  background: var(--admin-surface-muted);
 }
 
 .trace-toolbar__stats {
@@ -111,14 +111,14 @@ const { locale, t } = useI18n()
 .trace-toolbar__stats dt,
 .trace-toolbar__count {
   color: var(--admin-text-muted);
-  font-size: 11px;
+  font-size: var(--admin-font-xs);
 }
 
 .trace-toolbar__stats dd {
   margin: 0;
   color: var(--admin-text);
-  font-family: monospace;
-  font-size: 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: var(--admin-font-sm);
   font-variant-numeric: tabular-nums;
 }
 
@@ -132,11 +132,11 @@ const { locale, t } = useI18n()
   min-height: 32px;
   padding: 0 10px;
   border: 1px solid transparent;
-  border-radius: var(--admin-radius);
+  border-radius: var(--admin-radius-sm);
   color: var(--admin-text-muted);
   background: transparent;
   cursor: pointer;
-  font-size: 12px;
+  font-size: var(--admin-font-sm);
   transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease, transform 160ms ease;
 }
 
@@ -167,10 +167,10 @@ const { locale, t } = useI18n()
   margin-left: auto;
   padding: 0 10px;
   border: 1px solid var(--admin-border);
-  border-radius: var(--admin-radius);
+  border-radius: var(--admin-radius-sm);
   color: var(--admin-text-muted);
   background: var(--admin-surface);
-  font-size: 12px;
+  font-size: var(--admin-font-sm);
 }
 
 .trace-toolbar__search:focus-within {
@@ -186,7 +186,7 @@ const { locale, t } = useI18n()
   outline: 0;
   color: var(--admin-text);
   background: transparent;
-  font-size: 12px;
+  font-size: var(--admin-font-sm);
 }
 
 .trace-toolbar__search input::placeholder {

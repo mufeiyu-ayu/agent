@@ -150,9 +150,9 @@ async function copyRunId() {
 .trace-header__run-id > span {
   grid-column: 1 / -1;
   color: var(--admin-text-muted);
-  font-size: 10px;
+  font-size: var(--admin-font-2xs);
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.07em;
   text-transform: uppercase;
 }
 
@@ -161,7 +161,7 @@ async function copyRunId() {
   overflow: hidden;
   color: var(--admin-primary);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 10px;
+  font-size: var(--admin-font-xs);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -170,8 +170,8 @@ async function copyRunId() {
   min-width: 0;
   overflow: hidden;
   color: var(--admin-text);
-  font-family: monospace;
-  font-size: 14px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: var(--admin-font-md);
   font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -184,11 +184,11 @@ async function copyRunId() {
   place-items: center;
   padding: 0;
   border: 0;
-  border-radius: var(--admin-radius);
+  border-radius: var(--admin-radius-sm);
   color: var(--admin-text-subtle);
   background: transparent;
   cursor: pointer;
-  font-size: 13px;
+  font-size: var(--admin-font-sm);
 }
 
 .trace-header__copy:hover {
@@ -202,7 +202,7 @@ async function copyRunId() {
 
 .trace-header__identity :deep(.run-status-tag) {
   min-width: 78px;
-  font-size: 11px;
+  font-size: var(--admin-font-2xs);
 }
 
 .trace-header__metrics,
@@ -238,7 +238,7 @@ async function copyRunId() {
 .trace-header dt {
   overflow: hidden;
   color: var(--admin-text-muted);
-  font-size: 10px;
+  font-size: var(--admin-font-xs);
   font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -249,8 +249,8 @@ async function copyRunId() {
   margin: 4px 0 0;
   overflow: hidden;
   color: var(--admin-text);
-  font-family: monospace;
-  font-size: 13px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: var(--admin-font-sm);
   font-variant-numeric: tabular-nums;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -261,7 +261,7 @@ async function copyRunId() {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   padding: 8px 18px;
   border-top: 1px solid var(--admin-border);
-  background: color-mix(in srgb, var(--admin-bg-deep) 52%, var(--admin-surface));
+  background: var(--admin-surface-muted);
 }
 
 .trace-header__times > div {
@@ -274,7 +274,7 @@ async function copyRunId() {
 .trace-header__times dd {
   margin: 0;
   color: var(--admin-text-muted);
-  font-size: 11px;
+  font-size: var(--admin-font-xs);
 }
 
 @container run-trace (max-width: 880px) {

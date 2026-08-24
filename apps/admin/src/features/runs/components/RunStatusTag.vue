@@ -28,7 +28,7 @@ const color = computed(() => ({
   min-width: 70px;
   margin-inline-end: 0;
   text-align: center;
-  font-size: 10px;
+  font-size: var(--admin-font-2xs);
   font-weight: 650;
   letter-spacing: 0.025em;
 }

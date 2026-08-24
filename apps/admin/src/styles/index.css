@@ -1,25 +1,54 @@
 :root {
   --admin-font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
-  --admin-header-height: 50px;
-  --admin-tabs-height: 38px;
+  --admin-header-height: 52px;
+  --admin-tabs-height: 40px;
   --admin-sidebar-width: 224px;
   --admin-sidebar-collapsed-width: 60px;
-  --admin-radius: 8px;
-  --admin-primary: hsl(212deg 100% 45%);
-  --admin-primary-soft: hsl(212deg 100% 45% / 10%);
-  --admin-success: hsl(144deg 57% 45%);
-  --admin-success-strong: hsl(144deg 55% 31%);
-  --admin-success-soft: hsl(144deg 57% 45% / 10%);
-  --admin-bg: hsl(0deg 0% 100%);
-  --admin-bg-deep: hsl(216deg 20.1% 95.5%);
+
+  /* 字号阶梯：11px 为全局下限，正文与表格内容不低于 12px */
+  --admin-font-2xs: 11px;
+  --admin-font-xs: 12px;
+  --admin-font-sm: 13px;
+  --admin-font-md: 14px;
+  --admin-font-lg: 16px;
+  --admin-font-xl: 20px;
+  --admin-font-2xl: 24px;
+
+  /* 圆角阶梯：控件 / 卡片 / 大容器分级 */
+  --admin-radius-sm: 6px;
+  --admin-radius-md: 10px;
+  --admin-radius-lg: 14px;
+
+  --admin-primary: hsl(217deg 85% 52%);
+  --admin-primary-hover: hsl(217deg 85% 46%);
+  --admin-primary-soft: hsl(217deg 85% 52% / 9%);
+  --admin-success: hsl(150deg 52% 42%);
+  --admin-success-strong: hsl(150deg 55% 30%);
+  --admin-success-soft: hsl(150deg 52% 42% / 10%);
+  --admin-warning: hsl(35deg 88% 48%);
+  --admin-warning-strong: hsl(30deg 85% 38%);
+  --admin-warning-soft: hsl(35deg 88% 48% / 11%);
+  --admin-danger: hsl(354deg 70% 51%);
+  --admin-danger-strong: hsl(354deg 70% 44%);
+  --admin-danger-soft: hsl(354deg 70% 51% / 10%);
+
+  /* 面板层级：页面底 < 卡片 < 次级面板底 < 次级面板内容卡 */
+  --admin-bg-deep: hsl(220deg 24% 95.5%);
   --admin-surface: hsl(0deg 0% 100%);
-  --admin-text: hsl(210deg 6% 21%);
-  --admin-text-muted: hsl(240deg 3.8% 43%);
-  --admin-text-subtle: hsl(217deg 10.6% 62%);
-  --admin-border: hsl(240deg 5.9% 90%);
-  --admin-border-strong: hsl(216deg 11% 83%);
-  --admin-hover: hsl(240deg 4.8% 95.9%);
-  --admin-card-shadow: 0 1px 2px rgb(15 23 42 / 3%);
+  --admin-surface-muted: hsl(220deg 22% 96.5%);
+  --admin-surface-raised: hsl(0deg 0% 100%);
+
+  --admin-text: hsl(220deg 13% 18%);
+  --admin-text-muted: hsl(220deg 9% 46%);
+  --admin-text-subtle: hsl(220deg 9% 62%);
+  --admin-border: hsl(220deg 16% 92%);
+  --admin-border-strong: hsl(220deg 14% 86%);
+  --admin-hover: hsl(220deg 20% 93.5%);
+
+  /* 阴影阶梯：卡片贴地，浮层抬起 */
+  --admin-shadow-sm: 0 1px 2px hsl(220deg 40% 20% / 4%), 0 1px 3px hsl(220deg 40% 20% / 3%);
+  --admin-shadow-md: 0 2px 4px hsl(220deg 40% 20% / 4%), 0 10px 24px -8px hsl(220deg 40% 20% / 10%);
+
   color-scheme: light;
   font-family: var(--admin-font-family);
   font-synthesis: none;
@@ -27,21 +56,35 @@
 }
 
 :root[data-theme='dark'] {
-  --admin-primary: hsl(212deg 100% 62%);
-  --admin-primary-soft: hsl(212deg 100% 62% / 12%);
-  --admin-success: hsl(144deg 57% 58%);
-  --admin-success-strong: hsl(144deg 57% 67%);
-  --admin-success-soft: hsl(144deg 57% 58% / 11%);
-  --admin-bg: hsl(222.3deg 10.4% 12.3%);
-  --admin-bg-deep: hsl(220deg 13.1% 9%);
-  --admin-surface: hsl(222.3deg 10.4% 12.3%);
-  --admin-text: hsl(0deg 0% 95%);
-  --admin-text-muted: hsl(240deg 5% 65%);
-  --admin-text-subtle: hsl(218deg 11% 52%);
-  --admin-border: hsl(240deg 3.7% 22%);
-  --admin-border-strong: hsl(240deg 3.7% 29%);
-  --admin-hover: hsl(216deg 5% 19%);
-  --admin-card-shadow: 0 1px 2px rgb(0 0 0 / 16%);
+  --admin-primary: hsl(217deg 90% 64%);
+  --admin-primary-hover: hsl(217deg 90% 70%);
+  --admin-primary-soft: hsl(217deg 90% 64% / 14%);
+  --admin-success: hsl(150deg 52% 55%);
+  --admin-success-strong: hsl(150deg 55% 64%);
+  --admin-success-soft: hsl(150deg 52% 55% / 13%);
+  --admin-warning: hsl(35deg 88% 60%);
+  --admin-warning-strong: hsl(35deg 90% 66%);
+  --admin-warning-soft: hsl(35deg 88% 60% / 14%);
+  --admin-danger: hsl(354deg 78% 65%);
+  --admin-danger-strong: hsl(354deg 80% 71%);
+  --admin-danger-soft: hsl(354deg 78% 65% / 14%);
+
+  /* 暗色下次级面板取「更深」方向，形成下沉而非漂浮 */
+  --admin-bg-deep: hsl(222deg 14% 8%);
+  --admin-surface: hsl(222deg 12% 12.5%);
+  --admin-surface-muted: hsl(222deg 13% 10%);
+  --admin-surface-raised: hsl(222deg 11% 15.5%);
+
+  --admin-text: hsl(220deg 15% 95%);
+  --admin-text-muted: hsl(220deg 9% 66%);
+  --admin-text-subtle: hsl(220deg 8% 52%);
+  --admin-border: hsl(222deg 8% 22%);
+  --admin-border-strong: hsl(222deg 8% 29%);
+  --admin-hover: hsl(222deg 9% 18%);
+
+  --admin-shadow-sm: 0 1px 2px hsl(0deg 0% 0% / 24%);
+  --admin-shadow-md: 0 2px 4px hsl(0deg 0% 0% / 24%), 0 10px 24px -8px hsl(0deg 0% 0% / 36%);
+
   color-scheme: dark;
 }
 
@@ -73,7 +116,7 @@ body {
   color: var(--admin-text);
   background: var(--admin-bg-deep);
   font-family: var(--admin-font-family);
-  font-size: 14px;
+  font-size: var(--admin-font-md);
 }
 
 button,
@@ -87,6 +130,12 @@ button:focus-visible,
 a:focus-visible {
   outline: 2px solid var(--admin-primary);
   outline-offset: 2px;
+}
+
+/* antd 4.2.6 的按钮默认带 `0 2px 0` 实心阴影，观感偏旧；
+   该阴影由全局 controlOutline 派生，无法在 Button 组件 token 里单独关掉。 */
+.ant-btn {
+  box-shadow: none;
 }
 
 ::selection {

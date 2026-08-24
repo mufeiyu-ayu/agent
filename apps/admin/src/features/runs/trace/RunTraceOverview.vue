@@ -167,7 +167,7 @@ function spanLabel(span: TraceOverviewSpan): string {
 
 .trace-overview__heading strong {
   color: var(--admin-text);
-  font-size: 12px;
+  font-size: var(--admin-font-sm);
   font-weight: 650;
 }
 
@@ -179,7 +179,7 @@ function spanLabel(span: TraceOverviewSpan): string {
 .trace-overview__axis,
 .trace-overview__empty {
   color: var(--admin-text-muted);
-  font-size: 10px;
+  font-size: var(--admin-font-2xs);
   font-variant-numeric: tabular-nums;
 }
 
@@ -200,7 +200,7 @@ function spanLabel(span: TraceOverviewSpan): string {
   justify-content: flex-end;
   padding-right: 9px;
   color: var(--admin-text-muted);
-  font-size: 11px;
+  font-size: var(--admin-font-xs);
   font-weight: 600;
 }
 
@@ -228,7 +228,7 @@ function spanLabel(span: TraceOverviewSpan): string {
   height: 8px;
   padding: 0;
   border: 0;
-  border-radius: var(--admin-radius);
+  border-radius: var(--admin-radius-sm);
   background: var(--trace-span-color);
   cursor: pointer;
   opacity: 0.72;

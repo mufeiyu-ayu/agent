@@ -333,7 +333,8 @@ function resetInspectorWidth() {
 .run-trace-workspace__frame {
   display: flex;
   min-width: 0;
-  height: calc(100dvh - 156px);
+  /* 视口高度扣掉头部、路由标签与页面外框，随 token 自动跟随 */
+  height: calc(100dvh - var(--admin-header-height) - var(--admin-tabs-height) - 68px);
   min-height: 590px;
   flex-direction: column;
   overflow: hidden;
