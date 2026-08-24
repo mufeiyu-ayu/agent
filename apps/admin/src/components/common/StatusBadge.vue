@@ -23,7 +23,7 @@ withDefaults(defineProps<{
   border-radius: 999px;
   color: var(--admin-text-muted);
   background: var(--admin-surface);
-  font-size: 11px;
+  font-size: var(--admin-font-xs);
   font-weight: 600;
 }
 

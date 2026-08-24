@@ -159,8 +159,9 @@ onBeforeUnmount(cancelRunLoad)
 .overview-card,
 .detail-tabs-card {
   border: 1px solid var(--admin-border);
+  border-radius: var(--admin-radius-md);
   background: var(--admin-surface);
-  box-shadow: var(--admin-card-shadow);
+  box-shadow: var(--admin-shadow-sm);
 }
 
 .detail-tabs-card {
@@ -179,7 +180,7 @@ onBeforeUnmount(cancelRunLoad)
 
 .detail-tabs :deep(.ant-tabs-tab) {
   padding: 14px 4px 12px;
-  font-size: 13px;
+  font-size: var(--admin-font-sm);
   font-weight: 600;
 }
 
@@ -192,12 +193,12 @@ onBeforeUnmount(cancelRunLoad)
 }
 
 .tab-notice :deep(.ant-alert-message) {
-  font-size: 13px;
+  font-size: var(--admin-font-sm);
   font-weight: 650;
 }
 
 .tab-notice :deep(.ant-alert-description) {
-  font-size: 12px;
+  font-size: var(--admin-font-sm);
 }
 
 .message-list {
@@ -210,7 +211,7 @@ onBeforeUnmount(cancelRunLoad)
   min-width: 0;
   padding: 14px 16px;
   border: 1px solid var(--admin-border);
-  border-radius: 8px;
+  border-radius: var(--admin-radius-md);
   background: var(--admin-surface);
 }
 
@@ -246,14 +247,14 @@ onBeforeUnmount(cancelRunLoad)
 .message-card time,
 .message-card code {
   color: var(--admin-text-subtle);
-  font-family: monospace;
-  font-size: 9px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: var(--admin-font-2xs);
 }
 
 .message-card p {
   margin: 12px 0 10px;
   color: var(--admin-text);
-  font-size: 12px;
+  font-size: var(--admin-font-sm);
   line-height: 1.75;
   overflow-wrap: anywhere;
 }

@@ -206,7 +206,7 @@ function requestLabel(group: TraceRequestGroup): string {
   border-spacing: 0;
   table-layout: fixed;
   color: var(--admin-text);
-  font-size: 13px;
+  font-size: var(--admin-font-sm);
 }
 
 .trace-ledger__event-column {
@@ -221,8 +221,8 @@ function requestLabel(group: TraceRequestGroup): string {
   padding: 0 12px;
   border-bottom: 1px solid var(--admin-border-strong);
   color: var(--admin-text-muted);
-  background: color-mix(in srgb, var(--admin-bg-deep) 70%, var(--admin-surface));
-  font-size: 11px;
+  background: var(--admin-surface-muted);
+  font-size: var(--admin-font-xs);
   font-weight: 600;
   text-align: left;
 }
@@ -260,7 +260,7 @@ function requestLabel(group: TraceRequestGroup): string {
 .trace-ledger__request td {
   height: 38px;
   border-bottom-color: var(--admin-border-strong);
-  background: color-mix(in srgb, var(--admin-bg-deep) 52%, var(--admin-surface));
+  background: var(--admin-surface-muted);
 }
 
 .trace-ledger__request td:first-child,
@@ -270,8 +270,8 @@ function requestLabel(group: TraceRequestGroup): string {
 
 .trace-ledger__request td:first-child {
   color: var(--admin-text-muted);
-  font-family: monospace;
-  font-size: 11px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: var(--admin-font-xs);
 }
 
 .trace-ledger__collapse {
@@ -282,11 +282,11 @@ function requestLabel(group: TraceRequestGroup): string {
   margin-right: 3px;
   padding: 0;
   border: 0;
-  border-radius: var(--admin-radius);
+  border-radius: var(--admin-radius-sm);
   color: var(--admin-text-subtle);
   background: transparent;
   cursor: pointer;
-  font-size: 9px;
+  font-size: var(--admin-font-2xs);
 }
 
 .trace-ledger__collapse:hover {
@@ -306,7 +306,7 @@ function requestLabel(group: TraceRequestGroup): string {
   min-width: 0;
   align-items: baseline;
   gap: 12px;
-  font-size: 12px;
+  font-size: var(--admin-font-sm);
   white-space: nowrap;
 }
 
@@ -324,7 +324,7 @@ function requestLabel(group: TraceRequestGroup): string {
 
 .trace-ledger__request-content small {
   margin-left: auto;
-  font-size: 10px;
+  font-size: var(--admin-font-2xs);
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
@@ -344,7 +344,7 @@ function requestLabel(group: TraceRequestGroup): string {
   gap: 5px;
   overflow: hidden;
   color: var(--admin-text-muted);
-  font-size: 12px;
+  font-size: var(--admin-font-xs);
   font-weight: 700;
   letter-spacing: 0;
   text-overflow: ellipsis;
@@ -374,8 +374,8 @@ function requestLabel(group: TraceRequestGroup): string {
 
 .trace-ledger__record code {
   color: var(--admin-text-muted);
-  font-family: monospace;
-  font-size: 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: var(--admin-font-xs);
 }
 
 .trace-ledger__record-main {
@@ -403,20 +403,20 @@ function requestLabel(group: TraceRequestGroup): string {
 }
 
 .trace-ledger__content strong {
-  font-size: 13px;
+  font-size: var(--admin-font-sm);
   font-weight: 650;
 }
 
 .trace-ledger__content span,
 .trace-ledger__record-main > small {
   color: var(--admin-text-muted);
-  font-size: 13px;
+  font-size: var(--admin-font-sm);
 }
 
 .trace-ledger__record-main > small {
   flex: none;
-  font-family: monospace;
-  font-size: 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: var(--admin-font-xs);
   font-variant-numeric: tabular-nums;
 }
 
@@ -424,10 +424,10 @@ function requestLabel(group: TraceRequestGroup): string {
   flex: none;
   padding: 1px 5px;
   border: 1px solid var(--admin-border-strong);
-  border-radius: var(--admin-radius);
+  border-radius: var(--admin-radius-sm);
   color: var(--admin-text-muted);
-  background: var(--admin-bg-deep);
-  font-size: 10px;
+  background: var(--admin-surface-muted);
+  font-size: var(--admin-font-2xs);
 }
 
 .trace-ledger__record.is-error .trace-ledger__content strong,
@@ -450,7 +450,7 @@ function requestLabel(group: TraceRequestGroup): string {
 
   .trace-ledger__kind {
     width: 64px;
-    font-size: 10px;
+    font-size: var(--admin-font-2xs);
   }
 
   .trace-ledger__content {

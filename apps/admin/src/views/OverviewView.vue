@@ -335,7 +335,7 @@ function formatPercent(value: number, total: number): string {
 .dist-card {
   border: 1px solid var(--admin-border);
   background: var(--admin-surface);
-  box-shadow: var(--admin-card-shadow);
+  box-shadow: var(--admin-shadow-sm);
 }
 
 .stat-bar :deep(.ant-card-body) {
@@ -359,7 +359,7 @@ function formatPercent(value: number, total: number): string {
 .stat-cell small {
   display: block;
   color: var(--admin-text-muted);
-  font-size: 11px;
+  font-size: var(--admin-font-xs);
   font-weight: 600;
 }
 
@@ -368,7 +368,7 @@ function formatPercent(value: number, total: number): string {
   overflow: hidden;
   margin-top: 6px;
   color: var(--admin-text);
-  font-size: 22px;
+  font-size: var(--admin-font-2xl);
   font-variant-numeric: tabular-nums;
   font-weight: 680;
   letter-spacing: -0.02em;
@@ -380,7 +380,7 @@ function formatPercent(value: number, total: number): string {
   margin: 4px 0 0;
   overflow: hidden;
   color: var(--admin-text-subtle);
-  font-size: 11px;
+  font-size: var(--admin-font-2xs);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -411,7 +411,7 @@ function formatPercent(value: number, total: number): string {
 .dist-card :deep(.ant-card-head-title) {
   padding: 10px 0;
   color: var(--admin-text-muted);
-  font-size: 11px;
+  font-size: var(--admin-font-xs);
   font-weight: 650;
 }
 
@@ -432,7 +432,7 @@ function formatPercent(value: number, total: number): string {
   margin: 0;
   padding: 18px 0 12px;
   color: var(--admin-text-subtle);
-  font-size: 12px;
+  font-size: var(--admin-font-sm);
 }
 
 .dist-list {
@@ -459,7 +459,7 @@ function formatPercent(value: number, total: number): string {
   gap: 7px;
   overflow: hidden;
   color: var(--admin-text);
-  font-size: 12px;
+  font-size: var(--admin-font-sm);
   font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -475,7 +475,7 @@ function formatPercent(value: number, total: number): string {
 .dist-row__value {
   flex: none;
   color: var(--admin-text-muted);
-  font-size: 11px;
+  font-size: var(--admin-font-xs);
   font-variant-numeric: tabular-nums;
 }
 

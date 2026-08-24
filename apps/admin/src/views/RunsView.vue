@@ -301,42 +301,43 @@ function handlePageChange(page: number, pageSize: number) {
 </template>
 
 <style scoped>
+/* 卡片按内容自适应高度，不再撑满视口；数据少时下方露出页面底色 */
 .runs-page {
   display: flex;
-  min-height: calc(100dvh - var(--admin-header-height) - var(--admin-tabs-height) - 40px);
   flex-direction: column;
 }
 
 .summary-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
+  gap: 14px;
 }
 
 .summary-card,
 .filter-card,
 .table-card {
   border: 1px solid var(--admin-border);
+  border-radius: var(--admin-radius-md);
   background: var(--admin-surface);
-  box-shadow: var(--admin-card-shadow);
+  box-shadow: var(--admin-shadow-sm);
 }
 
 .summary-card :deep(.ant-card-body) {
   display: flex;
-  min-height: 96px;
+  min-height: 100px;
   align-items: center;
-  gap: 13px;
-  padding: 16px;
+  gap: 14px;
+  padding: 18px;
 }
 
 .summary-card__icon {
   display: grid;
-  width: 36px;
-  height: 36px;
-  flex: 0 0 36px;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
   place-items: center;
-  border-radius: 9px;
-  font-size: 16px;
+  border-radius: var(--admin-radius-md);
+  font-size: var(--admin-font-lg);
 }
 
 .summary-card__icon.is-blue {
@@ -350,13 +351,13 @@ function handlePageChange(page: number, pageSize: number) {
 }
 
 .summary-card__icon.is-amber {
-  color: #b76400;
-  background: rgb(245 158 11 / 12%);
+  color: var(--admin-warning-strong);
+  background: var(--admin-warning-soft);
 }
 
 .summary-card__icon.is-red {
-  color: #cf1322;
-  background: rgb(207 19 34 / 10%);
+  color: var(--admin-danger-strong);
+  background: var(--admin-danger-soft);
 }
 
 .summary-card small,
@@ -367,31 +368,32 @@ function handlePageChange(page: number, pageSize: number) {
 
 .summary-card small {
   color: var(--admin-text-muted);
-  font-size: 10px;
+  font-size: var(--admin-font-xs);
   font-weight: 600;
 }
 
 .summary-card strong {
-  margin-top: 3px;
+  margin-top: 4px;
   color: var(--admin-text);
-  font-size: 20px;
-  font-weight: 680;
+  font-size: var(--admin-font-2xl);
+  font-weight: 650;
   letter-spacing: -0.025em;
+  line-height: 1.15;
 }
 
 .summary-card p {
-  margin: 2px 0 0;
+  margin: 3px 0 0;
   color: var(--admin-text-subtle);
-  font-size: 10px;
+  font-size: var(--admin-font-2xs);
 }
 
 .filter-card,
 .table-card {
-  margin-top: 12px;
+  margin-top: 14px;
 }
 
 .filter-card :deep(.ant-card-body) {
-  padding: 14px 16px 12px;
+  padding: 16px 18px 14px;
 }
 
 .run-filters {
@@ -402,7 +404,7 @@ function handlePageChange(page: number, pageSize: number) {
     minmax(230px, 1.2fr)
     auto;
   align-items: end;
-  gap: 12px;
+  gap: 14px;
 }
 
 .run-filters :deep(.ant-form-item) {
@@ -410,13 +412,13 @@ function handlePageChange(page: number, pageSize: number) {
 }
 
 .run-filters :deep(.ant-form-item-label) {
-  padding-bottom: 4px;
+  padding-bottom: 5px;
 }
 
 .run-filters :deep(.ant-form-item-label > label) {
   height: auto;
   color: var(--admin-text-muted);
-  font-size: 10px;
+  font-size: var(--admin-font-xs);
   font-weight: 600;
 }
 
@@ -426,19 +428,18 @@ function handlePageChange(page: number, pageSize: number) {
 
 .run-filters__actions {
   display: flex;
-  gap: 7px;
+  gap: 8px;
 }
 
 .table-card {
   display: flex;
-  flex: 1 0 auto;
   flex-direction: column;
 }
 
 .table-card :deep(> .ant-card-body) {
   display: flex;
   min-width: 0;
-  flex: 1;
+  min-height: 180px;
   flex-direction: column;
   padding: 0;
 }
@@ -452,22 +453,23 @@ function handlePageChange(page: number, pageSize: number) {
 }
 
 .runs-table :deep(.ant-table) {
-  border-radius: 8px 8px 0 0;
+  border-radius: var(--admin-radius-md) var(--admin-radius-md) 0 0;
 }
 
 .runs-table :deep(.ant-table-thead > tr > th) {
-  height: 42px;
+  height: 44px;
+  border-bottom: 1px solid var(--admin-border);
   color: var(--admin-text-muted);
-  font-size: 10px;
-  font-weight: 650;
-  letter-spacing: 0.025em;
+  font-size: var(--admin-font-xs);
+  font-weight: 600;
+  letter-spacing: 0.01em;
   white-space: nowrap;
 }
 
 .runs-table :deep(.ant-table-tbody > tr > td) {
-  height: 47px;
+  height: 50px;
   color: var(--admin-text-muted);
-  font-size: 11px;
+  font-size: var(--admin-font-sm);
 }
 
 .run-id {
@@ -475,7 +477,7 @@ function handlePageChange(page: number, pageSize: number) {
   overflow: hidden;
   color: var(--admin-primary);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 10px;
+  font-size: var(--admin-font-xs);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -510,18 +512,18 @@ function handlePageChange(page: number, pageSize: number) {
 
 .table-card__footer {
   display: flex;
-  min-height: 48px;
+  min-height: 52px;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
   margin-top: auto;
-  padding: 8px 14px;
+  padding: 10px 16px;
   border-top: 1px solid var(--admin-border);
 }
 
 .table-card__footer > span {
   color: var(--admin-text-subtle);
-  font-size: 10px;
+  font-size: var(--admin-font-xs);
 }
 
 @media (max-width: 1240px) {

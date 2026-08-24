@@ -391,7 +391,7 @@ function callStatusColor(ok: boolean | null): string {
   min-width: 0;
   margin: 0;
   color: var(--admin-text-muted);
-  font-size: 12px;
+  font-size: var(--admin-font-sm);
   line-height: 1.6;
   overflow-wrap: anywhere;
 }
@@ -404,16 +404,16 @@ function callStatusColor(ok: boolean | null): string {
 .retrieval-inspector__block h4 {
   margin: 0 0 10px;
   color: var(--admin-text-muted);
-  font-size: 11px;
+  font-size: var(--admin-font-2xs);
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.07em;
   text-transform: uppercase;
 }
 
 .retrieval-inspector__hint {
   margin: 0;
   color: var(--admin-text-muted);
-  font-size: 12px;
+  font-size: var(--admin-font-sm);
   line-height: 1.6;
   overflow-wrap: anywhere;
 }
@@ -429,9 +429,11 @@ function callStatusColor(ok: boolean | null): string {
 
 .retrieval-inspector__card {
   min-width: 0;
-  padding: 12px;
+  padding: 14px 16px;
   border: 1px solid var(--admin-border);
-  border-radius: 8px;
+  border-radius: var(--admin-radius-md);
+  background: var(--admin-surface-raised);
+  box-shadow: var(--admin-shadow-sm);
 }
 
 .retrieval-inspector__card-head {
@@ -445,14 +447,15 @@ function callStatusColor(ok: boolean | null): string {
 
 .retrieval-inspector__card-head :deep(.ant-tag) {
   margin: 0;
-  font-size: 11px;
+  border-radius: var(--admin-radius-sm);
+  font-size: var(--admin-font-2xs);
 }
 
 .retrieval-inspector__card-head code,
 .retrieval-inspector__card-head strong {
   min-width: 0;
   color: var(--admin-text);
-  font-size: 12px;
+  font-size: var(--admin-font-sm);
   overflow-wrap: anywhere;
 }
 
@@ -464,7 +467,7 @@ function callStatusColor(ok: boolean | null): string {
   border-radius: 999px;
   background: var(--admin-border);
   color: var(--admin-text-muted);
-  font-size: 11px;
+  font-size: var(--admin-font-2xs);
   font-weight: 700;
   place-content: center;
 }
@@ -483,7 +486,7 @@ function callStatusColor(ok: boolean | null): string {
 
 .retrieval-inspector__facts dt {
   color: var(--admin-text-muted);
-  font-size: 11px;
+  font-size: var(--admin-font-xs);
   line-height: 1.5;
 }
 
@@ -491,7 +494,7 @@ function callStatusColor(ok: boolean | null): string {
   min-width: 0;
   margin: 0;
   color: var(--admin-text);
-  font-size: 12px;
+  font-size: var(--admin-font-sm);
   font-weight: 550;
   line-height: 1.5;
   overflow-wrap: anywhere;
@@ -516,7 +519,7 @@ function callStatusColor(ok: boolean | null): string {
   flex-wrap: wrap;
   gap: 6px;
   color: var(--admin-text-muted);
-  font-size: 11px;
+  font-size: var(--admin-font-xs);
   overflow-wrap: anywhere;
 }
 

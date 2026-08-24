@@ -36,6 +36,6 @@ const parent = computed(() => route.meta.parentPath && (route.meta.parentTitleKe
 
 <style scoped>
 .admin-breadcrumb {
-  font-size: 13px;
+  font-size: var(--admin-font-sm);
 }
 </style>

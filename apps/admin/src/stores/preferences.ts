@@ -37,7 +37,7 @@ export const useAdminPreferencesStore = defineStore('admin-preferences', () => {
     document.documentElement.style.colorScheme = value
     document.querySelector('meta[name="theme-color"]')?.setAttribute(
       'content',
-      value === 'dark' ? '#1c1d20' : '#ffffff',
+      value === 'dark' ? '#1c1e24' : '#f5f7f9',
     )
   }, { immediate: true })
 

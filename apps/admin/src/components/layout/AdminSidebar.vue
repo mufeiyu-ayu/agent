@@ -100,7 +100,7 @@ const activeMenuPath = computed(() => resolveActiveMenuPath(route))
 .admin-nav__section {
   padding: 4px 10px 8px;
   color: var(--admin-text-subtle);
-  font-size: 10px;
+  font-size: var(--admin-font-2xs);
   font-weight: 650;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -112,9 +112,9 @@ const activeMenuPath = computed(() => resolveActiveMenuPath(route))
   align-items: center;
   gap: 11px;
   padding: 0 12px;
-  border-radius: var(--admin-radius);
+  border-radius: var(--admin-radius-sm);
   color: var(--admin-text-muted);
-  font-size: 14px;
+  font-size: var(--admin-font-md);
   font-weight: 500;
   text-decoration: none;
   transition: color 140ms ease, background-color 140ms ease;
@@ -133,7 +133,7 @@ const activeMenuPath = computed(() => resolveActiveMenuPath(route))
 .admin-nav__icon {
   width: 16px;
   flex: 0 0 16px;
-  font-size: 16px;
+  font-size: var(--admin-font-lg);
 }
 
 .is-collapsed .admin-nav__item {
@@ -154,7 +154,7 @@ const activeMenuPath = computed(() => resolveActiveMenuPath(route))
   background: var(--admin-hover);
   cursor: pointer;
   font: inherit;
-  font-size: 13px;
+  font-size: var(--admin-font-sm);
 }
 
 .admin-sidebar__toggle:hover {

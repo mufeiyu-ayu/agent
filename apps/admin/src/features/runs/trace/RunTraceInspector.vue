@@ -165,13 +165,17 @@ const title = computed(() => {
 </template>
 
 <style scoped>
+/* 次级面板：底色比左侧 Ledger 下沉一层，内容以白卡浮于其上 */
 .run-trace-inspector {
+  /* 面板宽度可被拖拽独立调整，字段列表的断点必须以本面板为准，
+     不能沿用整个工作区的 run-trace 容器。 */
+  container: trace-inspector / inline-size;
   min-width: 0;
   height: 100%;
   min-height: 0;
   overflow: auto;
   color: var(--admin-text);
-  background: var(--admin-surface);
+  background: var(--admin-surface-muted);
   scrollbar-gutter: stable;
 }
 
@@ -181,8 +185,8 @@ const title = computed(() => {
   top: 0;
   display: flex;
   min-width: 0;
-  padding: 12px 18px 0;
-  background: var(--admin-surface);
+  padding: 14px 16px 0;
+  background: var(--admin-surface-muted);
 }
 
 .run-trace-inspector__switch :deep(.ant-segmented) {
@@ -194,14 +198,13 @@ const title = computed(() => {
 .run-trace-inspector__header {
   position: sticky;
   z-index: 2;
-  top: 40px;
+  top: 42px;
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
-  padding: 18px 18px 15px;
-  border-bottom: 1px solid var(--admin-border);
-  background: var(--admin-surface);
+  padding: 16px 16px 14px;
+  background: var(--admin-surface-muted);
 }
 
 .run-trace-inspector__identity {
@@ -210,9 +213,9 @@ const title = computed(() => {
 
 .run-trace-inspector__identity > span {
   color: var(--admin-text-muted);
-  font-size: 11px;
+  font-size: var(--admin-font-2xs);
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.07em;
   text-transform: uppercase;
 }
 
@@ -220,8 +223,8 @@ const title = computed(() => {
   margin: 6px 0 3px;
   overflow: hidden;
   color: var(--admin-text);
-  font-size: 17px;
-  font-weight: 680;
+  font-size: var(--admin-font-lg);
+  font-weight: 650;
   line-height: 1.35;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -230,8 +233,8 @@ const title = computed(() => {
 .run-trace-inspector__identity code {
   display: block;
   overflow: hidden;
-  color: var(--admin-text-muted);
-  font-size: 11px;
+  color: var(--admin-text-subtle);
+  font-size: var(--admin-font-2xs);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -246,24 +249,26 @@ const title = computed(() => {
 
 .run-trace-inspector__badges :deep(.ant-tag) {
   margin: 0;
-  font-size: 11px;
+  border-radius: var(--admin-radius-sm);
+  font-size: var(--admin-font-2xs);
 }
 
 .run-trace-inspector__body {
-  padding: 0 18px 24px;
+  padding: 0 16px 24px;
 }
 
+/* Tabs 栏贴在 sticky header 下方，背景需与面板底色一致才不露出内容 */
 .run-trace-inspector__body :deep(.trace-inspector-tabs > .ant-tabs-nav) {
   position: sticky;
   z-index: 1;
-  top: 88px;
-  margin-bottom: 18px;
-  background: var(--admin-surface);
+  top: 92px;
+  margin-bottom: 14px;
+  background: var(--admin-surface-muted);
 }
 
 .run-trace-inspector__body :deep(.trace-inspector-tabs .ant-tabs-tab) {
-  padding-block: 12px;
-  font-size: 13px;
+  padding-block: 10px;
+  font-size: var(--admin-font-sm);
 }
 
 .run-trace-inspector__empty {

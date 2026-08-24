@@ -71,7 +71,7 @@ function duration(value: number | null): string {
 .safe-raw-note {
   margin: 0 0 12px;
   color: var(--admin-text-muted);
-  font-size: 12px;
+  font-size: var(--admin-font-sm);
   line-height: 1.6;
 }
 
@@ -81,10 +81,11 @@ pre {
   padding: 14px;
   overflow: auto;
   border: 1px solid var(--admin-border);
-  border-radius: var(--admin-radius);
+  border-radius: var(--admin-radius-md);
   color: var(--admin-text);
-  background: var(--admin-bg-deep);
-  font-size: 11px;
+  background: var(--admin-surface-raised);
+  box-shadow: var(--admin-shadow-sm);
+  font-size: var(--admin-font-xs);
   line-height: 1.65;
   white-space: pre-wrap;
   overflow-wrap: anywhere;

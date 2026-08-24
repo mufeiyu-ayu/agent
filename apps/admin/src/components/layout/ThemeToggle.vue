@@ -81,7 +81,7 @@ function selectTheme(value: AdminTheme) {
   width: 34px;
   place-items: center;
   color: var(--admin-text-muted);
-  font-size: 16px;
+  font-size: var(--admin-font-lg);
 }
 
 .theme-menu {
@@ -106,7 +106,7 @@ function selectTheme(value: AdminTheme) {
   background: transparent;
   cursor: pointer;
   font: inherit;
-  font-size: 12px;
+  font-size: var(--admin-font-xs);
   text-align: left;
 }
 

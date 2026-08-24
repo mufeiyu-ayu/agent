@@ -85,7 +85,7 @@ const { t } = useI18n()
   width: 34px;
   place-items: center;
   color: var(--admin-text-muted);
-  font-size: 16px;
+  font-size: var(--admin-font-lg);
 }
 
 .admin-header__actions {
@@ -100,7 +100,7 @@ const { t } = useI18n()
   border: 1px solid var(--admin-border);
   border-radius: 999px;
   color: var(--admin-text-muted);
-  font-size: 11px;
+  font-size: var(--admin-font-xs);
 }
 
 .admin-header__environment i {
@@ -127,7 +127,7 @@ const { t } = useI18n()
   border-radius: 50%;
   color: var(--admin-primary);
   background: var(--admin-primary-soft);
-  font-size: 14px;
+  font-size: var(--admin-font-md);
 }
 
 .admin-header__user > span {
@@ -137,13 +137,13 @@ const { t } = useI18n()
 
 .admin-header__user strong {
   color: var(--admin-text);
-  font-size: 12px;
+  font-size: var(--admin-font-sm);
   font-weight: 600;
 }
 
 .admin-header__user small {
   margin-top: 3px;
   color: var(--admin-text-subtle);
-  font-size: 10px;
+  font-size: var(--admin-font-2xs);
 }
 </style>

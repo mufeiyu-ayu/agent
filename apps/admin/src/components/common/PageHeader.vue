@@ -32,7 +32,7 @@ defineProps<{
   display: block;
   margin-bottom: 7px;
   color: var(--admin-primary);
-  font-size: 10px;
+  font-size: var(--admin-font-2xs);
   font-weight: 700;
   letter-spacing: 0.13em;
   text-transform: uppercase;
@@ -41,7 +41,7 @@ defineProps<{
 h1 {
   margin: 0;
   color: var(--admin-text);
-  font-size: 23px;
+  font-size: var(--admin-font-2xl);
   font-weight: 650;
   letter-spacing: -0.025em;
 }
@@ -50,7 +50,7 @@ p {
   max-width: 680px;
   margin: 7px 0 0;
   color: var(--admin-text-muted);
-  font-size: 13px;
+  font-size: var(--admin-font-sm);
   line-height: 1.65;
 }
 
