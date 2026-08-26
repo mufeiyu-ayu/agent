@@ -99,8 +99,8 @@ git diff --check
 ## GitHub 交付记录
 
 - Issue：[Issue #101](https://github.com/mufeiyu-ayu/agent/issues/101)
-- 分支：`codex/issue-101-agent-runtime-layout`
-- PR：[PR #105](https://github.com/mufeiyu-ayu/agent/pull/105)
+- 分支：`codex/issue-101-agent-runtime-layout`（远程与本地均已删除）
+- PR：[PR #105](https://github.com/mufeiyu-ayu/agent/pull/105)，merge `2f1ae27`
 - GPT 验收结论：通过（基于 head `ecb44b58db`、完整 AC 映射、验证结果与 Codex Review）
 - 用户确认：已确认验收并授权 Ready、合并与分支清理
 
