@@ -1,6 +1,6 @@
 # Article Chunking Facade 与内部模块组织
 
-状态：**已实现、待验收 / Issue #103 / Gate READY**。
+状态：**Completed / Issue #103 / PR #107**。
 
 ## 目标
 
@@ -94,11 +94,11 @@ git diff --check
 
 - Issue：[Issue #103](https://github.com/mufeiyu-ayu/agent/issues/103)
 - 分支：`codex/issue-103-article-chunking-layout`
-- PR：[PR #107](https://github.com/mufeiyu-ayu/agent/pull/107)（Draft）
-- GPT 验收结论：未提供
-- 用户确认：未确认
+- PR：[PR #107](https://github.com/mufeiyu-ayu/agent/pull/107)（验收通过，已授权转 Ready、合并与分支清理）
+- GPT 验收结论：通过（基于 head `0db2129e6f`、完整 AC 映射、验证结果与提交前 Codex Review）
+- 用户确认：已确认验收并授权 Ready、合并、分支清理和启动 #104
 
 ## 任务状态
 
 - 实施状态：已实现
-- 验收状态：待验收
+- 验收状态：已通过
