@@ -97,7 +97,7 @@ git diff --check
 
 - Issue：[Issue #102](https://github.com/mufeiyu-ayu/agent/issues/102)
 - 分支：`codex/issue-102-admin-run-projections`
-- PR：未创建
+- PR：[PR #106](https://github.com/mufeiyu-ayu/agent/pull/106)（Draft）
 - GPT 验收结论：未提供
 - 用户确认：未确认
 
