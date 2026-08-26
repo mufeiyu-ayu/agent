@@ -7,7 +7,7 @@
 ```text
 阶段 1-8：Completed
 Phase 8：Completed
-Active Agent Task：Retrieval 模块组织 #104（Gate READY）
+Active Agent Task：无
 DeepSeek 思考强度与 Usage（#94）：Completed
 失败 Sampling 部分响应可观测性（#98）：Completed
 Minimal Compaction：Gated
@@ -25,7 +25,7 @@ Phase 8 已完成：
 - Task 3B：Web Grounding 状态、Sources disclosure、Source cards 与 Chromium，#60 / #61 / `572ad206`；
 - Task 3C：Admin Retrieval / Finalization / Citation Inspector，#62 / #63 / `20f838fb`。
 
-当前仍处于 Phase 8 源码阅读阶段；独立横向任务 Issue #101（[Agent Runtime 模块组织](./tasks/agent-runtime-module-organization.md)）、Issue #102（[Admin Runs 模块组织](./tasks/admin-runs-module-organization.md)）与 Issue #103（[Article Chunking 模块组织](./tasks/article-chunking-module-organization.md)）均已验收合并，Issue #104（[Retrieval 模块组织](./tasks/retrieval-module-organization.md)）为 Active / Gate READY；Issue #98（[失败 Sampling 部分响应可观测性](./tasks/failed-sampling-debug-capture.md)）和 Issue #94（[DeepSeek 思考强度与 Usage](./tasks/deepseek-reasoning-usage.md)）均已验收合并。下一阶段学习内容暂不定义，Phase 9 尚未定案。
+当前仍处于 Phase 8 源码阅读阶段；独立横向任务 Issue #101（[Agent Runtime 模块组织](./tasks/agent-runtime-module-organization.md)）、Issue #102（[Admin Runs 模块组织](./tasks/admin-runs-module-organization.md)）与 Issue #103（[Article Chunking 模块组织](./tasks/article-chunking-module-organization.md)）均已验收合并，Issue #104（[Retrieval 模块组织](./tasks/retrieval-module-organization.md)）已验收并获合并授权；Issue #98（[失败 Sampling 部分响应可观测性](./tasks/failed-sampling-debug-capture.md)）和 Issue #94（[DeepSeek 思考强度与 Usage](./tasks/deepseek-reasoning-usage.md)）均已验收合并。下一阶段学习内容暂不定义，Phase 9 尚未定案。
 
 ## 文档入口
 
@@ -36,7 +36,7 @@ Phase 8 已完成：
 | [失败 Sampling 部分响应可观测性](./tasks/failed-sampling-debug-capture.md) | Completed：#98 / PR #100 / `915315b` |
 | [DeepSeek 思考强度与 Usage](./tasks/deepseek-reasoning-usage.md) | Completed：#94 / PR #95 / `2266fad` |
 | [Article Chunking 模块组织](./tasks/article-chunking-module-organization.md) | Completed：#103 / PR #107 |
-| [Retrieval 模块组织](./tasks/retrieval-module-organization.md) | Active：#104 / Gate READY |
+| [Retrieval 模块组织](./tasks/retrieval-module-organization.md) | Completed：#104 / PR #108 |
 | [Phase 8 归档](./tasks/completed/phase-08-grounded-retrieval.md) | Completed：Task 0-3C 全部内容、阶段不变量与边界 |
 | [Grounded Answer / Citation 研究](./research/phase-08-grounded-answer-citation-design.md) | Provider、开源方案与架构定案 |
 | [Phase 7 归档](./tasks/completed/phase-07-context-engineering.md) | Context Engineering 最终能力与边界 |

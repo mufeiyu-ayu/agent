@@ -8,7 +8,7 @@
 阶段 1-8：Completed
 Phase 8：Completed
 Task 0、1、2A、2B、3A、3B、3C：Completed
-Active Agent Task：Retrieval 模块组织 #104（已实现、待验收）
+Active Agent Task：无
 DeepSeek 思考强度与 Usage（#94）：Completed
 Run 配置解析边界（#92）：Completed
 失败 Sampling 部分响应可观测性（#98）：Completed
@@ -25,7 +25,7 @@ Phase 9：未定案
 | Backend 模块组织 #101 | **Completed / #101 / PR #105** | [agent-runtime-module-organization.md](./agent-runtime-module-organization.md) | Agent Runtime 目录分域 + Cancellation Lifecycle；GPT 验收 + 用户确认 |
 | Admin Runs 模块组织 #102 | **Completed / #102 / PR #106** | [admin-runs-module-organization.md](./admin-runs-module-organization.md) | Projector 分域 + 循环依赖消除；GPT 验收 + 用户确认 |
 | Article Chunking 模块组织 #103 | **Completed / #103 / PR #107** | [article-chunking-module-organization.md](./article-chunking-module-organization.md) | 稳定 Facade + structural / deterministic / token 内部分层；GPT 验收 + 用户确认 |
-| Retrieval 模块组织 #104 | **已实现、待验收 / PR #108** | [retrieval-module-organization.md](./retrieval-module-organization.md) | Contract / Runtime、Retrievers、Persistence、Evaluation 分域 |
+| Retrieval 模块组织 #104 | **Completed / #104 / PR #108** | [retrieval-module-organization.md](./retrieval-module-organization.md) | Contract / Runtime、Retrievers、Persistence、Evaluation 分域；GPT 验收 + 用户确认 |
 | DeepSeek 思考强度与 Usage（#94） | **Completed / #95 / `2266fad`** | [deepseek-reasoning-usage.md](./deepseek-reasoning-usage.md) | Web 单次选择、Run resolved config、Provider wire、Usage / Admin 闭环 |
 | Run 配置解析边界（#92） | **Completed / #93 / `f32cd48`** | [agent-run-configuration.md](./agent-run-configuration.md) | 横向 refactor：单次 Run 配置解析入口 + 配置地图 |
 | 失败 Sampling 部分响应可观测性（#98） | **Completed / #100 / `915315b`** | [failed-sampling-debug-capture.md](./failed-sampling-debug-capture.md) | complete / partial / empty 捕获、失败终态保留与 Admin 三态展示 |
@@ -54,7 +54,7 @@ Phase 8 全部 Task 文档已合并归档到 [completed/phase-08-grounded-retrie
 
 ## 当前正式动作
 
-当前 Active Agent Task 为 Retrieval 模块组织 #104，实施状态已实现、验收状态待验收；#101-#103 已验收合并。
+当前无 Active Agent Task；Backend 模块组织 #101-#104 均已验收，其中 #104 已获合并与分支清理授权。
 
 失败 Sampling 部分响应可观测性（#98）、DeepSeek 思考强度与 Usage（#94）和 Run 配置解析边界（#92）均已验收合并。
 
