@@ -2,9 +2,9 @@
 
 - 实施状态：已实现
 - 验收状态：已通过（GPT 技术验收通过，用户 2026-08-26 确认并授权合并）
-- Issue：[#98](https://github.com/mufeiyu-ayu/agent/issues/98)
-- 分支：`codex/issue-98-partial-sampling-capture`
-- PR：[#100](https://github.com/mufeiyu-ayu/agent/pull/100)（合并授权已确认）
+- Issue：[#98](https://github.com/mufeiyu-ayu/agent/issues/98)（Closed）
+- 分支：`codex/issue-98-partial-sampling-capture`（已合并删除）
+- PR：[#100](https://github.com/mufeiyu-ayu/agent/pull/100)（Merged / `915315b`）
 
 ## 目标
 
@@ -56,4 +56,4 @@
 
 ## 收口结论
 
-Issue #98 的 AC-01～09 已通过技术验收，用户已明确确认并授权 docs 收口、PR 合并及分支清理。本任务作为独立横向可观测性修复 Completed，不启动 Phase 9。
+Issue #98 的 AC-01～09 已通过技术验收，用户明确确认后，PR #100 已合并为 `915315b`，Issue 已关闭，远程与本地任务分支已删除。本任务作为独立横向可观测性修复 Completed，不启动 Phase 9。

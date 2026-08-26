@@ -25,7 +25,7 @@ Phase 8 已完成：
 - Task 3B：Web Grounding 状态、Sources disclosure、Source cards 与 Chromium，#60 / #61 / `572ad206`；
 - Task 3C：Admin Retrieval / Finalization / Citation Inspector，#62 / #63 / `20f838fb`。
 
-当前仍处于 Phase 8 源码阅读阶段；独立横向任务 Issue #98（[失败 Sampling 部分响应可观测性](./tasks/failed-sampling-debug-capture.md)）和 Issue #94（[DeepSeek 思考强度与 Usage](./tasks/deepseek-reasoning-usage.md)）均已通过验收。下一阶段学习内容暂不定义，Phase 9 尚未定案。
+当前仍处于 Phase 8 源码阅读阶段；独立横向任务 Issue #98（[失败 Sampling 部分响应可观测性](./tasks/failed-sampling-debug-capture.md)）和 Issue #94（[DeepSeek 思考强度与 Usage](./tasks/deepseek-reasoning-usage.md)）均已验收合并。下一阶段学习内容暂不定义，Phase 9 尚未定案。
 
 ## 文档入口
 
@@ -33,7 +33,7 @@ Phase 8 已完成：
 | --- | --- |
 | [roadmap.md](./roadmap.md) | 阶段路线、学习闭环与 Phase 9 决策原则 |
 | [tasks/README.md](./tasks/README.md) | 正式任务看板和状态事实来源 |
-| [失败 Sampling 部分响应可观测性](./tasks/failed-sampling-debug-capture.md) | Completed：#98 / PR #100 |
+| [失败 Sampling 部分响应可观测性](./tasks/failed-sampling-debug-capture.md) | Completed：#98 / PR #100 / `915315b` |
 | [DeepSeek 思考强度与 Usage](./tasks/deepseek-reasoning-usage.md) | Completed：#94 / PR #95 / `2266fad` |
 | [Phase 8 归档](./tasks/completed/phase-08-grounded-retrieval.md) | Completed：Task 0-3C 全部内容、阶段不变量与边界 |
 | [Grounded Answer / Citation 研究](./research/phase-08-grounded-answer-citation-design.md) | Provider、开源方案与架构定案 |
