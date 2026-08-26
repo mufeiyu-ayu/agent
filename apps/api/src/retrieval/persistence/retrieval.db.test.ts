@@ -11,9 +11,9 @@ import process from 'node:process'
 // eslint-disable-next-line test/no-import-node-test
 import { after, before, describe, it } from 'node:test'
 
-import { ARTICLE_CHUNKER_PROFILE } from '../article-indexing/article-chunking.js'
-import { ACTIVE_EMBEDDING_PROFILE } from '../embeddings/embedding-provider.js'
-import { DatabaseOperationDeadlineExceededError } from '../prisma/prisma.service.js'
+import { ARTICLE_CHUNKER_PROFILE } from '../../article-indexing/article-chunking.js'
+import { ACTIVE_EMBEDDING_PROFILE } from '../../embeddings/embedding-provider.js'
+import { DatabaseOperationDeadlineExceededError } from '../../prisma/prisma.service.js'
 import {
   createArticleRetrievalPool,
   PostgresArticleRetrievalRepository,
@@ -79,9 +79,9 @@ integrationDescribe('Article retrieval PostgreSQL / pgvector integration', {
         [`${schema},public`],
       )
       for (const path of [
-        '../../../../prisma/migrations/20260711115000_add_article_demo_data/migration.sql',
-        '../../../../prisma/migrations/20260711122500_add_article_language_code/migration.sql',
-        '../../../../prisma/migrations/20260814090000_add_article_embedding_index/migration.sql',
+        '../../../../../prisma/migrations/20260711115000_add_article_demo_data/migration.sql',
+        '../../../../../prisma/migrations/20260711122500_add_article_language_code/migration.sql',
+        '../../../../../prisma/migrations/20260814090000_add_article_embedding_index/migration.sql',
       ]) {
         await migrationClient.query(await readFile(new URL(path, import.meta.url), 'utf8'))
       }

@@ -10,13 +10,13 @@ import { Injectable } from '@nestjs/common'
 
 import { resolveEmbeddingRuntimeConfig } from '../embeddings/embedding-provider.js'
 import { GeminiEmbeddingProvider } from '../embeddings/gemini-embedding.provider.js'
-import { HybridArticleRetriever } from './hybrid-article-retriever.js'
-import { LexicalArticleRetriever } from './lexical-article-retriever.js'
 import {
   createArticleRetrievalPool,
   PostgresArticleRetrievalRepository,
-} from './postgres-article-retrieval.repository.js'
-import { VectorArticleRetriever } from './vector-article-retriever.js'
+} from './persistence/postgres-article-retrieval.repository.js'
+import { HybridArticleRetriever } from './retrievers/hybrid-article-retriever.js'
+import { LexicalArticleRetriever } from './retrievers/lexical-article-retriever.js'
+import { VectorArticleRetriever } from './retrievers/vector-article-retriever.js'
 
 export interface HybridArticleRetrievalRuntimeHandle {
   retriever: ArticleRetriever<DatabaseArticleRetrievalExecutionContext>

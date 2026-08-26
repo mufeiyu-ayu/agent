@@ -7,7 +7,7 @@ import assert from 'node:assert/strict'
 // eslint-disable-next-line test/no-import-node-test
 import { describe, it } from 'node:test'
 
-import { ACTIVE_EMBEDDING_PROFILE } from '../embeddings/embedding-provider.js'
+import { ACTIVE_EMBEDDING_PROFILE } from '../../embeddings/embedding-provider.js'
 import {
   PostgresArticleRetrievalRepository,
 } from './postgres-article-retrieval.repository.js'

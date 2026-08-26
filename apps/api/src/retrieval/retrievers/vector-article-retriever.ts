@@ -1,25 +1,25 @@
-import type { EmbeddingProvider } from '../embeddings/embedding-provider.js'
+import type { EmbeddingProvider } from '../../embeddings/embedding-provider.js'
 import type {
   ArticleRetrievalHit,
   ArticleRetrievalInput,
   ArticleRetrievalResult,
   ArticleRetriever,
   DatabaseArticleRetrievalExecutionContext,
-} from './article-retrieval.js'
+} from '../article-retrieval.js'
 import type {
   ArticleRetrievalRepositoryContract,
   VectorChunkCandidate,
-} from './postgres-article-retrieval.repository.js'
+} from '../persistence/postgres-article-retrieval.repository.js'
 
-import { formatEmbeddingQueryInput } from '../embeddings/embedding-formatter.js'
+import { formatEmbeddingQueryInput } from '../../embeddings/embedding-formatter.js'
 import {
   ACTIVE_EMBEDDING_PROFILE,
-} from '../embeddings/embedding-provider.js'
+} from '../../embeddings/embedding-provider.js'
 import {
   normalizeArticleRetrievalInput,
   toArticleExcerpt,
-} from './article-retrieval.js'
-import { VECTOR_CHUNK_CANDIDATE_LIMIT } from './postgres-article-retrieval.repository.js'
+} from '../article-retrieval.js'
+import { VECTOR_CHUNK_CANDIDATE_LIMIT } from '../persistence/postgres-article-retrieval.repository.js'
 
 export const VECTOR_ARTICLE_CANDIDATE_LIMIT = 10
 export const EXACT_COSINE_VECTOR_STRATEGY = {

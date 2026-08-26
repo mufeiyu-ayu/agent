@@ -19,7 +19,7 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
 import { EmbeddingError } from '../../embeddings/embedding-provider.js'
-import { HYBRID_RRF_STRATEGY } from '../../retrieval/hybrid-article-retriever.js'
+import { HYBRID_RRF_STRATEGY } from '../../retrieval/retrievers/hybrid-article-retriever.js'
 import { toModelToolSpec } from '../core/model-tool-spec.mapper.js'
 import { normalizeToolEvidenceProjection } from '../core/tool-evidence.js'
 import { ToolInvocationService } from '../core/tool-invocation.service.js'

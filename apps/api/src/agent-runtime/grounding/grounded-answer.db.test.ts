@@ -7,7 +7,7 @@ import type { LLMService } from '../../llm/llm.service.js'
 import type { ChatStreamOptions } from '../../llm/llm.types.js'
 import type { ModelInputItem } from '../../llm/model-input.types.js'
 import type { ModelStreamEvent } from '../../llm/model-stream.types.js'
-import type { ArticleRetrievalPool } from '../../retrieval/postgres-article-retrieval.repository.js'
+import type { ArticleRetrievalPool } from '../../retrieval/persistence/postgres-article-retrieval.repository.js'
 import type { AgentRuntimeEvent } from '../agent-runtime.types.js'
 import type { AgentRuntimePolicyService } from '../configuration/agent-runtime.policy.js'
 import type { TokenEstimatorInput } from '../context/deepseek-v4-token-estimator.js'
@@ -31,13 +31,13 @@ import {
 } from '../../generated/prisma/client.js'
 import { getModelProfile } from '../../llm/model-profiles.js'
 import { PrismaService } from '../../prisma/prisma.service.js'
-import { HybridArticleRetriever } from '../../retrieval/hybrid-article-retriever.js'
-import { LexicalArticleRetriever } from '../../retrieval/lexical-article-retriever.js'
 import {
   createArticleRetrievalPool,
   PostgresArticleRetrievalRepository,
-} from '../../retrieval/postgres-article-retrieval.repository.js'
-import { VectorArticleRetriever } from '../../retrieval/vector-article-retriever.js'
+} from '../../retrieval/persistence/postgres-article-retrieval.repository.js'
+import { HybridArticleRetriever } from '../../retrieval/retrievers/hybrid-article-retriever.js'
+import { LexicalArticleRetriever } from '../../retrieval/retrievers/lexical-article-retriever.js'
+import { VectorArticleRetriever } from '../../retrieval/retrievers/vector-article-retriever.js'
 import {
   getArticleDetailDefinition,
   GetArticleDetailTool,

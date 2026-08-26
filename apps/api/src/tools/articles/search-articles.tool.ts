@@ -12,7 +12,7 @@ import type {
 import { Inject, Injectable } from '@nestjs/common'
 
 import { normalizeArticleRetrievalInput } from '../../retrieval/article-retrieval.js'
-import { PrismaArticleRetriever } from '../../retrieval/prisma-article-retriever.js'
+import { PrismaArticleRetriever } from '../../retrieval/retrievers/prisma-article-retriever.js'
 
 export type SearchArticlesInput = NormalizedArticleRetrievalQuery
 

@@ -7,7 +7,7 @@ import { describe, it } from 'node:test'
 
 import { PrismaModule } from '../prisma/prisma.module.js'
 import { HybridArticleRetrievalRuntime } from '../retrieval/hybrid-article-retrieval.runtime.js'
-import { PrismaArticleRetriever } from '../retrieval/prisma-article-retriever.js'
+import { PrismaArticleRetriever } from '../retrieval/retrievers/prisma-article-retriever.js'
 import { GetArticleDetailTool } from './articles/get-article-detail.tool.js'
 import { SearchArticlesTool } from './articles/search-articles.tool.js'
 import { ToolInvocationService } from './core/tool-invocation.service.js'

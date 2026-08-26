@@ -3,7 +3,7 @@ import type {
   ArticleRetriever,
   DatabaseArticleRetrievalExecutionContext,
 } from '../article-retrieval.js'
-import type { ArticleRetrievalRepositoryContract } from '../postgres-article-retrieval.repository.js'
+import type { ArticleRetrievalRepositoryContract } from '../persistence/postgres-article-retrieval.repository.js'
 import type {
   RetrievalQualityV2Report,
   RetrievalQualityV2Strategies,
@@ -18,13 +18,13 @@ import { GeminiEmbeddingProvider } from '../../embeddings/gemini-embedding.provi
 import {
   DatabaseOperationDeadlineExceededError,
 } from '../../prisma/prisma.service.js'
-import { HybridArticleRetriever } from '../hybrid-article-retriever.js'
-import { LexicalArticleRetriever } from '../lexical-article-retriever.js'
 import {
   createArticleRetrievalPool,
   PostgresArticleRetrievalRepository,
-} from '../postgres-article-retrieval.repository.js'
-import { VectorArticleRetriever } from '../vector-article-retriever.js'
+} from '../persistence/postgres-article-retrieval.repository.js'
+import { HybridArticleRetriever } from '../retrievers/hybrid-article-retriever.js'
+import { LexicalArticleRetriever } from '../retrievers/lexical-article-retriever.js'
+import { VectorArticleRetriever } from '../retrievers/vector-article-retriever.js'
 import { evaluateArticleRetrievalQualityV2 } from './article-retrieval-quality-v2.js'
 
 const QUALITY_DATABASE_TIMEOUT_MS = 60_000
