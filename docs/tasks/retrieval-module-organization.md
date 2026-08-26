@@ -100,7 +100,7 @@ git diff --check
 
 - Issue：[Issue #104](https://github.com/mufeiyu-ayu/agent/issues/104)
 - 分支：`codex/issue-104-retrieval-layout`
-- PR：未创建
+- PR：[PR #108](https://github.com/mufeiyu-ayu/agent/pull/108)（Draft）
 - GPT 验收结论：未提供
 - 用户确认：未确认
 
