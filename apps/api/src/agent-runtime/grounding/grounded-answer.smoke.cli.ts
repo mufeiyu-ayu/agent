@@ -9,7 +9,7 @@ import { LLMRuntimeConfigService } from '../../llm/llm-runtime-config.js'
 import { LLMService } from '../../llm/llm.service.js'
 import { PrismaService } from '../../prisma/prisma.service.js'
 import { createHybridArticleRetrievalRuntime } from '../../retrieval/hybrid-article-retrieval.runtime.js'
-import { PrismaArticleRetriever } from '../../retrieval/prisma-article-retriever.js'
+import { PrismaArticleRetriever } from '../../retrieval/retrievers/prisma-article-retriever.js'
 import { buildSeoAgentChatMessages } from '../../seo/prompts/seo-agent.prompt.js'
 import {
   getArticleDetailDefinition,

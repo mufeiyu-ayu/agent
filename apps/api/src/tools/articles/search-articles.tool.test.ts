@@ -15,7 +15,7 @@ import assert from 'node:assert/strict'
 // eslint-disable-next-line test/no-import-node-test
 import { describe, it } from 'node:test'
 
-import { PrismaArticleRetriever } from '../../retrieval/prisma-article-retriever.js'
+import { PrismaArticleRetriever } from '../../retrieval/retrievers/prisma-article-retriever.js'
 import { toModelToolSpec } from '../core/model-tool-spec.mapper.js'
 import { ToolInvocationService } from '../core/tool-invocation.service.js'
 import { ToolRegistryService } from '../core/tool-registry.service.js'

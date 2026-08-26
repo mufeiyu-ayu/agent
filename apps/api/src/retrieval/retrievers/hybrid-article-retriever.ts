@@ -5,10 +5,10 @@ import type {
   ArticleRetriever,
   DatabaseArticleRetrievalExecutionContext,
   NormalizedArticleRetrievalQuery,
-} from './article-retrieval.js'
+} from '../article-retrieval.js'
 
-import { normalizeArticleRetrievalInput } from './article-retrieval.js'
-import { LEXICAL_ARTICLE_CANDIDATE_LIMIT } from './postgres-article-retrieval.repository.js'
+import { normalizeArticleRetrievalInput } from '../article-retrieval.js'
+import { LEXICAL_ARTICLE_CANDIDATE_LIMIT } from '../persistence/postgres-article-retrieval.repository.js'
 import { VECTOR_ARTICLE_CANDIDATE_LIMIT } from './vector-article-retriever.js'
 
 export const RRF_CONSTANT = 60

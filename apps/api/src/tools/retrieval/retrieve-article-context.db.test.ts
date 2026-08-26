@@ -3,7 +3,7 @@ import type {
   EmbeddingResult,
 } from '../../embeddings/embedding-provider.js'
 import type { DatabaseOperationDeadline } from '../../prisma/prisma.service.js'
-import type { ArticleRetrievalPool } from '../../retrieval/postgres-article-retrieval.repository.js'
+import type { ArticleRetrievalPool } from '../../retrieval/persistence/postgres-article-retrieval.repository.js'
 import type { ToolExecutionContext } from '../core/tool.types.js'
 import type { RetrieveArticleContextOutput } from './retrieve-article-context.tool.js'
 import assert from 'node:assert/strict'
@@ -20,13 +20,13 @@ import {
   ACTIVE_EMBEDDING_PROFILE,
   EmbeddingError,
 } from '../../embeddings/embedding-provider.js'
-import { HybridArticleRetriever } from '../../retrieval/hybrid-article-retriever.js'
-import { LexicalArticleRetriever } from '../../retrieval/lexical-article-retriever.js'
 import {
   createArticleRetrievalPool,
   PostgresArticleRetrievalRepository,
-} from '../../retrieval/postgres-article-retrieval.repository.js'
-import { VectorArticleRetriever } from '../../retrieval/vector-article-retriever.js'
+} from '../../retrieval/persistence/postgres-article-retrieval.repository.js'
+import { HybridArticleRetriever } from '../../retrieval/retrievers/hybrid-article-retriever.js'
+import { LexicalArticleRetriever } from '../../retrieval/retrievers/lexical-article-retriever.js'
+import { VectorArticleRetriever } from '../../retrieval/retrievers/vector-article-retriever.js'
 import { ToolInvocationService } from '../core/tool-invocation.service.js'
 import { ToolRegistryService } from '../core/tool-registry.service.js'
 import {

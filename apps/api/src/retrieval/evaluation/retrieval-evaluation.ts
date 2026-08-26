@@ -2,9 +2,9 @@ import type {
   ArticleRetrievalResult,
   ArticleRetriever,
   NormalizedArticleRetrievalQuery,
-} from './article-retrieval.js'
+} from '../article-retrieval.js'
 
-import { normalizeArticleRetrievalInput } from './article-retrieval.js'
+import { normalizeArticleRetrievalInput } from '../article-retrieval.js'
 
 export interface RetrievalEvaluationCase {
   id: string

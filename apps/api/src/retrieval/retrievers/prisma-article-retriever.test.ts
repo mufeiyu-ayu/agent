@@ -1,11 +1,11 @@
 import type {
   DatabaseOperationDeadline,
   PrismaService,
-} from '../prisma/prisma.service.js'
+} from '../../prisma/prisma.service.js'
 import type {
   ArticleRetriever,
   DatabaseArticleRetrievalExecutionContext,
-} from './article-retrieval.js'
+} from '../article-retrieval.js'
 import assert from 'node:assert/strict'
 // 项目本轮使用 Node 原生测试运行器，不引入额外测试框架。
 // eslint-disable-next-line test/no-import-node-test

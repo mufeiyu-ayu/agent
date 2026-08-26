@@ -5,7 +5,7 @@ import type {
 import { performance } from 'node:perf_hooks'
 
 import { normalizeArticleRetrievalInput } from '../article-retrieval.js'
-import { validateRetrievalResult } from '../retrieval-evaluation.js'
+import { validateRetrievalResult } from './retrieval-evaluation.js'
 
 const TOP_K = 5
 const STRATEGY_KINDS = ['lexical', 'vector', 'hybrid'] as const

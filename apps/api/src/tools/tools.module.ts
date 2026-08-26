@@ -2,7 +2,7 @@ import { Inject, Module } from '@nestjs/common'
 
 import { PrismaModule } from '../prisma/prisma.module.js'
 import { HybridArticleRetrievalRuntime } from '../retrieval/hybrid-article-retrieval.runtime.js'
-import { PrismaArticleRetriever } from '../retrieval/prisma-article-retriever.js'
+import { PrismaArticleRetriever } from '../retrieval/retrievers/prisma-article-retriever.js'
 import {
   getArticleDetailDefinition,
   GetArticleDetailTool,

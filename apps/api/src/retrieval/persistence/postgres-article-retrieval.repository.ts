@@ -1,15 +1,15 @@
-import type { DatabaseOperationDeadline } from '../prisma/prisma.service.js'
+import type { DatabaseOperationDeadline } from '../../prisma/prisma.service.js'
 import type {
   DatabaseArticleRetrievalExecutionContext,
   NormalizedArticleRetrievalQuery,
-} from './article-retrieval.js'
+} from '../article-retrieval.js'
 import { createRequire } from 'node:module'
 import { performance } from 'node:perf_hooks'
 
 import { Logger } from '@nestjs/common'
 
-import { ARTICLE_CHUNKER_PROFILE } from '../article-indexing/article-chunking.js'
-import { ACTIVE_EMBEDDING_PROFILE } from '../embeddings/embedding-provider.js'
+import { ARTICLE_CHUNKER_PROFILE } from '../../article-indexing/article-chunking.js'
+import { ACTIVE_EMBEDDING_PROFILE } from '../../embeddings/embedding-provider.js'
 
 export const LEXICAL_ARTICLE_CANDIDATE_LIMIT = 10
 export const VECTOR_CHUNK_CANDIDATE_LIMIT = 40

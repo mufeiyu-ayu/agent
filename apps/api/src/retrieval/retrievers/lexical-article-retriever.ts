@@ -3,13 +3,13 @@ import type {
   ArticleRetrievalResult,
   ArticleRetriever,
   DatabaseArticleRetrievalExecutionContext,
-} from './article-retrieval.js'
-import type { ArticleRetrievalRepositoryContract } from './postgres-article-retrieval.repository.js'
+} from '../article-retrieval.js'
+import type { ArticleRetrievalRepositoryContract } from '../persistence/postgres-article-retrieval.repository.js'
 
 import {
   normalizeArticleRetrievalInput,
   toArticleExcerpt,
-} from './article-retrieval.js'
+} from '../article-retrieval.js'
 
 export const POSTGRES_LEXICAL_STRATEGY = {
   name: 'postgres_lexical_ranked',

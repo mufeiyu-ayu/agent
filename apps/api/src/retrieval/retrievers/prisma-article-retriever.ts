@@ -1,17 +1,17 @@
-import type { Prisma } from '../generated/prisma/client.js'
+import type { Prisma } from '../../generated/prisma/client.js'
 import type {
   ArticleRetrievalInput,
   ArticleRetrievalResult,
   ArticleRetriever,
   DatabaseArticleRetrievalExecutionContext,
-} from './article-retrieval.js'
+} from '../article-retrieval.js'
 import { Inject, Injectable } from '@nestjs/common'
 
-import { PrismaService } from '../prisma/prisma.service.js'
+import { PrismaService } from '../../prisma/prisma.service.js'
 import {
   normalizeArticleRetrievalInput,
   toArticleExcerpt,
-} from './article-retrieval.js'
+} from '../article-retrieval.js'
 
 export const PRISMA_LEXICAL_STRATEGY = {
   name: 'prisma_lexical',

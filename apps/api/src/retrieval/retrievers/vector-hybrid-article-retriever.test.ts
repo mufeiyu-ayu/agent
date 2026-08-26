@@ -1,20 +1,20 @@
-import type { EmbeddingProvider } from '../embeddings/embedding-provider.js'
-import type { DatabaseOperationDeadline } from '../prisma/prisma.service.js'
+import type { EmbeddingProvider } from '../../embeddings/embedding-provider.js'
+import type { DatabaseOperationDeadline } from '../../prisma/prisma.service.js'
 import type {
   ArticleRetrievalHit,
   ArticleRetriever,
   DatabaseArticleRetrievalExecutionContext,
-} from './article-retrieval.js'
+} from '../article-retrieval.js'
 import type {
   ArticleRetrievalRepositoryContract,
   VectorChunkCandidate,
-} from './postgres-article-retrieval.repository.js'
+} from '../persistence/postgres-article-retrieval.repository.js'
 import assert from 'node:assert/strict'
 // 项目使用 Node 原生测试运行器，不引入额外测试框架。
 // eslint-disable-next-line test/no-import-node-test
 import { describe, it } from 'node:test'
 
-import { ACTIVE_EMBEDDING_PROFILE } from '../embeddings/embedding-provider.js'
+import { ACTIVE_EMBEDDING_PROFILE } from '../../embeddings/embedding-provider.js'
 import {
   fuseArticleHits,
   HybridArticleRetriever,

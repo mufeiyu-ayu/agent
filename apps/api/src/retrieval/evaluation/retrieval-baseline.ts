@@ -3,7 +3,7 @@ import type {
   ArticleRetrievalInput,
   ArticleRetrievalResult,
   ArticleRetriever,
-} from './article-retrieval.js'
+} from '../article-retrieval.js'
 import type {
   RetrievalEvaluationDataset,
   RetrievalEvaluationReport,
@@ -12,7 +12,7 @@ import type {
 import {
   normalizeArticleRetrievalInput,
   toArticleExcerpt,
-} from './article-retrieval.js'
+} from '../article-retrieval.js'
 import { evaluateArticleRetrieval } from './retrieval-evaluation.js'
 
 const FIXTURE_LEXICAL_STRATEGY = {
