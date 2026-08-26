@@ -54,7 +54,7 @@ Phase 8 全部 Task 文档已合并归档到 [completed/phase-08-grounded-retrie
 
 ## 当前正式动作
 
-当前无 Active Agent Task；Article Chunking 模块组织 #103 已验收并获合并授权，#104 Retrieval 为 Next / Gate PENDING。
+当前无 Active Agent Task；Article Chunking 模块组织 #103 已验收合并，#104 Retrieval 为 Next / Gate PENDING。
 
 失败 Sampling 部分响应可观测性（#98）、DeepSeek 思考强度与 Usage（#94）和 Run 配置解析边界（#92）均已验收合并。
 

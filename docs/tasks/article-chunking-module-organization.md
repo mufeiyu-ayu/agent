@@ -93,8 +93,8 @@ git diff --check
 ## GitHub 交付记录
 
 - Issue：[Issue #103](https://github.com/mufeiyu-ayu/agent/issues/103)
-- 分支：`codex/issue-103-article-chunking-layout`
-- PR：[PR #107](https://github.com/mufeiyu-ayu/agent/pull/107)（验收通过，已授权转 Ready、合并与分支清理）
+- 分支：`codex/issue-103-article-chunking-layout`（远程与本地均已删除）
+- PR：[PR #107](https://github.com/mufeiyu-ayu/agent/pull/107)，merge `28024eb`
 - GPT 验收结论：通过（基于 head `0db2129e6f`、完整 AC 映射、验证结果与提交前 Codex Review）
 - 用户确认：已确认验收并授权 Ready、合并、分支清理和启动 #104
 
