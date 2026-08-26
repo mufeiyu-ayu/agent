@@ -395,6 +395,16 @@ function checkProductionSources(): void {
     /props\.item\.(?:prompt|reasoning|rawArguments|observationBody)\b/,
   )
 
+  const debugJsonPaneSource = readFileSync(
+    new URL('./trace/inspectors/DebugJsonPane.vue', import.meta.url),
+    'utf8',
+  )
+  assert.match(debugJsonPaneSource, /responseState === 'partial'/)
+  assert.match(debugJsonPaneSource, /capture\.state === 'empty'/)
+  assert.match(debugJsonPaneSource, /responseCapture/)
+  assert.match(debugJsonPaneSource, /state: props\.capture\.state/)
+  assert.match(debugJsonPaneSource, /debugCapture\.emptyResponse/)
+
   const ledgerSource = readFileSync(
     new URL('./trace/RunTraceLedger.vue', import.meta.url),
     'utf8',

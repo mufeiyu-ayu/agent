@@ -1,3 +1,4 @@
+import type { ChatCompletionChunk } from 'openai/resources/chat/completions'
 import type { AgentRun, Message } from '../generated/prisma/client.js'
 import type { LLMService } from '../llm/llm.service.js'
 import type { ChatStreamOptions } from '../llm/llm.types.js'
@@ -37,6 +38,8 @@ import {
   MessageRole,
   MessageStatus,
 } from '../generated/prisma/client.js'
+import { teeRawResponseCapture } from '../llm/clients/openai-compatible-raw-capture.js'
+import { adaptOpenAICompatibleStream } from '../llm/clients/openai-compatible-stream.adapter.js'
 import { getModelProfile } from '../llm/model-profiles.js'
 import {
   DatabaseCommitOutcomeUnknownError,
@@ -1754,6 +1757,71 @@ describe('AgentRuntimeService model stream', () => {
     }
   })
 
+  it('text_delta 后迟到 Tool Call 时保留 partial capture，且原失败语义不变', async () => {
+    const secret = 'DO_NOT_LOG_RAW_RESPONSE'
+    const warnings: unknown[] = []
+    const harness = createHarness((_, options) =>
+      capturedLateToolCallModelStream(options, secret))
+
+    Object.defineProperty(harness.service, 'logger', {
+      value: {
+        error: () => {},
+        warn: (warning: unknown) => warnings.push(warning),
+      },
+    })
+
+    const events = await collectEvents(harness.run())
+    const failure = events.at(-1)
+    const samplingStep = findStep(harness, 'model_sampling')
+    const output = samplingStep?.output as Record<string, unknown>
+
+    assert.equal(failure?.type, 'run_failed')
+    assert.match(
+      failure?.type === 'run_failed' ? failure.message : '',
+      /最终回答文本之后又返回了 Tool Call/,
+    )
+    assert.equal(samplingStep?.status, AgentStepStatus.FAILED)
+    assert.equal(harness.toolInvocations.length, 0)
+    assert.deepEqual(output.debugRawResponse, {
+      state: 'partial',
+      truncated: false,
+      value: {
+        id: 'chunk-1',
+        object: 'chat.completion',
+        created: 1_756_000_000,
+        model: 'deepseek-v4-flash',
+        choices: [{
+          index: 0,
+          finish_reason: null,
+          message: {
+            role: 'assistant',
+            content: secret,
+            tool_calls: [{
+              id: 'call-1',
+              type: 'function',
+              function: {
+                name: 'search_articles',
+                arguments: '{"query":"seo"}',
+              },
+            }],
+          },
+        }],
+      },
+    })
+    assert.deepEqual(warnings, [{
+      event: 'model_sampling_debug_capture_closed',
+      runId: 'run-1',
+      samplingAttemptId: 'run-1:sampling-1',
+      termination: 'failure',
+      captureState: 'partial',
+      lastModelEvent: 'tool_call_delta',
+      textChars: secret.length,
+      toolCallCount: 1,
+    }])
+    assert.doesNotMatch(JSON.stringify(warnings), new RegExp(secret))
+    assertNoUnfinishedSteps(harness)
+  })
+
   it('第三轮再次请求工具时拒绝第三次执行且不发起第四轮 sampling', async () => {
     const streams: ModelStreamEvent[][] = [
       [
@@ -1902,7 +1970,7 @@ describe('AgentRuntimeService model stream', () => {
   it('AbortSignal 触发后只收口为 ABORTED', async () => {
     const abortController = new AbortController()
     const harness = createHarness(
-      () => abortingModelStream(abortController),
+      (_, options) => abortingModelStream(abortController, options),
       abortController.signal,
     )
 
@@ -1929,13 +1997,25 @@ describe('AgentRuntimeService model stream', () => {
         promptCacheMissTokens: 2,
       },
     )
+    assert.deepEqual(
+      (findStep(harness, 'model_sampling')?.output as Record<string, unknown>)
+        .debugRawResponse,
+      {
+        state: 'partial',
+        truncated: false,
+        value: { choices: [{ message: { content: '部分' } }] },
+      },
+    )
     assertNoUnfinishedSteps(harness)
   })
 
   it('Provider 完整结束后、Step 落库前 Abort 时仍保留已成立 Usage', async () => {
     const abortController = new AbortController()
     const harness = createHarness(
-      () => abortingAfterCompletionModelStream(abortController),
+      (_, options) => abortingAfterCompletionModelStream(
+        abortController,
+        options,
+      ),
       abortController.signal,
     )
 
@@ -1959,16 +2039,30 @@ describe('AgentRuntimeService model stream', () => {
       toolCallCount: 0,
       textChars: 2,
       intermediateTextChars: 0,
+      debugRequestBody: {
+        truncated: false,
+        value: { model: 'deepseek-v4-flash' },
+      },
+      debugRawResponse: {
+        state: 'complete',
+        truncated: false,
+        value: { choices: [{ message: { content: '完整' } }] },
+      },
     })
     assertNoUnfinishedSteps(harness)
   })
 
-  it('消费者在 delta 后提前 return() 时兜底收口为 ABORTED', async () => {
-    const harness = createHarness(() => toModelStream([
-      { type: 'text_delta', delta: '部' },
-      { type: 'text_delta', delta: '分' },
-      { type: 'response_completed', finishReason: 'stop' },
-    ]))
+  it('消费者在 delta 后提前 return() 时兜底收口为 ABORTED 并持久化 partial capture', async () => {
+    const warnings: unknown[] = []
+    const harness = createHarness((_, options) =>
+      capturedTextModelStream(options))
+
+    Object.defineProperty(harness.service, 'logger', {
+      value: {
+        error: () => {},
+        warn: (warning: unknown) => warnings.push(warning),
+      },
+    })
     const generator = harness.run()
 
     const first = await generator.next()
@@ -1987,6 +2081,85 @@ describe('AgentRuntimeService model stream', () => {
     assert.deepEqual(harness.recorder.failedRunIds, [])
     // 兜底收口必须同时取消在途模型请求，否则 provider 流会继续生成计费 token。
     assert.equal(harness.llmCalls[0]?.options?.signal?.aborted, true)
+    assert.deepEqual(
+      (findStep(harness, 'model_sampling')?.output as Record<string, unknown>)
+        .debugRawResponse,
+      {
+        state: 'partial',
+        truncated: false,
+        value: {
+          id: 'chunk-1',
+          object: 'chat.completion',
+          created: 1_756_000_000,
+          model: 'deepseek-v4-flash',
+          choices: [{
+            index: 0,
+            finish_reason: null,
+            message: { role: 'assistant', content: '部' },
+          }],
+        },
+      },
+    )
+    assert.deepEqual(warnings, [{
+      event: 'model_sampling_debug_capture_closed',
+      runId: 'run-1',
+      samplingAttemptId: 'run-1:sampling-1',
+      termination: 'consumer_return',
+      captureState: 'partial',
+      lastModelEvent: 'text_delta',
+      textChars: 1,
+      toolCallCount: 0,
+    }])
+    assert.equal(findStep(harness, 'model_sampling')?.errorMessage, null)
+    assertNoUnfinishedSteps(harness)
+  })
+
+  it('捕获未开启时消费者 return() 保持既有 Step 输出', async () => {
+    const harness = createHarness(() => toModelStream([
+      { type: 'text_delta', delta: '部' },
+      { type: 'text_delta', delta: '分' },
+      { type: 'response_completed', finishReason: 'stop' },
+    ]))
+    const generator = harness.run()
+
+    await generator.next()
+    await generator.next()
+    await generator.return(undefined)
+
+    assert.equal(findStep(harness, 'model_sampling')?.output, null)
+    assert.equal(findStep(harness, 'model_sampling')?.status, AgentStepStatus.ABORTED)
+    assert.equal(findStep(harness, 'model_sampling')?.errorMessage, null)
+    assertNoUnfinishedSteps(harness)
+  })
+
+  it('Abort 在已缓冲 delta 返回后生效时先关闭 iterator 再保存 partial capture', async () => {
+    const abortController = new AbortController()
+    const harness = createHarness(
+      (_, options) => abortingBeforeYieldModelStream(
+        abortController,
+        options,
+      ),
+      abortController.signal,
+    )
+
+    const events = await collectEvents(harness.run())
+    const samplingStep = findStep(harness, 'model_sampling')
+
+    assert.deepEqual(
+      events.map(event => event.type),
+      ['run_started', 'run_aborted'],
+    )
+    assert.equal(samplingStep?.status, AgentStepStatus.ABORTED)
+    assert.deepEqual(
+      (samplingStep?.output as Record<string, unknown>).debugRawResponse,
+      {
+        state: 'partial',
+        truncated: false,
+        value: { choices: [{ message: { content: '已缓冲' } }] },
+      },
+    )
+    assert.equal(harness.assistantMessage()?.content, '')
+    assert.equal(harness.toolInvocations.length, 0)
     assertNoUnfinishedSteps(harness)
   })
 
@@ -2083,6 +2256,7 @@ describe('AgentRuntimeService model stream', () => {
       (_, options) => waitForAbortModelStream(
         options?.signal,
         () => abortController.abort(),
+        options,
       ),
       abortController.signal,
       async () => ({
@@ -2108,6 +2282,11 @@ describe('AgentRuntimeService model stream', () => {
     assert.deepEqual(harness.recorder.failedRunIds, ['run-1'])
     assert.deepEqual(harness.recorder.abortedRunIds, [])
     assert.equal(findStep(harness, 'model_sampling')?.status, AgentStepStatus.FAILED)
+    assert.deepEqual(
+      (findStep(harness, 'model_sampling')?.output as Record<string, unknown>)
+        .debugRawResponse,
+      { state: 'empty' },
+    )
     assertNoUnfinishedSteps(harness)
   })
 
@@ -3147,6 +3326,7 @@ class FakeAgentRunRecorderService {
     _deadline: DatabaseOperationDeadline,
     assistantMessage?: { id: string, content: string },
     failedStep?: { id: string, errorMessage: string, output?: unknown },
+    metadataStep?: { id: string, output: unknown },
   ): Promise<void> {
     if (this.failRunDelayMs > 0) {
       await new Promise(resolve => setTimeout(resolve, this.failRunDelayMs))
@@ -3154,6 +3334,12 @@ class FakeAgentRunRecorderService {
     this.closeMessage(assistantMessage, MessageStatus.FAILED)
     if (failedStep) {
       this.transitionStep(failedStep.id, AgentStepStatus.FAILED, failedStep)
+    }
+    if (metadataStep && metadataStep.id !== failedStep?.id) {
+      this.transitionStep(metadataStep.id, AgentStepStatus.FAILED, {
+        errorMessage,
+        output: metadataStep.output,
+      })
     }
     this.closeUnfinishedSteps(runId, AgentStepStatus.FAILED, errorMessage)
     this.failedRunIds.push(runId)
@@ -3164,6 +3350,7 @@ class FakeAgentRunRecorderService {
     _deadline: DatabaseOperationDeadline,
     assistantMessage?: { id: string, content: string },
     abortedStep?: { id: string, errorMessage: string, output?: unknown },
+    metadataStep?: { id: string, output: unknown },
   ): Promise<void> {
     this.closeMessage(assistantMessage, MessageStatus.ABORTED)
     if (abortedStep) {
@@ -3172,6 +3359,11 @@ class FakeAgentRunRecorderService {
         AgentStepStatus.ABORTED,
         abortedStep,
       )
+    }
+    if (metadataStep && metadataStep.id !== abortedStep?.id) {
+      this.transitionStep(metadataStep.id, AgentStepStatus.ABORTED, {
+        output: metadataStep.output,
+      })
     }
     this.closeUnfinishedSteps(runId, AgentStepStatus.ABORTED)
     this.abortedRunIds.push(runId)
@@ -3283,6 +3475,72 @@ async function* toModelStream(
   yield* events
 }
 
+function capturedLateToolCallModelStream(
+  options: ChatStreamOptions | undefined,
+  content: string,
+): AsyncGenerator<ModelStreamEvent> {
+  options?.debugCapture?.onRequest({ model: 'deepseek-v4-flash' })
+
+  return adaptOpenAICompatibleStream(teeRawResponseCapture(
+    toProviderStream([
+      providerChunk({ content }),
+      providerChunk({
+        reasoning_content: 'DO_NOT_PERSIST_REASONING',
+        tool_calls: [{
+          index: 0,
+          id: 'call-1',
+          type: 'function',
+          function: {
+            name: 'search_articles',
+            arguments: '{"query":"seo"}',
+          },
+        }],
+      } as ChatCompletionChunk.Choice.Delta),
+      providerChunk({}, 'tool_calls'),
+    ]),
+    capture => options?.debugCapture?.onResponse(capture),
+  ))
+}
+
+function capturedTextModelStream(
+  options: ChatStreamOptions | undefined,
+): AsyncGenerator<ModelStreamEvent> {
+  options?.debugCapture?.onRequest({ model: 'deepseek-v4-flash' })
+
+  return adaptOpenAICompatibleStream(teeRawResponseCapture(
+    toProviderStream([
+      providerChunk({ content: '部' }),
+      providerChunk({ content: '分' }),
+      providerChunk({}, 'stop'),
+    ]),
+    capture => options?.debugCapture?.onResponse(capture),
+  ))
+}
+
+function providerChunk(
+  delta: ChatCompletionChunk.Choice.Delta,
+  finishReason: ChatCompletionChunk.Choice['finish_reason'] = null,
+): ChatCompletionChunk {
+  return {
+    id: 'chunk-1',
+    object: 'chat.completion.chunk',
+    created: 1_756_000_000,
+    model: 'deepseek-v4-flash',
+    choices: [{
+      index: 0,
+      delta,
+      finish_reason: finishReason,
+      logprobs: null,
+    }],
+  }
+}
+
+async function* toProviderStream(
+  chunks: ChatCompletionChunk[],
+): AsyncGenerator<ChatCompletionChunk> {
+  yield* chunks
+}
+
 async function* delayedCompletionModelStream(
   content: string,
   completionGate: Promise<void>,
@@ -3310,40 +3568,89 @@ async function* failingModelStream(): AsyncGenerator<ModelStreamEvent> {
 
 async function* abortingModelStream(
   abortController: AbortController,
+  options: ChatStreamOptions | undefined,
 ): AsyncGenerator<ModelStreamEvent> {
-  yield { type: 'text_delta', delta: '部分' }
-  yield {
-    type: 'usage',
-    usage: {
-      inputTokens: 7,
-      outputTokens: 3,
-      totalTokens: 10,
-      reasoningTokens: 2,
-      promptCacheHitTokens: 5,
-      promptCacheMissTokens: 2,
-    },
+  options?.debugCapture?.onRequest({ model: 'deepseek-v4-flash' })
+
+  try {
+    yield { type: 'text_delta', delta: '部分' }
+    yield {
+      type: 'usage',
+      usage: {
+        inputTokens: 7,
+        outputTokens: 3,
+        totalTokens: 10,
+        reasoningTokens: 2,
+        promptCacheHitTokens: 5,
+        promptCacheMissTokens: 2,
+      },
+    }
+    abortController.abort()
+    throw new Error('aborted')
   }
-  abortController.abort()
-  throw new Error('aborted')
+  finally {
+    options?.debugCapture?.onResponse({
+      state: 'partial',
+      lastEvent: 'text_delta',
+      textChars: 2,
+      toolCallCount: 0,
+      rawResponse: { choices: [{ message: { content: '部分' } }] },
+    })
+  }
+}
+
+async function* abortingBeforeYieldModelStream(
+  abortController: AbortController,
+  options: ChatStreamOptions | undefined,
+): AsyncGenerator<ModelStreamEvent> {
+  options?.debugCapture?.onRequest({ model: 'deepseek-v4-flash' })
+
+  try {
+    abortController.abort()
+    yield { type: 'text_delta', delta: '已缓冲' }
+  }
+  finally {
+    options?.debugCapture?.onResponse({
+      state: 'partial',
+      lastEvent: 'text_delta',
+      textChars: 3,
+      toolCallCount: 0,
+      rawResponse: { choices: [{ message: { content: '已缓冲' } }] },
+    })
+  }
 }
 
 async function* abortingAfterCompletionModelStream(
   abortController: AbortController,
+  options: ChatStreamOptions | undefined,
 ): AsyncGenerator<ModelStreamEvent> {
-  yield { type: 'text_delta', delta: '完整' }
-  yield {
-    type: 'usage',
-    usage: {
-      inputTokens: 7,
-      outputTokens: 3,
-      totalTokens: 10,
-      reasoningTokens: 2,
-      promptCacheHitTokens: 5,
-      promptCacheMissTokens: 2,
-    },
+  options?.debugCapture?.onRequest({ model: 'deepseek-v4-flash' })
+
+  try {
+    yield { type: 'text_delta', delta: '完整' }
+    yield {
+      type: 'usage',
+      usage: {
+        inputTokens: 7,
+        outputTokens: 3,
+        totalTokens: 10,
+        reasoningTokens: 2,
+        promptCacheHitTokens: 5,
+        promptCacheMissTokens: 2,
+      },
+    }
+    yield { type: 'response_completed', finishReason: 'stop' }
+    abortController.abort()
   }
-  yield { type: 'response_completed', finishReason: 'stop' }
-  abortController.abort()
+  finally {
+    options?.debugCapture?.onResponse({
+      state: 'complete',
+      lastEvent: 'finish_reason',
+      textChars: 2,
+      toolCallCount: 0,
+      rawResponse: { choices: [{ message: { content: '完整' } }] },
+    })
+  }
 }
 
 async function* abortingWithoutDeltaModelStream(
@@ -3357,11 +3664,24 @@ async function* abortingWithoutDeltaModelStream(
 async function* waitForAbortModelStream(
   signal: AbortSignal | undefined,
   afterAbort?: () => void,
+  options?: ChatStreamOptions,
 ): AsyncGenerator<ModelStreamEvent> {
   assert.ok(signal)
-  await waitForAbort(signal)
-  afterAbort?.()
-  signal.throwIfAborted()
+  options?.debugCapture?.onRequest({ model: 'deepseek-v4-flash' })
+
+  try {
+    await waitForAbort(signal)
+    afterAbort?.()
+    signal.throwIfAborted()
+  }
+  finally {
+    options?.debugCapture?.onResponse({
+      state: 'empty',
+      lastEvent: null,
+      textChars: 0,
+      toolCallCount: 0,
+    })
+  }
 }
 
 async function waitForAbort(signal: AbortSignal): Promise<void> {

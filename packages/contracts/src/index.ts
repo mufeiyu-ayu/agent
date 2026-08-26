@@ -19,6 +19,7 @@ export type {
   AdminContextInspectorOutcome,
   AdminContextObservationSummary,
   AdminDebugModelIOCapture,
+  AdminDebugModelResponseCapture,
   AdminGenericStep,
   AdminGroundedAnswerRejectionCode,
   AdminGroundedCitationCorrelation,

@@ -11,6 +11,9 @@ import type {
   ChatStreamOptions,
   DeepSeekBalanceResponse,
   DeepSeekModelsResponse,
+  ModelIODebugCapture,
+  ModelIODebugCaptureSide,
+  ModelRawResponseCapture,
 } from '../llm.types.js'
 import type { ModelInputItem } from '../model-input.types.js'
 import type { ModelStreamEvent } from '../model-stream.types.js'
@@ -118,6 +121,29 @@ export class OpenAICompatibleClient {
     const debugCapture = this.runtimeConfigService.value.captureModelIO
       ? options?.debugCapture
       : undefined
+    let requestStarted = false
+    let responseCaptureCommitted = false
+    const notifyCaptureError = (side: ModelIODebugCaptureSide): void => {
+      try {
+        debugCapture?.onCaptureError?.(side)
+      }
+      catch {
+        // debug 旁路连错误通知都不得改变模型调用。
+      }
+    }
+    const commitResponseCapture = (capture: ModelRawResponseCapture): void => {
+      if (!debugCapture || responseCaptureCommitted)
+        return
+
+      responseCaptureCommitted = true
+
+      try {
+        debugCapture.onResponse(capture)
+      }
+      catch {
+        notifyCaptureError('response')
+      }
+    }
 
     try {
       const requestParams = {
@@ -132,8 +158,9 @@ export class OpenAICompatibleClient {
         },
       }
 
-      debugCapture?.onRequest(requestParams)
+      safelyCaptureRequest(debugCapture, requestParams, notifyCaptureError)
 
+      requestStarted = true
       const stream = await client.chat.completions.create(
         requestParams as unknown as ChatCompletionCreateParamsStreaming,
         requestOptions,
@@ -141,11 +168,23 @@ export class OpenAICompatibleClient {
 
       yield* adaptOpenAICompatibleStream(
         debugCapture
-          ? teeRawResponseCapture(stream, debugCapture.onResponse)
+          ? teeRawResponseCapture(
+              stream,
+              commitResponseCapture,
+              () => notifyCaptureError('response'),
+            )
           : stream,
       )
     }
     catch (cause) {
+      if (requestStarted && debugCapture && !responseCaptureCommitted) {
+        commitResponseCapture({
+          state: 'empty',
+          lastEvent: null,
+          textChars: 0,
+          toolCallCount: 0,
+        })
+      }
       throw this.toLLMError(cause)
     }
   }
@@ -234,6 +273,22 @@ export class OpenAICompatibleClient {
     const message = error.message ? `: ${error.message}` : ''
 
     return `LLM API ${status} 错误${message}`
+  }
+}
+
+function safelyCaptureRequest(
+  debugCapture: ModelIODebugCapture | undefined,
+  requestParams: unknown,
+  onCaptureError: (side: ModelIODebugCaptureSide) => void,
+): void {
+  if (!debugCapture)
+    return
+
+  try {
+    debugCapture.onRequest(requestParams)
+  }
+  catch {
+    onCaptureError('request')
   }
 }
 

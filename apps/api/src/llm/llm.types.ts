@@ -32,6 +32,27 @@ export interface ChatOptions {
   responseFormat?: { type: 'json_object' } | { type: 'text' }
 }
 
+export type ModelResponseCaptureState = 'complete' | 'partial' | 'empty'
+
+export type ModelResponseCaptureEvent
+  = | 'text_delta'
+    | 'reasoning_delta'
+    | 'tool_call_delta'
+    | 'finish_reason'
+    | 'usage'
+
+/** Provider 原始响应的旁路聚合结果；安全计数仅供关联日志使用。 */
+export interface ModelRawResponseCapture {
+  state: ModelResponseCaptureState
+  lastEvent: ModelResponseCaptureEvent | null
+  textChars: number
+  toolCallCount: number
+  /** empty 时刻意缺失，避免伪造 choices / finish reason / usage。 */
+  rawResponse?: unknown
+}
+
+export type ModelIODebugCaptureSide = 'request' | 'response'
+
 /**
  * debug 模型 I/O 捕获回调。
  *
@@ -42,8 +63,10 @@ export interface ChatOptions {
 export interface ModelIODebugCapture {
   /** 请求真正发出前回调，body 为实际请求体（不含凭据）。 */
   onRequest: (requestBody: unknown) => void
-  /** 模型流正常结束后回调，raw 为流式组装出的完整原始响应。 */
-  onResponse: (rawResponse: unknown) => void
+  /** 模型流关闭时回调；明确区分完整、部分和未收到 chunk。 */
+  onResponse: (capture: ModelRawResponseCapture) => void
+  /** 捕获回调自身失败时的安全旁路通知，不携带原始 payload。 */
+  onCaptureError?: (side: ModelIODebugCaptureSide) => void
 }
 
 /** chatStream() 方法的可选参数。 */

@@ -1,5 +1,8 @@
 <script setup lang="ts">
-import type { AdminDebugModelIOCapture } from '@agent/contracts'
+import type {
+  AdminDebugModelIOCapture,
+  AdminDebugModelResponseCapture,
+} from '@agent/contracts'
 import { Alert, Button, message } from 'ant-design-vue'
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -18,17 +21,47 @@ type JsonDataType
 
 // 旧 API 构建返回的 run 数据没有 debug 字段（undefined 而非 null），一并按未捕获处理。
 const props = defineProps<{
-  capture?: AdminDebugModelIOCapture | null
+  capture?: AdminDebugModelIOCapture | AdminDebugModelResponseCapture | null
+  responseCapture?: boolean
 }>()
 
 const { t } = useI18n()
 
-const jsonData = computed<JsonDataType>(() => (
-  props.capture && !props.capture.truncated ? props.capture.value : null
-) as JsonDataType)
+const responseState = computed(() => (
+  props.responseCapture && isResponseCapture(props.capture)
+    ? props.capture.state
+    : null
+))
+
+const jsonData = computed<JsonDataType>(() => {
+  const capture = props.capture
+
+  return (
+    capture
+    && !isEmptyResponseCapture(capture)
+    && !capture.truncated
+      ? capture.value
+      : null
+  ) as JsonDataType
+})
 
 const copyText = computed(() => {
   if (!props.capture)
+    return ''
+
+  if (props.responseCapture && isResponseCapture(props.capture)) {
+    if (props.capture.state === 'empty')
+      return JSON.stringify({ state: 'empty' }, null, 2)
+
+    return JSON.stringify({
+      state: props.capture.state,
+      ...(props.capture.truncated
+        ? { truncated: true, preview: props.capture.preview }
+        : { response: props.capture.value }),
+    }, null, 2)
+  }
+
+  if (isEmptyResponseCapture(props.capture))
     return ''
 
   return props.capture.truncated
@@ -48,6 +81,18 @@ async function copyJson() {
     message.error(t('runTrace.inspector.debugCapture.copyFailed'))
   }
 }
+
+function isResponseCapture(
+  capture: AdminDebugModelIOCapture | AdminDebugModelResponseCapture | null | undefined,
+): capture is AdminDebugModelResponseCapture {
+  return capture !== null && capture !== undefined && 'state' in capture
+}
+
+function isEmptyResponseCapture(
+  capture: AdminDebugModelIOCapture | AdminDebugModelResponseCapture,
+): capture is Extract<AdminDebugModelResponseCapture, { state: 'empty' }> {
+  return isResponseCapture(capture) && capture.state === 'empty'
+}
 </script>
 
 <template>
@@ -55,14 +100,28 @@ async function copyJson() {
     v-if="!capture"
     type="info"
     show-icon
-    :message="t('runTrace.inspector.debugCapture.empty')"
+    :message="t('runTrace.inspector.debugCapture.notCaptured')"
   />
 
   <div v-else class="debug-json-pane">
     <div class="debug-json-toolbar">
       <Alert
-        v-if="capture.truncated"
-        class="debug-json-truncated"
+        v-if="responseState === 'partial'"
+        class="debug-json-status"
+        type="warning"
+        show-icon
+        :message="t('runTrace.inspector.debugCapture.partial')"
+      />
+      <Alert
+        v-if="responseState === 'empty'"
+        class="debug-json-status"
+        type="info"
+        show-icon
+        :message="t('runTrace.inspector.debugCapture.emptyResponse')"
+      />
+      <Alert
+        v-if="!isEmptyResponseCapture(capture) && capture.truncated"
+        class="debug-json-status"
         type="warning"
         show-icon
         :message="t('runTrace.inspector.debugCapture.truncated')"
@@ -72,9 +131,12 @@ async function copyJson() {
       </Button>
     </div>
 
-    <pre v-if="capture.truncated" class="debug-json-preview">{{ capture.preview }}</pre>
+    <pre
+      v-if="!isEmptyResponseCapture(capture) && capture.truncated"
+      class="debug-json-preview"
+    >{{ capture.preview }}</pre>
     <VueJsonPretty
-      v-else
+      v-else-if="responseState !== 'empty'"
       class="debug-json-tree"
       :data="jsonData"
       :deep="4"
@@ -100,7 +162,7 @@ async function copyJson() {
   gap: 8px;
 }
 
-.debug-json-truncated {
+.debug-json-status {
   flex: 1;
 }
 

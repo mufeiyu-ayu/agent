@@ -5,6 +5,7 @@ import { describe, it } from 'node:test'
 import {
   MODEL_IO_DEBUG_CAPTURE_MAX_JSON_CHARS,
   toModelIODebugCaptureEnvelope,
+  toModelIODebugResponseCaptureEnvelope,
 } from './model-io-debug-capture.js'
 
 describe('toModelIODebugCaptureEnvelope', () => {
@@ -84,5 +85,61 @@ describe('toModelIODebugCaptureEnvelope', () => {
       },
     })
     assert.doesNotMatch(JSON.stringify(envelope), /DO_NOT_LEAK|reasoning_content/)
+  })
+})
+
+describe('toModelIODebugResponseCaptureEnvelope', () => {
+  it('保留 complete / partial 状态并沿用响应截断信封', () => {
+    assert.deepEqual(toModelIODebugResponseCaptureEnvelope({
+      state: 'partial',
+      lastEvent: 'text_delta',
+      textChars: 2,
+      toolCallCount: 0,
+      rawResponse: { choices: [{ message: { content: '部分' } }] },
+    }), {
+      state: 'partial',
+      truncated: false,
+      value: { choices: [{ message: { content: '部分' } }] },
+    })
+  })
+
+  it('empty 只记录事实，不伪造 value / preview', () => {
+    assert.deepEqual(toModelIODebugResponseCaptureEnvelope({
+      state: 'empty',
+      lastEvent: null,
+      textChars: 0,
+      toolCallCount: 0,
+    }), {
+      state: 'empty',
+    })
+  })
+
+  it('partial 超限时状态保留在截断信封外层', () => {
+    const envelope = toModelIODebugResponseCaptureEnvelope({
+      state: 'partial',
+      lastEvent: 'text_delta',
+      textChars: MODEL_IO_DEBUG_CAPTURE_MAX_JSON_CHARS + 1,
+      toolCallCount: 0,
+      rawResponse: {
+        content: 'x'.repeat(MODEL_IO_DEBUG_CAPTURE_MAX_JSON_CHARS + 1),
+      },
+    })
+
+    assert.ok(envelope)
+    assert.equal(envelope.state, 'partial')
+    assert.equal('truncated' in envelope ? envelope.truncated : null, true)
+  })
+
+  it('响应序列化失败继续安全降级', () => {
+    const circular: Record<string, unknown> = {}
+
+    circular.self = circular
+    assert.equal(toModelIODebugResponseCaptureEnvelope({
+      state: 'partial',
+      lastEvent: 'text_delta',
+      textChars: 1,
+      toolCallCount: 0,
+      rawResponse: circular,
+    }), undefined)
   })
 })
