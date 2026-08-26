@@ -94,7 +94,7 @@ git diff --check
 
 - Issue：[Issue #103](https://github.com/mufeiyu-ayu/agent/issues/103)
 - 分支：`codex/issue-103-article-chunking-layout`
-- PR：未创建
+- PR：[PR #107](https://github.com/mufeiyu-ayu/agent/pull/107)（Draft）
 - GPT 验收结论：未提供
 - 用户确认：未确认
 
