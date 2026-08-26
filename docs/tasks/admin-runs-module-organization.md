@@ -1,6 +1,6 @@
 # Admin Runs Projector 模块组织与循环依赖消除
 
-状态：**已实现、待验收 / Issue #102 / Gate READY**。
+状态：**Completed / Issue #102 / PR #106**。
 
 ## 目标
 
@@ -97,11 +97,11 @@ git diff --check
 
 - Issue：[Issue #102](https://github.com/mufeiyu-ayu/agent/issues/102)
 - 分支：`codex/issue-102-admin-run-projections`
-- PR：[PR #106](https://github.com/mufeiyu-ayu/agent/pull/106)（Draft）
-- GPT 验收结论：未提供
-- 用户确认：未确认
+- PR：[PR #106](https://github.com/mufeiyu-ayu/agent/pull/106)（验收通过，已授权转 Ready、合并与分支清理）
+- GPT 验收结论：通过（基于 head `a532c0839f`、完整 AC 映射、验证结果与两道 Codex Review）
+- 用户确认：已确认验收并授权 Ready、合并、分支清理和启动 #103
 
 ## 任务状态
 
 - 实施状态：已实现
-- 验收状态：待验收
+- 验收状态：已通过
