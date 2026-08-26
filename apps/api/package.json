@@ -26,7 +26,7 @@
     "smoke:retrieval-tool": "node --import tsx --env-file-if-exists=../../.env src/tools/retrieval/retrieve-article-context.smoke.cli.ts",
     "eval:retrieval-baseline": "tsx src/retrieval/retrieval-baseline.cli.ts",
     "eval:retrieval-quality": "node --import tsx --env-file-if-exists=../../.env src/retrieval/evaluation/article-retrieval-quality-v2.cli.ts",
-    "test:admin-runs": "pnpm build && node --test dist/admin-runs/admin-runs.controller.test.js dist/admin-runs/admin-runs.service.test.js dist/admin-runs/admin-retrieval-inspector.test.js",
+    "test:admin-runs": "pnpm build && node --test dist/admin-runs/admin-runs.controller.test.js dist/admin-runs/admin-runs.service.test.js dist/admin-runs/projection/retrieval-inspector.projector.test.js",
     "test:admin-conversations": "pnpm build && node --test dist/admin-conversations/admin-conversations.service.test.js",
     "test:admin-overview": "pnpm build && node --test dist/admin-overview/admin-overview.service.test.js",
     "test:db-reliability": "tsx --env-file-if-exists=../../.env --test src/prisma/prisma.service.reliability.test.ts",

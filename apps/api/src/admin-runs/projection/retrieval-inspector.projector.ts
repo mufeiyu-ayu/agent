@@ -18,23 +18,23 @@ import type {
   MessageGroundingOutcome,
   MessageGroundingV1,
 } from '@agent/contracts'
-import type { GroundedAnswerRejectionCode } from '../agent-runtime/grounding/grounded-answer.contract.js'
-import type { GroundedFinalizationSamplingFailure } from '../agent-runtime/grounding/grounded-answer.finalizer.js'
-import type { PersistedMessageGrounding } from '../agent-runtime/grounding/message-grounding.projector.js'
+import type { GroundedAnswerRejectionCode } from '../../agent-runtime/grounding/grounded-answer.contract.js'
+import type { GroundedFinalizationSamplingFailure } from '../../agent-runtime/grounding/grounded-answer.finalizer.js'
+import type { PersistedMessageGrounding } from '../../agent-runtime/grounding/message-grounding.projector.js'
 
-import { GROUNDED_FINALIZATION_MAX_ATTEMPTS } from '../agent-runtime/grounding/grounded-answer.finalizer.js'
-import { toOwnedMessageGroundingV1 } from '../agent-runtime/grounding/message-grounding.projector.js'
-import { AGENT_STEP_TYPES } from '../agent-runtime/lifecycle/agent-run-recorder.service.js'
-import { getArticleDetailDefinition } from '../tools/articles/get-article-detail.tool.js'
-import { searchArticlesDefinition } from '../tools/articles/search-articles.tool.js'
-import { retrieveArticleContextDefinition } from '../tools/retrieval/retrieve-article-context.tool.js'
+import { GROUNDED_FINALIZATION_MAX_ATTEMPTS } from '../../agent-runtime/grounding/grounded-answer.finalizer.js'
+import { toOwnedMessageGroundingV1 } from '../../agent-runtime/grounding/message-grounding.projector.js'
+import { AGENT_STEP_TYPES } from '../../agent-runtime/lifecycle/agent-run-recorder.service.js'
+import { getArticleDetailDefinition } from '../../tools/articles/get-article-detail.tool.js'
+import { searchArticlesDefinition } from '../../tools/articles/search-articles.tool.js'
+import { retrieveArticleContextDefinition } from '../../tools/retrieval/retrieve-article-context.tool.js'
 import {
   elapsedMs,
   readAllowedString,
   readBoolean,
   readNonNegativeInteger,
   readObject,
-} from './admin-run.projector.js'
+} from './safe-readers.js'
 
 /**
  * Run 级 Retrieval / Grounding 审计投影。

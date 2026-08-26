@@ -6,7 +6,10 @@ import type {
 } from '@agent/contracts'
 import { Inject, Injectable, Logger } from '@nestjs/common'
 
-import { readNonNegativeInteger, readObject } from '../admin-runs/admin-run.projector.js'
+import {
+  readNonNegativeInteger,
+  readObject,
+} from '../admin-runs/projection/safe-readers.js'
 import { LLMRuntimeConfigService } from '../llm/llm-runtime-config.js'
 import { PrismaService } from '../prisma/prisma.service.js'
 

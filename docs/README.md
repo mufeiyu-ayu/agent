@@ -8,7 +8,7 @@
 阶段 1-8：Completed
 Phase 8：Completed
 Active Agent Task：无
-Next：Admin Runs 模块组织 #102（Gate PENDING）
+Next Agent Task：Article Chunking 模块组织 #103（Gate PENDING）
 DeepSeek 思考强度与 Usage（#94）：Completed
 失败 Sampling 部分响应可观测性（#98）：Completed
 Minimal Compaction：Gated
@@ -26,7 +26,7 @@ Phase 8 已完成：
 - Task 3B：Web Grounding 状态、Sources disclosure、Source cards 与 Chromium，#60 / #61 / `572ad206`；
 - Task 3C：Admin Retrieval / Finalization / Citation Inspector，#62 / #63 / `20f838fb`。
 
-当前仍处于 Phase 8 源码阅读阶段；独立横向任务 Issue #101（[Agent Runtime 模块组织](./tasks/agent-runtime-module-organization.md)）已通过技术验收和用户确认，Issue #102 为 Next / Gate PENDING，#103-#104 等待前序任务收口；Issue #98（[失败 Sampling 部分响应可观测性](./tasks/failed-sampling-debug-capture.md)）和 Issue #94（[DeepSeek 思考强度与 Usage](./tasks/deepseek-reasoning-usage.md)）均已验收合并。下一阶段学习内容暂不定义，Phase 9 尚未定案。
+当前仍处于 Phase 8 源码阅读阶段；独立横向任务 Issue #101（[Agent Runtime 模块组织](./tasks/agent-runtime-module-organization.md)）已验收合并，Issue #102（[Admin Runs 模块组织](./tasks/admin-runs-module-organization.md)）已验收并获合并授权，#103 为 Next / Gate PENDING，#104 等待前序任务收口；Issue #98（[失败 Sampling 部分响应可观测性](./tasks/failed-sampling-debug-capture.md)）和 Issue #94（[DeepSeek 思考强度与 Usage](./tasks/deepseek-reasoning-usage.md)）均已验收合并。下一阶段学习内容暂不定义，Phase 9 尚未定案。
 
 ## 文档入口
 

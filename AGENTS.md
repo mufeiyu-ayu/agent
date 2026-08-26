@@ -49,7 +49,7 @@ Codex 应作为 Agent 应用开发学习搭档，负责按正式 Issue 实现、
 
 `docs/development-task-plan.md` 只保留为旧入口兼容，不再写入新任务。
 
-当前 Agent 主线状态：Phase 1-8 已 Completed 并归档（Phase 8 Task 0、1、2A、2B、3A、3B、3C 全部 Completed）；失败 Sampling 部分响应可观测性 #98 与 Backend 模块组织 #101 已验收；#102 Admin Runs 模块组织为 Next / Gate PENDING，#103-#104 等待前序任务收口；当前阶段仍为 Phase 8 源码阅读，Phase 9 未定案；Minimal Compaction 继续保持 Gated；Admin Task 4 保持 Planned。
+当前 Agent 主线状态：Phase 1-8 已 Completed 并归档（Phase 8 Task 0、1、2A、2B、3A、3B、3C 全部 Completed）；失败 Sampling 部分响应可观测性 #98 与 Backend 模块组织 #101 已验收合并；#102 Admin Runs 模块组织已验收并获合并授权，#103 Article Chunking 为 Next / Gate PENDING，#104 等待前序任务收口；当前阶段仍为 Phase 8 源码阅读，Phase 9 未定案；Minimal Compaction 继续保持 Gated；Admin Task 4 保持 Planned。
 
 ## 4. 关键目录与任务入口
 

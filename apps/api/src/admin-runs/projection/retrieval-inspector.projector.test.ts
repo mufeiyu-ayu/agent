@@ -8,12 +8,12 @@ import assert from 'node:assert/strict'
 // eslint-disable-next-line test/no-import-node-test
 import { describe, it } from 'node:test'
 
-import { GROUNDED_FINALIZATION_MAX_ATTEMPTS } from '../agent-runtime/grounding/grounded-answer.finalizer.js'
+import { GROUNDED_FINALIZATION_MAX_ATTEMPTS } from '../../agent-runtime/grounding/grounded-answer.finalizer.js'
+import { projectAdminRunDetail } from './admin-run.projector.js'
 import {
   ADMIN_RETRIEVAL_MAX_CALLS,
   ADMIN_RETRIEVAL_MAX_REFS_PER_CALL,
-} from './admin-retrieval-inspector.projector.js'
-import { projectAdminRunDetail } from './admin-run.projector.js'
+} from './retrieval-inspector.projector.js'
 
 type RunStatus = 'RUNNING' | 'COMPLETED' | 'FAILED' | 'ABORTED'
 type StepStatus = 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'ABORTED'
