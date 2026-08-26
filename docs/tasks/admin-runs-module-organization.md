@@ -96,8 +96,8 @@ git diff --check
 ## GitHub 交付记录
 
 - Issue：[Issue #102](https://github.com/mufeiyu-ayu/agent/issues/102)
-- 分支：`codex/issue-102-admin-run-projections`
-- PR：[PR #106](https://github.com/mufeiyu-ayu/agent/pull/106)（验收通过，已授权转 Ready、合并与分支清理）
+- 分支：`codex/issue-102-admin-run-projections`（远程与本地均已删除）
+- PR：[PR #106](https://github.com/mufeiyu-ayu/agent/pull/106)，merge `638c70e`
 - GPT 验收结论：通过（基于 head `a532c0839f`、完整 AC 映射、验证结果与两道 Codex Review）
 - 用户确认：已确认验收并授权 Ready、合并、分支清理和启动 #103
 
