@@ -1,14 +1,14 @@
 import type { DeepSeekReasoningEffort } from '@agent/contracts'
-import type { ResolvedChatRequestConfig } from '../llm/llm-runtime-config.js'
-import type { ModelToolSpec } from '../llm/model-tool-spec.types.js'
-import type { ToolDefinition } from '../tools/core/tool.types.js'
+import type { ResolvedChatRequestConfig } from '../../llm/llm-runtime-config.js'
+import type { ModelToolSpec } from '../../llm/model-tool-spec.types.js'
+import type { ToolDefinition } from '../../tools/core/tool.types.js'
 import type { AgentRuntimePolicy } from './agent-runtime.policy.js'
 
 import { Inject, Injectable, Logger } from '@nestjs/common'
 
-import { LLMService } from '../llm/llm.service.js'
-import { toModelToolSpec } from '../tools/core/model-tool-spec.mapper.js'
-import { ToolRegistryService } from '../tools/core/tool-registry.service.js'
+import { LLMService } from '../../llm/llm.service.js'
+import { toModelToolSpec } from '../../tools/core/model-tool-spec.mapper.js'
+import { ToolRegistryService } from '../../tools/core/tool-registry.service.js'
 import { AgentRuntimePolicyService } from './agent-runtime.policy.js'
 
 /** 单次 Agent Run 允许暴露给模型的 Tool allowlist；顺序即暴露顺序。 */

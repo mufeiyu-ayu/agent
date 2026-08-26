@@ -13,21 +13,21 @@ import type {
   AgentRuntimeEvent,
   RunTurnStreamInput,
 } from './agent-runtime.types.js'
+import type { HistoryCursor } from './context/initial-context-selection.js'
+import type { SamplingContextPlanSummary } from './context/sampling-context-planner.js'
 import type { GroundedFinalizationAttemptSummary } from './grounding/grounded-answer.finalizer.js'
-import type { HistoryCursor } from './initial-context-selection.js'
-import type { DebugModelIOCaptured } from './model-io-debug-capture.js'
+import type { RunCancellation } from './lifecycle/run-cancellation.js'
+import type { DebugModelIOCaptured } from './sampling/model-io-debug-capture.js'
+
 import type {
   ModelSamplingSummary,
   SamplingDecision,
-} from './model-sampling-decision.js'
-import type { SamplingContextPlanSummary } from './sampling-context-planner.js'
-
+} from './sampling/model-sampling-decision.js'
 import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common'
 import { MessageRole, MessageStatus } from '../generated/prisma/client.js'
 import { LLMService } from '../llm/llm.service.js'
 import {
   DatabaseCommitOutcomeUnknownError,
-  DatabaseOperationDeadlineExceededError,
   PrismaService,
 } from '../prisma/prisma.service.js'
 import { ToolInvocationService } from '../tools/core/tool-invocation.service.js'
@@ -36,11 +36,6 @@ import {
   TOOL_OBSERVATION_HARD_MAX_CHARS,
 } from '../tools/core/tool-observation.js'
 import { normalizeToolStepSummary } from '../tools/core/tool-step-summary.js'
-import { AgentRunConfigurationService } from './agent-run-configuration.service.js'
-import {
-  AGENT_STEP_TYPES,
-  AgentRunRecorderService,
-} from './agent-run-recorder.service.js'
 import {
   AgentLoopLimitExceededError,
   AgentRunDeadlineExceededError,
@@ -49,6 +44,15 @@ import {
   ContextTokenEstimationError,
   ModelSamplingIncompleteError,
 } from './agent-runtime.errors.js'
+import { AgentRunConfigurationService } from './configuration/agent-run-configuration.service.js'
+import {
+  InitialContextSelectionService,
+} from './context/initial-context-selection.js'
+import { ModelContext } from './context/model-context.js'
+import {
+  SamplingContextBudgetExceededError,
+  SamplingContextPlanner,
+} from './context/sampling-context-planner.js'
 import { submitGroundedAnswerToolSpec } from './grounding/grounded-answer.contract.js'
 import {
   GroundedFinalizationFailedError,
@@ -59,36 +63,19 @@ import { toMessageGroundingV1 } from './grounding/message-grounding.projector.js
 import { RunEvidenceRegistry } from './grounding/run-evidence-registry.js'
 import { toValidatedAnswerChunks } from './grounding/validated-answer-replay.js'
 import {
-  InitialContextSelectionService,
-} from './initial-context-selection.js'
-import { ModelContext } from './model-context.js'
+  AGENT_STEP_TYPES,
+  AgentRunRecorderService,
+} from './lifecycle/agent-run-recorder.service.js'
+import {
+  claimRunTermination,
+  createRunCancellation,
+  createTerminalizationDeadline,
+} from './lifecycle/run-cancellation.js'
 import {
   toModelIODebugCaptureEnvelope,
   toModelIODebugResponseCaptureEnvelope,
-} from './model-io-debug-capture.js'
-import { streamModelSampling } from './model-sampling-decision.js'
-import {
-  SamplingContextBudgetExceededError,
-  SamplingContextPlanner,
-} from './sampling-context-planner.js'
-
-const TERMINALIZATION_DEADLINE_MS = 5_000
-
-type RunTerminationSource = 'completed' | 'completing' | 'deadline' | 'failure' | 'user'
-
-interface RunCancellation {
-  databaseDeadline: DatabaseOperationDeadline
-  reason?: unknown
-  signal: AbortSignal
-  source?: RunTerminationSource
-  claimCompletion: () => void
-  claimCompleted: () => void
-  claimCompletionFailure: (source: 'deadline' | 'failure', reason: unknown) => void
-  claimDeadline: (reason?: AgentRunDeadlineExceededError) => void
-  claimFailure: (reason: unknown) => void
-  throwIfUnavailable: () => void
-  dispose: () => void
-}
+} from './sampling/model-io-debug-capture.js'
+import { streamModelSampling } from './sampling/model-sampling-decision.js'
 
 interface TerminalStepFailure {
   id: string
@@ -1304,138 +1291,5 @@ function toStrictlyEarlierMessageWhere(bound: HistoryCursor) {
         id: { lt: bound.id },
       },
     ],
-  }
-}
-
-function createRunCancellation(
-  userSignal: AbortSignal | undefined,
-  deadlineMs: number,
-): RunCancellation {
-  const controller = new AbortController()
-  const deadlineAt = Date.now() + deadlineMs
-  let cancellation!: RunCancellation
-  let deadlineId!: NodeJS.Timeout
-  let pendingTermination: {
-    source: 'deadline' | 'user'
-    reason: unknown
-  } | undefined
-  const deadlineError = (): AgentRunDeadlineExceededError => (
-    new AgentRunDeadlineExceededError()
-  )
-  const claim = (
-    source: 'deadline' | 'failure' | 'user',
-    reason: unknown,
-  ): void => {
-    if (cancellation.source === 'completing') {
-      if (
-        !pendingTermination
-        && (source === 'deadline' || source === 'user')
-      ) {
-        pendingTermination = { source, reason }
-      }
-      return
-    }
-
-    if (cancellation.source)
-      return
-
-    cancellation.source = source
-    cancellation.reason = reason
-    controller.abort(reason)
-  }
-  const handleUserAbort = (): void => claim('user', userSignal?.reason)
-
-  cancellation = {
-    databaseDeadline: {
-      deadlineAt,
-      signal: controller.signal,
-      createTimeoutError: () => new DatabaseOperationDeadlineExceededError(),
-    },
-    signal: controller.signal,
-    claimCompletion: () => {
-      cancellation.throwIfUnavailable()
-      cancellation.source = 'completing'
-    },
-    claimCompleted: () => {
-      if (cancellation.source !== 'completing')
-        throw new Error('Agent Run 尚未取得 completion commit ownership')
-      cancellation.source = 'completed'
-      pendingTermination = undefined
-    },
-    claimCompletionFailure: (source, reason) => {
-      if (cancellation.source !== 'completing') {
-        claim(source, reason)
-        return
-      }
-
-      const firstCause = pendingTermination ?? { source, reason }
-      cancellation.source = firstCause.source
-      cancellation.reason = firstCause.reason
-      controller.abort(firstCause.reason)
-      pendingTermination = undefined
-    },
-    claimDeadline: (reason = deadlineError()) => {
-      claim('deadline', reason)
-    },
-    claimFailure: (reason) => {
-      claim('failure', reason)
-    },
-    throwIfUnavailable: () => {
-      if (!cancellation.source && Date.now() >= deadlineAt)
-        cancellation.claimDeadline()
-
-      if (
-        cancellation.source === 'user'
-        || cancellation.source === 'deadline'
-        || cancellation.source === 'failure'
-      ) {
-        controller.signal.throwIfAborted()
-      }
-    },
-    dispose: () => {
-      clearTimeout(deadlineId)
-      userSignal?.removeEventListener('abort', handleUserAbort)
-    },
-  }
-  deadlineId = setTimeout(
-    () => claim('deadline', deadlineError()),
-    deadlineMs,
-  )
-
-  if (userSignal?.aborted)
-    handleUserAbort()
-  else
-    userSignal?.addEventListener('abort', handleUserAbort, { once: true })
-
-  return cancellation
-}
-
-function claimRunTermination(
-  cancellation: RunCancellation,
-  error: unknown,
-): void {
-  if (error instanceof DatabaseOperationDeadlineExceededError) {
-    if (cancellation.source === 'completing') {
-      cancellation.claimCompletionFailure(
-        'deadline',
-        new AgentRunDeadlineExceededError(),
-      )
-    }
-    else {
-      cancellation.claimDeadline()
-    }
-    return
-  }
-
-  if (cancellation.source === 'completing')
-    cancellation.claimCompletionFailure('failure', error)
-  else
-    cancellation.claimFailure(error)
-}
-
-function createTerminalizationDeadline(): DatabaseOperationDeadline {
-  return {
-    deadlineAt: Date.now() + TERMINALIZATION_DEADLINE_MS,
-    createTimeoutError: () => new Error('Agent Run 终态收口超过数据库等待上限。'),
   }
 }

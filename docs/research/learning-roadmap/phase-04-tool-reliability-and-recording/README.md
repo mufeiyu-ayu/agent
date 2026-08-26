@@ -335,7 +335,7 @@ Phase 04 **不实现自动 tool retry**。原因是单进程 `catch -> 再执行
 
 ### 当前项目
 
-- `apps/api/src/agent-runtime/agent-run-recorder.service.ts`
+- `apps/api/src/agent-runtime/lifecycle/agent-run-recorder.service.ts`
 - `apps/api/src/agent-runtime/agent-runtime.service.ts`
 - `apps/api/src/agent-runtime/agent-runtime.types.ts`
 - `prisma/schema.prisma`

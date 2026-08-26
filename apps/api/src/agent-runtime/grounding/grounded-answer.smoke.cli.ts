@@ -25,12 +25,12 @@ import {
   retrieveArticleContextDefinition,
   RetrieveArticleContextTool,
 } from '../../tools/retrieval/retrieve-article-context.tool.js'
-import { AgentRunConfigurationService } from '../agent-run-configuration.service.js'
-import { AgentRunRecorderService } from '../agent-run-recorder.service.js'
 import { AgentRuntimeService } from '../agent-runtime.service.js'
-import { DeepSeekV4TokenEstimator } from '../deepseek-v4-token-estimator.js'
-import { InitialContextSelectionService } from '../initial-context-selection.js'
-import { SamplingContextPlanner } from '../sampling-context-planner.js'
+import { AgentRunConfigurationService } from '../configuration/agent-run-configuration.service.js'
+import { DeepSeekV4TokenEstimator } from '../context/deepseek-v4-token-estimator.js'
+import { InitialContextSelectionService } from '../context/initial-context-selection.js'
+import { SamplingContextPlanner } from '../context/sampling-context-planner.js'
+import { AgentRunRecorderService } from '../lifecycle/agent-run-recorder.service.js'
 
 /**
  * Grounded Answer 端到端 smoke。

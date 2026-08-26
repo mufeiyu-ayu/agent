@@ -186,7 +186,7 @@ abort case 不能直接完整 collect 一个永不结束的 fake；应让 fake �
 ### 被测源码
 
 - `apps/api/src/agent-runtime/agent-runtime.service.ts`
-- `apps/api/src/agent-runtime/agent-run-recorder.service.ts`
+- `apps/api/src/agent-runtime/lifecycle/agent-run-recorder.service.ts`
 - `apps/api/src/agent-runtime/agent-runtime.types.ts`
 - `apps/api/src/seo/seo-chat-stream-event.mapper.ts`
 - `apps/api/src/llm/llm.service.ts`

@@ -25,8 +25,8 @@ import type {
 } from '@agent/contracts'
 import type { PersistedMessageGrounding } from '../agent-runtime/grounding/message-grounding.projector.js'
 
-import { AGENT_STEP_TYPES } from '../agent-runtime/agent-run-recorder.service.js'
 import { GROUNDED_FINALIZATION_MAX_ATTEMPTS } from '../agent-runtime/grounding/grounded-answer.finalizer.js'
+import { AGENT_STEP_TYPES } from '../agent-runtime/lifecycle/agent-run-recorder.service.js'
 import {
   projectAdminRetrievalInspector,
   projectGroundedFinalizationStep,

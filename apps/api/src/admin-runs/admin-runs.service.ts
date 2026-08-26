@@ -12,7 +12,7 @@ import {
   NotFoundException,
 } from '@nestjs/common'
 
-import { AGENT_STEP_TYPES } from '../agent-runtime/agent-run-recorder.service.js'
+import { AGENT_STEP_TYPES } from '../agent-runtime/lifecycle/agent-run-recorder.service.js'
 import { PrismaService } from '../prisma/prisma.service.js'
 import {
   projectAdminRunDetail,

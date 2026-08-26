@@ -33,7 +33,7 @@
 | --- | --- | --- |
 | Runtime 事件 | `apps/api/src/agent-runtime/agent-runtime.types.ts` | start -> delta* -> terminal |
 | Turn 编排 | `apps/api/src/agent-runtime/agent-runtime.service.ts` | 正常、失败、中断都只能有一个终态 |
-| Run/Step 记录 | `apps/api/src/agent-runtime/agent-run-recorder.service.ts` | 不残留非终态记录 |
+| Run/Step 记录 | `apps/api/src/agent-runtime/lifecycle/agent-run-recorder.service.ts` | 不残留非终态记录 |
 | LLM 文本流 | `apps/api/src/llm/llm.service.ts` | async generator 顺序和异常传播 |
 | Provider 适配 | `apps/api/src/llm/clients/openai-compatible.client.ts` | SDK 细节不泄漏到 runtime |
 | 外部流协议 | `packages/contracts/src/seo.ts` | `start/delta/done/error/aborted` 暂不变化 |
@@ -227,7 +227,7 @@ ID 固定能让失败 diff 易读；测试应避免依赖真实 CUID 与当前�
 - `apps/api/package.json`
 - `apps/api/src/agent-runtime/agent-runtime.service.ts`
 - `apps/api/src/agent-runtime/agent-runtime.types.ts`
-- `apps/api/src/agent-runtime/agent-run-recorder.service.ts`
+- `apps/api/src/agent-runtime/lifecycle/agent-run-recorder.service.ts`
 - `apps/api/src/llm/llm.service.ts`
 - `apps/api/src/seo/seo-chat-stream-event.mapper.ts`
 - `prisma/schema.prisma`

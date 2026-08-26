@@ -105,7 +105,7 @@
 
 ### C. 看现有持久化过渡
 
-文件：`apps/api/src/agent-runtime/agent-run-recorder.service.ts`
+文件：`apps/api/src/agent-runtime/lifecycle/agent-run-recorder.service.ts`
 
 当前 steps 在创建 run 时固定预创建。思考：为什么 Phase 03 不应强行把多轮 sampling 塞成多个同 type 的 `startStep`？记录 Phase 04 需要的动态 step 模型。
 
@@ -207,7 +207,7 @@ SeoService.chatStream
 ### 当前项目
 
 - `apps/api/src/agent-runtime/agent-runtime.service.ts`
-- `apps/api/src/agent-runtime/agent-run-recorder.service.ts`
+- `apps/api/src/agent-runtime/lifecycle/agent-run-recorder.service.ts`
 - `apps/api/src/llm/llm.types.ts`
 - `apps/api/src/seo/seo-context-builder.service.ts`
 - `apps/api/src/seo/prompts/seo-agent.prompt.ts`

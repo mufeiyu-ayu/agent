@@ -319,7 +319,7 @@ Tool output 来自网页、外部服务或其他不可信来源。即使 observa
 
 - `apps/api/src/agent-runtime/agent-runtime.service.ts`
 - `apps/api/src/agent-runtime/agent-runtime.types.ts`
-- `apps/api/src/agent-runtime/agent-run-recorder.service.ts`
+- `apps/api/src/agent-runtime/lifecycle/agent-run-recorder.service.ts`
 - `apps/api/src/llm/llm.types.ts`
 - `apps/api/src/llm/llm.service.ts`
 - `apps/api/src/llm/clients/openai-compatible.client.ts`

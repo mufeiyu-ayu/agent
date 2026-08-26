@@ -16,10 +16,10 @@ import type {
   ToolResult,
   UnvalidatedToolCallEnvelope,
 } from '../../tools/core/tool.types.js'
-import type { AgentRunRecorderService } from '../agent-run-recorder.service.js'
-import type { AgentRuntimePolicyService } from '../agent-runtime.policy.js'
 import type { AgentRuntimeEvent } from '../agent-runtime.types.js'
-import type { TokenEstimatorInput } from '../deepseek-v4-token-estimator.js'
+import type { AgentRuntimePolicyService } from '../configuration/agent-runtime.policy.js'
+import type { TokenEstimatorInput } from '../context/deepseek-v4-token-estimator.js'
+import type { AgentRunRecorderService } from '../lifecycle/agent-run-recorder.service.js'
 import assert from 'node:assert/strict'
 // 项目使用 Node 原生测试运行器，不为 grounded 路径引入额外测试框架。
 // eslint-disable-next-line test/no-import-node-test
@@ -28,12 +28,12 @@ import { describe, it } from 'node:test'
 import { MessageRole, MessageStatus } from '../../generated/prisma/client.js'
 import { getModelProfile } from '../../llm/model-profiles.js'
 import { toChatStreamEvent } from '../../seo/seo-chat-stream-event.mapper.js'
-import { AgentRunConfigurationService } from '../agent-run-configuration.service.js'
-import { AGENT_STEP_TYPES } from '../agent-run-recorder.service.js'
 import { AgentRuntimeService } from '../agent-runtime.service.js'
-import { TokenEstimator } from '../deepseek-v4-token-estimator.js'
-import { InitialContextSelectionService } from '../initial-context-selection.js'
-import { SamplingContextPlanner } from '../sampling-context-planner.js'
+import { AgentRunConfigurationService } from '../configuration/agent-run-configuration.service.js'
+import { TokenEstimator } from '../context/deepseek-v4-token-estimator.js'
+import { InitialContextSelectionService } from '../context/initial-context-selection.js'
+import { SamplingContextPlanner } from '../context/sampling-context-planner.js'
+import { AGENT_STEP_TYPES } from '../lifecycle/agent-run-recorder.service.js'
 
 const RETRIEVAL_EVIDENCE = {
   refs: [

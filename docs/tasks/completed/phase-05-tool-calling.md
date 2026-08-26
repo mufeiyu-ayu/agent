@@ -130,11 +130,11 @@ Tool Loop：
 4. apps/api/src/seo/seo.service.ts
 5. apps/api/src/seo/seo-context-builder.service.ts
 6. apps/api/src/agent-runtime/agent-runtime.service.ts
-7. apps/api/src/agent-runtime/model-sampling-decision.ts
+7. apps/api/src/agent-runtime/sampling/model-sampling-decision.ts
 8. apps/api/src/tools/core/tool-invocation.service.ts
 9. apps/api/src/tools/articles/search-articles.tool.ts
 10. apps/api/src/tools/core/tool-observation.ts
-11. apps/api/src/agent-runtime/agent-run-recorder.service.ts
+11. apps/api/src/agent-runtime/lifecycle/agent-run-recorder.service.ts
 12. prisma/schema.prisma 与对应测试
 ```
 

@@ -1,11 +1,11 @@
-import type { ModelInputItem } from '../llm/model-input.types.js'
-import type { ModelToolSpec } from '../llm/model-tool-spec.types.js'
+import type { ModelInputItem } from '../../llm/model-input.types.js'
+import type { ModelToolSpec } from '../../llm/model-tool-spec.types.js'
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 // eslint-disable-next-line test/no-import-node-test
 import { describe, it } from 'node:test'
 
-import { ContextTokenEstimationError } from './agent-runtime.errors.js'
+import { ContextTokenEstimationError } from '../agent-runtime.errors.js'
 import {
   DeepSeekV4TokenEstimator,
   renderDeepSeekV4RequestPrompt,

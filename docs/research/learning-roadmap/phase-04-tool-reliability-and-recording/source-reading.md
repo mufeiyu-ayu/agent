@@ -100,7 +100,7 @@ validate + risk gate
 
 ### A. Recorder 身份问题
 
-文件：`apps/api/src/agent-runtime/agent-run-recorder.service.ts`
+文件：`apps/api/src/agent-runtime/lifecycle/agent-run-recorder.service.ts`
 
 逐个看 `createRunWithInitialSteps`、`startStep`、`completeStep`、`failRun`、`abortRun`，回答：
 
@@ -219,7 +219,7 @@ validate + risk gate
 
 ### 当前项目
 
-- `apps/api/src/agent-runtime/agent-run-recorder.service.ts`
+- `apps/api/src/agent-runtime/lifecycle/agent-run-recorder.service.ts`
 - `apps/api/src/agent-runtime/agent-runtime.service.ts`
 - `apps/api/src/llm/llm.errors.ts`
 - `prisma/schema.prisma`

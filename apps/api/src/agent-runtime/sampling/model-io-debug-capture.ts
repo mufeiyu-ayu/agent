@@ -5,7 +5,7 @@ import type {
 import type {
   ModelIODebugCaptureSide,
   ModelRawResponseCapture,
-} from '../llm/llm.types.js'
+} from '../../llm/llm.types.js'
 
 /** 一轮采样内的关联信息与 debug 原始值；未开启时两侧载荷均为 undefined。 */
 export interface DebugModelIOCaptured {
