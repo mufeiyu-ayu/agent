@@ -336,6 +336,11 @@ export type AdminDebugModelIOCapture
   = | { truncated: false, value: unknown }
     | { truncated: true, preview: string }
 
+/** Response 专用信封：旧捕获由 projector 安全映射为 complete。 */
+export type AdminDebugModelResponseCapture
+  = | ({ state: 'complete' | 'partial' } & AdminDebugModelIOCapture)
+    | { state: 'empty' }
+
 export interface AdminModelSamplingStep extends AdminRunKnownTimelineItemBase {
   type: 'model_sampling'
   samplingIndex: number | null
@@ -353,8 +358,8 @@ export interface AdminModelSamplingStep extends AdminRunKnownTimelineItemBase {
   contextInspector: AdminContextInspector
   /** debug 捕获：实际发给 provider 的请求体；未开启捕获或数据缺失为 null。 */
   debugRequestBody: AdminDebugModelIOCapture | null
-  /** debug 捕获：流式组装后的 provider 原始响应；未开启捕获或数据缺失为 null。 */
-  debugRawResponse: AdminDebugModelIOCapture | null
+  /** debug 捕获：完整、部分或空的 provider 响应事实；未捕获为 null。 */
+  debugRawResponse: AdminDebugModelResponseCapture | null
 }
 
 export interface AdminToolExecutionStep extends AdminRunKnownTimelineItemBase {
@@ -421,7 +426,7 @@ export interface AdminRunSafeStepProjection {
   hasError: boolean
   /** debug 捕获白名单字段：仅 model_sampling 且捕获存在时出现。 */
   debugRequestBody?: AdminDebugModelIOCapture
-  debugRawResponse?: AdminDebugModelIOCapture
+  debugRawResponse?: AdminDebugModelResponseCapture
 }
 
 export interface AdminRunSafeRawData {

@@ -47,11 +47,11 @@ function selectLocale(value: AdminLocale): void {
   justify-content: center;
   gap: 6px;
   color: var(--admin-text-muted);
-  font-size: 13px;
+  font-size: var(--admin-font-sm);
 }
 
 .language-trigger span {
-  font-size: 11px;
+  font-size: var(--admin-font-xs);
   font-weight: 600;
 }
 </style>

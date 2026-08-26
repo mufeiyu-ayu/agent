@@ -7,7 +7,7 @@ import OpenAI from 'openai'
 import {
   resolveLLMRuntimeConfig,
 } from '../llm-runtime-config.js'
-import { LLMConfigError } from '../llm.errors.js'
+import { LLMConfigError, LLMNetworkError } from '../llm.errors.js'
 import { OpenAICompatibleClient } from './openai-compatible.client.js'
 
 describe('OpenAICompatibleClient runtime config', () => {
@@ -131,6 +131,71 @@ describe('OpenAICompatibleClient runtime config', () => {
     )
     assert.equal(harness.calls.length, 0)
   })
+
+  it('请求已发起但 SDK 在首个 chunk 前失败时提交 empty capture', async () => {
+    const harness = createHarness(true)
+    let captured: unknown
+
+    Object.defineProperty(harness.client, 'createClient', {
+      configurable: true,
+      value: () => ({
+        chat: {
+          completions: {
+            create: async () => {
+              throw new Error('connection failed')
+            },
+          },
+        },
+      }),
+    })
+
+    await assert.rejects(
+      collectEvents(harness.client.chatStream(
+        [{ type: 'message', role: 'user', content: 'hello' }],
+        {
+          debugCapture: {
+            onRequest: () => {},
+            onResponse: (capture) => {
+              captured = capture
+            },
+          },
+        },
+      )),
+      LLMNetworkError,
+    )
+    assert.deepEqual(captured, {
+      state: 'empty',
+      lastEvent: null,
+      textChars: 0,
+      toolCallCount: 0,
+    })
+  })
+
+  it('debug 回调失败只通知安全失败侧，不影响正常模型事件', async () => {
+    const harness = createHarness(true)
+    const failedSides: string[] = []
+
+    const events = await collectEvents(harness.client.chatStream(
+      [{ type: 'message', role: 'user', content: 'hello' }],
+      {
+        debugCapture: {
+          onRequest: () => {
+            throw new Error('request capture failed')
+          },
+          onResponse: () => {
+            throw new Error('response capture failed')
+          },
+          onCaptureError: side => failedSides.push(side),
+        },
+      },
+    ))
+
+    assert.deepEqual(events, [
+      { type: 'text_delta', delta: 'ok' },
+      { type: 'response_completed', finishReason: 'stop' },
+    ])
+    assert.deepEqual(failedSides, ['request', 'response'])
+  })
 })
 
 interface ProviderCall {
@@ -139,13 +204,14 @@ interface ProviderCall {
   params?: Record<string, unknown>
 }
 
-function createHarness() {
+function createHarness(captureModelIO = false) {
   const calls: ProviderCall[] = []
   const runtimeConfig = {
     value: resolveLLMRuntimeConfig({
       LLM_API_KEY: 'test-api-key',
       LLM_BASE_URL: 'https://api.deepseek.com/v1',
       LLM_MODEL: 'deepseek-v4-flash',
+      ...(captureModelIO ? { AGENT_DEBUG_CAPTURE_MODEL_IO: 'true' } : {}),
     }),
   } as LLMRuntimeConfigService
   const client = new OpenAICompatibleClient(runtimeConfig)

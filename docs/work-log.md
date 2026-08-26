@@ -6,7 +6,7 @@
 
 | 类型 | 当前记录 | 下一步 |
 | --- | --- | --- |
-| Agent 主线 | 阶段 1-8 Completed；#94 / PR #95 已验收合并 | Phase 8 源码阅读；不启动 Phase 9 |
+| Agent 主线 | 阶段 1-8 Completed；#98 / PR #100 已验收合并 | Phase 8 源码阅读；不启动 Phase 9 |
 | Phase 8 | Task 0、1、2A、2B、3A、3B、3C 全部 Completed | [阶段归档](./tasks/completed/phase-08-grounded-retrieval.md) |
 | Minimal Compaction | Gated | 只有真实 Context 压力证据满足触发条件后才讨论 |
 | Admin Console | Task 0-3、Enhancement 1-3、Phase 8 Task 3C Completed；Task 4 Planned | 不自动启动 Auth / RBAC |
@@ -16,6 +16,7 @@
 
 | 日期 | 事项 | 结果 |
 | --- | --- | --- |
+| 2026-08-26 | 失败 Sampling 部分响应可观测性 #98 验收收口 | Issue #98 / PR #100；失败、Abort、deadline 与消费者 return 路径保存 complete / partial / empty 聚合事实；Admin 区分未捕获、部分响应和空响应，复制 JSON 保留状态；安全日志只记录关联 ID 与计数；确定性测试 91 + 65 + 146 + 23 全绿，Admin checks、lint、typecheck、build 与 Chromium route fixture 通过；GPT 技术验收和用户确认通过；PR #100 merge `915315b`，Issue Closed，远程与本地任务分支已删除 |
 | 2026-08-23 | DeepSeek 思考强度与 Usage #94 收口 | Issue #94 / PR #95；Web Low / High / Max 单次选择贯穿 resolved Run 配置与全部 sampling；Provider 显式 thinking / reasoning_effort 并移除 temperature；reasoning / cache Usage 持久化到 AgentStep，Admin Run Detail 按指标独立 all-or-nothing 展示；debug safe projection 剥离 reasoning_content；用户确认 UI 验收通过，独立技术复核后修正 reasoning E2E 精确定位，完整 Web Chromium 10 / 10；PR #95 merge `2266fad`，Issue #94 Closed / Completed |
 | 2026-08-22 | Run 配置解析边界 #92 收口 | Issue #92 / PR #93；源码阅读阶段发现的横向 refactor：新增 `AgentRunConfigurationService` 收敛单次 Run 配置解析（policy getter 保 deadline 时序），`ResolvedChatRequestConfig` 补全 contextWindowTokens / temperature，Runtime 消除 `getModelProfile` 穿透与 `!` 断言，模型名单与 Profile 收敛进 `model-profiles.ts`，删除单行 `llm.constants.ts`；新增 `docs/research/configuration-map.md` 配置地图；commit 前 /code-review 15 项 findings（12 类修复并入提交，不修项在 PR 记录理由，含 model:'' 既有语义按规格保留）；验证 6 套件 383 项全绿 + lint + root typecheck；AC-01～09 逐项核对通过，用户确认验收并授权合并与清理；merge `f32cd48`，Issue #92 Closed，分支已删 |
 | 2026-08-22 | Admin Enhancement 3 Overview 仪表盘 #90 收口 | Issue #90 / PR #91；stats + balance API（应用层扫 30 天窗口聚合 step JSON usage；DeepSeek 余额服务端代理复用 LLM_API_KEY）+ ECharts 按需注册前端（stat bar、双趋势图、比例条分布列表，亮暗主题联动）；/code-review 一轮 5 项全处理（含 resolvedModel 落库路径确认级 bug，实调接口验证）；视觉验收反馈一轮重构后用户确认并授权合并；实测确认 DeepSeek 官方 API 仅开放 user/balance，平台用量页无公开 API；merge `3108a5f`，Issue #90 Closed，分支已删 |

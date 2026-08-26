@@ -112,16 +112,17 @@ function duration(value: number | null): string {
 <style scoped>
 .message-preview {
   min-width: 0;
-  margin-bottom: 20px;
-  padding: 15px;
+  margin-bottom: 12px;
+  padding: 14px 16px;
   border: 1px solid var(--admin-border);
-  border-radius: var(--admin-radius);
-  background: var(--admin-bg-deep);
+  border-radius: var(--admin-radius-md);
+  background: var(--admin-surface-raised);
+  box-shadow: var(--admin-shadow-sm);
 }
 
 .message-preview span {
   color: var(--admin-text-muted);
-  font-size: 11px;
+  font-size: var(--admin-font-2xs);
   font-weight: 700;
   letter-spacing: 0.07em;
   text-transform: uppercase;
@@ -130,7 +131,7 @@ function duration(value: number | null): string {
 .message-preview p {
   margin: 9px 0 0;
   color: var(--admin-text);
-  font-size: 13px;
+  font-size: var(--admin-font-sm);
   line-height: 1.65;
   overflow-wrap: anywhere;
   white-space: pre-wrap;

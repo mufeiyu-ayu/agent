@@ -214,7 +214,7 @@ function formatObservation(observation: AdminContextObservationSummary): string 
     </TabPane>
 
     <TabPane key="raw-response" :tab="t('runTrace.inspector.tabs.rawResponse')">
-      <DebugJsonPane :capture="item.debugRawResponse" />
+      <DebugJsonPane :capture="item.debugRawResponse" response-capture />
     </TabPane>
   </Tabs>
 </template>

@@ -9,8 +9,9 @@
 Phase 8：Completed
 Active Agent Task：无
 DeepSeek 思考强度与 Usage（#94）：Completed
+失败 Sampling 部分响应可观测性（#98）：Completed
 Minimal Compaction：Gated
-Admin Observability：Task 0-3、Enhancement 1、Phase 8 Task 3C Completed
+Admin Observability：Task 0-3、Enhancement 1、Phase 8 Task 3C、#98 Completed
 Admin Task 4：Planned
 Phase 9：未定案
 ```

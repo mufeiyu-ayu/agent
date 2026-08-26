@@ -1,9 +1,19 @@
-import type { AdminDebugModelIOCapture } from '@agent/contracts'
+import type {
+  AdminDebugModelIOCapture,
+  AdminDebugModelResponseCapture,
+} from '@agent/contracts'
+import type {
+  ModelIODebugCaptureSide,
+  ModelRawResponseCapture,
+} from '../llm/llm.types.js'
 
-/** 一轮采样内暂存的 debug 捕获原始值；未开启捕获时两侧都为 undefined。 */
+/** 一轮采样内的关联信息与 debug 原始值；未开启时两侧载荷均为 undefined。 */
 export interface DebugModelIOCaptured {
+  runId: string
+  samplingAttemptId: string
   requestBody?: unknown
-  rawResponse?: unknown
+  rawResponse?: ModelRawResponseCapture
+  failedSides?: ModelIODebugCaptureSide[]
 }
 
 /** 单侧捕获 JSON 序列化后的截断上限（约 200KB，以字符数近似）。 */
@@ -53,4 +63,20 @@ export function toModelIODebugCaptureEnvelope(
     truncated: false,
     value: JSON.parse(json),
   }
+}
+
+export function toModelIODebugResponseCaptureEnvelope(
+  capture: ModelRawResponseCapture,
+): AdminDebugModelResponseCapture | undefined {
+  if (capture.state === 'empty')
+    return { state: 'empty' }
+
+  if (capture.rawResponse === undefined)
+    return undefined
+
+  const envelope = toModelIODebugCaptureEnvelope(capture.rawResponse)
+
+  return envelope
+    ? { state: capture.state, ...envelope }
+    : undefined
 }

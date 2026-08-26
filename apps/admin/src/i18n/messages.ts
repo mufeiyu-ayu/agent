@@ -264,7 +264,9 @@ export const messages = {
           rawResponse: '原始响应',
         },
         debugCapture: {
-          empty: '未捕获。需要在 API 环境中开启 AGENT_DEBUG_CAPTURE_MODEL_IO 后重新运行。',
+          notCaptured: '未捕获。该运行没有可用的 debug 捕获数据。',
+          partial: '模型流未完整结束，以下仅为失败前已接收内容。',
+          emptyResponse: '请求已发起，但失败前未收到可捕获响应。',
           truncated: '内容超过截断上限，仅展示前缀预览。',
           copy: '复制 JSON',
           copied: '已复制',
@@ -786,7 +788,9 @@ export const messages = {
           rawResponse: 'Raw Response',
         },
         debugCapture: {
-          empty: 'Not captured. Enable AGENT_DEBUG_CAPTURE_MODEL_IO in the API environment and rerun.',
+          notCaptured: 'Not captured. This run has no available debug capture.',
+          partial: 'The model stream did not finish. Only content received before failure is shown.',
+          emptyResponse: 'The request started, but no capturable response arrived before failure.',
           truncated: 'Content exceeded the capture limit; only a prefix preview is shown.',
           copy: 'Copy JSON',
           copied: 'Copied',

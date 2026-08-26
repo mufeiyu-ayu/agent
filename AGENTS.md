@@ -49,7 +49,7 @@ Codex 应作为 Agent 应用开发学习搭档，负责按正式 Issue 实现、
 
 `docs/development-task-plan.md` 只保留为旧入口兼容，不再写入新任务。
 
-当前 Agent 主线状态：Phase 1-7 已 Completed；Phase 8 保持 Active，Task 0、Task 1、Task 2A 已 Completed；Task 2B 为 Next、Task 3 为 Planned；当前无 Active Agent Task；Minimal Compaction 继续保持 Gated。
+当前 Agent 主线状态：Phase 1-8 已 Completed 并归档（Phase 8 Task 0、1、2A、2B、3A、3B、3C 全部 Completed）；失败 Sampling 部分响应可观测性 #98 已验收合并；当前无 Active Agent Task；当前阶段为 Phase 8 源码阅读，Phase 9 未定案；Minimal Compaction 继续保持 Gated；Admin Task 4 保持 Planned。
 
 ## 4. 关键目录与任务入口
 

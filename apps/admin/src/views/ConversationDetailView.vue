@@ -357,7 +357,8 @@ function handleRunsPageChange(page: number, pageSize: number) {
 <style scoped>
 .conversation-page {
   display: flex;
-  height: calc(100dvh - var(--admin-header-height) - var(--admin-tabs-height) - 40px);
+  min-height: 380px;
+  max-height: calc(100dvh - var(--admin-header-height) - var(--admin-tabs-height) - 40px);
   flex-direction: column;
 }
 
@@ -367,8 +368,9 @@ function handleRunsPageChange(page: number, pageSize: number) {
   flex-direction: column;
   min-height: 0;
   border: 1px solid var(--admin-border);
+  border-radius: var(--admin-radius-md);
   background: var(--admin-surface);
-  box-shadow: var(--admin-card-shadow);
+  box-shadow: var(--admin-shadow-sm);
 }
 
 .detail-card :deep(> .ant-card-body) {
@@ -400,7 +402,7 @@ function handleRunsPageChange(page: number, pageSize: number) {
 .conversation-header__identity strong {
   overflow: hidden;
   color: var(--admin-text);
-  font-size: 15px;
+  font-size: var(--admin-font-lg);
   font-weight: 650;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -410,7 +412,7 @@ function handleRunsPageChange(page: number, pageSize: number) {
   overflow: hidden;
   color: var(--admin-text-subtle);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 10px;
+  font-size: var(--admin-font-xs);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -424,14 +426,14 @@ function handleRunsPageChange(page: number, pageSize: number) {
 
 .conversation-header__meta dt {
   color: var(--admin-text-muted);
-  font-size: 10px;
+  font-size: var(--admin-font-xs);
   font-weight: 600;
 }
 
 .conversation-header__meta dd {
   margin: 2px 0 0;
   color: var(--admin-text);
-  font-size: 12px;
+  font-size: var(--admin-font-sm);
   font-variant-numeric: tabular-nums;
 }
 
@@ -450,7 +452,7 @@ function handleRunsPageChange(page: number, pageSize: number) {
 
 .detail-tabs :deep(.ant-tabs-tab) {
   padding: 12px 4px 10px;
-  font-size: 13px;
+  font-size: var(--admin-font-sm);
   font-weight: 600;
 }
 
@@ -481,9 +483,9 @@ function handleRunsPageChange(page: number, pageSize: number) {
   min-height: 0;
   flex-direction: column;
   gap: 14px;
-  padding: 16px;
+  padding: 18px 16px;
   overflow-y: auto;
-  background: var(--admin-bg-deep);
+  background: var(--admin-surface-muted);
 }
 
 .transcript-message {
@@ -508,7 +510,7 @@ function handleRunsPageChange(page: number, pageSize: number) {
   flex: none;
   place-items: center;
   border-radius: 50%;
-  font-size: 14px;
+  font-size: var(--admin-font-md);
 }
 
 .transcript-message.is-user .transcript-message__avatar {
@@ -537,10 +539,11 @@ function handleRunsPageChange(page: number, pageSize: number) {
 }
 
 .transcript-message__bubble {
-  padding: 10px 14px;
+  padding: 11px 15px;
   border: 1px solid var(--admin-border);
-  border-radius: 12px;
-  background: var(--admin-surface);
+  border-radius: var(--admin-radius-lg);
+  background: var(--admin-surface-raised);
+  box-shadow: var(--admin-shadow-sm);
 }
 
 .transcript-message.is-user .transcript-message__bubble {
@@ -551,7 +554,7 @@ function handleRunsPageChange(page: number, pageSize: number) {
 .transcript-message__bubble p {
   margin: 0;
   color: var(--admin-text);
-  font-size: 13px;
+  font-size: var(--admin-font-sm);
   line-height: 1.7;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
@@ -562,7 +565,7 @@ function handleRunsPageChange(page: number, pageSize: number) {
   align-items: center;
   gap: 6px;
   color: var(--admin-text-subtle);
-  font-size: 10px;
+  font-size: var(--admin-font-xs);
 }
 
 .transcript-message footer :deep(.ant-tag) {
@@ -579,18 +582,19 @@ function handleRunsPageChange(page: number, pageSize: number) {
 }
 
 .runs-table :deep(.ant-table-thead > tr > th) {
-  height: 42px;
+  height: 44px;
+  border-bottom: 1px solid var(--admin-border);
   color: var(--admin-text-muted);
-  font-size: 10px;
-  font-weight: 650;
-  letter-spacing: 0.025em;
+  font-size: var(--admin-font-xs);
+  font-weight: 600;
+  letter-spacing: 0.01em;
   white-space: nowrap;
 }
 
 .runs-table :deep(.ant-table-tbody > tr > td) {
-  height: 47px;
+  height: 50px;
   color: var(--admin-text-muted);
-  font-size: 11px;
+  font-size: var(--admin-font-sm);
 }
 
 .run-id {
@@ -598,7 +602,7 @@ function handleRunsPageChange(page: number, pageSize: number) {
   overflow: hidden;
   color: var(--admin-primary);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 10px;
+  font-size: var(--admin-font-xs);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -619,18 +623,18 @@ function handleRunsPageChange(page: number, pageSize: number) {
 
 .runs-footer {
   display: flex;
-  min-height: 48px;
+  min-height: 52px;
   flex: none;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
   margin-top: auto;
-  padding: 8px 14px;
+  padding: 10px 16px;
   border-top: 1px solid var(--admin-border);
 }
 
 .runs-footer > span {
   color: var(--admin-text-subtle);
-  font-size: 10px;
+  font-size: var(--admin-font-xs);
 }
 </style>

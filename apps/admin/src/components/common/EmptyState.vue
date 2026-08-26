@@ -34,13 +34,13 @@ const simpleImage = Empty.PRESENTED_IMAGE_SIMPLE
   display: block;
   margin-bottom: 5px;
   color: var(--admin-text);
-  font-size: 14px;
+  font-size: var(--admin-font-md);
 }
 
 .empty-state p {
   max-width: 420px;
   margin: 0;
   color: var(--admin-text-muted);
-  font-size: 12px;
+  font-size: var(--admin-font-sm);
 }
 </style>

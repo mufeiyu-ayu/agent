@@ -140,7 +140,7 @@ function getTabTitle(tab: RouteTab): string {
   background: transparent;
   cursor: pointer;
   font: inherit;
-  font-size: 12px;
+  font-size: var(--admin-font-sm);
 }
 
 .route-tab:has(.route-tab__close) > button:first-child {
@@ -151,7 +151,7 @@ function getTabTitle(tab: RouteTab): string {
   width: 24px;
   padding: 0 8px 0 2px;
   color: var(--admin-text-subtle);
-  font-size: 10px;
+  font-size: var(--admin-font-2xs);
 }
 
 .route-tab .route-tab__close:hover {
