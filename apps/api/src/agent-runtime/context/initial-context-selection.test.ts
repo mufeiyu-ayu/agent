@@ -5,8 +5,8 @@ import { describe, it } from 'node:test'
 
 import {
   ContextBudgetExceededError,
-} from './agent-runtime.errors.js'
-import { DEFAULT_AGENT_RUNTIME_POLICY } from './agent-runtime.policy.js'
+} from '../agent-runtime.errors.js'
+import { DEFAULT_AGENT_RUNTIME_POLICY } from '../configuration/agent-runtime.policy.js'
 import { TokenEstimator } from './deepseek-v4-token-estimator.js'
 import {
   InitialContextSelectionService,

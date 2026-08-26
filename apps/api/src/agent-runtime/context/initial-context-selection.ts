@@ -1,9 +1,9 @@
-import type { ChatMessage } from '../llm/llm.types.js'
-import type { ModelToolSpec } from '../llm/model-tool-spec.types.js'
+import type { ChatMessage } from '../../llm/llm.types.js'
+import type { ModelToolSpec } from '../../llm/model-tool-spec.types.js'
 import { Inject, Injectable } from '@nestjs/common'
 
-import { toModelInputItems } from '../llm/model-input.types.js'
-import { ContextBudgetExceededError } from './agent-runtime.errors.js'
+import { toModelInputItems } from '../../llm/model-input.types.js'
+import { ContextBudgetExceededError } from '../agent-runtime.errors.js'
 import { TokenEstimator } from './deepseek-v4-token-estimator.js'
 
 export const DEFAULT_INITIAL_CONTEXT_POLICY = {

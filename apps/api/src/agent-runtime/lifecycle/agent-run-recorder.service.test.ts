@@ -1,9 +1,9 @@
-import type { Message, MessageRole, Prisma } from '../generated/prisma/client.js'
+import type { Message, MessageRole, Prisma } from '../../generated/prisma/client.js'
 import type {
   DatabaseOperationDeadline,
   DeadlineTransaction,
   PrismaService,
-} from '../prisma/prisma.service.js'
+} from '../../prisma/prisma.service.js'
 import assert from 'node:assert/strict'
 // 项目使用 Node 原生测试运行器，不为 Recorder 引入额外测试框架。
 // eslint-disable-next-line test/no-import-node-test
@@ -13,7 +13,7 @@ import {
   AgentRunStatus,
   AgentStepStatus,
   MessageStatus,
-} from '../generated/prisma/client.js'
+} from '../../generated/prisma/client.js'
 import {
   AGENT_STEP_TYPES,
   AgentRunRecorderService,

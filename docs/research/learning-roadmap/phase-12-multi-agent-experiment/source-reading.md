@@ -249,7 +249,7 @@ handler 不允许 interrupt root 或自身，解析 target 后记录 previous st
 ### 9.1 Schema 与 recorder
 
 - `prisma/schema.prisma`
-- `apps/api/src/agent-runtime/agent-run-recorder.service.ts`
+- `apps/api/src/agent-runtime/lifecycle/agent-run-recorder.service.ts`
 
 问题：
 

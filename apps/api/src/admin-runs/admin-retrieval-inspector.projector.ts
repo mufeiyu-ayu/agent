@@ -22,9 +22,9 @@ import type { GroundedAnswerRejectionCode } from '../agent-runtime/grounding/gro
 import type { GroundedFinalizationSamplingFailure } from '../agent-runtime/grounding/grounded-answer.finalizer.js'
 import type { PersistedMessageGrounding } from '../agent-runtime/grounding/message-grounding.projector.js'
 
-import { AGENT_STEP_TYPES } from '../agent-runtime/agent-run-recorder.service.js'
 import { GROUNDED_FINALIZATION_MAX_ATTEMPTS } from '../agent-runtime/grounding/grounded-answer.finalizer.js'
 import { toOwnedMessageGroundingV1 } from '../agent-runtime/grounding/message-grounding.projector.js'
+import { AGENT_STEP_TYPES } from '../agent-runtime/lifecycle/agent-run-recorder.service.js'
 import { getArticleDetailDefinition } from '../tools/articles/get-article-detail.tool.js'
 import { searchArticlesDefinition } from '../tools/articles/search-articles.tool.js'
 import { retrieveArticleContextDefinition } from '../tools/retrieval/retrieve-article-context.tool.js'

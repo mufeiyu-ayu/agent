@@ -127,7 +127,7 @@ allow / approval_required / deny
 | 当前项目文件 | 当前职责 | 本阶段要问 |
 | --- | --- | --- |
 | `apps/api/src/agent-runtime/agent-runtime.service.ts` | 创建 Run、采样、流式回复、收口 | policy 应插在 ToolCall schema 校验后的哪个位置？ |
-| `apps/api/src/agent-runtime/agent-run-recorder.service.ts` | Run/Step 写入与终态 | 如何表达 waiting，而不把 approval 当 failure？ |
+| `apps/api/src/agent-runtime/lifecycle/agent-run-recorder.service.ts` | Run/Step 写入与终态 | 如何表达 waiting，而不把 approval 当 failure？ |
 | `apps/api/src/agent-runtime/agent-runtime.types.ts` | 内部 runtime 事件 | 是否需要内部 `approval_required`？字段最小集是什么？ |
 | `prisma/schema.prisma` | canonical Message/Run/Step | Approval 独立表还是 JSON step？恢复查询需要什么？ |
 

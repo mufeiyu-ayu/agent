@@ -130,7 +130,7 @@ rg -n "resume_thread_from_rollout|resume_thread_with_history|flush_rollout" \
 | 当前文件 | 重点问题 |
 | --- | --- |
 | `apps/api/src/agent-runtime/agent-runtime.service.ts` | 一次请求有哪些不可原子的 crash windows？ |
-| `apps/api/src/agent-runtime/agent-run-recorder.service.ts` | complete/fail/abort 的事务覆盖哪些表，漏哪些事实？ |
+| `apps/api/src/agent-runtime/lifecycle/agent-run-recorder.service.ts` | complete/fail/abort 的事务覆盖哪些表，漏哪些事实？ |
 | `prisma/schema.prisma` | 哪些字段能识别 stale RUNNING？哪些不够？ |
 | `apps/api/src/seo/seo.service.ts` | 同步入口为何无法复用 Run recovery？ |
 

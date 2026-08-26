@@ -3,11 +3,11 @@ import type {
   ModelStreamEvent,
   ModelUsage,
   UnvalidatedModelToolCall,
-} from '../llm/model-stream.types.js'
-import type { UnvalidatedToolCallEnvelope } from '../tools/core/tool.types.js'
+} from '../../llm/model-stream.types.js'
+import type { UnvalidatedToolCallEnvelope } from '../../tools/core/tool.types.js'
 
-import { mergeModelUsage } from '../llm/model-stream.types.js'
-import { ModelSamplingIncompleteError } from './agent-runtime.errors.js'
+import { mergeModelUsage } from '../../llm/model-stream.types.js'
+import { ModelSamplingIncompleteError } from '../agent-runtime.errors.js'
 
 export interface ModelSamplingSummary {
   samplingAttemptId: string

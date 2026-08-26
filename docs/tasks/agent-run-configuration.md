@@ -13,7 +13,7 @@
 
 - `apps/api/src/llm/llm-runtime-config.ts`：`ChatRequestConfig` 重命名为 `ResolvedChatRequestConfig`，补全 `contextWindowTokens` 与 `temperature`；`DEFAULT_CHAT_TEMPERATURE` 并入本文件，删除单行 `llm.constants.ts`。
 - `apps/api/src/llm/model-profiles.ts`：`SUPPORTED_DEEPSEEK_MODELS` 与 `SupportedDeepSeekModel` 从 `llm.types.ts` 移入，模型名单与 Profile 单文件维护。
-- 新增 `apps/api/src/agent-runtime/agent-run-configuration.service.ts`：组合 resolved 请求配置 + Tool allowlist；`policy` 经 getter 单独暴露（Run deadline 需在可能抛错的请求解析之前生效）；Registry 缺失 allowlisted Tool 时记录 warn 并按既有语义跳过。
+- 新增 `apps/api/src/agent-runtime/configuration/agent-run-configuration.service.ts`：组合 resolved 请求配置 + Tool allowlist；`policy` 经 getter 单独暴露（Run deadline 需在可能抛错的请求解析之前生效）；Registry 缺失 allowlisted Tool 时记录 warn 并按既有语义跳过。
 - `apps/api/src/agent-runtime/agent-runtime.service.ts`：移除 `getModelProfile` 穿透依赖与 `!` 断言、`AGENT_RUN_TOOL_NAMES`、Tool 筛选与 Policy 直读；配置解析时机保持在 AgentRun / receiveUserMessageStep 落库之后，终态化语义不变；Initial Context、Sampling、Grounded finalization 共用同一份 resolved 请求配置。
 - Provider Client 改用 `requestConfig.temperature`（同默认值，行为不变）。
 - 测试：新增 `agent-run-configuration.service.test.ts`（allowlist 顺序 / 排除、`maxToolCalls=0`、Registry 缺失跳过、覆盖透传、空 model 回落）；`agent-runtime.service.test.ts` 新增 AC-04 用例（请求级覆盖时 Context 与 Provider 请求同源）；4 处构造点（harness、grounding runtime/db 测试、smoke CLI）同步更新。

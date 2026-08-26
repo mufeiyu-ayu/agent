@@ -7,7 +7,7 @@
 ```text
 阶段 1-8：Completed
 Phase 8：Completed
-Active Agent Task：无
+Active Agent Task：Backend 模块组织 #101
 DeepSeek 思考强度与 Usage（#94）：Completed
 失败 Sampling 部分响应可观测性（#98）：Completed
 Minimal Compaction：Gated
@@ -147,7 +147,7 @@ Phase 8 Task 3C 已完成安全 Retrieval Inspector，但不自动启动 Task 4�
 
 ```text
 Phase 8：Completed / 已归档（docs/tasks/completed/phase-08-grounded-retrieval.md）
-Active Agent Task：无
+Active Agent Task：Backend 模块组织 #101（#102-#104 等待前序任务收口）
 DeepSeek 思考强度与 Usage（#94）：Completed / PR #95 / `2266fad`
 当前阶段：Phase 8 源码阅读（学习阶段）
 下一阶段学习内容：暂不定义

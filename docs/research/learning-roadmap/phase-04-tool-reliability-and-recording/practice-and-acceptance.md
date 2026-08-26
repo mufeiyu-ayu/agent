@@ -200,7 +200,7 @@ Assistant Message
 
 ### 实现关注点
 
-- `apps/api/src/agent-runtime/agent-run-recorder.service.ts`
+- `apps/api/src/agent-runtime/lifecycle/agent-run-recorder.service.ts`
 - `apps/api/src/agent-runtime/agent-runtime.service.ts`
 - `apps/api/src/agent-runtime/agent-runtime.types.ts`
 - `apps/api/src/llm/llm.errors.ts`

@@ -1,6 +1,6 @@
-import type { LLMService } from '../llm/llm.service.js'
-import type { ToolRegistryService } from '../tools/core/tool-registry.service.js'
-import type { ToolDefinition } from '../tools/core/tool.types.js'
+import type { LLMService } from '../../llm/llm.service.js'
+import type { ToolRegistryService } from '../../tools/core/tool-registry.service.js'
+import type { ToolDefinition } from '../../tools/core/tool.types.js'
 import type { AgentRuntimePolicy, AgentRuntimePolicyService } from './agent-runtime.policy.js'
 import assert from 'node:assert/strict'
 // 项目本轮使用 Node 原生测试运行器，不引入 Vitest。

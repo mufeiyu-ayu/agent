@@ -54,7 +54,7 @@ Phase 05 会实现一个“等待审批后继续”的最小 checkpoint，但不
 | 当前能力 | 真实入口 | 可复用价值 |
 | --- | --- | --- |
 | 一次输入对应一个 Run | `apps/api/src/agent-runtime/agent-runtime.service.ts` | 审批可绑定 `runId` |
-| Run/Step 持久化 | `apps/api/src/agent-runtime/agent-run-recorder.service.ts` | 可新增 policy/approval/tool step |
+| Run/Step 持久化 | `apps/api/src/agent-runtime/lifecycle/agent-run-recorder.service.ts` | 可新增 policy/approval/tool step |
 | 用户可见 Message 与 Step 分离 | `prisma/schema.prisma` | 审批过程不必伪装成聊天气泡 |
 | 内部事件映射到外部事件 | `agent-runtime.types.ts`、`seo-chat-stream-event.mapper.ts` | 先增加内部事件，再决定前端协议 |
 | 浏览器断开传递 AbortSignal | `seo.controller.ts` | 可区分取消与审批等待 |

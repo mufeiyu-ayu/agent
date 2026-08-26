@@ -1,7 +1,7 @@
-import type { ChatMessage } from '../llm/llm.types.js'
-import type { ModelInputItem } from '../llm/model-input.types.js'
-import type { NormalizedToolObservation } from '../tools/core/tool-observation.js'
-import type { UnvalidatedToolCallEnvelope } from '../tools/core/tool.types.js'
+import type { ChatMessage } from '../../llm/llm.types.js'
+import type { ModelInputItem } from '../../llm/model-input.types.js'
+import type { NormalizedToolObservation } from '../../tools/core/tool-observation.js'
+import type { UnvalidatedToolCallEnvelope } from '../../tools/core/tool.types.js'
 import type { InitialContextSelectionSummary } from './initial-context-selection.js'
 
 type MessageInputItem = Extract<ModelInputItem, { type: 'message' }>

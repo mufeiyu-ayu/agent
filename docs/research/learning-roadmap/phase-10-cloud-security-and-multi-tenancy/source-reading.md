@@ -166,7 +166,7 @@ Codex 每读完一层，立即回到当前仓库找缺口。
 | `prisma/schema.prisma` | Conversation/Message/Run/Step 关系 | 无 User/Tenant/Membership 和资源 scope |
 | `apps/api/src/conversations/conversations.service.ts` | create/list/update/delete 查询条件 | `id` 是唯一访问条件 |
 | `apps/api/src/conversations/messages.service.ts` | 会话存在检查与消息列表 | 不知道调用者身份 |
-| `apps/api/src/agent-runtime/agent-run-recorder.service.ts` | Run/Step 写入 | 无 tenant/actor/usage/policy metadata |
+| `apps/api/src/agent-runtime/lifecycle/agent-run-recorder.service.ts` | Run/Step 写入 | 无 tenant/actor/usage/policy metadata |
 
 建议画出当前数据流，并用红色标记所有只接收裸 `conversationId` 的方法。
 

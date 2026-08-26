@@ -1,11 +1,11 @@
-import type { ModelInputItem } from '../llm/model-input.types.js'
-import type { ModelToolSpec } from '../llm/model-tool-spec.types.js'
+import type { ModelInputItem } from '../../llm/model-input.types.js'
+import type { ModelToolSpec } from '../../llm/model-tool-spec.types.js'
 import { readFileSync } from 'node:fs'
 import { gunzipSync } from 'node:zlib'
 import { Tokenizer } from '@huggingface/tokenizers'
 import { Injectable } from '@nestjs/common'
 
-import { ContextTokenEstimationError } from './agent-runtime.errors.js'
+import { ContextTokenEstimationError } from '../agent-runtime.errors.js'
 
 const BOS_TOKEN = '<｜begin▁of▁sentence｜>'
 const EOS_TOKEN = '<｜end▁of▁sentence｜>'
@@ -63,10 +63,10 @@ export class DeepSeekV4TokenEstimator extends TokenEstimator {
 
     try {
       const tokenizer = JSON.parse(gunzipSync(readFileSync(
-        new URL('../../tokenizers/deepseek-v4/tokenizer.json.gz', import.meta.url),
+        new URL('../../../tokenizers/deepseek-v4/tokenizer.json.gz', import.meta.url),
       )).toString('utf8')) as object
       const config = JSON.parse(readFileSync(
-        new URL('../../tokenizers/deepseek-v4/tokenizer_config.json', import.meta.url),
+        new URL('../../../tokenizers/deepseek-v4/tokenizer_config.json', import.meta.url),
         'utf8',
       )) as object
 

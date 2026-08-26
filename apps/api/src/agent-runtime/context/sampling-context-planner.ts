@@ -1,6 +1,6 @@
-import type { ModelInputItem } from '../llm/model-input.types.js'
-import type { ModelToolSpec } from '../llm/model-tool-spec.types.js'
-import type { NormalizedToolObservation } from '../tools/core/tool-observation.js'
+import type { ModelInputItem } from '../../llm/model-input.types.js'
+import type { ModelToolSpec } from '../../llm/model-tool-spec.types.js'
+import type { NormalizedToolObservation } from '../../tools/core/tool-observation.js'
 import type {
   ModelContext,
   ModelContextPlanningState,
@@ -8,7 +8,7 @@ import type {
 } from './model-context.js'
 import { Inject, Injectable } from '@nestjs/common'
 
-import { ContextBudgetExceededError } from './agent-runtime.errors.js'
+import { ContextBudgetExceededError } from '../agent-runtime.errors.js'
 import { TokenEstimator } from './deepseek-v4-token-estimator.js'
 import { flattenPlanningState } from './model-context.js'
 

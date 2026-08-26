@@ -189,7 +189,7 @@ Phase 00 暂时不实现工具，但测试基座必须为“按次响应、捕�
 - `apps/api/src/seo/seo.controller.ts`
 - `apps/api/src/seo/seo.service.ts`
 - `apps/api/src/agent-runtime/agent-runtime.service.ts`
-- `apps/api/src/agent-runtime/agent-run-recorder.service.ts`
+- `apps/api/src/agent-runtime/lifecycle/agent-run-recorder.service.ts`
 - `apps/api/src/llm/llm.service.ts`
 - `apps/api/src/llm/clients/openai-compatible.client.ts`
 - `packages/contracts/src/seo.ts`

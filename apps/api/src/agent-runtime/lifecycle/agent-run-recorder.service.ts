@@ -1,9 +1,9 @@
 import type { MessageGroundingV1 } from '@agent/contracts'
-import type { AgentRun, AgentStep, Message, Prisma } from '../generated/prisma/client.js'
+import type { AgentRun, AgentStep, Message, Prisma } from '../../generated/prisma/client.js'
 import type {
   DatabaseOperationDeadline,
   DeadlineTransaction,
-} from '../prisma/prisma.service.js'
+} from '../../prisma/prisma.service.js'
 import { Inject, Injectable } from '@nestjs/common'
 
 import {
@@ -11,8 +11,8 @@ import {
   AgentStepStatus,
   MessageRole,
   MessageStatus,
-} from '../generated/prisma/client.js'
-import { PrismaService } from '../prisma/prisma.service.js'
+} from '../../generated/prisma/client.js'
+import { PrismaService } from '../../prisma/prisma.service.js'
 
 export const AGENT_STEP_TYPES = {
   receiveUserMessage: 'receive_user_message',

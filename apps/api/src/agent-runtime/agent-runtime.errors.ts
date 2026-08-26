@@ -1,5 +1,5 @@
 import type { ModelFinishReason } from '../llm/model-stream.types.js'
-import type { ModelSamplingSummary } from './model-sampling-decision.js'
+import type { ModelSamplingSummary } from './sampling/model-sampling-decision.js'
 
 /** Agent Loop 已耗尽服务端执行预算，不能伪装成正常回答。 */
 export class AgentLoopLimitExceededError extends Error {

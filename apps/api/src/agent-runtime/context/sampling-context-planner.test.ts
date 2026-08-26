@@ -1,12 +1,12 @@
-import type { ModelInputItem } from '../llm/model-input.types.js'
-import type { ModelToolSpec } from '../llm/model-tool-spec.types.js'
+import type { ModelInputItem } from '../../llm/model-input.types.js'
+import type { ModelToolSpec } from '../../llm/model-tool-spec.types.js'
 import type { InitialContextSelectionSummary } from './initial-context-selection.js'
 import assert from 'node:assert/strict'
 // eslint-disable-next-line test/no-import-node-test
 import { describe, it } from 'node:test'
 
-import { normalizeToolObservation } from '../tools/core/tool-observation.js'
-import { ContextBudgetExceededError } from './agent-runtime.errors.js'
+import { normalizeToolObservation } from '../../tools/core/tool-observation.js'
+import { ContextBudgetExceededError } from '../agent-runtime.errors.js'
 import {
   DeepSeekV4TokenEstimator,
   TokenEstimator,
