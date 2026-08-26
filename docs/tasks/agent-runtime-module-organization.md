@@ -100,7 +100,7 @@ git diff --check
 
 - Issue：[Issue #101](https://github.com/mufeiyu-ayu/agent/issues/101)
 - 分支：`codex/issue-101-agent-runtime-layout`
-- PR：未创建
+- PR：[Draft PR #105](https://github.com/mufeiyu-ayu/agent/pull/105)
 - GPT 验收结论：未提供
 - 用户确认：未确认
 
