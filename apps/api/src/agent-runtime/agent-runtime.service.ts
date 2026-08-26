@@ -62,7 +62,10 @@ import {
   InitialContextSelectionService,
 } from './initial-context-selection.js'
 import { ModelContext } from './model-context.js'
-import { toModelIODebugCaptureEnvelope } from './model-io-debug-capture.js'
+import {
+  toModelIODebugCaptureEnvelope,
+  toModelIODebugResponseCaptureEnvelope,
+} from './model-io-debug-capture.js'
 import { streamModelSampling } from './model-sampling-decision.js'
 import {
   SamplingContextBudgetExceededError,
@@ -97,6 +100,12 @@ interface TerminalStepFailure {
 interface TerminalStepMetadata {
   id: string
   output: Prisma.InputJsonValue
+}
+
+interface ActiveSamplingClose {
+  close: () => Promise<void>
+  debugModelIO: DebugModelIOCaptured
+  toMetadata: () => TerminalStepMetadata | undefined
 }
 
 @Injectable()
@@ -136,10 +145,10 @@ export class AgentRuntimeService {
     // for-await break）会让 yield 点以 return 语义恢复、跳过 catch，
     // 此时只有 finally 有机会兜底收口。
     let terminalizationHandled = false
-    // finalization Step 的最新已知安全 output。一旦模型调用发生过，
-    // 无论 replay Abort、Step 启动失败还是终态事务回滚，都用它收口，
-    // 已经产生的 attempt 与 usage 不会从审计里消失。
-    let finalizationClose: TerminalStepMetadata | undefined
+    // 失败 / return 时仍需落库的最新安全 output；action sampling 与
+    // finalization 不会同时处于 RUNNING，因此复用一个 metadata 槽位。
+    let terminalStepMetadata: TerminalStepMetadata | undefined
+    let activeSamplingClose: ActiveSamplingClose | undefined
 
     try {
       await this.assertConversationExists(input.conversationId)
@@ -317,7 +326,10 @@ export class AgentRuntimeService {
         const samplingStartedAt = Date.now()
         // debug 捕获暂存：只有 AGENT_DEBUG_CAPTURE_MODEL_IO 开启时 client 才会回调，
         // 开关关闭时始终为空对象，落库输出与现状完全一致。
-        const debugModelIO: DebugModelIOCaptured = {}
+        const debugModelIO: DebugModelIOCaptured = {
+          runId: currentAgentRunId,
+          samplingAttemptId,
+        }
         let samplingDecision: SamplingDecision
         let completedSamplingSummary: ModelSamplingSummary | undefined
         let contextPlanSummary: SamplingContextPlanSummary | undefined
@@ -345,14 +357,47 @@ export class AgentRuntimeService {
                   onRequest: (requestBody) => {
                     debugModelIO.requestBody = requestBody
                   },
-                  onResponse: (rawResponse) => {
-                    debugModelIO.rawResponse = rawResponse
+                  onResponse: (responseCapture) => {
+                    debugModelIO.rawResponse = responseCapture
+                  },
+                  onCaptureError: (side) => {
+                    this.recordDebugCaptureFailure(debugModelIO, side)
                   },
                 },
               },
             ),
             samplingAttemptId,
           )
+          activeSamplingClose = {
+            debugModelIO,
+            close: async () => {
+              try {
+                await sampling.return(undefined as never)
+              }
+              catch {
+                this.logger.warn({
+                  event: 'model_sampling_iterator_close_failed',
+                  runId: currentAgentRunId,
+                  samplingAttemptId,
+                })
+              }
+            },
+            toMetadata: () => (
+              debugModelIO.requestBody !== undefined
+              || debugModelIO.rawResponse !== undefined
+                ? {
+                    id: samplingStep.id,
+                    output: this.toFailedSamplingStepOutput(
+                      undefined,
+                      Date.now() - samplingStartedAt,
+                      plannedMessageCount,
+                      contextPlanSummary,
+                      debugModelIO,
+                    ),
+                  }
+                : undefined
+            ),
+          }
           let samplingResult = await sampling.next()
 
           while (!samplingResult.done) {
@@ -393,8 +438,13 @@ export class AgentRuntimeService {
               ),
             },
           )
+          activeSamplingClose = undefined
         }
         catch (error) {
+          const closeSampling = activeSamplingClose
+
+          activeSamplingClose = undefined
+          await closeSampling?.close()
           terminalStepFailure = {
             id: samplingStep.id,
             errorMessage: this.toChatStreamErrorMessage(error),
@@ -415,6 +465,14 @@ export class AgentRuntimeService {
                 ),
           }
           claimRunTermination(runCancellation, error)
+          this.logSamplingDebugCaptureClosed(
+            debugModelIO,
+            runCancellation.source === 'user'
+              ? 'abort'
+              : runCancellation.source === 'deadline'
+                ? 'deadline'
+                : 'failure',
+          )
           throw error
         }
 
@@ -574,7 +632,7 @@ export class AgentRuntimeService {
         // 不依赖某一种错误类型是否恰好把 attempts 带出来。
         const finalizationAttempts: GroundedFinalizationAttemptSummary[] = []
         const closeFinalizationStep = (error?: unknown): void => {
-          finalizationClose = {
+          terminalStepMetadata = {
             id: finalizationStep.id,
             output: this.toFinalizationStepOutput(
               registry,
@@ -656,7 +714,7 @@ export class AgentRuntimeService {
             errorMessage: error instanceof GroundedFinalizationFailedError
               ? error.message
               : '回答引用校验未能安全完成。',
-            output: finalizationClose!.output,
+            output: terminalStepMetadata!.output,
           }
           claimRunTermination(runCancellation, error)
           throw error
@@ -741,7 +799,7 @@ export class AgentRuntimeService {
                 content,
               ),
               terminalStepFailure,
-              finalizationClose,
+              terminalStepMetadata,
             )
           }
           catch (terminalizationCause) {
@@ -782,7 +840,7 @@ export class AgentRuntimeService {
               content || errorMessage,
             ),
             terminalStepFailure,
-            finalizationClose,
+            terminalStepMetadata,
           )
         }
         catch (terminalizationCause) {
@@ -815,6 +873,18 @@ export class AgentRuntimeService {
         // 先取消在途模型请求：return() 路径不经过 claimRunTermination，
         // 不 abort 内部信号的话 provider 流会继续生成 token 直到自然结束。
         runCancellation?.claimFailure(new Error('流消费者提前终止了本次 Run'))
+        const samplingClose = activeSamplingClose
+
+        activeSamplingClose = undefined
+        await samplingClose?.close()
+
+        if (samplingClose) {
+          terminalStepMetadata = samplingClose.toMetadata()
+          this.logSamplingDebugCaptureClosed(
+            samplingClose.debugModelIO,
+            'consumer_return',
+          )
+        }
 
         try {
           await this.agentRunRecorderService.abortRun(
@@ -826,7 +896,7 @@ export class AgentRuntimeService {
               content,
             ),
             terminalStepFailure,
-            finalizationClose,
+            terminalStepMetadata,
           )
         }
         catch (terminalizationCause) {
@@ -1072,26 +1142,83 @@ export class AgentRuntimeService {
   ): Record<string, Prisma.InputJsonValue> {
     const output: Record<string, Prisma.InputJsonValue> = {}
 
-    for (const [capturedKey, outputKey] of [
-      ['requestBody', 'debugRequestBody'],
-      ['rawResponse', 'debugRawResponse'],
-    ] as const) {
-      const captured = debugModelIO?.[capturedKey]
+    if (debugModelIO?.requestBody !== undefined) {
+      const envelope = toModelIODebugCaptureEnvelope(debugModelIO.requestBody)
 
-      if (captured === undefined)
-        continue
-
-      const envelope = toModelIODebugCaptureEnvelope(captured)
-
-      if (envelope === undefined) {
-        this.logger.warn(`模型 I/O debug 捕获序列化失败，跳过 ${outputKey}`)
-        continue
+      if (envelope) {
+        output.debugRequestBody = envelope as unknown as Prisma.InputJsonValue
       }
+      else {
+        this.logger.warn({
+          event: 'model_sampling_debug_capture_serialization_failed',
+          runId: debugModelIO.runId,
+          samplingAttemptId: debugModelIO.samplingAttemptId,
+          captureSide: 'request',
+        })
+      }
+    }
 
-      output[outputKey] = envelope as unknown as Prisma.InputJsonValue
+    if (debugModelIO?.rawResponse !== undefined) {
+      const capture = debugModelIO.rawResponse
+      const envelope = toModelIODebugResponseCaptureEnvelope(capture)
+
+      if (envelope) {
+        output.debugRawResponse = envelope as unknown as Prisma.InputJsonValue
+      }
+      else {
+        this.logger.warn({
+          event: 'model_sampling_debug_capture_serialization_failed',
+          runId: debugModelIO.runId,
+          samplingAttemptId: debugModelIO.samplingAttemptId,
+          captureSide: 'response',
+          captureState: capture.state,
+          lastModelEvent: capture.lastEvent,
+          textChars: capture.textChars,
+          toolCallCount: capture.toolCallCount,
+        })
+      }
     }
 
     return output
+  }
+
+  private recordDebugCaptureFailure(
+    debugModelIO: DebugModelIOCaptured,
+    side: 'request' | 'response',
+  ): void {
+    debugModelIO.failedSides ??= []
+
+    if (debugModelIO.failedSides.includes(side))
+      return
+
+    debugModelIO.failedSides.push(side)
+    this.logger.warn({
+      event: 'model_sampling_debug_capture_failed',
+      runId: debugModelIO.runId,
+      samplingAttemptId: debugModelIO.samplingAttemptId,
+      captureSide: side,
+    })
+  }
+
+  private logSamplingDebugCaptureClosed(
+    debugModelIO: DebugModelIOCaptured,
+    termination: 'abort' | 'consumer_return' | 'deadline' | 'failure',
+  ): void {
+    const capture = debugModelIO.rawResponse
+
+    if (!capture)
+      return
+
+    this.logger.warn({
+      event: 'model_sampling_debug_capture_closed',
+      runId: debugModelIO.runId,
+      samplingAttemptId: debugModelIO.samplingAttemptId,
+      termination,
+      captureState: capture.state,
+      lastModelEvent: capture.lastEvent,
+      textChars: capture.textChars,
+      toolCallCount: capture.toolCallCount,
+    })
   }
 
   /**

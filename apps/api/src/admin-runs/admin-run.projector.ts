@@ -3,6 +3,7 @@ import type {
   AdminContextInspector,
   AdminContextObservationSummary,
   AdminDebugModelIOCapture,
+  AdminDebugModelResponseCapture,
   AdminGenericStep,
   AdminInitialHistoryExcludedReason,
   AdminLoadConversationHistoryStep,
@@ -360,7 +361,7 @@ function projectModelSampling(
     recordedDurationMs,
     contextInspector: projectContextInspector(input, output, step.status),
     debugRequestBody: readDebugModelIOCapture(output, 'debugRequestBody'),
-    debugRawResponse: readDebugModelIOCapture(output, 'debugRawResponse'),
+    debugRawResponse: readDebugModelResponseCapture(output),
     inputSummary: summarize([
       ['samplingIndex', samplingIndex],
       ['samplingAttemptId', samplingAttemptId],
@@ -1283,9 +1284,15 @@ function toSafeStepProjection(
  */
 function readDebugModelIOCapture(
   output: Record<string, unknown> | null,
-  key: 'debugRequestBody' | 'debugRawResponse',
+  key: 'debugRequestBody',
 ): AdminDebugModelIOCapture | null {
-  const envelope = readObject(output?.[key])
+  return readDebugModelIOCaptureEnvelope(output?.[key])
+}
+
+function readDebugModelIOCaptureEnvelope(
+  value: unknown,
+): AdminDebugModelIOCapture | null {
+  const envelope = readObject(value)
 
   if (envelope === null)
     return null
@@ -1300,6 +1307,32 @@ function readDebugModelIOCapture(
     return { truncated: false, value: envelope.value }
 
   return null
+}
+
+function readDebugModelResponseCapture(
+  output: Record<string, unknown> | null,
+): AdminDebugModelResponseCapture | null {
+  const envelope = readObject(output?.debugRawResponse)
+
+  if (envelope === null)
+    return null
+
+  if (envelope.state === 'empty') {
+    return Object.keys(envelope).length === 1
+      ? { state: 'empty' }
+      : null
+  }
+
+  const state = envelope.state === undefined
+    ? 'complete'
+    : envelope.state === 'complete' || envelope.state === 'partial'
+      ? envelope.state
+      : null
+  const capture = readDebugModelIOCaptureEnvelope(envelope)
+
+  return state && capture
+    ? { state, ...capture }
+    : null
 }
 
 function aggregateSamplingUsage(

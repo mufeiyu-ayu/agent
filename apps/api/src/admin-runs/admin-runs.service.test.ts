@@ -467,6 +467,80 @@ describe('Admin Run projector', () => {
     )
   })
 
+  it('Response debug capture 投影 complete / partial / empty，并兼容旧 complete 信封', () => {
+    const record = createRunRecord()
+    const samplings = record.steps
+      .filter(step => step.type === 'model_sampling')
+      .sort((left, right) => left.sequence - right.sequence)
+    const outputs = samplings.map(step => step.output as Record<string, unknown>)
+
+    outputs[0]!.debugRawResponse = {
+      truncated: false,
+      value: { choices: [{ message: { content: 'legacy complete' } }] },
+    }
+    outputs[1]!.debugRawResponse = {
+      state: 'partial',
+      truncated: true,
+      preview: '{"choices":[',
+    }
+    outputs[2]!.debugRawResponse = { state: 'empty' }
+
+    const detail = projectAdminRunDetail(record)
+    const projected = detail.timeline.filter(
+      item => item.kind === 'known' && item.type === 'model_sampling',
+    )
+
+    assert.deepEqual(projected.map(item => (
+      item.kind === 'known' && item.type === 'model_sampling'
+        ? item.debugRawResponse
+        : null
+    )), [
+      {
+        state: 'complete',
+        truncated: false,
+        value: { choices: [{ message: { content: 'legacy complete' } }] },
+      },
+      {
+        state: 'partial',
+        truncated: true,
+        preview: '{"choices":[',
+      },
+      { state: 'empty' },
+    ])
+    assert.deepEqual(
+      detail.safeRawData.agentSteps
+        .filter(step => step.type === 'model_sampling')
+        .map(step => step.debugRawResponse),
+      projected.map(item => (
+        item.kind === 'known' && item.type === 'model_sampling'
+          ? item.debugRawResponse
+          : null
+      )),
+    )
+  })
+
+  it('Response debug capture 状态或信封损坏时按未捕获降级', () => {
+    const record = createRunRecord()
+    const sampling = record.steps.find(step => step.type === 'model_sampling')!
+    const output = sampling.output as Record<string, unknown>
+
+    output.debugRawResponse = {
+      state: 'empty',
+      value: { choices: 'MUST_NOT_PROJECT' },
+    }
+
+    const detail = projectAdminRunDetail(record)
+    const projected = detail.timeline.find(item => item.id === sampling.id)
+
+    assert.equal(
+      projected?.kind === 'known' && projected.type === 'model_sampling'
+        ? projected.debugRawResponse
+        : undefined,
+      null,
+    )
+    assert.doesNotMatch(JSON.stringify(detail), /MUST_NOT_PROJECT/)
+  })
+
   it('按 Sampling 投影安全 Context Inspector，并区分三种 item count 与 Tool Exchange 0/1/2', () => {
     const record = createRunRecord()
     attachContextMetadata(record)
