@@ -25,7 +25,7 @@ Phase 8 已完成：
 - Task 3B：Web Grounding 状态、Sources disclosure、Source cards 与 Chromium，#60 / #61 / `572ad206`；
 - Task 3C：Admin Retrieval / Finalization / Citation Inspector，#62 / #63 / `20f838fb`。
 
-当前仍处于 Phase 8 源码阅读阶段；独立横向任务 Issue #101（[Agent Runtime 模块组织](./tasks/agent-runtime-module-organization.md)）、Issue #102（[Admin Runs 模块组织](./tasks/admin-runs-module-organization.md)）与 Issue #103（[Article Chunking 模块组织](./tasks/article-chunking-module-organization.md)）均已验收合并，Issue #104（[Retrieval 模块组织](./tasks/retrieval-module-organization.md)）已验收并获合并授权；Issue #98（[失败 Sampling 部分响应可观测性](./tasks/failed-sampling-debug-capture.md)）和 Issue #94（[DeepSeek 思考强度与 Usage](./tasks/deepseek-reasoning-usage.md)）均已验收合并。下一阶段学习内容暂不定义，Phase 9 尚未定案。
+当前仍处于 Phase 8 源码阅读阶段；Backend 模块组织 Issue #101（[Agent Runtime 模块组织](./tasks/agent-runtime-module-organization.md)）、#102（[Admin Runs 模块组织](./tasks/admin-runs-module-organization.md)）、#103（[Article Chunking 模块组织](./tasks/article-chunking-module-organization.md)）与 #104（[Retrieval 模块组织](./tasks/retrieval-module-organization.md)）均已验收合并；Issue #98（[失败 Sampling 部分响应可观测性](./tasks/failed-sampling-debug-capture.md)）和 Issue #94（[DeepSeek 思考强度与 Usage](./tasks/deepseek-reasoning-usage.md)）也已验收合并。下一阶段学习内容暂不定义，Phase 9 尚未定案。
 
 ## 文档入口
 

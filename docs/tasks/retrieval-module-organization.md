@@ -99,8 +99,8 @@ git diff --check
 ## GitHub 交付记录
 
 - Issue：[Issue #104](https://github.com/mufeiyu-ayu/agent/issues/104)
-- 分支：`codex/issue-104-retrieval-layout`
-- PR：[PR #108](https://github.com/mufeiyu-ayu/agent/pull/108)（验收通过，已授权转 Ready、合并与分支清理）
+- 分支：`codex/issue-104-retrieval-layout`（远程与本地均已删除）
+- PR：[PR #108](https://github.com/mufeiyu-ayu/agent/pull/108)，merge `132a51e`
 - GPT 验收结论：通过（基于 head `6911eaf8f2`、完整 AC 映射、验证结果与两道 Codex Review）
 - 用户确认：已确认验收并授权 Ready、合并与分支清理
 

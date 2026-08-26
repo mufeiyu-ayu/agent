@@ -54,7 +54,7 @@ Phase 8 全部 Task 文档已合并归档到 [completed/phase-08-grounded-retrie
 
 ## 当前正式动作
 
-当前无 Active Agent Task；Backend 模块组织 #101-#104 均已验收，其中 #104 已获合并与分支清理授权。
+当前无 Active Agent Task；Backend 模块组织 #101-#104 均已验收合并。
 
 失败 Sampling 部分响应可观测性（#98）、DeepSeek 思考强度与 Usage（#94）和 Run 配置解析边界（#92）均已验收合并。
 

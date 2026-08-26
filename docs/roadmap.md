@@ -147,7 +147,7 @@ Phase 8 Task 3C 已完成安全 Retrieval Inspector，但不自动启动 Task 4�
 
 ```text
 Phase 8：Completed / 已归档（docs/tasks/completed/phase-08-grounded-retrieval.md）
-Active Agent Task：无（Backend 模块组织 #101-#104 均已验收）
+Active Agent Task：无（Backend 模块组织 #101-#104 均已验收合并）
 DeepSeek 思考强度与 Usage（#94）：Completed / PR #95 / `2266fad`
 当前阶段：Phase 8 源码阅读（学习阶段）
 下一阶段学习内容：暂不定义

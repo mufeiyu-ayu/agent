@@ -6,7 +6,7 @@
 
 | 类型 | 当前记录 | 下一步 |
 | --- | --- | --- |
-| Agent 主线 | 阶段 1-8 Completed；#101 / PR #105、#102 / PR #106、#103 / PR #107 已验收合并 | #104 Retrieval 模块组织 Gate；不启动 Phase 9 |
+| Agent 主线 | 阶段 1-8 Completed；Backend 模块组织 #101 / PR #105 至 #104 / PR #108 全部验收合并 | 继续 Phase 8 源码阅读；不启动 Phase 9 |
 | Phase 8 | Task 0、1、2A、2B、3A、3B、3C 全部 Completed | [阶段归档](./tasks/completed/phase-08-grounded-retrieval.md) |
 | Minimal Compaction | Gated | 只有真实 Context 压力证据满足触发条件后才讨论 |
 | Admin Console | Task 0-3、Enhancement 1-3、Phase 8 Task 3C Completed；Task 4 Planned | 不自动启动 Auth / RBAC |
@@ -16,6 +16,7 @@
 
 | 日期 | 事项 | 结果 |
 | --- | --- | --- |
+| 2026-08-27 | Backend 模块组织 #104 验收收口 | Issue #104 / PR #108；Retrieval 按 Contract / Runtime、Retrievers、Persistence、Evaluation 分域，根目录只保留稳定入口；Retrieval 42、Tools 86、Article Indexing 62、Grounding 171 全绿，baseline 指标不变，API lint / typecheck / build 与 workspace typecheck 通过；DB integration 重构前后均因本机 5433 未启动受阻，未伪造通过；提交前 Review 修复 1 个 migration 路径 P2 后复审 `No findings.`，GitHub Codex Review 未发现 major issues；GPT 技术验收和用户确认通过；merge `132a51e`，Issue Closed，远程与本地任务分支已删除；Backend 模块组织 #101-#104 全部收口 |
 | 2026-08-27 | Backend 模块组织 #103 验收收口 | Issue #103 / PR #107；保留 15 行 `article-chunking.ts` Facade，将 HTML 结构提取、确定性 Chunk 组装与 cl100k Token 计数拆入单向依赖的内部模块；Article Indexing 重构前后均 62、Retrieval 42 全绿，API lint / typecheck / build 与 workspace typecheck 通过；提交前 Review `No findings.`；GPT 技术验收和用户确认通过；merge `28024eb`，Issue Closed，远程与本地任务分支已删除；#104 推进为 Next / Gate PENDING |
 | 2026-08-27 | Backend 模块组织 #102 验收收口 | Issue #102 / PR #106；Admin Runs 按 facade / context / retrieval / sampling usage / safe readers 分域并消除循环 import；Admin Runs 146、Grounding 171 与 Admin Overview / checks 全绿，API build / typecheck / lint、Admin 与 workspace typecheck 通过；提交前 Review `No findings.`，GitHub Codex Review 未发现 major issues；GPT 技术验收和用户确认通过；merge `638c70e`，Issue Closed，远程与本地任务分支已删除；#103 推进为 Next / Gate PENDING |
 | 2026-08-27 | Backend 模块组织 #101 验收收口 | Issue #101 / PR #105；Agent Runtime 按 configuration / lifecycle / context / sampling / grounding 分域，根目录保留公共入口；Run Cancellation 提取为独立 Lifecycle 状态机并新增 7 条测试；提交前 xhigh Review `No findings.`，GitHub Codex Review 未发现 major issues；Lifecycle 21、Tool Loop 65、Model Stream 91、Context 24、Grounding 171、Admin Runs 146、SEO Service 32 全绿，build / typecheck / lint / diff check 通过；GPT 技术验收和用户确认通过；merge `2f1ae27`，Issue Closed，远程与本地任务分支已删除；#102 推进为 Next / Gate PENDING |
