@@ -17,7 +17,7 @@ import { PrismaService } from '../prisma/prisma.service.js'
 import {
   projectAdminRunDetail,
   projectAdminRunListItem,
-} from './admin-run.projector.js'
+} from './projection/admin-run.projector.js'
 
 const DEFAULT_PAGE = 1
 const DEFAULT_PAGE_SIZE = 20

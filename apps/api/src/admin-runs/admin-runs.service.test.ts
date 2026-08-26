@@ -5,11 +5,11 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import { BadRequestException, NotFoundException } from '@nestjs/common'
 
+import { AdminRunsService } from './admin-runs.service.js'
 import {
   projectAdminRunDetail,
   projectAdminRunListItem,
-} from './admin-run.projector.js'
-import { AdminRunsService } from './admin-runs.service.js'
+} from './projection/admin-run.projector.js'
 
 describe('Admin Run projector', () => {
   it('从多次 sampling / tool step 聚合 durable 指标且保留 requestedModel=null', () => {
