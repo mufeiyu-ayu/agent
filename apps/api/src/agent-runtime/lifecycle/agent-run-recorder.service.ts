@@ -15,11 +15,17 @@ import {
 import { PrismaService } from '../../prisma/prisma.service.js'
 
 export const AGENT_STEP_TYPES = {
+  /** 接收用户消息 */
   receiveUserMessage: 'receive_user_message',
+  /** 加载会话上下文 */
   loadConversationHistory: 'load_conversation_history',
+  /** 模型采样 */
   modelSampling: 'model_sampling',
+  /** 执行工具 */
   toolExecution: 'tool_execution',
+  /** 校验回答引用 */
   groundedFinalization: 'grounded_finalization',
+  /** 生成助手回复 */
   assistantOutput: 'assistant_output',
 } as const
 
