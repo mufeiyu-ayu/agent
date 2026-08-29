@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { HomeOutlined } from '@ant-design/icons-vue'
 import { Breadcrumb, BreadcrumbItem } from 'ant-design-vue'
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -20,11 +19,6 @@ const parent = computed(() => route.meta.parentPath && (route.meta.parentTitleKe
 
 <template>
   <Breadcrumb class="admin-breadcrumb">
-    <BreadcrumbItem>
-      <RouterLink to="/overview" :aria-label="t('navigation.overview')">
-        <HomeOutlined />
-      </RouterLink>
-    </BreadcrumbItem>
     <BreadcrumbItem v-if="parent">
       <RouterLink :to="parent.path">
         {{ parent.title }}

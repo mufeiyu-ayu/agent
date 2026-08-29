@@ -206,6 +206,7 @@ export const messages = {
         copyRunId: '复制 Run ID',
         copiedRunId: 'Run ID 已复制',
         copyFailed: '复制失败，请手动选择 Run ID。',
+        details: '详情',
       },
       toolbar: {
         ariaLabel: '运行轨迹工具栏',
@@ -730,6 +731,7 @@ export const messages = {
         copyRunId: 'Copy Run ID',
         copiedRunId: 'Run ID copied',
         copyFailed: 'Copy failed. Select the Run ID manually.',
+        details: 'Details',
       },
       toolbar: {
         ariaLabel: 'Run trace toolbar',
