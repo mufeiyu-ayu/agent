@@ -26,19 +26,19 @@ const seedColors = {
     colorPrimary: '#1c6ced',
     colorBgContainer: '#ffffff',
     colorBgElevated: '#ffffff',
-    colorBgLayout: '#f5f7f9',
+    colorBgLayout: '#f9fafb',
     colorBorderSecondary: '#e7e9ee',
     colorText: '#282c34',
     colorTextSecondary: '#6b7280',
   },
   dark: {
-    colorPrimary: '#518ff6',
-    colorBgContainer: '#1c1e24',
-    colorBgElevated: '#232630',
-    colorBgLayout: '#111317',
-    colorBorderSecondary: '#34363d',
-    colorText: '#f0f2f4',
-    colorTextSecondary: '#a4a9b4',
+    colorPrimary: '#6492fc',
+    colorBgContainer: '#151820',
+    colorBgElevated: '#1c1f29',
+    colorBgLayout: '#0f1117',
+    colorBorderSecondary: '#292c35',
+    colorText: '#ebeef4',
+    colorTextSecondary: '#a2a8b9',
   },
 } as const
 
@@ -75,12 +75,12 @@ const themeConfig = computed<ThemeConfig>(() => {
       },
       Segmented: {
         borderRadius: 8,
-        bgColorSelected: dark ? '#2b2f3a' : '#ffffff',
+        bgColorSelected: dark ? '#262b3a' : '#ffffff',
       },
       Table: {
         tableHeaderBg: 'transparent',
         tableHeaderCellSplitColor: 'transparent',
-        tableRowHoverBg: dark ? '#22252d' : '#f5f7fa',
+        tableRowHoverBg: dark ? '#202432' : '#f5f7fa',
       },
     },
   }

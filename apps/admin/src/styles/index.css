@@ -32,8 +32,8 @@
   --admin-danger-strong: hsl(354deg 70% 44%);
   --admin-danger-soft: hsl(354deg 70% 51% / 10%);
 
-  /* 面板层级：页面底 < 卡片 < 次级面板底 < 次级面板内容卡 */
-  --admin-bg-deep: hsl(220deg 24% 95.5%);
+  /* 面板层级：页面底与卡片只差约 2% 亮度——有深度但无接缝（参照 shadcn background/card 与 Radix gray 1/2 的用法） */
+  --admin-bg-deep: hsl(220deg 22% 98.2%);
   --admin-surface: hsl(0deg 0% 100%);
   --admin-surface-muted: hsl(220deg 22% 96.5%);
   --admin-surface-raised: hsl(0deg 0% 100%);
@@ -56,34 +56,35 @@
 }
 
 :root[data-theme='dark'] {
-  --admin-primary: hsl(217deg 90% 64%);
-  --admin-primary-hover: hsl(217deg 90% 70%);
-  --admin-primary-soft: hsl(217deg 90% 64% / 14%);
-  --admin-success: hsl(150deg 52% 55%);
-  --admin-success-strong: hsl(150deg 55% 64%);
-  --admin-success-soft: hsl(150deg 52% 55% / 13%);
-  --admin-warning: hsl(35deg 88% 60%);
-  --admin-warning-strong: hsl(35deg 90% 66%);
-  --admin-warning-soft: hsl(35deg 88% 60% / 14%);
-  --admin-danger: hsl(354deg 78% 65%);
-  --admin-danger-strong: hsl(354deg 80% 71%);
-  --admin-danger-soft: hsl(354deg 78% 65% / 14%);
+  --admin-primary: hsl(222deg 96% 69%);
+  --admin-primary-hover: hsl(222deg 96% 75%);
+  --admin-primary-soft: hsl(222deg 96% 69% / 16%);
+  --admin-success: hsl(152deg 45% 58%);
+  --admin-success-strong: hsl(152deg 50% 66%);
+  --admin-success-soft: hsl(152deg 45% 58% / 14%);
+  --admin-warning: hsl(38deg 80% 62%);
+  --admin-warning-strong: hsl(38deg 84% 68%);
+  --admin-warning-soft: hsl(38deg 80% 62% / 14%);
+  --admin-danger: hsl(356deg 75% 68%);
+  --admin-danger-strong: hsl(356deg 78% 74%);
+  --admin-danger-soft: hsl(356deg 75% 68% / 14%);
 
-  /* 暗色下次级面板取「更深」方向，形成下沉而非漂浮 */
-  --admin-bg-deep: hsl(222deg 14% 8%);
-  --admin-surface: hsl(222deg 12% 12.5%);
-  --admin-surface-muted: hsl(222deg 13% 10%);
-  --admin-surface-raised: hsl(222deg 11% 15.5%);
+  /* Linear 式深蓝夜色：黑带明显冷调（饱和度 19–22%），elevation 靠亮度阶梯而非阴影；
+     边框用半透明冷白，叠在不同深浅面板上自然分层，比实心灰轻。 */
+  --admin-bg-deep: hsl(228deg 22% 7.5%);
+  --admin-surface: hsl(227deg 20% 10.5%);
+  --admin-surface-muted: hsl(228deg 21% 8.8%);
+  --admin-surface-raised: hsl(226deg 19% 13.5%);
 
-  --admin-text: hsl(220deg 15% 95%);
-  --admin-text-muted: hsl(220deg 9% 66%);
-  --admin-text-subtle: hsl(220deg 8% 52%);
-  --admin-border: hsl(222deg 8% 22%);
-  --admin-border-strong: hsl(222deg 8% 29%);
-  --admin-hover: hsl(222deg 9% 18%);
+  --admin-text: hsl(224deg 30% 94%);
+  --admin-text-muted: hsl(223deg 14% 68%);
+  --admin-text-subtle: hsl(224deg 11% 52%);
+  --admin-border: hsl(226deg 70% 88% / 10%);
+  --admin-border-strong: hsl(226deg 70% 88% / 17%);
+  --admin-hover: hsl(225deg 22% 16%);
 
-  --admin-shadow-sm: 0 1px 2px hsl(0deg 0% 0% / 24%);
-  --admin-shadow-md: 0 2px 4px hsl(0deg 0% 0% / 24%), 0 10px 24px -8px hsl(0deg 0% 0% / 36%);
+  --admin-shadow-sm: 0 1px 2px hsl(230deg 45% 2% / 40%);
+  --admin-shadow-md: 0 2px 4px hsl(230deg 45% 2% / 40%), 0 10px 24px -8px hsl(230deg 45% 2% / 55%);
 
   color-scheme: dark;
 }
