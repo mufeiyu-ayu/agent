@@ -13,7 +13,6 @@ import {
   Skeleton,
   Tag,
   Textarea,
-  Tooltip,
 } from 'ant-design-vue'
 import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -183,6 +182,9 @@ const reviewColor: Record<string, string> = {
   APPROVED: 'green',
   REJECTED: 'red',
 }
+const hasRuleScore = computed(() => score.value?.ruleScore != null && score.value.verdict != null)
+const ruleScorePercent = computed(() => Math.min(100, Math.max(0, score.value?.ruleScore ?? 0)))
+const reviewDone = computed(() => hasRuleScore.value && score.value?.reviewStatus !== 'PENDING')
 </script>
 
 <template>
@@ -279,79 +281,216 @@ const reviewColor: Record<string, string> = {
         </div>
       </header>
 
-      <section v-if="selectedLanguage" class="detail-card score-bar">
-        <div class="score-bar__facts">
-          <template v-if="score">
-            <Tag v-if="score.verdict" :color="verdictColor[score.verdict]" class="meta-tag">
-              {{ t(`qaArticleDetail.verdict.${score.verdict}`) }}
-            </Tag>
-            <span class="score-bar__item">{{ t('qaArticleDetail.ruleScore') }} <b>{{ score.ruleScore ?? '—' }}</b></span>
-            <span class="score-bar__item">{{ t('qaArticleDetail.lengthRatio') }} <b>{{ score.lengthRatio ?? '—' }}</b></span>
-            <Tag :color="reviewColor[score.reviewStatus]" class="meta-tag">
-              {{ t(`qaArticleDetail.review.${score.reviewStatus}`) }}
-            </Tag>
-            <Tooltip v-if="score.reviewNote" :title="score.reviewNote">
-              <span class="score-bar__note">{{ t('qaArticleDetail.reviewNote') }}</span>
-            </Tooltip>
+      <section v-if="selectedLanguage" class="quality-workspace">
+        <div v-if="translationState.loading.value" class="detail-card quality-state">
+          <Skeleton active :paragraph="{ rows: 5 }" />
+        </div>
+        <Alert
+          v-else-if="translationState.error.value"
+          type="error"
+          show-icon
+          :message="t('qaArticleDetail.translationLoadFailed')"
+          :description="translationState.error.value"
+        >
+          <template #action>
+            <Button size="small" @click="translationState.retry">
+              {{ t('common.actions.retry') }}
+            </Button>
           </template>
-          <span v-else class="score-bar__empty">{{ t('qaArticleDetail.notScored') }}</span>
-          <Tag v-if="translation?.hasPendingTask" color="processing" class="meta-tag">
-            {{ t('qaArticleDetail.pendingTask') }}
-          </Tag>
+        </Alert>
+        <div v-else-if="!translation" class="detail-card quality-state">
+          <Empty :description="t('qaArticleDetail.noTranslation')" />
         </div>
 
-        <div class="score-bar__actions">
-          <Button size="small" :loading="actionLoading" @click="handleScore">
-            {{ t('qaArticleDetail.score') }}
-          </Button>
-          <Button size="small" :disabled="!score || actionLoading" @click="handleApprove">
-            {{ t('qaArticleDetail.approve') }}
-          </Button>
-          <Button size="small" danger :disabled="!score || actionLoading" @click="rejectModalOpen = true">
-            {{ t('qaArticleDetail.reject') }}
-          </Button>
-          <Button size="small" :disabled="actionLoading" @click="handleTranslate(selectedLanguage)">
-            {{ t('qaArticleDetail.retranslate') }}
-          </Button>
-        </div>
+        <template v-else>
+          <article class="detail-card quality-summary">
+            <header class="quality-summary__head">
+              <div>
+                <h3>{{ t('qaArticleDetail.analysis.title') }}</h3>
+                <p>
+                  {{ t(`qaArticleDetail.analysis.summary.${hasRuleScore ? score?.verdict : 'PENDING'}`) }}
+                </p>
+              </div>
+              <Tag v-if="hasRuleScore && score?.verdict" :color="verdictColor[score.verdict]" class="quality-summary__verdict">
+                {{ t(`qaArticleDetail.verdict.${score.verdict}`) }}
+              </Tag>
+              <Tag v-else class="quality-summary__verdict">
+                {{ t('qaArticleDetail.notScored') }}
+              </Tag>
+            </header>
+
+            <div class="quality-score">
+              <div class="quality-score__value">
+                <span>{{ t('qaArticleDetail.ruleScore') }}</span>
+                <strong>{{ hasRuleScore ? score?.ruleScore : '—' }}</strong>
+              </div>
+              <div
+                v-if="hasRuleScore"
+                class="quality-score__track"
+                role="progressbar"
+                :aria-label="t('qaArticleDetail.ruleScore')"
+                :aria-valuenow="score?.ruleScore ?? undefined"
+                aria-valuemin="0"
+                aria-valuemax="100"
+              >
+                <span :style="{ width: `${ruleScorePercent}%` }" />
+              </div>
+              <div v-else class="quality-score__track" aria-hidden="true" />
+            </div>
+
+            <dl class="quality-facts">
+              <div>
+                <dt>{{ t('qaArticleDetail.lengthRatio') }}</dt>
+                <dd>{{ score?.lengthRatio ?? '—' }}</dd>
+              </div>
+              <div>
+                <dt>{{ t('qaArticleDetail.analysis.reviewStatus') }}</dt>
+                <dd>
+                  <Tag v-if="score" :color="reviewColor[score.reviewStatus]" class="meta-tag">
+                    {{ t(`qaArticleDetail.review.${score.reviewStatus}`) }}
+                  </Tag>
+                  <span v-else>—</span>
+                </dd>
+              </div>
+              <div>
+                <dt>{{ t('qaArticleDetail.analysis.taskStatus') }}</dt>
+                <dd>{{ translation.hasPendingTask ? t('qaArticleDetail.pendingTask') : t('qaArticleDetail.analysis.noPendingTask') }}</dd>
+              </div>
+              <div>
+                <dt>{{ t('qaArticleDetail.analysis.evidenceType') }}</dt>
+                <dd>{{ t('qaArticleDetail.analysis.lengthRule') }}</dd>
+              </div>
+            </dl>
+
+            <div class="analysis-scope">
+              <strong>{{ t('qaArticleDetail.analysis.scopeTitle') }}</strong>
+              <p>{{ t('qaArticleDetail.analysis.scopeDescription') }}</p>
+            </div>
+
+            <div v-if="score?.reviewNote" class="review-note">
+              <strong>
+                {{ t(score.reviewStatus === 'REJECTED'
+                  ? 'qaArticleDetail.analysis.reviewNote'
+                  : 'qaArticleDetail.analysis.reviewNoteHistory') }}
+              </strong>
+              <p>{{ score.reviewNote }}</p>
+            </div>
+
+            <div class="quality-actions">
+              <Button :type="hasRuleScore ? 'default' : 'primary'" :loading="actionLoading" @click="handleScore">
+                {{ t('qaArticleDetail.score') }}
+              </Button>
+              <Button type="primary" :disabled="!hasRuleScore || actionLoading" @click="handleApprove">
+                {{ t('qaArticleDetail.approve') }}
+              </Button>
+              <Button danger :disabled="!hasRuleScore || actionLoading" @click="rejectModalOpen = true">
+                {{ t('qaArticleDetail.reject') }}
+              </Button>
+              <Button :disabled="actionLoading" @click="handleTranslate(selectedLanguage)">
+                {{ t('qaArticleDetail.retranslate') }}
+              </Button>
+            </div>
+          </article>
+
+          <aside class="detail-card decision-flow">
+            <header class="decision-flow__head">
+              <div>
+                <h3>{{ t('qaArticleDetail.analysis.processTitle') }}</h3>
+                <p>{{ t('qaArticleDetail.analysis.processDescription') }}</p>
+              </div>
+              <Tag class="meta-tag">
+                A-2
+              </Tag>
+            </header>
+
+            <ol class="decision-steps">
+              <li class="decision-step decision-step--done">
+                <span class="decision-step__index">1</span>
+                <div>
+                  <strong>{{ t('qaArticleDetail.analysis.sourceReady') }}</strong>
+                  <p>{{ t('qaArticleDetail.analysis.sourceReadyDescription', { language: selectedLanguage }) }}</p>
+                </div>
+              </li>
+              <li class="decision-step" :class="hasRuleScore ? 'decision-step--done' : 'decision-step--current'">
+                <span class="decision-step__index">2</span>
+                <div>
+                  <strong>{{ t('qaArticleDetail.analysis.ruleScoring') }}</strong>
+                  <p>
+                    {{ hasRuleScore && score?.verdict
+                      ? t('qaArticleDetail.analysis.ruleScoringDone', { verdict: t(`qaArticleDetail.verdict.${score.verdict}`) })
+                      : t('qaArticleDetail.analysis.ruleScoringPending') }}
+                  </p>
+                </div>
+              </li>
+              <li
+                class="decision-step"
+                :class="reviewDone
+                  ? 'decision-step--done'
+                  : hasRuleScore ? 'decision-step--current' : 'decision-step--pending'"
+              >
+                <span class="decision-step__index">3</span>
+                <div>
+                  <strong>{{ t('qaArticleDetail.analysis.humanReview') }}</strong>
+                  <p>
+                    {{ reviewDone && score
+                      ? t('qaArticleDetail.analysis.humanReviewDone', { status: t(`qaArticleDetail.review.${score.reviewStatus}`) })
+                      : hasRuleScore
+                        ? t('qaArticleDetail.analysis.humanReviewPending')
+                        : t('qaArticleDetail.analysis.humanReviewBlocked') }}
+                  </p>
+                </div>
+              </li>
+            </ol>
+          </aside>
+        </template>
       </section>
 
-      <section class="compare detail-card">
-        <article class="compare__pane">
-          <header class="compare__head">
-            <span class="compare__lang">zh</span>
-            <span class="compare__title">{{ article.title }}</span>
-          </header>
-          <!-- contentHtml 由 API 通过标签白名单净化并移除全部属性 -->
-          <div class="compare__body" v-html="article.contentHtml" />
-        </article>
+      <details class="detail-card compare-disclosure">
+        <summary>
+          <span>
+            <strong>{{ t('qaArticleDetail.analysis.compareTitle') }}</strong>
+            <small>{{ t('qaArticleDetail.analysis.compareDescription') }}</small>
+          </span>
+          <code>zh → {{ selectedLanguage || '—' }}</code>
+        </summary>
 
-        <article class="compare__pane">
-          <header class="compare__head">
-            <span class="compare__lang">{{ selectedLanguage || '—' }}</span>
-            <span class="compare__title">{{ translation?.title ?? '' }}</span>
-          </header>
-          <Skeleton
-            v-if="translationState.loading.value"
-            active
-            :paragraph="{ rows: 8 }"
-            class="compare__skeleton"
-          />
-          <Alert
-            v-else-if="translationState.error.value"
-            type="error"
-            show-icon
-            :message="t('qaArticleDetail.translationLoadFailed')"
-            :description="translationState.error.value"
-          />
-          <Empty
-            v-else-if="!translation"
-            :description="t('qaArticleDetail.noTranslation')"
-          />
-          <!-- contentHtml 由 API 通过标签白名单净化并移除全部属性 -->
-          <div v-else class="compare__body" v-html="translation.contentHtml" />
-        </article>
-      </section>
+        <section class="compare">
+          <article class="compare__pane">
+            <header class="compare__head">
+              <span class="compare__lang">zh</span>
+              <span class="compare__title">{{ article.title }}</span>
+            </header>
+            <!-- contentHtml 由 API 通过标签白名单净化并移除全部属性 -->
+            <div class="compare__body" v-html="article.contentHtml" />
+          </article>
+
+          <article class="compare__pane">
+            <header class="compare__head">
+              <span class="compare__lang">{{ selectedLanguage || '—' }}</span>
+              <span class="compare__title">{{ translation?.title ?? '' }}</span>
+            </header>
+            <Skeleton
+              v-if="translationState.loading.value"
+              active
+              :paragraph="{ rows: 8 }"
+              class="compare__skeleton"
+            />
+            <Alert
+              v-else-if="translationState.error.value"
+              type="error"
+              show-icon
+              :message="t('qaArticleDetail.translationLoadFailed')"
+              :description="translationState.error.value"
+            />
+            <Empty
+              v-else-if="!translation"
+              :description="t('qaArticleDetail.noTranslation')"
+            />
+            <!-- contentHtml 由 API 通过标签白名单净化并移除全部属性 -->
+            <div v-else class="compare__body" v-html="translation.contentHtml" />
+          </article>
+        </section>
+      </details>
 
       <section class="detail-card diagnose">
         <header class="diagnose__head">
@@ -479,53 +618,310 @@ const reviewColor: Record<string, string> = {
   margin: 0;
 }
 
-.score-bar {
+.quality-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1.8fr) minmax(280px, 0.8fr);
+  gap: 14px;
+}
+
+.quality-workspace > .ant-alert,
+.quality-state {
+  grid-column: 1 / -1;
+}
+
+.quality-state {
+  padding: 22px 18px;
+}
+
+.quality-summary,
+.decision-flow {
+  padding: 18px;
+}
+
+.quality-summary__head,
+.decision-flow__head {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  gap: 10px 18px;
-  padding: 10px 18px;
+  gap: 16px;
 }
 
-.score-bar__facts {
+.quality-summary__head h3,
+.decision-flow__head h3 {
+  margin: 0;
+  color: var(--admin-text);
+  font-size: var(--admin-font-lg);
+  line-height: 1.4;
+}
+
+.quality-summary__head p,
+.decision-flow__head p {
+  max-width: 64ch;
+  margin: 4px 0 0;
+  color: var(--admin-text-muted);
+  font-size: var(--admin-font-sm);
+  line-height: 1.65;
+}
+
+.quality-summary__verdict {
+  flex: none;
+  margin: 2px 0 0;
+  font-size: var(--admin-font-sm);
+}
+
+.quality-score {
+  margin-top: 20px;
+}
+
+.quality-score__value {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px 14px;
-}
-
-.score-bar__item {
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
   color: var(--admin-text-muted);
   font-size: var(--admin-font-sm);
 }
 
-.score-bar__item b {
+.quality-score__value strong {
   color: var(--admin-text);
+  font-size: var(--admin-font-xl);
   font-variant-numeric: tabular-nums;
 }
 
-.score-bar__note {
-  color: var(--admin-primary);
-  cursor: help;
-  font-size: var(--admin-font-xs);
-  text-decoration: underline dotted;
+.quality-score__track {
+  height: 8px;
+  margin-top: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--admin-surface-muted);
 }
 
-.score-bar__empty {
+.quality-score__track span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--admin-primary);
+  transition: width 180ms ease-out;
+}
+
+.quality-facts {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 20px 0 0;
+  border-block: 1px solid var(--admin-border);
+}
+
+.quality-facts > div {
+  min-width: 0;
+  padding: 14px 12px;
+}
+
+.quality-facts > div:first-child {
+  padding-left: 0;
+}
+
+.quality-facts > div + div {
+  border-left: 1px solid var(--admin-border);
+}
+
+.quality-facts dt {
+  margin-bottom: 6px;
   color: var(--admin-text-subtle);
+  font-size: var(--admin-font-xs);
+}
+
+.quality-facts dd {
+  margin: 0;
+  overflow: hidden;
+  color: var(--admin-text);
+  font-size: var(--admin-font-sm);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.analysis-scope {
+  margin-top: 16px;
+  padding: 12px 14px;
+  border-radius: var(--admin-radius-sm);
+  background: var(--admin-surface-muted);
+}
+
+.analysis-scope strong {
+  color: var(--admin-text);
   font-size: var(--admin-font-sm);
 }
 
-.score-bar__actions {
+.analysis-scope p {
+  margin: 4px 0 0;
+  color: var(--admin-text-muted);
+  font-size: var(--admin-font-xs);
+  line-height: 1.65;
+}
+
+.review-note {
+  margin-top: 12px;
+  padding: 10px 14px;
+  border: 1px solid var(--admin-border);
+  border-radius: var(--admin-radius-sm);
+}
+
+.review-note strong {
+  color: var(--admin-text);
+  font-size: var(--admin-font-xs);
+}
+
+.review-note p {
+  margin: 4px 0 0;
+  color: var(--admin-text-muted);
+  font-size: var(--admin-font-sm);
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+
+.quality-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+  margin-top: 16px;
+}
+
+.decision-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 0;
+  margin: 20px 0 0;
+  list-style: none;
+}
+
+.decision-step {
+  position: relative;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 10px;
+  padding-bottom: 20px;
+}
+
+.decision-step:last-child {
+  padding-bottom: 0;
+}
+
+.decision-step:not(:last-child)::after {
+  position: absolute;
+  top: 28px;
+  bottom: 0;
+  left: 13px;
+  width: 1px;
+  background: var(--admin-border-strong);
+  content: '';
+}
+
+.decision-step__index {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border: 1px solid var(--admin-border-strong);
+  border-radius: 50%;
+  color: var(--admin-text-subtle);
+  background: var(--admin-surface);
+  font-size: var(--admin-font-xs);
+  font-weight: 700;
+}
+
+.decision-step--done .decision-step__index {
+  border-color: color-mix(in srgb, var(--admin-success) 45%, var(--admin-border));
+  color: var(--admin-success-strong);
+  background: var(--admin-success-soft);
+}
+
+.decision-step--current .decision-step__index {
+  border-color: color-mix(in srgb, var(--admin-primary) 45%, var(--admin-border));
+  color: var(--admin-primary);
+  background: var(--admin-primary-soft);
+}
+
+.decision-step strong {
+  display: block;
+  margin-top: 3px;
+  color: var(--admin-text);
+  font-size: var(--admin-font-sm);
+}
+
+.decision-step p {
+  margin: 4px 0 0;
+  color: var(--admin-text-muted);
+  font-size: var(--admin-font-xs);
+  line-height: 1.6;
+}
+
+.decision-step--pending strong,
+.decision-step--pending p {
+  color: var(--admin-text-subtle);
+}
+
+.compare-disclosure {
+  overflow: hidden;
+}
+
+.compare-disclosure > summary {
+  display: flex;
+  min-height: 56px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 18px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.compare-disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+
+.compare-disclosure > summary::after {
+  flex: none;
+  color: var(--admin-text-subtle);
+  content: '⌄';
+  transition: transform 180ms ease-out;
+}
+
+.compare-disclosure[open] > summary::after {
+  transform: rotate(180deg);
+}
+
+.compare-disclosure > summary > span {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.compare-disclosure > summary strong {
+  color: var(--admin-text);
+  font-size: var(--admin-font-sm);
+}
+
+.compare-disclosure > summary small {
+  color: var(--admin-text-muted);
+  font-size: var(--admin-font-xs);
+}
+
+.compare-disclosure > summary code {
+  flex: none;
+  color: var(--admin-text-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: var(--admin-font-xs);
 }
 
 .compare {
   display: grid;
   grid-template-columns: 1fr 1fr;
+  border-top: 1px solid var(--admin-border);
   overflow: hidden;
 }
 
@@ -696,6 +1092,10 @@ const reviewColor: Record<string, string> = {
 }
 
 @media (max-width: 1100px) {
+  .quality-workspace {
+    grid-template-columns: 1fr;
+  }
+
   .compare {
     grid-template-columns: 1fr;
   }
@@ -703,6 +1103,18 @@ const reviewColor: Record<string, string> = {
   .compare__pane + .compare__pane {
     border-top: 1px solid var(--admin-border);
     border-left: 0;
+  }
+
+  .quality-facts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .quality-facts > div:nth-child(3) {
+    border-left: 0;
+  }
+
+  .quality-facts > div:nth-child(n + 3) {
+    border-top: 1px solid var(--admin-border);
   }
 }
 

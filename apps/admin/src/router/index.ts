@@ -78,7 +78,7 @@ export const router = createRouter({
           component: () => import('@/views/QaArticleDetailView.vue'),
           meta: {
             activeMenu: '/qa/articles',
-            title: 'Translation Compare',
+            title: 'Translation QA',
             titleKey: 'navigation.qaArticleDetail',
             tab: true,
             parentTitle: 'QA Articles',
