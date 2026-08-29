@@ -952,6 +952,10 @@ export class AgentRuntimeService {
       : undefined
   }
 
+  /**
+   * 按时间倒序列出最近的已完成消息，分页游标为「严格早于」。
+   * 仅返回已完成消息，未完成消息不计入分页。
+   */
   private async listRecentChatMessageCandidates(
     conversationId: string,
     currentUserUpperBound: HistoryCursor,

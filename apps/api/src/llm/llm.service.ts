@@ -27,6 +27,12 @@ export class LLMService {
     private readonly runtimeConfigService: LLMRuntimeConfigService,
   ) {}
 
+  /**
+   * 解析单次 chat 请求的完整配置，包含模型、上下文窗口、输出 token 上限和推理强度。
+   *
+   * @param options - 可选：覆盖模型、推理强度和输出 token 上限
+   * @returns ResolvedChatRequestConfig
+   */
   resolveChatRequestConfig(options?: ChatOptions): ResolvedChatRequestConfig {
     return resolveChatRequestConfig(this.runtimeConfigService.value, options)
   }

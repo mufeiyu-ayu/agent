@@ -92,6 +92,7 @@ export class SeoService {
         ? { reasoningEffort: input.reasoningEffort }
         : {}),
       ...(signal ? { signal } : {}),
+      /** 系统提示词 */
       buildModelMessages: historyMessages =>
         this.seoContextBuilder.buildModelMessages({ historyMessages }),
     }
