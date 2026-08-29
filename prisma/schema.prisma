@@ -199,15 +199,23 @@ model Article {
   slug           String   @unique
   languageCode   String
   title          String
+  summary        String?
   content        String
   seoTitle       String?
   seoDescription String?
+  // 质检站（Issue #109）：发布状态与候选集标记来自生产快照导入
+  isPublished    Boolean  @default(false)
+  publishedAt    DateTime?
+  isQaCandidate  Boolean  @default(false)
+  termHitCount   Int?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
   chunks         ArticleChunk[]
   indexState     ArticleIndexState?
+  translations   ArticleTranslation[]
 
   @@index([title])
+  @@index([isQaCandidate])
 }
 
 // Task 1 只保留每篇 Article 的一个 active embedding index。
@@ -252,4 +260,91 @@ model ArticleIndexState {
   updatedAt        DateTime @updatedAt
 
   @@index([chunkerVersion, embeddingVersion])
+}
+
+// ---------- 翻译质检站（阶段 A，Issue #109）----------
+// Article 为中文原文；ArticleTranslation 按 (articleId, languageCode) 保存各语种译文。
+// TranslationScore 与审核状态本阶段只建表，A-2 起消费。
+
+enum TranslationVerdict {
+  PASS
+  REVIEW
+  REJECT
+}
+
+enum TranslationReviewStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model ArticleTranslation {
+  id              String    @id @default(cuid())
+  articleId       String
+  article         Article   @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  // 快照来源行 id，保证导入幂等
+  sourceId        Int       @unique
+  languageCode    String
+  title           String
+  summary         String?
+  content         String
+  metaTitle       String?
+  metaDescription String?
+  sourceUpdatedAt DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  score           TranslationScore?
+
+  @@unique([articleId, languageCode])
+  @@index([languageCode])
+}
+
+model TranslationScore {
+  id            String                  @id @default(cuid())
+  translationId String                  @unique
+  translation   ArticleTranslation      @relation(fields: [translationId], references: [id], onDelete: Cascade)
+  ruleScore     Int?
+  judgeScore    Int?
+  verdict       TranslationVerdict?
+  reviewStatus  TranslationReviewStatus @default(PENDING)
+  scoredAt      DateTime?
+  createdAt     DateTime                @default(now())
+  updatedAt     DateTime                @updatedAt
+
+  @@index([verdict])
+  @@index([reviewStatus])
+}
+
+// 术语库：id 直接沿用生产快照 id，保证导入幂等与可对账
+model Glossary {
+  id          Int      @id
+  name        String   @unique
+  description String?
+  isActive    Boolean  @default(true)
+  revision    Int      @default(1)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  terms       GlossaryTerm[]
+}
+
+model GlossaryTerm {
+  id           Int      @id
+  glossaryId   Int
+  glossary     Glossary @relation(fields: [glossaryId], references: [id], onDelete: Cascade)
+  isActive     Boolean  @default(true)
+  translations GlossaryTermTranslation[]
+
+  @@index([glossaryId])
+}
+
+model GlossaryTermTranslation {
+  id           Int          @id
+  glossaryId   Int
+  termId       Int
+  term         GlossaryTerm @relation(fields: [termId], references: [id], onDelete: Cascade)
+  languageCode String
+  text         String
+
+  @@unique([termId, languageCode])
+  @@index([glossaryId, languageCode])
 }

@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import {
+  BookOutlined,
   CommentOutlined,
   DashboardOutlined,
+  FileTextOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   ProfileOutlined,
@@ -21,10 +23,22 @@ defineEmits<{
   toggle: []
 }>()
 
-const navigation = [
-  { path: '/overview', labelKey: 'navigation.overview', icon: DashboardOutlined },
-  { path: '/conversations', labelKey: 'navigation.conversations', icon: CommentOutlined },
-  { path: '/runs', labelKey: 'navigation.runs', icon: ProfileOutlined },
+const sections = [
+  {
+    labelKey: 'navigation.workspace',
+    items: [
+      { path: '/overview', labelKey: 'navigation.overview', icon: DashboardOutlined },
+      { path: '/conversations', labelKey: 'navigation.conversations', icon: CommentOutlined },
+      { path: '/runs', labelKey: 'navigation.runs', icon: ProfileOutlined },
+    ],
+  },
+  {
+    labelKey: 'navigation.qaStation',
+    items: [
+      { path: '/qa/articles', labelKey: 'navigation.qaArticles', icon: FileTextOutlined },
+      { path: '/qa/glossaries', labelKey: 'navigation.qaGlossaries', icon: BookOutlined },
+    ],
+  },
 ]
 
 const route = useRoute()
@@ -41,20 +55,22 @@ const activeMenuPath = computed(() => resolveActiveMenuPath(route))
     <AdminLogo :collapsed="collapsed" />
 
     <nav class="admin-nav">
-      <span v-if="!collapsed" class="admin-nav__section">{{ t('navigation.workspace') }}</span>
-      <RouterLink
-        v-for="item in navigation"
-        :key="item.path"
-        :to="item.path"
-        class="admin-nav__item"
-        :class="{ 'is-active': activeMenuPath === item.path }"
-        :aria-current="activeMenuPath === item.path ? 'page' : undefined"
-        :aria-label="collapsed ? t(item.labelKey) : undefined"
-        :title="collapsed ? t(item.labelKey) : undefined"
-      >
-        <component :is="item.icon" class="admin-nav__icon" />
-        <span v-if="!collapsed">{{ t(item.labelKey) }}</span>
-      </RouterLink>
+      <template v-for="section in sections" :key="section.labelKey">
+        <span v-if="!collapsed" class="admin-nav__section">{{ t(section.labelKey) }}</span>
+        <RouterLink
+          v-for="item in section.items"
+          :key="item.path"
+          :to="item.path"
+          class="admin-nav__item"
+          :class="{ 'is-active': activeMenuPath === item.path }"
+          :aria-current="activeMenuPath === item.path ? 'page' : undefined"
+          :aria-label="collapsed ? t(item.labelKey) : undefined"
+          :title="collapsed ? t(item.labelKey) : undefined"
+        >
+          <component :is="item.icon" class="admin-nav__icon" />
+          <span v-if="!collapsed">{{ t(item.labelKey) }}</span>
+        </RouterLink>
+      </template>
     </nav>
 
     <button
@@ -104,6 +120,10 @@ const activeMenuPath = computed(() => resolveActiveMenuPath(route))
   font-weight: 650;
   letter-spacing: 0.12em;
   text-transform: uppercase;
+}
+
+.admin-nav__section:not(:first-child) {
+  margin-top: 14px;
 }
 
 .admin-nav__item {

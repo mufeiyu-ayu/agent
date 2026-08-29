@@ -66,6 +66,32 @@ export const router = createRouter({
             parentPath: '/runs',
           },
         },
+        {
+          path: 'qa/articles',
+          name: 'qa-articles',
+          component: () => import('@/views/QaArticlesView.vue'),
+          meta: { title: 'QA Articles', titleKey: 'navigation.qaArticles', tab: true },
+        },
+        {
+          path: 'qa/glossaries',
+          name: 'qa-glossaries',
+          component: () => import('@/views/QaGlossariesView.vue'),
+          meta: { title: 'QA Glossaries', titleKey: 'navigation.qaGlossaries', tab: true },
+        },
+        {
+          path: 'qa/glossaries/:glossaryId',
+          name: 'qa-glossary-terms',
+          component: () => import('@/views/QaGlossaryTermsView.vue'),
+          meta: {
+            activeMenu: '/qa/glossaries',
+            title: 'Glossary Terms',
+            titleKey: 'navigation.qaGlossaryTerms',
+            tab: true,
+            parentTitle: 'Glossaries',
+            parentTitleKey: 'navigation.qaGlossaries',
+            parentPath: '/qa/glossaries',
+          },
+        },
       ],
     },
     {
