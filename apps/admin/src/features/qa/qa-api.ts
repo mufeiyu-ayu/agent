@@ -1,6 +1,7 @@
 import type {
   QaArticleDetail,
   QaArticleListResponse,
+  QaDiagnoseHistoryResponse,
   QaDiagnoseResponse,
   QaGlossaryListResponse,
   QaGlossaryTermListResponse,
@@ -104,6 +105,16 @@ export function requestQaTranslation(
     `/api/admin/qa/articles/${encodeURIComponent(articleId)}/translate`,
     options,
     { method: 'POST', body: { languageCode } },
+  )
+}
+
+export function fetchQaDiagnoseMessages(
+  articleId: string,
+  options: AdminRunFetchOptions = {},
+): Promise<QaDiagnoseHistoryResponse> {
+  return requestAdminRun<QaDiagnoseHistoryResponse>(
+    `/api/admin/qa/articles/${encodeURIComponent(articleId)}/diagnose`,
+    options,
   )
 }
 

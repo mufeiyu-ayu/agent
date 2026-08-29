@@ -76,10 +76,11 @@ export interface QaTranslationScore {
   reviewedAt: string | null
 }
 
-/** 详情页语种侧栏的每语种摘要 */
+/** 详情页语种矩阵的每语种摘要 */
 export interface QaTranslationSummary {
   languageCode: string
   title: string
+  ruleScore: number | null
   verdict: QaTranslationVerdict | null
   reviewStatus: QaReviewStatus | null
   /** 该语种是否有排队中的翻译任务 */
@@ -139,4 +140,19 @@ export interface QaDiagnoseResponse {
   answer: string
   /** A-2 为占位实现；阶段 D 接入 Agent Runtime 后置为 false */
   mock: boolean
+}
+
+// ---------- 诊断对话落库（质检工作台重构） ----------
+
+export type QaDiagnoseRole = 'USER' | 'ASSISTANT'
+
+export interface QaDiagnoseMessage {
+  id: string
+  role: QaDiagnoseRole
+  content: string
+  createdAt: string
+}
+
+export interface QaDiagnoseHistoryResponse {
+  items: QaDiagnoseMessage[]
 }

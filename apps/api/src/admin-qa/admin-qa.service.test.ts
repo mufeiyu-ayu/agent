@@ -180,6 +180,35 @@ describe('AdminQaService', () => {
     )
     assert.equal(harness.calls.taskCreate.length, 0)
   })
+
+  it('诊断问答成对落库，assistant 时间戳错开 1ms 保证顺序', async () => {
+    const harness = createHarness()
+
+    const response = await harness.service.diagnose('article-1', '为什么没被收录？')
+
+    assert.equal(response.mock, true)
+    assert.equal(harness.calls.diagnoseCreate.length, 2)
+    const [userMessage, assistantMessage] = harness.calls.diagnoseCreate
+    assert.equal(userMessage?.data.role, 'USER')
+    assert.equal(userMessage?.data.content, '为什么没被收录？')
+    assert.equal(assistantMessage?.data.role, 'ASSISTANT')
+    assert.equal(assistantMessage?.data.content, response.answer)
+    assert.equal(
+      (assistantMessage?.data.createdAt as Date).getTime(),
+      (userMessage?.data.createdAt as Date).getTime() + 1,
+    )
+  })
+
+  it('诊断历史按时间升序返回并投影 ISO 时间', async () => {
+    const harness = createHarness()
+
+    const response = await harness.service.listDiagnoseMessages('article-1')
+
+    assert.deepEqual(response.items, [
+      { id: 'diag-1', role: 'USER', content: '历史问题', createdAt: '2026-08-29T09:00:00.000Z' },
+      { id: 'diag-2', role: 'ASSISTANT', content: '历史应答', createdAt: '2026-08-29T09:00:00.001Z' },
+    ])
+  })
 })
 
 interface HarnessOverrides {
@@ -198,6 +227,7 @@ function createHarness(overrides: HarnessOverrides = {}) {
     scoreUpsert: [] as Array<Record<string, unknown>>,
     scoreUpdate: [] as Array<{ data: Record<string, unknown> }>,
     taskCreate: [] as Array<Record<string, unknown>>,
+    diagnoseCreate: [] as Array<{ data: Record<string, unknown> }>,
   }
   let taskFindFirstIndex = 0
 
@@ -218,7 +248,7 @@ function createHarness(overrides: HarnessOverrides = {}) {
         }]
       },
       count: async () => 1,
-      findUnique: async () => ({ id: 'article-1' }),
+      findUnique: async () => ({ id: 'article-1', title: '演示文章' }),
     },
     articleTranslation: {
       findUnique: async () => ({
@@ -316,6 +346,18 @@ function createHarness(overrides: HarnessOverrides = {}) {
         { glossaryId: 3, languageCode: 'fr' },
       ],
     },
+    qaDiagnoseMessage: {
+      create: async (args: { data: Record<string, unknown> }) => {
+        calls.diagnoseCreate.push(args)
+        return { id: `diag-${calls.diagnoseCreate.length}`, ...args.data }
+      },
+      // 服务按 createdAt desc 取最近 N 条，mock 也按倒序返回
+      findMany: async () => [
+        { id: 'diag-2', role: 'ASSISTANT', content: '历史应答', createdAt: new Date('2026-08-29T09:00:00.001Z') },
+        { id: 'diag-1', role: 'USER', content: '历史问题', createdAt: new Date('2026-08-29T09:00:00.000Z') },
+      ],
+    },
+    $transaction: async (operations: Array<Promise<unknown>>) => Promise.all(operations),
   } as unknown as PrismaService
 
   return { calls, service: new AdminQaService(prisma) }

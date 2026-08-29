@@ -65,6 +65,11 @@ export class AdminQaController {
     return this.adminQaService.diagnose(params.articleId, body.question)
   }
 
+  @Get('articles/:articleId/diagnose')
+  listDiagnoseMessages(@Param() params: QaArticleIdParamDto) {
+    return this.adminQaService.listDiagnoseMessages(params.articleId)
+  }
+
   @Get('glossaries')
   listGlossaries() {
     return this.adminQaService.listGlossaries()

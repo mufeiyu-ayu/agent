@@ -67,6 +67,12 @@ export const router = createRouter({
           },
         },
         {
+          path: 'qa/workbench',
+          name: 'qa-workbench',
+          component: () => import('@/views/QaWorkbenchView.vue'),
+          meta: { title: 'QA Workbench', titleKey: 'navigation.qaWorkbench', tab: true },
+        },
+        {
           path: 'qa/articles',
           name: 'qa-articles',
           component: () => import('@/views/QaArticlesView.vue'),

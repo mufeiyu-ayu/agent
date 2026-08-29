@@ -16,6 +16,7 @@
 
 | 日期 | 事项 | 结果 |
 | --- | --- | --- |
+| 2026-08-29 | 翻译质检站 A-2b 信息架构重构（待验收） | 用户验收反馈定案「档案与操作分离」，并授权免 Issue 在 `claude/issue-111-qa-station-a2` 分支继续开发：新增「质检工作台」菜单（文章队列、语种 chips、打分/审核/重译动作、Agent 翻译流程演示面板——五步时间线仅最后一步真实入队）；文章详情页改只读档案（语种矩阵含规则分/结论/审核状态、译文预览按需展开、沟通记录只读）；诊断对话落库（`QaDiagnoseMessage` 表 + 历史接口，应答仍为占位）；service 测试 15/15、真库自检通过、typecheck/lint/build 全绿，待用户验收 |
 | 2026-08-29 | 翻译质检站 A-2 立项与实现（待验收） | Issue #111（Gate READY，用户授权 Claude 自行定夺方案）；`claude/issue-111-qa-station-a2` 实现：TranslationTask 表与 Score 增补字段、六个动作接口（详情/译文/打分-长度比最小真规则/审核附理由/任务幂等/诊断 mock）、admin 翻译质检页（质量结论/真实指标/判分过程优先，安全结构化全文对照按需展开，含动作区与诊断面板）；真库全链路自检通过、service 测试 13/13、typecheck、lint、admin checks 与 build 全绿；本地浏览器已核对分析层级、展开交互和无横向溢出，待用户验收 |
 | 2026-08-29 | 翻译质检站 A-1 验收收口 | Issue #109 / PR #110；用户浏览器验收通过；PR 转 Ready 合并 `d2a2ba9`，Issue Closed，远程与本地任务分支已删除；docs 状态收口为 Completed；A-2（译文对照详情 + mock 动作）进入规格讨论 |
 | 2026-08-29 | 翻译质检站 A-1 立项与实现（待验收） | 用户授权 SSH 生产服务器以 Laravel 只读导出快照至 `data/snapshots/2026-08-29/`（术语库 8/8725/156758 全量、文章元数据 1728、中文原文 3295、术语命中 top150 候选、候选全语言译文 2638，已 gitignore）；创建 Issue #109（Gate READY）并在 `claude/issue-109-qa-station-a1` 实现：温层 schema（ArticleTranslation、Glossary×3、TranslationScore 预建）、幂等导入脚本、admin-qa 只读三接口、admin「质检站」侧栏分组与文章/术语库/词条三页面；导入统计对账一致，服务层真库自检通过，三 workspace typecheck 与 lint 通过，service 测试 4/4；UI 页面效果待用户浏览器验收 |

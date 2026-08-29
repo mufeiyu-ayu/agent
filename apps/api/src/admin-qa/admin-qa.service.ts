@@ -1,6 +1,7 @@
 import type {
   QaArticleDetail,
   QaArticleListResponse,
+  QaDiagnoseHistoryResponse,
   QaDiagnoseResponse,
   QaGlossaryListResponse,
   QaGlossaryTermListResponse,
@@ -30,6 +31,8 @@ const DEFAULT_PAGE_SIZE = 20
 export const QA_LANGUAGE_TOTAL = 19
 /** 词条页默认目标语言 */
 const DEFAULT_TARGET_LANGUAGE = 'en'
+/** 诊断历史单次返回上限（最近 N 条） */
+const DIAGNOSE_HISTORY_LIMIT = 200
 
 // ponytail: 长度比为全局 naive 带，不区分语言族（CJK 目标语的合理比值更接近 1）；
 // A-3 规则打分器扩展时按语言族校准阈值。
@@ -231,7 +234,7 @@ export class AdminQaService {
             languageCode: true,
             title: true,
             score: {
-              select: { verdict: true, reviewStatus: true },
+              select: { ruleScore: true, verdict: true, reviewStatus: true },
             },
           },
         },
@@ -271,6 +274,7 @@ export class AdminQaService {
         .map(t => ({
           languageCode: t.languageCode,
           title: t.title,
+          ruleScore: t.score?.ruleScore ?? null,
           verdict: t.score?.verdict ?? null,
           reviewStatus: t.score?.reviewStatus ?? null,
           hasPendingTask: pendingLanguages.has(t.languageCode),
@@ -432,7 +436,7 @@ export class AdminQaService {
     }
   }
 
-  // ponytail: 占位实现，不接 LLM、不持久化；阶段 D 由 Agent Runtime + 工具链替换
+  // ponytail: 应答仍为占位实现（不接 LLM）；对话已按文章落库，阶段 D 只替换应答来源
   async diagnose(articleId: string, question: string): Promise<QaDiagnoseResponse> {
     const article = await this.prismaService.article.findUnique({
       where: { id: articleId },
@@ -441,10 +445,46 @@ export class AdminQaService {
     if (!article)
       throw new NotFoundException('文章不存在')
 
+    const answer = `诊断能力将在阶段 D 接入 Agent Runtime（工具：gsc_inspect / 质量分 / 检索对照）。`
+      + `当前为占位应答——你的问题「${question}」已收到，但《${article.title}》的质量分、审核状态与收录数据尚未关联分析。`
+
+    // createdAt 显式错开 1ms，保证问答对在时间线上顺序稳定
+    const askedAt = new Date()
+    await this.prismaService.$transaction([
+      this.prismaService.qaDiagnoseMessage.create({
+        data: { articleId, role: 'USER', content: question, createdAt: askedAt },
+      }),
+      this.prismaService.qaDiagnoseMessage.create({
+        data: { articleId, role: 'ASSISTANT', content: answer, createdAt: new Date(askedAt.getTime() + 1) },
+      }),
+    ])
+
+    return { answer, mock: true }
+  }
+
+  async listDiagnoseMessages(articleId: string): Promise<QaDiagnoseHistoryResponse> {
+    const article = await this.prismaService.article.findUnique({
+      where: { id: articleId },
+      select: { id: true },
+    })
+    if (!article)
+      throw new NotFoundException('文章不存在')
+
+    // 只取最近 N 条防止长期文章的线程无限膨胀；倒序取再反转，保证输出仍为时间升序
+    const messages = await this.prismaService.qaDiagnoseMessage.findMany({
+      where: { articleId },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: DIAGNOSE_HISTORY_LIMIT,
+      select: { id: true, role: true, content: true, createdAt: true },
+    })
+
     return {
-      answer: `诊断能力将在阶段 D 接入 Agent Runtime（工具：gsc_inspect / 质量分 / 检索对照）。`
-        + `当前为占位应答——你的问题「${question}」已收到，但《${article.title}》的质量分、审核状态与收录数据尚未关联分析。`,
-      mock: true,
+      items: messages.reverse().map(item => ({
+        id: item.id,
+        role: item.role,
+        content: item.content,
+        createdAt: item.createdAt.toISOString(),
+      })),
     }
   }
 

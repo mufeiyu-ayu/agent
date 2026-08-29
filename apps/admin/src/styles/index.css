@@ -33,7 +33,7 @@
   --admin-danger-soft: hsl(354deg 70% 51% / 10%);
 
   /* 面板层级：页面底与卡片只差约 2% 亮度——有深度但无接缝（参照 shadcn background/card 与 Radix gray 1/2 的用法） */
-  --admin-bg-deep: hsl(220deg 22% 98.2%);
+  --admin-bg-deep: hsl(220deg 20% 96.8%);
   --admin-surface: hsl(0deg 0% 100%);
   --admin-surface-muted: hsl(220deg 22% 96.5%);
   --admin-surface-raised: hsl(0deg 0% 100%);
