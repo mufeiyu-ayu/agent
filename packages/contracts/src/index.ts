@@ -13,6 +13,14 @@ export type {
   AdminProviderBalance,
 } from './admin-overview.js'
 export type {
+  QaArticleListItem,
+  QaArticleListResponse,
+  QaGlossaryListItem,
+  QaGlossaryListResponse,
+  QaGlossaryTermListItem,
+  QaGlossaryTermListResponse,
+} from './admin-qa.js'
+export type {
   AdminAssistantOutputStep,
   AdminContextInspector,
   AdminContextInspectorAvailability,
