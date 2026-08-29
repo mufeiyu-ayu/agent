@@ -252,10 +252,7 @@ function resetInspectorWidth() {
 <template>
   <section class="run-trace-workspace">
     <div class="run-trace-workspace__frame">
-      <RunTraceHeader
-        :run="run"
-        :request-count="projection.requestGroups.length"
-      />
+      <RunTraceHeader :run="run" />
 
       <RunTraceToolbar
         :duration-ms="run.durationMs"
