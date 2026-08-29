@@ -135,7 +135,12 @@ function handlePageChange(page: number, pageSize: number) {
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'title'">
             <Tooltip :title="record.title">
-              <span class="cell-title">{{ record.title }}</span>
+              <RouterLink
+                class="cell-title cell-title--link"
+                :to="{ name: 'qa-article-detail', params: { articleId: record.id } }"
+              >
+                {{ record.title }}
+              </RouterLink>
             </Tooltip>
           </template>
           <template v-else-if="column.key === 'slug'">
@@ -262,6 +267,10 @@ function handlePageChange(page: number, pageSize: number) {
   color: var(--admin-text);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.cell-title--link:hover {
+  color: var(--admin-primary);
 }
 
 .cell-slug {

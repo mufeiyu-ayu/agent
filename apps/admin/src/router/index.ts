@@ -73,6 +73,20 @@ export const router = createRouter({
           meta: { title: 'QA Articles', titleKey: 'navigation.qaArticles', tab: true },
         },
         {
+          path: 'qa/articles/:articleId',
+          name: 'qa-article-detail',
+          component: () => import('@/views/QaArticleDetailView.vue'),
+          meta: {
+            activeMenu: '/qa/articles',
+            title: 'Translation Compare',
+            titleKey: 'navigation.qaArticleDetail',
+            tab: true,
+            parentTitle: 'QA Articles',
+            parentTitleKey: 'navigation.qaArticles',
+            parentPath: '/qa/articles',
+          },
+        },
+        {
           path: 'qa/glossaries',
           name: 'qa-glossaries',
           component: () => import('@/views/QaGlossariesView.vue'),

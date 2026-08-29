@@ -1,7 +1,9 @@
 import { Transform, Type } from 'class-transformer'
 import {
   IsBoolean,
+  IsIn,
   IsInt,
+  IsNotEmpty,
   IsOptional,
   IsString,
   Matches,
@@ -63,6 +65,47 @@ export class QaGlossaryIdParamDto {
   @IsInt()
   @Min(1)
   glossaryId!: number
+}
+
+export class QaArticleIdParamDto {
+  @Transform(({ value }) => typeof value === 'string' ? value.trim() : value)
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(128)
+  articleId!: string
+}
+
+export class QaTranslationParamDto extends QaArticleIdParamDto {
+  @Transform(({ value }) => typeof value === 'string' ? value.trim().toLowerCase() : value)
+  @IsString()
+  @Matches(/^[a-z]{2}(?:-[a-z0-9]{2,8})?$/i, { message: 'languageCode 必须是合法语言码' })
+  languageCode!: string
+}
+
+export class QaReviewBodyDto {
+  @IsIn(['APPROVED', 'REJECTED'])
+  decision!: 'APPROVED' | 'REJECTED'
+
+  @IsOptional()
+  @Transform(({ value }) => typeof value === 'string' ? value.trim() : value)
+  @IsString()
+  @MaxLength(2000)
+  note?: string
+}
+
+export class QaTranslateBodyDto {
+  @Transform(({ value }) => typeof value === 'string' ? value.trim().toLowerCase() : value)
+  @IsString()
+  @Matches(/^[a-z]{2}(?:-[a-z0-9]{2,8})?$/i, { message: 'languageCode 必须是合法语言码' })
+  languageCode!: string
+}
+
+export class QaDiagnoseBodyDto {
+  @Transform(({ value }) => typeof value === 'string' ? value.trim() : value)
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(2000)
+  question!: string
 }
 
 export class ListQaGlossaryTermsQueryDto {

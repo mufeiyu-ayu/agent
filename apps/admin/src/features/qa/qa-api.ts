@@ -1,7 +1,13 @@
 import type {
+  QaArticleDetail,
   QaArticleListResponse,
+  QaDiagnoseResponse,
   QaGlossaryListResponse,
   QaGlossaryTermListResponse,
+  QaReviewRequest,
+  QaScoreResult,
+  QaTranslateTaskResponse,
+  QaTranslationDetail,
 } from '@agent/contracts'
 import type { AdminRunFetchOptions } from '../shared/admin-api'
 
@@ -41,6 +47,76 @@ export function fetchQaGlossaries(
   options: AdminRunFetchOptions = {},
 ): Promise<QaGlossaryListResponse> {
   return requestAdminRun<QaGlossaryListResponse>('/api/admin/qa/glossaries', options)
+}
+
+export function fetchQaArticleDetail(
+  articleId: string,
+  options: AdminRunFetchOptions = {},
+): Promise<QaArticleDetail> {
+  return requestAdminRun<QaArticleDetail>(
+    `/api/admin/qa/articles/${encodeURIComponent(articleId)}`,
+    options,
+  )
+}
+
+export function fetchQaTranslationDetail(
+  articleId: string,
+  languageCode: string,
+  options: AdminRunFetchOptions = {},
+): Promise<QaTranslationDetail> {
+  return requestAdminRun<QaTranslationDetail>(
+    `/api/admin/qa/articles/${encodeURIComponent(articleId)}/translations/${encodeURIComponent(languageCode)}`,
+    options,
+  )
+}
+
+export function scoreQaTranslation(
+  articleId: string,
+  languageCode: string,
+  options: AdminRunFetchOptions = {},
+): Promise<QaScoreResult> {
+  return requestAdminRun<QaScoreResult>(
+    `/api/admin/qa/articles/${encodeURIComponent(articleId)}/translations/${encodeURIComponent(languageCode)}/score`,
+    options,
+    { method: 'POST' },
+  )
+}
+
+export function reviewQaTranslation(
+  articleId: string,
+  languageCode: string,
+  body: QaReviewRequest,
+  options: AdminRunFetchOptions = {},
+): Promise<QaScoreResult> {
+  return requestAdminRun<QaScoreResult>(
+    `/api/admin/qa/articles/${encodeURIComponent(articleId)}/translations/${encodeURIComponent(languageCode)}/review`,
+    options,
+    { method: 'POST', body },
+  )
+}
+
+export function requestQaTranslation(
+  articleId: string,
+  languageCode: string,
+  options: AdminRunFetchOptions = {},
+): Promise<QaTranslateTaskResponse> {
+  return requestAdminRun<QaTranslateTaskResponse>(
+    `/api/admin/qa/articles/${encodeURIComponent(articleId)}/translate`,
+    options,
+    { method: 'POST', body: { languageCode } },
+  )
+}
+
+export function diagnoseQaArticle(
+  articleId: string,
+  question: string,
+  options: AdminRunFetchOptions = {},
+): Promise<QaDiagnoseResponse> {
+  return requestAdminRun<QaDiagnoseResponse>(
+    `/api/admin/qa/articles/${encodeURIComponent(articleId)}/diagnose`,
+    options,
+    { method: 'POST', body: { question } },
+  )
 }
 
 export interface QaGlossaryTermListQuery {
