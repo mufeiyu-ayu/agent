@@ -8,7 +8,8 @@
 阶段 1-8：Completed
 Phase 8：Completed
 Task 0、1、2A、2B、3A、3B、3C：Completed
-Active Agent Task：翻译质检站 A-1（#109，已实现待验收）
+Active Agent Task：无
+翻译质检站 A-1（#109）：Completed；A-2 讨论中
 DeepSeek 思考强度与 Usage（#94）：Completed
 Run 配置解析边界（#92）：Completed
 失败 Sampling 部分响应可观测性（#98）：Completed
@@ -22,7 +23,7 @@ Phase 9：未定案
 | 区域 | 状态 | 文档 | 说明 |
 | --- | --- | --- | --- |
 | Agent 主线 | **阶段 1-8 Completed** | [roadmap.md](../roadmap.md) | 当前为 Phase 8 源码阅读阶段 |
-| 翻译质检站 A-1 #109 | **Active / 已实现待验收** | [qa-station-a1.md](./qa-station-a1.md) | 快照导入 + 温层 schema + admin 术语库/文章列表模块 |
+| 翻译质检站 A-1 #109 | **Completed / #109 / PR #110** | [qa-station-a1.md](./qa-station-a1.md) | 快照导入 + 温层 schema + admin 术语库/文章列表模块；用户验收确认，merge `d2a2ba9` |
 | Backend 模块组织 #101 | **Completed / #101 / PR #105** | [agent-runtime-module-organization.md](./agent-runtime-module-organization.md) | Agent Runtime 目录分域 + Cancellation Lifecycle；GPT 验收 + 用户确认 |
 | Admin Runs 模块组织 #102 | **Completed / #102 / PR #106** | [admin-runs-module-organization.md](./admin-runs-module-organization.md) | Projector 分域 + 循环依赖消除；GPT 验收 + 用户确认 |
 | Article Chunking 模块组织 #103 | **Completed / #103 / PR #107** | [article-chunking-module-organization.md](./article-chunking-module-organization.md) | 稳定 Facade + structural / deterministic / token 内部分层；GPT 验收 + 用户确认 |
