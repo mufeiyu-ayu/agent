@@ -213,6 +213,8 @@ model Article {
   chunks         ArticleChunk[]
   indexState     ArticleIndexState?
   translations   ArticleTranslation[]
+  translationTasks TranslationTask[]
+  diagnoseMessages QaDiagnoseMessage[]
 
   @@index([title])
   @@index([isQaCandidate])
@@ -305,14 +307,59 @@ model TranslationScore {
   translation   ArticleTranslation      @relation(fields: [translationId], references: [id], onDelete: Cascade)
   ruleScore     Int?
   judgeScore    Int?
+  // A-2 起的最小真规则指标：译文/原文纯文本字符长度比
+  lengthRatio   Float?
   verdict       TranslationVerdict?
   reviewStatus  TranslationReviewStatus @default(PENDING)
+  reviewNote    String?
   scoredAt      DateTime?
+  reviewedAt    DateTime?
   createdAt     DateTime                @default(now())
   updatedAt     DateTime                @updatedAt
 
   @@index([verdict])
   @@index([reviewStatus])
+}
+
+// 翻译任务（Issue #111）：A-2 只创建 PENDING 记录；阶段 C 的翻译 Run 消费该队列。
+// 注意：迁移 20260829072944 额外维护了 (articleId, languageCode) WHERE status='PENDING'
+// 的部分唯一索引（Prisma schema 无法表达），保证幂等入队的并发兜底。
+enum TranslationTaskStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+model TranslationTask {
+  id           String                @id @default(cuid())
+  articleId    String
+  article      Article               @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  languageCode String
+  status       TranslationTaskStatus @default(PENDING)
+  requestedAt  DateTime              @default(now())
+  updatedAt    DateTime              @updatedAt
+
+  @@index([articleId, languageCode])
+  @@index([status])
+}
+
+// 诊断对话落库：按文章一条时间线保存问答。当前 assistant 应答为占位实现，
+// 阶段 D 接入 Agent Runtime 后由真实 Run 产出，表结构不变。
+enum QaDiagnoseRole {
+  USER
+  ASSISTANT
+}
+
+model QaDiagnoseMessage {
+  id        String         @id @default(cuid())
+  articleId String
+  article   Article        @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  role      QaDiagnoseRole
+  content   String
+  createdAt DateTime       @default(now())
+
+  @@index([articleId, createdAt])
 }
 
 // 术语库：id 直接沿用生产快照 id，保证导入幂等与可对账

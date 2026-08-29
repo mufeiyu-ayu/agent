@@ -7,6 +7,7 @@ import {
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   ProfileOutlined,
+  ThunderboltOutlined,
 } from '@ant-design/icons-vue'
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -35,6 +36,7 @@ const sections = [
   {
     labelKey: 'navigation.qaStation',
     items: [
+      { path: '/qa/workbench', labelKey: 'navigation.qaWorkbench', icon: ThunderboltOutlined },
       { path: '/qa/articles', labelKey: 'navigation.qaArticles', icon: FileTextOutlined },
       { path: '/qa/glossaries', labelKey: 'navigation.qaGlossaries', icon: BookOutlined },
     ],

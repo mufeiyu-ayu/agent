@@ -46,14 +46,18 @@ export function appendPositiveInteger(
 export async function requestAdminRun<T>(
   url: string,
   options: AdminRunFetchOptions,
+  init?: { method?: 'POST', body?: unknown },
 ): Promise<T> {
   let response: Response
 
   try {
     response = await fetch(url, {
+      method: init?.method ?? 'GET',
       headers: {
         Accept: 'application/json',
+        ...(init?.body !== undefined ? { 'Content-Type': 'application/json' } : {}),
       },
+      body: init?.body !== undefined ? JSON.stringify(init.body) : undefined,
       signal: options.signal,
     })
   }

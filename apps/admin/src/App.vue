@@ -26,7 +26,7 @@ const seedColors = {
     colorPrimary: '#1c6ced',
     colorBgContainer: '#ffffff',
     colorBgElevated: '#ffffff',
-    colorBgLayout: '#f9fafb',
+    colorBgLayout: '#f5f6f8',
     colorBorderSecondary: '#e7e9ee',
     colorText: '#282c34',
     colorTextSecondary: '#6b7280',

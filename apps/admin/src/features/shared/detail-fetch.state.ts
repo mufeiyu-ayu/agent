@@ -17,12 +17,13 @@ export function createDetailFetchState<T>(
   let activeController: AbortController | undefined
   let activeRequestId = 0
 
-  async function load(): Promise<void> {
+  async function execute(keepStale: boolean): Promise<void> {
     const targetId = getId()
     const requestId = ++activeRequestId
     activeController?.abort()
 
-    data.value = undefined
+    if (!keepStale)
+      data.value = undefined
     notFound.value = false
     errorCause.value = undefined
     loading.value = true
@@ -60,6 +61,15 @@ export function createDetailFetchState<T>(
     }
   }
 
+  function load(): Promise<void> {
+    return execute(false)
+  }
+
+  /** 原位刷新：保留旧数据直到新数据返回，避免局部刷新时整块闪回骨架 */
+  function refresh(): Promise<void> {
+    return execute(true)
+  }
+
   function cancel(): void {
     activeRequestId += 1
     activeController?.abort()
@@ -74,6 +84,7 @@ export function createDetailFetchState<T>(
     load,
     loading,
     notFound,
+    refresh,
     retry: load,
   }
 }

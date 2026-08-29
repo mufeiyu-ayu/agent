@@ -38,7 +38,7 @@ export const useAdminPreferencesStore = defineStore('admin-preferences', () => {
     // 镜像 styles/index.css 的 --admin-bg-deep；改动其一必须同步另一处。
     document.querySelector('meta[name="theme-color"]')?.setAttribute(
       'content',
-      value === 'dark' ? '#0f1117' : '#f9fafb',
+      value === 'dark' ? '#0f1117' : '#f5f6f8',
     )
   }, { immediate: true })
 

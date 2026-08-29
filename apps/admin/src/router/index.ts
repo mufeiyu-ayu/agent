@@ -67,10 +67,30 @@ export const router = createRouter({
           },
         },
         {
+          path: 'qa/workbench',
+          name: 'qa-workbench',
+          component: () => import('@/views/QaWorkbenchView.vue'),
+          meta: { title: 'QA Workbench', titleKey: 'navigation.qaWorkbench', tab: true },
+        },
+        {
           path: 'qa/articles',
           name: 'qa-articles',
           component: () => import('@/views/QaArticlesView.vue'),
           meta: { title: 'QA Articles', titleKey: 'navigation.qaArticles', tab: true },
+        },
+        {
+          path: 'qa/articles/:articleId',
+          name: 'qa-article-detail',
+          component: () => import('@/views/QaArticleDetailView.vue'),
+          meta: {
+            activeMenu: '/qa/articles',
+            title: 'Translation QA',
+            titleKey: 'navigation.qaArticleDetail',
+            tab: true,
+            parentTitle: 'QA Articles',
+            parentTitleKey: 'navigation.qaArticles',
+            parentPath: '/qa/articles',
+          },
         },
         {
           path: 'qa/glossaries',
