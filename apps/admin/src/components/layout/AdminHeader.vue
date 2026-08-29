@@ -62,7 +62,7 @@ const { t } = useI18n()
   height: var(--admin-header-height);
   align-items: center;
   justify-content: space-between;
-  padding: 0 18px;
+  padding: 0 18px 0 4px;
   border-bottom: 1px solid var(--admin-border);
   background: color-mix(in srgb, var(--admin-surface) 94%, transparent);
   backdrop-filter: blur(10px);
