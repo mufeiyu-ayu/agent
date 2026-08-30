@@ -1,6 +1,7 @@
 :root {
   --admin-font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
-  --admin-header-height: 52px;
+  --admin-header-height: 0px;
+  --admin-logo-height: 52px;
   --admin-tabs-height: 40px;
   --admin-sidebar-width: 224px;
   --admin-sidebar-collapsed-width: 60px;
@@ -19,18 +20,19 @@
   --admin-radius-md: 10px;
   --admin-radius-lg: 14px;
 
-  --admin-primary: hsl(217deg 85% 52%);
-  --admin-primary-hover: hsl(217deg 85% 46%);
-  --admin-primary-soft: hsl(217deg 85% 52% / 9%);
-  --admin-success: hsl(150deg 52% 42%);
-  --admin-success-strong: hsl(150deg 55% 30%);
-  --admin-success-soft: hsl(150deg 52% 42% / 10%);
-  --admin-warning: hsl(35deg 88% 48%);
-  --admin-warning-strong: hsl(30deg 85% 38%);
-  --admin-warning-soft: hsl(35deg 88% 48% / 11%);
-  --admin-danger: hsl(354deg 70% 51%);
-  --admin-danger-strong: hsl(354deg 70% 44%);
-  --admin-danger-soft: hsl(354deg 70% 51% / 10%);
+  /* 欧美 SaaS 风格色板：Linear/Stripe 式靛蓝主色 + 低饱和 emerald/amber/rose 状态色 */
+  --admin-primary: hsl(235deg 60% 58%);
+  --admin-primary-hover: hsl(235deg 60% 51%);
+  --admin-primary-soft: hsl(235deg 60% 58% / 9%);
+  --admin-success: hsl(158deg 42% 40%);
+  --admin-success-strong: hsl(158deg 48% 28%);
+  --admin-success-soft: hsl(158deg 42% 40% / 10%);
+  --admin-warning: hsl(32deg 78% 46%);
+  --admin-warning-strong: hsl(28deg 75% 36%);
+  --admin-warning-soft: hsl(32deg 78% 46% / 11%);
+  --admin-danger: hsl(348deg 62% 50%);
+  --admin-danger-strong: hsl(348deg 62% 43%);
+  --admin-danger-soft: hsl(348deg 62% 50% / 10%);
 
   /* 面板层级：页面底与卡片只差约 2% 亮度——有深度但无接缝（参照 shadcn background/card 与 Radix gray 1/2 的用法） */
   --admin-bg-deep: hsl(220deg 20% 96.8%);
@@ -56,18 +58,18 @@
 }
 
 :root[data-theme='dark'] {
-  --admin-primary: hsl(222deg 96% 69%);
-  --admin-primary-hover: hsl(222deg 96% 75%);
-  --admin-primary-soft: hsl(222deg 96% 69% / 16%);
-  --admin-success: hsl(152deg 45% 58%);
-  --admin-success-strong: hsl(152deg 50% 66%);
-  --admin-success-soft: hsl(152deg 45% 58% / 14%);
-  --admin-warning: hsl(38deg 80% 62%);
-  --admin-warning-strong: hsl(38deg 84% 68%);
-  --admin-warning-soft: hsl(38deg 80% 62% / 14%);
-  --admin-danger: hsl(356deg 75% 68%);
-  --admin-danger-strong: hsl(356deg 78% 74%);
-  --admin-danger-soft: hsl(356deg 75% 68% / 14%);
+  --admin-primary: hsl(235deg 80% 72%);
+  --admin-primary-hover: hsl(235deg 80% 78%);
+  --admin-primary-soft: hsl(235deg 80% 72% / 16%);
+  --admin-success: hsl(158deg 38% 55%);
+  --admin-success-strong: hsl(158deg 42% 64%);
+  --admin-success-soft: hsl(158deg 38% 55% / 14%);
+  --admin-warning: hsl(35deg 68% 60%);
+  --admin-warning-strong: hsl(35deg 72% 67%);
+  --admin-warning-soft: hsl(35deg 68% 60% / 14%);
+  --admin-danger: hsl(350deg 65% 68%);
+  --admin-danger-strong: hsl(350deg 68% 74%);
+  --admin-danger-soft: hsl(350deg 65% 68% / 14%);
 
   /* Linear 式深蓝夜色：黑带明显冷调（饱和度 19–22%），elevation 靠亮度阶梯而非阴影；
      边框用半透明冷白，叠在不同深浅面板上自然分层，比实心灰轻。 */

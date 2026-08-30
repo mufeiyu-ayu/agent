@@ -5,7 +5,12 @@ import type {
   QaTranslateTaskResponse,
   QaTranslationScore,
 } from '@agent/contracts'
-import { SearchOutlined, SendOutlined, ThunderboltOutlined } from '@ant-design/icons-vue'
+import {
+  ArrowUpOutlined,
+  ExperimentOutlined,
+  SearchOutlined,
+  ThunderboltOutlined,
+} from '@ant-design/icons-vue'
 import {
   Alert,
   App as AntApp,
@@ -18,6 +23,7 @@ import {
   Popover,
   Skeleton,
   Textarea,
+  Tooltip,
 } from 'ant-design-vue'
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -54,7 +60,7 @@ const queueState = createPagedListState<QaArticleListItem>(
     search: searchText.value,
     qaCandidateOnly: qaCandidateOnly.value,
   }, { signal }),
-  20,
+  30,
 )
 
 function applyQueueFilters() {
@@ -489,7 +495,16 @@ onBeforeUnmount(() => {
               @click="selectArticle(item)"
             >
               <span class="queue-item__title">{{ item.title }}</span>
-              <span v-if="item.isQaCandidate" class="pill pill--primary">{{ t('qaArticles.candidateTag') }}</span>
+              <!-- 勾选「仅质检集」时全列都是质检集，标记只在混排时才有信息量 -->
+              <Tooltip v-if="!qaCandidateOnly && item.isQaCandidate" :title="t('qaArticles.candidateTag')">
+                <span
+                  class="queue-item__flag"
+                  role="img"
+                  :aria-label="t('qaArticles.candidateTag')"
+                >
+                  <ExperimentOutlined aria-hidden="true" />
+                </span>
+              </Tooltip>
             </button>
           </li>
         </ul>
@@ -590,7 +605,7 @@ onBeforeUnmount(() => {
                     {{ isPendingSelected ? t('qaShared.pendingTask') : t('qaWorkbench.missingLanguage') }}
                   </p>
                   <Skeleton
-                    v-else-if="translationState.loading.value"
+                    v-else-if="translationState.loading.value && !translation"
                     active
                     :paragraph="{ rows: 4 }"
                   />
@@ -656,73 +671,75 @@ onBeforeUnmount(() => {
                   </template>
                 </div>
 
-                <div
-                  v-if="runStatus !== 'idle' && (runKind === 'translate' || runLanguage === selectedLanguage)"
-                  class="run-panel"
-                  aria-live="polite"
-                >
-                  <header class="run-panel__head">
-                    <h3>{{ t(runKind === 'score' ? 'qaWorkbench.scoreRunTitle' : 'qaWorkbench.runTitle') }}</h3>
-                    <span class="pill pill--ai">
-                      {{ t(runKind === 'score' ? 'qaWorkbench.scoreRunTag' : 'qaWorkbench.runMock') }}
-                    </span>
-                  </header>
-                  <ol class="run-steps">
-                    <li
-                      v-for="step in runSteps"
-                      :key="step.key"
-                      class="run-step"
-                      :class="`run-step--${step.status}`"
-                    >
-                      <span class="run-step__indicator" aria-hidden="true" />
-                      <div class="run-step__body">
-                        <strong>{{ t(`qaWorkbench.runSteps.${step.key}`, { language: runLanguageLabel }) }}</strong>
-                        <p>{{ t(`qaWorkbench.runSteps.${step.key}Detail`, { language: runLanguageLabel }) }}</p>
-                      </div>
-                    </li>
-                  </ol>
-                  <template v-if="runStatus === 'done'">
-                    <div v-if="runKind === 'score' && scoreRunResult" class="run-panel__result">
-                      <span
-                        class="pill pill--lg"
-                        :class="`pill--${scoreRunResult.verdict ? verdictTone[scoreRunResult.verdict] : 'neutral'}`"
+                <Transition name="run-panel">
+                  <div
+                    v-if="runStatus !== 'idle' && (runKind === 'translate' || runLanguage === selectedLanguage)"
+                    class="run-panel"
+                    aria-live="polite"
+                  >
+                    <header class="run-panel__head">
+                      <h3>{{ t(runKind === 'score' ? 'qaWorkbench.scoreRunTitle' : 'qaWorkbench.runTitle') }}</h3>
+                      <span class="pill pill--ai">
+                        {{ t(runKind === 'score' ? 'qaWorkbench.scoreRunTag' : 'qaWorkbench.runMock') }}
+                      </span>
+                    </header>
+                    <ol class="run-steps">
+                      <li
+                        v-for="step in runSteps"
+                        :key="step.key"
+                        class="run-step"
+                        :class="`run-step--${step.status}`"
                       >
-                        {{ scoreRunResult.verdict
-                          ? t(`qaShared.verdict.${scoreRunResult.verdict}`)
-                          : t('qaShared.notScored') }}
-                      </span>
-                      <strong class="run-panel__score">{{ scoreRunResult.ruleScore ?? '—' }}</strong>
-                      <span class="run-panel__ratio">
-                        {{ t('qaShared.lengthRatio') }} {{ scoreRunResult.lengthRatio ?? '—' }}
-                      </span>
-                      <Button size="small" @click="resetRun">
-                        {{ t('qaWorkbench.backToDecision') }}
-                      </Button>
-                    </div>
-                    <div v-else class="run-panel__result">
-                      <p class="run-panel__notice run-panel__notice--inline">
-                        {{ t('qaWorkbench.batchQueuedNotice', {
-                          queued: translateSummary?.queued ?? 0,
-                          already: translateSummary?.already ?? 0,
-                        }) }}
-                      </p>
+                        <span class="run-step__indicator" aria-hidden="true" />
+                        <div class="run-step__body">
+                          <strong>{{ t(`qaWorkbench.runSteps.${step.key}`, { language: runLanguageLabel }) }}</strong>
+                          <p>{{ t(`qaWorkbench.runSteps.${step.key}Detail`, { language: runLanguageLabel }) }}</p>
+                        </div>
+                      </li>
+                    </ol>
+                    <template v-if="runStatus === 'done'">
+                      <div v-if="runKind === 'score' && scoreRunResult" class="run-panel__result">
+                        <span
+                          class="pill pill--lg"
+                          :class="`pill--${scoreRunResult.verdict ? verdictTone[scoreRunResult.verdict] : 'neutral'}`"
+                        >
+                          {{ scoreRunResult.verdict
+                            ? t(`qaShared.verdict.${scoreRunResult.verdict}`)
+                            : t('qaShared.notScored') }}
+                        </span>
+                        <strong class="run-panel__score">{{ scoreRunResult.ruleScore ?? '—' }}</strong>
+                        <span class="run-panel__ratio">
+                          {{ t('qaShared.lengthRatio') }} {{ scoreRunResult.lengthRatio ?? '—' }}
+                        </span>
+                        <Button size="small" @click="resetRun">
+                          {{ t('qaWorkbench.backToDecision') }}
+                        </Button>
+                      </div>
+                      <div v-else class="run-panel__result">
+                        <p class="run-panel__notice run-panel__notice--inline">
+                          {{ t('qaWorkbench.batchQueuedNotice', {
+                            queued: translateSummary?.queued ?? 0,
+                            already: translateSummary?.already ?? 0,
+                          }) }}
+                        </p>
+                        <Button size="small" @click="resetRun">
+                          {{ t('qaWorkbench.runDismiss') }}
+                        </Button>
+                      </div>
+                    </template>
+                    <div v-else-if="runStatus === 'failed'" class="run-panel__result">
+                      <Alert
+                        class="run-panel__alert"
+                        type="error"
+                        show-icon
+                        :message="t(runKind === 'score' ? 'qaWorkbench.scoreFailed' : 'qaWorkbench.runFailed')"
+                      />
                       <Button size="small" @click="resetRun">
                         {{ t('qaWorkbench.runDismiss') }}
                       </Button>
                     </div>
-                  </template>
-                  <div v-else-if="runStatus === 'failed'" class="run-panel__result">
-                    <Alert
-                      class="run-panel__alert"
-                      type="error"
-                      show-icon
-                      :message="t(runKind === 'score' ? 'qaWorkbench.scoreFailed' : 'qaWorkbench.runFailed')"
-                    />
-                    <Button size="small" @click="resetRun">
-                      {{ t('qaWorkbench.runDismiss') }}
-                    </Button>
                   </div>
-                </div>
+                </Transition>
               </div>
 
               <div class="workcard__toolbar">
@@ -863,14 +880,14 @@ onBeforeUnmount(() => {
                 />
                 <Button
                   type="primary"
-                  shape="circle"
+                  class="diagnose__send"
                   :loading="diagnoseLoading"
                   :disabled="!diagnoseQuestion.trim()"
                   :aria-label="t('qaWorkbench.diagnoseSend')"
                   @click="handleDiagnose"
                 >
                   <template #icon>
-                    <SendOutlined />
+                    <ArrowUpOutlined />
                   </template>
                 </Button>
               </div>
@@ -960,8 +977,8 @@ onBeforeUnmount(() => {
   flex: 1;
   min-height: 0;
   flex-direction: column;
-  gap: 4px;
-  padding: 10px;
+  gap: 2px;
+  padding: 8px;
   margin: 0;
   overflow-y: auto;
   list-style: none;
@@ -970,10 +987,10 @@ onBeforeUnmount(() => {
 .queue-item {
   display: flex;
   width: 100%;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 6px;
-  padding: 10px 12px;
+  min-height: 40px;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
   border: 1px solid transparent;
   border-radius: var(--admin-radius-md);
   background: transparent;
@@ -993,14 +1010,29 @@ onBeforeUnmount(() => {
 }
 
 .queue-item__title {
-  display: -webkit-box;
+  display: block;
+  min-width: 0;
+  flex: 1;
   overflow: hidden;
-  color: var(--admin-text);
+  color: var(--admin-text-muted);
   font-size: var(--admin-font-sm);
+  font-weight: 500;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.queue-item--selected .queue-item__title {
+  color: var(--admin-text);
   font-weight: 600;
-  line-height: 1.5;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
+}
+
+.queue-item__flag {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  color: color-mix(in srgb, var(--admin-primary) 70%, transparent);
+  font-size: 14px;
 }
 
 .queue__footer {
@@ -1065,6 +1097,8 @@ onBeforeUnmount(() => {
   flex-direction: column;
   padding: 20px 24px;
   overflow-y: auto;
+  /* 预留滚动条槽位，避免面板展开触发滚动条时内容横向抖动 */
+  scrollbar-gutter: stable;
   border-right: 1px solid var(--admin-border);
 }
 
@@ -1220,14 +1254,44 @@ onBeforeUnmount(() => {
   color: var(--admin-primary);
 }
 
-/* ---- Agent 翻译流程 ---- */
+/* ---- Agent 翻译流程：无盒子，直接铺在工作卡上 ---- */
 .run-panel {
-  padding: 18px;
+  padding-top: 18px;
   margin-top: 18px;
-  border: 1px solid color-mix(in srgb, var(--admin-primary) 26%, var(--admin-border));
-  border-radius: var(--admin-radius-md);
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--admin-primary) 5%, var(--admin-surface)), var(--admin-surface) 55%);
+  border-top: 1px solid var(--admin-border);
+}
+
+/* 用 max-height 过渡展开/收起，让下方内容被平滑推开而不是瞬间跳位。
+   520px 只是上限，须大于面板实际高度。 */
+.run-panel-enter-active {
+  overflow: hidden;
+  transition:
+    max-height 260ms cubic-bezier(0.22, 0.61, 0.36, 1),
+    opacity 260ms ease,
+    padding-top 260ms ease,
+    margin-top 260ms ease;
+}
+
+.run-panel-leave-active {
+  overflow: hidden;
+  transition:
+    max-height 200ms ease,
+    opacity 160ms ease,
+    padding-top 200ms ease,
+    margin-top 200ms ease;
+}
+
+.run-panel-enter-from,
+.run-panel-leave-to {
+  max-height: 0;
+  padding-top: 0;
+  margin-top: 0;
+  opacity: 0;
+}
+
+.run-panel-enter-to,
+.run-panel-leave-from {
+  max-height: 520px;
 }
 
 .run-panel__head {
@@ -1334,9 +1398,6 @@ onBeforeUnmount(() => {
 
 .run-panel__notice {
   margin: 14px 0 0;
-  padding: 10px 14px;
-  border-radius: var(--admin-radius-sm);
-  background: var(--admin-success-soft);
   color: var(--admin-success-strong);
   font-size: var(--admin-font-xs);
   line-height: 1.6;
@@ -1348,8 +1409,14 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 12px;
   margin-top: 16px;
-  padding-top: 14px;
-  border-top: 1px solid color-mix(in srgb, var(--admin-primary) 16%, var(--admin-border));
+  animation: run-result-in 240ms ease;
+}
+
+@keyframes run-result-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
 }
 
 .run-panel__notice--inline {
@@ -1545,17 +1612,16 @@ onBeforeUnmount(() => {
   font-weight: 700;
 }
 
+/* 对话区不做灰底盒子，直接铺在面板上，由气泡自身承担对比 */
 .diagnose__thread {
   display: flex;
   flex: 1;
   min-height: 0;
   flex-direction: column;
   gap: 10px;
-  padding: 16px;
-  margin: 14px 0 12px;
+  padding: 16px 0 12px;
+  margin: 0;
   overflow-y: auto;
-  border-radius: 14px;
-  background: var(--admin-surface-muted);
 }
 
 .diagnose__hint {
@@ -1583,9 +1649,8 @@ onBeforeUnmount(() => {
 
 .bubble--assistant {
   align-self: flex-start;
-  border: 1px solid var(--admin-border);
   border-bottom-left-radius: 4px;
-  background: var(--admin-surface);
+  background: var(--admin-surface-muted);
   color: var(--admin-text-muted);
 }
 
@@ -1610,6 +1675,18 @@ onBeforeUnmount(() => {
   border: 0;
   background: transparent;
   box-shadow: none;
+}
+
+/* 主流 agent 风格发送键：小号圆角方块 + 上箭头 */
+.diagnose__composer :deep(.diagnose__send) {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  flex: none;
+  place-items: center;
+  padding: 0;
+  border-radius: 10px;
 }
 
 @media (max-width: 1100px) {

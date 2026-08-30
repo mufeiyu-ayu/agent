@@ -23,7 +23,7 @@ const antLocale = computed(() => locale.value === 'en-US' ? enUS : zhCN)
  */
 const seedColors = {
   light: {
-    colorPrimary: '#1c6ced',
+    colorPrimary: '#545ed4',
     colorBgContainer: '#ffffff',
     colorBgElevated: '#ffffff',
     colorBgLayout: '#f5f6f8',
@@ -32,7 +32,7 @@ const seedColors = {
     colorTextSecondary: '#6b7280',
   },
   dark: {
-    colorPrimary: '#6492fc',
+    colorPrimary: '#7e88f1',
     colorBgContainer: '#151820',
     colorBgElevated: '#1c1f29',
     colorBgLayout: '#0f1117',
