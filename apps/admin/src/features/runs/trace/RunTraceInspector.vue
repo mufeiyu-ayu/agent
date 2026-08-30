@@ -119,11 +119,10 @@ const title = computed(() => {
     <template v-else-if="record && item">
       <header class="run-trace-inspector__header">
         <div class="run-trace-inspector__identity">
-          <span>{{ inspectorLabel }}</span>
           <h3 :title="title">
             {{ title }}
           </h3>
-          <code :title="item.type">{{ item.type }}</code>
+          <span>{{ inspectorLabel }}</span>
         </div>
 
         <div class="run-trace-inspector__badges">
@@ -137,11 +136,13 @@ const title = computed(() => {
         </div>
       </header>
 
-      <div class="run-trace-inspector__body">
+      <div
+        class="run-trace-inspector__body"
+        :class="{ 'run-trace-inspector__body--sampling': sampling }"
+      >
         <RequestInspector
           v-if="sampling"
           :item="sampling"
-          :request-number="requestNumber"
         />
         <ToolExecutionInspector
           v-else-if="item.kind === 'known' && item.type === 'tool_execution'"
@@ -170,13 +171,14 @@ const title = computed(() => {
   /* 面板宽度可被拖拽独立调整，字段列表的断点必须以本面板为准，
      不能沿用整个工作区的 run-trace 容器。 */
   container: trace-inspector / inline-size;
+  display: flex;
   min-width: 0;
   height: 100%;
   min-height: 0;
-  overflow: auto;
+  flex-direction: column;
+  overflow: hidden;
   color: var(--admin-text);
   background: var(--admin-surface-muted);
-  scrollbar-gutter: stable;
 }
 
 .run-trace-inspector__switch {
@@ -184,6 +186,7 @@ const title = computed(() => {
   z-index: 3;
   top: 0;
   display: flex;
+  flex: none;
   min-width: 0;
   padding: 14px 16px 0;
   background: var(--admin-surface-muted);
@@ -196,45 +199,39 @@ const title = computed(() => {
 }
 
 .run-trace-inspector__header {
-  position: sticky;
-  z-index: 2;
-  top: 42px;
   display: flex;
-  align-items: flex-start;
+  flex: none;
+  align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  padding: 16px 16px 14px;
+  gap: 12px;
+  min-height: 44px;
+  padding: 6px 16px;
   background: var(--admin-surface-muted);
 }
 
 .run-trace-inspector__identity {
+  display: flex;
   min-width: 0;
+  align-items: baseline;
+  gap: 8px;
 }
 
 .run-trace-inspector__identity > span {
+  overflow: hidden;
   color: var(--admin-text-muted);
   font-size: var(--admin-font-2xs);
-  font-weight: 700;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-}
-
-.run-trace-inspector__identity h3 {
-  margin: 6px 0 3px;
-  overflow: hidden;
-  color: var(--admin-text);
-  font-size: var(--admin-font-lg);
-  font-weight: 650;
-  line-height: 1.35;
+  font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.run-trace-inspector__identity code {
-  display: block;
+.run-trace-inspector__identity h3 {
+  margin: 0;
   overflow: hidden;
-  color: var(--admin-text-subtle);
-  font-size: var(--admin-font-2xs);
+  color: var(--admin-text);
+  font-size: var(--admin-font-md);
+  font-weight: 650;
+  line-height: 1.35;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -254,16 +251,43 @@ const title = computed(() => {
 }
 
 .run-trace-inspector__body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
   padding: 0 16px 24px;
+  scrollbar-gutter: stable;
 }
 
-/* Tabs 栏贴在 sticky header 下方，背景需与面板底色一致才不露出内容 */
+.run-trace-inspector__body--sampling {
+  padding: 0;
+  background: var(--admin-surface-raised);
+}
+
+.run-trace-inspector__body--sampling :deep(.trace-inspector-tabs) {
+  min-height: 100%;
+}
+
+.run-trace-inspector__body--sampling :deep(.inspector-field-list) {
+  padding: 14px 16px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.run-trace-inspector__body--sampling :deep(.inspector-field-list + .inspector-field-list) {
+  margin-top: 0;
+  border-top: 1px solid var(--admin-border);
+}
+
+/* 内容区独立滚动，Tabs 栏固定在详情顶部。 */
 .run-trace-inspector__body :deep(.trace-inspector-tabs > .ant-tabs-nav) {
   position: sticky;
   z-index: 1;
-  top: 92px;
-  margin-bottom: 14px;
-  background: var(--admin-surface-muted);
+  top: 0;
+  margin-bottom: 0;
+  padding-inline: 16px;
+  background: var(--admin-surface-raised);
 }
 
 .run-trace-inspector__body :deep(.trace-inspector-tabs .ant-tabs-tab) {
@@ -276,15 +300,5 @@ const title = computed(() => {
   min-height: 280px;
   place-content: center;
   margin: 0;
-}
-
-@media (max-width: 1180px) {
-  .run-trace-inspector__header {
-    position: static;
-  }
-
-  .run-trace-inspector__body :deep(.trace-inspector-tabs > .ant-tabs-nav) {
-    position: static;
-  }
 }
 </style>

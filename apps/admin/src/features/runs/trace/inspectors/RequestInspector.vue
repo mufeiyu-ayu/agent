@@ -22,15 +22,12 @@ import InspectorFieldList from './InspectorFieldList.vue'
 
 const props = defineProps<{
   item: AdminModelSamplingStep
-  requestNumber: number
 }>()
 
 const { locale, t } = useI18n()
 const unavailable = computed(() => t('runTrace.inspector.unavailable'))
 
 const summaryFields = computed(() => [
-  { label: t('runTrace.inspector.fields.request'), value: t('runTrace.inspector.requestLabel', { number: props.requestNumber }) },
-  { label: t('runTrace.inspector.fields.status'), value: props.item.status },
   { label: t('eventDetail.fields.sequence'), value: props.item.sequence },
   { label: t('eventDetail.fields.samplingIndex'), value: show(props.item.samplingIndex) },
   { label: t('eventDetail.fields.attemptId'), value: show(props.item.samplingAttemptId), mono: true },
