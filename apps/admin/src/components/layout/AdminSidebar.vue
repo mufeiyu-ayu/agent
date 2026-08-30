@@ -7,14 +7,19 @@ import {
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   ProfileOutlined,
+  SettingOutlined,
   ThunderboltOutlined,
+  UserOutlined,
 } from '@ant-design/icons-vue'
-import { computed } from 'vue'
+import { Popover } from 'ant-design-vue'
+import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 
 import { resolveActiveMenuPath } from '@/lib/admin-state'
 import AdminLogo from './AdminLogo.vue'
+import LanguageSwitcher from './LanguageSwitcher.vue'
+import ThemeToggle from './ThemeToggle.vue'
 
 defineProps<{
   collapsed: boolean
@@ -46,6 +51,7 @@ const sections = [
 const route = useRoute()
 const { t } = useI18n()
 const activeMenuPath = computed(() => resolveActiveMenuPath(route))
+const quickActionsOpen = ref(false)
 </script>
 
 <template>
@@ -74,6 +80,50 @@ const activeMenuPath = computed(() => resolveActiveMenuPath(route))
         </RouterLink>
       </template>
     </nav>
+
+    <Popover
+      v-model:open="quickActionsOpen"
+      placement="rightBottom"
+      :trigger="['click']"
+      :overlay-inner-style="{ padding: 0 }"
+    >
+      <button
+        class="admin-sidebar__actions-trigger"
+        type="button"
+        aria-haspopup="dialog"
+        :aria-expanded="quickActionsOpen"
+        :aria-label="t('navigation.quickActions')"
+        :title="collapsed ? t('navigation.quickActions') : undefined"
+      >
+        <SettingOutlined />
+        <span v-if="!collapsed">{{ t('navigation.quickActions') }}</span>
+      </button>
+
+      <template #content>
+        <section class="admin-quick-actions" :aria-label="t('navigation.quickActions')">
+          <div class="admin-quick-actions__user">
+            <span class="admin-quick-actions__avatar">
+              <UserOutlined />
+            </span>
+            <span>
+              <strong>{{ t('common.developer') }}</strong>
+              <small>{{ t('common.consoleUser') }}</small>
+            </span>
+          </div>
+
+          <div class="admin-quick-actions__toolbar">
+            <span class="admin-quick-actions__environment">
+              <i />
+              {{ t('common.local') }}
+            </span>
+            <div class="admin-quick-actions__controls">
+              <LanguageSwitcher />
+              <ThemeToggle />
+            </div>
+          </div>
+        </section>
+      </template>
+    </Popover>
 
     <button
       class="admin-sidebar__toggle"
@@ -163,6 +213,7 @@ const activeMenuPath = computed(() => resolveActiveMenuPath(route))
   padding: 0;
 }
 
+.admin-sidebar__actions-trigger,
 .admin-sidebar__toggle {
   display: flex;
   height: 36px;
@@ -179,13 +230,107 @@ const activeMenuPath = computed(() => resolveActiveMenuPath(route))
   font-size: var(--admin-font-sm);
 }
 
+.admin-sidebar__actions-trigger {
+  margin-bottom: 4px;
+  color: var(--admin-text-muted);
+  background: transparent;
+}
+
+.admin-sidebar__actions-trigger:hover,
+.admin-sidebar__actions-trigger[aria-expanded='true'] {
+  color: var(--admin-primary);
+  background: var(--admin-primary-soft);
+}
+
+.admin-sidebar__actions-trigger :deep(.anticon),
+.admin-sidebar__toggle :deep(.anticon) {
+  flex: 0 0 16px;
+  font-size: var(--admin-font-lg);
+}
+
+.admin-sidebar__toggle {
+  margin-top: 0;
+}
+
 .admin-sidebar__toggle:hover {
   color: var(--admin-text);
 }
 
+.is-collapsed .admin-sidebar__actions-trigger,
 .is-collapsed .admin-sidebar__toggle {
   justify-content: center;
   margin-inline: 12px;
   padding: 0;
+}
+
+.admin-quick-actions {
+  width: 220px;
+  color: var(--admin-text);
+}
+
+.admin-quick-actions__user {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  border-bottom: 1px solid var(--admin-border);
+}
+
+.admin-quick-actions__avatar {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--admin-primary);
+  background: var(--admin-primary-soft);
+  font-size: var(--admin-font-md);
+}
+
+.admin-quick-actions__user > span:last-child {
+  display: grid;
+  line-height: 1.1;
+}
+
+.admin-quick-actions__user strong {
+  font-size: var(--admin-font-sm);
+  font-weight: 600;
+}
+
+.admin-quick-actions__user small {
+  margin-top: 4px;
+  color: var(--admin-text-subtle);
+  font-size: var(--admin-font-2xs);
+}
+
+.admin-quick-actions__toolbar {
+  display: flex;
+  min-height: 46px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px 6px 12px;
+}
+
+.admin-quick-actions__environment {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--admin-text-muted);
+  font-size: var(--admin-font-xs);
+}
+
+.admin-quick-actions__environment i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--admin-success);
+  box-shadow: 0 0 0 3px var(--admin-success-soft);
+}
+
+.admin-quick-actions__controls {
+  display: flex;
+  align-items: center;
 }
 </style>

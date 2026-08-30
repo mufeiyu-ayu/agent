@@ -5,7 +5,6 @@ export const messages = {
       local: '本地',
       developer: '开发者',
       consoleUser: '控制台用户',
-      currentUser: '当前用户：{name}',
       generic: '通用',
       yes: '是',
       no: '否',
@@ -49,6 +48,7 @@ export const messages = {
       expandSidebar: '展开侧边栏',
       collapseSidebar: '折叠侧边栏',
       collapseMenu: '收起菜单',
+      quickActions: '控制台',
       backToOverview: '返回概览',
     },
     theme: {
@@ -696,7 +696,6 @@ export const messages = {
       local: 'Local',
       developer: 'Developer',
       consoleUser: 'Console user',
-      currentUser: 'Current user: {name}',
       generic: 'Generic',
       yes: 'Yes',
       no: 'No',
@@ -740,6 +739,7 @@ export const messages = {
       expandSidebar: 'Expand sidebar',
       collapseSidebar: 'Collapse sidebar',
       collapseMenu: 'Collapse menu',
+      quickActions: 'Console',
       backToOverview: 'Back to Overview',
     },
     theme: {

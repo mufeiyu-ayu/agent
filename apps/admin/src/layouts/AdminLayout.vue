@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { RouterView } from 'vue-router'
 
-import AdminHeader from '@/components/layout/AdminHeader.vue'
 import AdminRouteTabs from '@/components/layout/AdminRouteTabs.vue'
 import AdminSidebar from '@/components/layout/AdminSidebar.vue'
 import { useAdminPreferencesStore } from '@/stores/preferences'
@@ -20,7 +19,6 @@ const preferences = useAdminPreferencesStore()
     />
 
     <section class="admin-main">
-      <AdminHeader />
       <AdminRouteTabs />
       <main class="admin-content">
         <RouterView v-slot="{ Component }">

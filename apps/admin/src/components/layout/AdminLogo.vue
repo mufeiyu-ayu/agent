@@ -24,7 +24,7 @@ const { t } = useI18n()
 <style scoped>
 .admin-logo {
   display: flex;
-  height: var(--admin-header-height);
+  height: var(--admin-logo-height);
   align-items: center;
   gap: 10px;
   padding: 0 14px;

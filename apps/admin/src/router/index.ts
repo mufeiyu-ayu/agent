@@ -3,9 +3,6 @@ import { createRouter, createWebHistory } from 'vue-router'
 declare module 'vue-router' {
   interface RouteMeta {
     activeMenu?: string
-    parentPath?: string
-    parentTitle?: string
-    parentTitleKey?: string
     title?: string
     titleKey?: string
     tab?: boolean
@@ -41,9 +38,6 @@ export const router = createRouter({
             title: 'Conversation Detail',
             titleKey: 'navigation.conversationDetail',
             tab: true,
-            parentTitle: 'Conversations',
-            parentTitleKey: 'navigation.conversations',
-            parentPath: '/conversations',
           },
         },
         {
@@ -61,9 +55,6 @@ export const router = createRouter({
             title: 'Run Detail',
             titleKey: 'navigation.runDetail',
             tab: true,
-            parentTitle: 'Runs',
-            parentTitleKey: 'navigation.runs',
-            parentPath: '/runs',
           },
         },
         {
@@ -87,9 +78,6 @@ export const router = createRouter({
             title: 'Translation QA',
             titleKey: 'navigation.qaArticleDetail',
             tab: true,
-            parentTitle: 'QA Articles',
-            parentTitleKey: 'navigation.qaArticles',
-            parentPath: '/qa/articles',
           },
         },
         {
@@ -107,9 +95,6 @@ export const router = createRouter({
             title: 'Glossary Terms',
             titleKey: 'navigation.qaGlossaryTerms',
             tab: true,
-            parentTitle: 'Glossaries',
-            parentTitleKey: 'navigation.qaGlossaries',
-            parentPath: '/qa/glossaries',
           },
         },
       ],
