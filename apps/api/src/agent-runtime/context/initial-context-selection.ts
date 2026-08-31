@@ -144,11 +144,12 @@ export class InitialContextSelectionService {
 
       // 没有更旧的历史消息了。
       if (batch.length === 0)
+        // 跳出 while 循环，此时数据已全部读取完毕，或已达候选总上限。
         break
 
       // 先记录本批已检查，再测算「已选历史 + 本批」能否整批放入预算。
       historyCandidateCount += batch.length
-      // 记录累加的当前已选上下文的完整输入 Token 估算，供下一轮循环使用。
+      // 记录以及选中的历史信息+ 本批候选的完整输入 Token 估算。
       const allBatchTokens = estimate([...selectedNewestFirst, ...batch])
 
       if (allBatchTokens <= resolvedInputBudgetTokens) {
