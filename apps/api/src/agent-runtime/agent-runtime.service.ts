@@ -224,19 +224,29 @@ export class AgentRuntimeService {
         loadHistoryStep.id,
         databaseDeadline,
         {
+          // 仅记录本次历史选择的安全统计，供 AgentStep / Admin 观测；
+          // 真正传给 ModelContext 的消息仍使用 selection.historyMessages。
           output: {
+            // 最终纳入模型上下文的历史消息条数。
             messageCount: selection.summary.historyIncludedCount,
+            // 本次实际从数据库读取并进入 Token 检查的候选条数。
             candidateCount: selection.summary.historyCandidateCount,
+            // 已读取候选中，因 Token 预算不足而未纳入的条数。
             excludedCount: selection.summary.historyExcludedCount,
+            // budget：Token 预算不足；candidate_cap：达到候选上限；null：自然读完。
             excludedReason: selection.summary.excludedReason,
           },
         },
       )
 
       const modelContext = ModelContext.fromHistory({
+        // 系统提示词
         instructions: input.buildModelMessages([]),
+        // 历史消息（按时间倒序，最旧在前）
         initialHistory: selection.historyMessages,
+        // 当前用户消息
         currentUserMessage: this.toLlmMessage(userMessage),
+        // 信息统计快照
         initialSelection: selection.summary,
       })
 
@@ -281,11 +291,18 @@ export class AgentRuntimeService {
         tools: modelTools,
       }
 
+      // 只有某轮 Sampling 返回 final_answer 才置为 true；
+      // 轮数耗尽后仍为 false 表示 Agent Loop 未正常完成。
       let hasFinalAnswer = false
+      // 已发起的普通 action Tool Call 次数，用于限制 maxToolCalls；
+      // 不计入 Grounded finalization 使用的终态提交工具。
       let toolCallCount = 0
       // Grounding Session：首次调用 evidence-eligible Tool 时建立，
-      // 此后本轮最终回答必须经过结构化 finalization，草稿不再直接流给用户。
+      // 用于累积检索证据、零命中或工具失败等事实；建立后最终回答
+      // 必须经过结构化 finalization，草稿不再直接流给用户。
       let evidenceRegistry: RunEvidenceRegistry | undefined
+      // Grounding Session 建立后暂存模型草稿；校验通过前不 yield 给前端，
+      // 也不写入 Assistant Message.content。
       let hiddenFinalDraft = ''
 
       for (
@@ -296,6 +313,7 @@ export class AgentRuntimeService {
         runCancellation.throwIfUnavailable()
         const samplingAttemptId = `${currentAgentRunId}:sampling-${samplingAttempt}`
         const contextSnapshot = modelContext.snapshot(samplingAttempt)
+        // 模型采样 step 创建完成
         const samplingStep = await this.agentRunRecorderService.startStep({
           runId: currentAgentRunId,
           type: AGENT_STEP_TYPES.modelSampling,
@@ -317,12 +335,19 @@ export class AgentRuntimeService {
           runId: currentAgentRunId,
           samplingAttemptId,
         }
+        // 模型流完整结束后的业务决策：final_answer 或 tool_call。
         let samplingDecision: SamplingDecision
+        // 模型流已正常收完时的统计；后续 Step 落库失败时仍可用于收口。
         let completedSamplingSummary: ModelSamplingSummary | undefined
+        // Context Planner 已产生的预算、历史排除和 Observation 截断统计。
         let contextPlanSummary: SamplingContextPlanSummary | undefined
+        // Planner 最终准备发给 Provider 的 ModelInputItem 数量。
         let plannedMessageCount = 0
 
         try {
+          // 每轮请求模型前重新规划完整输入：首轮复核 Initial Context；
+          // 后续轮次还要把上一轮模型产生的 assistant_tool_call 与后端产生的
+          // tool_result 成对加入输入，超预算时先删最旧历史，再缩短 Tool Observation。
           const contextPlan = this.samplingContextPlanner.plan({
             samplingIndex: samplingAttempt,
             context: modelContext,
@@ -330,6 +355,8 @@ export class AgentRuntimeService {
             resolvedInputBudgetTokens:
               selection.summary.resolvedInputBudgetTokens,
           })
+
+          // 主要是后台观察：记录本轮预算、最终 Token、历史排除和 Tool Observation
           contextPlanSummary = contextPlan.summary
           plannedMessageCount = contextPlan.items.length
 

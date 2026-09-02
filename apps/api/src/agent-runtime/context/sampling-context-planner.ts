@@ -63,13 +63,23 @@ export class SamplingContextPlanner {
 
   plan(input: PlanSamplingContextInput): SamplingContextPlan {
     const state = input.context.forPlanning()
+    // 每次调用都从当前工作副本 state 重新组装完整模型输入，因此删除历史
+    // 或缩短 Tool Result 后再调用，会得到调整后的 Token 数。计算范围包含：
+    // instructions + initialHistory + currentUser + 已发生的 Tool Call / Tool Result
+    // + 工具定义 + DeepSeek 请求格式标记；不包含纯后台观测字段。
     const estimate = (): number => this.tokenEstimator.estimateRequest({
       items: flattenPlanningState(state),
       tools: input.tools,
     })
+    // 核心执行状态：本轮 Planner 决定从最旧处删除多少条 initialHistory；
+    // 只有整份计划通过预算后，commitPlan() 才会把该数量正式应用回 ModelContext。
     let excludedOldestHistoryCount = 0
+    // 第一次真正计算当前工作副本的完整输入 Token；
+    // 后续每次删除历史或缩短 Tool Result 后都会重新赋值。
     let estimatedInputTokens = estimate()
 
+    // 第一层降级：初次估算超预算时，先从最旧历史开始删减，
+    // 并用修改后的 state 重新计算 Token；未超预算则保持 0 条删除。
     if (estimatedInputTokens > input.resolvedInputBudgetTokens) {
       excludedOldestHistoryCount = excludeOldestHistory(
         state,
@@ -79,6 +89,9 @@ export class SamplingContextPlanner {
       estimatedInputTokens = estimate()
     }
 
+    // 第二层降级：能走到这个条件，表示初始历史本来就是空的，
+    // 或 excludeOldestHistory() 已经删完全部 initialHistory，但完整输入仍超预算。
+    // 此时已没有历史可继续删除，只能缩短 Tool Observation 后再次重算 Token走下面的 if 逻辑
     if (estimatedInputTokens > input.resolvedInputBudgetTokens) {
       shrinkObservations(
         state,
@@ -88,6 +101,7 @@ export class SamplingContextPlanner {
       estimatedInputTokens = estimate()
     }
 
+    // 两层降级后仍超预算，说明最小安全 Context 也放不下，禁止调用模型。
     if (estimatedInputTokens > input.resolvedInputBudgetTokens) {
       throw new SamplingContextBudgetExceededError(toPlanSummary(
         input,
@@ -100,8 +114,13 @@ export class SamplingContextPlanner {
 
     const items = flattenPlanningState(state)
 
+    // 到这里为止，删历史和缩 Tool Result 都只发生在工作副本 state 上。
+    // 预算已确认通过，现在才把有效缩减正式同步回当前 Run 的原内存
+    // ModelContext，供后续 Sampling 继续使用；不会删除或修改数据库 Message。
     input.context.commitPlan({
+      // 从原 ModelContext.initialHistory 开头永久移除的最旧历史条数。
       excludedOldestHistoryCount,
+      // 按 exchangeIndex 把工作副本中最终的 Tool Result 文本与预览长度同步回去。
       observations: state.toolExchanges.map(exchange => ({
         exchangeIndex: exchange.exchangeIndex,
         content: exchange.toolResult.content,
@@ -110,12 +129,20 @@ export class SamplingContextPlanner {
     })
 
     return {
+      // 核心返回值：已通过 Token 预算检查，本轮真正准备传给模型的输入项。
       items,
+      // 纯后台观测：记录本轮预算、最终 Token、历史排除和 Tool Observation
+      // 截断结果，供 model_sampling Step / Admin Inspector 展示；不参与模型输入。
       summary: toPlanSummary(
+        // 提供本轮 samplingIndex 和 resolvedInputBudgetTokens。
         input,
+        // 已完成历史删减与 Tool Result 缩短的最终工作副本。
         state,
+        // 最后一次重新估算得到的完整输入 Token。
         estimatedInputTokens,
+        // null 表示本次规划成功，没有 minimum_context 溢出。
         null,
+        // 记录本轮使用的 Tokenizer / 请求编码策略版本。
         this.tokenEstimator.strategyId,
       ),
     }
