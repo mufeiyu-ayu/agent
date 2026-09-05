@@ -1,13 +1,13 @@
 ---
 name: github-pr-review-fix
-description: 获取并处理本项目 GitHub Pull Request 的 Claude Code Review findings：先讲解问题，再在本地修复真问题、验证、commit 并 push 回原 PR。Use when the user says 处理 PR #N 的 Review、修复 PR #N 的审查问题、读取远程 review 问题, or asks to continue a PR after automated review; also invoked by github-issue-workflow as its Review step. Do not use for creating a new Issue, opening the initial PR, or merging.
+description: 处理本项目 GitHub Pull Request 上的外部 Review 评论（如第三方 Review bot 或人工评论）：先讲解问题，再在本地修复真问题、验证、commit 并 push 回原 PR。Only when the user explicitly says 处理 PR #N 的 Review、修复 PR #N 的审查问题、读取远程 review 问题. Not a default step of github-issue-workflow. Do not use for creating a new Issue, opening the initial PR, or merging.
 ---
 
 # GitHub PR Review 修复工作流
 
 ## 完成边界
 
-读取并解释 findings 后，直接修复确认为真问题的项并推送到原 PR；不创建新 PR、不合并。合并与任务验收由 `github-issue-workflow` 的验收步骤负责。用户可以缩小范围，例如「只解释不改」「只修第 2 条」。
+本 skill 只在用户明确要求时使用；Claude 单角色流程不依赖任何远程 Review。读取并解释评论后，直接修复确认为真问题的项并推送到原 PR；不创建新 PR、不合并。合并与任务验收由 `github-issue-workflow` 的验收步骤负责。用户可以缩小范围，例如「只解释不改」「只修第 2 条」。
 
 ## 1. 获取远程状态
 

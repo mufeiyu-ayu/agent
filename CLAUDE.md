@@ -78,8 +78,7 @@ Claude 的角色是单角色搭档：陪读源码、当架构讨论对手、建 
   -> 建 Issue（gh；写目标、当前代码事实、范围、边界、验收标准、决策记录）
   -> 独立分支 claude/issue-N-<slug> 实现 + 最小必要验证
   -> 暂存后、commit 前 /code-review 自审并修复
-  -> commit、push、创建 PR（GitHub Claude Code Review 自动运行）
-  -> 处理 Review findings
+  -> commit、push、创建 PR
   -> 验收：基于 PR 最新 head 逐条核对验收标准，给出 PASS / FAIL
   -> PASS：合并、删除远程与本地分支、同步 docs 状态、在会话汇报
   -> FAIL：停在 PR，说明原因，不合并
@@ -88,7 +87,7 @@ Claude 的角色是单角色搭档：陪读源码、当架构讨论对手、建 
 | 触发语 | 执行方式 |
 | --- | --- |
 | 「完成 Issue #N」「读取 Issue #N 并实现」 | `.claude/skills/github-issue-workflow`，默认一路执行到合并与收口 |
-| 「处理 PR #N 的 Review」 | `.claude/skills/github-pr-review-fix` |
+| 「处理 PR #N 的 Review」 | `.claude/skills/github-pr-review-fix`；仅在用户明确要求处理 PR 上的外部 Review 评论时使用，不是默认步骤 |
 | 「建 Issue」「把刚才聊的立项」 | Claude 用 `gh` 建 Issue，内容取自本会话结论 |
 | 「更新 docs」「收口」「写入 master」 | docs-only 变更直接提交 `master` |
 
@@ -102,7 +101,7 @@ Claude 的角色是单角色搭档：陪读源码、当架构讨论对手、建 
 - 验收 PASS 后 Claude 直接合并、清理分支并收口 docs，不再等待单独授权；用户随时可以要求停在 PR、先看 diff 或改用 Draft，本次指令高于默认。验收 FAIL 不合并。
 - GitHub 交付前必须用 `gh auth status --hostname github.com` 和 `git push --dry-run origin HEAD` 预检凭据，不输出 token；凭据失效、权限不足时立即停止并告知，不得改用 GitHub API、Connector 或手工上传绕过。
 - Review finding 与最新 Issue 决策或项目规范冲突时，不为「通过 Review」反向改规格，按事实来源解决并说明。
-- 当前不把 GitHub Actions 作为必需环节；本地验证、PR diff、Claude Code Review 和验收记录是质量证据。
+- Review 与验收都由本会话完成：commit 前 `/code-review` 是唯一必需的 review，不等待也不依赖任何远程自动 Review；仓库里第三方 Review bot（如 Codex）的评论不阻塞流程。当前不把 GitHub Actions 作为必需环节；本地验证、PR diff、`/code-review` 结论和验收记录是质量证据。
 - 用户明确要求用 Codex 时，转到 `AGENTS.md` 流程。
 
 ## 6. 架构原则
