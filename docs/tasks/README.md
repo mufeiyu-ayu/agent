@@ -21,7 +21,7 @@ Admin Task 4：Planned
 | 区域 | 状态 | 文档 | 说明 |
 | --- | --- | --- | --- |
 | Agent 主线 | **阶段 1-8 Completed** | [roadmap.md](../roadmap.md) | 当前为源码阅读阶段；方向已定案为 runtime 深化 |
-| 翻译质检站 A-1 #109 / A-2 #111 | **已删除 / #113** | Issue #109、#111、#113 | 2026-09-02 方向放弃，2026-09-05 经 #113 删除全部代码、契约、admin 页面与数据模型（drop 迁移 `20260905120000_remove_qa_station`）；仅保留混入的通用 admin 改动 |
+| 翻译质检站 A-1 #109 / A-2 #111 | **已删除 / #113 / PR #114 / `26412d1`** | Issue #109、#111、#113 | 2026-09-02 方向放弃，2026-09-05 经 #113 删除全部代码、契约、admin 页面与数据模型（drop 迁移 `20260905120000_remove_qa_station`）；仅保留混入的通用 admin 改动 |
 | Backend 模块组织 #101 | **Completed / #101 / PR #105** | [agent-runtime-module-organization.md](./agent-runtime-module-organization.md) | Agent Runtime 目录分域 + Cancellation Lifecycle；GPT 验收 + 用户确认 |
 | Admin Runs 模块组织 #102 | **Completed / #102 / PR #106** | [admin-runs-module-organization.md](./admin-runs-module-organization.md) | Projector 分域 + 循环依赖消除；GPT 验收 + 用户确认 |
 | Article Chunking 模块组织 #103 | **Completed / #103 / PR #107** | [article-chunking-module-organization.md](./article-chunking-module-organization.md) | 稳定 Facade + structural / deterministic / token 内部分层；GPT 验收 + 用户确认 |
