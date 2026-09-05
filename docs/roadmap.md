@@ -10,7 +10,7 @@ Active Agent Task：无
 方向：runtime 深化（2026-09-05 定案）
 当前阶段：源码阅读
 候选子系统：session 事件流与 replay、审批门、compaction、定时任务
-翻译质检站：方向已放弃（代码保留）
+翻译质检站：已删除（#113）
 Admin Observability：Task 0-3、Enhancement 1-3、Phase 8 Task 3C、#98 Completed
 Admin Task 4：Planned
 ```

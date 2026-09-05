@@ -1,14 +1,11 @@
 <script setup lang="ts">
 import {
-  BookOutlined,
   CommentOutlined,
   DashboardOutlined,
-  FileTextOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   ProfileOutlined,
   SettingOutlined,
-  ThunderboltOutlined,
   UserOutlined,
 } from '@ant-design/icons-vue'
 import { Popover } from 'ant-design-vue'
@@ -36,14 +33,6 @@ const sections = [
       { path: '/overview', labelKey: 'navigation.overview', icon: DashboardOutlined },
       { path: '/conversations', labelKey: 'navigation.conversations', icon: CommentOutlined },
       { path: '/runs', labelKey: 'navigation.runs', icon: ProfileOutlined },
-    ],
-  },
-  {
-    labelKey: 'navigation.qaStation',
-    items: [
-      { path: '/qa/workbench', labelKey: 'navigation.qaWorkbench', icon: ThunderboltOutlined },
-      { path: '/qa/articles', labelKey: 'navigation.qaArticles', icon: FileTextOutlined },
-      { path: '/qa/glossaries', labelKey: 'navigation.qaGlossaries', icon: BookOutlined },
     ],
   },
 ]

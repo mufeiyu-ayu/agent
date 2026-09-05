@@ -8,7 +8,7 @@
 | --- | --- | --- |
 | Agent 主线 | 阶段 1-8 Completed；横向任务与 Backend 模块组织全部验收合并 | 源码阅读；候选子系统在立项条件满足时建 Issue |
 | 方向 | 2026-09-05 定案：runtime 深化，作品是 runtime 本身，参照 Codex 与 DeepSeek Harness | 见 [roadmap.md](./roadmap.md) 方向定案 |
-| 翻译质检站 | A-1 Completed；A-2 代码已合入 master；方向 2026-09-02 放弃 | 不再推进 |
+| 翻译质检站 | 方向 2026-09-02 放弃；2026-09-05 经 #113 删除全部代码与数据模型 | 无 |
 | Admin Console | Task 0-3、Enhancement 1-3、Phase 8 Task 3C Completed；Task 4 Planned | 不自动启动 Auth / RBAC |
 | 协作流程 | Claude 单角色流程（CLAUDE.md）与 GPT + Codex 双角色流程（AGENTS.md）并行 | 按所用工具选择 |
 
@@ -16,6 +16,7 @@
 
 | 日期 | 事项 | 结果 |
 | --- | --- | --- |
+| 2026-09-05 | 删除翻译质检站代码与数据模型 | Issue #113；移除 `admin-qa` 模块、导入脚本、`contracts/admin-qa`、admin 五个 Qa 页面与 qa api / 路由 / 侧栏分组 / 中英 i18n 块、Prisma 7 模型 4 枚举与 `Article` 5 个质检字段（含无人读写的 `summary`）；新增 drop 迁移 `20260905120000_remove_qa_station` 并已应用于本机库，旧 4 条 qa 迁移保留；保留混入的通用 admin 改动（POST 支持、`refresh()`、配色）；本地 `data/snapshots/` 不动，`data/` 改由根 `.gitignore` 忽略 |
 | 2026-09-05 | 方向定案与协作流程改版 | 两周方向调研（翻译质检站、内容流量助手、市场 C 端候选、公司后台候选、GitHub 开源借鉴）均未通过，最终定案：不再为 runtime 找产品域，作品是 runtime 本身，用户是自己，参照 Codex 与 DeepSeek Harness；`CLAUDE.md` 改为 Claude 单角色流程（聊清楚 → 建 Issue → 实现 → commit 前 `/code-review` → PR 与 Claude Code Review → 本会话逐条验收 → PASS 直接合并与收口），`AGENTS.md` 保留 GPT + Codex 双角色流程并与 CLAUDE.md 共用章节同步；两个 `.claude/skills` 同步改版；docs 状态对齐 |
 | 2026-09-03 | 内容与流量调查助手放弃 | 两天做出 admin 流量总览与 GSC 接入后判断为仪表盘而非 agent，用户放弃；分支、代码、本地表与 `.env` 授权全部删除，master 无残留 |
 | 2026-09-02 | 翻译质检站方向放弃 | 一天调查（源码、线上抽样、存量译文、GSC）证明现有翻译质量不差、剩余问题用不上 Agent；A-2 代码保留在 master，不再推进 A-3 及后续 |
@@ -57,7 +58,7 @@
 阶段 1-8            Completed
 Active Agent Task   无
 方向                runtime 深化（2026-09-05 定案）
-翻译质检站          已放弃（代码保留）
+翻译质检站          已删除（#113）
 Admin Task 4        Planned
 ```
 
