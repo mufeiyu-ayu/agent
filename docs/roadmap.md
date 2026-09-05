@@ -6,14 +6,13 @@
 
 ```text
 阶段 1-8：Completed
-Phase 8：Completed
 Active Agent Task：无
-DeepSeek 思考强度与 Usage（#94）：Completed
-失败 Sampling 部分响应可观测性（#98）：Completed
-Minimal Compaction：Gated
-Admin Observability：Task 0-3、Enhancement 1、Phase 8 Task 3C、#98 Completed
+方向：runtime 深化（2026-09-05 定案）
+当前阶段：源码阅读
+候选子系统：session 事件流与 replay、审批门、compaction、定时任务
+翻译质检站：方向已放弃（代码保留）
+Admin Observability：Task 0-3、Enhancement 1-3、Phase 8 Task 3C、#98 Completed
 Admin Task 4：Planned
-Phase 9：未定案
 ```
 
 ## 阶段路线
@@ -82,7 +81,7 @@ Phase 8 Closeout                                       Completed
 
 ## 当前学习阶段
 
-Phase 8 源码阅读仍是当前学习阶段；独立横向任务 #94 已验收合并，不改变 Phase 9 未定案状态。源码按以下链路回读：
+当前学习阶段是源码阅读，对象是三块：Phase 8 链路、codex-reference 中尚未落地的 durability-recovery 与 safety-permission、DeepSeek Harness 的 session 与 interaction。方法见 [`research/learning-roadmap/learning-method.md`](./research/learning-roadmap/learning-method.md)。Phase 8 链路按以下顺序回读：
 
 ```text
 索引入口
@@ -98,22 +97,20 @@ Phase 8 源码阅读仍是当前学习阶段；独立横向任务 #94 已验收�
   -> Admin Retrieval Inspector
 ```
 
-该阶段属于阅读、讨论和本地实验模式，默认不创建 Issue、不修改正式状态。下一阶段学习内容暂不定义。
+该阶段属于阅读、讨论和本地实验模式，默认不创建 Issue、不修改正式状态。
 
-## Phase 9 决策原则
+## 方向定案（2026-09-05）
 
-Phase 9 尚未定案。完成 Phase 8 源码阅读后，再基于真实产品价值和能力缺口选择方向。
+不再为 runtime 寻找产品域。作品就是 runtime 本身，第一个用户是用户自己；目标是运行层技术深度、真实使用留下的问题记录、公开的设计笔记三样。参照物为 Codex（`docs/research/codex-reference/`）与 DeepSeek Harness，只用于对比取舍。
 
-候选方向包括但不限于：
+当前能力缺口四块：Human-in-the-loop / 审批、Durable Execution / resume 与 replay、长期 Memory、成本与延迟。对应的候选子系统：
 
-- Durable Execution / Recovery；
-- Human-in-the-loop / Permission；
-- Agent Evaluation / Observability 增强；
-- 文件知识库；
-- Memory；
-- MCP。
+- session 事件流与 replay（append-only 日志、resume、fork、Trajectory 视图）；
+- 审批门（工具执行前的 approval 与 permission preset）；
+- compaction；
+- 定时任务 / jobs。
 
-候选不等于 Next。Memory、MCP、Multi-agent 不得因为“流行”而优先于真实业务需求和工程前置。
+立项条件：真实使用卡住、源码阅读发现缺陷，或缺口被明确命中；三者都不满足时不立 Issue。候选不等于 Next，不因为“成熟项目有”就做。
 
 ## 当前明确后置
 
@@ -125,8 +122,8 @@ Phase 9 尚未定案。完成 Phase 8 源码阅读后，再基于真实产品价
 - LangChain / LangGraph / 独立 Vector DB；
 - OpenAI / Gemini 双 active provider；
 - Admin Auth / RBAC Task 4；
-- 自动 Compaction；
 - 并行 Tool Call；
+- OS sandbox；
 - Memory、MCP、Multi-agent。
 
 ## Admin Console 支线
@@ -147,8 +144,7 @@ Phase 8 Task 3C 已完成安全 Retrieval Inspector，但不自动启动 Task 4�
 
 ```text
 Phase 8：Completed / 已归档（docs/tasks/completed/phase-08-grounded-retrieval.md）
-Active Agent Task：无（Backend 模块组织 #101-#104 均已验收合并）
-DeepSeek 思考强度与 Usage（#94）：Completed / PR #95 / `2266fad`
-当前阶段：Phase 8 源码阅读（学习阶段）
-下一阶段学习内容：暂不定义
+Active Agent Task：无
+当前阶段：源码阅读（Phase 8 链路 + codex-reference 两份 + DeepSeek Harness 两份）
+下一步：候选子系统在立项条件满足时建 Issue，走 CLAUDE.md 单角色流程
 ```

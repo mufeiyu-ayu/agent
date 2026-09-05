@@ -1,6 +1,6 @@
-# GitHub 学习开发工作流规范
+# GitHub 学习开发工作流规范（GPT + Codex 双角色流程）
 
-本文固定 GPT、GitHub Issue、本地 Codex、Pull Request、Codex Review、学习 docs 与用户授权执行之间的协作边界。`AGENTS.md` 保存触发规则和硬约束，本文保存完整流程。
+本文固定 GPT、GitHub Issue、本地 Codex、Pull Request、Codex Review、学习 docs 与用户授权执行之间的协作边界，只在使用 Codex + GPT 时生效。`AGENTS.md` 保存触发规则和硬约束，本文保存完整流程。使用 Claude 时以 `CLAUDE.md` 的单角色流程为准，本文不适用。
 
 ## 1. 工作方式
 

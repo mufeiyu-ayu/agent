@@ -6,16 +6,19 @@
 
 | 类型 | 当前记录 | 下一步 |
 | --- | --- | --- |
-| Agent 主线 | 阶段 1-8 Completed；Backend 模块组织 #101 / PR #105 至 #104 / PR #108 全部验收合并 | 继续 Phase 8 源码阅读；不启动 Phase 9 |
-| Phase 8 | Task 0、1、2A、2B、3A、3B、3C 全部 Completed | [阶段归档](./tasks/completed/phase-08-grounded-retrieval.md) |
-| Minimal Compaction | Gated | 只有真实 Context 压力证据满足触发条件后才讨论 |
+| Agent 主线 | 阶段 1-8 Completed；横向任务与 Backend 模块组织全部验收合并 | 源码阅读；候选子系统在立项条件满足时建 Issue |
+| 方向 | 2026-09-05 定案：runtime 深化，作品是 runtime 本身，参照 Codex 与 DeepSeek Harness | 见 [roadmap.md](./roadmap.md) 方向定案 |
+| 翻译质检站 | A-1 Completed；A-2 代码已合入 master；方向 2026-09-02 放弃 | 不再推进 |
 | Admin Console | Task 0-3、Enhancement 1-3、Phase 8 Task 3C Completed；Task 4 Planned | 不自动启动 Auth / RBAC |
-| Phase 9 | 未定案 | 学习闭环后基于真实需求讨论 |
+| 协作流程 | Claude 单角色流程（CLAUDE.md）与 GPT + Codex 双角色流程（AGENTS.md）并行 | 按所用工具选择 |
 
 ## 近期关键记录
 
 | 日期 | 事项 | 结果 |
 | --- | --- | --- |
+| 2026-09-05 | 方向定案与协作流程改版 | 两周方向调研（翻译质检站、内容流量助手、市场 C 端候选、公司后台候选、GitHub 开源借鉴）均未通过，最终定案：不再为 runtime 找产品域，作品是 runtime 本身，用户是自己，参照 Codex 与 DeepSeek Harness；`CLAUDE.md` 改为 Claude 单角色流程（聊清楚 → 建 Issue → 实现 → commit 前 `/code-review` → PR 与 Claude Code Review → 本会话逐条验收 → PASS 直接合并与收口），`AGENTS.md` 保留 GPT + Codex 双角色流程并与 CLAUDE.md 共用章节同步；两个 `.claude/skills` 同步改版；docs 状态对齐 |
+| 2026-09-03 | 内容与流量调查助手放弃 | 两天做出 admin 流量总览与 GSC 接入后判断为仪表盘而非 agent，用户放弃；分支、代码、本地表与 `.env` 授权全部删除，master 无残留 |
+| 2026-09-02 | 翻译质检站方向放弃 | 一天调查（源码、线上抽样、存量译文、GSC）证明现有翻译质量不差、剩余问题用不上 Agent；A-2 代码保留在 master，不再推进 A-3 及后续 |
 | 2026-08-29 | 翻译质检站 A-2b 信息架构重构（待验收） | 用户验收反馈定案「档案与操作分离」，并授权免 Issue 在 `claude/issue-111-qa-station-a2` 分支继续开发：新增「质检工作台」菜单（文章队列、语种 chips、打分/审核/重译动作、Agent 翻译流程演示面板——五步时间线仅最后一步真实入队）；文章详情页改只读档案（语种矩阵含规则分/结论/审核状态、译文预览按需展开、沟通记录只读）；诊断对话落库（`QaDiagnoseMessage` 表 + 历史接口，应答仍为占位）；service 测试 15/15、真库自检通过、typecheck/lint/build 全绿，待用户验收 |
 | 2026-08-29 | 翻译质检站 A-2 立项与实现（待验收） | Issue #111（Gate READY，用户授权 Claude 自行定夺方案）；`claude/issue-111-qa-station-a2` 实现：TranslationTask 表与 Score 增补字段、六个动作接口（详情/译文/打分-长度比最小真规则/审核附理由/任务幂等/诊断 mock）、admin 翻译质检页（质量结论/真实指标/判分过程优先，安全结构化全文对照按需展开，含动作区与诊断面板）；真库全链路自检通过、service 测试 13/13、typecheck、lint、admin checks 与 build 全绿；本地浏览器已核对分析层级、展开交互和无横向溢出，待用户验收 |
 | 2026-08-29 | 翻译质检站 A-1 验收收口 | Issue #109 / PR #110；用户浏览器验收通过；PR 转 Ready 合并 `d2a2ba9`，Issue Closed，远程与本地任务分支已删除；docs 状态收口为 Completed；A-2（译文对照详情 + mock 动作）进入规格讨论 |
@@ -52,18 +55,18 @@
 
 ```text
 阶段 1-8            Completed
-Phase 8             Completed
 Active Agent Task   无
-Minimal Compaction  Gated
+方向                runtime 深化（2026-09-05 定案）
+翻译质检站          已放弃（代码保留）
 Admin Task 4        Planned
-Phase 9             未定案
 ```
 
 当前执行顺序：
 
 ```text
-Phase 8 源码阅读（学习阶段）
-  -> 再讨论 Phase 9
+源码阅读（Phase 8 链路 + codex-reference 两份 + DeepSeek Harness 两份）
+  -> 真实使用卡住 / 缺口命中时建 Issue
+  -> CLAUDE.md 单角色流程
 ```
 
 ## 已稳定的 Phase 8 事实
@@ -81,5 +84,5 @@ Phase 8 源码阅读（学习阶段）
 
 - 只记录已经真实发生的事项。
 - 研究定案、Issue 创建、实现、验收、Task 收口和合并是不同动作。
-- Completed 必须有 GPT 技术验收和用户确认。
-- 下一阶段未定案前，不创建正式 Issue、不修改正式状态。
+- Completed 必须有验收记录：Claude 流程为 PR 逐条验收 PASS 并合并，GPT + Codex 流程为 GPT 技术验收加用户确认。
+- 候选子系统未立 Issue 前不修改正式状态。

@@ -10,13 +10,7 @@
 - [`../../tasks/README.md`](../../tasks/README.md)；
 - [`../codex-reference/current-agent-baseline.md`](../codex-reference/current-agent-baseline.md)。
 
-当前唯一确定的下一阶段是：
-
-```text
-阶段 6：有界单 Agent Loop
-```
-
-阶段 6 完成前，不提前编号或编写后续正式阶段。
+本目录中 [`learning-method.md`](./learning-method.md) 是现行学习方法（七步法、阶段产物、复盘模板），其余专题文件为历史研究快照。当前方向与候选子系统见 [`../../roadmap.md`](../../roadmap.md)。
 
 ## 本目录的用途
 
@@ -45,10 +39,8 @@
 
 ## 当前建议阅读
 
-阶段 6 优先阅读：
-
-- [`../codex-reference/core-runtime.md`](../codex-reference/core-runtime.md)；
-- [`../codex-reference/tool-loop.md`](../codex-reference/tool-loop.md)；
-- [`../codex-reference/current-agent-baseline.md`](../codex-reference/current-agent-baseline.md)。
+- [`../codex-reference/durability-recovery.md`](../codex-reference/durability-recovery.md)；
+- [`../codex-reference/safety-permission.md`](../codex-reference/safety-permission.md)；
+- DeepSeek Harness 的 `session`、`interaction` 子系统文档（入口见 [`../README.md`](../README.md)）。
 
 其他专题继续保留为历史研究快照，需要时按问题查阅，不按原编号机械执行。

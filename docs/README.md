@@ -6,13 +6,12 @@
 
 ```text
 阶段 1-8：Completed
-Phase 8：Completed
 Active Agent Task：无
-DeepSeek 思考强度与 Usage（#94）：Completed
-失败 Sampling 部分响应可观测性（#98）：Completed
-Minimal Compaction：Gated
+方向：runtime 深化（2026-09-05 定案，作品是 runtime 本身，参照 Codex 与 DeepSeek Harness）
+当前阶段：源码阅读
+候选子系统：session 事件流与 replay、审批门、compaction、定时任务（候选不等于 Active）
+翻译质检站：方向已放弃（A-1 / A-2 代码保留在 master）
 Admin Task 4：Planned
-Phase 9：未定案
 ```
 
 Phase 8 已完成：
@@ -25,13 +24,13 @@ Phase 8 已完成：
 - Task 3B：Web Grounding 状态、Sources disclosure、Source cards 与 Chromium，#60 / #61 / `572ad206`；
 - Task 3C：Admin Retrieval / Finalization / Citation Inspector，#62 / #63 / `20f838fb`。
 
-当前仍处于 Phase 8 源码阅读阶段；Backend 模块组织 Issue #101（[Agent Runtime 模块组织](./tasks/agent-runtime-module-organization.md)）、#102（[Admin Runs 模块组织](./tasks/admin-runs-module-organization.md)）、#103（[Article Chunking 模块组织](./tasks/article-chunking-module-organization.md)）与 #104（[Retrieval 模块组织](./tasks/retrieval-module-organization.md)）均已验收合并；Issue #98（[失败 Sampling 部分响应可观测性](./tasks/failed-sampling-debug-capture.md)）和 Issue #94（[DeepSeek 思考强度与 Usage](./tasks/deepseek-reasoning-usage.md)）也已验收合并。下一阶段学习内容暂不定义，Phase 9 尚未定案。
+Phase 8 之后的横向任务 #92、#94、#98 与 Backend 模块组织 #101-#104 均已验收合并；翻译质检站 A-1（#109）已合并，A-2（#111）代码已合入 master，该方向于 2026-09-02 放弃。2026-09-05 定案：不再为 runtime 寻找产品域，作品就是 runtime 本身，第一个用户是用户自己，参照物为 Codex 与 DeepSeek Harness；下一批子系统只在真实使用卡住或缺口被明确命中时立项。协作方式见 `CLAUDE.md`（Claude 单角色流程）与 `AGENTS.md`（GPT + Codex 双角色流程）。
 
 ## 文档入口
 
 | 文档 | 用途 |
 | --- | --- |
-| [roadmap.md](./roadmap.md) | 阶段路线、学习闭环与 Phase 9 决策原则 |
+| [roadmap.md](./roadmap.md) | 阶段路线、当前学习阶段与方向定案 |
 | [tasks/README.md](./tasks/README.md) | 正式任务看板和状态事实来源 |
 | [失败 Sampling 部分响应可观测性](./tasks/failed-sampling-debug-capture.md) | Completed：#98 / PR #100 / `915315b` |
 | [DeepSeek 思考强度与 Usage](./tasks/deepseek-reasoning-usage.md) | Completed：#94 / PR #95 / `2266fad` |
@@ -42,8 +41,9 @@ Phase 8 已完成：
 | [Phase 7 归档](./tasks/completed/phase-07-context-engineering.md) | Context Engineering 最终能力与边界 |
 | [Phase 6 归档](./tasks/completed/phase-06-bounded-agent-loop.md) | Agent Loop、deadline、终态可靠性 |
 | [Admin Console](./tasks/admin-console.md) | Admin Observability 支线 |
-| [development-workflow.md](./development-workflow.md) | Issue、Gate、Draft PR、验收和合并流程 |
-| [research/README.md](./research/README.md) | 架构研究入口，不代表实现状态 |
+| [development-workflow.md](./development-workflow.md) | GPT + Codex 双角色流程；Claude 单角色流程见 `CLAUDE.md` |
+| [research/README.md](./research/README.md) | 参照物研究入口：codex-reference、DeepSeek Harness，不代表实现状态 |
+| [research/learning-roadmap/learning-method.md](./research/learning-roadmap/learning-method.md) | 每个子系统的七步法与阶段产物 |
 | [work-log.md](./work-log.md) | 已发生里程碑 |
 
 ## 当前能力链路
@@ -80,6 +80,8 @@ Chunking / Indexing
   -> Stream / Messages API
   -> Web Source UI
   -> Admin Retrieval Inspector
+  -> codex-reference：durability-recovery、safety-permission
+  -> DeepSeek Harness：session、interaction
 ```
 
 该阶段属于讨论 / 学习模式，默认不创建 Issue、不修改正式代码。
@@ -99,7 +101,7 @@ Chunking / Indexing
 
 - `docs/README.md` 只做入口；
 - 一个正式 Issue 只对应一个明确 Task；
-- Active 必须有 Issue 且 Gate READY；
-- Completed 必须有 GPT 技术验收和用户确认；
+- Active 必须有 Issue（GPT + Codex 流程还需 Gate READY）；
+- Completed 必须有验收记录：Claude 流程为 PR 逐条验收 PASS 并合并，GPT + Codex 流程为 GPT 技术验收加用户确认；
 - 研究文档不能替代任务规格；
-- Phase 9 未定案前，不自动启动 Admin Task 4、并行 Tool Call、Memory、MCP、Multi-agent 或 Minimal Compaction。
+- 候选子系统未立 Issue 前不进入实现；Admin Task 4、并行 Tool Call、Memory、MCP、Multi-agent 不自动启动。

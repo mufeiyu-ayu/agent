@@ -17,12 +17,10 @@
 ## 当前项目结论
 
 ```text
-阶段 1-7：Completed
-Phase 8：Active
-Task 0、1、2A、2B、3A、3B：Completed
-Task 3C：Next
+阶段 1-8：Completed
 Active Agent Task：无
-Minimal Compaction：Gated
+方向：runtime 深化（2026-09-05 定案）
+参照物：Codex（codex-reference/）+ DeepSeek Harness
 ```
 
 当前项目已经建立：
@@ -54,9 +52,11 @@ Minimal Compaction：Gated
 | Core Runtime | [codex-reference/core-runtime.md](./codex-reference/core-runtime.md) | Runtime loop、Turn、Task、follow-up sampling |
 | Tool Loop | [codex-reference/tool-loop.md](./codex-reference/tool-loop.md) | Tool Call、Observation、继续 sampling |
 | Context / History | [codex-reference/context-history.md](./codex-reference/context-history.md) | model-visible history 与 Context 治理 |
-| Durability / Recovery | [codex-reference/durability-recovery.md](./codex-reference/durability-recovery.md) | 研究资料，未排期 |
-| Permission / Approval | [codex-reference/safety-permission.md](./codex-reference/safety-permission.md) | 研究资料，未排期 |
-| MCP / Multi-agent | [codex-reference/extensibility-and-multi-agent.md](./codex-reference/extensibility-and-multi-agent.md) | 研究资料，未排期 |
+| Durability / Recovery | [codex-reference/durability-recovery.md](./codex-reference/durability-recovery.md) | 当前阅读对象；对应候选子系统「session 事件流与 replay」 |
+| Permission / Approval | [codex-reference/safety-permission.md](./codex-reference/safety-permission.md) | 当前阅读对象；对应候选子系统「审批门」 |
+| MCP / Multi-agent | [codex-reference/extensibility-and-multi-agent.md](./codex-reference/extensibility-and-multi-agent.md) | 研究资料，后置 |
+| DeepSeek Harness | [github.com/deepseek-ai/deepseek-harness](https://github.com/deepseek-ai/deepseek-harness)（TypeScript，MIT，`docs/subsystems/*.zh.md` 有中文子系统文档） | 第二参照物；当前阅读 `session`、`interaction` 两个子系统，对照 append-only 会话日志、resume / fork / replay、approval 与 permission preset |
+| 学习方法 | [learning-roadmap/learning-method.md](./learning-roadmap/learning-method.md) | 每个子系统的七步法、阶段产物与复盘模板 |
 
 ## Grounded Answer 研究结论与落地状态
 
@@ -95,7 +95,7 @@ evidence-eligible Tool invocation
 
 ## 旧研究资料
 
-旧的 [codex/](./codex/README.md) 与 [learning-roadmap/](./learning-roadmap/README.md) 保留历史研究价值，但包含旧 baseline 和曾经设想的路线，不能直接作为当前执行计划。
+旧的 [codex/](./codex/README.md) 与 [learning-roadmap/](./learning-roadmap/README.md) 各专题保留历史研究价值，但包含旧 baseline 和曾经设想的阶段编号，不能直接作为当前执行计划；其中 [learning-method.md](./learning-roadmap/learning-method.md) 是现行学习方法，不属于历史资料。
 
 发生冲突时：
 

@@ -6,24 +6,22 @@
 
 ```text
 阶段 1-8：Completed
-Phase 8：Completed
-Task 0、1、2A、2B、3A、3B、3C：Completed
-Active Agent Task：翻译质检站 A-2（#111，已实现待验收）
-翻译质检站 A-1（#109）：Completed
+Active Agent Task：无
+方向：runtime 深化（2026-09-05 定案）
+候选子系统：session 事件流与 replay、审批门、compaction、定时任务（未立 Issue）
+翻译质检站 A-1（#109）：Completed；A-2（#111）：方向已放弃，代码保留
 DeepSeek 思考强度与 Usage（#94）：Completed
 Run 配置解析边界（#92）：Completed
 失败 Sampling 部分响应可观测性（#98）：Completed
-Minimal Compaction：Gated
 Admin Task 4：Planned
-Phase 9：未定案
 ```
 
 ## 当前看板
 
 | 区域 | 状态 | 文档 | 说明 |
 | --- | --- | --- | --- |
-| Agent 主线 | **阶段 1-8 Completed** | [roadmap.md](../roadmap.md) | 当前为 Phase 8 源码阅读阶段 |
-| 翻译质检站 A-2 #111 | **Active / 已实现待验收** | [qa-station-a2.md](./qa-station-a2.md) | 译文对照详情 + 翻译/打分/审核/诊断 mock 动作 |
+| Agent 主线 | **阶段 1-8 Completed** | [roadmap.md](../roadmap.md) | 当前为源码阅读阶段；方向已定案为 runtime 深化 |
+| 翻译质检站 A-2 #111 | **已放弃 / 代码保留** | [qa-station-a2.md](./qa-station-a2.md) | 2026-09-02 方向放弃；工作台与诊断落库代码已合入 master，不再推进 |
 | 翻译质检站 A-1 #109 | **Completed / #109 / PR #110** | [qa-station-a1.md](./qa-station-a1.md) | 快照导入 + 温层 schema + admin 术语库/文章列表模块；用户验收确认，merge `d2a2ba9` |
 | Backend 模块组织 #101 | **Completed / #101 / PR #105** | [agent-runtime-module-organization.md](./agent-runtime-module-organization.md) | Agent Runtime 目录分域 + Cancellation Lifecycle；GPT 验收 + 用户确认 |
 | Admin Runs 模块组织 #102 | **Completed / #102 / PR #106** | [admin-runs-module-organization.md](./admin-runs-module-organization.md) | Projector 分域 + 循环依赖消除；GPT 验收 + 用户确认 |
@@ -57,31 +55,26 @@ Phase 8 全部 Task 文档已合并归档到 [completed/phase-08-grounded-retrie
 
 ## 当前正式动作
 
-当前无 Active Agent Task；Backend 模块组织 #101-#104 均已验收合并。
+当前无 Active Agent Task。2026-09-05 方向定案为 runtime 深化，候选子系统见 [roadmap.md](../roadmap.md)；只在真实使用卡住、源码阅读发现缺陷或缺口被明确命中时建 Issue，走 `CLAUDE.md` 单角色流程。
 
-失败 Sampling 部分响应可观测性（#98）、DeepSeek 思考强度与 Usage（#94）和 Run 配置解析边界（#92）均已验收合并。
-
-Phase 8 源码阅读仍是当前学习阶段；#98、#94、#92 均为独立横向正式任务，不定义或启动 Phase 9。下一阶段学习内容暂不定义。
-
-Admin Task 4、并行 Tool Call、Minimal Compaction、Memory、MCP、Multi-agent 和 Durable Recovery 均不得自动进入实现。
+Admin Task 4、并行 Tool Call、Memory、MCP、Multi-agent 不得自动进入实现。
 
 ## 状态定义
 
 | 状态 | 含义 |
 | --- | --- |
 | Planned | 已记录方向，但依赖或规格尚未满足启动条件 |
-| Next | 已确认是下一项正式任务，或 Issue 已创建但 Gate 尚未 READY |
-| Active | 已创建 Issue 且 Gate READY，正在实现或待验收 |
+| Next | 已确认是下一项正式任务，或 Issue 已创建但尚未开工 |
+| Active | 已创建 Issue（GPT + Codex 流程还需 Gate READY），正在实现或待验收 |
 | Gated | 只有客观触发条件满足后才重新讨论 |
-| Completed | 已实现、GPT 技术验收通过，并由用户明确确认 |
+| 已放弃 | 方向放弃；代码保留或删除按文档记录 |
+| Completed | 已实现且验收通过：Claude 流程为 PR 逐条验收 PASS 并合并，GPT + Codex 流程为 GPT 技术验收加用户确认 |
 
 ## 新任务规则
 
 - 一个 Issue 只对应一个明确 Task；
 - Planned / Next 文档不能替代正式 Issue；
-- Issue 实质性变化后必须重新 Gate；
-- Gate READY 前不得修改正式代码；
-- 实现后只能写“已实现、待验收”；
-- Completed 必须同时具备 GPT 技术验收和用户确认；
-- docs 收口、Draft 转 Ready、合并、分支清理是不同动作；
-- 完整流程见 [`../development-workflow.md`](../development-workflow.md)。
+- Issue 建立前不得修改正式代码；Issue 实质性变化后先更新 Issue 再继续；
+- 实现后先写“已实现、待验收”，验收 PASS 后才写“已通过”；
+- Completed 必须有验收记录（见状态定义）；
+- Claude 流程见 `CLAUDE.md`，GPT + Codex 流程见 [`../development-workflow.md`](../development-workflow.md)。
