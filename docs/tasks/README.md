@@ -7,6 +7,8 @@
 ```text
 阶段 1-8：Completed
 Active Agent Task：无
+Next：#115 模型调用重试与 Loop 默认上限（Issue 已建，未开工）
+Planned：#116 同轮文本 + 多 Tool Call、#117 Responses API adapter（顺序 #115 → #116 → #117）
 方向：runtime 深化（2026-09-05 定案）
 候选子系统：session 事件流与 replay、审批门、compaction、定时任务（未立 Issue）
 翻译质检站：已删除（#113；A-1 #109 / A-2 #111 代码与数据模型全部移除）
@@ -21,6 +23,9 @@ Admin Task 4：Planned
 | 区域 | 状态 | 文档 | 说明 |
 | --- | --- | --- | --- |
 | Agent 主线 | **阶段 1-8 Completed** | [roadmap.md](../roadmap.md) | 当前为源码阅读阶段；方向已定案为 runtime 深化 |
+| 模型调用重试与 Loop 默认上限 #115 | **Next** | Issue #115 | SDK 内置重试（首个响应头之前）、`LLM_REQUEST_MAX_RETRIES`、采样 / 工具默认上限 10 / 8；规格与验收标准在 Issue |
+| 同轮文本 + 多 Tool Call #116 | Planned | Issue #116 | content 先于 tool_calls、多个 tool_calls 不再 FAILED，顺序执行；前置 #115 |
+| Responses API adapter #117 | Planned | Issue #117 | `LLM_WIRE_API` 环境变量切换 chat / responses，第二个 adapter 接同一契约；前置 #115、#116 |
 | 翻译质检站 A-1 #109 / A-2 #111 | **已删除 / #113 / PR #114 / `26412d1`** | Issue #109、#111、#113 | 2026-09-02 方向放弃，2026-09-05 经 #113 删除全部代码、契约、admin 页面与数据模型（drop 迁移 `20260905120000_remove_qa_station`）；仅保留混入的通用 admin 改动 |
 | Backend 模块组织 #101 | **Completed / #101 / PR #105** | [agent-runtime-module-organization.md](./agent-runtime-module-organization.md) | Agent Runtime 目录分域 + Cancellation Lifecycle；GPT 验收 + 用户确认 |
 | Admin Runs 模块组织 #102 | **Completed / #102 / PR #106** | [admin-runs-module-organization.md](./admin-runs-module-organization.md) | Projector 分域 + 循环依赖消除；GPT 验收 + 用户确认 |
@@ -55,6 +60,8 @@ Phase 8 全部 Task 文档已合并归档到 [completed/phase-08-grounded-retrie
 ## 当前正式动作
 
 当前无 Active Agent Task。2026-09-05 方向定案为 runtime 深化，候选子系统见 [roadmap.md](../roadmap.md)；只在真实使用卡住、源码阅读发现缺陷或缺口被明确命中时建 Issue，走 `CLAUDE.md` 单角色流程。
+
+2026-09-05 按「源码阅读发现缺陷」立项健壮性三件：#115 → #116 → #117 依次开工，一次只有一个 Active；规格、验收标准与决策记录在 Issue，本看板只记状态。
 
 Admin Task 4、并行 Tool Call、Memory、MCP、Multi-agent 不得自动进入实现。
 

@@ -7,6 +7,7 @@
 ```text
 阶段 1-8：Completed
 Active Agent Task：无
+Next / Planned：#115 模型调用重试 → #116 同轮文本 + 多 Tool Call → #117 Responses adapter
 方向：runtime 深化（2026-09-05 定案）
 当前阶段：源码阅读
 候选子系统：session 事件流与 replay、审批门、compaction、定时任务
@@ -112,6 +113,8 @@ Phase 8 Closeout                                       Completed
 
 立项条件：真实使用卡住、源码阅读发现缺陷，或缺口被明确命中；三者都不满足时不立 Issue。候选不等于 Next，不因为“成熟项目有”就做。
 
+2026-09-05 首批按「源码阅读发现缺陷」立项，主题是运行时健壮性：#115 模型调用零重试与 Loop 默认上限；#116 同轮「文本 + Tool Call」与多个 Tool Call 直接 FAILED；#117 DeepSeek Responses API adapter 与 Chat 并存。三件合起来是 Durable Execution 缺口的前半段（失败分类与重试单元），session 事件流与 replay 在其后。
+
 ## 当前明确后置
 
 - 生产数据库拓扑设计；
@@ -146,5 +149,5 @@ Phase 8 Task 3C 已完成安全 Retrieval Inspector，但不自动启动 Task 4�
 Phase 8：Completed / 已归档（docs/tasks/completed/phase-08-grounded-retrieval.md）
 Active Agent Task：无
 当前阶段：源码阅读（Phase 8 链路 + codex-reference 两份 + DeepSeek Harness 两份）
-下一步：候选子系统在立项条件满足时建 Issue，走 CLAUDE.md 单角色流程
+下一步：#115 → #116 → #117 依次开工；其余候选子系统在立项条件满足时建 Issue，走 CLAUDE.md 单角色流程
 ```
