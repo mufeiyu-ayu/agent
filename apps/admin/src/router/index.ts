@@ -57,46 +57,6 @@ export const router = createRouter({
             tab: true,
           },
         },
-        {
-          path: 'qa/workbench',
-          name: 'qa-workbench',
-          component: () => import('@/views/QaWorkbenchView.vue'),
-          meta: { title: 'QA Workbench', titleKey: 'navigation.qaWorkbench', tab: true },
-        },
-        {
-          path: 'qa/articles',
-          name: 'qa-articles',
-          component: () => import('@/views/QaArticlesView.vue'),
-          meta: { title: 'QA Articles', titleKey: 'navigation.qaArticles', tab: true },
-        },
-        {
-          path: 'qa/articles/:articleId',
-          name: 'qa-article-detail',
-          component: () => import('@/views/QaArticleDetailView.vue'),
-          meta: {
-            activeMenu: '/qa/articles',
-            title: 'Translation QA',
-            titleKey: 'navigation.qaArticleDetail',
-            tab: true,
-          },
-        },
-        {
-          path: 'qa/glossaries',
-          name: 'qa-glossaries',
-          component: () => import('@/views/QaGlossariesView.vue'),
-          meta: { title: 'QA Glossaries', titleKey: 'navigation.qaGlossaries', tab: true },
-        },
-        {
-          path: 'qa/glossaries/:glossaryId',
-          name: 'qa-glossary-terms',
-          component: () => import('@/views/QaGlossaryTermsView.vue'),
-          meta: {
-            activeMenu: '/qa/glossaries',
-            title: 'Glossary Terms',
-            titleKey: 'navigation.qaGlossaryTerms',
-            tab: true,
-          },
-        },
       ],
     },
     {

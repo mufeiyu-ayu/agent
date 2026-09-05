@@ -9,7 +9,7 @@
 Active Agent Task：无
 方向：runtime 深化（2026-09-05 定案）
 候选子系统：session 事件流与 replay、审批门、compaction、定时任务（未立 Issue）
-翻译质检站 A-1（#109）：Completed；A-2（#111）：方向已放弃，代码保留
+翻译质检站：已删除（#113；A-1 #109 / A-2 #111 代码与数据模型全部移除）
 DeepSeek 思考强度与 Usage（#94）：Completed
 Run 配置解析边界（#92）：Completed
 失败 Sampling 部分响应可观测性（#98）：Completed
@@ -21,8 +21,7 @@ Admin Task 4：Planned
 | 区域 | 状态 | 文档 | 说明 |
 | --- | --- | --- | --- |
 | Agent 主线 | **阶段 1-8 Completed** | [roadmap.md](../roadmap.md) | 当前为源码阅读阶段；方向已定案为 runtime 深化 |
-| 翻译质检站 A-2 #111 | **已放弃 / 代码保留** | [qa-station-a2.md](./qa-station-a2.md) | 2026-09-02 方向放弃；工作台与诊断落库代码已合入 master，不再推进 |
-| 翻译质检站 A-1 #109 | **Completed / #109 / PR #110** | [qa-station-a1.md](./qa-station-a1.md) | 快照导入 + 温层 schema + admin 术语库/文章列表模块；用户验收确认，merge `d2a2ba9` |
+| 翻译质检站 A-1 #109 / A-2 #111 | **已删除 / #113** | Issue #109、#111、#113 | 2026-09-02 方向放弃，2026-09-05 经 #113 删除全部代码、契约、admin 页面与数据模型（drop 迁移 `20260905120000_remove_qa_station`）；仅保留混入的通用 admin 改动 |
 | Backend 模块组织 #101 | **Completed / #101 / PR #105** | [agent-runtime-module-organization.md](./agent-runtime-module-organization.md) | Agent Runtime 目录分域 + Cancellation Lifecycle；GPT 验收 + 用户确认 |
 | Admin Runs 模块组织 #102 | **Completed / #102 / PR #106** | [admin-runs-module-organization.md](./admin-runs-module-organization.md) | Projector 分域 + 循环依赖消除；GPT 验收 + 用户确认 |
 | Article Chunking 模块组织 #103 | **Completed / #103 / PR #107** | [article-chunking-module-organization.md](./article-chunking-module-organization.md) | 稳定 Facade + structural / deterministic / token 内部分层；GPT 验收 + 用户确认 |
@@ -67,7 +66,7 @@ Admin Task 4、并行 Tool Call、Memory、MCP、Multi-agent 不得自动进入�
 | Next | 已确认是下一项正式任务，或 Issue 已创建但尚未开工 |
 | Active | 已创建 Issue（GPT + Codex 流程还需 Gate READY），正在实现或待验收 |
 | Gated | 只有客观触发条件满足后才重新讨论 |
-| 已放弃 | 方向放弃；代码保留或删除按文档记录 |
+| 已放弃 / 已删除 | 方向放弃；代码保留或删除按看板记录 |
 | Completed | 已实现且验收通过：Claude 流程为 PR 逐条验收 PASS 并合并，GPT + Codex 流程为 GPT 技术验收加用户确认 |
 
 ## 新任务规则

@@ -9,5 +9,6 @@ tmp/
 .agents
 
 /apps/api/src/generated/prisma
+/data/
 /apps/web/e2e/.artifacts
 /apps/admin/e2e/.artifacts

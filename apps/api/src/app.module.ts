@@ -3,7 +3,6 @@ import { Module } from '@nestjs/common'
 
 import { AdminConversationsModule } from './admin-conversations/admin-conversations.module.js'
 import { AdminOverviewModule } from './admin-overview/admin-overview.module.js'
-import { AdminQaModule } from './admin-qa/admin-qa.module.js'
 import { AdminRunsModule } from './admin-runs/admin-runs.module.js'
 import { AppController } from './app.controller.js'
 import { RequestIdMiddleware } from './common/middleware/request-id.middleware.js'
@@ -16,7 +15,6 @@ import { ToolsModule } from './tools/tools.module.js'
   imports: [
     AdminConversationsModule,
     AdminOverviewModule,
-    AdminQaModule,
     AdminRunsModule,
     LlmModule,
     SeoModule,

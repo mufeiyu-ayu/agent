@@ -10,7 +10,7 @@ Active Agent Task：无
 方向：runtime 深化（2026-09-05 定案，作品是 runtime 本身，参照 Codex 与 DeepSeek Harness）
 当前阶段：源码阅读
 候选子系统：session 事件流与 replay、审批门、compaction、定时任务（候选不等于 Active）
-翻译质检站：方向已放弃（A-1 / A-2 代码保留在 master）
+翻译质检站：已删除（#113）
 Admin Task 4：Planned
 ```
 
@@ -24,7 +24,7 @@ Phase 8 已完成：
 - Task 3B：Web Grounding 状态、Sources disclosure、Source cards 与 Chromium，#60 / #61 / `572ad206`；
 - Task 3C：Admin Retrieval / Finalization / Citation Inspector，#62 / #63 / `20f838fb`。
 
-Phase 8 之后的横向任务 #92、#94、#98 与 Backend 模块组织 #101-#104 均已验收合并；翻译质检站 A-1（#109）已合并，A-2（#111）代码已合入 master，该方向于 2026-09-02 放弃。2026-09-05 定案：不再为 runtime 寻找产品域，作品就是 runtime 本身，第一个用户是用户自己，参照物为 Codex 与 DeepSeek Harness；下一批子系统只在真实使用卡住或缺口被明确命中时立项。协作方式见 `CLAUDE.md`（Claude 单角色流程）与 `AGENTS.md`（GPT + Codex 双角色流程）。
+Phase 8 之后的横向任务 #92、#94、#98 与 Backend 模块组织 #101-#104 均已验收合并；翻译质检站 A-1（#109）/ A-2（#111）曾合入 master，该方向于 2026-09-02 放弃，并于 2026-09-05 经 #113 删除全部相关代码与数据模型。2026-09-05 定案：不再为 runtime 寻找产品域，作品就是 runtime 本身，第一个用户是用户自己，参照物为 Codex 与 DeepSeek Harness；下一批子系统只在真实使用卡住或缺口被明确命中时立项。协作方式见 `CLAUDE.md`（Claude 单角色流程）与 `AGENTS.md`（GPT + Codex 双角色流程）。
 
 ## 文档入口
 
