@@ -10,12 +10,13 @@
 | 方向 | 2026-09-05 定案：runtime 深化，作品是 runtime 本身，参照 Codex 与 DeepSeek Harness | 见 [roadmap.md](./roadmap.md) 方向定案 |
 | 翻译质检站 | 方向 2026-09-02 放弃；2026-09-05 经 #113 删除全部代码与数据模型 | 无 |
 | Admin Console | Task 0-3、Enhancement 1-3、Phase 8 Task 3C Completed；Task 4 Planned | 不自动启动 Auth / RBAC |
-| 协作流程 | `AGENTS.md` 为工具无关基线；多角色分工流程见 `docs/development-workflow.md`，单角色流程见 `CLAUDE.md` | 按所用工具选择载体 |
+| 协作流程 | `AGENTS.md` 为工具无关基线 + 默认单角色流程；多角色分工流程见 `docs/development-workflow.md`；工具适配文件（如 `CLAUDE.md`）只给 review 命令 / skill 路径 / 分支前缀 | 换工具只加一份适配文件 |
 
 ## 近期关键记录
 
 | 日期 | 事项 | 结果 |
 | --- | --- | --- |
+| 2026-09-12 | 单角色流程上收到 `AGENTS.md` | review 上一条重构发现单角色流程仍绑在只有 Claude 会读的 `CLAUDE.md`，换工具后无默认流程可循：单角色流程整体搬入 `AGENTS.md` 5.1 作为默认流程，硬约束归 5.2；`CLAUDE.md` 缩成 11 行适配层，只给 `<review 命令>` / skill 路径 / `<分支前缀>` 三个占位取值；`.codex/skills/github-issue-workflow` 的「另一侧」不再钉死为 GPT；`.claude/skills` 两个单角色 skill 改用 `<review 命令>` / `<分支前缀>` 占位成为共享实现；新增 pi 适配：`.pi/settings.json` 按 pi 官方写法引入 `../.claude/skills`，`.pi/APPEND_SYSTEM.md` 给三个占位取值（reviewer 子代理审暂存 diff、`pi/` 前缀）；查证 pi 0.85.1 每目录只取 `AGENTS.md`（有则忽略 `CLAUDE.md`），Claude Code 2.1.269 不原生发现 `.agents/skills`；`docs/README.md`、`docs/tasks/README.md`、`docs/roadmap.md`、`docs/development-workflow.md` 指向同步 |
 | 2026-09-12 | 协作规范按载体分层重构 | `AGENTS.md` 收敛为工具无关基线（项目定位到 docs 规则 + 各流程共用硬约束），删除工具范围声明与双份同步条款；多角色分工流程归 `docs/development-workflow.md`，单角色流程归 `CLAUDE.md`（用 `@AGENTS.md` 引入基线），两份文件从 380 行含 310 行重复改为单一事实源；流程文档全文改用“你 / 另一侧”角色称呼，不再以工具名指代流程；review 改为 commit 前本地完成、PR 一律 Ready 创建（PR 仅作验收载体，Draft 只表示未完成或受阻，云端 Review 降为可选）；同步 `docs/README.md`、`docs/tasks/README.md`、`docs/roadmap.md`、`PROJECT_STRUCTURE.md`、`docs/research/codex-reference/discussion-playbook.md` 表述与两个 skills 的读取清单 |
 | 2026-09-05 | 源码阅读立项健壮性三件 | 本机库 5 个 Run 全 COMPLETED、无失败样本，依据为源码阅读：`maxRetries: 0` 零重试且 Loop 默认上限 3 / 2（#115）；content 先于 tool_calls 或多个 tool_calls 直接 FAILED，而输入侧早已支持文本回填（#116）；DeepSeek Responses API 2026-08 上线且无状态，接入为第二个 adapter 而非替换（#117）。规格、验收标准、决策记录在 Issue，`docs/tasks` 只记状态；顺序 #115 → #116 → #117，一次一个 Active |
 | 2026-09-05 | 删除翻译质检站代码与数据模型 | Issue #113 / PR #114，merge `26412d1`；Codex 远程 Review 无 findings，验收 AC-01～06 PASS；移除 `admin-qa` 模块、导入脚本、`contracts/admin-qa`、admin 五个 Qa 页面与 qa api / 路由 / 侧栏分组 / 中英 i18n 块、Prisma 7 模型 4 枚举与 `Article` 5 个质检字段（含无人读写的 `summary`）；新增 drop 迁移 `20260905120000_remove_qa_station` 并已应用于本机库，旧 4 条 qa 迁移保留；保留混入的通用 admin 改动（POST 支持、`refresh()`、配色）；本地 `data/snapshots/` 不动，`data/` 改由根 `.gitignore` 忽略 |

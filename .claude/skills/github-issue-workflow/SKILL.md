@@ -7,14 +7,14 @@ description: 执行本项目 GitHub Issue 的实现、Review、验收、合并�
 
 ## 执行边界
 
-「完成 Issue #N」默认一路执行到底：实现、验证、commit 前 `/code-review` 自审、PR、基于 PR 最新 head 逐条验收、验收 PASS 后合并、清理分支、收口 docs 并汇报。review 和验收都由本会话完成，不存在另一个模型验收，也不等待任何远程自动 Review。
+「完成 Issue #N」默认一路执行到底：实现、验证、commit 前 `<review 命令>` 自审、PR、基于 PR 最新 head 逐条验收、验收 PASS 后合并、清理分支、收口 docs 并汇报。review 和验收都由本会话完成，不存在另一个模型验收，也不等待任何远程自动 Review。
 
 用户可以随时缩小范围，例如「先不要 commit」「只实现到本地验证」「停在 PR 让我看 diff」「用 Draft」。以本次明确指令为准。流程曾被缩小并停在某一步时，用户说「继续 Issue #N」就从停下的那一步接着执行。
 
 ## 1. 读取并确认 Issue
 
 1. 优先使用已认证的 `gh` CLI 读取 Issue；连接能力不足时再尝试其他方式。
-2. 读取 `CLAUDE.md`（含其引入的 `AGENTS.md` 工具无关基线）、`docs/tasks/README.md`、Issue 指向的 task 文档和相邻实现。
+2. 读取 `AGENTS.md`（基线与默认流程）、该工具的适配文件（`<review 命令>` / `<分支前缀>` 取值）、`docs/tasks/README.md`、Issue 指向的 task 文档和相邻实现。
 3. 从 Issue 的 `任务类型` 判断执行路径；缺失时根据内容推断并在开始前说明：
    - `feature / fix / refactor`：修改代码并记录实现证据。
    - `docs-task`：更新 Issue 明确要求的文档，不运行无关代码验证。
@@ -29,7 +29,7 @@ description: 执行本项目 GitHub Issue 的实现、Review、验收、合并�
 1. 检查当前分支、工作区、远程和默认主分支。
 2. 保留所有无关改动；无法安全隔离时停止。
 3. 联网 Git 命令遵守仓库代理规则。
-4. 更新 `master` 时只接受 fast-forward，再从最新 `origin/master` 创建 `claude/issue-<number>-<short-slug>`。
+4. 更新 `master` 时只接受 fast-forward，再从最新 `origin/master` 创建 `<分支前缀>/issue-<number>-<short-slug>`。
 5. 不直接在 `master` 上实现、提交或推送正式 Issue。
 
 ## 3. 实现与记录证据
@@ -46,7 +46,7 @@ description: 执行本项目 GitHub Issue 的实现、Review、验收、合并�
 
 ## 4. 验证
 
-1. 以 Issue、`CLAUDE.md` 及其引入的 `AGENTS.md` 验证规则、当前 task 文档和 `package.json` 的真实脚本选择最小必要验证。
+1. 以 Issue、`AGENTS.md` 验证规则、当前 task 文档和 `package.json` 的真实脚本选择最小必要验证。
 2. TypeScript、前端、后端和 Prisma 改动分别运行对应 typecheck、lint、build、测试或 Prisma 验证。
 3. docs-only 任务至少运行链接或结构检查以及 `git diff --check`。
 4. 区分本次回归与既有基线失败；不能把未运行或失败的检查写成已通过。
@@ -54,7 +54,7 @@ description: 执行本项目 GitHub Issue 的实现、Review、验收、合并�
 ## 5. Commit、Push 与 PR
 
 1. 再次检查 diff，只暂存当前 Issue 相关文件，不夹带用户的无关改动或敏感信息。
-2. 暂存后、commit 前，必须用 Claude Code 内置 `/code-review` 审当前暂存的改动：
+2. 暂存后、commit 前，必须用 `<review 命令>` 审当前暂存的改动：
    - 审查范围是暂存区 diff。改动此时尚未 commit，findings 直接并入本次提交，不产生额外的修复 commit，也不需要 amend 或改写历史。
    - `docs-task` 及其他 docs-only 改动跳过本步。
    - 确认为真问题的 finding 自行修复，不为技术判断等待用户确认；修复后重新运行受影响的验证并重新暂存。
@@ -67,11 +67,11 @@ description: 执行本项目 GitHub Issue 的实现、Review、验收、合并�
    - `Closes #<number>`；
    - 改动摘要和明确未做事项；
    - 验证命令与结果；
-   - commit 前 `/code-review` 的结论与处理情况；
+   - commit 前 `<review 命令>` 的结论与处理情况；
    - 已知风险或既有失败；
    - 建议阅读顺序和真实调用链。
 6. 默认创建 Ready PR，转 Ready 不需要额外授权。只有实现未完成、验证失败、任务受阻或用户要求时才用 Draft；Draft 恢复后先完成实现和验证、更新为“已实现、待验收”，再转 Ready。
-7. 代码修复后需要复审时，再次使用 `/code-review`；不存在第二道远程 Review。
+7. 代码修复后需要复审时，再次使用 `<review 命令>`；不存在第二道远程 Review。
 8. GitHub 连接或权限不可用时，保留本地成果并明确停止位置，不伪造远程状态。
 
 ## 6. 远程 Review 不是流程的一部分
@@ -82,7 +82,7 @@ description: 执行本项目 GitHub Issue 的实现、Review、验收、合并�
 
 由本会话基于 PR 最新 head 执行，不需要用户先确认：
 
-1. 读取 Issue 最新规格与决策记录、PR 最新 head 的 diff、commit 前 `/code-review` 的结论与处理结果、验证命令与真实输出。
+1. 读取 Issue 最新规格与决策记录、PR 最新 head 的 diff、commit 前 `<review 命令>` 的结论与处理结果、验证命令与真实输出。
 2. 对每条验收标准逐条给出 PASS / FAIL / 未验证，并注明证据位置；边界、失败路径和长链路集成必须有对应证据。“测试命令成功”或“代码看起来合理”不单独构成 PASS。
 3. 全部 PASS：把任务文档更新为 `实施状态：已实现`、`验收状态：已通过`，完成最终 checklist，更新 `docs/tasks/README.md`、`docs/roadmap.md`，记录一条 `docs/work-log.md` 事实；阶段完成时归档到 `docs/tasks/completed/`。收口改动在原 PR 分支 commit 并 push。
 4. 任一 FAIL 或未验证：停在 PR，在会话和 PR 评论里说明原因与所需改动，不合并；修复后回到第 4 步重新验证并重新验收。
