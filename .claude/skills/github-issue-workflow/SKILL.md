@@ -14,7 +14,7 @@ description: 执行本项目 GitHub Issue 的实现、Review、验收、合并�
 ## 1. 读取并确认 Issue
 
 1. 优先使用已认证的 `gh` CLI 读取 Issue；连接能力不足时再尝试其他方式。
-2. 读取 `CLAUDE.md`、`docs/tasks/README.md`、Issue 指向的 task 文档和相邻实现。
+2. 读取 `CLAUDE.md`（含其引入的 `AGENTS.md` 工具无关基线）、`docs/tasks/README.md`、Issue 指向的 task 文档和相邻实现。
 3. 从 Issue 的 `任务类型` 判断执行路径；缺失时根据内容推断并在开始前说明：
    - `feature / fix / refactor`：修改代码并记录实现证据。
    - `docs-task`：更新 Issue 明确要求的文档，不运行无关代码验证。
@@ -46,7 +46,7 @@ description: 执行本项目 GitHub Issue 的实现、Review、验收、合并�
 
 ## 4. 验证
 
-1. 以 Issue、`CLAUDE.md`、当前 task 文档和 `package.json` 的真实脚本选择最小必要验证。
+1. 以 Issue、`CLAUDE.md` 及其引入的 `AGENTS.md` 验证规则、当前 task 文档和 `package.json` 的真实脚本选择最小必要验证。
 2. TypeScript、前端、后端和 Prisma 改动分别运行对应 typecheck、lint、build、测试或 Prisma 验证。
 3. docs-only 任务至少运行链接或结构检查以及 `git diff --check`。
 4. 区分本次回归与既有基线失败；不能把未运行或失败的检查写成已通过。
@@ -70,7 +70,7 @@ description: 执行本项目 GitHub Issue 的实现、Review、验收、合并�
    - commit 前 `/code-review` 的结论与处理情况；
    - 已知风险或既有失败；
    - 建议阅读顺序和真实调用链。
-6. 默认创建 Ready PR。只有实现未完成、验证失败、任务受阻或用户要求时才用 Draft；Draft 恢复后先完成实现和验证、更新为“已实现、待验收”，再转 Ready。
+6. 默认创建 Ready PR，转 Ready 不需要额外授权。只有实现未完成、验证失败、任务受阻或用户要求时才用 Draft；Draft 恢复后先完成实现和验证、更新为“已实现、待验收”，再转 Ready。
 7. 代码修复后需要复审时，再次使用 `/code-review`；不存在第二道远程 Review。
 8. GitHub 连接或权限不可用时，保留本地成果并明确停止位置，不伪造远程状态。
 

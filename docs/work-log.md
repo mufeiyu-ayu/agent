@@ -10,12 +10,13 @@
 | 方向 | 2026-09-05 定案：runtime 深化，作品是 runtime 本身，参照 Codex 与 DeepSeek Harness | 见 [roadmap.md](./roadmap.md) 方向定案 |
 | 翻译质检站 | 方向 2026-09-02 放弃；2026-09-05 经 #113 删除全部代码与数据模型 | 无 |
 | Admin Console | Task 0-3、Enhancement 1-3、Phase 8 Task 3C Completed；Task 4 Planned | 不自动启动 Auth / RBAC |
-| 协作流程 | Claude 单角色流程（CLAUDE.md）与 GPT + Codex 双角色流程（AGENTS.md）并行 | 按所用工具选择 |
+| 协作流程 | `AGENTS.md` 为工具无关基线；多角色分工流程见 `docs/development-workflow.md`，单角色流程见 `CLAUDE.md` | 按所用工具选择载体 |
 
 ## 近期关键记录
 
 | 日期 | 事项 | 结果 |
 | --- | --- | --- |
+| 2026-09-12 | 协作规范按载体分层重构 | `AGENTS.md` 收敛为工具无关基线（项目定位到 docs 规则 + 各流程共用硬约束），删除工具范围声明与双份同步条款；多角色分工流程归 `docs/development-workflow.md`，单角色流程归 `CLAUDE.md`（用 `@AGENTS.md` 引入基线），两份文件从 380 行含 310 行重复改为单一事实源；流程文档全文改用“你 / 另一侧”角色称呼，不再以工具名指代流程；review 改为 commit 前本地完成、PR 一律 Ready 创建（PR 仅作验收载体，Draft 只表示未完成或受阻，云端 Review 降为可选）；同步 `docs/README.md`、`docs/tasks/README.md`、`docs/roadmap.md`、`PROJECT_STRUCTURE.md`、`docs/research/codex-reference/discussion-playbook.md` 表述与两个 skills 的读取清单 |
 | 2026-09-05 | 源码阅读立项健壮性三件 | 本机库 5 个 Run 全 COMPLETED、无失败样本，依据为源码阅读：`maxRetries: 0` 零重试且 Loop 默认上限 3 / 2（#115）；content 先于 tool_calls 或多个 tool_calls 直接 FAILED，而输入侧早已支持文本回填（#116）；DeepSeek Responses API 2026-08 上线且无状态，接入为第二个 adapter 而非替换（#117）。规格、验收标准、决策记录在 Issue，`docs/tasks` 只记状态；顺序 #115 → #116 → #117，一次一个 Active |
 | 2026-09-05 | 删除翻译质检站代码与数据模型 | Issue #113 / PR #114，merge `26412d1`；Codex 远程 Review 无 findings，验收 AC-01～06 PASS；移除 `admin-qa` 模块、导入脚本、`contracts/admin-qa`、admin 五个 Qa 页面与 qa api / 路由 / 侧栏分组 / 中英 i18n 块、Prisma 7 模型 4 枚举与 `Article` 5 个质检字段（含无人读写的 `summary`）；新增 drop 迁移 `20260905120000_remove_qa_station` 并已应用于本机库，旧 4 条 qa 迁移保留；保留混入的通用 admin 改动（POST 支持、`refresh()`、配色）；本地 `data/snapshots/` 不动，`data/` 改由根 `.gitignore` 忽略 |
 | 2026-09-05 | 方向定案与协作流程改版 | 两周方向调研（翻译质检站、内容流量助手、市场 C 端候选、公司后台候选、GitHub 开源借鉴）均未通过，最终定案：不再为 runtime 找产品域，作品是 runtime 本身，用户是自己，参照 Codex 与 DeepSeek Harness；`CLAUDE.md` 改为 Claude 单角色流程（聊清楚 → 建 Issue → 实现 → commit 前 `/code-review` → PR → 本会话逐条验收 → PASS 直接合并与收口，不依赖远程自动 Review），`AGENTS.md` 保留 GPT + Codex 双角色流程并与 CLAUDE.md 共用章节同步；两个 `.claude/skills` 同步改版；docs 状态对齐 |
@@ -86,5 +87,5 @@ Admin Task 4        Planned
 
 - 只记录已经真实发生的事项。
 - 研究定案、Issue 创建、实现、验收、Task 收口和合并是不同动作。
-- Completed 必须有验收记录：Claude 流程为 PR 逐条验收 PASS 并合并，GPT + Codex 流程为 GPT 技术验收加用户确认。
+- Completed 必须有验收记录：单角色流程为 PR 逐条验收 PASS 并合并，多角色分工流程为另一侧技术验收加用户确认。
 - 候选子系统未立 Issue 前不修改正式状态。

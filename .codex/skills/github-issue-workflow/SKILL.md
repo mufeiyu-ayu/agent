@@ -7,7 +7,7 @@ description: 执行本项目 GitHub Issue 的实现、验收收口与合并后�
 
 ## 三种执行模式
 
-- **实现模式**：“完成 Issue #N”默认执行到 commit 前 `$review-agent` 自审、Ready PR、自动 Codex Review、验证结果和学习交接。只记录“已实现、待验收”，不把任务标记为 Completed。
+- **实现模式**：“完成 Issue #N”默认执行到 commit 前 `$review-agent` 自审、Ready PR、验证结果和学习交接；PR 创建后的自动 Codex Review 是可选补充。只记录“已实现、待验收”，不把任务标记为 Completed。
 - **验收收口模式**：只有用户明确说明 GPT 已验收且自己也确认通过，才更新正式任务状态。
 - **合并清理模式**：只有用户明确授权合并，才合并 PR、同步 `master` 并清理分支。
 
@@ -16,7 +16,7 @@ description: 执行本项目 GitHub Issue 的实现、验收收口与合并后�
 ## 1. 读取并确认 Issue
 
 1. 优先使用已连接的 GitHub 工具读取 Issue；连接能力不足时再使用已认证的 `gh`。
-2. 读取 `AGENTS.md`、`docs/tasks/README.md`、Issue 指向的 task 文档和相邻实现。
+2. 读取 `AGENTS.md`（工具无关基线）、`docs/development-workflow.md`（多角色分工流程）、`docs/tasks/README.md`、Issue 指向的 task 文档和相邻实现。
 3. 从 Issue 的 `任务类型` 判断执行路径；缺失时根据内容推断并在开始前说明：
    - `feature / fix / refactor`：修改代码并记录实现证据。
    - `docs-task`：更新 Issue 明确要求的文档，不运行无关代码验证。
@@ -72,9 +72,9 @@ description: 执行本项目 GitHub Issue 的实现、验收收口与合并后�
    - commit 前 `$review-agent` 的结论与处理情况；
    - 已知风险或既有失败；
    - 建议阅读顺序和真实调用链。
-6. Ready 只表示 PR 可以接受 Review，不表示验收通过或允许合并。实现未完成、验证失败、任务受阻或等待用户确认时才使用 Draft。
-7. Draft PR 恢复后，必须先完成实现和必要验证、把任务文档更新为“已实现、待验收”，再转为 Ready 接受 Review；不得从 Draft 直接进入 GPT 验收或合并。
-8. PR 创建后的自动 Codex Review 是第二道，不替代第 2 步的 commit 前自审；自动审核未触发或代码修复后需要复审时，再使用 `@codex review`。
+6. Ready 只表示 PR 可以接受 Review，不表示验收通过或允许合并；创建 PR 即 Ready，转 Ready 不需要额外授权。实现未完成、验证失败、任务受阻或用户明确要求时才使用 Draft。
+7. Draft PR 恢复后，必须先完成实现和必要验证、把任务文档更新为“已实现、待验收”，再转为 Ready；不得从 Draft 直接进入 GPT 验收或合并。
+8. commit 前的本地自审是唯一必需的 review；PR 创建后的自动 Codex Review 是可选补充，不替代第 2 步，也不阻塞交付。自动审核未触发或代码修复后需要复审时，再使用 `@codex review`。
 9. GitHub 连接或权限不可用时，保留本地成果并明确停止位置，不伪造远程状态。
 
 ## 6. 学习交接
@@ -87,7 +87,7 @@ Ready PR 创建后说明：
 - 测试保护的行为和剩余风险；
 - 建议用户追问的 2-4 个问题。
 
-自动 Codex Review 出现问题时，交由 `github-pr-review-fix` 后续处理。当前流程不要求 GitHub Actions，验证以本地结果为准。
+自动 Codex Review 或他人 Review 出现问题时，按用户要求交由 `github-pr-review-fix` 处理。当前流程不要求 GitHub Actions，验证以本地结果为准。
 
 ## 7. 验收收口
 
@@ -105,7 +105,7 @@ Ready PR 创建后说明：
 只有用户明确授权合并 PR 时执行：
 
 1. 再次确认 PR 的 `验收状态：已通过` 且远程分支没有变化；未通过则停止，不得合并。
-2. Ready PR 直接合并到 `master`，正常流程不需要状态转换。PR 若仍为 Draft，则停止合并并返回实现流程：完成实现和验证、更新为“已实现、待验收”、转为 Ready 接受 Review，再等待 GPT 验收和用户合并授权。
+2. Ready PR 按用户授权直接合并到 `master`。PR 若仍为 Draft，说明实现未完成、验证失败或任务受阻，停止合并并返回实现流程。
 3. fast-forward 同步本地 `master`，确认合并内容已落入主分支。
 4. 删除远程 Issue 分支；如果 GitHub 已自动删除或 GPT 已删除，则视为已完成，不重复执行。
 5. 使用安全删除清理本地 Issue 分支。

@@ -149,5 +149,5 @@ Phase 8 Task 3C 已完成安全 Retrieval Inspector，但不自动启动 Task 4�
 Phase 8：Completed / 已归档（docs/tasks/completed/phase-08-grounded-retrieval.md）
 Active Agent Task：无
 当前阶段：源码阅读（Phase 8 链路 + codex-reference 两份 + DeepSeek Harness 两份）
-下一步：#115 → #116 → #117 依次开工；其余候选子系统在立项条件满足时建 Issue，走 CLAUDE.md 单角色流程
+下一步：#115 → #116 → #117 依次开工；其余候选子系统在立项条件满足时建 Issue，走单角色流程（见 CLAUDE.md）
 ```

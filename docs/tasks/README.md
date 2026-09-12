@@ -59,7 +59,7 @@ Phase 8 全部 Task 文档已合并归档到 [completed/phase-08-grounded-retrie
 
 ## 当前正式动作
 
-当前无 Active Agent Task。2026-09-05 方向定案为 runtime 深化，候选子系统见 [roadmap.md](../roadmap.md)；只在真实使用卡住、源码阅读发现缺陷或缺口被明确命中时建 Issue，走 `CLAUDE.md` 单角色流程。
+当前无 Active Agent Task。2026-09-05 方向定案为 runtime 深化，候选子系统见 [roadmap.md](../roadmap.md)；只在真实使用卡住、源码阅读发现缺陷或缺口被明确命中时建 Issue，走单角色流程（见 `CLAUDE.md`）。
 
 2026-09-05 按「源码阅读发现缺陷」立项健壮性三件：#115 → #116 → #117 依次开工，一次只有一个 Active；规格、验收标准与决策记录在 Issue，本看板只记状态。
 
@@ -71,10 +71,10 @@ Admin Task 4、并行 Tool Call、Memory、MCP、Multi-agent 不得自动进入�
 | --- | --- |
 | Planned | 已记录方向，但依赖或规格尚未满足启动条件 |
 | Next | 已确认是下一项正式任务，或 Issue 已创建但尚未开工 |
-| Active | 已创建 Issue（GPT + Codex 流程还需 Gate READY），正在实现或待验收 |
+| Active | 已创建 Issue（多角色分工流程还需 Gate READY），正在实现或待验收 |
 | Gated | 只有客观触发条件满足后才重新讨论 |
 | 已放弃 / 已删除 | 方向放弃；代码保留或删除按看板记录 |
-| Completed | 已实现且验收通过：Claude 流程为 PR 逐条验收 PASS 并合并，GPT + Codex 流程为 GPT 技术验收加用户确认 |
+| Completed | 已实现且验收通过：单角色流程为 PR 逐条验收 PASS 并合并，多角色分工流程为另一侧技术验收加用户确认 |
 
 ## 新任务规则
 
@@ -83,4 +83,4 @@ Admin Task 4、并行 Tool Call、Memory、MCP、Multi-agent 不得自动进入�
 - Issue 建立前不得修改正式代码；Issue 实质性变化后先更新 Issue 再继续；
 - 实现后先写“已实现、待验收”，验收 PASS 后才写“已通过”；
 - Completed 必须有验收记录（见状态定义）；
-- Claude 流程见 `CLAUDE.md`，GPT + Codex 流程见 [`../development-workflow.md`](../development-workflow.md)。
+- 共性约束见 `AGENTS.md`；单角色流程见 `CLAUDE.md`，多角色分工流程见 [`../development-workflow.md`](../development-workflow.md)。

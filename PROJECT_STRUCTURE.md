@@ -9,6 +9,7 @@
 ```text
 .
 ├── AGENTS.md
+├── CLAUDE.md
 ├── README.md
 ├── PROJECT_STRUCTURE.md
 ├── package.json
@@ -121,7 +122,7 @@ Run-scoped 数据库 timeout / terminalization 实现位于 `apps/api/src/prisma
 | `docs/tasks/completed/**` | 已完成阶段的精简归档 |
 | `docs/tasks/admin-console.md` | Admin Console 独立产品支线 |
 | `docs/roadmap.md` | 阶段级路线与当前主线状态 |
-| `docs/development-workflow.md` | Issue / Gate / Codex / PR / 验收 / 合并流程 |
+| `docs/development-workflow.md` | 多角色分工流程：Issue / Gate / PR / 验收 / 合并与授权边界 |
 | `docs/development-task-plan.md` | 旧链接兼容，不再维护第二套任务路线 |
 | `docs/research/**` | 源码研究、学习路线、长期候选能力；不代表当前状态 |
 | `docs/work-log.md` | 近期真实推进与收口记录 |

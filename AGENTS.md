@@ -1,9 +1,16 @@
 # AGENTS.md
 
-## codex 必须遵守的规则!
-- DO NOT send optional commentary ！！！！
+本文件是仓库对 agent 工具的工具无关基线：任何在这个仓库里工作的工具都读它，项目定位、沟通、状态入口、目录、架构原则、安全、验证和 docs 规则只在这里维护一份。
 
-本文件只在使用 Codex + GPT 时生效：GPT 负责讨论、规划、建 Issue 与验收，Codex 负责本地实现。使用 Claude 时以 `CLAUDE.md` 为准。两份文件中与工具无关的章节（项目定位、沟通、状态与入口、目录、架构原则、NestJS / 前端 / 安全 / 验证 / docs 规则）必须保持一致，改一处必须同步另一处；只有「工作方式」一节按各自工具编写。
+工具专属差异（角色分工、触发语、自审命令、授权默认范围）不写进本文件，放在对应载体里：
+
+| 载体 | 适用 | 内容 |
+| --- | --- | --- |
+| 本文件 | 所有工具 | 工具无关基线 |
+| `docs/development-workflow.md` | 多角色分工：规划 / 验收与本地实现分开 | 角色表、Clarification Gate、Issue 规格、触发语、授权边界 |
+| `CLAUDE.md` | 单角色会话：讨论到收口在同一会话 | 单角色流程与该流程的授权默认范围 |
+
+改本文件时只需确认两个载体是否仍然成立，不需要同步正文。
 
 ## 1. 项目定位
 
@@ -16,8 +23,6 @@
 - 参照物两个：OpenAI Codex（`docs/research/codex-reference/`）和 DeepSeek Harness（TypeScript，`docs/research/README.md` 有入口）。参照只用于对比取舍，不照抄。
 - 当前能力缺口四块：Human-in-the-loop / 审批、Durable Execution / resume 与 replay、长期 Memory、成本与延迟。子系统只在真实使用卡住、源码阅读发现缺陷或缺口被明确命中时才立项，不因为「成熟项目有」就做。
 
-Codex + GPT 模式下的角色：GPT 是讨论对手、任务规划者、Issue 创建者和 PR 验收者，并可在用户明确授权后处理 docs-only 收口、Draft 转 Ready、远程合并；Codex 按正式 Issue 在本地实现、验证并创建 Draft PR。
-
 ## 2. 用户与沟通
 
 用户是 4 年前端（Vue / Nuxt / TS），后端按 NestJS 够用深度掌握，Phase 1-8 全程参与，不需要入门式解释和前端类比。
@@ -25,6 +30,7 @@ Codex + GPT 模式下的角色：GPT 是讨论对手、任务规划者、Issue �
 - 始终中文。代码标识符、命令、日志、错误信息、协议字段、文件名保持原文。
 - 默认 TypeScript / NestJS / Vue；不默认 Python、Rust。
 - 讲 agent 设计必须对照业界真实实现（Claude Code、Codex、DeepSeek Harness、OpenClaw、OpenAI Agents SDK、LangGraph），说清「他们怎么做、我们为什么一样或不一样」，不空谈概念。
+- 只给必要信息：结论、取舍和证据；不补可选评论。
 - 澄清或拷问一轮最多 2 个问题，一句话问、一句话给推荐。
 - 方向、方案、Issue 先讨论，用户点头后才写正式文档或建 Issue；讨论期间只给观点和草稿。
 - 直接给结论和取舍，不做空泛鼓励，不取悦。
@@ -40,13 +46,13 @@ Codex + GPT 模式下的角色：GPT 是讨论对手、任务规划者、Issue �
 | `docs/tasks/_template.tdd.md` | 新任务模板 |
 | `docs/research/README.md` | 研究入口：codex-reference、DeepSeek Harness、学习方法 |
 | `docs/research/learning-roadmap/learning-method.md` | 每个子系统的七步法与阶段产物 |
-| `docs/development-workflow.md` | GPT + Codex 双角色完整流程，本文件保存触发规则和硬约束 |
+| `docs/development-workflow.md` | 多角色分工的完整流程：角色表、Clarification Gate、Issue 规格、触发语、授权边界 |
 | `docs/work-log.md` | 已发生事实 |
 | `docs/tasks/completed/` | 已完成阶段归档 |
 
 `docs/development-task-plan.md` 只保留为旧入口兼容，不写新任务。
 
-当前状态：Phase 1-8 Completed 并归档；当前阶段为源码阅读，范围是 Phase 8 链路、codex-reference 中的 durability-recovery 与 safety-permission、DeepSeek Harness 的 session 与 interaction；无 Active Task；翻译质检站已于 #113 删除；下一批候选子系统为 session 事件流与 replay、审批门、compaction、定时任务，候选不等于 Active；Admin Task 4 保持 Planned。
+当前状态：Phase 1-8 Completed 并归档；当前阶段为源码阅读，范围是 Phase 8 链路、codex-reference 中的 durability-recovery 与 safety-permission、DeepSeek Harness 的 session 与 interaction；无 Active Task，Next 为 #115 → #116 → #117（已立 Issue、未开工）；翻译质检站已于 #113 删除；下一批候选子系统为 session 事件流与 replay、审批门、compaction、定时任务，候选不等于 Active；Admin Task 4 保持 Planned。
 
 ## 4. 关键目录
 
@@ -65,38 +71,23 @@ Codex + GPT 模式下的角色：GPT 是讨论对手、任务规划者、Issue �
 
 修改代码前先确认：`docs/tasks/README.md` 当前状态；相邻 service / controller / hook / component / utils / contract 能否复用；是否涉及 Prisma schema、contracts、前后端协议或 docs 同步。
 
-## 5. 工作方式：GPT + Codex 双角色流程
+## 5. 工作方式：工具无关约束
 
-本项目在此模式下由 Codex 本地执行、GPT 远程受托收口。正式功能默认由 Codex 按 Issue 实现，以用户本轮明确指令为准。完整流程见 `docs/development-workflow.md`。
-
-| 用户意图 | 默认执行方式 |
-| --- | --- |
-| “完成 Issue #N”“读取 Issue #N 并实现” | `.codex/skills/github-issue-workflow` |
-| “处理 PR #N 的 Review” | `.codex/skills/github-pr-review-fix` |
-| “创建 Issue / 规划任务” | GPT 创建 Issue 与任务专属 Clarification Gate Prompt |
-| “把设计笔记 / 技术方案 / 总结写入 docs” | GPT 可更新 `docs/research/**` 或合适 docs；用户明确授权时可直接写入 `master` |
-| “GPT 已确认验收通过，我也确认，请收口” | GPT 或用户指定的 Codex 更新正式 docs 状态 |
-| “转 Ready 并合并 / 合并 PR #N” | 只有用户明确授权后，GPT 或 Codex 才执行 Ready 转换与合并 |
-
-其他讨论、源码阅读、inspection-only、本地实验和小改动默认自由进行，不自动切任务分支、commit、push、创建 PR 或更新任务状态。用户可以在本次指令中扩大或缩小流程。
-
-硬性规则：
+流程形态和授权范围由用户本轮明确指令决定，具体差异见顶部载体表中的两个文件。以下约束对任何工具都成立：
 
 - `docs/tasks/**` 是任务与阶段状态的事实来源；Issue 保存实现规格、验收标准和澄清决策。
-- 正式代码任务必须先创建 Issue，并使用独立任务分支和 PR，不直接在 `master` 上实现、提交或推送。
-- 一个 Issue / PR 只完成一个任务单元；Clarification Gate 为 `READY` 后才能进入实现。
-- 正式代码任务在暂存之后、commit 之前，必须显式调用 `$review-agent` 审暂存区 diff；确认为真问题的 finding 自行修复并入本次提交，不为技术判断等待用户确认，只有缺少密钥、权限、登录等授权类前提时才中断询问；`P0` / `P1` 必须给出明确结论，无法复现、超出 Issue 范围或与已确认规格冲突的不修但要说明，复审最多 2 轮后停止并记录剩余问题。findings 处理结果写入 PR 描述；docs-only 改动跳过。该自审不替代 PR 创建后的 Codex Review 和 GPT 技术验收。
-- 正式 Issue 实现并完成必要验证后，默认创建 **Draft PR**；Codex 最多记录“实施状态：已实现 / 验收状态：待验收”，不得自行标记 Completed。
-- Draft PR 可以接受 Codex Review 和 GPT 技术验收；**Draft 不代表实现未完成**。
-- Ready 是用户明确授权后的发布 / 合并前状态，不是开始 Review 的前置条件。只有 GPT 技术验收通过、用户明确确认验收，并且用户明确授权转 Ready / 合并后，才允许将 Draft 转 Ready。
-- 验收确认、docs 状态收口、Draft 转 Ready、合并和分支清理是不同动作；用户可以在同一句指令中一起授权，但不得自行推导。
-- 只有 GPT 给出验收通过结论且用户明确确认后，才能把任务写成已通过 / Completed；Phase 是否 Completed 还必须满足该阶段自己的完成条件。
-- 用户明确授权后，GPT 可以直接更新允许范围内的 docs-only 状态并提交 `master`，无需为纯文档状态同步单独创建 Issue / PR。
-- 用户明确授权后，GPT 可以远程转 Ready、合并 PR、关闭放弃 PR、删除远程分支；本地 `master` 同步和本地分支清理由用户或本地 Codex 处理。
+- 正式代码任务先建 Issue，再走独立任务分支和 PR，不直接在 `master` 上实现、提交或推送。
+- 一个 Issue / PR 只完成一个任务单元，不顺手推进后续任务。
+- 暂存之后、commit 之前必须按该载体约定的 review 步骤审暂存区 diff：确认为真问题的 finding 自行修复并入本次提交，不为技术判断等待用户确认；无法复现、超出范围或与已确认规格冲突的不修但要说明；复审最多 2 轮后停止并记录剩余问题。docs-only 改动跳过。
+- review 在本地完成，通过后才创建 PR；PR 是验收载体，不用来收集 review。PR 创建即为 Ready，只有实现未完成、验证失败或受阻才用 Draft；云端自动 Review 是可选输入，不阻塞交付。
+- 不因技术意见取舍打断用户；只在缺少密钥、权限、登录等授权类前提，或出现会改变实现方向的规格冲突时中断询问。
+- 验收必须基于 PR 最新 head，逐条核对验收标准与真实验证输出；「测试命令成功」或「代码看起来合理」不单独构成验收。
+- 验收确认、docs 状态收口、合并和分支清理是不同动作，各自需要用户明确授权，不得自行推导；用户可以在同一句指令中一并授权，各流程的默认授权范围见顶部载体表。任何工具都不得自行把任务标成 Completed；Phase 是否 Completed 还必须满足该阶段自己的完成条件。
+- Review finding 与最新 Issue 决策或项目规范冲突时，不为「通过 Review」反向违反已确认规格，应说明冲突并按事实来源解决。
 - 正式 GitHub 交付前必须先用 `gh auth status --hostname github.com` 和 `git push --dry-run origin HEAD` 预检凭据，且不得输出 token。若认证失效、凭据缺失、权限不足或 dry-run 因凭据失败，必须立即停止当前任务并告知用户；不得自行改用 GitHub API、Connector 或手工上传 blob / tree / commit / ref 绕过失败。
-- Review 默认先解释再处理；finding 与最新 Issue 决策或项目规范冲突时，不得为了“通过 Review”反向违反已确认规格，应说明冲突并按事实来源解决。
-- 当前不把 GitHub Actions 作为必需环节；以与 Task 匹配的本地验证、PR diff、Codex Review 和 GPT 验收为主要质量证据。
-- 用户明确授权“更新 docs 并写入 master”“直接改 docs”“收口任务状态”等 docs-only 操作时，可以绕过 Issue / PR；业务功能、API / contracts、数据库、Agent Runtime、Streaming、Tool Calling、依赖、环境、安全或权限变更仍禁止直接写 `master`。
+- 当前不把 GitHub Actions 作为必需环节；commit 前的本地自审（本地验证 + review 结论）是唯一必需的检查，PR diff、云端 Review 和验收记录是补充证据。
+- 用户明确授权「更新 docs 并写入 master」「直接改 docs」「收口任务状态」等 docs-only 操作时，可以绕过 Issue / PR；业务功能、API / contracts、数据库、Agent Runtime、Streaming、Tool Calling、依赖、环境、安全或权限变更仍禁止直接写 `master`。
+- 讨论、源码阅读、inspection-only、本地实验和小改动默认自由进行，不自动切任务分支、commit、push、创建 PR 或更新任务状态。
 
 ## 6. 架构原则
 
@@ -176,7 +167,7 @@ DTO class 用于 `@Body()` / `@Param()` 时，必须保留运行时值导入，�
 | 设计对比、学习笔记、复盘 | `docs/research/**` |
 | Issue 合并后 | 对应 `docs/tasks/**` 状态、`docs/roadmap.md`、`docs/work-log.md` 一条事实 |
 | 阶段完成 | 精简归档到 `docs/tasks/completed/`，更新 `docs/README.md` 与 `docs/roadmap.md` |
-| 方向或协作规则变化 | `CLAUDE.md`、`AGENTS.md` 共用章节同步，`docs/work-log.md` 一条事实 |
+| 协作规则变化 | 工具无关内容改 `AGENTS.md`；工具专属内容改对应载体；`docs/work-log.md` 一条事实 |
 | 小修 typo / 样式微调 | 可不更新 docs，commit 说明即可 |
 
 原则：

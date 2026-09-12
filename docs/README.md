@@ -24,7 +24,7 @@ Phase 8 已完成：
 - Task 3B：Web Grounding 状态、Sources disclosure、Source cards 与 Chromium，#60 / #61 / `572ad206`；
 - Task 3C：Admin Retrieval / Finalization / Citation Inspector，#62 / #63 / `20f838fb`。
 
-Phase 8 之后的横向任务 #92、#94、#98 与 Backend 模块组织 #101-#104 均已验收合并；翻译质检站 A-1（#109）/ A-2（#111）曾合入 master，该方向于 2026-09-02 放弃，并于 2026-09-05 经 #113 删除全部相关代码与数据模型。2026-09-05 定案：不再为 runtime 寻找产品域，作品就是 runtime 本身，第一个用户是用户自己，参照物为 Codex 与 DeepSeek Harness；下一批子系统只在真实使用卡住或缺口被明确命中时立项。协作方式见 `CLAUDE.md`（Claude 单角色流程）与 `AGENTS.md`（GPT + Codex 双角色流程）。
+Phase 8 之后的横向任务 #92、#94、#98 与 Backend 模块组织 #101-#104 均已验收合并；翻译质检站 A-1（#109）/ A-2（#111）曾合入 master，该方向于 2026-09-02 放弃，并于 2026-09-05 经 #113 删除全部相关代码与数据模型。2026-09-05 定案：不再为 runtime 寻找产品域，作品就是 runtime 本身，第一个用户是用户自己，参照物为 Codex 与 DeepSeek Harness；下一批子系统只在真实使用卡住或缺口被明确命中时立项。协作方式以 `AGENTS.md` 的工具无关基线为准，多角色分工流程见 [development-workflow.md](./development-workflow.md)，单角色流程见 `CLAUDE.md`。
 
 ## 文档入口
 
@@ -41,7 +41,7 @@ Phase 8 之后的横向任务 #92、#94、#98 与 Backend 模块组织 #101-#104
 | [Phase 7 归档](./tasks/completed/phase-07-context-engineering.md) | Context Engineering 最终能力与边界 |
 | [Phase 6 归档](./tasks/completed/phase-06-bounded-agent-loop.md) | Agent Loop、deadline、终态可靠性 |
 | [Admin Console](./tasks/admin-console.md) | Admin Observability 支线 |
-| [development-workflow.md](./development-workflow.md) | GPT + Codex 双角色流程；Claude 单角色流程见 `CLAUDE.md` |
+| [development-workflow.md](./development-workflow.md) | 多角色分工流程（规划 / 验收与本地实现分开）；单角色流程见 `CLAUDE.md` |
 | [research/README.md](./research/README.md) | 参照物研究入口：codex-reference、DeepSeek Harness，不代表实现状态 |
 | [research/learning-roadmap/learning-method.md](./research/learning-roadmap/learning-method.md) | 每个子系统的七步法与阶段产物 |
 | [work-log.md](./work-log.md) | 已发生里程碑 |
@@ -101,7 +101,7 @@ Chunking / Indexing
 
 - `docs/README.md` 只做入口；
 - 一个正式 Issue 只对应一个明确 Task；
-- Active 必须有 Issue（GPT + Codex 流程还需 Gate READY）；
-- Completed 必须有验收记录：Claude 流程为 PR 逐条验收 PASS 并合并，GPT + Codex 流程为 GPT 技术验收加用户确认；
+- Active 必须有 Issue（多角色分工流程还需 Gate READY）；
+- Completed 必须有验收记录：单角色流程为 PR 逐条验收 PASS 并合并，多角色分工流程为另一侧技术验收加用户确认；
 - 研究文档不能替代任务规格；
 - 候选子系统未立 Issue 前不进入实现；Admin Task 4、并行 Tool Call、Memory、MCP、Multi-agent 不自动启动。
