@@ -16,11 +16,8 @@
 
 从零手写的 TypeScript Agent Runtime：NestJS API + Vue Web / Admin + Prisma / PostgreSQL / pgvector，不依赖 LangChain / LangGraph / workflow 引擎。Phase 1-8 已完成：流式对话、AgentRun / AgentStep 编排、Tool Calling、Context Engineering、Grounded Retrieval 与服务端校验的引用、Admin 可观测性。
 
-2026-09-05 定案的方向：
-
-- 作品就是 runtime 本身，不再为它寻找产品域；第一个用户是用户自己。
-- 目标是三样：运行层的技术深度、真实使用留下的问题记录、公开的设计笔记。求职叙事是「一个自己每天用、被真实使用打磨过的 agent runtime」。
-- 2026-09-15 更新后续方向：完成当前源码学习后，面向云端 Agent 产品演进，以 Pi 为主要架构与组织方式参照（`docs/research/pi-reference/`）；旧 Codex 调研、reference 与阶段路线已按用户要求删除。DeepSeek Harness 保留补充对照。参照素材供 AI 实现时查阅，用户不读 Pi 代码；参照用于对比取舍，不照抄；研究完成不代表重构已启动。
+**定案的方向**
+- 2026-09-15：完成当前源码学习后，面向云端 Agent 产品演进，以 Pi 为主要架构与组织方式参照（`docs/research/pi-reference/`）；旧 Codex 调研、reference 与阶段路线已按用户要求删除。DeepSeek Harness 保留补充对照。参照素材供 AI 实现时查阅，用户不读 Pi 代码；参照用于对比取舍，不照抄；研究完成不代表重构已启动。
 - 当前能力缺口四块：Human-in-the-loop / 审批、Durable Execution / resume 与 replay、长期 Memory、成本与延迟。子系统只在真实使用卡住、源码阅读发现缺陷或缺口被明确命中时才立项，不因为「成熟项目有」就做。
 
 ## 2. 用户与沟通
