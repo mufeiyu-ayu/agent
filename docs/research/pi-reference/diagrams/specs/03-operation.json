@@ -1,0 +1,226 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "一次 durable operation",
+    "subtitle": "正常 Tool Call 链 · 每个状态转换都有明确持久化边界",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "visual_preset": "blueprint",
+    "animation": "none",
+    "views": [
+      {
+        "id": "normal",
+        "label": "正常运行",
+        "focus": [
+          "accept",
+          "drive",
+          "boundary",
+          "model",
+          "commit",
+          "terminal"
+        ]
+      },
+      {
+        "id": "tool",
+        "label": "工具 / 模型挂起",
+        "focus": [
+          "commit",
+          "tool",
+          "suspend",
+          "boundary"
+        ]
+      }
+    ],
+    "legend": {
+      "mode": "auto",
+      "entries": {
+        "database": {
+          "label": "持久化事实"
+        },
+        "security": {
+          "label": "工具执行"
+        },
+        "messagebus": {
+          "label": "等待"
+        },
+        "backend": {
+          "label": "执行控制"
+        },
+        "cloud": {
+          "label": "模型调用"
+        }
+      }
+    },
+    "output": "03-operation.html"
+  },
+  "lanes": [
+    {
+      "id": "run",
+      "label": "运行与持久化"
+    },
+    {
+      "id": "effect",
+      "label": "工具 / 终态 / 等待"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "accept",
+      "lane": "run",
+      "col": 0,
+      "type": "database",
+      "label": "accept",
+      "sublabel": "prompt + op 原子写入"
+    },
+    {
+      "id": "drive",
+      "lane": "run",
+      "col": 1,
+      "type": "backend",
+      "label": "drive",
+      "sublabel": "单个执行 owner"
+    },
+    {
+      "id": "boundary",
+      "lane": "run",
+      "col": 2,
+      "type": "backend",
+      "label": "checkpoint",
+      "sublabel": "inbox / context 预算"
+    },
+    {
+      "id": "model",
+      "lane": "run",
+      "col": 3,
+      "type": "cloud",
+      "label": "generation",
+      "sublabel": "effect_pending → model"
+    },
+    {
+      "id": "commit",
+      "lane": "run",
+      "col": 4,
+      "type": "database",
+      "label": "response",
+      "sublabel": "entry + usage + state"
+    },
+    {
+      "id": "terminal",
+      "lane": "effect",
+      "col": 2,
+      "type": "database",
+      "label": "terminal",
+      "sublabel": "结束检查 / lane 释放"
+    },
+    {
+      "id": "tool",
+      "lane": "effect",
+      "col": 4,
+      "type": "security",
+      "label": "tool journal",
+      "sublabel": "意图 → 执行 → 结果"
+    },
+    {
+      "id": "suspend",
+      "lane": "effect",
+      "col": 5,
+      "type": "messagebus",
+      "label": "suspended",
+      "sublabel": "显式 permit 后恢复"
+    }
+  ],
+  "edges": [
+    {
+      "from": "accept",
+      "to": "drive",
+      "role": "main"
+    },
+    {
+      "from": "drive",
+      "to": "boundary",
+      "role": "main"
+    },
+    {
+      "from": "boundary",
+      "to": "model",
+      "role": "main"
+    },
+    {
+      "from": "model",
+      "to": "commit",
+      "role": "main"
+    },
+    {
+      "from": "commit",
+      "to": "boundary",
+      "label": "无工具 / 下一检查点",
+      "role": "return",
+      "variant": "dashed",
+      "route": "up-channel",
+      "fromSide": "top",
+      "toSide": "top"
+    },
+    {
+      "from": "commit",
+      "to": "tool",
+      "label": "tool calls",
+      "role": "main"
+    },
+    {
+      "from": "tool",
+      "to": "boundary",
+      "label": "结果按原顺序提交",
+      "role": "return",
+      "variant": "dashed",
+      "route": "auto"
+    },
+    {
+      "from": "commit",
+      "to": "suspend",
+      "label": "deferred",
+      "role": "branch",
+      "variant": "security"
+    },
+    {
+      "from": "boundary",
+      "to": "terminal",
+      "label": "可结束",
+      "role": "branch"
+    },
+    {
+      "from": "suspend",
+      "to": "commit",
+      "label": "显式 poll 的新响应",
+      "role": "return",
+      "variant": "dashed",
+      "route": "auto"
+    }
+  ],
+  "mainPath": [
+    "accept",
+    "drive",
+    "boundary",
+    "model",
+    "commit",
+    "tool"
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "实际入口",
+      "items": [
+        "Lane.accept → Lane.drive → drive dispatcher。",
+        "图折叠 13 个内部状态；源码锚点见图表索引。"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "恢复边界",
+      "items": [
+        "model error 可能进入 retry_wait；不是所有失败都终止。",
+        "unsafe tool 不自动重放；挂起操作不会无许可自行轮询。"
+      ]
+    }
+  ]
+}

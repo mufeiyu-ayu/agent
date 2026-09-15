@@ -82,7 +82,7 @@ Phase 8 Closeout                                       Completed
 
 ## 当前学习阶段
 
-当前学习阶段是源码阅读，对象是三块：Phase 8 链路、codex-reference 中尚未落地的 durability-recovery 与 safety-permission、DeepSeek Harness 的 session 与 interaction。方法见 [`research/learning-roadmap/learning-method.md`](./research/learning-roadmap/learning-method.md)。Phase 8 链路按以下顺序回读：
+当前继续本项目源码阅读。2026-09-15 用户指定：完成当前学习后，以 Pi 为主要参照讨论云端 Agent；研究资料、架构图和后续顺序见 [`pi-reference/README.md`](./research/pi-reference/README.md) 与 [Pi 学习/重构 roadmap](./research/pi-reference/roadmap.md)。研究准备不代表用户已学完，不改变 #115 → #116 → #117 的正式顺序。通用方法见 [`learning-method.md`](research/pi-reference/learning-method.md)。Phase 8 链路仍可按以下顺序回读：
 
 ```text
 索引入口
@@ -102,7 +102,7 @@ Phase 8 Closeout                                       Completed
 
 ## 方向定案（2026-09-05）
 
-不再为 runtime 寻找产品域。作品就是 runtime 本身，第一个用户是用户自己；目标是运行层技术深度、真实使用留下的问题记录、公开的设计笔记三样。参照物为 Codex（`docs/research/codex-reference/`）与 DeepSeek Harness，只用于对比取舍。
+当时定案：不再为 runtime 寻找产品域，作品就是 runtime 本身，第一个用户是用户自己；目标是运行层技术深度、真实使用留下的问题记录、公开的设计笔记三样。当时参照 Codex 与 DeepSeek Harness。2026-09-15 后续方向更新为当前源码学习完成后演进云端 Agent，主要参照 [Pi](./research/pi-reference/README.md)；旧Codex研究资料已按用户要求删除。参照用于对比取舍，不整包照搬。
 
 当前能力缺口四块：Human-in-the-loop / 审批、Durable Execution / resume 与 replay、长期 Memory、成本与延迟。对应的候选子系统：
 
@@ -148,6 +148,6 @@ Phase 8 Task 3C 已完成安全 Retrieval Inspector，但不自动启动 Task 4�
 ```text
 Phase 8：Completed / 已归档（docs/tasks/completed/phase-08-grounded-retrieval.md）
 Active Agent Task：无
-当前阶段：源码阅读（Phase 8 链路 + codex-reference 两份 + DeepSeek Harness 两份）
+当前阶段：本项目源码阅读；后续按 pi-reference 学习 Pi 与讨论云端方向
 下一步：#115 → #116 → #117 依次开工；其余候选子系统在立项条件满足时建 Issue，走单角色流程（见 AGENTS.md 5.1）
 ```

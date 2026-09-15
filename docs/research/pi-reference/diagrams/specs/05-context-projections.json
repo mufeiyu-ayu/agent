@@ -1,0 +1,290 @@
+{
+  "schema_version": 1,
+  "diagram_type": "dataflow",
+  "meta": {
+    "title": "三种事实，三条数据路径",
+    "subtitle": "模型输入、durable history 与 UI 投影不能相互替代",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "visual_preset": "blueprint",
+    "animation": "none",
+    "viewBox": [
+      1080,
+      500
+    ],
+    "legend": {
+      "mode": "auto",
+      "entries": {
+        "default": {
+          "label": "状态投影"
+        },
+        "emphasis": {
+          "label": "模型输入"
+        },
+        "dashed": {
+          "label": "持久化 / 恢复"
+        }
+      }
+    },
+    "output": "05-context-projections.html"
+  },
+  "stages": [
+    {
+      "label": "来源"
+    },
+    {
+      "label": "组装"
+    },
+    {
+      "label": "中间数据"
+    },
+    {
+      "label": "发布边界"
+    },
+    {
+      "label": "消费者"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "branch",
+      "label": "Session Branch",
+      "sublabel": "entries / tip",
+      "type": "database",
+      "stage": 0,
+      "row": 0,
+      "width": 124,
+      "height": 58
+    },
+    {
+      "id": "context",
+      "label": "Context Builder",
+      "sublabel": "summary / tail",
+      "type": "backend",
+      "stage": 1,
+      "row": 0,
+      "width": 124,
+      "height": 58
+    },
+    {
+      "id": "prepare",
+      "label": "Request Transform",
+      "sublabel": "hooks / messages",
+      "type": "backend",
+      "stage": 2,
+      "row": 0,
+      "width": 124,
+      "height": 58
+    },
+    {
+      "id": "payload",
+      "label": "Provider Payload",
+      "sublabel": "tools / options",
+      "type": "backend",
+      "stage": 3,
+      "row": 0,
+      "width": 124,
+      "height": 58
+    },
+    {
+      "id": "model",
+      "label": "Provider",
+      "sublabel": "实际模型输入",
+      "type": "cloud",
+      "stage": 4,
+      "row": 0,
+      "width": 124,
+      "height": 58
+    },
+    {
+      "id": "events",
+      "label": "Lane.watch",
+      "sublabel": "snapshot + events",
+      "type": "messagebus",
+      "stage": 0,
+      "row": 1,
+      "width": 124,
+      "height": 58
+    },
+    {
+      "id": "project",
+      "label": "Transcript Reducer",
+      "sublabel": "reduce / rebase",
+      "type": "backend",
+      "stage": 1,
+      "row": 1,
+      "width": 124,
+      "height": 58
+    },
+    {
+      "id": "replica",
+      "label": "Replicated State",
+      "sublabel": "value / sequence",
+      "type": "backend",
+      "stage": 2,
+      "row": 1,
+      "width": 124,
+      "height": 58
+    },
+    {
+      "id": "codec",
+      "label": "State Codec",
+      "sublabel": "独立字典 / stream",
+      "type": "messagebus",
+      "stage": 3,
+      "row": 1,
+      "width": 124,
+      "height": 58
+    },
+    {
+      "id": "view",
+      "label": "Presentation",
+      "sublabel": "完整 UI value",
+      "type": "frontend",
+      "stage": 4,
+      "row": 1,
+      "width": 124,
+      "height": 58
+    },
+    {
+      "id": "result",
+      "label": "已知结果与意图",
+      "sublabel": "response / tool",
+      "type": "backend",
+      "stage": 0,
+      "row": 2,
+      "width": 124,
+      "height": 58
+    },
+    {
+      "id": "writes",
+      "label": "Commit Writes",
+      "sublabel": "entry / usage / op",
+      "type": "backend",
+      "stage": 1,
+      "row": 2,
+      "width": 124,
+      "height": 58
+    },
+    {
+      "id": "store",
+      "label": "Session Storage",
+      "sublabel": "atomic transaction",
+      "type": "database",
+      "stage": 2,
+      "row": 2,
+      "width": 124,
+      "height": 58
+    },
+    {
+      "id": "restore",
+      "label": "Restore State",
+      "sublabel": "durable records",
+      "type": "backend",
+      "stage": 3,
+      "row": 2,
+      "width": 124,
+      "height": 58
+    },
+    {
+      "id": "recover",
+      "label": "Drive",
+      "sublabel": "重新接管操作",
+      "type": "backend",
+      "stage": 4,
+      "row": 2,
+      "width": 124,
+      "height": 58
+    }
+  ],
+  "flows": [
+    {
+      "from": "branch",
+      "to": "context",
+      "label": "选中历史",
+      "variant": "emphasis"
+    },
+    {
+      "from": "context",
+      "to": "prepare",
+      "label": "规范上下文",
+      "variant": "emphasis"
+    },
+    {
+      "from": "prepare",
+      "to": "payload",
+      "label": "最终请求",
+      "variant": "emphasis"
+    },
+    {
+      "from": "payload",
+      "to": "model",
+      "label": "发送",
+      "variant": "emphasis"
+    },
+    {
+      "from": "events",
+      "to": "project",
+      "label": "投影",
+      "variant": "default"
+    },
+    {
+      "from": "project",
+      "to": "replica",
+      "label": "publish",
+      "variant": "default"
+    },
+    {
+      "from": "replica",
+      "to": "codec",
+      "label": "编码",
+      "variant": "default"
+    },
+    {
+      "from": "codec",
+      "to": "view",
+      "label": "水合 / 更新",
+      "variant": "default"
+    },
+    {
+      "from": "result",
+      "to": "writes",
+      "label": "构造",
+      "variant": "dashed"
+    },
+    {
+      "from": "writes",
+      "to": "store",
+      "label": "提交",
+      "variant": "dashed"
+    },
+    {
+      "from": "store",
+      "to": "restore",
+      "label": "重建",
+      "variant": "dashed"
+    },
+    {
+      "from": "restore",
+      "to": "recover",
+      "label": "接管",
+      "variant": "dashed"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "rose",
+      "title": "云端必须补证据",
+      "items": [
+        "请求期变换后另存有效输入及版本，才能证明可重建。"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "序号各有范围",
+      "items": [
+        "Session seq 与 replica sequence 分开；UI 恢复不证明副作用可重做。"
+      ]
+    }
+  ]
+}

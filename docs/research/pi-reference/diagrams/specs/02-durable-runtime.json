@@ -1,0 +1,208 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Durable Agent Runtime",
+    "subtitle": "新 AgentHarness：谁拥有执行、历史、模型与工具",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "visual_preset": "blueprint",
+    "animation": "none",
+    "views": [
+      {
+        "id": "execution",
+        "label": "执行所有权",
+        "focus": [
+          "harness",
+          "lane",
+          "drive"
+        ]
+      },
+      {
+        "id": "effects",
+        "label": "副作用与事实",
+        "focus": [
+          "drive",
+          "session",
+          "models",
+          "tools"
+        ]
+      }
+    ],
+    "output": "02-durable-runtime.html"
+  },
+  "layout": {
+    "mode": "grid",
+    "cols": 3,
+    "cellW": 220,
+    "cellH": 80,
+    "gapX": 100,
+    "gapY": 70
+  },
+  "components": [
+    {
+      "id": "harness",
+      "label": "AgentHarness",
+      "sublabel": "restore / events / resources",
+      "type": "backend",
+      "row": 0,
+      "col": 0,
+      "size": [
+        220,
+        80
+      ]
+    },
+    {
+      "id": "lane",
+      "label": "AgentLane",
+      "sublabel": "accept / drive / queues",
+      "type": "backend",
+      "row": 0,
+      "col": 1,
+      "size": [
+        220,
+        80
+      ]
+    },
+    {
+      "id": "drive",
+      "label": "Drive 状态机",
+      "sublabel": "checkpoint / generation / tools",
+      "type": "backend",
+      "row": 0,
+      "col": 2,
+      "size": [
+        220,
+        80
+      ]
+    },
+    {
+      "id": "watch",
+      "label": "Lane Watch",
+      "sublabel": "snapshot + live events",
+      "type": "frontend",
+      "row": 1,
+      "col": 0,
+      "size": [
+        220,
+        80
+      ]
+    },
+    {
+      "id": "session",
+      "label": "Durable Session",
+      "sublabel": "branch / op / journal / usage",
+      "type": "database",
+      "row": 1,
+      "col": 1,
+      "size": [
+        220,
+        80
+      ]
+    },
+    {
+      "id": "models",
+      "label": "Models",
+      "sublabel": "provider request / response",
+      "type": "cloud",
+      "row": 1,
+      "col": 2,
+      "size": [
+        220,
+        80
+      ]
+    },
+    {
+      "id": "tools",
+      "label": "Tool + ExecutionEnv",
+      "sublabel": "policy / effect / recovery",
+      "type": "security",
+      "row": 2,
+      "col": 2,
+      "size": [
+        220,
+        80
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "harness-lane",
+      "from": "harness",
+      "to": "lane",
+      "label": "提供",
+      "variant": "default"
+    },
+    {
+      "id": "lane-drive",
+      "from": "lane",
+      "to": "drive",
+      "label": "唯一 owner",
+      "variant": "default"
+    },
+    {
+      "id": "lane-session",
+      "from": "lane",
+      "to": "session",
+      "label": "accept 事务",
+      "variant": "default",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelDx": 45,
+      "labelDy": 20
+    },
+    {
+      "id": "lane-watch",
+      "from": "lane",
+      "to": "watch",
+      "label": "watch",
+      "variant": "default"
+    },
+    {
+      "id": "drive-models",
+      "from": "drive",
+      "to": "models",
+      "label": "采样",
+      "variant": "default",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelDx": 45,
+      "labelDy": 20
+    },
+    {
+      "id": "drive-tools",
+      "from": "drive",
+      "to": "tools",
+      "label": "执行与恢复",
+      "fromSide": "right",
+      "toSide": "right",
+      "variant": "dashed",
+      "labelDx": 50
+    },
+    {
+      "id": "drive-session",
+      "from": "drive",
+      "to": "session",
+      "label": "状态与事实",
+      "variant": "default"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "恢复不等于执行",
+      "items": [
+        "create 还原状态并返回 open operations；drive 才接管运行。",
+        "观察者取消只结束等待；运行取消有独立操作。"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "图的边界",
+      "items": [
+        "模型与工具都由 Drive 调用，各自有失败与恢复边界。",
+        "live message_end / tool_end 不直接等同 transcript 已提交。"
+      ]
+    }
+  ]
+}

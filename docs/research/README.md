@@ -1,119 +1,53 @@
 # Agent 架构研究资料
 
-本目录是 AI SEO Agent 的长期架构研究区，不直接充当当前任务看板或阶段路线。
+本目录保存源码研究、设计对照与学习记录。**当前主要参照是 [Pi 参考知识库](./pi-reference/README.md)**：为用户完成当前 agent 源码学习后的云端 Agent 方向准备，主要供带读智能体使用。
 
-正式状态必须按以下顺序判断：
+研究资料不承担正式任务看板。当前 Phase 1–8 Completed、无 Active，Next #115 → #116 → #117；实时状态以 [`../tasks/README.md`](../tasks/README.md) 为准。研究完成不代表用户已经学完，也不自动启动重构。
 
-```text
-当前 master 代码与测试
-  -> docs/tasks/**
-  -> docs/roadmap.md
-  -> docs/work-log.md
-  -> docs/research/**
-```
-
-研究资料可以讨论 Context、RAG、Recovery、HITL、MCP、Multi-agent 等候选能力，但不能据此宣称当前项目已经实现、必须立即实现或已经确定执行顺序。
-
-## 当前项目结论
+## 顶层结构与读取边界
 
 ```text
-阶段 1-8：Completed
-Active Agent Task：无
-方向：runtime 深化（2026-09-05 定案）
-参照物：Codex（codex-reference/）+ DeepSeek Harness
+research/
+├── README.md                                   现行总入口
+├── pi-reference/                               Pi 研究、源码标注、图表、学习方法与roadmap
+├── configuration-map.md                        当前项目配置导航
+└── phase-08-grounded-answer-citation-design.md  当前项目Phase 8设计依据
 ```
 
-当前项目已经建立：
+带读智能体从 `pi-reference/README.md` 按问题选资料。研究、阅读方法与后续路线都在 `pi-reference/`；旧Codex研究体系已删除。
 
-- Session Chat、NDJSON Streaming、Abort；
-- Conversation / Message / AgentRun / AgentStep；
-- bounded sequential Agent Loop；
-- DeepSeek Tool Call continuation；
-- Tool / Run / DB deadline 与终态可靠性；
-- ModelContext、Dynamic History、Context Planner、Observation Governance；
-- deterministic Article Chunking 与 stable identity；
-- Gemini Embedding + pgvector；
-- lexical + vector + hybrid RRF；
-- Retrieval Evaluation；
-- `retrieve_article_context@1` 与 candidate / unverified / untrusted Observation；
-- evidence-eligible Tool policy 与 Grounding Session；
-- Run-scoped Evidence Registry 与 structured finalization；
-- server-validated Citation identity 与 durable `MessageGroundingV1`；
-- optional `done.grounding` / `ConversationMessage.grounding`；
-- Web strict Grounding normalization、completed-only projection、状态提示与 accessible Source cards；
-- Admin Run Trace Workspace、Context Inspector 与 finalization usage 聚合。
+## 从这里开始
 
-## 当前重点研究
+| 需要 | 入口 |
+| --- | --- |
+| 新会话理解研究目的、目录与阅读顺序 | [pi-reference/README.md](./pi-reference/README.md) |
+| AI 怎样按用户节奏带读 | [how-to-read.md](./pi-reference/how-to-read.md) |
+| Pi 架构思想、文件夹与处理风格 | [architecture-and-style.md](./pi-reference/architecture-and-style.md) |
+| 原码索引、注释、真实调用链 | Pi 入口的主题路由 → `modules/` |
+| 交互架构、流程与时序图 | [图集入口](./pi-reference/diagrams/index.html) · [维护说明](./pi-reference/diagrams/README.md) |
+| 对照我们的现有能力和缺口 | [current-agent-mapping.md](./pi-reference/current-agent-mapping.md) |
+| 后续学习与云端重构候选顺序 | [Pi roadmap](./pi-reference/roadmap.md) |
+| 核实版本、全仓覆盖与验证范围 | [source-snapshot](./pi-reference/source-snapshot.md)、[coverage](./pi-reference/coverage.md)、[verification](./pi-reference/verification.md) |
 
-| 主题 | 文档 | 与正式任务的关系 |
-| --- | --- | --- |
-| Grounded Answer / Citation | [Phase 8 Grounded Answer / Citation 架构研究](./phase-08-grounded-answer-citation-design.md) | Task 3A / 3B / 3C 的设计依据；文内 Task 状态和“当前代码事实”是实现前研究快照，实时状态以 tasks / master 为准 |
-| 当前 Agent baseline | [codex-reference/current-agent-baseline.md](./codex-reference/current-agent-baseline.md) | 用于理解历史架构；实时状态以 tasks / master 为准 |
-| Core Runtime | [codex-reference/core-runtime.md](./codex-reference/core-runtime.md) | Runtime loop、Turn、Task、follow-up sampling |
-| Tool Loop | [codex-reference/tool-loop.md](./codex-reference/tool-loop.md) | Tool Call、Observation、继续 sampling |
-| Context / History | [codex-reference/context-history.md](./codex-reference/context-history.md) | model-visible history 与 Context 治理 |
-| Durability / Recovery | [codex-reference/durability-recovery.md](./codex-reference/durability-recovery.md) | 当前阅读对象；对应候选子系统「session 事件流与 replay」 |
-| Permission / Approval | [codex-reference/safety-permission.md](./codex-reference/safety-permission.md) | 当前阅读对象；对应候选子系统「审批门」 |
-| MCP / Multi-agent | [codex-reference/extensibility-and-multi-agent.md](./codex-reference/extensibility-and-multi-agent.md) | 研究资料，后置 |
-| DeepSeek Harness | [github.com/deepseek-ai/deepseek-harness](https://github.com/deepseek-ai/deepseek-harness)（TypeScript，MIT，`docs/subsystems/*.zh.md` 有中文子系统文档） | 第二参照物；当前阅读 `session`、`interaction` 两个子系统，对照 append-only 会话日志、resume / fork / replay、approval 与 permission preset |
-| 学习方法 | [learning-roadmap/learning-method.md](./learning-roadmap/learning-method.md) | 每个子系统的七步法、阶段产物与复盘模板 |
+## 项目配套资料
 
-## Grounded Answer 研究结论与落地状态
+| 资料 | 定位 |
+| --- | --- |
+| [Grounded Answer / Citation 设计](./phase-08-grounded-answer-citation-design.md) | Phase 8 实现前研究；实际 Task 0–3C 均已完成，状态看归档与当前代码 |
+| [配置地图](./configuration-map.md) | 当前配置职责导航；具体默认值以源码和生效入口核对 |
+| [通用学习方法](./pi-reference/learning-method.md) | 每个子系统的七步法；结合 Pi 的按场景带读 |
+| DeepSeek Harness | 补充参照；本机 `/Users/ayu/Desktop/deepseek-harness`，另见 [上游仓库](https://github.com/deepseek-ai/deepseek-harness)；继续引用前先核对实际版本 |
 
-Task 3 的定案不是“给 Prompt 加一句必须引用来源”，而是：
+## 研究转为正式任务的条件
 
-```text
-evidence-eligible Tool invocation
-  -> Grounding Session / evidence availability
-  -> Run-scoped evidence
-  -> structured finalization
-  -> server validates citation identity
-  -> durable Message Grounding
-  -> Web / Admin typed projection
-```
+先证明真实问题、当前前置能力、最小范围与可验收场景，再由用户定案并进入仓库 Issue/PR 流程。Pi 有某项机制，不意味着我们必须立即实现。
 
-关键边界：
+| 位置 | 责任 |
+| --- | --- |
+| 当前代码、测试、正式 Task/Issue 决策 | 能力、规格与实现事实 |
+| `docs/tasks/**` | 正式任务状态与验收 |
+| `docs/roadmap.md` | 阶段路线和当前主线 |
+| `docs/research/**` | 研究证据、解释、候选方向 |
+| `docs/work-log.md` | 已发生事实 |
 
-- 不解析任意 `[1]`；
-- Citation identity validation 与 semantic faithfulness 分离；
-- v1 不声称 claim-level verification；
-- Web 与 Admin 不解析 Tool 原始 Observation；
-- 不引入 LangChain / LangGraph / LlamaIndex 运行时依赖；
-- Task 3A 后端事实层已通过 #58 / #59 完成，merge `d6df7ac1`；
-- Task 3B Web Source UI 已通过 #60 / #61 完成，merge `572ad206`；
-- Task 3C Admin Retrieval Inspector 为 Next，尚未创建 Issue 或执行 Gate。
-
-## Research 迁移为正式 Task 的条件
-
-1. 当前业务出现真实问题或产品需求；
-2. 当前代码具备必要前置能力；
-3. 能定义最小、可测试、可验收边界；
-4. 学习收益高于当前其他候选方向；
-5. 规格写入 `docs/tasks/**` 并创建独立 Issue。
-
-禁止按“成熟项目有这个能力，所以当前项目也应立即实现”的方式推进。
-
-## 旧研究资料
-
-旧的 [codex/](./codex/README.md) 与 [learning-roadmap/](./learning-roadmap/README.md) 各专题保留历史研究价值，但包含旧 baseline 和曾经设想的阶段编号，不能直接作为当前执行计划；其中 [learning-method.md](./learning-roadmap/learning-method.md) 是现行学习方法，不属于历史资料。
-
-发生冲突时：
-
-```text
-当前代码事实
-  > docs/tasks/**
-  > docs/roadmap.md
-  > codex-reference/**
-  > 旧 research 文档
-  > PR 描述或历史自述
-```
-
-## Research 与 Tasks 的边界
-
-| 目录 | 负责什么 | 不负责什么 |
-| --- | --- | --- |
-| `docs/research/` | 源码研究、架构解释、长期候选能力 | 宣称当前实现、当前状态或自动启动 |
-| `docs/tasks/` | 当前可执行任务、边界、验收和状态 | 存放脱离当前阶段的长期研究路线 |
-| `docs/tasks/completed/` | 已完成阶段归档事实 | 维护 Active / Next |
-| `docs/roadmap.md` | 阶段顺序与当前主线 | 从研究资料自动生成任务 |
-| `docs/work-log.md` | 已真实发生事项 | 提前记录未来实现或合并 |
+发生冲突时，先区分“当前事实”“当时快照”“未来建议”，再核对原始代码与用户本次目标，不沿用过期状态。

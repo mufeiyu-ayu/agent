@@ -7,7 +7,7 @@
 | 类型 | 当前记录 | 下一步 |
 | --- | --- | --- |
 | Agent 主线 | 阶段 1-8 Completed；横向任务与 Backend 模块组织全部验收合并；健壮性三件 #115 / #116 / #117 已立 Issue | 源码阅读；#115 → #116 → #117 依次开工 |
-| 方向 | 2026-09-05 定案：runtime 深化，作品是 runtime 本身，参照 Codex 与 DeepSeek Harness | 见 [roadmap.md](./roadmap.md) 方向定案 |
+| 方向 | 当前继续源码学习；2026-09-15 用户指定学习后以 Pi 为主要参照演进云端 Agent | 见 [Pi 研究入口](./research/pi-reference/README.md) 与候选 roadmap；不改变正式任务顺序 |
 | 翻译质检站 | 方向 2026-09-02 放弃；2026-09-05 经 #113 删除全部代码与数据模型 | 无 |
 | Admin Console | Task 0-3、Enhancement 1-3、Phase 8 Task 3C Completed；Task 4 Planned | 不自动启动 Auth / RBAC |
 | 协作流程 | `AGENTS.md` 为工具无关基线 + 默认单角色流程；多角色分工流程见 `docs/development-workflow.md`；工具适配文件（如 `CLAUDE.md`）只给 review 命令 / skill 路径 / 分支前缀 | 换工具只加一份适配文件 |
@@ -16,6 +16,11 @@
 
 | 日期 | 事项 | 结果 |
 | --- | --- | --- |
+| 2026-09-15 | Pi研究深度Review修复 | 校正SDK默认持久化与项目信任、共享Lane watch与客户端订阅，补充小默认能力/扩展工作流哲学及before_run_end重新检查inbox；图表构建检测并清理无源JSON的生成HTML，保护手写页面。六图同步检查与删除/重命名回归检查通过；用户已验收图集HTML |
+| 2026-09-15 | Pi图表统一JSON维护与图集入口 | 源JSON集中到 `diagrams/specs/`；新增 `build.mjs` 从JSON生成六张图和index侧栏菜单，支持临时重建同步检查；`index.html` 以原生iframe切换图表，可直接本地打开。构建检查通过，Safari实际验证菜单逐项切换，未新增PNG或验收展示页 |
+| 2026-09-15 | 精简Pi图表维护文件 | 按用户要求删除24张PNG、6个四图验收HTML、12份验收JSON；仅保留6组正式JSON/HTML及图表索引，补齐JSON输出路径并重新生成，6组全部9/9校验通过，生成HTML内容哈希与清理前一致；同步清理附件链接和维护说明 |
+| 2026-09-15 | 修正Pi研究目录收口遗漏并删除旧资料 | 首轮遗漏顶层codex与旧learning-roadmap，用户指出后扩大检查范围；按用户明确要求删除旧Codex调研、reference、阶段路线及中间archive共65份Markdown，通用学习方法保留在pi-reference，清理相关入口与链接。首轮选定文件链接检查不能证明整个目录替换完整 |
+| 2026-09-15 | Pi 全仓研究与参照入口替换 | 基于本机 Pi `8a7b0c03` 建立 `docs/research/pi-reference/`：覆盖11个主要包及根级工程资源，保存1714文件清单、核心源码注释、6张Archify图、AI带读说明、当前项目对照与学习/云端重构roadmap；原 `codex-reference` 11份文档移入 `research/archive/` 并标注历史快照；同步研究与阶段入口、AGENTS参照指向。研究不代表用户学完或重构启动，未修改产品代码与正式Task状态，未commit/push；实际检查边界见研究区 verification |
 | 2026-09-12 | 单角色流程上收到 `AGENTS.md` | review 上一条重构发现单角色流程仍绑在只有 Claude 会读的 `CLAUDE.md`，换工具后无默认流程可循：单角色流程整体搬入 `AGENTS.md` 5.1 作为默认流程，硬约束归 5.2；`CLAUDE.md` 缩成 11 行适配层，只给 `<review 命令>` / skill 路径 / `<分支前缀>` 三个占位取值；`.codex/skills/github-issue-workflow` 的「另一侧」不再钉死为 GPT；`.claude/skills` 两个单角色 skill 改用 `<review 命令>` / `<分支前缀>` 占位成为共享实现；新增 pi 适配：`.pi/settings.json` 按 pi 官方写法引入 `../.claude/skills`，`.pi/APPEND_SYSTEM.md` 给三个占位取值（reviewer 子代理审暂存 diff、`pi/` 前缀）；查证 pi 0.85.1 每目录只取 `AGENTS.md`（有则忽略 `CLAUDE.md`），Claude Code 2.1.269 不原生发现 `.agents/skills`；`docs/README.md`、`docs/tasks/README.md`、`docs/roadmap.md`、`docs/development-workflow.md` 指向同步 |
 | 2026-09-12 | 协作规范按载体分层重构 | `AGENTS.md` 收敛为工具无关基线（项目定位到 docs 规则 + 各流程共用硬约束），删除工具范围声明与双份同步条款；多角色分工流程归 `docs/development-workflow.md`，单角色流程归 `CLAUDE.md`（用 `@AGENTS.md` 引入基线），两份文件从 380 行含 310 行重复改为单一事实源；流程文档全文改用“你 / 另一侧”角色称呼，不再以工具名指代流程；review 改为 commit 前本地完成、PR 一律 Ready 创建（PR 仅作验收载体，Draft 只表示未完成或受阻，云端 Review 降为可选）；同步 `docs/README.md`、`docs/tasks/README.md`、`docs/roadmap.md`、`PROJECT_STRUCTURE.md`、`docs/research/codex-reference/discussion-playbook.md` 表述与两个 skills 的读取清单 |
 | 2026-09-05 | 源码阅读立项健壮性三件 | 本机库 5 个 Run 全 COMPLETED、无失败样本，依据为源码阅读：`maxRetries: 0` 零重试且 Loop 默认上限 3 / 2（#115）；content 先于 tool_calls 或多个 tool_calls 直接 FAILED，而输入侧早已支持文本回填（#116）；DeepSeek Responses API 2026-08 上线且无状态，接入为第二个 adapter 而非替换（#117）。规格、验收标准、决策记录在 Issue，`docs/tasks` 只记状态；顺序 #115 → #116 → #117，一次一个 Active |
@@ -68,9 +73,9 @@ Admin Task 4        Planned
 当前执行顺序：
 
 ```text
-源码阅读（Phase 8 链路 + codex-reference 两份 + DeepSeek Harness 两份）
+本项目源码阅读 → pi-reference 学习与云端方向讨论
   -> 真实使用卡住 / 缺口命中时建 Issue
-  -> CLAUDE.md 单角色流程
+  -> AGENTS.md 单角色流程
 ```
 
 ## 已稳定的 Phase 8 事实

@@ -1,0 +1,161 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "重新附着与状态水合",
+    "subtitle": "实验性本地路径 · 先安装 snapshot，再接收有序 updates",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "visual_preset": "blueprint",
+    "animation": "none",
+    "column_fit": "spread",
+    "viewBox": [
+      1100,
+      700
+    ],
+    "output": "04-attachment.html"
+  },
+  "participants": [
+    {
+      "id": "ui",
+      "type": "frontend",
+      "label": "Presentation"
+    },
+    {
+      "id": "client",
+      "type": "backend",
+      "label": "Client"
+    },
+    {
+      "id": "server",
+      "type": "backend",
+      "label": "Server Router"
+    },
+    {
+      "id": "worker",
+      "type": "backend",
+      "label": "Worker / Lane"
+    },
+    {
+      "id": "state",
+      "type": "database",
+      "label": "Transcript"
+    }
+  ],
+  "messages": [
+    {
+      "id": "m1",
+      "from": "ui",
+      "to": "client",
+      "label": "connect + hello",
+      "y": 170,
+      "variant": "default"
+    },
+    {
+      "id": "m2",
+      "from": "client",
+      "to": "server",
+      "label": "hello(version)",
+      "y": 208,
+      "variant": "default"
+    },
+    {
+      "id": "m3",
+      "from": "server",
+      "to": "client",
+      "label": "hello(serverId)",
+      "y": 246,
+      "variant": "return"
+    },
+    {
+      "id": "m4",
+      "from": "client",
+      "to": "server",
+      "label": "SessionManagement.attach",
+      "y": 284,
+      "variant": "default"
+    },
+    {
+      "id": "m5",
+      "from": "server",
+      "to": "worker",
+      "label": "acquire attachment / demand",
+      "y": 322,
+      "variant": "default"
+    },
+    {
+      "id": "m6",
+      "from": "server",
+      "to": "client",
+      "label": "attachment 三元路由",
+      "y": 360,
+      "variant": "return"
+    },
+    {
+      "id": "m7",
+      "from": "client",
+      "to": "worker",
+      "label": "订阅 Transcript（经 Server）",
+      "y": 398,
+      "variant": "default"
+    },
+    {
+      "id": "m8",
+      "from": "worker",
+      "to": "state",
+      "label": "读取已有 Transcript 状态",
+      "y": 436,
+      "variant": "default"
+    },
+    {
+      "id": "m9",
+      "from": "state",
+      "to": "client",
+      "label": "subscription snapshot",
+      "y": 474,
+      "variant": "return"
+    },
+    {
+      "id": "m10",
+      "from": "client",
+      "to": "ui",
+      "label": "安装 value；start updates",
+      "y": 512,
+      "variant": "default"
+    },
+    {
+      "id": "m11",
+      "from": "state",
+      "to": "client",
+      "label": "sequence + Delta updates",
+      "y": 550,
+      "variant": "default"
+    },
+    {
+      "id": "m12",
+      "from": "client",
+      "to": "ui",
+      "label": "完整 immutable value",
+      "y": 588,
+      "variant": "default"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "共享状态与订阅",
+      "items": [
+        "共享 Lane watch 在 worker 初始化时建立。",
+        "客户端读取已有状态；箭头折叠 Server 转发。"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "断线以后",
+      "items": [
+        "断线清本连接 pending 与订阅，不自动重发命令。",
+        "run 的存活由 worker demand + operation activity 管理。"
+      ]
+    }
+  ]
+}

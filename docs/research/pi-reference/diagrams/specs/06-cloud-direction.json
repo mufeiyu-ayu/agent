@@ -1,0 +1,196 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "云端 Agent 的候选方向",
+    "subtitle": "设计建议 · 现有 Vue / NestJS / PostgreSQL 上逐步演进",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "visual_preset": "blueprint",
+    "animation": "none",
+    "views": [
+      {
+        "id": "control",
+        "label": "控制与观察分开",
+        "focus": [
+          "web",
+          "api",
+          "runtime",
+          "projection"
+        ]
+      },
+      {
+        "id": "durable",
+        "label": "事实与副作用",
+        "focus": [
+          "runtime",
+          "db",
+          "model",
+          "tool"
+        ]
+      }
+    ],
+    "output": "06-cloud-direction.html"
+  },
+  "layout": {
+    "mode": "grid",
+    "cols": 3,
+    "cellW": 220,
+    "cellH": 80,
+    "gapX": 100,
+    "gapY": 70
+  },
+  "components": [
+    {
+      "id": "web",
+      "type": "frontend",
+      "label": "Vue Web / Admin",
+      "sublabel": "会话 / 模型 / Trace / Sources",
+      "row": 0,
+      "col": 0,
+      "size": [
+        220,
+        80
+      ]
+    },
+    {
+      "id": "api",
+      "type": "security",
+      "label": "NestJS API",
+      "sublabel": "身份 / 会话权限 / 命令",
+      "row": 0,
+      "col": 1,
+      "size": [
+        220,
+        80
+      ]
+    },
+    {
+      "id": "runtime",
+      "type": "backend",
+      "label": "Run Owner",
+      "sublabel": "状态机 / checkpoint / deadline",
+      "row": 0,
+      "col": 2,
+      "size": [
+        220,
+        80
+      ]
+    },
+    {
+      "id": "projection",
+      "type": "messagebus",
+      "label": "订阅与投影",
+      "sublabel": "snapshot + cursor / 重连",
+      "row": 1,
+      "col": 0,
+      "size": [
+        220,
+        80
+      ]
+    },
+    {
+      "id": "db",
+      "type": "database",
+      "label": "PostgreSQL",
+      "sublabel": "operation / journal / model input",
+      "row": 1,
+      "col": 1,
+      "size": [
+        220,
+        80
+      ]
+    },
+    {
+      "id": "model",
+      "type": "cloud",
+      "label": "LLM Adapter",
+      "sublabel": "独立契约 / provider 差异",
+      "row": 1,
+      "col": 2,
+      "size": [
+        220,
+        80
+      ]
+    },
+    {
+      "id": "tool",
+      "type": "security",
+      "label": "Tool Execution",
+      "sublabel": "审批 / receipt / 隔离",
+      "row": 2,
+      "col": 2,
+      "size": [
+        220,
+        80
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "from": "web",
+      "to": "api",
+      "label": "命令"
+    },
+    {
+      "from": "api",
+      "to": "runtime",
+      "label": "接纳"
+    },
+    {
+      "from": "runtime",
+      "to": "db",
+      "label": "durable facts"
+    },
+    {
+      "from": "db",
+      "to": "projection",
+      "label": "恢复读端"
+    },
+    {
+      "from": "projection",
+      "to": "web",
+      "label": "观察",
+      "fromSide": "top",
+      "toSide": "bottom",
+      "labelDx": 40,
+      "labelDy": -20
+    },
+    {
+      "from": "runtime",
+      "to": "model",
+      "label": "采样",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelDx": 40,
+      "labelDy": 20
+    },
+    {
+      "from": "runtime",
+      "to": "tool",
+      "label": "受控执行",
+      "variant": "security",
+      "fromSide": "right",
+      "toSide": "right",
+      "labelDx": 45
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "先建立边界",
+      "items": [
+        "Run Owner 可先留在 NestJS 同一进程；独立 worker 按需求再拆。",
+        "沿用现有 NDJSON 与 contracts，先解决持久化和断线语义。"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "保留当前价值",
+      "items": [
+        "Grounding / Citation 校验、Context budget 与终态所有权继续保留。",
+        "候选图不代表已实现；正式任务与授权以 tasks / Issue 为准。"
+      ]
+    }
+  ]
+}

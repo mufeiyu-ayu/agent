@@ -20,7 +20,7 @@
 
 - 作品就是 runtime 本身，不再为它寻找产品域；第一个用户是用户自己。
 - 目标是三样：运行层的技术深度、真实使用留下的问题记录、公开的设计笔记。求职叙事是「一个自己每天用、被真实使用打磨过的 agent runtime」。
-- 参照物两个：OpenAI Codex（`docs/research/codex-reference/`）和 DeepSeek Harness（TypeScript，`docs/research/README.md` 有入口）。参照只用于对比取舍，不照抄。
+- 2026-09-15 更新后续方向：完成当前源码学习后，面向云端 Agent 产品演进，以 Pi 为主要架构与组织方式参照（`docs/research/pi-reference/`）；旧 Codex 调研、reference 与阶段路线已按用户要求删除。DeepSeek Harness 保留补充对照。参照用于对比取舍，不照抄；研究完成不代表用户学完或重构已启动。
 - 当前能力缺口四块：Human-in-the-loop / 审批、Durable Execution / resume 与 replay、长期 Memory、成本与延迟。子系统只在真实使用卡住、源码阅读发现缺陷或缺口被明确命中时才立项，不因为「成熟项目有」就做。
 
 ## 2. 用户与沟通
@@ -29,7 +29,7 @@
 
 - 始终中文。代码标识符、命令、日志、错误信息、协议字段、文件名保持原文。
 - 默认 TypeScript / NestJS / Vue；不默认 Python、Rust。
-- 讲 agent 设计必须对照业界真实实现（Claude Code、Codex、DeepSeek Harness、OpenClaw、OpenAI Agents SDK、LangGraph），说清「他们怎么做、我们为什么一样或不一样」，不空谈概念。
+- 讲 agent 设计必须对照真实实现，当前优先 Pi（必要时补充 Claude Code、Codex、DeepSeek Harness、OpenClaw、OpenAI Agents SDK、LangGraph），说清「他们怎么做、我们为什么一样或不一样」，不空谈概念。
 - 只给必要信息：结论、取舍和证据；不补可选评论。
 - 澄清或拷问一轮最多 2 个问题，一句话问、一句话给推荐。
 - 方向、方案、Issue 先讨论，用户点头后才写正式文档或建 Issue；讨论期间只给观点和草稿。
@@ -44,15 +44,15 @@
 | `docs/roadmap.md` | 阶段路线与方向 |
 | `docs/tasks/README.md` | 任务看板，Active / Completed / 放弃 以这里为准 |
 | `docs/tasks/_template.tdd.md` | 新任务模板 |
-| `docs/research/README.md` | 研究入口：codex-reference、DeepSeek Harness、学习方法 |
-| `docs/research/learning-roadmap/learning-method.md` | 每个子系统的七步法与阶段产物 |
+| `docs/research/README.md` | 研究入口：pi-reference、补充参照与学习方法 |
+| `docs/research/pi-reference/learning-method.md` | 每个子系统的七步法与阶段产物 |
 | `docs/development-workflow.md` | 多角色分工的完整流程：角色表、Clarification Gate、Issue 规格、触发语、授权边界 |
 | `docs/work-log.md` | 已发生事实 |
 | `docs/tasks/completed/` | 已完成阶段归档 |
 
 `docs/development-task-plan.md` 只保留为旧入口兼容，不写新任务。
 
-当前状态：Phase 1-8 Completed 并归档；当前阶段为源码阅读，范围是 Phase 8 链路、codex-reference 中的 durability-recovery 与 safety-permission、DeepSeek Harness 的 session 与 interaction；无 Active Task，Next 为 #115 → #116 → #117（已立 Issue、未开工）；翻译质检站已于 #113 删除；下一批候选子系统为 session 事件流与 replay、审批门、compaction、定时任务，候选不等于 Active；Admin Task 4 保持 Planned。
+当前状态：Phase 1-8 Completed 并归档；当前阶段为源码阅读，先完成当前项目链路学习，之后按 `docs/research/pi-reference/roadmap.md` 学习 Pi 并讨论云端重构；无 Active Task，Next 为 #115 → #116 → #117（已立 Issue、未开工）；翻译质检站已于 #113 删除；下一批候选子系统为 session 事件流与 replay、审批门、compaction、定时任务，候选不等于 Active；Admin Task 4 保持 Planned。
 
 ## 4. 关键目录
 
