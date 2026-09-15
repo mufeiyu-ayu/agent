@@ -80,7 +80,7 @@ if (
 
 server generation 自己另有 `ServerLifetime`：operator keepAlive、startup grace、连接数和 worker 数。两层计数不能相互替代。
 
-关闭顺序是 services → harness/session → repo → executionEnv → release writer ownership；错误汇总为 AggregateError。资源关闭失败不被包装成正常成功。[closeResources](/Users/ayu/Learn/pi/packages/coding-agent/src/experimental/session-worker.ts:480)。
+关闭顺序是 services → harness/session → repo → executionEnv → release writer ownership；每步失败都继续执行下一步，单个错误原样抛出，多个才汇总为 AggregateError。资源关闭失败不被包装成正常成功。[closeResources](/Users/ayu/Learn/pi/packages/coding-agent/src/experimental/session-worker.ts:480)。
 
 ## 5. 业务服务与 transport 分开
 

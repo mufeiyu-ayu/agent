@@ -7,7 +7,7 @@
     "locale": "zh-CN",
     "quality_profile": "showcase",
     "visual_preset": "blueprint",
-    "animation": "none",
+    "animation": "trace",
     "column_fit": "spread",
     "viewBox": [
       1100,
@@ -146,7 +146,8 @@
       "title": "共享状态与订阅",
       "items": [
         "共享 Lane watch 在 worker 初始化时建立。",
-        "客户端读取已有状态；箭头折叠 Server 转发。"
+        "客户端读取已有状态；箭头折叠 Server 转发。",
+        "路由附着折叠为一步：实际是 acquire(sessionId) 起 worker → attachClient 拿 lease → publishAttachment 通知客户端。"
       ]
     },
     {

@@ -163,7 +163,7 @@ Pi 自身 `AGENTS.md` 禁止默认跑全量 `npm test`；本研究没有因“�
 2. 说某功能“默认”时同时核对 CLI main、package exports/files 和配置默认值。
 3. 说某字段“不影响模型”时沿 `buildContextEntries → sessionEntryToContextMessages → convertToLlm → extension context transforms` 核对；UI display 与 model visibility 是两回事。
 4. 说“恢复”时明确是恢复聊天历史、重建模型 context、重连 replica，还是重启后继续未完成 effect；四种承诺分别找证据。
-5. 本次没有逐行审核所有低优先级 helper、例子、vendor 或平台 C 分支，也没有跨平台运行验证。模块地图用于后续定向带读，不制造不存在的验证结论。
+5. 本次没有逐行审核所有低优先级 helper、例子、vendor 或平台 C 分支，也没有跨平台运行验证。模块地图用于后续定向查阅，不制造不存在的验证结论。
 
 ## 7. 源码目录完整索引
 

@@ -38,7 +38,7 @@ proxy做两件事：更新真实root；把路径标进dirty trie。重复写同�
 
 ### 2.2 文本与数组的最小必要算法
 
-[diffString:206](/Users/ayu/Learn/pi/packages/chord/src/delta/index.ts:206) 优先检测追加，否则尝试“旧字符串后缀 == 新字符串前缀”得到t+a。`overlap()`扫描默认最多65,536字符、probe最多64字符、候选默认8个；重复内容找不到时回退s。**有界探测可漏掉更短编码机会，但不会为了压缩造出错误值。**文件中的微秒数字是源码注释中的历史测量，本次未复现性能基准。
+[diffString:205](/Users/ayu/Learn/pi/packages/chord/src/delta/index.ts:205) 优先检测追加，否则尝试“旧字符串后缀 == 新字符串前缀”得到t+a。`overlap()`扫描默认最多65,536字符、probe最多64字符、候选默认8个；重复内容找不到时回退s。**有界探测可漏掉更短编码机会，但不会为了压缩造出错误值。**文件中的微秒数字是源码注释中的历史测量，本次未复现性能基准。
 
 [diffArray:273](/Users/ayu/Learn/pi/packages/chord/src/delta/index.ts:273)：等长数组逐index diff；长度变化先找相同前/后缀，能描述成单一splice就发splice；重排又伴随保留index修改时没有唯一对齐，保留index diff，再描述尾部长度变化。它保证最终值，不保存“用户本来意图移动哪一项”。
 
@@ -69,7 +69,7 @@ if (op[0] === "r") {
 
 [encoder():1105](/Users/ayu/Learn/pi/packages/chord/src/delta/index.ts:1105) 对路径第一次inline，第二次出现发 `['#', id, path]` 并用id，之后复用id。同batch连续相同path直接省略，靠tuple arity区分；短形式绝不跨batch。
 
-原文，[delta/index.ts:1124](/Users/ayu/Learn/pi/packages/chord/src/delta/index.ts:1124)：
+原文，[delta/index.ts:1126](/Users/ayu/Learn/pi/packages/chord/src/delta/index.ts:1126)（前两行为注释）：
 
 ```ts
 seen.clear();

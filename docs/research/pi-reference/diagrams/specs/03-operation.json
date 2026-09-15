@@ -1,225 +1,230 @@
 {
-  "schema_version": 2,
-  "diagram_type": "workflow",
+  "schema_version": 1,
+  "diagram_type": "sequence",
   "meta": {
     "title": "一次 durable operation",
-    "subtitle": "正常 Tool Call 链 · 每个状态转换都有明确持久化边界",
+    "subtitle": "时间自上而下：accept 接纳 → drive 驱动 → 采样 → 工具 → 回到 checkpoint → 终态；每一步都有持久化边界",
     "locale": "zh-CN",
     "quality_profile": "showcase",
     "visual_preset": "blueprint",
-    "animation": "none",
+    "animation": "trace",
     "views": [
       {
-        "id": "normal",
-        "label": "正常运行",
+        "id": "accept",
+        "label": "接纳与驱动",
         "focus": [
-          "accept",
-          "drive",
-          "boundary",
-          "model",
-          "commit",
-          "terminal"
+          "lane",
+          "session",
+          "drive"
         ]
       },
       {
-        "id": "tool",
-        "label": "工具 / 模型挂起",
+        "id": "sample",
+        "label": "采样与工具",
         "focus": [
-          "commit",
-          "tool",
-          "suspend",
-          "boundary"
+          "drive",
+          "session",
+          "models",
+          "tools"
         ]
       }
     ],
-    "legend": {
-      "mode": "auto",
-      "entries": {
-        "database": {
-          "label": "持久化事实"
-        },
-        "security": {
-          "label": "工具执行"
-        },
-        "messagebus": {
-          "label": "等待"
-        },
-        "backend": {
-          "label": "执行控制"
-        },
-        "cloud": {
-          "label": "模型调用"
-        }
-      }
-    },
-    "output": "03-operation.html"
+    "output": "03-operation.html",
+    "column_fit": "spread",
+    "viewBox": [
+      1000,
+      720
+    ]
   },
-  "lanes": [
+  "participants": [
     {
-      "id": "run",
-      "label": "运行与持久化"
+      "id": "lane",
+      "type": "backend",
+      "label": "Lane",
+      "sublabel": "accept / drive"
     },
     {
-      "id": "effect",
-      "label": "工具 / 终态 / 等待"
-    }
-  ],
-  "nodes": [
-    {
-      "id": "accept",
-      "lane": "run",
-      "col": 0,
+      "id": "session",
       "type": "database",
-      "label": "accept",
-      "sublabel": "prompt + op 原子写入"
+      "label": "Session",
+      "sublabel": "durable 事实"
     },
     {
       "id": "drive",
-      "lane": "run",
-      "col": 1,
       "type": "backend",
-      "label": "drive",
+      "label": "Drive",
       "sublabel": "单个执行 owner"
     },
     {
-      "id": "boundary",
-      "lane": "run",
-      "col": 2,
-      "type": "backend",
-      "label": "checkpoint",
-      "sublabel": "inbox / context 预算"
-    },
-    {
-      "id": "model",
-      "lane": "run",
-      "col": 3,
+      "id": "models",
       "type": "cloud",
-      "label": "generation",
-      "sublabel": "effect_pending → model"
+      "label": "Models",
+      "sublabel": "provider"
     },
     {
-      "id": "commit",
-      "lane": "run",
-      "col": 4,
-      "type": "database",
-      "label": "response",
-      "sublabel": "entry + usage + state"
-    },
-    {
-      "id": "terminal",
-      "lane": "effect",
-      "col": 2,
-      "type": "database",
-      "label": "terminal",
-      "sublabel": "结束检查 / lane 释放"
-    },
-    {
-      "id": "tool",
-      "lane": "effect",
-      "col": 4,
+      "id": "tools",
       "type": "security",
-      "label": "tool journal",
-      "sublabel": "意图 → 执行 → 结果"
-    },
-    {
-      "id": "suspend",
-      "lane": "effect",
-      "col": 5,
-      "type": "messagebus",
-      "label": "suspended",
-      "sublabel": "显式 permit 后恢复"
+      "label": "Tools",
+      "sublabel": "effect"
     }
   ],
-  "edges": [
+  "segments": [
     {
-      "from": "accept",
+      "from": 152,
+      "to": 220,
+      "label": "接纳与驱动"
+    },
+    {
+      "from": 220,
+      "to": 390,
+      "label": "采样"
+    },
+    {
+      "from": 390,
+      "to": 526,
+      "label": "工具"
+    },
+    {
+      "from": 526,
+      "to": 628,
+      "label": "回环与结束"
+    }
+  ],
+  "messages": [
+    {
+      "from": "lane",
+      "to": "session",
+      "y": 170,
+      "label": "accept 原子写入 prompt + op",
+      "variant": "emphasis"
+    },
+    {
+      "from": "lane",
       "to": "drive",
-      "role": "main"
+      "y": 204,
+      "label": "drive 安装唯一 owner",
+      "variant": "emphasis"
     },
     {
       "from": "drive",
-      "to": "boundary",
-      "role": "main"
+      "to": "session",
+      "y": 238,
+      "label": "checkpoint：inbox / 压缩阈值",
+      "variant": "default"
     },
     {
-      "from": "boundary",
-      "to": "model",
-      "role": "main"
+      "from": "drive",
+      "to": "session",
+      "y": 272,
+      "label": "generation intent",
+      "variant": "default"
     },
     {
-      "from": "model",
-      "to": "commit",
-      "role": "main"
+      "from": "drive",
+      "to": "models",
+      "y": 306,
+      "label": "streamSimple（Gate.admit）",
+      "variant": "emphasis"
     },
     {
-      "from": "commit",
-      "to": "boundary",
-      "label": "无工具 / 下一检查点",
-      "role": "return",
-      "variant": "dashed",
-      "route": "up-channel",
-      "fromSide": "top",
-      "toSide": "top"
+      "from": "models",
+      "to": "drive",
+      "y": 340,
+      "label": "帧 / done",
+      "variant": "return"
     },
     {
-      "from": "commit",
-      "to": "tool",
-      "label": "tool calls",
-      "role": "main"
+      "from": "drive",
+      "to": "session",
+      "y": 374,
+      "label": "publishResponse 写 entry + usage",
+      "variant": "emphasis"
     },
     {
-      "from": "tool",
-      "to": "boundary",
-      "label": "结果按原顺序提交",
-      "role": "return",
-      "variant": "dashed",
-      "route": "auto"
+      "from": "drive",
+      "to": "session",
+      "y": 408,
+      "label": "tool intent：args + replay",
+      "variant": "default"
     },
     {
-      "from": "commit",
-      "to": "suspend",
-      "label": "deferred",
-      "role": "branch",
+      "from": "drive",
+      "to": "tools",
+      "y": 442,
+      "label": "execute",
       "variant": "security"
     },
     {
-      "from": "boundary",
-      "to": "terminal",
-      "label": "可结束",
-      "role": "branch"
+      "from": "tools",
+      "to": "drive",
+      "y": 476,
+      "label": "outcome",
+      "variant": "return"
     },
     {
-      "from": "suspend",
-      "to": "commit",
-      "label": "显式 poll 的新响应",
-      "role": "return",
-      "variant": "dashed",
-      "route": "auto"
+      "from": "drive",
+      "to": "session",
+      "y": 510,
+      "label": "outcome_ready → 按原顺序放置",
+      "variant": "default"
+    },
+    {
+      "from": "drive",
+      "to": "session",
+      "y": 544,
+      "label": "回到 checkpoint（need_assistant）",
+      "variant": "dashed"
+    },
+    {
+      "from": "drive",
+      "to": "session",
+      "y": 578,
+      "label": "finish：pi.result + 清理",
+      "variant": "emphasis"
+    },
+    {
+      "from": "drive",
+      "to": "lane",
+      "y": 612,
+      "label": "settled",
+      "variant": "return"
     }
   ],
-  "mainPath": [
-    "accept",
-    "drive",
-    "boundary",
-    "model",
-    "commit",
-    "tool"
+  "activations": [
+    {
+      "participant": "drive",
+      "from": 196,
+      "to": 620,
+      "type": "backend"
+    },
+    {
+      "participant": "models",
+      "from": 298,
+      "to": 348,
+      "type": "cloud"
+    },
+    {
+      "participant": "tools",
+      "from": 434,
+      "to": 484,
+      "type": "security"
+    }
   ],
   "cards": [
     {
       "dot": "emerald",
-      "title": "实际入口",
+      "title": "每一步的持久化边界",
       "items": [
-        "Lane.accept → Lane.drive → drive dispatcher。",
-        "图折叠 13 个内部状态；源码锚点见图表索引。"
+        "accept、generation intent、tool intent 都先写意图再执行副作用；publishResponse 与 placement 才写最终 entry。",
+        "帧与工具 checkpoint 进 pi.pending.*，不进 transcript；重启后由 effect_pending 恢复。"
       ]
     },
     {
       "dot": "rose",
-      "title": "恢复边界",
+      "title": "图外的分支",
       "items": [
-        "model error 可能进入 retry_wait；不是所有失败都终止。",
-        "unsafe tool 不自动重放；挂起操作不会无许可自行轮询。"
+        "模型 error 可能进入 retry_wait；deferred 响应进入 suspended，需显式 poll permit。",
+        "取消是 cancel_requested 标记 + reconcile，不是 signal；unsafe 工具不重放。"
       ]
     }
   ]

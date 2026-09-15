@@ -3,11 +3,11 @@
   "diagram_type": "architecture",
   "meta": {
     "title": "云端 Agent 的候选方向",
-    "subtitle": "设计建议 · 现有 Vue / NestJS / PostgreSQL 上逐步演进",
+    "subtitle": "自上而下：Web 发命令 → API 接纳 → Run Owner 执行 → 事实进 PostgreSQL → 投影回 Web",
     "locale": "zh-CN",
     "quality_profile": "showcase",
     "visual_preset": "blueprint",
-    "animation": "none",
+    "animation": "trace",
     "views": [
       {
         "id": "control",
@@ -34,145 +34,160 @@
   },
   "layout": {
     "mode": "grid",
+    "origin": [
+      36,
+      40
+    ],
     "cols": 3,
-    "cellW": 220,
-    "cellH": 80,
-    "gapX": 100,
-    "gapY": 70
+    "cellW": 200,
+    "cellH": 60,
+    "gapX": 96,
+    "gapY": 48
   },
   "components": [
     {
       "id": "web",
-      "type": "frontend",
       "label": "Vue Web / Admin",
       "sublabel": "会话 / 模型 / Trace / Sources",
+      "type": "frontend",
       "row": 0,
       "col": 0,
       "size": [
-        220,
-        80
+        200,
+        60
       ]
     },
     {
       "id": "api",
-      "type": "security",
       "label": "NestJS API",
       "sublabel": "身份 / 会话权限 / 命令",
+      "type": "security",
       "row": 0,
       "col": 1,
       "size": [
-        220,
-        80
-      ]
-    },
-    {
-      "id": "runtime",
-      "type": "backend",
-      "label": "Run Owner",
-      "sublabel": "状态机 / checkpoint / deadline",
-      "row": 0,
-      "col": 2,
-      "size": [
-        220,
-        80
+        200,
+        60
       ]
     },
     {
       "id": "projection",
-      "type": "messagebus",
       "label": "订阅与投影",
       "sublabel": "snapshot + cursor / 重连",
+      "type": "messagebus",
       "row": 1,
       "col": 0,
       "size": [
-        220,
-        80
+        200,
+        60
       ]
     },
     {
-      "id": "db",
-      "type": "database",
-      "label": "PostgreSQL",
-      "sublabel": "operation / journal / model input",
+      "id": "runtime",
+      "label": "Run Owner",
+      "sublabel": "状态机 / checkpoint / deadline",
+      "type": "backend",
       "row": 1,
       "col": 1,
       "size": [
-        220,
-        80
+        200,
+        60
       ]
     },
     {
       "id": "model",
-      "type": "cloud",
       "label": "LLM Adapter",
       "sublabel": "独立契约 / provider 差异",
+      "type": "cloud",
       "row": 1,
       "col": 2,
       "size": [
-        220,
-        80
+        200,
+        60
+      ]
+    },
+    {
+      "id": "db",
+      "label": "PostgreSQL",
+      "sublabel": "operation / journal / 模型输入",
+      "type": "database",
+      "row": 2,
+      "col": 1,
+      "size": [
+        200,
+        60
       ]
     },
     {
       "id": "tool",
-      "type": "security",
       "label": "Tool Execution",
       "sublabel": "审批 / receipt / 隔离",
+      "type": "security",
       "row": 2,
       "col": 2,
       "size": [
-        220,
-        80
+        200,
+        60
       ]
     }
   ],
   "connections": [
     {
+      "id": "web-api",
       "from": "web",
       "to": "api",
       "label": "命令"
     },
     {
+      "id": "api-runtime",
       "from": "api",
       "to": "runtime",
-      "label": "接纳"
+      "label": "接纳",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelDy": 26
     },
     {
+      "id": "runtime-db",
       "from": "runtime",
       "to": "db",
-      "label": "durable facts"
+      "label": "durable facts",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelDy": 26,
+      "labelDx": -46
     },
     {
+      "id": "db-projection",
       "from": "db",
       "to": "projection",
-      "label": "恢复读端"
+      "label": "恢复读端",
+      "fromSide": "left",
+      "toSide": "bottom"
     },
     {
+      "id": "projection-web",
       "from": "projection",
       "to": "web",
       "label": "观察",
       "fromSide": "top",
-      "toSide": "bottom",
-      "labelDx": 40,
-      "labelDy": -20
+      "toSide": "bottom"
     },
     {
+      "id": "runtime-model",
       "from": "runtime",
       "to": "model",
-      "label": "采样",
-      "fromSide": "bottom",
-      "toSide": "top",
-      "labelDx": 40,
-      "labelDy": 20
+      "label": "采样"
     },
     {
+      "id": "runtime-tool",
       "from": "runtime",
       "to": "tool",
       "label": "受控执行",
       "variant": "security",
-      "fromSide": "right",
-      "toSide": "right",
-      "labelDx": 45
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelDy": 26,
+      "labelDx": 46
     }
   ],
   "cards": [

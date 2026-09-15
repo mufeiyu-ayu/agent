@@ -1,0 +1,358 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Pi 生命周期与可定制点",
+    "subtitle": "左列：普通产品的扩展事件 · 右列：durable harness 的 hooks · 自上而下按发生顺序，只画能改变行为的点",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "visual_preset": "blueprint",
+    "animation": "trace",
+    "views": [
+      {
+        "id": "product",
+        "label": "普通产品扩展事件",
+        "focus": [
+          "session_start",
+          "before_agent_start",
+          "context",
+          "tool_call",
+          "agent_end",
+          "agent_settled"
+        ]
+      },
+      {
+        "id": "harness",
+        "label": "durable harness hooks",
+        "focus": [
+          "before_drive",
+          "before_run",
+          "transform",
+          "before_tool",
+          "before_run_end",
+          "before_compaction"
+        ]
+      }
+    ],
+    "output": "08-lifecycle-hooks.html"
+  },
+  "layout": {
+    "mode": "grid",
+    "origin": [
+      60,
+      40
+    ],
+    "cols": 2,
+    "cellW": 230,
+    "cellH": 54,
+    "gapX": 170,
+    "gapY": 32
+  },
+  "components": [
+    {
+      "id": "session_start",
+      "label": "session_start",
+      "sublabel": "资源 / 信任已定",
+      "type": "database",
+      "row": 0,
+      "col": 0,
+      "size": [
+        230,
+        54
+      ]
+    },
+    {
+      "id": "before_agent_start",
+      "label": "before_agent_start",
+      "sublabel": "注入消息 / 改 system prompt",
+      "type": "messagebus",
+      "row": 1,
+      "col": 0,
+      "size": [
+        230,
+        54
+      ]
+    },
+    {
+      "id": "context",
+      "label": "context",
+      "sublabel": "改发送前 messages",
+      "type": "cloud",
+      "row": 2,
+      "col": 0,
+      "size": [
+        230,
+        54
+      ]
+    },
+    {
+      "id": "tool_call",
+      "label": "tool_call",
+      "sublabel": "block / terminate",
+      "type": "security",
+      "row": 3,
+      "col": 0,
+      "size": [
+        230,
+        54
+      ]
+    },
+    {
+      "id": "agent_end",
+      "label": "agent_end",
+      "sublabel": "可入队 followUp",
+      "type": "backend",
+      "row": 4,
+      "col": 0,
+      "size": [
+        230,
+        54
+      ]
+    },
+    {
+      "id": "agent_settled",
+      "label": "agent_settled",
+      "sublabel": "随后 session_shutdown",
+      "type": "backend",
+      "row": 5,
+      "col": 0,
+      "size": [
+        230,
+        54
+      ]
+    },
+    {
+      "id": "before_drive",
+      "label": "before_drive",
+      "sublabel": "fail-closed",
+      "type": "security",
+      "row": 0,
+      "col": 1,
+      "size": [
+        230,
+        54
+      ]
+    },
+    {
+      "id": "before_run",
+      "label": "before_run",
+      "sublabel": "追加注入消息",
+      "type": "messagebus",
+      "row": 1,
+      "col": 1,
+      "size": [
+        230,
+        54
+      ]
+    },
+    {
+      "id": "transform",
+      "label": "transform_context",
+      "sublabel": "改 messages / systemPrompt",
+      "type": "cloud",
+      "row": 2,
+      "col": 1,
+      "size": [
+        230,
+        54
+      ]
+    },
+    {
+      "id": "before_tool",
+      "label": "before_tool",
+      "sublabel": "改 args / block",
+      "type": "security",
+      "row": 3,
+      "col": 1,
+      "size": [
+        230,
+        54
+      ]
+    },
+    {
+      "id": "before_run_end",
+      "label": "before_run_end",
+      "sublabel": "followUp 再复核 inbox",
+      "type": "messagebus",
+      "row": 4,
+      "col": 1,
+      "size": [
+        230,
+        54
+      ]
+    },
+    {
+      "id": "before_compaction",
+      "label": "before_compaction",
+      "sublabel": "decline / 自定义摘要",
+      "type": "database",
+      "row": 5,
+      "col": 1,
+      "size": [
+        230,
+        54
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "普通产品 · AgentSession 扩展事件（ExtensionEvent）",
+      "wraps": [
+        "session_start",
+        "before_agent_start",
+        "context",
+        "tool_call",
+        "agent_end",
+        "agent_settled"
+      ],
+      "pad": 14
+    },
+    {
+      "kind": "region",
+      "label": "durable harness · hooks",
+      "wraps": [
+        "before_drive",
+        "before_run",
+        "transform",
+        "before_tool",
+        "before_run_end",
+        "before_compaction"
+      ],
+      "pad": 14
+    }
+  ],
+  "connections": [
+    {
+      "id": "l0",
+      "from": "session_start",
+      "to": "before_agent_start",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "r0",
+      "from": "before_drive",
+      "to": "before_run",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "l1",
+      "from": "before_agent_start",
+      "to": "context",
+      "label": "每次采样",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelDy": 27
+    },
+    {
+      "id": "r1",
+      "from": "before_run",
+      "to": "transform",
+      "label": "每次 attempt",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelDy": 27
+    },
+    {
+      "id": "l2",
+      "from": "context",
+      "to": "tool_call",
+      "label": "有 toolCall",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelDy": 27
+    },
+    {
+      "id": "r2",
+      "from": "transform",
+      "to": "before_tool",
+      "label": "after_response 后",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelDy": 27
+    },
+    {
+      "id": "l3",
+      "from": "tool_call",
+      "to": "agent_end",
+      "label": "无更多工具",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelDy": 27
+    },
+    {
+      "id": "r3",
+      "from": "before_tool",
+      "to": "before_run_end",
+      "label": "批次完成",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelDy": 27
+    },
+    {
+      "id": "l4",
+      "from": "agent_end",
+      "to": "agent_settled",
+      "label": "重试 / 压缩后",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelDy": 27
+    },
+    {
+      "id": "r4",
+      "from": "before_run_end",
+      "to": "before_compaction",
+      "label": "阈值 / 导航时",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "variant": "dashed",
+      "labelDy": 27
+    },
+    {
+      "id": "l-loop",
+      "from": "tool_call",
+      "to": "context",
+      "label": "tool_result → 下一轮",
+      "variant": "dashed",
+      "fromSide": "left",
+      "toSide": "left",
+      "labelAt": [
+        36,
+        280
+      ]
+    },
+    {
+      "id": "r-loop",
+      "from": "before_tool",
+      "to": "transform",
+      "label": "after_tool → checkpoint",
+      "variant": "dashed",
+      "fromSide": "right",
+      "toSide": "right",
+      "labelAt": [
+        714,
+        280
+      ]
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "没画的介入点",
+      "items": [
+        "产品层：project_trust / resources_discover 在 session_start 之前；input / user_bash 拦截用户输入；before_provider_request / headers / after_provider_response 围绕每次请求；session_before_switch / fork / tree / compact 可否决会话结构操作。",
+        "harness：before_request / before_payload / after_response / before_navigation。"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "失败策略不一样",
+      "items": [
+        "产品 tool_call 与 harness before_drive 异常向上抛（fail-closed）；before_tool 异常转为 block；其余 hook 报告 handler_error 后继续。",
+        "两列不是一一对应：扩展事件跑在旧 AgentSession 上，hooks 跑在新 durable 内核上。"
+      ]
+    }
+  ]
+}

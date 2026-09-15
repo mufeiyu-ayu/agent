@@ -3,16 +3,11 @@
   "diagram_type": "architecture",
   "meta": {
     "title": "Pi 全仓架构",
-    "subtitle": "8a7b0c03 · 普通 CLI 与 durable 实验路径并存",
+    "subtitle": "自上而下：产品外壳 → 运行内核 → 模型与存储 · 普通 CLI 与 durable 实验路径并存",
     "locale": "zh-CN",
     "quality_profile": "showcase",
     "visual_preset": "blueprint",
-    "animation": "none",
-    "repository": {
-      "url": "https://github.com/mufeiyu-ayu/pi",
-      "revision": "8a7b0c03dfb702663acafb6dc29f8acaa4ffe391",
-      "link_mode": "local-only"
-    },
+    "animation": "trace",
     "views": [
       {
         "id": "classic",
@@ -30,21 +25,30 @@
         "focus": [
           "remote",
           "harness",
+          "chord",
           "ai",
-          "storage",
-          "chord"
+          "storage"
         ]
       }
     ],
-    "output": "01-repository.html"
+    "output": "01-repository.html",
+    "repository": {
+      "url": "https://github.com/mufeiyu-ayu/pi",
+      "revision": "8a7b0c03dfb702663acafb6dc29f8acaa4ffe391",
+      "link_mode": "local-only"
+    }
   },
   "layout": {
     "mode": "grid",
+    "origin": [
+      36,
+      40
+    ],
     "cols": 3,
-    "cellW": 220,
-    "cellH": 80,
-    "gapX": 100,
-    "gapY": 70
+    "cellW": 200,
+    "cellH": 60,
+    "gapX": 96,
+    "gapY": 48
   },
   "components": [
     {
@@ -54,14 +58,14 @@
       "type": "frontend",
       "row": 0,
       "col": 0,
+      "size": [
+        200,
+        60
+      ],
       "sources": [
         {
           "path": "packages/tui/src/tui.ts"
         }
-      ],
-      "size": [
-        220,
-        80
       ]
     },
     {
@@ -71,82 +75,65 @@
       "type": "backend",
       "row": 0,
       "col": 1,
+      "size": [
+        200,
+        60
+      ],
       "sources": [
         {
           "path": "packages/coding-agent/src/core/agent-session.ts"
         }
-      ],
+      ]
+    },
+    {
+      "id": "remote",
+      "label": "实验多端入口",
+      "sublabel": "coding-agent/experimental",
+      "type": "frontend",
+      "row": 0,
+      "col": 2,
       "size": [
-        220,
-        80
+        200,
+        60
+      ],
+      "sources": [
+        {
+          "path": "packages/coding-agent/src/experimental/server.ts"
+        }
       ]
     },
     {
       "id": "agent",
       "label": "Agent / agentLoop",
-      "sublabel": "packages/agent · 旧内存循环",
+      "sublabel": "packages/agent · 内存循环",
       "type": "backend",
-      "row": 0,
-      "col": 2,
+      "row": 1,
+      "col": 0,
+      "size": [
+        200,
+        60
+      ],
       "sources": [
         {
           "path": "packages/agent/src/agent-loop.ts"
         }
-      ],
-      "size": [
-        220,
-        80
-      ]
-    },
-    {
-      "id": "remote",
-      "label": "实验性多端入口",
-      "sublabel": "coding-agent + client/server/protocol",
-      "type": "frontend",
-      "row": 1,
-      "col": 0,
-      "sources": [
-        {
-          "path": "packages/coding-agent/src/experimental/server.ts"
-        }
-      ],
-      "size": [
-        220,
-        80
       ]
     },
     {
       "id": "harness",
       "label": "AgentHarness",
-      "sublabel": "packages/agent · durable runtime",
+      "sublabel": "packages/agent · durable",
       "type": "backend",
       "row": 1,
       "col": 1,
+      "size": [
+        200,
+        60
+      ],
       "sources": [
         {
           "path": "packages/agent/src/harness/runtime/harness.ts"
         }
-      ],
-      "size": [
-        220,
-        80
-      ]
-    },
-    {
-      "id": "ai",
-      "label": "Models / Providers",
-      "sublabel": "packages/ai · 模型流边界",
-      "type": "cloud",
-      "row": 1,
-      "col": 2,
-      "sources": [
-        {
-          "path": "packages/ai/src/models.ts"
-        }
-      ],
-      "size": [
-        220,
-        80
       ]
     },
     {
@@ -154,33 +141,50 @@
       "label": "Chord",
       "sublabel": "facets / services / delta",
       "type": "messagebus",
-      "row": 2,
-      "col": 0,
+      "row": 1,
+      "col": 2,
+      "size": [
+        200,
+        60
+      ],
       "sources": [
         {
           "path": "packages/chord/src/api.ts"
         }
-      ],
+      ]
+    },
+    {
+      "id": "ai",
+      "label": "Models / Providers",
+      "sublabel": "packages/ai",
+      "type": "cloud",
+      "row": 2,
+      "col": 0,
       "size": [
-        220,
-        80
+        200,
+        60
+      ],
+      "sources": [
+        {
+          "path": "packages/ai/src/models.ts"
+        }
       ]
     },
     {
       "id": "storage",
       "label": "Session / Backends",
-      "sublabel": "JSONL / Memory / sqlite-node",
+      "sublabel": "JSONL / Memory / sqlite",
       "type": "database",
       "row": 2,
       "col": 1,
+      "size": [
+        200,
+        60
+      ],
       "sources": [
         {
           "path": "packages/session-backends/sqlite-node/src/index.ts"
         }
-      ],
-      "size": [
-        220,
-        80
       ]
     }
   ],
@@ -189,79 +193,83 @@
       "id": "cli-tui",
       "from": "cli",
       "to": "tui",
-      "label": "渲染",
-      "variant": "default"
+      "label": "渲染"
     },
     {
       "id": "cli-agent",
       "from": "cli",
       "to": "agent",
       "label": "prompt",
-      "variant": "default"
-    },
-    {
-      "id": "agent-ai",
-      "from": "agent",
-      "to": "ai",
-      "label": "stream",
-      "variant": "default",
       "fromSide": "bottom",
       "toSide": "top",
-      "labelDx": 45,
-      "labelDy": 20
+      "labelDy": 26,
+      "labelDx": -30
     },
     {
       "id": "remote-harness",
       "from": "remote",
       "to": "harness",
       "label": "lane 服务",
-      "variant": "default"
-    },
-    {
-      "id": "harness-ai",
-      "from": "harness",
-      "to": "ai",
-      "label": "模型请求",
-      "variant": "default"
-    },
-    {
-      "id": "harness-storage",
-      "from": "harness",
-      "to": "storage",
-      "label": "事务 / 日志",
-      "variant": "default",
       "fromSide": "bottom",
       "toSide": "top",
-      "labelDx": 45,
-      "labelDy": 20
+      "labelDy": 26,
+      "labelDx": -44
     },
     {
       "id": "remote-chord",
       "from": "remote",
       "to": "chord",
       "label": "组合 / 复制",
-      "variant": "default",
       "fromSide": "bottom",
       "toSide": "top",
-      "labelDx": 45,
-      "labelDy": 20
+      "labelDy": 26,
+      "labelDx": 44
+    },
+    {
+      "id": "agent-ai",
+      "from": "agent",
+      "to": "ai",
+      "label": "stream",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelDy": 26,
+      "labelDx": 30
+    },
+    {
+      "id": "harness-ai",
+      "from": "harness",
+      "to": "ai",
+      "label": "模型请求",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelDy": 26,
+      "labelDx": -44
+    },
+    {
+      "id": "harness-storage",
+      "from": "harness",
+      "to": "storage",
+      "label": "事务 / 日志",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelDy": 26,
+      "labelDx": 44
     }
   ],
   "cards": [
     {
       "dot": "cyan",
-      "title": "产品与机制",
+      "title": "三层怎么读",
       "items": [
-        "coding-agent 组装产品；agent 与 ai 提供执行机制。",
-        "client/server/protocol 的路由不拥有 transcript 业务类型。"
+        "上层是产品外壳（TUI、CLI/SDK、实验多端入口）；中层是两代运行内核与 Chord 组合；下层是模型边界与会话存储。",
+        "普通 CLI 走左侧 Agent 内存循环；实验路径走 AgentHarness + Chord，两者共用 packages/ai。"
       ]
     },
     {
       "dot": "amber",
-      "title": "旁路工具",
+      "title": "旁路",
       "items": [
-        "telemetry 定义观测契约；evals 管理离线评估与比较。",
-        "tests / scripts / native 由全仓索引单独覆盖。"
+        "telemetry 定义观测契约；evals 管理离线评估；client/server/protocol 只做路由，不拥有业务类型。"
       ]
     }
   ]

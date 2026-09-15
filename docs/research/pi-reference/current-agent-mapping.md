@@ -9,13 +9,14 @@
 | 入口与产品 | `SeoController → SeoService → AgentRuntimeService.runTurnStream`；Runtime 已独立目录 | 普通 coding-agent 负责产品，Agent/Models 提供机制 | 后续抽离 SEO 命名与产品组合，先明确能力面，不因目录名直接重写 |
 | 模型边界 | `LLMService` / 自有 `ModelInputItem` / `ModelStreamEvent` / OpenAI-compatible client | `Models` / provider adapter / assistant frame | 保留自有契约，把 provider 兼容留在 adapter；#117 再加 Responses |
 | 模型重试 | `OpenAICompatibleClient.createClient()` 明确 `maxRetries: 0` | Pi 有 adapter request retry，也有 durable runtime 的 attempt/retry_wait | #115 已建，先分清请求前重试与已产生输出后的新 attempt |
-| 工具循环 | 默认 `maxSamplingRounds: 3`、`maxToolCalls: 2`；可由启动期环境覆盖 | 旧 Agent loop 与新 Drive 都支持工具续轮 | #115 的新默认值是计划，不是当前事实 |
-| 同轮输出 | `streamModelSampling` 拒绝文本之后 Tool Call 与同轮多个工具 | Pi assistant content 可同时含 text/toolCall；新 runtime 支持调度与顺序发布 | 按 #116 先实现顺序多工具；不顺带开并行 |
+| 工具循环 | 默认 `maxSamplingRounds: 3`、`maxToolCalls: 2`；可由 `AGENT_MAX_SAMPLING_ROUNDS / AGENT_MAX_TOOL_CALLS` 覆盖，但启动期校验 `maxToolCalls < maxSamplingRounds`（[policy.ts:78](/Users/ayu/Desktop/agent/apps/api/src/agent-runtime/configuration/agent-runtime.policy.ts:78)） | 旧 Agent loop 无轮次上限，靠 `shouldStopAfterTurn`；新 Drive 靠 durable 状态与 retry attempt 上限 | #115 的新默认值是计划，不是当前事实，且必须满足该不变量 |
+| 同轮输出 | `streamModelSampling` 拒绝"最终文本之后再出现 Tool Call"；同轮多工具只在 `finishReason === 'tool_calls'` 时判定并拒绝；Tool Call 还必须带非空 `reasoningContent`（DeepSeek thinking continuation，[model-sampling-decision.ts:137](/Users/ayu/Desktop/agent/apps/api/src/agent-runtime/sampling/model-sampling-decision.ts:137)） | Pi assistant content 可同时含 text/toolCall；OpenAI-compatible adapter 对 DeepSeek 用 `requiresReasoningContentOnAssistantMessages` 表达同一约束 | 按 #116 先实现顺序多工具；不顺带开并行；#116/#117 都要覆盖 reasoningContent 分支 |
+| 流协议与取消 | 统一 NDJSON：`start / delta / done / error / aborted` 五种事件（[contracts/seo.ts:29](/Users/ayu/Desktop/agent/packages/contracts/src/seo.ts:29)）；`RunCancellation` 三个来源 user / deadline / failure，`completing → completed` 处理 COMMIT 不确定态（[run-cancellation.ts:12](/Users/ayu/Desktop/agent/apps/api/src/agent-runtime/lifecycle/run-cancellation.ts:12)）；`runDeadlineMs` 默认 600s | Pi 的 live 事件与 durable entry 分离；取消是 `cancel_requested` 标记 + reconcile，不是 signal | R2/R4 的直接基线：先在这套事件与取消语义上加 operation ID 与 snapshot/cursor，不另起协议 |
 | 上下文 | source-aware `ModelContext`、每轮 `SamplingContextPlanner`、历史预算/Observation 治理 | branch context、compaction、request transforms | 保留预算与不可信数据边界；建立可持久化有效输入的契约 |
 | 运行记录 | Prisma Conversation / Message / AgentRun / AgentStep；Step input/output 记录统计及可选 debug payload | 旧 JSONL 与新 Session 的 branch/op/journal 是不同层级 | AgentStep 不是可恢复 operation journal，不能直接当 replay 驱动日志 |
 | 断线 | HTTP `close` 且响应未正常结束 → AbortController.abort；继续 drain generator 完成 ABORTED 收口 | durable 路径将 observer、attachment、lane operation 分开 | 云端运行独立于订阅，需要改变命令/观察协议与所有权；不能只删 abort |
 | Grounding | EvidenceRegistry、structured finalization、服务端 Citation identity 校验、MessageGrounding、Web/Admin typed projection | Pi 核心不替我们提供这套 RAG 引用事实 | 保留为我们的产品能力，迁移时放在明确的 runtime 扩展边界 |
-| 安全 | 模型 Tool Call 先校验，Observation 治理；尚无完整多租户审批/沙箱体系 | 本机默认权限，实验 protocol 也不等于租户授权 | 云端使用外部写操作前落实身份、scope、审批与隔离 |
+| 安全 | 模型 Tool Call 先校验，Observation 治理；api 目前没有任何 Nest Guard，即零鉴权，Admin Task 4 的 Auth/RBAC 仍 Planned | 本机默认权限，实验 protocol 也不等于租户授权 | 云端使用外部写操作前落实身份、scope、审批与隔离；这是比 Pi 缺口更早要补的项 |
 
 源码入口：
 
@@ -58,8 +59,8 @@ apps/api/src/
     session/        # 候选：事件、分支、快照、rebuild
     operations/     # 候选：accept/drive/checkpoint 与恢复
   llm/              # 已有：provider adapters
-  tools/            # 已有：registry/invocation；候选 journal/receipt
-packages/contracts/ # 已有：UI/API 公开投影，避免导出所有内部日志
+  tools/            # 已有：registry/invocation/observation 归一化（硬上限 128k 字符）；候选 journal/receipt
+packages/contracts/ # 已有：ChatStreamEvent、MessageGroundingV1、AgentRun/AgentStep 投影；R1/R4 改协议先动这里
 ```
 
 两个“候选”目录只有在对应 Issue 定案后才建立。不先抽 `packages/runtime`，也不先建 Chord 风格通用 service runtime；等真正出现第二个宿主（独立 worker/SDK）再证明抽包的收益。
@@ -74,4 +75,4 @@ packages/contracts/ # 已有：UI/API 公开投影，避免导出所有内部日
 
 ## 5. 当前状态不由研究重写
 
-`docs/tasks/README.md` 当前为 Phase 1–8 Completed、无 Active、Next #115，后续 #116 → #117；Admin Task 4 Planned。本次研究不修改这些状态，也不声明当前项目源码学习已由用户完成。
+`docs/tasks/README.md` 当前为 Phase 1–8 Completed、无 Active、Next #115，后续 #116 → #117；Admin Task 4 Planned。#115–#117 的规格只存在于 GitHub Issue 与 README 看板行，`docs/tasks/` 下没有对应任务文件，不要去找。本次研究不修改这些状态，也不声明当前项目源码学习已由用户完成。

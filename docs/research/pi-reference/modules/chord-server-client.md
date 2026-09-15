@@ -32,7 +32,7 @@ this.#bindServices(externalServices);
 
 标注：`setup()` 只允许同步声明 `provide/use/observe`，返回 Promise 会失败；先拿齐依赖再校验重复 provider、singleton/keyed 不匹配、缺依赖和环。随后等待所有 remote binding 的初始 snapshot，才按拓扑序激活。setup 时持有的 handle 尚不能调用服务。
 
-`env.own()` 与 `onDeactivate()` 都纳入资源释放序列，启动中途失败也会清理；不是“构造了一半就留给 GC”。[FacetLifecycle](/Users/ayu/Learn/pi/packages/chord/src/facets/host.ts:65) 与 [validateFacets](/Users/ayu/Learn/pi/packages/chord/src/facets/host.ts:796) 可一起读。
+`env.own()` 与 `onDeactivate()` 都纳入资源释放序列，启动中途失败也会清理；不是“构造了一半就留给 GC”。[FacetLifecycle](/Users/ayu/Learn/pi/packages/chord/src/facets/host.ts:59) 与 [validateFacets](/Users/ayu/Learn/pi/packages/chord/src/facets/host.ts:808) 可一起读。
 
 `reload()` 要求原来的服务 requirements/provisions 形状不变。候选先 setup / activate / validate，再替换 singleton 路由，最后清理旧代；cutover 后失败会撤销服务访问并终止 host，不能说成任意失败都无损回滚。[reload](/Users/ayu/Learn/pi/packages/chord/src/facets/host.ts:423)。
 
@@ -90,7 +90,7 @@ const SessionTargetSchema = StrictObject({
 | `sessionId` | durable Session 身份 | 当前 socket |
 | `attachmentId` | 当前 presentation 附着得到的临时能力标识 | 长期 session 主键 |
 
-server 先检查 `serverId`，SessionRouter 再按连接找到 attachment，核对 session 和 attachment ID，过期路由失败。[Server.handleRequest](/Users/ayu/Learn/pi/packages/server/src/server.ts:310)、[SessionRouter.requireAttachment](/Users/ayu/Learn/pi/packages/server/src/session-router.ts:224)。
+[Server.handleRequest](/Users/ayu/Learn/pi/packages/server/src/server.ts:306) 的检查顺序是：请求 ID 不得与本连接活跃请求重复 → `parseServiceCall` 结构校验 → `serverId` 不符抛 `WrongServerError` → 有 `sessionId` 的目标交给 SessionRouter，后者按连接找到 attachment，核对 session 和 attachment ID，过期路由失败（[SessionRouter.requireAttachment](/Users/ayu/Learn/pi/packages/server/src/session-router.ts:224)）。请求 ID 去重与结构校验先于身份校验。
 
 `SessionManagement.attach()` 的业务响应不返回路由 ID；router 安装路由后通过独立 `attachment` 消息通知 client。管理操作和 transport 控制数据分开。相同连接重复 attach 同一 Session 幂等；不同连接可以附着同一 Session。
 
@@ -116,9 +116,21 @@ Chord 的 service token TypeScript 类型检查、service/member allowlist、世
 
 插件 loader 的 SHA-256 校验保证加载内容与 manifest 一致，`compileFunction()` 和限制 external imports 并不是 OS sandbox。当前 host 同进程执行插件，云端不能以此安全运行不可信租户代码。[bundle-loader.ts](/Users/ayu/Learn/pi/packages/chord/src/node/bundle-loader.ts:170)。
 
+## 6.5 传输插槽、服务端缓冲与控制面认证
+
+这三处是云端接浏览器时最直接要复刻的部分，正文前几节没有单独点名。
+
+**传输插槽**：客户端只依赖 [ByteTransport / ByteTransportFactory](/Users/ayu/Learn/pi/packages/client/src/transport.ts:1)（`send(chunk)` 有序、`close()` 幂等，回调 `onData/onClose/onError` 恰好一个终态），服务端对应 `ByteConnection / ServerListener`（`packages/server/src/connection.ts`、`listener.ts`）。Unix socket 与 Radius WebSocket 都是这个接口的实现；浏览器 WebSocket 接入应实现同一接口，而不是改 Client/Server。
+
+**服务端订阅缓冲**：[server.ts:334-344](/Users/ayu/Learn/pi/packages/server/src/server.ts:334) 在 `subscribe` 响应发出前把该订阅到达的 update 放进 `pendingUpdates`，响应发出后再按序补发；客户端一侧对应 `queuedWireUpdates`（[client.ts:184](/Users/ayu/Learn/pi/packages/client/src/client.ts:184)）与 `start()` 放行。两侧合起来才构成"先装快照、再有序更新"的保证；只做客户端一半会在快照与首个 update 之间丢包。
+
+**控制面认证**：主 experimental 的 server→worker 私有通道有最小认证：[WorkerManager 启动 worker 时](/Users/ayu/Learn/pi/packages/coding-agent/src/experimental/session-worker-manager.ts:457) 生成随机 `token` 并把 `sessionKey`（会话文件路径）经环境变量注入，worker 的每条 `service_update` 都回带 `token + sessionKey`（[session-worker.ts:529](/Users/ayu/Learn/pi/packages/coding-agent/src/experimental/session-worker.ts:529)）。这与公开 protocol 层的 `TODO_CONTEXT`（无 principal）形成对比：进程间控制面有"谁在说话"，客户端数据面没有"谁在请求"。云端两层都要有，并且要落到租户身份。
+
+**wire 控制调用**：Chord 在业务服务之外只有三个控制成员——`$chord.service.catalogue / subscribe(subscriptionId, serviceId, mode) / unsubscribe(subscriptionId)`（[wire.ts:39](/Users/ayu/Learn/pi/packages/chord/src/services/wire.ts:39)），快照与更新的 wire 形状是 `{ instances[].members[] }` 与 `state/unavailable/replaced/spawned/closed` 五种 update。这是浏览器客户端真正要说的"API"，业务方法都通过 `ServiceCall { serviceId, member, args, instance? }` 泛化传递。
+
 ## 7. 接着读哪些测试
 
-以下是源码行为证据，是否执行以 [verification](../verification.md) 为准：
+以下是源码行为证据，是否执行以 [verification](../verification.md) 为准。优先用进程内基建复现场景，不连真实 socket：`packages/server/src/testing/`（`createTestServer / TestServerHost / ProtocolTestClient`）与 [chord loopback](/Users/ayu/Learn/pi/packages/chord/src/services/loopback.ts) 提供无网络的 provider/consumer 对接。
 
 - `packages/chord/test/facets.test.ts`：缺依赖、环、激活与逆序 disposal。
 - `packages/chord/test/services.test.ts`：singleton/keyed、snapshot、sequence、替换与失效。
@@ -127,4 +139,4 @@ Chord 的 service token TypeScript 类型检查、service/member allowlist、世
 - `packages/client/test/client.test.ts`：请求关联、订阅水合、断开与重连。
 - `packages/protocol/test/protocol.test.ts`、`framing.test.ts`、`cbor/cbor.test.ts`：非法输入、帧截断和尺寸限制。
 
-带读时先选“同一会话两个 presentation，其中一个断开”，沿 `Client → Server → SessionRouter → Worker → AgentController/Transcript` 走完，再研究 Chord 内部的 Proxy 实现。
+实现多端时先选“同一会话两个 presentation，其中一个断开”，沿 `Client → Server → SessionRouter → Worker → AgentController/Transcript` 走完，再研究 Chord 内部的 Proxy 实现。

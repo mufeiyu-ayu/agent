@@ -1,0 +1,230 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "普通 CLI 的一次 prompt",
+    "subtitle": "时间自上而下：用户发消息 → 模型返回 toolCall 则执行工具续轮，返回文本则回复用户 → agent_settled",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "visual_preset": "blueprint",
+    "animation": "trace",
+    "views": [
+      {
+        "id": "loop",
+        "label": "采样与工具续轮",
+        "focus": [
+          "session",
+          "agent",
+          "models",
+          "tools"
+        ]
+      },
+      {
+        "id": "reply",
+        "label": "回复与收尾",
+        "focus": [
+          "agent",
+          "session",
+          "user"
+        ]
+      }
+    ],
+    "output": "07-classic-loop.html",
+    "column_fit": "spread",
+    "viewBox": [
+      980,
+      700
+    ]
+  },
+  "participants": [
+    {
+      "id": "user",
+      "type": "external",
+      "label": "用户",
+      "sublabel": "终端 / RPC"
+    },
+    {
+      "id": "session",
+      "type": "backend",
+      "label": "AgentSession",
+      "sublabel": "产品门面"
+    },
+    {
+      "id": "agent",
+      "type": "backend",
+      "label": "Agent loop",
+      "sublabel": "runLoop"
+    },
+    {
+      "id": "models",
+      "type": "cloud",
+      "label": "Models",
+      "sublabel": "provider"
+    },
+    {
+      "id": "tools",
+      "type": "security",
+      "label": "Tools",
+      "sublabel": "read / bash / edit"
+    }
+  ],
+  "segments": [
+    {
+      "from": 152,
+      "to": 220,
+      "label": "输入"
+    },
+    {
+      "from": 220,
+      "to": 390,
+      "label": "采样与工具续轮"
+    },
+    {
+      "from": 390,
+      "to": 526,
+      "label": "回复"
+    },
+    {
+      "from": 526,
+      "to": 594,
+      "label": "收尾"
+    }
+  ],
+  "messages": [
+    {
+      "from": "user",
+      "to": "session",
+      "y": 170,
+      "label": "prompt 文本",
+      "variant": "emphasis"
+    },
+    {
+      "from": "session",
+      "to": "agent",
+      "y": 204,
+      "label": "agent.prompt",
+      "variant": "emphasis"
+    },
+    {
+      "from": "agent",
+      "to": "models",
+      "y": 238,
+      "label": "stream（转换后请求）",
+      "variant": "emphasis"
+    },
+    {
+      "from": "models",
+      "to": "agent",
+      "y": 272,
+      "label": "toolCall",
+      "variant": "return"
+    },
+    {
+      "from": "agent",
+      "to": "tools",
+      "y": 306,
+      "label": "execute（并行 / 串行）",
+      "variant": "security"
+    },
+    {
+      "from": "tools",
+      "to": "agent",
+      "y": 340,
+      "label": "tool result",
+      "variant": "return"
+    },
+    {
+      "from": "agent",
+      "to": "session",
+      "y": 374,
+      "label": "message_end → JSONL",
+      "variant": "dashed"
+    },
+    {
+      "from": "agent",
+      "to": "models",
+      "y": 408,
+      "label": "下一轮 stream",
+      "variant": "emphasis"
+    },
+    {
+      "from": "models",
+      "to": "agent",
+      "y": 442,
+      "label": "text（stop）",
+      "variant": "return"
+    },
+    {
+      "from": "agent",
+      "to": "session",
+      "y": 476,
+      "label": "turn_end → agent_end",
+      "variant": "default"
+    },
+    {
+      "from": "session",
+      "to": "user",
+      "y": 510,
+      "label": "回复文本",
+      "variant": "emphasis"
+    },
+    {
+      "from": "session",
+      "to": "agent",
+      "y": 544,
+      "label": "agent.continue()：重试 / 压缩 / 队列",
+      "variant": "dashed"
+    },
+    {
+      "from": "session",
+      "to": "user",
+      "y": 578,
+      "label": "agent_settled",
+      "variant": "return"
+    }
+  ],
+  "activations": [
+    {
+      "participant": "agent",
+      "from": 196,
+      "to": 484,
+      "type": "backend"
+    },
+    {
+      "participant": "models",
+      "from": 230,
+      "to": 280,
+      "type": "cloud"
+    },
+    {
+      "participant": "tools",
+      "from": 298,
+      "to": 348,
+      "type": "security"
+    },
+    {
+      "participant": "session",
+      "from": 162,
+      "to": 586,
+      "type": "backend"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "两条分支",
+      "items": [
+        "模型返回 toolCall：执行整批工具，结果按原顺序回到 messages，再采样一次；直到返回文本。",
+        "模型返回文本：message_end 落盘 → turn_end → agent_end，产品层把文本回给用户。"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "agent_end ≠ 空闲",
+      "items": [
+        "agent_end 后产品层可能 agent.continue()：可重试错误、压缩恢复、agent_end 期间入队的消息；agent_settled 才是空闲。",
+        "内存循环没有 operation journal，进程退出即丢失执行位置。"
+      ]
+    }
+  ]
+}

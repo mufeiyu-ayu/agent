@@ -7,7 +7,7 @@
     "locale": "zh-CN",
     "quality_profile": "showcase",
     "visual_preset": "blueprint",
-    "animation": "none",
+    "animation": "trace",
     "viewBox": [
       1080,
       500
@@ -283,7 +283,8 @@
       "dot": "cyan",
       "title": "序号各有范围",
       "items": [
-        "Session seq 与 replica sequence 分开；UI 恢复不证明副作用可重做。"
+        "Session seq 与 replica sequence 分开；UI 恢复不证明副作用可重做。",
+        "第二行 Replicated State / State Codec 属 chord 与 protocol 包，不在 packages/agent 内；agent 只提供 Lane.watch 与 reducer。"
       ]
     }
   ]

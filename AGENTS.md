@@ -20,7 +20,7 @@
 
 - 作品就是 runtime 本身，不再为它寻找产品域；第一个用户是用户自己。
 - 目标是三样：运行层的技术深度、真实使用留下的问题记录、公开的设计笔记。求职叙事是「一个自己每天用、被真实使用打磨过的 agent runtime」。
-- 2026-09-15 更新后续方向：完成当前源码学习后，面向云端 Agent 产品演进，以 Pi 为主要架构与组织方式参照（`docs/research/pi-reference/`）；旧 Codex 调研、reference 与阶段路线已按用户要求删除。DeepSeek Harness 保留补充对照。参照用于对比取舍，不照抄；研究完成不代表用户学完或重构已启动。
+- 2026-09-15 更新后续方向：完成当前源码学习后，面向云端 Agent 产品演进，以 Pi 为主要架构与组织方式参照（`docs/research/pi-reference/`）；旧 Codex 调研、reference 与阶段路线已按用户要求删除。DeepSeek Harness 保留补充对照。参照素材供 AI 实现时查阅，用户不读 Pi 代码；参照用于对比取舍，不照抄；研究完成不代表重构已启动。
 - 当前能力缺口四块：Human-in-the-loop / 审批、Durable Execution / resume 与 replay、长期 Memory、成本与延迟。子系统只在真实使用卡住、源码阅读发现缺陷或缺口被明确命中时才立项，不因为「成熟项目有」就做。
 
 ## 2. 用户与沟通
@@ -44,15 +44,15 @@
 | `docs/roadmap.md` | 阶段路线与方向 |
 | `docs/tasks/README.md` | 任务看板，Active / Completed / 放弃 以这里为准 |
 | `docs/tasks/_template.tdd.md` | 新任务模板 |
-| `docs/research/README.md` | 研究入口：pi-reference、补充参照与学习方法 |
-| `docs/research/pi-reference/learning-method.md` | 每个子系统的七步法与阶段产物 |
+| `docs/research/README.md` | 研究入口：pi-reference、补充参照与参照实现方法 |
+| `docs/research/pi-reference/learning-method.md` | 参照实现的六问与每步产物 |
 | `docs/development-workflow.md` | 多角色分工的完整流程：角色表、Clarification Gate、Issue 规格、触发语、授权边界 |
 | `docs/work-log.md` | 已发生事实 |
 | `docs/tasks/completed/` | 已完成阶段归档 |
 
 `docs/development-task-plan.md` 只保留为旧入口兼容，不写新任务。
 
-当前状态：Phase 1-8 Completed 并归档；当前阶段为源码阅读，先完成当前项目链路学习，之后按 `docs/research/pi-reference/roadmap.md` 学习 Pi 并讨论云端重构；无 Active Task，Next 为 #115 → #116 → #117（已立 Issue、未开工）；翻译质检站已于 #113 删除；下一批候选子系统为 session 事件流与 replay、审批门、compaction、定时任务，候选不等于 Active；Admin Task 4 保持 Planned。
+当前状态：Phase 1-8 Completed 并归档；当前阶段为源码阅读，先完成当前项目链路学习，之后按 `docs/research/pi-reference/roadmap.md` 由 AI 参照 Pi 实现云端方向；无 Active Task，Next 为 #115 → #116 → #117（已立 Issue、未开工）；翻译质检站已于 #113 删除；下一批候选子系统为 session 事件流与 replay、审批门、compaction、定时任务，候选不等于 Active；Admin Task 4 保持 Planned。
 
 ## 4. 关键目录
 
@@ -67,7 +67,7 @@
 | `packages/contracts/` | 前后端共享协议与类型 |
 | `prisma/` | schema、migration、fixtures 和 seed |
 | `docs/tasks/` | 当前任务、阶段入口和已完成归档 |
-| `docs/research/` | 参照物研究、学习方法、设计笔记与复盘 |
+| `docs/research/` | 参照物研究、参照实现方法、设计笔记与复盘 |
 
 修改代码前先确认：`docs/tasks/README.md` 当前状态；相邻 service / controller / hook / component / utils / contract 能否复用；是否涉及 Prisma schema、contracts、前后端协议或 docs 同步。
 

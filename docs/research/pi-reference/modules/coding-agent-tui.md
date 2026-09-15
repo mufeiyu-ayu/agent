@@ -6,7 +6,7 @@
 
 范围：默认 `packages/coding-agent` 产品链、旧 `AgentSession`/JSONL 会话、资源与扩展、工具、模型装配、终端 UI；同时核对实验入口与 mini 呈现。实验服务端拓扑另见 [Chord / Server / Client](chord-server-client.md)。所有子目录的覆盖边界和文件索引见 [product-coverage.md](product-coverage.md)。
 
-给带读 AI：每次选一个下面的场景，先打开当前源码核对符号，再走完「输入 → 状态改变 → 模型/工具 → 事件 → 持久化 → UI」中的相关闭环。本文标记的“建议”不代表已经立项或已实现。不要一口气讲完全文，不要把 Pi 的终端约束直接搬到 Vue/NestJS。
+给实现 AI：每次选一个下面的场景，先打开当前源码核对符号，再走完「输入 → 状态改变 → 模型/工具 → 事件 → 持久化 → UI」中的相关闭环。本文标记的“建议”不代表已经立项或已实现。不要一口气载入全文，不要把 Pi 的终端约束直接搬到 Vue/NestJS。
 
 ## 1. 先认清默认产品与实验产品
 
@@ -54,9 +54,28 @@ const sessionManager = options.sessionManager ?? SessionManager.create(cwd, getD
 
 注释：CLI 与未注入依赖的 SDK 都使用本机默认值。`createAgentSession({})` 会创建 ModelRuntime、磁盘 SettingsManager / SessionManager 和默认资源加载器；只有显式注入相应依赖才改变这些行为。`SessionManager.create()` 设置 `persist=true`，`inMemory()` 才关闭会话文件持久化，见 [session-manager.ts](/Users/ayu/Learn/pi/packages/coding-agent/src/core/session-manager.ts:1551)。支持注入不等于默认已经隔离，云端宿主必须明确提供凭据、会话存储与资源加载的作用域。
 
-[sdk.ts / Agent 装配](/Users/ayu/Learn/pi/packages/coding-agent/src/core/sdk.ts:306) 把 `convertToLlm`、`ModelRuntime.streamSimple`、provider hooks、`transformContext`、steering/follow-up 策略注入低层 `Agent`。默认启用的内置工具只有 `read/bash/edit/write`；可注册的工具还有 `grep/find/ls/powershell`。allowlist/denylist 同样过滤 extension/custom tools，不能只过滤内置工具。
+[sdk.ts / Agent 装配](/Users/ayu/Learn/pi/packages/coding-agent/src/core/sdk.ts:306) 把 `convertToLlm`、`ModelRuntime.streamSimple`、provider hooks、`transformContext`、steering/follow-up 策略注入低层 `Agent`。无 settings 覆盖时默认启用的内置工具是 `read/bash/edit/write`（[sdk.ts:256](/Users/ayu/Learn/pi/packages/coding-agent/src/core/sdk.ts:256)）；`settings.defaultTools` 可整体替换这个默认集，`options.tools` 显式指定、`noTools` 清空、`excludeTools` 再过滤。可注册的工具还有 `grep/find/ls/powershell`。allowlist/denylist 同样过滤 extension/custom tools，不能只过滤内置工具。
 
 **云端建议**：保留这条顺序，但把 cwd 的身份替换为明确的 `tenant/user/workspace/session` 上下文。NestJS DI 负责稳定基础设施，单个 session/请求的依赖通过工厂参数明确传入；不要把租户状态写进全局 singleton。
+
+### 2.3 System prompt 的装配顺序
+
+[buildSystemPrompt](/Users/ayu/Learn/pi/packages/coding-agent/src/core/system-prompt.ts:28) 是纯函数，输入全部由调用方预先加载，顺序固定：
+
+```text
+customPrompt（有则整体替换默认正文）
+  或 默认正文：角色一句话 → Available tools（只列有 snippet 的工具）→ Guidelines（按已启用工具推导 + promptGuidelines 去重）→ Pi 自身文档入口
+→ appendSystemPrompt
+→ <project_context>：每个 context file 一段 <project_instructions path=…>
+→ skills 列表：仅当启用了 read 或 bash 之一才附加，只给 name/description/path，不给正文
+→ Current working directory
+```
+
+- 工具描述不在 system prompt 里重复：工具 schema 走 provider 的 tools 字段，prompt 只放一行 snippet（`toolSnippets`）。
+- skills 只暴露索引，正文由模型按需 `read`；没有可读文件的工具时干脆不列，避免模型看见却读不到。
+- [AgentSession._baseSystemPrompt](/Users/ayu/Learn/pi/packages/coding-agent/src/core/agent-session.ts:1094) 在资源 reload 后重建；`before_agent_start` 扩展可以整体覆盖本轮 system prompt，覆盖只对本次 run 生效（`_runAgentPrompt` 的 finally 清掉 `_systemPromptOverride`）。
+
+**云端对应**：system prompt 的每一段都应有可追溯来源（租户配置、workspace 指令文件、技能索引、运行时状态），并把最终拼装结果作为本次请求的一部分记录，这是 `model-visible ⟺ logged` 的前提之一。
 
 ## 3. `AgentSession` 是产品运行门面，不是一个 AgentRun
 
@@ -94,11 +113,19 @@ while (await this._handlePostAgentRun()) {
 
 ### 3.3 消息顺序是协议约束
 
-[sendCustomMessage](/Users/ayu/Learn/pi/packages/coding-agent/src/core/agent-session.ts:1502) 在运行中收到 `triggerTurn:false` 的 custom message 时先排队，到 `turn_end` 才放入历史，避免插在 tool call 与 tool result 中间。交互 bash 也做延迟写入。
+[sendCustomMessage](/Users/ayu/Learn/pi/packages/coding-agent/src/core/agent-session.ts:1502) 有三种投递方式：`deliverAs:"nextTurn"` 存入 `_pendingNextTurnMessages`，与下一条用户 prompt 一起进入 messages；运行中且 `triggerTurn:false` 时先排队，到 `turn_end` 才放入历史，避免插在 tool call 与 tool result 中间；运行中要触发轮次则按 `deliverAs` 走 followUp 或默认 steer。交互 bash 也做延迟写入。
 
 [regression #8537](/Users/ayu/Learn/pi/packages/coding-agent/test/suite/regressions/8537-custom-message-tool-result-ordering.test.ts:13) 断言状态、session entries 和 message events 都是 `user → assistant → toolResult → custom → assistant`，并检查 tool result 有前置 call。**测试未执行。**
 
 **云端建议**：任务通知、审批结果、后台检索结果都要通过运行层的消息插入规则。WebSocket 收到一个异步结果，不代表可以直接 push 到模型 messages 数组。
+
+### 3.4 恢复会话与切换模型也是历史事实
+
+- `--resume` 走 [selectSession](/Users/ayu/Learn/pi/packages/coding-agent/src/main.ts:410) 选文件，`--continue` 走 `SessionManager.continueRecent`（[main.ts:427](/Users/ayu/Learn/pi/packages/coding-agent/src/main.ts:427)）；两者都只是选定 `sessionManager`，随后 `createRuntime` 按该会话的 cwd 重新解析设置与资源（§2.1）。恢复后 [createAgentSession](/Users/ayu/Learn/pi/packages/coding-agent/src/core/sdk.ts:191) 从 session context 取回 model 与 thinkingLevel；模型不可用或无凭据时回退到 `findInitialModel` 并给出 `modelFallbackMessage`，不是静默换模型。
+- 模型与思考级别的切换写入会话树：`setModel / cycleModel` 追加 `model_change`（[agent-session.ts:1679](/Users/ayu/Learn/pi/packages/coding-agent/src/core/agent-session.ts:1679)），`setThinkingLevel` 追加 `thinking_level_change`（[:1829](/Users/ayu/Learn/pi/packages/coding-agent/src/core/agent-session.ts:1829)）并按模型能力 clamp。`buildSessionContext` 沿当前分支回溯最近一次记录，所以换分支会带回那条分支当时的模型。
+- 新会话在没有 assistant 消息前不落盘（§4.3），但一旦落盘，首批写入就包含这些 `model_change/thinking_level_change`。
+
+**云端对应**：模型选择属于会话历史而非仅 UI 状态；重连或换分支后展示的模型必须来自持久化记录，而不是浏览器本地状态。
 
 ## 4. 会话树、模型上下文与磁盘事实
 
@@ -184,17 +211,17 @@ if (sessionEntryToContextMessages(entry).some(isCutPointMessage)) {
 | [prompt-templates.ts](/Users/ayu/Learn/pi/packages/coding-agent/src/core/prompt-templates.ts:1) | 文本模板与参数替换；不拥有模型运行生命周期 |
 | [settings-manager.ts](/Users/ayu/Learn/pi/packages/coding-agent/src/core/settings-manager.ts:184) | global/project 的深合并、临时 override、字段级保存与 reload；可注入内存 storage |
 
-同名资源要看实际排序：[resourcePrecedenceRank](/Users/ayu/Learn/pi/packages/coding-agent/src/core/package-manager.ts:184) 先项目显式、项目自动、用户显式、用户自动、package 资源；`DefaultResourceLoader` 再把 CLI 指定路径放前面，skills 按 first-wins 去重并输出 collision。不要只看 `loadSkills(includeDefaults:true)` 的直接调用次序就推断默认产品总优先级。
+同名资源要看实际排序：[resourcePrecedenceRank](/Users/ayu/Learn/pi/packages/coding-agent/src/core/package-manager.ts:188) 先项目显式、项目自动、用户显式、用户自动、package 资源；`DefaultResourceLoader` 再把 CLI 指定路径放前面，skills 按 first-wins 去重并输出 collision。不要只看 `loadSkills(includeDefaults:true)` 的直接调用次序就推断默认产品总优先级。
 
-上下文文件另一路：全局 agentDir + 根到 cwd 的祖先目录；每目录按 `AGENTS.override.md`、`AGENTS.md`、`AGENTS.MD`、`CLAUDE.md`、`CLAUDE.MD` 取首个，处理 nested worktree shadow，见 [loadProjectContextFiles](/Users/ayu/Learn/pi/packages/coding-agent/src/core/resource-loader.ts:127)。
+上下文文件另一路：全局 agentDir + 根到 cwd 的祖先目录；每目录按 `AGENTS.override.md`、`AGENTS.md`、`AGENTS.MD`、`CLAUDE.md`、`CLAUDE.MD` 取首个，处理 nested worktree shadow，见 [loadProjectContextFiles](/Users/ayu/Learn/pi/packages/coding-agent/src/core/resource-loader.ts:119)（文件名候选表在 [loadContextFileFromDir:72](/Users/ayu/Learn/pi/packages/coding-agent/src/core/resource-loader.ts:72)）。
 
 ### 6.2 Trust 的真实范围
 
 普通 CLI 的组合根用 project trust 控制 `.pi/settings.json`、项目 packages/extensions/skills/prompts/themes、SYSTEM/APPEND_SYSTEM 的加载。它的 bootstrap 先用不信任项目的设置，只加载 global/CLI 等扩展，让它们参与 `project_trust`；决定后再加载项目资源。该流程没有 UI 时，默认 ask 分支返回不信任。
 
-证据：[loadProjectTrustExtensions](/Users/ayu/Learn/pi/packages/coding-agent/src/core/resource-loader.ts:379)、[resolveProjectTrusted](/Users/ayu/Learn/pi/packages/coding-agent/src/core/project-trust.ts:46)、[ProjectTrustStore](/Users/ayu/Learn/pi/packages/coding-agent/src/core/trust-manager.ts:209)。
+证据：[loadProjectTrustExtensions](/Users/ayu/Learn/pi/packages/coding-agent/src/core/resource-loader.ts:380)、[resolveProjectTrusted](/Users/ayu/Learn/pi/packages/coding-agent/src/core/project-trust.ts:46)、[ProjectTrustStore](/Users/ayu/Learn/pi/packages/coding-agent/src/core/trust-manager.ts:209)。
 
-原始 SDK 默认不装配这套确认流程：`SettingsManager` 的 `projectTrusted` 默认为 `true`，`DefaultResourceLoader.reload()` 只在传入 `resolveProjectTrust` 时执行预信任确认，而 `createAgentSession()` 默认调用无该参数的 reload。见 [settings-manager.ts](/Users/ayu/Learn/pi/packages/coding-agent/src/core/settings-manager.ts:374)、[resource-loader.ts](/Users/ayu/Learn/pi/packages/coding-agent/src/core/resource-loader.ts:395)。嵌入云服务时，必须由宿主显式配置资源信任与服务端授权，不能把 CLI 的确认行为当作 SDK 默认保护。
+原始 SDK 默认不装配这套确认流程：`SettingsManager` 的 `projectTrusted` 默认为 `true`，`DefaultResourceLoader.reload()` 只在传入 `resolveProjectTrust` 时执行预信任确认，而 `createAgentSession()` 默认调用无该参数的 reload。见 [settings-manager.ts](/Users/ayu/Learn/pi/packages/coding-agent/src/core/settings-manager.ts:374)、[resource-loader.ts reload](/Users/ayu/Learn/pi/packages/coding-agent/src/core/resource-loader.ts:388)。嵌入云服务时，必须由宿主显式配置资源信任与服务端授权，不能把 CLI 的确认行为当作 SDK 默认保护。
 
 这不是每个工具动作的审批，也不是 OS 隔离。`AGENTS.md` 上下文仍由独立发现逻辑读取；显式 CLI、用户级 extension 是可执行本机代码。云端必须由服务端执行器和租户策略建立权限边界，不能把“用户信任了某目录”当作多租户安全模型。
 
@@ -219,6 +246,23 @@ if (handlerResult) {
 `reload` 先 `session_shutdown`，使旧 runner context 失效，重读 settings/resources，再构造 runner 和绑定。换 session 同样先 abort/settle、shutdown、dispose，再创建下一套 runtime；旧 UI 组件在 context 失效前拆除。见 [AgentSessionRuntime.teardownCurrent](/Users/ayu/Learn/pi/packages/coding-agent/src/core/agent-session-runtime.ts:167)。这是“生命周期与引用所有权”值得学的部分。
 
 **取舍**：云端先保留少量内部 hook 与结构化工具注册；只有真实需求才开放用户插件。保留 skill 的渐进加载与来源诊断；把本机 package 下载、npm install 和 arbitrary JS factory 留在受控开发/执行环境，不进入 API 主进程。
+
+### 6.4 扩展事件目录：产品层的完整扩展面
+
+[ExtensionEvent](/Users/ayu/Learn/pi/packages/coding-agent/src/core/extensions/types.ts:1086) 联合类型是普通产品真正的扩展协议，比 §6.3 提到的几个 hook 宽得多。按职责分组（名称即源码 `type` 字面量）：
+
+| 组 | 事件 | 能做什么 |
+| --- | --- | --- |
+| 信任与资源 | `project_trust`、`resources_discover` | 参与项目信任决定；向 loader 追加资源 |
+| 会话生命周期 | `session_start`、`session_shutdown`、`session_before_switch`、`session_before_fork`、`session_before_tree`、`session_tree`、`session_before_compact`、`session_compact`、`session_compact_failed`、`session_info_changed` | 在换会话、fork、tree 导航、压缩前后介入或否决 |
+| 模型请求 | `context`、`before_provider_request`、`before_provider_headers`、`after_provider_response` | 改发送前 messages、最终 payload、请求头；观察响应状态 |
+| 运行边界 | `before_agent_start`、`agent_start`、`agent_end`、`agent_settled`、`turn_start`、`turn_end` | 注入 custom message / 改 system prompt；`agent_end` 可入队 follow-up |
+| 消息与工具 | `message_start`、`message_update`、`message_end`、`tool_execution_start/update/end`、`tool_call`、`tool_result` | `tool_call` 可 block/terminate（异常向上抛）；`tool_result` 可改内容 |
+| 用户与 UI | `input`、`user_bash`、`ui_prompt_start`、`ui_prompt_end`、`model_select`、`thinking_level_select` | 拦截/改写输入；替换 `!` 命令执行；感知模型切换 |
+
+值得看的官方样例（[examples/extensions](/Users/ayu/Learn/pi/packages/coding-agent/examples/extensions)）：`confirm-destructive.ts` 与 `permission-gate.ts` 用 `tool_call` 实现审批，`sandbox/` 用扩展替换工具操作，`subagent/` 用扩展而非内核实现子代理，`plan-mode/` 用扩展限制工具集。它们是 README “No permission popups / no plan mode built in” 这一产品取舍的实证：这些能力存在，但以扩展形式存在。
+
+**云端对应**：设计内部 hook 点时对照这张表取舍，而不是照抄；审批类 hook 必须像 `tool_call` 一样 fail-closed，展示类 hook 才允许吞错继续。
 
 ## 7. 工具：统一定义 + 可替换操作，但边界并不完全一致
 
@@ -303,7 +347,7 @@ extension 的 select/confirm/input/editor 可转成 `extension_ui_request` 并�
 
 ## 10. TUI 包：我们学呈现边界，不重写终端
 
-最小契约见 [tui.ts / Component](/Users/ayu/Learn/pi/packages/tui/src/tui.ts:113)：
+最小契约见 [tui.ts / Component](/Users/ayu/Learn/pi/packages/tui/src/tui.ts:113)（节选，接口还有 `handleMouse?` 与 `wantsKeyRelease?`）：
 
 ```ts
 render(width: number): string[];
@@ -366,7 +410,7 @@ mini 的生命周期又不同于主 experimental server：[最后 presentation �
 
 mini 尚缺默认产品许多能力；它证明了一条架构方向，不是可直接替换默认 CLI 的完整实现。
 
-## 13. 建议带读顺序与每次停点
+## 13. 建议查阅顺序与停点
 
 | 次序 | 场景 | 打开哪些符号 | 本轮需要能回答 |
 | --- | --- | --- | --- |

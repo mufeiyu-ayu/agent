@@ -68,9 +68,9 @@ packages/session-backends/sqlite-node/src/
 1. **Session** 是存储容器：拥有 entry 树、values/lists、usage、ID 生成器和一条串行 mutation line。
 2. **Branch** 是命名的 `branch.tip`，可以只存数据，不附带 Agent 配置或运行状态。
 3. **AgentLane** 是附着在同名 Branch 上的配置及操作状态；一条 Lane 同时只有一个 current operation。
-4. **AgentHarness** 管理多个 Lane 和进程级工具/resources/hooks，不隐式创建 `main`。
+4. **AgentHarness** 管理多个 Lane 和进程级工具/resources/hooks。它不预设 `main`，但 `harness.lane(name)` 对任何尚不存在的名字都会**当场创建**：在 Session 写入屏障内一次 commit 写入 `branch.tip`（可用 `createAt` 指定起点 entry，未知 entry 抛 `UnknownTarget`）、`lane.config`（复制 create 时的 seed 模型/thinkingLevel/activeToolNames）和空闲的 `lane.state`，并发 `lane_created`。已存在的 data-only Branch 被首次 `lane()` 时只补写 config/state，不改 tip。见 [Harness.lane:78](/Users/ayu/Learn/pi/packages/agent/src/harness/runtime/harness.ts:78)。
 
-恢复时存在 `branch.tip` 但没有 `lane.config`、`lane.state` 是合法 data-only Branch；只有其中一部分 Lane 值则是 invariant fault。见 [restore.ts:63](/Users/ayu/Learn/pi/packages/agent/src/harness/runtime/restore.ts:63)。
+恢复时存在 `branch.tip` 但没有 `lane.config`、`lane.state` 是合法 data-only Branch；只有其中一部分 Lane 值则是 invariant fault。见 [restore.ts:63](/Users/ayu/Learn/pi/packages/agent/src/harness/runtime/restore.ts:63)。`restoreLaneState` 还会校验 `op.meta.intent` 与 `op.state.at` 的族匹配（compaction 意图只能停在 `summary.*` 且 boundary 为 finish；导航意图只能停在 `navigation.ready_to_commit` 或 boundary 为 commit_navigation 的 summary 叶子），不匹配同样 fault，见 [stateMatchesIntent:26](/Users/ayu/Learn/pi/packages/agent/src/harness/runtime/restore.ts:26)。
 
 ### 数据不是一种日志
 
@@ -85,6 +85,29 @@ packages/session-backends/sqlite-node/src/
 | `UsageRow` | 独立 ledger；可有 adjustment，没有必要每条都对应可见 message | 成本账本不由 UI 消息数推算 |
 
 具体地址集中在 [session/values.ts:158](/Users/ayu/Learn/pi/packages/agent/src/harness/session/values.ts:158)，状态联合在 [session/types.ts:316](/Users/ayu/Learn/pi/packages/agent/src/harness/session/types.ts:316)。`pi.op.*` 是当前 journal 值，不是逐事件不可变历史；Memory/SQLite 会覆盖 current value，JSONL 才保留其物理追加记录。不要把它称为完整事件溯源。
+
+### 3.5 宿主怎样使用 Lane：公开 API、错误契约与默认值
+
+正文其余部分讲内部的 `accept/drive/command`，但宿主（experimental worker、mini、未来我们的 NestJS 服务）只会接触 [AgentLane 接口](/Users/ayu/Learn/pi/packages/agent/src/harness/agent-harness.ts:546)。把它按“落到哪一步”分组：
+
+| 宿主调用 | 内部路径 | 语义要点 |
+| --- | --- | --- |
+| `prompt / skill / promptFromTemplate` | `accept(run) → drive({ waitForRetry: true })` | 一次调用走完接纳与驱动；返回 settled record 或 `SuspendedRun`（deferred）。返回 `LaneBusy` 表示已有 operation，不排队 |
+| `accept(request)` + `drive({ operationId, waitForRetry?, pollDeferred? })` | 分开的两步 | 云端 HTTP “接受即返回、worker 再驱动”的原型；`drive` 对已结束 ID 直接返回存储结果，对不匹配 ID 返回 `OperationMismatch` |
+| `resume()` | 读 current operation → `drive({ pollDeferred: true, waitForRetry: true })` | **重启后恢复 open operation 的推荐入口**；mini 宿主对 `AgentHarness.create` 返回的每个 `open` 调它。没有 current operation 返回 `NothingToResume` |
+| `abort()` / `requestAbort(id)` | 原子写 `cancel_requested` 并撤出 steer/followUp → `drive` 完成 reconcile | `abort()` 会等 reconcile 结束并返回被撤出的队列消息；`requestAbort` 只落标记。源码注释仍写“guarded until M8”，但接口已公开 |
+| `steer / followUp / nextRun` | 写 `pi.pending.entry` + inbox | 三种 inbox kind：steer 在下一 checkpoint 注入；followUp 只在没有其他触发时被采用；nextRun 与 write 一样总被下一次 accept 捕获。运行中与空闲时都可入队 |
+| `cancelQueued(entryId)` | 删 pending + inbox | 返回 `cancelled / already_consumed / not_found`，已被 accept 消费的条目不能撤回 |
+| `appendMessage / appendCustomEntry` | 空闲：直接写 entry 并推 tip；运行中：作为 `write` 入 inbox | 这是“把审批结果、检索结果插进历史”的正确入口，不会插在 tool call 与 result 之间 |
+| `navigateTree / compact` | `accept(navigation|compaction) → drive`，成功后自动 `accept({prompt:""})` 尝试续跑 | 续跑只在 inbox 有可触发内容时发生，否则返回 `InvalidMessage(empty)` 被吞掉 |
+| `waitForIdle / runWhenIdle` | 观察 `state.operation` 与 `activeDrive` | `runWhenIdle` 用 `idleOwner` 独占 command 线，回调期间新的 accept 会等待 |
+| `watch()` | 快照 + 缓冲事件 | 见 §9 |
+
+**错误契约**：所有公开操作返回 `Result<ok|err>`，错误是 [TaggedError](/Users/ayu/Learn/pi/packages/agent/src/harness/result.ts:28) 子类（`LaneBusy / OperationMismatch / NoActiveOperation / NothingToResume / NothingToCompact / InvalidMessage / InvalidNavigation / UnknownSkill / UnknownTemplate / UnknownTarget / Closed`），带 `_tag` 与 `toJSON()`，可直接序列化到 RPC/HTTP。只有 `HarnessFault`（存储/invariant 故障）和 `HarnessClosed` 以异常抛出。experimental 的 [AgentController](/Users/ayu/Learn/pi/packages/coding-agent/src/experimental/services/agent-controller-provider.ts:91) 就是把 `_tag` 映射成 snake_case 错误码给客户端。
+
+**Context 传播**：每个方法尾参 [Context](/Users/ayu/Learn/pi/packages/agent/src/harness/context.ts:1) 来自 chord，携带 `abortSignal` 与 telemetry parent；用 `withAbortSignal / withCancel / withoutAbortSignal / awaitWithContext` 派生，不用 AsyncLocalStorage。`awaitWithContext` 只取消等待者，不取消底层 Promise，这是 §6 “观察者断开不杀 run”的实现基础。
+
+**默认值**（云端要显式决定，不要沿用）：[DEFAULT_RETRY_POLICY](/Users/ayu/Learn/pi/packages/agent/src/harness/config.ts:4) `maxRetries: 3, baseDelayMs: 1000`，归一化为 `maxAttempts = maxRetries + 1`；Harness 的 `steeringMode / followUpMode` 默认 **`"all"`**（[harness.ts:66](/Users/ayu/Learn/pi/packages/agent/src/harness/runtime/harness.ts:66)），而旧 `Agent` 默认 **`"one-at-a-time"`**（[agent.ts:231](/Users/ayu/Learn/pi/packages/agent/src/agent.ts:231)），两代内核队列语义不同；`toolExecution` 两代都默认 `parallel`。`selectAcceptedInbox` 在 one-at-a-time 下每次 accept 只取第一条 steer/followUp，其余留在 inbox。
 
 ## 4. 一次带工具的运行：完整链路
 
@@ -141,7 +164,7 @@ this.signalStateChange();
 const result = decision.materialize(commit);
 ```
 
-这里集中保证“成功提交→更新内存投影→构造返回值”，随后同步绑定事件接收者，并在退出 Session 写入屏障后等待投递。`materialize` 必须同步；代码主动拒绝 thenable。planner 只能计算/读取，不得调用模型、工具、hook、timer 或事件处理器。见 [Lane.command:323](/Users/ayu/Learn/pi/packages/agent/src/harness/runtime/lane.ts:328)。
+这里集中保证“成功提交→更新内存投影→构造返回值”，随后同步绑定事件接收者，并在退出 Session 写入屏障后等待投递。`materialize` 必须同步；代码主动拒绝 thenable。planner 只能计算/读取，不得调用模型、工具、hook、timer 或事件处理器。见 [Lane.command:328](/Users/ayu/Learn/pi/packages/agent/src/harness/runtime/lane.ts:328)。
 
 `StorageBackedSession.beginMutation/mutate` 是 read-modify-write 屏障，一个 capability 只允许零或一次 commit attempt，结束后失效。callback 内再调用 public Session writer 并 await 会排到自己后面而死锁；必须用传入的 mutator。见 [session.ts:95](/Users/ayu/Learn/pi/packages/agent/src/harness/session/session.ts:95)、[session/types.ts:546](/Users/ayu/Learn/pi/packages/agent/src/harness/session/types.ts:546)。
 
@@ -216,7 +239,7 @@ if (!cancelled && call.replay === "safe" && tool?.replay === "safe") {
 | 事件 | 实现行为 | 不应声称 |
 | --- | --- | --- |
 | 观察者 signal abort | `awaitWithContext` 结束当前等待，Drive 的 context 已剥离此 signal | 用户断连会自动杀掉 run |
-| `requestAbort(operationId)` | 先关闭新 effect admission；原子存 cancel_requested、撤出 steer/follow-up；成功后 signal 已接纳 effect | 发送 signal 本身就是 durable cancel |
+| `requestAbort(operationId)` | 先关闭新 effect admission；原子存 cancel_requested、撤出 steer/follow-up；成功后 signal 已接纳 effect。已在 `AgentLane` 接口公开，源码内部注释“guarded until M8”已过期 | 发送 signal 本身就是 durable cancel |
 | Gate abort 与新 effect 竞争 | 同步 `admit` 和 `beginAbort` 定义谁先获得执行资格 | 任意一个异步检查足以防竞态 |
 | `Harness.close` | 封 Lane/Gate/hook/event、关闭 Session；保留未终结 operation 供下次恢复 | close 等于生成 aborted terminal |
 | 存储或 invariant fault | fault 全 Harness，封住所有 Lane；需要重新打开恢复 | DB 写失败可当普通 tool error 继续 |
@@ -263,7 +286,7 @@ JSONL 的 `publishFileAtomically` 用 `.tmp` 完整写入后 rename，用于创�
 
 SQLite 权威表是 `entries/scalar_values/list_values/usage_ledger`；`sessions` 内 stats 和 `branch_entries/branch_meta` 为事务内维护的投影。分支 divergence 复制最近 compaction 之后的祖先片段；没有 compaction 时可能复制整个历史，不是恒定成本。见 [schema](/Users/ayu/Learn/pi/packages/session-backends/sqlite-node/src/sqlite/migrations/001_initial.sql:1)、[createDivergentBranchForEntry](/Users/ayu/Learn/pi/packages/session-backends/sqlite-node/src/sqlite/session/branch-entries.ts:152)。
 
-SQLite repo 支持 no-create open、只读 list、safe filename、canonical physical identity、共享容器单 Session 删除、WAL/SHM 清理、all-settled close。独立 repo 对 live source fork 使用只读连接与一个 WAL read transaction；同 repo source 则在其 commit queue 抓快照。它保证这次复制的读边界，不替宿主实现分布式运行所有权。见 [repo.ts:119](/Users/ayu/Learn/pi/packages/session-backends/sqlite-node/src/sqlite/repo.ts:122)。
+SQLite repo 支持 no-create open、只读 list、safe filename、canonical physical identity、共享容器单 Session 删除、WAL/SHM 清理、all-settled close。独立 repo 对 live source fork 使用只读连接与一个 WAL read transaction；同 repo source 则在其 commit queue 抓快照。它保证这次复制的读边界，不替宿主实现分布式运行所有权。见 [repo.ts:122](/Users/ayu/Learn/pi/packages/session-backends/sqlite-node/src/sqlite/repo.ts:122)。
 
 ### 8.3 Fork 是新会话，不是复制正在执行的任务
 
@@ -311,6 +334,7 @@ skills/templates 被建模为宿主加载的资源：Skill 递归查找、尊重
 | 容易误读的材料 | 固定快照的源码事实 |
 | --- | --- |
 | `harness.md` 的 Session-wide watch | `Harness.watchSession()` 仍抛 `SliceNotImplemented` |
+| `docs/telemetry.md` 的 Context/span 设计 | 该文档自己说明大多数 runtime span 未实现；实际只有工具 hook 建 span，是 §9 telemetry 结论的一手依据 |
 | JSONL snapshot compaction 设计 | 有 atomic file publisher，但没有普通 current-state 重写、dead-byte 触发和回收 |
 | 原始 RemoteSession 传输要求 | 本研究的 Session/Storage 都是进程本地；不要从概念图推定 RPC 已传输了 mutation capability，参照协议模块另证 |
 | 全套 telemetry schema | agent 内只有工具 hook handler 真实创建 span；其他 vocabulary 不等于观测齐全 |
@@ -322,7 +346,7 @@ skills/templates 被建模为宿主加载的资源：Skill 递归查找、尊重
 
 核查设计入口：[post-wp05-roadmap.md:19](/Users/ayu/Learn/pi/packages/agent/docs/post-wp05-roadmap.md:19)、[harness.md:1251](/Users/ayu/Learn/pi/packages/agent/docs/harness.md:1251)、[harness.md:1282](/Users/ayu/Learn/pi/packages/agent/docs/harness.md:1282)。旧审计 baseline 早于本文 HEAD，逐项以本文源码比较为准。
 
-## 11. 后续 AI 带读顺序
+## 11. 后续 AI 查阅顺序
 
 每次选一条实际路径，读完“输入→决策→副作用→落库→下一步”，不按文件从上到下背 API。
 

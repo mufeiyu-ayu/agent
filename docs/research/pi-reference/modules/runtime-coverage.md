@@ -83,7 +83,7 @@
 
 ## 4. 其余测试的功能索引
 
-下列以测试文件名定位。已核对目录归属，未逐行审计全部断言；后续带读时先打开实际文件，不能仅凭名字解释。
+下列以测试文件名定位。已核对目录归属，未逐行审计全部断言；后续查阅时先打开实际文件，不能仅凭名字解释。
 
 | 功能 | `packages/agent/test/` 下文件 |
 | --- | --- |
@@ -107,7 +107,7 @@ SQLite 包的 6 个测试为 [adapter.test.ts](/Users/ayu/Learn/pi/packages/sess
 | 资料 | 分类与本次处理 |
 | --- | --- |
 | `packages/agent/README.md`、`package.json`、vitest configs；SQLite README/package/config | 包边界与入口核对；实现结论回到 src，不依赖 README 示例推定 |
-| `agent/docs/harness.md`、`runtime-simplification.md`、`post-wp05-roadmap.md`、`tool-durability.md`、`assistant-durability.md`、`values.md` | 规范、历史交接与规划材料；正文记录已反查的关键差异，未声称逐行完成全部设计稿审计 |
+| `agent/docs/harness.md`、`runtime-simplification.md`、`post-wp05-roadmap.md`、`tool-durability.md`、`assistant-durability.md`、`values.md`、`telemetry.md` | 规范、历史交接与规划材料；正文记录已反查的关键差异，未声称逐行完成全部设计稿审计。`telemetry.md` 自述大多数 runtime span 未实现，是主文 §9 telemetry 结论的一手依据 |
 | `agent/docs/work-packages/00–09` | 工作包历史/交接；HEAD 的 code 优先于旧状态表，WP08 必须按 backend 区分 |
 | `agent/docs/mobile-handoff/**` | 设计和实验（delta/scopes/execenv/tool-output/assistant-output、facets/sandbox）；其中 `.ts/.js/.diff` 不当作已集成生产代码 |
 | `agent/docs/pico/**`、`pico2.md`、`pico-v3.md`、`rpc.md`、`plugins.md` | 历史方案/协议和插件研究；与 protocol/client/server 的真正入口交叉读 |

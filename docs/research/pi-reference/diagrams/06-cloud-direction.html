@@ -5083,7 +5083,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         <div class="pulse-dot"></div>
         <h1>云端 Agent 的候选方向</h1>
       </div>
-      <p class="subtitle">设计建议 · 现有 Vue / NestJS / PostgreSQL 上逐步演进</p>
+      <p class="subtitle">自上而下：Web 发命令 → API 接纳 → Run Owner 执行 → 事实进 PostgreSQL → 投影回 Web</p>
     </div>
 
     <script id="archify-guided-views-data" type="application/json">[{"id":"control","label":"控制与观察分开","focus":["web","api","runtime","projection"]},{"id":"durable","label":"事实与副作用","focus":["runtime","db","model","tool"]}]</script>
@@ -5131,9 +5131,9 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
     <!-- Main Diagram -->
     <div class="diagram-container" data-detail-level="read"
          data-preset-badge-editorial-plate="ARCHIFY / 图版 04">
-      <svg viewBox="0 0 940 528" role="img" lang="zh-CN" aria-labelledby="archify-diagram-title archify-diagram-description" data-preset="blueprint" data-quality-profile="showcase">
+      <svg viewBox="0 0 868 384" role="img" lang="zh-CN" aria-labelledby="archify-diagram-title archify-diagram-description" data-animation="trace" data-preset="blueprint" data-quality-profile="showcase">
         <title id="archify-diagram-title">云端 Agent 的候选方向</title>
-        <desc id="archify-diagram-description">设计建议 · 现有 Vue / NestJS / PostgreSQL 上逐步演进</desc>
+        <desc id="archify-diagram-description">自上而下：Web 发命令 → API 接纳 → Run Owner 执行 → 事实进 PostgreSQL → 投影回 Web</desc>
         <!-- Definitions -->
         <defs>
           <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
@@ -5160,129 +5160,129 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
 
 
         <!-- Connection paths (before components for correct z-order) -->
-        <path data-edge-from="web" data-edge-to="api" data-edge-label="命令" data-edge-key="0" data-composition-points="260,120;360,120" d="M 260 120 L 360 120" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="api" data-edge-to="runtime" data-edge-label="接纳" data-edge-key="1" data-composition-points="580,113;680,113" d="M 580 113 L 680 113" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="runtime" data-edge-to="db" data-edge-label="durable facts" data-edge-key="2" data-composition-points="680,127;630,127;630,270;580,270" d="M 680 127 L 638 127 Q 630 127 630 135 L 630 262 Q 630 270 622 270 L 580 270" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="db" data-edge-to="projection" data-edge-label="恢复读端" data-edge-key="3" data-composition-points="360,270;260,270" d="M 360 270 L 260 270" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="projection" data-edge-to="web" data-edge-label="观察" data-edge-key="4" data-composition-points="150,230;150,160" d="M 150 230 L 150 160" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="runtime" data-edge-to="model" data-edge-label="采样" data-edge-key="5" data-composition-points="790,160;790,230" d="M 790 160 L 790 230" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="runtime" data-edge-to="tool" data-edge-label="受控执行" data-edge-key="6" data-composition-points="900,120;924,120;924,420;900,420" d="M 900 120 L 916 120 Q 924 120 924 128 L 924 412 Q 924 420 916 420 L 900 420" class="a-security" stroke-width="1.5" marker-end="url(#arrowhead-security)"/>
+        <path data-edge-from="web" data-edge-to="api" data-edge-label="命令" data-edge-key="0" data-edge-id="web-api" data-composition-points="236,70;332,70" d="M 236 70 L 332 70" class="a-default" data-animate="edge" style="--step:0" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="api" data-edge-to="runtime" data-edge-label="接纳" data-edge-key="1" data-edge-id="api-runtime" data-composition-points="432,100;432,148" d="M 432 100 L 432 148" class="a-default" data-animate="edge" style="--step:1" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="runtime" data-edge-to="db" data-edge-label="durable facts" data-edge-key="2" data-edge-id="runtime-db" data-composition-points="425,208;425,256" d="M 425 208 L 425 256" class="a-default" data-animate="edge" style="--step:2" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="db" data-edge-to="projection" data-edge-label="恢复读端" data-edge-key="3" data-edge-id="db-projection" data-composition-points="332,286;136,286;136,208" d="M 332 286 L 144 286 Q 136 286 136 278 L 136 208" class="a-default" data-animate="edge" style="--step:3" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="projection" data-edge-to="web" data-edge-label="观察" data-edge-key="4" data-edge-id="projection-web" data-composition-points="136,148;136,100" d="M 136 148 L 136 100" class="a-default" data-animate="edge" style="--step:4" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="runtime" data-edge-to="model" data-edge-label="采样" data-edge-key="5" data-edge-id="runtime-model" data-composition-points="532,178;628,178" d="M 532 178 L 628 178" class="a-default" data-animate="edge" style="--step:5" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="runtime" data-edge-to="tool" data-edge-label="受控执行" data-edge-key="6" data-edge-id="runtime-tool" data-composition-points="439,208;439,232;728,232;728,256" d="M 439 208 L 439 224 Q 439 232 447 232 L 720 232 Q 728 232 728 240 L 728 256" class="a-security" data-animate="edge" style="--step:6" stroke-width="1.5" marker-end="url(#arrowhead-security)"/>
 
         <!-- Components -->
         <g id="node-web" data-node-id="web" data-node-label="Vue Web / Admin" tabindex="0" role="button" aria-label="聚焦Vue Web / Admin，会话 / 模型 / Trace / Sources, 架构组件" aria-pressed="false" data-node-kind="frontend" data-node-sublabel="会话 / 模型 / Trace / Sources" data-node-context="架构组件">
           <title>Vue Web / Admin · 会话 / 模型 / Trace / Sources · 架构组件</title>
-          <rect x="40" y="80" width="220" height="80" rx="6" class="c-mask"/>
-          <rect x="40" y="80" width="220" height="80" rx="6" class="c-frontend" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="frontend" class="semantic-sigil s-frontend" transform="translate(46 86) scale(0.6875)">
+          <rect x="36" y="40" width="200" height="60" rx="6" class="c-mask"/>
+          <rect x="36" y="40" width="200" height="60" rx="6" class="c-frontend" data-animate="node" style="--step:0" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="frontend" class="semantic-sigil s-frontend" transform="translate(42 46) scale(0.6875)">
             <rect x="2" y="3" width="12" height="10" rx="2"/>
             <path d="M2 6.5h12"/>
             <circle cx="4.1" cy="4.8" r=".7" class="sigil-fill"/>
             <circle cx="6.3" cy="4.8" r=".7" class="sigil-fill"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="150" y="118" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Vue Web / Admin</text>
-        <text data-detail="context" x="150" y="134" class="t-muted" font-size="9" text-anchor="middle">会话 / 模型 / Trace / Sources</text>
+          <text data-node-label="" data-detail-anchor="" x="136" y="68" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Vue Web / Admin</text>
+        <text data-detail="context" x="136" y="84" class="t-muted" font-size="9" text-anchor="middle">会话 / 模型 / Trace / Sources</text>
         </g>
 
         <g id="node-api" data-node-id="api" data-node-label="NestJS API" tabindex="0" role="button" aria-label="聚焦NestJS API，身份 / 会话权限 / 命令, 架构组件" aria-pressed="false" data-node-kind="security" data-node-sublabel="身份 / 会话权限 / 命令" data-node-context="架构组件">
           <title>NestJS API · 身份 / 会话权限 / 命令 · 架构组件</title>
-          <rect x="360" y="80" width="220" height="80" rx="6" class="c-mask"/>
-          <rect x="360" y="80" width="220" height="80" rx="6" class="c-security" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(366 86) scale(0.6875)">
+          <rect x="332" y="40" width="200" height="60" rx="6" class="c-mask"/>
+          <rect x="332" y="40" width="200" height="60" rx="6" class="c-security" data-animate="node" style="--step:1" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(338 46) scale(0.6875)">
             <path d="M8 2.2 13 4v3.5c0 3.1-1.8 5.4-5 6.5-3.2-1.1-5-3.4-5-6.5V4Z"/>
             <path d="m5.8 8 1.5 1.5 3-3"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="470" y="118" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">NestJS API</text>
-        <text data-detail="context" x="470" y="134" class="t-muted" font-size="9" text-anchor="middle">身份 / 会话权限 / 命令</text>
-        </g>
-
-        <g id="node-runtime" data-node-id="runtime" data-node-label="Run Owner" tabindex="0" role="button" aria-label="聚焦Run Owner，状态机 / checkpoint / deadline, 架构组件" aria-pressed="false" data-node-kind="backend" data-node-sublabel="状态机 / checkpoint / deadline" data-node-context="架构组件">
-          <title>Run Owner · 状态机 / checkpoint / deadline · 架构组件</title>
-          <rect x="680" y="80" width="220" height="80" rx="6" class="c-mask"/>
-          <rect x="680" y="80" width="220" height="80" rx="6" class="c-backend" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(686 86) scale(0.6875)">
-            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
-          </g>
-          <text data-node-label="" data-detail-anchor="" x="790" y="118" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Run Owner</text>
-        <text data-detail="context" x="790" y="134" class="t-muted" font-size="9" text-anchor="middle">状态机 / checkpoint / deadline</text>
+          <text data-node-label="" data-detail-anchor="" x="432" y="68" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">NestJS API</text>
+        <text data-detail="context" x="432" y="84" class="t-muted" font-size="9" text-anchor="middle">身份 / 会话权限 / 命令</text>
         </g>
 
         <g id="node-projection" data-node-id="projection" data-node-label="订阅与投影" tabindex="0" role="button" aria-label="聚焦订阅与投影，snapshot + cursor / 重连, 架构组件" aria-pressed="false" data-node-kind="messagebus" data-node-sublabel="snapshot + cursor / 重连" data-node-context="架构组件">
           <title>订阅与投影 · snapshot + cursor / 重连 · 架构组件</title>
-          <rect x="40" y="230" width="220" height="80" rx="6" class="c-mask"/>
-          <rect x="40" y="230" width="220" height="80" rx="6" class="c-messagebus" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="messagebus" class="semantic-sigil s-messagebus" transform="translate(46 236) scale(0.6875)">
+          <rect x="36" y="148" width="200" height="60" rx="6" class="c-mask"/>
+          <rect x="36" y="148" width="200" height="60" rx="6" class="c-messagebus" data-animate="node" style="--step:4" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="messagebus" class="semantic-sigil s-messagebus" transform="translate(42 154) scale(0.6875)">
             <path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11"/>
             <circle cx="5" cy="4.5" r="1" class="sigil-fill"/>
             <circle cx="10.5" cy="8" r="1" class="sigil-fill"/>
             <circle cx="7" cy="11.5" r="1" class="sigil-fill"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="150" y="268" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">订阅与投影</text>
-        <text data-detail="context" x="150" y="284" class="t-muted" font-size="9" text-anchor="middle">snapshot + cursor / 重连</text>
+          <text data-node-label="" data-detail-anchor="" x="136" y="176" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">订阅与投影</text>
+        <text data-detail="context" x="136" y="192" class="t-muted" font-size="9" text-anchor="middle">snapshot + cursor / 重连</text>
         </g>
 
-        <g id="node-db" data-node-id="db" data-node-label="PostgreSQL" tabindex="0" role="button" aria-label="聚焦PostgreSQL，operation / journal / model input, 架构组件" aria-pressed="false" data-node-kind="database" data-node-sublabel="operation / journal / model input" data-node-context="架构组件">
-          <title>PostgreSQL · operation / journal / model input · 架构组件</title>
-          <rect x="360" y="230" width="220" height="80" rx="6" class="c-mask"/>
-          <rect x="360" y="230" width="220" height="80" rx="6" class="c-database" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(366 236) scale(0.6875)">
-            <ellipse cx="8" cy="4" rx="5" ry="2"/>
-            <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
+        <g id="node-runtime" data-node-id="runtime" data-node-label="Run Owner" tabindex="0" role="button" aria-label="聚焦Run Owner，状态机 / checkpoint / deadline, 架构组件" aria-pressed="false" data-node-kind="backend" data-node-sublabel="状态机 / checkpoint / deadline" data-node-context="架构组件">
+          <title>Run Owner · 状态机 / checkpoint / deadline · 架构组件</title>
+          <rect x="332" y="148" width="200" height="60" rx="6" class="c-mask"/>
+          <rect x="332" y="148" width="200" height="60" rx="6" class="c-backend" data-animate="node" style="--step:2" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(338 154) scale(0.6875)">
+            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="470" y="268" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">PostgreSQL</text>
-        <text data-detail="context" x="470" y="284" class="t-muted" font-size="9" text-anchor="middle">operation / journal / model input</text>
+          <text data-node-label="" data-detail-anchor="" x="432" y="176" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Run Owner</text>
+        <text data-detail="context" x="432" y="192" class="t-muted" font-size="9" text-anchor="middle">状态机 / checkpoint / deadline</text>
         </g>
 
         <g id="node-model" data-node-id="model" data-node-label="LLM Adapter" tabindex="0" role="button" aria-label="聚焦LLM Adapter，独立契约 / provider 差异, 架构组件" aria-pressed="false" data-node-kind="cloud" data-node-sublabel="独立契约 / provider 差异" data-node-context="架构组件">
           <title>LLM Adapter · 独立契约 / provider 差异 · 架构组件</title>
-          <rect x="680" y="230" width="220" height="80" rx="6" class="c-mask"/>
-          <rect x="680" y="230" width="220" height="80" rx="6" class="c-cloud" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="cloud" class="semantic-sigil s-cloud" transform="translate(686 236) scale(0.6875)">
+          <rect x="628" y="148" width="200" height="60" rx="6" class="c-mask"/>
+          <rect x="628" y="148" width="200" height="60" rx="6" class="c-cloud" data-animate="node" style="--step:6" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="cloud" class="semantic-sigil s-cloud" transform="translate(634 154) scale(0.6875)">
             <path d="M4.3 12.5h7.3a2.4 2.4 0 0 0 .2-4.8 4 4 0 0 0-7.5-1.3A3.1 3.1 0 0 0 4.3 12.5Z"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="790" y="268" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">LLM Adapter</text>
-        <text data-detail="context" x="790" y="284" class="t-muted" font-size="9" text-anchor="middle">独立契约 / provider 差异</text>
+          <text data-node-label="" data-detail-anchor="" x="728" y="176" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">LLM Adapter</text>
+        <text data-detail="context" x="728" y="192" class="t-muted" font-size="9" text-anchor="middle">独立契约 / provider 差异</text>
+        </g>
+
+        <g id="node-db" data-node-id="db" data-node-label="PostgreSQL" tabindex="0" role="button" aria-label="聚焦PostgreSQL，operation / journal / 模型输入, 架构组件" aria-pressed="false" data-node-kind="database" data-node-sublabel="operation / journal / 模型输入" data-node-context="架构组件">
+          <title>PostgreSQL · operation / journal / 模型输入 · 架构组件</title>
+          <rect x="332" y="256" width="200" height="60" rx="6" class="c-mask"/>
+          <rect x="332" y="256" width="200" height="60" rx="6" class="c-database" data-animate="node" style="--step:3" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(338 262) scale(0.6875)">
+            <ellipse cx="8" cy="4" rx="5" ry="2"/>
+            <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
+          </g>
+          <text data-node-label="" data-detail-anchor="" x="432" y="284" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">PostgreSQL</text>
+        <text data-detail="context" x="432" y="300" class="t-muted" font-size="9" text-anchor="middle">operation / journal / 模型输入</text>
         </g>
 
         <g id="node-tool" data-node-id="tool" data-node-label="Tool Execution" tabindex="0" role="button" aria-label="聚焦Tool Execution，审批 / receipt / 隔离, 架构组件" aria-pressed="false" data-node-kind="security" data-node-sublabel="审批 / receipt / 隔离" data-node-context="架构组件">
           <title>Tool Execution · 审批 / receipt / 隔离 · 架构组件</title>
-          <rect x="680" y="380" width="220" height="80" rx="6" class="c-mask"/>
-          <rect x="680" y="380" width="220" height="80" rx="6" class="c-security" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(686 386) scale(0.6875)">
+          <rect x="628" y="256" width="200" height="60" rx="6" class="c-mask"/>
+          <rect x="628" y="256" width="200" height="60" rx="6" class="c-security" data-animate="node" style="--step:7" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(634 262) scale(0.6875)">
             <path d="M8 2.2 13 4v3.5c0 3.1-1.8 5.4-5 6.5-3.2-1.1-5-3.4-5-6.5V4Z"/>
             <path d="m5.8 8 1.5 1.5 3-3"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="790" y="418" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Tool Execution</text>
-        <text data-detail="context" x="790" y="434" class="t-muted" font-size="9" text-anchor="middle">审批 / receipt / 隔离</text>
+          <text data-node-label="" data-detail-anchor="" x="728" y="284" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Tool Execution</text>
+        <text data-detail="context" x="728" y="300" class="t-muted" font-size="9" text-anchor="middle">审批 / receipt / 隔离</text>
         </g>
 
         <!-- Connection labels -->
-        <g data-detail="context" data-edge-from="web" data-edge-to="api" data-edge-label="命令" data-edge-key="0">
-          <rect x="295" y="100" width="30" height="14" rx="3" class="c-mask"/>
-          <text x="310" y="110" class="t-muted" font-size="8" text-anchor="middle">命令</text>
+        <g data-detail="context" data-edge-from="web" data-edge-to="api" data-edge-label="命令" data-edge-key="0" data-edge-id="web-api">
+          <rect x="269" y="50" width="30" height="14" rx="3" class="c-mask"/>
+          <text x="284" y="60" class="t-muted" font-size="8" text-anchor="middle">命令</text>
         </g>
-        <g data-detail="context" data-edge-from="api" data-edge-to="runtime" data-edge-label="接纳" data-edge-key="1">
-          <rect x="615" y="93" width="30" height="14" rx="3" class="c-mask"/>
-          <text x="630" y="103" class="t-muted" font-size="8" text-anchor="middle">接纳</text>
+        <g data-detail="context" data-edge-from="api" data-edge-to="runtime" data-edge-label="接纳" data-edge-key="1" data-edge-id="api-runtime">
+          <rect x="417" y="106" width="30" height="14" rx="3" class="c-mask"/>
+          <text x="432" y="116" class="t-muted" font-size="8" text-anchor="middle">接纳</text>
         </g>
-        <g data-detail="context" data-edge-from="runtime" data-edge-to="db" data-edge-label="durable facts" data-edge-key="2">
-          <rect x="593.8" y="178.5" width="72.4" height="14" rx="3" class="c-mask"/>
-          <text x="630" y="188.5" class="t-muted" font-size="8" text-anchor="middle">durable facts</text>
+        <g data-detail="context" data-edge-from="runtime" data-edge-to="db" data-edge-label="durable facts" data-edge-key="2" data-edge-id="runtime-db">
+          <rect x="342.8" y="214" width="72.4" height="14" rx="3" class="c-mask"/>
+          <text x="379" y="224" class="t-muted" font-size="8" text-anchor="middle">durable facts</text>
         </g>
-        <g data-detail="context" data-edge-from="db" data-edge-to="projection" data-edge-label="恢复读端" data-edge-key="3">
-          <rect x="285.8" y="250" width="48.4" height="14" rx="3" class="c-mask"/>
-          <text x="310" y="260" class="t-muted" font-size="8" text-anchor="middle">恢复读端</text>
+        <g data-detail="context" data-edge-from="db" data-edge-to="projection" data-edge-label="恢复读端" data-edge-key="3" data-edge-id="db-projection">
+          <rect x="111.8" y="227" width="48.4" height="14" rx="3" class="c-mask"/>
+          <text x="136" y="237" class="t-muted" font-size="8" text-anchor="middle">恢复读端</text>
         </g>
-        <g data-detail="context" data-edge-from="projection" data-edge-to="web" data-edge-label="观察" data-edge-key="4">
-          <rect x="175" y="190" width="30" height="14" rx="3" class="c-mask"/>
-          <text x="190" y="200" class="t-muted" font-size="8" text-anchor="middle">观察</text>
+        <g data-detail="context" data-edge-from="projection" data-edge-to="web" data-edge-label="观察" data-edge-key="4" data-edge-id="projection-web">
+          <rect x="121" y="128" width="30" height="14" rx="3" class="c-mask"/>
+          <text x="136" y="138" class="t-muted" font-size="8" text-anchor="middle">观察</text>
         </g>
-        <g data-detail="context" data-edge-from="runtime" data-edge-to="model" data-edge-label="采样" data-edge-key="5">
-          <rect x="815" y="160" width="30" height="14" rx="3" class="c-mask"/>
-          <text x="830" y="170" class="t-muted" font-size="8" text-anchor="middle">采样</text>
+        <g data-detail="context" data-edge-from="runtime" data-edge-to="model" data-edge-label="采样" data-edge-key="5" data-edge-id="runtime-model">
+          <rect x="565" y="158" width="30" height="14" rx="3" class="c-mask"/>
+          <text x="580" y="168" class="t-muted" font-size="8" text-anchor="middle">采样</text>
         </g>
-        <g data-detail="context" data-edge-from="runtime" data-edge-to="tool" data-edge-label="受控执行" data-edge-key="6">
-          <rect x="944.8" y="250" width="48.4" height="14" rx="3" class="c-mask"/>
-          <text x="969" y="260" class="t-security" font-size="8" text-anchor="middle">受控执行</text>
+        <g data-detail="context" data-edge-from="runtime" data-edge-to="tool" data-edge-label="受控执行" data-edge-key="6" data-edge-id="runtime-tool">
+          <rect x="605.3" y="238" width="48.4" height="14" rx="3" class="c-mask"/>
+          <text x="629.5" y="248" class="t-security" font-size="8" text-anchor="middle">受控执行</text>
         </g>
 
         <!-- Boundary labels (foreground masks keep routes out of titles) -->
@@ -5290,30 +5290,30 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
 
         <!-- Legend -->
         <g data-legend="" data-legend-bridge="">
-          <text x="40" y="492" class="t-primary" font-size="12" font-weight="650">图例</text>
-          <g data-legend-semantic-kind="frontend" data-legend-kind="frontend" data-legend-label="前端" data-legend-x="40" data-legend-baseline="512" data-legend-width="63">
-            <rect x="40" y="503" width="16" height="10" rx="2.5" class="c-frontend" stroke-width="1"/>
-            <text x="62" y="512" class="t-muted" font-size="10" font-weight="500">前端</text>
+          <text x="40" y="348" class="t-primary" font-size="12" font-weight="650">图例</text>
+          <g data-legend-semantic-kind="frontend" data-legend-kind="frontend" data-legend-label="前端" data-legend-x="40" data-legend-baseline="368" data-legend-width="63">
+            <rect x="40" y="359" width="16" height="10" rx="2.5" class="c-frontend" stroke-width="1"/>
+            <text x="62" y="368" class="t-muted" font-size="10" font-weight="500">前端</text>
           </g>
-          <g data-legend-semantic-kind="backend" data-legend-kind="backend" data-legend-label="后端" data-legend-x="125" data-legend-baseline="512" data-legend-width="63">
-            <rect x="125" y="503" width="16" height="10" rx="2.5" class="c-backend" stroke-width="1"/>
-            <text x="147" y="512" class="t-muted" font-size="10" font-weight="500">后端</text>
+          <g data-legend-semantic-kind="backend" data-legend-kind="backend" data-legend-label="后端" data-legend-x="125" data-legend-baseline="368" data-legend-width="63">
+            <rect x="125" y="359" width="16" height="10" rx="2.5" class="c-backend" stroke-width="1"/>
+            <text x="147" y="368" class="t-muted" font-size="10" font-weight="500">后端</text>
           </g>
-          <g data-legend-semantic-kind="database" data-legend-kind="database" data-legend-label="数据库" data-legend-x="210" data-legend-baseline="512" data-legend-width="73">
-            <rect x="210" y="503" width="16" height="10" rx="2.5" class="c-database" stroke-width="1"/>
-            <text x="232" y="512" class="t-muted" font-size="10" font-weight="500">数据库</text>
+          <g data-legend-semantic-kind="database" data-legend-kind="database" data-legend-label="数据库" data-legend-x="210" data-legend-baseline="368" data-legend-width="73">
+            <rect x="210" y="359" width="16" height="10" rx="2.5" class="c-database" stroke-width="1"/>
+            <text x="232" y="368" class="t-muted" font-size="10" font-weight="500">数据库</text>
           </g>
-          <g data-legend-semantic-kind="cloud" data-legend-kind="cloud" data-legend-label="云服务" data-legend-x="305" data-legend-baseline="512" data-legend-width="73">
-            <rect x="305" y="503" width="16" height="10" rx="2.5" class="c-cloud" stroke-width="1"/>
-            <text x="327" y="512" class="t-muted" font-size="10" font-weight="500">云服务</text>
+          <g data-legend-semantic-kind="cloud" data-legend-kind="cloud" data-legend-label="云服务" data-legend-x="305" data-legend-baseline="368" data-legend-width="73">
+            <rect x="305" y="359" width="16" height="10" rx="2.5" class="c-cloud" stroke-width="1"/>
+            <text x="327" y="368" class="t-muted" font-size="10" font-weight="500">云服务</text>
           </g>
-          <g data-legend-semantic-kind="security" data-legend-kind="security" data-legend-label="安全" data-legend-x="400" data-legend-baseline="512" data-legend-width="63">
-            <rect x="400" y="503" width="16" height="10" rx="2.5" class="c-security" stroke-width="1"/>
-            <text x="422" y="512" class="t-muted" font-size="10" font-weight="500">安全</text>
+          <g data-legend-semantic-kind="security" data-legend-kind="security" data-legend-label="安全" data-legend-x="400" data-legend-baseline="368" data-legend-width="63">
+            <rect x="400" y="359" width="16" height="10" rx="2.5" class="c-security" stroke-width="1"/>
+            <text x="422" y="368" class="t-muted" font-size="10" font-weight="500">安全</text>
           </g>
-          <g data-legend-semantic-kind="messagebus" data-legend-kind="messagebus" data-legend-label="消息总线" data-legend-x="485" data-legend-baseline="512" data-legend-width="83">
-            <rect x="485" y="503" width="16" height="10" rx="2.5" class="c-messagebus" stroke-width="1"/>
-            <text x="507" y="512" class="t-muted" font-size="10" font-weight="500">消息总线</text>
+          <g data-legend-semantic-kind="messagebus" data-legend-kind="messagebus" data-legend-label="消息总线" data-legend-x="485" data-legend-baseline="368" data-legend-width="83">
+            <rect x="485" y="359" width="16" height="10" rx="2.5" class="c-messagebus" stroke-width="1"/>
+            <text x="507" y="368" class="t-muted" font-size="10" font-weight="500">消息总线</text>
           </g>
         </g>
       </svg>

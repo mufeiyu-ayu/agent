@@ -7,7 +7,7 @@
 | 类型 | 当前记录 | 下一步 |
 | --- | --- | --- |
 | Agent 主线 | 阶段 1-8 Completed；横向任务与 Backend 模块组织全部验收合并；健壮性三件 #115 / #116 / #117 已立 Issue | 源码阅读；#115 → #116 → #117 依次开工 |
-| 方向 | 当前继续源码学习；2026-09-15 用户指定学习后以 Pi 为主要参照演进云端 Agent | 见 [Pi 研究入口](./research/pi-reference/README.md) 与候选 roadmap；不改变正式任务顺序 |
+| 方向 | 当前继续本项目源码学习；2026-09-15 用户指定学完后由 AI 以 Pi 为参照实现云端 Agent，用户不读 Pi 代码 | 见 [Pi 研究入口](./research/pi-reference/README.md) 与实现 roadmap；不改变正式任务顺序 |
 | 翻译质检站 | 方向 2026-09-02 放弃；2026-09-05 经 #113 删除全部代码与数据模型 | 无 |
 | Admin Console | Task 0-3、Enhancement 1-3、Phase 8 Task 3C Completed；Task 4 Planned | 不自动启动 Auth / RBAC |
 | 协作流程 | `AGENTS.md` 为工具无关基线 + 默认单角色流程；多角色分工流程见 `docs/development-workflow.md`；工具适配文件（如 `CLAUDE.md`）只给 review 命令 / skill 路径 / 分支前缀 | 换工具只加一份适配文件 |
@@ -16,6 +16,11 @@
 
 | 日期 | 事项 | 结果 |
 | --- | --- | --- |
+| 2026-09-16 | R2 首步定为分包 | 用户定案：完成 #115–117 后，在 R2 开始时仿 Pi 分 `packages/agent`（零 Nest/Prisma）与 `packages/ai`，`apps/api` 只做宿主；新代码直接进包、旧代码按替换节奏迁入；Grounding 拆校验/落库；验收为包测试不启动 Nest、不连库。R5 候选新增 Skill（R2 后）与 MCP（R3 后，Pi 本版本无内置 MCP） |
+| 2026-09-15 | Pi 路线改为实现口径 | 用户明确不读 Pi 代码，pi-reference 是给 AI 写代码用的素材：roadmap 去掉 L0–L5 学习站，改为 R0→R2→R1→R3→R4→R5 每步附“AI 查的素材”；how-to-read、learning-method 改为给实现智能体的说明；各入口与模块文档的“带读/学习”措辞同步 |
+| 2026-09-15 | 收敛Pi学习路线 | 用户确认云端目标不需要终端、provider 生态：roadmap 学习站从 L0–L8 收成 L0–L5 六站并列出明确不学清单；重构顺序改为 R0→R2→R1→R3→R4→R5，补充完成度（约 25%～30%）与剩余工作量估算（15～18 周，不含 R5）；入口文档同步 |
+| 2026-09-15 | Pi图表按反馈重排为自上而下 | 用户反馈图从左到右、流程不清、空白多字小、悬停动画异常：01/02/06/08 改为自上而下紧凑网格，03/07 改为时序图（用户 → 模型返回 toolCall 续轮 / 返回文本回复），全部开启 trace 动画；8 图 showcase 校验、build --check、build.test 通过。查看器字号由渲染器固定，只能靠压缩空白放大；浏览器视觉与悬停行为待用户允许后验证 |
+| 2026-09-15 | Pi研究第二轮源码复核与完善 | 主会话通读 agent/ai/coding-agent/experimental/server/client/chord 核心源码，配合五路独立核查 149 条断言与 529 条链接：0 事实错误，约 20 处表述精确化与行号校正；新增 runtime 宿主 API 与错误契约、system prompt 装配、扩展事件目录、DeepSeek 专项、传输插槽与控制面认证、术语表 `glossary.md`、第 7 张图“普通 CLI 的一次 prompt”（含回复用户 / 工具续轮分支）、第 8 张图“生命周期与可定制点”、当前项目流协议/取消/零鉴权对照；verification 改为只记当前可复核状态。图表 build/--check/test 与两个离线断言脚本通过；第 7、8 张图未做人工视觉检查；未 commit |
 | 2026-09-15 | Pi研究深度Review修复 | 校正SDK默认持久化与项目信任、共享Lane watch与客户端订阅，补充小默认能力/扩展工作流哲学及before_run_end重新检查inbox；图表构建检测并清理无源JSON的生成HTML，保护手写页面。六图同步检查与删除/重命名回归检查通过；用户已验收图集HTML |
 | 2026-09-15 | Pi图表统一JSON维护与图集入口 | 源JSON集中到 `diagrams/specs/`；新增 `build.mjs` 从JSON生成六张图和index侧栏菜单，支持临时重建同步检查；`index.html` 以原生iframe切换图表，可直接本地打开。构建检查通过，Safari实际验证菜单逐项切换，未新增PNG或验收展示页 |
 | 2026-09-15 | 精简Pi图表维护文件 | 按用户要求删除24张PNG、6个四图验收HTML、12份验收JSON；仅保留6组正式JSON/HTML及图表索引，补齐JSON输出路径并重新生成，6组全部9/9校验通过，生成HTML内容哈希与清理前一致；同步清理附件链接和维护说明 |
@@ -73,7 +78,7 @@ Admin Task 4        Planned
 当前执行顺序：
 
 ```text
-本项目源码阅读 → pi-reference 学习与云端方向讨论
+本项目源码阅读 → 按 pi-reference roadmap 实现云端方向（Pi 素材由 AI 查阅）
   -> 真实使用卡住 / 缺口命中时建 Issue
   -> AGENTS.md 单角色流程
 ```

@@ -7,7 +7,7 @@
 ```text
 阶段 1-8：Completed
 Active Agent Task：无
-方向：当前继续源码学习；学习完成后以 Pi 为主要参照演进云端 Agent（2026-09-15）
+方向：当前继续本项目源码学习；学完后由 AI 以 Pi 为参照实现云端 Agent，用户不读 Pi 代码（2026-09-15）
 当前阶段：源码阅读
 候选子系统：session 事件流与 replay、审批门、compaction、定时任务（候选不等于 Active）
 翻译质检站：已删除（#113）
@@ -24,7 +24,7 @@ Phase 8 已完成：
 - Task 3B：Web Grounding 状态、Sources disclosure、Source cards 与 Chromium，#60 / #61 / `572ad206`；
 - Task 3C：Admin Retrieval / Finalization / Citation Inspector，#62 / #63 / `20f838fb`。
 
-Phase 8 之后的横向任务 #92、#94、#98 与 Backend 模块组织 #101-#104 均已验收合并；翻译质检站 A-1（#109）/ A-2（#111）曾合入 master，该方向于 2026-09-02 放弃，并于 2026-09-05 经 #113 删除全部相关代码与数据模型。2026-09-05 定案为 runtime 深化；2026-09-15 用户指定完成当前源码学习后，以 Pi 为主要参照演进云端 Agent，研究入口为 [pi-reference](./research/pi-reference/README.md)，旧Codex研究资料已按用户要求删除。研究路线不改变已建 Issue 状态，也不自动启动重构。协作方式以 `AGENTS.md` 为准，多角色分工流程见 [development-workflow.md](./development-workflow.md)，工具专属配置保留在对应适配文件。
+Phase 8 之后的横向任务 #92、#94、#98 与 Backend 模块组织 #101-#104 均已验收合并；翻译质检站 A-1（#109）/ A-2（#111）曾合入 master，该方向于 2026-09-02 放弃，并于 2026-09-05 经 #113 删除全部相关代码与数据模型。2026-09-05 定案为 runtime 深化；2026-09-15 用户指定完成当前源码学习后，由 AI 以 Pi 为主要参照实现云端 Agent（用户不读 Pi 代码，素材给 AI 用），研究入口为 [pi-reference](./research/pi-reference/README.md)，旧Codex研究资料已按用户要求删除。研究路线不改变已建 Issue 状态，也不自动启动重构。协作方式以 `AGENTS.md` 为准，多角色分工流程见 [development-workflow.md](./development-workflow.md)，工具专属配置保留在对应适配文件。
 
 ## 文档入口
 
@@ -43,8 +43,8 @@ Phase 8 之后的横向任务 #92、#94、#98 与 Backend 模块组织 #101-#104
 | [Admin Console](./tasks/admin-console.md) | Admin Observability 支线 |
 | [development-workflow.md](./development-workflow.md) | 多角色分工流程（规划 / 验收与本地实现分开）；默认的单角色流程见 `AGENTS.md` 5.1 |
 | [research/README.md](./research/README.md) | Pi 参照入口与项目研究，不代表实现状态 |
-| [research/pi-reference/README.md](./research/pi-reference/README.md) | 全仓研究、带读说明、6张交互图和后续云端路线 |
-| [research/pi-reference/learning-method.md](./research/pi-reference/learning-method.md) | 每个子系统的七步法与阶段产物 |
+| [research/pi-reference/README.md](./research/pi-reference/README.md) | 全仓研究、AI 使用说明、术语表、8张交互图和云端实现路线 |
+| [research/pi-reference/learning-method.md](./research/pi-reference/learning-method.md) | 参照实现的六问与每步产物 |
 | [work-log.md](./work-log.md) | 已发生里程碑 |
 
 ## 当前能力链路
@@ -81,7 +81,7 @@ Chunking / Indexing
   -> Stream / Messages API
   -> Web Source UI
   -> Admin Retrieval Inspector
-  -> 完成当前链路学习后：pi-reference 的 L0–L8 学习路线
+  -> 完成当前链路学习后：按 pi-reference roadmap 的 R0→R2→R1→R3→R4→R5 实现（Pi 素材由 AI 查阅，不含终端/provider）
   -> 云端重构按具体问题讨论；其他实现按需对照
 ```
 
