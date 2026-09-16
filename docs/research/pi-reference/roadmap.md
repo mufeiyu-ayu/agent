@@ -22,6 +22,16 @@
 
 **AI 查的素材**：[07 图](./diagrams/07-classic-loop.html)；[产品主链 §3](./modules/coding-agent-tui.md)、[运行内核 §2](./modules/runtime-session.md)（toolCall 续轮与文本回复两条分支、`agent_end ≠ 空闲`）；[模型边界 §2–3、§4.1、§7](./modules/model-telemetry-evals.md)（事件流、transformMessages、compat 检测、usage 归一化、两层重试、overflow 判定）。对照点在 [current-agent-mapping](./current-agent-mapping.md) 的 `runTurnStream` 行。
 
+### R0 之后、R2 之前：第一个真实工具 `web_fetch`（2026-09-16 定案）
+
+只读、内容不可信的网络工具。它是第一个让用户真用起来的工具，也是 R3 副作用工具（工作区写入）的前置。第一个真实用途：盯 Pi 上游，读固定 revision 到 HEAD 的 compare / commits 页面，对照 pi-reference 判断哪些结论可能过期；第一版只读不写。
+
+**范围**：只允许 http/https；解析后拦截内网与保留地址，防 SSRF；体积与超时上限；HTML 转正文；observation 按 untrusted 标记，复用现有 Tool Observation 治理。不做 web_search，它需要搜索 API 与账单，进 R5 候选。
+
+**进入条件**：#115–117 合并。
+
+**AI 查的素材**：Pi 没有 fetch 工具，抓网页靠 `bash` 跑 `curl`，云端不能照搬；体积控制参照 `coding-agent/src/core/tools/truncate.ts` 与 `output-accumulator.ts`；工具定义与注册参照 [产品主链 §6.4](./modules/coding-agent-tui.md)。
+
 ### R2 operation 的接纳、执行和观察分开
 
 建立 `accept → drive → checkpoint → terminal` 的最小操作模型。先在现有 NestJS 进程内证明单 owner、取消和等待者隔离；需要独立恢复执行时再加 worker。命令端给 operation ID，观察端有 snapshot/cursor 与明确终态。沿用现有 NDJSON 事件与 `RunCancellation` 语义，加 operation ID，不另起协议。
@@ -84,6 +94,7 @@
 | 扩展 hooks / plugin | 出现第二种独立能力组合，静态 NestJS 注册已明显不够用 | 明确扩展点、权限、失效与版本；不直接执行不可信租户 JS | [08 图](./diagrams/08-lifecycle-hooks.html)、[运行内核 §9](./modules/runtime-session.md)、[产品主链 §6.4](./modules/coding-agent-tui.md) |
 | Skill（按需注入的 markdown 与资源） | R2 之后即可；出现按用户/租户定制 system prompt 或工作流的需求 | 存为数据不是代码；插入点为请求前上下文变换；只影响 prompt，不扩大工具权限；来源、版本、启停可查 | [产品主链 §6](./modules/coding-agent-tui.md)（resource-loader、skills 发现与注入） |
 | MCP 工具服务器 | R3 之后；出现第三方工具接入需求 | 外部工具与内置工具走同一条注册→审批→journal→租户隔离路径；服务器凭据按租户存；断连与超时有终态 | Pi 本版本无内置 MCP（`docs/usage.md` 明确留给扩展）；工具注册与拦截参照 [产品主链 §6.4](./modules/coding-agent-tui.md)（`registerTool`、`emitToolCall`）；审批与 receipt 复用 R3 |
+| web_search | 出现 `web_fetch` 覆盖不了的「不知道网址」需求 | 搜索 API key 按租户存、按次费用可见、结果仍按不可信内容处理 | Pi 无内置，社区扩展接搜索 API；不参照 |
 | 长期 Memory | 用户持续需要跨会话召回，且可控制写入/删除 | 记忆与检索正文的来源、权限、过期、删除可验证 | Pi 无直接参照 |
 | 定时任务 | 出现具体周期任务 | 稳定 operation identity、去重、错过执行策略、取消/重试规则 | Pi 无直接参照 |
 | Delta/更紧凑协议 | 测得完整 snapshot 流量或复制 CPU 成为瓶颈 | 带宽/CPU 对比及 gap/rebase 正确性 | [wire/delta](./modules/wire-delta-coverage.md) |

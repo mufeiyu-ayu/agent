@@ -16,6 +16,7 @@
 
 | 日期 | 事项 | 结果 |
 | --- | --- | --- |
+| 2026-09-16 | R0 之后加 `web_fetch` | 用户定案：#115–117 合并后、R2 之前立第一个真实工具 `web_fetch`（只读、SSRF 防护、untrusted observation），首个用途为盯 Pi 上游；`web_search` 进 R5 候选。工具在主线出现三次：#116 协议、R0 后 `web_fetch`、R3 工作区写入 |
 | 2026-09-16 | 按独立审查稿修订 Pi 路线 | 用户采纳当日审查稿的部分结论：mapping §3 改为引用 R2 分包决定，删除「不先抽包」旧指令；R5 更正「MCP 是数据不是代码」；R2 写明最少持久集合与 accept 后崩溃重发现，R1 不再含 operation 身份；R3 验收补权限撤销、schema 变更、换 toolCallId 三条；R4 验收补慢订阅者有界；删除完成度百分比与工期合计；ACL / Auth 触发条件改为第一个外部写或第一次开放给第二个用户；总 roadmap 加学习出口。未采纳：企业交付阶段 F、本地链接改写、AGENTS.md 框架口径 |
 | 2026-09-16 | R2 首步定为分包 | 用户定案：完成 #115–117 后，在 R2 开始时仿 Pi 分 `packages/agent`（零 Nest/Prisma）与 `packages/ai`，`apps/api` 只做宿主；新代码直接进包、旧代码按替换节奏迁入；Grounding 拆校验/落库；验收为包测试不启动 Nest、不连库。R5 候选新增 Skill（R2 后）与 MCP（R3 后，Pi 本版本无内置 MCP） |
 | 2026-09-15 | Pi 路线改为实现口径 | 用户明确不读 Pi 代码，pi-reference 是给 AI 写代码用的素材：roadmap 去掉 L0–L5 学习站，改为 R0→R2→R1→R3→R4→R5 每步附“AI 查的素材”；how-to-read、learning-method 改为给实现智能体的说明；各入口与模块文档的“带读/学习”措辞同步 |
