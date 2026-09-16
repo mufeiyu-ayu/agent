@@ -161,13 +161,7 @@ map编码按对象现有枚举顺序，不做canonical key排序。需要签名/
 
 ## 6. 原生离线检查及局限
 
-已保存 [checks/wire-study-check.mjs](../checks/wire-study-check.mjs)，直接import Pi delta、CBOR、framing，无第三方依赖、不连接网络：
-
-```sh
-/Users/ayu/.nvm/versions/node/v22.20.0/bin/node /Users/ayu/Desktop/agent/docs/research/pi-reference/checks/wire-study-check.mjs
-```
-
-实际exit0：
+2026-09-15 运行过直接 import Pi delta、CBOR、framing 的离线断言脚本，无第三方依赖、不连接网络；脚本硬编码本机路径，已于 2026-09-16 删除。当时实际 exit 0：
 
 ```text
 PASS: delta base recovery, path dictionary, ownership, safety, 1200 deterministic mutations; CBOR subset/bounds; bytewise framing and truncation

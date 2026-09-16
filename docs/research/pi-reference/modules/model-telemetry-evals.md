@@ -1,6 +1,6 @@
 # 模型边界、遥测与 Evals
 
-> 研究快照：`/Users/ayu/Learn/pi`，HEAD `8a7b0c03dfb702663acafb6dc29f8acaa4ffe391`，包版本 `0.85.1`。本文描述该 checkout 的实现，不声明第三方服务今天仍接受其中所有协议或价格。研究覆盖及实际检查见 [model-coverage.md](./model-coverage.md)。
+> 研究快照：`/Users/ayu/Learn/pi`，HEAD `8a7b0c03dfb702663acafb6dc29f8acaa4ffe391`，包版本 `0.85.1`。本文描述该 checkout 的实现，不声明第三方服务今天仍接受其中所有协议或价格。研究覆盖及实际检查见 [coverage](../coverage.md) 与 [verification](../verification.md)。
 
 ## 给实现 AI 的入口
 

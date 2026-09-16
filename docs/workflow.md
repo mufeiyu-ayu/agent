@@ -1,6 +1,6 @@
 # 协作工作流
 
-本文件是仓库的默认协作流程与硬约束。流程形态由用户本轮明确指令决定：默认走第 1 节的单角色流程；用户明确要求把规划 / 验收交给另一侧会话时，转到 [`development-workflow.md`](./development-workflow.md) 的多角色分工流程。第 2 节的硬约束对两种流程、任何工具都成立。
+本文件是仓库的协作流程、硬约束与共用定义。第 1 节是单角色流程：讨论、Issue、实现、review、验收、合并、带读都在同一会话完成。第 2 节的硬约束对任何工具都成立。第 3 节是 Issue 模板、任务状态与 docs 直写范围。
 
 下文的 `<review 命令>`、`<分支前缀>` 和 skill 取该工具适配文件里的值。
 
@@ -49,7 +49,7 @@
 
 ## 2. 各流程共用的硬约束
 
-以下约束对两种流程、任何工具都成立：
+以下约束对任何工具都成立：
 
 - `docs/tasks/**` 是任务与阶段状态的事实来源；Issue 保存实现规格、验收标准和澄清决策。
 - 正式代码任务先建 Issue，再走独立任务分支和 PR，不直接在 `master` 上实现、提交或推送。
@@ -58,9 +58,50 @@
 - review 在本地完成，通过后才创建 PR；PR 是验收载体，除高风险 Issue 的独立会话 review 外不用来收集 review。PR 创建即为 Ready，只有实现未完成、验证失败或受阻才用 Draft；云端自动 Review 是可选输入，不阻塞交付。
 - 不因技术意见取舍打断用户；只在缺少密钥、权限、登录等授权类前提，或出现会改变实现方向的规格冲突时中断询问。
 - 验收必须基于 PR 最新 head，逐条核对验收标准与真实验证输出；「测试命令成功」或「代码看起来合理」不单独构成验收。
-- 验收确认、docs 状态收口、合并和分支清理是不同动作，各自需要用户明确授权，不得自行推导；用户可以在同一句指令中一并授权；单角色流程的默认授权范围见第 1 节，多角色分工流程见 `docs/development-workflow.md`。任何工具都不得自行把任务标成 Completed；Phase 是否 Completed 还必须满足该阶段自己的完成条件。
+- 验收确认、docs 状态收口、合并和分支清理是不同动作，各自需要用户明确授权，不得自行推导；用户可以在同一句指令中一并授权；默认授权范围见第 1 节。任何工具都不得自行把任务标成 Completed；Phase 是否 Completed 还必须满足该阶段自己的完成条件。
 - Review finding 与最新 Issue 决策或项目规范冲突时，不为「通过 Review」反向违反已确认规格，应说明冲突并按事实来源解决。
 - 正式 GitHub 交付前必须先用 `gh auth status --hostname github.com` 和 `git push --dry-run origin HEAD` 预检凭据，且不得输出 token。若认证失效、凭据缺失、权限不足或 dry-run 因凭据失败，必须立即停止当前任务并告知用户；不得自行改用 GitHub API、Connector 或手工上传 blob / tree / commit / ref 绕过失败。
 - 当前不把 GitHub Actions 作为必需环节；commit 前的本地自审（本地验证 + review 结论）是普通 Issue 唯一必需的检查，高风险 Issue 另加独立会话 review；PR diff、云端 Review 和验收记录是补充证据。
-- 用户明确授权「更新 docs 并写入 master」「直接改 docs」「收口任务状态」等 docs-only 操作时，可以绕过 Issue / PR；业务功能、API / contracts、数据库、Agent Runtime、Streaming、Tool Calling、依赖、环境、安全或权限变更仍禁止直接写 `master`。
+- 用户明确授权的 docs-only 操作可以绕过 Issue / PR，允许与禁止范围见第 3 节。
 - 讨论、源码阅读、inspection-only、本地实验和小改动默认自由进行，不自动切任务分支、commit、push、创建 PR 或更新任务状态。
+
+## 3. 共用定义
+
+### Issue 模板
+
+一个 Issue 只对应一个任务单元，按 #115 的实际格式：
+
+```md
+## 目标
+## 当前代码事实
+## 对照            # 可选：Pi / Claude Code / OpenAI Agents SDK 等怎么做
+## 范围
+## 不做
+## 验收标准        # AC-01…，每条可独立核对
+## 决策记录
+## 依赖与顺序
+```
+
+### 任务状态
+
+正式任务同时记两个维度，写在 `docs/tasks/**` 对应文档或看板行：
+
+| 维度 | 可用状态 |
+| --- | --- |
+| 实施状态 | 未开始 / 进行中 / 已实现 |
+| 验收状态 | 未验收 / 待验收 / 需要修改 / 已通过 |
+
+「实施状态：已实现」且「验收状态：已通过」才能 Completed；已通过必须有本会话基于 PR 最新 head 的逐条验收记录。学习状态单独以 Issue 评论记录，见第 1 节。
+
+### docs 直写 master 的范围
+
+用户明确授权「更新 docs 并写入 master」「直接改 docs」「收口任务状态」时，以下 docs-only 改动直接提交 `master`，不建 Issue / PR：
+
+- `README.md`、`docs/README.md` 的进度与入口说明；
+- `docs/research/**` 的研究材料、设计对比与复盘；
+- `docs/tasks/**` 的状态同步与归档；
+- `docs/roadmap.md` 的阶段顺序与状态；
+- `docs/work-log.md` 已真实发生的记录；
+- 协作规范、流程、typo、格式与纯 Markdown 调整。
+
+以下不得走这条捷径：功能行为、API 或 shared contracts；数据库、migration 或 seed；Agent Runtime、Streaming、Tool Calling；依赖、环境变量、安全或权限；前后端业务代码与测试；任何会影响运行时行为的生成规格或策略文件。

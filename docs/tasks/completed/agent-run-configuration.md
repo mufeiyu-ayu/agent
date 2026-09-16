@@ -17,7 +17,7 @@
 - `apps/api/src/agent-runtime/agent-runtime.service.ts`：移除 `getModelProfile` 穿透依赖与 `!` 断言、`AGENT_RUN_TOOL_NAMES`、Tool 筛选与 Policy 直读；配置解析时机保持在 AgentRun / receiveUserMessageStep 落库之后，终态化语义不变；Initial Context、Sampling、Grounded finalization 共用同一份 resolved 请求配置。
 - Provider Client 改用 `requestConfig.temperature`（同默认值，行为不变）。
 - 测试：新增 `agent-run-configuration.service.test.ts`（allowlist 顺序 / 排除、`maxToolCalls=0`、Registry 缺失跳过、覆盖透传、空 model 回落）；`agent-runtime.service.test.ts` 新增 AC-04 用例（请求级覆盖时 Context 与 Provider 请求同源）；4 处构造点（harness、grounding runtime/db 测试、smoke CLI）同步更新。
-- 文档：新增 [`docs/research/configuration-map.md`](../research/configuration-map.md) 配置地图。
+- 文档：新增 [`docs/research/configuration-map.md`](../../research/configuration-map.md) 配置地图。
 
 ## Red 用例结果
 

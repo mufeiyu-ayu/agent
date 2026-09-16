@@ -7,11 +7,10 @@
 | 载体 | 适用 | 内容 |
 | --- | --- | --- |
 | 本文件 | 所有工具 | 工具无关基线 |
-| `docs/workflow.md` | 所有工具 | 默认单角色流程、学习环节、各流程共用的硬约束；本文件用 `@docs/workflow.md` 导入，不解析 `@` 的工具在会话开始先读它 |
-| `docs/development-workflow.md` | 多角色分工：规划 / 验收与本地实现分开 | 角色表、Clarification Gate、Issue 规格、触发语、授权边界 |
-| 工具适配文件（Claude Code 为 `CLAUDE.md`，pi 为 `.pi/APPEND_SYSTEM.md`；没有专属入口文件的工具以其 skill 目录为准，如 `.codex/skills/`） | 该工具的会话 | review 命令、skill 路径、分支前缀 |
+| `docs/workflow.md` | 所有工具 | 单角色流程、学习环节、硬约束、Issue 模板与任务状态；本文件用 `@docs/workflow.md` 导入，不解析 `@` 的工具在会话开始先读它 |
+| 工具适配文件（Claude Code 为 `CLAUDE.md`，pi 为 `.pi/APPEND_SYSTEM.md`） | 该工具的会话 | review 命令、skill 路径、分支前缀 |
 
-改本文件时只需确认另外三类载体是否仍然成立，不需要同步正文。
+改本文件时只需确认另外两类载体是否仍然成立，不需要同步正文。
 
 ## 1. 项目定位
 
@@ -41,15 +40,11 @@
 | `docs/README.md` | 文档总入口与当前状态 |
 | `docs/roadmap.md` | 阶段路线与方向 |
 | `docs/tasks/README.md` | 任务看板，Active / Completed / 放弃 以这里为准 |
-| `docs/tasks/_template.tdd.md` | 新任务模板 |
 | `docs/research/README.md` | 研究入口：pi-reference、补充参照与参照实现方法 |
 | `docs/research/pi-reference/learning-method.md` | 参照实现的六问与每步产物 |
-| `docs/workflow.md` | 默认单角色流程、学习环节与硬约束；`AGENTS.md` 自动导入 |
-| `docs/development-workflow.md` | 多角色分工的完整流程：角色表、Clarification Gate、Issue 规格、触发语、授权边界 |
+| `docs/workflow.md` | 单角色流程、学习环节、硬约束与共用定义；`AGENTS.md` 自动导入 |
 | `docs/work-log.md` | 已发生事实 |
-| `docs/tasks/completed/` | 已完成阶段归档 |
-
-`docs/development-task-plan.md` 只保留为旧入口兼容，不写新任务。
+| `docs/tasks/completed/` | 已完成阶段与任务的归档 |
 
 当前状态：Phase 1-8 Completed 并归档；当前阶段为源码阅读，先完成当前项目链路学习，之后按 `docs/research/pi-reference/roadmap.md` 由 AI 参照 Pi 实现云端方向；无 Active Task，Next 为 #115 → #116 → #117（已立 Issue、未开工）；翻译质检站已于 #113 删除；下一批候选子系统为 session 事件流与 replay、审批门、compaction、定时任务，候选不等于 Active；Admin Task 4 保持 Planned。
 
@@ -161,5 +156,5 @@ DTO class 用于 `@Body()` / `@Param()` 时，必须保留运行时值导入，�
 
 - `work-log` 只写真实已发生事实，保持简洁。
 - 不把计划写成已完成事实；候选子系统不写成 Active。
-- 不向 `docs/development-task-plan.md` 写新任务；不把研究长文写进 `docs/tasks/`。
+- 不把研究长文写进 `docs/tasks/`。
 - docs 更新范围不确定时先确认边界。

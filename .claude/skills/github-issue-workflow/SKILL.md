@@ -43,7 +43,6 @@ description: 执行本项目 GitHub Issue 的实现、Review、验收、合并�
 4. 实现未完成、验证失败或任务受阻时，保留任务文档原状态并记录阻塞原因；不得写成“已实现、待验收”。
 5. 实现阶段不把任务或阶段标记为 Completed，不推进下一任务，不归档阶段，不把 `docs/roadmap.md` 写成已完成；这些在第 7、8 步验收 PASS 后才做。
 6. Issue 本身是实施快照；正式状态仍以 `docs/tasks/**` 为准。
-7. 不向 `docs/development-task-plan.md` 写新任务。
 
 ## 4. 验证
 

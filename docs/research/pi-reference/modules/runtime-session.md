@@ -1,6 +1,6 @@
 # Pi 运行内核、会话与持久化研究
 
-> 基线：`/Users/ayu/Learn/pi`，HEAD `8a7b0c03dfb702663acafb6dc29f8acaa4ffe391`，2026-09-15 静态源码研究。本文记录实现，不把同目录设计稿当作已交付能力。范围及核实强度见 [runtime-coverage.md](runtime-coverage.md)。本次没有调用真实模型、执行 Pi 工具或运行测试。
+> 基线：`/Users/ayu/Learn/pi`，HEAD `8a7b0c03dfb702663acafb6dc29f8acaa4ffe391`，2026-09-15 静态源码研究。本文记录实现，不把同目录设计稿当作已交付能力。范围及核实强度见 [coverage](../coverage.md)。本次没有调用真实模型、执行 Pi 工具或运行测试。
 
 ## 1. 先认清两个运行内核
 

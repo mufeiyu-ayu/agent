@@ -10,12 +10,13 @@
 | 方向 | 当前继续本项目源码学习；2026-09-15 用户指定学完后由 AI 以 Pi 为参照实现云端 Agent，用户不读 Pi 代码 | 见 [Pi 研究入口](./research/pi-reference/README.md) 与实现 roadmap；不改变正式任务顺序 |
 | 翻译质检站 | 方向 2026-09-02 放弃；2026-09-05 经 #113 删除全部代码与数据模型 | 无 |
 | Admin Console | Task 0-3、Enhancement 1-3、Phase 8 Task 3C Completed；Task 4 Planned | 不自动启动 Auth / RBAC |
-| 协作流程 | `AGENTS.md` 为工具无关基线 + 默认单角色流程；多角色分工流程见 `docs/development-workflow.md`；工具适配文件（如 `CLAUDE.md`）只给 review 命令 / skill 路径 / 分支前缀 | 换工具只加一份适配文件 |
+| 协作流程 | `docs/workflow.md`（`AGENTS.md` 自动导入）：单角色流程、学习环节、硬约束、共用定义；工具适配文件（如 `CLAUDE.md`）只给 review 命令 / skill 路径 / 分支前缀 | 换工具只加一份适配文件 |
 
 ## 近期关键记录
 
 | 日期 | 事项 | 结果 |
 | --- | --- | --- |
+| 2026-09-16 | docs 与根目录清理 | 删除闲置文件：`docs/development-workflow.md`（双会话流程，9-05 起未用；双状态模型、docs 直写范围、Issue 模板搬入 `workflow.md` 第 3 节）、`development-task-plan.md`、`tasks/_template.tdd.md`、`PRODUCT.md`（6 月的 SEO 产品定义）、`PROJECT_STRUCTURE.md`（与 README / AGENTS.md 重复且过时）、`.codex/`、pi-reference 的 `source-files.txt`、三份 `*-coverage.md` 阅读证据表与 `checks/` 离线断言脚本。已完成横向任务 #92 / #94 / #98 / #101–#104 与 Admin Console 子任务文档移入 `tasks/completed/`。`docs/README.md`、`tasks/README.md` 重写为纯入口与看板；`roadmap.md` 删 Phase 8 两节重复归档、阶段 2–5 补归档链接；本文件删「已稳定的 Phase 8 事实」。docs 从 44 个 md 减到 33 个 |
 | 2026-09-16 | 协作流程拆到 `docs/workflow.md` | `AGENTS.md` 第 5 节移出为 `docs/workflow.md`，`AGENTS.md` 用 `@docs/workflow.md` 导入（Claude Code 嵌套导入最多 4 层，路径相对含 `@` 的文件）；pi 适配加「先读该文件」。流程新增三个学习环节：开工前用户先预测当前代码行为、合并后带读收尾用户讲回来、用户在纯 TS 层独立改一处；「代码完成」与「学习已验证」分开记录。高风险 Issue（持久化 / 恢复 / fencing / 审批 / 鉴权 / migration）验收前另开无实现上下文的新会话审 PR，skill 在 PR 后停下等「继续」。用户改用只用 Claude Code，Codex 远程 Review 不再作为独立 review 来源 |
 | 2026-09-16 | R0 之后加 `web_fetch` | 用户定案：#115–117 合并后、R2 之前立第一个真实工具 `web_fetch`（只读、SSRF 防护、untrusted observation），首个用途为盯 Pi 上游；`web_search` 进 R5 候选。工具在主线出现三次：#116 协议、R0 后 `web_fetch`、R3 工作区写入 |
 | 2026-09-16 | 按独立审查稿修订 Pi 路线 | 用户采纳当日审查稿的部分结论：mapping §3 改为引用 R2 分包决定，删除「不先抽包」旧指令；R5 更正「MCP 是数据不是代码」；R2 写明最少持久集合与 accept 后崩溃重发现，R1 不再含 operation 身份；R3 验收补权限撤销、schema 变更、换 toolCallId 三条；R4 验收补慢订阅者有界；删除完成度百分比与工期合计；ACL / Auth 触发条件改为第一个外部写或第一次开放给第二个用户；总 roadmap 加学习出口。未采纳：企业交付阶段 F、本地链接改写、AGENTS.md 框架口径 |
@@ -83,19 +84,8 @@ Admin Task 4        Planned
 ```text
 本项目源码阅读 → 按 pi-reference roadmap 实现云端方向（Pi 素材由 AI 查阅）
   -> 真实使用卡住 / 缺口命中时建 Issue
-  -> AGENTS.md 单角色流程
+  -> docs/workflow.md 单角色流程
 ```
-
-## 已稳定的 Phase 8 事实
-
-- Citation 是服务端验证的结构化事实，不是任意 Markdown `[1]`。
-- Evidence-backed answer 使用 Run-scoped opaque citationKey 和 structured finalization。
-- `citationIntegrity=validated` 与 `faithfulnessStatus=not_evaluated` 分开。
-- Message、Grounding、finalization Step、assistant Step 与 Run 正常完成时原子提交。
-- finalization sampling、usage、Abort、deadline 与事务失败的 attempt 事实不丢失。
-- Web 实时与历史 Grounding 使用同一严格 parser。
-- Admin 使用 typed、bounded、fail-closed projector 审计 Retrieval、Finalization 和 Citation。
-- ordinary、zero-hit、Tool failure、unclassifiable、legacy、malformed、FAILED、ABORTED 均有明确状态。
 
 ## 记录规则
 

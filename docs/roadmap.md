@@ -1,4 +1,4 @@
-# AI SEO Agent 学习路线
+# 路线
 
 本文维护阶段级路线。正式 Task 状态与执行顺序以 [`docs/tasks/README.md`](./tasks/README.md) 为准。
 
@@ -7,7 +7,7 @@
 ```text
 阶段 1-8：Completed
 Active Agent Task：无
-Next / Planned：#115 模型调用重试 → #116 同轮文本 + 多 Tool Call → #117 Responses adapter
+Next / Planned：#115 模型调用重试 → #116 同轮文本 + 多 Tool Call → #117 Responses adapter → web_fetch
 方向：runtime 深化（2026-09-05 定案）
 当前阶段：源码阅读
 候选子系统：session 事件流与 replay、审批门、compaction、定时任务
@@ -21,54 +21,13 @@ Admin Task 4：Planned
 | 阶段 | 状态 | 核心能力 |
 | --- | --- | --- |
 | 阶段 1：LLM + Chat 基础 | Completed | 基础模型问答 |
-| 阶段 2：Session Chat 持久化 | Completed | Conversation / Message 持久化 |
-| 阶段 3：Streaming Chat | Completed | NDJSON、Abort 与终态一致性 |
-| 阶段 4：Agent Runtime 基础 | Completed | AgentRun / AgentStep 与 Runtime Event |
-| 阶段 5：最小 Tool Calling | Completed | Tool Call、Observation、follow-up sampling |
+| [阶段 2：Session Chat 持久化](./tasks/completed/phase-02-agent-chat-session.md) | Completed | Conversation / Message 持久化 |
+| [阶段 3：Streaming Chat](./tasks/completed/phase-03-streaming-closeout.md) | Completed | NDJSON、Abort 与终态一致性 |
+| [阶段 4：Agent Runtime 基础](./tasks/completed/phase-04-agent-runtime.md) | Completed | AgentRun / AgentStep 与 Runtime Event |
+| [阶段 5：最小 Tool Calling](./tasks/completed/phase-05-tool-calling.md) | Completed | Tool Call、Observation、follow-up sampling |
 | [阶段 6：有界单 Agent Loop](./tasks/completed/phase-06-bounded-agent-loop.md) | Completed | bounded loop、DeepSeek continuation、deadline、终态可靠性 |
 | [阶段 7：Context Engineering](./tasks/completed/phase-07-context-engineering.md) | Completed | ModelContext、budget、history、Observation governance、Context Inspector |
 | [阶段 8：Grounded Retrieval / RAG Baseline](./tasks/completed/phase-08-grounded-retrieval.md) | **Completed** | Evaluation、Chunk / Index、Hybrid Retrieval、Agent Tool、Grounded Answer、Web Sources、Admin Inspector |
-
-## Phase 8 路线
-
-```text
-Task 0  Retrieval Boundary + Evaluation               Completed
-  ↓
-Task 1  Chunking + Embedding Index                     Completed
-  ↓
-Task 2A Vector / Hybrid Retrieval + Evaluation         Completed
-  ↓
-Task 2B Retrieval Tool + Agent Integration             Completed
-  ↓
-Task 3A Grounded Answer + Citation Backend Contract    Completed
-  ↓
-Task 3B Web Chat Source UI                             Completed
-  ↓
-Task 3C Admin Retrieval Inspector                      Completed
-  ↓
-Phase 8 Closeout                                       Completed
-```
-
-## Phase 8 最终能力
-
-- deterministic Article Chunking 与 stable identity；
-- Google `gemini-embedding-2` / 1536 dimensions active profile；
-- PostgreSQL pgvector exact cosine retrieval；
-- lexical + vector RRF；
-- 68 Articles / 2044 Chunks full indexing；
-- versioned quality-v2；
-- `retrieve_article_context@1`；
-- candidate / unverified / untrusted Observation；
-- Tool / Context / deadline / terminalization 不变量；
-- evidence-eligible Tool policy 与 Grounding Session；
-- Run-scoped Evidence Registry 与 opaque citationKey；
-- structured `submit_grounded_answer@1` finalization；
-- server-side Citation identity validation；
-- durable `MessageGroundingV1` 与原子终态；
-- optional `done.grounding` / `ConversationMessage.grounding`；
-- Web Grounding 状态、Sources disclosure 与 Source cards；
-- Admin Retrieval / Finalization / Citation Inspector；
-- ordinary、zero-hit、conflict、unavailable、legacy、malformed、FAILED、ABORTED 的确定性验证。
 
 ## 关键工程认知
 
@@ -158,5 +117,5 @@ Phase 8 Task 3C 已完成安全 Retrieval Inspector，但不自动启动 Task 4�
 Phase 8：Completed / 已归档（docs/tasks/completed/phase-08-grounded-retrieval.md）
 Active Agent Task：无
 当前阶段：本项目源码阅读；后续按 pi-reference roadmap 由 AI 参照 Pi 实现云端方向
-下一步：#115 → #116 → #117 依次开工；其余候选子系统在立项条件满足时建 Issue，走单角色流程（见 AGENTS.md 5.1）
+下一步：#115 → #116 → #117 依次开工，之后 web_fetch；其余候选子系统在立项条件满足时建 Issue，走 docs/workflow.md 的流程
 ```

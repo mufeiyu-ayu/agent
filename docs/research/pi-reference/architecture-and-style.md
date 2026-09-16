@@ -30,7 +30,7 @@ Pi的“No permission popups”是本机产品选择，不代表云端可以没�
 
 ## 1. 全仓文件夹地图
 
-目录相对 `/Users/ayu/Learn/pi`。完整 tracked 清单见 [source-files.txt](./source-files.txt)，每个条目含 Git blob ID；具体阅读证据见 [coverage](./coverage.md)。
+目录相对 `/Users/ayu/Learn/pi`。完整 tracked 清单用 `git ls-tree -r 8a7b0c03dfb702663acafb6dc29f8acaa4ffe391` 生成；阅读证据见 [coverage](./coverage.md)。
 
 | 路径 | 角色 | 优先级 / 阅读入口 |
 | --- | --- | --- |

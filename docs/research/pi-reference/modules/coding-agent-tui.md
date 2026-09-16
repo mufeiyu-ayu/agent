@@ -4,7 +4,7 @@
 
 研究基准：`/Users/ayu/Learn/pi`，HEAD `8a7b0c03dfb702663acafb6dc29f8acaa4ffe391`，2026-09-15 本地源码。下列绝对路径链接和行号均针对这个快照。本文是源码研究及云端迁移取舍，不是运行验收；没有启动 Pi、调用模型、执行扩展、读写真实会话或系统剪贴板。测试仅作为已阅读的设计证据，未执行。
 
-范围：默认 `packages/coding-agent` 产品链、旧 `AgentSession`/JSONL 会话、资源与扩展、工具、模型装配、终端 UI；同时核对实验入口与 mini 呈现。实验服务端拓扑另见 [Chord / Server / Client](chord-server-client.md)。所有子目录的覆盖边界和文件索引见 [product-coverage.md](product-coverage.md)。
+范围：默认 `packages/coding-agent` 产品链、旧 `AgentSession`/JSONL 会话、资源与扩展、工具、模型装配、终端 UI；同时核对实验入口与 mini 呈现。实验服务端拓扑另见 [Chord / Server / Client](chord-server-client.md)。覆盖边界见 [coverage](../coverage.md)。
 
 给实现 AI：每次选一个下面的场景，先打开当前源码核对符号，再走完「输入 → 状态改变 → 模型/工具 → 事件 → 持久化 → UI」中的相关闭环。本文标记的“建议”不代表已经立项或已实现。不要一口气载入全文，不要把 Pi 的终端约束直接搬到 Vue/NestJS。
 

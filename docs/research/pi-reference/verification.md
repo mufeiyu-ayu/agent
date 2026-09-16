@@ -8,7 +8,7 @@
 | --- | --- |
 | 掌握 Pi 架构、目录、处理风格（供 AI 参照） | [architecture-and-style](./architecture-and-style.md)、[glossary](./glossary.md)、11 个主要包与根级 91 文件的 [coverage](./coverage.md)、模块正文的实际调用链 |
 | 全仓重要模块有适当图表 | [8 张 Archify 图](./diagrams/README.md)：全仓、durable runtime、operation 流程、附着时序、三类数据投影、云端候选、普通 CLI 主链（含回复/工具分支）、生命周期与可定制点；每张均交付 JSON 与 HTML |
-| 核心源码记录并标注 | `modules/` 的路径/符号/行号、短原文与注释、失败分支、配套测试入口；完整 [1714 文件清单](./source-files.txt) 用于查漏 |
+| 核心源码记录并标注 | `modules/` 的路径/符号/行号、短原文与注释、失败分支、配套测试入口 |
 | 心得和云端建议 | 架构风格、各模块云端取舍、[当前项目对照](./current-agent-mapping.md) |
 | 实现路线 | [roadmap](./roadmap.md)：R0→R2→R1→R3→R4→R5 实现顺序，每步列出 AI 查的 Pi 素材与不借鉴的终端/provider 内容，附规模估算；保留已建 #115–117 顺序 |
 | 给智能体的目的与阅读方式 | [README](./README.md)、[how-to-read](./how-to-read.md)：按问题路由、版本核实、每次一条链、只向用户汇报结论 |
@@ -29,12 +29,7 @@
 
 ## 3. 实际执行的离线检查
 
-```sh
-/Users/ayu/.nvm/versions/node/v22.20.0/bin/node docs/research/pi-reference/checks/model-study-check.mjs
-/Users/ayu/.nvm/versions/node/v22.20.0/bin/node docs/research/pi-reference/checks/wire-study-check.mjs
-```
-
-两者均 **exit 0，PASS**。前者 9 组：EventStream 终态顺序、eager setup、Faux deferred、缺失 tool result 合成、OAuth 并发刷新一次、过时 catalog generation 不得发布、tier 成本、telemetry 被动契约、缺失/错误 eval 不能当作零分。后者：delta base 恢复、独立字典、adoption/immutable 边界、危险 path 拒绝、1200 次确定性混合修改收敛、CBOR 合法子集/限额与非法编码、逐 byte 分帧、残帧拒绝。它们直接 import 当前 Pi 源码，是有限的学习断言，不是原仓完整测试套件。换机器时调整脚本中的 Pi 绝对路径。
+2026-09-15 运行过两个直接 import Pi 源码的离线断言脚本（model-study-check、wire-study-check），均 exit 0。前者 9 组：EventStream 终态顺序、eager setup、Faux deferred、缺失 tool result 合成、OAuth 并发刷新一次、过时 catalog generation 不得发布、tier 成本、telemetry 被动契约、缺失/错误 eval 不能当作零分。后者：delta base 恢复、独立字典、adoption/immutable 边界、危险 path 拒绝、1200 次确定性混合修改收敛、CBOR 合法子集/限额与非法编码、逐 byte 分帧、残帧拒绝。脚本硬编码本机 Pi 路径，已于 2026-09-16 删除；它们是有限的学习断言，不是原仓完整测试套件。
 
 环境限制：Pi checkout 无 `node_modules`，`providers/data/amazon-bedrock.json` 未 hydrate，`packages/ai/scripts/check-model-data.ts` 因缺该文件退出 1。没有安装全仓依赖、刷新目录或跑真实 provider。
 

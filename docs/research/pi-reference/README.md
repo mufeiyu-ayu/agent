@@ -23,10 +23,9 @@ pi-reference/
 ├── how-to-read.md                   给实现智能体的工作方法与提示示例
 ├── learning-method.md               参照实现的六问、每步产物与边界
 ├── source-snapshot.md               固定版本、证据规则、覆盖含义
-├── source-files.txt                 全仓 1714 个 tracked 文件与 Git blob ID
 ├── architecture-and-style.md        11 个主要包、三条入口、架构心得与取舍
-├── current-agent-mapping.md         我们当前代码事实、缺口、候选目录映射
-├── roadmap.md                      实现顺序 R0→R2→R1→R3→R4→R5（含不借鉴清单、每步 Pi 素材）与规模估算
+├── current-agent-mapping.md         我们当前代码事实、缺口、目录映射
+├── roadmap.md                      实现顺序 R0→web_fetch→R2→R1→R3→R4→R5（含不借鉴清单、每步 Pi 素材）
 ├── coverage.md                     全仓功能覆盖、阅读深度和范围边界
 ├── verification.md                 实际检查、图表验收、未执行范围
 ├── modules/
@@ -36,18 +35,14 @@ pi-reference/
 │   ├── chord-server-client.md       Facets、RPC路由、状态复制与多端附着
 │   ├── experimental-host.md        Coordinator、Server/Worker、Relay生命周期
 │   ├── wire-delta-coverage.md       Delta/CBOR/Unix算法与边界
-│   ├── repository-tooling.md        构建/依赖/测试/发布/维护工具与91文件索引
-│   └── *-coverage.md              runtime/model/product 的分模块阅读证据
-├── diagrams/
-│   ├── index.html                 左侧菜单串联八张图的查看入口
-│   ├── build.mjs                  从JSON生成图表与菜单，支持同步检查
-│   ├── build.test.mjs             删除/重命名源JSON与文件保护的回归检查
-│   ├── specs/                     八份源JSON集中维护
-│   ├── README.md                  图表用途、源码锚点与维护方法
-│   └── 01–08-*.html               八张正式图表（由JSON生成）
-└── checks/
-    ├── model-study-check.mjs        9组原生离线断言
-    └── wire-study-check.mjs         Delta/CBOR/framing原生离线断言
+│   └── repository-tooling.md        构建/依赖/测试/发布/维护工具与91文件索引
+└── diagrams/
+    ├── index.html                 左侧菜单串联八张图的查看入口
+    ├── build.mjs                  从JSON生成图表与菜单，支持同步检查
+    ├── build.test.mjs             删除/重命名源JSON与文件保护的回归检查
+    ├── specs/                     八份源JSON集中维护
+    ├── README.md                  图表用途、源码锚点与维护方法
+    └── 01–08-*.html               八张正式图表（由JSON生成）
 ```
 
 图表内容和菜单标题统一从 `diagrams/specs/*.json` 维护，运行 `node diagrams/build.mjs` 重建八张图与index。截图、四图验收页和机器回执不存入研究目录。**智能体先读图表索引或JSON，避免把生成HTML全文载入上下文。**
