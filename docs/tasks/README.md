@@ -7,8 +7,8 @@
 ```text
 阶段 1-8：Completed
 Active Agent Task：无
-Next：#115 模型调用重试与 Loop 默认上限
-Planned：#116 同轮文本 + 多 Tool Call → #117 Responses API adapter → web_fetch（R0 后、R2 前）
+Next：#118 删除死代码与单实现抽象（零行为变化）
+Planned：#119 历史裁剪合一 → #120 抽出 packages/ai → #115 模型调用重试 → #116 同轮文本 + 多 Tool Call → #117 Responses API adapter → web_fetch（R0 后、R2 前）
 候选子系统：session 事件流与 replay、审批门、compaction、定时任务（未立 Issue）
 Admin Task 4：Planned
 ```
@@ -17,7 +17,10 @@ Admin Task 4：Planned
 
 | 任务 | 状态 | 说明 |
 | --- | --- | --- |
-| #115 模型调用重试与 Loop 默认上限 | **Next** | SDK 内置重试（首个响应头之前）、`LLM_REQUEST_MAX_RETRIES`、采样 / 工具默认上限 10 / 8 |
+| #118 删除死代码、单实现抽象与自校验 | **Next** | 纯删除约 800 行、零行为变化；`receive_user_message` Step、`abortStep`、`AgentRunConfigurationService`、`TokenEstimator` 抽象类、`tool-step-summary` 等；不删 Admin 读取的字段与 `tool-evidence` 校验 |
+| #119 历史裁剪合一 | Planned | 删 `InitialContextSelectionService` 分页与批内二分，一次查询到硬上限，首轮由 planner 裁剪；Admin 元数据同名字段保留；前置 #118 |
+| #120 抽出 `packages/ai` | Planned | 模型客户端、流适配、类型、错误、profile 搬入零 Nest 的包，apps/api 只留壳；`packages/agent` 仍在 R2；前置 #119 |
+| #115 模型调用重试与 Loop 默认上限 | Planned | SDK 内置重试（首个响应头之前）、`LLM_REQUEST_MAX_RETRIES`、采样 / 工具默认上限 10 / 8；在 `packages/ai` 内实现；前置 #120 |
 | #116 同轮文本 + 多 Tool Call | Planned | content 先于 tool_calls、多个 tool_calls 顺序执行、上限解耦、截断参数回喂；前置 #115 |
 | #117 Responses API adapter | Planned | `LLM_WIRE_API` 切换 chat / responses，第二个 adapter 接同一契约；前置 #116 |
 | `web_fetch` 第一个真实工具 | Planned | 只读、SSRF 防护、untrusted observation；前置 #115–117，范围见 [pi-reference roadmap](../research/pi-reference/roadmap.md) |

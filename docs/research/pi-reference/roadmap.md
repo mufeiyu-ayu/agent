@@ -16,6 +16,8 @@
 
 ### R0 保持当前链路可运行（已立项）
 
+**R0 前置（2026-09-16 定案）**：#118 删死代码与单实现抽象、#119 历史裁剪合一、#120 抽出 `packages/ai`，按序排在 #115 前。`packages/ai` 提前的理由：#115 / #117 全落在模型层，先搬再改只写一次。
+
 完成 #115（模型请求重试与 Loop 上限）、#116（同轮文本 + 顺序多 Tool Call）、#117（Responses adapter）。参照 Pi 的多 content block 和 request/attempt 区分，保留当前模型/工具/前端独立契约。
 
 **证明完成**：文本→工具→工具结果→最终文本；多个工具按原顺序执行；首次响应前失败与中途断流分开；usage 不重复计数；abort/deadline 不继续重试；DeepSeek 的 reasoningContent 分支覆盖。正式验收条款以对应 Issue 最新决定为准。
@@ -45,10 +47,10 @@
 | 包 | 内容 | 规则 |
 | --- | --- | --- |
 | `packages/agent` | 循环、operation 状态、上下文投影、工具契约、取消 | 零 Nest、零 Prisma，只依赖 `contracts`；存储与模型客户端只定义接口 |
-| `packages/ai` | DeepSeek / OpenAI-compatible 客户端、流事件、重试、usage | 零 Nest |
+| `packages/ai` | 已由 #120 先行抽出；#115 的重试、#117 的第二 wire 在包内实现 | 零 Nest |
 | `apps/api`（保留） | Nest 模块、Prisma 仓储、HTTP 控制器、Grounding 落库 | 实现上面两包的接口，在边缘注入 |
 
-不先搬旧文件：R2 新写的代码从第一天放进 `packages/agent`，旧代码按被替换的节奏迁入。Grounding 要拆成“校验规则”进包、“落库”留 apps，这是分包里最费工的部分。第三个包等出现第二个宿主（如独立 worker）再拆。分包不单独占周期，算在 R2 内。
+不先搬旧文件：R2 新写的代码从第一天放进 `packages/agent`，旧代码按被替换的节奏迁入。Grounding 要拆成“校验规则”进包、“落库”留 apps，这是分包里最费工的部分。搬 ModelContext 时把「工作副本 → commit」协议退化为数组加纯函数（删 `forPlanning` / `commitPlan`），planner 直接返回裁剪后的输入。第三个包等出现第二个宿主（如独立 worker）再拆。分包不单独占周期，算在 R2 内。
 
 **分包验收**：`packages/agent` 与 `packages/ai` 的测试不启动 Nest、不连数据库即可运行；`apps/api` 不再直接持有循环与 operation 状态。
 
@@ -60,7 +62,7 @@
 
 ### R1 明确可重建的 Session 事实
 
-先讨论数据库契约：会话条目、分支 parent/tip、有效模型输入或其不可变引用；operation 身份与 owner 已在 R2 落地，这里不重做。保留现有 UI Message 与 AgentStep 投影，避免一次替换全部历史表。
+先讨论数据库契约：会话条目、分支 parent/tip、有效模型输入或其不可变引用；operation 身份与 owner 已在 R2 落地，这里不重做。现有 debug 捕获（`openai-compatible-raw-capture.ts`、`model-io-debug-capture.ts` 约 500 行）在这里收成请求与响应两个回调，作为模型输入引用的来源，不另起一套。保留现有 UI Message 与 AgentStep 投影，避免一次替换全部历史表。
 
 **进入条件**：用户需要刷新/重启后解释上次模型究竟看到了什么，或开始 session replay 任务。
 
