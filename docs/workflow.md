@@ -1,6 +1,6 @@
 # 协作工作流
 
-本文件是仓库的默认协作流程与硬约束，由 `AGENTS.md` 用 `@docs/workflow.md` 导入，每个会话自动进入上下文；不解析 `@` 的工具在会话开始先读本文件。流程形态由用户本轮明确指令决定：默认走第 1 节的单角色流程；用户明确要求把规划 / 验收交给另一侧会话时，转到 [`development-workflow.md`](./development-workflow.md) 的多角色分工流程。第 2 节的硬约束对两种流程、任何工具都成立。
+本文件是仓库的默认协作流程与硬约束。流程形态由用户本轮明确指令决定：默认走第 1 节的单角色流程；用户明确要求把规划 / 验收交给另一侧会话时，转到 [`development-workflow.md`](./development-workflow.md) 的多角色分工流程。第 2 节的硬约束对两种流程、任何工具都成立。
 
 下文的 `<review 命令>`、`<分支前缀>` 和 skill 取该工具适配文件里的值。
 
@@ -43,9 +43,9 @@
 ### 本流程专属约束
 
 - 验收 FAIL 不合并，停在 PR 并说明原因。
-- Review 与验收都由本会话完成：commit 前的 `<review 命令>` 是唯一必需的本地 review，不等待也不依赖任何远程自动 Review；仓库里第三方 Review bot 的评论不阻塞流程。
+- 普通 Issue 的 review 与验收都由本会话完成：commit 前的 `<review 命令>` 是唯一必需的 review，不等待也不依赖任何远程自动 Review；仓库里第三方 Review bot 的评论不阻塞流程。
 - 高风险 Issue 指涉及持久化、恢复、owner fencing、审批、鉴权或数据库 migration 的改动。这类 Issue 在验收前多一道独立会话 review：新会话不带实现上下文，只读 Issue 规格与 PR diff；`github-issue-workflow` skill 在创建 PR 后停下并说明，用户说「继续 Issue #N」再验收。普通 Issue 不加这道。
-- 学习环节是流程的一部分：开工前的预测题由 AI 主动出，不等用户要求；带读收尾与独立改一处在合并后进行，不阻塞合并。两项都过才把该步记为「学习已验证」，与「代码完成」分开记录，判定标准见 [`roadmap.md`](./roadmap.md) 的学习出口。独立改一处只落在纯 TypeScript 层（循环、状态、测试），NestJS 装配与 Prisma migration 仍由 AI 写，用户在带读时讲清即可。
+- 学习环节是流程的一部分：开工前的预测题由 AI 主动出，不等用户要求；带读收尾与独立改一处在合并后进行，不阻塞合并。两项都过才在该 Issue 下追加一条「学习已验证」评论；合并只代表「代码完成」。判定标准见 [`roadmap.md`](./roadmap.md) 的学习出口。独立改一处只落在纯 TypeScript 层（循环、状态、测试），NestJS 装配与 Prisma migration 仍由 AI 写，用户在带读时讲清即可。
 
 ## 2. 各流程共用的硬约束
 
@@ -61,6 +61,6 @@
 - 验收确认、docs 状态收口、合并和分支清理是不同动作，各自需要用户明确授权，不得自行推导；用户可以在同一句指令中一并授权；单角色流程的默认授权范围见第 1 节，多角色分工流程见 `docs/development-workflow.md`。任何工具都不得自行把任务标成 Completed；Phase 是否 Completed 还必须满足该阶段自己的完成条件。
 - Review finding 与最新 Issue 决策或项目规范冲突时，不为「通过 Review」反向违反已确认规格，应说明冲突并按事实来源解决。
 - 正式 GitHub 交付前必须先用 `gh auth status --hostname github.com` 和 `git push --dry-run origin HEAD` 预检凭据，且不得输出 token。若认证失效、凭据缺失、权限不足或 dry-run 因凭据失败，必须立即停止当前任务并告知用户；不得自行改用 GitHub API、Connector 或手工上传 blob / tree / commit / ref 绕过失败。
-- 当前不把 GitHub Actions 作为必需环节；commit 前的本地自审（本地验证 + review 结论）是唯一必需的检查，PR diff、云端 Review 和验收记录是补充证据。
+- 当前不把 GitHub Actions 作为必需环节；commit 前的本地自审（本地验证 + review 结论）是普通 Issue 唯一必需的检查，高风险 Issue 另加独立会话 review；PR diff、云端 Review 和验收记录是补充证据。
 - 用户明确授权「更新 docs 并写入 master」「直接改 docs」「收口任务状态」等 docs-only 操作时，可以绕过 Issue / PR；业务功能、API / contracts、数据库、Agent Runtime、Streaming、Tool Calling、依赖、环境、安全或权限变更仍禁止直接写 `master`。
 - 讨论、源码阅读、inspection-only、本地实验和小改动默认自由进行，不自动切任务分支、commit、push、创建 PR 或更新任务状态。

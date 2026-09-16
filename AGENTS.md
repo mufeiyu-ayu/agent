@@ -72,11 +72,9 @@
 
 ## 5. 工作方式
 
-协作流程、触发语、授权边界、学习环节与各流程共用的硬约束在 `docs/workflow.md`，本文件导入它：
+协作流程、触发语、授权边界、学习环节与硬约束见导入的 `docs/workflow.md`：
 
 @docs/workflow.md
-
-不解析 `@` 的工具在会话开始先读 `docs/workflow.md`。多角色分工流程见 `docs/development-workflow.md`。
 
 ## 6. 架构原则
 

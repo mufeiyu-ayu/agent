@@ -6,6 +6,6 @@
 
 | 占位 | Claude Code 取值 |
 | --- | --- |
-| `<review 命令>` | `/code-review`（暂存后、commit 前审暂存区 diff） |
+| `<review 命令>` | `/code-review`（暂存后、commit 前审暂存区 diff；高风险 Issue 的独立会话用 `/code-review <PR 号>` 审 PR） |
 | skill 路径 | `.claude/skills/github-issue-workflow`、`.claude/skills/github-pr-review-fix`（占位写法，pi 经 `.pi/settings.json` 复用同一份） |
 | `<分支前缀>` | `claude`，任务分支为 `claude/issue-N-<slug>` |

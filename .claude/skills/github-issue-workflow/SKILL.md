@@ -7,7 +7,7 @@ description: 执行本项目 GitHub Issue 的实现、Review、验收、合并�
 
 ## 执行边界
 
-「完成 Issue #N」默认一路执行到底：实现、验证、commit 前 `<review 命令>` 自审、PR、基于 PR 最新 head 逐条验收、验收 PASS 后合并、清理分支、收口 docs 并汇报。review 和验收都由本会话完成，不存在另一个模型验收，也不等待任何远程自动 Review。
+「完成 Issue #N」默认一路执行到底：实现、验证、commit 前 `<review 命令>` 自审、PR、基于 PR 最新 head 逐条验收、验收 PASS 后合并、清理分支、收口 docs 并汇报。review 和验收都由本会话完成，不存在另一个模型验收，也不等待任何远程自动 Review。两个例外停点：本会话尚未为该 Issue 做过预测题时，开工前先出题等用户作答（第 1 节第 7 条）；高风险 Issue 在创建 PR 后停下等独立会话 review（第 6 节）。
 
 用户可以随时缩小范围，例如「先不要 commit」「只实现到本地验证」「停在 PR 让我看 diff」「用 Draft」。以本次明确指令为准。流程曾被缩小并停在某一步时，用户说「继续 Issue #N」就从停下的那一步接着执行。
 
@@ -23,6 +23,7 @@ description: 执行本项目 GitHub Issue 的实现、Review、验收、合并�
 4. Issue 与 task 文档存在会改变实现方向的冲突时，停止并请用户决定。
 5. 一个 Issue 只对应一个任务单元，不顺手实现后续 Task。
 6. Issue 规格与本会话已聊定的结论不一致时，以 Issue 最新正文为准；差异会改变实现方向的，先回到会话确认再动代码。
+7. 本会话尚未为该 Issue 做过预测题时，先出一道「现在的代码遇到 X 会怎样」（X 取 Issue 要改的行为），等用户作答并指出对错后再开始实现；已在聊清楚阶段做过的不重复。
 
 ## 2. 准备任务分支
 
@@ -74,11 +75,11 @@ description: 执行本项目 GitHub Issue 的实现、Review、验收、合并�
 7. 代码修复后需要复审时，再次使用 `<review 命令>`；不存在第二道远程 Review。高风险 Issue 的独立会话 review 见第 6 节。
 8. GitHub 连接或权限不可用时，保留本地成果并明确停止位置，不伪造远程状态。
 
-## 6. 远程 Review 不是流程的一部分
+## 6. 远程 Review 与高风险 Issue 的独立会话 Review
 
 不等待、不依赖任何远程自动 Review。仓库若装有第三方 Review bot（如 Codex connector），其评论不阻塞验收与合并；只有用户明确要求处理某条评论时，才用 `github-pr-review-fix`。
 
-高风险 Issue（`docs/workflow.md` 定义：持久化、恢复、owner fencing、审批、鉴权、数据库 migration）另有一道本地独立会话 review：创建 PR 后停下，汇报「高风险 Issue，等独立会话审 PR」，不进入第 7 步。用户在新会话审完、findings 回本会话处理后说「继续 Issue #N」，再验收。
+高风险 Issue（定义见 `docs/workflow.md`）创建 PR 后停下，汇报「高风险 Issue，等独立会话审 PR」，不进入第 7 步。用户在新会话审完、findings 回本会话处理后说「继续 Issue #N」，再验收。
 
 ## 7. 验收
 
@@ -99,6 +100,7 @@ description: 执行本项目 GitHub Issue 的实现、Review、验收、合并�
 4. 删除远程 Issue 分支；GitHub 已自动删除则视为完成。
 5. 使用安全删除清理本地 Issue 分支；禁止强制删除未合并分支，安全删除失败则停止并说明。
 6. 在会话汇报：合并 commit、Issue 状态、验收结论摘要、剩余风险与后续建议。
+7. 汇报后按 `docs/workflow.md` 进入学习环节：带读本次改动，结束时让用户讲回来并指出偏差；再让用户在纯 TypeScript 层独立改一处，只 review 不动手；两项都过后在 Issue 下追加「学习已验证」评论。
 
 ## 9. research / 学习 docs 边界
 
