@@ -100,6 +100,13 @@ Phase 8 Closeout                                       Completed
 
 该阶段属于阅读、讨论和本地实验模式，默认不创建 Issue、不修改正式状态。
 
+学习出口（「代码完成」与「学习已验证」是两种状态，后者不由前者自动推出，也不用百分比表示）：
+
+1. 不看代码，用自己的话讲清一次运行的控制权、持久状态与失败路径；
+2. AI 给方案前，先预测一个边界场景的结果；
+3. 独立完成一个小而关键的状态或测试改动，再交 AI review；
+4. 处理一个原任务里没见过的故障，说明为什么选当前修法而不是更重的方案。
+
 ## 方向定案（2026-09-05）
 
 当时定案：不再为 runtime 寻找产品域，作品就是 runtime 本身，第一个用户是用户自己；目标是运行层技术深度、真实使用留下的问题记录、公开的设计笔记三样。当时参照 Codex 与 DeepSeek Harness。2026-09-15 后续方向更新为当前源码学习完成后由 AI 实现云端 Agent，主要参照 [Pi](./research/pi-reference/README.md)；旧Codex研究资料已按用户要求删除。参照用于对比取舍，不整包照搬。
@@ -128,6 +135,8 @@ Phase 8 Closeout                                       Completed
 - 并行 Tool Call；
 - OS sandbox；
 - Memory、MCP、Multi-agent。
+
+多租户 ACL 与 Admin Auth 的触发条件：第一个外部写，或第一次把真实数据开放给第二个用户，先到者。在此之前 R2/R1 的持久契约先带 owner 字段，只补字段不建 Guard。
 
 ## Admin Console 支线
 

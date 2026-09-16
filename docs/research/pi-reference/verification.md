@@ -25,7 +25,7 @@
 
 - **机械校验**：脚本逐条打开全部 `/Users/ayu/Learn/pi/...:行号` 与 `/Users/ayu/Desktop/agent/...:行号` 链接（含图表 JSON），核对文件存在、行号在范围内、链接文字里的符号出现在锚点附近。当前 529 条，0 条失效，相对链接 0 条失效。
 - **源码复核**：五个独立核查者按模块对照 pi 源码逐条核实 149 条行为性断言，随后主会话亲自通读 `packages/agent`（旧 loop、harness 全部 runtime/drive/execution/session 文件、events/hooks/reducer）、`packages/ai` 核心（models/lazy/event-stream/frame/transform/retry/overflow/openai-completions/validation）、`coding-agent` 主链（sdk/system-prompt/main/agent-session/session-manager/extensions 类型/rpc）、`experimental`（session-worker/manager/services/transcript/agent-controller/mini）、`server/client/protocol/chord` 关键文件。
-- **结果**：0 条事实错误；约 20 处表述精确化（lane 按名即创建、requestAbort 已公开、默认工具集受 settings 影响、工具 ID 归一化条件、参数校验两条路径、cost tier 计算基数、serverId 检查顺序、AggregateError 仅多错误时、约 12 处行号漂移）；新增 runtime §3.5 宿主 API 与错误契约、coding-agent §2.3 system prompt 装配 / §3.4 恢复与模型切换 / §6.4 扩展事件目录、model §4.1 DeepSeek 专项、chord §6.5 传输插槽与控制面认证、术语表、第 7 张图（含回复用户分支）、第 8 张生命周期与可定制点图、当前项目流协议与取消行。
+- **结果**：该轮 149 条断言集合内 0 条事实错误，不代表其余内容免检；约 20 处表述精确化（lane 按名即创建、requestAbort 已公开、默认工具集受 settings 影响、工具 ID 归一化条件、参数校验两条路径、cost tier 计算基数、serverId 检查顺序、AggregateError 仅多错误时、约 12 处行号漂移）；新增 runtime §3.5 宿主 API 与错误契约、coding-agent §2.3 system prompt 装配 / §3.4 恢复与模型切换 / §6.4 扩展事件目录、model §4.1 DeepSeek 专项、chord §6.5 传输插槽与控制面认证、术语表、第 7 张图（含回复用户分支）、第 8 张生命周期与可定制点图、当前项目流协议与取消行。
 
 ## 3. 实际执行的离线检查
 

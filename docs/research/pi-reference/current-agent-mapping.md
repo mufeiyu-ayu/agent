@@ -9,7 +9,7 @@
 | 入口与产品 | `SeoController → SeoService → AgentRuntimeService.runTurnStream`；Runtime 已独立目录 | 普通 coding-agent 负责产品，Agent/Models 提供机制 | 后续抽离 SEO 命名与产品组合，先明确能力面，不因目录名直接重写 |
 | 模型边界 | `LLMService` / 自有 `ModelInputItem` / `ModelStreamEvent` / OpenAI-compatible client | `Models` / provider adapter / assistant frame | 保留自有契约，把 provider 兼容留在 adapter；#117 再加 Responses |
 | 模型重试 | `OpenAICompatibleClient.createClient()` 明确 `maxRetries: 0` | Pi 有 adapter request retry，也有 durable runtime 的 attempt/retry_wait | #115 已建，先分清请求前重试与已产生输出后的新 attempt |
-| 工具循环 | 默认 `maxSamplingRounds: 3`、`maxToolCalls: 2`；可由 `AGENT_MAX_SAMPLING_ROUNDS / AGENT_MAX_TOOL_CALLS` 覆盖，但启动期校验 `maxToolCalls < maxSamplingRounds`（[policy.ts:78](/Users/ayu/Desktop/agent/apps/api/src/agent-runtime/configuration/agent-runtime.policy.ts:78)） | 旧 Agent loop 无轮次上限，靠 `shouldStopAfterTurn`；新 Drive 靠 durable 状态与 retry attempt 上限 | #115 的新默认值是计划，不是当前事实，且必须满足该不变量 |
+| 工具循环 | 默认 `maxSamplingRounds: 3`、`maxToolCalls: 2`；可由 `AGENT_MAX_SAMPLING_ROUNDS / AGENT_MAX_TOOL_CALLS` 覆盖，但启动期校验 `maxToolCalls < maxSamplingRounds`（[policy.ts:78](/Users/ayu/Desktop/agent/apps/api/src/agent-runtime/configuration/agent-runtime.policy.ts:78)） | 旧 Agent loop 无轮次上限，靠 `shouldStopAfterTurn`；新 Drive 靠 durable 状态与 retry attempt 上限 | #115 的新默认值是计划，不是当前事实；该不变量来自单工具时代，#116 开工前重审并把决定记入 Issue |
 | 同轮输出 | `streamModelSampling` 拒绝"最终文本之后再出现 Tool Call"；同轮多工具只在 `finishReason === 'tool_calls'` 时判定并拒绝；Tool Call 还必须带非空 `reasoningContent`（DeepSeek thinking continuation，[model-sampling-decision.ts:137](/Users/ayu/Desktop/agent/apps/api/src/agent-runtime/sampling/model-sampling-decision.ts:137)） | Pi assistant content 可同时含 text/toolCall；OpenAI-compatible adapter 对 DeepSeek 用 `requiresReasoningContentOnAssistantMessages` 表达同一约束 | 按 #116 先实现顺序多工具；不顺带开并行；#116/#117 都要覆盖 reasoningContent 分支 |
 | 流协议与取消 | 统一 NDJSON：`start / delta / done / error / aborted` 五种事件（[contracts/seo.ts:29](/Users/ayu/Desktop/agent/packages/contracts/src/seo.ts:29)）；`RunCancellation` 三个来源 user / deadline / failure，`completing → completed` 处理 COMMIT 不确定态（[run-cancellation.ts:12](/Users/ayu/Desktop/agent/apps/api/src/agent-runtime/lifecycle/run-cancellation.ts:12)）；`runDeadlineMs` 默认 600s | Pi 的 live 事件与 durable entry 分离；取消是 `cancel_requested` 标记 + reconcile，不是 signal | R2/R4 的直接基线：先在这套事件与取消语义上加 operation ID 与 snapshot/cursor，不另起协议 |
 | 上下文 | source-aware `ModelContext`、每轮 `SamplingContextPlanner`、历史预算/Observation 治理 | branch context、compaction、request transforms | 保留预算与不可信数据边界；建立可持久化有效输入的契约 |
@@ -44,9 +44,9 @@ const debugModelIO: DebugModelIOCaptured = {
 
 Pi 也有同样需要审慎对待的边界：branch history 可恢复，但 extension/context/provider 变换可能发生在请求期。我们要记录或稳定引用真正发送的 instructions、选中 messages、tools/schema、模型配置、变换版本和受控数据版本。敏感原文的保存权限、保留期限和展示脱敏应与 Debug Inspector 分开设计。
 
-## 3. 目录映射建议
+## 3. 目录映射
 
-无需先复制 Pi 的 monorepo。当前目录已有按职责分层，优先在这里补边界：
+依赖方向与分包由 [roadmap R2](./roadmap.md) 唯一决定（2026-09-16 定案：`packages/agent` + `packages/ai`，`apps/api` 只做宿主），本节不重复也不另给方向。当前已有目录：
 
 ```text
 apps/api/src/
@@ -56,14 +56,12 @@ apps/api/src/
     sampling/       # 已有：模型事件到业务决策
     lifecycle/      # 已有：Run/Step 与取消、deadline
     grounding/      # 已有：引用事实与 finalization
-    session/        # 候选：事件、分支、快照、rebuild
-    operations/     # 候选：accept/drive/checkpoint 与恢复
   llm/              # 已有：provider adapters
-  tools/            # 已有：registry/invocation/observation 归一化（硬上限 128k 字符）；候选 journal/receipt
+  tools/            # 已有：registry/invocation/observation 归一化（硬上限 128k 字符）
 packages/contracts/ # 已有：ChatStreamEvent、MessageGroundingV1、AgentRun/AgentStep 投影；R1/R4 改协议先动这里
 ```
 
-两个“候选”目录只有在对应 Issue 定案后才建立。不先抽 `packages/runtime`，也不先建 Chord 风格通用 service runtime；等真正出现第二个宿主（独立 worker/SDK）再证明抽包的收益。
+R2 起新写的循环、operation 状态、工具契约进 `packages/agent`，模型客户端进 `packages/ai`；上面各目录按被替换的节奏迁入，Grounding 拆校验规则进包、落库留 apps。对应 Issue 定案前不建新目录。
 
 ## 4. 迁移时必须保留的东西
 

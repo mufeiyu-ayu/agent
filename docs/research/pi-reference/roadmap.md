@@ -26,6 +26,8 @@
 
 建立 `accept → drive → checkpoint → terminal` 的最小操作模型。先在现有 NestJS 进程内证明单 owner、取消和等待者隔离；需要独立恢复执行时再加 worker。命令端给 operation ID，观察端有 snapshot/cursor 与明确终态。沿用现有 NDJSON 事件与 `RunCancellation` 语义，加 operation ID，不另起协议。
 
+**最少持久集合（R2 内完成，不等 R1）**：operation ID、owner 主体与资源归属、状态/版本、终态、输入引用。accept 落库后、执行者收到内存通知前进程退出，重启必须能从数据库重新发现未完成的 operation 并继续或收口，轮询即可，不引入消息中间件。R1 只负责会话树、分支与模型输入的可重建引用。
+
 **进入条件**：确实要求关页后继续、另一个页面观察或进程重启后接管。#115–117 已完成。
 
 **第一步：分包（2026-09-16 定案）**。仿 Pi 的 `agent / ai / coding-agent` 三层，但只分两个纯包，不照搬 11 个包：
@@ -40,7 +42,7 @@
 
 **分包验收**：`packages/agent` 与 `packages/ai` 的测试不启动 Nest、不连数据库即可运行；`apps/api` 不再直接持有循环与 operation 状态。
 
-**证明完成**：两个订阅者之一断开不影响另一个；显式 Abort 只命中目标 operation；旧 owner 不能覆盖新 owner；数据库提交结果不确定时停止猜测。若跨进程争用，使用 DB 所有权/fencing 机制，不能复制 Pi 进程内 Map 或文件锁就宣布完成。
+**证明完成**：两个订阅者之一断开不影响另一个；显式 Abort 只命中目标 operation；旧 owner 不能覆盖新 owner；数据库提交结果不确定时停止猜测；accept 落库后进程退出，重启能找到该 operation，不永久悬挂。若跨进程争用，使用 DB 所有权/fencing 机制，不能复制 Pi 进程内 Map 或文件锁就宣布完成。
 
 **AI 动手前先做**：把我们自己的一次 Run 从 Controller 到 terminalization 走一遍，列出内存、数据库、模型输入、UI 四种状态各由谁写、请求结束后剩什么；据此回答关页后运行在不在、重启能不能续跑、记录能不能还原模型输入。这三个答案决定 R2/R1 的最小范围。
 
@@ -48,7 +50,7 @@
 
 ### R1 明确可重建的 Session 事实
 
-先讨论数据库契约：会话条目、分支 parent/tip、操作身份、有效模型输入或其不可变引用。保留现有 UI Message 与 AgentStep 投影，避免一次替换全部历史表。
+先讨论数据库契约：会话条目、分支 parent/tip、有效模型输入或其不可变引用；operation 身份与 owner 已在 R2 落地，这里不重做。保留现有 UI Message 与 AgentStep 投影，避免一次替换全部历史表。
 
 **进入条件**：用户需要刷新/重启后解释上次模型究竟看到了什么，或开始 session replay 任务。
 
@@ -58,11 +60,11 @@
 
 ### R3 工具结果未知时的恢复与审批
 
-将"工具尚未调用""外部动作可能已发生""结果已知未发布""已发布"分开。为外部写工具定义 idempotency key / receipt / 查询结果或人工处理方式；审批决定必须绑定 operation、工具、参数摘要与权限版本。恢复时重新核对当前权限。同时补上 api 的身份与租户边界（当前零 Guard）。
+将"工具尚未调用""外部动作可能已发生""结果已知未发布""已发布"分开。为外部写工具定义 idempotency key / receipt / 查询结果或人工处理方式；审批决定必须绑定 operation、工具、参数摘要与权限版本。恢复时重新核对当前权限。api 的身份与租户边界（当前零 Guard）不等本步：R2/R1 的持久契约已带 owner 字段，服务端检查在第一个外部写或第一次把真实数据开放给第二个用户时补上，先到者触发。
 
 **进入条件**：第一个有外部副作用的云工具，或现有工具需要跨进程恢复。
 
-**证明完成**：逐个注入执行前、执行后提交前、提交结果未知的崩溃；safe 工具符合重放策略；unsafe 工具不会重复写；审批等待可跨重启；取消审批不执行工具；租户 A 不能引用 B 的 receipt/approval/workspace。
+**证明完成**：逐个注入执行前、执行后提交前、提交结果未知的崩溃；safe 工具符合重放策略；unsafe 工具不会重复写；审批等待可跨重启；取消审批不执行工具；租户 A 不能引用 B 的 receipt/approval/workspace；审批后、恢复前撤销主体权限，工具不执行；工具版本或 schema 变更后，旧审批不与新实现无条件混用；结果未知后模型换新 toolCallId 重发同一业务动作，幂等键绑定业务意图而非参数 hash，不绕过对账与审批。
 
 **AI 查的素材**：[运行内核 §5–§6](./modules/runtime-session.md)（tool journal planned→effect_pending→outcome_ready→completed、replay safe/never、effect gate）。Pi 的 journal 是副作用恢复参照；effect Gate 控制取消/关闭时的 effect admission，deferred 是模型 provider 后台响应，poll permit 是每次 Drive 的查询预算。这三者均不等同于持久化用户审批。授权主体、审批决定、租户和云执行隔离需要我们独立设计。不要把"工具有 safe 标志"当作外部系统幂等性的证明。
 
@@ -70,7 +72,7 @@
 
 围绕长期会话做 model/thinking 选择、可见运行状态、停止/继续、分支查看、可解释的压缩点；Admin 继续负责 Trace/Context/Grounding。多端复用后端投影，区分正在同步、缺包需要快照、等待审批、已失败等状态。服务端要有"订阅响应发出前的更新缓冲"，客户端要有"先装快照再放行更新"，两侧缺一不可。
 
-**证明完成**：浏览器刷新能恢复当前 view；旧 attachment 的晚到事件不污染新会话；UI 不自己还原模型私有请求；引用卡片仍只展示服务端验证的 durable Grounding。
+**证明完成**：浏览器刷新能恢复当前 view；旧 attachment 的晚到事件不污染新会话；UI 不自己还原模型私有请求；引用卡片仍只展示服务端验证的 durable Grounding；慢订阅者缓冲有界，超限断开并要求重取快照，不影响其他订阅者与运行。
 
 **AI 查的素材**：[04 图](./diagrams/04-attachment.html)；[Chord/server/client §3–§6.5](./modules/chord-server-client.md)（三个 ID 各归谁、`pendingUpdates` 缓冲、sequence gap → clear）、[实验宿主 §2–§5](./modules/experimental-host.md)（两个页面附着、一个断线、worker 继续的时序、`Lane.watch` 共享）。Chord facets 内部、Delta/CBOR 算法、Radius、mini 不看。
 
@@ -89,11 +91,11 @@
 | 并行工具 | 顺序执行延迟显著且工具独立 | 顺序发布、并发上限、取消、共享资源隔离 | [运行内核 §5](./modules/runtime-session.md) |
 | 测试方法 | 任一步需要可重放故障样例 | faux provider、GatingStorage 思路 | [模型/评估 §9](./modules/model-telemetry-evals.md)、[工程工具](./modules/repository-tooling.md) |
 
-这些候选没有日历承诺，不自动立项。Skill 与 MCP 都是“数据不是代码”，云端可放；执行不可信租户 JS 仍不做。多 Agent、MCP marketplace、完整 Chord 移植仍不属于这条最小主线。
+这些候选没有日历承诺，不自动立项。Skill 限定为版本化文本与资源引用，按低信任输入处理，不扩大工具权限。MCP 是外部能力的连接边界，服务器会执行代码：可接入服务器、凭据、授权主体、网络访问与副作用分别限制，先支持平台允许的远端服务，不开放租户自定义 stdio 启动命令；执行不可信租户 JS 仍不做。多 Agent、MCP marketplace、完整 Chord 移植仍不属于这条最小主线。
 
 ## 二、规模参照（估算，不是承诺）
 
-以 2026-09-15 基线看，按产品目标加权完成度约 25%～30%。剩余主线工作量，一人配合 AI 全职：
+各步相对规模，一人配合 AI 全职。没有固定产品边界与权重模型，所以不给完成度百分比、不做合计，也不用于判断学习是否完成；需要排期时用已完成同类任务的实际速度校准。
 
 | 工作 | Pi 对应 | 估计 |
 | --- | --- | --- |
@@ -103,7 +105,7 @@
 | R3 工具 journal 与审批、鉴权租户 | `drive/tools` + `execution/tools`；审批与租户 Pi 无参照 | 4～5 周 |
 | R4 多端订阅与 Web 改造 | `Lane.watch` + Transcript + 服务端缓冲 | 4 周 |
 
-合计 15～18 周，不含 R5。前提：PostgreSQL 事务边界要重新设计（Pi 的 MutationLine 是进程内），Grounding 迁到新 operation 模型下而不重写。
+前提：PostgreSQL 事务边界要重新设计（Pi 的 MutationLine 是进程内），Grounding 迁到新 operation 模型下而不重写。
 
 ## 三、每个正式改动的交付模板
 
