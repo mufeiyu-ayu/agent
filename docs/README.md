@@ -24,7 +24,7 @@ Phase 8 已完成：
 - Task 3B：Web Grounding 状态、Sources disclosure、Source cards 与 Chromium，#60 / #61 / `572ad206`；
 - Task 3C：Admin Retrieval / Finalization / Citation Inspector，#62 / #63 / `20f838fb`。
 
-Phase 8 之后的横向任务 #92、#94、#98 与 Backend 模块组织 #101-#104 均已验收合并；翻译质检站 A-1（#109）/ A-2（#111）曾合入 master，该方向于 2026-09-02 放弃，并于 2026-09-05 经 #113 删除全部相关代码与数据模型。2026-09-05 定案为 runtime 深化；2026-09-15 用户指定完成当前源码学习后，由 AI 以 Pi 为主要参照实现云端 Agent（用户不读 Pi 代码，素材给 AI 用），研究入口为 [pi-reference](./research/pi-reference/README.md)，旧Codex研究资料已按用户要求删除。研究路线不改变已建 Issue 状态，也不自动启动重构。协作方式以 `AGENTS.md` 为准，多角色分工流程见 [development-workflow.md](./development-workflow.md)，工具专属配置保留在对应适配文件。
+Phase 8 之后的横向任务 #92、#94、#98 与 Backend 模块组织 #101-#104 均已验收合并；翻译质检站 A-1（#109）/ A-2（#111）曾合入 master，该方向于 2026-09-02 放弃，并于 2026-09-05 经 #113 删除全部相关代码与数据模型。2026-09-05 定案为 runtime 深化；2026-09-15 用户指定完成当前源码学习后，由 AI 以 Pi 为主要参照实现云端 Agent（用户不读 Pi 代码，素材给 AI 用），研究入口为 [pi-reference](./research/pi-reference/README.md)，旧Codex研究资料已按用户要求删除。研究路线不改变已建 Issue 状态，也不自动启动重构。协作流程见 [workflow.md](./workflow.md)（`AGENTS.md` 自动导入），多角色分工流程见 [development-workflow.md](./development-workflow.md)，工具专属配置保留在对应适配文件。
 
 ## 文档入口
 
@@ -41,7 +41,8 @@ Phase 8 之后的横向任务 #92、#94、#98 与 Backend 模块组织 #101-#104
 | [Phase 7 归档](./tasks/completed/phase-07-context-engineering.md) | Context Engineering 最终能力与边界 |
 | [Phase 6 归档](./tasks/completed/phase-06-bounded-agent-loop.md) | Agent Loop、deadline、终态可靠性 |
 | [Admin Console](./tasks/admin-console.md) | Admin Observability 支线 |
-| [development-workflow.md](./development-workflow.md) | 多角色分工流程（规划 / 验收与本地实现分开）；默认的单角色流程见 `AGENTS.md` 5.1 |
+| [workflow.md](./workflow.md) | 默认单角色流程、学习环节与各流程共用的硬约束；`AGENTS.md` 自动导入 |
+| [development-workflow.md](./development-workflow.md) | 多角色分工流程（规划 / 验收与本地实现分开）；默认的单角色流程见 `workflow.md` |
 | [research/README.md](./research/README.md) | Pi 参照入口与项目研究，不代表实现状态 |
 | [research/pi-reference/README.md](./research/pi-reference/README.md) | 全仓研究、AI 使用说明、术语表、8张交互图和云端实现路线 |
 | [research/pi-reference/learning-method.md](./research/pi-reference/learning-method.md) | 参照实现的六问与每步产物 |
@@ -93,7 +94,7 @@ Chunking / Indexing
 
 1. GitHub 当前代码、Issue、PR、Review、commit 与真实验证；
 2. `docs/tasks/**`；
-3. `docs/development-workflow.md`；
+3. `docs/workflow.md` 与 `docs/development-workflow.md`；
 4. `docs/roadmap.md`；
 5. `docs/work-log.md`；
 6. `docs/research/**`。

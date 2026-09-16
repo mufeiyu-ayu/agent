@@ -1,16 +1,17 @@
 # AGENTS.md
 
-本文件是仓库对 agent 工具的工具无关基线：任何在这个仓库里工作的工具都读它，项目定位、沟通、状态入口、目录、架构原则、安全、验证、docs 规则和默认工作流程只在这里维护一份。正在读它的工具就是「你」，不区分是哪一个。
+本文件是仓库对 agent 工具的工具无关基线：任何在这个仓库里工作的工具都读它，项目定位、沟通、状态入口、目录、架构原则、安全、验证、docs 规则只在这里维护一份；协作流程在 `docs/workflow.md`，由本文件导入。正在读它的工具就是「你」，不区分是哪一个。
 
 随工具变化的只有三样：review 命令、skill 路径、分支前缀。它们不写进本文件，放在该工具自己的适配文件里：
 
 | 载体 | 适用 | 内容 |
 | --- | --- | --- |
-| 本文件 | 所有工具 | 工具无关基线 + 单角色流程（默认） |
+| 本文件 | 所有工具 | 工具无关基线 |
+| `docs/workflow.md` | 所有工具 | 默认单角色流程、学习环节、各流程共用的硬约束；本文件用 `@docs/workflow.md` 导入，不解析 `@` 的工具在会话开始先读它 |
 | `docs/development-workflow.md` | 多角色分工：规划 / 验收与本地实现分开 | 角色表、Clarification Gate、Issue 规格、触发语、授权边界 |
 | 工具适配文件（Claude Code 为 `CLAUDE.md`，pi 为 `.pi/APPEND_SYSTEM.md`；没有专属入口文件的工具以其 skill 目录为准，如 `.codex/skills/`） | 该工具的会话 | review 命令、skill 路径、分支前缀 |
 
-改本文件时只需确认另外两类载体是否仍然成立，不需要同步正文。
+改本文件时只需确认另外三类载体是否仍然成立，不需要同步正文。
 
 ## 1. 项目定位
 
@@ -43,6 +44,7 @@
 | `docs/tasks/_template.tdd.md` | 新任务模板 |
 | `docs/research/README.md` | 研究入口：pi-reference、补充参照与参照实现方法 |
 | `docs/research/pi-reference/learning-method.md` | 参照实现的六问与每步产物 |
+| `docs/workflow.md` | 默认单角色流程、学习环节与硬约束；`AGENTS.md` 自动导入 |
 | `docs/development-workflow.md` | 多角色分工的完整流程：角色表、Clarification Gate、Issue 规格、触发语、授权边界 |
 | `docs/work-log.md` | 已发生事实 |
 | `docs/tasks/completed/` | 已完成阶段归档 |
@@ -70,64 +72,11 @@
 
 ## 5. 工作方式
 
-流程形态由用户本轮明确指令决定：默认走 5.1 的单角色流程；用户明确要求把规划 / 验收交给另一侧会话时，转到 `docs/development-workflow.md` 的多角色分工流程。5.2 的硬约束对两种流程、任何工具都成立。
+协作流程、触发语、授权边界、学习环节与各流程共用的硬约束在 `docs/workflow.md`，本文件导入它：
 
-下文的 `<review 命令>`、`<分支前缀>` 和 skill 取该工具适配文件里的值。
+@docs/workflow.md
 
-### 5.1 单角色流程（默认）
-
-单角色搭档：陪读源码、当架构讨论对手、建 Issue、实现、review、验收、收口，全部在同一会话完成，不存在另一个模型做规划或验收。
-
-#### 默认模式
-
-没有命中下面的触发语时，只做源码阅读、讨论、方案草稿、本地实验和小改动：不建 Issue、不切分支、不 commit、不 push、不改任务状态。用户可以在本次指令中扩大或缩小范围。
-
-#### 正式改动流程
-
-```text
-聊清楚（本会话讨论到用户拍板）
-  -> 建 Issue（gh；写目标、当前代码事实、范围、边界、验收标准、决策记录）
-  -> 独立分支 <分支前缀>/issue-N-<slug> 实现 + 最小必要验证
-  -> 暂存后、commit 前用 <review 命令> 自审并修复
-  -> commit、push、创建 PR
-  -> 验收：基于 PR 最新 head 逐条核对验收标准，给出 PASS / FAIL
-  -> PASS：合并、删除远程与本地分支、同步 docs 状态、在会话汇报
-  -> FAIL：停在 PR，说明原因，不合并
-```
-
-#### 触发语与授权默认范围
-
-| 触发语 | 执行方式 |
-| --- | --- |
-| 「完成 Issue #N」「读取 Issue #N 并实现」 | 该工具的 `github-issue-workflow` skill，默认一路执行到合并与收口 |
-| 「处理 PR #N 的 Review」 | 该工具的 `github-pr-review-fix` skill；仅在用户明确要求处理 PR 上的外部 Review 评论时使用，不是默认步骤 |
-| 「建 Issue」「把刚才聊的立项」 | 本会话用 `gh` 建 Issue，内容取自本会话结论 |
-| 「更新 docs」「收口」「写入 master」 | docs-only 变更直接提交 `master` |
-
-用户随时可以要求停在 PR、先看 diff 或改用 Draft，本次指令高于默认。
-
-#### 本流程专属约束
-
-- 验收 FAIL 不合并，停在 PR 并说明原因。
-- Review 与验收都由本会话完成：commit 前的 `<review 命令>` 是唯一必需的 review，不等待也不依赖任何远程自动 Review；仓库里第三方 Review bot 的评论不阻塞流程。
-
-### 5.2 各流程共用的硬约束
-
-以下约束对两种流程、任何工具都成立：
-
-- `docs/tasks/**` 是任务与阶段状态的事实来源；Issue 保存实现规格、验收标准和澄清决策。
-- 正式代码任务先建 Issue，再走独立任务分支和 PR，不直接在 `master` 上实现、提交或推送。
-- 一个 Issue / PR 只完成一个任务单元，不顺手推进后续任务。
-- 暂存之后、commit 之前必须用 `<review 命令>` 审暂存区 diff：确认为真问题的 finding 自行修复并入本次提交，不为技术判断等待用户确认；无法复现、超出范围或与已确认规格冲突的不修但要说明；复审最多 2 轮后停止并记录剩余问题。docs-only 改动跳过。
-- review 在本地完成，通过后才创建 PR；PR 是验收载体，不用来收集 review。PR 创建即为 Ready，只有实现未完成、验证失败或受阻才用 Draft；云端自动 Review 是可选输入，不阻塞交付。
-- 不因技术意见取舍打断用户；只在缺少密钥、权限、登录等授权类前提，或出现会改变实现方向的规格冲突时中断询问。
-- 验收必须基于 PR 最新 head，逐条核对验收标准与真实验证输出；「测试命令成功」或「代码看起来合理」不单独构成验收。
-- 验收确认、docs 状态收口、合并和分支清理是不同动作，各自需要用户明确授权，不得自行推导；用户可以在同一句指令中一并授权；单角色流程的默认授权范围见 5.1，多角色分工流程见 `docs/development-workflow.md`。任何工具都不得自行把任务标成 Completed；Phase 是否 Completed 还必须满足该阶段自己的完成条件。
-- Review finding 与最新 Issue 决策或项目规范冲突时，不为「通过 Review」反向违反已确认规格，应说明冲突并按事实来源解决。
-- 正式 GitHub 交付前必须先用 `gh auth status --hostname github.com` 和 `git push --dry-run origin HEAD` 预检凭据，且不得输出 token。若认证失效、凭据缺失、权限不足或 dry-run 因凭据失败，必须立即停止当前任务并告知用户；不得自行改用 GitHub API、Connector 或手工上传 blob / tree / commit / ref 绕过失败。
-- 当前不把 GitHub Actions 作为必需环节；commit 前的本地自审（本地验证 + review 结论）是唯一必需的检查，PR diff、云端 Review 和验收记录是补充证据。
-- 用户明确授权「更新 docs 并写入 master」「直接改 docs」「收口任务状态」等 docs-only 操作时，可以绕过 Issue / PR；业务功能、API / contracts、数据库、Agent Runtime、Streaming、Tool Calling、依赖、环境、安全或权限变更仍禁止直接写 `master`。
-- 讨论、源码阅读、inspection-only、本地实验和小改动默认自由进行，不自动切任务分支、commit、push、创建 PR 或更新任务状态。
+不解析 `@` 的工具在会话开始先读 `docs/workflow.md`。多角色分工流程见 `docs/development-workflow.md`。
 
 ## 6. 架构原则
 
@@ -207,7 +156,7 @@ DTO class 用于 `@Body()` / `@Param()` 时，必须保留运行时值导入，�
 | 设计对比、学习笔记、复盘 | `docs/research/**` |
 | Issue 合并后 | 对应 `docs/tasks/**` 状态、`docs/roadmap.md`、`docs/work-log.md` 一条事实 |
 | 阶段完成 | 精简归档到 `docs/tasks/completed/`，更新 `docs/README.md` 与 `docs/roadmap.md` |
-| 协作规则变化 | 工具无关内容改 `AGENTS.md`；工具专属内容改对应载体；`docs/work-log.md` 一条事实 |
+| 协作规则变化 | 流程与硬约束改 `docs/workflow.md`，其余工具无关内容改 `AGENTS.md`；工具专属内容改对应载体；`docs/work-log.md` 一条事实 |
 | 小修 typo / 样式微调 | 可不更新 docs，commit 说明即可 |
 
 原则：

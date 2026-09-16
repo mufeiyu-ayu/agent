@@ -16,6 +16,7 @@
 
 | 日期 | 事项 | 结果 |
 | --- | --- | --- |
+| 2026-09-16 | 协作流程拆到 `docs/workflow.md` | `AGENTS.md` 第 5 节移出为 `docs/workflow.md`，`AGENTS.md` 用 `@docs/workflow.md` 导入（Claude Code 嵌套导入最多 4 层，路径相对含 `@` 的文件）；pi 适配加「先读该文件」。流程新增三个学习环节：开工前用户先预测当前代码行为、合并后带读收尾用户讲回来、用户在纯 TS 层独立改一处；「代码完成」与「学习已验证」分开记录。高风险 Issue（持久化 / 恢复 / fencing / 审批 / 鉴权 / migration）验收前另开无实现上下文的新会话审 PR，skill 在 PR 后停下等「继续」。用户改用只用 Claude Code，Codex 远程 Review 不再作为独立 review 来源 |
 | 2026-09-16 | R0 之后加 `web_fetch` | 用户定案：#115–117 合并后、R2 之前立第一个真实工具 `web_fetch`（只读、SSRF 防护、untrusted observation），首个用途为盯 Pi 上游；`web_search` 进 R5 候选。工具在主线出现三次：#116 协议、R0 后 `web_fetch`、R3 工作区写入 |
 | 2026-09-16 | 按独立审查稿修订 Pi 路线 | 用户采纳当日审查稿的部分结论：mapping §3 改为引用 R2 分包决定，删除「不先抽包」旧指令；R5 更正「MCP 是数据不是代码」；R2 写明最少持久集合与 accept 后崩溃重发现，R1 不再含 operation 身份；R3 验收补权限撤销、schema 变更、换 toolCallId 三条；R4 验收补慢订阅者有界；删除完成度百分比与工期合计；ACL / Auth 触发条件改为第一个外部写或第一次开放给第二个用户；总 roadmap 加学习出口。未采纳：企业交付阶段 F、本地链接改写、AGENTS.md 框架口径 |
 | 2026-09-16 | R2 首步定为分包 | 用户定案：完成 #115–117 后，在 R2 开始时仿 Pi 分 `packages/agent`（零 Nest/Prisma）与 `packages/ai`，`apps/api` 只做宿主；新代码直接进包、旧代码按替换节奏迁入；Grounding 拆校验/落库；验收为包测试不启动 Nest、不连库。R5 候选新增 Skill（R2 后）与 MCP（R3 后，Pi 本版本无内置 MCP） |

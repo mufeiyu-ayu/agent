@@ -14,7 +14,7 @@ description: 执行本项目 GitHub Issue 的实现、Review、验收、合并�
 ## 1. 读取并确认 Issue
 
 1. 优先使用已认证的 `gh` CLI 读取 Issue；连接能力不足时再尝试其他方式。
-2. 读取 `AGENTS.md`（基线与默认流程）、该工具的适配文件（`<review 命令>` / `<分支前缀>` 取值）、`docs/tasks/README.md`、Issue 指向的 task 文档和相邻实现。
+2. 读取 `AGENTS.md` 与其导入的 `docs/workflow.md`（基线、默认流程、硬约束与高风险 Issue 定义）、该工具的适配文件（`<review 命令>` / `<分支前缀>` 取值）、`docs/tasks/README.md`、Issue 指向的 task 文档和相邻实现。
 3. 从 Issue 的 `任务类型` 判断执行路径；缺失时根据内容推断并在开始前说明：
    - `feature / fix / refactor`：修改代码并记录实现证据。
    - `docs-task`：更新 Issue 明确要求的文档，不运行无关代码验证。
@@ -71,12 +71,14 @@ description: 执行本项目 GitHub Issue 的实现、Review、验收、合并�
    - 已知风险或既有失败；
    - 建议阅读顺序和真实调用链。
 6. 默认创建 Ready PR，转 Ready 不需要额外授权。只有实现未完成、验证失败、任务受阻或用户要求时才用 Draft；Draft 恢复后先完成实现和验证、更新为“已实现、待验收”，再转 Ready。
-7. 代码修复后需要复审时，再次使用 `<review 命令>`；不存在第二道远程 Review。
+7. 代码修复后需要复审时，再次使用 `<review 命令>`；不存在第二道远程 Review。高风险 Issue 的独立会话 review 见第 6 节。
 8. GitHub 连接或权限不可用时，保留本地成果并明确停止位置，不伪造远程状态。
 
 ## 6. 远程 Review 不是流程的一部分
 
 不等待、不依赖任何远程自动 Review。仓库若装有第三方 Review bot（如 Codex connector），其评论不阻塞验收与合并；只有用户明确要求处理某条评论时，才用 `github-pr-review-fix`。
+
+高风险 Issue（`docs/workflow.md` 定义：持久化、恢复、owner fencing、审批、鉴权、数据库 migration）另有一道本地独立会话 review：创建 PR 后停下，汇报「高风险 Issue，等独立会话审 PR」，不进入第 7 步。用户在新会话审完、findings 回本会话处理后说「继续 Issue #N」，再验收。
 
 ## 7. 验收
 

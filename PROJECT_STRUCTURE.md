@@ -29,6 +29,7 @@
 └── docs/
     ├── README.md
     ├── roadmap.md
+    ├── workflow.md
     ├── development-workflow.md
     ├── development-task-plan.md   # 仅旧链接兼容
     ├── tasks/
@@ -122,6 +123,7 @@ Run-scoped 数据库 timeout / terminalization 实现位于 `apps/api/src/prisma
 | `docs/tasks/completed/**` | 已完成阶段的精简归档 |
 | `docs/tasks/admin-console.md` | Admin Console 独立产品支线 |
 | `docs/roadmap.md` | 阶段级路线与当前主线状态 |
+| `docs/workflow.md` | 默认单角色流程、学习环节与硬约束；`AGENTS.md` 自动导入 |
 | `docs/development-workflow.md` | 多角色分工流程：Issue / Gate / PR / 验收 / 合并与授权边界 |
 | `docs/development-task-plan.md` | 旧链接兼容，不再维护第二套任务路线 |
 | `docs/research/**` | 源码研究、学习路线、长期候选能力；不代表当前状态 |
