@@ -2,7 +2,7 @@ import type { ChatCompletionChunk } from 'openai/resources/chat/completions'
 import type {
   ModelRawResponseCapture,
   ModelResponseCaptureEvent,
-} from '../llm.types.js'
+} from '../types.js'
 
 interface RawToolCallSlot {
   id?: string

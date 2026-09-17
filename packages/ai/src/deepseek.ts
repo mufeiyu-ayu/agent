@@ -38,3 +38,26 @@ export function getModelProfile(model: string): ModelProfile | undefined {
     ? DEEPSEEK_MODEL_PROFILES[model as SupportedDeepSeekModel]
     : undefined
 }
+
+export interface DeepSeekModelInfo {
+  id: string
+  object: 'model'
+  owned_by: string
+}
+
+export interface DeepSeekModelsResponse {
+  object: 'list'
+  data: DeepSeekModelInfo[]
+}
+
+export interface DeepSeekBalanceInfo {
+  currency: 'CNY' | 'USD'
+  total_balance: string
+  granted_balance: string
+  topped_up_balance: string
+}
+
+export interface DeepSeekBalanceResponse {
+  is_available: boolean
+  balance_infos: DeepSeekBalanceInfo[]
+}

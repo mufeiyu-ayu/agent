@@ -3,10 +3,10 @@ import type {
   ModelFinishReason,
   ModelStreamEvent,
   ModelUsage,
-} from '../model-stream.types.js'
+} from '../types.js'
 
-import { LLMApiError } from '../llm.errors.js'
-import { OpenAICompatibleToolCallAccumulator } from './openai-compatible-tool-call-accumulator.js'
+import { LLMApiError } from '../errors.js'
+import { OpenAICompatibleToolCallAccumulator } from './openai-completions-tool-calls.js'
 
 type DeepSeekChatCompletionDelta = ChatCompletionChunk.Choice.Delta & {
   reasoning_content?: string | null

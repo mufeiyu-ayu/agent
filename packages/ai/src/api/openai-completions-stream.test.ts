@@ -4,12 +4,12 @@ import assert from 'node:assert/strict'
 // eslint-disable-next-line test/no-import-node-test
 import { describe, it } from 'node:test'
 
-import { LLMApiError } from '../llm.errors.js'
-import { adaptOpenAICompatibleStream } from './openai-compatible-stream.adapter.js'
+import { LLMApiError } from '../errors.js'
+import { adaptOpenAICompatibleStream } from './openai-completions-stream.js'
 import {
   toOpenAIChatTools,
   toOpenAIModelInputItem,
-} from './openai-compatible.client.js'
+} from './openai-completions.js'
 
 describe('OpenAI-compatible request mapping', () => {
   it('映射 Tool Call、Tool Result 和工具定义', () => {

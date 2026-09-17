@@ -1,10 +1,10 @@
 import type { ChatCompletionChunk } from 'openai/resources/chat/completions'
-import type { ModelRawResponseCapture } from '../llm.types.js'
+import type { ModelRawResponseCapture } from '../types.js'
 import assert from 'node:assert/strict'
 // eslint-disable-next-line test/no-import-node-test
 import { describe, it } from 'node:test'
 
-import { teeRawResponseCapture } from './openai-compatible-raw-capture.js'
+import { teeRawResponseCapture } from './openai-completions-raw-capture.js'
 
 describe('teeRawResponseCapture', () => {
   it('原样透传 chunk，并在流结束后组装完整原始响应', async () => {

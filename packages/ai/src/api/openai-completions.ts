@@ -5,27 +5,29 @@ import type {
   ChatCompletionMessageParam,
   ChatCompletionTool,
 } from 'openai/resources/chat/completions'
-import type { LLMRuntimeConfig } from '../llm-runtime-config.js'
+import type { LLMRuntimeConfig } from '../config.js'
+import type {
+  DeepSeekBalanceResponse,
+  DeepSeekModelsResponse,
+} from '../deepseek.js'
 import type {
   ChatMessage,
   ChatOptions,
   ChatStreamOptions,
-  DeepSeekBalanceResponse,
-  DeepSeekModelsResponse,
+  ModelInputItem,
   ModelIODebugCapture,
   ModelIODebugCaptureSide,
   ModelRawResponseCapture,
-} from '../llm.types.js'
-import type { ModelInputItem } from '../model-input.types.js'
-import type { ModelStreamEvent } from '../model-stream.types.js'
-import type { ModelToolSpec } from '../model-tool-spec.types.js'
+  ModelStreamEvent,
+  ModelToolSpec,
+} from '../types.js'
 import OpenAI, {
   APIConnectionError,
   APIError,
   APIUserAbortError,
 } from 'openai'
 
-import { resolveChatRequestConfig } from '../llm-runtime-config.js'
+import { resolveChatRequestConfig } from '../config.js'
 import {
   LLMApiError,
   LLMAuthError,
@@ -35,9 +37,9 @@ import {
   LLMNetworkError,
   LLMRateLimitError,
   LLMServerError,
-} from '../llm.errors.js'
-import { teeRawResponseCapture } from './openai-compatible-raw-capture.js'
-import { adaptOpenAICompatibleStream } from './openai-compatible-stream.adapter.js'
+} from '../errors.js'
+import { teeRawResponseCapture } from './openai-completions-raw-capture.js'
+import { adaptOpenAICompatibleStream } from './openai-completions-stream.js'
 
 type ChatCompletionBaseParams = Pick<
   ChatCompletionCreateParamsNonStreaming,

@@ -1,0 +1,208 @@
+import type { DeepSeekReasoningEffort } from '@agent/contracts'
+
+/** 当前工具输入需要的最小 JSON Schema 子集。 */
+export type JsonSchemaProperty
+  = | { type: 'boolean', description?: string }
+    | { type: 'integer', description?: string }
+    | { type: 'string', description?: string }
+    | { type: 'array', items: { type: 'string' }, description?: string }
+
+export interface JsonObjectSchema {
+  type: 'object'
+  properties: Record<string, JsonSchemaProperty>
+  required: string[]
+  additionalProperties: false
+}
+
+/** Provider-neutral 的模型可见工具说明，不包含任何服务端执行能力。 */
+export interface ModelToolSpec {
+  name: string
+  description: string
+  inputSchema: JsonObjectSchema
+}
+
+/** 模型单次 sampling 的结束原因，已与具体 Provider 类型解耦。 */
+export type ModelFinishReason
+  = | 'stop'
+    | 'tool_calls'
+    | 'length'
+    | 'content_filter'
+    | 'unknown'
+
+/**
+ * 模型提出、Provider adapter 已完成分片拼装，但尚未经过业务校验的 Tool Call。
+ *
+ * 它不等于已经通过 Registry、参数 Schema 和权限检查的 Tool Invocation。
+ */
+export interface UnvalidatedModelToolCall {
+  providerCallId: string
+  name: string
+  argumentsJson: string
+  index: number
+}
+
+/** 单次模型 sampling 的 token 使用量。 */
+export interface ModelUsage {
+  inputTokens?: number
+  outputTokens?: number
+  totalTokens?: number
+  reasoningTokens?: number
+  promptCacheHitTokens?: number
+  promptCacheMissTokens?: number
+}
+
+/** LLM 层向 Agent Runtime 暴露的 provider-neutral 流事件。 */
+export type ModelStreamEvent
+  = | {
+    type: 'text_delta'
+    delta: string
+  }
+  | {
+    type: 'tool_call_started'
+  }
+  | {
+    type: 'tool_call_completed'
+    toolCall: UnvalidatedModelToolCall
+    reasoningContent: string
+  }
+  | {
+    type: 'usage'
+    usage: ModelUsage
+  }
+  | {
+    type: 'response_completed'
+    finishReason: ModelFinishReason
+  }
+
+/** 合并流式 usage 分片；没有任何已知字段时保持 null，绝不补零。 */
+export function mergeModelUsage(
+  current: ModelUsage | null,
+  next: ModelUsage,
+): ModelUsage | null {
+  const merged: ModelUsage = {
+    ...(current ?? {}),
+    ...(next.inputTokens === undefined ? {} : { inputTokens: next.inputTokens }),
+    ...(next.outputTokens === undefined ? {} : { outputTokens: next.outputTokens }),
+    ...(next.totalTokens === undefined ? {} : { totalTokens: next.totalTokens }),
+    ...(next.reasoningTokens === undefined
+      ? {}
+      : { reasoningTokens: next.reasoningTokens }),
+    ...(next.promptCacheHitTokens === undefined
+      ? {}
+      : { promptCacheHitTokens: next.promptCacheHitTokens }),
+    ...(next.promptCacheMissTokens === undefined
+      ? {}
+      : { promptCacheMissTokens: next.promptCacheMissTokens }),
+  }
+
+  return Object.keys(merged).length > 0 ? merged : null
+}
+
+/** Runtime 传给模型的内部输入；工具调用过程不会进入用户可见消息。 */
+export type ModelInputItem
+  = | {
+    type: 'message'
+    role: ChatMessage['role']
+    content: string
+  }
+  | {
+    type: 'assistant_tool_call'
+    callId: string
+    name: string
+    rawArgumentsJson: string
+    reasoningContent: string
+    content?: string
+  }
+  | {
+    type: 'tool_result'
+    callId: string
+    name: string
+    content: string
+    ok: boolean
+  }
+
+export function toModelInputItems(messages: ChatMessage[]): ModelInputItem[] {
+  return messages.map(message => ({
+    type: 'message',
+    role: message.role,
+    content: message.content,
+  }))
+}
+
+/**
+ * LLM 调用相关类型定义
+ *
+ * 职责边界：
+ * - 只定义 LLM 层对上暴露的类型（消息结构、请求选项、业务需要的响应结构）
+ * - 不包含任何 SEO 业务字段（title、description 等由上层定义）
+ * - 不暴露 OpenAI SDK 原始 chunk / response 给业务层
+ */
+
+// ─── 消息结构 ────────────────────────────────
+
+/** 标准 chat message */
+export interface ChatMessage {
+  role: 'system' | 'user' | 'assistant'
+  content: string
+}
+
+// ─── 请求选项 ────────────────────────────────
+
+/** chat() 方法的可选参数，会覆盖环境变量中的默认值 */
+export interface ChatOptions {
+  /** 模型名，默认从 LLM_MODEL 环境变量读取 */
+  model?: string
+  /** DeepSeek Thinking Mode 思考强度，省略时稳定回落 high。 */
+  reasoningEffort?: DeepSeekReasoningEffort
+  /** 最大输出 token 数，默认由已验证的 LLM runtime config 提供 */
+  maxTokens?: number
+  /** JSON 输出约束（对应 OpenAI response_format） */
+  responseFormat?: { type: 'json_object' } | { type: 'text' }
+}
+
+export type ModelResponseCaptureState = 'complete' | 'partial' | 'empty'
+
+export type ModelResponseCaptureEvent
+  = | 'text_delta'
+    | 'reasoning_delta'
+    | 'tool_call_delta'
+    | 'finish_reason'
+    | 'usage'
+
+/** Provider 原始响应的旁路聚合结果；安全计数仅供关联日志使用。 */
+export interface ModelRawResponseCapture {
+  state: ModelResponseCaptureState
+  lastEvent: ModelResponseCaptureEvent | null
+  textChars: number
+  toolCallCount: number
+  /** empty 时刻意缺失，避免伪造 choices / finish reason / usage。 */
+  rawResponse?: unknown
+}
+
+export type ModelIODebugCaptureSide = 'request' | 'response'
+
+/**
+ * debug 模型 I/O 捕获回调。
+ *
+ * 仅当 AGENT_DEBUG_CAPTURE_MODEL_IO 开启时由 client 调用；载荷是 provider
+ * 原始 JSON，类型刻意保持 unknown——它只用于观测落库，不进入业务逻辑，
+ * 不构成对"不暴露 OpenAI SDK 原始 response"边界的破例。
+ */
+export interface ModelIODebugCapture {
+  /** 请求真正发出前回调，body 为实际请求体（不含凭据）。 */
+  onRequest: (requestBody: unknown) => void
+  /** 模型流关闭时回调；明确区分完整、部分和未收到 chunk。 */
+  onResponse: (capture: ModelRawResponseCapture) => void
+  /** 捕获回调自身失败时的安全旁路通知，不携带原始 payload。 */
+  onCaptureError?: (side: ModelIODebugCaptureSide) => void
+}
+
+/** chatStream() 方法的可选参数。 */
+export interface ChatStreamOptions extends ChatOptions {
+  /** 外部中止信号，用于后续支持用户主动停止生成。 */
+  signal?: AbortSignal
+  /** 只包含模型可见字段的工具说明。 */
+  tools?: ModelToolSpec[]
+  /** debug 捕获回调；未开启捕获开关时不会被调用。 */
+  debugCapture?: ModelIODebugCapture
+}

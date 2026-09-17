@@ -6,8 +6,8 @@ import {
   DEFAULT_LLM_RUNTIME_CONFIG,
   resolveChatRequestConfig,
   resolveLLMRuntimeConfig,
-} from './llm-runtime-config.js'
-import { LLMConfigError } from './llm.errors.js'
+} from './config.js'
+import { LLMConfigError } from './errors.js'
 
 describe('resolveLLMRuntimeConfig', () => {
   it('缺省运维参数使用代码默认值', () => {
