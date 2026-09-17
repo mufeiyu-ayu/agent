@@ -73,4 +73,4 @@ R2 起新写的循环、operation 状态、工具契约进 `packages/agent`，�
 
 ## 5. 当前状态不由研究重写
 
-`docs/tasks/README.md` 当前为 Phase 1–8 Completed、无 Active、Next #115，后续 #116 → #117；Admin Task 4 Planned。#115–#117 的规格只存在于 GitHub Issue 与 README 看板行，`docs/tasks/` 下没有对应任务文件，不要去找。本次研究不修改这些状态，也不声明当前项目源码学习已由用户完成。
+任务状态与顺序以 `docs/tasks/README.md` 看板为准，本文不重复。#115–#120 的规格只存在于 GitHub Issue 与看板行，`docs/tasks/` 下没有对应任务文件，不要去找。研究不修改这些状态，也不声明当前项目源码学习已由用户完成。

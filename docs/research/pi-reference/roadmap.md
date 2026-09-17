@@ -46,7 +46,7 @@
 
 | 包 | 内容 | 规则 |
 | --- | --- | --- |
-| `packages/agent` | 循环、operation 状态、上下文投影、工具契约、取消 | 零 Nest、零 Prisma，只依赖 `contracts`；存储与模型客户端只定义接口 |
+| `packages/agent` | 循环、operation 状态、上下文投影、工具契约、取消 | 零 Nest、零 Prisma；依赖 `contracts` 与 `ai` 的模型类型（`ModelInputItem` / `ModelStreamEvent` / `ModelToolSpec`），与 Pi 的 agent → ai 方向一致；存储与模型客户端实例只定义接口、由宿主注入 |
 | `packages/ai` | 已由 #120 先行抽出；#115 的重试、#117 的第二 wire 在包内实现 | 零 Nest |
 | `apps/api`（保留） | Nest 模块、Prisma 仓储、HTTP 控制器、Grounding 落库 | 实现上面两包的接口，在边缘注入 |
 
