@@ -80,7 +80,6 @@ export async function executeRetrieveArticleContextSmoke(
           createTimeoutError: () => new Error('retrieval tool smoke 数据库操作超时'),
         },
         signal,
-        executionAttempt: 1,
       },
     )
   }

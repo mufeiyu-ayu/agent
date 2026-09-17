@@ -11,8 +11,8 @@ import {
 } from '@nestjs/common'
 
 import { AgentRuntimeService } from '../agent-runtime/agent-runtime.service.js'
+import { buildSeoAgentChatMessages } from './prompts/seo-agent.prompt.js'
 import { toChatStreamEvent } from './seo-chat-stream-event.mapper.js'
-import { SeoContextBuilder } from './seo-context-builder.service.js'
 
 interface SeoChatStreamOptions {
   signal?: AbortSignal
@@ -23,9 +23,6 @@ export class SeoService {
   constructor(
     @Inject(AgentRuntimeService)
     private readonly agentRuntimeService: AgentRuntimeService,
-
-    @Inject(SeoContextBuilder)
-    private readonly seoContextBuilder: SeoContextBuilder,
   ) {}
 
   async chat(input: SeoChatDto): Promise<SeoChatResponse> {
@@ -93,8 +90,7 @@ export class SeoService {
         : {}),
       ...(signal ? { signal } : {}),
       /** 系统提示词 */
-      buildModelMessages: historyMessages =>
-        this.seoContextBuilder.buildModelMessages({ historyMessages }),
+      buildModelMessages: buildSeoAgentChatMessages,
     }
   }
 }

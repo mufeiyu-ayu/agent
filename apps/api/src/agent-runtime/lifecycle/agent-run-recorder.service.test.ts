@@ -79,20 +79,14 @@ describe('AgentRunRecorderService', () => {
       runId: run.id,
       type: AGENT_STEP_TYPES.toolExecution,
     }, TEST_DEADLINE)
-    const aborted = await harness.recorder.startStep({
-      runId: run.id,
-      type: AGENT_STEP_TYPES.assistantOutput,
-    }, TEST_DEADLINE)
 
     await harness.recorder.completeStep(completed.id, TEST_DEADLINE)
     await harness.recorder.failStep(failed.id, TEST_DEADLINE, { errorMessage: '安全失败' })
-    await harness.recorder.abortStep(aborted.id, TEST_DEADLINE)
 
     await assertRecorderInvariant(() => harness.recorder.failStep(completed.id, TEST_DEADLINE, {
       errorMessage: '迟到失败',
     }))
-    await assertRecorderInvariant(() => harness.recorder.abortStep(failed.id, TEST_DEADLINE))
-    await assertRecorderInvariant(() => harness.recorder.completeStep(aborted.id, TEST_DEADLINE))
+    await assertRecorderInvariant(() => harness.recorder.completeStep(failed.id, TEST_DEADLINE))
   })
 
   it('completeRun 在一个事务内完成 Message、assistant Step 和 Run', async () => {

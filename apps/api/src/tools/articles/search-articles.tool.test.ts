@@ -29,12 +29,9 @@ const FULL_CONTENT = `<p>${'alpha article content '.repeat(30)}</p>`
 describe('search_articles', () => {
   it('注册模型可见定义，并保持低风险只读边界', () => {
     const { registry } = createTools()
-    const definition = registry.require('search_articles').definition
+    const definition = registry.get('search_articles')?.definition
 
-    assert.deepEqual(
-      registry.listDefinitions().map(item => item.name),
-      ['search_articles'],
-    )
+    assert.ok(definition)
     assert.equal(definition, searchArticlesDefinition)
     assert.deepEqual(definition.risk, {
       level: 'low',
@@ -380,7 +377,6 @@ function createContext(
     conversationId: 'conversation-1',
     databaseDeadline: createDatabaseDeadline(signal),
     signal,
-    executionAttempt: 1,
   }
 }
 

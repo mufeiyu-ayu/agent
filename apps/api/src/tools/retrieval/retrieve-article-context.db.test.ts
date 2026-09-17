@@ -379,7 +379,6 @@ function createContext(
     conversationId: 'conversation-1',
     databaseDeadline: createDatabaseDeadline(signal),
     signal,
-    executionAttempt: 1,
   }
 }
 

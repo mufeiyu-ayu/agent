@@ -1,6 +1,7 @@
 import type { ModelInputItem } from '../../llm/model-input.types.js'
 import type { ModelToolSpec } from '../../llm/model-tool-spec.types.js'
 import type { NormalizedToolObservation } from '../../tools/core/tool-observation.js'
+import type { TokenEstimator } from './deepseek-v4-token-estimator.js'
 import type {
   ModelContext,
   ModelContextPlanningState,
@@ -9,7 +10,7 @@ import type {
 import { Inject, Injectable } from '@nestjs/common'
 
 import { ContextBudgetExceededError } from '../agent-runtime.errors.js'
-import { TokenEstimator } from './deepseek-v4-token-estimator.js'
+import { DeepSeekV4TokenEstimator } from './deepseek-v4-token-estimator.js'
 import { flattenPlanningState } from './model-context.js'
 
 export interface SamplingContextObservationSummary {
@@ -42,7 +43,7 @@ export interface SamplingContextPlan {
 export class SamplingContextBudgetExceededError
   extends ContextBudgetExceededError {
   constructor(readonly summary: SamplingContextPlanSummary) {
-    super('sampling_context')
+    super()
     this.name = 'SamplingContextBudgetExceededError'
   }
 }
@@ -57,7 +58,7 @@ interface PlanSamplingContextInput {
 @Injectable()
 export class SamplingContextPlanner {
   constructor(
-    @Inject(TokenEstimator)
+    @Inject(DeepSeekV4TokenEstimator)
     private readonly tokenEstimator: TokenEstimator,
   ) {}
 

@@ -13,6 +13,7 @@ import type {
   AgentRuntimeEvent,
   RunTurnStreamInput,
 } from './agent-runtime.types.js'
+import type { AgentRuntimePolicy } from './configuration/agent-runtime.policy.js'
 import type { HistoryCursor } from './context/initial-context-selection.js'
 import type { SamplingContextPlanSummary } from './context/sampling-context-planner.js'
 import type { GroundedFinalizationAttemptSummary } from './grounding/grounded-answer.finalizer.js'
@@ -30,11 +31,13 @@ import {
   DatabaseCommitOutcomeUnknownError,
   PrismaService,
 } from '../prisma/prisma.service.js'
+import { toModelToolSpec } from '../tools/core/model-tool-spec.mapper.js'
 import { ToolInvocationService } from '../tools/core/tool-invocation.service.js'
 import {
   normalizeToolObservation,
   TOOL_OBSERVATION_HARD_MAX_CHARS,
 } from '../tools/core/tool-observation.js'
+import { ToolRegistryService } from '../tools/core/tool-registry.service.js'
 import { normalizeToolStepSummary } from '../tools/core/tool-step-summary.js'
 import {
   AgentLoopLimitExceededError,
@@ -44,7 +47,7 @@ import {
   ContextTokenEstimationError,
   ModelSamplingIncompleteError,
 } from './agent-runtime.errors.js'
-import { AgentRunConfigurationService } from './configuration/agent-run-configuration.service.js'
+import { AgentRuntimePolicyService } from './configuration/agent-runtime.policy.js'
 import {
   InitialContextSelectionService,
 } from './context/initial-context-selection.js'
@@ -76,6 +79,13 @@ import {
   toModelIODebugResponseCaptureEnvelope,
 } from './sampling/model-io-debug-capture.js'
 import { streamModelSampling } from './sampling/model-sampling-decision.js'
+
+/** 单次 Agent Run 允许暴露给模型的 Tool allowlist；顺序即暴露顺序。 */
+const AGENT_RUN_TOOL_NAMES = [
+  'search_articles',
+  'get_article_detail',
+  'retrieve_article_context',
+] as const
 
 interface TerminalStepFailure {
   id: string
@@ -112,8 +122,11 @@ export class AgentRuntimeService {
     @Inject(ToolInvocationService)
     private readonly toolInvocationService: ToolInvocationService,
 
-    @Inject(AgentRunConfigurationService)
-    private readonly runConfigurationService: AgentRunConfigurationService,
+    @Inject(AgentRuntimePolicyService)
+    private readonly runtimePolicyService: AgentRuntimePolicyService,
+
+    @Inject(ToolRegistryService)
+    private readonly toolRegistryService: ToolRegistryService,
 
     @Inject(InitialContextSelectionService)
     private readonly initialContextSelectionService: InitialContextSelectionService,
@@ -155,7 +168,7 @@ export class AgentRuntimeService {
 
       agentRunId = currentAgentRunId
       // Run deadline 必须先于请求级配置解析生效；policy 是启动期已校验的非抛错读取。
-      const runtimePolicy = this.runConfigurationService.policy
+      const runtimePolicy = this.runtimePolicyService.value
 
       runCancellation = createRunCancellation(
         input.signal,
@@ -164,24 +177,10 @@ export class AgentRuntimeService {
       const runSignal = runCancellation.signal
       const databaseDeadline = runCancellation.databaseDeadline
 
-      const receiveUserMessageStep = await this.agentRunRecorderService.startStep({
-        runId: currentAgentRunId,
-        type: AGENT_STEP_TYPES.receiveUserMessage,
-        input: {
-          messageId: userMessage.id,
-          messageLength: normalizedMessage.length,
-        },
-      }, databaseDeadline)
-      await this.agentRunRecorderService.completeStep(
-        receiveUserMessageStep.id,
-        databaseDeadline,
-      )
-
-      // 配置解析时机保持在 Run / receiveUserMessageStep 落库之后：请求级
-      // 配置错误仍走既有 failRun 终态化，不改变 Run 生命周期语义。
-      // 覆盖字段的规范化只在 resolve() 内做一层，这里不重复过滤。
+      // 配置解析时机保持在 Run 落库之后：请求级配置错误仍走既有 failRun
+      // 终态化，不改变 Run 生命周期语义。
       const { request: resolvedRequestConfig, toolDefinitions, modelTools }
-        = this.runConfigurationService.resolve(input)
+        = this.resolveRunConfiguration(input, runtimePolicy)
       const loadHistoryStep = await this.agentRunRecorderService.startStep({
         runId: currentAgentRunId,
         type: AGENT_STEP_TYPES.loadConversationHistory,
@@ -537,7 +536,6 @@ export class AgentRuntimeService {
                 conversationId: input.conversationId,
                 signal: runSignal,
                 databaseDeadline,
-                executionAttempt: 1,
               },
             )
           }
@@ -977,6 +975,42 @@ export class AgentRuntimeService {
           content,
         }
       : undefined
+  }
+
+  /**
+   * 解析一次 Run 的请求级配置：allowlist 内的 Tool 定义、模型可见 Tool
+   * 说明与 resolved 模型请求配置。请求级 model / maxTokens 非法时抛
+   * LLMConfigError；Registry 缺失 allowlisted Tool 时按现状跳过，不伪造定义。
+   */
+  private resolveRunConfiguration(
+    input: RunTurnStreamInput,
+    runtimePolicy: AgentRuntimePolicy,
+  ) {
+    const toolDefinitions = AGENT_RUN_TOOL_NAMES.flatMap((name) => {
+      const definition = this.toolRegistryService.get(name)?.definition
+
+      if (!definition) {
+        this.logger.warn(`allowlist 工具 ${name} 未在 Registry 注册，本次 Run 不暴露该工具`)
+
+        return []
+      }
+
+      return [definition]
+    })
+    const modelTools = runtimePolicy.maxToolCalls === 0
+      ? []
+      : toolDefinitions.map(toModelToolSpec)
+    const request = this.llmService.resolveChatRequestConfig({
+      ...(input.model ? { model: input.model } : {}),
+      ...(input.reasoningEffort === undefined
+        ? {}
+        : { reasoningEffort: input.reasoningEffort }),
+      ...(input.maxTokens === undefined
+        ? {}
+        : { maxTokens: input.maxTokens }),
+    })
+
+    return { request, toolDefinitions, modelTools }
   }
 
   /**

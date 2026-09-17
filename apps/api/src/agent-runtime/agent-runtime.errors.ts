@@ -19,9 +19,7 @@ export class AgentRunDeadlineExceededError extends Error {
 
 /** Mandatory Context 已经无法在模型请求预算内安全保留。 */
 export class ContextBudgetExceededError extends Error {
-  constructor(
-    readonly stage: 'initial_context' | 'sampling_context' = 'initial_context',
-  ) {
+  constructor() {
     super('Mandatory Context 超出本轮输入预算，未调用模型。')
     this.name = 'ContextBudgetExceededError'
   }

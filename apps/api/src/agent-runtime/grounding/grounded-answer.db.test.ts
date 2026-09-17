@@ -10,7 +10,10 @@ import type { ModelStreamEvent } from '../../llm/model-stream.types.js'
 import type { ArticleRetrievalPool } from '../../retrieval/persistence/postgres-article-retrieval.repository.js'
 import type { AgentRuntimeEvent } from '../agent-runtime.types.js'
 import type { AgentRuntimePolicyService } from '../configuration/agent-runtime.policy.js'
-import type { TokenEstimatorInput } from '../context/deepseek-v4-token-estimator.js'
+import type {
+  TokenEstimator,
+  TokenEstimatorInput,
+} from '../context/deepseek-v4-token-estimator.js'
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
@@ -49,8 +52,6 @@ import {
   RetrieveArticleContextTool,
 } from '../../tools/retrieval/retrieve-article-context.tool.js'
 import { AgentRuntimeService } from '../agent-runtime.service.js'
-import { AgentRunConfigurationService } from '../configuration/agent-run-configuration.service.js'
-import { TokenEstimator } from '../context/deepseek-v4-token-estimator.js'
 import { InitialContextSelectionService } from '../context/initial-context-selection.js'
 import { SamplingContextPlanner } from '../context/sampling-context-planner.js'
 import { AgentRunRecorderService } from '../lifecycle/agent-run-recorder.service.js'
@@ -1027,7 +1028,11 @@ describe('Grounded Answer PostgreSQL integration', { concurrency: 1 }, () => {
         )
       },
     } as unknown as LLMService
-    const runConfigurationService = new AgentRunConfigurationService(
+    const service = new AgentRuntimeService(
+      llmService,
+      prisma,
+      new AgentRunRecorderService(prisma),
+      new ToolInvocationService(registry),
       {
         value: {
           historyCandidateBatchSize: 50,
@@ -1037,15 +1042,7 @@ describe('Grounded Answer PostgreSQL integration', { concurrency: 1 }, () => {
           runDeadlineMs: 60_000,
         },
       } as AgentRuntimePolicyService,
-      llmService,
       registry,
-    )
-    const service = new AgentRuntimeService(
-      llmService,
-      prisma,
-      new AgentRunRecorderService(prisma),
-      new ToolInvocationService(registry),
-      runConfigurationService,
       new InitialContextSelectionService(new TestTokenEstimator()),
       new SamplingContextPlanner(new TestTokenEstimator()),
     )
@@ -1183,7 +1180,7 @@ async function collectEvents(
   return collected
 }
 
-class TestTokenEstimator extends TokenEstimator {
+class TestTokenEstimator implements TokenEstimator {
   readonly strategyId = 'grounding-db-estimator'
 
   estimateRequest(input: TokenEstimatorInput): number {

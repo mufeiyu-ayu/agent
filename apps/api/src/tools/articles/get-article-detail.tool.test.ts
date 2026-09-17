@@ -26,12 +26,9 @@ const LONG_CONTENT = `<article>${'完整正文包含 emoji 🚀 和换行\n'.rep
 describe('get_article_detail', () => {
   it('注册模型可见定义，并保持低风险只读边界', () => {
     const { registry } = createTools()
-    const definition = registry.require('get_article_detail').definition
+    const definition = registry.get('get_article_detail')?.definition
 
-    assert.deepEqual(
-      registry.listDefinitions().map(item => item.name),
-      ['get_article_detail'],
-    )
+    assert.ok(definition)
     assert.equal(definition, getArticleDetailDefinition)
     assert.deepEqual(definition.risk, {
       level: 'low',
@@ -469,7 +466,6 @@ function createContext(
     conversationId: 'conversation-1',
     databaseDeadline: createDatabaseDeadline(signal),
     signal,
-    executionAttempt: 1,
   }
 }
 

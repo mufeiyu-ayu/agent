@@ -6,7 +6,6 @@ import type {
   RunTurnStreamInput,
 } from '../agent-runtime/agent-runtime.types.js'
 import type { ChatMessage } from '../llm/llm.types.js'
-import type { SeoContextBuilder } from './seo-context-builder.service.js'
 import assert from 'node:assert/strict'
 // 项目使用 Node 原生测试运行器，不引入新测试框架。
 // eslint-disable-next-line test/no-import-node-test
@@ -20,6 +19,7 @@ import {
 } from '@nestjs/common'
 
 import { toConversationMessageResponse } from '../conversations/messages.service.js'
+import { buildSeoAgentChatMessages } from './prompts/seo-agent.prompt.js'
 import { SeoService } from './seo.service.js'
 
 const GENERATED_AT = '2026-07-18T08:00:00.000Z'
@@ -153,14 +153,15 @@ describe('SeoService', () => {
 
     const historyMessages: ChatMessage[] = [{ role: 'user', content: '历史消息' }]
 
+    // 两个入口都直接使用 SEO Agent prompt 组装模型消息。
     assert.deepEqual(
       chatInput.buildModelMessages(historyMessages),
-      streamInput.buildModelMessages(historyMessages),
+      buildSeoAgentChatMessages(historyMessages),
     )
-    assert.deepEqual(harness.contextBuilder.historyCalls, [
-      historyMessages,
-      historyMessages,
-    ])
+    assert.deepEqual(
+      streamInput.buildModelMessages(historyMessages),
+      buildSeoAgentChatMessages(historyMessages),
+    )
   })
 
   it('流式入口保持既有五类 ChatStreamEvent 且不暴露 Runtime 字段', async () => {
@@ -426,28 +427,11 @@ describe('SeoService grounding 投影', () => {
   })
 })
 
-class FakeSeoContextBuilder {
-  readonly historyCalls: ChatMessage[][] = []
-
-  buildModelMessages(input: { historyMessages: ChatMessage[] }): ChatMessage[] {
-    this.historyCalls.push(input.historyMessages)
-
-    return [
-      { role: 'system', content: 'SEO Agent' },
-      ...input.historyMessages,
-    ]
-  }
-}
-
 function createHarness(...eventSequences: AgentRuntimeEvent[][]) {
   const runtime = new FakeAgentRuntimeService(...eventSequences)
-  const contextBuilder = new FakeSeoContextBuilder()
-  const service = new SeoService(
-    runtime as unknown as AgentRuntimeService,
-    contextBuilder as unknown as SeoContextBuilder,
-  )
+  const service = new SeoService(runtime as unknown as AgentRuntimeService)
 
-  return { contextBuilder, runtime, service }
+  return { runtime, service }
 }
 
 function createInput(model?: string, reasoningEffort?: 'low' | 'high' | 'max') {

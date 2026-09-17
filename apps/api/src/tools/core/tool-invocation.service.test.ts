@@ -104,7 +104,6 @@ describe('ToolInvocationService', () => {
     assert.equal(receivedContext.databaseDeadline.signal, receivedContext.signal)
     assert.ok(receivedContext.databaseDeadline.deadlineAt >= startedAt)
     assert.ok(receivedContext.databaseDeadline.deadlineAt < context.databaseDeadline.deadlineAt)
-    assert.equal(receivedContext.executionAttempt, 1)
     assert.notEqual(receivedContext.signal, context.signal)
     assert.equal(receivedContext.signal.aborted, false)
   })
@@ -525,7 +524,6 @@ function createContext(signal = new AbortController().signal): ToolExecutionCont
     conversationId: 'conversation-1',
     databaseDeadline: createDatabaseDeadline(signal),
     signal,
-    executionAttempt: 1,
   }
 }
 

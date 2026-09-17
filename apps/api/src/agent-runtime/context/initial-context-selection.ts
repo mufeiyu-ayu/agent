@@ -1,10 +1,11 @@
 import type { ChatMessage } from '../../llm/llm.types.js'
 import type { ModelToolSpec } from '../../llm/model-tool-spec.types.js'
+import type { TokenEstimator } from './deepseek-v4-token-estimator.js'
 import { Inject, Injectable } from '@nestjs/common'
 
 import { toModelInputItems } from '../../llm/model-input.types.js'
 import { ContextBudgetExceededError } from '../agent-runtime.errors.js'
-import { TokenEstimator } from './deepseek-v4-token-estimator.js'
+import { DeepSeekV4TokenEstimator } from './deepseek-v4-token-estimator.js'
 
 export const DEFAULT_INITIAL_CONTEXT_POLICY = {
   applicationInputCapTokens: 262_144,
@@ -75,7 +76,7 @@ export interface InitialContextSelection {
 @Injectable()
 export class InitialContextSelectionService {
   constructor(
-    @Inject(TokenEstimator)
+    @Inject(DeepSeekV4TokenEstimator)
     private readonly tokenEstimator: TokenEstimator,
   ) {}
 
