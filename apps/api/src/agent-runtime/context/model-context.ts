@@ -2,7 +2,6 @@ import type { ChatMessage } from '../../llm/llm.types.js'
 import type { ModelInputItem } from '../../llm/model-input.types.js'
 import type { NormalizedToolObservation } from '../../tools/core/tool-observation.js'
 import type { UnvalidatedToolCallEnvelope } from '../../tools/core/tool.types.js'
-import type { InitialContextSelectionSummary } from './initial-context-selection.js'
 
 type MessageInputItem = Extract<ModelInputItem, { type: 'message' }>
 type AssistantToolCallInputItem = Extract<
@@ -14,7 +13,6 @@ type ToolResultInputItem = Extract<ModelInputItem, { type: 'tool_result' }>
 export interface ModelContextSnapshot {
   samplingIndex: number
   itemCount: number
-  initialSelection?: InitialContextSelectionSummary
 }
 
 export interface ModelContextToolExchange {
@@ -49,7 +47,6 @@ interface CreateModelContextInput {
   instructions: ChatMessage[]
   initialHistory: ChatMessage[]
   currentUserMessage: ChatMessage
-  initialSelection?: InitialContextSelectionSummary
 }
 
 /** 单次 Run 内的 source-aware model-visible context；预算选择由 Sampling Planner 负责。 */
@@ -59,31 +56,25 @@ export class ModelContext {
   private constructor(
     // 核心输入：模型必须携带的指令消息；当前 SEO 入口中就是系统提示词。
     private readonly instructions: MessageInputItem[],
-    // 核心输入：Initial Context Selection 实际选中的历史消息；后续超预算时可删减。
+    // 核心输入：一次查询读到的全部历史候选；每轮 plan() 超预算时从最旧删减。
     private readonly initialHistory: MessageInputItem[],
-    // 纯后台观测：保存当初从数据库检查的候选总数，用它减去当前
-    // initialHistory.length，只为了展示最终有多少条历史未纳入模型上下文。
+    // 纯后台观测：创建时的候选总数基准，用它减去当前 initialHistory.length，
+    // 只为了展示累计有多少条历史未纳入模型上下文。
     // 它不参与 Token 计算、历史删减决策或真正的模型输入。
     private readonly initialHistoryCandidateCount: number,
     // 核心输入：触发本次 Run 的当前用户消息，始终必须保留。
     private readonly currentUser: MessageInputItem,
-    // 纯后台观测：初始历史选择快照，供 Sampling Step / Admin 展示；
-    // 不参与模型输入组装或预算决策。
-    private readonly initialSelection?: InitialContextSelectionSummary,
   ) {}
 
   static fromHistory(input: CreateModelContextInput): ModelContext {
-    // 将 select() 返回的 ChatMessage 转成 Runtime 内部统一的 message item。
     const initialHistory = toMessageInputItems(input.initialHistory)
 
     return new ModelContext(
       toMessageInputItems(input.instructions),
       initialHistory,
-      // 这一行只选择后台统计的「原始候选基准」，不会改变 initialHistory。
-      // 有快照时使用真实候选总数；没有时用已选长度兜底，表示无法确认更早的排除量。
-      input.initialSelection?.historyCandidateCount ?? initialHistory.length,
+      // 候选基准就是读取条数：全部候选都先进入 initialHistory，裁剪发生在 plan()。
+      initialHistory.length,
       toMessageInputItem(input.currentUserMessage),
-      input.initialSelection,
     )
   }
 
@@ -168,7 +159,7 @@ export class ModelContext {
     })
   }
 
-  /** 只暴露安全计数与初始选择快照，供 Sampling Step / Admin 观测。 */
+  /** 只暴露安全计数，供 Sampling Step / Admin 观测。 */
   snapshot(samplingIndex: number): ModelContextSnapshot {
     return {
       samplingIndex,
@@ -178,9 +169,6 @@ export class ModelContext {
         + this.initialHistory.length
         + 1
         + this.toolExchanges.length * 2,
-      ...(this.initialSelection
-        ? { initialSelection: this.initialSelection }
-        : {}),
     }
   }
 }

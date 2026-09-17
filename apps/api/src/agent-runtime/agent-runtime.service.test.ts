@@ -55,7 +55,6 @@ import {
   ContextTokenEstimationError,
 } from './agent-runtime.errors.js'
 import { AgentRuntimeService } from './agent-runtime.service.js'
-import { InitialContextSelectionService } from './context/initial-context-selection.js'
 import { flattenPlanningState, ModelContext } from './context/model-context.js'
 import { SamplingContextPlanner } from './context/sampling-context-planner.js'
 
@@ -155,7 +154,7 @@ describe('AgentRuntimeService model stream', () => {
       model: 'deepseek-v4-pro',
       reasoningEffort: 'max',
       maxTokens: 4_096,
-      buildModelMessages: historyMessages => historyMessages,
+      instructions: [],
     }))
 
     assert.equal(events.at(-1)?.type, 'run_completed')
@@ -184,7 +183,7 @@ describe('AgentRuntimeService model stream', () => {
       conversationId: 'conversation-1',
       userContent: '问题',
       model: '',
-      buildModelMessages: historyMessages => historyMessages,
+      instructions: [],
     }))
 
     assert.equal(events.at(-1)?.type, 'run_completed')
@@ -267,7 +266,7 @@ describe('AgentRuntimeService model stream', () => {
     assert.equal(harness.llmCalls.length, 0)
   })
 
-  it('分页加载 previous COMPLETED 历史，允许超过 40 条且当前输入恰好一次', async () => {
+  it('一次读取 previous COMPLETED 历史到硬上限，允许超过 40 条且当前输入恰好一次', async () => {
     const harness = createHarness(() => toModelStream([
       { type: 'response_completed', finishReason: 'stop' },
     ]))
@@ -304,21 +303,19 @@ describe('AgentRuntimeService model stream', () => {
       where: {
         conversationId: 'conversation-1',
         status: MessageStatus.COMPLETED,
-        AND: [{
-          OR: [
-            { createdAt: { lt: currentUser.createdAt } },
-            {
-              createdAt: currentUser.createdAt,
-              id: { lt: currentUser.id },
-            },
-          ],
-        }],
+        OR: [
+          { createdAt: { lt: currentUser.createdAt } },
+          {
+            createdAt: currentUser.createdAt,
+            id: { lt: currentUser.id },
+          },
+        ],
       },
       orderBy: [
         { createdAt: 'desc' },
         { id: 'desc' },
       ],
-      take: 50,
+      take: 1_000,
     }])
     const firstSamplingMessages = harness.llmCalls[0]?.messages ?? []
     const contents = firstSamplingMessages
@@ -333,11 +330,16 @@ describe('AgentRuntimeService model stream', () => {
       contents.some(content => content.startsWith('不应进入模型历史')),
       false,
     )
-    assert.equal(
-      findStep(harness, 'load_conversation_history')?.input
-      && (findStep(harness, 'load_conversation_history')?.input as Record<string, unknown>).limit,
-      1_000,
-    )
+    const loadHistoryStep = findStep(harness, 'load_conversation_history')
+
+    assert.deepEqual(loadHistoryStep?.input, { limit: 1_000 })
+    // 读取阶段不再按预算排除：candidate = message = 读取条数，excluded 恒为 0。
+    assert.deepEqual(loadHistoryStep?.output, {
+      messageCount: 45,
+      candidateCount: 45,
+      excludedCount: 0,
+      excludedReason: null,
+    })
   })
 
   it('只加载严格早于当前 User 上界的 History', async () => {
@@ -391,15 +393,13 @@ describe('AgentRuntimeService model stream', () => {
     assert.equal(currentUser.id, 'message-6')
     assert.deepEqual(contents, ['past-user', 'same-time-before', '问题'])
     assert.equal(contents.filter(content => content === '问题').length, 1)
-    assert.deepEqual(harness.prisma.findManyArguments[0]?.where.AND, [{
-      OR: [
-        { createdAt: { lt: currentCreatedAt } },
-        { createdAt: currentCreatedAt, id: { lt: 'message-6' } },
-      ],
-    }])
+    assert.deepEqual(harness.prisma.findManyArguments[0]?.where.OR, [
+      { createdAt: { lt: currentCreatedAt } },
+      { createdAt: currentCreatedAt, id: { lt: 'message-6' } },
+    ])
   })
 
-  it('createdAt 相同时使用 id keyset 稳定读取下一批', async () => {
+  it('createdAt 相同时按 id 倒序一次读取，并恢复稳定时间顺序', async () => {
     const harness = createHarness(() => toModelStream([
       { type: 'response_completed', finishReason: 'stop' },
     ]))
@@ -416,15 +416,8 @@ describe('AgentRuntimeService model stream', () => {
 
     await collectEvents(harness.run())
 
-    assert.equal(harness.prisma.findManyArguments.length, 2)
-    assert.deepEqual(
-      harness.prisma.findManyArguments[1]?.where.AND[0],
-      harness.prisma.findManyArguments[0]?.where.AND[0],
-    )
-    assert.deepEqual(harness.prisma.findManyArguments[1]?.where.AND[1]?.OR, [
-      { createdAt: { lt: createdAt } },
-      { createdAt, id: { lt: 'history-011' } },
-    ])
+    // 不再 keyset 翻页：整段历史只有一次 findMany，且只带当前用户消息上界。
+    assert.equal(harness.prisma.findManyArguments.length, 1)
     const contents = (harness.llmCalls[0]?.messages ?? [])
       .filter(item => item.type === 'message')
       .map(item => item.content)
@@ -433,6 +426,228 @@ describe('AgentRuntimeService model stream', () => {
       ...Array.from({ length: 60 }, (_, index) => `历史消息 ${index + 1}`),
       '问题',
     ])
+  })
+
+  it('读取条数触到硬上限时标记 candidate_cap，只保留最新的候选', async () => {
+    const harness = createHarness(
+      () => toModelStream([{ type: 'response_completed', finishReason: 'stop' }]),
+      undefined,
+      undefined,
+      { historyCandidateHardLimit: 50 },
+    )
+
+    for (let index = 1; index <= 60; index += 1) {
+      harness.prisma.seedMessage({
+        id: `history-${String(index).padStart(3, '0')}`,
+        content: `历史消息 ${index}`,
+        status: MessageStatus.COMPLETED,
+        createdAt: new Date(Date.UTC(2026, 0, 1, 0, 0, index)),
+      })
+    }
+
+    const events = await collectEvents(harness.run())
+
+    assert.equal(events.at(-1)?.type, 'run_completed')
+    assert.equal(harness.prisma.findManyArguments.length, 1)
+    assert.equal(harness.prisma.findManyArguments[0]?.take, 50)
+    const contents = (harness.llmCalls[0]?.messages ?? [])
+      .filter(item => item.type === 'message')
+      .map(item => item.content)
+
+    assert.deepEqual(contents, [
+      ...Array.from({ length: 50 }, (_, index) => `历史消息 ${index + 11}`),
+      '问题',
+    ])
+    const loadHistoryStep = findStep(harness, 'load_conversation_history')
+
+    assert.deepEqual(loadHistoryStep?.input, { limit: 50 })
+    assert.deepEqual(loadHistoryStep?.output, {
+      messageCount: 50,
+      candidateCount: 50,
+      excludedCount: 0,
+      excludedReason: 'candidate_cap',
+    })
+    const initialContext = (
+      findStep(harness, 'model_sampling')?.input as Record<string, unknown>
+    ).initialContext as Record<string, unknown>
+
+    assert.equal(initialContext.excludedReason, 'candidate_cap')
+    assert.equal(initialContext.historyCandidateCount, 50)
+    assert.equal(initialContext.historyIncludedCount, 50)
+    assert.equal(initialContext.historyExcludedCount, 0)
+    assertNoUnfinishedSteps(harness)
+  })
+
+  it('首轮超预算时由 planner 删最旧历史：initialContext 保持裁剪前值，contextPlan 记录删减数，Admin 投影不降级', async () => {
+    const harness = createHarness(
+      (_, __, callIndex) => toModelStream(callIndex === 0
+        ? [
+            toolCallEvent('call-history', 'search_articles', '{"query":"seo"}'),
+            { type: 'response_completed', finishReason: 'tool_calls' },
+          ]
+        : [
+            { type: 'text_delta', delta: '完成。' },
+            { type: 'response_completed', finishReason: 'stop' },
+          ]),
+      undefined,
+      async () => ({
+        ok: true,
+        data: {},
+        modelContent: '短 Observation',
+      }),
+      {},
+      new BaseCostTokenEstimator(250_000),
+    )
+    // 预算 262_144 − 基础 250_000 只容得下 2 条 5_000 字历史 + 当前消息 + 工具。
+    const historyContents = [1, 2, 3].map(
+      index => String(index).padEnd(5_000, '旧'),
+    )
+
+    for (const [index, content] of historyContents.entries()) {
+      harness.prisma.seedMessage({
+        id: `history-${index + 1}`,
+        content,
+        status: MessageStatus.COMPLETED,
+        createdAt: new Date(`2026-01-01T00:00:0${index + 1}.000Z`),
+      })
+    }
+
+    const events = await collectEvents(harness.run())
+
+    assert.equal(events.at(-1)?.type, 'run_completed')
+    assert.equal(harness.llmCalls.length, 2)
+    // 首轮模型输入只保留最新的连续 2 条，顺序不变。
+    assert.deepEqual(
+      (harness.llmCalls[0]?.messages ?? [])
+        .filter(item => item.type === 'message')
+        .map(item => item.content),
+      [historyContents[1], historyContents[2], '问题'],
+    )
+    // 读取阶段全部候选进入 ModelContext，不做预算排除。
+    assert.deepEqual(findStep(harness, 'load_conversation_history')?.output, {
+      messageCount: 3,
+      candidateCount: 3,
+      excludedCount: 0,
+      excludedReason: null,
+    })
+    const [firstSampling, secondSampling] = harness.recorder.steps.filter(
+      step => step.type === 'model_sampling',
+    )
+    const firstInput = firstSampling?.input as Record<string, unknown>
+    const firstInitialContext = firstInput.initialContext as Record<string, unknown>
+    const firstContextPlan = (firstSampling?.output as Record<string, unknown>)
+      .contextPlan as Record<string, unknown>
+
+    // AC-03：initialContext 取裁剪前值；预算删减只体现在 contextPlan。
+    assert.equal(firstInput.candidateMessageCount, 4)
+    assert.equal(firstInitialContext.historyCandidateCount, 3)
+    assert.equal(firstInitialContext.historyIncludedCount, 3)
+    assert.equal(firstInitialContext.historyExcludedCount, 0)
+    assert.equal(firstInitialContext.excludedReason, null)
+    assert.ok(
+      (firstInitialContext.estimatedInputTokens as number)
+      > (firstInitialContext.resolvedInputBudgetTokens as number),
+    )
+    assert.equal((firstSampling?.output as Record<string, unknown>).messageCount, 3)
+    assert.equal(firstContextPlan.historyCandidateCount, 3)
+    assert.equal(firstContextPlan.historyIncludedCount, 2)
+    assert.equal(firstContextPlan.historyExcludedCount, 1)
+    // 第二轮：历史基准不变，累计删减仍为 1，Tool Exchange 成对进入输入。
+    const secondInput = secondSampling?.input as Record<string, unknown>
+    const secondContextPlan = (secondSampling?.output as Record<string, unknown>)
+      .contextPlan as Record<string, unknown>
+
+    assert.deepEqual(secondInput.initialContext, firstInitialContext)
+    assert.equal(secondInput.candidateMessageCount, 5)
+    assert.equal((secondSampling?.output as Record<string, unknown>).messageCount, 5)
+    assert.equal(secondContextPlan.historyCandidateCount, 3)
+    assert.equal(secondContextPlan.historyIncludedCount, 2)
+    assert.equal(secondContextPlan.historyExcludedCount, 1)
+    assertNoUnfinishedSteps(harness)
+
+    // AC-04 跨层：runtime 真实写出的 Step 经 Admin projector 与序列校验投影。
+    const detail = projectHarnessRunDetail(harness, 'COMPLETED')
+    const inspectors = detail.timeline.flatMap(item => (
+      item.kind === 'known' && item.type === 'model_sampling'
+        ? [item.contextInspector]
+        : []
+    ))
+
+    assert.deepEqual(
+      inspectors.map(inspector => [
+        inspector.availability,
+        inspector.outcome,
+        inspector.samplingHistoryExcludedCount,
+        inspector.prePlanItemCount,
+        inspector.providerItemCount,
+      ]),
+      [
+        ['available', 'success', 1, 4, 3],
+        ['available', 'success', 1, 5, 5],
+      ],
+    )
+  })
+
+  it('首轮 plan 内估算失败时 sampling Step 记 estimator_failure，Admin 投影为 partial', async () => {
+    // 前置快照用正常 estimator，只让 planner 的 plan() 内估算失败。
+    const harness = createHarness(
+      () => toModelStream([{ type: 'response_completed', finishReason: 'stop' }]),
+      undefined,
+      undefined,
+      {},
+      new TestTokenEstimator(),
+      undefined,
+      new AlwaysFailingTokenEstimator(),
+    )
+
+    harness.prisma.seedMessage({
+      id: 'history-1',
+      content: '历史消息 1',
+      status: MessageStatus.COMPLETED,
+      createdAt: new Date('2026-01-01T00:00:01.000Z'),
+    })
+
+    const events = await collectEvents(harness.run())
+    const serialized = JSON.stringify({ events, steps: harness.recorder.steps })
+
+    assert.deepEqual(events.map(event => event.type), ['run_started', 'run_failed'])
+    assert.equal(harness.llmCalls.length, 0)
+    assert.equal(
+      findStep(harness, 'load_conversation_history')?.status,
+      AgentStepStatus.COMPLETED,
+    )
+    const samplingStep = findStep(harness, 'model_sampling')
+    const samplingOutput = samplingStep?.output as Record<string, unknown>
+    const initialContext = (samplingStep?.input as Record<string, unknown>)
+      .initialContext as Record<string, unknown>
+
+    assert.equal(samplingStep?.status, AgentStepStatus.FAILED)
+    assert.deepEqual(withoutDuration(samplingOutput), {
+      messageCount: 0,
+      contextFailureReason: 'estimator_failure',
+    })
+    assert.equal(Object.hasOwn(samplingOutput, 'contextPlan'), false)
+    assert.equal(initialContext.historyCandidateCount, 1)
+    assert.equal(initialContext.historyIncludedCount, 1)
+    assert.doesNotMatch(serialized, /initial-estimator-secret/)
+    assert.match(serialized, /TokenEstimator/)
+    assertNoUnfinishedSteps(harness)
+
+    const samplingItem = projectHarnessRunDetail(harness, 'FAILED').timeline.find(
+      item => item.type === 'model_sampling',
+    )
+
+    assert.equal(samplingItem?.kind, 'known')
+    assert.deepEqual(
+      samplingItem?.kind === 'known' && samplingItem.type === 'model_sampling'
+        ? [
+            samplingItem.contextInspector.availability,
+            samplingItem.contextInspector.outcome,
+            samplingItem.providerItemCount,
+          ]
+        : null,
+      ['partial', 'estimator_failure', 0],
+    )
   })
 
   it('mandatory Context 超预算时不调用 Provider', async () => {
@@ -715,40 +930,7 @@ describe('AgentRuntimeService model stream', () => {
 
     await collectEvents(harness.run())
 
-    const assistantMessage = harness.assistantMessage()
-    const now = new Date()
-
-    assert.ok(assistantMessage)
-
-    // 跨层：把 runtime 真实写出的 Step 记录原样交给 Admin projector，不手写 fixture。
-    const detail = projectAdminRunDetail({
-      id: 'run-1',
-      conversationId: 'conversation-1',
-      userMessageId: 'message-user',
-      assistantMessageId: assistantMessage.id,
-      status: 'COMPLETED',
-      startedAt: now,
-      endedAt: now,
-      createdAt: now,
-      updatedAt: now,
-      userMessage: {
-        id: 'message-user',
-        role: 'USER',
-        status: 'COMPLETED',
-        content: '问题',
-        createdAt: now,
-        updatedAt: now,
-      },
-      assistantMessage: {
-        id: assistantMessage.id,
-        role: 'ASSISTANT',
-        status: 'COMPLETED',
-        content: assistantMessage.content,
-        createdAt: assistantMessage.createdAt,
-        updatedAt: assistantMessage.updatedAt,
-      },
-      steps: harness.recorder.steps.map(step => ({ ...step, title: step.type })),
-    })
+    const detail = projectHarnessRunDetail(harness, 'COMPLETED')
     const toolItem = detail.timeline.find(item => item.type === 'tool_execution')
 
     assert.equal(toolItem?.kind, 'known')
@@ -2810,6 +2992,9 @@ function createHarness(
   policy: Partial<AgentRuntimePolicy> = {},
   tokenEstimator: TokenEstimator = new TestTokenEstimator(),
   registeredToolNames?: string[],
+  // 生产中 runtime 与 planner 共用同一个 estimator 实例；只在需要把估算故障
+  // 精确注入到 plan() 边界时才单独提供。
+  plannerTokenEstimator: TokenEstimator = tokenEstimator,
 ) {
   const registeredDefinitions = [
     hiddenAdminDefinition,
@@ -2863,7 +3048,6 @@ function createHarness(
     toolInvocationService as unknown as ToolInvocationService,
     {
       value: {
-        historyCandidateBatchSize: 50,
         historyCandidateHardLimit: 1_000,
         maxSamplingRounds: 3,
         maxToolCalls: 2,
@@ -2872,8 +3056,8 @@ function createHarness(
       },
     } as AgentRuntimePolicyService,
     new FakeToolRegistryService(registeredDefinitions) as unknown as ToolRegistryService,
-    new InitialContextSelectionService(tokenEstimator),
-    new SamplingContextPlanner(tokenEstimator),
+    tokenEstimator,
+    new SamplingContextPlanner(plannerTokenEstimator),
   )
 
   return {
@@ -2891,7 +3075,7 @@ function createHarness(
       userContent: '问题',
       reasoningEffort: 'high',
       ...(signal ? { signal } : {}),
-      buildModelMessages: historyMessages => historyMessages,
+      instructions: [],
     }),
   }
 }
@@ -2965,7 +3149,7 @@ class FakePrismaService {
         .filter(message =>
           message.conversationId === arguments_.where.conversationId
           && message.status === arguments_.where.status
-          && matchesHistoryBounds(message, arguments_.where.AND))
+          && isStrictlyBefore(message, arguments_.where.OR))
         .sort((left, right) =>
           right.createdAt.getTime() - left.createdAt.getTime()
           || right.id.localeCompare(left.id))
@@ -3070,34 +3254,30 @@ class FakePrismaService {
   }
 }
 
+type FakeStrictlyBeforeOr = [
+  { createdAt: { lt: Date } },
+  { createdAt: Date, id: { lt: string } },
+]
+
 interface FakeMessageFindManyArguments {
   where: {
     conversationId: string
     status: Message['status']
-    AND: FakeStrictBeforeWhere[]
+    OR: FakeStrictlyBeforeOr
   }
   orderBy: Array<{ createdAt: 'desc' } | { id: 'desc' }>
   take: number
 }
 
-interface FakeStrictBeforeWhere {
-  OR: [
-    { createdAt: { lt: Date } },
-    { createdAt: Date, id: { lt: string } },
-  ]
-}
-
-function matchesHistoryBounds(
+function isStrictlyBefore(
   message: Message,
-  bounds: FakeStrictBeforeWhere[],
+  [byCreatedAt, sameCreatedAt]: FakeStrictlyBeforeOr,
 ): boolean {
-  return bounds.every(({ OR }) => {
-    const boundDate = OR[0].createdAt.lt
+  const boundDate = byCreatedAt.createdAt.lt
 
-    return message.createdAt < boundDate
-      || (message.createdAt.getTime() === boundDate.getTime()
-        && message.id < OR[1].id.lt)
-  })
+  return message.createdAt < boundDate
+    || (message.createdAt.getTime() === boundDate.getTime()
+      && message.id < sameCreatedAt.id.lt)
 }
 
 class TestTokenEstimator implements TokenEstimator {
@@ -3444,6 +3624,46 @@ function findStep(
   type: string,
 ): RecordedAgentStep | undefined {
   return harness.recorder.steps.find(step => step.type === type)
+}
+
+/** 跨层：把 runtime 真实写出的 Step 记录原样交给 Admin projector，不手写 fixture。 */
+function projectHarnessRunDetail(
+  harness: ReturnType<typeof createHarness>,
+  status: 'COMPLETED' | 'FAILED',
+) {
+  const assistantMessage = harness.assistantMessage()
+  const now = new Date()
+
+  assert.ok(assistantMessage)
+
+  return projectAdminRunDetail({
+    id: 'run-1',
+    conversationId: 'conversation-1',
+    userMessageId: 'message-user',
+    assistantMessageId: assistantMessage.id,
+    status,
+    startedAt: now,
+    endedAt: now,
+    createdAt: now,
+    updatedAt: now,
+    userMessage: {
+      id: 'message-user',
+      role: 'USER',
+      status: 'COMPLETED',
+      content: '问题',
+      createdAt: now,
+      updatedAt: now,
+    },
+    assistantMessage: {
+      id: assistantMessage.id,
+      role: 'ASSISTANT',
+      status: assistantMessage.status,
+      content: assistantMessage.content,
+      createdAt: assistantMessage.createdAt,
+      updatedAt: assistantMessage.updatedAt,
+    },
+    steps: harness.recorder.steps.map(step => ({ ...step, title: step.type })),
+  })
 }
 
 function assertNoUnfinishedSteps(harness: ReturnType<typeof createHarness>): void {

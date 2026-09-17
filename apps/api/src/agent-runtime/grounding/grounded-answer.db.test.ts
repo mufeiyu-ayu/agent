@@ -52,7 +52,6 @@ import {
   RetrieveArticleContextTool,
 } from '../../tools/retrieval/retrieve-article-context.tool.js'
 import { AgentRuntimeService } from '../agent-runtime.service.js'
-import { InitialContextSelectionService } from '../context/initial-context-selection.js'
 import { SamplingContextPlanner } from '../context/sampling-context-planner.js'
 import { AgentRunRecorderService } from '../lifecycle/agent-run-recorder.service.js'
 import { toMessageGroundingV1 } from './message-grounding.projector.js'
@@ -1028,6 +1027,7 @@ describe('Grounded Answer PostgreSQL integration', { concurrency: 1 }, () => {
         )
       },
     } as unknown as LLMService
+    const tokenEstimator = new TestTokenEstimator()
     const service = new AgentRuntimeService(
       llmService,
       prisma,
@@ -1035,7 +1035,6 @@ describe('Grounded Answer PostgreSQL integration', { concurrency: 1 }, () => {
       new ToolInvocationService(registry),
       {
         value: {
-          historyCandidateBatchSize: 50,
           historyCandidateHardLimit: 1_000,
           maxSamplingRounds: 3,
           maxToolCalls: 1,
@@ -1043,8 +1042,8 @@ describe('Grounded Answer PostgreSQL integration', { concurrency: 1 }, () => {
         },
       } as AgentRuntimePolicyService,
       registry,
-      new InitialContextSelectionService(new TestTokenEstimator()),
-      new SamplingContextPlanner(new TestTokenEstimator()),
+      tokenEstimator,
+      new SamplingContextPlanner(tokenEstimator),
     )
 
     return {
@@ -1053,7 +1052,7 @@ describe('Grounded Answer PostgreSQL integration', { concurrency: 1 }, () => {
         userContent: 'SEO 是什么',
         reasoningEffort: 'high',
         ...(signal ? { signal } : {}),
-        buildModelMessages: historyMessages => historyMessages,
+        instructions: [],
       }),
     }
   }

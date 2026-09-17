@@ -63,5 +63,6 @@ export interface RunTurnStreamInput {
   reasoningEffort?: DeepSeekReasoningEffort
   signal?: AbortSignal
   maxTokens?: number
-  buildModelMessages: (historyMessages: ChatMessage[]) => ChatMessage[]
+  /** 模型必须携带的指令消息（当前为系统提示词）；历史与当前消息由 Runtime 自行拼接。 */
+  instructions: ChatMessage[]
 }

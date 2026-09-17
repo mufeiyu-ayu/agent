@@ -27,7 +27,6 @@ import {
 } from '../../tools/retrieval/retrieve-article-context.tool.js'
 import { AgentRuntimeService } from '../agent-runtime.service.js'
 import { DeepSeekV4TokenEstimator } from '../context/deepseek-v4-token-estimator.js'
-import { InitialContextSelectionService } from '../context/initial-context-selection.js'
 import { SamplingContextPlanner } from '../context/sampling-context-planner.js'
 import { AgentRunRecorderService } from '../lifecycle/agent-run-recorder.service.js'
 
@@ -123,7 +122,6 @@ export async function executeGroundedAnswerSmoke(
     new ToolInvocationService(registry),
     {
       value: {
-        historyCandidateBatchSize: 50,
         historyCandidateHardLimit: 1_000,
         maxSamplingRounds: 4,
         maxToolCalls: 2,
@@ -131,7 +129,7 @@ export async function executeGroundedAnswerSmoke(
       },
     },
     registry,
-    new InitialContextSelectionService(tokenEstimator),
+    tokenEstimator,
     new SamplingContextPlanner(tokenEstimator),
   )
 
@@ -178,7 +176,7 @@ async function runSmokeCase(
       userContent: query,
       reasoningEffort: 'high',
       signal,
-      buildModelMessages: buildSeoAgentChatMessages,
+      instructions: buildSeoAgentChatMessages([]),
     })) {
       if (event.type === 'assistant_delta') {
         deltas.push(event.contentDelta)

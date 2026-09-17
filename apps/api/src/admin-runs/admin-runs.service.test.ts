@@ -604,6 +604,53 @@ describe('Admin Run projector', () => {
     )
   })
 
+  it('#119 之前落库的 initialContext.excludedReason = budget 仍投影为 available', () => {
+    const legacy = createRunRecord()
+    legacy.steps = legacy.steps.filter(step => step.sequence <= 3)
+    const sampling = legacy.steps.find(step => step.sequence === 3)!
+    // 旧形状：读取阶段已按预算排除 1 条，plan 未再删减。
+    sampling.input = {
+      ...(sampling.input as Record<string, unknown>),
+      candidateMessageCount: 3,
+      initialContext: {
+        ...safeInitialContext(),
+        historyCandidateCount: 2,
+        historyIncludedCount: 1,
+        historyExcludedCount: 1,
+        excludedReason: 'budget',
+      },
+    }
+    sampling.output = {
+      ...(sampling.output as Record<string, unknown>),
+      messageCount: 3,
+      contextPlan: {
+        ...safeContextPlan(null),
+        estimatedInputTokens: 200,
+        historyCandidateCount: 2,
+        historyIncludedCount: 1,
+        historyExcludedCount: 1,
+      },
+    }
+
+    const projection = projectAdminRunDetail(legacy).timeline.find(
+      item => item.sequence === 3,
+    )
+
+    assert.equal(projection?.kind, 'known')
+    assert.deepEqual(
+      projection?.type === 'model_sampling'
+        ? [
+            projection.contextInspector.availability,
+            projection.contextInspector.outcome,
+            projection.contextInspector.initialHistoryExcludedReason,
+            projection.contextInspector.historyExcludedCount,
+            projection.contextInspector.samplingHistoryExcludedCount,
+          ]
+        : null,
+      ['available', 'success', 'budget', 1, 0],
+    )
+  })
+
   it('sampling estimator failure 使用安全枚举，且 Context metadata 不一致只降级 Inspector', () => {
     const estimatorFailure = createRunRecord()
     estimatorFailure.status = 'FAILED'

@@ -16,7 +16,7 @@
 | 单次 Run 组合配置 | 一次 Agent Run 的 resolved 请求配置 + Tool allowlist | `apps/api/src/agent-runtime/agent-runtime.service.ts`（私有方法 `resolveRunConfiguration`；allowlist 常量 `AGENT_RUN_TOOL_NAMES` 同文件） | Run 内、AgentRun 落库后解析 |
 | Tool Policy | 每个 Tool 的 timeout、Observation 预算、risk、approval、evidence policy | 各 Tool 自己的 definition（`apps/api/src/tools/**`，类型见 `tools/core/tool.types.ts`） | 注册时 + 编译期 |
 | 公共契约 | 前后端共享协议与类型 | `packages/contracts/` | 编译期 |
-| 算法不变量 | Context budget 比例、TokenEstimator、History Selection、Observation 硬上限等 | 各算法文件内常量（如 `initial-context-selection.ts`、`tool-observation.ts`） | 不可由环境变量改变 |
+| 算法不变量 | Context budget 比例、TokenEstimator、首轮历史裁剪（planner）、Observation 硬上限等 | 各算法文件内常量与函数（如 `initial-context.ts`、`sampling-context-planner.ts`、`tool-observation.ts`） | 不可由环境变量改变 |
 | 部署变量说明 | 各环境变量的示例与注释 | `.env.example` | 无（文档性质） |
 
 以上未列出的 env 读取点（如 `main.ts` 端口、各 smoke / CLI 专用变量）以 `.env.example` 与对应源码为准；本表只收录长期配置边界。

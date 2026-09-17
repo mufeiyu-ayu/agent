@@ -90,7 +90,7 @@ export class SeoService {
         : {}),
       ...(signal ? { signal } : {}),
       /** 系统提示词 */
-      buildModelMessages: buildSeoAgentChatMessages,
+      instructions: buildSeoAgentChatMessages([]),
     }
   }
 }
