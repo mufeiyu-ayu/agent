@@ -7,7 +7,7 @@
 ```text
 阶段 1-8：Completed
 Active Agent Task：无
-Next / Planned：#119 历史裁剪合一 → #120 packages/ai → #115 模型调用重试 → #116 同轮文本 + 多 Tool Call → #117 Responses adapter → web_fetch（#118 删死代码已于 2026-09-17 合并）
+Next / Planned：#120 packages/ai → #115 模型调用重试 → #116 同轮文本 + 多 Tool Call → #117 Responses adapter → web_fetch（#118 删死代码、#119 历史裁剪合一已于 2026-09-17 合并）
 方向：runtime 深化（2026-09-05 定案）
 当前阶段：源码阅读
 候选子系统：session 事件流与 replay、审批门、compaction、定时任务
@@ -119,5 +119,5 @@ Phase 8 Task 3C 已完成安全 Retrieval Inspector，但不自动启动 Task 4�
 Phase 8：Completed / 已归档（docs/tasks/completed/phase-08-grounded-retrieval.md）
 Active Agent Task：无
 当前阶段：本项目源码阅读；后续按 pi-reference roadmap 由 AI 参照 Pi 实现云端方向
-下一步：#119 → #120 → #115 → #116 → #117 依次开工（#118 已合并），之后 web_fetch；其余候选子系统在立项条件满足时建 Issue，走 docs/workflow.md 的流程
+下一步：#120 → #115 → #116 → #117 依次开工（#118 / #119 已合并），之后 web_fetch；其余候选子系统在立项条件满足时建 Issue，走 docs/workflow.md 的流程
 ```

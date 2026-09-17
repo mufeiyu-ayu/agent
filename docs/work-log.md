@@ -6,7 +6,7 @@
 
 | 类型 | 当前记录 | 下一步 |
 | --- | --- | --- |
-| Agent 主线 | 阶段 1-8 Completed；横向任务与 Backend 模块组织全部验收合并；去过度设计三件之一 #118 已合并（PR #121）；#119 / #120 与健壮性三件 #115 / #116 / #117 已立 Issue | 源码阅读；#119 → #120 → #115 → #116 → #117 依次开工 |
+| Agent 主线 | 阶段 1-8 Completed；横向任务与 Backend 模块组织全部验收合并；去过度设计三件中 #118（PR #121）、#119（PR #122）已合并；#120 与健壮性三件 #115 / #116 / #117 已立 Issue | 源码阅读；#120 → #115 → #116 → #117 依次开工 |
 | 方向 | 当前继续本项目源码学习；2026-09-15 用户指定学完后由 AI 以 Pi 为参照实现云端 Agent，用户不读 Pi 代码 | 见 [Pi 研究入口](./research/pi-reference/README.md) 与实现 roadmap；不改变正式任务顺序 |
 | 翻译质检站 | 方向 2026-09-02 放弃；2026-09-05 经 #113 删除全部代码与数据模型 | 无 |
 | Admin Console | Task 0-3、Enhancement 1-3、Phase 8 Task 3C Completed；Task 4 Planned | 不自动启动 Auth / RBAC |
@@ -16,6 +16,7 @@
 
 | 日期 | 事项 | 结果 |
 | --- | --- | --- |
+| 2026-09-17 | #119 历史裁剪合一合并 | PR #122（代码 `deb4a4b` + 测试 `bcf76b0` + docs 收口）：删 `InitialContextSelectionService` 的 keyset 分页与批内前缀二分，历史一次 `findMany({ take: hardLimit })`，全部候选进 `ModelContext.initialHistory`，首轮由 planner `excludeOldestHistory` 裁剪；`initialContext` 取裁剪前值（`excludedReason` 只剩 `candidate_cap`），预算删减只体现在 `contextPlan`；`ModelContext` 不再携带快照；`RunTurnStreamInput.buildModelMessages` 改 `instructions`；删 `historyCandidateBatchSize` 与 `SEO_CHAT_HISTORY_CANDIDATE_BATCH_SIZE`。api typecheck / lint 与 context / tool-loop / model-stream / admin-runs / grounding / seo-service 全绿；真实 tokenizer 差分旧算法 68 = planner 68；本机运行服务两轮真实对话 + Admin 投影冒烟通过。`/code-review high` 两轮 11 条 finding：7 条修复（估算改走 `flattenPlanningState`、内联双键上界、planner 独立故障注入、配置地图指向、估算次数上界护栏、差分不阻塞、看板措辞），重复全量估算与 `buildSeoAgentChatMessages([])` 按 Issue 规格保留。可见变化：Admin 的 `candidateCount / messageCount / historyIncludedCount` 变为一次读到的条数，预算裁剪看 `samplingHistoryExcludedCount`。学习环节按 Issue 决策记录豁免，不记「学习已验证」 |
 | 2026-09-17 | #118 删死代码与单实现抽象合并 | PR #121（代码 `48681f3` + docs 收口）：删 `receive_user_message` Step 写入、`abortStep`、`ToolRegistryService.require / listDefinitions`、`ContextBudgetExceededError.stage`、`SeoContextBuilder`、`AgentRunConfigurationService`（逻辑并入 `AgentRuntimeService.resolveRunConfiguration`）、`ToolExecutionContext.executionAttempt`、`ModelContext.forSampling` 与 snapshot 明细项，`TokenEstimator` 改 interface 直接注入 `DeepSeekV4TokenEstimator`；+327 / −761、无新增文件。api typecheck / lint 与 13 组非数据库测试全绿，db-reliability 通过，grounding-db / retrieval-db / article-indexing-db 因本机无 `ARTICLE_INDEX_TEST_DATABASE_URL` 未执行。`/code-review xhigh` 两轮 15 条 finding：7 条修复（配置地图指向、snapshot 零拷贝计数、`transitionStep` 去 ABORTED、policy 单次读取、`model: ''` 用例、itemCount 同源断言、fake 清理），其余为 Issue 范围 1 / 3 的直接后果或测试 nit。可见变化：新 Run 的 Admin Run Trace 无「接收用户消息」项；配置解析抛错时 Run 以 0 Step 的 FAILED 落库。学习环节按 Issue 决策记录豁免，不记「学习已验证」 |
 | 2026-09-17 | 第四轮独立审查收口 | GPT 基于 `1f3a7eb` 复审：T3 四条全部 ACCEPT，截断分片丢弃策略接受、不加丢弃计数，结论「规格修订收口，可按 #118 开工」；只到规格层，不含实现验收与合并授权。#116 范围 9 补一句：`length` 后全部 buffer 被丢弃时走现有「length 且无 Tool Call」失败路径，不伪造空调用续轮 |
 | 2026-09-17 | 第三轮独立审查修正 | GPT 基于 `a6c4eda` 复审：R2 十条中 7 条 ACCEPT，新出 4 条（T3-01～T3-04），主会话对照代码全部成立。改 Issue 正文：#118 AC-04 残留 grep 排除测试文件；#119 估算失败按「sampling Step 创建前 / plan 内」分两条验收，前者不调 LLM、后者投影 partial + estimator_failure 为预期，「真实 estimator 不同不阻塞」限定为历史选择差异；#116 adapter 第四条不变量加 `length` 例外并要求原始 chunk → adapter → Runtime 回归，上限下限改回 `>= 1 / >= 0` 保留 `1 / 0` 单轮禁工具模式，重复 id 判定限定在 `finalize()` 最终 id。#120 与两处流程修订 ACCEPT，未改 |
