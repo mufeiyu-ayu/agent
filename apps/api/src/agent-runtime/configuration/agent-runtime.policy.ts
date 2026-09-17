@@ -5,9 +5,7 @@ const MAX_HISTORY_CANDIDATE_LIMIT = 1_000
 const MAX_TIMER_TIMEOUT_MS = 2_147_483_647
 
 export const DEFAULT_AGENT_RUNTIME_POLICY = {
-  /** 每次分页查询（每页）从数据库读取的历史候选消息数量。 */
-  historyCandidateBatchSize: 50,
-  /** 单次 Run 最多检查的历史候选消息总数。 */
+  /** 单次 Run 一次查询最多读取的历史候选消息总数。 */
   historyCandidateHardLimit: 1_000,
   /** 单次 Run 最多允许发起的模型采样轮数。 */
   maxSamplingRounds: 3,
@@ -18,7 +16,6 @@ export const DEFAULT_AGENT_RUNTIME_POLICY = {
 } as const
 
 export interface AgentRuntimePolicy {
-  readonly historyCandidateBatchSize: number
   readonly historyCandidateHardLimit: number
   readonly maxSamplingRounds: number
   readonly maxToolCalls: number
@@ -34,15 +31,7 @@ export class AgentRuntimePolicyService {
 export function resolveAgentRuntimePolicy(
   env: NodeJS.ProcessEnv,
 ): AgentRuntimePolicy {
-  /** 每次分页查询（每页）读取的历史候选消息数量，不是最终进入模型的数量。 */
-  const historyCandidateBatchSize = resolveInteger(
-    env.SEO_CHAT_HISTORY_CANDIDATE_BATCH_SIZE,
-    'SEO_CHAT_HISTORY_CANDIDATE_BATCH_SIZE',
-    DEFAULT_AGENT_RUNTIME_POLICY.historyCandidateBatchSize,
-    50,
-    MAX_HISTORY_CANDIDATE_LIMIT,
-  )
-  /** 单次 Run 最多检查的历史候选总数，防止无限翻页。 */
+  /** 单次 Run 一次查询读取的历史候选上限，不是最终进入模型的数量。 */
   const historyCandidateHardLimit = resolveInteger(
     env.SEO_CHAT_HISTORY_CANDIDATE_HARD_LIMIT,
     'SEO_CHAT_HISTORY_CANDIDATE_HARD_LIMIT',
@@ -80,14 +69,7 @@ export function resolveAgentRuntimePolicy(
       'AGENT_MAX_TOOL_CALLS 必须小于 AGENT_MAX_SAMPLING_ROUNDS',
     )
   }
-  if (historyCandidateBatchSize > historyCandidateHardLimit) {
-    throw new AgentRuntimePolicyError(
-      'SEO_CHAT_HISTORY_CANDIDATE_BATCH_SIZE 不得大于 SEO_CHAT_HISTORY_CANDIDATE_HARD_LIMIT',
-    )
-  }
-
   return {
-    historyCandidateBatchSize,
     historyCandidateHardLimit,
     maxSamplingRounds,
     maxToolCalls,

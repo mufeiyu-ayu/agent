@@ -32,7 +32,6 @@ import { MessageRole, MessageStatus } from '../../generated/prisma/client.js'
 import { getModelProfile } from '../../llm/model-profiles.js'
 import { toChatStreamEvent } from '../../seo/seo-chat-stream-event.mapper.js'
 import { AgentRuntimeService } from '../agent-runtime.service.js'
-import { InitialContextSelectionService } from '../context/initial-context-selection.js'
 import { SamplingContextPlanner } from '../context/sampling-context-planner.js'
 import { AGENT_STEP_TYPES } from '../lifecycle/agent-run-recorder.service.js'
 
@@ -1463,6 +1462,7 @@ function createHarness(options: CreateHarnessOptions) {
       }
     },
   } as unknown as ToolInvocationService
+  const tokenEstimator = new TestTokenEstimator()
   const service = new AgentRuntimeService(
     llmService,
     prisma as unknown as PrismaService,
@@ -1470,7 +1470,6 @@ function createHarness(options: CreateHarnessOptions) {
     toolInvocationService,
     {
       value: {
-        historyCandidateBatchSize: 50,
         historyCandidateHardLimit: 1_000,
         maxSamplingRounds: options.policy?.maxSamplingRounds ?? 3,
         maxToolCalls: options.policy?.maxToolCalls ?? 1,
@@ -1478,8 +1477,8 @@ function createHarness(options: CreateHarnessOptions) {
       },
     } as AgentRuntimePolicyService,
     new FakeToolRegistryService() as unknown as ToolRegistryService,
-    new InitialContextSelectionService(new TestTokenEstimator()),
-    new SamplingContextPlanner(new TestTokenEstimator()),
+    tokenEstimator,
+    new SamplingContextPlanner(tokenEstimator),
   )
 
   return {
@@ -1494,7 +1493,7 @@ function createHarness(options: CreateHarnessOptions) {
       userContent: '问题',
       reasoningEffort: options.reasoningEffort ?? 'high',
       ...(options.signal ? { signal: options.signal } : {}),
-      buildModelMessages: historyMessages => historyMessages,
+      instructions: [],
     }),
   }
 }

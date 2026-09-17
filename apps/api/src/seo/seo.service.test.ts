@@ -138,30 +138,22 @@ describe('SeoService', () => {
 
     assert.ok(chatInput)
     assert.ok(streamInput)
-    assert.deepEqual(withoutFunctionsAndSignal(chatInput), {
+    assert.deepEqual(withoutSignal(chatInput), {
       conversationId: 'conversation-1',
       userContent: '用户问题',
       model: 'deepseek-chat',
       reasoningEffort: 'max',
+      instructions: buildSeoAgentChatMessages([]),
     })
-    assert.deepEqual(
-      withoutFunctionsAndSignal(streamInput),
-      withoutFunctionsAndSignal(chatInput),
-    )
+    assert.deepEqual(withoutSignal(streamInput), withoutSignal(chatInput))
     assert.equal(Object.hasOwn(chatInput, 'signal'), false)
     assert.equal(streamInput.signal, abortController.signal)
 
-    const historyMessages: ChatMessage[] = [{ role: 'user', content: '历史消息' }]
+    // 两个入口只传系统提示词；历史与当前消息由 Runtime 自行拼接。
+    const instructions: ChatMessage[] = chatInput.instructions
 
-    // 两个入口都直接使用 SEO Agent prompt 组装模型消息。
-    assert.deepEqual(
-      chatInput.buildModelMessages(historyMessages),
-      buildSeoAgentChatMessages(historyMessages),
-    )
-    assert.deepEqual(
-      streamInput.buildModelMessages(historyMessages),
-      buildSeoAgentChatMessages(historyMessages),
-    )
+    assert.equal(instructions.length, 1)
+    assert.equal(instructions[0]?.role, 'system')
   })
 
   it('流式入口保持既有五类 ChatStreamEvent 且不暴露 Runtime 字段', async () => {
@@ -443,15 +435,10 @@ function createInput(model?: string, reasoningEffort?: 'low' | 'high' | 'max') {
   }
 }
 
-function withoutFunctionsAndSignal(input: RunTurnStreamInput) {
-  return {
-    conversationId: input.conversationId,
-    userContent: input.userContent,
-    ...(input.model ? { model: input.model } : {}),
-    ...(input.reasoningEffort
-      ? { reasoningEffort: input.reasoningEffort }
-      : {}),
-  }
+function withoutSignal(input: RunTurnStreamInput) {
+  const { signal: _, ...rest } = input
+
+  return rest
 }
 
 async function collectEvents<T>(events: AsyncGenerator<T>): Promise<T[]> {

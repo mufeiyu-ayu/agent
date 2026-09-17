@@ -14,7 +14,7 @@ import type {
   RunTurnStreamInput,
 } from './agent-runtime.types.js'
 import type { AgentRuntimePolicy } from './configuration/agent-runtime.policy.js'
-import type { HistoryCursor } from './context/initial-context-selection.js'
+import type { TokenEstimator } from './context/deepseek-v4-token-estimator.js'
 import type { SamplingContextPlanSummary } from './context/sampling-context-planner.js'
 import type { GroundedFinalizationAttemptSummary } from './grounding/grounded-answer.finalizer.js'
 import type { RunCancellation } from './lifecycle/run-cancellation.js'
@@ -48,9 +48,8 @@ import {
   ModelSamplingIncompleteError,
 } from './agent-runtime.errors.js'
 import { AgentRuntimePolicyService } from './configuration/agent-runtime.policy.js'
-import {
-  InitialContextSelectionService,
-} from './context/initial-context-selection.js'
+import { DeepSeekV4TokenEstimator } from './context/deepseek-v4-token-estimator.js'
+import { summarizeInitialContext } from './context/initial-context.js'
 import { ModelContext } from './context/model-context.js'
 import {
   SamplingContextBudgetExceededError,
@@ -128,8 +127,8 @@ export class AgentRuntimeService {
     @Inject(ToolRegistryService)
     private readonly toolRegistryService: ToolRegistryService,
 
-    @Inject(InitialContextSelectionService)
-    private readonly initialContextSelectionService: InitialContextSelectionService,
+    @Inject(DeepSeekV4TokenEstimator)
+    private readonly tokenEstimator: TokenEstimator,
 
     @Inject(SamplingContextPlanner)
     private readonly samplingContextPlanner: SamplingContextPlanner,
@@ -186,68 +185,60 @@ export class AgentRuntimeService {
         type: AGENT_STEP_TYPES.loadConversationHistory,
         input: {
           limit: runtimePolicy.historyCandidateHardLimit,
-          batchSize: runtimePolicy.historyCandidateBatchSize,
         },
       }, databaseDeadline)
 
-      const selection = await this.initialContextSelectionService.select({
+      // 查询前后各检查一次用户取消或 Run 超时；await 期间也可能发生。
+      runCancellation.throwIfUnavailable()
+      const historyCandidates = await this.listRecentChatMessageCandidates(
+        input.conversationId,
+        userMessage,
+        runtimePolicy.historyCandidateHardLimit,
+        databaseDeadline,
+      )
+      runCancellation.throwIfUnavailable()
+
+      const modelContext = ModelContext.fromHistory({
+        // 系统提示词
+        instructions: input.instructions,
+        // 全部历史候选：数据库按「最新 -> 最旧」读取，模型上下文恢复为
+        // 「最旧 -> 最新」；首轮 plan() 超预算时从最旧删减
+        initialHistory: historyCandidates
+          .map(message => this.toLlmMessage(message))
+          .reverse(),
+        // 当前用户消息
+        currentUserMessage: this.toLlmMessage(userMessage),
+      })
+      // 裁剪前快照，写入每个 sampling Step 的 input.initialContext。
+      // 估算失败或必带内容超预算都在这里抛出，此时 load_conversation_history
+      // 仍为 RUNNING，由 failRun 收口为 FAILED，不会创建 sampling Step，也不会调用模型。
+      const initialContext = summarizeInitialContext({
         resolvedModel: resolvedRequestConfig.model,
         contextWindowTokens: resolvedRequestConfig.contextWindowTokens,
         resolvedMaxOutputTokens: resolvedRequestConfig.maxOutputTokens,
-        candidateBatchSize: runtimePolicy.historyCandidateBatchSize,
         candidateHardLimit: runtimePolicy.historyCandidateHardLimit,
-        currentUserMessage: this.toLlmMessage(userMessage),
+        context: modelContext,
         tools: modelTools,
-        buildModelMessages: input.buildModelMessages,
-        loadCandidates: async ({ cursor, take }) => {
-          const messages = await this.listRecentChatMessageCandidates(
-            input.conversationId,
-            {
-              id: userMessage.id,
-              createdAt: userMessage.createdAt,
-            },
-            cursor,
-            take,
-            databaseDeadline,
-          )
-
-          return messages.map(message => ({
-            id: message.id,
-            createdAt: message.createdAt,
-            message: this.toLlmMessage(message),
-          }))
-        },
-        assertAvailable: runCancellation.throwIfUnavailable,
+        tokenEstimator: this.tokenEstimator,
       })
       await this.agentRunRecorderService.completeStep(
         loadHistoryStep.id,
         databaseDeadline,
         {
-          // 仅记录本次历史选择的安全统计，供 AgentStep / Admin 观测；
-          // 真正传给 ModelContext 的消息仍使用 selection.historyMessages。
+          // 仅记录本次读取的安全统计，供 AgentStep / Admin 观测；
+          // 预算裁剪发生在首轮 plan()，体现在 sampling Step 的 contextPlan。
           output: {
-            // 最终纳入模型上下文的历史消息条数。
-            messageCount: selection.summary.historyIncludedCount,
-            // 本次实际从数据库读取并进入 Token 检查的候选条数。
-            candidateCount: selection.summary.historyCandidateCount,
-            // 已读取候选中，因 Token 预算不足而未纳入的条数。
-            excludedCount: selection.summary.historyExcludedCount,
-            // budget：Token 预算不足；candidate_cap：达到候选上限；null：自然读完。
-            excludedReason: selection.summary.excludedReason,
+            // 进入 ModelContext 的历史条数，等于一次读到的条数。
+            messageCount: initialContext.historyIncludedCount,
+            // 本次实际从数据库读取的候选条数。
+            candidateCount: initialContext.historyCandidateCount,
+            // 读取阶段不再按预算排除，恒为 0。
+            excludedCount: initialContext.historyExcludedCount,
+            // candidate_cap：读取条数触到硬上限；null：自然读完。
+            excludedReason: initialContext.excludedReason,
           },
         },
       )
-
-      const modelContext = ModelContext.fromHistory({
-        // 系统提示词
-        instructions: input.buildModelMessages([]),
-        // 历史消息（按时间倒序，最旧在前）
-        initialHistory: selection.historyMessages,
-        // 当前用户消息
-        currentUserMessage: this.toLlmMessage(userMessage),
-        // 信息统计快照
-        initialSelection: selection.summary,
-      })
 
       // 创建助手消息与 Run 关联必须同事务提交，避免 deadline 下留下未关联的 late Message。
       assistantMessage = await this.agentRunRecorderService.createAssistantMessage(
@@ -322,9 +313,7 @@ export class AgentRuntimeService {
             requestedModel: input.model ?? null,
             candidateMessageCount: contextSnapshot.itemCount,
             toolCount: modelTools.length,
-            ...(contextSnapshot.initialSelection
-              ? { initialContext: { ...contextSnapshot.initialSelection } }
-              : {}),
+            initialContext: { ...initialContext },
           },
         }, databaseDeadline)
         const samplingStartedAt = Date.now()
@@ -344,7 +333,7 @@ export class AgentRuntimeService {
         let plannedMessageCount = 0
 
         try {
-          // 每轮请求模型前重新规划完整输入：首轮复核 Initial Context；
+          // 每轮请求模型前重新规划完整输入：首轮把一次读到的全部历史按预算裁剪；
           // 后续轮次还要把上一轮模型产生的 assistant_tool_call 与后端产生的
           // tool_result 成对加入输入，超预算时先删最旧历史，再缩短 Tool Observation。
           const contextPlan = this.samplingContextPlanner.plan({
@@ -352,7 +341,7 @@ export class AgentRuntimeService {
             context: modelContext,
             tools: modelTools,
             resolvedInputBudgetTokens:
-              selection.summary.resolvedInputBudgetTokens,
+              initialContext.resolvedInputBudgetTokens,
           })
 
           // 主要是后台观察：记录本轮预算、最终 Token、历史排除和 Tool Observation
@@ -1014,13 +1003,12 @@ export class AgentRuntimeService {
   }
 
   /**
-   * 按时间倒序列出最近的已完成消息，分页游标为「严格早于」。
-   * 仅返回已完成消息，未完成消息不计入分页。
+   * 一次按时间倒序读取严格早于当前用户消息的最近已完成消息，最多 take 条。
+   * 仅返回已完成消息；未完成消息不进入模型历史。
    */
   private async listRecentChatMessageCandidates(
     conversationId: string,
-    currentUserUpperBound: HistoryCursor,
-    cursor: HistoryCursor | undefined,
+    currentUserUpperBound: Pick<Message, 'id' | 'createdAt'>,
     take: number,
     databaseDeadline: DatabaseOperationDeadline,
   ): Promise<Message[]> {
@@ -1030,9 +1018,13 @@ export class AgentRuntimeService {
         where: {
           conversationId,
           status: MessageStatus.COMPLETED,
-          AND: [
-            toStrictlyEarlierMessageWhere(currentUserUpperBound),
-            ...(cursor ? [toStrictlyEarlierMessageWhere(cursor)] : []),
+          // 严格早于当前用户消息：createdAt 更早，或同一时刻 id 更小。
+          OR: [
+            { createdAt: { lt: currentUserUpperBound.createdAt } },
+            {
+              createdAt: currentUserUpperBound.createdAt,
+              id: { lt: currentUserUpperBound.id },
+            },
           ],
         },
         orderBy: [
@@ -1345,16 +1337,4 @@ function toPersistedModelUsage(
       Object.entries(usage).filter(([, value]) => value !== undefined),
     ) as Prisma.InputJsonObject
     : null
-}
-
-function toStrictlyEarlierMessageWhere(bound: HistoryCursor) {
-  return {
-    OR: [
-      { createdAt: { lt: bound.createdAt } },
-      {
-        createdAt: bound.createdAt,
-        id: { lt: bound.id },
-      },
-    ],
-  }
 }
