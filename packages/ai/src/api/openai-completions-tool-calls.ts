@@ -1,6 +1,6 @@
-import type { UnvalidatedModelToolCall } from '../model-stream.types.js'
+import type { UnvalidatedModelToolCall } from '../types.js'
 
-import { LLMApiError } from '../llm.errors.js'
+import { LLMApiError } from '../errors.js'
 
 export interface OpenAICompatibleToolCallFragment {
   index: number

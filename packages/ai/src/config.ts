@@ -1,9 +1,9 @@
-import type { ChatOptions } from './llm.types.js'
-import type { SupportedDeepSeekModel } from './model-profiles.js'
+import type { SupportedDeepSeekModel } from './deepseek.js'
+import type { ChatOptions } from './types.js'
 import { DEFAULT_DEEPSEEK_REASONING_EFFORT } from '@agent/contracts'
 
-import { LLMAuthError, LLMConfigError } from './llm.errors.js'
-import { getModelProfile } from './model-profiles.js'
+import { getModelProfile } from './deepseek.js'
+import { LLMAuthError, LLMConfigError } from './errors.js'
 
 const MAX_TIMER_TIMEOUT_MS = 2_147_483_647
 

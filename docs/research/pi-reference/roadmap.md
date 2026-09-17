@@ -62,7 +62,7 @@
 
 ### R1 明确可重建的 Session 事实
 
-先讨论数据库契约：会话条目、分支 parent/tip、有效模型输入或其不可变引用；operation 身份与 owner 已在 R2 落地，这里不重做。现有 debug 捕获（`openai-compatible-raw-capture.ts`、`model-io-debug-capture.ts` 约 500 行）在这里收成请求与响应两个回调，作为模型输入引用的来源，不另起一套。保留现有 UI Message 与 AgentStep 投影，避免一次替换全部历史表。
+先讨论数据库契约：会话条目、分支 parent/tip、有效模型输入或其不可变引用；operation 身份与 owner 已在 R2 落地，这里不重做。现有 debug 捕获（`openai-completions-raw-capture.ts`、`model-io-debug-capture.ts` 约 500 行）在这里收成请求与响应两个回调，作为模型输入引用的来源，不另起一套。保留现有 UI Message 与 AgentStep 投影，避免一次替换全部历史表。
 
 **进入条件**：用户需要刷新/重启后解释上次模型究竟看到了什么，或开始 session replay 任务。
 

@@ -5,7 +5,7 @@ import { describe, it } from 'node:test'
 import {
   DEEPSEEK_MODEL_PROFILES,
   getModelProfile,
-} from './model-profiles.js'
+} from './deepseek.js'
 
 describe('DeepSeek model profiles', () => {
   it('记录两个支持模型的 Provider 能力，不混入应用默认值', () => {

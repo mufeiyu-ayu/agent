@@ -1,12 +1,12 @@
-import type { SupportedDeepSeekModel } from '../model-profiles.js'
+import type { SupportedDeepSeekModel } from '../deepseek.js'
 import assert from 'node:assert/strict'
 // eslint-disable-next-line test/no-import-node-test
 import { describe, it } from 'node:test'
 import OpenAI from 'openai'
 
-import { resolveLLMRuntimeConfig } from '../llm-runtime-config.js'
-import { LLMConfigError, LLMNetworkError } from '../llm.errors.js'
-import { OpenAICompatibleClient } from './openai-compatible.client.js'
+import { resolveLLMRuntimeConfig } from '../config.js'
+import { LLMConfigError, LLMNetworkError } from '../errors.js'
+import { OpenAICompatibleClient } from './openai-completions.js'
 
 describe('OpenAICompatibleClient runtime config', () => {
   it('metadata、普通 Chat 和 Stream 分别使用 10s、60s 和 10min', async () => {

@@ -23,7 +23,7 @@
 - [Runtime 导航](/Users/ayu/Desktop/agent/apps/api/src/agent-runtime/README.md)
 - [policy](/Users/ayu/Desktop/agent/apps/api/src/agent-runtime/configuration/agent-runtime.policy.ts:7)
 - [SamplingDecision](/Users/ayu/Desktop/agent/apps/api/src/agent-runtime/sampling/model-sampling-decision.ts:21)
-- [LLM client](/Users/ayu/Desktop/agent/packages/ai/src/clients/openai-compatible.client.ts:185)
+- [LLM client](/Users/ayu/Desktop/agent/packages/ai/src/api/openai-completions.ts:187)
 - [HTTP 断线](/Users/ayu/Desktop/agent/apps/api/src/seo/seo.controller.ts:43)
 - [Prisma 事实层](/Users/ayu/Desktop/agent/prisma/schema.prisma:59)
 

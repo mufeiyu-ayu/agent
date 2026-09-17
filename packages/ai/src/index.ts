@@ -4,17 +4,25 @@
  * 留在各自模块，出现第二个真实消费者再导出。
  */
 
-export { teeRawResponseCapture } from './clients/openai-compatible-raw-capture.js'
-export { adaptOpenAICompatibleStream } from './clients/openai-compatible-stream.adapter.js'
-export { OpenAICompatibleClient } from './clients/openai-compatible.client.js'
+export { teeRawResponseCapture } from './api/openai-completions-raw-capture.js'
+export { adaptOpenAICompatibleStream } from './api/openai-completions-stream.js'
+export { OpenAICompatibleClient } from './api/openai-completions.js'
 export type {
   LLMRuntimeConfig,
   ResolvedChatRequestConfig,
-} from './llm-runtime-config.js'
+} from './config.js'
 export {
   resolveChatRequestConfig,
   resolveLLMRuntimeConfig,
-} from './llm-runtime-config.js'
+} from './config.js'
+export type {
+  DeepSeekBalanceResponse,
+  DeepSeekModelsResponse,
+} from './deepseek.js'
+export {
+  getModelProfile,
+  SUPPORTED_DEEPSEEK_MODELS,
+} from './deepseek.js'
 export {
   LLMApiError,
   LLMAuthError,
@@ -25,30 +33,22 @@ export {
   LLMNetworkError,
   LLMRateLimitError,
   LLMServerError,
-} from './llm.errors.js'
+} from './errors.js'
 export type {
   ChatMessage,
   ChatOptions,
   ChatStreamOptions,
-  DeepSeekBalanceResponse,
-  DeepSeekModelsResponse,
+  JsonObjectSchema,
+  ModelFinishReason,
+  ModelInputItem,
   ModelIODebugCaptureSide,
   ModelRawResponseCapture,
-} from './llm.types.js'
-export type { ModelInputItem } from './model-input.types.js'
-export { toModelInputItems } from './model-input.types.js'
-export {
-  getModelProfile,
-  SUPPORTED_DEEPSEEK_MODELS,
-} from './model-profiles.js'
-export type {
-  ModelFinishReason,
   ModelStreamEvent,
+  ModelToolSpec,
   ModelUsage,
   UnvalidatedModelToolCall,
-} from './model-stream.types.js'
-export { mergeModelUsage } from './model-stream.types.js'
-export type {
-  JsonObjectSchema,
-  ModelToolSpec,
-} from './model-tool-spec.types.js'
+} from './types.js'
+export {
+  mergeModelUsage,
+  toModelInputItems,
+} from './types.js'
