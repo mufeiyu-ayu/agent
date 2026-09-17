@@ -1,3 +1,8 @@
+import type {
+  ChatMessage,
+  ChatStreamOptions,
+  ModelUsage,
+} from '@agent/ai'
 import type { MessageGroundingV1 } from '@agent/contracts'
 import type {
   Message,
@@ -5,8 +10,6 @@ import type {
   MessageRole as PrismaMessageRole,
   MessageStatus as PrismaMessageStatus,
 } from '../generated/prisma/client.js'
-import type { ChatMessage, ChatStreamOptions } from '../llm/llm.types.js'
-import type { ModelUsage } from '../llm/model-stream.types.js'
 import type { DatabaseOperationDeadline } from '../prisma/prisma.service.js'
 import type { ToolResult } from '../tools/core/tool.types.js'
 import type {

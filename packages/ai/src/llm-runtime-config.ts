@@ -1,8 +1,6 @@
 import type { ChatOptions } from './llm.types.js'
 import type { SupportedDeepSeekModel } from './model-profiles.js'
-import process from 'node:process'
 import { DEFAULT_DEEPSEEK_REASONING_EFFORT } from '@agent/contracts'
-import { Injectable } from '@nestjs/common'
 
 import { LLMAuthError, LLMConfigError } from './llm.errors.js'
 import { getModelProfile } from './model-profiles.js'
@@ -42,11 +40,6 @@ export interface ResolvedChatRequestConfig {
   contextWindowTokens: number
   maxOutputTokens: number
   reasoningEffort: NonNullable<ChatOptions['reasoningEffort']>
-}
-
-@Injectable()
-export class LLMRuntimeConfigService {
-  readonly value = resolveLLMRuntimeConfig(process.env)
 }
 
 export function resolveLLMRuntimeConfig(

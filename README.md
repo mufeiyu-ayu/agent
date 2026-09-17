@@ -101,16 +101,24 @@ pnpm dev
 
 seed 与 index 是检索 / 引用链路可用的前提：跳过它们普通聊天仍可用，但 `retrieve_article_context` 会因缺少 active index 而 fail closed。自装 PostgreSQL 必须带 pgvector 扩展；从旧 `postgres:16-alpine` 卷升级时建议重置卷重建（musl→glibc collation 差异），开发数据可由 seed / index 完整重建。
 
-完整环境变量见 [`.env.example`](./.env.example)；常用验证：`pnpm typecheck`、`pnpm lint`、`pnpm --filter @agent/api test:*`（14 个按边界拆分的测试入口）。
+完整环境变量见 [`.env.example`](./.env.example)；常用验证：`pnpm typecheck`、`pnpm lint`、`pnpm --filter @agent/api test:*`（按边界拆分的测试入口）、`pnpm --filter @agent/ai test`。
+
+`packages/ai` 与 `packages/contracts` 以 `dist` 被 API 运行时消费，包括 `tsx --test` 跑的 `test:*` 脚本；`pnpm dev` 会在启动前构建，但 dev 的 `tsc --watch` 只重编 API 自身，不重建包的 `dist`（类型检查会随包源码更新，运行时加载的仍是旧 `dist`）。改过 `packages/ai/src` 或 `packages/contracts/src` 后手动重建：
+
+```bash
+pnpm --filter @agent/ai build
+pnpm --filter @agent/contracts build
+```
 
 ## 目录结构
 
 ```text
 apps/
-  api/        NestJS API：Agent Runtime、模型适配、Tool、检索与索引、Prisma 边界
+  api/        NestJS API：Agent Runtime、Tool、检索与索引、Prisma 边界、LLM 门面与 DI 壳
   web/        Vue 3 对话前台（流式渲染 + 来源卡片）
   admin/      运维控制台（Run Trace / 检索审计）
 packages/
+  ai/         模型客户端、OpenAI-compatible 流适配、模型类型 / 错误 / profile（零 Nest、零 Prisma）
   contracts/  前后端共享协议与类型（编译期防漂移）
 prisma/       PostgreSQL schema、pgvector migration、fixtures 与 seed
 docs/         路线图、任务归档、研究沉淀与工作日志

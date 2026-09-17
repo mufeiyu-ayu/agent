@@ -1,22 +1,9 @@
+import type { JsonObjectSchema } from '@agent/ai'
 import type { DatabaseOperationDeadline } from '../../prisma/prisma.service.js'
 import type {
   ToolEvidencePolicy,
   ToolEvidenceProjection,
 } from './tool-evidence.js'
-
-/** 当前工具输入需要的最小 JSON Schema 子集。 */
-export type JsonSchemaProperty
-  = | { type: 'boolean', description?: string }
-    | { type: 'integer', description?: string }
-    | { type: 'string', description?: string }
-    | { type: 'array', items: { type: 'string' }, description?: string }
-
-export interface JsonObjectSchema {
-  type: 'object'
-  properties: Record<string, JsonSchemaProperty>
-  required: string[]
-  additionalProperties: false
-}
 
 /** 将模型可见 Schema 与服务端运行时解析绑定为同一个输入契约。 */
 export interface ToolInputContract<TInput> {

@@ -10,7 +10,7 @@ import {
   readNonNegativeInteger,
   readObject,
 } from '../admin-runs/projection/safe-readers.js'
-import { LLMRuntimeConfigService } from '../llm/llm-runtime-config.js'
+import { LLMRuntimeConfigService } from '../llm/llm-runtime-config.service.js'
 import { PrismaService } from '../prisma/prisma.service.js'
 
 const WINDOW_DAYS = 30

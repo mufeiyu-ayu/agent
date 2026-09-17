@@ -1,12 +1,14 @@
+import type {
+  ChatStreamOptions,
+  ModelInputItem,
+  ModelStreamEvent,
+} from '@agent/ai'
 import type { MessageGroundingV1 } from '@agent/contracts'
 import type {
   EmbeddingProvider,
   EmbeddingResult,
 } from '../../embeddings/embedding-provider.js'
 import type { LLMService } from '../../llm/llm.service.js'
-import type { ChatStreamOptions } from '../../llm/llm.types.js'
-import type { ModelInputItem } from '../../llm/model-input.types.js'
-import type { ModelStreamEvent } from '../../llm/model-stream.types.js'
 import type { ArticleRetrievalPool } from '../../retrieval/persistence/postgres-article-retrieval.repository.js'
 import type { AgentRuntimeEvent } from '../agent-runtime.types.js'
 import type { AgentRuntimePolicyService } from '../configuration/agent-runtime.policy.js'
@@ -22,6 +24,7 @@ import process from 'node:process'
 // 项目使用 Node 原生测试运行器，不为 DB integration 引入额外测试框架。
 // eslint-disable-next-line test/no-import-node-test
 import { after, before, describe, it } from 'node:test'
+import { getModelProfile } from '@agent/ai'
 
 import { AdminRunsService } from '../../admin-runs/admin-runs.service.js'
 import { ARTICLE_CHUNKER_PROFILE } from '../../article-indexing/article-chunking.js'
@@ -32,7 +35,6 @@ import {
   MessageRole,
   MessageStatus,
 } from '../../generated/prisma/client.js'
-import { getModelProfile } from '../../llm/model-profiles.js'
 import { PrismaService } from '../../prisma/prisma.service.js'
 import {
   createArticleRetrievalPool,

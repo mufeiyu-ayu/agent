@@ -5,6 +5,7 @@ import type {
   ChatCompletionMessageParam,
   ChatCompletionTool,
 } from 'openai/resources/chat/completions'
+import type { LLMRuntimeConfig } from '../llm-runtime-config.js'
 import type {
   ChatMessage,
   ChatOptions,
@@ -18,17 +19,13 @@ import type {
 import type { ModelInputItem } from '../model-input.types.js'
 import type { ModelStreamEvent } from '../model-stream.types.js'
 import type { ModelToolSpec } from '../model-tool-spec.types.js'
-import { Inject, Injectable } from '@nestjs/common'
 import OpenAI, {
   APIConnectionError,
   APIError,
   APIUserAbortError,
 } from 'openai'
 
-import {
-  LLMRuntimeConfigService,
-  resolveChatRequestConfig,
-} from '../llm-runtime-config.js'
+import { resolveChatRequestConfig } from '../llm-runtime-config.js'
 import {
   LLMApiError,
   LLMAuthError,
@@ -60,17 +57,13 @@ type DeepSeekAssistantToolCallMessageParam
  *
  * SDK、DeepSeek 兼容细节和错误转换都收敛在这里；业务层只依赖本项目自己的 LLM 类型。
  */
-@Injectable()
 export class OpenAICompatibleClient {
-  constructor(
-    @Inject(LLMRuntimeConfigService)
-    private readonly runtimeConfigService: LLMRuntimeConfigService,
-  ) {}
+  constructor(private readonly runtimeConfig: LLMRuntimeConfig) {}
 
   async listModels(): Promise<DeepSeekModelsResponse> {
     return await this.runWithLLMErrorHandling(() =>
       this.createClient().get<DeepSeekModelsResponse>('/models', {
-        timeout: this.runtimeConfigService.value.metadataRequestTimeoutMs,
+        timeout: this.runtimeConfig.metadataRequestTimeoutMs,
       }),
     )
   }
@@ -78,7 +71,7 @@ export class OpenAICompatibleClient {
   async getUserBalance(): Promise<DeepSeekBalanceResponse> {
     return await this.runWithLLMErrorHandling(() =>
       this.createClient().get<DeepSeekBalanceResponse>('/user/balance', {
-        timeout: this.runtimeConfigService.value.metadataRequestTimeoutMs,
+        timeout: this.runtimeConfig.metadataRequestTimeoutMs,
       }),
     )
   }
@@ -91,7 +84,7 @@ export class OpenAICompatibleClient {
           options,
         ) as unknown as ChatCompletionCreateParamsNonStreaming,
         {
-          timeout: this.runtimeConfigService.value.chatRequestTimeoutMs,
+          timeout: this.runtimeConfig.chatRequestTimeoutMs,
         },
       )
       const content = completion.choices[0]?.message.content
@@ -113,12 +106,12 @@ export class OpenAICompatibleClient {
   ): AsyncGenerator<ModelStreamEvent> {
     const client = this.createClient()
     const requestOptions = {
-      timeout: this.runtimeConfigService.value.streamTimeoutMs,
+      timeout: this.runtimeConfig.streamTimeoutMs,
       ...(options?.signal ? { signal: options.signal } : {}),
     }
     // debug 捕获只在开关开启且调用方提供回调时生效；请求体不含 apiKey / baseUrl
     // 等凭据（它们只存在于 SDK client 配置里，不在请求 params 中）。
-    const debugCapture = this.runtimeConfigService.value.captureModelIO
+    const debugCapture = this.runtimeConfig.captureModelIO
       ? options?.debugCapture
       : undefined
     let requestStarted = false
@@ -190,7 +183,7 @@ export class OpenAICompatibleClient {
   }
 
   private createClient(): OpenAI {
-    const { apiKey, baseUrl } = this.runtimeConfigService.value
+    const { apiKey, baseUrl } = this.runtimeConfig
 
     return new OpenAI({
       apiKey,
@@ -204,7 +197,7 @@ export class OpenAICompatibleClient {
     options?: ChatOptions,
   ): ChatCompletionBaseParams {
     const requestConfig = resolveChatRequestConfig(
-      this.runtimeConfigService.value,
+      this.runtimeConfig,
       options,
     )
     const params: ChatCompletionBaseParams = {

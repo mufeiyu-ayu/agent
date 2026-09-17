@@ -1,3 +1,4 @@
+import type { ChatMessage } from '@agent/ai'
 import type { MessageGroundingV1 } from '@agent/contracts'
 import type { AgentRuntimeService } from '../agent-runtime/agent-runtime.service.js'
 import type {
@@ -5,7 +6,6 @@ import type {
   AgentRuntimeRunFailedEvent,
   RunTurnStreamInput,
 } from '../agent-runtime/agent-runtime.types.js'
-import type { ChatMessage } from '../llm/llm.types.js'
 import assert from 'node:assert/strict'
 // 项目使用 Node 原生测试运行器，不引入新测试框架。
 // eslint-disable-next-line test/no-import-node-test

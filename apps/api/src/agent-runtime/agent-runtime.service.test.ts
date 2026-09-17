@@ -1,12 +1,12 @@
+import type {
+  ChatStreamOptions,
+  ModelFinishReason,
+  ModelInputItem,
+  ModelStreamEvent,
+} from '@agent/ai'
 import type { ChatCompletionChunk } from 'openai/resources/chat/completions'
 import type { AgentRun, Message } from '../generated/prisma/client.js'
 import type { LLMService } from '../llm/llm.service.js'
-import type { ChatStreamOptions } from '../llm/llm.types.js'
-import type { ModelInputItem } from '../llm/model-input.types.js'
-import type {
-  ModelFinishReason,
-  ModelStreamEvent,
-} from '../llm/model-stream.types.js'
 import type {
   DatabaseOperationDeadline,
   DeadlineTransaction,
@@ -34,6 +34,11 @@ import assert from 'node:assert/strict'
 // 项目本轮使用 Node 原生测试运行器，不引入 Vitest。
 // eslint-disable-next-line test/no-import-node-test
 import { describe, it } from 'node:test'
+import {
+  adaptOpenAICompatibleStream,
+  getModelProfile,
+  teeRawResponseCapture,
+} from '@agent/ai'
 
 import { projectAdminRunDetail } from '../admin-runs/projection/admin-run.projector.js'
 import {
@@ -42,9 +47,6 @@ import {
   MessageRole,
   MessageStatus,
 } from '../generated/prisma/client.js'
-import { teeRawResponseCapture } from '../llm/clients/openai-compatible-raw-capture.js'
-import { adaptOpenAICompatibleStream } from '../llm/clients/openai-compatible-stream.adapter.js'
-import { getModelProfile } from '../llm/model-profiles.js'
 import {
   DatabaseCommitOutcomeUnknownError,
   DatabaseOperationDeadlineExceededError,

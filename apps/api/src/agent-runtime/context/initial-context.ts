@@ -1,4 +1,4 @@
-import type { ModelToolSpec } from '../../llm/model-tool-spec.types.js'
+import type { ModelToolSpec } from '@agent/ai'
 import type { TokenEstimator } from './deepseek-v4-token-estimator.js'
 import type { ModelContext } from './model-context.js'
 

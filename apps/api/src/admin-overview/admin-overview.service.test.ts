@@ -1,4 +1,4 @@
-import type { LLMRuntimeConfigService } from '../llm/llm-runtime-config.js'
+import type { LLMRuntimeConfigService } from '../llm/llm-runtime-config.service.js'
 import type { PrismaService } from '../prisma/prisma.service.js'
 import assert from 'node:assert/strict'
 // 项目使用 Node 原生测试运行器，不为 Admin 查询引入额外测试框架。

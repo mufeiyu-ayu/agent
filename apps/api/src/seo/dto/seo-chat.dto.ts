@@ -1,4 +1,5 @@
 import type { DeepSeekReasoningEffort, SeoChatRequest } from '@agent/contracts'
+import { SUPPORTED_DEEPSEEK_MODELS } from '@agent/ai'
 import {
   DEEPSEEK_REASONING_EFFORTS,
   SEO_CHAT_MESSAGE_MAX_CHARS,
@@ -12,8 +13,6 @@ import {
   MaxLength,
   ValidateIf,
 } from 'class-validator'
-
-import { SUPPORTED_DEEPSEEK_MODELS } from '../../llm/model-profiles.js'
 
 export class SeoChatDto implements SeoChatRequest {
   @IsString()

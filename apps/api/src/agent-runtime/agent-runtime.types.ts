@@ -1,5 +1,5 @@
+import type { ChatMessage } from '@agent/ai'
 import type { DeepSeekReasoningEffort, MessageGroundingV1 } from '@agent/contracts'
-import type { ChatMessage } from '../llm/llm.types.js'
 
 export type AgentRuntimeEvent
   = | AgentRuntimeRunStartedEvent
