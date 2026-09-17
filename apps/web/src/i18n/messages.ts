@@ -173,7 +173,6 @@ export const messages = {
       },
       modelDescriptions: {
         'deepseek-v4-flash': '响应快，适合日常 SEO 任务',
-        'deepseek-v4-pro': '推理更强，适合复杂分析',
       },
       reset: '重置当前对话',
       send: '发送消息',
@@ -364,7 +363,6 @@ export const messages = {
       },
       modelDescriptions: {
         'deepseek-v4-flash': 'Fast responses for everyday SEO tasks',
-        'deepseek-v4-pro': 'Deeper reasoning for complex analysis',
       },
       reset: 'Reset current chat',
       send: 'Send message',

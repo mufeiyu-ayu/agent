@@ -1,6 +1,6 @@
 export type LlmRuntimeStatus = 'idle' | 'loading' | 'success' | 'error'
 
-export type DeepSeekModelId = 'deepseek-v4-flash' | 'deepseek-v4-pro'
+export type DeepSeekModelId = 'deepseek-v4-flash'
 
 export interface LlmModelOption {
   id: DeepSeekModelId
@@ -47,11 +47,6 @@ export const FALLBACK_DEEPSEEK_MODELS: LlmModelOption[] = [
   {
     id: 'deepseek-v4-flash',
     label: 'DeepSeek V4 Flash',
-    ownedBy: 'deepseek',
-  },
-  {
-    id: 'deepseek-v4-pro',
-    label: 'DeepSeek V4 Pro',
     ownedBy: 'deepseek',
   },
 ]

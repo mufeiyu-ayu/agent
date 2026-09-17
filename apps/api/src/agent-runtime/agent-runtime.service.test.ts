@@ -153,7 +153,7 @@ describe('AgentRuntimeService model stream', () => {
     const events = await collectEvents(harness.service.runTurnStream({
       conversationId: 'conversation-1',
       userContent: '问题',
-      model: 'deepseek-v4-pro',
+      model: 'deepseek-v4-flash',
       reasoningEffort: 'max',
       maxTokens: 4_096,
       instructions: [],
@@ -165,7 +165,7 @@ describe('AgentRuntimeService model stream', () => {
       harness.recorder.steps[1]?.input as Record<string, unknown>
     ).initialContext as Record<string, unknown>
 
-    assert.equal(initialContext.resolvedModel, 'deepseek-v4-pro')
+    assert.equal(initialContext.resolvedModel, 'deepseek-v4-flash')
     assert.equal(initialContext.resolvedMaxOutputTokens, 4_096)
     assert.equal(harness.llmCalls[0]?.options?.model, initialContext.resolvedModel)
     assert.equal(

@@ -8,15 +8,10 @@ import {
 } from './deepseek.js'
 
 describe('DeepSeek model profiles', () => {
-  it('记录两个支持模型的 Provider 能力，不混入应用默认值', () => {
+  it('记录支持模型的 Provider 能力，不混入应用默认值', () => {
     assert.deepEqual(DEEPSEEK_MODEL_PROFILES, {
       'deepseek-v4-flash': {
         id: 'deepseek-v4-flash',
-        contextWindowTokens: 1_000_000,
-        providerMaxOutputTokens: 384_000,
-      },
-      'deepseek-v4-pro': {
-        id: 'deepseek-v4-pro',
         contextWindowTokens: 1_000_000,
         providerMaxOutputTokens: 384_000,
       },

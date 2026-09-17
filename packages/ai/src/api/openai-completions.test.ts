@@ -1,4 +1,3 @@
-import type { SupportedDeepSeekModel } from '../deepseek.js'
 import assert from 'node:assert/strict'
 // eslint-disable-next-line test/no-import-node-test
 import { describe, it } from 'node:test'
@@ -90,14 +89,6 @@ describe('OpenAICompatibleClient runtime config', () => {
     assert.deepEqual(wireBody?.thinking, { type: 'enabled' })
     assert.equal(wireBody?.reasoning_effort, 'max')
     assert.equal(Object.hasOwn(wireBody ?? {}, 'temperature'), false)
-  })
-
-  it('默认模型来自构造时传入的配置对象，而不是包内常量', async () => {
-    const harness = createHarness({ model: 'deepseek-v4-pro' })
-
-    await harness.client.chat([{ role: 'user', content: 'hello' }])
-
-    assert.equal(harness.calls[0]?.params?.model, 'deepseek-v4-pro')
   })
 
   it('调用级模型或输出预算非法时不发起 Provider 请求', async () => {
@@ -193,13 +184,13 @@ interface ProviderCall {
 }
 
 function createHarness(
-  options: { captureModelIO?: boolean, model?: SupportedDeepSeekModel } = {},
+  options: { captureModelIO?: boolean } = {},
 ) {
   const calls: ProviderCall[] = []
   const client = new OpenAICompatibleClient(resolveLLMRuntimeConfig({
     LLM_API_KEY: 'test-api-key',
     LLM_BASE_URL: 'https://api.deepseek.com/v1',
-    LLM_MODEL: options.model ?? 'deepseek-v4-flash',
+    LLM_MODEL: 'deepseek-v4-flash',
     ...(options.captureModelIO ? { AGENT_DEBUG_CAPTURE_MODEL_IO: 'true' } : {}),
   }))
   const providerClient = {

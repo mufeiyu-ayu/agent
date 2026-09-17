@@ -130,12 +130,11 @@ describe('resolveChatRequestConfig', () => {
 
     assert.deepEqual(
       resolveChatRequestConfig(runtimeConfig, {
-        model: 'deepseek-v4-pro',
         reasoningEffort: 'max',
         maxTokens: 4_096,
       }),
       {
-        model: 'deepseek-v4-pro',
+        model: 'deepseek-v4-flash',
         contextWindowTokens: 1_000_000,
         maxOutputTokens: 4_096,
         reasoningEffort: 'max',

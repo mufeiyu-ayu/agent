@@ -7,7 +7,6 @@
 
 export const SUPPORTED_DEEPSEEK_MODELS = [
   'deepseek-v4-flash',
-  'deepseek-v4-pro',
 ] as const
 
 export type SupportedDeepSeekModel = typeof SUPPORTED_DEEPSEEK_MODELS[number]
@@ -23,11 +22,6 @@ export const DEEPSEEK_MODEL_PROFILES: Readonly<
 > = {
   'deepseek-v4-flash': {
     id: 'deepseek-v4-flash',
-    contextWindowTokens: 1_000_000,
-    providerMaxOutputTokens: 384_000,
-  },
-  'deepseek-v4-pro': {
-    id: 'deepseek-v4-pro',
     contextWindowTokens: 1_000_000,
     providerMaxOutputTokens: 384_000,
   },
