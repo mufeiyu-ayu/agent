@@ -6,9 +6,9 @@
 
 ```text
 阶段 1-8：Completed
-Active Agent Task：#118 删除死代码与单实现抽象（实施状态：已实现 / 验收状态：待验收）
-Next：#119 历史裁剪合一（前置 #118 合并）
-Planned：#119 历史裁剪合一 → #120 抽出 packages/ai → #115 模型调用重试 → #116 同轮文本 + 多 Tool Call → #117 Responses API adapter → web_fetch（R0 后、R2 前）
+Active Agent Task：无
+Next：#119 历史裁剪合一（前置 #118 已于 2026-09-17 合并）
+Planned：#120 抽出 packages/ai → #115 模型调用重试 → #116 同轮文本 + 多 Tool Call → #117 Responses API adapter → web_fetch（R0 后、R2 前）
 候选子系统：session 事件流与 replay、审批门、compaction、定时任务（未立 Issue）
 Admin Task 4：Planned
 ```
@@ -17,8 +17,8 @@ Admin Task 4：Planned
 
 | 任务 | 状态 | 说明 |
 | --- | --- | --- |
-| #118 删除死代码、单实现抽象与自校验 | **Active**（实施状态：已实现 / 验收状态：待验收） | 纯删除、零行为变化；`receive_user_message` Step、`abortStep`、`AgentRunConfigurationService`、`TokenEstimator` 抽象类、`tool-step-summary` 等；不删 Admin 读取的字段与 `tool-evidence` 校验 |
-| #119 历史裁剪合一 | Planned | 删 `InitialContextSelectionService` 分页与批内二分，一次查询到硬上限，首轮由 planner 裁剪；Admin 元数据同名字段保留；前置 #118 |
+| #118 删除死代码、单实现抽象与自校验 | Completed | 实施状态：已实现 / 验收状态：已通过。PR #121 于 2026-09-17 基于最新 head 逐条验收 AC-01～AC-06 PASS 并合并（+327 / −761，无新增文件）：删 `receive_user_message` Step 写入、`abortStep`、`ToolRegistryService.require / listDefinitions`、`ContextBudgetExceededError.stage`、`SeoContextBuilder`、`AgentRunConfigurationService`、`ToolExecutionContext.executionAttempt`、`ModelContext.forSampling` 与 snapshot 明细项，`TokenEstimator` 改 interface；`tool-step-summary`、Admin 读取字段与 `tool-evidence` 校验按 Issue 保留。学习环节按 Issue 决策记录豁免 |
+| #119 历史裁剪合一 | **Next** | 删 `InitialContextSelectionService` 分页与批内二分，一次查询到硬上限，首轮由 planner 裁剪；Admin 元数据同名字段保留；前置 #118（已合并） |
 | #120 抽出 `packages/ai` | Planned | 模型客户端、流适配、类型、错误、profile 搬入零 Nest 的包，apps/api 只留壳；`packages/agent` 仍在 R2；前置 #119 |
 | #115 模型调用重试与 Loop 默认上限 | Planned | SDK 内置重试（首个响应头之前）、`LLM_REQUEST_MAX_RETRIES`、采样 / 工具默认上限 10 / 8；在 `packages/ai` 内实现；前置 #120 |
 | #116 同轮文本 + 多 Tool Call | Planned | content 先于 tool_calls、多个 tool_calls 顺序执行、上限解耦、截断参数回喂；前置 #115 |
