@@ -4,7 +4,6 @@ import assert from 'node:assert/strict'
 // eslint-disable-next-line test/no-import-node-test
 import { describe, it } from 'node:test'
 
-import { SeoContextBuilder } from '../seo-context-builder.service.js'
 import { buildSeoAgentChatMessages } from './seo-agent.prompt.js'
 
 describe('SEO Agent system prompt', () => {
@@ -19,11 +18,6 @@ describe('SEO Agent system prompt', () => {
 
     assert.equal(messages[0]?.role, 'system')
     assert.deepEqual(messages.slice(1), history)
-    // Context Builder 与直接调用 prompt 必须产出同一份指令。
-    assert.deepEqual(
-      new SeoContextBuilder().buildModelMessages({ historyMessages: history }),
-      messages,
-    )
   })
 
   it('同时定义三个工具，并区分关键词检索、语义候选证据检索与全文读取', () => {

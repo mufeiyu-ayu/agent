@@ -18,7 +18,10 @@ import type {
 } from '../../tools/core/tool.types.js'
 import type { AgentRuntimeEvent } from '../agent-runtime.types.js'
 import type { AgentRuntimePolicyService } from '../configuration/agent-runtime.policy.js'
-import type { TokenEstimatorInput } from '../context/deepseek-v4-token-estimator.js'
+import type {
+  TokenEstimator,
+  TokenEstimatorInput,
+} from '../context/deepseek-v4-token-estimator.js'
 import type { AgentRunRecorderService } from '../lifecycle/agent-run-recorder.service.js'
 import assert from 'node:assert/strict'
 // 项目使用 Node 原生测试运行器，不为 grounded 路径引入额外测试框架。
@@ -29,8 +32,6 @@ import { MessageRole, MessageStatus } from '../../generated/prisma/client.js'
 import { getModelProfile } from '../../llm/model-profiles.js'
 import { toChatStreamEvent } from '../../seo/seo-chat-stream-event.mapper.js'
 import { AgentRuntimeService } from '../agent-runtime.service.js'
-import { AgentRunConfigurationService } from '../configuration/agent-run-configuration.service.js'
-import { TokenEstimator } from '../context/deepseek-v4-token-estimator.js'
 import { InitialContextSelectionService } from '../context/initial-context-selection.js'
 import { SamplingContextPlanner } from '../context/sampling-context-planner.js'
 import { AGENT_STEP_TYPES } from '../lifecycle/agent-run-recorder.service.js'
@@ -1462,7 +1463,11 @@ function createHarness(options: CreateHarnessOptions) {
       }
     },
   } as unknown as ToolInvocationService
-  const runConfigurationService = new AgentRunConfigurationService(
+  const service = new AgentRuntimeService(
+    llmService,
+    prisma as unknown as PrismaService,
+    recorder as unknown as AgentRunRecorderService,
+    toolInvocationService,
     {
       value: {
         historyCandidateBatchSize: 50,
@@ -1472,15 +1477,7 @@ function createHarness(options: CreateHarnessOptions) {
         runDeadlineMs: 600_000,
       },
     } as AgentRuntimePolicyService,
-    llmService,
     new FakeToolRegistryService() as unknown as ToolRegistryService,
-  )
-  const service = new AgentRuntimeService(
-    llmService,
-    prisma as unknown as PrismaService,
-    recorder as unknown as AgentRunRecorderService,
-    toolInvocationService,
-    runConfigurationService,
     new InitialContextSelectionService(new TestTokenEstimator()),
     new SamplingContextPlanner(new TestTokenEstimator()),
   )
@@ -1559,12 +1556,10 @@ const discoveryDefinition: ToolDefinition = {
 }
 
 class FakeToolRegistryService {
-  listDefinitions(): ToolDefinition[] {
-    return [discoveryDefinition, detailDefinition, eligibleDefinition]
-  }
+  private readonly definitions = [discoveryDefinition, detailDefinition, eligibleDefinition]
 
   get(name: string): { definition: ToolDefinition } | undefined {
-    const definition = this.listDefinitions().find(
+    const definition = this.definitions.find(
       candidate => candidate.name === name,
     )
 
@@ -1572,7 +1567,7 @@ class FakeToolRegistryService {
   }
 }
 
-class TestTokenEstimator extends TokenEstimator {
+class TestTokenEstimator implements TokenEstimator {
   readonly strategyId = 'grounded-test-estimator'
 
   estimateRequest(input: TokenEstimatorInput): number {

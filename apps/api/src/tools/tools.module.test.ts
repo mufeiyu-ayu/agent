@@ -43,14 +43,10 @@ describe('ToolsModule', () => {
       RetrieveArticleContextTool,
     ])
     assert.deepEqual(exports, [ToolRegistryService, ToolInvocationService])
-    assert.deepEqual(
-      registry.listDefinitions().map(definition => definition.name),
-      ['get_article_detail', 'retrieve_article_context', 'search_articles'],
-    )
-    assert.equal(registry.require('search_articles').executor, searchArticlesTool)
-    assert.equal(registry.require('get_article_detail').executor, getArticleDetailTool)
+    assert.equal(registry.get('search_articles')?.executor, searchArticlesTool)
+    assert.equal(registry.get('get_article_detail')?.executor, getArticleDetailTool)
     assert.equal(
-      registry.require('retrieve_article_context').executor,
+      registry.get('retrieve_article_context')?.executor,
       retrieveArticleContextTool,
     )
   })
@@ -71,7 +67,9 @@ describe('ToolsModule', () => {
       )
 
       assert.ok(toolsModule)
-      assert.equal(registry.listDefinitions().length, 3)
+      assert.ok(registry.get('search_articles'))
+      assert.ok(registry.get('get_article_detail'))
+      assert.ok(registry.get('retrieve_article_context'))
     }
     finally {
       if (originalApiKey === undefined)

@@ -11,24 +11,9 @@ type AssistantToolCallInputItem = Extract<
 >
 type ToolResultInputItem = Extract<ModelInputItem, { type: 'tool_result' }>
 
-export interface ModelContextSnapshotItem {
-  source: 'conversation' | 'instructions' | 'tool_exchange'
-  category:
-    | 'assistant_message'
-    | 'assistant_tool_call'
-    | 'system_message'
-    | 'tool_result'
-    | 'user_message'
-  characterCount: number
-}
-
 export interface ModelContextSnapshot {
   samplingIndex: number
   itemCount: number
-  characterCount: number
-  hasToolExchange: boolean
-  toolExchangeCount: number
-  items: ModelContextSnapshotItem[]
   initialSelection?: InitialContextSelectionSummary
 }
 
@@ -100,10 +85,6 @@ export class ModelContext {
       toMessageInputItem(input.currentUserMessage),
       input.initialSelection,
     )
-  }
-
-  forSampling(): ModelInputItem[] {
-    return flattenPlanningState(this.forPlanning())
   }
 
   forPlanning(): ModelContextPlanningState {
@@ -187,28 +168,16 @@ export class ModelContext {
     })
   }
 
+  /** 只暴露安全计数与初始选择快照，供 Sampling Step / Admin 观测。 */
   snapshot(samplingIndex: number): ModelContextSnapshot {
-    const state = this.forPlanning()
-    const items = [
-      ...state.instructions.map(item => toSnapshotItem(item, 'instructions')),
-      ...state.initialHistory.map(item => toSnapshotItem(item, 'conversation')),
-      toSnapshotItem(state.currentUser, 'conversation'),
-      ...state.toolExchanges.flatMap(exchange => [
-        toSnapshotItem(exchange.assistantCall, 'tool_exchange'),
-        toSnapshotItem(exchange.toolResult, 'tool_exchange'),
-      ]),
-    ]
-
     return {
       samplingIndex,
-      itemCount: items.length,
-      characterCount: items.reduce(
-        (total, item) => total + item.characterCount,
-        0,
-      ),
-      hasToolExchange: state.toolExchanges.length > 0,
-      toolExchangeCount: state.toolExchanges.length,
-      items,
+      // 与 flattenPlanningState 的组装顺序一一对应：
+      // instructions + initialHistory + currentUser + 每组 Tool Call / Tool Result。
+      itemCount: this.instructions.length
+        + this.initialHistory.length
+        + 1
+        + this.toolExchanges.length * 2,
       ...(this.initialSelection
         ? { initialSelection: this.initialSelection }
         : {}),
@@ -253,45 +222,4 @@ function toMessageInputItem(message: ChatMessage): MessageInputItem {
 
 function cloneMessage(item: MessageInputItem): MessageInputItem {
   return { ...item }
-}
-
-function toSnapshotItem(
-  item: ModelInputItem,
-  source: ModelContextSnapshotItem['source'],
-): ModelContextSnapshotItem {
-  switch (item.type) {
-    case 'message':
-      return {
-        source,
-        category: `${item.role}_message`,
-        characterCount: countCharacters(item.content),
-      }
-
-    case 'assistant_tool_call':
-      return {
-        source,
-        category: 'assistant_tool_call',
-        characterCount: countCharacters(
-          item.callId,
-          item.name,
-          item.rawArgumentsJson,
-          item.reasoningContent,
-          item.content,
-        ),
-      }
-
-    case 'tool_result':
-      return {
-        source,
-        category: 'tool_result',
-        characterCount: countCharacters(item.callId, item.content),
-      }
-  }
-}
-
-function countCharacters(...values: Array<string | undefined>): number {
-  return values.reduce(
-    (total, value) => total + (value ? [...value].length : 0),
-    0,
-  )
 }

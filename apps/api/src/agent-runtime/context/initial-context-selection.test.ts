@@ -1,4 +1,7 @@
-import type { TokenEstimatorInput } from './deepseek-v4-token-estimator.js'
+import type {
+  TokenEstimator,
+  TokenEstimatorInput,
+} from './deepseek-v4-token-estimator.js'
 import assert from 'node:assert/strict'
 // eslint-disable-next-line test/no-import-node-test
 import { describe, it } from 'node:test'
@@ -7,7 +10,6 @@ import {
   ContextBudgetExceededError,
 } from '../agent-runtime.errors.js'
 import { DEFAULT_AGENT_RUNTIME_POLICY } from '../configuration/agent-runtime.policy.js'
-import { TokenEstimator } from './deepseek-v4-token-estimator.js'
 import {
   InitialContextSelectionService,
   resolveInitialContextBudget,
@@ -250,7 +252,7 @@ describe('InitialContextSelectionService', () => {
   })
 })
 
-class MessageCountTokenEstimator extends TokenEstimator {
+class MessageCountTokenEstimator implements TokenEstimator {
   readonly strategyId = 'test-message-count'
 
   estimateRequest(input: TokenEstimatorInput): number {
@@ -258,19 +260,17 @@ class MessageCountTokenEstimator extends TokenEstimator {
   }
 }
 
-class FixedTokenEstimator extends TokenEstimator {
+class FixedTokenEstimator implements TokenEstimator {
   readonly strategyId = 'test-fixed'
 
-  constructor(private readonly tokens: number) {
-    super()
-  }
+  constructor(private readonly tokens: number) {}
 
   estimateRequest(_input: TokenEstimatorInput): number {
     return this.tokens
   }
 }
 
-class CharacterTokenEstimator extends TokenEstimator {
+class CharacterTokenEstimator implements TokenEstimator {
   readonly strategyId = 'test-character-count'
 
   estimateRequest(input: TokenEstimatorInput): number {
@@ -281,13 +281,11 @@ class CharacterTokenEstimator extends TokenEstimator {
   }
 }
 
-class BoundedFullRequestEstimator extends TokenEstimator {
+class BoundedFullRequestEstimator implements TokenEstimator {
   readonly strategyId = 'test-bounded-full-request'
   callCount = 0
 
-  constructor(private readonly maximumMessageCount: number) {
-    super()
-  }
+  constructor(private readonly maximumMessageCount: number) {}
 
   estimateRequest(input: TokenEstimatorInput): number {
     this.callCount += 1

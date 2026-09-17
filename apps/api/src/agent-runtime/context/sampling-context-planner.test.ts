@@ -1,5 +1,6 @@
 import type { ModelInputItem } from '../../llm/model-input.types.js'
 import type { ModelToolSpec } from '../../llm/model-tool-spec.types.js'
+import type { TokenEstimator } from './deepseek-v4-token-estimator.js'
 import type { InitialContextSelectionSummary } from './initial-context-selection.js'
 import assert from 'node:assert/strict'
 // eslint-disable-next-line test/no-import-node-test
@@ -7,11 +8,8 @@ import { describe, it } from 'node:test'
 
 import { normalizeToolObservation } from '../../tools/core/tool-observation.js'
 import { ContextBudgetExceededError } from '../agent-runtime.errors.js'
-import {
-  DeepSeekV4TokenEstimator,
-  TokenEstimator,
-} from './deepseek-v4-token-estimator.js'
-import { ModelContext } from './model-context.js'
+import { DeepSeekV4TokenEstimator } from './deepseek-v4-token-estimator.js'
+import { flattenPlanningState, ModelContext } from './model-context.js'
 import {
   SamplingContextBudgetExceededError,
   SamplingContextPlanner,
@@ -54,7 +52,7 @@ describe('SamplingContextPlanner', () => {
     const estimator = new CharacterTokenEstimator()
     const planner = new SamplingContextPlanner(estimator)
     const context = createContext()
-    const expectedItems = context.forSampling()
+    const expectedItems = flattenPlanningState(context.forPlanning())
     const expectedTokens = estimator.estimateRequest({
       items: expectedItems,
       tools: NO_TOOLS,
@@ -83,7 +81,7 @@ describe('SamplingContextPlanner', () => {
         { role: 'assistant', content: 'B'.repeat(10) },
       ],
     })
-    const withoutOldest = context.forSampling().filter(item => (
+    const withoutOldest = flattenPlanningState(context.forPlanning()).filter(item => (
       item.type !== 'message' || item.content !== 'A'.repeat(20)
     ))
     const budget = estimator.estimateRequest({
@@ -121,7 +119,7 @@ describe('SamplingContextPlanner', () => {
       ],
       historyCandidateCount: 5,
     })
-    const withoutOldest = context.forSampling().filter(item => (
+    const withoutOldest = flattenPlanningState(context.forPlanning()).filter(item => (
       item.type !== 'message' || item.content !== 'A'.repeat(20)
     ))
     const plan = planner.plan({
@@ -157,7 +155,7 @@ describe('SamplingContextPlanner', () => {
     appendExchange(context, 'call-1', '旧'.repeat(300))
     appendExchange(context, 'call-2', '新'.repeat(300))
 
-    const fullItems = context.forSampling()
+    const fullItems = flattenPlanningState(context.forPlanning())
     const oldResult = fullItems.find(item => (
       item.type === 'tool_result' && item.callId === 'call-1'
     ))!
@@ -212,7 +210,7 @@ describe('SamplingContextPlanner', () => {
     appendExchange(context, 'call-long', '长'.repeat(300))
 
     const fullTokens = estimator.estimateRequest({
-      items: context.forSampling(),
+      items: flattenPlanningState(context.forPlanning()),
       tools: NO_TOOLS,
     })
     const plan = planner.plan({
@@ -303,7 +301,7 @@ describe('SamplingContextPlanner', () => {
       ok: true,
     })
     const fullTokens = estimator.estimateRequest({
-      items: context.forSampling(),
+      items: flattenPlanningState(context.forPlanning()),
       tools: LOOKUP_TOOL,
     })
     const plan = planner.plan({
@@ -336,7 +334,6 @@ describe('SamplingContextPlanner', () => {
       error => (
         error instanceof SamplingContextBudgetExceededError
         && error instanceof ContextBudgetExceededError
-        && error.stage === 'sampling_context'
         && error.summary.overflowReason === 'minimum_context'
       ),
     )
@@ -453,7 +450,7 @@ function countItem(item: ModelInputItem): number {
   }
 }
 
-class CharacterTokenEstimator extends TokenEstimator {
+class CharacterTokenEstimator implements TokenEstimator {
   readonly strategyId = 'test-code-point-count'
   readonly inputs: Array<{
     items: ModelInputItem[]

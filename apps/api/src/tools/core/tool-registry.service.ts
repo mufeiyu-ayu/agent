@@ -1,4 +1,4 @@
-import type { RegisteredTool, ToolDefinition } from './tool.types.js'
+import type { RegisteredTool } from './tool.types.js'
 import { Injectable } from '@nestjs/common'
 
 import { ToolRegistryError } from './tool.errors.js'
@@ -23,20 +23,5 @@ export class ToolRegistryService {
 
   get(name: string): RegisteredTool | undefined {
     return this.tools.get(name) as RegisteredTool | undefined
-  }
-
-  require(name: string): RegisteredTool {
-    const tool = this.get(name)
-
-    if (!tool)
-      throw new ToolRegistryError('unknown_tool', `未知工具：${name}`)
-
-    return tool
-  }
-
-  listDefinitions(): ToolDefinition[] {
-    return [...this.tools.keys()]
-      .sort((left, right) => left.localeCompare(right))
-      .map(name => this.require(name).definition)
   }
 }

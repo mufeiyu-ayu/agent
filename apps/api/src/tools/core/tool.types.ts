@@ -82,7 +82,6 @@ export interface ToolExecutionContext {
   conversationId: string
   databaseDeadline: DatabaseOperationDeadline
   signal: AbortSignal
-  executionAttempt: number
 }
 
 export type JsonPrimitive = boolean | null | number | string

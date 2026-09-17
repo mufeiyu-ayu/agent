@@ -25,13 +25,17 @@ import type {
   AgentRuntimePolicy,
   AgentRuntimePolicyService,
 } from './configuration/agent-runtime.policy.js'
-import type { TokenEstimatorInput } from './context/deepseek-v4-token-estimator.js'
+import type {
+  TokenEstimator,
+  TokenEstimatorInput,
+} from './context/deepseek-v4-token-estimator.js'
 import type { AgentRunRecorderService } from './lifecycle/agent-run-recorder.service.js'
 import assert from 'node:assert/strict'
 // 项目本轮使用 Node 原生测试运行器，不引入 Vitest。
 // eslint-disable-next-line test/no-import-node-test
 import { describe, it } from 'node:test'
 
+import { projectAdminRunDetail } from '../admin-runs/projection/admin-run.projector.js'
 import {
   AgentRunStatus,
   AgentStepStatus,
@@ -51,10 +55,8 @@ import {
   ContextTokenEstimationError,
 } from './agent-runtime.errors.js'
 import { AgentRuntimeService } from './agent-runtime.service.js'
-import { AgentRunConfigurationService } from './configuration/agent-run-configuration.service.js'
-import { TokenEstimator } from './context/deepseek-v4-token-estimator.js'
 import { InitialContextSelectionService } from './context/initial-context-selection.js'
-import { ModelContext } from './context/model-context.js'
+import { flattenPlanningState, ModelContext } from './context/model-context.js'
 import { SamplingContextPlanner } from './context/sampling-context-planner.js'
 
 describe('AgentRuntimeService model stream', () => {
@@ -91,20 +93,19 @@ describe('AgentRuntimeService model stream', () => {
     assert.equal(harness.llmCalls[0]?.options?.model, 'deepseek-v4-flash')
     assert.equal(harness.llmCalls[0]?.options?.maxTokens, 65_536)
     assert.deepEqual(harness.recorder.steps.map(step => step.type), [
-      'receive_user_message',
       'load_conversation_history',
       'model_sampling',
       'assistant_output',
     ])
-    assert.deepEqual(harness.recorder.steps.map(step => step.sequence), [1, 2, 3, 4])
+    assert.deepEqual(harness.recorder.steps.map(step => step.sequence), [1, 2, 3])
     assert.deepEqual(
       harness.recorder.steps.map(step => step.status),
-      Array.from({ length: 4 }).fill(AgentStepStatus.COMPLETED),
+      Array.from({ length: 3 }).fill(AgentStepStatus.COMPLETED),
     )
     const {
       initialContext,
       ...samplingInput
-    } = harness.recorder.steps[2]?.input as Record<string, unknown>
+    } = harness.recorder.steps[1]?.input as Record<string, unknown>
 
     assert.deepEqual(samplingInput, {
       samplingIndex: 1,
@@ -119,7 +120,7 @@ describe('AgentRuntimeService model stream', () => {
     )
     assert.doesNotMatch(JSON.stringify(initialContext), /问题|search_articles/)
     assert.deepEqual(
-      withoutDuration(harness.recorder.steps[2]?.output),
+      withoutDuration(harness.recorder.steps[1]?.output),
       {
         samplingAttemptId: 'run-1:sampling-1',
         messageCount: 1,
@@ -131,11 +132,11 @@ describe('AgentRuntimeService model stream', () => {
       },
     )
     assert.equal(
-      typeof (harness.recorder.steps[2]?.output as Record<string, unknown>)?.durationMs,
+      typeof (harness.recorder.steps[1]?.output as Record<string, unknown>)?.durationMs,
       'number',
     )
     assert.equal(
-      (((harness.recorder.steps[2]?.output as Record<string, unknown>)
+      (((harness.recorder.steps[1]?.output as Record<string, unknown>)
         .contextPlan as Record<string, unknown>).toolExchangeCount),
       0,
     )
@@ -160,7 +161,7 @@ describe('AgentRuntimeService model stream', () => {
     assert.equal(events.at(-1)?.type, 'run_completed')
 
     const initialContext = (
-      harness.recorder.steps[2]?.input as Record<string, unknown>
+      harness.recorder.steps[1]?.input as Record<string, unknown>
     ).initialContext as Record<string, unknown>
 
     assert.equal(initialContext.resolvedModel, 'deepseek-v4-pro')
@@ -171,6 +172,25 @@ describe('AgentRuntimeService model stream', () => {
       initialContext.resolvedMaxOutputTokens,
     )
     assert.equal(harness.llmCalls[0]?.options?.reasoningEffort, 'max')
+  })
+
+  it('请求级 model 为空字符串时回落默认模型，不透传给 LLM 解析边界', async () => {
+    const harness = createHarness(() => toModelStream([
+      { type: 'text_delta', delta: '好' },
+      { type: 'response_completed', finishReason: 'stop' },
+    ]))
+
+    const events = await collectEvents(harness.service.runTurnStream({
+      conversationId: 'conversation-1',
+      userContent: '问题',
+      model: '',
+      buildModelMessages: historyMessages => historyMessages,
+    }))
+
+    assert.equal(events.at(-1)?.type, 'run_completed')
+    // fake resolveChatRequestConfig 对传入的 '' 会原样返回；这里看到默认模型
+    // 即证明 runtime 没有把空字符串透传出去。
+    assert.equal(harness.llmCalls[0]?.options?.model, 'deepseek-v4-flash')
   })
 
   it('零 Tool Budget 时不向模型暴露 Tool 并正常完成', async () => {
@@ -205,6 +225,28 @@ describe('AgentRuntimeService model stream', () => {
     assert.equal(findStep(harness, 'model_sampling')?.input
       && (findStep(harness, 'model_sampling')?.input as Record<string, unknown>).toolCount, 0)
     assertNoUnfinishedSteps(harness)
+  })
+
+  it('Registry 缺少 allowlist 工具时跳过该工具，不伪造定义', async () => {
+    const harness = createHarness(
+      () => toModelStream([
+        { type: 'text_delta', delta: '好' },
+        { type: 'response_completed', finishReason: 'stop' },
+      ]),
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      ['search_articles'],
+    )
+
+    const events = await collectEvents(harness.run())
+
+    assert.equal(events.at(-1)?.type, 'run_completed')
+    assert.deepEqual(
+      harness.llmCalls[0]?.options?.tools?.map(tool => tool.name),
+      ['search_articles'],
+    )
   })
 
   it('会话不存在时产出稳定失败分类且不创建 Message 或 Run', async () => {
@@ -579,14 +621,13 @@ describe('AgentRuntimeService model stream', () => {
     assert.equal(harness.assistantMessage()?.status, MessageStatus.COMPLETED)
     assert.doesNotMatch(harness.assistantMessage()?.content ?? '', /sourceId|article-1/)
     assert.deepEqual(harness.recorder.steps.map(step => step.type), [
-      'receive_user_message',
       'load_conversation_history',
       'model_sampling',
       'tool_execution',
       'model_sampling',
       'assistant_output',
     ])
-    assert.deepEqual(harness.recorder.steps.map(step => step.sequence), [1, 2, 3, 4, 5, 6])
+    assert.deepEqual(harness.recorder.steps.map(step => step.sequence), [1, 2, 3, 4, 5])
     const samplingSteps = harness.recorder.steps.filter(
       step => step.type === 'model_sampling',
     )
@@ -642,7 +683,7 @@ describe('AgentRuntimeService model stream', () => {
         .contextPlan as Record<string, unknown>).toolExchangeCount)),
       [0, 1],
     )
-    const toolStep = harness.recorder.steps[3]
+    const toolStep = harness.recorder.steps[2]
     assert.deepEqual(toolStep?.input, {
       callId: 'call-1',
       toolName: 'search_articles',
@@ -659,6 +700,64 @@ describe('AgentRuntimeService model stream', () => {
     })
     assert.equal(typeof (toolStep?.output as Record<string, unknown>)?.durationMs, 'number')
     assertNoUnfinishedSteps(harness)
+  })
+
+  it('runtime 写出的 tool_execution Step 可被 Admin 投影为已知 Step 且 executionAttempt = 1', async () => {
+    const harness = createHarness((_, __, callIndex) => toModelStream(callIndex === 0
+      ? [
+          toolCallEvent('call-1', 'search_articles', '{"query":"seo"}'),
+          { type: 'response_completed', finishReason: 'tool_calls' },
+        ]
+      : [
+          { type: 'text_delta', delta: '找到相关文章。' },
+          { type: 'response_completed', finishReason: 'stop' },
+        ]))
+
+    await collectEvents(harness.run())
+
+    const assistantMessage = harness.assistantMessage()
+    const now = new Date()
+
+    assert.ok(assistantMessage)
+
+    // 跨层：把 runtime 真实写出的 Step 记录原样交给 Admin projector，不手写 fixture。
+    const detail = projectAdminRunDetail({
+      id: 'run-1',
+      conversationId: 'conversation-1',
+      userMessageId: 'message-user',
+      assistantMessageId: assistantMessage.id,
+      status: 'COMPLETED',
+      startedAt: now,
+      endedAt: now,
+      createdAt: now,
+      updatedAt: now,
+      userMessage: {
+        id: 'message-user',
+        role: 'USER',
+        status: 'COMPLETED',
+        content: '问题',
+        createdAt: now,
+        updatedAt: now,
+      },
+      assistantMessage: {
+        id: assistantMessage.id,
+        role: 'ASSISTANT',
+        status: 'COMPLETED',
+        content: assistantMessage.content,
+        createdAt: assistantMessage.createdAt,
+        updatedAt: assistantMessage.updatedAt,
+      },
+      steps: harness.recorder.steps.map(step => ({ ...step, title: step.type })),
+    })
+    const toolItem = detail.timeline.find(item => item.type === 'tool_execution')
+
+    assert.equal(toolItem?.kind, 'known')
+    assert.equal(
+      toolItem?.kind === 'known' && toolItem.type === 'tool_execution'
+        ? toolItem.executionAttempt
+        : undefined,
+      1,
+    )
   })
 
   it('Retrieval Tool 走完整 Tool Loop，并只持久化安全检索摘要', async () => {
@@ -738,7 +837,6 @@ describe('AgentRuntimeService model stream', () => {
     assert.equal(harness.assistantMessage()?.content, '根据检索到的候选资料，SEO 让搜索引擎理解页面。')
     assert.doesNotMatch(harness.assistantMessage()?.content ?? '', /忽略以上指令|chunkId|untrusted/)
     assert.deepEqual(harness.recorder.steps.map(step => step.type), [
-      'receive_user_message',
       'load_conversation_history',
       'model_sampling',
       'tool_execution',
@@ -746,7 +844,7 @@ describe('AgentRuntimeService model stream', () => {
       'assistant_output',
     ])
 
-    const toolStep = harness.recorder.steps[3]
+    const toolStep = harness.recorder.steps[2]
 
     assert.deepEqual(withoutDuration(toolStep?.output), {
       ok: true,
@@ -838,7 +936,7 @@ describe('AgentRuntimeService model stream', () => {
       )
 
       // AgentStep 不写入非法 summary，其余字段保持不变。
-      const toolStepOutput = harness.recorder.steps[3]?.output as Record<string, unknown>
+      const toolStepOutput = harness.recorder.steps[2]?.output as Record<string, unknown>
 
       assert.equal(
         Object.hasOwn(toolStepOutput, 'toolSummary'),
@@ -847,7 +945,7 @@ describe('AgentRuntimeService model stream', () => {
       )
       assert.equal(toolStepOutput.ok, true)
       assert.equal(toolStepOutput.truncated, false)
-      assert.equal(harness.recorder.steps[3]?.status, AgentStepStatus.COMPLETED)
+      assert.equal(harness.recorder.steps[2]?.status, AgentStepStatus.COMPLETED)
       assertNoUnfinishedSteps(harness)
     }
   })
@@ -884,7 +982,7 @@ describe('AgentRuntimeService model stream', () => {
       /\[工具 Observation 已截断/,
     )
 
-    const toolStepOutput = harness.recorder.steps[3]?.output as Record<string, unknown>
+    const toolStepOutput = harness.recorder.steps[2]?.output as Record<string, unknown>
 
     assert.equal(toolStepOutput.truncated, true)
     assert.equal(toolStepOutput.originalChars, 9_000)
@@ -1312,7 +1410,6 @@ describe('AgentRuntimeService model stream', () => {
       },
     ])
     assert.deepEqual(harness.recorder.steps.map(step => step.type), [
-      'receive_user_message',
       'load_conversation_history',
       'model_sampling',
       'tool_execution',
@@ -1323,7 +1420,7 @@ describe('AgentRuntimeService model stream', () => {
     ])
     assert.deepEqual(
       harness.recorder.steps.map(step => step.sequence),
-      [1, 2, 3, 4, 5, 6, 7, 8],
+      [1, 2, 3, 4, 5, 6, 7],
     )
     assert.deepEqual(
       harness.recorder.steps
@@ -1525,7 +1622,6 @@ describe('AgentRuntimeService model stream', () => {
     assert.deepEqual(harness.recorder.completedRunIds, ['run-1'])
     assert.deepEqual(harness.recorder.failedRunIds, [])
     assert.deepEqual(harness.recorder.steps.map(step => step.type), [
-      'receive_user_message',
       'load_conversation_history',
       'model_sampling',
       'tool_execution',
@@ -1533,7 +1629,6 @@ describe('AgentRuntimeService model stream', () => {
       'assistant_output',
     ])
     assert.deepEqual(harness.recorder.steps.map(step => step.status), [
-      AgentStepStatus.COMPLETED,
       AgentStepStatus.COMPLETED,
       AgentStepStatus.COMPLETED,
       AgentStepStatus.FAILED,
@@ -1632,10 +1727,6 @@ describe('AgentRuntimeService model stream', () => {
     const durableState = JSON.stringify(harness.recorder.steps)
 
     assert.equal(harness.toolInvocations.length, 1)
-    assert.deepEqual(
-      harness.toolExecutionContexts.map(context => context.executionAttempt),
-      [1],
-    )
     assert.equal(findStep(harness, 'tool_execution')?.status, AgentStepStatus.FAILED)
     assert.doesNotMatch(durableState, /db-secret|sk-secret|password|rawArgumentsJson/)
     assert.doesNotMatch(harness.assistantMessage()?.content ?? '', /db-secret|sk-secret/)
@@ -2501,28 +2592,13 @@ describe('ModelContext', () => {
       currentUserMessage: { role: 'user', content: 'USER' },
     })
 
-    assert.deepEqual(context.forSampling(), [
+    assert.deepEqual(flattenPlanningState(context.forPlanning()), [
       { type: 'message', role: 'system', content: 'SYS' },
       { type: 'message', role: 'user', content: 'USER' },
     ])
     assert.deepEqual(context.snapshot(1), {
       samplingIndex: 1,
       itemCount: 2,
-      characterCount: 7,
-      hasToolExchange: false,
-      toolExchangeCount: 0,
-      items: [
-        {
-          source: 'instructions',
-          category: 'system_message',
-          characterCount: 3,
-        },
-        {
-          source: 'conversation',
-          category: 'user_message',
-          characterCount: 4,
-        },
-      ],
     })
 
     context.appendToolExchange({
@@ -2543,7 +2619,7 @@ describe('ModelContext', () => {
       ok: true,
     })
 
-    assert.deepEqual(context.forSampling().slice(-2), [
+    assert.deepEqual(flattenPlanningState(context.forPlanning()).slice(-2), [
       {
         type: 'assistant_tool_call',
         callId: 'c1',
@@ -2563,31 +2639,6 @@ describe('ModelContext', () => {
     assert.deepEqual(context.snapshot(2), {
       samplingIndex: 2,
       itemCount: 4,
-      characterCount: 17,
-      hasToolExchange: true,
-      toolExchangeCount: 1,
-      items: [
-        {
-          source: 'instructions',
-          category: 'system_message',
-          characterCount: 3,
-        },
-        {
-          source: 'conversation',
-          category: 'user_message',
-          characterCount: 4,
-        },
-        {
-          source: 'tool_exchange',
-          category: 'assistant_tool_call',
-          characterCount: 7,
-        },
-        {
-          source: 'tool_exchange',
-          category: 'tool_result',
-          characterCount: 3,
-        },
-      ],
     })
 
     context.appendToolExchange({
@@ -2611,42 +2662,12 @@ describe('ModelContext', () => {
     assert.deepEqual(context.snapshot(3), {
       samplingIndex: 3,
       itemCount: 6,
-      characterCount: 27,
-      hasToolExchange: true,
-      toolExchangeCount: 2,
-      items: [
-        {
-          source: 'instructions',
-          category: 'system_message',
-          characterCount: 3,
-        },
-        {
-          source: 'conversation',
-          category: 'user_message',
-          characterCount: 4,
-        },
-        {
-          source: 'tool_exchange',
-          category: 'assistant_tool_call',
-          characterCount: 7,
-        },
-        {
-          source: 'tool_exchange',
-          category: 'tool_result',
-          characterCount: 3,
-        },
-        {
-          source: 'tool_exchange',
-          category: 'assistant_tool_call',
-          characterCount: 7,
-        },
-        {
-          source: 'tool_exchange',
-          category: 'tool_result',
-          characterCount: 3,
-        },
-      ],
     })
+    // itemCount 与真正发给 Provider 的组装结果同源：任一侧改布局都会在这里暴露。
+    assert.equal(
+      context.snapshot(3).itemCount,
+      flattenPlanningState(context.forPlanning()).length,
+    )
   })
 
   it('Snapshot whitelist 不暴露 prompt、reasoning、raw arguments、data 或 Observation', () => {
@@ -2686,17 +2707,7 @@ describe('ModelContext', () => {
     const snapshot = context.snapshot(2)
     const serialized = JSON.stringify(snapshot)
 
-    assert.deepEqual(Object.keys(snapshot), [
-      'samplingIndex',
-      'itemCount',
-      'characterCount',
-      'hasToolExchange',
-      'toolExchangeCount',
-      'items',
-    ])
-    assert.equal(snapshot.items.every(item => (
-      Object.keys(item).join(',') === 'source,category,characterCount'
-    )), true)
+    assert.deepEqual(Object.keys(snapshot), ['samplingIndex', 'itemCount'])
     for (const secret of [
       systemPrompt,
       'user-secret',
@@ -2798,7 +2809,17 @@ function createHarness(
   invokeTool: InvokeTool = async () => successfulToolResult,
   policy: Partial<AgentRuntimePolicy> = {},
   tokenEstimator: TokenEstimator = new TestTokenEstimator(),
+  registeredToolNames?: string[],
 ) {
+  const registeredDefinitions = [
+    hiddenAdminDefinition,
+    getArticleDetailDefinition,
+    retrieveArticleContextDefinition,
+    searchArticlesDefinition,
+  ].filter(definition => (
+    registeredToolNames === undefined
+    || registeredToolNames.includes(definition.name)
+  ))
   const prisma = new FakePrismaService()
   const recorder = new FakeAgentRunRecorderService(prisma)
   const llmCalls: Array<{
@@ -2834,9 +2855,12 @@ function createHarness(
       return createModelStream(messages, options, callIndex)
     },
   } as unknown as LLMService
-  const toolRegistryService = new FakeToolRegistryService()
   const toolInvocationService = new FakeToolInvocationService(invokeTool)
-  const runConfigurationService = new AgentRunConfigurationService(
+  const service = new AgentRuntimeService(
+    llmService,
+    prisma as unknown as PrismaService,
+    recorder as unknown as AgentRunRecorderService,
+    toolInvocationService as unknown as ToolInvocationService,
     {
       value: {
         historyCandidateBatchSize: 50,
@@ -2847,15 +2871,7 @@ function createHarness(
         ...policy,
       },
     } as AgentRuntimePolicyService,
-    llmService,
-    toolRegistryService as unknown as ToolRegistryService,
-  )
-  const service = new AgentRuntimeService(
-    llmService,
-    prisma as unknown as PrismaService,
-    recorder as unknown as AgentRunRecorderService,
-    toolInvocationService as unknown as ToolInvocationService,
-    runConfigurationService,
+    new FakeToolRegistryService(registeredDefinitions) as unknown as ToolRegistryService,
     new InitialContextSelectionService(tokenEstimator),
     new SamplingContextPlanner(tokenEstimator),
   )
@@ -2881,17 +2897,10 @@ function createHarness(
 }
 
 class FakeToolRegistryService {
-  listDefinitions(): ToolDefinition[] {
-    return [
-      hiddenAdminDefinition,
-      getArticleDetailDefinition,
-      retrieveArticleContextDefinition,
-      searchArticlesDefinition,
-    ]
-  }
+  constructor(private readonly definitions: ToolDefinition[]) {}
 
   get(name: string): { definition: ToolDefinition } | undefined {
-    const definition = this.listDefinitions().find(
+    const definition = this.definitions.find(
       candidate => candidate.name === name,
     )
 
@@ -3091,7 +3100,7 @@ function matchesHistoryBounds(
   })
 }
 
-class TestTokenEstimator extends TokenEstimator {
+class TestTokenEstimator implements TokenEstimator {
   readonly strategyId = 'test-token-estimator'
 
   estimateRequest(input: TokenEstimatorInput): number {
@@ -3102,7 +3111,7 @@ class TestTokenEstimator extends TokenEstimator {
   }
 }
 
-class OverflowTokenEstimator extends TokenEstimator {
+class OverflowTokenEstimator implements TokenEstimator {
   readonly strategyId = 'test-overflow'
 
   estimateRequest(_input: TokenEstimatorInput): number {
@@ -3110,7 +3119,7 @@ class OverflowTokenEstimator extends TokenEstimator {
   }
 }
 
-class AlwaysFailingTokenEstimator extends TokenEstimator {
+class AlwaysFailingTokenEstimator implements TokenEstimator {
   readonly strategyId = 'test-initial-failure'
 
   estimateRequest(_input: TokenEstimatorInput): number {
@@ -3120,13 +3129,11 @@ class AlwaysFailingTokenEstimator extends TokenEstimator {
   }
 }
 
-class BaseCostTokenEstimator extends TokenEstimator {
+class BaseCostTokenEstimator implements TokenEstimator {
   readonly strategyId = 'test-base-cost'
   readonly inputs: TokenEstimatorInput[] = []
 
-  constructor(private readonly baseTokens: number) {
-    super()
-  }
+  constructor(private readonly baseTokens: number) {}
 
   estimateRequest(input: TokenEstimatorInput): number {
     this.inputs.push(structuredClone(input))
@@ -3138,7 +3145,7 @@ class BaseCostTokenEstimator extends TokenEstimator {
   }
 }
 
-class FollowUpOverflowTokenEstimator extends TokenEstimator {
+class FollowUpOverflowTokenEstimator implements TokenEstimator {
   readonly strategyId = 'test-follow-up-overflow'
 
   estimateRequest(input: TokenEstimatorInput): number {
@@ -3146,7 +3153,7 @@ class FollowUpOverflowTokenEstimator extends TokenEstimator {
   }
 }
 
-class FollowUpFailingTokenEstimator extends TokenEstimator {
+class FollowUpFailingTokenEstimator implements TokenEstimator {
   readonly strategyId = 'test-follow-up-failure'
 
   estimateRequest(input: TokenEstimatorInput): number {
@@ -3261,15 +3268,6 @@ class FakeAgentRunRecorderService {
   ): Promise<void> {
     this.assertDeadline(_deadline)
     this.transitionStep(stepId, AgentStepStatus.FAILED, input)
-  }
-
-  async abortStep(
-    stepId: string,
-    _deadline: DatabaseOperationDeadline,
-    input: { errorMessage?: string, output?: unknown } = {},
-  ): Promise<void> {
-    this.assertDeadline(_deadline)
-    this.transitionStep(stepId, AgentStepStatus.ABORTED, input)
   }
 
   async completeRun(

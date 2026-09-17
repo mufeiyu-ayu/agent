@@ -19,7 +19,7 @@ interface EchoOutput {
 }
 
 describe('ToolRegistryService', () => {
-  it('注册、查找并按名称稳定列出 Definition', () => {
+  it('注册并按名称查找 Tool', () => {
     const registry = new ToolRegistryService()
     const zebra = createEchoTool('zebra_tool')
     const alpha = createEchoTool('alpha_tool')
@@ -28,10 +28,7 @@ describe('ToolRegistryService', () => {
     registry.register(alpha)
 
     assert.equal(registry.get('zebra_tool'), zebra)
-    assert.deepEqual(
-      registry.listDefinitions().map(definition => definition.name),
-      ['alpha_tool', 'zebra_tool'],
-    )
+    assert.equal(registry.get('alpha_tool'), alpha)
   })
 
   it('拒绝非法名称和重复注册', () => {
@@ -51,14 +48,10 @@ describe('ToolRegistryService', () => {
     )
   })
 
-  it('require 对未知工具给出明确错误', () => {
+  it('未注册的工具查找返回 undefined', () => {
     const registry = new ToolRegistryService()
 
-    assert.throws(
-      () => registry.require('missing_tool'),
-      (error: unknown) => error instanceof ToolRegistryError
-        && error.code === 'unknown_tool',
-    )
+    assert.equal(registry.get('missing_tool'), undefined)
   })
 })
 

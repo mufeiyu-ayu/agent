@@ -64,10 +64,6 @@ interface FailAgentStepInput extends CompleteAgentStepInput {
   errorMessage: string
 }
 
-interface AbortAgentStepInput extends CompleteAgentStepInput {
-  errorMessage?: string
-}
-
 interface CompleteAgentRunInput {
   runId: string
   conversationId: string
@@ -225,14 +221,6 @@ export class AgentRunRecorderService {
     input: FailAgentStepInput,
   ): Promise<void> {
     await this.transitionStep(stepId, AgentStepStatus.FAILED, deadline, input)
-  }
-
-  async abortStep(
-    stepId: string,
-    deadline: DatabaseOperationDeadline,
-    input: AbortAgentStepInput = {},
-  ): Promise<void> {
-    await this.transitionStep(stepId, AgentStepStatus.ABORTED, deadline, input)
   }
 
   async completeRun(
@@ -415,7 +403,7 @@ export class AgentRunRecorderService {
 
   private async transitionStep(
     stepId: string,
-    status: typeof AgentStepStatus.COMPLETED | typeof AgentStepStatus.FAILED | typeof AgentStepStatus.ABORTED,
+    status: typeof AgentStepStatus.COMPLETED | typeof AgentStepStatus.FAILED,
     deadline: DatabaseOperationDeadline,
     input: CompleteAgentStepInput & { errorMessage?: string },
   ): Promise<void> {

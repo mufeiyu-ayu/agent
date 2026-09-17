@@ -32,8 +32,9 @@ import {
 describe('retrieve_article_context', () => {
   it('注册模型可见定义，并声明固定 trusted-provider 的低风险只读边界', () => {
     const { registry } = createTools()
-    const definition = registry.require('retrieve_article_context').definition
+    const definition = registry.get('retrieve_article_context')?.definition
 
+    assert.ok(definition)
     assert.equal(definition, retrieveArticleContextDefinition)
     assert.deepEqual(definition.risk, {
       level: 'low',
@@ -654,7 +655,6 @@ function createContext(
     conversationId: 'conversation-1',
     databaseDeadline: createDatabaseDeadline(signal),
     signal,
-    executionAttempt: 1,
   }
 }
 

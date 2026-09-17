@@ -26,7 +26,6 @@ import {
   RetrieveArticleContextTool,
 } from '../../tools/retrieval/retrieve-article-context.tool.js'
 import { AgentRuntimeService } from '../agent-runtime.service.js'
-import { AgentRunConfigurationService } from '../configuration/agent-run-configuration.service.js'
 import { DeepSeekV4TokenEstimator } from '../context/deepseek-v4-token-estimator.js'
 import { InitialContextSelectionService } from '../context/initial-context-selection.js'
 import { SamplingContextPlanner } from '../context/sampling-context-planner.js'
@@ -122,19 +121,16 @@ export async function executeGroundedAnswerSmoke(
     prisma,
     new AgentRunRecorderService(prisma),
     new ToolInvocationService(registry),
-    new AgentRunConfigurationService(
-      {
-        value: {
-          historyCandidateBatchSize: 50,
-          historyCandidateHardLimit: 1_000,
-          maxSamplingRounds: 4,
-          maxToolCalls: 2,
-          runDeadlineMs: 300_000,
-        },
+    {
+      value: {
+        historyCandidateBatchSize: 50,
+        historyCandidateHardLimit: 1_000,
+        maxSamplingRounds: 4,
+        maxToolCalls: 2,
+        runDeadlineMs: 300_000,
       },
-      llmService,
-      registry,
-    ),
+    },
+    registry,
     new InitialContextSelectionService(tokenEstimator),
     new SamplingContextPlanner(tokenEstimator),
   )

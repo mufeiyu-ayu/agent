@@ -48,19 +48,17 @@ export interface TokenEstimatorInput {
 }
 
 /** Context planning 只依赖该边界，不依赖具体 tokenizer 包。 */
-export abstract class TokenEstimator {
-  abstract readonly strategyId: string
-  abstract estimateRequest(input: TokenEstimatorInput): number
+export interface TokenEstimator {
+  readonly strategyId: string
+  estimateRequest: (input: TokenEstimatorInput) => number
 }
 
 @Injectable()
-export class DeepSeekV4TokenEstimator extends TokenEstimator {
+export class DeepSeekV4TokenEstimator implements TokenEstimator {
   readonly strategyId = 'deepseek-v4-official-b5968e9'
   private readonly tokenizer: Tokenizer
 
   constructor() {
-    super()
-
     try {
       const tokenizer = JSON.parse(gunzipSync(readFileSync(
         new URL('../../../tokenizers/deepseek-v4/tokenizer.json.gz', import.meta.url),
