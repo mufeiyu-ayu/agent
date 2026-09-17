@@ -1,4 +1,4 @@
-import type { ModelFinishReason } from '../llm/model-stream.types.js'
+import type { ModelFinishReason } from '@agent/ai'
 import type { ModelSamplingSummary } from './sampling/model-sampling-decision.js'
 
 /** Agent Loop 已耗尽服务端执行预算，不能伪装成正常回答。 */

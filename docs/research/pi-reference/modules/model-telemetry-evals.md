@@ -213,7 +213,7 @@ post = await credentials.modify(
 | --- | --- | --- |
 | context 估计 | [estimate.ts:114](/Users/ayu/Learn/pi/packages/ai/src/utils/estimate.ts:114) 优先最近适用 assistant usage，再估后缀；缺 usage 时约 4 chars/token、图片按固定量；较新 prefix timestamp 会使旧 usage 不适用 | 这是启发式；我们已有专用 estimator，不为形式统一而降级 |
 | output 上限 | `buildBaseOptions` 按 contextWindow、估计 context、4096 safety margin clamp；thinking budget 留答案空间 | 保存 resolved config，区分用户上限、model 上限和实际发送值 |
-| usage | input/output/cacheRead/cacheWrite 分开；reasoning 是 output 子集；各 SDK 报数差异在 adapter 归一化 | 我们 [mergeModelUsage](/Users/ayu/Desktop/agent/apps/api/src/llm/model-stream.types.ts:52) 保留 unknown，不因 Pi 初始零值而把“未报告”变成零 |
+| usage | input/output/cacheRead/cacheWrite 分开；reasoning 是 output 子集；各 SDK 报数差异在 adapter 归一化 | 我们 [mergeModelUsage](/Users/ayu/Desktop/agent/packages/ai/src/model-stream.types.ts:55) 保留 unknown，不因 Pi 初始零值而把“未报告”变成零 |
 | cost | [models.ts:891](/Users/ayu/Learn/pi/packages/ai/src/models.ts:891) 以 `input + cacheRead + cacheWrite` 之和匹配最高 tier，对整个请求用该档费率；Anthropic 1h cache write 按 2× input 计价 | 标记 estimated cost，并保留费率版本；不能宣称真实计费对账 |
 | request retry | `retryProviderRequest` 默认0，尊重 408/409/429/5xx、Retry-After 与 abortable sleep；OpenAI/Anthropic 主动关 SDK retry | 上层与 transport retry 分开计数，避免相乘；不能引用 SDK 默认2覆盖真实配置 |
 | assistant retry | [retry.ts:174](/Users/ayu/Learn/pi/packages/ai/src/utils/retry.ts:174) 对结果 error 分类，排除 billing/quota，指数退避，abort 不重试 | overflow 先单独处理；重试工具副作用需靠工具执行记录和幂等性解决 |
@@ -271,7 +271,7 @@ const candidatePassed = candidate.score >= 1;
 
 ## 10. 对当前 NestJS 云端的建议
 
-当前 [LLMService](/Users/ayu/Desktop/agent/apps/api/src/llm/llm.service.ts:19) 已经是业务门面，[ModelInputItem](/Users/ayu/Desktop/agent/apps/api/src/llm/model-input.types.ts:4) 与 [ModelStreamEvent](/Users/ayu/Desktop/agent/apps/api/src/llm/model-stream.types.ts:32) 已隔离 provider。先保留这些边界，不为模仿目录名重建一份 Pi。
+当前 [LLMService](/Users/ayu/Desktop/agent/apps/api/src/llm/llm.service.ts:16) 已经是业务门面，[ModelInputItem](/Users/ayu/Desktop/agent/packages/ai/src/model-input.types.ts:4) 与 [ModelStreamEvent](/Users/ayu/Desktop/agent/packages/ai/src/model-stream.types.ts:32) 已隔离 provider。先保留这些边界，不为模仿目录名重建一份 Pi。
 
 1. **第一学习产物：**把当前一次 sampling 的 resolved options、最终请求输入、事件、终态对应起来。Pi 的 frame encoder 和 transform 是问题样本；以我们持久化不变量来定方案。
 2. **第二学习产物：**用一个本地 scripted provider 跑 tool/error/abort 的完整场景。学 Faux 的可编排响应，不学它的字符估算当真实 usage；保留模型未知 usage 的语义。

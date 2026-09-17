@@ -3,9 +3,9 @@ import type { AgentRuntimeEvent } from '../agent-runtime.types.js'
 import { performance } from 'node:perf_hooks'
 import process from 'node:process'
 import { pathToFileURL } from 'node:url'
+import { OpenAICompatibleClient } from '@agent/ai'
 
-import { OpenAICompatibleClient } from '../../llm/clients/openai-compatible.client.js'
-import { LLMRuntimeConfigService } from '../../llm/llm-runtime-config.js'
+import { LLMRuntimeConfigService } from '../../llm/llm-runtime-config.service.js'
 import { LLMService } from '../../llm/llm.service.js'
 import { PrismaService } from '../../prisma/prisma.service.js'
 import { createHybridArticleRetrievalRuntime } from '../../retrieval/hybrid-article-retrieval.runtime.js'
@@ -112,7 +112,7 @@ export async function executeGroundedAnswerSmoke(
   const tokenEstimator = new DeepSeekV4TokenEstimator()
   const runtimeConfigService = new LLMRuntimeConfigService()
   const llmService = new LLMService(
-    new OpenAICompatibleClient(runtimeConfigService),
+    new OpenAICompatibleClient(runtimeConfigService.value),
     runtimeConfigService,
   )
   const runtime = new AgentRuntimeService(

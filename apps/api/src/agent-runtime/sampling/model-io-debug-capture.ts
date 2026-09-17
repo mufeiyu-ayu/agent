@@ -1,11 +1,11 @@
 import type {
+  ModelIODebugCaptureSide,
+  ModelRawResponseCapture,
+} from '@agent/ai'
+import type {
   AdminDebugModelIOCapture,
   AdminDebugModelResponseCapture,
 } from '@agent/contracts'
-import type {
-  ModelIODebugCaptureSide,
-  ModelRawResponseCapture,
-} from '../../llm/llm.types.js'
 
 /** 一轮采样内的关联信息与 debug 原始值；未开启时两侧载荷均为 undefined。 */
 export interface DebugModelIOCaptured {

@@ -1,5 +1,7 @@
-import type { ModelInputItem } from '../../llm/model-input.types.js'
-import type { ModelToolSpec } from '../../llm/model-tool-spec.types.js'
+import type {
+  ModelInputItem,
+  ModelToolSpec,
+} from '@agent/ai'
 import { readFileSync } from 'node:fs'
 import { gunzipSync } from 'node:zlib'
 import { Tokenizer } from '@huggingface/tokenizers'

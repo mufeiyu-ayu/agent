@@ -1,5 +1,7 @@
-import type { ChatMessage } from '../../llm/llm.types.js'
-import type { ModelInputItem } from '../../llm/model-input.types.js'
+import type {
+  ChatMessage,
+  ModelInputItem,
+} from '@agent/ai'
 import type { NormalizedToolObservation } from '../../tools/core/tool-observation.js'
 import type { UnvalidatedToolCallEnvelope } from '../../tools/core/tool.types.js'
 

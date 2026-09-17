@@ -1,12 +1,10 @@
-import type { LLMRuntimeConfigService } from '../llm-runtime-config.js'
+import type { SupportedDeepSeekModel } from '../model-profiles.js'
 import assert from 'node:assert/strict'
 // eslint-disable-next-line test/no-import-node-test
 import { describe, it } from 'node:test'
 import OpenAI from 'openai'
 
-import {
-  resolveLLMRuntimeConfig,
-} from '../llm-runtime-config.js'
+import { resolveLLMRuntimeConfig } from '../llm-runtime-config.js'
 import { LLMConfigError, LLMNetworkError } from '../llm.errors.js'
 import { OpenAICompatibleClient } from './openai-compatible.client.js'
 
@@ -94,22 +92,12 @@ describe('OpenAICompatibleClient runtime config', () => {
     assert.equal(Object.hasOwn(wireBody ?? {}, 'temperature'), false)
   })
 
-  it('Provider Client 只读取已验证配置对象，不读取后续 process.env 变化', async () => {
-    const harness = createHarness()
-    const previousModel = process.env.LLM_MODEL
+  it('默认模型来自构造时传入的配置对象，而不是包内常量', async () => {
+    const harness = createHarness({ model: 'deepseek-v4-pro' })
 
-    process.env.LLM_MODEL = 'unsupported-model'
-    try {
-      await harness.client.chat([{ role: 'user', content: 'hello' }])
-    }
-    finally {
-      if (previousModel === undefined)
-        delete process.env.LLM_MODEL
-      else
-        process.env.LLM_MODEL = previousModel
-    }
+    await harness.client.chat([{ role: 'user', content: 'hello' }])
 
-    assert.equal(harness.calls[0]?.params?.model, 'deepseek-v4-flash')
+    assert.equal(harness.calls[0]?.params?.model, 'deepseek-v4-pro')
   })
 
   it('调用级模型或输出预算非法时不发起 Provider 请求', async () => {
@@ -133,7 +121,7 @@ describe('OpenAICompatibleClient runtime config', () => {
   })
 
   it('请求已发起但 SDK 在首个 chunk 前失败时提交 empty capture', async () => {
-    const harness = createHarness(true)
+    const harness = createHarness({ captureModelIO: true })
     let captured: unknown
 
     Object.defineProperty(harness.client, 'createClient', {
@@ -172,7 +160,7 @@ describe('OpenAICompatibleClient runtime config', () => {
   })
 
   it('debug 回调失败只通知安全失败侧，不影响正常模型事件', async () => {
-    const harness = createHarness(true)
+    const harness = createHarness({ captureModelIO: true })
     const failedSides: string[] = []
 
     const events = await collectEvents(harness.client.chatStream(
@@ -204,17 +192,16 @@ interface ProviderCall {
   params?: Record<string, unknown>
 }
 
-function createHarness(captureModelIO = false) {
+function createHarness(
+  options: { captureModelIO?: boolean, model?: SupportedDeepSeekModel } = {},
+) {
   const calls: ProviderCall[] = []
-  const runtimeConfig = {
-    value: resolveLLMRuntimeConfig({
-      LLM_API_KEY: 'test-api-key',
-      LLM_BASE_URL: 'https://api.deepseek.com/v1',
-      LLM_MODEL: 'deepseek-v4-flash',
-      ...(captureModelIO ? { AGENT_DEBUG_CAPTURE_MODEL_IO: 'true' } : {}),
-    }),
-  } as LLMRuntimeConfigService
-  const client = new OpenAICompatibleClient(runtimeConfig)
+  const client = new OpenAICompatibleClient(resolveLLMRuntimeConfig({
+    LLM_API_KEY: 'test-api-key',
+    LLM_BASE_URL: 'https://api.deepseek.com/v1',
+    LLM_MODEL: options.model ?? 'deepseek-v4-flash',
+    ...(options.captureModelIO ? { AGENT_DEBUG_CAPTURE_MODEL_IO: 'true' } : {}),
+  }))
   const providerClient = {
     get: async (path: string, options: { timeout: number }) => {
       calls.push({ kind: `metadata:${path}`, options })

@@ -1,17 +1,17 @@
-import type { ModelInputItem } from '../../llm/model-input.types.js'
 import type {
   ModelFinishReason,
+  ModelInputItem,
   ModelStreamEvent,
   ModelUsage,
-} from '../../llm/model-stream.types.js'
+} from '@agent/ai'
 import type {
   GroundedAnswerRejectionCode,
   SubmitGroundedAnswerInputV1,
 } from './grounded-answer.contract.js'
 import type { ValidatedGroundedAnswer } from './grounded-answer.validator.js'
 import type { RunEvidenceRegistry } from './run-evidence-registry.js'
+import { mergeModelUsage } from '@agent/ai'
 
-import { mergeModelUsage } from '../../llm/model-stream.types.js'
 import {
   GroundedAnswerRejectedError,
   parseSubmitGroundedAnswerInput,

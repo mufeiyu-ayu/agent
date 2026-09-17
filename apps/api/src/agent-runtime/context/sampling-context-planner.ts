@@ -1,5 +1,7 @@
-import type { ModelInputItem } from '../../llm/model-input.types.js'
-import type { ModelToolSpec } from '../../llm/model-tool-spec.types.js'
+import type {
+  ModelInputItem,
+  ModelToolSpec,
+} from '@agent/ai'
 import type { NormalizedToolObservation } from '../../tools/core/tool-observation.js'
 import type { TokenEstimator } from './deepseek-v4-token-estimator.js'
 import type {

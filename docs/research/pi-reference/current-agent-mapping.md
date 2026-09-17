@@ -23,7 +23,7 @@
 - [Runtime 导航](/Users/ayu/Desktop/agent/apps/api/src/agent-runtime/README.md)
 - [policy](/Users/ayu/Desktop/agent/apps/api/src/agent-runtime/configuration/agent-runtime.policy.ts:7)
 - [SamplingDecision](/Users/ayu/Desktop/agent/apps/api/src/agent-runtime/sampling/model-sampling-decision.ts:21)
-- [LLM client](/Users/ayu/Desktop/agent/apps/api/src/llm/clients/openai-compatible.client.ts:192)
+- [LLM client](/Users/ayu/Desktop/agent/packages/ai/src/clients/openai-compatible.client.ts:185)
 - [HTTP 断线](/Users/ayu/Desktop/agent/apps/api/src/seo/seo.controller.ts:43)
 - [Prisma 事实层](/Users/ayu/Desktop/agent/prisma/schema.prisma:59)
 
@@ -56,12 +56,13 @@ apps/api/src/
     sampling/       # 已有：模型事件到业务决策
     lifecycle/      # 已有：Run/Step 与取消、deadline
     grounding/      # 已有：引用事实与 finalization
-  llm/              # 已有：provider adapters
+  llm/              # 已有：Nest 壳（LlmModule / LLMController / LLMService 门面 / LLMRuntimeConfigService）
   tools/            # 已有：registry/invocation/observation 归一化（硬上限 128k 字符）
+packages/ai/        # 已有（#120）：OpenAICompatibleClient、流适配、ModelStreamEvent / ModelInputItem / ModelToolSpec、LLM 错误、model profile、resolveLLMRuntimeConfig；零 Nest、零 Prisma
 packages/contracts/ # 已有：ChatStreamEvent、MessageGroundingV1、AgentRun/AgentStep 投影；R1/R4 改协议先动这里
 ```
 
-R2 起新写的循环、operation 状态、工具契约进 `packages/agent`，模型客户端进 `packages/ai`；上面各目录按被替换的节奏迁入，Grounding 拆校验规则进包、落库留 apps。对应 Issue 定案前不建新目录。
+R2 起新写的循环、operation 状态、工具契约进 `packages/agent`，并依赖 `@agent/ai` 的模型类型；上面各目录按被替换的节奏迁入，Grounding 拆校验规则进包、落库留 apps。对应 Issue 定案前不建新目录。
 
 ## 4. 迁移时必须保留的东西
 

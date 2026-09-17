@@ -1,6 +1,8 @@
-import type { ChatMessage } from '../../llm/llm.types.js'
-import type { ModelInputItem } from '../../llm/model-input.types.js'
-import type { ModelToolSpec } from '../../llm/model-tool-spec.types.js'
+import type {
+  ChatMessage,
+  ModelInputItem,
+  ModelToolSpec,
+} from '@agent/ai'
 import type {
   TokenEstimator,
   TokenEstimatorInput,
@@ -8,8 +10,8 @@ import type {
 import assert from 'node:assert/strict'
 // eslint-disable-next-line test/no-import-node-test
 import { describe, it } from 'node:test'
+import { toModelInputItems } from '@agent/ai'
 
-import { toModelInputItems } from '../../llm/model-input.types.js'
 import { normalizeToolObservation } from '../../tools/core/tool-observation.js'
 import { ContextBudgetExceededError } from '../agent-runtime.errors.js'
 import { DeepSeekV4TokenEstimator } from './deepseek-v4-token-estimator.js'

@@ -56,8 +56,9 @@
 | `apps/admin/` | 运维控制台：Run Trace、Context / Retrieval Inspector、Overview |
 | `apps/api/src/` | NestJS API、业务模块和应用入口 |
 | `apps/api/src/agent-runtime/` | Agent Run 编排与运行记录 |
-| `apps/api/src/llm/` | 模型调用、provider adapter 和模型流事件 |
+| `apps/api/src/llm/` | LLM 的 Nest 壳：`LlmModule`、`LLMController`、`LLMService` 门面、`LLMRuntimeConfigService` |
 | `apps/api/src/seo/` | SEO Agent 业务入口、上下文与协议适配 |
+| `packages/ai/` | `@agent/ai`：模型客户端、OpenAI-compatible 流适配、模型类型 / 错误 / profile / 运行时配置解析；零 Nest、零 Prisma |
 | `packages/contracts/` | 前后端共享协议与类型 |
 | `prisma/` | schema、migration、fixtures 和 seed |
 | `docs/tasks/` | 当前任务、阶段入口和已完成归档 |

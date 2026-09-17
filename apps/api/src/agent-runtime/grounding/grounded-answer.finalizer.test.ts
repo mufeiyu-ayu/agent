@@ -1,4 +1,4 @@
-import type { ModelStreamEvent } from '../../llm/model-stream.types.js'
+import type { ModelStreamEvent } from '@agent/ai'
 import type { ToolEvidenceRef } from '../../tools/core/tool-evidence.js'
 import type { GroundedFinalizationAttemptSummary } from './grounded-answer.finalizer.js'
 import assert from 'node:assert/strict'

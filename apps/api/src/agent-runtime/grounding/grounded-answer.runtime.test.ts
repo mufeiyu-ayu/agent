@@ -1,9 +1,11 @@
+import type {
+  ChatStreamOptions,
+  ModelInputItem,
+  ModelStreamEvent,
+} from '@agent/ai'
 import type { MessageGroundingV1 } from '@agent/contracts'
 import type { Message, Prisma } from '../../generated/prisma/client.js'
 import type { LLMService } from '../../llm/llm.service.js'
-import type { ChatStreamOptions } from '../../llm/llm.types.js'
-import type { ModelInputItem } from '../../llm/model-input.types.js'
-import type { ModelStreamEvent } from '../../llm/model-stream.types.js'
 import type {
   DatabaseOperationDeadline,
   DeadlineTransaction,
@@ -27,9 +29,9 @@ import assert from 'node:assert/strict'
 // 项目使用 Node 原生测试运行器，不为 grounded 路径引入额外测试框架。
 // eslint-disable-next-line test/no-import-node-test
 import { describe, it } from 'node:test'
+import { getModelProfile } from '@agent/ai'
 
 import { MessageRole, MessageStatus } from '../../generated/prisma/client.js'
-import { getModelProfile } from '../../llm/model-profiles.js'
 import { toChatStreamEvent } from '../../seo/seo-chat-stream-event.mapper.js'
 import { AgentRuntimeService } from '../agent-runtime.service.js'
 import { SamplingContextPlanner } from '../context/sampling-context-planner.js'

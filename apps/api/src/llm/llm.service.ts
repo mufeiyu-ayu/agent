@@ -1,20 +1,17 @@
-import type { ResolvedChatRequestConfig } from './llm-runtime-config.js'
 import type {
   ChatMessage,
   ChatOptions,
   ChatStreamOptions,
   DeepSeekBalanceResponse,
   DeepSeekModelsResponse,
-} from './llm.types.js'
-import type { ModelInputItem } from './model-input.types.js'
-import type { ModelStreamEvent } from './model-stream.types.js'
+  ModelInputItem,
+  ModelStreamEvent,
+  ResolvedChatRequestConfig,
+} from '@agent/ai'
+import { OpenAICompatibleClient, resolveChatRequestConfig } from '@agent/ai'
 import { Inject, Injectable } from '@nestjs/common'
 
-import { OpenAICompatibleClient } from './clients/openai-compatible.client.js'
-import {
-  LLMRuntimeConfigService,
-  resolveChatRequestConfig,
-} from './llm-runtime-config.js'
+import { LLMRuntimeConfigService } from './llm-runtime-config.service.js'
 
 /** LLMService 是业务门面；具体模型 SDK 和协议适配放在 client 层。 */
 @Injectable()

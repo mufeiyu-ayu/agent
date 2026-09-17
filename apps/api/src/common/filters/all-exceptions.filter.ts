@@ -1,8 +1,6 @@
 import type { ApiErrorResponse } from '@agent/contracts'
 import type { ArgumentsHost, ExceptionFilter } from '@nestjs/common'
 import type { HttpResponseLike, RequestWithId } from '../utils/http-request.util.js'
-import { Catch, HttpException, HttpStatus, Logger } from '@nestjs/common'
-
 import {
   LLMApiError,
   LLMAuthError,
@@ -12,7 +10,9 @@ import {
   LLMNetworkError,
   LLMRateLimitError,
   LLMServerError,
-} from '../../llm/llm.errors.js'
+} from '@agent/ai'
+import { Catch, HttpException, HttpStatus, Logger } from '@nestjs/common'
+
 import { getRequestId, getRequestPath } from '../utils/http-request.util.js'
 
 interface HttpExceptionResponse {

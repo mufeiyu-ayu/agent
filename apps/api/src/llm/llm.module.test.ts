@@ -2,12 +2,10 @@ import assert from 'node:assert/strict'
 import process from 'node:process'
 // eslint-disable-next-line test/no-import-node-test
 import { describe, it } from 'node:test'
+import { LLMConfigError } from '@agent/ai'
 import { NestFactory } from '@nestjs/core'
 
-import {
-  LLMRuntimeConfigService,
-} from './llm-runtime-config.js'
-import { LLMConfigError } from './llm.errors.js'
+import { LLMRuntimeConfigService } from './llm-runtime-config.service.js'
 import { LlmModule } from './llm.module.js'
 import 'reflect-metadata'
 

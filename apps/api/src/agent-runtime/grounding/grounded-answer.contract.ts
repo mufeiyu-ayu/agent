@@ -1,5 +1,5 @@
+import type { ModelToolSpec } from '@agent/ai'
 import type { MessageGroundingOutcome } from '@agent/contracts'
-import type { ModelToolSpec } from '../../llm/model-tool-spec.types.js'
 
 /**
  * `submit_grounded_answer@1`：Evidence-backed 回答的终态结构化输出契约。
