@@ -59,7 +59,7 @@ flowchart LR
 
 | 能力 | 实现 |
 | --- | --- |
-| 有界 Agent Loop | 服务端策略约束：默认 ≤3 轮采样、≤2 次 Tool Call、10 分钟 Run deadline |
+| 有界 Agent Loop | 服务端策略约束：默认 ≤10 轮采样、≤8 次 Tool Call、10 分钟 Run deadline |
 | 流式输出 | Abort 感知的 NDJSON 增量流，中止 / 半包 / 消息版本竞态全部有守卫 |
 | Tool Calling | 类型化定义、注册表、参数校验、执行隔离、超时与取消传播、按 Run 白名单 |
 | 上下文工程 | 每 Run 独立 `ModelContext`，模型感知预算 + 动态历史选择 + Observation 治理 |

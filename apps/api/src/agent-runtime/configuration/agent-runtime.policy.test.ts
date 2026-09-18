@@ -9,12 +9,12 @@ import {
 } from './agent-runtime.policy.js'
 
 describe('resolveAgentRuntimePolicy', () => {
-  it('缺省时使用 1000 条 candidate hard limit、3 轮 sampling、2 次工具和 600 秒 Run deadline', () => {
+  it('缺省时使用 1000 条 candidate hard limit、10 轮 sampling、8 次工具和 600 秒 Run deadline', () => {
     assert.deepEqual(resolveAgentRuntimePolicy({}), DEFAULT_AGENT_RUNTIME_POLICY)
     assert.deepEqual(DEFAULT_AGENT_RUNTIME_POLICY, {
       historyCandidateHardLimit: 1_000,
-      maxSamplingRounds: 3,
-      maxToolCalls: 2,
+      maxSamplingRounds: 10,
+      maxToolCalls: 8,
       runDeadlineMs: 600_000,
     })
   })

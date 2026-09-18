@@ -1,10 +1,19 @@
 import assert from 'node:assert/strict'
+import { getEventListeners } from 'node:events'
 // eslint-disable-next-line test/no-import-node-test
 import { describe, it } from 'node:test'
 import OpenAI from 'openai'
 
 import { resolveLLMRuntimeConfig } from '../config.js'
-import { LLMConfigError, LLMNetworkError } from '../errors.js'
+import {
+  LLMAuthError,
+  LLMBalanceError,
+  LLMConfigError,
+  LLMInvalidRequestError,
+  LLMNetworkError,
+  LLMRateLimitError,
+  LLMServerError,
+} from '../errors.js'
 import { OpenAICompatibleClient } from './openai-completions.js'
 
 describe('OpenAICompatibleClient runtime config', () => {
@@ -177,22 +186,225 @@ describe('OpenAICompatibleClient runtime config', () => {
   })
 })
 
+describe('OpenAICompatibleClient 瞬态失败重试', () => {
+  it('createClient() 交给 SDK 的 maxRetries 为 2', () => {
+    const client = new OpenAICompatibleClient(createRuntimeConfig())
+
+    assert.equal(createProviderClient(client).maxRetries, 2)
+  })
+
+  it('首次 429 / 503 / 连接错误、第二次成功时 chatStream 正常产出且只记一份请求体', async () => {
+    const transientAttempts: Array<() => Response> = [
+      () => new Response('{"error":{"message":"rate limited"}}', {
+        status: 429,
+        headers: { 'retry-after': '0' },
+      }),
+      () => new Response('{"error":{"message":"overloaded"}}', {
+        status: 503,
+        headers: { 'retry-after': '0' },
+      }),
+      () => {
+        throw new TypeError('fetch failed')
+      },
+    ]
+
+    for (const transientAttempt of transientAttempts) {
+      const harness = createFetchHarness(
+        [transientAttempt, () => okStreamResponse('ok')],
+        { captureModelIO: true },
+      )
+      let requestCaptureCount = 0
+
+      const events = await collectEvents(harness.client.chatStream(
+        [{ type: 'message', role: 'user', content: 'hello' }],
+        {
+          debugCapture: {
+            onRequest: () => {
+              requestCaptureCount += 1
+            },
+            onResponse: () => {},
+          },
+        },
+      ))
+
+      assert.deepEqual(events, [
+        { type: 'text_delta', delta: 'ok' },
+        { type: 'response_completed', finishReason: 'stop' },
+      ])
+      assert.equal(harness.fetchCalls.length, 2)
+      assert.equal(requestCaptureCount, 1)
+    }
+  })
+
+  it('400 / 401 / 402 不重试，直接抛对应 LLMError', async () => {
+    const cases = [
+      { status: 400, error: LLMInvalidRequestError },
+      { status: 401, error: LLMAuthError },
+      { status: 402, error: LLMBalanceError },
+    ]
+
+    for (const { status, error } of cases) {
+      const harness = createFetchHarness([
+        () => new Response('{"error":{"message":"nope"}}', {
+          status,
+          headers: { 'retry-after': '0' },
+        }),
+        () => okStreamResponse('ok'),
+      ])
+
+      await assert.rejects(
+        collectEvents(harness.client.chatStream([
+          { type: 'message', role: 'user', content: 'hello' },
+        ])),
+        error,
+      )
+      assert.equal(harness.fetchCalls.length, 1)
+    }
+  })
+
+  it('重试耗尽后仍抛对应 LLMError', async () => {
+    const cases = [
+      { status: 429, error: LLMRateLimitError },
+      { status: 503, error: LLMServerError },
+    ]
+
+    for (const { status, error } of cases) {
+      const failure = () => new Response('{"error":{"message":"still failing"}}', {
+        status,
+        headers: { 'retry-after': '0' },
+      })
+      const harness = createFetchHarness([failure, failure, failure, () => okStreamResponse('ok')])
+
+      await assert.rejects(
+        collectEvents(harness.client.chatStream([
+          { type: 'message', role: 'user', content: 'hello' },
+        ])),
+        error,
+      )
+      assert.equal(harness.fetchCalls.length, 3)
+    }
+  })
+
+  it('流正文中途断开不重试，已产出的 delta 保留并抛 LLMNetworkError', async () => {
+    const harness = createFetchHarness([
+      () => {
+        let pulls = 0
+
+        return new Response(new ReadableStream<Uint8Array>({
+          pull(controller) {
+            if (pulls++ === 0) {
+              controller.enqueue(new TextEncoder().encode(
+                `${sseChunk({ content: 'partial' })}\n\n`,
+              ))
+              return
+            }
+            controller.error(new TypeError('terminated'))
+          },
+        }), {
+          status: 200,
+          headers: { 'Content-Type': 'text/event-stream' },
+        })
+      },
+      () => okStreamResponse('ok'),
+    ])
+    const events: unknown[] = []
+
+    await assert.rejects(async () => {
+      for await (const event of harness.client.chatStream([
+        { type: 'message', role: 'user', content: 'hello' },
+      ])) {
+        events.push(event)
+      }
+    }, LLMNetworkError)
+    assert.deepEqual(events, [{ type: 'text_delta', delta: 'partial' }])
+    assert.equal(harness.fetchCalls.length, 1)
+  })
+
+  it('abort 信号触发后不再重试', async () => {
+    const abortController = new AbortController()
+    const harness = createFetchHarness([
+      () => {
+        abortController.abort()
+        throw new TypeError('fetch failed')
+      },
+      () => okStreamResponse('ok'),
+    ])
+
+    await assert.rejects(
+      collectEvents(harness.client.chatStream(
+        [{ type: 'message', role: 'user', content: 'hello' }],
+        { signal: abortController.signal },
+      )),
+      LLMNetworkError,
+    )
+    assert.equal(harness.fetchCalls.length, 1)
+  })
+
+  it('abort 落在 SDK 退避 sleep 期间时立即抛出，不等 retry-after 睡满', async () => {
+    const abortController = new AbortController()
+    const harness = createFetchHarness([
+      () => {
+        // 20ms 后 SDK 已进入 sleep(1000)；没有 rejectOnAbort 要到 1s 后才抛。
+        setTimeout(() => abortController.abort(), 20)
+
+        return new Response('{"error":{"message":"rate limited"}}', {
+          status: 429,
+          headers: { 'retry-after-ms': '1000' },
+        })
+      },
+      () => okStreamResponse('ok'),
+    ])
+    const startedAt = Date.now()
+
+    await assert.rejects(
+      collectEvents(harness.client.chatStream(
+        [{ type: 'message', role: 'user', content: 'hello' }],
+        { signal: abortController.signal },
+      )),
+      LLMNetworkError,
+    )
+    assert.ok(Date.now() - startedAt < 500, 'abort 被 SDK 退避 sleep 拖住了')
+    assert.equal(harness.fetchCalls.length, 1)
+  })
+
+  it('多轮采样共用同一个 signal 时不在它上面累积 SDK 的 abort 监听', async () => {
+    const abortController = new AbortController()
+    const harness = createFetchHarness(
+      Array.from({ length: 12 }, () => () => okStreamResponse('ok')),
+    )
+
+    for (let round = 0; round < 12; round += 1) {
+      await collectEvents(harness.client.chatStream(
+        [{ type: 'message', role: 'user', content: 'hello' }],
+        { signal: abortController.signal },
+      ))
+    }
+
+    assert.equal(harness.fetchCalls.length, 12)
+    assert.equal(getEventListeners(abortController.signal, 'abort').length, 0)
+  })
+})
+
 interface ProviderCall {
   kind: string
   options: { timeout: number }
   params?: Record<string, unknown>
 }
 
-function createHarness(
-  options: { captureModelIO?: boolean } = {},
-) {
-  const calls: ProviderCall[] = []
-  const client = new OpenAICompatibleClient(resolveLLMRuntimeConfig({
+function createRuntimeConfig(options: { captureModelIO?: boolean } = {}) {
+  return resolveLLMRuntimeConfig({
     LLM_API_KEY: 'test-api-key',
     LLM_BASE_URL: 'https://api.deepseek.com/v1',
     LLM_MODEL: 'deepseek-v4-flash',
     ...(options.captureModelIO ? { AGENT_DEBUG_CAPTURE_MODEL_IO: 'true' } : {}),
-  }))
+  })
+}
+
+function createHarness(
+  options: { captureModelIO?: boolean } = {},
+) {
+  const calls: ProviderCall[] = []
+  const client = new OpenAICompatibleClient(createRuntimeConfig(options))
   const providerClient = {
     get: async (path: string, options: { timeout: number }) => {
       calls.push({ kind: `metadata:${path}`, options })
@@ -243,6 +455,55 @@ function createHarness(
   })
 
   return { calls, client }
+}
+
+/** 读取 private createClient()，让 fake fetch 沿用生产 client 的 maxRetries。 */
+function createProviderClient(client: OpenAICompatibleClient): OpenAI {
+  // eslint-disable-next-line dot-notation
+  return client['createClient']()
+}
+
+/** 真实 SDK client + 按次序消费的 fake fetch；attempt 抛错即模拟连接错误。 */
+function createFetchHarness(
+  attempts: Array<() => Response>,
+  options: { captureModelIO?: boolean } = {},
+) {
+  const fetchCalls: RequestInit[] = []
+  const client = new OpenAICompatibleClient(createRuntimeConfig(options))
+  const providerClient = createProviderClient(client).withOptions({
+    fetch: async (_input, init) => {
+      fetchCalls.push(init ?? {})
+      const attempt = attempts[fetchCalls.length - 1]
+
+      assert.ok(attempt, `fake fetch 第 ${fetchCalls.length} 次调用没有预设响应`)
+
+      return attempt()
+    },
+  })
+
+  Object.defineProperty(client, 'createClient', {
+    configurable: true,
+    value: () => providerClient,
+  })
+
+  return { fetchCalls, client }
+}
+
+function sseChunk(delta: Record<string, unknown>, finishReason?: string): string {
+  return `data: ${JSON.stringify({
+    id: 'response-1',
+    choices: [{ index: 0, delta, finish_reason: finishReason ?? null }],
+    created: 0,
+    model: 'deepseek-v4-flash',
+    object: 'chat.completion.chunk',
+  })}`
+}
+
+function okStreamResponse(content: string): Response {
+  return new Response(
+    `${sseChunk({ content }, 'stop')}\n\ndata: [DONE]\n\n`,
+    { status: 200, headers: { 'Content-Type': 'text/event-stream' } },
+  )
 }
 
 async function* toProviderStream(

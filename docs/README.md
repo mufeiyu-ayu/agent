@@ -7,7 +7,7 @@
 ```text
 阶段 1-8：Completed，归档在 tasks/completed/
 Active Agent Task：无
-Next：#115 → #116 → #117 → web_fetch（均已立 Issue、未开工；#118 / #119 / #120 / #124 已于 2026-09-17 合并，#126 / #127 已于 2026-09-18 合并）
+Next：#116 → web_fetch → #117（均已立 Issue、未开工；#118 / #119 / #120 / #124 已于 2026-09-17 合并，#126 / #127 / #115 已于 2026-09-18 合并）
 当前阶段：本项目源码阅读；学完后由 AI 以 Pi 为参照实现云端 Agent，用户不读 Pi 代码（2026-09-15）
 候选子系统：session 事件流与 replay、审批门、compaction、定时任务（候选不等于 Active）
 Admin Task 4：Planned
