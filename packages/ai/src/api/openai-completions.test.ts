@@ -104,7 +104,7 @@ describe('OpenAICompatibleClient runtime config', () => {
     await assert.rejects(
       harness.client.chat(
         [{ role: 'user', content: 'hello' }],
-        { maxTokens: 131_073 },
+        { maxTokens: 384_001 },
       ),
       LLMConfigError,
     )

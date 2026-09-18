@@ -13,10 +13,7 @@ const ENV_NAMES = [
   'LLM_API_KEY',
   'LLM_BASE_URL',
   'LLM_MODEL',
-  'LLM_CHAT_REQUEST_TIMEOUT_MS',
-  'LLM_STREAM_TIMEOUT_MS',
-  'LLM_DEFAULT_MAX_OUTPUT_TOKENS',
-  'LLM_APPLICATION_MAX_OUTPUT_TOKENS',
+  'AGENT_DEBUG_CAPTURE_MODEL_IO',
 ] as const
 
 describe('LlmModule fail-fast assembly', () => {
@@ -30,11 +27,7 @@ describe('LlmModule fail-fast assembly', () => {
       try {
         const config = app.get(LLMRuntimeConfigService).value
 
-        assert.equal(config.chatRequestTimeoutMs, 60_000)
-        assert.equal(config.metadataRequestTimeoutMs, 10_000)
-        assert.equal(config.streamTimeoutMs, 600_000)
-        assert.equal(config.defaultMaxOutputTokens, 65_536)
-        assert.equal(config.applicationMaxOutputTokens, 131_072)
+        assert.equal(config.captureModelIO, false)
       }
       finally {
         await app.close()
@@ -42,39 +35,18 @@ describe('LlmModule fail-fast assembly', () => {
     })
   })
 
-  it('非法环境变量让应用上下文在初始化阶段失败', async () => {
-    await assertModuleInitializationFails({
-      LLM_CHAT_REQUEST_TIMEOUT_MS: '0',
-    })
-  })
-
-  it('默认输出大于应用硬上限时初始化失败', async () => {
-    await assertModuleInitializationFails({
-      LLM_DEFAULT_MAX_OUTPUT_TOKENS: '131073',
-      LLM_APPLICATION_MAX_OUTPUT_TOKENS: '131072',
-    })
-  })
-
-  it('应用硬上限大于当前模型 Provider 上限时初始化失败', async () => {
-    await assertModuleInitializationFails({
-      LLM_APPLICATION_MAX_OUTPUT_TOKENS: '384001',
+  it('LLM_MODEL 不支持时应用上下文在初始化阶段失败', async () => {
+    await withRuntimeEnv({ LLM_MODEL: 'unsupported-model' }, async () => {
+      await assert.rejects(
+        NestFactory.createApplicationContext(LlmModule, {
+          abortOnError: false,
+          logger: false,
+        }),
+        LLMConfigError,
+      )
     })
   })
 })
-
-async function assertModuleInitializationFails(
-  overrides: Record<string, string>,
-): Promise<void> {
-  await withRuntimeEnv(overrides, async () => {
-    await assert.rejects(
-      NestFactory.createApplicationContext(LlmModule, {
-        abortOnError: false,
-        logger: false,
-      }),
-      LLMConfigError,
-    )
-  })
-}
 
 async function withRuntimeEnv(
   overrides: Record<string, string>,

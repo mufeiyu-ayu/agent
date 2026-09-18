@@ -41,6 +41,15 @@ import {
 import { teeRawResponseCapture } from './openai-completions-raw-capture.js'
 import { adaptOpenAICompatibleStream } from './openai-completions-stream.js'
 
+/**
+ * 显式传给 SDK 的每类请求超时，不依赖 SDK 默认值；没有部署差异需求前不做 env。
+ * Agent Loop 只走 `chatStream`：600s 与 `AGENT_RUN_DEADLINE_MS` 分别治理，
+ * Run deadline 调大也不会放宽单轮采样；非流式 `chat` 的 60s 只适合短输出。
+ */
+const METADATA_REQUEST_TIMEOUT_MS = 10_000
+const CHAT_REQUEST_TIMEOUT_MS = 60_000
+const STREAM_TIMEOUT_MS = 600_000
+
 type ChatCompletionBaseParams = Pick<
   ChatCompletionCreateParamsNonStreaming,
   'messages' | 'model' | 'max_tokens' | 'response_format'
@@ -65,7 +74,7 @@ export class OpenAICompatibleClient {
   async listModels(): Promise<DeepSeekModelsResponse> {
     return await this.runWithLLMErrorHandling(() =>
       this.createClient().get<DeepSeekModelsResponse>('/models', {
-        timeout: this.runtimeConfig.metadataRequestTimeoutMs,
+        timeout: METADATA_REQUEST_TIMEOUT_MS,
       }),
     )
   }
@@ -73,7 +82,7 @@ export class OpenAICompatibleClient {
   async getUserBalance(): Promise<DeepSeekBalanceResponse> {
     return await this.runWithLLMErrorHandling(() =>
       this.createClient().get<DeepSeekBalanceResponse>('/user/balance', {
-        timeout: this.runtimeConfig.metadataRequestTimeoutMs,
+        timeout: METADATA_REQUEST_TIMEOUT_MS,
       }),
     )
   }
@@ -86,7 +95,7 @@ export class OpenAICompatibleClient {
           options,
         ) as unknown as ChatCompletionCreateParamsNonStreaming,
         {
-          timeout: this.runtimeConfig.chatRequestTimeoutMs,
+          timeout: CHAT_REQUEST_TIMEOUT_MS,
         },
       )
       const content = completion.choices[0]?.message.content
@@ -108,7 +117,7 @@ export class OpenAICompatibleClient {
   ): AsyncGenerator<ModelStreamEvent> {
     const client = this.createClient()
     const requestOptions = {
-      timeout: this.runtimeConfig.streamTimeoutMs,
+      timeout: STREAM_TIMEOUT_MS,
       ...(options?.signal ? { signal: options.signal } : {}),
     }
     // debug 捕获只在开关开启且调用方提供回调时生效；请求体不含 apiKey / baseUrl

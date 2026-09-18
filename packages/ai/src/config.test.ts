@@ -3,21 +3,18 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
 import {
-  DEFAULT_LLM_RUNTIME_CONFIG,
   resolveChatRequestConfig,
   resolveLLMRuntimeConfig,
 } from './config.js'
-import { LLMConfigError } from './errors.js'
+import { LLMAuthError, LLMConfigError } from './errors.js'
 
 describe('resolveLLMRuntimeConfig', () => {
-  it('缺省运维参数使用代码默认值', () => {
-    const config = resolveLLMRuntimeConfig(createEnv())
-
-    assert.deepEqual(config, {
+  it('只保留三个必填 env 与 debug 开关，baseUrl 去尾斜杠', () => {
+    assert.deepEqual(resolveLLMRuntimeConfig(createEnv()), {
       apiKey: 'test-api-key',
       baseUrl: 'https://api.deepseek.com/v1',
       model: 'deepseek-v4-flash',
-      ...DEFAULT_LLM_RUNTIME_CONFIG,
+      captureModelIO: false,
     })
   })
 
@@ -44,64 +41,33 @@ describe('resolveLLMRuntimeConfig', () => {
     }
   })
 
-  it('接受边界内的严格正整数覆盖', () => {
-    const config = resolveLLMRuntimeConfig(createEnv({
-      LLM_CHAT_REQUEST_TIMEOUT_MS: '90000',
-      LLM_STREAM_TIMEOUT_MS: '900000',
-      LLM_DEFAULT_MAX_OUTPUT_TOKENS: '70000',
-      LLM_APPLICATION_MAX_OUTPUT_TOKENS: '140000',
-    }))
-
-    assert.equal(config.chatRequestTimeoutMs, 90_000)
-    assert.equal(config.streamTimeoutMs, 900_000)
-    assert.equal(config.defaultMaxOutputTokens, 70_000)
-    assert.equal(config.applicationMaxOutputTokens, 140_000)
-  })
-
-  it('拒绝空字符串、浮点、负数、0、NaN、Infinity、指数和超大值', () => {
-    const invalidValues = [
-      '',
-      ' ',
-      '1.5',
-      '-1',
-      '0',
-      'NaN',
-      'Infinity',
-      '1e5',
-      '9007199254740992',
-      '2147483648',
-    ]
-
-    for (const value of invalidValues) {
-      assert.throws(
-        () => resolveLLMRuntimeConfig(createEnv({
-          LLM_CHAT_REQUEST_TIMEOUT_MS: value,
-        })),
-        LLMConfigError,
-      )
-    }
-  })
-
-  it('拒绝默认输出大于应用硬上限', () => {
+  it('LLM_API_KEY 缺失抛 LLMAuthError', () => {
     assert.throws(
-      () => resolveLLMRuntimeConfig(createEnv({
-        LLM_DEFAULT_MAX_OUTPUT_TOKENS: '131073',
-        LLM_APPLICATION_MAX_OUTPUT_TOKENS: '131072',
-      })),
+      () => resolveLLMRuntimeConfig(createEnv({ LLM_API_KEY: undefined })),
+      LLMAuthError,
+    )
+    assert.throws(
+      () => resolveLLMRuntimeConfig(createEnv({ LLM_API_KEY: ' ' })),
+      LLMAuthError,
+    )
+  })
+
+  it('LLM_BASE_URL 缺失抛 LLMConfigError', () => {
+    assert.throws(
+      () => resolveLLMRuntimeConfig(createEnv({ LLM_BASE_URL: undefined })),
+      LLMConfigError,
+    )
+    assert.throws(
+      () => resolveLLMRuntimeConfig(createEnv({ LLM_BASE_URL: '' })),
       LLMConfigError,
     )
   })
 
-  it('拒绝应用硬上限大于当前模型 Provider 上限', () => {
+  it('LLM_MODEL 缺失或不支持抛 LLMConfigError', () => {
     assert.throws(
-      () => resolveLLMRuntimeConfig(createEnv({
-        LLM_APPLICATION_MAX_OUTPUT_TOKENS: '384001',
-      })),
+      () => resolveLLMRuntimeConfig(createEnv({ LLM_MODEL: undefined })),
       LLMConfigError,
     )
-  })
-
-  it('拒绝缺失或不支持的默认模型', () => {
     assert.throws(
       () => resolveLLMRuntimeConfig(createEnv({ LLM_MODEL: '' })),
       LLMConfigError,
@@ -142,18 +108,30 @@ describe('resolveChatRequestConfig', () => {
     )
   })
 
-  it('拒绝不支持的调用级模型及越过应用硬上限的输出预算', () => {
+  it('调用级 maxTokens 只受 Provider 上限约束', () => {
+    const runtimeConfig = resolveLLMRuntimeConfig(createEnv())
+
+    assert.equal(
+      resolveChatRequestConfig(runtimeConfig, { maxTokens: 384_000 })
+        .maxOutputTokens,
+      384_000,
+    )
+    assert.throws(
+      () => resolveChatRequestConfig(runtimeConfig, { maxTokens: 384_001 }),
+      LLMConfigError,
+    )
+    assert.throws(
+      () => resolveChatRequestConfig(runtimeConfig, { maxTokens: 0 }),
+      LLMConfigError,
+    )
+  })
+
+  it('拒绝不支持的调用级模型', () => {
     const runtimeConfig = resolveLLMRuntimeConfig(createEnv())
 
     assert.throws(
       () => resolveChatRequestConfig(runtimeConfig, {
         model: 'unsupported-model',
-      }),
-      LLMConfigError,
-    )
-    assert.throws(
-      () => resolveChatRequestConfig(runtimeConfig, {
-        maxTokens: 131_073,
       }),
       LLMConfigError,
     )
