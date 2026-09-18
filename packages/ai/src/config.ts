@@ -5,26 +5,17 @@ import { DEFAULT_DEEPSEEK_REASONING_EFFORT } from '@agent/contracts'
 import { getModelProfile } from './deepseek.js'
 import { LLMAuthError, LLMConfigError } from './errors.js'
 
-const MAX_TIMER_TIMEOUT_MS = 2_147_483_647
-
-export const DEFAULT_LLM_RUNTIME_CONFIG = {
-  metadataRequestTimeoutMs: 10_000,
-  chatRequestTimeoutMs: 60_000,
-  streamTimeoutMs: 600_000,
-  defaultMaxOutputTokens: 65_536,
-  applicationMaxOutputTokens: 131_072,
-  captureModelIO: false,
-} as const
+/**
+ * 调用方未传 `ChatOptions.maxTokens` 时显式发送的 `max_tokens`。
+ * DeepSeek 不传时的默认值偏小，所以始终显式发送；没有部署差异需求前不做 env。
+ * 须不大于每个 profile 的 `providerMaxOutputTokens`，否则默认请求会被下面的校验拒绝。
+ */
+const DEFAULT_MAX_OUTPUT_TOKENS = 65_536
 
 export interface LLMRuntimeConfig {
   apiKey: string
   baseUrl: string
   model: SupportedDeepSeekModel
-  metadataRequestTimeoutMs: number
-  chatRequestTimeoutMs: number
-  streamTimeoutMs: number
-  defaultMaxOutputTokens: number
-  applicationMaxOutputTokens: number
   /** debug 开关：是否捕获 provider 原始请求 / 响应 JSON，默认关闭。 */
   captureModelIO: boolean
 }
@@ -61,48 +52,10 @@ export function resolveLLMRuntimeConfig(
   if (!profile)
     throw new LLMConfigError('LLM_MODEL', `不支持模型 ${model}`)
 
-  const chatRequestTimeoutMs = readPositiveInteger(
-    env,
-    'LLM_CHAT_REQUEST_TIMEOUT_MS',
-    DEFAULT_LLM_RUNTIME_CONFIG.chatRequestTimeoutMs,
-    MAX_TIMER_TIMEOUT_MS,
-  )
-  const streamTimeoutMs = readPositiveInteger(
-    env,
-    'LLM_STREAM_TIMEOUT_MS',
-    DEFAULT_LLM_RUNTIME_CONFIG.streamTimeoutMs,
-    MAX_TIMER_TIMEOUT_MS,
-  )
-  const defaultMaxOutputTokens = readPositiveInteger(
-    env,
-    'LLM_DEFAULT_MAX_OUTPUT_TOKENS',
-    DEFAULT_LLM_RUNTIME_CONFIG.defaultMaxOutputTokens,
-    profile.providerMaxOutputTokens,
-  )
-  const applicationMaxOutputTokens = readPositiveInteger(
-    env,
-    'LLM_APPLICATION_MAX_OUTPUT_TOKENS',
-    DEFAULT_LLM_RUNTIME_CONFIG.applicationMaxOutputTokens,
-    profile.providerMaxOutputTokens,
-  )
-
-  if (defaultMaxOutputTokens > applicationMaxOutputTokens) {
-    throw new LLMConfigError(
-      'LLM_DEFAULT_MAX_OUTPUT_TOKENS',
-      '不得大于 LLM_APPLICATION_MAX_OUTPUT_TOKENS',
-    )
-  }
-
   return {
     apiKey,
     baseUrl: baseUrl.replace(/\/+$/, ''),
     model: profile.id,
-    metadataRequestTimeoutMs:
-      DEFAULT_LLM_RUNTIME_CONFIG.metadataRequestTimeoutMs,
-    chatRequestTimeoutMs,
-    streamTimeoutMs,
-    defaultMaxOutputTokens,
-    applicationMaxOutputTokens,
     captureModelIO: readBooleanFlag(env, 'AGENT_DEBUG_CAPTURE_MODEL_IO'),
   }
 }
@@ -123,20 +76,13 @@ export function resolveChatRequestConfig(
   if (!profile)
     throw new LLMConfigError('model', `不支持模型 ${requestedModel || '(empty)'}`)
 
-  const maxOutputTokens = options.maxTokens
-    ?? runtimeConfig.defaultMaxOutputTokens
+  const maxOutputTokens = options.maxTokens ?? DEFAULT_MAX_OUTPUT_TOKENS
 
   if (
     !Number.isSafeInteger(maxOutputTokens)
     || maxOutputTokens <= 0
   ) {
     throw new LLMConfigError('maxTokens', '必须是正整数')
-  }
-  if (maxOutputTokens > runtimeConfig.applicationMaxOutputTokens) {
-    throw new LLMConfigError(
-      'maxTokens',
-      `不得大于应用硬上限 ${runtimeConfig.applicationMaxOutputTokens}`,
-    )
   }
   if (maxOutputTokens > profile.providerMaxOutputTokens) {
     throw new LLMConfigError(
@@ -151,36 +97,4 @@ export function resolveChatRequestConfig(
     maxOutputTokens,
     reasoningEffort: options.reasoningEffort ?? DEFAULT_DEEPSEEK_REASONING_EFFORT,
   }
-}
-
-function readPositiveInteger(
-  env: NodeJS.ProcessEnv,
-  name: string,
-  fallback: number,
-  maximum: number,
-): number {
-  const rawValue = env[name]
-
-  if (rawValue === undefined)
-    return fallback
-
-  const value = rawValue.trim()
-
-  if (!/^[1-9]\d*$/.test(value)) {
-    throw new LLMConfigError(
-      name,
-      `必须是 1-${maximum} 范围内的十进制正整数`,
-    )
-  }
-
-  const numericValue = Number(value)
-
-  if (!Number.isSafeInteger(numericValue) || numericValue > maximum) {
-    throw new LLMConfigError(
-      name,
-      `必须是 1-${maximum} 范围内的十进制正整数`,
-    )
-  }
-
-  return numericValue
 }
