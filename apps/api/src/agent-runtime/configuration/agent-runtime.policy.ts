@@ -8,9 +8,9 @@ export const DEFAULT_AGENT_RUNTIME_POLICY = {
   /** 单次 Run 一次查询最多读取的历史候选消息总数。 */
   historyCandidateHardLimit: 1_000,
   /** 单次 Run 最多允许发起的模型采样轮数。 */
-  maxSamplingRounds: 3,
+  maxSamplingRounds: 10,
   /** 单次 Run 最多允许执行的工具调用次数。 */
-  maxToolCalls: 2,
+  maxToolCalls: 8,
   /** 单次 Run 正常执行阶段的最长时间，单位为毫秒。 */
   runDeadlineMs: 600_000,
 } as const

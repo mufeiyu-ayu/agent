@@ -43,12 +43,21 @@ import { adaptOpenAICompatibleStream } from './openai-completions-stream.js'
 
 /**
  * 显式传给 SDK 的每类请求超时，不依赖 SDK 默认值；没有部署差异需求前不做 env。
- * Agent Loop 只走 `chatStream`：600s 与 `AGENT_RUN_DEADLINE_MS` 分别治理，
- * Run deadline 调大也不会放宽单轮采样；非流式 `chat` 的 60s 只适合短输出。
+ * SDK timeout 只约束到首个响应头，且重试时每次尝试各自计时；Agent Loop 只走
+ * `chatStream`，流正文阶段只受 `AGENT_RUN_DEADLINE_MS` 的 abort 约束；
+ * 非流式 `chat` 的 60s 只适合短输出。
  */
 const METADATA_REQUEST_TIMEOUT_MS = 10_000
 const CHAT_REQUEST_TIMEOUT_MS = 60_000
 const STREAM_TIMEOUT_MS = 600_000
+/**
+ * 交给 SDK 内置重试的瞬态失败次数（408 / 409 / 429 / 5xx、连接错误；退避与
+ * `retry-after` 由 SDK 处理）。重试边界是首个响应头之前：流正文中断不重试，
+ * 已推给调用方的 delta 无法撤回；abort 信号触发后也不再重试。
+ * SDK 的退避 sleep 不监听 signal，且对 `retry-after` 不设上限，`chatStream`
+ * 用 `rejectOnAbort` 让 abort 立即胜出，deadline / 用户停止不会被 sleep 拖住。
+ */
+const REQUEST_MAX_RETRIES = 2
 
 type ChatCompletionBaseParams = Pick<
   ChatCompletionCreateParamsNonStreaming,
@@ -116,9 +125,13 @@ export class OpenAICompatibleClient {
     options?: ChatStreamOptions,
   ): AsyncGenerator<ModelStreamEvent> {
     const client = this.createClient()
+    // SDK 每次尝试都在 signal 上挂 abort 监听且成功后不移除；一个 Run 的多轮采样
+    // 共用同一个 run 级 signal，按尝试次数累积到 11 个就打 MaxListenersExceededWarning，
+    // 派生一次性信号把监听隔离到本次调用。
+    const signal = options?.signal && AbortSignal.any([options.signal])
     const requestOptions = {
       timeout: STREAM_TIMEOUT_MS,
-      ...(options?.signal ? { signal: options.signal } : {}),
+      ...(signal ? { signal } : {}),
     }
     // debug 捕获只在开关开启且调用方提供回调时生效；请求体不含 apiKey / baseUrl
     // 等凭据（它们只存在于 SDK client 配置里，不在请求 params 中）。
@@ -165,9 +178,12 @@ export class OpenAICompatibleClient {
       safelyCaptureRequest(debugCapture, requestParams, notifyCaptureError)
 
       requestStarted = true
-      const stream = await client.chat.completions.create(
-        requestParams as unknown as ChatCompletionCreateParamsStreaming,
-        requestOptions,
+      const stream = await rejectOnAbort(
+        client.chat.completions.create(
+          requestParams as unknown as ChatCompletionCreateParamsStreaming,
+          requestOptions,
+        ),
+        signal,
       )
 
       yield* adaptOpenAICompatibleStream(
@@ -199,7 +215,7 @@ export class OpenAICompatibleClient {
     return new OpenAI({
       apiKey,
       baseURL: baseUrl,
-      maxRetries: 0,
+      maxRetries: REQUEST_MAX_RETRIES,
     })
   }
 
@@ -278,6 +294,27 @@ export class OpenAICompatibleClient {
 
     return `LLM API ${status} 错误${message}`
   }
+}
+
+/**
+ * abort 时立即以 SDK 同款 `APIUserAbortError` 拒绝，不等 SDK 退避 sleep 醒来。
+ * 晚醒的 SDK promise 落到已 settle 的 reject 上是 no-op，不会产生 unhandled rejection。
+ */
+function rejectOnAbort<T>(
+  request: Promise<T>,
+  signal: AbortSignal | undefined,
+): Promise<T> {
+  if (!signal)
+    return request
+
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = (): void => reject(new APIUserAbortError())
+
+    signal.addEventListener('abort', onAbort, { once: true })
+    request.then(resolve, reject).finally(() => {
+      signal.removeEventListener('abort', onAbort)
+    })
+  })
 }
 
 function safelyCaptureRequest(
