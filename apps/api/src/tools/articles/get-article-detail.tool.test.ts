@@ -284,7 +284,6 @@ describe('get_article_detail', () => {
       ok: false,
       code: 'execution_failed',
       modelContent: '工具 get_article_detail 执行失败。',
-      retryable: false,
     })
     assert.doesNotMatch(result.modelContent, /database|password|secret|stack|driver/)
   })

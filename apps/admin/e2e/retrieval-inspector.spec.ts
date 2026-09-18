@@ -7,12 +7,9 @@ import { expect, test } from '@playwright/test'
 import {
   createAnsweredDetail,
   createFailedDetail,
-  createFailedSummaryDetail,
   createLongIdentifierDetail,
-  createMalformedDetail,
   createOrdinaryDetail,
   createRunningDetail,
-  createUnclassifiableToolDetail,
   createUnknownResultDetail,
   createZeroHitDetail,
   FORBIDDEN_DOM_PATTERNS,
@@ -27,7 +24,6 @@ const SCREENSHOT_DIR = fileURLToPath(
 
 const SWITCH = '[data-testid="inspector-view-switch"]'
 const RETRIEVAL = '[data-testid="retrieval-inspector"]'
-const AVAILABILITY = '[data-testid="retrieval-availability"]'
 const CALLS = '[data-testid="retrieval-calls"]'
 const CALL_STATUS = '[data-testid^="retrieval-call-status-"]'
 const CITATIONS = '[data-testid="retrieval-citations"]'
@@ -102,11 +98,12 @@ test.describe('Event / Retrieval 切换', () => {
   test('Issue #94：Header、Sampling 与 Finalization 展示 reasoning / cache Usage', async ({ page }) => {
     await openRunDetail(page, createAnsweredDetail())
 
-    const header = page.locator('.trace-header')
+    await page.locator('.trace-header').getByRole('button', { name: '详情' }).click()
+    const details = page.locator('.trace-header__details')
 
-    await expect(header).toContainText('推理 Token')
-    await expect(header).toContainText('缓存命中 Token')
-    await expect(header).toContainText('缓存未命中 Token')
+    await expect(details).toContainText('推理 Token')
+    await expect(details).toContainText('缓存命中 Token')
+    await expect(details).toContainText('缓存未命中 Token')
 
     await page.getByText('模型采样').first().click()
     await page.getByRole('tab', { name: '用量' }).click()
@@ -120,7 +117,7 @@ test.describe('Event / Retrieval 切换', () => {
     await expectNoForbiddenText(page)
   })
 
-  test('AC-01 / AC-02 / AC-10：COMPLETED answered 可切换并读到分层的检索审计', async ({ page }) => {
+  test('AC-01 / AC-02 / AC-10：COMPLETED answered 可切换并读到分层的检索事实', async ({ page }) => {
     await openRunDetail(page, createAnsweredDetail())
 
     // Event 是默认视图，既有 Inspector 行为不变。
@@ -129,7 +126,6 @@ test.describe('Event / Retrieval 切换', () => {
 
     await switchToRetrieval(page)
 
-    await expect(page.locator(AVAILABILITY)).toHaveText('审计完整')
     // candidate / evidence / cited 三层必须分别可读。
     const overview = page.locator(RETRIEVAL).locator('dl').first()
 
@@ -137,16 +133,14 @@ test.describe('Event / Retrieval 切换', () => {
     await expect(overview).toContainText('证据引用身份数')
     await expect(overview).toContainText('被引用来源数')
     await expect(overview).toContainText('可关联引用')
+    await expect(readOverviewField(page, '可关联引用')).toHaveText('2 / 2')
 
+    // 工具身份按 stepId 从 timeline 的 tool step 取。
     await expect(page.locator(CALLS).locator('li').first()).toContainText(
-      'retrieve_article_context@1',
+      'retrieve_article_context',
     )
     await expect(page.locator(CITATIONS).locator('> li')).toHaveCount(2)
-    await expect(page.locator(CITATIONS)).toContainText('可关联')
-    await expect(page.locator(CITATIONS)).toContainText('文章片段')
     await expect(page.locator(CITATIONS)).toContainText('整篇文章')
-    await expect(page.locator(RETRIEVAL)).toContainText('引用身份已校验')
-    await expect(page.locator(RETRIEVAL)).toContainText('未做逐断言核验')
 
     await expectNoForbiddenText(page)
     await page.screenshot({
@@ -159,7 +153,7 @@ test.describe('Event / Retrieval 切换', () => {
     await expect(page.getByText('请求检查器')).toBeVisible()
   })
 
-  test('AC-05 / AC-12：切换不破坏既有 Timeline、搜索、折叠与 Safe Raw Data', async ({ page }) => {
+  test('AC-05 / AC-12：切换不破坏既有 Timeline、搜索与折叠', async ({ page }) => {
     await openRunDetail(page, createAnsweredDetail())
 
     const ledger = page.locator('.run-trace-ledger, [aria-label="事件与内容台账"]').first()
@@ -174,7 +168,7 @@ test.describe('Event / Retrieval 切换', () => {
     await page.getByRole('button', { name: '折叠请求', exact: true }).click()
     await expect(ledger).toBeVisible()
 
-    // grounded_finalization 现在是 typed Step，不再落 Generic。
+    // grounded_finalization 是 typed Step，不落 Generic。
     await page.getByText('校验回答引用').first().click()
     await expect(page.getByText('引用校验检查器')).toBeVisible()
     await expect(page.getByText('通用', { exact: true })).toHaveCount(0)
@@ -182,14 +176,13 @@ test.describe('Event / Retrieval 切换', () => {
 })
 
 test.describe('状态矩阵', () => {
-  test('AC-08 / AC-11：RUNNING 展示已发生调用且 finalization 缺失', async ({ page }) => {
+  test('AC-08 / AC-11：RUNNING 展示已发生调用且 citations 缺失', async ({ page }) => {
     await openRunDetail(page, createRunningDetail())
     await switchToRetrieval(page)
 
-    await expect(page.locator(AVAILABILITY)).toHaveText('审计不完整')
     await expect(page.locator(CALLS).locator('> li')).toHaveCount(1)
-    await expect(page.locator('[data-testid="retrieval-no-finalization"]')).toBeVisible()
     await expect(page.locator('[data-testid="retrieval-no-citations"]')).toBeVisible()
+    await expect(readOverviewField(page, '可关联引用')).toHaveText('未记录')
 
     await expectNoForbiddenText(page)
     await page.screenshot({
@@ -202,14 +195,17 @@ test.describe('状态矩阵', () => {
     await openRunDetail(page, createFailedDetail())
     await switchToRetrieval(page)
 
-    await expect(page.locator(AVAILABILITY)).toHaveText('审计不完整')
     await expect(page.locator(RETRIEVAL)).toContainText('timeout')
-    await expect(page.locator(RETRIEVAL)).toContainText('sampling_incomplete')
-    await expect(page.locator(RETRIEVAL)).toContainText('stream_failed')
-    await expect(page.locator(RETRIEVAL)).toContainText('证据通道不可用')
-    // 候选数量未知：必须显示「未记录」，不能显示 0。
+    // 候选数量未记录：必须显示「未记录」，不能显示 0。
     await expect(readOverviewField(page, '候选数量')).toHaveText('未记录')
     await expect(page.locator(CALL_STATUS)).toHaveAttribute('data-tone', 'error')
+
+    // finalization 的失败类别在 Event 视图的引用校验检查器里读。
+    await switchToEvent(page)
+    await page.getByText('校验回答引用').first().click()
+    await expect(page.locator('.run-trace-inspector')).toContainText('sampling_incomplete')
+    await expect(page.locator('.run-trace-inspector')).toContainText('stream_failed')
+    await expect(page.locator('.run-trace-inspector')).toContainText('证据通道不可用')
 
     await expectNoForbiddenText(page)
     await page.screenshot({
@@ -218,18 +214,20 @@ test.describe('状态矩阵', () => {
     })
   })
 
-  test('AC-08：zero-hit 显示确定的候选数量 0，与 Tool 不可用的未知区分开', async ({ page }) => {
+  test('AC-08：zero-hit 显示确定的候选数量 0，与 Tool 不可用的未记录区分开', async ({ page }) => {
     await openRunDetail(page, createZeroHitDetail())
     await switchToRetrieval(page)
 
-    await expect(page.locator(AVAILABILITY)).toHaveText('审计完整')
-    // zero-hit 是「确定没有候选」，与「候选数量未知」必须显示不同。
+    // zero-hit 是「确定没有候选」，与「候选数量未记录」必须显示不同。
     await expect(readOverviewField(page, '候选数量')).toHaveText('0')
     await expect(readOverviewField(page, '证据引用身份数')).toHaveText('0')
-    await expect(page.locator(RETRIEVAL)).toContainText('没有命中证据')
-    await expect(page.locator(RETRIEVAL)).toContainText('证据不足')
     await expect(page.locator(RETRIEVAL)).toContainText('本次回答没有引用任何来源')
     await expect(page.locator(CALL_STATUS)).toHaveAttribute('data-tone', 'success')
+
+    await switchToEvent(page)
+    await page.getByText('校验回答引用').first().click()
+    await expect(page.locator('.run-trace-inspector')).toContainText('没有命中证据')
+    await expect(page.locator('.run-trace-inspector')).toContainText('证据不足')
 
     await expectNoForbiddenText(page)
     await page.screenshot({
@@ -258,11 +256,10 @@ test.describe('状态矩阵', () => {
     })
   })
 
-  test('AC-05：普通未检索 Run 显示中性 not_applicable 文案', async ({ page }) => {
+  test('AC-05：普通未检索 Run 显示中性的未进入检索链路文案', async ({ page }) => {
     await openRunDetail(page, createOrdinaryDetail())
     await switchToRetrieval(page)
 
-    await expect(page.locator(AVAILABILITY)).toHaveText('未进入检索链路')
     await expect(page.locator(RETRIEVAL)).toContainText(
       '本 Run 未进入 Grounding / Retrieval 链路',
     )
@@ -275,74 +272,6 @@ test.describe('状态矩阵', () => {
 
     await page.screenshot({
       path: `${SCREENSHOT_DIR}ordinary-not-applicable.png`,
-      fullPage: true,
-    })
-  })
-
-  test('AC-05 / AC-08：只有身份不完整的 Tool Step 时显示审计不可用而非未进入检索', async ({ page }) => {
-    await openRunDetail(page, createUnclassifiableToolDetail())
-    await switchToRetrieval(page)
-
-    await expect(page.locator(AVAILABILITY)).toHaveText('审计数据不可用')
-    // not_applicable 与 unavailable 的文案必须不同，不能说成「未进入检索链路」。
-    await expect(page.locator(RETRIEVAL)).not.toContainText('未进入检索链路')
-    await expect(page.locator(RETRIEVAL)).not.toContainText(
-      '本 Run 未进入 Grounding / Retrieval 链路',
-    )
-    await expect(page.locator(RETRIEVAL)).toContainText('可信的检索 / 引用数据缺失或损坏')
-    await expect(page.locator(RETRIEVAL)).toContainText('没有可投影的证据类检索调用')
-    // Run 级总数必须是未知，不能把「无法确认」显示成确定的 0。
-    await expect(readOverviewField(page, '候选数量')).toHaveText('未记录')
-    await expect(readOverviewField(page, '证据引用身份数')).toHaveText('未记录')
-
-    await expectNoForbiddenText(page)
-    await page.screenshot({
-      path: `${SCREENSHOT_DIR}unclassifiable-tool-unavailable.png`,
-      fullPage: true,
-    })
-  })
-
-  test('AC-06 / AC-08：失败调用的 toolSummary 不产生候选、引用或 matched Citation', async ({ page }) => {
-    await openRunDetail(page, createFailedSummaryDetail())
-    await switchToRetrieval(page)
-
-    await expect(page.locator(AVAILABILITY)).toHaveText('审计不完整')
-    await expect(page.locator(CALLS)).toContainText('元数据不可信')
-    await expect(page.locator(CALL_STATUS)).toHaveAttribute('data-tone', 'error')
-    // 伪造的 candidate / strategy / refs 一律不展示。
-    await expect(readOverviewField(page, '候选数量')).toHaveText('未记录')
-    await expect(readOverviewField(page, '证据引用身份数')).toHaveText('未记录')
-    await expect(page.locator(CALLS)).toContainText('本次调用没有可投影的引用身份')
-    // Citation 全部 unmatched，不得因为伪造身份而显示可关联。
-    await expect(page.locator(CITATIONS)).not.toContainText('可关联')
-    await expect(page.locator(CITATIONS).locator('> li')).toHaveCount(2)
-    await expect(readOverviewField(page, '可关联引用')).toHaveText('0 / 2')
-
-    await expectNoForbiddenText(page)
-    await page.screenshot({
-      path: `${SCREENSHOT_DIR}failed-summary-fail-closed.png`,
-      fullPage: true,
-    })
-  })
-
-  test('AC-06：malformed 数据 fail closed，不显示原始 JSON', async ({ page }) => {
-    await openRunDetail(page, createMalformedDetail())
-    await switchToRetrieval(page)
-
-    await expect(page.locator(AVAILABILITY)).toHaveText('审计不完整')
-    await expect(page.locator(CALLS)).toContainText('元数据不可信')
-    await expect(page.locator(RETRIEVAL)).toContainText('不可用')
-    await expect(page.locator('[data-testid="retrieval-no-citations"]')).toBeVisible()
-    // 不出现原始 JSON 结构。
-    await expect(page.locator(RETRIEVAL)).not.toContainText('{"')
-
-    await switchToEvent(page)
-    await page.getByText('校验回答引用').first().click()
-    await expect(page.getByText('通用检查器')).toBeVisible()
-
-    await expectNoForbiddenText(page)
-    await page.screenshot({
-      path: `${SCREENSHOT_DIR}malformed-fail-closed.png`,
       fullPage: true,
     })
   })
@@ -366,7 +295,6 @@ test.describe('窄屏布局', () => {
     expect(shell.bodyMinWidth).toBe('1024px')
     expect(shell.documentScrollWidth).toBe(1024)
 
-    await expect(page.locator(AVAILABILITY)).toBeVisible()
     await expect(page.locator(CALLS)).toBeVisible()
     await expect(page.locator(CITATIONS)).toBeVisible()
     await expectNoInspectorOverflow(page)
@@ -378,7 +306,7 @@ test.describe('窄屏布局', () => {
     })
   })
 
-  test('AC-11：单列断点下 Overview、Finalization 与 Citation Ledger 无横向溢出', async ({ page }) => {
+  test('AC-11：单列断点下 Overview 与 Citation Ledger 无横向溢出', async ({ page }) => {
     await page.setViewportSize({ width: 1024, height: 900 })
     await openRunDetail(page, createLongIdentifierDetail())
     await switchToRetrieval(page)
@@ -390,7 +318,7 @@ test.describe('窄屏布局', () => {
     })
 
     expect(singleColumn).toBe(1)
-    await expect(page.locator(AVAILABILITY)).toBeVisible()
+    await expect(page.locator(CALLS)).toBeVisible()
     await expectNoInspectorOverflow(page)
 
     await page.screenshot({

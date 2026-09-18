@@ -5,8 +5,6 @@ export type {
   AdminRunListItem as RunListItem,
   AdminRunMessage as RunMessageItem,
   MessageStatus as RunMessageStatus,
-  AdminRunSafeRawData as RunSafeRawData,
-  AdminRunSafeStepProjection as RunSafeStepProjection,
   AgentRunStatus as RunStatus,
   AgentStepStatus as RunStepStatus,
   AdminRunSummary as RunSummary,

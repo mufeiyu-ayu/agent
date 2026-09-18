@@ -1,30 +1,32 @@
 <script setup lang="ts">
-import type { AdminRetrievalInspector } from '@agent/contracts'
+import type { AdminRetrievalInspector, AdminRunTimelineItem } from '@agent/contracts'
 import { Empty, Tag } from 'ant-design-vue'
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-import { formatDuration, formatTokens } from '../../run.utils'
 import {
+  createRetrievalCallCards,
   createRetrievalInspectorCounts,
-  resolveAvailabilityTone,
   resolveCallStatusTone,
+  toRefIdentity,
   toTagColor,
 } from '../retrieval-inspector.presenter'
 import InspectorFieldList from './InspectorFieldList.vue'
 
 const props = defineProps<{
   inspector: AdminRetrievalInspector
+  timeline: AdminRunTimelineItem[]
 }>()
 
-const { locale, t } = useI18n()
+const { t } = useI18n()
 const unavailable = computed(() => t('runTrace.inspector.unavailable'))
-const counts = computed(() => createRetrievalInspectorCounts(props.inspector))
+const cards = computed(() => createRetrievalCallCards(props.inspector, props.timeline))
+const counts = computed(() => createRetrievalInspectorCounts(cards.value, props.inspector.citations))
+/** 没有证据类调用、没有 finalization Step、也没有持久化 Grounding：本 Run 从未进入检索链路。 */
 const notApplicable = computed(
-  () => props.inspector.availability === 'not_applicable',
-)
-const tagColor = computed(
-  () => toTagColor(resolveAvailabilityTone(props.inspector.availability)),
+  () => props.inspector.retrievalCalls.length === 0
+    && props.inspector.citations === null
+    && !props.timeline.some(item => item.type === 'grounded_finalization'),
 )
 
 const overviewFields = computed(() => [
@@ -42,7 +44,7 @@ const overviewFields = computed(() => [
   },
   {
     label: t('retrieval.fields.evidenceRefCount'),
-    value: show(counts.value.evidenceRefCount),
+    value: counts.value.evidenceRefCount,
   },
   {
     label: t('retrieval.fields.citedSourceCount'),
@@ -54,100 +56,7 @@ const overviewFields = computed(() => [
       ? unavailable.value
       : `${counts.value.matchedCitationCount} / ${counts.value.citationCount}`,
   },
-  {
-    label: t('retrieval.fields.callsTruncated'),
-    value: yesNo(props.inspector.callsTruncated),
-  },
 ])
-
-const finalizationFields = computed(() => {
-  const finalization = props.inspector.finalization
-
-  if (!finalization)
-    return []
-
-  return [
-    {
-      label: t('retrieval.fields.validation'),
-      value: t(`retrieval.validation.${finalization.validation}`),
-    },
-    {
-      label: t('retrieval.fields.evidenceAvailability'),
-      value: finalization.evidenceAvailability === null
-        ? unavailable.value
-        : t(`retrieval.evidenceAvailability.${finalization.evidenceAvailability}`),
-    },
-    {
-      label: t('retrieval.fields.outcome'),
-      value: finalization.outcome === null
-        ? unavailable.value
-        : t(`retrieval.outcome.${finalization.outcome}`),
-    },
-    {
-      label: t('retrieval.fields.attempts'),
-      value: finalization.attemptCount === null
-        ? unavailable.value
-        : `${finalization.attemptCount} / ${finalization.maxAttempts}`,
-    },
-    {
-      label: t('retrieval.fields.failureReason'),
-      value: finalization.failureReason ?? unavailable.value,
-      mono: true,
-    },
-    {
-      label: t('retrieval.fields.rejectionCode'),
-      value: finalization.rejectionCode ?? unavailable.value,
-      mono: true,
-    },
-    {
-      label: t('retrieval.fields.samplingFailure'),
-      value: finalization.samplingFailure ?? unavailable.value,
-      mono: true,
-    },
-    {
-      label: t('retrieval.fields.registryRefCount'),
-      value: show(finalization.registryRefCount),
-    },
-    {
-      label: t('retrieval.fields.registryTruncated'),
-      value: finalization.registryTruncated === null
-        ? unavailable.value
-        : yesNo(finalization.registryTruncated),
-    },
-    {
-      label: t('retrieval.fields.citationCount'),
-      value: show(finalization.citationCount),
-    },
-    {
-      label: t('retrieval.fields.citationIntegrity'),
-      value: finalization.citationIntegrity === null
-        ? unavailable.value
-        : t('retrieval.citationIntegrity.validated'),
-    },
-    {
-      label: t('retrieval.fields.faithfulness'),
-      value: finalization.faithfulnessStatus === null
-        ? unavailable.value
-        : t('retrieval.faithfulness.notEvaluated'),
-    },
-    {
-      label: t('retrieval.fields.schemaVersion'),
-      value: show(finalization.schemaVersion),
-    },
-    {
-      label: t('retrieval.fields.tokens'),
-      value: finalization.usage === null
-        ? unavailable.value
-        : formatTokens(finalization.usage.totalTokens, locale.value),
-    },
-    {
-      label: t('eventDetail.fields.duration'),
-      value: finalization.durationMs === null
-        ? unavailable.value
-        : formatDuration(finalization.durationMs),
-    },
-  ]
-})
 
 function show(value: string | number | null): string | number {
   return value ?? unavailable.value
@@ -171,13 +80,6 @@ function callStatusColor(ok: boolean | null): string {
 
 <template>
   <div class="retrieval-inspector" data-testid="retrieval-inspector">
-    <header class="retrieval-inspector__status">
-      <Tag :color="tagColor" data-testid="retrieval-availability">
-        {{ t(`retrieval.availability.${inspector.availability}`) }}
-      </Tag>
-      <p>{{ t(`retrieval.availabilityHint.${inspector.availability}`) }}</p>
-    </header>
-
     <Empty
       v-if="notApplicable"
       class="retrieval-inspector__empty"
@@ -193,27 +95,24 @@ function callStatusColor(ok: boolean | null): string {
       <section class="retrieval-inspector__block">
         <h4>{{ t('retrieval.sections.calls') }}</h4>
 
-        <p v-if="inspector.retrievalCalls.length === 0" class="retrieval-inspector__hint">
+        <p v-if="cards.length === 0" class="retrieval-inspector__hint">
           {{ t('retrieval.emptyCalls') }}
         </p>
 
         <ul v-else class="retrieval-inspector__list" data-testid="retrieval-calls">
           <li
-            v-for="call in inspector.retrievalCalls"
+            v-for="call in cards"
             :key="call.stepId"
             class="retrieval-inspector__card"
           >
             <div class="retrieval-inspector__card-head">
-              <code>{{ call.toolName ?? unavailable }}@{{ call.toolVersion ?? '?' }}</code>
+              <code>{{ call.toolName ?? unavailable }}</code>
               <Tag
                 :color="callStatusColor(call.ok)"
                 :data-testid="`retrieval-call-status-${call.stepId}`"
                 :data-tone="resolveCallStatusTone(call.ok)"
               >
                 {{ callStatusLabel(call.ok) }}
-              </Tag>
-              <Tag v-if="!call.metadataTrusted" color="orange">
-                {{ t('retrieval.call.untrusted') }}
               </Tag>
             </div>
 
@@ -247,51 +146,19 @@ function callStatusColor(ok: boolean | null): string {
                 </dd>
               </div>
               <div>
-                <dt>{{ t('runTrace.inspector.fields.originalChars') }}</dt>
-                <dd>{{ show(call.originalChars) }}</dd>
-              </div>
-              <div>
-                <dt>{{ t('runTrace.inspector.fields.observationChars') }}</dt>
-                <dd>{{ show(call.observationChars) }}</dd>
-              </div>
-              <div>
                 <dt>{{ t('eventDetail.fields.truncated') }}</dt>
                 <dd>{{ call.truncated === null ? unavailable : yesNo(call.truncated) }}</dd>
               </div>
-              <div>
-                <dt>{{ t('eventDetail.fields.recordedDuration') }}</dt>
-                <dd>{{ call.recordedDurationMs === null ? unavailable : formatDuration(call.recordedDurationMs) }}</dd>
-              </div>
             </dl>
 
-            <p v-if="call.refs.length === 0" class="retrieval-inspector__hint">
-              {{ t('retrieval.call.noRefs') }}
-            </p>
-
-            <ul v-else class="retrieval-inspector__refs">
-              <li v-for="ref in call.refs" :key="`${ref.sourceId}:${ref.chunkId ?? ''}`">
+            <ul v-if="call.refs.length > 0" class="retrieval-inspector__refs">
+              <li v-for="ref in call.refs" :key="toRefIdentity(ref)">
                 <code>#{{ ref.sourceId }}</code>
-                <span>{{ ref.chunkId ?? t('retrieval.granularity.article') }}</span>
+                <span>{{ ref.chunkId ?? t('retrieval.wholeArticle') }}</span>
               </li>
             </ul>
-
-            <p v-if="call.refsTruncated" class="retrieval-inspector__hint">
-              {{ t('retrieval.call.refsTruncated') }}
-            </p>
           </li>
         </ul>
-      </section>
-
-      <InspectorFieldList
-        v-if="inspector.finalization"
-        :title="t('retrieval.sections.finalization')"
-        :items="finalizationFields"
-      />
-      <section v-else class="retrieval-inspector__block">
-        <h4>{{ t('retrieval.sections.finalization') }}</h4>
-        <p class="retrieval-inspector__hint" data-testid="retrieval-no-finalization">
-          {{ t('retrieval.emptyFinalization') }}
-        </p>
       </section>
 
       <section class="retrieval-inspector__block">
@@ -314,16 +181,13 @@ function callStatusColor(ok: boolean | null): string {
 
         <ul v-else class="retrieval-inspector__list" data-testid="retrieval-citations">
           <li
-            v-for="citation in inspector.citations"
+            v-for="(citation, index) in inspector.citations"
             :key="citation.citationId"
             class="retrieval-inspector__card"
           >
             <div class="retrieval-inspector__card-head">
-              <span class="retrieval-inspector__index">{{ citation.sequence }}</span>
+              <span class="retrieval-inspector__index">{{ index + 1 }}</span>
               <strong>{{ citation.title }}</strong>
-              <Tag :color="citation.correlation === 'matched' ? 'green' : 'orange'">
-                {{ t(`retrieval.correlation.${citation.correlation}`) }}
-              </Tag>
             </div>
 
             <dl class="retrieval-inspector__facts">
@@ -336,12 +200,8 @@ function callStatusColor(ok: boolean | null): string {
               <div>
                 <dt>{{ t('retrieval.fields.chunkId') }}</dt>
                 <dd class="is-mono">
-                  {{ citation.chunkId ?? unavailable }}
+                  {{ citation.chunkId ?? t('retrieval.wholeArticle') }}
                 </dd>
-              </div>
-              <div>
-                <dt>{{ t('retrieval.fields.granularity') }}</dt>
-                <dd>{{ t(`retrieval.granularity.${citation.granularity}`) }}</dd>
               </div>
               <div>
                 <dt>{{ t('retrieval.fields.sectionPath') }}</dt>
@@ -372,28 +232,7 @@ function callStatusColor(ok: boolean | null): string {
 <style scoped>
 .retrieval-inspector {
   min-width: 0;
-}
-
-.retrieval-inspector__status {
-  display: flex;
-  min-width: 0;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  padding: 16px 0 4px;
-}
-
-.retrieval-inspector__status :deep(.ant-tag) {
-  margin: 0;
-}
-
-.retrieval-inspector__status p {
-  min-width: 0;
-  margin: 0;
-  color: var(--admin-text-muted);
-  font-size: var(--admin-font-sm);
-  line-height: 1.6;
-  overflow-wrap: anywhere;
+  padding-top: 12px;
 }
 
 .retrieval-inspector__block {

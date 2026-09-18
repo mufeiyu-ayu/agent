@@ -31,7 +31,6 @@ export const knownTimelineTitleKeys = {
   grounded_finalization: 'timeline.titles.groundedFinalization',
   load_conversation_history: 'timeline.titles.loadConversationHistory',
   model_sampling: 'timeline.titles.modelSampling',
-  receive_user_message: 'timeline.titles.receiveUserMessage',
   tool_execution: 'timeline.titles.toolExecution',
 } as const
 
@@ -40,13 +39,8 @@ export const knownTimelineInspectorKeys = {
   grounded_finalization: 'timeline.inspectors.groundedFinalization',
   load_conversation_history: 'timeline.inspectors.loadConversationHistory',
   model_sampling: 'timeline.inspectors.modelSampling',
-  receive_user_message: 'timeline.inspectors.receiveUserMessage',
   tool_execution: 'timeline.inspectors.toolExecution',
 } as const
-
-export function formatRequestedModel(model: string | null, fallback = 'Default request'): string {
-  return model ?? fallback
-}
 
 export function formatDuration(durationMs: number | null): string {
   if (durationMs === null)

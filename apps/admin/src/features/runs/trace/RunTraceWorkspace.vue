@@ -308,6 +308,7 @@ function resetInspectorWidth() {
             :record="selectedRecord"
             :request-group="selectedRequestGroup"
             :retrieval-inspector="run.retrievalInspector"
+            :timeline="run.timeline"
           />
         </div>
       </div>

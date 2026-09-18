@@ -345,9 +345,9 @@ describe('AgentRunRecorderService', () => {
     const steps = []
 
     for (const type of [
-      AGENT_STEP_TYPES.receiveUserMessage,
       AGENT_STEP_TYPES.loadConversationHistory,
       AGENT_STEP_TYPES.modelSampling,
+      AGENT_STEP_TYPES.assistantOutput,
     ]) {
       steps.push(await harness.recorder.startStep({ runId: run.id, type }, TEST_DEADLINE))
     }
@@ -363,11 +363,11 @@ describe('AgentRunRecorderService', () => {
 
     const firstStep = await harness.recorder.startStep({
       runId: firstRun.id,
-      type: AGENT_STEP_TYPES.receiveUserMessage,
+      type: AGENT_STEP_TYPES.loadConversationHistory,
     }, TEST_DEADLINE)
     const secondStep = await harness.recorder.startStep({
       runId: secondRun.id,
-      type: AGENT_STEP_TYPES.receiveUserMessage,
+      type: AGENT_STEP_TYPES.loadConversationHistory,
     }, TEST_DEADLINE)
 
     assert.equal(firstStep.sequence, 1)

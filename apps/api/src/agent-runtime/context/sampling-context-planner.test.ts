@@ -612,7 +612,6 @@ describe('summarizeInitialContext', () => {
     })
 
     assert.deepEqual(flattenPlanningState(context.forPlanning()), before)
-    assert.equal(context.snapshot(1).itemCount, before.length)
   })
 
   it('读取条数等于硬上限时标记 candidate_cap，否则为 null', () => {

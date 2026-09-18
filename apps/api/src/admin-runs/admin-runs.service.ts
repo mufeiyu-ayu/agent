@@ -59,7 +59,6 @@ const ADMIN_RUN_LIST_SELECT = {
 const ADMIN_RUN_DETAIL_SELECT = {
   id: true,
   conversationId: true,
-  userMessageId: true,
   assistantMessageId: true,
   status: true,
   startedAt: true,
@@ -84,18 +83,10 @@ const ADMIN_RUN_DETAIL_SELECT = {
       content: true,
       createdAt: true,
       updatedAt: true,
-      // 只取构建 Retrieval Inspector 必需的 Grounding 字段；不读取文章正文，
-      // 归属与合法性仍由 `toOwnedMessageGroundingV1` 在投影时复核。
-      grounding: {
-        select: {
-          schemaVersion: true,
-          evidenceAvailability: true,
-          outcome: true,
-          citationIntegrity: true,
-          faithfulnessStatus: true,
-          citations: true,
-        },
-      },
+      // MessageGrounding 整行读取：projector 只消费 `toOwnedMessageGroundingV1`
+      // 需要的字段，归属与合法性仍在投影时复核；这里不再逐列列举 Message 持久化
+      // 契约的字段名，Admin 读模型不承载它们。
+      grounding: true,
     },
   },
   steps: {

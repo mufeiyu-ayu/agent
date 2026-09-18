@@ -2,7 +2,6 @@
 import type {
   AdminAssistantOutputStep,
   AdminLoadConversationHistoryStep,
-  AdminReceiveUserMessageStep,
 } from '@agent/contracts'
 import { TabPane, Tabs } from 'ant-design-vue'
 import { computed } from 'vue'
@@ -14,7 +13,6 @@ import InspectorFieldList from './InspectorFieldList.vue'
 type MessageStep
   = | AdminAssistantOutputStep
     | AdminLoadConversationHistoryStep
-    | AdminReceiveUserMessageStep
 
 const props = defineProps<{
   contentPreview: string | null
@@ -32,33 +30,20 @@ const summaryFields = computed(() => {
   ]
 
   switch (props.item.type) {
-    case 'receive_user_message':
-      return [
-        ...common,
-        { label: t('eventDetail.fields.messageId'), value: show(props.item.messageId), mono: true },
-        { label: t('eventDetail.fields.messageLength'), value: chars(props.item.messageLength) },
-      ]
     case 'load_conversation_history':
       return [
         ...common,
-        { label: t('eventDetail.fields.historyLimit'), value: show(props.item.historyLimit) },
         { label: t('eventDetail.fields.messageCount'), value: show(props.item.messageCount) },
       ]
     case 'assistant_output':
       return [
         ...common,
         { label: t('eventDetail.fields.assistantMessageId'), value: show(props.item.assistantMessageId), mono: true },
-        { label: t('eventDetail.fields.contentLength'), value: chars(props.item.contentLength) },
       ]
   }
 
   return common
 })
-
-const safeContentFields = computed(() => [
-  { label: t('eventDetail.safeInput'), value: show(props.item.inputSummary) },
-  { label: t('eventDetail.safeOutput'), value: show(props.item.outputSummary) },
-])
 
 const timingFields = computed(() => [
   { label: t('eventDetail.fields.startedAt'), value: dateTime(props.item.startedAt) },
@@ -68,10 +53,6 @@ const timingFields = computed(() => [
 
 function show(value: string | number | null): string | number {
   return value ?? unavailable.value
-}
-
-function chars(value: number | null): string {
-  return value === null ? unavailable.value : t('common.chars', { count: value })
 }
 
 function yesNo(value: boolean): string {
@@ -100,7 +81,6 @@ function duration(value: number | null): string {
           {{ contentPreview ?? unavailable }}
         </p>
       </article>
-      <InspectorFieldList :items="safeContentFields" />
     </TabPane>
 
     <TabPane key="timing" :tab="t('runTrace.inspector.tabs.timing')">

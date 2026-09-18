@@ -290,7 +290,6 @@ describe('Grounded finalization 路径', () => {
 
     assert.equal(output.evidenceAvailability, 'available')
     assert.equal(output.registryRefCount, 2)
-    assert.equal(output.registryTruncated, false)
     assert.equal(output.attemptCount, 1)
     assert.equal(output.outcome, 'answered')
     assert.equal(output.citationCount, 1)
@@ -495,7 +494,6 @@ describe('Grounded finalization 路径', () => {
         ok: false,
         code: 'execution_failed',
         modelContent: '工具执行失败。',
-        retryable: false,
       }],
     })
 
@@ -588,7 +586,6 @@ describe('Grounded finalization 路径', () => {
           ok: false,
           code: 'timeout',
           modelContent: '工具执行超时。',
-          retryable: false,
         },
       ],
     })
@@ -814,8 +811,6 @@ describe('Grounded finalization 路径', () => {
     const output = step?.output as Record<string, unknown>
 
     assert.equal(output.registryRefCount, 10)
-    assert.equal(output.registryTruncated, true)
-    assert.equal(output.eligibleToolCallCount, 3)
   })
 })
 

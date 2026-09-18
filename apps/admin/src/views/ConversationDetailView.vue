@@ -61,7 +61,7 @@ const runColumns = computed<TableColumnsType<RunListItem>>(() => [
   { title: t('runs.columns.runId'), dataIndex: 'id', key: 'id', width: 176, fixed: 'left' },
   { title: t('runs.columns.question'), dataIndex: 'questionPreview', key: 'question', width: 220 },
   { title: t('runs.columns.status'), dataIndex: 'status', key: 'status', width: 92 },
-  { title: t('runs.columns.tokens'), dataIndex: 'totalTokens', key: 'tokens', width: 78, align: 'right' },
+  { title: t('runs.columns.tokens'), dataIndex: ['usage', 'totalTokens'], key: 'tokens', width: 78, align: 'right' },
   { title: t('runs.columns.duration'), dataIndex: 'durationMs', key: 'duration', width: 78, align: 'right' },
   { title: t('runs.columns.createdAt'), dataIndex: 'createdAt', key: 'createdAt', width: 126 },
   { title: '', key: 'action', width: 54, fixed: 'right', align: 'center' },
@@ -265,7 +265,7 @@ function handleRunsPageChange(page: number, pageSize: number) {
                   <RunStatusTag :status="record.status" />
                 </template>
                 <template v-else-if="column.key === 'tokens'">
-                  <span class="numeric-cell">{{ formatTokens(record.totalTokens, locale) }}</span>
+                  <span class="numeric-cell">{{ formatTokens(record.usage.totalTokens, locale) }}</span>
                 </template>
                 <template v-else-if="column.key === 'duration'">
                   <span class="numeric-cell">{{ formatDuration(record.durationMs) }}</span>

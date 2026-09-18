@@ -15,8 +15,6 @@ import {
 import { PrismaService } from '../../prisma/prisma.service.js'
 
 export const AGENT_STEP_TYPES = {
-  /** 接收用户消息 */
-  receiveUserMessage: 'receive_user_message',
   /** 加载会话上下文 */
   loadConversationHistory: 'load_conversation_history',
   /** 模型采样 */
@@ -32,7 +30,6 @@ export const AGENT_STEP_TYPES = {
 export type AgentStepType = typeof AGENT_STEP_TYPES[keyof typeof AGENT_STEP_TYPES]
 
 const AGENT_STEP_TITLES: Record<AgentStepType, string> = {
-  receive_user_message: '接收用户消息',
   load_conversation_history: '加载会话上下文',
   model_sampling: '模型采样',
   tool_execution: '执行工具',

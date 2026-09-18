@@ -1,18 +1,14 @@
 import type { AdminRunTokenUsage } from '@agent/contracts'
 
-import { GROUNDED_FINALIZATION_MAX_ATTEMPTS } from '../../agent-runtime/grounding/grounded-answer.finalizer.js'
 import { AGENT_STEP_TYPES } from '../../agent-runtime/lifecycle/agent-run-recorder.service.js'
-import {
-  isRequiredNonNegativeInteger,
-  readNonNegativeInteger,
-  readObject,
-} from './safe-readers.js'
+import { readNonNegativeInteger, readObject } from './safe-readers.js'
 
 export interface SamplingUsageStepRecord {
   type: string
   output: unknown
 }
 
+/** 每个指标独立求和：任一条目该指标为 null，则该指标为 null，其余指标照常。 */
 export function aggregateSamplingUsage(
   usages: Array<AdminRunTokenUsage | null>,
 ): AdminRunTokenUsage {
@@ -31,76 +27,30 @@ export interface GroundedFinalizationAggregate {
   usages: Array<AdminRunTokenUsage | null>
 }
 
-/**
- * 汇总 grounded finalization Step 的模型调用次数与 Token。
- *
- * fail closed 而不是静默少算：metadata 损坏时无法知道真实 attempt 数，
- * 此时按「至少发生过一次模型调用」计数（Step 存在就说明调用过），并把 usage
- * 记为不可用，让整个 Run 的 Token 汇总变成 null，而不是给出偏低的假数字。
- */
+/** 汇总 grounded finalization Step 的模型调用次数与 Token：每个 attempt 就是一次真实模型调用。 */
 export function aggregateGroundedFinalization(
   steps: SamplingUsageStepRecord[],
 ): GroundedFinalizationAggregate {
-  const finalizationSteps = steps.filter(
-    step => step.type === AGENT_STEP_TYPES.groundedFinalization,
-  )
-  const aggregate: GroundedFinalizationAggregate = {
-    attemptCount: 0,
-    usages: finalizationSteps.length > 1 ? [null] : [],
-  }
+  const aggregate: GroundedFinalizationAggregate = { attemptCount: 0, usages: [] }
 
-  for (const step of finalizationSteps) {
-    const attempts = readFinalizationAttempts(step.output)
-
-    if (!attempts) {
-      aggregate.attemptCount += 1
-      aggregate.usages.push(null)
+  for (const step of steps) {
+    if (step.type !== AGENT_STEP_TYPES.groundedFinalization)
       continue
-    }
+
+    const attempts = readFinalizationAttempts(step.output)
 
     aggregate.attemptCount += attempts.length
     for (const attempt of attempts)
-      aggregate.usages.push(projectTokenUsage(attempt))
+      aggregate.usages.push(projectTokenUsage(readObject(attempt)))
   }
 
   return aggregate
 }
 
-/**
- * 读取 finalization Step 的 attempts 元数据。
- *
- * @returns 合法时返回 attempt 对象列表；缺失、类型错误或超出 attempt 上限时返回 null。
- */
-function readFinalizationAttempts(
-  output: unknown,
-): Array<Record<string, unknown>> | null {
-  const record = readObject(output)
-
-  if (!record || !Array.isArray(record.attempts))
-    return null
-
-  if (record.attempts.length > GROUNDED_FINALIZATION_MAX_ATTEMPTS)
-    return null
-
-  if (
-    !isRequiredNonNegativeInteger(record, 'attemptCount')
-    || record.attemptCount !== record.attempts.length
-  ) {
-    return null
-  }
-
-  const attempts: Array<Record<string, unknown>> = []
-
-  for (const candidate of record.attempts) {
-    const attempt = readObject(candidate)
-
-    if (!attempt || typeof attempt.ok !== 'boolean')
-      return null
-
-    attempts.push(attempt)
-  }
-
-  return attempts
+/** 读取 finalization output 的 attempts；不是数组时视为没有记录到任何 attempt。 */
+export function readFinalizationAttempts(output: unknown): unknown[] {
+  const attempts = readObject(output)?.attempts
+  return Array.isArray(attempts) ? attempts : []
 }
 
 export function projectTokenUsage(
@@ -110,34 +60,13 @@ export function projectTokenUsage(
   if (!usage)
     return null
 
-  const inputTokens = readNonNegativeInteger(usage, 'inputTokens')
-  const outputTokens = readNonNegativeInteger(usage, 'outputTokens')
-  const reasoningTokens = readNonNegativeInteger(usage, 'reasoningTokens')
-  const promptCacheHitTokens = readNonNegativeInteger(
-    usage,
-    'promptCacheHitTokens',
-  )
-  const promptCacheMissTokens = readNonNegativeInteger(
-    usage,
-    'promptCacheMissTokens',
-  )
-  const cacheBreakdownValid = inputTokens === null
-    || promptCacheHitTokens === null
-    || promptCacheMissTokens === null
-    || (Number.isSafeInteger(promptCacheHitTokens + promptCacheMissTokens)
-      && promptCacheHitTokens + promptCacheMissTokens === inputTokens)
-
   return {
-    inputTokens,
-    outputTokens,
+    inputTokens: readNonNegativeInteger(usage, 'inputTokens'),
+    outputTokens: readNonNegativeInteger(usage, 'outputTokens'),
     totalTokens: readNonNegativeInteger(usage, 'totalTokens'),
-    reasoningTokens: outputTokens !== null
-      && reasoningTokens !== null
-      && reasoningTokens > outputTokens
-      ? null
-      : reasoningTokens,
-    promptCacheHitTokens: cacheBreakdownValid ? promptCacheHitTokens : null,
-    promptCacheMissTokens: cacheBreakdownValid ? promptCacheMissTokens : null,
+    reasoningTokens: readNonNegativeInteger(usage, 'reasoningTokens'),
+    promptCacheHitTokens: readNonNegativeInteger(usage, 'promptCacheHitTokens'),
+    promptCacheMissTokens: readNonNegativeInteger(usage, 'promptCacheMissTokens'),
   }
 }
 

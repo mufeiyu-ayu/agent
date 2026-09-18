@@ -18,10 +18,6 @@ const summaryFields = computed(() => [
   { label: t('runTrace.inspector.fields.status'), value: props.item.status },
   { label: t('eventDetail.fields.sequence'), value: props.item.sequence },
   {
-    label: t('retrieval.fields.validation'),
-    value: t(`retrieval.validation.${props.item.validation}`),
-  },
-  {
     label: t('retrieval.fields.evidenceAvailability'),
     value: props.item.evidenceAvailability === null
       ? unavailable.value
@@ -38,35 +34,22 @@ const summaryFields = computed(() => [
     value: props.item.failureReason ?? unavailable.value,
     mono: true,
   },
+  {
+    label: t('retrieval.fields.rejectionCode'),
+    value: props.item.rejectionCode ?? unavailable.value,
+    mono: true,
+  },
+  {
+    label: t('retrieval.fields.samplingFailure'),
+    value: props.item.samplingFailure ?? unavailable.value,
+    mono: true,
+  },
   { label: t('eventDetail.fields.hasError'), value: yesNo(props.item.hasError) },
 ])
 
 const auditFields = computed(() => [
-  {
-    label: t('retrieval.fields.attempts'),
-    value: props.item.attemptCount === null
-      ? unavailable.value
-      : `${props.item.attemptCount} / ${props.item.maxAttempts}`,
-  },
-  {
-    label: t('retrieval.fields.registryRefCount'),
-    value: show(props.item.registryRefCount),
-  },
-  {
-    label: t('retrieval.fields.registryTruncated'),
-    value: showBoolean(props.item.registryTruncated),
-  },
-  {
-    label: t('retrieval.fields.citationCount'),
-    value: show(props.item.citationCount),
-  },
-  {
-    label: t('retrieval.fields.assistantMessageId'),
-    value: show(props.item.assistantMessageId),
-    mono: true,
-  },
-  { label: t('eventDetail.safeInput'), value: show(props.item.inputSummary) },
-  { label: t('eventDetail.safeOutput'), value: show(props.item.outputSummary) },
+  { label: t('retrieval.fields.attempts'), value: show(props.item.attemptCount) },
+  { label: t('retrieval.fields.registryRefCount'), value: show(props.item.registryRefCount) },
 ])
 
 const timingFields = computed(() => [
@@ -86,10 +69,6 @@ const usageFields = computed(() => [
 
 function show(value: string | number | null): string | number {
   return value ?? unavailable.value
-}
-
-function showBoolean(value: boolean | null): string {
-  return value === null ? unavailable.value : yesNo(value)
 }
 
 function yesNo(value: boolean): string {

@@ -34,8 +34,6 @@ const safeRaw = computed(() => JSON.stringify({
   startedAt: props.item.startedAt,
   endedAt: props.item.endedAt,
   durationMs: props.item.durationMs,
-  inputSummary: props.item.inputSummary,
-  outputSummary: props.item.outputSummary,
   hasError: props.item.hasError,
 }, null, 2))
 

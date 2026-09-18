@@ -18,30 +18,23 @@ const summaryFields = computed(() => [
   { label: t('runTrace.inspector.fields.status'), value: props.item.status },
   { label: t('eventDetail.fields.sequence'), value: props.item.sequence },
   { label: t('eventDetail.fields.tool'), value: show(props.item.toolName), mono: true },
-  { label: t('eventDetail.fields.version'), value: show(props.item.toolVersion), mono: true },
   { label: t('eventDetail.fields.callId'), value: show(props.item.callId), mono: true },
   { label: t('eventDetail.fields.samplingAttempt'), value: show(props.item.samplingAttemptId), mono: true },
-  { label: t('eventDetail.fields.executionAttempt'), value: show(props.item.executionAttempt) },
   { label: t('eventDetail.fields.hasError'), value: yesNo(props.item.hasError) },
 ])
 
 const safeIoFields = computed(() => [
-  { label: t('runTrace.inspector.fields.rawArgumentsChars'), value: chars(props.item.rawArgumentsChars) },
   { label: t('eventDetail.fields.ok'), value: showBoolean(props.item.ok) },
   { label: t('eventDetail.fields.code'), value: show(props.item.code) },
-  { label: t('eventDetail.fields.retryable'), value: showBoolean(props.item.retryable) },
   { label: t('runTrace.inspector.fields.originalChars'), value: chars(props.item.originalChars) },
   { label: t('runTrace.inspector.fields.observationChars'), value: chars(props.item.observationChars) },
   { label: t('eventDetail.fields.truncated'), value: showBoolean(props.item.truncated) },
-  { label: t('eventDetail.safeInput'), value: show(props.item.inputSummary) },
-  { label: t('eventDetail.safeOutput'), value: show(props.item.outputSummary) },
 ])
 
 const timingFields = computed(() => [
   { label: t('eventDetail.fields.startedAt'), value: dateTime(props.item.startedAt) },
   { label: t('eventDetail.fields.endedAt'), value: dateTime(props.item.endedAt) },
   { label: t('eventDetail.fields.duration'), value: duration(props.item.durationMs) },
-  { label: t('eventDetail.fields.recordedDuration'), value: duration(props.item.recordedDurationMs) },
 ])
 
 function show(value: string | number | null): string | number {

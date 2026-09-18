@@ -1,9 +1,7 @@
 <script setup lang="ts">
 import type {
-  AdminContextInspectorAvailability,
   AdminContextInspectorOutcome,
   AdminContextObservationSummary,
-  AdminInitialHistoryExcludedReason,
   AdminModelSamplingStep,
 } from '@agent/contracts'
 import { TabPane, Tabs } from 'ant-design-vue'
@@ -14,7 +12,6 @@ import {
   formatDateTime,
   formatDuration,
   formatPercentage,
-  formatRequestedModel,
   formatTokens,
 } from '../../run.utils'
 import DebugJsonPane from './DebugJsonPane.vue'
@@ -32,30 +29,25 @@ const summaryFields = computed(() => [
   { label: t('eventDetail.fields.samplingIndex'), value: show(props.item.samplingIndex) },
   { label: t('eventDetail.fields.attemptId'), value: show(props.item.samplingAttemptId), mono: true },
   { label: t('eventDetail.fields.resolvedModel'), value: show(props.item.contextInspector.resolvedModel), mono: true },
-  { label: t('eventDetail.fields.requestedOverride'), value: formatRequestedModel(props.item.requestedModel, t('eventDetail.context.noOverride')), mono: true },
   { label: t('eventDetail.fields.finishReason'), value: show(props.item.finishReason) },
   { label: t('eventDetail.fields.providerItems'), value: items(props.item.providerItemCount) },
-  { label: t('eventDetail.fields.toolDeclarations'), value: items(props.item.toolCount) },
   { label: t('eventDetail.fields.toolCalls'), value: items(props.item.toolCallCount) },
-  { label: t('eventDetail.fields.textChars'), value: chars(props.item.textChars) },
-  { label: t('eventDetail.fields.intermediateText'), value: chars(props.item.intermediateTextChars) },
   { label: t('eventDetail.fields.hasError'), value: yesNo(props.item.hasError) },
 ])
 
 const budgetFields = computed(() => {
   const context = props.item.contextInspector
+  const budgetUsageRatio = context.resolvedInputBudgetTokens !== null
+    && context.resolvedInputBudgetTokens > 0
+    && context.estimatedInputTokens !== null
+    ? context.estimatedInputTokens / context.resolvedInputBudgetTokens
+    : null
 
   return [
     { label: t('eventDetail.fields.resolvedModel'), value: show(context.resolvedModel), mono: true },
-    { label: t('eventDetail.fields.requestedOverride'), value: formatRequestedModel(context.requestedModel, t('eventDetail.context.noOverride')), mono: true },
-    { label: t('eventDetail.fields.estimatorStrategy'), value: show(context.estimatorStrategyId), mono: true },
-    { label: t('eventDetail.fields.contextWindow'), value: tokens(context.contextWindowTokens) },
-    { label: t('eventDetail.fields.applicationInputCap'), value: tokens(context.applicationInputCapTokens) },
-    { label: t('eventDetail.fields.outputReserve'), value: tokens(context.outputReserveTokens) },
-    { label: t('eventDetail.fields.safetyMargin'), value: tokens(context.safetyMarginTokens) },
     { label: t('eventDetail.fields.resolvedInputBudget'), value: tokens(context.resolvedInputBudgetTokens) },
     { label: t('eventDetail.fields.estimatedInput'), value: tokens(context.estimatedInputTokens) },
-    { label: t('eventDetail.fields.budgetUsage'), value: percentage(context.budgetUsageRatio) },
+    { label: t('eventDetail.fields.budgetUsage'), value: percentage(budgetUsageRatio) },
   ]
 })
 
@@ -63,29 +55,21 @@ const sourceFields = computed(() => {
   const context = props.item.contextInspector
 
   return [
-    { label: t('eventDetail.fields.prePlanItems'), value: items(context.prePlanItemCount) },
-    { label: t('eventDetail.fields.providerItems'), value: items(context.providerItemCount) },
+    { label: t('eventDetail.fields.providerItems'), value: items(props.item.providerItemCount) },
     { label: t('eventDetail.fields.historyCandidates'), value: items(context.historyCandidateCount) },
     { label: t('eventDetail.fields.historyIncluded'), value: items(context.historyIncludedCount) },
-    { label: t('eventDetail.fields.historyExcluded'), value: items(context.historyExcludedCount) },
-    { label: t('eventDetail.fields.toolExchanges'), value: items(context.toolExchangeCount) },
+    { label: t('eventDetail.fields.samplingHistoryExcluded'), value: items(context.samplingHistoryExcludedCount) },
     { label: t('eventDetail.fields.observations'), value: items(context.observations?.length ?? null) },
   ]
 })
 
 const adjustmentFields = computed(() => {
   const context = props.item.contextInspector
-  const observations = context.observations
 
   return [
-    { label: t('eventDetail.fields.contextAvailability'), value: contextAvailability(context.availability) },
     { label: t('eventDetail.fields.contextOutcome'), value: contextOutcome(context.outcome) },
-    { label: t('eventDetail.fields.initialHistoryReason'), value: initialHistoryReason(context.resolvedModel !== null, context.initialHistoryExcludedReason) },
-    { label: t('eventDetail.fields.samplingHistoryExcluded'), value: items(context.samplingHistoryExcludedCount) },
-    { label: t('eventDetail.fields.toolCeilingTruncations'), value: items(countTruncations(observations, 'toolCeilingTruncated')) },
-    { label: t('eventDetail.fields.contextBudgetTruncations'), value: items(countTruncations(observations, 'contextBudgetTruncated')) },
-    ...(observations ?? []).map(observation => ({
-      label: t('eventDetail.fields.observationIndex', { index: observation.exchangeIndex + 1 }),
+    ...(context.observations ?? []).map((observation, index) => ({
+      label: t('eventDetail.fields.observationIndex', { index: index + 1 }),
       value: formatObservation(observation),
     })),
   ]
@@ -104,20 +88,10 @@ const timingFields = computed(() => [
   { label: t('eventDetail.fields.startedAt'), value: dateTime(props.item.startedAt) },
   { label: t('eventDetail.fields.endedAt'), value: dateTime(props.item.endedAt) },
   { label: t('eventDetail.fields.duration'), value: duration(props.item.durationMs) },
-  { label: t('eventDetail.fields.recordedDuration'), value: duration(props.item.recordedDurationMs) },
-])
-
-const safeIoFields = computed(() => [
-  { label: t('eventDetail.safeInput'), value: show(props.item.inputSummary) },
-  { label: t('eventDetail.safeOutput'), value: show(props.item.outputSummary) },
 ])
 
 function show(value: string | number | null): string | number {
   return value ?? unavailable.value
-}
-
-function chars(value: number | null): string {
-  return value === null ? unavailable.value : t('common.chars', { count: value })
 }
 
 function items(value: number | null): string {
@@ -144,41 +118,20 @@ function yesNo(value: boolean): string {
   return value ? t('common.yes') : t('common.no')
 }
 
-function contextAvailability(value: AdminContextInspectorAvailability): string {
-  return t(`eventDetail.context.availability.${value}`)
-}
-
-function contextOutcome(value: AdminContextInspectorOutcome): string {
-  return t(`eventDetail.context.outcome.${value}`)
-}
-
-function initialHistoryReason(
-  hasInitialContext: boolean,
-  value: AdminInitialHistoryExcludedReason | null,
-): string {
-  if (!hasInitialContext)
-    return unavailable.value
-
-  return value === null
-    ? t('eventDetail.context.historyExcludedReason.none')
-    : t(`eventDetail.context.historyExcludedReason.${value}`)
-}
-
-function countTruncations(
-  observations: AdminContextObservationSummary[] | null,
-  key: 'contextBudgetTruncated' | 'toolCeilingTruncated',
-): number | null {
-  return observations?.filter(observation => observation[key]).length ?? null
+function contextOutcome(value: AdminContextInspectorOutcome | null): string {
+  return value === null ? unavailable.value : t(`eventDetail.context.outcome.${value}`)
 }
 
 function formatObservation(observation: AdminContextObservationSummary): string {
   return t('eventDetail.context.observationSummary', {
-    original: observation.originalChars.toLocaleString(locale.value),
-    toolCeiling: observation.toolCeilingChars.toLocaleString(locale.value),
-    final: observation.finalChars.toLocaleString(locale.value),
-    toolCeilingTruncated: yesNo(observation.toolCeilingTruncated),
-    contextBudgetTruncated: yesNo(observation.contextBudgetTruncated),
+    original: count(observation.originalChars),
+    toolCeiling: count(observation.toolCeilingChars),
+    final: count(observation.finalChars),
   })
+}
+
+function count(value: number | null): string {
+  return value === null ? unavailable.value : value.toLocaleString(locale.value)
 }
 </script>
 
@@ -200,10 +153,6 @@ function formatObservation(observation: AdminContextObservationSummary): string 
 
     <TabPane key="timing" :tab="t('runTrace.inspector.tabs.timing')">
       <InspectorFieldList :items="timingFields" />
-    </TabPane>
-
-    <TabPane key="safe-io" :tab="t('runTrace.inspector.tabs.safeIo')">
-      <InspectorFieldList :items="safeIoFields" />
     </TabPane>
 
     <TabPane key="request-body" :tab="t('runTrace.inspector.tabs.requestBody')">

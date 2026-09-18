@@ -54,7 +54,7 @@ export async function installRunDetail(
 export function createAnsweredDetail(): AdminRunDetail {
   return createDetail({
     timeline: [
-      receiveStep(),
+      historyStep(),
       samplingStep(3, 'run-e2e-1:sampling-1', 'tool_calls'),
       toolStep(4),
       samplingStep(5, 'run-e2e-1:sampling-2', 'stop'),
@@ -70,14 +70,12 @@ export function createRunningDetail(): AdminRunDetail {
     status: 'RUNNING',
     endedAt: null,
     timeline: [
-      receiveStep(),
+      historyStep(),
       samplingStep(3, 'run-e2e-1:sampling-1', 'tool_calls'),
       toolStep(4),
     ],
     retrievalInspector: {
       ...createAvailableInspector(),
-      availability: 'partial',
-      finalization: null,
       citations: null,
     },
   })
@@ -89,119 +87,22 @@ export function createFailedDetail(): AdminRunDetail {
   return createDetail({
     status: 'FAILED',
     timeline: [
-      receiveStep(),
+      historyStep(),
       samplingStep(3, 'run-e2e-1:sampling-1', 'tool_calls'),
       { ...toolStep(4), status: 'FAILED', hasError: true, ok: false, code: 'timeout' },
       finalizationStep(6, 'FAILED'),
     ],
     retrievalInspector: {
       ...inspector,
-      availability: 'partial',
+      // Tool 超时：没有 summary，候选数量未记录，不能展示成 0。
       retrievalCalls: [{
         ...inspector.retrievalCalls[0]!,
-        status: 'FAILED',
-        ok: false,
-        code: 'timeout',
         sourceCount: null,
         chunkEvidenceCount: null,
-        evidenceRefCount: null,
         strategy: null,
         refs: [],
       }],
-      // Tool 超时：候选数量未知，不能展示成 0。
-      candidateCount: null,
-      evidenceRefCount: 0,
-      finalization: {
-        ...inspector.finalization!,
-        status: 'FAILED',
-        validation: 'failed',
-        outcome: null,
-        citationCount: null,
-        citationIntegrity: null,
-        faithfulnessStatus: null,
-        schemaVersion: null,
-        evidenceAvailability: 'unavailable',
-        registryRefCount: 0,
-        eligibleToolFailureCount: 1,
-        failureReason: 'sampling_incomplete',
-        samplingFailure: 'stream_failed',
-        usage: null,
-      },
       citations: null,
-    },
-  })
-}
-
-/**
- * 只有身份不完整的 Tool Step：既不能算 evidence-eligible，也不能说「未进入检索链路」。
- */
-export function createUnclassifiableToolDetail(): AdminRunDetail {
-  return createDetail({
-    timeline: [
-      receiveStep(),
-      samplingStep(3, 'run-e2e-1:sampling-1', 'tool_calls'),
-      {
-        id: 'step-4',
-        kind: 'generic',
-        sequence: 4,
-        type: 'tool_execution',
-        title: '执行工具',
-        status: 'COMPLETED',
-        startedAt: START,
-        endedAt: END,
-        durationMs: 120,
-        inputSummary: '未识别 Step 的 input 已省略',
-        outputSummary: '未识别 Step 的 output 已省略',
-        hasError: false,
-      },
-    ],
-    retrievalInspector: {
-      availability: 'unavailable',
-      retrievalCalls: [],
-      callsTruncated: false,
-      // 无法确认该调用本应贡献多少候选 / 证据，只能是未知。
-      candidateCount: null,
-      evidenceRefCount: null,
-      finalization: null,
-      citations: null,
-    },
-  })
-}
-
-/** 失败调用被改写进 toolSummary：整项 fail closed，Citation 不得 matched。 */
-export function createFailedSummaryDetail(): AdminRunDetail {
-  const inspector = createAvailableInspector()
-
-  return createDetail({
-    timeline: [
-      receiveStep(),
-      samplingStep(3, 'run-e2e-1:sampling-1', 'tool_calls'),
-      { ...toolStep(4), status: 'FAILED', hasError: true, ok: false, code: 'timeout' },
-      finalizationStep(6),
-      assistantOutputStep(7),
-    ],
-    retrievalInspector: {
-      ...inspector,
-      availability: 'partial',
-      candidateCount: null,
-      evidenceRefCount: null,
-      retrievalCalls: [{
-        ...inspector.retrievalCalls[0]!,
-        status: 'FAILED',
-        ok: false,
-        code: 'timeout',
-        sourceCount: null,
-        chunkEvidenceCount: null,
-        evidenceRefCount: null,
-        strategy: null,
-        refs: [],
-        metadataTrusted: false,
-      }],
-      citations: inspector.citations!.map(citation => ({
-        ...citation,
-        correlation: 'unmatched' as const,
-        matchedCallIds: [],
-      })),
     },
   })
 }
@@ -212,30 +113,20 @@ export function createZeroHitDetail(): AdminRunDetail {
 
   return createDetail({
     timeline: [
-      receiveStep(),
+      historyStep(),
       samplingStep(3, 'run-e2e-1:sampling-1', 'tool_calls'),
       toolStep(4),
-      finalizationStep(6),
+      { ...finalizationStep(6), evidenceAvailability: 'none', outcome: 'insufficient_evidence', registryRefCount: 0 },
       assistantOutputStep(7),
     ],
     retrievalInspector: {
       ...inspector,
-      candidateCount: 0,
-      evidenceRefCount: 0,
       retrievalCalls: [{
         ...inspector.retrievalCalls[0]!,
         sourceCount: 0,
         chunkEvidenceCount: 0,
-        evidenceRefCount: 0,
         refs: [],
       }],
-      finalization: {
-        ...inspector.finalization!,
-        evidenceAvailability: 'none',
-        outcome: 'insufficient_evidence',
-        registryRefCount: 0,
-        citationCount: 0,
-      },
       citations: [],
     },
   })
@@ -249,112 +140,34 @@ export function createUnknownResultDetail(): AdminRunDetail {
     status: 'RUNNING',
     endedAt: null,
     timeline: [
-      receiveStep(),
+      historyStep(),
       samplingStep(3, 'run-e2e-1:sampling-1', 'tool_calls'),
       { ...toolStep(4), status: 'RUNNING', endedAt: null, ok: null, truncated: null },
     ],
     retrievalInspector: {
       ...inspector,
-      availability: 'partial',
-      candidateCount: null,
-      evidenceRefCount: null,
       retrievalCalls: [{
         ...inspector.retrievalCalls[0]!,
-        status: 'RUNNING',
-        ok: null,
-        code: null,
         sourceCount: null,
         chunkEvidenceCount: null,
-        evidenceRefCount: null,
         strategy: null,
-        truncated: null,
         refs: [],
       }],
-      finalization: null,
       citations: null,
     },
   })
 }
 
-/** 普通 Run：没有任何 evidence-eligible 调用。 */
+/** 普通 Run：没有任何 evidence-eligible 调用，也没有持久化 Grounding。 */
 export function createOrdinaryDetail(): AdminRunDetail {
   return createDetail({
     timeline: [
-      receiveStep(),
+      historyStep(),
       samplingStep(3, 'run-e2e-1:sampling-1', 'stop'),
       assistantOutputStep(4),
     ],
     retrievalInspector: {
-      availability: 'not_applicable',
       retrievalCalls: [],
-      callsTruncated: false,
-      candidateCount: 0,
-      evidenceRefCount: 0,
-      finalization: null,
-      citations: null,
-    },
-  })
-}
-
-/**
- * legacy / malformed：Step 落入 Generic fallback，Inspector 侧计数不可信、
- * 持久化 Grounding 损坏。
- */
-export function createMalformedDetail(): AdminRunDetail {
-  const inspector = createAvailableInspector()
-
-  return createDetail({
-    timeline: [
-      receiveStep(),
-      samplingStep(3, 'run-e2e-1:sampling-1', 'tool_calls'),
-      toolStep(4),
-      {
-        id: 'step-6',
-        kind: 'generic',
-        sequence: 6,
-        type: 'grounded_finalization',
-        title: '校验回答引用',
-        status: 'COMPLETED',
-        startedAt: START,
-        endedAt: END,
-        durationMs: 500,
-        inputSummary: '未识别 Step 的 input 已省略',
-        outputSummary: '未识别 Step 的 output 已省略',
-        hasError: false,
-      },
-    ],
-    retrievalInspector: {
-      ...inspector,
-      availability: 'partial',
-      retrievalCalls: [{
-        ...inspector.retrievalCalls[0]!,
-        metadataTrusted: false,
-        strategy: null,
-        sourceCount: null,
-        chunkEvidenceCount: null,
-        evidenceRefCount: null,
-        refs: [],
-      }],
-      candidateCount: null,
-      evidenceRefCount: null,
-      finalization: {
-        ...inspector.finalization!,
-        metadataTrusted: false,
-        validation: 'unavailable',
-        outcome: null,
-        attemptCount: null,
-        citationCount: null,
-        citationIntegrity: null,
-        faithfulnessStatus: null,
-        schemaVersion: null,
-        registryRefCount: null,
-        registryTruncated: null,
-        eligibleToolCallCount: null,
-        eligibleToolFailureCount: null,
-        evidenceAvailability: null,
-        usage: null,
-        recordedDurationMs: null,
-      },
       citations: null,
     },
   })
@@ -367,7 +180,7 @@ export function createLongIdentifierDetail(): AdminRunDetail {
 
   return createDetail({
     timeline: [
-      receiveStep(),
+      historyStep(),
       samplingStep(3, 'run-e2e-1:sampling-1', 'tool_calls'),
       toolStep(4),
       finalizationStep(6),
@@ -379,11 +192,7 @@ export function createLongIdentifierDetail(): AdminRunDetail {
         refs: [{ sourceId: 301, chunkId: longChunkId }],
         sourceCount: 1,
         chunkEvidenceCount: 1,
-        evidenceRefCount: 1,
       }],
-      candidateCount: 1,
-      evidenceRefCount: 1,
-      finalization: { ...inspector.finalization!, registryRefCount: 1, citationCount: 1 },
       citations: [{
         ...inspector.citations![0]!,
         chunkId: longChunkId,
@@ -396,43 +205,7 @@ export function createLongIdentifierDetail(): AdminRunDetail {
 
 function createAvailableInspector(): AdminRetrievalInspector {
   return {
-    availability: 'available',
-    callsTruncated: false,
-    candidateCount: 3,
-    evidenceRefCount: 3,
     retrievalCalls: [createCall()],
-    finalization: {
-      stepId: 'step-6',
-      sequence: 6,
-      status: 'COMPLETED',
-      schemaVersion: 1,
-      evidenceAvailability: 'available',
-      outcome: 'answered',
-      attemptCount: 1,
-      maxAttempts: 2,
-      registryRefCount: 3,
-      registryTruncated: false,
-      eligibleToolCallCount: 1,
-      eligibleToolFailureCount: 0,
-      validation: 'passed',
-      failureReason: null,
-      rejectionCode: null,
-      samplingFailure: null,
-      citationCount: 2,
-      citationIntegrity: 'validated',
-      faithfulnessStatus: 'not_evaluated',
-      usage: {
-        inputTokens: 30,
-        outputTokens: 12,
-        totalTokens: 42,
-        reasoningTokens: 8,
-        promptCacheHitTokens: 20,
-        promptCacheMissTokens: 10,
-      },
-      recordedDurationMs: 500,
-      durationMs: 520,
-      metadataTrusted: true,
-    },
     citations: createCitations(),
   }
 }
@@ -440,60 +213,38 @@ function createAvailableInspector(): AdminRetrievalInspector {
 function createCall(): AdminRetrievalCallSummary {
   return {
     stepId: 'step-4',
-    sequence: 4,
-    status: 'COMPLETED',
-    callId: 'call-1',
-    toolName: 'retrieve_article_context',
-    toolVersion: '1',
-    samplingAttemptId: 'run-e2e-1:sampling-1',
     query: null,
     strategy: { name: 'hybrid_rrf', version: '2' },
-    ok: true,
-    code: null,
     sourceCount: 3,
     chunkEvidenceCount: 2,
-    evidenceRefCount: 3,
-    originalChars: 4_000,
-    observationChars: 3_000,
-    truncated: true,
-    recordedDurationMs: 420,
-    durationMs: 430,
     refs: [
       { sourceId: 301, chunkId: 'article-301-chunk-0' },
       { sourceId: 302, chunkId: null },
       { sourceId: 303, chunkId: 'article-303-chunk-1' },
     ],
-    refsTruncated: false,
-    metadataTrusted: true,
   }
 }
 
 function createCitations(): AdminGroundedCitationSummary[] {
   return [
     {
-      sequence: 1,
       citationId: 'cit_0123456789abcdef0123456789abcdef',
       sourceId: 301,
       chunkId: 'article-301-chunk-0',
-      granularity: 'chunk',
       title: '落地页 SEO 结构指南',
       sectionPath: '页面结构 / 标题层级',
       languageCode: 'zh-cn',
       strategy: { name: 'hybrid_rrf', version: '2' },
-      correlation: 'matched',
       matchedCallIds: ['call-1'],
     },
     {
-      sequence: 2,
       citationId: 'cit_ffffffffffffffffffffffffffffffff',
       sourceId: 302,
       chunkId: null,
-      granularity: 'article',
       title: 'Keyword Intent Mapping',
       sectionPath: null,
       languageCode: 'en-us',
       strategy: { name: 'article_detail', version: '1' },
-      correlation: 'matched',
       matchedCallIds: ['call-1'],
     },
   ]
@@ -513,20 +264,20 @@ function createDetail(overrides: {
     conversationId: 'conversation-e2e',
     status,
     questionPreview: '站内有哪些 SEO 指南？',
-    requestedModel: null,
     samplingCount: 3,
     toolCallCount: 1,
-    inputTokens: 60,
-    outputTokens: 24,
-    totalTokens: 84,
-    reasoningTokens: 18,
-    promptCacheHitTokens: 42,
-    promptCacheMissTokens: 18,
+    usage: {
+      inputTokens: 60,
+      outputTokens: 24,
+      totalTokens: 84,
+      reasoningTokens: 18,
+      promptCacheHitTokens: 42,
+      promptCacheMissTokens: 18,
+    },
     durationMs: endedAt === null ? null : 5_000,
     startedAt: START,
     endedAt,
     createdAt: START,
-    userMessageId: 'message-user',
     assistantMessageId: status === 'COMPLETED' ? 'message-assistant' : null,
     updatedAt: endedAt ?? START,
     messages: [{
@@ -539,50 +290,22 @@ function createDetail(overrides: {
     }],
     timeline: overrides.timeline,
     retrievalInspector: overrides.retrievalInspector,
-    safeRawData: {
-      agentRun: {
-        id: RUN_ID,
-        conversationId: 'conversation-e2e',
-        userMessageId: 'message-user',
-        assistantMessageId: status === 'COMPLETED' ? 'message-assistant' : null,
-        status,
-        startedAt: START,
-        endedAt,
-        createdAt: START,
-        updatedAt: endedAt ?? START,
-      },
-      agentSteps: overrides.timeline.map(item => ({
-        id: item.id,
-        sequence: item.sequence,
-        type: item.type,
-        title: item.title,
-        status: item.status,
-        startedAt: item.startedAt,
-        endedAt: item.endedAt,
-        inputSummary: item.inputSummary,
-        outputSummary: item.outputSummary,
-        hasError: item.hasError,
-      })),
-    },
   }
 }
 
-function receiveStep(): AdminRunTimelineItem {
+function historyStep(): AdminRunTimelineItem {
   return {
     id: 'step-1',
     kind: 'known',
     sequence: 1,
-    type: 'receive_user_message',
-    title: '接收用户消息',
+    type: 'load_conversation_history',
+    title: '加载会话上下文',
     status: 'COMPLETED',
     startedAt: START,
     endedAt: START,
     durationMs: 0,
-    inputSummary: 'messageId=message-user, messageLength=12',
-    outputSummary: null,
     hasError: false,
-    messageId: 'message-user',
-    messageLength: 12,
+    messageCount: 2,
   }
 }
 
@@ -601,14 +324,10 @@ function samplingStep(
     startedAt: START,
     endedAt: END,
     durationMs: 300,
-    inputSummary: `samplingAttemptId=${samplingAttemptId}`,
-    outputSummary: `finishReason=${finishReason}`,
     hasError: false,
     samplingIndex: sequence === 3 ? 1 : 2,
     samplingAttemptId,
-    requestedModel: null,
     providerItemCount: 4,
-    toolCount: 3,
     finishReason,
     usage: {
       inputTokens: 20,
@@ -619,33 +338,17 @@ function samplingStep(
       promptCacheMissTokens: 6,
     },
     toolCallCount: finishReason === 'tool_calls' ? 1 : 0,
-    textChars: 40,
-    intermediateTextChars: 0,
-    recordedDurationMs: 300,
     debugRequestBody: null,
     debugRawResponse: null,
     contextInspector: {
-      availability: 'unavailable',
-      outcome: 'unavailable',
+      outcome: 'success',
       resolvedModel: 'deepseek-v4-flash',
-      requestedModel: null,
-      estimatorStrategyId: null,
-      contextWindowTokens: null,
-      applicationInputCapTokens: null,
-      outputReserveTokens: null,
-      safetyMarginTokens: null,
-      resolvedInputBudgetTokens: null,
-      estimatedInputTokens: null,
-      budgetUsageRatio: null,
-      prePlanItemCount: null,
-      providerItemCount: 4,
-      historyCandidateCount: null,
-      historyIncludedCount: null,
-      historyExcludedCount: null,
-      initialHistoryExcludedReason: null,
-      samplingHistoryExcludedCount: null,
-      toolExchangeCount: null,
-      observations: null,
+      resolvedInputBudgetTokens: 262_144,
+      estimatedInputTokens: 1_200,
+      historyCandidateCount: 2,
+      historyIncludedCount: 2,
+      samplingHistoryExcludedCount: 0,
+      observations: [],
     },
   }
 }
@@ -664,29 +367,22 @@ function toolStep(sequence: number): Extract<
     startedAt: START,
     endedAt: END,
     durationMs: 430,
-    inputSummary: 'callId=call-1, toolName=retrieve_article_context',
-    outputSummary: 'ok=true, originalChars=4000',
     hasError: false,
     callId: 'call-1',
     toolName: 'retrieve_article_context',
-    toolVersion: '1',
     samplingAttemptId: 'run-e2e-1:sampling-1',
-    executionAttempt: 1,
-    rawArgumentsChars: 48,
     ok: true,
     code: null,
-    retryable: null,
     originalChars: 4_000,
     observationChars: 3_000,
     truncated: true,
-    recordedDurationMs: 420,
   }
 }
 
 function finalizationStep(
   sequence: number,
   status: 'COMPLETED' | 'FAILED' = 'COMPLETED',
-): AdminRunTimelineItem {
+): Extract<AdminRunTimelineItem, { type: 'grounded_finalization' }> {
   return {
     id: `step-${sequence}`,
     kind: 'known',
@@ -697,19 +393,14 @@ function finalizationStep(
     startedAt: START,
     endedAt: END,
     durationMs: 520,
-    inputSummary: 'evidenceAvailability=available, registryRefCount=3',
-    outputSummary: 'attemptCount=1, outcome=answered, citationCount=2',
     hasError: status === 'FAILED',
-    assistantMessageId: 'message-assistant',
     evidenceAvailability: status === 'FAILED' ? 'unavailable' : 'available',
     outcome: status === 'FAILED' ? null : 'answered',
     attemptCount: 1,
-    maxAttempts: 2,
     registryRefCount: status === 'FAILED' ? 0 : 3,
-    registryTruncated: false,
-    citationCount: status === 'FAILED' ? null : 2,
-    validation: status === 'FAILED' ? 'failed' : 'passed',
     failureReason: status === 'FAILED' ? 'sampling_incomplete' : null,
+    rejectionCode: null,
+    samplingFailure: status === 'FAILED' ? 'stream_failed' : null,
     usage: status === 'FAILED'
       ? null
       : {
@@ -734,10 +425,7 @@ function assistantOutputStep(sequence: number): AdminRunTimelineItem {
     startedAt: START,
     endedAt: END,
     durationMs: 10,
-    inputSummary: 'assistantMessageId=message-assistant',
-    outputSummary: 'contentLength=40',
     hasError: false,
     assistantMessageId: 'message-assistant',
-    contentLength: 40,
   }
 }

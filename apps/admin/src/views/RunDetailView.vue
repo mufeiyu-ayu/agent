@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import type { AdminDebugModelIOCapture } from '@agent/contracts'
 import {
   Alert,
   Button,
@@ -18,7 +17,6 @@ import PageContainer from '@/components/common/PageContainer.vue'
 import RunStatusTag from '@/features/runs/components/RunStatusTag.vue'
 import { createRunDetailState } from '@/features/runs/run-detail.state'
 import { formatDateTime } from '@/features/runs/run.utils'
-import DebugJsonPane from '@/features/runs/trace/inspectors/DebugJsonPane.vue'
 import RunTraceWorkspace from '@/features/runs/trace/RunTraceWorkspace.vue'
 
 const route = useRoute()
@@ -36,10 +34,6 @@ const {
   notFound,
   run,
 } = runDetailState
-const safeRawCapture = computed<AdminDebugModelIOCapture>(() => ({
-  truncated: false,
-  value: run.value?.safeRawData ?? {},
-}))
 
 watch(run, () => {
   activeTab.value = 'trace'
@@ -101,20 +95,6 @@ onBeforeUnmount(cancelRunLoad)
                 <p>{{ item.contentPreview }}</p>
                 <code>{{ item.id }}</code>
               </article>
-            </div>
-          </TabPane>
-
-          <TabPane key="safe-raw" :tab="t('runDetail.tabs.safeRaw')">
-            <Alert
-              class="tab-notice"
-              type="warning"
-              show-icon
-              :message="t('runDetail.safeRawTitle')"
-              :description="t('runDetail.safeRawDescription')"
-            />
-
-            <div class="safe-raw-json">
-              <DebugJsonPane :capture="safeRawCapture" />
             </div>
           </TabPane>
         </Tabs>
@@ -261,16 +241,5 @@ onBeforeUnmount(cancelRunLoad)
 
 .message-card code {
   overflow-wrap: anywhere;
-}
-
-.safe-raw-json {
-  min-width: 0;
-  margin: 0 14px 14px;
-}
-
-/* 详情页整页可滚动，JSON 区比检查器侧栏（60vh）给得更高 */
-.safe-raw-json :deep(.debug-json-tree),
-.safe-raw-json :deep(.debug-json-preview) {
-  max-height: 75vh;
 }
 </style>

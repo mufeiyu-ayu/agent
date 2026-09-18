@@ -24,6 +24,7 @@ const props = defineProps<{
   record: TraceRecord | undefined
   requestGroup: TraceRequestGroup | undefined
   retrievalInspector: AdminRetrievalInspector
+  timeline: AdminRunTimelineItem[]
 }>()
 
 const { t } = useI18n()
@@ -36,7 +37,7 @@ const viewOptions = computed(() => [
 const item = computed(() => props.record?.item)
 type MessageTimelineItem = Extract<
   AdminRunTimelineItem,
-  { type: 'assistant_output' | 'load_conversation_history' | 'receive_user_message' }
+  { type: 'assistant_output' | 'load_conversation_history' }
 >
 
 const sampling = computed<AdminModelSamplingStep | undefined>(() => {
@@ -57,7 +58,6 @@ const messageItem = computed<MessageTimelineItem | undefined>(() => {
 
   return selected.type === 'assistant_output'
     || selected.type === 'load_conversation_history'
-    || selected.type === 'receive_user_message'
     ? selected
     : undefined
 })
@@ -112,7 +112,7 @@ const title = computed(() => {
 
     <template v-if="view === 'retrieval'">
       <div class="run-trace-inspector__body">
-        <RetrievalInspector :inspector="retrievalInspector" />
+        <RetrievalInspector :inspector="retrievalInspector" :timeline="timeline" />
       </div>
     </template>
 
