@@ -345,6 +345,110 @@ describe('Admin Retrieval Inspector', () => {
     assert.deepEqual(inspector.citations?.map(item => item.matchedCallIds), [[]])
   })
 
+  it('chunkId 身份原样保留：首尾空白、重复空白不做归一化，不与 Citation 误关联', () => {
+    const inspector = projectAdminRunDetail(createGroundedRun({
+      toolSummary: summaryWithSources([
+        { sourceId: 11, chunkId: ' chunk-a ' },
+        { sourceId: 12, chunkId: 'chunk  b' },
+        { sourceId: 13, chunkId: 'chunk-c' },
+      ]),
+      citations: [
+        citation(1, { sourceId: 11, chunkId: 'chunk-a' }),
+        citation(2, { sourceId: 12, chunkId: 'chunk b' }),
+        citation(3, { sourceId: 13, chunkId: 'chunk-c' }),
+      ],
+    })).retrievalInspector
+
+    assert.deepEqual(inspector.retrievalCalls[0]?.refs, [
+      { sourceId: 11, chunkId: ' chunk-a ' },
+      { sourceId: 12, chunkId: 'chunk  b' },
+      { sourceId: 13, chunkId: 'chunk-c' },
+    ])
+    // 只有逐字符相等的身份才关联；trim / 折叠空白后碰巧相等的不算。
+    assert.deepEqual(
+      inspector.citations?.map(item => item.matchedCallIds),
+      [[], [], ['call-1']],
+    )
+  })
+
+  it('空字符串 chunkId 整条跳过，不与 article 级 null 碰撞；合法 article null 照常关联', () => {
+    const inspector = projectAdminRunDetail(createGroundedRun({
+      toolSummary: summaryWithSources([
+        { sourceId: 11, chunkId: '' },
+        // 纯空白是非空字符串，按契约是一个独立身份，原样保留。
+        { sourceId: 12, chunkId: '   ' },
+        { sourceId: 13, chunkId: null },
+        { sourceId: 14 },
+      ]),
+      citations: [
+        citation(1, { sourceId: 11, chunkId: null }),
+        citation(2, { sourceId: 12, chunkId: null }),
+        citation(3, { sourceId: 13, chunkId: null }),
+        citation(4, { sourceId: 14, chunkId: null }),
+      ],
+    })).retrievalInspector
+
+    assert.deepEqual(inspector.retrievalCalls[0]?.refs, [
+      { sourceId: 12, chunkId: '   ' },
+      { sourceId: 13, chunkId: null },
+      { sourceId: 14, chunkId: null },
+    ])
+    assert.deepEqual(
+      inspector.citations?.map(item => item.matchedCallIds),
+      [[], [], ['call-1'], ['call-1']],
+    )
+  })
+
+  it('超长或类型非法的 chunkId 整条跳过，不截断成另一个可关联的身份', () => {
+    const boundary = 'x'.repeat(200)
+    const inspector = projectAdminRunDetail(createGroundedRun({
+      toolSummary: summaryWithSources([
+        { sourceId: 11, chunkId: `${boundary}y` },
+        { sourceId: 11, chunkId: 7 },
+        { sourceId: 11, chunkId: true },
+        { sourceId: 11, chunkId: { id: 'chunk-a' } },
+        { sourceId: 12, chunkId: boundary },
+      ]),
+      citations: [
+        // preview 截断会产出的形状：199 个字符加省略号；它不能被伪造出来。
+        citation(1, { sourceId: 11, chunkId: `${'x'.repeat(199)}…` }),
+        citation(2, { sourceId: 11, chunkId: null }),
+        citation(3, { sourceId: 12, chunkId: boundary }),
+      ],
+    })).retrievalInspector
+
+    assert.deepEqual(inspector.retrievalCalls[0]?.refs, [
+      { sourceId: 12, chunkId: boundary },
+    ])
+    assert.deepEqual(
+      inspector.citations?.map(item => item.matchedCallIds),
+      [[], [], ['call-1']],
+    )
+  })
+
+  it('get_article_detail 命中：真实工具只提交 evidence 不写 stepSummary，call 摘要数量未知', () => {
+    const detail = projectAdminRunDetail(createGroundedRun({
+      toolName: 'get_article_detail',
+      omitToolSummary: true,
+      finalization: { registryRefCount: 1 },
+      citations: [citation(1, { sourceId: 301, chunkId: null })],
+    }))
+    const item = findTimelineItem(detail, 'grounded_finalization')
+
+    // Registry 已有 1 条 article 证据，但 call 摘要读不出数量：null 而不是 0。
+    assert.deepEqual(detail.retrievalInspector.retrievalCalls, [{
+      stepId: 'step-3',
+      query: null,
+      strategy: null,
+      sourceCount: null,
+      chunkEvidenceCount: null,
+      refs: [],
+    }])
+    assert.ok(item.kind === 'known' && item.type === 'grounded_finalization')
+    assert.equal(item.registryRefCount, 1)
+    assert.deepEqual(detail.retrievalInspector.citations?.map(c => c.matchedCallIds), [[]])
+  })
+
   it('malformed persisted Grounding 不返回半份 Citation', () => {
     const run = createGroundedRun({
       groundingOverrides: { citations: [{ leaked: SENTINEL }] },
@@ -396,6 +500,7 @@ function findTimelineItem(
 }
 
 interface GroundedRunOptions {
+  toolName?: string
   toolSummary?: Record<string, unknown> | undefined
   omitToolSummary?: boolean
   toolFailure?: { code: string }
@@ -505,7 +610,7 @@ function createGroundedRun(options: GroundedRunOptions = {}) {
       : step(3, 'tool_execution', {
           input: {
             callId: 'call-1',
-            toolName: 'retrieve_article_context',
+            toolName: options.toolName ?? 'retrieve_article_context',
             samplingAttemptId: 'run-1:sampling-1',
             ...(options.injectSentinels ? { rawArguments: SENTINEL } : {}),
           },
@@ -585,6 +690,20 @@ interface GroundingRecord {
   citationIntegrity: string
   faithfulnessStatus: string
   citations: unknown
+}
+
+/** 只改 sources 的 summary；其余字段与默认 grounded fixture 一致。 */
+function summaryWithSources(sources: unknown[]): Record<string, unknown> {
+  return {
+    status: 'candidates_returned',
+    answerStatus: 'unverified',
+    strategy: RETRIEVAL_STRATEGY,
+    sourceCount: sources.length,
+    chunkEvidenceCount: sources.filter(source => (
+      typeof source === 'object' && source !== null && typeof (source as Record<string, unknown>).chunkId === 'string'
+    )).length,
+    sources,
+  }
 }
 
 function failedToolStep(sequence: number, callId: string, code = 'execution_failed') {

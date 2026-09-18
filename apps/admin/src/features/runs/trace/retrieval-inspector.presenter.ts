@@ -26,8 +26,8 @@ export interface RetrievalInspectorCounts {
   failedCallCount: number
   /** 各 call 声明候选数之和；任一 call 未记录时为 null。 */
   candidateCount: number | null
-  /** 去重后的 `sourceId:chunkId` 引用身份数量。 */
-  evidenceRefCount: number
+  /** 去重后的 `sourceId:chunkId` 引用身份数量；任一 call 的引用无法确认时为 null。 */
+  evidenceRefCount: number | null
   /** 最终被引用的不同来源数量；Grounding 不可用时为 null。 */
   citedSourceCount: number | null
   citationCount: number | null
@@ -69,9 +69,13 @@ export function createRetrievalInspectorCounts(
     candidateCount: cards.some(card => card.sourceCount === null)
       ? null
       : cards.reduce((total, card) => total + (card.sourceCount ?? 0), 0),
-    evidenceRefCount: new Set(
-      cards.flatMap(card => card.refs.map(toRefIdentity)),
-    ).size,
+    evidenceRefCount: cards.some(card => !hasRecordedRefs(card))
+      ? null
+      : new Set(
+        cards
+          .filter(card => card.ok !== false)
+          .flatMap(card => card.refs.map(toRefIdentity)),
+      ).size,
     citedSourceCount: citations === null
       ? null
       : new Set(citations.map(citation => citation.sourceId)).size,
@@ -80,6 +84,21 @@ export function createRetrievalInspectorCounts(
       ? null
       : citations.filter(citation => citation.matchedCallIds.length > 0).length,
   }
+}
+
+/**
+ * 一次 call 提交给 Registry 的引用是否已完整记录。
+ *
+ * 明确失败的调用不向 Registry 提交任何引用：0 是可确认的事实，计数时也不把它的 refs
+ * 计入。成功调用只有在 typed summary 存在且 refs 条数等于声明的 `sourceCount` 时才算
+ * 完整：projector 会逐条跳过非法 ref、工具 summary 也可能只写前 N 条，两者都不改
+ * `sourceCount`，只看它非 null 会得到一个确定但偏小的数字。成功但没有 summary
+ * （如 `get_article_detail` 命中时只提交 evidence 不写 summary）或结果未记录时，
+ * 数量未知，不能用 0 顶替。
+ */
+function hasRecordedRefs(card: RetrievalCallCard): boolean {
+  return card.ok === false
+    || (card.sourceCount !== null && card.refs.length === card.sourceCount)
 }
 
 /** 引用身份；与服务端 `projectCitations` 关联 `matchedCallIds` 的口径一致。 */

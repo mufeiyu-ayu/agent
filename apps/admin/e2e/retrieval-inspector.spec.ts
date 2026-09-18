@@ -134,6 +134,9 @@ test.describe('Event / Retrieval 切换', () => {
     await expect(overview).toContainText('被引用来源数')
     await expect(overview).toContainText('可关联引用')
     await expect(readOverviewField(page, '可关联引用')).toHaveText('2 / 2')
+    // summary 完整时引用身份数是精确去重计数，引用列表照常渲染。
+    await expect(readOverviewField(page, '证据引用身份数')).toHaveText('3')
+    await expect(page.locator(CALLS).locator('.retrieval-inspector__refs > li')).toHaveCount(3)
 
     // 工具身份按 stepId 从 timeline 的 tool step 取。
     await expect(page.locator(CALLS).locator('li').first()).toContainText(
@@ -198,6 +201,8 @@ test.describe('状态矩阵', () => {
     await expect(page.locator(RETRIEVAL)).toContainText('timeout')
     // 候选数量未记录：必须显示「未记录」，不能显示 0。
     await expect(readOverviewField(page, '候选数量')).toHaveText('未记录')
+    // 明确失败的调用不向 Registry 提交引用：引用身份数是可确认的 0，与候选数量分开读。
+    await expect(readOverviewField(page, '证据引用身份数')).toHaveText('0')
     await expect(page.locator(CALL_STATUS)).toHaveAttribute('data-tone', 'error')
 
     // finalization 的失败类别在 Event 视图的引用校验检查器里读。
@@ -248,6 +253,8 @@ test.describe('状态矩阵', () => {
     await expect(status).not.toHaveClass(/ant-tag-green/)
     await expect(status).not.toHaveText('成功')
     await expect(readOverviewField(page, '候选数量')).toHaveText('未记录')
+    // 没有 summary 时引用数量同样未知：不能显示成确定的 0。
+    await expect(readOverviewField(page, '证据引用身份数')).toHaveText('未记录')
 
     await expectNoForbiddenText(page)
     await page.screenshot({

@@ -31,6 +31,8 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import { getModelProfile } from '@agent/ai'
 
+import { projectAdminRunDetail } from '../../admin-runs/projection/admin-run.projector.js'
+
 import { MessageRole, MessageStatus } from '../../generated/prisma/client.js'
 import { toChatStreamEvent } from '../../seo/seo-chat-stream-event.mapper.js'
 import { AgentRuntimeService } from '../agent-runtime.service.js'
@@ -64,6 +66,22 @@ const RETRIEVAL_EVIDENCE = {
       strategy: { name: 'hybrid_rrf', version: '1' },
     },
   ],
+}
+
+/** 与 `GetArticleDetailTool` 命中时提交的 article 粒度 evidence 形状一致。 */
+const ARTICLE_DETAIL_EVIDENCE = {
+  refs: [{
+    sourceId: 301,
+    chunkId: null,
+    granularity: 'article' as const,
+    title: 'SEO 基础',
+    slug: 'seo-basics',
+    languageCode: 'zh-cn',
+    sectionPath: null,
+    excerpt: null,
+    rank: null,
+    strategy: { name: 'article_detail', version: '1' },
+  }],
 }
 
 describe('Grounded finalization 路径', () => {
@@ -596,6 +614,82 @@ describe('Grounded finalization 路径', () => {
     assert.ok(grounding)
     assert.equal(grounding.evidenceAvailability, 'partial')
     assert.equal(grounding.citations.length, 1)
+  })
+
+  it('get_article_detail 命中：runtime 不落库 toolSummary，Admin 投影保留「引用数量未知」', async () => {
+    const harness = createHarness({
+      modelStreams: [
+        () => toModelStream([
+          toolCallEvent('call-detail', 'get_article_detail', '{"sourceId":301}'),
+          { type: 'response_completed', finishReason: 'tool_calls' },
+        ]),
+        () => toModelStream([
+          { type: 'text_delta', delta: '草稿' },
+          { type: 'response_completed', finishReason: 'stop' },
+        ]),
+        registry => toModelStream([
+          submitGroundedAnswerEvent({
+            answer: '整篇文章可作为证据。',
+            outcome: 'answered',
+            citationKeys: [registry[0]!],
+          }),
+          { type: 'response_completed', finishReason: 'tool_calls' },
+        ]),
+      ],
+      // 与真实工具命中时的返回一致：只提交 evidence，没有 stepSummary。
+      toolResults: [{
+        ok: true,
+        data: { sourceId: 301, found: true },
+        modelContent: '{"sourceId":301,"found":true}',
+        evidence: ARTICLE_DETAIL_EVIDENCE,
+      }],
+    })
+
+    await collectEvents(harness.run())
+
+    const toolStep = harness.recorder.steps.find(
+      step => step.type === AGENT_STEP_TYPES.toolExecution,
+    )
+    const finalizationStep = harness.recorder.steps.find(
+      step => step.type === AGENT_STEP_TYPES.groundedFinalization,
+    )
+
+    assert.ok(toolStep && finalizationStep)
+
+    const toolOutput = toolStep.output as Record<string, unknown> | undefined
+    const finalizationOutput = finalizationStep.output as Record<string, unknown> | undefined
+
+    assert.ok(toolOutput && finalizationOutput, 'tool / finalization Step 缺少 output')
+    // runtime 事实：tool Step 没有 toolSummary，Registry 却已经有 1 条 article 证据。
+    assert.equal(Object.hasOwn(toolOutput, 'toolSummary'), false)
+    assert.equal(finalizationOutput.registryRefCount, 1)
+
+    // 跨层：runtime 真实写出的 Step 与 Grounding 原样交给 Admin projector。
+    const detail = projectHarnessRunDetail(harness)
+    const finalizationItem = detail.timeline.find(
+      item => item.type === AGENT_STEP_TYPES.groundedFinalization,
+    )
+
+    assert.deepEqual(detail.retrievalInspector.retrievalCalls, [{
+      stepId: toolStep.id,
+      query: null,
+      strategy: null,
+      sourceCount: null,
+      chunkEvidenceCount: null,
+      refs: [],
+    }])
+    assert.ok(
+      finalizationItem?.kind === 'known'
+      && finalizationItem.type === AGENT_STEP_TYPES.groundedFinalization,
+    )
+    assert.equal(finalizationItem.registryRefCount, 1)
+    // Citation 来自真实 Registry；summary 里没有 refs，所以无法关联到 call。
+    assert.deepEqual(
+      detail.retrievalInspector.citations?.map(
+        citation => [citation.sourceId, citation.chunkId, citation.matchedCallIds],
+      ),
+      [[301, null, []]],
+    )
   })
 
   it('conflicting_evidence 必须引用两个不同 source', async () => {
@@ -1512,6 +1606,54 @@ async function collectEvents(
   }
 
   return collected
+}
+
+/** 跨层：把 runtime 真实写出的 Step 与 Grounding 原样交给 Admin projector，不手写 fixture。 */
+function projectHarnessRunDetail(harness: ReturnType<typeof createHarness>) {
+  const assistantMessage = harness.assistantMessage()
+  const now = new Date()
+
+  assert.ok(assistantMessage)
+
+  return projectAdminRunDetail({
+    id: 'run-1',
+    conversationId: 'conversation-1',
+    assistantMessageId: assistantMessage.id,
+    status: 'COMPLETED',
+    startedAt: now,
+    endedAt: now,
+    createdAt: now,
+    updatedAt: now,
+    userMessage: {
+      id: 'message-user',
+      role: 'USER',
+      status: 'COMPLETED',
+      content: '问题',
+      createdAt: now,
+      updatedAt: now,
+    },
+    assistantMessage: {
+      id: assistantMessage.id,
+      role: 'ASSISTANT',
+      status: assistantMessage.status,
+      content: assistantMessage.content,
+      createdAt: assistantMessage.createdAt,
+      updatedAt: assistantMessage.updatedAt,
+      grounding: harness.recorder.completedGrounding ?? null,
+    },
+    steps: harness.recorder.steps.map(step => ({
+      id: step.id,
+      sequence: step.sequence,
+      type: step.type,
+      title: step.type,
+      status: step.status,
+      input: step.input ?? null,
+      output: step.output ?? null,
+      errorMessage: step.errorMessage ?? null,
+      startedAt: null,
+      endedAt: null,
+    })),
+  })
 }
 
 const eligibleDefinition: ToolDefinition = {

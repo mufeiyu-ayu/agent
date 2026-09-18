@@ -1,5 +1,6 @@
 import type {
   AdminContextInspector,
+  AdminRetrievalCallSummary,
   AdminRetrievalInspector,
   AdminRunDetail,
   AdminRunListItem,
@@ -407,6 +408,9 @@ function checkProductionSources(): void {
   // 三态色调必须走 presenter 纯函数，不得回到「非 false 即绿」的二元判断。
   assert.match(retrievalInspectorSource, /resolveCallStatusTone/)
   assert.doesNotMatch(retrievalInspectorSource, /ok === false \? 'red' : 'green'/)
+  // 证据引用身份数是三态：未知必须走「未记录」占位，不得用 ?? 0 顶替。
+  assert.match(retrievalInspectorSource, /show\(counts\.value\.evidenceRefCount\)/)
+  assert.doesNotMatch(retrievalInspectorSource, /evidenceRefCount \?\? 0/)
 
   const presenterSource = readFileSync(
     new URL('./trace/retrieval-inspector.presenter.ts', import.meta.url),
@@ -463,6 +467,7 @@ function checkRetrievalInspector(): void {
 
   checkCallStatusTone()
   checkCandidateCountRendering(traceDetail.timeline)
+  checkEvidenceRefCountRendering(createTraceDetail(2).timeline)
 }
 
 /**
@@ -513,8 +518,87 @@ function checkCandidateCountRendering(timeline: AdminRunTimelineItem[]): void {
   assert.equal(createRetrievalInspectorCounts(zeroHitCards, zeroHit.citations).candidateCount, 0)
   assert.equal(createRetrievalInspectorCounts(zeroHitCards, zeroHit.citations).evidenceRefCount, 0)
   assert.equal(createRetrievalInspectorCounts(unknownCards, unknown.citations).candidateCount, null)
+  assert.equal(createRetrievalInspectorCounts(unknownCards, unknown.citations).evidenceRefCount, null)
   assert.equal(createRetrievalInspectorCounts(failedCards, unknown.citations).failedCallCount, 1)
   assert.equal(resolveCallStatusTone(failedCards[0]!.ok), 'error')
+}
+
+/**
+ * 证据引用身份数必须区分「明确记录为 0」与「没有摘要、数量未知」。
+ *
+ * `get_article_detail` 命中时只提交 evidence 不写 summary，presenter 收到
+ * `sourceCount=null`、`refs=[]`；Registry 实际可能已有 1 条 article 证据，
+ * 不能把它显示成确定的 0，也不能把已知 call 的数量当成整个 Run 的总数。
+ */
+function checkEvidenceRefCountRendering(timeline: AdminRunTimelineItem[]): void {
+  const knownCall = createAvailableRetrievalInspector().retrievalCalls[0]!
+  const detailCall: AdminRetrievalCallSummary = {
+    stepId: 'trace-tool-2',
+    query: null,
+    strategy: null,
+    sourceCount: null,
+    chunkEvidenceCount: null,
+    refs: [],
+  }
+  const overlappingCall: AdminRetrievalCallSummary = {
+    ...knownCall,
+    stepId: 'trace-tool-2',
+    sourceCount: 2,
+    chunkEvidenceCount: 1,
+    refs: [
+      { sourceId: 11, chunkId: 'chunk-a' },
+      { sourceId: 21, chunkId: null },
+    ],
+  }
+  const counts = (
+    retrievalCalls: AdminRetrievalCallSummary[],
+    calls: AdminRunTimelineItem[] = timeline,
+  ) => createRetrievalInspectorCounts(
+    createRetrievalCallCards(createRetrievalInspector({ retrievalCalls }), calls),
+    null,
+  )
+  const withToolStep = (
+    id: string,
+    patch: Partial<Extract<AdminRunTimelineItem, { type: 'tool_execution' }>>,
+  ) => timeline.map(item => (
+    item.kind === 'known' && item.type === 'tool_execution' && item.id === id
+      ? { ...item, ...patch }
+      : item
+  ))
+
+  // 成功、有 evidence、无 summary：数量未知，不是 0。
+  assert.equal(counts([detailCall]).evidenceRefCount, null)
+  // 所有摘要完整：按 sourceId:chunkId 精确去重（11:chunk-a 重复只算一次）。
+  assert.equal(counts([knownCall, overlappingCall]).evidenceRefCount, 4)
+  // 已知与未知混合：不能把已知的 3 当成总数。
+  assert.equal(counts([knownCall, detailCall]).evidenceRefCount, null)
+  // summary 声明 5 条却只投影出 3 条（非法 ref 被跳过或只写了前 N 条）：数量未知，不是偏小的 3。
+  assert.equal(
+    counts([{ ...knownCall, sourceCount: 5 }]).evidenceRefCount,
+    null,
+  )
+  // 明确失败的调用不向 Registry 提交引用，0 是可确认的事实，总数仍为已知的 3。
+  assert.equal(
+    counts([knownCall, detailCall], withToolStep('trace-tool-2', { ok: false, code: 'timeout' }))
+      .evidenceRefCount,
+    3,
+  )
+  // 失败调用即使带着 summary refs 也不向 Registry 提交引用：不计入，总数仍是已知的 3。
+  assert.equal(
+    counts(
+      [knownCall, { ...overlappingCall, refs: [{ sourceId: 31, chunkId: 'chunk-x' }], sourceCount: 1 }],
+      withToolStep('trace-tool-2', { ok: false, code: 'timeout' }),
+    ).evidenceRefCount,
+    3,
+  )
+  // 运行中 / 结果未记录（ok=null）且无摘要：未知。
+  assert.equal(
+    counts([knownCall, detailCall], withToolStep('trace-tool-2', { ok: null, status: 'RUNNING' }))
+      .evidenceRefCount,
+    null,
+  )
+  // 在 timeline 找不到 tool step（ok=null）同样是未知。
+  assert.equal(counts([detailCall], []).evidenceRefCount, null)
 }
 
 function createRetrievalInspector(

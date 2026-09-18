@@ -234,7 +234,7 @@ function projectRetrievalCall(
 /**
  * 逐条读取来源身份；不是数组返回空数组，单条读不出则跳过该条。
  *
- * `chunkId` 缺省或 null 才是 article 粒度；其他非字符串值不能退化成 null，
+ * `chunkId` 缺省或 null 才是 article 粒度；其他读不出的值不能退化成 null，
  * 否则损坏的 chunk ref 会与同 sourceId 的 article 级 Citation 假关联。
  */
 function readSourceRefs(value: unknown): AdminRetrievalSourceRef[] {
@@ -246,17 +246,38 @@ function readSourceRefs(value: unknown): AdminRetrievalSourceRef[] {
   for (const candidate of value) {
     const object = readObject(candidate)
     const sourceId = readPositiveInteger(object, 'sourceId')
-    const chunkId = object?.chunkId === undefined || object.chunkId === null
-      ? null
-      : readString(object, 'chunkId', MAX_CHUNK_ID_CHARS)
+    const chunkId = readChunkIdentity(object)
 
-    if (sourceId === null || (chunkId === null && object?.chunkId != null))
+    if (sourceId === null || chunkId === undefined)
       continue
 
     refs.push({ sourceId, chunkId })
   }
 
   return refs
+}
+
+/**
+ * `chunkId` 是身份字段，口径与 `grounding.ts` 的 Citation 一致：非空且不超过
+ * `MAX_CHUNK_ID_CHARS` 的字符串原样保留，不做 preview 的空白折叠、trim 或截断，
+ * 否则 `" chunk-a "`、`""`、超长 ID 会被改写成另一个能与 Citation 关联的身份。
+ * 200 的上限与 `tools/core/tool-evidence.ts` 的 Registry 入口一致；调整任一处需同步。
+ *
+ * @returns `null` 表示 article 粒度（缺省或 null）；`undefined` 表示身份非法，调用方跳过整条 ref。
+ */
+function readChunkIdentity(
+  object: Record<string, unknown> | null,
+): string | null | undefined {
+  const value = object?.chunkId
+
+  if (value === undefined || value === null)
+    return null
+
+  return typeof value === 'string'
+    && value.length > 0
+    && [...value].length <= MAX_CHUNK_ID_CHARS
+    ? value
+    : undefined
 }
 
 function readStrategy(value: unknown): AdminRetrievalStrategy | null {

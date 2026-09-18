@@ -44,7 +44,7 @@ const overviewFields = computed(() => [
   },
   {
     label: t('retrieval.fields.evidenceRefCount'),
-    value: counts.value.evidenceRefCount,
+    value: show(counts.value.evidenceRefCount),
   },
   {
     label: t('retrieval.fields.citedSourceCount'),
