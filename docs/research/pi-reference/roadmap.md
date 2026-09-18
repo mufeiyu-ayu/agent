@@ -2,7 +2,7 @@
 
 ## 目的与状态
 
-这是用户完成当前项目源码学习后的**实现顺序**。用户不读 Pi 代码；Pi 素材是 AI 在替用户写代码时自行查阅的参照。本文不是新的 Active Task，也不表示以下实现已获批准。正式 #116 → `web_fetch` 继续按 `docs/tasks/README.md` 执行，遇到与本文冲突的规格先讨论。
+这是用户完成当前项目源码学习后的**实现顺序**。用户不读 Pi 代码；Pi 素材是 AI 在替用户写代码时自行查阅的参照。本文不是新的 Active Task，也不表示以下实现已获批准。正式 `web_fetch` 继续按 `docs/tasks/README.md` 执行，遇到与本文冲突的规格先讨论。
 
 目标产品：用户可以通过 Web 长期使用自己的云端 Agent，运行可观察、会话可继续、工具行为可控制；保留我们已有 RAG / Grounding 与 Admin 的价值。不是把 Pi TUI 逐屏翻译成 Vue。
 
@@ -18,7 +18,7 @@
 
 **R0 前置（2026-09-16 定案）**：#118 删死代码与单实现抽象、#119 历史裁剪合一、#120 抽出 `packages/ai`，按序排在 #115 前。`packages/ai` 提前的理由：#115 / #117 全落在模型层，先搬再改只写一次。
 
-完成 #115（模型请求重试与 Loop 上限，已于 2026-09-18 合并）、#116（同轮文本 + 顺序多 Tool Call）。#117（Responses adapter）已于 2026-09-18 关闭转 Gated：DeepSeek 上 Responses 无能力差异且无状态，触发条件见 `docs/tasks/README.md`。参照 Pi 的多 content block 和 request/attempt 区分，保留当前模型/工具/前端独立契约。
+完成 #115（模型请求重试与 Loop 上限，已于 2026-09-18 合并）、#116（同轮文本 + 顺序多 Tool Call，已于 2026-09-19 合并）。#117（Responses adapter）已于 2026-09-18 关闭转 Gated：DeepSeek 上 Responses 无能力差异且无状态，触发条件见 `docs/tasks/README.md`。参照 Pi 的多 content block 和 request/attempt 区分，保留当前模型/工具/前端独立契约。
 
 **证明完成**：文本→工具→工具结果→最终文本；多个工具按原顺序执行；首次响应前失败与中途断流分开；usage 不重复计数；abort/deadline 不继续重试；DeepSeek 的 reasoningContent 分支覆盖。正式验收条款以对应 Issue 最新决定为准。
 
@@ -30,7 +30,7 @@
 
 **范围**：只允许 http/https；解析后拦截内网与保留地址，防 SSRF；体积与超时上限；HTML 转正文；observation 按 untrusted 标记，复用现有 Tool Observation 治理。不做 web_search，它需要搜索 API 与账单，进 R5 候选。
 
-**进入条件**：#115、#116 合并。
+**进入条件**：#115、#116 合并（已满足，2026-09-19）。
 
 **AI 查的素材**：Pi 没有 fetch 工具，抓网页靠 `bash` 跑 `curl`，云端不能照搬；体积控制参照 `coding-agent/src/core/tools/truncate.ts` 与 `output-accumulator.ts`；工具定义与注册参照 [产品主链 §6.4](./modules/coding-agent-tui.md)。
 
@@ -112,7 +112,7 @@
 
 | 工作 | Pi 对应 | 估计 |
 | --- | --- | --- |
-| R0 #115–116 | #115 已合并，#116 已立项 | 1～2 周 |
+| R0 #115–116 | 已合并（2026-09-18 / 2026-09-19） | 完成 |
 | R2 运行解耦（含分包） | `harness/runtime` 的 lane/drive/checkpoint；包结构参照 `agent / ai / coding-agent` | 3～4 周 |
 | R1 durable 事实 | `harness/session` + `drive/recovery` | 3 周 |
 | R3 工具 journal 与审批、鉴权租户 | `drive/tools` + `execution/tools`；审批与租户 Pi 无参照 | 4～5 周 |

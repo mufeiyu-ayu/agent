@@ -7,7 +7,7 @@
 ```text
 阶段 1-8：Completed
 Active Agent Task：无
-Next / Planned：#116 同轮文本 + 多 Tool Call → web_fetch（#115 模型调用重试与 Loop 默认上限已于 2026-09-18 合并；#117 Responses adapter 已于 2026-09-18 关闭转 Gated；去过度设计三件 #118 / #119 / #120 与 #124 目录整理已于 2026-09-17 全部合并，`packages/ai` 已按 Pi 分层；#126 Admin Run 读模型去过度设计与 #127 `packages/ai` 运行时配置收敛已于 2026-09-18 合并）
+Next / Planned：web_fetch（#116 同轮文本 + 多 Tool Call 已于 2026-09-19 合并；#115 模型调用重试与 Loop 默认上限已于 2026-09-18 合并；#117 Responses adapter 已于 2026-09-18 关闭转 Gated；去过度设计三件 #118 / #119 / #120 与 #124 目录整理已于 2026-09-17 全部合并，`packages/ai` 已按 Pi 分层；#126 Admin Run 读模型去过度设计与 #127 `packages/ai` 运行时配置收敛已于 2026-09-18 合并）
 方向：runtime 深化（2026-09-05 定案）
 当前阶段：源码阅读
 候选子系统：session 事件流与 replay、审批门、compaction、定时任务
@@ -41,7 +41,7 @@ Admin Task 4：Planned
 
 ## 当前学习阶段
 
-当前继续本项目源码阅读。2026-09-15 用户指定：完成当前学习后，由 AI 以 Pi 为主要参照实现云端 Agent，用户不读 Pi 代码；研究资料、架构图和实现顺序见 [`pi-reference/README.md`](./research/pi-reference/README.md) 与 [Pi 实现 roadmap](./research/pi-reference/roadmap.md)。研究准备不改变 #116 → `web_fetch` 的正式顺序。参照方法见 [`learning-method.md`](research/pi-reference/learning-method.md)。Phase 8 链路仍可按以下顺序回读：
+当前继续本项目源码阅读。2026-09-15 用户指定：完成当前学习后，由 AI 以 Pi 为主要参照实现云端 Agent，用户不读 Pi 代码；研究资料、架构图和实现顺序见 [`pi-reference/README.md`](./research/pi-reference/README.md) 与 [Pi 实现 roadmap](./research/pi-reference/roadmap.md)。研究准备不改变 `web_fetch` 的正式顺序。参照方法见 [`learning-method.md`](research/pi-reference/learning-method.md)。Phase 8 链路仍可按以下顺序回读：
 
 ```text
 索引入口
@@ -120,5 +120,5 @@ Phase 8 Task 3C 已完成安全 Retrieval Inspector，但不自动启动 Task 4�
 Phase 8：Completed / 已归档（docs/tasks/completed/phase-08-grounded-retrieval.md）
 Active Agent Task：无
 当前阶段：本项目源码阅读；后续按 pi-reference roadmap 由 AI 参照 Pi 实现云端方向
-下一步：#116 → web_fetch 依次开工（#118 / #119 / #120 / #124 / #126 / #127 / #115 已合并；#117 已于 2026-09-18 关闭转 Gated，触发条件见看板）；其余候选子系统在立项条件满足时建 Issue，走 docs/workflow.md 的流程
+下一步：web_fetch 立项开工（#118 / #119 / #120 / #124 / #126 / #127 / #115 / #116 已合并；#117 已于 2026-09-18 关闭转 Gated，触发条件见看板）；其余候选子系统在立项条件满足时建 Issue，走 docs/workflow.md 的流程
 ```
