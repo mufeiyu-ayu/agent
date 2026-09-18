@@ -15,9 +15,11 @@ describe('OpenAI-compatible request mapping', () => {
   it('映射 Tool Call、Tool Result 和工具定义', () => {
     assert.deepEqual(toOpenAIModelInputItem({
       type: 'assistant_tool_call',
-      callId: 'call-1',
-      name: 'search_articles',
-      rawArgumentsJson: '{"query":"seo"}',
+      calls: [{
+        callId: 'call-1',
+        name: 'search_articles',
+        rawArgumentsJson: '{"query":"seo"}',
+      }],
       reasoningContent: '需要先查询相关文章。',
     }), {
       role: 'assistant',
@@ -31,6 +33,32 @@ describe('OpenAI-compatible request mapping', () => {
           arguments: '{"query":"seo"}',
         },
       }],
+    })
+    // 同轮多个 Tool Call 与中间文本映射为一条 assistant 消息。
+    assert.deepEqual(toOpenAIModelInputItem({
+      type: 'assistant_tool_call',
+      calls: [
+        { callId: 'call-1', name: 'search_articles', rawArgumentsJson: '{"query":"seo"}' },
+        { callId: 'call-2', name: 'get_article_detail', rawArgumentsJson: '{"sourceId":1}' },
+      ],
+      reasoningContent: '两个都查。',
+      content: '先查一下',
+    }), {
+      role: 'assistant',
+      content: '先查一下',
+      reasoning_content: '两个都查。',
+      tool_calls: [
+        {
+          id: 'call-1',
+          type: 'function',
+          function: { name: 'search_articles', arguments: '{"query":"seo"}' },
+        },
+        {
+          id: 'call-2',
+          type: 'function',
+          function: { name: 'get_article_detail', arguments: '{"sourceId":1}' },
+        },
+      ],
     })
     assert.deepEqual(toOpenAIModelInputItem({
       type: 'tool_result',
@@ -271,31 +299,34 @@ describe('adaptOpenAICompatibleStream', () => {
     ]
 
     for (const reasoningDelta of invalidReasoningDeltas) {
-      await assert.rejects(
-        collectEvents(adaptOpenAICompatibleStream(toStream([
-          ...(reasoningDelta ? [createChunk({ delta: reasoningDelta })] : []),
-          createChunk({
-            delta: {
-              tool_calls: [toolCallDelta(0, {
-                id: 'call-secret',
-                name: 'search_articles',
-                argumentsJson: '{"query":"provider-secret"}',
-              })],
-            },
-            finishReason: 'tool_calls',
-          }),
-        ]))),
-        (error) => {
-          assert.ok(error instanceof LLMApiError)
-          assert.equal(
-            error.message,
-            'DeepSeek thinking Tool Call 缺少必需的 reasoning_content continuation',
-          )
-          assert.equal(error.detail, undefined)
-          assert.doesNotMatch(error.message, /provider-secret|call-secret/)
-          return true
-        },
-      )
+      // length 截断的调用同样会作为 assistant tool_calls 消息回填，不变量一致。
+      for (const finishReason of ['tool_calls', 'length'] as const) {
+        await assert.rejects(
+          collectEvents(adaptOpenAICompatibleStream(toStream([
+            ...(reasoningDelta ? [createChunk({ delta: reasoningDelta })] : []),
+            createChunk({
+              delta: {
+                tool_calls: [toolCallDelta(0, {
+                  id: 'call-secret',
+                  name: 'search_articles',
+                  argumentsJson: '{"query":"provider-secret"}',
+                })],
+              },
+              finishReason,
+            }),
+          ]))),
+          (error) => {
+            assert.ok(error instanceof LLMApiError)
+            assert.equal(
+              error.message,
+              'DeepSeek thinking Tool Call 缺少必需的 reasoning_content continuation',
+            )
+            assert.equal(error.detail, undefined)
+            assert.doesNotMatch(error.message, /provider-secret|call-secret/)
+            return true
+          },
+        )
+      }
     }
   })
 
@@ -338,6 +369,125 @@ describe('adaptOpenAICompatibleStream', () => {
       ]))),
       LLMApiError,
     )
+  })
+
+  it('stop / content_filter 带 Tool Call 仍视为 Provider 违规', async () => {
+    for (const finishReason of ['stop', 'content_filter'] as const) {
+      await assert.rejects(
+        collectEvents(adaptOpenAICompatibleStream(toStream([
+          createChunk({ delta: { reasoning_content: '想一下。' } }),
+          createChunk({
+            delta: {
+              tool_calls: [toolCallDelta(0, {
+                id: 'call-1',
+                name: 'search_articles',
+                argumentsJson: '{"query":"seo"}',
+              })],
+            },
+            finishReason,
+          }),
+        ]))),
+        (error) => {
+          assert.ok(error instanceof LLMApiError)
+          assert.match(error.message, new RegExp(`finish reason 为 ${finishReason}`))
+          return true
+        },
+      )
+    }
+  })
+
+  it('length 时放行有 id 与 name 的截断 Tool Call，丢弃无法配对的分片', async () => {
+    const events = await collectEvents(adaptOpenAICompatibleStream(toStream([
+      createChunk({ delta: { reasoning_content: '需要查两篇。' } }),
+      createChunk({
+        delta: {
+          tool_calls: [
+            // index 0：arguments 一个字节都没来。
+            toolCallDelta(0, { id: 'call-empty', name: 'search_articles' }),
+            // index 1：arguments 只到一半。
+            toolCallDelta(1, { id: 'call-partial', name: 'get_article_detail', argumentsJson: '{"sourceId":' }),
+            // index 2：连 id 都没来，无法与 tool 消息配对。
+            toolCallDelta(2, { name: 'search_', argumentsJson: '{"q' }),
+            // index 3：有 id 但没有工具名，不构成完整调用身份。
+            toolCallDelta(3, { id: 'call-no-name' }),
+          ],
+        },
+        finishReason: 'length',
+      }),
+    ])))
+
+    assert.deepEqual(events, [
+      { type: 'tool_call_started' },
+      {
+        type: 'tool_call_completed',
+        toolCall: {
+          providerCallId: 'call-empty',
+          name: 'search_articles',
+          argumentsJson: '',
+          index: 0,
+        },
+        reasoningContent: '需要查两篇。',
+      },
+      {
+        type: 'tool_call_completed',
+        toolCall: {
+          providerCallId: 'call-partial',
+          name: 'get_article_detail',
+          argumentsJson: '{"sourceId":',
+          index: 1,
+        },
+        reasoningContent: '需要查两篇。',
+      },
+      { type: 'response_completed', finishReason: 'length' },
+    ])
+  })
+
+  it('length 后没有任何可配对分片时只产出 length 完成事件', async () => {
+    const events = await collectEvents(adaptOpenAICompatibleStream(toStream([
+      createChunk({
+        delta: {
+          tool_calls: [toolCallDelta(0, { name: 'search_articles', argumentsJson: '{"q' })],
+        },
+        finishReason: 'length',
+      }),
+    ])))
+
+    assert.deepEqual(events, [
+      { type: 'tool_call_started' },
+      { type: 'response_completed', finishReason: 'length' },
+    ])
+  })
+
+  it('同批不同 index 的最终 call id 重复时在 yield 任何 Tool Call 之前抛错', async () => {
+    const events: unknown[] = []
+
+    await assert.rejects(
+      (async () => {
+        for await (const event of adaptOpenAICompatibleStream(toStream([
+          createChunk({ delta: { reasoning_content: '重复。' } }),
+          createChunk({
+            delta: {
+              tool_calls: [
+                toolCallDelta(0, { id: 'call-', name: 'search_articles', argumentsJson: '{"query":"a"}' }),
+                toolCallDelta(1, { id: 'call-1', name: 'get_article_detail', argumentsJson: '{"sourceId":1}' }),
+              ],
+            },
+          }),
+          createChunk({
+            delta: { tool_calls: [toolCallDelta(0, { id: '1' })] },
+            finishReason: 'tool_calls',
+          }),
+        ]))) {
+          events.push(event)
+        }
+      })(),
+      (error) => {
+        assert.ok(error instanceof LLMApiError)
+        assert.match(error.message, /重复的 Tool Call id/)
+        return true
+      },
+    )
+    assert.deepEqual(events, [{ type: 'tool_call_started' }])
   })
 
   it('让 Provider iterator 错误沿 throw 通道传播', async () => {

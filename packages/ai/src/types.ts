@@ -98,36 +98,39 @@ export function mergeModelUsage(
   return Object.keys(merged).length > 0 ? merged : null
 }
 
-/** Runtime 传给模型的内部输入；工具调用过程不会进入用户可见消息。 */
-export type ModelInputItem
-  = | {
-    type: 'message'
-    role: ChatMessage['role']
-    content: string
-  }
-  | {
-    type: 'assistant_tool_call'
+/** Runtime 传给模型的普通消息；工具调用过程不会进入用户可见消息。 */
+export interface MessageInputItem {
+  type: 'message'
+  role: 'system' | 'user' | 'assistant'
+  content: string
+}
+
+/** 模型在同一轮里提出的一个或多个 Tool Call，映射为一条带 tool_calls[] 的 assistant 消息。 */
+export interface AssistantToolCallInputItem {
+  type: 'assistant_tool_call'
+  calls: Array<{
     callId: string
     name: string
     rawArgumentsJson: string
-    reasoningContent: string
-    content?: string
-  }
-  | {
-    type: 'tool_result'
-    callId: string
-    name: string
-    content: string
-    ok: boolean
-  }
-
-export function toModelInputItems(messages: ChatMessage[]): ModelInputItem[] {
-  return messages.map(message => ({
-    type: 'message',
-    role: message.role,
-    content: message.content,
-  }))
+  }>
+  reasoningContent: string
+  /** 模型在 Tool Call 之前 / 之间产生的文本，原样作为 assistant content 续传。 */
+  content?: string
 }
+
+export interface ToolResultInputItem {
+  type: 'tool_result'
+  callId: string
+  name: string
+  content: string
+  ok: boolean
+}
+
+/** Runtime 传给模型的内部输入。 */
+export type ModelInputItem
+  = | MessageInputItem
+    | AssistantToolCallInputItem
+    | ToolResultInputItem
 
 /**
  * LLM 调用相关类型定义
@@ -137,14 +140,6 @@ export function toModelInputItems(messages: ChatMessage[]): ModelInputItem[] {
  * - 不包含任何 SEO 业务字段（title、description 等由上层定义）
  * - 不暴露 OpenAI SDK 原始 chunk / response 给业务层
  */
-
-// ─── 消息结构 ────────────────────────────────
-
-/** 标准 chat message */
-export interface ChatMessage {
-  role: 'system' | 'user' | 'assistant'
-  content: string
-}
 
 // ─── 请求选项 ────────────────────────────────
 

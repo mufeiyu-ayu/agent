@@ -11,7 +11,7 @@ import {
 } from '@nestjs/common'
 
 import { AgentRuntimeService } from '../agent-runtime/agent-runtime.service.js'
-import { buildSeoAgentChatMessages } from './prompts/seo-agent.prompt.js'
+import { buildSeoAgentInstructions } from './prompts/seo-agent.prompt.js'
 import { toChatStreamEvent } from './seo-chat-stream-event.mapper.js'
 
 interface SeoChatStreamOptions {
@@ -90,7 +90,7 @@ export class SeoService {
         : {}),
       ...(signal ? { signal } : {}),
       /** 系统提示词 */
-      instructions: buildSeoAgentChatMessages([]),
+      instructions: buildSeoAgentInstructions([]),
     }
   }
 }

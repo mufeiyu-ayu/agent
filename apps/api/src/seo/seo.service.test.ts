@@ -1,4 +1,4 @@
-import type { ChatMessage } from '@agent/ai'
+import type { MessageInputItem } from '@agent/ai'
 import type { MessageGroundingV1 } from '@agent/contracts'
 import type { AgentRuntimeService } from '../agent-runtime/agent-runtime.service.js'
 import type {
@@ -19,7 +19,7 @@ import {
 } from '@nestjs/common'
 
 import { toConversationMessageResponse } from '../conversations/messages.service.js'
-import { buildSeoAgentChatMessages } from './prompts/seo-agent.prompt.js'
+import { buildSeoAgentInstructions } from './prompts/seo-agent.prompt.js'
 import { SeoService } from './seo.service.js'
 
 const GENERATED_AT = '2026-07-18T08:00:00.000Z'
@@ -143,14 +143,14 @@ describe('SeoService', () => {
       userContent: '用户问题',
       model: 'deepseek-chat',
       reasoningEffort: 'max',
-      instructions: buildSeoAgentChatMessages([]),
+      instructions: buildSeoAgentInstructions([]),
     })
     assert.deepEqual(withoutSignal(streamInput), withoutSignal(chatInput))
     assert.equal(Object.hasOwn(chatInput, 'signal'), false)
     assert.equal(streamInput.signal, abortController.signal)
 
     // 两个入口只传系统提示词；历史与当前消息由 Runtime 自行拼接。
-    const instructions: ChatMessage[] = chatInput.instructions
+    const instructions: MessageInputItem[] = chatInput.instructions
 
     assert.equal(instructions.length, 1)
     assert.equal(instructions[0]?.role, 'system')

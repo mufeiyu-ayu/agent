@@ -799,9 +799,7 @@ describe('AgentRuntimeService model stream', () => {
       },
       {
         type: 'assistant_tool_call',
-        callId: 'call-1',
-        name: 'search_articles',
-        rawArgumentsJson: '{"query":"SP Himeko"}',
+        calls: [{ callId: 'call-1', name: 'search_articles', rawArgumentsJson: '{"query":"SP Himeko"}' }],
         reasoningContent: 'reasoning for call-1',
       },
       {
@@ -993,9 +991,7 @@ describe('AgentRuntimeService model stream', () => {
     assert.deepEqual(harness.llmCalls[1]?.messages.slice(1), [
       {
         type: 'assistant_tool_call',
-        callId: 'call-retrieval',
-        name: 'retrieve_article_context',
-        rawArgumentsJson: '{"query":"什么是 SEO"}',
+        calls: [{ callId: 'call-retrieval', name: 'retrieve_article_context', rawArgumentsJson: '{"query":"什么是 SEO"}' }],
         reasoningContent: 'reasoning for call-retrieval',
       },
       {
@@ -1545,9 +1541,7 @@ describe('AgentRuntimeService model stream', () => {
       },
       {
         type: 'assistant_tool_call',
-        callId: 'call-search',
-        name: 'search_articles',
-        rawArgumentsJson: '{"query":"seo"}',
+        calls: [{ callId: 'call-search', name: 'search_articles', rawArgumentsJson: '{"query":"seo"}' }],
         reasoningContent: searchReasoning,
       },
       {
@@ -1559,9 +1553,7 @@ describe('AgentRuntimeService model stream', () => {
       },
       {
         type: 'assistant_tool_call',
-        callId: 'call-detail',
-        name: 'get_article_detail',
-        rawArgumentsJson: '{"sourceId":24}',
+        calls: [{ callId: 'call-detail', name: 'get_article_detail', rawArgumentsJson: '{"sourceId":24}' }],
         reasoningContent: detailReasoning,
       },
       {
@@ -1756,9 +1748,7 @@ describe('AgentRuntimeService model stream', () => {
     assert.deepEqual(harness.llmCalls[1]?.messages.slice(-2), [
       {
         type: 'assistant_tool_call',
-        callId: 'call-hidden',
-        name: 'hidden_admin_tool',
-        rawArgumentsJson: '{}',
+        calls: [{ callId: 'call-hidden', name: 'hidden_admin_tool', rawArgumentsJson: '{}' }],
         reasoningContent: 'reasoning for call-hidden',
       },
       {
@@ -1965,105 +1955,274 @@ describe('AgentRuntimeService model stream', () => {
     assertNoUnfinishedSteps(harness)
   })
 
-  it('拒绝同轮多个 Tool Call，不执行并行工具', async () => {
+  it('同轮「文本 + 两个 Tool Call」按 index 顺序执行，文本保留并随 tool_calls 回填', async () => {
+    const streams: ModelStreamEvent[][] = [
+      [
+        { type: 'text_delta', delta: '先查两篇。' },
+        { type: 'tool_call_started' },
+        toolCallEvent('call-1', 'search_articles', '{"query":"seo"}', '两个都查。', 0),
+        toolCallEvent('call-2', 'get_article_detail', '{"sourceId":24}', '两个都查。', 1),
+        { type: 'response_completed', finishReason: 'tool_calls' },
+      ],
+      [
+        { type: 'text_delta', delta: '最终回答。' },
+        { type: 'response_completed', finishReason: 'stop' },
+      ],
+    ]
+    const harness = createHarness(
+      (_, __, callIndex) => toModelStream(streams[callIndex] ?? []),
+      undefined,
+      async envelope => ({
+        ok: true,
+        data: {},
+        modelContent: `结果 ${envelope.callId}`,
+      }),
+    )
+
+    const events = await collectEvents(harness.run())
+
+    assert.deepEqual(events.map(event => event.type), [
+      'run_started',
+      'assistant_delta',
+      'assistant_delta',
+      'run_completed',
+    ])
+    // 非 Grounding 模式：已推出的中间文本保留，最终 Message = 中间文本 + 最终回答。
+    assert.equal(harness.assistantMessage()?.content, '先查两篇。最终回答。')
+    const completedEvent = events.at(-1)
+
+    assert.equal(
+      completedEvent?.type === 'run_completed' ? completedEvent.content : undefined,
+      '先查两篇。最终回答。',
+    )
+    assert.deepEqual(
+      harness.toolInvocations.map(invocation => invocation.callId),
+      ['call-1', 'call-2'],
+    )
+    // assistant_output Step 在首个 delta 推出时就已开始，早于本轮的 tool_execution。
+    assert.deepEqual(harness.recorder.steps.map(step => step.type), [
+      'load_conversation_history',
+      'model_sampling',
+      'assistant_output',
+      'tool_execution',
+      'tool_execution',
+      'model_sampling',
+    ])
+    assert.deepEqual(
+      harness.recorder.steps
+        .filter(step => step.type === 'tool_execution')
+        .map(step => (step.input as { callId: string }).callId),
+      ['call-1', 'call-2'],
+    )
+    // 第二轮请求：一条带 content 与 tool_calls[] 的 assistant 消息，后接两条一一对应的 tool 消息。
+    assert.deepEqual(harness.llmCalls[1]?.messages.slice(1), [
+      {
+        type: 'assistant_tool_call',
+        calls: [
+          { callId: 'call-1', name: 'search_articles', rawArgumentsJson: '{"query":"seo"}' },
+          { callId: 'call-2', name: 'get_article_detail', rawArgumentsJson: '{"sourceId":24}' },
+        ],
+        reasoningContent: '两个都查。',
+        content: '先查两篇。',
+      },
+      { type: 'tool_result', callId: 'call-1', name: 'search_articles', content: '结果 call-1', ok: true },
+      { type: 'tool_result', callId: 'call-2', name: 'get_article_detail', content: '结果 call-2', ok: true },
+    ])
+    assert.equal(
+      (findStep(harness, 'model_sampling')?.output as { toolCallCount: number }).toolCallCount,
+      2,
+    )
+    assertNoUnfinishedSteps(harness)
+  })
+
+  it('本轮 call 数超过剩余预算时整体拒绝，任何 call 都不执行', async () => {
     const harness = createHarness(() => toModelStream([
-      toolCallEvent('call-1', 'search_articles', '{"query":"seo"}'),
-      toolCallEvent('call-2', 'search_articles', '{"query":"vue"}'),
+      toolCallEvent('call-1', 'search_articles', '{"query":"a"}', 'reason', 0),
+      toolCallEvent('call-2', 'search_articles', '{"query":"b"}', 'reason', 1),
+      toolCallEvent('call-3', 'search_articles', '{"query":"c"}', 'reason', 2),
       { type: 'response_completed', finishReason: 'tool_calls' },
     ]))
 
     const events = await collectEvents(harness.run())
+    const finalEvent = events.at(-1)
 
-    assert.equal(events.at(-1)?.type, 'run_failed')
+    assert.equal(finalEvent?.type, 'run_failed')
+    assert.match(
+      finalEvent?.type === 'run_failed' ? finalEvent.message : '',
+      /执行上限/,
+    )
     assert.equal(harness.toolInvocations.length, 0)
     assert.equal(harness.llmCalls.length, 1)
+    assert.deepEqual(harness.recorder.steps.map(step => step.type), [
+      'load_conversation_history',
+      'model_sampling',
+    ])
+    assert.equal(findStep(harness, 'model_sampling')?.status, AgentStepStatus.COMPLETED)
+    assert.equal(
+      (findStep(harness, 'model_sampling')?.output as { toolCallCount: number }).toolCallCount,
+      3,
+    )
+    assert.deepEqual(harness.recorder.failedRunIds, ['run-1'])
+    assert.equal(harness.assistantMessage()?.status, MessageStatus.FAILED)
     assertNoUnfinishedSteps(harness)
   })
 
-  it('拒绝不完整或结束原因冲突的 sampling', async () => {
-    const invalidStreams: ModelStreamEvent[][] = [
-      [
-        toolCallEvent('call-1', 'search_articles', '{"query":"seo"}'),
+  it('length 截断的 Tool Call 整批不执行，逐个记 truncated_arguments 并回喂，Run 继续', async () => {
+    const streams: Array<() => AsyncGenerator<ModelStreamEvent>> = [
+      // 原始 provider chunk 经真实 adapter：arguments 为空、不完整，以及无 id 分片各一。
+      () => adaptOpenAICompatibleStream(toProviderStream([
+        providerChunk({ reasoning_content: '需要查两篇。' } as ChatCompletionChunk.Choice.Delta),
+        providerChunk({
+          tool_calls: [
+            { index: 0, id: 'call-empty', type: 'function', function: { name: 'search_articles' } },
+            { index: 1, id: 'call-partial', type: 'function', function: { name: 'get_article_detail', arguments: '{"sourceId":' } },
+            { index: 2, type: 'function', function: { name: 'search_', arguments: '{"q' } },
+          ],
+        } as ChatCompletionChunk.Choice.Delta),
+        providerChunk({}, 'length'),
+      ])),
+      () => toModelStream([
+        toolCallEvent('call-retry', 'search_articles', '{"query":"seo"}'),
+        { type: 'response_completed', finishReason: 'tool_calls' },
+      ]),
+      () => toModelStream([
+        { type: 'text_delta', delta: '重发后完成。' },
         { type: 'response_completed', finishReason: 'stop' },
-      ],
-      [{ type: 'response_completed', finishReason: 'tool_calls' }],
-      [{ type: 'text_delta', delta: '未完成' }],
+      ]),
     ]
-
-    for (const stream of invalidStreams) {
-      const harness = createHarness(() => toModelStream(stream))
-      const events = await collectEvents(harness.run())
-
-      assert.equal(events.at(-1)?.type, 'run_failed')
-      assert.equal(harness.toolInvocations.length, 0)
-      assert.deepEqual(harness.recorder.completedRunIds, [])
-      assert.equal(findStep(harness, 'model_sampling')?.status, AgentStepStatus.FAILED)
-      assertNoUnfinishedSteps(harness)
-    }
-  })
-
-  it('text_delta 后迟到 Tool Call 时保留 partial capture，且原失败语义不变', async () => {
-    const secret = 'DO_NOT_LOG_RAW_RESPONSE'
-    const warnings: unknown[] = []
-    const harness = createHarness((_, options) =>
-      capturedLateToolCallModelStream(options, secret))
-
-    Object.defineProperty(harness.service, 'logger', {
-      value: {
-        error: () => {},
-        warn: (warning: unknown) => warnings.push(warning),
-      },
-    })
+    const harness = createHarness(
+      (_, __, callIndex) => streams[callIndex]!(),
+      undefined,
+      undefined,
+      { maxToolCalls: 3 },
+    )
 
     const events = await collectEvents(harness.run())
-    const failure = events.at(-1)
+
+    assert.equal(events.at(-1)?.type, 'run_completed')
+    assert.equal(harness.assistantMessage()?.content, '重发后完成。')
+    // 截断批次一个都没执行，只有模型重发的调用真正执行。
+    assert.deepEqual(
+      harness.toolInvocations.map(invocation => invocation.callId),
+      ['call-retry'],
+    )
+    const toolSteps = harness.recorder.steps.filter(step => step.type === 'tool_execution')
+
+    assert.deepEqual(toolSteps.map(step => [
+      (step.input as { callId: string }).callId,
+      step.status,
+      (step.output as { ok: boolean, code?: string }).ok,
+      (step.output as { ok: boolean, code?: string }).code,
+    ]), [
+      ['call-empty', AgentStepStatus.FAILED, false, 'truncated_arguments'],
+      ['call-partial', AgentStepStatus.FAILED, false, 'truncated_arguments'],
+      ['call-retry', AgentStepStatus.COMPLETED, true, undefined],
+    ])
+    assert.equal(
+      (findStep(harness, 'model_sampling')?.output as { finishReason: string }).finishReason,
+      'length',
+    )
+    // 第二轮模型输入：截断的两个 call 与各自的失败 tool 消息成对回填，无 id 分片不出现。
+    assert.deepEqual(harness.llmCalls[1]?.messages.slice(1, 4), [
+      {
+        type: 'assistant_tool_call',
+        calls: [
+          { callId: 'call-empty', name: 'search_articles', rawArgumentsJson: '' },
+          { callId: 'call-partial', name: 'get_article_detail', rawArgumentsJson: '{"sourceId":' },
+        ],
+        reasoningContent: '需要查两篇。',
+      },
+      {
+        type: 'tool_result',
+        callId: 'call-empty',
+        name: 'search_articles',
+        content: '工具 search_articles 的参数因模型输出达到长度限制而不完整，本次未执行；仍需要时请重新发起调用。',
+        ok: false,
+      },
+      {
+        type: 'tool_result',
+        callId: 'call-partial',
+        name: 'get_article_detail',
+        content: '工具 get_article_detail 的参数因模型输出达到长度限制而不完整，本次未执行；仍需要时请重新发起调用。',
+        ok: false,
+      },
+    ])
+    assert.equal(harness.llmCalls[1]?.messages.length, 4)
+    // Admin 投影接受新的 code。
+    const detail = projectHarnessRunDetail(harness, 'COMPLETED')
+
+    assert.deepEqual(
+      detail.timeline
+        .filter(item => item.kind === 'known' && item.type === 'tool_execution')
+        .map(item => (item as { code: string | null }).code),
+      ['truncated_arguments', 'truncated_arguments', null],
+    )
+    assertNoUnfinishedSteps(harness)
+  })
+
+  it('length 后没有任何可配对 Tool Call 时按不完整回答失败', async () => {
+    const harness = createHarness(() => adaptOpenAICompatibleStream(toProviderStream([
+      providerChunk({
+        tool_calls: [{ index: 0, type: 'function', function: { name: 'search_articles', arguments: '{"q' } }],
+      } as ChatCompletionChunk.Choice.Delta),
+      providerChunk({}, 'length'),
+    ])))
+
+    const events = await collectEvents(harness.run())
+    const finalEvent = events.at(-1)
+
+    assert.equal(finalEvent?.type, 'run_failed')
+    assert.match(finalEvent?.type === 'run_failed' ? finalEvent.message : '', /长度限制/)
+    assert.equal(harness.toolInvocations.length, 0)
+    assert.equal(findStep(harness, 'model_sampling')?.status, AgentStepStatus.FAILED)
+    assertNoUnfinishedSteps(harness)
+  })
+
+  it('拒绝缺少 response_completed 的 sampling', async () => {
+    const harness = createHarness(() => toModelStream([
+      { type: 'text_delta', delta: '未完成' },
+    ]))
+    const events = await collectEvents(harness.run())
+
+    assert.equal(events.at(-1)?.type, 'run_failed')
+    assert.equal(harness.toolInvocations.length, 0)
+    assert.deepEqual(harness.recorder.completedRunIds, [])
+    assert.equal(findStep(harness, 'model_sampling')?.status, AgentStepStatus.FAILED)
+    assertNoUnfinishedSteps(harness)
+  })
+
+  it('content 先于 tool_calls 的真实 provider 流按正常路径继续，文本保留并回填', async () => {
+    const intermediate = '我先搜一下站内文章。'
+    const harness = createHarness((_, options, callIndex) => callIndex === 0
+      ? capturedTextThenToolCallModelStream(options, intermediate)
+      : toModelStream([
+          { type: 'text_delta', delta: '找到了。' },
+          { type: 'response_completed', finishReason: 'stop' },
+        ]))
+
+    const events = await collectEvents(harness.run())
     const samplingStep = findStep(harness, 'model_sampling')
     const output = samplingStep?.output as Record<string, unknown>
 
-    assert.equal(failure?.type, 'run_failed')
-    assert.match(
-      failure?.type === 'run_failed' ? failure.message : '',
-      /最终回答文本之后又返回了 Tool Call/,
-    )
-    assert.equal(samplingStep?.status, AgentStepStatus.FAILED)
-    assert.equal(harness.toolInvocations.length, 0)
-    assert.deepEqual(output.debugRawResponse, {
-      state: 'partial',
-      truncated: false,
-      value: {
-        id: 'chunk-1',
-        object: 'chat.completion',
-        created: 1_756_000_000,
-        model: 'deepseek-v4-flash',
-        choices: [{
-          index: 0,
-          finish_reason: null,
-          message: {
-            role: 'assistant',
-            content: secret,
-            tool_calls: [{
-              id: 'call-1',
-              type: 'function',
-              function: {
-                name: 'search_articles',
-                arguments: '{"query":"seo"}',
-              },
-            }],
-          },
-        }],
-      },
+    assert.deepEqual(events.map(event => event.type), [
+      'run_started',
+      'assistant_delta',
+      'assistant_delta',
+      'run_completed',
+    ])
+    assert.equal(harness.assistantMessage()?.content, `${intermediate}找到了。`)
+    assert.equal(samplingStep?.status, AgentStepStatus.COMPLETED)
+    assert.equal(output.finishReason, 'tool_calls')
+    assert.deepEqual(harness.toolInvocations.map(invocation => invocation.callId), ['call-1'])
+    // 第二轮 assistant 消息 content 等于该文本且带 tool_calls。
+    assert.deepEqual(harness.llmCalls[1]?.messages[1], {
+      type: 'assistant_tool_call',
+      calls: [{ callId: 'call-1', name: 'search_articles', rawArgumentsJson: '{"query":"seo"}' }],
+      reasoningContent: 'DO_NOT_PERSIST_REASONING',
+      content: intermediate,
     })
-    assert.deepEqual(warnings, [{
-      event: 'model_sampling_debug_capture_closed',
-      runId: 'run-1',
-      samplingAttemptId: 'run-1:sampling-1',
-      termination: 'failure',
-      captureState: 'partial',
-      lastModelEvent: 'tool_call_delta',
-      textChars: secret.length,
-      toolCallCount: 1,
-    }])
-    assert.doesNotMatch(JSON.stringify(warnings), new RegExp(secret))
+    assert.equal((output.debugRawResponse as { state: string }).state, 'complete')
+    assert.doesNotMatch(JSON.stringify(harness.recorder.steps), /DO_NOT_PERSIST_REASONING/)
     assertNoUnfinishedSteps(harness)
   })
 
@@ -2737,9 +2896,9 @@ describe('AgentRuntimeService model stream', () => {
 describe('ModelContext', () => {
   it('保持 direct-final、一次 Tool 和两次顺序 Tool 的 items', () => {
     const context = ModelContext.fromHistory({
-      instructions: [{ role: 'system', content: 'SYS' }],
+      instructions: [{ type: 'message', role: 'system', content: 'SYS' }],
       initialHistory: [],
-      currentUserMessage: { role: 'user', content: 'USER' },
+      currentUserMessage: { type: 'message', role: 'user', content: 'USER' },
     })
 
     assert.deepEqual(flattenPlanningState(context.forPlanning()), [
@@ -2748,29 +2907,29 @@ describe('ModelContext', () => {
     ])
 
     context.appendToolExchange({
-      call: {
+      calls: [{
         callId: 'c1',
         toolName: 't1',
         rawArgumentsJson: 'A',
         samplingAttemptId: 's1',
-      },
+      }],
       intermediateText: 'I',
       reasoningContent: 'R',
-      observation: {
-        content: 'O',
-        originalChars: 1,
-        observationChars: 1,
-        truncated: false,
-      },
-      ok: true,
+      results: [{
+        observation: {
+          content: 'O',
+          originalChars: 1,
+          observationChars: 1,
+          truncated: false,
+        },
+        ok: true,
+      }],
     })
 
     assert.deepEqual(flattenPlanningState(context.forPlanning()).slice(-2), [
       {
         type: 'assistant_tool_call',
-        callId: 'c1',
-        name: 't1',
-        rawArgumentsJson: 'A',
+        calls: [{ callId: 'c1', name: 't1', rawArgumentsJson: 'A' }],
         reasoningContent: 'R',
         content: 'I',
       },
@@ -2785,24 +2944,48 @@ describe('ModelContext', () => {
     assert.equal(flattenPlanningState(context.forPlanning()).length, 4)
 
     context.appendToolExchange({
-      call: {
-        callId: 'c2',
-        toolName: 't2',
-        rawArgumentsJson: 'B',
-        samplingAttemptId: 's2',
-      },
+      calls: [
+        { callId: 'c2', toolName: 't2', rawArgumentsJson: 'B', samplingAttemptId: 's2' },
+        { callId: 'c3', toolName: 't3', rawArgumentsJson: 'C', samplingAttemptId: 's2' },
+      ],
       intermediateText: 'J',
       reasoningContent: 'S',
-      observation: {
-        content: 'P',
-        originalChars: 1,
-        observationChars: 1,
-        truncated: false,
-      },
-      ok: false,
+      results: [
+        {
+          observation: { content: 'P', originalChars: 1, observationChars: 1, truncated: false },
+          ok: false,
+        },
+        {
+          observation: { content: 'Q', originalChars: 1, observationChars: 1, truncated: false },
+          ok: true,
+        },
+      ],
     })
 
-    assert.equal(flattenPlanningState(context.forPlanning()).length, 6)
+    // 同轮两个 call：一条 assistant 消息带 calls[]，后接两条按 callId 配对的 tool_result。
+    assert.deepEqual(flattenPlanningState(context.forPlanning()).slice(-3), [
+      {
+        type: 'assistant_tool_call',
+        calls: [
+          { callId: 'c2', name: 't2', rawArgumentsJson: 'B' },
+          { callId: 'c3', name: 't3', rawArgumentsJson: 'C' },
+        ],
+        reasoningContent: 'S',
+        content: 'J',
+      },
+      { type: 'tool_result', callId: 'c2', name: 't2', content: 'P', ok: false },
+      { type: 'tool_result', callId: 'c3', name: 't3', content: 'Q', ok: true },
+    ])
+    assert.equal(flattenPlanningState(context.forPlanning()).length, 7)
+    assert.throws(
+      () => context.appendToolExchange({
+        calls: [],
+        intermediateText: '',
+        reasoningContent: '',
+        results: [],
+      }),
+      RangeError,
+    )
   })
 })
 
@@ -3251,9 +3434,7 @@ function countModelInputCharacters(item: ModelInputItem): number {
       return [...item.content].length
     case 'assistant_tool_call':
       return [
-        item.callId,
-        item.name,
-        item.rawArgumentsJson,
+        ...item.calls.flatMap(call => [call.callId, call.name, call.rawArgumentsJson]),
         item.reasoningContent,
         item.content ?? '',
       ].reduce((total, value) => total + [...value].length, 0)
@@ -3587,7 +3768,7 @@ async function* toModelStream(
   yield* events
 }
 
-function capturedLateToolCallModelStream(
+function capturedTextThenToolCallModelStream(
   options: ChatStreamOptions | undefined,
   content: string,
 ): AsyncGenerator<ModelStreamEvent> {
@@ -3809,6 +3990,7 @@ function toolCallEvent(
   name: string,
   argumentsJson: string,
   reasoningContent = `reasoning for ${callId}`,
+  index = 0,
 ): ModelStreamEvent {
   return {
     type: 'tool_call_completed',
@@ -3817,7 +3999,7 @@ function toolCallEvent(
       providerCallId: callId,
       name,
       argumentsJson,
-      index: 0,
+      index,
     },
   }
 }

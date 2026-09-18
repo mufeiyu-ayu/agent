@@ -7,7 +7,7 @@ import type { TokenEstimator } from './deepseek-v4-token-estimator.js'
 import type {
   ModelContext,
   ModelContextPlanningState,
-  ModelContextToolExchange,
+  ModelContextToolResult,
 } from './model-context.js'
 import { Inject, Injectable } from '@nestjs/common'
 
@@ -17,6 +17,8 @@ import { flattenPlanningState } from './model-context.js'
 
 export interface SamplingContextObservationSummary {
   exchangeIndex: number
+  /** 该轮 assistant 消息里第几个 call 的结果，与 calls[] / tool_result 顺序一致。 */
+  resultIndex: number
   originalChars: number
   toolCeilingChars: number
   finalChars: number
@@ -123,12 +125,14 @@ export class SamplingContextPlanner {
     input.context.commitPlan({
       // 从原 ModelContext.initialHistory 开头永久移除的最旧历史条数。
       excludedOldestHistoryCount,
-      // 按 exchangeIndex 把工作副本中最终的 Tool Result 文本与预览长度同步回去。
-      observations: state.toolExchanges.map(exchange => ({
-        exchangeIndex: exchange.exchangeIndex,
-        content: exchange.toolResult.content,
-        contextBudgetPreviewChars: exchange.contextBudgetPreviewChars,
-      })),
+      // 按 exchangeIndex / resultIndex 把工作副本中最终的 Tool Result 文本与预览长度同步回去。
+      observations: state.toolExchanges.flatMap(exchange =>
+        exchange.results.map((result, resultIndex) => ({
+          exchangeIndex: exchange.exchangeIndex,
+          resultIndex,
+          content: result.toolResult.content,
+          contextBudgetPreviewChars: result.contextBudgetPreviewChars,
+        }))),
     })
 
     return {
@@ -168,7 +172,9 @@ function toPlanSummary(
     historyExcludedCount:
       state.initialHistoryCandidateCount - state.initialHistory.length,
     toolExchangeCount: state.toolExchanges.length,
-    observations: state.toolExchanges.map(toObservationSummary),
+    observations: state.toolExchanges.flatMap(exchange =>
+      exchange.results.map((result, resultIndex) =>
+        toObservationSummary(exchange.exchangeIndex, resultIndex, result))),
     overflowReason,
     estimatorStrategyId,
   }
@@ -213,24 +219,25 @@ function shrinkObservations(
   estimate: () => number,
   budget: number,
 ): void {
-  for (const exchange of state.toolExchanges) {
+  // 从最旧一轮的第一个 call 开始，逐个 Tool Result 尝试缩短。
+  for (const result of state.toolExchanges.flatMap(exchange => exchange.results)) {
     const sourceCodePoints = Array.from(
-      exchange.observation.previewContent ?? exchange.observation.content,
+      result.observation.previewContent ?? result.observation.content,
     )
     const currentPreviewChars = Math.min(
-      exchange.contextBudgetPreviewChars ?? sourceCodePoints.length,
-      maxContextBudgetPreviewChars(exchange.observation),
+      result.contextBudgetPreviewChars ?? sourceCodePoints.length,
+      maxContextBudgetPreviewChars(result.observation),
     )
-    const previousContent = exchange.toolResult.content
-    const previousPreviewChars = exchange.contextBudgetPreviewChars
+    const previousContent = result.toolResult.content
+    const previousPreviewChars = result.contextBudgetPreviewChars
     const previousTokens = estimate()
 
-    setContextBudgetPreview(exchange, sourceCodePoints, 0)
+    setContextBudgetPreview(result, sourceCodePoints, 0)
     const minimumTokens = estimate()
 
     if (minimumTokens >= previousTokens) {
-      exchange.toolResult.content = previousContent
-      exchange.contextBudgetPreviewChars = previousPreviewChars
+      result.toolResult.content = previousContent
+      result.contextBudgetPreviewChars = previousPreviewChars
       continue
     }
 
@@ -238,20 +245,20 @@ function shrinkObservations(
       continue
 
     const previewChars = findLargestFittingPreview(
-      exchange,
+      result,
       sourceCodePoints,
       currentPreviewChars,
       estimate,
       budget,
     )
 
-    setContextBudgetPreview(exchange, sourceCodePoints, previewChars)
+    setContextBudgetPreview(result, sourceCodePoints, previewChars)
     return
   }
 }
 
 function findLargestFittingPreview(
-  exchange: ModelContextToolExchange,
+  result: ModelContextToolResult,
   sourceCodePoints: string[],
   currentPreviewChars: number,
   estimate: () => number,
@@ -263,7 +270,7 @@ function findLargestFittingPreview(
   while (lower < upper) {
     const previewChars = Math.ceil((lower + upper) / 2)
 
-    setContextBudgetPreview(exchange, sourceCodePoints, previewChars)
+    setContextBudgetPreview(result, sourceCodePoints, previewChars)
 
     if (estimate() <= budget)
       lower = previewChars
@@ -275,18 +282,18 @@ function findLargestFittingPreview(
 }
 
 function setContextBudgetPreview(
-  exchange: ModelContextToolExchange,
+  result: ModelContextToolResult,
   sourceCodePoints: string[],
   previewChars: number,
 ): void {
   const boundedPreviewChars = Math.min(
     previewChars,
-    maxContextBudgetPreviewChars(exchange.observation),
+    maxContextBudgetPreviewChars(result.observation),
   )
 
-  exchange.contextBudgetPreviewChars = boundedPreviewChars
-  exchange.toolResult.content = renderContextBudgetObservation(
-    exchange.observation,
+  result.contextBudgetPreviewChars = boundedPreviewChars
+  result.toolResult.content = renderContextBudgetObservation(
+    result.observation,
     sourceCodePoints.slice(0, boundedPreviewChars).join(''),
   )
 }
@@ -323,14 +330,17 @@ function contextBudgetEnvelope(observation: NormalizedToolObservation): {
 }
 
 function toObservationSummary(
-  exchange: ModelContextToolExchange,
+  exchangeIndex: number,
+  resultIndex: number,
+  result: ModelContextToolResult,
 ): SamplingContextObservationSummary {
   return {
-    exchangeIndex: exchange.exchangeIndex,
-    originalChars: exchange.observation.originalChars,
-    toolCeilingChars: exchange.observation.observationChars,
-    finalChars: Array.from(exchange.toolResult.content).length,
-    toolCeilingTruncated: exchange.observation.truncated,
-    contextBudgetTruncated: exchange.contextBudgetPreviewChars !== null,
+    exchangeIndex,
+    resultIndex,
+    originalChars: result.observation.originalChars,
+    toolCeilingChars: result.observation.observationChars,
+    finalChars: Array.from(result.toolResult.content).length,
+    toolCeilingTruncated: result.observation.truncated,
+    contextBudgetTruncated: result.contextBudgetPreviewChars !== null,
   }
 }

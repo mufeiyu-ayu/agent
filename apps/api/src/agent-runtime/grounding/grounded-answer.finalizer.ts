@@ -73,9 +73,7 @@ export class GroundedFinalizationFailedError extends Error {
 
 /** 终态 sampling 未能完整结束的原因；与「模型内容不合法」是两类问题。 */
 export type GroundedFinalizationSamplingFailure
-  = | 'extra_event_after_completion'
-    | 'missing_response_completed'
-    | 'missing_submission'
+  = | 'missing_response_completed'
     | 'multiple_submissions'
     | 'stream_failed'
     | 'unexpected_finish_reason'
@@ -331,11 +329,12 @@ type FinalizationSamplingOutcome
  * 与 action loop 的 `streamModelSampling` 分开实现（那边要实时转发文本、要处理
  * action Tool），但可靠性标准不能更低。这里强制要求：
  *
- * - 恰好一个 `submit_grounded_answer` Tool Call；
+ * - 恰好一个 `submit_grounded_answer` Tool Call，与其他 Tool Call 混合即失败；
  * - 没有任何未知或额外 Tool Call；
  * - 出现 `response_completed`；
- * - `finishReason === 'tool_calls'`；
- * - `response_completed` 之后没有额外事件。
+ * - `finishReason === 'tool_calls'`。
+ *
+ * 流协议不变量（finish 后无事件、tool_calls 必带完整 call）由 Provider adapter 保证，不在这里重复。
  *
  * 任何一条不满足都返回失败分支。其中「正常 stop 结束且无提交」单独归类为
  * `model_noncompliance`（模型不服从，由调用方按 correction 语义处理）；其余
@@ -360,10 +359,6 @@ async function consumeFinalizationSampling(
 
   try {
     for await (const event of events) {
-      // response_completed 之后不允许再出现任何事件，包括迟到的 usage。
-      if (completed)
-        return failed('extra_event_after_completion')
-
       switch (event.type) {
         case 'tool_call_completed':
           if (event.toolCall.name !== SUBMIT_GROUNDED_ANSWER_TOOL_NAME)
@@ -405,11 +400,10 @@ async function consumeFinalizationSampling(
   if (finishReason === 'stop' && rawArgumentsJson === undefined)
     return { ok: false, kind: 'model_noncompliance', usage }
 
-  if (finishReason !== 'tool_calls')
-    return failed('unexpected_finish_reason')
+  if (finishReason === 'tool_calls' && rawArgumentsJson !== undefined)
+    return { ok: true, rawArgumentsJson, usage }
 
-  if (rawArgumentsJson === undefined)
-    return failed('missing_submission')
-
-  return { ok: true, rawArgumentsJson, usage }
+  // stop 带提交、length / content_filter / unknown；「tool_calls 却无提交」由 adapter 不变量排除，
+  // 这里只为类型收口，不再单列类别。
+  return failed('unexpected_finish_reason')
 }

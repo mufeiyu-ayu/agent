@@ -1,20 +1,20 @@
-import type { ChatMessage } from '@agent/ai'
+import type { MessageInputItem } from '@agent/ai'
 import assert from 'node:assert/strict'
 // 项目使用 Node 原生测试运行器，不引入新测试框架。
 // eslint-disable-next-line test/no-import-node-test
 import { describe, it } from 'node:test'
 
-import { buildSeoAgentChatMessages } from './seo-agent.prompt.js'
+import { buildSeoAgentInstructions } from './seo-agent.prompt.js'
 
 describe('SEO Agent system prompt', () => {
   it('保持 system message 在前、历史消息顺序不变', () => {
-    const history: ChatMessage[] = [
-      { role: 'user', content: '第一条' },
-      { role: 'assistant', content: '第二条' },
-      { role: 'user', content: '第三条' },
+    const history: MessageInputItem[] = [
+      { type: 'message', role: 'user', content: '第一条' },
+      { type: 'message', role: 'assistant', content: '第二条' },
+      { type: 'message', role: 'user', content: '第三条' },
     ]
 
-    const messages = buildSeoAgentChatMessages(history)
+    const messages = buildSeoAgentInstructions(history)
 
     assert.equal(messages[0]?.role, 'system')
     assert.deepEqual(messages.slice(1), history)
@@ -119,7 +119,7 @@ describe('SEO Agent system prompt', () => {
 })
 
 function systemPrompt(): string {
-  const systemMessage = buildSeoAgentChatMessages([])[0]
+  const systemMessage = buildSeoAgentInstructions([])[0]
 
   assert.equal(systemMessage?.role, 'system')
 

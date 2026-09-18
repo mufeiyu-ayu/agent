@@ -22,7 +22,7 @@ describe('OpenAICompatibleClient runtime config', () => {
 
     await harness.client.listModels()
     await harness.client.getUserBalance()
-    await harness.client.chat([{ role: 'user', content: 'hello' }])
+    await harness.client.chat([{ type: 'message', role: 'user', content: 'hello' }])
     await collectEvents(harness.client.chatStream([
       { type: 'message', role: 'user', content: 'hello' },
     ]))
@@ -105,14 +105,14 @@ describe('OpenAICompatibleClient runtime config', () => {
 
     await assert.rejects(
       harness.client.chat(
-        [{ role: 'user', content: 'hello' }],
+        [{ type: 'message', role: 'user', content: 'hello' }],
         { model: 'unsupported-model' },
       ),
       LLMConfigError,
     )
     await assert.rejects(
       harness.client.chat(
-        [{ role: 'user', content: 'hello' }],
+        [{ type: 'message', role: 'user', content: 'hello' }],
         { maxTokens: 384_001 },
       ),
       LLMConfigError,

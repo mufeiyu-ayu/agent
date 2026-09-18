@@ -96,17 +96,15 @@ const REJECTION_CODES: AdminGroundedAnswerRejectionCode[] = [
   'unknown_citation_key',
 ]
 const SAMPLING_FAILURES: AdminGroundedFinalizationSamplingFailure[] = [
-  'extra_event_after_completion',
   'missing_response_completed',
-  'missing_submission',
   'multiple_submissions',
   'stream_failed',
   'unexpected_finish_reason',
   'unknown_tool_call',
 ]
 
-// 契约漂移守卫：Runtime 新增安全类别而公共 contract 未同步时，这里会编译失败，
-// 而不是等到线上把未知类别静默投影成 null。
+// 契约漂移守卫：Runtime 新增或删除安全类别而公共 contract 未同步时，这里会编译失败，
+// 而不是等到线上把未知类别静默投影成 null，或让 contract 长期保留 Runtime 已不产出的死值。
 type AssertAssignable<Actual extends Expected, Expected> = Actual
 type AssertRejectionCodes = AssertAssignable<
   GroundedAnswerRejectionCode,
@@ -116,9 +114,14 @@ type AssertSamplingFailures = AssertAssignable<
   GroundedFinalizationSamplingFailure,
   AdminGroundedFinalizationSamplingFailure
 >
+type AssertSamplingFailuresExact = AssertAssignable<
+  AdminGroundedFinalizationSamplingFailure,
+  GroundedFinalizationSamplingFailure
+>
 export type AdminRetrievalContractGuards = [
   AssertRejectionCodes,
   AssertSamplingFailures,
+  AssertSamplingFailuresExact,
 ]
 
 export interface AdminRetrievalStepRecord {

@@ -1,23 +1,25 @@
 import type {
-  ChatMessage,
+  AssistantToolCallInputItem,
+  MessageInputItem,
   ModelInputItem,
+  ToolResultInputItem,
 } from '@agent/ai'
 import type { NormalizedToolObservation } from '../../tools/core/tool-observation.js'
 import type { UnvalidatedToolCallEnvelope } from '../../tools/core/tool.types.js'
 
-type MessageInputItem = Extract<ModelInputItem, { type: 'message' }>
-type AssistantToolCallInputItem = Extract<
-  ModelInputItem,
-  { type: 'assistant_tool_call' }
->
-type ToolResultInputItem = Extract<ModelInputItem, { type: 'tool_result' }>
-
-export interface ModelContextToolExchange {
-  exchangeIndex: number
-  assistantCall: AssistantToolCallInputItem
+/** 一个 Tool Call 的结果：Tool Result 文本与供 Context Planner 二次缩短的来源。 */
+export interface ModelContextToolResult {
   toolResult: ToolResultInputItem
   observation: NormalizedToolObservation
   contextBudgetPreviewChars: number | null
+}
+
+/** 一轮 sampling 产生的 assistant Tool Call 消息与逐个 call 对应的结果。 */
+export interface ModelContextToolExchange {
+  exchangeIndex: number
+  assistantCall: AssistantToolCallInputItem
+  /** 与 assistantCall.calls 一一对应，顺序相同。 */
+  results: ModelContextToolResult[]
 }
 
 /** Sampling Planner 使用的显式 source identity，不依赖 role 或数组位置反推。 */
@@ -35,15 +37,16 @@ export interface ModelContextPlanCommit {
   excludedOldestHistoryCount: number
   observations: Array<{
     exchangeIndex: number
+    resultIndex: number
     content: string
     contextBudgetPreviewChars: number | null
   }>
 }
 
 interface CreateModelContextInput {
-  instructions: ChatMessage[]
-  initialHistory: ChatMessage[]
-  currentUserMessage: ChatMessage
+  instructions: MessageInputItem[]
+  initialHistory: MessageInputItem[]
+  currentUserMessage: MessageInputItem
 }
 
 /** 单次 Run 内的 source-aware model-visible context；预算选择由 Sampling Planner 负责。 */
@@ -64,14 +67,14 @@ export class ModelContext {
   ) {}
 
   static fromHistory(input: CreateModelContextInput): ModelContext {
-    const initialHistory = toMessageInputItems(input.initialHistory)
+    const initialHistory = input.initialHistory.map(cloneMessage)
 
     return new ModelContext(
-      toMessageInputItems(input.instructions),
+      input.instructions.map(cloneMessage),
       initialHistory,
       // 候选基准就是读取条数：全部候选都先进入 initialHistory，裁剪发生在 plan()。
       initialHistory.length,
-      toMessageInputItem(input.currentUserMessage),
+      cloneMessage(input.currentUserMessage),
     )
   }
 
@@ -83,10 +86,12 @@ export class ModelContext {
       currentUser: cloneMessage(this.currentUser),
       toolExchanges: this.toolExchanges.map(exchange => ({
         exchangeIndex: exchange.exchangeIndex,
-        assistantCall: { ...exchange.assistantCall },
-        toolResult: { ...exchange.toolResult },
-        observation: { ...exchange.observation },
-        contextBudgetPreviewChars: exchange.contextBudgetPreviewChars,
+        assistantCall: cloneAssistantCall(exchange.assistantCall),
+        results: exchange.results.map(result => ({
+          toolResult: { ...result.toolResult },
+          observation: { ...result.observation },
+          contextBudgetPreviewChars: result.contextBudgetPreviewChars,
+        })),
       })),
     }
   }
@@ -96,63 +101,70 @@ export class ModelContext {
     this.initialHistory.splice(0, input.excludedOldestHistoryCount)
 
     for (const observation of input.observations) {
-      const exchange = this.toolExchanges[observation.exchangeIndex]
+      const result = this.toolExchanges[observation.exchangeIndex]
+        ?.results[observation.resultIndex]
 
-      if (!exchange)
+      if (!result)
         throw new RangeError('Sampling Context Plan 包含未知 Tool Exchange')
 
-      exchange.toolResult.content = observation.content
-      exchange.contextBudgetPreviewChars
-        = observation.contextBudgetPreviewChars
+      result.toolResult.content = observation.content
+      result.contextBudgetPreviewChars = observation.contextBudgetPreviewChars
     }
   }
 
   /**
-   * 将一次已执行的 Tool Call 与它的 Tool Result 成对追加到当前 Run 的
-   * 内存 ModelContext，供下一轮 Sampling 继续读取。
+   * 将一轮 sampling 已处理完的全部 Tool Call 与各自的 Tool Result 成组追加到
+   * 当前 Run 的内存 ModelContext，供下一轮 Sampling 继续读取。
    *
    * @description 这是核心模型输入，不是用户可见 Message，也不会在此函数中
-   * 写入数据库。`callId` 保证 Provider 能把调用与结果配对。
+   * 写入数据库。`callId` 保证 Provider 能把每个调用与结果配对。
    */
   appendToolExchange(input: {
-    // 上一轮模型产生的工具名、callId 与原始 JSON 参数。
-    call: UnvalidatedToolCallEnvelope
-    // 模型在 Tool Call 前产生的可选中间文本，存在时作为 assistant content 续传。
+    // 上一轮模型产生的全部工具名、callId 与原始 JSON 参数，按 index 顺序。
+    calls: UnvalidatedToolCallEnvelope[]
+    // 模型在本轮产生的可选文本，存在时作为 assistant content 续传。
     intermediateText: string
     // DeepSeek thinking Tool Call 要求下一轮原样续传的 reasoning continuation，不是 UI 消息。
     reasoningContent: string
-    // 后端工具结果经长度上限处理后的模型可见文本与原始字符统计。
-    observation: NormalizedToolObservation
-    // 工具执行是否成功；失败结果也要回填模型，让它决定后续行为。
-    ok: boolean
+    // 与 calls 一一对应：后端工具结果经长度上限处理后的模型可见文本，以及执行是否成功；
+    // 失败结果也要回填模型，让它决定后续行为。
+    results: Array<{ observation: NormalizedToolObservation, ok: boolean }>
   }): void {
-    // Provider 视角的 assistant Tool Call：表示「模型刚才请求调用了什么」。
-    const assistantCall: AssistantToolCallInputItem = {
-      type: 'assistant_tool_call',
-      callId: input.call.callId,
-      name: input.call.toolName,
-      rawArgumentsJson: input.call.rawArgumentsJson,
-      reasoningContent: input.reasoningContent,
-      ...(input.intermediateText ? { content: input.intermediateText } : {}),
-    }
-    // Provider 视角的 Tool Result：通过同一 callId 与 assistantCall 严格配对。
-    const toolResult: ToolResultInputItem = {
-      type: 'tool_result',
-      callId: input.call.callId,
-      name: input.call.toolName,
-      content: input.observation.content,
-      ok: input.ok,
-    }
+    if (input.calls.length === 0 || input.calls.length !== input.results.length)
+      throw new RangeError('Tool Exchange 的 calls 与 results 必须一一对应且非空')
 
     this.toolExchanges.push({
       // 同时作为数组位置，供 commitPlan() 定位并同步缩短后的 Tool Result。
       exchangeIndex: this.toolExchanges.length,
-      assistantCall,
-      toolResult,
-      // 保留规范化后的来源文本与长度统计，供 Context Planner 必要时生成更短预览。
-      observation: { ...input.observation },
-      // null 表示尚未因 Context Budget 进行第二次缩短。
-      contextBudgetPreviewChars: null,
+      // Provider 视角的 assistant Tool Call 消息：表示「模型刚才请求调用了什么」。
+      assistantCall: {
+        type: 'assistant_tool_call',
+        calls: input.calls.map(call => ({
+          callId: call.callId,
+          name: call.toolName,
+          rawArgumentsJson: call.rawArgumentsJson,
+        })),
+        reasoningContent: input.reasoningContent,
+        ...(input.intermediateText ? { content: input.intermediateText } : {}),
+      },
+      results: input.calls.map((call, index) => {
+        const result = input.results[index]!
+
+        return {
+          // Provider 视角的 Tool Result：通过同一 callId 与 assistant 消息里的 call 严格配对。
+          toolResult: {
+            type: 'tool_result',
+            callId: call.callId,
+            name: call.toolName,
+            content: result.observation.content,
+            ok: result.ok,
+          },
+          // 保留规范化后的来源文本与长度统计，供 Context Planner 必要时生成更短预览。
+          observation: { ...result.observation },
+          // null 表示尚未因 Context Budget 进行第二次缩短。
+          contextBudgetPreviewChars: null,
+        }
+      }),
     })
   }
 }
@@ -162,7 +174,7 @@ export class ModelContext {
  * 摊平成一个 `ModelInputItem[]`。
  *
  * @description 输出顺序固定为 instructions -> initialHistory -> currentUser
- * -> 每组 assistant Tool Call / Tool Result。本函数只复制和组装模型可见输入，
+ * -> 每组 assistant Tool Call 消息 / 逐个 Tool Result。本函数只复制和组装模型可见输入，
  * 不修改 `state`、不计算 Token，也不包含纯后台观测字段
  * `initialHistoryCandidateCount`。工具定义由调用方单独传给 TokenEstimator / Provider。
  */
@@ -174,24 +186,18 @@ export function flattenPlanningState(
     ...state.initialHistory.map(cloneMessage),
     cloneMessage(state.currentUser),
     ...state.toolExchanges.flatMap(exchange => [
-      { ...exchange.assistantCall },
-      { ...exchange.toolResult },
+      cloneAssistantCall(exchange.assistantCall),
+      ...exchange.results.map(result => ({ ...result.toolResult })),
     ]),
   ]
 }
 
-function toMessageInputItems(messages: ChatMessage[]): MessageInputItem[] {
-  return messages.map(toMessageInputItem)
-}
-
-function toMessageInputItem(message: ChatMessage): MessageInputItem {
-  return {
-    type: 'message',
-    role: message.role,
-    content: message.content,
-  }
-}
-
 function cloneMessage(item: MessageInputItem): MessageInputItem {
   return { ...item }
+}
+
+function cloneAssistantCall(
+  item: AssistantToolCallInputItem,
+): AssistantToolCallInputItem {
+  return { ...item, calls: item.calls.map(call => ({ ...call })) }
 }

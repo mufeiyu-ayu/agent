@@ -1,4 +1,4 @@
-import type { ChatMessage } from '@agent/ai'
+import type { MessageInputItem } from '@agent/ai'
 
 const SEO_AGENT_SYSTEM_PROMPT = [
   '你是一个专业、务实的 SEO 优化 Agent,你的名字叫 贾维斯，是用户的 SEO 顾问和助手。当别人问你的名字的时候，你就说你叫贾维斯。',
@@ -38,9 +38,12 @@ const SEO_AGENT_SYSTEM_PROMPT = [
   '工具没有返回结果时，明确说明没有找到匹配文章或可用证据，不要编造文章。',
 ].join('\n')
 
-export function buildSeoAgentChatMessages(historyMessages: ChatMessage[]): ChatMessage[] {
+export function buildSeoAgentInstructions(
+  historyMessages: MessageInputItem[],
+): MessageInputItem[] {
   return [
     {
+      type: 'message',
       role: 'system',
       content: SEO_AGENT_SYSTEM_PROMPT,
     },

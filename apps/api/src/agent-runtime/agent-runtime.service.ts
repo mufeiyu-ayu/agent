@@ -1,6 +1,6 @@
 import type {
-  ChatMessage,
   ChatStreamOptions,
+  MessageInputItem,
   ModelUsage,
 } from '@agent/ai'
 import type { MessageGroundingV1 } from '@agent/contracts'
@@ -11,6 +11,7 @@ import type {
   MessageStatus as PrismaMessageStatus,
 } from '../generated/prisma/client.js'
 import type { DatabaseOperationDeadline } from '../prisma/prisma.service.js'
+import type { NormalizedToolObservation } from '../tools/core/tool-observation.js'
 import type { ToolResult } from '../tools/core/tool.types.js'
 import type {
   AgentRuntimeEvent,
@@ -191,7 +192,7 @@ export class AgentRuntimeService {
 
       // 查询前后各检查一次用户取消或 Run 超时；await 期间也可能发生。
       runCancellation.throwIfUnavailable()
-      const historyCandidates = await this.listRecentChatMessageCandidates(
+      const historyCandidates = await this.listRecentMessageCandidates(
         input.conversationId,
         userMessage,
         runtimePolicy.historyCandidateHardLimit,
@@ -258,6 +259,8 @@ export class AgentRuntimeService {
       }
 
       let assistantOutputStepId: string | undefined
+      // 用户可见输出一开始就启动该 Step：非 Grounding 模式下 Tool Call 之前的中间文本也是
+      // 可见输出，因此它可能早于本轮的 tool_execution Step 创建，并在整个工具循环期间保持 RUNNING。
       const startAssistantOutputStep = async (): Promise<void> => {
         if (assistantOutputStepId)
           return
@@ -285,15 +288,15 @@ export class AgentRuntimeService {
       // 只有某轮 Sampling 返回 final_answer 才置为 true；
       // 轮数耗尽后仍为 false 表示 Agent Loop 未正常完成。
       let hasFinalAnswer = false
-      // 已发起的普通 action Tool Call 次数，用于限制 maxToolCalls；
-      // 不计入 Grounded finalization 使用的终态提交工具。
+      // 已发起的普通 action Tool Call 次数，按 call 计数（同轮多个 call 各算一次），
+      // 用于限制 maxToolCalls；不计入 Grounded finalization 使用的终态提交工具。
       let toolCallCount = 0
       // Grounding Session：首次调用 evidence-eligible Tool 时建立，
       // 用于累积检索证据、零命中或工具失败等事实；建立后最终回答
       // 必须经过结构化 finalization，草稿不再直接流给用户。
       let evidenceRegistry: RunEvidenceRegistry | undefined
-      // Grounding Session 建立后暂存模型草稿；校验通过前不 yield 给前端，
-      // 也不写入 Assistant Message.content。
+      // Grounding Session 建立后暂存最终回答那一轮的模型草稿；校验通过前不 yield 给前端，
+      // 也不写入 Assistant Message.content。带 Tool Call 的轮次文本不进这里，只回填模型。
       let hiddenFinalDraft = ''
 
       for (
@@ -327,6 +330,8 @@ export class AgentRuntimeService {
         let contextPlanSummary: SamplingContextPlanSummary | undefined
         // Planner 最终准备发给 Provider 的 ModelInputItem 数量。
         let plannedMessageCount = 0
+        // Grounding Session 建立后本轮暂存的文本；流结束前不知道它是草稿还是 Tool Call 前的中间文本。
+        let roundHiddenText = ''
 
         try {
           // 每轮请求模型前重新规划完整输入：首轮把一次读到的全部历史按预算裁剪；
@@ -401,11 +406,13 @@ export class AgentRuntimeService {
             runCancellation.throwIfUnavailable()
 
             if (evidenceRegistry) {
-              // 已建立 Grounding Session：草稿只留在服务端内存，
+              // 已建立 Grounding Session：文本只留在服务端内存，
               // 校验通过前既不发 assistant_delta，也不写入 Message.content。
-              hiddenFinalDraft += samplingResult.value
+              roundHiddenText += samplingResult.value
             }
             else {
+              // 尚未建立 Grounding Session：文本实时推给前端。若本轮随后由 evidence-eligible
+              // Tool 建立 Session，这段已推出的 delta 不可撤回，按 Issue #116 决策保留在 content。
               await startAssistantOutputStep()
               content += samplingResult.value
               yield {
@@ -473,116 +480,142 @@ export class AgentRuntimeService {
         runCancellation.throwIfUnavailable()
 
         if (samplingDecision.type === 'final_answer') {
+          // Grounding 模式下只有最终回答这一轮的文本才是待校验草稿。
+          hiddenFinalDraft = roundHiddenText
           hasFinalAnswer = true
           break
         }
 
-        if (toolCallCount >= runtimePolicy.maxToolCalls)
+        const { calls } = samplingDecision
+
+        // 本轮 call 数超过剩余预算：在执行任何 call 之前整体拒绝，没有部分副作用。
+        if (toolCallCount + calls.length > runtimePolicy.maxToolCalls)
           throw new AgentLoopLimitExceededError()
 
-        toolCallCount += 1
+        toolCallCount += calls.length
 
-        const toolDefinition = toolDefinitions.find(
-          definition => definition.name === samplingDecision.call.toolName,
-        )
-        const toolStep = await this.agentRunRecorderService.startStep({
-          runId: currentAgentRunId,
-          type: AGENT_STEP_TYPES.toolExecution,
-          input: {
-            callId: samplingDecision.call.callId,
-            toolName: samplingDecision.call.toolName,
-            samplingAttemptId: samplingDecision.call.samplingAttemptId,
-          },
-        }, databaseDeadline)
-        let toolResult: ToolResult
+        // length：模型输出达到长度限制，arguments 可能不完整。整批一个都不执行，
+        // 每个 call 记一条失败 Step 并作为 observation 回喂，下一轮由模型自行重发。
+        const argumentsTruncated
+          = samplingDecision.summary.finishReason === 'length'
+        const toolResults: Array<{
+          observation: NormalizedToolObservation
+          ok: boolean
+        }> = []
 
-        try {
-          if (!toolDefinition) {
-            toolResult = {
-              ok: false,
-              code: 'unknown_tool',
-              modelContent: `工具 ${samplingDecision.call.toolName} 不存在。`,
+        // 顺序执行，每个 call 一个 tool_execution Step；当前工具只读，并行没有收益。
+        for (const call of calls) {
+          const toolDefinition = toolDefinitions.find(
+            definition => definition.name === call.toolName,
+          )
+          const toolStep = await this.agentRunRecorderService.startStep({
+            runId: currentAgentRunId,
+            type: AGENT_STEP_TYPES.toolExecution,
+            input: {
+              callId: call.callId,
+              toolName: call.toolName,
+              samplingAttemptId: call.samplingAttemptId,
+            },
+          }, databaseDeadline)
+          let toolResult: ToolResult
+
+          try {
+            if (argumentsTruncated) {
+              toolResult = {
+                ok: false,
+                code: 'truncated_arguments',
+                modelContent: `工具 ${call.toolName} 的参数因模型输出达到长度限制而不完整，本次未执行；仍需要时请重新发起调用。`,
+              }
             }
+            else if (!toolDefinition) {
+              toolResult = {
+                ok: false,
+                code: 'unknown_tool',
+                modelContent: `工具 ${call.toolName} 不存在。`,
+              }
+            }
+            else {
+              toolResult = await this.toolInvocationService.invoke(
+                call,
+                {
+                  runId: currentAgentRunId,
+                  conversationId: input.conversationId,
+                  signal: runSignal,
+                  databaseDeadline,
+                },
+              )
+            }
+            runCancellation.throwIfUnavailable()
+          }
+          catch (error) {
+            terminalStepFailure = {
+              id: toolStep.id,
+              errorMessage: '工具执行未能安全完成。',
+            }
+            claimRunTermination(runCancellation, error)
+            throw error
+          }
+
+          const observation = normalizeToolObservation(
+            toolResult.modelContent,
+            toolDefinition?.maxObservationChars
+            ?? TOOL_OBSERVATION_HARD_MAX_CHARS,
+          )
+          // 工具自愿提供的安全摘要；未通过 JSON / 体积 / 深度校验时整项跳过，
+          // 既不写入 AgentStep，也不影响 Tool Result 与本轮 Run 的收口。
+          const toolSummary = toolResult.ok
+            ? normalizeToolStepSummary(toolResult.stepSummary)
+            : undefined
+          const toolStepOutput = {
+            ok: toolResult.ok,
+            ...(toolResult.ok ? {} : { code: toolResult.code }),
+            ...(toolSummary ? { toolSummary } : {}),
+            originalChars: observation.originalChars,
+            observationChars: observation.observationChars,
+            truncated: observation.truncated,
+          }
+
+          if (toolResult.ok) {
+            await this.agentRunRecorderService.completeStep(
+              toolStep.id,
+              databaseDeadline,
+              { output: toolStepOutput },
+            )
           }
           else {
-            toolResult = await this.toolInvocationService.invoke(
-              samplingDecision.call,
+            await this.agentRunRecorderService.failStep(
+              toolStep.id,
+              databaseDeadline,
               {
-                runId: currentAgentRunId,
-                conversationId: input.conversationId,
-                signal: runSignal,
-                databaseDeadline,
+                errorMessage: `工具 ${call.toolName} 返回 ${toolResult.code}。`,
+                output: toolStepOutput,
               },
             )
           }
-          runCancellation.throwIfUnavailable()
-        }
-        catch (error) {
-          terminalStepFailure = {
-            id: toolStep.id,
-            errorMessage: '工具执行未能安全完成。',
+
+          // Evidence policy 由服务端 Tool Definition 声明，模型 arguments 无法改变；
+          // zero-hit、not found 和执行失败同样建立 Session，它们是不同的证据事实。
+          // 截断批次根本没有执行，不构成任何证据事实。
+          if (!argumentsTruncated && toolDefinition?.evidencePolicy === 'eligible') {
+            evidenceRegistry ??= new RunEvidenceRegistry()
+            evidenceRegistry.recordEligibleToolOutcome({
+              toolName: toolDefinition.name,
+              ok: toolResult.ok,
+              // 始终原样传入：缺失投影本身就是需要被记录为 evidence failure 的事实，
+              // 不能在这里先过滤掉再让 Registry 误判成合法零命中。
+              evidence: toolResult.ok ? toolResult.evidence : undefined,
+            })
           }
-          claimRunTermination(runCancellation, error)
-          throw error
-        }
 
-        const observation = normalizeToolObservation(
-          toolResult.modelContent,
-          toolDefinition?.maxObservationChars
-          ?? TOOL_OBSERVATION_HARD_MAX_CHARS,
-        )
-        // 工具自愿提供的安全摘要；未通过 JSON / 体积 / 深度校验时整项跳过，
-        // 既不写入 AgentStep，也不影响 Tool Result 与本轮 Run 的收口。
-        const toolSummary = toolResult.ok
-          ? normalizeToolStepSummary(toolResult.stepSummary)
-          : undefined
-        const toolStepOutput = {
-          ok: toolResult.ok,
-          ...(toolResult.ok ? {} : { code: toolResult.code }),
-          ...(toolSummary ? { toolSummary } : {}),
-          originalChars: observation.originalChars,
-          observationChars: observation.observationChars,
-          truncated: observation.truncated,
-        }
-
-        if (toolResult.ok) {
-          await this.agentRunRecorderService.completeStep(
-            toolStep.id,
-            databaseDeadline,
-            { output: toolStepOutput },
-          )
-        }
-        else {
-          await this.agentRunRecorderService.failStep(
-            toolStep.id,
-            databaseDeadline,
-            {
-              errorMessage: `工具 ${samplingDecision.call.toolName} 返回 ${toolResult.code}。`,
-              output: toolStepOutput,
-            },
-          )
-        }
-
-        // Evidence policy 由服务端 Tool Definition 声明，模型 arguments 无法改变；
-        // zero-hit、not found 和执行失败同样建立 Session，它们是不同的证据事实。
-        if (toolDefinition?.evidencePolicy === 'eligible') {
-          evidenceRegistry ??= new RunEvidenceRegistry()
-          evidenceRegistry.recordEligibleToolOutcome({
-            toolName: toolDefinition.name,
-            ok: toolResult.ok,
-            // 始终原样传入：缺失投影本身就是需要被记录为 evidence failure 的事实，
-            // 不能在这里先过滤掉再让 Registry 误判成合法零命中。
-            evidence: toolResult.ok ? toolResult.evidence : undefined,
-          })
+          toolResults.push({ observation, ok: toolResult.ok })
         }
 
         runCancellation.throwIfUnavailable()
         modelContext.appendToolExchange({
-          call: samplingDecision.call,
+          calls,
           intermediateText: samplingDecision.intermediateText,
           reasoningContent: samplingDecision.reasoningContent,
-          observation,
-          ok: toolResult.ok,
+          results: toolResults,
         })
       }
 
@@ -980,7 +1013,7 @@ export class AgentRuntimeService {
    * 一次按时间倒序读取严格早于当前用户消息的最近已完成消息，最多 take 条。
    * 仅返回已完成消息；未完成消息不进入模型历史。
    */
-  private async listRecentChatMessageCandidates(
+  private async listRecentMessageCandidates(
     conversationId: string,
     currentUserUpperBound: Pick<Message, 'id' | 'createdAt'>,
     take: number,
@@ -1041,14 +1074,15 @@ export class AgentRuntimeService {
     })
   }
 
-  private toLlmMessage(message: Message): ChatMessage {
+  private toLlmMessage(message: Message): MessageInputItem {
     return {
+      type: 'message',
       role: this.toLlmRole(message.role),
       content: message.content,
     }
   }
 
-  private toLlmRole(role: PrismaMessageRole): ChatMessage['role'] {
+  private toLlmRole(role: PrismaMessageRole): MessageInputItem['role'] {
     switch (role) {
       case MessageRole.USER:
         return 'user'

@@ -124,6 +124,112 @@ describe('Grounded finalization 路径', () => {
     )
   })
 
+  it('Grounding Session 建立后，带 Tool Call 轮次的中间文本只回填模型，不进草稿与最终回答', async () => {
+    const intermediate = '让我再查一下关键词。'
+    const harness = createHarness({
+      policy: { maxSamplingRounds: 4, maxToolCalls: 2 },
+      modelStreams: [
+        () => toModelStream([
+          toolCallEvent('call-1', 'retrieve_article_context', '{"query":"seo"}'),
+          { type: 'response_completed', finishReason: 'tool_calls' },
+        ]),
+        () => toModelStream([
+          { type: 'text_delta', delta: intermediate },
+          { type: 'tool_call_started' },
+          toolCallEvent('call-2', 'search_articles', '{"query":"seo"}'),
+          { type: 'response_completed', finishReason: 'tool_calls' },
+        ]),
+        () => toModelStream([
+          { type: 'text_delta', delta: '草稿' },
+          { type: 'response_completed', finishReason: 'stop' },
+        ]),
+        registry => toModelStream([
+          submitGroundedAnswerEvent({
+            answer: '校验后的回答。',
+            outcome: 'answered',
+            citationKeys: [registry[0]!],
+          }),
+          { type: 'response_completed', finishReason: 'tool_calls' },
+        ]),
+      ],
+      toolResults: [
+        { ok: true, data: {}, modelContent: '候选资料', evidence: RETRIEVAL_EVIDENCE },
+        { ok: true, data: {}, modelContent: '搜索结果' },
+      ],
+    })
+
+    const events = await collectEvents(harness.run())
+    const completed = events.at(-1)
+
+    assert.equal(completed?.type, 'run_completed')
+    assert.equal(completed?.type === 'run_completed' ? completed.content : '', '校验后的回答。')
+    assert.equal(harness.assistantMessage()?.content, '校验后的回答。')
+    assert.equal(
+      events.some(event => event.type === 'assistant_delta' && event.contentDelta.includes(intermediate)),
+      false,
+    )
+    assert.deepEqual(harness.toolInvocations.map(invocation => invocation.callId), ['call-1', 'call-2'])
+    // 第三轮模型输入里，中间文本作为带 tool_calls 的 assistant content 回填。
+    assert.deepEqual(harness.llmCalls[2]?.messages.at(-2), {
+      type: 'assistant_tool_call',
+      calls: [{ callId: 'call-2', name: 'search_articles', rawArgumentsJson: '{"query":"seo"}' }],
+      reasoningContent: '需要调用工具。',
+      content: intermediate,
+    })
+    // finalization 只拿到最终回答轮次的草稿。
+    const finalizationDraft = harness.llmCalls[3]?.messages
+      .map(item => item.type === 'message' ? item.content : '')
+      .join('\n') ?? ''
+
+    assert.match(finalizationDraft, /草稿/)
+    assert.doesNotMatch(finalizationDraft, new RegExp(intermediate))
+  })
+
+  it('Session 在同一轮由 eligible Tool 建立时，该轮之前已推出的文本按决策保留', async () => {
+    const intermediate = '让我先检索一下。'
+    const harness = createHarness({
+      modelStreams: [
+        () => toModelStream([
+          { type: 'text_delta', delta: intermediate },
+          { type: 'tool_call_started' },
+          toolCallEvent('call-1', 'retrieve_article_context', '{"query":"seo"}'),
+          { type: 'response_completed', finishReason: 'tool_calls' },
+        ]),
+        () => toModelStream([
+          { type: 'text_delta', delta: '草稿' },
+          { type: 'response_completed', finishReason: 'stop' },
+        ]),
+        registry => toModelStream([
+          submitGroundedAnswerEvent({
+            answer: '校验后的回答。',
+            outcome: 'answered',
+            citationKeys: [registry[0]!],
+          }),
+          { type: 'response_completed', finishReason: 'tool_calls' },
+        ]),
+      ],
+      toolResults: [
+        { ok: true, data: {}, modelContent: '候选资料', evidence: RETRIEVAL_EVIDENCE },
+      ],
+    })
+
+    const events = await collectEvents(harness.run())
+    const deltas = events.flatMap(event => event.type === 'assistant_delta' ? [event.contentDelta] : [])
+
+    // delta 推出时 Session 尚不存在、不可撤回；chunks 拼接仍逐字符等于最终 content。
+    assert.equal(deltas[0], intermediate)
+    assert.equal(deltas.join(''), `${intermediate}校验后的回答。`)
+    assert.equal(harness.assistantMessage()?.content, `${intermediate}校验后的回答。`)
+    assert.ok((events.at(-1) as { grounding?: MessageGroundingV1 }).grounding)
+    // finalization 只拿最终回答轮次的草稿。
+    const finalizationDraft = harness.llmCalls[2]?.messages
+      .map(item => item.type === 'message' ? item.content : '')
+      .join('\n') ?? ''
+
+    assert.match(finalizationDraft, /草稿/)
+    assert.doesNotMatch(finalizationDraft, new RegExp(intermediate))
+  })
+
   it('discovery-only Tool 不建立 Grounding Session', async () => {
     const harness = createHarness({
       modelStreams: [
@@ -1428,21 +1534,23 @@ describe('Grounded finalization 终态流完整性', () => {
     assert.equal(output.attemptCount, 1)
   })
 
-  it('response_completed 之后出现额外事件时按采样故障收口', async () => {
+  it('submit_grounded_answer 与其他 Tool Call 混合时按采样故障收口，理由写入 Step', async () => {
     const harness = createStreamHarness(() => toModelStream([
       submitGroundedAnswerEvent({
         answer: '回答',
         outcome: 'insufficient_evidence',
         citationKeys: [],
       }),
+      toolCallEvent('call-x', 'retrieve_article_context', '{"query":"seo"}'),
       { type: 'response_completed', finishReason: 'tool_calls' },
-      { type: 'usage', usage: { inputTokens: 1 } },
     ]))
 
     const output = await runAndReadFailure(harness)
 
-    assert.equal(output.samplingFailure, 'extra_event_after_completion')
+    assert.equal(output.samplingFailure, 'unknown_tool_call')
     assert.equal(output.attemptCount, 1)
+    assert.equal(output.failureReason, 'sampling_incomplete')
+    assert.equal(harness.toolInvocations.length, 1)
   })
 
   it('Tool Call 之后流异常结束时按采样故障收口，已出现的调用不被信任', async () => {

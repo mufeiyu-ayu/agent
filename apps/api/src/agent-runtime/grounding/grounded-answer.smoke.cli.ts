@@ -10,7 +10,7 @@ import { LLMService } from '../../llm/llm.service.js'
 import { PrismaService } from '../../prisma/prisma.service.js'
 import { createHybridArticleRetrievalRuntime } from '../../retrieval/hybrid-article-retrieval.runtime.js'
 import { PrismaArticleRetriever } from '../../retrieval/retrievers/prisma-article-retriever.js'
-import { buildSeoAgentChatMessages } from '../../seo/prompts/seo-agent.prompt.js'
+import { buildSeoAgentInstructions } from '../../seo/prompts/seo-agent.prompt.js'
 import {
   getArticleDetailDefinition,
   GetArticleDetailTool,
@@ -176,7 +176,7 @@ async function runSmokeCase(
       userContent: query,
       reasoningEffort: 'high',
       signal,
-      instructions: buildSeoAgentChatMessages([]),
+      instructions: buildSeoAgentInstructions([]),
     })) {
       if (event.type === 'assistant_delta') {
         deltas.push(event.contentDelta)

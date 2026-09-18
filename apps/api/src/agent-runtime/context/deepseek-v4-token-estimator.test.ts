@@ -108,6 +108,41 @@ describe('DeepSeekV4TokenEstimator', () => {
     )
   })
 
+  it('同轮多个 Tool Call 渲染进同一个 tool_calls 块，多个 Tool Result 合并为一个 user 轮次', () => {
+    const prompt = renderDeepSeekV4RequestPrompt({
+      items: [
+        { type: 'message', role: 'system', content: 'SYS' },
+        { type: 'message', role: 'user', content: '问题 🧪' },
+        {
+          type: 'assistant_tool_call',
+          calls: [
+            { callId: 'call-1', name: 'lookup', rawArgumentsJson: '{"query":"火箭 🚀","limit":2}' },
+            { callId: 'call-2', name: 'lookup', rawArgumentsJson: '{"query":"月球"}' },
+          ],
+          reasoningContent: '先查。',
+          content: '查询中',
+        },
+        { type: 'tool_result', callId: 'call-1', name: 'lookup', content: '结果：甲 🧪', ok: true },
+        { type: 'tool_result', callId: 'call-2', name: 'lookup', content: '结果：乙 🚀', ok: true },
+      ],
+      tools: OFFICIAL_VECTOR_TOOLS,
+    })
+
+    // system 里的工具模板也含 tool_calls 标记，只数 assistant 轮次真正渲染出的那一块。
+    assert.equal(prompt.match(/\n\n<｜DSML｜tool_calls>\n<｜DSML｜invoke name="lookup">/g)?.length, 1)
+    assert.equal(prompt.match(/<｜DSML｜invoke name="lookup">/g)?.length, 2)
+    assert.match(
+      prompt,
+      /<\/｜DSML｜invoke>\n<｜DSML｜invoke name="lookup">\n<｜DSML｜parameter name="query" string="true">月球/,
+    )
+    assert.match(
+      prompt,
+      /<｜User｜><tool_result>结果：甲 🧪<\/tool_result>\n\n<tool_result>结果：乙 🚀<\/tool_result><｜Assistant｜>/,
+    )
+    // 单 call 的官方向量前缀原样保留：多 call 只是在同一块里追加 invoke。
+    assert.match(prompt, /<think>先查。<\/think>查询中\n\n<｜DSML｜tool_calls>\n<｜DSML｜invoke name="lookup">\n<｜DSML｜parameter name="query" string="true">火箭 🚀/)
+  })
+
   it('复刻官方非法 raw arguments 回退，并保留普通 assistant history', () => {
     const prompt = renderDeepSeekV4RequestPrompt({
       items: [
@@ -117,9 +152,11 @@ describe('DeepSeekV4TokenEstimator', () => {
         { type: 'message', role: 'user', content: '当前问题' },
         {
           type: 'assistant_tool_call',
-          callId: 'call-raw',
-          name: 'lookup',
-          rawArgumentsJson: '{not-json',
+          calls: [{
+            callId: 'call-raw',
+            name: 'lookup',
+            rawArgumentsJson: '{not-json',
+          }],
           reasoningContent: 'reasoning',
         },
         {
@@ -176,9 +213,11 @@ describe('DeepSeekV4TokenEstimator', () => {
           { type: 'message', role: 'user', content: 'question' },
           {
             type: 'assistant_tool_call',
-            callId: 'call-scalar',
-            name: 'lookup',
-            rawArgumentsJson: '1.5',
+            calls: [{
+              callId: 'call-scalar',
+              name: 'lookup',
+              rawArgumentsJson: '1.5',
+            }],
             reasoningContent: 'reasoning',
           },
         ],
@@ -194,6 +233,14 @@ describe('DeepSeekV4TokenEstimator', () => {
       () => estimator.estimateRequest(createRawArgumentsInput('{"value":NaN}')),
       ContextTokenEstimationError,
     )
+    // length 截断到字符串字面量中间的 raw arguments 走官方非法 JSON 回退，不因为正文里出现
+    // Infinity / NaN 字样而让下一轮 Context Planner 失败。
+    for (const truncated of ['{"query":"Wuthering Waves Infinity', '{"query":"NaN 与 \\"Infinity', '']) {
+      const prompt = renderDeepSeekV4RequestPrompt(createRawArgumentsInput(truncated))
+
+      assert.match(prompt, /<｜DSML｜parameter name="arguments" string="true">/)
+      assert.ok(Number.isInteger(estimator.estimateRequest(createRawArgumentsInput(truncated))))
+    }
   })
 })
 
@@ -210,9 +257,11 @@ function createOfficialVectorInput(toolExchangeCount: 0 | 1 | 2): {
     items.push(
       {
         type: 'assistant_tool_call',
-        callId: 'call-1',
-        name: 'lookup',
-        rawArgumentsJson: '{"query":"火箭 🚀","limit":2}',
+        calls: [{
+          callId: 'call-1',
+          name: 'lookup',
+          rawArgumentsJson: '{"query":"火箭 🚀","limit":2}',
+        }],
         reasoningContent: '先查。',
         content: '查询中',
       },
@@ -230,9 +279,11 @@ function createOfficialVectorInput(toolExchangeCount: 0 | 1 | 2): {
     items.push(
       {
         type: 'assistant_tool_call',
-        callId: 'call-2',
-        name: 'lookup',
-        rawArgumentsJson: '{"query":"月球"}',
+        calls: [{
+          callId: 'call-2',
+          name: 'lookup',
+          rawArgumentsJson: '{"query":"月球"}',
+        }],
         reasoningContent: '再查。',
         content: '继续',
       },
@@ -259,9 +310,11 @@ function createRawArgumentsInput(rawArgumentsJson: string): {
       { type: 'message', role: 'user', content: 'question' },
       {
         type: 'assistant_tool_call',
-        callId: 'call-raw',
-        name: 'lookup',
-        rawArgumentsJson,
+        calls: [{
+          callId: 'call-raw',
+          name: 'lookup',
+          rawArgumentsJson,
+        }],
         reasoningContent: 'reasoning',
       },
     ],

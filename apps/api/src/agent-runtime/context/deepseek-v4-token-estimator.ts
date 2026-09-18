@@ -112,10 +112,10 @@ type DeepSeekRenderMessage
     role: 'assistant'
     content: string
     reasoningContent?: string
-    toolCall?: {
+    toolCalls?: Array<{
       name: string
       rawArgumentsJson: string
-    }
+    }>
   }
 
 /** DeepSeek V4 官方 encoding_dsv4.py@b5968e9 的本项目输入子集。 */
@@ -172,10 +172,10 @@ function toDeepSeekRenderMessages(
           role: 'assistant',
           content: item.content ?? '',
           reasoningContent: item.reasoningContent,
-          toolCall: {
-            name: item.name,
-            rawArgumentsJson: item.rawArgumentsJson,
-          },
+          toolCalls: item.calls.map(call => ({
+            name: call.name,
+            rawArgumentsJson: call.rawArgumentsJson,
+          })),
         })
         break
 
@@ -241,11 +241,11 @@ function renderMessage(
       const reasoning = !dropThinking || index > lastUserIndex
         ? `${message.reasoningContent ?? ''}${THINKING_END_TOKEN}`
         : ''
-      const toolCall = message.toolCall
-        ? renderToolCall(message.toolCall)
+      const toolCalls = message.toolCalls
+        ? renderToolCalls(message.toolCalls)
         : ''
 
-      return `${reasoning}${message.content}${toolCall}${EOS_TOKEN}`
+      return `${reasoning}${message.content}${toolCalls}${EOS_TOKEN}`
     }
   }
 }
@@ -260,13 +260,15 @@ function renderTools(tools: ModelToolSpec[]): string {
   return TOOLS_TEMPLATE.replace('{tool_schemas}', toolSchemas)
 }
 
-function renderToolCall(input: {
+/** 同轮多个 Tool Call 渲染进同一个 tool_calls 块，每个 call 一个 invoke。 */
+function renderToolCalls(toolCalls: Array<{
   name: string
   rawArgumentsJson: string
-}): string {
-  const argumentsDsml = renderToolArguments(input.rawArgumentsJson)
+}>): string {
+  const invokes = toolCalls.map(toolCall =>
+    `<${DSML_TOKEN}invoke name="${toolCall.name}">\n${renderToolArguments(toolCall.rawArgumentsJson)}\n</${DSML_TOKEN}invoke>`)
 
-  return `\n\n<${DSML_TOKEN}tool_calls>\n<${DSML_TOKEN}invoke name="${input.name}">\n${argumentsDsml}\n</${DSML_TOKEN}invoke>\n</${DSML_TOKEN}tool_calls>`
+  return `\n\n<${DSML_TOKEN}tool_calls>\n${invokes.join('\n')}\n</${DSML_TOKEN}tool_calls>`
 }
 
 function renderToolArguments(rawArgumentsJson: string): string {
@@ -278,7 +280,9 @@ function renderToolArguments(rawArgumentsJson: string): string {
     valueSources = readTopLevelObjectValueSources(rawArgumentsJson)
   }
   catch {
-    if (/\b(?:NaN|Infinity)\b/.test(rawArgumentsJson)) {
+    // length 截断的 raw arguments 会常态化走到这里；只有字符串字面量之外的裸 NaN / Infinity
+    // 才是 Python json.loads 接受而 JSON.parse 拒绝的形态，其余非法 JSON 复刻官方回退。
+    if (hasBareNonFiniteToken(rawArgumentsJson)) {
       throw new TypeError(
         'DeepSeek V4 non-finite JSON number is outside the verified subset',
       )
@@ -360,6 +364,43 @@ function pythonJsonNumber(source: string): string {
 
   const decimal = String(value)
   return decimal.includes('.') ? decimal : `${decimal}.0`
+}
+
+function hasBareNonFiniteToken(input: string): boolean {
+  let inString = false
+  let escaped = false
+  let token = ''
+  const isNonFinite = (): boolean => token === 'NaN' || token === 'Infinity'
+
+  for (const character of input) {
+    if (inString) {
+      if (escaped)
+        escaped = false
+      else if (character === '\\')
+        escaped = true
+      else if (character === '"')
+        inString = false
+      continue
+    }
+
+    if (character === '"') {
+      inString = true
+      token = ''
+      continue
+    }
+
+    if (/[a-z]/i.test(character)) {
+      token += character
+      continue
+    }
+
+    if (isNonFinite())
+      return true
+
+    token = ''
+  }
+
+  return isNonFinite()
 }
 
 function readTopLevelObjectValueSources(input: string): Map<string, string> {
