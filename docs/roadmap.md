@@ -7,7 +7,7 @@
 ```text
 阶段 1-8：Completed
 Active Agent Task：无
-Next / Planned：#115 模型调用重试 → #116 同轮文本 + 多 Tool Call → #117 Responses adapter → web_fetch（去过度设计三件 #118 / #119 / #120 与 #124 目录整理已于 2026-09-17 全部合并，`packages/ai` 已按 Pi 分层；#126 Admin Run 读模型去过度设计与 #127 `packages/ai` 运行时配置收敛已于 2026-09-18 合并）
+Next / Planned：#115 模型调用重试 → #116 同轮文本 + 多 Tool Call → web_fetch → #117 Responses adapter（2026-09-18 定案 web_fetch 提到 #117 前；去过度设计三件 #118 / #119 / #120 与 #124 目录整理已于 2026-09-17 全部合并，`packages/ai` 已按 Pi 分层；#126 Admin Run 读模型去过度设计与 #127 `packages/ai` 运行时配置收敛已于 2026-09-18 合并）
 方向：runtime 深化（2026-09-05 定案）
 当前阶段：源码阅读
 候选子系统：session 事件流与 replay、审批门、compaction、定时任务
@@ -119,5 +119,5 @@ Phase 8 Task 3C 已完成安全 Retrieval Inspector，但不自动启动 Task 4�
 Phase 8：Completed / 已归档（docs/tasks/completed/phase-08-grounded-retrieval.md）
 Active Agent Task：无
 当前阶段：本项目源码阅读；后续按 pi-reference roadmap 由 AI 参照 Pi 实现云端方向
-下一步：#115 → #116 → #117 依次开工（#118 / #119 / #120 / #124 / #126 / #127 已合并，#115 开工前把其范围第 1 条「与 `readPositiveInteger` 一致」改为「解析为 0-5 整数，非法值启动失败」，#115 在 `packages/ai` 内实现），之后 web_fetch；其余候选子系统在立项条件满足时建 Issue，走 docs/workflow.md 的流程
+下一步：#115 → #116 → web_fetch → #117 依次开工（#118 / #119 / #120 / #124 / #126 / #127 已合并；2026-09-18 已把 #115 范围第 1 条改为 `createClient()` 常量 `maxRetries: 2`、不加 env，与 #127 一致；web_fetch 不依赖 #117 的第二 wire，故提前；#115 在 `packages/ai` 内实现）；其余候选子系统在立项条件满足时建 Issue，走 docs/workflow.md 的流程
 ```

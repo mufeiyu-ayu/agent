@@ -8,7 +8,7 @@
 阶段 1-8：Completed
 Active Agent Task：无
 Next：#115 模型调用重试（前置 #120 / #124 已于 2026-09-17 合并，#126 / #127 已于 2026-09-18 合并）
-Planned：#116 同轮文本 + 多 Tool Call → #117 Responses API adapter → web_fetch（R0 后、R2 前）
+Planned：#116 同轮文本 + 多 Tool Call → web_fetch → #117 Responses API adapter（2026-09-18 定案 web_fetch 提到 #117 前，它不依赖第二 wire；均在 R2 前）
 候选子系统：session 事件流与 replay、审批门、compaction、定时任务（未立 Issue）
 Admin Task 4：Planned
 ```
@@ -26,7 +26,7 @@ Admin Task 4：Planned
 | #115 模型调用重试与 Loop 默认上限 | Planned | SDK 内置重试（首个响应头之前）、`LLM_REQUEST_MAX_RETRIES`、采样 / 工具默认上限 10 / 8；在 `packages/ai` 内实现；前置 #120 |
 | #116 同轮文本 + 多 Tool Call | Planned | content 先于 tool_calls、多个 tool_calls 顺序执行、上限解耦、截断参数回喂；前置 #115 |
 | #117 Responses API adapter | Planned | `LLM_WIRE_API` 切换 chat / responses，第二个 adapter 接同一契约；前置 #116 |
-| `web_fetch` 第一个真实工具 | Planned | 只读、SSRF 防护、untrusted observation；前置 #115–117，范围见 [pi-reference roadmap](../research/pi-reference/roadmap.md) |
+| `web_fetch` 第一个真实工具 | Planned | 只读、SSRF 防护、untrusted observation；前置 #115 / #116，排在 #117 前（2026-09-18 定案），范围见 [pi-reference roadmap](../research/pi-reference/roadmap.md) |
 | Admin Console Task 4 | Planned | Auth / RBAC；触发条件见 [roadmap.md](../roadmap.md) 后置清单 |
 | 已完成 | Completed | Phase 2–8、横向任务 #92 / #94 / #98 / #101–#104、Admin Console Task 0–3 与 Enhancement 1–3，归档在 [completed/](./completed/) |
 | 翻译质检站 #109 / #111 | 已删除 | 2026-09-05 经 #113 / PR #114 删除全部代码与数据模型 |

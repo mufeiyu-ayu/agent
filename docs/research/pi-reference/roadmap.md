@@ -24,13 +24,13 @@
 
 **AI 查的素材**：[07 图](./diagrams/07-classic-loop.html)；[产品主链 §3](./modules/coding-agent-tui.md)、[运行内核 §2](./modules/runtime-session.md)（toolCall 续轮与文本回复两条分支、`agent_end ≠ 空闲`）；[模型边界 §2–3、§4.1、§7](./modules/model-telemetry-evals.md)（事件流、transformMessages、compat 检测、usage 归一化、两层重试、overflow 判定）。对照点在 [current-agent-mapping](./current-agent-mapping.md) 的 `runTurnStream` 行。
 
-### R0 之后、R2 之前：第一个真实工具 `web_fetch`（2026-09-16 定案）
+### #116 之后、#117 之前：第一个真实工具 `web_fetch`（2026-09-16 定案，2026-09-18 提前到 #117 前）
 
 只读、内容不可信的网络工具。它是第一个让用户真用起来的工具，也是 R3 副作用工具（工作区写入）的前置。第一个真实用途：盯 Pi 上游，读固定 revision 到 HEAD 的 compare / commits 页面，对照 pi-reference 判断哪些结论可能过期；第一版只读不写。
 
 **范围**：只允许 http/https；解析后拦截内网与保留地址，防 SSRF；体积与超时上限；HTML 转正文；observation 按 untrusted 标记，复用现有 Tool Observation 治理。不做 web_search，它需要搜索 API 与账单，进 R5 候选。
 
-**进入条件**：#115–117 合并。
+**进入条件**：#115、#116 合并。它不依赖 #117 的第二 wire，排在 #117 前。
 
 **AI 查的素材**：Pi 没有 fetch 工具，抓网页靠 `bash` 跑 `curl`，云端不能照搬；体积控制参照 `coding-agent/src/core/tools/truncate.ts` 与 `output-accumulator.ts`；工具定义与注册参照 [产品主链 §6.4](./modules/coding-agent-tui.md)。
 
@@ -40,7 +40,7 @@
 
 **最少持久集合（R2 内完成，不等 R1）**：operation ID、owner 主体与资源归属、状态/版本、终态、输入引用。accept 落库后、执行者收到内存通知前进程退出，重启必须能从数据库重新发现未完成的 operation 并继续或收口，轮询即可，不引入消息中间件。R1 只负责会话树、分支与模型输入的可重建引用。
 
-**进入条件**：确实要求关页后继续、另一个页面观察或进程重启后接管。#115–117 已完成。
+**进入条件**：确实要求关页后继续、另一个页面观察或进程重启后接管。#115–117 与 `web_fetch` 已完成。
 
 **第一步：分包（2026-09-16 定案）**。仿 Pi 的 `agent / ai / coding-agent` 三层，但只分两个纯包，不照搬 11 个包：
 
