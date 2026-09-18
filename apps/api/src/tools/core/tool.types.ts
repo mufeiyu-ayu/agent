@@ -104,7 +104,6 @@ export type ToolResult<T = unknown>
     ok: false
     code: 'execution_failed' | 'invalid_arguments' | 'timeout' | 'unknown_tool'
     modelContent: string
-    retryable: boolean
   }
 
 export interface ToolExecutor<TInput, TOutput> {

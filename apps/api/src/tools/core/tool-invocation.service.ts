@@ -31,7 +31,6 @@ export class ToolInvocationService {
         ok: false,
         code: 'unknown_tool',
         modelContent: `工具 ${envelope.toolName} 不存在。`,
-        retryable: false,
       }
     }
 
@@ -51,7 +50,6 @@ export class ToolInvocationService {
         ok: false,
         code: 'execution_failed',
         modelContent: `工具 ${envelope.toolName} 当前不允许执行。`,
-        retryable: false,
       }
     }
 
@@ -66,7 +64,6 @@ export class ToolInvocationService {
         ok: false,
         code: 'invalid_arguments',
         modelContent: `工具 ${envelope.toolName} 的参数无效。`,
-        retryable: false,
       }
     }
 
@@ -142,7 +139,6 @@ export class ToolInvocationService {
             ok: false,
             code: 'timeout',
             modelContent: `工具 ${envelope.toolName} 执行超时。`,
-            retryable: false,
           }
 
         case 'result':
@@ -157,7 +153,6 @@ export class ToolInvocationService {
               ok: false,
               code: 'timeout',
               modelContent: `工具 ${envelope.toolName} 执行超时。`,
-              retryable: false,
             }
           }
 
@@ -168,7 +163,6 @@ export class ToolInvocationService {
             ok: false,
             code: 'execution_failed',
             modelContent: `工具 ${envelope.toolName} 执行失败。`,
-            retryable: false,
           }
       }
     }

@@ -5,20 +5,6 @@ export function readObject(value: unknown): Record<string, unknown> | null {
     : null
 }
 
-export function isRequiredString(
-  object: Record<string, unknown>,
-  key: string,
-): boolean {
-  return typeof object[key] === 'string' && object[key].trim().length > 0
-}
-
-export function isRequiredNonNegativeInteger(
-  object: Record<string, unknown>,
-  key: string,
-): boolean {
-  return readNonNegativeInteger(object, key) !== null
-}
-
 export function readString(
   object: Record<string, unknown> | null,
   key: string,
@@ -53,7 +39,7 @@ export function readPositiveInteger(
 export function readAllowedString<T extends string>(
   object: Record<string, unknown> | null,
   key: string,
-  allowed: T[],
+  allowed: readonly T[],
 ): T | null {
   const value = object?.[key]
   return typeof value === 'string' && allowed.includes(value as T)

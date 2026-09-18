@@ -18,6 +18,7 @@ import type {
 } from './agent-runtime.types.js'
 import type { AgentRuntimePolicy } from './configuration/agent-runtime.policy.js'
 import type { TokenEstimator } from './context/deepseek-v4-token-estimator.js'
+import type { InitialContextSummary } from './context/initial-context.js'
 import type { SamplingContextPlanSummary } from './context/sampling-context-planner.js'
 import type { GroundedFinalizationAttemptSummary } from './grounding/grounded-answer.finalizer.js'
 import type { RunCancellation } from './lifecycle/run-cancellation.js'
@@ -186,9 +187,6 @@ export class AgentRuntimeService {
       const loadHistoryStep = await this.agentRunRecorderService.startStep({
         runId: currentAgentRunId,
         type: AGENT_STEP_TYPES.loadConversationHistory,
-        input: {
-          limit: runtimePolicy.historyCandidateHardLimit,
-        },
       }, databaseDeadline)
 
       // 查询前后各检查一次用户取消或 Run 超时；await 期间也可能发生。
@@ -305,7 +303,6 @@ export class AgentRuntimeService {
       ) {
         runCancellation.throwIfUnavailable()
         const samplingAttemptId = `${currentAgentRunId}:sampling-${samplingAttempt}`
-        const contextSnapshot = modelContext.snapshot(samplingAttempt)
         // 模型采样 step 创建完成
         const samplingStep = await this.agentRunRecorderService.startStep({
           runId: currentAgentRunId,
@@ -313,13 +310,9 @@ export class AgentRuntimeService {
           input: {
             samplingIndex: samplingAttempt,
             samplingAttemptId,
-            requestedModel: input.model ?? null,
-            candidateMessageCount: contextSnapshot.itemCount,
-            toolCount: modelTools.length,
-            initialContext: { ...initialContext },
+            initialContext: toPersistedInitialContext(initialContext),
           },
         }, databaseDeadline)
-        const samplingStartedAt = Date.now()
         // debug 捕获暂存：只有 AGENT_DEBUG_CAPTURE_MODEL_IO 开启时 client 才会回调，
         // 开关关闭时始终为空对象，落库输出与现状完全一致。
         const debugModelIO: DebugModelIOCaptured = {
@@ -394,7 +387,6 @@ export class AgentRuntimeService {
                     id: samplingStep.id,
                     output: this.toFailedSamplingStepOutput(
                       undefined,
-                      Date.now() - samplingStartedAt,
                       plannedMessageCount,
                       contextPlanSummary,
                       debugModelIO,
@@ -436,7 +428,6 @@ export class AgentRuntimeService {
             {
               output: this.toSamplingStepOutput(
                 samplingDecision.summary,
-                Date.now() - samplingStartedAt,
                 plannedMessageCount,
                 contextPlanSummary,
                 debugModelIO,
@@ -456,14 +447,12 @@ export class AgentRuntimeService {
             output: completedSamplingSummary
               ? this.toSamplingStepOutput(
                   completedSamplingSummary,
-                  Date.now() - samplingStartedAt,
                   plannedMessageCount,
                   contextPlanSummary,
                   debugModelIO,
                 )
               : this.toFailedSamplingStepOutput(
                   error,
-                  Date.now() - samplingStartedAt,
                   plannedMessageCount,
                   contextPlanSummary,
                   debugModelIO,
@@ -502,13 +491,9 @@ export class AgentRuntimeService {
           input: {
             callId: samplingDecision.call.callId,
             toolName: samplingDecision.call.toolName,
-            toolVersion: toolDefinition?.version ?? null,
             samplingAttemptId: samplingDecision.call.samplingAttemptId,
-            executionAttempt: 1,
-            rawArgumentsChars: [...samplingDecision.call.rawArgumentsJson].length,
           },
         }, databaseDeadline)
-        const toolStartedAt = Date.now()
         let toolResult: ToolResult
 
         try {
@@ -517,7 +502,6 @@ export class AgentRuntimeService {
               ok: false,
               code: 'unknown_tool',
               modelContent: `工具 ${samplingDecision.call.toolName} 不存在。`,
-              retryable: false,
             }
           }
           else {
@@ -537,9 +521,6 @@ export class AgentRuntimeService {
           terminalStepFailure = {
             id: toolStep.id,
             errorMessage: '工具执行未能安全完成。',
-            output: {
-              durationMs: Date.now() - toolStartedAt,
-            },
           }
           claimRunTermination(runCancellation, error)
           throw error
@@ -557,17 +538,11 @@ export class AgentRuntimeService {
           : undefined
         const toolStepOutput = {
           ok: toolResult.ok,
-          ...(toolResult.ok
-            ? {}
-            : {
-                code: toolResult.code,
-                retryable: toolResult.retryable,
-              }),
+          ...(toolResult.ok ? {} : { code: toolResult.code }),
           ...(toolSummary ? { toolSummary } : {}),
           originalChars: observation.originalChars,
           observationChars: observation.observationChars,
           truncated: observation.truncated,
-          durationMs: Date.now() - toolStartedAt,
         }
 
         if (toolResult.ok) {
@@ -628,7 +603,6 @@ export class AgentRuntimeService {
             assistantMessageId,
             evidenceAvailability: evidenceRegistry.evidenceAvailability(),
             registryRefCount: evidenceRegistry.summary().refCount,
-            registryTruncated: evidenceRegistry.summary().registryTruncated,
           },
         }, databaseDeadline)
         const registry = evidenceRegistry
@@ -735,9 +709,6 @@ export class AgentRuntimeService {
           assistantMessageId,
           assistantOutputStepId: assistantOutputStepId!,
           content,
-          output: {
-            contentLength: content.length,
-          },
           ...(grounding ? { grounding } : {}),
           ...(finalizationCommit ? { finalizationStep: finalizationCommit } : {}),
         },
@@ -1121,7 +1092,6 @@ export class AgentRuntimeService {
 
   private toSamplingStepOutput(
     summary: ModelSamplingSummary,
-    durationMs: number,
     messageCount: number,
     contextPlan?: SamplingContextPlanSummary,
     debugModelIO?: DebugModelIOCaptured,
@@ -1132,11 +1102,8 @@ export class AgentRuntimeService {
       finishReason: summary.finishReason,
       usage: toPersistedModelUsage(summary.usage),
       toolCallCount: summary.toolCallCount,
-      textChars: summary.textChars,
-      intermediateTextChars: summary.intermediateTextChars,
-      durationMs,
       ...(contextPlan
-        ? { contextPlan: contextPlan as unknown as Prisma.InputJsonValue }
+        ? { contextPlan: toPersistedContextPlan(contextPlan) }
         : {}),
       ...this.toDebugModelIOOutput(debugModelIO),
     }
@@ -1144,7 +1111,6 @@ export class AgentRuntimeService {
 
   private toFailedSamplingStepOutput(
     error: unknown,
-    durationMs: number,
     messageCount: number,
     contextPlan?: SamplingContextPlanSummary,
     debugModelIO?: DebugModelIOCaptured,
@@ -1157,7 +1123,6 @@ export class AgentRuntimeService {
     if (error instanceof ModelSamplingIncompleteError && error.summary) {
       return this.toSamplingStepOutput(
         error.summary,
-        durationMs,
         messageCount,
         failedContextPlan,
         debugModelIO,
@@ -1165,16 +1130,12 @@ export class AgentRuntimeService {
     }
 
     return {
-      durationMs,
       messageCount,
       ...(error instanceof ContextTokenEstimationError
         ? { contextFailureReason: 'estimator_failure' as const }
         : {}),
       ...(failedContextPlan
-        ? {
-            contextPlan:
-              failedContextPlan as unknown as Prisma.InputJsonValue,
-          }
+        ? { contextPlan: toPersistedContextPlan(failedContextPlan) }
         : {}),
       ...this.toDebugModelIOOutput(debugModelIO),
     }
@@ -1285,9 +1246,6 @@ export class AgentRuntimeService {
     return {
       evidenceAvailability: summary.evidenceAvailability,
       registryRefCount: summary.refCount,
-      registryTruncated: summary.registryTruncated,
-      eligibleToolCallCount: summary.eligibleToolCallCount,
-      eligibleToolFailureCount: summary.eligibleToolFailureCount,
       attemptCount: attempts.length,
       attempts: attempts.map(attempt => ({
         attempt: attempt.attempt,
@@ -1299,17 +1257,12 @@ export class AgentRuntimeService {
         ...(attempt.samplingFailure
           ? { samplingFailure: attempt.samplingFailure }
           : {}),
-        submittedCitationKeyCount: attempt.submittedCitationKeyCount,
         usage: toPersistedModelUsage(attempt.usage),
-        durationMs: attempt.durationMs,
       })),
       ...(grounding
         ? {
             outcome: grounding.outcome,
             citationCount: grounding.citations.length,
-            citationIntegrity: grounding.citationIntegrity,
-            faithfulnessStatus: grounding.faithfulnessStatus,
-            schemaVersion: grounding.schemaVersion,
           }
         : {}),
       ...(error instanceof GroundedFinalizationFailedError
@@ -1329,6 +1282,35 @@ export class AgentRuntimeService {
 
   private isAbortSignalTriggered(signal: AbortSignal | undefined): boolean {
     return signal?.aborted ?? false
+  }
+}
+
+/** 落库的裁剪前快照只保留 Admin 读取的四个字段；其余仍在内存对象里参与预算计算。 */
+function toPersistedInitialContext(
+  initialContext: InitialContextSummary,
+): Prisma.InputJsonObject {
+  return {
+    resolvedModel: initialContext.resolvedModel,
+    resolvedInputBudgetTokens: initialContext.resolvedInputBudgetTokens,
+    historyCandidateCount: initialContext.historyCandidateCount,
+    historyIncludedCount: initialContext.historyIncludedCount,
+  }
+}
+
+function toPersistedContextPlan(
+  contextPlan: SamplingContextPlanSummary,
+): Prisma.InputJsonObject {
+  return {
+    resolvedInputBudgetTokens: contextPlan.resolvedInputBudgetTokens,
+    estimatedInputTokens: contextPlan.estimatedInputTokens,
+    historyCandidateCount: contextPlan.historyCandidateCount,
+    historyIncludedCount: contextPlan.historyIncludedCount,
+    overflowReason: contextPlan.overflowReason,
+    observations: contextPlan.observations.map(observation => ({
+      originalChars: observation.originalChars,
+      toolCeilingChars: observation.toolCeilingChars,
+      finalChars: observation.finalChars,
+    })),
   }
 }
 

@@ -193,7 +193,6 @@ function toTraceEventType(item: AdminRunTimelineItem): TraceEventType {
     return 'GENERIC'
 
   return {
-    receive_user_message: 'USER',
     load_conversation_history: 'HISTORY',
     model_sampling: 'MODEL',
     // grounded finalization 也是一次真实模型调用，沿用 MODEL 事件与泳道，
@@ -210,11 +209,6 @@ function getMessagePreview(
 ): string | null {
   if (item.kind === 'generic')
     return null
-
-  if (item.type === 'receive_user_message') {
-    const message = item.messageId ? messagesById.get(item.messageId) : undefined
-    return message?.role === 'USER' ? message.contentPreview : null
-  }
 
   if (item.type === 'assistant_output') {
     const message = item.assistantMessageId
@@ -234,40 +228,23 @@ function createRecordContent(
     return messagePreview
 
   if (item.kind === 'generic')
-    return joinContent(item.title, item.inputSummary, item.outputSummary)
+    return item.title
 
   switch (item.type) {
-    case 'receive_user_message':
-      return joinContent(item.inputSummary, item.title)
     case 'load_conversation_history':
-      return joinContent(item.outputSummary, item.inputSummary, item.title)
+      return item.title
     case 'model_sampling':
       return joinContent(
         item.contextInspector.resolvedModel,
-        item.requestedModel,
         item.finishReason,
-        item.outputSummary,
-        item.inputSummary,
         item.title,
       )
     case 'tool_execution':
-      return joinContent(
-        item.toolName,
-        item.code,
-        item.outputSummary,
-        item.inputSummary,
-        item.title,
-      )
+      return joinContent(item.toolName, item.code, item.title)
     case 'grounded_finalization':
-      return joinContent(
-        item.outcome,
-        item.failureReason,
-        item.outputSummary,
-        item.inputSummary,
-        item.title,
-      )
+      return joinContent(item.outcome, item.failureReason, item.title)
     case 'assistant_output':
-      return joinContent(item.outputSummary, item.inputSummary, item.title)
+      return joinContent(item.assistantMessageId, item.title)
   }
 }
 
@@ -282,23 +259,17 @@ function createSearchText(
     item.title,
     item.sequence,
     item.status,
-    item.inputSummary,
-    item.outputSummary,
     messagePreview,
   ]
 
   if (item.kind === 'known' && item.type === 'model_sampling') {
-    values.push(
-      item.requestedModel,
-      item.contextInspector.requestedModel,
-      item.contextInspector.resolvedModel,
-    )
+    values.push(item.contextInspector.resolvedModel, item.finishReason)
   }
   else if (item.kind === 'known' && item.type === 'tool_execution') {
-    values.push(item.toolName)
+    values.push(item.toolName, item.code)
   }
   else if (item.kind === 'known' && item.type === 'grounded_finalization') {
-    values.push(item.outcome, item.validation, item.failureReason)
+    values.push(item.outcome, item.failureReason)
   }
 
   return normalizeSearchText(values.filter(value => value !== null).join(' '))
@@ -356,7 +327,6 @@ function toTraceLane(item: AdminRunTimelineItem): TraceLane | null {
     return null
 
   switch (item.type) {
-    case 'receive_user_message':
     case 'load_conversation_history':
       return 'input'
     case 'model_sampling':

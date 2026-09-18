@@ -475,7 +475,6 @@ describe('retrieve_article_context', () => {
         return
 
       assert.equal(result.code, 'execution_failed')
-      assert.equal(result.retryable, false)
       assert.equal(
         result.modelContent,
         '工具 retrieve_article_context 执行失败。',

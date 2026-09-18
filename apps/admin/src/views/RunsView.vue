@@ -34,7 +34,6 @@ import RunStatusTag from '@/features/runs/components/RunStatusTag.vue'
 import { useRunListStore } from '@/features/runs/run-list.store'
 import {
   formatDuration,
-  formatRequestedModel,
   formatShortDateTime,
   formatTokens,
 } from '@/features/runs/run.utils'
@@ -48,10 +47,9 @@ const columns = computed<TableColumnsType<RunListItem>>(() => [
   { title: t('runs.columns.question'), dataIndex: 'questionPreview', key: 'question', width: 220 },
   { title: t('runs.columns.conversation'), dataIndex: 'conversationId', key: 'conversation', width: 150 },
   { title: t('runs.columns.status'), dataIndex: 'status', key: 'status', width: 92 },
-  { title: t('runs.columns.model'), dataIndex: 'requestedModel', key: 'requestedModel', width: 132 },
   { title: t('runs.columns.tools'), dataIndex: 'toolCallCount', key: 'tools', width: 62, align: 'center' },
   { title: t('runs.columns.samples'), dataIndex: 'samplingCount', key: 'samplings', width: 72, align: 'center' },
-  { title: t('runs.columns.tokens'), dataIndex: 'totalTokens', key: 'tokens', width: 78, align: 'right' },
+  { title: t('runs.columns.tokens'), dataIndex: ['usage', 'totalTokens'], key: 'tokens', width: 78, align: 'right' },
   { title: t('runs.columns.duration'), dataIndex: 'durationMs', key: 'duration', width: 78, align: 'right' },
   { title: t('runs.columns.createdAt'), dataIndex: 'createdAt', key: 'createdAt', width: 126 },
   { title: '', key: 'action', width: 54, fixed: 'right', align: 'center' },
@@ -238,15 +236,8 @@ function handlePageChange(page: number, pageSize: number) {
           <template v-else-if="column.key === 'status'">
             <RunStatusTag :status="record.status" />
           </template>
-          <template v-else-if="column.key === 'requestedModel'">
-            <Tooltip :title="record.requestedModel ?? t('runs.defaultModelHint')">
-              <span class="requested-model" :class="{ 'is-default': record.requestedModel === null }">
-                {{ formatRequestedModel(record.requestedModel, t('runs.defaultModel')) }}
-              </span>
-            </Tooltip>
-          </template>
           <template v-else-if="column.key === 'tokens'">
-            <span class="numeric-cell">{{ formatTokens(record.totalTokens, locale) }}</span>
+            <span class="numeric-cell">{{ formatTokens(record.usage.totalTokens, locale) }}</span>
           </template>
           <template v-else-if="column.key === 'duration'">
             <span class="numeric-cell">{{ formatDuration(record.durationMs) }}</span>
@@ -488,19 +479,6 @@ function handlePageChange(page: number, pageSize: number) {
   color: var(--admin-text);
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.requested-model {
-  display: block;
-  overflow: hidden;
-  color: var(--admin-text-muted);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.requested-model.is-default {
-  color: var(--admin-text-subtle);
-  font-style: italic;
 }
 
 .numeric-cell,

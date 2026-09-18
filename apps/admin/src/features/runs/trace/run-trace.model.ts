@@ -4,7 +4,7 @@ import type {
   AgentStepStatus,
 } from '@agent/contracts'
 
-export type TraceEventType = 'USER' | 'HISTORY' | 'MODEL' | 'TOOL' | 'OUTPUT' | 'GENERIC'
+export type TraceEventType = 'HISTORY' | 'MODEL' | 'TOOL' | 'OUTPUT' | 'GENERIC'
 export type TraceLane = 'input' | 'model' | 'tools'
 
 export interface TraceRecord {

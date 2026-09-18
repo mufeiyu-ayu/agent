@@ -12,11 +12,6 @@ type AssistantToolCallInputItem = Extract<
 >
 type ToolResultInputItem = Extract<ModelInputItem, { type: 'tool_result' }>
 
-export interface ModelContextSnapshot {
-  samplingIndex: number
-  itemCount: number
-}
-
 export interface ModelContextToolExchange {
   exchangeIndex: number
   assistantCall: AssistantToolCallInputItem
@@ -159,19 +154,6 @@ export class ModelContext {
       // null 表示尚未因 Context Budget 进行第二次缩短。
       contextBudgetPreviewChars: null,
     })
-  }
-
-  /** 只暴露安全计数，供 Sampling Step / Admin 观测。 */
-  snapshot(samplingIndex: number): ModelContextSnapshot {
-    return {
-      samplingIndex,
-      // 与 flattenPlanningState 的组装顺序一一对应：
-      // instructions + initialHistory + currentUser + 每组 Tool Call / Tool Result。
-      itemCount: this.instructions.length
-        + this.initialHistory.length
-        + 1
-        + this.toolExchanges.length * 2,
-    }
   }
 }
 

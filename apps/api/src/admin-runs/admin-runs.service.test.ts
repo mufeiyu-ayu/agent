@@ -12,43 +12,41 @@ import {
 } from './projection/admin-run.projector.js'
 
 describe('Admin Run projector', () => {
-  it('从多次 sampling / tool step 聚合 durable 指标且保留 requestedModel=null', () => {
+  it('从多次 sampling / tool step 聚合 durable 指标', () => {
     const item = projectAdminRunListItem(createRunRecord())
 
-    assert.equal(item.requestedModel, null)
     assert.equal(item.samplingCount, 3)
     assert.equal(item.toolCallCount, 2)
-    assert.equal(item.inputTokens, 60)
-    assert.equal(item.outputTokens, 23)
-    assert.equal(item.totalTokens, 83)
+    assert.deepEqual(item.usage, {
+      inputTokens: 60,
+      outputTokens: 23,
+      totalTokens: 83,
+      reasoningTokens: null,
+      promptCacheHitTokens: null,
+      promptCacheMissTokens: null,
+    })
     assert.equal(item.durationMs, 3_000)
   })
 
-  it('usage 任一维度缺失时只把无法证明的聚合值保留为 null', () => {
+  it('usage 每个指标独立求和：任一 step 缺该指标则该指标为 null，其余照常', () => {
     const record = createRunRecord()
     const secondSampling = record.steps.find(step => step.sequence === 5)!
     secondSampling.output = {
       samplingAttemptId: 'run-1:sampling-2',
       messageCount: 4,
       finishReason: 'tool_calls',
-      usage: {
-        inputTokens: 20,
-        outputTokens: 8,
-      },
+      usage: { inputTokens: 20, outputTokens: 8 },
       toolCallCount: 1,
-      textChars: 0,
-      intermediateTextChars: 0,
-      durationMs: 800,
     }
 
     const item = projectAdminRunListItem(record)
 
-    assert.equal(item.inputTokens, 60)
-    assert.equal(item.outputTokens, 23)
-    assert.equal(item.totalTokens, null)
+    assert.equal(item.usage.inputTokens, 60)
+    assert.equal(item.usage.outputTokens, 23)
+    assert.equal(item.usage.totalTokens, null)
   })
 
-  it('Run Detail 对 reasoning / cache Usage 按维度独立 all-or-nothing 汇总', () => {
+  it('reasoning / cache 明细按指标独立求和且原样读取', () => {
     const record = createRunRecord()
     const samplings = record.steps
       .filter(step => step.type === 'model_sampling')
@@ -56,24 +54,19 @@ describe('Admin Run projector', () => {
 
     for (const [index, sampling] of samplings.entries()) {
       const output = sampling.output as Record<string, unknown>
-      const inputTokens = (output.usage as Record<string, number>).inputTokens
-
-      assert.ok(typeof inputTokens === 'number')
       output.usage = {
         ...(output.usage as Record<string, unknown>),
         reasoningTokens: index + 1,
         promptCacheHitTokens: index + 1,
-        ...(index === 1
-          ? {}
-          : { promptCacheMissTokens: inputTokens - index - 1 }),
+        ...(index === 1 ? {} : { promptCacheMissTokens: 3 }),
       }
     }
 
     const detail = projectAdminRunDetail(record)
 
-    assert.equal(detail.reasoningTokens, 6)
-    assert.equal(detail.promptCacheHitTokens, 6)
-    assert.equal(detail.promptCacheMissTokens, null)
+    assert.equal(detail.usage.reasoningTokens, 6)
+    assert.equal(detail.usage.promptCacheHitTokens, 6)
+    assert.equal(detail.usage.promptCacheMissTokens, null)
 
     const sampling = detail.timeline.find(item => item.type === 'model_sampling')
     assert.equal(
@@ -84,42 +77,12 @@ describe('Admin Run projector', () => {
     )
   })
 
-  it('malformed reasoning / cache 明细 fail closed，但不拖垮核心 Usage', () => {
+  it('AC-06：2 次 sampling + 1 次 finalization（2 attempts）的 totalTokens 等于 4 次调用之和', () => {
     const record = createRunRecord()
-    const sampling = record.steps.find(step => step.sequence === 3)!
-    const output = sampling.output as Record<string, unknown>
-
-    output.usage = {
-      ...(output.usage as Record<string, unknown>),
-      reasoningTokens: 6,
-      promptCacheHitTokens: 7,
-      promptCacheMissTokens: 4,
-    }
-
-    const item = projectAdminRunDetail(record).timeline.find(
-      candidate => candidate.sequence === 3,
-    )
-
-    assert.ok(item?.kind === 'known' && item.type === 'model_sampling')
-    assert.equal(item.usage?.inputTokens, 10)
-    assert.equal(item.usage?.outputTokens, 5)
-    assert.equal(item.usage?.reasoningTokens, null)
-    assert.equal(item.usage?.promptCacheHitTokens, null)
-    assert.equal(item.usage?.promptCacheMissTokens, null)
-  })
-
-  it('grounded finalization 计入总采样次数与 Token 汇总', () => {
-    const record = createRunRecord()
-
     record.steps = [
-      ...record.steps,
+      ...record.steps.filter(step => step.sequence !== 7),
       step(10, 'grounded_finalization', {
-        input: {
-          assistantMessageId: 'message-assistant',
-          evidenceAvailability: 'available',
-          registryRefCount: 2,
-          registryTruncated: false,
-        },
+        input: groundedFinalizationInput(),
         output: groundedFinalizationOutput([
           { ok: false, usage: { inputTokens: 5, outputTokens: 2, totalTokens: 7 } },
           { ok: true, usage: { inputTokens: 6, outputTokens: 3, totalTokens: 9 } },
@@ -128,125 +91,48 @@ describe('Admin Run projector', () => {
     ]
 
     const item = projectAdminRunListItem(record)
+    const detail = projectAdminRunDetail(record)
+    const stepUsages = detail.timeline.flatMap(candidate => (
+      candidate.kind === 'known'
+      && (candidate.type === 'model_sampling' || candidate.type === 'grounded_finalization')
+        ? [candidate.usage]
+        : []
+    ))
 
-    // 3 次 action sampling + 2 次 finalization attempt。
-    assert.equal(item.samplingCount, 5)
-    assert.equal(item.inputTokens, 60 + 11)
-    assert.equal(item.outputTokens, 23 + 5)
-    assert.equal(item.totalTokens, 83 + 16)
-  })
-
-  it('单次成功的 finalization 也计入采样次数', () => {
-    const record = createRunRecord()
-
-    record.steps = [
-      ...record.steps,
-      step(10, 'grounded_finalization', {
-        output: groundedFinalizationOutput([
-          { ok: true, usage: { inputTokens: 4, outputTokens: 1, totalTokens: 5 } },
-        ]),
-      }),
-    ]
-
-    const item = projectAdminRunListItem(record)
-
+    // 2 次 action sampling + 2 次 finalization attempt。
     assert.equal(item.samplingCount, 4)
-    assert.equal(item.totalTokens, 88)
+    assert.equal(item.usage.totalTokens, 15 + 28 + 7 + 9)
+    assert.equal(
+      stepUsages.reduce((total, usage) => total + (usage?.totalTokens ?? 0), 0),
+      item.usage.totalTokens,
+    )
+
+    // 任一调用缺 totalTokens 时该项为 null，其余项照常。
+    const output = record.steps.find(candidate => candidate.sequence === 10)!
+      .output as { attempts: Array<{ usage: Record<string, unknown> }> }
+    delete output.attempts[1]!.usage.totalTokens
+
+    const partial = projectAdminRunListItem(record)
+
+    assert.equal(partial.usage.totalTokens, null)
+    assert.equal(partial.usage.inputTokens, 10 + 20 + 5 + 6)
+    assert.equal(partial.usage.outputTokens, 5 + 8 + 2 + 3)
   })
 
-  it('finalization metadata 损坏时 fail closed：Token 汇总为 null，次数不少算', () => {
-    const malformedOutputs: unknown[] = [
-      null,
-      { attemptCount: 1 },
-      { attemptCount: 1, attempts: 'not-an-array' },
-      // attemptCount 与 attempts 长度不一致
-      { attemptCount: 3, attempts: [{ ok: true, usage: null }] },
-      // 超出 v1 的 attempt 上限
-      {
-        attemptCount: 3,
-        attempts: [{ ok: true }, { ok: true }, { ok: true }],
-      },
-      // attempt 结构非法
-      { attemptCount: 1, attempts: [{ usage: null }] },
-    ]
-
-    for (const output of malformedOutputs) {
+  it('finalization attempts 缺失或不是数组时不计入次数，usage 不受影响', () => {
+    for (const output of [null, { attemptCount: 1 }, { attempts: 'not-an-array' }]) {
       const record = createRunRecord()
-
-      record.steps = [
-        ...record.steps,
-        step(10, 'grounded_finalization', { output }),
-      ]
+      record.steps = [...record.steps, step(10, 'grounded_finalization', { output })]
 
       const item = projectAdminRunListItem(record)
 
-      // Step 存在就说明至少发生过一次模型调用，绝不少算成 0。
-      assert.equal(item.samplingCount, 4)
-      assert.equal(item.inputTokens, null)
-      assert.equal(item.outputTokens, null)
-      assert.equal(item.totalTokens, null)
+      assert.equal(item.samplingCount, 3)
+      assert.equal(item.usage.totalTokens, 83)
     }
   })
 
-  it('重复 finalization Step 时 Header Usage fail closed，不重复汇总', () => {
+  it('finalization attempt 缺少 usage 时该项 null，次数照常', () => {
     const record = createRunRecord()
-    const output = groundedFinalizationOutput([{
-      ok: true,
-      usage: { inputTokens: 4, outputTokens: 2, totalTokens: 6 },
-    }])
-    const attempt = output.attempts[0] as unknown as Record<string, unknown>
-
-    assert.ok(attempt)
-    attempt.usage = {
-      ...(attempt.usage as Record<string, unknown>),
-      reasoningTokens: 1,
-      promptCacheHitTokens: 3,
-      promptCacheMissTokens: 1,
-    }
-    record.steps = [
-      ...record.steps,
-      step(10, 'grounded_finalization', {
-        input: groundedFinalizationInput(),
-        output,
-      }),
-      step(11, 'grounded_finalization', {
-        input: groundedFinalizationInput(),
-        output: structuredClone(output),
-      }),
-    ]
-
-    const detail = projectAdminRunDetail(record)
-
-    assert.equal(detail.samplingCount, 5)
-    assert.equal(detail.inputTokens, null)
-    assert.equal(detail.outputTokens, null)
-    assert.equal(detail.totalTokens, null)
-    assert.equal(detail.reasoningTokens, null)
-    assert.equal(detail.promptCacheHitTokens, null)
-    assert.equal(detail.promptCacheMissTokens, null)
-    assert.equal(detail.retrievalInspector.finalization?.metadataTrusted, false)
-
-    const zeroAttemptRecord = createRunRecord()
-    zeroAttemptRecord.steps = [
-      ...zeroAttemptRecord.steps,
-      step(10, 'grounded_finalization', {
-        output: { attemptCount: 0, attempts: [] },
-      }),
-      step(11, 'grounded_finalization', {
-        output: { attemptCount: 0, attempts: [] },
-      }),
-    ]
-    const zeroAttemptDetail = projectAdminRunDetail(zeroAttemptRecord)
-
-    assert.equal(zeroAttemptDetail.totalTokens, null)
-    assert.equal(zeroAttemptDetail.reasoningTokens, null)
-    assert.equal(zeroAttemptDetail.promptCacheHitTokens, null)
-    assert.equal(zeroAttemptDetail.promptCacheMissTokens, null)
-  })
-
-  it('finalization attempt 缺少 usage 时不伪造 Token 数字', () => {
-    const record = createRunRecord()
-
     record.steps = [
       ...record.steps,
       step(10, 'grounded_finalization', {
@@ -257,184 +143,135 @@ describe('Admin Run projector', () => {
     const item = projectAdminRunListItem(record)
 
     assert.equal(item.samplingCount, 4)
-    assert.equal(item.totalTokens, null)
+    assert.equal(item.usage.totalTokens, null)
   })
 
-  it('action sampling metadata 损坏时 Token 汇总整体为 null，不输出部分总数', () => {
+  it('AC-03：sampling output 缺 finishReason 仍是 known Step，仅该字段为 null', () => {
     const record = createRunRecord()
-    const secondSampling = record.steps.find(step => step.sequence === 5)!
+    const sampling = record.steps.find(step => step.sequence === 3)!
+    delete (sampling.output as Record<string, unknown>).finishReason
 
-    // 破坏一条 action sampling 的 metadata，但 finalization usage 完全合法。
-    secondSampling.output = { providerPayload: 'DO_NOT_LEAK' }
-    record.steps = [
-      ...record.steps,
-      step(10, 'grounded_finalization', {
-        output: groundedFinalizationOutput([
-          { ok: true, usage: { inputTokens: 4, outputTokens: 1, totalTokens: 5 } },
-        ]),
-      }),
-    ]
+    const item = projectAdminRunDetail(record).timeline.find(candidate => candidate.sequence === 3)
 
-    const item = projectAdminRunListItem(record)
-
-    // 次数仍然正确：3 次 action sampling + 1 次 finalization。
-    assert.equal(item.samplingCount, 4)
-    // 但 Token 是 all-or-nothing：不能只报 finalization 那部分。
-    assert.equal(item.inputTokens, null)
-    assert.equal(item.outputTokens, null)
-    assert.equal(item.totalTokens, null)
+    assert.ok(item?.kind === 'known' && item.type === 'model_sampling')
+    assert.equal(item.finishReason, null)
+    assert.equal(item.samplingIndex, 1)
+    assert.equal(item.usage?.totalTokens, 15)
+    assert.equal(item.toolCallCount, 1)
   })
 
-  it('sampling 与 finalization 都可信时才给出 Token 总数', () => {
+  it('AC-03：usage.inputTokens 为字符串时只有该项为 null，Step 与其余 usage 照常', () => {
     const record = createRunRecord()
-
-    record.steps = [
-      ...record.steps,
-      step(10, 'grounded_finalization', {
-        output: groundedFinalizationOutput([
-          { ok: false, usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 } },
-          { ok: true, usage: { inputTokens: 2, outputTokens: 2, totalTokens: 4 } },
-        ]),
-      }),
-    ]
-
-    const item = projectAdminRunListItem(record)
-
-    assert.equal(item.samplingCount, 5)
-    assert.equal(item.totalTokens, 89)
-  })
-
-  it('采样故障的 finalization attempt 同样计入 samplingCount', () => {
-    const record = createRunRecord()
-
-    record.steps = [
-      ...record.steps,
-      step(10, 'grounded_finalization', {
-        status: 'FAILED',
-        output: {
-          ...groundedFinalizationOutput([{ ok: false, usage: null }]),
-          failureReason: 'sampling_incomplete',
-          samplingFailure: 'missing_response_completed',
-        },
-      }),
-    ]
-
-    const item = projectAdminRunListItem(record)
-
-    assert.equal(item.samplingCount, 4)
-    // usage 无法确认，整体 fail closed。
-    assert.equal(item.totalTokens, null)
-  })
-
-  it('ABORTED 的 finalization Step 同样计入 samplingCount 并保留 usage', () => {
-    const record = createRunRecord()
-
-    // 模型流已经完整结束、usage 已收到，随后 Abort 生效：
-    // 这次调用是既成事实，Run 的采样次数与 Token 都必须包含它。
-    record.steps = [
-      ...record.steps,
-      step(10, 'grounded_finalization', {
-        status: 'ABORTED',
-        output: groundedFinalizationOutput([
-          { ok: false, usage: { inputTokens: 19, outputTokens: 6, totalTokens: 25 } },
-        ]),
-      }),
-    ]
-
-    const item = projectAdminRunListItem(record)
-
-    assert.equal(item.samplingCount, 4)
-    assert.equal(item.inputTokens, 60 + 19)
-    assert.equal(item.outputTokens, 23 + 6)
-    assert.equal(item.totalTokens, 83 + 25)
-  })
-
-  // Task 3C 起 grounded_finalization 有 typed 投影；metadata 合法时不再落入
-  // Generic fallback，但 allowlist 之外的字段仍然一个都不能出现在响应里。
-  it('grounded finalization 在 Timeline 中 typed 投影，不泄漏内部 metadata', () => {
-    const record = createRunRecord()
-
-    record.steps = [
-      ...record.steps,
-      step(10, 'grounded_finalization', {
-        input: {
-          ...groundedFinalizationInput(),
-          hiddenDraft: 'DO_NOT_LEAK',
-        },
-        output: {
-          ...groundedFinalizationOutput([{ ok: true, usage: null }]),
-          providerPayload: 'DO_NOT_LEAK',
-        },
-      }),
-    ]
+    const sampling = record.steps.find(step => step.sequence === 3)!
+    const output = sampling.output as Record<string, unknown>
+    output.usage = { ...(output.usage as Record<string, unknown>), inputTokens: '10' }
 
     const detail = projectAdminRunDetail(record)
+    const item = detail.timeline.find(candidate => candidate.sequence === 3)
+
+    assert.ok(item?.kind === 'known' && item.type === 'model_sampling')
+    assert.deepEqual(item.usage, {
+      inputTokens: null,
+      outputTokens: 5,
+      totalTokens: 15,
+      reasoningTokens: null,
+      promptCacheHitTokens: null,
+      promptCacheMissTokens: null,
+    })
+    assert.equal(detail.usage.inputTokens, null)
+    assert.equal(detail.usage.totalTokens, 83)
+  })
+
+  it('AC-03：tool step input 缺 callId 仍是 known Step，仅 callId 为 null', () => {
+    const record = createRunRecord()
+    const tool = record.steps.find(step => step.sequence === 4)!
+    delete (tool.input as Record<string, unknown>).callId
+
+    const item = projectAdminRunDetail(record).timeline.find(candidate => candidate.sequence === 4)
+
+    assert.ok(item?.kind === 'known' && item.type === 'tool_execution')
+    assert.equal(item.callId, null)
+    assert.equal(item.toolName, 'search_articles')
+    assert.equal(item.ok, true)
+    assert.equal(item.truncated, true)
+  })
+
+  it('AC-03：receive_user_message 与未知 type 投影为 generic', () => {
+    const detail = projectAdminRunDetail(createRunRecord())
+
+    assert.deepEqual(
+      detail.timeline
+        .filter(item => item.kind === 'generic')
+        .map(item => item.type),
+      ['receive_user_message', 'future_retrieval'],
+    )
+  })
+
+  it('input / output 整体不是对象时已知 Step 仍为 known，字段全为 null', () => {
+    const record = createRunRecord()
+    const sampling = record.steps.find(step => step.sequence === 3)!
+    sampling.input = 'broken'
+    sampling.output = ['broken']
+
+    const item = projectAdminRunDetail(record).timeline.find(candidate => candidate.sequence === 3)
+
+    assert.ok(item?.kind === 'known' && item.type === 'model_sampling')
+    assert.equal(item.samplingIndex, null)
+    assert.equal(item.finishReason, null)
+    assert.equal(item.usage, null)
+    assert.equal(item.contextInspector.outcome, null)
+    assert.equal(item.contextInspector.resolvedModel, null)
+  })
+
+  it('AC-04：#124 之前落库的 Run 全部投影为 known 且忽略多余字段', () => {
+    const detail = projectAdminRunDetail(createLegacyRunRecord())
     const serialized = JSON.stringify(detail)
-    const finalizationItem = detail.timeline.find(
-      item => item.type === 'grounded_finalization',
-    )
 
-    assert.ok(finalizationItem)
-    assert.equal(finalizationItem.kind, 'known')
+    assert.deepEqual(
+      detail.timeline.map(item => [item.type, item.kind]),
+      [
+        ['receive_user_message', 'generic'],
+        ['load_conversation_history', 'known'],
+        ['model_sampling', 'known'],
+        ['tool_execution', 'known'],
+        ['model_sampling', 'known'],
+        ['grounded_finalization', 'known'],
+        ['assistant_output', 'known'],
+      ],
+    )
+    assert.doesNotMatch(
+      serialized,
+      /toolVersion|executionAttempt|retryable|rawArgumentsChars|requestedModel|textChars|registryTruncated|eligibleToolCallCount|schemaVersion|citationIntegrity|contentLength|estimatorStrategyId|contextWindowTokens|exchangeIndex|toolCeilingTruncated|submittedCitationKeyCount|recordedDurationMs/,
+    )
     assert.doesNotMatch(serialized, /DO_NOT_LEAK/)
-  })
 
-  it('grounded finalization 缺少必备 input 事实时回落 Generic fallback', () => {
-    const record = createRunRecord()
+    const sampling = detail.timeline.find(item => item.sequence === 3)
+    assert.ok(sampling?.kind === 'known' && sampling.type === 'model_sampling')
+    assert.deepEqual(sampling.contextInspector, {
+      outcome: 'success',
+      resolvedModel: 'deepseek-v4-flash',
+      resolvedInputBudgetTokens: 262_144,
+      estimatedInputTokens: 120_000,
+      historyCandidateCount: 2,
+      historyIncludedCount: 2,
+      samplingHistoryExcludedCount: 0,
+      observations: [],
+    })
 
-    record.steps = [
-      ...record.steps,
-      step(10, 'grounded_finalization', {
-        input: { hiddenDraft: 'DO_NOT_LEAK' },
-        output: groundedFinalizationOutput([{ ok: true, usage: null }]),
-      }),
-    ]
+    const tool = detail.timeline.find(item => item.sequence === 4)
+    assert.ok(tool?.kind === 'known' && tool.type === 'tool_execution')
+    assert.equal(tool.toolName, 'retrieve_article_context')
+    assert.equal(tool.ok, true)
 
-    const finalizationItem = projectAdminRunDetail(record).timeline.find(
-      item => item.type === 'grounded_finalization',
-    )
-
-    assert.ok(finalizationItem)
-    assert.equal(finalizationItem.kind, 'generic')
-  })
-
-  it('grounded finalization metadata 损坏时仍回落 Generic fallback', () => {
-    const record = createRunRecord()
-
-    record.steps = [
-      ...record.steps,
-      step(10, 'grounded_finalization', {
-        input: groundedFinalizationInput(),
-        output: {
-          ...groundedFinalizationOutput([{ ok: true, usage: null }]),
-          // registryRefCount 与 evidenceAvailability 自相矛盾。
-          registryRefCount: 0,
-          providerPayload: 'DO_NOT_LEAK',
-        },
-      }),
-    ]
-
-    const detail = projectAdminRunDetail(record)
-    const finalizationItem = detail.timeline.find(
-      item => item.type === 'grounded_finalization',
-    )
-
-    assert.ok(finalizationItem)
-    assert.equal(finalizationItem.kind, 'generic')
-    assert.doesNotMatch(JSON.stringify(detail), /DO_NOT_LEAK/)
-  })
-
-  it('普通单次采样成功不会伪造 Tool Execution', () => {
-    const record = createRunRecord()
-    record.steps = record.steps.filter(
-      step => step.sequence <= 3 || step.sequence === 8,
-    )
-
-    const item = projectAdminRunListItem(record)
-
-    assert.equal(item.samplingCount, 1)
-    assert.equal(item.toolCallCount, 0)
-    assert.equal(item.totalTokens, 15)
+    const finalization = detail.timeline.find(item => item.sequence === 6)
+    assert.ok(finalization?.kind === 'known' && finalization.type === 'grounded_finalization')
+    assert.equal(finalization.evidenceAvailability, 'available')
+    assert.equal(finalization.outcome, 'answered')
+    assert.equal(finalization.attemptCount, 1)
+    assert.equal(finalization.registryRefCount, 2)
+    assert.equal(finalization.usage?.totalTokens, 9)
+    assert.equal(detail.samplingCount, 3)
+    assert.equal(detail.retrievalInspector.retrievalCalls.length, 1)
   })
 
   it('五类已知 Step 使用 allowlist，unknown Step 安全降级且 Timeline 按 sequence 排序', () => {
@@ -446,24 +283,35 @@ describe('Admin Run projector', () => {
       [1, 2, 3, 4, 5, 6, 7, 8, 9],
     )
     assert.deepEqual(
-      detail.timeline.slice(0, 8).map(item => item.kind),
-      Array.from({ length: 8 }).fill('known'),
+      detail.timeline.slice(1, 8).map(item => item.kind),
+      Array.from({ length: 7 }).fill('known'),
     )
-    assert.equal(detail.timeline.at(-1)?.kind, 'generic')
-    assert.equal(detail.timeline.at(-1)?.type, 'future_retrieval')
     assert.doesNotMatch(
       serialized,
       /DO_NOT_LEAK|rawArgumentsJson|observationBody|providerPayload|reasoning_content/,
     )
-    assert.doesNotMatch(serialized, /"input"|"output"/)
+    assert.doesNotMatch(serialized, /"input"|"output"|inputSummary|outputSummary|safeRawData/)
     const secondSampling = detail.timeline.find(item => item.sequence === 5)
 
     assert.equal(
-      secondSampling?.kind === 'known'
-      && secondSampling.type === 'model_sampling'
+      secondSampling?.kind === 'known' && secondSampling.type === 'model_sampling'
         ? secondSampling.providerItemCount
         : null,
       4,
+    )
+    const history = detail.timeline.find(item => item.sequence === 2)
+    assert.equal(
+      history?.kind === 'known' && history.type === 'load_conversation_history'
+        ? history.messageCount
+        : null,
+      2,
+    )
+    const output = detail.timeline.find(item => item.sequence === 8)
+    assert.equal(
+      output?.kind === 'known' && output.type === 'assistant_output'
+        ? output.assistantMessageId
+        : null,
+      'message-assistant',
     )
   })
 
@@ -484,6 +332,7 @@ describe('Admin Run projector', () => {
       preview: '{"choices":[',
     }
     outputs[2]!.debugRawResponse = { state: 'empty' }
+    outputs[2]!.debugRequestBody = { truncated: false, value: { model: 'deepseek-v4-flash' } }
 
     const detail = projectAdminRunDetail(record)
     const projected = detail.timeline.filter(
@@ -492,31 +341,21 @@ describe('Admin Run projector', () => {
 
     assert.deepEqual(projected.map(item => (
       item.kind === 'known' && item.type === 'model_sampling'
-        ? item.debugRawResponse
+        ? [item.debugRawResponse, item.debugRequestBody]
         : null
     )), [
-      {
+      [{
         state: 'complete',
         truncated: false,
         value: { choices: [{ message: { content: 'legacy complete' } }] },
-      },
-      {
+      }, null],
+      [{
         state: 'partial',
         truncated: true,
         preview: '{"choices":[',
-      },
-      { state: 'empty' },
+      }, null],
+      [{ state: 'empty' }, { truncated: false, value: { model: 'deepseek-v4-flash' } }],
     ])
-    assert.deepEqual(
-      detail.safeRawData.agentSteps
-        .filter(step => step.type === 'model_sampling')
-        .map(step => step.debugRawResponse),
-      projected.map(item => (
-        item.kind === 'known' && item.type === 'model_sampling'
-          ? item.debugRawResponse
-          : null
-      )),
-    )
   })
 
   it('Response debug capture 状态或信封损坏时按未捕获降级', () => {
@@ -541,120 +380,35 @@ describe('Admin Run projector', () => {
     assert.doesNotMatch(JSON.stringify(detail), /MUST_NOT_PROJECT/)
   })
 
-  it('按 Sampling 投影安全 Context Inspector，并区分三种 item count 与 Tool Exchange 0/1/2', () => {
+  it('按 Sampling 逐字段投影 Context Inspector', () => {
     const record = createRunRecord()
     attachContextMetadata(record)
 
     const detail = projectAdminRunDetail(record)
-    const samplings = detail.timeline.filter(item => (
+    const inspectors = detail.timeline.flatMap(item => (
       item.kind === 'known' && item.type === 'model_sampling'
+        ? [item.contextInspector]
+        : []
     ))
-    const inspectors = samplings.map((item) => {
-      if (item.type !== 'model_sampling')
-        assert.fail('expected model_sampling')
-      return item.contextInspector
-    })
 
-    assert.deepEqual(
-      samplings.map(item => item.type === 'model_sampling'
-        ? item.providerItemCount
-        : null),
-      [4, 5, 7],
-    )
-    assert.deepEqual(inspectors.map(item => item.prePlanItemCount), [4, 6, 7])
-    assert.deepEqual(inspectors.map(item => item.toolExchangeCount), [0, 1, 2])
-    assert.deepEqual(
-      inspectors.map(item => item.availability),
-      ['available', 'available', 'available'],
-    )
-    assert.deepEqual(
-      inspectors.map(item => item.outcome),
-      ['success', 'success', 'success'],
-    )
-    assert.equal(inspectors[0]?.resolvedModel, 'deepseek-v4-flash')
-    assert.equal(inspectors[0]?.requestedModel, null)
-    assert.equal(inspectors[0]?.budgetUsageRatio, 120_000 / 262_144)
-    assert.deepEqual(
-      inspectors.map(item => item.samplingHistoryExcludedCount),
-      [0, 1, 1],
-    )
-    assert.equal(inspectors[1]?.observations?.[0]?.toolCeilingTruncated, true)
-    assert.equal(inspectors[1]?.observations?.[0]?.contextBudgetTruncated, false)
+    assert.deepEqual(inspectors.map(item => item.outcome), ['success', 'success', 'success'])
+    assert.deepEqual(inspectors.map(item => item.resolvedModel), Array.from({ length: 3 }).fill('deepseek-v4-flash'))
+    assert.deepEqual(inspectors.map(item => item.estimatedInputTokens), [120_000, 180_000, 220_000])
+    assert.deepEqual(inspectors.map(item => item.historyIncludedCount), [2, 1, 1])
+    assert.deepEqual(inspectors.map(item => item.samplingHistoryExcludedCount), [0, 1, 1])
+    assert.deepEqual(inspectors.map(item => item.observations?.length), [0, 1, 2])
     assert.deepEqual(inspectors[2]?.observations, [
-      {
-        exchangeIndex: 0,
-        originalChars: 100,
-        toolCeilingChars: 80,
-        finalChars: 64,
-        toolCeilingTruncated: true,
-        contextBudgetTruncated: true,
-      },
-      {
-        exchangeIndex: 1,
-        originalChars: 101,
-        toolCeilingChars: 101,
-        finalChars: 101,
-        toolCeilingTruncated: false,
-        contextBudgetTruncated: false,
-      },
+      { originalChars: 100, toolCeilingChars: 80, finalChars: 64 },
+      { originalChars: 101, toolCeilingChars: 101, finalChars: 101 },
     ])
     assert.doesNotMatch(
       JSON.stringify(detail),
-      /DO_NOT_LEAK|prompt(?!Cache)|observationBody|reasoning_content/,
+      /DO_NOT_LEAK|prompt(?!Cache)|observationBody|reasoning_content|exchangeIndex|toolCeilingTruncated/,
     )
   })
 
-  it('#119 之前落库的 initialContext.excludedReason = budget 仍投影为 available', () => {
-    const legacy = createRunRecord()
-    legacy.steps = legacy.steps.filter(step => step.sequence <= 3)
-    const sampling = legacy.steps.find(step => step.sequence === 3)!
-    // 旧形状：读取阶段已按预算排除 1 条，plan 未再删减。
-    sampling.input = {
-      ...(sampling.input as Record<string, unknown>),
-      candidateMessageCount: 3,
-      initialContext: {
-        ...safeInitialContext(),
-        historyCandidateCount: 2,
-        historyIncludedCount: 1,
-        historyExcludedCount: 1,
-        excludedReason: 'budget',
-      },
-    }
-    sampling.output = {
-      ...(sampling.output as Record<string, unknown>),
-      messageCount: 3,
-      contextPlan: {
-        ...safeContextPlan(null),
-        estimatedInputTokens: 200,
-        historyCandidateCount: 2,
-        historyIncludedCount: 1,
-        historyExcludedCount: 1,
-      },
-    }
-
-    const projection = projectAdminRunDetail(legacy).timeline.find(
-      item => item.sequence === 3,
-    )
-
-    assert.equal(projection?.kind, 'known')
-    assert.deepEqual(
-      projection?.type === 'model_sampling'
-        ? [
-            projection.contextInspector.availability,
-            projection.contextInspector.outcome,
-            projection.contextInspector.initialHistoryExcludedReason,
-            projection.contextInspector.historyExcludedCount,
-            projection.contextInspector.samplingHistoryExcludedCount,
-          ]
-        : null,
-      ['available', 'success', 'budget', 1, 0],
-    )
-  })
-
-  it('sampling estimator failure 使用安全枚举，且 Context metadata 不一致只降级 Inspector', () => {
+  it('Context Inspector 的 outcome 只看 contextFailureReason / overflowReason / contextPlan 是否存在', () => {
     const estimatorFailure = createRunRecord()
-    estimatorFailure.status = 'FAILED'
-    estimatorFailure.steps = estimatorFailure.steps.filter(step => step.sequence <= 3)
     const failedSampling = estimatorFailure.steps.find(step => step.sequence === 3)!
     failedSampling.status = 'FAILED'
     failedSampling.input = {
@@ -662,215 +416,58 @@ describe('Admin Run projector', () => {
       initialContext: safeInitialContext(),
     }
     failedSampling.output = {
-      durationMs: 25,
       messageCount: 0,
       contextFailureReason: 'estimator_failure',
     }
 
-    const failedProjection = projectAdminRunDetail(estimatorFailure).timeline.at(-1)
+    const failed = projectAdminRunDetail(estimatorFailure).timeline.find(item => item.sequence === 3)
+    assert.ok(failed?.kind === 'known' && failed.type === 'model_sampling')
+    assert.equal(failed.contextInspector.outcome, 'estimator_failure')
+    // 预算来自 initialContext；history 三项是 plan 的结果，plan 缺失时一起为 null。
+    assert.equal(failed.contextInspector.resolvedInputBudgetTokens, 262_144)
+    assert.equal(failed.contextInspector.historyCandidateCount, null)
+    assert.equal(failed.contextInspector.historyIncludedCount, null)
+    assert.equal(failed.contextInspector.samplingHistoryExcludedCount, null)
+    assert.equal(failed.contextInspector.estimatedInputTokens, null)
+    assert.equal(failed.providerItemCount, 0)
 
-    assert.equal(failedProjection?.kind, 'known')
-    assert.equal(
-      failedProjection?.type === 'model_sampling'
-        ? failedProjection.contextInspector.availability
-        : null,
-      'partial',
-    )
-    assert.equal(
-      failedProjection?.type === 'model_sampling'
-        ? failedProjection.contextInspector.outcome
-        : null,
-      'estimator_failure',
-    )
-    assert.equal(
-      failedProjection?.type === 'model_sampling'
-        ? failedProjection.providerItemCount
-        : null,
-      0,
-    )
-    assert.doesNotMatch(JSON.stringify(failedProjection), /DO_NOT_LEAK/)
-
-    const mismatched = createRunRecord()
-    attachContextMetadata(mismatched)
-    const secondSampling = mismatched.steps.find(step => step.sequence === 5)!
-    const contextPlan = (
-      secondSampling.output as Record<string, unknown>
-    ).contextPlan as Record<string, unknown>
-    contextPlan.samplingIndex = 3
-
-    const mismatchedProjection = projectAdminRunDetail(mismatched).timeline.find(
-      item => item.sequence === 5,
-    )
-
-    assert.equal(mismatchedProjection?.kind, 'known')
-    assert.equal(
-      mismatchedProjection?.type === 'model_sampling'
-        ? mismatchedProjection.contextInspector.availability
-        : null,
-      'partial',
-    )
-    assert.equal(
-      mismatchedProjection?.type === 'model_sampling'
-        ? mismatchedProjection.contextInspector.outcome
-        : null,
-      'unavailable',
-    )
-
-    for (const [estimatedInputTokens, overflowReason] of [
-      [262_145, null],
-      [262_144, 'minimum_context'],
-    ] as const) {
-      const contradictoryBudget = createRunRecord()
-      attachContextMetadata(contradictoryBudget)
-      const step = contradictoryBudget.steps.find(item => item.sequence === 5)!
-      const plan = (step.output as Record<string, unknown>)
-        .contextPlan as Record<string, unknown>
-      plan.estimatedInputTokens = estimatedInputTokens
-      plan.overflowReason = overflowReason
-
-      const projection = projectAdminRunDetail(contradictoryBudget).timeline.find(
-        item => item.sequence === 5,
-      )
-      assert.equal(projection?.kind, 'known')
-      assert.equal(
-        projection?.type === 'model_sampling'
-          ? projection.contextInspector.outcome
-          : null,
-        'unavailable',
-      )
-    }
-  })
-
-  it('initial budget 不符合唯一公式时只降级 Context Inspector', () => {
-    for (const mutate of [
-      (initial: Record<string, unknown>) => {
-        initial.resolvedInputBudgetTokens = 262_143
-      },
-      (initial: Record<string, unknown>) => {
-        initial.contextWindowTokens = 70_000
-      },
-    ]) {
-      const record = createRunRecord()
-      attachContextMetadata(record)
-      const firstSampling = record.steps.find(step => step.sequence === 3)!
-      const initialContext = (firstSampling.input as Record<string, unknown>)
-        .initialContext as Record<string, unknown>
-
-      mutate(initialContext)
-      assertContextUnavailable(record, 3)
-    }
-  })
-
-  it('Observation chars 与截断 flags 冲突时只降级 Context Inspector', () => {
-    const toolCeilingConflict = createRunRecord()
-    attachContextMetadata(toolCeilingConflict)
-    const secondPlan = contextPlanAt(toolCeilingConflict, 5)
-    const secondObservation = (secondPlan.observations as Array<
-      Record<string, unknown>
-    >)[0]!
-    secondObservation.toolCeilingTruncated = false
-    assertContextUnavailable(toolCeilingConflict, 5)
-
-    const contextBudgetConflict = createRunRecord()
-    attachContextMetadata(contextBudgetConflict)
-    const thirdPlan = contextPlanAt(contextBudgetConflict, 7)
-    const thirdObservation = (thirdPlan.observations as Array<
-      Record<string, unknown>
-    >)[0]!
-    thirdObservation.contextBudgetTruncated = false
-    assertContextUnavailable(contextBudgetConflict, 7)
-
-    const markerExpansion = createRunRecord()
-    attachContextMetadata(markerExpansion)
-    const previousMarkerPlan = contextPlanAt(markerExpansion, 5)
-    const previousMarkerObservation = (previousMarkerPlan.observations as Array<
-      Record<string, unknown>
-    >)[0]!
-    previousMarkerObservation.originalChars = 24
-    previousMarkerObservation.toolCeilingChars = 24
-    previousMarkerObservation.finalChars = 24
-    previousMarkerObservation.toolCeilingTruncated = false
-    previousMarkerObservation.contextBudgetTruncated = false
-    const markerPlan = contextPlanAt(markerExpansion, 7)
-    const markerObservation = (markerPlan.observations as Array<
-      Record<string, unknown>
-    >)[0]!
-    markerObservation.originalChars = 24
-    markerObservation.toolCeilingChars = 24
-    markerObservation.finalChars = 96
-    markerObservation.toolCeilingTruncated = false
-    markerObservation.contextBudgetTruncated = true
-
-    const markerProjection = projectAdminRunDetail(markerExpansion).timeline.find(
-      item => item.sequence === 7,
-    )
-    assert.equal(markerProjection?.kind, 'known')
-    assert.equal(
-      markerProjection?.type === 'model_sampling'
-        ? markerProjection.contextInspector.availability
-        : null,
-      'available',
-    )
-  })
-
-  it('fail-closed outcome 带正数 Provider item 时只降级 Context Inspector', () => {
-    const estimatorFailure = createRunRecord()
-    estimatorFailure.status = 'FAILED'
-    estimatorFailure.steps = estimatorFailure.steps.filter(step => step.sequence <= 3)
-    const estimatorStep = estimatorFailure.steps.find(step => step.sequence === 3)!
-    estimatorStep.status = 'FAILED'
-    estimatorStep.input = {
-      ...(estimatorStep.input as Record<string, unknown>),
-      candidateMessageCount: 4,
-      initialContext: safeInitialContext(),
-    }
-    estimatorStep.output = {
-      durationMs: 25,
-      messageCount: 1,
-      contextFailureReason: 'estimator_failure',
-    }
-    assertContextUnavailable(estimatorFailure, 3)
-
-    const minimumOverflow = createRunRecord()
-    minimumOverflow.status = 'FAILED'
-    minimumOverflow.steps = minimumOverflow.steps.filter(step => step.sequence <= 3)
-    const overflowStep = minimumOverflow.steps.find(step => step.sequence === 3)!
-    overflowStep.status = 'FAILED'
-    overflowStep.input = {
-      ...(overflowStep.input as Record<string, unknown>),
-      candidateMessageCount: 4,
-      initialContext: safeInitialContext(),
-    }
-    overflowStep.output = {
-      durationMs: 25,
-      messageCount: 1,
+    const overflow = createRunRecord()
+    const overflowSampling = overflow.steps.find(step => step.sequence === 3)!
+    overflowSampling.output = {
+      messageCount: 0,
       contextPlan: safeContextPlan('minimum_context'),
     }
-    assertContextUnavailable(minimumOverflow, 3)
+    const overflowItem = projectAdminRunDetail(overflow).timeline.find(item => item.sequence === 3)
+    assert.ok(overflowItem?.kind === 'known' && overflowItem.type === 'model_sampling')
+    assert.equal(overflowItem.contextInspector.outcome, 'minimum_context_overflow')
+    assert.equal(overflowItem.contextInspector.estimatedInputTokens, 262_145)
+
+    const noMetadata = projectAdminRunDetail(createRunRecord()).timeline.find(item => item.sequence === 3)
+    assert.ok(noMetadata?.kind === 'known' && noMetadata.type === 'model_sampling')
+    assert.equal(noMetadata.contextInspector.outcome, null)
+    assert.equal(noMetadata.contextInspector.observations, null)
   })
 
-  it('跨 sampling pre-plan 与已提交 History 矛盾时只降级当前 Inspector', () => {
-    const stalePrePlan = createRunRecord()
-    attachContextMetadata(stalePrePlan)
-    const staleInput = stalePrePlan.steps.find(step => step.sequence === 7)!
-      .input as Record<string, unknown>
-    staleInput.candidateMessageCount = 8
-    assertContextUnavailable(stalePrePlan, 7)
+  it('Observation 单条读不出时保留位置、只把该字段置 null', () => {
+    const record = createRunRecord()
+    attachContextMetadata(record)
+    const plan = (record.steps.find(step => step.sequence === 7)!.output as Record<string, unknown>)
+      .contextPlan as Record<string, unknown>
+    plan.observations = [
+      { originalChars: 3, toolCeilingChars: 'x', finalChars: 1 },
+      'broken',
+      { originalChars: 5, toolCeilingChars: 4, finalChars: 3 },
+    ]
 
-    const restoredHistory = createRunRecord()
-    attachContextMetadata(restoredHistory)
-    const restoredPlan = contextPlanAt(restoredHistory, 7)
-    restoredPlan.historyIncludedCount = 2
-    restoredPlan.historyExcludedCount = 0
-    assertContextUnavailable(restoredHistory, 7)
+    const item = projectAdminRunDetail(record).timeline.find(candidate => candidate.sequence === 7)
 
-    const missingMandatoryContext = createRunRecord()
-    attachContextMetadata(missingMandatoryContext)
-    const firstInput = missingMandatoryContext.steps.find(
-      step => step.sequence === 3,
-    )!.input as Record<string, unknown>
-    firstInput.candidateMessageCount = 2
-    assertContextUnavailable(missingMandatoryContext, 3)
+    assert.ok(item?.kind === 'known' && item.type === 'model_sampling')
+    assert.deepEqual(item.contextInspector.observations, [
+      { originalChars: 3, toolCeilingChars: null, finalChars: 1 },
+      { originalChars: null, toolCeilingChars: null, finalChars: null },
+      { originalChars: 5, toolCeilingChars: 4, finalChars: 3 },
+    ])
+    assert.equal(item.contextInspector.outcome, 'success')
   })
 
   it('Run 四种状态都能投影且只有终态计算 duration', () => {
@@ -886,7 +483,7 @@ describe('Admin Run projector', () => {
     }
   })
 
-  it('RUNNING / FAILED / ABORTED 的 partial output 保持 typed 且 assistant Message 可缺失', () => {
+  it('RUNNING / ABORTED 的 partial output 保持 typed 且 assistant Message 可缺失', () => {
     const running = createRunRecord()
     running.status = 'RUNNING'
     running.endedAt = null
@@ -911,46 +508,6 @@ describe('Admin Run projector', () => {
     )
     assert.equal(runningDetail.messages.at(-1)?.status, 'STREAMING')
 
-    const failed = createRunRecord()
-    failed.status = 'FAILED'
-    failed.steps = failed.steps.filter(step => step.sequence <= 3)
-    const failedSamplingStep = failed.steps.find(step => step.sequence === 3)!
-    failedSamplingStep.status = 'FAILED'
-    failedSamplingStep.input = {
-      ...(failedSamplingStep.input as Record<string, unknown>),
-      candidateMessageCount: 4,
-      initialContext: safeInitialContext(),
-    }
-    failedSamplingStep.output = {
-      durationMs: 500,
-      messageCount: 0,
-      contextPlan: safeContextPlan('minimum_context'),
-    }
-    failedSamplingStep.errorMessage = '安全错误摘要'
-
-    const failedDetail = projectAdminRunDetail(failed)
-    const failedSampling = failedDetail.timeline.at(-1)
-    assert.equal(failedSampling?.kind, 'known')
-    assert.equal(failedSampling?.status, 'FAILED')
-    assert.equal(
-      failedSampling?.type === 'model_sampling'
-        ? failedSampling.recordedDurationMs
-        : null,
-      500,
-    )
-    assert.equal(
-      failedSampling?.type === 'model_sampling'
-        ? failedSampling.contextInspector.outcome
-        : null,
-      'minimum_context_overflow',
-    )
-    assert.equal(
-      failedSampling?.type === 'model_sampling'
-        ? failedSampling.contextInspector.providerItemCount
-        : null,
-      0,
-    )
-
     const aborted = createRunRecord()
     aborted.status = 'ABORTED'
     aborted.assistantMessageId = null
@@ -964,106 +521,7 @@ describe('Admin Run projector', () => {
     assert.equal(abortedDetail.timeline.at(-1)?.kind, 'known')
     assert.equal(abortedDetail.timeline.at(-1)?.status, 'ABORTED')
     assert.deepEqual(abortedDetail.messages.map(message => message.role), ['USER'])
-  })
-
-  it('malformed 已知 Step 降级 generic 且不污染列表聚合', () => {
-    const record = createRunRecord()
-    const sampling = record.steps.find(step => step.sequence === 3)!
-    sampling.status = 'FAILED'
-    sampling.input = {
-      ...(sampling.input as Record<string, unknown>),
-      requestedModel: 'MALFORMED_SECRET',
-    }
-    sampling.output = {
-      durationMs: 500,
-      usage: {
-        inputTokens: 999,
-        outputTokens: 999,
-        totalTokens: 999,
-      },
-    }
-    assert.equal(projectAdminRunListItem(record).requestedModel, null)
-
-    const completedWithPartialOutput = record.steps.find(
-      step => step.sequence === 5,
-    )!
-    completedWithPartialOutput.output = { durationMs: 800 }
-    const completedWithInvalidFinish = record.steps.find(
-      step => step.sequence === 7,
-    )!
-    completedWithInvalidFinish.output = {
-      ...(completedWithInvalidFinish.output as Record<string, unknown>),
-      finishReason: 'length',
-    }
-
-    const detail = projectAdminRunDetail(record)
-    const item = projectAdminRunListItem(record)
-    const malformed = detail.timeline.find(candidate => candidate.sequence === 3)
-
-    assert.equal(malformed?.kind, 'generic')
-    assert.equal(
-      detail.timeline.find(candidate => candidate.sequence === 5)?.kind,
-      'generic',
-    )
-    assert.equal(
-      detail.timeline.find(candidate => candidate.sequence === 7)?.kind,
-      'generic',
-    )
-    assert.equal(item.requestedModel, null)
-    assert.equal(item.inputTokens, null)
-    assert.equal(item.outputTokens, null)
-    assert.equal(item.totalTokens, null)
-    assert.doesNotMatch(JSON.stringify({ detail, item }), /MALFORMED_SECRET/)
-
-    const shortFailedOutput = createRunRecord()
-    shortFailedOutput.status = 'FAILED'
-    shortFailedOutput.steps = shortFailedOutput.steps.filter(
-      step => step.sequence <= 3,
-    )
-    const shortFailedSampling = shortFailedOutput.steps.find(
-      step => step.sequence === 3,
-    )!
-    shortFailedSampling.status = 'FAILED'
-    shortFailedSampling.output = {
-      durationMs: 10,
-      messageCount: 0,
-      usage: { inputTokens: 999, outputTokens: 999, totalTokens: 1_998 },
-    }
-
-    assert.equal(
-      projectAdminRunDetail(shortFailedOutput).timeline.at(-1)?.kind,
-      'generic',
-    )
-    assert.equal(projectAdminRunListItem(shortFailedOutput).totalTokens, null)
-  })
-
-  it('兼容旧版 input-only messageCount，并把实际 Provider 数量标为未知', () => {
-    const record = createRunRecord()
-    const sampling = record.steps.find(step => step.sequence === 3)!
-    const input = sampling.input as Record<string, unknown>
-    const output = sampling.output as Record<string, unknown>
-
-    input.messageCount = input.candidateMessageCount
-    delete input.candidateMessageCount
-    delete output.messageCount
-
-    const projected = projectAdminRunDetail(record).timeline.find(
-      item => item.sequence === 3,
-    )
-
-    assert.equal(projected?.kind, 'known')
-    assert.equal(
-      projected?.type === 'model_sampling'
-        ? projected.providerItemCount
-        : null,
-      null,
-    )
-    assert.equal(
-      projected?.type === 'model_sampling'
-        ? projected.contextInspector.availability
-        : null,
-      'unavailable',
-    )
+    assert.equal(abortedDetail.retrievalInspector.citations, null)
   })
 
   it('Message 固定按 Run 的 user / assistant 关系排序，不用同毫秒 ID 猜顺序', () => {
@@ -1080,22 +538,24 @@ describe('Admin Run projector', () => {
     ])
   })
 
-  it('零 sampling 的早期终止保留 requestedModel 与 usage 未记录语义', () => {
+  it('零 sampling 的早期终止保留 usage 未记录语义', () => {
     const record = createRunRecord()
     record.status = 'FAILED'
     record.assistantMessageId = null
     record.assistantMessage = null
-    record.steps = record.steps.filter(
-      step => step.sequence <= 2,
-    )
+    record.steps = record.steps.filter(step => step.sequence <= 2)
 
     const item = projectAdminRunListItem(record)
 
     assert.equal(item.samplingCount, 0)
-    assert.equal(item.requestedModel, null)
-    assert.equal(item.inputTokens, null)
-    assert.equal(item.outputTokens, null)
-    assert.equal(item.totalTokens, null)
+    assert.deepEqual(item.usage, {
+      inputTokens: null,
+      outputTokens: null,
+      totalTokens: null,
+      reasoningTokens: null,
+      promptCacheHitTokens: null,
+      promptCacheMissTokens: null,
+    })
   })
 })
 
@@ -1120,12 +580,6 @@ describe('AdminRunsService', () => {
     ])
     assert.equal(harness.calls.findMany[0]?.skip, 2)
     assert.equal(harness.calls.findMany[0]?.take, 2)
-    assert.equal(
-      (harness.calls.findMany[0]?.select as {
-        steps?: { select?: { status?: boolean } }
-      }).steps?.select?.status,
-      true,
-    )
     assert.equal(JSON.stringify(harness.calls.findMany[0]?.where).includes('audit'), true)
     assert.equal(response.pagination.page, 2)
     assert.equal(response.pagination.totalItems, 1)
@@ -1185,27 +639,29 @@ describe('AdminRunsService', () => {
 
     // 3 次 action sampling + 1 次 finalization attempt。
     assert.equal(item?.samplingCount, 4)
-    assert.equal(item?.inputTokens, 60 + 4)
-    assert.equal(item?.outputTokens, 23 + 1)
-    assert.equal(item?.totalTokens, 83 + 5)
+    assert.deepEqual(item?.usage, {
+      inputTokens: 60 + 4,
+      outputTokens: 23 + 1,
+      totalTokens: 83 + 5,
+      reasoningTokens: null,
+      promptCacheHitTokens: null,
+      promptCacheMissTokens: null,
+    })
   })
 
-  it('finalization metadata 损坏时列表路径继续 fail closed', async () => {
-    const listRecord = createRunRecord()
-    listRecord.steps = [
-      ...listRecord.steps,
-      step(10, 'grounded_finalization', { output: null }),
-    ]
+  it('详情查询把 MessageGrounding 整行交给 projector', async () => {
+    const harness = createServiceHarness()
 
-    const response = await createServiceHarness({ list: listRecord })
-      .service
-      .list({})
-    const item = response.items[0]
+    const detail = await harness.service.getDetail('run-1')
 
-    assert.equal(item?.samplingCount, 4)
-    assert.equal(item?.inputTokens, null)
-    assert.equal(item?.outputTokens, null)
-    assert.equal(item?.totalTokens, null)
+    assert.equal(
+      (harness.calls.findUnique[0]?.select as {
+        assistantMessage?: { select?: { grounding?: boolean } }
+      }).assistantMessage?.select?.grounding,
+      true,
+    )
+    assert.equal(detail.id, 'run-1')
+    assert.equal(detail.timeline.length, 9)
   })
 
   it('拒绝反向日期范围', async () => {
@@ -1234,7 +690,6 @@ function createRunRecord() {
   return {
     id: 'run-1',
     conversationId: 'conversation-1',
-    userMessageId: 'message-user',
     assistantMessageId: 'message-assistant' as string | null,
     status: 'COMPLETED' as 'RUNNING' | 'COMPLETED' | 'FAILED' | 'ABORTED',
     startedAt: new Date('2026-08-09T00:00:00.000Z'),
@@ -1271,15 +726,12 @@ function createRunRecord() {
       }),
       step(8, 'assistant_output', {
         input: { assistantMessageId: 'message-assistant', extraSecret: 'DO_NOT_LEAK' },
-        output: { contentLength: 8, providerPayload: 'DO_NOT_LEAK' },
+        output: { providerPayload: 'DO_NOT_LEAK' },
       }),
       step(7, 'model_sampling', {
         input: {
           samplingIndex: 3,
           samplingAttemptId: 'run-1:sampling-3',
-          requestedModel: null,
-          candidateMessageCount: 6,
-          toolCount: 2,
           reasoning: 'DO_NOT_LEAK',
         },
         output: {
@@ -1288,9 +740,6 @@ function createRunRecord() {
           finishReason: 'stop',
           usage: { inputTokens: 30, outputTokens: 10, totalTokens: 40 },
           toolCallCount: 0,
-          textChars: 8,
-          intermediateTextChars: 0,
-          durationMs: 900,
           providerPayload: 'DO_NOT_LEAK',
         },
       }),
@@ -1299,20 +748,15 @@ function createRunRecord() {
         input: {
           callId: 'call-2',
           toolName: 'get_article_detail',
-          toolVersion: '1',
           samplingAttemptId: 'run-1:sampling-2',
-          executionAttempt: 1,
-          rawArgumentsChars: 20,
           rawArgumentsJson: 'DO_NOT_LEAK',
         },
         output: {
           ok: false,
           code: 'invalid_arguments',
-          retryable: false,
           originalChars: 0,
           observationChars: 0,
           truncated: false,
-          durationMs: 5,
           observationBody: 'DO_NOT_LEAK',
         },
       }),
@@ -1320,9 +764,6 @@ function createRunRecord() {
         input: {
           samplingIndex: 2,
           samplingAttemptId: 'run-1:sampling-2',
-          requestedModel: null,
-          candidateMessageCount: 5,
-          toolCount: 2,
           reasoning: 'DO_NOT_LEAK',
         },
         output: {
@@ -1331,9 +772,6 @@ function createRunRecord() {
           finishReason: 'tool_calls',
           usage: { inputTokens: 20, outputTokens: 8, totalTokens: 28 },
           toolCallCount: 1,
-          textChars: 0,
-          intermediateTextChars: 0,
-          durationMs: 800,
           providerPayload: 'DO_NOT_LEAK',
         },
       }),
@@ -1341,10 +779,7 @@ function createRunRecord() {
         input: {
           callId: 'call-1',
           toolName: 'search_articles',
-          toolVersion: '1',
           samplingAttemptId: 'run-1:sampling-1',
-          executionAttempt: 1,
-          rawArgumentsChars: 30,
           rawArgumentsJson: 'DO_NOT_LEAK',
         },
         output: {
@@ -1352,7 +787,6 @@ function createRunRecord() {
           originalChars: 100,
           observationChars: 80,
           truncated: true,
-          durationMs: 10,
           observationBody: 'DO_NOT_LEAK',
         },
       }),
@@ -1360,9 +794,6 @@ function createRunRecord() {
         input: {
           samplingIndex: 1,
           samplingAttemptId: 'run-1:sampling-1',
-          requestedModel: null,
-          candidateMessageCount: 2,
-          toolCount: 2,
           reasoning: 'DO_NOT_LEAK',
         },
         output: {
@@ -1371,14 +802,11 @@ function createRunRecord() {
           finishReason: 'tool_calls',
           usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
           toolCallCount: 1,
-          textChars: 0,
-          intermediateTextChars: 0,
-          durationMs: 500,
           providerPayload: 'DO_NOT_LEAK',
         },
       }),
       step(2, 'load_conversation_history', {
-        input: { limit: 20, prompt: 'DO_NOT_LEAK' },
+        input: { prompt: 'DO_NOT_LEAK' },
         output: { messageCount: 2, truncated: 'DO_NOT_LEAK' },
       }),
       step(1, 'receive_user_message', {
@@ -1392,14 +820,160 @@ function createRunRecord() {
   }
 }
 
-/** 构造与 Runtime 一致形状的 finalization Step output。 */
-/** Runtime 在 startStep 就写入的完整 Registry 快照与归属事实。 */
+/** #124 之前 runtime 落库的真实形状：含全部已停写字段。 */
+function createLegacyRunRecord() {
+  const record = createRunRecord()
+
+  record.steps = [
+    step(1, 'receive_user_message', {
+      input: { messageId: 'message-user', messageLength: 14 },
+    }),
+    step(2, 'load_conversation_history', {
+      input: { limit: 20 },
+      output: { messageCount: 2, candidateCount: 2, excludedCount: 0, excludedReason: null },
+    }),
+    step(3, 'model_sampling', {
+      input: {
+        samplingIndex: 1,
+        samplingAttemptId: 'run-1:sampling-1',
+        requestedModel: null,
+        candidateMessageCount: 4,
+        toolCount: 3,
+        initialContext: safeInitialContext(),
+      },
+      output: {
+        samplingAttemptId: 'run-1:sampling-1',
+        messageCount: 4,
+        finishReason: 'tool_calls',
+        usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
+        toolCallCount: 1,
+        textChars: 0,
+        intermediateTextChars: 0,
+        durationMs: 500,
+        contextPlan: {
+          samplingIndex: 1,
+          resolvedInputBudgetTokens: 262_144,
+          estimatedInputTokens: 120_000,
+          historyCandidateCount: 2,
+          historyIncludedCount: 2,
+          historyExcludedCount: 0,
+          toolExchangeCount: 0,
+          observations: [],
+          overflowReason: null,
+          estimatorStrategyId: 'deepseek-v4-official-b5968e9',
+        },
+      },
+    }),
+    step(4, 'tool_execution', {
+      input: {
+        callId: 'call-1',
+        toolName: 'retrieve_article_context',
+        toolVersion: '1',
+        samplingAttemptId: 'run-1:sampling-1',
+        executionAttempt: 1,
+        rawArgumentsChars: 48,
+      },
+      output: {
+        ok: true,
+        originalChars: 4_000,
+        observationChars: 3_000,
+        truncated: true,
+        durationMs: 420,
+        toolSummary: {
+          status: 'candidates_returned',
+          answerStatus: 'unverified',
+          strategy: { name: 'hybrid_rrf', version: '2' },
+          sourceCount: 2,
+          chunkEvidenceCount: 2,
+          sources: [
+            { sourceId: 11, chunkId: 'chunk-a' },
+            { sourceId: 12, chunkId: 'chunk-b' },
+          ],
+        },
+      },
+    }),
+    step(5, 'model_sampling', {
+      input: {
+        samplingIndex: 2,
+        samplingAttemptId: 'run-1:sampling-2',
+        requestedModel: null,
+        candidateMessageCount: 6,
+        toolCount: 3,
+        initialContext: safeInitialContext(),
+      },
+      output: {
+        samplingAttemptId: 'run-1:sampling-2',
+        messageCount: 6,
+        finishReason: 'stop',
+        usage: { inputTokens: 20, outputTokens: 8, totalTokens: 28 },
+        toolCallCount: 0,
+        textChars: 40,
+        intermediateTextChars: 0,
+        durationMs: 350,
+        contextPlan: {
+          samplingIndex: 2,
+          resolvedInputBudgetTokens: 262_144,
+          estimatedInputTokens: 180_000,
+          historyCandidateCount: 2,
+          historyIncludedCount: 2,
+          historyExcludedCount: 0,
+          toolExchangeCount: 1,
+          observations: [{
+            exchangeIndex: 0,
+            originalChars: 4_000,
+            toolCeilingChars: 3_000,
+            finalChars: 3_000,
+            toolCeilingTruncated: true,
+            contextBudgetTruncated: false,
+          }],
+          overflowReason: null,
+          estimatorStrategyId: 'deepseek-v4-official-b5968e9',
+        },
+      },
+    }),
+    step(6, 'grounded_finalization', {
+      input: {
+        assistantMessageId: 'message-assistant',
+        evidenceAvailability: 'available',
+        registryRefCount: 2,
+        registryTruncated: false,
+      },
+      output: {
+        evidenceAvailability: 'available',
+        registryRefCount: 2,
+        registryTruncated: false,
+        eligibleToolCallCount: 1,
+        eligibleToolFailureCount: 0,
+        attemptCount: 1,
+        attempts: [{
+          attempt: 1,
+          ok: true,
+          submittedCitationKeyCount: 1,
+          usage: { inputTokens: 6, outputTokens: 3, totalTokens: 9 },
+          durationMs: 500,
+        }],
+        outcome: 'answered',
+        citationCount: 1,
+        citationIntegrity: 'validated',
+        faithfulnessStatus: 'not_evaluated',
+        schemaVersion: 1,
+      },
+    }),
+    step(7, 'assistant_output', {
+      input: { assistantMessageId: 'message-assistant' },
+      output: { contentLength: 40 },
+    }),
+  ]
+
+  return record
+}
+
+/** Runtime 在 startStep 就写入的 Registry 快照与归属事实。 */
 function groundedFinalizationInput() {
   return {
     assistantMessageId: 'message-assistant',
     evidenceAvailability: 'available',
     registryRefCount: 2,
-    registryTruncated: false,
   }
 }
 
@@ -1412,22 +986,14 @@ function groundedFinalizationOutput(
   return {
     evidenceAvailability: 'available',
     registryRefCount: 2,
-    registryTruncated: false,
-    eligibleToolCallCount: 1,
-    eligibleToolFailureCount: 0,
     attemptCount: attempts.length,
     attempts: attempts.map((attempt, index) => ({
       attempt: index + 1,
       ok: attempt.ok,
-      submittedCitationKeyCount: attempt.ok ? 1 : 0,
       usage: attempt.usage,
-      durationMs: 100,
     })),
     outcome: 'answered',
     citationCount: 1,
-    citationIntegrity: 'validated',
-    faithfulnessStatus: 'not_evaluated',
-    schemaVersion: 1,
   }
 }
 
@@ -1455,86 +1021,42 @@ function attachContextMetadata(record: ReturnType<typeof createRunRecord>): void
   const samplings = record.steps
     .filter(step => step.type === 'model_sampling')
     .sort((left, right) => left.sequence - right.sequence)
-  const prePlanItemCounts = [4, 6, 7]
-  const providerItemCounts = [4, 5, 7]
   const estimatedInputTokens = [120_000, 180_000, 220_000]
 
   for (const [index, sampling] of samplings.entries()) {
     const input = sampling.input as Record<string, unknown>
     const output = sampling.output as Record<string, unknown>
-    const samplingIndex = index + 1
     const toolExchangeCount = index
     const historyIncludedCount = index === 0 ? 2 : 1
 
-    input.candidateMessageCount = prePlanItemCounts[index]
     input.initialContext = {
       ...safeInitialContext(),
       prompt: 'DO_NOT_LEAK',
     }
-    output.messageCount = providerItemCounts[index]
     output.contextPlan = {
-      samplingIndex,
       resolvedInputBudgetTokens: 262_144,
       estimatedInputTokens: estimatedInputTokens[index],
       historyCandidateCount: 2,
       historyIncludedCount,
-      historyExcludedCount: 2 - historyIncludedCount,
-      toolExchangeCount,
       observations: Array.from({ length: toolExchangeCount }, (_, exchangeIndex) => {
         const originalChars = 100 + exchangeIndex
-        const toolCeilingTruncated = exchangeIndex === 0
-        const toolCeilingChars = toolCeilingTruncated ? 80 : originalChars
-        const contextBudgetTruncated = samplingIndex === 3
-          && exchangeIndex === 0
+        const toolCeilingChars = exchangeIndex === 0 ? 80 : originalChars
+        const contextBudgetTruncated = index === 2 && exchangeIndex === 0
 
         return {
           exchangeIndex,
           originalChars,
           toolCeilingChars,
           finalChars: contextBudgetTruncated ? 64 : toolCeilingChars,
-          toolCeilingTruncated,
+          toolCeilingTruncated: exchangeIndex === 0,
           contextBudgetTruncated,
           observationBody: 'DO_NOT_LEAK',
         }
       }),
       overflowReason: null,
-      estimatorStrategyId: 'deepseek-v4-official-b5968e9',
       futureSafeField: true,
     }
   }
-}
-
-function contextPlanAt(
-  record: ReturnType<typeof createRunRecord>,
-  sequence: number,
-): Record<string, unknown> {
-  const sampling = record.steps.find(step => step.sequence === sequence)!
-
-  return (sampling.output as Record<string, unknown>)
-    .contextPlan as Record<string, unknown>
-}
-
-function assertContextUnavailable(
-  record: ReturnType<typeof createRunRecord>,
-  sequence: number,
-): void {
-  const projection = projectAdminRunDetail(record).timeline.find(
-    item => item.sequence === sequence,
-  )
-
-  assert.equal(projection?.kind, 'known')
-  assert.equal(
-    projection?.type === 'model_sampling'
-      ? projection.contextInspector.availability
-      : null,
-    'partial',
-  )
-  assert.equal(
-    projection?.type === 'model_sampling'
-      ? projection.contextInspector.outcome
-      : null,
-    'unavailable',
-  )
 }
 
 function safeInitialContext(): Record<string, unknown> {
@@ -1560,16 +1082,12 @@ function safeContextPlan(
   overflowReason: 'minimum_context' | null,
 ): Record<string, unknown> {
   return {
-    samplingIndex: 1,
     resolvedInputBudgetTokens: 262_144,
     estimatedInputTokens: 262_145,
     historyCandidateCount: 2,
     historyIncludedCount: 0,
-    historyExcludedCount: 2,
-    toolExchangeCount: 0,
     observations: [],
     overflowReason,
-    estimatorStrategyId: 'deepseek-v4-official-b5968e9',
   }
 }
 
@@ -1579,6 +1097,7 @@ function createServiceHarness(options: {
 } = {}) {
   const calls = {
     findMany: [] as Array<Record<string, unknown>>,
+    findUnique: [] as Array<Record<string, unknown>>,
     groupBy: [] as Array<Record<string, unknown>>,
   }
   const record = createRunRecord()
@@ -1588,8 +1107,6 @@ function createServiceHarness(options: {
       async findMany(args: Record<string, unknown>) {
         calls.findMany.push(args)
         // 模拟 Prisma 真实行为：只返回 list select allowlist 内的 Step。
-        // 否则 mock 会把生产查询压根不会读到的 Step 喂给 projector，
-        // 让查询—投影接缝缺陷在测试里变成假阳性。
         const allowedTypes = readListStepTypes(args)
         return [{
           ...listRecord,
@@ -1602,7 +1119,8 @@ function createServiceHarness(options: {
           { status: 'FAILED', _count: { _all: 1 } },
         ]
       },
-      async findUnique() {
+      async findUnique(args: Record<string, unknown>) {
+        calls.findUnique.push(args)
         return options.detail === undefined ? record : options.detail
       },
     },

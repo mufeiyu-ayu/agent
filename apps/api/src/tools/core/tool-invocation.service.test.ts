@@ -33,7 +33,6 @@ describe('ToolInvocationService', () => {
         ok: false,
         code: 'unknown_tool',
         modelContent: '工具 missing_tool 不存在。',
-        retryable: false,
       },
     )
   })
@@ -142,7 +141,6 @@ describe('ToolInvocationService', () => {
       ok: false,
       code: 'timeout',
       modelContent: '工具 echo 执行超时。',
-      retryable: false,
     })
   })
 
@@ -296,7 +294,6 @@ describe('ToolInvocationService', () => {
         ok: false,
         code: 'execution_failed',
         modelContent: '工具 echo 执行失败。',
-        retryable: false,
       },
     )
   })
@@ -330,7 +327,6 @@ describe('ToolInvocationService', () => {
       ok: false,
       code: 'timeout',
       modelContent: '工具 echo 执行超时。',
-      retryable: false,
     })
     assert.equal(executionCount, 1)
   })
@@ -417,7 +413,6 @@ describe('ToolInvocationService', () => {
           ok: false,
           code: 'timeout',
           modelContent: '工具 echo 执行超时。',
-          retryable: false,
         })
         assert.deepEqual(unhandledReasons, [])
       }

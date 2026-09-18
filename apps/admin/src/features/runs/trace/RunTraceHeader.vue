@@ -6,11 +6,7 @@ import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import RunStatusTag from '../components/RunStatusTag.vue'
-import {
-  formatDateTime,
-  formatRequestedModel,
-  formatTokens,
-} from '../run.utils'
+import { formatDateTime, formatTokens } from '../run.utils'
 
 const props = defineProps<{
   run: RunDetail
@@ -55,29 +51,23 @@ async function copyRunId() {
 
     <div class="trace-header__meta">
       <span class="trace-header__stat">
-        <span class="trace-header__stat-label">{{ t('runDetail.fields.model') }}</span>
-        <span class="trace-header__stat-value" :title="formatRequestedModel(run.requestedModel, t('runs.defaultModel'))">
-          {{ formatRequestedModel(run.requestedModel, t('runs.defaultModel')) }}
-        </span>
-      </span>
-      <span class="trace-header__stat">
         <span class="trace-header__stat-label">{{ t('runDetail.fields.totalTokens') }}</span>
-        <span class="trace-header__stat-value">{{ formatTokens(run.totalTokens, locale) }}</span>
+        <span class="trace-header__stat-value">{{ formatTokens(run.usage.totalTokens, locale) }}</span>
       </span>
 
       <Popover v-model:open="detailsOpen" trigger="click" placement="bottomRight">
         <template #content>
           <dl class="trace-header__details">
             <dt>{{ t('runDetail.fields.inputTokens') }}</dt>
-            <dd>{{ formatTokens(run.inputTokens, locale) }}</dd>
+            <dd>{{ formatTokens(run.usage.inputTokens, locale) }}</dd>
             <dt>{{ t('runDetail.fields.outputTokens') }}</dt>
-            <dd>{{ formatTokens(run.outputTokens, locale) }}</dd>
+            <dd>{{ formatTokens(run.usage.outputTokens, locale) }}</dd>
             <dt>{{ t('runDetail.fields.reasoningTokens') }}</dt>
-            <dd>{{ formatTokens(run.reasoningTokens, locale) }}</dd>
+            <dd>{{ formatTokens(run.usage.reasoningTokens, locale) }}</dd>
             <dt>{{ t('runDetail.fields.promptCacheHitTokens') }}</dt>
-            <dd>{{ formatTokens(run.promptCacheHitTokens, locale) }}</dd>
+            <dd>{{ formatTokens(run.usage.promptCacheHitTokens, locale) }}</dd>
             <dt>{{ t('runDetail.fields.promptCacheMissTokens') }}</dt>
-            <dd>{{ formatTokens(run.promptCacheMissTokens, locale) }}</dd>
+            <dd>{{ formatTokens(run.usage.promptCacheMissTokens, locale) }}</dd>
             <div class="trace-header__details-sep" aria-hidden="true" />
             <dt>{{ t('runDetail.fields.created') }}</dt>
             <dd>{{ formatDateTime(run.createdAt, locale) }}</dd>

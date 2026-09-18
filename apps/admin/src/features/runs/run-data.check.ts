@@ -5,6 +5,7 @@ import type {
   AdminRunListItem,
   AdminRunListResponse,
   AdminRunTimelineItem,
+  AdminRunTokenUsage,
   ApiErrorResponse,
   ApiSuccessResponse,
 } from '@agent/contracts'
@@ -25,13 +26,12 @@ import { defaultRunListPageSize, useRunListStore } from './run-list.store'
 import {
   formatDateTime,
   formatPercentage,
-  formatRequestedModel,
   formatTime,
   formatTokens,
 } from './run.utils'
 import {
+  createRetrievalCallCards,
   createRetrievalInspectorCounts,
-  resolveAvailabilityTone,
   resolveCallStatusTone,
   toTagColor,
 } from './trace/retrieval-inspector.presenter'
@@ -70,24 +70,19 @@ function checkPartialTraceAndInspectors(): void {
 
   assert.equal(detail.status, 'RUNNING')
   assert.equal(formatDateTime(detail.endedAt), '—')
-  assert.equal(formatTokens(detail.totalTokens), '—')
-  assert.equal(formatRequestedModel(detail.requestedModel), 'Default request')
+  assert.equal(formatTokens(detail.usage.totalTokens), '—')
   assert.equal(formatTime('2026-08-09T16:00:00.000Z', 'en-US'), '00:00:00')
   assert.equal(detail.messages.length, 1)
   assert.equal(sampling.status, 'RUNNING')
   assert.equal(sampling.endedAt, null)
   assert.equal(
     sampling.kind === 'known' && sampling.type === 'model_sampling'
-      ? sampling.contextInspector.availability
-      : null,
-    'partial',
+      ? sampling.contextInspector.outcome
+      : undefined,
+    null,
   )
-  const safeRaw = JSON.stringify(detail.safeRawData)
-  assert.doesNotMatch(safeRaw, /"(?:input|output)":/)
-  assert.doesNotMatch(safeRaw, /reasoning|authorization|api[_-]?key/i)
 
   const directFinal = createContextInspector()
-  assert.equal(directFinal.toolExchangeCount, 0)
   assert.deepEqual(directFinal.observations, [])
   assert.equal(formatPercentage(0, 'en-US'), '0%')
   assert.equal(formatPercentage(null, 'en-US'), '—')
@@ -105,9 +100,10 @@ function checkRunTraceProjection(): void {
   assert.equal(directProjection.requestGroups[0]?.number, 1)
   assert.deepEqual(directProjection.requestGroups[0]?.toolRecordIds, [])
   assert.equal(directProjection.defaultSelectionId, 'trace-model-1')
+  // 旧库的 receive_user_message 投影为 generic，事件类型不再是 USER。
   assert.equal(
-    directProjection.records.find(record => record.eventType === 'USER')?.content,
-    '用户可见问题 preview',
+    directProjection.records.find(record => record.id === 'trace-user')?.eventType,
+    'GENERIC',
   )
   assert.equal(
     directProjection.records.find(record => record.eventType === 'OUTPUT')?.messagePreview,
@@ -163,29 +159,17 @@ function checkRunTraceProjection(): void {
     'tools',
   )
 
-  const modelFallbackCases = [
-    { availability: 'available', requestedModel: 'requested-only' },
-    { availability: 'available', requestedModel: null },
-    { availability: 'partial', requestedModel: 'partial-request' },
-    { availability: 'unavailable', requestedModel: 'legacy-request' },
-  ] as const
-  for (const modelCase of modelFallbackCases) {
-    const detail = createTraceDetail(0)
-    const sampling = detail.timeline.find(item => item.id === 'trace-model-1')!
-    if (sampling.kind === 'known' && sampling.type === 'model_sampling') {
-      sampling.requestedModel = modelCase.requestedModel
-      sampling.contextInspector.resolvedModel = null
-      sampling.contextInspector.requestedModel = modelCase.requestedModel
-      sampling.contextInspector.availability = modelCase.availability
-    }
-    assert.equal(
-      resolveTraceRequestModel(
-        createRunTraceProjection(detail).requestGroups[0]!,
-        'Unavailable',
-      ),
+  const missingModel = createTraceDetail(0)
+  const missingModelSampling = missingModel.timeline.find(item => item.id === 'trace-model-1')!
+  if (missingModelSampling.kind === 'known' && missingModelSampling.type === 'model_sampling')
+    missingModelSampling.contextInspector.resolvedModel = null
+  assert.equal(
+    resolveTraceRequestModel(
+      createRunTraceProjection(missingModel).requestGroups[0]!,
       'Unavailable',
-    )
-  }
+    ),
+    'Unavailable',
+  )
 
   const twoTool = createTraceDetail(2)
   const twoToolProjection = createRunTraceProjection(twoTool)
@@ -221,6 +205,10 @@ function checkRunTraceProjection(): void {
   assert.deepEqual(filterTraceRecords(twoToolProjection.records, 'deepseek-v4-flash').map(
     record => record.id,
   ), ['trace-model-1', 'trace-model-2', 'trace-model-3'])
+  // 搜索只用 typed 字段：finishReason 与 tool code 可搜，摘要文本已不存在。
+  assert.deepEqual(filterTraceRecords(twoToolProjection.records, 'tool_calls').map(
+    record => record.id,
+  ), ['trace-model-1', 'trace-model-2'])
   const noResults = getVisibleTraceRecords(twoToolProjection, 'does-not-exist', collapsed)
   assert.deepEqual(noResults, [])
   assert.equal(resolveTraceSelection(twoToolProjection, noResults, 'trace-tool-1'), undefined)
@@ -287,15 +275,11 @@ function checkRunTraceProjection(): void {
   runningSampling.status = 'RUNNING'
   runningSampling.endedAt = null
   runningSampling.durationMs = null
-  if (runningSampling.kind === 'known' && runningSampling.type === 'model_sampling') {
+  if (runningSampling.kind === 'known' && runningSampling.type === 'model_sampling')
     runningSampling.usage = null
-    runningSampling.recordedDurationMs = null
-  }
   const zeroTool = partialTiming.timeline.find(item => item.id === 'trace-tool-1')!
   zeroTool.endedAt = zeroTool.startedAt
   zeroTool.durationMs = 0
-  if (zeroTool.kind === 'known' && zeroTool.type === 'tool_execution')
-    zeroTool.recordedDurationMs = 0
   const missingTiming = partialTiming.timeline.find(item => item.id === 'trace-history')!
   missingTiming.startedAt = null
   missingTiming.endedAt = null
@@ -340,8 +324,6 @@ function checkRunTraceProjection(): void {
     startedAt: null,
     endedAt: null,
     durationMs: null,
-    inputSummary: '未识别 Step 的 input 已省略',
-    outputSummary: '未识别 Step 的 output 已省略',
     hasError: false,
     prompt: 'FORBIDDEN_PROMPT_VALUE',
     reasoning: 'FORBIDDEN_REASONING_VALUE',
@@ -355,8 +337,8 @@ function checkRunTraceProjection(): void {
   assert.match(safeProjection.records.at(-1)?.content ?? '', /Future safe title/)
   assert.deepEqual(filterTraceRecords(safeProjection.records, 'FORBIDDEN'), [])
   assert.deepEqual(
-    filterTraceRecords(safeProjection.records, '用户可见问题').map(record => record.id),
-    ['trace-user'],
+    filterTraceRecords(safeProjection.records, '助手可见回答').map(record => record.id),
+    ['trace-output'],
   )
 }
 
@@ -386,9 +368,7 @@ function checkProductionSources(): void {
     new URL('./trace/inspectors/RequestInspector.vue', import.meta.url),
     'utf8',
   )
-  assert.match(requestInspectorSource, /runTrace\.inspector\.tabs\.safeIo/)
-  assert.match(requestInspectorSource, /props\.item\.inputSummary/)
-  assert.match(requestInspectorSource, /props\.item\.outputSummary/)
+  assert.doesNotMatch(requestInspectorSource, /inputSummary|outputSummary|safeIo/)
   assert.doesNotMatch(requestInspectorSource, /props\.item\.(?:input|output)\b/)
   assert.doesNotMatch(
     requestInspectorSource,
@@ -414,7 +394,7 @@ function checkProductionSources(): void {
 
   assert.equal(existsSync(new URL('./run.mocks.ts', import.meta.url)), false)
 
-  // Retrieval 视图必须只消费 typed contract：不得解析安全摘要文本或原始 JSON。
+  // Retrieval 视图必须只消费 typed contract：不得解析原始 JSON。
   const retrievalInspectorSource = readFileSync(
     new URL('./trace/inspectors/RetrievalInspector.vue', import.meta.url),
     'utf8',
@@ -437,58 +417,52 @@ function checkProductionSources(): void {
 
 function checkRetrievalInspector(): void {
   const traceDetail = createTraceDetail(1)
-  const available = traceDetail.retrievalInspector
-  const counts = createRetrievalInspectorCounts(available)
+  const cards = createRetrievalCallCards(traceDetail.retrievalInspector, traceDetail.timeline)
+  const counts = createRetrievalInspectorCounts(cards, traceDetail.retrievalInspector.citations)
 
-  assert.equal(available.availability, 'available')
-  assert.equal(resolveAvailabilityTone(available.availability), 'success')
+  // 工具身份与执行结果按 stepId 从 timeline 的 tool step 取。
+  assert.equal(cards.length, 1)
+  assert.equal(cards[0]?.stepId, 'trace-tool-1')
+  assert.equal(cards[0]?.callId, 'trace-call-1')
+  assert.equal(cards[0]?.toolName, 'search_articles')
+  assert.equal(cards[0]?.ok, true)
+  assert.equal(cards[0]?.code, null)
+  assert.equal(cards[0]?.truncated, false)
   // candidate、evidence 与 cited 必须分别可读，不能互相顶替。
   assert.equal(counts.callCount, 1)
+  assert.equal(counts.failedCallCount, 0)
   assert.equal(counts.candidateCount, 3)
   assert.equal(counts.evidenceRefCount, 3)
   assert.equal(counts.citedSourceCount, 2)
   assert.equal(counts.citationCount, 2)
   assert.equal(counts.matchedCitationCount, 2)
-  assert.equal(counts.unmatchedCitationCount, 0)
-  assert.equal(counts.untrustedCallCount, 0)
-  assert.equal(counts.failedCallCount, 0)
 
-  const runningInspector = createRunningDetail().retrievalInspector
-  const runningCounts = createRetrievalInspectorCounts(runningInspector)
+  // stepId 在 timeline 里找不到 tool step 时，工具身份与结果为 null。
+  const orphanCards = createRetrievalCallCards(traceDetail.retrievalInspector, [])
+  assert.equal(orphanCards[0]?.toolName, null)
+  assert.equal(orphanCards[0]?.ok, null)
+  assert.equal(resolveCallStatusTone(orphanCards[0]!.ok), 'neutral')
 
-  assert.equal(runningInspector.availability, 'partial')
-  assert.equal(resolveAvailabilityTone(runningInspector.availability), 'warning')
-  assert.equal(runningInspector.finalization, null)
+  const runningDetail = createRunningDetail()
+  const runningCounts = createRetrievalInspectorCounts(
+    createRetrievalCallCards(runningDetail.retrievalInspector, runningDetail.timeline),
+    runningDetail.retrievalInspector.citations,
+  )
+
   assert.equal(runningCounts.citationCount, null)
   assert.equal(runningCounts.citedSourceCount, null)
   assert.equal(runningCounts.matchedCitationCount, null)
 
-  const notApplicable = createRetrievalInspector({
-    availability: 'not_applicable',
-    retrievalCalls: [],
-    candidateCount: 0,
-    evidenceRefCount: 0,
-  })
-
-  assert.equal(resolveAvailabilityTone('not_applicable'), 'neutral')
-  assert.equal(resolveAvailabilityTone('unavailable'), 'error')
-  assert.equal(createRetrievalInspectorCounts(notApplicable).callCount, 0)
-
-  const unmatched = createRetrievalInspector({
-    availability: 'partial',
-    citations: [{
-      ...availableCitations()[0]!,
-      correlation: 'unmatched',
-      matchedCallIds: [],
-    }],
-  })
-  const unmatchedCounts = createRetrievalInspectorCounts(unmatched)
+  const unmatchedCounts = createRetrievalInspectorCounts(
+    cards,
+    [{ ...availableCitations()[0]!, matchedCallIds: [] }],
+  )
 
   assert.equal(unmatchedCounts.matchedCitationCount, 0)
-  assert.equal(unmatchedCounts.unmatchedCitationCount, 1)
+  assert.equal(unmatchedCounts.citationCount, 1)
 
   checkCallStatusTone()
-  checkCandidateCountRendering()
+  checkCandidateCountRendering(traceDetail.timeline)
 }
 
 /**
@@ -507,40 +481,40 @@ function checkCallStatusTone(): void {
   assert.notEqual(toTagColor(resolveCallStatusTone(null)), 'green')
 }
 
-/** zero-hit 的 0 与「候选数量未知」的 null 必须走不同的展示分支。 */
-function checkCandidateCountRendering(): void {
+/** zero-hit 的 0 与「候选数量未记录」的 null 必须走不同的展示分支。 */
+function checkCandidateCountRendering(timeline: AdminRunTimelineItem[]): void {
   const zeroHit = createRetrievalInspector({
-    candidateCount: 0,
-    evidenceRefCount: 0,
     retrievalCalls: [{
       ...createAvailableRetrievalInspector().retrievalCalls[0]!,
       sourceCount: 0,
       chunkEvidenceCount: 0,
-      evidenceRefCount: 0,
       refs: [],
     }],
   })
-  const unavailable = createRetrievalInspector({
-    availability: 'partial',
-    candidateCount: null,
-    evidenceRefCount: 0,
+  const unknown = createRetrievalInspector({
     retrievalCalls: [{
       ...createAvailableRetrievalInspector().retrievalCalls[0]!,
-      ok: false,
-      code: 'timeout',
       sourceCount: null,
       chunkEvidenceCount: null,
-      evidenceRefCount: null,
       strategy: null,
       refs: [],
     }],
   })
+  const failedTimeline = timeline.map(item => (
+    item.kind === 'known' && item.type === 'tool_execution'
+      ? { ...item, ok: false, code: 'timeout' as const }
+      : item
+  ))
 
-  assert.equal(createRetrievalInspectorCounts(zeroHit).candidateCount, 0)
-  assert.equal(createRetrievalInspectorCounts(unavailable).candidateCount, null)
-  assert.equal(createRetrievalInspectorCounts(unavailable).failedCallCount, 1)
-  assert.equal(resolveCallStatusTone(zeroHit.retrievalCalls[0]!.ok), 'success')
-  assert.equal(resolveCallStatusTone(unavailable.retrievalCalls[0]!.ok), 'error')
+  const zeroHitCards = createRetrievalCallCards(zeroHit, timeline)
+  const unknownCards = createRetrievalCallCards(unknown, timeline)
+  const failedCards = createRetrievalCallCards(unknown, failedTimeline)
+
+  assert.equal(createRetrievalInspectorCounts(zeroHitCards, zeroHit.citations).candidateCount, 0)
+  assert.equal(createRetrievalInspectorCounts(zeroHitCards, zeroHit.citations).evidenceRefCount, 0)
+  assert.equal(createRetrievalInspectorCounts(unknownCards, unknown.citations).candidateCount, null)
+  assert.equal(createRetrievalInspectorCounts(failedCards, unknown.citations).failedCallCount, 1)
+  assert.equal(resolveCallStatusTone(failedCards[0]!.ok), 'error')
 }
 
 function createRetrievalInspector(
@@ -554,70 +528,18 @@ function createRetrievalInspector(
 
 function createAvailableRetrievalInspector(): AdminRetrievalInspector {
   return {
-    availability: 'available',
-    callsTruncated: false,
-    candidateCount: 3,
-    evidenceRefCount: 3,
     retrievalCalls: [{
       stepId: 'trace-tool-1',
-      sequence: 4,
-      status: 'COMPLETED',
-      callId: 'call-1',
-      toolName: 'retrieve_article_context',
-      toolVersion: '1',
-      samplingAttemptId: 'trace-attempt-1',
       query: null,
       strategy: { name: 'hybrid_rrf', version: '2' },
-      ok: true,
-      code: null,
       sourceCount: 3,
       chunkEvidenceCount: 2,
-      evidenceRefCount: 3,
-      originalChars: 4_000,
-      observationChars: 3_000,
-      truncated: true,
-      recordedDurationMs: 420,
-      durationMs: 430,
       refs: [
         { sourceId: 11, chunkId: 'chunk-a' },
         { sourceId: 12, chunkId: null },
         { sourceId: 13, chunkId: 'chunk-c' },
       ],
-      refsTruncated: false,
-      metadataTrusted: true,
     }],
-    finalization: {
-      stepId: 'trace-finalization',
-      sequence: 6,
-      status: 'COMPLETED',
-      schemaVersion: 1,
-      evidenceAvailability: 'available',
-      outcome: 'answered',
-      attemptCount: 1,
-      maxAttempts: 2,
-      registryRefCount: 3,
-      registryTruncated: false,
-      eligibleToolCallCount: 1,
-      eligibleToolFailureCount: 0,
-      validation: 'passed',
-      failureReason: null,
-      rejectionCode: null,
-      samplingFailure: null,
-      citationCount: 2,
-      citationIntegrity: 'validated',
-      faithfulnessStatus: 'not_evaluated',
-      usage: {
-        inputTokens: 30,
-        outputTokens: 12,
-        totalTokens: 42,
-        reasoningTokens: null,
-        promptCacheHitTokens: null,
-        promptCacheMissTokens: null,
-      },
-      recordedDurationMs: 500,
-      durationMs: 520,
-      metadataTrusted: true,
-    },
     citations: availableCitations(),
   }
 }
@@ -625,30 +547,24 @@ function createAvailableRetrievalInspector(): AdminRetrievalInspector {
 function availableCitations(): NonNullable<AdminRetrievalInspector['citations']> {
   return [
     {
-      sequence: 1,
       citationId: 'cit_00000000000000000000000000000001',
       sourceId: 11,
       chunkId: 'chunk-a',
-      granularity: 'chunk',
       title: '示例文章 1',
       sectionPath: '指南 / 基础',
       languageCode: 'zh-CN',
       strategy: { name: 'hybrid_rrf', version: '2' },
-      correlation: 'matched',
-      matchedCallIds: ['call-1'],
+      matchedCallIds: ['trace-call-1'],
     },
     {
-      sequence: 2,
       citationId: 'cit_00000000000000000000000000000002',
       sourceId: 12,
       chunkId: null,
-      granularity: 'article',
       title: '示例文章 2',
       sectionPath: null,
       languageCode: 'zh-CN',
       strategy: { name: 'hybrid_rrf', version: '2' },
-      correlation: 'matched',
-      matchedCallIds: ['call-1'],
+      matchedCallIds: ['trace-call-1'],
     },
   ]
 }
@@ -656,8 +572,6 @@ function availableCitations(): NonNullable<AdminRetrievalInspector['citations']>
 function createPartialRetrievalInspector(): AdminRetrievalInspector {
   return {
     ...createAvailableRetrievalInspector(),
-    availability: 'partial',
-    finalization: null,
     citations: null,
   }
 }
@@ -938,19 +852,16 @@ async function checkDetailStateAndRaceFencing(): Promise<void> {
 
 function createTraceDetail(toolCount: 0 | 1 | 2): AdminRunDetail {
   const timeline: AdminRunTimelineItem[] = [
+    // 旧库仍可能带 receive_user_message：服务端投影为 generic。
     {
       id: 'trace-user',
-      kind: 'known',
+      kind: 'generic',
       sequence: 1,
       type: 'receive_user_message',
       title: '接收用户消息',
       status: 'COMPLETED',
       ...traceTiming(1),
-      inputSummary: 'messageId=trace-user-message, messageLength=12',
-      outputSummary: null,
       hasError: false,
-      messageId: 'trace-user-message',
-      messageLength: 12,
     },
     {
       id: 'trace-history',
@@ -960,10 +871,7 @@ function createTraceDetail(toolCount: 0 | 1 | 2): AdminRunDetail {
       title: '加载会话上下文',
       status: 'COMPLETED',
       ...traceTiming(2),
-      inputSummary: 'limit=20',
-      outputSummary: 'messageCount=2',
       hasError: false,
-      historyLimit: 20,
       messageCount: 2,
     },
   ]
@@ -981,14 +889,10 @@ function createTraceDetail(toolCount: 0 | 1 | 2): AdminRunDetail {
       title: '模型采样',
       status: 'COMPLETED',
       ...traceTiming(sequence),
-      inputSummary: `samplingIndex=${index}, samplingAttemptId=${samplingAttemptId}`,
-      outputSummary: `finishReason=${finishReason}, toolCallCount=${finishReason === 'tool_calls' ? 1 : 0}`,
       hasError: false,
       samplingIndex: index,
       samplingAttemptId,
-      requestedModel: null,
       providerItemCount: index + 2,
-      toolCount: 2,
       finishReason,
       usage: index === 1
         ? {
@@ -1008,17 +912,15 @@ function createTraceDetail(toolCount: 0 | 1 | 2): AdminRunDetail {
             promptCacheMissTokens: index * 7,
           },
       toolCallCount: finishReason === 'tool_calls' ? 1 : 0,
-      textChars: finishReason === 'stop' ? 12 : 0,
-      intermediateTextChars: 0,
-      recordedDurationMs: 50,
       debugRequestBody: null,
       debugRawResponse: null,
       contextInspector: createContextInspector({
         estimatedInputTokens: index * 100,
-        budgetUsageRatio: index * 100 / 262_144,
-        prePlanItemCount: index + 2,
-        providerItemCount: index + 2,
-        toolExchangeCount: index - 1,
+        observations: Array.from({ length: index - 1 }, () => ({
+          originalChars: 24,
+          toolCeilingChars: 24,
+          finalChars: 24,
+        })),
       }),
     })
     sequence += 1
@@ -1035,22 +937,15 @@ function createTraceDetail(toolCount: 0 | 1 | 2): AdminRunDetail {
       title: '执行工具',
       status: 'COMPLETED',
       ...traceTiming(sequence),
-      inputSummary: `toolName=${toolName}, samplingAttemptId=${samplingAttemptId}`,
-      outputSummary: 'ok=true, observationChars=24, truncated=false',
       hasError: false,
       callId: `trace-call-${index}`,
       toolName,
-      toolVersion: '1',
       samplingAttemptId,
-      executionAttempt: 1,
-      rawArgumentsChars: 12,
       ok: true,
       code: null,
-      retryable: null,
       originalChars: 24,
       observationChars: 24,
       truncated: false,
-      recordedDurationMs: 50,
     })
     sequence += 1
   }
@@ -1066,30 +961,19 @@ function createTraceDetail(toolCount: 0 | 1 | 2): AdminRunDetail {
     startedAt: traceTimestamp((sequence - 1) * 100),
     endedAt: runEndedAt,
     durationMs: 100,
-    inputSummary: 'assistantMessageId=trace-assistant-message',
-    outputSummary: 'contentLength=12',
     hasError: false,
     assistantMessageId: 'trace-assistant-message',
-    contentLength: 12,
   })
 
-  const sortedTimeline = [...timeline].sort((left, right) => left.sequence - right.sequence)
   return {
     id: 'run-trace',
     conversationId: 'trace-conversation',
-    userMessageId: 'trace-user-message',
     assistantMessageId: 'trace-assistant-message',
     status: 'COMPLETED',
     questionPreview: '用户可见问题 preview',
-    requestedModel: null,
     samplingCount: toolCount + 1,
     toolCallCount: toolCount,
-    inputTokens: null,
-    outputTokens: null,
-    totalTokens: null,
-    reasoningTokens: null,
-    promptCacheHitTokens: null,
-    promptCacheMissTokens: null,
+    usage: emptyUsage(),
     durationMs: Date.parse(runEndedAt) - Date.parse(traceTimestamp(0)),
     startedAt: traceTimestamp(0),
     endedAt: runEndedAt,
@@ -1116,31 +1000,6 @@ function createTraceDetail(toolCount: 0 | 1 | 2): AdminRunDetail {
     // 反转输入，确保 presenter 而不是 fixture 顺序决定 Ledger。
     timeline: [...timeline].reverse(),
     retrievalInspector: createAvailableRetrievalInspector(),
-    safeRawData: {
-      agentRun: {
-        id: 'run-trace',
-        conversationId: 'trace-conversation',
-        userMessageId: 'trace-user-message',
-        assistantMessageId: 'trace-assistant-message',
-        status: 'COMPLETED',
-        startedAt: traceTimestamp(0),
-        endedAt: runEndedAt,
-        createdAt: traceTimestamp(0),
-        updatedAt: runEndedAt,
-      },
-      agentSteps: sortedTimeline.map(item => ({
-        id: item.id,
-        sequence: item.sequence,
-        type: item.type,
-        title: item.title,
-        status: item.status,
-        startedAt: item.startedAt,
-        endedAt: item.endedAt,
-        inputSummary: item.inputSummary,
-        outputSummary: item.outputSummary,
-        hasError: item.hasError,
-      })),
-    },
   }
 }
 
@@ -1173,8 +1032,6 @@ function createRunningDetail(): AdminRunDetail {
     startedAt,
     endedAt: '2026-08-09T00:00:00.010Z',
     durationMs: 10,
-    inputSummary: '未识别 Step 的 input 已省略',
-    outputSummary: '未识别 Step 的 output 已省略',
     hasError: false,
   }
   const sampling: AdminRunTimelineItem = {
@@ -1187,33 +1044,21 @@ function createRunningDetail(): AdminRunDetail {
     startedAt: '2026-08-09T00:00:00.010Z',
     endedAt: null,
     durationMs: null,
-    inputSummary: 'samplingIndex=1, requestedModel=null',
-    outputSummary: null,
     hasError: false,
     samplingIndex: 1,
     samplingAttemptId: 'sampling-running-1',
-    requestedModel: null,
     providerItemCount: null,
-    toolCount: 1,
     finishReason: null,
     usage: null,
     toolCallCount: null,
-    textChars: null,
-    intermediateTextChars: null,
-    recordedDurationMs: null,
     debugRequestBody: null,
     debugRawResponse: null,
     contextInspector: createContextInspector({
-      availability: 'partial',
-      outcome: 'unavailable',
+      outcome: null,
       estimatedInputTokens: null,
-      budgetUsageRatio: null,
-      providerItemCount: null,
       historyCandidateCount: null,
       historyIncludedCount: null,
-      historyExcludedCount: null,
       samplingHistoryExcludedCount: null,
-      toolExchangeCount: null,
       observations: null,
     }),
   }
@@ -1221,19 +1066,12 @@ function createRunningDetail(): AdminRunDetail {
   return {
     id: 'run-running',
     conversationId: 'conversation-running',
-    userMessageId: 'message-user-running',
     assistantMessageId: null,
     status: 'RUNNING',
     questionPreview: '验证 RUNNING partial trace',
-    requestedModel: null,
     samplingCount: 1,
     toolCallCount: 0,
-    inputTokens: null,
-    outputTokens: null,
-    totalTokens: null,
-    reasoningTokens: null,
-    promptCacheHitTokens: null,
-    promptCacheMissTokens: null,
+    usage: emptyUsage(),
     durationMs: null,
     startedAt,
     endedAt: null,
@@ -1249,31 +1087,6 @@ function createRunningDetail(): AdminRunDetail {
     }],
     timeline: [generic, sampling],
     retrievalInspector: createPartialRetrievalInspector(),
-    safeRawData: {
-      agentRun: {
-        id: 'run-running',
-        conversationId: 'conversation-running',
-        userMessageId: 'message-user-running',
-        assistantMessageId: null,
-        status: 'RUNNING',
-        startedAt,
-        endedAt: null,
-        createdAt: startedAt,
-        updatedAt: '2026-08-09T00:00:00.020Z',
-      },
-      agentSteps: [generic, sampling].map(item => ({
-        id: item.id,
-        sequence: item.sequence,
-        type: item.type,
-        title: item.title,
-        status: item.status,
-        startedAt: item.startedAt,
-        endedAt: item.endedAt,
-        inputSummary: item.inputSummary,
-        outputSummary: item.outputSummary,
-        hasError: item.hasError,
-      })),
-    },
   }
 }
 
@@ -1281,28 +1094,26 @@ function createContextInspector(
   overrides: Partial<AdminContextInspector> = {},
 ): AdminContextInspector {
   return {
-    availability: 'available',
     outcome: 'success',
     resolvedModel: 'deepseek-v4-flash',
-    requestedModel: null,
-    estimatorStrategyId: 'deepseek-v4-official-b5968e9',
-    contextWindowTokens: 1_000_000,
-    applicationInputCapTokens: 262_144,
-    outputReserveTokens: 65_536,
-    safetyMarginTokens: 16_384,
     resolvedInputBudgetTokens: 262_144,
     estimatedInputTokens: 0,
-    budgetUsageRatio: 0,
-    prePlanItemCount: 1,
-    providerItemCount: 1,
     historyCandidateCount: 0,
     historyIncludedCount: 0,
-    historyExcludedCount: 0,
-    initialHistoryExcludedReason: null,
     samplingHistoryExcludedCount: 0,
-    toolExchangeCount: 0,
     observations: [],
     ...overrides,
+  }
+}
+
+function emptyUsage(): AdminRunTokenUsage {
+  return {
+    inputTokens: null,
+    outputTokens: null,
+    totalTokens: null,
+    reasoningTokens: null,
+    promptCacheHitTokens: null,
+    promptCacheMissTokens: null,
   }
 }
 
@@ -1319,15 +1130,6 @@ function createDetail(
     status,
     durationMs: status === 'RUNNING' ? null : 100,
     endedAt,
-    safeRawData: {
-      ...detail.safeRawData,
-      agentRun: {
-        ...detail.safeRawData.agentRun,
-        id,
-        status,
-        endedAt,
-      },
-    },
   }
 }
 
@@ -1379,12 +1181,9 @@ function createListItem(id: string): AdminRunListItem {
     conversationId: `${id}-conversation`,
     status: 'COMPLETED',
     questionPreview: '真实问题摘要',
-    requestedModel: null,
     samplingCount: 1,
     toolCallCount: 0,
-    inputTokens: null,
-    outputTokens: null,
-    totalTokens: null,
+    usage: emptyUsage(),
     durationMs: 100,
     startedAt: '2026-08-09T00:00:00.000Z',
     endedAt: '2026-08-09T00:00:00.100Z',
