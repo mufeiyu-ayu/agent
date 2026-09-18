@@ -848,7 +848,6 @@ function createLegacyRunRecord() {
         usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
         toolCallCount: 1,
         textChars: 0,
-        intermediateTextChars: 0,
         durationMs: 500,
         contextPlan: {
           samplingIndex: 1,
@@ -908,7 +907,6 @@ function createLegacyRunRecord() {
         usage: { inputTokens: 20, outputTokens: 8, totalTokens: 28 },
         toolCallCount: 0,
         textChars: 40,
-        intermediateTextChars: 0,
         durationMs: 350,
         contextPlan: {
           samplingIndex: 2,

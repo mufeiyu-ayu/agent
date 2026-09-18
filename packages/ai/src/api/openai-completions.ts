@@ -11,7 +11,6 @@ import type {
   DeepSeekModelsResponse,
 } from '../deepseek.js'
 import type {
-  ChatMessage,
   ChatOptions,
   ChatStreamOptions,
   ModelInputItem,
@@ -96,11 +95,11 @@ export class OpenAICompatibleClient {
     )
   }
 
-  async chat(messages: ChatMessage[], options?: ChatOptions): Promise<string> {
+  async chat(messages: ModelInputItem[], options?: ChatOptions): Promise<string> {
     return await this.runWithLLMErrorHandling(async () => {
       const completion = await this.createClient().chat.completions.create(
         this.buildBaseChatCompletionParams(
-          messages.map(toOpenAIChatMessage),
+          messages.map(toOpenAIModelInputItem),
           options,
         ) as unknown as ChatCompletionCreateParamsNonStreaming,
         {
@@ -333,13 +332,6 @@ function safelyCaptureRequest(
   }
 }
 
-function toOpenAIChatMessage(message: ChatMessage): ChatCompletionMessageParam {
-  return {
-    role: message.role,
-    content: message.content,
-  }
-}
-
 export function toOpenAIModelInputItem(
   item: ModelInputItem,
 ): ChatCompletionMessageParam {
@@ -355,14 +347,14 @@ export function toOpenAIModelInputItem(
         role: 'assistant',
         content: item.content ?? '',
         reasoning_content: item.reasoningContent,
-        tool_calls: [{
-          id: item.callId,
-          type: 'function',
+        tool_calls: item.calls.map(call => ({
+          id: call.callId,
+          type: 'function' as const,
           function: {
-            name: item.name,
-            arguments: item.rawArgumentsJson,
+            name: call.name,
+            arguments: call.rawArgumentsJson,
           },
-        }],
+        })),
       }
 
       return message

@@ -73,6 +73,8 @@ export type AdminToolResultCode
   = | 'execution_failed'
     | 'invalid_arguments'
     | 'timeout'
+    // 模型输出达到长度限制、arguments 不完整，本次未执行。
+    | 'truncated_arguments'
     | 'unknown_tool'
 
 export type AdminContextInspectorOutcome
@@ -148,9 +150,7 @@ export type AdminGroundedAnswerRejectionCode
 
 /** 终态采样流未完整结束的安全类别；与「模型说错了」是两类问题。 */
 export type AdminGroundedFinalizationSamplingFailure
-  = | 'extra_event_after_completion'
-    | 'missing_response_completed'
-    | 'missing_submission'
+  = | 'missing_response_completed'
     | 'multiple_submissions'
     | 'stream_failed'
     | 'unexpected_finish_reason'

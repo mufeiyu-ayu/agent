@@ -38,14 +38,33 @@ export class OpenAICompatibleToolCallAccumulator {
     this.buffers.set(fragment.index, buffer)
   }
 
-  finalize(): UnvalidatedModelToolCall[] {
-    return [...this.buffers.values()]
+  /**
+   * 组装全部分片。`truncated`（finish reason 为 length）时 arguments 允许为空或不完整，
+   * 但无 provider call id 或无工具名的分片不构成完整调用身份、无法与 tool 消息配对，整条丢弃。
+   * 同批不同 index 的最终 call id 重复视为 Provider 违规。
+   */
+  finalize(truncated = false): UnvalidatedModelToolCall[] {
+    const toolCalls = [...this.buffers.values()]
       .sort((left, right) => left.index - right.index)
-      .map(buffer => this.toCompletedToolCall(buffer))
+      .filter(buffer => !truncated || (buffer.providerCallId && buffer.name))
+      .map(buffer => this.toCompletedToolCall(buffer, truncated))
+    const seenCallIds = new Set<string>()
+
+    for (const toolCall of toolCalls) {
+      if (seenCallIds.has(toolCall.providerCallId)) {
+        throw new LLMApiError(
+          `模型同一轮返回了重复的 Tool Call id（index=${toolCall.index}）`,
+        )
+      }
+      seenCallIds.add(toolCall.providerCallId)
+    }
+
+    return toolCalls
   }
 
   private toCompletedToolCall(
     buffer: OpenAICompatibleToolCallBuffer,
+    truncated: boolean,
   ): UnvalidatedModelToolCall {
     if (!buffer.providerCallId) {
       throw new LLMApiError(`模型 Tool Call index=${buffer.index} 缺少 provider call id`)
@@ -53,7 +72,7 @@ export class OpenAICompatibleToolCallAccumulator {
     if (!buffer.name) {
       throw new LLMApiError(`模型 Tool Call index=${buffer.index} 缺少工具名称`)
     }
-    if (!buffer.argumentsJson) {
+    if (!buffer.argumentsJson && !truncated) {
       throw new LLMApiError(`模型 Tool Call index=${buffer.index} 缺少参数 JSON`)
     }
 

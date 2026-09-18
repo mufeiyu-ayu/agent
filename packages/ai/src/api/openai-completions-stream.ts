@@ -86,18 +86,24 @@ export async function* adaptOpenAICompatibleStream(
         //   argumentsJson: '{"query":"SP Himeko","limit":5}',
         //   index: 0,
         // }]
-        const toolCalls = toolCallAccumulator.finalize()
+        // length：arguments 可能被截断，放行有 id 与 name 的调用，交给上层按截断回喂。
+        const toolCalls = toolCallAccumulator.finalize(finishReason === 'length')
         const reasoningContent = reasoningContentChunks.join('')
 
         if (finishReason === 'tool_calls' && toolCalls.length === 0) {
           throw new LLMApiError('模型以 tool_calls 结束，但没有返回完整 Tool Call')
         }
-        if (finishReason === 'tool_calls' && reasoningContent.length === 0) {
+        // 任何会回填成 assistant tool_calls 消息的调用（含 length 截断）都需要 reasoning continuation。
+        if (toolCalls.length > 0 && reasoningContent.length === 0) {
           throw new LLMApiError(
             'DeepSeek thinking Tool Call 缺少必需的 reasoning_content continuation',
           )
         }
-        if (finishReason !== 'tool_calls' && toolCalls.length > 0) {
+        if (
+          finishReason !== 'tool_calls'
+          && finishReason !== 'length'
+          && toolCalls.length > 0
+        ) {
           throw new LLMApiError(
             `模型返回了 Tool Call，但 finish reason 为 ${finishReason}`,
           )

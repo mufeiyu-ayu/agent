@@ -15,7 +15,6 @@ export interface ModelSamplingSummary {
   usage: ModelUsage | null
   toolCallCount: number
   textChars: number
-  intermediateTextChars: number
 }
 
 export type SamplingDecision
@@ -25,14 +24,19 @@ export type SamplingDecision
   }
   | {
     type: 'tool_call'
-    call: UnvalidatedToolCallEnvelope
+    /** 本轮全部 Tool Call，按模型给出的 index 顺序；finishReason 为 length 时参数可能被截断。 */
+    calls: UnvalidatedToolCallEnvelope[]
+    /** 本轮模型产出的全部文本，随 Tool Call 一起作为 assistant content 回填模型。 */
     intermediateText: string
     reasoningContent: string
     summary: ModelSamplingSummary
   }
 
 /**
- * 函数职责：实时转发最终回答文本，并只接受完整最终回答或单个完整 Tool Call。
+ * 函数职责：实时转发模型文本，并在流结束后只按 finishReason 分派本轮决策。
+ *
+ * 流协议不变量（finish 后无事件、tool_calls 必带完整 call 与 reasoning、非
+ * tool_calls / length 不带 call、同批 call id 不重复）由 Provider adapter 负责，这里不重复校验。
  *
  * 执行方式：每轮模型请求只调用一次本函数；内部循环消费多个模型事件，文本通过 yield 分段返回，模型流结束后再通过 return 返回最终决策。
  */
@@ -40,16 +44,12 @@ export async function* streamModelSampling(
   events: AsyncIterable<ModelStreamEvent>,
   samplingAttemptId: string,
 ): AsyncGenerator<string, SamplingDecision> {
-  const intermediateTextChunks: string[] = []
-  const toolCalls: Array<{
-    toolCall: UnvalidatedModelToolCall
-    reasoningContent: string
-  }> = []
-  let outputMode: 'final_answer' | 'tool_call' | undefined
+  const textChunks: string[] = []
+  const toolCalls: UnvalidatedModelToolCall[] = []
+  let reasoningContent = ''
   let finishReason: ModelFinishReason | undefined
   let usage: ModelUsage | null = null
   let textChars = 0
-  let intermediateTextChars = 0
 
   const buildSummary = (): ModelSamplingSummary => ({
     samplingAttemptId,
@@ -57,58 +57,23 @@ export async function* streamModelSampling(
     usage,
     toolCallCount: toolCalls.length,
     textChars,
-    intermediateTextChars,
   })
-  const incomplete = (message: string): ModelSamplingIncompleteError =>
-    new ModelSamplingIncompleteError(message, buildSummary())
 
   try {
     for await (const event of events) {
-      if (finishReason) {
-        throw incomplete(
-          '模型在 response_completed 之后仍返回了额外事件。',
-        )
-      }
-
       switch (event.type) {
         case 'text_delta':
           textChars += event.delta.length
-
-          if (!outputMode)
-            outputMode = 'final_answer'
-
-          if (outputMode === 'final_answer') {
-            // ponytail: 已发送的前端 delta 无法撤回；工具调用必须先于文本出现，否则本轮失败。
-            yield event.delta
-          }
-          else {
-            intermediateTextChunks.push(event.delta)
-            intermediateTextChars += event.delta.length
-          }
+          textChunks.push(event.delta)
+          yield event.delta
           break
 
         case 'tool_call_started':
-          if (outputMode === 'final_answer') {
-            throw incomplete(
-              '模型在最终回答文本之后又返回了 Tool Call，当前流协议无法安全执行该调用。',
-            )
-          }
-
-          outputMode = 'tool_call'
           break
 
         case 'tool_call_completed':
-          if (outputMode === 'final_answer') {
-            throw incomplete(
-              '模型在最终回答文本之后又返回了 Tool Call，当前流协议无法安全执行该调用。',
-            )
-          }
-
-          outputMode = 'tool_call'
-          toolCalls.push({
-            toolCall: event.toolCall,
-            reasoningContent: event.reasoningContent,
-          })
+          toolCalls.push(event.toolCall)
+          reasoningContent = event.reasoningContent
           break
 
         case 'usage':
@@ -121,49 +86,35 @@ export async function* streamModelSampling(
       }
     }
   }
-  catch (error) {
-    if (error instanceof ModelSamplingIncompleteError)
-      throw error
-
-    throw incomplete('模型流读取失败，当前 sampling 未完整结束。')
+  catch {
+    throw new ModelSamplingIncompleteError(
+      '模型流读取失败，当前 sampling 未完整结束。',
+      buildSummary(),
+    )
   }
 
   if (!finishReason) {
-    throw incomplete(
+    throw new ModelSamplingIncompleteError(
       '模型流缺少 response_completed，当前回答未被标记为成功。',
+      buildSummary(),
     )
   }
 
-  if (finishReason === 'tool_calls') {
-    if (toolCalls.length === 0) {
-      throw incomplete(
-        '模型以 tool_calls 结束，但没有返回完整 Tool Call。',
-      )
-    }
-    if (toolCalls.length > 1) {
-      throw incomplete(
-        '当前只支持同轮一个 Tool Call，不支持并行工具调用。',
-      )
-    }
-    if (!toolCalls[0]!.reasoningContent) {
-      throw incomplete(
-        'Tool Call 缺少必需的 thinking continuation。',
-      )
-    }
-
+  // tool_calls 正常结束，或 length 截断但仍有可配对的调用：都交给 Runtime 逐个处理，
+  // 后者由 Runtime 按截断参数记 Step 并回喂，不在这里让 Run 失败。
+  if (finishReason === 'tool_calls' || (finishReason === 'length' && toolCalls.length > 0)) {
     return {
       type: 'tool_call',
-      call: toToolCallEnvelope(toolCalls[0]!.toolCall, samplingAttemptId),
-      intermediateText: intermediateTextChunks.join(''),
-      reasoningContent: toolCalls[0]!.reasoningContent,
+      calls: toolCalls.map(toolCall => ({
+        callId: toolCall.providerCallId,
+        toolName: toolCall.name,
+        rawArgumentsJson: toolCall.argumentsJson,
+        samplingAttemptId,
+      })),
+      intermediateText: textChunks.join(''),
+      reasoningContent,
       summary: buildSummary(),
     }
-  }
-
-  if (outputMode === 'tool_call') {
-    throw incomplete(
-      `模型返回了 Tool Call，但 finish reason 为 ${finishReason}。`,
-    )
   }
 
   if (finishReason !== 'stop') {
@@ -176,17 +127,5 @@ export async function* streamModelSampling(
   return {
     type: 'final_answer',
     summary: buildSummary(),
-  }
-}
-
-function toToolCallEnvelope(
-  toolCall: UnvalidatedModelToolCall,
-  samplingAttemptId: string,
-): UnvalidatedToolCallEnvelope {
-  return {
-    callId: toolCall.providerCallId,
-    toolName: toolCall.name,
-    rawArgumentsJson: toolCall.argumentsJson,
-    samplingAttemptId,
   }
 }

@@ -61,23 +61,17 @@ describe('resolveAgentRuntimePolicy', () => {
     }
   })
 
-  it('要求 maxToolCalls 严格小于 maxSamplingRounds', () => {
-    for (const env of [
-      {
-        AGENT_MAX_SAMPLING_ROUNDS: '2',
-        AGENT_MAX_TOOL_CALLS: '2',
-      },
-      {
-        AGENT_MAX_SAMPLING_ROUNDS: '2',
-        AGENT_MAX_TOOL_CALLS: '3',
-      },
-    ]) {
-      assert.throws(
-        () => resolveAgentRuntimePolicy(env),
-        error => error instanceof AgentRuntimePolicyError
-          && error.message.includes('AGENT_MAX_TOOL_CALLS')
-          && error.message.includes('AGENT_MAX_SAMPLING_ROUNDS'),
-      )
+  it('两个上限相互独立：maxToolCalls 大于等于 maxSamplingRounds 也可以启动', () => {
+    for (const [rounds, calls] of [['2', '2'], ['2', '3'], ['1', '8']]) {
+      assert.deepEqual(resolveAgentRuntimePolicy({
+        AGENT_MAX_SAMPLING_ROUNDS: rounds,
+        AGENT_MAX_TOOL_CALLS: calls,
+      }), {
+        historyCandidateHardLimit: 1_000,
+        maxSamplingRounds: Number(rounds),
+        maxToolCalls: Number(calls),
+        runDeadlineMs: 600_000,
+      })
     }
   })
 

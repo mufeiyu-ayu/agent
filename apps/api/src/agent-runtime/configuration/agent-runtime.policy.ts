@@ -9,7 +9,7 @@ export const DEFAULT_AGENT_RUNTIME_POLICY = {
   historyCandidateHardLimit: 1_000,
   /** 单次 Run 最多允许发起的模型采样轮数。 */
   maxSamplingRounds: 10,
-  /** 单次 Run 最多允许执行的工具调用次数。 */
+  /** 单次 Run 最多允许执行的工具调用次数，按 call 计数，同轮多个 call 各算一次。 */
   maxToolCalls: 8,
   /** 单次 Run 正常执行阶段的最长时间，单位为毫秒。 */
   runDeadlineMs: 600_000,
@@ -64,11 +64,7 @@ export function resolveAgentRuntimePolicy(
     MAX_TIMER_TIMEOUT_MS,
   )
 
-  if (maxToolCalls >= maxSamplingRounds) {
-    throw new AgentRuntimePolicyError(
-      'AGENT_MAX_TOOL_CALLS 必须小于 AGENT_MAX_SAMPLING_ROUNDS',
-    )
-  }
+  // 两个上限各自独立：同轮可以有多个 Tool Call，「1 轮 3 个 call + 1 轮总结」是合法形态。
   return {
     historyCandidateHardLimit,
     maxSamplingRounds,

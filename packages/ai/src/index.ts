@@ -35,10 +35,11 @@ export {
   LLMServerError,
 } from './errors.js'
 export type {
-  ChatMessage,
+  AssistantToolCallInputItem,
   ChatOptions,
   ChatStreamOptions,
   JsonObjectSchema,
+  MessageInputItem,
   ModelFinishReason,
   ModelInputItem,
   ModelIODebugCaptureSide,
@@ -46,9 +47,7 @@ export type {
   ModelStreamEvent,
   ModelToolSpec,
   ModelUsage,
+  ToolResultInputItem,
   UnvalidatedModelToolCall,
 } from './types.js'
-export {
-  mergeModelUsage,
-  toModelInputItems,
-} from './types.js'
+export { mergeModelUsage } from './types.js'

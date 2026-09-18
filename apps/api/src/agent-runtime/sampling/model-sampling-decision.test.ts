@@ -43,7 +43,6 @@ describe('streamModelSampling', () => {
         },
         toolCallCount: 0,
         textChars: 2,
-        intermediateTextChars: 0,
       },
     })
   })
@@ -91,29 +90,25 @@ describe('streamModelSampling', () => {
     assert.equal(decision.summary.usage, null)
   })
 
-  it('返回 tool_calls 汇总，并只统计不对 UI yield 的中间文本', async () => {
+  it('文本先于 Tool Call 时照常 yield 文本，并把它作为 intermediateText 随 calls 返回', async () => {
     const { decision, deltas } = await collectSampling([
+      { type: 'text_delta', delta: '查询' },
+      { type: 'text_delta', delta: '中' },
       { type: 'tool_call_started' },
-      { type: 'text_delta', delta: '查询中' },
-      toolCallEvent(
-        'call-1',
-        'search_articles',
-        '{"query":"seo"}',
-        '先搜索站内文章。',
-      ),
+      toolCallEvent('call-1', 'search_articles', '{"query":"seo"}', '先搜索站内文章。'),
       { type: 'usage', usage: { totalTokens: 8 } },
       { type: 'response_completed', finishReason: 'tool_calls' },
     ], 'run-1:sampling-2')
 
-    assert.deepEqual(deltas, [])
+    assert.deepEqual(deltas, ['查询', '中'])
     assert.deepEqual(decision, {
       type: 'tool_call',
-      call: {
+      calls: [{
         callId: 'call-1',
         toolName: 'search_articles',
         rawArgumentsJson: '{"query":"seo"}',
         samplingAttemptId: 'run-1:sampling-2',
-      },
+      }],
       intermediateText: '查询中',
       reasoningContent: '先搜索站内文章。',
       summary: {
@@ -122,41 +117,51 @@ describe('streamModelSampling', () => {
         usage: { totalTokens: 8 },
         toolCallCount: 1,
         textChars: 3,
-        intermediateTextChars: 3,
       },
     })
   })
 
-  it('拒绝缺失必需 reasoning continuation 的 Tool Call', async () => {
-    await assert.rejects(
-      collectSampling([
-        { type: 'tool_call_started' },
-        toolCallEvent('call-1', 'search_articles', '{"query":"seo"}', ''),
-        { type: 'response_completed', finishReason: 'tool_calls' },
-      ]),
-      (error) => {
-        assert.ok(error instanceof ModelSamplingIncompleteError)
-        assert.match(error.message, /continuation/)
-        assert.doesNotMatch(error.message, /call-1|search_articles|seo/)
-        return true
-      },
+  it('同轮多个 Tool Call 按事件顺序全部返回', async () => {
+    const { decision } = await collectSampling([
+      { type: 'tool_call_started' },
+      toolCallEvent('call-1', 'search_articles', '{"query":"seo"}', '两个都查。', 0),
+      toolCallEvent('call-2', 'get_article_detail', '{"sourceId":1}', '两个都查。', 1),
+      { type: 'response_completed', finishReason: 'tool_calls' },
+    ])
+
+    assert.equal(decision.type, 'tool_call')
+    assert.deepEqual(
+      decision.type === 'tool_call' ? decision.calls.map(call => call.callId) : [],
+      ['call-1', 'call-2'],
+    )
+    assert.equal(decision.summary.toolCallCount, 2)
+    assert.equal(decision.type === 'tool_call' ? decision.intermediateText : undefined, '')
+  })
+
+  it('length 且带 Tool Call 时仍返回 tool_call 决策，由 Runtime 按截断回喂', async () => {
+    const { decision } = await collectSampling([
+      { type: 'tool_call_started' },
+      toolCallEvent('call-1', 'search_articles', '{"query":', '想查。'),
+      { type: 'response_completed', finishReason: 'length' },
+    ])
+
+    assert.equal(decision.type, 'tool_call')
+    assert.equal(decision.summary.finishReason, 'length')
+    assert.deepEqual(
+      decision.type === 'tool_call' ? decision.calls[0]?.rawArgumentsJson : undefined,
+      '{"query":',
     )
   })
 
-  it('保持先向 UI 发送文本后拒绝迟到 Tool Call 的 fail-safe', async () => {
+  it('模型流读取失败时携带 partial summary', async () => {
     await assert.rejects(
-      collectSampling([
-        { type: 'text_delta', delta: '已发送' },
-        { type: 'tool_call_started' },
-        toolCallEvent(
-          'call-1',
-          'search_articles',
-          '{"query":"seo"}',
-          '不得泄漏的推理',
-        ),
-        { type: 'response_completed', finishReason: 'tool_calls' },
-      ]),
-      ModelSamplingIncompleteError,
+      collectSampling([{ type: 'text_delta', delta: '部分' }], 'run-1:sampling-1', new Error('reset')),
+      (error) => {
+        assert.ok(error instanceof ModelSamplingIncompleteError)
+        assert.match(error.message, /读取失败/)
+        assert.equal(error.summary?.textChars, 2)
+        return true
+      },
     )
   })
 
@@ -173,7 +178,6 @@ describe('streamModelSampling', () => {
           usage: null,
           toolCallCount: 0,
           textChars: 4,
-          intermediateTextChars: 0,
         })
         assert.doesNotMatch(JSON.stringify(error.summary), /部分文本/)
         return true
@@ -181,59 +185,36 @@ describe('streamModelSampling', () => {
     )
   })
 
-  it('Tool Call 与 finish reason 冲突时携带脱敏 partial summary', async () => {
-    const secret = 'sk-secret-123'
-
-    await assert.rejects(
-      collectSampling([
-        toolCallEvent('call-1', 'search_articles', `{"password":"${secret}"}`),
-        { type: 'response_completed', finishReason: 'stop' },
-      ]),
-      (error) => {
-        assert.ok(error instanceof ModelSamplingIncompleteError)
-        assert.deepEqual(error.summary, {
-          samplingAttemptId: 'run-1:sampling-1',
-          finishReason: 'stop',
-          usage: null,
-          toolCallCount: 1,
-          textChars: 0,
-          intermediateTextChars: 0,
-        })
-        assert.doesNotMatch(JSON.stringify(error), new RegExp(secret))
-        assert.doesNotMatch(error.message, new RegExp(secret))
-        return true
-      },
-    )
-  })
-
-  it('非完整 finish reason 失败时保留 finish reason 和 usage', async () => {
-    await assert.rejects(
-      collectSampling([
-        { type: 'text_delta', delta: '未完成' },
-        { type: 'usage', usage: { inputTokens: 5 } },
-        { type: 'response_completed', finishReason: 'length' },
-      ]),
-      (error) => {
-        assert.ok(error instanceof ModelSamplingIncompleteError)
-        assert.deepEqual(error.summary, {
-          samplingAttemptId: 'run-1:sampling-1',
-          finishReason: 'length',
-          usage: { inputTokens: 5 },
-          toolCallCount: 0,
-          textChars: 3,
-          intermediateTextChars: 0,
-        })
-        return true
-      },
-    )
+  it('length 无 Tool Call、content_filter 与 unknown 失败时保留 finish reason 和 usage', async () => {
+    for (const finishReason of ['length', 'content_filter', 'unknown'] as const) {
+      await assert.rejects(
+        collectSampling([
+          { type: 'text_delta', delta: '未完成' },
+          { type: 'usage', usage: { inputTokens: 5 } },
+          { type: 'response_completed', finishReason },
+        ]),
+        (error) => {
+          assert.ok(error instanceof ModelSamplingIncompleteError)
+          assert.deepEqual(error.summary, {
+            samplingAttemptId: 'run-1:sampling-1',
+            finishReason,
+            usage: { inputTokens: 5 },
+            toolCallCount: 0,
+            textChars: 3,
+          })
+          return true
+        },
+      )
+    }
   })
 })
 
 async function collectSampling(
   events: ModelStreamEvent[],
   samplingAttemptId = 'run-1:sampling-1',
+  failWith?: Error,
 ) {
-  const sampling = streamModelSampling(toModelStream(events), samplingAttemptId)
+  const sampling = streamModelSampling(toModelStream(events, failWith), samplingAttemptId)
   const deltas: string[] = []
   let result = await sampling.next()
 
@@ -250,8 +231,11 @@ async function collectSampling(
 
 async function* toModelStream(
   events: ModelStreamEvent[],
+  failWith?: Error,
 ): AsyncGenerator<ModelStreamEvent> {
   yield* events
+  if (failWith)
+    throw failWith
 }
 
 async function* delayedCompletionStream(
@@ -275,6 +259,7 @@ function toolCallEvent(
   name: string,
   argumentsJson: string,
   reasoningContent = `reasoning for ${providerCallId}`,
+  index = 0,
 ): ModelStreamEvent {
   return {
     type: 'tool_call_completed',
@@ -283,7 +268,7 @@ function toolCallEvent(
       providerCallId,
       name,
       argumentsJson,
-      index: 0,
+      index,
     },
   }
 }

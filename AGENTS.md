@@ -46,7 +46,7 @@
 | `docs/work-log.md` | 已发生事实 |
 | `docs/tasks/completed/` | 已完成阶段与任务的归档 |
 
-当前状态：Phase 1-8 Completed 并归档；当前阶段为源码阅读，先完成当前项目链路学习，之后按 `docs/research/pi-reference/roadmap.md` 由 AI 参照 Pi 实现云端方向；无 Active Task，#118 / #119 / #120 / #124 已于 2026-09-17 合并，#126 / #127 / #115 已于 2026-09-18 合并，Next 为 #116 → web_fetch（#116 已立 Issue、未开工；#117 已于 2026-09-18 关闭转 Gated）；翻译质检站已于 #113 删除；下一批候选子系统为 session 事件流与 replay、审批门、compaction、定时任务，候选不等于 Active；Admin Task 4 保持 Planned。
+当前状态：Phase 1-8 Completed 并归档；当前阶段为源码阅读，先完成当前项目链路学习，之后按 `docs/research/pi-reference/roadmap.md` 由 AI 参照 Pi 实现云端方向；无 Active Task，#118 / #119 / #120 / #124 已于 2026-09-17 合并，#126 / #127 / #115 已于 2026-09-18 合并，#116 已于 2026-09-19 合并，Next 为 web_fetch（未立 Issue；#117 已于 2026-09-18 关闭转 Gated）；翻译质检站已于 #113 删除；下一批候选子系统为 session 事件流与 replay、审批门、compaction、定时任务，候选不等于 Active；Admin Task 4 保持 Planned。
 
 ## 4. 关键目录
 

@@ -1,5 +1,4 @@
 import type {
-  ChatMessage,
   ChatOptions,
   ChatStreamOptions,
   DeepSeekBalanceResponse,
@@ -45,11 +44,11 @@ export class LLMService {
   /**
    * 发送一次 chat 请求，返回模型回复的纯文本（choices[0].message.content）。
    *
-   * @param messages  - 消息数组（system / user / assistant）
+   * @param messages  - Runtime 组装的模型输入项
    * @param options   - 可选：覆盖 model、reasoningEffort、maxTokens、responseFormat
    * @returns 模型回复的字符串内容
    */
-  async chat(messages: ChatMessage[], options?: ChatOptions): Promise<string> {
+  async chat(messages: ModelInputItem[], options?: ChatOptions): Promise<string> {
     return await this.llmClient.chat(messages, options)
   }
 

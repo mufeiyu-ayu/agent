@@ -1,5 +1,5 @@
 import type {
-  ChatMessage,
+  MessageInputItem,
   ModelInputItem,
   ModelToolSpec,
 } from '@agent/ai'
@@ -10,7 +10,6 @@ import type {
 import assert from 'node:assert/strict'
 // eslint-disable-next-line test/no-import-node-test
 import { describe, it } from 'node:test'
-import { toModelInputItems } from '@agent/ai'
 
 import { normalizeToolObservation } from '../../tools/core/tool-observation.js'
 import { ContextBudgetExceededError } from '../agent-runtime.errors.js'
@@ -26,8 +25,8 @@ import {
 } from './sampling-context-planner.js'
 
 const NO_TOOLS: ModelToolSpec[] = []
-const INSTRUCTIONS: ChatMessage[] = [{ role: 'system', content: 'instructions' }]
-const CURRENT_USER: ChatMessage = { role: 'user', content: 'current-user' }
+const INSTRUCTIONS: MessageInputItem[] = [{ type: 'message', role: 'system', content: 'instructions' }]
+const CURRENT_USER: MessageInputItem = { type: 'message', role: 'user', content: 'current-user' }
 const LOOKUP_TOOL: ModelToolSpec[] = [{
   name: 'tool',
   description: 'Lookup.',
@@ -43,8 +42,8 @@ describe('SamplingContextPlanner', () => {
   it('保留显式 Instructions、initial History 与 current User identity', () => {
     const context = createContext({
       history: [
-        { role: 'user', content: 'oldest-history' },
-        { role: 'assistant', content: 'newest-history' },
+        { type: 'message', role: 'user', content: 'oldest-history' },
+        { type: 'message', role: 'assistant', content: 'newest-history' },
       ],
     })
     const state = context.forPlanning()
@@ -89,8 +88,8 @@ describe('SamplingContextPlanner', () => {
     const planner = new SamplingContextPlanner(estimator)
     const context = createContext({
       history: [
-        { role: 'user', content: 'A'.repeat(20) },
-        { role: 'assistant', content: 'B'.repeat(10) },
+        { type: 'message', role: 'user', content: 'A'.repeat(20) },
+        { type: 'message', role: 'assistant', content: 'B'.repeat(10) },
       ],
     })
     const withoutOldest = flattenPlanningState(context.forPlanning()).filter(item => (
@@ -126,9 +125,9 @@ describe('SamplingContextPlanner', () => {
     const planner = new SamplingContextPlanner(estimator)
     const context = createContext({
       history: [
-        { role: 'user', content: 'A'.repeat(20) },
-        { role: 'assistant', content: 'B'.repeat(10) },
-        { role: 'user', content: 'C'.repeat(10) },
+        { type: 'message', role: 'user', content: 'A'.repeat(20) },
+        { type: 'message', role: 'assistant', content: 'B'.repeat(10) },
+        { type: 'message', role: 'user', content: 'C'.repeat(10) },
       ],
     })
     const budgetWithout = (...excluded: string[]): number => estimator.estimateRequest({
@@ -206,7 +205,7 @@ describe('SamplingContextPlanner', () => {
     assert.deepEqual(
       first.items.filter(item => item.type !== 'message').map(item => (
         item.type === 'assistant_tool_call'
-          ? ['call', item.callId, item.rawArgumentsJson, item.reasoningContent]
+          ? ['call', item.calls[0]!.callId, item.calls[0]!.rawArgumentsJson, item.reasoningContent]
           : ['result', item.callId, item.name, item.ok]
       )),
       [
@@ -253,22 +252,24 @@ describe('SamplingContextPlanner', () => {
     const context = createContext()
 
     context.appendToolExchange({
-      call: {
+      calls: [{
         callId: 'call-emoji',
         toolName: 'tool',
         rawArgumentsJson: '{}',
         samplingAttemptId: 'sampling-1',
-      },
+      }],
       intermediateText: '',
       reasoningContent: 'reason',
-      observation: {
-        content: '😀'.repeat(300),
-        previewContent: '😀'.repeat(250),
-        originalChars: 1_000,
-        observationChars: 300,
-        truncated: true,
-      },
-      ok: true,
+      results: [{
+        observation: {
+          content: '😀'.repeat(300),
+          previewContent: '😀'.repeat(250),
+          originalChars: 1_000,
+          observationChars: 300,
+          truncated: true,
+        },
+        ok: true,
+      }],
     })
 
     const plan = planner.plan({
@@ -291,6 +292,7 @@ describe('SamplingContextPlanner', () => {
     )
     assert.deepEqual(plan.summary.observations, [{
       exchangeIndex: 0,
+      resultIndex: 0,
       originalChars: 1_000,
       toolCeilingChars: 300,
       finalChars: Array.from(result.content).length,
@@ -306,16 +308,15 @@ describe('SamplingContextPlanner', () => {
     const observation = normalizeToolObservation('🚀'.repeat(16_100), 16_000)
 
     context.appendToolExchange({
-      call: {
+      calls: [{
         callId: 'call-ceiling',
         toolName: 'tool',
         rawArgumentsJson: '{"q":"emoji"}',
         samplingAttemptId: 'sampling-1',
-      },
+      }],
       intermediateText: '',
       reasoningContent: 'reason',
-      observation,
-      ok: true,
+      results: [{ observation, ok: true }],
     })
     const fullTokens = estimator.estimateRequest({
       items: flattenPlanningState(context.forPlanning()),
@@ -443,12 +444,12 @@ describe('SamplingContextPlanner 首轮历史裁剪（迁自旧的初始上下�
 
   it('较新的完整 Message 放不下时全部排除，不跳过它选择更旧的小消息', () => {
     const estimator = new CharacterTokenEstimator()
-    const history: ChatMessage[] = [
-      { role: 'user', content: 'x' },
-      { role: 'user', content: 'x'.repeat(200) },
+    const history: MessageInputItem[] = [
+      { type: 'message', role: 'user', content: 'x' },
+      { type: 'message', role: 'user', content: 'x'.repeat(200) },
     ]
     const mandatoryTokens = estimator.estimateRequest({
-      items: toModelInputItems([...INSTRUCTIONS, CURRENT_USER]),
+      items: [...INSTRUCTIONS, CURRENT_USER],
       tools: NO_TOOLS,
     })
     const budget = mandatoryTokens + 100
@@ -495,11 +496,11 @@ describe('SamplingContextPlanner 首轮历史裁剪（迁自旧的初始上下�
       index => `第 ${index} 条：${'站内 SEO 与检索。'.repeat(index % 5 + 1)}`,
     )
     const estimateNewest = (count: number): number => estimator.estimateRequest({
-      items: toModelInputItems([
+      items: [
         ...INSTRUCTIONS,
         ...history.slice(history.length - count),
         CURRENT_USER,
-      ]),
+      ],
       tools: LOOKUP_TOOL,
     })
     const budget = Math.floor(estimateNewest(history.length) * 0.6)
@@ -560,7 +561,7 @@ describe('SamplingContextPlanner 首轮历史裁剪（迁自旧的初始上下�
 
 describe('summarizeInitialContext', () => {
   const summarize = (input: {
-    history: ChatMessage[]
+    history: MessageInputItem[]
     candidateHardLimit: number
     estimator?: TokenEstimator
     contextWindowTokens?: number
@@ -668,7 +669,7 @@ describe('resolveInitialContextBudget', () => {
   })
 })
 
-function createContext(input: { history?: ChatMessage[] } = {}): ModelContext {
+function createContext(input: { history?: MessageInputItem[] } = {}): ModelContext {
   return ModelContext.fromHistory({
     instructions: INSTRUCTIONS,
     initialHistory: input.history ?? [],
@@ -678,7 +679,7 @@ function createContext(input: { history?: ChatMessage[] } = {}): ModelContext {
 
 /** #119 之前的历史选择算法（keyset 分页 + 批内前缀二分），只用于 AC-01 / AC-02 差分。 */
 function legacySelectedHistoryCount(input: {
-  historyOldestFirst: ChatMessage[]
+  historyOldestFirst: MessageInputItem[]
   tools: ModelToolSpec[]
   estimator: TokenEstimator
   budget: number
@@ -686,16 +687,16 @@ function legacySelectedHistoryCount(input: {
   hardLimit: number
 }): number {
   const newestFirst = [...input.historyOldestFirst].reverse()
-  const estimate = (selectedNewestFirst: ChatMessage[]): number =>
+  const estimate = (selectedNewestFirst: MessageInputItem[]): number =>
     input.estimator.estimateRequest({
-      items: toModelInputItems([
+      items: [
         ...INSTRUCTIONS,
         ...[...selectedNewestFirst].reverse(),
         CURRENT_USER,
-      ]),
+      ],
       tools: input.tools,
     })
-  const selected: ChatMessage[] = []
+  const selected: MessageInputItem[] = []
   let candidateCount = 0
   let offset = 0
 
@@ -734,8 +735,9 @@ function legacySelectedHistoryCount(input: {
   return selected.length
 }
 
-function historyMessages(count: number, content: (index: number) => string): ChatMessage[] {
+function historyMessages(count: number, content: (index: number) => string): MessageInputItem[] {
   return Array.from({ length: count }, (_, index) => ({
+    type: 'message',
     role: index % 2 === 0 ? 'user' : 'assistant',
     content: content(index + 1),
   }))
@@ -743,7 +745,7 @@ function historyMessages(count: number, content: (index: number) => string): Cha
 
 function planFirstRound(
   estimator: TokenEstimator,
-  history: ChatMessage[],
+  history: MessageInputItem[],
   budget: number,
   tools: ModelToolSpec[] = NO_TOOLS,
 ) {
@@ -768,21 +770,23 @@ function appendExchange(
   content: string,
 ): void {
   context.appendToolExchange({
-    call: {
+    calls: [{
       callId,
       toolName: 'tool',
       rawArgumentsJson: JSON.stringify({ q: callId }),
       samplingAttemptId: `sampling-${callId}`,
-    },
+    }],
     intermediateText: `intermediate-${callId}`,
     reasoningContent: `reason-${callId}`,
-    observation: {
-      content,
-      originalChars: Array.from(content).length,
-      observationChars: Array.from(content).length,
-      truncated: false,
-    },
-    ok: true,
+    results: [{
+      observation: {
+        content,
+        originalChars: Array.from(content).length,
+        observationChars: Array.from(content).length,
+        truncated: false,
+      },
+      ok: true,
+    }],
   })
 }
 
@@ -792,9 +796,7 @@ function countItem(item: ModelInputItem): number {
       return Array.from(item.content).length
     case 'assistant_tool_call':
       return [
-        item.callId,
-        item.name,
-        item.rawArgumentsJson,
+        ...item.calls.flatMap(call => [call.callId, call.name, call.rawArgumentsJson]),
         item.reasoningContent,
         item.content ?? '',
       ].reduce((total, value) => total + Array.from(value).length, 0)

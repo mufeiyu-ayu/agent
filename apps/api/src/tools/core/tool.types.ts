@@ -102,7 +102,13 @@ export type ToolResult<T = unknown>
   }
   | {
     ok: false
-    code: 'execution_failed' | 'invalid_arguments' | 'timeout' | 'unknown_tool'
+    code:
+      | 'execution_failed'
+      | 'invalid_arguments'
+      | 'timeout'
+      // 仅由 Runtime 合成：模型输出达到长度限制、arguments 不完整，本次未执行。
+      | 'truncated_arguments'
+      | 'unknown_tool'
     modelContent: string
   }
 

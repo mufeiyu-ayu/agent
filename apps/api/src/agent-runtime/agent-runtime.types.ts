@@ -1,4 +1,4 @@
-import type { ChatMessage } from '@agent/ai'
+import type { MessageInputItem } from '@agent/ai'
 import type { DeepSeekReasoningEffort, MessageGroundingV1 } from '@agent/contracts'
 
 export type AgentRuntimeEvent
@@ -64,5 +64,5 @@ export interface RunTurnStreamInput {
   signal?: AbortSignal
   maxTokens?: number
   /** 模型必须携带的指令消息（当前为系统提示词）；历史与当前消息由 Runtime 自行拼接。 */
-  instructions: ChatMessage[]
+  instructions: MessageInputItem[]
 }

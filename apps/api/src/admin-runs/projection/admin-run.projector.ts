@@ -57,6 +57,7 @@ const TOOL_RESULT_CODES: AdminToolResultCode[] = [
   'execution_failed',
   'invalid_arguments',
   'timeout',
+  'truncated_arguments',
   'unknown_tool',
 ]
 
