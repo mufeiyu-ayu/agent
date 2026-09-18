@@ -8,7 +8,8 @@
 阶段 1-8：Completed
 Active Agent Task：无
 Next：#116 同轮文本 + 多 Tool Call（前置 #115 已于 2026-09-18 合并）
-Planned：web_fetch → #117 Responses API adapter（2026-09-18 定案 web_fetch 提到 #117 前，它不依赖第二 wire；均在 R2 前）
+Planned：web_fetch（R2 前）
+Gated：#117 Responses API adapter（2026-09-18 关闭转 Gated，触发条件见看板）
 候选子系统：session 事件流与 replay、审批门、compaction、定时任务（未立 Issue）
 Admin Task 4：Planned
 ```
@@ -25,8 +26,8 @@ Admin Task 4：Planned
 | #127 收敛 `packages/ai` 运行时配置 | Completed | 实施状态：已实现 / 验收状态：已通过。PR #129 于 2026-09-18 基于最新 head `95e74c6` 逐条验收 AC-01～AC-06 PASS 并合并（7 files，+73 / −216）：`LLMRuntimeConfig` 收为 `{ apiKey, baseUrl, model, captureModelIO }`，三个 timeout 改 `openai-completions.ts` 常量、`max_tokens` 默认 65_536 改 `config.ts` 常量，删应用硬上限层、`readPositiveInteger` 与 4 个 `LLM_*` env；`config.test.ts` 11 → 9 case，`llm.module.test.ts` 改断言 `captureModelIO` 默认 false 与 `LLM_MODEL` 不支持时初始化失败。验证：`/ai` typecheck / test 35/35 / build，api typecheck / lint，`test:llm-config` 2/2、`test:model-stream` 78/78，`git diff --check` 通过；AC-01 grep 零匹配。`/code-review high` 两轮 7 条：修 5 条（含第二轮收回超范围的默认 `max_tokens` clamp），残留 env 静默忽略与 `chat` 60s 数值按 Issue 范围不改。学习环节按 Issue 决策记录豁免 |
 | #115 模型调用重试与 Loop 默认上限 | Completed | 实施状态：已实现 / 验收状态：已通过。PR #131 于 2026-09-18 基于最新 head `4efc5b2` 逐条验收 AC-01～AC-06 PASS 并合并（7 files，+329 / −29；AC-01 字面 grep 的 5 处 `readPositiveInteger` 是 #126 Admin 投影 safe reader，origin/master 已存在、与本 Issue 无关）：`createClient()` 交给 SDK 内置重试的 `maxRetries` 改为代码常量 2（首个响应头之前；流正文中断、abort 后不重试），无新增 env；review 后补两处：`chatStream` 内 `rejectOnAbort`（SDK 退避 sleep 不监听 signal 且 `retry-after` 无上限，abort 落在 sleep 期间也立即抛出）与 `AbortSignal.any` 派生一次性信号（SDK 每次尝试在 signal 上挂监听不移除，10 轮 + 1 次重试即触发 `MaxListenersExceededWarning`）；policy 默认 `maxSamplingRounds` 3 → 10、`maxToolCalls` 2 → 8，`.env.example` / README 同步；`openai-completions.test.ts` 新增 8 个用例（1 个 `maxRetries` 常量断言 + 7 个 fake fetch：首次 429 / 503 / 连接错误后成功且 `onRequest` 只记一次、400 / 401 / 402 不重试、重试耗尽抛对应 `LLMError`、流正文中断不重试、abort 不重试、abort 落在退避 sleep 期间立即抛出、12 轮共用 signal 不累积监听）。验证：`@agent/ai` typecheck / test 43/43，api typecheck / lint、`test:tool-loop` 65/65、`test:tools` 86/86、`test:llm-config` 2/2、`test:model-stream` 78/78、`test:admin-runs` 55/55、`test:grounding` 172/172。Review：`/code-review high`（Opus）+ Fable agent 各 3 条、Fable 复审 2 条，修 5 条（abort 竞速、监听隔离、上限耦合提示、看板文案、timeout 注释），非流式 / metadata 请求无 signal 的最坏耗时按范围记录不改。学习环节：待带读与独立改一处，通过后在 Issue 追加「学习已验证」 |
 | #116 同轮文本 + 多 Tool Call | Next | content 先于 tool_calls、多个 tool_calls 顺序执行、上限解耦、截断参数回喂；前置 #115 已合并 |
-| #117 Responses API adapter | Planned | `LLM_WIRE_API` 切换 chat / responses，第二个 adapter 接同一契约；前置 #116 |
-| `web_fetch` 第一个真实工具 | Planned | 只读、SSRF 防护、untrusted observation；前置 #115 / #116，排在 #117 前（2026-09-18 定案），范围见 [pi-reference roadmap](../research/pi-reference/roadmap.md) |
+| #117 Responses API adapter | Gated | 2026-09-18 关闭（not planned）：DeepSeek 上 Responses 与 Chat 无能力差异且无状态，为证明边界写第二实现属过度设计；Pi 的 DeepSeek 也走 completions。映射规格保留在 Issue，满足任一条件 reopen：DeepSeek 弃用 Chat Completions / 需要仅 Responses 有的能力 / 接入只支持 Responses 的第二 provider |
+| `web_fetch` 第一个真实工具 | Planned | 只读、SSRF 防护、untrusted observation；前置 #115 / #116，范围见 [pi-reference roadmap](../research/pi-reference/roadmap.md) |
 | Admin Console Task 4 | Planned | Auth / RBAC；触发条件见 [roadmap.md](../roadmap.md) 后置清单 |
 | 已完成 | Completed | Phase 2–8、横向任务 #92 / #94 / #98 / #101–#104、Admin Console Task 0–3 与 Enhancement 1–3，归档在 [completed/](./completed/) |
 | 翻译质检站 #109 / #111 | 已删除 | 2026-09-05 经 #113 / PR #114 删除全部代码与数据模型 |

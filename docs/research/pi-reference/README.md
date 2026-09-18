@@ -2,7 +2,7 @@
 
 **读者是替用户写代码的智能体，用户不读 Pi 代码。** 本目录研究 `/Users/ayu/Learn/pi`，提炼架构思想、目录组织、关键代码与处理风格，供 AI 在实现云端 Agent 时对照借鉴。它是现行研究与实现路线入口。
 
-研究准备完成 ≠ 重构已经批准。正式任务与状态仍以 [`docs/tasks/README.md`](../../tasks/README.md) 为准；当前 #115 → #116 → #117 不由本目录重新排期。
+研究准备完成 ≠ 重构已经批准。正式任务与状态仍以 [`docs/tasks/README.md`](../../tasks/README.md) 为准；当前 #116 → `web_fetch` 不由本目录重新排期。
 
 图表统一从 **[图集入口](./diagrams/index.html)** 打开，左侧菜单切换；源码JSON集中在 `diagrams/specs/`。术语不熟先查 [术语表](./glossary.md)。
 

@@ -2,7 +2,7 @@
 
 ## 目的与状态
 
-这是用户完成当前项目源码学习后的**实现顺序**。用户不读 Pi 代码；Pi 素材是 AI 在替用户写代码时自行查阅的参照。本文不是新的 Active Task，也不表示以下实现已获批准。正式 #115 → #116 → #117 继续按 `docs/tasks/README.md` 执行，遇到与本文冲突的规格先讨论。
+这是用户完成当前项目源码学习后的**实现顺序**。用户不读 Pi 代码；Pi 素材是 AI 在替用户写代码时自行查阅的参照。本文不是新的 Active Task，也不表示以下实现已获批准。正式 #116 → `web_fetch` 继续按 `docs/tasks/README.md` 执行，遇到与本文冲突的规格先讨论。
 
 目标产品：用户可以通过 Web 长期使用自己的云端 Agent，运行可观察、会话可继续、工具行为可控制；保留我们已有 RAG / Grounding 与 Admin 的价值。不是把 Pi TUI 逐屏翻译成 Vue。
 
@@ -18,19 +18,19 @@
 
 **R0 前置（2026-09-16 定案）**：#118 删死代码与单实现抽象、#119 历史裁剪合一、#120 抽出 `packages/ai`，按序排在 #115 前。`packages/ai` 提前的理由：#115 / #117 全落在模型层，先搬再改只写一次。
 
-完成 #115（模型请求重试与 Loop 上限）、#116（同轮文本 + 顺序多 Tool Call）、#117（Responses adapter）。参照 Pi 的多 content block 和 request/attempt 区分，保留当前模型/工具/前端独立契约。
+完成 #115（模型请求重试与 Loop 上限，已于 2026-09-18 合并）、#116（同轮文本 + 顺序多 Tool Call）。#117（Responses adapter）已于 2026-09-18 关闭转 Gated：DeepSeek 上 Responses 无能力差异且无状态，触发条件见 `docs/tasks/README.md`。参照 Pi 的多 content block 和 request/attempt 区分，保留当前模型/工具/前端独立契约。
 
 **证明完成**：文本→工具→工具结果→最终文本；多个工具按原顺序执行；首次响应前失败与中途断流分开；usage 不重复计数；abort/deadline 不继续重试；DeepSeek 的 reasoningContent 分支覆盖。正式验收条款以对应 Issue 最新决定为准。
 
 **AI 查的素材**：[07 图](./diagrams/07-classic-loop.html)；[产品主链 §3](./modules/coding-agent-tui.md)、[运行内核 §2](./modules/runtime-session.md)（toolCall 续轮与文本回复两条分支、`agent_end ≠ 空闲`）；[模型边界 §2–3、§4.1、§7](./modules/model-telemetry-evals.md)（事件流、transformMessages、compat 检测、usage 归一化、两层重试、overflow 判定）。对照点在 [current-agent-mapping](./current-agent-mapping.md) 的 `runTurnStream` 行。
 
-### #116 之后、#117 之前：第一个真实工具 `web_fetch`（2026-09-16 定案，2026-09-18 提前到 #117 前）
+### #116 之后、R2 之前：第一个真实工具 `web_fetch`（2026-09-16 定案）
 
 只读、内容不可信的网络工具。它是第一个让用户真用起来的工具，也是 R3 副作用工具（工作区写入）的前置。第一个真实用途：盯 Pi 上游，读固定 revision 到 HEAD 的 compare / commits 页面，对照 pi-reference 判断哪些结论可能过期；第一版只读不写。
 
 **范围**：只允许 http/https；解析后拦截内网与保留地址，防 SSRF；体积与超时上限；HTML 转正文；observation 按 untrusted 标记，复用现有 Tool Observation 治理。不做 web_search，它需要搜索 API 与账单，进 R5 候选。
 
-**进入条件**：#115、#116 合并。它不依赖 #117 的第二 wire，排在 #117 前。
+**进入条件**：#115、#116 合并。
 
 **AI 查的素材**：Pi 没有 fetch 工具，抓网页靠 `bash` 跑 `curl`，云端不能照搬；体积控制参照 `coding-agent/src/core/tools/truncate.ts` 与 `output-accumulator.ts`；工具定义与注册参照 [产品主链 §6.4](./modules/coding-agent-tui.md)。
 
@@ -40,14 +40,14 @@
 
 **最少持久集合（R2 内完成，不等 R1）**：operation ID、owner 主体与资源归属、状态/版本、终态、输入引用。accept 落库后、执行者收到内存通知前进程退出，重启必须能从数据库重新发现未完成的 operation 并继续或收口，轮询即可，不引入消息中间件。R1 只负责会话树、分支与模型输入的可重建引用。
 
-**进入条件**：确实要求关页后继续、另一个页面观察或进程重启后接管。#115–117 与 `web_fetch` 已完成。
+**进入条件**：确实要求关页后继续、另一个页面观察或进程重启后接管。#115、#116 与 `web_fetch` 已完成。
 
 **第一步：分包（2026-09-16 定案）**。仿 Pi 的 `agent / ai / coding-agent` 三层，但只分两个纯包，不照搬 11 个包：
 
 | 包 | 内容 | 规则 |
 | --- | --- | --- |
 | `packages/agent` | 循环、operation 状态、上下文投影、工具契约、取消 | 零 Nest、零 Prisma；依赖 `contracts` 与 `ai` 的模型类型（`ModelInputItem` / `ModelStreamEvent` / `ModelToolSpec`），与 Pi 的 agent → ai 方向一致；存储与模型客户端实例只定义接口、由宿主注入 |
-| `packages/ai` | 已由 #120 先行抽出；#115 的重试、#117 的第二 wire 在包内实现 | 零 Nest |
+| `packages/ai` | 已由 #120 先行抽出；#115 的重试已在包内实现；第二 wire 随 #117 转 Gated | 零 Nest |
 | `apps/api`（保留） | Nest 模块、Prisma 仓储、HTTP 控制器、Grounding 落库 | 实现上面两包的接口，在边缘注入 |
 
 不先搬旧文件：R2 新写的代码从第一天放进 `packages/agent`，旧代码按被替换的节奏迁入。Grounding 要拆成“校验规则”进包、“落库”留 apps，这是分包里最费工的部分。搬 ModelContext 时把「工作副本 → commit」协议退化为数组加纯函数（删 `forPlanning` / `commitPlan`），planner 直接返回裁剪后的输入。第三个包等出现第二个宿主（如独立 worker）再拆。分包不单独占周期，算在 R2 内。
@@ -112,7 +112,7 @@
 
 | 工作 | Pi 对应 | 估计 |
 | --- | --- | --- |
-| R0 #115–117 | 已立项 | 1～2 周 |
+| R0 #115–116 | #115 已合并，#116 已立项 | 1～2 周 |
 | R2 运行解耦（含分包） | `harness/runtime` 的 lane/drive/checkpoint；包结构参照 `agent / ai / coding-agent` | 3～4 周 |
 | R1 durable 事实 | `harness/session` + `drive/recovery` | 3 周 |
 | R3 工具 journal 与审批、鉴权租户 | `drive/tools` + `execution/tools`；审批与租户 Pi 无参照 | 4～5 周 |
