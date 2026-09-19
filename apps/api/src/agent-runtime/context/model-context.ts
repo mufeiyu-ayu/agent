@@ -128,7 +128,12 @@ export class ModelContext {
     reasoningContent: string
     // 与 calls 一一对应：后端工具结果经长度上限处理后的模型可见文本，以及执行是否成功；
     // 失败结果也要回填模型，让它决定后续行为。
-    results: Array<{ observation: NormalizedToolObservation, ok: boolean }>
+    results: Array<{
+      observation: NormalizedToolObservation
+      ok: boolean
+      /** 参数是否通过了工具输入契约校验；未校验的原始参数不可信，续轮表示见 toFeedbackArgumentsJson。 */
+      argumentsValidated: boolean
+    }>
   }): void {
     if (input.calls.length === 0 || input.calls.length !== input.results.length)
       throw new RangeError('Tool Exchange 的 calls 与 results 必须一一对应且非空')
@@ -139,10 +144,13 @@ export class ModelContext {
       // Provider 视角的 assistant Tool Call 消息：表示「模型刚才请求调用了什么」。
       assistantCall: {
         type: 'assistant_tool_call',
-        calls: input.calls.map(call => ({
+        calls: input.calls.map((call, index) => ({
           callId: call.callId,
           name: call.toolName,
-          rawArgumentsJson: call.rawArgumentsJson,
+          rawArgumentsJson: toFeedbackArgumentsJson(
+            call.rawArgumentsJson,
+            input.results[index]!.argumentsValidated,
+          ),
         })),
         reasoningContent: input.reasoningContent,
         ...(input.intermediateText ? { content: input.intermediateText } : {}),
@@ -190,6 +198,24 @@ export function flattenPlanningState(
       ...exchange.results.map(result => ({ ...result.toolResult })),
     ]),
   ]
+}
+
+/**
+ * 续轮表示里的 arguments。
+ *
+ * 通过工具输入契约校验的参数是键与值都在 DeepSeek estimator 已验证子集内的 JSON 对象，
+ * 原样续传。未校验的原始参数（unknown_tool / invalid_arguments / truncated_arguments）
+ * 可能是任意文本或非对象 JSON，统一用 DeepSeek 官方编码器对不可解析参数的回退形状
+ * `{"arguments": raw}` 承载：原文一字不改保留在值里，wire 上是合法 JSON 对象，
+ * Context Planner 估算的和实际发给 Provider 的是同一份表示。
+ */
+function toFeedbackArgumentsJson(
+  rawArgumentsJson: string,
+  argumentsValidated: boolean,
+): string {
+  return argumentsValidated
+    ? rawArgumentsJson
+    : JSON.stringify({ arguments: rawArgumentsJson })
 }
 
 function cloneMessage(item: MessageInputItem): MessageInputItem {

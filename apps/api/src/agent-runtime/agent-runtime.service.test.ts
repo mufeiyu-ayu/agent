@@ -57,6 +57,7 @@ import {
   ContextTokenEstimationError,
 } from './agent-runtime.errors.js'
 import { AgentRuntimeService } from './agent-runtime.service.js'
+import { DeepSeekV4TokenEstimator } from './context/deepseek-v4-token-estimator.js'
 import { flattenPlanningState, ModelContext } from './context/model-context.js'
 import { SamplingContextPlanner } from './context/sampling-context-planner.js'
 
@@ -1748,7 +1749,7 @@ describe('AgentRuntimeService model stream', () => {
     assert.deepEqual(harness.llmCalls[1]?.messages.slice(-2), [
       {
         type: 'assistant_tool_call',
-        calls: [{ callId: 'call-hidden', name: 'hidden_admin_tool', rawArgumentsJson: '{}' }],
+        calls: [{ callId: 'call-hidden', name: 'hidden_admin_tool', rawArgumentsJson: '{"arguments":"{}"}' }],
         reasoningContent: 'reasoning for call-hidden',
       },
       {
@@ -1827,6 +1828,12 @@ describe('AgentRuntimeService model stream', () => {
 
     await collectEvents(harness.run())
 
+    // 未通过 input.parse 的原始参数不可信，续轮以官方回退形状承载。
+    assert.deepEqual(harness.llmCalls[1]?.messages.at(-2), {
+      type: 'assistant_tool_call',
+      calls: [{ callId: 'call-1', name: 'search_articles', rawArgumentsJson: '{"arguments":"{\\"sourceId\\":1.5}"}' }],
+      reasoningContent: 'reasoning for call-1',
+    })
     assert.deepEqual(harness.llmCalls[1]?.messages.at(-1), {
       type: 'tool_result',
       callId: 'call-1',
@@ -2127,8 +2134,8 @@ describe('AgentRuntimeService model stream', () => {
       {
         type: 'assistant_tool_call',
         calls: [
-          { callId: 'call-empty', name: 'search_articles', rawArgumentsJson: '' },
-          { callId: 'call-partial', name: 'get_article_detail', rawArgumentsJson: '{"sourceId":' },
+          { callId: 'call-empty', name: 'search_articles', rawArgumentsJson: '{"arguments":""}' },
+          { callId: 'call-partial', name: 'get_article_detail', rawArgumentsJson: '{"arguments":"{\\"sourceId\\":"}' },
         ],
         reasoningContent: '需要查两篇。',
       },
@@ -2158,6 +2165,199 @@ describe('AgentRuntimeService model stream', () => {
       ['truncated_arguments', 'truncated_arguments', null],
     )
     assertNoUnfinishedSteps(harness)
+  })
+
+  it('length 截断的原始参数经生产 estimator 仍能续轮：未校验参数以官方回退形状回喂，estimator 输入与实际请求一致', async () => {
+    const productionEstimator = new DeepSeekV4TokenEstimator()
+    // 同一根因的全部边界：空、半截对象、非对象 JSON、生产 renderer 已知拒绝的合法对象，以及完整对象对照。
+    const rawArgumentsSamples = [
+      '',
+      '{"sourceId":',
+      '[]',
+      'null',
+      '1',
+      '1.5',
+      'true',
+      '"abc"',
+      '{"x":NaN}',
+      '{"x":1e999}',
+      '{"0":"x"}',
+      '{"nested":[1.5]}',
+      '{"query":"seo"}',
+    ]
+
+    for (const rawArguments of rawArgumentsSamples) {
+      const label = `raw=${JSON.stringify(rawArguments)}`
+      const estimatedInputs: ModelInputItem[][] = []
+      // 只旁路记录，渲染与 tokenizer 仍是生产实现。
+      const recordingEstimator: TokenEstimator = {
+        strategyId: productionEstimator.strategyId,
+        estimateRequest: (input) => {
+          estimatedInputs.push(structuredClone(input.items))
+
+          return productionEstimator.estimateRequest(input)
+        },
+      }
+      // 每次真正发请求时，estimator 最后一次看到的输入。
+      const estimatedAtRequest: Array<ModelInputItem[] | undefined> = []
+      const streams: Array<() => AsyncGenerator<ModelStreamEvent>> = [
+        () => adaptOpenAICompatibleStream(toProviderStream([
+          providerChunk({ reasoning_content: '需要查。' } as ChatCompletionChunk.Choice.Delta),
+          providerChunk({
+            tool_calls: [{
+              index: 0,
+              id: 'call-truncated',
+              type: 'function',
+              function: {
+                name: 'get_article_detail',
+                ...(rawArguments ? { arguments: rawArguments } : {}),
+              },
+            }],
+          } as ChatCompletionChunk.Choice.Delta),
+          providerChunk({}, 'length'),
+        ])),
+        () => toModelStream([
+          toolCallEvent('call-retry', 'search_articles', '{"query":"seo"}'),
+          { type: 'response_completed', finishReason: 'tool_calls' },
+        ]),
+        () => toModelStream([
+          { type: 'text_delta', delta: '完成。' },
+          { type: 'response_completed', finishReason: 'stop' },
+        ]),
+      ]
+      const harness = createHarness(
+        (_, __, callIndex) => {
+          estimatedAtRequest.push(estimatedInputs.at(-1))
+
+          return streams[callIndex]!()
+        },
+        undefined,
+        undefined,
+        { maxToolCalls: 3 },
+        recordingEstimator,
+      )
+
+      // 生产 estimator 要求带工具的请求有 system 消息，与真实入口一致。
+      const events = await collectEvents(harness.service.runTurnStream({
+        conversationId: 'conversation-1',
+        userContent: '问题',
+        reasoningEffort: 'high',
+        instructions: [{ type: 'message', role: 'system', content: 'SYS' }],
+      }))
+
+      assert.equal(events.at(-1)?.type, 'run_completed', `${label}: ${JSON.stringify(events.at(-1))}`)
+      assert.equal(harness.assistantMessage()?.content, '完成。', label)
+      assert.equal(harness.llmCalls.length, 3, label)
+      assert.deepEqual(
+        harness.toolInvocations.map(invocation => invocation.callId),
+        ['call-retry'],
+        label,
+      )
+      assert.deepEqual(
+        harness.recorder.steps
+          .filter(step => step.type === 'tool_execution')
+          .map(step => [
+            (step.input as { callId: string }).callId,
+            step.status,
+            (step.output as { code?: string }).code,
+          ]),
+        [
+          ['call-truncated', AgentStepStatus.FAILED, 'truncated_arguments'],
+          ['call-retry', AgentStepStatus.COMPLETED, undefined],
+        ],
+        label,
+      )
+      // 续轮表示：未校验参数用 DeepSeek 官方编码器对不可解析参数的回退形状承载，原文一字不改。
+      assert.deepEqual(harness.llmCalls[1]?.messages.slice(2, 4), [
+        {
+          type: 'assistant_tool_call',
+          calls: [{
+            callId: 'call-truncated',
+            name: 'get_article_detail',
+            rawArgumentsJson: JSON.stringify({ arguments: rawArguments }),
+          }],
+          reasoningContent: '需要查。',
+        },
+        {
+          type: 'tool_result',
+          callId: 'call-truncated',
+          name: 'get_article_detail',
+          content: '工具 get_article_detail 的参数因模型输出达到长度限制而不完整，本次未执行；仍需要时请重新发起调用。',
+          ok: false,
+        },
+      ], label)
+      // 已校验的重发调用原样续传（对照）。
+      assert.deepEqual(harness.llmCalls[2]?.messages.at(-2), {
+        type: 'assistant_tool_call',
+        calls: [{ callId: 'call-retry', name: 'search_articles', rawArgumentsJson: '{"query":"seo"}' }],
+        reasoningContent: 'reasoning for call-retry',
+      }, label)
+      // 每一轮发出的请求，就是生产 estimator 最后一次估算的那份输入。
+      assert.deepEqual(
+        estimatedAtRequest,
+        harness.llmCalls.map(call => call.messages),
+        label,
+      )
+      assertNoUnfinishedSteps(harness)
+    }
+  })
+
+  it('invalid_arguments 与 unknown_tool 回喂的未校验参数经生产 estimator 仍能续轮', async () => {
+    const productionEstimator = new DeepSeekV4TokenEstimator()
+    const cases = [
+      { toolName: 'search_articles', code: 'invalid_arguments' },
+      { toolName: 'not_a_tool', code: 'unknown_tool' },
+    ] as const
+
+    for (const { toolName, code } of cases) {
+      for (const rawArguments of ['[]', '{"0":"x"}']) {
+        const label = `${code} raw=${rawArguments}`
+        const harness = createHarness(
+          (_, __, callIndex) => toModelStream(callIndex === 0
+            ? [
+                toolCallEvent('call-bad', toolName, rawArguments),
+                { type: 'response_completed', finishReason: 'tool_calls' },
+              ]
+            : [
+                { type: 'text_delta', delta: '换个说法。' },
+                { type: 'response_completed', finishReason: 'stop' },
+              ]),
+          undefined,
+          async envelope => ({
+            ok: false,
+            code: 'invalid_arguments',
+            modelContent: `工具 ${envelope.toolName} 的参数无效。`,
+          }),
+          undefined,
+          productionEstimator,
+        )
+
+        const events = await collectEvents(harness.service.runTurnStream({
+          conversationId: 'conversation-1',
+          userContent: '问题',
+          reasoningEffort: 'high',
+          instructions: [{ type: 'message', role: 'system', content: 'SYS' }],
+        }))
+
+        assert.equal(events.at(-1)?.type, 'run_completed', `${label}: ${JSON.stringify(events.at(-1))}`)
+        assert.equal(harness.llmCalls.length, 2, label)
+        assert.equal(
+          (findStep(harness, 'tool_execution')?.output as { code?: string }).code,
+          code,
+          label,
+        )
+        assert.deepEqual(harness.llmCalls[1]?.messages[2], {
+          type: 'assistant_tool_call',
+          calls: [{
+            callId: 'call-bad',
+            name: toolName,
+            rawArgumentsJson: JSON.stringify({ arguments: rawArguments }),
+          }],
+          reasoningContent: 'reasoning for call-bad',
+        }, label)
+        assertNoUnfinishedSteps(harness)
+      }
+    }
   })
 
   it('length 后没有任何可配对 Tool Call 时按不完整回答失败', async () => {
@@ -2923,6 +3123,7 @@ describe('ModelContext', () => {
           truncated: false,
         },
         ok: true,
+        argumentsValidated: true,
       }],
     })
 
@@ -2954,10 +3155,13 @@ describe('ModelContext', () => {
         {
           observation: { content: 'P', originalChars: 1, observationChars: 1, truncated: false },
           ok: false,
+          // 未校验的原始参数：续轮用官方回退形状承载，原文保留在值里。
+          argumentsValidated: false,
         },
         {
           observation: { content: 'Q', originalChars: 1, observationChars: 1, truncated: false },
           ok: true,
+          argumentsValidated: true,
         },
       ],
     })
@@ -2967,7 +3171,7 @@ describe('ModelContext', () => {
       {
         type: 'assistant_tool_call',
         calls: [
-          { callId: 'c2', name: 't2', rawArgumentsJson: 'B' },
+          { callId: 'c2', name: 't2', rawArgumentsJson: '{"arguments":"B"}' },
           { callId: 'c3', name: 't3', rawArgumentsJson: 'C' },
         ],
         reasoningContent: 'S',

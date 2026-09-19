@@ -501,6 +501,7 @@ export class AgentRuntimeService {
         const toolResults: Array<{
           observation: NormalizedToolObservation
           ok: boolean
+          argumentsValidated: boolean
         }> = []
 
         // 顺序执行，每个 call 一个 tool_execution Step；当前工具只读，并行没有收益。
@@ -607,7 +608,17 @@ export class AgentRuntimeService {
             })
           }
 
-          toolResults.push({ observation, ok: toolResult.ok })
+          toolResults.push({
+            observation,
+            ok: toolResult.ok,
+            // 只有 ToolInvocationService 经 input.parse 校验后执行的调用，参数才可信；
+            // 这三个 code 都发生在校验之前或根本没有校验。execution_failed 也可能来自
+            // policy 拒绝（parse 前），当前 allowlist 工具都通过 policy，该分支不可达。
+            argumentsValidated: toolResult.ok
+              || (toolResult.code !== 'truncated_arguments'
+                && toolResult.code !== 'unknown_tool'
+                && toolResult.code !== 'invalid_arguments'),
+          })
         }
 
         runCancellation.throwIfUnavailable()
