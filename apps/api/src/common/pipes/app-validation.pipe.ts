@@ -1,13 +1,8 @@
-import type { Type, ValidationPipeOptions } from '@nestjs/common'
 import type { ValidationError } from 'class-validator'
 import { BadRequestException, ValidationPipe } from '@nestjs/common'
 
-interface AppValidationPipeOptions {
-  expectedType?: Type<unknown>
-}
-
-export function createAppValidationPipe(options: AppValidationPipeOptions = {}): ValidationPipe {
-  const pipeOptions: ValidationPipeOptions = {
+export function createAppValidationPipe(): ValidationPipe {
+  return new ValidationPipe({
     transform: true,
     whitelist: true,
     forbidNonWhitelisted: true,
@@ -22,13 +17,7 @@ export function createAppValidationPipe(options: AppValidationPipeOptions = {}):
         details: flattenValidationErrors(errors),
       })
     },
-  }
-
-  if (options.expectedType) {
-    pipeOptions.expectedType = options.expectedType
-  }
-
-  return new ValidationPipe(pipeOptions)
+  })
 }
 
 function flattenValidationErrors(errors: ValidationError[], parentPath = ''): string[] {

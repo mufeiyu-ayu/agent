@@ -256,7 +256,6 @@ describe('SamplingContextPlanner', () => {
         callId: 'call-emoji',
         toolName: 'tool',
         rawArgumentsJson: '{}',
-        samplingAttemptId: 'sampling-1',
       }],
       intermediateText: '',
       reasoningContent: 'reason',
@@ -313,7 +312,6 @@ describe('SamplingContextPlanner', () => {
         callId: 'call-ceiling',
         toolName: 'tool',
         rawArgumentsJson: '{"q":"emoji"}',
-        samplingAttemptId: 'sampling-1',
       }],
       intermediateText: '',
       reasoningContent: 'reason',
@@ -551,10 +549,10 @@ describe('SamplingContextPlanner 首轮历史裁剪（迁自旧的初始上下�
     })
 
     assert.equal(plan.summary.historyIncludedCount, 498)
-    // 快照 2 次（空历史、全部候选）+ plan 内 3 次（初次、清空历史、删减后复核）
+    // 快照 1 次（空历史）+ plan 内 3 次（初次、清空历史、删减后复核）
     // + excludeOldestHistory 二分 ⌈log2(1000)⌉ 次；多加一次 estimate 或改成线性都会越界。
     assert.ok(
-      estimator.callCount <= 2 + 3 + Math.ceil(Math.log2(history.length)),
+      estimator.callCount <= 1 + 3 + Math.ceil(Math.log2(history.length)),
       `estimate 调用 ${estimator.callCount} 次`,
     )
   })
@@ -576,25 +574,17 @@ describe('summarizeInitialContext', () => {
     tokenEstimator: input.estimator ?? new MessageCountTokenEstimator(),
   })
 
-  it('计数取裁剪前值，全部候选估算可超预算而不裁剪', () => {
+  it('计数取裁剪前值，只估算必带内容，不裁剪也不估算全部候选', () => {
     const history = historyMessages(60, index => `history-${index}`)
     const summary = summarize({ history, candidateHardLimit: 1_000 })
 
     assert.deepEqual(summary, {
       resolvedModel: 'deepseek-v4-flash',
-      contextWindowTokens: 17_010,
-      applicationInputCapTokens: 262_144,
       resolvedInputBudgetTokens: 526,
-      resolvedMaxOutputTokens: 100,
-      safetyMarginTokens: 16_384,
-      estimatedMandatoryTokens: 20,
-      historyBudgetTokens: 506,
-      estimatedInputTokens: 620,
       historyCandidateCount: 60,
       historyIncludedCount: 60,
       historyExcludedCount: 0,
       excludedReason: null,
-      estimatorStrategyId: 'test-message-count',
     })
   })
 
@@ -775,7 +765,6 @@ function appendExchange(
       callId,
       toolName: 'tool',
       rawArgumentsJson: JSON.stringify({ q: callId }),
-      samplingAttemptId: `sampling-${callId}`,
     }],
     intermediateText: `intermediate-${callId}`,
     reasoningContent: `reason-${callId}`,

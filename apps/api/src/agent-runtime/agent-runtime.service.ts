@@ -22,6 +22,10 @@ import type { TokenEstimator } from './context/deepseek-v4-token-estimator.js'
 import type { InitialContextSummary } from './context/initial-context.js'
 import type { SamplingContextPlanSummary } from './context/sampling-context-planner.js'
 import type { GroundedFinalizationAttemptSummary } from './grounding/grounded-answer.finalizer.js'
+import type {
+  CloseAgentStepInput,
+  CloseAgentStepMetadata,
+} from './lifecycle/agent-run-recorder.service.js'
 import type { RunCancellation } from './lifecycle/run-cancellation.js'
 import type { DebugModelIOCaptured } from './sampling/model-io-debug-capture.js'
 
@@ -36,7 +40,6 @@ import {
   DatabaseCommitOutcomeUnknownError,
   PrismaService,
 } from '../prisma/prisma.service.js'
-import { toModelToolSpec } from '../tools/core/model-tool-spec.mapper.js'
 import { ToolInvocationService } from '../tools/core/tool-invocation.service.js'
 import {
   normalizeToolObservation,
@@ -44,6 +47,7 @@ import {
 } from '../tools/core/tool-observation.js'
 import { ToolRegistryService } from '../tools/core/tool-registry.service.js'
 import { normalizeToolStepSummary } from '../tools/core/tool-step-summary.js'
+import { TOOL_DEFINITIONS } from '../tools/tool-definitions.js'
 import {
   AgentLoopLimitExceededError,
   AgentRunDeadlineExceededError,
@@ -84,29 +88,10 @@ import {
 } from './sampling/model-io-debug-capture.js'
 import { streamModelSampling } from './sampling/model-sampling-decision.js'
 
-/** 单次 Agent Run 允许暴露给模型的 Tool allowlist；顺序即暴露顺序。 */
-const AGENT_RUN_TOOL_NAMES = [
-  'search_articles',
-  'get_article_detail',
-  'retrieve_article_context',
-] as const
-
-interface TerminalStepFailure {
-  id: string
-  errorMessage: string
-  output?: Prisma.InputJsonValue
-}
-
-/** 失败 / 中断收口时仍需保留 output 的 Step。 */
-interface TerminalStepMetadata {
-  id: string
-  output: Prisma.InputJsonValue
-}
-
 interface ActiveSamplingClose {
   close: () => Promise<void>
   debugModelIO: DebugModelIOCaptured
-  toMetadata: () => TerminalStepMetadata | undefined
+  toMetadata: () => CloseAgentStepMetadata | undefined
 }
 
 @Injectable()
@@ -144,14 +129,14 @@ export class AgentRuntimeService {
     let agentRunId: string | undefined
     let content = ''
     let runCancellation: RunCancellation | undefined
-    let terminalStepFailure: TerminalStepFailure | undefined
+    let terminalStepFailure: CloseAgentStepInput | undefined
     // 终态收口是否已由正常完成或 catch 接管。消费者提前 return()（如
     // for-await break）会让 yield 点以 return 语义恢复、跳过 catch，
     // 此时只有 finally 有机会兜底收口。
     let terminalizationHandled = false
     // 失败 / return 时仍需落库的最新安全 output；action sampling 与
     // finalization 不会同时处于 RUNNING，因此复用一个 metadata 槽位。
-    let terminalStepMetadata: TerminalStepMetadata | undefined
+    let terminalStepMetadata: CloseAgentStepMetadata | undefined
     let activeSamplingClose: ActiveSamplingClose | undefined
 
     try {
@@ -515,7 +500,7 @@ export class AgentRuntimeService {
             input: {
               callId: call.callId,
               toolName: call.toolName,
-              samplingAttemptId: call.samplingAttemptId,
+              samplingAttemptId,
             },
           }, databaseDeadline)
           let toolResult: ToolResult
@@ -538,12 +523,7 @@ export class AgentRuntimeService {
             else {
               toolResult = await this.toolInvocationService.invoke(
                 call,
-                {
-                  runId: currentAgentRunId,
-                  conversationId: input.conversationId,
-                  signal: runSignal,
-                  databaseDeadline,
-                },
+                { signal: runSignal, databaseDeadline },
               )
             }
             runCancellation.throwIfUnavailable()
@@ -637,7 +617,7 @@ export class AgentRuntimeService {
       runCancellation.throwIfUnavailable()
 
       let grounding: MessageGroundingV1 | undefined
-      let finalizationCommit: TerminalStepMetadata | undefined
+      let finalizationCommit: CloseAgentStepMetadata | undefined
 
       if (evidenceRegistry) {
         const finalizationStep = await this.agentRunRecorderService.startStep({
@@ -801,7 +781,7 @@ export class AgentRuntimeService {
       }
 
       const userAborted = runCancellation?.source === 'user'
-        || (!runCancellation && this.isAbortSignalTriggered(input.signal))
+        || (!runCancellation && (input.signal?.aborted ?? false))
       const runCause = runCancellation?.reason ?? error
 
       runCancellation?.dispose()
@@ -993,7 +973,8 @@ export class AgentRuntimeService {
     input: RunTurnStreamInput,
     runtimePolicy: AgentRuntimePolicy,
   ) {
-    const toolDefinitions = AGENT_RUN_TOOL_NAMES.flatMap((name) => {
+    // allowlist 就是 TOOL_DEFINITIONS 的顺序；定义仍以 Registry 实际注册的为准。
+    const toolDefinitions = TOOL_DEFINITIONS.flatMap(({ name }) => {
       const definition = this.toolRegistryService.get(name)?.definition
 
       if (!definition) {
@@ -1004,9 +985,14 @@ export class AgentRuntimeService {
 
       return [definition]
     })
+    // 模型只看到名称、说明与输入 Schema；timeout、Observation 预算与 evidence policy 留在服务端。
     const modelTools = runtimePolicy.maxToolCalls === 0
       ? []
-      : toolDefinitions.map(toModelToolSpec)
+      : toolDefinitions.map(definition => ({
+          name: definition.name,
+          description: definition.description,
+          inputSchema: definition.input.schema,
+        }))
     const request = this.llmService.resolveChatRequestConfig({
       ...(input.model ? { model: input.model } : {}),
       ...(input.reasoningEffort === undefined
@@ -1088,17 +1074,8 @@ export class AgentRuntimeService {
   private toLlmMessage(message: Message): MessageInputItem {
     return {
       type: 'message',
-      role: this.toLlmRole(message.role),
+      role: message.role === MessageRole.USER ? 'user' : 'assistant',
       content: message.content,
-    }
-  }
-
-  private toLlmRole(role: PrismaMessageRole): MessageInputItem['role'] {
-    switch (role) {
-      case MessageRole.USER:
-        return 'user'
-      case MessageRole.ASSISTANT:
-        return 'assistant'
     }
   }
 
@@ -1324,13 +1301,9 @@ export class AgentRuntimeService {
         : {}),
     }
   }
-
-  private isAbortSignalTriggered(signal: AbortSignal | undefined): boolean {
-    return signal?.aborted ?? false
-  }
 }
 
-/** 落库的裁剪前快照只保留 Admin 读取的四个字段；其余仍在内存对象里参与预算计算。 */
+/** 落库的裁剪前快照只保留 Admin 读取的四个字段；另两个计数写入 load_conversation_history 的 output。 */
 function toPersistedInitialContext(
   initialContext: InitialContextSummary,
 ): Prisma.InputJsonObject {

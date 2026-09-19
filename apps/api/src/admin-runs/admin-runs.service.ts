@@ -22,7 +22,8 @@ import {
 const DEFAULT_PAGE = 1
 const DEFAULT_PAGE_SIZE = 20
 
-const ADMIN_RUN_LIST_SELECT = {
+/** 列表页读取的列；projector 的输入类型直接由它派生。 */
+export const ADMIN_RUN_LIST_SELECT = {
   id: true,
   conversationId: true,
   status: true,
@@ -56,7 +57,7 @@ const ADMIN_RUN_LIST_SELECT = {
   },
 } as const satisfies Prisma.AgentRunSelect
 
-const ADMIN_RUN_DETAIL_SELECT = {
+export const ADMIN_RUN_DETAIL_SELECT = {
   id: true,
   conversationId: true,
   assistantMessageId: true,

@@ -109,7 +109,6 @@ export async function* streamModelSampling(
         callId: toolCall.providerCallId,
         toolName: toolCall.name,
         rawArgumentsJson: toolCall.argumentsJson,
-        samplingAttemptId,
       })),
       intermediateText: textChunks.join(''),
       reasoningContent,

@@ -11,7 +11,7 @@ import type {
 } from '../core/tool.types.js'
 import type {
   RetrieveArticleContextInput,
-  RetrieveArticleContextOutput,
+  RetrievedArticleSource,
 } from './retrieve-article-context.tool.js'
 import assert from 'node:assert/strict'
 // 项目本轮使用 Node 原生测试运行器，不引入额外测试框架。
@@ -20,7 +20,6 @@ import { describe, it } from 'node:test'
 
 import { EmbeddingError } from '../../embeddings/embedding-provider.js'
 import { HYBRID_RRF_STRATEGY } from '../../retrieval/retrievers/hybrid-article-retriever.js'
-import { toModelToolSpec } from '../core/model-tool-spec.mapper.js'
 import { normalizeToolEvidenceProjection } from '../core/tool-evidence.js'
 import { ToolInvocationService } from '../core/tool-invocation.service.js'
 import { ToolRegistryService } from '../core/tool-registry.service.js'
@@ -30,33 +29,12 @@ import {
 } from './retrieve-article-context.tool.js'
 
 describe('retrieve_article_context', () => {
-  it('注册模型可见定义，并声明固定 trusted-provider 的低风险只读边界', () => {
-    const { registry } = createTools()
-    const definition = registry.get('retrieve_article_context')?.definition
-
-    assert.ok(definition)
-    assert.equal(definition, retrieveArticleContextDefinition)
-    assert.deepEqual(definition.risk, {
-      level: 'low',
-      sideEffect: 'none',
-      network: 'trusted_provider',
-    })
-    assert.equal(definition.requiresApproval, false)
-    assert.equal(definition.idempotent, true)
-    assert.equal(definition.version, '1')
-    assert.equal(definition.timeoutMs, 30_000)
-    assert.equal(definition.maxObservationChars, 8_000)
-    assert.deepEqual(toModelToolSpec(definition), {
-      name: 'retrieve_article_context',
-      description: definition.description,
-      inputSchema: definition.input.schema,
-    })
-    // 模型可见 schema 不暴露数据库、embedding、score 或网络目标调参能力。
+  it('模型可见 schema 不暴露数据库、embedding、score 或网络目标调参能力', () => {
     assert.deepEqual(
-      Object.keys(definition.input.schema.properties).sort(),
+      Object.keys(retrieveArticleContextDefinition.input.schema.properties).sort(),
       ['languageCode', 'limit', 'query'],
     )
-    assert.equal(definition.input.schema.additionalProperties, false)
+    assert.equal(retrieveArticleContextDefinition.input.schema.additionalProperties, false)
   })
 
   it('limit 缺省为 3，并把规范化 query 交给 Hybrid Retriever', async () => {
@@ -159,42 +137,32 @@ describe('retrieve_article_context', () => {
     if (!result.ok)
       return
 
-    const data = result.data as RetrieveArticleContextOutput
-
-    assert.deepEqual(data, {
-      kind: 'article_retrieval_candidates',
-      query: 'SEO',
-      status: 'candidates_returned',
-      answerStatus: 'unverified',
-      strategy: { name: 'hybrid_rrf', version: '1' },
-      sourceCount: 2,
-      sources: [
-        {
-          sourceId: 7,
-          slug: 'seo-basics',
-          title: 'SEO 基础',
-          languageCode: 'zh-cn',
-          rank: 1,
-          excerpt: 'SEO 的核心是让搜索引擎理解页面。',
-          evidence: {
-            chunkId: 'article-7-chunk-2',
-            sectionPath: '正文 > 核心概念',
-          },
+    assert.match(
+      result.modelContent,
+      new RegExp(`strategy=${HYBRID_RRF_STRATEGY.name}@${HYBRID_RRF_STRATEGY.version} \\| status=candidates_returned \\| answer_status=unverified \\| source_count=2`),
+    )
+    assert.deepEqual(readModelSources(result.modelContent), [
+      {
+        sourceId: 7,
+        slug: 'seo-basics',
+        title: 'SEO 基础',
+        languageCode: 'zh-cn',
+        rank: 1,
+        excerpt: 'SEO 的核心是让搜索引擎理解页面。',
+        evidence: {
+          chunkId: 'article-7-chunk-2',
+          sectionPath: '正文 > 核心概念',
         },
-        {
-          sourceId: 9,
-          slug: 'lexical-only',
-          title: '仅词面命中',
-          languageCode: 'zh-cn',
-          rank: 2,
-          excerpt: '词面命中没有 chunk 证据。',
-        },
-      ],
-    })
-    assert.deepEqual(data.strategy, {
-      name: HYBRID_RRF_STRATEGY.name,
-      version: HYBRID_RRF_STRATEGY.version,
-    })
+      },
+      {
+        sourceId: 9,
+        slug: 'lexical-only',
+        title: '仅词面命中',
+        languageCode: 'zh-cn',
+        rank: 2,
+        excerpt: '词面命中没有 chunk 证据。',
+      },
+    ])
 
     const serialized = JSON.stringify(result)
 
@@ -304,13 +272,11 @@ describe('retrieve_article_context', () => {
     if (!result.ok)
       return
 
-    const data = result.data as RetrieveArticleContextOutput
-
-    assert.equal(data.status, 'no_candidates')
-    assert.equal(data.sourceCount, 0)
-    assert.deepEqual(data.sources, [])
-    assert.equal(data.answerStatus, 'unverified')
-    assert.match(result.modelContent, /status=no_candidates/)
+    assert.equal(result.stepSummary?.status, 'no_candidates')
+    assert.equal(result.stepSummary?.sourceCount, 0)
+    assert.deepEqual(result.stepSummary?.sources, [])
+    assert.equal(result.stepSummary?.answerStatus, 'unverified')
+    assert.match(result.modelContent, /status=no_candidates \| answer_status=unverified \| source_count=0/)
     assert.match(result.modelContent, /没有返回任何候选资料/)
     assert.match(result.modelContent, /不要凭空补全/)
   })
@@ -389,20 +355,20 @@ describe('retrieve_article_context', () => {
     if (!result.ok)
       return
 
-    const data = result.data as RetrieveArticleContextOutput
-
-    assert.equal(data.sources.length, 5)
-    assert.equal(data.sourceCount, 5)
-    assert.deepEqual(data.sources.map(source => source.sourceId), [1, 2, 3, 4, 5])
+    assert.match(result.modelContent, /source_count=5/)
+    assert.deepEqual(
+      readModelSources(result.modelContent).map(source => source.sourceId),
+      [1, 2, 3, 4, 5],
+    )
     assert.deepEqual(result.stepSummary?.sourceCount, 5)
     assert.equal((result.stepSummary?.sources as unknown[]).length, 5)
     assert.equal(result.stepSummary?.chunkEvidenceCount, 5)
 
     // 第 6 条不得出现在任何一种投影里。
     for (const projection of [
-      JSON.stringify(data),
       result.modelContent,
       JSON.stringify(result.stepSummary),
+      JSON.stringify(result.evidence),
     ]) {
       assert.equal(projection.includes('article-6'), false)
       assert.equal(projection.includes('第 6 条候选正文'), false)
@@ -427,11 +393,8 @@ describe('retrieve_article_context', () => {
     if (!result.ok)
       return
 
-    const data = result.data as RetrieveArticleContextOutput
-
-    assert.equal(data.sources.length, 1)
-    assert.equal(data.sourceCount, 1)
-    assert.equal(data.sources[0]?.sourceId, 1)
+    assert.match(result.modelContent, /source_count=1/)
+    assert.deepEqual(readModelSources(result.modelContent).map(source => source.sourceId), [1])
     assert.deepEqual(result.stepSummary?.sourceCount, 1)
   })
 
@@ -450,9 +413,7 @@ describe('retrieve_article_context', () => {
     if (!result.ok)
       return
 
-    const data = result.data as RetrieveArticleContextOutput
-
-    assert.equal([...(data.sources[0]?.excerpt ?? '')].length, 500)
+    assert.equal([...(readModelSources(result.modelContent)[0]?.excerpt ?? '')].length, 500)
   })
 
   it('Embedding 配置缺失与 Provider 失败都收敛为脱敏 execution_failed', async () => {
@@ -590,6 +551,11 @@ class FakeRetriever implements ArticleRetriever<DatabaseArticleRetrievalExecutio
   }
 }
 
+/** modelContent 最后一行就是交给模型的候选来源 JSON。 */
+function readModelSources(modelContent: string): RetrievedArticleSource[] {
+  return JSON.parse(modelContent.slice(modelContent.lastIndexOf('\n') + 1)) as RetrievedArticleSource[]
+}
+
 function createHit(
   overrides: Partial<ArticleRetrievalResult['hits'][number]> = {},
 ): ArticleRetrievalResult['hits'][number] {
@@ -630,7 +596,6 @@ function createEnvelope(input: Record<string, unknown>) {
     callId: 'call-retrieve-1',
     toolName: 'retrieve_article_context',
     rawArgumentsJson: JSON.stringify(input),
-    samplingAttemptId: 'sampling-1',
   }
 }
 
@@ -638,10 +603,7 @@ function createValidatedInvocation(
   input: RetrieveArticleContextInput,
 ): ValidatedToolInvocation<RetrieveArticleContextInput> {
   return {
-    callId: 'call-retrieve-1',
     toolName: 'retrieve_article_context',
-    toolVersion: '1',
-    samplingAttemptId: 'sampling-1',
     input,
   }
 }
@@ -650,8 +612,6 @@ function createContext(
   signal = new AbortController().signal,
 ): ToolExecutionContext {
   return {
-    runId: 'run-1',
-    conversationId: 'conversation-1',
     databaseDeadline: createDatabaseDeadline(signal),
     signal,
   }

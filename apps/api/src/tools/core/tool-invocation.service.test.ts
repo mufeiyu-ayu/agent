@@ -19,10 +19,6 @@ interface EchoInput {
   message: string
 }
 
-interface EchoOutput {
-  echoed: string
-}
-
 describe('ToolInvocationService', () => {
   it('未知工具返回结构化失败', async () => {
     const service = new ToolInvocationService(new ToolRegistryService())
@@ -42,7 +38,7 @@ describe('ToolInvocationService', () => {
     const registry = new ToolRegistryService()
     registry.register(createEchoTool('echo', async () => {
       executionCount += 1
-      return { ok: true, data: { echoed: 'unexpected' }, modelContent: 'unexpected' }
+      return { ok: true, modelContent: 'unexpected' }
     }))
     const service = new ToolInvocationService(registry)
     const invalidArguments = [
@@ -65,7 +61,7 @@ describe('ToolInvocationService', () => {
     assert.equal(executionCount, 0)
   })
 
-  it('合法调用只把已验证参数与 Registry 版本交给 Executor', async () => {
+  it('合法调用只把已验证参数交给 Executor', async () => {
     let receivedInvocation: ValidatedToolInvocation<EchoInput> | undefined
     let receivedContext: ToolExecutionContext | undefined
     const registry = new ToolRegistryService()
@@ -74,7 +70,6 @@ describe('ToolInvocationService', () => {
       receivedContext = context
       return {
         ok: true,
-        data: { echoed: invocation.input.message },
         modelContent: invocation.input.message,
       }
     }))
@@ -86,19 +81,13 @@ describe('ToolInvocationService', () => {
 
     assert.deepEqual(result, {
       ok: true,
-      data: { echoed: 'hello' },
       modelContent: 'hello',
     })
     assert.deepEqual(receivedInvocation, {
-      callId: 'call-1',
       toolName: 'echo',
-      toolVersion: '1',
-      samplingAttemptId: 'sampling-2',
       input: { message: 'hello' },
     })
     assert.ok(receivedContext)
-    assert.equal(receivedContext.runId, context.runId)
-    assert.equal(receivedContext.conversationId, context.conversationId)
     assert.notEqual(receivedContext.databaseDeadline, context.databaseDeadline)
     assert.equal(receivedContext.databaseDeadline.signal, receivedContext.signal)
     assert.ok(receivedContext.databaseDeadline.deadlineAt >= startedAt)
@@ -167,84 +156,12 @@ describe('ToolInvocationService', () => {
     )
   })
 
-  it('拒绝当前阶段不支持的风险和审批配置，且不执行工具', async () => {
-    let executionCount = 0
-    const execute: ToolExecutor<EchoInput, EchoOutput>['execute'] = async () => {
-      executionCount += 1
-      return { ok: true, data: { echoed: 'unexpected' }, modelContent: 'unexpected' }
-    }
-    const approvalTool = createEchoTool('approval_tool', execute)
-    const mediumRiskTool = createEchoTool('medium_risk_tool', execute)
-    const writeTool = createEchoTool('write_tool', execute)
-    const highRiskTool = createEchoTool('high_risk_tool', execute)
-    const arbitraryNetworkTool = createEchoTool('arbitrary_network_tool', execute)
-    const nonIdempotentTool = createEchoTool('non_idempotent_tool', execute)
-    approvalTool.definition.requiresApproval = true
-    mediumRiskTool.definition.risk.level = 'medium'
-    highRiskTool.definition.risk.level = 'high'
-    writeTool.definition.risk.sideEffect = 'external_write'
-    arbitraryNetworkTool.definition.risk.network = 'arbitrary'
-    // 非幂等工具即使只访问固定可信 Provider 也必须 fail closed。
-    nonIdempotentTool.definition.idempotent = false
-    nonIdempotentTool.definition.risk.network = 'trusted_provider'
-
-    const registry = new ToolRegistryService()
-    const tools = [
-      approvalTool,
-      mediumRiskTool,
-      highRiskTool,
-      writeTool,
-      arbitraryNetworkTool,
-      nonIdempotentTool,
-    ]
-
-    for (const tool of tools)
-      registry.register(tool)
-
-    const service = new ToolInvocationService(registry)
-
-    for (const tool of tools) {
-      const result = await service.invoke(
-        createEnvelope(tool.definition.name),
-        createContext(),
-      )
-
-      assert.equal(result.ok, false)
-      assert.equal(result.ok ? undefined : result.code, 'execution_failed')
-    }
-
-    assert.equal(executionCount, 0)
-  })
-
-  it('允许 low-risk、无副作用、幂等的 none / trusted_provider 工具执行', async () => {
-    for (const network of ['none', 'trusted_provider'] as const) {
-      let executionCount = 0
-      const tool = createEchoTool(`${network}_tool`, async () => {
-        executionCount += 1
-        return { ok: true, data: { echoed: 'ok' }, modelContent: 'ok' }
-      })
-      tool.definition.risk.network = network
-
-      const registry = new ToolRegistryService()
-      registry.register(tool)
-
-      const result = await new ToolInvocationService(registry).invoke(
-        createEnvelope(tool.definition.name),
-        createContext(),
-      )
-
-      assert.equal(result.ok, true, `network=${network} 应允许执行`)
-      assert.equal(executionCount, 1)
-      assert.equal(tool.definition.idempotent, true)
-    }
-  })
-
   it('已触发的 AbortSignal 优先于工具查找和参数验证，且不执行工具', async () => {
     let executionCount = 0
     const registry = new ToolRegistryService()
     registry.register(createEchoTool('echo', async () => {
       executionCount += 1
-      return { ok: true, data: { echoed: 'unexpected' }, modelContent: 'unexpected' }
+      return { ok: true, modelContent: 'unexpected' }
     }))
     const service = new ToolInvocationService(registry)
     const abortController = new AbortController()
@@ -271,7 +188,7 @@ describe('ToolInvocationService', () => {
     const registry = new ToolRegistryService()
     registry.register(createEchoTool('echo', async () => {
       abortController.abort()
-      return { ok: true, data: { echoed: 'unexpected' }, modelContent: 'unexpected' }
+      return { ok: true, modelContent: 'unexpected' }
     }))
     const service = new ToolInvocationService(registry)
 
@@ -400,7 +317,6 @@ describe('ToolInvocationService', () => {
         if (lateOutcome === 'resolve') {
           deferred.resolve({
             ok: true,
-            data: { echoed: 'late' },
             modelContent: 'late',
           })
         }
@@ -430,7 +346,6 @@ describe('ToolInvocationService', () => {
       executionSignal = context.signal
       return {
         ok: true,
-        data: { echoed: invocation.input.message },
         modelContent: invocation.input.message,
       }
     })
@@ -451,12 +366,11 @@ describe('ToolInvocationService', () => {
 
 function createEchoTool(
   name = 'echo',
-  execute: ToolExecutor<EchoInput, EchoOutput>['execute'] = async invocation => ({
+  execute: ToolExecutor<EchoInput>['execute'] = async invocation => ({
     ok: true,
-    data: { echoed: invocation.input.message },
     modelContent: invocation.input.message,
   }),
-): RegisteredTool<EchoInput, EchoOutput> {
+): RegisteredTool<EchoInput> {
   return {
     definition: {
       name,
@@ -473,9 +387,6 @@ function createEchoTool(
       },
       timeoutMs: 1_000,
       maxObservationChars: 8_000,
-      requiresApproval: false,
-      idempotent: true,
-      risk: { level: 'low', sideEffect: 'none', network: 'none' },
       evidencePolicy: 'discovery_only',
     },
     executor: { execute },
@@ -509,14 +420,11 @@ function createEnvelope(toolName = 'echo') {
     callId: 'call-1',
     toolName,
     rawArgumentsJson: '{"message":"hello"}',
-    samplingAttemptId: 'sampling-2',
   }
 }
 
 function createContext(signal = new AbortController().signal): ToolExecutionContext {
   return {
-    runId: 'run-1',
-    conversationId: 'conversation-1',
     databaseDeadline: createDatabaseDeadline(signal),
     signal,
   }
@@ -553,13 +461,13 @@ function createWatchdog(durationMs: number): {
 }
 
 function createDeferredToolResult(): {
-  promise: Promise<ToolResult<EchoOutput>>
-  resolve: (result: ToolResult<EchoOutput>) => void
+  promise: Promise<ToolResult>
+  resolve: (result: ToolResult) => void
   reject: (reason: unknown) => void
 } {
-  let resolve!: (result: ToolResult<EchoOutput>) => void
+  let resolve!: (result: ToolResult) => void
   let reject!: (reason: unknown) => void
-  const promise = new Promise<ToolResult<EchoOutput>>((done, fail) => {
+  const promise = new Promise<ToolResult>((done, fail) => {
     resolve = done
     reject = fail
   })

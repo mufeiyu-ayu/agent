@@ -4,7 +4,7 @@ import type {
   ModelStreamEvent,
 } from '@agent/ai'
 import type { MessageGroundingV1 } from '@agent/contracts'
-import type { Message, Prisma } from '../../generated/prisma/client.js'
+import type { Message, MessageGrounding, Prisma } from '../../generated/prisma/client.js'
 import type { LLMService } from '../../llm/llm.service.js'
 import type {
   DatabaseOperationDeadline,
@@ -153,8 +153,8 @@ describe('Grounded finalization 路径', () => {
         ]),
       ],
       toolResults: [
-        { ok: true, data: {}, modelContent: '候选资料', evidence: RETRIEVAL_EVIDENCE },
-        { ok: true, data: {}, modelContent: '搜索结果' },
+        { ok: true, modelContent: '候选资料', evidence: RETRIEVAL_EVIDENCE },
+        { ok: true, modelContent: '搜索结果' },
       ],
     })
 
@@ -209,7 +209,7 @@ describe('Grounded finalization 路径', () => {
         ]),
       ],
       toolResults: [
-        { ok: true, data: {}, modelContent: '候选资料', evidence: RETRIEVAL_EVIDENCE },
+        { ok: true, modelContent: '候选资料', evidence: RETRIEVAL_EVIDENCE },
       ],
     })
 
@@ -276,7 +276,6 @@ describe('Grounded finalization 路径', () => {
       ],
       toolResults: [{
         ok: true,
-        data: {},
         modelContent: '候选资料',
         evidence: RETRIEVAL_EVIDENCE,
       }],
@@ -348,7 +347,6 @@ describe('Grounded finalization 路径', () => {
       ],
       toolResults: [{
         ok: true,
-        data: {},
         modelContent: '候选资料',
         evidence: RETRIEVAL_EVIDENCE,
       }],
@@ -395,7 +393,6 @@ describe('Grounded finalization 路径', () => {
       ],
       toolResults: [{
         ok: true,
-        data: {},
         modelContent: '候选资料',
         evidence: RETRIEVAL_EVIDENCE,
       }],
@@ -457,7 +454,6 @@ describe('Grounded finalization 路径', () => {
       ],
       toolResults: [{
         ok: true,
-        data: {},
         modelContent: '候选资料',
         evidence: RETRIEVAL_EVIDENCE,
       }],
@@ -516,7 +512,6 @@ describe('Grounded finalization 路径', () => {
       ],
       toolResults: [{
         ok: true,
-        data: {},
         modelContent: '候选资料',
         evidence: RETRIEVAL_EVIDENCE,
       }],
@@ -568,7 +563,6 @@ describe('Grounded finalization 路径', () => {
       ],
       toolResults: [{
         ok: true,
-        data: {},
         modelContent: '候选资料',
         evidence: RETRIEVAL_EVIDENCE,
       }],
@@ -660,7 +654,6 @@ describe('Grounded finalization 路径', () => {
       ],
       toolResults: [{
         ok: true,
-        data: {},
         modelContent: '没有候选',
         evidence: { refs: [] },
       }],
@@ -702,7 +695,6 @@ describe('Grounded finalization 路径', () => {
       toolResults: [
         {
           ok: true,
-          data: {},
           modelContent: '候选资料',
           evidence: RETRIEVAL_EVIDENCE,
         },
@@ -745,7 +737,6 @@ describe('Grounded finalization 路径', () => {
       // 与真实工具命中时的返回一致：只提交 evidence，没有 stepSummary。
       toolResults: [{
         ok: true,
-        data: { sourceId: 301, found: true },
         modelContent: '{"sourceId":301,"found":true}',
         evidence: ARTICLE_DETAIL_EVIDENCE,
       }],
@@ -828,7 +819,6 @@ describe('Grounded finalization 路径', () => {
       ],
       toolResults: [{
         ok: true,
-        data: {},
         modelContent: '候选资料',
         evidence: RETRIEVAL_EVIDENCE,
       }],
@@ -865,7 +855,6 @@ describe('Grounded finalization 路径', () => {
       ],
       toolResults: [{
         ok: true,
-        data: {},
         modelContent: '候选资料',
         evidence: RETRIEVAL_EVIDENCE,
       }],
@@ -905,7 +894,6 @@ describe('Grounded finalization 路径', () => {
       ],
       toolResults: [{
         ok: true,
-        data: {},
         modelContent: '候选资料',
         evidence: RETRIEVAL_EVIDENCE,
       }],
@@ -975,10 +963,9 @@ describe('Grounded finalization 路径', () => {
         ]),
       ],
       toolResults: [
-        { ok: true, data: {}, modelContent: 'a', evidence: manyRefs },
+        { ok: true, modelContent: 'a', evidence: manyRefs },
         {
           ok: true,
-          data: {},
           modelContent: 'b',
           evidence: {
             refs: manyRefs.refs.map(ref => ({
@@ -990,7 +977,6 @@ describe('Grounded finalization 路径', () => {
         },
         {
           ok: true,
-          data: {},
           modelContent: 'c',
           evidence: {
             refs: manyRefs.refs.map(ref => ({
@@ -1052,7 +1038,6 @@ describe('Grounded finalization Context 信任边界', () => {
       ],
       toolResults: [{
         ok: true,
-        data: {},
         modelContent: '候选资料',
         evidence: injectionEvidence,
       }],
@@ -1160,7 +1145,6 @@ describe('Grounded finalization 终态原子性', () => {
       ],
       toolResults: [{
         ok: true,
-        data: {},
         modelContent: '候选资料',
         evidence: RETRIEVAL_EVIDENCE,
       }],
@@ -1282,7 +1266,6 @@ describe('Grounded finalization 终态原子性', () => {
       ],
       toolResults: [{
         ok: true,
-        data: {},
         modelContent: '候选资料',
         evidence: RETRIEVAL_EVIDENCE,
       }],
@@ -1338,7 +1321,6 @@ describe('Grounded finalization 终态原子性', () => {
       ],
       toolResults: [{
         ok: true,
-        data: {},
         modelContent: '候选资料',
         evidence: RETRIEVAL_EVIDENCE,
       }],
@@ -1383,7 +1365,6 @@ describe('Grounded finalization 终态流完整性', () => {
       ],
       toolResults: [{
         ok: true,
-        data: {},
         modelContent: '候选资料',
         evidence: RETRIEVAL_EVIDENCE,
       }],
@@ -1656,7 +1637,6 @@ function createHarness(options: CreateHarnessOptions) {
 
       return result ?? {
         ok: true as const,
-        data: {},
         modelContent: '工具结果',
       }
     },
@@ -1747,7 +1727,8 @@ function projectHarnessRunDetail(harness: ReturnType<typeof createHarness>) {
       content: assistantMessage.content,
       createdAt: assistantMessage.createdAt,
       updatedAt: assistantMessage.updatedAt,
-      grounding: harness.recorder.completedGrounding ?? null,
+      // 真实行还带 messageId / createdAt / updatedAt，projector 不读；这里只按写入的 Grounding 事实投影。
+      grounding: (harness.recorder.completedGrounding ?? null) as unknown as MessageGrounding | null,
     },
     steps: harness.recorder.steps.map(step => ({
       id: step.id,
@@ -1779,9 +1760,6 @@ const eligibleDefinition: ToolDefinition = {
   },
   timeoutMs: 30_000,
   maxObservationChars: 8_000,
-  requiresApproval: false,
-  idempotent: true,
-  risk: { level: 'low', sideEffect: 'none', network: 'trusted_provider' },
   evidencePolicy: 'eligible',
 }
 
@@ -1789,7 +1767,6 @@ const detailDefinition: ToolDefinition = {
   ...eligibleDefinition,
   name: 'get_article_detail',
   description: '按 sourceId 读取整篇文章。',
-  risk: { level: 'low', sideEffect: 'none', network: 'none' },
   evidencePolicy: 'eligible',
 }
 
@@ -1797,7 +1774,6 @@ const discoveryDefinition: ToolDefinition = {
   ...eligibleDefinition,
   name: 'search_articles',
   description: '按关键词发现文章。',
-  risk: { level: 'low', sideEffect: 'none', network: 'none' },
   evidencePolicy: 'discovery_only',
 }
 

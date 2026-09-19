@@ -1,56 +1,19 @@
-import assert from 'node:assert/strict'
-import process from 'node:process'
+import type { GetArticleDetailTool } from './articles/get-article-detail.tool.js'
+import type { SearchArticlesTool } from './articles/search-articles.tool.js'
 
+import assert from 'node:assert/strict'
+
+import process from 'node:process'
 // 项目本轮使用 Node 原生测试运行器，不引入额外测试框架。
 // eslint-disable-next-line test/no-import-node-test
 import { describe, it } from 'node:test'
-
-import { PrismaModule } from '../prisma/prisma.module.js'
 import { HybridArticleRetrievalRuntime } from '../retrieval/hybrid-article-retrieval.runtime.js'
-import { PrismaArticleRetriever } from '../retrieval/retrievers/prisma-article-retriever.js'
-import { GetArticleDetailTool } from './articles/get-article-detail.tool.js'
-import { SearchArticlesTool } from './articles/search-articles.tool.js'
-import { ToolInvocationService } from './core/tool-invocation.service.js'
 import { ToolRegistryService } from './core/tool-registry.service.js'
 import { RetrieveArticleContextTool } from './retrieval/retrieve-article-context.tool.js'
+import { TOOL_DEFINITIONS } from './tool-definitions.js'
 import { ToolsModule } from './tools.module.js'
 
 describe('ToolsModule', () => {
-  it('ToolsModule 提供并导出 Registry 与 InvocationService', () => {
-    const imports = Reflect.getMetadata('imports', ToolsModule)
-    const providers = Reflect.getMetadata('providers', ToolsModule)
-    const exports = Reflect.getMetadata('exports', ToolsModule)
-    const registry = new ToolRegistryService()
-    const searchArticlesTool = {} as SearchArticlesTool
-    const getArticleDetailTool = {} as GetArticleDetailTool
-    const retrieveArticleContextTool = {} as RetrieveArticleContextTool
-    const toolsModule = new ToolsModule(
-      registry,
-      searchArticlesTool,
-      getArticleDetailTool,
-      retrieveArticleContextTool,
-    )
-
-    assert.ok(toolsModule)
-    assert.deepEqual(imports, [PrismaModule])
-    assert.deepEqual(providers, [
-      ToolRegistryService,
-      ToolInvocationService,
-      PrismaArticleRetriever,
-      HybridArticleRetrievalRuntime,
-      SearchArticlesTool,
-      GetArticleDetailTool,
-      RetrieveArticleContextTool,
-    ])
-    assert.deepEqual(exports, [ToolRegistryService, ToolInvocationService])
-    assert.equal(registry.get('search_articles')?.executor, searchArticlesTool)
-    assert.equal(registry.get('get_article_detail')?.executor, getArticleDetailTool)
-    assert.equal(
-      registry.get('retrieve_article_context')?.executor,
-      retrieveArticleContextTool,
-    )
-  })
-
   it('模块装配不依赖 Embedding 配置，未调用检索时不解析 GEMINI_API_KEY', () => {
     const originalApiKey = process.env.GEMINI_API_KEY
 
@@ -67,9 +30,9 @@ describe('ToolsModule', () => {
       )
 
       assert.ok(toolsModule)
-      assert.ok(registry.get('search_articles'))
-      assert.ok(registry.get('get_article_detail'))
-      assert.ok(registry.get('retrieve_article_context'))
+      // 共用清单里的每个定义都必须被模块注册，否则 Run allowlist 会暴露一个 Registry 里没有的工具。
+      for (const definition of TOOL_DEFINITIONS)
+        assert.equal(registry.get(definition.name)?.definition, definition)
     }
     finally {
       if (originalApiKey === undefined)

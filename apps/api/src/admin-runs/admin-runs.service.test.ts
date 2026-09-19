@@ -1,3 +1,4 @@
+import type { Prisma } from '../generated/prisma/client.js'
 import type { PrismaService } from '../prisma/prisma.service.js'
 import assert from 'node:assert/strict'
 // 项目使用 Node 原生测试运行器，不为 Admin 查询引入额外测试框架。
@@ -6,6 +7,7 @@ import { describe, it } from 'node:test'
 import { BadRequestException, NotFoundException } from '@nestjs/common'
 
 import { AdminRunsService } from './admin-runs.service.js'
+import { runRecord, step } from './projection/__fixtures__.js'
 import {
   projectAdminRunDetail,
   projectAdminRunListItem,
@@ -687,137 +689,108 @@ describe('AdminRunsService', () => {
 })
 
 function createRunRecord() {
-  return {
-    id: 'run-1',
-    conversationId: 'conversation-1',
-    assistantMessageId: 'message-assistant' as string | null,
-    status: 'COMPLETED' as 'RUNNING' | 'COMPLETED' | 'FAILED' | 'ABORTED',
-    startedAt: new Date('2026-08-09T00:00:00.000Z'),
-    endedAt: new Date('2026-08-09T00:00:03.000Z') as Date | null,
-    createdAt: new Date('2026-08-09T00:00:00.000Z'),
-    updatedAt: new Date('2026-08-09T00:00:03.000Z'),
-    userMessage: {
-      id: 'message-user',
-      role: 'USER' as const,
-      status: 'COMPLETED' as const,
-      content: '请检查这个页面的 SEO。',
-      createdAt: new Date('2026-08-09T00:00:00.000Z'),
-      updatedAt: new Date('2026-08-09T00:00:00.000Z'),
-    },
-    assistantMessage: {
-      id: 'message-assistant',
-      role: 'ASSISTANT' as const,
-      status: 'COMPLETED' as const,
-      content: '已经完成检查。',
-      createdAt: new Date('2026-08-09T00:00:00.100Z'),
-      updatedAt: new Date('2026-08-09T00:00:03.000Z'),
-    } as {
-      id: string
-      role: 'ASSISTANT'
-      status: 'PENDING' | 'STREAMING' | 'COMPLETED' | 'FAILED' | 'ABORTED'
-      content: string
-      createdAt: Date
-      updatedAt: Date
-    } | null,
-    steps: [
-      step(9, 'future_retrieval', {
-        input: { providerPayload: 'DO_NOT_LEAK' },
-        output: { reasoning: 'DO_NOT_LEAK' },
-      }),
-      step(8, 'assistant_output', {
-        input: { assistantMessageId: 'message-assistant', extraSecret: 'DO_NOT_LEAK' },
-        output: { providerPayload: 'DO_NOT_LEAK' },
-      }),
-      step(7, 'model_sampling', {
-        input: {
-          samplingIndex: 3,
-          samplingAttemptId: 'run-1:sampling-3',
-          reasoning: 'DO_NOT_LEAK',
-        },
-        output: {
-          samplingAttemptId: 'run-1:sampling-3',
-          messageCount: 6,
-          finishReason: 'stop',
-          usage: { inputTokens: 30, outputTokens: 10, totalTokens: 40 },
-          toolCallCount: 0,
-          providerPayload: 'DO_NOT_LEAK',
-        },
-      }),
-      step(6, 'tool_execution', {
-        status: 'FAILED',
-        input: {
-          callId: 'call-2',
-          toolName: 'get_article_detail',
-          samplingAttemptId: 'run-1:sampling-2',
-          rawArgumentsJson: 'DO_NOT_LEAK',
-        },
-        output: {
-          ok: false,
-          code: 'invalid_arguments',
-          originalChars: 0,
-          observationChars: 0,
-          truncated: false,
-          observationBody: 'DO_NOT_LEAK',
-        },
-      }),
-      step(5, 'model_sampling', {
-        input: {
-          samplingIndex: 2,
-          samplingAttemptId: 'run-1:sampling-2',
-          reasoning: 'DO_NOT_LEAK',
-        },
-        output: {
-          samplingAttemptId: 'run-1:sampling-2',
-          messageCount: 4,
-          finishReason: 'tool_calls',
-          usage: { inputTokens: 20, outputTokens: 8, totalTokens: 28 },
-          toolCallCount: 1,
-          providerPayload: 'DO_NOT_LEAK',
-        },
-      }),
-      step(4, 'tool_execution', {
-        input: {
-          callId: 'call-1',
-          toolName: 'search_articles',
-          samplingAttemptId: 'run-1:sampling-1',
-          rawArgumentsJson: 'DO_NOT_LEAK',
-        },
-        output: {
-          ok: true,
-          originalChars: 100,
-          observationChars: 80,
-          truncated: true,
-          observationBody: 'DO_NOT_LEAK',
-        },
-      }),
-      step(3, 'model_sampling', {
-        input: {
-          samplingIndex: 1,
-          samplingAttemptId: 'run-1:sampling-1',
-          reasoning: 'DO_NOT_LEAK',
-        },
-        output: {
-          samplingAttemptId: 'run-1:sampling-1',
-          messageCount: 2,
-          finishReason: 'tool_calls',
-          usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
-          toolCallCount: 1,
-          providerPayload: 'DO_NOT_LEAK',
-        },
-      }),
-      step(2, 'load_conversation_history', {
-        input: { prompt: 'DO_NOT_LEAK' },
-        output: { messageCount: 2, truncated: 'DO_NOT_LEAK' },
-      }),
-      step(1, 'receive_user_message', {
-        input: {
-          messageId: 'message-user',
-          messageLength: 14,
-          prompt: 'DO_NOT_LEAK',
-        },
-      }),
-    ],
-  }
+  const record = runRecord()
+
+  record.steps = [
+    step(9, 'future_retrieval', {
+      input: { providerPayload: 'DO_NOT_LEAK' },
+      output: { reasoning: 'DO_NOT_LEAK' },
+    }),
+    step(8, 'assistant_output', {
+      input: { assistantMessageId: 'message-assistant', extraSecret: 'DO_NOT_LEAK' },
+      output: { providerPayload: 'DO_NOT_LEAK' },
+    }),
+    step(7, 'model_sampling', {
+      input: {
+        samplingIndex: 3,
+        samplingAttemptId: 'run-1:sampling-3',
+        reasoning: 'DO_NOT_LEAK',
+      },
+      output: {
+        samplingAttemptId: 'run-1:sampling-3',
+        messageCount: 6,
+        finishReason: 'stop',
+        usage: { inputTokens: 30, outputTokens: 10, totalTokens: 40 },
+        toolCallCount: 0,
+        providerPayload: 'DO_NOT_LEAK',
+      },
+    }),
+    step(6, 'tool_execution', {
+      status: 'FAILED',
+      input: {
+        callId: 'call-2',
+        toolName: 'get_article_detail',
+        samplingAttemptId: 'run-1:sampling-2',
+        rawArgumentsJson: 'DO_NOT_LEAK',
+      },
+      output: {
+        ok: false,
+        code: 'invalid_arguments',
+        originalChars: 0,
+        observationChars: 0,
+        truncated: false,
+        observationBody: 'DO_NOT_LEAK',
+      },
+    }),
+    step(5, 'model_sampling', {
+      input: {
+        samplingIndex: 2,
+        samplingAttemptId: 'run-1:sampling-2',
+        reasoning: 'DO_NOT_LEAK',
+      },
+      output: {
+        samplingAttemptId: 'run-1:sampling-2',
+        messageCount: 4,
+        finishReason: 'tool_calls',
+        usage: { inputTokens: 20, outputTokens: 8, totalTokens: 28 },
+        toolCallCount: 1,
+        providerPayload: 'DO_NOT_LEAK',
+      },
+    }),
+    step(4, 'tool_execution', {
+      input: {
+        callId: 'call-1',
+        toolName: 'search_articles',
+        samplingAttemptId: 'run-1:sampling-1',
+        rawArgumentsJson: 'DO_NOT_LEAK',
+      },
+      output: {
+        ok: true,
+        originalChars: 100,
+        observationChars: 80,
+        truncated: true,
+        observationBody: 'DO_NOT_LEAK',
+      },
+    }),
+    step(3, 'model_sampling', {
+      input: {
+        samplingIndex: 1,
+        samplingAttemptId: 'run-1:sampling-1',
+        reasoning: 'DO_NOT_LEAK',
+      },
+      output: {
+        samplingAttemptId: 'run-1:sampling-1',
+        messageCount: 2,
+        finishReason: 'tool_calls',
+        usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
+        toolCallCount: 1,
+        providerPayload: 'DO_NOT_LEAK',
+      },
+    }),
+    step(2, 'load_conversation_history', {
+      input: { prompt: 'DO_NOT_LEAK' },
+      output: { messageCount: 2, truncated: 'DO_NOT_LEAK' },
+    }),
+    step(1, 'receive_user_message', {
+      input: {
+        messageId: 'message-user',
+        messageLength: 14,
+        prompt: 'DO_NOT_LEAK',
+      },
+    }),
+  ]
+
+  return record
 }
 
 /** #124 之前 runtime 落库的真实形状：含全部已停写字段。 */
@@ -995,26 +968,6 @@ function groundedFinalizationOutput(
   }
 }
 
-function step(
-  sequence: number,
-  type: string,
-  overrides: Record<string, unknown> = {},
-) {
-  return {
-    id: `step-${sequence}`,
-    sequence,
-    type,
-    title: `Step ${sequence}`,
-    status: 'COMPLETED' as 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'ABORTED',
-    input: null as unknown,
-    output: null as unknown,
-    errorMessage: null as string | null,
-    startedAt: new Date(`2026-08-09T00:00:0${Math.min(sequence, 9)}.000Z`) as Date | null,
-    endedAt: new Date(`2026-08-09T00:00:0${Math.min(sequence, 9)}.100Z`) as Date | null,
-    ...overrides,
-  }
-}
-
 function attachContextMetadata(record: ReturnType<typeof createRunRecord>): void {
   const samplings = record.steps
     .filter(step => step.type === 'model_sampling')
@@ -1057,7 +1010,7 @@ function attachContextMetadata(record: ReturnType<typeof createRunRecord>): void
   }
 }
 
-function safeInitialContext(): Record<string, unknown> {
+function safeInitialContext(): Prisma.JsonObject {
   return {
     resolvedModel: 'deepseek-v4-flash',
     contextWindowTokens: 1_000_000,
@@ -1078,7 +1031,7 @@ function safeInitialContext(): Record<string, unknown> {
 
 function safeContextPlan(
   overflowReason: 'minimum_context' | null,
-): Record<string, unknown> {
+): Prisma.JsonObject {
   return {
     resolvedInputBudgetTokens: 262_144,
     estimatedInputTokens: 262_145,

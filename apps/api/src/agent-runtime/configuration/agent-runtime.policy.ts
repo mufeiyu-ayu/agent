@@ -73,17 +73,12 @@ export function resolveAgentRuntimePolicy(
   }
 }
 
-/** 将单个环境变量解析为带默认值和闭区间约束的安全整数。 */
+/** 将单个环境变量解析为带默认值和闭区间约束的安全整数；未配置时返回 fallback。 */
 function resolveInteger(
-  /** 环境变量原始字符串；未配置时为 undefined。 */
   rawValue: string | undefined,
-  /** 配置项名称，仅用于生成明确的错误信息。 */
   name: string,
-  /** 未配置该环境变量时使用的默认值。 */
   fallback: number,
-  /** 允许值的下界，包含该值。 */
   minimum: number,
-  /** 允许值的上界，包含该值。 */
   maximum: number,
 ): number {
   if (rawValue === undefined)

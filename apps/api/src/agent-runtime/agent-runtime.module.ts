@@ -17,6 +17,6 @@ import { AgentRunRecorderService } from './lifecycle/agent-run-recorder.service.
     AgentRunRecorderService,
     AgentRuntimeService,
   ],
-  exports: [AgentRunRecorderService, AgentRuntimeService],
+  exports: [AgentRuntimeService],
 })
 export class AgentRuntimeModule {}

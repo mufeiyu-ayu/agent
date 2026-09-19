@@ -1,32 +1,29 @@
 import type {
-  AdminGroundedAnswerRejectionCode,
   AdminGroundedCitationSummary,
-  AdminGroundedFinalizationFailureReason,
-  AdminGroundedFinalizationSamplingFailure,
   AdminGroundedFinalizationStep,
   AdminRetrievalCallSummary,
   AdminRetrievalInspector,
   AdminRetrievalSourceRef,
   AdminRetrievalStrategy,
-  AgentStepStatus,
-  MessageEvidenceAvailability,
-  MessageGroundingOutcome,
+  AdminRunKnownTimelineItemBase,
   MessageGroundingV1,
 } from '@agent/contracts'
-import type { GroundedAnswerRejectionCode } from '../../agent-runtime/grounding/grounded-answer.contract.js'
-import type { GroundedFinalizationSamplingFailure } from '../../agent-runtime/grounding/grounded-answer.finalizer.js'
 import type { PersistedMessageGrounding } from '../../agent-runtime/grounding/message-grounding.projector.js'
+import {
+  ADMIN_GROUNDED_ANSWER_REJECTION_CODES,
+  ADMIN_GROUNDED_FINALIZATION_FAILURE_REASONS,
+  ADMIN_GROUNDED_FINALIZATION_SAMPLING_FAILURES,
+  MESSAGE_EVIDENCE_AVAILABILITIES,
+  MESSAGE_GROUNDING_OUTCOMES,
+} from '@agent/contracts'
 
 import { toOwnedMessageGroundingV1 } from '../../agent-runtime/grounding/message-grounding.projector.js'
 import { AGENT_STEP_TYPES } from '../../agent-runtime/lifecycle/agent-run-recorder.service.js'
-import { getArticleDetailDefinition } from '../../tools/articles/get-article-detail.tool.js'
-import { searchArticlesDefinition } from '../../tools/articles/search-articles.tool.js'
-import { retrieveArticleContextDefinition } from '../../tools/retrieval/retrieve-article-context.tool.js'
+import { TOOL_DEFINITIONS } from '../../tools/tool-definitions.js'
 import {
   readAllowedString,
   readNonNegativeInteger,
   readObject,
-  readPositiveInteger,
   readString,
   toPreview,
 } from './safe-readers.js'
@@ -52,97 +49,12 @@ const MAX_STRATEGY_NAME_CHARS = 64
 const MAX_STRATEGY_VERSION_CHARS = 32
 const MAX_LANGUAGE_CODE_CHARS = 32
 
-/**
- * evidence-eligible Tool 的唯一事实来源是 Tool Definition 自己声明的 policy：
- * 改动某个工具的 policy 时这份表自动跟随，不会出现 Admin 按旧 policy 归类的漂移。
- */
-const TOOL_EVIDENCE_POLICIES = new Map(
-  [
-    retrieveArticleContextDefinition,
-    getArticleDetailDefinition,
-    searchArticlesDefinition,
-  ].map(definition => [definition.name, definition.evidencePolicy] as const),
-)
-
-const EVIDENCE_AVAILABILITIES: MessageEvidenceAvailability[] = [
-  'available',
-  'partial',
-  'none',
-  'unavailable',
-]
-const GROUNDING_OUTCOMES: MessageGroundingOutcome[] = [
-  'answered',
-  'insufficient_evidence',
-  'conflicting_evidence',
-]
-const FINALIZATION_FAILURE_REASONS: AdminGroundedFinalizationFailureReason[] = [
-  'validation_failed',
-  'sampling_incomplete',
-  'finalization_incomplete',
-]
-const REJECTION_CODES: AdminGroundedAnswerRejectionCode[] = [
-  'answer_empty',
-  'answer_too_long',
-  'arguments_too_large',
-  'citation_key_invalid',
-  'citation_keys_too_many',
-  'citation_required_for_answered',
-  'citations_not_allowed_without_evidence',
-  'conflicting_requires_two_sources',
-  'malformed_json',
-  'outcome_not_allowed_for_availability',
-  'schema_invalid',
-  'submission_missing',
-  'unknown_citation_key',
-]
-const SAMPLING_FAILURES: AdminGroundedFinalizationSamplingFailure[] = [
-  'missing_response_completed',
-  'multiple_submissions',
-  'stream_failed',
-  'unexpected_finish_reason',
-  'unknown_tool_call',
-]
-
-// 契约漂移守卫：Runtime 新增或删除安全类别而公共 contract 未同步时，这里会编译失败，
-// 而不是等到线上把未知类别静默投影成 null，或让 contract 长期保留 Runtime 已不产出的死值。
-type AssertAssignable<Actual extends Expected, Expected> = Actual
-type AssertRejectionCodes = AssertAssignable<
-  GroundedAnswerRejectionCode,
-  AdminGroundedAnswerRejectionCode
->
-type AssertSamplingFailures = AssertAssignable<
-  GroundedFinalizationSamplingFailure,
-  AdminGroundedFinalizationSamplingFailure
->
-type AssertSamplingFailuresExact = AssertAssignable<
-  AdminGroundedFinalizationSamplingFailure,
-  GroundedFinalizationSamplingFailure
->
-export type AdminRetrievalContractGuards = [
-  AssertRejectionCodes,
-  AssertSamplingFailures,
-  AssertSamplingFailuresExact,
-]
-
 export interface AdminRetrievalStepRecord {
   id: string
   sequence: number
   type: string
   input: unknown
   output: unknown
-}
-
-/** `knownStepBase()` 已经产出的通用字段；避免在两个 projector 里重复计算。 */
-export interface AdminGroundedFinalizationStepBase {
-  kind: 'known'
-  id: string
-  sequence: number
-  title: string
-  status: AgentStepStatus
-  startedAt: string | null
-  endedAt: string | null
-  durationMs: number | null
-  hasError: boolean
 }
 
 export interface AdminRetrievalMessageRecord {
@@ -163,10 +75,11 @@ export function projectAdminRetrievalInspector(
     .filter(step => step.type === AGENT_STEP_TYPES.toolExecution)
     .sort((left, right) => left.sequence - right.sequence)
     .map(step => ({ step, input: readObject(step.input) }))
+    // evidence-eligible 的唯一事实来源是 Tool Definition 自己声明的 policy，Admin 不另抄一份。
     .filter(({ input: toolInput }) => {
       const toolName = readString(toolInput, 'toolName')
-      return toolName !== null
-        && TOOL_EVIDENCE_POLICIES.get(toolName) === 'eligible'
+      return TOOL_DEFINITIONS.find(definition => definition.name === toolName)
+        ?.evidencePolicy === 'eligible'
     })
     .map(({ step, input: toolInput }) => ({
       callId: readString(toolInput, 'callId'),
@@ -185,10 +98,10 @@ export function projectAdminRetrievalInspector(
   }
 }
 
-/** `grounded_finalization` 的 typed timeline 投影：逐字段读取 output。 */
+/** `grounded_finalization` 的 typed timeline 投影：逐字段读取 output；`base` 由调用方的 `knownStepBase()` 算好。 */
 export function projectGroundedFinalizationStep(
   step: AdminRetrievalStepRecord,
-  base: AdminGroundedFinalizationStepBase,
+  base: AdminRunKnownTimelineItemBase,
 ): AdminGroundedFinalizationStep {
   const output = readObject(step.output)
   const attempts = readFinalizationAttempts(step.output)
@@ -199,18 +112,26 @@ export function projectGroundedFinalizationStep(
     evidenceAvailability: readAllowedString(
       output,
       'evidenceAvailability',
-      EVIDENCE_AVAILABILITIES,
+      MESSAGE_EVIDENCE_AVAILABILITIES,
     ),
-    outcome: readAllowedString(output, 'outcome', GROUNDING_OUTCOMES),
+    outcome: readAllowedString(output, 'outcome', MESSAGE_GROUNDING_OUTCOMES),
     attemptCount: readNonNegativeInteger(output, 'attemptCount'),
     registryRefCount: readNonNegativeInteger(output, 'registryRefCount'),
     failureReason: readAllowedString(
       output,
       'failureReason',
-      FINALIZATION_FAILURE_REASONS,
+      ADMIN_GROUNDED_FINALIZATION_FAILURE_REASONS,
     ),
-    rejectionCode: readAllowedString(output, 'rejectionCode', REJECTION_CODES),
-    samplingFailure: readAllowedString(output, 'samplingFailure', SAMPLING_FAILURES),
+    rejectionCode: readAllowedString(
+      output,
+      'rejectionCode',
+      ADMIN_GROUNDED_ANSWER_REJECTION_CODES,
+    ),
+    samplingFailure: readAllowedString(
+      output,
+      'samplingFailure',
+      ADMIN_GROUNDED_FINALIZATION_SAMPLING_FAILURES,
+    ),
     usage: attempts.length > 0
       ? aggregateSamplingUsage(
           attempts.map(attempt => projectTokenUsage(readObject(attempt))),
@@ -248,10 +169,11 @@ function readSourceRefs(value: unknown): AdminRetrievalSourceRef[] {
 
   for (const candidate of value) {
     const object = readObject(candidate)
-    const sourceId = readPositiveInteger(object, 'sourceId')
+    const sourceId = readNonNegativeInteger(object, 'sourceId')
     const chunkId = readChunkIdentity(object)
 
-    if (sourceId === null || chunkId === undefined)
+    // sourceId 从 1 起算，0 不是合法身份。
+    if (sourceId === null || sourceId === 0 || chunkId === undefined)
       continue
 
     refs.push({ sourceId, chunkId })

@@ -5,7 +5,7 @@ import type {
   ModelStreamEvent,
 } from '@agent/ai'
 import type { ChatCompletionChunk } from 'openai/resources/chat/completions'
-import type { AgentRun, Message } from '../generated/prisma/client.js'
+import type { AgentRun, Message, Prisma } from '../generated/prisma/client.js'
 import type { LLMService } from '../llm/llm.service.js'
 import type {
   DatabaseOperationDeadline,
@@ -484,7 +484,6 @@ describe('AgentRuntimeService model stream', () => {
       undefined,
       async () => ({
         ok: true,
-        data: {},
         modelContent: '短 Observation',
       }),
       {},
@@ -778,7 +777,6 @@ describe('AgentRuntimeService model stream', () => {
       callId: 'call-1',
       toolName: 'search_articles',
       rawArgumentsJson: '{"query":"SP Himeko"}',
-      samplingAttemptId: 'run-1:sampling-1',
     }])
     assert.equal(harness.llmCalls.length, 2)
     assert.deepEqual(
@@ -965,7 +963,6 @@ describe('AgentRuntimeService model stream', () => {
       undefined,
       async () => ({
         ok: true,
-        data: { kind: 'article_retrieval_candidates' },
         modelContent: retrievalObservation,
         stepSummary: {
           status: 'candidates_returned',
@@ -986,7 +983,6 @@ describe('AgentRuntimeService model stream', () => {
       callId: 'call-retrieval',
       toolName: 'retrieve_article_context',
       rawArgumentsJson: '{"query":"什么是 SEO"}',
-      samplingAttemptId: 'run-1:sampling-1',
     }])
     // Tool Call 与 Tool Result 以同一个 callId 成对进入第二轮模型输入。
     assert.deepEqual(harness.llmCalls[1]?.messages.slice(1), [
@@ -1084,7 +1080,6 @@ describe('AgentRuntimeService model stream', () => {
         undefined,
         async () => ({
           ok: true,
-          data: {},
           modelContent: '候选资料。',
           stepSummary: stepSummary as never,
         }),
@@ -1135,7 +1130,7 @@ describe('AgentRuntimeService model stream', () => {
     const harness = createHarness(
       (_, __, callIndex) => toModelStream(streams[callIndex] ?? []),
       undefined,
-      async () => ({ ok: true, data: {}, modelContent: oversized }),
+      async () => ({ ok: true, modelContent: oversized }),
     )
 
     await collectEvents(harness.run())
@@ -1177,7 +1172,6 @@ describe('AgentRuntimeService model stream', () => {
       undefined,
       async () => ({
         ok: true,
-        data: {},
         modelContent: observation,
       }),
       {},
@@ -1240,7 +1234,6 @@ describe('AgentRuntimeService model stream', () => {
       undefined,
       async () => ({
         ok: true,
-        data: {},
         modelContent: observationContent,
       }),
       {},
@@ -1313,7 +1306,6 @@ describe('AgentRuntimeService model stream', () => {
       undefined,
       async envelope => ({
         ok: true,
-        data: {},
         modelContent: envelope.callId === 'call-old'
           ? olderObservation
           : latestObservation,
@@ -1370,7 +1362,6 @@ describe('AgentRuntimeService model stream', () => {
       undefined,
       async () => ({
         ok: true,
-        data: {},
         modelContent: `无法容纳的 Observation ${observationSecret}`,
       }),
       {},
@@ -1424,7 +1415,6 @@ describe('AgentRuntimeService model stream', () => {
       undefined,
       async () => ({
         ok: true,
-        data: {},
         modelContent: '普通 Observation',
       }),
       {},
@@ -1494,12 +1484,10 @@ describe('AgentRuntimeService model stream', () => {
       async envelope => envelope.toolName === 'search_articles'
         ? {
             ok: true,
-            data: { results: [{ sourceId: 24 }] },
             modelContent: '搜索到 sourceId=24。',
           }
         : {
             ok: true,
-            data: { found: true },
             modelContent: '已读取 sourceId=24 的文章详情。',
           },
     )
@@ -1525,13 +1513,11 @@ describe('AgentRuntimeService model stream', () => {
         callId: 'call-search',
         toolName: 'search_articles',
         rawArgumentsJson: '{"query":"seo"}',
-        samplingAttemptId: 'run-1:sampling-1',
       },
       {
         callId: 'call-detail',
         toolName: 'get_article_detail',
         rawArgumentsJson: '{"sourceId":24}',
-        samplingAttemptId: 'run-1:sampling-2',
       },
     ])
     assert.deepEqual(harness.llmCalls[2]?.messages, [
@@ -1728,7 +1714,6 @@ describe('AgentRuntimeService model stream', () => {
 
         return {
           ok: true,
-          data: { content: secretContent },
           modelContent: secretContent,
         }
       },
@@ -1917,13 +1902,8 @@ describe('AgentRuntimeService model stream', () => {
     assertNoUnfinishedSteps(harness)
   })
 
-  it('规范化超大 Unicode Observation，durable Step 不保存 ToolResult.data', async () => {
+  it('规范化超大 Unicode Observation，durable Step 不保存 Observation 正文', async () => {
     const oversizedObservation = '🚀'.repeat(16_100)
-    const fullArticle = {
-      sourceId: 24,
-      content: '完整 Article JSON 不应进入 AgentStep',
-      secret: 'result-secret',
-    }
     const harness = createHarness(
       (_, __, callIndex) => toModelStream(callIndex === 0
         ? [
@@ -1937,7 +1917,6 @@ describe('AgentRuntimeService model stream', () => {
       undefined,
       async () => ({
         ok: true,
-        data: { articles: [fullArticle] },
         modelContent: oversizedObservation,
       }),
     )
@@ -1957,7 +1936,7 @@ describe('AgentRuntimeService model stream', () => {
     assert.equal(toolOutput.originalChars, 16_100)
     assert.equal(toolOutput.observationChars, [...observationContent].length)
     assert.equal(toolOutput.truncated, true)
-    assert.doesNotMatch(durableState, /result-secret|完整 Article JSON|🚀/)
+    assert.doesNotMatch(durableState, /🚀/)
     assert.doesNotMatch(harness.assistantMessage()?.content ?? '', /result-secret|🚀/)
     assertNoUnfinishedSteps(harness)
   })
@@ -1981,7 +1960,6 @@ describe('AgentRuntimeService model stream', () => {
       undefined,
       async envelope => ({
         ok: true,
-        data: {},
         modelContent: `结果 ${envelope.callId}`,
       }),
     )
@@ -3107,12 +3085,7 @@ describe('ModelContext', () => {
     ])
 
     context.appendToolExchange({
-      calls: [{
-        callId: 'c1',
-        toolName: 't1',
-        rawArgumentsJson: 'A',
-        samplingAttemptId: 's1',
-      }],
+      calls: [{ callId: 'c1', toolName: 't1', rawArgumentsJson: 'A' }],
       intermediateText: 'I',
       reasoningContent: 'R',
       results: [{
@@ -3146,8 +3119,8 @@ describe('ModelContext', () => {
 
     context.appendToolExchange({
       calls: [
-        { callId: 'c2', toolName: 't2', rawArgumentsJson: 'B', samplingAttemptId: 's2' },
-        { callId: 'c3', toolName: 't3', rawArgumentsJson: 'C', samplingAttemptId: 's2' },
+        { callId: 'c2', toolName: 't2', rawArgumentsJson: 'B' },
+        { callId: 'c3', toolName: 't3', rawArgumentsJson: 'C' },
       ],
       intermediateText: 'J',
       reasoningContent: 'S',
@@ -3224,13 +3197,6 @@ const searchArticlesDefinition: ToolDefinition = {
   },
   timeoutMs: 1_000,
   maxObservationChars: 16_000,
-  requiresApproval: false,
-  idempotent: true,
-  risk: {
-    level: 'low',
-    sideEffect: 'none',
-    network: 'none',
-  },
   // 本文件覆盖的是 action loop 行为，所以全部 fixture 保持 discovery_only：
   // 真实工具的 evidence policy 由 tools 测试断言，grounded 路径由
   // grounding/grounded-answer.runtime.test.ts 用 eligible fixture 单独覆盖。
@@ -3250,11 +3216,6 @@ const retrieveArticleContextDefinition: ToolDefinition = {
   description: '按语义检索文章候选证据。',
   timeoutMs: 30_000,
   maxObservationChars: 8_000,
-  risk: {
-    level: 'low',
-    sideEffect: 'none',
-    network: 'trusted_provider',
-  },
 }
 
 const hiddenAdminDefinition: ToolDefinition = {
@@ -3265,9 +3226,6 @@ const hiddenAdminDefinition: ToolDefinition = {
 
 const successfulToolResult: ToolResult = {
   ok: true,
-  data: {
-    results: [{ sourceId: 'article-1' }],
-  },
   modelContent: '找到 1 篇相关文章。',
 }
 
@@ -3944,8 +3902,15 @@ function projectHarnessRunDetail(
       content: assistantMessage.content,
       createdAt: assistantMessage.createdAt,
       updatedAt: assistantMessage.updatedAt,
+      grounding: null,
     },
-    steps: harness.recorder.steps.map(step => ({ ...step, title: step.type })),
+    // 内存 recorder 只保证写入的是 InputJsonValue；投影按持久化后的 JsonValue 读。
+    steps: harness.recorder.steps.map(step => ({
+      ...step,
+      title: step.type,
+      input: step.input as Prisma.JsonValue,
+      output: step.output as Prisma.JsonValue,
+    })),
   })
 }
 

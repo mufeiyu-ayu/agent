@@ -8,14 +8,9 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
 import { ToolRegistryService } from './tool-registry.service.js'
-import { ToolRegistryError } from './tool.errors.js'
 
 interface EchoInput {
   message: string
-}
-
-interface EchoOutput {
-  echoed: string
 }
 
 describe('ToolRegistryService', () => {
@@ -31,21 +26,11 @@ describe('ToolRegistryService', () => {
     assert.equal(registry.get('alpha_tool'), alpha)
   })
 
-  it('拒绝非法名称和重复注册', () => {
+  it('拒绝重复注册', () => {
     const registry = new ToolRegistryService()
 
-    assert.throws(
-      () => registry.register(createEchoTool('Bad Tool')),
-      (error: unknown) => error instanceof ToolRegistryError
-        && error.code === 'invalid_tool_name',
-    )
-
     registry.register(createEchoTool())
-    assert.throws(
-      () => registry.register(createEchoTool()),
-      (error: unknown) => error instanceof ToolRegistryError
-        && error.code === 'duplicate_tool',
-    )
+    assert.throws(() => registry.register(createEchoTool()), /工具已注册：echo/)
   })
 
   it('未注册的工具查找返回 undefined', () => {
@@ -57,12 +42,11 @@ describe('ToolRegistryService', () => {
 
 function createEchoTool(
   name = 'echo',
-  execute: ToolExecutor<EchoInput, EchoOutput>['execute'] = async invocation => ({
+  execute: ToolExecutor<EchoInput>['execute'] = async invocation => ({
     ok: true,
-    data: { echoed: invocation.input.message },
     modelContent: invocation.input.message,
   }),
-): RegisteredTool<EchoInput, EchoOutput> {
+): RegisteredTool<EchoInput> {
   return {
     definition: {
       name,
@@ -79,9 +63,6 @@ function createEchoTool(
       },
       timeoutMs: 1_000,
       maxObservationChars: 8_000,
-      requiresApproval: false,
-      idempotent: true,
-      risk: { level: 'low', sideEffect: 'none', network: 'none' },
       evidencePolicy: 'discovery_only',
     },
     executor: { execute },

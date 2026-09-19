@@ -107,7 +107,6 @@ describe('streamModelSampling', () => {
         callId: 'call-1',
         toolName: 'search_articles',
         rawArgumentsJson: '{"query":"seo"}',
-        samplingAttemptId: 'run-1:sampling-2',
       }],
       intermediateText: '查询中',
       reasoningContent: '先搜索站内文章。',

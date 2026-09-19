@@ -12,7 +12,6 @@ import assert from 'node:assert/strict'
 // eslint-disable-next-line test/no-import-node-test
 import { describe, it } from 'node:test'
 
-import { toModelToolSpec } from '../core/model-tool-spec.mapper.js'
 import { normalizeToolEvidenceProjection } from '../core/tool-evidence.js'
 import { ToolInvocationService } from '../core/tool-invocation.service.js'
 import { ToolRegistryService } from '../core/tool-registry.service.js'
@@ -24,29 +23,6 @@ import {
 const LONG_CONTENT = `<article>${'完整正文包含 emoji 🚀 和换行\n'.repeat(500)}</article>`
 
 describe('get_article_detail', () => {
-  it('注册模型可见定义，并保持低风险只读边界', () => {
-    const { registry } = createTools()
-    const definition = registry.get('get_article_detail')?.definition
-
-    assert.ok(definition)
-    assert.equal(definition, getArticleDetailDefinition)
-    assert.deepEqual(definition.risk, {
-      level: 'low',
-      sideEffect: 'none',
-      network: 'none',
-    })
-    assert.equal(definition.requiresApproval, false)
-    assert.equal(definition.idempotent, true)
-    assert.equal(definition.timeoutMs, 5_000)
-    assert.equal(definition.maxObservationChars, 64_000)
-    assert.equal(definition.evidencePolicy, 'eligible')
-    assert.deepEqual(toModelToolSpec(definition), {
-      name: 'get_article_detail',
-      description: definition.description,
-      inputSchema: definition.input.schema,
-    })
-  })
-
   it('按 sourceId 查询并返回完整的受控文章详情', async () => {
     const createdAt = new Date('2026-01-02T03:04:05.000Z')
     const updatedAt = new Date('2026-06-07T08:09:10.000Z')
@@ -99,21 +75,6 @@ describe('get_article_detail', () => {
     }])
     assert.deepEqual(result, {
       ok: true,
-      data: {
-        sourceId: 25,
-        found: true,
-        article: {
-          sourceId: 25,
-          slug: 'complete-article',
-          languageCode: 'zh-cn',
-          title: '完整文章',
-          content: LONG_CONTENT,
-          seoTitle: '受控 SEO 标题',
-          seoDescription: null,
-          createdAt: createdAt.toISOString(),
-          updatedAt: updatedAt.toISOString(),
-        },
-      },
       evidence: {
         refs: [{
           sourceId: 25,
@@ -163,11 +124,6 @@ describe('get_article_detail', () => {
 
     assert.deepEqual(result, {
       ok: true,
-      data: {
-        sourceId: 404,
-        found: false,
-        article: null,
-      },
       modelContent: JSON.stringify({
         sourceId: 404,
         found: false,
@@ -441,7 +397,6 @@ function createEnvelope(input: unknown) {
     callId: 'call-detail-1',
     toolName: 'get_article_detail',
     rawArgumentsJson: JSON.stringify(input)!,
-    samplingAttemptId: 'sampling-1',
   }
 }
 
@@ -449,10 +404,7 @@ function createValidatedInvocation(
   input: GetArticleDetailInput,
 ): ValidatedToolInvocation<GetArticleDetailInput> {
   return {
-    callId: 'call-detail-1',
     toolName: 'get_article_detail',
-    toolVersion: '1',
-    samplingAttemptId: 'sampling-1',
     input,
   }
 }
@@ -461,8 +413,6 @@ function createContext(
   signal = new AbortController().signal,
 ): ToolExecutionContext {
   return {
-    runId: 'run-1',
-    conversationId: 'conversation-1',
     databaseDeadline: createDatabaseDeadline(signal),
     signal,
   }

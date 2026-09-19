@@ -11,26 +11,18 @@ export const DEFAULT_INITIAL_CONTEXT_POLICY = {
 } as const
 
 /**
- * 首轮采样前的裁剪前快照，原样写入 sampling Step 输入 `initialContext`。
- * 字段名是 Admin Context Inspector 的读取契约；预算裁剪只体现在 planner 的
- * `contextPlan`，因此这里 included 恒等于 candidate、excluded 恒为 0。
+ * 首轮采样前的裁剪前快照：前四个字段写入 sampling Step 输入 `initialContext`
+ * （Admin Context Inspector 的读取契约），后两个写入 load_conversation_history 的 output。
+ * 预算裁剪只体现在 planner 的 `contextPlan`，因此这里 included 恒等于 candidate、excluded 恒为 0。
  */
 export interface InitialContextSummary {
   resolvedModel: string
-  contextWindowTokens: number
-  applicationInputCapTokens: number
   resolvedInputBudgetTokens: number
-  resolvedMaxOutputTokens: number
-  safetyMarginTokens: number
-  estimatedMandatoryTokens: number
-  historyBudgetTokens: number
-  estimatedInputTokens: number
   historyCandidateCount: number
   historyIncludedCount: number
   historyExcludedCount: number
   /** 读取条数触到硬上限时为 candidate_cap，否则 null；不再出现 budget。 */
   excludedReason: 'candidate_cap' | null
-  estimatorStrategyId: string
 }
 
 interface SummarizeInitialContextInput {
@@ -50,53 +42,37 @@ interface SummarizeInitialContextInput {
 }
 
 /**
- * 解析本次 Run 的输入预算，并对必带内容与全部候选各做一次估算。
- * 不做任何裁剪：超预算的历史由 SamplingContextPlanner 在首轮 plan() 删最旧；
+ * 解析本次 Run 的输入预算，并对必带内容做一次估算。
+ * 不做任何裁剪：全部候选的估算与超预算删最旧都由 SamplingContextPlanner 在首轮 plan() 完成；
  * 连必带内容都放不下时直接抛 ContextBudgetExceededError，不调用模型。
  */
 export function summarizeInitialContext(
   input: SummarizeInitialContextInput,
 ): InitialContextSummary {
   const resolvedInputBudgetTokens = resolveInitialContextBudget(input)
-  // 只在工作副本上切换历史，与 planner 用同一份组装顺序估算，不改动 ModelContext。
+  // 只在工作副本上清空历史，与 planner 用同一份组装顺序估算，不改动 ModelContext。
   const state = input.context.forPlanning()
-  const initialHistory = state.initialHistory
-  const estimate = (): number => input.tokenEstimator.estimateRequest({
+  const historyCandidateCount = state.initialHistoryCandidateCount
+
+  // 不带历史消息时仍必须容纳系统消息、当前用户消息和工具定义。
+  state.initialHistory = []
+  const estimatedMandatoryTokens = input.tokenEstimator.estimateRequest({
     items: flattenPlanningState(state),
     tools: input.tools,
   })
 
-  // 不带历史消息时仍必须容纳系统消息、当前用户消息和工具定义。
-  state.initialHistory = []
-  const estimatedMandatoryTokens = estimate()
-
   if (estimatedMandatoryTokens > resolvedInputBudgetTokens)
     throw new ContextBudgetExceededError()
 
-  // 全部候选的完整请求估算；可能超预算，超出部分由首轮 plan() 裁掉。
-  state.initialHistory = initialHistory
-  const estimatedInputTokens = estimate()
-  const historyCandidateCount = state.initialHistoryCandidateCount
-
   return {
     resolvedModel: input.resolvedModel,
-    contextWindowTokens: input.contextWindowTokens,
-    applicationInputCapTokens:
-      DEFAULT_INITIAL_CONTEXT_POLICY.applicationInputCapTokens,
     resolvedInputBudgetTokens,
-    resolvedMaxOutputTokens: input.resolvedMaxOutputTokens,
-    safetyMarginTokens: DEFAULT_INITIAL_CONTEXT_POLICY.safetyMarginTokens,
-    estimatedMandatoryTokens,
-    // 理论上可供历史消息使用的预算，不代表历史实际已经用满。
-    historyBudgetTokens: resolvedInputBudgetTokens - estimatedMandatoryTokens,
-    estimatedInputTokens,
     historyCandidateCount,
     historyIncludedCount: historyCandidateCount,
     historyExcludedCount: 0,
     excludedReason: historyCandidateCount === input.candidateHardLimit
       ? 'candidate_cap'
       : null,
-    estimatorStrategyId: input.tokenEstimator.strategyId,
   }
 }
 

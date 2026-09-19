@@ -8,17 +8,23 @@
  */
 
 /** 服务端派生的证据可用性；不是模型字段。 */
-export type MessageEvidenceAvailability
-  = | 'available' // 至少一个有效 evidence ref，且没有 evidence-eligible Tool 失败
-    | 'partial' // 至少一个有效 evidence ref，同时存在 evidence-eligible Tool 失败
-    | 'none' // evidence-eligible Tool 成功，但 zero-hit / not found，没有 ref
-    | 'unavailable' // 没有 ref，且 evidence-eligible Tool 失败
+export const MESSAGE_EVIDENCE_AVAILABILITIES = [
+  'available', // 至少一个有效 evidence ref，且没有 evidence-eligible Tool 失败
+  'partial', // 至少一个有效 evidence ref，同时存在 evidence-eligible Tool 失败
+  'none', // evidence-eligible Tool 成功，但 zero-hit / not found，没有 ref
+  'unavailable', // 没有 ref，且 evidence-eligible Tool 失败
+] as const
+
+export type MessageEvidenceAvailability = typeof MESSAGE_EVIDENCE_AVAILABILITIES[number]
 
 /** 模型在终态结构化输出中声明、并经服务端校验的回答结论。 */
-export type MessageGroundingOutcome
-  = | 'answered'
-    | 'insufficient_evidence'
-    | 'conflicting_evidence'
+export const MESSAGE_GROUNDING_OUTCOMES = [
+  'answered',
+  'insufficient_evidence',
+  'conflicting_evidence',
+] as const
+
+export type MessageGroundingOutcome = typeof MESSAGE_GROUNDING_OUTCOMES[number]
 
 /** Citation 指向整篇文章还是文章内的某个 chunk。 */
 export type MessageCitationGranularity = 'article' | 'chunk'
@@ -61,17 +67,6 @@ export const MESSAGE_GROUNDING_SCHEMA_VERSION = 1
 /** 单条 Message 最多携带的 Citation 数量。 */
 export const MESSAGE_GROUNDING_MAX_CITATIONS = 5
 
-const EVIDENCE_AVAILABILITIES: readonly MessageEvidenceAvailability[] = [
-  'available',
-  'partial',
-  'none',
-  'unavailable',
-]
-const OUTCOMES: readonly MessageGroundingOutcome[] = [
-  'answered',
-  'insufficient_evidence',
-  'conflicting_evidence',
-]
 const GRANULARITIES: readonly MessageCitationGranularity[] = ['article', 'chunk']
 const CITATION_KEYS: readonly string[] = [
   'citationId',
@@ -149,10 +144,10 @@ export function parseMessageGroundingV1(
   if (citationIntegrity !== 'validated' || faithfulnessStatus !== 'not_evaluated')
     return null
 
-  if (!isOneOf(evidenceAvailability, EVIDENCE_AVAILABILITIES))
+  if (!isOneOf(evidenceAvailability, MESSAGE_EVIDENCE_AVAILABILITIES))
     return null
 
-  if (!isOneOf(outcome, OUTCOMES))
+  if (!isOneOf(outcome, MESSAGE_GROUNDING_OUTCOMES))
     return null
 
   if (!Array.isArray(citations) || citations.length > MESSAGE_GROUNDING_MAX_CITATIONS)

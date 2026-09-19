@@ -23,5 +23,3 @@ export interface ApiErrorResponse extends ApiResponseMeta {
   message: string
   error: ApiErrorPayload
 }
-
-export type ApiResponse<T = unknown> = ApiSuccessResponse<T> | ApiErrorResponse
