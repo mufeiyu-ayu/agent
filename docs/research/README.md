@@ -2,7 +2,7 @@
 
 本目录保存源码研究、设计对照与学习记录。**当前主要参照是 [Pi 参考知识库](./pi-reference/README.md)**：为用户完成当前 agent 源码学习后、由 AI 实现云端 Agent 准备的参照素材；用户不读 Pi 代码。
 
-研究资料不承担正式任务看板。当前 Phase 1–8 Completed、无 Active，Next #115 → #116 → #117；实时状态以 [`../tasks/README.md`](../tasks/README.md) 为准。研究完成不自动启动重构。
+研究资料不承担正式任务看板；实时状态以 [`../tasks/README.md`](../tasks/README.md) 为准。研究完成不自动启动重构。
 
 ## 顶层结构与读取边界
 
@@ -10,6 +10,7 @@
 research/
 ├── README.md                                   现行总入口
 ├── pi-reference/                               Pi 研究、源码标注、图表、参照实现方法与实现路线
+├── workbench-direction.md                      内部数据工作台方向定案（2026-09-20）
 ├── configuration-map.md                        当前项目配置导航
 └── phase-08-grounded-answer-citation-design.md  当前项目Phase 8设计依据
 ```
@@ -20,6 +21,7 @@ research/
 
 | 需要 | 入口 |
 | --- | --- |
+| 产品方向、合并 gsc 的方式、档与触发、否决项 | [workbench-direction.md](./workbench-direction.md) |
 | 新会话理解研究目的、目录与阅读顺序 | [pi-reference/README.md](./pi-reference/README.md) |
 | AI 实现前怎样查证据、怎样向用户汇报 | [how-to-read.md](./pi-reference/how-to-read.md) |
 | Pi 架构思想、文件夹与处理风格 | [architecture-and-style.md](./pi-reference/architecture-and-style.md) |

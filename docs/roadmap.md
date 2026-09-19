@@ -8,7 +8,7 @@
 阶段 1-8：Completed
 Active Agent Task：无
 Next / Planned：无（2026-09-19 过度设计审计四件 #134 去 SEO 产品命名、#135 删离线评估与 smoke 死链、#136 零行为变化小修、#137 embedding 重试交给 SDK 已于同日全部合并；web_fetch 同日转 Gated；#116 同轮文本 + 多 Tool Call 已于 2026-09-19 合并；#115 模型调用重试与 Loop 默认上限已于 2026-09-18 合并；#117 Responses adapter 已于 2026-09-18 关闭转 Gated；去过度设计三件 #118 / #119 / #120 与 #124 目录整理已于 2026-09-17 全部合并，`packages/ai` 已按 Pi 分层；#126 Admin Run 读模型去过度设计与 #127 `packages/ai` 运行时配置收敛已于 2026-09-18 合并）
-方向：runtime 深化（2026-09-05 定案）
+方向：runtime 深化（2026-09-05 定案）；产品方向：内部数据工作台（2026-09-20 定案，见 research/workbench-direction.md，路线正文待源码阅读完成后改写）
 当前阶段：源码阅读
 候选子系统：session 事件流与 replay、审批门、compaction、定时任务
 翻译质检站：已删除（#113）
@@ -81,6 +81,8 @@ Admin Task 4：Planned
 
 2026-09-05 首批按「源码阅读发现缺陷」立项，主题是运行时健壮性：#115 模型调用零重试与 Loop 默认上限；#116 同轮「文本 + Tool Call」与多个 Tool Call 直接 FAILED；#117 DeepSeek Responses API adapter 与 Chat 并存。三件合起来是 Durable Execution 缺口的前半段（失败分类与重试单元），session 事件流与 replay 在其后。
 
+2026-09-20 产品方向定案：合并公司 gsc 数据观测项目为内部数据工作台，固定页面是基础、agent 对话是补充，runtime 以它为唯一真实负载；OS sandbox 进第 1 档，各步触发条件具体化；定案、边界、否决项与未决见 [内部数据工作台方向](./research/workbench-direction.md)。
+
 2026-09-16 对照 Pi 做过度设计审查后再立三件，排在 #115 前：#118 删死代码与单实现抽象（零行为变化）、#119 历史裁剪合一、#120 抽出 `packages/ai`。`packages/ai` 提前的理由是 #115 / #117 全落在模型层；`packages/agent` 仍在 R2。2026-09-17 再立 #124 把 `packages/ai` 目录按 Pi 分层整理（单一 `types.ts`、按协议命名的 `api/`），同日合并。2026-09-18 立 #126 把 Admin Run 读模型去过度设计（删常量 / 重复 / 可信度字段与读时校验，projector 改逐字段读取，净减 5,611 行），同日合并；同日再立 #127 收敛 `packages/ai` 运行时配置（`LLMRuntimeConfig` 只剩三个必填 env 与 debug 开关，timeout 与 `max_tokens` 默认值改代码常量，删应用硬上限层与 4 个 `LLM_*` env），同日合并。其余结构性问题不单独立项，分别归 #116（重复校验、消息类型合并）、R1（debug 捕获）、R2（ModelContext 协议）。
 
 ## 当前明确后置
@@ -121,5 +123,5 @@ Phase 8 Task 3C 已完成安全 Retrieval Inspector，但不自动启动 Task 4�
 Phase 8：Completed / 已归档（docs/tasks/completed/phase-08-grounded-retrieval.md）
 Active Agent Task：无
 当前阶段：本项目源码阅读；后续按 pi-reference roadmap 由 AI 参照 Pi 实现云端方向
-下一步：继续源码阅读，按 pi-reference roadmap 提议下一任务（#118 / #119 / #120 / #124 / #126 / #127 / #115 / #116 / #134 / #135 / #136 / #137 已合并；#117 与 web_fetch 已转 Gated，触发条件见看板）；其余候选子系统在立项条件满足时建 Issue，走 docs/workflow.md 的流程
+下一步：源码阅读主线 → 六条真实对话验证 → 按 [内部数据工作台方向](./research/workbench-direction.md) 第 7 节立第一个 Issue；路线正文按其第 8 节改写（#118 / #119 / #120 / #124 / #126 / #127 / #115 / #116 / #134 / #135 / #136 / #137 已合并；#117 与 web_fetch 已转 Gated，触发条件见看板）；其余候选子系统在立项条件满足时建 Issue，走 docs/workflow.md 的流程
 ```
