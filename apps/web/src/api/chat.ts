@@ -1,20 +1,20 @@
 import type {
   ApiErrorResponse,
+  ChatRequest,
   ChatStreamEvent,
-  SeoChatRequest,
 } from '@agent/contracts'
 
 import { parseMessageGroundingV1 } from '@agent/contracts'
 
-interface StreamChatWithSeoAgentOptions {
+interface StreamChatOptions {
   signal?: AbortSignal
 }
 
-export async function* streamChatWithSeoAgent(
-  payload: SeoChatRequest,
-  options: StreamChatWithSeoAgentOptions = {},
+export async function* streamChat(
+  payload: ChatRequest,
+  options: StreamChatOptions = {},
 ): AsyncGenerator<ChatStreamEvent> {
-  const response = await fetch('/api/seo/chat/stream', {
+  const response = await fetch('/api/chat/stream', {
     method: 'POST',
     headers: {
       'Accept': 'application/x-ndjson',

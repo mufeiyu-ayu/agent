@@ -2,12 +2,12 @@ import type { MessageGroundingV1 } from '@agent/contracts'
 
 export type GenerationStatus = 'empty' | 'idle' | 'thinking' | 'generating' | 'done' | 'error' | 'aborted'
 
-export type SeoConversationTurnStatus = 'thinking' | 'generating' | 'success' | 'error' | 'aborted'
+export type ConversationTurnStatus = 'thinking' | 'generating' | 'success' | 'error' | 'aborted'
 
-export interface SeoConversationTurn {
+export interface ConversationTurn {
   id: string
   userMessage: string
-  status: SeoConversationTurnStatus
+  status: ConversationTurnStatus
   createdAt: string
   reply?: string
   generatedAt?: string

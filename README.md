@@ -18,7 +18,7 @@
 
 ## 这是什么
 
-一个完整闭环的 AI SEO 问答 Agent：用户在 Web 前台提问，Runtime 在服务端预算内编排模型采样与工具调用，从 pgvector 索引中做混合检索，最终产出**每条引用都经过服务端校验**的带证据回答——全过程持久化为可审计的 Run / Step 轨迹，并配有独立的运维控制台。
+一个完整闭环的知识库问答 Agent：用户在 Web 前台提问，Runtime 在服务端预算内编排模型采样与工具调用，从 pgvector 索引中做混合检索，最终产出**每条引用都经过服务端校验**的带证据回答——全过程持久化为可审计的 Run / Step 轨迹，并配有独立的运维控制台。
 
 它不是又一个框架 Demo。所有编排（采样轮次、工具执行、上下文预算、终态提交、引用校验）都是显式 TypeScript 代码，这也是它作为 Agent 工程学习样本的价值：**没有任何一步藏在黑盒里**。
 
@@ -26,7 +26,7 @@
 
 ```mermaid
 flowchart LR
-    Web[Vue 前台] -->|NDJSON 流| API[SeoController]
+    Web[Vue 前台] -->|NDJSON 流| API[ChatController]
     Admin[运维控制台] --> AdminAPI[Admin API]
     API --> Runtime[Agent Runtime<br/>runTurnStream]
     Runtime --> Context[ModelContext<br/>token 预算 / 因果历史]
@@ -99,7 +99,7 @@ pnpm dev
 | 运维控制台 | `http://localhost:5174` |
 | API | `http://localhost:3000/api` |
 
-seed 与 index 是检索 / 引用链路可用的前提：跳过它们普通聊天仍可用，但 `retrieve_article_context` 会因缺少 active index 而 fail closed。自装 PostgreSQL 必须带 pgvector 扩展；从旧 `postgres:16-alpine` 卷升级时建议重置卷重建（musl→glibc collation 差异），开发数据可由 seed / index 完整重建。
+seed 与 index 是检索 / 引用链路可用的前提：跳过它们普通聊天仍可用，但 `retrieve_article_context` 会因缺少 active index 而 fail closed。自装 PostgreSQL 必须带 pgvector 扩展；从旧 `postgres:16-alpine` 卷升级时建议重置卷重建（musl→glibc collation 差异），开发数据可由 seed / index 完整重建。`POSTGRES_DB` 只在卷首次初始化时生效：沿用改名前（库名 `agent_ai_seo`）的已有卷时，`.env` 里的 `DATABASE_URL` 保留 `agent_ai_seo`，或重置卷按新库名 `agent` 重建。
 
 完整环境变量见 [`.env.example`](./.env.example)；常用验证：`pnpm typecheck`、`pnpm lint`、`pnpm --filter @agent/api test:*`（按边界拆分的测试入口）、`pnpm --filter @agent/ai test`。
 

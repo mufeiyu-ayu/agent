@@ -5,10 +5,10 @@ import { AdminConversationsModule } from './admin-conversations/admin-conversati
 import { AdminOverviewModule } from './admin-overview/admin-overview.module.js'
 import { AdminRunsModule } from './admin-runs/admin-runs.module.js'
 import { AppController } from './app.controller.js'
+import { ChatModule } from './chat/chat.module.js'
 import { RequestIdMiddleware } from './common/middleware/request-id.middleware.js'
 import { ConversationsModule } from './conversations/conversations.module.js'
 import { LlmModule } from './llm/llm.module.js'
-import { SeoModule } from './seo/seo.module.js'
 import { ToolsModule } from './tools/tools.module.js'
 
 @Module({
@@ -17,7 +17,7 @@ import { ToolsModule } from './tools/tools.module.js'
     AdminOverviewModule,
     AdminRunsModule,
     LlmModule,
-    SeoModule,
+    ChatModule,
     ConversationsModule,
     ToolsModule,
   ],

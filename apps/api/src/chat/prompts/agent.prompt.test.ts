@@ -1,23 +1,22 @@
-import type { MessageInputItem } from '@agent/ai'
 import assert from 'node:assert/strict'
 // 项目使用 Node 原生测试运行器，不引入新测试框架。
 // eslint-disable-next-line test/no-import-node-test
 import { describe, it } from 'node:test'
 
-import { buildSeoAgentInstructions } from './seo-agent.prompt.js'
+import { AGENT_INSTRUCTIONS } from './agent.prompt.js'
 
-describe('SEO Agent system prompt', () => {
-  it('保持 system message 在前、历史消息顺序不变', () => {
-    const history: MessageInputItem[] = [
-      { type: 'message', role: 'user', content: '第一条' },
-      { type: 'message', role: 'assistant', content: '第二条' },
-      { type: 'message', role: 'user', content: '第三条' },
-    ]
+describe('Agent system prompt', () => {
+  it('指令只有一条 system message；历史与当前消息由 Runtime 拼接', () => {
+    assert.equal(AGENT_INSTRUCTIONS.length, 1)
+    assert.equal(AGENT_INSTRUCTIONS[0]?.role, 'system')
+  })
 
-    const messages = buildSeoAgentInstructions(history)
+  it('通用助手人设：保留名字贾维斯，不再带 SEO 定位', () => {
+    const prompt = systemPrompt()
 
-    assert.equal(messages[0]?.role, 'system')
-    assert.deepEqual(messages.slice(1), history)
+    assert.match(prompt, /贾维斯/)
+    assert.doesNotMatch(prompt, /SEO/i)
+    assert.match(prompt, /站内文章知识库/)
   })
 
   it('同时定义三个工具，并区分关键词检索、语义候选证据检索与全文读取', () => {
@@ -110,16 +109,16 @@ describe('SEO Agent system prompt', () => {
     }
   })
 
-  it('不强制所有 SEO 问题都调用检索工具', () => {
+  it('不强制所有问题都调用检索工具', () => {
     const prompt = systemPrompt()
 
-    assert.match(prompt, /并不是每个 SEO 问题都需要调用工具/)
-    assert.match(prompt, /可以直接依据专业经验回答的问题，直接回答即可/)
+    assert.match(prompt, /并不是每个问题都需要调用工具/)
+    assert.match(prompt, /可以直接依据自身知识回答的问题，直接回答即可/)
   })
 })
 
 function systemPrompt(): string {
-  const systemMessage = buildSeoAgentInstructions([])[0]
+  const systemMessage = AGENT_INSTRUCTIONS[0]
 
   assert.equal(systemMessage?.role, 'system')
 

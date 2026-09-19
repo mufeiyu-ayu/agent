@@ -1,26 +1,26 @@
 <script setup lang="ts">
 import type {
-  SeoBriefPreviewConfig,
-  SeoCenterNodeConfig,
-  SeoFlowViewBox,
-  SeoProcessCardConfig,
-} from '@/types/seo-flow'
+  BriefPreviewConfig,
+  CenterNodeConfig,
+  FlowViewBox,
+  ProcessCardConfig,
+} from '@/types/flow'
 
 import { ref } from 'vue'
 
-import SeoBriefPreview from '@/components/seo/SeoBriefPreview.vue'
-import SeoCenterNode from '@/components/seo/SeoCenterNode.vue'
-import SeoFlowLines from '@/components/seo/SeoFlowLines.vue'
-import SeoParticleField from '@/components/seo/SeoParticleField.vue'
-import SeoProcessCard from '@/components/seo/SeoProcessCard.vue'
-import { useSeoFlowLayout } from '@/hooks/useSeoFlowLayout'
+import BriefPreview from '@/components/home/BriefPreview.vue'
+import CenterNode from '@/components/home/CenterNode.vue'
+import FlowLines from '@/components/home/FlowLines.vue'
+import ParticleField from '@/components/home/ParticleField.vue'
+import ProcessCard from '@/components/home/ProcessCard.vue'
+import { useFlowLayout } from '@/hooks/useFlowLayout'
 
-const leftProcessCards: SeoProcessCardConfig[] = [
+const leftProcessCards: ProcessCardConfig[] = [
   {
-    id: 'page-input',
+    id: 'user-question',
     eyebrow: 'Input',
-    title: 'Page input',
-    description: 'https://example.com/blog/',
+    title: 'User question',
+    description: 'Natural language',
     icon: 'tabler:file-description',
     tone: 'copper',
     side: 'left',
@@ -29,10 +29,10 @@ const leftProcessCards: SeoProcessCardConfig[] = [
     items: [],
   },
   {
-    id: 'content-signals',
+    id: 'chat-history',
     eyebrow: 'Context',
-    title: 'Content signals',
-    description: 'Headings · Entities · Schema',
+    title: 'Chat history',
+    description: 'Turns · Budget',
     icon: 'tabler:radar-2',
     tone: 'moss',
     side: 'left',
@@ -41,10 +41,10 @@ const leftProcessCards: SeoProcessCardConfig[] = [
     items: [],
   },
   {
-    id: 'search-intent',
-    eyebrow: 'Intent',
-    title: 'Search intent',
-    description: 'Informational · How-to · Commercial',
+    id: 'article-library',
+    eyebrow: 'Knowledge',
+    title: 'Article library',
+    description: 'Chunks · Vectors',
     icon: 'tabler:target',
     tone: 'moss',
     side: 'left',
@@ -54,25 +54,25 @@ const leftProcessCards: SeoProcessCardConfig[] = [
   },
 ]
 
-const centerNode: SeoCenterNodeConfig = {
-  id: 'seo-agent-core',
+const centerNode: CenterNodeConfig = {
+  id: 'agent-core',
   eyebrow: 'Orchestrator',
-  label: 'SEO Agent',
-  description: 'Plan · Draft · Verify',
+  label: 'Agent Runtime',
+  description: 'Plan · Call · Verify',
   sparkLabel: 'Agent spark',
   metrics: [
     { id: 'prompt', label: 'Prompt', value: 'Role' },
-    { id: 'schema', label: 'JSON', value: 'Guard' },
+    { id: 'tools', label: 'Tools', value: 'Guard' },
     { id: 'review', label: 'Check', value: 'Pass' },
   ],
 }
 
-const rightProcessCards: SeoProcessCardConfig[] = [
+const rightProcessCards: ProcessCardConfig[] = [
   {
-    id: 'page-audit',
-    eyebrow: 'Audit',
-    title: 'Page audit',
-    description: 'Technical · Content · UX',
+    id: 'keyword-search',
+    eyebrow: 'Search',
+    title: 'Keyword search',
+    description: 'Title · Slug · Keywords',
     icon: 'tabler:clipboard-list',
     tone: 'sand',
     side: 'right',
@@ -81,10 +81,10 @@ const rightProcessCards: SeoProcessCardConfig[] = [
     items: [],
   },
   {
-    id: 'keyword-discovery',
-    eyebrow: 'Discovery',
-    title: 'Keyword discovery',
-    description: 'Clusters · Gaps · Intent',
+    id: 'semantic-retrieval',
+    eyebrow: 'Retrieval',
+    title: 'Semantic retrieval',
+    description: 'Vector · Hybrid · Rank',
     icon: 'tabler:search',
     tone: 'moss',
     side: 'right',
@@ -93,10 +93,10 @@ const rightProcessCards: SeoProcessCardConfig[] = [
     items: [],
   },
   {
-    id: 'content-plan',
-    eyebrow: 'Plan',
-    title: 'Content plan',
-    description: 'Topics · Outline · Brief',
+    id: 'article-detail',
+    eyebrow: 'Detail',
+    title: 'Article detail',
+    description: 'Full text · Sections',
     icon: 'tabler:list-details',
     tone: 'sand',
     side: 'right',
@@ -105,10 +105,10 @@ const rightProcessCards: SeoProcessCardConfig[] = [
     items: [],
   },
   {
-    id: 'internal-linking',
-    eyebrow: 'Links',
-    title: 'Internal linking',
-    description: 'Opportunities · Anchors',
+    id: 'citation-check',
+    eyebrow: 'Verify',
+    title: 'Citation check',
+    description: 'Evidence · Sources',
     icon: 'tabler:link',
     tone: 'moss',
     side: 'right',
@@ -118,16 +118,16 @@ const rightProcessCards: SeoProcessCardConfig[] = [
   },
 ]
 
-const briefPreview: SeoBriefPreviewConfig = {
-  id: 'search-ready-brief',
-  fileName: 'Search-ready brief',
+const briefPreview: BriefPreviewConfig = {
+  id: 'grounded-answer',
+  fileName: 'Grounded answer',
   status: 'Ready for review',
-  summary: 'A search brief with reviewable rationale, structured sections, and quality checks.',
-  updatedLabel: 'Search-ready',
+  summary: 'A grounded answer with cited sources, server-checked evidence, and a full run trace.',
+  updatedLabel: 'Grounded',
   sections: [
-    { id: 'title', label: 'Title', value: '58 chars', tone: 'title' },
-    { id: 'meta', label: 'Meta', value: '142 chars', tone: 'meta' },
-    { id: 'check', label: 'Score', value: '8/10', tone: 'check' },
+    { id: 'sources', label: 'Sources', value: '2 cited', tone: 'title' },
+    { id: 'steps', label: 'Steps', value: '4 steps', tone: 'meta' },
+    { id: 'check', label: 'Check', value: 'Pass', tone: 'check' },
   ],
   lines: [
     { id: 'line-1', width: 'full' },
@@ -137,13 +137,13 @@ const briefPreview: SeoBriefPreviewConfig = {
   ],
 }
 
-const flowViewBox: SeoFlowViewBox = {
+const flowViewBox: FlowViewBox = {
   width: 1600,
   height: 430,
 }
 
 const processMapRef = ref<HTMLElement | null>(null)
-const { flowPaths, particlePaths, isMeasured: isFlowMeasured } = useSeoFlowLayout({
+const { flowPaths, particlePaths, isMeasured: isFlowMeasured } = useFlowLayout({
   containerRef: processMapRef,
   viewBox: flowViewBox,
 })
@@ -158,7 +158,7 @@ const signalParticles = Array.from({ length: 150 }, (_, index) => {
   const tone = index % 5 === 0 ? 'moss' : 'copper'
 
   return {
-    id: `seo-signal-particle-${index}`,
+    id: `signal-particle-${index}`,
     tone,
     style: `left:${left}%;top:${top}%;width:${size}px;height:${size}px;opacity:${opacity};`,
   }
@@ -168,10 +168,10 @@ const signalParticles = Array.from({ length: 150 }, (_, index) => {
 <template>
   <section
     class="relative h-full w-full"
-    aria-labelledby="seo-process-map-title"
+    aria-labelledby="process-map-title"
   >
-    <h2 id="seo-process-map-title" class="sr-only">
-      SEO Agent workflow diagram
+    <h2 id="process-map-title" class="sr-only">
+      Agent workflow diagram
     </h2>
 
     <div ref="processMapRef" class="relative h-full min-h-[340px] min-[1800px]:min-h-[390px]">
@@ -185,14 +185,14 @@ const signalParticles = Array.from({ length: 150 }, (_, index) => {
         />
       </div>
 
-      <SeoFlowLines
+      <FlowLines
         class="absolute inset-0 z-[2] hidden lg:block"
         :paths="flowPaths"
         :view-box="flowViewBox"
         :show-endpoints="isFlowMeasured"
         :show-streams="false"
       />
-      <SeoParticleField
+      <ParticleField
         class="z-[3] hidden lg:block"
         overlay
         :paths="particlePaths"
@@ -213,7 +213,7 @@ const signalParticles = Array.from({ length: 150 }, (_, index) => {
 
       <div class="seo-process-coordinate relative z-10 h-full">
         <div class="seo-left-stack">
-          <SeoProcessCard
+          <ProcessCard
             v-for="card in leftProcessCards"
             :id="card.id"
             :key="card.id"
@@ -231,11 +231,11 @@ const signalParticles = Array.from({ length: 150 }, (_, index) => {
         </div>
 
         <div class="seo-center-slot">
-          <SeoCenterNode :node="centerNode" />
+          <CenterNode :node="centerNode" />
         </div>
 
         <div class="seo-right-stack">
-          <SeoProcessCard
+          <ProcessCard
             v-for="card in rightProcessCards"
             :id="card.id"
             :key="card.id"
@@ -253,7 +253,7 @@ const signalParticles = Array.from({ length: 150 }, (_, index) => {
         </div>
 
         <div class="seo-brief-slot">
-          <SeoBriefPreview :brief="briefPreview" />
+          <BriefPreview :brief="briefPreview" />
         </div>
       </div>
     </div>

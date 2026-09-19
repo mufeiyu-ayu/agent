@@ -28,9 +28,9 @@ test('AC-01 / AC-11：默认 High，三档可选且 320px 下随本次请求发�
 
   await page.getByRole('textbox').first().fill('测试思考强度')
   await page.getByRole('button', { name: '发送消息' }).click()
-  await expect.poll(async () => await page.evaluate(() => window.__seoRequests?.length)).toBe(1)
+  await expect.poll(async () => await page.evaluate(() => window.__chatRequests?.length)).toBe(1)
 
-  expect(await page.evaluate(() => window.__seoRequests?.[0])).toMatchObject({
+  expect(await page.evaluate(() => window.__chatRequests?.[0])).toMatchObject({
     reasoningEffort: 'max',
   })
 

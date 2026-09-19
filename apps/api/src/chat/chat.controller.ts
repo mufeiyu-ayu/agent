@@ -1,42 +1,25 @@
 import type { ChatStreamEvent } from '@agent/contracts'
+import type { ServerResponse } from 'node:http'
 import { Body, Controller, HttpStatus, Inject, Logger, Post, Res } from '@nestjs/common'
 
+import { ChatService } from './chat.service.js'
 // DTO classes are required at runtime for Nest decorator metadata.
 // eslint-disable-next-line ts/consistent-type-imports
-import { SeoChatDto } from './dto/seo-chat.dto.js'
-import { SeoService } from './seo.service.js'
+import { ChatDto } from './dto/chat.dto.js'
 
-interface StreamResponse {
-  readonly destroyed: boolean
-  readonly writableEnded: boolean
-  end: () => void
-  flushHeaders: () => void
-  on: (event: 'close', listener: () => void) => void
-  setHeader: (name: string, value: string) => void
-  status: (statusCode: number) => StreamResponse
-  write: (chunk: string) => void
-}
-
-@Controller('seo')
-export class SeoController {
-  private readonly logger = new Logger(SeoController.name)
+@Controller('chat')
+export class ChatController {
+  private readonly logger = new Logger(ChatController.name)
 
   constructor(
-    @Inject(SeoService)
-    private readonly seoService: SeoService,
+    @Inject(ChatService)
+    private readonly chatService: ChatService,
   ) {}
 
-  @Post('chat')
-  chat(
-    @Body() body: SeoChatDto,
-  ) {
-    return this.seoService.chat(body)
-  }
-
-  @Post('chat/stream')
+  @Post('stream')
   async chatStream(
-    @Body() body: SeoChatDto,
-    @Res() response: StreamResponse,
+    @Body() body: ChatDto,
+    @Res() response: ServerResponse,
   ): Promise<void> {
     const abortController = new AbortController()
 
@@ -46,14 +29,14 @@ export class SeoController {
       }
     })
 
-    response.status(HttpStatus.OK)
+    response.statusCode = HttpStatus.OK
     response.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8')
     response.setHeader('Cache-Control', 'no-cache, no-transform')
     response.setHeader('Connection', 'keep-alive')
     response.flushHeaders()
 
     try {
-      for await (const event of this.seoService.chatStream(body, {
+      for await (const event of this.chatService.chatStream(body, {
         signal: abortController.signal,
       })) {
         // 断连后不能 break：break 会触发 generator.return()，让 runtime 的
@@ -71,7 +54,7 @@ export class SeoController {
       // response 再写 JSON）；runtime 在抛出终态化异常前已 best-effort
       // 向流写入 error 事件，这里只记录。
       this.logger.error(
-        'SEO chat 流式收口异常',
+        'chat 流式收口异常',
         error instanceof Error ? error.stack : String(error),
       )
     }
@@ -83,6 +66,6 @@ export class SeoController {
   }
 }
 
-function writeNdjsonEvent(response: StreamResponse, event: ChatStreamEvent): void {
+function writeNdjsonEvent(response: ServerResponse, event: ChatStreamEvent): void {
   response.write(`${JSON.stringify(event)}\n`)
 }

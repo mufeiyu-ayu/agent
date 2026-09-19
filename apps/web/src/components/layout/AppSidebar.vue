@@ -110,7 +110,7 @@ function handleBalanceSelect(event: Event) {
           >
         </div>
         <h1 class="sidebar-wordmark min-w-0 truncate text-[17px] font-bold text-agent-ink">
-          SEO Agent
+          {{ t('common.appName') }}
         </h1>
       </div>
 

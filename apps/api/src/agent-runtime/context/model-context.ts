@@ -54,7 +54,7 @@ export class ModelContext {
   private readonly toolExchanges: ModelContextToolExchange[] = []
 
   private constructor(
-    // 核心输入：模型必须携带的指令消息；当前 SEO 入口中就是系统提示词。
+    // 核心输入：模型必须携带的指令消息；当前 Chat 入口中就是系统提示词。
     private readonly instructions: MessageInputItem[],
     // 核心输入：一次查询读到的全部历史候选；每轮 plan() 超预算时从最旧删减。
     private readonly initialHistory: MessageInputItem[],

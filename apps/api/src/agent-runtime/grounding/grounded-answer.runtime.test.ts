@@ -33,8 +33,8 @@ import { getModelProfile } from '@agent/ai'
 
 import { projectAdminRunDetail } from '../../admin-runs/projection/admin-run.projector.js'
 
+import { toChatStreamEvent } from '../../chat/chat-stream-event.mapper.js'
 import { MessageRole, MessageStatus } from '../../generated/prisma/client.js'
-import { toChatStreamEvent } from '../../seo/seo-chat-stream-event.mapper.js'
 import { AgentRuntimeService } from '../agent-runtime.service.js'
 import { SamplingContextPlanner } from '../context/sampling-context-planner.js'
 import { AGENT_STEP_TYPES } from '../lifecycle/agent-run-recorder.service.js'

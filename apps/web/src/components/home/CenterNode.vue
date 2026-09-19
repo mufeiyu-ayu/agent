@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import type { SeoCenterNodeConfig } from '@/types/seo-flow'
+import type { CenterNodeConfig } from '@/types/flow'
 
 import aiAvatarHomeCoreSoftUrl from '@/assets/avatar-olive.webp'
 
 defineProps<{
-  node: SeoCenterNodeConfig
+  node: CenterNodeConfig
 }>()
 </script>
 
@@ -24,7 +24,7 @@ defineProps<{
 
     <div
       class="relative flex size-[94px] items-center justify-center min-[1800px]:size-[110px]"
-      :data-seo-center-node="node.id"
+      :data-center-node="node.id"
     >
       <img
         :src="aiAvatarHomeCoreSoftUrl"

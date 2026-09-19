@@ -1,4 +1,3 @@
-import type { MessageInputItem } from '@agent/ai'
 import type { MessageGroundingV1 } from '@agent/contracts'
 import type { AgentRuntimeService } from '../agent-runtime/agent-runtime.service.js'
 import type {
@@ -10,150 +9,54 @@ import assert from 'node:assert/strict'
 // 项目使用 Node 原生测试运行器，不引入新测试框架。
 // eslint-disable-next-line test/no-import-node-test
 import { describe, it } from 'node:test'
-import {
-  HttpStatus,
-  InternalServerErrorException,
-  NotFoundException,
-  RequestTimeoutException,
-  ServiceUnavailableException,
-} from '@nestjs/common'
 
 import { toConversationMessageResponse } from '../conversations/messages.service.js'
-import { buildSeoAgentInstructions } from './prompts/seo-agent.prompt.js'
-import { SeoService } from './seo.service.js'
+import { ChatService } from './chat.service.js'
+import { AGENT_INSTRUCTIONS } from './prompts/agent.prompt.js'
 
 const GENERATED_AT = '2026-07-18T08:00:00.000Z'
 
-describe('SeoService', () => {
-  it('非流式入口忽略过程事件，只投影 run_completed 终态', async () => {
-    const harness = createHarness([
-      runStartedEvent(),
-      assistantDeltaEvent('不应作为最终答案'),
-      runCompletedEvent('最终回答'),
-    ])
-
-    const result = await harness.service.chat(createInput())
-
-    assert.deepEqual(result, {
-      reply: '最终回答',
-      generatedAt: GENERATED_AT,
-    })
-    assert.equal(harness.runtime.inputs.length, 1)
-  })
-
-  it('非流式 Tool Loop 只使用 Runtime 的最终回答，不拼接 delta 或工具数据', async () => {
-    const harness = createHarness([
-      runStartedEvent(),
-      assistantDeltaEvent('{"rawArgumentsJson":"secret"}'),
-      assistantDeltaEvent('{"ToolResult":{"data":"article-json"}}'),
-      runCompletedEvent('找到 1 篇相关文章。'),
-    ])
-
-    const result = await harness.service.chat(createInput())
-
-    assert.equal(result.reply, '找到 1 篇相关文章。')
-    assert.doesNotMatch(result.reply, /rawArgumentsJson|ToolResult|article-json|secret/)
-  })
-
-  it('run_failed 映射为稳定的安全 HTTP 异常', async () => {
-    const harness = createHarness([runFailedEvent('provider password=secret')])
-
-    await assert.rejects(
-      harness.service.chat(createInput()),
-      (error: unknown) => {
-        assert.ok(error instanceof ServiceUnavailableException)
-        assert.equal(error.getStatus(), HttpStatus.SERVICE_UNAVAILABLE)
-        assert.equal(error.message, '模型服务暂时没有返回结果，请稍后重试。')
-        assert.doesNotMatch(JSON.stringify(error.getResponse()), /provider|password|secret/)
-        return true
-      },
-    )
-  })
-
-  it('conversation_not_found 映射为固定 404，不伪装成模型故障', async () => {
-    const harness = createHarness([
-      runFailedEvent('provider password=secret', 'conversation_not_found'),
-    ])
-
-    await assert.rejects(
-      harness.service.chat(createInput()),
-      (error: unknown) => {
-        assert.ok(error instanceof NotFoundException)
-        assert.equal(error.getStatus(), HttpStatus.NOT_FOUND)
-        assert.equal(error.message, '会话不存在或已被删除')
-        assert.doesNotMatch(JSON.stringify(error.getResponse()), /provider|password|secret/)
-        return true
-      },
-    )
-  })
-
-  it('run_aborted 映射为失败，不返回 SeoChatResponse 伪成功', async () => {
-    const harness = createHarness([runAbortedEvent('部分回答')])
-
-    await assert.rejects(
-      harness.service.chat(createInput()),
-      (error: unknown) => {
-        assert.ok(error instanceof RequestTimeoutException)
-        assert.equal(error.getStatus(), HttpStatus.REQUEST_TIMEOUT)
-        assert.equal(error.message, '请求已中止，请重新发起。')
-        assert.doesNotMatch(JSON.stringify(error.getResponse()), /部分回答/)
-        return true
-      },
-    )
-  })
-
-  it('Runtime generator 无 terminal 时明确失败', async () => {
-    const harness = createHarness([
-      runStartedEvent(),
-      assistantDeltaEvent('未完成'),
-    ])
-
-    await assert.rejects(
-      harness.service.chat(createInput()),
-      (error: unknown) => {
-        assert.ok(error instanceof InternalServerErrorException)
-        assert.equal(error.getStatus(), HttpStatus.INTERNAL_SERVER_ERROR)
-        assert.equal(error.message, '请求未能完成，请稍后重试。')
-        assert.doesNotMatch(JSON.stringify(error.getResponse()), /未完成/)
-        return true
-      },
-    )
-  })
-
-  it('同步与流式入口共享同一 RunTurnStreamInput 配置，只有流式透传 signal', async () => {
+describe('ChatService', () => {
+  it('流式入口把 DTO 映射为 RunTurnStreamInput，透传 signal，只注入系统提示词', async () => {
     const abortController = new AbortController()
-    const harness = createHarness(
-      [runCompletedEvent('同步回答')],
-      [runCompletedEvent('流式回答')],
-    )
+    const harness = createHarness([runCompletedEvent('流式回答')])
     const input = createInput('deepseek-chat', 'max')
 
-    await harness.service.chat(input)
     await collectEvents(harness.service.chatStream(input, {
       signal: abortController.signal,
     }))
 
-    assert.equal(harness.runtime.inputs.length, 2)
-    const [chatInput, streamInput] = harness.runtime.inputs
+    assert.equal(harness.runtime.inputs.length, 1)
+    const [streamInput] = harness.runtime.inputs
 
-    assert.ok(chatInput)
     assert.ok(streamInput)
-    assert.deepEqual(withoutSignal(chatInput), {
+    assert.deepEqual(withoutSignal(streamInput), {
       conversationId: 'conversation-1',
       userContent: '用户问题',
       model: 'deepseek-chat',
       reasoningEffort: 'max',
-      instructions: buildSeoAgentInstructions([]),
+      instructions: AGENT_INSTRUCTIONS,
     })
-    assert.deepEqual(withoutSignal(streamInput), withoutSignal(chatInput))
-    assert.equal(Object.hasOwn(chatInput, 'signal'), false)
     assert.equal(streamInput.signal, abortController.signal)
 
-    // 两个入口只传系统提示词；历史与当前消息由 Runtime 自行拼接。
-    const instructions: MessageInputItem[] = chatInput.instructions
+    // 只传系统提示词；历史与当前消息由 Runtime 自行拼接。
+    assert.equal(streamInput.instructions.length, 1)
+    assert.equal(streamInput.instructions[0]?.role, 'system')
+  })
 
-    assert.equal(instructions.length, 1)
-    assert.equal(instructions[0]?.role, 'system')
+  it('省略 model / reasoningEffort / signal 时不向 Runtime 传 undefined 键', async () => {
+    const harness = createHarness([runCompletedEvent('回答')])
+
+    await collectEvents(harness.service.chatStream(createInput()))
+
+    const [streamInput] = harness.runtime.inputs
+
+    assert.ok(streamInput)
+    assert.deepEqual(Object.keys(streamInput).sort(), [
+      'conversationId',
+      'instructions',
+      'userContent',
+    ])
   })
 
   it('流式入口保持既有五类 ChatStreamEvent 且不暴露 Runtime 字段', async () => {
@@ -223,7 +126,7 @@ class FakeAgentRuntimeService {
   }
 }
 
-describe('SeoService grounding 投影', () => {
+describe('ChatService grounding 投影', () => {
   const grounding: MessageGroundingV1 = {
     schemaVersion: 1,
     evidenceAvailability: 'available',
@@ -421,7 +324,7 @@ describe('SeoService grounding 投影', () => {
 
 function createHarness(...eventSequences: AgentRuntimeEvent[][]) {
   const runtime = new FakeAgentRuntimeService(...eventSequences)
-  const service = new SeoService(runtime as unknown as AgentRuntimeService)
+  const service = new ChatService(runtime as unknown as AgentRuntimeService)
 
   return { runtime, service }
 }

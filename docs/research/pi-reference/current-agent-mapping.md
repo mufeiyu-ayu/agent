@@ -6,12 +6,12 @@
 
 | 主题 | agent 当前源码事实 | Pi 对照 | 后续方向 |
 | --- | --- | --- | --- |
-| 入口与产品 | `SeoController → SeoService → AgentRuntimeService.runTurnStream`；Runtime 已独立目录 | 普通 coding-agent 负责产品，Agent/Models 提供机制 | 后续抽离 SEO 命名与产品组合，先明确能力面，不因目录名直接重写 |
+| 入口与产品 | `ChatController → ChatService → AgentRuntimeService.runTurnStream`；Runtime 已独立目录 | 普通 coding-agent 负责产品，Agent/Models 提供机制 | SEO 命名已于 #134 去掉；产品组合后续再抽离，先明确能力面，不因目录名直接重写 |
 | 模型边界 | `LLMService` / 自有 `ModelInputItem` / `ModelStreamEvent` / OpenAI-compatible client | `Models` / provider adapter / assistant frame | 保留自有契约，把 provider 兼容留在 adapter；Responses 第二 wire 随 #117 转 Gated，不做 |
 | 模型重试 | `OpenAICompatibleClient.createClient()` 常量 `maxRetries: 2`，交给 openai SDK 内置重试，边界为首个响应头之前；`chatStream` 内 abort 与 `create()` 竞速、派生一次性 signal（#115，2026-09-18 合并） | Pi 有 adapter request retry（`maxRetryDelayMs` 封顶），也有 durable runtime 的 attempt/retry_wait | 请求前重试已做；已产生输出后的新 attempt 属 session 事件流 / replay 阶段 |
 | 工具循环 | 默认 `maxSamplingRounds: 10`、`maxToolCalls: 8`（#115），两个上限相互独立（#116 删除 `maxToolCalls < maxSamplingRounds` 耦合）；`maxToolCalls` 按 call 计数，同轮 call 数超过剩余预算时在执行任何 call 之前整体抛 `AgentLoopLimitExceededError` | 旧 Agent loop 无轮次上限，靠 `shouldStopAfterTurn`；新 Drive 靠 durable 状态与 retry attempt 上限 | 已按 #116 落地（2026-09-19 合并） |
 | 同轮输出 | `streamModelSampling` 只按 `finishReason` 分派：本轮 = 可选文本 + 一个或多个 Tool Call（`SamplingDecision.tool_call.calls[]`），顺序执行；`length` 截断整批不执行、逐 call 记 `truncated_arguments` 回喂；流协议不变量（含 reasoning_content 必需、同批 call id 不重复、`length` 例外）只在 `packages/ai` adapter 一处（#116，2026-09-19 合并） | Pi assistant content 可同时含 text/toolCall；adapter 对 DeepSeek 用 `requiresReasoningContentOnAssistantMessages` 表达同一约束；Pi 截断用 `failToolCallsFromTruncatedMessage` 整批回喂 | 并行 Tool Call 仍后置 |
-| 流协议与取消 | 统一 NDJSON：`start / delta / done / error / aborted` 五种事件（[contracts/seo.ts:29](/Users/ayu/Desktop/agent/packages/contracts/src/seo.ts:29)）；`RunCancellation` 三个来源 user / deadline / failure，`completing → completed` 处理 COMMIT 不确定态（[run-cancellation.ts:12](/Users/ayu/Desktop/agent/apps/api/src/agent-runtime/lifecycle/run-cancellation.ts:12)）；`runDeadlineMs` 默认 600s | Pi 的 live 事件与 durable entry 分离；取消是 `cancel_requested` 标记 + reconcile，不是 signal | R2/R4 的直接基线：先在这套事件与取消语义上加 operation ID 与 snapshot/cursor，不另起协议 |
+| 流协议与取消 | 统一 NDJSON：`start / delta / done / error / aborted` 五种事件（[contracts/chat.ts:24](/Users/ayu/Desktop/agent/packages/contracts/src/chat.ts:24)）；`RunCancellation` 三个来源 user / deadline / failure，`completing → completed` 处理 COMMIT 不确定态（[run-cancellation.ts:12](/Users/ayu/Desktop/agent/apps/api/src/agent-runtime/lifecycle/run-cancellation.ts:12)）；`runDeadlineMs` 默认 600s | Pi 的 live 事件与 durable entry 分离；取消是 `cancel_requested` 标记 + reconcile，不是 signal | R2/R4 的直接基线：先在这套事件与取消语义上加 operation ID 与 snapshot/cursor，不另起协议 |
 | 上下文 | source-aware `ModelContext`、每轮 `SamplingContextPlanner`、历史预算/Observation 治理 | branch context、compaction、request transforms | 保留预算与不可信数据边界；建立可持久化有效输入的契约 |
 | 运行记录 | Prisma Conversation / Message / AgentRun / AgentStep；Step input/output 记录统计及可选 debug payload | 旧 JSONL 与新 Session 的 branch/op/journal 是不同层级 | AgentStep 不是可恢复 operation journal，不能直接当 replay 驱动日志 |
 | 断线 | HTTP `close` 且响应未正常结束 → AbortController.abort；继续 drain generator 完成 ABORTED 收口 | durable 路径将 observer、attachment、lane operation 分开 | 云端运行独立于订阅，需要改变命令/观察协议与所有权；不能只删 abort |
@@ -24,7 +24,7 @@
 - [policy](/Users/ayu/Desktop/agent/apps/api/src/agent-runtime/configuration/agent-runtime.policy.ts:7)
 - [SamplingDecision](/Users/ayu/Desktop/agent/apps/api/src/agent-runtime/sampling/model-sampling-decision.ts:21)
 - [LLM client](/Users/ayu/Desktop/agent/packages/ai/src/api/openai-completions.ts:187)
-- [HTTP 断线](/Users/ayu/Desktop/agent/apps/api/src/seo/seo.controller.ts:43)
+- [HTTP 断线](/Users/ayu/Desktop/agent/apps/api/src/chat/chat.controller.ts:26)
 - [Prisma 事实层](/Users/ayu/Desktop/agent/prisma/schema.prisma:59)
 
 ## 2. 最容易混淆的现状：可观测不等于可恢复

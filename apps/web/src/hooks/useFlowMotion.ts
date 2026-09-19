@@ -1,22 +1,22 @@
 import type { MaybeRefOrGetter, Ref } from 'vue'
 import type {
-  SeoFlowMotionConfig,
-  SeoFlowMotionFrame,
-  SeoFlowMotionFrameRenderer,
-  SeoFlowMotionPath,
-  SeoFlowMotionPauseReason,
-  SeoFlowMotionRange,
-  SeoFlowMotionStatus,
-  SeoFlowParticle,
-  SeoFlowPathSample,
-  SeoFlowPathSampler,
-  SeoFlowPathSegment,
-  SeoFlowRenderedParticle,
-} from '../types/seo-flow-motion'
+  FlowMotionConfig,
+  FlowMotionFrame,
+  FlowMotionFrameRenderer,
+  FlowMotionPath,
+  FlowMotionPauseReason,
+  FlowMotionRange,
+  FlowMotionStatus,
+  FlowParticle,
+  FlowPathSample,
+  FlowPathSampler,
+  FlowPathSegment,
+  FlowRenderedParticle,
+} from '../types/flow-motion'
 
 import { onMounted, onUnmounted, readonly, ref, toValue, watch } from 'vue'
 
-export const DEFAULT_SEO_FLOW_MOTION_CONFIG: SeoFlowMotionConfig = {
+export const DEFAULT_FLOW_MOTION_CONFIG: FlowMotionConfig = {
   particleCount: 44,
   mobileParticleCount: 18,
   mobileBreakpoint: 768,
@@ -37,17 +37,17 @@ export const DEFAULT_SEO_FLOW_MOTION_CONFIG: SeoFlowMotionConfig = {
   seed: 29,
 }
 
-export interface UseSeoFlowMotionOptions {
+export interface UseFlowMotionOptions {
   containerRef?: Ref<Element | null>
-  paths: MaybeRefOrGetter<SeoFlowMotionPath[]>
-  config?: MaybeRefOrGetter<Partial<SeoFlowMotionConfig> | undefined>
+  paths: MaybeRefOrGetter<FlowMotionPath[]>
+  config?: MaybeRefOrGetter<Partial<FlowMotionConfig> | undefined>
   active?: MaybeRefOrGetter<boolean>
   autoStart?: boolean
-  renderFrame: SeoFlowMotionFrameRenderer
-  onStatusChange?: (status: SeoFlowMotionStatus) => void
+  renderFrame: FlowMotionFrameRenderer
+  onStatusChange?: (status: FlowMotionStatus) => void
 }
 
-export function createSeoFlowPathSamplers(paths: SeoFlowMotionPath[]): SeoFlowPathSampler[] {
+export function createFlowPathSamplers(paths: FlowMotionPath[]): FlowPathSampler[] {
   return paths
     .map((path) => {
       const segments = createPathSegments(path)
@@ -63,10 +63,10 @@ export function createSeoFlowPathSamplers(paths: SeoFlowMotionPath[]): SeoFlowPa
     .filter(sampler => sampler.length > 0 && sampler.segments.length > 0)
 }
 
-export function sampleSeoFlowPathSampler(
-  sampler: SeoFlowPathSampler,
+export function sampleFlowPathSampler(
+  sampler: FlowPathSampler,
   progress: number,
-): SeoFlowPathSample {
+): FlowPathSample {
   const normalizedProgress = normalizeProgress(progress)
   const targetDistance = normalizedProgress * sampler.length
   let selectedSegment = sampler.segments[sampler.segments.length - 1]
@@ -103,17 +103,17 @@ export function sampleSeoFlowPathSampler(
   }
 }
 
-export function useSeoFlowMotion(options: UseSeoFlowMotionOptions) {
+export function useFlowMotion(options: UseFlowMotionOptions) {
   const isRunning = ref(false)
   const isReducedMotion = ref(false)
   const isDocumentVisible = ref(true)
   const isIntersecting = ref(true)
-  const pauseReasons = ref<SeoFlowMotionPauseReason[]>([])
+  const pauseReasons = ref<FlowMotionPauseReason[]>([])
 
-  const renderedParticles: SeoFlowRenderedParticle[] = []
-  let particles: SeoFlowParticle[] = []
-  let samplers: SeoFlowPathSampler[] = []
-  let samplerById = new Map<string, SeoFlowPathSampler>()
+  const renderedParticles: FlowRenderedParticle[] = []
+  let particles: FlowParticle[] = []
+  let samplers: FlowPathSampler[] = []
+  let samplerById = new Map<string, FlowPathSampler>()
   let animationFrameId: number | null = null
   let frameTimeoutId: number | null = null
   let mediaQuery: MediaQueryList | null = null
@@ -144,9 +144,9 @@ export function useSeoFlowMotion(options: UseSeoFlowMotionOptions) {
   function rebuildMotion() {
     const config = resolveConfig()
 
-    samplers = createSeoFlowPathSamplers(toValue(options.paths))
+    samplers = createFlowPathSamplers(toValue(options.paths))
     samplerById = new Map(samplers.map(sampler => [sampler.id, sampler]))
-    particles = createSeoFlowParticles(samplers, config)
+    particles = createFlowParticles(samplers, config)
     activeParticleCount = getActiveParticleCount(config)
   }
 
@@ -219,7 +219,7 @@ export function useSeoFlowMotion(options: UseSeoFlowMotionOptions) {
   function renderParticles(
     elapsedMs: number,
     deltaMs: number,
-    config: SeoFlowMotionConfig,
+    config: FlowMotionConfig,
   ) {
     renderedParticles.length = 0
 
@@ -240,7 +240,7 @@ export function useSeoFlowMotion(options: UseSeoFlowMotionOptions) {
       particle.progress = normalizeProgress(particle.progress + particle.speed * deltaSeconds)
 
       const sampledProgress = sampler.path.reverse ? 1 - particle.progress : particle.progress
-      const sample = sampleSeoFlowPathSampler(sampler, sampledProgress)
+      const sample = sampleFlowPathSampler(sampler, sampledProgress)
       const phase = Math.sin(elapsedMs * 0.004 + particle.phase)
       const opacity = clampNumber(
         particle.opacity * (1 - config.pulseStrength / 2 + phase * config.pulseStrength),
@@ -261,7 +261,7 @@ export function useSeoFlowMotion(options: UseSeoFlowMotionOptions) {
       })
     }
 
-    const frame: SeoFlowMotionFrame = {
+    const frame: FlowMotionFrame = {
       elapsedMs,
       deltaMs,
       particles: renderedParticles,
@@ -296,7 +296,7 @@ export function useSeoFlowMotion(options: UseSeoFlowMotionOptions) {
   }
 
   function updatePauseReasons() {
-    const nextReasons: SeoFlowMotionPauseReason[] = []
+    const nextReasons: FlowMotionPauseReason[] = []
 
     if (isManuallyPaused)
       nextReasons.push('manual')
@@ -320,7 +320,7 @@ export function useSeoFlowMotion(options: UseSeoFlowMotionOptions) {
   }
 
   function notifyStatusChange() {
-    const status: SeoFlowMotionStatus = {
+    const status: FlowMotionStatus = {
       running: isRunning.value,
       reducedMotion: isReducedMotion.value,
       documentVisible: isDocumentVisible.value,
@@ -392,33 +392,33 @@ export function useSeoFlowMotion(options: UseSeoFlowMotionOptions) {
     return toValue(options.active)
   }
 
-  function resolveConfig(): SeoFlowMotionConfig {
+  function resolveConfig(): FlowMotionConfig {
     const input = toValue(options.config) ?? {}
 
     return {
-      particleCount: normalizeCount(input.particleCount, DEFAULT_SEO_FLOW_MOTION_CONFIG.particleCount),
+      particleCount: normalizeCount(input.particleCount, DEFAULT_FLOW_MOTION_CONFIG.particleCount),
       mobileParticleCount: normalizeCount(
         input.mobileParticleCount,
-        DEFAULT_SEO_FLOW_MOTION_CONFIG.mobileParticleCount,
+        DEFAULT_FLOW_MOTION_CONFIG.mobileParticleCount,
       ),
       mobileBreakpoint: normalizeCount(
         input.mobileBreakpoint,
-        DEFAULT_SEO_FLOW_MOTION_CONFIG.mobileBreakpoint,
+        DEFAULT_FLOW_MOTION_CONFIG.mobileBreakpoint,
       ),
-      speed: normalizeRange(input.speed, DEFAULT_SEO_FLOW_MOTION_CONFIG.speed),
-      radius: normalizeRange(input.radius, DEFAULT_SEO_FLOW_MOTION_CONFIG.radius),
-      opacity: normalizeRange(input.opacity, DEFAULT_SEO_FLOW_MOTION_CONFIG.opacity),
+      speed: normalizeRange(input.speed, DEFAULT_FLOW_MOTION_CONFIG.speed),
+      radius: normalizeRange(input.radius, DEFAULT_FLOW_MOTION_CONFIG.radius),
+      opacity: normalizeRange(input.opacity, DEFAULT_FLOW_MOTION_CONFIG.opacity),
       pulseStrength: clampNumber(
-        input.pulseStrength ?? DEFAULT_SEO_FLOW_MOTION_CONFIG.pulseStrength,
+        input.pulseStrength ?? DEFAULT_FLOW_MOTION_CONFIG.pulseStrength,
         0,
         0.8,
       ),
-      fpsCap: clampNumber(input.fpsCap ?? DEFAULT_SEO_FLOW_MOTION_CONFIG.fpsCap, 12, 120),
-      seed: Math.max(1, Math.floor(input.seed ?? DEFAULT_SEO_FLOW_MOTION_CONFIG.seed)),
+      fpsCap: clampNumber(input.fpsCap ?? DEFAULT_FLOW_MOTION_CONFIG.fpsCap, 12, 120),
+      seed: Math.max(1, Math.floor(input.seed ?? DEFAULT_FLOW_MOTION_CONFIG.seed)),
     }
   }
 
-  function getActiveParticleCount(config: SeoFlowMotionConfig): number {
+  function getActiveParticleCount(config: FlowMotionConfig): number {
     if (typeof window === 'undefined')
       return config.particleCount
 
@@ -489,8 +489,8 @@ export function useSeoFlowMotion(options: UseSeoFlowMotionOptions) {
   }
 }
 
-function createPathSegments(path: SeoFlowMotionPath): SeoFlowPathSegment[] {
-  const segments: SeoFlowPathSegment[] = []
+function createPathSegments(path: FlowMotionPath): FlowPathSegment[] {
+  const segments: FlowPathSegment[] = []
   let startDistance = 0
 
   for (let index = 1; index < path.points.length; index += 1) {
@@ -518,13 +518,13 @@ function createPathSegments(path: SeoFlowMotionPath): SeoFlowPathSegment[] {
   return segments
 }
 
-function createSeoFlowParticles(
-  samplers: SeoFlowPathSampler[],
-  config: SeoFlowMotionConfig,
-): SeoFlowParticle[] {
+function createFlowParticles(
+  samplers: FlowPathSampler[],
+  config: FlowMotionConfig,
+): FlowParticle[] {
   const particleCount = Math.max(config.particleCount, config.mobileParticleCount)
   const random = createSeededRandom(config.seed)
-  const particles: SeoFlowParticle[] = []
+  const particles: FlowParticle[] = []
 
   for (let index = 0; index < particleCount; index += 1) {
     const sampler = pickSampler(samplers, random)
@@ -533,7 +533,7 @@ function createSeoFlowParticles(
       break
 
     particles.push({
-      id: `seo-flow-particle-${index}`,
+      id: `flow-particle-${index}`,
       pathId: sampler.id,
       progress: normalizeProgress(index / particleCount + random() * 0.24),
       speed: getRandomInRange(config.speed, random),
@@ -548,9 +548,9 @@ function createSeoFlowParticles(
 }
 
 function pickSampler(
-  samplers: SeoFlowPathSampler[],
+  samplers: FlowPathSampler[],
   random: () => number,
-): SeoFlowPathSampler | undefined {
+): FlowPathSampler | undefined {
   if (samplers.length === 0)
     return undefined
 
@@ -575,9 +575,9 @@ function pickSampler(
 }
 
 function normalizeRange(
-  range: SeoFlowMotionRange | undefined,
-  fallback: SeoFlowMotionRange,
-): SeoFlowMotionRange {
+  range: FlowMotionRange | undefined,
+  fallback: FlowMotionRange,
+): FlowMotionRange {
   const min = Math.max(0, range?.min ?? fallback.min)
   const max = Math.max(min, range?.max ?? fallback.max)
 
@@ -594,7 +594,7 @@ function normalizeCount(value: number | undefined, fallback: number): number {
   return Math.max(0, Math.floor(value))
 }
 
-function getRandomInRange(range: SeoFlowMotionRange, random: () => number): number {
+function getRandomInRange(range: FlowMotionRange, random: () => number): number {
   return interpolateNumber(range.min, range.max, random())
 }
 

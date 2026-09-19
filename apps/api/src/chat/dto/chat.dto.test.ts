@@ -5,12 +5,12 @@ import type { ArgumentMetadata } from '@nestjs/common'
 import assert from 'node:assert/strict'
 // eslint-disable-next-line test/no-import-node-test
 import { describe, it } from 'node:test'
-import { SEO_CHAT_MESSAGE_MAX_CHARS } from '@agent/contracts'
+import { CHAT_MESSAGE_MAX_CHARS } from '@agent/contracts'
 import { BadRequestException } from '@nestjs/common'
 import { validate } from 'class-validator'
 
 import { createAppValidationPipe } from '../../common/pipes/app-validation.pipe.js'
-import { SeoChatDto } from './seo-chat.dto.js'
+import { ChatDto } from './chat.dto.js'
 
 /** 只由常规空白构成的消息，必须在 DTO / 全局 Pipe 边界被拒绝。 */
 const BLANK_MESSAGES = [
@@ -34,20 +34,20 @@ const CONVERSATION_SENTINEL = 'conversation-sentinel-1'
 
 const BODY_METADATA: ArgumentMetadata = {
   type: 'body',
-  metatype: SeoChatDto,
+  metatype: ChatDto,
   data: undefined,
 }
 
-describe('SeoChatDto', () => {
+describe('ChatDto', () => {
   it('接受共享上限内的用户消息', async () => {
-    const errors = await validate(createDto('a'.repeat(SEO_CHAT_MESSAGE_MAX_CHARS)))
+    const errors = await validate(createDto('a'.repeat(CHAT_MESSAGE_MAX_CHARS)))
 
     assert.equal(errors.length, 0)
   })
 
   it('拒绝超过共享上限的用户消息', async () => {
     const errors = await validate(createDto(
-      'a'.repeat(SEO_CHAT_MESSAGE_MAX_CHARS + 1),
+      'a'.repeat(CHAT_MESSAGE_MAX_CHARS + 1),
     ))
 
     assert.equal(
@@ -82,7 +82,7 @@ describe('SeoChatDto', () => {
 
   it('MaxLength 仍在 trim 前生效，前导空白计入长度', async () => {
     const errors = await validate(createDto(
-      `${' '.repeat(10)}${'a'.repeat(SEO_CHAT_MESSAGE_MAX_CHARS)}`,
+      `${' '.repeat(10)}${'a'.repeat(CHAT_MESSAGE_MAX_CHARS)}`,
     ))
 
     assert.equal(
@@ -101,9 +101,9 @@ describe('SeoChatDto', () => {
   })
 })
 
-describe('SeoChatDto 在 App ValidationPipe 边界的行为', () => {
+describe('ChatDto 在 App ValidationPipe 边界的行为', () => {
   it('纯空白 body 抛出 400 且不进入下游处理', async () => {
-    const pipe = createAppValidationPipe({ expectedType: SeoChatDto })
+    const pipe = createAppValidationPipe({ expectedType: ChatDto })
 
     for (const message of BLANK_MESSAGES) {
       let downstreamCalled = false
@@ -151,7 +151,7 @@ describe('SeoChatDto 在 App ValidationPipe 边界的行为', () => {
   })
 
   it('校验失败字段的原始值不会被回显到错误详情', async () => {
-    const pipe = createAppValidationPipe({ expectedType: SeoChatDto })
+    const pipe = createAppValidationPipe({ expectedType: ChatDto })
     const payload = {
       ...createPayload('hi'),
       // 超过 conversationId 的 128 字符上限，让该字段本身成为失败字段，
@@ -176,29 +176,29 @@ describe('SeoChatDto 在 App ValidationPipe 边界的行为', () => {
   })
 
   it('含非空白字符的 body 通过校验且保留原始空白', async () => {
-    const pipe = createAppValidationPipe({ expectedType: SeoChatDto })
+    const pipe = createAppValidationPipe({ expectedType: ChatDto })
     const transformed: unknown = await pipe.transform(
       createPayload(' hi '),
       BODY_METADATA,
     )
 
-    assert.ok(transformed instanceof SeoChatDto)
+    assert.ok(transformed instanceof ChatDto)
     assert.equal(transformed.message, ' hi ')
   })
 
   it('reasoningEffort 仅放行 low / high / max，省略保持 legacy 兼容', async () => {
-    const pipe = createAppValidationPipe({ expectedType: SeoChatDto })
+    const pipe = createAppValidationPipe({ expectedType: ChatDto })
 
     for (const reasoningEffort of ['low', 'high', 'max']) {
       const transformed = await pipe.transform({
         ...createPayload('hi'),
         reasoningEffort,
-      }, BODY_METADATA) as SeoChatDto
+      }, BODY_METADATA) as ChatDto
 
       assert.equal(transformed.reasoningEffort, reasoningEffort)
     }
 
-    const legacy = await pipe.transform(createPayload('hi'), BODY_METADATA) as SeoChatDto
+    const legacy = await pipe.transform(createPayload('hi'), BODY_METADATA) as ChatDto
     assert.equal(legacy.reasoningEffort, undefined)
 
     for (const reasoningEffort of ['unknown', '', ' ', 1, null, true]) {
@@ -213,8 +213,8 @@ describe('SeoChatDto 在 App ValidationPipe 边界的行为', () => {
   })
 })
 
-function createDto(message: string, model = 'deepseek-v4-flash'): SeoChatDto {
-  return Object.assign(new SeoChatDto(), {
+function createDto(message: string, model = 'deepseek-v4-flash'): ChatDto {
+  return Object.assign(new ChatDto(), {
     conversationId: 'conversation-1',
     message,
     model,

@@ -64,7 +64,7 @@ P0/P1/P2 是本次云端学习优先级，**不是实现状态**。
 
 | 做法 | 真实证据 | 我们的取舍 |
 | --- | --- | --- |
-| 产品决定能力，核心提供机制 | coding-agent SDK 组装模型、工具、资源；普通 Agent 不理解 TUI | Runtime 继续不依赖 Vue、Admin 或 SEO Controller |
+| 产品决定能力，核心提供机制 | coding-agent SDK 组装模型、工具、资源；普通 Agent 不理解 TUI | Runtime 继续不依赖 Vue、Admin 或 Chat Controller |
 | 长期历史与当前执行分开 | 新 Session branch / op / journal；AgentHarness 的 lane/drive | Conversation 与 operation 分层，不能把 Message 当所有事实的容器 |
 | 接纳和执行分开 | Lane.accept 原子落意图，drive 单独接管 | HTTP 可返回 accepted；worker 才拥有执行，但需新增协议而非改一个返回值 |
 | 先记录副作用意图，再处理未知结果 | durable tool journal 的 `effect_pending` / `outcome_ready` / completed | 外部写调用要有 receipt/idempotency，不拿 retry 兜底所有失败 |

@@ -1,8 +1,8 @@
-import type { DeepSeekReasoningEffort, SeoChatRequest } from '@agent/contracts'
+import type { ChatRequest, DeepSeekReasoningEffort } from '@agent/contracts'
 import { SUPPORTED_DEEPSEEK_MODELS } from '@agent/ai'
 import {
+  CHAT_MESSAGE_MAX_CHARS,
   DEEPSEEK_REASONING_EFFORTS,
-  SEO_CHAT_MESSAGE_MAX_CHARS,
 } from '@agent/contracts'
 import {
   IsIn,
@@ -14,7 +14,7 @@ import {
   ValidateIf,
 } from 'class-validator'
 
-export class SeoChatDto implements SeoChatRequest {
+export class ChatDto implements ChatRequest {
   @IsString()
   @IsNotEmpty()
   @MaxLength(128)
@@ -27,7 +27,7 @@ export class SeoChatDto implements SeoChatRequest {
   @Matches(/\S/u, {
     message: 'message 不能只包含空白字符',
   })
-  @MaxLength(SEO_CHAT_MESSAGE_MAX_CHARS)
+  @MaxLength(CHAT_MESSAGE_MAX_CHARS)
   message!: string
 
   @IsOptional()

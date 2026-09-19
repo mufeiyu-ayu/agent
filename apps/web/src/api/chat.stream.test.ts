@@ -4,7 +4,7 @@ import assert from 'node:assert/strict'
 // eslint-disable-next-line test/no-import-node-test
 import { describe, it } from 'node:test'
 
-import { parseChatStreamEventLine, streamChatWithSeoAgent } from './seo'
+import { parseChatStreamEventLine, streamChat } from './chat'
 
 const GROUNDING: MessageGroundingV1 = {
   schemaVersion: 1,
@@ -286,7 +286,7 @@ describe('NDJSON 协议兼容', () => {
   })
 })
 
-describe('streamChatWithSeoAgent', () => {
+describe('streamChat', () => {
   it('按行消费 NDJSON，并保留 done 上的可选 grounding', async () => {
     const lines = [
       ...LEGACY_EVENTS.slice(0, 2).map(event => JSON.stringify(event)),
@@ -295,7 +295,7 @@ describe('streamChatWithSeoAgent', () => {
     const restoreFetch = stubFetch(`${lines.join('\n')}\n`)
 
     try {
-      const events = await collect(streamChatWithSeoAgent({
+      const events = await collect(streamChat({
         conversationId: 'conversation-1',
         message: '问题',
       }))
@@ -319,7 +319,7 @@ describe('streamChatWithSeoAgent', () => {
     const restoreFetch = stubFetch(payload, { chunkSize: 7 })
 
     try {
-      const events = await collect(streamChatWithSeoAgent({
+      const events = await collect(streamChat({
         conversationId: 'conversation-1',
         message: '问题',
       }))
@@ -361,7 +361,7 @@ describe('streamChatWithSeoAgent', () => {
       ])) as typeof globalThis.fetch
 
       await assert.rejects(
-        collect(streamChatWithSeoAgent({
+        collect(streamChat({
           conversationId: 'conversation-1',
           message: '问题',
         })),
@@ -375,7 +375,7 @@ describe('streamChatWithSeoAgent', () => {
         JSON.stringify(LEGACY_EVENTS[1]),
       ])) as typeof globalThis.fetch
 
-      const stream = streamChatWithSeoAgent({
+      const stream = streamChat({
         conversationId: 'conversation-1',
         message: '问题',
       })
@@ -399,7 +399,7 @@ describe('streamChatWithSeoAgent', () => {
 
     try {
       await assert.rejects(
-        collect(streamChatWithSeoAgent({
+        collect(streamChat({
           conversationId: 'conversation-1',
           message: '问题',
         })),
