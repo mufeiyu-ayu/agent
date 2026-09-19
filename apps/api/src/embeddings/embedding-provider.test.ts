@@ -34,9 +34,6 @@ describe('Embedding shared boundary', () => {
       apiKey: 'gemini-key',
       model: 'gemini-embedding-2',
       dimensions: 1536,
-      batchSize: 64,
-      requestTimeoutMs: 60_000,
-      maxRetries: 2,
     })
     assert.deepEqual(ACTIVE_EMBEDDING_PROFILE, {
       provider: 'google',
@@ -50,23 +47,6 @@ describe('Embedding shared boundary', () => {
       { EMBEDDING_API_KEY: 'old-key' },
       { LLM_API_KEY: 'chat-key' },
     ]) {
-      assert.throws(
-        () => resolveEmbeddingRuntimeConfig(env),
-        error => error instanceof EmbeddingError
-          && error.code === 'configuration',
-      )
-    }
-  })
-
-  it('provider-neutral batch / timeout / retry 数值配置 fail closed', () => {
-    const invalidEnvironments = [
-      { GEMINI_API_KEY: 'key', EMBEDDING_BATCH_SIZE: '0' },
-      { GEMINI_API_KEY: 'key', EMBEDDING_BATCH_SIZE: '376' },
-      { GEMINI_API_KEY: 'key', EMBEDDING_REQUEST_TIMEOUT_MS: '1.5' },
-      { GEMINI_API_KEY: 'key', EMBEDDING_MAX_RETRIES: '3' },
-    ]
-
-    for (const env of invalidEnvironments) {
       assert.throws(
         () => resolveEmbeddingRuntimeConfig(env),
         error => error instanceof EmbeddingError
@@ -101,29 +81,31 @@ describe('Embedding shared boundary', () => {
 })
 
 describe('GeminiEmbeddingProvider', () => {
-  it('每条输入使用独立 Content，固定 1536 且关闭 SDK 隐式重试', async () => {
+  it('每 64 条输入一次请求、每条独立 Content，固定 1536 并把重试交给 SDK', async () => {
     const calls: Parameters<GeminiEmbeddingClient['models']['embedContent']>[0][] = []
     const abortController = new AbortController()
     const provider = new GeminiEmbeddingProvider(
-      { ...config(), batchSize: 2 },
+      config(),
       fakeClient(async (request) => {
         calls.push(request)
         return response(request.contents.length, request.config.outputDimensionality)
       }),
     )
+    const inputs = Array.from({ length: 65 }, (_, index) => `input ${index}`)
 
-    const result = await provider.embed(['one', 'two', 'three'], {
+    const result = await provider.embed(inputs, {
       signal: abortController.signal,
     })
 
-    assert.equal(result.vectors.length, 3)
+    assert.equal(result.vectors.length, 65)
     assert.equal(result.providerRequests, 2)
     assert.equal(result.retryCount, 0)
     assert.equal(new Set(calls.map(request => request.config.abortSignal)).size, 2)
     assert.equal(getEventListeners(abortController.signal, 'abort').length, 0)
     assert.deepEqual(calls.map(request => ({
       model: request.model,
-      contents: request.contents,
+      contents: request.contents.length,
+      firstText: request.contents[0]?.parts,
       outputDimensionality: request.config.outputDimensionality,
       timeout: request.config.httpOptions.timeout,
       retryOptions: request.config.httpOptions.retryOptions,
@@ -131,88 +113,84 @@ describe('GeminiEmbeddingProvider', () => {
     })), [
       {
         model: 'gemini-embedding-2',
-        contents: [
-          { parts: [{ text: 'one' }] },
-          { parts: [{ text: 'two' }] },
-        ],
+        contents: 64,
+        firstText: [{ text: 'input 0' }],
         outputDimensionality: 1536,
         timeout: 60_000,
-        retryOptions: { attempts: 1 },
+        retryOptions: { attempts: 3 },
         hasTaskType: false,
       },
       {
         model: 'gemini-embedding-2',
-        contents: [{ parts: [{ text: 'three' }] }],
+        contents: 1,
+        firstText: [{ text: 'input 64' }],
         outputDimensionality: 1536,
         timeout: 60_000,
-        retryOptions: { attempts: 1 },
+        retryOptions: { attempts: 3 },
         hasTaskType: false,
       },
     ])
   })
 
-  it('network、timeout、408、429 和 5xx 显式重试并记录 metrics', async () => {
-    const retryableErrors: Array<{ error: Error, sleeps: number[] }> = [
-      { error: new TypeError('fetch failed'), sleeps: [250, 500] },
-      { error: new DOMException('SDK timeout', 'AbortError'), sleeps: [250, 500] },
-      { error: apiError(408), sleeps: [250, 500] },
-      { error: apiError(429), sleeps: [60_000, 60_000] },
-      {
-        error: apiError(429, 'Please retry in 42.600363495s.'),
-        sleeps: [43_601, 43_601],
-      },
-      { error: apiError(503), sleeps: [250, 500] },
+  it('SDK 耗尽后抛出的 timeout、408、429、5xx 映射为 retry_exhausted，不泄漏原始错误', async () => {
+    const exhausted = [
+      new DOMException('SDK timeout after secret payload', 'AbortError'),
+      apiError(408, 'secret payload'),
+      apiError(429, 'secret payload'),
+      apiError(429, 'Please retry in 42.600363495s. secret payload'),
+      apiError(500, 'secret payload'),
+      apiError(503, 'secret payload'),
     ]
 
-    for (const retryableError of retryableErrors) {
-      const sleeps: number[] = []
+    for (const sdkError of exhausted) {
       let calls = 0
       const provider = new GeminiEmbeddingProvider(
         config(),
-        fakeClient(async (request) => {
+        fakeClient(async () => {
           calls += 1
-          if (calls <= 2)
-            throw retryableError.error
-          return response(request.contents.length, request.config.outputDimensionality)
+          throw sdkError
         }),
-        async milliseconds => void sleeps.push(milliseconds),
       )
 
-      const result = await provider.embed(['safe input'], {
-        signal: new AbortController().signal,
-      })
-
-      assert.equal(calls, 3)
-      assert.deepEqual(sleeps, retryableError.sleeps)
-      assert.equal(result.providerRequests, 3)
-      assert.equal(result.retryCount, 2)
+      await assert.rejects(
+        provider.embed(['safe input'], { signal: new AbortController().signal }),
+        error => error instanceof EmbeddingError
+          && error.code === 'retry_exhausted'
+          && error.retryable === false
+          && error.providerRequests === 1
+          && error.retryCount === 0
+          && !/secret|payload/i.test(error.message)
+          && error.cause === undefined,
+      )
+      // Provider 自身不再重试：一次 embedContent 调用内的重试全部在 SDK 里。
+      assert.equal(calls, 1)
     }
   })
 
-  it('重试耗尽保留安全 metrics，不泄漏 SDK 原始错误', async () => {
+  it('SDK 不重试的网络错误按 network 上报并保留安全 metrics', async () => {
     let calls = 0
     const provider = new GeminiEmbeddingProvider(
       config(),
       fakeClient(async () => {
         calls += 1
-        throw new TypeError('secret upstream URL and payload')
+        throw new TypeError('fetch failed: secret upstream URL and payload')
       }),
-      async () => {},
     )
 
     await assert.rejects(
       provider.embed(['safe input'], { signal: new AbortController().signal }),
       error => error instanceof EmbeddingError
-        && error.code === 'retry_exhausted'
-        && error.providerRequests === 3
-        && error.retryCount === 2
+        && error.code === 'network'
+        && error.retryable === false
+        && error.providerRequests === 1
+        && error.retryCount === 0
         && !/secret|payload|URL/i.test(error.message)
         && error.cause === undefined,
     )
-    assert.equal(calls, 3)
+    assert.equal(calls, 1)
   })
 
-  it('认证、daily quota、其他 4xx、protocol mismatch 和 caller Abort 不重试', async () => {
+  it('认证、daily quota、其他 4xx、protocol mismatch 和 caller Abort 按原分类上报', async () => {
     const nonRetryable = [
       apiError(401),
       apiError(403),
@@ -229,12 +207,12 @@ describe('GeminiEmbeddingProvider', () => {
           calls += 1
           throw error
         }),
-        async () => assert.fail('non-retryable error must not sleep'),
       )
 
       await assert.rejects(
         provider.embed(['safe input'], { signal: new AbortController().signal }),
         candidate => candidate instanceof EmbeddingError
+          && candidate.code !== 'retry_exhausted'
           && candidate.retryable === false
           && !/secret|payload/i.test(candidate.message),
       )
@@ -248,7 +226,6 @@ describe('GeminiEmbeddingProvider', () => {
         protocolCalls += 1
         return { embeddings: [] }
       }),
-      async () => assert.fail('protocol error must not retry'),
     )
     await assert.rejects(
       protocolProvider.embed(['safe input'], {
@@ -265,7 +242,6 @@ describe('GeminiEmbeddingProvider', () => {
         abortController.abort()
         throw new DOMException('SDK abort', 'AbortError')
       }),
-      async () => assert.fail('Abort must not retry'),
     )
     await assert.rejects(
       abortProvider.embed(['safe input'], { signal: abortController.signal }),
@@ -283,7 +259,6 @@ describe('GeminiEmbeddingProvider', () => {
         calls += 1
         throw new Error('generic provider failure with secret payload')
       }),
-      async () => assert.fail('unknown error must not retry'),
     )
 
     await assert.rejects(
@@ -354,11 +329,11 @@ describe('GeminiEmbeddingProvider', () => {
     assert.equal(calls, 0)
   })
 
-  it('多 batch 或 retry wait 中 Abort 保留已发生的安全请求统计', async () => {
+  it('多 batch 中 Abort 保留已发生的安全请求统计，且 Abort 优先于晚到的成功响应', async () => {
     let calls = 0
     const abortController = new AbortController()
     const batched = new GeminiEmbeddingProvider(
-      { ...config(), batchSize: 1 },
+      config(),
       fakeClient(async (request) => {
         calls += 1
         if (calls === 2) {
@@ -369,30 +344,29 @@ describe('GeminiEmbeddingProvider', () => {
       }),
     )
     await assert.rejects(
-      batched.embed(['one', 'two'], { signal: abortController.signal }),
+      batched.embed(
+        Array.from({ length: 65 }, (_, index) => `input ${index}`),
+        { signal: abortController.signal },
+      ),
       error => error instanceof EmbeddingError
         && error.name === 'AbortError'
         && error.providerRequests === 2
         && error.retryCount === 0,
     )
 
-    const retryAbortController = new AbortController()
-    const duringWait = new GeminiEmbeddingProvider(
+    const lateAbort = new AbortController()
+    const lateSuccess = new GeminiEmbeddingProvider(
       config(),
-      fakeClient(async () => {
-        throw new TypeError('network')
+      fakeClient(async (request) => {
+        lateAbort.abort()
+        return response(request.contents.length, request.config.outputDimensionality)
       }),
-      async (_milliseconds, signal) => {
-        retryAbortController.abort()
-        signal.throwIfAborted()
-      },
     )
     await assert.rejects(
-      duringWait.embed(['one'], { signal: retryAbortController.signal }),
+      lateSuccess.embed(['one'], { signal: lateAbort.signal }),
       error => error instanceof EmbeddingError
         && error.name === 'AbortError'
-        && error.providerRequests === 1
-        && error.retryCount === 1,
+        && error.providerRequests === 1,
     )
   })
 })
