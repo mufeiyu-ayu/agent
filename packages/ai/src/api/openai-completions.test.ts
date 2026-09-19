@@ -100,6 +100,53 @@ describe('OpenAICompatibleClient runtime config', () => {
     assert.equal(Object.hasOwn(wireBody ?? {}, 'temperature'), false)
   })
 
+  it('assistant_tool_call 的 rawArgumentsJson 原样进入实际 wire body 的 function.arguments', async () => {
+    const harness = createHarness()
+    let wireBody: Record<string, unknown> | undefined
+    const providerClient = new OpenAI({
+      apiKey: 'test-api-key',
+      baseURL: 'https://api.deepseek.com/v1',
+      maxRetries: 0,
+      fetch: async (_input, init) => {
+        wireBody = JSON.parse(String(init?.body)) as Record<string, unknown>
+
+        return okStreamResponse('ok')
+      },
+    })
+
+    Object.defineProperty(harness.client, 'createClient', {
+      value: () => providerClient,
+    })
+
+    // Runtime 对未校验参数产出的续轮表示（官方回退形状）与已校验参数各一条。
+    await collectEvents(harness.client.chatStream([
+      { type: 'message', role: 'user', content: 'hello' },
+      {
+        type: 'assistant_tool_call',
+        calls: [
+          { callId: 'call-1', name: 'get_article_detail', rawArgumentsJson: '{"arguments":"[]"}' },
+          { callId: 'call-2', name: 'search_articles', rawArgumentsJson: '{"query":"seo"}' },
+        ],
+        reasoningContent: 'r',
+      },
+      { type: 'tool_result', callId: 'call-1', name: 'get_article_detail', content: 'x', ok: false },
+      { type: 'tool_result', callId: 'call-2', name: 'search_articles', content: 'y', ok: true },
+    ]))
+
+    const messages = wireBody?.messages as Array<Record<string, unknown>>
+
+    assert.deepEqual(messages[1], {
+      role: 'assistant',
+      content: '',
+      reasoning_content: 'r',
+      tool_calls: [
+        { id: 'call-1', type: 'function', function: { name: 'get_article_detail', arguments: '{"arguments":"[]"}' } },
+        { id: 'call-2', type: 'function', function: { name: 'search_articles', arguments: '{"query":"seo"}' } },
+      ],
+    })
+    assert.deepEqual(messages.slice(2).map(message => message.tool_call_id), ['call-1', 'call-2'])
+  })
+
   it('调用级模型或输出预算非法时不发起 Provider 请求', async () => {
     const harness = createHarness()
 

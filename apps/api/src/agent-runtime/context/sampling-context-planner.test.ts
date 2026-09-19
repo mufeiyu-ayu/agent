@@ -269,6 +269,7 @@ describe('SamplingContextPlanner', () => {
           truncated: true,
         },
         ok: true,
+        argumentsValidated: true,
       }],
     })
 
@@ -316,7 +317,7 @@ describe('SamplingContextPlanner', () => {
       }],
       intermediateText: '',
       reasoningContent: 'reason',
-      results: [{ observation, ok: true }],
+      results: [{ observation, ok: true, argumentsValidated: true }],
     })
     const fullTokens = estimator.estimateRequest({
       items: flattenPlanningState(context.forPlanning()),
@@ -786,6 +787,7 @@ function appendExchange(
         truncated: false,
       },
       ok: true,
+      argumentsValidated: true,
     }],
   })
 }
