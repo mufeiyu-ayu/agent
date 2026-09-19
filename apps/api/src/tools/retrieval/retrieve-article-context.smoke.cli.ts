@@ -14,42 +14,14 @@ import {
   RetrieveArticleContextTool,
 } from './retrieve-article-context.tool.js'
 
-const SMOKE_QUERY = process.env.RETRIEVAL_TOOL_SMOKE_QUERY?.trim() || 'SEO 标题应该怎么写'
+const SMOKE_QUERY = process.env.RETRIEVAL_TOOL_SMOKE_QUERY?.trim() || 'Wuthering Waves 的 soft pity 是什么'
 const SMOKE_DATABASE_TIMEOUT_MS = 60_000
 
-/** 只包含可以安全打印的字段：没有 excerpt、正文、向量、距离和 Provider payload。 */
-export interface RetrieveArticleContextSmokeSummary {
-  tool: 'retrieve_article_context@1'
-  embeddingProfile: {
-    provider: typeof ACTIVE_EMBEDDING_PROFILE.provider
-    model: typeof ACTIVE_EMBEDDING_PROFILE.model
-    dimensions: typeof ACTIVE_EMBEDDING_PROFILE.dimensions
-    version: typeof ACTIVE_EMBEDDING_PROFILE.version
-  }
-  queryChars: number
-  ok: boolean
-  status: RetrieveArticleContextOutput['status']
-  answerStatus: RetrieveArticleContextOutput['answerStatus']
-  strategy: RetrieveArticleContextOutput['strategy']
-  sourceCount: number
-  chunkEvidenceCount: number
-  sourceIds: number[]
-  chunkIds: string[]
-  observation: {
-    maxChars: number
-    originalChars: number
-    observationChars: number
-    truncated: boolean
-    untrustedMarked: boolean
-    unverifiedMarked: boolean
-  }
-  elapsedMs: number
-}
-
-export async function executeRetrieveArticleContextSmoke(
+/** 摘要只包含可以安全打印的字段：没有 excerpt、正文、向量、距离和 Provider payload。 */
+async function executeRetrieveArticleContextSmoke(
   signal: AbortSignal,
   env: NodeJS.ProcessEnv = process.env,
-): Promise<RetrieveArticleContextSmokeSummary> {
+) {
   signal.throwIfAborted()
   const runtime = createHybridArticleRetrievalRuntime(env)
   const registry = new ToolRegistryService()
@@ -129,7 +101,7 @@ export async function executeRetrieveArticleContextSmoke(
   }
 }
 
-export function safeSmokeFailure(error: unknown): { error: string, message: string } {
+function safeSmokeFailure(error: unknown): { error: string, message: string } {
   return {
     error: error instanceof Error && error.name === 'AbortError'
       ? 'retrieval_tool_smoke_aborted'

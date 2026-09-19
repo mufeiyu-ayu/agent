@@ -54,9 +54,7 @@ export interface ArticleRetrievalResult {
   hits: ArticleRetrievalHit[]
 }
 
-export interface ArticleRetriever<
-  TContext extends ArticleRetrievalExecutionContext = ArticleRetrievalExecutionContext,
-> {
+export interface ArticleRetriever<TContext extends ArticleRetrievalExecutionContext> {
   retrieve: (
     input: ArticleRetrievalInput,
     context: TContext,
