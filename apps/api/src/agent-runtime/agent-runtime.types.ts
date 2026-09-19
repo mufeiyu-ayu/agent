@@ -2,38 +2,38 @@ import type { MessageInputItem } from '@agent/ai'
 import type { DeepSeekReasoningEffort, MessageGroundingV1 } from '@agent/contracts'
 
 export type AgentRuntimeEvent
-  = | AgentRuntimeRunStartedEvent
-    | AgentRuntimeAssistantDeltaEvent
-    | AgentRuntimeRunCompletedEvent
-    | AgentRuntimeRunFailedEvent
-    | AgentRuntimeRunAbortedEvent
-
-export interface AgentRuntimeRunStartedEvent {
-  type: 'run_started'
-  runId: string
-  conversationId: string
-  userMessageId: string
-  assistantMessageId: string
-}
-
-export interface AgentRuntimeAssistantDeltaEvent {
-  type: 'assistant_delta'
-  runId: string
-  conversationId: string
-  assistantMessageId: string
-  contentDelta: string
-}
-
-export interface AgentRuntimeRunCompletedEvent {
-  type: 'run_completed'
-  runId: string
-  conversationId: string
-  assistantMessageId: string
-  content: string
-  generatedAt: string
-  /** 仅 Evidence-backed 回答携带；普通回答没有 Grounding。 */
-  grounding?: MessageGroundingV1
-}
+  = | {
+    type: 'run_started'
+    runId: string
+    conversationId: string
+    userMessageId: string
+    assistantMessageId: string
+  }
+  | {
+    type: 'assistant_delta'
+    runId: string
+    conversationId: string
+    assistantMessageId: string
+    contentDelta: string
+  }
+  | {
+    type: 'run_completed'
+    runId: string
+    conversationId: string
+    assistantMessageId: string
+    content: string
+    generatedAt: string
+    /** 仅 Evidence-backed 回答携带；普通回答没有 Grounding。 */
+    grounding?: MessageGroundingV1
+  }
+  | AgentRuntimeRunFailedEvent
+  | {
+    type: 'run_aborted'
+    runId?: string
+    conversationId: string
+    assistantMessageId: string
+    content: string
+  }
 
 export interface AgentRuntimeRunFailedEvent {
   type: 'run_failed'
@@ -46,14 +46,6 @@ export interface AgentRuntimeRunFailedEvent {
    */
   failureReason?: 'conversation_not_found' | 'terminalization_unknown'
   message: string
-}
-
-export interface AgentRuntimeRunAbortedEvent {
-  type: 'run_aborted'
-  runId?: string
-  conversationId: string
-  assistantMessageId: string
-  content: string
 }
 
 export interface RunTurnStreamInput {

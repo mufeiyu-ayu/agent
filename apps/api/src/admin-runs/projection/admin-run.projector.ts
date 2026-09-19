@@ -1,10 +1,11 @@
 import type {
   AdminAssistantOutputStep,
+  AdminContextInspector,
+  AdminContextObservationSummary,
   AdminDebugModelIOCapture,
   AdminDebugModelResponseCapture,
   AdminGenericStep,
   AdminLoadConversationHistoryStep,
-  AdminModelFinishReason,
   AdminModelSamplingStep,
   AdminRunDetail,
   AdminRunListItem,
@@ -12,16 +13,18 @@ import type {
   AdminRunTimelineItem,
   AdminRunTokenUsage,
   AdminToolExecutionStep,
-  AdminToolResultCode,
-  AgentRunStatus,
-  AgentStepStatus,
-  MessageRole,
-  MessageStatus,
 } from '@agent/contracts'
-import type { PersistedMessageGrounding } from '../../agent-runtime/grounding/message-grounding.projector.js'
+import type { Prisma } from '../../generated/prisma/client.js'
+import type {
+  ADMIN_RUN_DETAIL_SELECT,
+  ADMIN_RUN_LIST_SELECT,
+} from '../admin-runs.service.js'
+import {
+  ADMIN_MODEL_FINISH_REASONS,
+  ADMIN_TOOL_RESULT_CODES,
+} from '@agent/contracts'
 
 import { AGENT_STEP_TYPES } from '../../agent-runtime/lifecycle/agent-run-recorder.service.js'
-import { projectContextInspector } from './context-inspector.projector.js'
 import {
   projectAdminRetrievalInspector,
   projectGroundedFinalizationStep,
@@ -32,7 +35,6 @@ import {
   readBoolean,
   readNonNegativeInteger,
   readObject,
-  readPositiveInteger,
   readString,
   toIsoString,
   toPreview,
@@ -46,78 +48,15 @@ import {
 const QUESTION_PREVIEW_MAX_CHARS = 200
 const MESSAGE_PREVIEW_MAX_CHARS = 500
 const SAFE_TEXT_MAX_CHARS = 128
-const MODEL_FINISH_REASONS: AdminModelFinishReason[] = [
-  'stop',
-  'tool_calls',
-  'length',
-  'content_filter',
-  'unknown',
-]
-const TOOL_RESULT_CODES: AdminToolResultCode[] = [
-  'execution_failed',
-  'invalid_arguments',
-  'timeout',
-  'truncated_arguments',
-  'unknown_tool',
-]
 
-interface AdminRunProjectionStepRecord {
-  id?: string
-  sequence: number
-  type: string
-  title?: string
-  status?: AgentStepStatus
-  input: unknown
-  output: unknown
-  errorMessage?: string | null
-  startedAt?: Date | null
-  endedAt?: Date | null
-}
-
-interface AdminRunProjectionRecord {
-  id: string
-  conversationId: string
-  status: AgentRunStatus
-  startedAt: Date
-  endedAt: Date | null
-  createdAt: Date
-  updatedAt?: Date
-  userMessage: {
-    content: string
-  }
-  steps: AdminRunProjectionStepRecord[]
-}
-
-interface AdminRunDetailProjectionStepRecord extends AdminRunProjectionStepRecord {
-  id: string
-  title: string
-  status: AgentStepStatus
-  errorMessage: string | null
-  startedAt: Date | null
-  endedAt: Date | null
-}
-
-interface AdminRunDetailMessageRecord {
-  id: string
-  role: MessageRole
-  status: MessageStatus
-  content: string
-  createdAt: Date
-  updatedAt: Date
-  /** 只有助手消息可能带 Grounding；投影前仍由 projector 复核归属与合法性。 */
-  grounding?: PersistedMessageGrounding | null
-}
-
-interface AdminRunDetailProjectionRecord extends AdminRunProjectionRecord {
-  assistantMessageId: string | null
-  updatedAt: Date
-  userMessage: AdminRunDetailMessageRecord
-  assistantMessage: AdminRunDetailMessageRecord | null
-  steps: AdminRunDetailProjectionStepRecord[]
-}
+/** 投影输入就是 service 按 select 读出的行；类型从 select 派生，不另抄一份镜像接口。 */
+type AdminRunListRecord = Prisma.AgentRunGetPayload<{ select: typeof ADMIN_RUN_LIST_SELECT }>
+export type AdminRunDetailRecord = Prisma.AgentRunGetPayload<{ select: typeof ADMIN_RUN_DETAIL_SELECT }>
+type AdminRunDetailStepRecord = AdminRunDetailRecord['steps'][number]
+type AdminRunDetailMessageRecord = AdminRunDetailRecord['userMessage']
 
 export function projectAdminRunListItem(
-  run: AdminRunProjectionRecord,
+  run: AdminRunListRecord,
 ): AdminRunListItem {
   const sampling = aggregateRunSampling(run.steps)
 
@@ -143,7 +82,7 @@ export function projectAdminRunListItem(
  * 每个 Usage 指标独立求和，任一调用该指标缺失则该指标为 null。
  */
 function aggregateRunSampling(
-  steps: AdminRunProjectionStepRecord[],
+  steps: AdminRunListRecord['steps'],
 ): { count: number, usage: AdminRunTokenUsage } {
   const samplingSteps = steps.filter(
     step => step.type === AGENT_STEP_TYPES.modelSampling,
@@ -160,7 +99,7 @@ function aggregateRunSampling(
 }
 
 export function projectAdminRunDetail(
-  run: AdminRunDetailProjectionRecord,
+  run: AdminRunDetailRecord,
 ): AdminRunDetail {
   return {
     ...projectAdminRunListItem(run),
@@ -179,7 +118,7 @@ export function projectAdminRunDetail(
 
 /** 已知 `type` 逐字段投影；只有未知 `type` 才是 Generic。 */
 function projectTimelineItem(
-  step: AdminRunDetailProjectionStepRecord,
+  step: AdminRunDetailStepRecord,
 ): AdminRunTimelineItem {
   const input = readObject(step.input)
   const output = readObject(step.output)
@@ -201,7 +140,7 @@ function projectTimelineItem(
 }
 
 function projectLoadConversationHistory(
-  step: AdminRunDetailProjectionStepRecord,
+  step: AdminRunDetailStepRecord,
   output: Record<string, unknown> | null,
 ): AdminLoadConversationHistoryStep {
   return {
@@ -212,17 +151,20 @@ function projectLoadConversationHistory(
 }
 
 function projectModelSampling(
-  step: AdminRunDetailProjectionStepRecord,
+  step: AdminRunDetailStepRecord,
   input: Record<string, unknown> | null,
   output: Record<string, unknown> | null,
 ): AdminModelSamplingStep {
+  const samplingIndex = readNonNegativeInteger(input, 'samplingIndex')
+
   return {
     ...knownStepBase(step),
     type: AGENT_STEP_TYPES.modelSampling,
-    samplingIndex: readPositiveInteger(input, 'samplingIndex'),
+    // 轮次从 1 起算；0 只可能来自损坏数据，按读不出处理。
+    samplingIndex: samplingIndex === 0 ? null : samplingIndex,
     samplingAttemptId: readString(input, 'samplingAttemptId'),
     providerItemCount: readNonNegativeInteger(output, 'messageCount'),
-    finishReason: readAllowedString(output, 'finishReason', MODEL_FINISH_REASONS),
+    finishReason: readAllowedString(output, 'finishReason', ADMIN_MODEL_FINISH_REASONS),
     usage: projectTokenUsage(output),
     toolCallCount: readNonNegativeInteger(output, 'toolCallCount'),
     contextInspector: projectContextInspector(input, output),
@@ -232,7 +174,7 @@ function projectModelSampling(
 }
 
 function projectToolExecution(
-  step: AdminRunDetailProjectionStepRecord,
+  step: AdminRunDetailStepRecord,
   input: Record<string, unknown> | null,
   output: Record<string, unknown> | null,
 ): AdminToolExecutionStep {
@@ -243,7 +185,7 @@ function projectToolExecution(
     toolName: readString(input, 'toolName'),
     samplingAttemptId: readString(input, 'samplingAttemptId'),
     ok: readBoolean(output, 'ok'),
-    code: readAllowedString(output, 'code', TOOL_RESULT_CODES),
+    code: readAllowedString(output, 'code', ADMIN_TOOL_RESULT_CODES),
     originalChars: readNonNegativeInteger(output, 'originalChars'),
     observationChars: readNonNegativeInteger(output, 'observationChars'),
     truncated: readBoolean(output, 'truncated'),
@@ -251,7 +193,7 @@ function projectToolExecution(
 }
 
 function projectAssistantOutput(
-  step: AdminRunDetailProjectionStepRecord,
+  step: AdminRunDetailStepRecord,
   input: Record<string, unknown> | null,
 ): AdminAssistantOutputStep {
   return {
@@ -262,7 +204,7 @@ function projectAssistantOutput(
 }
 
 function projectGenericStep(
-  step: AdminRunDetailProjectionStepRecord,
+  step: AdminRunDetailStepRecord,
 ): AdminGenericStep {
   return {
     ...stepBase(step),
@@ -271,14 +213,14 @@ function projectGenericStep(
   }
 }
 
-function knownStepBase(step: AdminRunDetailProjectionStepRecord) {
+function knownStepBase(step: AdminRunDetailStepRecord) {
   return {
     ...stepBase(step),
     kind: 'known' as const,
   }
 }
 
-function stepBase(step: AdminRunDetailProjectionStepRecord) {
+function stepBase(step: AdminRunDetailStepRecord) {
   return {
     id: step.id,
     sequence: step.sequence,
@@ -301,6 +243,81 @@ function projectMessage(message: AdminRunDetailMessageRecord): AdminRunMessage {
     createdAt: message.createdAt.toISOString(),
     updatedAt: message.updatedAt.toISOString(),
   }
+}
+
+/**
+ * 按 sampling Step 的 `input.initialContext` 与 `output.contextPlan` 逐字段投影。
+ *
+ * 字段能读就读，读不出就 null；不做跨字段等式或跨 Step 序列检查。
+ */
+function projectContextInspector(
+  input: Record<string, unknown> | null,
+  output: Record<string, unknown> | null,
+): AdminContextInspector {
+  const initialContext = readObject(input?.initialContext)
+  const contextPlan = readObject(output?.contextPlan)
+  const contextFailureReason = readAllowedString(
+    output,
+    'contextFailureReason',
+    ['estimator_failure'],
+  )
+  const overflowReason = readAllowedString(
+    contextPlan,
+    'overflowReason',
+    ['minimum_context'],
+  )
+  const initialIncludedCount = readNonNegativeInteger(
+    initialContext,
+    'historyIncludedCount',
+  )
+  const planIncludedCount = readNonNegativeInteger(
+    contextPlan,
+    'historyIncludedCount',
+  )
+
+  return {
+    outcome: contextFailureReason === 'estimator_failure'
+      ? 'estimator_failure'
+      : overflowReason === 'minimum_context'
+        ? 'minimum_context_overflow'
+        : contextPlan
+          ? 'success'
+          : null,
+    resolvedModel: readString(initialContext, 'resolvedModel'),
+    // 预算在 plan 前就已解析并写入 initialContext；history 三项都是 plan 的结果，只读 contextPlan。
+    resolvedInputBudgetTokens: readNonNegativeInteger(contextPlan, 'resolvedInputBudgetTokens')
+      ?? readNonNegativeInteger(initialContext, 'resolvedInputBudgetTokens'),
+    estimatedInputTokens: readNonNegativeInteger(contextPlan, 'estimatedInputTokens'),
+    historyCandidateCount: readNonNegativeInteger(contextPlan, 'historyCandidateCount'),
+    historyIncludedCount: planIncludedCount,
+    samplingHistoryExcludedCount: initialIncludedCount !== null && planIncludedCount !== null
+      ? initialIncludedCount - planIncludedCount
+      : null,
+    observations: readContextObservationSummaries(contextPlan?.observations),
+  }
+}
+
+/**
+ * 逐条、逐字段读取 Observation 摘要；不是数组返回 null。
+ *
+ * 展示按数组下标编号（第 N 轮 Tool Exchange），因此单条读不出时保留位置、
+ * 只把读不出的字段置 null，不跳过也不拖垮整个数组。
+ */
+function readContextObservationSummaries(
+  value: unknown,
+): AdminContextObservationSummary[] | null {
+  if (!Array.isArray(value))
+    return null
+
+  return value.map((candidate) => {
+    const object = readObject(candidate)
+
+    return {
+      originalChars: readNonNegativeInteger(object, 'originalChars'),
+      toolCeilingChars: readNonNegativeInteger(object, 'toolCeilingChars'),
+      finalChars: readNonNegativeInteger(object, 'finalChars'),
+    }
+  })
 }
 
 /**
@@ -353,8 +370,8 @@ function readDebugModelResponseCapture(
 }
 
 function compareSteps(
-  left: AdminRunProjectionStepRecord,
-  right: AdminRunProjectionStepRecord,
+  left: AdminRunDetailStepRecord,
+  right: AdminRunDetailStepRecord,
 ): number {
-  return left.sequence - right.sequence || (left.id ?? '').localeCompare(right.id ?? '')
+  return left.sequence - right.sequence || left.id.localeCompare(right.id)
 }

@@ -9,6 +9,7 @@ import { Inject, Injectable, Logger } from '@nestjs/common'
 import {
   readNonNegativeInteger,
   readObject,
+  readString,
 } from '../admin-runs/projection/safe-readers.js'
 import { LLMRuntimeConfigService } from '../llm/llm-runtime-config.service.js'
 import { PrismaService } from '../prisma/prisma.service.js'
@@ -122,8 +123,9 @@ export class AdminOverviewService {
       }
 
       // resolvedModel 落库在 step input.initialContext（output.contextPlan 里没有模型名）。
+      // 统计要原值而不是 128 字 preview，所以不限长。
       const initialContext = readObject(readObject(step.input)?.initialContext)
-      const model = readString(initialContext, 'resolvedModel')
+      const model = readString(initialContext, 'resolvedModel', Number.POSITIVE_INFINITY)
       if (model) {
         const entry = models.get(model) ?? { samplingCount: 0, totalTokens: 0 }
         entry.samplingCount += 1
@@ -134,7 +136,7 @@ export class AdminOverviewService {
 
     const tools = new Map<string, number>()
     for (const step of toolSteps) {
-      const toolName = readString(readObject(step.input), 'toolName')
+      const toolName = readString(readObject(step.input), 'toolName', Number.POSITIVE_INFINITY)
       if (toolName)
         tools.set(toolName, (tools.get(toolName) ?? 0) + 1)
     }
@@ -194,16 +196,17 @@ export function parseProviderBalance(payload: unknown): AdminProviderBalance {
 
   const info = readObject(Array.isArray(record.balance_infos) ? record.balance_infos[0] : null)
 
+  // 空串按缺失处理，保持 null 语义。
   return {
     available: record.is_available,
-    currency: readString(info, 'currency'),
-    totalBalance: readString(info, 'total_balance'),
+    currency: readString(info, 'currency', Number.POSITIVE_INFINITY) || null,
+    totalBalance: readString(info, 'total_balance', Number.POSITIVE_INFINITY) || null,
   }
 }
 
 /** 统计窗口起点：29 天前的 Asia/Shanghai 零点（含今天共 30 天）。 */
-function resolveWindowStart(now = Date.now()): Date {
-  const todayStartShanghai = Math.floor((now + SHANGHAI_OFFSET_MS) / DAY_MS) * DAY_MS
+function resolveWindowStart(): Date {
+  const todayStartShanghai = Math.floor((Date.now() + SHANGHAI_OFFSET_MS) / DAY_MS) * DAY_MS
   return new Date(todayStartShanghai - (WINDOW_DAYS - 1) * DAY_MS - SHANGHAI_OFFSET_MS)
 }
 
@@ -218,11 +221,4 @@ function createEmptyDaily(windowStart: Date): AdminOverviewDailyPoint[] {
     inputTokens: 0,
     outputTokens: 0,
   }))
-}
-
-// 不复用 projector 的 readString：那个版本内嵌 128 字安全截断（preview 语义），
-// 统计场景要原值（模型名 / 币种），保留本地纯读取实现。
-function readString(record: Record<string, unknown> | null, key: string): string | null {
-  const value = record?.[key]
-  return typeof value === 'string' && value.length > 0 ? value : null
 }

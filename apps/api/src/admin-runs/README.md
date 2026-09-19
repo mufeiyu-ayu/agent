@@ -15,18 +15,18 @@
 
 | 文件 | 职责 |
 | --- | --- |
-| `admin-run.projector.ts` | Run List / Detail 的 facade 与 Timeline 组合 |
-| `context-inspector.projector.ts` | sampling Step 的 `initialContext` / `contextPlan` 逐字段读取 |
+| `admin-run.projector.ts` | Run List / Detail 的 facade 与 Timeline 组合，含 sampling Step 的 `initialContext` / `contextPlan` 逐字段读取；输入类型由 `admin-runs.service.ts` 的两个 select 派生 |
 | `retrieval-inspector.projector.ts` | evidence-eligible call 摘要、finalization Step 与 Citation 关联 |
 | `sampling-usage.projector.ts` | action sampling / finalization 次数和 Usage 逐项求和 |
 | `safe-readers.ts` | 无领域状态的 primitive / JSON readers |
+| `__fixtures__.ts` | 两份 projector 测试共用的 Run / Step 记录 builder |
 
 依赖方向固定为：
 
 ```text
 AdminRunsService
   -> admin-run.projector (facade)
-  -> context / retrieval / sampling-usage
+  -> retrieval / sampling-usage
   -> safe-readers
 ```
 

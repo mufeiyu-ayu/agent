@@ -74,19 +74,12 @@ export const retrieveArticleContextDefinition: ToolDefinition<RetrieveArticleCon
   // 一次真实检索包含 Gemini query embedding 往返与 pgvector exact search，预算高于纯数据库工具。
   timeoutMs: 30_000,
   maxObservationChars: RETRIEVE_ARTICLE_CONTEXT_MAX_OBSERVATION_CHARS,
-  requiresApproval: false,
-  idempotent: true,
-  // 网络访问目标固定为服务端配置的 Gemini Embedding Provider，模型 arguments 无法改变它。
-  risk: { level: 'low', sideEffect: 'none', network: 'trusted_provider' },
   // 语义检索候选是回答证据的主要来源；零候选属于成功但无证据。
   evidencePolicy: 'eligible',
 }
 
 @Injectable()
-export class RetrieveArticleContextTool implements ToolExecutor<
-  RetrieveArticleContextInput,
-  RetrieveArticleContextOutput
-> {
+export class RetrieveArticleContextTool implements ToolExecutor<RetrieveArticleContextInput> {
   constructor(
     @Inject(HybridArticleRetrievalRuntime)
     private readonly articleRetriever: ArticleRetriever<DatabaseArticleRetrievalExecutionContext>,
@@ -126,7 +119,6 @@ export class RetrieveArticleContextTool implements ToolExecutor<
 
     return {
       ok: true as const,
-      data,
       modelContent: toModelContent(data),
       stepSummary: toStepSummary(data),
       evidence: {

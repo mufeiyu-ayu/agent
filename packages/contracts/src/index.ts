@@ -33,6 +33,7 @@ export type {
   AdminRetrievalSourceRef,
   AdminRetrievalStrategy,
   AdminRunDetail,
+  AdminRunKnownTimelineItemBase,
   AdminRunListItem,
   AdminRunListResponse,
   AdminRunMessage,
@@ -43,17 +44,20 @@ export type {
   AdminToolExecutionStep,
   AdminToolResultCode,
 } from './admin-run.js'
+export {
+  ADMIN_GROUNDED_ANSWER_REJECTION_CODES,
+  ADMIN_GROUNDED_FINALIZATION_FAILURE_REASONS,
+  ADMIN_GROUNDED_FINALIZATION_SAMPLING_FAILURES,
+  ADMIN_MODEL_FINISH_REASONS,
+  ADMIN_TOOL_RESULT_CODES,
+} from './admin-run.js'
 export type {
-  AgentRun,
   AgentRunStatus,
-  AgentStep,
-  AgentStepJsonValue,
   AgentStepStatus,
 } from './agent-run.js'
 export type {
   ApiErrorPayload,
   ApiErrorResponse,
-  ApiResponse,
   ApiResponseMeta,
   ApiSuccessResponse,
 } from './api-response.js'
@@ -91,7 +95,9 @@ export type {
   MessageGroundingV1,
 } from './grounding.js'
 export {
+  MESSAGE_EVIDENCE_AVAILABILITIES,
   MESSAGE_GROUNDING_MAX_CITATIONS,
+  MESSAGE_GROUNDING_OUTCOMES,
   MESSAGE_GROUNDING_SCHEMA_VERSION,
   parseMessageGroundingV1,
 } from './grounding.js'

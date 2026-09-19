@@ -16,23 +16,6 @@ import { PrismaArticleRetriever } from '../../retrieval/retrievers/prisma-articl
 
 export type SearchArticlesInput = NormalizedArticleRetrievalQuery
 
-export interface SearchArticleSummary {
-  sourceId: number
-  slug: string
-  languageCode: string
-  title: string
-  seoTitle: string | null
-  seoDescription: string | null
-  excerpt: string
-}
-
-export interface SearchArticlesOutput {
-  query: string
-  languageCode?: string
-  total: number
-  articles: SearchArticleSummary[]
-}
-
 export const searchArticlesDefinition: ToolDefinition<SearchArticlesInput> = {
   name: 'search_articles',
   version: '1',
@@ -48,19 +31,16 @@ export const searchArticlesDefinition: ToolDefinition<SearchArticlesInput> = {
       required: ['query'],
       additionalProperties: false,
     },
-    parse: parseSearchArticlesInput,
+    parse: normalizeArticleRetrievalInput,
   },
   timeoutMs: 5_000,
   maxObservationChars: 16_000,
-  requiresApproval: false,
-  idempotent: true,
-  risk: { level: 'low', sideEffect: 'none', network: 'none' },
   // 关键词发现结果不是回答证据：它没有语义相关性判断，也没有可引用的片段。
   evidencePolicy: 'discovery_only',
 }
 
 @Injectable()
-export class SearchArticlesTool implements ToolExecutor<SearchArticlesInput, SearchArticlesOutput> {
+export class SearchArticlesTool implements ToolExecutor<SearchArticlesInput> {
   constructor(
     @Inject(PrismaArticleRetriever)
     private readonly articleRetriever: ArticleRetriever<DatabaseArticleRetrievalExecutionContext>,
@@ -79,25 +59,14 @@ export class SearchArticlesTool implements ToolExecutor<SearchArticlesInput, Sea
     })
 
     context.signal.throwIfAborted()
-    const { languageCode, query } = retrieval.query
+    const { query } = retrieval.query
     const articles = retrieval.hits.map(({ rank: _rank, ...article }) => article)
-    const data: SearchArticlesOutput = {
-      query,
-      ...(languageCode ? { languageCode } : {}),
-      total: retrieval.total,
-      articles,
-    }
 
     return {
       ok: true as const,
-      data,
       modelContent: articles.length === 0
         ? `没有找到与“${query}”匹配的文章。`
         : `共找到 ${retrieval.total} 篇匹配文章，以下是 ${articles.length} 条精简结果：\n${JSON.stringify(articles)}`,
     }
   }
-}
-
-function parseSearchArticlesInput(value: unknown): SearchArticlesInput {
-  return normalizeArticleRetrievalInput(value)
 }

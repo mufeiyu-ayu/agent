@@ -94,7 +94,8 @@ interface CloseAssistantMessageInput {
   content: string
 }
 
-interface CloseAgentStepInput {
+/** 收口失败 / 中断 Run 时一并标记失败的 Step；Runtime 用它暂存最新一条终态归因。 */
+export interface CloseAgentStepInput {
   id: string
   errorMessage: string
   output?: Prisma.InputJsonValue
@@ -106,7 +107,7 @@ interface CloseAgentStepInput {
  * 用于 grounded finalization：模型调用一旦发生，attempt 与 usage 就是既成事实，
  * 不能因为后续 replay 被中断或终态事务回滚而从审计里消失。
  */
-interface CloseAgentStepMetadata {
+export interface CloseAgentStepMetadata {
   id: string
   output: Prisma.InputJsonValue
 }

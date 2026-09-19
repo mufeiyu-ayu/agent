@@ -1,5 +1,4 @@
 import type { ToolResult } from '../core/tool.types.js'
-import type { RetrieveArticleContextOutput } from './retrieve-article-context.tool.js'
 import { performance } from 'node:perf_hooks'
 import process from 'node:process'
 import { pathToFileURL } from 'node:url'
@@ -41,11 +40,8 @@ async function executeRetrieveArticleContextSmoke(
         callId: 'smoke-call-1',
         toolName: 'retrieve_article_context',
         rawArgumentsJson: JSON.stringify({ query: SMOKE_QUERY, limit: 3 }),
-        samplingAttemptId: 'smoke-sampling-1',
       },
       {
-        runId: 'smoke-run-1',
-        conversationId: 'smoke-conversation-1',
         databaseDeadline: {
           deadlineAt: Date.now() + SMOKE_DATABASE_TIMEOUT_MS,
           signal,
@@ -64,7 +60,15 @@ async function executeRetrieveArticleContextSmoke(
   if (!result.ok)
     throw new Error(`retrieval tool smoke 返回失败：${result.code}`)
 
-  const data = result.data as RetrieveArticleContextOutput
+  // stepSummary 就是工具自己声明的可安全持久化摘要，这里直接复用它的字段。
+  const summary = result.stepSummary as unknown as {
+    status: string
+    answerStatus: string
+    strategy: { name: string, version: string }
+    sourceCount: number
+    chunkEvidenceCount: number
+    sources: Array<{ sourceId: number, chunkId?: string }>
+  }
   const observation = normalizeToolObservation(
     result.modelContent,
     retrieveArticleContextDefinition.maxObservationChars,
@@ -80,14 +84,14 @@ async function executeRetrieveArticleContextSmoke(
     },
     queryChars: [...SMOKE_QUERY].length,
     ok: result.ok,
-    status: data.status,
-    answerStatus: data.answerStatus,
-    strategy: data.strategy,
-    sourceCount: data.sourceCount,
-    chunkEvidenceCount: data.sources.filter(source => source.evidence).length,
-    sourceIds: data.sources.map(source => source.sourceId),
-    chunkIds: data.sources.flatMap(source => (
-      source.evidence ? [source.evidence.chunkId] : []
+    status: summary.status,
+    answerStatus: summary.answerStatus,
+    strategy: summary.strategy,
+    sourceCount: summary.sourceCount,
+    chunkEvidenceCount: summary.chunkEvidenceCount,
+    sourceIds: summary.sources.map(source => source.sourceId),
+    chunkIds: summary.sources.flatMap(source => (
+      source.chunkId === undefined ? [] : [source.chunkId]
     )),
     observation: {
       maxChars: retrieveArticleContextDefinition.maxObservationChars,

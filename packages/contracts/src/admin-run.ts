@@ -62,20 +62,26 @@ export interface AdminRunMessage {
   updatedAt: string
 }
 
-export type AdminModelFinishReason
-  = | 'stop'
-    | 'tool_calls'
-    | 'length'
-    | 'content_filter'
-    | 'unknown'
+export const ADMIN_MODEL_FINISH_REASONS = [
+  'stop',
+  'tool_calls',
+  'length',
+  'content_filter',
+  'unknown',
+] as const
 
-export type AdminToolResultCode
-  = | 'execution_failed'
-    | 'invalid_arguments'
-    | 'timeout'
-    // 模型输出达到长度限制、arguments 不完整，本次未执行。
-    | 'truncated_arguments'
-    | 'unknown_tool'
+export type AdminModelFinishReason = typeof ADMIN_MODEL_FINISH_REASONS[number]
+
+export const ADMIN_TOOL_RESULT_CODES = [
+  'execution_failed',
+  'invalid_arguments',
+  'timeout',
+  // 模型输出达到长度限制、arguments 不完整，本次未执行。
+  'truncated_arguments',
+  'unknown_tool',
+] as const
+
+export type AdminToolResultCode = typeof ADMIN_TOOL_RESULT_CODES[number]
 
 export type AdminContextInspectorOutcome
   = | 'success'
@@ -126,35 +132,47 @@ export interface AdminRetrievalCallSummary {
 }
 
 /** finalization 未能收口的安全大类；不携带 stack 或 Provider payload。 */
+export const ADMIN_GROUNDED_FINALIZATION_FAILURE_REASONS = [
+  'validation_failed',
+  'sampling_incomplete',
+  'finalization_incomplete',
+] as const
+
 export type AdminGroundedFinalizationFailureReason
-  = | 'validation_failed'
-    | 'sampling_incomplete'
-    | 'finalization_incomplete'
+  = typeof ADMIN_GROUNDED_FINALIZATION_FAILURE_REASONS[number]
 
 /** 模型终态输出被拒绝的安全类别。 */
+export const ADMIN_GROUNDED_ANSWER_REJECTION_CODES = [
+  'answer_empty',
+  'answer_too_long',
+  'arguments_too_large',
+  'citation_key_invalid',
+  'citation_keys_too_many',
+  'citation_required_for_answered',
+  'citations_not_allowed_without_evidence',
+  'conflicting_requires_two_sources',
+  'malformed_json',
+  'outcome_not_allowed_for_availability',
+  'schema_invalid',
+  // 模型以纯文本正常 stop 结束、未调用提交工具（模型不服从）。
+  'submission_missing',
+  'unknown_citation_key',
+] as const
+
 export type AdminGroundedAnswerRejectionCode
-  = | 'answer_empty'
-    | 'answer_too_long'
-    | 'arguments_too_large'
-    | 'citation_key_invalid'
-    | 'citation_keys_too_many'
-    | 'citation_required_for_answered'
-    | 'citations_not_allowed_without_evidence'
-    | 'conflicting_requires_two_sources'
-    | 'malformed_json'
-    | 'outcome_not_allowed_for_availability'
-    | 'schema_invalid'
-    // 模型以纯文本正常 stop 结束、未调用提交工具（模型不服从）。
-    | 'submission_missing'
-    | 'unknown_citation_key'
+  = typeof ADMIN_GROUNDED_ANSWER_REJECTION_CODES[number]
 
 /** 终态采样流未完整结束的安全类别；与「模型说错了」是两类问题。 */
+export const ADMIN_GROUNDED_FINALIZATION_SAMPLING_FAILURES = [
+  'missing_response_completed',
+  'multiple_submissions',
+  'stream_failed',
+  'unexpected_finish_reason',
+  'unknown_tool_call',
+] as const
+
 export type AdminGroundedFinalizationSamplingFailure
-  = | 'missing_response_completed'
-    | 'multiple_submissions'
-    | 'stream_failed'
-    | 'unexpected_finish_reason'
-    | 'unknown_tool_call'
+  = typeof ADMIN_GROUNDED_FINALIZATION_SAMPLING_FAILURES[number]
 
 export interface AdminGroundedCitationSummary {
   /** 服务端签发的公开 ID；与内部 citationKey 无关且不由它派生。 */
@@ -188,7 +206,8 @@ interface AdminRunTimelineItemBase {
   hasError: boolean
 }
 
-interface AdminRunKnownTimelineItemBase extends AdminRunTimelineItemBase {
+/** 已知 `type` 的 Step 共有字段；projector 先算好这一段，再按 `type` 补各自的字段。 */
+export interface AdminRunKnownTimelineItemBase extends AdminRunTimelineItemBase {
   kind: 'known'
 }
 

@@ -5,7 +5,7 @@ import type {
 import type { DatabaseOperationDeadline } from '../../prisma/prisma.service.js'
 import type { ArticleRetrievalPool } from '../../retrieval/persistence/postgres-article-retrieval.repository.js'
 import type { ToolExecutionContext } from '../core/tool.types.js'
-import type { RetrieveArticleContextOutput } from './retrieve-article-context.tool.js'
+import type { RetrievedArticleSource } from './retrieve-article-context.tool.js'
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
@@ -139,16 +139,19 @@ integrationDescribe('retrieve_article_context PostgreSQL / pgvector integration'
     if (!result.ok)
       return
 
-    const data = result.data as RetrieveArticleContextOutput
+    // modelContent 最后一行就是交给模型的候选来源 JSON。
+    const sources = JSON.parse(
+      result.modelContent.slice(result.modelContent.lastIndexOf('\n') + 1),
+    ) as RetrievedArticleSource[]
 
-    assert.equal(data.status, 'candidates_returned')
-    assert.equal(data.answerStatus, 'unverified')
-    assert.deepEqual(data.strategy, { name: 'hybrid_rrf', version: '1' })
-    assert.equal(data.sources[0]?.sourceId, 301)
-    assert.equal(data.sources[0]?.evidence?.chunkId, 'article-301-chunk-0')
-    assert.equal(data.sources[0]?.evidence?.sectionPath, 'Section 0')
+    assert.equal(result.stepSummary?.status, 'candidates_returned')
+    assert.equal(result.stepSummary?.answerStatus, 'unverified')
+    assert.deepEqual(result.stepSummary?.strategy, { name: 'hybrid_rrf', version: '1' })
+    assert.equal(sources[0]?.sourceId, 301)
+    assert.equal(sources[0]?.evidence?.chunkId, 'article-301-chunk-0')
+    assert.equal(sources[0]?.evidence?.sectionPath, 'Section 0')
     assert.equal(
-      Object.hasOwn(data.sources[0]?.evidence ?? {}, 'cosineDistance'),
+      Object.hasOwn(sources[0]?.evidence ?? {}, 'cosineDistance'),
       false,
     )
     // excerpt 里的 injection 文本只是候选资料，Observation 仍然标注 untrusted。
@@ -169,10 +172,7 @@ integrationDescribe('retrieve_article_context PostgreSQL / pgvector integration'
     if (!result.ok)
       return
 
-    const data = result.data as RetrieveArticleContextOutput
-
-    assert.equal(data.status, 'no_candidates')
-    assert.deepEqual(data.sources, [])
+    assert.match(result.modelContent, /status=no_candidates \| answer_status=unverified \| source_count=0/)
     assert.deepEqual(result.stepSummary, {
       status: 'no_candidates',
       answerStatus: 'unverified',
@@ -367,7 +367,6 @@ function createEnvelope(input: Record<string, unknown>) {
     callId: 'call-retrieve-db-1',
     toolName: 'retrieve_article_context',
     rawArgumentsJson: JSON.stringify(input),
-    samplingAttemptId: 'sampling-1',
   }
 }
 
@@ -375,8 +374,6 @@ function createContext(
   signal = new AbortController().signal,
 ): ToolExecutionContext {
   return {
-    runId: 'run-1',
-    conversationId: 'conversation-1',
     databaseDeadline: createDatabaseDeadline(signal),
     signal,
   }

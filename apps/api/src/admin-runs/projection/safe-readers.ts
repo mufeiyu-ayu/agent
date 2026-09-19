@@ -28,14 +28,6 @@ export function readNonNegativeInteger(
     : null
 }
 
-export function readPositiveInteger(
-  object: Record<string, unknown> | null,
-  key: string,
-): number | null {
-  const value = readNonNegativeInteger(object, key)
-  return value !== null && value > 0 ? value : null
-}
-
 export function readAllowedString<T extends string>(
   object: Record<string, unknown> | null,
   key: string,

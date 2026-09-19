@@ -3,16 +3,14 @@ import type {
   AdminRunTimelineItem,
   MessageCitationV1,
 } from '@agent/contracts'
+import type { MessageGrounding } from '../../generated/prisma/client.js'
 import assert from 'node:assert/strict'
 // 项目使用 Node 原生测试运行器，不为 Admin 投影引入额外测试框架。
 // eslint-disable-next-line test/no-import-node-test
 import { describe, it } from 'node:test'
 
+import { runRecord, step } from './__fixtures__.js'
 import { projectAdminRunDetail } from './admin-run.projector.js'
-
-type RunStatus = 'RUNNING' | 'COMPLETED' | 'FAILED' | 'ABORTED'
-type StepStatus = 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'ABORTED'
-type MessageStatus = 'PENDING' | 'STREAMING' | 'COMPLETED' | 'FAILED' | 'ABORTED'
 
 /** 注入到所有禁止外泄位置的哨兵；序列化响应中出现即视为泄漏。 */
 const SENTINEL = 'DO_NOT_LEAK_SENTINEL'
@@ -517,7 +515,7 @@ interface GroundedRunOptions {
 }
 
 function createOrdinaryRun() {
-  const run = baseRun()
+  const run = runRecord()
 
   run.steps = [
     step(1, 'load_conversation_history', {
@@ -558,7 +556,7 @@ function createOrdinaryRun() {
 }
 
 function createGroundedRun(options: GroundedRunOptions = {}) {
-  const run = baseRun()
+  const run = runRecord()
   const citations = options.citations ?? defaultCitations()
   const finalization = options.finalization ?? {}
   const evidenceAvailability = finalization.evidenceAvailability ?? 'available'
@@ -670,6 +668,7 @@ function createGroundedRun(options: GroundedRunOptions = {}) {
     }),
   ]
 
+  // 只填 projector 会读的列；messageId / createdAt / updatedAt 投影不读，测试不造。
   run.assistantMessage!.grounding = {
     schemaVersion: 1,
     evidenceAvailability,
@@ -678,18 +677,9 @@ function createGroundedRun(options: GroundedRunOptions = {}) {
     faithfulnessStatus: 'not_evaluated',
     citations: citations as unknown,
     ...options.groundingOverrides,
-  } as GroundingRecord
+  } as MessageGrounding
 
   return run
-}
-
-interface GroundingRecord {
-  schemaVersion: number
-  evidenceAvailability: string
-  outcome: string
-  citationIntegrity: string
-  faithfulnessStatus: string
-  citations: unknown
 }
 
 /** 只改 sources 的 summary；其余字段与默认 grounded fixture 一致。 */
@@ -708,7 +698,7 @@ function summaryWithSources(sources: unknown[]): Record<string, unknown> {
 
 function failedToolStep(sequence: number, callId: string, code = 'execution_failed') {
   return step(sequence, 'tool_execution', {
-    status: 'FAILED' as StepStatus,
+    status: 'FAILED',
     input: {
       callId,
       toolName: 'retrieve_article_context',
@@ -754,65 +744,6 @@ function citation(
     href: null,
     granularity: overrides.chunkId === null ? 'article' : 'chunk',
     strategy: { ...RETRIEVAL_STRATEGY },
-    ...overrides,
-  }
-}
-
-function baseRun() {
-  return {
-    id: 'run-1',
-    conversationId: 'conversation-1',
-    assistantMessageId: 'message-assistant' as string | null,
-    status: 'COMPLETED' as RunStatus,
-    startedAt: new Date('2026-08-16T00:00:00.000Z'),
-    endedAt: new Date('2026-08-16T00:00:05.000Z') as Date | null,
-    createdAt: new Date('2026-08-16T00:00:00.000Z'),
-    updatedAt: new Date('2026-08-16T00:00:05.000Z'),
-    userMessage: {
-      id: 'message-user',
-      role: 'USER' as const,
-      status: 'COMPLETED' as MessageStatus,
-      content: '站内有哪些 SEO 指南？',
-      createdAt: new Date('2026-08-16T00:00:00.000Z'),
-      updatedAt: new Date('2026-08-16T00:00:00.000Z'),
-    },
-    assistantMessage: {
-      id: 'message-assistant',
-      role: 'ASSISTANT' as const,
-      status: 'COMPLETED' as MessageStatus,
-      content: '已根据站内资料回答。',
-      createdAt: new Date('2026-08-16T00:00:00.100Z'),
-      updatedAt: new Date('2026-08-16T00:00:05.000Z'),
-      grounding: null as GroundingRecord | null,
-    } as {
-      id: string
-      role: 'ASSISTANT'
-      status: MessageStatus
-      content: string
-      createdAt: Date
-      updatedAt: Date
-      grounding: GroundingRecord | null
-    } | null,
-    steps: [] as ReturnType<typeof step>[],
-  }
-}
-
-function step(
-  sequence: number,
-  type: string,
-  overrides: Record<string, unknown> = {},
-) {
-  return {
-    id: `step-${sequence}`,
-    sequence,
-    type,
-    title: `Step ${sequence}`,
-    status: 'COMPLETED' as StepStatus,
-    input: null as unknown,
-    output: null as unknown,
-    errorMessage: null as string | null,
-    startedAt: new Date('2026-08-16T00:00:01.000Z') as Date | null,
-    endedAt: new Date('2026-08-16T00:00:01.500Z') as Date | null,
     ...overrides,
   }
 }

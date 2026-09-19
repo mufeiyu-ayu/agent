@@ -34,25 +34,6 @@ export class ToolInvocationService {
       }
     }
 
-    // 当前只放行 low-risk、无副作用、幂等、无需审批的工具；
-    // 服务端固定的可信 Provider 网络访问是允许的，模型可影响目标的任意外网访问继续 fail closed。
-    if (
-      tool.definition.requiresApproval
-      || !tool.definition.idempotent
-      || tool.definition.risk.level !== 'low'
-      || tool.definition.risk.sideEffect !== 'none'
-      || (
-        tool.definition.risk.network !== 'none'
-        && tool.definition.risk.network !== 'trusted_provider'
-      )
-    ) {
-      return {
-        ok: false,
-        code: 'execution_failed',
-        modelContent: `工具 ${envelope.toolName} 当前不允许执行。`,
-      }
-    }
-
     // 将模型返回的 arguments JSON 解析为对象，再通过工具输入契约校验并规范化。
     let input: unknown
 
@@ -67,12 +48,9 @@ export class ToolInvocationService {
       }
     }
 
-    // 将校验后的输入与服务端工具元数据组装为执行器唯一允许接收的可信调用。
+    // 将校验后的输入与服务端工具名组装为执行器唯一允许接收的可信调用。
     const invocation: ValidatedToolInvocation = {
-      callId: envelope.callId,
       toolName: tool.definition.name,
-      toolVersion: tool.definition.version,
-      samplingAttemptId: envelope.samplingAttemptId,
       input,
     }
     const executionController = new AbortController()
@@ -116,7 +94,6 @@ export class ToolInvocationService {
 
     const execution = Promise.resolve()
       .then(() => tool.executor.execute(invocation, {
-        ...context,
         databaseDeadline,
         signal: executionController.signal,
       }))

@@ -103,7 +103,7 @@ describe('ChatDto', () => {
 
 describe('ChatDto 在 App ValidationPipe 边界的行为', () => {
   it('纯空白 body 抛出 400 且不进入下游处理', async () => {
-    const pipe = createAppValidationPipe({ expectedType: ChatDto })
+    const pipe = createAppValidationPipe()
 
     for (const message of BLANK_MESSAGES) {
       let downstreamCalled = false
@@ -151,7 +151,7 @@ describe('ChatDto 在 App ValidationPipe 边界的行为', () => {
   })
 
   it('校验失败字段的原始值不会被回显到错误详情', async () => {
-    const pipe = createAppValidationPipe({ expectedType: ChatDto })
+    const pipe = createAppValidationPipe()
     const payload = {
       ...createPayload('hi'),
       // 超过 conversationId 的 128 字符上限，让该字段本身成为失败字段，
@@ -176,7 +176,7 @@ describe('ChatDto 在 App ValidationPipe 边界的行为', () => {
   })
 
   it('含非空白字符的 body 通过校验且保留原始空白', async () => {
-    const pipe = createAppValidationPipe({ expectedType: ChatDto })
+    const pipe = createAppValidationPipe()
     const transformed: unknown = await pipe.transform(
       createPayload(' hi '),
       BODY_METADATA,
@@ -187,7 +187,7 @@ describe('ChatDto 在 App ValidationPipe 边界的行为', () => {
   })
 
   it('reasoningEffort 仅放行 low / high / max，省略保持 legacy 兼容', async () => {
-    const pipe = createAppValidationPipe({ expectedType: ChatDto })
+    const pipe = createAppValidationPipe()
 
     for (const reasoningEffort of ['low', 'high', 'max']) {
       const transformed = await pipe.transform({

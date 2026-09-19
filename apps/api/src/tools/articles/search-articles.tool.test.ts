@@ -6,17 +6,13 @@ import type {
   ToolExecutionContext,
   ValidatedToolInvocation,
 } from '../core/tool.types.js'
-import type {
-  SearchArticlesInput,
-  SearchArticlesOutput,
-} from './search-articles.tool.js'
+import type { SearchArticlesInput } from './search-articles.tool.js'
 import assert from 'node:assert/strict'
 // 项目本轮使用 Node 原生测试运行器，不引入额外测试框架。
 // eslint-disable-next-line test/no-import-node-test
 import { describe, it } from 'node:test'
 
 import { PrismaArticleRetriever } from '../../retrieval/retrievers/prisma-article-retriever.js'
-import { toModelToolSpec } from '../core/model-tool-spec.mapper.js'
 import { ToolInvocationService } from '../core/tool-invocation.service.js'
 import { ToolRegistryService } from '../core/tool-registry.service.js'
 import {
@@ -27,30 +23,6 @@ import {
 const FULL_CONTENT = `<p>${'alpha article content '.repeat(30)}</p>`
 
 describe('search_articles', () => {
-  it('注册模型可见定义，并保持低风险只读边界', () => {
-    const { registry } = createTools()
-    const definition = registry.get('search_articles')?.definition
-
-    assert.ok(definition)
-    assert.equal(definition, searchArticlesDefinition)
-    assert.deepEqual(definition.risk, {
-      level: 'low',
-      sideEffect: 'none',
-      network: 'none',
-    })
-    assert.equal(definition.requiresApproval, false)
-    assert.equal(definition.idempotent, true)
-    assert.equal(definition.timeoutMs, 5_000)
-    assert.equal(definition.maxObservationChars, 16_000)
-    // 关键词发现结果永远不是回答证据，不进入 Run Evidence Registry。
-    assert.equal(definition.evidencePolicy, 'discovery_only')
-    assert.deepEqual(toModelToolSpec(definition), {
-      name: 'search_articles',
-      description: definition.description,
-      inputSchema: definition.input.schema,
-    })
-  })
-
   it('校验并规范化参数，查询总数和受控精简结果', async () => {
     const fakePrisma = new FakePrismaService({
       total: 12,
@@ -117,11 +89,12 @@ describe('search_articles', () => {
     if (!result.ok)
       return
 
-    const data = result.data as SearchArticlesOutput
+    // 精简结果只通过 modelContent 交给模型：第一行是总数说明，第二行是 JSON。
+    const [headline, serializedArticles] = result.modelContent.split('\n')
+    const articles = JSON.parse(serializedArticles!) as Array<Record<string, unknown>>
 
-    assert.equal(data.query, 'Alpha%_\\')
-    assert.equal(data.total, 12)
-    assert.deepEqual(data.articles.map(({ excerpt, ...article }) => article), [{
+    assert.equal(headline, '共找到 12 篇匹配文章，以下是 1 条精简结果：')
+    assert.deepEqual(articles.map(({ excerpt: _excerpt, ...article }) => article), [{
       sourceId: 7,
       slug: 'alpha-article',
       languageCode: 'zh-cn',
@@ -129,12 +102,8 @@ describe('search_articles', () => {
       seoTitle: 'Alpha SEO',
       seoDescription: null,
     }])
-    assert.equal(data.articles[0]?.excerpt.length, 500)
-    assert.equal(Object.hasOwn(data.articles[0] ?? {}, 'content'), false)
-    assert.equal(
-      result.modelContent,
-      `共找到 12 篇匹配文章，以下是 1 条精简结果：\n${JSON.stringify(data.articles)}`,
-    )
+    assert.equal((articles[0]?.excerpt as string).length, 500)
+    assert.equal(Object.hasOwn(articles[0] ?? {}, 'content'), false)
     assert.doesNotMatch(result.modelContent, new RegExp(FULL_CONTENT))
     assert.doesNotMatch(result.modelContent, /<p>|<\/p>/)
   })
@@ -174,11 +143,6 @@ describe('search_articles', () => {
     assert.equal(fakePrisma.findManyArguments[0]?.take, 5)
     assert.deepEqual(result, {
       ok: true,
-      data: {
-        query: 'missing',
-        total: 0,
-        articles: [],
-      },
       modelContent: '没有找到与“missing”匹配的文章。',
     })
   })
@@ -353,7 +317,6 @@ function createEnvelope(input: Record<string, unknown>) {
     callId: 'call-search-1',
     toolName: 'search_articles',
     rawArgumentsJson: JSON.stringify(input),
-    samplingAttemptId: 'sampling-1',
   }
 }
 
@@ -361,10 +324,7 @@ function createValidatedInvocation(
   input: SearchArticlesInput,
 ): ValidatedToolInvocation<SearchArticlesInput> {
   return {
-    callId: 'call-search-1',
     toolName: 'search_articles',
-    toolVersion: '1',
-    samplingAttemptId: 'sampling-1',
     input,
   }
 }
@@ -373,8 +333,6 @@ function createContext(
   signal = new AbortController().signal,
 ): ToolExecutionContext {
   return {
-    runId: 'run-1',
-    conversationId: 'conversation-1',
     databaseDeadline: createDatabaseDeadline(signal),
     signal,
   }

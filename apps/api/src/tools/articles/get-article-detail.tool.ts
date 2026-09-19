@@ -47,9 +47,6 @@ export const getArticleDetailDefinition: ToolDefinition<GetArticleDetailInput> =
   },
   timeoutMs: 5_000,
   maxObservationChars: 64_000,
-  requiresApproval: false,
-  idempotent: true,
-  risk: { level: 'low', sideEffect: 'none', network: 'none' },
   // 命中时可以作为 article 粒度证据；not found 属于成功但无证据。
   evidencePolicy: 'eligible',
 }
@@ -61,10 +58,7 @@ const ARTICLE_DETAIL_EVIDENCE_STRATEGY = {
 } as const
 
 @Injectable()
-export class GetArticleDetailTool implements ToolExecutor<
-  GetArticleDetailInput,
-  GetArticleDetailOutput
-> {
+export class GetArticleDetailTool implements ToolExecutor<GetArticleDetailInput> {
   constructor(
     @Inject(PrismaService)
     private readonly prismaService: PrismaService,
@@ -113,7 +107,6 @@ export class GetArticleDetailTool implements ToolExecutor<
 
       return {
         ok: true as const,
-        data,
         modelContent: JSON.stringify(data),
         // not found 是真实的「成功但没有证据」，必须显式提交合法空投影；
         // 省略 evidence 会被 Registry 当成 projector 故障。
@@ -140,7 +133,6 @@ export class GetArticleDetailTool implements ToolExecutor<
 
     return {
       ok: true as const,
-      data,
       modelContent: JSON.stringify(data),
       // 只投影可引用的来源身份与展示快照；完整正文留在 Observation，不进 Registry。
       evidence: {
