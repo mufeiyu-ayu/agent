@@ -12,7 +12,7 @@
 | 环境配置（数据库） | `DATABASE_URL`、操作 deadline | `apps/api/src/prisma/prisma.service.ts` | 连接时 |
 | 环境配置（检索运行时） | 混合检索装配所需的 env | `apps/api/src/retrieval/hybrid-article-retrieval.runtime.ts` | 装配时 |
 | Provider 模型能力 | 支持模型名单 + 每个模型的 context window / Provider 输出上限 | `packages/ai/src/deepseek.ts`（LLM 领域单点；前端另有展示用名单 `apps/web/src/types/llm.ts`，新增模型需同步） | 编译期 `Record` 双向约束 |
-| 请求级覆盖 | HTTP 请求可覆盖 model（`SeoChatDto` 白名单校验）；temperature / maxTokens 目前只由服务端调用方设置（`SeoService` 固定 temperature 0.4，maxTokens 未使用） | `packages/ai/src/config.ts`（`resolveChatRequestConfig` → `ResolvedChatRequestConfig`） | model / maxTokens 解析时抛 `LLMConfigError`；temperature 无范围校验，仅缺省补 0.7——未来暴露给 HTTP 前必须先加 DTO 校验 |
+| 请求级覆盖 | HTTP 请求可覆盖 model（`ChatDto` 白名单校验）；temperature / maxTokens 目前只由服务端调用方设置（`ChatService` 固定 temperature 0.4，maxTokens 未使用） | `packages/ai/src/config.ts`（`resolveChatRequestConfig` → `ResolvedChatRequestConfig`） | model / maxTokens 解析时抛 `LLMConfigError`；temperature 无范围校验，仅缺省补 0.7——未来暴露给 HTTP 前必须先加 DTO 校验 |
 | 单次 Run 组合配置 | 一次 Agent Run 的 resolved 请求配置 + Tool allowlist | `apps/api/src/agent-runtime/agent-runtime.service.ts`（私有方法 `resolveRunConfiguration`；allowlist 常量 `AGENT_RUN_TOOL_NAMES` 同文件） | Run 内、AgentRun 落库后解析 |
 | Tool Policy | 每个 Tool 的 timeout、Observation 预算、risk、approval、evidence policy | 各 Tool 自己的 definition（`apps/api/src/tools/**`，类型见 `tools/core/tool.types.ts`） | 注册时 + 编译期 |
 | 公共契约 | 前后端共享协议与类型 | `packages/contracts/` | 编译期 |

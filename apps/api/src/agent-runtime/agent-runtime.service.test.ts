@@ -41,6 +41,7 @@ import {
 } from '@agent/ai'
 
 import { projectAdminRunDetail } from '../admin-runs/projection/admin-run.projector.js'
+import { toChatStreamEvent } from '../chat/chat-stream-event.mapper.js'
 import {
   AgentRunStatus,
   AgentStepStatus,
@@ -51,7 +52,6 @@ import {
   DatabaseCommitOutcomeUnknownError,
   DatabaseOperationDeadlineExceededError,
 } from '../prisma/prisma.service.js'
-import { toChatStreamEvent } from '../seo/seo-chat-stream-event.mapper.js'
 import {
   AgentRunTerminalizationError,
   ContextTokenEstimationError,
@@ -3193,8 +3193,8 @@ describe('ModelContext', () => {
   })
 })
 
-// SEO Agent system prompt 的工具选择策略由
-// `src/seo/prompts/seo-agent.prompt.test.ts` 直接覆盖。
+// Agent system prompt 的工具选择策略由
+// `src/chat/prompts/agent.prompt.test.ts` 直接覆盖。
 
 type CreateModelStream = (
   messages: ModelInputItem[],

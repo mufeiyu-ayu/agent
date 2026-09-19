@@ -1,5 +1,5 @@
 import type { Conversation, ConversationMessage } from '@agent/contracts'
-import type { SeoConversationTurn, SeoConversationTurnStatus } from '../types/seo'
+import type { ConversationTurn, ConversationTurnStatus } from '../types/chat'
 
 interface MapConversationMessagesOptions {
   activeTurnId: string | null
@@ -16,8 +16,8 @@ interface MapConversationMessagesOptions {
 export function mapMessagesToConversationTurns(
   messages: ConversationMessage[],
   options: MapConversationMessagesOptions,
-): SeoConversationTurn[] {
-  return messages.reduce<SeoConversationTurn[]>((turns, item) => {
+): ConversationTurn[] {
+  return messages.reduce<ConversationTurn[]>((turns, item) => {
     if (item.role === 'USER') {
       const errorMessage = options.turnErrors[item.id]
 
@@ -87,7 +87,7 @@ function getUserMessageTurnStatus(
   messageId: string,
   activeTurnId: string | null,
   errorMessage: string | undefined,
-): SeoConversationTurn['status'] {
+): ConversationTurn['status'] {
   if (errorMessage)
     return 'error'
 
@@ -99,7 +99,7 @@ function getUserMessageTurnStatus(
 
 function mapAssistantMessageStatus(
   status: ConversationMessage['status'],
-): SeoConversationTurnStatus {
+): ConversationTurnStatus {
   switch (status) {
     case 'STREAMING':
       return 'generating'

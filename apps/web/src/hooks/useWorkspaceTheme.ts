@@ -2,7 +2,7 @@ import type { WorkspaceThemeId, WorkspaceThemeOption } from '@/types/workspace-t
 
 import { computed, readonly, ref, watch } from 'vue'
 
-const workspaceThemeStorageKey = 'ai-seo-agent:workspace-theme'
+const workspaceThemeStorageKey = 'agent:workspace-theme'
 const defaultWorkspaceTheme: WorkspaceThemeId = 'warm-ledger'
 
 export const workspaceThemeOptions = [

@@ -1,12 +1,12 @@
 import type { Ref } from 'vue'
 import type {
-  SeoFlowParticlePathConfig,
-  SeoFlowPathConfig,
-  SeoFlowPathTone,
-  SeoFlowPoint,
-  SeoFlowStreamDelay,
-  SeoFlowViewBox,
-} from '@/types/seo-flow'
+  FlowParticlePathConfig,
+  FlowPathConfig,
+  FlowPathTone,
+  FlowPoint,
+  FlowStreamDelay,
+  FlowViewBox,
+} from '@/types/flow'
 
 import { nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 
@@ -14,9 +14,9 @@ type FlowAnchorSide = 'left' | 'right'
 
 type FlowRouteType = 'inbound' | 'fanout' | 'handoff'
 
-interface UseSeoFlowLayoutOptions {
+interface UseFlowLayoutOptions {
   containerRef: Ref<HTMLElement | null>
-  viewBox: SeoFlowViewBox
+  viewBox: FlowViewBox
 }
 
 interface FlowRect {
@@ -37,9 +37,9 @@ interface FlowPathDefinition {
   fromRatio: number
   toRatio: number
   route: FlowRouteType
-  tone: SeoFlowPathTone
+  tone: FlowPathTone
   bend?: number
-  streamDelay?: SeoFlowStreamDelay
+  streamDelay?: FlowStreamDelay
   weight?: number
   reverse?: boolean
   color: string
@@ -49,7 +49,7 @@ interface FlowPathDefinition {
 
 interface FlowCurve {
   d: string
-  points: SeoFlowPoint[]
+  points: FlowPoint[]
 }
 
 const COPPER_PARTICLE = {
@@ -78,9 +78,9 @@ const NEUTRAL_PARTICLE = {
 
 const FLOW_PATH_DEFINITIONS: FlowPathDefinition[] = [
   {
-    id: 'seo-flow-page-to-agent',
-    from: 'page-input',
-    to: 'seo-agent-core',
+    id: 'flow-question-to-agent',
+    from: 'user-question',
+    to: 'agent-core',
     fromSide: 'right',
     toSide: 'left',
     fromRatio: 0.50,
@@ -93,9 +93,9 @@ const FLOW_PATH_DEFINITIONS: FlowPathDefinition[] = [
     ...COPPER_PARTICLE,
   },
   {
-    id: 'seo-flow-signals-to-agent',
-    from: 'content-signals',
-    to: 'seo-agent-core',
+    id: 'flow-history-to-agent',
+    from: 'chat-history',
+    to: 'agent-core',
     fromSide: 'right',
     toSide: 'left',
     fromRatio: 0.50,
@@ -108,9 +108,9 @@ const FLOW_PATH_DEFINITIONS: FlowPathDefinition[] = [
     ...MOSS_PARTICLE,
   },
   {
-    id: 'seo-flow-intent-to-agent',
-    from: 'search-intent',
-    to: 'seo-agent-core',
+    id: 'flow-library-to-agent',
+    from: 'article-library',
+    to: 'agent-core',
     fromSide: 'right',
     toSide: 'left',
     fromRatio: 0.50,
@@ -123,9 +123,9 @@ const FLOW_PATH_DEFINITIONS: FlowPathDefinition[] = [
     ...MOSS_PARTICLE,
   },
   {
-    id: 'seo-flow-agent-to-audit',
-    from: 'seo-agent-core',
-    to: 'page-audit',
+    id: 'flow-agent-to-search',
+    from: 'agent-core',
+    to: 'keyword-search',
     fromSide: 'right',
     toSide: 'left',
     fromRatio: 0.31,
@@ -138,9 +138,9 @@ const FLOW_PATH_DEFINITIONS: FlowPathDefinition[] = [
     ...SAND_PARTICLE,
   },
   {
-    id: 'seo-flow-agent-to-keywords',
-    from: 'seo-agent-core',
-    to: 'keyword-discovery',
+    id: 'flow-agent-to-retrieval',
+    from: 'agent-core',
+    to: 'semantic-retrieval',
     fromSide: 'right',
     toSide: 'left',
     fromRatio: 0.43,
@@ -153,9 +153,9 @@ const FLOW_PATH_DEFINITIONS: FlowPathDefinition[] = [
     ...MOSS_PARTICLE,
   },
   {
-    id: 'seo-flow-agent-to-plan',
-    from: 'seo-agent-core',
-    to: 'content-plan',
+    id: 'flow-agent-to-detail',
+    from: 'agent-core',
+    to: 'article-detail',
     fromSide: 'right',
     toSide: 'left',
     fromRatio: 0.57,
@@ -168,9 +168,9 @@ const FLOW_PATH_DEFINITIONS: FlowPathDefinition[] = [
     ...SAND_PARTICLE,
   },
   {
-    id: 'seo-flow-agent-to-linking',
-    from: 'seo-agent-core',
-    to: 'internal-linking',
+    id: 'flow-agent-to-check',
+    from: 'agent-core',
+    to: 'citation-check',
     fromSide: 'right',
     toSide: 'left',
     fromRatio: 0.69,
@@ -183,9 +183,9 @@ const FLOW_PATH_DEFINITIONS: FlowPathDefinition[] = [
     ...MOSS_PARTICLE,
   },
   {
-    id: 'seo-flow-audit-to-brief',
-    from: 'page-audit',
-    to: 'search-ready-brief',
+    id: 'flow-search-to-answer',
+    from: 'keyword-search',
+    to: 'grounded-answer',
     fromSide: 'right',
     toSide: 'left',
     fromRatio: 0.50,
@@ -197,9 +197,9 @@ const FLOW_PATH_DEFINITIONS: FlowPathDefinition[] = [
     ...COPPER_PARTICLE,
   },
   {
-    id: 'seo-flow-keywords-to-brief',
-    from: 'keyword-discovery',
-    to: 'search-ready-brief',
+    id: 'flow-retrieval-to-answer',
+    from: 'semantic-retrieval',
+    to: 'grounded-answer',
     fromSide: 'right',
     toSide: 'left',
     fromRatio: 0.50,
@@ -211,9 +211,9 @@ const FLOW_PATH_DEFINITIONS: FlowPathDefinition[] = [
     ...MOSS_PARTICLE,
   },
   {
-    id: 'seo-flow-plan-to-brief',
-    from: 'content-plan',
-    to: 'search-ready-brief',
+    id: 'flow-detail-to-answer',
+    from: 'article-detail',
+    to: 'grounded-answer',
     fromSide: 'right',
     toSide: 'left',
     fromRatio: 0.50,
@@ -225,9 +225,9 @@ const FLOW_PATH_DEFINITIONS: FlowPathDefinition[] = [
     ...SAND_PARTICLE,
   },
   {
-    id: 'seo-flow-linking-to-brief',
-    from: 'internal-linking',
-    to: 'search-ready-brief',
+    id: 'flow-check-to-answer',
+    from: 'citation-check',
+    to: 'grounded-answer',
     fromSide: 'right',
     toSide: 'left',
     fromRatio: 0.50,
@@ -243,9 +243,9 @@ const FLOW_NODE_IDS = Array.from(
   new Set(FLOW_PATH_DEFINITIONS.flatMap(definition => [definition.from, definition.to])),
 )
 
-export function useSeoFlowLayout(options: UseSeoFlowLayoutOptions) {
-  const flowPaths = ref<SeoFlowPathConfig[]>([])
-  const particlePaths = ref<SeoFlowParticlePathConfig[]>([])
+export function useFlowLayout(options: UseFlowLayoutOptions) {
+  const flowPaths = ref<FlowPathConfig[]>([])
+  const particlePaths = ref<FlowParticlePathConfig[]>([])
   const isMeasured = ref(false)
 
   let resizeObserver: ResizeObserver | null = null
@@ -312,8 +312,8 @@ export function useSeoFlowLayout(options: UseSeoFlowLayoutOptions) {
       rects.set(nodeId, readFlowRect(element, rootRect, options.viewBox))
     }
 
-    const nextFlowPaths: SeoFlowPathConfig[] = []
-    const nextParticlePaths: SeoFlowParticlePathConfig[] = []
+    const nextFlowPaths: FlowPathConfig[] = []
+    const nextParticlePaths: FlowParticlePathConfig[] = []
 
     for (const definition of FLOW_PATH_DEFINITIONS) {
       const fromRect = rects.get(definition.from)
@@ -402,9 +402,9 @@ export function useSeoFlowLayout(options: UseSeoFlowLayoutOptions) {
 
 function findFlowElement(root: HTMLElement, nodeId: string): HTMLElement | null {
   const selectors = [
-    `[data-seo-process-card="${nodeId}"]`,
-    `[data-seo-center-node="${nodeId}"]`,
-    `[data-seo-brief-preview="${nodeId}"]`,
+    `[data-process-card="${nodeId}"]`,
+    `[data-center-node="${nodeId}"]`,
+    `[data-brief-preview="${nodeId}"]`,
   ]
 
   for (const selector of selectors) {
@@ -420,7 +420,7 @@ function findFlowElement(root: HTMLElement, nodeId: string): HTMLElement | null 
 function readFlowRect(
   element: HTMLElement,
   rootRect: DOMRect,
-  viewBox: SeoFlowViewBox,
+  viewBox: FlowViewBox,
 ): FlowRect {
   const rect = element.getBoundingClientRect()
   const scaleX = viewBox.width / rootRect.width
@@ -440,7 +440,7 @@ function readFlowRect(
   }
 }
 
-function getAnchorPoint(rect: FlowRect, side: FlowAnchorSide, ratio: number): SeoFlowPoint {
+function getAnchorPoint(rect: FlowRect, side: FlowAnchorSide, ratio: number): FlowPoint {
   const y = rect.top + rect.height * ratio
 
   return {
@@ -450,8 +450,8 @@ function getAnchorPoint(rect: FlowRect, side: FlowAnchorSide, ratio: number): Se
 }
 
 function createFlowCurve(
-  start: SeoFlowPoint,
-  end: SeoFlowPoint,
+  start: FlowPoint,
+  end: FlowPoint,
   route: FlowRouteType,
   bend: number,
 ): FlowCurve {
@@ -465,8 +465,8 @@ function createFlowCurve(
 }
 
 function createHorizontalCurve(
-  start: SeoFlowPoint,
-  end: SeoFlowPoint,
+  start: FlowPoint,
+  end: FlowPoint,
   route: FlowRouteType,
   bend: number,
 ): FlowCurve {
@@ -501,7 +501,7 @@ function createHorizontalCurve(
   }
 }
 
-function createFanoutCurve(start: SeoFlowPoint, end: SeoFlowPoint): FlowCurve {
+function createFanoutCurve(start: FlowPoint, end: FlowPoint): FlowCurve {
   const distance = Math.max(1, end.x - start.x)
   const verticalDelta = end.y - start.y
   const verticalDistance = Math.abs(verticalDelta)
@@ -605,7 +605,7 @@ function createFanoutCurve(start: SeoFlowPoint, end: SeoFlowPoint): FlowCurve {
   }
 }
 
-function createHandoffCurve(start: SeoFlowPoint, end: SeoFlowPoint): FlowCurve {
+function createHandoffCurve(start: FlowPoint, end: FlowPoint): FlowCurve {
   const distance = Math.max(1, end.x - start.x)
   const verticalDelta = end.y - start.y
   const verticalDistance = Math.abs(verticalDelta)
@@ -712,11 +712,11 @@ function getControlDistance(distance: number, route: FlowRouteType): number {
 }
 
 function sampleLineSegment(
-  start: SeoFlowPoint,
-  end: SeoFlowPoint,
+  start: FlowPoint,
+  end: FlowPoint,
   steps: number,
-): SeoFlowPoint[] {
-  const points: SeoFlowPoint[] = []
+): FlowPoint[] {
+  const points: FlowPoint[] = []
 
   for (let index = 0; index <= steps; index += 1) {
     const progress = index / steps
@@ -731,13 +731,13 @@ function sampleLineSegment(
 }
 
 function sampleCubicBezier(
-  start: SeoFlowPoint,
-  controlA: SeoFlowPoint,
-  controlB: SeoFlowPoint,
-  end: SeoFlowPoint,
+  start: FlowPoint,
+  controlA: FlowPoint,
+  controlB: FlowPoint,
+  end: FlowPoint,
   steps: number,
-): SeoFlowPoint[] {
-  const points: SeoFlowPoint[] = []
+): FlowPoint[] {
+  const points: FlowPoint[] = []
 
   for (let index = 0; index <= steps; index += 1) {
     const progress = index / steps

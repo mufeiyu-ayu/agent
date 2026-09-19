@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import type {
-  SeoFlowCardSide,
-  SeoFlowCardTone,
-  SeoProcessCardHeight,
-  SeoProcessItem,
-} from '@/types/seo-flow'
+  FlowCardSide,
+  FlowCardTone,
+  ProcessCardHeight,
+  ProcessItem,
+} from '@/types/flow'
 
 import { computed } from 'vue'
 
@@ -21,21 +21,21 @@ const props = withDefaults(defineProps<{
   id: string
   title: string
   description: string
-  items: SeoProcessItem[]
+  items: ProcessItem[]
   icon: string
-  tone?: SeoFlowCardTone
-  side?: SeoFlowCardSide
+  tone?: FlowCardTone
+  side?: FlowCardSide
   eyebrow?: string
   indexLabel?: string
   compact?: boolean
-  height?: SeoProcessCardHeight
+  height?: ProcessCardHeight
 }>(), {
   tone: 'copper',
   side: 'left',
   compact: false,
 })
 
-const toneClassMap: Record<SeoFlowCardTone, ToneClasses> = {
+const toneClassMap: Record<FlowCardTone, ToneClasses> = {
   copper: {
     shell: 'border-[#d59a61]/28 bg-[#191512]/86 shadow-[0_18px_42px_rgb(0_0_0/24%),inset_0_1px_0_rgba(255,255,255,0.06)]',
     icon: 'border-[#d59a61]/38 bg-[#d59a61]/12 text-[#f0c18f]',
@@ -64,7 +64,7 @@ const toneClassMap: Record<SeoFlowCardTone, ToneClasses> = {
 
 const toneClasses = computed(() => toneClassMap[props.tone])
 
-const titleId = computed(() => `seo-process-card-${props.id}-title`)
+const titleId = computed(() => `process-card-${props.id}-title`)
 
 const shellSizeClass = computed(() => {
   if (props.compact)
@@ -122,7 +122,7 @@ const sideClasses = computed(() => {
     class="relative overflow-hidden rounded-lg border text-left backdrop-blur-md"
     :class="[toneClasses.shell, sideClasses.shell, shellSizeClass]"
     :aria-labelledby="titleId"
-    :data-seo-process-card="id"
+    :data-process-card="id"
   >
     <div
       class="flex h-full min-w-0 items-center gap-3"

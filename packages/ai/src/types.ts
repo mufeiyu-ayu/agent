@@ -137,7 +137,7 @@ export type ModelInputItem
  *
  * 职责边界：
  * - 只定义 LLM 层对上暴露的类型（消息结构、请求选项、业务需要的响应结构）
- * - 不包含任何 SEO 业务字段（title、description 等由上层定义）
+ * - 不包含任何业务字段（title、description 等由上层定义）
  * - 不暴露 OpenAI SDK 原始 chunk / response 给业务层
  */
 

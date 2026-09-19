@@ -1,22 +1,23 @@
 import type {
   ApiErrorResponse,
+  ChatRequest,
   ChatStreamEvent,
   Conversation,
   ConversationMessage,
   DeepSeekReasoningEffort,
-  SeoChatRequest,
 } from '@agent/contracts'
 import type { AgentRecentChat } from '../types/agent-platform'
 import type {
   AppMessageState,
   AppMessageType,
   GenerationStatus,
-} from '../types/seo'
+} from '../types/chat'
 
 import { isAxiosError } from 'axios'
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
+import { streamChat } from '../api/chat'
 import {
   createConversation,
   deleteConversation,
@@ -24,7 +25,6 @@ import {
   listConversations,
   updateConversation,
 } from '../api/conversations'
-import { streamChatWithSeoAgent } from '../api/seo'
 import {
   compareMessagesByCreatedAt,
   mapMessagesToConversationTurns,
@@ -34,7 +34,7 @@ import {
   applyStreamDoneToMessage,
   withoutMessageGrounding,
 } from '../utils/message-grounding'
-import { formatGeneratedTime } from '../utils/seo-format'
+import { formatGeneratedTime } from '../utils/time-format'
 
 const CHAT_REQUEST_INTERVAL_MS = 800
 const DEFAULT_MESSAGE_TIMEOUT_MS = 3600
@@ -42,7 +42,7 @@ const ERROR_MESSAGE_TIMEOUT_MS = 6400
 const CONVERSATION_PAGE_SIZE = 20
 const CONVERSATION_TITLE_MAX_LENGTH = 28
 
-export function useSeoWorkspace() {
+export function useChatWorkspace() {
   const { t } = useI18n()
   const message = ref('')
   const status = ref<GenerationStatus>('empty')
@@ -269,7 +269,7 @@ export function useSeoWorkspace() {
 
       upsertMessageInConversation(pendingMessage)
 
-      for await (const event of streamChatWithSeoAgent(request, {
+      for await (const event of streamChat(request, {
         signal: abortController.signal,
       })) {
         if (event.conversationId !== targetConversationId)
@@ -503,7 +503,7 @@ export function useSeoWorkspace() {
     messageContent: string,
     model?: string,
     reasoningEffort?: DeepSeekReasoningEffort,
-  ): SeoChatRequest {
+  ): ChatRequest {
     const nextModel = model?.trim()
 
     return {
@@ -855,7 +855,7 @@ export function useSeoWorkspace() {
     const normalizedContent = content.replace(/\s+/g, ' ').trim()
 
     if (!normalizedContent)
-      return '新的 SEO 会话'
+      return '新的会话'
 
     return normalizedContent.length > CONVERSATION_TITLE_MAX_LENGTH
       ? `${normalizedContent.slice(0, CONVERSATION_TITLE_MAX_LENGTH)}...`

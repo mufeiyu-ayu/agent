@@ -9,7 +9,7 @@ import { BadRequestException, Inject, Injectable, NotFoundException } from '@nes
 
 import { PrismaService } from '../prisma/prisma.service.js'
 
-const DEFAULT_CONVERSATION_TITLE = '新的 SEO 会话'
+const DEFAULT_CONVERSATION_TITLE = '新的会话'
 const DEFAULT_CONVERSATION_PAGE_SIZE = 20
 const MAX_CONVERSATION_PAGE_SIZE = 50
 

@@ -58,6 +58,21 @@ export type {
   ApiSuccessResponse,
 } from './api-response.js'
 export type {
+  ChatRequest,
+  ChatStreamAbortedEvent,
+  ChatStreamDeltaEvent,
+  ChatStreamDoneEvent,
+  ChatStreamErrorEvent,
+  ChatStreamEvent,
+  ChatStreamStartEvent,
+  DeepSeekReasoningEffort,
+} from './chat.js'
+export {
+  CHAT_MESSAGE_MAX_CHARS,
+  DEEPSEEK_REASONING_EFFORTS,
+  DEFAULT_DEEPSEEK_REASONING_EFFORT,
+} from './chat.js'
+export type {
   Conversation,
   ConversationMessage,
   CreateConversationRequest,
@@ -80,21 +95,3 @@ export {
   MESSAGE_GROUNDING_SCHEMA_VERSION,
   parseMessageGroundingV1,
 } from './grounding.js'
-export type {
-  ChatStreamAbortedEvent,
-  ChatStreamDeltaEvent,
-  ChatStreamDoneEvent,
-  ChatStreamErrorEvent,
-  ChatStreamEvent,
-  ChatStreamEventType,
-  ChatStreamProtocol,
-  ChatStreamStartEvent,
-  DeepSeekReasoningEffort,
-  SeoChatRequest,
-  SeoChatResponse,
-} from './seo.js'
-export {
-  DEEPSEEK_REASONING_EFFORTS,
-  DEFAULT_DEEPSEEK_REASONING_EFFORT,
-  SEO_CHAT_MESSAGE_MAX_CHARS,
-} from './seo.js'

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { SeoConversationTurn } from '../../types/seo'
+import type { ConversationTurn } from '../../types/chat'
 
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -12,7 +12,7 @@ import AgentAssistantReply from './AgentAssistantReply.vue'
 import AgentMessage from './AgentMessage.vue'
 
 const props = defineProps<{
-  turns: SeoConversationTurn[]
+  turns: ConversationTurn[]
   lastGeneratedAt: string
   isLoadingMessages: boolean
   conversationId: string | null

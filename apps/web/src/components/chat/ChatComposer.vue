@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import type { DeepSeekReasoningEffort } from '@agent/contracts'
+import type { GenerationStatus } from '../../types/chat'
 import type { LlmModelOption } from '../../types/llm'
-import type { GenerationStatus } from '../../types/seo'
 
 import {
+  CHAT_MESSAGE_MAX_CHARS,
   DEEPSEEK_REASONING_EFFORTS,
-  SEO_CHAT_MESSAGE_MAX_CHARS,
 } from '@agent/contracts'
 import {
   DropdownMenuContent,
@@ -54,7 +54,7 @@ const canReset = computed(() => {
 })
 
 const showCharacterCount = computed(() => {
-  return props.messageCharacterCount >= SEO_CHAT_MESSAGE_MAX_CHARS * 0.9
+  return props.messageCharacterCount >= CHAT_MESSAGE_MAX_CHARS * 0.9
 })
 
 const selectedModelLabel = computed(() => {
@@ -119,7 +119,7 @@ function selectReasoningEffort(effort: DeepSeekReasoningEffort) {
       >
         <Textarea
           :model-value="message"
-          :maxlength="SEO_CHAT_MESSAGE_MAX_CHARS"
+          :maxlength="CHAT_MESSAGE_MAX_CHARS"
           rows="1"
           class="max-h-40 resize-none border-0 bg-transparent px-3 pb-1 pt-2.5 text-base font-normal leading-6 text-agent-ink shadow-none focus-visible:ring-0 placeholder:text-agent-ink-muted"
           :class="hero ? 'min-h-16' : 'min-h-12'"
@@ -210,7 +210,7 @@ function selectReasoningEffort(effort: DeepSeekReasoningEffort) {
               v-if="showCharacterCount"
               class="text-xs font-medium text-agent-ink-muted"
             >
-              {{ messageCharacterCount }} / {{ SEO_CHAT_MESSAGE_MAX_CHARS }}
+              {{ messageCharacterCount }} / {{ CHAT_MESSAGE_MAX_CHARS }}
             </span>
             <Button
               type="button"

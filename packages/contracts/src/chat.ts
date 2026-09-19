@@ -1,7 +1,7 @@
 import type { MessageGroundingV1 } from './grounding.js'
 
-/** 前后端共同执行的单次 SEO Chat 用户消息字符上限。 */
-export const SEO_CHAT_MESSAGE_MAX_CHARS = 64_000
+/** 前后端共同执行的单次 Chat 用户消息字符上限。 */
+export const CHAT_MESSAGE_MAX_CHARS = 64_000
 
 /** DeepSeek Thinking Mode 对外开放的单次请求思考强度。 */
 export const DEEPSEEK_REASONING_EFFORTS = ['low', 'high', 'max'] as const
@@ -10,32 +10,23 @@ export type DeepSeekReasoningEffort = typeof DEEPSEEK_REASONING_EFFORTS[number]
 
 export const DEFAULT_DEEPSEEK_REASONING_EFFORT: DeepSeekReasoningEffort = 'high'
 
-export interface SeoChatRequest {
+export interface ChatRequest {
   conversationId: string
   message: string
   model?: string
   reasoningEffort?: DeepSeekReasoningEffort
 }
 
-export interface SeoChatResponse {
-  reply: string
-  generatedAt: string
-}
-
 /**
  * Chat streaming 统一采用 NDJSON 协议：
  * 后端每行输出一个 JSON 序列化后的 `ChatStreamEvent`，前端通过 fetch + ReadableStream 按行解析。
  */
-export type ChatStreamProtocol = 'ndjson'
-
 export type ChatStreamEvent
   = | ChatStreamStartEvent
     | ChatStreamDeltaEvent
     | ChatStreamDoneEvent
     | ChatStreamErrorEvent
     | ChatStreamAbortedEvent
-
-export type ChatStreamEventType = ChatStreamEvent['type']
 
 export interface ChatStreamStartEvent {
   type: 'start'

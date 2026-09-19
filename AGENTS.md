@@ -46,7 +46,7 @@
 | `docs/work-log.md` | 已发生事实 |
 | `docs/tasks/completed/` | 已完成阶段与任务的归档 |
 
-当前状态：Phase 1-8 Completed 并归档；当前阶段为源码阅读，先完成当前项目链路学习，之后按 `docs/research/pi-reference/roadmap.md` 由 AI 参照 Pi 实现云端方向；无 Active Task，#118 / #119 / #120 / #124 已于 2026-09-17 合并，#126 / #127 / #115 已于 2026-09-18 合并，#116 已于 2026-09-19 合并，Next 为 web_fetch（未立 Issue；#117 已于 2026-09-18 关闭转 Gated）；翻译质检站已于 #113 删除；下一批候选子系统为 session 事件流与 replay、审批门、compaction、定时任务，候选不等于 Active；Admin Task 4 保持 Planned。
+当前状态：Phase 1-8 Completed 并归档；当前阶段为源码阅读，先完成当前项目链路学习，之后按 `docs/research/pi-reference/roadmap.md` 由 AI 参照 Pi 实现云端方向；无 Active Task，#118 / #119 / #120 / #124 已于 2026-09-17 合并，#126 / #127 / #115 已于 2026-09-18 合并，#116 / #134 已于 2026-09-19 合并（#134 去掉 SEO 产品命名，入口改为 `apps/api/src/chat/` 与 `/api/chat/stream`），Next 为 #135 → #136 → #137（2026-09-19 过度设计审计后立项；web_fetch 同日转 Gated；#117 已于 2026-09-18 关闭转 Gated）；翻译质检站已于 #113 删除；下一批候选子系统为 session 事件流与 replay、审批门、compaction、定时任务，候选不等于 Active；Admin Task 4 保持 Planned。
 
 ## 4. 关键目录
 
@@ -57,7 +57,7 @@
 | `apps/api/src/` | NestJS API、业务模块和应用入口 |
 | `apps/api/src/agent-runtime/` | Agent Run 编排与运行记录 |
 | `apps/api/src/llm/` | LLM 的 Nest 壳：`LlmModule`、`LLMController`、`LLMService` 门面、`LLMRuntimeConfigService` |
-| `apps/api/src/seo/` | SEO Agent 业务入口、上下文与协议适配 |
+| `apps/api/src/chat/` | Chat 业务入口：DTO 校验、系统提示词与 NDJSON 流协议适配 |
 | `packages/ai/` | `@agent/ai`：模型客户端、OpenAI-compatible 流适配、模型类型 / 错误 / profile / 运行时配置解析；零 Nest、零 Prisma |
 | `packages/contracts/` | 前后端共享协议与类型 |
 | `prisma/` | schema、migration、fixtures 和 seed |

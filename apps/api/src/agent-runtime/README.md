@@ -24,7 +24,7 @@
 ## 主调用链
 
 ```text
-SeoService
+ChatService
   -> AgentRuntimeService.runTurnStream()
   -> configuration: resolve Run config
   -> lifecycle: create Run / Step + cancellation

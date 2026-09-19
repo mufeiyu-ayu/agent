@@ -21,7 +21,7 @@ describe('resolveAgentRuntimePolicy', () => {
 
   it('接受合法覆盖和零次工具调用', () => {
     assert.deepEqual(resolveAgentRuntimePolicy({
-      SEO_CHAT_HISTORY_CANDIDATE_HARD_LIMIT: '500',
+      AGENT_HISTORY_CANDIDATE_HARD_LIMIT: '500',
       AGENT_MAX_SAMPLING_ROUNDS: '4',
       AGENT_MAX_TOOL_CALLS: '3',
       AGENT_RUN_DEADLINE_MS: '2147483647',
@@ -44,7 +44,7 @@ describe('resolveAgentRuntimePolicy', () => {
 
   it('拒绝空值、小数、非安全整数和超出范围的配置', () => {
     const invalidValuesByName = {
-      SEO_CHAT_HISTORY_CANDIDATE_HARD_LIMIT: ['', '0', '1', '49', '-1', '1.5', 'NaN', 'Infinity', '1001'],
+      AGENT_HISTORY_CANDIDATE_HARD_LIMIT: ['', '0', '1', '49', '-1', '1.5', 'NaN', 'Infinity', '1001'],
       AGENT_MAX_SAMPLING_ROUNDS: ['', '0', '-1', '1.5', 'NaN', 'Infinity', '9007199254740992'],
       AGENT_MAX_TOOL_CALLS: ['', '-1', '1.5', 'NaN', 'Infinity', '9007199254740992'],
       AGENT_RUN_DEADLINE_MS: ['', '0', '-1', '1.5', 'NaN', 'Infinity', '2147483648'],
@@ -75,9 +75,12 @@ describe('resolveAgentRuntimePolicy', () => {
     }
   })
 
-  it('旧 SEO_CHAT_HISTORY_LIMIT 不再参与 candidate 或最终选择配置', () => {
+  it('旧 SEO_CHAT_HISTORY_LIMIT / SEO_CHAT_HISTORY_CANDIDATE_HARD_LIMIT 不再读取', () => {
     assert.deepEqual(
-      resolveAgentRuntimePolicy({ SEO_CHAT_HISTORY_LIMIT: '1' }),
+      resolveAgentRuntimePolicy({
+        SEO_CHAT_HISTORY_LIMIT: '1',
+        SEO_CHAT_HISTORY_CANDIDATE_HARD_LIMIT: '500',
+      }),
       DEFAULT_AGENT_RUNTIME_POLICY,
     )
   })

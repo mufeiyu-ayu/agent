@@ -5,12 +5,12 @@ import process from 'node:process'
 import { pathToFileURL } from 'node:url'
 import { OpenAICompatibleClient } from '@agent/ai'
 
+import { AGENT_INSTRUCTIONS } from '../../chat/prompts/agent.prompt.js'
 import { LLMRuntimeConfigService } from '../../llm/llm-runtime-config.service.js'
 import { LLMService } from '../../llm/llm.service.js'
 import { PrismaService } from '../../prisma/prisma.service.js'
 import { createHybridArticleRetrievalRuntime } from '../../retrieval/hybrid-article-retrieval.runtime.js'
 import { PrismaArticleRetriever } from '../../retrieval/retrievers/prisma-article-retriever.js'
-import { buildSeoAgentInstructions } from '../../seo/prompts/seo-agent.prompt.js'
 import {
   getArticleDetailDefinition,
   GetArticleDetailTool,
@@ -45,7 +45,7 @@ import { AgentRunRecorderService } from '../lifecycle/agent-run-recorder.service
  * 默认 query 必须指向站内知识库真实覆盖 / 真实不覆盖的内容。
  *
  * 两点约束来自真实模型行为，不是为了让 smoke 好看：
- * 1. 通用 SEO 方法论问题会被 Agent 直接回答（不调用 evidence-eligible Tool），
+ * 1. 通用方法论问题会被 Agent 直接回答（不调用 evidence-eligible Tool），
  *    那是正确的普通回答路径，但验证不到 Grounded finalization；
  * 2. 当前 Agent Loop 只接受同轮单个 Tool Call（Phase 6 既有协议约束），而
  *    DeepSeek 对开放式检索问题经常并行返回多个 Tool Call，因此 query 需要
@@ -176,7 +176,7 @@ async function runSmokeCase(
       userContent: query,
       reasoningEffort: 'high',
       signal,
-      instructions: buildSeoAgentInstructions([]),
+      instructions: AGENT_INSTRUCTIONS,
     })) {
       if (event.type === 'assistant_delta') {
         deltas.push(event.contentDelta)

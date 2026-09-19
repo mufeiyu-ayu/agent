@@ -5,9 +5,9 @@ import { RouterLink } from 'vue-router'
 
 import AppIcon from '@/components/common/AppIcon.vue'
 import LanguageSwitcher from '@/components/common/LanguageSwitcher.vue'
-import SeoHeroAccentBackdrop from './SeoHeroAccentBackdrop.vue'
-import SeoHomeAnimatedPlaceholder from './SeoHomeAnimatedPlaceholder.vue'
-import SeoProcessMap from './SeoProcessMap.vue'
+import HeroAccentBackdrop from './HeroAccentBackdrop.vue'
+import HomeAnimatedPlaceholder from './HomeAnimatedPlaceholder.vue'
+import ProcessMap from './ProcessMap.vue'
 
 const { t } = useI18n()
 
@@ -28,9 +28,9 @@ const navItems = [
 ] as const
 
 const homePromptMessages = computed(() => [
-  t('home.form.animatedPrompts.url'),
-  t('home.form.animatedPrompts.brief'),
-  t('home.form.animatedPrompts.keywords'),
+  t('home.form.animatedPrompts.question'),
+  t('home.form.animatedPrompts.retrieve'),
+  t('home.form.animatedPrompts.followUp'),
 ])
 
 const shouldShowAnimatedPrompt = computed(() => {
@@ -38,9 +38,9 @@ const shouldShowAnimatedPrompt = computed(() => {
 })
 
 const homeSuggestions = computed(() => [
-  { key: 'audit', label: t('home.suggestions.audit.label'), prompt: t('home.suggestions.audit.prompt') },
-  { key: 'keywords', label: t('home.suggestions.keywords.label'), prompt: t('home.suggestions.keywords.prompt') },
-  { key: 'content', label: t('home.suggestions.content.label'), prompt: t('home.suggestions.content.prompt') },
+  { key: 'ask', label: t('home.suggestions.ask.label'), prompt: t('home.suggestions.ask.prompt') },
+  { key: 'search', label: t('home.suggestions.search.label'), prompt: t('home.suggestions.search.prompt') },
+  { key: 'capabilities', label: t('home.suggestions.capabilities.label'), prompt: t('home.suggestions.capabilities.prompt') },
 ])
 
 /**
@@ -86,7 +86,7 @@ function isDesktopWorkflowViewport(): boolean {
 <template>
   <main id="product" class="relative min-h-screen overflow-x-hidden bg-[#101312] text-[#f5eee4]">
     <div class="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_30%,rgba(221,180,137,0.08),transparent_34%),linear-gradient(115deg,rgba(26,31,28,0.98)_0%,rgba(13,14,13,0.99)_50%,rgba(31,22,17,0.98)_100%)]" />
-    <SeoHeroAccentBackdrop />
+    <HeroAccentBackdrop />
     <div class="pointer-events-none absolute inset-0 opacity-[0.026] [background-image:linear-gradient(rgba(255,255,255,0.16)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.14)_1px,transparent_1px)] [background-size:56px_56px]" />
     <div class="pointer-events-none absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-[#d7b18a]/10 to-transparent" />
     <div class="pointer-events-none absolute inset-x-0 bottom-0 h-56 bg-gradient-to-t from-[#070806]/72 to-transparent" />
@@ -102,7 +102,7 @@ function isDesktopWorkflowViewport(): boolean {
             <AppIcon name="tabler:sparkles" :size="30" />
           </span>
           <span class="min-w-0">
-            <span class="block text-xl font-bold leading-6 text-[#fff7ed]">SEO Agent</span>
+            <span class="block text-xl font-bold leading-6 text-[#fff7ed]">{{ t('common.appName') }}</span>
           </span>
         </RouterLink>
 
@@ -142,7 +142,7 @@ function isDesktopWorkflowViewport(): boolean {
             v-if="shouldRenderProcessMap"
             class="relative mx-auto h-[clamp(350px,38dvh,400px)] w-full overflow-visible min-[1800px]:h-[clamp(390px,34dvh,440px)]"
           >
-            <SeoProcessMap class="absolute inset-0 z-10 h-full w-full translate-y-7 min-[1800px]:translate-y-9" />
+            <ProcessMap class="absolute inset-0 z-10 h-full w-full translate-y-7 min-[1800px]:translate-y-9" />
           </div>
         </section>
 
@@ -200,15 +200,15 @@ function isDesktopWorkflowViewport(): boolean {
           @submit.prevent
         >
           <div class="flex min-h-[120px] flex-col min-[1800px]:min-h-[134px]">
-            <label class="sr-only" for="home-seo-topic">{{ t('home.form.topicLabel') }}</label>
+            <label class="sr-only" for="home-question">{{ t('home.form.topicLabel') }}</label>
             <div class="relative min-h-[54px] min-[1800px]:min-h-[60px]">
-              <SeoHomeAnimatedPlaceholder
+              <HomeAnimatedPlaceholder
                 :messages="homePromptMessages"
                 :visible="shouldShowAnimatedPrompt"
               />
 
               <textarea
-                id="home-seo-topic"
+                id="home-question"
                 ref="homeTopicRef"
                 v-model="homeInput"
                 class="relative z-10 block min-h-[54px] w-full resize-none bg-transparent px-1 py-1 text-base font-medium leading-7 text-[#eee4d9] outline-none placeholder:text-transparent min-[1800px]:min-h-[60px] min-[1800px]:text-lg"

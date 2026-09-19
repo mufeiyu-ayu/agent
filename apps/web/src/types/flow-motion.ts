@@ -1,11 +1,11 @@
-export interface SeoFlowPoint {
+export interface FlowPoint {
   x: number
   y: number
 }
 
-export interface SeoFlowMotionPath {
+export interface FlowMotionPath {
   id: string
-  points: SeoFlowPoint[]
+  points: FlowPoint[]
   weight?: number
   reverse?: boolean
   color?: string
@@ -13,22 +13,22 @@ export interface SeoFlowMotionPath {
   particleColor?: string
 }
 
-export interface SeoFlowPathSegment {
-  from: SeoFlowPoint
-  to: SeoFlowPoint
+export interface FlowPathSegment {
+  from: FlowPoint
+  to: FlowPoint
   length: number
   startDistance: number
   angle: number
 }
 
-export interface SeoFlowPathSampler {
+export interface FlowPathSampler {
   id: string
-  path: SeoFlowMotionPath
+  path: FlowMotionPath
   length: number
-  segments: SeoFlowPathSegment[]
+  segments: FlowPathSegment[]
 }
 
-export interface SeoFlowPathSample {
+export interface FlowPathSample {
   pathId: string
   x: number
   y: number
@@ -36,24 +36,24 @@ export interface SeoFlowPathSample {
   progress: number
 }
 
-export interface SeoFlowMotionRange {
+export interface FlowMotionRange {
   min: number
   max: number
 }
 
-export interface SeoFlowMotionConfig {
+export interface FlowMotionConfig {
   particleCount: number
   mobileParticleCount: number
   mobileBreakpoint: number
-  speed: SeoFlowMotionRange
-  radius: SeoFlowMotionRange
-  opacity: SeoFlowMotionRange
+  speed: FlowMotionRange
+  radius: FlowMotionRange
+  opacity: FlowMotionRange
   pulseStrength: number
   fpsCap: number
   seed: number
 }
 
-export interface SeoFlowParticle {
+export interface FlowParticle {
   id: string
   pathId: string
   progress: number
@@ -64,7 +64,7 @@ export interface SeoFlowParticle {
   phase: number
 }
 
-export interface SeoFlowRenderedParticle {
+export interface FlowRenderedParticle {
   id: string
   pathId: string
   x: number
@@ -76,13 +76,13 @@ export interface SeoFlowRenderedParticle {
   angle: number
 }
 
-export interface SeoFlowMotionFrame {
+export interface FlowMotionFrame {
   elapsedMs: number
   deltaMs: number
-  particles: SeoFlowRenderedParticle[]
+  particles: FlowRenderedParticle[]
 }
 
-export type SeoFlowMotionPauseReason
+export type FlowMotionPauseReason
   = | 'manual'
     | 'inactive'
     | 'document-hidden'
@@ -90,17 +90,17 @@ export type SeoFlowMotionPauseReason
     | 'reduced-motion'
     | 'empty-path'
 
-export interface SeoFlowMotionStatus {
+export interface FlowMotionStatus {
   running: boolean
   reducedMotion: boolean
   documentVisible: boolean
   intersecting: boolean
-  pauseReasons: SeoFlowMotionPauseReason[]
+  pauseReasons: FlowMotionPauseReason[]
 }
 
-export type SeoFlowMotionFrameRenderer = (frame: SeoFlowMotionFrame) => void
+export type FlowMotionFrameRenderer = (frame: FlowMotionFrame) => void
 
-export interface SeoParticleFieldApi {
+export interface ParticleFieldApi {
   start: () => void
   stop: () => void
   restart: () => void

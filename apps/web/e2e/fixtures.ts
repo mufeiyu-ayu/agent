@@ -235,14 +235,14 @@ declare global {
   interface Window {
     __releaseStream?: () => void
     __copiedText?: string
-    __seoRequests?: unknown[]
+    __chatRequests?: unknown[]
   }
 }
 
 /**
  * 安装浏览器侧的确定性桩。
  *
- * - `/api/seo/chat/stream` 由受控 `ReadableStream` 逐行推送，可在 `done` 之前挂起，
+ * - `/api/chat/stream` 由受控 `ReadableStream` 逐行推送，可在 `done` 之前挂起，
  *   这样 streaming 中间态是可断言的，而不是靠时序碰运气；
  * - `navigator.clipboard.writeText` 被记录下来，用于验证复制内容只含回答正文；
  * - 语言写入 localStorage，避免受运行环境的 `navigator.language` 影响。
@@ -257,7 +257,7 @@ export async function installBrowserStubs(
       window.localStorage.setItem('agent-web-locale', appLocale)
 
       const originalFetch = window.fetch.bind(window)
-      window.__seoRequests = []
+      window.__chatRequests = []
       let release: (() => void) | undefined
       // 记录「已放行」而不是只保存 resolver：测试可能在流到达挂起点之前就调用放行，
       // 只保存 resolver 会让这次放行丢失，流永远挂住。
@@ -273,10 +273,10 @@ export async function installBrowserStubs(
           ? input
           : input instanceof URL ? input.href : input.url
 
-        if (!url.includes('/api/seo/chat/stream'))
+        if (!url.includes('/api/chat/stream'))
           return originalFetch(input, init)
 
-        window.__seoRequests?.push(JSON.parse(String(init?.body)))
+        window.__chatRequests?.push(JSON.parse(String(init?.body)))
 
         const encoder = new TextEncoder()
         const body = new ReadableStream<Uint8Array>({

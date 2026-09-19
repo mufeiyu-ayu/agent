@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import SeoHomeHero from '@/components/seo/SeoHomeHero.vue'
+import HomeHero from '@/components/home/HomeHero.vue'
 </script>
 
 <template>
-  <SeoHomeHero />
+  <HomeHero />
 </template>

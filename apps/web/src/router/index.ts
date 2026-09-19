@@ -11,7 +11,7 @@ export const router = createRouter({
     {
       path: '/workspace',
       name: 'workspace',
-      component: () => import('@/views/SeoWorkspaceView.vue'),
+      component: () => import('@/views/ChatWorkspaceView.vue'),
     },
   ],
 })

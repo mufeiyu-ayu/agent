@@ -1,24 +1,24 @@
 <script setup lang="ts">
 import type {
-  SeoFlowMotionConfig,
-  SeoFlowMotionFrame,
-  SeoFlowMotionPath,
-  SeoFlowMotionStatus,
-  SeoFlowPathSample,
-  SeoParticleFieldApi,
-} from '@/types/seo-flow-motion'
+  FlowMotionConfig,
+  FlowMotionFrame,
+  FlowMotionPath,
+  FlowMotionStatus,
+  FlowPathSample,
+  ParticleFieldApi,
+} from '@/types/flow-motion'
 
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 
 import {
-  createSeoFlowPathSamplers,
-  sampleSeoFlowPathSampler,
-  useSeoFlowMotion,
-} from '@/hooks/useSeoFlowMotion'
+  createFlowPathSamplers,
+  sampleFlowPathSampler,
+  useFlowMotion,
+} from '@/hooks/useFlowMotion'
 
-interface SeoParticleFieldProps {
-  paths?: SeoFlowMotionPath[]
-  config?: Partial<SeoFlowMotionConfig>
+interface ParticleFieldProps {
+  paths?: FlowMotionPath[]
+  config?: Partial<FlowMotionConfig>
   active?: boolean
   overlay?: boolean
   showGuideLines?: boolean
@@ -28,7 +28,7 @@ interface SeoParticleFieldProps {
   ariaLabel?: string
 }
 
-interface StaticGlowPoint extends SeoFlowPathSample {
+interface StaticGlowPoint extends FlowPathSample {
   id: string
   radius: number
   opacity: number
@@ -49,24 +49,24 @@ interface CanvasProjection {
   scaleY: number
 }
 
-const props = withDefaults(defineProps<SeoParticleFieldProps>(), {
+const props = withDefaults(defineProps<ParticleFieldProps>(), {
   active: true,
   overlay: false,
   showGuideLines: true,
   decorative: true,
   viewBox: '0 0 640 360',
   preserveAspectRatio: 'xMidYMid meet',
-  ariaLabel: 'SEO Agent workflow motion',
+  ariaLabel: 'Agent workflow motion',
 })
 
 const emit = defineEmits<{
-  ready: [api: SeoParticleFieldApi]
+  ready: [api: ParticleFieldApi]
   motionStart: []
   motionStop: []
-  motionStatusChange: [status: SeoFlowMotionStatus]
+  motionStatusChange: [status: FlowMotionStatus]
 }>()
 
-const DEFAULT_SEO_FLOW_PATHS: SeoFlowMotionPath[] = [
+const DEFAULT_FLOW_PATHS: FlowMotionPath[] = [
   {
     id: 'brief-to-agent',
     points: [
@@ -119,7 +119,7 @@ let canvasContext: CanvasRenderingContext2D | null = null
 let canvasCssWidth = 0
 let canvasCssHeight = 0
 let canvasDpr = 1
-let lastFrame: SeoFlowMotionFrame = {
+let lastFrame: FlowMotionFrame = {
   elapsedMs: 0,
   deltaMs: 0,
   particles: [],
@@ -129,7 +129,7 @@ const activePaths = computed(() => {
   if (props.paths && props.paths.length > 0)
     return props.paths
 
-  return DEFAULT_SEO_FLOW_PATHS
+  return DEFAULT_FLOW_PATHS
 })
 
 const motionConfig = computed(() => props.config ?? {})
@@ -139,12 +139,12 @@ const activeState = computed(() => props.active)
 const parsedViewBox = computed(() => parseViewBox(props.viewBox))
 
 const staticGlowPoints = computed<StaticGlowPoint[]>(() => {
-  const samplers = createSeoFlowPathSamplers(activePaths.value)
+  const samplers = createFlowPathSamplers(activePaths.value)
   const glowPoints: StaticGlowPoint[] = []
 
   samplers.forEach((sampler, samplerIndex) => {
     STATIC_GLOW_PROGRESS.forEach((progress, glowIndex) => {
-      const sample = sampleSeoFlowPathSampler(sampler, progress)
+      const sample = sampleFlowPathSampler(sampler, progress)
 
       glowPoints.push({
         ...sample,
@@ -166,7 +166,7 @@ const rootClass = computed(() => {
   ]
 })
 
-const motion = useSeoFlowMotion({
+const motion = useFlowMotion({
   containerRef,
   paths: activePaths,
   config: motionConfig,
@@ -175,7 +175,7 @@ const motion = useSeoFlowMotion({
   onStatusChange: status => emit('motionStatusChange', status),
 })
 
-const particleFieldApi: SeoParticleFieldApi = {
+const particleFieldApi: ParticleFieldApi = {
   start: motion.start,
   stop: motion.stop,
   restart: motion.restart,
@@ -258,12 +258,12 @@ function resizeCanvas() {
   drawCanvas(lastFrame)
 }
 
-function renderFrame(frame: SeoFlowMotionFrame) {
+function renderFrame(frame: FlowMotionFrame) {
   lastFrame = frame
   drawCanvas(frame)
 }
 
-function drawCanvas(frame: SeoFlowMotionFrame) {
+function drawCanvas(frame: FlowMotionFrame) {
   const canvas = canvasRef.value
 
   if (!canvas || canvasCssWidth <= 0 || canvasCssHeight <= 0)
@@ -323,7 +323,7 @@ function drawGuideLines(context: CanvasRenderingContext2D, projection: CanvasPro
 function drawParticles(
   context: CanvasRenderingContext2D,
   projection: CanvasProjection,
-  particles: SeoFlowMotionFrame['particles'],
+  particles: FlowMotionFrame['particles'],
 ) {
   if (particles.length === 0)
     return

@@ -1,17 +1,17 @@
 <script setup lang="ts">
-import type { SeoBriefPreviewConfig } from '@/types/seo-flow'
+import type { BriefPreviewConfig } from '@/types/flow'
 
 import AppIcon from '@/components/common/AppIcon.vue'
 
 defineProps<{
-  brief: SeoBriefPreviewConfig
+  brief: BriefPreviewConfig
 }>()
 </script>
 
 <template>
   <article
     class="seo-brief-preview relative h-[332px] overflow-visible rounded-lg border border-[#dfc19d]/24 bg-[#1b1813]/70 p-4 text-[#fff6e8] shadow-[0_18px_42px_rgb(0_0_0/20%),inset_0_1px_0_rgba(255,255,255,0.04)] backdrop-blur-md min-[1800px]:h-[372px] min-[1800px]:p-5"
-    :data-seo-brief-preview="brief.id"
+    :data-brief-preview="brief.id"
     :aria-label="brief.fileName"
   >
     <svg
@@ -32,12 +32,12 @@ defineProps<{
             {{ brief.fileName }}
           </h3>
           <p class="mt-6 text-[10px] font-bold uppercase leading-none tracking-normal text-[#6f665f]">
-            Target keyword
+            Question
           </p>
           <span class="mt-2 block h-2 w-full rounded-full bg-white/[0.06]" aria-hidden="true" />
           <span class="mt-1.5 block h-2 w-7/12 rounded-full bg-white/[0.05]" aria-hidden="true" />
           <p class="mt-5 text-[10px] font-bold uppercase leading-none tracking-normal text-[#6f665f]">
-            Search intent
+            Sources
           </p>
           <span class="mt-2 block h-2 w-8/12 rounded-full bg-white/[0.06]" aria-hidden="true" />
           <span class="mt-1.5 block h-2 w-full rounded-full bg-white/[0.05]" aria-hidden="true" />
@@ -49,7 +49,7 @@ defineProps<{
 
       <div class="mt-5">
         <p class="text-[10px] font-bold uppercase leading-none tracking-normal text-[#6f665f]">
-          Outline
+          Answer
         </p>
         <div class="mt-3 space-y-2" aria-hidden="true">
           <span class="block h-1.5 w-10/12 rounded-full bg-white/[0.07]" />
@@ -60,7 +60,7 @@ defineProps<{
 
       <div class="mt-6">
         <p class="text-[10px] font-bold uppercase leading-none tracking-normal text-[#6f665f]">
-          Key points
+          Citations
         </p>
         <div class="mt-3 space-y-2" aria-hidden="true">
           <span class="block h-1.5 w-full rounded-full bg-white/[0.07]" />
@@ -70,7 +70,7 @@ defineProps<{
 
       <div class="mt-6">
         <p class="text-[10px] font-bold uppercase leading-none tracking-normal text-[#6f665f]">
-          FAQ ideas
+          Evidence check
         </p>
         <div class="mt-3 space-y-2" aria-hidden="true">
           <span class="block h-1.5 w-7/12 rounded-full bg-white/[0.06]" />
@@ -80,7 +80,7 @@ defineProps<{
 
       <div class="mt-6">
         <p class="text-[10px] font-bold uppercase leading-none tracking-normal text-[#6f665f]">
-          Internal links
+          Run steps
         </p>
         <div class="mt-3 flex gap-2" aria-hidden="true">
           <span class="h-6 w-9 rounded-sm border border-white/[0.08]" />

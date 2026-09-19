@@ -66,7 +66,7 @@ describe('HybridArticleRetrievalRuntime', () => {
   it('缺少 GEMINI_API_KEY 时以 configuration 错误失败，不回退到其他配置', () => {
     assert.throws(
       () => createHybridArticleRetrievalRuntime({
-        DATABASE_URL: 'postgresql://postgres:postgres@127.0.0.1:5432/agent_ai_seo',
+        DATABASE_URL: 'postgresql://postgres:postgres@127.0.0.1:5432/agent',
         LLM_API_KEY: 'sk-should-not-be-used',
       }),
       (error: unknown) => (
@@ -79,7 +79,7 @@ describe('HybridArticleRetrievalRuntime', () => {
 
   it('配置齐备时组装出 hybrid_rrf@1 检索链路并可关闭', async () => {
     const runtime = createHybridArticleRetrievalRuntime({
-      DATABASE_URL: 'postgresql://postgres:postgres@127.0.0.1:5432/agent_ai_seo',
+      DATABASE_URL: 'postgresql://postgres:postgres@127.0.0.1:5432/agent',
       GEMINI_API_KEY: 'test-key',
     })
 

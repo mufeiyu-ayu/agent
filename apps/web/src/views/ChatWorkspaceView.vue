@@ -7,19 +7,19 @@ import { useI18n } from 'vue-i18n'
 import workspaceBgOliveEmberDeepUrl from '../assets/bg-olive.webp'
 import workspaceBgAiBalancedUrl from '../assets/bg-warm.webp'
 import AgentConversation from '../components/agent/AgentConversation.vue'
+import ChatComposer from '../components/chat/ChatComposer.vue'
 import AppIcon from '../components/common/AppIcon.vue'
 import AppMessage from '../components/common/AppMessage.vue'
 import AppShell from '../components/layout/AppShell.vue'
-import SeoChatComposer from '../components/seo/SeoChatComposer.vue'
+import { useChatWorkspace } from '../hooks/useChatWorkspace'
 import { useLlmRuntime } from '../hooks/useLlmRuntime'
-import { useSeoWorkspace } from '../hooks/useSeoWorkspace'
 import { useWorkspaceTheme } from '../hooks/useWorkspaceTheme'
 
 const navigationConfig = [
-  { id: 'page-audit', labelKey: 'navigation.pageAudit', icon: 'tabler:file-search', active: true },
-  { id: 'keyword-ideas', labelKey: 'navigation.keywordIdeas', icon: 'tabler:bulb' },
-  { id: 'content-plan', labelKey: 'navigation.contentPlan', icon: 'tabler:article' },
-  { id: 'seo-checklist', labelKey: 'navigation.seoChecklist', icon: 'tabler:checklist' },
+  { id: 'knowledge-qa', labelKey: 'navigation.knowledgeQa', icon: 'tabler:file-search', active: true },
+  { id: 'article-search', labelKey: 'navigation.articleSearch', icon: 'tabler:bulb' },
+  { id: 'cited-sources', labelKey: 'navigation.citedSources', icon: 'tabler:article' },
+  { id: 'run-trace', labelKey: 'navigation.runTrace', icon: 'tabler:checklist' },
   { id: 'history', labelKey: 'navigation.history', icon: 'tabler:history' },
   { id: 'settings', labelKey: 'navigation.settings', icon: 'tabler:settings' },
 ] as const
@@ -83,16 +83,16 @@ const {
   sendMessage,
   stopGeneration,
   hideMessage,
-} = useSeoWorkspace()
+} = useChatWorkspace()
 
 const showConversationEmptyState = computed(() => {
   return !activeConversationId.value && conversationTurns.value.length === 0 && !isLoadingMessages.value
 })
 
 const starterPrompts = computed(() => [
-  { key: 'audit', label: t('conversation.starterPrompts.audit.label'), prompt: t('conversation.starterPrompts.audit.prompt') },
-  { key: 'keywords', label: t('conversation.starterPrompts.keywords.label'), prompt: t('conversation.starterPrompts.keywords.prompt') },
-  { key: 'content', label: t('conversation.starterPrompts.content.label'), prompt: t('conversation.starterPrompts.content.prompt') },
+  { key: 'ask', label: t('conversation.starterPrompts.ask.label'), prompt: t('conversation.starterPrompts.ask.prompt') },
+  { key: 'search', label: t('conversation.starterPrompts.search.label'), prompt: t('conversation.starterPrompts.search.prompt') },
+  { key: 'capabilities', label: t('conversation.starterPrompts.capabilities.label'), prompt: t('conversation.starterPrompts.capabilities.prompt') },
 ])
 
 function applySuggestedPrompt(prompt: string) {
@@ -138,7 +138,7 @@ function applySuggestedPrompt(prompt: string) {
             <AppIcon name="tabler:asterisk" :size="26" class="mr-1.5 inline-block align-[-0.2em] text-agent-accent" />{{ t('conversation.emptyTitle') }}
           </h2>
 
-          <SeoChatComposer
+          <ChatComposer
             v-model:message="message"
             v-model:selected-model="selectedModel"
             v-model:selected-reasoning-effort="selectedReasoningEffort"
@@ -176,7 +176,7 @@ function applySuggestedPrompt(prompt: string) {
           :turns="conversationTurns"
         />
 
-        <SeoChatComposer
+        <ChatComposer
           v-model:message="message"
           v-model:selected-model="selectedModel"
           v-model:selected-reasoning-effort="selectedReasoningEffort"

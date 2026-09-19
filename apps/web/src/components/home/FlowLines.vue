@@ -1,17 +1,17 @@
 <script setup lang="ts">
 import type { ComponentPublicInstance } from 'vue'
 import type {
-  SeoFlowPathConfig,
-  SeoFlowPathTone,
-  SeoFlowStreamDelay,
-  SeoFlowViewBox,
-} from '@/types/seo-flow'
+  FlowPathConfig,
+  FlowPathTone,
+  FlowStreamDelay,
+  FlowViewBox,
+} from '@/types/flow'
 
 import { computed } from 'vue'
 
 const props = withDefaults(defineProps<{
-  paths: SeoFlowPathConfig[]
-  viewBox?: SeoFlowViewBox
+  paths: FlowPathConfig[]
+  viewBox?: FlowViewBox
   showEndpoints?: boolean
   showStreams?: boolean
 }>(), {
@@ -22,7 +22,7 @@ const props = withDefaults(defineProps<{
 
 const pathRefs = new Map<string, SVGPathElement>()
 
-const toneClassMap: Record<SeoFlowPathTone, string> = {
+const toneClassMap: Record<FlowPathTone, string> = {
   copper: 'seo-flow-path--copper',
   moss: 'seo-flow-path--moss',
   sand: 'seo-flow-path--sand',
@@ -30,7 +30,7 @@ const toneClassMap: Record<SeoFlowPathTone, string> = {
   neutral: 'seo-flow-path--neutral',
 }
 
-const delayClassMap: Record<SeoFlowStreamDelay, string> = {
+const delayClassMap: Record<FlowStreamDelay, string> = {
   none: '',
   short: 'seo-flow-stream--delay-short',
   medium: 'seo-flow-stream--delay-medium',
@@ -54,11 +54,11 @@ function getPathElement(pathId: string): SVGPathElement | undefined {
   return pathRefs.get(pathId)
 }
 
-function getToneClass(tone: SeoFlowPathTone): string {
+function getToneClass(tone: FlowPathTone): string {
   return toneClassMap[tone]
 }
 
-function getDelayClass(delay: SeoFlowStreamDelay | undefined): string {
+function getDelayClass(delay: FlowStreamDelay | undefined): string {
   return delayClassMap[delay ?? 'none']
 }
 
@@ -79,8 +79,8 @@ defineExpose({
     <g
       v-for="path in paths"
       :key="path.id"
-      :data-seo-flow-from="path.from"
-      :data-seo-flow-to="path.to"
+      :data-flow-from="path.from"
+      :data-flow-to="path.to"
     >
       <path
         :id="path.id"

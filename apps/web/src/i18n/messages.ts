@@ -1,8 +1,8 @@
 export const messages = {
   'zh-CN': {
     common: {
-      appName: 'AI SEO 工作台',
-      appSubtitle: '页面诊断、关键词与内容优化',
+      appName: 'Agent 工作台',
+      appSubtitle: '知识库问答与多轮对话',
       languageSwitcher: {
         ariaLabel: '切换界面语言',
         placeholder: '语言',
@@ -19,7 +19,7 @@ export const messages = {
     },
     home: {
       header: {
-        logoAria: '返回 SEO Agent 首页',
+        logoAria: '返回 Agent 工作台首页',
       },
       navigation: {
         ariaLabel: '首页导航',
@@ -30,52 +30,52 @@ export const messages = {
         resources: '资源',
       },
       workflow: {
-        ariaLabel: 'SEO Agent 工作流示意',
+        ariaLabel: 'Agent 工作流示意',
       },
       hero: {
-        title: '把页面变成可搜索的 SEO 简报',
-        description: '一个面向页面诊断、关键词和内容规划的 AI 工作台，让输出始终基于真实页面上下文。',
+        title: '把站内知识变成有据可查的回答',
+        description: '一个面向知识库问答与多轮对话的 Agent 工作台，让每条回答都基于可核对的站内资料。',
       },
       actions: {
         openWorkspace: '打开工作台',
-        openWorkspaceAria: '打开 AI SEO 工作台',
-        analyze: '分析页面',
-        analyzeAria: '在 SEO Agent 工作台分析页面',
+        openWorkspaceAria: '打开 Agent 工作台',
+        analyze: '开始对话',
+        analyzeAria: '在 Agent 工作台开始对话',
         viewExample: '查看示例',
       },
       suggestions: {
         ariaLabel: '示例任务',
         hint: '从一个示例开始：',
-        audit: {
-          label: '诊断落地页 SEO',
-          prompt: '帮我诊断这个落地页的 SEO：重点看 title、description、页面结构和关键词覆盖。',
+        ask: {
+          label: '基于站内资料提问',
+          prompt: '请基于站内文章回答我的问题，并注明引用来源。我会在下一条消息里描述问题。',
         },
-        keywords: {
-          label: '生成关键词想法',
-          prompt: '基于我的产品页生成 SEO 关键词想法：核心词、长尾词和不同搜索意图。',
+        search: {
+          label: '按关键词找文章',
+          prompt: '帮我按关键词查找站内已有文章，列出标题、简介和 sourceId。我会给出关键词。',
         },
-        content: {
-          label: '规划内容结构',
-          prompt: '帮我规划这个页面的内容结构：H1、H2/H3、FAQ 和转化段落。',
+        capabilities: {
+          label: '了解它能做什么',
+          prompt: '介绍一下你能做什么：可以查哪些资料、有哪些工具、什么情况下会引用来源。',
         },
       },
       form: {
-        ariaLabel: 'SEO Agent 静态输入示例',
-        topicLabel: '页面主题',
-        placeholder: '粘贴 URL 或描述你要优化的页面...',
+        ariaLabel: 'Agent 静态输入示例',
+        topicLabel: '你的问题',
+        placeholder: '输入问题，或描述你想了解的内容...',
         animatedPrompts: {
-          url: '粘贴产品页 URL，开始一次页面诊断...',
-          brief: '描述落地页，生成可执行的 SEO 简报...',
-          keywords: '输入关键词目标，规划内容结构和优化方向...',
+          question: '输入一个问题，从站内资料里找答案...',
+          retrieve: '让 Agent 检索相关文章并注明来源...',
+          followUp: '继续追问，回答会带上可核对的引用...',
         },
         submit: '提交示例',
       },
     },
     navigation: {
-      pageAudit: '页面诊断',
-      keywordIdeas: '关键词想法',
-      contentPlan: '内容计划',
-      seoChecklist: 'SEO 检查清单',
+      knowledgeQa: '知识库问答',
+      articleSearch: '文章检索',
+      citedSources: '引用来源',
+      runTrace: '运行轨迹',
       history: '历史对话',
       settings: '设置',
     },
@@ -116,9 +116,9 @@ export const messages = {
     },
     conversation: {
       avatarAlt: 'AI 助手头像',
-      emptyTitle: '今天要优化哪个页面？',
+      emptyTitle: '今天想了解什么？',
       lastReply: '上次回复 {time}',
-      loading: '正在分析 SEO 任务...',
+      loading: '正在处理你的问题...',
       aborted: '已停止生成',
       fallbackError: '模型服务暂时没有返回结果，你的输入已保留，可以稍后重试。',
       actions: {
@@ -147,22 +147,22 @@ export const messages = {
         },
       },
       starterPrompts: {
-        audit: {
-          label: '诊断落地页 SEO',
-          prompt: '请帮我诊断一个落地页的 SEO，重点看 title、description、页面结构和关键词覆盖。我会补充页面主题和目标关键词。',
+        ask: {
+          label: '基于站内资料提问',
+          prompt: '请基于站内文章回答我的问题，并注明引用来源；资料不足时直接说明无法确认。我会在下一条消息里描述问题。',
         },
-        keywords: {
-          label: '生成关键词想法',
-          prompt: '请基于一个产品页面帮我生成 SEO 关键词想法，包括核心关键词、长尾关键词和不同搜索意图。我会提供产品和目标市场。',
+        search: {
+          label: '按关键词找文章',
+          prompt: '请帮我按关键词查找站内已有文章，列出标题、简介和 sourceId，方便我进一步读取全文。我会给出关键词。',
         },
-        content: {
-          label: '规划内容结构',
-          prompt: '请帮我规划一个 SEO 页面内容结构，包括 H1、H2/H3、FAQ 和转化段落。我会提供页面主题、目标用户和关键词。',
+        capabilities: {
+          label: '了解它能做什么',
+          prompt: '请介绍一下你能做什么：可以查哪些资料、有哪些工具、什么情况下会引用来源，以及什么情况下会说明无法确认。',
         },
       },
     },
     composer: {
-      placeholder: '输入页面主题、关键词或你想优化的 SEO 问题...',
+      placeholder: '输入你的问题，或让我检索站内资料...',
       modelSelectAria: '选择模型与思考强度',
       modelPlaceholder: 'DeepSeek 模型',
       reasoningEffortLabel: '思考强度',
@@ -172,7 +172,7 @@ export const messages = {
         max: 'Max',
       },
       modelDescriptions: {
-        'deepseek-v4-flash': '响应快，适合日常 SEO 任务',
+        'deepseek-v4-flash': '响应快，适合日常对话任务',
       },
       reset: '重置当前对话',
       send: '发送消息',
@@ -191,8 +191,8 @@ export const messages = {
   },
   'en-US': {
     common: {
-      appName: 'AI SEO Workspace',
-      appSubtitle: 'Page audits, keywords, and content optimization',
+      appName: 'Agent Workspace',
+      appSubtitle: 'Knowledge base Q&A and multi-turn chat',
       languageSwitcher: {
         ariaLabel: 'Switch interface language',
         placeholder: 'Language',
@@ -209,7 +209,7 @@ export const messages = {
     },
     home: {
       header: {
-        logoAria: 'Back to SEO Agent home',
+        logoAria: 'Back to Agent workspace home',
       },
       navigation: {
         ariaLabel: 'Home navigation',
@@ -220,52 +220,52 @@ export const messages = {
         resources: 'Resources',
       },
       workflow: {
-        ariaLabel: 'SEO Agent workflow visual',
+        ariaLabel: 'Agent workflow visual',
       },
       hero: {
-        title: 'Turn pages into search-ready briefs',
-        description: 'An AI workspace for audits, keywords, and content plans that stays grounded in page context.',
+        title: 'Turn your articles into cited answers',
+        description: 'An agent workspace for knowledge base Q&A and conversation that stays grounded in your own sources.',
       },
       actions: {
         openWorkspace: 'Open workspace',
-        openWorkspaceAria: 'Open AI SEO workspace',
-        analyze: 'Analyze a page',
-        analyzeAria: 'Analyze a page in SEO Agent workspace',
+        openWorkspaceAria: 'Open Agent workspace',
+        analyze: 'Start a chat',
+        analyzeAria: 'Start a chat in the Agent workspace',
         viewExample: 'View example',
       },
       suggestions: {
         ariaLabel: 'Example tasks',
         hint: 'Start from an example:',
-        audit: {
-          label: 'Audit landing page SEO',
-          prompt: 'Audit this landing page for SEO — focus on title, description, page structure, and keyword coverage.',
+        ask: {
+          label: 'Ask the knowledge base',
+          prompt: 'Answer my question from the article library and cite your sources. I will describe the question in my next message.',
         },
-        keywords: {
-          label: 'Generate keyword ideas',
-          prompt: 'Generate SEO keyword ideas for my product page: head terms, long-tail variants, and different search intents.',
+        search: {
+          label: 'Find articles by keyword',
+          prompt: 'Find existing articles in the library by keyword and list their titles, summaries, and sourceIds. I will provide the keywords.',
         },
-        content: {
-          label: 'Plan content structure',
-          prompt: 'Plan the content structure for this page: H1, H2/H3, FAQ, and conversion sections.',
+        capabilities: {
+          label: 'See what it can do',
+          prompt: 'Tell me what you can do: which material you can look up, which tools you have, and when you cite sources.',
         },
       },
       form: {
-        ariaLabel: 'SEO Agent static input example',
-        topicLabel: 'Page topic',
-        placeholder: 'Drop a URL or describe the page...',
+        ariaLabel: 'Agent static input example',
+        topicLabel: 'Your question',
+        placeholder: 'Ask a question or describe what you need...',
         animatedPrompts: {
-          url: 'Paste a product page URL for an audit...',
-          brief: 'Describe a landing page to shape the SEO brief...',
-          keywords: 'Ask for keywords, fixes, or content angles...',
+          question: 'Ask a question and get answers from your articles...',
+          retrieve: 'Let the agent retrieve articles and cite the sources...',
+          followUp: 'Keep asking; every reply carries checkable citations...',
         },
         submit: 'Submit static example',
       },
     },
     navigation: {
-      pageAudit: 'Page audit',
-      keywordIdeas: 'Keyword ideas',
-      contentPlan: 'Content plan',
-      seoChecklist: 'SEO checklist',
+      knowledgeQa: 'Knowledge Q&A',
+      articleSearch: 'Article search',
+      citedSources: 'Cited sources',
+      runTrace: 'Run trace',
       history: 'Chat history',
       settings: 'Settings',
     },
@@ -306,9 +306,9 @@ export const messages = {
     },
     conversation: {
       avatarAlt: 'AI assistant avatar',
-      emptyTitle: 'Which page are we optimizing today?',
+      emptyTitle: 'What would you like to know today?',
       lastReply: 'Last reply {time}',
-      loading: 'Analyzing the SEO task...',
+      loading: 'Working on your question...',
       aborted: 'Generation stopped',
       fallbackError: 'The model service did not return a response. Your input is still here, so you can try again later.',
       actions: {
@@ -337,22 +337,22 @@ export const messages = {
         },
       },
       starterPrompts: {
-        audit: {
-          label: 'Audit landing page SEO',
-          prompt: 'Help me audit a landing page for SEO. Focus on title, description, page structure, and keyword coverage. I will provide the page topic and target keywords.',
+        ask: {
+          label: 'Ask the knowledge base',
+          prompt: 'Please answer my question from the article library and cite your sources. If the material is not enough, say so instead of guessing. I will describe the question in my next message.',
         },
-        keywords: {
-          label: 'Generate keyword ideas',
-          prompt: 'Help me generate SEO keyword ideas for a product page, including seed keywords, long-tail keywords, and search intent groups. I will provide the product and target market.',
+        search: {
+          label: 'Find articles by keyword',
+          prompt: 'Please find existing articles in the library by keyword and list their titles, summaries, and sourceIds so I can read the full text later. I will provide the keywords.',
         },
-        content: {
-          label: 'Plan content structure',
-          prompt: 'Help me plan an SEO page content structure, including H1, H2/H3, FAQ, and conversion sections. I will provide the topic, audience, and keywords.',
+        capabilities: {
+          label: 'See what it can do',
+          prompt: 'Please tell me what you can do: which material you can look up, which tools you have, when you cite sources, and when you will say something cannot be confirmed.',
         },
       },
     },
     composer: {
-      placeholder: 'Enter a page topic, keywords, or the SEO question you want to optimize...',
+      placeholder: 'Ask a question or have me search the article library...',
       modelSelectAria: 'Select model and reasoning effort',
       modelPlaceholder: 'DeepSeek model',
       reasoningEffortLabel: 'Effort',
@@ -362,7 +362,7 @@ export const messages = {
         max: 'Max',
       },
       modelDescriptions: {
-        'deepseek-v4-flash': 'Fast responses for everyday SEO tasks',
+        'deepseek-v4-flash': 'Fast responses for everyday chat tasks',
       },
       reset: 'Reset current chat',
       send: 'Send message',

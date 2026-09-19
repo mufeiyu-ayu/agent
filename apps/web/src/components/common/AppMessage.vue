@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { AppMessageType } from '../../types/seo'
+import type { AppMessageType } from '../../types/chat'
 
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
