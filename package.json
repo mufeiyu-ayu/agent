@@ -11,7 +11,6 @@
   "scripts": {
     "dev": "pnpm dev:apps",
     "dev:api": "pnpm --filter @agent/api dev",
-    "dev:api:watch": "pnpm --filter @agent/api dev:watch",
     "dev:admin": "pnpm --filter @agent/admin dev",
     "dev:web": "pnpm --filter @agent/web dev",
     "dev:apps": "node scripts/dev-apps.mjs",

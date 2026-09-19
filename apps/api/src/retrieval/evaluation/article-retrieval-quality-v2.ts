@@ -5,7 +5,6 @@ import type {
 import { performance } from 'node:perf_hooks'
 
 import { normalizeArticleRetrievalInput } from '../article-retrieval.js'
-import { validateRetrievalResult } from './retrieval-evaluation.js'
 
 const TOP_K = 5
 const STRATEGY_KINDS = ['lexical', 'vector', 'hybrid'] as const
@@ -318,6 +317,53 @@ function validateExecution(
   }
 }
 
+function validateRetrievalResult(
+  result: ArticleRetrievalResult,
+  expectedQuery: NormalizedArticleRetrievalQuery,
+): void {
+  if (
+    typeof result !== 'object'
+    || result === null
+    || !Array.isArray(result.hits)
+    || !Number.isSafeInteger(result.total)
+    || result.total < result.hits.length
+    || typeof result.strategy?.name !== 'string'
+    || result.strategy.name.length === 0
+    || typeof result.strategy.version !== 'string'
+    || result.strategy.version.length === 0
+  ) {
+    throw invalidResult('total or strategy is invalid')
+  }
+
+  if (
+    typeof result.query !== 'object'
+    || result.query === null
+    || result.query.query !== expectedQuery.query
+    || result.query.languageCode !== expectedQuery.languageCode
+    || result.query.limit !== expectedQuery.limit
+  ) {
+    throw invalidResult('query does not match the evaluation case')
+  }
+
+  if (result.hits.length > expectedQuery.limit)
+    throw invalidResult('hits exceed the evaluation case limit')
+
+  const sourceIds = new Set<number>()
+
+  for (const [index, hit] of result.hits.entries()) {
+    if (
+      !Number.isSafeInteger(hit.sourceId)
+      || hit.sourceId <= 0
+      || sourceIds.has(hit.sourceId)
+      || hit.rank !== index + 1
+    ) {
+      throw invalidResult('hits require unique sourceId and contiguous rank from 1')
+    }
+
+    sourceIds.add(hit.sourceId)
+  }
+}
+
 function summarize(
   cases: RetrievalQualityV2Report['strategies'][number]['cases'],
 ): RetrievalQualityV2Report['strategies'][number]['summary'] {
@@ -467,6 +513,10 @@ function copyExpectation(
   return expectation.kind === 'sources'
     ? { kind: 'sources', sourceIds: [...expectation.sourceIds] }
     : { kind: 'no-answer' }
+}
+
+function invalidResult(message: string): Error {
+  return new Error(`invalid retrieval result: ${message}`)
 }
 
 function invalidEvaluation(message: string): Error {

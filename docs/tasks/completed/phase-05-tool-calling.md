@@ -121,7 +121,7 @@ Tool Loop：
 
 ## 源码复盘顺序
 
-阶段复盘仍是推荐学习任务，用于巩固最小 Tool Calling 闭环；后续阶段 6 已将固定两轮执行升级为有界单 Agent Loop：
+阶段复盘仍是推荐学习任务，用于巩固最小 Tool Calling 闭环；后续阶段 6 已将固定两轮执行升级为有界单 Agent Loop。下列 1-5 为阶段 5 当时的路径：#134 后 `useSeoWorkspace.ts` → `useChatWorkspace.ts`、`api/seo.ts` → `api/chat.ts`、`seo/` → `chat/`（`chat.controller.ts` / `chat.service.ts`），`seo-context-builder.service.ts` 已删除：
 
 ```text
 1. apps/web/src/hooks/useSeoWorkspace.ts

@@ -43,7 +43,7 @@ Article Source
 
 - 建立 Article 专属 Retrieval 契约（query、ordered hits、total、rank、strategy/version）与 `PrismaArticleRetriever`；`search_articles` 委托 Retriever 且外部行为兼容；
 - Retrieval 层不依赖 ToolDefinition、Registry、Tool call ID、LLM role、Prompt、`modelContent` 或 ChatStreamEvent；
-- 建立版本化 fixture adapter、Recall@K / RR / Mean Recall@K / MRR 评估器与 `test:retrieval`、`eval:retrieval-baseline` 命令；
+- 建立版本化 fixture adapter、Recall@K / RR / Mean Recall@K / MRR 评估器与 `test:retrieval`、`eval:retrieval-baseline` 命令（fixture baseline 闭环与该命令已由 #135 删除，真实库评估为 `eval:retrieval-quality`）；
 - baseline：`article-retrieval-baseline-v1` / `fixture_lexical/1`，8 cases，meanRecallAtK 0.875、MRR 0.875、zeroHit 1。该结果只证明 contract 与评估逻辑，不是线上检索质量认证。
 
 核心认知：Retrieval 是内部数据能力，Tool 是 Agent 调用与 Observation 适配边界，两者不应互相污染；先固化 corpus、指标和可复现命令，再讨论新检索策略。
