@@ -1,27 +1,25 @@
 import type { Dispatcher } from 'undici'
 import type { GeminiEmbeddingClient } from './gemini-embedding.provider.js'
 import assert from 'node:assert/strict'
-import process from 'node:process'
 // 项目使用 Node 原生测试运行器，不引入额外测试框架。
 // eslint-disable-next-line test/no-import-node-test
 import { describe, it } from 'node:test'
+import { GoogleGenAI } from '@google/genai'
 import { getGlobalDispatcher, MockAgent, setGlobalDispatcher } from 'undici'
 import {
   EmbeddingError,
   resolveEmbeddingRuntimeConfig,
 } from './embedding-provider.js'
-import {
-  createGeminiEmbeddingClient,
-  GeminiEmbeddingProvider,
-} from './gemini-embedding.provider.js'
+import { GeminiEmbeddingProvider } from './gemini-embedding.provider.js'
 
-// 这些用例必须真正经过 @google/genai 的 models.embedContent -> ApiClient -> fetch，
+// 这些用例必须真正经过 @google/genai 的 models.embedContent -> ApiClient -> p-retry -> fetch，
 // 因此只替换最底层的 undici dispatcher，不注入 fake GeminiEmbeddingClient。
 const GEMINI_ORIGIN = 'https://generativelanguage.googleapis.com'
-const PROXY_ENV_NAMES = ['HTTPS_PROXY', 'https_proxy', 'HTTP_PROXY', 'http_proxy'] as const
 // SDK deadline 必须远小于 mock 响应延迟，才能证明是 timeout 触发而不是响应返回。
 const SDK_TIMEOUT_MS = 300
 const MOCK_DELAY_MS = 1_500
+const UPSTREAM_ERROR_BODY = { error: { message: 'controlled upstream payload', code: 503 } }
+const JSON_HEADERS = { headers: { 'content-type': 'application/json' } }
 
 interface SafeErrorShape {
   constructorName: string | null
@@ -97,76 +95,80 @@ describe('Gemini SDK transport boundary', () => {
     assert.equal(callerAbort.signal.aborted, false)
   })
 
-  it('Provider 把真实连接失败归类为可重试 network 并保留 metrics', async () => {
+  for (const status of [429, 503]) {
+    it(`首次 ${status}、第二次成功：SDK 内置重试让 Provider 正常返回`, async () => {
+      await withMockedTransport(async ({ client, pool, transportCalls }) => {
+        pool.intercept({ path: matchEmbedContent, method: 'POST' })
+          .reply(status, UPSTREAM_ERROR_BODY, JSON_HEADERS)
+        pool.intercept({ path: matchEmbedContent, method: 'POST' })
+          .reply(200, embeddingResponse(1))
+
+        const result = await new GeminiEmbeddingProvider(config(), client).embed(
+          ['safe input'],
+          { signal: new AbortController().signal },
+        )
+
+        assert.equal(result.vectors.length, 1)
+        // 重试发生在 SDK 内部：Provider 只数到一次 embedContent，transport 打了两次。
+        assert.equal(result.providerRequests, 1)
+        assert.equal(result.retryCount, 0)
+        assert.equal(transportCalls(), 2)
+      })
+    })
+  }
+
+  it('可重试状态码由 attempts: 3 兜底，耗尽后映射为 retry_exhausted 且不泄漏原始错误', async () => {
     await withMockedTransport(async ({ client, pool, transportCalls }) => {
       pool.intercept({ path: matchEmbedContent, method: 'POST' })
-        .replyWithError(new Error('controlled transport failure'))
-        .times(2)
-      pool.intercept({ path: matchEmbedContent, method: 'POST' })
-        .reply(200, embeddingResponse(1))
+        .reply(503, UPSTREAM_ERROR_BODY, JSON_HEADERS)
+        .times(3)
 
-      const sleeps: number[] = []
-      const provider = new GeminiEmbeddingProvider(
-        config(),
-        client,
-        async milliseconds => void sleeps.push(milliseconds),
+      await assert.rejects(
+        new GeminiEmbeddingProvider(config(), client).embed(
+          ['safe input'],
+          { signal: new AbortController().signal },
+        ),
+        error => error instanceof EmbeddingError
+          && error.code === 'retry_exhausted'
+          && error.providerRequests === 1
+          && error.retryCount === 0
+          && !/payload|upstream/i.test(error.message)
+          && error.cause === undefined,
       )
-
-      const result = await provider.embed(['safe input'], {
-        signal: new AbortController().signal,
-      })
-
-      assert.equal(result.vectors.length, 1)
-      assert.equal(result.providerRequests, 3)
-      assert.equal(result.retryCount, 2)
-      assert.deepEqual(sleeps, [250, 500])
-      // AC-10：Transport 次数等于 Provider 请求次数，SDK 内部没有隐藏重试。
       assert.equal(transportCalls(), 3)
     })
   })
 
-  it('Provider 把真实 SDK timeout 归类为可重试 timeout，不误判为 caller Abort', async () => {
+  it('连接失败不被 SDK 重试（p-retry@4 不放行 Node 的 fetch failed），Provider 按 network 上报', async () => {
     await withMockedTransport(async ({ client, pool, transportCalls }) => {
       pool.intercept({ path: matchEmbedContent, method: 'POST' })
-        .reply(200, embeddingResponse(1))
-        .delay(MOCK_DELAY_MS)
-      pool.intercept({ path: matchEmbedContent, method: 'POST' })
-        .reply(200, embeddingResponse(1))
+        .replyWithError(new Error('controlled transport failure'))
+        .times(3)
 
-      const sleeps: number[] = []
-      const callerAbort = new AbortController()
-      const provider = new GeminiEmbeddingProvider(
-        { ...config(), requestTimeoutMs: SDK_TIMEOUT_MS },
-        client,
-        async milliseconds => void sleeps.push(milliseconds),
+      await assert.rejects(
+        new GeminiEmbeddingProvider(config(), client).embed(
+          ['safe input'],
+          { signal: new AbortController().signal },
+        ),
+        error => error instanceof EmbeddingError
+          && error.code === 'network'
+          && error.providerRequests === 1
+          && !/controlled|transport/i.test(error.message),
       )
-
-      const result = await provider.embed(['safe input'], {
-        signal: callerAbort.signal,
-      })
-
-      assert.equal(result.vectors.length, 1)
-      assert.equal(result.providerRequests, 2)
-      assert.equal(result.retryCount, 1)
-      assert.deepEqual(sleeps, [250])
-      assert.equal(callerAbort.signal.aborted, false)
-      assert.equal(transportCalls(), 2)
+      assert.equal(transportCalls(), 1)
     })
   })
 
-  it('caller 主动 Abort 转成 EmbeddingAbortError 且不重试', async () => {
+  it('caller 主动 Abort 转成 EmbeddingAbortError 且 SDK 不再重试', async () => {
     await withMockedTransport(async ({ client, pool, transportCalls }) => {
       pool.intercept({ path: matchEmbedContent, method: 'POST' })
         .reply(200, embeddingResponse(1))
         .delay(MOCK_DELAY_MS)
+        .times(3)
 
       const callerAbort = new AbortController()
-      const provider = new GeminiEmbeddingProvider(
-        config(),
-        client,
-        async () => assert.fail('caller Abort 不得进入重试等待'),
-      )
-      const pending = provider.embed(['safe input'], { signal: callerAbort.signal })
+      const pending = new GeminiEmbeddingProvider(config(), client)
+        .embed(['safe input'], { signal: callerAbort.signal })
       setTimeout(() => callerAbort.abort(), 20)
 
       await assert.rejects(
@@ -177,36 +179,6 @@ describe('Gemini SDK transport boundary', () => {
           && error.retryCount === 0,
       )
       assert.equal(transportCalls(), 1)
-    })
-  })
-
-  it('可重试 HTTP 状态码不触发 SDK 隐式重试，重试耗尽后不泄漏原始错误', async () => {
-    await withMockedTransport(async ({ client, pool, transportCalls }) => {
-      pool.intercept({ path: matchEmbedContent, method: 'POST' })
-        .reply(
-          503,
-          { error: { message: 'controlled upstream payload', code: 503 } },
-          { headers: { 'content-type': 'application/json' } },
-        )
-        .times(3)
-
-      const provider = new GeminiEmbeddingProvider(
-        config(),
-        client,
-        async () => {},
-      )
-
-      await assert.rejects(
-        provider.embed(['safe input'], { signal: new AbortController().signal }),
-        error => error instanceof EmbeddingError
-          && error.code === 'retry_exhausted'
-          && error.providerRequests === 3
-          && error.retryCount === 2
-          && !/payload|upstream/i.test(error.message)
-          && error.cause === undefined,
-      )
-      // 503 属于 SDK 默认可重试状态码，attempts: 1 必须让每次 provider 请求只打一次。
-      assert.equal(transportCalls(), 3)
     })
   })
 })
@@ -238,55 +210,49 @@ async function embedOnce(
 /**
  * 安装受控 undici dispatcher，让真实 SDK 请求落在 MockAgent 上。
  *
- * 先删除 proxy 环境变量再创建 client，是因为 createGeminiEmbeddingClient()
- * 会在检测到 proxy 时 setGlobalDispatcher(EnvHttpProxyAgent) 覆盖掉 MockAgent。
+ * client 级 retryOptions 只把退避缩到 1ms；SDK 按 key 合并 client 级与请求级 retryOptions，
+ * attempts 仍由 Provider 的请求级 `{ attempts: 3 }` 决定，所以 transport 次数能证明上限。
+ * 不经过 createGeminiEmbeddingClient()，避免它在检测到 proxy 环境变量时
+ * setGlobalDispatcher(EnvHttpProxyAgent) 覆盖掉 MockAgent。
  */
 async function withMockedTransport(
   run: (transport: MockedTransport) => Promise<void>,
 ): Promise<void> {
-  const savedProxyEnv = PROXY_ENV_NAMES.map(name => [name, process.env[name]] as const)
-  for (const name of PROXY_ENV_NAMES)
-    delete process.env[name]
-
   const originalDispatcher = getGlobalDispatcher()
-  let agent: MockAgent | undefined
+  const agent = new MockAgent()
+  agent.disableNetConnect()
   try {
-    const client = createGeminiEmbeddingClient(config())
-    agent = new MockAgent()
-    agent.disableNetConnect()
-
-    const mockAgent = agent
+    const sdk = new GoogleGenAI({
+      apiKey: config().apiKey,
+      httpOptions: { retryOptions: { initialDelay: 0.001, maxDelay: 0.001 } },
+    })
     let calls = 0
     const countingDispatcher = {
       dispatch(options: Dispatcher.DispatchOptions, handler: Dispatcher.DispatchHandler) {
         calls += 1
-        return mockAgent.dispatch(options, handler)
+        return agent.dispatch(options, handler)
       },
-      close: async () => await mockAgent.close(),
-      destroy: async () => await mockAgent.destroy(),
+      close: async () => await agent.close(),
+      destroy: async () => await agent.destroy(),
     } as unknown as Dispatcher
     setGlobalDispatcher(countingDispatcher)
 
     await run({
-      client,
-      pool: mockAgent.get(GEMINI_ORIGIN),
+      client: {
+        models: {
+          embedContent: async request => await sdk.models.embedContent(request),
+        },
+      },
+      pool: agent.get(GEMINI_ORIGIN),
       transportCalls: () => calls,
     })
   }
   finally {
     setGlobalDispatcher(originalDispatcher)
-    await agent?.close()
-    for (const [name, value] of savedProxyEnv) {
-      if (value === undefined)
-        delete process.env[name]
-      else
-        process.env[name] = value
-    }
+    await agent.close()
   }
 
   assert.equal(getGlobalDispatcher(), originalDispatcher)
-  for (const [name, value] of savedProxyEnv)
-    assert.equal(process.env[name], value)
 }
 
 function matchEmbedContent(path: string): boolean {

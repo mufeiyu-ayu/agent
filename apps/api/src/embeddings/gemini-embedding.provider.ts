@@ -8,14 +8,13 @@ import { ApiError, GoogleGenAI } from '@google/genai'
 import { EnvHttpProxyAgent, setGlobalDispatcher } from 'undici'
 import {
   ACTIVE_EMBEDDING_PROFILE,
+  EMBEDDING_ATTEMPT_TIMEOUT_MS,
+  EMBEDDING_BATCH_INPUTS,
+  EMBEDDING_RETRIES,
   EmbeddingAbortError,
   EmbeddingError,
 } from './embedding-provider.js'
 
-const RETRY_BASE_DELAY_MS = 250
-const RATE_LIMIT_FALLBACK_DELAY_MS = 60_000
-const RATE_LIMIT_MAX_DELAY_MS = 60_000
-const RATE_LIMIT_SAFETY_MARGIN_MS = 1_000
 let environmentProxyConfigured = false
 
 interface GeminiEmbeddingRequest {
@@ -28,7 +27,7 @@ interface GeminiEmbeddingRequest {
     abortSignal: AbortSignal
     httpOptions: {
       timeout: number
-      retryOptions: { attempts: 1 }
+      retryOptions: { attempts: number }
     }
   }
 }
@@ -45,8 +44,6 @@ export interface GeminiEmbeddingClient {
   }
 }
 
-type RetrySleep = (milliseconds: number, signal: AbortSignal) => Promise<void>
-
 export class GeminiEmbeddingProvider implements EmbeddingProvider {
   readonly profile = ACTIVE_EMBEDDING_PROFILE
   private readonly client: GeminiEmbeddingClient
@@ -54,7 +51,6 @@ export class GeminiEmbeddingProvider implements EmbeddingProvider {
   constructor(
     private readonly config: EmbeddingRuntimeConfig,
     client?: GeminiEmbeddingClient,
-    private readonly retrySleep: RetrySleep = sleepWithAbort,
   ) {
     this.client = client ?? createGeminiEmbeddingClient(config)
   }
@@ -76,133 +72,58 @@ export class GeminiEmbeddingProvider implements EmbeddingProvider {
     }
 
     const vectors: number[][] = []
+    // 重试在 SDK 内部完成，这里只能数到 embedContent 调用次数；retryCount 恒为 0。
     let providerRequests = 0
-    let retryCount = 0
 
-    for (let offset = 0; offset < inputs.length; offset += this.config.batchSize) {
+    for (let offset = 0; offset < inputs.length; offset += EMBEDDING_BATCH_INPUTS) {
       if (options.signal.aborted)
-        throw new EmbeddingAbortError(providerRequests, retryCount)
-      const batch = inputs.slice(offset, offset + this.config.batchSize)
-
-      try {
-        const result = await this.embedBatch(batch, options.signal)
-        vectors.push(...result.vectors)
-        providerRequests += result.providerRequests
-        retryCount += result.retryCount
-      }
-      catch (cause) {
-        if (cause instanceof EmbeddingAbortError) {
-          throw new EmbeddingAbortError(
-            providerRequests + cause.providerRequests,
-            retryCount + cause.retryCount,
-          )
-        }
-        if (cause instanceof EmbeddingError) {
-          throw new EmbeddingError(
-            cause.message,
-            cause.code,
-            cause.retryable,
-            providerRequests + cause.providerRequests,
-            retryCount + cause.retryCount,
-          )
-        }
-        throw cause
-      }
-    }
-
-    return { vectors, providerRequests, retryCount }
-  }
-
-  private async embedBatch(
-    inputs: string[],
-    signal: AbortSignal,
-  ): Promise<EmbeddingResult> {
-    let providerRequests = 0
-    let retryCount = 0
-
-    for (let attempt = 0; ; attempt += 1) {
-      if (signal.aborted)
-        throw new EmbeddingAbortError(providerRequests, retryCount)
+        throw new EmbeddingAbortError(providerRequests, 0)
+      const batch = inputs.slice(offset, offset + EMBEDDING_BATCH_INPUTS)
       providerRequests += 1
 
+      const requestAbort = createRequestAbort(options.signal)
       try {
-        const requestAbort = createRequestAbort(signal)
-        let response: GeminiEmbeddingResponse
-        try {
-          response = await this.client.models.embedContent({
-            model: this.config.model,
-            contents: inputs.map(text => ({ parts: [{ text }] })),
-            config: {
-              outputDimensionality: this.config.dimensions,
-              abortSignal: requestAbort.signal,
-              httpOptions: {
-                timeout: this.config.requestTimeoutMs,
-                // The project owns retries and metrics; one SDK attempt prevents
-                // hidden retries from stacking underneath this loop.
-                retryOptions: { attempts: 1 },
-              },
+        const response = await this.client.models.embedContent({
+          model: this.config.model,
+          contents: batch.map(text => ({ parts: [{ text }] })),
+          config: {
+            outputDimensionality: this.config.dimensions,
+            abortSignal: requestAbort.signal,
+            httpOptions: {
+              timeout: EMBEDDING_ATTEMPT_TIMEOUT_MS,
+              // 退避用 SDK 默认（1s 起、×2、带 jitter）；SDK 不读 Retry-After，
+              // 也不重试 Node 的 `fetch failed`，见 classifyEmbeddingError。
+              retryOptions: { attempts: 1 + EMBEDDING_RETRIES },
             },
-          })
-        }
-        finally {
-          requestAbort.cleanup()
-        }
-        if (signal.aborted)
-          throw new EmbeddingAbortError(providerRequests, retryCount)
-
-        return {
-          vectors: validateGeminiEmbeddingResponse(
-            response,
-            inputs.length,
-            this.config.dimensions,
-          ),
-          providerRequests,
-          retryCount,
-        }
+          },
+        })
+        options.signal.throwIfAborted()
+        vectors.push(...validateGeminiEmbeddingResponse(
+          response,
+          batch.length,
+          this.config.dimensions,
+        ))
       }
       catch (cause) {
-        if (cause instanceof EmbeddingAbortError)
-          throw cause
-        if (signal.aborted) {
-          throw new EmbeddingAbortError(
-            providerRequests,
-            retryCount,
-          )
-        }
-
+        if (options.signal.aborted)
+          throw new EmbeddingAbortError(providerRequests, 0)
         const error = classifyEmbeddingError(cause)
-        if (!error.retryable)
-          throw withMetrics(error, providerRequests, retryCount)
-        if (attempt >= this.config.maxRetries) {
-          throw new EmbeddingError(
-            `embedding ${error.code} 重试已耗尽`,
-            'retry_exhausted',
-            false,
-            providerRequests,
-            retryCount,
-          )
-        }
-
-        retryCount += 1
-        try {
-          await this.retrySleep(
-            error.code === 'rate_limit'
-              ? error.retryAfterMs
-              : RETRY_BASE_DELAY_MS * 2 ** attempt,
-            signal,
-          )
-        }
-        catch (cause) {
-          if (signal.aborted || isAbortError(cause)) {
-            throw new EmbeddingAbortError(
+        // 走到这里说明 SDK 已用完 attempts，可重试类错误统一按耗尽上报。
+        throw error.retryable
+          ? new EmbeddingError(
+              `embedding ${error.code} 重试已耗尽`,
+              'retry_exhausted',
+              false,
               providerRequests,
-              retryCount,
             )
-          }
-          throw cause
-        }
+          : new EmbeddingError(error.message, error.code, false, providerRequests)
+      }
+      finally {
+        requestAbort.cleanup()
       }
     }
+
+    return { vectors, providerRequests, retryCount: 0 }
   }
 }
 
@@ -289,6 +210,15 @@ export function validateGeminiEmbeddingResponse(
   })
 }
 
+/**
+ * 把 SDK 抛出的错误归类为项目错误码。
+ *
+ * `retryable` 决定耗尽后是否按 `retry_exhausted` 上报。SDK 内置重试（p-retry@4）对
+ * 408 / 429 / 5xx 与每次尝试的 timeout 一律重试、不看响应体，所以 daily quota 的 429
+ * 也会被 SDK 多打两次，这里仍按不可重试的 rate_limit 上报以保留原因；Node fetch 的
+ * `TypeError: fetch failed` 则不会被 SDK 重试（p-retry 只放行浏览器网络错误文案），
+ * network 直接失败。
+ */
 function classifyEmbeddingError(cause: unknown): EmbeddingError {
   if (cause instanceof EmbeddingError)
     return cause
@@ -303,7 +233,7 @@ function classifyEmbeddingError(cause: unknown): EmbeddingError {
     return new EmbeddingError(
       'embedding network error',
       'network',
-      true,
+      false,
     )
   }
   if (cause instanceof ApiError) {
@@ -323,9 +253,6 @@ function classifyEmbeddingError(cause: unknown): EmbeddingError {
           : 'embedding rate limited',
         'rate_limit',
         !dailyQuotaExceeded,
-        0,
-        0,
-        readRateLimitRetryDelayMs(cause.message),
       )
     }
     if (cause.status >= 500) {
@@ -367,56 +294,6 @@ function classifyEmbeddingError(cause: unknown): EmbeddingError {
 
 function protocolError(message: string): EmbeddingError {
   return new EmbeddingError(message, 'protocol', false)
-}
-
-function withMetrics(
-  error: EmbeddingError,
-  providerRequests: number,
-  retryCount: number,
-): EmbeddingError {
-  return new EmbeddingError(
-    error.message,
-    error.code,
-    error.retryable,
-    providerRequests,
-    retryCount,
-    error.retryAfterMs,
-  )
-}
-
-function readRateLimitRetryDelayMs(message: string): number {
-  const match = /(?:retry in |retryDelay\D+)(\d+(?:\.\d+)?)s/i.exec(message)
-  const seconds = Number(match?.[1])
-
-  if (!Number.isFinite(seconds) || seconds <= 0)
-    return RATE_LIMIT_FALLBACK_DELAY_MS
-
-  return Math.min(
-    RATE_LIMIT_MAX_DELAY_MS,
-    Math.ceil(seconds * 1_000) + RATE_LIMIT_SAFETY_MARGIN_MS,
-  )
-}
-
-async function sleepWithAbort(
-  milliseconds: number,
-  signal: AbortSignal,
-): Promise<void> {
-  if (signal.aborted)
-    throw new DOMException('embedding retry aborted', 'AbortError')
-
-  await new Promise<void>((resolve, reject) => {
-    const timer = setTimeout(finish, milliseconds)
-    const abort = (): void => {
-      clearTimeout(timer)
-      signal.removeEventListener('abort', abort)
-      reject(new DOMException('embedding retry aborted', 'AbortError'))
-    }
-    function finish(): void {
-      signal.removeEventListener('abort', abort)
-      resolve()
-    }
-    signal.addEventListener('abort', abort, { once: true })
-  })
 }
 
 function isAbortError(error: unknown): boolean {
