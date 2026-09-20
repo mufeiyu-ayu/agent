@@ -78,14 +78,18 @@ export interface AdminLlmProviderInput {
   importTestResults?: AdminLlmModelTestResult[]
 }
 
-/** 存库前用填好的地址与密钥拉一次模型清单，用来验证配置；不落库。 */
-export interface AdminLlmPreviewModelsRequest {
+/**
+ * 拉模型清单 / 测模型用的凭据，不落库：给了 apiKey 就用它（新增或换密钥）；
+ * 否则按 providerId 用库里的密钥，baseUrl 用表单里当前的值（可以还没保存）。
+ */
+export interface AdminLlmCredentialsInput {
+  providerId?: string
   baseUrl: string
-  apiKey: string
+  apiKey?: string
 }
 
-/** 对勾选的模型各发一条最短对话请求，验证对话接口真的通；不落库。 */
-export interface AdminLlmTestModelsRequest extends AdminLlmPreviewModelsRequest {
+/** 对勾选的模型各发一条最短对话请求，验证对话接口真的通。 */
+export interface AdminLlmTestModelsRequest extends AdminLlmCredentialsInput {
   wireNames: string[]
 }
 

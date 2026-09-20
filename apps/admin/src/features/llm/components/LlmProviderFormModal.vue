@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { AdminLlmModelTestResult, AdminLlmProvider, AdminLlmProviderInput, LlmProviderFamily } from '@agent/contracts'
 import type { FormInstance, Rule } from 'ant-design-vue/es/form'
+import { LLM_PROVIDER_FAMILIES } from '@agent/contracts'
 import { CheckCircleFilled, CloseCircleFilled, SyncOutlined } from '@ant-design/icons-vue'
 import {
   Button,
@@ -13,7 +14,7 @@ import {
 import { computed, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-import { getLlmProviderPreset, LLM_PROVIDER_PRESETS } from '../llm-presets'
+import { LLM_FAMILY_BRAND } from '../llm-families'
 import LlmFamilyLogo from './LlmFamilyLogo.vue'
 import LlmModelCandidateList from './LlmModelCandidateList.vue'
 
@@ -97,11 +98,11 @@ const rules = computed<Record<string, Rule[]>>(() => ({
 
 /** 选服务商：Base URL 只在还没被人改过时跟着预设走。 */
 function selectFamily(family: LlmProviderFamily) {
-  const previousSuggestion = getLlmProviderPreset(formState.family).suggestedBaseUrl
+  const previousSuggestion = LLM_FAMILY_BRAND[formState.family].suggestedBaseUrl
 
   formState.family = family
   if (!formState.baseUrl || formState.baseUrl === previousSuggestion)
-    formState.baseUrl = getLlmProviderPreset(family).suggestedBaseUrl
+    formState.baseUrl = LLM_FAMILY_BRAND[family].suggestedBaseUrl
 }
 
 watch(() => props.open, (isOpen) => {
@@ -121,7 +122,7 @@ watch(() => props.open, (isOpen) => {
   else {
     formState.family = 'deepseek'
     formState.note = ''
-    formState.baseUrl = getLlmProviderPreset('deepseek').suggestedBaseUrl
+    formState.baseUrl = LLM_FAMILY_BRAND.deepseek.suggestedBaseUrl
     formState.apiKey = ''
     formState.enabled = true
   }
@@ -187,15 +188,15 @@ async function handleOk() {
         <FormItem :label="t('llmModels.providers.form.family')" class="form-item-family">
           <div class="family-grid">
             <button
-              v-for="preset in LLM_PROVIDER_PRESETS"
-              :key="preset.family"
+              v-for="family in LLM_PROVIDER_FAMILIES"
+              :key="family"
               type="button"
               class="family-option"
-              :class="{ 'is-active': formState.family === preset.family }"
-              @click="selectFamily(preset.family)"
+              :class="{ 'is-active': formState.family === family }"
+              @click="selectFamily(family)"
             >
-              <LlmFamilyLogo :family="preset.family" :size="20" />
-              <span class="family-option__label">{{ t(`llmModels.families.${preset.family}`) }}</span>
+              <LlmFamilyLogo :family="family" :size="20" />
+              <span class="family-option__label">{{ t(`llmModels.families.${family}`) }}</span>
             </button>
           </div>
         </FormItem>

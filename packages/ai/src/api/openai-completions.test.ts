@@ -33,12 +33,11 @@ const RELAY_REQUEST: ResolvedChatRequestConfig = {
 }
 
 describe('OpenAICompatibleClient runtime config', () => {
-  it('metadata、普通 Chat 和 Stream 分别使用 10s、60s 和 10min', async () => {
+  it('metadata 与 Stream 分别使用 10s 和 10min', async () => {
     const harness = createHarness()
 
     await harness.client.listModels()
     await harness.client.getUserBalance()
-    await harness.client.chat([{ type: 'message', role: 'user', content: 'hello' }], { request: DEEPSEEK_REQUEST })
     await collectEvents(harness.client.chatStream([
       { type: 'message', role: 'user', content: 'hello' },
     ], { request: DEEPSEEK_REQUEST }))
@@ -51,12 +50,10 @@ describe('OpenAICompatibleClient runtime config', () => {
       [
         { kind: 'metadata:/models', timeout: 10_000 },
         { kind: 'metadata:https://api.deepseek.com/user/balance', timeout: 10_000 },
-        { kind: 'chat', timeout: 60_000 },
         { kind: 'stream', timeout: 600_000 },
       ],
     )
     assert.equal(harness.calls[2]?.params?.max_tokens, 65_536)
-    assert.equal(harness.calls[3]?.params?.max_tokens, 65_536)
     for (const call of harness.calls.slice(2)) {
       assert.deepEqual(call.params?.thinking, { type: 'enabled' })
       assert.equal(call.params?.reasoning_effort, 'high')
@@ -166,7 +163,6 @@ describe('OpenAICompatibleClient runtime config', () => {
   it('非 reasoning 模型不发 thinking 参数，Tool Call 无 reasoning_content 也能完成', async () => {
     const harness = createHarness()
 
-    await harness.client.chat([{ type: 'message', role: 'user', content: 'hello' }], { request: RELAY_REQUEST })
     await collectEvents(harness.client.chatStream(
       [{ type: 'message', role: 'user', content: 'hello' }],
       { request: RELAY_REQUEST },
@@ -181,10 +177,10 @@ describe('OpenAICompatibleClient runtime config', () => {
 
     // 非 reasoning 模型配了 reasoning_effort：只发 reasoning_effort，不发 thinking。
     const effortHarness = createHarness()
-    await effortHarness.client.chat(
+    await collectEvents(effortHarness.client.chatStream(
       [{ type: 'message', role: 'user', content: 'hello' }],
       { request: { ...RELAY_REQUEST, reasoningEffort: 'low' } },
-    )
+    ))
     assert.equal(effortHarness.calls[0]?.params?.reasoning_effort, 'low')
     assert.equal(Object.hasOwn(effortHarness.calls[0]?.params ?? {}, 'thinking'), false)
 

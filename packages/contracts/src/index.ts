@@ -5,13 +5,13 @@ export type {
   AdminConversationMessage,
 } from './admin-conversation.js'
 export type {
+  AdminLlmCredentialsInput,
   AdminLlmFetchModelsResponse,
   AdminLlmImportModelsRequest,
   AdminLlmImportModelsResponse,
   AdminLlmModel,
   AdminLlmModelInput,
   AdminLlmModelTestResult,
-  AdminLlmPreviewModelsRequest,
   AdminLlmProbeModelsRequest,
   AdminLlmProvider,
   AdminLlmProviderInput,

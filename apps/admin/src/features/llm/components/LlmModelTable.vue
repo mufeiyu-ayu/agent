@@ -5,6 +5,8 @@ import { reasoningEffortsOf } from '@agent/contracts'
 import {
   CheckCircleFilled,
   CloseCircleFilled,
+  DeleteOutlined,
+  EditOutlined,
   MinusCircleOutlined,
   PushpinFilled,
   PushpinOutlined,
@@ -22,7 +24,6 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import LlmFamilyLogo from '@/features/llm/components/LlmFamilyLogo.vue'
-import LlmIcon from '@/features/llm/components/LlmIcon.vue'
 import { formatShortDateTime, formatTokens } from '@/features/runs/run.utils'
 
 const props = defineProps<{
@@ -155,39 +156,25 @@ function onEdit(record: unknown) {
         <!-- 2. 模型名称列：副标签只在与真实代号不同时展示；默认星标跟在最后一行末尾，点它设默认 -->
         <template v-else-if="column.key === 'nameInfo'">
           <div class="model-name-cell">
-            <span class="model-name-line">
+            <span class="model-name-text">
               <span class="model-display-name" :title="record.displayName">
                 {{ record.displayName }}
               </span>
-              <button
-                v-if="record.displayName === record.wireName"
-                type="button"
-                class="default-star-btn"
-                :class="{ 'is-default': record.isDefault }"
-                :title="record.isDefault ? t('llmModels.models.defaultTag') : t('llmModels.models.setDefault')"
-                :disabled="record.isDefault"
-                @click="emit('setDefault', record.id)"
-              >
-                <PushpinFilled v-if="record.isDefault" />
-                <PushpinOutlined v-else />
-              </button>
-            </span>
-            <span v-if="record.displayName !== record.wireName" class="model-name-line">
-              <span class="model-wire-sub" :title="record.wireName">
+              <span v-if="record.displayName !== record.wireName" class="model-wire-sub" :title="record.wireName">
                 {{ record.wireName }}
               </span>
-              <button
-                type="button"
-                class="default-star-btn"
-                :class="{ 'is-default': record.isDefault }"
-                :title="record.isDefault ? t('llmModels.models.defaultTag') : t('llmModels.models.setDefault')"
-                :disabled="record.isDefault"
-                @click="emit('setDefault', record.id)"
-              >
-                <PushpinFilled v-if="record.isDefault" />
-                <PushpinOutlined v-else />
-              </button>
             </span>
+            <button
+              type="button"
+              class="default-star-btn"
+              :class="{ 'is-default': record.isDefault }"
+              :title="record.isDefault ? t('llmModels.models.defaultTag') : t('llmModels.models.setDefault')"
+              :disabled="record.isDefault"
+              @click="emit('setDefault', record.id)"
+            >
+              <PushpinFilled v-if="record.isDefault" />
+              <PushpinOutlined v-else />
+            </button>
           </div>
         </template>
 
@@ -268,7 +255,7 @@ function onEdit(record: unknown) {
                 @click="onEdit(record)"
               >
                 <template #icon>
-                  <LlmIcon name="edit" :size="13" />
+                  <EditOutlined />
                 </template>
               </Button>
             </Tooltip>
@@ -289,7 +276,7 @@ function onEdit(record: unknown) {
                   class="action-icon-btn is-danger"
                 >
                   <template #icon>
-                    <LlmIcon name="delete" :size="13" />
+                    <DeleteOutlined />
                   </template>
                 </Button>
               </Tooltip>
@@ -400,20 +387,19 @@ function onEdit(record: unknown) {
   white-space: nowrap;
 }
 
-/* 2. 模型名称单元格 */
+/* 2. 模型名称单元格：文字块两行，图钉贴在末行末尾 */
 .model-name-cell {
   display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 1px;
+  align-items: flex-end;
+  gap: 6px;
   min-width: 0;
   line-height: 1.25;
 }
 
-.model-name-line {
+.model-name-text {
   display: inline-flex;
-  align-items: center;
-  gap: 6px;
+  flex-direction: column;
+  gap: 1px;
   min-width: 0;
 }
 

@@ -6,7 +6,7 @@ import type {
   AdminLlmProviderInput,
   ReasoningEffort,
 } from '@agent/contracts'
-import { PlusOutlined } from '@ant-design/icons-vue'
+import { PlusOutlined, ReloadOutlined } from '@ant-design/icons-vue'
 import {
   Alert,
   App as AntApp,
@@ -19,7 +19,6 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import PageContainer from '@/components/common/PageContainer.vue'
-import LlmIcon from '@/features/llm/components/LlmIcon.vue'
 import LlmModelFormModal from '@/features/llm/components/LlmModelFormModal.vue'
 import LlmModelTable from '@/features/llm/components/LlmModelTable.vue'
 import LlmProviderFormModal from '@/features/llm/components/LlmProviderFormModal.vue'
@@ -70,17 +69,10 @@ watch(
 const providerModalOpen = ref(false)
 const editingProvider = ref<AdminLlmProvider | null>(null)
 
-/** 当前选中服务商已有的 wireName，拉取清单里置灰。 */
-const existingWireNames = computed(() => state.models.value
-  .filter(model => model.providerId === state.selectedProviderId.value)
+/** 编辑服务商时置灰它已导入的 wireName。 */
+const providerModalExisting = computed(() => state.models.value
+  .filter(model => model.providerId === editingProvider.value?.id)
   .map(model => model.wireName))
-
-/** 服务商弹窗里已有的 wireName：编辑当前选中的服务商时置灰其已导入的模型。 */
-const providerModalExisting = computed(() => (
-  editingProvider.value && editingProvider.value.id === state.selectedProviderId.value
-    ? existingWireNames.value
-    : []
-))
 
 function openCreateProviderModal() {
   editingProvider.value = null
@@ -94,25 +86,13 @@ function handleEditProvider(provider: AdminLlmProvider) {
   providerModalOpen.value = true
 }
 
-/** 对勾选的模型发最短对话：新增用表单里的密钥；编辑且密钥留空时用库里那把。 */
-async function handleTestInProviderForm(input: { baseUrl: string, apiKey: string }, wireNames: string[]) {
-  const provider = editingProvider.value
-
-  await runWrite(() => state.testModels(
-    provider && !input.apiKey ? { providerId: provider.id, baseUrl: input.baseUrl } : input,
-    wireNames,
-  ))
+/** 弹窗里的拉取 / 测试都带上正在编辑的服务商 id：密钥留空时服务端用库里那把。 */
+function handleFetchInProviderForm(input: { baseUrl: string, apiKey: string }) {
+  void runWrite(() => state.fetchModelNames({ providerId: editingProvider.value?.id, ...input }))
 }
 
-/** 存库前验证：新增用表单里的密钥直接拉；编辑且密钥留空时用库里那把。 */
-async function handleFetchInProviderForm(input: { baseUrl: string, apiKey: string }) {
-  const provider = editingProvider.value
-
-  await runWrite(() => (
-    provider && !input.apiKey
-      ? state.fetchModelNamesOf(provider.id, input.baseUrl)
-      : state.previewModelNames(input)
-  ))
+function handleTestInProviderForm(input: { baseUrl: string, apiKey: string }, wireNames: string[]) {
+  void runWrite(() => state.testModels({ providerId: editingProvider.value?.id, ...input }, wireNames))
 }
 
 /** 写操作失败统一弹提示；state 只负责请求与刷新，不碰 UI。 */
@@ -139,7 +119,7 @@ async function handleSubmitProvider(input: AdminLlmProviderInput, wireNames: str
     if (wireNames.length > 0) {
       const result = await state.importModels(wireNames, provider.id)
 
-      message.success(t('llmModels.fetch.importSuccess', result))
+      message.success(t('llmModels.fetch.importSuccess', { ...result }))
     }
   })
 
@@ -153,10 +133,6 @@ function handleDeleteProvider(id: string) {
 
 function handleToggleProviderEnabled(id: string, enabled: boolean) {
   void runWrite(() => state.updateProvider(id, { enabled }))
-}
-
-function handleSelectProvider(id: string) {
-  state.selectProvider(id)
 }
 
 // Model modal state
@@ -260,7 +236,7 @@ function handleProbeVisibleModels() {
             :providers="state.providers.value"
             :selected-id="state.selectedProviderId.value"
             :loading="state.providersLoading.value"
-            @select="handleSelectProvider"
+            @select="state.selectProvider"
             @edit="handleEditProvider"
             @delete="handleDeleteProvider"
             @toggle-enabled="handleToggleProviderEnabled"
@@ -298,7 +274,7 @@ function handleProbeVisibleModels() {
                   @click="handleProbeVisibleModels"
                 >
                   <template #icon>
-                    <LlmIcon name="refresh" :size="13" />
+                    <ReloadOutlined />
                   </template>
                 </Button>
               </Tooltip>
@@ -368,6 +344,7 @@ function handleProbeVisibleModels() {
     />
 
     <LlmModelFormModal
+      v-if="editingModel"
       :open="modelModalOpen"
       :model="editingModel"
       :family="editingModelFamily"
@@ -468,13 +445,6 @@ function handleProbeVisibleModels() {
   min-width: 0;
   background: var(--admin-surface);
   overflow: hidden;
-}
-
-.unselected-state {
-  display: grid;
-  flex: 1;
-  place-items: center;
-  padding: 40px;
 }
 
 .provider-workspace {

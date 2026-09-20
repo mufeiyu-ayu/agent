@@ -1,10 +1,10 @@
 import type {
+  AdminLlmCredentialsInput,
   AdminLlmFetchModelsResponse,
   AdminLlmImportModelsResponse,
   AdminLlmModel,
   AdminLlmModelInput,
   AdminLlmModelTestResult,
-  AdminLlmPreviewModelsRequest,
   AdminLlmProvider,
   AdminLlmProviderInput,
   AdminLlmTestModelsRequest,
@@ -43,54 +43,24 @@ export function deleteLlmProvider(providerId: string): Promise<{ id: string }> {
   return requestAdminRun<{ id: string }>(providerPath(providerId), {}, { method: 'DELETE' })
 }
 
-/** 存库前用表单里的地址与密钥拉一次模型清单。 */
-export function previewLlmProviderModels(
-  input: AdminLlmPreviewModelsRequest,
+/** 用表单凭据拉模型清单：有 apiKey 用它，否则服务端按 providerId 取库里的密钥。 */
+export function fetchLlmModelNames(
+  input: AdminLlmCredentialsInput,
   options: AdminRunFetchOptions = {},
 ): Promise<AdminLlmFetchModelsResponse> {
   return requestAdminRun<AdminLlmFetchModelsResponse>(
-    `${BASE}/providers/preview-models`,
+    `${BASE}/providers/fetch-models`,
     options,
     { method: 'POST', body: input },
   )
 }
 
-/** 存库前对勾选的模型各发一条最短对话，逐个回报通不通。 */
-export function testLlmProviderModels(
-  input: AdminLlmTestModelsRequest,
-  options: AdminRunFetchOptions = {},
-): Promise<AdminLlmTestModelsResponse> {
+/** 同上凭据，对勾选的模型各发一条最短对话，逐个回报通不通。 */
+export function testLlmModelNames(input: AdminLlmTestModelsRequest): Promise<AdminLlmTestModelsResponse> {
   return requestAdminRun<AdminLlmTestModelsResponse>(
     `${BASE}/providers/test-models`,
-    options,
+    {},
     { method: 'POST', body: input },
-  )
-}
-
-/** 编辑已有服务商时用库里的密钥测。 */
-export function testLlmProviderModelsOf(
-  providerId: string,
-  wireNames: string[],
-  baseUrl: string | undefined,
-  options: AdminRunFetchOptions = {},
-): Promise<AdminLlmTestModelsResponse> {
-  return requestAdminRun<AdminLlmTestModelsResponse>(
-    providerPath(providerId, '/test-models'),
-    options,
-    { method: 'POST', body: { wireNames, ...(baseUrl ? { baseUrl } : {}) } },
-  )
-}
-
-/** 编辑服务商时用库里的密钥拉；传 baseUrl 则用表单里还没保存的地址。 */
-export function fetchLlmProviderModelNames(
-  providerId: string,
-  baseUrl: string | undefined,
-  options: AdminRunFetchOptions = {},
-): Promise<AdminLlmFetchModelsResponse> {
-  return requestAdminRun<AdminLlmFetchModelsResponse>(
-    providerPath(providerId, '/fetch-models'),
-    options,
-    { method: 'POST', body: baseUrl ? { baseUrl } : {} },
   )
 }
 

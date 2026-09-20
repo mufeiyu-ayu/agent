@@ -31,7 +31,6 @@ export type {
 } from './provider-metadata.js'
 export type {
   AssistantToolCallInputItem,
-  ChatOptions,
   ChatStreamOptions,
   JsonObjectSchema,
   MessageInputItem,

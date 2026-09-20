@@ -16,7 +16,8 @@ import { useI18n } from 'vue-i18n'
 
 const props = defineProps<{
   open: boolean
-  model: AdminLlmModel | null
+  /** 弹窗只用于编辑，页面在有 model 时才挂载它。 */
+  model: AdminLlmModel
   /** 所属服务商的家族，决定 reasoning_effort 可选值。 */
   family: LlmProviderFamily | null
   submitting: boolean
@@ -73,39 +74,22 @@ const rules = computed<Record<string, Rule[]>>(() => ({
       trigger: 'blur',
     },
   ],
-  contextWindowTokens: [
-    {
-      required: true,
-      message: t('llmModels.models.form.contextWindowTokensRequired'),
-      trigger: 'blur',
-    },
-    {
-      validator: async (_rule: unknown, value: number) => {
-        if (!value || value <= 0 || !Number.isInteger(value)) {
-          return Promise.reject(new Error(t('llmModels.models.form.contextWindowTokensInvalid')))
-        }
-        return Promise.resolve()
-      },
-      trigger: 'blur',
-    },
-  ],
-  maxOutputTokens: [
-    {
-      required: true,
-      message: t('llmModels.models.form.maxOutputTokensRequired'),
-      trigger: 'blur',
-    },
-    {
-      validator: async (_rule: unknown, value: number) => {
-        if (!value || value <= 0 || !Number.isInteger(value)) {
-          return Promise.reject(new Error(t('llmModels.models.form.maxOutputTokensInvalid')))
-        }
-        return Promise.resolve()
-      },
-      trigger: 'blur',
-    },
-  ],
+  contextWindowTokens: positiveIntRules('contextWindowTokens'),
+  maxOutputTokens: positiveIntRules('maxOutputTokens'),
 }))
+
+function positiveIntRules(field: 'contextWindowTokens' | 'maxOutputTokens'): Rule[] {
+  return [
+    { required: true, message: t(`llmModels.models.form.${field}Required`), trigger: 'blur' },
+    {
+      validator: async (_rule: unknown, value: number) => {
+        if (!value || value <= 0 || !Number.isInteger(value))
+          throw new Error(t(`llmModels.models.form.${field}Invalid`))
+      },
+      trigger: 'blur',
+    },
+  ]
+}
 
 watch(
   () => props.open,
@@ -113,26 +97,14 @@ watch(
     if (!isOpen)
       return
     formRef.value?.clearValidate()
-    if (props.model) {
-      formState.wireName = props.model.wireName
-      formState.displayName = props.model.displayName
-      formState.contextWindowTokens = props.model.contextWindowTokens
-      formState.maxOutputTokens = props.model.maxOutputTokens
-      formState.reasoningEffort = props.model.reasoningEffort ?? ''
-      formState.visible = props.model.visible
-      formState.isDefault = props.model.isDefault
-      formState.sortOrder = props.model.sortOrder
-    }
-    else {
-      formState.wireName = ''
-      formState.displayName = ''
-      formState.contextWindowTokens = 128000
-      formState.maxOutputTokens = 8192
-      formState.reasoningEffort = ''
-      formState.visible = true
-      formState.isDefault = false
-      formState.sortOrder = 0
-    }
+    formState.wireName = props.model.wireName
+    formState.displayName = props.model.displayName
+    formState.contextWindowTokens = props.model.contextWindowTokens
+    formState.maxOutputTokens = props.model.maxOutputTokens
+    formState.reasoningEffort = props.model.reasoningEffort ?? ''
+    formState.visible = props.model.visible
+    formState.isDefault = props.model.isDefault
+    formState.sortOrder = props.model.sortOrder
   },
   { immediate: true },
 )

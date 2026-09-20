@@ -1,7 +1,6 @@
 import type { ReasoningEffort } from '@agent/contracts'
 import type {
   ChatCompletionAssistantMessageParam,
-  ChatCompletionCreateParamsNonStreaming,
   ChatCompletionCreateParamsStreaming,
   ChatCompletionMessageParam,
   ChatCompletionTool,
@@ -12,7 +11,6 @@ import type {
   ProviderModelsResponse,
 } from '../provider-metadata.js'
 import type {
-  ChatOptions,
   ChatStreamOptions,
   ModelInputItem,
   ModelIODebugCapture,
@@ -47,7 +45,6 @@ import { adaptOpenAICompatibleStream } from './openai-completions-stream.js'
  * 非流式 `chat` 的 60s 只适合短输出。
  */
 const METADATA_REQUEST_TIMEOUT_MS = 10_000
-const CHAT_REQUEST_TIMEOUT_MS = 60_000
 const STREAM_TIMEOUT_MS = 600_000
 /**
  * 交给 SDK 内置重试的瞬态失败次数（408 / 409 / 429 / 5xx、连接错误；退避与
@@ -59,8 +56,8 @@ const STREAM_TIMEOUT_MS = 600_000
 const REQUEST_MAX_RETRIES = 2
 
 type ChatCompletionBaseParams = Pick<
-  ChatCompletionCreateParamsNonStreaming,
-  'messages' | 'model' | 'max_tokens' | 'response_format'
+  ChatCompletionCreateParamsStreaming,
+  'messages' | 'model' | 'max_tokens'
 > & {
   /** DeepSeek thinking 开关只对 reasoning 模型发。 */
   thinking?: { type: 'enabled' }
@@ -99,30 +96,6 @@ export class OpenAICompatibleClient {
         timeout: METADATA_REQUEST_TIMEOUT_MS,
       }),
     )
-  }
-
-  async chat(messages: ModelInputItem[], options: ChatOptions): Promise<string> {
-    return await this.runWithLLMErrorHandling(async () => {
-      const completion = await this.createClient().chat.completions.create(
-        this.buildBaseChatCompletionParams(
-          messages.map(toOpenAIModelInputItem),
-          options,
-        ) as unknown as ChatCompletionCreateParamsNonStreaming,
-        {
-          timeout: CHAT_REQUEST_TIMEOUT_MS,
-        },
-      )
-      const content = completion.choices[0]?.message.content
-
-      if (typeof content !== 'string') {
-        throw new LLMApiError(
-          '模型未返回有效内容（choices[0].message.content 为空），请检查 messages 或换用模型重试',
-          completion,
-        )
-      }
-
-      return content
-    })
   }
 
   async* chatStream(
@@ -227,20 +200,14 @@ export class OpenAICompatibleClient {
 
   private buildBaseChatCompletionParams(
     messages: ChatCompletionMessageParam[],
-    options: ChatOptions,
+    options: ChatStreamOptions,
   ): ChatCompletionBaseParams {
-    const params: ChatCompletionBaseParams = {
+    return {
       model: options.request.model,
       messages,
       max_tokens: options.request.maxOutputTokens,
       ...toThinkingParams(options.request),
     }
-
-    if (options.responseFormat) {
-      params.response_format = options.responseFormat
-    }
-
-    return params
   }
 
   private async runWithLLMErrorHandling<T>(operation: () => Promise<T>): Promise<T> {

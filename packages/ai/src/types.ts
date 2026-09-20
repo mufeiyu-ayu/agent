@@ -143,14 +143,6 @@ export type ModelInputItem
 
 // ─── 请求选项 ────────────────────────────────
 
-/** chat() / chatStream() 的请求选项；模型与输出上限由调用方解析好的请求配置决定。 */
-export interface ChatOptions {
-  /** 本次请求的 resolved 配置：模型名、输出上限、是否走 thinking 路径。 */
-  request: ResolvedChatRequestConfig
-  /** JSON 输出约束（对应 OpenAI response_format） */
-  responseFormat?: { type: 'json_object' } | { type: 'text' }
-}
-
 export type ModelResponseCaptureState = 'complete' | 'partial' | 'empty'
 
 export type ModelResponseCaptureEvent
@@ -188,9 +180,11 @@ export interface ModelIODebugCapture {
   onCaptureError?: (side: ModelIODebugCaptureSide) => void
 }
 
-/** chatStream() 方法的可选参数。 */
-export interface ChatStreamOptions extends ChatOptions {
-  /** 外部中止信号，用于后续支持用户主动停止生成。 */
+/** chatStream() 的请求选项；模型与输出上限由调用方解析好的请求配置决定。 */
+export interface ChatStreamOptions {
+  /** 本次请求的 resolved 配置：模型名、输出上限、是否走 thinking 路径。 */
+  request: ResolvedChatRequestConfig
+  /** 外部中止信号，用于用户主动停止生成。 */
   signal?: AbortSignal
   /** 只包含模型可见字段的工具说明。 */
   tools?: ModelToolSpec[]

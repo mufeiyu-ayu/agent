@@ -8,16 +8,19 @@ import type {
   ReasoningEffort,
 } from '@agent/contracts'
 import type { LlmModel, LlmProvider } from '../generated/prisma/client.js'
+import type { LlmProviderCredentials } from '../llm/llm-model-config.service.js'
 import type {
+  AdminLlmCredentialsDto,
   AdminLlmModelTestResultDto,
   CreateAdminLlmProviderDto,
-  PreviewAdminLlmModelsDto,
   ProbeAdminLlmModelsDto,
   TestAdminLlmModelsDto,
   UpdateAdminLlmModelDto,
   UpdateAdminLlmProviderDto,
 } from './dto/admin-llm.dto.js'
+import { LLMAuthError } from '@agent/ai'
 import { isThinkingFamily, LLM_PROVIDER_FAMILIES, reasoningEffortsOf } from '@agent/contracts'
+
 import {
   BadRequestException,
   ConflictException,
@@ -25,7 +28,6 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common'
-
 import { Prisma } from '../generated/prisma/client.js'
 import { LlmModelConfigService } from '../llm/llm-model-config.service.js'
 import { LlmModelUnavailableError } from '../llm/llm.errors.js'
@@ -60,25 +62,27 @@ export class AdminLlmService {
     return providers.map(toAdminLlmProvider)
   }
 
-  /** 存库前验证配置：用填好的地址与密钥直接拉模型清单，拉不通就在弹窗里改。 */
-  previewModelNames(input: PreviewAdminLlmModelsDto): Promise<AdminLlmFetchModelsResponse> {
-    return this.listSortedModelNames(toPreviewCredentials(input))
+  /** 用表单凭据打 `/models`，只返回名字；拉不通就在弹窗里改。 */
+  async fetchModelNames(input: AdminLlmCredentialsDto): Promise<AdminLlmFetchModelsResponse> {
+    const credentials = await this.resolveCredentials(input)
+
+    try {
+      const models = await this.llmService.listProviderModelNames(credentials)
+
+      return { models: [...new Set(models)].sort() }
+    }
+    catch (error) {
+      // 管理员填错密钥是客户端错误，按 400 回给弹窗改，而不是当成上游网关故障 502。
+      if (error instanceof LLMAuthError)
+        throw new BadRequestException(error.message)
+
+      throw error
+    }
   }
 
-  /** 存库前对勾选的模型各发一条最短对话，逐个回报通不通；并发有限，失败不抛。 */
-  testModelNames(input: TestAdminLlmModelsDto): Promise<AdminLlmTestModelsResponse> {
-    return this.probeWireNames(toPreviewCredentials(input), input.wireNames)
-  }
-
-  /** 编辑已有服务商且密钥留空：用库里的密钥，地址用表单里还没保存的那个（省略则用库里的）。 */
-  async testProviderModelNames(
-    providerId: string,
-    wireNames: string[],
-    baseUrl?: string,
-  ): Promise<AdminLlmTestModelsResponse> {
-    const provider = await this.requireProvider(providerId)
-
-    return this.probeWireNames(this.toCredentialsOrBadRequest(provider, baseUrl), wireNames)
+  /** 对勾选的模型各发一条最短对话，逐个回报通不通；并发有限，失败不抛。 */
+  async testModelNames(input: TestAdminLlmModelsDto): Promise<AdminLlmTestModelsResponse> {
+    return this.probeWireNames(await this.resolveCredentials(input), input.wireNames)
   }
 
   /** 服务商与预览时勾选的模型同一事务写入：任一失败都不留半截配置。 */
@@ -156,13 +160,6 @@ export class AdminLlmService {
     return { id: providerId }
   }
 
-  /** 用该 Provider 的密钥打 `/models`，只返回名字；编辑时可传表单里未保存的地址。 */
-  async fetchModelNames(providerId: string, baseUrl?: string): Promise<AdminLlmFetchModelsResponse> {
-    const provider = await this.requireProvider(providerId)
-
-    return this.listSortedModelNames(this.toCredentialsOrBadRequest(provider, baseUrl))
-  }
-
   /** 按勾选批量建行；已存在的 wireName 跳过，不覆盖人改过的数值与测试状态。 */
   async importModels(
     providerId: string,
@@ -197,17 +194,6 @@ export class AdminLlmService {
   async listAllModels(): Promise<AdminLlmModel[]> {
     const models = await this.prismaService.llmModel.findMany({
       orderBy: [{ provider: { createdAt: 'asc' } }, { sortOrder: 'asc' }, { createdAt: 'asc' }],
-    })
-
-    return models.map(toAdminLlmModel)
-  }
-
-  async listModels(providerId: string): Promise<AdminLlmModel[]> {
-    await this.requireProvider(providerId)
-
-    const models = await this.prismaService.llmModel.findMany({
-      where: { providerId },
-      orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
     })
 
     return models.map(toAdminLlmModel)
@@ -306,22 +292,22 @@ export class AdminLlmService {
     return { results }
   }
 
-  private async listSortedModelNames(
-    credentials: Parameters<LLMService['listProviderModelNames']>[0],
-  ): Promise<AdminLlmFetchModelsResponse> {
-    const models = await this.llmService.listProviderModelNames(credentials)
+  /**
+   * 拉清单 / 测模型的凭据：表单给了 apiKey 就用它，否则按 providerId 取库里的密钥；
+   * 地址一律用表单当前值（编辑时可能还没保存）。主密钥更换后旧密文解不开：提示重填密钥，而不是 500。
+   */
+  private async resolveCredentials(input: AdminLlmCredentialsDto): Promise<LlmProviderCredentials> {
+    const baseUrl = normalizeBaseUrl(input.baseUrl)
 
-    return { models: [...new Set(models)].sort() }
-  }
+    if (input.apiKey)
+      return { providerId: input.providerId ?? 'preview', baseUrl, apiKey: input.apiKey }
+    if (!input.providerId)
+      throw new BadRequestException('请填写 API Key')
 
-  /** 主密钥更换后旧密文解不开：告诉管理员重填密钥，而不是 500。可用表单里未保存的地址覆盖库里的。 */
-  private toCredentialsOrBadRequest(provider: LlmProvider, baseUrlOverride?: string) {
+    const provider = await this.requireProvider(input.providerId)
+
     try {
-      const credentials = this.llmModelConfigService.toCredentials(provider)
-
-      return baseUrlOverride
-        ? { ...credentials, baseUrl: normalizeBaseUrl(baseUrlOverride) }
-        : credentials
+      return { ...this.llmModelConfigService.toCredentials(provider), baseUrl }
     }
     catch (error) {
       if (error instanceof LlmModelUnavailableError)
@@ -417,15 +403,6 @@ async function mapWithConcurrency<T, R>(
   }))
 
   return results
-}
-
-/** 存库前预览 / 测试用的临时凭据：没有 Provider 行，只有表单里的地址与密钥。 */
-function toPreviewCredentials(input: PreviewAdminLlmModelsDto) {
-  return {
-    providerId: 'preview',
-    baseUrl: normalizeBaseUrl(input.baseUrl),
-    apiKey: input.apiKey,
-  }
 }
 
 function omitUndefined<T extends object>(value: T): Partial<T> {

@@ -4,14 +4,12 @@ import { AdminLlmService } from './admin-llm.service.js'
 // DTO classes are required at runtime for Nest decorator metadata.
 // eslint-disable-next-line ts/consistent-type-imports
 import {
+  AdminLlmCredentialsDto,
   AdminLlmIdParamDto,
   CreateAdminLlmProviderDto,
   ImportAdminLlmModelsDto,
-  PreviewAdminLlmModelsDto,
   ProbeAdminLlmModelsDto,
-  ProviderBaseUrlOverrideDto,
   TestAdminLlmModelsDto,
-  TestProviderModelsDto,
   UpdateAdminLlmModelDto,
   UpdateAdminLlmProviderDto,
 } from './dto/admin-llm.dto.js'
@@ -34,21 +32,16 @@ export class AdminLlmController {
     return this.adminLlmService.createProvider(body)
   }
 
-  /** 存库前验证：用表单里的地址与密钥拉一次模型清单。 */
-  @Post('providers/preview-models')
-  previewModels(@Body() body: PreviewAdminLlmModelsDto) {
-    return this.adminLlmService.previewModelNames(body)
+  /** 用表单里的地址与密钥（或 providerId 对应库里的密钥）拉一次模型清单，不落库。 */
+  @Post('providers/fetch-models')
+  fetchModels(@Body() body: AdminLlmCredentialsDto) {
+    return this.adminLlmService.fetchModelNames(body)
   }
 
-  /** 存库前验证：对勾选的模型各发一条最短对话。 */
+  /** 同上凭据，对勾选的模型各发一条最短对话，不落库。 */
   @Post('providers/test-models')
   testModels(@Body() body: TestAdminLlmModelsDto) {
     return this.adminLlmService.testModelNames(body)
-  }
-
-  @Post('providers/:id/test-models')
-  testProviderModels(@Param() params: AdminLlmIdParamDto, @Body() body: TestProviderModelsDto) {
-    return this.adminLlmService.testProviderModelNames(params.id, body.wireNames, body.baseUrl)
   }
 
   @Patch('providers/:id')
@@ -61,11 +54,6 @@ export class AdminLlmController {
     return this.adminLlmService.deleteProvider(params.id)
   }
 
-  @Post('providers/:id/fetch-models')
-  fetchModels(@Param() params: AdminLlmIdParamDto, @Body() body: ProviderBaseUrlOverrideDto) {
-    return this.adminLlmService.fetchModelNames(params.id, body.baseUrl)
-  }
-
   @Post('providers/:id/import-models')
   importModels(@Param() params: AdminLlmIdParamDto, @Body() body: ImportAdminLlmModelsDto) {
     return this.adminLlmService.importModels(params.id, body.wireNames, body.testResults)
@@ -74,11 +62,6 @@ export class AdminLlmController {
   @Get('models')
   listAllModels() {
     return this.adminLlmService.listAllModels()
-  }
-
-  @Get('providers/:id/models')
-  listModels(@Param() params: AdminLlmIdParamDto) {
-    return this.adminLlmService.listModels(params.id)
   }
 
   /** 重测已入库的模型，结果写回行。 */

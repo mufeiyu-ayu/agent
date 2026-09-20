@@ -1,6 +1,12 @@
 <script setup lang="ts">
 import type { AdminLlmProvider } from '@agent/contracts'
 import {
+  DeleteOutlined,
+  EditOutlined,
+  GlobalOutlined,
+  KeyOutlined,
+} from '@ant-design/icons-vue'
+import {
   Button,
   Empty,
   Popconfirm,
@@ -11,7 +17,6 @@ import {
 import { useI18n } from 'vue-i18n'
 
 import LlmFamilyLogo from '@/features/llm/components/LlmFamilyLogo.vue'
-import LlmIcon from '@/features/llm/components/LlmIcon.vue'
 import { formatShortDateTime } from '@/features/runs/run.utils'
 
 defineProps<{
@@ -79,11 +84,11 @@ const { locale, t } = useI18n()
 
         <div class="provider-card__meta">
           <div class="meta-row" :title="provider.baseUrl">
-            <LlmIcon name="globe" :size="12" class="meta-icon" />
+            <GlobalOutlined class="meta-icon" />
             <code class="meta-url">{{ provider.baseUrl }}</code>
           </div>
           <div class="meta-row">
-            <LlmIcon name="key" :size="12" class="meta-icon" />
+            <KeyOutlined class="meta-icon" />
             <span class="meta-key">••••{{ provider.apiKeyLast4 }}</span>
           </div>
         </div>
@@ -107,7 +112,7 @@ const { locale, t } = useI18n()
                 @click="emit('edit', provider)"
               >
                 <template #icon>
-                  <LlmIcon name="edit" :size="13" />
+                  <EditOutlined />
                 </template>
               </Button>
             </Tooltip>
@@ -128,7 +133,7 @@ const { locale, t } = useI18n()
                   class="action-btn is-danger"
                 >
                   <template #icon>
-                    <LlmIcon name="delete" :size="13" />
+                    <DeleteOutlined />
                   </template>
                 </Button>
               </Tooltip>
