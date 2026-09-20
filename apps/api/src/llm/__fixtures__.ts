@@ -1,7 +1,7 @@
 import type { LLMModelProfile } from '@agent/ai'
 import type { ResolvedLlmModel } from './llm-model-config.service.js'
 
-/** 测试用的模型行快照：默认按 DeepSeek V4 Flash 的真实能力，与生产配置锚定。 */
+/** 测试用的模型行快照：上下文按 DeepSeek V4 Flash 的 1M，输出上限 65_536 是测试常量（生产预设为 384k），预算断言依赖它。 */
 export function createResolvedLlmModel(
   profile: Partial<LLMModelProfile> = {},
 ): ResolvedLlmModel {

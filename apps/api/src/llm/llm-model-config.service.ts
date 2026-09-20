@@ -1,7 +1,7 @@
 import type { LLMModelProfile } from '@agent/ai'
 import type { ChatModelOption, ReasoningEffort } from '@agent/contracts'
 import type { ApiKeyCipher } from './api-key-cipher.js'
-import { reasoningEffortsOf } from '@agent/contracts'
+import { isThinkingFamily, reasoningEffortsOf } from '@agent/contracts'
 import { Inject, Injectable } from '@nestjs/common'
 
 import { PrismaService } from '../prisma/prisma.service.js'
@@ -21,14 +21,6 @@ export interface ResolvedLlmModel {
   modelId: string
   provider: LlmProviderCredentials
   profile: LLMModelProfile
-}
-
-/**
- * 思考协议由服务商家族决定：deepseek 家族请求带 thinking / reasoning_effort、Tool Call 要求 reasoning_content；
- * 中转站后面的 gpt / grok / gemini 不回 reasoning_content，一律不走。模型行不单独配置。
- */
-function isThinkingFamily(family: string): boolean {
-  return family === 'deepseek'
 }
 
 /** 读数据库里的模型配置并持有唯一一份密钥 cipher；Admin 的写操作在 admin-llm 模块，加密经这里。 */
@@ -109,11 +101,14 @@ export class LlmModelConfigService {
     }
   }
 
-  /** 默认模型所属 Provider 的凭据；余额面板用，没有可用的默认模型时为 null。 */
+  /**
+   * 默认模型所属 Provider 的凭据；余额面板用，没有可用的默认模型时为 null。
+   * 余额端点只有 DeepSeek 官方提供，其他家族直接返回 null，不去中转站白打一次 /user/balance。
+   */
   async resolveDefaultProvider(): Promise<LlmProviderCredentials | null> {
     const model = await this.prismaService.llmModel.findFirst({
       // 与 resolveModel 同一口径：默认模型必须可见且 Provider 启用。
-      where: { isDefault: true, visible: true, provider: { enabled: true } },
+      where: { isDefault: true, visible: true, provider: { enabled: true, family: 'deepseek' } },
       include: { provider: true },
     })
 

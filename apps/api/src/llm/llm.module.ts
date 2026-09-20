@@ -21,6 +21,7 @@ import { LLMService } from './llm.service.js'
     LlmModelConfigService,
     LLMService,
   ],
-  exports: [LLMService, LlmModelConfigService, LLMRuntimeConfigService],
+  // LLMRuntimeConfigService 持有明文主密钥，只给本模块内的 cipher 用，不对外导出。
+  exports: [LLMService, LlmModelConfigService],
 })
 export class LlmModule {}

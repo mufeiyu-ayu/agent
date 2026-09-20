@@ -18,6 +18,13 @@ import { LLMRuntimeConfigService } from './llm-runtime-config.service.js'
  * 不做 client 缓存：`OpenAICompatibleClient` 只是三字段配置的持有者，每次请求都会新建 SDK 实例；
  * 凭据由 Run 开始时的快照传入，后台改 key 只影响之后解析的 Run。
  */
+/** 探测已入库模型行时对齐真实 Run 的参数；省略即最保守。 */
+export interface ProbeModelOptions {
+  reasoning?: boolean
+  reasoningEffort?: ReasoningEffort | null
+  maxOutputTokens?: number
+}
+
 @Injectable()
 export class LLMService {
   private readonly logger = new Logger(LLMService.name)
@@ -59,13 +66,14 @@ export class LLMService {
 
   /**
    * Admin 探测：对一个模型发一条最短的流式对话，流能正常结束就算通，不看有没有正文
-   * （默认开思考的模型 16 个 token 可能全被思考吃掉，content 为空不代表接口不通）。
-   * 不发 thinking 参数；已入库的行带上它配置的 reasoning_effort，配错值能在这里暴露。失败原因原样带回给管理台。
+   * （开思考的模型 16 个 token 可能全被思考吃掉，content 为空不代表接口不通）。
+   * 已入库的行按它真实 Run 的参数探测（thinking 家族、reasoning_effort、max_tokens），
+   * 配错的值在这里就暴露；存库前的预览没有行，按最保守的参数探。失败原因原样带回给管理台。
    */
   async probeModel(
     provider: LlmProviderCredentials,
     wireName: string,
-    reasoningEffort?: ReasoningEffort,
+    options: ProbeModelOptions = {},
   ): Promise<{ ok: true } | { ok: false, error: string }> {
     try {
       const events = this.createClient(provider).chatStream(
@@ -74,9 +82,9 @@ export class LLMService {
           request: {
             model: wireName,
             contextWindowTokens: 0,
-            maxOutputTokens: 16,
-            reasoning: false,
-            ...(reasoningEffort ? { reasoningEffort } : {}),
+            maxOutputTokens: options.maxOutputTokens ?? 16,
+            reasoning: options.reasoning ?? false,
+            ...(options.reasoningEffort ? { reasoningEffort: options.reasoningEffort } : {}),
           },
         },
       )

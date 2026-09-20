@@ -16,30 +16,39 @@ export const LLM_PROVIDER_FAMILIES = [
 export type LlmProviderFamily = typeof LLM_PROVIDER_FAMILIES[number]
 
 /**
- * 各家族 `reasoning_effort` 的可取值，按官方文档（DeepSeek / OpenAI / xAI / Google / Anthropic）。
- * 空数组表示该家族不认这个参数；模型行默认值与请求级覆盖都只能取所属家族的值。
- * 中转站会把这个参数透传给上游，直连官方时同一张表照用；接入新家族只改这里。
+ * 各家族的协议事实，只此一处：
+ * - `thinking`：是否走 DeepSeek thinking 协议（请求带 `thinking`，Tool Call 要求 `reasoning_content`）。
+ * - `reasoningEfforts`：`reasoning_effort` 可取值，按官方文档；空数组表示该家族不认这个参数。
+ * 模型行默认值与请求级覆盖都只能取所属家族的值。中转站会把参数透传给上游，直连官方时同一张表照用。
  */
-export const REASONING_EFFORTS_BY_FAMILY = {
-  deepseek: ['low', 'high', 'max'],
-  openai: ['minimal', 'low', 'medium', 'high', 'xhigh'],
-  grok: ['low', 'high'],
+export const LLM_FAMILY_CAPABILITIES = {
+  deepseek: { thinking: true, reasoningEfforts: ['low', 'high', 'max'] },
+  openai: { thinking: false, reasoningEfforts: ['minimal', 'low', 'medium', 'high', 'xhigh'] },
+  grok: { thinking: false, reasoningEfforts: ['low', 'high'] },
   // Google 官方支持 low / medium / high，但中转站的 Gemini 已把档位写进模型名，且不回推理 token 无法验证透传；直连官方时再放开。
-  gemini: [],
-  claude: ['low', 'medium', 'high'],
-  other: [],
-} as const satisfies Record<LlmProviderFamily, readonly string[]>
+  gemini: { thinking: false, reasoningEfforts: [] },
+  claude: { thinking: false, reasoningEfforts: ['low', 'medium', 'high'] },
+  other: { thinking: false, reasoningEfforts: [] },
+} as const satisfies Record<LlmProviderFamily, { thinking: boolean, reasoningEfforts: readonly string[] }>
 
-export type ReasoningEffort = typeof REASONING_EFFORTS_BY_FAMILY[LlmProviderFamily][number]
+export type ReasoningEffort = typeof LLM_FAMILY_CAPABILITIES[LlmProviderFamily]['reasoningEfforts'][number]
 
 /** 全部家族取值的并集：DTO 先做形状校验，家族归属在 service 里再查。 */
 export const REASONING_EFFORTS: readonly ReasoningEffort[] = [...new Set(
-  (Object.values(REASONING_EFFORTS_BY_FAMILY) as readonly (readonly ReasoningEffort[])[]).flat(),
+  Object.values(LLM_FAMILY_CAPABILITIES).flatMap(item => item.reasoningEfforts as readonly ReasoningEffort[]),
 )]
 
-/** 数据库里的 family 是自由字符串，不认识的家族按不支持处理。 */
+/** 数据库里的 family 是自由字符串，不认识的家族按「不走 thinking、不支持强度」处理。 */
+function capabilitiesOf(family: string) {
+  return (LLM_FAMILY_CAPABILITIES as Record<string, typeof LLM_FAMILY_CAPABILITIES[LlmProviderFamily] | undefined>)[family]
+}
+
 export function reasoningEffortsOf(family: string): readonly ReasoningEffort[] {
-  return (REASONING_EFFORTS_BY_FAMILY as Record<string, readonly ReasoningEffort[] | undefined>)[family] ?? []
+  return capabilitiesOf(family)?.reasoningEfforts ?? []
+}
+
+export function isThinkingFamily(family: string): boolean {
+  return capabilitiesOf(family)?.thinking ?? false
 }
 
 export interface AdminLlmProvider {

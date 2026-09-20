@@ -17,7 +17,7 @@ import type {
   UpdateAdminLlmModelDto,
   UpdateAdminLlmProviderDto,
 } from './dto/admin-llm.dto.js'
-import { LLM_PROVIDER_FAMILIES, reasoningEffortsOf } from '@agent/contracts'
+import { isThinkingFamily, LLM_PROVIDER_FAMILIES, reasoningEffortsOf } from '@agent/contracts'
 import {
   BadRequestException,
   ConflictException,
@@ -119,19 +119,30 @@ export class AdminLlmService {
     providerId: string,
     input: UpdateAdminLlmProviderDto,
   ): Promise<AdminLlmProvider> {
-    await this.requireProvider(providerId)
+    const current = await this.requireProvider(providerId)
+    const nextFamily = input.family ?? current.family
 
-    const provider = await this.prismaService.llmProvider.update({
-      where: { id: providerId },
-      data: {
-        ...(input.family === undefined ? {} : { family: input.family }),
-        ...(input.note === undefined ? {} : { note: input.note }),
-        ...(input.baseUrl === undefined ? {} : { baseUrl: normalizeBaseUrl(input.baseUrl) }),
-        ...(input.enabled === undefined ? {} : { enabled: input.enabled }),
-        // 空串与省略同义：管理台编辑表单留空就是不改密钥。
-        ...(input.apiKey ? this.llmModelConfigService.encryptApiKey(input.apiKey) : {}),
-      },
-      include: { _count: { select: { models: true } } },
+    const provider = await this.prismaService.$transaction(async (tx) => {
+      // 家族变了，其下模型行里新家族不认的 reasoning_effort 一并清空，避免之后每个 Run 都被上游 400。
+      if (nextFamily !== current.family) {
+        await tx.llmModel.updateMany({
+          where: { providerId, reasoningEffort: { not: null, notIn: [...reasoningEffortsOf(nextFamily)] } },
+          data: { reasoningEffort: null },
+        })
+      }
+
+      return tx.llmProvider.update({
+        where: { id: providerId },
+        data: {
+          ...(input.family === undefined ? {} : { family: input.family }),
+          ...(input.note === undefined ? {} : { note: input.note }),
+          ...(input.baseUrl === undefined ? {} : { baseUrl: normalizeBaseUrl(input.baseUrl) }),
+          ...(input.enabled === undefined ? {} : { enabled: input.enabled }),
+          // 空串与省略同义：管理台编辑表单留空就是不改密钥。
+          ...(input.apiKey ? this.llmModelConfigService.encryptApiKey(input.apiKey) : {}),
+        },
+        include: { _count: { select: { models: true } } },
+      })
     })
 
     return toAdminLlmProvider(provider)
@@ -215,12 +226,9 @@ export class AdminLlmService {
 
     const model = await this.rejectDuplicateWireName(patch.wireName ?? current.wireName, () =>
       this.prismaService.$transaction(async (tx) => {
-        if (patch.isDefault) {
-          await tx.llmModel.updateMany({
-            where: { isDefault: true, id: { not: modelId } },
-            data: { isDefault: false },
-          })
-        }
+        // 一条语句改全表：两个并发的「设为默认」在行锁上串行，最后提交的赢，不会留下两个默认。
+        if (patch.isDefault)
+          await tx.$executeRaw`UPDATE "LlmModel" SET "isDefault" = ("id" = ${modelId})`
 
         return tx.llmModel.update({ where: { id: modelId }, data: patch })
       }))
@@ -261,6 +269,7 @@ export class AdminLlmService {
     return { id: modelId }
   }
 
+  /** 按该行真实 Run 的参数探测；任何异常都记进这一行，不让一条异常把整批 probe 打成 500。 */
   private async probeStoredModel(
     model: LlmModel & { provider: LlmProvider },
   ): Promise<{ ok: true } | { ok: false, error: string }> {
@@ -271,14 +280,15 @@ export class AdminLlmService {
       return await this.llmService.probeModel(
         this.llmModelConfigService.toCredentials(model.provider),
         model.wireName,
-        toReasoningEffort(model.reasoningEffort) ?? undefined,
+        {
+          reasoning: isThinkingFamily(model.provider.family),
+          reasoningEffort: toReasoningEffort(model.reasoningEffort),
+          maxOutputTokens: model.maxOutputTokens,
+        },
       )
     }
     catch (error) {
-      if (error instanceof LlmModelUnavailableError)
-        return { ok: false, error: error.message }
-
-      throw error
+      return { ok: false, error: error instanceof Error ? error.message : String(error) }
     }
   }
 

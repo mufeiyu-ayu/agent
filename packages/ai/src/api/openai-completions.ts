@@ -64,7 +64,7 @@ type ChatCompletionBaseParams = Pick<
 > & {
   /** DeepSeek thinking 开关只对 reasoning 模型发。 */
   thinking?: { type: 'enabled' }
-  /** 任何家族配置了就发，取值按家族见 contracts 的 REASONING_EFFORTS_BY_FAMILY。 */
+  /** 任何家族配置了就发，取值按家族见 contracts 的 LLM_FAMILY_CAPABILITIES。 */
   reasoning_effort?: ReasoningEffort
 }
 

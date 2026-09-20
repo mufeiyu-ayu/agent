@@ -20,7 +20,7 @@ export type {
   LlmProviderFamily,
   ReasoningEffort,
 } from './admin-llm.js'
-export { LLM_PROVIDER_FAMILIES, REASONING_EFFORTS, REASONING_EFFORTS_BY_FAMILY, reasoningEffortsOf } from './admin-llm.js'
+export { isThinkingFamily, LLM_FAMILY_CAPABILITIES, LLM_PROVIDER_FAMILIES, REASONING_EFFORTS, reasoningEffortsOf } from './admin-llm.js'
 export type {
   AdminOverviewDailyPoint,
   AdminOverviewModelUsageItem,
