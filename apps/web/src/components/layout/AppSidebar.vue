@@ -26,6 +26,8 @@ import ConversationList from './ConversationList.vue'
 
 const props = defineProps<{
   balanceAvailable: boolean
+  /** 服务商不提供余额时整行隐藏。 */
+  balanceHidden: boolean
   balanceLabel: string
   balanceStatus: LlmRuntimeStatus
   collapsed: boolean
@@ -241,6 +243,7 @@ function handleBalanceSelect(event: Event) {
             class="w-[248px]" :class="[dropdownMenuPanelClass]"
           >
             <DropdownMenuItem
+              v-if="!balanceHidden"
               class="flex cursor-pointer items-center justify-between gap-3 rounded-xl px-3 py-2 text-sm outline-none transition data-[highlighted]:bg-agent-surface-sunken/50"
               :aria-label="`${t('common.actions.refreshBalance')}：${balanceLabel}`"
               @select="handleBalanceSelect"
@@ -257,7 +260,7 @@ function handleBalanceSelect(event: Event) {
               />
             </DropdownMenuItem>
 
-            <DropdownMenuSeparator class="mx-1 my-1.5 h-px bg-agent-border-subtle" />
+            <DropdownMenuSeparator v-if="!balanceHidden" class="mx-1 my-1.5 h-px bg-agent-border-subtle" />
 
             <DropdownMenuSub>
               <DropdownMenuSubTrigger

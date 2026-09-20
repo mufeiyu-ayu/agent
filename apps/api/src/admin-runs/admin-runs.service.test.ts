@@ -252,6 +252,8 @@ describe('Admin Run projector', () => {
     assert.deepEqual(sampling.contextInspector, {
       outcome: 'success',
       resolvedModel: 'deepseek-v4-flash',
+      providerId: null,
+      modelId: null,
       resolvedInputBudgetTokens: 262_144,
       estimatedInputTokens: 120_000,
       historyCandidateCount: 2,

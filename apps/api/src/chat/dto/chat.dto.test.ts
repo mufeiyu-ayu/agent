@@ -91,13 +91,17 @@ describe('ChatDto', () => {
     )
   })
 
-  it('拒绝不在白名单内的 model', async () => {
-    const errors = await validate(createDto('hi', 'gpt-4o'))
-
+  it('model 是后台模型行 id：任意非空字符串通过，空串或超长拒绝', async () => {
     assert.equal(
-      errors.some(error => error.property === 'model'),
-      true,
+      (await validate(createDto('hi', 'cmfxq0abc0000llm'))).some(error => error.property === 'model'),
+      false,
     )
+    for (const model of ['', 'x'.repeat(129)]) {
+      assert.equal(
+        (await validate(createDto('hi', model))).some(error => error.property === 'model'),
+        true,
+      )
+    }
   })
 })
 
@@ -213,7 +217,7 @@ describe('ChatDto 在 App ValidationPipe 边界的行为', () => {
   })
 })
 
-function createDto(message: string, model = 'deepseek-v4-flash'): ChatDto {
+function createDto(message: string, model = 'model-deepseek-v4-flash'): ChatDto {
   return Object.assign(new ChatDto(), {
     conversationId: 'conversation-1',
     message,
@@ -225,6 +229,6 @@ function createPayload(message: string) {
   return {
     conversationId: 'conversation-1',
     message,
-    model: 'deepseek-v4-flash',
+    model: 'model-deepseek-v4-flash',
   }
 }

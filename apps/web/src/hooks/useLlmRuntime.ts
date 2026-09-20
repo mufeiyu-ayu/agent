@@ -1,26 +1,32 @@
-import type { ApiErrorResponse, DeepSeekReasoningEffort } from '@agent/contracts'
+import type { ApiErrorResponse, ReasoningEffort } from '@agent/contracts'
 import type { LlmBalanceInfo, LlmBalanceState, LlmModelOption, LlmRuntimeStatus } from '../types/llm'
 
-import { DEFAULT_DEEPSEEK_REASONING_EFFORT } from '@agent/contracts'
 import { isAxiosError } from 'axios'
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import { fetchLlmBalance, fetchLlmModels } from '../api/llm'
-import { FALLBACK_DEEPSEEK_MODELS } from '../types/llm'
 
 export function useLlmRuntime() {
   const { locale, t } = useI18n()
-  const models = ref<LlmModelOption[]>([...FALLBACK_DEEPSEEK_MODELS])
-  const selectedModel = ref<LlmModelOption['id']>(FALLBACK_DEEPSEEK_MODELS[0].id)
-  const selectedReasoningEffort = ref<DeepSeekReasoningEffort>(
-    DEFAULT_DEEPSEEK_REASONING_EFFORT,
-  )
+  const models = ref<LlmModelOption[]>([])
+  /** 选中的模型行 id；后台没有可见模型时为 null，请求里不带 model 由后端取默认。 */
+  const selectedModel = ref<string | null>(null)
+  /** 本次会话选的思考强度；null 表示不带，用模型行默认。切换模型时重置为该行默认。 */
+  const selectedReasoningEffort = ref<ReasoningEffort | null>(null)
   const balance = ref<LlmBalanceState | null>(null)
   const modelStatus = ref<LlmRuntimeStatus>('idle')
   const balanceStatus = ref<LlmRuntimeStatus>('idle')
   const modelError = ref('')
   const balanceError = ref('')
+
+  const selectedModelOption = computed(() => models.value.find(model => model.id === selectedModel.value))
+  /** 该家族可选的强度；为空时前台不展示选择器，请求也不带 reasoningEffort。 */
+  const selectedModelEffortOptions = computed(() => selectedModelOption.value?.reasoningEffortOptions ?? [])
+
+  watch(selectedModelOption, (option) => {
+    selectedReasoningEffort.value = option?.reasoningEffort ?? null
+  }, { immediate: true })
 
   const balanceLabel = computed(() => {
     if (balanceStatus.value === 'loading' && !balance.value)
@@ -35,6 +41,8 @@ export function useLlmRuntime() {
   })
 
   const balanceAvailable = computed(() => balance.value?.isAvailable ?? false)
+  /** 服务商不提供余额时整行隐藏，而不是一直显示「余额 --」。 */
+  const balanceHidden = computed(() => balanceStatus.value === 'success' && balance.value === null)
   const isRefreshingBalance = computed(() => balanceStatus.value === 'loading')
 
   async function loadModels() {
@@ -47,7 +55,7 @@ export function useLlmRuntime() {
       modelStatus.value = 'success'
     }
     catch (error) {
-      models.value = [...FALLBACK_DEEPSEEK_MODELS]
+      models.value = []
       ensureSelectedModelExists()
       modelError.value = getRuntimeErrorMessage(error, t('runtime.errors.models'))
       modelStatus.value = 'error'
@@ -68,11 +76,15 @@ export function useLlmRuntime() {
     }
   }
 
+  /** 初始（或当前选项消失时）优先选 Admin 设的默认模型，其次列表第一条。 */
   function ensureSelectedModelExists() {
     const exists = models.value.some(model => model.id === selectedModel.value)
 
-    if (!exists)
-      selectedModel.value = models.value[0]?.id ?? FALLBACK_DEEPSEEK_MODELS[0].id
+    if (!exists) {
+      selectedModel.value = models.value.find(model => model.isDefault)?.id
+        ?? models.value[0]?.id
+        ?? null
+    }
   }
 
   void loadModels()
@@ -81,10 +93,12 @@ export function useLlmRuntime() {
   return {
     models,
     selectedModel,
+    selectedModelEffortOptions,
     selectedReasoningEffort,
     balance,
     balanceLabel,
     balanceAvailable,
+    balanceHidden,
     balanceStatus,
     modelStatus,
     balanceError,

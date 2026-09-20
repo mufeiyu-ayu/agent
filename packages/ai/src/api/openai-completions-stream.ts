@@ -20,9 +20,18 @@ type DeepSeekCompletionUsage = NonNullable<ChatCompletionChunk['usage']> & {
   } | null
 }
 
+export interface AdaptStreamOptions {
+  /**
+   * reasoning 模型（DeepSeek thinking）的 Tool Call 必须带 reasoning_content 才能回填续轮；
+   * 中转站后面的 gpt / gemini / claude 从不返回它，按模型关掉这条不变量。
+   */
+  requireReasoningContent: boolean
+}
+
 /** 将 OpenAI-compatible SDK chunk 转换为项目内部模型事件。 */
 export async function* adaptOpenAICompatibleStream(
   chunks: AsyncIterable<ChatCompletionChunk>,
+  options: AdaptStreamOptions,
 ): AsyncGenerator<ModelStreamEvent> {
   const toolCallAccumulator = new OpenAICompatibleToolCallAccumulator()
   const reasoningContentChunks: string[] = []
@@ -93,8 +102,12 @@ export async function* adaptOpenAICompatibleStream(
         if (finishReason === 'tool_calls' && toolCalls.length === 0) {
           throw new LLMApiError('模型以 tool_calls 结束，但没有返回完整 Tool Call')
         }
-        // 任何会回填成 assistant tool_calls 消息的调用（含 length 截断）都需要 reasoning continuation。
-        if (toolCalls.length > 0 && reasoningContent.length === 0) {
+        // reasoning 模型下，任何会回填成 assistant tool_calls 消息的调用（含 length 截断）都需要 reasoning continuation。
+        if (
+          options.requireReasoningContent
+          && toolCalls.length > 0
+          && reasoningContent.length === 0
+        ) {
           throw new LLMApiError(
             'DeepSeek thinking Tool Call 缺少必需的 reasoning_content continuation',
           )

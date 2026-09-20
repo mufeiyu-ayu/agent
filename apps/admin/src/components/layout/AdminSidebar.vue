@@ -33,6 +33,7 @@ const sections = [
       { path: '/overview', labelKey: 'navigation.overview', icon: DashboardOutlined },
       { path: '/conversations', labelKey: 'navigation.conversations', icon: CommentOutlined },
       { path: '/runs', labelKey: 'navigation.runs', icon: ProfileOutlined },
+      { path: '/llm-models', labelKey: 'navigation.llmModels', icon: SettingOutlined },
     ],
   },
 ]

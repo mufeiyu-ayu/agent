@@ -21,7 +21,7 @@ src/api/openai-completions-raw-capture.ts  # debug：捕获原始请求 / 响应
 - 只有一套 wire 协议（Chat Completions）；直连 Anthropic / Gemini 原生接口时才加第二套，现在不做。
 - `thinking` 只对 `reasoning=true`（DeepSeek 家族）发；`reasoning_effort` 任何家族配置了就发；`reasoning=true` 时 Tool Call 必须回 `reasoning_content`。
 - 家族取值表不在这里，在 `@agent/contracts`；这里只消费 `ReasoningEffort` 类型。
-- 网络错误不重试（2026-09-19 拍板）；错误文案里的厂商名是历史遗留，待收口。
+- 网络错误不重试（2026-09-19 拍板）；错误文案不带厂商名，各家 OpenAI-compatible 端点共用同一套状态码含义。
 
 ## 验证
 

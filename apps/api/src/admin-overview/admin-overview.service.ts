@@ -11,13 +11,13 @@ import {
   readObject,
   readString,
 } from '../admin-runs/projection/safe-readers.js'
-import { LLMRuntimeConfigService } from '../llm/llm-runtime-config.service.js'
+import { LlmModelConfigService } from '../llm/llm-model-config.service.js'
+import { LLMService } from '../llm/llm.service.js'
 import { PrismaService } from '../prisma/prisma.service.js'
 
 const WINDOW_DAYS = 30
 const DAY_MS = 86_400_000
 const SHANGHAI_OFFSET_MS = 8 * 3_600_000
-const BALANCE_TIMEOUT_MS = 5_000
 
 const UNAVAILABLE_BALANCE: AdminProviderBalance = {
   available: false,
@@ -32,8 +32,10 @@ export class AdminOverviewService {
   constructor(
     @Inject(PrismaService)
     private readonly prismaService: PrismaService,
-    @Inject(LLMRuntimeConfigService)
-    private readonly llmRuntimeConfigService: LLMRuntimeConfigService,
+    @Inject(LlmModelConfigService)
+    private readonly llmModelConfigService: LlmModelConfigService,
+    @Inject(LLMService)
+    private readonly llmService: LLMService,
   ) {}
 
   async getStats(): Promise<AdminOverviewStats> {
@@ -163,23 +165,15 @@ export class AdminOverviewService {
 
   async getBalance(): Promise<AdminProviderBalance> {
     try {
-      const { apiKey, baseUrl } = this.llmRuntimeConfigService.value
-      const origin = new URL(baseUrl).origin
+      const provider = await this.llmModelConfigService.resolveDefaultProvider()
 
-      const response = await fetch(`${origin}/user/balance`, {
-        headers: {
-          Accept: 'application/json',
-          Authorization: `Bearer ${apiKey}`,
-        },
-        signal: AbortSignal.timeout(BALANCE_TIMEOUT_MS),
-      })
-
-      if (!response.ok) {
-        this.logger.warn(`余额查询失败：上游返回 ${response.status}`)
+      if (!provider)
         return UNAVAILABLE_BALANCE
-      }
 
-      return parseProviderBalance(await response.json())
+      // 与前台 /api/llm/balance 同一条路径与 URL 拼法；404 / 形状不符已在 LLMService 归一为 null。
+      const balance = await this.llmService.getProviderBalance(provider)
+
+      return balance ? parseProviderBalance(balance) : UNAVAILABLE_BALANCE
     }
     catch (error) {
       this.logger.warn(`余额查询失败：${error instanceof Error ? error.message : String(error)}`)

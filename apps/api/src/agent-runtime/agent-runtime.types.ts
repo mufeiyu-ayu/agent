@@ -1,5 +1,6 @@
 import type { MessageInputItem } from '@agent/ai'
-import type { DeepSeekReasoningEffort, MessageGroundingV1 } from '@agent/contracts'
+import type { MessageGroundingV1, ReasoningEffort } from '@agent/contracts'
+import type { ResolvedLlmModel } from '../llm/llm-model-config.service.js'
 
 export type AgentRuntimeEvent
   = | {
@@ -51,10 +52,11 @@ export interface AgentRuntimeRunFailedEvent {
 export interface RunTurnStreamInput {
   conversationId: string
   userContent: string
-  model?: string
-  reasoningEffort?: DeepSeekReasoningEffort
+  /** Run 开始前解析好的模型配置快照：整个 Run 用同一份，后台改配置对下一个 Run 生效。 */
+  model: ResolvedLlmModel
+  /** 请求级覆盖模型行的默认 reasoning_effort；省略时用模型行的。 */
+  reasoningEffort?: ReasoningEffort
   signal?: AbortSignal
-  maxTokens?: number
   /** 模型必须携带的指令消息（当前为系统提示词）；历史与当前消息由 Runtime 自行拼接。 */
   instructions: MessageInputItem[]
 }

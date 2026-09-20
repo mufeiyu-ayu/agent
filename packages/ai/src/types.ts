@@ -1,4 +1,4 @@
-import type { DeepSeekReasoningEffort } from '@agent/contracts'
+import type { ResolvedChatRequestConfig } from './config.js'
 
 /** 当前工具输入需要的最小 JSON Schema 子集。 */
 export type JsonSchemaProperty
@@ -143,18 +143,6 @@ export type ModelInputItem
 
 // ─── 请求选项 ────────────────────────────────
 
-/** chat() 方法的可选参数，会覆盖环境变量中的默认值 */
-export interface ChatOptions {
-  /** 模型名，默认从 LLM_MODEL 环境变量读取 */
-  model?: string
-  /** DeepSeek Thinking Mode 思考强度，省略时稳定回落 high。 */
-  reasoningEffort?: DeepSeekReasoningEffort
-  /** 最大输出 token 数，默认由已验证的 LLM runtime config 提供 */
-  maxTokens?: number
-  /** JSON 输出约束（对应 OpenAI response_format） */
-  responseFormat?: { type: 'json_object' } | { type: 'text' }
-}
-
 export type ModelResponseCaptureState = 'complete' | 'partial' | 'empty'
 
 export type ModelResponseCaptureEvent
@@ -192,9 +180,11 @@ export interface ModelIODebugCapture {
   onCaptureError?: (side: ModelIODebugCaptureSide) => void
 }
 
-/** chatStream() 方法的可选参数。 */
-export interface ChatStreamOptions extends ChatOptions {
-  /** 外部中止信号，用于后续支持用户主动停止生成。 */
+/** chatStream() 的请求选项；模型与输出上限由调用方解析好的请求配置决定。 */
+export interface ChatStreamOptions {
+  /** 本次请求的 resolved 配置：模型名、输出上限、是否走 thinking 路径。 */
+  request: ResolvedChatRequestConfig
+  /** 外部中止信号，用于用户主动停止生成。 */
   signal?: AbortSignal
   /** 只包含模型可见字段的工具说明。 */
   tools?: ModelToolSpec[]

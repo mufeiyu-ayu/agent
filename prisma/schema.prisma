@@ -253,3 +253,50 @@ model ArticleIndexState {
 
   @@index([chunkerVersion, embeddingVersion])
 }
+
+// ─── LLM 配置（Issue #142）────────────────────────────
+// Provider 是一把 key + 一个 baseUrl；同一个中转站按 key 分组就是多个 Provider。
+// 密钥用 AGENT_SECRET_KEY 派生的密钥 AES-256-GCM 加密后存放，只回显尾四位。
+model LlmProvider {
+  id              String     @id @default(cuid())
+  // 服务商就是模型家族：deepseek / openai / grok / gemini / claude / other，决定管理台标识与导入预设，
+  // 不参与请求拼接（一把中转站 key 可能跨家族）。取值由 contracts 的 LLM_PROVIDER_FAMILIES 约束。
+  family          String
+  // 给人看的备注，例如「公司中转站」「官方」；不参与任何逻辑。
+  note            String
+  baseUrl         String
+  apiKeyEncrypted String
+  apiKeyLast4     String
+  enabled         Boolean    @default(true)
+  models          LlmModel[]
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+}
+
+// 模型能力字段由 Admin 人工维护：`/models` 接口给不出 contextWindow / maxOutput / 是否思考。
+model LlmModel {
+  id                  String      @id @default(cuid())
+  providerId          String
+  provider            LlmProvider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  // 发给 Provider 的模型名；前台展示用 displayName。
+  wireName            String
+  displayName         String
+  contextWindowTokens Int
+  maxOutputTokens     Int
+  // 默认发给服务商的 reasoning_effort；null 不发。取值按家族由 contracts 的 LLM_FAMILY_CAPABILITIES 约束。
+  reasoningEffort     String?
+  // 前台模型下拉只列 visible 为真的行；拉取导入默认为假。
+  visible             Boolean     @default(false)
+  // 全局唯一的默认模型；前台不传 model 时使用。
+  isDefault           Boolean     @default(false)
+  sortOrder           Int         @default(0)
+  // 管理台「测试」的上次结果：一条最短对话是否通、失败原因、时间；没测过为 null。
+  lastProbeOk         Boolean?
+  lastProbeError      String?
+  lastProbedAt        DateTime?
+  createdAt           DateTime    @default(now())
+  updatedAt           DateTime    @updatedAt
+
+  @@unique([providerId, wireName])
+  @@index([visible, sortOrder])
+}

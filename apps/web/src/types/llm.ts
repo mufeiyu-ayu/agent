@@ -1,34 +1,21 @@
+import type { ChatModelOption } from '@agent/contracts'
+
 export type LlmRuntimeStatus = 'idle' | 'loading' | 'success' | 'error'
 
-export type DeepSeekModelId = 'deepseek-v4-flash'
+/** 前台模型下拉的一项，来自 Admin 勾选「前台可见」的模型行。 */
+export type LlmModelOption = ChatModelOption
 
-export interface LlmModelOption {
-  id: DeepSeekModelId
-  label: string
-  ownedBy: string
-}
-
-export interface DeepSeekModelInfo {
-  id: string
-  object: 'model'
-  owned_by: string
-}
-
-export interface DeepSeekModelsResponse {
-  object: 'list'
-  data: DeepSeekModelInfo[]
-}
-
-export interface DeepSeekBalanceInfo {
+export interface ProviderBalanceInfo {
   currency: 'CNY' | 'USD' | string
   total_balance: string
   granted_balance: string
   topped_up_balance: string
 }
 
-export interface DeepSeekBalanceResponse {
+/** 默认模型所属服务商的余额；只有 DeepSeek 官方提供，其他服务商为 null。 */
+export interface ProviderBalanceResponse {
   is_available: boolean
-  balance_infos: DeepSeekBalanceInfo[]
+  balance_infos: ProviderBalanceInfo[]
 }
 
 export interface LlmBalanceInfo {
@@ -42,11 +29,3 @@ export interface LlmBalanceState {
   isAvailable: boolean
   balances: LlmBalanceInfo[]
 }
-
-export const FALLBACK_DEEPSEEK_MODELS: LlmModelOption[] = [
-  {
-    id: 'deepseek-v4-flash',
-    label: 'DeepSeek V4 Flash',
-    ownedBy: 'deepseek',
-  },
-]

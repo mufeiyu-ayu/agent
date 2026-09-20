@@ -1,29 +1,27 @@
-import { OpenAICompatibleClient } from '@agent/ai'
 import { Global, Module } from '@nestjs/common'
+
+import { PrismaModule } from '../prisma/prisma.module.js'
+import { LlmModelConfigService } from './llm-model-config.service.js'
 import { LLMRuntimeConfigService } from './llm-runtime-config.service.js'
 import { LLMController } from './llm.controller.js'
 import { LLMService } from './llm.service.js'
 
 /**
  * LLM 模块 — 全局模块。
- * 使用 @Global() 装饰器，让 LLMService 可以在任何模块中直接注入，无需重复 import。
+ * 使用 @Global() 装饰器，让 LLMService / LlmModelConfigService 可以在任何模块中直接注入。
  *
- * `OpenAICompatibleClient` 来自零 Nest 的 `@agent/ai`，构造参数是纯配置对象；
- * DI 只在这里的 `useFactory` 边缘接上。
+ * Provider client 不再是启动期单例：模型与密钥来自数据库，`LLMService` 按 Provider 行按需构造。
  */
 @Global()
 @Module({
+  imports: [PrismaModule],
   controllers: [LLMController],
   providers: [
     LLMRuntimeConfigService,
-    {
-      provide: OpenAICompatibleClient,
-      useFactory: (runtimeConfigService: LLMRuntimeConfigService) =>
-        new OpenAICompatibleClient(runtimeConfigService.value),
-      inject: [LLMRuntimeConfigService],
-    },
+    LlmModelConfigService,
     LLMService,
   ],
-  exports: [LLMService, LLMRuntimeConfigService],
+  // LLMRuntimeConfigService 持有明文主密钥，只给本模块内的 cipher 用，不对外导出。
+  exports: [LLMService, LlmModelConfigService],
 })
 export class LlmModule {}

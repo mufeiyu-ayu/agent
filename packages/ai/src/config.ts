@@ -1,23 +1,25 @@
-import type { SupportedDeepSeekModel } from './deepseek.js'
-import type { ChatOptions } from './types.js'
-import { DEFAULT_DEEPSEEK_REASONING_EFFORT } from '@agent/contracts'
+import type { ReasoningEffort } from '@agent/contracts'
 
-import { getModelProfile } from './deepseek.js'
-import { LLMAuthError, LLMConfigError } from './errors.js'
-
-/**
- * 调用方未传 `ChatOptions.maxTokens` 时显式发送的 `max_tokens`。
- * DeepSeek 不传时的默认值偏小，所以始终显式发送；没有部署差异需求前不做 env。
- * 须不大于每个 profile 的 `providerMaxOutputTokens`，否则默认请求会被下面的校验拒绝。
- */
-const DEFAULT_MAX_OUTPUT_TOKENS = 65_536
-
-export interface LLMRuntimeConfig {
+/** 构造一个 Provider client 需要的全部事实；apiKey / baseUrl 来自数据库里的 Provider 行。 */
+export interface LLMClientConfig {
   apiKey: string
   baseUrl: string
-  model: SupportedDeepSeekModel
   /** debug 开关：是否捕获 provider 原始请求 / 响应 JSON，默认关闭。 */
   captureModelIO: boolean
+}
+
+/**
+ * 一个模型行的能力事实，由 Admin 人工维护，不从 Provider 接口猜。
+ * `reasoning` 为真时走 DeepSeek thinking 协议：请求带 `thinking`，Tool Call 要求 `reasoning_content`；
+ * `reasoningEffort` 是默认的 `reasoning_effort`，任何家族配置了就发，null 不发。
+ */
+export interface LLMModelProfile {
+  /** 发给 Provider 的模型名。 */
+  wireName: string
+  contextWindowTokens: number
+  maxOutputTokens: number
+  reasoning: boolean
+  reasoningEffort: ReasoningEffort | null
 }
 
 /**
@@ -27,74 +29,31 @@ export interface LLMRuntimeConfig {
  * 调用方（如 Context Selection）不需要再穿透 LLM 边界补查 Model Profile。
  */
 export interface ResolvedChatRequestConfig {
-  model: SupportedDeepSeekModel
+  model: string
   contextWindowTokens: number
   maxOutputTokens: number
-  reasoningEffort: NonNullable<ChatOptions['reasoningEffort']>
+  reasoning: boolean
+  /** 省略表示请求体不带 reasoning_effort。 */
+  reasoningEffort?: ReasoningEffort
 }
 
-export function resolveLLMRuntimeConfig(
-  env: NodeJS.ProcessEnv,
-): LLMRuntimeConfig {
-  const apiKey = env.LLM_API_KEY?.trim()
-  const baseUrl = env.LLM_BASE_URL?.trim()
-  const model = env.LLM_MODEL?.trim()
-
-  if (!apiKey)
-    throw new LLMAuthError('请在项目根目录 .env 中设置 LLM_API_KEY')
-  if (!baseUrl)
-    throw new LLMConfigError('LLM_BASE_URL', '必须提供非空 URL')
-  if (!model)
-    throw new LLMConfigError('LLM_MODEL', '必须提供支持的模型名')
-
-  const profile = getModelProfile(model)
-
-  if (!profile)
-    throw new LLMConfigError('LLM_MODEL', `不支持模型 ${model}`)
-
-  return {
-    apiKey,
-    baseUrl: baseUrl.replace(/\/+$/, ''),
-    model: profile.id,
-    captureModelIO: readBooleanFlag(env, 'AGENT_DEBUG_CAPTURE_MODEL_IO'),
-  }
+export interface ChatRequestOverrides {
+  /** 请求级覆盖模型行的默认 reasoning_effort。 */
+  reasoningEffort?: ReasoningEffort
 }
 
-function readBooleanFlag(env: NodeJS.ProcessEnv, name: string): boolean {
-  const value = env[name]?.trim().toLowerCase()
-
-  return value === '1' || value === 'true'
-}
-
+/** 模型名与输出上限直接取模型行；请求级只能覆盖 reasoningEffort，都没有就不发。 */
 export function resolveChatRequestConfig(
-  runtimeConfig: LLMRuntimeConfig,
-  options: ChatOptions = {},
+  profile: LLMModelProfile,
+  overrides: ChatRequestOverrides = {},
 ): ResolvedChatRequestConfig {
-  const requestedModel = (options.model ?? runtimeConfig.model).trim()
-  const profile = getModelProfile(requestedModel)
-
-  if (!profile)
-    throw new LLMConfigError('model', `不支持模型 ${requestedModel || '(empty)'}`)
-
-  const maxOutputTokens = options.maxTokens ?? DEFAULT_MAX_OUTPUT_TOKENS
-
-  if (
-    !Number.isSafeInteger(maxOutputTokens)
-    || maxOutputTokens <= 0
-  ) {
-    throw new LLMConfigError('maxTokens', '必须是正整数')
-  }
-  if (maxOutputTokens > profile.providerMaxOutputTokens) {
-    throw new LLMConfigError(
-      'maxTokens',
-      `不得大于模型 ${profile.id} 的 Provider 上限`,
-    )
-  }
+  const reasoningEffort = overrides.reasoningEffort ?? profile.reasoningEffort ?? undefined
 
   return {
-    model: profile.id,
+    model: profile.wireName,
     contextWindowTokens: profile.contextWindowTokens,
-    maxOutputTokens,
-    reasoningEffort: options.reasoningEffort ?? DEFAULT_DEEPSEEK_REASONING_EFFORT,
+    maxOutputTokens: profile.maxOutputTokens,
+    reasoning: profile.reasoning,
+    ...(reasoningEffort ? { reasoningEffort } : {}),
   }
 }

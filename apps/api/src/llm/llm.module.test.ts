@@ -1,79 +1,63 @@
 import assert from 'node:assert/strict'
-import process from 'node:process'
 // eslint-disable-next-line test/no-import-node-test
 import { describe, it } from 'node:test'
 import { LLMConfigError } from '@agent/ai'
-import { NestFactory } from '@nestjs/core'
 
-import { LLMRuntimeConfigService } from './llm-runtime-config.service.js'
-import { LlmModule } from './llm.module.js'
-import 'reflect-metadata'
+import { createApiKeyCipher, toApiKeyLast4 } from './api-key-cipher.js'
+import { resolveLlmEnvConfig } from './llm-runtime-config.service.js'
 
-const ENV_NAMES = [
-  'LLM_API_KEY',
-  'LLM_BASE_URL',
-  'LLM_MODEL',
-  'AGENT_DEBUG_CAPTURE_MODEL_IO',
-] as const
+const SECRET_KEY = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
 
-describe('LlmModule fail-fast assembly', () => {
-  it('应用上下文初始化时真实实例化配置 Provider 并使用默认值', async () => {
-    await withRuntimeEnv({}, async () => {
-      const app = await NestFactory.createApplicationContext(LlmModule, {
-        abortOnError: false,
-        logger: false,
-      })
-
-      try {
-        const config = app.get(LLMRuntimeConfigService).value
-
-        assert.equal(config.captureModelIO, false)
-      }
-      finally {
-        await app.close()
-      }
-    })
+describe('resolveLlmEnvConfig', () => {
+  it('只读主密钥与 debug 开关，模型接入配置不再来自 env', () => {
+    assert.deepEqual(
+      resolveLlmEnvConfig({ AGENT_SECRET_KEY: ` ${SECRET_KEY} ` }),
+      { secretKey: SECRET_KEY, captureModelIO: false },
+    )
+    assert.equal(
+      resolveLlmEnvConfig({
+        AGENT_SECRET_KEY: SECRET_KEY,
+        AGENT_DEBUG_CAPTURE_MODEL_IO: 'true',
+      }).captureModelIO,
+      true,
+    )
   })
 
-  it('LLM_MODEL 不支持时应用上下文在初始化阶段失败', async () => {
-    await withRuntimeEnv({ LLM_MODEL: 'unsupported-model' }, async () => {
-      await assert.rejects(
-        NestFactory.createApplicationContext(LlmModule, {
-          abortOnError: false,
-          logger: false,
-        }),
-        LLMConfigError,
+  it('AGENT_SECRET_KEY 缺失或短于 32 个字符时启动失败', () => {
+    for (const env of [{}, { AGENT_SECRET_KEY: '' }, { AGENT_SECRET_KEY: 'short-secret' }]) {
+      assert.throws(
+        () => resolveLlmEnvConfig(env as NodeJS.ProcessEnv),
+        (error: unknown) => {
+          assert.ok(error instanceof LLMConfigError)
+          assert.match(error.message, /AGENT_SECRET_KEY/)
+          return true
+        },
       )
-    })
+    }
   })
 })
 
-async function withRuntimeEnv(
-  overrides: Record<string, string>,
-  operation: () => Promise<void>,
-): Promise<void> {
-  const previousValues = new Map(
-    ENV_NAMES.map(name => [name, process.env[name]]),
-  )
+describe('createApiKeyCipher', () => {
+  it('加密后不含明文，同一密钥能解回；每次加密 IV 不同', () => {
+    const cipher = createApiKeyCipher(SECRET_KEY)
+    const apiKey = 'sk-035aac06474e906ce3a85dbb69ae654c'
+    const first = cipher.encrypt(apiKey)
+    const second = cipher.encrypt(apiKey)
 
-  try {
-    for (const name of ENV_NAMES)
-      delete process.env[name]
+    assert.match(first, /^v1:[^:]+:[^:]+:[^:]+$/)
+    assert.doesNotMatch(first, /sk-035/)
+    assert.notEqual(first, second)
+    assert.equal(cipher.decrypt(first), apiKey)
+    assert.equal(cipher.decrypt(second), apiKey)
+    assert.equal(toApiKeyLast4(apiKey), '654c')
+  })
 
-    Object.assign(process.env, {
-      LLM_API_KEY: 'test-api-key',
-      LLM_BASE_URL: 'https://api.deepseek.com/v1',
-      LLM_MODEL: 'deepseek-v4-flash',
-      ...overrides,
-    })
-    await operation()
-  }
-  finally {
-    for (const [name, value] of previousValues) {
-      if (value === undefined)
-        delete process.env[name]
-      else
-        process.env[name] = value
-    }
-  }
-}
+  it('换主密钥或篡改密文都无法解密', () => {
+    const cipher = createApiKeyCipher(SECRET_KEY)
+    const payload = cipher.encrypt('sk-secret')
+
+    assert.throws(() => createApiKeyCipher(`${SECRET_KEY}-rotated`).decrypt(payload))
+    assert.throws(() => cipher.decrypt(`${payload.slice(0, -2)}AA`))
+    assert.throws(() => cipher.decrypt('v0:a:b:c'), /格式不合法/)
+  })
+})

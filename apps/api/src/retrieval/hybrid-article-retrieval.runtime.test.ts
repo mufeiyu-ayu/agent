@@ -67,7 +67,6 @@ describe('HybridArticleRetrievalRuntime', () => {
     assert.throws(
       () => createHybridArticleRetrievalRuntime({
         DATABASE_URL: 'postgresql://postgres:postgres@127.0.0.1:5432/agent',
-        LLM_API_KEY: 'sk-should-not-be-used',
       }),
       (error: unknown) => (
         error instanceof EmbeddingError

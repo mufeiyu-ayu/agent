@@ -5,6 +5,23 @@ export type {
   AdminConversationMessage,
 } from './admin-conversation.js'
 export type {
+  AdminLlmCredentialsInput,
+  AdminLlmFetchModelsResponse,
+  AdminLlmImportModelsRequest,
+  AdminLlmImportModelsResponse,
+  AdminLlmModel,
+  AdminLlmModelInput,
+  AdminLlmModelTestResult,
+  AdminLlmProbeModelsRequest,
+  AdminLlmProvider,
+  AdminLlmProviderInput,
+  AdminLlmTestModelsRequest,
+  AdminLlmTestModelsResponse,
+  LlmProviderFamily,
+  ReasoningEffort,
+} from './admin-llm.js'
+export { isThinkingFamily, LLM_FAMILY_CAPABILITIES, LLM_PROVIDER_FAMILIES, REASONING_EFFORTS, reasoningEffortsOf } from './admin-llm.js'
+export type {
   AdminOverviewDailyPoint,
   AdminOverviewModelUsageItem,
   AdminOverviewStats,
@@ -62,6 +79,7 @@ export type {
   ApiSuccessResponse,
 } from './api-response.js'
 export type {
+  ChatModelOption,
   ChatRequest,
   ChatStreamAbortedEvent,
   ChatStreamDeltaEvent,
@@ -69,12 +87,9 @@ export type {
   ChatStreamErrorEvent,
   ChatStreamEvent,
   ChatStreamStartEvent,
-  DeepSeekReasoningEffort,
 } from './chat.js'
 export {
   CHAT_MESSAGE_MAX_CHARS,
-  DEEPSEEK_REASONING_EFFORTS,
-  DEFAULT_DEEPSEEK_REASONING_EFFORT,
 } from './chat.js'
 export type {
   Conversation,

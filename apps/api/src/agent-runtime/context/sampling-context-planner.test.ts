@@ -534,6 +534,8 @@ describe('SamplingContextPlanner 首轮历史裁剪（迁自旧的初始上下�
 
     summarizeInitialContext({
       resolvedModel: 'deepseek-v4-flash',
+      providerId: 'provider-deepseek',
+      modelId: 'model-deepseek-v4-flash',
       contextWindowTokens: 1_000_000,
       resolvedMaxOutputTokens: 65_536,
       candidateHardLimit: 1_000,
@@ -566,6 +568,8 @@ describe('summarizeInitialContext', () => {
     contextWindowTokens?: number
   }) => summarizeInitialContext({
     resolvedModel: 'deepseek-v4-flash',
+    providerId: 'provider-deepseek',
+    modelId: 'model-deepseek-v4-flash',
     contextWindowTokens: input.contextWindowTokens ?? 17_010,
     resolvedMaxOutputTokens: 100,
     candidateHardLimit: input.candidateHardLimit,
@@ -580,6 +584,8 @@ describe('summarizeInitialContext', () => {
 
     assert.deepEqual(summary, {
       resolvedModel: 'deepseek-v4-flash',
+      providerId: 'provider-deepseek',
+      modelId: 'model-deepseek-v4-flash',
       resolvedInputBudgetTokens: 526,
       historyCandidateCount: 60,
       historyIncludedCount: 60,
@@ -595,6 +601,8 @@ describe('summarizeInitialContext', () => {
 
     summarizeInitialContext({
       resolvedModel: 'deepseek-v4-flash',
+      providerId: 'provider-deepseek',
+      modelId: 'model-deepseek-v4-flash',
       contextWindowTokens: 17_010,
       resolvedMaxOutputTokens: 100,
       candidateHardLimit: 1_000,

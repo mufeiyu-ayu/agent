@@ -87,7 +87,7 @@ gsc 现状三块：
 
 ## 10. 未决
 
-- DeepSeek V4 Pro 写页面的质量是否够，用运营十条需求测。runtime 三处 DeepSeek 专用（`packages/ai/src/deepseek.ts` 模型表、请求固定带 `thinking` / `reasoning_effort`、回填要求 `reasoning_content`），换模型时一并泛化成兼容开关表。
+- DeepSeek V4 Pro 写页面的质量是否够，用运营十条需求测。runtime 三处 DeepSeek 专用中，模型表与「请求固定带 `thinking` / `reasoning_effort`、Tool Call 要求 `reasoning_content`」两处已由 #142 改为模型行的 `reasoning` 开关；剩 `DeepSeekV4TokenEstimator` 对非 DeepSeek 模型只是估算不准，换模型时再看。
 - 工作台与管理台是否合成一个应用。
 - 口径由谁兜底：现状无人，靠结果亮出过程。
 - 运营十条小需求原话：目录种子与验收集，待用户收集。

@@ -1180,6 +1180,8 @@ function createContextInspector(
   return {
     outcome: 'success',
     resolvedModel: 'deepseek-v4-flash',
+    providerId: 'provider-deepseek',
+    modelId: 'model-deepseek-v4-flash',
     resolvedInputBudgetTokens: 262_144,
     estimatedInputTokens: 0,
     historyCandidateCount: 0,

@@ -20,10 +20,10 @@
   --admin-radius-md: 10px;
   --admin-radius-lg: 14px;
 
-  /* 欧美 SaaS 风格色板：Linear/Stripe 式靛蓝主色 + 低饱和 emerald/amber/rose 状态色 */
-  --admin-primary: hsl(235deg 60% 58%);
-  --admin-primary-hover: hsl(235deg 60% 51%);
-  --admin-primary-soft: hsl(235deg 60% 58% / 9%);
+  /* 2024–2026 前沿云端与 AI 基础设施色板（Neon DB / Railway / Fly.io 冰川极光青体系） */
+  --admin-primary: hsl(200deg 98% 39%);
+  --admin-primary-hover: hsl(201deg 96% 32%);
+  --admin-primary-soft: hsl(200deg 98% 39% / 9%);
   --admin-success: hsl(158deg 42% 40%);
   --admin-success-strong: hsl(158deg 48% 28%);
   --admin-success-soft: hsl(158deg 42% 40% / 10%);
@@ -35,9 +35,9 @@
   --admin-danger-soft: hsl(348deg 62% 50% / 10%);
 
   /* 面板层级：页面底与卡片只差约 2% 亮度——有深度但无接缝（参照 shadcn background/card 与 Radix gray 1/2 的用法） */
-  --admin-bg-deep: hsl(220deg 20% 96.8%);
+  --admin-bg-deep: hsl(220deg 14% 96.5%);
   --admin-surface: hsl(0deg 0% 100%);
-  --admin-surface-muted: hsl(220deg 22% 96.5%);
+  --admin-surface-muted: hsl(220deg 14% 96%);
   --admin-surface-raised: hsl(0deg 0% 100%);
 
   --admin-text: hsl(220deg 13% 18%);
@@ -45,7 +45,7 @@
   --admin-text-subtle: hsl(220deg 9% 62%);
   --admin-border: hsl(220deg 16% 92%);
   --admin-border-strong: hsl(220deg 14% 86%);
-  --admin-hover: hsl(220deg 20% 93.5%);
+  --admin-hover: hsl(220deg 20% 94%);
 
   /* 阴影阶梯：卡片贴地，浮层抬起 */
   --admin-shadow-sm: 0 1px 2px hsl(220deg 40% 20% / 4%), 0 1px 3px hsl(220deg 40% 20% / 3%);
@@ -58,9 +58,9 @@
 }
 
 :root[data-theme='dark'] {
-  --admin-primary: hsl(235deg 80% 72%);
-  --admin-primary-hover: hsl(235deg 80% 78%);
-  --admin-primary-soft: hsl(235deg 80% 72% / 16%);
+  --admin-primary: hsl(198deg 93% 60%);
+  --admin-primary-hover: hsl(199deg 95% 74%);
+  --admin-primary-soft: hsl(198deg 93% 60% / 15%);
   --admin-success: hsl(158deg 38% 55%);
   --admin-success-strong: hsl(158deg 42% 64%);
   --admin-success-soft: hsl(158deg 38% 55% / 14%);

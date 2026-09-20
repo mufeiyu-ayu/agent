@@ -29,12 +29,11 @@ import assert from 'node:assert/strict'
 // 项目使用 Node 原生测试运行器，不为 grounded 路径引入额外测试框架。
 // eslint-disable-next-line test/no-import-node-test
 import { describe, it } from 'node:test'
-import { getModelProfile } from '@agent/ai'
-
 import { projectAdminRunDetail } from '../../admin-runs/projection/admin-run.projector.js'
-
 import { toChatStreamEvent } from '../../chat/chat-stream-event.mapper.js'
+
 import { MessageRole, MessageStatus } from '../../generated/prisma/client.js'
+import { createResolvedLlmModel } from '../../llm/__fixtures__.js'
 import { AgentRuntimeService } from '../agent-runtime.service.js'
 import { SamplingContextPlanner } from '../context/sampling-context-planner.js'
 import { AGENT_STEP_TYPES } from '../lifecycle/agent-run-recorder.service.js'
@@ -295,7 +294,7 @@ describe('Grounded finalization 路径', () => {
     assert.equal(harness.assistantMessage()?.content, answer)
     assert.equal(harness.assistantMessage()?.status, MessageStatus.COMPLETED)
     assert.deepEqual(
-      harness.llmCalls.map(call => call.options?.reasoningEffort),
+      harness.llmCalls.map(call => call.options?.request.reasoningEffort),
       ['max', 'max', 'max'],
     )
 
@@ -1600,22 +1599,7 @@ function createHarness(options: CreateHarnessOptions) {
     return [...text.matchAll(/evk_[a-f\d]{32}/g)].map(match => match[0])
   }
   const llmService = {
-    resolveChatRequestConfig: (config?: {
-      model?: string
-      reasoningEffort?: 'low' | 'high' | 'max'
-      maxTokens?: number
-    }) => {
-      const model = config?.model ?? 'deepseek-v4-flash'
-
-      return {
-        model,
-        contextWindowTokens: getModelProfile(model)?.contextWindowTokens
-          ?? 1_000_000,
-        maxOutputTokens: config?.maxTokens ?? 65_536,
-        reasoningEffort: config?.reasoningEffort ?? 'high',
-      }
-    },
-    chatStream: (messages: ModelInputItem[], streamOptions?: ChatStreamOptions) => {
+    chatStream: (_provider: unknown, messages: ModelInputItem[], streamOptions?: ChatStreamOptions) => {
       const callIndex = llmCalls.length
 
       llmCalls.push({ messages: structuredClone(messages), options: streamOptions })
@@ -1670,6 +1654,7 @@ function createHarness(options: CreateHarnessOptions) {
     run: () => service.runTurnStream({
       conversationId: 'conversation-1',
       userContent: '问题',
+      model: createResolvedLlmModel(),
       reasoningEffort: options.reasoningEffort ?? 'high',
       ...(options.signal ? { signal: options.signal } : {}),
       instructions: [],

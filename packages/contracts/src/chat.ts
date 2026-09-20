@@ -1,20 +1,28 @@
+import type { ReasoningEffort } from './admin-llm.js'
 import type { MessageGroundingV1 } from './grounding.js'
 
 /** 前后端共同执行的单次 Chat 用户消息字符上限。 */
 export const CHAT_MESSAGE_MAX_CHARS = 64_000
 
-/** DeepSeek Thinking Mode 对外开放的单次请求思考强度。 */
-export const DEEPSEEK_REASONING_EFFORTS = ['low', 'high', 'max'] as const
-
-export type DeepSeekReasoningEffort = typeof DEEPSEEK_REASONING_EFFORTS[number]
-
-export const DEFAULT_DEEPSEEK_REASONING_EFFORT: DeepSeekReasoningEffort = 'high'
-
 export interface ChatRequest {
   conversationId: string
   message: string
+  /** Admin 配置的模型行 id（`ChatModelOption.id`）；省略时用默认模型。 */
   model?: string
-  reasoningEffort?: DeepSeekReasoningEffort
+  /** 按次覆盖模型行的默认 reasoning_effort；只能取该模型家族的值（`ChatModelOption.reasoningEffortOptions`）。 */
+  reasoningEffort?: ReasoningEffort
+}
+
+/** 前台模型下拉的一项：只有 Admin 勾选「前台可见」的模型行才会出现。 */
+export interface ChatModelOption {
+  id: string
+  displayName: string
+  /** 模型行的默认 reasoning_effort；null 表示不发。 */
+  reasoningEffort: ReasoningEffort | null
+  /** 该模型家族可选的 reasoning_effort；为空时前台不展示思考强度选择器。 */
+  reasoningEffortOptions: readonly ReasoningEffort[]
+  /** Admin 设的默认模型，前台初始选中它。 */
+  isDefault: boolean
 }
 
 /**

@@ -1,15 +1,24 @@
 import type { ChatCompletionChunk } from 'openai/resources/chat/completions'
+import type { AdaptStreamOptions } from './openai-completions-stream.js'
 import assert from 'node:assert/strict'
+
 // 项目本轮使用 Node 原生测试运行器，不引入 Vitest。
 // eslint-disable-next-line test/no-import-node-test
 import { describe, it } from 'node:test'
-
 import { LLMApiError } from '../errors.js'
 import { adaptOpenAICompatibleStream } from './openai-completions-stream.js'
 import {
   toOpenAIChatTools,
   toOpenAIModelInputItem,
 } from './openai-completions.js'
+
+/** 默认按 DeepSeek thinking 模型适配；非 reasoning 模型的差异只在 reasoning_content 不变量。 */
+function adapt(
+  chunks: AsyncIterable<ChatCompletionChunk>,
+  options: AdaptStreamOptions = { requireReasoningContent: true },
+) {
+  return adaptOpenAICompatibleStream(chunks, options)
+}
 
 describe('OpenAI-compatible request mapping', () => {
   it('映射 Tool Call、Tool Result 和工具定义', () => {
@@ -32,6 +41,20 @@ describe('OpenAI-compatible request mapping', () => {
           name: 'search_articles',
           arguments: '{"query":"seo"}',
         },
+      }],
+    })
+    // 非 reasoning 模型没有 reasoning_content：不写该字段，中转站后面的 Provider 不认识它。
+    assert.deepEqual(toOpenAIModelInputItem({
+      type: 'assistant_tool_call',
+      calls: [{ callId: 'call-1', name: 'search_articles', rawArgumentsJson: '{"query":"seo"}' }],
+      reasoningContent: '',
+    }), {
+      role: 'assistant',
+      content: '',
+      tool_calls: [{
+        id: 'call-1',
+        type: 'function',
+        function: { name: 'search_articles', arguments: '{"query":"seo"}' },
       }],
     })
     // 同轮多个 Tool Call 与中间文本映射为一条 assistant 消息。
@@ -105,7 +128,7 @@ describe('OpenAI-compatible request mapping', () => {
 describe('adaptOpenAICompatibleStream', () => {
   it('保留文本、usage 和 stop 完成事件的顺序', async () => {
     const reasoningSecret = 'final-reasoning-must-not-leak'
-    const events = await collectEvents(adaptOpenAICompatibleStream(toStream([
+    const events = await collectEvents(adapt(toStream([
       createChunk({ delta: { reasoning_content: reasoningSecret } }),
       createChunk({ delta: { content: '你' } }),
       createChunk({ delta: { content: '好' }, finishReason: 'stop' }),
@@ -144,7 +167,7 @@ describe('adaptOpenAICompatibleStream', () => {
   })
 
   it('新增 Usage 字段逐项缺失时保持 unavailable，不补假 0', async () => {
-    const events = await collectEvents(adaptOpenAICompatibleStream(toStream([
+    const events = await collectEvents(adapt(toStream([
       createChunk({
         includeChoice: false,
         usage: {
@@ -169,7 +192,7 @@ describe('adaptOpenAICompatibleStream', () => {
   })
 
   it('拼装跨多个 chunk 的单个 Tool Call', async () => {
-    const events = await collectEvents(adaptOpenAICompatibleStream(toStream([
+    const events = await collectEvents(adapt(toStream([
       createChunk({
         delta: { reasoning_content: '先查询' },
       }),
@@ -209,7 +232,7 @@ describe('adaptOpenAICompatibleStream', () => {
   })
 
   it('按 index 隔离交错的多个 Tool Call', async () => {
-    const events = await collectEvents(adaptOpenAICompatibleStream(toStream([
+    const events = await collectEvents(adapt(toStream([
       createChunk({
         delta: { reasoning_content: '需要调用两个工具。' },
       }),
@@ -259,7 +282,7 @@ describe('adaptOpenAICompatibleStream', () => {
   })
 
   it('同一 chunk 先标记 Tool Call，再转发 assistant content', async () => {
-    const events = await collectEvents(adaptOpenAICompatibleStream(toStream([
+    const events = await collectEvents(adapt(toStream([
       createChunk({
         delta: {
           content: '查询中',
@@ -302,7 +325,7 @@ describe('adaptOpenAICompatibleStream', () => {
       // length 截断的调用同样会作为 assistant tool_calls 消息回填，不变量一致。
       for (const finishReason of ['tool_calls', 'length'] as const) {
         await assert.rejects(
-          collectEvents(adaptOpenAICompatibleStream(toStream([
+          collectEvents(adapt(toStream([
             ...(reasoningDelta ? [createChunk({ delta: reasoningDelta })] : []),
             createChunk({
               delta: {
@@ -330,6 +353,38 @@ describe('adaptOpenAICompatibleStream', () => {
     }
   })
 
+  it('非 reasoning 模型的 Tool Call 不要求 reasoning_content', async () => {
+    for (const finishReason of ['tool_calls', 'length'] as const) {
+      const events = await collectEvents(adapt(toStream([
+        createChunk({
+          delta: {
+            tool_calls: [toolCallDelta(0, {
+              id: 'call-1',
+              name: 'search_articles',
+              argumentsJson: '{"query":"seo"}',
+            })],
+          },
+          finishReason,
+        }),
+      ]), { requireReasoningContent: false }))
+
+      assert.deepEqual(events, [
+        { type: 'tool_call_started' },
+        {
+          type: 'tool_call_completed',
+          toolCall: {
+            providerCallId: 'call-1',
+            name: 'search_articles',
+            argumentsJson: '{"query":"seo"}',
+            index: 0,
+          },
+          reasoningContent: '',
+        },
+        { type: 'response_completed', finishReason },
+      ])
+    }
+  })
+
   it('归一化 length、content_filter 和未知 finish reason', async () => {
     const cases: Array<[ChatCompletionChunk.Choice['finish_reason'], string]> = [
       ['length', 'length'],
@@ -338,7 +393,7 @@ describe('adaptOpenAICompatibleStream', () => {
     ]
 
     for (const [finishReason, expected] of cases) {
-      const events = await collectEvents(adaptOpenAICompatibleStream(toStream([
+      const events = await collectEvents(adapt(toStream([
         createChunk({ finishReason }),
       ])))
 
@@ -350,7 +405,7 @@ describe('adaptOpenAICompatibleStream', () => {
 
   it('拒绝没有 finish reason 的不完整流', async () => {
     await assert.rejects(
-      collectEvents(adaptOpenAICompatibleStream(toStream([
+      collectEvents(adapt(toStream([
         createChunk({ delta: { content: '未完成' } }),
       ]))),
       LLMApiError,
@@ -359,7 +414,7 @@ describe('adaptOpenAICompatibleStream', () => {
 
   it('拒绝缺少必要字段的 Tool Call', async () => {
     await assert.rejects(
-      collectEvents(adaptOpenAICompatibleStream(toStream([
+      collectEvents(adapt(toStream([
         createChunk({
           delta: {
             tool_calls: [toolCallDelta(0, { argumentsJson: '{}' })],
@@ -374,7 +429,7 @@ describe('adaptOpenAICompatibleStream', () => {
   it('stop / content_filter 带 Tool Call 仍视为 Provider 违规', async () => {
     for (const finishReason of ['stop', 'content_filter'] as const) {
       await assert.rejects(
-        collectEvents(adaptOpenAICompatibleStream(toStream([
+        collectEvents(adapt(toStream([
           createChunk({ delta: { reasoning_content: '想一下。' } }),
           createChunk({
             delta: {
@@ -397,7 +452,7 @@ describe('adaptOpenAICompatibleStream', () => {
   })
 
   it('length 时放行有 id 与 name 的截断 Tool Call，丢弃无法配对的分片', async () => {
-    const events = await collectEvents(adaptOpenAICompatibleStream(toStream([
+    const events = await collectEvents(adapt(toStream([
       createChunk({ delta: { reasoning_content: '需要查两篇。' } }),
       createChunk({
         delta: {
@@ -443,7 +498,7 @@ describe('adaptOpenAICompatibleStream', () => {
   })
 
   it('length 后没有任何可配对分片时只产出 length 完成事件', async () => {
-    const events = await collectEvents(adaptOpenAICompatibleStream(toStream([
+    const events = await collectEvents(adapt(toStream([
       createChunk({
         delta: {
           tool_calls: [toolCallDelta(0, { name: 'search_articles', argumentsJson: '{"q' })],
@@ -463,7 +518,7 @@ describe('adaptOpenAICompatibleStream', () => {
 
     await assert.rejects(
       (async () => {
-        for await (const event of adaptOpenAICompatibleStream(toStream([
+        for await (const event of adapt(toStream([
           createChunk({ delta: { reasoning_content: '重复。' } }),
           createChunk({
             delta: {
@@ -494,7 +549,7 @@ describe('adaptOpenAICompatibleStream', () => {
     const providerError = new Error('provider unavailable')
 
     await assert.rejects(
-      collectEvents(adaptOpenAICompatibleStream(failingStream(providerError))),
+      collectEvents(adapt(failingStream(providerError))),
       error => error === providerError,
     )
   })

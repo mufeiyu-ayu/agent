@@ -58,6 +58,7 @@ const {
   selectedReasoningEffort,
   balanceLabel,
   balanceAvailable,
+  balanceHidden,
   balanceStatus,
   refreshBalance,
 } = useLlmRuntime()
@@ -98,11 +99,17 @@ const starterPrompts = computed(() => [
 function applySuggestedPrompt(prompt: string) {
   message.value = prompt
 }
+
+/** 没选强度就不带 reasoningEffort，后端用模型行默认。 */
+function send() {
+  void sendMessage(selectedModel.value, selectedReasoningEffort.value ?? undefined)
+}
 </script>
 
 <template>
   <AppShell
     :balance-available="balanceAvailable"
+    :balance-hidden="balanceHidden"
     :balance-label="balanceLabel"
     :balance-status="balanceStatus"
     :has-more-recent-chats="hasMoreConversations"
@@ -148,7 +155,7 @@ function applySuggestedPrompt(prompt: string) {
             :models="models"
             :status="status"
             :message-character-count="messageCharacterCount"
-            @send="sendMessage(selectedModel, selectedReasoningEffort)"
+            @send="send"
             @stop="stopGeneration"
             @reset="resetWorkspace"
           />
@@ -184,7 +191,7 @@ function applySuggestedPrompt(prompt: string) {
           :models="models"
           :status="status"
           :message-character-count="messageCharacterCount"
-          @send="sendMessage(selectedModel, selectedReasoningEffort)"
+          @send="send"
           @stop="stopGeneration"
           @reset="resetWorkspace"
         />

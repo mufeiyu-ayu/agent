@@ -84,7 +84,7 @@ flowchart LR
 ```bash
 corepack enable
 pnpm install
-cp .env.example .env                                          # 填入 LLM_API_KEY / GEMINI_API_KEY
+cp .env.example .env                                          # 填入 AGENT_SECRET_KEY / GEMINI_API_KEY，模型在管理台配置
 docker compose up -d postgres                                 # 含 pgvector 的主库
 pnpm prisma:generate
 pnpm prisma:migrate

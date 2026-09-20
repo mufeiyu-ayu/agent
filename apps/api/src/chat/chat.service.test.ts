@@ -5,24 +5,30 @@ import type {
   AgentRuntimeRunFailedEvent,
   RunTurnStreamInput,
 } from '../agent-runtime/agent-runtime.types.js'
+import type { LlmModelConfigService } from '../llm/llm-model-config.service.js'
 import assert from 'node:assert/strict'
 // 项目使用 Node 原生测试运行器，不引入新测试框架。
 // eslint-disable-next-line test/no-import-node-test
 import { describe, it } from 'node:test'
 
+import { BadRequestException } from '@nestjs/common'
+
 import { toConversationMessageResponse } from '../conversations/messages.service.js'
+import { createResolvedLlmModel } from '../llm/__fixtures__.js'
+import { LlmModelUnavailableError } from '../llm/llm.errors.js'
 import { ChatService } from './chat.service.js'
 import { AGENT_INSTRUCTIONS } from './prompts/agent.prompt.js'
 
 const GENERATED_AT = '2026-07-18T08:00:00.000Z'
+const RESOLVED_MODEL = createResolvedLlmModel()
 
 describe('ChatService', () => {
   it('流式入口把 DTO 映射为 RunTurnStreamInput，透传 signal，只注入系统提示词', async () => {
     const abortController = new AbortController()
     const harness = createHarness([runCompletedEvent('流式回答')])
-    const input = createInput('deepseek-chat', 'max')
+    const input = createInput('model-deepseek-v4-flash', 'max')
 
-    await collectEvents(harness.service.chatStream(input, {
+    await collectEvents(await harness.service.chatStream(input, {
       signal: abortController.signal,
     }))
 
@@ -30,10 +36,12 @@ describe('ChatService', () => {
     const [streamInput] = harness.runtime.inputs
 
     assert.ok(streamInput)
+    // 模型行 id 在进入 Runtime 之前就解析成快照：Run 开始后后台改配置不影响本次。
+    assert.deepEqual(harness.modelConfig.resolvedIds, ['model-deepseek-v4-flash'])
     assert.deepEqual(withoutSignal(streamInput), {
       conversationId: 'conversation-1',
       userContent: '用户问题',
-      model: 'deepseek-chat',
+      model: RESOLVED_MODEL,
       reasoningEffort: 'max',
       instructions: AGENT_INSTRUCTIONS,
     })
@@ -44,19 +52,35 @@ describe('ChatService', () => {
     assert.equal(streamInput.instructions[0]?.role, 'system')
   })
 
-  it('省略 model / reasoningEffort / signal 时不向 Runtime 传 undefined 键', async () => {
+  it('省略 model / reasoningEffort / signal 时解析默认模型，不向 Runtime 传 undefined 键', async () => {
     const harness = createHarness([runCompletedEvent('回答')])
 
-    await collectEvents(harness.service.chatStream(createInput()))
+    await collectEvents(await harness.service.chatStream(createInput()))
 
     const [streamInput] = harness.runtime.inputs
 
     assert.ok(streamInput)
+    assert.deepEqual(harness.modelConfig.resolvedIds, [undefined])
     assert.deepEqual(Object.keys(streamInput).sort(), [
       'conversationId',
       'instructions',
+      'model',
       'userContent',
     ])
+  })
+
+  it('模型不可用时在返回事件流之前抛 400，Runtime 不会启动', async () => {
+    const harness = createHarness([runCompletedEvent('回答')])
+
+    await assert.rejects(
+      harness.service.chatStream(createInput('model-hidden')),
+      (error: unknown) => {
+        assert.ok(error instanceof BadRequestException)
+        assert.equal(error.message, '请求的模型未对前台开放')
+        return true
+      },
+    )
+    assert.equal(harness.runtime.inputs.length, 0)
   })
 
   it('流式入口保持既有五类 ChatStreamEvent 且不暴露 Runtime 字段', async () => {
@@ -68,7 +92,7 @@ describe('ChatService', () => {
       runAbortedEvent('部分回答'),
     ])
 
-    const events = await collectEvents(harness.service.chatStream(createInput()))
+    const events = await collectEvents(await harness.service.chatStream(createInput()))
 
     assert.deepEqual(events, [
       {
@@ -155,7 +179,7 @@ describe('ChatService grounding 投影', () => {
       runCompletedEvent('基于站内资料的回答。', grounding),
     ])
 
-    const events = await collectEvents(harness.service.chatStream(createInput()))
+    const events = await collectEvents(await harness.service.chatStream(createInput()))
     const doneEvent = events.at(-1)!
 
     assert.equal(doneEvent.type, 'done')
@@ -195,7 +219,7 @@ describe('ChatService grounding 投影', () => {
       runCompletedEvent('普通回答'),
     ])
 
-    const events = await collectEvents(harness.service.chatStream(createInput()))
+    const events = await collectEvents(await harness.service.chatStream(createInput()))
     const doneEvent = events.at(-1)!
 
     assert.equal(doneEvent.type, 'done')
@@ -324,9 +348,23 @@ describe('ChatService grounding 投影', () => {
 
 function createHarness(...eventSequences: AgentRuntimeEvent[][]) {
   const runtime = new FakeAgentRuntimeService(...eventSequences)
-  const service = new ChatService(runtime as unknown as AgentRuntimeService)
+  const modelConfig = {
+    resolvedIds: [] as Array<string | undefined>,
+    resolveModel: async (modelId?: string) => {
+      modelConfig.resolvedIds.push(modelId)
 
-  return { runtime, service }
+      if (modelId === 'model-hidden')
+        throw new LlmModelUnavailableError('请求的模型未对前台开放')
+
+      return RESOLVED_MODEL
+    },
+  }
+  const service = new ChatService(
+    runtime as unknown as AgentRuntimeService,
+    modelConfig as unknown as LlmModelConfigService,
+  )
+
+  return { runtime, modelConfig, service }
 }
 
 function createInput(model?: string, reasoningEffort?: 'low' | 'high' | 'max') {
