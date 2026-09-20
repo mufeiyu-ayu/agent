@@ -49,23 +49,21 @@
 
 当前状态：Phase 1-8 Completed 并归档；当前阶段为源码阅读，先完成当前项目链路学习，之后按 `docs/research/pi-reference/roadmap.md` 由 AI 参照 Pi 实现云端方向；无 Active Task，#118 / #119 / #120 / #124 已于 2026-09-17 合并，#126 / #127 / #115 已于 2026-09-18 合并，#116 / #134 / #135 / #136 / #137 已于 2026-09-19 合并（#134 去掉 SEO 产品命名，入口改为 `apps/api/src/chat/` 与 `/api/chat/stream`；#135 删离线评估 baseline 与无运行记录的 smoke，检索评估只剩 `eval:retrieval-quality`；#136 删 tools / agent-runtime / admin 的无消费者字段、重复类型与单实现包装，工具清单收成 `apps/api/src/tools/tool-definitions.ts`；#137 Gemini embedding 重试交给 SDK `retryOptions`，`EMBEDDING_*` 三个 env 改 `embedding-provider.ts` 常量），2026-09-19 审计四件全部收口，暂无 Next（web_fetch 2026-09-19 转 Gated；#117 已于 2026-09-18 关闭转 Gated）；翻译质检站已于 #113 删除；下一批候选子系统为 session 事件流与 replay、审批门、compaction、定时任务，候选不等于 Active；Admin Task 4 保持 Planned。
 
-## 4. 关键目录
+## 4. 关键目录与导图
 
-| 目录 | 用途 |
+三个 app、两个包各有一份给模型看的路径导图，放在各自根目录的 `AGENTS.md`（同目录的 `CLAUDE.md` 只是一行 `@AGENTS.md` 导入壳，供 Claude Code 自动加载）。导图只写入口、分层、核心文件与不变量，不列普通文件；模块内部更细的导航在该模块的 `README.md`（如 `apps/api/src/agent-runtime/README.md`）。
+
+| 位置 | 内容 |
 | --- | --- |
-| `apps/web/src/` | Vue 前台页面、组件、hooks、API 和状态 |
-| `apps/admin/` | 运维控制台：Run Trace、Context / Retrieval Inspector、Overview |
-| `apps/api/src/` | NestJS API、业务模块和应用入口 |
-| `apps/api/src/agent-runtime/` | Agent Run 编排与运行记录 |
-| `apps/api/src/llm/` | LLM 的 Nest 壳：`LlmModule`、`LLMController`、`LLMService` 门面、`LLMRuntimeConfigService` |
-| `apps/api/src/chat/` | Chat 业务入口：DTO 校验、系统提示词与 NDJSON 流协议适配 |
-| `packages/ai/` | `@agent/ai`：模型客户端、OpenAI-compatible 流适配、模型类型 / 错误 / profile / 运行时配置解析；零 Nest、零 Prisma |
-| `packages/contracts/` | 前后端共享协议与类型 |
-| `prisma/` | schema、migration、fixtures 和 seed |
-| `docs/tasks/` | 当前任务、阶段入口和已完成归档 |
-| `docs/research/` | 参照物研究、参照实现方法、设计笔记与复盘 |
+| `apps/api/AGENTS.md` | NestJS API：入口、分层链路、各业务模块与核心文件、运行时不变量 |
+| `apps/web/AGENTS.md` | Vue 前台：页面 / 组件 / hooks / api / utils 分层与核心文件 |
+| `apps/admin/AGENTS.md` | 运维控制台：feature 拆分（runs / conversations / overview / llm / shared）与核心文件 |
+| `packages/ai/AGENTS.md` | `@agent/ai` 模型客户端：文件清单与协议不变量 |
+| `packages/contracts/AGENTS.md` | `@agent/contracts` 共享协议：文件清单与改协议的连带范围 |
+| `prisma/` | schema、migration、fixtures；生成的 client 在 `apps/api/src/generated/prisma` |
+| `docs/tasks/`、`docs/research/` | 任务状态与归档；参照物研究、设计笔记与复盘 |
 
-修改代码前先确认：`docs/tasks/README.md` 当前状态；相邻 service / controller / hook / component / utils / contract 能否复用；是否涉及 Prisma schema、contracts、前后端协议或 docs 同步。
+修改某个 app / 包的代码前先读它的导图；改完再确认：`docs/tasks/README.md` 当前状态；相邻 service / controller / hook / component / utils / contract 能否复用；是否涉及 Prisma schema、contracts、前后端协议或 docs 同步。导图由模型自己维护：新增、移动、删除了导图里提到的模块或核心文件，同一次提交里同步导图。
 
 ## 5. 工作方式
 
@@ -152,6 +150,7 @@ DTO class 用于 `@Body()` / `@Param()` 时，必须保留运行时值导入，�
 | Issue 合并后 | 对应 `docs/tasks/**` 状态、`docs/roadmap.md`、`docs/work-log.md` 一条事实 |
 | 阶段完成 | 精简归档到 `docs/tasks/completed/`，更新 `docs/README.md` 与 `docs/roadmap.md` |
 | 协作规则变化 | 流程与硬约束改 `docs/workflow.md`，其余工具无关内容改 `AGENTS.md`；工具专属内容改对应载体；`docs/work-log.md` 一条事实 |
+| 新增 / 移动 / 删除模块或核心文件 | 对应 app / 包根目录的 `AGENTS.md` 导图，与代码同一次提交；普通文件增删不更新 |
 | 小修 typo / 样式微调 | 可不更新 docs，commit 说明即可 |
 
 原则：
