@@ -1,5 +1,4 @@
-import type { DeepSeekReasoningEffort } from '@agent/contracts'
-import { DEFAULT_DEEPSEEK_REASONING_EFFORT } from '@agent/contracts'
+import type { ReasoningEffort } from '@agent/contracts'
 
 /** 构造一个 Provider client 需要的全部事实；apiKey / baseUrl 来自数据库里的 Provider 行。 */
 export interface LLMClientConfig {
@@ -11,8 +10,8 @@ export interface LLMClientConfig {
 
 /**
  * 一个模型行的能力事实，由 Admin 人工维护，不从 Provider 接口猜。
- * `reasoning` 为真时走 DeepSeek thinking 路径：请求带 `thinking` / `reasoning_effort`，
- * Tool Call 要求 `reasoning_content`；为假时这三处都不做。
+ * `reasoning` 为真时走 DeepSeek thinking 协议：请求带 `thinking`，Tool Call 要求 `reasoning_content`；
+ * `reasoningEffort` 是默认的 `reasoning_effort`，任何家族配置了就发，null 不发。
  */
 export interface LLMModelProfile {
   /** 发给 Provider 的模型名。 */
@@ -20,6 +19,7 @@ export interface LLMModelProfile {
   contextWindowTokens: number
   maxOutputTokens: number
   reasoning: boolean
+  reasoningEffort: ReasoningEffort | null
 }
 
 /**
@@ -33,24 +33,27 @@ export interface ResolvedChatRequestConfig {
   contextWindowTokens: number
   maxOutputTokens: number
   reasoning: boolean
-  reasoningEffort: DeepSeekReasoningEffort
+  /** 省略表示请求体不带 reasoning_effort。 */
+  reasoningEffort?: ReasoningEffort
 }
 
 export interface ChatRequestOverrides {
-  /** 只对 reasoning 模型有意义；省略时稳定回落 high。 */
-  reasoningEffort?: DeepSeekReasoningEffort
+  /** 请求级覆盖模型行的默认 reasoning_effort。 */
+  reasoningEffort?: ReasoningEffort
 }
 
-/** 模型名与输出上限直接取模型行；请求级只能覆盖 reasoningEffort。 */
+/** 模型名与输出上限直接取模型行；请求级只能覆盖 reasoningEffort，都没有就不发。 */
 export function resolveChatRequestConfig(
   profile: LLMModelProfile,
   overrides: ChatRequestOverrides = {},
 ): ResolvedChatRequestConfig {
+  const reasoningEffort = overrides.reasoningEffort ?? profile.reasoningEffort ?? undefined
+
   return {
     model: profile.wireName,
     contextWindowTokens: profile.contextWindowTokens,
     maxOutputTokens: profile.maxOutputTokens,
     reasoning: profile.reasoning,
-    reasoningEffort: overrides.reasoningEffort ?? DEFAULT_DEEPSEEK_REASONING_EFFORT,
+    ...(reasoningEffort ? { reasoningEffort } : {}),
   }
 }

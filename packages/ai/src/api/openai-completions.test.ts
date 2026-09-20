@@ -1,10 +1,10 @@
+import type { LLMClientConfig, ResolvedChatRequestConfig } from '../config.js'
 import assert from 'node:assert/strict'
 import { getEventListeners } from 'node:events'
 // eslint-disable-next-line test/no-import-node-test
 import { describe, it } from 'node:test'
-import OpenAI from 'openai'
 
-import type { LLMClientConfig, ResolvedChatRequestConfig } from '../config.js'
+import OpenAI from 'openai'
 import {
   LLMAuthError,
   LLMBalanceError,
@@ -14,6 +14,23 @@ import {
   LLMServerError,
 } from '../errors.js'
 import { OpenAICompatibleClient } from './openai-completions.js'
+
+/** DeepSeek thinking 模型的 resolved 请求：带 thinking 参数，Tool Call 要求 reasoning_content。 */
+const DEEPSEEK_REQUEST: ResolvedChatRequestConfig = {
+  model: 'deepseek-v4-flash',
+  contextWindowTokens: 1_000_000,
+  maxOutputTokens: 65_536,
+  reasoning: true,
+  reasoningEffort: 'high',
+}
+
+/** 中转站后面的非 reasoning 模型且没配 reasoning_effort：两个参数都不发，Tool Call 不要求 reasoning_content。 */
+const RELAY_REQUEST: ResolvedChatRequestConfig = {
+  model: 'gpt-5.6-sol',
+  contextWindowTokens: 128_000,
+  maxOutputTokens: 8_192,
+  reasoning: false,
+}
 
 describe('OpenAICompatibleClient runtime config', () => {
   it('metadata、普通 Chat 和 Stream 分别使用 10s、60s 和 10min', async () => {
@@ -162,6 +179,15 @@ describe('OpenAICompatibleClient runtime config', () => {
       assert.equal(Object.hasOwn(call.params ?? {}, 'reasoning_effort'), false)
     }
 
+    // 非 reasoning 模型配了 reasoning_effort：只发 reasoning_effort，不发 thinking。
+    const effortHarness = createHarness()
+    await effortHarness.client.chat(
+      [{ type: 'message', role: 'user', content: 'hello' }],
+      { request: { ...RELAY_REQUEST, reasoningEffort: 'low' } },
+    )
+    assert.equal(effortHarness.calls[0]?.params?.reasoning_effort, 'low')
+    assert.equal(Object.hasOwn(effortHarness.calls[0]?.params ?? {}, 'thinking'), false)
+
     // 中转站 gpt / gemini / claude 的 Tool Call 不带 reasoning_content：不再抛 LLMApiError。
     const toolCallHarness = createFetchHarness([() => new Response([
       sseChunk({ tool_calls: [{ index: 0, id: 'call-1', type: 'function', function: { name: 'search_articles', arguments: '{"query":"x"}' } }] }),
@@ -207,14 +233,12 @@ describe('OpenAICompatibleClient runtime config', () => {
     await assert.rejects(
       collectEvents(harness.client.chatStream(
         [{ type: 'message', role: 'user', content: 'hello' }],
-        { request: DEEPSEEK_REQUEST,
-          debugCapture: {
-            onRequest: () => {},
-            onResponse: (capture) => {
-              captured = capture
-            },
+        { request: DEEPSEEK_REQUEST, debugCapture: {
+          onRequest: () => {},
+          onResponse: (capture) => {
+            captured = capture
           },
-        },
+        } },
       )),
       LLMNetworkError,
     )
@@ -232,17 +256,15 @@ describe('OpenAICompatibleClient runtime config', () => {
 
     const events = await collectEvents(harness.client.chatStream(
       [{ type: 'message', role: 'user', content: 'hello' }],
-      { request: DEEPSEEK_REQUEST,
-        debugCapture: {
-          onRequest: () => {
-            throw new Error('request capture failed')
-          },
-          onResponse: () => {
-            throw new Error('response capture failed')
-          },
-          onCaptureError: side => failedSides.push(side),
+      { request: DEEPSEEK_REQUEST, debugCapture: {
+        onRequest: () => {
+          throw new Error('request capture failed')
         },
-      },
+        onResponse: () => {
+          throw new Error('response capture failed')
+        },
+        onCaptureError: side => failedSides.push(side),
+      } },
     ))
 
     assert.deepEqual(events, [
@@ -284,14 +306,12 @@ describe('OpenAICompatibleClient 瞬态失败重试', () => {
 
       const events = await collectEvents(harness.client.chatStream(
         [{ type: 'message', role: 'user', content: 'hello' }],
-        { request: DEEPSEEK_REQUEST,
-          debugCapture: {
-            onRequest: () => {
-              requestCaptureCount += 1
-            },
-            onResponse: () => {},
+        { request: DEEPSEEK_REQUEST, debugCapture: {
+          onRequest: () => {
+            requestCaptureCount += 1
           },
-        },
+          onResponse: () => {},
+        } },
       ))
 
       assert.deepEqual(events, [
@@ -456,24 +476,6 @@ interface ProviderCall {
   kind: string
   options: { timeout: number }
   params?: Record<string, unknown>
-}
-
-/** DeepSeek thinking 模型的 resolved 请求：带 thinking 参数，Tool Call 要求 reasoning_content。 */
-const DEEPSEEK_REQUEST: ResolvedChatRequestConfig = {
-  model: 'deepseek-v4-flash',
-  contextWindowTokens: 1_000_000,
-  maxOutputTokens: 65_536,
-  reasoning: true,
-  reasoningEffort: 'high',
-}
-
-/** 中转站后面的非 reasoning 模型：不发 thinking 参数，Tool Call 不要求 reasoning_content。 */
-const RELAY_REQUEST: ResolvedChatRequestConfig = {
-  model: 'gpt-5.6-sol',
-  contextWindowTokens: 128_000,
-  maxOutputTokens: 8_192,
-  reasoning: false,
-  reasoningEffort: 'high',
 }
 
 function createRuntimeConfig(options: { captureModelIO?: boolean } = {}): LLMClientConfig {

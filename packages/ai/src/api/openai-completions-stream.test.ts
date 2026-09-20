@@ -1,11 +1,11 @@
 import type { ChatCompletionChunk } from 'openai/resources/chat/completions'
+import type { AdaptStreamOptions } from './openai-completions-stream.js'
 import assert from 'node:assert/strict'
+
 // 项目本轮使用 Node 原生测试运行器，不引入 Vitest。
 // eslint-disable-next-line test/no-import-node-test
 import { describe, it } from 'node:test'
-
 import { LLMApiError } from '../errors.js'
-import type { AdaptStreamOptions } from './openai-completions-stream.js'
 import { adaptOpenAICompatibleStream } from './openai-completions-stream.js'
 import {
   toOpenAIChatTools,

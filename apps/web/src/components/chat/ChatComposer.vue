@@ -1,12 +1,9 @@
 <script setup lang="ts">
-import type { DeepSeekReasoningEffort } from '@agent/contracts'
+import type { ReasoningEffort } from '@agent/contracts'
 import type { GenerationStatus } from '../../types/chat'
 import type { LlmModelOption } from '../../types/llm'
 
-import {
-  CHAT_MESSAGE_MAX_CHARS,
-  DEEPSEEK_REASONING_EFFORTS,
-} from '@agent/contracts'
+import { CHAT_MESSAGE_MAX_CHARS } from '@agent/contracts'
 import {
   DropdownMenuContent,
   DropdownMenuItem,
@@ -32,7 +29,7 @@ const props = defineProps<{
   hasConversation: boolean
   models: LlmModelOption[]
   selectedModel: string | null
-  selectedReasoningEffort: DeepSeekReasoningEffort
+  selectedReasoningEffort: ReasoningEffort | null
   status: GenerationStatus
   messageCharacterCount: number
   hero?: boolean
@@ -41,7 +38,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   'update:message': [value: string]
   'update:selectedModel': [value: string]
-  'update:selectedReasoningEffort': [value: DeepSeekReasoningEffort]
+  'update:selectedReasoningEffort': [value: ReasoningEffort | null]
   'send': []
   'reset': []
   'stop': []
@@ -65,8 +62,13 @@ const selectedModelLabel = computed(() => {
   return selectedModelOption.value?.displayName ?? t('composer.modelPlaceholder')
 })
 
-/** 只有思考模型才有思考强度可选；其余模型不显示、也不随请求发送。 */
-const showReasoningEffort = computed(() => selectedModelOption.value?.reasoning ?? false)
+/** 该家族可选的强度；为空的模型不显示、请求也不带。null 项表示用模型行默认。 */
+const effortOptions = computed(() => selectedModelOption.value?.reasoningEffortOptions ?? [])
+const showReasoningEffort = computed(() => effortOptions.value.length > 0)
+
+function effortLabel(effort: ReasoningEffort | null): string {
+  return effort ? t(`composer.reasoningEffort.${effort}`) : t('composer.reasoningEffortDefault')
+}
 
 const isGenerationInProgress = computed(() => {
   return props.status === 'thinking' || props.status === 'generating'
@@ -109,7 +111,7 @@ function selectModel(id: string) {
   emit('update:selectedModel', id)
 }
 
-function selectReasoningEffort(effort: DeepSeekReasoningEffort) {
+function selectReasoningEffort(effort: ReasoningEffort | null) {
   emit('update:selectedReasoningEffort', effort)
 }
 </script>
@@ -144,7 +146,7 @@ function selectReasoningEffort(effort: DeepSeekReasoningEffort) {
                 class="inline-flex h-8 min-w-0 items-center gap-1.5 rounded-lg px-2 text-[13px] font-medium text-agent-ink-soft transition hover:bg-agent-surface-sunken/55 hover:text-agent-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-agent-focus/40 data-[state=open]:bg-agent-surface-sunken/55 data-[state=open]:text-agent-ink"
               >
                 <span class="truncate">{{ selectedModelLabel }}</span>
-                <span v-if="showReasoningEffort" class="shrink-0 text-agent-ink-muted">{{ t(`composer.reasoningEffort.${selectedReasoningEffort}`) }}</span>
+                <span v-if="showReasoningEffort" class="shrink-0 text-agent-ink-muted">{{ effortLabel(selectedReasoningEffort) }}</span>
                 <AppIcon name="tabler:chevron-down" :size="14" class="shrink-0 text-agent-ink-muted" />
               </DropdownMenuTrigger>
 
@@ -179,7 +181,7 @@ function selectReasoningEffort(effort: DeepSeekReasoningEffort) {
                     >
                       <span>{{ t('composer.reasoningEffortLabel') }}</span>
                       <span class="flex shrink-0 items-center gap-1 text-agent-ink-muted">
-                        {{ t(`composer.reasoningEffort.${selectedReasoningEffort}`) }}
+                        {{ effortLabel(selectedReasoningEffort) }}
                         <AppIcon name="tabler:chevron-right" :size="14" />
                       </span>
                     </DropdownMenuSubTrigger>
@@ -189,13 +191,13 @@ function selectReasoningEffort(effort: DeepSeekReasoningEffort) {
                         class="min-w-[132px]" :class="[dropdownMenuPanelClass]"
                       >
                         <DropdownMenuItem
-                          v-for="effort in DEEPSEEK_REASONING_EFFORTS"
-                          :key="effort"
+                          v-for="effort in [null, ...effortOptions]"
+                          :key="effort ?? 'default'"
                           class="flex cursor-pointer items-center justify-between gap-3 rounded-lg px-3 py-1.5 text-sm outline-none transition"
                           :class="dropdownMenuOptionClass(effort === selectedReasoningEffort)"
                           @select="selectReasoningEffort(effort)"
                         >
-                          <span>{{ t(`composer.reasoningEffort.${effort}`) }}</span>
+                          <span>{{ effortLabel(effort) }}</span>
                           <AppIcon
                             v-if="effort === selectedReasoningEffort"
                             name="tabler:check"

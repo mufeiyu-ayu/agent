@@ -169,6 +169,15 @@ export function createLlmModelsState(): LlmModelsState {
     }
   }
 
+  /** 弹窗里已测过的结果，导入时随行写进 lastProbe*；没测过的名字不带。 */
+  function pickTestResults(wireNames: string[]): AdminLlmModelTestResult[] {
+    return wireNames.flatMap((name) => {
+      const result = modelTestResults.value[name]
+
+      return result ? [result] : []
+    })
+  }
+
   /** 三种来源的拉取共用：同一时间只保留最后一次的结果。 */
   async function loadCandidates(
     request: (signal: AbortSignal) => Promise<{ models: string[] }>,
@@ -233,7 +242,10 @@ export function createLlmModelsState(): LlmModelsState {
     loadProviders,
     selectProvider,
     createProvider: input => submit(async () => {
-      const created = await createLlmProvider(input)
+      const created = await createLlmProvider({
+        ...input,
+        importTestResults: pickTestResults(input.importWireNames ?? []),
+      })
       await Promise.all([loadProviders(), loadModels()])
       selectProvider(created.id)
     }),
@@ -323,7 +335,7 @@ export function createLlmModelsState(): LlmModelsState {
       submitting.value = true
 
       try {
-        const result = await importLlmProviderModels(providerId, wireNames)
+        const result = await importLlmProviderModels(providerId, wireNames, pickTestResults(wireNames))
         await Promise.all([loadModels(), loadProviders()])
 
         return result

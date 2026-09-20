@@ -1,14 +1,16 @@
 import type {
   AdminLlmImportModelsRequest,
   AdminLlmModelInput,
+  AdminLlmModelTestResult,
   AdminLlmPreviewModelsRequest,
   AdminLlmProbeModelsRequest,
   AdminLlmProviderInput,
   AdminLlmTestModelsRequest,
   LlmProviderFamily,
+  ReasoningEffort,
 } from '@agent/contracts'
-import { LLM_PROVIDER_FAMILIES } from '@agent/contracts'
-import { Transform } from 'class-transformer'
+import { LLM_PROVIDER_FAMILIES, REASONING_EFFORTS } from '@agent/contracts'
+import { Transform, Type } from 'class-transformer'
 import {
   ArrayMaxSize,
   IsArray,
@@ -22,6 +24,7 @@ import {
   Max,
   MaxLength,
   Min,
+  ValidateNested,
 } from 'class-validator'
 
 const trim = Transform(({ value }) => typeof value === 'string' ? value.trim() : value)
@@ -36,6 +39,23 @@ export class AdminLlmIdParamDto {
   @IsNotEmpty()
   @MaxLength(128)
   id!: string
+}
+
+/** 弹窗里 test-models 回来的单条结果，导入时原样带回来写进行。 */
+export class AdminLlmModelTestResultDto implements AdminLlmModelTestResult {
+  @trim
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(200)
+  wireName!: string
+
+  @IsBoolean()
+  ok!: boolean
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  error!: string | null
 }
 
 export class CreateAdminLlmProviderDto implements AdminLlmProviderInput {
@@ -70,6 +90,13 @@ export class CreateAdminLlmProviderDto implements AdminLlmProviderInput {
   @IsNotEmpty({ each: true })
   @MaxLength(200, { each: true })
   importWireNames?: string[]
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(500)
+  @ValidateNested({ each: true })
+  @Type(() => AdminLlmModelTestResultDto)
+  importTestResults?: AdminLlmModelTestResultDto[]
 }
 
 export class PreviewAdminLlmModelsDto implements AdminLlmPreviewModelsRequest {
@@ -144,9 +171,10 @@ export class UpdateAdminLlmModelDto implements Partial<AdminLlmModelInput> {
   @Max(TOKENS_MAX)
   maxOutputTokens?: number
 
+  /** null 表示清空（不发）；是否属于该模型家族在 service 里查。 */
   @IsOptional()
-  @IsBoolean()
-  reasoning?: boolean
+  @IsIn([...REASONING_EFFORTS])
+  reasoningEffort?: ReasoningEffort | null
 
   @IsOptional()
   @IsBoolean()
@@ -188,6 +216,13 @@ export class ImportAdminLlmModelsDto implements AdminLlmImportModelsRequest {
   @IsNotEmpty({ each: true })
   @MaxLength(200, { each: true })
   wireNames!: string[]
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(500)
+  @ValidateNested({ each: true })
+  @Type(() => AdminLlmModelTestResultDto)
+  testResults?: AdminLlmModelTestResultDto[]
 }
 
 /** 编辑服务商时的拉取 / 测试：密钥用库里的，地址可用表单里还没保存的那个。 */

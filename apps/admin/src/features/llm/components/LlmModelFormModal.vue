@@ -1,12 +1,14 @@
 <script setup lang="ts">
-import type { AdminLlmModel, AdminLlmModelInput } from '@agent/contracts'
+import type { AdminLlmModel, AdminLlmModelInput, LlmProviderFamily, ReasoningEffort } from '@agent/contracts'
 import type { FormInstance, Rule } from 'ant-design-vue/es/form'
+import { reasoningEffortsOf } from '@agent/contracts'
 import {
   Form,
   FormItem,
   Input,
   InputNumber,
   Modal,
+  Select,
   Switch,
 } from 'ant-design-vue'
 import { computed, reactive, ref, watch } from 'vue'
@@ -15,6 +17,8 @@ import { useI18n } from 'vue-i18n'
 const props = defineProps<{
   open: boolean
   model: AdminLlmModel | null
+  /** 所属服务商的家族，决定 reasoning_effort 可选值。 */
+  family: LlmProviderFamily | null
   submitting: boolean
 }>()
 
@@ -26,12 +30,18 @@ const emit = defineEmits<{
 const { t } = useI18n()
 const formRef = ref<FormInstance>()
 
+/** 直接用参数值做选项文案，不做映射。 */
+const reasoningEffortOptions = computed(() => (
+  reasoningEffortsOf(props.family ?? 'other').map(value => ({ value, label: value }))
+))
+
 interface FormState {
   wireName: string
   displayName: string
   contextWindowTokens: number
   maxOutputTokens: number
-  reasoning: boolean
+  /** 空串表示不发，提交时转成 null。 */
+  reasoningEffort: ReasoningEffort | ''
   visible: boolean
   isDefault: boolean
   sortOrder: number
@@ -42,7 +52,7 @@ const formState = reactive<FormState>({
   displayName: '',
   contextWindowTokens: 128000,
   maxOutputTokens: 8192,
-  reasoning: false,
+  reasoningEffort: '',
   visible: true,
   isDefault: false,
   sortOrder: 0,
@@ -108,7 +118,7 @@ watch(
       formState.displayName = props.model.displayName
       formState.contextWindowTokens = props.model.contextWindowTokens
       formState.maxOutputTokens = props.model.maxOutputTokens
-      formState.reasoning = props.model.reasoning
+      formState.reasoningEffort = props.model.reasoningEffort ?? ''
       formState.visible = props.model.visible
       formState.isDefault = props.model.isDefault
       formState.sortOrder = props.model.sortOrder
@@ -118,7 +128,7 @@ watch(
       formState.displayName = ''
       formState.contextWindowTokens = 128000
       formState.maxOutputTokens = 8192
-      formState.reasoning = false
+      formState.reasoningEffort = ''
       formState.visible = true
       formState.isDefault = false
       formState.sortOrder = 0
@@ -140,7 +150,7 @@ async function handleOk() {
     displayName: formState.displayName.trim(),
     contextWindowTokens: Math.floor(formState.contextWindowTokens),
     maxOutputTokens: Math.floor(formState.maxOutputTokens),
-    reasoning: formState.reasoning,
+    reasoningEffort: formState.reasoningEffort || null,
     visible: formState.visible,
     isDefault: formState.isDefault,
     sortOrder: Math.floor(formState.sortOrder || 0),
@@ -157,8 +167,9 @@ async function handleOk() {
     :confirm-loading="submitting"
     :ok-text="t('llmModels.actions.confirm')"
     :cancel-text="t('llmModels.actions.cancel')"
-    :width="560"
+    :width="520"
     destroy-on-close
+    class="model-form-modal"
     @ok="handleOk"
     @cancel="emit('cancel')"
   >
@@ -221,41 +232,54 @@ async function handleOk() {
         </FormItem>
       </div>
 
-      <FormItem
-        :label="t('llmModels.models.form.sortOrder')"
-        name="sortOrder"
-        :extra="t('llmModels.models.form.sortOrderHelp')"
-      >
-        <InputNumber
-          v-model:value="formState.sortOrder"
-          :step="1"
-          class="full-width"
-        />
-      </FormItem>
+      <div class="form-row">
+        <FormItem
+          :label="t('llmModels.models.form.reasoningEffort')"
+          name="reasoningEffort"
+          class="form-col"
+        >
+          <Select
+            v-model:value="formState.reasoningEffort"
+            :options="reasoningEffortOptions"
+            :disabled="reasoningEffortOptions.length === 0"
+            :placeholder="t('llmModels.models.form.reasoningEffortNone')"
+            allow-clear
+            class="full-width"
+            @change="(value) => { formState.reasoningEffort = (value ?? '') as ReasoningEffort | '' }"
+          />
+        </FormItem>
 
-      <div class="toggles-group">
-        <div class="toggle-row">
-          <div class="toggle-text">
-            <strong class="toggle-title">{{ t('llmModels.models.form.reasoning') }}</strong>
-            <span class="toggle-desc">{{ t('llmModels.models.form.reasoningDesc') }}</span>
-          </div>
-          <Switch v-model:checked="formState.reasoning" />
+        <FormItem
+          :label="t('llmModels.models.form.sortOrder')"
+          name="sortOrder"
+          class="form-col"
+        >
+          <InputNumber
+            v-model:value="formState.sortOrder"
+            :step="1"
+            class="full-width"
+          />
+        </FormItem>
+      </div>
+
+      <!-- 优雅并排的双列轻量开关，彻底去除冗余长文案 -->
+      <div class="toggles-grid">
+        <div
+          class="toggle-card"
+          :class="{ 'is-active': formState.visible }"
+          @click="formState.visible = !formState.visible"
+        >
+          <span class="toggle-label">{{ t('llmModels.models.form.visible') }}</span>
+          <Switch v-model:checked="formState.visible" size="small" @click.stop />
         </div>
 
-        <div class="toggle-row">
-          <div class="toggle-text">
-            <strong class="toggle-title">{{ t('llmModels.models.form.visible') }}</strong>
-            <span class="toggle-desc">{{ t('llmModels.models.form.visibleDesc') }}</span>
-          </div>
-          <Switch v-model:checked="formState.visible" />
-        </div>
-
-        <div class="toggle-row">
-          <div class="toggle-text">
-            <strong class="toggle-title">{{ t('llmModels.models.form.isDefault') }}</strong>
-            <span class="toggle-desc">{{ t('llmModels.models.form.isDefaultDesc') }}</span>
-          </div>
-          <Switch v-model:checked="formState.isDefault" />
+        <div
+          class="toggle-card"
+          :class="{ 'is-active': formState.isDefault }"
+          @click="formState.isDefault = !formState.isDefault"
+        >
+          <span class="toggle-label">{{ t('llmModels.models.form.isDefault') }}</span>
+          <Switch v-model:checked="formState.isDefault" size="small" @click.stop />
         </div>
       </div>
     </Form>
@@ -264,54 +288,61 @@ async function handleOk() {
 
 <style scoped>
 .model-form {
-  margin-top: 18px;
+  margin-top: 14px;
 }
 
 .form-row {
   display: flex;
-  gap: 16px;
+  gap: 14px;
 }
 
 .form-col {
   flex: 1;
+  margin-bottom: 14px;
 }
 
 .full-width {
   width: 100%;
 }
 
-.toggles-group {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-top: 8px;
+.toggles-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 4px;
+  margin-bottom: 4px;
 }
 
-.toggle-row {
+.toggle-card {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  padding: 10px 14px;
+  gap: 8px;
+  height: 42px;
+  padding: 0 14px;
   border: 1px solid var(--admin-border);
   border-radius: var(--admin-radius-sm);
   background: var(--admin-surface-muted);
+  cursor: pointer;
+  user-select: none;
+  transition: border-color 140ms ease, background-color 140ms ease, box-shadow 140ms ease;
 }
 
-.toggle-text {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
+.toggle-card:hover {
+  border-color: var(--admin-border-strong);
+  background: var(--admin-hover);
 }
 
-.toggle-title {
+.toggle-card.is-active {
+  border-color: color-mix(in srgb, var(--admin-primary) 35%, var(--admin-border));
+  background: color-mix(in srgb, var(--admin-primary) 4%, var(--admin-surface));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--admin-primary) 15%, transparent), var(--admin-shadow-sm);
+}
+
+.toggle-label {
   color: var(--admin-text);
-  font-size: var(--admin-font-sm);
-  font-weight: 600;
-}
-
-.toggle-desc {
-  color: var(--admin-text-subtle);
-  font-size: var(--admin-font-2xs);
+  font-size: var(--admin-font-xs);
+  font-weight: 550;
+  letter-spacing: -0.01em;
 }
 </style>

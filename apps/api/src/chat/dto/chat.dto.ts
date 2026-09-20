@@ -1,7 +1,7 @@
-import type { ChatRequest, DeepSeekReasoningEffort } from '@agent/contracts'
+import type { ChatRequest, ReasoningEffort } from '@agent/contracts'
 import {
   CHAT_MESSAGE_MAX_CHARS,
-  DEEPSEEK_REASONING_EFFORTS,
+  REASONING_EFFORTS,
 } from '@agent/contracts'
 import {
   IsIn,
@@ -38,6 +38,6 @@ export class ChatDto implements ChatRequest {
 
   @ValidateIf((_object, value) => value !== undefined)
   @IsString()
-  @IsIn([...DEEPSEEK_REASONING_EFFORTS])
-  reasoningEffort?: DeepSeekReasoningEffort
+  @IsIn([...REASONING_EFFORTS])
+  reasoningEffort?: ReasoningEffort
 }

@@ -283,8 +283,8 @@ model LlmModel {
   displayName         String
   contextWindowTokens Int
   maxOutputTokens     Int
-  // 为真走 DeepSeek thinking 路径（请求带 thinking / reasoning_effort，Tool Call 要求 reasoning_content）。
-  reasoning           Boolean     @default(false)
+  // 默认发给服务商的 reasoning_effort；null 不发。取值按家族由 contracts 的 REASONING_EFFORTS_BY_FAMILY 约束。
+  reasoningEffort     String?
   // 前台模型下拉只列 visible 为真的行；拉取导入默认为假。
   visible             Boolean     @default(false)
   // 全局唯一的默认模型；前台不传 model 时使用。

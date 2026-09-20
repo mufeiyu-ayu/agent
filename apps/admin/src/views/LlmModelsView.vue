@@ -4,19 +4,22 @@ import type {
   AdminLlmModelInput,
   AdminLlmProvider,
   AdminLlmProviderInput,
+  ReasoningEffort,
 } from '@agent/contracts'
-import { ExperimentOutlined, PlusOutlined } from '@ant-design/icons-vue'
+import { PlusOutlined } from '@ant-design/icons-vue'
 import {
   Alert,
   App as AntApp,
   Button,
   Checkbox,
   Skeleton,
+  Tooltip,
 } from 'ant-design-vue'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import PageContainer from '@/components/common/PageContainer.vue'
+import LlmIcon from '@/features/llm/components/LlmIcon.vue'
 import LlmModelFormModal from '@/features/llm/components/LlmModelFormModal.vue'
 import LlmModelTable from '@/features/llm/components/LlmModelTable.vue'
 import LlmProviderFormModal from '@/features/llm/components/LlmProviderFormModal.vue'
@@ -159,6 +162,9 @@ function handleSelectProvider(id: string) {
 // Model modal state
 const modelModalOpen = ref(false)
 const editingModel = ref<AdminLlmModel | null>(null)
+const editingModelFamily = computed(() => (
+  state.providers.value.find(provider => provider.id === editingModel.value?.providerId)?.family ?? null
+))
 
 function handleEditModel(model: AdminLlmModel) {
   editingModel.value = model
@@ -177,6 +183,10 @@ async function handleSubmitModel(input: AdminLlmModelInput) {
 
 function handleDeleteModel(id: string) {
   void runWrite(() => state.deleteModel(id))
+}
+
+function handleUpdateModelReasoningEffort(id: string, reasoningEffort: ReasoningEffort | null) {
+  void runWrite(() => state.updateModel(id, { reasoningEffort }))
 }
 
 function handleToggleModelVisible(id: string, visible: boolean) {
@@ -279,17 +289,19 @@ function handleProbeVisibleModels() {
                 {{ t('llmModels.models.onlySelectedProvider') }}
               </Checkbox>
 
-              <Button
-                size="small"
-                :disabled="visibleModels.length === 0"
-                :loading="state.probingModelIds.value.size > 0"
-                @click="handleProbeVisibleModels"
-              >
-                <template #icon>
-                  <ExperimentOutlined />
-                </template>
-                {{ t('llmModels.models.probeAll') }}
-              </Button>
+              <Tooltip :title="t('llmModels.models.probeAll')">
+                <Button
+                  size="small"
+                  class="probe-all-btn"
+                  :disabled="visibleModels.length === 0"
+                  :loading="state.probingModelIds.value.size > 0"
+                  @click="handleProbeVisibleModels"
+                >
+                  <template #icon>
+                    <LlmIcon name="refresh" :size="13" />
+                  </template>
+                </Button>
+              </Tooltip>
             </div>
           </header>
 
@@ -330,6 +342,7 @@ function handleProbeVisibleModels() {
               @edit="handleEditModel"
               @delete="handleDeleteModel"
               @toggle-visible="handleToggleModelVisible"
+              @update-reasoning-effort="handleUpdateModelReasoningEffort"
               @set-default="handleSetDefaultModel"
               @probe="handleProbeModel"
             />
@@ -357,6 +370,7 @@ function handleProbeVisibleModels() {
     <LlmModelFormModal
       :open="modelModalOpen"
       :model="editingModel"
+      :family="editingModelFamily"
       :submitting="state.submitting.value"
       @submit="handleSubmitModel"
       @cancel="modelModalOpen = false"
@@ -505,6 +519,24 @@ function handleProbeVisibleModels() {
   color: var(--admin-text-muted);
   font-size: var(--admin-font-xs);
   user-select: none;
+}
+
+.probe-all-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: var(--admin-radius-sm);
+  color: var(--admin-text-muted);
+  transition: all 120ms ease;
+}
+
+.probe-all-btn:hover:not(:disabled) {
+  color: var(--admin-primary);
+  border-color: var(--admin-border-strong);
+  background: var(--admin-hover);
 }
 
 .models-content {

@@ -61,7 +61,7 @@ export const router = createRouter({
           path: 'llm-models',
           name: 'llm-models',
           component: () => import('@/views/LlmModelsView.vue'),
-          meta: { title: 'LLM Models', titleKey: 'navigation.llmModels', tab: true },
+          meta: { title: 'Model Access', titleKey: 'navigation.llmModels', tab: true },
         },
       ],
     },

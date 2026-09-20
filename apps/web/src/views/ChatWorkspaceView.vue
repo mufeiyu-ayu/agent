@@ -55,7 +55,6 @@ const navigationItems = computed<AgentNavigationItem[]>(() => {
 const {
   models,
   selectedModel,
-  selectedModelReasoning,
   selectedReasoningEffort,
   balanceLabel,
   balanceAvailable,
@@ -101,12 +100,9 @@ function applySuggestedPrompt(prompt: string) {
   message.value = prompt
 }
 
-/** 非思考模型不带 reasoningEffort，后端也不会发 thinking 参数。 */
+/** 没选强度就不带 reasoningEffort，后端用模型行默认。 */
 function send() {
-  void sendMessage(
-    selectedModel.value,
-    selectedModelReasoning.value ? selectedReasoningEffort.value : undefined,
-  )
+  void sendMessage(selectedModel.value, selectedReasoningEffort.value ?? undefined)
 }
 </script>
 

@@ -1,19 +1,19 @@
 <script setup lang="ts">
-import type { AdminLlmModel, AdminLlmProvider } from '@agent/contracts'
+import type { AdminLlmModel, AdminLlmProvider, ReasoningEffort } from '@agent/contracts'
 import type { TableColumnsType } from 'ant-design-vue'
+import { reasoningEffortsOf } from '@agent/contracts'
 import {
   CheckCircleFilled,
   CloseCircleFilled,
-  DeleteOutlined,
-  EditOutlined,
-  ReloadOutlined,
-  StarFilled,
-  StarOutlined,
+  MinusCircleOutlined,
+  PushpinFilled,
+  PushpinOutlined,
 } from '@ant-design/icons-vue'
 import {
   Button,
   Empty,
   Popconfirm,
+  Select,
   Switch,
   Table,
   Tooltip,
@@ -22,6 +22,7 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import LlmFamilyLogo from '@/features/llm/components/LlmFamilyLogo.vue'
+import LlmIcon from '@/features/llm/components/LlmIcon.vue'
 import { formatShortDateTime, formatTokens } from '@/features/runs/run.utils'
 
 const props = defineProps<{
@@ -29,7 +30,7 @@ const props = defineProps<{
   /** 用来渲染「服务商」列的标识与备注。 */
   providers: AdminLlmProvider[]
   loading: boolean
-  /** 正在重测的模型 id，行尾刷新按钮转圈。 */
+  /** 正在重测的模型 id，状态图标转圈。 */
   probingIds: Set<string>
 }>()
 
@@ -37,6 +38,8 @@ const emit = defineEmits<{
   edit: [model: AdminLlmModel]
   delete: [id: string]
   toggleVisible: [id: string, visible: boolean]
+  /** 表格里直接改推理强度；null 表示不发。 */
+  updateReasoningEffort: [id: string, reasoningEffort: ReasoningEffort | null]
   setDefault: [id: string]
   /** 重测这一行。 */
   probe: [id: string]
@@ -46,51 +49,46 @@ const { locale, t } = useI18n()
 
 const providerById = computed(() => new Map(props.providers.map(provider => [provider.id, provider])))
 
+/** 该行所属家族允许的 reasoning_effort，直接用参数值做选项文案。 */
+function effortOptionsOf(row: unknown) {
+  const record = row as AdminLlmModel
+  const family = providerById.value.get(record.providerId)?.family ?? 'other'
+
+  return reasoningEffortsOf(family).map(value => ({ value, label: value }))
+}
+
 const columns = computed<TableColumnsType<AdminLlmModel>>(() => [
   {
     title: t('llmModels.models.columns.provider'),
     key: 'provider',
-    width: '18%',
-    minWidth: 150,
+    width: '16%',
   },
   {
     title: t('llmModels.models.columns.displayName'),
     key: 'nameInfo',
-    width: '28%',
-    minWidth: 200,
+    width: '26%',
   },
   {
     title: t('llmModels.models.columns.tokens'),
     key: 'tokens',
-    width: '20%',
-    minWidth: 170,
+    width: '17%',
+  },
+  {
+    title: t('llmModels.models.columns.reasoningEffort'),
+    key: 'reasoningEffort',
+    width: '11%',
+    align: 'center',
   },
   {
     title: t('llmModels.models.columns.probe'),
     key: 'probe',
     width: '9%',
-    minWidth: 96,
-    align: 'center',
-  },
-  {
-    title: t('llmModels.models.columns.reasoning'),
-    key: 'reasoning',
-    width: '7%',
-    minWidth: 70,
     align: 'center',
   },
   {
     title: t('llmModels.models.columns.visible'),
     key: 'visible',
-    width: '8%',
-    minWidth: 80,
-    align: 'center',
-  },
-  {
-    title: t('llmModels.models.columns.isDefault'),
-    key: 'isDefault',
-    width: '9%',
-    minWidth: 90,
+    width: '7%',
     align: 'center',
   },
   {
@@ -98,30 +96,30 @@ const columns = computed<TableColumnsType<AdminLlmModel>>(() => [
     dataIndex: 'sortOrder',
     key: 'sortOrder',
     width: '5%',
-    minWidth: 60,
     align: 'center',
   },
   {
     title: t('llmModels.models.columns.actions'),
     key: 'actions',
     width: '5%',
-    minWidth: 70,
     align: 'center',
   },
 ])
 
-/** 悬浮显示上次测试的时间与失败原因；Table 的 bodyCell record 未带类型，这里收窄。 */
+/** 悬浮显示上次测试的时间与失败原因，点图标本身重测；Table 的 bodyCell record 未带类型，这里收窄。 */
 function probeTooltip(row: unknown): string {
   const record = row as AdminLlmModel
+  const hint = t('llmModels.models.probeClickHint')
 
   if (record.lastProbeOk === null || !record.lastProbedAt)
-    return t('llmModels.models.probeNever')
+    return `${t('llmModels.models.probeNever')}${hint}`
 
   const when = formatShortDateTime(record.lastProbedAt, locale.value)
-
-  return record.lastProbeOk
+  const result = record.lastProbeOk
     ? t('llmModels.models.probeOk', { when })
     : t('llmModels.models.probeFailed', { when, error: record.lastProbeError ?? '' })
+
+  return `${result}${hint}`
 }
 
 function onEdit(record: unknown) {
@@ -138,33 +136,57 @@ function onEdit(record: unknown) {
       :loading="loading"
       :pagination="false"
       row-key="id"
-      size="middle"
-      :scroll="{ x: 880 }"
+      size="small"
     >
       <template #bodyCell="{ column, record }">
         <!-- 1. 服务商列 -->
         <template v-if="column.key === 'provider'">
           <div v-if="providerById.get(record.providerId)" class="provider-cell">
-            <LlmFamilyLogo :family="providerById.get(record.providerId)!.family" :size="16" />
-            <span class="provider-name">{{ t(`llmModels.families.${providerById.get(record.providerId)!.family}`) }}</span>
-            <span v-if="providerById.get(record.providerId)!.note" class="provider-note-pill">
-              {{ providerById.get(record.providerId)!.note }}
-            </span>
+            <LlmFamilyLogo :family="providerById.get(record.providerId)!.family" :size="14" badge />
+            <div class="provider-info-text">
+              <span class="provider-name">{{ t(`llmModels.families.${providerById.get(record.providerId)!.family}`) }}</span>
+              <span v-if="providerById.get(record.providerId)!.note" class="provider-note-pill" :title="providerById.get(record.providerId)!.note">
+                {{ providerById.get(record.providerId)!.note }}
+              </span>
+            </div>
           </div>
         </template>
 
-        <!-- 2. 模型名称列（去重：仅在与真实代号不同时才展示副标签） -->
+        <!-- 2. 模型名称列：副标签只在与真实代号不同时展示；默认星标跟在最后一行末尾，点它设默认 -->
         <template v-else-if="column.key === 'nameInfo'">
           <div class="model-name-cell">
-            <span class="model-display-name" :title="record.displayName">
-              {{ record.displayName }}
+            <span class="model-name-line">
+              <span class="model-display-name" :title="record.displayName">
+                {{ record.displayName }}
+              </span>
+              <button
+                v-if="record.displayName === record.wireName"
+                type="button"
+                class="default-star-btn"
+                :class="{ 'is-default': record.isDefault }"
+                :title="record.isDefault ? t('llmModels.models.defaultTag') : t('llmModels.models.setDefault')"
+                :disabled="record.isDefault"
+                @click="emit('setDefault', record.id)"
+              >
+                <PushpinFilled v-if="record.isDefault" />
+                <PushpinOutlined v-else />
+              </button>
             </span>
-            <span
-              v-if="record.displayName !== record.wireName"
-              class="model-wire-sub"
-              :title="record.wireName"
-            >
-              {{ record.wireName }}
+            <span v-if="record.displayName !== record.wireName" class="model-name-line">
+              <span class="model-wire-sub" :title="record.wireName">
+                {{ record.wireName }}
+              </span>
+              <button
+                type="button"
+                class="default-star-btn"
+                :class="{ 'is-default': record.isDefault }"
+                :title="record.isDefault ? t('llmModels.models.defaultTag') : t('llmModels.models.setDefault')"
+                :disabled="record.isDefault"
+                @click="emit('setDefault', record.id)"
+              >
+                <PushpinFilled v-if="record.isDefault" />
+                <PushpinOutlined v-else />
+              </button>
             </span>
           </div>
         </template>
@@ -186,33 +208,39 @@ function onEdit(record: unknown) {
           </Tooltip>
         </template>
 
-        <!-- 4. 思考模型列 -->
-        <template v-else-if="column.key === 'probe'">
-          <Tooltip :title="probeTooltip(record)">
-            <span class="probe-cell">
-              <CheckCircleFilled v-if="record.lastProbeOk === true" class="probe-cell__icon is-ok" />
-              <CloseCircleFilled v-else-if="record.lastProbeOk === false" class="probe-cell__icon is-failed" />
-              <span v-else class="empty-dash">—</span>
-              <Button
-                type="text"
-                size="small"
-                class="action-icon-btn"
-                :loading="probingIds.has(record.id)"
-                @click="emit('probe', record.id)"
-              >
-                <template #icon>
-                  <ReloadOutlined />
-                </template>
-              </Button>
-            </span>
-          </Tooltip>
+        <!-- 推理强度列：直接在表格里选，值原样发给服务商；清空为不发 -->
+        <template v-else-if="column.key === 'reasoningEffort'">
+          <Select
+            v-if="effortOptionsOf(record).length > 0"
+            :value="record.reasoningEffort ?? undefined"
+            :options="effortOptionsOf(record)"
+            :placeholder="t('llmModels.models.form.reasoningEffortNone')"
+            size="small"
+            :bordered="false"
+            allow-clear
+            class="effort-select"
+            @change="(value) => emit('updateReasoningEffort', record.id, (value ?? null) as ReasoningEffort | null)"
+          />
+          <span v-else class="empty-dash">—</span>
         </template>
 
-        <template v-else-if="column.key === 'reasoning'">
-          <span v-if="record.reasoning" class="badge-reasoning">
-            {{ t('llmModels.models.reasoningTag') }}
-          </span>
-          <span v-else class="empty-dash">—</span>
+        <!-- 4. 模型状态列：图标即按钮，点击重测 -->
+        <template v-else-if="column.key === 'probe'">
+          <Tooltip :title="probeTooltip(record)">
+            <Button
+              type="text"
+              size="small"
+              class="action-icon-btn probe-btn"
+              :loading="probingIds.has(record.id)"
+              @click="emit('probe', record.id)"
+            >
+              <template #icon>
+                <CheckCircleFilled v-if="record.lastProbeOk === true" class="probe-btn__icon is-ok" />
+                <CloseCircleFilled v-else-if="record.lastProbeOk === false" class="probe-btn__icon is-failed" />
+                <MinusCircleOutlined v-else class="probe-btn__icon is-never" />
+              </template>
+            </Button>
+          </Tooltip>
         </template>
 
         <!-- 5. 前台可见列 -->
@@ -224,29 +252,12 @@ function onEdit(record: unknown) {
           />
         </template>
 
-        <!-- 6. 默认模型列 -->
-        <template v-else-if="column.key === 'isDefault'">
-          <span v-if="record.isDefault" class="badge-default">
-            <StarFilled class="star-icon" />
-            {{ t('llmModels.models.defaultTag') }}
-          </span>
-          <button
-            v-else
-            type="button"
-            class="set-default-btn"
-            @click="emit('setDefault', record.id)"
-          >
-            <StarOutlined class="ghost-star" />
-            <span class="btn-text">{{ t('llmModels.models.setDefault') }}</span>
-          </button>
-        </template>
-
-        <!-- 7. 排序列 -->
+        <!-- 6. 排序列 -->
         <template v-else-if="column.key === 'sortOrder'">
           <span class="sort-order">{{ record.sortOrder }}</span>
         </template>
 
-        <!-- 8. 操作列 -->
+        <!-- 7. 操作列 -->
         <template v-else-if="column.key === 'actions'">
           <div class="action-cell">
             <Tooltip :title="t('llmModels.actions.edit')">
@@ -257,7 +268,7 @@ function onEdit(record: unknown) {
                 @click="onEdit(record)"
               >
                 <template #icon>
-                  <EditOutlined />
+                  <LlmIcon name="edit" :size="13" />
                 </template>
               </Button>
             </Tooltip>
@@ -278,7 +289,7 @@ function onEdit(record: unknown) {
                   class="action-icon-btn is-danger"
                 >
                   <template #icon>
-                    <DeleteOutlined />
+                    <LlmIcon name="delete" :size="13" />
                   </template>
                 </Button>
               </Tooltip>
@@ -299,16 +310,35 @@ function onEdit(record: unknown) {
   display: flex;
   flex-direction: column;
   height: 100%;
+  min-width: 0;
+  overflow-x: auto;
 }
 
 .model-table {
   background: var(--admin-surface);
+  min-width: 780px;
 }
 
-/* 表头风格：浅色背景 + 精致次级字体 */
+.model-table :deep(table) {
+  table-layout: fixed;
+  width: 100%;
+}
+
+/* 首列与末列内边距，与 Header 左右 18px 严格对齐，彻底消除贴边压迫感 */
+.model-table :deep(.ant-table-thead > tr > th:first-child),
+.model-table :deep(.ant-table-tbody > tr > td:first-child) {
+  padding-left: 18px !important;
+}
+
+.model-table :deep(.ant-table-thead > tr > th:last-child),
+.model-table :deep(.ant-table-tbody > tr > td:last-child) {
+  padding-right: 18px !important;
+}
+
+/* 表头风格：紧凑浅色背景 + 精致次级字体 */
 .model-table :deep(.ant-table-thead > tr > th) {
-  height: 40px;
-  padding: 8px 14px;
+  height: 36px;
+  padding: 6px 10px;
   border-bottom: 1px solid var(--admin-border);
   background: var(--admin-surface-muted);
   color: var(--admin-text-muted);
@@ -318,13 +348,13 @@ function onEdit(record: unknown) {
   white-space: nowrap;
 }
 
-/* 表身单元格 */
+/* 表身单元格：紧凑高度，快速扫描 */
 .model-table :deep(.ant-table-tbody > tr > td) {
-  height: 48px;
-  padding: 8px 14px;
+  height: 40px;
+  padding: 5px 10px;
   border-bottom: 1px solid var(--admin-border);
   color: var(--admin-text);
-  font-size: var(--admin-font-sm);
+  font-size: var(--admin-font-xs);
   transition: background-color 100ms ease;
 }
 
@@ -340,6 +370,13 @@ function onEdit(record: unknown) {
   max-width: 100%;
 }
 
+.provider-info-text {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
 .provider-name {
   color: var(--admin-text);
   font-size: var(--admin-font-xs);
@@ -349,11 +386,15 @@ function onEdit(record: unknown) {
 
 .provider-note-pill {
   display: inline-block;
-  padding: 1px 8px;
+  padding: 0 6px;
+  height: 18px;
+  line-height: 18px;
   border-radius: 4px;
   background: var(--admin-surface-muted);
+  border: 1px solid var(--admin-border);
   color: var(--admin-text-subtle);
   font-size: var(--admin-font-2xs);
+  font-weight: 500;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -363,8 +404,47 @@ function onEdit(record: unknown) {
 .model-name-cell {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  justify-content: center;
+  gap: 1px;
   min-width: 0;
+  line-height: 1.25;
+}
+
+.model-name-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* 默认图钉：已默认常亮主色；未默认平时隐藏，行 hover 时显现，点击设为默认 */
+.default-star-btn {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  padding: 0 2px;
+  border: 0;
+  background: transparent;
+  color: var(--admin-text-subtle);
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition: all 120ms ease;
+}
+
+.default-star-btn.is-default {
+  color: var(--admin-primary);
+  opacity: 1;
+  cursor: default;
+}
+
+:deep(.ant-table-row:hover) .default-star-btn {
+  opacity: 1;
+}
+
+.default-star-btn:not(.is-default):hover {
+  color: var(--admin-primary);
 }
 
 .model-display-name {
@@ -391,7 +471,7 @@ function onEdit(record: unknown) {
 .tokens-cell {
   display: inline-flex;
   align-items: baseline;
-  gap: 8px;
+  gap: 6px;
   cursor: help;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -400,7 +480,7 @@ function onEdit(record: unknown) {
 .token-item {
   display: inline-flex;
   align-items: baseline;
-  gap: 4px;
+  gap: 3px;
 }
 
 .token-val {
@@ -419,22 +499,8 @@ function onEdit(record: unknown) {
 }
 
 .token-separator {
-  color: var(--admin-text-subtle);
+  color: var(--admin-border-strong);
   font-size: var(--admin-font-2xs);
-  opacity: 0.5;
-}
-
-/* 4. 思考模型徽标 */
-.badge-reasoning {
-  display: inline-flex;
-  align-items: center;
-  padding: 2px 7px;
-  border-radius: 4px;
-  background: var(--admin-primary-soft);
-  color: var(--admin-primary);
-  font-size: var(--admin-font-2xs);
-  font-weight: 600;
-  line-height: 1.2;
 }
 
 .empty-dash {
@@ -443,109 +509,59 @@ function onEdit(record: unknown) {
   font-size: var(--admin-font-xs);
 }
 
-/* 6. 默认模型 */
-.badge-default {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px 8px;
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--admin-warning) 12%, transparent);
-  color: var(--admin-warning-strong);
-  font-size: var(--admin-font-2xs);
-  font-weight: 600;
+/* 推理强度：看起来就是一段文本，只有箭头暗示可点；不画边框、背景、阴影 */
+.effort-select {
+  width: auto;
+  min-width: 72px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
-.star-icon {
-  font-size: 11px;
+.effort-select :deep(.ant-select-selector) {
+  height: 22px !important;
+  padding: 0 16px 0 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: var(--admin-text);
+  font-size: var(--admin-font-xs);
 }
 
-/* 设为默认幽灵按钮：平时弱化，行悬停时更易辨识 */
-.set-default-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  padding: 2px 6px;
-  border: 1px solid transparent;
-  border-radius: var(--admin-radius-sm);
+.effort-select :deep(.ant-select-selection-item),
+.effort-select :deep(.ant-select-selection-placeholder) {
+  padding-inline-end: 0 !important;
+  line-height: 22px !important;
+}
+
+.effort-select :deep(.ant-select-arrow),
+.effort-select :deep(.ant-select-clear) {
+  right: 0;
+  font-size: 9px;
+  color: var(--admin-text-subtle);
   background: transparent;
-  color: var(--admin-text-subtle);
-  font-size: var(--admin-font-xs);
-  cursor: pointer;
-  transition: all 120ms ease;
 }
 
-/* 表格行 hover 时按钮轻微凸显 */
-:deep(.ant-table-row:hover) .set-default-btn {
+.effort-select:hover :deep(.ant-select-arrow) {
   color: var(--admin-text-muted);
 }
 
-.set-default-btn:hover {
-  border-color: var(--admin-border-strong);
-  background: var(--admin-surface);
-  color: var(--admin-primary);
-}
-
-.ghost-star {
-  font-size: 11px;
-}
-
-/* 7. 排序 */
-.sort-order {
-  color: var(--admin-text-subtle);
-  font-size: var(--admin-font-xs);
-  font-variant-numeric: tabular-nums;
-}
-
-/* 8. 操作按钮组 */
-.action-cell {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-}
-
-.action-icon-btn {
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  border-radius: var(--admin-radius-sm);
-  color: var(--admin-text-muted);
-  transition: all 120ms ease;
-}
-
-.action-icon-btn:hover {
-  color: var(--admin-primary);
-  background: var(--admin-hover);
-}
-
-.action-icon-btn.is-danger:hover {
-  color: var(--admin-danger);
-  background: var(--admin-danger-soft);
-}
-
-.model-table :deep(.ant-table-placeholder) {
-  min-height: 260px;
-}
-
-.model-table :deep(.ant-table-placeholder .ant-empty) {
-  margin: 60px 0;
-}
-.probe-cell {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.probe-cell__icon {
+/* 4. 模型状态：状态图标本身可点，hover 不改色以免盖掉状态语义 */
+.probe-btn__icon {
   font-size: 14px;
 }
 
-.probe-cell__icon.is-ok {
+.probe-btn__icon.is-ok {
   color: var(--admin-success);
 }
 
-.probe-cell__icon.is-failed {
+.probe-btn__icon.is-failed {
   color: var(--admin-danger);
+}
+
+.probe-btn__icon.is-never {
+  color: var(--admin-text-subtle);
+}
+
+.probe-btn:hover {
+  color: inherit !important;
 }
 </style>

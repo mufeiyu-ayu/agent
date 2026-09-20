@@ -5,9 +5,11 @@ import type {
   AdminLlmProvider,
   AdminLlmTestModelsResponse,
   LlmProviderFamily,
+  ReasoningEffort,
 } from '@agent/contracts'
 import type { LlmModel, LlmProvider } from '../generated/prisma/client.js'
 import type {
+  AdminLlmModelTestResultDto,
   CreateAdminLlmProviderDto,
   PreviewAdminLlmModelsDto,
   ProbeAdminLlmModelsDto,
@@ -15,7 +17,7 @@ import type {
   UpdateAdminLlmModelDto,
   UpdateAdminLlmProviderDto,
 } from './dto/admin-llm.dto.js'
-import { LLM_PROVIDER_FAMILIES } from '@agent/contracts'
+import { LLM_PROVIDER_FAMILIES, reasoningEffortsOf } from '@agent/contracts'
 import {
   BadRequestException,
   ConflictException,
@@ -81,8 +83,9 @@ export class AdminLlmService {
 
   /** 服务商与预览时勾选的模型同一事务写入：任一失败都不留半截配置。 */
   async createProvider(input: CreateAdminLlmProviderDto): Promise<AdminLlmProvider> {
-    const { importWireNames = [], ...providerInput } = input
+    const { importWireNames = [], importTestResults = [], ...providerInput } = input
     const wireNames = dedupeWireNames(importWireNames)
+    const probeColumns = toProbeColumnsByWireName(importTestResults)
 
     const provider = await this.prismaService.$transaction(async (tx) => {
       const created = await tx.llmProvider.create({
@@ -101,6 +104,7 @@ export class AdminLlmService {
             providerId: created.id,
             wireName,
             ...resolveImportedModelDefaults(providerInput.family, wireName),
+            ...probeColumns.get(wireName),
           })),
         })
       }
@@ -148,14 +152,16 @@ export class AdminLlmService {
     return this.listSortedModelNames(this.toCredentialsOrBadRequest(provider, baseUrl))
   }
 
-  /** 按勾选批量建行；已存在的 wireName 跳过，不覆盖人改过的数值。 */
+  /** 按勾选批量建行；已存在的 wireName 跳过，不覆盖人改过的数值与测试状态。 */
   async importModels(
     providerId: string,
     wireNames: string[],
+    testResults: AdminLlmModelTestResultDto[] = [],
   ): Promise<AdminLlmImportModelsResponse> {
     const provider = await this.requireProvider(providerId)
 
     const requested = dedupeWireNames(wireNames)
+    const probeColumns = toProbeColumnsByWireName(testResults)
 
     if (requested.length === 0)
       return { imported: 0, skipped: 0 }
@@ -166,6 +172,7 @@ export class AdminLlmService {
         providerId,
         wireName,
         ...resolveImportedModelDefaults(toFamily(provider.family), wireName),
+        ...probeColumns.get(wireName),
       })),
       skipDuplicates: true,
     })
@@ -203,8 +210,8 @@ export class AdminLlmService {
     // DTO 实例上没传的字段是值为 undefined 的自有属性，直接展开会把 current 覆盖成 undefined。
     const patch = omitUndefined(input)
 
-    // 局部更新按合并后的整行校验：输出上限与上下文、默认与可见的约束不能被拆开绕过。
-    assertModelRowValid({ ...current, ...patch })
+    // 局部更新按合并后的整行校验：输出上限与上下文、默认与可见、强度与家族的约束不能被拆开绕过。
+    assertModelRowValid({ ...current, ...patch, family: current.provider.family })
 
     const model = await this.rejectDuplicateWireName(patch.wireName ?? current.wireName, () =>
       this.prismaService.$transaction(async (tx) => {
@@ -264,6 +271,7 @@ export class AdminLlmService {
       return await this.llmService.probeModel(
         this.llmModelConfigService.toCredentials(model.provider),
         model.wireName,
+        toReasoningEffort(model.reasoningEffort) ?? undefined,
       )
     }
     catch (error) {
@@ -322,8 +330,11 @@ export class AdminLlmService {
     return provider
   }
 
-  private async requireModel(modelId: string): Promise<LlmModel> {
-    const model = await this.prismaService.llmModel.findUnique({ where: { id: modelId } })
+  private async requireModel(modelId: string): Promise<LlmModel & { provider: LlmProvider }> {
+    const model = await this.prismaService.llmModel.findUnique({
+      where: { id: modelId },
+      include: { provider: true },
+    })
 
     if (!model)
       throw new NotFoundException('模型不存在')
@@ -347,18 +358,36 @@ export class AdminLlmService {
 
 /**
  * 模型行的跨字段约束：输出上限必须小于上下文窗口（否则每个 Run 都在创建后才因预算失败）；
- * 默认模型必须对前台可见（与 resolveModel / resolveDefaultProvider 的口径一致）。
+ * 默认模型必须对前台可见（与 resolveModel / resolveDefaultProvider 的口径一致）；
+ * reasoning_effort 只能取所属家族的值。
  */
 function assertModelRowValid(row: {
   contextWindowTokens: number
   maxOutputTokens: number
   visible: boolean
   isDefault: boolean
+  reasoningEffort: string | null
+  family: string
 }): void {
   if (row.maxOutputTokens >= row.contextWindowTokens)
     throw new BadRequestException('maxOutputTokens 必须小于 contextWindowTokens')
   if (row.isDefault && !row.visible)
     throw new BadRequestException('默认模型必须对前台可见')
+
+  const allowed = reasoningEffortsOf(row.family)
+
+  if (row.reasoningEffort && !(allowed as readonly string[]).includes(row.reasoningEffort)) {
+    throw new BadRequestException(
+      allowed.length === 0
+        ? `${row.family} 家族不支持 reasoning_effort`
+        : `${row.family} 家族的 reasoning_effort 只能是 ${allowed.join(' / ')}`,
+    )
+  }
+}
+
+/** 列是自由字符串，写入时已按家族校验过；这里只收窄类型。 */
+function toReasoningEffort(value: string | null): ReasoningEffort | null {
+  return value as ReasoningEffort | null
 }
 
 async function mapWithConcurrency<T, R>(
@@ -393,6 +422,22 @@ function omitUndefined<T extends object>(value: T): Partial<T> {
   return Object.fromEntries(
     Object.entries(value).filter(([, item]) => item !== undefined),
   ) as Partial<T>
+}
+
+/**
+ * 弹窗里 test-models 的结果随导入写进行的 lastProbe* 列：建行时就带上，不用再测一遍
+ * （紧接着重测会撞中转站限流，把刚看到的 ok 变成 429）。同名多条以最后一条为准。
+ */
+function toProbeColumnsByWireName(
+  testResults: AdminLlmModelTestResultDto[],
+): Map<string, { lastProbeOk: boolean, lastProbeError: string | null, lastProbedAt: Date }> {
+  const probedAt = new Date()
+
+  return new Map(testResults.map(result => [result.wireName, {
+    lastProbeOk: result.ok,
+    lastProbeError: result.ok ? null : (result.error ?? '测试失败'),
+    lastProbedAt: probedAt,
+  }]))
 }
 
 function dedupeWireNames(wireNames: string[]): string[] {
@@ -437,7 +482,7 @@ function toAdminLlmModel(model: LlmModel): AdminLlmModel {
     displayName: model.displayName,
     contextWindowTokens: model.contextWindowTokens,
     maxOutputTokens: model.maxOutputTokens,
-    reasoning: model.reasoning,
+    reasoningEffort: toReasoningEffort(model.reasoningEffort),
     visible: model.visible,
     isDefault: model.isDefault,
     sortOrder: model.sortOrder,

@@ -1,3 +1,4 @@
+import type { ReasoningEffort } from '@agent/contracts'
 import type {
   ChatCompletionAssistantMessageParam,
   ChatCompletionCreateParamsNonStreaming,
@@ -61,9 +62,10 @@ type ChatCompletionBaseParams = Pick<
   ChatCompletionCreateParamsNonStreaming,
   'messages' | 'model' | 'max_tokens' | 'response_format'
 > & {
-  /** 只有 reasoning 模型带这两个 DeepSeek thinking 参数；其他 Provider 不发。 */
+  /** DeepSeek thinking 开关只对 reasoning 模型发。 */
   thinking?: { type: 'enabled' }
-  reasoning_effort?: 'low' | 'high' | 'max'
+  /** 任何家族配置了就发，取值按家族见 contracts 的 REASONING_EFFORTS_BY_FAMILY。 */
+  reasoning_effort?: ReasoningEffort
 }
 
 type AssistantToolCallMessageParam
@@ -316,13 +318,14 @@ function rejectOnAbort<T>(
   })
 }
 
-/** DeepSeek thinking 参数只对 reasoning 模型发送；中转站后面的 gpt / gemini / claude 不需要。 */
+/** thinking 开关只对 DeepSeek reasoning 模型发；reasoning_effort 任何家族配置了就发，中转站会透传给上游。 */
 function toThinkingParams(
   request: ResolvedChatRequestConfig,
 ): Pick<ChatCompletionBaseParams, 'thinking' | 'reasoning_effort'> {
-  return request.reasoning
-    ? { thinking: { type: 'enabled' }, reasoning_effort: request.reasoningEffort }
-    : {}
+  return {
+    ...(request.reasoning ? { thinking: { type: 'enabled' as const } } : {}),
+    ...(request.reasoningEffort ? { reasoning_effort: request.reasoningEffort } : {}),
+  }
 }
 
 function safelyCaptureRequest(

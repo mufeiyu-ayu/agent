@@ -1,12 +1,6 @@
 <script setup lang="ts">
 import type { AdminLlmProvider } from '@agent/contracts'
 import {
-  DeleteOutlined,
-  EditOutlined,
-  GlobalOutlined,
-  KeyOutlined,
-} from '@ant-design/icons-vue'
-import {
   Button,
   Empty,
   Popconfirm,
@@ -17,6 +11,7 @@ import {
 import { useI18n } from 'vue-i18n'
 
 import LlmFamilyLogo from '@/features/llm/components/LlmFamilyLogo.vue'
+import LlmIcon from '@/features/llm/components/LlmIcon.vue'
 import { formatShortDateTime } from '@/features/runs/run.utils'
 
 defineProps<{
@@ -60,18 +55,15 @@ const { locale, t } = useI18n()
       >
         <div class="provider-card__head">
           <div class="provider-card__title-wrap">
-            <span class="family-icon" :title="t(`llmModels.families.${provider.family}`)">
-              <LlmFamilyLogo :family="provider.family" :size="16" />
-            </span>
-            <span
-              class="status-dot"
-              :class="{ 'is-active': provider.enabled }"
-              :title="provider.enabled ? t('llmModels.statusEnabled') : t('llmModels.statusDisabled')"
-            />
-            <strong class="provider-card__name" :title="provider.note">
-              {{ t(`llmModels.families.${provider.family}`) }}
-              <span class="provider-card__note">{{ provider.note }}</span>
-            </strong>
+            <LlmFamilyLogo :family="provider.family" :size="14" badge />
+            <div class="provider-card__title-body">
+              <strong class="provider-card__name">
+                {{ t(`llmModels.families.${provider.family}`) }}
+              </strong>
+              <span v-if="provider.note" class="provider-card__note" :title="provider.note">
+                {{ provider.note }}
+              </span>
+            </div>
           </div>
 
           <div class="provider-card__switch" @click.stop>
@@ -87,11 +79,11 @@ const { locale, t } = useI18n()
 
         <div class="provider-card__meta">
           <div class="meta-row" :title="provider.baseUrl">
-            <GlobalOutlined class="meta-icon" />
+            <LlmIcon name="globe" :size="12" class="meta-icon" />
             <code class="meta-url">{{ provider.baseUrl }}</code>
           </div>
           <div class="meta-row">
-            <KeyOutlined class="meta-icon" />
+            <LlmIcon name="key" :size="12" class="meta-icon" />
             <span class="meta-key">••••{{ provider.apiKeyLast4 }}</span>
           </div>
         </div>
@@ -115,7 +107,7 @@ const { locale, t } = useI18n()
                 @click="emit('edit', provider)"
               >
                 <template #icon>
-                  <EditOutlined />
+                  <LlmIcon name="edit" :size="13" />
                 </template>
               </Button>
             </Tooltip>
@@ -136,7 +128,7 @@ const { locale, t } = useI18n()
                   class="action-btn is-danger"
                 >
                   <template #icon>
-                    <DeleteOutlined />
+                    <LlmIcon name="delete" :size="13" />
                   </template>
                 </Button>
               </Tooltip>
@@ -189,38 +181,47 @@ const { locale, t } = useI18n()
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 14px 14px 12px;
+  gap: 9px;
+  padding: 12px 14px;
   border: 1px solid var(--admin-border);
-  border-left: 3px solid transparent;
   border-radius: var(--admin-radius-sm);
   background: var(--admin-surface);
   cursor: pointer;
-  transition: all 160ms ease;
+  transition: border-color 150ms ease, background-color 150ms ease, box-shadow 150ms ease;
 }
 
 .provider-card:hover {
   border-color: var(--admin-border-strong);
   background: var(--admin-hover);
-  transform: translateY(-1px);
 }
 
 .provider-card.is-selected {
-  border-color: var(--admin-primary);
-  border-left-color: var(--admin-primary);
-  background: var(--admin-primary-soft);
-  box-shadow: var(--admin-shadow-sm);
+  border-color: color-mix(in srgb, var(--admin-primary) 42%, var(--admin-border));
+  background: color-mix(in srgb, var(--admin-primary) 3.5%, var(--admin-surface));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--admin-primary) 22%, transparent), var(--admin-shadow-sm);
+}
+
+.provider-card.is-selected::before {
+  content: '';
+  position: absolute;
+  left: -1px;
+  top: 10px;
+  bottom: 10px;
+  width: 3.5px;
+  border-radius: 0 3px 3px 0;
+  background: var(--admin-primary);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--admin-primary) 40%, transparent);
 }
 
 .provider-card.is-disabled {
-  opacity: 0.72;
+  opacity: 0.65;
 }
 
 .provider-card__head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: 8px;
 }
 
 .provider-card__title-wrap {
@@ -228,26 +229,15 @@ const { locale, t } = useI18n()
   min-width: 0;
   align-items: center;
   gap: 8px;
+  flex: 1;
 }
 
-.family-icon {
-  display: inline-flex;
-  flex: 0 0 auto;
+.provider-card__title-body {
+  display: flex;
+  min-width: 0;
   align-items: center;
-}
-
-.status-dot {
-  width: 7px;
-  height: 7px;
-  flex: 0 0 7px;
-  border-radius: 50%;
-  background: var(--admin-text-subtle);
-  transition: background-color 160ms ease;
-}
-
-.status-dot.is-active {
-  background: var(--admin-success);
-  box-shadow: 0 0 0 3px var(--admin-success-soft);
+  gap: 6px;
+  overflow: hidden;
 }
 
 .provider-card__name {
@@ -261,9 +251,25 @@ const { locale, t } = useI18n()
 }
 
 .provider-card__note {
-  margin-left: 6px;
-  color: var(--admin-text-muted);
+  display: inline-block;
+  padding: 0 6px;
+  height: 18px;
+  line-height: 18px;
+  border-radius: 4px;
+  background: var(--admin-surface-muted);
+  border: 1px solid var(--admin-border);
+  color: var(--admin-text-subtle);
+  font-size: var(--admin-font-2xs);
   font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.provider-card__switch {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
 }
 
 .provider-card__meta {
@@ -326,6 +332,14 @@ const { locale, t } = useI18n()
   background: var(--admin-primary-soft);
   font-size: var(--admin-font-2xs);
   font-weight: 550;
+  transition: all 150ms ease;
+}
+
+.provider-card.is-selected .badge-count {
+  background: var(--admin-surface);
+  border: 1px solid color-mix(in srgb, var(--admin-primary) 30%, transparent);
+  color: var(--admin-primary);
+  font-weight: 600;
 }
 
 .date-text {
@@ -338,7 +352,7 @@ const { locale, t } = useI18n()
   display: flex;
   align-items: center;
   gap: 2px;
-  opacity: 0.7;
+  opacity: 0;
   transition: opacity 140ms ease;
 }
 
@@ -348,11 +362,11 @@ const { locale, t } = useI18n()
 }
 
 .action-btn {
-  width: 26px;
-  height: 26px;
+  width: 24px;
+  height: 24px;
   padding: 0;
   border-radius: var(--admin-radius-sm);
-  color: var(--admin-text-muted);
+  color: var(--admin-text-subtle);
 }
 
 .action-btn:hover {

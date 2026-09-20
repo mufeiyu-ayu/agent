@@ -68,7 +68,7 @@ export class AdminLlmController {
 
   @Post('providers/:id/import-models')
   importModels(@Param() params: AdminLlmIdParamDto, @Body() body: ImportAdminLlmModelsDto) {
-    return this.adminLlmService.importModels(params.id, body.wireNames)
+    return this.adminLlmService.importModels(params.id, body.wireNames, body.testResults)
   }
 
   @Get('models')

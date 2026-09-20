@@ -17,6 +17,7 @@ export function createResolvedLlmModel(
       contextWindowTokens: 1_000_000,
       maxOutputTokens: 65_536,
       reasoning: true,
+      reasoningEffort: 'high',
       ...profile,
     },
   }

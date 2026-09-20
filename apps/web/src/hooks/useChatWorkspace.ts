@@ -4,7 +4,7 @@ import type {
   ChatStreamEvent,
   Conversation,
   ConversationMessage,
-  DeepSeekReasoningEffort,
+  ReasoningEffort,
 } from '@agent/contracts'
 import type { AgentRecentChat } from '../types/agent-platform'
 import type {
@@ -223,7 +223,7 @@ export function useChatWorkspace() {
 
   async function sendMessage(
     model?: string | null,
-    reasoningEffort?: DeepSeekReasoningEffort,
+    reasoningEffort?: ReasoningEffort,
   ) {
     if (!canStartChatRequest())
       return
@@ -502,7 +502,7 @@ export function useChatWorkspace() {
     conversationId: string,
     messageContent: string,
     model?: string | null,
-    reasoningEffort?: DeepSeekReasoningEffort,
+    reasoningEffort?: ReasoningEffort,
   ): ChatRequest {
     const nextModel = model?.trim()
 

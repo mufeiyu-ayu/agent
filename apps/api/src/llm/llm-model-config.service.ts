@@ -1,6 +1,7 @@
 import type { LLMModelProfile } from '@agent/ai'
-import type { ChatModelOption } from '@agent/contracts'
+import type { ChatModelOption, ReasoningEffort } from '@agent/contracts'
 import type { ApiKeyCipher } from './api-key-cipher.js'
+import { reasoningEffortsOf } from '@agent/contracts'
 import { Inject, Injectable } from '@nestjs/common'
 
 import { PrismaService } from '../prisma/prisma.service.js'
@@ -20,6 +21,14 @@ export interface ResolvedLlmModel {
   modelId: string
   provider: LlmProviderCredentials
   profile: LLMModelProfile
+}
+
+/**
+ * 思考协议由服务商家族决定：deepseek 家族请求带 thinking / reasoning_effort、Tool Call 要求 reasoning_content；
+ * 中转站后面的 gpt / grok / gemini 不回 reasoning_content，一律不走。模型行不单独配置。
+ */
+function isThinkingFamily(family: string): boolean {
+  return family === 'deepseek'
 }
 
 /** 读数据库里的模型配置并持有唯一一份密钥 cipher；Admin 的写操作在 admin-llm 模块，加密经这里。 */
@@ -49,17 +58,27 @@ export class LlmModelConfigService {
     const models = await this.prismaService.llmModel.findMany({
       where: { visible: true, provider: { enabled: true } },
       orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
-      select: { id: true, displayName: true, reasoning: true, isDefault: true },
+      select: {
+        id: true,
+        displayName: true,
+        isDefault: true,
+        reasoningEffort: true,
+        provider: { select: { family: true } },
+      },
     })
 
-    return models
+    return models.map(({ provider, reasoningEffort, ...model }) => ({
+      ...model,
+      reasoningEffort: reasoningEffort as ReasoningEffort | null,
+      reasoningEffortOptions: reasoningEffortsOf(provider.family),
+    }))
   }
 
   /**
    * 把请求里的模型行 id 解析成本次 Run 的完整配置；省略 id 时取默认模型。
-   * 不存在、不可见或 Provider 停用都视为不可用，由调用方转成 400。
+   * 不存在、不可见、Provider 停用或请求的 reasoningEffort 不属于该家族都视为不可用，由调用方转成 400。
    */
-  async resolveModel(modelId?: string): Promise<ResolvedLlmModel> {
+  async resolveModel(modelId?: string, reasoningEffort?: ReasoningEffort): Promise<ResolvedLlmModel> {
     const model = await this.prismaService.llmModel.findFirst({
       where: modelId ? { id: modelId } : { isDefault: true },
       include: { provider: true },
@@ -74,6 +93,8 @@ export class LlmModelConfigService {
       throw new LlmModelUnavailableError('请求的模型未对前台开放')
     if (!model.provider.enabled)
       throw new LlmModelUnavailableError('请求的模型所属服务商已停用')
+    if (reasoningEffort && !reasoningEffortsOf(model.provider.family).includes(reasoningEffort))
+      throw new LlmModelUnavailableError(`请求的模型不支持思考强度 ${reasoningEffort}`)
 
     return {
       modelId: model.id,
@@ -82,7 +103,8 @@ export class LlmModelConfigService {
         wireName: model.wireName,
         contextWindowTokens: model.contextWindowTokens,
         maxOutputTokens: model.maxOutputTokens,
-        reasoning: model.reasoning,
+        reasoning: isThinkingFamily(model.provider.family),
+        reasoningEffort: model.reasoningEffort as ReasoningEffort | null,
       },
     }
   }

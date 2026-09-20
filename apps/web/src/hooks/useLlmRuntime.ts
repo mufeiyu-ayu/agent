@@ -1,9 +1,8 @@
-import type { ApiErrorResponse, DeepSeekReasoningEffort } from '@agent/contracts'
+import type { ApiErrorResponse, ReasoningEffort } from '@agent/contracts'
 import type { LlmBalanceInfo, LlmBalanceState, LlmModelOption, LlmRuntimeStatus } from '../types/llm'
 
-import { DEFAULT_DEEPSEEK_REASONING_EFFORT } from '@agent/contracts'
 import { isAxiosError } from 'axios'
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import { fetchLlmBalance, fetchLlmModels } from '../api/llm'
@@ -13,19 +12,21 @@ export function useLlmRuntime() {
   const models = ref<LlmModelOption[]>([])
   /** 选中的模型行 id；后台没有可见模型时为 null，请求里不带 model 由后端取默认。 */
   const selectedModel = ref<string | null>(null)
-  const selectedReasoningEffort = ref<DeepSeekReasoningEffort>(
-    DEFAULT_DEEPSEEK_REASONING_EFFORT,
-  )
+  /** 本次会话选的思考强度；null 表示不带，用模型行默认。切换模型时重置为该行默认。 */
+  const selectedReasoningEffort = ref<ReasoningEffort | null>(null)
   const balance = ref<LlmBalanceState | null>(null)
   const modelStatus = ref<LlmRuntimeStatus>('idle')
   const balanceStatus = ref<LlmRuntimeStatus>('idle')
   const modelError = ref('')
   const balanceError = ref('')
 
-  /** 只有思考模型才展示思考强度；非思考模型的请求不带 reasoningEffort。 */
-  const selectedModelReasoning = computed(() => (
-    models.value.find(model => model.id === selectedModel.value)?.reasoning ?? false
-  ))
+  const selectedModelOption = computed(() => models.value.find(model => model.id === selectedModel.value))
+  /** 该家族可选的强度；为空时前台不展示选择器，请求也不带 reasoningEffort。 */
+  const selectedModelEffortOptions = computed(() => selectedModelOption.value?.reasoningEffortOptions ?? [])
+
+  watch(selectedModelOption, (option) => {
+    selectedReasoningEffort.value = option?.reasoningEffort ?? null
+  }, { immediate: true })
 
   const balanceLabel = computed(() => {
     if (balanceStatus.value === 'loading' && !balance.value)
@@ -92,7 +93,7 @@ export function useLlmRuntime() {
   return {
     models,
     selectedModel,
-    selectedModelReasoning,
+    selectedModelEffortOptions,
     selectedReasoningEffort,
     balance,
     balanceLabel,

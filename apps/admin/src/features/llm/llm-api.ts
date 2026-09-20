@@ -3,6 +3,7 @@ import type {
   AdminLlmImportModelsResponse,
   AdminLlmModel,
   AdminLlmModelInput,
+  AdminLlmModelTestResult,
   AdminLlmPreviewModelsRequest,
   AdminLlmProvider,
   AdminLlmProviderInput,
@@ -93,14 +94,16 @@ export function fetchLlmProviderModelNames(
   )
 }
 
+/** 弹窗里已测过的结果一并带上，导入后表格立刻有状态。 */
 export function importLlmProviderModels(
   providerId: string,
   wireNames: string[],
+  testResults: AdminLlmModelTestResult[] = [],
 ): Promise<AdminLlmImportModelsResponse> {
   return requestAdminRun<AdminLlmImportModelsResponse>(
     providerPath(providerId, '/import-models'),
     {},
-    { method: 'POST', body: { wireNames } },
+    { method: 'POST', body: { wireNames, testResults } },
   )
 }
 

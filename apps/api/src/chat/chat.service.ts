@@ -1,4 +1,4 @@
-import type { ChatStreamEvent } from '@agent/contracts'
+import type { ChatStreamEvent, ReasoningEffort } from '@agent/contracts'
 import type { ChatDto } from './dto/chat.dto.js'
 import { BadRequestException, Inject, Injectable } from '@nestjs/common'
 
@@ -29,7 +29,7 @@ export class ChatService {
     input: ChatDto,
     options: ChatStreamOptions = {},
   ): Promise<AsyncGenerator<ChatStreamEvent>> {
-    const model = await this.resolveModel(input.model)
+    const model = await this.resolveModel(input.model, input.reasoningEffort)
 
     return this.mapRuntimeEvents(this.agentRuntimeService.runTurnStream({
       conversationId: input.conversationId,
@@ -44,9 +44,9 @@ export class ChatService {
     }))
   }
 
-  private async resolveModel(modelId: string | undefined) {
+  private async resolveModel(modelId: string | undefined, reasoningEffort?: ReasoningEffort) {
     try {
-      return await this.llmModelConfigService.resolveModel(modelId)
+      return await this.llmModelConfigService.resolveModel(modelId, reasoningEffort)
     }
     catch (error) {
       if (error instanceof LlmModelUnavailableError)

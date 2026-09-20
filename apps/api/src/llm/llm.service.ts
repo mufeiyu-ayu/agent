@@ -4,6 +4,7 @@ import type {
   ModelStreamEvent,
   ProviderBalanceResponse,
 } from '@agent/ai'
+import type { ReasoningEffort } from '@agent/contracts'
 import type { LlmProviderCredentials } from './llm-model-config.service.js'
 import { LLMApiError, LLMError, OpenAICompatibleClient } from '@agent/ai'
 import { Inject, Injectable, Logger } from '@nestjs/common'
@@ -59,11 +60,12 @@ export class LLMService {
   /**
    * Admin 探测：对一个模型发一条最短的流式对话，流能正常结束就算通，不看有没有正文
    * （默认开思考的模型 16 个 token 可能全被思考吃掉，content 为空不代表接口不通）。
-   * 不发 thinking 参数，失败原因原样带回给管理台。
+   * 不发 thinking 参数；已入库的行带上它配置的 reasoning_effort，配错值能在这里暴露。失败原因原样带回给管理台。
    */
   async probeModel(
     provider: LlmProviderCredentials,
     wireName: string,
+    reasoningEffort?: ReasoningEffort,
   ): Promise<{ ok: true } | { ok: false, error: string }> {
     try {
       const events = this.createClient(provider).chatStream(
@@ -74,7 +76,7 @@ export class LLMService {
             contextWindowTokens: 0,
             maxOutputTokens: 16,
             reasoning: false,
-            reasoningEffort: 'low',
+            ...(reasoningEffort ? { reasoningEffort } : {}),
           },
         },
       )
