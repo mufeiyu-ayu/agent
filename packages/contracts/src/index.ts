@@ -5,6 +5,22 @@ export type {
   AdminConversationMessage,
 } from './admin-conversation.js'
 export type {
+  AdminLlmFetchModelsResponse,
+  AdminLlmImportModelsRequest,
+  AdminLlmImportModelsResponse,
+  AdminLlmModel,
+  AdminLlmModelInput,
+  AdminLlmModelTestResult,
+  AdminLlmPreviewModelsRequest,
+  AdminLlmProbeModelsRequest,
+  AdminLlmProvider,
+  AdminLlmProviderInput,
+  AdminLlmTestModelsRequest,
+  AdminLlmTestModelsResponse,
+  LlmProviderFamily,
+} from './admin-llm.js'
+export { LLM_PROVIDER_FAMILIES } from './admin-llm.js'
+export type {
   AdminOverviewDailyPoint,
   AdminOverviewModelUsageItem,
   AdminOverviewStats,
@@ -62,6 +78,7 @@ export type {
   ApiSuccessResponse,
 } from './api-response.js'
 export type {
+  ChatModelOption,
   ChatRequest,
   ChatStreamAbortedEvent,
   ChatStreamDeltaEvent,

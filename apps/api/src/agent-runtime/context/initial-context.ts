@@ -17,6 +17,9 @@ export const DEFAULT_INITIAL_CONTEXT_POLICY = {
  */
 export interface InitialContextSummary {
   resolvedModel: string
+  /** 本次 Run 快照的 Provider 与模型行 id，供 Admin 追溯这轮打的是谁。 */
+  providerId: string
+  modelId: string
   resolvedInputBudgetTokens: number
   historyCandidateCount: number
   historyIncludedCount: number
@@ -26,8 +29,10 @@ export interface InitialContextSummary {
 }
 
 interface SummarizeInitialContextInput {
-  /** 本次 Run 解析后的模型名：决定 token 估算策略，并写入快照供审计。 */
+  /** 本次 Run 解析后的模型名，写入快照供审计；token 估算当前一律用 DeepSeek V4 estimator。 */
   resolvedModel: string
+  providerId: string
+  modelId: string
   /** 模型的上下文窗口大小（token），用于计算本次可用输入预算。 */
   contextWindowTokens: number
   /** 要给模型回答预留的输出 token 数，从上下文窗口中扣除。 */
@@ -66,6 +71,8 @@ export function summarizeInitialContext(
 
   return {
     resolvedModel: input.resolvedModel,
+    providerId: input.providerId,
+    modelId: input.modelId,
     resolvedInputBudgetTokens,
     historyCandidateCount,
     historyIncludedCount: historyCandidateCount,

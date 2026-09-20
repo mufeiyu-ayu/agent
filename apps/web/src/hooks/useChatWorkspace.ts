@@ -222,7 +222,7 @@ export function useChatWorkspace() {
   }
 
   async function sendMessage(
-    model?: string,
+    model?: string | null,
     reasoningEffort?: DeepSeekReasoningEffort,
   ) {
     if (!canStartChatRequest())
@@ -501,7 +501,7 @@ export function useChatWorkspace() {
   function buildChatRequest(
     conversationId: string,
     messageContent: string,
-    model?: string,
+    model?: string | null,
     reasoningEffort?: DeepSeekReasoningEffort,
   ): ChatRequest {
     const nextModel = model?.trim()

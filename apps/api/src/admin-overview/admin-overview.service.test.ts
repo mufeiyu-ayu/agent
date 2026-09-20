@@ -1,4 +1,5 @@
-import type { LLMRuntimeConfigService } from '../llm/llm-runtime-config.service.js'
+import type { LlmModelConfigService } from '../llm/llm-model-config.service.js'
+import type { LLMService } from '../llm/llm.service.js'
 import type { PrismaService } from '../prisma/prisma.service.js'
 import assert from 'node:assert/strict'
 // 项目使用 Node 原生测试运行器，不为 Admin 查询引入额外测试框架。
@@ -172,9 +173,17 @@ function createService(options: {
     },
   } as unknown as PrismaService
 
-  const llmConfig = {
-    value: { apiKey: 'test-key', baseUrl: 'https://api.deepseek.com/v1' },
-  } as unknown as LLMRuntimeConfigService
+  const llmModelConfig = {
+    resolveDefaultProvider: async () => ({
+      providerId: 'provider-deepseek',
+      apiKey: 'test-key',
+      baseUrl: 'https://api.deepseek.com/v1',
+    }),
+  } as unknown as LlmModelConfigService
 
-  return new AdminOverviewService(prisma, llmConfig)
+  const llmService = {
+    getProviderBalance: async () => null,
+  } as unknown as LLMService
+
+  return new AdminOverviewService(prisma, llmModelConfig, llmService)
 }

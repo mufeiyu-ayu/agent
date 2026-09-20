@@ -33,6 +33,7 @@ import type {
   ModelSamplingSummary,
   SamplingDecision,
 } from './sampling/model-sampling-decision.js'
+import { resolveChatRequestConfig } from '@agent/ai'
 import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common'
 import { MessageRole, MessageStatus } from '../generated/prisma/client.js'
 import { LLMService } from '../llm/llm.service.js'
@@ -201,6 +202,8 @@ export class AgentRuntimeService {
       // 仍为 RUNNING，由 failRun 收口为 FAILED，不会创建 sampling Step，也不会调用模型。
       const initialContext = summarizeInitialContext({
         resolvedModel: resolvedRequestConfig.model,
+        providerId: input.model.provider.providerId,
+        modelId: input.model.modelId,
         contextWindowTokens: resolvedRequestConfig.contextWindowTokens,
         resolvedMaxOutputTokens: resolvedRequestConfig.maxOutputTokens,
         candidateHardLimit: runtimePolicy.historyCandidateHardLimit,
@@ -261,11 +264,9 @@ export class AgentRuntimeService {
       }
 
       // Initial Context、后续 Sampling 与 Grounded finalization 共用同一份
-      // resolved 请求配置；Provider Client 端的重校验只会 fail-fast，不会漂移。
+      // resolved 请求配置；它直接取自 Run 开始时的模型行快照，Run 中途不会漂移。
       const chatStreamOptions: ChatStreamOptions = {
-        model: resolvedRequestConfig.model,
-        reasoningEffort: resolvedRequestConfig.reasoningEffort,
-        maxTokens: resolvedRequestConfig.maxOutputTokens,
+        request: resolvedRequestConfig,
         signal: runSignal,
         tools: modelTools,
       }
@@ -338,6 +339,7 @@ export class AgentRuntimeService {
           // 两层 async generator 此时只创建迭代器；首次 sampling.next() 才启动模型请求并拉取事件。
           const sampling = streamModelSampling(
             this.llmService.chatStream(
+              input.model.provider,
               contextPlan.items,
               {
                 ...chatStreamOptions,
@@ -658,7 +660,7 @@ export class AgentRuntimeService {
             },
             // finalization 只暴露终态输出契约，没有任何 action Tool，
             // 因此不可能借这一轮继续调用工具或扩展 action-loop 预算。
-            sample: items => this.llmService.chatStream(items, {
+            sample: items => this.llmService.chatStream(input.model.provider, items, {
               ...chatStreamOptions,
               tools: [submitGroundedAnswerToolSpec],
             }),
@@ -966,8 +968,9 @@ export class AgentRuntimeService {
 
   /**
    * 解析一次 Run 的请求级配置：allowlist 内的 Tool 定义、模型可见 Tool
-   * 说明与 resolved 模型请求配置。请求级 model / maxTokens 非法时抛
-   * LLMConfigError；Registry 缺失 allowlisted Tool 时按现状跳过，不伪造定义。
+   * 说明与 resolved 模型请求配置（模型行快照 + 请求级 reasoningEffort）。
+   * 模型行的数值约束在 Admin 写入时由 `assertModelRowValid` 把关，这里不再校验；
+   * Registry 缺失 allowlisted Tool 时按现状跳过，不伪造定义。
    */
   private resolveRunConfiguration(
     input: RunTurnStreamInput,
@@ -993,14 +996,10 @@ export class AgentRuntimeService {
           description: definition.description,
           inputSchema: definition.input.schema,
         }))
-    const request = this.llmService.resolveChatRequestConfig({
-      ...(input.model ? { model: input.model } : {}),
+    const request = resolveChatRequestConfig(input.model.profile, {
       ...(input.reasoningEffort === undefined
         ? {}
         : { reasoningEffort: input.reasoningEffort }),
-      ...(input.maxTokens === undefined
-        ? {}
-        : { maxTokens: input.maxTokens }),
     })
 
     return { request, toolDefinitions, modelTools }
@@ -1309,6 +1308,8 @@ function toPersistedInitialContext(
 ): Prisma.InputJsonObject {
   return {
     resolvedModel: initialContext.resolvedModel,
+    providerId: initialContext.providerId,
+    modelId: initialContext.modelId,
     resolvedInputBudgetTokens: initialContext.resolvedInputBudgetTokens,
     historyCandidateCount: initialContext.historyCandidateCount,
     historyIncludedCount: initialContext.historyIncludedCount,

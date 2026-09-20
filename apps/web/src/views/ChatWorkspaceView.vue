@@ -55,9 +55,11 @@ const navigationItems = computed<AgentNavigationItem[]>(() => {
 const {
   models,
   selectedModel,
+  selectedModelReasoning,
   selectedReasoningEffort,
   balanceLabel,
   balanceAvailable,
+  balanceHidden,
   balanceStatus,
   refreshBalance,
 } = useLlmRuntime()
@@ -98,11 +100,20 @@ const starterPrompts = computed(() => [
 function applySuggestedPrompt(prompt: string) {
   message.value = prompt
 }
+
+/** 非思考模型不带 reasoningEffort，后端也不会发 thinking 参数。 */
+function send() {
+  void sendMessage(
+    selectedModel.value,
+    selectedModelReasoning.value ? selectedReasoningEffort.value : undefined,
+  )
+}
 </script>
 
 <template>
   <AppShell
     :balance-available="balanceAvailable"
+    :balance-hidden="balanceHidden"
     :balance-label="balanceLabel"
     :balance-status="balanceStatus"
     :has-more-recent-chats="hasMoreConversations"
@@ -148,7 +159,7 @@ function applySuggestedPrompt(prompt: string) {
             :models="models"
             :status="status"
             :message-character-count="messageCharacterCount"
-            @send="sendMessage(selectedModel, selectedReasoningEffort)"
+            @send="send"
             @stop="stopGeneration"
             @reset="resetWorkspace"
           />
@@ -184,7 +195,7 @@ function applySuggestedPrompt(prompt: string) {
           :models="models"
           :status="status"
           :message-character-count="messageCharacterCount"
-          @send="sendMessage(selectedModel, selectedReasoningEffort)"
+          @send="send"
           @stop="stopGeneration"
           @reset="resetWorkspace"
         />

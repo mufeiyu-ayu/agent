@@ -99,6 +99,9 @@ export interface AdminContextInspector {
   /** 无 contextPlan 且无 contextFailureReason 时为 null。 */
   outcome: AdminContextInspectorOutcome | null
   resolvedModel: string | null
+  /** 本次 Run 快照的 Provider / 模型行 id；#142 之前的 Run 为 null。 */
+  providerId: string | null
+  modelId: string | null
   resolvedInputBudgetTokens: number | null
   estimatedInputTokens: number | null
   historyCandidateCount: number | null

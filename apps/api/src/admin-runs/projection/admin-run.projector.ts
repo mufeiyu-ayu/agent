@@ -284,6 +284,8 @@ function projectContextInspector(
           ? 'success'
           : null,
     resolvedModel: readString(initialContext, 'resolvedModel'),
+    providerId: readString(initialContext, 'providerId'),
+    modelId: readString(initialContext, 'modelId'),
     // 预算在 plan 前就已解析并写入 initialContext；history 三项都是 plan 的结果，只读 contextPlan。
     resolvedInputBudgetTokens: readNonNegativeInteger(contextPlan, 'resolvedInputBudgetTokens')
       ?? readNonNegativeInteger(initialContext, 'resolvedInputBudgetTokens'),

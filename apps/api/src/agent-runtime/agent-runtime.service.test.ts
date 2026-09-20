@@ -6,6 +6,7 @@ import type {
 } from '@agent/ai'
 import type { ChatCompletionChunk } from 'openai/resources/chat/completions'
 import type { AgentRun, Message, Prisma } from '../generated/prisma/client.js'
+import type { ResolvedLlmModel } from '../llm/llm-model-config.service.js'
 import type { LLMService } from '../llm/llm.service.js'
 import type {
   DatabaseOperationDeadline,
@@ -20,7 +21,7 @@ import type {
   ToolResult,
   UnvalidatedToolCallEnvelope,
 } from '../tools/core/tool.types.js'
-import type { AgentRuntimeEvent } from './agent-runtime.types.js'
+import type { AgentRuntimeEvent, RunTurnStreamInput } from './agent-runtime.types.js'
 import type {
   AgentRuntimePolicy,
   AgentRuntimePolicyService,
@@ -36,7 +37,6 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
   adaptOpenAICompatibleStream,
-  getModelProfile,
   teeRawResponseCapture,
 } from '@agent/ai'
 
@@ -48,6 +48,7 @@ import {
   MessageRole,
   MessageStatus,
 } from '../generated/prisma/client.js'
+import { createResolvedLlmModel } from '../llm/__fixtures__.js'
 import {
   DatabaseCommitOutcomeUnknownError,
   DatabaseOperationDeadlineExceededError,
@@ -92,8 +93,8 @@ describe('AgentRuntimeService model stream', () => {
       harness.llmCalls[0]?.options?.tools?.map(tool => tool.name),
       ['search_articles', 'get_article_detail', 'retrieve_article_context'],
     )
-    assert.equal(harness.llmCalls[0]?.options?.model, 'deepseek-v4-flash')
-    assert.equal(harness.llmCalls[0]?.options?.maxTokens, 65_536)
+    assert.equal(harness.llmCalls[0]?.options?.request.model, 'deepseek-v4-flash')
+    assert.equal(harness.llmCalls[0]?.options?.request.maxOutputTokens, 65_536)
     assert.deepEqual(harness.recorder.steps.map(step => step.type), [
       'load_conversation_history',
       'model_sampling',
@@ -115,6 +116,8 @@ describe('AgentRuntimeService model stream', () => {
     })
     assert.deepEqual(initialContext, {
       resolvedModel: 'deepseek-v4-flash',
+      providerId: 'provider-deepseek',
+      modelId: 'model-deepseek-v4-flash',
       resolvedInputBudgetTokens: 262_144,
       historyCandidateCount: 0,
       historyIncludedCount: 0,
@@ -137,7 +140,7 @@ describe('AgentRuntimeService model stream', () => {
     assertNoUnfinishedSteps(harness)
   })
 
-  it('请求级覆盖 model / maxTokens 时 Initial Context 与 Provider 请求使用同一份 resolved 配置', async () => {
+  it('模型行快照与请求级 reasoningEffort 解析后，Initial Context 与 Provider 请求使用同一份 resolved 配置', async () => {
     const harness = createHarness(() => toModelStream([
       { type: 'text_delta', delta: '好' },
       { type: 'response_completed', finishReason: 'stop' },
@@ -146,9 +149,8 @@ describe('AgentRuntimeService model stream', () => {
     const events = await collectEvents(harness.service.runTurnStream({
       conversationId: 'conversation-1',
       userContent: '问题',
-      model: 'deepseek-v4-flash',
+      model: createResolvedLlmModel({ maxOutputTokens: 4_096 }),
       reasoningEffort: 'max',
-      maxTokens: 4_096,
       instructions: [],
     }))
 
@@ -159,33 +161,19 @@ describe('AgentRuntimeService model stream', () => {
     ).initialContext as Record<string, unknown>
 
     assert.equal(initialContext.resolvedModel, 'deepseek-v4-flash')
-    assert.equal(harness.llmCalls[0]?.options?.model, initialContext.resolvedModel)
-    assert.equal(harness.llmCalls[0]?.options?.maxTokens, 4_096)
+    // 快照的 Provider / 模型行 id 落进 sampling Step，Admin 据此追溯这轮打的是谁。
+    assert.equal(initialContext.providerId, 'provider-deepseek')
+    assert.equal(initialContext.modelId, 'model-deepseek-v4-flash')
+    assert.equal(harness.llmCalls[0]?.options?.request.model, initialContext.resolvedModel)
+    assert.equal(harness.llmCalls[0]?.options?.request.maxOutputTokens, 4_096)
     // 输出预留从窗口扣除后才是落库的输入预算：与 Provider 请求同一份 resolved 配置。
     assert.equal(
       initialContext.resolvedInputBudgetTokens,
       Math.min(262_144, 1_000_000 - 4_096 - 16_384),
     )
-    assert.equal(harness.llmCalls[0]?.options?.reasoningEffort, 'max')
-  })
-
-  it('请求级 model 为空字符串时回落默认模型，不透传给 LLM 解析边界', async () => {
-    const harness = createHarness(() => toModelStream([
-      { type: 'text_delta', delta: '好' },
-      { type: 'response_completed', finishReason: 'stop' },
-    ]))
-
-    const events = await collectEvents(harness.service.runTurnStream({
-      conversationId: 'conversation-1',
-      userContent: '问题',
-      model: '',
-      instructions: [],
-    }))
-
-    assert.equal(events.at(-1)?.type, 'run_completed')
-    // fake resolveChatRequestConfig 对传入的 '' 会原样返回；这里看到默认模型
-    // 即证明 runtime 没有把空字符串透传出去。
-    assert.equal(harness.llmCalls[0]?.options?.model, 'deepseek-v4-flash')
+    assert.equal(harness.llmCalls[0]?.options?.request.reasoningEffort, 'max')
+    // Provider 凭据随快照传给 LLMService：整个 Run 用同一把 key。
+    assert.equal(harness.llmCalls[0]?.provider.providerId, 'provider-deepseek')
   })
 
   it('零 Tool Budget 时不向模型暴露 Tool 并正常完成', async () => {
@@ -787,7 +775,7 @@ describe('AgentRuntimeService model stream', () => {
       ],
     )
     assert.deepEqual(
-      harness.llmCalls.map(call => call.options?.reasoningEffort),
+      harness.llmCalls.map(call => call.options?.request.reasoningEffort),
       ['high', 'high'],
     )
     assert.deepEqual(harness.llmCalls[1]?.messages, [
@@ -1322,7 +1310,7 @@ describe('AgentRuntimeService model stream', () => {
 
     assert.equal(harness.llmCalls.length, 3)
     assert.deepEqual(
-      harness.llmCalls.map(call => call.options?.reasoningEffort),
+      harness.llmCalls.map(call => call.options?.request.reasoningEffort),
       ['high', 'high', 'high'],
     )
     assert.equal(thirdRoundResults.length, 2)
@@ -1497,7 +1485,7 @@ describe('AgentRuntimeService model stream', () => {
 
     assert.equal(harness.llmCalls.length, 3)
     assert.deepEqual(
-      harness.llmCalls.map(call => call.options?.reasoningEffort),
+      harness.llmCalls.map(call => call.options?.request.reasoningEffort),
       ['high', 'high', 'high'],
     )
     assert.deepEqual(
@@ -2055,7 +2043,7 @@ describe('AgentRuntimeService model stream', () => {
   it('length 截断的 Tool Call 整批不执行，逐个记 truncated_arguments 并回喂，Run 继续', async () => {
     const streams: Array<() => AsyncGenerator<ModelStreamEvent>> = [
       // 原始 provider chunk 经真实 adapter：arguments 为空、不完整，以及无 id 分片各一。
-      () => adaptOpenAICompatibleStream(toProviderStream([
+      () => adaptDeepSeekStream(toProviderStream([
         providerChunk({ reasoning_content: '需要查两篇。' } as ChatCompletionChunk.Choice.Delta),
         providerChunk({
           tool_calls: [
@@ -2179,7 +2167,7 @@ describe('AgentRuntimeService model stream', () => {
       // 每次真正发请求时，estimator 最后一次看到的输入。
       const estimatedAtRequest: Array<ModelInputItem[] | undefined> = []
       const streams: Array<() => AsyncGenerator<ModelStreamEvent>> = [
-        () => adaptOpenAICompatibleStream(toProviderStream([
+        () => adaptDeepSeekStream(toProviderStream([
           providerChunk({ reasoning_content: '需要查。' } as ChatCompletionChunk.Choice.Delta),
           providerChunk({
             tool_calls: [{
@@ -2339,7 +2327,7 @@ describe('AgentRuntimeService model stream', () => {
   })
 
   it('length 后没有任何可配对 Tool Call 时按不完整回答失败', async () => {
-    const harness = createHarness(() => adaptOpenAICompatibleStream(toProviderStream([
+    const harness = createHarness(() => adaptDeepSeekStream(toProviderStream([
       providerChunk({
         tool_calls: [{ index: 0, type: 'function', function: { name: 'search_articles', arguments: '{"q' } }],
       } as ChatCompletionChunk.Choice.Delta),
@@ -3252,31 +3240,20 @@ function createHarness(
   const prisma = new FakePrismaService()
   const recorder = new FakeAgentRunRecorderService(prisma)
   const llmCalls: Array<{
+    provider: ResolvedLlmModel['provider']
     messages: ModelInputItem[]
     options: ChatStreamOptions | undefined
   }> = []
   const llmService = {
-    // contextWindowTokens 取真实 Model Profile，让 context 预算测试
-    // 与生产模型能力保持锚定，不冻结在手写字面量上。
-    resolveChatRequestConfig: (options?: {
-      model?: string
-      reasoningEffort?: 'low' | 'high' | 'max'
-      maxTokens?: number
-    }) => {
-      const model = options?.model ?? 'deepseek-v4-flash'
-
-      return {
-        model,
-        contextWindowTokens: getModelProfile(model)?.contextWindowTokens
-          ?? 1_000_000,
-        maxOutputTokens: options?.maxTokens ?? 65_536,
-        reasoningEffort: options?.reasoningEffort ?? 'high',
-      }
-    },
-    chatStream: (messages: ModelInputItem[], options?: ChatStreamOptions) => {
+    chatStream: (
+      provider: ResolvedLlmModel['provider'],
+      messages: ModelInputItem[],
+      options?: ChatStreamOptions,
+    ) => {
       const callIndex = llmCalls.length
 
       llmCalls.push({
+        provider,
         messages: structuredClone(messages),
         options,
       })
@@ -3285,7 +3262,7 @@ function createHarness(
     },
   } as unknown as LLMService
   const toolInvocationService = new FakeToolInvocationService(invokeTool)
-  const service = new AgentRuntimeService(
+  const runtimeService = new AgentRuntimeService(
     llmService,
     prisma as unknown as PrismaService,
     recorder as unknown as AgentRunRecorderService,
@@ -3303,6 +3280,12 @@ function createHarness(
     tokenEstimator,
     new SamplingContextPlanner(plannerTokenEstimator),
   )
+  // 模型行快照由 ChatService 在 Run 之前解析；这里给用例一个默认快照，省得每处都写。
+  const runTurnStream = runtimeService.runTurnStream.bind(runtimeService)
+  const service = Object.assign(runtimeService, {
+    runTurnStream: (input: TestRunTurnStreamInput) =>
+      runTurnStream({ model: createResolvedLlmModel(), ...input }),
+  })
 
   return {
     llmCalls,
@@ -3937,13 +3920,15 @@ async function* toModelStream(
   yield* events
 }
 
+type TestRunTurnStreamInput = Omit<RunTurnStreamInput, 'model'> & { model?: ResolvedLlmModel }
+
 function capturedTextThenToolCallModelStream(
   options: ChatStreamOptions | undefined,
   content: string,
 ): AsyncGenerator<ModelStreamEvent> {
   options?.debugCapture?.onRequest({ model: 'deepseek-v4-flash' })
 
-  return adaptOpenAICompatibleStream(teeRawResponseCapture(
+  return adaptDeepSeekStream(teeRawResponseCapture(
     toProviderStream([
       providerChunk({ content }),
       providerChunk({
@@ -3969,7 +3954,7 @@ function capturedTextModelStream(
 ): AsyncGenerator<ModelStreamEvent> {
   options?.debugCapture?.onRequest({ model: 'deepseek-v4-flash' })
 
-  return adaptOpenAICompatibleStream(teeRawResponseCapture(
+  return adaptDeepSeekStream(teeRawResponseCapture(
     toProviderStream([
       providerChunk({ content: '部' }),
       providerChunk({ content: '分' }),
@@ -4194,4 +4179,11 @@ function createDeferred(): {
   })
 
   return { promise, resolve }
+}
+
+/** 用例全部按 DeepSeek thinking 模型走真实 adapter：Tool Call 要求 reasoning_content。 */
+function adaptDeepSeekStream(
+  chunks: Parameters<typeof adaptOpenAICompatibleStream>[0],
+): AsyncGenerator<ModelStreamEvent> {
+  return adaptOpenAICompatibleStream(chunks, { requireReasoningContent: true })
 }

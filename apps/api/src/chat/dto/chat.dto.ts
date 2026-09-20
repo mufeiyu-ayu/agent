@@ -1,5 +1,4 @@
 import type { ChatRequest, DeepSeekReasoningEffort } from '@agent/contracts'
-import { SUPPORTED_DEEPSEEK_MODELS } from '@agent/ai'
 import {
   CHAT_MESSAGE_MAX_CHARS,
   DEEPSEEK_REASONING_EFFORTS,
@@ -30,9 +29,11 @@ export class ChatDto implements ChatRequest {
   @MaxLength(CHAT_MESSAGE_MAX_CHARS)
   message!: string
 
+  /** Admin 配置的模型行 id；是否存在 / 可见由 ChatService 解析时判定。 */
   @IsOptional()
   @IsString()
-  @IsIn([...SUPPORTED_DEEPSEEK_MODELS])
+  @IsNotEmpty()
+  @MaxLength(128)
   model?: string
 
   @ValidateIf((_object, value) => value !== undefined)

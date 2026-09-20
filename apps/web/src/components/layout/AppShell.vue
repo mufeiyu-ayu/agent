@@ -19,6 +19,7 @@ interface AppShellWorkspaceBackground {
 
 const props = defineProps<{
   balanceAvailable: boolean
+  balanceHidden: boolean
   balanceLabel: string
   balanceStatus: LlmRuntimeStatus
   hasMoreRecentChats: boolean
@@ -87,6 +88,7 @@ function handleRenameChat(chatId: string, title: string) {
   >
     <AppSidebar
       :balance-available="props.balanceAvailable"
+      :balance-hidden="props.balanceHidden"
       :balance-label="props.balanceLabel"
       :balance-status="props.balanceStatus"
       :collapsed="sidebarCollapsed"
@@ -121,6 +123,7 @@ function handleRenameChat(chatId: string, title: string) {
         </SheetDescription>
         <AppSidebar
           :balance-available="props.balanceAvailable"
+          :balance-hidden="props.balanceHidden"
           :balance-label="props.balanceLabel"
           :balance-status="props.balanceStatus"
           :collapsed="false"

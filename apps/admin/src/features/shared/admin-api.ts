@@ -46,7 +46,7 @@ export function appendPositiveInteger(
 export async function requestAdminRun<T>(
   url: string,
   options: AdminRunFetchOptions,
-  init?: { method?: 'POST', body?: unknown },
+  init?: { method?: 'POST' | 'PATCH' | 'DELETE', body?: unknown },
 ): Promise<T> {
   let response: Response
 

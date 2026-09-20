@@ -5,11 +5,11 @@ import type {
   ChatCompletionMessageParam,
   ChatCompletionTool,
 } from 'openai/resources/chat/completions'
-import type { LLMRuntimeConfig } from '../config.js'
+import type { LLMClientConfig, ResolvedChatRequestConfig } from '../config.js'
 import type {
-  DeepSeekBalanceResponse,
-  DeepSeekModelsResponse,
-} from '../deepseek.js'
+  ProviderBalanceResponse,
+  ProviderModelsResponse,
+} from '../provider-metadata.js'
 import type {
   ChatOptions,
   ChatStreamOptions,
@@ -26,7 +26,6 @@ import OpenAI, {
   APIUserAbortError,
 } from 'openai'
 
-import { resolveChatRequestConfig } from '../config.js'
 import {
   LLMApiError,
   LLMAuthError,
@@ -62,40 +61,45 @@ type ChatCompletionBaseParams = Pick<
   ChatCompletionCreateParamsNonStreaming,
   'messages' | 'model' | 'max_tokens' | 'response_format'
 > & {
-  thinking: { type: 'enabled' }
-  reasoning_effort: 'low' | 'high' | 'max'
+  /** 只有 reasoning 模型带这两个 DeepSeek thinking 参数；其他 Provider 不发。 */
+  thinking?: { type: 'enabled' }
+  reasoning_effort?: 'low' | 'high' | 'max'
 }
 
-type DeepSeekAssistantToolCallMessageParam
+type AssistantToolCallMessageParam
   = ChatCompletionAssistantMessageParam & {
-    reasoning_content: string
+    reasoning_content?: string
   }
 
 /**
  * OpenAI-compatible 模型适配层。
  *
  * SDK、DeepSeek 兼容细节和错误转换都收敛在这里；业务层只依赖本项目自己的 LLM 类型。
+ * 一个实例对应一个 Provider（一把 key + 一个 baseUrl）；模型名与能力随每次请求传入。
  */
 export class OpenAICompatibleClient {
-  constructor(private readonly runtimeConfig: LLMRuntimeConfig) {}
+  constructor(private readonly clientConfig: LLMClientConfig) {}
 
-  async listModels(): Promise<DeepSeekModelsResponse> {
+  async listModels(): Promise<ProviderModelsResponse> {
     return await this.runWithLLMErrorHandling(() =>
-      this.createClient().get<DeepSeekModelsResponse>('/models', {
+      this.createClient().get<ProviderModelsResponse>('/models', {
         timeout: METADATA_REQUEST_TIMEOUT_MS,
       }),
     )
   }
 
-  async getUserBalance(): Promise<DeepSeekBalanceResponse> {
+  /** DeepSeek 的余额端点在 origin 下（`/user/balance`），不在 `/v1` 前缀下；用绝对 URL 绕过 baseURL 拼接。 */
+  async getUserBalance(): Promise<ProviderBalanceResponse> {
+    const url = new URL('/user/balance', this.clientConfig.baseUrl).href
+
     return await this.runWithLLMErrorHandling(() =>
-      this.createClient().get<DeepSeekBalanceResponse>('/user/balance', {
+      this.createClient().get<ProviderBalanceResponse>(url, {
         timeout: METADATA_REQUEST_TIMEOUT_MS,
       }),
     )
   }
 
-  async chat(messages: ModelInputItem[], options?: ChatOptions): Promise<string> {
+  async chat(messages: ModelInputItem[], options: ChatOptions): Promise<string> {
     return await this.runWithLLMErrorHandling(async () => {
       const completion = await this.createClient().chat.completions.create(
         this.buildBaseChatCompletionParams(
@@ -121,21 +125,21 @@ export class OpenAICompatibleClient {
 
   async* chatStream(
     messages: ModelInputItem[],
-    options?: ChatStreamOptions,
+    options: ChatStreamOptions,
   ): AsyncGenerator<ModelStreamEvent> {
     const client = this.createClient()
     // SDK 每次尝试都在 signal 上挂 abort 监听且成功后不移除；一个 Run 的多轮采样
     // 共用同一个 run 级 signal，按尝试次数累积到 11 个就打 MaxListenersExceededWarning，
     // 派生一次性信号把监听隔离到本次调用。
-    const signal = options?.signal && AbortSignal.any([options.signal])
+    const signal = options.signal && AbortSignal.any([options.signal])
     const requestOptions = {
       timeout: STREAM_TIMEOUT_MS,
       ...(signal ? { signal } : {}),
     }
     // debug 捕获只在开关开启且调用方提供回调时生效；请求体不含 apiKey / baseUrl
     // 等凭据（它们只存在于 SDK client 配置里，不在请求 params 中）。
-    const debugCapture = this.runtimeConfig.captureModelIO
-      ? options?.debugCapture
+    const debugCapture = this.clientConfig.captureModelIO
+      ? options.debugCapture
       : undefined
     let requestStarted = false
     let responseCaptureCommitted = false
@@ -167,7 +171,7 @@ export class OpenAICompatibleClient {
           messages.map(toOpenAIModelInputItem),
           options,
         ),
-        ...toOpenAIChatTools(options?.tools),
+        ...toOpenAIChatTools(options.tools),
         stream: true as const,
         stream_options: {
           include_usage: true,
@@ -193,6 +197,7 @@ export class OpenAICompatibleClient {
               () => notifyCaptureError('response'),
             )
           : stream,
+        { requireReasoningContent: options.request.reasoning },
       )
     }
     catch (cause) {
@@ -209,7 +214,7 @@ export class OpenAICompatibleClient {
   }
 
   private createClient(): OpenAI {
-    const { apiKey, baseUrl } = this.runtimeConfig
+    const { apiKey, baseUrl } = this.clientConfig
 
     return new OpenAI({
       apiKey,
@@ -220,21 +225,16 @@ export class OpenAICompatibleClient {
 
   private buildBaseChatCompletionParams(
     messages: ChatCompletionMessageParam[],
-    options?: ChatOptions,
+    options: ChatOptions,
   ): ChatCompletionBaseParams {
-    const requestConfig = resolveChatRequestConfig(
-      this.runtimeConfig,
-      options,
-    )
     const params: ChatCompletionBaseParams = {
-      model: requestConfig.model,
+      model: options.request.model,
       messages,
-      max_tokens: requestConfig.maxOutputTokens,
-      thinking: { type: 'enabled' },
-      reasoning_effort: requestConfig.reasoningEffort,
+      max_tokens: options.request.maxOutputTokens,
+      ...toThinkingParams(options.request),
     }
 
-    if (options?.responseFormat) {
+    if (options.responseFormat) {
       params.response_format = options.responseFormat
     }
 
@@ -316,6 +316,15 @@ function rejectOnAbort<T>(
   })
 }
 
+/** DeepSeek thinking 参数只对 reasoning 模型发送；中转站后面的 gpt / gemini / claude 不需要。 */
+function toThinkingParams(
+  request: ResolvedChatRequestConfig,
+): Pick<ChatCompletionBaseParams, 'thinking' | 'reasoning_effort'> {
+  return request.reasoning
+    ? { thinking: { type: 'enabled' }, reasoning_effort: request.reasoningEffort }
+    : {}
+}
+
 function safelyCaptureRequest(
   debugCapture: ModelIODebugCapture | undefined,
   requestParams: unknown,
@@ -343,10 +352,11 @@ export function toOpenAIModelInputItem(
       }
 
     case 'assistant_tool_call': {
-      const message: DeepSeekAssistantToolCallMessageParam = {
+      const message: AssistantToolCallMessageParam = {
         role: 'assistant',
         content: item.content ?? '',
-        reasoning_content: item.reasoningContent,
+        // 只有 DeepSeek thinking 会给出 reasoning_content；为空就不写字段，其他 Provider 不认识它。
+        ...(item.reasoningContent ? { reasoning_content: item.reasoningContent } : {}),
         tool_calls: item.calls.map(call => ({
           id: call.callId,
           type: 'function' as const,

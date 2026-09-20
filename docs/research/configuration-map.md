@@ -6,7 +6,7 @@
 
 | 类别 | 含义 | 事实来源 | 校验时机 |
 | --- | --- | --- | --- |
-| 环境配置（LLM） | API Key、Base URL、默认模型、超时、输出预算上限 | `packages/ai/src/config.ts`（`resolveLLMRuntimeConfig`，由 `apps/api/src/llm/llm-runtime-config.service.ts` 在启动期调用） | Nest 启动期 fail-fast |
+| 环境配置（LLM） | 主密钥 `AGENT_SECRET_KEY`、debug 开关 `AGENT_DEBUG_CAPTURE_MODEL_IO`；服务商地址 / API Key / 模型名与能力自 #142 起在数据库 `LlmProvider` / `LlmModel`，由管理台维护 | `apps/api/src/llm/llm-runtime-config.service.ts`（`resolveLlmEnvConfig`）；数据库配置经 `apps/api/src/llm/llm-model-config.service.ts` 在每个 Run 开始时解析成快照 | env：Nest 启动期 fail-fast；模型行：Admin 写入时校验，Run 开始时解析 |
 | 环境配置（Run Policy） | history 候选批量 / 上限、sampling 轮数、Tool Call 预算、Run deadline | `apps/api/src/agent-runtime/configuration/agent-runtime.policy.ts`（`resolveAgentRuntimePolicy`） | Nest 启动期 fail-fast |
 | 环境配置（Embedding） | Gemini API Key、批量、重试、请求超时 | `apps/api/src/embeddings/embedding-provider.ts` | 构建 provider 时解析 |
 | 环境配置（数据库） | `DATABASE_URL`、操作 deadline | `apps/api/src/prisma/prisma.service.ts` | 连接时 |

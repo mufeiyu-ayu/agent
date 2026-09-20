@@ -164,15 +164,12 @@ export const messages = {
     composer: {
       placeholder: '输入你的问题，或让我检索站内资料...',
       modelSelectAria: '选择模型与思考强度',
-      modelPlaceholder: 'DeepSeek 模型',
+      modelPlaceholder: '选择模型',
       reasoningEffortLabel: '思考强度',
       reasoningEffort: {
         low: 'Low',
         high: 'High',
         max: 'Max',
-      },
-      modelDescriptions: {
-        'deepseek-v4-flash': '响应快，适合日常对话任务',
       },
       reset: '重置当前对话',
       send: '发送消息',
@@ -184,7 +181,7 @@ export const messages = {
         empty: '余额 --',
       },
       errors: {
-        models: '模型列表读取失败，已使用默认 DeepSeek 模型',
+        models: '模型列表读取失败，请检查后台模型配置',
         balance: '余额读取失败，请稍后重试',
       },
     },
@@ -354,15 +351,12 @@ export const messages = {
     composer: {
       placeholder: 'Ask a question or have me search the article library...',
       modelSelectAria: 'Select model and reasoning effort',
-      modelPlaceholder: 'DeepSeek model',
+      modelPlaceholder: 'Select a model',
       reasoningEffortLabel: 'Effort',
       reasoningEffort: {
         low: 'Low',
         high: 'High',
         max: 'Max',
-      },
-      modelDescriptions: {
-        'deepseek-v4-flash': 'Fast responses for everyday chat tasks',
       },
       reset: 'Reset current chat',
       send: 'Send message',
@@ -374,7 +368,7 @@ export const messages = {
         empty: 'Balance --',
       },
       errors: {
-        models: 'Failed to load models. Using the default DeepSeek models.',
+        models: 'Failed to load models. Check the model settings in Admin.',
         balance: 'Failed to load balance. Please try again later.',
       },
     },

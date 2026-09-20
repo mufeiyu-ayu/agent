@@ -29,6 +29,8 @@ const summaryFields = computed(() => [
   { label: t('eventDetail.fields.samplingIndex'), value: show(props.item.samplingIndex) },
   { label: t('eventDetail.fields.attemptId'), value: show(props.item.samplingAttemptId), mono: true },
   { label: t('eventDetail.fields.resolvedModel'), value: show(props.item.contextInspector.resolvedModel), mono: true },
+  { label: t('eventDetail.fields.providerId'), value: show(props.item.contextInspector.providerId), mono: true },
+  { label: t('eventDetail.fields.modelId'), value: show(props.item.contextInspector.modelId), mono: true },
   { label: t('eventDetail.fields.finishReason'), value: show(props.item.finishReason) },
   { label: t('eventDetail.fields.providerItems'), value: items(props.item.providerItemCount) },
   { label: t('eventDetail.fields.toolCalls'), value: items(props.item.toolCallCount) },

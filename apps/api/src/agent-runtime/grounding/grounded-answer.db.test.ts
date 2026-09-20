@@ -24,8 +24,6 @@ import process from 'node:process'
 // 项目使用 Node 原生测试运行器，不为 DB integration 引入额外测试框架。
 // eslint-disable-next-line test/no-import-node-test
 import { after, before, describe, it } from 'node:test'
-import { getModelProfile } from '@agent/ai'
-
 import { AdminRunsService } from '../../admin-runs/admin-runs.service.js'
 import { ARTICLE_CHUNKER_PROFILE } from '../../article-indexing/article-chunking.js'
 import { ACTIVE_EMBEDDING_PROFILE } from '../../embeddings/embedding-provider.js'
@@ -35,6 +33,7 @@ import {
   MessageRole,
   MessageStatus,
 } from '../../generated/prisma/client.js'
+import { createResolvedLlmModel } from '../../llm/__fixtures__.js'
 import { PrismaService } from '../../prisma/prisma.service.js'
 import {
   createArticleRetrievalPool,
@@ -907,22 +906,7 @@ describe('Grounded Answer PostgreSQL integration', { concurrency: 1 }, () => {
 
     let callIndex = 0
     const llmService = {
-      resolveChatRequestConfig: (options?: {
-        model?: string
-        reasoningEffort?: 'low' | 'high' | 'max'
-        maxTokens?: number
-      }) => {
-        const model = options?.model ?? 'deepseek-v4-flash'
-
-        return {
-          model,
-          contextWindowTokens: getModelProfile(model)?.contextWindowTokens
-            ?? 1_000_000,
-          maxOutputTokens: options?.maxTokens ?? 65_536,
-          reasoningEffort: options?.reasoningEffort ?? 'high',
-        }
-      },
-      chatStream: (messages: ModelInputItem[], _options?: ChatStreamOptions) => {
+      chatStream: (_provider: unknown, messages: ModelInputItem[], _options?: ChatStreamOptions) => {
         const createStream = modelStreams[callIndex]
 
         callIndex += 1
@@ -962,6 +946,7 @@ describe('Grounded Answer PostgreSQL integration', { concurrency: 1 }, () => {
       run: () => service.runTurnStream({
         conversationId,
         userContent: 'SEO 是什么',
+        model: createResolvedLlmModel(),
         reasoningEffort: 'high',
         ...(signal ? { signal } : {}),
         instructions: [],

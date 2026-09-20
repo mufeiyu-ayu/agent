@@ -2,6 +2,7 @@ import type { MiddlewareConsumer, NestModule } from '@nestjs/common'
 import { Module } from '@nestjs/common'
 
 import { AdminConversationsModule } from './admin-conversations/admin-conversations.module.js'
+import { AdminLlmModule } from './admin-llm/admin-llm.module.js'
 import { AdminOverviewModule } from './admin-overview/admin-overview.module.js'
 import { AdminRunsModule } from './admin-runs/admin-runs.module.js'
 import { AppController } from './app.controller.js'
@@ -14,6 +15,7 @@ import { ToolsModule } from './tools/tools.module.js'
 @Module({
   imports: [
     AdminConversationsModule,
+    AdminLlmModule,
     AdminOverviewModule,
     AdminRunsModule,
     LlmModule,

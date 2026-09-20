@@ -1,0 +1,450 @@
+import type {
+  AdminLlmFetchModelsResponse,
+  AdminLlmImportModelsResponse,
+  AdminLlmModel,
+  AdminLlmProvider,
+  AdminLlmTestModelsResponse,
+  LlmProviderFamily,
+} from '@agent/contracts'
+import type { LlmModel, LlmProvider } from '../generated/prisma/client.js'
+import type {
+  CreateAdminLlmProviderDto,
+  PreviewAdminLlmModelsDto,
+  ProbeAdminLlmModelsDto,
+  TestAdminLlmModelsDto,
+  UpdateAdminLlmModelDto,
+  UpdateAdminLlmProviderDto,
+} from './dto/admin-llm.dto.js'
+import { LLM_PROVIDER_FAMILIES } from '@agent/contracts'
+import {
+  BadRequestException,
+  ConflictException,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common'
+
+import { Prisma } from '../generated/prisma/client.js'
+import { LlmModelConfigService } from '../llm/llm-model-config.service.js'
+import { LlmModelUnavailableError } from '../llm/llm.errors.js'
+import { LLMService } from '../llm/llm.service.js'
+import { PrismaService } from '../prisma/prisma.service.js'
+import { resolveImportedModelDefaults } from './llm-model-presets.js'
+
+type ProviderWithCount = LlmProvider & { _count: { models: number } }
+
+/** 同时探测的模型数：够快，又不至于一下把中转站的限流打满。 */
+const PROBE_CONCURRENCY = 4
+
+@Injectable()
+export class AdminLlmService {
+  constructor(
+    @Inject(PrismaService)
+    private readonly prismaService: PrismaService,
+    @Inject(LLMService)
+    private readonly llmService: LLMService,
+    @Inject(LlmModelConfigService)
+    private readonly llmModelConfigService: LlmModelConfigService,
+  ) {}
+
+  // ─── Provider ────────────────────────────────
+
+  async listProviders(): Promise<AdminLlmProvider[]> {
+    const providers = await this.prismaService.llmProvider.findMany({
+      orderBy: { createdAt: 'asc' },
+      include: { _count: { select: { models: true } } },
+    })
+
+    return providers.map(toAdminLlmProvider)
+  }
+
+  /** 存库前验证配置：用填好的地址与密钥直接拉模型清单，拉不通就在弹窗里改。 */
+  previewModelNames(input: PreviewAdminLlmModelsDto): Promise<AdminLlmFetchModelsResponse> {
+    return this.listSortedModelNames(toPreviewCredentials(input))
+  }
+
+  /** 存库前对勾选的模型各发一条最短对话，逐个回报通不通；并发有限，失败不抛。 */
+  testModelNames(input: TestAdminLlmModelsDto): Promise<AdminLlmTestModelsResponse> {
+    return this.probeWireNames(toPreviewCredentials(input), input.wireNames)
+  }
+
+  /** 编辑已有服务商且密钥留空：用库里的密钥，地址用表单里还没保存的那个（省略则用库里的）。 */
+  async testProviderModelNames(
+    providerId: string,
+    wireNames: string[],
+    baseUrl?: string,
+  ): Promise<AdminLlmTestModelsResponse> {
+    const provider = await this.requireProvider(providerId)
+
+    return this.probeWireNames(this.toCredentialsOrBadRequest(provider, baseUrl), wireNames)
+  }
+
+  /** 服务商与预览时勾选的模型同一事务写入：任一失败都不留半截配置。 */
+  async createProvider(input: CreateAdminLlmProviderDto): Promise<AdminLlmProvider> {
+    const { importWireNames = [], ...providerInput } = input
+    const wireNames = dedupeWireNames(importWireNames)
+
+    const provider = await this.prismaService.$transaction(async (tx) => {
+      const created = await tx.llmProvider.create({
+        data: {
+          family: providerInput.family,
+          note: providerInput.note,
+          baseUrl: normalizeBaseUrl(providerInput.baseUrl),
+          ...this.llmModelConfigService.encryptApiKey(providerInput.apiKey),
+          enabled: providerInput.enabled,
+        },
+      })
+
+      if (wireNames.length > 0) {
+        await tx.llmModel.createMany({
+          data: wireNames.map(wireName => ({
+            providerId: created.id,
+            wireName,
+            ...resolveImportedModelDefaults(providerInput.family, wireName),
+          })),
+        })
+      }
+
+      return { ...created, _count: { models: wireNames.length } }
+    })
+
+    return toAdminLlmProvider(provider)
+  }
+
+  async updateProvider(
+    providerId: string,
+    input: UpdateAdminLlmProviderDto,
+  ): Promise<AdminLlmProvider> {
+    await this.requireProvider(providerId)
+
+    const provider = await this.prismaService.llmProvider.update({
+      where: { id: providerId },
+      data: {
+        ...(input.family === undefined ? {} : { family: input.family }),
+        ...(input.note === undefined ? {} : { note: input.note }),
+        ...(input.baseUrl === undefined ? {} : { baseUrl: normalizeBaseUrl(input.baseUrl) }),
+        ...(input.enabled === undefined ? {} : { enabled: input.enabled }),
+        // 空串与省略同义：管理台编辑表单留空就是不改密钥。
+        ...(input.apiKey ? this.llmModelConfigService.encryptApiKey(input.apiKey) : {}),
+      },
+      include: { _count: { select: { models: true } } },
+    })
+
+    return toAdminLlmProvider(provider)
+  }
+
+  async deleteProvider(providerId: string): Promise<{ id: string }> {
+    await this.requireProvider(providerId)
+    // 模型行随 Provider 级联删除（schema onDelete: Cascade）。
+    await this.prismaService.llmProvider.delete({ where: { id: providerId } })
+
+    return { id: providerId }
+  }
+
+  /** 用该 Provider 的密钥打 `/models`，只返回名字；编辑时可传表单里未保存的地址。 */
+  async fetchModelNames(providerId: string, baseUrl?: string): Promise<AdminLlmFetchModelsResponse> {
+    const provider = await this.requireProvider(providerId)
+
+    return this.listSortedModelNames(this.toCredentialsOrBadRequest(provider, baseUrl))
+  }
+
+  /** 按勾选批量建行；已存在的 wireName 跳过，不覆盖人改过的数值。 */
+  async importModels(
+    providerId: string,
+    wireNames: string[],
+  ): Promise<AdminLlmImportModelsResponse> {
+    const provider = await this.requireProvider(providerId)
+
+    const requested = dedupeWireNames(wireNames)
+
+    if (requested.length === 0)
+      return { imported: 0, skipped: 0 }
+
+    // 交给唯一索引跳过已存在的 wireName：不先查后写，并发建行也不会撞成 500。
+    const { count } = await this.prismaService.llmModel.createMany({
+      data: requested.map(wireName => ({
+        providerId,
+        wireName,
+        ...resolveImportedModelDefaults(toFamily(provider.family), wireName),
+      })),
+      skipDuplicates: true,
+    })
+
+    return { imported: count, skipped: requested.length - count }
+  }
+
+  // ─── Model ───────────────────────────────────
+
+  /** 管理台右侧默认列全部服务商的模型，按服务商筛选在前端做。 */
+  async listAllModels(): Promise<AdminLlmModel[]> {
+    const models = await this.prismaService.llmModel.findMany({
+      orderBy: [{ provider: { createdAt: 'asc' } }, { sortOrder: 'asc' }, { createdAt: 'asc' }],
+    })
+
+    return models.map(toAdminLlmModel)
+  }
+
+  async listModels(providerId: string): Promise<AdminLlmModel[]> {
+    await this.requireProvider(providerId)
+
+    const models = await this.prismaService.llmModel.findMany({
+      where: { providerId },
+      orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+    })
+
+    return models.map(toAdminLlmModel)
+  }
+
+  async updateModel(
+    modelId: string,
+    input: UpdateAdminLlmModelDto,
+  ): Promise<AdminLlmModel> {
+    const current = await this.requireModel(modelId)
+    // DTO 实例上没传的字段是值为 undefined 的自有属性，直接展开会把 current 覆盖成 undefined。
+    const patch = omitUndefined(input)
+
+    // 局部更新按合并后的整行校验：输出上限与上下文、默认与可见的约束不能被拆开绕过。
+    assertModelRowValid({ ...current, ...patch })
+
+    const model = await this.rejectDuplicateWireName(patch.wireName ?? current.wireName, () =>
+      this.prismaService.$transaction(async (tx) => {
+        if (patch.isDefault) {
+          await tx.llmModel.updateMany({
+            where: { isDefault: true, id: { not: modelId } },
+            data: { isDefault: false },
+          })
+        }
+
+        return tx.llmModel.update({ where: { id: modelId }, data: patch })
+      }))
+
+    return toAdminLlmModel(model)
+  }
+
+  /**
+   * 重测已入库的模型：每条发一条最短对话，结果写回行（ok / 原因 / 时间）。
+   * Provider 密钥解不开的按失败记原因，不中断其他行。
+   */
+  async probeModels(input: ProbeAdminLlmModelsDto): Promise<AdminLlmModel[]> {
+    const models = await this.prismaService.llmModel.findMany({
+      where: { id: { in: [...new Set(input.modelIds)] } },
+      include: { provider: true },
+    })
+
+    const updated = await mapWithConcurrency(models, PROBE_CONCURRENCY, async (model) => {
+      const outcome = await this.probeStoredModel(model)
+
+      return this.prismaService.llmModel.update({
+        where: { id: model.id },
+        data: {
+          lastProbeOk: outcome.ok,
+          lastProbeError: outcome.ok ? null : outcome.error,
+          lastProbedAt: new Date(),
+        },
+      })
+    })
+
+    return updated.map(toAdminLlmModel)
+  }
+
+  async deleteModel(modelId: string): Promise<{ id: string }> {
+    await this.requireModel(modelId)
+    await this.prismaService.llmModel.delete({ where: { id: modelId } })
+
+    return { id: modelId }
+  }
+
+  private async probeStoredModel(
+    model: LlmModel & { provider: LlmProvider },
+  ): Promise<{ ok: true } | { ok: false, error: string }> {
+    if (!model.provider.enabled)
+      return { ok: false, error: '服务商已停用' }
+
+    try {
+      return await this.llmService.probeModel(
+        this.llmModelConfigService.toCredentials(model.provider),
+        model.wireName,
+      )
+    }
+    catch (error) {
+      if (error instanceof LlmModelUnavailableError)
+        return { ok: false, error: error.message }
+
+      throw error
+    }
+  }
+
+  private async probeWireNames(
+    credentials: Parameters<LLMService['probeModel']>[0],
+    wireNames: string[],
+  ): Promise<AdminLlmTestModelsResponse> {
+    const names = dedupeWireNames(wireNames)
+    const results = await mapWithConcurrency(names, PROBE_CONCURRENCY, async (wireName) => {
+      const outcome = await this.llmService.probeModel(credentials, wireName)
+
+      return { wireName, ok: outcome.ok, error: outcome.ok ? null : outcome.error }
+    })
+
+    return { results }
+  }
+
+  private async listSortedModelNames(
+    credentials: Parameters<LLMService['listProviderModelNames']>[0],
+  ): Promise<AdminLlmFetchModelsResponse> {
+    const models = await this.llmService.listProviderModelNames(credentials)
+
+    return { models: [...new Set(models)].sort() }
+  }
+
+  /** 主密钥更换后旧密文解不开：告诉管理员重填密钥，而不是 500。可用表单里未保存的地址覆盖库里的。 */
+  private toCredentialsOrBadRequest(provider: LlmProvider, baseUrlOverride?: string) {
+    try {
+      const credentials = this.llmModelConfigService.toCredentials(provider)
+
+      return baseUrlOverride
+        ? { ...credentials, baseUrl: normalizeBaseUrl(baseUrlOverride) }
+        : credentials
+    }
+    catch (error) {
+      if (error instanceof LlmModelUnavailableError)
+        throw new BadRequestException(error.message)
+
+      throw error
+    }
+  }
+
+  private async requireProvider(providerId: string): Promise<LlmProvider> {
+    const provider = await this.prismaService.llmProvider.findUnique({ where: { id: providerId } })
+
+    if (!provider)
+      throw new NotFoundException('服务商不存在')
+
+    return provider
+  }
+
+  private async requireModel(modelId: string): Promise<LlmModel> {
+    const model = await this.prismaService.llmModel.findUnique({ where: { id: modelId } })
+
+    if (!model)
+      throw new NotFoundException('模型不存在')
+
+    return model
+  }
+
+  /** 直接依赖 `providerId + wireName` 唯一索引：并发写入也只会得到 409，不做先查后写。 */
+  private async rejectDuplicateWireName<T>(wireName: string, write: () => Promise<T>): Promise<T> {
+    try {
+      return await write()
+    }
+    catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002')
+        throw new ConflictException(`该服务商下已存在模型 ${wireName}`)
+
+      throw error
+    }
+  }
+}
+
+/**
+ * 模型行的跨字段约束：输出上限必须小于上下文窗口（否则每个 Run 都在创建后才因预算失败）；
+ * 默认模型必须对前台可见（与 resolveModel / resolveDefaultProvider 的口径一致）。
+ */
+function assertModelRowValid(row: {
+  contextWindowTokens: number
+  maxOutputTokens: number
+  visible: boolean
+  isDefault: boolean
+}): void {
+  if (row.maxOutputTokens >= row.contextWindowTokens)
+    throw new BadRequestException('maxOutputTokens 必须小于 contextWindowTokens')
+  if (row.isDefault && !row.visible)
+    throw new BadRequestException('默认模型必须对前台可见')
+}
+
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  operation: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const results: R[] = Array.from({ length: items.length })
+  let next = 0
+
+  await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+    while (next < items.length) {
+      const index = next++
+
+      results[index] = await operation(items[index] as T)
+    }
+  }))
+
+  return results
+}
+
+/** 存库前预览 / 测试用的临时凭据：没有 Provider 行，只有表单里的地址与密钥。 */
+function toPreviewCredentials(input: PreviewAdminLlmModelsDto) {
+  return {
+    providerId: 'preview',
+    baseUrl: normalizeBaseUrl(input.baseUrl),
+    apiKey: input.apiKey,
+  }
+}
+
+function omitUndefined<T extends object>(value: T): Partial<T> {
+  return Object.fromEntries(
+    Object.entries(value).filter(([, item]) => item !== undefined),
+  ) as Partial<T>
+}
+
+function dedupeWireNames(wireNames: string[]): string[] {
+  return [...new Set(wireNames.map(name => name.trim()).filter(Boolean))]
+}
+
+function normalizeBaseUrl(baseUrl: string): string {
+  const normalized = baseUrl.replace(/\/+$/, '')
+
+  if (!normalized)
+    throw new BadRequestException('baseUrl 不能为空')
+
+  return normalized
+}
+
+/** 列是自由字符串（Prisma 无跨包 enum），读出来按 contracts 的清单收口，不认识的当 other。 */
+function toFamily(value: string): LlmProviderFamily {
+  return (LLM_PROVIDER_FAMILIES as readonly string[]).includes(value)
+    ? value as LlmProviderFamily
+    : 'other'
+}
+
+function toAdminLlmProvider(provider: ProviderWithCount): AdminLlmProvider {
+  return {
+    id: provider.id,
+    family: toFamily(provider.family),
+    note: provider.note,
+    baseUrl: provider.baseUrl,
+    apiKeyLast4: provider.apiKeyLast4,
+    enabled: provider.enabled,
+    modelCount: provider._count.models,
+    createdAt: provider.createdAt.toISOString(),
+    updatedAt: provider.updatedAt.toISOString(),
+  }
+}
+
+function toAdminLlmModel(model: LlmModel): AdminLlmModel {
+  return {
+    id: model.id,
+    providerId: model.providerId,
+    wireName: model.wireName,
+    displayName: model.displayName,
+    contextWindowTokens: model.contextWindowTokens,
+    maxOutputTokens: model.maxOutputTokens,
+    reasoning: model.reasoning,
+    visible: model.visible,
+    isDefault: model.isDefault,
+    sortOrder: model.sortOrder,
+    lastProbeOk: model.lastProbeOk,
+    lastProbeError: model.lastProbeError,
+    lastProbedAt: model.lastProbedAt?.toISOString() ?? null,
+    createdAt: model.createdAt.toISOString(),
+    updatedAt: model.updatedAt.toISOString(),
+  }
+}

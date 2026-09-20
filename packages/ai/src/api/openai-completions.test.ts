@@ -4,11 +4,10 @@ import { getEventListeners } from 'node:events'
 import { describe, it } from 'node:test'
 import OpenAI from 'openai'
 
-import { resolveLLMRuntimeConfig } from '../config.js'
+import type { LLMClientConfig, ResolvedChatRequestConfig } from '../config.js'
 import {
   LLMAuthError,
   LLMBalanceError,
-  LLMConfigError,
   LLMInvalidRequestError,
   LLMNetworkError,
   LLMRateLimitError,
@@ -22,10 +21,10 @@ describe('OpenAICompatibleClient runtime config', () => {
 
     await harness.client.listModels()
     await harness.client.getUserBalance()
-    await harness.client.chat([{ type: 'message', role: 'user', content: 'hello' }])
+    await harness.client.chat([{ type: 'message', role: 'user', content: 'hello' }], { request: DEEPSEEK_REQUEST })
     await collectEvents(harness.client.chatStream([
       { type: 'message', role: 'user', content: 'hello' },
-    ]))
+    ], { request: DEEPSEEK_REQUEST }))
 
     assert.deepEqual(
       harness.calls.map(call => ({
@@ -34,7 +33,7 @@ describe('OpenAICompatibleClient runtime config', () => {
       })),
       [
         { kind: 'metadata:/models', timeout: 10_000 },
-        { kind: 'metadata:/user/balance', timeout: 10_000 },
+        { kind: 'metadata:https://api.deepseek.com/user/balance', timeout: 10_000 },
         { kind: 'chat', timeout: 60_000 },
         { kind: 'stream', timeout: 600_000 },
       ],
@@ -54,7 +53,7 @@ describe('OpenAICompatibleClient runtime config', () => {
     for (const reasoningEffort of ['low', 'high', 'max'] as const) {
       await collectEvents(harness.client.chatStream(
         [{ type: 'message', role: 'user', content: 'hello' }],
-        { reasoningEffort },
+        { request: { ...DEEPSEEK_REQUEST, reasoningEffort } },
       ))
     }
 
@@ -92,7 +91,7 @@ describe('OpenAICompatibleClient runtime config', () => {
 
     await collectEvents(harness.client.chatStream(
       [{ type: 'message', role: 'user', content: 'hello' }],
-      { reasoningEffort: 'max' },
+      { request: { ...DEEPSEEK_REQUEST, reasoningEffort: 'max' } },
     ))
 
     assert.deepEqual(wireBody?.thinking, { type: 'enabled' })
@@ -131,7 +130,7 @@ describe('OpenAICompatibleClient runtime config', () => {
       },
       { type: 'tool_result', callId: 'call-1', name: 'get_article_detail', content: 'x', ok: false },
       { type: 'tool_result', callId: 'call-2', name: 'search_articles', content: 'y', ok: true },
-    ]))
+    ], { request: DEEPSEEK_REQUEST }))
 
     const messages = wireBody?.messages as Array<Record<string, unknown>>
 
@@ -147,24 +146,45 @@ describe('OpenAICompatibleClient runtime config', () => {
     assert.deepEqual(messages.slice(2).map(message => message.tool_call_id), ['call-1', 'call-2'])
   })
 
-  it('调用级模型或输出预算非法时不发起 Provider 请求', async () => {
+  it('非 reasoning 模型不发 thinking 参数，Tool Call 无 reasoning_content 也能完成', async () => {
     const harness = createHarness()
 
-    await assert.rejects(
-      harness.client.chat(
-        [{ type: 'message', role: 'user', content: 'hello' }],
-        { model: 'unsupported-model' },
-      ),
-      LLMConfigError,
-    )
-    await assert.rejects(
-      harness.client.chat(
-        [{ type: 'message', role: 'user', content: 'hello' }],
-        { maxTokens: 384_001 },
-      ),
-      LLMConfigError,
-    )
-    assert.equal(harness.calls.length, 0)
+    await harness.client.chat([{ type: 'message', role: 'user', content: 'hello' }], { request: RELAY_REQUEST })
+    await collectEvents(harness.client.chatStream(
+      [{ type: 'message', role: 'user', content: 'hello' }],
+      { request: RELAY_REQUEST },
+    ))
+
+    for (const call of harness.calls) {
+      assert.equal(call.params?.model, 'gpt-5.6-sol')
+      assert.equal(call.params?.max_tokens, 8_192)
+      assert.equal(Object.hasOwn(call.params ?? {}, 'thinking'), false)
+      assert.equal(Object.hasOwn(call.params ?? {}, 'reasoning_effort'), false)
+    }
+
+    // 中转站 gpt / gemini / claude 的 Tool Call 不带 reasoning_content：不再抛 LLMApiError。
+    const toolCallHarness = createFetchHarness([() => new Response([
+      sseChunk({ tool_calls: [{ index: 0, id: 'call-1', type: 'function', function: { name: 'search_articles', arguments: '{"query":"x"}' } }] }),
+      '',
+      sseChunk({}, 'tool_calls'),
+      '',
+      'data: [DONE]',
+      '',
+    ].join('\n'), { status: 200, headers: { 'Content-Type': 'text/event-stream' } })])
+    const events = await collectEvents(toolCallHarness.client.chatStream(
+      [{ type: 'message', role: 'user', content: 'hello' }],
+      { request: RELAY_REQUEST },
+    ))
+
+    assert.deepEqual(events, [
+      { type: 'tool_call_started' },
+      {
+        type: 'tool_call_completed',
+        toolCall: { providerCallId: 'call-1', name: 'search_articles', argumentsJson: '{"query":"x"}', index: 0 },
+        reasoningContent: '',
+      },
+      { type: 'response_completed', finishReason: 'tool_calls' },
+    ])
   })
 
   it('请求已发起但 SDK 在首个 chunk 前失败时提交 empty capture', async () => {
@@ -187,7 +207,7 @@ describe('OpenAICompatibleClient runtime config', () => {
     await assert.rejects(
       collectEvents(harness.client.chatStream(
         [{ type: 'message', role: 'user', content: 'hello' }],
-        {
+        { request: DEEPSEEK_REQUEST,
           debugCapture: {
             onRequest: () => {},
             onResponse: (capture) => {
@@ -212,7 +232,7 @@ describe('OpenAICompatibleClient runtime config', () => {
 
     const events = await collectEvents(harness.client.chatStream(
       [{ type: 'message', role: 'user', content: 'hello' }],
-      {
+      { request: DEEPSEEK_REQUEST,
         debugCapture: {
           onRequest: () => {
             throw new Error('request capture failed')
@@ -264,7 +284,7 @@ describe('OpenAICompatibleClient 瞬态失败重试', () => {
 
       const events = await collectEvents(harness.client.chatStream(
         [{ type: 'message', role: 'user', content: 'hello' }],
-        {
+        { request: DEEPSEEK_REQUEST,
           debugCapture: {
             onRequest: () => {
               requestCaptureCount += 1
@@ -302,7 +322,7 @@ describe('OpenAICompatibleClient 瞬态失败重试', () => {
       await assert.rejects(
         collectEvents(harness.client.chatStream([
           { type: 'message', role: 'user', content: 'hello' },
-        ])),
+        ], { request: DEEPSEEK_REQUEST })),
         error,
       )
       assert.equal(harness.fetchCalls.length, 1)
@@ -325,7 +345,7 @@ describe('OpenAICompatibleClient 瞬态失败重试', () => {
       await assert.rejects(
         collectEvents(harness.client.chatStream([
           { type: 'message', role: 'user', content: 'hello' },
-        ])),
+        ], { request: DEEPSEEK_REQUEST })),
         error,
       )
       assert.equal(harness.fetchCalls.length, 3)
@@ -359,7 +379,7 @@ describe('OpenAICompatibleClient 瞬态失败重试', () => {
     await assert.rejects(async () => {
       for await (const event of harness.client.chatStream([
         { type: 'message', role: 'user', content: 'hello' },
-      ])) {
+      ], { request: DEEPSEEK_REQUEST })) {
         events.push(event)
       }
     }, LLMNetworkError)
@@ -380,7 +400,7 @@ describe('OpenAICompatibleClient 瞬态失败重试', () => {
     await assert.rejects(
       collectEvents(harness.client.chatStream(
         [{ type: 'message', role: 'user', content: 'hello' }],
-        { signal: abortController.signal },
+        { request: DEEPSEEK_REQUEST, signal: abortController.signal },
       )),
       LLMNetworkError,
     )
@@ -406,7 +426,7 @@ describe('OpenAICompatibleClient 瞬态失败重试', () => {
     await assert.rejects(
       collectEvents(harness.client.chatStream(
         [{ type: 'message', role: 'user', content: 'hello' }],
-        { signal: abortController.signal },
+        { request: DEEPSEEK_REQUEST, signal: abortController.signal },
       )),
       LLMNetworkError,
     )
@@ -423,7 +443,7 @@ describe('OpenAICompatibleClient 瞬态失败重试', () => {
     for (let round = 0; round < 12; round += 1) {
       await collectEvents(harness.client.chatStream(
         [{ type: 'message', role: 'user', content: 'hello' }],
-        { signal: abortController.signal },
+        { request: DEEPSEEK_REQUEST, signal: abortController.signal },
       ))
     }
 
@@ -438,13 +458,30 @@ interface ProviderCall {
   params?: Record<string, unknown>
 }
 
-function createRuntimeConfig(options: { captureModelIO?: boolean } = {}) {
-  return resolveLLMRuntimeConfig({
-    LLM_API_KEY: 'test-api-key',
-    LLM_BASE_URL: 'https://api.deepseek.com/v1',
-    LLM_MODEL: 'deepseek-v4-flash',
-    ...(options.captureModelIO ? { AGENT_DEBUG_CAPTURE_MODEL_IO: 'true' } : {}),
-  })
+/** DeepSeek thinking 模型的 resolved 请求：带 thinking 参数，Tool Call 要求 reasoning_content。 */
+const DEEPSEEK_REQUEST: ResolvedChatRequestConfig = {
+  model: 'deepseek-v4-flash',
+  contextWindowTokens: 1_000_000,
+  maxOutputTokens: 65_536,
+  reasoning: true,
+  reasoningEffort: 'high',
+}
+
+/** 中转站后面的非 reasoning 模型：不发 thinking 参数，Tool Call 不要求 reasoning_content。 */
+const RELAY_REQUEST: ResolvedChatRequestConfig = {
+  model: 'gpt-5.6-sol',
+  contextWindowTokens: 128_000,
+  maxOutputTokens: 8_192,
+  reasoning: false,
+  reasoningEffort: 'high',
+}
+
+function createRuntimeConfig(options: { captureModelIO?: boolean } = {}): LLMClientConfig {
+  return {
+    apiKey: 'test-api-key',
+    baseUrl: 'https://api.deepseek.com/v1',
+    captureModelIO: options.captureModelIO ?? false,
+  }
 }
 
 function createHarness(

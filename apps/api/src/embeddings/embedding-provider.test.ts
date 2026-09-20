@@ -26,8 +26,8 @@ describe('Embedding shared boundary', () => {
       EMBEDDING_API_KEY: 'old-embedding-key',
       EMBEDDING_MODEL: 'old-model',
       EMBEDDING_DIMENSIONS: '3072',
-      LLM_API_KEY: 'chat-key',
-      LLM_MODEL: 'deepseek-v4-flash',
+      UNRELATED_API_KEY: 'chat-key',
+      UNRELATED_MODEL: 'deepseek-v4-flash',
     })
 
     assert.deepEqual(config, {
@@ -45,7 +45,7 @@ describe('Embedding shared boundary', () => {
     for (const env of [
       {},
       { EMBEDDING_API_KEY: 'old-key' },
-      { LLM_API_KEY: 'chat-key' },
+      { UNRELATED_API_KEY: 'chat-key' },
     ]) {
       assert.throws(
         () => resolveEmbeddingRuntimeConfig(env),

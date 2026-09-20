@@ -39,7 +39,7 @@ export class LLMNetworkError extends LLMError {
 /** 401：API Key 无效、过期或未配置 */
 export class LLMAuthError extends LLMError {
   constructor(hint?: string, detail?: unknown) {
-    const base = 'DeepSeek API Key 认证失败（401），请检查 LLM_API_KEY 是否正确且处于启用状态'
+    const base = 'API Key 认证失败（401），请在后台检查该服务商的密钥是否正确且处于启用状态'
 
     super(hint ? `${base}。${hint}` : base, detail)
     this.name = 'LLMAuthError'

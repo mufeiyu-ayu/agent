@@ -29,6 +29,12 @@ export class ChatController {
       }
     })
 
+    // 模型行解析在写出响应头之前完成：模型不可用时抛 BadRequestException，
+    // 由全局异常过滤器返回 400 JSON，而不是一条空的 NDJSON 流。
+    const events = await this.chatService.chatStream(body, {
+      signal: abortController.signal,
+    })
+
     response.statusCode = HttpStatus.OK
     response.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8')
     response.setHeader('Cache-Control', 'no-cache, no-transform')
@@ -36,9 +42,7 @@ export class ChatController {
     response.flushHeaders()
 
     try {
-      for await (const event of this.chatService.chatStream(body, {
-        signal: abortController.signal,
-      })) {
+      for await (const event of events) {
         // 断连后不能 break：break 会触发 generator.return()，让 runtime 的
         // yield 点以 return 语义恢复、跳过 catch 收口路径。abort 信号由
         // 'close' 监听统一触发；这里继续 drain（不再写出），让 runtime 走
