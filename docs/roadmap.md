@@ -10,6 +10,7 @@ Active Agent Task：无
 Next / Planned：无（2026-09-19 过度设计审计四件 #134 去 SEO 产品命名、#135 删离线评估与 smoke 死链、#136 零行为变化小修、#137 embedding 重试交给 SDK 已于同日全部合并；web_fetch 同日转 Gated；#116 同轮文本 + 多 Tool Call 已于 2026-09-19 合并；#115 模型调用重试与 Loop 默认上限已于 2026-09-18 合并；#117 Responses adapter 已于 2026-09-18 关闭转 Gated；去过度设计三件 #118 / #119 / #120 与 #124 目录整理已于 2026-09-17 全部合并，`packages/ai` 已按 Pi 分层；#126 Admin Run 读模型去过度设计与 #127 `packages/ai` 运行时配置收敛已于 2026-09-18 合并）
 方向：runtime 深化（2026-09-05 定案）；产品方向：内部数据工作台（2026-09-20 定案，见 research/workbench-direction.md，路线正文待源码阅读完成后改写）
 当前阶段：源码阅读
+前台 UI 支线：#144 / PR #145 已于 2026-09-21 完成代码验收（卡片、流式阅读、Tooltip；不改变主线路线）
 候选子系统：session 事件流与 replay、审批门、compaction、定时任务
 翻译质检站：已删除（#113）
 Admin Observability：Task 0-3、Enhancement 1-3、Phase 8 Task 3C、#98 Completed
