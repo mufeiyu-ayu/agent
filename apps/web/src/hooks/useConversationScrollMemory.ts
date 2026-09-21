@@ -81,7 +81,8 @@ export function useConversationScrollMemory(options: UseConversationScrollMemory
     const handleScroll = () => {
       const conversationId = options.conversationId.value
 
-      if (conversationId)
+      // 切换会话后，上一会话延迟派发的 scroll 不能覆盖目标会话的记忆位置。
+      if (conversationId && !isRestoringScroll.value)
         conversationScrollPositions.set(conversationId, viewport.scrollTop)
     }
 

@@ -6,7 +6,7 @@
 
 ```text
 阶段 1-8：Completed
-Active Agent Task：无（#142 模型配置入库已于 2026-09-20 合并，学习环节待做）
+Active Agent Task：#144 前台模型对话 UI 优化（实施状态：已实现 / 验收状态：待验收；#142 学习环节待做）
 Next：无（#134 / #135 / #136 / #137 已于 2026-09-19 合并；2026-09-19 审计四件全部收口；#142 已于 2026-09-20 合并）
 Gated：#117 Responses API adapter（2026-09-18）、web_fetch（2026-09-19），触发条件见看板
 产品方向：内部数据工作台（2026-09-20 定案，docs/research/workbench-direction.md），未立 Issue；第一件在源码阅读与六条真实对话验证之后
@@ -18,6 +18,7 @@ Admin Task 4：Planned
 
 | 任务 | 状态 | 说明 |
 | --- | --- | --- |
+| #144 前台模型对话 UI 优化 | Active | 实施状态：已实现 / 验收状态：待验收。代码卡片、Markdown 流式批处理、阅读定位与 Loading 胶囊、Tooltip；审查修复 Markdown 结构 / 代码空白、终态状态、暗色样式、滚动跟随与会话恢复竞态、复制失败反馈、锁文件残留；删流式前缀缓存和无消费者 Tooltip 配置。验证：web typecheck / lint / build、54 项单元测试、10 项 Chromium 定向回归通过；独立 reviewer 的 2 条 finding（中止/失败重建卡片、返回生成会话后不能跟随）均浏览器复现后修复并定向复核；PR 待创建 |
 | #142 模型配置入库 | Completed | 实施状态：已实现 / 验收状态：已通过。PR #143 于 2026-09-20 基于最新 head `87cefcc` 逐条验收 AC-01～AC-11 PASS 并合并（`39edad1`，Closes #142）：新增 `LlmProvider` / `LlmModel` 与三条 migration（建表、删 `reasoning` 列、加 `reasoningEffort` 列），Provider API Key 用 `AGENT_SECRET_KEY` 派生密钥 AES-256-GCM 加密入库、只回显尾四位；删 `LLM_API_KEY / LLM_BASE_URL / LLM_MODEL` 与 `packages/ai` 硬编码模型表，client 按 Run 快照里的凭据构造；思考协议改按家族固定（`@agent/contracts` 的 `LLM_FAMILY_CAPABILITIES` 一张表：deepseek 走 thinking + `reasoning_content` 校验，其余不走），模型行 `reasoningEffort` 按家族取值、请求级可覆盖，直打中转站实验证实 GPT / Grok 透传该参数（Gemini 暂不开放）；导入预设按家族官方上限（DeepSeek 1M/384k、GPT-5.6 1.05M/128k、Grok 4.6 500k/128k、Gemini 3.8 Flash 1M/64k）；`admin-llm` 模块：Provider / Model CRUD、`providers/fetch-models` / `test-models`（有 apiKey 用表单的，否则按 providerId 用库里的）、导入随行写入弹窗测试状态、probe 按真实 Run 参数；管理台「模型接入」页：默认改图钉、状态图标即重测、推理强度列可直接选；前台按家族显示思考强度选择器。本机冒烟：DeepSeek 与 Gemini 各一次带工具调用的对话到 done，Run Trace 采样 Step `providerId / modelId` 与配置一致；不可见 / 不存在 / 停用 / 无默认均 400 中文提示；缺 `AGENT_SECRET_KEY` 启动失败并提示。验证：`pnpm typecheck` 6/6，api / web / admin / ai / contracts lint，`@agent/ai` 41、`test:llm-config` 7、`test:chat-service` 29、`test:tool-loop` 5、`test:model-stream` 82、`test:tools` 80、`test:retrieval` 34，`prisma validate`。`/code-review high` 9 条全部修复；可维护性审查 15 条改 8 条（净删约 430 行）。学习环节（带读 + 独立改一处）待做 |
 | #118 删除死代码、单实现抽象与自校验 | Completed | 实施状态：已实现 / 验收状态：已通过。PR #121 于 2026-09-17 基于最新 head 逐条验收 AC-01～AC-06 PASS 并合并（+327 / −761，无新增文件）：删 `receive_user_message` Step 写入、`abortStep`、`ToolRegistryService.require / listDefinitions`、`ContextBudgetExceededError.stage`、`SeoContextBuilder`、`AgentRunConfigurationService`、`ToolExecutionContext.executionAttempt`、`ModelContext.forSampling` 与 snapshot 明细项，`TokenEstimator` 改 interface；`tool-step-summary`、Admin 读取字段与 `tool-evidence` 校验按 Issue 保留。学习环节按 Issue 决策记录豁免 |
 | #119 历史裁剪合一 | Completed | 实施状态：已实现 / 验收状态：已通过。PR #122 于 2026-09-17 基于最新 head `bcf76b0` 逐条验收 AC-01～AC-06 PASS 并合并：删 `InitialContextSelectionService` 分页与批内二分，历史一次 `findMany({ take: hardLimit })`，首轮由 planner `excludeOldestHistory` 裁剪；`initialContext` 取裁剪前值（`excludedReason` 只剩 `candidate_cap`）、`contextPlan` 记删减数；`buildModelMessages` 改 `instructions`；删 `SEO_CHAT_HISTORY_CANDIDATE_BATCH_SIZE`。真实 tokenizer 差分旧算法 68 = planner 68；本机运行服务两轮真实对话 + Admin 投影冒烟通过。学习环节按 Issue 决策记录豁免 |

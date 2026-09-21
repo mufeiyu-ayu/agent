@@ -1,84 +1,99 @@
 import type { ComputedRef, Ref } from 'vue'
 
-import { nextTick, onUnmounted, watch } from 'vue'
+import { onUnmounted, ref, watch } from 'vue'
 
 interface UseAgentConversationScrollOptions {
   viewportRef: Ref<HTMLElement | null>
   activeTurnId: ComputedRef<string | undefined>
-  activeTurnSignature: ComputedRef<string>
-  enabled: ComputedRef<boolean>
+  anchorLatestTurn: ComputedRef<boolean>
+  conversationId: ComputedRef<string | null>
+  isRestoringScroll: Ref<boolean>
 }
 
-const BOTTOM_THRESHOLD_PX = 96
+const BOTTOM_THRESHOLD_PX = 48
 
-/**
- * 新一轮开始时定位到用户消息；流式输出只在用户仍停留在底部时自动跟随。
- */
+/** 新轮定点阅读；用户主动到底后才跟随。以实际布局而非 token 到达驱动滚动。 */
 export function useAgentConversationScroll(options: UseAgentConversationScrollOptions) {
-  let alignmentRunId = 0
-  let shouldFollowLatest = true
+  const isNearBottom = ref(true)
+  let shouldFollowLatest = false
+  let alignPending = false
   let lastScrollTop = 0
-  let observedViewport: HTMLElement | undefined
-  let removeScrollListener: (() => void) | undefined
+  let frame: number | undefined
+  let unbind: (() => void) | undefined
 
-  function bindScrollListener() {
-    const viewport = options.viewportRef.value
+  function nearBottom(viewport: HTMLElement) {
+    return viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight <= BOTTOM_THRESHOLD_PX
+  }
 
-    if (observedViewport === viewport)
+  function scheduleLayout() {
+    if (frame !== undefined)
       return
+    frame = requestAnimationFrame(() => {
+      frame = undefined
+      const viewport = options.viewportRef.value
+      if (!viewport)
+        return
 
-    removeScrollListener?.()
-    observedViewport = viewport ?? undefined
+      if (alignPending && options.anchorLatestTurn.value) {
+        const anchor = [...viewport.querySelectorAll<HTMLElement>('[data-agent-user-turn-id]')]
+          .find(element => element.dataset.agentUserTurnId === options.activeTurnId.value)
+        if (anchor) {
+          const top = viewport.scrollTop + anchor.getBoundingClientRect().top
+            - viewport.getBoundingClientRect().top - Math.max(20, Math.round(viewport.clientHeight * 0.24))
+          viewport.scrollTo({ top: Math.max(0, top), behavior: 'instant' })
+        }
+        alignPending = false
+      }
+      else if (shouldFollowLatest && !options.isRestoringScroll.value) {
+        viewport.scrollTo({ top: viewport.scrollHeight, behavior: 'instant' })
+      }
+      lastScrollTop = viewport.scrollTop
+      isNearBottom.value = nearBottom(viewport)
+    })
+  }
 
+  function bindViewport(viewport: HTMLElement | null) {
+    unbind?.()
     if (!viewport)
       return
-
     lastScrollTop = viewport.scrollTop
     let lastTouchY: number | undefined
 
+    const isNestedScroll = (event: Event) => event.target instanceof Element
+      && Boolean(event.target.closest('[data-agent-code-scroll]'))
     const handleScroll = () => {
-      const nextScrollTop = viewport.scrollTop
-
-      if (nextScrollTop < lastScrollTop)
-        shouldFollowLatest = false
-      else if (isNearBottom(viewport))
-        shouldFollowLatest = true
-
-      lastScrollTop = nextScrollTop
-    }
-
-    const handleWheel = (event: WheelEvent) => {
-      if (event.ctrlKey)
-        return
-
-      if (event.deltaY < 0)
-        shouldFollowLatest = false
-      else if (event.deltaY > 0 && isNearBottom(viewport))
-        shouldFollowLatest = true
-    }
-
-    const handleTouchStart = (event: TouchEvent) => {
-      lastTouchY = event.touches.length === 1 ? event.touches[0]?.clientY : undefined
-    }
-
-    const handleTouchMove = (event: TouchEvent) => {
-      if (event.touches.length !== 1) {
-        lastTouchY = undefined
-        return
-      }
-
-      const nextTouchY = event.touches[0]?.clientY
-
-      if (lastTouchY !== undefined && nextTouchY !== undefined) {
-        if (nextTouchY > lastTouchY)
+      const top = viewport.scrollTop
+      isNearBottom.value = nearBottom(viewport)
+      if (!options.isRestoringScroll.value) {
+        if (top < lastScrollTop)
           shouldFollowLatest = false
-        else if (nextTouchY < lastTouchY && isNearBottom(viewport))
+        else if (top > lastScrollTop && isNearBottom.value)
           shouldFollowLatest = true
       }
-
-      lastTouchY = nextTouchY
+      lastScrollTop = top
     }
-
+    const handleDirection = (delta: number) => {
+      if (delta < 0) {
+        shouldFollowLatest = false
+        alignPending = false
+      }
+      else if (delta > 0 && nearBottom(viewport)) {
+        shouldFollowLatest = true
+      }
+    }
+    const handleWheel = (event: WheelEvent) => {
+      if (!event.ctrlKey && !isNestedScroll(event))
+        handleDirection(event.deltaY)
+    }
+    const handleTouchStart = (event: TouchEvent) => {
+      lastTouchY = !isNestedScroll(event) && event.touches.length === 1 ? event.touches[0]?.clientY : undefined
+    }
+    const handleTouchMove = (event: TouchEvent) => {
+      const y = event.touches.length === 1 ? event.touches[0]?.clientY : undefined
+      if (lastTouchY !== undefined && y !== undefined)
+        handleDirection(lastTouchY - y)
+      lastTouchY = isNestedScroll(event) ? undefined : y
+    }
     const handleTouchEnd = () => {
       lastTouchY = undefined
     }
@@ -89,7 +104,14 @@ export function useAgentConversationScroll(options: UseAgentConversationScrollOp
     viewport.addEventListener('touchmove', handleTouchMove, { passive: true })
     viewport.addEventListener('touchend', handleTouchEnd, { passive: true })
     viewport.addEventListener('touchcancel', handleTouchEnd, { passive: true })
-    removeScrollListener = () => {
+
+    // 包括 Markdown 节流后提交、图片加载、输入框/窗口尺寸变化。
+    const observer = new ResizeObserver(scheduleLayout)
+    observer.observe(viewport)
+    if (viewport.firstElementChild)
+      observer.observe(viewport.firstElementChild)
+    unbind = () => {
+      observer.disconnect()
       viewport.removeEventListener('scroll', handleScroll)
       viewport.removeEventListener('wheel', handleWheel)
       viewport.removeEventListener('touchstart', handleTouchStart)
@@ -99,106 +121,32 @@ export function useAgentConversationScroll(options: UseAgentConversationScrollOp
     }
   }
 
-  async function alignActiveTurn() {
-    const activeTurnId = options.activeTurnId.value
-
-    if (!options.enabled.value || !activeTurnId)
-      return
-
-    const runId = ++alignmentRunId
-
-    await waitForLayout()
-
-    if (!isCurrentAlignment(runId, activeTurnId))
-      return
-
-    bindScrollListener()
-
+  function scrollToBottom(behavior: ScrollBehavior = 'smooth') {
     const viewport = options.viewportRef.value
-    const anchor = findUserTurnAnchor(viewport, activeTurnId)
-
-    if (!viewport || !anchor)
+    if (!viewport)
       return
-
-    const viewportRect = viewport.getBoundingClientRect()
-    const anchorRect = anchor.getBoundingClientRect()
-    const targetTop = viewport.scrollTop + anchorRect.top - viewportRect.top - 16
-
+    alignPending = false
     shouldFollowLatest = true
-    scrollViewport(viewport, targetTop)
-  }
-
-  async function followActiveTurn() {
-    const activeTurnId = options.activeTurnId.value
-
-    if (!options.enabled.value || !activeTurnId || !shouldFollowLatest)
-      return
-
-    const runId = alignmentRunId
-
-    await waitForLayout()
-
-    if (!isCurrentAlignment(runId, activeTurnId) || !shouldFollowLatest)
-      return
-
-    const viewport = options.viewportRef.value
-
-    if (viewport)
-      scrollViewport(viewport, viewport.scrollHeight)
-  }
-
-  function scrollViewport(viewport: HTMLElement, top: number) {
-    viewport.scrollTo({ top, behavior: 'auto' })
-    lastScrollTop = viewport.scrollTop
-  }
-
-  function findUserTurnAnchor(viewport: HTMLElement | null, activeTurnId: string) {
-    const anchors = Array.from(
-      viewport?.querySelectorAll<HTMLElement>('[data-agent-user-turn-id]') ?? [],
-    )
-
-    return anchors.find(anchor => anchor.dataset.agentUserTurnId === activeTurnId) ?? null
-  }
-
-  function isCurrentAlignment(runId: number, activeTurnId: string) {
-    return runId === alignmentRunId
-      && options.enabled.value
-      && options.activeTurnId.value === activeTurnId
-  }
-
-  function isNearBottom(viewport: HTMLElement) {
-    return viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight <= BOTTOM_THRESHOLD_PX
-  }
-
-  async function waitForLayout() {
-    await nextTick()
-    await new Promise<void>((resolve) => {
-      window.requestAnimationFrame(() => resolve())
+    viewport.scrollTo({
+      top: viewport.scrollHeight,
+      behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : behavior,
     })
+    lastScrollTop = viewport.scrollTop
+    isNearBottom.value = nearBottom(viewport)
   }
 
-  watch(
-    [
-      () => options.activeTurnId.value,
-      () => options.enabled.value,
-      () => options.viewportRef.value,
-    ],
-    () => {
-      bindScrollListener()
-      void alignActiveTurn()
-    },
-    { flush: 'post', immediate: true },
-  )
-
-  watch(
-    () => options.activeTurnSignature.value,
-    () => void followActiveTurn(),
-    { flush: 'post' },
-  )
+  watch([options.activeTurnId, options.anchorLatestTurn, options.conversationId, options.viewportRef], () => {
+    shouldFollowLatest = false
+    alignPending = options.anchorLatestTurn.value && Boolean(options.activeTurnId.value)
+    bindViewport(options.viewportRef.value)
+    scheduleLayout()
+  }, { flush: 'post', immediate: true })
 
   onUnmounted(() => {
-    removeScrollListener?.()
-    observedViewport = undefined
-    alignmentRunId += 1
+    unbind?.()
+    if (frame !== undefined)
+      cancelAnimationFrame(frame)
   })
+
+  return { isNearBottom, scrollToBottom }
 }
