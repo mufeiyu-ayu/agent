@@ -20,6 +20,7 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import AppIcon from '@/components/common/AppIcon.vue'
+import AppTooltip from '@/components/common/AppTooltip.vue'
 import { Button } from '@/components/ui/button'
 import { dropdownMenuOptionClass, dropdownMenuPanelClass } from '@/components/ui/dropdown-menu'
 import { Textarea } from '@/components/ui/textarea'
@@ -220,31 +221,33 @@ function selectReasoningEffort(effort: ReasoningEffort | null) {
             >
               {{ messageCharacterCount }} / {{ CHAT_MESSAGE_MAX_CHARS }}
             </span>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-lg"
-              :title="t('composer.reset')"
-              :aria-label="t('composer.reset')"
-              class="size-9 rounded-lg bg-transparent text-agent-ink-muted shadow-none hover:bg-agent-surface-sunken/55 hover:text-agent-ink disabled:text-agent-ink-faint"
-              :disabled="!canReset || isGenerationInProgress"
-              @click="emit('reset')"
-            >
-              <AppIcon name="tabler:rotate-clockwise" :size="17" />
-            </Button>
-            <Button
-              type="button"
-              size="icon-lg"
-              :title="isGenerationInProgress ? t('composer.stop') : t('composer.send')"
-              :aria-label="isGenerationInProgress ? t('composer.stop') : t('composer.send')"
-              class="size-9 rounded-xl text-white shadow-none disabled:bg-agent-border"
-              :class="isGenerationInProgress ? 'bg-agent-copper hover:bg-agent-copper' : 'bg-agent-accent hover:bg-agent-accent/90'"
-              :disabled="!isGenerationInProgress && !message.trim()"
-              @click="triggerPrimaryAction"
-            >
-              <AppIcon v-if="isGenerationInProgress" name="tabler:player-stop" :size="18" />
-              <AppIcon v-else name="tabler:arrow-up" :size="19" />
-            </Button>
+            <AppTooltip :content="t('composer.reset')">
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-lg"
+                :aria-label="t('composer.reset')"
+                class="size-9 rounded-lg bg-transparent text-agent-ink-muted shadow-none hover:bg-agent-surface-sunken/55 hover:text-agent-ink disabled:text-agent-ink-faint"
+                :disabled="!canReset || isGenerationInProgress"
+                @click="emit('reset')"
+              >
+                <AppIcon name="tabler:rotate-clockwise" :size="17" />
+              </Button>
+            </AppTooltip>
+            <AppTooltip :content="isGenerationInProgress ? t('composer.stop') : t('composer.send')">
+              <Button
+                type="button"
+                size="icon-lg"
+                :aria-label="isGenerationInProgress ? t('composer.stop') : t('composer.send')"
+                class="size-9 rounded-xl text-white shadow-none disabled:bg-agent-border"
+                :class="isGenerationInProgress ? 'bg-agent-copper hover:bg-agent-copper' : 'bg-agent-accent hover:bg-agent-accent/90'"
+                :disabled="!isGenerationInProgress && !message.trim()"
+                @click="triggerPrimaryAction"
+              >
+                <AppIcon v-if="isGenerationInProgress" name="tabler:player-stop" :size="18" />
+                <AppIcon v-else name="tabler:arrow-up" :size="19" />
+              </Button>
+            </AppTooltip>
           </div>
         </div>
       </div>

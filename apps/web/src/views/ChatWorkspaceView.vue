@@ -37,12 +37,6 @@ const {
   updateWorkspaceTheme,
 } = useWorkspaceTheme()
 
-const workspaceBackground = computed(() => ({
-  imageUrl: workspaceTheme.value === 'olive-ember' ? workspaceBgOliveEmberDeepUrl : workspaceBgAiBalancedUrl,
-  position: 'center center',
-  opacity: workspaceTheme.value === 'olive-ember' ? '0.78' : '0.2',
-}))
-
 const navigationItems = computed<AgentNavigationItem[]>(() => {
   return navigationConfig.map(item => ({
     id: item.id,
@@ -88,6 +82,17 @@ const {
 
 const showConversationEmptyState = computed(() => {
   return !activeConversationId.value && conversationTurns.value.length === 0 && !isLoadingMessages.value
+})
+
+const workspaceBackground = computed(() => {
+  const isDark = workspaceTheme.value === 'olive-ember'
+  const activeOpacity = isDark ? '0.78' : '0.2'
+
+  return {
+    imageUrl: isDark ? workspaceBgOliveEmberDeepUrl : workspaceBgAiBalancedUrl,
+    position: 'center center',
+    opacity: showConversationEmptyState.value ? activeOpacity : '0',
+  }
 })
 
 const starterPrompts = computed(() => [

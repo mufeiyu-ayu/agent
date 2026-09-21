@@ -17,11 +17,12 @@ src/main.ts -> src/App.vue -> src/router/index.ts   # 两个页面：/ 首页、
 | `hooks/` | 状态与副作用 | `useChatWorkspace.ts`（会话、发送、NDJSON 流消费、中断）、`useLlmRuntime.ts`（模型下拉、思考强度、余额） |
 | `api/` | HTTP | `http.ts`（axios 实例，自动解包 `{ success, data }`）、`chat.ts`（`POST /api/chat/stream` 流读取）、`conversations.ts`、`llm.ts` |
 | `components/chat/` | `ChatComposer.vue`：输入框、模型与思考强度选择 | |
-| `components/agent/` | 对话消息渲染：Markdown、引用面板、来源卡片 | `AgentConversation.vue`、`AgentGroundingPanel.vue` |
+| `components/agent/` | 对话消息渲染：Markdown、引用面板、限高代码卡片（无执行 / 预览能力）、来源卡片 | `AgentConversation.vue`、`AgentGroundingPanel.vue`、`AgentCodeBlock.vue` |
+| `components/common/` | 通用基础设施：图标、语义悬浮提示、全局消息 | `AppIcon.vue`、`AppTooltip.vue`、`AppMessage.vue` |
 | `components/layout/` | 壳、头部、侧栏、会话列表 | `AppShell.vue` |
 | `components/home/` | 首页动效与流程图，纯展示 | |
 | `components/ui/` | shadcn 风格基础组件 | |
-| `utils/` | 纯函数：会话分轮、引用投影、时间格式 | `conversation-turns.ts`、`message-grounding.ts` |
+| `utils/` | 纯函数：会话分轮、引用投影、时间格式、Markdown 分块与高亮 | `conversation-turns.ts`、`message-grounding.ts`、`markdown-blocks.ts` |
 | `types/` | 前台内部类型；跨端协议一律从 `@agent/contracts` 取 | |
 | `i18n/` | 中英文案，`messages.test.ts` 校验两份键一致 | |
 

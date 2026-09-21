@@ -124,6 +124,14 @@ export const messages = {
       actions: {
         copyReply: '复制',
         copiedReply: '已复制',
+        scrollToBottom: '直达底部',
+        codeBlock: {
+          copy: '复制代码',
+          copied: '已复制',
+          preview: '预览（暂不可用）',
+          code: '代码',
+          generating: '正在生成...',
+        },
       },
       grounding: {
         status: {
@@ -315,6 +323,14 @@ export const messages = {
       actions: {
         copyReply: 'Copy',
         copiedReply: 'Copied',
+        scrollToBottom: 'Scroll to bottom',
+        codeBlock: {
+          copy: 'Copy code',
+          copied: 'Copied',
+          preview: 'Preview (unavailable)',
+          code: 'Code',
+          generating: 'Generating...',
+        },
       },
       grounding: {
         status: {

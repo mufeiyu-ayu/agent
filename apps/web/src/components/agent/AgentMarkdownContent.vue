@@ -1,64 +1,56 @@
-<script lang="ts">
-import type Token from 'markdown-it/lib/token.mjs'
-
-import MarkdownIt from 'markdown-it'
-import { computed } from 'vue'
-
-// 解析器配置是纯静态的，放模块级共享一个实例，避免每条回复各建一个。
-const markdown = new MarkdownIt({
-  breaks: true,
-  html: false,
-  linkify: true,
-})
-
-markdown.validateLink = (url) => {
-  const normalizedUrl = url.trim().toLowerCase()
-
-  return !/^(?:javascript|vbscript|file|data):/.test(normalizedUrl)
-}
-
-const defaultLinkOpenRenderer = markdown.renderer.rules.link_open
-
-markdown.renderer.rules.link_open = (tokens, index, options, env, self) => {
-  const token = tokens[index]
-
-  setTokenAttr(token, 'target', '_blank')
-  setTokenAttr(token, 'rel', 'noreferrer noopener')
-
-  if (defaultLinkOpenRenderer)
-    return defaultLinkOpenRenderer(tokens, index, options, env, self)
-
-  return self.renderToken(tokens, index, options)
-}
-
-function setTokenAttr(token: Token, name: string, value: string) {
-  const attrIndex = token.attrIndex(name)
-
-  if (attrIndex < 0) {
-    token.attrPush([name, value])
-    return
-  }
-
-  if (!token.attrs)
-    return
-
-  token.attrs[attrIndex][1] = value
-}
-</script>
-
 <script setup lang="ts">
+import { onUnmounted, shallowRef, watch } from 'vue'
+
+import { parseMarkdownBlocks } from '@/utils/markdown-blocks'
+
+import AgentCodeBlock from './AgentCodeBlock.vue'
+
 const props = defineProps<{
   text: string
+  isStreaming?: boolean
 }>()
 
-const renderedContent = computed(() => markdown.render(props.text.trim()))
+const blocks = shallowRef<ReturnType<typeof parseMarkdownBlocks>>([])
+let timer: ReturnType<typeof setTimeout> | undefined
+let lastRenderAt = -Infinity
+
+function render() {
+  timer = undefined
+  blocks.value = parseMarkdownBlocks(props.text)
+  lastRenderAt = performance.now()
+}
+
+// 在入口合并解析、HTML 更新和子组件高亮，不保存每个流式前缀。
+watch([() => props.text, () => props.isStreaming], () => {
+  const remaining = 80 - (performance.now() - lastRenderAt)
+  if (!props.isStreaming || remaining <= 0) {
+    clearTimeout(timer)
+    render()
+  }
+  else if (timer === undefined) {
+    timer = setTimeout(render, remaining)
+  }
+}, { immediate: true })
+
+onUnmounted(() => clearTimeout(timer))
 </script>
 
 <template>
-  <div
-    class="agent-markdown-content"
-    v-html="renderedContent"
-  />
+  <div class="agent-markdown-content">
+    <template v-for="(block, index) in blocks" :key="index">
+      <div
+        v-if="block.type === 'markdown'"
+        class="agent-markdown-prose"
+        v-html="block.html"
+      />
+      <AgentCodeBlock
+        v-else
+        :code="block.code"
+        :language="block.language"
+        :is-streaming="!!props.isStreaming && block.isOpen"
+      />
+    </template>
+  </div>
 </template>
 
 <style scoped>
@@ -168,12 +160,15 @@ const renderedContent = computed(() => markdown.render(props.text.trim()))
   color: var(--agent-primary-hover);
 }
 
-.agent-markdown-content :deep(code) {
-  border: 1px solid var(--agent-border-soft);
-  border-radius: 0.45rem;
-  background: color-mix(in oklch, var(--agent-surface-raised) 72%, var(--agent-ink) 8%);
+.agent-markdown-prose :deep(code) {
+  border: 1px solid var(--agent-border-subtle);
+  border-radius: 0.375rem;
+  background: color-mix(in oklch, var(--agent-surface-raised) 82%, var(--agent-border-subtle) 18%);
   color: var(--agent-ink);
   font-family:
+    "JetBrains Maple Mono",
+    "Maple Mono",
+    "JetBrains Mono",
     ui-monospace,
     SFMono-Regular,
     Menlo,
@@ -184,24 +179,41 @@ const renderedContent = computed(() => markdown.render(props.text.trim()))
     monospace;
   font-size: 0.86em;
   font-weight: 600;
-  padding: 0.12rem 0.36rem;
+  padding: 0.12rem 0.38rem;
 }
 
-.agent-markdown-content :deep(pre) {
+.agent-markdown-prose :deep(pre) {
   max-width: 100%;
   margin: 1rem 0 0;
   overflow-x: auto;
   border: 1px solid var(--agent-border-soft);
   border-radius: 0.75rem;
-  background: var(--agent-surface-sunken);
-  padding: 0.9rem 1rem;
+  background: var(--agent-surface-raised);
+  box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.04), 0 1px 2px -1px rgb(0 0 0 / 0.04);
+  padding: 0.95rem 1.15rem;
 }
 
-.agent-markdown-content :deep(pre code) {
+.agent-markdown-prose :deep(pre code) {
   border: 0;
   border-radius: 0;
   background: transparent;
   padding: 0;
+  color: var(--agent-ink);
+  font-family:
+    "JetBrains Maple Mono",
+    "Maple Mono",
+    "JetBrains Mono",
+    ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    Monaco,
+    Consolas,
+    "Liberation Mono",
+    "Courier New",
+    monospace;
+  font-size: 0.88em;
+  font-weight: 450;
+  line-height: 1.65;
   white-space: pre;
 }
 

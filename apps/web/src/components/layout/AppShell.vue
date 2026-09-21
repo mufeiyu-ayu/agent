@@ -150,7 +150,7 @@ function handleRenameChat(chatId: string, title: string) {
     <section class="relative flex min-h-0 min-w-0 flex-col overflow-hidden bg-agent-surface">
       <div
         v-if="props.workspaceBackground"
-        class="pointer-events-none absolute inset-0 z-0 bg-cover bg-no-repeat transition-[background-position,opacity] duration-300"
+        class="pointer-events-none absolute inset-0 z-0 bg-cover bg-no-repeat transition-[background-position,opacity] duration-500 ease-out"
         :style="{
           backgroundImage: `url(${props.workspaceBackground.imageUrl})`,
           backgroundPosition: props.workspaceBackground.position,
