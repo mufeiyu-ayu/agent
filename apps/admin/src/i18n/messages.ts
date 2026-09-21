@@ -509,8 +509,6 @@ export const messages = {
           visible: '前台可见',
           sortOrder: '排序',
           actions: '操作',
-          contextWindow: '上下文',
-          maxOutput: '输出',
         },
         form: {
           wireName: 'Wire Name',
@@ -1059,8 +1057,6 @@ export const messages = {
           visible: 'Visible',
           sortOrder: 'Order',
           actions: 'Actions',
-          contextWindow: 'Context',
-          maxOutput: 'Output',
         },
         form: {
           wireName: 'Wire Name',

@@ -182,15 +182,9 @@ function onEdit(record: unknown) {
         <template v-else-if="column.key === 'tokens'">
           <Tooltip :title="`${t('llmModels.models.form.contextWindowTokens')}: ${record.contextWindowTokens.toLocaleString()} / ${t('llmModels.models.form.maxOutputTokens')}: ${record.maxOutputTokens.toLocaleString()}`">
             <div class="tokens-cell">
-              <span class="token-item">
-                <span class="token-val">{{ formatTokens(record.contextWindowTokens) }}</span>
-                <span class="token-sub">{{ t('llmModels.models.columns.contextWindow') }}</span>
-              </span>
+              <span class="token-val">{{ formatTokens(record.contextWindowTokens) }}</span>
               <span class="token-separator">/</span>
-              <span class="token-item">
-                <span class="token-val is-output">{{ formatTokens(record.maxOutputTokens) }}</span>
-                <span class="token-sub">{{ t('llmModels.models.columns.maxOutput') }}</span>
-              </span>
+              <span class="token-val is-output">{{ formatTokens(record.maxOutputTokens) }}</span>
             </div>
           </Tooltip>
         </template>
@@ -463,12 +457,6 @@ function onEdit(record: unknown) {
   white-space: nowrap;
 }
 
-.token-item {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 3px;
-}
-
 .token-val {
   color: var(--admin-text);
   font-size: var(--admin-font-xs);
@@ -477,11 +465,6 @@ function onEdit(record: unknown) {
 
 .token-val.is-output {
   color: var(--admin-text-muted);
-}
-
-.token-sub {
-  color: var(--admin-text-subtle);
-  font-size: var(--admin-font-2xs);
 }
 
 .token-separator {
