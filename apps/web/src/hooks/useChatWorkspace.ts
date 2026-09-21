@@ -848,7 +848,9 @@ export function useChatWorkspace() {
   }
 
   function createClientMessageId(): string {
-    return `local-${crypto.randomUUID()}`
+    // 局域网 HTTP 不提供 randomUUID；getRandomValues 不要求安全上下文。
+    const bytes = crypto.getRandomValues(new Uint8Array(16))
+    return `local-${Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('')}`
   }
 
   function createConversationTitle(content: string): string {

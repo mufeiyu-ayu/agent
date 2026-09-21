@@ -274,6 +274,27 @@ test('返回生成中的会话：历史恢复不自动开启跟随，主动到�
   await expect.poll(() => bottomGap(page)).toBeLessThan(2)
 })
 
+test('局域网 HTTP 缺少 randomUUID 时仍能生成临时 ID 并完成发送', async ({ page }) => {
+  const errors: string[] = []
+  page.on('pageerror', error => errors.push(error.message))
+  await installApiRoutes(page, () => [])
+  await installBrowserStubs(page, { lines: toNdjsonLines(), holdBeforeIndex: 0 })
+  await page.addInitScript(() => {
+    // 模拟局域网 HTTP：getRandomValues 可用，randomUUID 未暴露。
+    Object.defineProperty(crypto, 'randomUUID', { configurable: true, value: undefined })
+  })
+  await page.goto('/workspace')
+  expect(await page.evaluate(() => typeof crypto.randomUUID)).toBe('undefined')
+  await page.getByRole('textbox').first().fill('局域网发送测试')
+  await page.getByRole('button', { name: '发送消息' }).click()
+  await expect.poll(() => page.evaluate(() => window.__chatRequests?.length)).toBe(1)
+  await expect(page.locator('[data-agent-user-turn-id]').last()).toHaveAttribute('data-agent-user-turn-id', /^local-[0-9a-f]{32}$/)
+  await page.evaluate(() => window.__releaseStream?.())
+  await expect(page.locator('.agent-markdown-prose').last()).toContainText('再检查内链锚文本。')
+  await expect(page.getByRole('button', { name: '发送消息' })).toBeVisible()
+  expect(errors).toEqual([])
+})
+
 test('真实 Workspace 发送链路与 Tooltip，流式未闭合卡片结束后可复制', async ({ page }) => {
   const [start] = toNdjsonLines()
   const content = '```ts\nconst x = 1'
