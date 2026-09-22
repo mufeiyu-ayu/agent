@@ -22,16 +22,16 @@ export class LLMController {
     return this.llmModelConfigService.listVisibleModels()
   }
 
-  /** 默认模型所属 Provider 的余额；没有默认模型或 Provider 不提供余额端点时为 null。 */
+  /** 自有 DeepSeek 官方账号的余额（没有则退回默认模型所属 Provider）；Provider 不提供余额端点时为 null。 */
   @Get('balance')
   async getUserBalance(): Promise<ProviderBalanceResponse | null> {
     let provider: LlmProviderCredentials | null
 
     try {
-      provider = await this.llmModelConfigService.resolveDefaultProvider()
+      provider = await this.llmModelConfigService.resolveBalanceProvider()
     }
     catch (error) {
-      // 主密钥更换后默认 Provider 的密钥解不开：余额按无处理，对话入口会给出明确的 400。
+      // 主密钥更换后 Provider 的密钥解不开：余额按无处理，对话入口会给出明确的 400。
       if (error instanceof LlmModelUnavailableError)
         return null
 
