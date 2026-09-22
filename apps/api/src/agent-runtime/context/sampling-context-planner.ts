@@ -27,16 +27,13 @@ export interface SamplingContextObservationSummary {
 }
 
 export interface SamplingContextPlanSummary {
-  samplingIndex: number
   resolvedInputBudgetTokens: number
   estimatedInputTokens: number
   historyCandidateCount: number
   historyIncludedCount: number
   historyExcludedCount: number
-  toolExchangeCount: number
   observations: SamplingContextObservationSummary[]
   overflowReason: 'minimum_context' | null
-  estimatorStrategyId: string
 }
 
 export interface SamplingContextPlan {
@@ -53,7 +50,6 @@ export class SamplingContextBudgetExceededError
 }
 
 interface PlanSamplingContextInput {
-  samplingIndex: number
   context: ModelContext
   tools: ModelToolSpec[]
   resolvedInputBudgetTokens: number
@@ -113,7 +109,6 @@ export class SamplingContextPlanner {
         state,
         estimatedInputTokens,
         'minimum_context',
-        this.tokenEstimator.strategyId,
       ))
     }
 
@@ -141,7 +136,7 @@ export class SamplingContextPlanner {
       // 纯后台观测：记录本轮预算、最终 Token、历史排除和 Tool Observation
       // 截断结果，供 model_sampling Step / Admin Inspector 展示；不参与模型输入。
       summary: toPlanSummary(
-        // 提供本轮 samplingIndex 和 resolvedInputBudgetTokens。
+        // 提供本轮 resolvedInputBudgetTokens。
         input,
         // 已完成历史删减与 Tool Result 缩短的最终工作副本。
         state,
@@ -149,8 +144,6 @@ export class SamplingContextPlanner {
         estimatedInputTokens,
         // null 表示本次规划成功，没有 minimum_context 溢出。
         null,
-        // 记录本轮使用的 Tokenizer / 请求编码策略版本。
-        this.tokenEstimator.strategyId,
       ),
     }
   }
@@ -161,22 +154,18 @@ function toPlanSummary(
   state: ModelContextPlanningState,
   estimatedInputTokens: number,
   overflowReason: SamplingContextPlanSummary['overflowReason'],
-  estimatorStrategyId: string,
 ): SamplingContextPlanSummary {
   return {
-    samplingIndex: input.samplingIndex,
     resolvedInputBudgetTokens: input.resolvedInputBudgetTokens,
     estimatedInputTokens,
     historyCandidateCount: state.initialHistoryCandidateCount,
     historyIncludedCount: state.initialHistory.length,
     historyExcludedCount:
       state.initialHistoryCandidateCount - state.initialHistory.length,
-    toolExchangeCount: state.toolExchanges.length,
     observations: state.toolExchanges.flatMap(exchange =>
       exchange.results.map((result, resultIndex) =>
         toObservationSummary(exchange.exchangeIndex, resultIndex, result))),
     overflowReason,
-    estimatorStrategyId,
   }
 }
 

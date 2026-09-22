@@ -314,7 +314,6 @@ export class AgentRuntimeService {
           // 后续轮次还要把上一轮模型产生的 assistant_tool_call 与后端产生的
           // tool_result 成对加入输入，超预算时先删最旧历史，再缩短 Tool Observation。
           const contextPlan = this.samplingContextPlanner.plan({
-            samplingIndex: samplingAttempt,
             context: modelContext,
             tools: modelTools,
             resolvedInputBudgetTokens:

@@ -70,7 +70,6 @@ describe('SamplingContextPlanner', () => {
     })
 
     const plan = planner.plan({
-      samplingIndex: 1,
       context,
       tools: NO_TOOLS,
       resolvedInputBudgetTokens: expectedTokens,
@@ -79,7 +78,6 @@ describe('SamplingContextPlanner', () => {
     assert.deepEqual(plan.items, expectedItems)
     assert.equal(plan.summary.estimatedInputTokens, expectedTokens)
     assert.equal(plan.summary.historyExcludedCount, 0)
-    assert.equal(plan.summary.estimatorStrategyId, estimator.strategyId)
     assert.deepEqual(estimator.inputs.at(-1)?.items, plan.items)
   })
 
@@ -101,7 +99,6 @@ describe('SamplingContextPlanner', () => {
     })
 
     const plan = planner.plan({
-      samplingIndex: 2,
       context,
       tools: NO_TOOLS,
       resolvedInputBudgetTokens: budget,
@@ -137,13 +134,11 @@ describe('SamplingContextPlanner', () => {
       tools: NO_TOOLS,
     })
     const first = planner.plan({
-      samplingIndex: 1,
       context,
       tools: NO_TOOLS,
       resolvedInputBudgetTokens: budgetWithout('A'.repeat(20)),
     })
     const second = planner.plan({
-      samplingIndex: 2,
       context,
       tools: NO_TOOLS,
       resolvedInputBudgetTokens: budgetWithout('B'.repeat(10)),
@@ -181,13 +176,11 @@ describe('SamplingContextPlanner', () => {
     }) - countItem(oldResult) + 180
 
     const first = planner.plan({
-      samplingIndex: 3,
       context,
       tools: NO_TOOLS,
       resolvedInputBudgetTokens: budget,
     })
     const second = planner.plan({
-      samplingIndex: 3,
       context,
       tools: NO_TOOLS,
       resolvedInputBudgetTokens: budget,
@@ -230,7 +223,6 @@ describe('SamplingContextPlanner', () => {
       tools: NO_TOOLS,
     })
     const plan = planner.plan({
-      samplingIndex: 3,
       context,
       tools: NO_TOOLS,
       resolvedInputBudgetTokens: fullTokens - 50,
@@ -273,7 +265,6 @@ describe('SamplingContextPlanner', () => {
     })
 
     const plan = planner.plan({
-      samplingIndex: 2,
       context,
       tools: NO_TOOLS,
       resolvedInputBudgetTokens: 220,
@@ -322,7 +313,6 @@ describe('SamplingContextPlanner', () => {
       tools: LOOKUP_TOOL,
     })
     const plan = planner.plan({
-      samplingIndex: 2,
       context,
       tools: LOOKUP_TOOL,
       resolvedInputBudgetTokens: fullTokens - 1,
@@ -343,7 +333,6 @@ describe('SamplingContextPlanner', () => {
 
     assert.throws(
       () => planner.plan({
-        samplingIndex: 2,
         context,
         tools: NO_TOOLS,
         resolvedInputBudgetTokens: 1,
@@ -368,7 +357,6 @@ describe('SamplingContextPlanner', () => {
     )
 
     const plan = planner.plan({
-      samplingIndex: 2,
       context,
       tools: NO_TOOLS,
       resolvedInputBudgetTokens: 260,
@@ -543,7 +531,6 @@ describe('SamplingContextPlanner 首轮历史裁剪（迁自旧的初始上下�
       tokenEstimator: estimator,
     })
     const plan = new SamplingContextPlanner(estimator).plan({
-      samplingIndex: 1,
       context,
       tools: NO_TOOLS,
       resolvedInputBudgetTokens: budget,
@@ -723,7 +710,6 @@ function planFirstRound(
   tools: ModelToolSpec[] = NO_TOOLS,
 ) {
   return new SamplingContextPlanner(estimator).plan({
-    samplingIndex: 1,
     context: createContext({ history }),
     tools,
     resolvedInputBudgetTokens: budget,
