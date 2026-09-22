@@ -17,10 +17,11 @@ export type {
   AdminLlmProviderInput,
   AdminLlmTestModelsRequest,
   AdminLlmTestModelsResponse,
+  LlmFamilyCompat,
   LlmProviderFamily,
   ReasoningEffort,
 } from './admin-llm.js'
-export { isThinkingFamily, LLM_FAMILY_CAPABILITIES, LLM_PROVIDER_FAMILIES, REASONING_EFFORTS, reasoningEffortsOf } from './admin-llm.js'
+export { familyCompatOf, LLM_FAMILY_CAPABILITIES, LLM_PROVIDER_FAMILIES, REASONING_EFFORTS, reasoningEffortsOf } from './admin-llm.js'
 export type {
   AdminOverviewDailyPoint,
   AdminOverviewModelUsageItem,

@@ -18,6 +18,7 @@
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
+    "lint": "eslint src scripts",
     "test": "pnpm --filter @agent/contracts build && tsx --test src/*.test.ts src/**/*.test.ts"
   },
   "dependencies": {

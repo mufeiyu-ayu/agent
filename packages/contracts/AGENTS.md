@@ -11,7 +11,7 @@ src/chat.ts              # ChatRequest / ChatModelOption / NDJSON 流事件（st
 src/conversation.ts      # 会话与消息
 src/agent-run.ts         # AgentRun / AgentStep 的对外形状
 src/grounding.ts         # 引用与证据契约 MessageGroundingV1
-src/admin-llm.ts         # LLM 配置：LLM_PROVIDER_FAMILIES、LLM_FAMILY_CAPABILITIES（各家族 thinking / reasoning_effort 取值，唯一来源）、Provider / Model 的读写形状
+src/admin-llm.ts         # LLM 配置：LLM_PROVIDER_FAMILIES、LLM_FAMILY_CAPABILITIES（各家族 compat：thinkingFormat / requiresReasoningContent / reasoningEfforts，唯一来源）、Provider / Model 的读写形状
 src/admin-run.ts         # 管理台 Run Trace 读模型
 src/admin-conversation.ts / src/admin-overview.ts   # 管理台其他读模型
 ```

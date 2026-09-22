@@ -1,0 +1,140 @@
+{
+  "family": "deepseek",
+  "note": "DeepSeek 直连（api.deepseek.com，thinking enabled）的 Tool Call 流：reasoning_content 先于 tool_calls，usage 在结束 choice 之后单独返回，缓存同时给顶层 prompt_cache_* 与 prompt_tokens_details.cached_tokens。",
+  "chunks": [
+    {
+      "id": "ds-1",
+      "object": "chat.completion.chunk",
+      "created": 1758515880,
+      "model": "deepseek-flash",
+      "choices": [
+        {
+          "index": 0,
+          "delta": {
+            "role": "assistant",
+            "content": null,
+            "reasoning_content": "用户要查文章，"
+          },
+          "finish_reason": null
+        }
+      ]
+    },
+    {
+      "id": "ds-1",
+      "object": "chat.completion.chunk",
+      "created": 1758515880,
+      "model": "deepseek-flash",
+      "choices": [
+        {
+          "index": 0,
+          "delta": {
+            "reasoning_content": "先检索。"
+          },
+          "finish_reason": null
+        }
+      ]
+    },
+    {
+      "id": "ds-1",
+      "object": "chat.completion.chunk",
+      "created": 1758515880,
+      "model": "deepseek-flash",
+      "choices": [
+        {
+          "index": 0,
+          "delta": {
+            "tool_calls": [
+              {
+                "index": 0,
+                "id": "call_0_9b0c1a2d",
+                "type": "function",
+                "function": {
+                  "name": "retrieve_article_context",
+                  "arguments": ""
+                }
+              }
+            ]
+          },
+          "finish_reason": null
+        }
+      ]
+    },
+    {
+      "id": "ds-1",
+      "object": "chat.completion.chunk",
+      "created": 1758515880,
+      "model": "deepseek-flash",
+      "choices": [
+        {
+          "index": 0,
+          "delta": {
+            "tool_calls": [
+              {
+                "index": 0,
+                "function": {
+                  "arguments": "{\"query\":"
+                }
+              }
+            ]
+          },
+          "finish_reason": null
+        }
+      ]
+    },
+    {
+      "id": "ds-1",
+      "object": "chat.completion.chunk",
+      "created": 1758515880,
+      "model": "deepseek-flash",
+      "choices": [
+        {
+          "index": 0,
+          "delta": {
+            "tool_calls": [
+              {
+                "index": 0,
+                "function": {
+                  "arguments": "\"青柠 146\"}"
+                }
+              }
+            ]
+          },
+          "finish_reason": null
+        }
+      ]
+    },
+    {
+      "id": "ds-1",
+      "object": "chat.completion.chunk",
+      "created": 1758515880,
+      "model": "deepseek-flash",
+      "choices": [
+        {
+          "index": 0,
+          "delta": {},
+          "finish_reason": "tool_calls"
+        }
+      ]
+    },
+    {
+      "id": "ds-1",
+      "object": "chat.completion.chunk",
+      "created": 1758515880,
+      "model": "deepseek-flash",
+      "choices": [],
+      "usage": {
+        "prompt_tokens": 1304,
+        "completion_tokens": 21,
+        "total_tokens": 1325,
+        "prompt_tokens_details": {
+          "cached_tokens": 1152
+        },
+        "prompt_cache_hit_tokens": 1152,
+        "prompt_cache_miss_tokens": 152,
+        "completion_tokens_details": {
+          "reasoning_tokens": 16
+        }
+      }
+    }
+  ]
+}

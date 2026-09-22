@@ -1,0 +1,42 @@
+{
+  "key": "grok",
+  "stepId": "cmuc6ocbq000b1xvbk6ngxafl",
+  "capturedAt": "2026-09-22T04:38:07.718",
+  "family": "grok",
+  "wireName": "grok-4.7",
+  "response": {
+    "id": "62edef96-ca98-9c2c-b17a-eb2d24563712",
+    "model": "grok-4.7",
+    "usage": {
+      "total_tokens": 2579,
+      "prompt_tokens": 2419,
+      "num_sources_used": 0,
+      "completion_tokens": 10,
+      "cost_in_usd_ticks": 23420000,
+      "prompt_tokens_details": {
+        "text_tokens": 2419,
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "cached_tokens": 2304
+      },
+      "completion_tokens_details": {
+        "audio_tokens": 0,
+        "reasoning_tokens": 150,
+        "accepted_prediction_tokens": 0,
+        "rejected_prediction_tokens": 0
+      }
+    },
+    "object": "chat.completion",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "刚才的暗号是「青柠 146」。"
+        },
+        "finish_reason": "stop"
+      }
+    ],
+    "created": 0
+  }
+}

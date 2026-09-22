@@ -1,0 +1,76 @@
+{
+  "family": "grok",
+  "note": "中转站上的 grok-4.7：不回 reasoning_content 只回 reasoning_tokens；usage 带 xAI 私有字段（num_sources_used / cost_in_usd_ticks），缓存在 prompt_tokens_details.cached_tokens。",
+  "chunks": [
+    {
+      "id": "grok-1",
+      "object": "chat.completion.chunk",
+      "created": 1758515880,
+      "model": "grok-4.7",
+      "choices": [
+        {
+          "index": 0,
+          "delta": {
+            "role": "assistant",
+            "content": "刚才的暗号是"
+          },
+          "finish_reason": null
+        }
+      ]
+    },
+    {
+      "id": "grok-1",
+      "object": "chat.completion.chunk",
+      "created": 1758515880,
+      "model": "grok-4.7",
+      "choices": [
+        {
+          "index": 0,
+          "delta": {
+            "content": "「青柠 146」。"
+          },
+          "finish_reason": null
+        }
+      ]
+    },
+    {
+      "id": "grok-1",
+      "object": "chat.completion.chunk",
+      "created": 1758515880,
+      "model": "grok-4.7",
+      "choices": [
+        {
+          "index": 0,
+          "delta": {},
+          "finish_reason": "stop"
+        }
+      ]
+    },
+    {
+      "id": "grok-1",
+      "object": "chat.completion.chunk",
+      "created": 1758515880,
+      "model": "grok-4.7",
+      "choices": [],
+      "usage": {
+        "prompt_tokens": 2419,
+        "completion_tokens": 10,
+        "total_tokens": 2579,
+        "num_sources_used": 0,
+        "cost_in_usd_ticks": 23420000,
+        "prompt_tokens_details": {
+          "text_tokens": 2419,
+          "audio_tokens": 0,
+          "image_tokens": 0,
+          "cached_tokens": 2304
+        },
+        "completion_tokens_details": {
+          "audio_tokens": 0,
+          "reasoning_tokens": 150,
+          "accepted_prediction_tokens": 0,
+          "rejected_prediction_tokens": 0
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,49 @@
+{
+  "family": "gemini",
+  "note": "中转站上的 gemini-3.8-flash-low：档位写在模型名里，不回 reasoning_content 也不回 reasoning_tokens，usage 没有任何缓存字段。",
+  "chunks": [
+    {
+      "id": "gem-1",
+      "object": "chat.completion.chunk",
+      "created": 1758515880,
+      "model": "gemini-3.8-flash-low",
+      "choices": [
+        {
+          "index": 0,
+          "delta": {
+            "role": "assistant",
+            "content": "刚才的暗号是"
+          },
+          "finish_reason": null
+        }
+      ]
+    },
+    {
+      "id": "gem-1",
+      "object": "chat.completion.chunk",
+      "created": 1758515880,
+      "model": "gemini-3.8-flash-low",
+      "choices": [
+        {
+          "index": 0,
+          "delta": {
+            "content": "「青柠 146」。"
+          },
+          "finish_reason": "stop"
+        }
+      ]
+    },
+    {
+      "id": "gem-1",
+      "object": "chat.completion.chunk",
+      "created": 1758515880,
+      "model": "gemini-3.8-flash-low",
+      "choices": [],
+      "usage": {
+        "prompt_tokens": 1347,
+        "completion_tokens": 150,
+        "total_tokens": 1497
+      }
+    }
+  ]
+}

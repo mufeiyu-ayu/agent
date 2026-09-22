@@ -12,9 +12,18 @@ type DeepSeekChatCompletionDelta = ChatCompletionChunk.Choice.Delta & {
   reasoning_content?: string | null
 }
 
-type DeepSeekCompletionUsage = NonNullable<ChatCompletionChunk['usage']> & {
+/**
+ * usage 的三种缓存写法（对照 Pi `parseChunkUsage`）：OpenAI 形状 `prompt_tokens_details.cached_tokens`
+ * （中转站上的 gpt / grok / 经中转的 DeepSeek）、DeepSeek 直连的顶层 `prompt_cache_hit_tokens` /
+ * `prompt_cache_miss_tokens`、以及部分兼容端点的顶层 `cached_tokens`。
+ */
+type CompatCompletionUsage = NonNullable<ChatCompletionChunk['usage']> & {
   prompt_cache_hit_tokens?: number | null
   prompt_cache_miss_tokens?: number | null
+  cached_tokens?: number | null
+  prompt_tokens_details?: {
+    cached_tokens?: number | null
+  } | null
   completion_tokens_details?: {
     reasoning_tokens?: number | null
   } | null
@@ -165,9 +174,23 @@ function normalizeFinishReason(finishReason: string): ModelFinishReason {
   }
 }
 
+/**
+ * 缓存命中数按三种写法兜底取值；未命中数只有 DeepSeek 直连会报，其他家族在有命中数时用
+ * `prompt_tokens − 命中数` 推出。`inputTokens` 保持原始 `prompt_tokens`，不像 Pi 那样扣掉缓存，
+ * Admin 投影与概览口径不变；哪个字段都没有时保持 undefined，不补零。
+ */
 function toModelUsage(
-  usage: DeepSeekCompletionUsage,
+  usage: CompatCompletionUsage,
 ): ModelUsage {
+  const promptCacheHitTokens = usage.prompt_tokens_details?.cached_tokens
+    ?? usage.prompt_cache_hit_tokens
+    ?? usage.cached_tokens
+    ?? undefined
+  const promptCacheMissTokens = usage.prompt_cache_miss_tokens
+    ?? (promptCacheHitTokens !== undefined && usage.prompt_tokens >= promptCacheHitTokens
+      ? usage.prompt_tokens - promptCacheHitTokens
+      : undefined)
+
   return {
     inputTokens: usage.prompt_tokens,
     outputTokens: usage.completion_tokens,
@@ -175,11 +198,7 @@ function toModelUsage(
     ...(typeof usage.completion_tokens_details?.reasoning_tokens === 'number'
       ? { reasoningTokens: usage.completion_tokens_details.reasoning_tokens }
       : {}),
-    ...(typeof usage.prompt_cache_hit_tokens === 'number'
-      ? { promptCacheHitTokens: usage.prompt_cache_hit_tokens }
-      : {}),
-    ...(typeof usage.prompt_cache_miss_tokens === 'number'
-      ? { promptCacheMissTokens: usage.prompt_cache_miss_tokens }
-      : {}),
+    ...(promptCacheHitTokens === undefined ? {} : { promptCacheHitTokens }),
+    ...(promptCacheMissTokens === undefined ? {} : { promptCacheMissTokens }),
   }
 }

@@ -19,7 +19,7 @@ import type {
   UpdateAdminLlmProviderDto,
 } from './dto/admin-llm.dto.js'
 import { LLMAuthError } from '@agent/ai'
-import { isThinkingFamily, LLM_PROVIDER_FAMILIES, reasoningEffortsOf } from '@agent/contracts'
+import { familyCompatOf, LLM_PROVIDER_FAMILIES, reasoningEffortsOf } from '@agent/contracts'
 
 import {
   BadRequestException,
@@ -267,7 +267,7 @@ export class AdminLlmService {
         this.llmModelConfigService.toCredentials(model.provider),
         model.wireName,
         {
-          reasoning: isThinkingFamily(model.provider.family),
+          compat: familyCompatOf(model.provider.family),
           reasoningEffort: toReasoningEffort(model.reasoningEffort),
           maxOutputTokens: model.maxOutputTokens,
         },

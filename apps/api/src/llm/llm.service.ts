@@ -4,9 +4,10 @@ import type {
   ModelStreamEvent,
   ProviderBalanceResponse,
 } from '@agent/ai'
-import type { ReasoningEffort } from '@agent/contracts'
+import type { LlmFamilyCompat, ReasoningEffort } from '@agent/contracts'
 import type { LlmProviderCredentials } from './llm-model-config.service.js'
 import { LLMApiError, LLMError, OpenAICompatibleClient } from '@agent/ai'
+import { familyCompatOf } from '@agent/contracts'
 import { Inject, Injectable, Logger } from '@nestjs/common'
 
 import { LLMRuntimeConfigService } from './llm-runtime-config.service.js'
@@ -18,9 +19,9 @@ import { LLMRuntimeConfigService } from './llm-runtime-config.service.js'
  * 不做 client 缓存：`OpenAICompatibleClient` 只是三字段配置的持有者，每次请求都会新建 SDK 实例；
  * 凭据由 Run 开始时的快照传入，后台改 key 只影响之后解析的 Run。
  */
-/** 探测已入库模型行时对齐真实 Run 的参数；省略即最保守。 */
+/** 探测已入库模型行时对齐真实 Run 的参数；省略即最保守：不发 thinking、不要求 reasoning_content。 */
 export interface ProbeModelOptions {
-  reasoning?: boolean
+  compat?: LlmFamilyCompat
   reasoningEffort?: ReasoningEffort | null
   maxOutputTokens?: number
 }
@@ -83,7 +84,7 @@ export class LLMService {
             model: wireName,
             contextWindowTokens: 0,
             maxOutputTokens: options.maxOutputTokens ?? 16,
-            reasoning: options.reasoning ?? false,
+            compat: options.compat ?? familyCompatOf('other'),
             ...(options.reasoningEffort ? { reasoningEffort: options.reasoningEffort } : {}),
           },
         },

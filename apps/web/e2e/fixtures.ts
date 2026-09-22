@@ -326,10 +326,14 @@ export async function installApiRoutes(
     body: JSON.stringify({ success: true, code: 0, message: 'ok', data }),
   })
 
-  await page.route('**/api/llm/models', route => route.fulfill(json({
-    object: 'list',
-    data: [{ id: 'deepseek-v4-flash', object: 'model', owned_by: 'deepseek' }],
-  })))
+  // 与 `/api/llm/models` 的 ChatModelOption[] 契约对齐（#142 起）：三档强度、默认 High。
+  await page.route('**/api/llm/models', route => route.fulfill(json([{
+    id: 'model-deepseek-v4-flash',
+    displayName: 'DeepSeek V4 Flash',
+    reasoningEffort: 'high',
+    reasoningEffortOptions: ['low', 'high', 'max'],
+    isDefault: true,
+  }])))
 
   await page.route('**/api/llm/balance', route => route.fulfill(json({
     is_available: true,

@@ -1,0 +1,38 @@
+{
+  "key": "openai",
+  "stepId": "cmub29hhl00269dvbs4ktp6s3",
+  "capturedAt": "2026-09-21T09:46:49.929",
+  "family": "openai",
+  "wireName": "gpt-5.6-luna",
+  "response": {
+    "id": "resp_05aada2a41b3d983016ab0fd0b0d7487d19678efd2d0037d8c",
+    "model": "gpt-5.6-luna",
+    "usage": {
+      "total_tokens": 7980,
+      "prompt_tokens": 7930,
+      "completion_tokens": 50
+    },
+    "object": "chat.completion",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": null,
+          "tool_calls": [
+            {
+              "id": "call_tYj5Cu6HpTPG8P0adxE0YttT",
+              "type": "function",
+              "function": {
+                "name": "retrieve_article_context",
+                "arguments": "{\"query\":\"Genshin Impact 7.1 新武器 蝶变 漩流颂歌 新枝 柔风游弦 武器属性\"}"
+              }
+            }
+          ]
+        },
+        "finish_reason": "tool_calls"
+      }
+    ],
+    "created": 1789984011
+  }
+}
