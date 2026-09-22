@@ -88,13 +88,6 @@ export type AdminContextInspectorOutcome
     | 'minimum_context_overflow'
     | 'estimator_failure'
 
-/** 按 Tool Exchange 顺序逐条投影；单条里读不出的字段为 null，位置不丢。 */
-export interface AdminContextObservationSummary {
-  originalChars: number | null
-  toolCeilingChars: number | null
-  finalChars: number | null
-}
-
 export interface AdminContextInspector {
   /** 无 contextPlan 且无 contextFailureReason 时为 null。 */
   outcome: AdminContextInspectorOutcome | null
@@ -104,11 +97,6 @@ export interface AdminContextInspector {
   modelId: string | null
   resolvedInputBudgetTokens: number | null
   estimatedInputTokens: number | null
-  historyCandidateCount: number | null
-  historyIncludedCount: number | null
-  /** `initialContext.historyIncludedCount − contextPlan.historyIncludedCount`；任一侧缺失为 null。 */
-  samplingHistoryExcludedCount: number | null
-  observations: AdminContextObservationSummary[] | null
 }
 
 /** 检索策略标识；只保留名称与版本。 */
@@ -238,8 +226,6 @@ export interface AdminModelSamplingStep extends AdminRunKnownTimelineItemBase {
   type: 'model_sampling'
   samplingIndex: number | null
   samplingAttemptId: string | null
-  /** 最终 Provider-facing ModelInputItem 数量；Plan 失败为 0，未记录为 null。 */
-  providerItemCount: number | null
   finishReason: AdminModelFinishReason | null
   usage: AdminRunTokenUsage | null
   toolCallCount: number | null

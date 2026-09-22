@@ -1,7 +1,6 @@
 import type {
   AdminAssistantOutputStep,
   AdminContextInspector,
-  AdminContextObservationSummary,
   AdminDebugModelIOCapture,
   AdminDebugModelResponseCapture,
   AdminGenericStep,
@@ -163,7 +162,6 @@ function projectModelSampling(
     // 轮次从 1 起算；0 只可能来自损坏数据，按读不出处理。
     samplingIndex: samplingIndex === 0 ? null : samplingIndex,
     samplingAttemptId: readString(input, 'samplingAttemptId'),
-    providerItemCount: readNonNegativeInteger(output, 'messageCount'),
     finishReason: readAllowedString(output, 'finishReason', ADMIN_MODEL_FINISH_REASONS),
     usage: projectTokenUsage(output),
     toolCallCount: readNonNegativeInteger(output, 'toolCallCount'),
@@ -266,15 +264,6 @@ function projectContextInspector(
     'overflowReason',
     ['minimum_context'],
   )
-  const initialIncludedCount = readNonNegativeInteger(
-    initialContext,
-    'historyIncludedCount',
-  )
-  const planIncludedCount = readNonNegativeInteger(
-    contextPlan,
-    'historyIncludedCount',
-  )
-
   return {
     outcome: contextFailureReason === 'estimator_failure'
       ? 'estimator_failure'
@@ -286,40 +275,11 @@ function projectContextInspector(
     resolvedModel: readString(initialContext, 'resolvedModel'),
     providerId: readString(initialContext, 'providerId'),
     modelId: readString(initialContext, 'modelId'),
-    // 预算在 plan 前就已解析并写入 initialContext；history 三项都是 plan 的结果，只读 contextPlan。
+    // 预算在 plan 前就已解析并写入 initialContext，plan 失败时从这里兜底读取。
     resolvedInputBudgetTokens: readNonNegativeInteger(contextPlan, 'resolvedInputBudgetTokens')
       ?? readNonNegativeInteger(initialContext, 'resolvedInputBudgetTokens'),
     estimatedInputTokens: readNonNegativeInteger(contextPlan, 'estimatedInputTokens'),
-    historyCandidateCount: readNonNegativeInteger(contextPlan, 'historyCandidateCount'),
-    historyIncludedCount: planIncludedCount,
-    samplingHistoryExcludedCount: initialIncludedCount !== null && planIncludedCount !== null
-      ? initialIncludedCount - planIncludedCount
-      : null,
-    observations: readContextObservationSummaries(contextPlan?.observations),
   }
-}
-
-/**
- * 逐条、逐字段读取 Observation 摘要；不是数组返回 null。
- *
- * 展示按数组下标编号（第 N 轮 Tool Exchange），因此单条读不出时保留位置、
- * 只把读不出的字段置 null，不跳过也不拖垮整个数组。
- */
-function readContextObservationSummaries(
-  value: unknown,
-): AdminContextObservationSummary[] | null {
-  if (!Array.isArray(value))
-    return null
-
-  return value.map((candidate) => {
-    const object = readObject(candidate)
-
-    return {
-      originalChars: readNonNegativeInteger(object, 'originalChars'),
-      toolCeilingChars: readNonNegativeInteger(object, 'toolCeilingChars'),
-      finalChars: readNonNegativeInteger(object, 'finalChars'),
-    }
-  })
 }
 
 /**

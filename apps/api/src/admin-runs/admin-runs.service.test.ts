@@ -256,10 +256,6 @@ describe('Admin Run projector', () => {
       modelId: null,
       resolvedInputBudgetTokens: 262_144,
       estimatedInputTokens: 120_000,
-      historyCandidateCount: 2,
-      historyIncludedCount: 2,
-      samplingHistoryExcludedCount: 0,
-      observations: [],
     })
 
     const tool = detail.timeline.find(item => item.sequence === 4)
@@ -295,14 +291,6 @@ describe('Admin Run projector', () => {
       /DO_NOT_LEAK|rawArgumentsJson|observationBody|providerPayload|reasoning_content/,
     )
     assert.doesNotMatch(serialized, /"input"|"output"|inputSummary|outputSummary|safeRawData/)
-    const secondSampling = detail.timeline.find(item => item.sequence === 5)
-
-    assert.equal(
-      secondSampling?.kind === 'known' && secondSampling.type === 'model_sampling'
-        ? secondSampling.providerItemCount
-        : null,
-      4,
-    )
     const history = detail.timeline.find(item => item.sequence === 2)
     assert.equal(
       history?.kind === 'known' && history.type === 'load_conversation_history'
@@ -398,13 +386,6 @@ describe('Admin Run projector', () => {
     assert.deepEqual(inspectors.map(item => item.outcome), ['success', 'success', 'success'])
     assert.deepEqual(inspectors.map(item => item.resolvedModel), Array.from({ length: 3 }).fill('deepseek-v4-flash'))
     assert.deepEqual(inspectors.map(item => item.estimatedInputTokens), [120_000, 180_000, 220_000])
-    assert.deepEqual(inspectors.map(item => item.historyIncludedCount), [2, 1, 1])
-    assert.deepEqual(inspectors.map(item => item.samplingHistoryExcludedCount), [0, 1, 1])
-    assert.deepEqual(inspectors.map(item => item.observations?.length), [0, 1, 2])
-    assert.deepEqual(inspectors[2]?.observations, [
-      { originalChars: 100, toolCeilingChars: 80, finalChars: 64 },
-      { originalChars: 101, toolCeilingChars: 101, finalChars: 101 },
-    ])
     assert.doesNotMatch(
       JSON.stringify(detail),
       /DO_NOT_LEAK|prompt(?!Cache)|observationBody|reasoning_content|exchangeIndex|toolCeilingTruncated/,
@@ -427,13 +408,9 @@ describe('Admin Run projector', () => {
     const failed = projectAdminRunDetail(estimatorFailure).timeline.find(item => item.sequence === 3)
     assert.ok(failed?.kind === 'known' && failed.type === 'model_sampling')
     assert.equal(failed.contextInspector.outcome, 'estimator_failure')
-    // 预算来自 initialContext；history 三项是 plan 的结果，plan 缺失时一起为 null。
+    // 预算来自 initialContext；估算 Token 是 plan 的结果，plan 缺失时为 null。
     assert.equal(failed.contextInspector.resolvedInputBudgetTokens, 262_144)
-    assert.equal(failed.contextInspector.historyCandidateCount, null)
-    assert.equal(failed.contextInspector.historyIncludedCount, null)
-    assert.equal(failed.contextInspector.samplingHistoryExcludedCount, null)
     assert.equal(failed.contextInspector.estimatedInputTokens, null)
-    assert.equal(failed.providerItemCount, 0)
 
     const overflow = createRunRecord()
     const overflowSampling = overflow.steps.find(step => step.sequence === 3)!
@@ -449,29 +426,6 @@ describe('Admin Run projector', () => {
     const noMetadata = projectAdminRunDetail(createRunRecord()).timeline.find(item => item.sequence === 3)
     assert.ok(noMetadata?.kind === 'known' && noMetadata.type === 'model_sampling')
     assert.equal(noMetadata.contextInspector.outcome, null)
-    assert.equal(noMetadata.contextInspector.observations, null)
-  })
-
-  it('Observation 单条读不出时保留位置、只把该字段置 null', () => {
-    const record = createRunRecord()
-    attachContextMetadata(record)
-    const plan = (record.steps.find(step => step.sequence === 7)!.output as Record<string, unknown>)
-      .contextPlan as Record<string, unknown>
-    plan.observations = [
-      { originalChars: 3, toolCeilingChars: 'x', finalChars: 1 },
-      'broken',
-      { originalChars: 5, toolCeilingChars: 4, finalChars: 3 },
-    ]
-
-    const item = projectAdminRunDetail(record).timeline.find(candidate => candidate.sequence === 7)
-
-    assert.ok(item?.kind === 'known' && item.type === 'model_sampling')
-    assert.deepEqual(item.contextInspector.observations, [
-      { originalChars: 3, toolCeilingChars: null, finalChars: 1 },
-      { originalChars: null, toolCeilingChars: null, finalChars: null },
-      { originalChars: 5, toolCeilingChars: 4, finalChars: 3 },
-    ])
-    assert.equal(item.contextInspector.outcome, 'success')
   })
 
   it('Run 四种状态都能投影且只有终态计算 duration', () => {
@@ -503,13 +457,6 @@ describe('Admin Run projector', () => {
 
     assert.equal(runningSamplingProjection?.kind, 'known')
     assert.equal(runningSamplingProjection?.status, 'RUNNING')
-    assert.equal(
-      runningSamplingProjection?.kind === 'known'
-      && runningSamplingProjection.type === 'model_sampling'
-        ? runningSamplingProjection.providerItemCount
-        : undefined,
-      null,
-    )
     assert.equal(runningDetail.messages.at(-1)?.status, 'STREAMING')
 
     const aborted = createRunRecord()

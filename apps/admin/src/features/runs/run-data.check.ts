@@ -83,8 +83,6 @@ function checkPartialTraceAndInspectors(): void {
     null,
   )
 
-  const directFinal = createContextInspector()
-  assert.deepEqual(directFinal.observations, [])
   assert.equal(formatPercentage(0, 'en-US'), '0%')
   assert.equal(formatPercentage(null, 'en-US'), '—')
 }
@@ -976,7 +974,6 @@ function createTraceDetail(toolCount: 0 | 1 | 2): AdminRunDetail {
       hasError: false,
       samplingIndex: index,
       samplingAttemptId,
-      providerItemCount: index + 2,
       finishReason,
       usage: index === 1
         ? {
@@ -1000,11 +997,6 @@ function createTraceDetail(toolCount: 0 | 1 | 2): AdminRunDetail {
       debugRawResponse: null,
       contextInspector: createContextInspector({
         estimatedInputTokens: index * 100,
-        observations: Array.from({ length: index - 1 }, () => ({
-          originalChars: 24,
-          toolCeilingChars: 24,
-          finalChars: 24,
-        })),
       }),
     })
     sequence += 1
@@ -1131,7 +1123,6 @@ function createRunningDetail(): AdminRunDetail {
     hasError: false,
     samplingIndex: 1,
     samplingAttemptId: 'sampling-running-1',
-    providerItemCount: null,
     finishReason: null,
     usage: null,
     toolCallCount: null,
@@ -1140,10 +1131,6 @@ function createRunningDetail(): AdminRunDetail {
     contextInspector: createContextInspector({
       outcome: null,
       estimatedInputTokens: null,
-      historyCandidateCount: null,
-      historyIncludedCount: null,
-      samplingHistoryExcludedCount: null,
-      observations: null,
     }),
   }
 
@@ -1184,10 +1171,6 @@ function createContextInspector(
     modelId: 'model-deepseek-v4-flash',
     resolvedInputBudgetTokens: 262_144,
     estimatedInputTokens: 0,
-    historyCandidateCount: 0,
-    historyIncludedCount: 0,
-    samplingHistoryExcludedCount: 0,
-    observations: [],
     ...overrides,
   }
 }

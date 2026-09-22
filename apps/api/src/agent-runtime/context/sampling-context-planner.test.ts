@@ -538,7 +538,6 @@ describe('SamplingContextPlanner 首轮历史裁剪（迁自旧的初始上下�
       modelId: 'model-deepseek-v4-flash',
       contextWindowTokens: 1_000_000,
       resolvedMaxOutputTokens: 65_536,
-      candidateHardLimit: 1_000,
       context,
       tools: NO_TOOLS,
       tokenEstimator: estimator,
@@ -563,7 +562,6 @@ describe('SamplingContextPlanner 首轮历史裁剪（迁自旧的初始上下�
 describe('summarizeInitialContext', () => {
   const summarize = (input: {
     history: MessageInputItem[]
-    candidateHardLimit: number
     estimator?: TokenEstimator
     contextWindowTokens?: number
   }) => summarizeInitialContext({
@@ -572,25 +570,20 @@ describe('summarizeInitialContext', () => {
     modelId: 'model-deepseek-v4-flash',
     contextWindowTokens: input.contextWindowTokens ?? 17_010,
     resolvedMaxOutputTokens: 100,
-    candidateHardLimit: input.candidateHardLimit,
     context: createContext({ history: input.history }),
     tools: NO_TOOLS,
     tokenEstimator: input.estimator ?? new MessageCountTokenEstimator(),
   })
 
-  it('计数取裁剪前值，只估算必带内容，不裁剪也不估算全部候选', () => {
+  it('只估算必带内容，不裁剪也不估算全部候选', () => {
     const history = historyMessages(60, index => `history-${index}`)
-    const summary = summarize({ history, candidateHardLimit: 1_000 })
+    const summary = summarize({ history })
 
     assert.deepEqual(summary, {
       resolvedModel: 'deepseek-v4-flash',
       providerId: 'provider-deepseek',
       modelId: 'model-deepseek-v4-flash',
       resolvedInputBudgetTokens: 526,
-      historyCandidateCount: 60,
-      historyIncludedCount: 60,
-      historyExcludedCount: 0,
-      excludedReason: null,
     })
   })
 
@@ -605,7 +598,6 @@ describe('summarizeInitialContext', () => {
       modelId: 'model-deepseek-v4-flash',
       contextWindowTokens: 17_010,
       resolvedMaxOutputTokens: 100,
-      candidateHardLimit: 1_000,
       context,
       tools: NO_TOOLS,
       tokenEstimator: new MessageCountTokenEstimator(),
@@ -614,28 +606,10 @@ describe('summarizeInitialContext', () => {
     assert.deepEqual(flattenPlanningState(context.forPlanning()), before)
   })
 
-  it('读取条数等于硬上限时标记 candidate_cap，否则为 null', () => {
-    const history = historyMessages(3, index => `history-${index}`)
-
-    assert.equal(
-      summarize({ history, candidateHardLimit: 3 }).excludedReason,
-      'candidate_cap',
-    )
-    assert.equal(
-      summarize({ history, candidateHardLimit: 4 }).excludedReason,
-      null,
-    )
-    assert.equal(
-      summarize({ history: [], candidateHardLimit: 50 }).excludedReason,
-      null,
-    )
-  })
-
   it('mandatory context 超预算时抛 ContextBudgetExceededError', () => {
     assert.throws(
       () => summarize({
         history: [],
-        candidateHardLimit: 1_000,
         estimator: new FixedTokenEstimator(600),
         contextWindowTokens: 17_000,
       }),
