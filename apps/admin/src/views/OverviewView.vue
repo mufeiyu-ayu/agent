@@ -1,518 +1,321 @@
 <script setup lang="ts">
-import type { AdminOverviewStats, AdminProviderBalance } from '@agent/contracts'
-import { Alert, Button, Card, Skeleton } from 'ant-design-vue'
-import { computed, onBeforeUnmount, ref, shallowRef } from 'vue'
-import VChart from 'vue-echarts'
-import { useI18n } from 'vue-i18n'
+import type { OverviewDataSet, OverviewWindowKey } from '@/features/overview/mock-data'
+import {
+  DownOutlined,
+  ReloadOutlined,
+  SettingOutlined,
+} from '@ant-design/icons-vue'
+import { Button, Dropdown, Menu, MenuItem } from 'ant-design-vue'
+import { computed, ref, shallowRef, watch } from 'vue'
+import { useRouter } from 'vue-router'
 
 import PageContainer from '@/components/common/PageContainer.vue'
-import { fetchOverviewStats, fetchProviderBalance } from '@/features/overview/overview-api'
-import { formatTokens } from '@/features/runs/run.utils'
-import { formatAdminRunError } from '@/features/shared/admin-api'
-import { useAdminPreferencesStore } from '@/stores/preferences'
+import OverviewLeftBottom from '@/features/overview/components/OverviewLeftBottom.vue'
+import OverviewLeftKpi from '@/features/overview/components/OverviewLeftKpi.vue'
+import OverviewLeftTrend from '@/features/overview/components/OverviewLeftTrend.vue'
+import OverviewRightTable from '@/features/overview/components/OverviewRightTable.vue'
+import { getOverviewMockData } from '@/features/overview/mock-data'
 
-import '@/features/overview/echarts'
+const router = useRouter()
+const activeWindow = ref<OverviewWindowKey>('24h')
+const loading = ref(false)
+const renderKey = ref(0)
+const currentData = shallowRef<OverviewDataSet>(getOverviewMockData('24h'))
 
-const { locale, t } = useI18n()
-const preferences = useAdminPreferencesStore()
-
-const stats = shallowRef<AdminOverviewStats>()
-const statsLoading = ref(false)
-const statsErrorCause = shallowRef<unknown>()
-const statsError = computed(() => (
-  statsErrorCause.value === undefined ? '' : formatAdminRunError(statsErrorCause.value)
-))
-
-const balance = shallowRef<AdminProviderBalance>()
-const balanceLoading = ref(false)
-
-const abortController = new AbortController()
-
-async function loadStats() {
-  statsLoading.value = true
-  statsErrorCause.value = undefined
-  try {
-    stats.value = await fetchOverviewStats({ signal: abortController.signal })
-  }
-  catch (cause) {
-    if (!abortController.signal.aborted)
-      statsErrorCause.value = cause
-  }
-  finally {
-    statsLoading.value = false
-  }
+async function refreshData(windowKey: OverviewWindowKey) {
+  loading.value = true
+  await new Promise(resolve => setTimeout(resolve, 180))
+  currentData.value = getOverviewMockData(windowKey)
+  renderKey.value++
+  loading.value = false
 }
 
-// 余额独立加载：provider 查询失败只影响余额格，不阻塞统计。
-async function loadBalance() {
-  balanceLoading.value = true
-  try {
-    balance.value = await fetchProviderBalance({ signal: abortController.signal })
-  }
-  catch {
-    balance.value = { available: false, currency: null, totalBalance: null }
-  }
-  finally {
-    balanceLoading.value = false
-  }
-}
-
-void loadStats()
-void loadBalance()
-onBeforeUnmount(() => abortController.abort())
-
-const windowRunCount = computed(() => (
-  stats.value?.daily.reduce((total, point) => total + point.runCount, 0) ?? 0
-))
-
-const balanceText = computed(() => {
-  const value = balance.value
-  if (balanceLoading.value)
-    return '…'
-  if (!value?.totalBalance)
-    return t('overview.balanceUnavailable')
-  return `${value.totalBalance} ${value.currency ?? ''}`.trim()
+watch(activeWindow, (newWindow) => {
+  void refreshData(newWindow)
 })
 
-/** 主题相关的图表基础色；跟随 resolvedTheme 切换，数值与 styles/index.css 对齐。 */
-const chartTheme = computed(() => (
-  preferences.resolvedTheme === 'dark'
-    ? { label: '#a6a6ad', border: '#3a3a40', splitLine: '#2c2c31' }
-    : { label: '#6b6b74', border: '#e4e4e8', splitLine: '#ececef' }
-))
-
-const SERIES_COLORS = ['#3b82f6', '#22c55e', '#f59e0b', '#8b5cf6', '#14b8a6', '#ef4444']
-const STATUS_COLORS: Record<string, string> = {
-  COMPLETED: '#22c55e',
-  RUNNING: '#3b82f6',
-  FAILED: '#ef4444',
-  ABORTED: '#f59e0b',
+function handleRefresh() {
+  void refreshData(activeWindow.value)
 }
 
-function axisBase() {
-  return {
-    axisLine: { lineStyle: { color: chartTheme.value.border } },
-    axisLabel: { color: chartTheme.value.label, fontSize: 10 },
-    splitLine: { lineStyle: { color: chartTheme.value.splitLine } },
-  }
+function handleSelectWindow(key: OverviewWindowKey) {
+  activeWindow.value = key
 }
 
-const dailyDates = computed(() => stats.value?.daily.map(point => point.date.slice(5)) ?? [])
-
-const dailyRunsOption = computed(() => ({
-  color: SERIES_COLORS,
-  tooltip: { trigger: 'axis' },
-  grid: { top: 20, right: 12, bottom: 24, left: 40 },
-  xAxis: { type: 'category', data: dailyDates.value, ...axisBase(), splitLine: { show: false } },
-  yAxis: { type: 'value', minInterval: 1, ...axisBase() },
-  series: [{
-    name: t('overview.charts.runCount'),
-    type: 'bar',
-    barMaxWidth: 14,
-    data: stats.value?.daily.map(point => point.runCount) ?? [],
-  }],
-}))
-
-const dailyTokensOption = computed(() => ({
-  color: SERIES_COLORS,
-  tooltip: { trigger: 'axis' },
-  legend: { top: 0, textStyle: { color: chartTheme.value.label, fontSize: 10 } },
-  grid: { top: 30, right: 12, bottom: 24, left: 52 },
-  xAxis: { type: 'category', data: dailyDates.value, ...axisBase(), splitLine: { show: false } },
-  yAxis: { type: 'value', ...axisBase() },
-  series: [
-    {
-      name: t('overview.charts.inputTokens'),
-      type: 'line',
-      stack: 'tokens',
-      areaStyle: { opacity: 0.25 },
-      showSymbol: false,
-      data: stats.value?.daily.map(point => point.inputTokens) ?? [],
-    },
-    {
-      name: t('overview.charts.outputTokens'),
-      type: 'line',
-      stack: 'tokens',
-      areaStyle: { opacity: 0.25 },
-      showSymbol: false,
-      data: stats.value?.daily.map(point => point.outputTokens) ?? [],
-    },
-  ],
-}))
-
-interface DistributionRow {
-  key: string
-  label: string
-  valueText: string
-  ratio: number
-  color: string
+const windowLabels: Record<OverviewWindowKey, string> = {
+  '24h': '最近 24 小时 (按小时连续)',
+  '7d': '近 7 天 (日维度)',
+  '30d': '近 30 天 (月度视角)',
 }
 
-/** 分布行：名称 + 数值 + 占比条。少量数据也保持信息密度，不画悬空饼图。 */
-const statusRows = computed<DistributionRow[]>(() => {
-  const entries = Object.entries(stats.value?.statusCounts ?? {}).filter(([, count]) => count > 0)
-  const total = entries.reduce((sum, [, count]) => sum + count, 0)
-
-  return entries.map(([status, count]) => ({
-    key: status,
-    label: status,
-    valueText: `${count.toLocaleString(locale.value)} · ${formatPercent(count, total)}`,
-    ratio: total === 0 ? 0 : count / total,
-    color: STATUS_COLORS[status] ?? SERIES_COLORS[0]!,
-  }))
-})
-
-const modelRows = computed<DistributionRow[]>(() => {
-  const models = stats.value?.models ?? []
-  const total = models.reduce((sum, item) => sum + item.totalTokens, 0)
-
-  return models.map((item, index) => ({
-    key: item.model,
-    label: item.model,
-    valueText: `${formatTokens(item.totalTokens, locale.value)} · ${formatPercent(item.totalTokens, total)}`,
-    ratio: total === 0 ? 0 : item.totalTokens / total,
-    color: SERIES_COLORS[index % SERIES_COLORS.length]!,
-  }))
-})
-
-const toolRows = computed<DistributionRow[]>(() => {
-  const tools = stats.value?.tools ?? []
-  const total = tools.reduce((sum, item) => sum + item.count, 0)
-
-  return tools.map((item, index) => ({
-    key: item.tool,
-    label: item.tool,
-    valueText: `${item.count.toLocaleString(locale.value)} · ${formatPercent(item.count, total)}`,
-    ratio: total === 0 ? 0 : item.count / total,
-    color: SERIES_COLORS[index % SERIES_COLORS.length]!,
-  }))
-})
-
-function formatPercent(value: number, total: number): string {
-  if (total === 0)
-    return '0%'
-  return `${Math.round((value / total) * 100)}%`
-}
+const kpi = computed(() => currentData.value.kpi)
+const balances = computed(() => currentData.value.balances)
+const models = computed(() => currentData.value.models)
+const trends = computed(() => currentData.value.trends)
+const tools = computed(() => currentData.value.tools)
+const sparklines = computed(() => currentData.value.sparklines)
 </script>
 
 <template>
   <PageContainer wide>
-    <h1 class="sr-only">
-      {{ t('overview.title') }}
-    </h1>
+    <!-- 顶部 Meta 栏 (极简、轻盈、科技感) -->
+    <div class="overview-meta-bar dash-card-box">
+      <div class="overview-meta-bar__left">
+        <Dropdown trigger="click">
+          <button class="meta-dropdown-btn">
+            <span>{{ windowLabels[activeWindow] }}</span>
+            <DownOutlined class="dropdown-arrow" />
+          </button>
+          <template #overlay>
+            <Menu @click="(info) => handleSelectWindow(info.key as OverviewWindowKey)">
+              <MenuItem key="24h">
+                最近 24 小时 (按小时连续)
+              </MenuItem>
+              <MenuItem key="7d">
+                近 7 天 (日维度)
+              </MenuItem>
+              <MenuItem key="30d">
+                近 30 天 (月度视角)
+              </MenuItem>
+            </Menu>
+          </template>
+        </Dropdown>
+        <span class="meta-separator">·</span>
+        <span class="meta-status-indicator" :class="{ 'is-loading': loading }">
+          <span class="status-pulse-dot" />
+          <span class="meta-update-time">{{ loading ? '正在同步数据...' : '最后更新：刚刚' }}</span>
+        </span>
+      </div>
 
-    <Alert
-      v-if="statsError"
-      class="stats-error"
-      type="error"
-      show-icon
-      :message="t('overview.loadFailed')"
-      :description="statsError"
-    >
-      <template #action>
-        <Button size="small" :loading="statsLoading" @click="loadStats">
-          {{ t('common.actions.retry') }}
+      <div class="overview-meta-bar__right">
+        <Button
+          size="small"
+          type="text"
+          :loading="loading"
+          class="meta-action-btn"
+          @click="handleRefresh"
+        >
+          <template #icon>
+            <ReloadOutlined />
+          </template>
+          刷新
         </Button>
-      </template>
-    </Alert>
+        <Button
+          size="small"
+          type="text"
+          class="meta-action-btn"
+          @click="() => router.push('/llm-models')"
+        >
+          <template #icon>
+            <SettingOutlined />
+          </template>
+          模型接入配置
+        </Button>
+      </div>
+    </div>
 
-    <Card v-else-if="statsLoading && !stats" class="chart-card" :bordered="false">
-      <Skeleton active :paragraph="{ rows: 8 }" />
-    </Card>
-
-    <template v-else-if="stats">
-      <Card class="stat-bar" :bordered="false">
-        <div class="stat-bar__grid" role="group" :aria-label="t('overview.title')">
-          <div class="stat-cell">
-            <small>{{ t('overview.cards.conversations') }}</small>
-            <strong>{{ stats.totals.conversationCount.toLocaleString(locale) }}</strong>
-            <p>{{ t('overview.cards.conversationsDetail', { count: stats.totals.messageCount.toLocaleString(locale) }) }}</p>
-          </div>
-          <div class="stat-cell">
-            <small>{{ t('overview.cards.runs') }}</small>
-            <strong>{{ stats.totals.runCount.toLocaleString(locale) }}</strong>
-            <p>{{ t('overview.cards.runsDetail', { count: windowRunCount.toLocaleString(locale) }) }}</p>
-          </div>
-          <div class="stat-cell">
-            <small>{{ t('overview.cards.tokens') }}</small>
-            <strong>{{ formatTokens(stats.totals.inputTokens + stats.totals.outputTokens, locale) }}</strong>
-            <p>
-              {{ t('overview.cards.tokensDetail', {
-                input: formatTokens(stats.totals.inputTokens, locale),
-                output: formatTokens(stats.totals.outputTokens, locale),
-              }) }}
-            </p>
-          </div>
-          <div class="stat-cell">
-            <small>{{ t('overview.cards.balance') }}</small>
-            <strong>{{ balanceText }}</strong>
-            <p>{{ t('overview.cards.balanceDetail') }}</p>
-          </div>
+    <!-- 左右双主轴分栏布局 (对标参考图，带阶梯级联酷炫入场动效) -->
+    <div :key="renderKey" class="overview-dashboard-grid">
+      <!-- 左主栏 (约 56% 宽)：运行大盘、趋势折线、余额与工具生态 -->
+      <div class="overview-left-col">
+        <!-- 1. 运行核心 KPI (对标 Deliveries) -->
+        <div class="dash-card-box dash-card-delay-1">
+          <OverviewLeftKpi
+            :kpi="kpi"
+            :sparklines="sparklines"
+            :loading="loading"
+          />
         </div>
-      </Card>
 
-      <section class="chart-grid">
-        <Card class="chart-card" :bordered="false" :title="t('overview.charts.dailyRuns', { days: stats.windowDays })">
-          <VChart class="chart" :option="dailyRunsOption" autoresize />
-        </Card>
-        <Card class="chart-card" :bordered="false" :title="t('overview.charts.dailyTokens', { days: stats.windowDays })">
-          <VChart class="chart" :option="dailyTokensOption" autoresize />
-        </Card>
-      </section>
+        <!-- 2. Token 吞吐与调用趋势大图 (对标 Revenue and costs) -->
+        <div class="dash-card-box dash-card-delay-2">
+          <OverviewLeftTrend
+            :trends="trends"
+            :active-window="activeWindow"
+            :loading="loading"
+          />
+        </div>
 
-      <section class="dist-grid">
-        <Card class="dist-card" :bordered="false" :title="t('overview.charts.statusDistribution', { days: stats.windowDays })">
-          <p v-if="!statusRows.length" class="dist-empty">
-            {{ t('overview.charts.empty') }}
-          </p>
-          <ul v-else class="dist-list">
-            <li v-for="row in statusRows" :key="row.key">
-              <div class="dist-row__head">
-                <span class="dist-row__label">
-                  <i class="dist-row__dot" :style="{ background: row.color }" />
-                  {{ row.label }}
-                </span>
-                <span class="dist-row__value">{{ row.valueText }}</span>
-              </div>
-              <div class="dist-row__track">
-                <div class="dist-row__fill" :style="{ width: `${row.ratio * 100}%`, background: row.color }" />
-              </div>
-            </li>
-          </ul>
-        </Card>
+        <!-- 3. 左下两张并排小卡片 (对标 Balance and costs & Costs by category) -->
+        <div class="dash-card-box dash-card-delay-4">
+          <OverviewLeftBottom
+            :balances="balances"
+            :tools="tools"
+            :sparklines="sparklines"
+            :loading="loading"
+          />
+        </div>
+      </div>
 
-        <Card class="dist-card" :bordered="false" :title="t('overview.charts.modelDistribution', { days: stats.windowDays })">
-          <p v-if="!modelRows.length" class="dist-empty">
-            {{ t('overview.charts.empty') }}
-          </p>
-          <ul v-else class="dist-list">
-            <li v-for="row in modelRows" :key="row.key">
-              <div class="dist-row__head">
-                <span class="dist-row__label">
-                  <i class="dist-row__dot" :style="{ background: row.color }" />
-                  {{ row.label }}
-                </span>
-                <span class="dist-row__value">{{ row.valueText }}</span>
-              </div>
-              <div class="dist-row__track">
-                <div class="dist-row__fill" :style="{ width: `${row.ratio * 100}%`, background: row.color }" />
-              </div>
-            </li>
-          </ul>
-        </Card>
-
-        <Card class="dist-card" :bordered="false" :title="t('overview.charts.toolDistribution', { days: stats.windowDays })">
-          <p v-if="!toolRows.length" class="dist-empty">
-            {{ t('overview.charts.emptyTools') }}
-          </p>
-          <ul v-else class="dist-list">
-            <li v-for="row in toolRows" :key="row.key">
-              <div class="dist-row__head">
-                <span class="dist-row__label">
-                  <i class="dist-row__dot" :style="{ background: row.color }" />
-                  {{ row.label }}
-                </span>
-                <span class="dist-row__value">{{ row.valueText }}</span>
-              </div>
-              <div class="dist-row__track">
-                <div class="dist-row__fill" :style="{ width: `${row.ratio * 100}%`, background: row.color }" />
-              </div>
-            </li>
-          </ul>
-        </Card>
-      </section>
-    </template>
+      <!-- 右主栏 (约 44% 宽，全高度通卡，对标 Invoices) -->
+      <div class="overview-right-col">
+        <div class="dash-card-box dash-card-delay-3 h-full">
+          <OverviewRightTable
+            :models="models"
+            :loading="loading"
+          />
+        </div>
+      </div>
+    </div>
   </PageContainer>
 </template>
 
 <style scoped>
-.stats-error {
-  margin-bottom: 12px;
+.overview-meta-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+  padding: 0 4px;
+  flex-wrap: wrap;
+  gap: 10px;
 }
 
-.stat-bar,
-.chart-card,
-.dist-card {
-  border: 1px solid var(--admin-border);
-  background: var(--admin-surface);
-  box-shadow: var(--admin-shadow-sm);
+.overview-meta-bar__left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--admin-text-subtle);
+  font-size: 12px;
 }
 
-.stat-bar :deep(.ant-card-body) {
+.meta-dropdown-btn {
+  background: transparent;
+  border: none;
+  color: var(--admin-text);
+  font-size: 13px;
+  font-weight: 650;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
   padding: 0;
 }
 
-.stat-bar__grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+.dropdown-arrow {
+  font-size: 10px;
+  color: var(--admin-text-subtle);
 }
 
-.stat-cell {
-  min-width: 0;
-  padding: 16px 20px 14px;
+.meta-separator {
+  color: var(--admin-border-strong);
 }
 
-.stat-cell + .stat-cell {
-  border-inline-start: 1px solid var(--admin-border);
+.meta-status-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
-.stat-cell small {
-  display: block;
+.status-pulse-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #10b981;
+  box-shadow: 0 0 8px rgba(16, 185, 129, 0.6);
+  transition: background-color 200ms ease, box-shadow 200ms ease;
+}
+
+.meta-status-indicator.is-loading .status-pulse-dot {
+  background: #38bdf8;
+  box-shadow: 0 0 10px rgba(56, 189, 248, 0.8);
+  animation: pulseLoadingDot 0.8s infinite alternate ease-in-out;
+}
+
+@keyframes pulseLoadingDot {
+  0% {
+    transform: scale(0.85);
+    opacity: 0.5;
+  }
+  100% {
+    transform: scale(1.35);
+    opacity: 1;
+  }
+}
+
+.meta-update-time {
+  color: var(--admin-text-subtle);
+  font-size: 11px;
+}
+
+.overview-meta-bar__right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.meta-action-btn {
   color: var(--admin-text-muted);
-  font-size: var(--admin-font-xs);
-  font-weight: 600;
+  font-size: 12px;
 }
 
-.stat-cell strong {
-  display: block;
-  overflow: hidden;
-  margin-top: 6px;
+.meta-action-btn:hover {
   color: var(--admin-text);
-  font-size: var(--admin-font-2xl);
-  font-variant-numeric: tabular-nums;
-  font-weight: 680;
-  letter-spacing: -0.02em;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
-.stat-cell p {
-  margin: 4px 0 0;
-  overflow: hidden;
-  color: var(--admin-text-subtle);
-  font-size: var(--admin-font-2xs);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.chart-grid {
+/* 左右分栏核心网格 (56% : 44%) */
+.overview-dashboard-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-  margin-top: 12px;
+  grid-template-columns: minmax(0, 1.28fr) minmax(0, 1fr);
+  gap: 14px;
+  align-items: stretch;
 }
 
-.dist-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  align-items: start;
-  gap: 12px;
-  margin-top: 12px;
-}
-
-.chart-card :deep(.ant-card-head),
-.dist-card :deep(.ant-card-head) {
-  min-height: 40px;
-  padding: 0 14px;
-  border-bottom-color: var(--admin-border);
-}
-
-.chart-card :deep(.ant-card-head-title),
-.dist-card :deep(.ant-card-head-title) {
-  padding: 10px 0;
-  color: var(--admin-text-muted);
-  font-size: var(--admin-font-xs);
-  font-weight: 650;
-}
-
-.chart-card :deep(.ant-card-body) {
-  padding: 8px 10px 10px;
-}
-
-.dist-card :deep(.ant-card-body) {
-  padding: 6px 14px 14px;
-}
-
-.chart {
-  width: 100%;
-  height: 240px;
-}
-
-.dist-empty {
-  margin: 0;
-  padding: 18px 0 12px;
-  color: var(--admin-text-subtle);
-  font-size: var(--admin-font-sm);
-}
-
-.dist-list {
+.overview-left-col {
   display: flex;
   flex-direction: column;
-  gap: 13px;
-  margin: 0;
-  padding: 10px 0 0;
-  list-style: none;
-}
-
-.dist-row__head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 6px;
-}
-
-.dist-row__label {
-  display: inline-flex;
   min-width: 0;
-  align-items: center;
-  gap: 7px;
-  overflow: hidden;
-  color: var(--admin-text);
-  font-size: var(--admin-font-sm);
-  font-weight: 600;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
-.dist-row__dot {
-  width: 7px;
-  height: 7px;
-  flex: none;
-  border-radius: 50%;
+.overview-right-col {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
 }
 
-.dist-row__value {
-  flex: none;
-  color: var(--admin-text-muted);
-  font-size: var(--admin-font-xs);
-  font-variant-numeric: tabular-nums;
-}
-
-.dist-row__track {
-  height: 6px;
-  overflow: hidden;
-  border-radius: 3px;
-  background: var(--admin-bg-deep);
-}
-
-.dist-row__fill {
-  height: 100%;
-  border-radius: 3px;
-  transition: width 300ms cubic-bezier(0.22, 0.61, 0.36, 1);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .dist-row__fill {
-    transition: none;
+/* 数据盒子炫酷级联入场动效 (Staggered Cascade Entrance) */
+@keyframes cardEntrance {
+  0% {
+    opacity: 0;
+    transform: translateY(18px) scale(0.992);
   }
+  60% {
+    opacity: 0.95;
+    transform: translateY(-1px) scale(1);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.dash-card-box {
+  animation: cardEntrance 480ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  will-change: transform, opacity;
+}
+
+.dash-card-delay-1 {
+  animation-delay: 35ms;
+}
+
+.dash-card-delay-2 {
+  animation-delay: 85ms;
+}
+
+.dash-card-delay-3 {
+  animation-delay: 135ms;
+}
+
+.dash-card-delay-4 {
+  animation-delay: 185ms;
+}
+
+.h-full {
+  height: 100%;
 }
 
 @media (max-width: 1240px) {
-  .stat-bar__grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .stat-cell:nth-child(2n + 1) {
-    border-inline-start: none;
-  }
-
-  .stat-cell:nth-child(n + 3) {
-    border-top: 1px solid var(--admin-border);
-  }
-
-  .chart-grid,
-  .dist-grid {
+  .overview-dashboard-grid {
     grid-template-columns: minmax(0, 1fr);
   }
 }
