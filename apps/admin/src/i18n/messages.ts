@@ -63,7 +63,6 @@ export const messages = {
         d1: '最近 24 小时',
         d7: '近 7 天',
         d30: '近 30 天',
-        pending: '24 小时与 7 天视图待后端按小时 / 按日聚合后开放',
       },
       kpi: {
         title: 'Agent 运行',
@@ -80,7 +79,7 @@ export const messages = {
         cacheHitRateDetail: '命中 ÷ 输入 Token',
         toolCalls: '工具调用',
         toolCallsDetail: '累计会话 {conversations} · 消息 {messages}',
-        pending: '后端接入后显示',
+        cacheHitRateEmpty: '窗口内没有采样报告缓存字段',
       },
       trend: {
         title: 'Token 吞吐与运行频次',
@@ -651,7 +650,6 @@ export const messages = {
         d1: 'Last 24 hours',
         d7: 'Last 7 days',
         d30: 'Last 30 days',
-        pending: '24-hour and 7-day views open once the backend aggregates by hour / day',
       },
       kpi: {
         title: 'Agent Runs',
@@ -668,7 +666,7 @@ export const messages = {
         cacheHitRateDetail: 'Cached ÷ input tokens',
         toolCalls: 'Tool calls',
         toolCallsDetail: '{conversations} conversations · {messages} messages in total',
-        pending: 'Available once the backend ships it',
+        cacheHitRateEmpty: 'No sampling reported cache fields in this window',
       },
       trend: {
         title: 'Token Throughput & Run Frequency',

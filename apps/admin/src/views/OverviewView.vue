@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { OverviewWindow } from '@/features/overview/overview.model'
+import type { AdminOverviewWindow } from '@agent/contracts'
 
 import { ReloadOutlined, SettingOutlined } from '@ant-design/icons-vue'
 import { Alert, Button, Segmented, Skeleton, Tooltip } from 'ant-design-vue'
@@ -36,10 +36,9 @@ const {
   refresh,
 } = useOverviewDashboard()
 
-/** 24h / 7d 要后端按小时 / 按日聚合，接入前禁用。 */
-const windowOptions = computed<{ label: string, value: OverviewWindow, disabled?: boolean }[]>(() => [
-  { label: t('overview.windows.d1'), value: '24h', disabled: true },
-  { label: t('overview.windows.d7'), value: '7d', disabled: true },
+const windowOptions = computed<{ label: string, value: AdminOverviewWindow }[]>(() => [
+  { label: t('overview.windows.d1'), value: '24h' },
+  { label: t('overview.windows.d7'), value: '7d' },
   { label: t('overview.windows.d30'), value: '30d' },
 ])
 
@@ -65,9 +64,7 @@ const statusText = computed(() => {
 
     <div class="overview-toolbar">
       <div class="overview-toolbar__left">
-        <Tooltip :title="t('overview.windows.pending')">
-          <Segmented v-model:value="activeWindow" size="small" :options="windowOptions" />
-        </Tooltip>
+        <Segmented v-model:value="activeWindow" size="small" :options="windowOptions" />
         <span class="overview-toolbar__status">
           <span class="status-dot" :class="{ 'is-loading': statsLoading }" />
           {{ statusText }}
@@ -117,7 +114,7 @@ const statusText = computed(() => {
     <div v-else-if="stats" class="overview-grid">
       <div class="overview-grid__main">
         <OverviewKpiRow :kpi="kpi" />
-        <OverviewTrendCard :points="trend" />
+        <OverviewTrendCard :points="trend" :bucket="stats.bucket" />
         <OverviewToolUsageCard :rows="toolRows" />
       </div>
       <div class="overview-grid__side">

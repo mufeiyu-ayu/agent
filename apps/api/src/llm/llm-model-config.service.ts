@@ -115,6 +115,31 @@ export class LlmModelConfigService {
     return model ? this.toCredentials(model.provider) : null
   }
 
+  /**
+   * 余额只有 DeepSeek 官方端点提供：优先自有账号（启用且 baseUrl 指向 api.deepseek.com 的 DeepSeek Provider），
+   * 没有再退回默认模型所属的 DeepSeek Provider；中转站没有余额接口，走到那里也只会得到 null。
+   */
+  async resolveBalanceProvider(): Promise<LlmProviderCredentials | null> {
+    const providers = await this.prismaService.llmProvider.findMany({
+      where: { enabled: true, family: 'deepseek' },
+      orderBy: { createdAt: 'asc' },
+    })
+    const own = providers.find(provider => isDeepSeekOfficialBaseUrl(provider.baseUrl))
+
+    if (own) {
+      try {
+        return this.toCredentials(own)
+      }
+      catch (error) {
+        // 自有账号的密钥解不开（主密钥更换后）：退回默认 Provider，不让整个余额入口失效。
+        if (!(error instanceof LlmModelUnavailableError))
+          throw error
+      }
+    }
+
+    return this.resolveDefaultProvider()
+  }
+
   toCredentials(provider: {
     id: string
     baseUrl: string
@@ -135,5 +160,15 @@ export class LlmModelConfigService {
     catch {
       throw new LlmModelUnavailableError('主密钥已更换，请在管理台重新填写该服务商的 API Key')
     }
+  }
+}
+
+/** 官方端点按主机名精确匹配，避免大小写或路径里含同名子串的中转地址误判。 */
+function isDeepSeekOfficialBaseUrl(baseUrl: string): boolean {
+  try {
+    return new URL(baseUrl).hostname.toLowerCase() === 'api.deepseek.com'
+  }
+  catch {
+    return false
   }
 }

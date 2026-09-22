@@ -2,6 +2,7 @@ import type {
   AdminLlmModel,
   AdminLlmProvider,
   AdminOverviewStats,
+  AdminOverviewWindow,
   AdminProviderBalance,
 } from '@agent/contracts'
 import type {
@@ -9,10 +10,9 @@ import type {
   OverviewModelRow,
   OverviewToolRow,
   OverviewTrendPoint,
-  OverviewWindow,
 } from './overview.model'
 
-import { computed, onBeforeUnmount, ref, shallowRef } from 'vue'
+import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
 
 import { fetchAllLlmModels, fetchLlmProviders } from '../llm/llm-api'
 import { formatAdminRunError } from '../shared/admin-api'
@@ -29,7 +29,7 @@ import {
  * 余额 / 模型配置失败只影响各自的卡片。
  */
 export function useOverviewDashboard() {
-  const activeWindow = ref<OverviewWindow>('30d')
+  const activeWindow = ref<AdminOverviewWindow>('30d')
   const stats = shallowRef<AdminOverviewStats>()
   const statsLoading = ref(false)
   const statsErrorCause = shallowRef<unknown>()
@@ -47,20 +47,29 @@ export function useOverviewDashboard() {
   const lastUpdatedAt = ref<string | null>(null)
 
   let abortController = new AbortController()
+  let statsAbortController = new AbortController()
 
+  /** 统计按窗口单独可重拉；切窗口时取消上一次未完成的统计请求，余额与模型配置不受影响。 */
   async function loadStats() {
+    statsAbortController.abort()
+    statsAbortController = new AbortController()
+    const { signal } = statsAbortController
     statsLoading.value = true
     statsErrorCause.value = undefined
     try {
-      stats.value = await fetchOverviewStats({ signal: abortController.signal })
+      const nextStats = await fetchOverviewStats(activeWindow.value, { signal })
+      if (signal.aborted)
+        return
+      stats.value = nextStats
       lastUpdatedAt.value = new Date().toISOString()
     }
     catch (cause) {
-      if (!abortController.signal.aborted)
+      if (!signal.aborted)
         statsErrorCause.value = cause
     }
     finally {
-      statsLoading.value = false
+      if (!signal.aborted)
+        statsLoading.value = false
     }
   }
 
@@ -101,7 +110,13 @@ export function useOverviewDashboard() {
   }
 
   refresh()
-  onBeforeUnmount(() => abortController.abort())
+  watch(activeWindow, () => {
+    void loadStats()
+  })
+  onBeforeUnmount(() => {
+    abortController.abort()
+    statsAbortController.abort()
+  })
 
   const kpi = computed<OverviewKpi | undefined>(() => (
     stats.value

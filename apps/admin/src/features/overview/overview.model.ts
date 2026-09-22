@@ -6,9 +6,6 @@ import type {
   LlmProviderFamily,
 } from '@agent/contracts'
 
-/** 统计窗口；24h / 7d 由后端按小时 / 按日聚合，接入前只有 30d 可选。 */
-export type OverviewWindow = '24h' | '7d' | '30d'
-
 export interface OverviewKpi {
   runCount: number
   completedRuns: number
@@ -20,7 +17,7 @@ export interface OverviewKpi {
   outputTokens: number
   totalTokens: number
   avgTokensPerRun: number | null
-  /** 0–100；后端提供缓存汇总前为 null。 */
+  /** 0–100；窗口内没有任何采样报告缓存字段时为 null。 */
   cacheHitRate: number | null
   toolCallCount: number
   conversationCount: number
@@ -28,6 +25,7 @@ export interface OverviewKpi {
 }
 
 export interface OverviewTrendPoint {
+  bucketStart: string
   label: string
   runCount: number
   inputTokens: number
@@ -44,8 +42,9 @@ export interface OverviewModelRow {
   totalTokens: number
   /** 占窗口内全部模型 Token 的比例，0–100。 */
   share: number
-  /** 后端提供每模型汇总前为 null。 */
+  /** 没有带时间的采样时为 null。 */
   avgDurationMs: number | null
+  /** 0–100；该模型没有采样报告缓存字段时为 null。 */
   cacheHitRate: number | null
   lastProbeOk: boolean | null
   lastProbedAt: string | null
@@ -66,7 +65,7 @@ export const TOOL_COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#ec4899', '#8b5cf6
 export function toOverviewKpi(stats: AdminOverviewStats, toolCallCount: number): OverviewKpi {
   const { COMPLETED, FAILED, ABORTED } = stats.statusCounts
   const settled = COMPLETED + FAILED + ABORTED
-  const windowRunCount = stats.daily.reduce((total, point) => total + point.runCount, 0)
+  const windowRunCount = stats.points.reduce((total, point) => total + point.runCount, 0)
   const totalTokens = stats.totals.inputTokens + stats.totals.outputTokens
 
   return {
@@ -79,7 +78,7 @@ export function toOverviewKpi(stats: AdminOverviewStats, toolCallCount: number):
     outputTokens: stats.totals.outputTokens,
     totalTokens,
     avgTokensPerRun: windowRunCount === 0 ? null : Math.round(totalTokens / windowRunCount),
-    cacheHitRate: null,
+    cacheHitRate: toCacheHitRate(stats.totals.cacheHitTokens, stats.totals.cacheInputTokens),
     toolCallCount,
     conversationCount: stats.totals.conversationCount,
     messageCount: stats.totals.messageCount,
@@ -87,8 +86,9 @@ export function toOverviewKpi(stats: AdminOverviewStats, toolCallCount: number):
 }
 
 export function toOverviewTrend(stats: AdminOverviewStats): OverviewTrendPoint[] {
-  return stats.daily.map(point => ({
-    label: point.date.slice(5),
+  return stats.points.map(point => ({
+    bucketStart: point.bucketStart,
+    label: point.label,
     runCount: point.runCount,
     inputTokens: point.inputTokens,
     outputTokens: point.outputTokens,
@@ -132,8 +132,8 @@ export function toOverviewModelRows(
         samplingCount: usage?.samplingCount ?? 0,
         totalTokens,
         share: tokenTotal === 0 ? 0 : (totalTokens / tokenTotal) * 100,
-        avgDurationMs: null,
-        cacheHitRate: null,
+        avgDurationMs: usage?.avgDurationMs ?? null,
+        cacheHitRate: usage ? toCacheHitRate(usage.cacheHitTokens, usage.cacheInputTokens) : null,
         lastProbeOk: model?.lastProbeOk ?? null,
         lastProbedAt: model?.lastProbedAt ?? null,
         visible: model?.visible ?? false,
@@ -152,6 +152,16 @@ export function toOverviewToolRows(stats: AdminOverviewStats): OverviewToolRow[]
     share: total === 0 ? 0 : (item.count / total) * 100,
     color: TOOL_COLORS[index % TOOL_COLORS.length]!,
   }))
+}
+
+export function formatPercent(value: number | null): string {
+  return value === null ? '—' : `${value.toFixed(1)}%`
+}
+
+export function toCacheHitRate(hitTokens: number | null, inputTokens: number | null): number | null {
+  if (hitTokens === null || inputTokens === null || inputTokens === 0)
+    return null
+  return (hitTokens / inputTokens) * 100
 }
 
 export function toBalanceText(balance: AdminProviderBalance | undefined, unavailableText: string): string {

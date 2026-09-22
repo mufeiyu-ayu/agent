@@ -1,6 +1,8 @@
-import { Controller, Get, Inject } from '@nestjs/common'
+import { Controller, Get, Inject, Query } from '@nestjs/common'
 
 import { AdminOverviewService } from './admin-overview.service.js'
+// eslint-disable-next-line ts/consistent-type-imports
+import { GetAdminOverviewStatsQueryDto } from './dto/admin-overview.dto.js'
 
 @Controller('admin/overview')
 export class AdminOverviewController {
@@ -10,8 +12,8 @@ export class AdminOverviewController {
   ) {}
 
   @Get('stats')
-  getStats() {
-    return this.adminOverviewService.getStats()
+  getStats(@Query() query: GetAdminOverviewStatsQueryDto) {
+    return this.adminOverviewService.getStats(query.window ?? '30d')
   }
 
   @Get('balance')

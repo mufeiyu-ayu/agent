@@ -6,6 +6,7 @@ import { useI18n } from 'vue-i18n'
 
 import { formatTokens } from '@/features/runs/run.utils'
 
+import { formatPercent } from '../overview.model'
 import OverviewCard from './OverviewCard.vue'
 
 const props = defineProps<{
@@ -13,10 +14,6 @@ const props = defineProps<{
 }>()
 
 const { locale, t } = useI18n()
-
-function percent(value: number | null): string {
-  return value === null ? '—' : `${value.toFixed(1)}%`
-}
 
 function count(value: number): string {
   return value.toLocaleString(locale.value)
@@ -27,7 +24,7 @@ interface KpiTile {
   label: string
   value: string
   detail: string
-  /** 后端尚未提供的指标：显示占位并给出提示。 */
+  /** 窗口内没有数据的指标：数值置灰。 */
   pending?: boolean
 }
 
@@ -50,7 +47,7 @@ const tiles = computed<KpiTile[]>(() => {
     {
       key: 'successRate',
       label: t('overview.kpi.successRate'),
-      value: percent(kpi.successRate),
+      value: formatPercent(kpi.successRate),
       detail: t('overview.kpi.successRateDetail'),
     },
     {
@@ -71,8 +68,8 @@ const tiles = computed<KpiTile[]>(() => {
     {
       key: 'cacheHitRate',
       label: t('overview.kpi.cacheHitRate'),
-      value: percent(kpi.cacheHitRate),
-      detail: kpi.cacheHitRate === null ? t('overview.kpi.pending') : t('overview.kpi.cacheHitRateDetail'),
+      value: formatPercent(kpi.cacheHitRate),
+      detail: kpi.cacheHitRate === null ? t('overview.kpi.cacheHitRateEmpty') : t('overview.kpi.cacheHitRateDetail'),
       pending: kpi.cacheHitRate === null,
     },
     {

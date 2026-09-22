@@ -8,8 +8,9 @@ import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 
 import LlmFamilyLogo from '@/features/llm/components/LlmFamilyLogo.vue'
-import { formatShortDateTime, formatTokens } from '@/features/runs/run.utils'
+import { formatDuration, formatShortDateTime, formatTokens } from '@/features/runs/run.utils'
 
+import { formatPercent } from '../overview.model'
 import OverviewCard from './OverviewCard.vue'
 
 const props = defineProps<{
@@ -20,17 +21,14 @@ const props = defineProps<{
 const { locale, t } = useI18n()
 const router = useRouter()
 
-/** 缓存命中率与平均时长两列等后端提供每模型汇总后再加。 */
 const columns = computed<TableColumnsType<OverviewModelRow>>(() => [
   { title: t('overview.models.columns.model'), key: 'model' },
-  { title: t('overview.models.columns.calls'), dataIndex: 'samplingCount', key: 'calls', width: 56, align: 'right' },
-  { title: t('overview.models.columns.tokens'), key: 'tokens', width: 132 },
-  { title: t('overview.models.columns.probe'), key: 'probe', width: 92 },
+  { title: t('overview.models.columns.calls'), dataIndex: 'samplingCount', key: 'calls', width: 52, align: 'right' },
+  { title: t('overview.models.columns.tokens'), key: 'tokens', width: 118 },
+  { title: t('overview.models.columns.cacheHitRate'), key: 'cacheHitRate', width: 72, align: 'right' },
+  { title: t('overview.models.columns.avgDuration'), key: 'avgDuration', width: 72, align: 'right' },
+  { title: t('overview.models.columns.probe'), key: 'probe', width: 76 },
 ])
-
-function percent(value: number): string {
-  return `${value.toFixed(1)}%`
-}
 
 function probeLabel(row: { lastProbeOk?: boolean | null }): string {
   if (row.lastProbeOk === null || row.lastProbeOk === undefined)
@@ -92,11 +90,17 @@ const hasRows = computed(() => props.rows.length > 0)
         <template v-else-if="column.key === 'tokens'">
           <div class="tokens-cell">
             <span class="numeric-cell">{{ formatTokens(record.totalTokens, locale) }}</span>
-            <span class="tokens-cell__share">{{ percent(record.share) }}</span>
+            <span class="tokens-cell__share">{{ formatPercent(record.share) }}</span>
             <span class="tokens-cell__bar">
               <span class="tokens-cell__fill" :style="{ width: `${Math.min(100, record.share)}%` }" />
             </span>
           </div>
+        </template>
+        <template v-else-if="column.key === 'cacheHitRate'">
+          <span class="numeric-cell" :class="{ 'is-empty': record.cacheHitRate === null }">{{ formatPercent(record.cacheHitRate) }}</span>
+        </template>
+        <template v-else-if="column.key === 'avgDuration'">
+          <span class="numeric-cell" :class="{ 'is-empty': record.avgDurationMs === null }">{{ formatDuration(record.avgDurationMs) }}</span>
         </template>
         <template v-else-if="column.key === 'probe'">
           <Tooltip :title="record.lastProbedAt ? formatShortDateTime(record.lastProbedAt, locale) : undefined">
@@ -170,6 +174,10 @@ const hasRows = computed(() => props.rows.length > 0)
 
 .numeric-cell {
   font-variant-numeric: tabular-nums;
+}
+
+.numeric-cell.is-empty {
+  color: var(--admin-text-subtle);
 }
 
 .tokens-cell {

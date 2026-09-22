@@ -1,11 +1,12 @@
 <script setup lang="ts">
+import type { AdminOverviewBucket } from '@agent/contracts'
 import type { OverviewTrendPoint } from '../overview.model'
 
 import { computed } from 'vue'
 import VChart from 'vue-echarts'
 import { useI18n } from 'vue-i18n'
 
-import { formatTokens } from '@/features/runs/run.utils'
+import { formatShortDateTime, formatTokens } from '@/features/runs/run.utils'
 import { useAdminPreferencesStore } from '@/stores/preferences'
 
 import OverviewCard from './OverviewCard.vue'
@@ -14,10 +15,18 @@ import '@/features/overview/echarts'
 
 const props = defineProps<{
   points: OverviewTrendPoint[]
+  bucket: AdminOverviewBucket
 }>()
 
 const { locale, t } = useI18n()
 const preferences = useAdminPreferencesStore()
+
+interface TooltipParam {
+  dataIndex: number
+  seriesName: string
+  marker: string
+  value: number
+}
 
 const INPUT_COLOR = '#10b981'
 const OUTPUT_COLOR = '#f43f5e'
@@ -37,6 +46,15 @@ const chartOption = computed(() => ({
     backgroundColor: chartTheme.value.tooltipBg,
     borderColor: chartTheme.value.border,
     textStyle: { color: chartTheme.value.tooltipText, fontSize: 12 },
+    // 小时桶跨日，轴标签只有 HH:00；tooltip 标题用桶起点的完整时间。
+    formatter: (params: TooltipParam[]) => {
+      const point = props.points[params[0]?.dataIndex ?? -1]
+      const title = point
+        ? (props.bucket === 'hour' ? formatShortDateTime(point.bucketStart, locale.value) : point.label)
+        : ''
+      const rows = params.map(item => `${item.marker}${item.seriesName}&nbsp;&nbsp;<strong>${formatTokens(item.value, locale.value)}</strong>`)
+      return [title, ...rows].join('<br/>')
+    },
   },
   legend: {
     bottom: 0,
