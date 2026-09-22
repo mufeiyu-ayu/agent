@@ -23,13 +23,16 @@ export type {
 } from './admin-llm.js'
 export { familyCompatOf, LLM_FAMILY_CAPABILITIES, LLM_PROVIDER_FAMILIES, REASONING_EFFORTS, reasoningEffortsOf } from './admin-llm.js'
 export type {
-  AdminOverviewDailyPoint,
+  AdminOverviewBucket,
   AdminOverviewModelUsageItem,
+  AdminOverviewPoint,
   AdminOverviewStats,
   AdminOverviewToolUsageItem,
   AdminOverviewTotals,
+  AdminOverviewWindow,
   AdminProviderBalance,
 } from './admin-overview.js'
+export { ADMIN_OVERVIEW_WINDOWS } from './admin-overview.js'
 export type {
   AdminAssistantOutputStep,
   AdminContextInspector,

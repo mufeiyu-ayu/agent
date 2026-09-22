@@ -1,198 +1,59 @@
 <script setup lang="ts">
-import type { AdminOverviewStats, AdminProviderBalance } from '@agent/contracts'
-import { Alert, Button, Card, Skeleton } from 'ant-design-vue'
-import { computed, onBeforeUnmount, ref, shallowRef } from 'vue'
-import VChart from 'vue-echarts'
+import type { AdminOverviewWindow } from '@agent/contracts'
+
+import { ReloadOutlined, SettingOutlined } from '@ant-design/icons-vue'
+import { Alert, Button, Segmented, Skeleton, Tooltip } from 'ant-design-vue'
+import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRouter } from 'vue-router'
 
 import PageContainer from '@/components/common/PageContainer.vue'
-import { fetchOverviewStats, fetchProviderBalance } from '@/features/overview/overview-api'
-import { formatTokens } from '@/features/runs/run.utils'
-import { formatAdminRunError } from '@/features/shared/admin-api'
-import { useAdminPreferencesStore } from '@/stores/preferences'
-
-import '@/features/overview/echarts'
+import OverviewKpiRow from '@/features/overview/components/OverviewKpiRow.vue'
+import OverviewModelTable from '@/features/overview/components/OverviewModelTable.vue'
+import OverviewToolUsageCard from '@/features/overview/components/OverviewToolUsageCard.vue'
+import OverviewTrendCard from '@/features/overview/components/OverviewTrendCard.vue'
+import { toBalanceText } from '@/features/overview/overview.model'
+import { useOverviewDashboard } from '@/features/overview/overview.state'
+import { formatTime } from '@/features/runs/run.utils'
 
 const { locale, t } = useI18n()
-const preferences = useAdminPreferencesStore()
+const router = useRouter()
 
-const stats = shallowRef<AdminOverviewStats>()
-const statsLoading = ref(false)
-const statsErrorCause = shallowRef<unknown>()
-const statsError = computed(() => (
-  statsErrorCause.value === undefined ? '' : formatAdminRunError(statsErrorCause.value)
+const {
+  activeWindow,
+  stats,
+  statsLoading,
+  statsError,
+  balance,
+  balanceLoading,
+  balanceCheckedAt,
+  lastUpdatedAt,
+  kpi,
+  trend,
+  modelRows,
+  toolRows,
+  loadStats,
+  refresh,
+} = useOverviewDashboard()
+
+const windowOptions = computed<{ label: string, value: AdminOverviewWindow }[]>(() => [
+  { label: t('overview.windows.d1'), value: '24h' },
+  { label: t('overview.windows.d7'), value: '7d' },
+  { label: t('overview.windows.d30'), value: '30d' },
+])
+
+const isInitialLoading = computed(() => statsLoading.value && !stats.value)
+const balanceText = computed(() => (
+  balanceLoading.value && !balance.value ? '…' : toBalanceText(balance.value, t('overview.balance.unavailable'))
 ))
-
-const balance = shallowRef<AdminProviderBalance>()
-const balanceLoading = ref(false)
-
-const abortController = new AbortController()
-
-async function loadStats() {
-  statsLoading.value = true
-  statsErrorCause.value = undefined
-  try {
-    stats.value = await fetchOverviewStats({ signal: abortController.signal })
-  }
-  catch (cause) {
-    if (!abortController.signal.aborted)
-      statsErrorCause.value = cause
-  }
-  finally {
-    statsLoading.value = false
-  }
-}
-
-// 余额独立加载：provider 查询失败只影响余额格，不阻塞统计。
-async function loadBalance() {
-  balanceLoading.value = true
-  try {
-    balance.value = await fetchProviderBalance({ signal: abortController.signal })
-  }
-  catch {
-    balance.value = { available: false, currency: null, totalBalance: null }
-  }
-  finally {
-    balanceLoading.value = false
-  }
-}
-
-void loadStats()
-void loadBalance()
-onBeforeUnmount(() => abortController.abort())
-
-const windowRunCount = computed(() => (
-  stats.value?.daily.reduce((total, point) => total + point.runCount, 0) ?? 0
+const balanceTooltip = computed(() => (
+  balanceCheckedAt.value ? t('overview.balance.checkedAt', { time: formatTime(balanceCheckedAt.value, locale.value) }) : undefined
 ))
-
-const balanceText = computed(() => {
-  const value = balance.value
-  if (balanceLoading.value)
-    return '…'
-  if (!value?.totalBalance)
-    return t('overview.balanceUnavailable')
-  return `${value.totalBalance} ${value.currency ?? ''}`.trim()
+const statusText = computed(() => {
+  if (statsLoading.value)
+    return t('overview.refreshing')
+  return lastUpdatedAt.value ? t('overview.lastUpdated', { time: formatTime(lastUpdatedAt.value, locale.value) }) : ''
 })
-
-/** 主题相关的图表基础色；跟随 resolvedTheme 切换，数值与 styles/index.css 对齐。 */
-const chartTheme = computed(() => (
-  preferences.resolvedTheme === 'dark'
-    ? { label: '#a6a6ad', border: '#3a3a40', splitLine: '#2c2c31' }
-    : { label: '#6b6b74', border: '#e4e4e8', splitLine: '#ececef' }
-))
-
-const SERIES_COLORS = ['#3b82f6', '#22c55e', '#f59e0b', '#8b5cf6', '#14b8a6', '#ef4444']
-const STATUS_COLORS: Record<string, string> = {
-  COMPLETED: '#22c55e',
-  RUNNING: '#3b82f6',
-  FAILED: '#ef4444',
-  ABORTED: '#f59e0b',
-}
-
-function axisBase() {
-  return {
-    axisLine: { lineStyle: { color: chartTheme.value.border } },
-    axisLabel: { color: chartTheme.value.label, fontSize: 10 },
-    splitLine: { lineStyle: { color: chartTheme.value.splitLine } },
-  }
-}
-
-const dailyDates = computed(() => stats.value?.daily.map(point => point.date.slice(5)) ?? [])
-
-const dailyRunsOption = computed(() => ({
-  color: SERIES_COLORS,
-  tooltip: { trigger: 'axis' },
-  grid: { top: 20, right: 12, bottom: 24, left: 40 },
-  xAxis: { type: 'category', data: dailyDates.value, ...axisBase(), splitLine: { show: false } },
-  yAxis: { type: 'value', minInterval: 1, ...axisBase() },
-  series: [{
-    name: t('overview.charts.runCount'),
-    type: 'bar',
-    barMaxWidth: 14,
-    data: stats.value?.daily.map(point => point.runCount) ?? [],
-  }],
-}))
-
-const dailyTokensOption = computed(() => ({
-  color: SERIES_COLORS,
-  tooltip: { trigger: 'axis' },
-  legend: { top: 0, textStyle: { color: chartTheme.value.label, fontSize: 10 } },
-  grid: { top: 30, right: 12, bottom: 24, left: 52 },
-  xAxis: { type: 'category', data: dailyDates.value, ...axisBase(), splitLine: { show: false } },
-  yAxis: { type: 'value', ...axisBase() },
-  series: [
-    {
-      name: t('overview.charts.inputTokens'),
-      type: 'line',
-      stack: 'tokens',
-      areaStyle: { opacity: 0.25 },
-      showSymbol: false,
-      data: stats.value?.daily.map(point => point.inputTokens) ?? [],
-    },
-    {
-      name: t('overview.charts.outputTokens'),
-      type: 'line',
-      stack: 'tokens',
-      areaStyle: { opacity: 0.25 },
-      showSymbol: false,
-      data: stats.value?.daily.map(point => point.outputTokens) ?? [],
-    },
-  ],
-}))
-
-interface DistributionRow {
-  key: string
-  label: string
-  valueText: string
-  ratio: number
-  color: string
-}
-
-/** 分布行：名称 + 数值 + 占比条。少量数据也保持信息密度，不画悬空饼图。 */
-const statusRows = computed<DistributionRow[]>(() => {
-  const entries = Object.entries(stats.value?.statusCounts ?? {}).filter(([, count]) => count > 0)
-  const total = entries.reduce((sum, [, count]) => sum + count, 0)
-
-  return entries.map(([status, count]) => ({
-    key: status,
-    label: status,
-    valueText: `${count.toLocaleString(locale.value)} · ${formatPercent(count, total)}`,
-    ratio: total === 0 ? 0 : count / total,
-    color: STATUS_COLORS[status] ?? SERIES_COLORS[0]!,
-  }))
-})
-
-const modelRows = computed<DistributionRow[]>(() => {
-  const models = stats.value?.models ?? []
-  const total = models.reduce((sum, item) => sum + item.totalTokens, 0)
-
-  return models.map((item, index) => ({
-    key: item.model,
-    label: item.model,
-    valueText: `${formatTokens(item.totalTokens, locale.value)} · ${formatPercent(item.totalTokens, total)}`,
-    ratio: total === 0 ? 0 : item.totalTokens / total,
-    color: SERIES_COLORS[index % SERIES_COLORS.length]!,
-  }))
-})
-
-const toolRows = computed<DistributionRow[]>(() => {
-  const tools = stats.value?.tools ?? []
-  const total = tools.reduce((sum, item) => sum + item.count, 0)
-
-  return tools.map((item, index) => ({
-    key: item.tool,
-    label: item.tool,
-    valueText: `${item.count.toLocaleString(locale.value)} · ${formatPercent(item.count, total)}`,
-    ratio: total === 0 ? 0 : item.count / total,
-    color: SERIES_COLORS[index % SERIES_COLORS.length]!,
-  }))
-})
-
-function formatPercent(value: number, total: number): string {
-  if (total === 0)
-    return '0%'
-  return `${Math.round((value / total) * 100)}%`
-}
 </script>
 
 <template>
@@ -201,9 +62,39 @@ function formatPercent(value: number, total: number): string {
       {{ t('overview.title') }}
     </h1>
 
+    <div class="overview-toolbar">
+      <div class="overview-toolbar__left">
+        <Segmented v-model:value="activeWindow" size="small" :options="windowOptions" />
+        <span class="overview-toolbar__status">
+          <span class="status-dot" :class="{ 'is-loading': statsLoading }" />
+          {{ statusText }}
+        </span>
+      </div>
+      <div class="overview-toolbar__right">
+        <Tooltip :title="balanceTooltip">
+          <span class="overview-toolbar__balance" :class="{ 'is-unavailable': !balance?.available }">
+            <span class="overview-toolbar__balance-label">{{ t('overview.balance.title') }}</span>
+            <strong class="overview-toolbar__balance-value">{{ balanceText }}</strong>
+          </span>
+        </Tooltip>
+        <Button size="small" type="text" :loading="statsLoading" @click="refresh">
+          <template #icon>
+            <ReloadOutlined />
+          </template>
+          {{ t('overview.refresh') }}
+        </Button>
+        <Button size="small" type="text" @click="router.push({ name: 'llm-models' })">
+          <template #icon>
+            <SettingOutlined />
+          </template>
+          {{ t('overview.manageModels') }}
+        </Button>
+      </div>
+    </div>
+
     <Alert
       v-if="statsError"
-      class="stats-error"
+      class="overview-error"
       type="error"
       show-icon
       :message="t('overview.loadFailed')"
@@ -216,303 +107,154 @@ function formatPercent(value: number, total: number): string {
       </template>
     </Alert>
 
-    <Card v-else-if="statsLoading && !stats" class="chart-card" :bordered="false">
+    <div v-else-if="isInitialLoading" class="overview-skeleton">
       <Skeleton active :paragraph="{ rows: 8 }" />
-    </Card>
+    </div>
 
-    <template v-else-if="stats">
-      <Card class="stat-bar" :bordered="false">
-        <div class="stat-bar__grid" role="group" :aria-label="t('overview.title')">
-          <div class="stat-cell">
-            <small>{{ t('overview.cards.conversations') }}</small>
-            <strong>{{ stats.totals.conversationCount.toLocaleString(locale) }}</strong>
-            <p>{{ t('overview.cards.conversationsDetail', { count: stats.totals.messageCount.toLocaleString(locale) }) }}</p>
-          </div>
-          <div class="stat-cell">
-            <small>{{ t('overview.cards.runs') }}</small>
-            <strong>{{ stats.totals.runCount.toLocaleString(locale) }}</strong>
-            <p>{{ t('overview.cards.runsDetail', { count: windowRunCount.toLocaleString(locale) }) }}</p>
-          </div>
-          <div class="stat-cell">
-            <small>{{ t('overview.cards.tokens') }}</small>
-            <strong>{{ formatTokens(stats.totals.inputTokens + stats.totals.outputTokens, locale) }}</strong>
-            <p>
-              {{ t('overview.cards.tokensDetail', {
-                input: formatTokens(stats.totals.inputTokens, locale),
-                output: formatTokens(stats.totals.outputTokens, locale),
-              }) }}
-            </p>
-          </div>
-          <div class="stat-cell">
-            <small>{{ t('overview.cards.balance') }}</small>
-            <strong>{{ balanceText }}</strong>
-            <p>{{ t('overview.cards.balanceDetail') }}</p>
-          </div>
-        </div>
-      </Card>
-
-      <section class="chart-grid">
-        <Card class="chart-card" :bordered="false" :title="t('overview.charts.dailyRuns', { days: stats.windowDays })">
-          <VChart class="chart" :option="dailyRunsOption" autoresize />
-        </Card>
-        <Card class="chart-card" :bordered="false" :title="t('overview.charts.dailyTokens', { days: stats.windowDays })">
-          <VChart class="chart" :option="dailyTokensOption" autoresize />
-        </Card>
-      </section>
-
-      <section class="dist-grid">
-        <Card class="dist-card" :bordered="false" :title="t('overview.charts.statusDistribution', { days: stats.windowDays })">
-          <p v-if="!statusRows.length" class="dist-empty">
-            {{ t('overview.charts.empty') }}
-          </p>
-          <ul v-else class="dist-list">
-            <li v-for="row in statusRows" :key="row.key">
-              <div class="dist-row__head">
-                <span class="dist-row__label">
-                  <i class="dist-row__dot" :style="{ background: row.color }" />
-                  {{ row.label }}
-                </span>
-                <span class="dist-row__value">{{ row.valueText }}</span>
-              </div>
-              <div class="dist-row__track">
-                <div class="dist-row__fill" :style="{ width: `${row.ratio * 100}%`, background: row.color }" />
-              </div>
-            </li>
-          </ul>
-        </Card>
-
-        <Card class="dist-card" :bordered="false" :title="t('overview.charts.modelDistribution', { days: stats.windowDays })">
-          <p v-if="!modelRows.length" class="dist-empty">
-            {{ t('overview.charts.empty') }}
-          </p>
-          <ul v-else class="dist-list">
-            <li v-for="row in modelRows" :key="row.key">
-              <div class="dist-row__head">
-                <span class="dist-row__label">
-                  <i class="dist-row__dot" :style="{ background: row.color }" />
-                  {{ row.label }}
-                </span>
-                <span class="dist-row__value">{{ row.valueText }}</span>
-              </div>
-              <div class="dist-row__track">
-                <div class="dist-row__fill" :style="{ width: `${row.ratio * 100}%`, background: row.color }" />
-              </div>
-            </li>
-          </ul>
-        </Card>
-
-        <Card class="dist-card" :bordered="false" :title="t('overview.charts.toolDistribution', { days: stats.windowDays })">
-          <p v-if="!toolRows.length" class="dist-empty">
-            {{ t('overview.charts.emptyTools') }}
-          </p>
-          <ul v-else class="dist-list">
-            <li v-for="row in toolRows" :key="row.key">
-              <div class="dist-row__head">
-                <span class="dist-row__label">
-                  <i class="dist-row__dot" :style="{ background: row.color }" />
-                  {{ row.label }}
-                </span>
-                <span class="dist-row__value">{{ row.valueText }}</span>
-              </div>
-              <div class="dist-row__track">
-                <div class="dist-row__fill" :style="{ width: `${row.ratio * 100}%`, background: row.color }" />
-              </div>
-            </li>
-          </ul>
-        </Card>
-      </section>
-    </template>
+    <div v-else-if="stats" class="overview-grid">
+      <div class="overview-grid__main">
+        <OverviewKpiRow :kpi="kpi" />
+        <OverviewTrendCard :points="trend" :bucket="stats.bucket" />
+        <OverviewToolUsageCard :rows="toolRows" />
+      </div>
+      <div class="overview-grid__side">
+        <OverviewModelTable :rows="modelRows" :loading="statsLoading" />
+      </div>
+    </div>
   </PageContainer>
 </template>
 
 <style scoped>
-.stats-error {
-  margin-bottom: 12px;
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
 }
 
-.stat-bar,
-.chart-card,
-.dist-card {
+.overview-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 14px;
+  padding: 0 4px;
+}
+
+.overview-toolbar__left,
+.overview-toolbar__right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.overview-toolbar__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--admin-text-subtle);
+  font-size: 11px;
+}
+
+.overview-toolbar__balance {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  margin-right: 6px;
+  padding: 2px 10px;
   border: 1px solid var(--admin-border);
+  border-radius: 999px;
   background: var(--admin-surface);
-  box-shadow: var(--admin-shadow-sm);
+  font-size: 12px;
 }
 
-.stat-bar :deep(.ant-card-body) {
-  padding: 0;
+.overview-toolbar__balance-label {
+  color: var(--admin-text-subtle);
 }
 
-.stat-bar__grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-}
-
-.stat-cell {
-  min-width: 0;
-  padding: 16px 20px 14px;
-}
-
-.stat-cell + .stat-cell {
-  border-inline-start: 1px solid var(--admin-border);
-}
-
-.stat-cell small {
-  display: block;
-  color: var(--admin-text-muted);
-  font-size: var(--admin-font-xs);
-  font-weight: 600;
-}
-
-.stat-cell strong {
-  display: block;
-  overflow: hidden;
-  margin-top: 6px;
+.overview-toolbar__balance-value {
   color: var(--admin-text);
-  font-size: var(--admin-font-2xl);
   font-variant-numeric: tabular-nums;
-  font-weight: 680;
-  letter-spacing: -0.02em;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
-.stat-cell p {
-  margin: 4px 0 0;
-  overflow: hidden;
+.overview-toolbar__balance.is-unavailable .overview-toolbar__balance-value {
   color: var(--admin-text-subtle);
-  font-size: var(--admin-font-2xs);
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  font-weight: 500;
 }
 
-.chart-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-  margin-top: 12px;
+.status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--admin-success);
 }
 
-.dist-grid {
+.status-dot.is-loading {
+  background: var(--admin-primary);
+  animation: pulse 800ms infinite alternate ease-in-out;
+}
+
+@keyframes pulse {
+  from {
+    opacity: 0.4;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+.overview-error,
+.overview-skeleton {
+  margin-bottom: 14px;
+}
+
+.overview-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1.28fr) minmax(0, 1fr);
+  gap: 14px;
   align-items: start;
-  gap: 12px;
-  margin-top: 12px;
 }
 
-.chart-card :deep(.ant-card-head),
-.dist-card :deep(.ant-card-head) {
-  min-height: 40px;
-  padding: 0 14px;
-  border-bottom-color: var(--admin-border);
-}
-
-.chart-card :deep(.ant-card-head-title),
-.dist-card :deep(.ant-card-head-title) {
-  padding: 10px 0;
-  color: var(--admin-text-muted);
-  font-size: var(--admin-font-xs);
-  font-weight: 650;
-}
-
-.chart-card :deep(.ant-card-body) {
-  padding: 8px 10px 10px;
-}
-
-.dist-card :deep(.ant-card-body) {
-  padding: 6px 14px 14px;
-}
-
-.chart {
-  width: 100%;
-  height: 240px;
-}
-
-.dist-empty {
-  margin: 0;
-  padding: 18px 0 12px;
-  color: var(--admin-text-subtle);
-  font-size: var(--admin-font-sm);
-}
-
-.dist-list {
+.overview-grid__main,
+.overview-grid__side {
   display: flex;
   flex-direction: column;
-  gap: 13px;
-  margin: 0;
-  padding: 10px 0 0;
-  list-style: none;
-}
-
-.dist-row__head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 6px;
-}
-
-.dist-row__label {
-  display: inline-flex;
+  gap: 14px;
   min-width: 0;
-  align-items: center;
-  gap: 7px;
-  overflow: hidden;
-  color: var(--admin-text);
-  font-size: var(--admin-font-sm);
-  font-weight: 600;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
-.dist-row__dot {
-  width: 7px;
-  height: 7px;
-  flex: none;
-  border-radius: 50%;
+.overview-grid > * {
+  animation: card-enter 420ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
-.dist-row__value {
-  flex: none;
-  color: var(--admin-text-muted);
-  font-size: var(--admin-font-xs);
-  font-variant-numeric: tabular-nums;
+.overview-grid__side {
+  animation-delay: 60ms;
 }
 
-.dist-row__track {
-  height: 6px;
-  overflow: hidden;
-  border-radius: 3px;
-  background: var(--admin-bg-deep);
-}
+@keyframes card-enter {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
 
-.dist-row__fill {
-  height: 100%;
-  border-radius: 3px;
-  transition: width 300ms cubic-bezier(0.22, 0.61, 0.36, 1);
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .dist-row__fill {
-    transition: none;
+  .overview-grid > * {
+    animation: none;
   }
 }
 
 @media (max-width: 1240px) {
-  .stat-bar__grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .stat-cell:nth-child(2n + 1) {
-    border-inline-start: none;
-  }
-
-  .stat-cell:nth-child(n + 3) {
-    border-top: 1px solid var(--admin-border);
-  }
-
-  .chart-grid,
-  .dist-grid {
+  .overview-grid {
     grid-template-columns: minmax(0, 1fr);
   }
 }

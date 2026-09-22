@@ -1,5 +1,6 @@
 import type {
   AdminOverviewStats,
+  AdminOverviewWindow,
   AdminProviderBalance,
 } from '@agent/contracts'
 import type { AdminRunFetchOptions } from '../shared/admin-api'
@@ -7,9 +8,10 @@ import type { AdminRunFetchOptions } from '../shared/admin-api'
 import { requestAdminRun } from '../shared/admin-api'
 
 export function fetchOverviewStats(
+  window: AdminOverviewWindow,
   options: AdminRunFetchOptions = {},
 ): Promise<AdminOverviewStats> {
-  return requestAdminRun<AdminOverviewStats>('/api/admin/overview/stats', options)
+  return requestAdminRun<AdminOverviewStats>(`/api/admin/overview/stats?window=${window}`, options)
 }
 
 export function fetchProviderBalance(
