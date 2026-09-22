@@ -1,0 +1,28 @@
+{
+  "key": "gemini",
+  "stepId": "cmuc6ojbq00111xvbn6o1dzt8",
+  "capturedAt": "2026-09-22T04:38:16.79",
+  "family": "gemini",
+  "wireName": "gemini-3.8-flash-low",
+  "response": {
+    "id": "OQayas7iK4jnz7IP5JuCsQI",
+    "model": "gemini-3.8-flash-low",
+    "usage": {
+      "total_tokens": 1497,
+      "prompt_tokens": 1347,
+      "completion_tokens": 150
+    },
+    "object": "chat.completion",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "刚才的暗号是「青柠 146」。"
+        },
+        "finish_reason": "stop"
+      }
+    ],
+    "created": 1790051898
+  }
+}

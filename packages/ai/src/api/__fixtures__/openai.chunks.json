@@ -1,0 +1,105 @@
+{
+  "family": "openai",
+  "note": "中转站上的 gpt-5.6-luna Tool Call 流：没有 reasoning_content，tool_calls 分片带 index / id / name / arguments，usage 只在最后一个空 choices 的 chunk 里，缓存在 prompt_tokens_details.cached_tokens。",
+  "chunks": [
+    {
+      "id": "resp_gpt-1",
+      "object": "chat.completion.chunk",
+      "created": 1758515880,
+      "model": "gpt-5.6-luna",
+      "choices": [
+        {
+          "index": 0,
+          "delta": {
+            "role": "assistant",
+            "content": null,
+            "tool_calls": [
+              {
+                "index": 0,
+                "id": "call_tYj5Cu6HpTPG8P0adxE0YttT",
+                "type": "function",
+                "function": {
+                  "name": "retrieve_article_context",
+                  "arguments": ""
+                }
+              }
+            ]
+          },
+          "finish_reason": null
+        }
+      ]
+    },
+    {
+      "id": "resp_gpt-1",
+      "object": "chat.completion.chunk",
+      "created": 1758515880,
+      "model": "gpt-5.6-luna",
+      "choices": [
+        {
+          "index": 0,
+          "delta": {
+            "tool_calls": [
+              {
+                "index": 0,
+                "function": {
+                  "arguments": "{\"query\":\"Genshin"
+                }
+              }
+            ]
+          },
+          "finish_reason": null
+        }
+      ]
+    },
+    {
+      "id": "resp_gpt-1",
+      "object": "chat.completion.chunk",
+      "created": 1758515880,
+      "model": "gpt-5.6-luna",
+      "choices": [
+        {
+          "index": 0,
+          "delta": {
+            "tool_calls": [
+              {
+                "index": 0,
+                "function": {
+                  "arguments": " Impact 7.1\"}"
+                }
+              }
+            ]
+          },
+          "finish_reason": null
+        }
+      ]
+    },
+    {
+      "id": "resp_gpt-1",
+      "object": "chat.completion.chunk",
+      "created": 1758515880,
+      "model": "gpt-5.6-luna",
+      "choices": [
+        {
+          "index": 0,
+          "delta": {},
+          "finish_reason": "tool_calls"
+        }
+      ]
+    },
+    {
+      "id": "resp_gpt-1",
+      "object": "chat.completion.chunk",
+      "created": 1758515880,
+      "model": "gpt-5.6-luna",
+      "choices": [],
+      "usage": {
+        "prompt_tokens": 8061,
+        "completion_tokens": 767,
+        "total_tokens": 8828,
+        "prompt_tokens_details": {
+          "cached_tokens": 7680
+        }
+      }
+    }
+  ]
+}

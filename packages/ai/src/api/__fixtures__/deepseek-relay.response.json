@@ -1,0 +1,41 @@
+{
+  "key": "deepseek-relay",
+  "stepId": "cmuc74lwo0005zcvbx82iah66",
+  "capturedAt": "2026-09-22T04:50:46.632",
+  "family": "deepseek",
+  "wireName": "deepseek-v4-flash",
+  "response": {
+    "id": "router-8f7a72a85471af5e1636ea206e600538",
+    "model": "deepseek-v4-flash",
+    "usage": {
+      "total_tokens": 1473,
+      "prompt_tokens": 1362,
+      "completion_tokens": 111,
+      "prompt_tokens_details": {
+        "cached_tokens": 1280
+      }
+    },
+    "object": "chat.completion",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": null,
+          "tool_calls": [
+            {
+              "id": "call_f39d80cf29be45f2a7fe7600",
+              "type": "function",
+              "function": {
+                "name": "retrieve_article_context",
+                "arguments": "{\"query\": \"Genshin Impact 7.1 新武器\"}"
+              }
+            }
+          ]
+        },
+        "finish_reason": "tool_calls"
+      }
+    ],
+    "created": 1790052650
+  }
+}

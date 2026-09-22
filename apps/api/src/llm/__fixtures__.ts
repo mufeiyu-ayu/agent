@@ -1,5 +1,6 @@
 import type { LLMModelProfile } from '@agent/ai'
 import type { ResolvedLlmModel } from './llm-model-config.service.js'
+import { familyCompatOf } from '@agent/contracts'
 
 /** 测试用的模型行快照：上下文按 DeepSeek V4 Flash 的 1M，输出上限 65_536 是测试常量（生产预设为 384k），预算断言依赖它。 */
 export function createResolvedLlmModel(
@@ -16,7 +17,7 @@ export function createResolvedLlmModel(
       wireName: 'deepseek-v4-flash',
       contextWindowTokens: 1_000_000,
       maxOutputTokens: 65_536,
-      reasoning: true,
+      compat: familyCompatOf('deepseek'),
       reasoningEffort: 'high',
       ...profile,
     },

@@ -59,7 +59,7 @@ type ChatCompletionBaseParams = Pick<
   ChatCompletionCreateParamsStreaming,
   'messages' | 'model' | 'max_tokens'
 > & {
-  /** DeepSeek thinking 开关只对 reasoning 模型发。 */
+  /** 思考开关只对 compat.thinkingFormat 为 'deepseek' 的家族发。 */
   thinking?: { type: 'enabled' }
   /** 任何家族配置了就发，取值按家族见 contracts 的 LLM_FAMILY_CAPABILITIES。 */
   reasoning_effort?: ReasoningEffort
@@ -172,7 +172,7 @@ export class OpenAICompatibleClient {
               () => notifyCaptureError('response'),
             )
           : stream,
-        { requireReasoningContent: options.request.reasoning },
+        { requireReasoningContent: options.request.compat.requiresReasoningContent },
       )
     }
     catch (cause) {
@@ -285,12 +285,12 @@ function rejectOnAbort<T>(
   })
 }
 
-/** thinking 开关只对 DeepSeek reasoning 模型发；reasoning_effort 任何家族配置了就发，中转站会透传给上游。 */
+/** thinking 开关按家族 compat 表决定格式，目前只有 DeepSeek 一种；reasoning_effort 任何家族配置了就发，中转站会透传给上游。 */
 function toThinkingParams(
   request: ResolvedChatRequestConfig,
 ): Pick<ChatCompletionBaseParams, 'thinking' | 'reasoning_effort'> {
   return {
-    ...(request.reasoning ? { thinking: { type: 'enabled' as const } } : {}),
+    ...(request.compat.thinkingFormat === 'deepseek' ? { thinking: { type: 'enabled' as const } } : {}),
     ...(request.reasoningEffort ? { reasoning_effort: request.reasoningEffort } : {}),
   }
 }

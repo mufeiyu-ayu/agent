@@ -1,0 +1,80 @@
+{
+  "family": "deepseek",
+  "note": "经中转（opencode.ai/zen）的 DeepSeek 纯文本流：缓存只在 prompt_tokens_details.cached_tokens，没有顶层 prompt_cache_*；是否回 reasoning_content 无法从剥离后的捕获判断，这里不做断言。",
+  "chunks": [
+    {
+      "id": "dsr-1",
+      "object": "chat.completion.chunk",
+      "created": 1758515880,
+      "model": "deepseek-v4-flash",
+      "choices": [
+        {
+          "index": 0,
+          "delta": {
+            "role": "assistant",
+            "content": ""
+          },
+          "finish_reason": null
+        }
+      ]
+    },
+    {
+      "id": "dsr-1",
+      "object": "chat.completion.chunk",
+      "created": 1758515880,
+      "model": "deepseek-v4-flash",
+      "choices": [
+        {
+          "index": 0,
+          "delta": {
+            "content": "刚才的暗号是"
+          },
+          "finish_reason": null
+        }
+      ]
+    },
+    {
+      "id": "dsr-1",
+      "object": "chat.completion.chunk",
+      "created": 1758515880,
+      "model": "deepseek-v4-flash",
+      "choices": [
+        {
+          "index": 0,
+          "delta": {
+            "content": "「青柠 146」。"
+          },
+          "finish_reason": null
+        }
+      ]
+    },
+    {
+      "id": "dsr-1",
+      "object": "chat.completion.chunk",
+      "created": 1758515880,
+      "model": "deepseek-v4-flash",
+      "choices": [
+        {
+          "index": 0,
+          "delta": {},
+          "finish_reason": "stop"
+        }
+      ]
+    },
+    {
+      "id": "dsr-1",
+      "object": "chat.completion.chunk",
+      "created": 1758515880,
+      "model": "deepseek-v4-flash",
+      "choices": [],
+      "usage": {
+        "prompt_tokens": 1386,
+        "completion_tokens": 42,
+        "total_tokens": 1428,
+        "prompt_tokens_details": {
+          "cached_tokens": 1280
+        }
+      }
+    }
+  ]
+}

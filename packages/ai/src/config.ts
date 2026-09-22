@@ -1,4 +1,4 @@
-import type { ReasoningEffort } from '@agent/contracts'
+import type { LlmFamilyCompat, ReasoningEffort } from '@agent/contracts'
 
 /** 构造一个 Provider client 需要的全部事实；apiKey / baseUrl 来自数据库里的 Provider 行。 */
 export interface LLMClientConfig {
@@ -10,7 +10,8 @@ export interface LLMClientConfig {
 
 /**
  * 一个模型行的能力事实，由 Admin 人工维护，不从 Provider 接口猜。
- * `reasoning` 为真时走 DeepSeek thinking 协议：请求带 `thinking`，Tool Call 要求 `reasoning_content`；
+ * `compat` 是所属家族的协议差异（thinking 开关格式、Tool Call 是否必须回 reasoning_content），
+ * 取值只来自 `@agent/contracts` 的 `LLM_FAMILY_CAPABILITIES`；
  * `reasoningEffort` 是默认的 `reasoning_effort`，任何家族配置了就发，null 不发。
  */
 export interface LLMModelProfile {
@@ -18,7 +19,7 @@ export interface LLMModelProfile {
   wireName: string
   contextWindowTokens: number
   maxOutputTokens: number
-  reasoning: boolean
+  compat: LlmFamilyCompat
   reasoningEffort: ReasoningEffort | null
 }
 
@@ -32,7 +33,7 @@ export interface ResolvedChatRequestConfig {
   model: string
   contextWindowTokens: number
   maxOutputTokens: number
-  reasoning: boolean
+  compat: LlmFamilyCompat
   /** 省略表示请求体不带 reasoning_effort。 */
   reasoningEffort?: ReasoningEffort
 }
@@ -53,7 +54,7 @@ export function resolveChatRequestConfig(
     model: profile.wireName,
     contextWindowTokens: profile.contextWindowTokens,
     maxOutputTokens: profile.maxOutputTokens,
-    reasoning: profile.reasoning,
+    compat: profile.compat,
     ...(reasoningEffort ? { reasoningEffort } : {}),
   }
 }

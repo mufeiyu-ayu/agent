@@ -1,4 +1,5 @@
 import type { ChatCompletionChunk } from 'openai/resources/chat/completions'
+import type { ModelUsage } from '../types.js'
 import type { AdaptStreamOptions } from './openai-completions-stream.js'
 import assert from 'node:assert/strict'
 
@@ -166,29 +167,55 @@ describe('adaptOpenAICompatibleStream', () => {
     assert.doesNotMatch(JSON.stringify(events), new RegExp(reasoningSecret))
   })
 
-  it('新增 Usage 字段逐项缺失时保持 unavailable，不补假 0', async () => {
-    const events = await collectEvents(adapt(toStream([
-      createChunk({
-        includeChoice: false,
-        usage: {
-          prompt_tokens: 3,
-          completion_tokens: 2,
-          total_tokens: 5,
-          prompt_cache_hit_tokens: 2,
-        },
-      }),
-      createChunk({ delta: { content: '好' }, finishReason: 'stop' }),
-    ])))
+  it('缓存字段按 OpenAI 形状 / DeepSeek 顶层 / cached_tokens 兜底，只有命中数时推导未命中数', async () => {
+    const cases: Array<[NonNullable<CreateChunkInput['usage']>, Partial<ModelUsage>]> = [
+      // 中转站上的 grok（实测会话最后一次运行）：只有 OpenAI 形状的命中数。
+      [
+        { prompt_tokens: 3145, completion_tokens: 61, total_tokens: 3206, prompt_tokens_details: { cached_tokens: 2944 } },
+        { promptCacheHitTokens: 2944, promptCacheMissTokens: 201 },
+      ],
+      // DeepSeek 直连：顶层两个字段都有，且 prompt_tokens_details 同时给出同一命中数，结果不变。
+      [
+        { prompt_tokens: 3, completion_tokens: 2, total_tokens: 5, prompt_tokens_details: { cached_tokens: 2 }, prompt_cache_hit_tokens: 2, prompt_cache_miss_tokens: 1 },
+        { promptCacheHitTokens: 2, promptCacheMissTokens: 1 },
+      ],
+      // OpenAI 形状未命中时固定回 cached_tokens: 0：这是 Provider 报告的 0，不是缺失，照实记为 0 / prompt_tokens。
+      [
+        { prompt_tokens: 10, completion_tokens: 2, total_tokens: 12, prompt_tokens_details: { cached_tokens: 0 } },
+        { promptCacheHitTokens: 0, promptCacheMissTokens: 10 },
+      ],
+      // 只有顶层 cached_tokens 的兼容端点。
+      [
+        { prompt_tokens: 10, completion_tokens: 2, total_tokens: 12, cached_tokens: 4 },
+        { promptCacheHitTokens: 4, promptCacheMissTokens: 6 },
+      ],
+      // 三处都没有（含空的 prompt_tokens_details 与 null）：两个字段保持 undefined，不补 0。
+      [
+        { prompt_tokens: 3, completion_tokens: 2, total_tokens: 5, prompt_tokens_details: {} },
+        {},
+      ],
+      [
+        { prompt_tokens: 3, completion_tokens: 2, total_tokens: 5, prompt_tokens_details: { cached_tokens: null }, prompt_cache_hit_tokens: null },
+        {},
+      ],
+    ]
 
-    assert.deepEqual(events[0], {
-      type: 'usage',
-      usage: {
-        inputTokens: 3,
-        outputTokens: 2,
-        totalTokens: 5,
-        promptCacheHitTokens: 2,
-      },
-    })
+    for (const [usage, expectedCache] of cases) {
+      const events = await collectEvents(adapt(toStream([
+        createChunk({ includeChoice: false, usage }),
+        createChunk({ delta: { content: '好' }, finishReason: 'stop' }),
+      ])))
+
+      assert.deepEqual(events[0], {
+        type: 'usage',
+        usage: {
+          inputTokens: usage.prompt_tokens,
+          outputTokens: usage.completion_tokens,
+          totalTokens: usage.total_tokens,
+          ...expectedCache,
+        },
+      }, JSON.stringify(usage))
+    }
   })
 
   it('拼装跨多个 chunk 的单个 Tool Call', async () => {
@@ -559,9 +586,15 @@ interface CreateChunkInput {
   delta?: DeepSeekChatCompletionDelta
   finishReason?: ChatCompletionChunk.Choice['finish_reason']
   includeChoice?: boolean
-  usage?: ChatCompletionChunk['usage'] & {
-    prompt_cache_hit_tokens?: number
-    prompt_cache_miss_tokens?: number
+  /** 不与 SDK 的 CompletionUsage 求交：SDK 把 cached_tokens 标成 number，真实响应里会出现 null。 */
+  usage?: {
+    prompt_tokens: number
+    completion_tokens: number
+    total_tokens: number
+    prompt_cache_hit_tokens?: number | null
+    prompt_cache_miss_tokens?: number | null
+    cached_tokens?: number | null
+    prompt_tokens_details?: { cached_tokens?: number | null }
     completion_tokens_details?: { reasoning_tokens?: number }
   }
 }
@@ -589,7 +622,7 @@ function createChunk(input: CreateChunkInput = {}): ChatCompletionChunk {
     created: 0,
     model: 'test-model',
     object: 'chat.completion.chunk',
-    ...(input.usage === undefined ? {} : { usage: input.usage }),
+    ...(input.usage === undefined ? {} : { usage: input.usage as NonNullable<ChatCompletionChunk['usage']> }),
   }
 }
 

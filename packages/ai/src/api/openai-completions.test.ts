@@ -4,6 +4,7 @@ import { getEventListeners } from 'node:events'
 // eslint-disable-next-line test/no-import-node-test
 import { describe, it } from 'node:test'
 
+import { familyCompatOf } from '@agent/contracts'
 import OpenAI from 'openai'
 import {
   LLMAuthError,
@@ -20,7 +21,7 @@ const DEEPSEEK_REQUEST: ResolvedChatRequestConfig = {
   model: 'deepseek-v4-flash',
   contextWindowTokens: 1_000_000,
   maxOutputTokens: 65_536,
-  reasoning: true,
+  compat: familyCompatOf('deepseek'),
   reasoningEffort: 'high',
 }
 
@@ -29,7 +30,7 @@ const RELAY_REQUEST: ResolvedChatRequestConfig = {
   model: 'gpt-5.6-sol',
   contextWindowTokens: 128_000,
   maxOutputTokens: 8_192,
-  reasoning: false,
+  compat: familyCompatOf('openai'),
 }
 
 describe('OpenAICompatibleClient runtime config', () => {

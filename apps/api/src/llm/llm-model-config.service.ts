@@ -1,7 +1,7 @@
 import type { LLMModelProfile } from '@agent/ai'
 import type { ChatModelOption, ReasoningEffort } from '@agent/contracts'
 import type { ApiKeyCipher } from './api-key-cipher.js'
-import { isThinkingFamily, reasoningEffortsOf } from '@agent/contracts'
+import { familyCompatOf, reasoningEffortsOf } from '@agent/contracts'
 import { Inject, Injectable } from '@nestjs/common'
 
 import { PrismaService } from '../prisma/prisma.service.js'
@@ -95,7 +95,7 @@ export class LlmModelConfigService {
         wireName: model.wireName,
         contextWindowTokens: model.contextWindowTokens,
         maxOutputTokens: model.maxOutputTokens,
-        reasoning: isThinkingFamily(model.provider.family),
+        compat: familyCompatOf(model.provider.family),
         reasoningEffort: model.reasoningEffort as ReasoningEffort | null,
       },
     }
