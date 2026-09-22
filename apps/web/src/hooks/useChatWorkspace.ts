@@ -299,7 +299,7 @@ export function useChatWorkspace() {
           activeTurnId = null
           clearActiveStreamState(streamRequestId)
           setStatusAfterStreamCompletion(event.conversationId, 'done')
-          await refreshConversationList()
+          touchConversation(event.conversationId)
           continue
         }
 
@@ -311,7 +311,7 @@ export function useChatWorkspace() {
           clearActiveStreamState(streamRequestId)
           setStatusAfterStreamError(event.conversationId)
           showMessage(event.message, 'error')
-          await refreshConversationList()
+          touchConversation(event.conversationId)
           continue
         }
 
@@ -320,7 +320,7 @@ export function useChatWorkspace() {
         activeTurnId = null
         clearActiveStreamState(streamRequestId)
         setStatusAfterStreamCompletion(event.conversationId, 'aborted')
-        await refreshConversationList()
+        touchConversation(event.conversationId)
       }
 
       if (!hasFinalStreamEvent) {
@@ -339,7 +339,8 @@ export function useChatWorkspace() {
 
       if (isAbortError(error)) {
         markGenerationAborted(targetConversationId, assistantMessageId, streamRequestId)
-        await refreshConversationList()
+        if (targetConversationId)
+          touchConversation(targetConversationId)
         return
       }
 
@@ -363,7 +364,7 @@ export function useChatWorkspace() {
 
       if (failedConversationId) {
         setStatusAfterStreamError(failedConversationId)
-        await refreshConversationList()
+        touchConversation(failedConversationId)
         return
       }
 
@@ -404,26 +405,23 @@ export function useChatWorkspace() {
     }
   }
 
-  async function refreshConversationList() {
-    try {
-      const response = await listConversations({
-        limit: Math.max(conversations.value.length, CONVERSATION_PAGE_SIZE),
-      })
+  /**
+   * 一轮结束后只把会话提到侧栏顶部：后端每写一条消息只更新 conversation.updatedAt，
+   * 标题不会变，列表按 updatedAt 排序，本地改时间戳即可，不再整页重拉列表。
+   */
+  function touchConversation(conversationId: string) {
+    const conversation = conversations.value.find(item => item.id === conversationId)
 
-      conversations.value = response.items
-      conversationNextCursor = response.nextCursor
-      hasMoreConversations.value = Boolean(response.nextCursor)
+    if (!conversation)
+      return
 
-      if (
-        activeConversationId.value
-        && !conversations.value.some(conversation => conversation.id === activeConversationId.value)
-      ) {
-        activeConversationId.value = conversations.value[0]?.id ?? null
-      }
-    }
-    catch (error) {
-      handleWorkspaceError(error)
-    }
+    // 本地时钟可能落后服务端：取不早于列表里最新时间戳的值，保证它排到顶部。
+    const latestKnown = Math.max(
+      Date.now(),
+      ...conversations.value.map(item => new Date(item.updatedAt).getTime() + 1),
+    )
+
+    upsertConversation({ ...conversation, updatedAt: new Date(latestKnown).toISOString() })
   }
 
   async function loadMoreConversations() {

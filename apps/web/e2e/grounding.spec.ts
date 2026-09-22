@@ -19,9 +19,9 @@ import {
   UNAVAILABLE_GROUNDING,
 } from './fixtures'
 
-/** 截图落到本 Task 专属 docs asset 目录，作为可核验的浏览器证据。 */
+/** 截图是运行产物，落到已忽略的 .artifacts；Phase 8 验收用的那份已随任务归档。 */
 const SCREENSHOT_DIR = fileURLToPath(
-  new URL('../../../docs/tasks/phase-08-grounded-retrieval/assets/task-03b/', import.meta.url),
+  new URL('./.artifacts/grounding-screenshots/', import.meta.url),
 )
 
 const GROUNDING = '[data-agent-grounding]'

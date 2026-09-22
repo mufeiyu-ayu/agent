@@ -270,7 +270,7 @@ test('返回生成中的会话：历史恢复不自动开启跟随，主动到�
   await capsule.click()
   await expect.poll(() => bottomGap(page)).toBeLessThan(2)
   await updateReply(page, longProse.repeat(3))
-  await expect(page.locator('#chat-ui-test .agent-markdown-prose').last()).toHaveText(longProse.repeat(3).trim())
+  await expect(page.locator('#chat-ui-test .agent-markdown-content').last()).toHaveText(longProse.repeat(3).trim())
   await expect.poll(() => bottomGap(page)).toBeLessThan(2)
 })
 

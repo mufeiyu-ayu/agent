@@ -1,7 +1,5 @@
 <script setup lang="ts">
-import { onUnmounted, shallowRef, watch } from 'vue'
-
-import { parseMarkdownBlocks } from '@/utils/markdown-blocks'
+import { useStreamingMarkdown } from '@/hooks/useStreamingMarkdown'
 
 import AgentCodeBlock from './AgentCodeBlock.vue'
 
@@ -10,29 +8,8 @@ const props = defineProps<{
   isStreaming?: boolean
 }>()
 
-const blocks = shallowRef<ReturnType<typeof parseMarkdownBlocks>>([])
-let timer: ReturnType<typeof setTimeout> | undefined
-let lastRenderAt = -Infinity
-
-function render() {
-  timer = undefined
-  blocks.value = parseMarkdownBlocks(props.text)
-  lastRenderAt = performance.now()
-}
-
-// 在入口合并解析、HTML 更新和子组件高亮，不保存每个流式前缀。
-watch([() => props.text, () => props.isStreaming], () => {
-  const remaining = 80 - (performance.now() - lastRenderAt)
-  if (!props.isStreaming || remaining <= 0) {
-    clearTimeout(timer)
-    render()
-  }
-  else if (timer === undefined) {
-    timer = setTimeout(render, remaining)
-  }
-}, { immediate: true })
-
-onUnmounted(() => clearTimeout(timer))
+// 平滑放出、按顶层块记忆化与尾块补齐都在 hook 里；这里只渲染块列表。
+const blocks = useStreamingMarkdown(() => props.text, () => !!props.isStreaming)
 </script>
 
 <template>
@@ -80,6 +57,15 @@ onUnmounted(() => clearTimeout(timer))
   margin-top: 1rem;
 }
 
+/* 每个顶层块各占一个 wrapper：块间距由 wrapper 给出，与块内元素自身的上边距折叠取大者。 */
+.agent-markdown-prose + .agent-markdown-prose {
+  margin-top: 1rem;
+}
+
+.agent-markdown-prose:has(> h1, > h2, > h3, > h4) + .agent-markdown-prose {
+  margin-top: 0;
+}
+
 .agent-markdown-content :deep(strong) {
   color: var(--agent-ink);
   font-weight: 760;
@@ -100,10 +86,7 @@ onUnmounted(() => clearTimeout(timer))
   line-height: 1.35;
 }
 
-.agent-markdown-content :deep(h1:first-child),
-.agent-markdown-content :deep(h2:first-child),
-.agent-markdown-content :deep(h3:first-child),
-.agent-markdown-content :deep(h4:first-child) {
+.agent-markdown-prose:first-child :deep(:is(h1, h2, h3, h4):first-child) {
   margin-top: 0;
 }
 
@@ -126,8 +109,7 @@ onUnmounted(() => clearTimeout(timer))
   padding-left: 1.5rem;
 }
 
-.agent-markdown-content :deep(ol:first-child),
-.agent-markdown-content :deep(ul:first-child) {
+.agent-markdown-prose:first-child :deep(:is(ol, ul):first-child) {
   margin-top: 0;
 }
 
