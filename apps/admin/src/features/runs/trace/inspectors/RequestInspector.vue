@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import type {
   AdminContextInspectorOutcome,
-  AdminContextObservationSummary,
   AdminModelSamplingStep,
 } from '@agent/contracts'
 import { TabPane, Tabs } from 'ant-design-vue'
@@ -32,7 +31,6 @@ const summaryFields = computed(() => [
   { label: t('eventDetail.fields.providerId'), value: show(props.item.contextInspector.providerId), mono: true },
   { label: t('eventDetail.fields.modelId'), value: show(props.item.contextInspector.modelId), mono: true },
   { label: t('eventDetail.fields.finishReason'), value: show(props.item.finishReason) },
-  { label: t('eventDetail.fields.providerItems'), value: items(props.item.providerItemCount) },
   { label: t('eventDetail.fields.toolCalls'), value: items(props.item.toolCallCount) },
   { label: t('eventDetail.fields.hasError'), value: yesNo(props.item.hasError) },
 ])
@@ -53,29 +51,9 @@ const budgetFields = computed(() => {
   ]
 })
 
-const sourceFields = computed(() => {
-  const context = props.item.contextInspector
-
-  return [
-    { label: t('eventDetail.fields.providerItems'), value: items(props.item.providerItemCount) },
-    { label: t('eventDetail.fields.historyCandidates'), value: items(context.historyCandidateCount) },
-    { label: t('eventDetail.fields.historyIncluded'), value: items(context.historyIncludedCount) },
-    { label: t('eventDetail.fields.samplingHistoryExcluded'), value: items(context.samplingHistoryExcludedCount) },
-    { label: t('eventDetail.fields.observations'), value: items(context.observations?.length ?? null) },
-  ]
-})
-
-const adjustmentFields = computed(() => {
-  const context = props.item.contextInspector
-
-  return [
-    { label: t('eventDetail.fields.contextOutcome'), value: contextOutcome(context.outcome) },
-    ...(context.observations ?? []).map((observation, index) => ({
-      label: t('eventDetail.fields.observationIndex', { index: index + 1 }),
-      value: formatObservation(observation),
-    })),
-  ]
-})
+const adjustmentFields = computed(() => [
+  { label: t('eventDetail.fields.contextOutcome'), value: contextOutcome(props.item.contextInspector.outcome) },
+])
 
 const usageFields = computed(() => [
   { label: t('eventDetail.fields.inputTokens'), value: tokens(props.item.usage?.inputTokens ?? null) },
@@ -123,18 +101,6 @@ function yesNo(value: boolean): string {
 function contextOutcome(value: AdminContextInspectorOutcome | null): string {
   return value === null ? unavailable.value : t(`eventDetail.context.outcome.${value}`)
 }
-
-function formatObservation(observation: AdminContextObservationSummary): string {
-  return t('eventDetail.context.observationSummary', {
-    original: count(observation.originalChars),
-    toolCeiling: count(observation.toolCeilingChars),
-    final: count(observation.finalChars),
-  })
-}
-
-function count(value: number | null): string {
-  return value === null ? unavailable.value : value.toLocaleString(locale.value)
-}
 </script>
 
 <template>
@@ -145,7 +111,6 @@ function count(value: number | null): string {
 
     <TabPane key="context" :tab="t('runTrace.inspector.tabs.context')">
       <InspectorFieldList :title="t('eventDetail.sections.contextBudget')" :items="budgetFields" />
-      <InspectorFieldList :title="t('eventDetail.sections.contextSources')" :items="sourceFields" />
       <InspectorFieldList :title="t('eventDetail.sections.contextAdjustments')" :items="adjustmentFields" />
     </TabPane>
 

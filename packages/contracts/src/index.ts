@@ -37,7 +37,6 @@ export type {
   AdminAssistantOutputStep,
   AdminContextInspector,
   AdminContextInspectorOutcome,
-  AdminContextObservationSummary,
   AdminDebugModelIOCapture,
   AdminDebugModelResponseCapture,
   AdminGenericStep,

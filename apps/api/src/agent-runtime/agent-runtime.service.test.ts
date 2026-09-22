@@ -119,23 +119,15 @@ describe('AgentRuntimeService model stream', () => {
       providerId: 'provider-deepseek',
       modelId: 'model-deepseek-v4-flash',
       resolvedInputBudgetTokens: 262_144,
-      historyCandidateCount: 0,
-      historyIncludedCount: 0,
     })
     assert.deepEqual(
       withoutContextPlan(harness.recorder.steps[1]?.output),
       {
         samplingAttemptId: 'run-1:sampling-1',
-        messageCount: 1,
         finishReason: 'stop',
         usage: null,
         toolCallCount: 0,
       },
-    )
-    assert.deepEqual(
-      (((harness.recorder.steps[1]?.output as Record<string, unknown>)
-        .contextPlan as Record<string, unknown>).observations),
-      [],
     )
     assertNoUnfinishedSteps(harness)
   })
@@ -315,13 +307,8 @@ describe('AgentRuntimeService model stream', () => {
     const loadHistoryStep = findStep(harness, 'load_conversation_history')
 
     assert.equal(loadHistoryStep?.input, null)
-    // 读取阶段不再按预算排除：candidate = message = 读取条数，excluded 恒为 0。
-    assert.deepEqual(loadHistoryStep?.output, {
-      messageCount: 45,
-      candidateCount: 45,
-      excludedCount: 0,
-      excludedReason: null,
-    })
+    // 读取阶段不裁剪：messageCount 就是读取条数。
+    assert.deepEqual(loadHistoryStep?.output, { messageCount: 45 })
   })
 
   it('只加载严格早于当前 User 上界的 History', async () => {
@@ -443,18 +430,7 @@ describe('AgentRuntimeService model stream', () => {
     const loadHistoryStep = findStep(harness, 'load_conversation_history')
 
     assert.equal(loadHistoryStep?.input, null)
-    assert.deepEqual(loadHistoryStep?.output, {
-      messageCount: 50,
-      candidateCount: 50,
-      excludedCount: 0,
-      excludedReason: 'candidate_cap',
-    })
-    const initialContext = (
-      findStep(harness, 'model_sampling')?.input as Record<string, unknown>
-    ).initialContext as Record<string, unknown>
-
-    assert.equal(initialContext.historyCandidateCount, 50)
-    assert.equal(initialContext.historyIncludedCount, 50)
+    assert.deepEqual(loadHistoryStep?.output, { messageCount: 50 })
     assertNoUnfinishedSteps(harness)
   })
 
@@ -505,9 +481,6 @@ describe('AgentRuntimeService model stream', () => {
     // 读取阶段全部候选进入 ModelContext，不做预算排除。
     assert.deepEqual(findStep(harness, 'load_conversation_history')?.output, {
       messageCount: 3,
-      candidateCount: 3,
-      excludedCount: 0,
-      excludedReason: null,
     })
     const [firstSampling, secondSampling] = harness.recorder.steps.filter(
       step => step.type === 'model_sampling',
@@ -517,21 +490,19 @@ describe('AgentRuntimeService model stream', () => {
     const firstContextPlan = (firstSampling?.output as Record<string, unknown>)
       .contextPlan as Record<string, unknown>
 
-    // AC-03：initialContext 取裁剪前值；预算删减只体现在 contextPlan。
-    assert.equal(firstInitialContext.historyCandidateCount, 3)
-    assert.equal(firstInitialContext.historyIncludedCount, 3)
-    assert.equal((firstSampling?.output as Record<string, unknown>).messageCount, 3)
-    assert.equal(firstContextPlan.historyCandidateCount, 3)
-    assert.equal(firstContextPlan.historyIncludedCount, 2)
-    // 第二轮：历史基准不变，累计删减仍为 1，Tool Exchange 成对进入输入。
+    // AC-03：预算删减只体现在模型输入与 contextPlan 的估算，不写历史计数。
+    assert.equal(firstContextPlan.resolvedInputBudgetTokens, firstInitialContext.resolvedInputBudgetTokens)
+    assert.ok(Number(firstContextPlan.estimatedInputTokens) <= Number(firstContextPlan.resolvedInputBudgetTokens))
+    // 第二轮：initialContext 快照不变，Tool Exchange 成对进入输入。
     const secondInput = secondSampling?.input as Record<string, unknown>
-    const secondContextPlan = (secondSampling?.output as Record<string, unknown>)
-      .contextPlan as Record<string, unknown>
 
     assert.deepEqual(secondInput.initialContext, firstInitialContext)
-    assert.equal((secondSampling?.output as Record<string, unknown>).messageCount, 5)
-    assert.equal(secondContextPlan.historyCandidateCount, 3)
-    assert.equal(secondContextPlan.historyIncludedCount, 2)
+    assert.deepEqual(
+      (harness.llmCalls[1]?.messages ?? [])
+        .filter(item => item.type === 'message')
+        .map(item => item.content),
+      [historyContents[1], historyContents[2], '问题'],
+    )
     assertNoUnfinishedSteps(harness)
 
     // AC-04 跨层：runtime 真实写出的 Step 经 Admin projector 投影。
@@ -543,16 +514,8 @@ describe('AgentRuntimeService model stream', () => {
     ))
 
     assert.deepEqual(
-      inspectors.map(inspector => [
-        inspector.outcome,
-        inspector.historyCandidateCount,
-        inspector.historyIncludedCount,
-        inspector.samplingHistoryExcludedCount,
-      ]),
-      [
-        ['success', 3, 2, 1],
-        ['success', 3, 2, 1],
-      ],
+      inspectors.map(inspector => inspector.outcome),
+      ['success', 'success'],
     )
   })
 
@@ -591,12 +554,10 @@ describe('AgentRuntimeService model stream', () => {
 
     assert.equal(samplingStep?.status, AgentStepStatus.FAILED)
     assert.deepEqual(samplingOutput, {
-      messageCount: 0,
       contextFailureReason: 'estimator_failure',
     })
     assert.equal(Object.hasOwn(samplingOutput, 'contextPlan'), false)
-    assert.equal(initialContext.historyCandidateCount, 1)
-    assert.equal(initialContext.historyIncludedCount, 1)
+    assert.equal(initialContext.resolvedInputBudgetTokens, 262_144)
     assert.doesNotMatch(serialized, /initial-estimator-secret/)
     assert.match(serialized, /TokenEstimator/)
     assertNoUnfinishedSteps(harness)
@@ -611,10 +572,9 @@ describe('AgentRuntimeService model stream', () => {
         ? [
             samplingItem.contextInspector.outcome,
             samplingItem.contextInspector.resolvedModel,
-            samplingItem.providerItemCount,
           ]
         : null,
-      ['estimator_failure', 'deepseek-v4-flash', 0],
+      ['estimator_failure', 'deepseek-v4-flash'],
     )
   })
 
@@ -829,53 +789,25 @@ describe('AgentRuntimeService model stream', () => {
     assert.deepEqual(samplingSteps.map(step => withoutContextPlan(step.output)), [
       {
         samplingAttemptId: 'run-1:sampling-1',
-        messageCount: 1,
         finishReason: 'tool_calls',
         usage: { inputTokens: 10, outputTokens: 2, totalTokens: 12 },
         toolCallCount: 1,
       },
       {
         samplingAttemptId: 'run-1:sampling-2',
-        messageCount: 3,
         finishReason: 'stop',
         usage: { inputTokens: 20, outputTokens: 4, totalTokens: 24 },
         toolCallCount: 0,
       },
     ])
-    // contextPlan 只落库 Admin 读取的字段；observations 每轮一条 Tool Exchange。
+    // contextPlan 只落库 Admin 读取的字段。
     assert.deepEqual(
-      samplingSteps.map((step) => {
-        const contextPlan = (step.output as Record<string, unknown>)
-          .contextPlan as Record<string, unknown>
-
-        return [
-          Object.keys(contextPlan).sort(),
-          (contextPlan.observations as unknown[]).length,
-        ]
-      }),
+      samplingSteps.map(step => Object.keys(
+        (step.output as Record<string, unknown>).contextPlan as Record<string, unknown>,
+      ).sort()),
       [
-        [
-          [
-            'estimatedInputTokens',
-            'historyCandidateCount',
-            'historyIncludedCount',
-            'observations',
-            'overflowReason',
-            'resolvedInputBudgetTokens',
-          ],
-          0,
-        ],
-        [
-          [
-            'estimatedInputTokens',
-            'historyCandidateCount',
-            'historyIncludedCount',
-            'observations',
-            'overflowReason',
-            'resolvedInputBudgetTokens',
-          ],
-          1,
-        ],
+        ['estimatedInputTokens', 'overflowReason', 'resolvedInputBudgetTokens'],
+        ['estimatedInputTokens', 'overflowReason', 'resolvedInputBudgetTokens'],
       ],
     )
     const toolStep = harness.recorder.steps[2]
@@ -1193,14 +1125,7 @@ describe('AgentRuntimeService model stream', () => {
 
     assert.deepEqual(
       Object.keys(contextPlan.contextPlan as Record<string, unknown>),
-      [
-        'resolvedInputBudgetTokens',
-        'estimatedInputTokens',
-        'historyCandidateCount',
-        'historyIncludedCount',
-        'overflowReason',
-        'observations',
-      ],
+      ['resolvedInputBudgetTokens', 'estimatedInputTokens', 'overflowReason'],
     )
     assert.doesNotMatch(JSON.stringify(contextPlan.contextPlan), /🚀/)
     assertNoUnfinishedSteps(harness)
@@ -1251,23 +1176,11 @@ describe('AgentRuntimeService model stream', () => {
       harness.prisma.messages.find(message => message.id === 'history-oldest')?.content,
       historyContent,
     )
-    const followUpSamplingStep = harness.recorder.steps.filter(
-      step => step.type === 'model_sampling',
-    )[1]
-    const persistedSamplingMessageCount = (
-      followUpSamplingStep?.output as Record<string, unknown>
-    )?.messageCount
-
-    assert.equal(
-      persistedSamplingMessageCount,
-      harness.llmCalls[1]?.messages.length,
-    )
-    assert.equal(persistedSamplingMessageCount, 3)
-    const followUpContextPlan = (
-      followUpSamplingStep?.output as Record<string, unknown>
-    ).contextPlan as Record<string, unknown>
-    assert.equal(followUpContextPlan.historyCandidateCount, 1)
-    assert.equal(followUpContextPlan.historyIncludedCount, 0)
+    // 第二轮输入：最旧历史已被排除，只剩当前问题 + Tool Call + Tool Result。
+    assert.equal(harness.llmCalls[1]?.messages.length, 3)
+    assert.equal(harness.llmCalls[1]?.messages.some(
+      item => item.type === 'message' && item.content === historyContent,
+    ), false)
     assertNoUnfinishedSteps(harness)
   })
 
@@ -1371,10 +1284,6 @@ describe('AgentRuntimeService model stream', () => {
     assert.equal(samplingSteps.length, 2)
     assert.equal(samplingSteps[1]?.status, AgentStepStatus.FAILED)
     assert.equal(
-      (samplingSteps[1]?.output as Record<string, unknown>)?.messageCount,
-      0,
-    )
-    assert.equal(
       ((samplingSteps[1]?.output as Record<string, unknown>)
         ?.contextPlan as Record<string, unknown>)?.overflowReason,
       'minimum_context',
@@ -1421,12 +1330,6 @@ describe('AgentRuntimeService model stream', () => {
     assert.equal(
       harness.recorder.steps.filter(step => step.type === 'model_sampling')[1]?.status,
       AgentStepStatus.FAILED,
-    )
-    assert.equal(
-      (harness.recorder.steps.filter(
-        step => step.type === 'model_sampling',
-      )[1]?.output as Record<string, unknown>)?.messageCount,
-      0,
     )
     assert.equal(
       (harness.recorder.steps.filter(
@@ -1552,11 +1455,9 @@ describe('AgentRuntimeService model stream', () => {
       harness.recorder.steps.map(step => step.sequence),
       [1, 2, 3, 4, 5, 6, 7],
     )
+    // 每轮模型输入里的 Tool Result 数逐轮累加。
     assert.deepEqual(
-      harness.recorder.steps
-        .filter(step => step.type === 'model_sampling')
-        .map(step => ((((step.output as Record<string, unknown>)
-          .contextPlan as Record<string, unknown>).observations as unknown[]).length)),
+      harness.llmCalls.map(call => call.messages.filter(item => item.type === 'tool_result').length),
       [0, 1, 2],
     )
     assert.equal(harness.assistantMessage()?.content, '已基于文章详情生成 SEO 建议。')
@@ -2457,7 +2358,6 @@ describe('AgentRuntimeService model stream', () => {
     assert.equal(samplingStep?.status, AgentStepStatus.FAILED)
     assert.deepEqual(withoutContextPlan(samplingStep?.output), {
       samplingAttemptId: 'run-1:sampling-1',
-      messageCount: 1,
       finishReason: null,
       usage: {
         inputTokens: 7,
@@ -2594,7 +2494,6 @@ describe('AgentRuntimeService model stream', () => {
     assert.equal(samplingStep?.status, AgentStepStatus.ABORTED)
     assert.deepEqual(withoutContextPlan(samplingStep?.output), {
       samplingAttemptId: 'run-1:sampling-1',
-      messageCount: 1,
       finishReason: 'stop',
       usage: {
         inputTokens: 7,

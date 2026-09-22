@@ -327,7 +327,6 @@ function samplingStep(
     hasError: false,
     samplingIndex: sequence === 3 ? 1 : 2,
     samplingAttemptId,
-    providerItemCount: 4,
     finishReason,
     usage: {
       inputTokens: 20,
@@ -343,12 +342,10 @@ function samplingStep(
     contextInspector: {
       outcome: 'success',
       resolvedModel: 'deepseek-v4-flash',
+      providerId: 'provider-deepseek',
+      modelId: 'model-deepseek-v4-flash',
       resolvedInputBudgetTokens: 262_144,
       estimatedInputTokens: 1_200,
-      historyCandidateCount: 2,
-      historyIncludedCount: 2,
-      samplingHistoryExcludedCount: 0,
-      observations: [],
     },
   }
 }

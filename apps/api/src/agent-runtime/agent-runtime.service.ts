@@ -206,7 +206,6 @@ export class AgentRuntimeService {
         modelId: input.model.modelId,
         contextWindowTokens: resolvedRequestConfig.contextWindowTokens,
         resolvedMaxOutputTokens: resolvedRequestConfig.maxOutputTokens,
-        candidateHardLimit: runtimePolicy.historyCandidateHardLimit,
         context: modelContext,
         tools: modelTools,
         tokenEstimator: this.tokenEstimator,
@@ -215,17 +214,10 @@ export class AgentRuntimeService {
         loadHistoryStep.id,
         databaseDeadline,
         {
-          // 仅记录本次读取的安全统计，供 AgentStep / Admin 观测；
+          // 只记本次读入 ModelContext 的历史条数，供 Admin 时间线展示；
           // 预算裁剪发生在首轮 plan()，体现在 sampling Step 的 contextPlan。
           output: {
-            // 进入 ModelContext 的历史条数，等于一次读到的条数。
-            messageCount: initialContext.historyIncludedCount,
-            // 本次实际从数据库读取的候选条数。
-            candidateCount: initialContext.historyCandidateCount,
-            // 读取阶段不再按预算排除，恒为 0。
-            excludedCount: initialContext.historyExcludedCount,
-            // candidate_cap：读取条数触到硬上限；null：自然读完。
-            excludedReason: initialContext.excludedReason,
+            messageCount: historyCandidates.length,
           },
         },
       )
@@ -314,8 +306,6 @@ export class AgentRuntimeService {
         let completedSamplingSummary: ModelSamplingSummary | undefined
         // Context Planner 已产生的预算、历史排除和 Observation 截断统计。
         let contextPlanSummary: SamplingContextPlanSummary | undefined
-        // Planner 最终准备发给 Provider 的 ModelInputItem 数量。
-        let plannedMessageCount = 0
         // Grounding Session 建立后本轮暂存的文本；流结束前不知道它是草稿还是 Tool Call 前的中间文本。
         let roundHiddenText = ''
 
@@ -333,7 +323,6 @@ export class AgentRuntimeService {
 
           // 主要是后台观察：记录本轮预算、最终 Token、历史排除和 Tool Observation
           contextPlanSummary = contextPlan.summary
-          plannedMessageCount = contextPlan.items.length
 
           runCancellation.throwIfUnavailable()
           // 两层 async generator 此时只创建迭代器；首次 sampling.next() 才启动模型请求并拉取事件。
@@ -379,7 +368,6 @@ export class AgentRuntimeService {
                     id: samplingStep.id,
                     output: this.toFailedSamplingStepOutput(
                       undefined,
-                      plannedMessageCount,
                       contextPlanSummary,
                       debugModelIO,
                     ),
@@ -422,7 +410,6 @@ export class AgentRuntimeService {
             {
               output: this.toSamplingStepOutput(
                 samplingDecision.summary,
-                plannedMessageCount,
                 contextPlanSummary,
                 debugModelIO,
               ),
@@ -441,13 +428,11 @@ export class AgentRuntimeService {
             output: completedSamplingSummary
               ? this.toSamplingStepOutput(
                   completedSamplingSummary,
-                  plannedMessageCount,
                   contextPlanSummary,
                   debugModelIO,
                 )
               : this.toFailedSamplingStepOutput(
                   error,
-                  plannedMessageCount,
                   contextPlanSummary,
                   debugModelIO,
                 ),
@@ -1113,13 +1098,11 @@ export class AgentRuntimeService {
 
   private toSamplingStepOutput(
     summary: ModelSamplingSummary,
-    messageCount: number,
     contextPlan?: SamplingContextPlanSummary,
     debugModelIO?: DebugModelIOCaptured,
   ) {
     return {
       samplingAttemptId: summary.samplingAttemptId,
-      messageCount,
       finishReason: summary.finishReason,
       usage: toPersistedModelUsage(summary.usage),
       toolCallCount: summary.toolCallCount,
@@ -1132,7 +1115,6 @@ export class AgentRuntimeService {
 
   private toFailedSamplingStepOutput(
     error: unknown,
-    messageCount: number,
     contextPlan?: SamplingContextPlanSummary,
     debugModelIO?: DebugModelIOCaptured,
   ) {
@@ -1144,14 +1126,12 @@ export class AgentRuntimeService {
     if (error instanceof ModelSamplingIncompleteError && error.summary) {
       return this.toSamplingStepOutput(
         error.summary,
-        messageCount,
         failedContextPlan,
         debugModelIO,
       )
     }
 
     return {
-      messageCount,
       ...(error instanceof ContextTokenEstimationError
         ? { contextFailureReason: 'estimator_failure' as const }
         : {}),
@@ -1311,8 +1291,6 @@ function toPersistedInitialContext(
     providerId: initialContext.providerId,
     modelId: initialContext.modelId,
     resolvedInputBudgetTokens: initialContext.resolvedInputBudgetTokens,
-    historyCandidateCount: initialContext.historyCandidateCount,
-    historyIncludedCount: initialContext.historyIncludedCount,
   }
 }
 
@@ -1322,14 +1300,7 @@ function toPersistedContextPlan(
   return {
     resolvedInputBudgetTokens: contextPlan.resolvedInputBudgetTokens,
     estimatedInputTokens: contextPlan.estimatedInputTokens,
-    historyCandidateCount: contextPlan.historyCandidateCount,
-    historyIncludedCount: contextPlan.historyIncludedCount,
     overflowReason: contextPlan.overflowReason,
-    observations: contextPlan.observations.map(observation => ({
-      originalChars: observation.originalChars,
-      toolCeilingChars: observation.toolCeilingChars,
-      finalChars: observation.finalChars,
-    })),
   }
 }
 
