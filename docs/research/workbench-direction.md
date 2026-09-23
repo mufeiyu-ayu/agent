@@ -129,6 +129,6 @@ gsc 现状三块：
 | C 端站（Nuxt） | `vcode_frontend` | `~/Desktop/company/vcode_frontend` | `~/Desktop/vcode_frontend` |
 | 后端 API（Laravel） | `vcode_api` | `~/Desktop/company/vcode_api` | `~/Desktop/vcode_api` |
 | B 端管理（Nuxt） | `vcode_backend` | `~/Desktop/company/vcode_backend` | `~/Desktop/vcode_backend` |
-| Pi 源码 | `pi` | `~/Learn/pi` | 无 |
+| Pi 源码 | `pi` | `~/Learn/pi` | `~/Desktop/pi`（HEAD 比研究快照新，查行号用 `git show 8a7b0c03:<path>`） |
 
 gsc 里先看：根 `AGENTS.md`（口径约束）、`README.md`、`dashboard/src/lib/`（数据层）、`dashboard/src/app/api/`（9 条路由，无鉴权，局域网）、`docs/GA4-WORKSPACE-PLAN.md`（经营分析提案）。vcode 三个仓库只读。agent 仓库转私有后，gsc 相关代码可直接放本仓库。

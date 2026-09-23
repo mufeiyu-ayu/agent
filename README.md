@@ -2,128 +2,199 @@
 
 # TypeScript Agent Runtime
 
-**从零手写的全栈 AI Agent 运行时 —— 不依赖 LangChain / Workflow 引擎，每一行编排逻辑都可读、可测、可审计。**
+<h3>Agents you can actually read.</h3>
 
-流式对话 · 有界 Agent Loop · Tool Calling · Token 级上下文工程 · pgvector 混合检索 · 服务端校验的证据引用
+A production-minded AI agent runtime in plain TypeScript.<br/>
+No LangChain. No LangGraph. No workflow engine. Just the loop, the edge cases, and the tests.
 
+**English** · [简体中文](./README.zh-CN.md)
+
+[![Stars](https://img.shields.io/github/stars/mufeiyu-ayu/agent?style=flat&logo=github&label=Stars)](https://github.com/mufeiyu-ayu/agent/stargazers)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)
-![NestJS](https://img.shields.io/badge/NestJS-API-E0234E?logo=nestjs&logoColor=white)
-![Vue](https://img.shields.io/badge/Vue_3-Web-4FC08D?logo=vuedotjs&logoColor=white)
+![NestJS](https://img.shields.io/badge/NestJS-11-E0234E?logo=nestjs&logoColor=white)
+![Vue](https://img.shields.io/badge/Vue-3.5-4FC08D?logo=vuedotjs&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-pgvector-4169E1?logo=postgresql&logoColor=white)
-![DeepSeek](https://img.shields.io/badge/LLM-DeepSeek-556?logo=openai&logoColor=white)
-![Gemini](https://img.shields.io/badge/Embedding-Gemini-8E75B2?logo=googlegemini&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-550%2B_passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-700%2B-brightgreen)
+
+[Why](#why-this-exists) · [Highlights](#highlights) · [The loop](#the-whole-loop-in-one-screen) · [Quick start](#quick-start) · [Learn from it](#learn-agent-engineering-from-it) · [Roadmap](#roadmap)
 
 </div>
 
-## 这是什么
+---
 
-一个完整闭环的知识库问答 Agent：用户在 Web 前台提问，Runtime 在服务端预算内编排模型采样与工具调用，从 pgvector 索引中做混合检索，最终产出**每条引用都经过服务端校验**的带证据回答——全过程持久化为可审计的 Run / Step 轨迹，并配有独立的运维控制台。
+## Why this exists
 
-它不是又一个框架 Demo。所有编排（采样轮次、工具执行、上下文预算、终态提交、引用校验）都是显式 TypeScript 代码，这也是它作为 Agent 工程学习样本的价值：**没有任何一步藏在黑盒里**。
+Most agent tutorials end at "call the model in a `while` loop". Real agents break after that point:
 
-## 架构
+- the model writes half an answer, then asks for **two tools at once**;
+- the tool arguments get **cut off** because the output hit its token limit;
+- the user **closes the tab** while a tool is still running;
+- the model **cites a source that doesn't exist**;
+- a request fails, gets retried, and a **late result tries to overwrite** a run that already ended.
+
+Frameworks hide these decisions behind abstractions. This project handles every one of them in explicit, tested TypeScript, so you can open a file and see exactly what happens.
+
+<div align="center">
+
+| ~4,800 | 700+ | 77 | 72 |
+| :---: | :---: | :---: | :---: |
+| lines of runtime code | tests | merged PRs | closed issues |
+
+</div>
+
+## Highlights
+
+### 🔍 Citations the model can't fake
+
+When an answer relies on retrieved documents, the model can't just type `[1]`. It must submit the answer through a structured tool, and the server checks every citation against the evidence the retrieval tools actually returned in that run. If the model can't produce a valid submission, the run fails closed instead of showing sources nobody verified.
+
+### 🛑 One run, one final state
+
+User aborts, deadlines, and late database results all race for the final state, and only the first one wins. The message, its citations, the steps, and the run are committed in a single transaction. When the commit outcome is uncertain, the system reports it instead of faking success.
+
+### 🧭 Every step on the record
+
+Each run is stored as a sequence of steps: history loading, every model call, every tool call, and the final answer. The admin console shows a timeline with token usage, latency, finish reasons, and (optionally) the exact request body sent to the provider.
+
+### 📏 Context engineering with real token budgets
+
+Each run gets its own model context. Tokens are counted with a local tokenizer, history is trimmed oldest-first to fit the budget, and tool output is treated as untrusted data with its own size limits.
+
+### 🔌 Any OpenAI-compatible model
+
+DeepSeek's official API and OpenAI-compatible relays (GPT / Grok / Gemini) share one configuration. Providers and models are managed in the admin console, API keys are encrypted with AES-256-GCM, and per-family protocol differences live in one compat table.
+
+### 🧪 Built like production, documented like a course
+
+Every change starts as an issue with current-code facts, out-of-scope items, and numbered acceptance criteria, then lands through a reviewed PR. The history reads like a textbook of real agent problems.
+
+## The whole loop in one screen
+
+A simplified view of the core loop in [`agent-runtime.service.ts`](./apps/api/src/agent-runtime/agent-runtime.service.ts):
+
+```ts
+for (let round = 1; round <= policy.maxSamplingRounds; round++) {
+  const input = planner.plan(context, budget) // what the model sees this round
+  const decision = await streamModelSampling(llm.chatStream(input))
+
+  if (decision.type === 'final_answer')
+    break
+
+  // Too many tool calls? Reject the whole batch before anything runs.
+  if (toolCallCount + decision.calls.length > policy.maxToolCalls)
+    throw new AgentLoopLimitExceededError()
+
+  for (const call of decision.calls) { // several calls per turn, in order
+    const result = await tools.invoke(call) // validate args, time out, cap output
+    context.appendToolExchange(call, result) // fed back as untrusted data
+  }
+}
+
+await finalizeGroundedAnswer() // server-verified citations, one transaction
+```
+
+The real version adds streaming deltas, abort and deadline handling, and step recording. It is still one file you can read top to bottom.
+
+## How it works
 
 ```mermaid
 flowchart LR
-    Web[Vue 前台] -->|NDJSON 流| API[ChatController]
-    Admin[运维控制台] --> AdminAPI[Admin API]
-    API --> Runtime[Agent Runtime<br/>runTurnStream]
-    Runtime --> Context[ModelContext<br/>token 预算 / 因果历史]
-    Runtime --> Grounding[Grounding<br/>证据注册 / 引用校验]
-    Runtime --> LLM[LLM Service] -->|SSE| DeepSeek([DeepSeek API])
-    Runtime --> Tools[Tool 边界] --> Retrieval[混合检索<br/>lexical + vector RRF]
-    Retrieval --> Gemini([Gemini Embedding])
+    Web[Vue chat app] -->|NDJSON stream| API[ChatController]
+    Admin[Admin console] --> AdminAPI[Admin API]
+    API --> Runtime[Agent Runtime]
+    Runtime --> Context[Model context<br/>token budget · trimming]
+    Runtime --> Grounding[Grounding<br/>evidence · citation checks]
+    Runtime --> LLM["@agent/ai<br/>OpenAI-compatible client"]
+    LLM -->|SSE| Providers([DeepSeek · GPT · Grok · Gemini])
+    Runtime --> Tools[Tools] --> Retrieval[Hybrid retrieval<br/>lexical + vector, RRF]
     Retrieval --> DB[(PostgreSQL<br/>+ pgvector)]
-    Runtime --> Recorder[Run / Step 记录] --> DB
+    Runtime --> Recorder[Run / Step recorder] --> DB
     AdminAPI --> DB
 ```
 
-一次带引用回答的完整生命周期：
-
-```text
-用户提问
-  -> 创建 AgentRun，解析模型与输入预算（本地 DeepSeek tokenizer 精确估算）
-  -> 因果历史选择进入 ModelContext（COMPLETED-only、token 预算内）
-  -> 模型采样（SSE 流式）
-       -> 触发 retrieve_article_context 工具
-       -> Gemini query embedding + pgvector 余弦检索 + lexical RRF 融合
-       -> 证据注册：签发 Run 级不透明 citationKey，正文对模型扣留
-  -> structured finalization：模型必须调用 submit_grounded_answer 提交答案与引用
-  -> 服务端逐条校验 citationKey 与引用文本（fail-closed）
-  -> Message / Grounding / Step / Run 单事务原子落库
-  -> 前台渲染回答 + 可追溯的来源卡片
-```
-
-## 核心能力
-
-| 能力 | 实现 |
+| Layer | What it does |
 | --- | --- |
-| 有界 Agent Loop | 服务端策略约束：默认 ≤10 轮采样、≤8 次 Tool Call、10 分钟 Run deadline |
-| 流式输出 | Abort 感知的 NDJSON 增量流，中止 / 半包 / 消息版本竞态全部有守卫 |
-| Tool Calling | 类型化定义、注册表、参数校验、执行隔离、超时与取消传播、按 Run 白名单 |
-| 上下文工程 | 每 Run 独立 `ModelContext`，模型感知预算 + 动态历史选择 + Observation 治理 |
-| RAG 检索 | 确定性 HTML 分块、版本化 Embedding profile、精确余弦 + RRF(k=60) 混合 |
-| 证据引用 | 引用是服务端校验的结构化事实，不是模型随手写的 Markdown `[1]` |
-| 可靠性 | Run 剩余预算传导到 DB statement timeout；晚到结果 fencing；终态原子提交 |
-| 可观测性 | 每次采样的输入 / 输出 / 预算决策 / 错误持久化；Admin 端 Run Trace 与检索审计 |
+| `apps/api` | NestJS API: agent runtime, tools, retrieval and indexing, model provider config |
+| `apps/web` | Vue 3 chat app with streaming Markdown and source cards |
+| `apps/admin` | Admin console: overview, conversations, run trace, retrieval audit, model providers |
+| `packages/ai` | Framework-free model client: stream adapter, retries, errors (no Nest, no Prisma) |
+| `packages/contracts` | Types shared by frontend and backend |
 
-## 工程原则
+## Quick start
 
-- **显式控制流** —— 编排逻辑就在 TypeScript 里，不藏在 workflow 引擎背后。
-- **模型输出不可信** —— 工具名、参数、引用 key 全部先校验再执行，检索正文以 untrusted data 隔离注入。
-- **分层消息模型** —— UI Message ≠ 模型输入 ≠ 运行事件 ≠ 持久化轨迹，各自独立契约。
-- **预算而非上限** —— Provider 容量只是天花板，模型实际看到什么由应用策略决定。
-- **终态所有权** —— 晚到的 Abort / deadline / DB 结果不能覆盖已确立的终态；COMMIT 结果不确定时如实暴露，不伪造成功。
-- **证据驱动演进** —— 550+ 项测试（含真实 PostgreSQL / pgvector / SDK 传输层集成测试）先行，能力后加。
-
-## 快速开始
-
-要求：Node.js `^20.19.0` 或 `>=22.12.0`、pnpm `10.32.1`、Docker、一个 OpenAI-compatible 模型服务商的 API Key（DeepSeek 官方或中转站，启动后在管理台「模型接入」录入）、Gemini API Key（检索链路用）。
+You need Node.js `^20.19.0` or `>=22.12.0`, pnpm `10.32.1`, Docker, an API key for any OpenAI-compatible model provider, and a Gemini API key for the retrieval pipeline.
 
 ```bash
-corepack enable
-pnpm install
-cp .env.example .env                                          # 填入 AGENT_SECRET_KEY / GEMINI_API_KEY，模型在管理台配置
-docker compose up -d postgres                                 # 含 pgvector 的主库
-pnpm prisma:generate
-pnpm prisma:migrate
-node --env-file=.env --import tsx apps/api/scripts/seed.ts    # 灌入 68 篇 Demo 文章（幂等）
-pnpm --filter @agent/api index:articles -- --mode=incremental # 构建向量索引（调真实 Gemini）
+corepack enable && pnpm install
+cp .env.example .env              # set AGENT_SECRET_KEY (openssl rand -hex 32) and GEMINI_API_KEY
+docker compose up -d postgres     # PostgreSQL with pgvector
+pnpm prisma:generate && pnpm prisma:migrate
 pnpm dev
 ```
 
-| 应用 | 地址 |
-| --- | --- |
-| Web 前台 | `http://localhost:5173` |
-| 运维控制台 | `http://localhost:5174` |
-| API | `http://localhost:3000/api` |
+Then open the admin console at `http://localhost:5174`, go to the model provider page (「模型接入」), add a provider and a model, and mark it visible. Chat at `http://localhost:5173`.
 
-seed 与 index 是检索 / 引用链路可用的前提：跳过它们普通聊天仍可用，但 `retrieve_article_context` 会因缺少 active index 而 fail closed。自装 PostgreSQL 必须带 pgvector 扩展；从旧 `postgres:16-alpine` 卷升级时建议重置卷重建（musl→glibc collation 差异），开发数据可由 seed / index 完整重建。`POSTGRES_DB` 只在卷首次初始化时生效：沿用改名前（库名 `agent_ai_seo`）的已有卷时，`.env` 里的 `DATABASE_URL` 保留 `agent_ai_seo`，或重置卷按新库名 `agent` 重建。
-
-完整环境变量见 [`.env.example`](./.env.example)；常用验证：`pnpm typecheck`、`pnpm lint`、API 按边界拆分的测试入口（如 `pnpm --filter @agent/api test:tools`，完整清单见 `apps/api/package.json` 的 `test:*` 脚本）、`pnpm --filter @agent/ai test`。
-
-`packages/ai` 与 `packages/contracts` 以 `dist` 被 API 运行时消费，包括 `tsx --test` 跑的 `test:*` 脚本；`pnpm dev` 会在启动前构建，但 dev 的 `tsc --watch` 只重编 API 自身，不重建包的 `dist`（类型检查会随包源码更新，运行时加载的仍是旧 `dist`）。改过 `packages/ai/src` 或 `packages/contracts/src` 后手动重建：
+<details>
+<summary>Enable retrieval and citations (demo articles + vector index)</summary>
 
 ```bash
-pnpm --filter @agent/ai build
-pnpm --filter @agent/contracts build
+node --env-file=.env --import tsx apps/api/scripts/seed.ts     # load 68 demo articles (idempotent)
+pnpm --filter @agent/api index:articles -- --mode=incremental  # build the vector index (calls Gemini)
 ```
 
-## 目录结构
+Without these, plain chat still works, and the retrieval tool fails closed because there is no active index. If you run PostgreSQL yourself, it needs the pgvector extension. See [`.env.example`](./.env.example) for every setting.
 
-```text
-apps/
-  api/        NestJS API：Agent Runtime、Tool、检索与索引、Prisma 边界、LLM 门面与 DI 壳
-  web/        Vue 3 对话前台（流式渲染 + 来源卡片）
-  admin/      运维控制台（概览 / 会话记录 / Run Trace 与检索审计 / 模型接入）
-packages/
-  ai/         模型客户端、OpenAI-compatible 流适配、模型类型 / 错误 / profile（零 Nest、零 Prisma）
-  contracts/  前后端共享协议与类型（编译期防漂移）
-prisma/       PostgreSQL schema、pgvector migration 与 fixtures（seed 脚本在 apps/api/scripts/seed.ts）
-docs/         路线图、任务归档、研究沉淀与工作日志
-```
+</details>
 
-## 更多文档
+## Learn agent engineering from it
 
-阶段路线见 [`docs/roadmap.md`](./docs/roadmap.md)，任务归档见 [`docs/tasks/`](./docs/tasks/README.md)，架构决策与推进记录见 [`docs/work-log.md`](./docs/work-log.md)。项目按 8 个阶段迭代完成：多轮流式对话 → 有界 Agent Loop → 上下文工程 → Grounded Retrieval，全部经 Issue / PR / 提交前 Review 与逐条验收收口。
+Follow one request from the HTTP call to the database, in this order:
+
+| # | Read | You'll understand |
+| --- | --- | --- |
+| 1 | [`chat.controller.ts`](./apps/api/src/chat/chat.controller.ts) | How a closed browser tab becomes an abort signal |
+| 2 | [`agent-runtime.service.ts`](./apps/api/src/agent-runtime/agent-runtime.service.ts) | The main loop: sample, dispatch, run tools, continue, finish |
+| 3 | [`sampling-context-planner.ts`](./apps/api/src/agent-runtime/context/sampling-context-planner.ts) | What the model sees each round, and what gets dropped first |
+| 4 | [`openai-completions-stream.ts`](./packages/ai/src/api/openai-completions-stream.ts) | How a provider's stream becomes clean events |
+| 5 | [`grounded-answer.validator.ts`](./apps/api/src/agent-runtime/grounding/grounded-answer.validator.ts) | Why a citation can be proven, not just trusted |
+| 6 | [`agent-run-recorder.service.ts`](./apps/api/src/agent-runtime/lifecycle/agent-run-recorder.service.ts) | Final-state ownership and atomic commits |
+
+Try to answer these before reading the code. Every answer has a test:
+
+1. The model writes some text, then calls two tools in the same turn. What happens?
+2. The output hits its token limit mid-arguments. Do the tools still run?
+3. The user closes the page while a tool is running. Who writes the final state?
+4. The model invents a citation key. What does the user see?
+5. How is a 429 before the response starts handled differently from one mid-stream?
+
+## When to use a framework instead
+
+Use LangChain, LangGraph, or the Vercel AI SDK when you want to ship quickly and are happy with their abstractions. Use this project when you want to **understand and own** the loop: to learn how agents behave under real failure modes, or as a reference for building your own runtime. It is a working system, not a library you install.
+
+## Roadmap
+
+Done: streaming chat, a bounded agent loop, multiple tool calls per turn, context engineering, grounded retrieval with verified citations, multi-provider support, and an admin console.
+
+Next, each triggered by real usage:
+
+- **Durable runs**: keep working after the page closes, and resume after a restart
+- **Approvals**: ask before tools with side effects run
+- **Replay**: rebuild exactly what the model saw from stored records
+- **Compaction** for long conversations, and **scheduled jobs**
+
+## Project docs
+
+Design notes, phase write-ups, and every issue spec are written in Chinese:
+
+- [Phase archives](./docs/tasks/completed/): goals, trade-offs, and lessons from each phase
+- [Closed issues](https://github.com/mufeiyu-ayu/agent/issues?q=is%3Aissue+is%3Aclosed): real engineering specs with acceptance criteria
+- [Pi reference notes](./docs/research/pi-reference/README.md): an architecture comparison with the open-source agent [Pi](https://github.com/earendil-works/pi)
+- [Task board](./docs/tasks/README.md) and [roadmap](./docs/roadmap.md)
+
+## Support
+
+If this project helped you understand how agents really work, **a star is the best way to say so** ⭐
+
+Questions and bug reports are welcome in [issues](https://github.com/mufeiyu-ayu/agent/issues). The admin console's visual design draws on vue-vben-admin (see [`apps/admin/THIRD_PARTY_NOTICES.md`](./apps/admin/THIRD_PARTY_NOTICES.md)).
+
+[![Star History Chart](https://api.star-history.com/svg?repos=mufeiyu-ayu/agent&type=Date)](https://star-history.com/#mufeiyu-ayu/agent&Date)

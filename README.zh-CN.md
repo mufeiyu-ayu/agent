@@ -1,0 +1,198 @@
+<div align="center">
+
+# TypeScript Agent Runtime
+
+<h3>读得懂的 Agent。</h3>
+
+一个按生产标准写的 AI Agent 运行时，纯 TypeScript。<br/>
+不用 LangChain，不用 LangGraph，不用 workflow 引擎。只有循环本身、边界情况和测试。
+
+[English](./README.md) · **简体中文**
+
+[![Stars](https://img.shields.io/github/stars/mufeiyu-ayu/agent?style=flat&logo=github&label=Stars)](https://github.com/mufeiyu-ayu/agent/stargazers)
+![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)
+![NestJS](https://img.shields.io/badge/NestJS-11-E0234E?logo=nestjs&logoColor=white)
+![Vue](https://img.shields.io/badge/Vue-3.5-4FC08D?logo=vuedotjs&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-pgvector-4169E1?logo=postgresql&logoColor=white)
+![Tests](https://img.shields.io/badge/tests-700%2B-brightgreen)
+
+[为什么做](#为什么做这个项目) · [亮点](#亮点) · [主循环](#一屏看完整个循环) · [快速开始](#快速开始) · [学习路线](#拿它学-agent-工程) · [路线](#路线)
+
+</div>
+
+---
+
+## 为什么做这个项目
+
+大多数 Agent 教程停在「把模型调用放进 `while` 循环」。真实的 Agent 恰恰是从这之后开始出问题：
+
+- 模型写了半段回答，接着**同时要调两个工具**；
+- 输出撞上 Token 上限，工具参数**被截断**；
+- 工具还在跑，用户**关掉了页面**；
+- 模型**引用了一个根本不存在的来源**；
+- 请求失败、重试，结果**晚到的结果想覆盖**一个已经结束的 Run。
+
+框架把这些决策藏在抽象后面。这个项目把每一种情况都写成显式、带测试的 TypeScript，打开文件就能看到到底发生了什么。
+
+<div align="center">
+
+| ~4,800 | 700+ | 77 | 72 |
+| :---: | :---: | :---: | :---: |
+| 行运行时代码 | 个测试 | 个已合并 PR | 个已关闭 Issue |
+
+</div>
+
+## 亮点
+
+### 🔍 模型伪造不了的引用
+
+回答依赖检索到的文档时，模型不能随手写个 `[1]`。它必须通过结构化工具提交答案，服务端把每个引用与本次 Run 里检索工具真实返回的证据逐条核对。模型给不出合法提交，这次 Run 就 fail closed，而不是把没人核实过的来源展示给用户。
+
+### 🛑 一次 Run，只有一个终态
+
+用户中止、deadline、晚到的数据库结果都在抢终态，只有第一个生效。消息、引用、Step 和 Run 在同一个事务里提交。提交结果不确定时如实报告，不伪装成功。
+
+### 🧭 每一步都有记录
+
+每次 Run 都存成一串 Step：加载历史、每次模型调用、每次工具调用、最终回答。管理台按时间线展示 Token 用量、耗时、结束原因，还可以打开开关，看到发给模型服务商的原始请求体。
+
+### 📏 按真实 Token 预算做上下文工程
+
+每次 Run 有独立的模型上下文。Token 用本地 tokenizer 计数，超预算时从最旧的历史开始裁剪，工具输出按不可信数据处理并有单独的长度上限。
+
+### 🔌 接任意 OpenAI-compatible 模型
+
+DeepSeek 官方 API 和 OpenAI-compatible 中转站（GPT / Grok / Gemini）用同一套配置。服务商和模型在管理台里管理，API Key 用 AES-256-GCM 加密入库，各家族的协议差异收在一张 compat 表里。
+
+### 🧪 按生产标准做，按课程标准记
+
+每个改动都从一个 Issue 开始，写清当前代码事实、不做什么和逐条验收标准，再经过 review 的 PR 合入。整段提交历史读起来就是一本真实 Agent 问题的教材。
+
+## 一屏看完整个循环
+
+[`agent-runtime.service.ts`](./apps/api/src/agent-runtime/agent-runtime.service.ts) 主循环的简化版：
+
+```ts
+for (let round = 1; round <= policy.maxSamplingRounds; round++) {
+  const input = planner.plan(context, budget) // 这一轮模型能看到什么
+  const decision = await streamModelSampling(llm.chatStream(input))
+
+  if (decision.type === 'final_answer')
+    break
+
+  // 工具调用超预算？在执行任何一个之前整批拒绝。
+  if (toolCallCount + decision.calls.length > policy.maxToolCalls)
+    throw new AgentLoopLimitExceededError()
+
+  for (const call of decision.calls) { // 一轮多个调用，按顺序执行
+    const result = await tools.invoke(call) // 校验参数、超时、限制输出长度
+    context.appendToolExchange(call, result) // 作为不可信数据回喂给模型
+  }
+}
+
+await finalizeGroundedAnswer() // 服务端校验引用，单事务提交
+```
+
+真实代码还要处理流式 delta、中止与 deadline、Step 记录，但仍然是一个能从头读到尾的文件。
+
+## 架构
+
+```mermaid
+flowchart LR
+    Web[Vue 对话前台] -->|NDJSON 流| API[ChatController]
+    Admin[运维控制台] --> AdminAPI[Admin API]
+    API --> Runtime[Agent Runtime]
+    Runtime --> Context[模型上下文<br/>Token 预算 · 裁剪]
+    Runtime --> Grounding[Grounding<br/>证据登记 · 引用校验]
+    Runtime --> LLM["@agent/ai<br/>OpenAI-compatible 客户端"]
+    LLM -->|SSE| Providers([DeepSeek · GPT · Grok · Gemini])
+    Runtime --> Tools[工具] --> Retrieval[混合检索<br/>lexical + vector，RRF]
+    Retrieval --> DB[(PostgreSQL<br/>+ pgvector)]
+    Runtime --> Recorder[Run / Step 记录] --> DB
+    AdminAPI --> DB
+```
+
+| 模块 | 做什么 |
+| --- | --- |
+| `apps/api` | NestJS API：Agent Runtime、工具、检索与索引、模型接入配置 |
+| `apps/web` | Vue 3 对话前台，流式 Markdown 渲染与来源卡片 |
+| `apps/admin` | 运维控制台：概览、会话记录、Run Trace、检索审计、模型接入 |
+| `packages/ai` | 不依赖框架的模型客户端：流适配、重试、错误（零 Nest、零 Prisma） |
+| `packages/contracts` | 前后端共享的类型 |
+
+## 快速开始
+
+需要 Node.js `^20.19.0` 或 `>=22.12.0`、pnpm `10.32.1`、Docker、任意一家 OpenAI-compatible 模型服务商的 API Key，检索链路另需 Gemini API Key。
+
+```bash
+corepack enable && pnpm install
+cp .env.example .env              # 填 AGENT_SECRET_KEY（openssl rand -hex 32）与 GEMINI_API_KEY
+docker compose up -d postgres     # 自带 pgvector 的 PostgreSQL
+pnpm prisma:generate && pnpm prisma:migrate
+pnpm dev
+```
+
+然后打开管理台 `http://localhost:5174`，在「模型接入」页添加服务商和模型，并勾选「前台可见」，就可以在 `http://localhost:5173` 对话了。
+
+<details>
+<summary>开启检索与引用（Demo 文章 + 向量索引）</summary>
+
+```bash
+node --env-file=.env --import tsx apps/api/scripts/seed.ts     # 灌入 68 篇 Demo 文章（幂等）
+pnpm --filter @agent/api index:articles -- --mode=incremental  # 构建向量索引（调用 Gemini）
+```
+
+不做这两步，普通聊天照常可用，检索工具会因为没有 active index 而 fail closed。自己装 PostgreSQL 必须带 pgvector 扩展。全部配置见 [`.env.example`](./.env.example)。
+
+</details>
+
+## 拿它学 Agent 工程
+
+跟着一次请求，从 HTTP 入口一路走到数据库，按这个顺序读：
+
+| # | 读什么 | 看懂什么 |
+| --- | --- | --- |
+| 1 | [`chat.controller.ts`](./apps/api/src/chat/chat.controller.ts) | 用户关掉页面怎样变成 Abort 信号 |
+| 2 | [`agent-runtime.service.ts`](./apps/api/src/agent-runtime/agent-runtime.service.ts) | 主循环：采样、分派、执行工具、续轮、收尾 |
+| 3 | [`sampling-context-planner.ts`](./apps/api/src/agent-runtime/context/sampling-context-planner.ts) | 模型每轮看到什么，超预算时先删谁 |
+| 4 | [`openai-completions-stream.ts`](./packages/ai/src/api/openai-completions-stream.ts) | 服务商的流怎样变成干净的事件 |
+| 5 | [`grounded-answer.validator.ts`](./apps/api/src/agent-runtime/grounding/grounded-answer.validator.ts) | 引用为什么能被证明，而不是只能相信 |
+| 6 | [`agent-run-recorder.service.ts`](./apps/api/src/agent-runtime/lifecycle/agent-run-recorder.service.ts) | 终态所有权与原子提交 |
+
+读代码前先猜答案，每个答案都有对应的测试：
+
+1. 模型先写一段话，再在同一轮调用两个工具，会发生什么？
+2. 输出在工具参数写到一半时撞上 Token 上限，工具还会执行吗？
+3. 工具执行中用户关掉了页面，终态由谁写入？
+4. 模型编了一个不存在的引用 key，用户会看到什么？
+5. 429 发生在响应开始之前和流进行到一半，处理有什么不同？
+
+## 什么时候该用框架
+
+想快速交付、也接受框架的抽象，就用 LangChain、LangGraph 或 Vercel AI SDK。想**看懂并掌控**这个循环，想知道 Agent 在真实故障下怎么表现，或者想找一个自研运行时的参照，就用这个项目。它是一个能跑的完整系统，不是一个装上就用的库。
+
+## 路线
+
+已完成：流式对话、有界 Agent Loop、同轮多工具调用、上下文工程、带引用校验的 Grounded Retrieval、多模型接入、运维控制台。
+
+接下来的每一项都由真实使用触发：
+
+- **持久运行**：关掉页面后继续跑，进程重启后能接上
+- **审批**：有副作用的工具先问再执行
+- **回放**：从落库记录精确重建模型当时看到的内容
+- 长对话**压缩**与**定时任务**
+
+## 项目文档
+
+- [阶段归档](./docs/tasks/completed/)：每个阶段的目标、取舍与踩过的坑
+- [已关闭的 Issue](https://github.com/mufeiyu-ayu/agent/issues?q=is%3Aissue+is%3Aclosed)：带验收标准的真实工程规格
+- [Pi 参考知识库](./docs/research/pi-reference/README.md)：对照开源 Agent [Pi](https://github.com/earendil-works/pi) 的架构研究
+- [任务看板](./docs/tasks/README.md) 与 [路线](./docs/roadmap.md)
+
+## 支持
+
+如果这个项目帮你弄懂了 Agent 到底怎么跑，**点一个 Star 是最直接的支持** ⭐
+
+问题和 bug 欢迎提到 [Issue](https://github.com/mufeiyu-ayu/agent/issues)。管理台的视觉设计参考了 vue-vben-admin（见 [`apps/admin/THIRD_PARTY_NOTICES.md`](./apps/admin/THIRD_PARTY_NOTICES.md)）。
+
+[![Star History Chart](https://api.star-history.com/svg?repos=mufeiyu-ayu/agent&type=Date)](https://star-history.com/#mufeiyu-ayu/agent&Date)

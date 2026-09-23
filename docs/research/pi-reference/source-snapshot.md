@@ -26,7 +26,7 @@
 
 ## 如何回到原始证据
 
-文中 Pi 源码位置写作相对 Pi 仓库根的 `packages/…:行号`（2026-09-23 去掉研究机前缀 `/Users/ayu/Learn/pi/`，本仓库文件改相对链接），行号只对应上面的 commit。本机查看时拼上自己的 Pi checkout；文件内的**符号名**比行号更稳定。
+文中 Pi 源码位置写作相对 Pi 仓库根的 `packages/…:行号`（2026-09-23 去掉研究机前缀 `/Users/ayu/Learn/pi/`，本仓库文件改相对链接），行号只对应上面的 commit。本机查看时拼上自己的 Pi checkout（两台电脑的位置见 [工作台方向](../workbench-direction.md) 第 11 节；checkout 比快照新时用 `git show 8a7b0c03:<path>` 读原文）；文件内的**符号名**比行号更稳定。
 
 ```sh
 git -C /Users/ayu/Learn/pi rev-parse HEAD

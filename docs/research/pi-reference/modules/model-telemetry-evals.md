@@ -275,7 +275,7 @@ const candidatePassed = candidate.score >= 1;
 
 1. **第一学习产物：**把当前一次 sampling 的 resolved options、最终请求输入、事件、终态对应起来。Pi 的 frame encoder 和 transform 是问题样本；以我们持久化不变量来定方案。
 2. **第二学习产物：**用一个本地 scripted provider 跑 tool/error/abort 的完整场景。学 Faux 的可编排响应，不学它的字符估算当真实 usage；保留模型未知 usage 的语义。
-3. **第二个 provider 真正需要时：**再引入 provider-owned auth/catalog/API 组合；保留 NestJS DI，auth store 多租户作用域与 wire adapter 单独定义。无需先复制40个 provider。
+3. **第二个 provider 真正需要时：**再引入 provider-owned auth/catalog/API 组合；保留 NestJS DI，auth store 多租户作用域与 wire adapter 单独定义。无需先复制40个 provider。（2026-09-23 注：#142 / #146 已接入第二 provider，走的是数据库模型行加 `LLM_FAMILY_CAPABILITIES` 家族 compat 表，仍只有一套 Chat Completions wire，没有 provider-owned auth/catalog；多租户已否决，见工作台方向第 9 节。）
 4. **成本/延迟改善需要证据时：**先做2—3个真实痛点的 paired eval，保存输入、输出、session trace、版本与估计费率。eval harness 和产品 runtime 共享入口，比较器与 provider 分开。
 5. **云端不可直接照搬：**loopback OAuth、本地 auth.json、process-global websocket cache、无界 FIFO、直接浏览器带 provider key、客户端 identity 兼容头。Pi 的模块分层可以借鉴，这些部署假设需要重新设计。
 

@@ -42,7 +42,7 @@ ToolRegistryService.get(name) ────────────────�
 
 - 本轮用哪个模型行、哪把 Provider 凭据看 `ChatService` 调的 `resolveModel`；多大预算、暴露哪些 Tool 看 `agent-runtime.service.ts` 的 `resolveRunConfiguration`。
 - `ResolvedChatRequestConfig` 携带 `contextWindowTokens`，Runtime 不再穿透 LLM 边界补查 Model Profile。
-- Provider Client 端对已 resolved 值的重校验是确定性 fail-fast，不会产生第二份事实。
+- 模型行的数值约束只在 Admin 写入时由 `assertModelRowValid` 把关；Runtime 与 `@agent/ai` client 不再重校验，不会产生第二份事实。
 - 配置解析时机保持在 userMessage / AgentRun 落库之后：请求级配置错误仍走既有 `failRun` 终态化。
 - policy 在 Run deadline 建立时读取一次（启动期已校验、非抛错），先于可能抛错的请求解析，并作为参数传入 `resolveRunConfiguration`。
 
