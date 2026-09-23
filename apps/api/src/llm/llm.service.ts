@@ -6,11 +6,17 @@ import type {
 } from '@agent/ai'
 import type { LlmFamilyCompat, ReasoningEffort } from '@agent/contracts'
 import type { LlmProviderCredentials } from './llm-model-config.service.js'
-import { LLMApiError, LLMError, OpenAICompatibleClient } from '@agent/ai'
+import { LLMApiError, LLMError, LLMInvalidRequestError, LLMNetworkError, OpenAICompatibleClient } from '@agent/ai'
 import { familyCompatOf } from '@agent/contracts'
 import { Inject, Injectable, Logger } from '@nestjs/common'
 
 import { LLMRuntimeConfigService } from './llm-runtime-config.service.js'
+
+/**
+ * 探活、拉取模型、查余额的整体时间上界。SDK 的 timeout 只管到响应头、按尝试次数叠加，
+ * 对 Retry-After 也不设上限，探活还要读完整条流；一个 signal 把重试、退避与读流一起框住。
+ */
+const METADATA_CALL_TIMEOUT_MS = 30_000
 
 /**
  * LLMService 是业务门面：按调用方给的 Provider 凭据构造 `OpenAICompatibleClient`，
@@ -54,11 +60,25 @@ export class LLMService {
 
   /** Admin「拉取模型」：只取名字，能力字段由人填；中转站返回别的形状时明确报错而不是 500。 */
   async listProviderModelNames(provider: LlmProviderCredentials): Promise<string[]> {
-    const response: unknown = await this.createClient(provider).listModels()
+    const signal = AbortSignal.timeout(METADATA_CALL_TIMEOUT_MS)
+    let response: unknown
+
+    try {
+      response = await this.createClient(provider).listModels({ signal })
+    }
+    catch (error) {
+      // GET /models 回 4xx（404 / 405 / 400 等）多半也是地址没填到 /v1：给同一条提示并带上状态码，
+      // 上游 body 只留在 detail 里。
+      if ((error instanceof LLMApiError || error instanceof LLMInvalidRequestError) && !signal.aborted)
+        throw new LLMApiError(modelsNotListed((error.detail as { status?: unknown } | undefined)?.status), error)
+
+      throw toTimeoutError(error, signal)
+    }
+
     const data = (response as { data?: unknown } | null)?.data
 
     if (!Array.isArray(data))
-      throw new LLMApiError('服务商的 /models 没有返回模型列表，请检查 baseUrl 是否填到 /v1')
+      throw new LLMApiError(modelsNotListed())
 
     return data.flatMap(item => (
       typeof (item as { id?: unknown })?.id === 'string' ? [(item as { id: string }).id] : []
@@ -76,6 +96,8 @@ export class LLMService {
     wireName: string,
     options: ProbeModelOptions = {},
   ): Promise<{ ok: true } | { ok: false, error: string }> {
+    const signal = AbortSignal.timeout(METADATA_CALL_TIMEOUT_MS)
+
     try {
       const events = this.createClient(provider).chatStream(
         [{ type: 'message', role: 'user', content: 'hi' }],
@@ -87,6 +109,7 @@ export class LLMService {
             compat: options.compat ?? familyCompatOf('other'),
             ...(options.reasoningEffort ? { reasoningEffort: options.reasoningEffort } : {}),
           },
+          signal,
         },
       )
 
@@ -97,10 +120,12 @@ export class LLMService {
       return { ok: true }
     }
     catch (error) {
-      if (!(error instanceof LLMError))
-        throw error
+      const failure = toTimeoutError(error, signal)
 
-      return { ok: false, error: error.message }
+      if (!(failure instanceof LLMError))
+        throw failure
+
+      return { ok: false, error: failure.message }
     }
   }
 
@@ -111,14 +136,18 @@ export class LLMService {
   async getProviderBalance(
     provider: LlmProviderCredentials,
   ): Promise<ProviderBalanceResponse | null> {
+    const signal = AbortSignal.timeout(METADATA_CALL_TIMEOUT_MS)
+
     try {
-      return await this.createClient(provider).getUserBalance()
+      return await this.createClient(provider).getUserBalance({ signal })
     }
     catch (error) {
-      if (!(error instanceof LLMError))
-        throw error
+      const failure = toTimeoutError(error, signal)
 
-      this.logger.warn(`余额查询失败：${error.message}`)
+      if (!(failure instanceof LLMError))
+        throw failure
+
+      this.logger.warn(`余额查询失败：${failure.message}`)
 
       return null
     }
@@ -131,4 +160,17 @@ export class LLMService {
       captureModelIO: this.runtimeConfigService.value.captureModelIO,
     })
   }
+}
+
+function modelsNotListed(status?: unknown): string {
+  const code = typeof status === 'number' ? `（HTTP ${status}）` : ''
+
+  return `服务商的 /models 没有返回模型列表${code}，请检查 baseUrl 是否填到 /v1`
+}
+
+/** 30s 上界触发时换成明确的超时原因；其他错误原样返回。 */
+function toTimeoutError(error: unknown, signal: AbortSignal): unknown {
+  return signal.aborted
+    ? new LLMNetworkError(new Error(`请求超时（${METADATA_CALL_TIMEOUT_MS / 1000}s 内未完成）`))
+    : error
 }

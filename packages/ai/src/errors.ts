@@ -10,6 +10,7 @@
  * | 400  | 请求格式错误 |
  * | 401  | API Key 认证失败 |
  * | 402  | 账户余额不足 |
+ * | 403  | API Key 无权访问 |
  * | 422  | 请求参数错误 |
  * | 429  | 请求速率达到上限 |
  * | 500  | 服务器内部错误 |
@@ -36,12 +37,12 @@ export class LLMNetworkError extends LLMError {
   }
 }
 
-/** 401：API Key 无效、过期或未配置 */
+/** 401 / 403：API Key 无效、过期、未配置，或无权使用该模型；文案带实际状态码 */
 export class LLMAuthError extends LLMError {
-  constructor(hint?: string, detail?: unknown) {
-    const base = 'API Key 认证失败（401），请在后台检查该服务商的密钥是否正确且处于启用状态'
+  constructor(statusCode = 401, detail?: unknown) {
+    const desc = statusCode === 403 ? 'API Key 无权访问' : 'API Key 认证失败'
 
-    super(hint ? `${base}。${hint}` : base, detail)
+    super(`${desc}（${statusCode}），请在后台检查该服务商的密钥是否正确、处于启用状态且有权使用该模型`, detail)
     this.name = 'LLMAuthError'
   }
 }

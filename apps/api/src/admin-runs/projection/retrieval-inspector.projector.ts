@@ -100,11 +100,15 @@ export function projectAdminRetrievalInspector(
   }
 }
 
-/** `grounded_finalization` 的 typed timeline 投影：逐字段读取 output；`base` 由调用方的 `knownStepBase()` 算好。 */
+/**
+ * `grounded_finalization` 的 typed timeline 投影：逐字段读取 output；`base` 由调用方的 `knownStepBase()` 算好。
+ * availability 与引用数在 Step 开始时已写进 input，RUNNING 期间 output 还没有，回退读 input。
+ */
 export function projectGroundedFinalizationStep(
   step: AdminRetrievalStepRecord,
   base: AdminRunKnownTimelineItemBase,
 ): AdminGroundedFinalizationStep {
+  const input = readObject(step.input)
   const output = readObject(step.output)
   const attempts = readFinalizationAttempts(step.output)
 
@@ -115,10 +119,11 @@ export function projectGroundedFinalizationStep(
       output,
       'evidenceAvailability',
       MESSAGE_EVIDENCE_AVAILABILITIES,
-    ),
+    ) ?? readAllowedString(input, 'evidenceAvailability', MESSAGE_EVIDENCE_AVAILABILITIES),
     outcome: readAllowedString(output, 'outcome', MESSAGE_GROUNDING_OUTCOMES),
     attemptCount: readNonNegativeInteger(output, 'attemptCount'),
-    registryRefCount: readNonNegativeInteger(output, 'registryRefCount'),
+    registryRefCount: readNonNegativeInteger(output, 'registryRefCount')
+      ?? readNonNegativeInteger(input, 'registryRefCount'),
     registryTruncated: readBoolean(output, 'registryTruncated'),
     eligibleToolCallCount: readNonNegativeInteger(output, 'eligibleToolCallCount'),
     eligibleToolFailureCount: readNonNegativeInteger(output, 'eligibleToolFailureCount'),

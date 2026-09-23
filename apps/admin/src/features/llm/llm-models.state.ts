@@ -60,6 +60,11 @@ export function createLlmModelsState() {
     'providers' | 'models' | 'fetch',
     AbortController | undefined
   >
+  /**
+   * 弹窗测试的代次：每次清空换一代并中止上一代的请求。晚到的旧结果一律丢弃，
+   * 不会串进下一次打开的弹窗，也不会随新建 / 导入写进别的服务商的 lastProbe*。
+   */
+  let testGeneration = new AbortController()
 
   const selectedProvider = computed(
     () => providers.value.find(item => item.id === selectedProviderId.value) ?? null,
@@ -104,6 +109,8 @@ export function createLlmModelsState() {
 
   function clearFetchedModelNames(): void {
     controllers.fetch?.abort()
+    testGeneration.abort()
+    testGeneration = new AbortController()
     fetchedModelNames.value = []
     modelTestResults.value = {}
     testingWireNames.value = new Set()
@@ -130,7 +137,7 @@ export function createLlmModelsState() {
     }
   }
 
-  /** 用表单凭据拉模型名：同一时间只保留最后一次的结果。 */
+  /** 用表单凭据拉模型名：同一时间只保留最后一次的结果；被中止（重新拉取、关弹窗、离开页面）时静默结束。 */
   async function fetchModelNames(input: AdminLlmCredentialsInput): Promise<void> {
     clearFetchedModelNames()
     const controller = new AbortController()
@@ -143,6 +150,10 @@ export function createLlmModelsState() {
       if (!controller.signal.aborted)
         fetchedModelNames.value = response.models
     }
+    catch (error) {
+      if (!controller.signal.aborted)
+        throw error
+    }
     finally {
       if (controllers.fetch === controller)
         fetchingModels.value = false
@@ -151,9 +162,11 @@ export function createLlmModelsState() {
 
   /**
    * 对勾中的模型各发一条最短对话。按服务端上限分批；
-   * 某批请求失败时把该批全部记为失败原因，不让名字停在「测试中」。
+   * 某批请求失败时把这批与还没发的批次都记为失败原因，不让名字停在「测试中」。
+   * 这一代被清空后，剩下的批次不再发，已发出的结果与错误都丢弃。
    */
   async function testModels(input: AdminLlmCredentialsInput, wireNames: string[]): Promise<void> {
+    const generation = testGeneration
     const pending = wireNames.filter(name => !testingWireNames.value.has(name))
 
     if (pending.length === 0)
@@ -162,6 +175,9 @@ export function createLlmModelsState() {
     testingWireNames.value = new Set([...testingWireNames.value, ...pending])
 
     const record = (results: AdminLlmModelTestResult[]) => {
+      if (generation.signal.aborted)
+        return
+
       modelTestResults.value = {
         ...modelTestResults.value,
         ...Object.fromEntries(results.map(result => [result.wireName, result])),
@@ -172,16 +188,19 @@ export function createLlmModelsState() {
       testingWireNames.value = remaining
     }
 
-    for (let start = 0; start < pending.length; start += TEST_BATCH_SIZE) {
+    for (let start = 0; start < pending.length && !generation.signal.aborted; start += TEST_BATCH_SIZE) {
       const batch = pending.slice(start, start + TEST_BATCH_SIZE)
 
       try {
-        record((await testLlmModelNames({ ...input, wireNames: batch })).results)
+        record((await testLlmModelNames({ ...input, wireNames: batch }, { signal: generation.signal })).results)
       }
       catch (error) {
+        if (generation.signal.aborted)
+          return
+
         const message = formatAdminRunError(error)
 
-        record(batch.map(wireName => ({ wireName, ok: false, error: message })))
+        record(pending.slice(start).map(wireName => ({ wireName, ok: false, error: message })))
         throw error
       }
     }
@@ -241,9 +260,18 @@ export function createLlmModelsState() {
       await Promise.all([loadProviders(), loadModels()])
       selectProvider(created.id)
     }),
+    /**
+     * 家族、地址或密钥变了，服务端会改模型行（清不兼容的强度、清探活结论），模型表跟着重载；
+     * 只改备注或启用状态时不动模型表。
+     */
     updateProvider: (providerId: string, input: Partial<AdminLlmProviderInput>) => submit(async () => {
+      const current = providers.value.find(provider => provider.id === providerId)
+      const touchesModels = (input.family !== undefined && input.family !== current?.family)
+        || (input.baseUrl !== undefined && input.baseUrl !== current?.baseUrl)
+        || Boolean(input.apiKey)
+
       await updateLlmProvider(providerId, input)
-      await loadProviders()
+      await (touchesModels ? Promise.all([loadProviders(), loadModels()]) : loadProviders())
     }),
     deleteProvider: (providerId: string) => submit(async () => {
       await deleteLlmProvider(providerId)
@@ -274,6 +302,7 @@ export function createLlmModelsState() {
     cancel: () => {
       for (const controller of Object.values(controllers))
         controller?.abort()
+      clearFetchedModelNames()
     },
   }
 }

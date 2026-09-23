@@ -321,11 +321,12 @@ describe('OpenAICompatibleClient 瞬态失败重试', () => {
     }
   })
 
-  it('400 / 401 / 402 不重试，直接抛对应 LLMError', async () => {
+  it('400 / 401 / 402 / 403 不重试，直接抛对应 LLMError', async () => {
     const cases = [
       { status: 400, error: LLMInvalidRequestError },
       { status: 401, error: LLMAuthError },
       { status: 402, error: LLMBalanceError },
+      { status: 403, error: LLMAuthError },
     ]
 
     for (const { status, error } of cases) {
@@ -341,7 +342,13 @@ describe('OpenAICompatibleClient 瞬态失败重试', () => {
         collectEvents(harness.client.chatStream([
           { type: 'message', role: 'user', content: 'hello' },
         ], { request: DEEPSEEK_REQUEST })),
-        error,
+        (thrown) => {
+          assert.ok(thrown instanceof error)
+          // 认证类文案带实际状态码，403 不能写成 401。
+          if (thrown instanceof LLMAuthError)
+            assert.match(thrown.message, new RegExp(`（${status}）`))
+          return true
+        },
       )
       assert.equal(harness.fetchCalls.length, 1)
     }
@@ -353,6 +360,7 @@ describe('OpenAICompatibleClient 瞬态失败重试', () => {
       { status: 503, error: LLMServerError },
       // 中转站网关故障与 500 / 503 同归服务端错误，不落成协议异常。
       { status: 502, error: LLMServerError },
+      { status: 504, error: LLMServerError },
     ]
 
     for (const { status, error } of cases) {
@@ -502,6 +510,31 @@ describe('OpenAICompatibleClient 瞬态失败重试', () => {
     )
     assert.ok(Date.now() - startedAt < 500, 'abort 被 SDK 退避 sleep 拖住了')
     assert.equal(harness.fetchCalls.length, 1)
+  })
+
+  it('元数据请求的调用方 signal 落在 retry-after 退避期间时立即抛出', async () => {
+    for (const request of ['listModels', 'getUserBalance'] as const) {
+      const abortController = new AbortController()
+      const harness = createFetchHarness([
+        () => {
+          setTimeout(() => abortController.abort(), 20)
+
+          return new Response('{"error":{"message":"busy"}}', {
+            status: 503,
+            headers: { 'retry-after-ms': '1000' },
+          })
+        },
+        () => new Response('{"object":"list","data":[]}', { status: 200 }),
+      ])
+      const startedAt = Date.now()
+
+      await assert.rejects(
+        harness.client[request]({ signal: abortController.signal }),
+        LLMNetworkError,
+      )
+      assert.ok(Date.now() - startedAt < 500, `${request} 被 SDK 退避 sleep 拖住了`)
+      assert.equal(harness.fetchCalls.length, 1)
+    }
   })
 
   it('多轮采样共用同一个 signal 时不在它上面累积 SDK 的 abort 监听', async () => {

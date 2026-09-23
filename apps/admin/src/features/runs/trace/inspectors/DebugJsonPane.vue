@@ -8,6 +8,7 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import VueJsonPretty from 'vue-json-pretty'
 
+import { writeClipboardText } from '../clipboard'
 import 'vue-json-pretty/lib/styles.css'
 
 // vue-json-pretty 的 data prop 类型；捕获值来自后端 JSON 列，运行时必然满足。
@@ -74,7 +75,7 @@ const useVirtual = computed(() => copyText.value.length > 50_000)
 
 async function copyJson() {
   try {
-    await navigator.clipboard.writeText(copyText.value)
+    await writeClipboardText(copyText.value)
     message.success(t('runTrace.inspector.debugCapture.copied'))
   }
   catch {

@@ -101,7 +101,12 @@ watch(
     formState.displayName = props.model.displayName
     formState.contextWindowTokens = props.model.contextWindowTokens
     formState.maxOutputTokens = props.model.maxOutputTokens
-    formState.reasoningEffort = props.model.reasoningEffort ?? ''
+    // 行上的强度可能落后于刚改过的家族：新家族不认就置空，免得整行提交被服务端按家族校验打回。
+    // 家族未知（服务商列表还没回来）时不动，交给服务端校验。
+    formState.reasoningEffort = props.model.reasoningEffort
+      && (props.family === null || reasoningEffortsOf(props.family).includes(props.model.reasoningEffort))
+      ? props.model.reasoningEffort
+      : ''
     formState.visible = props.model.visible
     formState.isDefault = props.model.isDefault
     formState.sortOrder = props.model.sortOrder

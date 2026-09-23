@@ -15,11 +15,10 @@ import { existsSync, readFileSync } from 'node:fs'
 import { createPinia, setActivePinia } from 'pinia'
 
 import { i18n } from '@/i18n'
+import { AdminRunApiError, formatAdminRunError } from '../shared/admin-api'
 import {
-  AdminRunApiError,
   fetchAdminRunDetail,
   fetchAdminRuns,
-  formatAdminRunError,
   serializeAdminRunQuery,
 } from './run-api'
 import { createRunDetailState } from './run-detail.state'

@@ -56,10 +56,13 @@ export function fetchLlmModelNames(
 }
 
 /** 同上凭据，对勾选的模型各发一条最短对话，逐个回报通不通。 */
-export function testLlmModelNames(input: AdminLlmTestModelsRequest): Promise<AdminLlmTestModelsResponse> {
+export function testLlmModelNames(
+  input: AdminLlmTestModelsRequest,
+  options: AdminRunFetchOptions = {},
+): Promise<AdminLlmTestModelsResponse> {
   return requestAdminRun<AdminLlmTestModelsResponse>(
     `${BASE}/providers/test-models`,
-    {},
+    options,
     { method: 'POST', body: input },
   )
 }
