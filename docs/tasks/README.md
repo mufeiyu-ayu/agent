@@ -7,8 +7,8 @@
 ```text
 阶段 1-8：Completed
 当前阶段：本项目源码阅读（工作台第 0 档）
-Active Agent Task：无
-Next：2026-09-23 审查拆出的 #154–#158 均为 Planned，建议顺序见看板
+Active Agent Task：#155 前台流式渲染与模型自恢复（已实现 / 待验收）
+Next：2026-09-23 审查拆出的 #154、#156–#158 均为 Planned，建议顺序见看板
 Gated：#117 Responses API adapter（2026-09-18）、web_fetch（2026-09-19），触发条件见看板
 产品方向：内部数据工作台（2026-09-20 定案，docs/research/workbench-direction.md），未立 Issue；档、顺序与触发只在其第 7 节
 候选子系统：session 事件流与 replay、审批门、compaction、定时任务（未立 Issue，各自的档见 workbench 第 7 节）
@@ -41,7 +41,7 @@ Admin Task 4：Planned
 | #153 管理台概览与运行列表重构（健康 / 延迟 / 用量 / 工具） | Completed | 实施状态：已实现 / 验收状态：已通过。PR #160 代码 head `4e54a72` 的 AC-01～AC-08 于 2026-09-23 逐条 PASS（PR 验收评论为证据）：概览接口改 SQL 聚合，只取必要 JSON 路径（健康：状态 / 成功率 / 按 errorCode 的失败原因；延迟：Run 时长 p50 / p95；用量：totalTokens 含 finalization attempts、缓存命中率与覆盖率；按 modelId 的模型行由服务端关联显示名；工具健康，不在清单的名字并为 unknown_tool）；模型调用口径（有 usage 或 llm_* 失败）在列表 / 详情 / 概览同源；运行列表加模型 / 失败原因列与 errorCode 筛选，概览失败原因可下钻；概览不再请求模型目录，余额中止竞态修复；`@agent/ai` grok outputTokens 归一为 completion + reasoning。验证：dev 库 30d 概览 = 模型表 = 列表 = 159,305；事务内构造数据验证后回滚；Playwright 验证模型目录 500、连续刷新余额与 1440px 布局；typecheck、api / admin / ai lint、`test:admin` 74、`@agent/admin test`、`@agent/ai` 55、`test:model-stream` 94、`test:grounding` 156、`test:agent-recorder` 21。`/code-review high` 两轮 18 条修 11 条。限制：24h 下钻按天筛会多出起点当天更早的 Run；中途中断且无 usage 的调用不计入；两个 Step 之间中断时列表无失败文案。学习环节待做 |
 | #152 Run 轨迹补齐模型可见内容 | Completed | 实施状态：已实现 / 验收状态：已通过。PR #161 代码 head `c75119e` 的 AC-01～AC-07 于 2026-09-23 逐条 PASS（PR 验收评论为证据）：tool Step 收口时与 output 同一事务落回喂参数（`toFeedbackArgumentsJson` 只算一次，同一字符串进 ModelContext）与 observation，未收口的 Step 两者都不写；采样 Step 落 Tool Call 轮 `intermediateText` / 非空 `reasoningContent`，`contextPlan` 加 `historyIncludedCount` / `observationPreviewChars`；finalization 落提示词三个标量；落库副本把 U+0000 与孤立代理项换成 U+FFFD；Admin Run Trace 纯文本展示（observation / reasoning 默认折叠），Retrieval 查询改读参数，「候选历史条数」标签。验证：`pnpm typecheck`、api / admin lint、`test:model-stream` 103、`test:context` 28、`test:grounding` 157、`test:admin` 75、`test:agent-recorder` 22、`test:tools` 80、`test:grounding-db` 15（补齐漏掉的 4 条 migration）、admin `test`、admin e2e 13；本机真实 DeepSeek 对话核对落库与 Admin 渲染。`/code-review xhigh` 两轮 25 条修 19 条。与 Issue 差异：reasoningContent 按「Tool Call 轮且非空」写，不按 compat。已知偏差写进根 `AGENTS.md` 第 6 节（历史只落条数、finalization 证据清单与草稿不落库）。学习环节待做 |
 | #154 管理台模型接入页与小修 | Planned | 2026-09-23 审查拆出。实施状态：未开始 / 验收状态：未验收。家族变更刷新、测试结果串味、预算校验对齐、探活超时、32 个孤儿 key；可与 #153 并行 |
-| #155 前台流式渲染与模型自恢复 | Planned | 2026-09-23 审查拆出。实施状态：未开始 / 验收状态：未验收。H2 闪烁、补齐越界、模型失效自恢复、外链图片、按帧合并 delta |
+| #155 前台流式渲染与模型自恢复 | Active | 2026-09-23 审查拆出。实施状态：已实现 / 验收状态：待验收。分支 `claude/issue-155-web-streaming-fixes`：H2 闪烁、补齐越界、尾块不走缓存、模型失效自恢复与强度默认不发送、图片渲染成链接、delta 按帧合并 + 轮次 v-memo、i18n localStorage 保护、失败不置顶、死代码与孤儿 key、e2e 默认端口 5176。验证：web typecheck / lint / test 81 / build，不设 `E2E_PORT` 的 e2e 28 / 28；`/code-review high` 三轮 26 条修 13 条 |
 | #156 低成本安全加固 | Planned | 2026-09-23 审查拆出。实施状态：未开始 / 验收状态：未验收。库内密钥绑定库内地址、不回显上游 body、API 只监听本机、5432 绑本机；不做鉴权（第 3 档）；约半天，随时可做 |
 | #158 运行时小修 | Planned | 2026-09-23 审查拆出。实施状态：未开始 / 验收状态：未验收。证据口径、中间文本分隔、裁剪按问答对齐、测试脚本与注释漂移；与 #152 都改 runtime，后合并者 rebase |
 | #157 真实 Tool Call 流 fixture | Planned | 2026-09-23 审查拆出。实施状态：未开始 / 验收状态：未验收。用户认为现在做拖进度，优先级最低 |

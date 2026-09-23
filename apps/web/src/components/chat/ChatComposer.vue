@@ -31,6 +31,10 @@ const props = defineProps<{
   models: LlmModelOption[]
   selectedModel: string | null
   selectedReasoningEffort: ReasoningEffort | null
+  /** 模型列表读取失败时的提示，显示在选择器旁。 */
+  modelError: string
+  /** 原选中模型失效被自动替换后的提示。 */
+  modelNotice: string
   status: GenerationStatus
   messageCharacterCount: number
   hero?: boolean
@@ -40,6 +44,7 @@ const emit = defineEmits<{
   'update:message': [value: string]
   'update:selectedModel': [value: string]
   'update:selectedReasoningEffort': [value: ReasoningEffort | null]
+  'refreshModels': []
   'send': []
   'reset': []
   'stop': []
@@ -66,9 +71,18 @@ const selectedModelLabel = computed(() => {
 /** 该家族可选的强度；为空的模型不显示、请求也不带。null 项表示用模型行默认。 */
 const effortOptions = computed(() => selectedModelOption.value?.reasoningEffortOptions ?? [])
 const showReasoningEffort = computed(() => effortOptions.value.length > 0)
+/** 没有显式选择时不发送强度，展示模型行当前的默认值。 */
+const effectiveReasoningEffort = computed(() => props.selectedReasoningEffort ?? selectedModelOption.value?.reasoningEffort ?? null)
 
+/** null 项标出模型行当前的默认值，与触发器上显示的实际强度对得上。 */
 function effortLabel(effort: ReasoningEffort | null): string {
-  return effort ? t(`composer.reasoningEffort.${effort}`) : t('composer.reasoningEffortDefault')
+  if (effort)
+    return t(`composer.reasoningEffort.${effort}`)
+
+  const modelDefault = selectedModelOption.value?.reasoningEffort
+  return modelDefault
+    ? t('composer.reasoningEffortDefaultWith', { effort: t(`composer.reasoningEffort.${modelDefault}`) })
+    : t('composer.reasoningEffortDefault')
 }
 
 const isGenerationInProgress = computed(() => {
@@ -112,6 +126,12 @@ function selectModel(id: string) {
   emit('update:selectedModel', id)
 }
 
+/** 管理台可能刚隐藏 / 删除了模型或改了默认强度：每次打开下拉都重新拉取。 */
+function handleModelMenuOpen(open: boolean) {
+  if (open)
+    emit('refreshModels')
+}
+
 function selectReasoningEffort(effort: ReasoningEffort | null) {
   emit('update:selectedReasoningEffort', effort)
 }
@@ -139,15 +159,15 @@ function selectReasoningEffort(effort: ReasoningEffort | null) {
         />
 
         <div class="flex flex-wrap items-center justify-between gap-2 px-1 pb-0.5 pt-1">
-          <div class="flex min-w-0 items-center">
-            <DropdownMenuRoot>
+          <div class="flex min-w-0 flex-wrap items-center gap-x-1">
+            <DropdownMenuRoot @update:open="handleModelMenuOpen">
               <DropdownMenuTrigger
                 type="button"
                 :aria-label="t('composer.modelSelectAria')"
                 class="inline-flex h-8 min-w-0 items-center gap-1.5 rounded-lg px-2 text-[13px] font-medium text-agent-ink-soft transition hover:bg-agent-surface-sunken/55 hover:text-agent-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-agent-focus/40 data-[state=open]:bg-agent-surface-sunken/55 data-[state=open]:text-agent-ink"
               >
                 <span class="truncate">{{ selectedModelLabel }}</span>
-                <span v-if="showReasoningEffort" class="shrink-0 text-agent-ink-muted">{{ effortLabel(selectedReasoningEffort) }}</span>
+                <span v-if="showReasoningEffort" class="shrink-0 text-agent-ink-muted">{{ effortLabel(effectiveReasoningEffort) }}</span>
                 <AppIcon name="tabler:chevron-down" :size="14" class="shrink-0 text-agent-ink-muted" />
               </DropdownMenuTrigger>
 
@@ -182,7 +202,7 @@ function selectReasoningEffort(effort: ReasoningEffort | null) {
                     >
                       <span>{{ t('composer.reasoningEffortLabel') }}</span>
                       <span class="flex shrink-0 items-center gap-1 text-agent-ink-muted">
-                        {{ effortLabel(selectedReasoningEffort) }}
+                        {{ effortLabel(effectiveReasoningEffort) }}
                         <AppIcon name="tabler:chevron-right" :size="14" />
                       </span>
                     </DropdownMenuSubTrigger>
@@ -212,6 +232,15 @@ function selectReasoningEffort(effort: ReasoningEffort | null) {
                 </DropdownMenuContent>
               </DropdownMenuPortal>
             </DropdownMenuRoot>
+
+            <p
+              v-if="modelError || modelNotice"
+              role="status"
+              class="min-w-0 px-2 text-xs leading-5"
+              :class="modelError ? 'text-agent-copper' : 'text-agent-ink-muted'"
+            >
+              {{ modelError || modelNotice }}
+            </p>
           </div>
 
           <div class="flex shrink-0 items-center justify-end gap-1">

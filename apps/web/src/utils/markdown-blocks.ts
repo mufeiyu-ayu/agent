@@ -41,6 +41,26 @@ markdown.renderer.rules.link_open = (tokens, index, options, _env, renderer) => 
   tokens[index].attrSet('rel', 'noreferrer noopener')
   return renderer.renderToken(tokens, index, options)
 }
+/**
+ * 模型输出不可信：`<img>` 会让浏览器立即请求任意地址（可把对话内容拼进 URL 外带），
+ * 图片一律渲染成链接，文字取 alt。已在链接里的图片只留文字，避免 `<a>` 嵌套。
+ */
+markdown.renderer.rules.image = (tokens, index, options, env, renderer) => {
+  const token = tokens[index]
+  const alt = markdown.utils.escapeHtml(renderer.renderInlineAsText(token.children ?? [], options, env))
+  const src = markdown.utils.escapeHtml(token.attrGet('src') ?? '')
+  // 链接不能嵌套：往前遇到的第一个链接标记是 open 就说明在链接里。
+  for (let i = index - 1; i >= 0; i--) {
+    if (tokens[i].type === 'link_close')
+      break
+    if (tokens[i].type === 'link_open')
+      return alt || src
+  }
+  // 空地址的 `<a href="">` 会在新标签页打开当前页，只留文字。
+  if (!src)
+    return alt
+  return `<a href="${src}" target="_blank" rel="noreferrer noopener">${alt || src}</a>`
+}
 
 interface Segment {
   /** 顶层 open 到对应 close 的整组 token；nesting 为 0 的顶层 token 单独成组。 */
@@ -87,6 +107,17 @@ function isCodeSegment(segment: Segment) {
 }
 
 /**
+ * 文末一行只有 `-` / `=`（可带引用符与缩进）且尾块里有 setext 标题止于这一行：段落下一行刚写出 `-`，
+ * 会先被解析成标题，而它还可能长成列表项（`1. 第一点：\n   - 子项`）或正文。
+ */
+function endsWithPendingSetextUnderline(segment: Segment, lines: string[]) {
+  return /^[ \t>]*(?:-+|=+)[ \t]*$/.test(lines.at(-1) ?? '')
+    && segment.tokens.some(token => token.type === 'heading_open'
+      && (token.markup === '-' || token.markup === '=')
+      && token.map?.[1] === lines.length)
+}
+
+/**
  * 只将顶层围栏变成独立卡片。列表、引用等嵌套结构整组交给 markdown-it，
  * 不切断其 HTML 层级；全篇共享同一次解析的 env，保留跨块 reference links。
  *
@@ -105,7 +136,12 @@ export function renderMarkdownBlocks(
     if (tail && tail.map && !isCodeSegment(tail)) {
       const [start, end] = tail.map
       const tailSource = document.lines.slice(start, end).join('\n')
-      const completed = completeStreamingMarkdown(tailSource)
+      // 「要点如下：\n-」先按 H2 渲染、下一字符到达后又变回段落加列表：下划线在文末时先不显示。
+      // 其后已有换行说明这一行已经写完，是真的 setext 标题，照常渲染。
+      const settledSource = endsWithPendingSetextUnderline(tail, document.lines)
+        ? document.lines.slice(start, end - 1).join('\n')
+        : tailSource
+      const completed = completeStreamingMarkdown(settledSource)
       // 补齐只改尾块末尾，前面的块不受影响：沿用同一个 env 只重解析尾块及其后的行
       // （reference 定义、空行不产生 token，但必须保留），不再解析全文第二次。
       if (completed !== tailSource) {
@@ -129,7 +165,7 @@ export function renderMarkdownBlocks(
   const html = new Map<string, string>()
   const blocks: ParsedContentBlock[] = []
 
-  for (const segment of segments) {
+  for (const [index, segment] of segments.entries()) {
     const token = segment.tokens[0]
 
     if (token.type === 'fence' && segment.map) {
@@ -146,7 +182,8 @@ export function renderMarkdownBlocks(
       continue
     }
 
-    const key = segment.map ? lines.slice(segment.map[0], segment.map[1]).join('\n') : null
+    // 最后一块的解析结果依赖是否到达文末（嵌套未闭合围栏的内容带不带尾换行），源码相同也不能复用。
+    const key = segment.map && index < segments.length - 1 ? lines.slice(segment.map[0], segment.map[1]).join('\n') : null
     let rendered = key === null ? undefined : (html.get(key) ?? previous?.get(key))
     if (rendered === undefined)
       rendered = markdown.renderer.render(segment.tokens, markdown.options, env)

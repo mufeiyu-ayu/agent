@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { AgentNavigationItem, AgentPlatformUser } from '../types/agent-platform'
 
-import { computed } from 'vue'
+import { computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import workspaceBgOliveEmberDeepUrl from '../assets/bg-olive.webp'
@@ -54,6 +54,10 @@ const {
   balanceAvailable,
   balanceHidden,
   balanceStatus,
+  modelError,
+  modelNotice,
+  loadModels,
+  dismissModelNotice,
   refreshBalance,
 } = useLlmRuntime()
 
@@ -78,7 +82,13 @@ const {
   sendMessage,
   stopGeneration,
   hideMessage,
-} = useChatWorkspace()
+} = useChatWorkspace({ onModelUnavailable: loadModels })
+
+// 请求真正发出（未被节流 / 生成中拦下）才算用户已经看到模型替换提示。
+watch(status, (next) => {
+  if (next === 'thinking')
+    dismissModelNotice()
+})
 
 const showConversationEmptyState = computed(() => {
   return !activeConversationId.value && conversationTurns.value.length === 0 && !isLoadingMessages.value
@@ -158,8 +168,11 @@ function send() {
             class="mt-8"
             :has-conversation="false"
             :models="models"
+            :model-error="modelError"
+            :model-notice="modelNotice"
             :status="status"
             :message-character-count="messageCharacterCount"
+            @refresh-models="loadModels"
             @send="send"
             @stop="stopGeneration"
             @reset="resetWorkspace"
@@ -194,8 +207,11 @@ function send() {
           v-model:selected-reasoning-effort="selectedReasoningEffort"
           :has-conversation="conversationTurns.length > 0"
           :models="models"
+          :model-error="modelError"
+          :model-notice="modelNotice"
           :status="status"
           :message-character-count="messageCharacterCount"
+          @refresh-models="loadModels"
           @send="send"
           @stop="stopGeneration"
           @reset="resetWorkspace"

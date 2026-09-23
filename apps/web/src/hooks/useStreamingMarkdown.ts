@@ -15,8 +15,8 @@ const MAX_COMMIT_INTERVAL_MS = 120
 const COMMIT_BUDGET_RATIO = 4
 
 /**
- * 对照 AI SDK `smoothStream` 与 Streamdown：网络 delta 原样进消息状态，只在渲染这一层
- * 按帧平滑放出并按顶层块记忆化。已挂载时存在的正文直接显示，只有之后追加的内容做动画。
+ * 对照 AI SDK `smoothStream` 与 Streamdown：网络 delta 由 useChatWorkspace 按帧合并后写入消息状态，
+ * 这一层再平滑放出并按顶层块记忆化。已挂载时存在的正文直接显示，只有之后追加的内容做动画。
  */
 export function useStreamingMarkdown(source: () => string, isStreaming: () => boolean) {
   const blocks = shallowRef<ParsedContentBlock[]>([])

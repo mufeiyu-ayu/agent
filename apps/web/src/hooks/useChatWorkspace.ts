@@ -17,7 +17,7 @@ import { isAxiosError } from 'axios'
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-import { streamChat } from '../api/chat'
+import { ChatStreamHttpError, streamChat } from '../api/chat'
 import {
   createConversation,
   deleteConversation,
@@ -42,7 +42,12 @@ const ERROR_MESSAGE_TIMEOUT_MS = 6400
 const CONVERSATION_PAGE_SIZE = 20
 const CONVERSATION_TITLE_MAX_LENGTH = 28
 
-export function useChatWorkspace() {
+interface UseChatWorkspaceOptions {
+  /** 发送因模型行不可用被拒（HTTP 400）：由调用方重新拉取模型列表并纠正选中项。 */
+  onModelUnavailable?: () => void
+}
+
+export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
   const { t } = useI18n()
   const message = ref('')
   const status = ref<GenerationStatus>('empty')
@@ -73,6 +78,13 @@ export function useChatWorkspace() {
   let activeStreamConversationId: string | null = null
   let activeStreamAssistantMessageId: string | null = null
   let isUnmounted = false
+  // 同一帧内到达的 delta 先拼在一起，下一帧一次写入：每次写入都会复制消息数组、重算全部轮次。
+  let pendingDelta: {
+    conversationId: string
+    assistantMessageId: string
+    content: string
+  } | null = null
+  let deltaFrame: number | undefined
   // start 事件前 abort 的占位消息：同一次请求只允许创建一条（stopGeneration
   // 与 catch 的 abort 分支会先后进入 markGenerationAborted）；若排队中的
   // start 事件随后到达，真实助手消息会取代它，占位必须移除。
@@ -124,6 +136,9 @@ export function useChatWorkspace() {
     // abort 之后才落地的异步续体再更新状态或重建定时器。
     isUnmounted = true
     activeAbortController?.abort()
+
+    if (deltaFrame !== undefined)
+      cancelAnimationFrame(deltaFrame)
 
     if (messageTimer !== undefined)
       window.clearTimeout(messageTimer)
@@ -275,6 +290,15 @@ export function useChatWorkspace() {
         if (event.conversationId !== targetConversationId)
           continue
 
+        if (event.type === 'delta') {
+          handleStreamDeltaEvent(event)
+          status.value = 'generating'
+          continue
+        }
+
+        // 终态与 start 之前先写入攒着的 delta，保证它们看到的是完整正文。
+        flushPendingDelta()
+
         if (event.type === 'start') {
           assistantMessageId = event.assistantMessageId
           activeStreamAssistantMessageId = event.assistantMessageId
@@ -284,12 +308,8 @@ export function useChatWorkspace() {
           handleStreamStartEvent(event, pendingMessage)
           message.value = ''
           status.value = 'generating'
-          continue
-        }
-
-        if (event.type === 'delta') {
-          handleStreamDeltaEvent(event)
-          status.value = 'generating'
+          // 后端写入用户消息后会话 updatedAt 才变；在此之前失败的请求不改侧栏顺序。
+          touchConversation(event.conversationId)
           continue
         }
 
@@ -311,7 +331,6 @@ export function useChatWorkspace() {
           clearActiveStreamState(streamRequestId)
           setStatusAfterStreamError(event.conversationId)
           showMessage(event.message, 'error')
-          touchConversation(event.conversationId)
           continue
         }
 
@@ -320,7 +339,6 @@ export function useChatWorkspace() {
         activeTurnId = null
         clearActiveStreamState(streamRequestId)
         setStatusAfterStreamCompletion(event.conversationId, 'aborted')
-        touchConversation(event.conversationId)
       }
 
       if (!hasFinalStreamEvent) {
@@ -332,6 +350,8 @@ export function useChatWorkspace() {
       if (isUnmounted)
         return
 
+      flushPendingDelta()
+
       // done/error/aborted 已处理完终态：EOF 前的尾部异常（连接重置、
       // 结尾残行解析失败）不能把已完成的回答翻成 FAILED。
       if (hasFinalStreamEvent)
@@ -339,12 +359,13 @@ export function useChatWorkspace() {
 
       if (isAbortError(error)) {
         markGenerationAborted(targetConversationId, assistantMessageId, streamRequestId)
-        if (targetConversationId)
-          touchConversation(targetConversationId)
         return
       }
 
       const nextErrorMessage = getRequestErrorMessage(error)
+
+      if (error instanceof ChatStreamHttpError && error.isModelUnavailable)
+        options.onModelUnavailable?.()
 
       errorMessage.value = nextErrorMessage
 
@@ -364,7 +385,6 @@ export function useChatWorkspace() {
 
       if (failedConversationId) {
         setStatusAfterStreamError(failedConversationId)
-        touchConversation(failedConversationId)
         return
       }
 
@@ -381,6 +401,7 @@ export function useChatWorkspace() {
     const assistantMessageId = activeStreamAssistantMessageId
 
     activeAbortController?.abort()
+    flushPendingDelta()
     markGenerationAborted(conversationId, assistantMessageId, streamRequestId)
   }
 
@@ -406,7 +427,7 @@ export function useChatWorkspace() {
   }
 
   /**
-   * 一轮结束后只把会话提到侧栏顶部：后端每写一条消息只更新 conversation.updatedAt，
+   * 收到 start / done 后只把会话提到侧栏顶部：后端每写一条消息只更新 conversation.updatedAt，
    * 标题不会变，列表按 updatedAt 排序，本地改时间戳即可，不再整页重拉列表。
    */
   function touchConversation(conversationId: string) {
@@ -535,12 +556,47 @@ export function useChatWorkspace() {
   }
 
   function handleStreamDeltaEvent(event: Extract<ChatStreamEvent, { type: 'delta' }>) {
+    if (pendingDelta && (
+      pendingDelta.conversationId !== event.conversationId
+      || pendingDelta.assistantMessageId !== event.assistantMessageId
+    )) {
+      flushPendingDelta()
+    }
+
+    if (pendingDelta) {
+      pendingDelta.content += event.contentDelta
+    }
+    else {
+      pendingDelta = {
+        conversationId: event.conversationId,
+        assistantMessageId: event.assistantMessageId,
+        content: event.contentDelta,
+      }
+    }
+
+    // 后台标签页不派发 rAF：攒到回前台的下一帧或终态事件时再写入，期间页面本来也不可见。
+    deltaFrame ??= requestAnimationFrame(flushPendingDelta)
+  }
+
+  function flushPendingDelta() {
+    if (deltaFrame !== undefined) {
+      cancelAnimationFrame(deltaFrame)
+      deltaFrame = undefined
+    }
+
+    const delta = pendingDelta
+
+    if (!delta)
+      return
+
+    pendingDelta = null
+
     const hasUpdatedMessage = updateMessageById(
-      event.conversationId,
-      event.assistantMessageId,
+      delta.conversationId,
+      delta.assistantMessageId,
       currentMessage => ({
         ...currentMessage,
-        content: `${currentMessage.content}${event.contentDelta}`,
+        content: `${currentMessage.content}${delta.content}`,
         status: 'STREAMING',
         updatedAt: createMessageTimestamp(),
       }),
@@ -548,8 +604,8 @@ export function useChatWorkspace() {
 
     if (!hasUpdatedMessage) {
       upsertMessageInConversation({
-        ...createStreamingAssistantMessage(event.conversationId, event.assistantMessageId),
-        content: event.contentDelta,
+        ...createStreamingAssistantMessage(delta.conversationId, delta.assistantMessageId),
+        content: delta.content,
       })
     }
   }
@@ -743,7 +799,8 @@ export function useChatWorkspace() {
     const nextMessages = [...currentMessages]
 
     nextMessages[messageIndex] = updater(currentMessages[messageIndex])
-    setMessagesForConversation(conversationId, nextMessages)
+    // 原地更新不改 createdAt，顺序不变，不用重新排序。
+    setMessagesForConversation(conversationId, nextMessages, { sort: false })
 
     return true
   }
@@ -758,8 +815,9 @@ export function useChatWorkspace() {
   function setMessagesForConversation(
     conversationId: string,
     nextMessages: ConversationMessage[],
+    { sort = true }: { sort?: boolean } = {},
   ) {
-    const sortedMessages = [...nextMessages].sort(compareMessagesByCreatedAt)
+    const sortedMessages = sort ? [...nextMessages].sort(compareMessagesByCreatedAt) : nextMessages
 
     conversationMessagesVersion.set(
       conversationId,
