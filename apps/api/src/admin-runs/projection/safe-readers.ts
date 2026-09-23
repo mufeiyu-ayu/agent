@@ -16,6 +16,15 @@ export function readString(
     : null
 }
 
+/** 原样读取正文类字符串（参数、observation、模型文本）：不折叠空白、不截断，展示端按纯文本渲染。 */
+export function readText(
+  object: Record<string, unknown> | null,
+  key: string,
+): string | null {
+  const value = object?.[key]
+  return typeof value === 'string' ? value : null
+}
+
 export function readNonNegativeInteger(
   object: Record<string, unknown> | null,
   key: string,

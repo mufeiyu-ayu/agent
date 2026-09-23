@@ -81,6 +81,10 @@ const MIGRATIONS = [
   '20260717160000_add_agent_step_sequence',
   '20260814090000_add_article_embedding_index',
   '20260815160000_add_message_grounding',
+  '20260920160000_llm_model_config',
+  '20260920200000_llm_model_drop_reasoning',
+  '20260920210000_llm_model_reasoning_effort',
+  '20260923120000_agent_run_error_code',
 ]
 
 const require = createRequire(import.meta.url)
@@ -656,10 +660,19 @@ describe('Grounded Answer PostgreSQL integration', { concurrency: 1 }, () => {
     assert.equal(inspector.citations![0]!.sourceId, 301)
     assert.deepEqual(inspector.citations![0]!.matchedCallIds, ['call-1'])
 
-    const serialized = JSON.stringify(detail)
+    // 真实 Postgres 往返后：参数与 observation 在 tool Step 收口时写入，Admin 原样投影，查询取自参数。
+    assert.ok(toolItem?.kind === 'known' && toolItem.type === 'tool_execution')
+    assert.equal(toolItem.arguments, '{"query":"SEO 是什么","limit":2}')
+    assert.match(toolItem.observation ?? '', /Sitemap 帮助搜索引擎发现页面。/)
+    assert.equal(call.query, 'SEO 是什么')
+
+    // 回喂给模型的正文只出现在 tool Step 的 observation；草稿、citationKey 等仍不进 Admin 响应。
+    const serialized = JSON.stringify({
+      ...detail,
+      timeline: detail.timeline.map(item => item.id === toolItem.id ? { ...item, observation: null } : item),
+    })
 
     assert.doesNotMatch(serialized, /内部草稿|evk_|SELECT|embedding|excerpt/)
-    // Observation 正文与候选摘要都留在 Step output 里，不进入 Admin 响应。
     assert.doesNotMatch(serialized, /Sitemap 帮助搜索引擎发现页面。/)
   })
 
@@ -770,7 +783,8 @@ describe('Grounded Answer PostgreSQL integration', { concurrency: 1 }, () => {
       step => step.type === 'grounded_finalization',
     )!
 
-    // #126 之前落库的 finalization output 带有已停写字段：projector 忽略它们。
+    // #126 之前落库的 finalization output 带有已停写字段：registryTruncated / eligible* 与 #152 起
+    // 写入的是同一组提示词标量，照读；其余停写字段忽略。
     await prisma.agentStep.update({
       where: { id: finalizationStep.id },
       data: {
@@ -793,7 +807,8 @@ describe('Grounded Answer PostgreSQL integration', { concurrency: 1 }, () => {
 
     assert.ok(finalizationItem?.kind === 'known' && finalizationItem.type === 'grounded_finalization')
     assert.equal(finalizationItem.outcome, 'answered')
-    assert.doesNotMatch(JSON.stringify(detail), /eligibleToolCallCount|citationIntegrity/)
+    assert.equal(finalizationItem.eligibleToolCallCount, 99)
+    assert.doesNotMatch(JSON.stringify(detail), /citationIntegrity|faithfulnessStatus|schemaVersion/)
   })
 
   it('Admin Run Detail 把失败 Tool Step 上的 toolSummary 原样投影，但 Citation 关联只看引用身份', async () => {

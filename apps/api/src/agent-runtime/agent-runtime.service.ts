@@ -73,7 +73,7 @@ import {
 import { AgentRuntimePolicyService } from './configuration/agent-runtime.policy.js'
 import { DeepSeekV4TokenEstimator } from './context/deepseek-v4-token-estimator.js'
 import { summarizeInitialContext } from './context/initial-context.js'
-import { ModelContext } from './context/model-context.js'
+import { ModelContext, toFeedbackArgumentsJson } from './context/model-context.js'
 import {
   SamplingContextBudgetExceededError,
   SamplingContextPlanner,
@@ -235,8 +235,8 @@ export class AgentRuntimeService {
         loadHistoryStep.id,
         databaseDeadline,
         {
-          // 只记本次读入 ModelContext 的历史条数，供 Admin 时间线展示；
-          // 预算裁剪发生在首轮 plan()，体现在 sampling Step 的 contextPlan。
+          // 候选历史条数：本次读入 ModelContext、尚未按预算裁剪的条数；
+          // 每轮实际选入几条由该轮 plan() 决定，记在对应 sampling Step 的 contextPlan.historyIncludedCount。
           output: {
             messageCount: historyCandidates.length,
           },
@@ -323,8 +323,8 @@ export class AgentRuntimeService {
         }
         // 模型流完整结束后的业务决策：final_answer 或 tool_call。
         let samplingDecision: SamplingDecision
-        // 模型流已正常收完时的统计；后续 Step 落库失败时仍可用于收口。
-        let completedSamplingSummary: ModelSamplingSummary | undefined
+        // 模型流已正常收完时的决策；后续 Step 落库失败时仍可用于收口，统计与回填内容都已完整成立。
+        let completedSamplingDecision: SamplingDecision | undefined
         // Context Planner 已产生的预算、历史排除和 Observation 截断统计。
         let contextPlanSummary: SamplingContextPlanSummary | undefined
         // Grounding Session 建立后本轮暂存的文本；流结束前不知道它是草稿还是 Tool Call 前的中间文本。
@@ -421,18 +421,21 @@ export class AgentRuntimeService {
             samplingResult = await sampling.next()
           }
           samplingDecision = samplingResult.value
-          completedSamplingSummary = samplingDecision.summary
+          completedSamplingDecision = samplingDecision
 
           runCancellation.throwIfUnavailable()
           await this.agentRunRecorderService.completeStep(
             samplingStep.id,
             databaseDeadline,
             {
-              output: this.toSamplingStepOutput(
-                samplingDecision.summary,
-                contextPlanSummary,
-                debugModelIO,
-              ),
+              output: {
+                ...this.toSamplingStepOutput(
+                  samplingDecision.summary,
+                  contextPlanSummary,
+                  debugModelIO,
+                ),
+                ...toPersistedSamplingContent(samplingDecision),
+              },
             },
           )
           activeSamplingClose = undefined
@@ -454,12 +457,15 @@ export class AgentRuntimeService {
             id: samplingStep.id,
             errorMessage: samplingFailure.message,
             output: {
-              ...(completedSamplingSummary
-                ? this.toSamplingStepOutput(
-                    completedSamplingSummary,
-                    contextPlanSummary,
-                    debugModelIO,
-                  )
+              ...(completedSamplingDecision
+                ? {
+                    ...this.toSamplingStepOutput(
+                      completedSamplingDecision.summary,
+                      contextPlanSummary,
+                      debugModelIO,
+                    ),
+                    ...toPersistedSamplingContent(completedSamplingDecision),
+                  }
                 : this.toFailedSamplingStepOutput(
                     error,
                     contextPlanSummary,
@@ -503,7 +509,7 @@ export class AgentRuntimeService {
         const toolResults: Array<{
           observation: NormalizedToolObservation
           ok: boolean
-          argumentsValidated: boolean
+          feedbackArgumentsJson: string
         }> = []
 
         // 顺序执行，每个 call 一个 tool_execution Step；当前工具只读，并行没有收益。
@@ -511,14 +517,15 @@ export class AgentRuntimeService {
           const toolDefinition = toolDefinitions.find(
             definition => definition.name === call.toolName,
           )
+          const toolStepInput = {
+            callId: call.callId,
+            toolName: call.toolName,
+            samplingAttemptId,
+          }
           const toolStep = await this.agentRunRecorderService.startStep({
             runId: currentAgentRunId,
             type: AGENT_STEP_TYPES.toolExecution,
-            input: {
-              callId: call.callId,
-              toolName: call.toolName,
-              samplingAttemptId,
-            },
+            input: toolStepInput,
           }, databaseDeadline)
           let toolResult: ToolResult
 
@@ -570,20 +577,42 @@ export class AgentRuntimeService {
           const toolSummary = toolResult.ok
             ? normalizeToolStepSummary(toolResult.stepSummary)
             : undefined
-          const toolStepOutput = {
-            ok: toolResult.ok,
-            ...(toolResult.ok ? {} : { code: toolResult.code }),
-            ...(toolSummary ? { toolSummary } : {}),
-            originalChars: observation.originalChars,
-            observationChars: observation.observationChars,
-            truncated: observation.truncated,
+          // 只有 ToolInvocationService 经 input.parse 校验后执行的调用，参数才可信；
+          // 这三个 code 都发生在校验之前或根本没有校验。execution_failed 也可能来自
+          // policy 拒绝（parse 前），当前 allowlist 工具都通过 policy，该分支不可达。
+          const argumentsValidated = toolResult.ok
+            || (toolResult.code !== 'truncated_arguments'
+              && toolResult.code !== 'unknown_tool'
+              && toolResult.code !== 'invalid_arguments')
+          // 回喂给模型的参数表示只算这一次：同一个字符串既落库，也进下一轮的 ModelContext。
+          const feedbackArgumentsJson = toFeedbackArgumentsJson(
+            call.rawArgumentsJson,
+            argumentsValidated,
+          )
+          // 它要等执行结果出来才知道（是否经过校验），所以与 output 在收口时同一事务写入；
+          // 停止、deadline 或工具抛错时 Step 未收口，不带参数与 observation。
+          const toolStepClose = {
+            input: {
+              ...toolStepInput,
+              arguments: toPersistableText(feedbackArgumentsJson),
+            },
+            output: {
+              ok: toolResult.ok,
+              ...(toolResult.ok ? {} : { code: toolResult.code }),
+              ...(toolSummary ? { toolSummary } : {}),
+              originalChars: observation.originalChars,
+              observationChars: observation.observationChars,
+              truncated: observation.truncated,
+              // 回喂给模型的正文，已受 maxObservationChars 限制；后续轮次按预算缩短见 sampling Step 的 contextPlan。
+              observation: toPersistableText(observation.content),
+            },
           }
 
           if (toolResult.ok) {
             await this.agentRunRecorderService.completeStep(
               toolStep.id,
               databaseDeadline,
-              { output: toolStepOutput },
+              toolStepClose,
             )
           }
           else {
@@ -592,7 +621,7 @@ export class AgentRuntimeService {
               databaseDeadline,
               {
                 errorMessage: `工具 ${call.toolName} 返回 ${toolResult.code}。`,
-                output: toolStepOutput,
+                ...toolStepClose,
               },
             )
           }
@@ -614,13 +643,7 @@ export class AgentRuntimeService {
           toolResults.push({
             observation,
             ok: toolResult.ok,
-            // 只有 ToolInvocationService 经 input.parse 校验后执行的调用，参数才可信；
-            // 这三个 code 都发生在校验之前或根本没有校验。execution_failed 也可能来自
-            // policy 拒绝（parse 前），当前 allowlist 工具都通过 policy，该分支不可达。
-            argumentsValidated: toolResult.ok
-              || (toolResult.code !== 'truncated_arguments'
-                && toolResult.code !== 'unknown_tool'
-                && toolResult.code !== 'invalid_arguments'),
+            feedbackArgumentsJson,
           })
         }
 
@@ -1287,7 +1310,8 @@ export class AgentRuntimeService {
    * finalization Step 的 bounded 审计输出。
    *
    * 刻意不写入 finalization Prompt、reasoning、hidden draft、证据 excerpt 全文
-   * 和 citationKey；只保留可审计的计数、状态与安全错误类别。
+   * 和 citationKey；只保留可审计的计数、状态与安全错误类别。提示词里服务端派生的
+   * 标量（`buildFinalizationInput` 的 system 段）全部落库，与模型看到的一致。
    */
   private toFinalizationStepOutput(
     registry: RunEvidenceRegistry,
@@ -1300,6 +1324,9 @@ export class AgentRuntimeService {
     return {
       evidenceAvailability: summary.evidenceAvailability,
       registryRefCount: summary.refCount,
+      registryTruncated: summary.registryTruncated,
+      eligibleToolCallCount: summary.eligibleToolCallCount,
+      eligibleToolFailureCount: summary.eligibleToolFailureCount,
       attemptCount: attempts.length,
       attempts: attempts.map(attempt => ({
         attempt: attempt.attempt,
@@ -1440,6 +1467,11 @@ function toPersistedInitialContext(
   }
 }
 
+/**
+ * 预算与估算之外，只落两项 planner 决策：本轮选入几条历史（首轮超预算从最旧处删，后续轮次
+ * 超预算还会继续删，所以每轮各记各的），以及每个 Tool Result 实际送入的字符数（按 exchange、
+ * call 顺序，与 tool_execution Step 的先后一致）。它们与历史消息、Step 里的正文一起还原本轮输入。
+ */
 function toPersistedContextPlan(
   contextPlan: SamplingContextPlanSummary,
 ): Prisma.InputJsonObject {
@@ -1447,7 +1479,42 @@ function toPersistedContextPlan(
     resolvedInputBudgetTokens: contextPlan.resolvedInputBudgetTokens,
     estimatedInputTokens: contextPlan.estimatedInputTokens,
     overflowReason: contextPlan.overflowReason,
+    historyIncludedCount: contextPlan.historyIncludedCount,
+    observationPreviewChars: contextPlan.observations.map(
+      observation => observation.finalChars,
+    ),
   }
+}
+
+/**
+ * Tool Call 轮随 assistant 消息回填给模型的内容：本轮文本（含 Grounding 模式下没推给用户的那段）
+ * 与 reasoning continuation。reasoning 只有非空时才会被 adapter 回填（DeepSeek 家族在 Tool Call
+ * 轮必然非空），所以按非空写。final_answer 轮的文本是最终回答或待校验草稿，不在这里。
+ */
+function toPersistedSamplingContent(
+  decision: SamplingDecision,
+): Prisma.InputJsonObject {
+  if (decision.type !== 'tool_call')
+    return {}
+
+  return {
+    ...(decision.intermediateText
+      ? { intermediateText: toPersistableText(decision.intermediateText) }
+      : {}),
+    ...(decision.reasoningContent
+      ? { reasoningContent: toPersistableText(decision.reasoningContent) }
+      : {}),
+  }
+}
+
+/**
+ * PostgreSQL jsonb 存不了 U+0000 与孤立代理项：原样写入会让 Step 收口失败，失败收口再写同一段
+ * 内容也会失败，Run 停在 RUNNING。落库副本把它们换成 U+FFFD，这是模型可见内容与落库唯一不逐字相等的情况。
+ */
+function toPersistableText(text: string): string {
+  return text
+    .replaceAll('\0', '\uFFFD')
+    .replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '\uFFFD')
 }
 
 function toPersistedModelUsage(

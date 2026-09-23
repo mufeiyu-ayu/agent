@@ -26,6 +26,7 @@ import { createRunDetailState } from './run-detail.state'
 import { defaultRunListPageSize, useRunListStore } from './run-list.store'
 import {
   formatDateTime,
+  formatJsonText,
   formatPercentage,
   formatTime,
   formatTokens,
@@ -86,6 +87,24 @@ function checkPartialTraceAndInspectors(): void {
 
   assert.equal(formatPercentage(0, 'en-US'), '0%')
   assert.equal(formatPercentage(null, 'en-US'), '—')
+
+  // 工具参数排版：只动字符串外的空白，字面量与转义原样保留；非 JSON 原样返回。
+  assert.equal(
+    formatJsonText('{"query": "a, b: {c}","n":1e999,"big":12345678901234567890,"esc":"\\u4e2d\\"","empty":{},"list":[ ]}'),
+    [
+      '{',
+      '  "query": "a, b: {c}",',
+      '  "n": 1e999,',
+      '  "big": 12345678901234567890,',
+      '  "esc": "\\u4e2d\\"",',
+      '  "empty": {},',
+      '  "list": []',
+      '}',
+    ].join('\n'),
+  )
+  assert.equal(formatJsonText('{"arguments":"{\\"query\\":"}'), '{\n  "arguments": "{\\"query\\":"\n}')
+  assert.equal(formatJsonText('{"query":'), '{"query":')
+  assert.equal(formatJsonText(''), '')
 }
 
 function checkRunTraceProjection(): void {
@@ -369,11 +388,22 @@ function checkProductionSources(): void {
     'utf8',
   )
   assert.doesNotMatch(requestInspectorSource, /inputSummary|outputSummary|safeIo/)
-  assert.doesNotMatch(requestInspectorSource, /props\.item\.(?:input|output)\b/)
-  assert.doesNotMatch(
-    requestInspectorSource,
-    /props\.item\.(?:prompt|reasoning|rawArguments|observationBody)\b/,
-  )
+  // #152 起 reasoningContent / intermediateText 是契约字段、按纯文本展示；prompt 仍不在契约里。
+  assert.doesNotMatch(requestInspectorSource, /item\.(?:prompt|observationBody)\b/)
+
+  // 参数、observation、模型文本是不可信数据：Run Trace 的 Inspector 一律不用 v-html，
+  // 也只读 typed contract 字段，不碰原始 input / output。
+  for (const name of [
+    'InspectorTextBlock',
+    'ToolExecutionInspector',
+    'RequestInspector',
+    'GroundedFinalizationInspector',
+  ]) {
+    const source = readFileSync(new URL(`./trace/inspectors/${name}.vue`, import.meta.url), 'utf8')
+
+    assert.doesNotMatch(source, /v-html|innerHTML/)
+    assert.doesNotMatch(source, /\bitem\.(?:input|output|rawArguments)\b/)
+  }
 
   const debugJsonPaneSource = readFileSync(
     new URL('./trace/inspectors/DebugJsonPane.vue', import.meta.url),
@@ -1011,6 +1041,8 @@ function createTraceDetail(toolCount: 0 | 1 | 2): AdminRunDetail {
       toolCallCount: finishReason === 'tool_calls' ? 1 : 0,
       firstTokenMs: 40 + index,
       errorCode: null,
+      intermediateText: null,
+      reasoningContent: finishReason === 'tool_calls' ? `reasoning ${index}` : null,
       debugRequestBody: null,
       debugRawResponse: null,
       contextInspector: createContextInspector({
@@ -1037,6 +1069,8 @@ function createTraceDetail(toolCount: 0 | 1 | 2): AdminRunDetail {
       samplingAttemptId,
       ok: true,
       code: null,
+      arguments: '{"query":"seo"}',
+      observation: `结果 ${index}`,
       originalChars: 24,
       observationChars: 24,
       truncated: false,
@@ -1149,11 +1183,14 @@ function createRunningDetail(): AdminRunDetail {
     toolCallCount: null,
     firstTokenMs: null,
     errorCode: null,
+    intermediateText: null,
+    reasoningContent: null,
     debugRequestBody: null,
     debugRawResponse: null,
     contextInspector: createContextInspector({
       outcome: null,
       estimatedInputTokens: null,
+      historyIncludedCount: null,
     }),
   }
 
@@ -1197,6 +1234,8 @@ function createContextInspector(
     modelId: 'model-deepseek-v4-flash',
     resolvedInputBudgetTokens: 262_144,
     estimatedInputTokens: 0,
+    historyIncludedCount: 2,
+    historyCandidateCount: 2,
     ...overrides,
   }
 }

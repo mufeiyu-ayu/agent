@@ -308,13 +308,30 @@ describe('Admin Retrieval Inspector', () => {
     assert.deepEqual(inspector.citations?.map(item => item.matchedCallIds), [[], []])
   })
 
+  it('查询取自落库的工具参数：未校验的 {"arguments": raw} 形状、非 JSON 与旧 Run 都为 null', () => {
+    const queries = [
+      '{"query":"sitemap 指南","limit":3}',
+      '{"arguments":"{\\"query\\":"}',
+      '{"query":',
+      '[]',
+      undefined,
+    ].map(toolArguments => projectAdminRunDetail(
+      createGroundedRun({ ...(toolArguments === undefined ? {} : { toolArguments }) }),
+      null,
+    ).retrievalInspector.retrievalCalls[0]?.query)
+
+    assert.deepEqual(queries, ['sitemap 指南', null, null, null, null])
+  })
+
   it('malformed Tool summary 逐字段读取：读不出的字段为 null，非法 ref 跳过', () => {
     const inspector = projectAdminRunDetail(createGroundedRun({
+      toolArguments: '{"query":"  SEO   指南  "}',
       toolSummary: {
         strategy: { name: 'hybrid_rrf' },
         sourceCount: -1,
         chunkEvidenceCount: 2,
-        query: '  SEO   指南  ',
+        // 摘要里的 query 不再读取：查询只认工具参数。
+        query: '摘要里的查询',
         sources: [
           { sourceId: 0 },
           // 非字符串 chunkId 不能退化成 article 身份，整条跳过。
@@ -500,6 +517,8 @@ function findTimelineItem(
 
 interface GroundedRunOptions {
   toolName?: string
+  /** tool Step 落库的参数 JSON 文本；省略表示 #152 之前的 Run，没有这一项。 */
+  toolArguments?: string
   toolSummary?: Record<string, unknown> | undefined
   omitToolSummary?: boolean
   toolFailure?: { code: string }
@@ -611,6 +630,7 @@ function createGroundedRun(options: GroundedRunOptions = {}) {
             callId: 'call-1',
             toolName: options.toolName ?? 'retrieve_article_context',
             samplingAttemptId: 'run-1:sampling-1',
+            ...(options.toolArguments === undefined ? {} : { arguments: options.toolArguments }),
             ...(options.injectSentinels ? { rawArguments: SENTINEL } : {}),
           },
           output: {

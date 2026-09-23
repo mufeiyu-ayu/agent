@@ -186,6 +186,105 @@ describe('Grounded finalization 路径', () => {
     assert.doesNotMatch(finalizationDraft, new RegExp(intermediate))
   })
 
+  it('AC-04 Grounding 模式：隐藏的中间文本落在采样 Step，finalization Step 的三个标量与提示词一致', async () => {
+    const intermediate = '换个关键词再查一次。'
+    const harness = createHarness({
+      policy: { maxSamplingRounds: 4, maxToolCalls: 2 },
+      modelStreams: [
+        () => toModelStream([
+          toolCallEvent('call-1', 'retrieve_article_context', '{"query":"seo 基础"}'),
+          { type: 'response_completed', finishReason: 'tool_calls' },
+        ]),
+        () => toModelStream([
+          { type: 'text_delta', delta: intermediate },
+          toolCallEvent('call-2', 'retrieve_article_context', '{"query":"sitemap"}'),
+          { type: 'response_completed', finishReason: 'tool_calls' },
+        ]),
+        () => toModelStream([
+          { type: 'text_delta', delta: '草稿' },
+          { type: 'response_completed', finishReason: 'stop' },
+        ]),
+        registry => toModelStream([
+          submitGroundedAnswerEvent({
+            answer: '校验后的回答。',
+            outcome: 'answered',
+            citationKeys: [registry[0]!],
+          }),
+          { type: 'response_completed', finishReason: 'tool_calls' },
+        ]),
+      ],
+      toolResults: [
+        { ok: true, modelContent: '候选资料', evidence: RETRIEVAL_EVIDENCE },
+        { ok: false, code: 'execution_failed', modelContent: '工具 retrieve_article_context 执行失败。' },
+      ],
+    })
+
+    const events = await collectEvents(harness.run())
+    const samplingOutputs = harness.recorder.steps
+      .filter(step => step.type === AGENT_STEP_TYPES.modelSampling)
+      .map(step => step.output as Record<string, unknown>)
+    const finalizationOutput = harness.recorder.steps.find(
+      step => step.type === AGENT_STEP_TYPES.groundedFinalization,
+    )?.output as Record<string, unknown>
+    const finalizationSystem = harness.llmCalls[3]?.messages[0]
+    const promptScalars = Object.fromEntries(
+      [...(finalizationSystem?.type === 'message' ? finalizationSystem.content : '')
+        .matchAll(/^(registry_truncated|eligible_tool_calls|eligible_tool_failures)=(.+)$/gm)]
+        .map(match => [match[1], match[2]]),
+    )
+
+    assert.equal(events.at(-1)?.type, 'run_completed')
+    // 中间文本没推给用户，但回填了模型：作为内容事实落在第 2 轮采样 Step。
+    assert.equal(harness.assistantMessage()?.content, '校验后的回答。')
+    assert.deepEqual(
+      samplingOutputs.map(output => output.intermediateText),
+      [undefined, intermediate, undefined],
+    )
+    assert.equal(
+      harness.llmCalls[2]?.messages.find(item => item.type === 'assistant_tool_call' && item.content)?.content,
+      intermediate,
+    )
+    // finalization 提示词里的三个服务端标量与 Step output 一一对应。
+    assert.deepEqual(promptScalars, {
+      registry_truncated: 'false',
+      eligible_tool_calls: '2',
+      eligible_tool_failures: '1',
+    })
+    assert.deepEqual(
+      [
+        finalizationOutput.registryTruncated,
+        finalizationOutput.eligibleToolCallCount,
+        finalizationOutput.eligibleToolFailureCount,
+      ],
+      [
+        promptScalars.registry_truncated === 'true',
+        Number(promptScalars.eligible_tool_calls),
+        Number(promptScalars.eligible_tool_failures),
+      ],
+    )
+
+    // AC-06：Admin 投影带出三个标量；Retrieval Inspector 的查询取自工具参数。
+    const detail = projectHarnessRunDetail(harness)
+    const finalizationItem = detail.timeline.find(
+      item => item.kind === 'known' && item.type === AGENT_STEP_TYPES.groundedFinalization,
+    )
+
+    assert.deepEqual(
+      finalizationItem?.kind === 'known' && finalizationItem.type === 'grounded_finalization'
+        ? [
+            finalizationItem.registryTruncated,
+            finalizationItem.eligibleToolCallCount,
+            finalizationItem.eligibleToolFailureCount,
+          ]
+        : undefined,
+      [false, 2, 1],
+    )
+    assert.deepEqual(
+      detail.retrievalInspector.retrievalCalls.map(call => call.query),
+      ['seo 基础', 'sitemap'],
+    )
+  })
+
   it('Session 在同一轮由 eligible Tool 建立时，该轮之前已推出的文本按决策保留', async () => {
     const intermediate = '让我先检索一下。'
     const harness = createHarness({
@@ -1935,7 +2034,7 @@ class FakeAgentRunRecorderService {
   async completeStep(
     stepId: string,
     _deadline: DatabaseOperationDeadline,
-    input: { output?: unknown } = {},
+    input: { input?: unknown, output?: unknown } = {},
   ) {
     this.transition(stepId, 'COMPLETED', input)
   }
@@ -1943,7 +2042,7 @@ class FakeAgentRunRecorderService {
   async failStep(
     stepId: string,
     _deadline: DatabaseOperationDeadline,
-    input: { output?: unknown, errorMessage: string },
+    input: { input?: unknown, output?: unknown, errorMessage: string },
   ) {
     this.transition(stepId, 'FAILED', input)
   }
@@ -2065,7 +2164,7 @@ class FakeAgentRunRecorderService {
   private transition(
     stepId: string,
     status: RecordedStep['status'],
-    input: { output?: unknown, errorMessage?: string },
+    input: { input?: unknown, output?: unknown, errorMessage?: string },
   ): void {
     const step = this.steps.find(item => item.id === stepId)
 
@@ -2073,6 +2172,8 @@ class FakeAgentRunRecorderService {
       throw new Error(`未知 AgentStep ${stepId}`)
 
     step.status = status
+    if (input.input !== undefined)
+      step.input = input.input
     if (input.output !== undefined)
       step.output = input.output
     if (input.errorMessage !== undefined)

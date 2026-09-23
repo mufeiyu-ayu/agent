@@ -50,6 +50,14 @@ const summaryFields = computed(() => [
 const auditFields = computed(() => [
   { label: t('retrieval.fields.attempts'), value: show(props.item.attemptCount) },
   { label: t('retrieval.fields.registryRefCount'), value: show(props.item.registryRefCount) },
+  // 以下三项与 finalization 提示词里的服务端标量一致。
+  {
+    label: t('retrieval.fields.registryTruncated'),
+    // 比 API 旧的构建没有这个字段（undefined），不能显示成「否」。
+    value: props.item.registryTruncated == null ? unavailable.value : yesNo(props.item.registryTruncated),
+  },
+  { label: t('retrieval.fields.eligibleToolCalls'), value: show(props.item.eligibleToolCallCount) },
+  { label: t('retrieval.fields.eligibleToolFailures'), value: show(props.item.eligibleToolFailureCount) },
 ])
 
 const timingFields = computed(() => [

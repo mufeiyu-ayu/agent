@@ -47,6 +47,81 @@ export const knownTimelineInspectorKeys = {
   tool_execution: 'timeline.inspectors.toolExecution',
 } as const
 
+/**
+ * 把合法 JSON 文本按两格缩进排版，只改字符串之外的空白：数字、转义与键序原样保留
+ * （parse 再 stringify 会把大数、1e999、\u 转义改写成别的样子，排障时看到的就不是模型发的了）。
+ * 不是合法 JSON 时原样返回。
+ */
+export function formatJsonText(text: string): string {
+  try {
+    JSON.parse(text)
+  }
+  catch {
+    return text
+  }
+
+  const indent = (depth: number) => `\n${'  '.repeat(depth)}`
+  let formatted = ''
+  let depth = 0
+  let inString = false
+  let escaped = false
+
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index]!
+
+    if (inString) {
+      formatted += char
+      if (escaped)
+        escaped = false
+      else if (char === '\\')
+        escaped = true
+      else if (char === '"')
+        inString = false
+      continue
+    }
+
+    switch (char) {
+      case '"':
+        inString = true
+        formatted += char
+        break
+      case '{':
+      case '[': {
+        let next = index + 1
+
+        while (next < text.length && /\s/.test(text[next]!))
+          next += 1
+
+        // 空容器保持 {} / []，不拆成两行。
+        if (text[next] === (char === '{' ? '}' : ']')) {
+          formatted += `${char}${text[next]}`
+          index = next
+          break
+        }
+        depth += 1
+        formatted += `${char}${indent(depth)}`
+        break
+      }
+      case '}':
+      case ']':
+        depth -= 1
+        formatted += `${indent(depth)}${char}`
+        break
+      case ',':
+        formatted += `,${indent(depth)}`
+        break
+      case ':':
+        formatted += ': '
+        break
+      default:
+        if (!/\s/.test(char))
+          formatted += char
+    }
+  }
+
+  return formatted
+}
+
 export function formatDuration(durationMs: number | null): string {
   if (durationMs === null)
     return '—'

@@ -244,11 +244,7 @@ describe('SamplingContextPlanner', () => {
     const context = createContext()
 
     context.appendToolExchange({
-      calls: [{
-        callId: 'call-emoji',
-        toolName: 'tool',
-        rawArgumentsJson: '{}',
-      }],
+      calls: [{ callId: 'call-emoji', toolName: 'tool' }],
       intermediateText: '',
       reasoningContent: 'reason',
       results: [{
@@ -260,7 +256,7 @@ describe('SamplingContextPlanner', () => {
           truncated: true,
         },
         ok: true,
-        argumentsValidated: true,
+        feedbackArgumentsJson: '{}',
       }],
     })
 
@@ -299,14 +295,10 @@ describe('SamplingContextPlanner', () => {
     const observation = normalizeToolObservation('🚀'.repeat(16_100), 16_000)
 
     context.appendToolExchange({
-      calls: [{
-        callId: 'call-ceiling',
-        toolName: 'tool',
-        rawArgumentsJson: '{"q":"emoji"}',
-      }],
+      calls: [{ callId: 'call-ceiling', toolName: 'tool' }],
       intermediateText: '',
       reasoningContent: 'reason',
-      results: [{ observation, ok: true, argumentsValidated: true }],
+      results: [{ observation, ok: true, feedbackArgumentsJson: '{"q":"emoji"}' }],
     })
     const fullTokens = estimator.estimateRequest({
       items: flattenPlanningState(context.forPlanning()),
@@ -729,11 +721,7 @@ function appendExchange(
   content: string,
 ): void {
   context.appendToolExchange({
-    calls: [{
-      callId,
-      toolName: 'tool',
-      rawArgumentsJson: JSON.stringify({ q: callId }),
-    }],
+    calls: [{ callId, toolName: 'tool' }],
     intermediateText: `intermediate-${callId}`,
     reasoningContent: `reason-${callId}`,
     results: [{
@@ -744,7 +732,7 @@ function appendExchange(
         truncated: false,
       },
       ok: true,
-      argumentsValidated: true,
+      feedbackArgumentsJson: JSON.stringify({ q: callId }),
     }],
   })
 }
