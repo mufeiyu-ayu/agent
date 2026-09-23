@@ -36,7 +36,7 @@ Frameworks hide these decisions behind abstractions. This project handles every 
 
 <div align="center">
 
-| ~4,800 | 700+ | 77 | 72 |
+| ~5,000 | 700+ | 80+ | 80+ |
 | :---: | :---: | :---: | :---: |
 | lines of runtime code | tests | merged PRs | closed issues |
 
@@ -54,19 +54,19 @@ User aborts, deadlines, and late database results all race for the final state, 
 
 ### 🧭 Every step on the record
 
-Each run is stored as a sequence of steps: history loading, every model call, every tool call, and the final answer. The admin console shows a timeline with token usage, latency, finish reasons, and (optionally) the exact request body sent to the provider.
+Each run is stored as a sequence of steps: history loading, every model call, every tool call, and the final answer. The admin console shows a timeline with token usage, latency, finish reasons, failure causes, and (optionally) a debug capture of the request and response exchanged with the provider.
 
 ### 📏 Context engineering with real token budgets
 
-Each run gets its own model context. Tokens are counted with a local tokenizer, history is trimmed oldest-first to fit the budget, and tool output is treated as untrusted data with its own size limits.
+Each run gets its own model context. Tokens are estimated with a local DeepSeek tokenizer (an approximation for other model families), history is trimmed oldest-first in question–answer pairs to fit the budget, and tool output is treated as untrusted data with its own size limits.
 
-### 🔌 Any OpenAI-compatible model
+### 🔌 OpenAI-compatible providers
 
-DeepSeek's official API and OpenAI-compatible relays (GPT / Grok / Gemini) share one configuration. Providers and models are managed in the admin console, API keys are encrypted with AES-256-GCM, and per-family protocol differences live in one compat table.
+DeepSeek's official API and OpenAI-compatible relays (GPT / Grok / Gemini) share one configuration. Gemini called directly through Google's endpoint can't continue a tool call yet (thought signatures aren't sent back). Providers and models are managed in the admin console, API keys are encrypted with AES-256-GCM, and per-family protocol differences live in one compat table.
 
 ### 🧪 Built like production, documented like a course
 
-Every change starts as an issue with current-code facts, out-of-scope items, and numbered acceptance criteria, then lands through a reviewed PR. The history reads like a textbook of real agent problems.
+Non-trivial changes start as an issue with current-code facts, out-of-scope items, and numbered acceptance criteria, then land through a PR with a local review and a per-criterion acceptance record. Small single-concern fixes may go straight to master after a local review, and the work log records every one of them. The history reads like a textbook of real agent problems.
 
 ## The whole loop in one screen
 
@@ -156,7 +156,7 @@ Follow one request from the HTTP call to the database, in this order:
 | 2 | [`agent-runtime.service.ts`](./apps/api/src/agent-runtime/agent-runtime.service.ts) | The main loop: sample, dispatch, run tools, continue, finish |
 | 3 | [`sampling-context-planner.ts`](./apps/api/src/agent-runtime/context/sampling-context-planner.ts) | What the model sees each round, and what gets dropped first |
 | 4 | [`openai-completions-stream.ts`](./packages/ai/src/api/openai-completions-stream.ts) | How a provider's stream becomes clean events |
-| 5 | [`grounded-answer.validator.ts`](./apps/api/src/agent-runtime/grounding/grounded-answer.validator.ts) | Why a citation can be proven, not just trusted |
+| 5 | [`grounded-answer.validator.ts`](./apps/api/src/agent-runtime/grounding/grounded-answer.validator.ts) | How every citation is checked against the evidence the run actually retrieved (source identity, not the truth of each claim) |
 | 6 | [`agent-run-recorder.service.ts`](./apps/api/src/agent-runtime/lifecycle/agent-run-recorder.service.ts) | Final-state ownership and atomic commits |
 
 Try to answer these before reading the code. Every answer has a test:
@@ -165,7 +165,7 @@ Try to answer these before reading the code. Every answer has a test:
 2. The output hits its token limit mid-arguments. Do the tools still run?
 3. The user closes the page while a tool is running. Who writes the final state?
 4. The model invents a citation key. What does the user see?
-5. How is a 429 before the response starts handled differently from one mid-stream?
+5. How is a 429 before the response starts handled differently from a connection that drops mid-stream?
 
 ## When to use a framework instead
 
@@ -177,10 +177,10 @@ Done: streaming chat, a bounded agent loop, multiple tool calls per turn, contex
 
 Next, each triggered by real usage:
 
+- **A real workload**: validate the loop on real conversations, then use it daily inside an internal data workbench, with sandboxed tools running in containers
 - **Durable runs**: keep working after the page closes, and resume after a restart
 - **Approvals**: ask before tools with side effects run
-- **Replay**: rebuild exactly what the model saw from stored records
-- **Compaction** for long conversations, and **scheduled jobs**
+- Later: **replay** from stored records, **compaction** for long conversations, and **scheduled jobs**
 
 ## Project docs
 

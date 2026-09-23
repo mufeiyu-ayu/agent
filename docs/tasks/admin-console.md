@@ -2,7 +2,7 @@
 
 本文记录 Agent Runtime Console 的独立 Observability 支线。
 
-状态：**Task 0-3、Enhancement 1-3、Phase 8 Task 3C Completed；Task 4 Planned**。
+状态只在 [看板](./README.md) 维护；下表是各任务的目标与链接。2026-09-22 起管理台的改动（#148 概览接真实数据、#151 errorCode、#152 模型可见内容、#153 概览与运行列表重构、#154 模型接入页、#156 服务商改地址须重填密钥）以各自 Issue / PR 为准，不再在本文逐条归档。
 
 Admin Console 面向项目开发、调试和运行过程复盘。它是 Agent 主线事实的安全投影，不为了展示反向污染 Runtime Domain Model。
 
@@ -29,7 +29,7 @@ Admin Console 面向项目开发、调试和运行过程复盘。它是 Agent �
 - Admin View Model 与 Prisma Model 分层；
 - Vben 只作为视觉语言参考，不引入其运行时依赖。
 
-## 当前任务看板
+## 任务清单
 
 | Task | 状态 | 目标 | GitHub / 文档 |
 | --- | --- | --- | --- |
@@ -109,7 +109,7 @@ Context / Tool / Message / Retrieval / Finalization Inspector
 
 ## Task 4：登录、权限与敏感信息脱敏
 
-保持 Planned。触发为「第一个同事要用」（2026-09-23 用户决定，局域网可达本身不算；此前只做低成本加固，另立 Issue）。当前 Admin Console 仍不等于可直接公网暴露的生产后台。
+保持 Planned。触发为「第一个同事要用」（2026-09-23 用户决定，局域网可达本身不算；此前只做低成本加固，即 #156）。当前 Admin Console 仍不等于可直接公网暴露的生产后台。
 
 Task 4 启动前需要重新讨论：
 

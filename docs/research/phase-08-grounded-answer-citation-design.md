@@ -503,6 +503,8 @@ Admin Auth / RBAC Task 4 未启动，因此 Task 3C 必须继续使用最小化�
 
 ## 15. 当前正式动作
 
+以下是写作当时的状态，现状见 [`docs/tasks/README.md`](../tasks/README.md)：
+
 ```text
 Phase 8 Task 3：已经完成研究与子任务拆分
 Task 3A：Next / Issue 未创建 / Gate 未执行

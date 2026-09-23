@@ -34,4 +34,4 @@ views 组合 -> features/<领域>/ 的 state + api + components -> features/shar
 
 ## 验证
 
-`pnpm --filter @agent/admin typecheck`、`lint`，必要时 `build`。
+`pnpm --filter @agent/admin typecheck`、`lint`、`test`（`*.check.ts` 状态与数据检查，含 i18n 引用检查），必要时 `build`；改 Run Trace / 模型接入页交互时跑 `test:e2e`（Playwright）。

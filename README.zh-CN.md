@@ -36,7 +36,7 @@
 
 <div align="center">
 
-| ~4,800 | 700+ | 77 | 72 |
+| ~5,000 | 700+ | 80+ | 80+ |
 | :---: | :---: | :---: | :---: |
 | 行运行时代码 | 个测试 | 个已合并 PR | 个已关闭 Issue |
 
@@ -54,19 +54,19 @@
 
 ### 🧭 每一步都有记录
 
-每次 Run 都存成一串 Step：加载历史、每次模型调用、每次工具调用、最终回答。管理台按时间线展示 Token 用量、耗时、结束原因，还可以打开开关，看到发给模型服务商的原始请求体。
+每次 Run 都存成一串 Step：加载历史、每次模型调用、每次工具调用、最终回答。管理台按时间线展示 Token 用量、耗时、结束原因和失败原因，还可以打开开关，看到与模型服务商往来的请求与响应的调试抓取。
 
 ### 📏 按真实 Token 预算做上下文工程
 
-每次 Run 有独立的模型上下文。Token 用本地 tokenizer 计数，超预算时从最旧的历史开始裁剪，工具输出按不可信数据处理并有单独的长度上限。
+每次 Run 有独立的模型上下文。Token 用本地 DeepSeek tokenizer 估算（其他家族按它近似），超预算时从最旧的历史开始按问答对裁剪，工具输出按不可信数据处理并有单独的长度上限。
 
-### 🔌 接任意 OpenAI-compatible 模型
+### 🔌 接 OpenAI-compatible 服务商
 
-DeepSeek 官方 API 和 OpenAI-compatible 中转站（GPT / Grok / Gemini）用同一套配置。服务商和模型在管理台里管理，API Key 用 AES-256-GCM 加密入库，各家族的协议差异收在一张 compat 表里。
+DeepSeek 官方 API 和 OpenAI-compatible 中转站（GPT / Grok / Gemini）用同一套配置。经 Google 官方端点直连的 Gemini 暂时不能续接 Tool Call（没有回传 thought signature）。服务商和模型在管理台里管理，API Key 用 AES-256-GCM 加密入库，各家族的协议差异收在一张 compat 表里。
 
 ### 🧪 按生产标准做，按课程标准记
 
-每个改动都从一个 Issue 开始，写清当前代码事实、不做什么和逐条验收标准，再经过 review 的 PR 合入。整段提交历史读起来就是一本真实 Agent 问题的教材。
+正式改动从一个 Issue 开始，写清当前代码事实、不做什么和逐条验收标准，经本地 review 后以 PR 合入，并留下逐条验收记录。单一关注点的小修可以在本地 review 后直接合入 master，每一笔都记在工作记录里。整段提交历史读起来就是一本真实 Agent 问题的教材。
 
 ## 一屏看完整个循环
 
@@ -156,7 +156,7 @@ pnpm --filter @agent/api index:articles -- --mode=incremental  # 构建向量索
 | 2 | [`agent-runtime.service.ts`](./apps/api/src/agent-runtime/agent-runtime.service.ts) | 主循环：采样、分派、执行工具、续轮、收尾 |
 | 3 | [`sampling-context-planner.ts`](./apps/api/src/agent-runtime/context/sampling-context-planner.ts) | 模型每轮看到什么，超预算时先删谁 |
 | 4 | [`openai-completions-stream.ts`](./packages/ai/src/api/openai-completions-stream.ts) | 服务商的流怎样变成干净的事件 |
-| 5 | [`grounded-answer.validator.ts`](./apps/api/src/agent-runtime/grounding/grounded-answer.validator.ts) | 引用为什么能被证明，而不是只能相信 |
+| 5 | [`grounded-answer.validator.ts`](./apps/api/src/agent-runtime/grounding/grounded-answer.validator.ts) | 每个引用怎样与本次 Run 真实检索到的证据逐条核对（证明来源身份，不证明每个断言为真） |
 | 6 | [`agent-run-recorder.service.ts`](./apps/api/src/agent-runtime/lifecycle/agent-run-recorder.service.ts) | 终态所有权与原子提交 |
 
 读代码前先猜答案，每个答案都有对应的测试：
@@ -165,7 +165,7 @@ pnpm --filter @agent/api index:articles -- --mode=incremental  # 构建向量索
 2. 输出在工具参数写到一半时撞上 Token 上限，工具还会执行吗？
 3. 工具执行中用户关掉了页面，终态由谁写入？
 4. 模型编了一个不存在的引用 key，用户会看到什么？
-5. 429 发生在响应开始之前和流进行到一半，处理有什么不同？
+5. 响应开始之前的 429，和流进行到一半时连接断开，处理有什么不同？
 
 ## 什么时候该用框架
 
@@ -177,10 +177,10 @@ pnpm --filter @agent/api index:articles -- --mode=incremental  # 构建向量索
 
 接下来的每一项都由真实使用触发：
 
+- **真实负载**：先用真实对话验证循环，再在一个内部数据工作台里日常使用，工具在容器沙箱里运行
 - **持久运行**：关掉页面后继续跑，进程重启后能接上
 - **审批**：有副作用的工具先问再执行
-- **回放**：从落库记录精确重建模型当时看到的内容
-- 长对话**压缩**与**定时任务**
+- 更后面：从落库记录**回放**、长对话**压缩**与**定时任务**
 
 ## 项目文档
 

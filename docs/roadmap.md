@@ -27,9 +27,9 @@
 6. UI、model-visible history、durable Grounding 与 Admin trace 必须分层。
 7. fail-closed 的价值不仅是安全，也用于阻止损坏数据被展示成“完整成功”。
 
-## 当前学习阶段
+## 学习路径
 
-当前继续本项目源码阅读（工作台第 0 档）。2026-09-15 用户指定：完成当前学习后，由 AI 以 Pi 为主要参照实现云端 Agent，用户不读 Pi 代码；研究资料与架构图见 [`pi-reference/README.md`](./research/pi-reference/README.md)，每步的 Pi 素材与证明完成见 [Pi 实现 roadmap](./research/pi-reference/roadmap.md)，先后看工作台方向第 7 节。参照方法见 [`learning-method.md`](research/pi-reference/learning-method.md)。Phase 8 链路仍可按以下顺序回读：
+当前阶段只看 [`tasks/README.md`](./tasks/README.md)。2026-09-15 用户指定：完成当前学习后，由 AI 以 Pi 为主要参照实现云端 Agent，用户不读 Pi 代码；研究资料与架构图见 [`pi-reference/README.md`](./research/pi-reference/README.md)，每步的 Pi 素材与证明完成见 [Pi 实现 roadmap](./research/pi-reference/roadmap.md)，先后看工作台方向第 7 节。参照方法见 [`learning-method.md`](research/pi-reference/learning-method.md)。Phase 8 链路仍可按以下顺序回读：
 
 ```text
 索引入口
@@ -71,7 +71,7 @@
 
 2026-09-20 产品方向定案：合并公司 gsc 数据观测项目为内部数据工作台，固定页面是基础、agent 对话是补充，runtime 以它为唯一真实负载；OS sandbox 进第 1 档，各步触发条件具体化；定案、边界、否决项与未决见 [内部数据工作台方向](./research/workbench-direction.md)。2026-09-23 路线正文按其第 7、8 节对齐：顺序与触发只在第 7 节，本文不再维护顺序。
 
-2026-09-20 方向变化：第二 provider 由 #142（模型配置入库、接入公司中转站）与 #146（各家族协议差异收口为 compat 表）落地，前台可选 DeepSeek 与经中转站的 GPT / Grok / Gemini，推翻工作台方向第 9 节「现在接第二模型」的否决。
+2026-09-20 方向变化：第二 provider 由 #142（2026-09-20 合并，模型配置入库、接入公司中转站）与 #146（2026-09-22 合并，各家族协议差异收口为 compat 表）落地，前台可选 DeepSeek 与经中转站的 GPT / Grok / Gemini，推翻工作台方向第 9 节「现在接第二模型」的否决。
 
 2026-09-16 对照 Pi 做过度设计审查后再立三件，排在 #115 前：#118 删死代码与单实现抽象（零行为变化）、#119 历史裁剪合一、#120 抽出 `packages/ai`。`packages/ai` 提前的理由是 #115 / #117 全落在模型层；`packages/agent` 仍在 R2。2026-09-17 再立 #124 把 `packages/ai` 目录按 Pi 分层整理（单一 `types.ts`、按协议命名的 `api/`），同日合并。2026-09-18 立 #126 把 Admin Run 读模型去过度设计（删常量 / 重复 / 可信度字段与读时校验，projector 改逐字段读取，净减 5,611 行），同日合并；同日再立 #127 收敛 `packages/ai` 运行时配置（`LLMRuntimeConfig` 只剩三个必填 env 与 debug 开关，timeout 与 `max_tokens` 默认值改代码常量，删应用硬上限层与 4 个 `LLM_*` env），同日合并。其余结构性问题不单独立项，分别归 #116（重复校验、消息类型合并）、R1（debug 捕获）、R2（ModelContext 协议）。
 
@@ -87,6 +87,7 @@
 - 登录权限 / Admin Auth / RBAC（Task 4）：2026-09-23 用户决定暂缓，API 与模型配置都是公司内部资产，现在做完整鉴权会拖慢学习节奏。触发为「第一个同事要用」（工作台第 3 档），局域网可达本身不算；此前只做低成本加固（#156）。R2/R1 的持久契约先带 owner 字段，只补字段不建 Guard；
 - `web_fetch`（Gated）：2026-09-23 用户确认以后仍要做，放在工作台第 7 节「后」行；触发为用户或工作台需要读外部网页；
 - 长会话首轮同步分词：会阻塞事件循环，实测 1000 条 × 约 2.4k 字符的历史要 4.6s；当前 dev 库最长的会话只有 18 条，2026-09-23 决定暂不处理。触发为真实会话超过约 200 条，或首轮 plan 超过 500ms；
+- `packages/ai` / `packages/contracts` 的 src / dist 构建方式：typecheck 读 src，运行时与 api 测试读 dist，dev 期间不重建。2026-09-23 用户决定保留，只修导图描述；触发为 dist 过期造成一次真实误判；
 - 并行 Tool Call；
 - Memory、MCP、Multi-agent。
 
@@ -94,18 +95,8 @@
 
 ## Admin Console 支线
 
-```text
-Task 0：Admin 基础壳                    Completed
-Task 1：静态 Run List / Detail          Completed
-Task 2：真实 Run / Step Query API       Completed
-Task 3：真实 Run Trace UI               Completed
-Enhancement 1：Run Trace Workspace      Completed
-Phase 8 Task 3C：Retrieval Inspector    Completed
-Task 4：登录 / 权限 / 脱敏              Planned
-```
-
-Phase 8 Task 3C 已完成安全 Retrieval Inspector，但不自动启动 Task 4。
+目标与已完成基线见 [`tasks/admin-console.md`](./tasks/admin-console.md)，各任务状态只看看板。Task 4（登录 / 权限 / 脱敏）不因 Inspector 完成而自动启动，触发见上面的后置清单。
 
 ## 当前正式动作
 
-状态看 [`tasks/README.md`](./tasks/README.md)。下一步按工作台方向第 7 节：源码阅读（第 0 档）→ 六条真实对话验证（0.5 档）→ 立第一个 Issue；候选子系统在立项条件满足时建 Issue，走 `docs/workflow.md` 的流程。
+状态看 [`tasks/README.md`](./tasks/README.md)，顺序与触发看工作台方向第 7 节；候选子系统在立项条件满足时建 Issue，走 `docs/workflow.md` 的流程。
