@@ -10,7 +10,7 @@
 
 | 日期 | 事项 | 结果 |
 | --- | --- | --- |
-| 2026-09-23 | #152 Run 轨迹补齐模型可见内容合并 | PR #161（代码 head `c75119e`，Closes #152）：27 files，无 migration。tool Step 落回喂参数与 observation，采样 Step 落 Tool Call 轮文本 / reasoning 与历史条数、observation 实际送入长度，finalization 落提示词三个标量；Admin Run Trace 展示并按纯文本渲染；根与 `apps/api` 导图的 model-visible ⟺ logged 改为 action 循环内成立并写明范围。AC-01～AC-07 逐条 PASS |
+| 2026-09-23 | #152 Run 轨迹补齐模型可见内容合并 | PR #161（代码 head `c75119e`，Closes #152）：28 files，+1,480 / −137，无 migration。tool Step 落回喂参数与 observation，采样 Step 落 Tool Call 轮文本 / reasoning 与历史条数、observation 实际送入长度，finalization 落提示词三个标量；Admin Run Trace 展示并按纯文本渲染；根与 `apps/api` 导图的 model-visible ⟺ logged 改为 action 循环内成立并写明范围。AC-01～AC-07 逐条 PASS |
 | 2026-09-23 | #153 管理台概览与运行列表按健康 / 延迟 / 用量 / 工具重构合并 | PR #160（代码 head `4e54a72`，Closes #153）：42 files，+2,161 / −1,090，无 migration。概览接口改 SQL 聚合只取必要 JSON 路径，Token 统一 totalTokens 并计入 finalization attempts；模型调用口径在列表 / 详情 / 概览同源；运行列表加模型 / 失败原因列与 errorCode 筛选；概览不再请求模型目录、余额竞态修复；`@agent/ai` grok outputTokens 归一。AC-01～AC-08 逐条 PASS，dev 库 30d 三方 Token 均为 159,305 |
 | 2026-09-23 | #151 模型调用失败保留真实原因合并 | PR #159（代码 head `1706a2d`，Closes #151）：39 files，+1,263 / −127，含 migration `20260923120000_agent_run_error_code`（`AgentRun.errorCode` 可空列）。失败类别与用户文案在终态确立后一处得出，Run / Step / error 事件同源；采样 Step 记 `firstTokenMs`；Admin Run Trace 展示两项。AC-01～AC-07 逐条 PASS，dev 库已 `migrate deploy` |
 | 2026-09-23 | 近 7 天改动只读审查 | 6 个 agent 对近 7 天改动做只读审查，基线全绿；主要发现：库内 API Key 可被发往任意 baseUrl（无鉴权 + 局域网暴露）、模型调用失败原因被统一改写为「模型流读取失败」、model-visible ⟺ logged 不成立、概览 Token 口径与整列读 JSON、前台流式标题闪烁与外链图片；拆为 #151–#158（Planned，#151 为 Next），鉴权按第 3 档暂缓 |
