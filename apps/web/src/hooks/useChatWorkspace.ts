@@ -326,6 +326,9 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
         if (event.type === 'error') {
           hasFinalStreamEvent = true
           errorMessage.value = event.message
+          // 用户消息已落库后才失败（没发 start，比如必带内容超预算）：会话 updatedAt 已变，侧栏同步。
+          if (event.userMessagePersisted)
+            touchConversation(event.conversationId)
           handleStreamErrorEvent(event, pendingMessage)
           activeTurnId = null
           clearActiveStreamState(streamRequestId)

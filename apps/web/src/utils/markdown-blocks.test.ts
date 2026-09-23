@@ -4,8 +4,11 @@ import assert from 'node:assert/strict'
 // eslint-disable-next-line test/no-import-node-test
 import test from 'node:test'
 
+import MarkdownIt from 'markdown-it'
+
 import { highlightCode } from './code-highlighter'
 import { renderMarkdownBlocks } from './markdown-blocks'
+import { alignRevealBoundary } from './streaming-markdown'
 
 function blocksOf(text: string, options?: RenderMarkdownBlocksOptions) {
   return renderMarkdownBlocks(text, options).blocks
@@ -229,4 +232,69 @@ test('随机文档的每个前缀：缓存渲染与全新渲染结果一致', ()
       }
     }
   }
+})
+
+test('#169 AC-01 全角标点紧贴 ** 的中文强调在终态成对，流式中间态不在粗体与字面 ** 之间翻转', () => {
+  for (const text of ['**结论：**后文', '**大逃杀（Battle Royale）**这一品类', '**「标题」**正文'])
+    assert.match(html(text), /<strong>/)
+  assert.equal(html('a **b** c'), '<p>a <strong>b</strong> c</p>\n')
+
+  for (const text of ['**结论：**后文', '前文**大逃杀（Battle Royale）**这一品类']) {
+    let seenStrong = false
+    for (let end = 1; end <= text.length; end++) {
+      const rendered = html(text.slice(0, end), { streaming: true })
+      if (seenStrong)
+        assert.doesNotMatch(rendered, /\*\*/, `前缀 ${JSON.stringify(text.slice(0, end))} 翻回字面 **`)
+      seenStrong ||= rendered.includes('<strong>')
+    }
+    assert.ok(seenStrong)
+  }
+})
+
+test('#169 AC-02 当前行的字面 * 不被补成强调，这一行换行后按终态显示', () => {
+  for (const text of ['计算 2*3 = 6，然后', '- 匹配 *.ts 文件', '- 2**10 很大', '$x*y$ 继续']) {
+    assert.doesNotMatch(html(text, { streaming: true }), /<em>|<strong>/, text)
+    assert.equal(html(`${text}\n`, { streaming: true }), html(`${text}\n`), `${text} 换行后`)
+  }
+  assert.match(html('**加粗', { streaming: true }), /<strong>加粗<\/strong>/)
+  assert.match(html('先说 *斜体', { streaming: true }), /<em>斜体<\/em>/)
+  // 行已写完：按终态显示，未闭合的 ** 就是字面字符。
+  assert.equal(html('**加粗\n', { streaming: true }), html('**加粗\n'))
+})
+
+test('#169 AC-03 无前导竖线的表格与代码段里的 \\| 在流式中不多出标记', () => {
+  assert.doesNotMatch(html('a | b\n--|--\n*x | y', { streaming: true }), /<em>|y\*/)
+  assert.doesNotMatch(html('| h | g |\n|---|---|\n| a | `x\\|y **z` 后', { streaming: true }), /\*\*<\/td>|<strong>/)
+})
+
+test('#169 AC-04 标题逐字到达加平滑放出切点，任何一帧都没有空标题', () => {
+  const text = '先查一下。\n\n## 标题\n\n# 一级\n正文'
+  for (let index = 1; index <= text.length; index++) {
+    const shown = text.slice(0, alignRevealBoundary(text, index))
+    assert.doesNotMatch(html(shown, { streaming: true }), /<h[1-6][^>]*>\s*<\/h[1-6]>/, JSON.stringify(shown))
+  }
+})
+
+test('#169 AC-06 裸链接在全角标点处结束，后文照常解析', () => {
+  assert.match(html('见 https://x.com/a。**注意**'), /<a href="https:\/\/x\.com\/a" [^>]*>https:\/\/x\.com\/a<\/a>。<strong>注意<\/strong>/)
+  assert.match(html('（https://x.com/a）后面'), /href="https:\/\/x\.com\/a"/)
+  assert.match(html('访问 www.x.com，然后'), /href="http:\/\/www\.x\.com"/)
+  // 路径里的汉字照常属于链接。
+  assert.match(html('https://zh.wikipedia.org/wiki/中文 页面'), /wiki\/%E4%B8%AD%E6%96%87"/)
+  assert.equal(html('见 https://x.com/a。**注意', { streaming: true }), html('见 https://x.com/a。**注意**'))
+})
+
+test('#169 AC-07 大量图片的链接判断是一次遍历，耗时与 markdown-it 基线同量级', () => {
+  const text = Array.from({ length: 16_000 }, (_, index) => `![i${index}](https://x.com/${index}.png)`).join(' ')
+  const baseline = new MarkdownIt({ linkify: true })
+  // 各取 3 次里最快的一次，减少 GC 与调度抖动。
+  const measure = (render: () => unknown) => Math.min(...Array.from({ length: 3 }, () => {
+    const startedAt = performance.now()
+    render()
+    return performance.now() - startedAt
+  }))
+  const baselineMs = measure(() => baseline.render(text))
+  const ourMs = measure(() => html(text))
+  assert.ok(ourMs < baselineMs * 5 + 50, `自定义渲染 ${ourMs.toFixed(0)}ms，基线 ${baselineMs.toFixed(0)}ms`)
+  assert.equal(html('[![图](https://x.com/a.png)](https://y.com)'), '<p><a href="https://y.com" target="_blank" rel="noreferrer noopener">图</a></p>\n')
 })

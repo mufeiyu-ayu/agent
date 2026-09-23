@@ -1,9 +1,10 @@
 import type Token from 'markdown-it/lib/token.mjs'
 
 import MarkdownIt from 'markdown-it'
+import markdownItCjkFriendly from 'markdown-it-cjk-friendly'
 
 import { highlightCode } from './code-highlighter'
-import { completeStreamingMarkdown } from './streaming-markdown'
+import { CJK_PUNCTUATION_CHARS, completeStreamingMarkdown } from './streaming-markdown'
 
 export type ParsedContentBlock
   = | { type: 'markdown', html: string }
@@ -28,12 +29,48 @@ export interface RenderMarkdownBlocksResult {
   cache: MarkdownBlockCache
 }
 
+// CommonMark 的强调规则在全角标点紧贴 `**` 时配不上对（`**结论：**后文` 显示字面 `**`）；
+// markdown-it-cjk-friendly 是 CommonMark「CJK 友好强调」修订提案的参考实现。
 const markdown = new MarkdownIt({
   breaks: true,
   html: false,
   linkify: true,
   highlight: highlightCode,
-})
+}).use(markdownItCjkFriendly)
+
+type LinkifyMatch = NonNullable<ReturnType<typeof markdown.linkify.matchAtStart>>
+const CJK_PUNCTUATION = new RegExp(`[${CJK_PUNCTUATION_CHARS}]`)
+
+/**
+ * linkify 会把「https://x.com/a。后文」整段并进链接：在第一个全角标点处截断，后文照常解析。
+ * 上限：路径里本来就带全角标点的 URL（`/wiki/東京（曖昧さ回避）`、以 `。` 分隔标签的 IDN 主机）会被截短。
+ */
+function trimAtCjkPunctuation(match: LinkifyMatch): LinkifyMatch {
+  const cut = match.raw.search(CJK_PUNCTUATION)
+
+  if (cut <= 0)
+    return match
+
+  const removed = match.raw.length - cut
+
+  return Object.assign(match, {
+    raw: match.raw.slice(0, cut),
+    text: match.text.slice(0, -removed),
+    url: match.url.slice(0, -removed),
+    lastIndex: match.lastIndex - removed,
+  })
+}
+
+const { linkify } = markdown
+const matchAtStart = linkify.matchAtStart.bind(linkify)
+const matchAll = linkify.match.bind(linkify)
+
+// 带协议的链接走 inline 规则（matchAtStart），www. 这类走 core 规则（match）。
+linkify.matchAtStart = (text) => {
+  const found = matchAtStart(text)
+  return found && trimAtCjkPunctuation(found)
+}
+linkify.match = text => matchAll(text)?.map(trimAtCjkPunctuation) ?? null
 
 markdown.validateLink = url => !/^(?:javascript|vbscript|file|data):/.test(url.trim().toLowerCase())
 markdown.renderer.rules.link_open = (tokens, index, options, _env, renderer) => {
@@ -49,17 +86,36 @@ markdown.renderer.rules.image = (tokens, index, options, env, renderer) => {
   const token = tokens[index]
   const alt = markdown.utils.escapeHtml(renderer.renderInlineAsText(token.children ?? [], options, env))
   const src = markdown.utils.escapeHtml(token.attrGet('src') ?? '')
-  // 链接不能嵌套：往前遇到的第一个链接标记是 open 就说明在链接里。
-  for (let i = index - 1; i >= 0; i--) {
-    if (tokens[i].type === 'link_close')
-      break
-    if (tokens[i].type === 'link_open')
-      return alt || src
-  }
+  // 链接不能嵌套：在链接里的图片只留文字。
+  if (imagesInLinks(tokens).has(index))
+    return alt || src
   // 空地址的 `<a href="">` 会在新标签页打开当前页，只留文字。
   if (!src)
     return alt
   return `<a href="${src}" target="_blank" rel="noreferrer noopener">${alt || src}</a>`
+}
+
+const imageIndexesInLinks = new WeakMap<Token[], Set<number>>()
+
+/** 一组 inline token 里位于链接内的图片下标；每组只遍历一次，不为每张图片往回扫。 */
+function imagesInLinks(tokens: Token[]): Set<number> {
+  let indexes = imageIndexesInLinks.get(tokens)
+
+  if (!indexes) {
+    indexes = new Set()
+    let depth = 0
+
+    for (const [index, token] of tokens.entries()) {
+      if (token.type === 'link_open')
+        depth++
+      else if (token.type === 'link_close')
+        depth--
+      else if (token.type === 'image' && depth > 0)
+        indexes.add(index)
+    }
+    imageIndexesInLinks.set(tokens, indexes)
+  }
+  return indexes
 }
 
 interface Segment {
@@ -133,7 +189,8 @@ export function renderMarkdownBlocks(
 
   if (options.streaming) {
     const tail = document.segments.at(-1)
-    if (tail && tail.map && !isCodeSegment(tail)) {
+    // 尾块之后还有行，说明它的最后一行已经换行写完：按终态显示，不再补齐（多补的标记会一直挂到下一行开始）。
+    if (tail && tail.map && !isCodeSegment(tail) && tail.map[1] === document.lines.length) {
       const [start, end] = tail.map
       const tailSource = document.lines.slice(start, end).join('\n')
       // 「要点如下：\n-」先按 H2 渲染、下一字符到达后又变回段落加列表：下划线在文末时先不显示。
@@ -141,7 +198,7 @@ export function renderMarkdownBlocks(
       const settledSource = endsWithPendingSetextUnderline(tail, document.lines)
         ? document.lines.slice(start, end - 1).join('\n')
         : tailSource
-      const completed = completeStreamingMarkdown(settledSource)
+      const completed = completeStreamingMarkdown(settledSource, { table: tail.tokens[0]?.type === 'table_open' })
       // 补齐只改尾块末尾，前面的块不受影响：沿用同一个 env 只重解析尾块及其后的行
       // （reference 定义、空行不产生 token，但必须保留），不再解析全文第二次。
       if (completed !== tailSource) {

@@ -70,6 +70,8 @@ export interface ChatStreamErrorEvent {
   conversationId: string
   assistantMessageId?: string
   message: string
+  /** 用户消息已落库（会话 updatedAt 已更新）之后才失败时为 true；前台据此把会话移到侧栏顶部。 */
+  userMessagePersisted?: boolean
 }
 
 export interface ChatStreamAbortedEvent {

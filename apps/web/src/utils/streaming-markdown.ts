@@ -2,13 +2,16 @@
  * 流式 Markdown 的两个纯函数：
  * - `completeStreamingMarkdown`：给尾块补齐未闭合的行内标记（对照 Streamdown 的 remend）。
  *   不补则 `**加粗` 会先以字面 `**` 出现，闭合后才变成粗体，正文来回翻转。
- *   补齐以行、列表项、表格单元格为边界：前面行里没闭合的 `*.ts`、`2**10` 多半是字面字符，补到末尾反而多出标记。
+ *   补齐以行、列表项、表格单元格为边界：前面行里没闭合的 `*.ts`、`2**10` 多半是字面字符，补到末尾反而多出标记；
+ *   当前行里这类多半是字面字符的 opener 也不补，宁可晚一帧显示格式，也不显示正文里没有的样式。
  * - `alignRevealBoundary`：平滑放出文本时的切点不落在代理对或 `**` 这类标记中间。
  */
 
 const MARKER_CHARS = new Set(['*', '_', '~', '`'])
-/** 裸 URL 里的 `_`、`~`、`*` 不是强调；止于空白、括号与引号，Markdown 链接的 `)` 之后照常扫描。 */
-const BARE_URL = /https?:\/\/[^\s<>()[\]"'`]*/y
+/** 中文正文里紧跟 URL 的全角标点与中文引号：不属于 URL，markdown-blocks 的 linkify 用同一份字符表截断。 */
+export const CJK_PUNCTUATION_CHARS = '、。，．：；！？（）［］｛｝【】《》〈〉「」『』〔〕〖〗～…—‘’“”＂＇'
+/** 裸 URL 里的 `_`、`~`、`*` 不是强调；止于空白、括号、引号与全角标点，Markdown 链接的 `)` 之后照常扫描。 */
+const BARE_URL = new RegExp(`https?:\\/\\/[^\\s<>()[\\]"'\`${CJK_PUNCTUATION_CHARS}]*`, 'y')
 /** 切在这些字符之后会先渲染出半个转义 / 半个图片标记，下一帧才消失。 */
 const PENDING_PREFIX_CHARS = new Set(['\\', '!'])
 
@@ -19,6 +22,14 @@ function isWhitespace(char: string | undefined) {
 function isWordChar(char: string | undefined) {
   return char !== undefined && /[\p{L}\p{N}]/u.test(char)
 }
+
+function isAsciiAlnum(char: string | undefined) {
+  return char !== undefined && /[A-Z0-9]/i.test(char)
+}
+
+// 紧跟在字面星号后面的常见字符（`*.ts`、`*=`、`*)`、注释里的斜杠）；强调的正文很少以它们开头。
+// 反引号、`[`、`(`、引号不在其列：粗体代码、粗体链接、括号与引号开头的强调都很常见。
+const LITERAL_FOLLOWERS = new Set(['.', ',', ';', ':', '=', '/', ')', ']', '}', '?', '!'])
 
 /** 按 CommonMark 分隔符成对拆分：`***` 是 `**` + `*`，`****` 是两个 `**`。 */
 function markersOfRun(char: string, run: number): string[] {
@@ -33,6 +44,8 @@ function markersOfRun(char: string, run: number): string[] {
 }
 
 const TABLE_ROW = /[ \t>]*\|/y
+/** 尾块末尾只有 ATX 标题标记（含列表项里的 `- ##`）、正文还没到：先不显示，否则会闪出一个空标题。 */
+const PENDING_ATX_HEADING = /(^|\n)[ \t>]*(?:(?:[-*+]|\d{1,9}[.)])[ \t]+)?#{1,6}[ \t]*$/
 /** 列表项、表格行、空行（或文末）：markdown-it 不会跨过它们配对标记。 */
 const NEW_INLINE_CONTEXT = /[ \t>]*(?:(?:[-*+]|\d{1,9}[.)])(?=[ \t\n]|$)|\||\n|$)/y
 
@@ -77,7 +90,10 @@ function findFenceEnd(text: string, index: number, char: string, run: number): n
   return -1
 }
 
-export function completeStreamingMarkdown(text: string): string {
+/**
+ * `table`：尾块已被解析成表格（含不以 `|` 开头的行），每一行都按单元格切分。
+ */
+export function completeStreamingMarkdown(text: string, options: { table?: boolean } = {}): string {
   /** 当前行（单元格）里未闭合、到文末要补齐的强调标记。 */
   let open: string[] = []
   /** 同一段落前面行里未闭合的：不再补，但后面的闭合符仍与之配对（markdown-it 跨软换行配对），不能当成新起点。 */
@@ -92,14 +108,15 @@ export function completeStreamingMarkdown(text: string): string {
   /** 文本停在裸 URL 末尾时补的 `_`、`~` 会被 linkify 并进链接。 */
   let endsInUrl = false
   let index = 0
-  let inTableRow = isTableRow(text, 0)
+  let inTableRow = options.table || isTableRow(text, 0)
   // 尾部只能作为 opener 的标记（`**` 刚到达、正文还没来）先裁掉，等下一帧再显示。
   let cutAt = text.length
 
   while (index < text.length) {
     const char = text[index]
 
-    if (char === '\n' || (char === '|' && inTableRow)) {
+    // GFM 先按未转义的 `|` 切单元格，与 markdown-it 一样只看前一个字符：代码段里的 `\|` 也不是边界。
+    if (char === '\n' || (char === '|' && inTableRow && text[index - 1] !== '\\')) {
       const separate = char === '|' || startsNewInlineContext(text, index + 1)
       // 代码段跨软换行：本行代码段里的标记随 open 并入 stale，记下它们在 stale 里的起点。
       if (separate)
@@ -114,7 +131,7 @@ export function completeStreamingMarkdown(text: string): string {
       open = []
       codeRun = 0
       if (char === '\n')
-        inTableRow = isTableRow(text, index + 1)
+        inTableRow = options.table || isTableRow(text, index + 1)
       index++
       continue
     }
@@ -188,13 +205,17 @@ export function completeStreamingMarkdown(text: string): string {
     const wordInternal = char === '_' && isWordChar(before) && isWordChar(after)
     const canClose = !isWhitespace(before) && !wordInternal
     const canOpen = (atEnd || !isWhitespace(after)) && !wordInternal
+    // 多半是字面字符（2*3、2**10、x*y、*.ts、src/**/）：终态可能成对也可能不成对，流式中不补。
+    // 后接字符只对单个星号或紧贴在词里的标记生效：前面是空白的 `**.env`、`**/api` 是真粗体。
+    const likelyLiteral = (isAsciiAlnum(before) && isAsciiAlnum(after))
+      || (LITERAL_FOLLOWERS.has(after ?? '') && (run === 1 || !isWhitespace(before)))
 
     for (const marker of markersOfRun(char, run)) {
       if (canClose && (removeLast(open, marker) || removeLast(stale, marker)))
         continue
       if (canOpen && atEnd)
         cutAt = Math.min(cutAt, index)
-      else if (canOpen)
+      else if (canOpen && !likelyLiteral)
         open.push(marker)
     }
     index += run
@@ -213,6 +234,7 @@ export function completeStreamingMarkdown(text: string): string {
   result = result
     .replace(/!\[[^\]\n]*(?:\]\([^)\n]*)?$/, '')
     .replace(/(\[[^\]\n]*\]\([^)\s]+)$/, '$1)')
+    .replace(PENDING_ATX_HEADING, '$1')
 
   if (endsInUrl)
     open = open.filter(marker => marker[0] === '*')

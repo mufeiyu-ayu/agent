@@ -157,6 +157,8 @@ export class AgentRuntimeService {
     // for-await break）会让 yield 点以 return 语义恢复、跳过 catch，
     // 此时只有 finally 有机会兜底收口。
     let terminalizationHandled = false
+    // 用户消息落库时同时更新了会话 updatedAt；此后的失败要让前台同步侧栏（Run 可能还没创建）。
+    let userMessagePersisted = false
     // 失败 / return 时仍需落库的最新安全 output；action sampling 与
     // finalization 不会同时处于 RUNNING，因此复用一个 metadata 槽位。
     let terminalStepMetadata: CloseAgentStepMetadata | undefined
@@ -172,6 +174,7 @@ export class AgentRuntimeService {
         MessageRole.USER,
         normalizedMessage,
       )
+      userMessagePersisted = true
 
       const agentRun = await this.agentRunRecorderService.createRun({
         conversationId: input.conversationId,
@@ -925,6 +928,7 @@ export class AgentRuntimeService {
           ? { failureReason: 'conversation_not_found' as const }
           : {}),
         message: errorMessage,
+        ...(userMessagePersisted ? { userMessagePersisted: true as const } : {}),
       }
     }
     finally {
@@ -1005,6 +1009,8 @@ export class AgentRuntimeService {
         : {}),
       failureReason: 'terminalization_unknown',
       message: '本轮回答的收口结果未知，请刷新会话查看最终状态。',
+      // 终态收口只发生在 Run 创建之后，用户消息必然已落库。
+      userMessagePersisted: true,
     }
 
     throw new AgentRunTerminalizationError(
