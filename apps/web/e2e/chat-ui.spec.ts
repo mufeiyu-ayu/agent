@@ -524,3 +524,12 @@ test('#155：同一帧内到达的多个 delta 合并成一次消息写入，终
   await page.evaluate(() => window.__releaseStream?.())
   await expect.poll(() => page.evaluate(() => window.__workspace.messages.value.map(item => `${item.role}:${item.status}`))).toEqual(['USER:COMPLETED', 'ASSISTANT:COMPLETED'])
 })
+
+test('#176 AC-01：回答里的列表显示圆点与序号，嵌套层级用浏览器默认标记', async ({ page }) => {
+  await mountConversation(page, '- 甲\n  - 甲1\n- 乙\n\n1. 一\n2. 二', 'success')
+  const content = page.locator('#chat-ui-test .agent-markdown-content').last()
+  await expect(content.locator('ul').first()).toHaveCSS('list-style-type', 'disc')
+  await expect(content.locator('ul ul')).toHaveCSS('list-style-type', 'circle')
+  await expect(content.locator('ol')).toHaveCSS('list-style-type', 'decimal')
+  await expect(content.locator('li').first()).toHaveCSS('display', 'list-item')
+})

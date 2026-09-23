@@ -107,6 +107,8 @@ const blocks = useStreamingMarkdown(() => props.text, () => !!props.isStreaming)
 .agent-markdown-content :deep(ul) {
   margin: 1rem 0 0;
   padding-left: 1.5rem;
+  /* Tailwind preflight 把列表标记清成 none；revert 回到浏览器默认：圆点 / 序号，嵌套层级依次空心圆、方块。 */
+  list-style: revert;
 }
 
 .agent-markdown-prose:first-child :deep(:is(ol, ul):first-child) {
