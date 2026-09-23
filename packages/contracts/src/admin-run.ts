@@ -1,3 +1,4 @@
+import type { LlmProviderFamily } from './admin-llm.js'
 import type {
   AgentRunErrorCode,
   AgentRunStatus,
@@ -21,16 +22,42 @@ export interface AdminRunTokenUsage {
   promptCacheMissTokens: number | null
 }
 
+/**
+ * 采样快照里的模型，服务端按 modelId 关联模型行得出显示名与家族。
+ * 旧采样没有 modelId 时按 wire name 归行；模型行已删除时显示 wire name 并标 deleted。
+ */
+export interface AdminModelRef {
+  /** 旧采样没有记录 modelId 时为 null。 */
+  modelId: string | null
+  displayName: string
+  wireName: string
+  /** 模型行所属服务商的家族；旧采样或模型行已删除时为 null。 */
+  family: LlmProviderFamily | null
+  /** 采样记录了 modelId，但该模型行已被删除。 */
+  deleted: boolean
+}
+
 export interface AdminRunListItem {
   id: string
   conversationId: string
   status: AgentRunStatus
   /** 失败 / 中断类别；成功、仍在运行或字段上线前的旧 Run 为 null。 */
   errorCode: AgentRunErrorCode | null
+  /**
+   * 失败 / 中断 Run 在终态时与 Run 一起收口的 Step 的错误文案；更早失败、已回喂模型的工具 Step 不算。
+   * 成功 / 运行中的 Run，以及在两个 Step 之间中断（没有 Step 随终态收口）时为 null。
+   */
+  failureMessage: string | null
+  /** 本次 Run 采样使用的模型；没有任何采样记录时为 null。 */
+  model: AdminModelRef | null
   questionPreview: string
+  /**
+   * 真实发出的模型调用次数，与概览同一口径：action sampling Step 与 finalization attempt 中，
+   * 有 usage 或以 llm_* 类别失败的才算；估算失败、上下文溢出、请求前取消的不算。
+   */
   samplingCount: number
   toolCallCount: number
-  /** 全部模型调用（action sampling + finalization attempt）的逐项求和；任一调用缺某项则该项为 null。 */
+  /** 上述模型调用中带 usage 的逐项求和；任一调用缺某项则该项为 null，没有带 usage 的调用时全为 null。 */
   usage: AdminRunTokenUsage
   durationMs: number | null
   startedAt: string

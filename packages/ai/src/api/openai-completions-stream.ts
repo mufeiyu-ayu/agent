@@ -184,6 +184,10 @@ function normalizeFinishReason(finishReason: string): ModelFinishReason {
  * 缓存命中数按三种写法兜底取值；未命中数只有 DeepSeek 直连会报，其他家族在有命中数时用
  * `prompt_tokens − 命中数` 推出。`inputTokens` 保持原始 `prompt_tokens`，不像 Pi 那样扣掉缓存，
  * Admin 投影与概览口径不变；哪个字段都没有时保持 undefined，不补零。
+ *
+ * reasoning 按 Pi 口径算作 output 的子集：grok 的 `completion_tokens` 不含推理 Token，
+ * 只有 `total_tokens` 能证明这一点（= prompt + completion + reasoning 且 ≠ prompt + completion），
+ * 此时 `outputTokens` 归一为 completion + reasoning；其余家族原样保留。
  */
 function toModelUsage(
   usage: CompatCompletionUsage,
@@ -196,14 +200,18 @@ function toModelUsage(
     ?? (promptCacheHitTokens !== undefined && usage.prompt_tokens >= promptCacheHitTokens
       ? usage.prompt_tokens - promptCacheHitTokens
       : undefined)
+  const reasoningTokens = usage.completion_tokens_details?.reasoning_tokens
+  const reasoningOutsideCompletion = typeof reasoningTokens === 'number'
+    && usage.total_tokens === usage.prompt_tokens + usage.completion_tokens + reasoningTokens
+    && usage.total_tokens !== usage.prompt_tokens + usage.completion_tokens
 
   return {
     inputTokens: usage.prompt_tokens,
-    outputTokens: usage.completion_tokens,
+    outputTokens: reasoningOutsideCompletion
+      ? usage.completion_tokens + reasoningTokens
+      : usage.completion_tokens,
     totalTokens: usage.total_tokens,
-    ...(typeof usage.completion_tokens_details?.reasoning_tokens === 'number'
-      ? { reasoningTokens: usage.completion_tokens_details.reasoning_tokens }
-      : {}),
+    ...(typeof reasoningTokens === 'number' ? { reasoningTokens } : {}),
     ...(promptCacheHitTokens === undefined ? {} : { promptCacheHitTokens }),
     ...(promptCacheMissTokens === undefined ? {} : { promptCacheMissTokens }),
   }

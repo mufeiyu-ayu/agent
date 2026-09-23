@@ -24,15 +24,18 @@ export type {
 export { familyCompatOf, LLM_FAMILY_CAPABILITIES, LLM_PROVIDER_FAMILIES, REASONING_EFFORTS, reasoningEffortsOf } from './admin-llm.js'
 export type {
   AdminOverviewBucket,
-  AdminOverviewModelUsageItem,
+  AdminOverviewFailureReason,
+  AdminOverviewHealth,
+  AdminOverviewLatency,
+  AdminOverviewModelItem,
   AdminOverviewPoint,
   AdminOverviewStats,
-  AdminOverviewToolUsageItem,
-  AdminOverviewTotals,
+  AdminOverviewToolItem,
+  AdminOverviewUsage,
   AdminOverviewWindow,
   AdminProviderBalance,
 } from './admin-overview.js'
-export { ADMIN_OVERVIEW_WINDOWS } from './admin-overview.js'
+export { ADMIN_OVERVIEW_UNKNOWN_TOOL, ADMIN_OVERVIEW_WINDOWS } from './admin-overview.js'
 export type {
   AdminAssistantOutputStep,
   AdminContextInspector,
@@ -47,6 +50,7 @@ export type {
   AdminGroundedFinalizationStep,
   AdminLoadConversationHistoryStep,
   AdminModelFinishReason,
+  AdminModelRef,
   AdminModelSamplingStep,
   AdminRetrievalCallSummary,
   AdminRetrievalInspector,

@@ -1,16 +1,18 @@
 <script setup lang="ts">
-import type { OverviewKpi } from '../overview.model'
+import type { AdminOverviewStats } from '@agent/contracts'
 
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-import { formatTokens } from '@/features/runs/run.utils'
+import { formatDuration, formatPercentage, formatTokens } from '@/features/runs/run.utils'
 
-import { formatPercent } from '../overview.model'
 import OverviewCard from './OverviewCard.vue'
 
 const props = defineProps<{
-  kpi: OverviewKpi | undefined
+  stats: AdminOverviewStats
+  balanceText: string
+  balanceDetail: string
+  balanceUnavailable: boolean
 }>()
 
 const { locale, t } = useI18n()
@@ -29,57 +31,56 @@ interface KpiTile {
 }
 
 const tiles = computed<KpiTile[]>(() => {
-  const kpi = props.kpi
-  if (!kpi)
-    return []
+  const { health, latency, usage } = props.stats
 
   return [
     {
       key: 'runs',
       label: t('overview.kpi.runs'),
-      value: count(kpi.runCount),
+      value: count(health.runCount),
       detail: t('overview.kpi.runsDetail', {
-        completed: count(kpi.completedRuns),
-        failed: count(kpi.failedRuns),
-        aborted: count(kpi.abortedRuns),
+        completed: count(health.statusCounts.COMPLETED),
+        failed: count(health.statusCounts.FAILED),
+        aborted: count(health.statusCounts.ABORTED),
       }),
     },
     {
       key: 'successRate',
       label: t('overview.kpi.successRate'),
-      value: formatPercent(kpi.successRate),
+      value: formatPercentage(health.successRate, locale.value),
       detail: t('overview.kpi.successRateDetail'),
+      pending: health.successRate === null,
+    },
+    {
+      key: 'duration',
+      label: t('overview.kpi.duration'),
+      value: `${formatDuration(latency.runDurationP50Ms)} / ${formatDuration(latency.runDurationP95Ms)}`,
+      detail: t('overview.kpi.durationDetail'),
+      pending: latency.runDurationP50Ms === null,
     },
     {
       key: 'tokens',
       label: t('overview.kpi.tokens'),
-      value: formatTokens(kpi.totalTokens, locale.value),
+      value: formatTokens(usage.totalTokens, locale.value),
       detail: t('overview.kpi.tokensDetail', {
-        input: formatTokens(kpi.inputTokens, locale.value),
-        output: formatTokens(kpi.outputTokens, locale.value),
+        avg: usage.avgTokensPerRun === null ? '—' : formatTokens(usage.avgTokensPerRun, locale.value),
       }),
-    },
-    {
-      key: 'avgTokens',
-      label: t('overview.kpi.avgTokens'),
-      value: kpi.avgTokensPerRun === null ? '—' : formatTokens(kpi.avgTokensPerRun, locale.value),
-      detail: t('overview.kpi.avgTokensDetail'),
     },
     {
       key: 'cacheHitRate',
       label: t('overview.kpi.cacheHitRate'),
-      value: formatPercent(kpi.cacheHitRate),
-      detail: kpi.cacheHitRate === null ? t('overview.kpi.cacheHitRateEmpty') : t('overview.kpi.cacheHitRateDetail'),
-      pending: kpi.cacheHitRate === null,
+      value: formatPercentage(usage.cacheHitRate, locale.value),
+      detail: usage.cacheCoverage === null
+        ? t('overview.kpi.cacheEmpty')
+        : t('overview.kpi.cacheCoverage', { coverage: formatPercentage(usage.cacheCoverage, locale.value) }),
+      pending: usage.cacheHitRate === null,
     },
     {
-      key: 'toolCalls',
-      label: t('overview.kpi.toolCalls'),
-      value: count(kpi.toolCallCount),
-      detail: t('overview.kpi.toolCallsDetail', {
-        conversations: count(kpi.conversationCount),
-        messages: count(kpi.messageCount),
-      }),
+      key: 'balance',
+      label: t('overview.kpi.balance'),
+      value: props.balanceText,
+      detail: props.balanceDetail,
+      pending: props.balanceUnavailable,
     },
   ]
 })
@@ -96,7 +97,7 @@ const tiles = computed<KpiTile[]>(() => {
       >
         <span class="kpi-tile__label">{{ tile.label }}</span>
         <strong class="kpi-tile__value">{{ tile.value }}</strong>
-        <span class="kpi-tile__detail">{{ tile.detail }}</span>
+        <span class="kpi-tile__detail" :title="tile.detail">{{ tile.detail }}</span>
       </div>
     </div>
   </OverviewCard>
@@ -105,7 +106,7 @@ const tiles = computed<KpiTile[]>(() => {
 <style scoped>
 .kpi-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 18px 24px;
 }
 
@@ -126,11 +127,12 @@ const tiles = computed<KpiTile[]>(() => {
 
 .kpi-tile__value {
   color: var(--admin-text);
-  font-size: 24px;
+  font-size: 22px;
   font-weight: 750;
   letter-spacing: -0.03em;
   line-height: 1.1;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .kpi-tile.is-pending .kpi-tile__value {
@@ -143,6 +145,12 @@ const tiles = computed<KpiTile[]>(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+@media (max-width: 1240px) {
+  .kpi-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 720px) {

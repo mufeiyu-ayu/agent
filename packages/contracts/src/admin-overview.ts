@@ -1,4 +1,5 @@
-import type { AgentRunStatus } from './agent-run.js'
+import type { AdminModelRef, AdminToolResultCode } from './admin-run.js'
+import type { AgentRunErrorCode, AgentRunStatus } from './agent-run.js'
 
 /** 统计窗口：24h 取精确的最近 24 小时按整点分桶（25 个桶，首尾半桶），7d / 30d 按 Asia/Shanghai 归日。 */
 export const ADMIN_OVERVIEW_WINDOWS = ['24h', '7d', '30d'] as const
@@ -7,56 +8,97 @@ export type AdminOverviewWindow = typeof ADMIN_OVERVIEW_WINDOWS[number]
 
 export type AdminOverviewBucket = 'hour' | 'day'
 
-export interface AdminOverviewTotals {
-  /** 三个计数是全量，不受窗口影响。 */
-  conversationCount: number
+/** 不在当前服务端工具清单里的工具名（模型编造，或工具已下线 / 改名）合并成这一行。 */
+export const ADMIN_OVERVIEW_UNKNOWN_TOOL = 'unknown_tool'
+
+/**
+ * 全部统计都以「窗口内创建的 Run」为单位：Run 按 createdAt 进窗口，它的 Step 跟着 Run 走，
+ * 所以概览与运行列表按同一日期范围筛出来的是同一批 Run。
+ */
+export interface AdminOverviewHealth {
   runCount: number
-  messageCount: number
-  /** 统计窗口内可证明的 Token 汇总；无任何采样数据时为 0。 */
-  inputTokens: number
-  outputTokens: number
-  /**
-   * 窗口内报告了缓存字段的采样：命中 Token 之和与同口径的输入 Token 之和，命中率 = hit / input。
-   * 没有任何采样报告缓存字段时两者都为 null，不补零。
-   */
-  cacheHitTokens: number | null
-  cacheInputTokens: number | null
+  statusCounts: Record<AgentRunStatus, number>
+  /** COMPLETED ÷ 已终态 Run，0–1；没有终态 Run 时为 null。 */
+  successRate: number | null
+  /** FAILED / ABORTED Run 按 errorCode 计数，次数降序；errorCode 为 null 是字段上线前的旧 Run（未记录）。 */
+  failureReasons: AdminOverviewFailureReason[]
 }
 
-/** 一个时间桶的聚合点；bucketStart 为 ISO 时间，label 按 Asia/Shanghai 给图表看（HH:00 或 MM-DD）。 */
+export interface AdminOverviewFailureReason {
+  errorCode: AgentRunErrorCode | null
+  count: number
+}
+
+export interface AdminOverviewLatency {
+  /** 已终态 Run 的 endedAt − startedAt 分位（毫秒）；没有终态 Run 时为 null。 */
+  runDurationP50Ms: number | null
+  runDurationP95Ms: number | null
+}
+
+/**
+ * 模型调用 = action sampling Step 与 grounded finalization attempt 中，有 usage 或以 llm_* 类别失败的；
+ * 估算失败、上下文溢出、请求前取消的采样从未发出请求，不算调用。
+ */
+export interface AdminOverviewUsage {
+  /** 全部模型调用的 totalTokens 之和。 */
+  totalTokens: number
+  /** totalTokens ÷ 有 Token 的 Run 数；没有时为 null。 */
+  avgTokensPerRun: number | null
+  /** 上报了缓存字段的调用：命中 Token ÷ 它们的输入 Token，0–1；没有任何调用上报时为 null。 */
+  cacheHitRate: number | null
+  /** 上报了缓存字段的调用的输入 Token ÷ 全部输入 Token，0–1；没有输入 Token 时为 null。 */
+  cacheCoverage: number | null
+}
+
+/** 一个时间桶；bucketStart 为 ISO 时间，label 按 Asia/Shanghai 给图表看（HH:00 或 MM-DD）。 */
 export interface AdminOverviewPoint {
   bucketStart: string
   label: string
-  runCount: number
-  inputTokens: number
-  outputTokens: number
-}
-
-export interface AdminOverviewModelUsageItem {
-  model: string
-  samplingCount: number
+  statusCounts: Record<AgentRunStatus, number>
   totalTokens: number
-  /** 与 totals 同口径的每模型缓存汇总。 */
-  cacheHitTokens: number | null
-  cacheInputTokens: number | null
-  /** 有 startedAt / endedAt 的采样的平均时长；一个都没有时为 null。 */
-  avgDurationMs: number | null
 }
 
-export interface AdminOverviewToolUsageItem {
+export interface AdminOverviewModelItem {
+  /** 采样快照里既没有 modelId 也没有 wire name 时为 null（未记录）。 */
+  model: AdminModelRef | null
+  callCount: number
+  /** 以 llm_* 类别失败的调用 ÷ callCount，0–1。 */
+  failureRate: number
+  /** action sampling 的首 token 时间 p50（毫秒）；finalization 不记这一项，没有记录时为 null。 */
+  firstTokenP50Ms: number | null
+  /** 成功的 action sampling 的 endedAt − startedAt p50（毫秒）；没有时为 null。 */
+  samplingDurationP50Ms: number | null
+  totalTokens: number
+  /** totalTokens ÷ 全部模型 totalTokens，0–1；总量为 0 时为 0。 */
+  tokenShare: number
+  /** 与 usage.cacheHitRate 同口径。 */
+  cacheHitRate: number | null
+}
+
+export interface AdminOverviewToolItem {
+  /** 服务端工具清单里的名字，或 ADMIN_OVERVIEW_UNKNOWN_TOOL。 */
   tool: string
-  count: number
+  callCount: number
+  /** FAILED Step ÷ callCount，0–1。 */
+  failureRate: number
+  /** 失败按 output.code 计数，次数降序；执行中抛错没有 code，记为 null。 */
+  failureCodes: Array<{ code: AdminToolResultCode | null, count: number }>
+  /** 已结束（COMPLETED / FAILED）Step 的平均耗时；没有时为 null。 */
+  avgDurationMs: number | null
 }
 
 export interface AdminOverviewStats {
   window: AdminOverviewWindow
   bucket: AdminOverviewBucket
-  totals: AdminOverviewTotals
+  health: AdminOverviewHealth
+  latency: AdminOverviewLatency
+  usage: AdminOverviewUsage
   /** 长度固定为窗口桶数（25 / 7 / 30），缺数据的桶补零。 */
   points: AdminOverviewPoint[]
-  statusCounts: Record<AgentRunStatus, number>
-  models: AdminOverviewModelUsageItem[]
-  tools: AdminOverviewToolUsageItem[]
+  /** totalTokens 降序。 */
+  models: AdminOverviewModelItem[]
+  /** callCount 降序。 */
+  tools: AdminOverviewToolItem[]
 }
 
 /** Provider 余额投影；上游查询失败时 available=false 且金额为 null。 */

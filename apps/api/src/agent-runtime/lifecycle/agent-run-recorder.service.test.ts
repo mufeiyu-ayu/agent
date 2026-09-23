@@ -181,7 +181,8 @@ describe('AgentRunRecorderService', () => {
     for (const step of harness.steps(prepared.run.id)) {
       assert.equal(step.status, AgentStepStatus.FAILED)
       assert.equal(step.errorMessage, '安全错误')
-      assert.ok(step.endedAt)
+      // 终态收口的 Step 与 Run 共用同一个时间戳，Admin 靠它认出失败文案来自哪条 Step。
+      assert.equal(step.endedAt?.getTime(), harness.run(prepared.run.id)?.endedAt?.getTime())
     }
   })
 
@@ -223,7 +224,7 @@ describe('AgentRunRecorderService', () => {
     assert.equal(harness.unfinishedSteps(prepared.run.id).length, 0)
     for (const step of harness.steps(prepared.run.id)) {
       assert.equal(step.status, AgentStepStatus.ABORTED)
-      assert.ok(step.endedAt)
+      assert.equal(step.endedAt?.getTime(), harness.run(prepared.run.id)?.endedAt?.getTime())
     }
   })
 

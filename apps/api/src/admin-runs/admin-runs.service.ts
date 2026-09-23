@@ -3,8 +3,8 @@ import type {
   AdminRunListResponse,
   AgentRunStatus,
 } from '@agent/contracts'
-import type { Prisma } from '../generated/prisma/client.js'
 import type { ListAdminRunsQueryDto } from './dto/admin-runs.dto.js'
+import type { AdminRunListStepRecord } from './projection/admin-run.projector.js'
 import {
   BadRequestException,
   Inject,
@@ -13,16 +13,19 @@ import {
 } from '@nestjs/common'
 
 import { AGENT_STEP_TYPES } from '../agent-runtime/lifecycle/agent-run-recorder.service.js'
+import { Prisma } from '../generated/prisma/client.js'
 import { PrismaService } from '../prisma/prisma.service.js'
+import { resolveAdminModelRefs } from './admin-model-refs.js'
 import {
   projectAdminRunDetail,
   projectAdminRunListItem,
+  readRunModelKey,
 } from './projection/admin-run.projector.js'
 
 const DEFAULT_PAGE = 1
 const DEFAULT_PAGE_SIZE = 20
 
-/** 列表页读取的列；projector 的输入类型直接由它派生。 */
+/** 列表页读取的 Run 列；Step 另由 `loadListSteps` 只取需要的 JSON 路径。 */
 export const ADMIN_RUN_LIST_SELECT = {
   id: true,
   conversationId: true,
@@ -36,27 +39,14 @@ export const ADMIN_RUN_LIST_SELECT = {
       content: true,
     },
   },
-  steps: {
-    where: {
-      type: {
-        // grounded finalization 也是真实模型调用，必须喂给 projector，
-        // 否则 Grounded Run 在列表页会系统性少算采样次数与 Token。
-        in: [
-          AGENT_STEP_TYPES.modelSampling,
-          AGENT_STEP_TYPES.toolExecution,
-          AGENT_STEP_TYPES.groundedFinalization,
-        ],
-      },
-    },
-    select: {
-      sequence: true,
-      type: true,
-      status: true,
-      input: true,
-      output: true,
-    },
-  },
 } as const satisfies Prisma.AgentRunSelect
+
+/** 列表统计需要的 Step 类型；grounded finalization 的 attempt 也是真实模型调用。 */
+const LIST_STEP_TYPES = [
+  AGENT_STEP_TYPES.modelSampling,
+  AGENT_STEP_TYPES.toolExecution,
+  AGENT_STEP_TYPES.groundedFinalization,
+]
 
 export const ADMIN_RUN_DETAIL_SELECT = {
   id: true,
@@ -120,7 +110,7 @@ export class AdminRunsService {
     const pageSize = input.pageSize ?? DEFAULT_PAGE_SIZE
     const where = createRunWhere(input)
 
-    const [runs, statusGroups] = await Promise.all([
+    const [runRows, statusGroups] = await Promise.all([
       this.prismaService.agentRun.findMany({
         where,
         orderBy: [
@@ -153,9 +143,15 @@ export class AdminRunsService {
       (total, count) => total + count,
       0,
     )
+    const stepsByRun = await this.loadListSteps(runRows.map(run => run.id))
+    const runs = runRows.map(run => ({ ...run, steps: stepsByRun.get(run.id) ?? [] }))
+    const models = await resolveAdminModelRefs(
+      this.prismaService,
+      runs.map(run => readRunModelKey(run.steps)),
+    )
 
     return {
-      items: runs.map(projectAdminRunListItem),
+      items: runs.map((run, index) => projectAdminRunListItem(run, models[index] ?? null)),
       pagination: {
         page,
         pageSize,
@@ -180,7 +176,56 @@ export class AdminRunsService {
     if (!run)
       throw new NotFoundException('Agent Run 不存在或已被删除')
 
-    return projectAdminRunDetail(run)
+    const [model] = await resolveAdminModelRefs(this.prismaService, [readRunModelKey(run.steps)])
+
+    return projectAdminRunDetail(run, model ?? null)
+  }
+
+  /**
+   * 列表页的 Step 行：采样 Step 只取 usage / errorCode 与模型快照，finalization 只取 attempts，
+   * 另带失败 / 中断 Run 在终态事务里收口的 Step（取失败文案）；不读整列 output，
+   * debug 捕获（单条可达数十 KB）不出数据库。
+   */
+  private async loadListSteps(
+    runIds: string[],
+  ): Promise<Map<string, AdminRunListStepRecord[]>> {
+    if (runIds.length === 0)
+      return new Map()
+
+    const rows = await this.prismaService.$queryRaw<Array<AdminRunListStepRecord & { runId: string }>>(Prisma.sql`
+      SELECT
+        s."runId",
+        s."sequence",
+        s."type",
+        s."status"::text AS "status",
+        s."errorMessage",
+        s."endedAt",
+        CASE WHEN s."type" = ${AGENT_STEP_TYPES.modelSampling}
+          THEN jsonb_build_object('initialContext', s."input" -> 'initialContext')
+        END AS "input",
+        CASE s."type"
+          WHEN ${AGENT_STEP_TYPES.modelSampling}
+            THEN jsonb_build_object('usage', s."output" -> 'usage', 'errorCode', s."output" -> 'errorCode')
+          WHEN ${AGENT_STEP_TYPES.groundedFinalization}
+            THEN jsonb_build_object('attempts', s."output" -> 'attempts')
+        END AS "output"
+      FROM "AgentStep" s
+      JOIN "AgentRun" r ON r."id" = s."runId"
+      WHERE s."runId" = ANY(${runIds})
+        AND (
+          s."type" IN (${Prisma.join(LIST_STEP_TYPES)})
+          OR (s."errorMessage" IS NOT NULL AND r."status" IN ('FAILED', 'ABORTED') AND s."endedAt" = r."endedAt")
+        )
+    `)
+    const stepsByRun = new Map<string, AdminRunListStepRecord[]>()
+
+    for (const { runId, ...step } of rows) {
+      const steps = stepsByRun.get(runId) ?? []
+      steps.push(step)
+      stepsByRun.set(runId, steps)
+    }
+
+    return stepsByRun
   }
 }
 
@@ -194,6 +239,7 @@ function createRunWhere(input: ListAdminRunsQueryDto): Prisma.AgentRunWhereInput
 
   return {
     ...(input.status ? { status: input.status } : {}),
+    ...(input.errorCode ? { errorCode: input.errorCode } : {}),
     ...(input.conversationId ? { conversationId: input.conversationId } : {}),
     ...(query
       ? {

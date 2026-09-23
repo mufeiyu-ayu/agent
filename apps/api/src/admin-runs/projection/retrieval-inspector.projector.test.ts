@@ -19,7 +19,7 @@ const RETRIEVAL_STRATEGY = { name: 'hybrid_rrf', version: '2' }
 
 describe('Admin Retrieval Inspector', () => {
   it('普通未检索 Run 返回空 calls 与 null citations，且不破坏既有 Timeline', () => {
-    const detail = projectAdminRunDetail(createOrdinaryRun())
+    const detail = projectAdminRunDetail(createOrdinaryRun(), null)
 
     assert.deepEqual(detail.retrievalInspector, { retrievalCalls: [], citations: null })
     assert.deepEqual(
@@ -36,7 +36,7 @@ describe('Admin Retrieval Inspector', () => {
 
       ;(toolStep.input as Record<string, unknown>).toolName = toolName
 
-      assert.deepEqual(projectAdminRunDetail(run).retrievalInspector.retrievalCalls, [])
+      assert.deepEqual(projectAdminRunDetail(run, null).retrievalInspector.retrievalCalls, [])
     }
   })
 
@@ -47,14 +47,14 @@ describe('Admin Retrieval Inspector', () => {
     ;(toolStep.input as Record<string, unknown>).toolVersion = 'drifted'
     delete (toolStep.input as Record<string, unknown>).toolVersion
 
-    const inspector = projectAdminRunDetail(run).retrievalInspector
+    const inspector = projectAdminRunDetail(run, null).retrievalInspector
 
     assert.equal(inspector.retrievalCalls.length, 1)
     assert.equal(inspector.retrievalCalls[0]?.stepId, 'step-3')
   })
 
   it('COMPLETED answered 时 call 摘要与 Citation 按 sourceId:chunkId 关联', () => {
-    const detail = projectAdminRunDetail(createGroundedRun())
+    const detail = projectAdminRunDetail(createGroundedRun(), null)
     const inspector = detail.retrievalInspector
 
     assert.deepEqual(inspector.retrievalCalls, [{
@@ -106,7 +106,7 @@ describe('Admin Retrieval Inspector', () => {
   it('Citation 身份没有出现在任何 call 的 refs 时 matchedCallIds 为空', () => {
     const inspector = projectAdminRunDetail(createGroundedRun({
       citations: [citation(1, { sourceId: 99, chunkId: 'chunk-z' })],
-    })).retrievalInspector
+    }), null).retrievalInspector
 
     assert.deepEqual(inspector.citations?.map(item => item.matchedCallIds), [[]])
   })
@@ -122,14 +122,14 @@ describe('Admin Retrieval Inspector', () => {
       input: { ...(toolStep.input as Record<string, unknown>), callId: 'call-2' },
     })
 
-    const inspector = projectAdminRunDetail(run).retrievalInspector
+    const inspector = projectAdminRunDetail(run, null).retrievalInspector
 
     assert.deepEqual(inspector.retrievalCalls.map(call => call.stepId), ['step-3', 'step-3b'])
     assert.deepEqual(inspector.citations?.[0]?.matchedCallIds, ['call-1', 'call-2'])
   })
 
   it('grounded_finalization 逐字段投影 typed timeline item', () => {
-    const detail = projectAdminRunDetail(createGroundedRun())
+    const detail = projectAdminRunDetail(createGroundedRun(), null)
     const item = findTimelineItem(detail, 'grounded_finalization')
 
     assert.ok(item.kind === 'known' && item.type === 'grounded_finalization')
@@ -184,7 +184,7 @@ describe('Admin Retrieval Inspector', () => {
     ]
     output.attemptCount = 2
 
-    const item = findTimelineItem(projectAdminRunDetail(run), 'grounded_finalization')
+    const item = findTimelineItem(projectAdminRunDetail(run, null), 'grounded_finalization')
 
     assert.ok(item.kind === 'known' && item.type === 'grounded_finalization')
     assert.deepEqual(item.usage, {
@@ -204,7 +204,7 @@ describe('Admin Retrieval Inspector', () => {
     const step = run.steps.find(item => item.type === 'grounded_finalization')!
     ;(step.output as Record<string, unknown>).rejectionCode = 'not_a_code'
 
-    const detail = projectAdminRunDetail(run)
+    const detail = projectAdminRunDetail(run, null)
     const item = findTimelineItem(detail, 'grounded_finalization')
 
     assert.ok(item.kind === 'known' && item.type === 'grounded_finalization')
@@ -221,7 +221,7 @@ describe('Admin Retrieval Inspector', () => {
       const step = run.steps.find(item => item.type === 'grounded_finalization')!
       step.output = output
 
-      const item = findTimelineItem(projectAdminRunDetail(run), 'grounded_finalization')
+      const item = findTimelineItem(projectAdminRunDetail(run, null), 'grounded_finalization')
 
       assert.ok(item.kind === 'known' && item.type === 'grounded_finalization')
       assert.equal(item.usage, null)
@@ -247,7 +247,7 @@ describe('Admin Retrieval Inspector', () => {
       },
       citations: [],
     })
-    const detail = projectAdminRunDetail(run)
+    const detail = projectAdminRunDetail(run, null)
 
     assert.equal(detail.retrievalInspector.retrievalCalls[0]?.sourceCount, 0)
     assert.deepEqual(detail.retrievalInspector.retrievalCalls[0]?.refs, [])
@@ -265,7 +265,7 @@ describe('Admin Retrieval Inspector', () => {
       finalization: { evidenceAvailability: 'unavailable', registryRefCount: 0, outcome: null, failure: 'FAILED' },
       citations: [],
     })
-    const detail = projectAdminRunDetail(run)
+    const detail = projectAdminRunDetail(run, null)
 
     assert.deepEqual(detail.retrievalInspector.retrievalCalls, [{
       stepId: 'step-3',
@@ -290,7 +290,7 @@ describe('Admin Retrieval Inspector', () => {
     run.assistantMessage!.grounding = null
     run.steps = run.steps.filter(step => step.sequence <= 3)
 
-    const inspector = projectAdminRunDetail(run).retrievalInspector
+    const inspector = projectAdminRunDetail(run, null).retrievalInspector
 
     assert.equal(inspector.retrievalCalls.length, 1)
     assert.equal(inspector.citations, null)
@@ -299,6 +299,7 @@ describe('Admin Retrieval Inspector', () => {
   it('legacy Retrieval Step 缺少 toolSummary 时 call 摘要为 null，Citation 无关联', () => {
     const inspector = projectAdminRunDetail(
       createGroundedRun({ omitToolSummary: true }),
+      null,
     ).retrievalInspector
 
     assert.equal(inspector.retrievalCalls.length, 1)
@@ -325,7 +326,7 @@ describe('Admin Retrieval Inspector', () => {
         ],
       },
       citations: [citation(1, { sourceId: 11, chunkId: null })],
-    })).retrievalInspector
+    }), null).retrievalInspector
 
     assert.deepEqual(inspector.retrievalCalls[0], {
       stepId: 'step-3',
@@ -355,7 +356,7 @@ describe('Admin Retrieval Inspector', () => {
         citation(2, { sourceId: 12, chunkId: 'chunk b' }),
         citation(3, { sourceId: 13, chunkId: 'chunk-c' }),
       ],
-    })).retrievalInspector
+    }), null).retrievalInspector
 
     assert.deepEqual(inspector.retrievalCalls[0]?.refs, [
       { sourceId: 11, chunkId: ' chunk-a ' },
@@ -384,7 +385,7 @@ describe('Admin Retrieval Inspector', () => {
         citation(3, { sourceId: 13, chunkId: null }),
         citation(4, { sourceId: 14, chunkId: null }),
       ],
-    })).retrievalInspector
+    }), null).retrievalInspector
 
     assert.deepEqual(inspector.retrievalCalls[0]?.refs, [
       { sourceId: 12, chunkId: '   ' },
@@ -413,7 +414,7 @@ describe('Admin Retrieval Inspector', () => {
         citation(2, { sourceId: 11, chunkId: null }),
         citation(3, { sourceId: 12, chunkId: boundary }),
       ],
-    })).retrievalInspector
+    }), null).retrievalInspector
 
     assert.deepEqual(inspector.retrievalCalls[0]?.refs, [
       { sourceId: 12, chunkId: boundary },
@@ -430,7 +431,7 @@ describe('Admin Retrieval Inspector', () => {
       omitToolSummary: true,
       finalization: { registryRefCount: 1 },
       citations: [citation(1, { sourceId: 301, chunkId: null })],
-    }))
+    }), null)
     const item = findTimelineItem(detail, 'grounded_finalization')
 
     // Registry 已有 1 条 article 证据，但 call 摘要读不出数量：null 而不是 0。
@@ -451,7 +452,7 @@ describe('Admin Retrieval Inspector', () => {
     const run = createGroundedRun({
       groundingOverrides: { citations: [{ leaked: SENTINEL }] },
     })
-    const detail = projectAdminRunDetail(run)
+    const detail = projectAdminRunDetail(run, null)
 
     assert.equal(detail.retrievalInspector.citations, null)
     assert.doesNotMatch(JSON.stringify(detail), new RegExp(SENTINEL))
@@ -461,7 +462,7 @@ describe('Admin Retrieval Inspector', () => {
     const run = createGroundedRun()
     run.assistantMessage!.status = 'FAILED'
 
-    assert.equal(projectAdminRunDetail(run).retrievalInspector.citations, null)
+    assert.equal(projectAdminRunDetail(run, null).retrievalInspector.citations, null)
   })
 
   it('Citation 文本字段做 preview 截断，超长 title 不原样透传', () => {
@@ -472,14 +473,14 @@ describe('Admin Retrieval Inspector', () => {
         // Grounding 契约允许 300 字符；Admin 投影在 200 字符处做 preview 截断。
         title: 'x'.repeat(250),
       })],
-    })).retrievalInspector
+    }), null).retrievalInspector
 
     assert.equal([...inspector.citations![0]!.title].length, 200)
     assert.match(inspector.citations![0]!.title, /…$/)
   })
 
   it('Prompt、reasoning、excerpt、embedding 等敏感字段不进入序列化响应', () => {
-    const detail = projectAdminRunDetail(createGroundedRun({ injectSentinels: true }))
+    const detail = projectAdminRunDetail(createGroundedRun({ injectSentinels: true }), null)
     const serialized = JSON.stringify(detail)
 
     assert.doesNotMatch(serialized, new RegExp(SENTINEL))

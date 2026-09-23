@@ -8,12 +8,11 @@ import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 
 import LlmFamilyLogo from '@/features/llm/components/LlmFamilyLogo.vue'
-import { formatDuration, formatShortDateTime, formatTokens } from '@/features/runs/run.utils'
+import { formatDuration, formatPercentage, formatTokens } from '@/features/runs/run.utils'
 
-import { formatPercent } from '../overview.model'
 import OverviewCard from './OverviewCard.vue'
 
-const props = defineProps<{
+defineProps<{
   rows: OverviewModelRow[]
   loading: boolean
 }>()
@@ -22,27 +21,14 @@ const { locale, t } = useI18n()
 const router = useRouter()
 
 const columns = computed<TableColumnsType<OverviewModelRow>>(() => [
-  { title: t('overview.models.columns.model'), key: 'model' },
-  { title: t('overview.models.columns.calls'), dataIndex: 'samplingCount', key: 'calls', width: 52, align: 'right' },
-  { title: t('overview.models.columns.tokens'), key: 'tokens', width: 118 },
-  { title: t('overview.models.columns.cacheHitRate'), key: 'cacheHitRate', width: 72, align: 'right' },
-  { title: t('overview.models.columns.avgDuration'), key: 'avgDuration', width: 72, align: 'right' },
-  { title: t('overview.models.columns.probe'), key: 'probe', width: 76 },
+  { title: t('overview.models.columns.model'), key: 'model', ellipsis: true },
+  { title: t('overview.models.columns.calls'), key: 'calls', width: 80, align: 'right' },
+  { title: t('overview.models.columns.failureRate'), key: 'failureRate', width: 90, align: 'right' },
+  { title: t('overview.models.columns.firstToken'), key: 'firstToken', width: 120, align: 'right' },
+  { title: t('overview.models.columns.samplingDuration'), key: 'samplingDuration', width: 120, align: 'right' },
+  { title: t('overview.models.columns.tokens'), key: 'tokens', width: 180 },
+  { title: t('overview.models.columns.cacheHitRate'), key: 'cacheHitRate', width: 100, align: 'right' },
 ])
-
-function probeLabel(row: { lastProbeOk?: boolean | null }): string {
-  if (row.lastProbeOk === null || row.lastProbeOk === undefined)
-    return t('overview.models.probeNever')
-  return t(row.lastProbeOk ? 'overview.models.probeOk' : 'overview.models.probeFailed')
-}
-
-function probeColor(row: { lastProbeOk?: boolean | null }): string | undefined {
-  if (row.lastProbeOk === null || row.lastProbeOk === undefined)
-    return undefined
-  return row.lastProbeOk ? 'success' : 'error'
-}
-
-const hasRows = computed(() => props.rows.length > 0)
 </script>
 
 <template>
@@ -54,7 +40,7 @@ const hasRows = computed(() => props.rows.length > 0)
     </template>
 
     <Table
-      v-if="hasRows || loading"
+      v-if="rows.length > 0 || loading"
       class="model-table"
       size="small"
       row-key="key"
@@ -62,7 +48,7 @@ const hasRows = computed(() => props.rows.length > 0)
       :data-source="rows"
       :loading="loading"
       :pagination="false"
-      :scroll="{ y: 520 }"
+      :scroll="{ x: 860 }"
     >
       <template #bodyCell="{ column, record }">
         <template v-if="column.key === 'model'">
@@ -70,44 +56,40 @@ const hasRows = computed(() => props.rows.length > 0)
             <LlmFamilyLogo :family="record.family" :size="15" badge />
             <div class="model-cell__names">
               <span class="model-cell__display">
-                {{ record.displayName }}
-                <Tag v-if="record.isDefault" class="model-cell__tag" color="processing">
-                  {{ t('overview.models.default') }}
-                </Tag>
-                <Tag v-else-if="!record.visible" class="model-cell__tag">
-                  {{ t('overview.models.hidden') }}
+                <span class="model-cell__display-text" :class="{ 'is-empty': record.displayName === null }">{{ record.displayName ?? t('runTrace.inspector.unavailable') }}</span>
+                <Tag v-if="record.deleted" class="model-cell__tag">
+                  {{ t('overview.models.deleted') }}
                 </Tag>
               </span>
-              <Tooltip :title="record.providerNote || undefined">
+              <Tooltip v-if="record.wireName" :title="record.wireName">
                 <span class="model-cell__wire">{{ record.wireName }}</span>
               </Tooltip>
             </div>
           </div>
         </template>
         <template v-else-if="column.key === 'calls'">
-          <span class="numeric-cell">{{ record.samplingCount.toLocaleString(locale) }}</span>
+          <span class="numeric-cell">{{ record.callCount.toLocaleString(locale) }}</span>
+        </template>
+        <template v-else-if="column.key === 'failureRate'">
+          <span class="numeric-cell" :class="{ 'is-danger': record.failureRate > 0 }">{{ formatPercentage(record.failureRate, locale) }}</span>
+        </template>
+        <template v-else-if="column.key === 'firstToken'">
+          <span class="numeric-cell" :class="{ 'is-empty': record.firstTokenP50Ms === null }">{{ formatDuration(record.firstTokenP50Ms) }}</span>
+        </template>
+        <template v-else-if="column.key === 'samplingDuration'">
+          <span class="numeric-cell" :class="{ 'is-empty': record.samplingDurationP50Ms === null }">{{ formatDuration(record.samplingDurationP50Ms) }}</span>
         </template>
         <template v-else-if="column.key === 'tokens'">
           <div class="tokens-cell">
             <span class="numeric-cell">{{ formatTokens(record.totalTokens, locale) }}</span>
-            <span class="tokens-cell__share">{{ formatPercent(record.share) }}</span>
+            <span class="tokens-cell__share">{{ formatPercentage(record.tokenShare, locale) }}</span>
             <span class="tokens-cell__bar">
-              <span class="tokens-cell__fill" :style="{ width: `${Math.min(100, record.share)}%` }" />
+              <span class="tokens-cell__fill" :style="{ width: `${Math.min(100, record.tokenShare * 100)}%` }" />
             </span>
           </div>
         </template>
         <template v-else-if="column.key === 'cacheHitRate'">
-          <span class="numeric-cell" :class="{ 'is-empty': record.cacheHitRate === null }">{{ formatPercent(record.cacheHitRate) }}</span>
-        </template>
-        <template v-else-if="column.key === 'avgDuration'">
-          <span class="numeric-cell" :class="{ 'is-empty': record.avgDurationMs === null }">{{ formatDuration(record.avgDurationMs) }}</span>
-        </template>
-        <template v-else-if="column.key === 'probe'">
-          <Tooltip :title="record.lastProbedAt ? formatShortDateTime(record.lastProbedAt, locale) : undefined">
-            <Tag class="probe-tag" :color="probeColor(record)">
-              {{ probeLabel(record) }}
-            </Tag>
-          </Tooltip>
+          <span class="numeric-cell" :class="{ 'is-empty': record.cacheHitRate === null }">{{ formatPercentage(record.cacheHitRate, locale) }}</span>
         </template>
       </template>
     </Table>
@@ -132,6 +114,7 @@ const hasRows = computed(() => props.rows.length > 0)
   font-size: 11px;
   font-weight: 600;
   background: transparent;
+  white-space: nowrap;
 }
 
 .model-cell {
@@ -151,12 +134,26 @@ const hasRows = computed(() => props.rows.length > 0)
   display: flex;
   align-items: center;
   gap: 6px;
+  min-width: 0;
   color: var(--admin-text);
   font-weight: 600;
   line-height: 1.25;
 }
 
+.model-cell__display-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.model-cell__display-text.is-empty {
+  color: var(--admin-text-subtle);
+  font-weight: 500;
+}
+
 .model-cell__tag {
+  flex-shrink: 0;
   margin: 0;
   font-size: 10px;
   line-height: 16px;
@@ -174,10 +171,16 @@ const hasRows = computed(() => props.rows.length > 0)
 
 .numeric-cell {
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .numeric-cell.is-empty {
   color: var(--admin-text-subtle);
+}
+
+.numeric-cell.is-danger {
+  color: var(--admin-danger-strong);
+  font-weight: 600;
 }
 
 .tokens-cell {
@@ -207,10 +210,6 @@ const hasRows = computed(() => props.rows.length > 0)
   border-radius: 2px;
   background: var(--admin-primary);
   transition: width 300ms ease;
-}
-
-.probe-tag {
-  margin: 0;
 }
 
 .model-table__empty {

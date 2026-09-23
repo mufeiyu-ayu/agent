@@ -1,6 +1,8 @@
 <script setup lang="ts">
+import type { AgentRunErrorCode } from '@agent/contracts'
 import type { TableColumnsType } from 'ant-design-vue'
 import type { RunListItem, RunStatus } from '@/features/runs/run.model'
+import { AGENT_RUN_ERROR_CODES } from '@agent/contracts'
 import {
   BarsOutlined,
   CheckCircleOutlined,
@@ -23,11 +25,12 @@ import {
   Select,
   Skeleton,
   Table,
+  Tag,
   Tooltip,
 } from 'ant-design-vue'
 import { computed, onBeforeUnmount, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 
 import PageContainer from '@/components/common/PageContainer.vue'
 import RunStatusTag from '@/features/runs/components/RunStatusTag.vue'
@@ -36,8 +39,10 @@ import {
   formatDuration,
   formatShortDateTime,
   formatTokens,
+  readRunFailureDrilldown,
 } from '@/features/runs/run.utils'
 
+const route = useRoute()
 const router = useRouter()
 const runListStore = useRunListStore()
 const { locale, t } = useI18n()
@@ -46,7 +51,9 @@ const columns = computed<TableColumnsType<RunListItem>>(() => [
   { title: t('runs.columns.runId'), dataIndex: 'id', key: 'id', width: 176, fixed: 'left' },
   { title: t('runs.columns.question'), dataIndex: 'questionPreview', key: 'question', width: 220 },
   { title: t('runs.columns.conversation'), dataIndex: 'conversationId', key: 'conversation', width: 150 },
+  { title: t('runs.columns.model'), key: 'model', width: 150 },
   { title: t('runs.columns.status'), dataIndex: 'status', key: 'status', width: 92 },
+  { title: t('runs.columns.failure'), key: 'failure', width: 140 },
   { title: t('runs.columns.tools'), dataIndex: 'toolCallCount', key: 'tools', width: 62, align: 'center' },
   { title: t('runs.columns.samples'), dataIndex: 'samplingCount', key: 'samplings', width: 72, align: 'center' },
   { title: t('runs.columns.tokens'), dataIndex: ['usage', 'totalTokens'], key: 'tokens', width: 78, align: 'right' },
@@ -62,7 +69,24 @@ const statusOptions: Array<{ label: string, value: RunStatus }> = [
   { label: 'ABORTED', value: 'ABORTED' },
 ]
 
-onMounted(() => void runListStore.load())
+const errorCodeOptions = computed<Array<{ label: string, value: AgentRunErrorCode }>>(() => (
+  AGENT_RUN_ERROR_CODES.map(code => ({ label: errorCodeLabel(code), value: code }))
+))
+
+function errorCodeLabel(code: AgentRunErrorCode): string {
+  return t(`runTrace.errorCodes.${code}`)
+}
+
+onMounted(() => {
+  // 概览的失败原因带着类别与窗口日期跳过来：应用后清掉 URL 上的参数，之后的筛选以页面为准。
+  const drilldown = readRunFailureDrilldown(route.query)
+  if (!drilldown) {
+    void runListStore.load()
+    return
+  }
+  void runListStore.applyFailureDrilldown(drilldown)
+  void router.replace({ query: {} })
+})
 onBeforeUnmount(runListStore.cancel)
 
 function getRunDetailLocation(runId: string) {
@@ -147,6 +171,14 @@ function handlePageChange(page: number, pageSize: number) {
             :placeholder="t('runs.filters.allStatuses')"
           />
         </FormItem>
+        <FormItem :label="t('runs.filters.errorCode')">
+          <Select
+            v-model:value="runListStore.draftFilters.errorCode"
+            allow-clear
+            :options="errorCodeOptions"
+            :placeholder="t('runs.filters.allErrorCodes')"
+          />
+        </FormItem>
         <FormItem :label="t('runs.filters.dateRange')">
           <RangePicker
             v-model:value="runListStore.dateRange"
@@ -208,7 +240,7 @@ function handlePageChange(page: number, pageSize: number) {
         :pagination="false"
         row-key="id"
         size="small"
-        :scroll="{ x: 1_240 }"
+        :scroll="{ x: 1_540 }"
       >
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'id'">
@@ -233,8 +265,26 @@ function handlePageChange(page: number, pageSize: number) {
               </RouterLink>
             </Tooltip>
           </template>
+          <template v-else-if="column.key === 'model'">
+            <Tooltip v-if="record.model" :title="record.model.wireName">
+              <span class="model-name">
+                <span class="model-name__text">{{ record.model.displayName }}</span>
+                <Tag v-if="record.model.deleted" class="model-name__tag">{{ t('runs.modelDeleted') }}</Tag>
+              </span>
+            </Tooltip>
+            <span v-else class="unrecorded-cell">{{ t('runTrace.inspector.unavailable') }}</span>
+          </template>
           <template v-else-if="column.key === 'status'">
             <RunStatusTag :status="record.status" />
+          </template>
+          <template v-else-if="column.key === 'failure'">
+            <template v-if="record.status === 'FAILED' || record.status === 'ABORTED'">
+              <Tooltip :title="record.failureMessage ?? undefined">
+                <span v-if="record.errorCode" class="failure-cell">{{ errorCodeLabel(record.errorCode) }}</span>
+                <span v-else class="unrecorded-cell">{{ t('runTrace.inspector.unavailable') }}</span>
+              </Tooltip>
+            </template>
+            <span v-else class="unrecorded-cell">—</span>
           </template>
           <template v-else-if="column.key === 'tokens'">
             <span class="numeric-cell">{{ formatTokens(record.usage.totalTokens, locale) }}</span>
@@ -392,6 +442,7 @@ function handlePageChange(page: number, pageSize: number) {
   grid-template-columns:
     minmax(210px, 1.25fr)
     minmax(120px, 0.72fr)
+    minmax(150px, 0.9fr)
     minmax(230px, 1.2fr)
     auto;
   align-items: end;
@@ -478,6 +529,39 @@ function handlePageChange(page: number, pageSize: number) {
   overflow: hidden;
   color: var(--admin-text);
   text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.model-name {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  color: var(--admin-text);
+}
+
+.model-name__text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.model-name__tag {
+  flex-shrink: 0;
+  margin: 0;
+  font-size: 10px;
+  line-height: 16px;
+  padding: 0 4px;
+}
+
+.failure-cell {
+  color: var(--admin-danger-strong);
+  white-space: nowrap;
+}
+
+.unrecorded-cell {
+  color: var(--admin-text-subtle);
   white-space: nowrap;
 }
 

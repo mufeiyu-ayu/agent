@@ -56,8 +56,9 @@ const RESPONSE_EXPECTATIONS = {
     finishReason: 'tool_calls',
     toolCallIds: ['call_f39d80cf29be45f2a7fe7600'],
   },
+  // grok 的 completion_tokens 不含推理：total = prompt + completion + reasoning，outputTokens 归一为 10 + 150。
   'grok': {
-    usage: { inputTokens: 2419, outputTokens: 10, totalTokens: 2579, reasoningTokens: 150, promptCacheHitTokens: 2304, promptCacheMissTokens: 115 },
+    usage: { inputTokens: 2419, outputTokens: 160, totalTokens: 2579, reasoningTokens: 150, promptCacheHitTokens: 2304, promptCacheMissTokens: 115 },
     finishReason: 'stop',
     toolCallIds: [],
   },
@@ -95,7 +96,7 @@ const CHUNK_EXPECTATIONS: Record<FixtureKey, ModelStreamEvent[]> = {
   'grok': [
     { type: 'text_delta', delta: '刚才的暗号是' },
     { type: 'text_delta', delta: '「青柠 146」。' },
-    { type: 'usage', usage: { inputTokens: 2419, outputTokens: 10, totalTokens: 2579, reasoningTokens: 150, promptCacheHitTokens: 2304, promptCacheMissTokens: 115 } },
+    { type: 'usage', usage: { inputTokens: 2419, outputTokens: 160, totalTokens: 2579, reasoningTokens: 150, promptCacheHitTokens: 2304, promptCacheMissTokens: 115 } },
     { type: 'response_completed', finishReason: 'stop' },
   ],
   'openai': [

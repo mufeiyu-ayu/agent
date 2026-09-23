@@ -1,32 +1,32 @@
 import type {
-  AdminLlmModel,
-  AdminLlmProvider,
   AdminOverviewStats,
   AdminOverviewWindow,
   AdminProviderBalance,
 } from '@agent/contracts'
 import type {
-  OverviewKpi,
+  OverviewFailureReasonRow,
   OverviewModelRow,
   OverviewToolRow,
-  OverviewTrendPoint,
+  OverviewTrend,
 } from './overview.model'
 
 import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
 
-import { fetchAllLlmModels, fetchLlmProviders } from '../llm/llm-api'
 import { formatAdminRunError } from '../shared/admin-api'
 import { fetchOverviewStats, fetchProviderBalance } from './overview-api'
 import {
-  toOverviewKpi,
+  toFailureReasonRows,
   toOverviewModelRows,
   toOverviewToolRows,
   toOverviewTrend,
 } from './overview.model'
 
+const UNAVAILABLE_BALANCE: AdminProviderBalance = { available: false, currency: null, totalBalance: null }
+
 /**
- * 概览页的数据与派生视图模型。三路请求并行、各自失败：统计失败整页报错可重试，
- * 余额 / 模型配置失败只影响各自的卡片。
+ * 概览页的数据与派生视图模型。统计与余额两路请求并行、各自失败：统计失败整页报错可重试，
+ * 余额失败只影响余额一格。两路各自持有 AbortController，新请求取消旧请求，
+ * 被取消的旧请求不再写任何状态。
  */
 export function useOverviewDashboard() {
   const activeWindow = ref<AdminOverviewWindow>('30d')
@@ -41,15 +41,11 @@ export function useOverviewDashboard() {
   const balanceLoading = ref(false)
   const balanceCheckedAt = ref<string | null>(null)
 
-  const models = shallowRef<AdminLlmModel[]>([])
-  const providers = shallowRef<AdminLlmProvider[]>([])
-
   const lastUpdatedAt = ref<string | null>(null)
 
-  let abortController = new AbortController()
   let statsAbortController = new AbortController()
+  let balanceAbortController = new AbortController()
 
-  /** 统计按窗口单独可重拉；切窗口时取消上一次未完成的统计请求，余额与模型配置不受影响。 */
   async function loadStats() {
     statsAbortController.abort()
     statsAbortController = new AbortController()
@@ -74,39 +70,31 @@ export function useOverviewDashboard() {
   }
 
   async function loadBalance() {
+    balanceAbortController.abort()
+    balanceAbortController = new AbortController()
+    const { signal } = balanceAbortController
     balanceLoading.value = true
     try {
-      balance.value = await fetchProviderBalance({ signal: abortController.signal })
+      const nextBalance = await fetchProviderBalance({ signal })
+      if (signal.aborted)
+        return
+      balance.value = nextBalance
       balanceCheckedAt.value = new Date().toISOString()
     }
     catch {
-      balance.value = { available: false, currency: null, totalBalance: null }
+      // 被刷新取消的旧请求不能把余额写成「不可用」，也不能清掉新请求的加载态。
+      if (!signal.aborted)
+        balance.value = UNAVAILABLE_BALANCE
     }
     finally {
-      balanceLoading.value = false
-    }
-  }
-
-  async function loadModelCatalog() {
-    try {
-      const [nextModels, nextProviders] = await Promise.all([
-        fetchAllLlmModels({ signal: abortController.signal }),
-        fetchLlmProviders({ signal: abortController.signal }),
-      ])
-      models.value = nextModels
-      providers.value = nextProviders
-    }
-    catch {
-      // 只影响模型表的显示名与探活列，用量本身来自统计接口。
+      if (!signal.aborted)
+        balanceLoading.value = false
     }
   }
 
   function refresh() {
-    abortController.abort()
-    abortController = new AbortController()
     void loadStats()
     void loadBalance()
-    void loadModelCatalog()
   }
 
   refresh()
@@ -114,19 +102,13 @@ export function useOverviewDashboard() {
     void loadStats()
   })
   onBeforeUnmount(() => {
-    abortController.abort()
     statsAbortController.abort()
+    balanceAbortController.abort()
   })
 
-  const kpi = computed<OverviewKpi | undefined>(() => (
-    stats.value
-      ? toOverviewKpi(stats.value, stats.value.tools.reduce((total, item) => total + item.count, 0))
-      : undefined
-  ))
-  const trend = computed<OverviewTrendPoint[]>(() => (stats.value ? toOverviewTrend(stats.value) : []))
-  const modelRows = computed<OverviewModelRow[]>(() => (
-    stats.value ? toOverviewModelRows(stats.value, models.value, providers.value) : []
-  ))
+  const trend = computed<OverviewTrend | undefined>(() => (stats.value ? toOverviewTrend(stats.value) : undefined))
+  const failureReasonRows = computed<OverviewFailureReasonRow[]>(() => (stats.value ? toFailureReasonRows(stats.value) : []))
+  const modelRows = computed<OverviewModelRow[]>(() => (stats.value ? toOverviewModelRows(stats.value) : []))
   const toolRows = computed<OverviewToolRow[]>(() => (stats.value ? toOverviewToolRows(stats.value) : []))
 
   return {
@@ -138,8 +120,8 @@ export function useOverviewDashboard() {
     balanceLoading,
     balanceCheckedAt,
     lastUpdatedAt,
-    kpi,
     trend,
+    failureReasonRows,
     modelRows,
     toolRows,
     loadStats,
