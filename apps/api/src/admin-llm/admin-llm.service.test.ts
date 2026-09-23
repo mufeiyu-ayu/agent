@@ -1,7 +1,8 @@
 import type { AddressInfo } from 'node:net'
-import type { LlmProvider } from '../generated/prisma/client.js'
+import type { LlmModel, LlmProvider } from '../generated/prisma/client.js'
 import type { LLMRuntimeConfigService } from '../llm/llm-runtime-config.service.js'
 import type { PrismaService } from '../prisma/prisma.service.js'
+import type { UpdateAdminLlmModelDto } from './dto/admin-llm.dto.js'
 import assert from 'node:assert/strict'
 import { once } from 'node:events'
 import { createServer } from 'node:http'
@@ -224,5 +225,70 @@ describe('AdminLlmService.updateProvider：换地址必须同时换密钥', () =
 
     assert.equal(providerWrite.data.baseUrl, STORED_BASE_URL)
     assert.equal(providerWrite.data.apiKeyLast4, NEW_API_KEY.slice(-4))
+  })
+})
+
+/** #170：只有可见行会被 Run 选中，可见行不论改了什么都按运行时公式校验输入预算。 */
+describe('AdminLlmService.updateModel 输入预算', () => {
+  function createModelService(row: Partial<LlmModel>) {
+    const provider = { id: 'provider-1', family: 'openai' } as LlmProvider
+    let model: LlmModel & { provider: LlmProvider } = {
+      id: 'model-1',
+      providerId: provider.id,
+      wireName: 'gpt-test',
+      displayName: '旧名',
+      contextWindowTokens: 1_000_000,
+      maxOutputTokens: 65_536,
+      reasoningEffort: null,
+      visible: true,
+      isDefault: false,
+      sortOrder: 0,
+      lastProbeOk: null,
+      lastProbeError: null,
+      lastProbedAt: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      ...row,
+      provider,
+    }
+    const tx = {
+      $executeRaw: async () => 0,
+      llmModel: {
+        update: async ({ data }: { data: Partial<LlmModel> }) => (model = { ...model, ...data }),
+      },
+    }
+    const prisma = {
+      llmModel: { findUnique: async () => model },
+      $transaction: async <T>(operation: (client: typeof tx) => Promise<T>) => operation(tx),
+    } as unknown as PrismaService
+
+    return new AdminLlmService(prisma, new LLMService(RUNTIME_CONFIG), new LlmModelConfigService(prisma, RUNTIME_CONFIG))
+  }
+
+  // 32768 − 16384 − 安全余量 16384 = 0：能保存，但每次 Run 都会因预算失败。
+  const BROKEN = { contextWindowTokens: 32_768, maxOutputTokens: 16_384 }
+  const isBudgetRejected = (error: unknown) => error instanceof BadRequestException && /输入预算/.test(error.message)
+
+  it('可见的坏行只改显示名也返回 400', async () => {
+    await assert.rejects(
+      createModelService(BROKEN).updateModel('model-1', { displayName: '新名' } as UpdateAdminLlmModelDto),
+      isBudgetRejected,
+    )
+  })
+
+  it('坏行可以先设为隐藏；隐藏的坏行改回可见返回 400', async () => {
+    const hidden = await createModelService(BROKEN).updateModel('model-1', { visible: false } as UpdateAdminLlmModelDto)
+
+    assert.equal(hidden.visible, false)
+    await assert.rejects(
+      createModelService({ ...BROKEN, visible: false }).updateModel('model-1', { visible: true } as UpdateAdminLlmModelDto),
+      isBudgetRejected,
+    )
+  })
+
+  it('预算为正的可见行改名照常保存', async () => {
+    const renamed = await createModelService({}).updateModel('model-1', { displayName: '新名' } as UpdateAdminLlmModelDto)
+
+    assert.equal(renamed.displayName, '新名')
   })
 })

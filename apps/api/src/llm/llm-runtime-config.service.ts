@@ -4,6 +4,8 @@ import { Injectable } from '@nestjs/common'
 
 /** 密钥派生的输入长度下限；`openssl rand -hex 32` 生成的 64 位十六进制满足。 */
 const SECRET_KEY_MIN_LENGTH = 32
+/** #156 之前 `.env.example` 里的占位串：公开在仓库里，从旧模板复制出来的 `.env` 会拿它加密所有服务商的 key。 */
+const FORMER_PLACEHOLDER_SECRET_KEY = 'replace-with-openssl-rand-hex-32-output'
 
 export interface LlmEnvConfig {
   /** 加密 Provider API Key 的主密钥；模型与密钥本身都在数据库里。 */
@@ -14,6 +16,13 @@ export interface LlmEnvConfig {
 
 export function resolveLlmEnvConfig(env: NodeJS.ProcessEnv): LlmEnvConfig {
   const secretKey = env.AGENT_SECRET_KEY?.trim()
+
+  if (secretKey === FORMER_PLACEHOLDER_SECRET_KEY) {
+    throw new LLMConfigError(
+      'AGENT_SECRET_KEY',
+      '仍是旧 .env.example 里公开的占位串，请用 openssl rand -hex 32 生成新值；已入库的服务商密钥要在管理台重新填写',
+    )
+  }
 
   if (!secretKey || secretKey.length < SECRET_KEY_MIN_LENGTH) {
     throw new LLMConfigError(

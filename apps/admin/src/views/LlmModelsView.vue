@@ -117,7 +117,7 @@ async function handleSubmitProvider(input: AdminLlmProviderInput, wireNames: str
 
     await state.updateProvider(provider.id, input)
     if (wireNames.length > 0) {
-      const result = await state.importModels(wireNames, provider.id)
+      const result = await state.importModels(wireNames, provider.id, input)
 
       message.success(t('llmModels.fetch.importSuccess', { ...result }))
     }
@@ -339,6 +339,7 @@ function handleProbeVisibleModels() {
       :testing-names="state.testingWireNames.value"
       @fetch-models="handleFetchInProviderForm"
       @test-models="handleTestInProviderForm"
+      @credentials-change="state.setFormCredentials"
       @submit="handleSubmitProvider"
       @cancel="providerModalOpen = false"
     />

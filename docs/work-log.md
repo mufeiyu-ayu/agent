@@ -10,6 +10,7 @@
 
 | 日期 | 事项 | 结果 |
 | --- | --- | --- |
+| 2026-09-24 | #170 模型配置校验小修合并 | PR #174（代码 head `b1025b0`，Closes #170）：9 files，+218 / −16，无 migration。可见模型行按运行时公式校验输入预算（隐藏行不校验）；服务商弹窗改家族 / 地址 / 密钥时清掉旧名单与测试结论，提交时凭据不一致也不带结论；启动拒绝 #156 前公开的占位主密钥。AC-01～AC-04 逐条 PASS；复核拆出的 #167–#170 全部完成 |
 | 2026-09-23 | #169 前台 Markdown 与会话小修合并 | PR #173（代码 head `ecfc5f4`，Closes #169）：18 files，无 migration；新增运行时依赖 `markdown-it-cjk-friendly`，`@types/markdown-it` 升 14.2.0。中文全角标点紧贴 `**` 的强调终态成对；流式补齐不补多半是字面字符的 opener、尾块已换行按终态显示、表格按单元格切分、空 ATX 标题先隐藏；流结束后 150ms 内放完；裸链接在全角标点处截断；图片在链接内判断单次遍历；runtime 在用户消息落库时记 `userMessagePersisted` 并下发，前台据此同步侧栏。AC-01～AC-09 逐条 PASS |
 | 2026-09-23 | #168 模型调用边界补漏合并 | PR #172（代码 head `6f6be0c`，Closes #168）：14 files，+469 / −46，无 migration。上游回显的本次 key 在报错文案里先换 `***` 再截断（Codex P1）；SDK `logLevel: 'off'`；上游 JSON 解析失败与无 choices / usage 的数据块归协议错误；流内 error 对象 4xx / 5xx code 同表归类；`firstTokenMs` 只认生成事件；`ToolCallSlots` 让缺 index 与显式 index 不撞号（adapter 与 tee 共用）。15 条 AC 用例在旧代码上全失败。AC-01～AC-07 逐条 PASS |
 | 2026-09-23 | #167 落库文本清洗合并 | PR #171（代码 head `da358c8`，Closes #167）：8 files，+341 / −30，无 migration。可见 delta、Grounding 回答、用户消息在进入 `content` 前把 U+0000 / 孤立代理项换成 U+FFFD，delta / done / 落库同一个串；工具 Step 的 callId / toolName / errorMessage 与 debug 抓取信封同样替换；`toPersistableText` 移到 `agent-runtime/persistable-text.ts`。7 条真实 DB 故障注入用例在旧代码上全失败。AC-01～AC-07 逐条 PASS |

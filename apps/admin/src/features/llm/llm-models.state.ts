@@ -27,6 +27,20 @@ import {
 /** 与服务端 `TestAdminLlmModelsDto` 的 `ArrayMaxSize(50)` 对齐。 */
 const TEST_BATCH_SIZE = 50
 
+/** 服务商弹窗里决定「测出的结论还算不算数」的三项；编辑时密钥留空表示用库里那把。 */
+type ProviderCredentials = Pick<AdminLlmProviderInput, 'family' | 'baseUrl' | 'apiKey'>
+
+/**
+ * 地址比较忽略末尾斜杠，与服务端 admin-llm.service 一致；表单值另外先 trim（提交给服务端的也是 trim 后的值）。
+ */
+export function normalizeBaseUrl(baseUrl: string): string {
+  return baseUrl.trim().replace(/\/+$/, '')
+}
+
+function credentialsKey(credentials: ProviderCredentials): string {
+  return JSON.stringify([credentials.family, normalizeBaseUrl(credentials.baseUrl), credentials.apiKey?.trim() ?? ''])
+}
+
 /**
  * 「模型接入」页的状态与动作（Issue #142）。
  *
@@ -116,8 +130,26 @@ export function createLlmModelsState() {
     testingWireNames.value = new Set()
   }
 
-  /** 弹窗里已测过的结果，导入时随行写进 lastProbe*；没测过的名字不带。 */
-  function pickTestResults(wireNames: string[]): AdminLlmModelTestResult[] {
+  /** 弹窗表单当前的家族 / 地址 / 密钥；变了就清掉按旧配置拉到的名单与测出的结论，它们不能随新配置导入。 */
+  let formCredentials: string | undefined
+
+  function setFormCredentials(credentials: ProviderCredentials): void {
+    const key = credentialsKey(credentials)
+
+    if (key === formCredentials)
+      return
+    formCredentials = key
+    clearFetchedModelNames()
+  }
+
+  /**
+   * 弹窗里已测过的结果，导入时随行写进 lastProbe*；没测过的名字不带。
+   * 提交的凭据与测出这些结论时的表单凭据对不上（有路径没经过 setFormCredentials）时一条都不带。
+   */
+  function pickTestResults(wireNames: string[], credentials: ProviderCredentials): AdminLlmModelTestResult[] {
+    if (credentialsKey(credentials) !== formCredentials)
+      return []
+
     return wireNames.flatMap((name) => {
       const result = modelTestResults.value[name]
 
@@ -240,6 +272,7 @@ export function createLlmModelsState() {
     fetchedModelNames,
     fetchingModels,
     clearFetchedModelNames,
+    setFormCredentials,
     modelTestResults,
     testingWireNames,
     probingModelIds,
@@ -255,7 +288,7 @@ export function createLlmModelsState() {
     createProvider: (input: AdminLlmProviderInput) => submit(async () => {
       const created = await createLlmProvider({
         ...input,
-        importTestResults: pickTestResults(input.importWireNames ?? []),
+        importTestResults: pickTestResults(input.importWireNames ?? [], input),
       })
       await Promise.all([loadProviders(), loadModels()])
       selectProvider(created.id)
@@ -292,8 +325,8 @@ export function createLlmModelsState() {
       await loadModels()
     }),
     /** 编辑服务商时把弹窗里勾选的模型导入该服务商；返回导入 / 跳过条数供页面提示。 */
-    importModels: (wireNames: string[], providerId: string) => submit(async () => {
-      const result = await importLlmProviderModels(providerId, wireNames, pickTestResults(wireNames))
+    importModels: (wireNames: string[], providerId: string, credentials: ProviderCredentials) => submit(async () => {
+      const result = await importLlmProviderModels(providerId, wireNames, pickTestResults(wireNames, credentials))
       await Promise.all([loadModels(), loadProviders()])
 
       return result

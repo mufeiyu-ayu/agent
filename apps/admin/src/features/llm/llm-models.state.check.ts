@@ -19,6 +19,7 @@ async function main(): Promise<void> {
     await checkAbortedFetchIsSilent()
     await checkFailedBatchReleasesRemainingNames()
     await checkProviderUpdateReloadsModels()
+    await checkCredentialChangeDropsTestResults()
   }
   finally {
     globalThis.fetch = originalFetch
@@ -61,8 +62,9 @@ async function checkStaleTestResultsAreDropped(): Promise<void> {
   const staleTest = state.testModels({ providerId: 'provider-a', baseUrl: 'https://a.example/v1', apiKey: '' }, ['m'])
   assert.deepEqual([...state.testingWireNames.value], ['m'])
 
-  // 关掉 A，打开新建弹窗，用 B 的凭据拉取并测试同名模型。
+  // 关掉 A，打开新建弹窗（弹窗把表单凭据报给页面），用 B 的凭据拉取并测试同名模型。
   state.clearFetchedModelNames()
+  state.setFormCredentials({ family: 'openai', baseUrl: 'https://b.example/v1', apiKey: 'sk-b' })
   assert.equal(state.testingWireNames.value.size, 0)
   await state.fetchModelNames({ baseUrl: 'https://b.example/v1', apiKey: 'sk-b' })
   await state.testModels({ baseUrl: 'https://b.example/v1', apiKey: 'sk-b' }, ['m'])
@@ -164,6 +166,73 @@ async function checkProviderUpdateReloadsModels(): Promise<void> {
   await state.updateProvider('provider-1', { family: 'gemini', note: 'n', baseUrl: 'https://g.example/v1', enabled: true })
   assert.equal(calls.filter(call => call.url.endsWith('/models')).length, 1)
   assert.equal(state.models.value[0]?.reasoningEffort, null)
+}
+
+/**
+ * #170：弹窗里测过模型后改了家族、地址或密钥，拉到的名单与测出的结论都作废；
+ * 不重新测试就确定时，新建请求里不带改动前的结论。只差末尾斜杠不算改动。
+ */
+async function checkCredentialChangeDropsTestResults(): Promise<void> {
+  const calls: FetchCall[] = []
+
+  globalThis.fetch = async (input, init) => {
+    const call = recordCall(calls, input, init)
+
+    if (call.url.endsWith('/providers/test-models'))
+      return jsonResponse({ results: [testResult('m', true, null)] })
+    if (call.url.endsWith('/providers/fetch-models'))
+      return jsonResponse({ models: ['m'] })
+    if (call.url.endsWith('/providers') && call.method === 'POST')
+      return jsonResponse({ id: 'provider-new' })
+
+    return jsonResponse([])
+  }
+
+  const state = createLlmModelsState()
+  const oldCredentials = { family: 'openai', baseUrl: 'https://old.example/v1', apiKey: 'sk-old' } as const
+
+  state.setFormCredentials(oldCredentials)
+  await state.fetchModelNames(oldCredentials)
+  await state.testModels(oldCredentials, ['m'])
+  state.setFormCredentials({ ...oldCredentials, baseUrl: 'https://old.example/v1/' })
+  assert.deepEqual(state.modelTestResults.value, { m: testResult('m', true, null) })
+
+  for (const changed of [
+    { ...oldCredentials, baseUrl: 'https://new.example/v1' },
+    { ...oldCredentials, apiKey: 'sk-new' },
+    { ...oldCredentials, family: 'grok' as const },
+  ]) {
+    state.setFormCredentials(oldCredentials)
+    await state.fetchModelNames(oldCredentials)
+    await state.testModels(oldCredentials, ['m'])
+    state.setFormCredentials(changed)
+    assert.deepEqual(state.fetchedModelNames.value, [])
+    assert.deepEqual(state.modelTestResults.value, {})
+  }
+
+  await state.createProvider({
+    family: 'grok',
+    note: 'new',
+    baseUrl: 'https://old.example/v1',
+    apiKey: 'sk-old',
+    enabled: true,
+    importWireNames: ['m'],
+  })
+  const create = calls.find(call => call.url.endsWith('/providers') && call.method === 'POST')
+
+  assert.deepEqual((create?.body as { importTestResults?: AdminLlmModelTestResult[] }).importTestResults, [])
+
+  // 绕过 setFormCredentials 的路径：结论还在，但提交的凭据与测出它们时的表单凭据不同，照样一条都不带。
+  calls.length = 0
+  state.setFormCredentials(oldCredentials)
+  await state.fetchModelNames(oldCredentials)
+  await state.testModels(oldCredentials, ['m'])
+  await state.importModels(['m'], 'provider-old', { ...oldCredentials, apiKey: 'sk-other' })
+  const imported = calls.find(call => call.url.includes('/import-models'))
+
+  assert.ok(imported)
+
+  assert.deepEqual((imported.body as { testResults: AdminLlmModelTestResult[] }).testResults, [])
 }
 
 function recordCall(calls: FetchCall[], input: string | URL | Request, init?: RequestInit): FetchCall {
