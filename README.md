@@ -79,7 +79,7 @@ flowchart LR
 
 ## 快速开始
 
-要求：Node.js `^20.19.0` 或 `>=22.12.0`、pnpm `10.32.1`、Docker、DeepSeek API Key、Gemini API Key（检索链路用）。
+要求：Node.js `^20.19.0` 或 `>=22.12.0`、pnpm `10.32.1`、Docker、一个 OpenAI-compatible 模型服务商的 API Key（DeepSeek 官方或中转站，启动后在管理台「模型接入」录入）、Gemini API Key（检索链路用）。
 
 ```bash
 corepack enable
@@ -101,7 +101,7 @@ pnpm dev
 
 seed 与 index 是检索 / 引用链路可用的前提：跳过它们普通聊天仍可用，但 `retrieve_article_context` 会因缺少 active index 而 fail closed。自装 PostgreSQL 必须带 pgvector 扩展；从旧 `postgres:16-alpine` 卷升级时建议重置卷重建（musl→glibc collation 差异），开发数据可由 seed / index 完整重建。`POSTGRES_DB` 只在卷首次初始化时生效：沿用改名前（库名 `agent_ai_seo`）的已有卷时，`.env` 里的 `DATABASE_URL` 保留 `agent_ai_seo`，或重置卷按新库名 `agent` 重建。
 
-完整环境变量见 [`.env.example`](./.env.example)；常用验证：`pnpm typecheck`、`pnpm lint`、`pnpm --filter @agent/api test:*`（按边界拆分的测试入口）、`pnpm --filter @agent/ai test`。
+完整环境变量见 [`.env.example`](./.env.example)；常用验证：`pnpm typecheck`、`pnpm lint`、API 按边界拆分的测试入口（如 `pnpm --filter @agent/api test:tools`，完整清单见 `apps/api/package.json` 的 `test:*` 脚本）、`pnpm --filter @agent/ai test`。
 
 `packages/ai` 与 `packages/contracts` 以 `dist` 被 API 运行时消费，包括 `tsx --test` 跑的 `test:*` 脚本；`pnpm dev` 会在启动前构建，但 dev 的 `tsc --watch` 只重编 API 自身，不重建包的 `dist`（类型检查会随包源码更新，运行时加载的仍是旧 `dist`）。改过 `packages/ai/src` 或 `packages/contracts/src` 后手动重建：
 
@@ -116,14 +116,14 @@ pnpm --filter @agent/contracts build
 apps/
   api/        NestJS API：Agent Runtime、Tool、检索与索引、Prisma 边界、LLM 门面与 DI 壳
   web/        Vue 3 对话前台（流式渲染 + 来源卡片）
-  admin/      运维控制台（Run Trace / 检索审计）
+  admin/      运维控制台（概览 / 会话记录 / Run Trace 与检索审计 / 模型接入）
 packages/
   ai/         模型客户端、OpenAI-compatible 流适配、模型类型 / 错误 / profile（零 Nest、零 Prisma）
   contracts/  前后端共享协议与类型（编译期防漂移）
-prisma/       PostgreSQL schema、pgvector migration、fixtures 与 seed
+prisma/       PostgreSQL schema、pgvector migration 与 fixtures（seed 脚本在 apps/api/scripts/seed.ts）
 docs/         路线图、任务归档、研究沉淀与工作日志
 ```
 
 ## 更多文档
 
-阶段路线见 [`docs/roadmap.md`](./docs/roadmap.md)，任务归档见 [`docs/tasks/`](./docs/tasks/README.md)，架构决策与推进记录见 [`docs/work-log.md`](./docs/work-log.md)。项目按 8 个阶段迭代完成：多轮流式对话 → 有界 Agent Loop → 上下文工程 → Grounded Retrieval，全部经 Issue / PR / 双重 Review 收口。
+阶段路线见 [`docs/roadmap.md`](./docs/roadmap.md)，任务归档见 [`docs/tasks/`](./docs/tasks/README.md)，架构决策与推进记录见 [`docs/work-log.md`](./docs/work-log.md)。项目按 8 个阶段迭代完成：多轮流式对话 → 有界 Agent Loop → 上下文工程 → Grounded Retrieval，全部经 Issue / PR / 提交前 Review 与逐条验收收口。

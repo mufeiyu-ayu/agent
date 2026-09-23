@@ -83,7 +83,7 @@ description: 执行本项目 GitHub Issue 的实现、Review、验收、合并�
 
 1. 读取 Issue 最新规格与决策记录、PR 最新 head 的 diff、commit 前 `<review 命令>` 的结论与处理结果、验证命令与真实输出。
 2. 对每条验收标准逐条给出 PASS / FAIL / 未验证，并注明证据位置；边界、失败路径和长链路集成必须有对应证据。“测试命令成功”或“代码看起来合理”不单独构成 PASS。
-3. 全部 PASS：把任务文档或看板行更新为 `实施状态：已实现`、`验收状态：已通过`，更新 `docs/tasks/README.md`、`docs/roadmap.md`，记录一条 `docs/work-log.md` 事实；阶段完成时归档到 `docs/tasks/completed/`。收口改动在原 PR 分支 commit 并 push。
+3. 全部 PASS：把任务文档或看板行更新为 `实施状态：已实现`、`验收状态：已通过`，更新 `docs/tasks/README.md`（当前状态只在这里），记录一条 `docs/work-log.md` 事实；路线或触发变了才改 `docs/research/workbench-direction.md` 第 7 节；阶段完成时归档到 `docs/tasks/completed/` 并更新 `docs/roadmap.md` 阶段表。收口改动在原 PR 分支 commit 并 push。
 4. 任一 FAIL 或未验证：停在 PR，在会话和 PR 评论里说明原因与所需改动，不合并；修复后回到第 4 步重新验证并重新验收。
 
 ## 8. 合并与分支清理

@@ -11,25 +11,25 @@
 | 模型重试 | `OpenAICompatibleClient.createClient()` 常量 `maxRetries: 2`，交给 openai SDK 内置重试，边界为首个响应头之前；`chatStream` 内 abort 与 `create()` 竞速、派生一次性 signal（#115，2026-09-18 合并） | Pi 有 adapter request retry（`maxRetryDelayMs` 封顶），也有 durable runtime 的 attempt/retry_wait | 请求前重试已做；已产生输出后的新 attempt 属 session 事件流 / replay 阶段 |
 | 工具循环 | 默认 `maxSamplingRounds: 10`、`maxToolCalls: 8`（#115），两个上限相互独立（#116 删除 `maxToolCalls < maxSamplingRounds` 耦合）；`maxToolCalls` 按 call 计数，同轮 call 数超过剩余预算时在执行任何 call 之前整体抛 `AgentLoopLimitExceededError` | 旧 Agent loop 无轮次上限，靠 `shouldStopAfterTurn`；新 Drive 靠 durable 状态与 retry attempt 上限 | 已按 #116 落地（2026-09-19 合并） |
 | 同轮输出 | `streamModelSampling` 只按 `finishReason` 分派：本轮 = 可选文本 + 一个或多个 Tool Call（`SamplingDecision.tool_call.calls[]`），顺序执行；`length` 截断整批不执行、逐 call 记 `truncated_arguments` 回喂；流协议不变量（含 reasoning_content 必需、同批 call id 不重复、`length` 例外）只在 `packages/ai` adapter 一处（#116，2026-09-19 合并） | Pi assistant content 可同时含 text/toolCall；adapter 对 DeepSeek 用 `requiresReasoningContentOnAssistantMessages` 表达同一约束；Pi 截断用 `failToolCallsFromTruncatedMessage` 整批回喂 | 并行 Tool Call 仍后置 |
-| 流协议与取消 | 统一 NDJSON：`start / delta / done / error / aborted` 五种事件（[contracts/chat.ts:24](/Users/ayu/Desktop/agent/packages/contracts/src/chat.ts:24)）；`RunCancellation` 三个来源 user / deadline / failure，`completing → completed` 处理 COMMIT 不确定态（[run-cancellation.ts:12](/Users/ayu/Desktop/agent/apps/api/src/agent-runtime/lifecycle/run-cancellation.ts:12)）；`runDeadlineMs` 默认 600s | Pi 的 live 事件与 durable entry 分离；取消是 `cancel_requested` 标记 + reconcile，不是 signal | R2/R4 的直接基线：先在这套事件与取消语义上加 operation ID 与 snapshot/cursor，不另起协议 |
+| 流协议与取消 | 统一 NDJSON：`start / delta / done / error / aborted` 五种事件（[contracts/chat.ts](../../../packages/contracts/src/chat.ts)）；`RunCancellation` 三个来源 user / deadline / failure，`completing → completed` 处理 COMMIT 不确定态（[run-cancellation.ts](../../../apps/api/src/agent-runtime/lifecycle/run-cancellation.ts)）；`runDeadlineMs` 默认 600s | Pi 的 live 事件与 durable entry 分离；取消是 `cancel_requested` 标记 + reconcile，不是 signal | R2/R4 的直接基线：先在这套事件与取消语义上加 operation ID 与 snapshot/cursor，不另起协议 |
 | 上下文 | source-aware `ModelContext`、每轮 `SamplingContextPlanner`、历史预算/Observation 治理 | branch context、compaction、request transforms | 保留预算与不可信数据边界；建立可持久化有效输入的契约 |
 | 运行记录 | Prisma Conversation / Message / AgentRun / AgentStep；Step input/output 记录统计及可选 debug payload | 旧 JSONL 与新 Session 的 branch/op/journal 是不同层级 | AgentStep 不是可恢复 operation journal，不能直接当 replay 驱动日志 |
 | 断线 | HTTP `close` 且响应未正常结束 → AbortController.abort；继续 drain generator 完成 ABORTED 收口 | durable 路径将 observer、attachment、lane operation 分开 | 云端运行独立于订阅，需要改变命令/观察协议与所有权；不能只删 abort |
 | Grounding | EvidenceRegistry、structured finalization、服务端 Citation identity 校验、MessageGrounding、Web/Admin typed projection | Pi 核心不替我们提供这套 RAG 引用事实 | 保留为我们的产品能力，迁移时放在明确的 runtime 扩展边界 |
-| 安全 | 模型 Tool Call 先校验，Observation 治理；api 目前没有任何 Nest Guard，即零鉴权，Admin Task 4 的 Auth/RBAC 仍 Planned | 本机默认权限，实验 protocol 也不等于租户授权 | 云端使用外部写操作前落实身份、scope、审批与隔离；这是比 Pi 缺口更早要补的项 |
+| 安全 | 模型 Tool Call 先校验，Observation 治理；api 目前没有任何 Nest Guard，即零鉴权，Admin Task 4 的 Auth/RBAC 仍 Planned | 本机默认权限，实验 protocol 也不等于租户授权 | 鉴权触发为「第一个同事要用」（工作台方向第 7 节第 3 档，2026-09-23），此前只做低成本加固；审批与副作用隔离随 R3 |
 
 源码入口：
 
-- [Runtime 导航](/Users/ayu/Desktop/agent/apps/api/src/agent-runtime/README.md)
-- [policy](/Users/ayu/Desktop/agent/apps/api/src/agent-runtime/configuration/agent-runtime.policy.ts:7)
-- [SamplingDecision](/Users/ayu/Desktop/agent/apps/api/src/agent-runtime/sampling/model-sampling-decision.ts:21)
-- [LLM client](/Users/ayu/Desktop/agent/packages/ai/src/api/openai-completions.ts:187)
-- [HTTP 断线](/Users/ayu/Desktop/agent/apps/api/src/chat/chat.controller.ts:26)
-- [Prisma 事实层](/Users/ayu/Desktop/agent/prisma/schema.prisma:59)
+- [Runtime 导航](../../../apps/api/src/agent-runtime/README.md)
+- [policy](../../../apps/api/src/agent-runtime/configuration/agent-runtime.policy.ts)
+- [SamplingDecision](../../../apps/api/src/agent-runtime/sampling/model-sampling-decision.ts)
+- [LLM client](../../../packages/ai/src/api/openai-completions.ts)
+- [HTTP 断线](../../../apps/api/src/chat/chat.controller.ts)
+- [Prisma 事实层](../../../prisma/schema.prisma)
 
 ## 2. 最容易混淆的现状：可观测不等于可恢复
 
-当前 [Runtime](/Users/ayu/Desktop/agent/apps/api/src/agent-runtime/agent-runtime.service.ts:332) 原文节选：
+当前 [Runtime](../../../apps/api/src/agent-runtime/agent-runtime.service.ts) 原文节选：
 
 ```ts
 // debug 捕获暂存：只有 AGENT_DEBUG_CAPTURE_MODEL_IO 开启时 client 才会回调，
@@ -51,14 +51,15 @@ Pi 也有同样需要审慎对待的边界：branch history 可恢复，但 exte
 ```text
 apps/api/src/
   agent-runtime/
-    configuration/  # 已有：一次 run 的 resolved config
+    configuration/  # 已有：Runtime Policy（启动期从 env 解析一次）；单次 Run 的配置组合是 service 私有方法 resolveRunConfiguration
     context/        # 已有：source-aware context 与预算
     sampling/       # 已有：模型事件到业务决策
     lifecycle/      # 已有：Run/Step 与取消、deadline
     grounding/      # 已有：引用事实与 finalization
-  llm/              # 已有：Nest 壳（LlmModule / LLMController / LLMService 门面 / LLMRuntimeConfigService）
+  llm/              # 已有：Nest 壳读侧（LLMService 门面、LlmModelConfigService 解析模型行、api-key-cipher、LLMRuntimeConfigService 只读主密钥与 debug 开关）
+  admin-llm/        # 已有（#142）：模型配置写侧（服务商 / 模型 CRUD、拉取、探测、导入预设）
   tools/            # 已有：registry/invocation/observation 归一化（硬上限 128k 字符）
-packages/ai/        # 已有（#120）：OpenAICompatibleClient、流适配、ModelStreamEvent / ModelInputItem / ModelToolSpec、LLM 错误、model profile、resolveLLMRuntimeConfig；零 Nest、零 Prisma
+packages/ai/        # 已有（#120）：OpenAICompatibleClient、流适配、ModelStreamEvent / ModelInputItem / ModelToolSpec、LLM 错误、LLMModelProfile 类型与 resolveChatRequestConfig；零 Nest、零 Prisma。模型行与凭据来自数据库（#142 删了 resolveLLMRuntimeConfig 与硬编码模型表）
 packages/contracts/ # 已有：ChatStreamEvent、MessageGroundingV1、AgentRun/AgentStep 投影；R1/R4 改协议先动这里
 ```
 

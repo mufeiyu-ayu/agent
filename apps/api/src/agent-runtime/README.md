@@ -15,7 +15,7 @@
 
 | 目录 | 职责 |
 | --- | --- |
-| `configuration/` | 单次 Run 配置组合与 Runtime Policy |
+| `configuration/` | Runtime Policy：启动期从 env 解析一次的历史候选上限、采样轮数、Tool Call 预算与 Run deadline（`agent-runtime.policy.ts`）。单次 Run 的配置组合不在这里，是 `agent-runtime.service.ts` 的私有方法 `resolveRunConfiguration` |
 | `lifecycle/` | Run / Step 持久化与取消、deadline、终态竞争 |
 | `context/` | Model Context、History Selection、Token 估算与每轮 Context Plan |
 | `sampling/` | 模型流到 Sampling Decision 的转换与安全 Debug 捕获 |
@@ -24,10 +24,10 @@
 ## 主调用链
 
 ```text
-ChatService
+ChatService（LlmModelConfigService.resolveModel 解析模型行快照）
   -> AgentRuntimeService.runTurnStream()
-  -> configuration: resolve Run config
-  -> lifecycle: create Run / Step + cancellation
+  -> lifecycle: create Run + cancellation（deadline 取自 configuration 的 policy）
+  -> resolveRunConfiguration()（私有方法）：Tool allowlist + resolveChatRequestConfig
   -> context: select and plan model-visible input
   -> sampling: consume model stream and return decision
   -> ToolInvocationService / grounding

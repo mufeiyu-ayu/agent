@@ -2,16 +2,16 @@
 
 ## 这个目录为什么存在
 
-用户不读 Pi 代码，也不需要 AI 把 Pi 讲给他听。用户完成自己项目的源码学习后，会让 AI 按 [roadmap](./roadmap.md) 的顺序替他实现云端 Agent；本目录是 AI 动手前查证据的素材库，避免每个新会话重复调研、套用旧版 Pi 印象或直接照搬 CLI。
+用户不读 Pi 代码，也不需要 AI 把 Pi 讲给他听。用户完成自己项目的源码学习后，会让 AI 按 [工作台方向](../workbench-direction.md) 第 7 节的顺序替他实现云端 Agent，每步的 Pi 素材与证明完成见 [roadmap](./roadmap.md)；本目录是 AI 动手前查证据的素材库，避免每个新会话重复调研、套用旧版 Pi 印象或直接照搬 CLI。
 
-研究准备完成不代表重构已获批准。正式任务状态看 `docs/tasks/README.md`，下一项 `web_fetch` 不由这里改动（#116 已于 2026-09-19 合并；#117 已于 2026-09-18 关闭转 Gated）。
+研究准备完成不代表重构已获批准。正式任务状态看 `docs/tasks/README.md`，顺序与触发看工作台方向第 7 节，本目录不重新排期。
 
 ## 新会话读取顺序
 
 1. 读本目录 `README.md` 的主题路由，按这次要实现的问题选模块；遇到不熟的词先查 `glossary.md`，不要凭名字猜（`deferred`、`attachment`、`checkpoint` 在不同层含义不同）。
 2. 读 `source-snapshot.md`，核实两个 checkout 的 HEAD。
 3. 只读对应模块说明及其中的一条真实源码链；需要总体定位再开图。
-4. 对照 `current-agent-mapping.md` 找到我们当前实现的位置，再看 `roadmap.md` 里这一步的进入条件与证明完成。
+4. 对照 `current-agent-mapping.md` 找到我们当前实现的位置，再看 `roadmap.md` 里这一步的证明完成（进入条件看工作台方向第 7 节）。
 
 不要把全目录一次塞进模型上下文。模块说明是导航和事实索引，原始代码是最终证据。研究边界与核实强度见 `coverage.md` 与 `verification.md`。
 

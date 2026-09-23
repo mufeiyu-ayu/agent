@@ -18,7 +18,7 @@
 
 **定案的方向**
 - 2026-09-15：完成当前源码学习后，面向云端 Agent 产品演进，以 Pi 为主要架构与组织方式参照（`docs/research/pi-reference/`）；旧 Codex 调研、reference 与阶段路线已按用户要求删除。DeepSeek Harness 保留补充对照。参照素材供 AI 实现时查阅，用户不读 Pi 代码；参照用于对比取舍，不照抄；研究完成不代表重构已启动。
-- 2026-09-20：合并公司 gsc 数据观测项目为内部数据工作台（固定页面是基础、agent 对话是补充，本机 Docker 局域网），runtime 以它为唯一真实负载；定案、边界、档与触发见 `docs/research/workbench-direction.md`，路线正文待源码阅读完成后改写。
+- 2026-09-20：合并公司 gsc 数据观测项目为内部数据工作台（固定页面是基础、agent 对话是补充，本机 Docker 局域网），runtime 以它为唯一真实负载；定案、边界与否决项见 `docs/research/workbench-direction.md`，顺序与触发只在它的第 7 节（2026-09-23 路线正文已对齐）。
 - 当前能力缺口四块：Human-in-the-loop / 审批、Durable Execution / resume 与 replay、长期 Memory、成本与延迟。子系统只在真实使用卡住、源码阅读发现缺陷或缺口被明确命中时才立项，不因为「成熟项目有」就做。
 
 ## 2. 用户与沟通
@@ -38,16 +38,17 @@
 
 | 文档 | 用途 |
 | --- | --- |
-| `docs/README.md` | 文档总入口与当前状态 |
-| `docs/roadmap.md` | 阶段路线与方向 |
-| `docs/tasks/README.md` | 任务看板，Active / Completed / 放弃 以这里为准 |
+| `docs/README.md` | 文档总入口 |
+| `docs/tasks/README.md` | 任务看板与当前状态（唯一维护处） |
+| `docs/research/workbench-direction.md` | 产品方向；第 7 节是唯一的顺序与触发来源 |
+| `docs/roadmap.md` | 阶段路线、方向定案与后置清单 |
 | `docs/research/README.md` | 研究入口：pi-reference、补充参照与参照实现方法 |
 | `docs/research/pi-reference/learning-method.md` | 参照实现的六问与每步产物 |
 | `docs/workflow.md` | 单角色流程、学习环节、硬约束与共用定义；`AGENTS.md` 自动导入 |
 | `docs/work-log.md` | 已发生事实 |
 | `docs/tasks/completed/` | 已完成阶段与任务的归档 |
 
-当前状态：Phase 1-8 Completed 并归档；当前阶段为源码阅读，先完成当前项目链路学习，之后按 `docs/research/pi-reference/roadmap.md` 由 AI 参照 Pi 实现云端方向；无 Active Task，#118 / #119 / #120 / #124 已于 2026-09-17 合并，#126 / #127 / #115 已于 2026-09-18 合并，#116 / #134 / #135 / #136 / #137 已于 2026-09-19 合并（#134 去掉 SEO 产品命名，入口改为 `apps/api/src/chat/` 与 `/api/chat/stream`；#135 删离线评估 baseline 与无运行记录的 smoke，检索评估只剩 `eval:retrieval-quality`；#136 删 tools / agent-runtime / admin 的无消费者字段、重复类型与单实现包装，工具清单收成 `apps/api/src/tools/tool-definitions.ts`；#137 Gemini embedding 重试交给 SDK `retryOptions`，`EMBEDDING_*` 三个 env 改 `embedding-provider.ts` 常量），2026-09-19 审计四件全部收口，#142 已于 2026-09-20 合并（模型配置入库：`LlmProvider` / `LlmModel`，密钥加密入库，思考协议与 `reasoning_effort` 按家族由 `@agent/contracts` 的 `LLM_FAMILY_CAPABILITIES` 决定，管理台「模型接入」页；学习环节待做），#146 已于 2026-09-22 合并（`LLM_FAMILY_CAPABILITIES` 扩成 compat 表，usage 缓存字段按三种写法兜底，`packages/ai` 五家族真实响应 fixture；学习环节待做），#149 已于 2026-09-22 合并（删 #119 后无读者的初始上下文观测字段与 Admin Context Inspector 来源分区，`InitialContextSummary` 只剩模型标识与预算），PR #148 已于 2026-09-22 合并（管理台概览页接真实数据，`/api/admin/overview/stats` 支持 `window=24h/7d/30d`、每模型缓存与时长，无 Issue，规格见 PR 正文），暂无 Next（web_fetch 2026-09-19 转 Gated；#117 已于 2026-09-18 关闭转 Gated）；翻译质检站已于 #113 删除；下一批候选子系统为 session 事件流与 replay、审批门、compaction、定时任务，候选不等于 Active；Admin Task 4 保持 Planned。
+当前阶段：本项目源码阅读（工作台第 0 档）。Active / Next / Gated、学习欠账与已合并任务只看 `docs/tasks/README.md`，这里不复制。
 
 ## 4. 关键目录与导图
 
@@ -85,7 +86,7 @@ Runtime 不变量：
 - UI message ≠ model message ≠ runtime event ≠ 持久化轨迹，各自独立契约。
 - delta 不等于持久化事实。
 - model-visible context 通过独立 Context boundary 维护，不回填 UI `Message`。
-- 模型看到的必须能从持久化记录重建（model-visible ⟺ logged），这是 resume / replay 的前提。
+- 模型看到的必须能从持久化记录重建（model-visible ⟺ logged），这是 resume / replay 的前提。这是 R1 的目标，当前不完全成立：工具参数与回填形状、observation 正文、Grounding 中间文本、首轮裁掉的历史条数、finalization 提示词里的 `registry_truncated` 等标量都没有落库，修复见 #152。
 - 模型输出不可信：工具名、参数、引用 key 先校验再执行；检索正文按 untrusted data 隔离注入。
 - 终态所有权：晚到的 Abort / deadline / DB 结果不能覆盖已确立终态；COMMIT 结果不确定时如实暴露。
 
@@ -147,14 +148,15 @@ DTO class 用于 `@Body()` / `@Param()` 时，必须保留运行时值导入，�
 | 情况 | 需要更新 |
 | --- | --- |
 | 设计对比、学习笔记、复盘 | `docs/research/**` |
-| Issue 合并后 | 对应 `docs/tasks/**` 状态、`docs/roadmap.md`、`docs/work-log.md` 一条事实 |
-| 阶段完成 | 精简归档到 `docs/tasks/completed/`，更新 `docs/README.md` 与 `docs/roadmap.md` |
+| Issue 合并后 | 对应 `docs/tasks/**` 状态、`docs/work-log.md` 一条事实；路线或触发变了才改 `docs/research/workbench-direction.md` 第 7 节 |
+| 阶段完成 | 精简归档到 `docs/tasks/completed/`，更新 `docs/roadmap.md` 阶段表 |
 | 协作规则变化 | 流程与硬约束改 `docs/workflow.md`，其余工具无关内容改 `AGENTS.md`；工具专属内容改对应载体；`docs/work-log.md` 一条事实 |
 | 新增 / 移动 / 删除模块或核心文件 | 对应 app / 包根目录的 `AGENTS.md` 导图，与代码同一次提交；普通文件增删不更新 |
 | 小修 typo / 样式微调 | 可不更新 docs，commit 说明即可 |
 
 原则：
 
+- 当前状态只写 `docs/tasks/README.md`，其他文档放指针，不复制快照。
 - `work-log` 只写真实已发生事实，保持简洁。
 - 不把计划写成已完成事实；候选子系统不写成 Active。
 - 不把研究长文写进 `docs/tasks/`。

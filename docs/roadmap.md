@@ -1,21 +1,8 @@
 # 路线
 
-本文维护阶段级路线。正式 Task 状态与执行顺序以 [`docs/tasks/README.md`](./tasks/README.md) 为准。
-
 ## 当前状态
 
-```text
-阶段 1-8：Completed
-Active Agent Task：无
-Next / Planned：无（#146 中转站各家族协议差异收口——compat 表、usage 缓存字段兜底、五家族真实响应 fixture——已于 2026-09-22 合并（PR #147）；2026-09-19 过度设计审计四件 #134 去 SEO 产品命名、#135 删离线评估与 smoke 死链、#136 零行为变化小修、#137 embedding 重试交给 SDK 已于同日全部合并；web_fetch 同日转 Gated；#116 同轮文本 + 多 Tool Call 已于 2026-09-19 合并；#115 模型调用重试与 Loop 默认上限已于 2026-09-18 合并；#117 Responses adapter 已于 2026-09-18 关闭转 Gated；去过度设计三件 #118 / #119 / #120 与 #124 目录整理已于 2026-09-17 全部合并，`packages/ai` 已按 Pi 分层；#126 Admin Run 读模型去过度设计与 #127 `packages/ai` 运行时配置收敛已于 2026-09-18 合并）
-方向：runtime 深化（2026-09-05 定案）；产品方向：内部数据工作台（2026-09-20 定案，见 research/workbench-direction.md，路线正文待源码阅读完成后改写）
-当前阶段：源码阅读
-前台 UI 支线：#144 / PR #145 已于 2026-09-21 完成代码验收（卡片、流式阅读、Tooltip；不改变主线路线）
-候选子系统：session 事件流与 replay、审批门、compaction、定时任务
-翻译质检站：已删除（#113）
-Admin Observability：Task 0-3、Enhancement 1-3、Phase 8 Task 3C、#98 Completed
-Admin Task 4：Planned
-```
+当前状态（Active / Next / Gated / 学习欠账）只在 [`tasks/README.md`](./tasks/README.md) 维护；顺序与触发只在 [内部数据工作台方向](./research/workbench-direction.md) 第 7 节维护。本文只写阶段、方向定案与后置清单。
 
 ## 阶段路线
 
@@ -42,7 +29,7 @@ Admin Task 4：Planned
 
 ## 当前学习阶段
 
-当前继续本项目源码阅读。2026-09-15 用户指定：完成当前学习后，由 AI 以 Pi 为主要参照实现云端 Agent，用户不读 Pi 代码；研究资料、架构图和实现顺序见 [`pi-reference/README.md`](./research/pi-reference/README.md) 与 [Pi 实现 roadmap](./research/pi-reference/roadmap.md)。研究准备不改变 #137 的正式顺序（#134 / #135 / #136 已于 2026-09-19 合并；web_fetch 同日转 Gated）。参照方法见 [`learning-method.md`](research/pi-reference/learning-method.md)。Phase 8 链路仍可按以下顺序回读：
+当前继续本项目源码阅读（工作台第 0 档）。2026-09-15 用户指定：完成当前学习后，由 AI 以 Pi 为主要参照实现云端 Agent，用户不读 Pi 代码；研究资料与架构图见 [`pi-reference/README.md`](./research/pi-reference/README.md)，每步的 Pi 素材与证明完成见 [Pi 实现 roadmap](./research/pi-reference/roadmap.md)，先后看工作台方向第 7 节。参照方法见 [`learning-method.md`](research/pi-reference/learning-method.md)。Phase 8 链路仍可按以下顺序回读：
 
 ```text
 索引入口
@@ -78,11 +65,13 @@ Admin Task 4：Planned
 - compaction；
 - 定时任务 / jobs。
 
-立项条件：真实使用卡住、源码阅读发现缺陷，或缺口被明确命中；三者都不满足时不立 Issue。候选不等于 Next，不因为“成熟项目有”就做。
+它们在 [工作台方向](./research/workbench-direction.md) 第 7 节的位置：session 事件流与 replay 拆在第 2 档 R2（关页续跑）与「后」行 R1（可重建）；审批门是第 2 档 R3；compaction 与定时任务在「后」行。立项条件：真实使用卡住、源码阅读发现缺陷，或缺口被明确命中；三者都不满足时不立 Issue。候选不等于 Next，不因为“成熟项目有”就做。
 
 2026-09-05 首批按「源码阅读发现缺陷」立项，主题是运行时健壮性：#115 模型调用零重试与 Loop 默认上限；#116 同轮「文本 + Tool Call」与多个 Tool Call 直接 FAILED；#117 DeepSeek Responses API adapter 与 Chat 并存。三件合起来是 Durable Execution 缺口的前半段（失败分类与重试单元），session 事件流与 replay 在其后。
 
-2026-09-20 产品方向定案：合并公司 gsc 数据观测项目为内部数据工作台，固定页面是基础、agent 对话是补充，runtime 以它为唯一真实负载；OS sandbox 进第 1 档，各步触发条件具体化；定案、边界、否决项与未决见 [内部数据工作台方向](./research/workbench-direction.md)。
+2026-09-20 产品方向定案：合并公司 gsc 数据观测项目为内部数据工作台，固定页面是基础、agent 对话是补充，runtime 以它为唯一真实负载；OS sandbox 进第 1 档，各步触发条件具体化；定案、边界、否决项与未决见 [内部数据工作台方向](./research/workbench-direction.md)。2026-09-23 路线正文按其第 7、8 节对齐：顺序与触发只在第 7 节，本文不再维护顺序。
+
+2026-09-20 方向变化：第二 provider 由 #142（模型配置入库、接入公司中转站）与 #146（各家族协议差异收口为 compat 表）落地，前台可选 DeepSeek 与经中转站的 GPT / Grok / Gemini，推翻工作台方向第 9 节「现在接第二模型」的否决。
 
 2026-09-16 对照 Pi 做过度设计审查后再立三件，排在 #115 前：#118 删死代码与单实现抽象（零行为变化）、#119 历史裁剪合一、#120 抽出 `packages/ai`。`packages/ai` 提前的理由是 #115 / #117 全落在模型层；`packages/agent` 仍在 R2。2026-09-17 再立 #124 把 `packages/ai` 目录按 Pi 分层整理（单一 `types.ts`、按协议命名的 `api/`），同日合并。2026-09-18 立 #126 把 Admin Run 读模型去过度设计（删常量 / 重复 / 可信度字段与读时校验，projector 改逐字段读取，净减 5,611 行），同日合并；同日再立 #127 收敛 `packages/ai` 运行时配置（`LLMRuntimeConfig` 只剩三个必填 env 与 debug 开关，timeout 与 `max_tokens` 默认值改代码常量，删应用硬上限层与 4 个 `LLM_*` env），同日合并。其余结构性问题不单独立项，分别归 #116（重复校验、消息类型合并）、R1（debug 捕获）、R2（ModelContext 协议）。
 
@@ -91,18 +80,17 @@ Admin Task 4：Planned
 - 生产数据库拓扑设计；
 - claim-level inline offsets；
 - 在线第二模型 judge；
-- PDF / Office、通用知识库、多租户 ACL；
+- PDF / Office、通用知识库；
 - Agentic Retrieval、复杂 rerank / query rewrite；
 - LangChain / LangGraph / 独立 Vector DB；
-- OpenAI / Gemini 双 active provider；
 - DeepSeek Responses adapter（#117 Gated）；
-- Admin Auth / RBAC Task 4；
-- `web_fetch`（2026-09-19 Gated，等真实读网页用途）；
+- 登录权限 / Admin Auth / RBAC（Task 4）：2026-09-23 用户决定暂缓，API 与模型配置都是公司内部资产，现在做完整鉴权会拖慢学习节奏。触发为「第一个同事要用」（工作台第 3 档），局域网可达本身不算；此前只做低成本加固（#156）。R2/R1 的持久契约先带 owner 字段，只补字段不建 Guard；
+- `web_fetch`（Gated）：2026-09-23 用户确认以后仍要做，放在工作台第 7 节「后」行；触发为用户或工作台需要读外部网页；
+- 长会话首轮同步分词：会阻塞事件循环，实测 1000 条 × 约 2.4k 字符的历史要 4.6s；当前 dev 库最长的会话只有 18 条，2026-09-23 决定暂不处理。触发为真实会话超过约 200 条，或首轮 plan 超过 500ms；
 - 并行 Tool Call；
-- OS sandbox；
 - Memory、MCP、Multi-agent。
 
-多租户 ACL 与 Admin Auth 的触发条件：第一个外部写，或第一次把真实数据开放给第二个用户，先到者。在此之前 R2/R1 的持久契约先带 owner 字段，只补字段不建 Guard。
+已移出后置：OS sandbox 于 2026-09-20 进工作台第 1 档；OpenAI / Gemini 等第二 provider 已由 #142 / #146 落地。多租户已否决（工作台方向第 9 节），不在后置清单。
 
 ## Admin Console 支线
 
@@ -120,9 +108,4 @@ Phase 8 Task 3C 已完成安全 Retrieval Inspector，但不自动启动 Task 4�
 
 ## 当前正式动作
 
-```text
-Phase 8：Completed / 已归档（docs/tasks/completed/phase-08-grounded-retrieval.md）
-Active Agent Task：无
-当前阶段：本项目源码阅读；后续按 pi-reference roadmap 由 AI 参照 Pi 实现云端方向
-下一步：源码阅读主线 → 六条真实对话验证 → 按 [内部数据工作台方向](./research/workbench-direction.md) 第 7 节立第一个 Issue；路线正文按其第 8 节改写（#118 / #119 / #120 / #124 / #126 / #127 / #115 / #116 / #134 / #135 / #136 / #137 已合并；#117 与 web_fetch 已转 Gated，触发条件见看板）；其余候选子系统在立项条件满足时建 Issue，走 docs/workflow.md 的流程
-```
+状态看 [`tasks/README.md`](./tasks/README.md)。下一步按工作台方向第 7 节：源码阅读（第 0 档）→ 六条真实对话验证（0.5 档）→ 立第一个 Issue；候选子系统在立项条件满足时建 Issue，走 `docs/workflow.md` 的流程。

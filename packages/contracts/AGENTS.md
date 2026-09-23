@@ -20,4 +20,4 @@ src/admin-conversation.ts / src/admin-overview.ts   # 管理台其他读模型
 
 - 改这里等于改协议：api 的 DTO、web / admin 的调用都要跟着看一遍，`pnpm typecheck` 全仓跑。
 - 取值表（家族、强度、状态枚举）以这里为准，api 的 DTO 用它做 `IsIn`，前端用它渲染选项，不各自再抄一份。
-- 改动后 `pnpm --filter @agent/contracts build`，其他包的 typecheck 读它的产物。
+- `package.json` 的 `exports` 里 `types` 指向 `src`、`import` 指向 `dist`：其他包的 typecheck 读 src，api 运行时、web / admin 的 Vite 与 api 的 `test:*`（tsx）读 dist。`pnpm dev` 只在启动时构建一次本包，改了 `src` 后要重启 dev 或先 `pnpm --filter @agent/contracts build`，再跑 api 测试。

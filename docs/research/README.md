@@ -15,20 +15,20 @@ research/
 └── phase-08-grounded-answer-citation-design.md  当前项目Phase 8设计依据
 ```
 
-实现智能体从 `pi-reference/README.md` 按问题选资料。研究、参照方法与实现路线都在 `pi-reference/`；旧Codex研究体系已删除。
+实现智能体从 `pi-reference/README.md` 按问题选资料。研究、参照方法与每步素材都在 `pi-reference/`，实现顺序在 `workbench-direction.md` 第 7 节；旧Codex研究体系已删除。
 
 ## 从这里开始
 
 | 需要 | 入口 |
 | --- | --- |
-| 产品方向、合并 gsc 的方式、档与触发、否决项 | [workbench-direction.md](./workbench-direction.md) |
+| 产品方向、合并 gsc 的方式、档与触发（唯一的顺序来源）、否决项 | [workbench-direction.md](./workbench-direction.md) |
 | 新会话理解研究目的、目录与阅读顺序 | [pi-reference/README.md](./pi-reference/README.md) |
 | AI 实现前怎样查证据、怎样向用户汇报 | [how-to-read.md](./pi-reference/how-to-read.md) |
 | Pi 架构思想、文件夹与处理风格 | [architecture-and-style.md](./pi-reference/architecture-and-style.md) |
 | 原码索引、注释、真实调用链 | Pi 入口的主题路由 → `modules/` |
 | 交互架构、流程与时序图 | [图集入口](./pi-reference/diagrams/index.html) · [维护说明](./pi-reference/diagrams/README.md) |
 | 对照我们的现有能力和缺口 | [current-agent-mapping.md](./pi-reference/current-agent-mapping.md) |
-| 云端实现顺序与每步 Pi 素材 | [Pi roadmap](./pi-reference/roadmap.md) |
+| 每步 Pi 素材与证明完成（顺序看工作台方向第 7 节） | [Pi roadmap](./pi-reference/roadmap.md) |
 | 核实版本、全仓覆盖与验证范围 | [source-snapshot](./pi-reference/source-snapshot.md)、[coverage](./pi-reference/coverage.md)、[verification](./pi-reference/verification.md) |
 
 ## 项目配套资料
@@ -48,7 +48,7 @@ research/
 | --- | --- |
 | 当前代码、测试、正式 Task/Issue 决策 | 能力、规格与实现事实 |
 | `docs/tasks/**` | 正式任务状态与验收 |
-| `docs/roadmap.md` | 阶段路线和当前主线 |
+| `docs/roadmap.md` | 阶段路线、方向定案与后置清单 |
 | `docs/research/**` | 研究证据、解释、候选方向 |
 | `docs/work-log.md` | 已发生事实 |
 

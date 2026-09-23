@@ -1,30 +1,24 @@
 # Docs
 
-本目录只做导航。正式任务状态以 [`tasks/README.md`](./tasks/README.md) 为准，阶段路线以 [`roadmap.md`](./roadmap.md) 为准，协作流程以 [`workflow.md`](./workflow.md) 为准（`AGENTS.md` 自动导入）。
+本目录只做导航。正式任务状态以 [`tasks/README.md`](./tasks/README.md) 为准，顺序与触发以 [`research/workbench-direction.md`](./research/workbench-direction.md) 第 7 节为准，阶段路线以 [`roadmap.md`](./roadmap.md) 为准，协作流程以 [`workflow.md`](./workflow.md) 为准（`AGENTS.md` 自动导入）。
 
-## 当前主线
+## 当前状态
 
-```text
-阶段 1-8：Completed，归档在 tasks/completed/
-Active Agent Task：无
-Next：无（2026-09-19 审计四件 #134 / #135 / #136 / #137 已于同日全部合并，SEO 产品命名已去掉、离线评估 baseline 与无运行记录的 smoke 已删、tools / agent-runtime / admin 的无消费者字段与重复类型已删、Gemini embedding 重试交给 SDK 且 `EMBEDDING_*` env 改常量；web_fetch 同日转 Gated；#116 已于 2026-09-19 合并；#117 已于 2026-09-18 关闭转 Gated；#118 / #119 / #120 / #124 已于 2026-09-17 合并，#126 / #127 / #115 已于 2026-09-18 合并）
-当前阶段：本项目源码阅读；学完后由 AI 以 Pi 为参照实现云端 Agent，用户不读 Pi 代码（2026-09-15）
-候选子系统：session 事件流与 replay、审批门、compaction、定时任务（候选不等于 Active）
-Admin Task 4：Planned
-```
+只在 [`tasks/README.md`](./tasks/README.md) 维护，本文件不复制。
 
 ## 文档入口
 
 | 文档 | 用途 |
 | --- | --- |
 | [roadmap.md](./roadmap.md) | 阶段路线、当前学习阶段与学习出口、方向定案、后置清单 |
+| [research/workbench-direction.md](./research/workbench-direction.md) | 内部数据工作台方向；第 7 节是唯一的顺序与触发来源 |
 | [tasks/README.md](./tasks/README.md) | 正式任务看板与状态事实来源 |
 | [tasks/completed/](./tasks/completed/) | 已完成阶段与横向任务的归档 |
 | [tasks/admin-console.md](./tasks/admin-console.md) | Admin Console 支线，Task 4 Planned |
 | [workflow.md](./workflow.md) | 单角色流程、学习环节、硬约束、Issue 模板与任务状态 |
 | [research/README.md](./research/README.md) | 研究入口：Pi 参照、Phase 8 设计依据、配置地图 |
 | [research/pi-reference/README.md](./research/pi-reference/README.md) | Pi 参考知识库：模块正文、8 张图、实现路线 |
-| [research/pi-reference/roadmap.md](./research/pi-reference/roadmap.md) | 云端实现顺序 R0 → web_fetch → R2 → R1 → R3 → R4 → R5 |
+| [research/pi-reference/roadmap.md](./research/pi-reference/roadmap.md) | 每步（R0～R5、web_fetch）的 Pi 素材与证明完成 |
 | [work-log.md](./work-log.md) | 已发生事实 |
 
 ## 事实来源
@@ -34,9 +28,10 @@ Admin Task 4：Planned
 1. GitHub 当前代码、Issue、PR、commit 与真实验证；
 2. `docs/tasks/**`；
 3. `docs/workflow.md`；
-4. `docs/roadmap.md`；
-5. `docs/work-log.md`；
-6. `docs/research/**`。
+4. `docs/research/workbench-direction.md` 第 7 节（只管顺序与触发）；
+5. `docs/roadmap.md`；
+6. `docs/work-log.md`；
+7. 其余 `docs/research/**`。
 
 ## 维护原则
 

@@ -17,7 +17,7 @@
 ```text
 讨论会话
   用户：「下一步做什么」
-  AI：按 docs/roadmap.md 与 pi-reference roadmap 提议一个任务，讲现有代码的事实与缺点，
+  AI：按 workbench-direction 第 7 节与 docs/tasks/README.md 提议一个任务，讲现有代码的事实与缺点，
       出「现在的代码遇到 X 会怎样」预测题
   多轮：用户作答、追问，AI 纠正；直到用户能用自己的话说出改什么、为什么、验收看什么
   用户：「建 Issue」→ AI 用 gh 建 Issue，规格全在 Issue（模板见第 3 节）
@@ -38,7 +38,7 @@
 
 | 触发语 | 执行方式 |
 | --- | --- |
-| 「下一步做什么」「下一阶段做什么」 | AI 按 `docs/roadmap.md` 与 `docs/research/pi-reference/roadmap.md` 提议一个任务，从现有代码的事实与缺点讲起；不建 Issue |
+| 「下一步做什么」「下一阶段做什么」 | AI 按 `docs/research/workbench-direction.md` 第 7 节（顺序与触发）与 `docs/tasks/README.md`（当前状态）提议一个任务，从现有代码的事实与缺点讲起；该步的 Pi 素材与证明完成查 `docs/research/pi-reference/roadmap.md`；不建 Issue |
 | 「完成 Issue #N」「读取 Issue #N 并实现」 | 该工具的 `github-issue-workflow` skill，默认一路执行到合并与收口 |
 | 「处理 PR #N 的 Review」 | 该工具的 `github-pr-review-fix` skill；仅在用户明确要求处理 PR 上的外部 Review 评论时使用，不是默认步骤 |
 | 「建 Issue」「把刚才聊的立项」 | 本会话用 `gh` 建 Issue，内容取自本会话结论 |
@@ -50,7 +50,7 @@
 
 - 验收 FAIL 不合并，停在 PR 并说明原因。
 - Review 与验收都由实现会话完成：commit 前的 `<review 命令>` 是唯一必需的 review，不等待也不依赖任何远程自动 Review；仓库里第三方 Review bot 的评论不阻塞流程。
-- 高风险 Issue 指涉及持久化、恢复、owner fencing、审批、鉴权或数据库 migration 的改动：`<review 命令>` 用 high 以上档位；验收标准必须包含路线对应步骤「证明完成」列出的故障注入场景，缺一条不 PASS。
+- 高风险 Issue 指涉及持久化、恢复、owner fencing、审批、鉴权或数据库 migration 的改动：`<review 命令>` 用 high 以上档位；验收标准必须包含路线对应步骤「证明完成」列出的故障注入场景，缺一条不 PASS；不对应路线某一步的高风险 Issue，在 Issue 里自拟故障注入 AC。
 - 路线守门：用户提出偏离路线顺序的任务时，AI 先对照路线说明它的位置与现在做的代价，再由用户决定，不因一句话就跳步；一次只聊一个任务。
 - Issue 是唯一规格：讨论不产出中间文件；用户能复述改什么、为什么、验收看什么之前不建 Issue；Issue 必须自足，实现会话只看 Issue 与代码；开工前把已确认的补充决定并入正文，评论不作为规格。
 - Issue 必须写「不过度设计」边界：范围只列本次要改的行为；不为想象中的扩展加抽象、接口、配置项或分层；一个实现的接口不抽，一个消费者的模块不拆，出现第二个真实用例再泛化。Review 时把「比 Issue 范围多出来的抽象」当 finding 处理。
@@ -63,6 +63,7 @@
 - `docs/tasks/**` 是任务与阶段状态的事实来源；Issue 保存实现规格、验收标准和澄清决策。
 - 改某个 app / 包的代码前先读它根目录的 `AGENTS.md` 导图（清单见 `AGENTS.md` 第 4 节）；commit 前检查本次是否新增、移动、删除了导图里提到的模块或核心文件，有就在同一次提交里同步导图。导图只写入口、分层、核心文件与不变量，不列普通文件，单份控制在 50 行内。
 - 正式代码任务先建 Issue，再走独立任务分支和 PR，不直接在 `master` 上实现、提交或推送。
+- 小改动例外（用户惯例）：非高风险（定义见第 1 节，持久化、恢复、鉴权、migration 等）、单一关注点的小改动可以不建 Issue，在独立分支改完，用 `<review 命令>` 自审通过后合进 `master`，`docs/work-log.md` 记一行事实（含 commit）。高风险改动照常走 Issue / PR。
 - 一个 Issue / PR 只完成一个任务单元，不顺手推进后续任务。
 - 暂存之后、commit 之前必须用 `<review 命令>` 审暂存区 diff：确认为真问题的 finding 自行修复并入本次提交，不为技术判断等待用户确认；无法复现、超出范围或与已确认规格冲突的不修但要说明；复审最多 2 轮后停止并记录剩余问题。docs-only 改动跳过。
 - review 在本地完成，通过后才创建 PR；PR 是验收载体，不用来收集 review。PR 创建即为 Ready，只有实现未完成、验证失败或受阻才用 Draft；云端自动 Review 是可选输入，不阻塞交付。

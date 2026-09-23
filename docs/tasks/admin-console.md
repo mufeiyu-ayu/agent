@@ -50,10 +50,10 @@ Admin Console 面向项目开发、调试和运行过程复盘。它是 Agent �
 - `GET /api/admin/runs`；
 - `GET /api/admin/runs/:runId`；
 - server-side pagination / filters / stable ordering；
-- known Step typed projection 与 unknown / malformed Generic fallback；
+- known Step typed projection；Generic 只用于未知 `type`（#126 起字段非法不再整步降级为 Generic）；
 - RUNNING / COMPLETED / FAILED / ABORTED；
 - stale-response fencing；
-- Safe Raw bounded projection。
+- 服务端 Safe Raw 投影（`safeRawData`）已于 #126 删除；Generic Inspector 只把未知 Step 的白名单字段渲染成 JSON。
 
 ### Run Trace Workspace
 
@@ -65,11 +65,11 @@ Event / Content Ledger
 Typed Inspector / Generic Inspector
 ```
 
-保留 Messages、搜索、折叠、选中态、Safe Raw 和桌面响应式布局。
+保留 Messages、搜索、折叠、选中态和桌面响应式布局（Safe Raw tab 只剩 Generic Inspector 一处，见上）。
 
 ### Context Inspector
 
-展示每次 sampling 的 Budget、Sources、History / Observation 调整和 outcome，不暴露完整 model-visible Context。
+展示每次 sampling 的 outcome、模型标识（resolvedModel / providerId / modelId）、输入预算与估算输入 Token，不暴露完整 model-visible Context；「Sources」分区与 History / Observation 调整计数已于 #149 删除。
 
 ### Retrieval Inspector
 
@@ -82,16 +82,14 @@ Run / Steps / MessageGrounding
   -> Event / Retrieval switch
 ```
 
-状态包括：
+当前行为（#126 起）：
 
-- `available / partial / unavailable / not_applicable`；
-- zero-hit 与候选数量未知分离；
-- exact known Tool、discovery-only 和 unclassifiable Tool 分离；
-- malformed Tool summary / finalization / Grounding fail closed；
-- failed Tool refs 不参与 Citation correlation；
+- 投影逐字段「能读就读、读不出就 null」，不再有 `available / partial / unavailable / not_applicable` 这类投影可用性状态，也不做跨字段、跨 Step 复核；
+- `citations` 只在 COMPLETED 助手消息带合法 Grounding 时有值，缺失或损坏为 null；
+- 证据身份数在引用未完整记录时显示「未记录」（PR #130）；
 - Prompt、reasoning、embedding、SQL、正文、secret 不进入 API / DOM。
 
-最终验证：Admin API tests 136、Grounding 168、DB integration 17、Chromium 12、repeat-each=3 为 36，均通过。
+Task 3C 收口时的最终验证：Admin API tests 136、Grounding 168、DB integration 17、Chromium 12、repeat-each=3 为 36，均通过。
 
 ## 当前 Observability Baseline
 
@@ -111,13 +109,13 @@ Context / Tool / Message / Retrieval / Finalization Inspector
 
 ## Task 4：登录、权限与敏感信息脱敏
 
-保持 Planned。当前 Admin Console 仍不等于可直接公网暴露的生产后台。
+保持 Planned。触发为「第一个同事要用」（2026-09-23 用户决定，局域网可达本身不算；此前只做低成本加固，另立 Issue）。当前 Admin Console 仍不等于可直接公网暴露的生产后台。
 
 Task 4 启动前需要重新讨论：
 
 - 登录与 Session；
 - Role / Permission；
-- 多租户边界；
+- 用户与团队边界（多租户已否决，见 `docs/research/workbench-direction.md` 第 9 节）；
 - API 权限；
 - 更严格的敏感字段治理；
 - 部署与审计要求。

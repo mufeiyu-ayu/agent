@@ -24,8 +24,11 @@ scripts/export-raw-response-fixtures.ts    # 一次性只读导出脚本：从�
 - 家族差异只读 `@agent/contracts` 的 compat 表（`LlmFamilyCompat`）：`thinkingFormat='deepseek'` 才发 `thinking`；`requiresReasoningContent` 为真时 Tool Call 必须回 `reasoning_content`；`reasoning_effort` 任何家族配置了就发。
 - usage 的缓存字段按 `prompt_tokens_details.cached_tokens ?? prompt_cache_hit_tokens ?? cached_tokens` 兜底；`inputTokens` 保持原始 `prompt_tokens`；缺失字段保持 unknown，不补零。
 - `src/api/__fixtures__/`：`*.response.json` 是各家族经中转站 / 直连的真实聚合响应（由 `scripts/export-raw-response-fixtures.ts` 从本机 `AgentStep.debugRawResponse` 只读导出，不含 `reasoning_content`，也不带服务商地址）；`*.chunks.json` 是按真实 usage 形状手工整理的最小流序列，不是抓包原样。改 usage 归一化或不变量时先跑这组回归。
-- 网络错误不重试（2026-09-19 拍板）；错误文案不带厂商名，各家 OpenAI-compatible 端点共用同一套状态码含义。
+- 重试交给 SDK：`REQUEST_MAX_RETRIES = 2`（#115），只在收到响应头之前重试 408 / 409 / 429 / 5xx 与连接错误；流正文中断、abort 之后不重试，abort 不等退避 sleep（`rejectOnAbort`）。回归在 `openai-completions.test.ts` 的「瞬态失败重试」组。
+- 错误文案不带厂商名，各家 OpenAI-compatible 端点共用同一套状态码含义。
 
 ## 验证
 
-`pnpm --filter @agent/ai typecheck`、`lint`、`test`（node:test）。改公开导出面时先 `build`，api 与前端的 typecheck 依赖它。`scripts/` 不在 tsconfig include 里，只过 lint。
+`pnpm --filter @agent/ai typecheck`、`lint`、`test`（node:test）。`scripts/` 不在 tsconfig include 里，只过 lint。
+
+`package.json` 的 `exports` 里 `types` 指向 `src`、`import` 指向 `dist`：typecheck 读 src，node 运行时与 api 的 `test:*`（tsx）读 dist。`pnpm dev` 只在启动时构建一次本包，改了 `src` 后要重启 dev 或先 `pnpm --filter @agent/ai build`，再跑 api 测试。

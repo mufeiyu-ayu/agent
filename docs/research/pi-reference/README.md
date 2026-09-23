@@ -2,7 +2,7 @@
 
 **读者是替用户写代码的智能体，用户不读 Pi 代码。** 本目录研究 `/Users/ayu/Learn/pi`，提炼架构思想、目录组织、关键代码与处理风格，供 AI 在实现云端 Agent 时对照借鉴。它是现行研究与实现路线入口。
 
-研究准备完成 ≠ 重构已经批准。正式任务与状态仍以 [`docs/tasks/README.md`](../../tasks/README.md) 为准；当前 `web_fetch` 不由本目录重新排期。
+研究准备完成 ≠ 重构已经批准。正式任务与状态仍以 [`docs/tasks/README.md`](../../tasks/README.md) 为准，顺序与触发以 [工作台方向](../workbench-direction.md) 第 7 节为准；本目录不重新排期。
 
 图表统一从 **[图集入口](./diagrams/index.html)** 打开，左侧菜单切换；源码JSON集中在 `diagrams/specs/`。术语不熟先查 [术语表](./glossary.md)。
 
@@ -25,7 +25,7 @@ pi-reference/
 ├── source-snapshot.md               固定版本、证据规则、覆盖含义
 ├── architecture-and-style.md        11 个主要包、三条入口、架构心得与取舍
 ├── current-agent-mapping.md         我们当前代码事实、缺口、目录映射
-├── roadmap.md                      实现顺序 R0→web_fetch→R2→R1→R3→R4→R5（含不借鉴清单、每步 Pi 素材）
+├── roadmap.md                      每步（R0～R5、web_fetch）的 Pi 素材与证明完成，含不借鉴清单；顺序见工作台方向第 7 节
 ├── coverage.md                     全仓功能覆盖、阅读深度和范围边界
 ├── verification.md                 实际检查、图表验收、未执行范围
 ├── modules/
@@ -77,7 +77,7 @@ Pi 源码仍有 `watchSession`/search stub、SQLite streaming/list fork 不完�
 ## 与其他文档的关系
 
 - 现行研究总入口：[`../README.md`](../README.md)。
-- 参照实现方法：[learning-method.md](./learning-method.md)；主题路由与实现顺序见本目录的how-to-read和roadmap。
+- 参照实现方法：[learning-method.md](./learning-method.md)；主题路由见本目录的 how-to-read，每步素材见 roadmap，实现顺序见 [工作台方向](../workbench-direction.md) 第 7 节。
 - 当前正式状态：[`../../tasks/README.md`](../../tasks/README.md)；阶段路线：[`../../roadmap.md`](../../roadmap.md)；事实日志：[`../../work-log.md`](../../work-log.md)。
 
 冲突时先核对当前代码、正式 Task/Issue 决策与本次用户目标，再解释研究快照为什么不同；不为了“像 Pi”反向改变已确认的不变量。

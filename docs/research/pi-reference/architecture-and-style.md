@@ -6,7 +6,7 @@ Pi 的产品选择是**保持小的默认能力面，用扩展适应用户工作
 
 ## 产品哲学：让工作流扩展出去
 
-这部分首先指普通coding-agent的产品策略，依据是固定快照的 [README开头](/Users/ayu/Learn/pi/packages/coding-agent/README.md:15) 和 [Philosophy](/Users/ayu/Learn/pi/packages/coding-agent/README.md:495)，不把实验性durable/Chord的全部机制都当作最小起步要求。
+这部分首先指普通coding-agent的产品策略，依据是固定快照的 README开头（`packages/coding-agent/README.md:15`） 和 Philosophy（`packages/coding-agent/README.md:495`），不把实验性durable/Chord的全部机制都当作最小起步要求。
 
 | Pi 的选择 | 实际机制与理由 | 云端保留与改变 |
 | --- | --- | --- |
@@ -15,7 +15,7 @@ Pi 的产品选择是**保持小的默认能力面，用扩展适应用户工作
 | 通过扩展而非fork核心来适配工作流 | TypeScript extensions提供工具、hooks和命令；skills/prompts/themes分别提供知识、文本模板与表现；Pi Packages组合并分发资源 | 先建立内部稳定扩展点和版本化契约；用户代码进入受控执行环境，不能由扩展绕过租户授权和审批 |
 | Agent可以读取自己的文档来编写扩展 | system prompt按需提供自身README、docs、examples入口；用户提出Pi相关需求时，模型能先读契约，再生成扩展和执行验证 | 提供版本明确的工具/扩展文档与示例，让Agent生成可审查的扩展草稿；执行和发布仍受平台策略约束 |
 
-最后一点是“自扩展”的具体落点。[system-prompt.ts:137](/Users/ayu/Learn/pi/packages/coding-agent/src/core/system-prompt.ts:137) 的原文节选：
+最后一点是“自扩展”的具体落点。`packages/coding-agent/src/core/system-prompt.ts:137` 的原文节选：
 
 ```text
 Pi documentation (read only when the user asks about pi itself, its SDK, extensions, themes, skills, or TUI):

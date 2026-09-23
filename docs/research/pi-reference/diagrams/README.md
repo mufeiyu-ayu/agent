@@ -41,7 +41,7 @@ diagrams/
 只编辑 `specs/*.json` 中的图表内容、标题和类型。`build.mjs` 按文件名排序读取这些JSON，生成每张图和index菜单；不用再维护一份菜单配置。每份JSON的 `meta.output` 必须是对应同名HTML文件名。入口页面的布局和交互改 `build.mjs` 中的模板，不手工改生成HTML。
 
 ```sh
-cd /Users/ayu/Desktop/agent/docs/research/pi-reference/diagrams
+cd docs/research/pi-reference/diagrams   # 从仓库根目录进入
 node build.mjs
 node build.mjs --check
 node build.test.mjs

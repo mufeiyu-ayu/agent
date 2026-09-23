@@ -7,7 +7,7 @@ article-retrieval.ts                  # 公共 Contract、输入规范化
 hybrid-article-retrieval.runtime.ts   # 正式 hybrid_rrf@1 运行时组装
 retrievers/                           # lexical / Prisma / vector / hybrid 策略
 persistence/                          # PostgreSQL lexical / pgvector SQL 与连接生命周期
-evaluation/                           # baseline、quality-v2、评估函数与 CLI
+evaluation/                           # quality-v2 评估与 CLI（`eval:retrieval-quality`；v1 baseline 已于 #135 删除）
 ```
 
 依赖方向：Runtime / Evaluation -> Retrievers -> Contract / Persistence；Persistence -> Contract。目录内不提供 barrel，也不保留旧路径转发文件。
