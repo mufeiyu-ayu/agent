@@ -1,9 +1,13 @@
+import type { PrismaService } from '../prisma/prisma.service.js'
 import type { LLMRuntimeConfigService } from './llm-runtime-config.service.js'
 import assert from 'node:assert/strict'
 // eslint-disable-next-line test/no-import-node-test
 import { afterEach, describe, it } from 'node:test'
 import { LLMApiError, LLMNetworkError } from '@agent/ai'
 
+import { createApiKeyCipher } from './api-key-cipher.js'
+import { LlmModelConfigService } from './llm-model-config.service.js'
+import { LLMController } from './llm.controller.js'
 import { LLMService } from './llm.service.js'
 
 const originalFetch = globalThis.fetch
@@ -83,6 +87,30 @@ describe('LLMService', () => {
     assert.equal(await service.getProviderBalance(SNAPSHOT), null)
   })
 
+  it('余额只投影声明的字段：多余字段不透传，形状不符为 null，不认识的余额项丢掉', async () => {
+    const service = createService()
+
+    stubFetch({
+      is_available: true,
+      upstream_debug: 'SHOULD_NOT_APPEAR',
+      balance_infos: [
+        { currency: 'CNY', total_balance: '1.00', granted_balance: '0.00', topped_up_balance: '1.00', account: 'SHOULD_NOT_APPEAR' },
+        { currency: 'EUR', total_balance: '2.00', granted_balance: '0.00', topped_up_balance: '2.00' },
+        { currency: 'USD', total_balance: 3 },
+        'not-an-object',
+      ],
+    })
+    assert.deepEqual(await service.getProviderBalance(SNAPSHOT), {
+      is_available: true,
+      balance_infos: [{ currency: 'CNY', total_balance: '1.00', granted_balance: '0.00', topped_up_balance: '1.00' }],
+    })
+
+    for (const body of [{ error: 'html page' }, { is_available: 'yes', balance_infos: [] }, ['not', 'object']]) {
+      stubFetch(body)
+      assert.equal(await service.getProviderBalance(SNAPSHOT), null)
+    }
+  })
+
   it('上游在响应头前挂住时，探活 / 拉取 / 余额都在 30s 上界内结束，原因写明超时', async () => {
     const requestedTimeouts: number[] = []
 
@@ -107,5 +135,58 @@ describe('LLMService', () => {
     })
     assert.equal(await service.getProviderBalance(SNAPSHOT), null)
     assert.deepEqual(requestedTimeouts, [30_000, 30_000, 30_000])
+  })
+})
+
+describe('GET /api/llm/balance：只查 https 的官方 DeepSeek 账号', () => {
+  afterEach(() => {
+    globalThis.fetch = originalFetch
+  })
+
+  const RUNTIME_CONFIG = { value: { secretKey: 'x'.repeat(32), captureModelIO: false } } as LLMRuntimeConfigService
+
+  /**
+   * fake prisma 只实现 findMany：返回「启用的 DeepSeek 服务商」；没有 llmModel，走到默认模型回退就会抛错。
+   * 传字符串为密钥正常的行，传 `{ baseUrl, apiKeyEncrypted }` 可以造解不开的密文。
+   */
+  function createController(rows: Array<string | { baseUrl: string, apiKeyEncrypted: string }>): LLMController {
+    const cipher = createApiKeyCipher(RUNTIME_CONFIG.value.secretKey)
+    const providers = rows.map((row, index) => ({
+      id: `provider-${index}`,
+      ...(typeof row === 'string' ? { baseUrl: row, apiKeyEncrypted: cipher.encrypt('sk-test-not-a-real-key') } : row),
+    }))
+    const prisma = { llmProvider: { findMany: async () => providers } } as unknown as PrismaService
+
+    return new LLMController(new LLMService(RUNTIME_CONFIG), new LlmModelConfigService(prisma, RUNTIME_CONFIG))
+  }
+
+  it('官方账号是 http 或只有中转站时余额为 null，且不发出任何请求', async () => {
+    for (const baseUrls of [['http://api.deepseek.com'], ['http://relay.example/v1'], []]) {
+      const calls = stubFetch({ is_available: true, balance_infos: [] })
+
+      assert.equal(await createController(baseUrls).getUserBalance(), null)
+      assert.deepEqual(calls.urls, [])
+    }
+  })
+
+  it('https 官方账号正常查余额；密钥解不开的跳过，全都解不开时为 null 且不发请求', async () => {
+    let calls = stubFetch({ is_available: true, balance_infos: [] })
+
+    assert.deepEqual(
+      await createController(['http://relay.example/v1', 'https://API.deepseek.com']).getUserBalance(),
+      { is_available: true, balance_infos: [] },
+    )
+    assert.deepEqual(calls.urls, ['https://api.deepseek.com/user/balance'])
+    assert.deepEqual(calls.authorizations, ['Bearer sk-test-not-a-real-key'])
+
+    const broken = { baseUrl: 'https://api.deepseek.com', apiKeyEncrypted: 'v1:bad:bad:bad' }
+
+    calls = stubFetch({ is_available: true, balance_infos: [] })
+    assert.deepEqual(await createController([broken, 'https://api.deepseek.com/v1']).getUserBalance(), { is_available: true, balance_infos: [] })
+    assert.deepEqual(calls.authorizations, ['Bearer sk-test-not-a-real-key'])
+
+    calls = stubFetch({ is_available: true, balance_infos: [] })
+    assert.equal(await createController([broken]).getUserBalance(), null)
+    assert.deepEqual(calls.urls, [])
   })
 })

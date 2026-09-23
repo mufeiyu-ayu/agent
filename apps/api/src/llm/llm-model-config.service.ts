@@ -102,42 +102,27 @@ export class LlmModelConfigService {
   }
 
   /**
-   * 默认模型所属 Provider 的凭据；余额面板用，没有可用的默认模型时为 null。
-   * 余额端点只有 DeepSeek 官方提供，其他家族直接返回 null，不去中转站白打一次 /user/balance。
-   */
-  async resolveDefaultProvider(): Promise<LlmProviderCredentials | null> {
-    const model = await this.prismaService.llmModel.findFirst({
-      // 与 resolveModel 同一口径：默认模型必须可见且 Provider 启用。
-      where: { isDefault: true, visible: true, provider: { enabled: true, family: 'deepseek' } },
-      include: { provider: true },
-    })
-
-    return model ? this.toCredentials(model.provider) : null
-  }
-
-  /**
-   * 余额只有 DeepSeek 官方端点提供：优先自有账号（启用且 baseUrl 指向 api.deepseek.com 的 DeepSeek Provider），
-   * 没有再退回默认模型所属的 DeepSeek Provider；中转站没有余额接口，走到那里也只会得到 null。
+   * 余额只查 DeepSeek 官方账号（启用且 baseUrl 为 https://api.deepseek.com 的 DeepSeek Provider），
+   * 取第一个密钥解得开的（主密钥更换后旧行解不开）；没有就是 null。
+   * 不退回默认模型所属的 Provider：那可能是 http 中转站，会带着 Bearer Key 白打一次 /user/balance。
    */
   async resolveBalanceProvider(): Promise<LlmProviderCredentials | null> {
     const providers = await this.prismaService.llmProvider.findMany({
       where: { enabled: true, family: 'deepseek' },
       orderBy: { createdAt: 'asc' },
     })
-    const own = providers.find(provider => isDeepSeekOfficialBaseUrl(provider.baseUrl))
 
-    if (own) {
+    for (const provider of providers.filter(item => isDeepSeekOfficialBaseUrl(item.baseUrl))) {
       try {
-        return this.toCredentials(own)
+        return this.toCredentials(provider)
       }
       catch (error) {
-        // 自有账号的密钥解不开（主密钥更换后）：退回默认 Provider，不让整个余额入口失效。
         if (!(error instanceof LlmModelUnavailableError))
           throw error
       }
     }
 
-    return this.resolveDefaultProvider()
+    return null
   }
 
   toCredentials(provider: {
@@ -163,10 +148,15 @@ export class LlmModelConfigService {
   }
 }
 
-/** 官方端点按主机名精确匹配，避免大小写或路径里含同名子串的中转地址误判。 */
+/**
+ * 官方端点按主机名精确匹配，避免大小写或路径里含同名子串的中转地址误判；
+ * 必须是 https，`http://api.deepseek.com` 会用明文带着 Bearer Key 查余额。
+ */
 function isDeepSeekOfficialBaseUrl(baseUrl: string): boolean {
   try {
-    return new URL(baseUrl).hostname.toLowerCase() === 'api.deepseek.com'
+    const url = new URL(baseUrl)
+
+    return url.protocol === 'https:' && url.hostname.toLowerCase() === 'api.deepseek.com'
   }
   catch {
     return false

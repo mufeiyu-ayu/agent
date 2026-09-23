@@ -55,6 +55,8 @@ const STREAM_TIMEOUT_MS = 600_000
  * 调用方的整体超时不会被 sleep 拖住。
  */
 const REQUEST_MAX_RETRIES = 2
+/** 上游错误里的 code / type / message 进文案前各自的长度上限。 */
+const UPSTREAM_ERROR_TEXT_MAX_CHARS = 200
 
 type ChatCompletionBaseParams = Pick<
   ChatCompletionCreateParamsStreaming,
@@ -260,12 +262,40 @@ export class OpenAICompatibleClient {
     }
   }
 
+  /**
+   * 未单独映射的状态码（404 / 405 等）只报状态：非 JSON body 可能是整页 HTML 或任意文本，SDK 会把它原样放进
+   * `error.message`，而这条文案会进管理台「测试模型」结果与 `lastProbeError`。只有 body 解析成 JSON 且
+   * `error` 是对象时，才附带字符串类型的 code / type 与截断后的 message；完整 APIError 仍在 `detail` 里供日志排查。
+   */
   private formatUnhandledApiErrorMessage(error: APIError): string {
     const status = error.status ? `HTTP ${error.status}` : '未知 HTTP 状态'
-    const message = error.message ? `: ${error.message}` : ''
+    const upstream = describeJsonErrorBody(error.error)
 
-    return `LLM API ${status} 错误${message}`
+    return `LLM API ${status} 错误${upstream ? `: ${upstream}` : ''}`
   }
+}
+
+/** SDK 的 `APIError.error` 是 JSON body 里的 `error` 字段；非 JSON body 时为 undefined。 */
+function describeJsonErrorBody(body: unknown): string {
+  if (typeof body !== 'object' || body === null || Array.isArray(body))
+    return ''
+
+  const { code, type, message } = body as Record<string, unknown>
+  const labels = [code, type]
+    .flatMap(value => typeof value === 'string' ? [sanitizeUpstreamText(value)] : [])
+    .filter(Boolean)
+  const text = typeof message === 'string' ? sanitizeUpstreamText(message) : ''
+
+  return [labels.length > 0 ? `[${labels.join(' / ')}]` : '', text].filter(Boolean).join(' ')
+}
+
+/** 上游文本进文案前：控制与格式字符（换行、双向覆盖、零宽字符）换成空格，压缩空白，截断到 200 字符以内，不在代理对中间切开。 */
+function sanitizeUpstreamText(value: string): string {
+  const text = value.replace(/[\p{Cc}\p{Cf}]+/gu, ' ').replace(/\s+/g, ' ').trim()
+
+  return text.length > UPSTREAM_ERROR_TEXT_MAX_CHARS
+    ? `${text.slice(0, UPSTREAM_ERROR_TEXT_MAX_CHARS - 1).replace(/[\uD800-\uDBFF]$/, '')}…`
+    : text
 }
 
 /**

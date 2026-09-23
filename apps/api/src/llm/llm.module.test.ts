@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { Buffer } from 'node:buffer'
 // eslint-disable-next-line test/no-import-node-test
 import { describe, it } from 'node:test'
 import { LLMConfigError } from '@agent/ai'
@@ -40,16 +41,31 @@ describe('resolveLlmEnvConfig', () => {
 describe('createApiKeyCipher', () => {
   it('加密后不含明文，同一密钥能解回；每次加密 IV 不同', () => {
     const cipher = createApiKeyCipher(SECRET_KEY)
-    const apiKey = 'sk-035aac06474e906ce3a85dbb69ae654c'
+    const apiKey = 'sk-test-not-a-real-key'
     const first = cipher.encrypt(apiKey)
     const second = cipher.encrypt(apiKey)
 
     assert.match(first, /^v1:[^:]+:[^:]+:[^:]+$/)
-    assert.doesNotMatch(first, /sk-035/)
+    assert.doesNotMatch(first, /sk-test/)
     assert.notEqual(first, second)
     assert.equal(cipher.decrypt(first), apiKey)
     assert.equal(cipher.decrypt(second), apiKey)
-    assert.equal(toApiKeyLast4(apiKey), '654c')
+    assert.equal(toApiKeyLast4(apiKey), '-key')
+  })
+
+  it('固定认证标签长度前写入的密文照常解密', () => {
+    // 与加密逻辑同款算法、以 SECRET_KEY 离线生成的固定密文（16 字节标签），代表库里已有的数据。
+    const stored = 'v1:MSs02au1tXyGfe84:Wv52sw3PntE/F+7gqIJa5w==:5ek9XzoF9lLhed+XfQxpdYQGzN+NpQ=='
+
+    assert.equal(createApiKeyCipher(SECRET_KEY).decrypt(stored), 'sk-test-not-a-real-key')
+  })
+
+  it('认证标签被截短的密文解密失败', () => {
+    const cipher = createApiKeyCipher(SECRET_KEY)
+    const [version, iv, tag, ciphertext] = cipher.encrypt('sk-test-not-a-real-key').split(':')
+    const truncatedTag = Buffer.from(tag!, 'base64').subarray(0, 4).toString('base64')
+
+    assert.throws(() => cipher.decrypt([version, iv, truncatedTag, ciphertext].join(':')), /authentication tag length/i)
   })
 
   it('换主密钥或篡改密文都无法解密', () => {

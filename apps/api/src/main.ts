@@ -12,8 +12,8 @@ async function bootstrap() {
   const port = process.env.PORT ?? 3000
 
   registerAppGlobals(app)
-  app.enableCors()
-  await app.listen(port)
+  // 前台与管理台都经各自 Vite 代理同源转发 /api，不需要 CORS；局域网访问走 `vite --host`，API 只对本机开放。
+  await app.listen(port, '127.0.0.1')
 }
 
 void bootstrap()

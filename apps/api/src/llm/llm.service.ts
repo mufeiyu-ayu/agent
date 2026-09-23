@@ -130,8 +130,8 @@ export class LLMService {
   }
 
   /**
-   * 默认 Provider 的余额：只有 DeepSeek 官方提供；404 等 LLMError 归一为 null。
-   * 响应形状不在这里校验，由消费方（Admin `parseProviderBalance`、前台 `fetchLlmBalance`）各自容错。
+   * 官方 DeepSeek 账号的余额；404 等 LLMError 与形状不符都归一为 null。
+   * 上游响应只投影成 `ProviderBalanceResponse` 声明的字段，不把原文透传给前台。
    */
   async getProviderBalance(
     provider: LlmProviderCredentials,
@@ -139,7 +139,7 @@ export class LLMService {
     const signal = AbortSignal.timeout(METADATA_CALL_TIMEOUT_MS)
 
     try {
-      return await this.createClient(provider).getUserBalance({ signal })
+      return toProviderBalance(await this.createClient(provider).getUserBalance({ signal }))
     }
     catch (error) {
       const failure = toTimeoutError(error, signal)
@@ -159,6 +159,37 @@ export class LLMService {
       baseUrl: provider.baseUrl,
       captureModelIO: this.runtimeConfigService.value.captureModelIO,
     })
+  }
+}
+
+/** `/user/balance` 只取声明的字段：整体形状不符为 null；币种不认识或余额不是字符串的项丢掉。 */
+function toProviderBalance(payload: unknown): ProviderBalanceResponse | null {
+  const record = payload as Partial<Record<keyof ProviderBalanceResponse, unknown>> | null
+
+  if (typeof record?.is_available !== 'boolean' || !Array.isArray(record.balance_infos))
+    return null
+
+  return {
+    is_available: record.is_available,
+    balance_infos: record.balance_infos.flatMap((value: unknown) => {
+      const item = value as Record<string, unknown> | null
+
+      if (
+        (item?.currency !== 'CNY' && item?.currency !== 'USD')
+        || typeof item.total_balance !== 'string'
+        || typeof item.granted_balance !== 'string'
+        || typeof item.topped_up_balance !== 'string'
+      ) {
+        return []
+      }
+
+      return [{
+        currency: item.currency,
+        total_balance: item.total_balance,
+        granted_balance: item.granted_balance,
+        topped_up_balance: item.topped_up_balance,
+      }]
+    }),
   }
 }
 

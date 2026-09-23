@@ -8,6 +8,8 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:
 
 const FORMAT_VERSION = 'v1'
 const IV_BYTES = 12
+/** 加密产出的 GCM 认证标签为 16 字节；解密时固定长度，否则被截短到 4 字节的标签也能通过。 */
+const AUTH_TAG_BYTES = 16
 
 export interface ApiKeyCipher {
   encrypt: (apiKey: string) => string
@@ -36,7 +38,9 @@ export function createApiKeyCipher(secretKey: string): ApiKeyCipher {
       if (version !== FORMAT_VERSION || !iv || !tag || !ciphertext)
         throw new Error('Provider 密钥密文格式不合法，无法解密')
 
-      const decipher = createDecipheriv('aes-256-gcm', key, Buffer.from(iv, 'base64'))
+      const decipher = createDecipheriv('aes-256-gcm', key, Buffer.from(iv, 'base64'), {
+        authTagLength: AUTH_TAG_BYTES,
+      })
       decipher.setAuthTag(Buffer.from(tag, 'base64'))
 
       return Buffer.concat([
