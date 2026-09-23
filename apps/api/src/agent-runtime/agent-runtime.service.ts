@@ -96,6 +96,7 @@ import {
   createRunCancellation,
   createTerminalizationDeadline,
 } from './lifecycle/run-cancellation.js'
+import { toPersistableText } from './persistable-text.js'
 import {
   toModelIODebugCaptureEnvelope,
   toModelIODebugResponseCaptureEnvelope,
@@ -164,7 +165,8 @@ export class AgentRuntimeService {
     try {
       await this.assertConversationExists(input.conversationId)
 
-      const normalizedMessage = input.userContent.trim()
+      // 落库与进模型上下文的是同一个替换后的串。
+      const normalizedMessage = toPersistableText(input.userContent.trim())
       const userMessage = await this.createMessageAndTouchConversation(
         input.conversationId,
         MessageRole.USER,
@@ -411,9 +413,11 @@ export class AgentRuntimeService {
               // 尚未建立 Grounding Session：文本实时推给前端。若本轮随后由 evidence-eligible
               // Tool 建立 Session，这段已推出的 delta 不可撤回，按 Issue #116 决策保留在 content。
               await startAssistantOutputStep()
+              // 推出去的 delta 与写进 Message.content 的是同一个替换后的串。
+              const visibleText = toPersistableText(samplingResult.value)
               const contentDelta = roundTextStarted
-                ? samplingResult.value
-                : separateFromPreviousText(content, samplingResult.value)
+                ? visibleText
+                : separateFromPreviousText(content, visibleText)
 
               roundTextStarted = true
               content += contentDelta
@@ -524,9 +528,10 @@ export class AgentRuntimeService {
           const toolDefinition = toolDefinitions.find(
             definition => definition.name === call.toolName,
           )
+          // callId / toolName 是模型原样给的，落库副本同样要能进 jsonb。
           const toolStepInput = {
-            callId: call.callId,
-            toolName: call.toolName,
+            callId: toPersistableText(call.callId),
+            toolName: toPersistableText(call.toolName),
             samplingAttemptId,
           }
           const toolStep = await this.agentRunRecorderService.startStep({
@@ -626,7 +631,7 @@ export class AgentRuntimeService {
               toolStep.id,
               databaseDeadline,
               {
-                errorMessage: `工具 ${call.toolName} 返回 ${toolResult.code}。`,
+                errorMessage: `工具 ${toolStepInput.toolName} 返回 ${toolResult.code}。`,
                 ...toolStepClose,
               },
             )
@@ -748,7 +753,7 @@ export class AgentRuntimeService {
           // 校验通过后才通过既有 assistant_delta 重放正文；Session 建立前已推出的中间文本
           // 与回答之间同样分段。chunks 拼接逐字符等于 persisted content 与 done.content。
           for (const contentDelta of toValidatedAnswerChunks(
-            separateFromPreviousText(content, finalization.validated.answer),
+            separateFromPreviousText(content, toPersistableText(finalization.validated.answer)),
           )) {
             runCancellation.throwIfUnavailable()
             content += contentDelta
@@ -1522,16 +1527,6 @@ function separateFromPreviousText(previous: string, next: string): string {
     return next
 
   return `${previous.endsWith('\n') ? '\n' : '\n\n'}${next}`
-}
-
-/**
- * PostgreSQL jsonb 存不了 U+0000 与孤立代理项：原样写入会让 Step 收口失败，失败收口再写同一段
- * 内容也会失败，Run 停在 RUNNING。落库副本把它们换成 U+FFFD，这是模型可见内容与落库唯一不逐字相等的情况。
- */
-function toPersistableText(text: string): string {
-  return text
-    .replaceAll('\0', '\uFFFD')
-    .replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '\uFFFD')
 }
 
 function toPersistedModelUsage(
