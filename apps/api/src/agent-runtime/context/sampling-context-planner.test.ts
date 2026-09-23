@@ -88,13 +88,15 @@ describe('SamplingContextPlanner', () => {
       history: [
         { type: 'message', role: 'user', content: 'A'.repeat(20) },
         { type: 'message', role: 'assistant', content: 'B'.repeat(10) },
+        { type: 'message', role: 'user', content: 'C'.repeat(10) },
+        { type: 'message', role: 'assistant', content: 'D'.repeat(10) },
       ],
     })
-    const withoutOldest = flattenPlanningState(context.forPlanning()).filter(item => (
-      item.type !== 'message' || item.content !== 'A'.repeat(20)
+    const withoutOldestPair = flattenPlanningState(context.forPlanning()).filter(item => (
+      item.type !== 'message' || (item.content !== 'A'.repeat(20) && item.content !== 'B'.repeat(10))
     ))
     const budget = estimator.estimateRequest({
-      items: withoutOldest,
+      items: withoutOldestPair,
       tools: NO_TOOLS,
     })
 
@@ -104,16 +106,16 @@ describe('SamplingContextPlanner', () => {
       resolvedInputBudgetTokens: budget,
     })
 
-    assert.equal(plan.summary.historyCandidateCount, 2)
-    assert.equal(plan.summary.historyIncludedCount, 1)
-    assert.equal(plan.summary.historyExcludedCount, 1)
+    assert.equal(plan.summary.historyCandidateCount, 4)
+    assert.equal(plan.summary.historyIncludedCount, 2)
+    assert.equal(plan.summary.historyExcludedCount, 2)
     assert.equal(
       plan.summary.historyCandidateCount,
       plan.summary.historyIncludedCount + plan.summary.historyExcludedCount,
     )
     assert.deepEqual(
       plan.items.filter(item => item.type === 'message').map(item => item.content),
-      ['instructions', 'B'.repeat(10), 'current-user'],
+      ['instructions', 'C'.repeat(10), 'D'.repeat(10), 'current-user'],
     )
   })
 
@@ -125,6 +127,8 @@ describe('SamplingContextPlanner', () => {
         { type: 'message', role: 'user', content: 'A'.repeat(20) },
         { type: 'message', role: 'assistant', content: 'B'.repeat(10) },
         { type: 'message', role: 'user', content: 'C'.repeat(10) },
+        { type: 'message', role: 'assistant', content: 'D'.repeat(10) },
+        { type: 'message', role: 'user', content: 'E'.repeat(10) },
       ],
     })
     const budgetWithout = (...excluded: string[]): number => estimator.estimateRequest({
@@ -133,6 +137,7 @@ describe('SamplingContextPlanner', () => {
       )),
       tools: NO_TOOLS,
     })
+    // 两次预算都只够删一条提问，删除位置落在问答中间，每次都把随后的回答一起删掉。
     const first = planner.plan({
       context,
       tools: NO_TOOLS,
@@ -141,7 +146,7 @@ describe('SamplingContextPlanner', () => {
     const second = planner.plan({
       context,
       tools: NO_TOOLS,
-      resolvedInputBudgetTokens: budgetWithout('B'.repeat(10)),
+      resolvedInputBudgetTokens: budgetWithout('C'.repeat(10)),
     })
 
     assert.deepEqual(
@@ -150,11 +155,11 @@ describe('SamplingContextPlanner', () => {
         plan.summary.historyIncludedCount,
         plan.summary.historyExcludedCount,
       ]),
-      [[3, 2, 1], [3, 1, 2]],
+      [[5, 3, 2], [5, 1, 4]],
     )
     assert.deepEqual(
       second.items.filter(item => item.type === 'message').map(item => item.content),
-      ['instructions', 'C'.repeat(10), 'current-user'],
+      ['instructions', 'E'.repeat(10), 'current-user'],
     )
   })
 
@@ -390,16 +395,16 @@ describe('SamplingContextPlanner 首轮历史裁剪（迁自旧的初始上下�
     )
   })
 
-  it('AC-02：超预算时保留最新的连续 n 条，n 与旧批内前缀二分结果相同', () => {
+  it('AC-02：超预算且删除位置落在问答对边界时保留最新的连续 n 条，n 与旧批内前缀二分结果相同', () => {
     const estimator = new MessageCountTokenEstimator()
     const history = historyMessages(60, index => `history-${index}`)
-    // 53 个 item 的预算：instructions + 51 条历史 + current。
-    const budget = 53 * 10
+    // 54 个 item 的预算：instructions + 52 条历史 + current；删掉的 8 条正好是 4 对问答。
+    const budget = 54 * 10
     const plan = planFirstRound(estimator, history, budget)
     const included = includedHistoryContents(plan)
 
-    assert.equal(included.length, 51)
-    assert.equal(included[0], 'history-10')
+    assert.equal(included.length, 52)
+    assert.equal(included[0], 'history-9')
     assert.equal(included.at(-1), 'history-60')
     assert.deepEqual(
       [
@@ -407,8 +412,45 @@ describe('SamplingContextPlanner 首轮历史裁剪（迁自旧的初始上下�
         plan.summary.historyIncludedCount,
         plan.summary.historyExcludedCount,
       ],
-      [60, 51, 9],
+      [60, 52, 8],
     )
+    assert.equal(
+      legacySelectedHistoryCount({
+        historyOldestFirst: history,
+        tools: NO_TOOLS,
+        estimator,
+        budget,
+        ...LEGACY_PAGING,
+      }),
+      52,
+    )
+  })
+
+  it('AC-03 故障注入：删除位置落在一问一答中间时整对删除，保留部分从 user 开始且问答成对', () => {
+    const estimator = new MessageCountTokenEstimator()
+    const history = historyMessages(60, index => `history-${index}`)
+    // 53 个 item 的预算：只删 9 条就够，第 10 条（history-10）是第 5 对的回答，提问已被删掉。
+    const budget = 53 * 10
+    const plan = planFirstRound(estimator, history, budget)
+    const historyItems = plan.items.slice(INSTRUCTIONS.length, -1)
+
+    assert.equal(history[9]?.role, 'assistant')
+    assert.deepEqual(
+      [
+        plan.summary.historyCandidateCount,
+        plan.summary.historyIncludedCount,
+        plan.summary.historyExcludedCount,
+      ],
+      [60, 50, 10],
+    )
+    assert.equal(historyItems[0]?.type === 'message' ? historyItems[0].role : undefined, 'user')
+    assert.equal(includedHistoryContents(plan)[0], 'history-11')
+    // 问答成对：保留部分按 user / assistant 交替，且以回答结尾。
+    assert.deepEqual(
+      historyItems.map(item => item.type === 'message' ? item.role : item.type),
+      Array.from({ length: 50 }, (_, index) => index % 2 === 0 ? 'user' : 'assistant'),
+    )
+    // 旧算法只按预算删到 51 条，会留下没有提问的 history-10；新规则多删这一条。
     assert.equal(
       legacySelectedHistoryCount({
         historyOldestFirst: history,
@@ -754,7 +796,6 @@ function countItem(item: ModelInputItem): number {
 }
 
 class MessageCountTokenEstimator implements TokenEstimator {
-  readonly strategyId = 'test-message-count'
   callCount = 0
 
   estimateRequest(input: TokenEstimatorInput): number {
@@ -765,8 +806,6 @@ class MessageCountTokenEstimator implements TokenEstimator {
 }
 
 class FixedTokenEstimator implements TokenEstimator {
-  readonly strategyId = 'test-fixed'
-
   constructor(private readonly tokens: number) {}
 
   estimateRequest(_input: TokenEstimatorInput): number {
@@ -775,7 +814,6 @@ class FixedTokenEstimator implements TokenEstimator {
 }
 
 class CharacterTokenEstimator implements TokenEstimator {
-  readonly strategyId = 'test-code-point-count'
   readonly inputs: Array<{
     items: ModelInputItem[]
     tools: ModelToolSpec[]

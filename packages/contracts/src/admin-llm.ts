@@ -56,10 +56,14 @@ export const REASONING_EFFORTS: readonly ReasoningEffort[] = [...new Set(
   Object.values(LLM_FAMILY_CAPABILITIES).flatMap(item => item.reasoningEfforts as readonly ReasoningEffort[]),
 )]
 
-/** 数据库里的 family 是自由字符串，不认识的家族按 `other` 处理：不发 thinking、不要求 reasoning_content、不支持强度。 */
+/**
+ * 数据库里的 family 是自由字符串，不认识的家族按 `other` 处理：不发 thinking、不要求 reasoning_content、不支持强度。
+ * 只查自有属性：`constructor`、`__proto__` 这类原型链上的名字也算不认识。
+ */
 function capabilitiesOf(family: string) {
-  return (LLM_FAMILY_CAPABILITIES as Record<string, typeof LLM_FAMILY_CAPABILITIES[LlmProviderFamily] | undefined>)[family]
-    ?? LLM_FAMILY_CAPABILITIES.other
+  return Object.hasOwn(LLM_FAMILY_CAPABILITIES, family)
+    ? LLM_FAMILY_CAPABILITIES[family as LlmProviderFamily]
+    : LLM_FAMILY_CAPABILITIES.other
 }
 
 export function reasoningEffortsOf(family: string): readonly ReasoningEffort[] {

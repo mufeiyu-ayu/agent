@@ -14,6 +14,7 @@
     "dev:admin": "pnpm --filter @agent/admin dev",
     "dev:web": "pnpm --filter @agent/web dev",
     "dev:apps": "node scripts/dev-apps.mjs",
+    "test:dev-apps": "node --test scripts/dev-apps.test.mjs",
     "build:admin": "pnpm --filter @agent/admin build",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",

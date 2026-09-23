@@ -207,11 +207,13 @@ function normalizeFinishReason(finishReason: string): ModelFinishReason {
 function toModelUsage(
   usage: CompatCompletionUsage,
 ): ModelUsage {
-  const promptCacheHitTokens = usage.prompt_tokens_details?.cached_tokens
-    ?? usage.prompt_cache_hit_tokens
-    ?? usage.cached_tokens
-    ?? undefined
-  const promptCacheMissTokens = usage.prompt_cache_miss_tokens
+  // 兼容端点不受 SDK 类型约束：不是有限数的值（字符串、null 等）一律当作缺失，继续往下兜底。
+  const promptCacheHitTokens = [
+    usage.prompt_tokens_details?.cached_tokens,
+    usage.prompt_cache_hit_tokens,
+    usage.cached_tokens,
+  ].find(isFiniteNumber)
+  const promptCacheMissTokens = (isFiniteNumber(usage.prompt_cache_miss_tokens) ? usage.prompt_cache_miss_tokens : undefined)
     ?? (promptCacheHitTokens !== undefined && usage.prompt_tokens >= promptCacheHitTokens
       ? usage.prompt_tokens - promptCacheHitTokens
       : undefined)
@@ -230,4 +232,8 @@ function toModelUsage(
     ...(promptCacheHitTokens === undefined ? {} : { promptCacheHitTokens }),
     ...(promptCacheMissTokens === undefined ? {} : { promptCacheMissTokens }),
   }
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value)
 }

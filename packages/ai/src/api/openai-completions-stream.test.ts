@@ -169,7 +169,7 @@ describe('adaptOpenAICompatibleStream', () => {
     assert.doesNotMatch(JSON.stringify(events), new RegExp(reasoningSecret))
   })
 
-  it('缓存字段按 OpenAI 形状 / DeepSeek 顶层 / cached_tokens 兜底，只有命中数时推导未命中数', async () => {
+  it('缓存字段按 OpenAI 形状 / DeepSeek 顶层 / cached_tokens 兜底，只认有限数，只有命中数时推导未命中数', async () => {
     const cases: Array<[NonNullable<CreateChunkInput['usage']>, Partial<ModelUsage>]> = [
       // 中转站上的 grok（实测会话最后一次运行）：只有 OpenAI 形状的命中数。
       [
@@ -199,6 +199,20 @@ describe('adaptOpenAICompatibleStream', () => {
       [
         { prompt_tokens: 3, completion_tokens: 2, total_tokens: 5, prompt_tokens_details: { cached_tokens: null }, prompt_cache_hit_tokens: null },
         {},
+      ],
+      // 兼容端点不受 SDK 类型约束：字符串不是有限数，按缺失处理，不写进 usage。
+      [
+        { prompt_tokens: 10, completion_tokens: 2, total_tokens: 12, prompt_tokens_details: { cached_tokens: '4' } },
+        {},
+      ],
+      // 前一处按缺失后继续往下兜底；上报的未命中数不合法时同样按缺失，改由命中数推出。
+      [
+        { prompt_tokens: 10, completion_tokens: 2, total_tokens: 12, prompt_tokens_details: { cached_tokens: '4' }, prompt_cache_hit_tokens: 3, prompt_cache_miss_tokens: '7' },
+        { promptCacheHitTokens: 3, promptCacheMissTokens: 7 },
+      ],
+      [
+        { prompt_tokens: 10, completion_tokens: 2, total_tokens: 12, prompt_tokens_details: { cached_tokens: null }, cached_tokens: 4 },
+        { promptCacheHitTokens: 4, promptCacheMissTokens: 6 },
       ],
     ]
 
@@ -592,15 +606,15 @@ interface CreateChunkInput {
   delta?: DeepSeekChatCompletionDelta
   finishReason?: ChatCompletionChunk.Choice['finish_reason']
   includeChoice?: boolean
-  /** 不与 SDK 的 CompletionUsage 求交：SDK 把 cached_tokens 标成 number，真实响应里会出现 null。 */
+  /** 不与 SDK 的 CompletionUsage 求交：SDK 把 cached_tokens 标成 number，真实响应里会出现 null，兼容端点还可能给字符串。 */
   usage?: {
     prompt_tokens: number
     completion_tokens: number
     total_tokens: number
-    prompt_cache_hit_tokens?: number | null
-    prompt_cache_miss_tokens?: number | null
-    cached_tokens?: number | null
-    prompt_tokens_details?: { cached_tokens?: number | null }
+    prompt_cache_hit_tokens?: number | string | null
+    prompt_cache_miss_tokens?: number | string | null
+    cached_tokens?: number | string | null
+    prompt_tokens_details?: { cached_tokens?: number | string | null }
     completion_tokens_details?: { reasoning_tokens?: number }
   }
 }
