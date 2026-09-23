@@ -7,6 +7,7 @@ export function runRecord(): AdminRunDetailRecord {
     conversationId: 'conversation-1',
     assistantMessageId: 'message-assistant',
     status: 'COMPLETED',
+    errorCode: null,
     startedAt: new Date('2026-08-09T00:00:00.000Z'),
     endedAt: new Date('2026-08-09T00:00:03.000Z'),
     createdAt: new Date('2026-08-09T00:00:00.000Z'),

@@ -21,6 +21,7 @@ import type {
 import {
   ADMIN_MODEL_FINISH_REASONS,
   ADMIN_TOOL_RESULT_CODES,
+  AGENT_RUN_ERROR_CODES,
 } from '@agent/contracts'
 
 import { AGENT_STEP_TYPES } from '../../agent-runtime/lifecycle/agent-run-recorder.service.js'
@@ -63,6 +64,8 @@ export function projectAdminRunListItem(
     id: run.id,
     conversationId: run.conversationId,
     status: run.status,
+    // 旧 Run 没有这一列的值，读出 null 由前端显示「未记录」。
+    errorCode: readAllowedString(run, 'errorCode', AGENT_RUN_ERROR_CODES),
     questionPreview: toPreview(run.userMessage.content, QUESTION_PREVIEW_MAX_CHARS),
     samplingCount: sampling.count,
     toolCallCount: run.steps.filter(
@@ -165,6 +168,8 @@ function projectModelSampling(
     finishReason: readAllowedString(output, 'finishReason', ADMIN_MODEL_FINISH_REASONS),
     usage: projectTokenUsage(output),
     toolCallCount: readNonNegativeInteger(output, 'toolCallCount'),
+    firstTokenMs: readNonNegativeInteger(output, 'firstTokenMs'),
+    errorCode: readAllowedString(output, 'errorCode', AGENT_RUN_ERROR_CODES),
     contextInspector: projectContextInspector(input, output),
     debugRequestBody: readDebugModelIOCaptureEnvelope(output?.debugRequestBody),
     debugRawResponse: readDebugModelResponseCapture(output),

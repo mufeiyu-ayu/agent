@@ -1,4 +1,5 @@
 import type { LLMClientConfig, ResolvedChatRequestConfig } from '../config.js'
+import type { ModelRawResponseCapture } from '../types.js'
 import assert from 'node:assert/strict'
 import { getEventListeners } from 'node:events'
 // eslint-disable-next-line test/no-import-node-test
@@ -350,6 +351,8 @@ describe('OpenAICompatibleClient 瞬态失败重试', () => {
     const cases = [
       { status: 429, error: LLMRateLimitError },
       { status: 503, error: LLMServerError },
+      // 中转站网关故障与 500 / 503 同归服务端错误，不落成协议异常。
+      { status: 502, error: LLMServerError },
     ]
 
     for (const { status, error } of cases) {
@@ -401,6 +404,56 @@ describe('OpenAICompatibleClient 瞬态失败重试', () => {
       }
     }, LLMNetworkError)
     assert.deepEqual(events, [{ type: 'text_delta', delta: 'partial' }])
+    assert.equal(harness.fetchCalls.length, 1)
+  })
+
+  it('流正文阶段 abort 时按 abort 抛出，不报成缺 finish reason，capture 标 partial', async () => {
+    const abortController = new AbortController()
+    const harness = createFetchHarness([
+      () => {
+        const signal = harness.fetchCalls[0]?.signal ?? undefined
+
+        return new Response(new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode(`${sseChunk({ content: 'partial' })}\n\n`))
+            // 与真实 fetch 一致：请求 signal abort 后响应体以 AbortError 出错，SDK 会静默结束迭代。
+            signal?.addEventListener('abort', () => {
+              controller.error(new DOMException('This operation was aborted', 'AbortError'))
+            }, { once: true })
+          },
+        }), {
+          status: 200,
+          headers: { 'Content-Type': 'text/event-stream' },
+        })
+      },
+    ], { captureModelIO: true })
+    const events: unknown[] = []
+    let captured: ModelRawResponseCapture | undefined
+
+    await assert.rejects(async () => {
+      for await (const event of harness.client.chatStream(
+        [{ type: 'message', role: 'user', content: 'hello' }],
+        {
+          request: DEEPSEEK_REQUEST,
+          signal: abortController.signal,
+          debugCapture: {
+            onRequest: () => {},
+            onResponse: (capture) => {
+              captured = capture
+            },
+          },
+        },
+      )) {
+        events.push(event)
+        abortController.abort()
+      }
+    }, (error) => {
+      assert.ok(error instanceof LLMNetworkError)
+      assert.doesNotMatch(error.message, /finish reason/)
+      return true
+    })
+    assert.deepEqual(events, [{ type: 'text_delta', delta: 'partial' }])
+    assert.equal(captured?.state, 'partial')
     assert.equal(harness.fetchCalls.length, 1)
   })
 

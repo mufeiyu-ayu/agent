@@ -1,4 +1,4 @@
-import type { MessageGroundingV1 } from '@agent/contracts'
+import type { AgentRunErrorCode, MessageGroundingV1 } from '@agent/contracts'
 import type { AgentRun, AgentStep, Message, Prisma } from '../../generated/prisma/client.js'
 import type {
   DatabaseOperationDeadline,
@@ -361,6 +361,7 @@ export class AgentRunRecorderService {
   async failRun(
     runId: string,
     errorMessage: string,
+    errorCode: AgentRunErrorCode,
     deadline: DatabaseOperationDeadline,
     assistantMessage?: CloseAssistantMessageInput,
     failedStep?: CloseAgentStepInput,
@@ -371,6 +372,7 @@ export class AgentRunRecorderService {
       AgentRunStatus.FAILED,
       AgentStepStatus.FAILED,
       MessageStatus.FAILED,
+      errorCode,
       deadline,
       errorMessage,
       assistantMessage,
@@ -379,6 +381,7 @@ export class AgentRunRecorderService {
     )
   }
 
+  /** ABORTED 只有一种失败类别：用户停止或流消费者提前断开都记 aborted。 */
   async abortRun(
     runId: string,
     deadline: DatabaseOperationDeadline,
@@ -391,6 +394,7 @@ export class AgentRunRecorderService {
       AgentRunStatus.ABORTED,
       AgentStepStatus.ABORTED,
       MessageStatus.ABORTED,
+      'aborted',
       deadline,
       undefined,
       assistantMessage,
@@ -437,6 +441,7 @@ export class AgentRunRecorderService {
     runStatus: typeof AgentRunStatus.FAILED | typeof AgentRunStatus.ABORTED,
     stepStatus: typeof AgentStepStatus.FAILED | typeof AgentStepStatus.ABORTED,
     messageStatus: typeof MessageStatus.FAILED | typeof MessageStatus.ABORTED,
+    errorCode: AgentRunErrorCode,
     deadline: DatabaseOperationDeadline,
     errorMessage?: string,
     assistantMessage?: CloseAssistantMessageInput,
@@ -569,6 +574,7 @@ export class AgentRunRecorderService {
         runStatus,
         now,
         assistantMessage?.id,
+        errorCode,
       )
     })
   }
@@ -579,7 +585,9 @@ export class AgentRunRecorderService {
     status: typeof AgentRunStatus.COMPLETED | typeof AgentRunStatus.FAILED | typeof AgentRunStatus.ABORTED,
     endedAt = new Date(),
     assistantMessageId?: string,
+    errorCode?: AgentRunErrorCode,
   ): Promise<void> {
+    // errorCode 与终态在同一条 CAS 更新里写入：终态没抢到就一起不写，不会留下孤立的失败类别。
     const result = await transaction.execute(prisma => prisma.agentRun.updateMany({
       where: {
         id: runId,
@@ -589,6 +597,7 @@ export class AgentRunRecorderService {
         status,
         endedAt,
         ...(assistantMessageId === undefined ? {} : { assistantMessageId }),
+        ...(errorCode === undefined ? {} : { errorCode }),
       },
     }))
 

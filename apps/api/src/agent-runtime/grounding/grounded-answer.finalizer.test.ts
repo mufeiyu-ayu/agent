@@ -329,4 +329,31 @@ describe('runGroundedFinalization 模型不服从（正常 stop、未调用提�
     assert.equal(sampleCount, 1)
     assert.equal(attempts[0]?.samplingFailure, 'unexpected_finish_reason')
   })
+
+  it('流读取抛错时 samplingFailure 为 stream_failed，原错误挂在 cause 上', async () => {
+    const providerError = new Error('provider connection reset')
+    const attempts: GroundedFinalizationAttemptSummary[] = []
+
+    await assert.rejects(
+      runGroundedFinalization({
+        draft: '草稿',
+        registry: createRegistry(),
+        assertAvailable: () => {},
+        onAttempt: summary => attempts.push(summary),
+        async* sample() {
+          yield { type: 'usage', usage: { inputTokens: 7 } }
+          throw providerError
+        },
+      }),
+      (error: unknown) => {
+        assert.ok(error instanceof GroundedFinalizationSamplingError)
+        assert.equal(error.failure, 'stream_failed')
+        assert.equal(error.cause, providerError)
+        return true
+      },
+    )
+
+    assert.equal(attempts[0]?.samplingFailure, 'stream_failed')
+    assert.deepEqual(attempts[0]?.usage, { inputTokens: 7 })
+  })
 })

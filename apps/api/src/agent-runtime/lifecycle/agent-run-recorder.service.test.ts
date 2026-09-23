@@ -162,6 +162,7 @@ describe('AgentRunRecorderService', () => {
     await harness.recorder.failRun(
       prepared.run.id,
       '安全错误',
+      'llm_auth',
       TEST_DEADLINE,
       {
         id: prepared.message.id,
@@ -173,6 +174,8 @@ describe('AgentRunRecorderService', () => {
     assert.equal(harness.message(prepared.message.id)?.status, MessageStatus.FAILED)
     assert.equal(harness.message(prepared.message.id)?.content, '部分回答')
     assert.equal(harness.run(prepared.run.id)?.status, AgentRunStatus.FAILED)
+    // 失败类别与 FAILED 在同一次 Run CAS 里写入。
+    assert.equal(harness.run(prepared.run.id)?.errorCode, 'llm_auth')
     assert.equal(harness.run(prepared.run.id)?.assistantMessageId, prepared.message.id)
     assert.equal(harness.unfinishedSteps(prepared.run.id).length, 0)
     for (const step of harness.steps(prepared.run.id)) {
@@ -210,6 +213,7 @@ describe('AgentRunRecorderService', () => {
     assert.equal(harness.message(prepared.message.id)?.status, MessageStatus.ABORTED)
     assert.equal(harness.message(prepared.message.id)?.content, '已停止')
     assert.equal(harness.run(prepared.run.id)?.status, AgentRunStatus.ABORTED)
+    assert.equal(harness.run(prepared.run.id)?.errorCode, 'aborted')
     assert.deepEqual(harness.step(prepared.assistantStep.id)?.output, {
       usage: {
         inputTokens: 7,
@@ -230,6 +234,7 @@ describe('AgentRunRecorderService', () => {
     await harness.recorder.failRun(
       prepared.run.id,
       '安全错误',
+      'internal',
       TEST_DEADLINE,
     )
 
@@ -251,6 +256,7 @@ describe('AgentRunRecorderService', () => {
     await harness.recorder.failRun(
       prepared.run.id,
       'Run deadline',
+      'deadline',
       TEST_DEADLINE,
       {
         id: prepared.message.id,
@@ -280,6 +286,7 @@ describe('AgentRunRecorderService', () => {
     await assert.rejects(() => harness.recorder.failRun(
       prepared.run.id,
       '安全错误',
+      'internal',
       TEST_DEADLINE,
       {
         id: prepared.message.id,
@@ -290,6 +297,7 @@ describe('AgentRunRecorderService', () => {
 
     assert.equal(harness.message(prepared.message.id)?.status, MessageStatus.STREAMING)
     assert.equal(harness.run(prepared.run.id)?.status, AgentRunStatus.RUNNING)
+    assert.equal(harness.run(prepared.run.id)?.errorCode, null)
     assert.equal(harness.unfinishedSteps(prepared.run.id).length, 2)
   })
 
@@ -309,6 +317,7 @@ describe('AgentRunRecorderService', () => {
     await assertRecorderInvariant(() => harness.recorder.failRun(
       completed.run.id,
       '迟到失败',
+      'internal',
       TEST_DEADLINE,
     ))
     await assertRecorderInvariant(() => harness.recorder.abortRun(
@@ -325,6 +334,7 @@ describe('AgentRunRecorderService', () => {
       type: AGENT_STEP_TYPES.modelSampling,
     }, TEST_DEADLINE))
     assert.equal(harness.run(completed.run.id)?.status, AgentRunStatus.COMPLETED)
+    assert.equal(harness.run(completed.run.id)?.errorCode, null)
 
     const abortedRun = await harness.createRun('run-aborted')
     const activeStep = await harness.recorder.startStep({
@@ -454,6 +464,7 @@ interface StoredRun {
   userMessageId: string
   assistantMessageId: string | null
   status: AgentRunStatus
+  errorCode: string | null
   startedAt: Date
   endedAt: Date | null
   createdAt: Date
@@ -553,6 +564,7 @@ class FakePrismaService {
         userMessageId: requireString(data.userMessageId),
         assistantMessageId: data.assistantMessageId ?? null,
         status: data.status ?? AgentRunStatus.RUNNING,
+        errorCode: data.errorCode ?? null,
         startedAt: data.startedAt ?? now,
         endedAt: data.endedAt ?? null,
         createdAt: data.createdAt ?? now,

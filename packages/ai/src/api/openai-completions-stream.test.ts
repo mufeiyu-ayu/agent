@@ -148,7 +148,9 @@ describe('adaptOpenAICompatibleStream', () => {
       }),
     ])))
 
+    // reasoning 只以一个不带正文的 reasoning_started 标记到达时间，正文不进事件流。
     assert.deepEqual(events, [
+      { type: 'reasoning_started' },
       { type: 'text_delta', delta: '你' },
       { type: 'text_delta', delta: '好' },
       {
@@ -243,6 +245,7 @@ describe('adaptOpenAICompatibleStream', () => {
     ])))
 
     assert.deepEqual(events, [
+      { type: 'reasoning_started' },
       { type: 'tool_call_started' },
       {
         type: 'tool_call_completed',
@@ -283,6 +286,7 @@ describe('adaptOpenAICompatibleStream', () => {
     ])))
 
     assert.deepEqual(events, [
+      { type: 'reasoning_started' },
       { type: 'tool_call_started' },
       {
         type: 'tool_call_completed',
@@ -325,6 +329,7 @@ describe('adaptOpenAICompatibleStream', () => {
     ])))
 
     assert.deepEqual(events, [
+      { type: 'reasoning_started' },
       { type: 'tool_call_started' },
       { type: 'text_delta', delta: '查询中' },
       {
@@ -499,6 +504,7 @@ describe('adaptOpenAICompatibleStream', () => {
     ])))
 
     assert.deepEqual(events, [
+      { type: 'reasoning_started' },
       { type: 'tool_call_started' },
       {
         type: 'tool_call_completed',
@@ -569,7 +575,7 @@ describe('adaptOpenAICompatibleStream', () => {
         return true
       },
     )
-    assert.deepEqual(events, [{ type: 'tool_call_started' }])
+    assert.deepEqual(events, [{ type: 'reasoning_started' }, { type: 'tool_call_started' }])
   })
 
   it('让 Provider iterator 错误沿 throw 通道传播', async () => {

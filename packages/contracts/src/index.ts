@@ -72,9 +72,11 @@ export {
   ADMIN_TOOL_RESULT_CODES,
 } from './admin-run.js'
 export type {
+  AgentRunErrorCode,
   AgentRunStatus,
   AgentStepStatus,
 } from './agent-run.js'
+export { AGENT_RUN_ERROR_CODES } from './agent-run.js'
 export type {
   ApiErrorPayload,
   ApiErrorResponse,

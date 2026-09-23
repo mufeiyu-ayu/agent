@@ -4,6 +4,7 @@ import type {
   ModelInputItem,
   ModelStreamEvent,
 } from '@agent/ai'
+import type { AgentRunErrorCode } from '@agent/contracts'
 import type { ChatCompletionChunk } from 'openai/resources/chat/completions'
 import type { AgentRun, Message, Prisma } from '../generated/prisma/client.js'
 import type { ResolvedLlmModel } from '../llm/llm-model-config.service.js'
@@ -35,13 +36,22 @@ import assert from 'node:assert/strict'
 // 项目本轮使用 Node 原生测试运行器，不引入 Vitest。
 // eslint-disable-next-line test/no-import-node-test
 import { describe, it } from 'node:test'
+import { setTimeout as sleep } from 'node:timers/promises'
 import {
   adaptOpenAICompatibleStream,
+  LLMApiError,
+  LLMAuthError,
+  LLMBalanceError,
+  LLMNetworkError,
+  LLMRateLimitError,
+  LLMServerError,
+  OpenAICompatibleClient,
   teeRawResponseCapture,
 } from '@agent/ai'
 
 import { projectAdminRunDetail } from '../admin-runs/projection/admin-run.projector.js'
 import { toChatStreamEvent } from '../chat/chat-stream-event.mapper.js'
+import { getAiExceptionMessage } from '../common/utils/llm-error-message.util.js'
 import {
   AgentRunStatus,
   AgentStepStatus,
@@ -121,7 +131,7 @@ describe('AgentRuntimeService model stream', () => {
       resolvedInputBudgetTokens: 262_144,
     })
     assert.deepEqual(
-      withoutContextPlan(harness.recorder.steps[1]?.output),
+      withoutVolatileSamplingFields(harness.recorder.steps[1]?.output),
       {
         samplingAttemptId: 'run-1:sampling-1',
         finishReason: 'stop',
@@ -555,7 +565,9 @@ describe('AgentRuntimeService model stream', () => {
     assert.equal(samplingStep?.status, AgentStepStatus.FAILED)
     assert.deepEqual(samplingOutput, {
       contextFailureReason: 'estimator_failure',
+      errorCode: 'estimator_failure',
     })
+    assert.equal(harness.recorder.runErrorCode, 'estimator_failure')
     assert.equal(Object.hasOwn(samplingOutput, 'contextPlan'), false)
     assert.equal(initialContext.resolvedInputBudgetTokens, 262_144)
     assert.doesNotMatch(serialized, /initial-estimator-secret/)
@@ -786,7 +798,7 @@ describe('AgentRuntimeService model stream', () => {
         samplingAttemptId: 'run-1:sampling-2',
       },
     ])
-    assert.deepEqual(samplingSteps.map(step => withoutContextPlan(step.output)), [
+    assert.deepEqual(samplingSteps.map(step => withoutVolatileSamplingFields(step.output)), [
       {
         samplingAttemptId: 'run-1:sampling-1',
         finishReason: 'tool_calls',
@@ -2356,7 +2368,7 @@ describe('AgentRuntimeService model stream', () => {
     const samplingStep = findStep(harness, 'model_sampling')
 
     assert.equal(samplingStep?.status, AgentStepStatus.FAILED)
-    assert.deepEqual(withoutContextPlan(samplingStep?.output), {
+    assert.deepEqual(withoutVolatileSamplingFields(samplingStep?.output), {
       samplingAttemptId: 'run-1:sampling-1',
       finishReason: null,
       usage: {
@@ -2368,7 +2380,10 @@ describe('AgentRuntimeService model stream', () => {
         promptCacheMissTokens: 2,
       },
       toolCallCount: 0,
+      // 非 LLMError 的流错误只可能来自服务端自身，归为 internal。
+      errorCode: 'internal',
     })
+    assert.equal(harness.recorder.runErrorCode, 'internal')
     assert.equal(findStep(harness, 'assistant_output')?.status, AgentStepStatus.FAILED)
     assertNoUnfinishedSteps(harness)
   })
@@ -2492,7 +2507,7 @@ describe('AgentRuntimeService model stream', () => {
 
     assert.equal(events.at(-1)?.type, 'run_aborted')
     assert.equal(samplingStep?.status, AgentStepStatus.ABORTED)
-    assert.deepEqual(withoutContextPlan(samplingStep?.output), {
+    assert.deepEqual(withoutVolatileSamplingFields(samplingStep?.output), {
       samplingAttemptId: 'run-1:sampling-1',
       finishReason: 'stop',
       usage: {
@@ -2513,6 +2528,7 @@ describe('AgentRuntimeService model stream', () => {
         truncated: false,
         value: { choices: [{ message: { content: '完整' } }] },
       },
+      errorCode: 'aborted',
     })
     assertNoUnfinishedSteps(harness)
   })
@@ -2575,11 +2591,17 @@ describe('AgentRuntimeService model stream', () => {
       textChars: 1,
       toolCallCount: 0,
     }])
-    assert.equal(findStep(harness, 'model_sampling')?.errorMessage, null)
+    // 兜底按用户中断语义收口：采样 Step 与 Run 同记 aborted 与中断文案。
+    assert.equal(harness.recorder.runErrorCode, 'aborted')
+    assert.equal(findStep(harness, 'model_sampling')?.errorMessage, '用户已停止生成。')
+    assert.equal(
+      (findStep(harness, 'model_sampling')?.output as Record<string, unknown>).errorCode,
+      'aborted',
+    )
     assertNoUnfinishedSteps(harness)
   })
 
-  it('捕获未开启时消费者 return() 保持既有 Step 输出', async () => {
+  it('捕获未开启时消费者 return() 的采样 Step 只记失败类别与中断文案', async () => {
     const harness = createHarness(() => toModelStream([
       { type: 'text_delta', delta: '部' },
       { type: 'text_delta', delta: '分' },
@@ -2591,9 +2613,14 @@ describe('AgentRuntimeService model stream', () => {
     await generator.next()
     await generator.return(undefined)
 
-    assert.equal(findStep(harness, 'model_sampling')?.output, null)
+    const { contextPlan: _, ...samplingOutput } = findStep(harness, 'model_sampling')
+      ?.output as Record<string, unknown>
+
+    // 流没收完就没有 summary：不伪造 usage / firstTokenMs，只有失败类别。
+    assert.deepEqual(samplingOutput, { errorCode: 'aborted' })
     assert.equal(findStep(harness, 'model_sampling')?.status, AgentStepStatus.ABORTED)
-    assert.equal(findStep(harness, 'model_sampling')?.errorMessage, null)
+    assert.equal(findStep(harness, 'model_sampling')?.errorMessage, '用户已停止生成。')
+    assert.equal(harness.recorder.runErrorCode, 'aborted')
     assertNoUnfinishedSteps(harness)
   })
 
@@ -2755,6 +2782,31 @@ describe('AgentRuntimeService model stream', () => {
     assertNoUnfinishedSteps(harness)
   })
 
+  it('工具执行本身抛错时 Step 记工具失败，Run 归为 internal 且不说成模型问题', async () => {
+    const harness = createHarness(
+      () => toModelStream([
+        toolCallEvent('call-1', 'search_articles', '{"query":"seo"}'),
+        { type: 'response_completed', finishReason: 'tool_calls' },
+      ]),
+      undefined,
+      async () => {
+        throw new Error('database connection lost')
+      },
+    )
+
+    const events = await collectEvents(harness.run())
+    const failedEvent = events.at(-1)
+
+    assert.equal(failedEvent?.type, 'run_failed')
+    assert.equal(
+      failedEvent?.type === 'run_failed' ? failedEvent.message : undefined,
+      '服务端未能完成本轮回答，请稍后重试。',
+    )
+    assert.equal(findStep(harness, 'tool_execution')?.errorMessage, '工具执行未能安全完成。')
+    assert.equal(harness.recorder.runErrorCode, 'internal')
+    assertNoUnfinishedSteps(harness)
+  })
+
   it('Run deadline 会取消 in-flight Tool Execution 且不发起下一轮 sampling', async () => {
     const harness = createHarness(
       () => toModelStream([
@@ -2781,6 +2833,9 @@ describe('AgentRuntimeService model stream', () => {
     assert.equal(harness.toolInvocations.length, 1)
     assert.equal(harness.toolExecutionContexts[0]?.signal.aborted, true)
     assert.equal(findStep(harness, 'tool_execution')?.status, AgentStepStatus.FAILED)
+    // 工具是被 deadline 取消的，Step 按终态原因记时限文案，不记成工具自身失败。
+    assert.equal(findStep(harness, 'tool_execution')?.errorMessage, 'Agent Run 已达到执行时限。')
+    assert.equal(harness.recorder.runErrorCode, 'deadline')
     assert.deepEqual(harness.recorder.failedRunIds, ['run-1'])
     assert.deepEqual(harness.recorder.abortedRunIds, [])
     assertNoUnfinishedSteps(harness)
@@ -2955,6 +3010,235 @@ describe('AgentRuntimeService model stream', () => {
     assert.equal(harness.assistantMessage()?.status, MessageStatus.STREAMING)
     assert.deepEqual(harness.recorder.abortedRunIds, [])
     assert.deepEqual(harness.recorder.failedRunIds, [])
+  })
+})
+
+/** 测试 Provider 的密钥；出现在日志里就说明泄漏。 */
+const FAKE_PROVIDER_API_KEY = 'sk-test-must-not-leak-4f2a'
+/** 写进用户输入的哨兵；出现在日志里就说明记了请求体。 */
+const PROMPT_SENTINEL = '请求体哨兵-不应出现在日志里'
+
+describe('Run 失败归因与首 token 时间（真实 SDK + fake fetch 故障注入）', () => {
+  const failureCases: Array<{
+    name: string
+    attempts: FakeFetchAttempt[]
+    errorCode: string
+    error: Error
+    httpStatus?: number
+    fetchCount: number
+  }> = [
+    {
+      name: '401',
+      attempts: [() => providerErrorResponse(401)],
+      errorCode: 'llm_auth',
+      error: new LLMAuthError(),
+      httpStatus: 401,
+      fetchCount: 1,
+    },
+    {
+      name: '402',
+      attempts: [() => providerErrorResponse(402)],
+      errorCode: 'llm_balance',
+      error: new LLMBalanceError(),
+      httpStatus: 402,
+      fetchCount: 1,
+    },
+    {
+      name: '429 重试用尽',
+      attempts: Array.from({ length: 3 }, () => () => providerErrorResponse(429)),
+      errorCode: 'llm_rate_limit',
+      error: new LLMRateLimitError(),
+      httpStatus: 429,
+      fetchCount: 3,
+    },
+    {
+      name: '500 重试用尽',
+      attempts: Array.from({ length: 3 }, () => () => providerErrorResponse(500)),
+      errorCode: 'llm_server',
+      error: new LLMServerError(500),
+      httpStatus: 500,
+      fetchCount: 3,
+    },
+    {
+      name: '流中途连接重置',
+      attempts: [() => connectionResetSseResponse()],
+      errorCode: 'llm_network',
+      error: new LLMNetworkError(new Error('terminated')),
+      fetchCount: 1,
+    },
+    {
+      name: '流中途结束却缺 finish_reason',
+      attempts: [() => sseResponse([sseData({ content: '部分' }), 'data: [DONE]'])],
+      errorCode: 'llm_protocol',
+      error: new LLMApiError('模型流在没有 finish reason 的情况下结束'),
+      fetchCount: 1,
+    },
+  ]
+
+  for (const failureCase of failureCases) {
+    it(`AC-01 上游${failureCase.name}：Run FAILED / ${failureCase.errorCode}，Step 与 error 事件同一套文案，一条不含密钥与请求体的 warn`, async () => {
+      const provider = createFakeFetchProvider(failureCase.attempts)
+      const harness = createHarness(provider.createModelStream)
+      const warnings = captureRuntimeWarnings(harness)
+      const expectedMessage = getAiExceptionMessage(failureCase.error)
+
+      const events = await collectEvents(harness.service.runTurnStream({
+        conversationId: 'conversation-1',
+        userContent: PROMPT_SENTINEL,
+        instructions: [],
+      }))
+      const failedEvent = events.at(-1)
+      const chatEvent = failedEvent ? toChatStreamEvent(failedEvent) : undefined
+      const samplingStep = findStep(harness, 'model_sampling')
+      const samplingOutput = samplingStep?.output as Record<string, unknown>
+
+      assert.equal(provider.fetchCalls.length, failureCase.fetchCount)
+      assert.equal(failedEvent?.type, 'run_failed')
+      assert.deepEqual(harness.recorder.failedRunIds, ['run-1'])
+      assert.equal(harness.recorder.runErrorCode, failureCase.errorCode)
+      // 前台 error 事件、采样 Step 与 getAiExceptionMessage 是同一套文案。
+      assert.equal(chatEvent?.type === 'error' ? chatEvent.message : undefined, expectedMessage)
+      assert.equal(samplingStep?.status, AgentStepStatus.FAILED)
+      assert.equal(samplingStep?.errorMessage, expectedMessage)
+      assert.equal(samplingOutput.errorCode, failureCase.errorCode)
+
+      const runFailures = warnings.filter(warning => warning.event === 'agent_run_failed')
+
+      assert.deepEqual(runFailures, [{
+        event: 'agent_run_failed',
+        runId: 'run-1',
+        stepId: samplingStep?.id,
+        errorCode: failureCase.errorCode,
+        errorName: failureCase.error.name,
+        ...(failureCase.httpStatus === undefined ? {} : { httpStatus: failureCase.httpStatus }),
+        message: runFailures[0]?.message,
+      }])
+      assert.equal(typeof runFailures[0]?.message, 'string')
+      // 上游 401 body 回显了 key；日志只有安全字段，既不含 key 也不含请求体。
+      assert.equal(JSON.stringify(warnings).includes(FAKE_PROVIDER_API_KEY), false)
+      assert.equal(JSON.stringify(warnings).includes(PROMPT_SENTINEL), false)
+      assertNoUnfinishedSteps(harness)
+    })
+  }
+
+  it('AC-02 流进行中用户停止：Run ABORTED / aborted，采样 Step 记中断文案，raw capture 为 partial', async () => {
+    const abortController = new AbortController()
+    const provider = createFakeFetchProvider([
+      init => hangingSseResponse(init, sseData({ content: '部分' })),
+    ])
+    const harness = createHarness(provider.createModelStream, abortController.signal)
+    const warnings = captureRuntimeWarnings(harness)
+    const events: AgentRuntimeEvent[] = []
+
+    for await (const event of harness.run()) {
+      events.push(event)
+      if (event.type === 'assistant_delta')
+        abortController.abort()
+    }
+
+    const samplingStep = findStep(harness, 'model_sampling')
+    const samplingOutput = samplingStep?.output as Record<string, unknown>
+
+    assert.deepEqual(events.map(event => event.type), [
+      'run_started',
+      'assistant_delta',
+      'run_aborted',
+    ])
+    assert.deepEqual(harness.recorder.abortedRunIds, ['run-1'])
+    assert.equal(harness.recorder.runErrorCode, 'aborted')
+    assert.equal(samplingStep?.status, AgentStepStatus.ABORTED)
+    assert.equal(samplingStep?.errorMessage, '用户已停止生成。')
+    assert.equal(samplingOutput.errorCode, 'aborted')
+    // SDK 读响应体遇到 abort 会静默结束迭代，源流「正常结束」也不能标 complete。
+    assert.equal(
+      (samplingOutput.debugRawResponse as Record<string, unknown>).state,
+      'partial',
+    )
+    // 用户停止不是故障，不打失败日志。
+    assert.equal(warnings.some(warning => warning.event === 'agent_run_failed'), false)
+    assertNoUnfinishedSteps(harness)
+  })
+
+  it('AC-02 流进行中 Run deadline 到期：Run FAILED / deadline，采样 Step 与 assistant_output Step 文案一致', async () => {
+    const provider = createFakeFetchProvider([
+      init => hangingSseResponse(init, sseData({ content: '部分' })),
+    ])
+    const harness = createHarness(
+      provider.createModelStream,
+      undefined,
+      undefined,
+      { runDeadlineMs: 80 },
+    )
+    const warnings = captureRuntimeWarnings(harness)
+
+    const events = await collectEvents(harness.run())
+    const failedEvent = events.at(-1)
+    const samplingStep = findStep(harness, 'model_sampling')
+    const assistantOutputStep = findStep(harness, 'assistant_output')
+    const samplingOutput = samplingStep?.output as Record<string, unknown>
+
+    assert.deepEqual(events.map(event => event.type), [
+      'run_started',
+      'assistant_delta',
+      'run_failed',
+    ])
+    assert.deepEqual(harness.recorder.failedRunIds, ['run-1'])
+    assert.equal(harness.recorder.runErrorCode, 'deadline')
+    assert.equal(
+      failedEvent?.type === 'run_failed' ? failedEvent.message : undefined,
+      'Agent Run 已达到执行时限。',
+    )
+    assert.equal(samplingStep?.status, AgentStepStatus.FAILED)
+    assert.equal(assistantOutputStep?.status, AgentStepStatus.FAILED)
+    assert.equal(samplingStep?.errorMessage, 'Agent Run 已达到执行时限。')
+    assert.equal(samplingStep?.errorMessage, assistantOutputStep?.errorMessage)
+    assert.equal(samplingOutput.errorCode, 'deadline')
+    assert.equal(
+      (samplingOutput.debugRawResponse as Record<string, unknown>).state,
+      'partial',
+    )
+    assert.deepEqual(
+      warnings
+        .filter(warning => warning.event === 'agent_run_failed')
+        .map(warning => [warning.errorCode, warning.errorName]),
+      [['deadline', 'AgentRunDeadlineExceededError']],
+    )
+    assertNoUnfinishedSteps(harness)
+  })
+
+  // 「首 token 从 reasoning_started 算起」由 model-sampling-decision.test.ts 用注入时钟确定性断言。
+  it('AC-04 正常完成的采样 Step 带 firstTokenMs：大于 0 且不超过 Step 时长；成功 Run 的 errorCode 为 null', async () => {
+    const provider = createFakeFetchProvider([
+      () => delayedSseResponse([
+        { delayMs: 20, data: sseData({ reasoning_content: '先想一下' }) },
+        { delayMs: 10, data: sseData({ content: '答' }, 'stop') },
+        { delayMs: 0, data: 'data: [DONE]' },
+      ]),
+    ])
+    const harness = createHarness(provider.createModelStream)
+
+    const events = await collectEvents(harness.run())
+    const samplingStep = findStep(harness, 'model_sampling')
+    const firstTokenMs = (samplingStep?.output as Record<string, unknown>).firstTokenMs
+    const stepDurationMs = samplingStep!.endedAt!.getTime() - samplingStep!.startedAt.getTime()
+
+    assert.equal(events.at(-1)?.type, 'run_completed')
+    assert.deepEqual(harness.recorder.completedRunIds, ['run-1'])
+    assert.equal(harness.recorder.runErrorCode, null)
+    assert.equal(typeof firstTokenMs, 'number')
+    assert.ok((firstTokenMs as number) > 0, `firstTokenMs=${String(firstTokenMs)}`)
+    assert.ok((firstTokenMs as number) <= stepDurationMs, `firstTokenMs=${String(firstTokenMs)} > ${stepDurationMs}`)
+
+    const detail = projectHarnessRunDetail(harness, 'COMPLETED')
+    const samplingItem = detail.timeline.find(item => item.type === 'model_sampling')
+
+    assert.equal(detail.errorCode, null)
+    assert.deepEqual(
+      samplingItem?.kind === 'known' && samplingItem.type === 'model_sampling'
+        ? [samplingItem.firstTokenMs, samplingItem.errorCode]
+        : null,
+      [firstTokenMs, null],
+    )
   })
 })
 
@@ -3489,6 +3773,8 @@ class FakeAgentRunRecorderService {
   readonly completedRunIds: string[] = []
   readonly failedRunIds: string[] = []
   readonly abortedRunIds: string[] = []
+  /** failRun / abortRun 与终态同事务写入的 Run 失败类别；成功时保持 null。 */
+  runErrorCode: AgentRunErrorCode | null = null
   readonly steps: RecordedAgentStep[] = []
   readonly completionOwnership = createDeferred()
   completeRunCommitError: Error | undefined
@@ -3509,6 +3795,7 @@ class FakeAgentRunRecorderService {
       userMessageId: input.userMessageId,
       assistantMessageId: null,
       status: AgentRunStatus.RUNNING,
+      errorCode: null,
       startedAt: now,
       endedAt: null,
       createdAt: now,
@@ -3625,6 +3912,7 @@ class FakeAgentRunRecorderService {
   async failRun(
     runId: string,
     errorMessage: string,
+    errorCode: AgentRunErrorCode,
     _deadline: DatabaseOperationDeadline,
     assistantMessage?: { id: string, content: string },
     failedStep?: { id: string, errorMessage: string, output?: unknown },
@@ -3633,6 +3921,7 @@ class FakeAgentRunRecorderService {
     if (this.failRunDelayMs > 0) {
       await new Promise(resolve => setTimeout(resolve, this.failRunDelayMs))
     }
+    this.runErrorCode = errorCode
     this.closeMessage(assistantMessage, MessageStatus.FAILED)
     if (failedStep) {
       this.transitionStep(failedStep.id, AgentStepStatus.FAILED, failedStep)
@@ -3654,6 +3943,7 @@ class FakeAgentRunRecorderService {
     abortedStep?: { id: string, errorMessage: string, output?: unknown },
     metadataStep?: { id: string, output: unknown },
   ): Promise<void> {
+    this.runErrorCode = 'aborted'
     this.closeMessage(assistantMessage, MessageStatus.ABORTED)
     if (abortedStep) {
       this.transitionStep(
@@ -3765,6 +4055,7 @@ function projectHarnessRunDetail(
     conversationId: 'conversation-1',
     assistantMessageId: assistantMessage.id,
     status,
+    errorCode: harness.recorder.runErrorCode,
     startedAt: now,
     endedAt: now,
     createdAt: now,
@@ -3805,11 +4096,20 @@ function isUnfinishedStep(step: RecordedAgentStep): boolean {
     || step.status === AgentStepStatus.RUNNING
 }
 
-function withoutContextPlan(value: unknown): unknown {
+/**
+ * 去掉 sampling output 里随环境变化的字段：contextPlan 由各用例单独断言；
+ * firstTokenMs 依赖真实时钟，这里只确认它是非负整数或 null（取值由 AC-04 用例单独断言）。
+ */
+function withoutVolatileSamplingFields(value: unknown): unknown {
   if (typeof value !== 'object' || value === null || Array.isArray(value))
     return value
 
-  const { contextPlan: _, ...rest } = value as Record<string, unknown>
+  const { contextPlan: _, firstTokenMs, ...rest } = value as Record<string, unknown>
+
+  assert.ok(
+    firstTokenMs === null || (Number.isSafeInteger(firstTokenMs) && (firstTokenMs as number) >= 0),
+    `firstTokenMs 应为非负整数或 null，实际 ${String(firstTokenMs)}`,
+  )
   return rest
 }
 
@@ -4085,4 +4385,139 @@ function adaptDeepSeekStream(
   chunks: Parameters<typeof adaptOpenAICompatibleStream>[0],
 ): AsyncGenerator<ModelStreamEvent> {
   return adaptOpenAICompatibleStream(chunks, { requireReasoningContent: true })
+}
+
+type FakeFetchAttempt = (init: RequestInit) => Response
+
+/**
+ * 真实 `OpenAICompatibleClient`（SDK 重试与退避、错误转换、adapter、raw capture）+ 按次序消费的
+ * fake fetch：除了网络本身，模型调用链路与生产完全一致。
+ */
+function createFakeFetchProvider(attempts: FakeFetchAttempt[]) {
+  const fetchCalls: RequestInit[] = []
+  const client = new OpenAICompatibleClient({
+    apiKey: FAKE_PROVIDER_API_KEY,
+    baseUrl: 'https://relay.invalid/v1',
+    captureModelIO: true,
+  })
+  // 沿用生产 client 的 maxRetries，只替换 fetch。
+  // eslint-disable-next-line dot-notation
+  const providerClient = client['createClient']().withOptions({
+    fetch: async (_input: string | URL | Request, init?: RequestInit) => {
+      fetchCalls.push(init ?? {})
+      const attempt = attempts[fetchCalls.length - 1]
+
+      assert.ok(attempt, `fake fetch 第 ${fetchCalls.length} 次调用没有预设响应`)
+
+      return attempt(init ?? {})
+    },
+  })
+
+  Object.defineProperty(client, 'createClient', {
+    configurable: true,
+    value: () => providerClient,
+  })
+
+  const createModelStream: CreateModelStream = (messages, options) => {
+    assert.ok(options)
+    return client.chatStream(messages, options)
+  }
+
+  return { fetchCalls, createModelStream }
+}
+
+function captureRuntimeWarnings(
+  harness: ReturnType<typeof createHarness>,
+): Array<Record<string, unknown>> {
+  const warnings: Array<Record<string, unknown>> = []
+
+  Object.defineProperty(harness.service, 'logger', {
+    value: {
+      error: () => {},
+      warn: (warning: Record<string, unknown>) => warnings.push(warning),
+    },
+  })
+
+  return warnings
+}
+
+/** 上游错误响应；body 回显密钥，模拟服务商把 key 写进报错的情况。retry-after-ms 让 SDK 退避只等 1ms。 */
+function providerErrorResponse(status: number): Response {
+  return new Response(
+    JSON.stringify({ error: { message: `Incorrect API key provided: ${FAKE_PROVIDER_API_KEY}` } }),
+    {
+      status,
+      headers: {
+        'Content-Type': 'application/json',
+        'retry-after-ms': '1',
+      },
+    },
+  )
+}
+
+function sseData(delta: Record<string, unknown>, finishReason?: string): string {
+  return `data: ${JSON.stringify({
+    id: 'response-1',
+    object: 'chat.completion.chunk',
+    created: 0,
+    model: 'deepseek-v4-flash',
+    choices: [{ index: 0, delta, finish_reason: finishReason ?? null }],
+  })}`
+}
+
+function sseResponse(lines: string[]): Response {
+  return new Response(
+    lines.map(line => `${line}\n\n`).join(''),
+    { status: 200, headers: { 'Content-Type': 'text/event-stream' } },
+  )
+}
+
+function sseStreamResponse(body: ReadableStream<Uint8Array>): Response {
+  return new Response(body, {
+    status: 200,
+    headers: { 'Content-Type': 'text/event-stream' },
+  })
+}
+
+/** 先推一段正文，随后连接被对端重置（undici 表现为 `TypeError: terminated`）。 */
+function connectionResetSseResponse(): Response {
+  return sseStreamResponse(new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode(`${sseData({ content: '部分' })}\n\n`))
+      controller.error(Object.assign(new TypeError('terminated'), {
+        cause: Object.assign(new Error('read ECONNRESET'), { code: 'ECONNRESET' }),
+      }))
+    },
+  }))
+}
+
+/** 推出第一段后一直挂起；与真实 fetch 一致，请求 signal abort 后响应体以 AbortError 出错。 */
+function hangingSseResponse(init: RequestInit, firstLine: string): Response {
+  return sseStreamResponse(new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode(`${firstLine}\n\n`))
+      init.signal?.addEventListener('abort', () => {
+        controller.error(new DOMException('This operation was aborted', 'AbortError'))
+      }, { once: true })
+    },
+  }))
+}
+
+/** 每段按给定延迟推出，用来制造可测的首 token 时间。 */
+function delayedSseResponse(parts: Array<{ delayMs: number, data: string }>): Response {
+  let index = 0
+
+  return sseStreamResponse(new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      const part = parts[index++]
+
+      if (!part) {
+        controller.close()
+        return
+      }
+
+      await sleep(part.delayMs)
+      controller.enqueue(new TextEncoder().encode(`${part.data}\n\n`))
+    },
+  }))
 }

@@ -91,8 +91,10 @@ export class GroundedFinalizationSamplingError extends Error {
     readonly failure: GroundedFinalizationSamplingFailure,
     /** 已经发生的 attempt 事实；调用已经开始，就不能当作没调用过。 */
     readonly attempts: GroundedFinalizationAttemptSummary[] = [],
+    /** stream_failed 时的原错误（通常是 LLMError），终态归因按它映射失败类别与文案。 */
+    cause?: unknown,
   ) {
-    super('回答收口采样未能完整结束。')
+    super('回答收口采样未能完整结束。', cause === undefined ? undefined : { cause })
     this.name = 'GroundedFinalizationSamplingError'
   }
 }
@@ -166,7 +168,11 @@ export async function runGroundedFinalization(
         durationMs: Math.max(0, now() - startedAt),
       })
       // 采样故障不消耗 correction，直接按现有失败语义收口。
-      throw new GroundedFinalizationSamplingError(sampling.failure, attempts)
+      throw new GroundedFinalizationSamplingError(
+        sampling.failure,
+        attempts,
+        sampling.cause,
+      )
     }
 
     let submitted: SubmitGroundedAnswerInputV1 | undefined
@@ -314,6 +320,8 @@ type FinalizationSamplingOutcome
       kind: 'sampling_failure'
       failure: GroundedFinalizationSamplingFailure
       usage: ModelUsage | null
+      /** 只有 stream_failed 有：流读取时抛出的原错误。 */
+      cause?: unknown
     }
     // 流本身完整（正常 stop 结束），但模型没有调用提交工具：
     // 这是「模型不服从」，不是 Provider 故障，按校验失败语义消耗 correction。
@@ -350,11 +358,13 @@ async function consumeFinalizationSampling(
   let completed = false
   const failed = (
     failure: GroundedFinalizationSamplingFailure,
+    cause?: unknown,
   ): FinalizationSamplingOutcome => ({
     ok: false,
     kind: 'sampling_failure',
     failure,
     usage,
+    ...(cause === undefined ? {} : { cause }),
   })
 
   try {
@@ -381,15 +391,16 @@ async function consumeFinalizationSampling(
 
         // 终态阶段的自由文本不构成有效提交，也不算故障；缺少调用会在下面判定。
         case 'text_delta':
+        case 'reasoning_started':
         case 'tool_call_started':
           break
       }
     }
   }
-  catch {
+  catch (error) {
     // Provider 连接异常、超时或 adapter 抛错：Tool Call 即使已经出现也不可信，
-    // 但流中断前已经收到的 usage 仍然是真实发生的。
-    return failed('stream_failed')
+    // 但流中断前已经收到的 usage 仍然是真实发生的；原错误随 cause 交给终态归因。
+    return failed('stream_failed', error)
   }
 
   if (!completed)

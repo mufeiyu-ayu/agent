@@ -31,6 +31,7 @@ const summaryFields = computed(() => [
   { label: t('eventDetail.fields.providerId'), value: show(props.item.contextInspector.providerId), mono: true },
   { label: t('eventDetail.fields.modelId'), value: show(props.item.contextInspector.modelId), mono: true },
   { label: t('eventDetail.fields.finishReason'), value: show(props.item.finishReason) },
+  { label: t('eventDetail.fields.errorCode'), value: errorCode(), mono: props.item.errorCode !== null },
   { label: t('eventDetail.fields.toolCalls'), value: items(props.item.toolCallCount) },
   { label: t('eventDetail.fields.hasError'), value: yesNo(props.item.hasError) },
 ])
@@ -68,6 +69,7 @@ const timingFields = computed(() => [
   { label: t('eventDetail.fields.startedAt'), value: dateTime(props.item.startedAt) },
   { label: t('eventDetail.fields.endedAt'), value: dateTime(props.item.endedAt) },
   { label: t('eventDetail.fields.duration'), value: duration(props.item.durationMs) },
+  { label: t('eventDetail.fields.firstTokenMs'), value: duration(props.item.firstTokenMs) },
 ])
 
 function show(value: string | number | null): string | number {
@@ -96,6 +98,16 @@ function duration(value: number | null): string {
 
 function yesNo(value: boolean): string {
   return value ? t('common.yes') : t('common.no')
+}
+
+/** 只有失败 / 中断的采样才有失败类别；其余状态显示「—」，失败却没有类别的旧数据显示「未记录」。 */
+function errorCode(): string {
+  const { errorCode: code, status } = props.item
+
+  if (code !== null)
+    return `${t(`runTrace.errorCodes.${code}`)} · ${code}`
+
+  return status === 'FAILED' || status === 'ABORTED' ? unavailable.value : '—'
 }
 
 function contextOutcome(value: AdminContextInspectorOutcome | null): string {

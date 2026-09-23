@@ -62,7 +62,7 @@ export class LLMRateLimitError extends LLMError {
   }
 }
 
-/** 500 或 503：服务端错误 */
+/** 5xx：服务端错误（503 为繁忙，其余按内部错误描述） */
 export class LLMServerError extends LLMError {
   constructor(statusCode: number, detail?: unknown) {
     const desc = statusCode === 503 ? '服务器繁忙' : '服务器内部错误'

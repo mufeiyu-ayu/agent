@@ -111,6 +111,9 @@ model AgentRun {
   assistantMessage   Message?       @relation("AgentRunAssistantMessage", fields: [assistantMessageId], references: [id], onDelete: SetNull)
 
   status             AgentRunStatus @default(RUNNING)
+  // 失败类别：进入 FAILED / ABORTED 时与终态同事务写入，成功与旧 Run 为空。
+  // 与 AgentStep.type 同理用字符串而非枚举，取值由 contracts 的 AGENT_RUN_ERROR_CODES 约束。
+  errorCode          String?
   startedAt          DateTime       @default(now())
   // 结束时间：运行中为空，进入终态（完成/失败/中断）时写入。
   endedAt            DateTime?

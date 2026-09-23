@@ -3,7 +3,7 @@ import type {
   MessageInputItem,
   ModelUsage,
 } from '@agent/ai'
-import type { MessageGroundingV1 } from '@agent/contracts'
+import type { AgentRunErrorCode, MessageGroundingV1 } from '@agent/contracts'
 import type {
   Message,
   Prisma,
@@ -26,15 +26,28 @@ import type {
   CloseAgentStepInput,
   CloseAgentStepMetadata,
 } from './lifecycle/agent-run-recorder.service.js'
-import type { RunCancellation } from './lifecycle/run-cancellation.js'
+import type {
+  RunCancellation,
+  RunTerminationSource,
+} from './lifecycle/run-cancellation.js'
 import type { DebugModelIOCaptured } from './sampling/model-io-debug-capture.js'
 
 import type {
   ModelSamplingSummary,
   SamplingDecision,
 } from './sampling/model-sampling-decision.js'
-import { resolveChatRequestConfig } from '@agent/ai'
+import {
+  LLMAuthError,
+  LLMBalanceError,
+  LLMError,
+  LLMInvalidRequestError,
+  LLMNetworkError,
+  LLMRateLimitError,
+  LLMServerError,
+  resolveChatRequestConfig,
+} from '@agent/ai'
 import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common'
+import { getAiExceptionMessage } from '../common/utils/llm-error-message.util.js'
 import { MessageRole, MessageStatus } from '../generated/prisma/client.js'
 import { LLMService } from '../llm/llm.service.js'
 import {
@@ -50,8 +63,8 @@ import { ToolRegistryService } from '../tools/core/tool-registry.service.js'
 import { normalizeToolStepSummary } from '../tools/core/tool-step-summary.js'
 import { TOOL_DEFINITIONS } from '../tools/tool-definitions.js'
 import {
+  AGENT_RUN_DEADLINE_EXCEEDED_MESSAGE,
   AgentLoopLimitExceededError,
-  AgentRunDeadlineExceededError,
   AgentRunTerminalizationError,
   ContextBudgetExceededError,
   ContextTokenEstimationError,
@@ -89,10 +102,18 @@ import {
 } from './sampling/model-io-debug-capture.js'
 import { streamModelSampling } from './sampling/model-sampling-decision.js'
 
+/** 用户停止（或消费者提前断开）时中断的 Step 文案；Run 与 Message 走 ABORTED，不写失败文案。 */
+const RUN_ABORTED_MESSAGE = '用户已停止生成。'
+/** finalization 流不合协议、又没有更具体原因时的文案（沿用改动前的说法）。 */
+const MODEL_NO_RESULT_MESSAGE = '模型服务暂时没有返回结果，请稍后重试。'
+/** 数据库、工具执行等服务端自身故障的文案：不能说成模型服务的问题。 */
+const RUN_INTERNAL_FAILURE_MESSAGE = '服务端未能完成本轮回答，请稍后重试。'
+
 interface ActiveSamplingClose {
   close: () => Promise<void>
   debugModelIO: DebugModelIOCaptured
-  toMetadata: () => CloseAgentStepMetadata | undefined
+  /** 消费者提前 return() 时按中断收口这一轮采样。 */
+  toAbortedStep: () => CloseAgentStepInput
 }
 
 @Injectable()
@@ -360,19 +381,19 @@ export class AgentRuntimeService {
                 })
               }
             },
-            toMetadata: () => (
-              debugModelIO.requestBody !== undefined
-              || debugModelIO.rawResponse !== undefined
-                ? {
-                    id: samplingStep.id,
-                    output: this.toFailedSamplingStepOutput(
-                      undefined,
-                      contextPlanSummary,
-                      debugModelIO,
-                    ),
-                  }
-                : undefined
-            ),
+            toAbortedStep: () => ({
+              id: samplingStep.id,
+              errorMessage: RUN_ABORTED_MESSAGE,
+              output: {
+                ...this.toFailedSamplingStepOutput(
+                  undefined,
+                  contextPlanSummary,
+                  debugModelIO,
+                ),
+                // 与 abortRun 写入 Run 的类别一致。
+                errorCode: 'aborted',
+              },
+            }),
           }
           let samplingResult = await sampling.next()
 
@@ -421,22 +442,32 @@ export class AgentRuntimeService {
 
           activeSamplingClose = undefined
           await closeSampling?.close()
+          // 先确立终态原因再写 Step 归因：用户停止或 deadline 先到时，
+          // 随后的流读取失败只是它们的后果，Step 不能记成模型故障。
+          claimRunTermination(runCancellation, error)
+          const samplingFailure = describeRunFailure(
+            runCancellation.source,
+            runCancellation.reason ?? error,
+          )
+
           terminalStepFailure = {
             id: samplingStep.id,
-            errorMessage: this.toChatStreamErrorMessage(error),
-            output: completedSamplingSummary
-              ? this.toSamplingStepOutput(
-                  completedSamplingSummary,
-                  contextPlanSummary,
-                  debugModelIO,
-                )
-              : this.toFailedSamplingStepOutput(
-                  error,
-                  contextPlanSummary,
-                  debugModelIO,
-                ),
+            errorMessage: samplingFailure.message,
+            output: {
+              ...(completedSamplingSummary
+                ? this.toSamplingStepOutput(
+                    completedSamplingSummary,
+                    contextPlanSummary,
+                    debugModelIO,
+                  )
+                : this.toFailedSamplingStepOutput(
+                    error,
+                    contextPlanSummary,
+                    debugModelIO,
+                  )),
+              errorCode: samplingFailure.errorCode,
+            },
           }
-          claimRunTermination(runCancellation, error)
           this.logSamplingDebugCaptureClosed(
             debugModelIO,
             runCancellation.source === 'user'
@@ -515,11 +546,17 @@ export class AgentRuntimeService {
             runCancellation.throwIfUnavailable()
           }
           catch (error) {
+            claimRunTermination(runCancellation, error)
             terminalStepFailure = {
               id: toolStep.id,
-              errorMessage: '工具执行未能安全完成。',
+              // 用户停止或 deadline 先到时按终态原因记；工具自身抛错仍记工具失败。
+              errorMessage: runCancellation.source === 'failure'
+                ? '工具执行未能安全完成。'
+                : describeRunFailure(
+                  runCancellation.source,
+                  runCancellation.reason ?? error,
+                ).message,
             }
-            claimRunTermination(runCancellation, error)
             throw error
           }
 
@@ -697,14 +734,16 @@ export class AgentRuntimeService {
         }
         catch (error) {
           closeFinalizationStep(error)
+          // 与 action sampling 同理：先确立终态原因，Step 文案再跟 Run 走同一套归因。
+          claimRunTermination(runCancellation, error)
           terminalStepFailure = {
             id: finalizationStep.id,
-            errorMessage: error instanceof GroundedFinalizationFailedError
-              ? error.message
-              : '回答引用校验未能安全完成。',
+            errorMessage: describeRunFailure(
+              runCancellation.source,
+              runCancellation.reason ?? error,
+            ).message,
             output: terminalStepMetadata!.output,
           }
-          claimRunTermination(runCancellation, error)
           throw error
         }
       }
@@ -811,13 +850,17 @@ export class AgentRuntimeService {
         return
       }
 
-      const errorMessage = this.toChatStreamErrorMessage(runCause)
+      const runFailure = describeRunFailure(runCancellation?.source, runCause)
+      const errorMessage = runFailure.message
 
       if (agentRunId) {
+        this.logRunFailure(agentRunId, terminalStepFailure?.id, runFailure)
+
         try {
           await this.agentRunRecorderService.failRun(
             agentRunId,
             errorMessage,
+            runFailure.errorCode,
             createTerminalizationDeadline(),
             this.toAssistantMessageSnapshot(
               assistantMessage,
@@ -864,7 +907,7 @@ export class AgentRuntimeService {
         await samplingClose?.close()
 
         if (samplingClose) {
-          terminalStepMetadata = samplingClose.toMetadata()
+          terminalStepFailure = samplingClose.toAbortedStep()
           this.logSamplingDebugCaptureClosed(
             samplingClose.debugModelIO,
             'consumer_return',
@@ -1077,22 +1120,32 @@ export class AgentRuntimeService {
     }
   }
 
-  private toChatStreamErrorMessage(error: unknown): string {
-    if (error instanceof NotFoundException)
-      return error.message
-    if (
-      error instanceof ModelSamplingIncompleteError
-      || error instanceof AgentLoopLimitExceededError
-      || error instanceof AgentRunDeadlineExceededError
-      || error instanceof ContextBudgetExceededError
-      || error instanceof ContextTokenEstimationError
-      // 引用校验失败必须与「知识库没有答案」区分开，不能伪装成 zero-hit。
-      || error instanceof GroundedFinalizationFailedError
-    ) {
-      return error.message
-    }
+  /**
+   * Run FAILED 时的一条服务端日志：真实错误类别与上游状态码只在这里出现，
+   * 用户看到的是 describeRunFailure 的安全文案。不记 LLMError.detail 与请求体；
+   * message 是错误自身的文案，未识别状态码的 LLMApiError 文案里带 SDK 给出的上游错误摘要。
+   */
+  private logRunFailure(
+    runId: string,
+    stepId: string | undefined,
+    failure: RunFailure,
+  ): void {
+    const { rootCause } = failure
+    // LLMError.detail 是 SDK 的 APIError 时只取它的 HTTP status，不碰 body。
+    const status = rootCause instanceof LLMError
+      ? (rootCause.detail as { status?: unknown } | null | undefined)?.status
+      : undefined
+    const httpStatus = typeof status === 'number' ? status : undefined
 
-    return '模型服务暂时没有返回结果，请稍后重试。'
+    this.logger.warn({
+      event: 'agent_run_failed',
+      runId,
+      stepId: stepId ?? null,
+      errorCode: failure.errorCode,
+      errorName: rootCause instanceof Error ? rootCause.name : typeof rootCause,
+      ...(httpStatus === undefined ? {} : { httpStatus }),
+      message: rootCause instanceof Error ? rootCause.message : String(rootCause),
+    })
   }
 
   private toSamplingStepOutput(
@@ -1105,6 +1158,7 @@ export class AgentRuntimeService {
       finishReason: summary.finishReason,
       usage: toPersistedModelUsage(summary.usage),
       toolCallCount: summary.toolCallCount,
+      firstTokenMs: summary.firstTokenMs,
       ...(contextPlan
         ? { contextPlan: toPersistedContextPlan(contextPlan) }
         : {}),
@@ -1279,6 +1333,99 @@ export class AgentRuntimeService {
         : {}),
     }
   }
+}
+
+interface RunFailure {
+  errorCode: AgentRunErrorCode
+  /** 用户可见文案：error 事件、失败 Message.content 与失败 Step.errorMessage 共用。 */
+  message: string
+  /** 剥掉采样包装后的真实错误，只进服务端日志。 */
+  rootCause: unknown
+}
+
+/**
+ * 从终态已确立的原因得出失败类别与用户可见文案；Run、失败采样 Step 与 error 事件都用它，
+ * 三处因此不会各说各话。source 先于 reason：用户停止或 deadline 先到时，
+ * 随后的流读取失败只是后果，不能归为模型故障。
+ */
+function describeRunFailure(
+  source: RunTerminationSource | undefined,
+  reason: unknown,
+): RunFailure {
+  if (source === 'user')
+    return { errorCode: 'aborted', message: RUN_ABORTED_MESSAGE, rootCause: reason }
+  if (source === 'deadline')
+    return { errorCode: 'deadline', message: AGENT_RUN_DEADLINE_EXCEEDED_MESSAGE, rootCause: reason }
+
+  // 流读取失败时，采样包装只说明「这一轮没完整结束」，真实原因在 cause 上。
+  const rootCause = (
+    reason instanceof ModelSamplingIncompleteError
+    || reason instanceof GroundedFinalizationSamplingError
+  ) && reason.cause !== undefined
+    ? reason.cause
+    : reason
+
+  if (rootCause instanceof LLMError) {
+    return {
+      errorCode: toLlmErrorCode(rootCause),
+      message: getAiExceptionMessage(rootCause),
+      rootCause,
+    }
+  }
+
+  const known = describeRuntimeError(rootCause)
+
+  return known
+    ? { ...known, rootCause }
+    : {
+        errorCode: 'internal',
+        // 会话不存在发生在 Run 创建之前：不写 errorCode，但 run_failed 事件仍用这条文案。
+        message: rootCause instanceof NotFoundException
+          ? rootCause.message
+          : RUN_INTERNAL_FAILURE_MESSAGE,
+        rootCause,
+      }
+}
+
+/** runtime 自己抛出的失败语义；文案就是错误自身的 message（已是用户可读的安全文案）。 */
+function describeRuntimeError(
+  error: unknown,
+): Omit<RunFailure, 'rootCause'> | undefined {
+  // 模型没以 stop / tool_calls 完整结束（length / content_filter / unknown / 缺 response_completed）。
+  if (error instanceof ModelSamplingIncompleteError)
+    return { errorCode: 'llm_protocol', message: error.message }
+  // finalization 流本身不合协议：缺完成事件、多次提交、未知工具或 finish reason 不对。
+  if (error instanceof GroundedFinalizationSamplingError)
+    return { errorCode: 'llm_protocol', message: MODEL_NO_RESULT_MESSAGE }
+  // 引用校验失败必须与「知识库没有答案」区分开，不能伪装成 zero-hit。
+  if (error instanceof GroundedFinalizationFailedError)
+    return { errorCode: 'grounding_failed', message: error.message }
+  if (error instanceof AgentLoopLimitExceededError)
+    return { errorCode: 'loop_limit', message: error.message }
+  if (error instanceof ContextBudgetExceededError)
+    return { errorCode: 'context_overflow', message: error.message }
+  if (error instanceof ContextTokenEstimationError)
+    return { errorCode: 'estimator_failure', message: error.message }
+
+  return undefined
+}
+
+function toLlmErrorCode(error: LLMError): AgentRunErrorCode {
+  if (error instanceof LLMAuthError)
+    return 'llm_auth'
+  if (error instanceof LLMBalanceError)
+    return 'llm_balance'
+  if (error instanceof LLMRateLimitError)
+    return 'llm_rate_limit'
+  if (error instanceof LLMInvalidRequestError)
+    return 'llm_invalid_request'
+  if (error instanceof LLMServerError)
+    return 'llm_server'
+  if (error instanceof LLMNetworkError)
+    return 'llm_network'
+
+  // LLMApiError：adapter 协议异常，或 400 / 401 / 402 / 403 / 422 / 429 / 5xx 之外的 HTTP 状态。
+  return 'llm_protocol'
 }
 
 /** 落库的裁剪前快照只保留 Admin 读取的四个字段；另两个计数写入 load_conversation_history 的 output。 */

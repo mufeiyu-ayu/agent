@@ -170,6 +170,7 @@ export class OpenAICompatibleClient {
               stream,
               commitResponseCapture,
               () => notifyCaptureError('response'),
+              signal,
             )
           : stream,
         { requireReasoningContent: options.request.compat.requiresReasoningContent },
@@ -184,7 +185,9 @@ export class OpenAICompatibleClient {
           toolCallCount: 0,
         })
       }
-      throw this.toLLMError(cause)
+      // SDK 读响应体时遇到 abort 会静默结束迭代，adapter 随后报「没有 finish reason」；
+      // 先看 signal，已 aborted 就按与首个响应头之前 abort 相同的方式处理，不当成协议异常。
+      throw this.toLLMError(signal?.aborted ? new APIUserAbortError() : cause)
     }
   }
 
@@ -245,10 +248,11 @@ export class OpenAICompatibleClient {
         return new LLMInvalidRequestError(422, error)
       case 429:
         return new LLMRateLimitError(error)
-      case 500:
-      case 503:
-        return new LLMServerError(error.status, error)
       default:
+        // 中转站常见的 502 / 504 与 500 / 503 同属上游服务端故障。
+        if (error.status !== undefined && error.status >= 500)
+          return new LLMServerError(error.status, error)
+
         return new LLMApiError(
           this.formatUnhandledApiErrorMessage(error),
           error,

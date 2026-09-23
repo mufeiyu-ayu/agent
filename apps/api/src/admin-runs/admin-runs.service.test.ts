@@ -489,6 +489,53 @@ describe('Admin Run projector', () => {
     ])
   })
 
+  it('#151 errorCode 与 firstTokenMs：新 Run 原样投影，旧 Run 与非法值读成 null', () => {
+    const failed = createRunRecord()
+    failed.status = 'FAILED'
+    failed.errorCode = 'llm_auth'
+    const failedSampling = failed.steps.find(step => step.sequence === 7)!
+    failedSampling.output = {
+      ...(failedSampling.output as Record<string, unknown>),
+      firstTokenMs: 812,
+      errorCode: 'llm_auth',
+    }
+
+    const failedDetail = projectAdminRunDetail(failed)
+    const failedSamplingItem = failedDetail.timeline.find(item => item.sequence === 7)
+
+    assert.equal(projectAdminRunListItem(failed).errorCode, 'llm_auth')
+    assert.equal(failedDetail.errorCode, 'llm_auth')
+    assert.ok(failedSamplingItem?.kind === 'known' && failedSamplingItem.type === 'model_sampling')
+    assert.equal(failedSamplingItem.firstTokenMs, 812)
+    assert.equal(failedSamplingItem.errorCode, 'llm_auth')
+
+    // 字段上线前的旧 Run：列为 null、Step output 没有这两个键，前端显示「未记录」。
+    const legacyDetail = projectAdminRunDetail(createLegacyRunRecord())
+    const legacySampling = legacyDetail.timeline.find(item => item.sequence === 3)
+
+    assert.equal(legacyDetail.errorCode, null)
+    assert.ok(legacySampling?.kind === 'known' && legacySampling.type === 'model_sampling')
+    assert.equal(legacySampling.firstTokenMs, null)
+    assert.equal(legacySampling.errorCode, null)
+
+    const corrupted = createRunRecord()
+    corrupted.errorCode = 'not_a_code'
+    const corruptedSampling = corrupted.steps.find(step => step.sequence === 7)!
+    corruptedSampling.output = {
+      ...(corruptedSampling.output as Record<string, unknown>),
+      firstTokenMs: -1,
+      errorCode: 'provider_secret',
+    }
+
+    const corruptedDetail = projectAdminRunDetail(corrupted)
+    const corruptedSamplingItem = corruptedDetail.timeline.find(item => item.sequence === 7)
+
+    assert.equal(corruptedDetail.errorCode, null)
+    assert.ok(corruptedSamplingItem?.kind === 'known' && corruptedSamplingItem.type === 'model_sampling')
+    assert.equal(corruptedSamplingItem.firstTokenMs, null)
+    assert.equal(corruptedSamplingItem.errorCode, null)
+  })
+
   it('零 sampling 的早期终止保留 usage 未记录语义', () => {
     const record = createRunRecord()
     record.status = 'FAILED'
