@@ -24,6 +24,43 @@ export function appendToolCallIdentity(current: string, delta: string | undefine
   return delta && delta !== current ? current + delta : current
 }
 
+/**
+ * 分片 index → 累积槽位，adapter 与 debug tee 共用，Admin 看到的调用与运行时一致。显式 index 固定映射到同一槽位；
+ * 缺 index 的分片（Google 官方端点，每片是一个完整调用）取还没被占用的最小槽位。两者谁先到都不撞号。
+ */
+export class ToolCallSlots {
+  private readonly slotsByIndex = new Map<number, number>()
+  private readonly taken = new Set<number>()
+
+  slotOf(index: number | null | undefined): number {
+    if (index == null)
+      return this.take(this.firstFree())
+
+    const known = this.slotsByIndex.get(index)
+
+    if (known !== undefined)
+      return known
+
+    const slot = this.taken.has(index) ? this.firstFree() : index
+
+    this.slotsByIndex.set(index, slot)
+    return this.take(slot)
+  }
+
+  private firstFree(): number {
+    let slot = 0
+
+    while (this.taken.has(slot))
+      slot++
+    return slot
+  }
+
+  private take(slot: number): number {
+    this.taken.add(slot)
+    return slot
+  }
+}
+
 /** 按 Tool Call index 累积 OpenAI-compatible 流式分片。 */
 export class OpenAICompatibleToolCallAccumulator {
   private readonly buffers = new Map<number, OpenAICompatibleToolCallBuffer>()

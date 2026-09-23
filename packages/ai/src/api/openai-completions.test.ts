@@ -3,7 +3,7 @@ import type { ModelRawResponseCapture } from '../types.js'
 import assert from 'node:assert/strict'
 import { getEventListeners } from 'node:events'
 // eslint-disable-next-line test/no-import-node-test
-import { describe, it } from 'node:test'
+import { describe, it, mock } from 'node:test'
 
 import { familyCompatOf } from '@agent/contracts'
 import OpenAI from 'openai'
@@ -645,15 +645,114 @@ describe('OpenAICompatibleClient 未映射状态码的错误文案', () => {
   })
 })
 
+describe('OpenAICompatibleClient 模型调用边界（#168）', () => {
+  async function failureOf(response: () => Response): Promise<unknown> {
+    const harness = createFetchHarness([response])
+
+    try {
+      await collectEvents(harness.client.chatStream(
+        [{ type: 'message', role: 'user', content: 'hello' }],
+        { request: RELAY_REQUEST },
+      ))
+    }
+    catch (error) {
+      return error
+    }
+    assert.fail('chatStream 应当失败')
+  }
+
+  const sse = (...lines: string[]) => () => new Response(
+    lines.map(line => `${line}\n\n`).join(''),
+    { status: 200, headers: { 'Content-Type': 'text/event-stream' } },
+  )
+
+  it('AC-01 上游报错回显本次 key：code / type / message 里的 key 换成 ***，截断也不留半截', async () => {
+    const key = createRuntimeConfig().apiKey
+    const echoed = await failureOf(() => new Response(JSON.stringify({
+      error: { code: `bad_${key}`, type: 'auth', message: `Incorrect API key provided: ${key}.` },
+    }), { status: 404, headers: { 'Content-Type': 'application/json' } }))
+    const atBoundary = await failureOf(() => new Response(JSON.stringify({
+      error: { message: `${'x'.repeat(190)}${key}${'y'.repeat(50)}` },
+    }), { status: 404, headers: { 'Content-Type': 'application/json' } }))
+    const inStream = await failureOf(sse(`data: ${JSON.stringify({ error: { code: 'invalid_api_key', message: `bad key ${key}` } })}`))
+
+    for (const error of [echoed, atBoundary, inStream]) {
+      assert.ok(error instanceof LLMApiError)
+      assert.doesNotMatch(error.message, /test-api/)
+      assert.match(error.message, /\*\*\*/)
+    }
+    assert.equal((echoed as LLMApiError).message, 'LLM API HTTP 404 错误: [bad_*** / auth] Incorrect API key provided: ***.')
+  })
+
+  it('少于 8 个字符的占位 key 不做替换，正文不被打乱', async () => {
+    const harness = createFetchHarness([() => new Response(JSON.stringify({
+      error: { message: 'model none not found' },
+    }), { status: 404, headers: { 'Content-Type': 'application/json' } })], { apiKey: 'none' })
+
+    await assert.rejects(
+      collectEvents(harness.client.chatStream(
+        [{ type: 'message', role: 'user', content: 'hello' }],
+        { request: RELAY_REQUEST },
+      )),
+      (error: unknown) => error instanceof LLMApiError && error.message === 'LLM API HTTP 404 错误: model none not found',
+    )
+  })
+
+  it('AC-02 SSE 行不是合法 JSON：SDK 不往 stderr 打上游原文，归为协议错误且文案不带片段', async () => {
+    const consoleError = mock.method(console, 'error', () => {})
+    const consoleWarn = mock.method(console, 'warn', () => {})
+
+    try {
+      const error = await failureOf(sse('data: {"choices": SECRET_UPSTREAM_LINE'))
+
+      assert.ok(error instanceof LLMApiError)
+      assert.equal(error.message, '模型服务返回了无法解析的数据')
+      assert.equal(consoleError.mock.callCount(), 0)
+      assert.equal(consoleWarn.mock.callCount(), 0)
+    }
+    finally {
+      consoleError.mock.restore()
+      consoleWarn.mock.restore()
+    }
+  })
+
+  it('AC-03 数据块没有 choices：报协议错误，不再变成 TypeError / 网络错误', async () => {
+    const error = await failureOf(sse('data: {"message":"upstream oops"}', 'data: [DONE]'))
+
+    assert.ok(error instanceof LLMApiError)
+    assert.match(error.message, /没有 choices/)
+  })
+
+  it('AC-04 流内 error 对象带 HTTP 状态码时与响应状态码同表归类，非数值 code 仍是协议错误', async () => {
+    const cases: Array<[unknown, (error: unknown) => boolean]> = [
+      [429, error => error instanceof LLMRateLimitError],
+      [503, error => error instanceof LLMServerError && /（503）/.test(error.message)],
+      ['502', error => error instanceof LLMServerError && /（502）/.test(error.message)],
+      [401, error => error instanceof LLMAuthError],
+      ['server_busy', error => error instanceof LLMApiError && /未知 HTTP 状态/.test(error.message)],
+      [42, error => error instanceof LLMApiError && /未知 HTTP 状态/.test(error.message)],
+      // 200 / 300 不是错误状态，多半是中转站自己的业务码，不当 HTTP 状态归类。
+      [200, error => error instanceof LLMApiError && /未知 HTTP 状态/.test(error.message)],
+      ['300', error => error instanceof LLMApiError && /未知 HTTP 状态/.test(error.message)],
+    ]
+
+    for (const [code, matches] of cases) {
+      const error = await failureOf(sse(`data: ${JSON.stringify({ error: { code, message: 'upstream said no' } })}`))
+
+      assert.ok(matches(error), `code ${String(code)} 归类不对：${String(error)}`)
+    }
+  })
+})
+
 interface ProviderCall {
   kind: string
   options: { timeout: number }
   params?: Record<string, unknown>
 }
 
-function createRuntimeConfig(options: { captureModelIO?: boolean } = {}): LLMClientConfig {
+function createRuntimeConfig(options: { captureModelIO?: boolean, apiKey?: string } = {}): LLMClientConfig {
   return {
-    apiKey: 'test-api-key',
+    apiKey: options.apiKey ?? 'test-api-key',
     baseUrl: 'https://api.deepseek.com/v1',
     captureModelIO: options.captureModelIO ?? false,
   }
@@ -725,7 +824,7 @@ function createProviderClient(client: OpenAICompatibleClient): OpenAI {
 /** 真实 SDK client + 按次序消费的 fake fetch；attempt 抛错即模拟连接错误。 */
 function createFetchHarness(
   attempts: Array<() => Response>,
-  options: { captureModelIO?: boolean } = {},
+  options: { captureModelIO?: boolean, apiKey?: string } = {},
 ) {
   const fetchCalls: RequestInit[] = []
   const client = new OpenAICompatibleClient(createRuntimeConfig(options))

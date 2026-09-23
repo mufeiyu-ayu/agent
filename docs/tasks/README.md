@@ -7,8 +7,8 @@
 ```text
 阶段 1-8：Completed
 当前阶段：本项目源码阅读（工作台第 0 档）
-Active Agent Task：无
-Next：#168；Planned：#169、#170（2026-09-23 复核拆出，按此顺序）
+Active Agent Task：#168（已实现、待验收）
+Planned：#169、#170（2026-09-23 复核拆出，按此顺序）
 Gated：#117 Responses API adapter（2026-09-18）、web_fetch（2026-09-19），触发条件见看板
 产品方向：内部数据工作台（2026-09-20 定案，docs/research/workbench-direction.md），未立 Issue；档、顺序与触发只在其第 7 节
 候选子系统：session 事件流与 replay、审批门、compaction、定时任务（未立 Issue，各自的档见 workbench 第 7 节）
@@ -21,7 +21,7 @@ Admin Task 4：Planned
 | 任务 | 状态 | 说明 |
 | --- | --- | --- |
 | #167 落库文本清洗（U+0000 不再让 Run 停在 RUNNING） | Completed | 实施状态：已实现 / 验收状态：已通过。PR #171 代码 head `da358c8` 的 AC-01～AC-07（含 AC-05b）于 2026-09-23 逐条 PASS（PR 验收评论为证据）：可见 delta、Grounding 回答、用户消息在进入 `content` 前把 U+0000 与孤立代理项换成 U+FFFD（delta / done / 落库同一个串），工具 Step 的 callId / toolName / errorMessage 与 debug 抓取信封同样过 `toPersistableText`（移到 `agent-runtime/persistable-text.ts`）；实现会话读码补入 debug 抓取入口、review 后孤立代理项也在 `content` 入口替换（Issue 已更新）。验证：api typecheck / lint、`test:model-stream` 105、`test:grounding` 159、`test:agent-recorder` 22、`test:grounding-db` 22（新增 7 条真实 DB 故障注入，旧代码上 7 条全失败且复现「终态收口失败，DB 状态可能停留在非终态」；只还原抓取信封时 AC-05b 以 jsonb 报错失败）、`test:tools` 80、`test:chat-service` 29。`/code-review high` 两轮 15 条修 10 条。限制：跨两个 delta 的代理对会各自换成 U+FFFD（上游按码点解码，实际不出现）；`Conversation.title` 含 U+0000 仍返回 500（Issue 不做其他表）；不清理已卡住的 Run（R2）。学习环节待做 |
-| #168 模型调用边界补漏 | Planned | 实施状态：未开始 / 验收状态：未验收。回显 key 脱敏（Codex P1，PR #159）、SDK 日志关闭、非 HTTP 异常与流内错误归类、首 Token 只认生成事件、缺 index 编号不撞号 |
+| #168 模型调用边界补漏 | Active | 实施状态：已实现 / 验收状态：待验收。未映射状态码文案里本次 key（≥ 8 字符）先换 `***` 再截断（Codex P1，PR #159），SDK `logLevel: 'off'`，上游 JSON 解析失败与既无 `choices` 也无 `usage` 的数据块归 `LLMApiError`（只带 usage 的末尾块、省掉 delta 的 choice 放行），流内 error 对象的 4xx / 5xx code 与响应状态码同表归类，`firstTokenMs` 只认生成事件，缺 index 与显式 index 经 `ToolCallSlots` 分槽（adapter 与 tee 共用，谁先到都不撞号）。验证：`pnpm typecheck`、api / ai lint、`@agent/ai` 76、`test:model-stream` 111、`test:llm-config` 23、`test:grounding` 159、`test:chat-service` 29；新增 15 条 AC 用例在旧代码上全失败 |
 | #169 前台 Markdown 与会话小修 | Planned | 实施状态：未开始 / 验收状态：未验收。复核 P2 中文强调（`markdown-it-cjk-friendly`）；流式当前行误补、无前导竖线表格与代码段竖线、空标题、收尾 150ms、裸链接吞全角标点、图片 O(n²)、失败请求侧栏排序 |
 | #170 模型配置校验小修 | Planned | 实施状态：未开始 / 验收状态：未验收。可见行按运行时公式校验预算、服务商弹窗改凭据清掉旧测试结论、拒绝旧占位主密钥 |
 | #151 模型调用失败保留真实原因（errorCode / 首 token 时间） | Completed | 实施状态：已实现 / 验收状态：已通过。PR #159 代码 head `1706a2d` 的 AC-01～AC-07 于 2026-09-23 逐条 PASS（PR 验收评论为证据）：contracts 加 `AGENT_RUN_ERROR_CODES`，`AgentRun.errorCode` 可空列（migration 只加列）；runtime 在终态确立后由 `describeRunFailure` 一处得出 errorCode 与文案，Run、失败采样 / finalization / 工具 Step 与 error 事件同源，errorCode 与终态同一条 Run CAS 写入，流错误保留 `cause`，FAILED 时一条 `agent_run_failed` warn；`getAiExceptionMessage` 移到 `common/utils`；`@agent/ai` 加 `reasoning_started`、流正文阶段 abort 不再报成缺 finish reason、raw capture 按 finish_reason / usage / signal 标 partial、上游 5xx 统一 `LLMServerError`；采样 Step 记 `firstTokenMs`（含 SDK 首个响应头前的重试与退避）；Admin Run Trace 头部与采样详情展示两项。验证：真实 SDK + fake fetch 故障注入覆盖 401 / 402 / 429 / 500 / 连接重置 / 缺 finish_reason / 用户停止 / deadline / finalization 401；`pnpm typecheck`、api / ai / admin lint、`test:model-stream` 94、`test:agent-recorder` 21、`test:grounding` 156、`@agent/ai` 55、`test:admin` 66、prisma generate / validate；dev 库 `migrate deploy` 后 27 条旧 Run 为 null、Admin 显示「未记录」；本机临时错误 key 服务商 → 前台「AI 服务认证失败…」与 Run Trace `llm_auth`（测后删除），正常对话首 Token 时间 503ms。`/code-review high` 两轮 18 条修 11 条。限制：408 / 409 等未单独归类的 4xx 仍归 `llm_protocol`；dev 库既有 `LlmProvider.family` 默认值漂移与本改动无关；消费者 `return()` 兜底收口的采样 Step 没有 usage 与 `firstTokenMs`（2026-09-23 复核补记）。学习环节待做 |

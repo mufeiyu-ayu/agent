@@ -4,6 +4,7 @@ import assert from 'node:assert/strict'
 // eslint-disable-next-line test/no-import-node-test
 import { describe, it } from 'node:test'
 
+import { LLMApiError } from '../errors.js'
 import { teeRawResponseCapture } from './openai-completions-raw-capture.js'
 import { adaptOpenAICompatibleStream } from './openai-completions-stream.js'
 
@@ -177,6 +178,132 @@ describe('teeRawResponseCapture', () => {
       (captured?.rawResponse as { choices: Array<{ message: { tool_calls: unknown } }> }).choices[0]?.message.tool_calls,
       [{ id: 'call_1', type: 'function', function: { name: 'search', arguments: '{"query":"seo"}' } }],
     )
+  })
+
+  it('缺 index 放宽下显式 index 与缺 index 混用：取未占用的最小编号，tee 与累加器给出两个独立调用', async () => {
+    // Google 官方端点缺 index 且每个分片是一个完整调用；SDK 类型把 index 标为必填，这里按线上形状构造。
+    const indexless = { id: 'call_B', type: 'function', function: { name: 'b', arguments: '{"q":"b"}' } } as ChatCompletionChunk.Choice.Delta.ToolCall
+    const chunks = [
+      createChunk({ delta: { role: 'assistant', tool_calls: [{ index: 0, id: 'call_A', type: 'function', function: { name: 'a', arguments: '{"q":"a"}' } }] } }),
+      createChunk({ delta: { tool_calls: [indexless] }, finish_reason: 'stop' }),
+    ]
+    let captured: ModelRawResponseCapture | undefined
+    const events: ModelStreamEvent[] = []
+
+    for await (const event of adaptOpenAICompatibleStream(
+      teeRawResponseCapture(toAsyncIterable(chunks), (capture) => {
+        captured = capture
+      }),
+      { requireReasoningContent: false, toolCallIndexOptional: true, toolCallsMayFinishWithStop: true },
+    )) {
+      events.push(event)
+    }
+
+    assert.deepEqual(
+      events.flatMap(event => event.type === 'tool_call_completed' ? [event.toolCall] : []),
+      [
+        { providerCallId: 'call_A', name: 'a', argumentsJson: '{"q":"a"}', index: 0 },
+        { providerCallId: 'call_B', name: 'b', argumentsJson: '{"q":"b"}', index: 1 },
+      ],
+    )
+    assert.deepEqual(
+      (captured?.rawResponse as { choices: Array<{ message: { tool_calls: Array<{ id: string }> } }> })
+        .choices[0]
+        ?.message
+        .tool_calls
+        .map(call => call.id),
+      ['call_A', 'call_B'],
+    )
+  })
+
+  it('缺 index 的调用先到、显式 index 0 后到：显式 index 换到空槽位，仍是两个独立调用', async () => {
+    const indexless = { id: 'call_B', type: 'function', function: { name: 'b', arguments: '{"q":"b"}' } } as ChatCompletionChunk.Choice.Delta.ToolCall
+    const chunks = [
+      createChunk({ delta: { role: 'assistant', tool_calls: [indexless] } }),
+      createChunk({ delta: { tool_calls: [{ index: 0, id: 'call_A', type: 'function', function: { name: 'a', arguments: '{"q":' } }] } }),
+      createChunk({ delta: { tool_calls: [{ index: 0, function: { arguments: '"a"}' } }] }, finish_reason: 'stop' }),
+    ]
+    let captured: ModelRawResponseCapture | undefined
+    const events: ModelStreamEvent[] = []
+
+    for await (const event of adaptOpenAICompatibleStream(
+      teeRawResponseCapture(toAsyncIterable(chunks), (capture) => {
+        captured = capture
+      }),
+      { requireReasoningContent: false, toolCallIndexOptional: true, toolCallsMayFinishWithStop: true },
+    )) {
+      events.push(event)
+    }
+
+    assert.deepEqual(
+      events.flatMap(event => event.type === 'tool_call_completed' ? [event.toolCall] : []),
+      [
+        { providerCallId: 'call_B', name: 'b', argumentsJson: '{"q":"b"}', index: 0 },
+        { providerCallId: 'call_A', name: 'a', argumentsJson: '{"q":"a"}', index: 1 },
+      ],
+    )
+    assert.deepEqual(
+      (captured?.rawResponse as { choices: Array<{ message: { tool_calls: Array<{ id: string }> } }> })
+        .choices[0]
+        ?.message
+        .tool_calls
+        .map(call => call.id),
+      ['call_B', 'call_A'],
+    )
+  })
+
+  it('只带 usage、省掉 choices 的末尾数据块与省掉 delta 的末尾 choice 照常完成；null 数据块报协议错误', async () => {
+    const tolerated = [
+      createChunk({ delta: { role: 'assistant', content: '答' } }),
+      { id: 'chunk-1', object: 'chat.completion.chunk', created: 0, model: 'm', choices: [{ index: 0, finish_reason: 'stop' }] } as unknown as ChatCompletionChunk,
+      { id: 'chunk-1', object: 'chat.completion.chunk', created: 0, model: 'm', usage: { prompt_tokens: 3, completion_tokens: 1, total_tokens: 4 } } as unknown as ChatCompletionChunk,
+    ]
+    const events: ModelStreamEvent[] = []
+
+    for await (const event of adaptOpenAICompatibleStream(
+      teeRawResponseCapture(toAsyncIterable(tolerated), () => {}),
+      { requireReasoningContent: false },
+    )) {
+      events.push(event)
+    }
+
+    assert.deepEqual(events.map(event => event.type), ['text_delta', 'usage', 'response_completed'])
+
+    await assert.rejects(
+      (async () => {
+        for await (const _event of adaptOpenAICompatibleStream(
+          teeRawResponseCapture(toAsyncIterable([null as unknown as ChatCompletionChunk]), () => {}),
+          { requireReasoningContent: false },
+        )) {
+          // 只消费到出错为止。
+        }
+      })(),
+      (error: unknown) => error instanceof LLMApiError && /没有 choices/.test(error.message),
+    )
+  })
+
+  it('没有 choices 的数据块：tee 照常旁路记录，adapter 报协议错误而不是 TypeError', async () => {
+    const chunks = [
+      createChunk({ delta: { role: 'assistant', content: '部分' } }),
+      { message: 'upstream oops' } as unknown as ChatCompletionChunk,
+    ]
+    let captured: ModelRawResponseCapture | undefined
+
+    await assert.rejects(
+      (async () => {
+        for await (const _event of adaptOpenAICompatibleStream(
+          teeRawResponseCapture(toAsyncIterable(chunks), (capture) => {
+            captured = capture
+          }),
+          { requireReasoningContent: false },
+        )) {
+          // 只消费到出错为止。
+        }
+      })(),
+      (error: unknown) => error instanceof LLMApiError && /没有 choices/.test(error.message),
+    )
+    assert.equal(captured?.state, 'partial')
+    assert.equal(captured?.textChars, 2)
   })
 
   it('流中途抛错时提交 partial 并透传原错误', async () => {

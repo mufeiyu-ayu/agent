@@ -4,7 +4,7 @@ import type {
   ModelResponseCaptureEvent,
 } from '../types.js'
 
-import { appendToolCallIdentity } from './openai-completions-tool-calls.js'
+import { appendToolCallIdentity, ToolCallSlots } from './openai-completions-tool-calls.js'
 
 interface RawToolCallSlot {
   id?: string
@@ -46,20 +46,23 @@ export async function* teeRawResponseCapture(
   const contentChunks: string[] = []
   const reasoningContentChunks: string[] = []
   const toolCalls: RawToolCallSlot[] = []
-  let indexlessToolCallCount = 0
+  const toolCallSlots = new ToolCallSlots()
 
   try {
     for await (const chunk of chunks) {
       receivedChunkCount += 1
-      id ??= chunk.id
-      model ??= chunk.model
-      created ??= chunk.created
+      // tee 只旁路记录，不校验：null、缺 choices 这类数据块交给 adapter 报协议错误。
+      const record = typeof chunk === 'object' && chunk !== null ? chunk : undefined
 
-      const choice = chunk.choices[0]
+      id ??= record?.id
+      model ??= record?.model
+      created ??= record?.created
+
+      const choice = record?.choices?.[0]
 
       if (choice) {
         sawChoice = true
-        const delta = choice.delta as ChatCompletionChunk.Choice.Delta & {
+        const delta = (choice.delta ?? {}) as ChatCompletionChunk.Choice.Delta & {
           reasoning_content?: string | null
         }
 
@@ -69,8 +72,8 @@ export async function* teeRawResponseCapture(
         }
 
         for (const toolCallDelta of delta.tool_calls ?? []) {
-          // 与 adapter 同一编号：不带 index 的分片（Google 官方端点）按出现顺序编号；tee 不做校验，不看 compat。
-          const index = toolCallDelta.index ?? indexlessToolCallCount++
+          // 与 adapter 同一套槽位（ToolCallSlots）；tee 不做校验，不看 compat。
+          const index = toolCallSlots.slotOf(toolCallDelta.index)
           const slot = toolCalls[index]
             ?? (toolCalls[index] = { function: { name: '', arguments: '' } })
 
@@ -97,7 +100,7 @@ export async function* teeRawResponseCapture(
         }
       }
 
-      if (chunk.usage) {
+      if (record?.usage) {
         usage = chunk.usage
         lastEvent = 'usage'
       }
