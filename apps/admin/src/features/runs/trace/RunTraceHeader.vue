@@ -7,6 +7,7 @@ import { useI18n } from 'vue-i18n'
 
 import RunStatusTag from '../components/RunStatusTag.vue'
 import { formatDateTime, formatTokens } from '../run.utils'
+import { writeClipboardText } from './clipboard'
 
 const props = defineProps<{
   run: RunDetail
@@ -25,7 +26,7 @@ const errorCodeLabel = computed(() => (
 
 async function copyRunId() {
   try {
-    await navigator.clipboard.writeText(props.run.id)
+    await writeClipboardText(props.run.id)
     message.success(t('runTrace.header.copiedRunId'))
   }
   catch {

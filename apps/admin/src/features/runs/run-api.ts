@@ -9,15 +9,6 @@ import { i18n } from '@/i18n'
 
 import { appendPositiveInteger, requestAdminRun } from '../shared/admin-api'
 
-// 历史入口兼容：通用请求层已上移到 features/shared/admin-api，这里保留 re-export。
-export {
-  AdminRunApiError,
-  appendPositiveInteger,
-  formatAdminRunError,
-  requestAdminRun,
-} from '../shared/admin-api'
-export type { AdminRunFetchOptions } from '../shared/admin-api'
-
 export interface AdminRunListQuery {
   page?: number
   pageSize?: number

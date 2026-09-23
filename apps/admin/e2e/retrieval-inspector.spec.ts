@@ -17,9 +17,9 @@ import {
   RUN_ID,
 } from './fixtures'
 
-/** 截图落到本 Task 专属 docs asset 目录，作为可核验的浏览器证据。 */
+/** 截图落到已被 .gitignore 的 e2e/.artifacts，只作本地核验证据，不再写进已归档的任务目录。 */
 const SCREENSHOT_DIR = fileURLToPath(
-  new URL('../../../docs/tasks/phase-08-grounded-retrieval/assets/task-03c/', import.meta.url),
+  new URL('./.artifacts/retrieval-inspector/', import.meta.url),
 )
 
 const SWITCH = '[data-testid="inspector-view-switch"]'

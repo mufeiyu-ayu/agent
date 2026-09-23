@@ -51,7 +51,8 @@ const STREAM_TIMEOUT_MS = 600_000
  * `retry-after` 由 SDK 处理）。重试边界是首个响应头之前：流正文中断不重试，
  * 已推给调用方的 delta 无法撤回；abort 信号触发后也不再重试。
  * SDK 的退避 sleep 不监听 signal，且对 `retry-after` 不设上限，`chatStream`
- * 用 `rejectOnAbort` 让 abort 立即胜出，deadline / 用户停止不会被 sleep 拖住。
+ * 与元数据请求用 `rejectOnAbort` 让 abort 立即胜出，deadline / 用户停止 /
+ * 调用方的整体超时不会被 sleep 拖住。
  */
 const REQUEST_MAX_RETRIES = 2
 
@@ -79,23 +80,16 @@ type AssistantToolCallMessageParam
 export class OpenAICompatibleClient {
   constructor(private readonly clientConfig: LLMClientConfig) {}
 
-  async listModels(): Promise<ProviderModelsResponse> {
-    return await this.runWithLLMErrorHandling(() =>
-      this.createClient().get<ProviderModelsResponse>('/models', {
-        timeout: METADATA_REQUEST_TIMEOUT_MS,
-      }),
-    )
+  /** `signal` 由调用方给整体时间上界：SDK 的 timeout 按尝试计时，重试退避也不听 signal。 */
+  async listModels(options: { signal?: AbortSignal } = {}): Promise<ProviderModelsResponse> {
+    return await this.getMetadata<ProviderModelsResponse>('/models', options.signal)
   }
 
   /** DeepSeek 的余额端点在 origin 下（`/user/balance`），不在 `/v1` 前缀下；用绝对 URL 绕过 baseURL 拼接。 */
-  async getUserBalance(): Promise<ProviderBalanceResponse> {
+  async getUserBalance(options: { signal?: AbortSignal } = {}): Promise<ProviderBalanceResponse> {
     const url = new URL('/user/balance', this.clientConfig.baseUrl).href
 
-    return await this.runWithLLMErrorHandling(() =>
-      this.createClient().get<ProviderBalanceResponse>(url, {
-        timeout: METADATA_REQUEST_TIMEOUT_MS,
-      }),
-    )
+    return await this.getMetadata<ProviderBalanceResponse>(url, options.signal)
   }
 
   async* chatStream(
@@ -213,9 +207,15 @@ export class OpenAICompatibleClient {
     }
   }
 
-  private async runWithLLMErrorHandling<T>(operation: () => Promise<T>): Promise<T> {
+  private async getMetadata<T>(path: string, signal: AbortSignal | undefined): Promise<T> {
     try {
-      return await operation()
+      return await rejectOnAbort(
+        this.createClient().get<T>(path, {
+          timeout: METADATA_REQUEST_TIMEOUT_MS,
+          ...(signal ? { signal } : {}),
+        }),
+        signal,
+      )
     }
     catch (cause) {
       throw this.toLLMError(cause)
@@ -241,7 +241,7 @@ export class OpenAICompatibleClient {
         return new LLMInvalidRequestError(400, error)
       case 401:
       case 403:
-        return new LLMAuthError(undefined, error)
+        return new LLMAuthError(error.status, error)
       case 402:
         return new LLMBalanceError(error)
       case 422:

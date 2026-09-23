@@ -8,7 +8,8 @@ import type { RunFailureDrilldown } from './run.utils'
 import { defineStore } from 'pinia'
 import { computed, reactive, ref, shallowRef } from 'vue'
 
-import { fetchAdminRuns, formatAdminRunError } from './run-api'
+import { formatAdminRunError } from '../shared/admin-api'
+import { fetchAdminRuns } from './run-api'
 
 export const defaultRunListPageSize = 8
 

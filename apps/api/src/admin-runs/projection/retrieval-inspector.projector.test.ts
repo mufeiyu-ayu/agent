@@ -150,6 +150,30 @@ describe('Admin Retrieval Inspector', () => {
     })
   })
 
+  it('finalization RUNNING 时 output 还没写，availability 与引用数回退读 input', () => {
+    const run = createGroundedRun({ finalization: { evidenceAvailability: 'partial', registryRefCount: 2 } })
+    const step = run.steps.find(item => item.type === 'grounded_finalization')!
+    step.status = 'RUNNING'
+    step.endedAt = null
+    step.output = null
+
+    const item = findTimelineItem(projectAdminRunDetail(run, null), 'grounded_finalization')
+
+    assert.ok(item.kind === 'known' && item.type === 'grounded_finalization')
+    assert.equal(item.evidenceAvailability, 'partial')
+    assert.equal(item.registryRefCount, 2)
+    assert.equal(item.outcome, null)
+    assert.equal(item.attemptCount, null)
+
+    // output 写了就以 output 为准。
+    step.output = { evidenceAvailability: 'available', registryRefCount: 5 }
+    const closed = findTimelineItem(projectAdminRunDetail(run, null), 'grounded_finalization')
+
+    assert.ok(closed.kind === 'known' && closed.type === 'grounded_finalization')
+    assert.equal(closed.evidenceAvailability, 'available')
+    assert.equal(closed.registryRefCount, 5)
+  })
+
   it('finalization usage 按 attempt 求和且投影 reasoning / cache 明细', () => {
     const run = createGroundedRun()
     const step = run.steps.find(item => item.type === 'grounded_finalization')!

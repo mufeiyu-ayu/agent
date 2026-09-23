@@ -18,7 +18,7 @@ import type {
   UpdateAdminLlmModelDto,
   UpdateAdminLlmProviderDto,
 } from './dto/admin-llm.dto.js'
-import { LLMAuthError } from '@agent/ai'
+import { LLMApiError, LLMAuthError, LLMNetworkError } from '@agent/ai'
 import { familyCompatOf, LLM_PROVIDER_FAMILIES, reasoningEffortsOf } from '@agent/contracts'
 
 import {
@@ -28,6 +28,8 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common'
+import { ContextBudgetExceededError } from '../agent-runtime/agent-runtime.errors.js'
+import { DEFAULT_INITIAL_CONTEXT_POLICY, resolveInitialContextBudget } from '../agent-runtime/context/initial-context.js'
 import { Prisma } from '../generated/prisma/client.js'
 import { LlmModelConfigService } from '../llm/llm-model-config.service.js'
 import { LlmModelUnavailableError } from '../llm/llm.errors.js'
@@ -39,6 +41,9 @@ type ProviderWithCount = LlmProvider & { _count: { models: number } }
 
 /** 同时探测的模型数：够快，又不至于一下把中转站的限流打满。 */
 const PROBE_CONCURRENCY = 4
+
+/** 探活结论作废：表格回到「未测试」。 */
+const CLEARED_PROBE = { lastProbeOk: null, lastProbeError: null, lastProbedAt: null }
 
 @Injectable()
 export class AdminLlmService {
@@ -72,8 +77,10 @@ export class AdminLlmService {
       return { models: [...new Set(models)].sort() }
     }
     catch (error) {
-      // 管理员填错密钥是客户端错误，按 400 回给弹窗改，而不是当成上游网关故障 502。
-      if (error instanceof LLMAuthError)
+      // 密钥、地址（少了 /v1、返回的不是模型列表）、连不上或超时都是管理员能在弹窗里改的：
+      // 按 400 带原文案回去，否则全局 filter 会把 LLMError 换成面向前台的通用文案。
+      // 限流、余额与上游 5xx 仍交给 filter。
+      if (error instanceof LLMAuthError || error instanceof LLMApiError || error instanceof LLMNetworkError)
         throw new BadRequestException(error.message)
 
       throw error
@@ -125,6 +132,7 @@ export class AdminLlmService {
   ): Promise<AdminLlmProvider> {
     const current = await this.requireProvider(providerId)
     const nextFamily = input.family ?? current.family
+    const nextBaseUrl = input.baseUrl === undefined ? current.baseUrl : normalizeBaseUrl(input.baseUrl)
 
     const provider = await this.prismaService.$transaction(async (tx) => {
       // 家族变了，其下模型行里新家族不认的 reasoning_effort 一并清空，避免之后每个 Run 都被上游 400。
@@ -134,13 +142,17 @@ export class AdminLlmService {
           data: { reasoningEffort: null },
         })
       }
+      // 家族、地址、密钥任一变了，旧的探活结论不再代表现在的配置；空串密钥等于不改。
+      if (nextFamily !== current.family || nextBaseUrl !== current.baseUrl || input.apiKey) {
+        await tx.llmModel.updateMany({ where: { providerId }, data: CLEARED_PROBE })
+      }
 
       return tx.llmProvider.update({
         where: { id: providerId },
         data: {
           ...(input.family === undefined ? {} : { family: input.family }),
           ...(input.note === undefined ? {} : { note: input.note }),
-          ...(input.baseUrl === undefined ? {} : { baseUrl: normalizeBaseUrl(input.baseUrl) }),
+          ...(input.baseUrl === undefined ? {} : { baseUrl: nextBaseUrl }),
           ...(input.enabled === undefined ? {} : { enabled: input.enabled }),
           // 空串与省略同义：管理台编辑表单留空就是不改密钥。
           ...(input.apiKey ? this.llmModelConfigService.encryptApiKey(input.apiKey) : {}),
@@ -207,16 +219,30 @@ export class AdminLlmService {
     // DTO 实例上没传的字段是值为 undefined 的自有属性，直接展开会把 current 覆盖成 undefined。
     const patch = omitUndefined(input)
 
-    // 局部更新按合并后的整行校验：输出上限与上下文、默认与可见、强度与家族的约束不能被拆开绕过。
-    assertModelRowValid({ ...current, ...patch, family: current.provider.family })
+    const next = { ...current, ...patch }
 
-    const model = await this.rejectDuplicateWireName(patch.wireName ?? current.wireName, () =>
+    // 局部更新按合并后的整行校验：默认与可见、强度与家族的约束不能被拆开绕过。
+    assertModelRowValid({ ...next, family: current.provider.family })
+    // 输入预算只在上下文或输出上限这次真的变了时校验：它比旧规则「输出 < 上下文」严，
+    // 旧行改名、切可见或排序时不被卡住（编辑弹窗总会带上没动过的数值）；变了就按合并后的整行算，拆成两次改也绕不过。
+    if (next.contextWindowTokens !== current.contextWindowTokens || next.maxOutputTokens !== current.maxOutputTokens)
+      assertInputBudget(next)
+
+    // 探活按 wireName、强度、maxOutput 发请求，这三项变了旧结论就不作数，表格回到「未测试」。
+    const probeChanged = next.wireName !== current.wireName
+      || next.reasoningEffort !== current.reasoningEffort
+      || next.maxOutputTokens !== current.maxOutputTokens
+
+    const model = await this.rejectDuplicateWireName(next.wireName, () =>
       this.prismaService.$transaction(async (tx) => {
         // 一条语句改全表：两个并发的「设为默认」在行锁上串行，最后提交的赢，不会留下两个默认。
         if (patch.isDefault)
           await tx.$executeRaw`UPDATE "LlmModel" SET "isDefault" = ("id" = ${modelId})`
 
-        return tx.llmModel.update({ where: { id: modelId }, data: patch })
+        return tx.llmModel.update({
+          where: { id: modelId },
+          data: { ...patch, ...(probeChanged ? CLEARED_PROBE : {}) },
+        })
       }))
 
     return toAdminLlmModel(model)
@@ -232,17 +258,35 @@ export class AdminLlmService {
       include: { provider: true },
     })
 
-    const updated = await mapWithConcurrency(models, PROBE_CONCURRENCY, async (model) => {
+    await mapWithConcurrency(models, PROBE_CONCURRENCY, async (model) => {
       const outcome = await this.probeStoredModel(model)
 
-      return this.prismaService.llmModel.update({
-        where: { id: model.id },
+      // 只在探活用到的配置没变时写回：一次探活最长 30s，期间改了模型或服务商（lastProbe* 已被清空），
+      // 旧配置测出的结论不能再盖上去。
+      await this.prismaService.llmModel.updateMany({
+        where: {
+          id: model.id,
+          wireName: model.wireName,
+          reasoningEffort: model.reasoningEffort,
+          maxOutputTokens: model.maxOutputTokens,
+          provider: {
+            is: {
+              family: model.provider.family,
+              baseUrl: model.provider.baseUrl,
+              apiKeyEncrypted: model.provider.apiKeyEncrypted,
+            },
+          },
+        },
         data: {
           lastProbeOk: outcome.ok,
           lastProbeError: outcome.ok ? null : outcome.error,
           lastProbedAt: new Date(),
         },
       })
+    })
+
+    const updated = await this.prismaService.llmModel.findMany({
+      where: { id: { in: models.map(model => model.id) } },
     })
 
     return updated.map(toAdminLlmModel)
@@ -353,20 +397,40 @@ export class AdminLlmService {
 }
 
 /**
- * 模型行的跨字段约束：输出上限必须小于上下文窗口（否则每个 Run 都在创建后才因预算失败）；
- * 默认模型必须对前台可见（与 resolveModel / resolveDefaultProvider 的口径一致）；
+ * 上下文窗口扣掉输出上限与安全余量后必须还有输入预算。直接调运行时的 `resolveInitialContextBudget`，
+ * 公式只有一份；否则这样的行能保存、能探活，每个 Run 却都在创建后才因预算失败。
+ */
+function assertInputBudget(row: { contextWindowTokens: number, maxOutputTokens: number }): void {
+  try {
+    resolveInitialContextBudget({
+      contextWindowTokens: row.contextWindowTokens,
+      resolvedMaxOutputTokens: row.maxOutputTokens,
+    })
+  }
+  catch (error) {
+    if (!(error instanceof ContextBudgetExceededError))
+      throw error
+
+    const margin = DEFAULT_INITIAL_CONTEXT_POLICY.safetyMarginTokens
+
+    throw new BadRequestException(
+      `输入预算 = contextWindowTokens − maxOutputTokens − 安全余量 ${margin} 必须大于 0，`
+      + `当前为 ${row.contextWindowTokens} − ${row.maxOutputTokens} − ${margin} = `
+      + `${row.contextWindowTokens - row.maxOutputTokens - margin}；请调大上下文窗口或调小输出上限`,
+    )
+  }
+}
+
+/**
+ * 模型行的跨字段约束：默认模型必须对前台可见（与 resolveModel / resolveDefaultProvider 的口径一致）；
  * reasoning_effort 只能取所属家族的值。
  */
 function assertModelRowValid(row: {
-  contextWindowTokens: number
-  maxOutputTokens: number
   visible: boolean
   isDefault: boolean
   reasoningEffort: string | null
   family: string
 }): void {
-  if (row.maxOutputTokens >= row.contextWindowTokens)
-    throw new BadRequestException('maxOutputTokens 必须小于 contextWindowTokens')
   if (row.isDefault && !row.visible)
     throw new BadRequestException('默认模型必须对前台可见')
 

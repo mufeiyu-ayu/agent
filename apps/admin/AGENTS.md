@@ -23,7 +23,7 @@ views 组合 -> features/<领域>/ 的 state + api + components -> features/shar
 | `components/layout/` | 侧栏、路由 tab、主题与语言切换 | `AdminSidebar.vue`（菜单项在这里） |
 | `components/common/` | 页面容器、空态、状态徽标 | |
 | `lib/` `stores/` | 主题 / 侧栏偏好与路由 tab 的持久化 | `admin-state.ts` |
-| `i18n/` | 中英文案，`i18n.check.ts` 校验键一致 | |
+| `i18n/` | 中英文案，`i18n.check.ts` 校验中英键一致、每个键在 src 里被引用（动态拼接的键登记前缀白名单） | |
 | `styles/index.css` | 设计 token（颜色 / 圆角 / 阴影 CSS 变量） | |
 
 ## 约束
