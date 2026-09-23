@@ -433,6 +433,47 @@ test('#155 AC-07：发送因 400 失败后侧栏会话顺序不变', async ({ pa
   await expect(titles).toHaveText(['较新的会话', '落地页 SEO 诊断'])
 })
 
+async function failSendInOlderConversation(page: Page, userMessagePersisted: boolean) {
+  const json = (data: unknown) => ({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, code: 0, message: 'ok', data }) })
+  await installApiRoutes(page, () => [])
+  await installBrowserStubs(page, {
+    lines: [JSON.stringify({
+      type: 'error',
+      conversationId: CONVERSATION_ID,
+      message: '上下文超出预算',
+      ...(userMessagePersisted ? { userMessagePersisted: true } : {}),
+    })],
+    holdBeforeIndex: -1,
+  })
+  await page.route('**/api/conversations?*', route => route.fulfill(json({
+    items: [
+      { id: 'conversation-newer', title: '较新的会话', createdAt: '2026-08-17T08:00:00.000Z', updatedAt: '2026-08-17T09:00:00.000Z' },
+      { id: CONVERSATION_ID, title: '落地页 SEO 诊断', createdAt: '2026-08-16T08:00:00.000Z', updatedAt: '2026-08-16T09:00:00.000Z' },
+    ],
+    nextCursor: null,
+  })))
+  await page.route('**/api/conversations/conversation-newer/messages', route => route.fulfill(json([])))
+  await page.goto('/workspace')
+
+  const titles = page.getByText(/^(较新的会话|落地页 SEO 诊断)$/)
+  await expect(titles).toHaveText(['较新的会话', '落地页 SEO 诊断'])
+  await page.getByText('落地页 SEO 诊断').click()
+  await page.getByRole('textbox').first().fill('这次会失败')
+  await page.getByRole('button', { name: '发送消息' }).click()
+  await expect(page.getByRole('status').filter({ hasText: '上下文超出预算' })).toBeVisible()
+  return titles
+}
+
+test('#169 AC-08：用户消息已落库后才失败的请求立即把会话移到侧栏顶部', async ({ page }) => {
+  const titles = await failSendInOlderConversation(page, true)
+  await expect(titles).toHaveText(['落地页 SEO 诊断', '较新的会话'])
+})
+
+test('#169 AC-08：用户消息落库前就失败（会话不存在等）不移动侧栏', async ({ page }) => {
+  const titles = await failSendInOlderConversation(page, false)
+  await expect(titles).toHaveText(['较新的会话', '落地页 SEO 诊断'])
+})
+
 test('#155：同一帧内到达的多个 delta 合并成一次消息写入，终态前全部写入', async ({ page }) => {
   const identity = { conversationId: CONVERSATION_ID, assistantMessageId: 'assistant-live' }
   const [start] = toNdjsonLines()

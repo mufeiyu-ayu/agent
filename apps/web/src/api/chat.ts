@@ -187,6 +187,7 @@ function isChatStreamEvent(value: unknown): value is ChatStreamEvent {
           value.assistantMessageId === undefined
           || typeof value.assistantMessageId === 'string'
         )
+        && (value.userMessagePersisted === undefined || typeof value.userMessagePersisted === 'boolean')
       )
     case 'aborted':
       return (

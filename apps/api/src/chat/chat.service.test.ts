@@ -119,6 +119,7 @@ describe('ChatService', () => {
         conversationId: 'conversation-1',
         assistantMessageId: 'assistant-message-1',
         message: '安全错误',
+        userMessagePersisted: true,
       },
       {
         type: 'aborted',
@@ -437,6 +438,7 @@ function runFailedEvent(
     assistantMessageId: 'assistant-message-1',
     ...(failureReason ? { failureReason } : {}),
     message,
+    userMessagePersisted: true,
   }
 }
 

@@ -612,6 +612,8 @@ describe('AgentRuntimeService model stream', () => {
     if (events[0]?.type !== 'run_failed')
       assert.fail('expected run_failed')
     assert.match(events[0].message, /Mandatory Context/)
+    // 用户消息已落库、会话 updatedAt 已变：前台要据此同步侧栏（#169）。
+    assert.equal(events[0].userMessagePersisted, true)
     assert.equal(harness.llmCalls.length, 0)
     assert.equal(harness.assistantMessage(), undefined)
     assert.equal(

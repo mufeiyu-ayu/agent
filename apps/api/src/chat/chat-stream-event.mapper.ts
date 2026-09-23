@@ -37,6 +37,7 @@ export function toChatStreamEvent(event: AgentRuntimeEvent): ChatStreamEvent {
         conversationId: event.conversationId,
         ...(event.assistantMessageId ? { assistantMessageId: event.assistantMessageId } : {}),
         message: event.message,
+        ...(event.userMessagePersisted ? { userMessagePersisted: true } : {}),
       }
 
     case 'run_aborted':

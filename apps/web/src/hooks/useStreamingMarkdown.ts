@@ -5,9 +5,12 @@ import { onUnmounted, shallowRef, watch } from 'vue'
 import { renderMarkdownBlocks } from '@/utils/markdown-blocks'
 import { alignRevealBoundary } from '@/utils/streaming-markdown'
 
-/** 积压字符按时间常数指数放出：流式中滞后网络约 150ms，结束后 50ms 内收尾，不整段跳出。 */
+/** 积压字符按时间常数指数放出：流式中滞后网络约 150ms，结束后按 50ms 时间常数收尾，不整段跳出。 */
 const REVEAL_LAG_MS = 150
 const SETTLE_LAG_MS = 50
+/** 流结束后必须在这之内放完（#155 决策）：积压多时指数收尾要好几轮，到期前一帧不等提交间隔、一次放完。 */
+const SETTLE_WITHIN_MS = 150
+const FRAME_MS = 17
 const MIN_COMMIT_INTERVAL_MS = 32
 /** 上限必须低于 REVEAL_LAG_MS，否则每次提交的放出比例都到 1，平滑退化成整段跳出。 */
 const MAX_COMMIT_INTERVAL_MS = 120
@@ -24,6 +27,8 @@ export function useStreamingMarkdown(source: () => string, isStreaming: () => bo
   let revealedText = ''
   let committedStreaming = false
   let revealAnchor = 0
+  /** 流结束的时刻；流式中为 undefined。 */
+  let settleStartedAt: number | undefined
   let lastCommitAt = -Infinity
   let commitInterval = MIN_COMMIT_INTERVAL_MS
   let frame: number | undefined
@@ -74,6 +79,12 @@ export function useStreamingMarkdown(source: () => string, isStreaming: () => bo
   function tick() {
     frame = undefined
     const now = performance.now()
+    if (!isStreaming() && settleStartedAt !== undefined && now - settleStartedAt >= SETTLE_WITHIN_MS - FRAME_MS) {
+      const text = source()
+      if (text !== revealedText || committedStreaming)
+        commit(text, false)
+      return
+    }
     if (now - lastCommitAt < commitInterval) {
       schedule()
       return
@@ -105,9 +116,11 @@ export function useStreamingMarkdown(source: () => string, isStreaming: () => bo
   commit(source(), isStreaming())
   document.addEventListener('visibilitychange', handleVisibilityChange)
 
-  watch([source, isStreaming], () => {
+  watch([source, isStreaming], ([, streaming]) => {
+    const now = performance.now()
     if (!isPending())
-      revealAnchor = performance.now()
+      revealAnchor = now
+    settleStartedAt = streaming ? undefined : (settleStartedAt ?? now)
     schedule()
   })
 

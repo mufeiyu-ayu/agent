@@ -47,6 +47,8 @@ export interface AgentRuntimeRunFailedEvent {
    */
   failureReason?: 'conversation_not_found' | 'terminalization_unknown'
   message: string
+  /** 用户消息已落库（会话 updatedAt 已更新）之后才失败；前台据此同步侧栏顺序。 */
+  userMessagePersisted?: true
 }
 
 export interface RunTurnStreamInput {
