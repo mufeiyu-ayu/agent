@@ -10,6 +10,7 @@
 
 | 日期 | 事项 | 结果 |
 | --- | --- | --- |
+| 2026-09-24 | #176 Markdown 列表标记合并 | PR #178（代码 head `dcedb94`，Closes #176）：2 files。Tailwind preflight 把回答里 `ol` / `ul` 的 `list-style` 清成 `none`（Markdown 渲染上线起即如此），改为 `list-style: revert`；e2e 断言 `disc` / 嵌套 `circle` / `decimal`。验证：web typecheck / lint、test 91、e2e 31 |
 | 2026-09-24 | #175 失败原因可诊断合并 | PR #177（代码 head `391e4d1`，Closes #175）：8 files，无 migration。`@agent/ai` 400 / 422 / 5xx 文案附脱敏上游摘要，中转站 400 + `upstream_error` 归 `LLMServerError`（`llm_server`）；`ToolInvocationService` 执行器异常记 `tool_execution_failed` 日志；`.env.example` 写明 `HTTPS_PROXY` / `NO_PROXY`。验证：ai 79、`test:tools` 81、`test:model-stream` 111、`test:llm-config` 27；真实环境中转站 gemini 失败记 `llm_server`、配代理后检索工具成功。`/code-review` 两轮 23 条修 15 条 |
 | 2026-09-24 | #170 模型配置校验小修合并 | PR #174（代码 head `b1025b0`，Closes #170）：9 files，+218 / −16，无 migration。可见模型行按运行时公式校验输入预算（隐藏行不校验）；服务商弹窗改家族 / 地址 / 密钥时清掉旧名单与测试结论，提交时凭据不一致也不带结论；启动拒绝 #156 前公开的占位主密钥。AC-01～AC-04 逐条 PASS；复核拆出的 #167–#170 全部完成 |
 | 2026-09-23 | #169 前台 Markdown 与会话小修合并 | PR #173（代码 head `ecfc5f4`，Closes #169）：18 files，无 migration；新增运行时依赖 `markdown-it-cjk-friendly`，`@types/markdown-it` 升 14.2.0。中文全角标点紧贴 `**` 的强调终态成对；流式补齐不补多半是字面字符的 opener、尾块已换行按终态显示、表格按单元格切分、空 ATX 标题先隐藏；流结束后 150ms 内放完；裸链接在全角标点处截断；图片在链接内判断单次遍历；runtime 在用户消息落库时记 `userMessagePersisted` 并下发，前台据此同步侧栏。AC-01～AC-09 逐条 PASS |
