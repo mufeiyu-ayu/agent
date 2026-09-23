@@ -233,9 +233,9 @@ export class AdminLlmService {
 
     // 局部更新按合并后的整行校验：默认与可见、强度与家族的约束不能被拆开绕过。
     assertModelRowValid({ ...next, family: current.provider.family })
-    // 输入预算只在上下文或输出上限这次真的变了时校验：它比旧规则「输出 < 上下文」严，
-    // 旧行改名、切可见或排序时不被卡住（编辑弹窗总会带上没动过的数值）；变了就按合并后的整行算，拆成两次改也绕不过。
-    if (next.contextWindowTokens !== current.contextWindowTokens || next.maxOutputTokens !== current.maxOutputTokens)
+    // 只有可见行会被 Run 选中（resolveModel 拒绝隐藏行）：可见的行不论这次改了什么都必须有输入预算，
+    // 按合并后的整行算，拆成两次改也绕不过；隐藏行不校验，坏行可以先藏起来再修。
+    if (next.visible)
       assertInputBudget(next)
 
     // 探活按 wireName、强度、maxOutput 发请求，这三项变了旧结论就不作数，表格回到「未测试」。

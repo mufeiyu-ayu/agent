@@ -15,6 +15,7 @@ import { computed, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import { LLM_FAMILY_BRAND } from '../llm-families'
+import { normalizeBaseUrl } from '../llm-models.state'
 import LlmFamilyLogo from './LlmFamilyLogo.vue'
 import LlmModelCandidateList from './LlmModelCandidateList.vue'
 
@@ -43,6 +44,8 @@ const emit = defineEmits<{
   /** 勾中模型后自动对它们各发一条最短对话；密钥留空时页面用库里那把。 */
   testModels: [input: { baseUrl: string, apiKey: string }, wireNames: string[]]
   submit: [input: AdminLlmProviderInput, wireNames: string[]]
+  /** 家族、地址或密钥变了：按旧配置拉到的名单与测出的结论作废，由页面清掉。 */
+  credentialsChange: [credentials: { family: LlmProviderFamily, baseUrl: string, apiKey: string }]
   cancel: []
 }>()
 
@@ -71,7 +74,7 @@ const isEdit = computed(() => props.provider !== null)
 /** 编辑时地址改了（末尾斜杠不算）：库里的密钥不跟着新地址走，后端要求同时重填密钥。 */
 const baseUrlChanged = computed(() => (
   props.provider !== null
-  && formState.baseUrl.trim().replace(/\/+$/, '') !== props.provider.baseUrl.replace(/\/+$/, '')
+  && normalizeBaseUrl(formState.baseUrl) !== normalizeBaseUrl(props.provider.baseUrl)
 ))
 
 /** 地址改回原值后密钥不再必填：清掉之前按「改了地址」报的错。 */
@@ -114,6 +117,16 @@ const rules = computed<Record<string, Rule[]>>(() => ({
       : [],
 }))
 
+watch(() => [formState.family, formState.baseUrl, formState.apiKey] as const, ([family, baseUrl, apiKey]) => {
+  emit('credentialsChange', { family, baseUrl, apiKey })
+})
+
+/** 名单被清空（凭据真的变了、重新拉取）时勾选跟着作废；只差末尾斜杠时页面不清，勾选也保留。 */
+watch(() => props.candidates, (names) => {
+  if (names.length === 0)
+    selectedWireNames.value = []
+})
+
 /** 选服务商：Base URL 只在还没被人改过时跟着预设走。 */
 function selectFamily(family: LlmProviderFamily) {
   const previousSuggestion = LLM_FAMILY_BRAND[formState.family].suggestedBaseUrl
@@ -147,7 +160,7 @@ watch(() => props.open, (isOpen) => {
 }, { immediate: true })
 
 function handleFetch() {
-  selectedWireNames.value = []
+  // 勾选由 candidates 的 watch 清：拉取开始时页面先清空名单。
   emit('fetchModels', { baseUrl: formState.baseUrl.trim(), apiKey: formState.apiKey.trim() })
 }
 

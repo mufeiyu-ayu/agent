@@ -24,6 +24,18 @@ describe('resolveLlmEnvConfig', () => {
     )
   })
 
+  it('AGENT_SECRET_KEY 是 #156 前模板里公开的占位串时启动失败，文案指明是占位串而不是长度', () => {
+    assert.throws(
+      () => resolveLlmEnvConfig({ AGENT_SECRET_KEY: ' replace-with-openssl-rand-hex-32-output ' }),
+      (error: unknown) => {
+        assert.ok(error instanceof LLMConfigError)
+        assert.match(error.message, /公开的占位串/)
+        assert.doesNotMatch(error.message, /不少于 32/)
+        return true
+      },
+    )
+  })
+
   it('AGENT_SECRET_KEY 缺失或短于 32 个字符时启动失败', () => {
     for (const env of [{}, { AGENT_SECRET_KEY: '' }, { AGENT_SECRET_KEY: 'short-secret' }]) {
       assert.throws(
