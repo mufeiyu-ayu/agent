@@ -28,7 +28,7 @@ scripts/record-tool-call-stream-fixtures.ts  # 一次性手动录制脚本：用
 - 重试交给 SDK：`REQUEST_MAX_RETRIES = 2`（#115），只在收到响应头之前重试 408 / 409 / 429 / 5xx 与连接错误；流正文中断、abort 之后不重试，abort 不等退避 sleep（`rejectOnAbort`，`chatStream` 与 `listModels` / `getUserBalance` 都接受调用方 signal）。回归在 `openai-completions.test.ts` 的「瞬态失败重试」组。
 - reasoning 正文不进事件流：adapter 只在首段 reasoning 到达时发一次不带正文的 `reasoning_started`（runtime 据此算首 token 时间），正文只随 `tool_call_completed.reasoningContent` 回填。
 - SDK 读响应体时遇到 abort 会静默结束迭代：`chatStream` 先看 signal，已 aborted 就按 abort 抛（不报成缺 finish reason）；raw capture 在 signal 已 aborted 或没见到 finish_reason 时标 partial。
-- 错误文案不带厂商名，各家 OpenAI-compatible 端点共用同一套状态码含义。上游 body 不进文案：未单独映射的状态码只报 `HTTP ${status}`，仅当 JSON body 的 `error` 是对象时附带字符串 code / type 与去掉控制 / 格式字符、截断到 200 字符的 message，其中出现的本次请求 key 先换成 `***` 再截断；完整 APIError 留在异常的 `detail` 上，目前没有代码记录它。流内夹带的 error 对象带 HTTP 状态码（数值或三位数字字符串）时与响应状态码同表归类；上游 JSON 解析失败（SSE 行或元数据响应体）与既没有 `choices` 也没有 `usage` 的数据块归协议错误（`LLMApiError`），不当网络错误。SDK 客户端 `logLevel: 'off'`，解析失败时不再把上游原文打到 stderr（SDK 只在 Assistants 的 `thread.*` 事件分支直接调 `console.error`，Chat Completions 流走不到）。
+- 错误文案不带厂商名，各家 OpenAI-compatible 端点共用同一套状态码含义。上游 body 原文不进文案：400 / 422 / 5xx 与未单独映射的状态码（后者只报 `HTTP ${status}`）仅当 JSON body 的 `error` 是对象时在文案末尾附摘要——字符串 code / type 与去掉控制 / 格式字符、截断到 200 字符的 message，其中出现的本次请求 key 先换成 `***` 再截断；401 / 402 / 403 / 429 只有固定文案；中转站把上游故障包成的 400 + `type: upstream_error` 归 `LLMServerError`（#175）。完整 APIError 留在异常的 `detail` 上，目前没有代码记录它。流内夹带的 error 对象带 HTTP 状态码（数值或三位数字字符串）时与响应状态码同表归类；上游 JSON 解析失败（SSE 行或元数据响应体）与既没有 `choices` 也没有 `usage` 的数据块归协议错误（`LLMApiError`），不当网络错误。SDK 客户端 `logLevel: 'off'`，解析失败时不再把上游原文打到 stderr（SDK 只在 Assistants 的 `thread.*` 事件分支直接调 `console.error`，Chat Completions 流走不到）。
 
 ## 验证
 

@@ -1163,7 +1163,8 @@ export class AgentRuntimeService {
   /**
    * Run FAILED 时的一条服务端日志：真实错误类别与上游状态码只在这里出现，
    * 用户看到的是 describeRunFailure 的安全文案。不记 LLMError.detail 与请求体；
-   * message 是错误自身的文案，未识别状态码的 LLMApiError 文案里带 SDK 给出的上游错误摘要。
+   * message 是错误自身的文案：400 / 422 / 5xx 与未识别状态码的文案里带脱敏、截断到 200 字符的上游错误摘要，
+   * 上游若在报错里回显请求片段，这一段会进日志。
    */
   private logRunFailure(
     runId: string,

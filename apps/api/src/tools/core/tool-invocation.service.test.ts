@@ -1,3 +1,4 @@
+import type { Logger } from '@nestjs/common'
 import type { DatabaseOperationDeadline } from '../../prisma/prisma.service.js'
 import type {
   RegisteredTool,
@@ -9,7 +10,7 @@ import type {
 import assert from 'node:assert/strict'
 // 项目本轮使用 Node 原生测试运行器，不引入额外测试框架。
 // eslint-disable-next-line test/no-import-node-test
-import { describe, it } from 'node:test'
+import { describe, it, mock } from 'node:test'
 
 import { DatabaseOperationDeadlineExceededError } from '../../prisma/prisma.service.js'
 import { ToolInvocationService } from './tool-invocation.service.js'
@@ -108,6 +109,39 @@ describe('ToolInvocationService', () => {
     assert.equal(result.ok, false)
     assert.equal(result.ok ? undefined : result.code, 'execution_failed')
     assert.doesNotMatch(result.modelContent, /password|secret/)
+  })
+
+  it('执行异常的真实原因只进服务端日志：工具名、callId、错误名与截断后的 message', async () => {
+    const failures: unknown[] = [
+      Object.assign(new Error(`embedding network error${'x'.repeat(600)}`), { name: 'EmbeddingError' }),
+      Object.create(null),
+      Object.assign(new Error('x'), { message: { nested: true } }),
+      'ECONNRESET',
+    ]
+    const registry = new ToolRegistryService()
+    registry.register(createEchoTool('echo', async () => {
+      throw failures.shift()
+    }))
+    const service = new ToolInvocationService(registry)
+    const warn = mock.method((service as unknown as { logger: Logger }).logger, 'warn', () => {})
+
+    for (let i = 0; i < 4; i++) {
+      const result = await service.invoke(createEnvelope(), createContext())
+
+      assert.equal(result.ok ? undefined : result.code, 'execution_failed')
+      assert.equal(result.modelContent, '工具 echo 执行失败。')
+    }
+    assert.equal(warn.mock.callCount(), 4)
+    const [first, nullProto, oddMessage, thrownString] = warn.mock.calls.map(call => call.arguments[0] as Record<string, unknown>)
+    assert.equal(first?.event, 'tool_execution_failed')
+    assert.equal(first?.toolName, 'echo')
+    assert.equal(first?.callId, 'call-1')
+    assert.equal(first?.errorName, 'EmbeddingError')
+    assert.equal((first?.message as string).length, 500)
+    assert.match(first?.message as string, /^embedding network error/)
+    assert.deepEqual([nullProto?.errorName, nullProto?.message], ['object', ''])
+    assert.deepEqual([oddMessage?.errorName, oddMessage?.message], ['Error', ''])
+    assert.deepEqual([thrownString?.errorName, thrownString?.message], ['string', 'ECONNRESET'])
   })
 
   it('Tool deadline 更早时把数据库 timeout 保持为 Tool timeout', async () => {
