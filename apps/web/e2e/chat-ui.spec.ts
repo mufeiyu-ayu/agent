@@ -3,7 +3,7 @@ import type { ConversationTurn } from '../src/types/chat'
 
 import { expect, test } from '@playwright/test'
 
-import { installApiRoutes, installBrowserStubs, toNdjsonLines } from './fixtures'
+import { CONVERSATION_ID, installApiRoutes, installBrowserStubs, toNdjsonLines } from './fixtures'
 
 declare global {
   interface Window {
@@ -15,6 +15,12 @@ declare global {
       lastGeneratedAt: string
     }
     __renderCount: number
+    __assistantContents: string[]
+    __workspace: {
+      message: { value: string }
+      messages: { value: Array<{ id: string, role: string, content: string, status: string }> }
+      sendMessage: (model?: string | null) => Promise<void>
+    }
   }
 }
 
@@ -161,7 +167,7 @@ test('代码内部滚动不改变外层跟随；320px 不横溢；减少动画�
   await expect(dot).toHaveCSS('animation-name', 'none')
 })
 
-test('高频纯文本和代码更新合并，终态立即补齐；复制失败不报成功', async ({ page }) => {
+test('高频纯文本和代码更新合并，终态替换正文后对齐；复制失败不报成功', async ({ page }) => {
   await mountConversation(page, '```js\nlet x = 0')
   const code = page.locator('#chat-ui-test .agent-code-card code')
   await page.evaluate(async () => {
@@ -317,4 +323,163 @@ test('真实 Workspace 发送链路与 Tooltip，流式未闭合卡片结束后�
   await expect(page.locator('.agent-code-card').getByRole('button', { name: '复制代码' })).toBeVisible()
   await page.locator('.agent-code-card').getByRole('button', { name: '复制代码' }).click()
   await expect.poll(() => page.evaluate(() => window.__copiedText)).toBe('const x = 1')
+})
+
+const modelUnavailableResponse = {
+  success: false,
+  code: 400,
+  message: '请求的模型未对前台开放',
+  error: { statusCode: 400, error: 'Bad Request', details: [] },
+}
+
+test('#155：追加内容后立即收到终态，最终 DOM 与全文的一次性渲染一致', async ({ page }) => {
+  await mountConversation(page, '第一段')
+  const content = page.locator('#chat-ui-test .agent-markdown-content').last()
+  await expect(content).toHaveText('第一段')
+  const full = '第一段\n\n要点如下：\n- **甲**\n- 乙 *.ts\n\n| 列 | 值 |\n|---|---|\n| a | 1 |\n\n结论\n='
+  await page.evaluate((full) => {
+    Object.assign(window.__chatUi.turns[1], { reply: full, status: 'success' })
+  }, full)
+  await expect(content.locator('h1')).toHaveText('结论')
+  const [rendered, expected] = await page.evaluate(async (full) => {
+    const blocksPath = '/src/utils/markdown-blocks.ts'
+    const { renderMarkdownBlocks } = await import(blocksPath)
+    const normalize = (html: string) => {
+      const template = document.createElement('template')
+      template.innerHTML = html
+      return template.innerHTML
+    }
+    const prose = [...document.querySelectorAll('#chat-ui-test .agent-markdown-content')].at(-1)!
+    return [
+      [...prose.querySelectorAll('.agent-markdown-prose')].map(el => el.innerHTML),
+      renderMarkdownBlocks(full).blocks.map((block: { html: string }) => normalize(block.html)),
+    ]
+  }, full)
+  expect(rendered).toEqual(expected)
+})
+
+test('#155 AC-04：正文里的 Markdown 图片渲染成链接，浏览器不请求图片地址', async ({ page }) => {
+  const imageRequests: string[] = []
+  page.on('request', request => request.url().includes('leak.png') && imageRequests.push(request.url()))
+  const reply = '见图 ![x](http://127.0.0.1:9/leak.png) 后续'
+  await mountConversation(page, reply)
+  const content = page.locator('#chat-ui-test .agent-markdown-content').last()
+  await expect(content.getByRole('link', { name: 'x' })).toHaveAttribute('href', 'http://127.0.0.1:9/leak.png')
+  await updateReply(page, `${reply}\n\n![y](http://127.0.0.1:9/leak.png?q=secret)`, 'success')
+  await expect(content.getByRole('link', { name: 'y' })).toHaveAttribute('rel', 'noreferrer noopener')
+  await expect(content.locator('img')).toHaveCount(0)
+  await page.waitForTimeout(300)
+  expect(imageRequests).toEqual([])
+})
+
+test('#155 AC-06：localStorage 访问抛 SecurityError 时页面仍正常渲染', async ({ page }) => {
+  const errors: string[] = []
+  page.on('pageerror', error => errors.push(error.message))
+  await installApiRoutes(page, () => [])
+  await page.addInitScript(() => {
+    // dev 模式下 vue-router 打包的 devtools-kit 会在模块求值时直接读 localStorage（生产构建不含这段）；
+    // 只给这种依赖包自己的访问一个内存桩，应用代码的访问照常抛错。
+    const devtoolsStorage = new Map<string, string>()
+    const memoryStorage = {
+      getItem: (key: string) => devtoolsStorage.get(key) ?? null,
+      setItem: (key: string, value: string) => void devtoolsStorage.set(key, value),
+      removeItem: (key: string) => void devtoolsStorage.delete(key),
+    }
+    Object.defineProperty(window, 'localStorage', {
+      configurable: true,
+      get() {
+        const caller = new Error('caller').stack?.split('\n')[2] ?? ''
+        if (caller.includes('/node_modules/.vite/deps/'))
+          return memoryStorage
+        throw new DOMException('The operation is insecure.', 'SecurityError')
+      },
+    })
+  })
+  await page.goto('/workspace')
+  await expect(page.getByRole('textbox').first()).toBeVisible()
+  await expect(page.getByRole('button', { name: '发送消息' })).toBeVisible()
+  expect(errors).toEqual([])
+})
+
+test('#155 AC-07：发送因 400 失败后侧栏会话顺序不变', async ({ page }) => {
+  const json = (data: unknown) => ({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, code: 0, message: 'ok', data }) })
+  await installApiRoutes(page, () => [])
+  await installBrowserStubs(page, { lines: [], holdBeforeIndex: -1 })
+  await page.route('**/api/conversations?*', route => route.fulfill(json({
+    items: [
+      { id: 'conversation-newer', title: '较新的会话', createdAt: '2026-08-17T08:00:00.000Z', updatedAt: '2026-08-17T09:00:00.000Z' },
+      { id: CONVERSATION_ID, title: '落地页 SEO 诊断', createdAt: '2026-08-16T08:00:00.000Z', updatedAt: '2026-08-16T09:00:00.000Z' },
+    ],
+    nextCursor: null,
+  })))
+  await page.route('**/api/conversations/conversation-newer/messages', route => route.fulfill(json([])))
+  await page.addInitScript((body) => {
+    const stubbedFetch = window.fetch
+    window.fetch = async (input, init) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+      if (!url.includes('/api/chat/stream'))
+        return stubbedFetch(input, init)
+      return new Response(JSON.stringify(body), { status: 400, headers: { 'Content-Type': 'application/json' } })
+    }
+  }, modelUnavailableResponse)
+  await page.goto('/workspace')
+
+  const titles = page.getByText(/^(较新的会话|落地页 SEO 诊断)$/)
+  await expect(titles).toHaveText(['较新的会话', '落地页 SEO 诊断'])
+  await page.getByText('落地页 SEO 诊断').click()
+  await page.getByRole('textbox').first().fill('这次会被拒绝')
+  await page.getByRole('button', { name: '发送消息' }).click()
+  await expect(page.getByRole('status').filter({ hasText: '请求的模型未对前台开放' })).toBeVisible()
+  await expect(titles).toHaveText(['较新的会话', '落地页 SEO 诊断'])
+})
+
+test('#155：同一帧内到达的多个 delta 合并成一次消息写入，终态前全部写入', async ({ page }) => {
+  const identity = { conversationId: CONVERSATION_ID, assistantMessageId: 'assistant-live' }
+  const [start] = toNdjsonLines()
+  const pieces = Array.from({ length: 30 }, (_, index) => `片段${index} `)
+  const full = pieces.join('')
+  await installApiRoutes(page, () => [])
+  // 30 条 delta 拼进同一次推送：解析后在同一个任务里连续到达，中间不会有新的一帧。
+  await installBrowserStubs(page, {
+    lines: [
+      start,
+      pieces.map(contentDelta => JSON.stringify({ type: 'delta', ...identity, contentDelta })).join('\n'),
+      JSON.stringify({ type: 'done', ...identity, content: full, generatedAt: '2026-09-23T00:00:00.000Z' }),
+    ],
+    holdBeforeIndex: 2,
+  })
+  await page.goto('/')
+  await page.evaluate(async () => {
+    const hookPath = '/src/hooks/useChatWorkspace.ts'
+    const hookSource = await (await fetch(hookPath)).text()
+    // 与 hook 用同一个 Vue 模块实例，watch 才能追踪到它的 ref。
+    const vuePath = hookSource.match(/from "(\/node_modules\/\.vite\/deps\/vue\.js[^"]*)"/)![1]
+    const i18nPath = '/src/i18n/index.ts'
+    const { createApp, h, watch } = await import(vuePath)
+    const { useChatWorkspace } = await import(hookPath)
+    const { i18n } = await import(i18nPath)
+    window.__assistantContents = []
+    createApp({
+      setup() {
+        const workspace = useChatWorkspace()
+        window.__workspace = workspace
+        watch(workspace.messages, (messages: Array<{ id: string, content: string }>) => {
+          const assistant = messages.find(item => item.id === 'assistant-live')
+          if (assistant)
+            window.__assistantContents.push(assistant.content)
+        }, { flush: 'sync' })
+        return () => h('div')
+      },
+    }).use(i18n).mount(document.createElement('div'))
+  })
+  await expect.poll(() => page.evaluate(() => window.__workspace.messages.value.length)).toBe(0)
+  await page.evaluate(() => {
+    window.__workspace.message.value = '合并测试'
+    void window.__workspace.sendMessage('model-deepseek-v4-flash')
+  })
+  await expect.poll(() => page.evaluate(() => window.__workspace.messages.value.at(-1)?.content)).toBe(full)
+  // 流式中间只写入了空占位与合并后的全文，没有逐个 delta 的中间态。
+  expect(await page.evaluate(() => [...new Set(window.__assistantContents)])).toEqual(['', full])
+  await page.evaluate(() => window.__releaseStream?.())
+  await expect.poll(() => page.evaluate(() => window.__workspace.messages.value.map(item => `${item.role}:${item.status}`))).toEqual(['USER:COMPLETED', 'ASSISTANT:COMPLETED'])
 })

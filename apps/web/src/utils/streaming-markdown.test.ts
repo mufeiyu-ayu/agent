@@ -88,3 +88,45 @@ test('四个及以上星号按成对分隔符记账', () => {
   assert.equal(completeStreamingMarkdown('****x'), '****x****')
   assert.equal(completeStreamingMarkdown('**a** ****b'), '**a** ****b****')
 })
+
+test('补齐以行与表格单元格为边界，前面行里未闭合的字面标记不补到末尾', () => {
+  for (const text of [
+    '- 匹配 *.ts 文件\n- 其他',
+    '- 2**10 很大\n- 其他',
+    '| 模式 | 说明 |\n|---|---|\n| *.ts | TS 文件',
+    '| *.ts | TS 文件 |',
+    '**跨行\n下一行',
+  ]) {
+    assert.equal(completeStreamingMarkdown(text), text)
+  }
+  assert.equal(completeStreamingMarkdown('- 匹配 *.ts\n- 其他 **重'), '- 匹配 *.ts\n- 其他 **重**')
+  assert.equal(completeStreamingMarkdown('| a | **粗'), '| a | **粗**')
+  assert.equal(completeStreamingMarkdown('硬换行 *x\\\n继续'), '硬换行 *x\\\n继续')
+})
+
+test('裸 URL 内的下划线与后接空白的反引号不当作标记', () => {
+  assert.equal(completeStreamingMarkdown('https://x.com/_foo'), 'https://x.com/_foo')
+  assert.equal(completeStreamingMarkdown('见 https://x.com/_a_b 与 **粗'), '见 https://x.com/_a_b 与 **粗**')
+  assert.equal(completeStreamingMarkdown('[文档](https://x.com/_a) *斜'), '[文档](https://x.com/_a) *斜*')
+  assert.equal(completeStreamingMarkdown('It\'s a ` char. 后面整段'), 'It\'s a ` char. 后面整段')
+  assert.equal(completeStreamingMarkdown('It\'s a ` char.\n后面整段'), 'It\'s a ` char.\n后面整段')
+  assert.equal(completeStreamingMarkdown('调用 `fetch('), '调用 `fetch(`')
+})
+
+test('同一段落跨软换行的强调与代码仍能闭合，不被当成新起点', () => {
+  for (const text of ['**标题\n内容**', '**标题\n内容**。', '` foo`', '_见 https://x.com/a_', '~~删除 https://x.com~~', '_见 https://x.com/a']) {
+    assert.equal(completeStreamingMarkdown(text), text)
+  }
+  // URL 里的下划线闭合不了前面的斜体；只有文本停在 URL 末尾时才不补（补的 `_` 会被并进链接）。
+  assert.equal(completeStreamingMarkdown('_斜体 见 https://x.com/foo_bar 继续'), '_斜体 见 https://x.com/foo_bar 继续_')
+  assert.equal(completeStreamingMarkdown('**见 https://x.com/a'), '**见 https://x.com/a**')
+  assert.equal(completeStreamingMarkdown('见 https://x.com/**/a *斜'), '见 https://x.com/**/a *斜*')
+  assert.equal(completeStreamingMarkdown('**见 https://x.com/a** 后 *斜'), '**见 https://x.com/a** 后 *斜*')
+  // 代码段跨行闭合后，上一行代码里的 ** 不再参与配对。
+  assert.equal(completeStreamingMarkdown('` x **y\nz` w**q'), '` x **y\nz` w**q**')
+  assert.equal(completeStreamingMarkdown('`a\nb` **c'), '`a\nb` **c**')
+  // 空白开头的代码闭合后，其间的星号在代码里，不补。
+  assert.equal(completeStreamingMarkdown('` a **b` c'), '` a **b` c')
+  // 新列表项另起上下文：前一项的字面星号不参与配对。
+  assert.equal(completeStreamingMarkdown('- 匹配 *.ts\n- 其他*重点'), '- 匹配 *.ts\n- 其他*重点*')
+})

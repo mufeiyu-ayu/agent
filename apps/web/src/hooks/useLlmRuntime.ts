@@ -12,21 +12,38 @@ export function useLlmRuntime() {
   const models = ref<LlmModelOption[]>([])
   /** 选中的模型行 id；后台没有可见模型时为 null，请求里不带 model 由后端取默认。 */
   const selectedModel = ref<string | null>(null)
-  /** 本次会话选的思考强度；null 表示不带，用模型行默认。切换模型时重置为该行默认。 */
+  /** 用户显式选的思考强度；null 不发送，由后端按模型行当前的默认值决定。换模型时回到 null。 */
   const selectedReasoningEffort = ref<ReasoningEffort | null>(null)
   const balance = ref<LlmBalanceState | null>(null)
-  const modelStatus = ref<LlmRuntimeStatus>('idle')
   const balanceStatus = ref<LlmRuntimeStatus>('idle')
   const modelError = ref('')
-  const balanceError = ref('')
+  /** 原选中模型失效被自动换掉后的新 id；用户改选或下一次请求开始后清除。 */
+  const replacedModel = ref<{ id: string | null } | null>(null)
+  let modelsRequestId = 0
 
   const selectedModelOption = computed(() => models.value.find(model => model.id === selectedModel.value))
-  /** 该家族可选的强度；为空时前台不展示选择器，请求也不带 reasoningEffort。 */
-  const selectedModelEffortOptions = computed(() => selectedModelOption.value?.reasoningEffortOptions ?? [])
 
-  watch(selectedModelOption, (option) => {
-    selectedReasoningEffort.value = option?.reasoningEffort ?? null
-  }, { immediate: true })
+  watch(selectedModelOption, (option, previous) => {
+    const effort = selectedReasoningEffort.value
+
+    // 刷新后的同一行可能换了家族：显式选的强度不再可选时也回到 null。
+    if (option?.id !== previous?.id || (effort && !option?.reasoningEffortOptions.includes(effort)))
+      selectedReasoningEffort.value = null
+  })
+
+  watch(selectedModel, (id) => {
+    if (replacedModel.value && replacedModel.value.id !== id)
+      replacedModel.value = null
+  })
+
+  const modelNotice = computed(() => {
+    if (!replacedModel.value)
+      return ''
+
+    const name = selectedModelOption.value?.displayName
+
+    return name ? t('runtime.modelReplaced', { name }) : t('runtime.modelUnavailable')
+  })
 
   const balanceLabel = computed(() => {
     if (balanceStatus.value === 'loading' && !balance.value)
@@ -43,35 +60,38 @@ export function useLlmRuntime() {
   const balanceAvailable = computed(() => balance.value?.isAvailable ?? false)
   /** 服务商不提供余额时整行隐藏，而不是一直显示「余额 --」。 */
   const balanceHidden = computed(() => balanceStatus.value === 'success' && balance.value === null)
-  const isRefreshingBalance = computed(() => balanceStatus.value === 'loading')
 
+  /**
+   * 挂载时、打开模型下拉时、发送因模型不可用被拒后都重新拉取：管理台隐藏 / 删除模型或停用服务商后，
+   * 前台不刷新页面也能纠正选中项。失败时保留已有列表，只给出错误提示。
+   */
   async function loadModels() {
-    modelStatus.value = 'loading'
-    modelError.value = ''
+    const requestId = ++modelsRequestId
 
     try {
-      models.value = await fetchLlmModels()
+      const nextModels = await fetchLlmModels()
+
+      if (requestId !== modelsRequestId)
+        return
+
+      models.value = nextModels
+      modelError.value = ''
       ensureSelectedModelExists()
-      modelStatus.value = 'success'
     }
     catch (error) {
-      models.value = []
-      ensureSelectedModelExists()
-      modelError.value = getRuntimeErrorMessage(error, t('runtime.errors.models'))
-      modelStatus.value = 'error'
+      if (requestId === modelsRequestId)
+        modelError.value = getRuntimeErrorMessage(error, t('runtime.errors.models'))
     }
   }
 
   async function refreshBalance() {
     balanceStatus.value = 'loading'
-    balanceError.value = ''
 
     try {
       balance.value = await fetchLlmBalance()
       balanceStatus.value = 'success'
     }
-    catch (error) {
-      balanceError.value = getRuntimeErrorMessage(error, t('runtime.errors.balance'))
+    catch {
       balanceStatus.value = 'error'
     }
   }
@@ -80,11 +100,21 @@ export function useLlmRuntime() {
   function ensureSelectedModelExists() {
     const exists = models.value.some(model => model.id === selectedModel.value)
 
-    if (!exists) {
-      selectedModel.value = models.value.find(model => model.isDefault)?.id
-        ?? models.value[0]?.id
-        ?? null
-    }
+    if (exists)
+      return
+
+    const hadSelection = selectedModel.value !== null
+
+    selectedModel.value = models.value.find(model => model.isDefault)?.id
+      ?? models.value[0]?.id
+      ?? null
+
+    if (hadSelection)
+      replacedModel.value = { id: selectedModel.value }
+  }
+
+  function dismissModelNotice() {
+    replacedModel.value = null
   }
 
   void loadModels()
@@ -93,18 +123,15 @@ export function useLlmRuntime() {
   return {
     models,
     selectedModel,
-    selectedModelEffortOptions,
     selectedReasoningEffort,
-    balance,
     balanceLabel,
     balanceAvailable,
     balanceHidden,
     balanceStatus,
-    modelStatus,
-    balanceError,
     modelError,
-    isRefreshingBalance,
+    modelNotice,
     loadModels,
+    dismissModelNotice,
     refreshBalance,
   }
 }

@@ -29,7 +29,7 @@ function getInitialLocale(): AppLocale {
   if (typeof window === 'undefined')
     return defaultLocale
 
-  const savedLocale = window.localStorage.getItem(localeStorageKey)
+  const savedLocale = readSavedLocale()
 
   if (isAppLocale(savedLocale))
     return savedLocale
@@ -39,11 +39,26 @@ function getInitialLocale(): AppLocale {
     : defaultLocale
 }
 
+/** localStorage 可能被隐私设置禁用（访问即抛 SecurityError）：模块加载时读不到就按浏览器语言，不能让整页白屏。 */
+function readSavedLocale(): string | null {
+  try {
+    return window.localStorage.getItem(localeStorageKey)
+  }
+  catch {
+    return null
+  }
+}
+
 export function persistLocale(locale: AppLocale) {
   if (typeof window === 'undefined')
     return
 
-  window.localStorage.setItem(localeStorageKey, locale)
+  try {
+    window.localStorage.setItem(localeStorageKey, locale)
+  }
+  catch {
+    // 存不下时切换仍在当前页面生效。
+  }
 }
 
 export function syncDocumentLocale(locale: AppLocale) {

@@ -10,6 +10,22 @@ interface StreamChatOptions {
   signal?: AbortSignal
 }
 
+/** 流接口在写出 NDJSON 之前就拒绝了请求（非 2xx）。 */
+export class ChatStreamHttpError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    /**
+     * 模型行不可用（已隐藏 / 删除、服务商停用、强度不属于该家族）：这是流接口写出响应头前唯一的业务 400，
+     * 不带 `error.details`；DTO 校验失败的 400 带 details。
+     */
+    readonly isModelUnavailable: boolean,
+  ) {
+    super(message)
+    this.name = 'ChatStreamHttpError'
+  }
+}
+
 export async function* streamChat(
   payload: ChatRequest,
   options: StreamChatOptions = {},
@@ -25,7 +41,7 @@ export async function* streamChat(
   })
 
   if (!response.ok) {
-    throw new Error(await getStreamHttpErrorMessage(response))
+    throw await readStreamHttpError(response)
   }
 
   if (!response.body) {
@@ -183,18 +199,22 @@ function isChatStreamEvent(value: unknown): value is ChatStreamEvent {
   }
 }
 
-async function getStreamHttpErrorMessage(response: Response): Promise<string> {
+async function readStreamHttpError(response: Response): Promise<ChatStreamHttpError> {
   try {
     const payload = await response.json() as Partial<ApiErrorResponse>
 
-    if (typeof payload.message === 'string')
-      return payload.message
+    if (typeof payload.message === 'string') {
+      const details = payload.error?.details
+      const isModelUnavailable = response.status === 400 && !(Array.isArray(details) && details.length > 0)
+
+      return new ChatStreamHttpError(payload.message, response.status, isModelUnavailable)
+    }
   }
   catch {
     // 非 JSON 错误响应时使用 HTTP 状态码兜底。
   }
 
-  return `请求失败（${response.status}）`
+  return new ChatStreamHttpError(`请求失败（${response.status}）`, response.status, false)
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

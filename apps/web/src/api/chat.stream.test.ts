@@ -4,7 +4,7 @@ import assert from 'node:assert/strict'
 // eslint-disable-next-line test/no-import-node-test
 import { describe, it } from 'node:test'
 
-import { parseChatStreamEventLine, streamChat } from './chat'
+import { ChatStreamHttpError, parseChatStreamEventLine, streamChat } from './chat'
 
 const GROUNDING: MessageGroundingV1 = {
   schemaVersion: 1,
@@ -408,6 +408,31 @@ describe('streamChat', () => {
     }
     finally {
       restoreFetch()
+    }
+  })
+
+  it('只有不带校验明细的 400 才标记为模型不可用', async () => {
+    const cases = [
+      { status: 400, error: { statusCode: 400, error: 'Bad Request', details: [] }, expected: true },
+      { status: 400, error: { statusCode: 400, error: 'Bad Request', details: ['message must be a string'] }, expected: false },
+      { status: 503, error: { statusCode: 503, error: 'Service Unavailable', details: [] }, expected: false },
+    ]
+
+    for (const { status, error, expected } of cases) {
+      const restoreFetch = stubFetch('', { status, body: JSON.stringify({ message: '请求的模型未对前台开放', error }) })
+
+      try {
+        await assert.rejects(
+          collect(streamChat({ conversationId: 'conversation-1', message: '问题' })),
+          (thrown: unknown) => thrown instanceof ChatStreamHttpError
+            && thrown.status === status
+            && thrown.isModelUnavailable === expected
+            && thrown.message === '请求的模型未对前台开放',
+        )
+      }
+      finally {
+        restoreFetch()
+      }
     }
   })
 })

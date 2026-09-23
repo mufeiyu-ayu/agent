@@ -21,7 +21,7 @@ const props = defineProps<{
   anchorLatestTurn: boolean
 }>()
 
-const { t } = useI18n()
+const { locale, t } = useI18n()
 const { workspaceTheme } = useWorkspaceTheme()
 
 const isDark = computed(() => workspaceTheme.value === 'olive-ember')
@@ -84,10 +84,18 @@ const showFloatingLoading = computed(() => {
         </div>
         <div>
           <div class="space-y-6 sm:space-y-7">
+            <!--
+              流式时每次写入都会产生新的 turns 数组；插槽引用了 v-for 变量，不加 v-memo 时
+              每一轮的子组件都会被强制更新。依赖只列模板用到的字段，其余轮次直接复用上次的 vnode。
+              该规则不认识 template v-for 上的 v-memo（编译器支持，产物含 withMemo）。
+            -->
+            <!-- eslint-disable vue/no-useless-template-attributes -->
             <template
               v-for="(turn, turnIndex) in turns"
               :key="turn.id"
+              v-memo="[turn.userMessage, turn.reply, turn.status, turn.errorMessage, turn.grounding, anchorLatestTurn && turnIndex === turns.length - 1, locale]"
             >
+              <!-- eslint-enable vue/no-useless-template-attributes -->
               <AgentMessage
                 role="user"
                 :data-agent-user-turn-id="turn.id"

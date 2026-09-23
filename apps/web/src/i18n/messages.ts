@@ -2,7 +2,6 @@ export const messages = {
   'zh-CN': {
     common: {
       appName: 'Agent 工作台',
-      appSubtitle: '知识库问答与多轮对话',
       languageSwitcher: {
         ariaLabel: '切换界面语言',
         placeholder: '语言',
@@ -118,7 +117,6 @@ export const messages = {
       avatarAlt: 'AI 助手头像',
       emptyTitle: '今天想了解什么？',
       lastReply: '上次回复 {time}',
-      loading: '正在处理你的问题...',
       aborted: '已停止生成',
       fallbackError: '模型服务暂时没有返回结果，你的输入已保留，可以稍后重试。',
       actions: {
@@ -175,6 +173,7 @@ export const messages = {
       modelPlaceholder: '选择模型',
       reasoningEffortLabel: '思考强度',
       reasoningEffortDefault: '默认',
+      reasoningEffortDefaultWith: '默认（{effort}）',
       reasoningEffort: {
         minimal: 'Minimal',
         low: 'Low',
@@ -194,14 +193,14 @@ export const messages = {
       },
       errors: {
         models: '模型列表读取失败，请检查后台模型配置',
-        balance: '余额读取失败，请稍后重试',
       },
+      modelReplaced: '所选模型已不可用，已切换为 {name}',
+      modelUnavailable: '所选模型已不可用，后台当前没有可用模型',
     },
   },
   'en-US': {
     common: {
       appName: 'Agent Workspace',
-      appSubtitle: 'Knowledge base Q&A and multi-turn chat',
       languageSwitcher: {
         ariaLabel: 'Switch interface language',
         placeholder: 'Language',
@@ -317,7 +316,6 @@ export const messages = {
       avatarAlt: 'AI assistant avatar',
       emptyTitle: 'What would you like to know today?',
       lastReply: 'Last reply {time}',
-      loading: 'Working on your question...',
       aborted: 'Generation stopped',
       fallbackError: 'The model service did not return a response. Your input is still here, so you can try again later.',
       actions: {
@@ -374,6 +372,7 @@ export const messages = {
       modelPlaceholder: 'Select a model',
       reasoningEffortLabel: 'Effort',
       reasoningEffortDefault: 'Default',
+      reasoningEffortDefaultWith: 'Default ({effort})',
       reasoningEffort: {
         minimal: 'Minimal',
         low: 'Low',
@@ -393,8 +392,9 @@ export const messages = {
       },
       errors: {
         models: 'Failed to load models. Check the model settings in Admin.',
-        balance: 'Failed to load balance. Please try again later.',
       },
+      modelReplaced: 'The selected model is no longer available. Switched to {name}.',
+      modelUnavailable: 'The selected model is no longer available, and no other model is enabled.',
     },
   },
 } as const
