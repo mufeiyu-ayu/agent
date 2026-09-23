@@ -68,6 +68,34 @@ describe('AgentRunRecorderService', () => {
     assert.equal(harness.step(second.id)?.status, AgentStepStatus.COMPLETED)
   })
 
+  it('收口时提供 input 就与 output 同一次更新整体替换，不提供则保留开始时的 input', async () => {
+    const harness = createHarness()
+    const run = await harness.createRun('run-a')
+    const replaced = await harness.recorder.startStep({
+      runId: run.id,
+      type: AGENT_STEP_TYPES.toolExecution,
+      input: { callId: 'call-1' },
+    }, TEST_DEADLINE)
+    const kept = await harness.recorder.startStep({
+      runId: run.id,
+      type: AGENT_STEP_TYPES.toolExecution,
+      input: { callId: 'call-2' },
+    }, TEST_DEADLINE)
+
+    await harness.recorder.failStep(replaced.id, TEST_DEADLINE, {
+      errorMessage: '工具失败',
+      input: { callId: 'call-1', arguments: '{"query":"seo"}' },
+      output: { ok: false, observation: '工具失败。' },
+    })
+    await harness.recorder.completeStep(kept.id, TEST_DEADLINE, {
+      output: { ok: true },
+    })
+
+    assert.deepEqual(harness.step(replaced.id)?.input, { callId: 'call-1', arguments: '{"query":"seo"}' })
+    assert.deepEqual(harness.step(replaced.id)?.output, { ok: false, observation: '工具失败。' })
+    assert.deepEqual(harness.step(kept.id)?.input, { callId: 'call-2' })
+  })
+
   it('同一个 Step 的第二次 terminal transition 被明确拒绝', async () => {
     const harness = createHarness()
     const run = await harness.createRun('run-a')

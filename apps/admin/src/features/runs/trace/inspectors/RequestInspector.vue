@@ -15,6 +15,7 @@ import {
 } from '../../run.utils'
 import DebugJsonPane from './DebugJsonPane.vue'
 import InspectorFieldList from './InspectorFieldList.vue'
+import InspectorTextBlock from './InspectorTextBlock.vue'
 
 const props = defineProps<{
   item: AdminModelSamplingStep
@@ -33,6 +34,7 @@ const summaryFields = computed(() => [
   { label: t('eventDetail.fields.finishReason'), value: show(props.item.finishReason) },
   { label: t('eventDetail.fields.errorCode'), value: errorCode(), mono: props.item.errorCode !== null },
   { label: t('eventDetail.fields.toolCalls'), value: items(props.item.toolCallCount) },
+  { label: t('eventDetail.fields.historySelection'), value: historySelection() },
   { label: t('eventDetail.fields.hasError'), value: yesNo(props.item.hasError) },
 ])
 
@@ -110,6 +112,23 @@ function errorCode(): string {
   return status === 'FAILED' || status === 'ABORTED' ? unavailable.value : '—'
 }
 
+/** 「选入 X / 候选 Y 条」：两项都没记录时整行显示未记录，缺一项时那一项显示未记录。 */
+function historySelection(): string {
+  const { historyIncludedCount: included, historyCandidateCount: candidates } = props.item.contextInspector
+
+  if (included == null && candidates == null)
+    return unavailable.value
+
+  return t('eventDetail.context.historySelection', {
+    included: historyCount(included),
+    candidates: historyCount(candidates),
+  })
+}
+
+function historyCount(value: number | null | undefined): string {
+  return value == null ? unavailable.value : t('eventDetail.context.historyCount', { count: value })
+}
+
 function contextOutcome(value: AdminContextInspectorOutcome | null): string {
   return value === null ? unavailable.value : t(`eventDetail.context.outcome.${value}`)
 }
@@ -119,6 +138,24 @@ function contextOutcome(value: AdminContextInspectorOutcome | null): string {
   <Tabs class="trace-inspector-tabs" size="small">
     <TabPane key="summary" :tab="t('runTrace.inspector.tabs.summary')">
       <InspectorFieldList :items="summaryFields" />
+      <!-- 只有 Tool Call 轮才有；最终回答轮与旧数据不显示。 -->
+      <InspectorTextBlock
+        v-if="item.intermediateText != null"
+        :title="t('runTrace.inspector.fields.intermediateText')"
+        :text="item.intermediateText"
+        :empty-text="unavailable"
+        data-testid="sampling-intermediate-text"
+      />
+      <!-- 按 Step 重建：同类条目之间切换时组件实例复用，折叠状态不能带到下一条。 -->
+      <InspectorTextBlock
+        v-if="item.reasoningContent != null"
+        :key="item.id"
+        :title="t('runTrace.inspector.fields.reasoningContent')"
+        :text="item.reasoningContent"
+        :empty-text="unavailable"
+        collapsible
+        data-testid="sampling-reasoning"
+      />
     </TabPane>
 
     <TabPane key="context" :tab="t('runTrace.inspector.tabs.context')">

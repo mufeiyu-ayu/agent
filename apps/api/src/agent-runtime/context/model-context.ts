@@ -120,8 +120,9 @@ export class ModelContext {
    * 写入数据库。`callId` 保证 Provider 能把每个调用与结果配对。
    */
   appendToolExchange(input: {
-    // 上一轮模型产生的全部工具名、callId 与原始 JSON 参数，按 index 顺序。
-    calls: UnvalidatedToolCallEnvelope[]
+    // 上一轮模型产生的全部工具名与 callId，按 index 顺序。原始参数刻意不收：
+    // 回喂的只能是 results 里的续轮表示，与 tool Step 落库的是同一个字符串。
+    calls: Array<Pick<UnvalidatedToolCallEnvelope, 'callId' | 'toolName'>>
     // 模型在本轮产生的可选文本，存在时作为 assistant content 续传。
     intermediateText: string
     // DeepSeek thinking Tool Call 要求下一轮原样续传的 reasoning continuation，不是 UI 消息。
@@ -131,8 +132,8 @@ export class ModelContext {
     results: Array<{
       observation: NormalizedToolObservation
       ok: boolean
-      /** 参数是否通过了工具输入契约校验；未校验的原始参数不可信，续轮表示见 toFeedbackArgumentsJson。 */
-      argumentsValidated: boolean
+      /** 回喂给模型的参数 JSON，由调用方经 toFeedbackArgumentsJson 得出；tool Step 落库的是同一个字符串。 */
+      feedbackArgumentsJson: string
     }>
   }): void {
     if (input.calls.length === 0 || input.calls.length !== input.results.length)
@@ -147,10 +148,7 @@ export class ModelContext {
         calls: input.calls.map((call, index) => ({
           callId: call.callId,
           name: call.toolName,
-          rawArgumentsJson: toFeedbackArgumentsJson(
-            call.rawArgumentsJson,
-            input.results[index]!.argumentsValidated,
-          ),
+          rawArgumentsJson: input.results[index]!.feedbackArgumentsJson,
         })),
         reasoningContent: input.reasoningContent,
         ...(input.intermediateText ? { content: input.intermediateText } : {}),
@@ -207,9 +205,10 @@ export function flattenPlanningState(
  * 原样续传。未校验的原始参数（unknown_tool / invalid_arguments / truncated_arguments）
  * 可能是任意文本或非对象 JSON，统一用 DeepSeek 官方编码器对不可解析参数的回退形状
  * `{"arguments": raw}` 承载：原文一字不改保留在值里，wire 上是合法 JSON 对象，
- * Context Planner 估算的和实际发给 Provider 的是同一份表示。
+ * Context Planner 估算的和实际发给 Provider 的是同一份表示。Runtime 每个 call 只调用一次，
+ * 同一个字符串既进 appendToolExchange，也落 tool_execution Step 的 `input.arguments`。
  */
-function toFeedbackArgumentsJson(
+export function toFeedbackArgumentsJson(
   rawArgumentsJson: string,
   argumentsValidated: boolean,
 ): string {

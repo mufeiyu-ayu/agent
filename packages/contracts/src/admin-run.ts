@@ -127,6 +127,10 @@ export interface AdminContextInspector {
   modelId: string | null
   resolvedInputBudgetTokens: number | null
   estimatedInputTokens: number | null
+  /** 本轮 planner 选入的历史条数（超预算时从最旧处删减后剩下的）；#149 之后、#152 之前的 Run 没记录，为 null。 */
+  historyIncludedCount: number | null
+  /** 本次 Run 读入的候选历史条数，取自 load_conversation_history Step（#119 之前的 Run 那里记的是选入条数）；读不出为 null。 */
+  historyCandidateCount: number | null
 }
 
 /** 检索策略标识；只保留名称与版本。 */
@@ -145,6 +149,7 @@ export interface AdminRetrievalSourceRef {
 /** evidence-eligible Tool Step 的检索摘要；工具身份与执行结果按 `stepId` 到 timeline 取。 */
 export interface AdminRetrievalCallSummary {
   stepId: string
+  /** 取自工具参数的 `query`；参数未落库的旧 Run 或参数里没有 query 为 null。 */
   query: string | null
   strategy: AdminRetrievalStrategy | null
   sourceCount: number | null
@@ -234,6 +239,7 @@ export interface AdminRunKnownTimelineItemBase extends AdminRunTimelineItemBase 
 
 export interface AdminLoadConversationHistoryStep extends AdminRunKnownTimelineItemBase {
   type: 'load_conversation_history'
+  /** 候选历史条数（按预算裁剪前）；#119 之前的 Run 记的是选入条数。 */
   messageCount: number | null
 }
 
@@ -266,6 +272,13 @@ export interface AdminModelSamplingStep extends AdminRunKnownTimelineItemBase {
   firstTokenMs: number | null
   /** 本轮失败 / 中断时与 Run 相同的失败类别；成功或旧数据为 null。 */
   errorCode: AgentRunErrorCode | null
+  /**
+   * Tool Call 轮随 assistant 消息回填给模型的文本，含 Grounding 模式下没推给用户的那段；
+   * 最终回答轮、本轮没有文本或旧数据为 null。
+   */
+  intermediateText: string | null
+  /** Tool Call 轮回填给模型的 reasoning continuation（DeepSeek 家族）；没有或旧数据为 null。 */
+  reasoningContent: string | null
   contextInspector: AdminContextInspector
   /** debug 捕获：实际发给 provider 的请求体；未开启捕获或数据缺失为 null。 */
   debugRequestBody: AdminDebugModelIOCapture | null
@@ -280,6 +293,13 @@ export interface AdminToolExecutionStep extends AdminRunKnownTimelineItemBase {
   samplingAttemptId: string | null
   ok: boolean | null
   code: AdminToolResultCode | null
+  /**
+   * 回喂给模型的参数 JSON 文本：通过校验时是模型原参数，未校验或被截断时是 `{"arguments": raw}`。
+   * 旧数据或 Step 未收口（停止 / deadline）为 null。
+   */
+  arguments: string | null
+  /** 回喂给模型的 observation 正文（已受工具字符上限约束）；属于不可信数据，只能按纯文本展示。旧数据或未收口为 null。 */
+  observation: string | null
   originalChars: number | null
   observationChars: number | null
   truncated: boolean | null
@@ -291,6 +311,10 @@ export interface AdminGroundedFinalizationStep extends AdminRunKnownTimelineItem
   outcome: MessageGroundingOutcome | null
   attemptCount: number | null
   registryRefCount: number | null
+  /** finalization 提示词里的三个服务端标量；旧数据为 null。 */
+  registryTruncated: boolean | null
+  eligibleToolCallCount: number | null
+  eligibleToolFailureCount: number | null
   failureReason: AdminGroundedFinalizationFailureReason | null
   rejectionCode: AdminGroundedAnswerRejectionCode | null
   samplingFailure: AdminGroundedFinalizationSamplingFailure | null

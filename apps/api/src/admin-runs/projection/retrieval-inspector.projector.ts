@@ -22,9 +22,11 @@ import { AGENT_STEP_TYPES } from '../../agent-runtime/lifecycle/agent-run-record
 import { TOOL_DEFINITIONS } from '../../tools/tool-definitions.js'
 import {
   readAllowedString,
+  readBoolean,
   readNonNegativeInteger,
   readObject,
   readString,
+  readText,
   toPreview,
 } from './safe-readers.js'
 import {
@@ -37,8 +39,8 @@ import {
  * Run 级 Retrieval / Grounding 投影。
  *
  * 只读取已持久化的 typed metadata（Step input / output 与 MessageGrounding），
- * 字段能读就读，读不出就 null；excerpt、正文、raw arguments、embedding、
- * Provider payload、内部 `citationKey` 一律不进入公共 contract。
+ * 字段能读就读，读不出就 null；参数只取 `query`，excerpt、embedding、Provider payload、
+ * 内部 `citationKey` 一律不进入这里。参数与 observation 原文在 timeline 的 tool Step 上。
  */
 
 const MAX_QUERY_CHARS = 200
@@ -83,7 +85,7 @@ export function projectAdminRetrievalInspector(
     })
     .map(({ step, input: toolInput }) => ({
       callId: readString(toolInput, 'callId'),
-      summary: projectRetrievalCall(step),
+      summary: projectRetrievalCall(step, toolInput),
     }))
   const grounding = input.assistantMessage
     ? toOwnedMessageGroundingV1(
@@ -117,6 +119,9 @@ export function projectGroundedFinalizationStep(
     outcome: readAllowedString(output, 'outcome', MESSAGE_GROUNDING_OUTCOMES),
     attemptCount: readNonNegativeInteger(output, 'attemptCount'),
     registryRefCount: readNonNegativeInteger(output, 'registryRefCount'),
+    registryTruncated: readBoolean(output, 'registryTruncated'),
+    eligibleToolCallCount: readNonNegativeInteger(output, 'eligibleToolCallCount'),
+    eligibleToolFailureCount: readNonNegativeInteger(output, 'eligibleToolFailureCount'),
     failureReason: readAllowedString(
       output,
       'failureReason',
@@ -142,16 +147,37 @@ export function projectGroundedFinalizationStep(
 
 function projectRetrievalCall(
   step: AdminRetrievalStepRecord,
+  toolInput: Record<string, unknown> | null,
 ): AdminRetrievalCallSummary {
   const summary = readObject(readObject(step.output)?.toolSummary)
 
   return {
     stepId: step.id,
-    query: readString(summary, 'query', MAX_QUERY_CHARS),
+    query: readString(readToolArguments(toolInput), 'query', MAX_QUERY_CHARS),
     strategy: readStrategy(summary?.strategy),
     sourceCount: readNonNegativeInteger(summary, 'sourceCount'),
     chunkEvidenceCount: readNonNegativeInteger(summary, 'chunkEvidenceCount'),
     refs: readSourceRefs(summary?.sources),
+  }
+}
+
+/**
+ * 解析 tool Step 落库的参数 JSON 文本；未落库（旧 Run、Step 未收口）或不是 JSON 对象时为 null。
+ * 未校验参数的形状是 `{"arguments": raw}`，自然读不出 query。
+ */
+function readToolArguments(
+  toolInput: Record<string, unknown> | null,
+): Record<string, unknown> | null {
+  const argumentsJson = readText(toolInput, 'arguments')
+
+  if (argumentsJson === null)
+    return null
+
+  try {
+    return readObject(JSON.parse(argumentsJson))
+  }
+  catch {
+    return null
   }
 }
 

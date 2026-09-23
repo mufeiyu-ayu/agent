@@ -54,6 +54,11 @@ interface StartAgentStepInput {
 }
 
 interface CompleteAgentStepInput {
+  /**
+   * 收口时整体替换 Step input，与状态、output 同一事务写入。只用于执行结果出来才能确定的
+   * 输入事实（tool Step 回喂给模型的参数形状取决于是否通过校验）；未收口的 Step 保持开始时的 input。
+   */
+  input?: Prisma.InputJsonValue
   output?: Prisma.InputJsonValue
 }
 
@@ -426,6 +431,7 @@ export class AgentRunRecorderService {
         },
         data: {
           status,
+          ...(input.input === undefined ? {} : { input: input.input }),
           ...(input.output === undefined ? {} : { output: input.output }),
           ...(input.errorMessage === undefined ? {} : { errorMessage: input.errorMessage }),
           endedAt: new Date(),

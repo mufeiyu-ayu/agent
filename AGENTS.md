@@ -82,11 +82,11 @@ Controller -> Service -> AgentRuntime -> LLMService / ToolRegistry -> Prisma
 
 Runtime 不变量：
 
-- `Conversation` 是长期会话；`Message` 是用户可见消息；`AgentRun` 是一次用户输入触发的运行；`AgentStep` 是系统执行过程，不是模型真实 chain-of-thought。
+- `Conversation` 是长期会话；`Message` 是用户可见消息；`AgentRun` 是一次用户输入触发的运行；`AgentStep` 是系统执行过程，不是模型真实 chain-of-thought；采样 Step 的 `reasoningContent` 只是 Tool Call 轮回填给模型、为重建而存的内容。
 - UI message ≠ model message ≠ runtime event ≠ 持久化轨迹，各自独立契约。
 - delta 不等于持久化事实。
 - model-visible context 通过独立 Context boundary 维护，不回填 UI `Message`。
-- 模型看到的必须能从持久化记录重建（model-visible ⟺ logged），这是 resume / replay 的前提。这是 R1 的目标，当前不完全成立：工具参数与回填形状、observation 正文、Grounding 中间文本、首轮裁掉的历史条数、finalization 提示词里的 `registry_truncated` 等标量都没有落库，修复见 #152。
+- 模型看到的必须能从持久化记录重建（model-visible ⟺ logged），这是 resume / replay 的前提。#152 起在 action 循环内成立：历史取候选里最新的 `contextPlan.historyIncludedCount` 条；Tool Call 轮回填的文本与 reasoning 在采样 Step；回喂的参数与 observation 在 tool Step，被预算压缩后的长度在 `contextPlan.observationPreviewChars`；finalization 提示词的服务端标量在 finalization Step。范围外与已知偏差：系统提示词与工具定义取自当次部署的代码；finalization 的证据清单与回答草稿不落库；历史只落条数，同一会话并发 Run 时按条数重建会多算事后才完成的消息；U+0000 落库时换成 U+FFFD。replay 本身属 R1。
 - 模型输出不可信：工具名、参数、引用 key 先校验再执行；检索正文按 untrusted data 隔离注入。
 - 终态所有权：晚到的 Abort / deadline / DB 结果不能覆盖已确立终态；COMMIT 结果不确定时如实暴露。
 

@@ -192,7 +192,8 @@ function toStepSummary(data: RetrieveArticleContextOutput): ToolStepSummary {
     strategy: data.strategy,
     sourceCount: data.sourceCount,
     chunkEvidenceCount: data.sources.filter(source => source.evidence).length,
-    // 只留可追溯引用；excerpt、正文、距离和向量不进入持久化记录。
+    // 摘要只留可追溯引用；excerpt 与正文随回喂给模型的 observation 落在 Step 的 observation 字段，
+    // 距离和向量不进入持久化记录。
     sources: data.sources.slice(0, MAX_STEP_SUMMARY_REFS).map(source => ({
       sourceId: source.sourceId,
       ...(source.evidence ? { chunkId: source.evidence.chunkId } : {}),

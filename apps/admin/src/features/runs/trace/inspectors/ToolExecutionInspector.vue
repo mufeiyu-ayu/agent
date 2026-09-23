@@ -4,8 +4,9 @@ import { TabPane, Tabs } from 'ant-design-vue'
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-import { formatDateTime, formatDuration } from '../../run.utils'
+import { formatDateTime, formatDuration, formatJsonText } from '../../run.utils'
 import InspectorFieldList from './InspectorFieldList.vue'
+import InspectorTextBlock from './InspectorTextBlock.vue'
 
 const props = defineProps<{
   item: AdminToolExecutionStep
@@ -22,6 +23,11 @@ const summaryFields = computed(() => [
   { label: t('eventDetail.fields.samplingAttempt'), value: show(props.item.samplingAttemptId), mono: true },
   { label: t('eventDetail.fields.hasError'), value: yesNo(props.item.hasError) },
 ])
+
+// 比 API 旧的构建没有这两个字段（undefined），与 null 一样按未记录处理。
+const formattedArguments = computed(() => props.item.arguments == null
+  ? null
+  : formatJsonText(props.item.arguments))
 
 const safeIoFields = computed(() => [
   { label: t('eventDetail.fields.ok'), value: showBoolean(props.item.ok) },
@@ -66,6 +72,22 @@ function duration(value: number | null): string {
   <Tabs class="trace-inspector-tabs" size="small">
     <TabPane key="summary" :tab="t('runTrace.inspector.tabs.summary')">
       <InspectorFieldList :items="summaryFields" />
+      <InspectorTextBlock
+        :title="t('runTrace.inspector.fields.arguments')"
+        :text="formattedArguments"
+        :empty-text="unavailable"
+        data-testid="tool-arguments"
+      />
+      <!-- 按 Step 重建：同类条目之间切换时组件实例复用，折叠状态不能带到下一条。 -->
+      <InspectorTextBlock
+        :key="item.id"
+        :title="t('runTrace.inspector.fields.observation')"
+        :text="item.observation"
+        :empty-text="unavailable"
+        :meta="chars(item.observationChars)"
+        collapsible
+        data-testid="tool-observation"
+      />
     </TabPane>
 
     <TabPane key="safe-io" :tab="t('runTrace.inspector.tabs.safeIo')">

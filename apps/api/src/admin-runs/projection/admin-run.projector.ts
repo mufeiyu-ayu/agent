@@ -36,6 +36,7 @@ import {
   readNonNegativeInteger,
   readObject,
   readString,
+  readText,
   toAllowedString,
   toIsoString,
   toPreview,
@@ -150,6 +151,14 @@ export function projectAdminRunDetail(
   run: AdminRunDetailRecord,
   model: AdminModelRef | null,
 ): AdminRunDetail {
+  // 候选历史条数是 Run 级事实，只记在 load_conversation_history；采样详情「选入 X / 候选 Y」要用它。
+  const historyCandidateCount = readNonNegativeInteger(
+    readObject(run.steps.find(
+      step => step.type === AGENT_STEP_TYPES.loadConversationHistory,
+    )?.output),
+    'messageCount',
+  )
+
   return {
     ...projectAdminRunListItem(run, model),
     assistantMessageId: run.assistantMessageId,
@@ -157,7 +166,9 @@ export function projectAdminRunDetail(
     messages: [run.userMessage, run.assistantMessage]
       .filter((message): message is AdminRunDetailMessageRecord => message !== null)
       .map(projectMessage),
-    timeline: [...run.steps].sort(compareSteps).map(projectTimelineItem),
+    timeline: [...run.steps]
+      .sort(compareSteps)
+      .map(step => projectTimelineItem(step, historyCandidateCount)),
     retrievalInspector: projectAdminRetrievalInspector({
       steps: run.steps,
       assistantMessage: run.assistantMessage,
@@ -168,6 +179,7 @@ export function projectAdminRunDetail(
 /** 已知 `type` 逐字段投影；只有未知 `type` 才是 Generic。 */
 function projectTimelineItem(
   step: AdminRunDetailStepRecord,
+  historyCandidateCount: number | null,
 ): AdminRunTimelineItem {
   const input = readObject(step.input)
   const output = readObject(step.output)
@@ -176,7 +188,7 @@ function projectTimelineItem(
     case AGENT_STEP_TYPES.loadConversationHistory:
       return projectLoadConversationHistory(step, output)
     case AGENT_STEP_TYPES.modelSampling:
-      return projectModelSampling(step, input, output)
+      return projectModelSampling(step, input, output, historyCandidateCount)
     case AGENT_STEP_TYPES.toolExecution:
       return projectToolExecution(step, input, output)
     case AGENT_STEP_TYPES.groundedFinalization:
@@ -203,6 +215,7 @@ function projectModelSampling(
   step: AdminRunDetailStepRecord,
   input: Record<string, unknown> | null,
   output: Record<string, unknown> | null,
+  historyCandidateCount: number | null,
 ): AdminModelSamplingStep {
   const samplingIndex = readNonNegativeInteger(input, 'samplingIndex')
 
@@ -217,7 +230,9 @@ function projectModelSampling(
     toolCallCount: readNonNegativeInteger(output, 'toolCallCount'),
     firstTokenMs: readNonNegativeInteger(output, 'firstTokenMs'),
     errorCode: readAllowedString(output, 'errorCode', AGENT_RUN_ERROR_CODES),
-    contextInspector: projectContextInspector(input, output),
+    intermediateText: readText(output, 'intermediateText'),
+    reasoningContent: readText(output, 'reasoningContent'),
+    contextInspector: projectContextInspector(input, output, historyCandidateCount),
     debugRequestBody: readDebugModelIOCaptureEnvelope(output?.debugRequestBody),
     debugRawResponse: readDebugModelResponseCapture(output),
   }
@@ -236,6 +251,8 @@ function projectToolExecution(
     samplingAttemptId: readString(input, 'samplingAttemptId'),
     ok: readBoolean(output, 'ok'),
     code: readAllowedString(output, 'code', ADMIN_TOOL_RESULT_CODES),
+    arguments: readText(input, 'arguments'),
+    observation: readText(output, 'observation'),
     originalChars: readNonNegativeInteger(output, 'originalChars'),
     observationChars: readNonNegativeInteger(output, 'observationChars'),
     truncated: readBoolean(output, 'truncated'),
@@ -296,13 +313,15 @@ function projectMessage(message: AdminRunDetailMessageRecord): AdminRunMessage {
 }
 
 /**
- * 按 sampling Step 的 `input.initialContext` 与 `output.contextPlan` 逐字段投影。
+ * 按 sampling Step 的 `input.initialContext` 与 `output.contextPlan` 逐字段投影；
+ * 候选历史条数是 Run 级事实，由调用方从 load_conversation_history 读好传入。
  *
  * 字段能读就读，读不出就 null；不做跨字段等式或跨 Step 序列检查。
  */
 function projectContextInspector(
   input: Record<string, unknown> | null,
   output: Record<string, unknown> | null,
+  historyCandidateCount: number | null,
 ): AdminContextInspector {
   const initialContext = readObject(input?.initialContext)
   const contextPlan = readObject(output?.contextPlan)
@@ -331,6 +350,8 @@ function projectContextInspector(
     resolvedInputBudgetTokens: readNonNegativeInteger(contextPlan, 'resolvedInputBudgetTokens')
       ?? readNonNegativeInteger(initialContext, 'resolvedInputBudgetTokens'),
     estimatedInputTokens: readNonNegativeInteger(contextPlan, 'estimatedInputTokens'),
+    historyIncludedCount: readNonNegativeInteger(contextPlan, 'historyIncludedCount'),
+    historyCandidateCount,
   }
 }
 

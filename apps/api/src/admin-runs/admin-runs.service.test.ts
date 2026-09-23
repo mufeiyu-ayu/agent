@@ -294,14 +294,16 @@ describe('Admin Run projector', () => {
         ['assistant_output', 'known'],
       ],
     )
+    // registryTruncated / eligibleToolCallCount 是 #152 起的契约字段（旧 Run 恰好也写过），不在忽略之列。
     assert.doesNotMatch(
       serialized,
-      /toolVersion|executionAttempt|retryable|rawArgumentsChars|requestedModel|textChars|registryTruncated|eligibleToolCallCount|schemaVersion|citationIntegrity|contentLength|estimatorStrategyId|contextWindowTokens|exchangeIndex|toolCeilingTruncated|submittedCitationKeyCount|recordedDurationMs/,
+      /toolVersion|executionAttempt|retryable|rawArgumentsChars|requestedModel|textChars|schemaVersion|citationIntegrity|contentLength|estimatorStrategyId|contextWindowTokens|exchangeIndex|toolCeilingTruncated|submittedCitationKeyCount|recordedDurationMs/,
     )
     assert.doesNotMatch(serialized, /DO_NOT_LEAK/)
 
     const sampling = detail.timeline.find(item => item.sequence === 3)
     assert.ok(sampling?.kind === 'known' && sampling.type === 'model_sampling')
+    // 旧 contextPlan 带过 historyIncludedCount，照读；候选条数取自 load_conversation_history。
     assert.deepEqual(sampling.contextInspector, {
       outcome: 'success',
       resolvedModel: 'deepseek-v4-flash',
@@ -309,12 +311,20 @@ describe('Admin Run projector', () => {
       modelId: null,
       resolvedInputBudgetTokens: 262_144,
       estimatedInputTokens: 120_000,
+      historyIncludedCount: 2,
+      historyCandidateCount: 2,
     })
+    assert.equal(sampling.intermediateText, null)
+    assert.equal(sampling.reasoningContent, null)
 
+    // 旧 Run 没有落参数与 observation：投影为 null，不报错。
     const tool = detail.timeline.find(item => item.sequence === 4)
     assert.ok(tool?.kind === 'known' && tool.type === 'tool_execution')
     assert.equal(tool.toolName, 'retrieve_article_context')
     assert.equal(tool.ok, true)
+    assert.equal(tool.arguments, null)
+    assert.equal(tool.observation, null)
+    assert.equal(detail.retrievalInspector.retrievalCalls[0]?.query, null)
 
     const finalization = detail.timeline.find(item => item.sequence === 6)
     assert.ok(finalization?.kind === 'known' && finalization.type === 'grounded_finalization')
