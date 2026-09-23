@@ -10,6 +10,7 @@
 
 | 日期 | 事项 | 结果 |
 | --- | --- | --- |
+| 2026-09-23 | #155 前台流式渲染与模型自恢复合并 | PR #162（代码 head `6dad027`，Closes #155）：18 files，+778 / −101，只改 `apps/web`。流式补齐按行 / 列表项 / 单元格为边界、setext 下划线在文末先不显示、尾块不走缓存、图片渲染成链接；模型不可用 400 后与打开下拉时重拉模型并纠正选中项，强度默认不发送；delta 按帧合并 + 轮次 v-memo（80 轮 400 delta TaskDuration 1559→1091ms）；i18n localStorage 保护、失败不置顶、删死代码与孤儿 key、e2e 默认端口 5176。AC-01～AC-08 逐条 PASS |
 | 2026-09-23 | #152 Run 轨迹补齐模型可见内容合并 | PR #161（代码 head `c75119e`，Closes #152）：28 files，+1,480 / −137，无 migration。tool Step 落回喂参数与 observation，采样 Step 落 Tool Call 轮文本 / reasoning 与历史条数、observation 实际送入长度，finalization 落提示词三个标量；Admin Run Trace 展示并按纯文本渲染；根与 `apps/api` 导图的 model-visible ⟺ logged 改为 action 循环内成立并写明范围。AC-01～AC-07 逐条 PASS |
 | 2026-09-23 | #153 管理台概览与运行列表按健康 / 延迟 / 用量 / 工具重构合并 | PR #160（代码 head `4e54a72`，Closes #153）：42 files，+2,161 / −1,090，无 migration。概览接口改 SQL 聚合只取必要 JSON 路径，Token 统一 totalTokens 并计入 finalization attempts；模型调用口径在列表 / 详情 / 概览同源；运行列表加模型 / 失败原因列与 errorCode 筛选；概览不再请求模型目录、余额竞态修复；`@agent/ai` grok outputTokens 归一。AC-01～AC-08 逐条 PASS，dev 库 30d 三方 Token 均为 159,305 |
 | 2026-09-23 | #151 模型调用失败保留真实原因合并 | PR #159（代码 head `1706a2d`，Closes #151）：39 files，+1,263 / −127，含 migration `20260923120000_agent_run_error_code`（`AgentRun.errorCode` 可空列）。失败类别与用户文案在终态确立后一处得出，Run / Step / error 事件同源；采样 Step 记 `firstTokenMs`；Admin Run Trace 展示两项。AC-01～AC-07 逐条 PASS，dev 库已 `migrate deploy` |
