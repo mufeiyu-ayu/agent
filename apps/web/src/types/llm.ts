@@ -12,7 +12,7 @@ export interface ProviderBalanceInfo {
   topped_up_balance: string
 }
 
-/** 默认模型所属服务商的余额；只有 DeepSeek 官方提供，其他服务商为 null。 */
+/** DeepSeek 官方账号（https）的余额；没有这样的账号时为 null。 */
 export interface ProviderBalanceResponse {
   is_available: boolean
   balance_infos: ProviderBalanceInfo[]

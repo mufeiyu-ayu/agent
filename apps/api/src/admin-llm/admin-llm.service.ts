@@ -45,6 +45,9 @@ const PROBE_CONCURRENCY = 4
 /** 探活结论作废：表格回到「未测试」。 */
 const CLEARED_PROBE = { lastProbeOk: null, lastProbeError: null, lastProbedAt: null }
 
+/** 库里的密钥只发往库里的地址：换地址必须同时换密钥，否则能把明文 key 发到任意端点。 */
+const BASE_URL_CHANGE_REQUIRES_API_KEY = '更换地址需要重新填写 API Key'
+
 @Injectable()
 export class AdminLlmService {
   constructor(
@@ -133,6 +136,11 @@ export class AdminLlmService {
     const current = await this.requireProvider(providerId)
     const nextFamily = input.family ?? current.family
     const nextBaseUrl = input.baseUrl === undefined ? current.baseUrl : normalizeBaseUrl(input.baseUrl)
+    const baseUrlChanged = input.baseUrl !== undefined && nextBaseUrl !== normalizeBaseUrl(current.baseUrl)
+
+    // 空串密钥等于不改：只改地址时，下一次 Run 或探活会把库里的 key 发到新地址。
+    if (baseUrlChanged && !input.apiKey)
+      throw new BadRequestException(BASE_URL_CHANGE_REQUIRES_API_KEY)
 
     const provider = await this.prismaService.$transaction(async (tx) => {
       // 家族变了，其下模型行里新家族不认的 reasoning_effort 一并清空，避免之后每个 Run 都被上游 400。
@@ -143,7 +151,7 @@ export class AdminLlmService {
         })
       }
       // 家族、地址、密钥任一变了，旧的探活结论不再代表现在的配置；空串密钥等于不改。
-      if (nextFamily !== current.family || nextBaseUrl !== current.baseUrl || input.apiKey) {
+      if (nextFamily !== current.family || baseUrlChanged || input.apiKey) {
         await tx.llmModel.updateMany({ where: { providerId }, data: CLEARED_PROBE })
       }
 
@@ -152,7 +160,9 @@ export class AdminLlmService {
         data: {
           ...(input.family === undefined ? {} : { family: input.family }),
           ...(input.note === undefined ? {} : { note: input.note }),
-          ...(input.baseUrl === undefined ? {} : { baseUrl: nextBaseUrl }),
+          // 地址与密钥只成对写（换地址必带密钥，换密钥带上校验过的地址）；地址没变又不换密钥时不写回地址，
+          // 否则并发时会把别人刚提交的「新地址 + 新密钥」里的地址覆盖回旧值，新 key 就配上了旧地址。
+          ...(baseUrlChanged || input.apiKey ? { baseUrl: nextBaseUrl } : {}),
           ...(input.enabled === undefined ? {} : { enabled: input.enabled }),
           // 空串与省略同义：管理台编辑表单留空就是不改密钥。
           ...(input.apiKey ? this.llmModelConfigService.encryptApiKey(input.apiKey) : {}),
@@ -337,8 +347,8 @@ export class AdminLlmService {
   }
 
   /**
-   * 拉清单 / 测模型的凭据：表单给了 apiKey 就用它，否则按 providerId 取库里的密钥；
-   * 地址一律用表单当前值（编辑时可能还没保存）。主密钥更换后旧密文解不开：提示重填密钥，而不是 500。
+   * 拉清单 / 测模型的凭据：表单给了 apiKey 就用它和表单地址；否则按 providerId 取库里的密钥与库里的地址，
+   * 表单地址与库里不同时 400（库里的密钥不跟着表单地址走）。主密钥更换后旧密文解不开：提示重填密钥，而不是 500。
    */
   private async resolveCredentials(input: AdminLlmCredentialsDto): Promise<LlmProviderCredentials> {
     const baseUrl = normalizeBaseUrl(input.baseUrl)
@@ -350,8 +360,11 @@ export class AdminLlmService {
 
     const provider = await this.requireProvider(input.providerId)
 
+    if (baseUrl !== normalizeBaseUrl(provider.baseUrl))
+      throw new BadRequestException(BASE_URL_CHANGE_REQUIRES_API_KEY)
+
     try {
-      return { ...this.llmModelConfigService.toCredentials(provider), baseUrl }
+      return this.llmModelConfigService.toCredentials(provider)
     }
     catch (error) {
       if (error instanceof LlmModelUnavailableError)
@@ -422,7 +435,7 @@ function assertInputBudget(row: { contextWindowTokens: number, maxOutputTokens: 
 }
 
 /**
- * 模型行的跨字段约束：默认模型必须对前台可见（与 resolveModel / resolveDefaultProvider 的口径一致）；
+ * 模型行的跨字段约束：默认模型必须对前台可见（与 resolveModel 的口径一致）；
  * reasoning_effort 只能取所属家族的值。
  */
 function assertModelRowValid(row: {

@@ -37,7 +37,8 @@ async function isPortAvailable(port) {
 
     server.unref()
     server.once('error', () => resolve(false))
-    server.listen(port, () => server.close(() => resolve(true)))
+    // 与 API 实际监听的地址一致：只占 127.0.0.1 的进程在 :: 上探测不出来。
+    server.listen(port, '127.0.0.1', () => server.close(() => resolve(true)))
   })
 }
 
@@ -59,12 +60,13 @@ async function main() {
   const apiPort = hasExplicitPort
     ? requestedPort
     : await findAvailablePort(requestedPort)
-  const apiProxyTarget = process.env.VITE_API_PROXY_TARGET ?? `http://localhost:${apiPort}`
+  // API 只监听 127.0.0.1；写 localhost 会先试 ::1，可能连到那里的其他服务。
+  const apiProxyTarget = process.env.VITE_API_PROXY_TARGET ?? `http://127.0.0.1:${apiPort}`
 
   if (apiPort !== requestedPort)
     console.warn(`[dev:apps] API 端口 ${requestedPort} 已被占用，自动使用 ${apiPort}`)
 
-  console.log(`[dev:apps] API: http://localhost:${apiPort} | Web/Admin proxy: ${apiProxyTarget}`)
+  console.log(`[dev:apps] API: http://127.0.0.1:${apiPort} | Web/Admin proxy: ${apiProxyTarget}`)
 
   const pnpmArgs = [
     '--parallel',

@@ -1,10 +1,8 @@
 import type { ProviderBalanceResponse } from '@agent/ai'
 import type { ChatModelOption } from '@agent/contracts'
-import type { LlmProviderCredentials } from './llm-model-config.service.js'
 
 import { Controller, Get, Inject } from '@nestjs/common'
 import { LlmModelConfigService } from './llm-model-config.service.js'
-import { LlmModelUnavailableError } from './llm.errors.js'
 import { LLMService } from './llm.service.js'
 
 @Controller('llm')
@@ -22,21 +20,11 @@ export class LLMController {
     return this.llmModelConfigService.listVisibleModels()
   }
 
-  /** 自有 DeepSeek 官方账号的余额（没有则退回默认模型所属 Provider）；Provider 不提供余额端点时为 null。 */
+  /** 自有 DeepSeek 官方账号（https）的余额；没有这样的账号或端点失败时为 null。 */
   @Get('balance')
   async getUserBalance(): Promise<ProviderBalanceResponse | null> {
-    let provider: LlmProviderCredentials | null
-
-    try {
-      provider = await this.llmModelConfigService.resolveBalanceProvider()
-    }
-    catch (error) {
-      // 主密钥更换后 Provider 的密钥解不开：余额按无处理，对话入口会给出明确的 400。
-      if (error instanceof LlmModelUnavailableError)
-        return null
-
-      throw error
-    }
+    // 密钥解不开的官方账号在 resolveBalanceProvider 里已跳过，这里只剩「有没有」。
+    const provider = await this.llmModelConfigService.resolveBalanceProvider()
 
     return provider ? await this.llmService.getProviderBalance(provider) : null
   }

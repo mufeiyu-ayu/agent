@@ -24,7 +24,7 @@
     "test:admin": "pnpm build && node --test dist/admin-runs/admin-runs.controller.test.js dist/admin-runs/admin-runs.service.test.js dist/admin-runs/projection/retrieval-inspector.projector.test.js dist/admin-conversations/admin-conversations.service.test.js dist/admin-overview/admin-overview.service.test.js",
     "test:db-reliability": "tsx --env-file-if-exists=../../.env --test src/prisma/prisma.service.reliability.test.ts",
     "test:model-stream": "tsx --test src/agent-runtime/agent-runtime.service.test.ts src/agent-runtime/sampling/model-sampling-decision.test.ts src/agent-runtime/sampling/model-io-debug-capture.test.ts",
-    "test:llm-config": "tsx --test src/llm/llm.module.test.ts src/llm/llm.service.test.ts",
+    "test:llm-config": "tsx --test src/llm/llm.module.test.ts src/llm/llm.service.test.ts src/admin-llm/admin-llm.service.test.ts",
     "test:chat-service": "pnpm --filter @agent/contracts build && pnpm --filter @agent/ai build && tsx --test src/chat/chat.service.test.ts src/chat/dto/chat.dto.test.ts src/chat/prompts/agent.prompt.test.ts",
     "test:tool-loop": "tsx --test src/agent-runtime/configuration/agent-runtime.policy.test.ts",
     "test:tools": "tsx --test src/tools/*.test.ts src/tools/**/*.test.ts",

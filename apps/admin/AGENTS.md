@@ -28,7 +28,7 @@ views 组合 -> features/<领域>/ 的 state + api + components -> features/shar
 
 ## 约束
 
-- 管理台是唯一的写入口（模型配置等），密钥只回显尾四位，表单留空表示不改。
+- 管理台是唯一的写入口（模型配置等），密钥只回显尾四位，表单留空表示不改；编辑服务商改了地址必须重填密钥（后端同样拒绝）。
 - 跨端类型从 `@agent/contracts` 取，feature 内只放视图模型与展示映射。
 - 一个 feature 内按 state / api / components 拆；只有一个消费者的东西不抽到 shared。
 

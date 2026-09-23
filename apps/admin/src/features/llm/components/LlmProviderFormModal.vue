@@ -68,16 +68,32 @@ const formState = reactive<FormState>({
 
 const isEdit = computed(() => props.provider !== null)
 
-/** 新增必须先填地址和密钥；编辑可以只填地址（密钥沿用库里的）。 */
-const canFetch = computed(() => (
-  formState.baseUrl.trim().length > 0 && (isEdit.value || formState.apiKey.trim().length > 0)
+/** 编辑时地址改了（末尾斜杠不算）：库里的密钥不跟着新地址走，后端要求同时重填密钥。 */
+const baseUrlChanged = computed(() => (
+  props.provider !== null
+  && formState.baseUrl.trim().replace(/\/+$/, '') !== props.provider.baseUrl.replace(/\/+$/, '')
 ))
 
-const apiKeyPlaceholder = computed(() => (
-  props.provider
-    ? t('llmModels.providers.form.apiKeyPlaceholderEdit', { last4: props.provider.apiKeyLast4 })
-    : t('llmModels.providers.form.apiKeyPlaceholderNew')
+/** 地址改回原值后密钥不再必填：清掉之前按「改了地址」报的错。 */
+watch(baseUrlChanged, (changed) => {
+  if (!changed)
+    formRef.value?.clearValidate(['apiKey'])
+})
+
+/** 新增或改了地址必须先填密钥；编辑且地址没变可以只用库里那把。 */
+const canFetch = computed(() => (
+  formState.baseUrl.trim().length > 0
+  && (formState.apiKey.trim().length > 0 || (isEdit.value && !baseUrlChanged.value))
 ))
+
+const apiKeyPlaceholder = computed(() => {
+  if (!props.provider)
+    return t('llmModels.providers.form.apiKeyPlaceholderNew')
+
+  return baseUrlChanged.value
+    ? t('llmModels.providers.form.apiKeyRequiredForBaseUrl')
+    : t('llmModels.providers.form.apiKeyPlaceholderEdit', { last4: props.provider.apiKeyLast4 })
+})
 
 const rules = computed<Record<string, Rule[]>>(() => ({
   note: [{ required: true, message: t('llmModels.providers.form.noteRequired'), trigger: 'blur' }],
@@ -91,9 +107,11 @@ const rules = computed<Record<string, Rule[]>>(() => ({
       trigger: 'blur',
     },
   ],
-  apiKey: isEdit.value
-    ? []
-    : [{ required: true, message: t('llmModels.providers.form.apiKeyRequired'), trigger: 'blur' }],
+  apiKey: !isEdit.value
+    ? [{ required: true, message: t('llmModels.providers.form.apiKeyRequired'), trigger: 'blur' }]
+    : baseUrlChanged.value
+      ? [{ required: true, message: t('llmModels.providers.form.apiKeyRequiredForBaseUrl'), trigger: 'blur' }]
+      : [],
 }))
 
 /** 选服务商：Base URL 只在还没被人改过时跟着预设走。 */

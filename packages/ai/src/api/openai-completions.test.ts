@@ -8,6 +8,7 @@ import { describe, it } from 'node:test'
 import { familyCompatOf } from '@agent/contracts'
 import OpenAI from 'openai'
 import {
+  LLMApiError,
   LLMAuthError,
   LLMBalanceError,
   LLMInvalidRequestError,
@@ -552,6 +553,95 @@ describe('OpenAICompatibleClient 瞬态失败重试', () => {
 
     assert.equal(harness.fetchCalls.length, 12)
     assert.equal(getEventListeners(abortController.signal, 'abort').length, 0)
+  })
+})
+
+describe('OpenAICompatibleClient 未映射状态码的错误文案', () => {
+  async function rejectWith(response: () => Response): Promise<LLMApiError> {
+    const harness = createFetchHarness([response])
+    let failure: unknown
+
+    try {
+      await collectEvents(harness.client.chatStream(
+        [{ type: 'message', role: 'user', content: 'hello' }],
+        { request: RELAY_REQUEST },
+      ))
+    }
+    catch (error) {
+      failure = error
+    }
+
+    assert.ok(failure instanceof LLMApiError)
+    return failure
+  }
+
+  it('非 JSON body（HTML 页面 / 纯文本）不进文案，只报状态码；detail 仍是完整 APIError', async () => {
+    for (const status of [404, 405]) {
+      const error = await rejectWith(() => new Response('<html><body>SECRET_UPSTREAM_PAGE</body></html>', {
+        status,
+        headers: { 'Content-Type': 'text/html' },
+      }))
+
+      assert.equal(error.message, `LLM API HTTP ${status} 错误`)
+      assert.ok(error.detail instanceof OpenAI.APIError)
+      assert.match(error.detail.message, /SECRET_UPSTREAM_PAGE/)
+    }
+  })
+
+  it('JSON body 的 error 对象只取字符串 code / type 与截断、去控制字符后的 message', async () => {
+    const error = await rejectWith(() => new Response(JSON.stringify({
+      error: {
+        code: 'model_not_found',
+        type: 404,
+        message: `line1\nline2\u0007\u202E${'x'.repeat(500)}`,
+        param: 'SHOULD_NOT_APPEAR',
+      },
+    }), { status: 404, headers: { 'Content-Type': 'application/json' } }))
+    const upstream = error.message.replace('LLM API HTTP 404 错误: [model_not_found] ', '')
+
+    assert.match(error.message, /^LLM API HTTP 404 错误: \[model_not_found\] line1 line2 x+…$/)
+    assert.ok(upstream.length <= 200, `message 截断后仍有 ${upstream.length} 字符`)
+    assert.doesNotMatch(error.message, /SHOULD_NOT_APPEAR|\p{Cc}|\p{Cf}/u)
+  })
+
+  it('502 纯文本（重试耗尽后）归 LLMServerError，文案不带上游 body', async () => {
+    const failure = () => new Response('SECRET_UPSTREAM_BAD_GATEWAY_TEXT', {
+      status: 502,
+      headers: { 'Content-Type': 'text/plain', 'retry-after': '0' },
+    })
+    const harness = createFetchHarness([failure, failure, failure])
+
+    await assert.rejects(
+      collectEvents(harness.client.chatStream(
+        [{ type: 'message', role: 'user', content: 'hello' }],
+        { request: RELAY_REQUEST },
+      )),
+      (error: unknown) => {
+        assert.ok(error instanceof LLMServerError)
+        assert.match(error.message, /（502）/)
+        assert.doesNotMatch(error.message, /SECRET_UPSTREAM/)
+        return true
+      },
+    )
+  })
+
+  it('截断不在代理对中间切开', async () => {
+    const error = await rejectWith(() => new Response(JSON.stringify({
+      error: { message: `${'a'.repeat(198)}😀${'b'.repeat(10)}` },
+    }), { status: 404, headers: { 'Content-Type': 'application/json' } }))
+
+    assert.equal(error.message, `LLM API HTTP 404 错误: ${'a'.repeat(198)}…`)
+  })
+
+  it('JSON body 的 error 不是对象（字符串 / 缺失）时同样只报状态码', async () => {
+    for (const body of [{ error: 'plain upstream text' }, { message: 'no error wrapper' }]) {
+      const error = await rejectWith(() => new Response(JSON.stringify(body), {
+        status: 404,
+        headers: { 'Content-Type': 'application/json' },
+      }))
+
+      assert.equal(error.message, 'LLM API HTTP 404 错误')
+    }
   })
 })
 

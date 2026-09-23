@@ -129,7 +129,7 @@ export const messages = {
       balance: {
         unavailable: '不可用',
         checkedAt: '查询于 {time}',
-        provider: '默认模型服务商的余额',
+        provider: 'DeepSeek 官方账号的余额',
       },
     },
     runs: {
@@ -527,6 +527,7 @@ export const messages = {
           apiKeyPlaceholderNew: '请输入 API 密钥',
           apiKeyPlaceholderEdit: '留空则保持不变（当前尾号 {last4}）',
           apiKeyRequired: '请输入 API 密钥',
+          apiKeyRequiredForBaseUrl: '更换地址需要重新填写 API 密钥',
           fetchModels: '拉取模型',
           testHint: '勾中的模型会自动各发一条最短对话验证能否调用；失败的把鼠标放在叉上看原因。',
           candidatesTitle: '验证并导入模型',
@@ -725,7 +726,7 @@ export const messages = {
       balance: {
         unavailable: 'Unavailable',
         checkedAt: 'Checked at {time}',
-        provider: 'Balance of the default model provider',
+        provider: 'Balance of the official DeepSeek account',
       },
     },
     runs: {
@@ -1123,6 +1124,7 @@ export const messages = {
           apiKeyPlaceholderNew: 'Enter API Key',
           apiKeyPlaceholderEdit: 'Leave blank to keep unchanged (ends in {last4})',
           apiKeyRequired: 'Please enter API Key',
+          apiKeyRequiredForBaseUrl: 'Changing the Base URL requires re-entering the API Key',
           fetchModels: 'Fetch models',
           testHint: 'Each selected model is tested automatically with one minimal chat request; hover a cross to see why it failed.',
           candidatesTitle: 'Verify and import models',

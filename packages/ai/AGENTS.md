@@ -27,7 +27,7 @@ scripts/export-raw-response-fixtures.ts    # 一次性只读导出脚本：从�
 - 重试交给 SDK：`REQUEST_MAX_RETRIES = 2`（#115），只在收到响应头之前重试 408 / 409 / 429 / 5xx 与连接错误；流正文中断、abort 之后不重试，abort 不等退避 sleep（`rejectOnAbort`，`chatStream` 与 `listModels` / `getUserBalance` 都接受调用方 signal）。回归在 `openai-completions.test.ts` 的「瞬态失败重试」组。
 - reasoning 正文不进事件流：adapter 只在首段 reasoning 到达时发一次不带正文的 `reasoning_started`（runtime 据此算首 token 时间），正文只随 `tool_call_completed.reasoningContent` 回填。
 - SDK 读响应体时遇到 abort 会静默结束迭代：`chatStream` 先看 signal，已 aborted 就按 abort 抛（不报成缺 finish reason）；raw capture 在 signal 已 aborted 或没见到 finish_reason 时标 partial。
-- 错误文案不带厂商名，各家 OpenAI-compatible 端点共用同一套状态码含义。
+- 错误文案不带厂商名，各家 OpenAI-compatible 端点共用同一套状态码含义。上游 body 不进文案：未单独映射的状态码只报 `HTTP ${status}`，仅当 JSON body 的 `error` 是对象时附带字符串 code / type 与去掉控制 / 格式字符、截断到 200 字符的 message；完整 APIError 留在 `detail` 供日志。
 
 ## 验证
 

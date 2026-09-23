@@ -8,7 +8,7 @@ export async function fetchLlmModels(): Promise<LlmModelOption[]> {
   return response.data
 }
 
-/** 服务商不提供余额端点或后台没有默认模型时为 null，侧栏据此隐藏余额行。 */
+/** 后台没有 DeepSeek 官方账号或查询失败时为 null，侧栏据此隐藏余额行。 */
 export async function fetchLlmBalance(): Promise<LlmBalanceState | null> {
   const response = await http.get<ProviderBalanceResponse | null>('/api/llm/balance')
   const balance = response.data

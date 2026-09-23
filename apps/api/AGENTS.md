@@ -5,7 +5,7 @@ NestJS API。给模型的路径导图：只写入口、分层、核心文件与�
 ## 入口与分层
 
 ```txt
-src/main.ts                      # 启动，全局前缀 /api，端口 PORT（默认 3000）
+src/main.ts                      # 启动，全局前缀 /api，端口 PORT（默认 3000）；只监听 127.0.0.1、不开 CORS，局域网访问走 Vite 代理
 src/app.module.ts                # 装配所有业务模块
 src/common/bootstrap/register-app-globals.ts   # 全局校验管道 / 响应包装 / 异常过滤 / requestId；Controller 不重复实现
 Controller -> Service -> AgentRuntime -> LLMService / ToolRegistry -> Prisma
@@ -36,7 +36,7 @@ Prisma schema 在仓库根 `prisma/`，生成的 client 在 `src/generated/prism
 - 模型输出不可信：工具名、参数、引用 key 先校验再执行；检索正文按 untrusted data 注入。
 - 终态所有权：晚到的 Abort / deadline / DB 结果不能覆盖已确立终态。
 - 失败归因同源：Run 的 `errorCode`、失败采样 Step 的文案与前台 error 事件都在终态确立后由 `agent-runtime.service.ts` 的 `describeRunFailure` 一处得出；LLMError 的用户文案与 `AllExceptionsFilter` 共用 `common/utils/llm-error-message.util.ts`。
-- 服务商 API Key 只以密文入库，任何接口只回显尾四位；主密钥 `AGENT_SECRET_KEY` 只在 `llm/` 内使用。
+- 服务商 API Key 只以密文入库，任何接口只回显尾四位；主密钥 `AGENT_SECRET_KEY` 只在 `llm/` 内使用。库里的密钥只发往库里的地址：拉取 / 测试只带 providerId 时用库里的 baseUrl，换地址（含 PATCH 服务商）必须同时重填 key；余额只查 https 的官方 DeepSeek 账号，响应只投影声明字段。
 - 家族协议事实（thinking / reasoning_effort 取值）只在 `@agent/contracts` 的 `LLM_FAMILY_CAPABILITIES` 一处。
 - 管理台「模型调用」口径同源：有 usage 或以 llm_* 类别失败的 action sampling / finalization attempt 才算，运行列表与 Run Trace 走 `sampling-usage.projector.ts` 的 `aggregateRunModelCalls`，概览 SQL 复用同文件的 `LLM_CALL_ERROR_CODES`；改一处要同步另一处。
 

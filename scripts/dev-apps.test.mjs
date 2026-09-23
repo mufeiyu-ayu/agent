@@ -27,7 +27,7 @@ test('findAvailablePort skips an occupied port', async () => {
 
   await new Promise((resolve, reject) => {
     blocker.once('error', reject)
-    blocker.listen(occupiedPort, resolve)
+    blocker.listen(occupiedPort, '127.0.0.1', resolve)
   })
 
   try {
