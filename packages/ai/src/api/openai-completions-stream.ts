@@ -6,7 +6,7 @@ import type {
 } from '../types.js'
 
 import { LLMApiError } from '../errors.js'
-import { OpenAICompatibleToolCallAccumulator } from './openai-completions-tool-calls.js'
+import { OpenAICompatibleToolCallAccumulator, ToolCallSlots } from './openai-completions-tool-calls.js'
 
 type DeepSeekChatCompletionDelta = ChatCompletionChunk.Choice.Delta & {
   reasoning_content?: string | null
@@ -35,7 +35,7 @@ export interface AdaptStreamOptions {
    * 中转站后面的 gpt / gemini / claude 从不返回它，按模型关掉这条不变量。
    */
   requireReasoningContent: boolean
-  /** compat 同名字段：tool_calls 分片可以不带 index，按出现顺序编号。缺省严格，缺 index 即报错。 */
+  /** compat 同名字段：tool_calls 分片可以不带 index，每片是一个完整调用，按 `ToolCallSlots` 取槽位。缺省严格，缺 index 即报错。 */
   toolCallIndexOptional?: boolean
   /** compat 同名字段：带 Tool Call 的 stop 归一成 tool_calls。缺省严格，带 Tool Call 的 stop 即报错。 */
   toolCallsMayFinishWithStop?: boolean
@@ -47,21 +47,27 @@ export async function* adaptOpenAICompatibleStream(
   options: AdaptStreamOptions,
 ): AsyncGenerator<ModelStreamEvent> {
   const toolCallAccumulator = new OpenAICompatibleToolCallAccumulator()
+  const toolCallSlots = new ToolCallSlots()
   const reasoningContentChunks: string[] = []
   let hasStartedReasoning = false
   let hasStartedToolCall = false
-  let indexlessToolCallCount = 0
   let finishReason: ModelFinishReason | undefined
 
   for await (const chunk of chunks) {
-    const choice = chunk.choices[0]
+    // 各家真实流都带 choices 数组（只带 usage 的末尾 chunk 是空数组，个别中转站连空数组也省掉）；
+    // 两者都没有就是上游返回了别的东西（裸 error 对象、null），按协议异常报，不让它变成 TypeError。
+    if (typeof chunk !== 'object' || chunk === null || (!Array.isArray(chunk.choices) && !chunk.usage))
+      throw new LLMApiError('模型流返回了没有 choices 的数据块')
+
+    const choice = chunk.choices?.[0]
 
     if (choice) {
       if (finishReason) {
         throw new LLMApiError('模型在 finish reason 之后仍返回了 choice 数据')
       }
 
-      const providerDelta = choice.delta as DeepSeekChatCompletionDelta
+      // 个别端点在只带 finish_reason 的末尾 choice 里省掉 delta。
+      const providerDelta = (choice.delta ?? {}) as DeepSeekChatCompletionDelta
       const reasoningContentDelta = providerDelta.reasoning_content
       const contentDelta = providerDelta.content
 
@@ -78,8 +84,8 @@ export async function* adaptOpenAICompatibleStream(
 
       for (const toolCallDelta of toolCallDeltas) {
         // SDK 类型把 index 标为必填，Google 官方端点的分片却不带它，且每个分片就是一个完整调用；null 同样按缺失处理。
-        const index = toolCallDelta.index == null && options.toolCallIndexOptional
-          ? indexlessToolCallCount++
+        const index = options.toolCallIndexOptional
+          ? toolCallSlots.slotOf(toolCallDelta.index)
           : toolCallDelta.index
 
         // 工具名和 arguments 可能分多个 chunk 返回，这里只负责持续拼接碎片。

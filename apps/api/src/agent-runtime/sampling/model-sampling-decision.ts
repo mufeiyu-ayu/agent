@@ -16,8 +16,9 @@ export interface ModelSamplingSummary {
   toolCallCount: number
   textChars: number
   /**
-   * 从发出请求到收到第一个流事件（含 reasoning_started）的毫秒数；一个事件都没收到为 null。
-   * 包含 SDK 在首个响应头之前的重试与退避：429 / 5xx 后重试成功的这一轮会偏大。
+   * 从发出请求到收到第一个生成事件（正文、reasoning_started 或 tool_call_started）的毫秒数；
+   * 只有 usage / response_completed 的空正文结束为 null。包含 SDK 在首个响应头之前的重试与退避：
+   * 429 / 5xx 后重试成功的这一轮会偏大。
    */
   firstTokenMs: number | null
 }
@@ -72,10 +73,9 @@ export async function* streamModelSampling(
 
   try {
     for await (const event of events) {
-      firstTokenMs ??= Math.max(0, now() - requestedAt)
-
       switch (event.type) {
         case 'text_delta':
+          firstTokenMs ??= Math.max(0, now() - requestedAt)
           textChars += event.delta.length
           textChunks.push(event.delta)
           yield event.delta
@@ -83,9 +83,11 @@ export async function* streamModelSampling(
 
         case 'reasoning_started':
         case 'tool_call_started':
+          firstTokenMs ??= Math.max(0, now() - requestedAt)
           break
 
         case 'tool_call_completed':
+          firstTokenMs ??= Math.max(0, now() - requestedAt)
           toolCalls.push(event.toolCall)
           reasoningContent = event.reasoningContent
           break

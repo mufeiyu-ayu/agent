@@ -266,7 +266,7 @@ export interface AdminModelSamplingStep extends AdminRunKnownTimelineItemBase {
   usage: AdminRunTokenUsage | null
   toolCallCount: number | null
   /**
-   * 从发出请求到收到第一个流事件（含 reasoning）的毫秒数；一个事件都没收到或旧数据为 null。
+   * 从发出请求到收到第一个生成事件（正文、reasoning 或 Tool Call 开始）的毫秒数；空正文结束、一个都没收到或旧数据为 null。
    * 包含 SDK 在首个响应头之前的重试与退避。
    */
   firstTokenMs: number | null

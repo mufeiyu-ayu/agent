@@ -185,6 +185,78 @@ describe('streamModelSampling', () => {
     assert.equal(decision.summary.firstTokenMs, 30)
   })
 
+  it('首 token 只认生成事件：先到的 usage 不算，空正文 stop 为 null', async () => {
+    const cases: Array<{ events: Array<[number, ModelStreamEvent]>, firstTokenMs: number | null }> = [
+      {
+        events: [
+          [1_010, { type: 'usage', usage: { inputTokens: 5 } }],
+          [1_050, { type: 'text_delta', delta: '答' }],
+          [1_060, { type: 'response_completed', finishReason: 'stop' }],
+        ],
+        firstTokenMs: 50,
+      },
+      {
+        events: [
+          [1_010, { type: 'usage', usage: { inputTokens: 5 } }],
+          [1_030, { type: 'reasoning_started' }],
+          [1_070, { type: 'text_delta', delta: '答' }],
+          [1_080, { type: 'response_completed', finishReason: 'stop' }],
+        ],
+        firstTokenMs: 30,
+      },
+      {
+        events: [
+          [1_020, { type: 'tool_call_started' }],
+          [1_040, {
+            type: 'tool_call_completed',
+            toolCall: { providerCallId: 'call-1', name: 'search', argumentsJson: '{}', index: 0 },
+            reasoningContent: '',
+          }],
+          [1_050, { type: 'response_completed', finishReason: 'tool_calls' }],
+        ],
+        firstTokenMs: 20,
+      },
+      {
+        // adapter 总会先发 tool_call_started；没发时 tool_call_completed 同样算生成事件。
+        events: [
+          [1_025, {
+            type: 'tool_call_completed',
+            toolCall: { providerCallId: 'call-1', name: 'search', argumentsJson: '{}', index: 0 },
+            reasoningContent: '',
+          }],
+          [1_050, { type: 'response_completed', finishReason: 'tool_calls' }],
+        ],
+        firstTokenMs: 25,
+      },
+      {
+        events: [
+          [1_010, { type: 'usage', usage: { inputTokens: 5 } }],
+          [1_020, { type: 'response_completed', finishReason: 'stop' }],
+        ],
+        firstTokenMs: null,
+      },
+    ]
+
+    for (const { events, firstTokenMs } of cases) {
+      let current = 1_000
+      const sampling = streamModelSampling(
+        (async function* () {
+          for (const [at, event] of events) {
+            current = at
+            yield event
+          }
+        })(),
+        'run-1:sampling-1',
+        () => current,
+      )
+      let result = await sampling.next()
+
+      while (!result.done)
+        result = await sampling.next()
+      assert.equal(result.value.summary.firstTokenMs, firstTokenMs)
+    }
+  })
+
   it('一个流事件都没收到就失败时 firstTokenMs 为 null', async () => {
     await assert.rejects(
       collectSampling([], 'run-1:sampling-1', new Error('connect refused')),

@@ -3201,6 +3201,43 @@ describe('Run 失败归因与首 token 时间（真实 SDK + fake fetch 故障�
       error: new LLMApiError('模型流在没有 finish reason 的情况下结束'),
       fetchCount: 1,
     },
+    // #168：未映射状态码的报错回显了 key，warn 日志只能带 *** 的版本。
+    {
+      name: '404 且报错回显 key',
+      attempts: [() => providerErrorResponse(404)],
+      errorCode: 'llm_protocol',
+      error: new LLMApiError('LLM API HTTP 404 错误'),
+      httpStatus: 404,
+      fetchCount: 1,
+    },
+    {
+      name: 'SSE 行不是合法 JSON',
+      attempts: [() => sseResponse([sseData({ content: '部分' }), 'data: {"choices": [truncated'])],
+      errorCode: 'llm_protocol',
+      error: new LLMApiError('模型服务返回了无法解析的数据'),
+      fetchCount: 1,
+    },
+    {
+      name: '数据块没有 choices',
+      attempts: [() => sseResponse(['data: {"message":"upstream oops"}', 'data: [DONE]'])],
+      errorCode: 'llm_protocol',
+      error: new LLMApiError('模型流返回了没有 choices 的数据块'),
+      fetchCount: 1,
+    },
+    {
+      name: '流内 error 对象 code 429',
+      attempts: [() => sseResponse([`data: ${JSON.stringify({ error: { code: 429, message: 'rate limited' } })}`])],
+      errorCode: 'llm_rate_limit',
+      error: new LLMRateLimitError(),
+      fetchCount: 1,
+    },
+    {
+      name: '流内 error 对象 code 503',
+      attempts: [() => sseResponse([`data: ${JSON.stringify({ error: { code: '503', message: 'busy' } })}`])],
+      errorCode: 'llm_server',
+      error: new LLMServerError(503),
+      fetchCount: 1,
+    },
   ]
 
   for (const failureCase of failureCases) {

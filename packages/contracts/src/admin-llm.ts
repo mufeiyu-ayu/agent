@@ -21,7 +21,7 @@ export type LlmProviderFamily = typeof LLM_PROVIDER_FAMILIES[number]
  * - `thinkingFormat`：请求体的思考开关。`'deepseek'` 发 `thinking: { type: 'enabled' }`；null 不发。
  * - `requiresReasoningContent`：Tool Call 必须回 `reasoning_content`（DeepSeek thinking 续轮回填需要）；
  *   中转站后面的 gpt / grok / gemini 只回 `reasoning_tokens` 不回正文，不能要求。
- * - `toolCallIndexOptional`：流式 tool_calls 分片可以不带 `index`，每个这样的分片就是一个完整调用，按出现顺序编号。
+ * - `toolCallIndexOptional`：流式 tool_calls 分片可以不带 `index`，每个这样的分片就是一个完整调用，取还没被占用的最小槽位（不与显式 index 撞号）。
  * - `toolCallsMayFinishWithStop`：带 Tool Call 时 `finish_reason` 可能是 `stop`，按 `tool_calls` 处理。
  *   后两条来自 Google 官方 OpenAI 兼容端点的真实流（#157 fixture `gemini-direct.tool-call.sse`），其余家族保持严格。
  *   它们只让首轮 Tool Call 能被解析；直连 Google 的 Gemini 3 续轮还要回传 `extra_content.google.thought_signature`，

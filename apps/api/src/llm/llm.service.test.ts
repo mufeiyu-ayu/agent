@@ -78,6 +78,20 @@ describe('LLMService', () => {
     }
   })
 
+  it('#168 探活时上游 404 报错回显本次 key：写回 lastProbeError 的失败原因里只有 ***', async () => {
+    const provider = { ...SNAPSHOT, apiKey: 'sk-test-echoed-by-upstream' }
+
+    globalThis.fetch = (async () => new Response(JSON.stringify({
+      error: { message: `Incorrect API key provided: ${provider.apiKey}` },
+    }), { status: 404, headers: { 'Content-Type': 'application/json' } })) as typeof fetch
+
+    const probe = await createService().probeModel(provider, 'gpt-5.6-sol')
+
+    assert.equal(probe.ok, false)
+    assert.match(probe.ok ? '' : probe.error, /Incorrect API key provided: \*\*\*/)
+    assert.doesNotMatch(probe.ok ? '' : probe.error, /echoed-by-upstream/)
+  })
+
   it('余额打 origin 下的 /user/balance（不带 /v1），404 等 LLMError 归一为 null', async () => {
     const calls = stubFetch({ is_available: true, balance_infos: [] })
     const service = createService()

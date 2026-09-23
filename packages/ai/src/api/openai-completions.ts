@@ -198,6 +198,8 @@ export class OpenAICompatibleClient {
       apiKey,
       baseURL: baseUrl,
       maxRetries: REQUEST_MAX_RETRIES,
+      // SDK 解析不了 SSE 行时会用 console.error 把整行上游原文打到 stderr；错误本身照常抛出。
+      logLevel: 'off',
     })
   }
 
@@ -238,16 +240,23 @@ export class OpenAICompatibleClient {
     if (cause instanceof APIError)
       return this.toLLMHttpError(cause)
 
+    // SDK 解析上游 JSON 失败（SSE `data:` 行或元数据响应体）：数据不合协议，不是网络问题；文案不带上游片段。
+    if (cause instanceof SyntaxError)
+      return new LLMApiError('模型服务返回了无法解析的数据', cause)
+
     return new LLMNetworkError(cause)
   }
 
   private toLLMHttpError(error: APIError): LLMError {
-    switch (error.status) {
+    // 流内夹带的 error 对象被 SDK 抛成 status 为空的 APIError；它带着 HTTP 状态码时按同一张表归类。
+    const status = error.status ?? statusOfStreamError(error.error)
+
+    switch (status) {
       case 400:
         return new LLMInvalidRequestError(400, error)
       case 401:
       case 403:
-        return new LLMAuthError(error.status, error)
+        return new LLMAuthError(status, error)
       case 402:
         return new LLMBalanceError(error)
       case 422:
@@ -256,11 +265,11 @@ export class OpenAICompatibleClient {
         return new LLMRateLimitError(error)
       default:
         // 中转站常见的 502 / 504 与 500 / 503 同属上游服务端故障。
-        if (error.status !== undefined && error.status >= 500)
-          return new LLMServerError(error.status, error)
+        if (status !== undefined && status >= 500)
+          return new LLMServerError(status, error)
 
         return new LLMApiError(
-          this.formatUnhandledApiErrorMessage(error),
+          this.formatUnhandledApiErrorMessage(error, status),
           error,
         )
     }
@@ -269,26 +278,43 @@ export class OpenAICompatibleClient {
   /**
    * 未单独映射的状态码（404 / 405 等）只报状态：非 JSON body 可能是整页 HTML 或任意文本，SDK 会把它原样放进
    * `error.message`，而这条文案会进管理台「测试模型」结果与 `lastProbeError`。只有 body 解析成 JSON 且
-   * `error` 是对象时，才附带字符串类型的 code / type 与截断后的 message；完整 APIError 仍在 `detail` 里供日志排查。
+   * `error` 是对象时，才附带字符串类型的 code / type 与截断后的 message；完整 APIError 留在 `detail` 上。
    */
-  private formatUnhandledApiErrorMessage(error: APIError): string {
-    const status = error.status ? `HTTP ${error.status}` : '未知 HTTP 状态'
-    const upstream = describeJsonErrorBody(error.error)
+  private formatUnhandledApiErrorMessage(error: APIError, status: number | undefined): string {
+    const label = status ? `HTTP ${status}` : '未知 HTTP 状态'
+    const upstream = describeJsonErrorBody(error.error, this.clientConfig.apiKey)
 
-    return `LLM API ${status} 错误${upstream ? `: ${upstream}` : ''}`
+    return `LLM API ${label} 错误${upstream ? `: ${upstream}` : ''}`
   }
 }
 
-/** SDK 的 `APIError.error` 是 JSON body 里的 `error` 字段；非 JSON body 时为 undefined。 */
-function describeJsonErrorBody(body: unknown): string {
+/** 流内 error 对象的 `code` 是 4xx / 5xx 状态码（数值或三位数字字符串）时取出来；其余（含 200 这类业务码）为 undefined。 */
+function statusOfStreamError(body: unknown): number | undefined {
+  const code = typeof body === 'object' && body !== null
+    ? (body as Record<string, unknown>).code
+    : undefined
+  const status = typeof code === 'number' || (typeof code === 'string' && /^\d{3}$/.test(code))
+    ? Number(code)
+    : undefined
+
+  return status !== undefined && status >= 400 && status <= 599 ? status : undefined
+}
+
+/**
+ * SDK 的 `APIError.error` 是 JSON body 里的 `error` 字段；非 JSON body 时为 undefined。
+ * 上游可能在报错里原样回显请求用的 key，先把它换成 `***` 再截断，截断不会留下半截 key。
+ * 少于 8 个字符的是本地 / 中转站的占位 key（`none`、`EMPTY`），不是秘密，替换反而会把正文打乱。
+ */
+function describeJsonErrorBody(body: unknown, apiKey: string): string {
   if (typeof body !== 'object' || body === null || Array.isArray(body))
     return ''
 
+  const redact = (value: string) => apiKey.length >= 8 ? value.replaceAll(apiKey, '***') : value
   const { code, type, message } = body as Record<string, unknown>
   const labels = [code, type]
-    .flatMap(value => typeof value === 'string' ? [sanitizeUpstreamText(value)] : [])
+    .flatMap(value => typeof value === 'string' ? [sanitizeUpstreamText(redact(value))] : [])
     .filter(Boolean)
-  const text = typeof message === 'string' ? sanitizeUpstreamText(message) : ''
+  const text = typeof message === 'string' ? sanitizeUpstreamText(redact(message)) : ''
 
   return [labels.length > 0 ? `[${labels.join(' / ')}]` : '', text].filter(Boolean).join(' ')
 }
