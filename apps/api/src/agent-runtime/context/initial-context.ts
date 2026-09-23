@@ -11,7 +11,7 @@ export const DEFAULT_INITIAL_CONTEXT_POLICY = {
 } as const
 
 /**
- * 首轮采样前的快照，原样写入每个 sampling Step 输入 `initialContext`（Admin Context Inspector 的读取契约）。
+ * 首轮采样前的快照，原样写入每个 sampling Step 输入 `initialContext`（Admin 的 Run 模型快照与请求详情都读它）。
  * 历史条数与裁剪结果不在这里：读取阶段不裁剪，预算裁剪只体现在 planner 的 `contextPlan`。
  */
 export interface InitialContextSummary {

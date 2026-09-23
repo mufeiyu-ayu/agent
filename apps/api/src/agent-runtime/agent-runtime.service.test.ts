@@ -412,7 +412,7 @@ describe('AgentRuntimeService model stream', () => {
     ])
   })
 
-  it('读取条数触到硬上限时标记 candidate_cap，只保留最新的候选', async () => {
+  it('读取条数触到硬上限时只保留最新的候选，load_conversation_history 记读入条数', async () => {
     const harness = createHarness(
       () => toModelStream([{ type: 'response_completed', finishReason: 'stop' }]),
       undefined,
@@ -1933,13 +1933,13 @@ describe('AgentRuntimeService model stream', () => {
       'assistant_delta',
       'run_completed',
     ])
-    // 非 Grounding 模式：已推出的中间文本保留，最终 Message = 中间文本 + 最终回答。
-    assert.equal(harness.assistantMessage()?.content, '先查两篇。最终回答。')
+    // 非 Grounding 模式：已推出的中间文本保留，最终 Message = 中间文本 + 空行 + 最终回答。
+    assert.equal(harness.assistantMessage()?.content, '先查两篇。\n\n最终回答。')
     const completedEvent = events.at(-1)
 
     assert.equal(
       completedEvent?.type === 'run_completed' ? completedEvent.content : undefined,
-      '先查两篇。最终回答。',
+      '先查两篇。\n\n最终回答。',
     )
     assert.deepEqual(
       harness.toolInvocations.map(invocation => invocation.callId),
@@ -1979,6 +1979,72 @@ describe('AgentRuntimeService model stream', () => {
       2,
     )
     assertNoUnfinishedSteps(harness)
+  })
+
+  it('AC-02 非 Grounding 模式：中间文本与以 ## 标题开头的最终回答之间补空行，delta、done 与落库一致', async () => {
+    const streams: ModelStreamEvent[][] = [
+      [
+        { type: 'text_delta', delta: '先查' },
+        { type: 'text_delta', delta: '一下。' },
+        toolCallEvent('call-1', 'search_articles', '{"query":"seo"}'),
+        { type: 'response_completed', finishReason: 'tool_calls' },
+      ],
+      // 没有文本的工具轮不推 delta，也不产生分隔。
+      [
+        toolCallEvent('call-2', 'search_articles', '{"query":"sitemap"}'),
+        { type: 'response_completed', finishReason: 'tool_calls' },
+      ],
+      [
+        { type: 'text_delta', delta: '## 标题' },
+        { type: 'text_delta', delta: '\n正文。' },
+        { type: 'response_completed', finishReason: 'stop' },
+      ],
+    ]
+    const harness = createHarness((_, __, callIndex) => toModelStream(streams[callIndex] ?? []))
+
+    const events = await collectEvents(harness.run())
+    const deltas = events.flatMap(event => event.type === 'assistant_delta' ? [event.contentDelta] : [])
+    const completedEvent = events.at(-1)
+    const expected = '先查一下。\n\n## 标题\n正文。'
+
+    // 分隔只加在新一轮的第一个 delta 前，同一轮的后续 delta 原样推出。
+    assert.deepEqual(deltas, ['先查', '一下。', '\n\n## 标题', '\n正文。'])
+    assert.equal(deltas.join(''), expected)
+    assert.equal(completedEvent?.type === 'run_completed' ? completedEvent.content : undefined, expected)
+    assert.equal(harness.assistantMessage()?.content, expected)
+    // 回填模型的中间文本仍是该轮原文，不带分隔。
+    assert.equal(
+      (harness.llmCalls[1]?.messages.find(item => item.type === 'assistant_tool_call') as { content?: string } | undefined)?.content,
+      '先查一下。',
+    )
+    assertNoUnfinishedSteps(harness)
+  })
+
+  it('中间文本以单个换行结尾时只补一个换行，已有空行时不再补', async () => {
+    // 单个换行只是段内软换行，不以列表或标题开头的回答仍会被并进上一段。
+    const cases: Array<[string, string]> = [
+      ['先查一下。\n', '先查一下。\n\n找到了三篇。'],
+      ['先查一下。\n\n', '先查一下。\n\n找到了三篇。'],
+    ]
+
+    for (const [intermediate, expected] of cases) {
+      const streams: ModelStreamEvent[][] = [
+        [
+          { type: 'text_delta', delta: intermediate },
+          toolCallEvent('call-1', 'search_articles', '{"query":"seo"}'),
+          { type: 'response_completed', finishReason: 'tool_calls' },
+        ],
+        [
+          { type: 'text_delta', delta: '找到了三篇。' },
+          { type: 'response_completed', finishReason: 'stop' },
+        ],
+      ]
+      const harness = createHarness((_, __, callIndex) => toModelStream(streams[callIndex] ?? []))
+
+      await collectEvents(harness.run())
+
+      assert.equal(harness.assistantMessage()?.content, expected, JSON.stringify(intermediate))
+    }
   })
 
   it('本轮 call 数超过剩余预算时整体拒绝，任何 call 都不执行', async () => {
@@ -2130,7 +2196,6 @@ describe('AgentRuntimeService model stream', () => {
       const estimatedInputs: ModelInputItem[][] = []
       // 只旁路记录，渲染与 tokenizer 仍是生产实现。
       const recordingEstimator: TokenEstimator = {
-        strategyId: productionEstimator.strategyId,
         estimateRequest: (input) => {
           estimatedInputs.push(structuredClone(input.items))
 
@@ -2349,7 +2414,7 @@ describe('AgentRuntimeService model stream', () => {
       'assistant_delta',
       'run_completed',
     ])
-    assert.equal(harness.assistantMessage()?.content, `${intermediate}找到了。`)
+    assert.equal(harness.assistantMessage()?.content, `${intermediate}\n\n找到了。`)
     assert.equal(samplingStep?.status, AgentStepStatus.COMPLETED)
     assert.equal(output.finishReason, 'tool_calls')
     assert.deepEqual(harness.toolInvocations.map(invocation => invocation.callId), ['call-1'])
@@ -4155,8 +4220,6 @@ function isStrictlyBefore(
 }
 
 class TestTokenEstimator implements TokenEstimator {
-  readonly strategyId = 'test-token-estimator'
-
   estimateRequest(input: TokenEstimatorInput): number {
     return input.items.reduce(
       (tokens, item) => tokens + countModelInputCharacters(item) + 1,
@@ -4166,16 +4229,12 @@ class TestTokenEstimator implements TokenEstimator {
 }
 
 class OverflowTokenEstimator implements TokenEstimator {
-  readonly strategyId = 'test-overflow'
-
   estimateRequest(_input: TokenEstimatorInput): number {
     return 300_000
   }
 }
 
 class AlwaysFailingTokenEstimator implements TokenEstimator {
-  readonly strategyId = 'test-initial-failure'
-
   estimateRequest(_input: TokenEstimatorInput): number {
     throw new ContextTokenEstimationError(
       new Error('initial-estimator-secret'),
@@ -4184,7 +4243,6 @@ class AlwaysFailingTokenEstimator implements TokenEstimator {
 }
 
 class BaseCostTokenEstimator implements TokenEstimator {
-  readonly strategyId = 'test-base-cost'
   readonly inputs: TokenEstimatorInput[] = []
 
   constructor(private readonly baseTokens: number) {}
@@ -4200,16 +4258,12 @@ class BaseCostTokenEstimator implements TokenEstimator {
 }
 
 class FollowUpOverflowTokenEstimator implements TokenEstimator {
-  readonly strategyId = 'test-follow-up-overflow'
-
   estimateRequest(input: TokenEstimatorInput): number {
     return input.items.some(item => item.type === 'tool_result') ? 300_000 : 1
   }
 }
 
 class FollowUpFailingTokenEstimator implements TokenEstimator {
-  readonly strategyId = 'test-follow-up-failure'
-
   estimateRequest(input: TokenEstimatorInput): number {
     if (input.items.some(item => item.type === 'tool_result')) {
       throw new ContextTokenEstimationError(new Error('estimator-secret'))

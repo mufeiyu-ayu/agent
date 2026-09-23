@@ -146,7 +146,7 @@ model AgentStep {
   status       AgentStepStatus @default(PENDING)
 
   // 步骤的输入 / 输出快照，用 Json 存半结构化数据（不同步骤字段不同）。
-  // 例如 loadConversationHistory 的 input 记 limit、output 记 messageCount。
+  // 例如 loadConversationHistory 不写 input、output 记 messageCount。
   input        Json?
   output       Json?
   // 仅失败步骤填写，记录错误摘要。

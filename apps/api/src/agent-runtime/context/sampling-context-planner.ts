@@ -133,8 +133,8 @@ export class SamplingContextPlanner {
     return {
       // 核心返回值：已通过 Token 预算检查，本轮真正准备传给模型的输入项。
       items,
-      // 纯后台观测：记录本轮预算、最终 Token、历史排除和 Tool Observation
-      // 截断结果，供 model_sampling Step / Admin Inspector 展示；不参与模型输入。
+      // 规划结果统计，不参与模型输入：runtime 只把其中一部分写入 model_sampling Step，
+      // 落哪些字段以 agent-runtime.service.ts 的 toPersistedContextPlan 为准，其余只在内存。
       summary: toPlanSummary(
         // 提供本轮 resolvedInputBudgetTokens。
         input,
@@ -197,6 +197,11 @@ function excludeOldestHistory(
     else
       lower = excludedCount + 1
   }
+
+  // 删除位置落在一问一答中间时把整对删掉：保留部分从 user 消息开始，裁剪不会留下没有提问的回答。
+  // 多删只会更省，plan() 随后仍会重估。候选读取触到硬上限时最旧一条本身就可能是回答，不在这里处理。
+  while (lower < history.length && history[lower]!.role !== 'user')
+    lower += 1
 
   state.initialHistory = history.slice(lower)
 

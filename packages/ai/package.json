@@ -19,7 +19,7 @@
     "build": "tsc",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src scripts",
-    "test": "pnpm --filter @agent/contracts build && tsx --test src/*.test.ts src/**/*.test.ts"
+    "test": "pnpm --filter @agent/contracts build && tsx --test $(find src -name '*.test.ts')"
   },
   "dependencies": {
     "@agent/contracts": "workspace:*",

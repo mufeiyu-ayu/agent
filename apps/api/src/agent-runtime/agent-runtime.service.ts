@@ -325,10 +325,12 @@ export class AgentRuntimeService {
         let samplingDecision: SamplingDecision
         // 模型流已正常收完时的决策；后续 Step 落库失败时仍可用于收口，统计与回填内容都已完整成立。
         let completedSamplingDecision: SamplingDecision | undefined
-        // Context Planner 已产生的预算、历史排除和 Observation 截断统计。
+        // Context Planner 本轮的规划结果；落库的字段见 toPersistedContextPlan。
         let contextPlanSummary: SamplingContextPlanSummary | undefined
         // Grounding Session 建立后本轮暂存的文本；流结束前不知道它是草稿还是 Tool Call 前的中间文本。
         let roundHiddenText = ''
+        // 本轮是否已推出可见文本：只在本轮第一个 delta 前和上一轮的文本分段。
+        let roundTextStarted = false
 
         try {
           // 每轮请求模型前重新规划完整输入：首轮把一次读到的全部历史按预算裁剪；
@@ -341,7 +343,7 @@ export class AgentRuntimeService {
               initialContext.resolvedInputBudgetTokens,
           })
 
-          // 主要是后台观察：记录本轮预算、最终 Token、历史排除和 Tool Observation
+          // 预算、估算与选入的历史条数、每个 Tool Result 送入的字符数随采样 Step 落库，用于重建本轮输入。
           contextPlanSummary = contextPlan.summary
 
           runCancellation.throwIfUnavailable()
@@ -409,13 +411,18 @@ export class AgentRuntimeService {
               // 尚未建立 Grounding Session：文本实时推给前端。若本轮随后由 evidence-eligible
               // Tool 建立 Session，这段已推出的 delta 不可撤回，按 Issue #116 决策保留在 content。
               await startAssistantOutputStep()
-              content += samplingResult.value
+              const contentDelta = roundTextStarted
+                ? samplingResult.value
+                : separateFromPreviousText(content, samplingResult.value)
+
+              roundTextStarted = true
+              content += contentDelta
               yield {
                 type: 'assistant_delta',
                 runId: currentAgentRunId,
                 conversationId: input.conversationId,
                 assistantMessageId,
-                contentDelta: samplingResult.value,
+                contentDelta,
               }
             }
             samplingResult = await sampling.next()
@@ -578,8 +585,7 @@ export class AgentRuntimeService {
             ? normalizeToolStepSummary(toolResult.stepSummary)
             : undefined
           // 只有 ToolInvocationService 经 input.parse 校验后执行的调用，参数才可信；
-          // 这三个 code 都发生在校验之前或根本没有校验。execution_failed 也可能来自
-          // policy 拒绝（parse 前），当前 allowlist 工具都通过 policy，该分支不可达。
+          // 这三个 code 都发生在校验之前或根本没有校验，其余 code 都在校验通过之后。
           const argumentsValidated = toolResult.ok
             || (toolResult.code !== 'truncated_arguments'
               && toolResult.code !== 'unknown_tool'
@@ -628,8 +634,8 @@ export class AgentRuntimeService {
 
           // Evidence policy 由服务端 Tool Definition 声明，模型 arguments 无法改变；
           // zero-hit、not found 和执行失败同样建立 Session，它们是不同的证据事实。
-          // 截断批次根本没有执行，不构成任何证据事实。
-          if (!argumentsTruncated && toolDefinition?.evidencePolicy === 'eligible') {
+          // 参数没通过校验的调用（截断批次、invalid_arguments）根本没有执行，不构成任何证据事实。
+          if (argumentsValidated && toolDefinition?.evidencePolicy === 'eligible') {
             evidenceRegistry ??= new RunEvidenceRegistry()
             evidenceRegistry.recordEligibleToolOutcome({
               toolName: toolDefinition.name,
@@ -739,10 +745,10 @@ export class AgentRuntimeService {
           runCancellation.throwIfUnavailable()
           await startAssistantOutputStep()
 
-          // 校验通过后才通过既有 assistant_delta 重放正文；
-          // chunks 拼接逐字符等于 persisted content 与 done.content。
+          // 校验通过后才通过既有 assistant_delta 重放正文；Session 建立前已推出的中间文本
+          // 与回答之间同样分段。chunks 拼接逐字符等于 persisted content 与 done.content。
           for (const contentDelta of toValidatedAnswerChunks(
-            finalization.validated.answer,
+            separateFromPreviousText(content, finalization.validated.answer),
           )) {
             runCancellation.throwIfUnavailable()
             content += contentDelta
@@ -1455,7 +1461,7 @@ function toLlmErrorCode(error: LLMError): AgentRunErrorCode {
   return 'llm_protocol'
 }
 
-/** 落库的裁剪前快照只保留 Admin 读取的四个字段；另两个计数写入 load_conversation_history 的 output。 */
+/** 落库的裁剪前快照：InitialContextSummary 的四个字段原样写入；候选历史条数在 load_conversation_history 的 output。 */
 function toPersistedInitialContext(
   initialContext: InitialContextSummary,
 ): Prisma.InputJsonObject {
@@ -1505,6 +1511,17 @@ function toPersistedSamplingContent(
       ? { reasoningContent: toPersistableText(decision.reasoningContent) }
       : {}),
   }
+}
+
+/**
+ * 用户可见文本跨轮拼接时保证中间隔一个空行，新一轮的文本另起一段：否则以 `## 标题` 或列表开头的
+ * 回答会粘进上一段，只隔单个换行也只是段内软换行；下个 Run 的历史里同样是粘连文本。
+ */
+function separateFromPreviousText(previous: string, next: string): string {
+  if (!previous || !next || previous.endsWith('\n\n'))
+    return next
+
+  return `${previous.endsWith('\n') ? '\n' : '\n\n'}${next}`
 }
 
 /**

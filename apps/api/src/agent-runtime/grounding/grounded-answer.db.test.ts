@@ -1092,8 +1092,6 @@ async function collectEvents(
 }
 
 class TestTokenEstimator implements TokenEstimator {
-  readonly strategyId = 'grounding-db-estimator'
-
   estimateRequest(input: TokenEstimatorInput): number {
     return input.items.length + input.tools.length
   }

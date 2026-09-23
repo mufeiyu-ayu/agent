@@ -4,10 +4,12 @@ import assert from 'node:assert/strict'
 // eslint-disable-next-line test/no-import-node-test
 import { afterEach, describe, it } from 'node:test'
 import { LLMApiError, LLMNetworkError } from '@agent/ai'
+import { familyCompatOf, reasoningEffortsOf } from '@agent/contracts'
 
 import { createApiKeyCipher } from './api-key-cipher.js'
 import { LlmModelConfigService } from './llm-model-config.service.js'
 import { LLMController } from './llm.controller.js'
+import { LlmModelUnavailableError } from './llm.errors.js'
 import { LLMService } from './llm.service.js'
 
 const originalFetch = globalThis.fetch
@@ -188,5 +190,43 @@ describe('GET /api/llm/balance：只查 https 的官方 DeepSeek 账号', () => 
     calls = stubFetch({ is_available: true, balance_infos: [] })
     assert.equal(await createController([broken]).getUserBalance(), null)
     assert.deepEqual(calls.urls, [])
+  })
+})
+
+describe('模型解析：库里的 family 是原型链上的名字', () => {
+  const RUNTIME_CONFIG = { value: { secretKey: 'x'.repeat(32), captureModelIO: false } } as LLMRuntimeConfigService
+
+  function createConfigService(family: string): LlmModelConfigService {
+    const cipher = createApiKeyCipher(RUNTIME_CONFIG.value.secretKey)
+    const model = {
+      id: 'model-1',
+      wireName: 'wire-model',
+      contextWindowTokens: 128_000,
+      maxOutputTokens: 8_192,
+      reasoningEffort: null,
+      visible: true,
+      provider: {
+        id: 'provider-1',
+        family,
+        enabled: true,
+        baseUrl: 'https://relay.example/v1',
+        apiKeyEncrypted: cipher.encrypt('sk-test-not-a-real-key'),
+      },
+    }
+    const prisma = { llmModel: { findFirst: async () => model } } as unknown as PrismaService
+
+    return new LlmModelConfigService(prisma, RUNTIME_CONFIG)
+  }
+
+  it('constructor / __proto__ 按不认识的家族处理：强度为空、compat 同 other，请求强度按不支持拒绝', async () => {
+    for (const family of ['constructor', '__proto__', 'toString']) {
+      assert.deepEqual(reasoningEffortsOf(family), [], family)
+      assert.deepEqual(familyCompatOf(family), familyCompatOf('other'), family)
+
+      const service = createConfigService(family)
+
+      assert.deepEqual((await service.resolveModel('model-1')).profile.compat, familyCompatOf('other'), family)
+      await assert.rejects(service.resolveModel('model-1', 'low'), LlmModelUnavailableError, family)
+    }
   })
 })

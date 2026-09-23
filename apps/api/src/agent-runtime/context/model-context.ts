@@ -26,7 +26,7 @@ export interface ModelContextToolExchange {
 export interface ModelContextPlanningState {
   instructions: MessageInputItem[]
   initialHistory: MessageInputItem[]
-  // 纯后台观测：作为原始候选基准，用于统计最终有多少条历史未纳入。
+  // 原始候选基准，只用于 plan summary 统计有多少条历史未纳入（内存统计，不落库）。
   // 不参与 Token 估算、历史删减决策或模型输入组装。
   initialHistoryCandidateCount: number
   currentUser: MessageInputItem
@@ -58,8 +58,8 @@ export class ModelContext {
     private readonly instructions: MessageInputItem[],
     // 核心输入：一次查询读到的全部历史候选；每轮 plan() 超预算时从最旧删减。
     private readonly initialHistory: MessageInputItem[],
-    // 纯后台观测：创建时的候选总数基准，用它减去当前 initialHistory.length，
-    // 只为了展示累计有多少条历史未纳入模型上下文。
+    // 创建时的候选总数基准，用它减去当前 initialHistory.length 得出累计有多少条历史
+    // 未纳入模型上下文；只进 plan summary，不落库（Admin 的候选条数取自 load_conversation_history）。
     // 它不参与 Token 计算、历史删减决策或真正的模型输入。
     private readonly initialHistoryCandidateCount: number,
     // 核心输入：触发本次 Run 的当前用户消息，始终必须保留。
@@ -181,7 +181,7 @@ export class ModelContext {
  *
  * @description 输出顺序固定为 instructions -> initialHistory -> currentUser
  * -> 每组 assistant Tool Call 消息 / 逐个 Tool Result。本函数只复制和组装模型可见输入，
- * 不修改 `state`、不计算 Token，也不包含纯后台观测字段
+ * 不修改 `state`、不计算 Token，也不包含只用于统计的字段
  * `initialHistoryCandidateCount`。工具定义由调用方单独传给 TokenEstimator / Provider。
  */
 export function flattenPlanningState(

@@ -67,7 +67,6 @@ describe('DeepSeekV4TokenEstimator', () => {
       tokenVectorSha256(estimator, prompt),
       '2a24222fd673c77c6f699497e70a7381dd3dc72e736aa9f2a50f78624ae13b47',
     )
-    assert.equal(estimator.strategyId, 'deepseek-v4-official-b5968e9')
   })
 
   it('按官方 b5968e9 encoding 覆盖一次 Tool continuation', () => {

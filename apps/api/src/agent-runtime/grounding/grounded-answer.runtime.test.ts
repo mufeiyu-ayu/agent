@@ -316,10 +316,10 @@ describe('Grounded finalization 路径', () => {
     const events = await collectEvents(harness.run())
     const deltas = events.flatMap(event => event.type === 'assistant_delta' ? [event.contentDelta] : [])
 
-    // delta 推出时 Session 尚不存在、不可撤回；chunks 拼接仍逐字符等于最终 content。
+    // delta 推出时 Session 尚不存在、不可撤回；校验后的回答另起一段，chunks 拼接仍逐字符等于最终 content。
     assert.equal(deltas[0], intermediate)
-    assert.equal(deltas.join(''), `${intermediate}校验后的回答。`)
-    assert.equal(harness.assistantMessage()?.content, `${intermediate}校验后的回答。`)
+    assert.equal(deltas.join(''), `${intermediate}\n\n校验后的回答。`)
+    assert.equal(harness.assistantMessage()?.content, `${intermediate}\n\n校验后的回答。`)
     assert.ok((events.at(-1) as { grounding?: MessageGroundingV1 }).grounding)
     // finalization 只拿最终回答轮次的草稿。
     const finalizationDraft = harness.llmCalls[2]?.messages
@@ -765,6 +765,87 @@ describe('Grounded finalization 路径', () => {
     assert.ok(grounding)
     assert.equal(grounding.evidenceAvailability, 'none')
     assert.equal(grounding.outcome, 'insufficient_evidence')
+  })
+
+  it('AC-01 eligible Tool 第一次参数非法、第二次合法并命中：非法那次不算证据事实，availability 为 available', async () => {
+    const harness = createHarness({
+      policy: { maxSamplingRounds: 4, maxToolCalls: 2 },
+      modelStreams: [
+        () => toModelStream([
+          toolCallEvent('call-1', 'retrieve_article_context', '{"q":1}'),
+          { type: 'response_completed', finishReason: 'tool_calls' },
+        ]),
+        () => toModelStream([
+          toolCallEvent('call-2', 'retrieve_article_context', '{"query":"seo"}'),
+          { type: 'response_completed', finishReason: 'tool_calls' },
+        ]),
+        () => toModelStream([
+          { type: 'text_delta', delta: '草稿' },
+          { type: 'response_completed', finishReason: 'stop' },
+        ]),
+        registry => toModelStream([
+          submitGroundedAnswerEvent({
+            answer: '有证据的回答。',
+            outcome: 'answered',
+            citationKeys: [registry[0]!],
+          }),
+          { type: 'response_completed', finishReason: 'tool_calls' },
+        ]),
+      ],
+      toolResults: [
+        {
+          ok: false,
+          code: 'invalid_arguments',
+          modelContent: '工具 retrieve_article_context 的参数无效。',
+        },
+        { ok: true, modelContent: '候选资料', evidence: RETRIEVAL_EVIDENCE },
+      ],
+    })
+
+    const events = await collectEvents(harness.run())
+    const grounding = (events.at(-1) as { grounding?: MessageGroundingV1 }).grounding
+    const finalizationOutput = harness.recorder.steps.find(
+      item => item.type === AGENT_STEP_TYPES.groundedFinalization,
+    )?.output as Record<string, unknown> | undefined
+
+    assert.ok(grounding)
+    assert.equal(grounding.evidenceAvailability, 'available')
+    assert.equal(grounding.outcome, 'answered')
+    // 只有校验通过、真正执行的那次计入 eligible 调用；非法参数既不算调用也不算失败。
+    assert.equal(finalizationOutput?.eligibleToolCallCount, 1)
+    assert.equal(finalizationOutput?.eligibleToolFailureCount, 0)
+  })
+
+  it('eligible Tool 只收到非法参数时不建立 Grounding Session，与截断批次同一条规则', async () => {
+    const harness = createHarness({
+      modelStreams: [
+        () => toModelStream([
+          toolCallEvent('call-1', 'retrieve_article_context', '{"q":1}'),
+          { type: 'response_completed', finishReason: 'tool_calls' },
+        ]),
+        () => toModelStream([
+          { type: 'text_delta', delta: '直接回答。' },
+          { type: 'response_completed', finishReason: 'stop' },
+        ]),
+      ],
+      toolResults: [{
+        ok: false,
+        code: 'invalid_arguments',
+        modelContent: '工具 retrieve_article_context 的参数无效。',
+      }],
+    })
+
+    const events = await collectEvents(harness.run())
+    const completed = events.at(-1)
+
+    assert.equal(completed?.type, 'run_completed')
+    assert.equal((completed as { grounding?: MessageGroundingV1 }).grounding, undefined)
+    assert.equal(harness.llmCalls.length, 2)
+    assert.equal(harness.assistantMessage()?.content, '直接回答。')
+    assert.equal(
+      harness.recorder.steps.some(item => item.type === AGENT_STEP_TYPES.groundedFinalization),
+      false,
+    )
   })
 
   it('部分 Tool 失败时为 partial，只允许引用成功通道的证据', async () => {
@@ -1930,8 +2011,6 @@ class FakeToolRegistryService {
 }
 
 class TestTokenEstimator implements TokenEstimator {
-  readonly strategyId = 'grounded-test-estimator'
-
   estimateRequest(input: TokenEstimatorInput): number {
     return input.items.length + input.tools.length
   }
