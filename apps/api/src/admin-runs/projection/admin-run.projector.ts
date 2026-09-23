@@ -5,19 +5,19 @@ import type {
   AdminDebugModelResponseCapture,
   AdminGenericStep,
   AdminLoadConversationHistoryStep,
+  AdminModelRef,
   AdminModelSamplingStep,
   AdminRunDetail,
   AdminRunListItem,
   AdminRunMessage,
   AdminRunTimelineItem,
-  AdminRunTokenUsage,
   AdminToolExecutionStep,
+  AgentRunStatus,
+  AgentStepStatus,
 } from '@agent/contracts'
 import type { Prisma } from '../../generated/prisma/client.js'
-import type {
-  ADMIN_RUN_DETAIL_SELECT,
-  ADMIN_RUN_LIST_SELECT,
-} from '../admin-runs.service.js'
+import type { ModelKey } from '../admin-model-refs.js'
+import type { ADMIN_RUN_DETAIL_SELECT } from '../admin-runs.service.js'
 import {
   ADMIN_MODEL_FINISH_REASONS,
   ADMIN_TOOL_RESULT_CODES,
@@ -36,42 +36,72 @@ import {
   readNonNegativeInteger,
   readObject,
   readString,
+  toAllowedString,
   toIsoString,
   toPreview,
 } from './safe-readers.js'
 import {
-  aggregateGroundedFinalization,
-  aggregateSamplingUsage,
+  aggregateRunModelCalls,
   projectTokenUsage,
 } from './sampling-usage.projector.js'
 
 const QUESTION_PREVIEW_MAX_CHARS = 200
 const MESSAGE_PREVIEW_MAX_CHARS = 500
+const FAILURE_MESSAGE_MAX_CHARS = 300
 const SAFE_TEXT_MAX_CHARS = 128
 
-/** 投影输入就是 service 按 select 读出的行；类型从 select 派生，不另抄一份镜像接口。 */
-type AdminRunListRecord = Prisma.AgentRunGetPayload<{ select: typeof ADMIN_RUN_LIST_SELECT }>
+/**
+ * 列表页的 Run 行：Run 列加上该 Run 的 Step 行。列表的 Step 行由 service 用 SQL 只取计数、usage、
+ * 模型快照与错误文案需要的 JSON 路径；详情行是它的超集，同一个投影直接复用。
+ */
+export interface AdminRunListRecord {
+  id: string
+  conversationId: string
+  status: AgentRunStatus
+  errorCode: string | null
+  startedAt: Date
+  endedAt: Date | null
+  createdAt: Date
+  userMessage: { content: string }
+  steps: AdminRunListStepRecord[]
+}
+
+export interface AdminRunListStepRecord {
+  sequence: number
+  type: string
+  status: AgentStepStatus
+  input: unknown
+  output: unknown
+  errorMessage: string | null
+  endedAt: Date | null
+}
+
+/** 详情投影输入就是 service 按 select 读出的行；类型从 select 派生，不另抄一份镜像接口。 */
 export type AdminRunDetailRecord = Prisma.AgentRunGetPayload<{ select: typeof ADMIN_RUN_DETAIL_SELECT }>
 type AdminRunDetailStepRecord = AdminRunDetailRecord['steps'][number]
 type AdminRunDetailMessageRecord = AdminRunDetailRecord['userMessage']
 
+/** model 由 service 按 `readRunModelKey` 的结果关联模型行得出。 */
 export function projectAdminRunListItem(
   run: AdminRunListRecord,
+  model: AdminModelRef | null,
 ): AdminRunListItem {
-  const sampling = aggregateRunSampling(run.steps)
+  const modelCalls = aggregateRunModelCalls(run.steps, run.errorCode)
 
   return {
     id: run.id,
     conversationId: run.conversationId,
     status: run.status,
     // 旧 Run 没有这一列的值，读出 null 由前端显示「未记录」。
-    errorCode: readAllowedString(run, 'errorCode', AGENT_RUN_ERROR_CODES),
+    errorCode: toAllowedString(run.errorCode, AGENT_RUN_ERROR_CODES),
+    failureMessage: readFailureMessage(run),
+    model,
     questionPreview: toPreview(run.userMessage.content, QUESTION_PREVIEW_MAX_CHARS),
-    samplingCount: sampling.count,
+    samplingCount: modelCalls.count,
     toolCallCount: run.steps.filter(
       step => step.type === AGENT_STEP_TYPES.toolExecution,
     ).length,
-    usage: sampling.usage,
+    usage: modelCalls.usage,
     durationMs: elapsedMs(run.startedAt, run.endedAt),
     startedAt: run.startedAt.toISOString(),
     endedAt: toIsoString(run.endedAt),
@@ -79,32 +109,49 @@ export function projectAdminRunListItem(
   }
 }
 
-/**
- * 采样次数与 Token：action sampling 与 grounded finalization attempt 都是真实模型调用。
- * 每个 Usage 指标独立求和，任一调用该指标缺失则该指标为 null。
- */
-function aggregateRunSampling(
-  steps: AdminRunListRecord['steps'],
-): { count: number, usage: AdminRunTokenUsage } {
-  const samplingSteps = steps.filter(
-    step => step.type === AGENT_STEP_TYPES.modelSampling,
-  )
-  const finalization = aggregateGroundedFinalization(steps)
+/** Run 的模型快照：取第一条采样 Step 的 initialContext；一次 Run 只用一个模型。 */
+export function readRunModelKey(steps: AdminRunListStepRecord[]): ModelKey | null {
+  const sampling = steps
+    .filter(step => step.type === AGENT_STEP_TYPES.modelSampling)
+    .sort(bySequence)
+    .at(0)
+  const initialContext = readObject(readObject(sampling?.input)?.initialContext)
+  // 空串与缺失同样按「没有记录」处理，与概览 SQL 的 nullif 一致。
+  const modelId = readString(initialContext, 'modelId', Number.POSITIVE_INFINITY) || null
+  const resolvedModel = readString(initialContext, 'resolvedModel', Number.POSITIVE_INFINITY) || null
 
-  return {
-    count: samplingSteps.length + finalization.attemptCount,
-    usage: aggregateSamplingUsage([
-      ...samplingSteps.map(step => projectTokenUsage(readObject(step.output))),
-      ...finalization.usages,
-    ]),
-  }
+  return modelId || resolvedModel ? { modelId, resolvedModel } : null
+}
+
+/**
+ * 失败 / 中断 Run 的失败文案：终态事务用同一个时间戳收口 Run 与失败 Step，只认这批 Step；
+ * 更早失败、已作为 observation 回喂模型的工具 Step 与终态无关。在两个 Step 之间中断时没有
+ * 这样的 Step，返回 null。runtime 写入的都是用户可见的安全文案。
+ */
+function readFailureMessage(run: AdminRunListRecord): string | null {
+  if ((run.status !== 'FAILED' && run.status !== 'ABORTED') || !run.endedAt)
+    return null
+
+  const runEndedAt = run.endedAt.getTime()
+  const failed = run.steps
+    .filter(step => step.errorMessage && step.endedAt?.getTime() === runEndedAt)
+    .sort(bySequence)
+    .at(-1)
+
+  return failed?.errorMessage ? toPreview(failed.errorMessage, FAILURE_MESSAGE_MAX_CHARS) : null
+}
+
+/** sequence 在同一 Run 内唯一（数据库约束），列表 Step 行没有 id 可做次序兜底。 */
+function bySequence(left: { sequence: number }, right: { sequence: number }): number {
+  return left.sequence - right.sequence
 }
 
 export function projectAdminRunDetail(
   run: AdminRunDetailRecord,
+  model: AdminModelRef | null,
 ): AdminRunDetail {
   return {
-    ...projectAdminRunListItem(run),
+    ...projectAdminRunListItem(run, model),
     assistantMessageId: run.assistantMessageId,
     updatedAt: run.updatedAt.toISOString(),
     messages: [run.userMessage, run.assistantMessage]

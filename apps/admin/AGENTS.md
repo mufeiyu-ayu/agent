@@ -18,7 +18,7 @@ views 组合 -> features/<领域>/ 的 state + api + components -> features/shar
 | `features/shared/` | 所有 feature 共用 | `admin-api.ts`（请求层，解包 `{ success, data }`、错误文案）、`paged-list.state.ts`、`detail-fetch.state.ts` |
 | `features/runs/` | Run Trace：列表、详情、时间线与 Inspector | `run-detail.state.ts`、`trace/run-trace.presenter.ts`、`trace/RunTraceWorkspace.vue`、`trace/inspectors/` |
 | `features/conversations/` | 会话记录 | `conversation-detail.state.ts` |
-| `features/overview/` | 概览：统计 / 余额 / 模型配置三路并行，派生视图模型 | `overview.state.ts`（加载与派生）、`overview.model.ts`（纯映射）、`components/`（KPI / 趋势 / 模型表 / 工具；余额只在页面顶栏一格） |
+| `features/overview/` | 概览：健康 / 延迟 / 用量 / 工具，统计与余额两路并行；不读模型目录，模型的可见 / 默认 / 探活只在模型接入页 | `overview.state.ts`（加载与派生）、`overview.model.ts`（纯映射，`overview.model.check.ts` 覆盖）、`components/`（KPI 含余额 / 趋势 / 失败原因（点击下钻运行列表）/ 模型表 / 工具表） |
 | `features/llm/` | 模型接入：服务商 / 模型 / 可见性 / 默认 / 推理强度 | `llm-models.state.ts`（状态与动作）、`llm-api.ts`、`components/LlmModelTable.vue`、`components/LlmProviderFormModal.vue` |
 | `components/layout/` | 侧栏、路由 tab、主题与语言切换 | `AdminSidebar.vue`（菜单项在这里） |
 | `components/common/` | 页面容器、空态、状态徽标 | |

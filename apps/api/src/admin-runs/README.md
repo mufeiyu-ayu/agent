@@ -8,16 +8,17 @@
 | --- | --- |
 | `admin-runs.module.ts` | Nest Provider 组装 |
 | `admin-runs.controller.ts` | Admin Runs HTTP 入口 |
-| `admin-runs.service.ts` | Prisma 查询、筛选与分页，并调用投影入口 |
+| `admin-runs.service.ts` | Prisma 查询、筛选与分页，并调用投影入口；列表的 Step 行用 SQL 只取 usage / errorCode / 模型快照 / attempts / 错误文案，不读整列 output |
+| `admin-model-refs.ts` | 按采样快照的 modelId 关联模型行得出显示名与家族；运行列表、Run 详情与概览共用 |
 | `dto/` | Query / Params 运行时校验 |
 
 ## Projection
 
 | 文件 | 职责 |
 | --- | --- |
-| `admin-run.projector.ts` | Run List / Detail 的 facade 与 Timeline 组合，含 sampling Step 的 `initialContext` / `contextPlan` 逐字段读取；输入类型由 `admin-runs.service.ts` 的两个 select 派生 |
+| `admin-run.projector.ts` | Run List / Detail 的 facade 与 Timeline 组合，含 sampling Step 的 `initialContext` / `contextPlan` 逐字段读取；列表输入是显式的瘦身行，详情输入由 `ADMIN_RUN_DETAIL_SELECT` 派生 |
 | `retrieval-inspector.projector.ts` | evidence-eligible call 摘要、finalization Step 与 Citation 关联 |
-| `sampling-usage.projector.ts` | action sampling / finalization 次数和 Usage 逐项求和 |
+| `sampling-usage.projector.ts` | 模型调用口径（有 usage 或 llm_* 失败才算）、次数与 Usage 逐项求和；`LLM_CALL_ERROR_CODES` 与概览 SQL 共用 |
 | `safe-readers.ts` | 无领域状态的 primitive / JSON readers |
 | `__fixtures__.ts` | 两份 projector 测试共用的 Run / Step 记录 builder |
 

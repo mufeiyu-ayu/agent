@@ -1,6 +1,7 @@
 import type {
   AdminRunDetail,
   AdminRunListResponse,
+  AgentRunErrorCode,
   AgentRunStatus,
 } from '@agent/contracts'
 import type { AdminRunFetchOptions } from '../shared/admin-api'
@@ -21,6 +22,7 @@ export interface AdminRunListQuery {
   page?: number
   pageSize?: number
   status?: AgentRunStatus
+  errorCode?: AgentRunErrorCode
   query?: string
   conversationId?: string
   dateFrom?: string
@@ -36,6 +38,8 @@ export function serializeAdminRunQuery(query: AdminRunListQuery): string {
 
   if (query.status)
     search.set('status', query.status)
+  if (query.errorCode)
+    search.set('errorCode', query.errorCode)
   if (normalizedQuery)
     search.set('query', normalizedQuery)
   if (query.conversationId)

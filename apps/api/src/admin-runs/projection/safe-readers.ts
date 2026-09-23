@@ -33,7 +33,13 @@ export function readAllowedString<T extends string>(
   key: string,
   allowed: readonly T[],
 ): T | null {
-  const value = object?.[key]
+  return toAllowedString(object?.[key], allowed)
+}
+
+export function toAllowedString<T extends string>(
+  value: unknown,
+  allowed: readonly T[],
+): T | null {
   return typeof value === 'string' && allowed.includes(value as T)
     ? value as T
     : null

@@ -1783,7 +1783,7 @@ function projectHarnessRunDetail(harness: ReturnType<typeof createHarness>) {
       startedAt: null,
       endedAt: null,
     })),
-  })
+  }, null)
 }
 
 const eligibleDefinition: ToolDefinition = {

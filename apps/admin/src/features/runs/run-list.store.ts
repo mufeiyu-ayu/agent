@@ -4,6 +4,7 @@ import type {
   AdminRunSummary,
 } from '@agent/contracts'
 import type { RunFilters } from './run.model'
+import type { RunFailureDrilldown } from './run.utils'
 import { defineStore } from 'pinia'
 import { computed, reactive, ref, shallowRef } from 'vue'
 
@@ -37,6 +38,13 @@ export const useRunListStore = defineStore('run-list', () => {
     currentPage.value = 1
     clearResults()
     return load()
+  }
+
+  /** 从概览的失败原因进来：只按该类别与窗口日期筛，清掉其余筛选。 */
+  function applyFailureDrilldown(drilldown: RunFailureDrilldown): Promise<void> {
+    Object.assign(draftFilters, createDefaultFilters(), { errorCode: drilldown.errorCode })
+    dateRange.value = drilldown.dateRange
+    return applyFilters()
   }
 
   function resetFilters(): Promise<void> {
@@ -131,6 +139,7 @@ export const useRunListStore = defineStore('run-list', () => {
 
   return {
     appliedFilters,
+    applyFailureDrilldown,
     applyFilters,
     cancel,
     currentPage,
@@ -154,6 +163,7 @@ function createDefaultFilters(): RunFilters {
   return {
     query: '',
     status: undefined,
+    errorCode: undefined,
     dateFrom: '',
     dateTo: '',
   }

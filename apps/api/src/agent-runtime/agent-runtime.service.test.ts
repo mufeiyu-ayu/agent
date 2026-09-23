@@ -4084,7 +4084,7 @@ function projectHarnessRunDetail(
       input: step.input as Prisma.JsonValue,
       output: step.output as Prisma.JsonValue,
     })),
-  })
+  }, null)
 }
 
 function assertNoUnfinishedSteps(harness: ReturnType<typeof createHarness>): void {

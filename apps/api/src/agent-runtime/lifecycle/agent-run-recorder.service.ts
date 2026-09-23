@@ -450,6 +450,7 @@ export class AgentRunRecorderService {
   ): Promise<void> {
     await this.prismaService.withDeadlineTransaction(deadline, async (transaction) => {
       const run = await this.assertRunningRunLocked(transaction, runId)
+      // 失败 Step、批量收口的 Step 与 Run 共用这一个 endedAt：Admin 按「与 Run 同时刻收口」认出失败文案。
       const now = new Date()
 
       const assistantMessageId = assistantMessage?.id ?? run.assistantMessageId

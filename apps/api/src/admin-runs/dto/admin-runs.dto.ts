@@ -1,4 +1,5 @@
-import type { AgentRunStatus } from '@agent/contracts'
+import type { AgentRunErrorCode, AgentRunStatus } from '@agent/contracts'
+import { AGENT_RUN_ERROR_CODES } from '@agent/contracts'
 import { Transform, Type } from 'class-transformer'
 import {
   IsIn,
@@ -40,6 +41,10 @@ export class ListAdminRunsQueryDto {
   @IsOptional()
   @IsIn(ADMIN_RUN_STATUSES)
   status?: AgentRunStatus
+
+  @IsOptional()
+  @IsIn(AGENT_RUN_ERROR_CODES)
+  errorCode?: AgentRunErrorCode
 
   @IsOptional()
   @Transform(({ value }) => typeof value === 'string' ? value.trim() : value)

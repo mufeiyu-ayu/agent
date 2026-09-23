@@ -1,3 +1,8 @@
+import type { AgentRunErrorCode } from '@agent/contracts'
+import type { LocationQuery } from 'vue-router'
+
+import { AGENT_RUN_ERROR_CODES } from '@agent/contracts'
+
 const dateTimeOptions: Intl.DateTimeFormatOptions = {
   timeZone: 'Asia/Shanghai',
   year: 'numeric',
@@ -89,4 +94,35 @@ export function formatTime(value: string | null, locale = 'zh-CN'): string {
 
 function formatCompact(value: number): string {
   return value.toFixed(value >= 10 ? 1 : 2).replace(/\.0+$|(?<=\.\d)0$/, '')
+}
+
+/** 概览「失败原因」跳到运行列表时带的筛选；只认合法的 errorCode 与 YYYY-MM-DD 日期。 */
+export interface RunFailureDrilldown {
+  errorCode: AgentRunErrorCode
+  dateRange: [string, string] | undefined
+}
+
+export function readRunFailureDrilldown(query: LocationQuery): RunFailureDrilldown | null {
+  const errorCode = query.errorCode
+  if (typeof errorCode !== 'string' || !(AGENT_RUN_ERROR_CODES as readonly string[]).includes(errorCode))
+    return null
+
+  const { dateFrom, dateTo } = query
+
+  return {
+    errorCode: errorCode as AgentRunErrorCode,
+    // 手改的 URL 可能带非法日期：日期不成立或先后颠倒时只按类别筛，避免列表请求在序列化时抛错。
+    dateRange: isCalendarDate(dateFrom) && isCalendarDate(dateTo) && dateFrom <= dateTo
+      ? [dateFrom, dateTo]
+      : undefined,
+  }
+}
+
+function isCalendarDate(value: unknown): value is string {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value))
+    return false
+
+  // 月份 13、日期 32 这类值是 Invalid Date，toISOString 会抛错，先排除。
+  const parsed = new Date(`${value}T00:00:00Z`)
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value
 }

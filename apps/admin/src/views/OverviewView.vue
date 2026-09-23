@@ -1,18 +1,19 @@
 <script setup lang="ts">
-import type { AdminOverviewWindow } from '@agent/contracts'
+import type { AdminOverviewWindow, AgentRunErrorCode } from '@agent/contracts'
 
 import { ReloadOutlined, SettingOutlined } from '@ant-design/icons-vue'
-import { Alert, Button, Segmented, Skeleton, Tooltip } from 'ant-design-vue'
+import { Alert, Button, Segmented, Skeleton } from 'ant-design-vue'
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 
 import PageContainer from '@/components/common/PageContainer.vue'
+import OverviewFailureReasonsCard from '@/features/overview/components/OverviewFailureReasonsCard.vue'
 import OverviewKpiRow from '@/features/overview/components/OverviewKpiRow.vue'
 import OverviewModelTable from '@/features/overview/components/OverviewModelTable.vue'
 import OverviewToolUsageCard from '@/features/overview/components/OverviewToolUsageCard.vue'
 import OverviewTrendCard from '@/features/overview/components/OverviewTrendCard.vue'
-import { toBalanceText } from '@/features/overview/overview.model'
+import { toBalanceText, toFailureReasonRunsLocation } from '@/features/overview/overview.model'
 import { useOverviewDashboard } from '@/features/overview/overview.state'
 import { formatTime } from '@/features/runs/run.utils'
 
@@ -28,8 +29,8 @@ const {
   balanceLoading,
   balanceCheckedAt,
   lastUpdatedAt,
-  kpi,
   trend,
+  failureReasonRows,
   modelRows,
   toolRows,
   loadStats,
@@ -46,14 +47,21 @@ const isInitialLoading = computed(() => statsLoading.value && !stats.value)
 const balanceText = computed(() => (
   balanceLoading.value && !balance.value ? '…' : toBalanceText(balance.value, t('overview.balance.unavailable'))
 ))
-const balanceTooltip = computed(() => (
-  balanceCheckedAt.value ? t('overview.balance.checkedAt', { time: formatTime(balanceCheckedAt.value, locale.value) }) : undefined
+const balanceDetail = computed(() => (
+  balanceCheckedAt.value
+    ? t('overview.balance.checkedAt', { time: formatTime(balanceCheckedAt.value, locale.value) })
+    : t('overview.balance.provider')
 ))
 const statusText = computed(() => {
   if (statsLoading.value)
     return t('overview.refreshing')
   return lastUpdatedAt.value ? t('overview.lastUpdated', { time: formatTime(lastUpdatedAt.value, locale.value) }) : ''
 })
+
+function openFailureReason(errorCode: AgentRunErrorCode) {
+  if (stats.value)
+    void router.push(toFailureReasonRunsLocation(errorCode, stats.value))
+}
 </script>
 
 <template>
@@ -71,12 +79,6 @@ const statusText = computed(() => {
         </span>
       </div>
       <div class="overview-toolbar__right">
-        <Tooltip :title="balanceTooltip">
-          <span class="overview-toolbar__balance" :class="{ 'is-unavailable': !balance?.available }">
-            <span class="overview-toolbar__balance-label">{{ t('overview.balance.title') }}</span>
-            <strong class="overview-toolbar__balance-value">{{ balanceText }}</strong>
-          </span>
-        </Tooltip>
         <Button size="small" type="text" :loading="statsLoading" @click="refresh">
           <template #icon>
             <ReloadOutlined />
@@ -111,15 +113,19 @@ const statusText = computed(() => {
       <Skeleton active :paragraph="{ rows: 8 }" />
     </div>
 
-    <div v-else-if="stats" class="overview-grid">
-      <div class="overview-grid__main">
-        <OverviewKpiRow :kpi="kpi" />
-        <OverviewTrendCard :points="trend" :bucket="stats.bucket" />
-        <OverviewToolUsageCard :rows="toolRows" />
+    <div v-else-if="stats && trend" class="overview-grid">
+      <OverviewKpiRow
+        :stats="stats"
+        :balance-text="balanceText"
+        :balance-detail="balanceDetail"
+        :balance-unavailable="!balance?.available"
+      />
+      <div class="overview-grid__health">
+        <OverviewTrendCard :trend="trend" :bucket="stats.bucket" />
+        <OverviewFailureReasonsCard :rows="failureReasonRows" @select="openFailureReason" />
       </div>
-      <div class="overview-grid__side">
-        <OverviewModelTable :rows="modelRows" :loading="statsLoading" />
-      </div>
+      <OverviewModelTable :rows="modelRows" :loading="statsLoading" />
+      <OverviewToolUsageCard :rows="toolRows" />
     </div>
   </PageContainer>
 </template>
@@ -159,32 +165,6 @@ const statusText = computed(() => {
   font-size: 11px;
 }
 
-.overview-toolbar__balance {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 6px;
-  margin-right: 6px;
-  padding: 2px 10px;
-  border: 1px solid var(--admin-border);
-  border-radius: 999px;
-  background: var(--admin-surface);
-  font-size: 12px;
-}
-
-.overview-toolbar__balance-label {
-  color: var(--admin-text-subtle);
-}
-
-.overview-toolbar__balance-value {
-  color: var(--admin-text);
-  font-variant-numeric: tabular-nums;
-}
-
-.overview-toolbar__balance.is-unavailable .overview-toolbar__balance-value {
-  color: var(--admin-text-subtle);
-  font-weight: 500;
-}
-
 .status-dot {
   width: 6px;
   height: 6px;
@@ -213,26 +193,21 @@ const statusText = computed(() => {
 }
 
 .overview-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1.28fr) minmax(0, 1fr);
-  gap: 14px;
-  align-items: start;
-}
-
-.overview-grid__main,
-.overview-grid__side {
   display: flex;
   flex-direction: column;
   gap: 14px;
   min-width: 0;
 }
 
-.overview-grid > * {
-  animation: card-enter 420ms cubic-bezier(0.16, 1, 0.3, 1) both;
+.overview-grid__health {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr);
+  gap: 14px;
+  align-items: stretch;
 }
 
-.overview-grid__side {
-  animation-delay: 60ms;
+.overview-grid > * {
+  animation: card-enter 420ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 @keyframes card-enter {
@@ -254,7 +229,7 @@ const statusText = computed(() => {
 }
 
 @media (max-width: 1240px) {
-  .overview-grid {
+  .overview-grid__health {
     grid-template-columns: minmax(0, 1fr);
   }
 }

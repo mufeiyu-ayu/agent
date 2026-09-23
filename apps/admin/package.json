@@ -9,7 +9,7 @@
     "build": "vue-tsc --noEmit -p tsconfig.json && vite build",
     "lint": "eslint src",
     "lint:fix": "eslint src --fix",
-    "test": "tsx src/lib/admin-state.check.ts && tsx src/i18n/i18n.check.ts && tsx src/features/runs/run-data.check.ts",
+    "test": "tsx src/lib/admin-state.check.ts && tsx src/i18n/i18n.check.ts && tsx src/features/runs/run-data.check.ts && tsx src/features/overview/overview.model.check.ts",
     "test:e2e": "pnpm --filter @agent/contracts build && playwright test"
   },
   "dependencies": {

@@ -29,6 +29,7 @@ import {
   formatPercentage,
   formatTime,
   formatTokens,
+  readRunFailureDrilldown,
 } from './run.utils'
 import {
   createRetrievalCallCards,
@@ -663,6 +664,7 @@ async function checkQuerySerialization(): Promise<void> {
     page: 2,
     pageSize: 8,
     status: 'FAILED',
+    errorCode: 'llm_auth',
     query: '  run-35  ',
     dateFrom: '2026-08-01',
     dateTo: '2026-08-09',
@@ -672,11 +674,25 @@ async function checkQuerySerialization(): Promise<void> {
     page: '2',
     pageSize: '8',
     status: 'FAILED',
+    errorCode: 'llm_auth',
     query: 'run-35',
     dateFrom: '2026-08-01T00:00:00+08:00',
     dateTo: '2026-08-09T23:59:59.999+08:00',
   })
   assert.equal(serializeAdminRunQuery({ query: '   ' }), '')
+
+  // 概览失败原因下钻：只认合法类别；日期两端都合法才带上。
+  assert.deepEqual(
+    readRunFailureDrilldown({ errorCode: 'llm_auth', dateFrom: '2026-08-25', dateTo: '2026-09-23' }),
+    { errorCode: 'llm_auth', dateRange: ['2026-08-25', '2026-09-23'] },
+  )
+  assert.deepEqual(readRunFailureDrilldown({ errorCode: 'deadline', dateFrom: '2026-08-25' }), { errorCode: 'deadline', dateRange: undefined })
+  // 手改的非法日期或颠倒的范围只按类别筛，不让列表序列化抛错。
+  assert.deepEqual(readRunFailureDrilldown({ errorCode: 'llm_auth', dateFrom: '2026-02-30', dateTo: '2026-03-01' }), { errorCode: 'llm_auth', dateRange: undefined })
+  assert.deepEqual(readRunFailureDrilldown({ errorCode: 'llm_auth', dateFrom: '2026-13-01', dateTo: '2026-09-32' }), { errorCode: 'llm_auth', dateRange: undefined })
+  assert.deepEqual(readRunFailureDrilldown({ errorCode: 'llm_auth', dateFrom: '2026-09-23', dateTo: '2026-08-25' }), { errorCode: 'llm_auth', dateRange: undefined })
+  assert.equal(readRunFailureDrilldown({ errorCode: 'provider_secret' }), null)
+  assert.equal(readRunFailureDrilldown({}), null)
   assert.throws(
     () => serializeAdminRunQuery({ dateFrom: '2026-02-30' }),
     RangeError,
@@ -1049,6 +1065,8 @@ function createTraceDetail(toolCount: 0 | 1 | 2): AdminRunDetail {
     assistantMessageId: 'trace-assistant-message',
     status: 'COMPLETED',
     errorCode: null,
+    failureMessage: null,
+    model: null,
     questionPreview: '用户可见问题 preview',
     samplingCount: toolCount + 1,
     toolCallCount: toolCount,
@@ -1145,6 +1163,8 @@ function createRunningDetail(): AdminRunDetail {
     assistantMessageId: null,
     status: 'RUNNING',
     errorCode: null,
+    failureMessage: null,
+    model: null,
     questionPreview: '验证 RUNNING partial trace',
     samplingCount: 1,
     toolCallCount: 0,
@@ -1256,6 +1276,8 @@ function createListItem(id: string): AdminRunListItem {
     conversationId: `${id}-conversation`,
     status: 'COMPLETED',
     errorCode: null,
+    failureMessage: null,
+    model: null,
     questionPreview: '真实问题摘要',
     samplingCount: 1,
     toolCallCount: 0,

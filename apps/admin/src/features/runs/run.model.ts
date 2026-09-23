@@ -1,4 +1,4 @@
-import type { AgentRunStatus } from '@agent/contracts'
+import type { AgentRunErrorCode, AgentRunStatus } from '@agent/contracts'
 
 export type {
   AdminRunDetail as RunDetail,
@@ -13,6 +13,7 @@ export type {
 export interface RunFilters {
   query: string
   status: AgentRunStatus | undefined
+  errorCode: AgentRunErrorCode | undefined
   dateFrom: string
   dateTo: string
 }
