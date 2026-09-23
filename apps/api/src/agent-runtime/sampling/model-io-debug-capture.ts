@@ -7,6 +7,8 @@ import type {
   AdminDebugModelResponseCapture,
 } from '@agent/contracts'
 
+import { toPersistableText } from '../persistable-text.js'
+
 /** 一轮采样内的关联信息与 debug 原始值；未开启时两侧载荷均为 undefined。 */
 export interface DebugModelIOCaptured {
   runId: string
@@ -22,7 +24,7 @@ export const MODEL_IO_DEBUG_CAPTURE_MAX_JSON_CHARS = 200_000
 /**
  * 把 debug 捕获的原始值收敛成可落库的信封。
  *
- * - 正常：{ truncated: false, value }（经 JSON round-trip，保证 Prisma Json 兼容）；
+ * - 正常：{ truncated: false, value }（经 JSON round-trip，保证 Prisma Json 兼容；字符串里的 U+0000 与孤立代理项换成 U+FFFD，jsonb 存不了）；
  * - 超限：{ truncated: true, preview } 只保留前缀字符串；
  * - 序列化失败（循环引用等）：返回 undefined，由调用方降级为不写并记 warning。
  */
@@ -34,7 +36,9 @@ export function toModelIODebugCaptureEnvelope(
   try {
     json = JSON.stringify(
       value,
-      (key, child) => key === 'reasoning_content' ? undefined : child,
+      (key, child) => key === 'reasoning_content'
+        ? undefined
+        : typeof child === 'string' ? toPersistableText(child) : child,
     )
   }
   catch {

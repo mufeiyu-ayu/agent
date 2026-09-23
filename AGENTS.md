@@ -86,7 +86,7 @@ Runtime 不变量：
 - UI message ≠ model message ≠ runtime event ≠ 持久化轨迹，各自独立契约。
 - delta 不等于持久化事实。
 - model-visible context 通过独立 Context boundary 维护，不回填 UI `Message`。
-- 模型看到的必须能从持久化记录重建（model-visible ⟺ logged），这是 resume / replay 的前提。#152 起在 action 循环内成立：历史取候选里最新的 `contextPlan.historyIncludedCount` 条；Tool Call 轮回填的文本与 reasoning 在采样 Step；回喂的参数与 observation 在 tool Step，被预算压缩后的长度在 `contextPlan.observationPreviewChars`；finalization 提示词的服务端标量在 finalization Step。范围外与已知偏差：系统提示词与工具定义取自当次部署的代码；请求参数（`max_tokens`、强度、thinking）不落库，只能经 modelId 反查事后可被改动的模型行；finalization 的证据清单与回答草稿不落库；历史只落条数，同一会话并发 Run 时按条数重建会多算事后才完成的消息；Step 的 jsonb 副本里的 U+0000 与孤立代理项换成 U+FFFD（`Message.content` 与模型给的 toolName / callId 尚未处理）。replay 本身属 R1。
+- 模型看到的必须能从持久化记录重建（model-visible ⟺ logged），这是 resume / replay 的前提。#152 起在 action 循环内成立：历史取候选里最新的 `contextPlan.historyIncludedCount` 条；Tool Call 轮回填的文本与 reasoning 在采样 Step；回喂的参数与 observation 在 tool Step，被预算压缩后的长度在 `contextPlan.observationPreviewChars`；finalization 提示词的服务端标量在 finalization Step。范围外与已知偏差：系统提示词与工具定义取自当次部署的代码；请求参数（`max_tokens`、强度、thinking）不落库，只能经 modelId 反查事后可被改动的模型行；finalization 的证据清单与回答草稿不落库；历史只落条数，同一会话并发 Run 时按条数重建会多算事后才完成的消息；PostgreSQL 存不了 U+0000（jsonb 还拒收孤立代理项）：可见文本、Grounding 回答与用户消息在进入 `content` 前把两者换成 U+FFFD（delta、done 与落库逐字一致，模型下一轮看到的也是替换后的文本）；Step 的 jsonb 副本（参数、observation、中间文本、reasoning、toolName / callId、debug 抓取）同样替换，而同一 Run 内回填给模型的是原文，这是模型可见内容与落库唯一不逐字相等的情况。replay 本身属 R1。
 - 模型输出不可信：工具名、参数、引用 key 先校验再执行；检索正文按 untrusted data 隔离注入。
 - 终态所有权：晚到的 Abort / deadline / DB 结果不能覆盖已确立终态；COMMIT 结果不确定时如实暴露。
 

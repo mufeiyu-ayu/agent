@@ -8,7 +8,7 @@
 阶段 1-8：Completed
 当前阶段：本项目源码阅读（工作台第 0 档）
 Active Agent Task：无
-Next：#167；Planned：#168、#169、#170（2026-09-23 复核拆出，按此顺序）
+Next：#168；Planned：#169、#170（2026-09-23 复核拆出，按此顺序）
 Gated：#117 Responses API adapter（2026-09-18）、web_fetch（2026-09-19），触发条件见看板
 产品方向：内部数据工作台（2026-09-20 定案，docs/research/workbench-direction.md），未立 Issue；档、顺序与触发只在其第 7 节
 候选子系统：session 事件流与 replay、审批门、compaction、定时任务（未立 Issue，各自的档见 workbench 第 7 节）
@@ -20,7 +20,7 @@ Admin Task 4：Planned
 
 | 任务 | 状态 | 说明 |
 | --- | --- | --- |
-| #167 落库文本清洗（U+0000 不再让 Run 停在 RUNNING） | Next | 实施状态：未开始 / 验收状态：未验收。复核 P2：模型可见文本、Grounding 回答、用户消息里的 U+0000 在写进 `content` 前换成 U+FFFD，工具 Step 的 toolName / callId 落库副本清洗；真实 DB 故障注入 AC。高风险（持久化） |
+| #167 落库文本清洗（U+0000 不再让 Run 停在 RUNNING） | Completed | 实施状态：已实现 / 验收状态：已通过。PR #171 代码 head `da358c8` 的 AC-01～AC-07（含 AC-05b）于 2026-09-23 逐条 PASS（PR 验收评论为证据）：可见 delta、Grounding 回答、用户消息在进入 `content` 前把 U+0000 与孤立代理项换成 U+FFFD（delta / done / 落库同一个串），工具 Step 的 callId / toolName / errorMessage 与 debug 抓取信封同样过 `toPersistableText`（移到 `agent-runtime/persistable-text.ts`）；实现会话读码补入 debug 抓取入口、review 后孤立代理项也在 `content` 入口替换（Issue 已更新）。验证：api typecheck / lint、`test:model-stream` 105、`test:grounding` 159、`test:agent-recorder` 22、`test:grounding-db` 22（新增 7 条真实 DB 故障注入，旧代码上 7 条全失败且复现「终态收口失败，DB 状态可能停留在非终态」；只还原抓取信封时 AC-05b 以 jsonb 报错失败）、`test:tools` 80、`test:chat-service` 29。`/code-review high` 两轮 15 条修 10 条。限制：跨两个 delta 的代理对会各自换成 U+FFFD（上游按码点解码，实际不出现）；`Conversation.title` 含 U+0000 仍返回 500（Issue 不做其他表）；不清理已卡住的 Run（R2）。学习环节待做 |
 | #168 模型调用边界补漏 | Planned | 实施状态：未开始 / 验收状态：未验收。回显 key 脱敏（Codex P1，PR #159）、SDK 日志关闭、非 HTTP 异常与流内错误归类、首 Token 只认生成事件、缺 index 编号不撞号 |
 | #169 前台 Markdown 与会话小修 | Planned | 实施状态：未开始 / 验收状态：未验收。复核 P2 中文强调（`markdown-it-cjk-friendly`）；流式当前行误补、无前导竖线表格与代码段竖线、空标题、收尾 150ms、裸链接吞全角标点、图片 O(n²)、失败请求侧栏排序 |
 | #170 模型配置校验小修 | Planned | 实施状态：未开始 / 验收状态：未验收。可见行按运行时公式校验预算、服务商弹窗改凭据清掉旧测试结论、拒绝旧占位主密钥 |

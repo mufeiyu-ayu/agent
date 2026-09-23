@@ -3682,7 +3682,7 @@ describe('Run 轨迹补齐模型可见内容', () => {
     assertNoUnfinishedSteps(harness)
   })
 
-  it('模型文本或工具结果含 U+0000 / 孤立代理项时，落库副本换成 U+FFFD，Run 照常完成（jsonb 存不了）', async () => {
+  it('模型文本或工具结果含 U+0000 / 孤立代理项时，Step 落库副本与 Message.content 都换成 U+FFFD，Run 照常完成', async () => {
     const streams: ModelStreamEvent[][] = [
       [
         { type: 'text_delta', delta: '先查\u0000一下\uD83D。' },
@@ -3716,6 +3716,14 @@ describe('Run 轨迹补齐模型可见内容', () => {
     // 成对的代理项（🚀）原样保留，只有孤立的半个被替换。
     assert.equal((toolStep?.output as Record<string, unknown>).observation, '结果\uFFFD正文🚀\uFFFD')
     assert.doesNotMatch(JSON.stringify(harness.recorder.steps), /\\u0000/)
+    // delta 拼接、done 与 Message.content 是同一个替换后的串（pg 驱动也会把 text 列里的孤立代理项换掉，这里先换保持一致）。
+    const streamed = events
+      .map(event => event.type === 'assistant_delta' ? event.contentDelta : '')
+      .join('')
+
+    assert.equal(streamed, '先查\uFFFD一下\uFFFD。\n\n完成。')
+    assert.equal((events.at(-1) as { content?: string }).content, streamed)
+    assert.equal(harness.assistantMessage()?.content, streamed)
     assertNoUnfinishedSteps(harness)
   })
 
