@@ -2,7 +2,7 @@
 import type { RunDetail } from '../run.model'
 import { CopyOutlined, DownOutlined } from '@ant-design/icons-vue'
 import { App as AntApp, Popover } from 'ant-design-vue'
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import RunStatusTag from '../components/RunStatusTag.vue'
@@ -15,6 +15,13 @@ const props = defineProps<{
 const { message } = AntApp.useApp()
 const { locale, t } = useI18n()
 const detailsOpen = ref(false)
+// 失败类别只对 FAILED / ABORTED 有意义；字段上线前的旧 Run 为 null，显示「未记录」。
+const showErrorCode = computed(() => props.run.status === 'FAILED' || props.run.status === 'ABORTED')
+const errorCodeLabel = computed(() => (
+  props.run.errorCode
+    ? t(`runTrace.errorCodes.${props.run.errorCode}`)
+    : t('runTrace.inspector.unavailable')
+))
 
 async function copyRunId() {
   try {
@@ -41,6 +48,11 @@ async function copyRunId() {
       <CopyOutlined aria-hidden="true" />
     </button>
     <RunStatusTag :status="run.status" />
+    <span v-if="showErrorCode" class="trace-header__failure">
+      <span class="trace-header__label">{{ t('runTrace.header.errorCode') }}</span>
+      <span class="trace-header__failure-value" :class="{ 'is-unrecorded': !run.errorCode }">{{ errorCodeLabel }}</span>
+      <code v-if="run.errorCode" class="trace-header__failure-code">{{ run.errorCode }}</code>
+    </span>
     <RouterLink
       class="trace-header__conversation"
       :to="{ name: 'conversation-detail', params: { conversationId: run.conversationId } }"
@@ -148,6 +160,31 @@ async function copyRunId() {
 
 .trace-header :deep(.run-status-tag) {
   font-size: var(--admin-font-2xs);
+}
+
+.trace-header__failure {
+  display: inline-flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.trace-header__failure-value {
+  color: var(--admin-danger-strong);
+  font-size: var(--admin-font-xs);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.trace-header__failure-value.is-unrecorded {
+  color: var(--admin-text-muted);
+  font-weight: 500;
+}
+
+.trace-header__failure-code {
+  color: var(--admin-text-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: var(--admin-font-xs);
 }
 
 .trace-header__conversation {

@@ -44,6 +44,7 @@ export async function* adaptOpenAICompatibleStream(
 ): AsyncGenerator<ModelStreamEvent> {
   const toolCallAccumulator = new OpenAICompatibleToolCallAccumulator()
   const reasoningContentChunks: string[] = []
+  let hasStartedReasoning = false
   let hasStartedToolCall = false
   let finishReason: ModelFinishReason | undefined
 
@@ -61,6 +62,11 @@ export async function* adaptOpenAICompatibleStream(
 
       if (reasoningContentDelta) {
         reasoningContentChunks.push(reasoningContentDelta)
+
+        if (!hasStartedReasoning) {
+          hasStartedReasoning = true
+          yield { type: 'reasoning_started' }
+        }
       }
 
       const toolCallDeltas = providerDelta.tool_calls ?? []

@@ -19,11 +19,16 @@ interface RawToolCallSlot {
  *
  * 只做字段拼接，不做业务校验（校验属于 stream adapter 的职责）；
  * 捕获是旁路观测：回调失败不会改变原流的完成或异常语义。
+ *
+ * 源流正常结束不等于响应完整：SDK 在读响应体时遇到 abort 会静默结束迭代。
+ * 所以始终没见到 finish_reason 时标 partial；signal 已 aborted 时，只有连最后的
+ * usage chunk 都收到了才算完整，否则 finish_reason 之后、usage 之前被停也标 partial。
  */
 export async function* teeRawResponseCapture(
   chunks: AsyncIterable<ChatCompletionChunk>,
   onResponse: (capture: ModelRawResponseCapture) => void,
   onCaptureError?: () => void,
+  signal?: AbortSignal,
 ): AsyncGenerator<ChatCompletionChunk> {
   let id: string | undefined
   let model: string | undefined
@@ -109,7 +114,11 @@ export async function* teeRawResponseCapture(
             toolCallCount: 0,
           }
         : {
-            state: sourceCompleted ? 'complete' : 'partial',
+            state: sourceCompleted
+              && finishReason !== null
+              && (usage !== undefined || !signal?.aborted)
+              ? 'complete'
+              : 'partial',
             lastEvent,
             textChars,
             toolCallCount: compactToolCalls.length,

@@ -35,6 +35,7 @@ Prisma schema 在仓库根 `prisma/`，生成的 client 在 `src/generated/prism
 - 模型看到的必须能从持久化记录重建：这是 R1 目标，当前不完全成立，缺口见根 `AGENTS.md` 第 6 节；`AgentStep` 是系统执行过程，不是模型思考链。
 - 模型输出不可信：工具名、参数、引用 key 先校验再执行；检索正文按 untrusted data 注入。
 - 终态所有权：晚到的 Abort / deadline / DB 结果不能覆盖已确立终态。
+- 失败归因同源：Run 的 `errorCode`、失败采样 Step 的文案与前台 error 事件都在终态确立后由 `agent-runtime.service.ts` 的 `describeRunFailure` 一处得出；LLMError 的用户文案与 `AllExceptionsFilter` 共用 `common/utils/llm-error-message.util.ts`。
 - 服务商 API Key 只以密文入库，任何接口只回显尾四位；主密钥 `AGENT_SECRET_KEY` 只在 `llm/` 内使用。
 - 家族协议事实（thinking / reasoning_effort 取值）只在 `@agent/contracts` 的 `LLM_FAMILY_CAPABILITIES` 一处。
 

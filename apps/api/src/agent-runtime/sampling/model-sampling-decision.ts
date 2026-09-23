@@ -15,6 +15,11 @@ export interface ModelSamplingSummary {
   usage: ModelUsage | null
   toolCallCount: number
   textChars: number
+  /**
+   * 从发出请求到收到第一个流事件（含 reasoning_started）的毫秒数；一个事件都没收到为 null。
+   * 包含 SDK 在首个响应头之前的重试与退避：429 / 5xx 后重试成功的这一轮会偏大。
+   */
+  firstTokenMs: number | null
 }
 
 export type SamplingDecision
@@ -43,6 +48,7 @@ export type SamplingDecision
 export async function* streamModelSampling(
   events: AsyncIterable<ModelStreamEvent>,
   samplingAttemptId: string,
+  now: () => number = Date.now,
 ): AsyncGenerator<string, SamplingDecision> {
   const textChunks: string[] = []
   const toolCalls: UnvalidatedModelToolCall[] = []
@@ -50,6 +56,7 @@ export async function* streamModelSampling(
   let finishReason: ModelFinishReason | undefined
   let usage: ModelUsage | null = null
   let textChars = 0
+  let firstTokenMs: number | null = null
 
   const buildSummary = (): ModelSamplingSummary => ({
     samplingAttemptId,
@@ -57,10 +64,16 @@ export async function* streamModelSampling(
     usage,
     toolCallCount: toolCalls.length,
     textChars,
+    firstTokenMs,
   })
+
+  // events 是惰性的 async generator：下面 for await 第一次拉取时才真正发出模型请求。
+  const requestedAt = now()
 
   try {
     for await (const event of events) {
+      firstTokenMs ??= Math.max(0, now() - requestedAt)
+
       switch (event.type) {
         case 'text_delta':
           textChars += event.delta.length
@@ -68,6 +81,7 @@ export async function* streamModelSampling(
           yield event.delta
           break
 
+        case 'reasoning_started':
         case 'tool_call_started':
           break
 
@@ -86,10 +100,11 @@ export async function* streamModelSampling(
       }
     }
   }
-  catch {
+  catch (error) {
     throw new ModelSamplingIncompleteError(
       '模型流读取失败，当前 sampling 未完整结束。',
       buildSummary(),
+      error,
     )
   }
 

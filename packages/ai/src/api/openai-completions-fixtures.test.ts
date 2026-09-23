@@ -76,6 +76,7 @@ const RESPONSE_EXPECTATIONS = {
 /** 手工 chunk 序列：完整事件列表。 */
 const CHUNK_EXPECTATIONS: Record<FixtureKey, ModelStreamEvent[]> = {
   'deepseek-direct': [
+    { type: 'reasoning_started' },
     { type: 'tool_call_started' },
     {
       type: 'tool_call_completed',

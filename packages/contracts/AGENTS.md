@@ -9,7 +9,7 @@ src/index.ts             # 唯一导出面，新增类型必须在这里 export
 src/api-response.ts      # 全局响应包装 { success, code, message, data }
 src/chat.ts              # ChatRequest / ChatModelOption / NDJSON 流事件（start / delta / done / error / aborted）、消息字数上限
 src/conversation.ts      # 会话与消息
-src/agent-run.ts         # AgentRun / AgentStep 的对外形状
+src/agent-run.ts         # AgentRun / AgentStep 的对外形状、Run 失败类别 AGENT_RUN_ERROR_CODES（唯一来源）
 src/grounding.ts         # 引用与证据契约 MessageGroundingV1
 src/admin-llm.ts         # LLM 配置：LLM_PROVIDER_FAMILIES、LLM_FAMILY_CAPABILITIES（各家族 compat：thinkingFormat / requiresReasoningContent / reasoningEfforts，唯一来源）、Provider / Model 的读写形状
 src/admin-run.ts         # 管理台 Run Trace 读模型

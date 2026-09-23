@@ -2,11 +2,7 @@ import type { ApiErrorResponse } from '@agent/contracts'
 import type { ArgumentsHost, ExceptionFilter } from '@nestjs/common'
 import type { HttpResponseLike, RequestWithId } from '../utils/http-request.util.js'
 import {
-  LLMApiError,
-  LLMAuthError,
-  LLMBalanceError,
   LLMError,
-  LLMInvalidRequestError,
   LLMNetworkError,
   LLMRateLimitError,
   LLMServerError,
@@ -14,6 +10,7 @@ import {
 import { Catch, HttpException, HttpStatus, Logger } from '@nestjs/common'
 
 import { getRequestId, getRequestPath } from '../utils/http-request.util.js'
+import { getAiExceptionMessage } from '../utils/llm-error-message.util.js'
 
 interface HttpExceptionResponse {
   statusCode?: number
@@ -155,38 +152,6 @@ function normalizeAiException(
     error: getDefaultError(statusCode),
     details: [],
   }
-}
-
-function getAiExceptionMessage(exception: LLMError): string {
-  if (exception instanceof LLMAuthError) {
-    return 'AI 服务认证失败，请检查服务端模型配置'
-  }
-
-  if (exception instanceof LLMBalanceError) {
-    return 'AI 服务账户余额不足，请检查模型平台账户状态'
-  }
-
-  if (exception instanceof LLMRateLimitError) {
-    return 'AI 服务请求过于频繁，请稍后重试'
-  }
-
-  if (exception instanceof LLMInvalidRequestError) {
-    return 'AI 服务请求参数异常，请稍后重试'
-  }
-
-  if (exception instanceof LLMNetworkError) {
-    return 'AI 服务暂时不可用，请稍后重试'
-  }
-
-  if (exception instanceof LLMServerError) {
-    return 'AI 服务繁忙，请稍后重试'
-  }
-
-  if (exception instanceof LLMApiError) {
-    return 'AI 服务返回异常，请稍后重试'
-  }
-
-  return 'AI 服务异常，请稍后重试'
 }
 
 function isHttpExceptionResponse(value: unknown): value is HttpExceptionResponse {

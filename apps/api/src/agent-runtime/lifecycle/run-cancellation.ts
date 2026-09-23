@@ -7,7 +7,7 @@ import { AgentRunDeadlineExceededError } from '../agent-runtime.errors.js'
 
 const TERMINALIZATION_DEADLINE_MS = 5_000
 
-type RunTerminationSource
+export type RunTerminationSource
   = | 'completed'
     | 'completing'
     | 'deadline'

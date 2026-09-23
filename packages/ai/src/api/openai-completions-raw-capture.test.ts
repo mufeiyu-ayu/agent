@@ -179,6 +179,67 @@ describe('teeRawResponseCapture', () => {
     })
   })
 
+  it('源流正常结束但没见到 finish_reason 时提交 partial', async () => {
+    let captured: ModelRawResponseCapture | undefined
+
+    // SDK 读响应体遇到 abort 时静默结束迭代，源流看起来是正常结束的。
+    for await (const _ of teeRawResponseCapture(
+      toAsyncIterable([createChunk({ delta: { content: '部分' } })]),
+      (capture) => {
+        captured = capture
+      },
+    )) {
+      // 只消费流
+    }
+
+    assert.equal(captured?.state, 'partial')
+    assert.equal(captured?.lastEvent, 'text_delta')
+  })
+
+  it('signal 已 aborted 时即使见过 finish_reason 也提交 partial', async () => {
+    const abortController = new AbortController()
+    let captured: ModelRawResponseCapture | undefined
+
+    for await (const _ of teeRawResponseCapture(
+      toAsyncIterable([
+        createChunk({ delta: { content: '完' }, finish_reason: 'stop' }),
+      ]),
+      (capture) => {
+        captured = capture
+      },
+      undefined,
+      abortController.signal,
+    )) {
+      // 模拟 finish_reason 之后、usage 之前被停止：之后的 usage chunk 再也收不到。
+      abortController.abort()
+    }
+
+    assert.equal(captured?.state, 'partial')
+  })
+
+  it('finish_reason 与 usage 都已收到后才 aborted 时仍为 complete', async () => {
+    const abortController = new AbortController()
+    let captured: ModelRawResponseCapture | undefined
+
+    for await (const chunk of teeRawResponseCapture(
+      toAsyncIterable([
+        createChunk({ delta: { content: '完' }, finish_reason: 'stop' }),
+        createUsageChunk({ prompt_tokens: 3, completion_tokens: 1, total_tokens: 4 }),
+      ]),
+      (capture) => {
+        captured = capture
+      },
+      undefined,
+      abortController.signal,
+    )) {
+      // 最后的 usage chunk 已交给下游，这之后的停止不影响响应本身的完整性。
+      if (chunk.usage)
+        abortController.abort()
+    }
+
+    assert.equal(captured?.state, 'complete')
+  })
+
   it('下游提前 return 时提交 partial，保留不完整 Tool Call 分片', async () => {
     let captured: unknown
     const stream = teeRawResponseCapture(toAsyncIterable([

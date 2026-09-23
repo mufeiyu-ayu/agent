@@ -1,4 +1,5 @@
 import type {
+  AgentRunErrorCode,
   AgentRunStatus,
   AgentStepStatus,
 } from './agent-run.js'
@@ -24,6 +25,8 @@ export interface AdminRunListItem {
   id: string
   conversationId: string
   status: AgentRunStatus
+  /** 失败 / 中断类别；成功、仍在运行或字段上线前的旧 Run 为 null。 */
+  errorCode: AgentRunErrorCode | null
   questionPreview: string
   samplingCount: number
   toolCallCount: number
@@ -229,6 +232,13 @@ export interface AdminModelSamplingStep extends AdminRunKnownTimelineItemBase {
   finishReason: AdminModelFinishReason | null
   usage: AdminRunTokenUsage | null
   toolCallCount: number | null
+  /**
+   * 从发出请求到收到第一个流事件（含 reasoning）的毫秒数；一个事件都没收到或旧数据为 null。
+   * 包含 SDK 在首个响应头之前的重试与退避。
+   */
+  firstTokenMs: number | null
+  /** 本轮失败 / 中断时与 Run 相同的失败类别；成功或旧数据为 null。 */
+  errorCode: AgentRunErrorCode | null
   contextInspector: AdminContextInspector
   /** debug 捕获：实际发给 provider 的请求体；未开启捕获或数据缺失为 null。 */
   debugRequestBody: AdminDebugModelIOCapture | null

@@ -58,6 +58,13 @@ export type ModelStreamEvent
     delta: string
   }
   | {
+    /**
+     * 本轮第一段 reasoning 到达，只发一次且不带正文：思考模型的首 token 时间要从这里算，
+     * reasoning 正文只随 tool_call_completed.reasoningContent 回填模型，不进事件流。
+     */
+    type: 'reasoning_started'
+  }
+  | {
     type: 'tool_call_started'
   }
   | {

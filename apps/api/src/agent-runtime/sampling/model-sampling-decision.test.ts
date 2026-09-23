@@ -7,12 +7,16 @@ import { describe, it } from 'node:test'
 import { ModelSamplingIncompleteError } from '../agent-runtime.errors.js'
 import { streamModelSampling } from './model-sampling-decision.js'
 
+/** 默认时钟：请求在 1_000 发出，之后每次读数都是 1_000 + FIRST_EVENT_DELAY_MS。 */
+const FIRST_EVENT_DELAY_MS = 42
+
 describe('streamModelSampling', () => {
   it('实时 yield 最终回答，并返回 stop sampling 安全汇总', async () => {
     const completionGate = createDeferred()
     const sampling = streamModelSampling(
       delayedCompletionStream(completionGate.promise),
       'run-1:sampling-1',
+      createClock(),
     )
 
     const firstDeltaPromise = sampling.next()
@@ -43,6 +47,7 @@ describe('streamModelSampling', () => {
         },
         toolCallCount: 0,
         textChars: 2,
+        firstTokenMs: FIRST_EVENT_DELAY_MS,
       },
     })
   })
@@ -116,6 +121,7 @@ describe('streamModelSampling', () => {
         usage: { totalTokens: 8 },
         toolCallCount: 1,
         textChars: 3,
+        firstTokenMs: FIRST_EVENT_DELAY_MS,
       },
     })
   })
@@ -152,13 +158,39 @@ describe('streamModelSampling', () => {
     )
   })
 
-  it('模型流读取失败时携带 partial summary', async () => {
+  it('模型流读取失败时携带 partial summary，原错误挂在 cause 上', async () => {
+    const providerError = new Error('reset')
+
     await assert.rejects(
-      collectSampling([{ type: 'text_delta', delta: '部分' }], 'run-1:sampling-1', new Error('reset')),
+      collectSampling([{ type: 'text_delta', delta: '部分' }], 'run-1:sampling-1', providerError),
       (error) => {
         assert.ok(error instanceof ModelSamplingIncompleteError)
         assert.match(error.message, /读取失败/)
         assert.equal(error.summary?.textChars, 2)
+        assert.equal(error.summary?.firstTokenMs, FIRST_EVENT_DELAY_MS)
+        assert.equal(error.cause, providerError)
+        return true
+      },
+    )
+  })
+
+  it('reasoning_started 先到时首 token 时间从它算起，且不产出文本', async () => {
+    const { decision, deltas } = await collectSampling([
+      { type: 'reasoning_started' },
+      { type: 'text_delta', delta: '答' },
+      { type: 'response_completed', finishReason: 'stop' },
+    ], 'run-1:sampling-1', undefined, createClock([1_000, 1_030, 1_900]))
+
+    assert.deepEqual(deltas, ['答'])
+    assert.equal(decision.summary.firstTokenMs, 30)
+  })
+
+  it('一个流事件都没收到就失败时 firstTokenMs 为 null', async () => {
+    await assert.rejects(
+      collectSampling([], 'run-1:sampling-1', new Error('connect refused')),
+      (error) => {
+        assert.ok(error instanceof ModelSamplingIncompleteError)
+        assert.equal(error.summary?.firstTokenMs, null)
         return true
       },
     )
@@ -177,6 +209,7 @@ describe('streamModelSampling', () => {
           usage: null,
           toolCallCount: 0,
           textChars: 4,
+          firstTokenMs: FIRST_EVENT_DELAY_MS,
         })
         assert.doesNotMatch(JSON.stringify(error.summary), /部分文本/)
         return true
@@ -200,6 +233,7 @@ describe('streamModelSampling', () => {
             usage: { inputTokens: 5 },
             toolCallCount: 0,
             textChars: 3,
+            firstTokenMs: FIRST_EVENT_DELAY_MS,
           })
           return true
         },
@@ -208,12 +242,25 @@ describe('streamModelSampling', () => {
   })
 })
 
+function createClock(
+  readings: number[] = [1_000, 1_000 + FIRST_EVENT_DELAY_MS],
+): () => number {
+  let index = 0
+
+  return () => readings[Math.min(index++, readings.length - 1)]!
+}
+
 async function collectSampling(
   events: ModelStreamEvent[],
   samplingAttemptId = 'run-1:sampling-1',
   failWith?: Error,
+  now = createClock(),
 ) {
-  const sampling = streamModelSampling(toModelStream(events, failWith), samplingAttemptId)
+  const sampling = streamModelSampling(
+    toModelStream(events, failWith),
+    samplingAttemptId,
+    now,
+  )
   const deltas: string[] = []
   let result = await sampling.next()
 

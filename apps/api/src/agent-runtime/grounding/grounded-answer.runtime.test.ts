@@ -3,7 +3,7 @@ import type {
   ModelInputItem,
   ModelStreamEvent,
 } from '@agent/ai'
-import type { MessageGroundingV1 } from '@agent/contracts'
+import type { AgentRunErrorCode, MessageGroundingV1 } from '@agent/contracts'
 import type { Message, MessageGrounding, Prisma } from '../../generated/prisma/client.js'
 import type { LLMService } from '../../llm/llm.service.js'
 import type {
@@ -29,8 +29,10 @@ import assert from 'node:assert/strict'
 // 项目使用 Node 原生测试运行器，不为 grounded 路径引入额外测试框架。
 // eslint-disable-next-line test/no-import-node-test
 import { describe, it } from 'node:test'
+import { LLMAuthError } from '@agent/ai'
 import { projectAdminRunDetail } from '../../admin-runs/projection/admin-run.projector.js'
 import { toChatStreamEvent } from '../../chat/chat-stream-event.mapper.js'
+import { getAiExceptionMessage } from '../../common/utils/llm-error-message.util.js'
 
 import { MessageRole, MessageStatus } from '../../generated/prisma/client.js'
 import { createResolvedLlmModel } from '../../llm/__fixtures__.js'
@@ -867,6 +869,14 @@ describe('Grounded finalization 路径', () => {
     assert.equal(harness.assistantMessage()?.status, MessageStatus.ABORTED)
     assert.equal(harness.recorder.completedGrounding, undefined)
     assert.doesNotMatch(JSON.stringify(events), /内部草稿/)
+    // finalization Step 按终态原因记中断文案，不再笼统记成引用校验失败。
+    assert.equal(harness.recorder.runErrorCode, 'aborted')
+    assert.equal(
+      harness.recorder.steps.find(
+        item => item.type === AGENT_STEP_TYPES.groundedFinalization,
+      )?.errorMessage,
+      '用户已停止生成。',
+    )
   })
 
   it('validated delta 重放期间 Abort 时保留 partial content，且没有 completed Grounding', async () => {
@@ -1461,6 +1471,50 @@ describe('Grounded finalization 终态流完整性', () => {
     assert.deepEqual(attempt?.usage, { inputTokens: 7 })
   })
 
+  it('finalization 流因 LLMError 中断时仍记 stream_failed，Run 失败类别、文案与日志按原错误归因', async () => {
+    const harness = createStreamHarness(async function* () {
+      yield { type: 'usage', usage: { inputTokens: 7 } }
+      throw new LLMAuthError(undefined, { status: 401 })
+    })
+    const warnings: Array<Record<string, unknown>> = []
+
+    Object.defineProperty(harness.service, 'logger', {
+      value: {
+        error: () => {},
+        warn: (warning: Record<string, unknown>) => warnings.push(warning),
+      },
+    })
+
+    const events = await collectEvents(harness.run())
+    const failedEvent = events.at(-1)
+    const finalizationStep = harness.recorder.steps.find(
+      item => item.type === AGENT_STEP_TYPES.groundedFinalization,
+    )
+    const output = finalizationStep?.output as Record<string, unknown>
+    const authMessage = getAiExceptionMessage(new LLMAuthError())
+
+    // finalization 审计口径不变：仍是采样故障 stream_failed。
+    assert.equal(output.failureReason, 'sampling_incomplete')
+    assert.equal(output.samplingFailure, 'stream_failed')
+    // Run、finalization Step 与用户可见文案按 cause 上的真实错误归因。
+    assert.equal(harness.recorder.runErrorCode, 'llm_auth')
+    assert.equal(failedEvent?.type, 'run_failed')
+    assert.equal(failedEvent?.type === 'run_failed' ? failedEvent.message : '', authMessage)
+    assert.equal(finalizationStep?.errorMessage, authMessage)
+    assert.deepEqual(
+      warnings.filter(warning => warning.event === 'agent_run_failed'),
+      [{
+        event: 'agent_run_failed',
+        runId: 'run-1',
+        stepId: finalizationStep?.id,
+        errorCode: 'llm_auth',
+        errorName: 'LLMAuthError',
+        httpStatus: 401,
+        message: new LLMAuthError().message,
+      }],
+    )
+  })
+
   for (const finishReason of ['stop', 'length', 'content_filter'] as const) {
     it(`finishReason=${finishReason} 时按采样故障收口`, async () => {
       const harness = createStreamHarness(() => toModelStream([
@@ -1647,6 +1701,7 @@ function createHarness(options: CreateHarnessOptions) {
   return {
     llmCalls,
     recorder,
+    service,
     toolInvocations,
     assistantMessage: () => prisma.messages.find(
       message => message.role === MessageRole.ASSISTANT,
@@ -1693,6 +1748,7 @@ function projectHarnessRunDetail(harness: ReturnType<typeof createHarness>) {
     conversationId: 'conversation-1',
     assistantMessageId: assistantMessage.id,
     status: 'COMPLETED',
+    errorCode: null,
     startedAt: now,
     endedAt: now,
     createdAt: now,
@@ -1839,6 +1895,8 @@ class FakePrismaService {
 
 class FakeAgentRunRecorderService {
   readonly steps: RecordedStep[] = []
+  /** failRun / abortRun 与终态同事务写入的 Run 失败类别；成功时保持 null。 */
+  runErrorCode: AgentRunErrorCode | null = null
   completedGrounding: MessageGroundingV1 | undefined
   /** 注入终态事务失败，用于验证「回滚后不留下 COMPLETED finalization Step」。 */
   completeRunFailure: Error | undefined
@@ -1931,11 +1989,13 @@ class FakeAgentRunRecorderService {
   async failRun(
     _runId: string,
     errorMessage: string,
+    errorCode: AgentRunErrorCode,
     _deadline: DatabaseOperationDeadline,
     assistantMessage?: { id: string, content: string },
     failedStep?: { id: string, errorMessage: string, output?: unknown },
     metadataStep?: { id: string, output: unknown },
   ) {
+    this.runErrorCode = errorCode
     this.closeMessage(assistantMessage, MessageStatus.FAILED, errorMessage)
     if (failedStep)
       this.transition(failedStep.id, 'FAILED', failedStep)
@@ -1950,6 +2010,7 @@ class FakeAgentRunRecorderService {
     abortedStep?: { id: string, errorMessage: string, output?: unknown },
     metadataStep?: { id: string, output: unknown },
   ) {
+    this.runErrorCode = 'aborted'
     this.closeMessage(assistantMessage, MessageStatus.ABORTED)
     if (abortedStep)
       this.transition(abortedStep.id, 'ABORTED', abortedStep)

@@ -9,10 +9,13 @@ export class AgentLoopLimitExceededError extends Error {
   }
 }
 
+/** Run 超时的用户可见文案；终态归因不依赖 deadline reason 的具体形状。 */
+export const AGENT_RUN_DEADLINE_EXCEEDED_MESSAGE = 'Agent Run 已达到执行时限。'
+
 /** 整个 Agent Run 已超过统一执行时限。 */
 export class AgentRunDeadlineExceededError extends Error {
   constructor() {
-    super('Agent Run 已达到执行时限。')
+    super(AGENT_RUN_DEADLINE_EXCEEDED_MESSAGE)
     this.name = 'AgentRunDeadlineExceededError'
   }
 }
@@ -53,13 +56,18 @@ const INCOMPLETE_FINISH_REASON_MESSAGES: Record<IncompleteFinishReason, string> 
   unknown: '模型以未知原因结束，当前回答未被标记为成功。',
 }
 
-/** 当前 sampling 无法作为一条完整助手回答结束。 */
+/**
+ * 当前 sampling 无法作为一条完整助手回答结束。
+ *
+ * 流读取失败时原错误（通常是 LLMError）挂在 `cause` 上，终态归因按它映射失败类别与文案。
+ */
 export class ModelSamplingIncompleteError extends Error {
   constructor(
     message: string,
     readonly summary?: ModelSamplingSummary,
+    cause?: unknown,
   ) {
-    super(message)
+    super(message, cause === undefined ? undefined : { cause })
     this.name = 'ModelSamplingIncompleteError'
   }
 

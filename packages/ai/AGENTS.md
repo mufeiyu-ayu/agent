@@ -25,6 +25,8 @@ scripts/export-raw-response-fixtures.ts    # 一次性只读导出脚本：从�
 - usage 的缓存字段按 `prompt_tokens_details.cached_tokens ?? prompt_cache_hit_tokens ?? cached_tokens` 兜底；`inputTokens` 保持原始 `prompt_tokens`；缺失字段保持 unknown，不补零。
 - `src/api/__fixtures__/`：`*.response.json` 是各家族经中转站 / 直连的真实聚合响应（由 `scripts/export-raw-response-fixtures.ts` 从本机 `AgentStep.debugRawResponse` 只读导出，不含 `reasoning_content`，也不带服务商地址）；`*.chunks.json` 是按真实 usage 形状手工整理的最小流序列，不是抓包原样。改 usage 归一化或不变量时先跑这组回归。
 - 重试交给 SDK：`REQUEST_MAX_RETRIES = 2`（#115），只在收到响应头之前重试 408 / 409 / 429 / 5xx 与连接错误；流正文中断、abort 之后不重试，abort 不等退避 sleep（`rejectOnAbort`）。回归在 `openai-completions.test.ts` 的「瞬态失败重试」组。
+- reasoning 正文不进事件流：adapter 只在首段 reasoning 到达时发一次不带正文的 `reasoning_started`（runtime 据此算首 token 时间），正文只随 `tool_call_completed.reasoningContent` 回填。
+- SDK 读响应体时遇到 abort 会静默结束迭代：`chatStream` 先看 signal，已 aborted 就按 abort 抛（不报成缺 finish reason）；raw capture 在 signal 已 aborted 或没见到 finish_reason 时标 partial。
 - 错误文案不带厂商名，各家 OpenAI-compatible 端点共用同一套状态码含义。
 
 ## 验证
