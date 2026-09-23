@@ -7,7 +7,7 @@
 | 载体 | 适用 | 内容 |
 | --- | --- | --- |
 | 本文件 | 所有工具 | 工具无关基线 |
-| `docs/workflow.md` | 所有工具 | 单角色流程、学习环节、硬约束、Issue 模板与任务状态；本文件用 `@docs/workflow.md` 导入，不解析 `@` 的工具在会话开始先读它 |
+| `docs/workflow.md` | 所有工具 | 单角色流程、硬约束、Issue 模板与任务状态；本文件用 `@docs/workflow.md` 导入，不解析 `@` 的工具在会话开始先读它 |
 | 工具适配文件（Claude Code 为 `CLAUDE.md`，pi 为 `.pi/APPEND_SYSTEM.md`） | 该工具的会话 | review 命令、skill 路径、分支前缀 |
 
 改本文件时只需确认另外两类载体是否仍然成立，不需要同步正文。
@@ -44,11 +44,11 @@
 | `docs/roadmap.md` | 阶段路线、方向定案与后置清单 |
 | `docs/research/README.md` | 研究入口：pi-reference、补充参照与参照实现方法 |
 | `docs/research/pi-reference/learning-method.md` | 参照实现的六问与每步产物 |
-| `docs/workflow.md` | 单角色流程、学习环节、硬约束与共用定义；`AGENTS.md` 自动导入 |
+| `docs/workflow.md` | 单角色流程、硬约束与共用定义；`AGENTS.md` 自动导入 |
 | `docs/work-log.md` | 已发生事实 |
 | `docs/tasks/completed/` | 已完成阶段与任务的归档 |
 
-当前阶段：本项目源码阅读（工作台第 0 档）。Active / Next / Gated、学习欠账与已合并任务只看 `docs/tasks/README.md`，这里不复制。
+当前阶段：本项目源码阅读（工作台第 0 档）。Active / Next / Gated 与已合并任务只看 `docs/tasks/README.md`，这里不复制。
 
 ## 4. 关键目录与导图
 
@@ -68,7 +68,7 @@
 
 ## 5. 工作方式
 
-协作流程、触发语、授权边界、学习环节与硬约束见导入的 `docs/workflow.md`：
+协作流程、触发语、授权边界与硬约束见导入的 `docs/workflow.md`：
 
 @docs/workflow.md
 

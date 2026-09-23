@@ -7,7 +7,7 @@ description: 执行本项目 GitHub Issue 的实现、Review、验收、合并�
 
 ## 执行边界
 
-「完成 Issue #N」默认一路执行到底：实现、验证、commit 前 `<review 命令>` 自审、PR、基于 PR 最新 head 逐条验收、验收 PASS 后合并、清理分支、收口 docs 并汇报。review 和验收都由本会话完成，不存在另一个模型验收，也不等待任何远程自动 Review。高风险 Issue（定义见 `docs/workflow.md`）不改变流程：`<review 命令>` 用 high 以上档位，并把路线「证明完成」列出的故障注入场景纳入验收。预测题属于建 Issue 前的讨论会话，本 skill 不出题。
+「完成 Issue #N」默认一路执行到底：实现、验证、commit 前 `<review 命令>` 自审、PR、基于 PR 最新 head 逐条验收、验收 PASS 后合并、清理分支、收口 docs 并汇报。review 和验收都由本会话完成，不存在另一个模型验收，也不等待任何远程自动 Review。高风险 Issue（定义见 `docs/workflow.md`）不改变流程：`<review 命令>` 用 high 以上档位，并把路线「证明完成」列出的故障注入场景纳入验收。
 
 用户可以随时缩小范围，例如「先不要 commit」「只实现到本地验证」「停在 PR 让我看 diff」「用 Draft」。以本次明确指令为准。流程曾被缩小并停在某一步时，用户说「继续 Issue #N」就从停下的那一步接着执行。
 
@@ -96,7 +96,6 @@ description: 执行本项目 GitHub Issue 的实现、Review、验收、合并�
 4. 删除远程 Issue 分支；GitHub 已自动删除则视为完成。
 5. 使用安全删除清理本地 Issue 分支；禁止强制删除未合并分支，安全删除失败则停止并说明。
 6. 在会话汇报：合并 commit、Issue 状态、验收结论摘要、剩余风险与后续建议。
-7. 汇报后按 `docs/workflow.md` 进入学习环节：带读本次改动，结束时让用户讲回来并指出偏差；再让用户在纯 TypeScript 层独立改一处，只 review 不动手；两项都过后在 Issue 下追加「学习已验证」评论。
 
 ## 9. research / 学习 docs 边界
 
