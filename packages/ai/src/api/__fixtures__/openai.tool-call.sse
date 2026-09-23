@@ -1,0 +1,16 @@
+data: {"id":"resp_0a48a1c3bb17fd08016ab39a09f8c487d18c872fcda1cecc9a","object":"chat.completion.chunk","created":1790155274,"model":"gpt-5.6-luna","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}],"service_tier":"auto"}
+
+data: {"id":"resp_0a48a1c3bb17fd08016ab39a09f8c487d18c872fcda1cecc9a","object":"chat.completion.chunk","created":1790155274,"model":"gpt-5.6-luna","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_loHf2IU3gl3R9SNTH4GR2pUe","type":"function","function":{"name":"search_articles","arguments":""}}]},"finish_reason":null}],"service_tier":"auto"}
+
+data: {"id":"resp_0a48a1c3bb17fd08016ab39a09f8c487d18c872fcda1cecc9a","object":"chat.completion.chunk","created":1790155274,"model":"gpt-5.6-luna","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"query\":\"青柠\"}"}}]},"finish_reason":null}],"service_tier":"auto"}
+
+data: {"id":"resp_0a48a1c3bb17fd08016ab39a09f8c487d18c872fcda1cecc9a","object":"chat.completion.chunk","created":1790155274,"model":"gpt-5.6-luna","choices":[{"index":0,"delta":{"tool_calls":[{"index":1,"id":"call_DkLHzXgeyzJhTq0vP2aV7yR4","type":"function","function":{"name":"search_articles","arguments":""}}]},"finish_reason":null}],"service_tier":"auto"}
+
+data: {"id":"resp_0a48a1c3bb17fd08016ab39a09f8c487d18c872fcda1cecc9a","object":"chat.completion.chunk","created":1790155274,"model":"gpt-5.6-luna","choices":[{"index":0,"delta":{"tool_calls":[{"index":1,"function":{"arguments":"{\"query\":\"146\"}"}}]},"finish_reason":null}],"service_tier":"auto"}
+
+data: {"id":"resp_0a48a1c3bb17fd08016ab39a09f8c487d18c872fcda1cecc9a","object":"chat.completion.chunk","created":1790155274,"model":"gpt-5.6-luna","choices":[{"index":0,"delta":{"content":""},"finish_reason":"tool_calls"}],"service_tier":"default"}
+
+data: {"id":"resp_0a48a1c3bb17fd08016ab39a09f8c487d18c872fcda1cecc9a","object":"chat.completion.chunk","created":1790155274,"model":"gpt-5.6-luna","choices":[],"usage":{"prompt_tokens":121,"completion_tokens":63,"total_tokens":184,"completion_tokens_details":{"reasoning_tokens":11}},"service_tier":"default"}
+
+data: [DONE]
+

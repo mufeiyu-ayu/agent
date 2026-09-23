@@ -16,6 +16,14 @@ interface OpenAICompatibleToolCallBuffer {
   argumentsJson: string
 }
 
+/**
+ * 拼接同一 index 的 id / name 分片：分片与已拼出的值完全相同时视为逐片重复发送，不再拼接，
+ * 否则 `call_1` 会拼成 `call_1call_1`。debug tee 用同一条规则，Admin 看到的 call id 与运行时一致。
+ */
+export function appendToolCallIdentity(current: string, delta: string | undefined): string {
+  return delta && delta !== current ? current + delta : current
+}
+
 /** 按 Tool Call index 累积 OpenAI-compatible 流式分片。 */
 export class OpenAICompatibleToolCallAccumulator {
   private readonly buffers = new Map<number, OpenAICompatibleToolCallBuffer>()
@@ -32,8 +40,8 @@ export class OpenAICompatibleToolCallAccumulator {
       argumentsJson: '',
     }
 
-    buffer.providerCallId += fragment.providerCallIdDelta ?? ''
-    buffer.name += fragment.nameDelta ?? ''
+    buffer.providerCallId = appendToolCallIdentity(buffer.providerCallId, fragment.providerCallIdDelta)
+    buffer.name = appendToolCallIdentity(buffer.name, fragment.nameDelta)
     buffer.argumentsJson += fragment.argumentsJsonDelta ?? ''
     this.buffers.set(fragment.index, buffer)
   }

@@ -35,6 +35,10 @@ export interface AdaptStreamOptions {
    * 中转站后面的 gpt / gemini / claude 从不返回它，按模型关掉这条不变量。
    */
   requireReasoningContent: boolean
+  /** compat 同名字段：tool_calls 分片可以不带 index，按出现顺序编号。缺省严格，缺 index 即报错。 */
+  toolCallIndexOptional?: boolean
+  /** compat 同名字段：带 Tool Call 的 stop 归一成 tool_calls。缺省严格，带 Tool Call 的 stop 即报错。 */
+  toolCallsMayFinishWithStop?: boolean
 }
 
 /** 将 OpenAI-compatible SDK chunk 转换为项目内部模型事件。 */
@@ -46,6 +50,7 @@ export async function* adaptOpenAICompatibleStream(
   const reasoningContentChunks: string[] = []
   let hasStartedReasoning = false
   let hasStartedToolCall = false
+  let indexlessToolCallCount = 0
   let finishReason: ModelFinishReason | undefined
 
   for await (const chunk of chunks) {
@@ -72,9 +77,14 @@ export async function* adaptOpenAICompatibleStream(
       const toolCallDeltas = providerDelta.tool_calls ?? []
 
       for (const toolCallDelta of toolCallDeltas) {
+        // SDK 类型把 index 标为必填，Google 官方端点的分片却不带它，且每个分片就是一个完整调用；null 同样按缺失处理。
+        const index = toolCallDelta.index == null && options.toolCallIndexOptional
+          ? indexlessToolCallCount++
+          : toolCallDelta.index
+
         // 工具名和 arguments 可能分多个 chunk 返回，这里只负责持续拼接碎片。
         toolCallAccumulator.append({
-          index: toolCallDelta.index,
+          index,
           ...(toolCallDelta.id
             ? { providerCallIdDelta: toolCallDelta.id }
             : {}),
@@ -113,6 +123,11 @@ export async function* adaptOpenAICompatibleStream(
         // length：arguments 可能被截断，放行有 id 与 name 的调用，交给上层按截断回喂。
         const toolCalls = toolCallAccumulator.finalize(finishReason === 'length')
         const reasoningContent = reasoningContentChunks.join('')
+
+        // Runtime 只按 finish reason 分派：带 Tool Call 的 stop 不归一，调用就会被当成最终回答丢掉。
+        if (finishReason === 'stop' && toolCalls.length > 0 && options.toolCallsMayFinishWithStop) {
+          finishReason = 'tool_calls'
+        }
 
         if (finishReason === 'tool_calls' && toolCalls.length === 0) {
           throw new LLMApiError('模型以 tool_calls 结束，但没有返回完整 Tool Call')

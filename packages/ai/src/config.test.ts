@@ -23,7 +23,7 @@ describe('resolveChatRequestConfig', () => {
       model: 'deepseek-v4-flash',
       contextWindowTokens: 1_000_000,
       maxOutputTokens: 384_000,
-      compat: { thinkingFormat: 'deepseek', requiresReasoningContent: true },
+      compat: { thinkingFormat: 'deepseek', requiresReasoningContent: true, toolCallIndexOptional: false, toolCallsMayFinishWithStop: false },
       reasoningEffort: 'high',
     })
   })

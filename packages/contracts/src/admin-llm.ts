@@ -21,25 +21,32 @@ export type LlmProviderFamily = typeof LLM_PROVIDER_FAMILIES[number]
  * - `thinkingFormat`：请求体的思考开关。`'deepseek'` 发 `thinking: { type: 'enabled' }`；null 不发。
  * - `requiresReasoningContent`：Tool Call 必须回 `reasoning_content`（DeepSeek thinking 续轮回填需要）；
  *   中转站后面的 gpt / grok / gemini 只回 `reasoning_tokens` 不回正文，不能要求。
+ * - `toolCallIndexOptional`：流式 tool_calls 分片可以不带 `index`，每个这样的分片就是一个完整调用，按出现顺序编号。
+ * - `toolCallsMayFinishWithStop`：带 Tool Call 时 `finish_reason` 可能是 `stop`，按 `tool_calls` 处理。
+ *   后两条来自 Google 官方 OpenAI 兼容端点的真实流（#157 fixture `gemini-direct.tool-call.sse`），其余家族保持严格。
+ *   它们只让首轮 Tool Call 能被解析；直连 Google 的 Gemini 3 续轮还要回传 `extra_content.google.thought_signature`，
+ *   当前不保存也不回填，工具循环在第二次请求会 400（证据见 #157 评论）。
  */
 export interface LlmFamilyCompat {
   thinkingFormat: 'deepseek' | null
   requiresReasoningContent: boolean
+  toolCallIndexOptional: boolean
+  toolCallsMayFinishWithStop: boolean
 }
 
 /**
- * 各家族的协议事实，只此一处：compat 两个字段见 `LlmFamilyCompat`；
+ * 各家族的协议事实，只此一处：compat 字段见 `LlmFamilyCompat`；
  * `reasoningEfforts` 是 `reasoning_effort` 可取值，按官方文档，空数组表示该家族不认这个参数。
  * 模型行默认值与请求级覆盖都只能取所属家族的值。中转站会把参数透传给上游，直连官方时同一张表照用。
  */
 export const LLM_FAMILY_CAPABILITIES = {
-  deepseek: { thinkingFormat: 'deepseek', requiresReasoningContent: true, reasoningEfforts: ['low', 'high', 'max'] },
-  openai: { thinkingFormat: null, requiresReasoningContent: false, reasoningEfforts: ['minimal', 'low', 'medium', 'high', 'xhigh'] },
-  grok: { thinkingFormat: null, requiresReasoningContent: false, reasoningEfforts: ['low', 'high'] },
+  deepseek: { thinkingFormat: 'deepseek', requiresReasoningContent: true, toolCallIndexOptional: false, toolCallsMayFinishWithStop: false, reasoningEfforts: ['low', 'high', 'max'] },
+  openai: { thinkingFormat: null, requiresReasoningContent: false, toolCallIndexOptional: false, toolCallsMayFinishWithStop: false, reasoningEfforts: ['minimal', 'low', 'medium', 'high', 'xhigh'] },
+  grok: { thinkingFormat: null, requiresReasoningContent: false, toolCallIndexOptional: false, toolCallsMayFinishWithStop: false, reasoningEfforts: ['low', 'high'] },
   // Google 官方支持 low / medium / high，但中转站的 Gemini 已把档位写进模型名，且不回推理 token 无法验证透传；直连官方时再放开。
-  gemini: { thinkingFormat: null, requiresReasoningContent: false, reasoningEfforts: [] },
-  claude: { thinkingFormat: null, requiresReasoningContent: false, reasoningEfforts: ['low', 'medium', 'high'] },
-  other: { thinkingFormat: null, requiresReasoningContent: false, reasoningEfforts: [] },
+  gemini: { thinkingFormat: null, requiresReasoningContent: false, toolCallIndexOptional: true, toolCallsMayFinishWithStop: true, reasoningEfforts: [] },
+  claude: { thinkingFormat: null, requiresReasoningContent: false, toolCallIndexOptional: false, toolCallsMayFinishWithStop: false, reasoningEfforts: ['low', 'medium', 'high'] },
+  other: { thinkingFormat: null, requiresReasoningContent: false, toolCallIndexOptional: false, toolCallsMayFinishWithStop: false, reasoningEfforts: [] },
 } as const satisfies Record<LlmProviderFamily, LlmFamilyCompat & { reasoningEfforts: readonly string[] }>
 
 export type ReasoningEffort = typeof LLM_FAMILY_CAPABILITIES[LlmProviderFamily]['reasoningEfforts'][number]
@@ -60,9 +67,9 @@ export function reasoningEffortsOf(family: string): readonly ReasoningEffort[] {
 }
 
 export function familyCompatOf(family: string): LlmFamilyCompat {
-  const { thinkingFormat, requiresReasoningContent } = capabilitiesOf(family)
+  const { thinkingFormat, requiresReasoningContent, toolCallIndexOptional, toolCallsMayFinishWithStop } = capabilitiesOf(family)
 
-  return { thinkingFormat, requiresReasoningContent }
+  return { thinkingFormat, requiresReasoningContent, toolCallIndexOptional, toolCallsMayFinishWithStop }
 }
 
 export interface AdminLlmProvider {

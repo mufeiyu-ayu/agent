@@ -169,7 +169,11 @@ export class OpenAICompatibleClient {
               signal,
             )
           : stream,
-        { requireReasoningContent: options.request.compat.requiresReasoningContent },
+        {
+          requireReasoningContent: options.request.compat.requiresReasoningContent,
+          toolCallIndexOptional: options.request.compat.toolCallIndexOptional,
+          toolCallsMayFinishWithStop: options.request.compat.toolCallsMayFinishWithStop,
+        },
       )
     }
     catch (cause) {

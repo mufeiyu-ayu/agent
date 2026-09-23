@@ -4,6 +4,8 @@ import type {
   ModelResponseCaptureEvent,
 } from '../types.js'
 
+import { appendToolCallIdentity } from './openai-completions-tool-calls.js'
+
 interface RawToolCallSlot {
   id?: string
   type?: string
@@ -44,6 +46,7 @@ export async function* teeRawResponseCapture(
   const contentChunks: string[] = []
   const reasoningContentChunks: string[] = []
   const toolCalls: RawToolCallSlot[] = []
+  let indexlessToolCallCount = 0
 
   try {
     for await (const chunk of chunks) {
@@ -66,15 +69,17 @@ export async function* teeRawResponseCapture(
         }
 
         for (const toolCallDelta of delta.tool_calls ?? []) {
-          const slot = toolCalls[toolCallDelta.index]
-            ?? (toolCalls[toolCallDelta.index] = { function: { name: '', arguments: '' } })
+          // 与 adapter 同一编号：不带 index 的分片（Google 官方端点）按出现顺序编号；tee 不做校验，不看 compat。
+          const index = toolCallDelta.index ?? indexlessToolCallCount++
+          const slot = toolCalls[index]
+            ?? (toolCalls[index] = { function: { name: '', arguments: '' } })
 
           if (toolCallDelta.id)
-            slot.id = toolCallDelta.id
+            slot.id = appendToolCallIdentity(slot.id ?? '', toolCallDelta.id)
           if (toolCallDelta.type)
             slot.type = toolCallDelta.type
           if (toolCallDelta.function?.name)
-            slot.function.name += toolCallDelta.function.name
+            slot.function.name = appendToolCallIdentity(slot.function.name, toolCallDelta.function.name)
           if (toolCallDelta.function?.arguments)
             slot.function.arguments += toolCallDelta.function.arguments
           lastEvent = 'tool_call_delta'

@@ -1,10 +1,11 @@
 import type { ChatCompletionChunk } from 'openai/resources/chat/completions'
-import type { ModelRawResponseCapture } from '../types.js'
+import type { ModelRawResponseCapture, ModelStreamEvent } from '../types.js'
 import assert from 'node:assert/strict'
 // eslint-disable-next-line test/no-import-node-test
 import { describe, it } from 'node:test'
 
 import { teeRawResponseCapture } from './openai-completions-raw-capture.js'
+import { adaptOpenAICompatibleStream } from './openai-completions-stream.js'
 
 describe('teeRawResponseCapture', () => {
   it('原样透传 chunk，并在流结束后组装完整原始响应', async () => {
@@ -140,6 +141,42 @@ describe('teeRawResponseCapture', () => {
         ],
       },
     })
+  })
+
+  it('每片重复带相同 id / name 时不再拼接，tee 与累加器给出同一个 call id', async () => {
+    const repeated = (argumentsJson: string): ChatCompletionChunk.Choice.Delta => ({
+      tool_calls: [{ index: 0, id: 'call_1', type: 'function', function: { name: 'search', arguments: argumentsJson } }],
+    })
+    const chunks = [
+      createChunk({ delta: { role: 'assistant', ...repeated('{"query":') } }),
+      createChunk({ delta: repeated('"seo"') }),
+      createChunk({ delta: repeated('}'), finish_reason: 'tool_calls' }),
+    ]
+    let captured: ModelRawResponseCapture | undefined
+    const events: ModelStreamEvent[] = []
+
+    for await (const event of adaptOpenAICompatibleStream(
+      teeRawResponseCapture(toAsyncIterable(chunks), (capture) => {
+        captured = capture
+      }),
+      { requireReasoningContent: false },
+    )) {
+      events.push(event)
+    }
+
+    assert.deepEqual(events, [
+      { type: 'tool_call_started' },
+      {
+        type: 'tool_call_completed',
+        toolCall: { providerCallId: 'call_1', name: 'search', argumentsJson: '{"query":"seo"}', index: 0 },
+        reasoningContent: '',
+      },
+      { type: 'response_completed', finishReason: 'tool_calls' },
+    ])
+    assert.deepEqual(
+      (captured?.rawResponse as { choices: Array<{ message: { tool_calls: unknown } }> }).choices[0]?.message.tool_calls,
+      [{ id: 'call_1', type: 'function', function: { name: 'search', arguments: '{"query":"seo"}' } }],
+    )
   })
 
   it('流中途抛错时提交 partial 并透传原错误', async () => {
