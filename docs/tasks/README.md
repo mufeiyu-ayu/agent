@@ -8,11 +8,11 @@
 阶段 1-8：Completed
 当前阶段：本项目源码阅读（工作台第 0 档）
 Active Agent Task：无
-Next：2026-09-23 审查拆出的 #157、#158 为 Planned，建议顺序见看板
+Next：#158 为 Planned，建议顺序见看板
 Gated：#117 Responses API adapter（2026-09-18）、web_fetch（2026-09-19），触发条件见看板
 产品方向：内部数据工作台（2026-09-20 定案，docs/research/workbench-direction.md），未立 Issue；档、顺序与触发只在其第 7 节
 候选子系统：session 事件流与 replay、审批门、compaction、定时任务（未立 Issue，各自的档见 workbench 第 7 节）
-学习环节待做（带读收尾与独立改一处，均无「学习已验证」评论）：#115、#116、#126、#127（Issue 只豁免讨论阶段复述，预测题未出不算豁免）、#134、#135、#136、#137、#142（Issue 豁免预测题）、#144、#146、#151、#152、#153、#154、#155、#156
+学习环节待做（带读收尾与独立改一处，均无「学习已验证」评论）：#115、#116、#126、#127（Issue 只豁免讨论阶段复述，预测题未出不算豁免）、#134、#135、#136、#137、#142（Issue 豁免预测题）、#144、#146、#151、#152、#153、#154、#155、#156、#157
 Admin Task 4：Planned
 ```
 
@@ -44,7 +44,7 @@ Admin Task 4：Planned
 | #154 管理台模型接入页与小修 | Completed | 实施状态：已实现 / 验收状态：已通过。PR #163 代码 head `a2570ba` 的 AC-01～AC-10 于 2026-09-23 逐条 PASS（PR 验收评论为证据）：模型接入页 state 在家族 / 地址 / 密钥变了时重载模型表，弹窗测试结果按代次（AbortController）丢弃旧结果并中止旧请求，拉取 / 测试被中止时静默，首批失败时剩余批次一起记失败；模型弹窗置空家族不认的强度；服务端在 wireName / 强度 / maxOutput 或服务商家族 / 地址 / 密钥变更时清 `lastProbe*`，探活结果只在所用配置未变时条件写回；预算校验直接调 `resolveInitialContextBudget`，只在数值变化时校验；`LLMService` 探活 / 拉取 / 余额统一 30s 上界，`@agent/ai` 的 `listModels` / `getUserBalance` 接受 signal，403 文案带实际状态码；拉取模型 4xx / 非列表给带状态码的 `/v1` 提示且不回显上游 body；Retrieval Inspector 回退读 finalization input；Run 详情复制加 `execCommand` 回退；删 32 个孤儿 i18n key 并加引用检查；删 `refresh` / `keepStale` 与 run-api re-export；e2e 截图改到 `.artifacts`。验证：`pnpm typecheck`、admin / api / ai lint、`@agent/admin test`、`@agent/ai` 56、`test:admin` 76、`test:llm-config` 9、`test:model-stream` 103、`test:grounding` 157、admin e2e 13；本机 dev + fake 上游真实链路覆盖 AC-01～AC-09（挂住上游 30.1s 退出测试中、局域网 HTTP 复制、RUNNING finalization），临时数据已删。`/code-review high` 三轮 27 条修 10 条。限制：慢推理模型的已入库行探活可能被 30s 判为超时；预算校验不估算必带内容；客户端中止测试后服务端探活仍会跑完。学习环节待做 |
 | #156 低成本安全加固 | Completed | 实施状态：已实现 / 验收状态：已通过。PR #164 代码 head `1f4616d` 的 AC-01～AC-09 于 2026-09-23 逐条 PASS（PR 验收评论为证据）：fetch / test-models 只带 providerId 时用库里 baseUrl，表单地址不同 400「更换地址需要重新填写 API Key」；PATCH 改地址须带新 key，地址与密钥只成对写入（只改备注不写回地址，并发下新 key 不配旧地址）；管理台编辑弹窗改地址时密钥必填、拉取置灰；`@agent/ai` 未映射状态码只报 `HTTP ${status}`，仅 JSON `error` 对象附带字符串 code / type 与去控制 / 格式字符、截断 200 字符的 message；余额只查 https 官方 DeepSeek 账号（跳过解不开的行）、删默认 Provider 回退、响应只投影声明字段；API 去 CORS、只监听 127.0.0.1，dev 端口探测与 Vite 代理目标同步 127.0.0.1；compose 主库 `127.0.0.1:5432`；`.env.example` 主密钥留空、补 `PORT`；GCM 标签固定 16 字节；测试 key 换假值。验证：`pnpm typecheck`、api / ai / admin / web lint、`@agent/ai` 61、`test:llm-config` 21（新增 fake prisma 单测）、`test:admin` 76、dev-apps 3、`test:db-reliability` 11、`test:grounding-db` 15；本机假上游 + 临时服务商真实故障注入 AC-01～AC-03（最终 head 复跑）、LAN 发消息 / 看 Run、外部 Origin 无 CORS 头、空主密钥启动失败，临时数据已删。`/code-review high` 三轮 25 条修 11 条。限制：局域网仍可经 5173 / 5174 代理调用全部接口（鉴权第 3 档）；本机主库容器按 #134 名字重建为 `agent-postgres`；运行中的 dev 代理目标重启后才换成 127.0.0.1。学习环节待做 |
 | #158 运行时小修 | Planned | 2026-09-23 审查拆出。实施状态：未开始 / 验收状态：未验收。证据口径、中间文本分隔、裁剪按问答对齐、测试脚本与注释漂移；与 #152 都改 runtime，后合并者 rebase |
-| #157 真实 Tool Call 流 fixture | Planned | 2026-09-23 审查拆出。实施状态：未开始 / 验收状态：未验收。用户认为现在做拖进度，优先级最低 |
+| #157 真实 Tool Call 流 fixture | Completed | 实施状态：已实现 / 验收状态：已通过。PR #165 代码 head `8d95252` 的 AC-01～AC-04 于 2026-09-23 逐条 PASS（PR 验收评论为证据）：一次性录制脚本 `record-tool-call-stream-fixtures.ts` 用生产 client 真实调用，deepseek 直连、中转站 gpt / grok、Google 官方直连 gemini（中转站 gemini 当天全线 upstream_error，用户同意改源，写入 Issue 决策记录）四份原始 SSE 经 SDK 回放，断言完整事件与 debug 捕获 call id 一致；累加器与 tee 共用 `appendToolCallIdentity`（相同 id / name 不再拼接）；gemini 缺 index、带调用报 stop，compat 加 `toolCallIndexOptional` / `toolCallsMayFinishWithStop` 只对 gemini 放宽。验证：`@agent/ai` 67、全仓 typecheck、api lint、`test:model-stream` 103、`test:llm-config` 21，字段改名变异 102 次中决定结果的字段全红。`/code-review high` 两轮 17 条修 8 条。限制：直连 Google 的 Gemini 3 续轮需回传 thought_signature（实测 400，未做）；gemini 思考 Token 不进 outputTokens（不改 usage 口径）。学习环节待做 |
 | 内部数据工作台 | Planned | 合并 gsc：数据层迁入 → 页面移植 → agent 数据工具 → 容器与预览面板；档、触发、里程碑见 [workbench-direction](../research/workbench-direction.md) 第 7 节；一次只立一个 Issue |
 | `web_fetch` 第一个真实工具 | Gated | 只读、SSRF 防护、untrusted observation，范围见 [pi-reference roadmap](../research/pi-reference/roadmap.md)。2026-09-19 转 Gated：用户确认当前没有会反复让 agent 读网页的真实用途；出现一个即 reopen 讨论 |
 | Admin Console Task 4 | Planned | Auth / RBAC；触发条件见 [roadmap.md](../roadmap.md) 后置清单 |
