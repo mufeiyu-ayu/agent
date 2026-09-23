@@ -7,7 +7,7 @@
  *
  * | HTTP | 含义 |
  * |------|------|
- * | 400  | 请求格式错误 |
+ * | 400  | 请求格式错误（中转站的 `upstream_error` 除外，按 5xx 归类） |
  * | 401  | API Key 认证失败 |
  * | 402  | 账户余额不足 |
  * | 403  | API Key 无权访问 |
@@ -63,22 +63,25 @@ export class LLMRateLimitError extends LLMError {
   }
 }
 
-/** 5xx：服务端错误（503 为繁忙，其余按内部错误描述） */
+/**
+ * 5xx，以及中转站把上游故障包成的 400 `upstream_error`：服务端错误（503 为繁忙，其余按内部错误描述）。
+ * `upstream` 是已脱敏、截断的上游错误摘要，只进 message 供服务端日志与管理台「测试模型」定位，不进用户文案。
+ */
 export class LLMServerError extends LLMError {
-  constructor(statusCode: number, detail?: unknown) {
+  constructor(statusCode: number, detail?: unknown, upstream = '') {
     const desc = statusCode === 503 ? '服务器繁忙' : '服务器内部错误'
 
-    super(`服务商${desc}（${statusCode}），请稍后重试。如持续出现请检查服务商状态`, detail)
+    super(`服务商${desc}（${statusCode}），请稍后重试。如持续出现请检查服务商状态${upstream ? `: ${upstream}` : ''}`, detail)
     this.name = 'LLMServerError'
   }
 }
 
-/** 400 或 422：请求格式/参数错误 */
+/** 400 或 422：请求格式/参数错误；`upstream` 同 LLMServerError。 */
 export class LLMInvalidRequestError extends LLMError {
-  constructor(statusCode: number, detail?: unknown) {
+  constructor(statusCode: number, detail?: unknown, upstream = '') {
     const desc = statusCode === 400 ? '请求格式错误' : '请求参数错误'
 
-    super(`${desc}（${statusCode}），请根据错误提示修改请求体`, detail)
+    super(`${desc}（${statusCode}），请根据错误提示修改请求体${upstream ? `: ${upstream}` : ''}`, detail)
     this.name = 'LLMInvalidRequestError'
   }
 }

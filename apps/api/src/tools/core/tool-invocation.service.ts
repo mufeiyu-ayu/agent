@@ -5,13 +5,15 @@ import type {
   UnvalidatedToolCallEnvelope,
   ValidatedToolInvocation,
 } from './tool.types.js'
-import { Inject, Injectable } from '@nestjs/common'
+import { Inject, Injectable, Logger } from '@nestjs/common'
 
 import { DatabaseOperationDeadlineExceededError } from '../../prisma/prisma.service.js'
 import { ToolRegistryService } from './tool-registry.service.js'
 
 @Injectable()
 export class ToolInvocationService {
+  private readonly logger = new Logger(ToolInvocationService.name)
+
   constructor(
     @Inject(ToolRegistryService)
     private readonly registry: ToolRegistryService,
@@ -135,6 +137,22 @@ export class ToolInvocationService {
 
           if (outcome.error instanceof DatabaseOperationDeadlineExceededError)
             throw outcome.error
+
+          // 模型与 Step 只拿到脱敏的「执行失败」，真实原因（如 Embedding 服务连不上）只进服务端日志；
+          // callId 与 tool Step 落库的一致，用来对上 Run Trace。记日志失败不能改变返回结果。
+          try {
+            const error = outcome.error
+            const message = error instanceof Error ? error.message : error
+
+            this.logger.warn({
+              event: 'tool_execution_failed',
+              toolName: envelope.toolName,
+              callId: envelope.callId,
+              errorName: error instanceof Error ? error.name : typeof error,
+              message: typeof message === 'string' ? message.slice(0, 500) : '',
+            })
+          }
+          catch {}
 
           return {
             ok: false,

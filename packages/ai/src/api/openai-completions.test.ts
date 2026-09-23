@@ -645,22 +645,23 @@ describe('OpenAICompatibleClient 未映射状态码的错误文案', () => {
   })
 })
 
-describe('OpenAICompatibleClient 模型调用边界（#168）', () => {
-  async function failureOf(response: () => Response): Promise<unknown> {
-    const harness = createFetchHarness([response])
+/** 取一次 chatStream 的失败；默认只备一份响应（多发一次请求就会断言失败），5xx 用例传 3 份给 SDK 重试。 */
+async function failureOf(response: () => Response, attempts = 1): Promise<unknown> {
+  const harness = createFetchHarness(Array.from<() => Response>({ length: attempts }).fill(response))
 
-    try {
-      await collectEvents(harness.client.chatStream(
-        [{ type: 'message', role: 'user', content: 'hello' }],
-        { request: RELAY_REQUEST },
-      ))
-    }
-    catch (error) {
-      return error
-    }
-    assert.fail('chatStream 应当失败')
+  try {
+    await collectEvents(harness.client.chatStream(
+      [{ type: 'message', role: 'user', content: 'hello' }],
+      { request: RELAY_REQUEST },
+    ))
   }
+  catch (error) {
+    return error
+  }
+  assert.fail('chatStream 应当失败')
+}
 
+describe('OpenAICompatibleClient 模型调用边界（#168）', () => {
   const sse = (...lines: string[]) => () => new Response(
     lines.map(line => `${line}\n\n`).join(''),
     { status: 200, headers: { 'Content-Type': 'text/event-stream' } },
@@ -741,6 +742,59 @@ describe('OpenAICompatibleClient 模型调用边界（#168）', () => {
 
       assert.ok(matches(error), `code ${String(code)} 归类不对：${String(error)}`)
     }
+  })
+})
+
+describe('OpenAICompatibleClient 映射状态码保留上游原因（#175）', () => {
+  // 502 会被 SDK 重试：retry-after 0 免得等退避。
+  const json = (status: number, error: unknown) => () => new Response(
+    JSON.stringify({ error }),
+    { status, headers: { 'Content-Type': 'application/json', 'retry-after': '0' } },
+  )
+
+  it('AC-01 400 / 422 带上游摘要，其中的本次 key 换成 ***', async () => {
+    const key = createRuntimeConfig().apiKey
+
+    for (const status of [400, 422]) {
+      const error = await failureOf(json(status, { type: 'invalid_request_error', message: `max_tokens too large for ${key}` }))
+
+      assert.ok(error instanceof LLMInvalidRequestError)
+      assert.match(error.message, /\[invalid_request_error\] max_tokens too large for \*\*\*$/)
+      assert.doesNotMatch(error.message, /test-api/)
+    }
+  })
+
+  it('AC-02 中转站 400 upstream_error 归 LLMServerError，文案带上游摘要', async () => {
+    const error = await failureOf(json(400, { code: null, type: 'upstream_error', message: 'Upstream request failed' }))
+
+    assert.ok(error instanceof LLMServerError)
+    assert.match(error.message, /（400）.*: \[upstream_error\] Upstream request failed$/)
+  })
+
+  it('AC-03 流内 error 对象 upstream_error（code 为 400 或 null）同样归 LLMServerError；5xx 的摘要进文案', async () => {
+    for (const code of [400, null]) {
+      const inStream = await failureOf(() => new Response(
+        `data: ${JSON.stringify({ error: { code, type: 'upstream_error', message: 'Upstream request failed' } })}\n\n`,
+        { status: 200, headers: { 'Content-Type': 'text/event-stream' } },
+      ))
+
+      assert.ok(inStream instanceof LLMServerError, `code ${String(code)}：${String(inStream)}`)
+      assert.match(inStream.message, code === null ? /（502）/ : /（400）/)
+      assert.match(inStream.message, /\[upstream_error\] Upstream request failed$/)
+    }
+    const server = await failureOf(json(502, { type: 'bad_gateway', message: 'upstream timeout' }), 3)
+    // 沿用上游状态码的 upstream_error 照常按状态码归类。
+    const rateLimited = await failureOf(json(429, { type: 'upstream_error', message: 'Upstream rate limited' }), 3)
+    const inStreamAuth = await failureOf(() => new Response(
+      `data: ${JSON.stringify({ error: { code: 401, type: 'upstream_error', message: 'bad key' } })}\n\n`,
+      { status: 200, headers: { 'Content-Type': 'text/event-stream' } },
+    ))
+
+    assert.ok(rateLimited instanceof LLMRateLimitError)
+    assert.ok(inStreamAuth instanceof LLMAuthError)
+
+    assert.ok(server instanceof LLMServerError)
+    assert.match(server.message, /（502）.*: \[bad_gateway\] upstream timeout$/)
   })
 })
 

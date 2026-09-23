@@ -250,41 +250,40 @@ export class OpenAICompatibleClient {
   private toLLMHttpError(error: APIError): LLMError {
     // 流内夹带的 error 对象被 SDK 抛成 status 为空的 APIError；它带着 HTTP 状态码时按同一张表归类。
     const status = error.status ?? statusOfStreamError(error.error)
+    // 进文案的上游摘要：非 JSON body 可能是整页 HTML 或任意文本，SDK 会把它原样放进 `error.message`，而文案会进
+    // 管理台「测试模型」结果与 `lastProbeError`。只有 body 解析成 JSON 且 `error` 是对象时，才取字符串类型的
+    // code / type 与截断后的 message；完整 APIError 留在 `detail` 上。401 / 402 / 403 / 429 的文案已足够定位，不带摘要。
+    const upstream = describeJsonErrorBody(error.error, this.clientConfig.apiKey)
+
+    // 中转站把「中转站到上游失败」包成 400 + `upstream_error`（流内则 code 为 null），与请求体无关，
+    // 按服务端故障归类；流内没有状态码时按网关故障记 502。沿用上游 401 / 429 等状态码的照常按状态码归类。
+    // SDK 已把 error 对象的 type 放在 `error.type` 上。SDK 不重试 400，这类故障不会像 502 那样自动重试。
+    if ((status === 400 || status === undefined) && error.type === 'upstream_error')
+      return new LLMServerError(status ?? 502, error, upstream)
 
     switch (status) {
       case 400:
-        return new LLMInvalidRequestError(400, error)
+        return new LLMInvalidRequestError(400, error, upstream)
       case 401:
       case 403:
         return new LLMAuthError(status, error)
       case 402:
         return new LLMBalanceError(error)
       case 422:
-        return new LLMInvalidRequestError(422, error)
+        return new LLMInvalidRequestError(422, error, upstream)
       case 429:
         return new LLMRateLimitError(error)
       default:
         // 中转站常见的 502 / 504 与 500 / 503 同属上游服务端故障。
         if (status !== undefined && status >= 500)
-          return new LLMServerError(status, error)
+          return new LLMServerError(status, error, upstream)
 
+        // 未单独映射的状态码（404 / 405 等）只报状态与摘要。
         return new LLMApiError(
-          this.formatUnhandledApiErrorMessage(error, status),
+          `LLM API ${status ? `HTTP ${status}` : '未知 HTTP 状态'} 错误${upstream ? `: ${upstream}` : ''}`,
           error,
         )
     }
-  }
-
-  /**
-   * 未单独映射的状态码（404 / 405 等）只报状态：非 JSON body 可能是整页 HTML 或任意文本，SDK 会把它原样放进
-   * `error.message`，而这条文案会进管理台「测试模型」结果与 `lastProbeError`。只有 body 解析成 JSON 且
-   * `error` 是对象时，才附带字符串类型的 code / type 与截断后的 message；完整 APIError 留在 `detail` 上。
-   */
-  private formatUnhandledApiErrorMessage(error: APIError, status: number | undefined): string {
-    const label = status ? `HTTP ${status}` : '未知 HTTP 状态'
-    const upstream = describeJsonErrorBody(error.error, this.clientConfig.apiKey)
-
-    return `LLM API ${label} 错误${upstream ? `: ${upstream}` : ''}`
   }
 }
 
