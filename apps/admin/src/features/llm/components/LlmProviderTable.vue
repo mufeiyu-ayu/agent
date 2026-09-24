@@ -98,6 +98,9 @@ const { locale, t } = useI18n()
             <span class="badge-count">
               {{ t('llmModels.providerBadge', { count: provider.modelCount }) }}
             </span>
+            <span v-if="provider.useProxy" class="badge-proxy">
+              {{ t('llmModels.providers.proxyTag') }}
+            </span>
             <span class="date-text">
               {{ formatShortDateTime(provider.updatedAt, locale) }}
             </span>
@@ -338,6 +341,17 @@ const { locale, t } = useI18n()
   font-size: var(--admin-font-2xs);
   font-weight: 550;
   transition: all 150ms ease;
+}
+
+.badge-proxy {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 5px;
+  border: 1px solid var(--admin-border-strong);
+  border-radius: 4px;
+  color: var(--admin-text-muted);
+  font-size: var(--admin-font-2xs);
+  font-weight: 550;
 }
 
 .provider-card.is-selected .badge-count {

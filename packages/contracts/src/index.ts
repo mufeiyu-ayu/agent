@@ -15,6 +15,7 @@ export type {
   AdminLlmProbeModelsRequest,
   AdminLlmProvider,
   AdminLlmProviderInput,
+  AdminLlmProxyStatus,
   AdminLlmTestModelsRequest,
   AdminLlmTestModelsResponse,
   LlmFamilyCompat,

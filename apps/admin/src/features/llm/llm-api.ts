@@ -7,6 +7,7 @@ import type {
   AdminLlmModelTestResult,
   AdminLlmProvider,
   AdminLlmProviderInput,
+  AdminLlmProxyStatus,
   AdminLlmTestModelsRequest,
   AdminLlmTestModelsResponse,
 } from '@agent/contracts'
@@ -22,6 +23,11 @@ function providerPath(providerId: string, suffix = ''): string {
 
 function modelPath(modelId: string): string {
   return `${BASE}/models/${encodeURIComponent(modelId)}`
+}
+
+/** 本机 `.env` 的出站代理是否配置；地址不含凭据。 */
+export function fetchLlmProxyStatus(options: AdminRunFetchOptions = {}): Promise<AdminLlmProxyStatus> {
+  return requestAdminRun<AdminLlmProxyStatus>(`${BASE}/proxy`, options)
 }
 
 export function fetchLlmProviders(options: AdminRunFetchOptions = {}): Promise<AdminLlmProvider[]> {

@@ -1,15 +1,23 @@
 <script setup lang="ts">
-import type { AdminLlmModelTestResult, AdminLlmProvider, AdminLlmProviderInput, LlmProviderFamily } from '@agent/contracts'
+import type {
+  AdminLlmModelTestResult,
+  AdminLlmProvider,
+  AdminLlmProviderInput,
+  AdminLlmProxyStatus,
+  LlmProviderFamily,
+} from '@agent/contracts'
 import type { FormInstance, Rule } from 'ant-design-vue/es/form'
 import { LLM_PROVIDER_FAMILIES } from '@agent/contracts'
 import { CheckCircleFilled, CloseCircleFilled, SyncOutlined } from '@ant-design/icons-vue'
 import {
   Button,
+  Checkbox,
   Form,
   FormItem,
   Input,
   Modal,
   Switch,
+  Tooltip,
 } from 'ant-design-vue'
 import { computed, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -27,6 +35,8 @@ const props = defineProps<{
   open: boolean
   /** null 为新增。 */
   provider: AdminLlmProvider | null
+  /** 本机 `.env` 的出站代理；null 按未配置处理。 */
+  proxyStatus: AdminLlmProxyStatus | null
   submitting: boolean
   /** 拉取回来的模型名与加载态，由页面持有。 */
   candidates: string[]
@@ -39,13 +49,13 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  /** 用表单当前的地址与密钥拉取模型；编辑时密钥留空表示用库里那把。 */
-  fetchModels: [input: { baseUrl: string, apiKey: string }]
+  /** 用表单当前的地址、密钥与「使用代理」勾选拉取模型；编辑时密钥留空表示用库里那把。 */
+  fetchModels: [input: { baseUrl: string, apiKey: string, useProxy: boolean }]
   /** 勾中模型后自动对它们各发一条最短对话；密钥留空时页面用库里那把。 */
-  testModels: [input: { baseUrl: string, apiKey: string }, wireNames: string[]]
+  testModels: [input: { baseUrl: string, apiKey: string, useProxy: boolean }, wireNames: string[]]
   submit: [input: AdminLlmProviderInput, wireNames: string[]]
-  /** 家族、地址或密钥变了：按旧配置拉到的名单与测出的结论作废，由页面清掉。 */
-  credentialsChange: [credentials: { family: LlmProviderFamily, baseUrl: string, apiKey: string }]
+  /** 家族、地址、密钥或「使用代理」变了：按旧配置拉到的名单与测出的结论作废，由页面清掉。 */
+  credentialsChange: [credentials: { family: LlmProviderFamily, baseUrl: string, apiKey: string, useProxy: boolean }]
   cancel: []
 }>()
 
@@ -59,6 +69,7 @@ interface FormState {
   baseUrl: string
   apiKey: string
   enabled: boolean
+  useProxy: boolean
 }
 
 const formState = reactive<FormState>({
@@ -67,7 +78,17 @@ const formState = reactive<FormState>({
   baseUrl: '',
   apiKey: '',
   enabled: true,
+  useProxy: false,
 })
+
+const proxyConfigured = computed(() => props.proxyStatus?.configured === true)
+/** 本机没配代理时不能勾上；已勾上的（库从别的机器搬来）仍可取消。 */
+const useProxyDisabled = computed(() => !proxyConfigured.value && !formState.useProxy)
+const proxyTooltip = computed(() => (
+  proxyConfigured.value
+    ? t('llmModels.providers.form.proxyAddress', { address: props.proxyStatus?.address })
+    : t('llmModels.providers.form.proxyNotConfigured')
+))
 
 const isEdit = computed(() => props.provider !== null)
 
@@ -117,9 +138,12 @@ const rules = computed<Record<string, Rule[]>>(() => ({
       : [],
 }))
 
-watch(() => [formState.family, formState.baseUrl, formState.apiKey] as const, ([family, baseUrl, apiKey]) => {
-  emit('credentialsChange', { family, baseUrl, apiKey })
-})
+watch(
+  () => [formState.family, formState.baseUrl, formState.apiKey, formState.useProxy] as const,
+  ([family, baseUrl, apiKey, useProxy]) => {
+    emit('credentialsChange', { family, baseUrl, apiKey, useProxy })
+  },
+)
 
 /** 名单被清空（凭据真的变了、重新拉取）时勾选跟着作废；只差末尾斜杠时页面不清，勾选也保留。 */
 watch(() => props.candidates, (names) => {
@@ -149,6 +173,7 @@ watch(() => props.open, (isOpen) => {
     formState.baseUrl = props.provider.baseUrl
     formState.apiKey = ''
     formState.enabled = props.provider.enabled
+    formState.useProxy = props.provider.useProxy
   }
   else {
     formState.family = 'deepseek'
@@ -156,12 +181,18 @@ watch(() => props.open, (isOpen) => {
     formState.baseUrl = LLM_FAMILY_BRAND.deepseek.suggestedBaseUrl
     formState.apiKey = ''
     formState.enabled = true
+    formState.useProxy = false
   }
 }, { immediate: true })
 
+/** 拉取 / 测试用表单当前的勾选，没保存也生效。 */
+function formCredentials() {
+  return { baseUrl: formState.baseUrl.trim(), apiKey: formState.apiKey.trim(), useProxy: formState.useProxy }
+}
+
 function handleFetch() {
   // 勾选由 candidates 的 watch 清：拉取开始时页面先清空名单。
-  emit('fetchModels', { baseUrl: formState.baseUrl.trim(), apiKey: formState.apiKey.trim() })
+  emit('fetchModels', formCredentials())
 }
 
 /** 勾选变化时只测新勾上的：已有结果或正在测的不重发。 */
@@ -169,7 +200,7 @@ watch(selectedWireNames, (names) => {
   const fresh = names.filter(name => !props.testResults[name] && !props.testingNames.has(name))
 
   if (fresh.length > 0)
-    emit('testModels', { baseUrl: formState.baseUrl.trim(), apiKey: formState.apiKey.trim() }, fresh)
+    emit('testModels', formCredentials(), fresh)
 })
 
 async function handleOk() {
@@ -185,6 +216,7 @@ async function handleOk() {
     note: formState.note.trim(),
     baseUrl: formState.baseUrl.trim(),
     enabled: formState.enabled,
+    useProxy: formState.useProxy,
   }
 
   if (formState.apiKey.trim())
@@ -280,10 +312,18 @@ async function handleOk() {
           <Input
             v-model:value="formState.baseUrl"
             :placeholder="t('llmModels.providers.form.baseUrlPlaceholder')"
-          />
-          <div class="form-item-help">
-            {{ t('llmModels.providers.form.baseUrlHelp') }}
-          </div>
+          >
+            <!-- 是否经本机 .env 的代理访问：跟地址放在一起，地址或未配置的原因悬停可见 -->
+            <template #addonAfter>
+              <Tooltip :title="proxyTooltip">
+                <span class="proxy-toggle">
+                  <Checkbox v-model:checked="formState.useProxy" :disabled="useProxyDisabled">
+                    {{ t('llmModels.providers.form.useProxy') }}
+                  </Checkbox>
+                </span>
+              </Tooltip>
+            </template>
+          </Input>
         </FormItem>
 
         <!-- 4. API 密钥 -->
@@ -301,10 +341,7 @@ async function handleOk() {
         <!-- 5. 模型验证与导入卡片 -->
         <section class="connectivity-card">
           <header class="connectivity-header">
-            <div class="connectivity-title-wrap">
-              <span class="connectivity-title">{{ t('llmModels.providers.form.candidatesTitle') }}</span>
-              <span class="connectivity-hint">{{ t('llmModels.providers.form.fetchHint') }}</span>
-            </div>
+            <span class="connectivity-title">{{ t('llmModels.providers.form.candidatesTitle') }}</span>
 
             <Button
               class="fetch-btn"
@@ -319,29 +356,21 @@ async function handleOk() {
             </Button>
           </header>
 
-          <div class="connectivity-body">
+          <div v-if="fetchingCandidates || candidates.length > 0" class="connectivity-body">
             <div v-if="fetchingCandidates" class="fetching-loading-state">
               <SyncOutlined spin class="loading-icon" />
               <span class="loading-text">{{ t('llmModels.providers.form.fetchingModels') }}</span>
             </div>
 
-            <template v-else-if="candidates.length > 0">
-              <LlmModelCandidateList
-                v-model="selectedWireNames"
-                :candidates="candidates"
-                :existing="existing"
-                :loading="false"
-                :test-results="testResults"
-                :testing-names="testingNames"
-              />
-              <p class="test-hint">
-                {{ t('llmModels.providers.form.testHint') }}
-              </p>
-            </template>
-
-            <div v-else class="connectivity-idle-state">
-              <span class="idle-text">{{ t('llmModels.providers.form.candidatesEmptyHint') }}</span>
-            </div>
+            <LlmModelCandidateList
+              v-else
+              v-model="selectedWireNames"
+              :candidates="candidates"
+              :existing="existing"
+              :loading="false"
+              :test-results="testResults"
+              :testing-names="testingNames"
+            />
           </div>
         </section>
       </Form>
@@ -350,6 +379,12 @@ async function handleOk() {
 </template>
 
 <style scoped>
+.proxy-toggle {
+  display: inline-flex;
+  align-items: center;
+  height: 30px;
+}
+
 .provider-modal-scroll {
   max-height: calc(82vh - 110px);
   overflow-y: auto;
@@ -381,13 +416,6 @@ async function handleOk() {
 
 .form-item-tight {
   margin-bottom: 14px !important;
-}
-
-.form-item-help {
-  margin-top: 4px;
-  color: var(--admin-text-subtle);
-  font-size: var(--admin-font-xs);
-  line-height: 1.4;
 }
 
 /* 1. 服务商单选网格 */
@@ -508,24 +536,11 @@ async function handleOk() {
   gap: 14px;
 }
 
-.connectivity-title-wrap {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-
 .connectivity-title {
   color: var(--admin-text);
   font-size: var(--admin-font-sm);
   font-weight: 600;
   line-height: 1.3;
-}
-
-.connectivity-hint {
-  color: var(--admin-text-subtle);
-  font-size: var(--admin-font-xs);
-  line-height: 1.4;
 }
 
 .fetch-btn {
@@ -549,26 +564,5 @@ async function handleOk() {
 
 .loading-icon {
   color: var(--admin-primary);
-}
-
-.connectivity-idle-state {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 10px 12px;
-  border: 1px dashed var(--admin-border-strong);
-  border-radius: var(--admin-radius-sm);
-  background: var(--admin-surface);
-}
-
-.idle-text {
-  color: var(--admin-text-subtle);
-  font-size: var(--admin-font-xs);
-  text-align: center;
-}
-.test-hint {
-  margin: 8px 0 0;
-  color: var(--admin-text-subtle);
-  font-size: var(--admin-font-xs);
 }
 </style>

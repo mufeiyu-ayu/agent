@@ -1,6 +1,8 @@
+import type { OutboundProxyConfig } from './outbound-proxy.js'
 import process from 'node:process'
 import { LLMConfigError } from '@agent/ai'
 import { Injectable } from '@nestjs/common'
+import { resolveOutboundProxyConfig } from './outbound-proxy.js'
 
 /** 密钥派生的输入长度下限；`openssl rand -hex 32` 生成的 64 位十六进制满足。 */
 const SECRET_KEY_MIN_LENGTH = 32
@@ -12,6 +14,8 @@ export interface LlmEnvConfig {
   secretKey: string
   /** debug 开关：是否捕获 provider 原始请求 / 响应 JSON，默认关闭。 */
   captureModelIO: boolean
+  /** `OUTBOUND_PROXY_URL`；没配为 null，勾选了「使用代理」的服务商此时请求直接失败。 */
+  outboundProxy: OutboundProxyConfig | null
 }
 
 export function resolveLlmEnvConfig(env: NodeJS.ProcessEnv): LlmEnvConfig {
@@ -34,6 +38,7 @@ export function resolveLlmEnvConfig(env: NodeJS.ProcessEnv): LlmEnvConfig {
   return {
     secretKey,
     captureModelIO: readBooleanFlag(env, 'AGENT_DEBUG_CAPTURE_MODEL_IO'),
+    outboundProxy: resolveOutboundProxyConfig(env),
   }
 }
 
@@ -43,7 +48,7 @@ function readBooleanFlag(env: NodeJS.ProcessEnv, name: string): boolean {
   return value === '1' || value === 'true'
 }
 
-/** 启动期读一次 env：只剩主密钥与 debug 开关，模型接入配置全部来自数据库。 */
+/** 启动期读一次 env：主密钥、debug 开关与出站代理地址；模型接入配置全部来自数据库。 */
 @Injectable()
 export class LLMRuntimeConfigService {
   readonly value = resolveLlmEnvConfig(process.env)

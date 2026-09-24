@@ -3,9 +3,7 @@ import type {
   EmbeddingResult,
   EmbeddingRuntimeConfig,
 } from './embedding-provider.js'
-import process from 'node:process'
 import { ApiError, GoogleGenAI } from '@google/genai'
-import { EnvHttpProxyAgent, setGlobalDispatcher } from 'undici'
 import {
   ACTIVE_EMBEDDING_PROFILE,
   EMBEDDING_ATTEMPT_TIMEOUT_MS,
@@ -14,8 +12,6 @@ import {
   EmbeddingAbortError,
   EmbeddingError,
 } from './embedding-provider.js'
-
-let environmentProxyConfigured = false
 
 interface GeminiEmbeddingRequest {
   model: string
@@ -148,7 +144,7 @@ function createRequestAbort(parent: AbortSignal): {
 export function createGeminiEmbeddingClient(
   config: EmbeddingRuntimeConfig,
 ): GeminiEmbeddingClient {
-  configureEnvironmentProxy()
+  // 没有 dispatcher 入口：配了 OUTBOUND_PROXY_URL 时经启动阶段装好的全局出口走代理。
   const client = new GoogleGenAI({ apiKey: config.apiKey })
 
   return {
@@ -156,23 +152,6 @@ export function createGeminiEmbeddingClient(
       embedContent: async request => await client.models.embedContent(request),
     },
   }
-}
-
-function configureEnvironmentProxy(): void {
-  if (
-    environmentProxyConfigured
-    || ![
-      'HTTPS_PROXY',
-      'https_proxy',
-      'HTTP_PROXY',
-      'http_proxy',
-    ].some(name => process.env[name]?.trim())
-  ) {
-    return
-  }
-
-  setGlobalDispatcher(new EnvHttpProxyAgent())
-  environmentProxyConfigured = true
 }
 
 export function validateGeminiEmbeddingResponse(

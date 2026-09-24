@@ -6,14 +6,19 @@ import { LLMConfigError } from '@agent/ai'
 
 import { createApiKeyCipher, toApiKeyLast4 } from './api-key-cipher.js'
 import { resolveLlmEnvConfig } from './llm-runtime-config.service.js'
+import { resolveOutboundProxyConfig } from './outbound-proxy.js'
 
 const SECRET_KEY = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
 
 describe('resolveLlmEnvConfig', () => {
-  it('只读主密钥与 debug 开关，模型接入配置不再来自 env', () => {
+  it('只读主密钥、debug 开关与出站代理，模型接入配置不再来自 env；标准代理变量不再读取', () => {
     assert.deepEqual(
-      resolveLlmEnvConfig({ AGENT_SECRET_KEY: ` ${SECRET_KEY} ` }),
-      { secretKey: SECRET_KEY, captureModelIO: false },
+      resolveLlmEnvConfig({
+        AGENT_SECRET_KEY: ` ${SECRET_KEY} `,
+        HTTPS_PROXY: 'http://127.0.0.1:7890',
+        https_proxy: 'http://127.0.0.1:7890',
+      }),
+      { secretKey: SECRET_KEY, captureModelIO: false, outboundProxy: null },
     )
     assert.equal(
       resolveLlmEnvConfig({
@@ -43,6 +48,48 @@ describe('resolveLlmEnvConfig', () => {
         (error: unknown) => {
           assert.ok(error instanceof LLMConfigError)
           assert.match(error.message, /AGENT_SECRET_KEY/)
+          return true
+        },
+      )
+    }
+  })
+})
+
+describe('resolveOutboundProxyConfig', () => {
+  it('没配或空白时为 null', () => {
+    assert.equal(resolveOutboundProxyConfig({}), null)
+    assert.equal(resolveOutboundProxyConfig({ OUTBOUND_PROXY_URL: '  ' }), null)
+  })
+
+  it('http / https 地址给出 协议://主机:端口，缺省端口按协议补齐', () => {
+    assert.deepEqual(
+      resolveOutboundProxyConfig({ OUTBOUND_PROXY_URL: ' http://127.0.0.1:7890 ' }),
+      { url: 'http://127.0.0.1:7890', address: 'http://127.0.0.1:7890', hostname: '127.0.0.1', port: 7890 },
+    )
+    assert.equal(resolveOutboundProxyConfig({ OUTBOUND_PROXY_URL: 'https://proxy.example' })?.address, 'https://proxy.example:443')
+    assert.equal(resolveOutboundProxyConfig({ OUTBOUND_PROXY_URL: 'http://proxy.example' })?.port, 80)
+    assert.equal(
+      resolveOutboundProxyConfig({ OUTBOUND_PROXY_URL: 'http://host.docker.internal:7890' })?.address,
+      'http://host.docker.internal:7890',
+    )
+  })
+
+  it('地址带 user:pass 时 url 原样交给 undici，address 不含凭据', () => {
+    const config = resolveOutboundProxyConfig({ OUTBOUND_PROXY_URL: 'http://user:pass@127.0.0.1:7890' })
+
+    assert.equal(config?.url, 'http://user:pass@127.0.0.1:7890')
+    assert.equal(config?.address, 'http://127.0.0.1:7890')
+  })
+
+  it('缺协议、socks5 或无法解析时启动失败，文案给出正确写法且不回显原值', () => {
+    for (const value of ['127.0.0.1:7890', 'localhost:7890', 'socks5://user:secret@127.0.0.1:7890', 'http://']) {
+      assert.throws(
+        () => resolveLlmEnvConfig({ AGENT_SECRET_KEY: SECRET_KEY, OUTBOUND_PROXY_URL: value }),
+        (error: unknown) => {
+          assert.ok(error instanceof LLMConfigError)
+          assert.match(error.message, /OUTBOUND_PROXY_URL/)
+          assert.match(error.message, /http:\/\/127\.0\.0\.1:7890/)
+          assert.doesNotMatch(error.message, /secret/)
           return true
         },
       )

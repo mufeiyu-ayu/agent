@@ -22,6 +22,12 @@ export class AdminLlmController {
     private readonly adminLlmService: AdminLlmService,
   ) {}
 
+  /** 本机出站代理状态：只回 `协议://主机:端口`，代理地址里的凭据不回显。 */
+  @Get('proxy')
+  getProxyStatus() {
+    return this.adminLlmService.getProxyStatus()
+  }
+
   @Get('providers')
   listProviders() {
     return this.adminLlmService.listProviders()

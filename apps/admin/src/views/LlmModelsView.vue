@@ -34,6 +34,7 @@ const state = createLlmModelsState()
 onMounted(() => {
   void state.loadProviders()
   void state.loadModels()
+  void state.loadProxyStatus()
 })
 
 /** 右侧默认列全部模型；勾上只看当前选中服务商的。 */
@@ -87,11 +88,11 @@ function handleEditProvider(provider: AdminLlmProvider) {
 }
 
 /** 弹窗里的拉取 / 测试都带上正在编辑的服务商 id：密钥留空时服务端用库里那把。 */
-function handleFetchInProviderForm(input: { baseUrl: string, apiKey: string }) {
+function handleFetchInProviderForm(input: { baseUrl: string, apiKey: string, useProxy: boolean }) {
   void runWrite(() => state.fetchModelNames({ providerId: editingProvider.value?.id, ...input }))
 }
 
-function handleTestInProviderForm(input: { baseUrl: string, apiKey: string }, wireNames: string[]) {
+function handleTestInProviderForm(input: { baseUrl: string, apiKey: string, useProxy: boolean }, wireNames: string[]) {
   void runWrite(() => state.testModels({ providerId: editingProvider.value?.id, ...input }, wireNames))
 }
 
@@ -331,6 +332,7 @@ function handleProbeVisibleModels() {
     <LlmProviderFormModal
       :open="providerModalOpen"
       :provider="editingProvider"
+      :proxy-status="state.proxyStatus.value"
       :submitting="state.submitting.value"
       :candidates="state.fetchedModelNames.value"
       :fetching-candidates="state.fetchingModels.value"

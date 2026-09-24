@@ -18,11 +18,12 @@ const SNAPSHOT = {
   providerId: 'provider-1',
   baseUrl: 'https://relay.example/v1',
   apiKey: 'sk-old',
+  useProxy: false,
 }
 
 function createService(): LLMService {
   return new LLMService({
-    value: { secretKey: 'x'.repeat(32), captureModelIO: false },
+    value: { secretKey: 'x'.repeat(32), captureModelIO: false, outboundProxy: null },
   } as LLMRuntimeConfigService)
 }
 

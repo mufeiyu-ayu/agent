@@ -8,10 +8,11 @@ import {
   LLMRateLimitError,
   LLMServerError,
 } from '@agent/ai'
+import { LlmProxyError } from '../../llm/llm.errors.js'
 
 /**
  * LLMError 的用户可见文案：普通 HTTP 接口（AllExceptionsFilter）与对话流的 error 事件共用一套，
- * 不带厂商名、状态码与上游 body；真实原因只进服务端日志。
+ * 不带厂商名、状态码与上游 body；真实原因只进服务端日志。出站代理的失败例外，见下。
  */
 export function getAiExceptionMessage(exception: LLMError): string {
   if (exception instanceof LLMAuthError) {
@@ -28,6 +29,11 @@ export function getAiExceptionMessage(exception: LLMError): string {
 
   if (exception instanceof LLMInvalidRequestError) {
     return 'AI 服务请求参数异常，请稍后重试'
+  }
+
+  // 代理未配置 / 代理连不上是本机网络配置问题，文案只含代理的 协议://主机:端口，原样给出才能定位。
+  if (exception instanceof LlmProxyError) {
+    return exception.message
   }
 
   if (exception instanceof LLMNetworkError) {

@@ -85,6 +85,9 @@ export class CreateAdminLlmProviderDto implements AdminLlmProviderInput {
   @IsBoolean()
   enabled!: boolean
 
+  @IsBoolean()
+  useProxy!: boolean
+
   @IsOptional()
   @IsArray()
   @ArrayMaxSize(500)
@@ -122,6 +125,9 @@ export class AdminLlmCredentialsDto implements AdminLlmCredentialsInput {
   @IsString()
   @MaxLength(512)
   apiKey?: string
+
+  @IsBoolean()
+  useProxy!: boolean
 }
 
 export class UpdateAdminLlmProviderDto implements Partial<AdminLlmProviderInput> {
@@ -153,6 +159,10 @@ export class UpdateAdminLlmProviderDto implements Partial<AdminLlmProviderInput>
   @IsOptional()
   @IsBoolean()
   enabled?: boolean
+
+  @IsOptional()
+  @IsBoolean()
+  useProxy?: boolean
 }
 
 export class UpdateAdminLlmModelDto implements Partial<AdminLlmModelInput> {

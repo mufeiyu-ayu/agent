@@ -192,11 +192,12 @@ export class OpenAICompatibleClient {
   }
 
   private createClient(): OpenAI {
-    const { apiKey, baseUrl } = this.clientConfig
+    const { apiKey, baseUrl, fetchOptions } = this.clientConfig
 
     return new OpenAI({
       apiKey,
       baseURL: baseUrl,
+      ...(fetchOptions ? { fetchOptions } : {}),
       maxRetries: REQUEST_MAX_RETRIES,
       // SDK 解析不了 SSE 行时会用 console.error 把整行上游原文打到 stderr；错误本身照常抛出。
       logLevel: 'off',

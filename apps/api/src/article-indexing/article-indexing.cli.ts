@@ -10,6 +10,7 @@ import {
   resolveEmbeddingRuntimeConfig,
 } from '../embeddings/embedding-provider.js'
 import { GeminiEmbeddingProvider } from '../embeddings/gemini-embedding.provider.js'
+import { installOutboundProxyFromEnv } from '../llm/outbound-proxy.js'
 import { PrismaService } from '../prisma/prisma.service.js'
 import {
   ArticleIndexRepository,
@@ -257,6 +258,8 @@ async function main(): Promise<void> {
   process.once('SIGTERM', handleSigterm)
 
   try {
+    // 不经 Nest 启动：embedding 的代理出口在这里装（OUTBOUND_PROXY_URL）。
+    installOutboundProxyFromEnv(process.env)
     const summary = await executeArticleIndexCli(
       process.argv.slice(2),
       abortController.signal,

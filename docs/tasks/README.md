@@ -7,7 +7,7 @@
 ```text
 阶段 1-8：Completed
 当前阶段：本项目源码阅读（工作台第 0 档）
-Active Agent Task：无
+Active Agent Task：#179 服务商按勾选走出站代理
 Gated：#117 Responses API adapter（2026-09-18）、web_fetch（2026-09-19），触发条件见看板
 产品方向：内部数据工作台（2026-09-20 定案，docs/research/workbench-direction.md），未立 Issue；档、顺序与触发只在其第 7 节
 候选子系统：session 事件流与 replay、审批门、compaction、定时任务（未立 Issue，各自的档见 workbench 第 7 节）
@@ -18,6 +18,7 @@ Admin Task 4：Planned
 
 | 任务 | 状态 | 说明 |
 | --- | --- | --- |
+| #179 服务商按勾选走出站代理 | Active | 实施状态：已实现 / 验收状态：待验收。代理地址只读 `.env` 的 `OUTBOUND_PROXY_URL`（启动校验，http(s) 之外启动失败），`LlmProvider.useProxy`（migration 只加列），API 启动阶段装全局代理出口（embedding），模型请求按勾选显式传代理或直连 dispatcher；勾选未配置报 `llm_network`，代理连不上文案带 `协议://主机:端口`；管理台「使用代理」勾选（Base URL 输入框后缀，地址 / 未配置原因悬停可见）、卡片「代理」标签、`GET admin/llm/proxy`；应用户要求一并删掉服务商弹窗里的说明小字。验证：全仓 typecheck、api / ai / admin lint、`test:llm-config` 39、ai 79、`test:model-stream` 111、`test:admin` 76、admin test；真实链路（假上游 + 记录连接的测试代理 + 临时 API 实例）AC-01～AC-08 |
 | #175 模型 400 / 5xx 与工具失败保留真实原因 | Completed | 实施状态：已实现 / 验收状态：已通过。PR #177 代码 head `391e4d1` 的 AC-01～AC-06 于 2026-09-24 逐条 PASS（PR 验收评论为证据）：400 / 422 / 5xx 的 `LLMError` 文案附脱敏截断的上游摘要（用户文案不变）；中转站 400（或流内无状态码）+ `upstream_error` 归 `LLMServerError` → `llm_server`，沿用上游 401 / 429 的照常归类；工具执行器异常记 `tool_execution_failed` 服务端日志（toolName / callId / errorName / 截断 message，记日志失败不影响返回）；`.env.example` 写明 embedding 代理变量、全局 dispatcher 影响与变量优先级。真实环境：中转站 gemini 失败由 `llm_invalid_request` 变为 `llm_server`；配代理后 `retrieve_article_context` 由 10s `execution_failed` 变为 0.5～1s 成功。`/code-review` 两轮 23 条，修 15 条，其余理由见 PR |
 | #176 回答 Markdown 列表标记 | Completed | 实施状态：已实现 / 验收状态：已通过。PR #178 代码 head `dcedb94` 的 AC-01～AC-02 于 2026-09-24 逐条 PASS（PR 验收评论为证据）：`AgentMarkdownContent.vue` 的 `ol, ul` 规则加 `list-style: revert`，回到浏览器默认标记（嵌套依次空心圆、方块）；e2e 断言计算样式（旧样式对照失败）。验证：web typecheck / lint、test 91、e2e 31 |
 | #167 落库文本清洗（U+0000 不再让 Run 停在 RUNNING） | Completed | 实施状态：已实现 / 验收状态：已通过。PR #171 代码 head `da358c8` 的 AC-01～AC-07（含 AC-05b）于 2026-09-23 逐条 PASS（PR 验收评论为证据）：可见 delta、Grounding 回答、用户消息在进入 `content` 前把 U+0000 与孤立代理项换成 U+FFFD（delta / done / 落库同一个串），工具 Step 的 callId / toolName / errorMessage 与 debug 抓取信封同样过 `toPersistableText`（移到 `agent-runtime/persistable-text.ts`）；实现会话读码补入 debug 抓取入口、review 后孤立代理项也在 `content` 入口替换（Issue 已更新）。验证：api typecheck / lint、`test:model-stream` 105、`test:grounding` 159、`test:agent-recorder` 22、`test:grounding-db` 22（新增 7 条真实 DB 故障注入，旧代码上 7 条全失败且复现「终态收口失败，DB 状态可能停留在非终态」；只还原抓取信封时 AC-05b 以 jsonb 报错失败）、`test:tools` 80、`test:chat-service` 29。`/code-review high` 两轮 15 条修 10 条。限制：跨两个 delta 的代理对会各自换成 U+FFFD（上游按码点解码，实际不出现）；`Conversation.title` 含 U+0000 仍返回 500（Issue 不做其他表）；不清理已卡住的 Run（R2）。 |

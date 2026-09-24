@@ -59,15 +59,15 @@ async function checkStaleTestResultsAreDropped(): Promise<void> {
 
   // 打开 A 的弹窗并勾选 m：测试发出，结果未回。
   state.clearFetchedModelNames()
-  const staleTest = state.testModels({ providerId: 'provider-a', baseUrl: 'https://a.example/v1', apiKey: '' }, ['m'])
+  const staleTest = state.testModels({ providerId: 'provider-a', baseUrl: 'https://a.example/v1', apiKey: '', useProxy: false }, ['m'])
   assert.deepEqual([...state.testingWireNames.value], ['m'])
 
   // 关掉 A，打开新建弹窗（弹窗把表单凭据报给页面），用 B 的凭据拉取并测试同名模型。
   state.clearFetchedModelNames()
-  state.setFormCredentials({ family: 'openai', baseUrl: 'https://b.example/v1', apiKey: 'sk-b' })
+  state.setFormCredentials({ family: 'openai', baseUrl: 'https://b.example/v1', apiKey: 'sk-b', useProxy: false })
   assert.equal(state.testingWireNames.value.size, 0)
-  await state.fetchModelNames({ baseUrl: 'https://b.example/v1', apiKey: 'sk-b' })
-  await state.testModels({ baseUrl: 'https://b.example/v1', apiKey: 'sk-b' }, ['m'])
+  await state.fetchModelNames({ baseUrl: 'https://b.example/v1', apiKey: 'sk-b', useProxy: false })
+  await state.testModels({ baseUrl: 'https://b.example/v1', apiKey: 'sk-b', useProxy: false }, ['m'])
 
   // A 的旧响应这时才回来。
   staleResponse.resolve(jsonResponse({ results: [testResult('m', true, null)] }))
@@ -82,6 +82,7 @@ async function checkStaleTestResultsAreDropped(): Promise<void> {
     baseUrl: 'https://b.example/v1',
     apiKey: 'sk-b',
     enabled: true,
+    useProxy: false,
     importWireNames: ['m'],
   })
   const create = calls.find(call => call.url.endsWith('/providers') && call.method === 'POST')
@@ -102,7 +103,7 @@ async function checkAbortedFetchIsSilent(): Promise<void> {
 
   for (const interrupt of ['cancel', 'clearFetchedModelNames'] as const) {
     const state = createLlmModelsState()
-    const fetching = state.fetchModelNames({ baseUrl: 'https://a.example/v1', apiKey: 'sk-a' })
+    const fetching = state.fetchModelNames({ baseUrl: 'https://a.example/v1', apiKey: 'sk-a', useProxy: false })
 
     assert.equal(state.fetchingModels.value, true)
     state[interrupt]()
@@ -112,7 +113,7 @@ async function checkAbortedFetchIsSilent(): Promise<void> {
 
   // 测试请求被新一代中止时同样静默，也不把这一批记成失败。
   const state = createLlmModelsState()
-  const testing = state.testModels({ baseUrl: 'https://a.example/v1', apiKey: 'sk-a' }, ['m'])
+  const testing = state.testModels({ baseUrl: 'https://a.example/v1', apiKey: 'sk-a', useProxy: false }, ['m'])
 
   state.clearFetchedModelNames()
   await testing
@@ -131,14 +132,14 @@ async function checkFailedBatchReleasesRemainingNames(): Promise<void> {
   const state = createLlmModelsState()
   const names = Array.from({ length: 51 }, (_, index) => `m-${index}`)
 
-  await assert.rejects(state.testModels({ baseUrl: 'https://a.example/v1', apiKey: 'sk-a' }, names))
+  await assert.rejects(state.testModels({ baseUrl: 'https://a.example/v1', apiKey: 'sk-a', useProxy: false }, names))
   assert.equal(requests, 1)
   assert.equal(state.testingWireNames.value.size, 0)
   assert.equal(Object.keys(state.modelTestResults.value).length, 51)
   assert.equal(state.modelTestResults.value['m-50']?.error, '上游网关故障')
 }
 
-/** AC-01 的前端一半：家族 / 地址 / 密钥变了才重载模型表，只改备注或启用状态不重载。 */
+/** AC-01 的前端一半：家族 / 地址 / 密钥 / 使用代理变了才重载模型表，只改备注或启用状态不重载。 */
 async function checkProviderUpdateReloadsModels(): Promise<void> {
   const calls: FetchCall[] = []
 
@@ -166,10 +167,17 @@ async function checkProviderUpdateReloadsModels(): Promise<void> {
   await state.updateProvider('provider-1', { family: 'gemini', note: 'n', baseUrl: 'https://g.example/v1', enabled: true })
   assert.equal(calls.filter(call => call.url.endsWith('/models')).length, 1)
   assert.equal(state.models.value[0]?.reasoningEffort, null)
+
+  // #179：切换「使用代理」服务端会清探活结论，模型表同样重载；勾选没变不重载，也不提交这个字段。
+  await state.updateProvider('provider-1', { useProxy: false, note: '只改备注' })
+  assert.equal(calls.filter(call => call.url.endsWith('/models')).length, 1)
+  assert.deepEqual(calls.at(-2)?.body, { note: '只改备注' })
+  await state.updateProvider('provider-1', { useProxy: true })
+  assert.equal(calls.filter(call => call.url.endsWith('/models')).length, 2)
 }
 
 /**
- * #170：弹窗里测过模型后改了家族、地址或密钥，拉到的名单与测出的结论都作废；
+ * #170 / #179：弹窗里测过模型后改了家族、地址、密钥或「使用代理」，拉到的名单与测出的结论都作废；
  * 不重新测试就确定时，新建请求里不带改动前的结论。只差末尾斜杠不算改动。
  */
 async function checkCredentialChangeDropsTestResults(): Promise<void> {
@@ -189,7 +197,7 @@ async function checkCredentialChangeDropsTestResults(): Promise<void> {
   }
 
   const state = createLlmModelsState()
-  const oldCredentials = { family: 'openai', baseUrl: 'https://old.example/v1', apiKey: 'sk-old' } as const
+  const oldCredentials = { family: 'openai', baseUrl: 'https://old.example/v1', apiKey: 'sk-old', useProxy: false } as const
 
   state.setFormCredentials(oldCredentials)
   await state.fetchModelNames(oldCredentials)
@@ -201,6 +209,7 @@ async function checkCredentialChangeDropsTestResults(): Promise<void> {
     { ...oldCredentials, baseUrl: 'https://new.example/v1' },
     { ...oldCredentials, apiKey: 'sk-new' },
     { ...oldCredentials, family: 'grok' as const },
+    { ...oldCredentials, useProxy: true },
   ]) {
     state.setFormCredentials(oldCredentials)
     await state.fetchModelNames(oldCredentials)
@@ -216,6 +225,7 @@ async function checkCredentialChangeDropsTestResults(): Promise<void> {
     baseUrl: 'https://old.example/v1',
     apiKey: 'sk-old',
     enabled: true,
+    useProxy: false,
     importWireNames: ['m'],
   })
   const create = calls.find(call => call.url.endsWith('/providers') && call.method === 'POST')
@@ -258,6 +268,7 @@ function provider(id: string, family: AdminLlmProvider['family'], baseUrl: strin
     baseUrl,
     apiKeyLast4: '1234',
     enabled: true,
+    useProxy: false,
     modelCount: 1,
     createdAt: '2026-09-23T00:00:00.000Z',
     updatedAt: '2026-09-23T00:00:00.000Z',

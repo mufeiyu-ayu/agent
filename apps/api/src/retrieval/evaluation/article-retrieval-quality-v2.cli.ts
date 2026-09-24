@@ -15,6 +15,7 @@ import { pathToFileURL } from 'node:url'
 
 import { resolveEmbeddingRuntimeConfig } from '../../embeddings/embedding-provider.js'
 import { GeminiEmbeddingProvider } from '../../embeddings/gemini-embedding.provider.js'
+import { installOutboundProxyFromEnv } from '../../llm/outbound-proxy.js'
 import {
   DatabaseOperationDeadlineExceededError,
 } from '../../prisma/prisma.service.js'
@@ -194,6 +195,8 @@ async function main(): Promise<void> {
   process.once('SIGTERM', abort)
 
   try {
+    // 不经 Nest 启动：embedding 的代理出口在这里装（OUTBOUND_PROXY_URL）。
+    installOutboundProxyFromEnv(process.env)
     runtime = await createProductionRuntime()
     await runArticleRetrievalQualityV2Cli({
       strategies: runtime.strategies,

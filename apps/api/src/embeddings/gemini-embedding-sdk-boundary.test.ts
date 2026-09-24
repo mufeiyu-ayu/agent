@@ -212,8 +212,7 @@ async function embedOnce(
  *
  * client 级 retryOptions 只把退避缩到 1ms；SDK 按 key 合并 client 级与请求级 retryOptions，
  * attempts 仍由 Provider 的请求级 `{ attempts: 3 }` 决定，所以 transport 次数能证明上限。
- * 不经过 createGeminiEmbeddingClient()，避免它在检测到 proxy 环境变量时
- * setGlobalDispatcher(EnvHttpProxyAgent) 覆盖掉 MockAgent。
+ * 直接构造 SDK client，只为给它 client 级 retryOptions；全局出口由本函数装成 MockAgent。
  */
 async function withMockedTransport(
   run: (transport: MockedTransport) => Promise<void>,
