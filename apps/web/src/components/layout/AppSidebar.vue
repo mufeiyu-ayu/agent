@@ -81,7 +81,7 @@ function handleBalanceSelect(event: Event) {
 
 <template>
   <aside
-    class="relative flex h-full shrink-0 flex-col border-r border-agent-border bg-agent-sidebar py-5 font-sans text-sm transition-[width,padding] duration-300"
+    class="relative flex h-full shrink-0 flex-col border-r border-agent-border-subtle bg-agent-sidebar py-5 font-sans text-sm transition-[width,padding] duration-300"
     :class="[
       mobile ? 'flex w-full px-5' : collapsed ? 'w-[68px] px-3' : 'w-[264px] px-4',
       mobile ? undefined : 'hidden min-[960px]:flex',
@@ -96,7 +96,7 @@ function handleBalanceSelect(event: Event) {
         type="button"
         :title="t('layout.sidebar.expand')"
         :aria-label="t('layout.sidebar.expand')"
-        class="grid size-9 place-items-center rounded-lg text-agent-ink-muted transition hover:bg-agent-surface hover:text-agent-ink focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-agent-focus/40"
+        class="grid size-9 place-items-center rounded-lg text-agent-ink-muted transition hover:bg-agent-surface-sunken/45 hover:text-agent-ink focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-agent-focus/40"
         @click="emit('toggleSidebar')"
       >
         <AppIcon name="tabler:layout-sidebar-left-expand" :size="21" />
@@ -121,7 +121,7 @@ function handleBalanceSelect(event: Event) {
         type="button"
         :title="mobile ? t('layout.sidebar.close') : t('layout.sidebar.collapse')"
         :aria-label="mobile ? t('layout.sidebar.close') : t('layout.sidebar.collapse')"
-        class="grid size-9 place-items-center rounded-lg text-agent-ink-muted transition hover:bg-agent-surface hover:text-agent-ink focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-agent-focus/40"
+        class="grid size-9 place-items-center rounded-lg text-agent-ink-muted transition hover:bg-agent-surface-sunken/45 hover:text-agent-ink focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-agent-focus/40"
         @click="emit('toggleSidebar')"
       >
         <AppIcon v-if="mobile" name="tabler:x" :size="19" />
@@ -133,7 +133,7 @@ function handleBalanceSelect(event: Event) {
       type="button"
       :title="collapsed ? t('layout.sidebar.newChat') : undefined"
       :aria-label="collapsed ? t('layout.sidebar.newChat') : undefined"
-      class="mb-5 inline-flex h-9 items-center gap-2.5 rounded-lg bg-agent-surface-raised text-sm font-medium text-agent-ink ring-1 ring-agent-border-soft transition hover:bg-agent-surface focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-agent-focus/45"
+      class="mb-5 inline-flex h-9 items-center gap-2.5 rounded-lg bg-agent-surface-raised text-sm font-medium text-agent-ink ring-1 ring-agent-border-soft transition hover:bg-agent-surface-sunken/45 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-agent-focus/45"
       :class="collapsed ? 'justify-center px-0' : 'px-2.5'"
       @click="emit('newChat')"
     >
@@ -176,7 +176,7 @@ function handleBalanceSelect(event: Event) {
           type="button"
           :title="t('layout.sidebar.searchRecentChats')"
           :aria-label="t('layout.sidebar.searchRecentChats')"
-          class="grid size-8 place-items-center rounded-lg text-agent-ink-muted transition hover:bg-agent-surface-raised hover:text-agent-ink focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-agent-focus/40"
+          class="grid size-8 place-items-center rounded-lg text-agent-ink-muted transition hover:bg-agent-surface-sunken/45 hover:text-agent-ink focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-agent-focus/40"
         >
           <AppIcon name="tabler:search" :size="17" />
         </button>
@@ -210,7 +210,7 @@ function handleBalanceSelect(event: Event) {
         type="button"
         :title="chat.title"
         :aria-label="chat.title"
-        class="grid size-11 place-items-center rounded-xl text-agent-ink-muted transition hover:bg-agent-surface-raised hover:text-agent-ink focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-agent-focus/40"
+        class="grid size-11 place-items-center rounded-xl text-agent-ink-muted transition hover:bg-agent-surface-sunken/45 hover:text-agent-ink focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-agent-focus/40"
         :class="{ 'bg-agent-surface-sunken/45 text-agent-accent ring-1 ring-agent-border-soft': chat.active }"
         @click="emit('selectChat', chat.id)"
       >

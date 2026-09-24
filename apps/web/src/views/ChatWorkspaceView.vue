@@ -155,7 +155,7 @@ function send() {
         v-if="showConversationEmptyState"
         class="relative z-10 flex min-h-0 flex-1 flex-col items-center overflow-y-auto px-4 pb-6 pt-14 sm:px-6"
       >
-        <div class="my-auto w-full max-w-[680px] pb-[8dvh]">
+        <div class="my-auto w-full max-w-[720px] pb-[8dvh]">
           <h2 class="workspace-greeting text-center text-[28px] leading-snug text-agent-ink sm:text-[34px]">
             <AppIcon name="tabler:asterisk" :size="26" class="mr-1.5 inline-block align-[-0.2em] text-agent-accent" />{{ t('conversation.emptyTitle') }}
           </h2>
@@ -165,8 +165,7 @@ function send() {
             v-model:selected-model="selectedModel"
             v-model:selected-reasoning-effort="selectedReasoningEffort"
             hero
-            class="mt-8"
-            :has-conversation="false"
+            class="mt-10"
             :models="models"
             :model-error="modelError"
             :model-notice="modelNotice"
@@ -175,15 +174,14 @@ function send() {
             @refresh-models="loadModels"
             @send="send"
             @stop="stopGeneration"
-            @reset="resetWorkspace"
           />
 
-          <div class="mt-5 flex flex-wrap justify-center gap-2">
+          <div class="mt-6 flex flex-wrap justify-center gap-2">
             <button
               v-for="prompt in starterPrompts"
               :key="prompt.key"
               type="button"
-              class="rounded-full border border-agent-border-soft bg-agent-surface-raised/70 px-3.5 py-1.5 text-[13px] font-medium text-agent-ink-soft transition hover:bg-agent-surface-raised hover:text-agent-ink focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-agent-focus/40"
+              class="inline-flex h-8 items-center rounded-full border border-agent-border-soft px-3 text-[13px] text-agent-ink-soft transition hover:bg-agent-surface-raised hover:text-agent-ink focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-agent-focus/40"
               @click="applySuggestedPrompt(prompt.prompt)"
             >
               {{ prompt.label }}
@@ -205,7 +203,6 @@ function send() {
           v-model:message="message"
           v-model:selected-model="selectedModel"
           v-model:selected-reasoning-effort="selectedReasoningEffort"
-          :has-conversation="conversationTurns.length > 0"
           :models="models"
           :model-error="modelError"
           :model-notice="modelNotice"
@@ -214,7 +211,6 @@ function send() {
           @refresh-models="loadModels"
           @send="send"
           @stop="stopGeneration"
-          @reset="resetWorkspace"
         />
       </div>
     </div>

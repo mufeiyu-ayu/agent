@@ -27,7 +27,7 @@
   -moz-osx-font-smoothing: grayscale;
   --radius: 0.625rem;
   --agent-canvas: oklch(0.955 0.007 72);
-  --agent-sidebar: oklch(0.915 0.010 72);
+  --agent-sidebar: oklch(0.978 0.004 72);
   --agent-surface: oklch(0.978 0.004 72);
   --agent-surface-raised: oklch(0.992 0.002 72);
   --agent-surface-sunken: oklch(0.890 0.012 72);
