@@ -7,7 +7,7 @@
 ```txt
 src/index.ts                          # 公开导出面，业务层只从这里 import
 src/types.ts                          # 模型输入项 / 流事件 / usage / 工具定义等内部类型
-src/config.ts                         # LLMClientConfig（key / baseUrl）、LLMModelProfile（模型行能力）、resolveChatRequestConfig
+src/config.ts                         # LLMClientConfig（key / baseUrl / 原样透传给 SDK 的 fetchOptions）、LLMModelProfile（模型行能力）、resolveChatRequestConfig
 src/errors.ts                         # LLMError 族：网络 / 401·403 / 402 / 429 / 4xx / 5xx / 协议异常
 src/provider-metadata.ts              # /models 与 /user/balance 的响应形状
 src/api/openai-completions.ts         # 客户端主体：请求拼装（thinking / reasoning_effort / tools）、重试、错误转换、SDK 边界
@@ -21,6 +21,7 @@ scripts/record-tool-call-stream-fixtures.ts  # 一次性手动录制脚本：用
 
 ## 不变量
 
+- 出口不在本包决定：`fetchOptions`（如 undici `dispatcher`，由 api 按服务商的代理勾选构造）原样交给 SDK，本包不依赖 undici、不读代理环境变量。
 - 只有一套 wire 协议（Chat Completions）；直连 Anthropic / Gemini 原生接口时才加第二套，现在不做。
 - 家族差异只读 `@agent/contracts` 的 compat 表（`LlmFamilyCompat`）：`thinkingFormat='deepseek'` 才发 `thinking`；`requiresReasoningContent` 为真时 Tool Call 必须回 `reasoning_content`；`toolCallIndexOptional` / `toolCallsMayFinishWithStop` 为真时（目前只有 gemini）分片缺 index 取还没被占用的最小槽位、显式 index 固定映射到同一槽位（`ToolCallSlots`，谁先到都不撞号，debug tee 共用）、带 Tool Call 的 stop 归一成 tool_calls，其余家族缺 index 或 stop 带调用都报错；`reasoning_effort` 任何家族配置了就发。
 - usage 的缓存字段按 `prompt_tokens_details.cached_tokens` → `prompt_cache_hit_tokens` → `cached_tokens` 兜底，只认有限数，字符串 / null 按缺失继续往下取；`inputTokens` 保持原始 `prompt_tokens`；reasoning 是 output 的子集，`total_tokens` 证明 `completion_tokens` 不含推理（grok）时 `outputTokens` 归一为 completion + reasoning；缺失字段保持 unknown，不补零。

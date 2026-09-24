@@ -5,6 +5,7 @@ import type {
   AdminLlmModelTestResult,
   AdminLlmProvider,
   AdminLlmProviderInput,
+  AdminLlmProxyStatus,
 } from '@agent/contracts'
 import type { Ref } from 'vue'
 import { computed, ref, shallowRef } from 'vue'
@@ -17,6 +18,7 @@ import {
   fetchAllLlmModels,
   fetchLlmModelNames,
   fetchLlmProviders,
+  fetchLlmProxyStatus,
   importLlmProviderModels,
   probeLlmModels,
   testLlmModelNames,
@@ -27,8 +29,8 @@ import {
 /** 与服务端 `TestAdminLlmModelsDto` 的 `ArrayMaxSize(50)` 对齐。 */
 const TEST_BATCH_SIZE = 50
 
-/** 服务商弹窗里决定「测出的结论还算不算数」的三项；编辑时密钥留空表示用库里那把。 */
-type ProviderCredentials = Pick<AdminLlmProviderInput, 'family' | 'baseUrl' | 'apiKey'>
+/** 服务商弹窗里决定「测出的结论还算不算数」的几项；编辑时密钥留空表示用库里那把。 */
+type ProviderCredentials = Pick<AdminLlmProviderInput, 'family' | 'baseUrl' | 'apiKey' | 'useProxy'>
 
 /**
  * 地址比较忽略末尾斜杠，与服务端 admin-llm.service 一致；表单值另外先 trim（提交给服务端的也是 trim 后的值）。
@@ -38,7 +40,12 @@ export function normalizeBaseUrl(baseUrl: string): string {
 }
 
 function credentialsKey(credentials: ProviderCredentials): string {
-  return JSON.stringify([credentials.family, normalizeBaseUrl(credentials.baseUrl), credentials.apiKey?.trim() ?? ''])
+  return JSON.stringify([
+    credentials.family,
+    normalizeBaseUrl(credentials.baseUrl),
+    credentials.apiKey?.trim() ?? '',
+    credentials.useProxy,
+  ])
 }
 
 /**
@@ -52,6 +59,8 @@ export function createLlmModelsState() {
   const providersLoading = ref(false)
   const providersErrorCause = shallowRef<unknown>()
   const selectedProviderId = ref<string | null>(null)
+  /** 本机出站代理；加载失败或还没回来时为 null，表单按未配置处理。 */
+  const proxyStatus = shallowRef<AdminLlmProxyStatus | null>(null)
 
   /** 全部服务商的模型；按服务商筛选由页面做。 */
   const models = shallowRef<AdminLlmModel[]>([])
@@ -117,6 +126,16 @@ export function createLlmModelsState() {
   const loadProviders = () => loadList('providers', providers, providersLoading, providersErrorCause, signal => fetchLlmProviders({ signal }))
   const loadModels = () => loadList('models', models, modelsLoading, modelsErrorCause, signal => fetchAllLlmModels({ signal }))
 
+  /** 失败不报错：表单按「未配置」置灰，保存时服务端仍会校验。 */
+  async function loadProxyStatus(): Promise<void> {
+    try {
+      proxyStatus.value = await fetchLlmProxyStatus()
+    }
+    catch {
+      proxyStatus.value = null
+    }
+  }
+
   function selectProvider(providerId: string | null): void {
     selectedProviderId.value = providerId
   }
@@ -130,7 +149,7 @@ export function createLlmModelsState() {
     testingWireNames.value = new Set()
   }
 
-  /** 弹窗表单当前的家族 / 地址 / 密钥；变了就清掉按旧配置拉到的名单与测出的结论，它们不能随新配置导入。 */
+  /** 弹窗表单当前的家族 / 地址 / 密钥 / 是否走代理；变了就清掉按旧配置拉到的名单与测出的结论，它们不能随新配置导入。 */
   let formCredentials: string | undefined
 
   function setFormCredentials(credentials: ProviderCredentials): void {
@@ -264,6 +283,7 @@ export function createLlmModelsState() {
     )),
     selectedProviderId,
     selectedProvider,
+    proxyStatus,
     models,
     modelsLoading,
     modelsError: computed(() => (
@@ -280,6 +300,7 @@ export function createLlmModelsState() {
 
     loadProviders,
     loadModels,
+    loadProxyStatus,
     selectProvider,
     fetchModelNames,
     testModels,
@@ -294,7 +315,7 @@ export function createLlmModelsState() {
       selectProvider(created.id)
     }),
     /**
-     * 家族、地址或密钥变了，服务端会改模型行（清不兼容的强度、清探活结论），模型表跟着重载；
+     * 家族、地址、密钥或是否走代理变了，服务端会改模型行（清不兼容的强度、清探活结论），模型表跟着重载；
      * 只改备注或启用状态时不动模型表。
      */
     updateProvider: (providerId: string, input: Partial<AdminLlmProviderInput>) => submit(async () => {
@@ -302,8 +323,11 @@ export function createLlmModelsState() {
       const touchesModels = (input.family !== undefined && input.family !== current?.family)
         || (input.baseUrl !== undefined && input.baseUrl !== current?.baseUrl)
         || Boolean(input.apiKey)
+        || (input.useProxy !== undefined && input.useProxy !== current?.useProxy)
 
-      await updateLlmProvider(providerId, input)
+      // 勾选没变就不提交：从别的机器搬来的已勾选行在本机没配代理时，改备注等其他字段不会被 400。
+      const { useProxy, ...rest } = input
+      await updateLlmProvider(providerId, useProxy === current?.useProxy ? rest : input)
       await (touchesModels ? Promise.all([loadProviders(), loadModels()]) : loadProviders())
     }),
     deleteProvider: (providerId: string) => submit(async () => {

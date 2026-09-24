@@ -3,6 +3,7 @@ import type {
   AdminLlmImportModelsResponse,
   AdminLlmModel,
   AdminLlmProvider,
+  AdminLlmProxyStatus,
   AdminLlmTestModelsResponse,
   LlmProviderFamily,
   ReasoningEffort,
@@ -48,6 +49,8 @@ const CLEARED_PROBE = { lastProbeOk: null, lastProbeError: null, lastProbedAt: n
 /** 库里的密钥只发往库里的地址：换地址必须同时换密钥，否则能把明文 key 发到任意端点。 */
 const BASE_URL_CHANGE_REQUIRES_API_KEY = '更换地址需要重新填写 API Key'
 
+const PROXY_NOT_CONFIGURED = '本机未配置 OUTBOUND_PROXY_URL，不能设置为使用代理'
+
 @Injectable()
 export class AdminLlmService {
   constructor(
@@ -60,6 +63,10 @@ export class AdminLlmService {
   ) {}
 
   // ─── Provider ────────────────────────────────
+
+  getProxyStatus(): AdminLlmProxyStatus {
+    return this.llmService.getProxyStatus()
+  }
 
   async listProviders(): Promise<AdminLlmProvider[]> {
     const providers = await this.prismaService.llmProvider.findMany({
@@ -101,6 +108,8 @@ export class AdminLlmService {
     const wireNames = dedupeWireNames(importWireNames)
     const probeColumns = toProbeColumnsByWireName(importTestResults)
 
+    this.assertProxyAvailable(providerInput.useProxy)
+
     const provider = await this.prismaService.$transaction(async (tx) => {
       const created = await tx.llmProvider.create({
         data: {
@@ -109,6 +118,7 @@ export class AdminLlmService {
           baseUrl: normalizeBaseUrl(providerInput.baseUrl),
           ...this.llmModelConfigService.encryptApiKey(providerInput.apiKey),
           enabled: providerInput.enabled,
+          useProxy: providerInput.useProxy,
         },
       })
 
@@ -137,6 +147,9 @@ export class AdminLlmService {
     const nextFamily = input.family ?? current.family
     const nextBaseUrl = input.baseUrl === undefined ? current.baseUrl : normalizeBaseUrl(input.baseUrl)
     const baseUrlChanged = input.baseUrl !== undefined && nextBaseUrl !== normalizeBaseUrl(current.baseUrl)
+    const useProxyChanged = input.useProxy !== undefined && input.useProxy !== current.useProxy
+
+    this.assertProxyAvailable(input.useProxy)
 
     // 空串密钥等于不改：只改地址时，下一次 Run 或探活会把库里的 key 发到新地址。
     if (baseUrlChanged && !input.apiKey)
@@ -150,8 +163,8 @@ export class AdminLlmService {
           data: { reasoningEffort: null },
         })
       }
-      // 家族、地址、密钥任一变了，旧的探活结论不再代表现在的配置；空串密钥等于不改。
-      if (nextFamily !== current.family || baseUrlChanged || input.apiKey) {
+      // 家族、地址、密钥、是否走代理任一变了，旧的探活结论不再代表现在的配置；空串密钥等于不改。
+      if (nextFamily !== current.family || baseUrlChanged || input.apiKey || useProxyChanged) {
         await tx.llmModel.updateMany({ where: { providerId }, data: CLEARED_PROBE })
       }
 
@@ -164,6 +177,7 @@ export class AdminLlmService {
           // 否则并发时会把别人刚提交的「新地址 + 新密钥」里的地址覆盖回旧值，新 key 就配上了旧地址。
           ...(baseUrlChanged || input.apiKey ? { baseUrl: nextBaseUrl } : {}),
           ...(input.enabled === undefined ? {} : { enabled: input.enabled }),
+          ...(input.useProxy === undefined ? {} : { useProxy: input.useProxy }),
           // 空串与省略同义：管理台编辑表单留空就是不改密钥。
           ...(input.apiKey ? this.llmModelConfigService.encryptApiKey(input.apiKey) : {}),
         },
@@ -284,6 +298,7 @@ export class AdminLlmService {
               family: model.provider.family,
               baseUrl: model.provider.baseUrl,
               apiKeyEncrypted: model.provider.apiKeyEncrypted,
+              useProxy: model.provider.useProxy,
             },
           },
         },
@@ -354,7 +369,7 @@ export class AdminLlmService {
     const baseUrl = normalizeBaseUrl(input.baseUrl)
 
     if (input.apiKey)
-      return { providerId: input.providerId ?? 'preview', baseUrl, apiKey: input.apiKey }
+      return { providerId: input.providerId ?? 'preview', baseUrl, apiKey: input.apiKey, useProxy: input.useProxy }
     if (!input.providerId)
       throw new BadRequestException('请填写 API Key')
 
@@ -364,7 +379,8 @@ export class AdminLlmService {
       throw new BadRequestException(BASE_URL_CHANGE_REQUIRES_API_KEY)
 
     try {
-      return this.llmModelConfigService.toCredentials(provider)
+      // 是否走代理取表单当前的勾选：没保存也按它拉取 / 测试。
+      return this.llmModelConfigService.toCredentials({ ...provider, useProxy: input.useProxy })
     }
     catch (error) {
       if (error instanceof LlmModelUnavailableError)
@@ -372,6 +388,12 @@ export class AdminLlmService {
 
       throw error
     }
+  }
+
+  /** 勾选「使用代理」要求本机配了代理；没配时保存不进去，而不是等到每次请求才失败。 */
+  private assertProxyAvailable(useProxy: boolean | undefined): void {
+    if (useProxy && !this.llmService.getProxyStatus().configured)
+      throw new BadRequestException(PROXY_NOT_CONFIGURED)
   }
 
   private async requireProvider(providerId: string): Promise<LlmProvider> {
@@ -532,6 +554,7 @@ function toAdminLlmProvider(provider: ProviderWithCount): AdminLlmProvider {
     baseUrl: provider.baseUrl,
     apiKeyLast4: provider.apiKeyLast4,
     enabled: provider.enabled,
+    useProxy: provider.useProxy,
     modelCount: provider._count.models,
     createdAt: provider.createdAt.toISOString(),
     updatedAt: provider.updatedAt.toISOString(),

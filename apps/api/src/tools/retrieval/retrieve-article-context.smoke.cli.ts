@@ -4,6 +4,7 @@ import process from 'node:process'
 import { pathToFileURL } from 'node:url'
 
 import { ACTIVE_EMBEDDING_PROFILE } from '../../embeddings/embedding-provider.js'
+import { installOutboundProxyFromEnv } from '../../llm/outbound-proxy.js'
 import { createHybridArticleRetrievalRuntime } from '../../retrieval/hybrid-article-retrieval.runtime.js'
 import { ToolInvocationService } from '../core/tool-invocation.service.js'
 import { normalizeToolObservation } from '../core/tool-observation.js'
@@ -123,6 +124,8 @@ async function main(): Promise<void> {
   process.once('SIGTERM', abort)
 
   try {
+    // 不经 Nest 启动：embedding 的代理出口在这里装（OUTBOUND_PROXY_URL）。
+    installOutboundProxyFromEnv(process.env)
     // smoke 只允许连隔离数据库，避免真实 Provider 调用打到开发库。
     const connectionString = process.env.ARTICLE_INDEX_TEST_DATABASE_URL?.trim()
 

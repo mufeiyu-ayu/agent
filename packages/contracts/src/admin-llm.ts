@@ -85,6 +85,8 @@ export interface AdminLlmProvider {
   /** 密钥只回显尾四位，完整 key 永不出现在任何响应里。 */
   apiKeyLast4: string
   enabled: boolean
+  /** 是否经本机 `.env` 的 `OUTBOUND_PROXY_URL` 访问。 */
+  useProxy: boolean
   modelCount: number
   createdAt: string
   updatedAt: string
@@ -97,6 +99,8 @@ export interface AdminLlmProviderInput {
   /** 新增时必填；更新时省略或空串表示不改。 */
   apiKey?: string
   enabled: boolean
+  /** 本机没配 `OUTBOUND_PROXY_URL` 时提交 true 会被拒绝（400）。 */
+  useProxy: boolean
   /** 新增时随服务商一起导入的模型名（来自预览拉取的勾选）；更新时忽略。 */
   importWireNames?: string[]
   /** 弹窗里对 importWireNames 已做过的测试结果，随行写入 lastProbe*；没测过的名字不用给。 */
@@ -111,6 +115,14 @@ export interface AdminLlmCredentialsInput {
   providerId?: string
   baseUrl: string
   apiKey?: string
+  /** 用表单当前的勾选值，没保存也生效。 */
+  useProxy: boolean
+}
+
+/** 本机出站代理状态；`address` 只含 `协议://主机:端口`，不含凭据。 */
+export interface AdminLlmProxyStatus {
+  configured: boolean
+  address: string | null
 }
 
 /** 对勾选的模型各发一条最短对话请求，验证对话接口真的通。 */

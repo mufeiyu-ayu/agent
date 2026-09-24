@@ -1,4 +1,5 @@
 import type { LlmFamilyCompat, ReasoningEffort } from '@agent/contracts'
+import type { ClientOptions } from 'openai'
 
 /** 构造一个 Provider client 需要的全部事实；apiKey / baseUrl 来自数据库里的 Provider 行。 */
 export interface LLMClientConfig {
@@ -6,6 +7,8 @@ export interface LLMClientConfig {
   baseUrl: string
   /** debug 开关：是否捕获 provider 原始请求 / 响应 JSON，默认关闭。 */
   captureModelIO: boolean
+  /** 原样交给 SDK 的 `fetchOptions`；调用方用它为每个请求指定出口（例如 undici `dispatcher`）。 */
+  fetchOptions?: ClientOptions['fetchOptions']
 }
 
 /**

@@ -12,6 +12,7 @@ export function createResolvedLlmModel(
       providerId: 'provider-deepseek',
       baseUrl: 'https://api.deepseek.com/v1',
       apiKey: 'test-api-key',
+      useProxy: false,
     },
     profile: {
       wireName: 'deepseek-v4-flash',

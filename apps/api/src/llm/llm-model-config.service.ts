@@ -14,6 +14,8 @@ export interface LlmProviderCredentials {
   providerId: string
   baseUrl: string
   apiKey: string
+  /** 是否经 `OUTBOUND_PROXY_URL` 访问；没勾选的显式直连。 */
+  useProxy: boolean
 }
 
 /** 一次 Run 开始时解析并快照的模型配置；整个 Run 只用这一份。 */
@@ -129,11 +131,13 @@ export class LlmModelConfigService {
     id: string
     baseUrl: string
     apiKeyEncrypted: string
+    useProxy: boolean
   }): LlmProviderCredentials {
     return {
       providerId: provider.id,
       baseUrl: provider.baseUrl,
       apiKey: this.decryptOrUnavailable(provider.apiKeyEncrypted),
+      useProxy: provider.useProxy,
     }
   }
 
