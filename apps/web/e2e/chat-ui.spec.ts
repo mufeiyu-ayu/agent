@@ -297,6 +297,9 @@ test('局域网 HTTP 缺少 randomUUID 时仍能生成临时 ID 并完成发送'
   await expect(page.locator('[data-agent-user-turn-id]').last()).toHaveAttribute('data-agent-user-turn-id', /^local-[0-9a-f]{32}$/)
   await page.evaluate(() => window.__releaseStream?.())
   await expect(page.locator('.agent-markdown-prose').last()).toContainText('再检查内链锚文本。')
+  // 生成结束：停止按钮退场；输入框已清空，发送按钮要等有内容才出现。
+  await expect(page.getByRole('button', { name: '停止生成' })).toHaveCount(0)
+  await page.getByRole('textbox').first().fill('再来一条')
   await expect(page.getByRole('button', { name: '发送消息' })).toBeVisible()
   expect(errors).toEqual([])
 })
@@ -397,6 +400,7 @@ test('#155 AC-06：localStorage 访问抛 SecurityError 时页面仍正常渲染
   })
   await page.goto('/workspace')
   await expect(page.getByRole('textbox').first()).toBeVisible()
+  await page.getByRole('textbox').first().fill('存储不可用')
   await expect(page.getByRole('button', { name: '发送消息' })).toBeVisible()
   expect(errors).toEqual([])
 })

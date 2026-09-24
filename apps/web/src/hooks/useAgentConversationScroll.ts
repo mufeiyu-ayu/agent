@@ -18,6 +18,7 @@ export function useAgentConversationScroll(options: UseAgentConversationScrollOp
   let shouldFollowLatest = false
   let alignPending = false
   let lastScrollTop = 0
+  let lastClientHeight = 0
   let frame: number | undefined
   let unbind: (() => void) | undefined
 
@@ -34,6 +35,11 @@ export function useAgentConversationScroll(options: UseAgentConversationScrollOp
       if (!viewport)
         return
 
+      // 底部输入框长高会压扁视口：原本停在底部的，保持贴底，不让最后几行被挡住。
+      const shrunkAtBottom = viewport.clientHeight < lastClientHeight
+        && viewport.scrollHeight - viewport.scrollTop - lastClientHeight <= BOTTOM_THRESHOLD_PX
+      lastClientHeight = viewport.clientHeight
+
       if (alignPending && options.anchorLatestTurn.value) {
         const anchor = [...viewport.querySelectorAll<HTMLElement>('[data-agent-user-turn-id]')]
           .find(element => element.dataset.agentUserTurnId === options.activeTurnId.value)
@@ -44,7 +50,7 @@ export function useAgentConversationScroll(options: UseAgentConversationScrollOp
         }
         alignPending = false
       }
-      else if (shouldFollowLatest && !options.isRestoringScroll.value) {
+      else if ((shouldFollowLatest || shrunkAtBottom) && !options.isRestoringScroll.value) {
         viewport.scrollTo({ top: viewport.scrollHeight, behavior: 'instant' })
       }
       lastScrollTop = viewport.scrollTop
@@ -57,6 +63,7 @@ export function useAgentConversationScroll(options: UseAgentConversationScrollOp
     if (!viewport)
       return
     lastScrollTop = viewport.scrollTop
+    lastClientHeight = viewport.clientHeight
     let lastTouchY: number | undefined
 
     const isNestedScroll = (event: Event) => event.target instanceof Element
@@ -64,7 +71,9 @@ export function useAgentConversationScroll(options: UseAgentConversationScrollOp
     const handleScroll = () => {
       const top = viewport.scrollTop
       isNearBottom.value = nearBottom(viewport)
-      if (!options.isRestoringScroll.value) {
+      // 输入框变矮让视口变高时，浏览器夹小 scrollTop 也会派发 scroll，不是用户在往上翻。
+      const resizedByLayout = viewport.clientHeight !== lastClientHeight
+      if (!options.isRestoringScroll.value && !resizedByLayout) {
         if (top < lastScrollTop)
           shouldFollowLatest = false
         else if (top > lastScrollTop && isNearBottom.value)
