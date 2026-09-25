@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import aiAvatarHomeCoreSoftUrl from '@/assets/avatar-olive.webp'
+import userAvatarUrl from '@/assets/avatar-user.jpg'
 import aiAvatarUrl from '@/assets/avatar-warm.webp'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { useWorkspaceTheme } from '@/hooks/useWorkspaceTheme'
@@ -50,8 +51,12 @@ const agentAvatarUrl = computed(() => {
       size="lg"
       class="size-10 bg-agent-primary text-white"
     >
+      <AvatarImage
+        :src="userAvatarUrl"
+        :alt="t('conversation.userAvatarAlt')"
+      />
       <AvatarFallback class="bg-agent-primary text-sm font-black text-white">
-        D
+        A
       </AvatarFallback>
     </Avatar>
   </article>

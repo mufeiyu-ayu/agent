@@ -10,6 +10,7 @@
 
 | 日期 | 事项 | 结果 |
 | --- | --- | --- |
+| 2026-09-25 | 前台用户头像与用户名 | 小改动直接提交 master（本条所在提交，用户授权）：消息旁与侧栏左下角的用户头像由字母 `D` 改为用户提供的图片（`src/assets/avatar-user.jpg`，256px），侧栏写死的用户名 `Demo User` 改为 `ayu` 并删除无用的 `initials` 字段；review 1 条（备用字母仍为 `D`）已修为 `A`。验证 web typecheck / lint / test 91 |
 | 2026-09-25 | 前台等待态样式与孤儿 Run 手动收口 | 小改动直接提交 master（`c39de05`，用户授权）：回复前的转圈改为铜色星芒 + 站酷快乐体流光「思考中」，review 无 finding；验证 web typecheck / lint、test 91、build。验证时 dev 在运行，web `prebuild` 重建 `packages/contracts/dist` 触发 API `node --watch` 重启，进行中的 Run `cmugomb7l00212hi5ya8e8nf6` 残留为 RUNNING、回复消息为空 STREAMING，前台一直显示思考中；经用户同意把该 Run、回复消息与两个 RUNNING Step 手动改为 ABORTED。启动时没有孤儿 Run 回收，属 Durable Execution 缺口，未立项 |
 | 2026-09-24 | #179 服务商按勾选使用出站代理合并 | PR #180（代码 head `103d0a6`，Closes #179）：35 files，含 migration `20260924120000_llm_provider_use_proxy`（本机 dev 库已 deploy，5 个服务商均为 false）。新增 `OUTBOUND_PROXY_URL`，删除 embedding 懒加载代理与 `HTTPS_PROXY` / `NO_PROXY` 读取；`LLMService` 启动即装全局代理出口，模型请求按 `useProxy` 显式选 dispatcher；新增 `GET admin/llm/proxy`；管理台「使用代理」勾选与「代理」标签，服务商弹窗删掉说明小字。验证：typecheck、三包 lint、ai 79、`test:llm-config` 39、`test:model-stream` 111、`test:admin` 76、admin test；临时 API 实例 + 假上游 + 记录连接的测试代理核对 AC-01～AC-08 |
 | 2026-09-24 | 删除学习环节（协作规则） | 用户改为自己读源码：`docs/workflow.md` 删带读收尾、预测题、独立改一处与「学习已验证」评论，建 Issue 的门槛改为「改什么、为什么、验收看什么经用户拍板」；`roadmap.md` 删学习出口；`AGENTS.md`、`docs/README.md`、`workbench-direction.md`（第 0 档去掉三笔带读、估算去掉学习瓶颈）与 `github-issue-workflow` skill 同步；看板删学习欠账行与各行的学习环节备注 |

@@ -115,6 +115,7 @@ export const messages = {
     },
     conversation: {
       avatarAlt: 'AI 助手头像',
+      userAvatarAlt: '我的头像',
       emptyTitle: '今天想了解什么？',
       lastReply: '上次回复 {time}',
       thinking: '思考中',
@@ -323,6 +324,7 @@ export const messages = {
     },
     conversation: {
       avatarAlt: 'AI assistant avatar',
+      userAvatarAlt: 'My avatar',
       emptyTitle: 'What would you like to know today?',
       lastReply: 'Last reply {time}',
       thinking: 'Thinking',

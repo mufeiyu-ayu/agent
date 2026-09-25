@@ -25,8 +25,7 @@ const navigationConfig = [
 ] as const
 
 const user: AgentPlatformUser = {
-  name: 'Demo User',
-  initials: 'D',
+  name: 'ayu',
 }
 
 const { t } = useI18n()

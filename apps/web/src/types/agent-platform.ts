@@ -15,5 +15,4 @@ export interface AgentRecentChat {
 
 export interface AgentPlatformUser {
   name: string
-  initials: string
 }
