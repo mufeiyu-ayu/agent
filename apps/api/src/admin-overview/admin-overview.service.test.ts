@@ -194,18 +194,18 @@ describe('AdminOverviewService stats', () => {
     const bucketQueries = queries.filter(query => query.sql.includes('to_char('))
     assert.equal(bucketQueries.length, 2)
     for (const query of bucketQueries)
-      assert.ok(query.sql.includes(`'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'`))
+      assert.ok(query.sql.includes(`'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'`), 'query.sql.includes(`\'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"\'`)')
     for (const query of queries) {
       assert.doesNotMatch(query.sql, /debug/i)
       // 整列只能出现在 `->` 左边（取路径）或作为别名，不能被原样选出。
       assert.doesNotMatch(query.sql, /(?<!AS )"(input|output)"(?!\s*->)/)
-      assert.ok(query.values.includes('2026-09-21T06:30:00.000Z'))
+      assert.ok(query.values.includes('2026-09-21T06:30:00.000Z'), 'query.values.includes(\'2026-09-21T06:30:00.000Z\')')
     }
     const toolQueries = queries.filter(query => query.values.includes('unknown_tool'))
     assert.equal(toolQueries.length, 2)
     for (const query of toolQueries) {
-      assert.ok(query.values.includes('search_articles'))
-      assert.ok(query.values.includes('retrieve_article_context'))
+      assert.ok(query.values.includes('search_articles'), 'query.values.includes(\'search_articles\')')
+      assert.ok(query.values.includes('retrieve_article_context'), 'query.values.includes(\'retrieve_article_context\')')
     }
 
     assert.equal(stats.bucket, 'hour')

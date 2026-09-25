@@ -70,7 +70,7 @@ integrationDescribe('Article indexing PostgreSQL / pgvector integration', {
   let repository: ArticleIndexRepository
 
   before(async () => {
-    assert.ok(testDatabaseUrl)
+    assert.ok(testDatabaseUrl, 'testDatabaseUrl')
     assert.match(schema, /^article_index_test_[a-f\d]+$/)
     adminPool = new PgPool({
       connectionString: testDatabaseUrl,
@@ -247,7 +247,7 @@ integrationDescribe('Article indexing PostgreSQL / pgvector integration', {
       newSource,
       ACTIVE_EMBEDDING_PROFILE.version,
     )
-    assert.ok(generated.length > 1)
+    assert.ok(generated.length > 1, 'generated.length > 1')
     const duplicateIdChunks: DeterministicArticleChunk[] = generated.map(
       (chunk, index) => index === 1 ? { ...chunk, id: generated[0]!.id } : chunk,
     )
@@ -402,11 +402,11 @@ integrationDescribe('Article indexing PostgreSQL / pgvector integration', {
   })
 
   it('session advisory lock 阻止第二个 repository，释放后可重新获取', async () => {
-    assert.ok(testDatabaseUrl)
+    assert.ok(testDatabaseUrl, 'testDatabaseUrl')
     const secondPool = createArticleIndexPool(withSearchPath(testDatabaseUrl, schema))
     const secondRepository = new ArticleIndexRepository(prisma, secondPool)
     const firstLock = await repository.acquireCommandLock(new AbortController().signal)
-    assert.ok(firstLock)
+    assert.ok(firstLock, 'firstLock')
     assert.equal(
       await secondRepository.acquireCommandLock(new AbortController().signal),
       null,
@@ -416,7 +416,7 @@ integrationDescribe('Article indexing PostgreSQL / pgvector integration', {
     const secondLock = await secondRepository.acquireCommandLock(
       new AbortController().signal,
     )
-    assert.ok(secondLock)
+    assert.ok(secondLock, 'secondLock')
     await secondLock.release()
     await secondPool.end()
   })

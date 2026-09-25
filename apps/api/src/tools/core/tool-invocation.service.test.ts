@@ -88,11 +88,11 @@ describe('ToolInvocationService', () => {
       toolName: 'echo',
       input: { message: 'hello' },
     })
-    assert.ok(receivedContext)
+    assert.ok(receivedContext, 'receivedContext')
     assert.notEqual(receivedContext.databaseDeadline, context.databaseDeadline)
     assert.equal(receivedContext.databaseDeadline.signal, receivedContext.signal)
-    assert.ok(receivedContext.databaseDeadline.deadlineAt >= startedAt)
-    assert.ok(receivedContext.databaseDeadline.deadlineAt < context.databaseDeadline.deadlineAt)
+    assert.ok(receivedContext.databaseDeadline.deadlineAt >= startedAt, 'receivedContext.databaseDeadline.deadlineAt >= startedAt')
+    assert.ok(receivedContext.databaseDeadline.deadlineAt < context.databaseDeadline.deadlineAt, 'receivedContext.databaseDeadline.deadlineAt < context.databaseDeadline.deadlineAt')
     assert.notEqual(receivedContext.signal, context.signal)
     assert.equal(receivedContext.signal.aborted, false)
   })
@@ -158,8 +158,8 @@ describe('ToolInvocationService', () => {
     const context = createContext()
     const result = await service.invoke(createEnvelope(), context)
 
-    assert.ok(receivedDeadline)
-    assert.ok(receivedDeadline.deadlineAt < context.databaseDeadline.deadlineAt)
+    assert.ok(receivedDeadline, 'receivedDeadline')
+    assert.ok(receivedDeadline.deadlineAt < context.databaseDeadline.deadlineAt, 'receivedDeadline.deadlineAt < context.databaseDeadline.deadlineAt')
     assert.deepEqual(result, {
       ok: false,
       code: 'timeout',
@@ -303,7 +303,7 @@ describe('ToolInvocationService', () => {
       ])
 
       assert.notEqual(outcome, 'watchdog')
-      assert.ok(outcome instanceof Error)
+      assert.ok(outcome instanceof Error, 'outcome instanceof Error')
       assert.equal(outcome.name, 'AbortError')
     }
     finally {
@@ -328,7 +328,7 @@ describe('ToolInvocationService', () => {
 
     assert.equal(result.ok, false)
     assert.equal(result.ok ? undefined : result.code, 'timeout')
-    assert.ok(executionSignal)
+    assert.ok(executionSignal, 'executionSignal')
     assert.equal(executionSignal.aborted, true)
   })
 
@@ -390,7 +390,7 @@ describe('ToolInvocationService', () => {
 
     await service.invoke(createEnvelope(), createContext(abortController.signal))
     await delay(30)
-    assert.ok(executionSignal)
+    assert.ok(executionSignal, 'executionSignal')
     assert.equal(executionSignal.aborted, false)
 
     abortController.abort()

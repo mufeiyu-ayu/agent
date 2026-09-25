@@ -115,7 +115,7 @@ describe('RunEvidenceRegistry citationKey', () => {
 
     const [entry] = registry.list()
 
-    assert.ok(entry)
+    assert.ok(entry, 'entry')
     assert.match(entry.citationKey, /^evk_[a-f\d]{32}$/)
     assert.doesNotMatch(entry.citationKey, /301|seo-basics|chunk-0/)
   })
@@ -131,7 +131,7 @@ describe('RunEvidenceRegistry citationKey', () => {
     const otherKey = other.list()[0]!.citationKey
 
     assert.notEqual(currentKey, otherKey)
-    assert.ok(current.resolve(currentKey))
+    assert.ok(current.resolve(currentKey), 'current.resolve(currentKey)')
     // 另一次 Run 的 key 在这里不存在，历史证据无法越界。
     assert.equal(current.resolve(otherKey), undefined)
     assert.equal(current.resolve('301'), undefined)

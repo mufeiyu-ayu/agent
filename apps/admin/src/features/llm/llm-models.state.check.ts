@@ -240,7 +240,7 @@ async function checkCredentialChangeDropsTestResults(): Promise<void> {
   await state.importModels(['m'], 'provider-old', { ...oldCredentials, apiKey: 'sk-other' })
   const imported = calls.find(call => call.url.includes('/import-models'))
 
-  assert.ok(imported)
+  assert.ok(imported, 'imported')
 
   assert.deepEqual((imported.body as { testResults: AdminLlmModelTestResult[] }).testResults, [])
 }

@@ -317,8 +317,8 @@ describe('SamplingContextPlanner', () => {
     const result = plan.items.find(item => item.type === 'tool_result')
 
     assert.equal(result?.type, 'tool_result')
-    assert.ok(Array.from(result?.content ?? '').length <= observation.observationChars)
-    assert.ok(plan.summary.estimatedInputTokens <= fullTokens - 1)
+    assert.ok(Array.from(result?.content ?? '').length <= observation.observationChars, 'Array.from(result?.content ?? \'\').length <= observation.observationChars')
+    assert.ok(plan.summary.estimatedInputTokens <= fullTokens - 1, 'plan.summary.estimatedInputTokens <= fullTokens - 1')
   })
 
   it('最小 Observation marker 仍超预算时 fail closed', () => {
@@ -506,8 +506,8 @@ describe('SamplingContextPlanner 首轮历史裁剪（迁自旧的初始上下�
     const largerOutput = includedCount(16_800, 300)
 
     assert.equal(largeModel, 20)
-    assert.ok(smallModel < largeModel)
-    assert.ok(largerOutput < largeModel)
+    assert.ok(smallModel < largeModel, 'smallModel < largeModel')
+    assert.ok(largerOutput < largeModel, 'largerOutput < largeModel')
   })
 
   it('AC-02 真实 tokenizer：固定消息集上新算法保留最大的最新连续后缀，并记录与旧算法的差分', (t) => {
@@ -538,13 +538,13 @@ describe('SamplingContextPlanner 首轮历史裁剪（迁自旧的初始上下�
     // Issue AC-02：真实 tokenizer 下新旧条数差异只记录不阻塞，以新算法为准；
     // 这里只断言新算法自洽：最新连续后缀、不超预算、再多一条就超预算。
     t.diagnostic(`budget=${budget} legacy=${legacyCount} planner=${includedCount}`)
-    assert.ok(includedCount > 0 && includedCount < history.length)
+    assert.ok(includedCount > 0 && includedCount < history.length, 'includedCount > 0 && includedCount < history.length')
     assert.deepEqual(
       includedHistoryContents(plan),
       history.slice(history.length - includedCount).map(message => message.content),
     )
-    assert.ok(plan.summary.estimatedInputTokens <= budget)
-    assert.ok(estimateNewest(includedCount + 1) > budget)
+    assert.ok(plan.summary.estimatedInputTokens <= budget, 'plan.summary.estimatedInputTokens <= budget')
+    assert.ok(estimateNewest(includedCount + 1) > budget, 'estimateNewest(includedCount + 1) > budget')
   })
 
   it('1000 条超预算历史的首轮全量估算次数有上界', () => {

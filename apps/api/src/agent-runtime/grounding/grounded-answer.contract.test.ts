@@ -15,7 +15,7 @@ function assertRejected(rawArgumentsJson: string, code: string): void {
   assert.throws(
     () => parseSubmitGroundedAnswerInput(rawArgumentsJson),
     (error: unknown) => {
-      assert.ok(error instanceof GroundedAnswerRejectedError)
+      assert.ok(error instanceof GroundedAnswerRejectedError, 'error instanceof GroundedAnswerRejectedError')
       assert.equal(error.code, code)
       return true
     },

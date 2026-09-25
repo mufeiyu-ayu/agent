@@ -24,7 +24,7 @@ describe('HybridArticleRetrievalRuntime', () => {
 
       // 构造和销毁都不应该触碰 Provider 或数据库。
       await runtime.onModuleDestroy()
-      assert.ok(runtime)
+      assert.ok(runtime, 'runtime')
     }
     finally {
       restore('GEMINI_API_KEY', originalApiKey)

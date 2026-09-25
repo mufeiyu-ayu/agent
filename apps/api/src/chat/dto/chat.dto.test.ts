@@ -122,7 +122,7 @@ describe('ChatDto 在 App ValidationPipe 边界的行为', () => {
         void transformed
       }
       catch (error) {
-        assert.ok(error instanceof BadRequestException)
+        assert.ok(error instanceof BadRequestException, 'error instanceof BadRequestException')
         assert.equal(error.getStatus(), 400)
 
         const response = error.getResponse() as {
@@ -166,7 +166,7 @@ describe('ChatDto 在 App ValidationPipe 边界的行为', () => {
     await assert.rejects(
       () => pipe.transform(payload, BODY_METADATA),
       (error: unknown) => {
-        assert.ok(error instanceof BadRequestException)
+        assert.ok(error instanceof BadRequestException, 'error instanceof BadRequestException')
 
         const response = error.getResponse() as { details: string[] }
         const detailText = response.details.join('\n')
@@ -186,7 +186,7 @@ describe('ChatDto 在 App ValidationPipe 边界的行为', () => {
       BODY_METADATA,
     )
 
-    assert.ok(transformed instanceof ChatDto)
+    assert.ok(transformed instanceof ChatDto, 'transformed instanceof ChatDto')
     assert.equal(transformed.message, ' hi ')
   })
 

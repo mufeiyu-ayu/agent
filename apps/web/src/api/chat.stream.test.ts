@@ -74,7 +74,7 @@ describe('NDJSON 协议兼容', () => {
   it('done 上没有 grounding 时不会凭空补字段', () => {
     const parsed = parseChatStreamEventLine(JSON.stringify(LEGACY_EVENTS[2]))
 
-    assert.ok(parsed)
+    assert.ok(parsed, 'parsed')
     assert.equal(Object.hasOwn(parsed, 'grounding'), false)
   })
 
@@ -84,7 +84,7 @@ describe('NDJSON 协议兼容', () => {
       grounding: GROUNDING,
     }))
 
-    assert.ok(parsed)
+    assert.ok(parsed, 'parsed')
     assert.equal(parsed.type, 'done')
     assert.deepEqual(parsed.type === 'done' ? parsed.grounding : undefined, GROUNDING)
   })
@@ -138,7 +138,7 @@ describe('NDJSON 协议兼容', () => {
         grounding,
       }))
 
-      assert.ok(parsed)
+      assert.ok(parsed, 'parsed')
       assert.equal(parsed.type === 'done' ? Object.hasOwn(parsed, 'grounding') : false, true)
     }
   })
@@ -247,7 +247,7 @@ describe('NDJSON 协议兼容', () => {
         grounding: invalidGrounding,
       }))
 
-      assert.ok(parsed)
+      assert.ok(parsed, 'parsed')
       assert.equal(parsed.type, 'done')
       assert.equal(parsed.type === 'done' ? parsed.content : '', '最终回答')
       assert.equal(Object.hasOwn(parsed, 'grounding'), false)

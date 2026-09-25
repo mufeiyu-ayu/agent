@@ -278,7 +278,7 @@ describe('deterministic Article chunking', () => {
       )),
       [-1, -4, -5],
     )
-    assert.ok(countArticleTokens('<|endoftext|>') > 1)
+    assert.ok(countArticleTokens('<|endoftext|>') > 1, 'countArticleTokens(\'<|endoftext|>\') > 1')
     assert.doesNotThrow(() => (
       chunkCanonicalArticle(wrapped, ACTIVE_EMBEDDING_PROFILE.version)
     ))
@@ -294,7 +294,7 @@ describe('deterministic Article chunking', () => {
       content: string
     }>
     const article = articles.find(item => item.sourceId === 44)
-    assert.ok(article)
+    assert.ok(article, 'article')
     const input = snapshot(article.content, {
       sourceId: article.sourceId,
       title: article.title,
@@ -307,11 +307,11 @@ describe('deterministic Article chunking', () => {
 
     assert.deepEqual(secondSource, firstSource)
     assert.deepEqual(second, first)
-    assert.ok(first.length > 10)
-    assert.ok(firstSource.blocks.some(block => block.kind === 'table_row'))
-    assert.ok(firstSource.blocks.some(block => block.kind === 'figure'))
-    assert.ok(firstSource.blocks.some(block => block.kind === 'list_item'))
-    assert.ok(firstSource.blocks.some(block => block.kind === 'blockquote'))
+    assert.ok(first.length > 10, 'first.length > 10')
+    assert.ok(firstSource.blocks.some(block => block.kind === 'table_row'), 'firstSource.blocks.some(block => block.kind === \'table_row\')')
+    assert.ok(firstSource.blocks.some(block => block.kind === 'figure'), 'firstSource.blocks.some(block => block.kind === \'figure\')')
+    assert.ok(firstSource.blocks.some(block => block.kind === 'list_item'), 'firstSource.blocks.some(block => block.kind === \'list_item\')')
+    assert.ok(firstSource.blocks.some(block => block.kind === 'blockquote'), 'firstSource.blocks.some(block => block.kind === \'blockquote\')')
     assert.deepEqual(first.map(chunk => chunk.ordinal), first.map((_, index) => index))
     assert.ok(first.every(chunk => (
       chunk.tokenCount === countArticleTokens(chunk.embeddingInput)
@@ -320,7 +320,7 @@ describe('deterministic Article chunking', () => {
       && /^[a-f\d]{64}$/.test(chunk.id)
       && /^[a-f\d]{64}$/.test(chunk.contentHash)
       && /^[a-f\d]{64}$/.test(chunk.embeddingInputHash)
-    )))
+    )), 'first.every(chunk => ( chunk.tokenCount === countArticleTokens(chunk.embeddingInput) && chunk.tokenCount <= ARTICLE_CHUNKER_PROFILE.hardMaxTokens && chunk.overlapTokenCount <= ARTICLE_CHUNKER_PROFILE.overlapTokens && /^[a-f\\d]{64}$/.test(chunk.id) && /^[a-f\\d]{64}$/.test(chunk.contentHash) && /^[a-f\\d]{64}$/.test(chunk.embeddingInputHash) ))')
   })
 
   it('常规 prose 按 600-token target 聚合，不把同步探针上限当作 chunk 边界', () => {
@@ -331,8 +331,8 @@ describe('deterministic Article chunking', () => {
     const chunks = chunkCanonicalArticle(source, ACTIVE_EMBEDDING_PROFILE.version)
 
     assert.equal(chunks.length, 1)
-    assert.ok(chunks[0]!.tokenCount < ARTICLE_CHUNKER_PROFILE.targetTokens)
-    assert.ok(chunks[0]!.content.length > 1_024)
+    assert.ok(chunks[0]!.tokenCount < ARTICLE_CHUNKER_PROFILE.targetTokens, 'chunks[0]!.tokenCount < ARTICLE_CHUNKER_PROFILE.targetTokens')
+    assert.ok(chunks[0]!.content.length > 1_024, 'chunks[0]!.content.length > 1_024')
   })
 
   it('块级 wrapper、嵌套列表顺序/层级与 empty list/table 均稳定规范化', () => {
@@ -550,12 +550,12 @@ describe('deterministic Article chunking', () => {
     ))
     const chunks = chunkCanonicalArticle(source, ACTIVE_EMBEDDING_PROFILE.version)
 
-    assert.ok(chunks.length > 2)
-    assert.ok(chunks.some(chunk => chunk.overlapTokenCount > 0))
+    assert.ok(chunks.length > 2, 'chunks.length > 2')
+    assert.ok(chunks.some(chunk => chunk.overlapTokenCount > 0), 'chunks.some(chunk => chunk.overlapTokenCount > 0)')
     for (const chunk of chunks) {
-      assert.ok(chunk.tokenCount <= ARTICLE_CHUNKER_PROFILE.hardMaxTokens)
-      assert.ok(chunk.overlapTokenCount <= ARTICLE_CHUNKER_PROFILE.overlapTokens)
-      assert.ok(countArticleTokens(chunk.content) > chunk.overlapTokenCount)
+      assert.ok(chunk.tokenCount <= ARTICLE_CHUNKER_PROFILE.hardMaxTokens, 'chunk.tokenCount <= ARTICLE_CHUNKER_PROFILE.hardMaxTokens')
+      assert.ok(chunk.overlapTokenCount <= ARTICLE_CHUNKER_PROFILE.overlapTokens, 'chunk.overlapTokenCount <= ARTICLE_CHUNKER_PROFILE.overlapTokens')
+      assert.ok(countArticleTokens(chunk.content) > chunk.overlapTokenCount, 'countArticleTokens(chunk.content) > chunk.overlapTokenCount')
       assert.doesNotMatch(chunk.content, /�/)
     }
   })
@@ -569,11 +569,11 @@ describe('deterministic Article chunking', () => {
     ))
     const chunks = chunkCanonicalArticle(source, ACTIVE_EMBEDDING_PROFILE.version)
 
-    assert.ok(chunks.length > 10)
+    assert.ok(chunks.length > 10, 'chunks.length > 10')
     assert.ok(chunks.every(chunk => (
       chunk.tokenCount <= ARTICLE_CHUNKER_PROFILE.hardMaxTokens
       && !chunk.content.includes('。 ')
-    )))
+    )), 'chunks.every(chunk => ( chunk.tokenCount <= ARTICLE_CHUNKER_PROFILE.hardMaxTokens && !chunk.content.includes(\'。 \') ))')
   })
 
   it('无句界长块限制同步 tokenizer 探针并保持 hard max', { timeout: 10_000 }, () => {
@@ -581,18 +581,19 @@ describe('deterministic Article chunking', () => {
     const source = canonicalizeArticleSource(snapshot(`<p>${body}</p>`))
     const chunks = chunkCanonicalArticle(source, ACTIVE_EMBEDDING_PROFILE.version)
 
-    assert.ok(chunks.length > 1)
-    assert.ok(chunks.every(chunk => /^a+(?:\n\na+)*$/.test(chunk.content)))
+    assert.ok(chunks.length > 1, 'chunks.length > 1')
+    assert.ok(chunks.every(chunk => /^a+(?:\n\na+)*$/.test(chunk.content)), 'chunks.every(chunk => /^a+(?:\\n\\na+)*$/.test(chunk.content))')
     assert.ok(
       chunks.reduce(
         (length, chunk) => length + chunk.content.replaceAll('\n', '').length,
         0,
       ) >= body.length,
+      'chunks.reduce( (length, chunk) => length + chunk.content.replaceAll(\'\\n\', \'\').length, 0, ) >= body.length',
     )
     assert.ok(chunks.every(chunk => (
       chunk.tokenCount <= ARTICLE_CHUNKER_PROFILE.hardMaxTokens
       && chunk.tokenCount === countArticleTokens(chunk.embeddingInput)
-    )))
+    )), 'chunks.every(chunk => ( chunk.tokenCount <= ARTICLE_CHUNKER_PROFILE.hardMaxTokens && chunk.tokenCount === countArticleTokens(chunk.embeddingInput) ))')
 
     const compressibleTitle = canonicalizeArticleSource(snapshot('<p>body</p>', {
       title: 'a'.repeat(1_100),
@@ -600,6 +601,7 @@ describe('deterministic Article chunking', () => {
     assert.ok(
       chunkCanonicalArticle(compressibleTitle, ACTIVE_EMBEDDING_PROFILE.version)
         .every(chunk => chunk.tokenCount <= ARTICLE_CHUNKER_PROFILE.hardMaxTokens),
+      'chunkCanonicalArticle(compressibleTitle, ACTIVE_EMBEDDING_PROFILE.version) .every(chunk => chunk.tokenCount <= ARTICLE_CHUNKER_PROFILE.hardMaxTokens)',
     )
 
     assert.deepEqual(
@@ -614,6 +616,7 @@ describe('deterministic Article chunking', () => {
     assert.ok(
       chunkCanonicalArticle(longCompressibleTitle, ACTIVE_EMBEDDING_PROFILE.version)
         .every(chunk => chunk.tokenCount <= ARTICLE_CHUNKER_PROFILE.hardMaxTokens),
+      'chunkCanonicalArticle(longCompressibleTitle, ACTIVE_EMBEDDING_PROFILE.version) .every(chunk => chunk.tokenCount <= ARTICLE_CHUNKER_PROFILE.hardMaxTokens)',
     )
   })
 
@@ -630,11 +633,11 @@ describe('deterministic Article chunking', () => {
         canonicalizeArticleSource(snapshot(html)),
         ACTIVE_EMBEDDING_PROFILE.version,
       )
-      assert.ok(chunks.length > 1)
-      assert.ok(chunks.every(chunk => chunk.content.includes(marker)))
+      assert.ok(chunks.length > 1, 'chunks.length > 1')
+      assert.ok(chunks.every(chunk => chunk.content.includes(marker)), 'chunks.every(chunk => chunk.content.includes(marker))')
       assert.ok(chunks.every(chunk => (
         chunk.tokenCount <= ARTICLE_CHUNKER_PROFILE.hardMaxTokens
-      )))
+      )), 'chunks.every(chunk => ( chunk.tokenCount <= ARTICLE_CHUNKER_PROFILE.hardMaxTokens ))')
     }
   })
 

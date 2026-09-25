@@ -33,7 +33,7 @@ describe('resolveLlmEnvConfig', () => {
     assert.throws(
       () => resolveLlmEnvConfig({ AGENT_SECRET_KEY: ' replace-with-openssl-rand-hex-32-output ' }),
       (error: unknown) => {
-        assert.ok(error instanceof LLMConfigError)
+        assert.ok(error instanceof LLMConfigError, 'error instanceof LLMConfigError')
         assert.match(error.message, /公开的占位串/)
         assert.doesNotMatch(error.message, /不少于 32/)
         return true
@@ -46,7 +46,7 @@ describe('resolveLlmEnvConfig', () => {
       assert.throws(
         () => resolveLlmEnvConfig(env as NodeJS.ProcessEnv),
         (error: unknown) => {
-          assert.ok(error instanceof LLMConfigError)
+          assert.ok(error instanceof LLMConfigError, 'error instanceof LLMConfigError')
           assert.match(error.message, /AGENT_SECRET_KEY/)
           return true
         },
@@ -86,7 +86,7 @@ describe('resolveOutboundProxyConfig', () => {
       assert.throws(
         () => resolveLlmEnvConfig({ AGENT_SECRET_KEY: SECRET_KEY, OUTBOUND_PROXY_URL: value }),
         (error: unknown) => {
-          assert.ok(error instanceof LLMConfigError)
+          assert.ok(error instanceof LLMConfigError, 'error instanceof LLMConfigError')
           assert.match(error.message, /OUTBOUND_PROXY_URL/)
           assert.match(error.message, /http:\/\/127\.0\.0\.1:7890/)
           assert.doesNotMatch(error.message, /secret/)

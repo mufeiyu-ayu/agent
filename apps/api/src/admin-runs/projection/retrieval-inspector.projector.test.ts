@@ -72,7 +72,7 @@ describe('Admin Retrieval Inspector', () => {
 
     // 工具身份与执行结果按 stepId 从 timeline 取。
     const toolItem = detail.timeline.find(item => item.id === 'step-3')
-    assert.ok(toolItem?.kind === 'known' && toolItem.type === 'tool_execution')
+    assert.ok(toolItem?.kind === 'known' && toolItem.type === 'tool_execution', 'toolItem?.kind === \'known\' && toolItem.type === \'tool_execution\'')
     assert.equal(toolItem.toolName, 'retrieve_article_context')
     assert.equal(toolItem.callId, 'call-1')
     assert.equal(toolItem.ok, true)
@@ -132,7 +132,7 @@ describe('Admin Retrieval Inspector', () => {
     const detail = projectAdminRunDetail(createGroundedRun(), null)
     const item = findTimelineItem(detail, 'grounded_finalization')
 
-    assert.ok(item.kind === 'known' && item.type === 'grounded_finalization')
+    assert.ok(item.kind === 'known' && item.type === 'grounded_finalization', 'item.kind === \'known\' && item.type === \'grounded_finalization\'')
     assert.equal(item.evidenceAvailability, 'available')
     assert.equal(item.outcome, 'answered')
     assert.equal(item.attemptCount, 1)
@@ -159,7 +159,7 @@ describe('Admin Retrieval Inspector', () => {
 
     const item = findTimelineItem(projectAdminRunDetail(run, null), 'grounded_finalization')
 
-    assert.ok(item.kind === 'known' && item.type === 'grounded_finalization')
+    assert.ok(item.kind === 'known' && item.type === 'grounded_finalization', 'item.kind === \'known\' && item.type === \'grounded_finalization\'')
     assert.equal(item.evidenceAvailability, 'partial')
     assert.equal(item.registryRefCount, 2)
     assert.equal(item.outcome, null)
@@ -169,7 +169,7 @@ describe('Admin Retrieval Inspector', () => {
     step.output = { evidenceAvailability: 'available', registryRefCount: 5 }
     const closed = findTimelineItem(projectAdminRunDetail(run, null), 'grounded_finalization')
 
-    assert.ok(closed.kind === 'known' && closed.type === 'grounded_finalization')
+    assert.ok(closed.kind === 'known' && closed.type === 'grounded_finalization', 'closed.kind === \'known\' && closed.type === \'grounded_finalization\'')
     assert.equal(closed.evidenceAvailability, 'available')
     assert.equal(closed.registryRefCount, 5)
   })
@@ -210,7 +210,7 @@ describe('Admin Retrieval Inspector', () => {
 
     const item = findTimelineItem(projectAdminRunDetail(run, null), 'grounded_finalization')
 
-    assert.ok(item.kind === 'known' && item.type === 'grounded_finalization')
+    assert.ok(item.kind === 'known' && item.type === 'grounded_finalization', 'item.kind === \'known\' && item.type === \'grounded_finalization\'')
     assert.deepEqual(item.usage, {
       inputTokens: 40,
       outputTokens: 14,
@@ -231,7 +231,7 @@ describe('Admin Retrieval Inspector', () => {
     const detail = projectAdminRunDetail(run, null)
     const item = findTimelineItem(detail, 'grounded_finalization')
 
-    assert.ok(item.kind === 'known' && item.type === 'grounded_finalization')
+    assert.ok(item.kind === 'known' && item.type === 'grounded_finalization', 'item.kind === \'known\' && item.type === \'grounded_finalization\'')
     assert.equal(item.outcome, null)
     assert.equal(item.failureReason, 'sampling_incomplete')
     assert.equal(item.samplingFailure, 'stream_failed')
@@ -247,7 +247,7 @@ describe('Admin Retrieval Inspector', () => {
 
       const item = findTimelineItem(projectAdminRunDetail(run, null), 'grounded_finalization')
 
-      assert.ok(item.kind === 'known' && item.type === 'grounded_finalization')
+      assert.ok(item.kind === 'known' && item.type === 'grounded_finalization', 'item.kind === \'known\' && item.type === \'grounded_finalization\'')
       assert.equal(item.usage, null)
       assert.equal(item.attemptCount, null)
     }
@@ -278,7 +278,7 @@ describe('Admin Retrieval Inspector', () => {
     assert.deepEqual(detail.retrievalInspector.citations, [])
 
     const item = findTimelineItem(detail, 'grounded_finalization')
-    assert.ok(item.kind === 'known' && item.type === 'grounded_finalization')
+    assert.ok(item.kind === 'known' && item.type === 'grounded_finalization', 'item.kind === \'known\' && item.type === \'grounded_finalization\'')
     assert.equal(item.evidenceAvailability, 'none')
     assert.equal(item.outcome, 'insufficient_evidence')
   })
@@ -301,7 +301,7 @@ describe('Admin Retrieval Inspector', () => {
     }])
 
     const toolItem = detail.timeline.find(item => item.id === 'step-3')
-    assert.ok(toolItem?.kind === 'known' && toolItem.type === 'tool_execution')
+    assert.ok(toolItem?.kind === 'known' && toolItem.type === 'tool_execution', 'toolItem?.kind === \'known\' && toolItem.type === \'tool_execution\'')
     assert.equal(toolItem.ok, false)
     assert.equal(toolItem.code, 'timeout')
   })
@@ -484,7 +484,7 @@ describe('Admin Retrieval Inspector', () => {
       chunkEvidenceCount: null,
       refs: [],
     }])
-    assert.ok(item.kind === 'known' && item.type === 'grounded_finalization')
+    assert.ok(item.kind === 'known' && item.type === 'grounded_finalization', 'item.kind === \'known\' && item.type === \'grounded_finalization\'')
     assert.equal(item.registryRefCount, 1)
     assert.deepEqual(detail.retrievalInspector.citations?.map(c => c.matchedCallIds), [[]])
   })

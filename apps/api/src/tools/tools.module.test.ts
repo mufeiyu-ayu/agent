@@ -29,7 +29,7 @@ describe('ToolsModule', () => {
         new RetrieveArticleContextTool(runtime),
       )
 
-      assert.ok(toolsModule)
+      assert.ok(toolsModule, 'toolsModule')
       // 共用清单里的每个定义都必须被模块注册，否则 Run allowlist 会暴露一个 Registry 里没有的工具。
       for (const definition of TOOL_DEFINITIONS)
         assert.equal(registry.get(definition.name)?.definition, definition)

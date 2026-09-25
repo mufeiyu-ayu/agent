@@ -70,7 +70,7 @@ integrationDescribe('retrieve_article_context PostgreSQL / pgvector integration'
   let retrievalPool: ArticleRetrievalPool
 
   before(async () => {
-    assert.ok(testDatabaseUrl)
+    assert.ok(testDatabaseUrl, 'testDatabaseUrl')
     assert.match(schema, /^retrieve_tool_test_[a-f\d]+$/)
     adminPool = new PgPool({
       connectionString: testDatabaseUrl,
@@ -206,7 +206,7 @@ integrationDescribe('retrieve_article_context PostgreSQL / pgvector integration'
     const emptySchema = `retrieve_tool_empty_${randomUUID().replaceAll('-', '')}`
 
     assert.match(emptySchema, /^retrieve_tool_empty_[a-f\d]+$/)
-    assert.ok(testDatabaseUrl)
+    assert.ok(testDatabaseUrl, 'testDatabaseUrl')
     await adminPool.query(`CREATE SCHEMA "${emptySchema}"`)
 
     // search_path 不含 public：Article / ArticleChunk 表与 vector 类型都不可见。

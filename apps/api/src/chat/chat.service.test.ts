@@ -35,7 +35,7 @@ describe('ChatService', () => {
     assert.equal(harness.runtime.inputs.length, 1)
     const [streamInput] = harness.runtime.inputs
 
-    assert.ok(streamInput)
+    assert.ok(streamInput, 'streamInput')
     // 模型行 id 在进入 Runtime 之前就解析成快照：Run 开始后后台改配置不影响本次。
     assert.deepEqual(harness.modelConfig.resolvedIds, ['model-deepseek-v4-flash'])
     assert.deepEqual(withoutSignal(streamInput), {
@@ -59,7 +59,7 @@ describe('ChatService', () => {
 
     const [streamInput] = harness.runtime.inputs
 
-    assert.ok(streamInput)
+    assert.ok(streamInput, 'streamInput')
     assert.deepEqual(harness.modelConfig.resolvedIds, [undefined])
     assert.deepEqual(Object.keys(streamInput).sort(), [
       'conversationId',
@@ -75,7 +75,7 @@ describe('ChatService', () => {
     await assert.rejects(
       harness.service.chatStream(createInput('model-hidden')),
       (error: unknown) => {
-        assert.ok(error instanceof BadRequestException)
+        assert.ok(error instanceof BadRequestException, 'error instanceof BadRequestException')
         assert.equal(error.message, '请求的模型未对前台开放')
         return true
       },
@@ -267,7 +267,7 @@ describe('ChatService grounding 投影', () => {
         grounding: persistedGrounding,
       } as never)
 
-    assert.ok(project('ASSISTANT', 'COMPLETED').grounding)
+    assert.ok(project('ASSISTANT', 'COMPLETED').grounding, 'project(\'ASSISTANT\', \'COMPLETED\').grounding')
 
     // 绕过 Runtime 写到非终态 / 失败消息或用户消息上的 Grounding 不得外泄。
     for (const status of ['PENDING', 'STREAMING', 'FAILED', 'ABORTED']) {

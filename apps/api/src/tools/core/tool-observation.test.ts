@@ -35,7 +35,7 @@ describe('normalizeToolObservation', () => {
       [...(first.previewContent ?? '')].length,
       16_000 - [...first.content.replace(first.previewContent ?? '', '')].length,
     )
-    assert.ok(first.observationChars <= 16_000)
+    assert.ok(first.observationChars <= 16_000, 'first.observationChars <= 16_000')
     assert.match(first.content, /^\[工具 Observation 已截断/)
     assert.match(first.content, /\[预览结束\]$/)
     assert.equal(hasUnpairedSurrogate(first.content), false)

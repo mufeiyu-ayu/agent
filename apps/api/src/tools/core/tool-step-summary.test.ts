@@ -131,7 +131,7 @@ describe('normalizeToolStepSummary', () => {
     assert.equal(TOOL_STEP_SUMMARY_MAX_CHARS, 2_000)
     assert.equal(TOOL_STEP_SUMMARY_MAX_DEPTH, 5)
     // 合法 Retrieval summary 应远小于预算。
-    assert.ok(JSON.stringify(VALID_SUMMARY).length < TOOL_STEP_SUMMARY_MAX_CHARS / 4)
+    assert.ok(JSON.stringify(VALID_SUMMARY).length < TOOL_STEP_SUMMARY_MAX_CHARS / 4, 'JSON.stringify(VALID_SUMMARY).length < TOOL_STEP_SUMMARY_MAX_CHARS / 4')
   })
 })
 

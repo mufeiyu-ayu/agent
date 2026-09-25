@@ -320,7 +320,7 @@ describe('Grounded finalization 路径', () => {
     assert.equal(deltas[0], intermediate)
     assert.equal(deltas.join(''), `${intermediate}\n\n校验后的回答。`)
     assert.equal(harness.assistantMessage()?.content, `${intermediate}\n\n校验后的回答。`)
-    assert.ok((events.at(-1) as { grounding?: MessageGroundingV1 }).grounding)
+    assert.ok((events.at(-1) as { grounding?: MessageGroundingV1 }).grounding, '(events.at(-1) as { grounding?: MessageGroundingV1 }).grounding')
     // finalization 只拿最终回答轮次的草稿。
     const finalizationDraft = harness.llmCalls[2]?.messages
       .map(item => item.type === 'message' ? item.content : '')
@@ -401,7 +401,7 @@ describe('Grounded finalization 路径', () => {
 
     const grounding = (completed as { grounding?: MessageGroundingV1 }).grounding
 
-    assert.ok(grounding)
+    assert.ok(grounding, 'grounding')
     assert.equal(grounding.schemaVersion, 1)
     assert.equal(grounding.evidenceAvailability, 'available')
     assert.equal(grounding.outcome, 'answered')
@@ -504,7 +504,7 @@ describe('Grounded finalization 路径', () => {
       item => item.type === AGENT_STEP_TYPES.groundedFinalization,
     )
 
-    assert.ok(step)
+    assert.ok(step, 'step')
     assert.equal(step.status, 'COMPLETED')
 
     const output = step.output as Record<string, unknown>
@@ -718,7 +718,7 @@ describe('Grounded finalization 路径', () => {
     const events = await collectEvents(harness.run())
     const grounding = (events.at(-1) as { grounding?: MessageGroundingV1 }).grounding
 
-    assert.ok(grounding)
+    assert.ok(grounding, 'grounding')
     assert.equal(grounding.evidenceAvailability, 'unavailable')
     assert.equal(grounding.outcome, 'insufficient_evidence')
     assert.deepEqual(grounding.citations, [])
@@ -762,7 +762,7 @@ describe('Grounded finalization 路径', () => {
     const events = await collectEvents(harness.run())
     const grounding = (events.at(-1) as { grounding?: MessageGroundingV1 }).grounding
 
-    assert.ok(grounding)
+    assert.ok(grounding, 'grounding')
     assert.equal(grounding.evidenceAvailability, 'none')
     assert.equal(grounding.outcome, 'insufficient_evidence')
   })
@@ -808,7 +808,7 @@ describe('Grounded finalization 路径', () => {
       item => item.type === AGENT_STEP_TYPES.groundedFinalization,
     )?.output as Record<string, unknown> | undefined
 
-    assert.ok(grounding)
+    assert.ok(grounding, 'grounding')
     assert.equal(grounding.evidenceAvailability, 'available')
     assert.equal(grounding.outcome, 'answered')
     // 只有校验通过、真正执行的那次计入 eligible 调用；非法参数既不算调用也不算失败。
@@ -890,7 +890,7 @@ describe('Grounded finalization 路径', () => {
     const events = await collectEvents(harness.run())
     const grounding = (events.at(-1) as { grounding?: MessageGroundingV1 }).grounding
 
-    assert.ok(grounding)
+    assert.ok(grounding, 'grounding')
     assert.equal(grounding.evidenceAvailability, 'partial')
     assert.equal(grounding.citations.length, 1)
   })
@@ -996,7 +996,7 @@ describe('Grounded finalization 路径', () => {
       step => step.type === AGENT_STEP_TYPES.groundedFinalization,
     )
 
-    assert.ok(toolStep && finalizationStep)
+    assert.ok(toolStep && finalizationStep, 'toolStep && finalizationStep')
 
     const toolOutput = toolStep.output as Record<string, unknown> | undefined
     const finalizationOutput = finalizationStep.output as Record<string, unknown> | undefined
@@ -1023,6 +1023,7 @@ describe('Grounded finalization 路径', () => {
     assert.ok(
       finalizationItem?.kind === 'known'
       && finalizationItem.type === AGENT_STEP_TYPES.groundedFinalization,
+      'finalizationItem?.kind === \'known\' && finalizationItem.type === AGENT_STEP_TYPES.groundedFinalization',
     )
     assert.equal(finalizationItem.registryRefCount, 1)
     // Citation 来自真实 Registry；summary 里没有 refs，所以无法关联到 call。
@@ -1072,7 +1073,7 @@ describe('Grounded finalization 路径', () => {
     const events = await collectEvents(harness.run())
     const grounding = (events.at(-1) as { grounding?: MessageGroundingV1 }).grounding
 
-    assert.ok(grounding)
+    assert.ok(grounding, 'grounding')
     assert.equal(grounding.outcome, 'conflicting_evidence')
     assert.equal(
       new Set(grounding.citations.map(citation => citation.sourceId)).size,
@@ -1164,7 +1165,7 @@ describe('Grounded finalization 路径', () => {
       .join('')
 
     assert.equal(aborted.type, 'run_aborted')
-    assert.ok(replayed.length > 0)
+    assert.ok(replayed.length > 0, 'replayed.length > 0')
     assert.equal(aborted.type === 'run_aborted' ? aborted.content : '', replayed)
     assert.equal(harness.assistantMessage()?.status, MessageStatus.ABORTED)
     assert.equal(harness.assistantMessage()?.content, replayed)
@@ -1354,8 +1355,8 @@ describe('Grounded finalization Context 信任边界', () => {
       content => content.startsWith('[untrusted_data:answer_draft]'),
     )
 
-    assert.ok(evidenceMessage)
-    assert.ok(draftMessage)
+    assert.ok(evidenceMessage, 'evidenceMessage')
+    assert.ok(draftMessage, 'draftMessage')
     assert.match(evidenceMessage, /IGNORE ALL PREVIOUS INSTRUCTIONS/)
     assert.match(draftMessage, /草稿正文里也可能出现/)
   })
@@ -1366,7 +1367,7 @@ describe('Grounded finalization Context 信任边界', () => {
     const events = await collectEvents(harness.run())
     const grounding = (events.at(-1) as { grounding?: MessageGroundingV1 }).grounding
 
-    assert.ok(grounding)
+    assert.ok(grounding, 'grounding')
     assert.equal(grounding.evidenceAvailability, 'available')
     assert.equal(grounding.citations.length, 1)
     assert.equal(grounding.citations[0]?.sourceId, 301)
@@ -1416,7 +1417,7 @@ describe('Grounded finalization 终态原子性', () => {
       )
     })
 
-    assert.ok(statusesDuringReplay.length > 1)
+    assert.ok(statusesDuringReplay.length > 1, 'statusesDuringReplay.length > 1')
     // 每一个 delta 发出时，finalization Step 都还没有终态化。
     assert.deepEqual(
       [...new Set(statusesDuringReplay)],
@@ -1985,7 +1986,7 @@ function projectHarnessRunDetail(harness: ReturnType<typeof createHarness>) {
   const assistantMessage = harness.assistantMessage()
   const now = new Date()
 
-  assert.ok(assistantMessage)
+  assert.ok(assistantMessage, 'assistantMessage')
 
   return projectAdminRunDetail({
     id: 'run-1',

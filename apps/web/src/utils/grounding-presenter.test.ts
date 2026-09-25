@@ -84,7 +84,7 @@ describe('toGroundingView 状态映射', () => {
     const statuses = (['available', 'partial', 'none', 'unavailable'] as const).map((availability) => {
       const view = toGroundingView(createGrounding('insufficient_evidence', availability))
 
-      assert.ok(view)
+      assert.ok(view, 'view')
 
       return `${view.statusKey}|${view.noteKey}`
     })
@@ -96,7 +96,7 @@ describe('toGroundingView 状态映射', () => {
     for (const [outcome, availability] of LEGAL_COMBINATIONS) {
       const view = toGroundingView(createGrounding(outcome, availability))
 
-      assert.ok(view)
+      assert.ok(view, 'view')
       assert.equal(view.noteKey, availability === 'partial' ? 'partial' : null)
     }
   })
@@ -105,7 +105,7 @@ describe('toGroundingView 状态映射', () => {
     const answered = toGroundingView(createGrounding('answered', 'available'))
     const insufficient = toGroundingView(createGrounding('insufficient_evidence', 'available'))
 
-    assert.ok(answered && insufficient)
+    assert.ok(answered && insufficient, 'answered && insufficient')
     assert.notEqual(answered.sourcesKey, insufficient.sourcesKey)
   })
 
@@ -132,7 +132,7 @@ describe('toGroundingView 来源投影', () => {
       }),
     ]))
 
-    assert.ok(view)
+    assert.ok(view, 'view')
     assert.deepEqual(
       view.sources.map(source => [source.index, source.title]),
       [[1, '后排候选'], [2, '前排候选']],
@@ -142,7 +142,7 @@ describe('toGroundingView 来源投影', () => {
   it('只投影安全展示字段，不泄漏内部标识与检索细节', () => {
     const view = toGroundingView(createGrounding('answered', 'available'))
 
-    assert.ok(view)
+    assert.ok(view, 'view')
     assert.deepEqual(Object.keys(view.sources[0]).sort(), [
       'citationId',
       'excerpt',
@@ -164,7 +164,7 @@ describe('toGroundingView 来源投影', () => {
       }),
     ]))
 
-    assert.ok(view)
+    assert.ok(view, 'view')
     assert.equal(view.sources[0].granularity, 'article')
     assert.equal(view.sources[0].excerpt, null)
     assert.equal(view.sources[0].sectionPath, null)
@@ -174,7 +174,7 @@ describe('toGroundingView 来源投影', () => {
   it('没有 Citation 的 zero-hit 状态不产生来源列表', () => {
     const view = toGroundingView(createGrounding('insufficient_evidence', 'none', []))
 
-    assert.ok(view)
+    assert.ok(view, 'view')
     assert.deepEqual(view.sources, [])
   })
 })

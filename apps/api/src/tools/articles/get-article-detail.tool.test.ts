@@ -53,6 +53,7 @@ describe('get_article_detail', () => {
     assert.ok(
       fakePrisma.transactionDeadlines[0]!.deadlineAt
       < context.databaseDeadline.deadlineAt,
+      'fakePrisma.transactionDeadlines[0]!.deadlineAt < context.databaseDeadline.deadlineAt',
     )
     assert.notEqual(
       fakePrisma.transactionDeadlines[0]!.signal,

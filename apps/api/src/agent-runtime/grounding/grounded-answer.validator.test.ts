@@ -68,7 +68,7 @@ function assertRejected(
   assert.throws(
     () => validateGroundedAnswer(input, registry),
     (error: unknown) => {
-      assert.ok(error instanceof GroundedAnswerRejectedError)
+      assert.ok(error instanceof GroundedAnswerRejectedError, 'error instanceof GroundedAnswerRejectedError')
       assert.equal(error.code, code)
       return true
     },

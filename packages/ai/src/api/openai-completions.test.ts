@@ -344,7 +344,7 @@ describe('OpenAICompatibleClient 瞬态失败重试', () => {
           { type: 'message', role: 'user', content: 'hello' },
         ], { request: DEEPSEEK_REQUEST })),
         (thrown) => {
-          assert.ok(thrown instanceof error)
+          assert.ok(thrown instanceof error, 'thrown instanceof error')
           // 认证类文案带实际状态码，403 不能写成 401。
           if (thrown instanceof LLMAuthError)
             assert.match(thrown.message, new RegExp(`（${status}）`))
@@ -457,7 +457,7 @@ describe('OpenAICompatibleClient 瞬态失败重试', () => {
         abortController.abort()
       }
     }, (error) => {
-      assert.ok(error instanceof LLMNetworkError)
+      assert.ok(error instanceof LLMNetworkError, 'error instanceof LLMNetworkError')
       assert.doesNotMatch(error.message, /finish reason/)
       return true
     })
@@ -571,7 +571,7 @@ describe('OpenAICompatibleClient 未映射状态码的错误文案', () => {
       failure = error
     }
 
-    assert.ok(failure instanceof LLMApiError)
+    assert.ok(failure instanceof LLMApiError, 'failure instanceof LLMApiError')
     return failure
   }
 
@@ -583,7 +583,7 @@ describe('OpenAICompatibleClient 未映射状态码的错误文案', () => {
       }))
 
       assert.equal(error.message, `LLM API HTTP ${status} 错误`)
-      assert.ok(error.detail instanceof OpenAI.APIError)
+      assert.ok(error.detail instanceof OpenAI.APIError, 'error.detail instanceof OpenAI.APIError')
       assert.match(error.detail.message, /SECRET_UPSTREAM_PAGE/)
     }
   })
@@ -617,7 +617,7 @@ describe('OpenAICompatibleClient 未映射状态码的错误文案', () => {
         { request: RELAY_REQUEST },
       )),
       (error: unknown) => {
-        assert.ok(error instanceof LLMServerError)
+        assert.ok(error instanceof LLMServerError, 'error instanceof LLMServerError')
         assert.match(error.message, /（502）/)
         assert.doesNotMatch(error.message, /SECRET_UPSTREAM/)
         return true
@@ -678,7 +678,7 @@ describe('OpenAICompatibleClient 模型调用边界（#168）', () => {
     const inStream = await failureOf(sse(`data: ${JSON.stringify({ error: { code: 'invalid_api_key', message: `bad key ${key}` } })}`))
 
     for (const error of [echoed, atBoundary, inStream]) {
-      assert.ok(error instanceof LLMApiError)
+      assert.ok(error instanceof LLMApiError, 'error instanceof LLMApiError')
       assert.doesNotMatch(error.message, /test-api/)
       assert.match(error.message, /\*\*\*/)
     }
@@ -706,7 +706,7 @@ describe('OpenAICompatibleClient 模型调用边界（#168）', () => {
     try {
       const error = await failureOf(sse('data: {"choices": SECRET_UPSTREAM_LINE'))
 
-      assert.ok(error instanceof LLMApiError)
+      assert.ok(error instanceof LLMApiError, 'error instanceof LLMApiError')
       assert.equal(error.message, '模型服务返回了无法解析的数据')
       assert.equal(consoleError.mock.callCount(), 0)
       assert.equal(consoleWarn.mock.callCount(), 0)
@@ -720,7 +720,7 @@ describe('OpenAICompatibleClient 模型调用边界（#168）', () => {
   it('AC-03 数据块没有 choices：报协议错误，不再变成 TypeError / 网络错误', async () => {
     const error = await failureOf(sse('data: {"message":"upstream oops"}', 'data: [DONE]'))
 
-    assert.ok(error instanceof LLMApiError)
+    assert.ok(error instanceof LLMApiError, 'error instanceof LLMApiError')
     assert.match(error.message, /没有 choices/)
   })
 
@@ -758,7 +758,7 @@ describe('OpenAICompatibleClient 映射状态码保留上游原因（#175）', (
     for (const status of [400, 422]) {
       const error = await failureOf(json(status, { type: 'invalid_request_error', message: `max_tokens too large for ${key}` }))
 
-      assert.ok(error instanceof LLMInvalidRequestError)
+      assert.ok(error instanceof LLMInvalidRequestError, 'error instanceof LLMInvalidRequestError')
       assert.match(error.message, /\[invalid_request_error\] max_tokens too large for \*\*\*$/)
       assert.doesNotMatch(error.message, /test-api/)
     }
@@ -767,7 +767,7 @@ describe('OpenAICompatibleClient 映射状态码保留上游原因（#175）', (
   it('AC-02 中转站 400 upstream_error 归 LLMServerError，文案带上游摘要', async () => {
     const error = await failureOf(json(400, { code: null, type: 'upstream_error', message: 'Upstream request failed' }))
 
-    assert.ok(error instanceof LLMServerError)
+    assert.ok(error instanceof LLMServerError, 'error instanceof LLMServerError')
     assert.match(error.message, /（400）.*: \[upstream_error\] Upstream request failed$/)
   })
 
@@ -790,10 +790,10 @@ describe('OpenAICompatibleClient 映射状态码保留上游原因（#175）', (
       { status: 200, headers: { 'Content-Type': 'text/event-stream' } },
     ))
 
-    assert.ok(rateLimited instanceof LLMRateLimitError)
-    assert.ok(inStreamAuth instanceof LLMAuthError)
+    assert.ok(rateLimited instanceof LLMRateLimitError, 'rateLimited instanceof LLMRateLimitError')
+    assert.ok(inStreamAuth instanceof LLMAuthError, 'inStreamAuth instanceof LLMAuthError')
 
-    assert.ok(server instanceof LLMServerError)
+    assert.ok(server instanceof LLMServerError, 'server instanceof LLMServerError')
     assert.match(server.message, /（502）.*: \[bad_gateway\] upstream timeout$/)
   })
 })

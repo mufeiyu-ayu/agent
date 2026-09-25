@@ -193,7 +193,7 @@ function createService(baseUrl: string, llmService = new LLMService(RUNTIME_CONF
 }
 
 function isBaseUrlChangeRejected(error: unknown): boolean {
-  assert.ok(error instanceof BadRequestException)
+  assert.ok(error instanceof BadRequestException, 'error instanceof BadRequestException')
   assert.equal(error.message, BASE_URL_CHANGE_MESSAGE)
   return true
 }
@@ -277,7 +277,7 @@ describe('AdminLlmService.updateProvider：换地址必须同时换密钥', () =
     assert.equal(updated.apiKeyLast4, NEW_API_KEY.slice(-4))
     assert.equal(providerWrite.data.baseUrl, 'https://new.example/v1')
     assert.notEqual(providerWrite.data.apiKeyEncrypted, provider.apiKeyEncrypted)
-    assert.ok(writes.some(write => write.op === 'llmModel.updateMany'))
+    assert.ok(writes.some(write => write.op === 'llmModel.updateMany'), 'writes.some(write => write.op === \'llmModel.updateMany\')')
   })
 
   it('地址不变（省略或只差末尾斜杠）时不要求重填密钥，也不把地址写回（避免覆盖并发提交的新地址）', async () => {
@@ -357,14 +357,14 @@ describe('LLMService 出站代理分流', () => {
 
     const proxied = await exerciseAllPaths(llmService, true)
 
-    assert.ok(proxied.chatEvents.includes('response_completed'))
+    assert.ok(proxied.chatEvents.includes('response_completed'), 'proxied.chatEvents.includes(\'response_completed\')')
     assert.deepEqual(proxied.probe, { ok: true })
     assert.deepEqual(proxied.models, ['fake-model'])
     assert.deepEqual(upstream.requests.map(item => item.path), ['/v1/chat/completions', '/v1/chat/completions', '/v1/models'])
     // 隧道会被 keep-alive 复用，按请求的对端端口核对：三条请求都从代理的隧道进来。
-    assert.ok(proxy.connections.length > 0)
-    assert.ok(proxy.connections.every(item => item.target === upstreamHost))
-    assert.ok(upstream.remotePorts.every(port => proxy.tunnelPorts.has(port)))
+    assert.ok(proxy.connections.length > 0, 'proxy.connections.length > 0')
+    assert.ok(proxy.connections.every(item => item.target === upstreamHost), 'proxy.connections.every(item => item.target === upstreamHost)')
+    assert.ok(upstream.remotePorts.every(port => proxy.tunnelPorts.has(port)), 'upstream.remotePorts.every(port => proxy.tunnelPorts.has(port))')
 
     proxy.connections.length = 0
     upstream.requests.length = 0
@@ -372,20 +372,20 @@ describe('LLMService 出站代理分流', () => {
 
     const direct = await exerciseAllPaths(llmService, false)
 
-    assert.ok(direct.chatEvents.includes('response_completed'))
+    assert.ok(direct.chatEvents.includes('response_completed'), 'direct.chatEvents.includes(\'response_completed\')')
     assert.deepEqual(direct.probe, { ok: true })
     assert.deepEqual(direct.models, ['fake-model'])
     assert.equal(upstream.requests.length, 3)
     assert.deepEqual(proxy.connections, [])
-    assert.ok(upstream.remotePorts.every(port => !proxy.tunnelPorts.has(port)))
+    assert.ok(upstream.remotePorts.every(port => !proxy.tunnelPorts.has(port)), 'upstream.remotePorts.every(port => !proxy.tunnelPorts.has(port))')
   })
 
   it('勾选了但本机没配代理：聊天、探活、拉取模型都按 LLMNetworkError 失败，点明缺 OUTBOUND_PROXY_URL，不静默直连', async () => {
     const llmService = createProxiedLlmService(null)
     const credentials = { providerId: 'provider-1', baseUrl: `${upstream.origin}/v1`, apiKey: STORED_API_KEY, useProxy: true }
     const isMissingProxy = (error: unknown) => {
-      assert.ok(error instanceof LlmProxyError)
-      assert.ok(error instanceof LLMNetworkError)
+      assert.ok(error instanceof LlmProxyError, 'error instanceof LlmProxyError')
+      assert.ok(error instanceof LLMNetworkError, 'error instanceof LLMNetworkError')
       assert.match(error.message, /本机未配置 OUTBOUND_PROXY_URL/)
       return true
     }
@@ -423,12 +423,12 @@ describe('LLMService 出站代理分流', () => {
         // 连接阶段就失败
       }
     }, (error: unknown) => {
-      assert.ok(error instanceof LlmProxyError)
+      assert.ok(error instanceof LlmProxyError, 'error instanceof LlmProxyError')
       assert.equal(error.message, expected)
       assert.doesNotMatch(error.message, /user:pass/)
       return true
     })
-    assert.ok(Date.now() - startedAt < 30_000)
+    assert.ok(Date.now() - startedAt < 30_000, 'Date.now() - startedAt < 30_000')
   })
 
   it('隧道建立后的失败只说明经过哪个代理与错误码，不带底层原文；localhost 双栈的 AggregateError 也认得出是代理连不上', async () => {
@@ -472,7 +472,7 @@ describe('LLMService 出站代理分流', () => {
 describe('AdminLlmService：使用代理的勾选', () => {
   const STORED_BASE_URL = 'https://stored.example/v1'
   const isProxyRejected = (error: unknown) => {
-    assert.ok(error instanceof BadRequestException)
+    assert.ok(error instanceof BadRequestException, 'error instanceof BadRequestException')
     assert.match(error.message, /本机未配置 OUTBOUND_PROXY_URL/)
     return true
   }

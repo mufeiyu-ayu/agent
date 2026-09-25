@@ -281,7 +281,7 @@ describe('runGroundedFinalization 模型不服从（正常 stop、未调用提�
         },
       }),
       (error: unknown) => {
-        assert.ok(error instanceof GroundedFinalizationFailedError)
+        assert.ok(error instanceof GroundedFinalizationFailedError, 'error instanceof GroundedFinalizationFailedError')
         assert.equal(error.rejectionCode, 'submission_missing')
         assert.equal(error.attempts.length, 2)
         return true
@@ -320,7 +320,7 @@ describe('runGroundedFinalization 模型不服从（正常 stop、未调用提�
         },
       }),
       (error: unknown) => {
-        assert.ok(error instanceof GroundedFinalizationSamplingError)
+        assert.ok(error instanceof GroundedFinalizationSamplingError, 'error instanceof GroundedFinalizationSamplingError')
         assert.equal(error.failure, 'unexpected_finish_reason')
         return true
       },
@@ -346,7 +346,7 @@ describe('runGroundedFinalization 模型不服从（正常 stop、未调用提�
         },
       }),
       (error: unknown) => {
-        assert.ok(error instanceof GroundedFinalizationSamplingError)
+        assert.ok(error instanceof GroundedFinalizationSamplingError, 'error instanceof GroundedFinalizationSamplingError')
         assert.equal(error.failure, 'stream_failed')
         assert.equal(error.cause, providerError)
         return true

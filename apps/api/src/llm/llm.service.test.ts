@@ -71,7 +71,7 @@ describe('LLMService', () => {
       globalThis.fetch = (async () => new Response('<html>UPSTREAM_BODY</html>', { status })) as typeof fetch
 
       await assert.rejects(createService().listProviderModelNames(SNAPSHOT), (error: unknown) => {
-        assert.ok(error instanceof LLMApiError)
+        assert.ok(error instanceof LLMApiError, 'error instanceof LLMApiError')
         assert.match(error.message, new RegExp(`（HTTP ${status}），请检查 baseUrl 是否填到 /v1`))
         assert.doesNotMatch(error.message, /UPSTREAM_BODY/)
         return true
@@ -146,7 +146,7 @@ describe('LLMService', () => {
     assert.match(probe.ok ? '' : probe.error, /请求超时（30s 内未完成）/)
 
     await assert.rejects(service.listProviderModelNames(SNAPSHOT), (error: unknown) => {
-      assert.ok(error instanceof LLMNetworkError)
+      assert.ok(error instanceof LLMNetworkError, 'error instanceof LLMNetworkError')
       assert.match(error.message, /请求超时/)
       return true
     })

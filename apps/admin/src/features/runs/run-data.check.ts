@@ -746,9 +746,9 @@ async function checkApiErrors(): Promise<void> {
     fetchAdminRuns({}),
     (error: unknown) => {
       networkError = error
-      assert.ok(error instanceof AdminRunApiError)
+      assert.ok(error instanceof AdminRunApiError, 'error instanceof AdminRunApiError')
       assert.equal(error.status, 0)
-      assert.ok(error.cause instanceof TypeError)
+      assert.ok(error.cause instanceof TypeError, 'error.cause instanceof TypeError')
       return true
     },
   )
@@ -762,7 +762,7 @@ async function checkApiErrors(): Promise<void> {
   await assert.rejects(
     fetchAdminRunDetail('missing/run'),
     (error: unknown) => {
-      assert.ok(error instanceof AdminRunApiError)
+      assert.ok(error instanceof AdminRunApiError, 'error instanceof AdminRunApiError')
       assert.equal(error.status, 404)
       assert.equal(error.message, 'Agent Run 不存在')
       return true
@@ -775,7 +775,7 @@ async function checkApiErrors(): Promise<void> {
     fetchAdminRuns({}),
     (error: unknown) => {
       localError = error
-      assert.ok(error instanceof AdminRunApiError)
+      assert.ok(error instanceof AdminRunApiError, 'error instanceof AdminRunApiError')
       assert.equal(error.status, 500)
       assert.match(error.message, /HTTP 500/)
       return true

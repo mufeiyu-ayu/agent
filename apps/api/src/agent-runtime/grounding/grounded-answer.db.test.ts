@@ -120,7 +120,7 @@ describe('Grounded Answer PostgreSQL integration', { concurrency: 1 }, () => {
   let prisma: PrismaService
 
   before(async () => {
-    assert.ok(testDatabaseUrl)
+    assert.ok(testDatabaseUrl, 'testDatabaseUrl')
     assert.match(schema, /^grounding_test_[a-f\d]+$/)
     adminPool = new PgPool({
       connectionString: testDatabaseUrl,
@@ -211,7 +211,7 @@ describe('Grounded Answer PostgreSQL integration', { concurrency: 1 }, () => {
     const streamedGrounding = (completed as { grounding?: MessageGroundingV1 })
       .grounding
 
-    assert.ok(streamedGrounding)
+    assert.ok(streamedGrounding, 'streamedGrounding')
     assert.equal(streamedGrounding.evidenceAvailability, 'available')
     assert.equal(streamedGrounding.outcome, 'answered')
     assert.equal(streamedGrounding.citations.length, 1)
@@ -244,7 +244,7 @@ describe('Grounded Answer PostgreSQL integration', { concurrency: 1 }, () => {
       step => step.type === 'grounded_finalization',
     )
 
-    assert.ok(finalizationStep)
+    assert.ok(finalizationStep, 'finalizationStep')
     assert.doesNotMatch(
       JSON.stringify(finalizationStep.output),
       /evk_|内部草稿|SEO 的核心是让搜索引擎理解页面结构/,
@@ -277,7 +277,7 @@ describe('Grounded Answer PostgreSQL integration', { concurrency: 1 }, () => {
     const message = await requireAssistantMessage(conversationId)
     const grounding = toMessageGroundingV1(await requireGrounding(message.id))
 
-    assert.ok(grounding)
+    assert.ok(grounding, 'grounding')
     assert.equal(grounding.evidenceAvailability, 'none')
     assert.equal(grounding.outcome, 'insufficient_evidence')
     assert.deepEqual(grounding.citations, [])
@@ -309,7 +309,7 @@ describe('Grounded Answer PostgreSQL integration', { concurrency: 1 }, () => {
     const message = await requireAssistantMessage(conversationId)
     const grounding = toMessageGroundingV1(await requireGrounding(message.id))
 
-    assert.ok(grounding)
+    assert.ok(grounding, 'grounding')
     assert.equal(grounding.citations.length, 1)
 
     const [citation] = grounding.citations
@@ -350,7 +350,7 @@ describe('Grounded Answer PostgreSQL integration', { concurrency: 1 }, () => {
     const message = await requireAssistantMessage(conversationId)
     const grounding = toMessageGroundingV1(await requireGrounding(message.id))
 
-    assert.ok(grounding)
+    assert.ok(grounding, 'grounding')
     assert.equal(grounding.evidenceAvailability, 'none')
     assert.deepEqual(grounding.citations, [])
   })
@@ -435,7 +435,7 @@ describe('Grounded Answer PostgreSQL integration', { concurrency: 1 }, () => {
       .join('')
 
     assert.equal(events.at(-1)?.type, 'run_aborted')
-    assert.ok(replayed.length > 0)
+    assert.ok(replayed.length > 0, 'replayed.length > 0')
 
     const message = await requireAssistantMessage(conversationId)
 
@@ -455,7 +455,7 @@ describe('Grounded Answer PostgreSQL integration', { concurrency: 1 }, () => {
 
     // finalization Step 在 replay 期间保持 RUNNING，中断后由统一收口变成 ABORTED；
     // 绝不能留下一个 COMPLETED 的 finalization Step 配上 ABORTED 的 Run。
-    assert.ok(finalizationStep)
+    assert.ok(finalizationStep, 'finalizationStep')
     assert.equal(finalizationStep.status, AgentStepStatus.ABORTED)
     assert.equal(
       steps.some(step => step.status === AgentStepStatus.RUNNING),
@@ -514,7 +514,7 @@ describe('Grounded Answer PostgreSQL integration', { concurrency: 1 }, () => {
         step => step.type === 'grounded_finalization',
       )
 
-      assert.ok(finalizationStep)
+      assert.ok(finalizationStep, 'finalizationStep')
       assert.notEqual(finalizationStep.status, AgentStepStatus.COMPLETED)
       assert.equal(
         steps.some(step => step.status === AgentStepStatus.RUNNING),
@@ -641,16 +641,16 @@ describe('Grounded Answer PostgreSQL integration', { concurrency: 1 }, () => {
         : null,
       'retrieve_article_context:true',
     )
-    assert.ok(call.sourceCount !== null && call.sourceCount > 0)
+    assert.ok(call.sourceCount !== null && call.sourceCount > 0, 'call.sourceCount !== null && call.sourceCount > 0')
     assert.deepEqual(call.strategy?.name !== undefined, true)
-    assert.ok(call.refs.some(ref => ref.sourceId === 301))
+    assert.ok(call.refs.some(ref => ref.sourceId === 301), 'call.refs.some(ref => ref.sourceId === 301)')
 
     // typed timeline item 必须来自真实 finalization Step，而不是 Generic fallback。
     const finalizationItem = detail.timeline.find(
       item => item.type === 'grounded_finalization',
     )
 
-    assert.ok(finalizationItem?.kind === 'known' && finalizationItem.type === 'grounded_finalization')
+    assert.ok(finalizationItem?.kind === 'known' && finalizationItem.type === 'grounded_finalization', 'finalizationItem?.kind === \'known\' && finalizationItem.type === \'grounded_finalization\'')
     assert.equal(finalizationItem.evidenceAvailability, 'available')
     assert.equal(finalizationItem.outcome, 'answered')
     assert.equal(finalizationItem.attemptCount, 1)
@@ -661,7 +661,7 @@ describe('Grounded Answer PostgreSQL integration', { concurrency: 1 }, () => {
     assert.deepEqual(inspector.citations![0]!.matchedCallIds, ['call-1'])
 
     // 真实 Postgres 往返后：参数与 observation 在 tool Step 收口时写入，Admin 原样投影，查询取自参数。
-    assert.ok(toolItem?.kind === 'known' && toolItem.type === 'tool_execution')
+    assert.ok(toolItem?.kind === 'known' && toolItem.type === 'tool_execution', 'toolItem?.kind === \'known\' && toolItem.type === \'tool_execution\'')
     assert.equal(toolItem.arguments, '{"query":"SEO 是什么","limit":2}')
     assert.match(toolItem.observation ?? '', /Sitemap 帮助搜索引擎发现页面。/)
     assert.equal(call.query, 'SEO 是什么')
@@ -731,7 +731,7 @@ describe('Grounded Answer PostgreSQL integration', { concurrency: 1 }, () => {
 
     assert.equal(detail.retrievalInspector.citations, null)
     // Run Detail 仍然可加载，且不透传原始 JSON。
-    assert.ok(detail.timeline.length > 0)
+    assert.ok(detail.timeline.length > 0, 'detail.timeline.length > 0')
     assert.doesNotMatch(JSON.stringify(detail), /SELECT|leaked/)
   })
 
@@ -805,7 +805,7 @@ describe('Grounded Answer PostgreSQL integration', { concurrency: 1 }, () => {
       item => item.type === 'grounded_finalization',
     )
 
-    assert.ok(finalizationItem?.kind === 'known' && finalizationItem.type === 'grounded_finalization')
+    assert.ok(finalizationItem?.kind === 'known' && finalizationItem.type === 'grounded_finalization', 'finalizationItem?.kind === \'known\' && finalizationItem.type === \'grounded_finalization\'')
     assert.equal(finalizationItem.outcome, 'answered')
     assert.equal(finalizationItem.eligibleToolCallCount, 99)
     assert.doesNotMatch(JSON.stringify(detail), /citationIntegrity|faithfulnessStatus|schemaVersion/)
@@ -883,7 +883,7 @@ describe('Grounded Answer PostgreSQL integration', { concurrency: 1 }, () => {
     const events = await collectEvents(harness.run())
     const completed = events.at(-1)
 
-    assert.ok(completed?.type === 'run_completed')
+    assert.ok(completed?.type === 'run_completed', 'completed?.type === \'run_completed\'')
     const streamed = joinDeltas(events)
 
     assert.equal(streamed, '先说\uFFFD结论，再补一句\uFFFD。')
@@ -920,7 +920,7 @@ describe('Grounded Answer PostgreSQL integration', { concurrency: 1 }, () => {
     const events = await collectEvents(harness.run())
     const completed = events.at(-1)
 
-    assert.ok(completed?.type === 'run_completed')
+    assert.ok(completed?.type === 'run_completed', 'completed?.type === \'run_completed\'')
     const replayed = joinDeltas(events)
 
     assert.equal(replayed, 'SEO 的核心\uFFFD是让搜索引擎理解页面结构。')
@@ -930,7 +930,7 @@ describe('Grounded Answer PostgreSQL integration', { concurrency: 1 }, () => {
 
     assert.equal(message.status, MessageStatus.COMPLETED)
     assert.equal(message.content, replayed)
-    assert.ok(await findGrounding(message.id))
+    assert.ok(await findGrounding(message.id), 'await findGrounding(message.id)')
     assert.equal((await requireRun(conversationId)).status, AgentRunStatus.COMPLETED)
   })
 
@@ -963,7 +963,7 @@ describe('Grounded Answer PostgreSQL integration', { concurrency: 1 }, () => {
     const steps = await listSteps(run.id)
     const toolStep = steps.find(step => step.type === 'tool_execution')
 
-    assert.ok(toolStep)
+    assert.ok(toolStep, 'toolStep')
     assert.equal(toolStep.status, AgentStepStatus.FAILED)
     assert.deepEqual(
       [(toolStep.input as Record<string, unknown>).callId, (toolStep.input as Record<string, unknown>).toolName],
@@ -1244,7 +1244,7 @@ describe('Grounded Answer PostgreSQL integration', { concurrency: 1 }, () => {
       orderBy: { createdAt: 'desc' },
     })
 
-    assert.ok(message)
+    assert.ok(message, 'message')
     return message
   }
 
@@ -1255,7 +1255,7 @@ describe('Grounded Answer PostgreSQL integration', { concurrency: 1 }, () => {
   async function requireGrounding(messageId: string) {
     const grounding = await findGrounding(messageId)
 
-    assert.ok(grounding)
+    assert.ok(grounding, 'grounding')
     return grounding
   }
 
@@ -1265,7 +1265,7 @@ describe('Grounded Answer PostgreSQL integration', { concurrency: 1 }, () => {
       orderBy: { createdAt: 'desc' },
     })
 
-    assert.ok(run)
+    assert.ok(run, 'run')
     return run
   }
 

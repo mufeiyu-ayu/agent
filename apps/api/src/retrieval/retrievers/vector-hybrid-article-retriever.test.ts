@@ -80,7 +80,7 @@ describe('VectorArticleRetriever', () => {
 
     assert.equal(result.length, 10)
     assert.equal(new Set(result.map(hit => hit.sourceId)).size, 10)
-    assert.ok(result.every(hit => hit.sourceId !== 999))
+    assert.ok(result.every(hit => hit.sourceId !== 999), 'result.every(hit => hit.sourceId !== 999)')
     assert.deepEqual(result.map(hit => hit.rank), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
   })
 

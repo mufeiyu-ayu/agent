@@ -28,7 +28,7 @@ describe('PrismaArticleRetriever', () => {
     }
 
     assert.equal(contract, retriever)
-    assert.ok(missingDeadline.signal)
+    assert.ok(missingDeadline.signal, 'missingDeadline.signal')
   })
 
   it('保持 lexical 查询条件、顺序、deadline、excerpt 和稳定 rank', async () => {

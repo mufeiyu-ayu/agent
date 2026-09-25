@@ -30,7 +30,7 @@ describe('toModelIODebugCaptureEnvelope', () => {
       content: 'x'.repeat(MODEL_IO_DEBUG_CAPTURE_MAX_JSON_CHARS + 1),
     })
 
-    assert.ok(envelope)
+    assert.ok(envelope, 'envelope')
     assert.equal(envelope.truncated, true)
 
     if (envelope.truncated) {
@@ -38,7 +38,7 @@ describe('toModelIODebugCaptureEnvelope', () => {
         envelope.preview.length,
         MODEL_IO_DEBUG_CAPTURE_MAX_JSON_CHARS,
       )
-      assert.ok(envelope.preview.startsWith('{"content":"xxx'))
+      assert.ok(envelope.preview.startsWith('{"content":"xxx'), 'envelope.preview.startsWith(\'{"content":"xxx\')')
     }
   })
 
@@ -48,7 +48,7 @@ describe('toModelIODebugCaptureEnvelope', () => {
       content: `${'x'.repeat(MODEL_IO_DEBUG_CAPTURE_MAX_JSON_CHARS - 13)}😀`,
     })
 
-    assert.ok(envelope)
+    assert.ok(envelope, 'envelope')
     assert.equal(envelope.truncated, true)
 
     if (envelope.truncated) {
@@ -56,7 +56,7 @@ describe('toModelIODebugCaptureEnvelope', () => {
         envelope.preview.length,
         MODEL_IO_DEBUG_CAPTURE_MAX_JSON_CHARS - 1,
       )
-      assert.ok(envelope.preview.endsWith('x'))
+      assert.ok(envelope.preview.endsWith('x'), 'envelope.preview.endsWith(\'x\')')
     }
   })
 
@@ -125,7 +125,7 @@ describe('toModelIODebugResponseCaptureEnvelope', () => {
       },
     })
 
-    assert.ok(envelope)
+    assert.ok(envelope, 'envelope')
     assert.equal(envelope.state, 'partial')
     assert.equal('truncated' in envelope ? envelope.truncated : null, true)
   })

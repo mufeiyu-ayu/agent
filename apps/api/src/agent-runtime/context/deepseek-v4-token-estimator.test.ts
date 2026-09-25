@@ -96,9 +96,9 @@ describe('DeepSeekV4TokenEstimator', () => {
 
     assert.equal(prompt.match(/<｜DSML｜invoke name="lookup">/g)?.length, 2)
     assert.ok(prompt.indexOf('name="query" string="true">火箭 🚀')
-      < prompt.indexOf('name="query" string="true">月球'))
+      < prompt.indexOf('name="query" string="true">月球'), 'prompt.indexOf(\'name="query" string="true">火箭 🚀\') < prompt.indexOf(\'name="query" string="true">月球\')')
     assert.ok(prompt.indexOf('<tool_result>结果：甲')
-      < prompt.indexOf('<tool_result>结果：乙'))
+      < prompt.indexOf('<tool_result>结果：乙'), 'prompt.indexOf(\'<tool_result>结果：甲\') < prompt.indexOf(\'<tool_result>结果：乙\')')
     assert.equal(sha256(prompt), 'a82f582965b5a3d6dd66c2a3e1f30894a87ac0276e13869dc6e902eb840ee1f3')
     assert.equal(estimator.estimateRequest(input), 449)
     assert.equal(
@@ -238,7 +238,7 @@ describe('DeepSeekV4TokenEstimator', () => {
       const prompt = renderDeepSeekV4RequestPrompt(createRawArgumentsInput(truncated))
 
       assert.match(prompt, /<｜DSML｜parameter name="arguments" string="true">/)
-      assert.ok(Number.isInteger(estimator.estimateRequest(createRawArgumentsInput(truncated))))
+      assert.ok(Number.isInteger(estimator.estimateRequest(createRawArgumentsInput(truncated))), 'Number.isInteger(estimator.estimateRequest(createRawArgumentsInput(truncated)))')
     }
   })
 })

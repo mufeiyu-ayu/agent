@@ -508,7 +508,7 @@ describe('AgentRuntimeService model stream', () => {
     // 预算删减体现在模型输入与 contextPlan；选入条数与请求的一致性见「Run 轨迹补齐模型可见内容」AC-02。
     assert.equal(firstContextPlan.historyIncludedCount, 2)
     assert.equal(firstContextPlan.resolvedInputBudgetTokens, firstInitialContext.resolvedInputBudgetTokens)
-    assert.ok(Number(firstContextPlan.estimatedInputTokens) <= Number(firstContextPlan.resolvedInputBudgetTokens))
+    assert.ok(Number(firstContextPlan.estimatedInputTokens) <= Number(firstContextPlan.resolvedInputBudgetTokens), 'Number(firstContextPlan.estimatedInputTokens) <= Number(firstContextPlan.resolvedInputBudgetTokens)')
     // 第二轮：initialContext 快照不变，Tool Exchange 成对进入输入。
     const secondInput = secondSampling?.input as Record<string, unknown>
 
@@ -1146,16 +1146,16 @@ describe('AgentRuntimeService model stream', () => {
     assert.equal(plannedObservation?.type, 'tool_result')
     if (plannedObservation?.type !== 'tool_result')
       assert.fail('expected tool_result')
-    assert.ok([...plannedObservation.content].length < [...observation].length)
-    assert.ok([...plannedObservation.content].length <= 16_000)
+    assert.ok([...plannedObservation.content].length < [...observation].length, '[...plannedObservation.content].length < [...observation].length')
+    assert.ok([...plannedObservation.content].length <= 16_000, '[...plannedObservation.content].length <= 16_000')
     assert.match(plannedObservation.content, /Context Budget|context_budget|上下文预算/i)
     assert.ok(estimator.estimateRequest({
       items: followUpItems,
       tools: harness.llmCalls[1]?.options?.tools ?? [],
-    }) <= 262_144)
+    }) <= 262_144, 'estimator.estimateRequest({ items: followUpItems, tools: harness.llmCalls[1]?.options?.tools ?? [], }) <= 262_144')
     assert.ok(estimator.inputs.some(input => input.items.some(
       item => item.type === 'tool_result',
-    )))
+    )), 'estimator.inputs.some(input => input.items.some( item => item.type === \'tool_result\', ))')
     const contextPlan = harness.recorder.steps
       .filter(step => step.type === 'model_sampling')[1]
       ?.output as Record<string, unknown>
@@ -1287,7 +1287,7 @@ describe('AgentRuntimeService model stream', () => {
     ) {
       assert.fail('expected paired tool results')
     }
-    assert.ok([...thirdRoundResults[0].content].length < [...olderObservation].length)
+    assert.ok([...thirdRoundResults[0].content].length < [...olderObservation].length, '[...thirdRoundResults[0].content].length < [...olderObservation].length')
     assert.equal(thirdRoundResults[1].content, latestObservation)
     assert.deepEqual(thirdRoundResults.map(item => item.callId), [
       'call-old',
@@ -1891,7 +1891,7 @@ describe('AgentRuntimeService model stream', () => {
       : ''
     const toolOutput = findStep(harness, 'tool_execution')?.output as Record<string, unknown>
 
-    assert.ok([...observationContent].length <= 16_000)
+    assert.ok([...observationContent].length <= 16_000, '[...observationContent].length <= 16_000')
     assert.match(observationContent, /truncated|截断/)
     assert.doesNotMatch(observationContent, /\uFFFD/)
     assert.equal(toolOutput.originalChars, 16_100)
@@ -2530,7 +2530,7 @@ describe('AgentRuntimeService model stream', () => {
 
     const assistantMessage = harness.assistantMessage()
 
-    assert.ok(assistantMessage)
+    assert.ok(assistantMessage, 'assistantMessage')
     assistantMessage.status = MessageStatus.ABORTED
     assistantMessage.content = '已停止'
 
@@ -3130,7 +3130,7 @@ describe('AgentRuntimeService model stream', () => {
       caught = error
     }
 
-    assert.ok(caught instanceof AgentRunTerminalizationError)
+    assert.ok(caught instanceof AgentRunTerminalizationError, 'caught instanceof AgentRunTerminalizationError')
     assert.equal(events.at(-1)?.type, 'run_failed')
     assert.match(
       (events.at(-1) as { message: string }).message,
@@ -3612,7 +3612,7 @@ describe('Run 轨迹补齐模型可见内容', () => {
     // 第 2 轮放得下；第 3 轮较旧的 observation 被压缩，最新的保持原长。
     assert.deepEqual(readContextPlan(samplingSteps[1]).observationPreviewChars, [8_000])
     assert.deepEqual(readContextPlan(samplingSteps[2]).observationPreviewChars, thirdRoundLengths)
-    assert.ok(thirdRoundLengths[0]! < 8_000)
+    assert.ok(thirdRoundLengths[0]! < 8_000, 'thirdRoundLengths[0]! < 8_000')
     assert.equal(thirdRoundLengths[1], 8_000)
     assert.deepEqual(
       harness.recorder.steps
@@ -4442,7 +4442,7 @@ class FakeAgentRunRecorderService {
       candidate => candidate.id === input.assistantMessageId,
     )
 
-    assert.ok(message)
+    assert.ok(message, 'message')
     if (
       message.status !== MessageStatus.PENDING
       && message.status !== MessageStatus.STREAMING
@@ -4555,7 +4555,7 @@ class FakeAgentRunRecorderService {
   ): void {
     const step = this.steps.find(candidate => candidate.id === stepId)
 
-    assert.ok(step)
+    assert.ok(step, 'step')
     assert.equal(step.status, AgentStepStatus.RUNNING)
     // 与真实 Recorder 一致：收口时提供 input 就整体替换，否则保留开始时的 input。
     if (input.input !== undefined)
@@ -4616,7 +4616,7 @@ function projectHarnessRunDetail(
   const assistantMessage = harness.assistantMessage()
   const now = new Date()
 
-  assert.ok(assistantMessage)
+  assert.ok(assistantMessage, 'assistantMessage')
 
   return projectAdminRunDetail({
     id: 'run-1',
@@ -4728,7 +4728,7 @@ function readRequestBody(init: RequestInit | undefined): {
     tool_calls?: Array<{ function: { arguments: string } }>
   }>
 } {
-  assert.ok(typeof init?.body === 'string')
+  assert.ok(typeof init?.body === 'string', 'typeof init?.body === \'string\'')
   return JSON.parse(init.body)
 }
 
@@ -4980,7 +4980,7 @@ async function* waitForAbortModelStream(
   afterAbort?: () => void,
   options?: ChatStreamOptions,
 ): AsyncGenerator<ModelStreamEvent> {
-  assert.ok(signal)
+  assert.ok(signal, 'signal')
   options?.debugCapture?.onRequest({ model: 'deepseek-v4-flash' })
 
   try {
@@ -5087,7 +5087,7 @@ function createFakeFetchProvider(attempts: FakeFetchAttempt[]) {
   })
 
   const createModelStream: CreateModelStream = (messages, options) => {
-    assert.ok(options)
+    assert.ok(options, 'options')
     return client.chatStream(messages, options)
   }
 

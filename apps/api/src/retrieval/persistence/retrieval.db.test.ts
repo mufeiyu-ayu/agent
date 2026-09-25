@@ -62,7 +62,7 @@ integrationDescribe('Article retrieval PostgreSQL / pgvector integration', {
   let repository: PostgresArticleRetrievalRepository
 
   before(async () => {
-    assert.ok(testDatabaseUrl)
+    assert.ok(testDatabaseUrl, 'testDatabaseUrl')
     assert.match(schema, /^article_retrieval_test_[a-f\d]+$/)
     adminPool = new PgPool({
       connectionString: testDatabaseUrl,
@@ -147,7 +147,7 @@ integrationDescribe('Article retrieval PostgreSQL / pgvector integration', {
     ])
     assert.equal(result[0]?.chunkId, 'article-101-chunk-0')
     assert.equal(result[0]?.cosineDistance, 0)
-    assert.ok((result[1]?.cosineDistance ?? 1) > 0)
+    assert.ok((result[1]?.cosineDistance ?? 1) > 0, '(result[1]?.cosineDistance ?? 1) > 0')
     assert.deepEqual(
       (await repository.findVectorChunkCandidates(
         basisVector(0),
@@ -198,7 +198,7 @@ integrationDescribe('Article retrieval PostgreSQL / pgvector integration', {
       void pending.catch(() => {})
       await waitFor(() => trackingPool.connectedProcessIds.length > connectionCount)
       const processId = trackingPool.connectedProcessIds.at(-1)
-      assert.ok(processId)
+      assert.ok(processId, 'processId')
       await waitForBlockedQuery(processId)
 
       abortController.abort()
@@ -219,7 +219,7 @@ integrationDescribe('Article retrieval PostgreSQL / pgvector integration', {
       { query: 'reusable', languageCode: 'en', limit: 5 },
       createContext(),
     )
-    assert.ok(reusable.length > 0)
+    assert.ok(reusable.length > 0, 'reusable.length > 0')
   })
 
   it('database deadline 真实终止 blocked SQL、返回统一 timeout 且 pool 后续可复用', async () => {
@@ -238,7 +238,7 @@ integrationDescribe('Article retrieval PostgreSQL / pgvector integration', {
       void pending.catch(() => {})
       await waitFor(() => trackingPool.connectedProcessIds.length > connectionCount)
       const processId = trackingPool.connectedProcessIds.at(-1)
-      assert.ok(processId)
+      assert.ok(processId, 'processId')
       await waitForBlockedQuery(processId)
 
       await assert.rejects(pending, {
@@ -257,7 +257,7 @@ integrationDescribe('Article retrieval PostgreSQL / pgvector integration', {
       { query: 'reusable', languageCode: 'en', limit: 5 },
       createContext(),
     )
-    assert.ok(reusable.length > 0)
+    assert.ok(reusable.length > 0, 'reusable.length > 0')
   })
 
   async function seedLexicalFixtures(): Promise<void> {

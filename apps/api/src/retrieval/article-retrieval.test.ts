@@ -68,6 +68,6 @@ describe('Article Retrieval contract', () => {
     assert.equal([...excerpt].length, 500)
     assert.doesNotMatch(excerpt, /<article>|<h1>|<p>|\n/)
     assert.doesNotMatch(excerpt, /\s{2,}/)
-    assert.ok(excerpt.includes('🚀'))
+    assert.ok(excerpt.includes('🚀'), 'excerpt.includes(\'🚀\')')
   })
 })

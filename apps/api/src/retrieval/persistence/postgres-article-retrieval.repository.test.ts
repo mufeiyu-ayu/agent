@@ -37,7 +37,7 @@ describe('PostgresArticleRetrievalRepository', () => {
 
     assert.equal(result[0]?.sourceId, 7)
     const query = client.queries.find(entry => entry.text.includes('FROM "Article" AS article'))
-    assert.ok(query)
+    assert.ok(query, 'query')
     assert.deepEqual(query.values, [
       'Alpha%_\\',
       '%Alpha\\%\\_\\\\%',
@@ -80,10 +80,10 @@ describe('PostgresArticleRetrievalRepository', () => {
     )
 
     assert.equal(result[0]?.cosineDistance, 0.125)
-    assert.ok(sqlLatencyMs !== undefined && sqlLatencyMs >= 0)
+    assert.ok(sqlLatencyMs !== undefined && sqlLatencyMs >= 0, 'sqlLatencyMs !== undefined && sqlLatencyMs >= 0')
     const query = client.queries.find(entry => entry.text.includes('compatible_chunks'))
-    assert.ok(query)
-    assert.ok(!query.text.includes(query.values[0] as string))
+    assert.ok(query, 'query')
+    assert.ok(!query.text.includes(query.values[0] as string), '!query.text.includes(query.values[0] as string)')
     assert.match(query.text, /"embedding" <=> \$1::vector/)
     assert.match(query.text, /state\."sourceUpdatedAt" = article\."updatedAt"/)
     assert.match(query.text, /actual_chunk_count = declared_chunk_count::bigint/)

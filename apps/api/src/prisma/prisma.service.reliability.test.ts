@@ -85,7 +85,7 @@ describe('PrismaService database deadline reliability', () => {
     const afterRollback = await readTimeoutSettings(prisma)
 
     assertDynamicTimeoutSettings(committedLocal)
-    assert.ok(rolledBackLocal)
+    assert.ok(rolledBackLocal, 'rolledBackLocal')
     assertDynamicTimeoutSettings(rolledBackLocal)
     assert.match(errorDetail(rollbackFailure), /issue31 forced rollback/)
     assert.deepEqual(afterCommit, before)
@@ -113,11 +113,11 @@ describe('PrismaService database deadline reliability', () => {
       failure = error
     }
 
-    assert.ok(failure instanceof DatabaseOperationDeadlineExceededError)
+    assert.ok(failure instanceof DatabaseOperationDeadlineExceededError, 'failure instanceof DatabaseOperationDeadlineExceededError')
     assert.match(errorDetail(failure.cause), /57014/)
     assert.match(errorDetail(failure.cause), /canceling statement due to statement timeout/)
-    assert.ok(Date.now() - startedAt < 750)
-    assert.ok(backendPid !== undefined)
+    assert.ok(Date.now() - startedAt < 750, 'Date.now() - startedAt < 750')
+    assert.ok(backendPid !== undefined, 'backendPid !== undefined')
 
     const monitor = new Pool({ connectionString, max: 1 })
     try {
@@ -155,7 +155,7 @@ describe('PrismaService database deadline reliability', () => {
         failure = error
       }
 
-      assert.ok(failure instanceof DatabaseOperationDeadlineExceededError)
+      assert.ok(failure instanceof DatabaseOperationDeadlineExceededError, 'failure instanceof DatabaseOperationDeadlineExceededError')
       assert.match(errorDetail(failure.cause), /55P03/)
       assert.match(errorDetail(failure.cause), /canceling statement due to lock timeout/)
 
@@ -261,7 +261,7 @@ describe('PrismaService database deadline reliability', () => {
       assert.equal(beginDelayed, true)
       assert.equal(rollbackCount, 1)
       assert.equal(releaseCount, 1)
-      assert.ok(backendPid !== undefined)
+      assert.ok(backendPid !== undefined, 'backendPid !== undefined')
 
       pool.connect = originalConnect
       const reusableClient = await pool.connect()
@@ -327,7 +327,7 @@ describe('PrismaService database deadline reliability', () => {
         operation,
         DatabaseOperationDeadlineExceededError,
       )
-      assert.ok(Date.now() - startedAt < 500)
+      assert.ok(Date.now() - startedAt < 500, 'Date.now() - startedAt < 500')
       assert.equal(callbackInvoked, false)
     }
     finally {
@@ -381,7 +381,7 @@ describe('PrismaService database deadline reliability', () => {
       )
 
       assert.equal(commitOwned, true)
-      assert.ok(elapsedMs >= 180)
+      assert.ok(elapsedMs >= 180, 'elapsedMs >= 180')
       assert.equal(result[0]!.count, 1)
     }
     finally {
@@ -421,9 +421,9 @@ describe('PrismaService database deadline reliability', () => {
       )
 
       assert.equal(commitOwned, true)
-      assert.ok(elapsedMs >= 180)
-      assert.ok(!(failure instanceof DatabaseOperationDeadlineExceededError))
-      assert.ok(!(failure instanceof DatabaseCommitOutcomeUnknownError))
+      assert.ok(elapsedMs >= 180, 'elapsedMs >= 180')
+      assert.ok(!(failure instanceof DatabaseOperationDeadlineExceededError), '!(failure instanceof DatabaseOperationDeadlineExceededError)')
+      assert.ok(!(failure instanceof DatabaseCommitOutcomeUnknownError), '!(failure instanceof DatabaseCommitOutcomeUnknownError)')
       assert.match(errorDetail(failure), /issue31 forced commit failure/)
       assert.equal(result[0]!.count, 0)
       assert.notEqual(activity[0]?.state, 'idle in transaction')
@@ -504,7 +504,7 @@ describe('PrismaService database deadline reliability', () => {
 
       assert.equal(commitOwned, true)
       assert.equal(commitResponseLost, true)
-      assert.ok(failure instanceof DatabaseCommitOutcomeUnknownError)
+      assert.ok(failure instanceof DatabaseCommitOutcomeUnknownError, 'failure instanceof DatabaseCommitOutcomeUnknownError')
       assert.match(errorDetail(failure.cause), /ConnectionClosed/)
       assert.equal(result[0]!.count, 1)
       assert.notEqual(activity[0]?.state, 'idle in transaction')
@@ -529,8 +529,8 @@ describe('PrismaService database deadline reliability', () => {
         )),
       ))
 
-      assert.ok(failure instanceof DatabaseOperationDeadlineExceededError)
-      assert.ok(Date.now() - startedAt < 180)
+      assert.ok(failure instanceof DatabaseOperationDeadlineExceededError, 'failure instanceof DatabaseOperationDeadlineExceededError')
+      assert.ok(Date.now() - startedAt < 180, 'Date.now() - startedAt < 180')
 
       await sleep(250)
       const result = await prisma.$queryRawUnsafe<Array<{ count: number }>>(
@@ -565,9 +565,9 @@ describe('PrismaService database deadline reliability', () => {
       )
 
       assert.equal(commitOwned, true)
-      assert.ok(failure instanceof DatabaseCommitOutcomeUnknownError)
-      assert.ok(elapsedMs >= 50)
-      assert.ok(elapsedMs < 300)
+      assert.ok(failure instanceof DatabaseCommitOutcomeUnknownError, 'failure instanceof DatabaseCommitOutcomeUnknownError')
+      assert.ok(elapsedMs >= 50, 'elapsedMs >= 50')
+      assert.ok(elapsedMs < 300, 'elapsedMs < 300')
       assert.equal(pendingResult[0]!.count, 0)
 
       await sleep(450)
@@ -609,8 +609,8 @@ function assertDynamicTimeoutSettings(settings: TimeoutSettings): void {
   const statementTimeoutMs = Number.parseInt(settings.statement_timeout, 10)
   const lockTimeoutMs = Number.parseInt(settings.lock_timeout, 10)
 
-  assert.ok(statementTimeoutMs > 0 && statementTimeoutMs < 500)
-  assert.ok(lockTimeoutMs > 0 && lockTimeoutMs < statementTimeoutMs)
+  assert.ok(statementTimeoutMs > 0 && statementTimeoutMs < 500, 'statementTimeoutMs > 0 && statementTimeoutMs < 500')
+  assert.ok(lockTimeoutMs > 0 && lockTimeoutMs < statementTimeoutMs, 'lockTimeoutMs > 0 && lockTimeoutMs < statementTimeoutMs')
 }
 
 let commitProbeSequence = 0

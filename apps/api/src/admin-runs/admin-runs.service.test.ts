@@ -208,7 +208,7 @@ describe('Admin Run projector', () => {
 
     const item = projectAdminRunDetail(record, null).timeline.find(candidate => candidate.sequence === 3)
 
-    assert.ok(item?.kind === 'known' && item.type === 'model_sampling')
+    assert.ok(item?.kind === 'known' && item.type === 'model_sampling', 'item?.kind === \'known\' && item.type === \'model_sampling\'')
     assert.equal(item.finishReason, null)
     assert.equal(item.samplingIndex, 1)
     assert.equal(item.usage?.totalTokens, 15)
@@ -224,7 +224,7 @@ describe('Admin Run projector', () => {
     const detail = projectAdminRunDetail(record, null)
     const item = detail.timeline.find(candidate => candidate.sequence === 3)
 
-    assert.ok(item?.kind === 'known' && item.type === 'model_sampling')
+    assert.ok(item?.kind === 'known' && item.type === 'model_sampling', 'item?.kind === \'known\' && item.type === \'model_sampling\'')
     assert.deepEqual(item.usage, {
       inputTokens: null,
       outputTokens: 5,
@@ -244,7 +244,7 @@ describe('Admin Run projector', () => {
 
     const item = projectAdminRunDetail(record, null).timeline.find(candidate => candidate.sequence === 4)
 
-    assert.ok(item?.kind === 'known' && item.type === 'tool_execution')
+    assert.ok(item?.kind === 'known' && item.type === 'tool_execution', 'item?.kind === \'known\' && item.type === \'tool_execution\'')
     assert.equal(item.callId, null)
     assert.equal(item.toolName, 'search_articles')
     assert.equal(item.ok, true)
@@ -270,7 +270,7 @@ describe('Admin Run projector', () => {
 
     const item = projectAdminRunDetail(record, null).timeline.find(candidate => candidate.sequence === 3)
 
-    assert.ok(item?.kind === 'known' && item.type === 'model_sampling')
+    assert.ok(item?.kind === 'known' && item.type === 'model_sampling', 'item?.kind === \'known\' && item.type === \'model_sampling\'')
     assert.equal(item.samplingIndex, null)
     assert.equal(item.finishReason, null)
     assert.equal(item.usage, null)
@@ -302,7 +302,7 @@ describe('Admin Run projector', () => {
     assert.doesNotMatch(serialized, /DO_NOT_LEAK/)
 
     const sampling = detail.timeline.find(item => item.sequence === 3)
-    assert.ok(sampling?.kind === 'known' && sampling.type === 'model_sampling')
+    assert.ok(sampling?.kind === 'known' && sampling.type === 'model_sampling', 'sampling?.kind === \'known\' && sampling.type === \'model_sampling\'')
     // 旧 contextPlan 带过 historyIncludedCount，照读；候选条数取自 load_conversation_history。
     assert.deepEqual(sampling.contextInspector, {
       outcome: 'success',
@@ -319,7 +319,7 @@ describe('Admin Run projector', () => {
 
     // 旧 Run 没有落参数与 observation：投影为 null，不报错。
     const tool = detail.timeline.find(item => item.sequence === 4)
-    assert.ok(tool?.kind === 'known' && tool.type === 'tool_execution')
+    assert.ok(tool?.kind === 'known' && tool.type === 'tool_execution', 'tool?.kind === \'known\' && tool.type === \'tool_execution\'')
     assert.equal(tool.toolName, 'retrieve_article_context')
     assert.equal(tool.ok, true)
     assert.equal(tool.arguments, null)
@@ -327,7 +327,7 @@ describe('Admin Run projector', () => {
     assert.equal(detail.retrievalInspector.retrievalCalls[0]?.query, null)
 
     const finalization = detail.timeline.find(item => item.sequence === 6)
-    assert.ok(finalization?.kind === 'known' && finalization.type === 'grounded_finalization')
+    assert.ok(finalization?.kind === 'known' && finalization.type === 'grounded_finalization', 'finalization?.kind === \'known\' && finalization.type === \'grounded_finalization\'')
     assert.equal(finalization.evidenceAvailability, 'available')
     assert.equal(finalization.outcome, 'answered')
     assert.equal(finalization.attemptCount, 1)
@@ -469,7 +469,7 @@ describe('Admin Run projector', () => {
     }
 
     const failed = projectAdminRunDetail(estimatorFailure, null).timeline.find(item => item.sequence === 3)
-    assert.ok(failed?.kind === 'known' && failed.type === 'model_sampling')
+    assert.ok(failed?.kind === 'known' && failed.type === 'model_sampling', 'failed?.kind === \'known\' && failed.type === \'model_sampling\'')
     assert.equal(failed.contextInspector.outcome, 'estimator_failure')
     // 预算来自 initialContext；估算 Token 是 plan 的结果，plan 缺失时为 null。
     assert.equal(failed.contextInspector.resolvedInputBudgetTokens, 262_144)
@@ -482,12 +482,12 @@ describe('Admin Run projector', () => {
       contextPlan: safeContextPlan('minimum_context'),
     }
     const overflowItem = projectAdminRunDetail(overflow, null).timeline.find(item => item.sequence === 3)
-    assert.ok(overflowItem?.kind === 'known' && overflowItem.type === 'model_sampling')
+    assert.ok(overflowItem?.kind === 'known' && overflowItem.type === 'model_sampling', 'overflowItem?.kind === \'known\' && overflowItem.type === \'model_sampling\'')
     assert.equal(overflowItem.contextInspector.outcome, 'minimum_context_overflow')
     assert.equal(overflowItem.contextInspector.estimatedInputTokens, 262_145)
 
     const noMetadata = projectAdminRunDetail(createRunRecord(), null).timeline.find(item => item.sequence === 3)
-    assert.ok(noMetadata?.kind === 'known' && noMetadata.type === 'model_sampling')
+    assert.ok(noMetadata?.kind === 'known' && noMetadata.type === 'model_sampling', 'noMetadata?.kind === \'known\' && noMetadata.type === \'model_sampling\'')
     assert.equal(noMetadata.contextInspector.outcome, null)
   })
 
@@ -568,7 +568,7 @@ describe('Admin Run projector', () => {
 
     assert.equal(projectAdminRunListItem(failed, null).errorCode, 'llm_auth')
     assert.equal(failedDetail.errorCode, 'llm_auth')
-    assert.ok(failedSamplingItem?.kind === 'known' && failedSamplingItem.type === 'model_sampling')
+    assert.ok(failedSamplingItem?.kind === 'known' && failedSamplingItem.type === 'model_sampling', 'failedSamplingItem?.kind === \'known\' && failedSamplingItem.type === \'model_sampling\'')
     assert.equal(failedSamplingItem.firstTokenMs, 812)
     assert.equal(failedSamplingItem.errorCode, 'llm_auth')
 
@@ -577,7 +577,7 @@ describe('Admin Run projector', () => {
     const legacySampling = legacyDetail.timeline.find(item => item.sequence === 3)
 
     assert.equal(legacyDetail.errorCode, null)
-    assert.ok(legacySampling?.kind === 'known' && legacySampling.type === 'model_sampling')
+    assert.ok(legacySampling?.kind === 'known' && legacySampling.type === 'model_sampling', 'legacySampling?.kind === \'known\' && legacySampling.type === \'model_sampling\'')
     assert.equal(legacySampling.firstTokenMs, null)
     assert.equal(legacySampling.errorCode, null)
 
@@ -594,7 +594,7 @@ describe('Admin Run projector', () => {
     const corruptedSamplingItem = corruptedDetail.timeline.find(item => item.sequence === 7)
 
     assert.equal(corruptedDetail.errorCode, null)
-    assert.ok(corruptedSamplingItem?.kind === 'known' && corruptedSamplingItem.type === 'model_sampling')
+    assert.ok(corruptedSamplingItem?.kind === 'known' && corruptedSamplingItem.type === 'model_sampling', 'corruptedSamplingItem?.kind === \'known\' && corruptedSamplingItem.type === \'model_sampling\'')
     assert.equal(corruptedSamplingItem.firstTokenMs, null)
     assert.equal(corruptedSamplingItem.errorCode, null)
   })
@@ -685,8 +685,8 @@ describe('AdminRunsService', () => {
     assert.doesNotMatch(query.sql, /(?<!AS )"(input|output)"(?!\s*->)/)
     // 三类统计 Step 都在参数里，且只查本页的 Run。
     for (const type of ['model_sampling', 'tool_execution', 'grounded_finalization'])
-      assert.ok(query.values.includes(type))
-    assert.ok(query.values.some(value => Array.isArray(value) && value.includes('run-1')))
+      assert.ok(query.values.includes(type), 'query.values.includes(type)')
+    assert.ok(query.values.some(value => Array.isArray(value) && value.includes('run-1')), 'query.values.some(value => Array.isArray(value) && value.includes(\'run-1\'))')
   })
 
   it('模型列按 modelId 关联模型行；模型行已删除时显示 wire name 并标 deleted', async () => {

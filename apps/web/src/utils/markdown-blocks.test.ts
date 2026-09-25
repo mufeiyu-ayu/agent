@@ -247,7 +247,7 @@ test('#169 AC-01 全角标点紧贴 ** 的中文强调在终态成对，流式�
         assert.doesNotMatch(rendered, /\*\*/, `前缀 ${JSON.stringify(text.slice(0, end))} 翻回字面 **`)
       seenStrong ||= rendered.includes('<strong>')
     }
-    assert.ok(seenStrong)
+    assert.ok(seenStrong, 'seenStrong')
   }
 })
 

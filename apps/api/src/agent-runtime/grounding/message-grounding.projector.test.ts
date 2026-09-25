@@ -46,7 +46,7 @@ describe('toMessageGroundingV1 成功路径', () => {
   it('投影合法持久化数据', () => {
     const grounding = toMessageGroundingV1(persisted())
 
-    assert.ok(grounding)
+    assert.ok(grounding, 'grounding')
     assert.equal(grounding.schemaVersion, 1)
     assert.equal(grounding.evidenceAvailability, 'available')
     assert.equal(grounding.outcome, 'answered')
@@ -67,7 +67,7 @@ describe('toMessageGroundingV1 成功路径', () => {
       })],
     }))
 
-    assert.ok(grounding)
+    assert.ok(grounding, 'grounding')
     assert.equal(grounding.citations[0]?.granularity, 'article')
     assert.equal(grounding.citations[0]?.chunkId, null)
   })
@@ -77,7 +77,7 @@ describe('toMessageGroundingV1 成功路径', () => {
       citations: [citation({ sectionPath: '', excerpt: '' })],
     }))
 
-    assert.ok(grounding)
+    assert.ok(grounding, 'grounding')
     assert.equal(grounding.citations[0]?.sectionPath, null)
     assert.equal(grounding.citations[0]?.excerpt, null)
   })
@@ -89,7 +89,7 @@ describe('toMessageGroundingV1 成功路径', () => {
       citations: [],
     }))
 
-    assert.ok(grounding)
+    assert.ok(grounding, 'grounding')
     assert.deepEqual(grounding.citations, [])
   })
 
@@ -252,7 +252,7 @@ describe('toMessageGroundingV1 语义 fail closed', () => {
       ],
     }))
 
-    assert.ok(grounding)
+    assert.ok(grounding, 'grounding')
     assert.equal(grounding.citations.length, 2)
   })
 
@@ -263,7 +263,7 @@ describe('toMessageGroundingV1 语义 fail closed', () => {
       })],
     }))
 
-    assert.ok(grounding)
+    assert.ok(grounding, 'grounding')
     assert.equal(
       grounding.citations[0]?.citationId,
       'cit_abcdef0123456789abcdef0123456789',
@@ -275,7 +275,7 @@ describe('toMessageGroundingV1 语义 fail closed', () => {
       evidenceAvailability: 'partial',
     }))
 
-    assert.ok(grounding)
+    assert.ok(grounding, 'grounding')
     assert.equal(grounding.evidenceAvailability, 'partial')
   })
 })
@@ -285,7 +285,7 @@ describe('toOwnedMessageGroundingV1 归属校验', () => {
     assert.ok(toOwnedMessageGroundingV1(
       { role: 'ASSISTANT', status: 'COMPLETED' },
       persisted(),
-    ))
+    ), 'toOwnedMessageGroundingV1( { role: \'ASSISTANT\', status: \'COMPLETED\' }, persisted(), )')
   })
 
   it('非终态或失败的助手消息不返回 Grounding', () => {

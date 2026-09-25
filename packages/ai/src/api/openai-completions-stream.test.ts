@@ -494,7 +494,7 @@ describe('adaptOpenAICompatibleStream', () => {
           }),
         ]))),
         (error) => {
-          assert.ok(error instanceof LLMApiError)
+          assert.ok(error instanceof LLMApiError, 'error instanceof LLMApiError')
           assert.match(error.message, new RegExp(`finish reason 为 ${finishReason}`))
           return true
         },
@@ -589,7 +589,7 @@ describe('adaptOpenAICompatibleStream', () => {
         }
       })(),
       (error) => {
-        assert.ok(error instanceof LLMApiError)
+        assert.ok(error instanceof LLMApiError, 'error instanceof LLMApiError')
         assert.match(error.message, /重复的 Tool Call id/)
         return true
       },

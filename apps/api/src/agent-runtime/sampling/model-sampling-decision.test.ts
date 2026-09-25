@@ -164,7 +164,7 @@ describe('streamModelSampling', () => {
     await assert.rejects(
       collectSampling([{ type: 'text_delta', delta: '部分' }], 'run-1:sampling-1', providerError),
       (error) => {
-        assert.ok(error instanceof ModelSamplingIncompleteError)
+        assert.ok(error instanceof ModelSamplingIncompleteError, 'error instanceof ModelSamplingIncompleteError')
         assert.match(error.message, /读取失败/)
         assert.equal(error.summary?.textChars, 2)
         assert.equal(error.summary?.firstTokenMs, FIRST_EVENT_DELAY_MS)
@@ -261,7 +261,7 @@ describe('streamModelSampling', () => {
     await assert.rejects(
       collectSampling([], 'run-1:sampling-1', new Error('connect refused')),
       (error) => {
-        assert.ok(error instanceof ModelSamplingIncompleteError)
+        assert.ok(error instanceof ModelSamplingIncompleteError, 'error instanceof ModelSamplingIncompleteError')
         assert.equal(error.summary?.firstTokenMs, null)
         return true
       },
@@ -274,7 +274,7 @@ describe('streamModelSampling', () => {
         { type: 'text_delta', delta: '部分文本' },
       ]),
       (error) => {
-        assert.ok(error instanceof ModelSamplingIncompleteError)
+        assert.ok(error instanceof ModelSamplingIncompleteError, 'error instanceof ModelSamplingIncompleteError')
         assert.deepEqual(error.summary, {
           samplingAttemptId: 'run-1:sampling-1',
           finishReason: null,
@@ -298,7 +298,7 @@ describe('streamModelSampling', () => {
           { type: 'response_completed', finishReason },
         ]),
         (error) => {
-          assert.ok(error instanceof ModelSamplingIncompleteError)
+          assert.ok(error instanceof ModelSamplingIncompleteError, 'error instanceof ModelSamplingIncompleteError')
           assert.deepEqual(error.summary, {
             samplingAttemptId: 'run-1:sampling-1',
             finishReason,
