@@ -111,9 +111,11 @@ const showFloatingLoading = computed(() => {
               >
                 <div
                   v-if="(turn.status === 'thinking' || turn.status === 'generating') && !turn.reply"
-                  class="inline-flex h-10 items-center justify-center text-agent-ink-muted"
+                  role="status"
+                  class="inline-flex h-10 items-center gap-2"
                 >
-                  <AppIcon name="tabler:loader-2" :size="18" class="animate-spin" />
+                  <AppIcon name="tabler:sparkles" :size="15" class="thinking-glyph text-agent-copper" />
+                  <span class="thinking-shimmer text-base tracking-wider">{{ t('conversation.thinking') }}</span>
                 </div>
 
                 <AgentAssistantReply
@@ -210,8 +212,47 @@ const showFloatingLoading = computed(() => {
   animation-delay: 0s;
 }
 
+/* 等待首个回复片段时的流光文字：高光带从左向右扫过 */
+.thinking-shimmer {
+  font-family: "ZCOOL KuaiLe", sans-serif;
+  background: linear-gradient(
+    90deg,
+    var(--agent-ink-faint) 0%,
+    var(--agent-ink-faint) 40%,
+    var(--agent-ink) 50%,
+    var(--agent-ink-faint) 60%,
+    var(--agent-ink-faint) 100%
+  );
+  background-size: 250% 100%;
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  animation: thinking-shimmer 2s linear infinite;
+}
+
+@keyframes thinking-shimmer {
+  from { background-position: 100% 0; }
+  to { background-position: 0% 0; }
+}
+
+/* 前导星芒：缓慢呼吸并微转，与流光同一节奏 */
+.thinking-glyph {
+  animation: thinking-glyph 2s ease-in-out infinite;
+}
+
+@keyframes thinking-glyph {
+  0%, 100% { opacity: 0.45; transform: scale(0.9) rotate(0deg); }
+  50% { opacity: 1; transform: scale(1.05) rotate(15deg); }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .dot-bounce { animation: none; }
+  .thinking-glyph { animation: none; }
+  .thinking-shimmer {
+    animation: none;
+    background: none;
+    color: var(--agent-ink-muted);
+  }
   .floating-loading-enter-active,
   .floating-loading-leave-active { transition: none; }
 }

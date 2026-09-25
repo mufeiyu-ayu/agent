@@ -1,5 +1,7 @@
 
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Libre+Baskerville:wght@400;700&display=swap');
+/* 思考中提示专用的可爱字体：text= 只下载这几个字形，体积只有几 KB */
+@import url('https://fonts.googleapis.com/css2?family=ZCOOL+KuaiLe&text=%E6%80%9D%E8%80%83%E4%B8%ADThinking&display=swap');
 
 @import "tailwindcss";
 
