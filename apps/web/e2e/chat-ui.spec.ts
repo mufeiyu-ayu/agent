@@ -12,7 +12,6 @@ declare global {
       anchorLatestTurn: boolean
       conversationId: string
       isLoadingMessages: boolean
-      lastGeneratedAt: string
     }
     __renderCount: number
     __assistantContents: string[]
@@ -54,7 +53,6 @@ async function mountConversation(page: Page, reply: string, status: Conversation
       anchorLatestTurn: true,
       conversationId: 'ui-test',
       isLoadingMessages: false,
-      lastGeneratedAt: '--:--',
     })
     createApp({ render: () => h(Conversation, window.__chatUi) }).use(i18n).mount(root)
   }, { reply, status })

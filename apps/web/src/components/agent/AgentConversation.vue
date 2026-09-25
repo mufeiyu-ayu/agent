@@ -12,10 +12,10 @@ import { useWorkspaceTheme } from '@/hooks/useWorkspaceTheme'
 
 import AgentAssistantReply from './AgentAssistantReply.vue'
 import AgentMessage from './AgentMessage.vue'
+import AgentUserMessage from './AgentUserMessage.vue'
 
 const props = defineProps<{
   turns: ConversationTurn[]
-  lastGeneratedAt: string
   isLoadingMessages: boolean
   conversationId: string | null
   anchorLatestTurn: boolean
@@ -76,12 +76,6 @@ const showFloatingLoading = computed(() => {
       :class="isRestoringScroll ? 'invisible' : undefined"
     >
       <div class="mx-auto flex min-h-full w-full max-w-[840px] flex-col px-4 pb-10 pt-[72px] sm:px-5 sm:pb-12">
-        <div
-          v-if="lastGeneratedAt !== '--:--'"
-          class="pb-3 text-right text-xs font-semibold text-agent-ink-muted"
-        >
-          {{ t('conversation.lastReply', { time: lastGeneratedAt }) }}
-        </div>
         <div>
           <div class="space-y-6 sm:space-y-7">
             <!--
@@ -93,16 +87,14 @@ const showFloatingLoading = computed(() => {
             <template
               v-for="(turn, turnIndex) in turns"
               :key="turn.id"
-              v-memo="[turn.userMessage, turn.reply, turn.status, turn.errorMessage, turn.grounding, anchorLatestTurn && turnIndex === turns.length - 1, locale]"
+              v-memo="[turn.userMessage, turn.createdAt, turn.reply, turn.status, turn.errorMessage, turn.grounding, anchorLatestTurn && turnIndex === turns.length - 1, locale]"
             >
               <!-- eslint-enable vue/no-useless-template-attributes -->
               <AgentMessage
                 role="user"
                 :data-agent-user-turn-id="turn.id"
               >
-                <div class="max-w-[660px] whitespace-pre-wrap rounded-2xl bg-agent-user-bubble px-4 py-3 text-base font-normal leading-7 text-agent-user-bubble-text ring-1 ring-agent-user-bubble-border min-[960px]:text-[15px] min-[960px]:leading-6">
-                  {{ turn.userMessage }}
-                </div>
+                <AgentUserMessage :text="turn.userMessage" :created-at="turn.createdAt" />
               </AgentMessage>
 
               <AgentMessage

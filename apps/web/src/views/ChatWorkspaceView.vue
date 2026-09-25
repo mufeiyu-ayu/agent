@@ -63,7 +63,6 @@ const {
 const {
   message,
   status,
-  lastGeneratedAt,
   appMessage,
   recentChats,
   hasMoreConversations,
@@ -194,7 +193,6 @@ function send() {
           :anchor-latest-turn="shouldAnchorLatestTurn"
           :conversation-id="activeConversationId"
           :is-loading-messages="isLoadingMessages"
-          :last-generated-at="lastGeneratedAt"
           :turns="conversationTurns"
         />
 

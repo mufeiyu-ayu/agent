@@ -34,7 +34,6 @@ import {
   applyStreamDoneToMessage,
   withoutMessageGrounding,
 } from '../utils/message-grounding'
-import { formatGeneratedTime } from '../utils/time-format'
 
 const CHAT_REQUEST_INTERVAL_MS = 800
 const DEFAULT_MESSAGE_TIMEOUT_MS = 3600
@@ -105,17 +104,6 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
       activeTurnId,
       turnErrors: localTurnErrors.value,
     })
-  })
-
-  const lastGeneratedAt = computed(() => {
-    const lastAssistantMessage = [...messages.value]
-      .reverse()
-      .find(item => item.role === 'ASSISTANT')
-
-    if (!lastAssistantMessage)
-      return '--:--'
-
-    return formatGeneratedTime(new Date(lastAssistantMessage.createdAt))
   })
 
   const recentChats = computed<AgentRecentChat[]>(() => {
@@ -1110,7 +1098,6 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
   return {
     message,
     status,
-    lastGeneratedAt,
     errorMessage,
     conversations,
     activeConversationId,

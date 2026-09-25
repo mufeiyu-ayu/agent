@@ -51,7 +51,6 @@
   --agent-focus: oklch(0.620 0.060 42);
   --agent-user-bubble: oklch(0.925 0.008 72);
   --agent-user-bubble-text: var(--agent-ink);
-  --agent-user-bubble-border: oklch(0.820 0.010 72);
   --background: var(--agent-canvas);
   --foreground: var(--agent-ink);
   --card: var(--agent-surface-raised);
@@ -92,10 +91,10 @@
   --agent-surface: oklch(0.206 0.012 115);
   --agent-surface-raised: oklch(0.233 0.016 85);
   --agent-surface-sunken: oklch(0.175 0.008 119);
-  --agent-ink: oklch(0.905 0.024 86);
-  --agent-ink-soft: oklch(0.848 0.029 85);
-  --agent-ink-muted: oklch(0.718 0.043 83);
-  --agent-ink-faint: oklch(0.624 0.036 84);
+  --agent-ink: oklch(0.960 0.008 88);
+  --agent-ink-soft: oklch(0.920 0.012 86);
+  --agent-ink-muted: oklch(0.770 0.030 84);
+  --agent-ink-faint: oklch(0.660 0.026 84);
   --agent-border: oklch(0.331 0.033 82);
   --agent-border-soft: oklch(0.294 0.026 81);
   --agent-border-subtle: oklch(0.265 0.022 92);
@@ -108,9 +107,8 @@
   --agent-copper: oklch(0.632 0.109 61);
   --agent-copper-soft: oklch(0.238 0.024 72);
   --agent-focus: oklch(0.632 0.109 61);
-  --agent-user-bubble: oklch(0.245 0.017 87);
+  --agent-user-bubble: oklch(0.155 0.008 120);
   --agent-user-bubble-text: var(--agent-ink);
-  --agent-user-bubble-border: oklch(0.331 0.033 82);
   --background: var(--agent-canvas);
   --foreground: var(--agent-ink);
   --card: var(--agent-surface-raised);
@@ -216,7 +214,6 @@ button:disabled {
   --color-agent-surface: var(--agent-surface);
   --color-agent-sidebar: var(--agent-sidebar);
   --color-agent-canvas: var(--agent-canvas);
-  --color-agent-user-bubble-border: var(--agent-user-bubble-border);
   --color-agent-user-bubble-text: var(--agent-user-bubble-text);
   --color-agent-user-bubble: var(--agent-user-bubble);
   --color-sidebar-ring: var(--sidebar-ring);
