@@ -5048,11 +5048,11 @@ function createDeferred(): {
   return { promise, resolve }
 }
 
-/** 用例全部按 DeepSeek thinking 模型走真实 adapter：Tool Call 要求 reasoning_content。 */
+/** 用例全部按 DeepSeek 家族走真实 adapter：严格 index、带 Tool Call 的 stop 报错。 */
 function adaptDeepSeekStream(
   chunks: Parameters<typeof adaptOpenAICompatibleStream>[0],
 ): AsyncGenerator<ModelStreamEvent> {
-  return adaptOpenAICompatibleStream(chunks, { requireReasoningContent: true })
+  return adaptOpenAICompatibleStream(chunks, {})
 }
 
 type FakeFetchAttempt = (init: RequestInit) => Response

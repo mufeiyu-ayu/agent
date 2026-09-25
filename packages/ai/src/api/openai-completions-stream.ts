@@ -30,11 +30,6 @@ type CompatCompletionUsage = NonNullable<ChatCompletionChunk['usage']> & {
 }
 
 export interface AdaptStreamOptions {
-  /**
-   * reasoning 模型（DeepSeek thinking）的 Tool Call 必须带 reasoning_content 才能回填续轮；
-   * 中转站后面的 gpt / gemini / claude 从不返回它，按模型关掉这条不变量。
-   */
-  requireReasoningContent: boolean
   /** compat 同名字段：tool_calls 分片可以不带 index，每片是一个完整调用，按 `ToolCallSlots` 取槽位。缺省严格，缺 index 即报错。 */
   toolCallIndexOptional?: boolean
   /** compat 同名字段：带 Tool Call 的 stop 归一成 tool_calls。缺省严格，带 Tool Call 的 stop 即报错。 */
@@ -139,16 +134,6 @@ export async function* adaptOpenAICompatibleStream(
 
         if (finishReason === 'tool_calls' && toolCalls.length === 0) {
           throw new LLMApiError('模型以 tool_calls 结束，但没有返回完整 Tool Call')
-        }
-        // reasoning 模型下，任何会回填成 assistant tool_calls 消息的调用（含 length 截断）都需要 reasoning continuation。
-        if (
-          options.requireReasoningContent
-          && toolCalls.length > 0
-          && reasoningContent.length === 0
-        ) {
-          throw new LLMApiError(
-            'DeepSeek thinking Tool Call 缺少必需的 reasoning_content continuation',
-          )
         }
         if (
           finishReason !== 'tool_calls'

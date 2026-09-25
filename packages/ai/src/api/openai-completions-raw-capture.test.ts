@@ -160,7 +160,7 @@ describe('teeRawResponseCapture', () => {
       teeRawResponseCapture(toAsyncIterable(chunks), (capture) => {
         captured = capture
       }),
-      { requireReasoningContent: false },
+      {},
     )) {
       events.push(event)
     }
@@ -194,7 +194,7 @@ describe('teeRawResponseCapture', () => {
       teeRawResponseCapture(toAsyncIterable(chunks), (capture) => {
         captured = capture
       }),
-      { requireReasoningContent: false, toolCallIndexOptional: true, toolCallsMayFinishWithStop: true },
+      { toolCallIndexOptional: true, toolCallsMayFinishWithStop: true },
     )) {
       events.push(event)
     }
@@ -230,7 +230,7 @@ describe('teeRawResponseCapture', () => {
       teeRawResponseCapture(toAsyncIterable(chunks), (capture) => {
         captured = capture
       }),
-      { requireReasoningContent: false, toolCallIndexOptional: true, toolCallsMayFinishWithStop: true },
+      { toolCallIndexOptional: true, toolCallsMayFinishWithStop: true },
     )) {
       events.push(event)
     }
@@ -262,7 +262,7 @@ describe('teeRawResponseCapture', () => {
 
     for await (const event of adaptOpenAICompatibleStream(
       teeRawResponseCapture(toAsyncIterable(tolerated), () => {}),
-      { requireReasoningContent: false },
+      {},
     )) {
       events.push(event)
     }
@@ -273,7 +273,7 @@ describe('teeRawResponseCapture', () => {
       (async () => {
         for await (const _event of adaptOpenAICompatibleStream(
           teeRawResponseCapture(toAsyncIterable([null as unknown as ChatCompletionChunk]), () => {}),
-          { requireReasoningContent: false },
+          {},
         )) {
           // 只消费到出错为止。
         }
@@ -295,7 +295,7 @@ describe('teeRawResponseCapture', () => {
           teeRawResponseCapture(toAsyncIterable(chunks), (capture) => {
             captured = capture
           }),
-          { requireReasoningContent: false },
+          {},
         )) {
           // 只消费到出错为止。
         }

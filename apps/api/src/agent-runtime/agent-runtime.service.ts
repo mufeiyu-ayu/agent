@@ -1508,8 +1508,8 @@ function toPersistedContextPlan(
 
 /**
  * Tool Call 轮随 assistant 消息回填给模型的内容：本轮文本（含 Grounding 模式下没推给用户的那段）
- * 与 reasoning continuation。reasoning 只有非空时才会被 adapter 回填（DeepSeek 家族在 Tool Call
- * 轮必然非空），所以按非空写。final_answer 轮的文本是最终回答或待校验草稿，不在这里。
+ * 与 reasoning continuation。DeepSeek 家族续轮一律回填 `reasoning_content`（模型没思考时为空串），
+ * 这里仍只在非空时落库，重建时缺失即视为空串。final_answer 轮的文本是最终回答或待校验草稿，不在这里。
  */
 function toPersistedSamplingContent(
   decision: SamplingDecision,

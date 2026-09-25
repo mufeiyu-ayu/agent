@@ -139,7 +139,7 @@ export class OpenAICompatibleClient {
     try {
       const requestParams = {
         ...this.buildBaseChatCompletionParams(
-          messages.map(toOpenAIModelInputItem),
+          messages.map(item => toOpenAIModelInputItem(item, options.request.compat.requiresReasoningContent)),
           options,
         ),
         ...toOpenAIChatTools(options.tools),
@@ -172,7 +172,6 @@ export class OpenAICompatibleClient {
             )
           : stream,
         {
-          requireReasoningContent: options.request.compat.requiresReasoningContent,
           toolCallIndexOptional: options.request.compat.toolCallIndexOptional,
           toolCallsMayFinishWithStop: options.request.compat.toolCallsMayFinishWithStop,
         },
@@ -379,6 +378,7 @@ function safelyCaptureRequest(
 
 export function toOpenAIModelInputItem(
   item: ModelInputItem,
+  requiresReasoningContent: boolean,
 ): ChatCompletionMessageParam {
   switch (item.type) {
     case 'message':
@@ -391,8 +391,11 @@ export function toOpenAIModelInputItem(
       const message: AssistantToolCallMessageParam = {
         role: 'assistant',
         content: item.content ?? '',
-        // 只有 DeepSeek thinking 会给出 reasoning_content；为空就不写字段，其他 Provider 不认识它。
-        ...(item.reasoningContent ? { reasoning_content: item.reasoningContent } : {}),
+        // DeepSeek thinking 续轮要求字段必须存在，模型没思考时回空串，缺字段官方端点会 400；
+        // 其他 Provider 不认识它，有内容才写。
+        ...(requiresReasoningContent || item.reasoningContent
+          ? { reasoning_content: item.reasoningContent ?? '' }
+          : {}),
         tool_calls: item.calls.map(call => ({
           id: call.callId,
           type: 'function' as const,

@@ -266,10 +266,9 @@ describe('各家族真实响应 fixture', () => {
     it(`${key}：真实聚合响应的 usage 与 Tool Call 身份归一化`, async () => {
       const fixture = loadFixture<ResponseFixture>(`${key}.response.json`)
       const expected = RESPONSE_EXPECTATIONS[key]
-      // 捕获已剥掉 reasoning_content，这里不能按 compat 要求它，否则 DeepSeek 带 Tool Call 的样本必红。
       const events = await collectEvents(adaptOpenAICompatibleStream(
         toStream(responseToChunks(fixture)),
-        { requireReasoningContent: false },
+        {},
       ))
 
       assert.deepEqual(events.filter(event => event.type === 'usage'), [{ type: 'usage', usage: expected.usage }])
@@ -286,7 +285,6 @@ describe('各家族真实响应 fixture', () => {
       const events = await collectEvents(adaptOpenAICompatibleStream(
         toStream(fixture.chunks),
         {
-          requireReasoningContent: compat.requiresReasoningContent,
           toolCallIndexOptional: compat.toolCallIndexOptional,
           toolCallsMayFinishWithStop: compat.toolCallsMayFinishWithStop,
         },
