@@ -895,6 +895,70 @@ describe('Grounded finalization 路径', () => {
     assert.equal(grounding.citations.length, 1)
   })
 
+  it('同一批两个 eligible 调用共用一个 Registry：一成一败时为 partial，只引用成功通道的证据', async () => {
+    const harness = createHarness({
+      policy: { maxSamplingRounds: 3, maxToolCalls: 2 },
+      modelStreams: [
+        () => toModelStream([
+          toolCallEvent('call-1', 'retrieve_article_context', '{"query":"seo"}'),
+          // 脚手架的 toolCallEvent 固定 index 0，同批第二个 call 手写 index 1。
+          {
+            type: 'tool_call_completed',
+            toolCall: {
+              providerCallId: 'call-2',
+              name: 'get_article_detail',
+              argumentsJson: '{"sourceId":301}',
+              index: 1,
+            },
+            reasoningContent: '需要调用工具。',
+          },
+          { type: 'response_completed', finishReason: 'tool_calls' },
+        ]),
+        () => toModelStream([
+          { type: 'text_delta', delta: '草稿' },
+          { type: 'response_completed', finishReason: 'stop' },
+        ]),
+        registry => toModelStream([
+          submitGroundedAnswerEvent({
+            answer: '部分证据可用的回答。',
+            outcome: 'answered',
+            citationKeys: [registry[0]!],
+          }),
+          { type: 'response_completed', finishReason: 'tool_calls' },
+        ]),
+      ],
+      toolResults: [
+        { ok: true, modelContent: '候选资料', evidence: RETRIEVAL_EVIDENCE },
+        { ok: false, code: 'timeout', modelContent: '工具执行超时。' },
+      ],
+    })
+
+    const events = await collectEvents(harness.run())
+    const grounding = (events.at(-1) as { grounding?: MessageGroundingV1 }).grounding
+    const finalizationOutput = harness.recorder.steps.find(
+      item => item.type === AGENT_STEP_TYPES.groundedFinalization,
+    )?.output as Record<string, unknown> | undefined
+
+    // 不用裸 assert.ok(grounding)：它在本文件里失败时，Node 生成默认报错文案会卡死（100% CPU），回归会表现为挂起而不是失败。
+    assert.equal(events.at(-1)?.type, 'run_completed')
+    // 两个 tool Step 出自同一轮采样。
+    assert.deepEqual(
+      harness.recorder.steps
+        .filter(step => step.type === AGENT_STEP_TYPES.toolExecution)
+        .map(step => (step.input as { samplingAttemptId: string }).samplingAttemptId),
+      ['run-1:sampling-1', 'run-1:sampling-1'],
+    )
+    // 两次结果记进同一个 Registry 才是 partial；每个 call 各建一个时只剩其中一次，会变成 available 或 unavailable。
+    assert.equal(grounding?.evidenceAvailability, 'partial')
+    assert.equal(finalizationOutput?.eligibleToolCallCount, 2)
+    assert.equal(finalizationOutput?.eligibleToolFailureCount, 1)
+    // 失败的 get_article_detail 没有证据，唯一的引用来自检索成功的 chunk。
+    assert.deepEqual(
+      grounding?.citations.map(citation => [citation.sourceId, citation.chunkId, citation.granularity]),
+      [[301, 'article-301-chunk-0', 'chunk']],
+    )
+  })
+
   it('get_article_detail 命中：runtime 不落库 toolSummary，Admin 投影保留「引用数量未知」', async () => {
     const harness = createHarness({
       modelStreams: [

@@ -31,7 +31,8 @@ ChatService（LlmModelConfigService.resolveModel 解析模型行快照）
   -> resolveRunConfiguration()（私有方法）：Tool allowlist + resolveChatRequestConfig
   -> context: select and plan model-visible input
   -> sampling: consume model stream and return decision
-  -> ToolInvocationService / grounding
+  -> executeToolBatch()（私有方法）：顺序执行一批 Tool Call，每个 call 一个 tool_execution Step，经 ToolInvocationService
+  -> grounding
   -> lifecycle: atomic terminalization
 ```
 
