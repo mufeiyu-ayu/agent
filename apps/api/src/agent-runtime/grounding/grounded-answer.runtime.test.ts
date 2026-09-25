@@ -1464,6 +1464,52 @@ describe('Grounded finalization 终态原子性', () => {
     })
   })
 
+  it('replay 期间消费者提前 return() 时由 finally 兜底收口为 ABORTED，finalization Step 保留 attempt 与 usage', async () => {
+    const harness = createReplayHarness()
+    const replayed: string[] = []
+
+    // 回答长于一个重放切片；拿到第一片就 break：for-await 调 generator.return()，
+    // yield 点以 return 语义恢复，外层 catch 不执行，只有 finally 兜底收口。
+    for await (const event of harness.run()) {
+      if (event.type === 'assistant_delta') {
+        replayed.push(event.contentDelta)
+        break
+      }
+    }
+
+    assert.equal(replayed.length, 1)
+    assert.equal(harness.recorder.runErrorCode, 'aborted')
+    assert.equal(harness.assistantMessage()?.status, MessageStatus.ABORTED)
+    assert.equal(harness.assistantMessage()?.content, replayed[0])
+    assert.equal(harness.recorder.completedGrounding, undefined)
+
+    const step = harness.recorder.steps.find(
+      item => item.type === AGENT_STEP_TYPES.groundedFinalization,
+    )
+
+    assert.equal(step?.status, 'ABORTED')
+
+    // 这条路径不经过 finalization 的 catch：attempt 与 usage 只能来自此前写入的 metadata 槽位。
+    const output = step?.output as Record<string, unknown>
+
+    assert.equal(output.attemptCount, 1)
+
+    const [attempt] = output.attempts as Array<Record<string, unknown>>
+
+    assert.equal(attempt?.ok, true)
+    assert.deepEqual(attempt?.usage, {
+      inputTokens: 33,
+      outputTokens: 12,
+      totalTokens: 45,
+    })
+    assert.deepEqual(
+      harness.recorder.steps
+        .filter(item => item.status === 'RUNNING')
+        .map(item => item.type),
+      [],
+    )
+  })
+
   it('终态事务失败时不留下 COMPLETED finalization Step，但保留 attempt metadata', async () => {
     const harness = createReplayHarness()
 
