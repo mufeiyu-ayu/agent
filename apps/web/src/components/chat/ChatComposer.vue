@@ -43,8 +43,13 @@ const { t } = useI18n()
 
 const PLACEHOLDER_HINT_KEYS = ['ask', 'cite', 'search', 'summarize'] as const
 
+/**
+ * 输入法组合拼音期间 v-model 要到 compositionend 才更新，message 仍为空；
+ * 此时也要隐藏打字机提示，否则会和正在组合的拼音叠在一起。
+ */
+const isComposing = ref(false)
 /** 打字机提示只在空态 hero 输入框里、且还没输入内容时出现。 */
-const showTypewriter = computed(() => Boolean(props.hero) && props.message.length === 0)
+const showTypewriter = computed(() => Boolean(props.hero) && props.message.length === 0 && !isComposing.value)
 const placeholderHints = computed(() => PLACEHOLDER_HINT_KEYS.map(key => t(`composer.placeholderHints.${key}`)))
 /** 聚焦时输入框自带光标，隐藏假光标以免出现两个。 */
 const isTextareaFocused = ref(false)
@@ -148,6 +153,8 @@ function updateMessage(value: string | number) {
             @keydown.enter.exact="handleEnterKeydown"
             @focus="isTextareaFocused = true"
             @blur="isTextareaFocused = false"
+            @compositionstart="isComposing = true"
+            @compositionend="isComposing = false"
           />
 
           <ChatTypewriterPlaceholder
