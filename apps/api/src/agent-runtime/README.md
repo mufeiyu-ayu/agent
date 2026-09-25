@@ -32,7 +32,7 @@ ChatService（LlmModelConfigService.resolveModel 解析模型行快照）
   -> context: select and plan model-visible input
   -> sampling: consume model stream and return decision
   -> executeToolBatch()（私有方法）：顺序执行一批 Tool Call，每个 call 一个 tool_execution Step，经 ToolInvocationService
-  -> grounding
+  -> finalizeGroundedAnswer()（私有异步生成器，建立 Grounding Session 后才走）：grounded_finalization Step 校验草稿，通过后重放已校验正文
   -> lifecycle: atomic terminalization
 ```
 

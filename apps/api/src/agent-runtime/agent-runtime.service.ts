@@ -10,6 +10,7 @@ import type {
   MessageRole as PrismaMessageRole,
   MessageStatus as PrismaMessageStatus,
 } from '../generated/prisma/client.js'
+import type { LlmProviderCredentials } from '../llm/llm-model-config.service.js'
 import type { DatabaseOperationDeadline } from '../prisma/prisma.service.js'
 import type { NormalizedToolObservation } from '../tools/core/tool-observation.js'
 import type {
@@ -121,6 +122,18 @@ interface ActiveSamplingClose {
   toAbortedStep: () => CloseAgentStepInput
 }
 
+/** 被多个阶段写入、终态收口时读取的 Run 状态。 */
+interface RunTerminalSlots {
+  /** 用户可见正文：action 循环推可见文本、Grounding 重放时追加；完成与中断时原样写进 Message，失败时为空则换成失败文案。 */
+  content: string
+  /** 被打断的 Step 与归因文案：sampling / 工具执行 / grounded finalization 的 catch 与 finally 兜底写入；abortRun / failRun 按它关闭该 Step。 */
+  stepFailure?: CloseAgentStepInput
+  /** 失败 / 中断时仍需落库的最新安全 output：只由 grounded finalization 写入；abortRun / failRun 带着它关闭仍未结束的该 Step。 */
+  stepMetadata?: CloseAgentStepMetadata
+  /** 进行中的 action sampling：每轮开流时写入，收完或进 catch 时清空；消费者 return() 时 finally 按它关流并记中断 Step。 */
+  samplingClose?: ActiveSamplingClose | undefined
+}
+
 @Injectable()
 export class AgentRuntimeService {
   private readonly logger = new Logger(AgentRuntimeService.name)
@@ -154,19 +167,14 @@ export class AgentRuntimeService {
   async* runTurnStream(input: RunTurnStreamInput): AsyncGenerator<AgentRuntimeEvent> {
     let assistantMessage: Message | undefined
     let agentRunId: string | undefined
-    let content = ''
     let runCancellation: RunCancellation | undefined
-    let terminalStepFailure: CloseAgentStepInput | undefined
     // 终态收口是否已由正常完成或 catch 接管。消费者提前 return()（如
     // for-await break）会让 yield 点以 return 语义恢复、跳过 catch，
     // 此时只有 finally 有机会兜底收口。
     let terminalizationHandled = false
     // 用户消息落库时同时更新了会话 updatedAt；此后的失败要让前台同步侧栏（Run 可能还没创建）。
     let userMessagePersisted = false
-    // 失败 / return 时仍需落库的最新安全 output；action sampling 与
-    // finalization 不会同时处于 RUNNING，因此复用一个 metadata 槽位。
-    let terminalStepMetadata: CloseAgentStepMetadata | undefined
-    let activeSamplingClose: ActiveSamplingClose | undefined
+    const terminal: RunTerminalSlots = { content: '' }
 
     try {
       await this.assertConversationExists(input.conversationId)
@@ -380,7 +388,7 @@ export class AgentRuntimeService {
           )
 
           // 中途关水龙头
-          activeSamplingClose = {
+          terminal.samplingClose = {
             debugModelIO,
             close: async () => {
               try {
@@ -426,10 +434,10 @@ export class AgentRuntimeService {
               const visibleText = toPersistableText(samplingResult.value)
               const contentDelta = roundTextStarted
                 ? visibleText
-                : separateFromPreviousText(content, visibleText)
+                : separateFromPreviousText(terminal.content, visibleText)
 
               roundTextStarted = true
-              content += contentDelta
+              terminal.content += contentDelta
               yield {
                 type: 'assistant_delta',
                 runId: currentAgentRunId,
@@ -458,12 +466,12 @@ export class AgentRuntimeService {
               },
             },
           )
-          activeSamplingClose = undefined
+          terminal.samplingClose = undefined
         }
         catch (error) {
-          const closeSampling = activeSamplingClose
+          const closeSampling = terminal.samplingClose
 
-          activeSamplingClose = undefined
+          terminal.samplingClose = undefined
           await closeSampling?.close()
           // 先确立终态原因再写 Step 归因：用户停止或 deadline 先到时，
           // 随后的流读取失败只是它们的后果，Step 不能记成模型故障。
@@ -473,7 +481,7 @@ export class AgentRuntimeService {
             runCancellation.reason ?? error,
           )
 
-          terminalStepFailure = {
+          terminal.stepFailure = {
             id: samplingStep.id,
             errorMessage: samplingFailure.message,
             output: {
@@ -534,10 +542,8 @@ export class AgentRuntimeService {
           argumentsTruncated,
           runCancellation,
           evidenceRegistry,
-          // 外层 catch / finally 按它收口被打断的 tool Step。
-          onTerminalStepFailure: (failure) => {
-            terminalStepFailure = failure
-          },
+          // 某个 call 被打断时把该 Step 的失败归因写进 terminal.stepFailure，由外层 catch 收口。
+          terminal,
         })
 
         evidenceRegistry = toolBatch.evidenceRegistry
@@ -560,109 +566,18 @@ export class AgentRuntimeService {
       let finalizationCommit: CloseAgentStepMetadata | undefined
 
       if (evidenceRegistry) {
-        const finalizationStep = await this.agentRunRecorderService.startStep({
+        ({ grounding, finalizationCommit } = yield* this.finalizeGroundedAnswer({
           runId: currentAgentRunId,
-          type: AGENT_STEP_TYPES.groundedFinalization,
-          input: {
-            assistantMessageId,
-            evidenceAvailability: evidenceRegistry.evidenceAvailability(),
-            registryRefCount: evidenceRegistry.summary().refCount,
-          },
-        }, databaseDeadline)
-        const registry = evidenceRegistry
-        // Runtime 自己持有 attempt 事实：模型调用一开始就记账，
-        // 不依赖某一种错误类型是否恰好把 attempts 带出来。
-        const finalizationAttempts: GroundedFinalizationAttemptSummary[] = []
-        const closeFinalizationStep = (error?: unknown): void => {
-          terminalStepMetadata = {
-            id: finalizationStep.id,
-            output: this.toFinalizationStepOutput(
-              registry,
-              finalizationAttempts,
-              grounding,
-              error,
-            ),
-          }
-        }
-
-        closeFinalizationStep()
-
-        try {
-          const finalization = await runGroundedFinalization({
-            draft: hiddenFinalDraft,
-            registry,
-            assertAvailable: runCancellation.throwIfUnavailable,
-            onAttempt: (summary) => {
-              finalizationAttempts.push(summary)
-              closeFinalizationStep()
-            },
-            // finalization 只暴露终态输出契约，没有任何 action Tool，
-            // 因此不可能借这一轮继续调用工具或扩展 action-loop 预算。
-            sample: items => this.llmService.chatStream(input.model.provider, items, {
-              ...chatStreamOptions,
-              tools: [submitGroundedAnswerToolSpec],
-            }),
-          })
-
-          // done 事件与 Messages API 必须来自同一个 durable safe projector：
-          // 这里先按持久化形状过一遍投影，投影不通过就 fail closed，不写库也不外发。
-          const projected = toMessageGroundingV1(finalization.validated.grounding)
-
-          if (!projected) {
-            throw new GroundedFinalizationFailedError(
-              'schema_invalid',
-              finalization.attempts,
-            )
-          }
-
-          grounding = projected
-          // finalization Step 在 replay 期间保持 RUNNING：只有 replay 全部完成、
-          // 终态事务提交成功，它才和 Message / Grounding / Run 一起变成 COMPLETED。
-          finalizationCommit = {
-            id: finalizationStep.id,
-            output: this.toFinalizationStepOutput(
-              registry,
-              finalizationAttempts,
-              grounding,
-            ),
-          }
-          // 成功后的失败路径（replay Abort / Step 失败 / 终态事务回滚）
-          // 同样保留这份已经成立的 attempt 与 usage。
-          closeFinalizationStep()
-
-          runCancellation.throwIfUnavailable()
-          await startAssistantOutputStep()
-
-          // 校验通过后才通过既有 assistant_delta 重放正文；Session 建立前已推出的中间文本
-          // 与回答之间同样分段。chunks 拼接逐字符等于 persisted content 与 done.content。
-          for (const contentDelta of toValidatedAnswerChunks(
-            separateFromPreviousText(content, toPersistableText(finalization.validated.answer)),
-          )) {
-            runCancellation.throwIfUnavailable()
-            content += contentDelta
-            yield {
-              type: 'assistant_delta',
-              runId: currentAgentRunId,
-              conversationId: input.conversationId,
-              assistantMessageId,
-              contentDelta,
-            }
-          }
-        }
-        catch (error) {
-          closeFinalizationStep(error)
-          // 与 action sampling 同理：先确立终态原因，Step 文案再跟 Run 走同一套归因。
-          claimRunTermination(runCancellation, error)
-          terminalStepFailure = {
-            id: finalizationStep.id,
-            errorMessage: describeRunFailure(
-              runCancellation.source,
-              runCancellation.reason ?? error,
-            ).message,
-            output: terminalStepMetadata!.output,
-          }
-          throw error
-        }
+          conversationId: input.conversationId,
+          assistantMessageId,
+          provider: input.model.provider,
+          chatStreamOptions,
+          evidenceRegistry,
+          hiddenFinalDraft,
+          runCancellation,
+          terminal,
+          startAssistantOutputStep,
+        }))
       }
 
       runCancellation.throwIfUnavailable()
@@ -674,7 +589,7 @@ export class AgentRuntimeService {
           conversationId: input.conversationId,
           assistantMessageId,
           assistantOutputStepId: assistantOutputStepId!,
-          content,
+          content: terminal.content,
           ...(grounding ? { grounding } : {}),
           ...(finalizationCommit ? { finalizationStep: finalizationCommit } : {}),
         },
@@ -690,7 +605,7 @@ export class AgentRuntimeService {
         runId: currentAgentRunId,
         conversationId: input.conversationId,
         assistantMessageId,
-        content,
+        content: terminal.content,
         generatedAt: completedMessage.updatedAt.toISOString(),
         ...(grounding ? { grounding } : {}),
       }
@@ -737,10 +652,10 @@ export class AgentRuntimeService {
               this.toAssistantMessageSnapshot(
                 assistantMessage,
                 input.conversationId,
-                content,
+                terminal.content,
               ),
-              terminalStepFailure,
-              terminalStepMetadata,
+              terminal.stepFailure,
+              terminal.stepMetadata,
             )
           }
           catch (terminalizationCause) {
@@ -760,7 +675,7 @@ export class AgentRuntimeService {
             ...(agentRunId ? { runId: agentRunId } : {}),
             conversationId: input.conversationId,
             assistantMessageId: assistantMessage.id,
-            content,
+            content: terminal.content,
           }
         }
 
@@ -771,7 +686,7 @@ export class AgentRuntimeService {
       const errorMessage = runFailure.message
 
       if (agentRunId) {
-        this.logRunFailure(agentRunId, terminalStepFailure?.id, runFailure)
+        this.logRunFailure(agentRunId, terminal.stepFailure?.id, runFailure)
 
         try {
           await this.agentRunRecorderService.failRun(
@@ -782,10 +697,10 @@ export class AgentRuntimeService {
             this.toAssistantMessageSnapshot(
               assistantMessage,
               input.conversationId,
-              content || errorMessage,
+              terminal.content || errorMessage,
             ),
-            terminalStepFailure,
-            terminalStepMetadata,
+            terminal.stepFailure,
+            terminal.stepMetadata,
           )
         }
         catch (terminalizationCause) {
@@ -819,13 +734,13 @@ export class AgentRuntimeService {
         // 先取消在途模型请求：return() 路径不经过 claimRunTermination，
         // 不 abort 内部信号的话 provider 流会继续生成 token 直到自然结束。
         runCancellation?.claimFailure(new Error('流消费者提前终止了本次 Run'))
-        const samplingClose = activeSamplingClose
+        const samplingClose = terminal.samplingClose
 
-        activeSamplingClose = undefined
+        terminal.samplingClose = undefined
         await samplingClose?.close()
 
         if (samplingClose) {
-          terminalStepFailure = samplingClose.toAbortedStep()
+          terminal.stepFailure = samplingClose.toAbortedStep()
           this.logSamplingDebugCaptureClosed(
             samplingClose.debugModelIO,
             'consumer_return',
@@ -839,10 +754,10 @@ export class AgentRuntimeService {
             this.toAssistantMessageSnapshot(
               assistantMessage,
               input.conversationId,
-              content,
+              terminal.content,
             ),
-            terminalStepFailure,
-            terminalStepMetadata,
+            terminal.stepFailure,
+            terminal.stepMetadata,
           )
         }
         catch (terminalizationCause) {
@@ -864,7 +779,7 @@ export class AgentRuntimeService {
    * 执行一轮采样给出的全部 Tool Call：返回与 calls 一一对应的回填结果，以及登记过本批
    * eligible 结果的 Evidence Registry（传入的沿用，否则由本批第一个 eligible 调用建立）。
    * 某个 call 被停止、deadline 或工具自身抛错打断时，先确立终态原因，再把该 Step 的失败归因
-   * 交给 onTerminalStepFailure，然后原样抛出：外层 catch 要靠原异常判断终止来源。
+   * 写进 terminal.stepFailure，然后原样抛出：外层 catch 要靠原异常判断终止来源。
    * 抛出时本批才建立的 Registry 不会回到外层；外层 catch / finally 目前不读它，要读须先改成外层持有。
    */
   private async executeToolBatch(input: {
@@ -875,7 +790,7 @@ export class AgentRuntimeService {
     argumentsTruncated: boolean
     runCancellation: RunCancellation
     evidenceRegistry: RunEvidenceRegistry | undefined
-    onTerminalStepFailure: (failure: CloseAgentStepInput) => void
+    terminal: RunTerminalSlots
   }) {
     const {
       runId,
@@ -884,7 +799,7 @@ export class AgentRuntimeService {
       toolDefinitions,
       argumentsTruncated,
       runCancellation,
-      onTerminalStepFailure,
+      terminal,
     } = input
     const { signal: runSignal, databaseDeadline } = runCancellation
     let evidenceRegistry = input.evidenceRegistry
@@ -938,7 +853,7 @@ export class AgentRuntimeService {
       }
       catch (error) {
         claimRunTermination(runCancellation, error)
-        onTerminalStepFailure({
+        terminal.stepFailure = {
           id: toolStep.id,
           // 用户停止或 deadline 先到时按终态原因记；工具自身抛错仍记工具失败。
           errorMessage: runCancellation.source === 'failure'
@@ -947,7 +862,7 @@ export class AgentRuntimeService {
               runCancellation.source,
               runCancellation.reason ?? error,
             ).message,
-        })
+        }
         throw error
       }
 
@@ -1033,6 +948,152 @@ export class AgentRuntimeService {
     }
 
     return { toolResults, evidenceRegistry }
+  }
+
+  /**
+   * Grounding Session 建立后的收尾：开 grounded_finalization Step，校验隐藏草稿并投影成 Message Grounding，
+   * 通过后经 assistant_delta 重放已校验正文，返回终态事务要一并提交的 grounding 与 finalization Step 收口内容。
+   * finalization Step 在重放期间保持 RUNNING，最新安全 output 始终在 terminal.stepMetadata：出错时先把
+   * 该 Step 的失败归因写进 terminal.stepFailure 再原样抛出；消费者提前 return() 不经过这里的 catch，
+   * 外层 finally 只按 terminal.stepMetadata 收口。
+   */
+  private async* finalizeGroundedAnswer(input: {
+    runId: string
+    conversationId: string
+    assistantMessageId: string
+    provider: LlmProviderCredentials
+    chatStreamOptions: ChatStreamOptions
+    evidenceRegistry: RunEvidenceRegistry
+    hiddenFinalDraft: string
+    runCancellation: RunCancellation
+    terminal: RunTerminalSlots
+    startAssistantOutputStep: () => Promise<void>
+  }): AsyncGenerator<AgentRuntimeEvent, {
+    grounding: MessageGroundingV1
+    finalizationCommit: CloseAgentStepMetadata
+  }> {
+    const {
+      runId,
+      conversationId,
+      assistantMessageId,
+      provider,
+      chatStreamOptions,
+      evidenceRegistry,
+      hiddenFinalDraft,
+      runCancellation,
+      terminal,
+      startAssistantOutputStep,
+    } = input
+    const { databaseDeadline } = runCancellation
+    // closeFinalizationStep 读 grounding 的当前值：投影通过前为空。
+    let grounding: MessageGroundingV1 | undefined
+    let finalizationCommit: CloseAgentStepMetadata | undefined
+
+    const finalizationStep = await this.agentRunRecorderService.startStep({
+      runId,
+      type: AGENT_STEP_TYPES.groundedFinalization,
+      input: {
+        assistantMessageId,
+        evidenceAvailability: evidenceRegistry.evidenceAvailability(),
+        registryRefCount: evidenceRegistry.summary().refCount,
+      },
+    }, databaseDeadline)
+    const registry = evidenceRegistry
+    // Runtime 自己持有 attempt 事实：模型调用一开始就记账，
+    // 不依赖某一种错误类型是否恰好把 attempts 带出来。
+    const finalizationAttempts: GroundedFinalizationAttemptSummary[] = []
+    const closeFinalizationStep = (error?: unknown): void => {
+      terminal.stepMetadata = {
+        id: finalizationStep.id,
+        output: this.toFinalizationStepOutput(
+          registry,
+          finalizationAttempts,
+          grounding,
+          error,
+        ),
+      }
+    }
+
+    closeFinalizationStep()
+
+    try {
+      const finalization = await runGroundedFinalization({
+        draft: hiddenFinalDraft,
+        registry,
+        assertAvailable: runCancellation.throwIfUnavailable,
+        onAttempt: (summary) => {
+          finalizationAttempts.push(summary)
+          closeFinalizationStep()
+        },
+        // finalization 只暴露终态输出契约，没有任何 action Tool，
+        // 因此不可能借这一轮继续调用工具或扩展 action-loop 预算。
+        sample: items => this.llmService.chatStream(provider, items, {
+          ...chatStreamOptions,
+          tools: [submitGroundedAnswerToolSpec],
+        }),
+      })
+
+      // done 事件与 Messages API 必须来自同一个 durable safe projector：
+      // 这里先按持久化形状过一遍投影，投影不通过就 fail closed，不写库也不外发。
+      const projected = toMessageGroundingV1(finalization.validated.grounding)
+
+      if (!projected) {
+        throw new GroundedFinalizationFailedError(
+          'schema_invalid',
+          finalization.attempts,
+        )
+      }
+
+      grounding = projected
+      // finalization Step 在 replay 期间保持 RUNNING：只有 replay 全部完成、
+      // 终态事务提交成功，它才和 Message / Grounding / Run 一起变成 COMPLETED。
+      finalizationCommit = {
+        id: finalizationStep.id,
+        output: this.toFinalizationStepOutput(
+          registry,
+          finalizationAttempts,
+          grounding,
+        ),
+      }
+      // 成功后的失败路径（replay Abort / Step 失败 / 终态事务回滚）
+      // 同样保留这份已经成立的 attempt 与 usage。
+      closeFinalizationStep()
+
+      runCancellation.throwIfUnavailable()
+      await startAssistantOutputStep()
+
+      // 校验通过后才通过既有 assistant_delta 重放正文；Session 建立前已推出的中间文本
+      // 与回答之间同样分段。chunks 拼接逐字符等于 persisted content 与 done.content。
+      for (const contentDelta of toValidatedAnswerChunks(
+        separateFromPreviousText(terminal.content, toPersistableText(finalization.validated.answer)),
+      )) {
+        runCancellation.throwIfUnavailable()
+        terminal.content += contentDelta
+        yield {
+          type: 'assistant_delta',
+          runId,
+          conversationId,
+          assistantMessageId,
+          contentDelta,
+        }
+      }
+    }
+    catch (error) {
+      closeFinalizationStep(error)
+      // 与 action sampling 同理：先确立终态原因，Step 文案再跟 Run 走同一套归因。
+      claimRunTermination(runCancellation, error)
+      terminal.stepFailure = {
+        id: finalizationStep.id,
+        errorMessage: describeRunFailure(
+          runCancellation.source,
+          runCancellation.reason ?? error,
+        ).message,
+        output: terminal.stepMetadata!.output,
+      }
+      throw error
+    }
+
+    return { grounding, finalizationCommit }
   }
 
   /**
