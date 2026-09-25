@@ -12,7 +12,11 @@ import type {
 } from '../generated/prisma/client.js'
 import type { DatabaseOperationDeadline } from '../prisma/prisma.service.js'
 import type { NormalizedToolObservation } from '../tools/core/tool-observation.js'
-import type { ToolResult } from '../tools/core/tool.types.js'
+import type {
+  ToolDefinition,
+  ToolResult,
+  UnvalidatedToolCallEnvelope,
+} from '../tools/core/tool.types.js'
 import type {
   AgentRuntimeEvent,
   RunTurnStreamInput,
@@ -522,156 +526,27 @@ export class AgentRuntimeService {
         // 每个 call 记一条失败 Step 并作为 observation 回喂，下一轮由模型自行重发。
         const argumentsTruncated
           = samplingDecision.summary.finishReason === 'length'
-        const toolResults: Array<{
-          observation: NormalizedToolObservation
-          ok: boolean
-          feedbackArgumentsJson: string
-        }> = []
+        const toolBatch = await this.executeToolBatch({
+          runId: currentAgentRunId,
+          samplingAttemptId,
+          calls,
+          toolDefinitions,
+          argumentsTruncated,
+          runCancellation,
+          evidenceRegistry,
+          // 外层 catch / finally 按它收口被打断的 tool Step。
+          onTerminalStepFailure: (failure) => {
+            terminalStepFailure = failure
+          },
+        })
 
-        // 顺序执行，每个 call 一个 tool_execution Step；当前工具只读，并行没有收益。
-        for (const call of calls) {
-          const toolDefinition = toolDefinitions.find(
-            definition => definition.name === call.toolName,
-          )
-          // callId / toolName 是模型原样给的，落库副本同样要能进 jsonb。
-          const toolStepInput = {
-            callId: toPersistableText(call.callId),
-            toolName: toPersistableText(call.toolName),
-            samplingAttemptId,
-          }
-          const toolStep = await this.agentRunRecorderService.startStep({
-            runId: currentAgentRunId,
-            type: AGENT_STEP_TYPES.toolExecution,
-            input: toolStepInput,
-          }, databaseDeadline)
-          let toolResult: ToolResult
-
-          try {
-            if (argumentsTruncated) {
-              toolResult = {
-                ok: false,
-                code: 'truncated_arguments',
-                modelContent: `工具 ${call.toolName} 的参数因模型输出达到长度限制而不完整，本次未执行；仍需要时请重新发起调用。`,
-              }
-            }
-            else if (!toolDefinition) {
-              toolResult = {
-                ok: false,
-                code: 'unknown_tool',
-                modelContent: `工具 ${call.toolName} 不存在。`,
-              }
-            }
-            else {
-              // 拿到工具执行的结果
-              toolResult = await this.toolInvocationService.invoke(
-                call,
-                { signal: runSignal, databaseDeadline },
-              )
-            }
-            runCancellation.throwIfUnavailable()
-          }
-          catch (error) {
-            claimRunTermination(runCancellation, error)
-            terminalStepFailure = {
-              id: toolStep.id,
-              // 用户停止或 deadline 先到时按终态原因记；工具自身抛错仍记工具失败。
-              errorMessage: runCancellation.source === 'failure'
-                ? '工具执行未能安全完成。'
-                : describeRunFailure(
-                  runCancellation.source,
-                  runCancellation.reason ?? error,
-                ).message,
-            }
-            throw error
-          }
-
-          // 第一道截断：按工具自己的字数上限修剪回喂给模型的正文（不超过全局硬上限），
-          // 超了就截断并前后加说明，让模型知道看到的不完整。第二道按整轮上下文预算缩，在 plan() 里。
-          const observation = normalizeToolObservation(
-            toolResult.modelContent,
-            toolDefinition?.maxObservationChars
-            ?? TOOL_OBSERVATION_HARD_MAX_CHARS,
-          )
-          // 工具自愿提供的安全摘要；未通过 JSON / 体积 / 深度校验时整项跳过，
-          // 既不写入 AgentStep，也不影响 Tool Result 与本轮 Run 的收口。
-          const toolSummary = toolResult.ok
-            ? normalizeToolStepSummary(toolResult.stepSummary)
-            : undefined
-          // 只有 ToolInvocationService 经 input.parse 校验后执行的调用，参数才可信；
-          // 这三个 code 都发生在校验之前或根本没有校验，其余 code 都在校验通过之后。
-          const argumentsValidated = toolResult.ok
-            || (toolResult.code !== 'truncated_arguments'
-              && toolResult.code !== 'unknown_tool'
-              && toolResult.code !== 'invalid_arguments')
-          // 回喂给模型的参数表示只算这一次：同一个字符串既落库，也进下一轮的 ModelContext。
-          const feedbackArgumentsJson = toFeedbackArgumentsJson(
-            call.rawArgumentsJson,
-            argumentsValidated,
-          )
-          // 它要等执行结果出来才知道（是否经过校验），所以与 output 在收口时同一事务写入；
-          // 停止、deadline 或工具抛错时 Step 未收口，不带参数与 observation。
-          const toolStepClose = {
-            input: {
-              ...toolStepInput,
-              arguments: toPersistableText(feedbackArgumentsJson),
-            },
-            output: {
-              ok: toolResult.ok,
-              ...(toolResult.ok ? {} : { code: toolResult.code }),
-              ...(toolSummary ? { toolSummary } : {}),
-              originalChars: observation.originalChars,
-              observationChars: observation.observationChars,
-              truncated: observation.truncated,
-              // 回喂给模型的正文，已受 maxObservationChars 限制；后续轮次按预算缩短见 sampling Step 的 contextPlan。
-              observation: toPersistableText(observation.content),
-            },
-          }
-
-          if (toolResult.ok) {
-            await this.agentRunRecorderService.completeStep(
-              toolStep.id,
-              databaseDeadline,
-              toolStepClose,
-            )
-          }
-          else {
-            await this.agentRunRecorderService.failStep(
-              toolStep.id,
-              databaseDeadline,
-              {
-                errorMessage: `工具 ${toolStepInput.toolName} 返回 ${toolResult.code}。`,
-                ...toolStepClose,
-              },
-            )
-          }
-
-          // Evidence policy 由服务端 Tool Definition 声明，模型 arguments 无法改变；
-          // zero-hit、not found 和执行失败同样建立 Session，它们是不同的证据事实。
-          // 参数没通过校验的调用（截断批次、invalid_arguments）根本没有执行，不构成任何证据事实。
-          if (argumentsValidated && toolDefinition?.evidencePolicy === 'eligible') {
-            evidenceRegistry ??= new RunEvidenceRegistry()
-            evidenceRegistry.recordEligibleToolOutcome({
-              toolName: toolDefinition.name,
-              ok: toolResult.ok,
-              // 始终原样传入：缺失投影本身就是需要被记录为 evidence failure 的事实，
-              // 不能在这里先过滤掉再让 Registry 误判成合法零命中。
-              evidence: toolResult.ok ? toolResult.evidence : undefined,
-            })
-          }
-
-          toolResults.push({
-            observation,
-            ok: toolResult.ok,
-            feedbackArgumentsJson,
-          })
-        }
-
+        evidenceRegistry = toolBatch.evidenceRegistry
         runCancellation.throwIfUnavailable()
         modelContext.appendToolExchange({
           calls,
           intermediateText: samplingDecision.intermediateText,
           reasoningContent: samplingDecision.reasoningContent,
-          results: toolResults,
+          results: toolBatch.toolResults,
         })
       }
 
@@ -983,6 +858,181 @@ export class AgentRuntimeService {
       }
       runCancellation?.dispose()
     }
+  }
+
+  /**
+   * 执行一轮采样给出的全部 Tool Call：返回与 calls 一一对应的回填结果，以及登记过本批
+   * eligible 结果的 Evidence Registry（传入的沿用，否则由本批第一个 eligible 调用建立）。
+   * 某个 call 被停止、deadline 或工具自身抛错打断时，先确立终态原因，再把该 Step 的失败归因
+   * 交给 onTerminalStepFailure，然后原样抛出：外层 catch 要靠原异常判断终止来源。
+   * 抛出时本批才建立的 Registry 不会回到外层；外层 catch / finally 目前不读它，要读须先改成外层持有。
+   */
+  private async executeToolBatch(input: {
+    runId: string
+    samplingAttemptId: string
+    calls: UnvalidatedToolCallEnvelope[]
+    toolDefinitions: ToolDefinition[]
+    argumentsTruncated: boolean
+    runCancellation: RunCancellation
+    evidenceRegistry: RunEvidenceRegistry | undefined
+    onTerminalStepFailure: (failure: CloseAgentStepInput) => void
+  }) {
+    const {
+      runId,
+      samplingAttemptId,
+      calls,
+      toolDefinitions,
+      argumentsTruncated,
+      runCancellation,
+      onTerminalStepFailure,
+    } = input
+    const { signal: runSignal, databaseDeadline } = runCancellation
+    let evidenceRegistry = input.evidenceRegistry
+    const toolResults: Array<{
+      observation: NormalizedToolObservation
+      ok: boolean
+      feedbackArgumentsJson: string
+    }> = []
+
+    // 顺序执行，每个 call 一个 tool_execution Step；当前工具只读，并行没有收益。
+    for (const call of calls) {
+      const toolDefinition = toolDefinitions.find(
+        definition => definition.name === call.toolName,
+      )
+      // callId / toolName 是模型原样给的，落库副本同样要能进 jsonb。
+      const toolStepInput = {
+        callId: toPersistableText(call.callId),
+        toolName: toPersistableText(call.toolName),
+        samplingAttemptId,
+      }
+      const toolStep = await this.agentRunRecorderService.startStep({
+        runId,
+        type: AGENT_STEP_TYPES.toolExecution,
+        input: toolStepInput,
+      }, databaseDeadline)
+      let toolResult: ToolResult
+
+      try {
+        if (argumentsTruncated) {
+          toolResult = {
+            ok: false,
+            code: 'truncated_arguments',
+            modelContent: `工具 ${call.toolName} 的参数因模型输出达到长度限制而不完整，本次未执行；仍需要时请重新发起调用。`,
+          }
+        }
+        else if (!toolDefinition) {
+          toolResult = {
+            ok: false,
+            code: 'unknown_tool',
+            modelContent: `工具 ${call.toolName} 不存在。`,
+          }
+        }
+        else {
+          // 拿到工具执行的结果
+          toolResult = await this.toolInvocationService.invoke(
+            call,
+            { signal: runSignal, databaseDeadline },
+          )
+        }
+        runCancellation.throwIfUnavailable()
+      }
+      catch (error) {
+        claimRunTermination(runCancellation, error)
+        onTerminalStepFailure({
+          id: toolStep.id,
+          // 用户停止或 deadline 先到时按终态原因记；工具自身抛错仍记工具失败。
+          errorMessage: runCancellation.source === 'failure'
+            ? '工具执行未能安全完成。'
+            : describeRunFailure(
+              runCancellation.source,
+              runCancellation.reason ?? error,
+            ).message,
+        })
+        throw error
+      }
+
+      // 第一道截断：按工具自己的字数上限修剪回喂给模型的正文（不超过全局硬上限），
+      // 超了就截断并前后加说明，让模型知道看到的不完整。第二道按整轮上下文预算缩，在 plan() 里。
+      const observation = normalizeToolObservation(
+        toolResult.modelContent,
+        toolDefinition?.maxObservationChars
+        ?? TOOL_OBSERVATION_HARD_MAX_CHARS,
+      )
+      // 工具自愿提供的安全摘要；未通过 JSON / 体积 / 深度校验时整项跳过，
+      // 既不写入 AgentStep，也不影响 Tool Result 与本轮 Run 的收口。
+      const toolSummary = toolResult.ok
+        ? normalizeToolStepSummary(toolResult.stepSummary)
+        : undefined
+      // 只有 ToolInvocationService 经 input.parse 校验后执行的调用，参数才可信；
+      // 这三个 code 都发生在校验之前或根本没有校验，其余 code 都在校验通过之后。
+      const argumentsValidated = toolResult.ok
+        || (toolResult.code !== 'truncated_arguments'
+          && toolResult.code !== 'unknown_tool'
+          && toolResult.code !== 'invalid_arguments')
+      // 回喂给模型的参数表示只算这一次：同一个字符串既落库，也进下一轮的 ModelContext。
+      const feedbackArgumentsJson = toFeedbackArgumentsJson(
+        call.rawArgumentsJson,
+        argumentsValidated,
+      )
+      // 它要等执行结果出来才知道（是否经过校验），所以与 output 在收口时同一事务写入；
+      // 停止、deadline 或工具抛错时 Step 未收口，不带参数与 observation。
+      const toolStepClose = {
+        input: {
+          ...toolStepInput,
+          arguments: toPersistableText(feedbackArgumentsJson),
+        },
+        output: {
+          ok: toolResult.ok,
+          ...(toolResult.ok ? {} : { code: toolResult.code }),
+          ...(toolSummary ? { toolSummary } : {}),
+          originalChars: observation.originalChars,
+          observationChars: observation.observationChars,
+          truncated: observation.truncated,
+          // 回喂给模型的正文，已受 maxObservationChars 限制；后续轮次按预算缩短见 sampling Step 的 contextPlan。
+          observation: toPersistableText(observation.content),
+        },
+      }
+
+      if (toolResult.ok) {
+        await this.agentRunRecorderService.completeStep(
+          toolStep.id,
+          databaseDeadline,
+          toolStepClose,
+        )
+      }
+      else {
+        await this.agentRunRecorderService.failStep(
+          toolStep.id,
+          databaseDeadline,
+          {
+            errorMessage: `工具 ${toolStepInput.toolName} 返回 ${toolResult.code}。`,
+            ...toolStepClose,
+          },
+        )
+      }
+
+      // Evidence policy 由服务端 Tool Definition 声明，模型 arguments 无法改变；
+      // zero-hit、not found 和执行失败同样建立 Session，它们是不同的证据事实。
+      // 参数没通过校验的调用（截断批次、invalid_arguments）根本没有执行，不构成任何证据事实。
+      if (argumentsValidated && toolDefinition?.evidencePolicy === 'eligible') {
+        evidenceRegistry ??= new RunEvidenceRegistry()
+        evidenceRegistry.recordEligibleToolOutcome({
+          toolName: toolDefinition.name,
+          ok: toolResult.ok,
+          // 始终原样传入：缺失投影本身就是需要被记录为 evidence failure 的事实，
+          // 不能在这里先过滤掉再让 Registry 误判成合法零命中。
+          evidence: toolResult.ok ? toolResult.evidence : undefined,
+        })
+      }
+
+      toolResults.push({
+        observation,
+        ok: toolResult.ok,
+        feedbackArgumentsJson,
+      })
+    }
+
+    return { toolResults, evidenceRegistry }
   }
 
   /**

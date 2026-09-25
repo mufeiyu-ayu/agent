@@ -7,7 +7,7 @@
 ```text
 阶段 1-8：Completed
 当前阶段：本项目源码阅读（工作台第 0 档）
-Active Agent Task：无
+Active Agent Task：#181 runTurnStream 工具执行循环抽成 executeToolBatch
 Gated：#117 Responses API adapter（2026-09-18）、web_fetch（2026-09-19），触发条件见看板
 产品方向：内部数据工作台（2026-09-20 定案，docs/research/workbench-direction.md），未立 Issue；档、顺序与触发只在其第 7 节
 候选子系统：session 事件流与 replay、审批门、compaction、定时任务（未立 Issue，各自的档见 workbench 第 7 节）
@@ -18,6 +18,7 @@ Admin Task 4：Planned
 
 | 任务 | 状态 | 说明 |
 | --- | --- | --- |
+| #181 runTurnStream 工具执行循环抽成 executeToolBatch | Active | 实施状态：已实现 / 验收状态：待验收。工具执行循环原样搬进同类私有方法 `executeToolBatch`（循环正文与原文逐行比对只差 3 行：`runId` 1 行，`terminalStepFailure = {…}` 改为回调 `onTerminalStepFailure({…})` 2 行；Registry 改为方法内局部变量、随结果返回），`runTurnStream` 837 → 708 行；`runSignal` / `databaseDeadline` 改由 `runCancellation` 派生（Issue 已更新）。新增「同一批两个 eligible 调用共用一个 Registry」用例，先在重构前代码上通过，两种搬移错误的变异下 5ms 内失败。验证：api typecheck、改动文件 eslint、`test:model-stream` 111、`test:grounding` 160、`test:grounding-db` 22、`test:tools` 81 |
 | #179 服务商按勾选使用出站代理 | Completed | 实施状态：已实现 / 验收状态：已通过。PR #180 代码 head `103d0a6` 的 AC-01～AC-09 于 2026-09-24 逐条 PASS（PR 验收评论为证据）：代理地址只读 `.env` 的 `OUTBOUND_PROXY_URL`（http(s) 之外启动失败，不再读 `HTTPS_PROXY` / `NO_PROXY`）；`LlmProvider.useProxy`（migration 只加列，dev 库已 deploy）；API 启动阶段装全局代理出口（embedding），模型请求按勾选显式传代理或直连 dispatcher；勾选未配置报 `llm_network`、保存 400；代理连不上文案带 `协议://主机:端口`，底层原因进服务端日志；管理台 Base URL 后缀「使用代理」（地址 / 未配置原因悬停可见）、卡片「代理」标签，应用户要求删掉服务商弹窗说明小字。旧 `.env` 的 `HTTPS_PROXY` 需自行改名。`/code-review high` 两轮 17 条，修 9 条，其余理由见 PR |
 | #175 模型 400 / 5xx 与工具失败保留真实原因 | Completed | 实施状态：已实现 / 验收状态：已通过。PR #177 代码 head `391e4d1` 的 AC-01～AC-06 于 2026-09-24 逐条 PASS（PR 验收评论为证据）：400 / 422 / 5xx 的 `LLMError` 文案附脱敏截断的上游摘要（用户文案不变）；中转站 400（或流内无状态码）+ `upstream_error` 归 `LLMServerError` → `llm_server`，沿用上游 401 / 429 的照常归类；工具执行器异常记 `tool_execution_failed` 服务端日志（toolName / callId / errorName / 截断 message，记日志失败不影响返回）；`.env.example` 写明 embedding 代理变量、全局 dispatcher 影响与变量优先级。真实环境：中转站 gemini 失败由 `llm_invalid_request` 变为 `llm_server`；配代理后 `retrieve_article_context` 由 10s `execution_failed` 变为 0.5～1s 成功。`/code-review` 两轮 23 条，修 15 条，其余理由见 PR |
 | #176 回答 Markdown 列表标记 | Completed | 实施状态：已实现 / 验收状态：已通过。PR #178 代码 head `dcedb94` 的 AC-01～AC-02 于 2026-09-24 逐条 PASS（PR 验收评论为证据）：`AgentMarkdownContent.vue` 的 `ol, ul` 规则加 `list-style: revert`，回到浏览器默认标记（嵌套依次空心圆、方块）；e2e 断言计算样式（旧样式对照失败）。验证：web typecheck / lint、test 91、e2e 31 |
