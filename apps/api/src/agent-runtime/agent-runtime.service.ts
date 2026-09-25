@@ -374,6 +374,8 @@ export class AgentRuntimeService {
             ),
             samplingAttemptId,
           )
+
+          // 中途关水龙头
           activeSamplingClose = {
             debugModelIO,
             close: async () => {

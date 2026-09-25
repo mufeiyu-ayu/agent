@@ -71,6 +71,7 @@ export async function* adaptOpenAICompatibleStream(
       const reasoningContentDelta = providerDelta.reasoning_content
       const contentDelta = providerDelta.content
 
+      // 处理思考模型的 reasoning_content：只要有 reasoning_content，就算是思考模型，首个 reasoning_content 到达时发 reasoning_started 事件。
       if (reasoningContentDelta) {
         reasoningContentChunks.push(reasoningContentDelta)
 
@@ -108,6 +109,7 @@ export async function* adaptOpenAICompatibleStream(
         yield { type: 'tool_call_started' }
       }
 
+      // 模型输出文本：每片原样作为 text_delta 发出，不在这里拼接。
       if (contentDelta) {
         // 同一 chunk 已先标记 Tool Call，避免把随后的 assistant content 当成最终回答。
         yield {
@@ -116,17 +118,17 @@ export async function* adaptOpenAICompatibleStream(
         }
       }
 
+      // 模型生成结束（流后面可能还有 usage 块）：先记下原因，结束事件等流读完再发。
       if (choice.finish_reason) {
         // finish reason 只表示本轮模型生成结束；若为 tool_calls，工具此时尚未执行。
+        // 归一后取值与上层（streamModelSampling）的处理：
+        // - stop：话说完且没调工具，判 final_answer
+        // - tool_calls：调用请求已生成完，判 tool_call
+        // - length：撞到 max_tokens；有调用就判 tool_call 按截断回喂，没有就抛错
+        // - content_filter：被服务商内容审核截断，抛错
+        // - unknown：其余原始值（如 DeepSeek 的 insufficient_system_resource），抛错
         finishReason = normalizeFinishReason(choice.finish_reason)
-        // 例如得到：
-        // [{
-        //   providerCallId: 'call_123',
-        //   name: 'search_articles',
-        //   argumentsJson: '{"query":"SP Himeko","limit":5}',
-        //   index: 0,
-        // }]
-        // length：arguments 可能被截断，放行有 id 与 name 的调用，交给上层按截断回喂。
+
         const toolCalls = toolCallAccumulator.finalize(finishReason === 'length')
         const reasoningContent = reasoningContentChunks.join('')
 

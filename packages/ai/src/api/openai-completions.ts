@@ -149,8 +149,10 @@ export class OpenAICompatibleClient {
         },
       }
 
+      // debug 捕获请求体，失败不影响模型调用。记录到后台
       safelyCaptureRequest(debugCapture, requestParams, notifyCaptureError)
 
+      // 标记请求准备发送
       requestStarted = true
       const stream = await rejectOnAbort(
         client.chat.completions.create(
