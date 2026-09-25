@@ -562,6 +562,7 @@ export class AgentRuntimeService {
               }
             }
             else {
+              // 拿到工具执行的结果
               toolResult = await this.toolInvocationService.invoke(
                 call,
                 { signal: runSignal, databaseDeadline },
@@ -584,6 +585,8 @@ export class AgentRuntimeService {
             throw error
           }
 
+          // 第一道截断：按工具自己的字数上限修剪回喂给模型的正文（不超过全局硬上限），
+          // 超了就截断并前后加说明，让模型知道看到的不完整。第二道按整轮上下文预算缩，在 plan() 里。
           const observation = normalizeToolObservation(
             toolResult.modelContent,
             toolDefinition?.maxObservationChars

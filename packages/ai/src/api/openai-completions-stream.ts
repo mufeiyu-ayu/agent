@@ -78,6 +78,7 @@ export async function* adaptOpenAICompatibleStream(
 
       const toolCallDeltas = providerDelta.tool_calls ?? []
 
+      // 拼接 toolcall 碎片
       for (const toolCallDelta of toolCallDeltas) {
         // SDK 类型把 index 标为必填，Google 官方端点的分片却不带它，且每个分片就是一个完整调用；null 同样按缺失处理。
         const index = options.toolCallIndexOptional
