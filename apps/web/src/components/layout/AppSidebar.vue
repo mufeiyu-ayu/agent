@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import type { AgentNavigationItem, AgentPlatformUser, AgentRecentChat } from '../../types/agent-platform'
 import type { LlmRuntimeStatus } from '../../types/llm'
-import type { WorkspaceThemeId, WorkspaceThemeOption } from '../../types/workspace-theme'
 
 import {
   DropdownMenuContent,
@@ -9,9 +8,6 @@ import {
   DropdownMenuPortal,
   DropdownMenuRoot,
   DropdownMenuSeparator,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from 'reka-ui'
 import { computed } from 'vue'
@@ -20,8 +16,7 @@ import { useI18n } from 'vue-i18n'
 import userAvatarUrl from '@/assets/avatar-user.jpg'
 import brandLogoUrl from '@/assets/logo.webp'
 import AppIcon from '@/components/common/AppIcon.vue'
-import { dropdownMenuOptionClass, dropdownMenuPanelClass } from '@/components/ui/dropdown-menu'
-import { useLocale } from '@/hooks/useLocale'
+import { dropdownMenuPanelClass } from '@/components/ui/dropdown-menu'
 
 import ConversationList from './ConversationList.vue'
 
@@ -38,23 +33,20 @@ const props = defineProps<{
   navigationItems: AgentNavigationItem[]
   recentChats: AgentRecentChat[]
   user: AgentPlatformUser
-  workspaceTheme: WorkspaceThemeId
-  workspaceThemeOptions: readonly WorkspaceThemeOption[]
 }>()
 
 const emit = defineEmits<{
   deleteChat: [chatId: string]
   loadMoreChats: []
   newChat: []
+  openSettings: []
   refreshBalance: []
   renameChat: [chatId: string, title: string]
   selectChat: [chatId: string]
   toggleSidebar: []
-  updateWorkspaceTheme: [value: WorkspaceThemeId]
 }>()
 
 const { t } = useI18n()
-const { localeOptions, currentLocale, currentLocaleLabel, updateLocale } = useLocale()
 
 const balanceToneClass = computed(() => {
   if (props.balanceStatus === 'error')
@@ -65,9 +57,20 @@ const balanceToneClass = computed(() => {
 
 const isRefreshingBalance = computed(() => props.balanceStatus === 'loading')
 
-const currentThemeOption = computed(() => {
-  return props.workspaceThemeOptions.find(option => option.value === props.workspaceTheme)
-})
+let openingSettings = false
+
+function openSettings() {
+  openingSettings = true
+  emit('openSettings')
+}
+
+/** 打开设置时焦点交给弹窗，菜单关闭后不再把焦点抢回头像按钮。 */
+function handleMenuCloseAutoFocus(event: Event) {
+  if (!openingSettings)
+    return
+  openingSettings = false
+  event.preventDefault()
+}
 
 /**
  * 余额行点击后触发刷新，但阻止菜单关闭，方便用户看到刷新结果。
@@ -240,6 +243,7 @@ function handleBalanceSelect(event: Event) {
             align="start"
             :side-offset="8"
             class="w-[248px]" :class="[dropdownMenuPanelClass]"
+            @close-auto-focus="handleMenuCloseAutoFocus"
           >
             <DropdownMenuItem
               v-if="!balanceHidden"
@@ -261,82 +265,13 @@ function handleBalanceSelect(event: Event) {
 
             <DropdownMenuSeparator v-if="!balanceHidden" class="mx-1 my-1.5 h-px bg-agent-border-subtle" />
 
-            <DropdownMenuSub>
-              <DropdownMenuSubTrigger
-                class="flex w-full cursor-pointer items-center justify-between gap-3 rounded-xl px-3 py-2 text-sm outline-none transition data-[highlighted]:bg-agent-surface-sunken/50 data-[state=open]:bg-agent-surface-sunken/50"
-              >
-                <span class="flex items-center gap-2.5">
-                  <AppIcon :name="currentThemeOption?.icon ?? 'tabler:sun-low'" :size="16" class="text-agent-ink-muted" />
-                  {{ t('layout.themeSwitcher.placeholder') }}
-                </span>
-                <span class="flex shrink-0 items-center gap-1 text-agent-ink-muted">
-                  {{ currentThemeOption ? t(currentThemeOption.shortLabelKey) : '' }}
-                  <AppIcon name="tabler:chevron-right" :size="14" />
-                </span>
-              </DropdownMenuSubTrigger>
-              <DropdownMenuPortal>
-                <DropdownMenuSubContent
-                  :side-offset="6"
-                  class="min-w-[176px]" :class="[dropdownMenuPanelClass]"
-                >
-                  <DropdownMenuItem
-                    v-for="option in workspaceThemeOptions"
-                    :key="option.value"
-                    class="flex cursor-pointer items-center justify-between gap-3 rounded-lg px-3 py-1.5 text-sm outline-none transition"
-                    :class="dropdownMenuOptionClass(option.value === workspaceTheme)"
-                    @select="emit('updateWorkspaceTheme', option.value)"
-                  >
-                    <span class="flex items-center gap-2">
-                      <AppIcon :name="option.icon" :size="15" class="text-agent-ink-muted" />
-                      {{ t(option.labelKey) }}
-                    </span>
-                    <AppIcon
-                      v-if="option.value === workspaceTheme"
-                      name="tabler:check"
-                      :size="15"
-                      class="shrink-0"
-                    />
-                  </DropdownMenuItem>
-                </DropdownMenuSubContent>
-              </DropdownMenuPortal>
-            </DropdownMenuSub>
-
-            <DropdownMenuSub>
-              <DropdownMenuSubTrigger
-                class="flex w-full cursor-pointer items-center justify-between gap-3 rounded-xl px-3 py-2 text-sm outline-none transition data-[highlighted]:bg-agent-surface-sunken/50 data-[state=open]:bg-agent-surface-sunken/50"
-              >
-                <span class="flex items-center gap-2.5">
-                  <AppIcon name="tabler:language" :size="16" class="text-agent-ink-muted" />
-                  {{ t('common.languageSwitcher.placeholder') }}
-                </span>
-                <span class="flex shrink-0 items-center gap-1 text-agent-ink-muted">
-                  {{ currentLocaleLabel }}
-                  <AppIcon name="tabler:chevron-right" :size="14" />
-                </span>
-              </DropdownMenuSubTrigger>
-              <DropdownMenuPortal>
-                <DropdownMenuSubContent
-                  :side-offset="6"
-                  class="min-w-[152px]" :class="[dropdownMenuPanelClass]"
-                >
-                  <DropdownMenuItem
-                    v-for="option in localeOptions"
-                    :key="option.value"
-                    class="flex cursor-pointer items-center justify-between gap-3 rounded-lg px-3 py-1.5 text-sm outline-none transition"
-                    :class="dropdownMenuOptionClass(option.value === currentLocale)"
-                    @select="updateLocale(option.value)"
-                  >
-                    <span>{{ t(option.labelKey) }}</span>
-                    <AppIcon
-                      v-if="option.value === currentLocale"
-                      name="tabler:check"
-                      :size="15"
-                      class="shrink-0"
-                    />
-                  </DropdownMenuItem>
-                </DropdownMenuSubContent>
-              </DropdownMenuPortal>
-            </DropdownMenuSub>
+            <DropdownMenuItem
+              class="flex cursor-pointer items-center gap-2.5 rounded-xl px-3 py-2 text-sm outline-none transition data-[highlighted]:bg-agent-surface-sunken/50"
+              @select="openSettings"
+            >
+              <AppIcon name="tabler:settings" :size="16" class="text-agent-ink-muted" />
+              {{ t('layout.settings.open') }}
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenuPortal>
       </DropdownMenuRoot>

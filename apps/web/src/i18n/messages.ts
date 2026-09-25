@@ -97,20 +97,41 @@ export const messages = {
         description: '主导航和最近对话',
       },
       themeSwitcher: {
-        placeholder: '主题',
         themes: {
           warmLedger: {
-            label: '经典浅色',
             shortLabel: '浅色',
           },
           oliveEmber: {
-            label: '橄榄余烬',
             shortLabel: '余烬',
           },
         },
       },
       settings: {
         trigger: '用户设置',
+        open: '设置',
+        title: '设置',
+        close: '关闭设置',
+        nav: {
+          general: '通用',
+        },
+        sections: {
+          appearance: '外观',
+          language: '语言',
+        },
+        theme: {
+          label: '主题',
+        },
+        inkLevel: {
+          label: '文字亮度',
+          options: {
+            soft: '柔和',
+            standard: '标准',
+            bright: '高亮',
+          },
+        },
+        language: {
+          label: '界面语言',
+        },
       },
     },
     conversation: {
@@ -305,20 +326,41 @@ export const messages = {
         description: 'Main navigation and recent chats',
       },
       themeSwitcher: {
-        placeholder: 'Theme',
         themes: {
           warmLedger: {
-            label: 'Classic light',
             shortLabel: 'Light',
           },
           oliveEmber: {
-            label: 'Olive ember',
             shortLabel: 'Ember',
           },
         },
       },
       settings: {
         trigger: 'User settings',
+        open: 'Settings',
+        title: 'Settings',
+        close: 'Close settings',
+        nav: {
+          general: 'General',
+        },
+        sections: {
+          appearance: 'Appearance',
+          language: 'Language',
+        },
+        theme: {
+          label: 'Theme',
+        },
+        inkLevel: {
+          label: 'Text brightness',
+          options: {
+            soft: 'Soft',
+            standard: 'Standard',
+            bright: 'Bright',
+          },
+        },
+        language: {
+          label: 'Interface language',
+        },
       },
     },
     conversation: {

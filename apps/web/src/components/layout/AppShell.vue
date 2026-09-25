@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { AgentNavigationItem, AgentPlatformUser, AgentRecentChat } from '../../types/agent-platform'
 import type { LlmRuntimeStatus } from '../../types/llm'
-import type { WorkspaceThemeId, WorkspaceThemeOption } from '../../types/workspace-theme'
+import type { WorkspaceThemeId } from '../../types/workspace-theme'
 
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -10,6 +10,7 @@ import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/components/
 
 import AppHeader from './AppHeader.vue'
 import AppSidebar from './AppSidebar.vue'
+import SettingsDialog from './SettingsDialog.vue'
 
 interface AppShellWorkspaceBackground {
   imageUrl: string
@@ -28,7 +29,6 @@ const props = defineProps<{
   recentChats: AgentRecentChat[]
   user: AgentPlatformUser
   workspaceTheme: WorkspaceThemeId
-  workspaceThemeOptions: readonly WorkspaceThemeOption[]
   workspaceBackground?: AppShellWorkspaceBackground
 }>()
 
@@ -39,11 +39,11 @@ const emit = defineEmits<{
   refreshBalance: []
   renameChat: [chatId: string, title: string]
   selectChat: [chatId: string]
-  updateWorkspaceTheme: [value: WorkspaceThemeId]
 }>()
 
 const sidebarCollapsed = ref(false)
 const mobileSidebarOpen = ref(false)
+const settingsOpen = ref(false)
 const { t } = useI18n()
 
 const desktopGridClass = computed(() => {
@@ -78,6 +78,12 @@ function handleDeleteChat(chatId: string) {
 function handleRenameChat(chatId: string, title: string) {
   emit('renameChat', chatId, title)
 }
+
+/** 桌面侧栏与移动抽屉共用一个设置弹窗；从抽屉打开时先收起抽屉。 */
+function openSettings() {
+  closeMobileSidebar()
+  settingsOpen.value = true
+}
 </script>
 
 <template>
@@ -97,16 +103,14 @@ function handleRenameChat(chatId: string, title: string) {
       :navigation-items="props.navigationItems"
       :recent-chats="props.recentChats"
       :user="props.user"
-      :workspace-theme="props.workspaceTheme"
-      :workspace-theme-options="props.workspaceThemeOptions"
       @delete-chat="handleDeleteChat"
       @load-more-chats="emit('loadMoreChats')"
       @new-chat="handleNewChat"
+      @open-settings="openSettings"
       @refresh-balance="emit('refreshBalance')"
       @rename-chat="handleRenameChat"
       @select-chat="handleSelectChat"
       @toggle-sidebar="toggleSidebar"
-      @update-workspace-theme="emit('updateWorkspaceTheme', $event)"
     />
 
     <Sheet v-model:open="mobileSidebarOpen">
@@ -132,20 +136,20 @@ function handleRenameChat(chatId: string, title: string) {
           :navigation-items="props.navigationItems"
           :recent-chats="props.recentChats"
           :user="props.user"
-          :workspace-theme="props.workspaceTheme"
-          :workspace-theme-options="props.workspaceThemeOptions"
           mobile
           @delete-chat="handleDeleteChat"
           @load-more-chats="emit('loadMoreChats')"
           @new-chat="handleNewChat"
+          @open-settings="openSettings"
           @refresh-balance="emit('refreshBalance')"
           @rename-chat="handleRenameChat"
           @select-chat="handleSelectChat"
           @toggle-sidebar="closeMobileSidebar"
-          @update-workspace-theme="emit('updateWorkspaceTheme', $event)"
         />
       </SheetContent>
     </Sheet>
+
+    <SettingsDialog v-model:open="settingsOpen" />
 
     <section class="relative flex min-h-0 min-w-0 flex-col overflow-hidden bg-agent-surface">
       <div

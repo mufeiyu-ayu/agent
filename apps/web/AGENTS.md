@@ -19,7 +19,7 @@ src/main.ts -> src/App.vue -> src/router/index.ts   # 两个页面：/ 首页、
 | `components/chat/` | `ChatComposer.vue`：空态大输入框 / 对话中单行胶囊两套布局、随内容增高；`ChatModelMenu.vue`：模型与思考强度下拉；`ChatTypewriterPlaceholder.vue`：空态打字机提示 | |
 | `components/agent/` | 对话消息渲染：Markdown、引用面板、限高代码卡片（无执行 / 预览能力）、来源卡片 | `AgentConversation.vue`、`AgentMarkdownContent.vue`（流式正文渲染入口，块列表来自 `useStreamingMarkdown`）、`AgentGroundingPanel.vue`、`AgentCodeBlock.vue` |
 | `components/common/` | 通用基础设施：图标、语义悬浮提示、全局消息 | `AppIcon.vue`、`AppTooltip.vue`、`AppMessage.vue` |
-| `components/layout/` | 壳、头部、侧栏、会话列表 | `AppShell.vue` |
+| `components/layout/` | 壳、头部、侧栏、会话列表、设置弹窗（主题 / 文字亮度 / 语言） | `AppShell.vue`、`SettingsDialog.vue` |
 | `components/home/` | 首页动效与流程图，纯展示 | |
 | `components/ui/` | shadcn 风格基础组件 | |
 | `utils/` | 纯函数：会话分轮、引用投影、时间格式、Markdown 分块与高亮、流式尾块补齐 | `conversation-turns.ts`、`message-grounding.ts`、`markdown-blocks.ts`、`streaming-markdown.ts` |

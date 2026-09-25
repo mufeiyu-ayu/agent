@@ -139,6 +139,40 @@
   --sidebar-ring: var(--agent-focus);
 }
 
+/*
+ * 文字亮度（设置弹窗「文字亮度」）：standard 用主题原色，这里只覆盖 soft / bright 的 ink 四档。
+ * 暗色主题的 token 也声明在 AppShell 的 main 上，所以选择器同时匹配根与后代。
+ */
+:root[data-agent-ink-level='soft'] {
+  --agent-ink: oklch(0.300 0.016 65);
+  --agent-ink-soft: oklch(0.400 0.016 65);
+  --agent-ink-muted: oklch(0.530 0.012 65);
+  --agent-ink-faint: oklch(0.620 0.009 65);
+}
+
+:root[data-agent-ink-level='bright'] {
+  --agent-ink: oklch(0.120 0.014 65);
+  --agent-ink-soft: oklch(0.200 0.016 65);
+  --agent-ink-muted: oklch(0.380 0.014 65);
+  --agent-ink-faint: oklch(0.520 0.010 65);
+}
+
+:root[data-agent-ink-level='soft'][data-agent-workspace-theme='olive-ember'],
+:root[data-agent-ink-level='soft'] [data-agent-workspace-theme='olive-ember'] {
+  --agent-ink: oklch(0.880 0.022 86);
+  --agent-ink-soft: oklch(0.820 0.026 85);
+  --agent-ink-muted: oklch(0.690 0.038 83);
+  --agent-ink-faint: oklch(0.600 0.032 84);
+}
+
+:root[data-agent-ink-level='bright'][data-agent-workspace-theme='olive-ember'],
+:root[data-agent-ink-level='bright'] [data-agent-workspace-theme='olive-ember'] {
+  --agent-ink: oklch(0.990 0.004 88);
+  --agent-ink-soft: oklch(0.970 0.006 86);
+  --agent-ink-muted: oklch(0.840 0.020 84);
+  --agent-ink-faint: oklch(0.730 0.018 84);
+}
+
 * {
   box-sizing: border-box;
 }

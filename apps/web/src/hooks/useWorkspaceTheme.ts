@@ -1,4 +1,4 @@
-import type { WorkspaceThemeId, WorkspaceThemeOption } from '@/types/workspace-theme'
+import type { InkLevel, WorkspaceThemeId, WorkspaceThemeOption } from '@/types/workspace-theme'
 
 import { computed, readonly, ref, watch } from 'vue'
 
@@ -8,19 +8,23 @@ const defaultWorkspaceTheme: WorkspaceThemeId = 'warm-ledger'
 export const workspaceThemeOptions = [
   {
     value: 'warm-ledger',
-    labelKey: 'layout.themeSwitcher.themes.warmLedger.label',
     shortLabelKey: 'layout.themeSwitcher.themes.warmLedger.shortLabel',
-    icon: 'tabler:sun-low',
+    icon: 'tabler:sun',
   },
   {
     value: 'olive-ember',
-    labelKey: 'layout.themeSwitcher.themes.oliveEmber.label',
     shortLabelKey: 'layout.themeSwitcher.themes.oliveEmber.shortLabel',
-    icon: 'tabler:moon-stars',
+    icon: 'tabler:moon',
   },
 ] as const satisfies readonly WorkspaceThemeOption[]
 
+/** 文字亮度三档；standard 即主题原色，soft / bright 由 style.css 按主题覆盖 ink 四档。 */
+export const inkLevelOptions = ['soft', 'standard', 'bright'] as const satisfies readonly InkLevel[]
+
+const inkLevelStorageKey = 'agent:ink-level'
+
 const workspaceTheme = ref<WorkspaceThemeId>(defaultWorkspaceTheme)
+const inkLevel = ref<InkLevel>('standard')
 
 let initialized = false
 
@@ -38,11 +42,20 @@ export function useWorkspaceTheme() {
     saveWorkspaceTheme(value)
   }
 
+  function updateInkLevel(value: InkLevel) {
+    inkLevel.value = value
+    document.documentElement.dataset.agentInkLevel = value
+    saveToStorage(inkLevelStorageKey, value)
+  }
+
   return {
     currentWorkspaceTheme,
     workspaceTheme: readonly(workspaceTheme),
     workspaceThemeOptions,
     updateWorkspaceTheme,
+    inkLevel: readonly(inkLevel),
+    inkLevelOptions,
+    updateInkLevel,
   }
 }
 
@@ -57,6 +70,9 @@ function initializeWorkspaceTheme() {
 
   if (typeof window === 'undefined')
     return
+
+  inkLevel.value = readSavedInkLevel()
+  document.documentElement.dataset.agentInkLevel = inkLevel.value
 
   watch(
     workspaceTheme,
@@ -82,12 +98,28 @@ function readSavedWorkspaceTheme(): WorkspaceThemeId {
   }
 }
 
-function saveWorkspaceTheme(theme: WorkspaceThemeId) {
+/** 没存过时跟随系统「增强对比度」：开了默认高亮档。 */
+function readSavedInkLevel(): InkLevel {
   try {
-    window.localStorage.setItem(workspaceThemeStorageKey, theme)
+    const saved = window.localStorage.getItem(inkLevelStorageKey)
+    if (saved && (inkLevelOptions as readonly string[]).includes(saved))
+      return saved as InkLevel
+  }
+  catch {}
+
+  return window.matchMedia?.('(prefers-contrast: more)').matches ? 'bright' : 'standard'
+}
+
+function saveWorkspaceTheme(theme: WorkspaceThemeId) {
+  saveToStorage(workspaceThemeStorageKey, theme)
+}
+
+function saveToStorage(key: string, value: string) {
+  try {
+    window.localStorage.setItem(key, value)
   }
   catch {
-    // localStorage 可能被浏览器隐私设置禁用；主题切换仍应在当前页面生效。
+    // localStorage 可能被浏览器隐私设置禁用；设置仍应在当前页面生效。
   }
 }
 

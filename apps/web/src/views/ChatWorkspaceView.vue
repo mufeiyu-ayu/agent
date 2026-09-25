@@ -32,8 +32,6 @@ const { t } = useI18n()
 
 const {
   workspaceTheme,
-  workspaceThemeOptions,
-  updateWorkspaceTheme,
 } = useWorkspaceTheme()
 
 const navigationItems = computed<AgentNavigationItem[]>(() => {
@@ -132,14 +130,12 @@ function send() {
     :user="user"
     :workspace-background="workspaceBackground"
     :workspace-theme="workspaceTheme"
-    :workspace-theme-options="workspaceThemeOptions"
     @delete-chat="deleteConversationById"
     @load-more-chats="loadMoreConversations"
     @new-chat="resetWorkspace"
     @refresh-balance="refreshBalance"
     @rename-chat="renameConversationById"
     @select-chat="selectConversation"
-    @update-workspace-theme="updateWorkspaceTheme"
   >
     <div class="relative flex min-h-0 flex-1 flex-col overflow-hidden">
       <AppMessage
