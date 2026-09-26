@@ -22,6 +22,24 @@ function adapt(
 }
 
 describe('OpenAI-compatible request mapping', () => {
+  it('requiresReasoningContent 为真时历史 assistant 消息带空 reasoning_content，其余角色与家族不带', () => {
+    assert.deepEqual(
+      toOpenAIModelInputItem({ type: 'message', role: 'assistant', content: '上一轮回答' }, true),
+      { role: 'assistant', content: '上一轮回答', reasoning_content: '' },
+    )
+    assert.deepEqual(
+      toOpenAIModelInputItem({ type: 'message', role: 'assistant', content: '上一轮回答' }, false),
+      { role: 'assistant', content: '上一轮回答' },
+    )
+
+    for (const role of ['system', 'user'] as const) {
+      assert.deepEqual(
+        toOpenAIModelInputItem({ type: 'message', role, content: '文本' }, true),
+        { role, content: '文本' },
+      )
+    }
+  })
+
   it('requiresReasoningContent 为真时 assistant Tool Call 一律带 reasoning_content，没思考回空串', () => {
     const calls = [{ callId: 'call-1', name: 'search_articles', rawArgumentsJson: '{"query":"seo"}' }]
     const expectedToolCalls = [{

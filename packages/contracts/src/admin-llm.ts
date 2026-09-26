@@ -19,7 +19,7 @@ export type LlmProviderFamily = typeof LLM_PROVIDER_FAMILIES[number]
  * 一个家族在 Chat Completions 之上的协议差异；所有流量都走中转站或直连的同一套 wire 协议，
  * 差异只写在这张表里，不按家族各写一个 adapter。对照 Pi 的 `OpenAICompletionsCompat`。
  * - `thinkingFormat`：请求体的思考开关。`'deepseek'` 发 `thinking: { type: 'enabled' }`；null 不发。
- * - `requiresReasoningContent`：Tool Call 必须回 `reasoning_content`（DeepSeek thinking 续轮回填需要）；字段必须存在，模型没思考时回空串；
+ * - `requiresReasoningContent`：assistant 消息必须带 `reasoning_content`（DeepSeek thinking：Tool Call 续轮回填本轮推理，历史回放给空串）；字段必须存在，模型没思考时回空串；
  *   中转站后面的 gpt / gemini / grok-4.6-latest 不回推理正文，grok-4.6 会回（有就原样回填，2026-09-26 实测上游接受），都不能要求。
  * - `toolCallIndexOptional`：流式 tool_calls 分片可以不带 `index`，每个这样的分片就是一个完整调用，取还没被占用的最小槽位（不与显式 index 撞号）。
  * - `toolCallsMayFinishWithStop`：带 Tool Call 时 `finish_reason` 可能是 `stop`，按 `tool_calls` 处理。

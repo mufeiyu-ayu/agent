@@ -68,7 +68,7 @@ type ChatCompletionBaseParams = Pick<
   reasoning_effort?: ReasoningEffort
 }
 
-type AssistantToolCallMessageParam
+type AssistantMessageParam
   = ChatCompletionAssistantMessageParam & {
     reasoning_content?: string
   }
@@ -381,14 +381,20 @@ export function toOpenAIModelInputItem(
   requiresReasoningContent: boolean,
 ): ChatCompletionMessageParam {
   switch (item.type) {
-    case 'message':
-      return {
-        role: item.role,
-        content: item.content,
-      }
+    case 'message': {
+      if (item.role !== 'assistant' || !requiresReasoningContent)
+        return { role: item.role, content: item.content }
+
+      // DeepSeek 官方文档：请求带 tools 时历史轮的 assistant 也要带 reasoning_content，缺了按文档会 400
+      // （2026-09-26 实测未强制；不带 tools 时文档说会被忽略）。历史不回放推理，给空串；
+      // 按官方编码空串与缺字段渲染相同，模型看到的不变。
+      const message: AssistantMessageParam = { role: 'assistant', content: item.content, reasoning_content: '' }
+
+      return message
+    }
 
     case 'assistant_tool_call': {
-      const message: AssistantToolCallMessageParam = {
+      const message: AssistantMessageParam = {
         role: 'assistant',
         content: item.content ?? '',
         // DeepSeek thinking 续轮要求字段必须存在，模型没思考时回空串，缺字段官方端点会 400；

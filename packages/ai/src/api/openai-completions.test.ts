@@ -163,6 +163,36 @@ describe('OpenAICompatibleClient runtime config', () => {
     assert.deepEqual(messages.slice(2).map(message => message.tool_call_id), ['call-1', 'call-2'])
   })
 
+  it('带 tools 的多轮请求：DeepSeek 家族的历史 assistant 回复在实际 wire body 里带空 reasoning_content，其他家族不带', async () => {
+    const cases = [
+      [DEEPSEEK_REQUEST, { role: 'assistant', content: '上一轮回答', reasoning_content: '' }],
+      [RELAY_REQUEST, { role: 'assistant', content: '上一轮回答' }],
+    ] as const
+
+    for (const [request, expected] of cases) {
+      const { fetchCalls, client } = createFetchHarness([() => okStreamResponse('ok')])
+
+      await collectEvents(client.chatStream([
+        { type: 'message', role: 'user', content: '上一轮问题' },
+        { type: 'message', role: 'assistant', content: '上一轮回答' },
+        { type: 'message', role: 'user', content: '这一轮问题' },
+      ], {
+        request,
+        tools: [{
+          name: 'search_articles',
+          description: '按关键词查询文章',
+          inputSchema: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'], additionalProperties: false },
+        }],
+      }))
+
+      assert.equal(fetchCalls.length, 1)
+      const wireBody = JSON.parse(String(fetchCalls[0]!.body)) as { messages: unknown[], tools: unknown[] }
+
+      assert.equal(wireBody.tools.length, 1)
+      assert.deepEqual(wireBody.messages[1], expected)
+    }
+  })
+
   it('非 reasoning 模型不发 thinking 参数，Tool Call 无 reasoning_content 也能完成', async () => {
     const harness = createHarness()
 
