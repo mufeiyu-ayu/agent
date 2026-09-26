@@ -14,7 +14,7 @@
 ![NestJS](https://img.shields.io/badge/NestJS-11-E0234E?logo=nestjs&logoColor=white)
 ![Vue](https://img.shields.io/badge/Vue-3.5-4FC08D?logo=vuedotjs&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-700%2B-brightgreen)
+![Tests](https://img.shields.io/badge/tests-450%2B-brightgreen)
 
 [为什么做](#为什么做这个项目) · [亮点](#亮点) · [主循环](#一屏看完整个循环) · [快速开始](#快速开始) · [学习路线](#拿它学-agent-工程) · [路线](#路线)
 
@@ -35,7 +35,7 @@
 
 <div align="center">
 
-| ~5,000 | 700+ | 80+ | 80+ |
+| ~5,000 | 450+ | 80+ | 80+ |
 | :---: | :---: | :---: | :---: |
 | 行运行时代码 | 个测试 | 个已合并 PR | 个已关闭 Issue |
 

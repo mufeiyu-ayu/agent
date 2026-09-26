@@ -14,7 +14,7 @@ No LangChain. No LangGraph. No workflow engine. Just the loop, the edge cases, a
 ![NestJS](https://img.shields.io/badge/NestJS-11-E0234E?logo=nestjs&logoColor=white)
 ![Vue](https://img.shields.io/badge/Vue-3.5-4FC08D?logo=vuedotjs&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-700%2B-brightgreen)
+![Tests](https://img.shields.io/badge/tests-450%2B-brightgreen)
 
 [Why](#why-this-exists) · [Highlights](#highlights) · [The loop](#the-whole-loop-in-one-screen) · [Quick start](#quick-start) · [Learn from it](#learn-agent-engineering-from-it) · [Roadmap](#roadmap)
 
@@ -35,7 +35,7 @@ Frameworks hide these decisions behind abstractions. This project handles every 
 
 <div align="center">
 
-| ~5,000 | 700+ | 80+ | 80+ |
+| ~5,000 | 450+ | 80+ | 80+ |
 | :---: | :---: | :---: | :---: |
 | lines of runtime code | tests | merged PRs | closed issues |
 
