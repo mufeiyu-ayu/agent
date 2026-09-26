@@ -113,7 +113,7 @@ flowchart LR
 
 ## Quick start
 
-You need Node.js `^20.19.0` or `>=22.12.0`, pnpm `10.32.1`, Docker, and an API key for any OpenAI-compatible model provider.
+You need Node.js `^24.11.0` (LTS), pnpm `10.32.1`, Docker, and an API key for any OpenAI-compatible model provider.
 
 ```bash
 corepack enable && pnpm install

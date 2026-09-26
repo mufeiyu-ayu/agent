@@ -113,7 +113,7 @@ flowchart LR
 
 ## 快速开始
 
-需要 Node.js `^20.19.0` 或 `>=22.12.0`、pnpm `10.32.1`、Docker 和任意一家 OpenAI-compatible 模型服务商的 API Key。
+需要 Node.js `^24.11.0`（LTS）、pnpm `10.32.1`、Docker 和任意一家 OpenAI-compatible 模型服务商的 API Key。
 
 ```bash
 corepack enable && pnpm install
