@@ -5,14 +5,13 @@ import type {
   ProviderBalanceResponse,
 } from '@agent/ai'
 import type { AdminLlmProxyStatus, LlmFamilyCompat, ReasoningEffort } from '@agent/contracts'
-import type { OnModuleInit } from '@nestjs/common'
 import type { Dispatcher, ProxyAgent } from 'undici'
 import type { LlmProviderCredentials } from './llm-model-config.service.js'
 import type { OutboundProxyConfig } from './outbound-proxy.js'
 import { LLMApiError, LLMError, LLMInvalidRequestError, LLMNetworkError, OpenAICompatibleClient } from '@agent/ai'
 import { familyCompatOf } from '@agent/contracts'
 import { Inject, Injectable, Logger } from '@nestjs/common'
-import { Agent, setGlobalDispatcher } from 'undici'
+import { Agent } from 'undici'
 
 import { LLMRuntimeConfigService } from './llm-runtime-config.service.js'
 import { LlmProxyError } from './llm.errors.js'
@@ -32,16 +31,6 @@ const PROXY_NOT_CONFIGURED = '该服务商设置为经代理访问，但本机�
  */
 const PROXY_CONNECT_ERROR_CODES = new Set(['ECONNREFUSED', 'ETIMEDOUT', 'EHOSTUNREACH', 'ENOTFOUND', 'UND_ERR_CONNECT_TIMEOUT'])
 
-/**
- * LLMService 是业务门面：按调用方给的 Provider 凭据构造 `OpenAICompatibleClient`，
- * 具体模型 SDK 和协议适配放在 `@agent/ai`。
- *
- * 不做 client 缓存：`OpenAICompatibleClient` 只是几个字段的配置持有者，每次请求都会新建 SDK 实例；
- * 凭据由 Run 开始时的快照传入，后台改 key 只影响之后解析的 Run。
- *
- * 出口按服务商的 `useProxy` 显式指定：勾选的走进程内共用的代理 agent，没勾的走直连 agent；
- * 全局出口在启动阶段装成代理后，不显式直连的请求会被带进代理。
- */
 /** 探测已入库模型行时对齐真实 Run 的参数；省略即最保守：不发 thinking、不要求 reasoning_content。 */
 export interface ProbeModelOptions {
   compat?: LlmFamilyCompat
@@ -49,11 +38,20 @@ export interface ProbeModelOptions {
   maxOutputTokens?: number
 }
 
+/**
+ * LLMService 是业务门面：按调用方给的 Provider 凭据构造 `OpenAICompatibleClient`，
+ * 具体模型 SDK 和协议适配放在 `@agent/ai`。
+ *
+ * 不做 client 缓存：`OpenAICompatibleClient` 只是几个字段的配置持有者，每次请求都会新建 SDK 实例；
+ * 凭据由 Run 开始时的快照传入，后台改 key 只影响之后解析的 Run。
+ *
+ * 出口按服务商的 `useProxy` 显式指定：勾选的走进程内共用的代理 agent，没勾的走直连 agent，都不经进程的全局 dispatcher。
+ */
 @Injectable()
-export class LLMService implements OnModuleInit {
+export class LLMService {
   private readonly logger = new Logger(LLMService.name)
   private readonly proxy: OutboundProxyConfig | null
-  /** 进程内唯一的代理 agent：勾选「使用代理」的服务商与全局出口（embedding）共用。 */
+  /** 进程内唯一的代理 agent：勾选「使用代理」的服务商共用。 */
   private readonly proxyAgent: ProxyAgent | null
   private readonly directAgent = new Agent()
 
@@ -63,15 +61,6 @@ export class LLMService implements OnModuleInit {
   ) {
     this.proxy = runtimeConfigService.value.outboundProxy
     this.proxyAgent = this.proxy ? createOutboundProxyAgent(this.proxy) : null
-  }
-
-  /**
-   * 启动阶段装一次全局出口：`@google/genai` 没有 dispatcher 入口，embedding 只能经全局 dispatcher 走代理。
-   * 在 listen 之前完成，API 的第一个请求就遵守分流规则。
-   */
-  onModuleInit(): void {
-    if (this.proxyAgent)
-      setGlobalDispatcher(this.proxyAgent)
   }
 
   /** 管理台表单用：只给去掉凭据的 `协议://主机:端口`。 */

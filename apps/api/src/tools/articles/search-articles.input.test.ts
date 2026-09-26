@@ -6,9 +6,9 @@ import { describe, it } from 'node:test'
 import {
   normalizeArticleRetrievalInput,
   toArticleExcerpt,
-} from './article-retrieval.js'
+} from './search-articles.tool.js'
 
-describe('Article Retrieval contract', () => {
+describe('search_articles 输入规范化与摘录', () => {
   it('使用唯一规则规范化 query、languageCode 和 limit', () => {
     assert.deepEqual(
       normalizeArticleRetrievalInput({
@@ -51,7 +51,7 @@ describe('Article Retrieval contract', () => {
     }
   })
 
-  it('同一规范化函数可直接复核已规范化的 Retrieval query', () => {
+  it('同一规范化函数可直接复核已规范化的 query', () => {
     const query = normalizeArticleRetrievalInput({
       query: '  seo  ',
       languageCode: ' EN ',

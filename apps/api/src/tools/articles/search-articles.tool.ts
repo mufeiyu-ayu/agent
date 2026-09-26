@@ -1,8 +1,4 @@
-import type {
-  ArticleRetriever,
-  DatabaseArticleRetrievalExecutionContext,
-  NormalizedArticleRetrievalQuery,
-} from '../../retrieval/article-retrieval.js'
+import type { Prisma } from '../../generated/prisma/client.js'
 import type {
   ToolDefinition,
   ToolExecutionContext,
@@ -11,10 +7,19 @@ import type {
 } from '../core/tool.types.js'
 import { Inject, Injectable } from '@nestjs/common'
 
-import { normalizeArticleRetrievalInput } from '../../retrieval/article-retrieval.js'
-import { PrismaArticleRetriever } from '../../retrieval/retrievers/prisma-article-retriever.js'
+import { PrismaService } from '../../prisma/prisma.service.js'
 
-export type SearchArticlesInput = NormalizedArticleRetrievalQuery
+const DEFAULT_LIMIT = 5
+const MAX_LIMIT = 10
+const MAX_QUERY_LENGTH = 100
+const MAX_LANGUAGE_CODE_LENGTH = 20
+const EXCERPT_LENGTH = 500
+
+export interface SearchArticlesInput {
+  query: string
+  languageCode?: string
+  limit: number
+}
 
 export const searchArticlesDefinition: ToolDefinition<SearchArticlesInput> = {
   name: 'search_articles',
@@ -40,31 +45,150 @@ export const searchArticlesDefinition: ToolDefinition<SearchArticlesInput> = {
 @Injectable()
 export class SearchArticlesTool implements ToolExecutor<SearchArticlesInput> {
   constructor(
-    @Inject(PrismaArticleRetriever)
-    private readonly articleRetriever: ArticleRetriever<DatabaseArticleRetrievalExecutionContext>,
+    @Inject(PrismaService)
+    private readonly prismaService: PrismaService,
   ) {}
 
   async execute(
     invocation: ValidatedToolInvocation<SearchArticlesInput>,
     context: ToolExecutionContext,
   ) {
-    context.signal.throwIfAborted()
-
     // 零结果属于正常查询结果；未捕获的数据库或执行异常由 ToolInvocationService 统一兜底。
-    const retrieval = await this.articleRetriever.retrieve(invocation.input, {
-      databaseDeadline: context.databaseDeadline,
-      signal: context.signal,
-    })
+    const { total, hits } = await queryArticles(this.prismaService, invocation.input, context)
 
     context.signal.throwIfAborted()
-    const { query } = retrieval.query
-    const articles = retrieval.hits.map(({ rank: _rank, ...article }) => article)
 
     return {
       ok: true as const,
-      modelContent: articles.length === 0
-        ? `没有找到与“${query}”匹配的文章。`
-        : `共找到 ${retrieval.total} 篇匹配文章，以下是 ${articles.length} 条精简结果：\n${JSON.stringify(articles)}`,
+      modelContent: hits.length === 0
+        ? `没有找到与“${invocation.input.query}”匹配的文章。`
+        : `共找到 ${total} 篇匹配文章，以下是 ${hits.length} 条精简结果：\n${JSON.stringify(hits)}`,
     }
   }
+}
+
+/** 入参已经过 `parse` 规范化；五个字段不区分大小写的包含匹配取 OR，同一个事务里先 count 再取前 limit 条。 */
+export async function queryArticles(
+  prismaService: PrismaService,
+  query: SearchArticlesInput,
+  context: ToolExecutionContext,
+) {
+  context.signal.throwIfAborted()
+
+  const queryPattern = query.query.replace(/[\\%_]/g, '\\$&')
+  const where: Prisma.ArticleWhereInput = {
+    ...(query.languageCode ? { languageCode: query.languageCode } : {}),
+    OR: [
+      { title: { contains: queryPattern, mode: 'insensitive' } },
+      { slug: { contains: queryPattern, mode: 'insensitive' } },
+      { seoTitle: { contains: queryPattern, mode: 'insensitive' } },
+      { seoDescription: { contains: queryPattern, mode: 'insensitive' } },
+      { content: { contains: queryPattern, mode: 'insensitive' } },
+    ],
+  }
+
+  const { total, records } = await prismaService.withDeadlineTransaction(
+    context.databaseDeadline,
+    async (transaction) => {
+      context.signal.throwIfAborted()
+      const total = await transaction.execute(prisma =>
+        prisma.article.count({ where }))
+
+      context.signal.throwIfAborted()
+      const records = await transaction.execute(prisma =>
+        prisma.article.findMany({
+          where,
+          select: {
+            sourceId: true,
+            slug: true,
+            languageCode: true,
+            title: true,
+            seoTitle: true,
+            seoDescription: true,
+            content: true,
+          },
+          orderBy: [
+            { updatedAt: 'desc' },
+            { sourceId: 'asc' },
+          ],
+          take: query.limit,
+        }))
+
+      context.signal.throwIfAborted()
+      return { total, records }
+    },
+  )
+
+  context.signal.throwIfAborted()
+
+  return {
+    total,
+    hits: records.map(({ content, ...record }) => ({
+      ...record,
+      excerpt: toArticleExcerpt(content),
+    })),
+  }
+}
+
+export function normalizeArticleRetrievalInput(
+  value: unknown,
+): SearchArticlesInput {
+  if (typeof value !== 'object' || value === null || Array.isArray(value))
+    throw new Error('invalid article retrieval input')
+
+  const record = value as Record<string, unknown>
+  const allowedKeys = new Set(['query', 'languageCode', 'limit'])
+
+  if (Object.keys(record).some(key => !allowedKeys.has(key)))
+    throw new Error('invalid article retrieval input')
+
+  if (typeof record.query !== 'string')
+    throw new Error('invalid article retrieval query')
+
+  const query = record.query.trim()
+
+  if (query.length === 0 || query.length > MAX_QUERY_LENGTH)
+    throw new Error('invalid article retrieval query')
+
+  let languageCode: string | undefined
+
+  if (Object.hasOwn(record, 'languageCode')) {
+    if (typeof record.languageCode !== 'string')
+      throw new Error('invalid article retrieval languageCode')
+
+    languageCode = record.languageCode.trim().toLowerCase()
+
+    if (languageCode.length === 0 || languageCode.length > MAX_LANGUAGE_CODE_LENGTH)
+      throw new Error('invalid article retrieval languageCode')
+  }
+
+  let limit = DEFAULT_LIMIT
+
+  if (Object.hasOwn(record, 'limit')) {
+    if (
+      typeof record.limit !== 'number'
+      || !Number.isInteger(record.limit)
+      || record.limit < 1
+      || record.limit > MAX_LIMIT
+    ) {
+      throw new Error('invalid article retrieval limit')
+    }
+
+    limit = record.limit
+  }
+
+  return {
+    query,
+    ...(languageCode ? { languageCode } : {}),
+    limit,
+  }
+}
+
+export function toArticleExcerpt(content: string): string {
+  const plainText = content
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  return [...plainText].slice(0, EXCERPT_LENGTH).join('')
 }

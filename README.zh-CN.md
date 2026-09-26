@@ -13,7 +13,7 @@
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)
 ![NestJS](https://img.shields.io/badge/NestJS-11-E0234E?logo=nestjs&logoColor=white)
 ![Vue](https://img.shields.io/badge/Vue-3.5-4FC08D?logo=vuedotjs&logoColor=white)
-![PostgreSQL](https://img.shields.io/badge/PostgreSQL-pgvector-4169E1?logo=postgresql&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white)
 ![Tests](https://img.shields.io/badge/tests-700%2B-brightgreen)
 
 [为什么做](#为什么做这个项目) · [亮点](#亮点) · [主循环](#一屏看完整个循环) · [快速开始](#快速开始) · [学习路线](#拿它学-agent-工程) · [路线](#路线)
@@ -98,15 +98,14 @@ flowchart LR
     Runtime --> Context[模型上下文<br/>Token 预算 · 裁剪]
     Runtime --> LLM["@agent/ai<br/>OpenAI-compatible 客户端"]
     LLM -->|SSE| Providers([DeepSeek · GPT · Grok · Gemini])
-    Runtime --> Tools[工具] --> Retrieval[混合检索<br/>lexical + vector，RRF]
-    Retrieval --> DB[(PostgreSQL<br/>+ pgvector)]
+    Runtime --> Tools[工具<br/>文章关键词搜索] --> DB[(PostgreSQL)]
     Runtime --> Recorder[Run / Step 记录] --> DB
     AdminAPI --> DB
 ```
 
 | 模块 | 做什么 |
 | --- | --- |
-| `apps/api` | NestJS API：Agent Runtime、工具、检索与索引、模型接入配置 |
+| `apps/api` | NestJS API：Agent Runtime、工具、模型接入配置 |
 | `apps/web` | Vue 3 对话前台，流式 Markdown 渲染 |
 | `apps/admin` | 运维控制台：概览、会话记录、Run Trace、模型接入 |
 | `packages/ai` | 不依赖框架的模型客户端：流适配、重试、错误（零 Nest、零 Prisma） |
@@ -114,12 +113,12 @@ flowchart LR
 
 ## 快速开始
 
-需要 Node.js `^20.19.0` 或 `>=22.12.0`、pnpm `10.32.1`、Docker、任意一家 OpenAI-compatible 模型服务商的 API Key，检索链路另需 Gemini API Key。
+需要 Node.js `^20.19.0` 或 `>=22.12.0`、pnpm `10.32.1`、Docker 和任意一家 OpenAI-compatible 模型服务商的 API Key。
 
 ```bash
 corepack enable && pnpm install
-cp .env.example .env              # 填 AGENT_SECRET_KEY（openssl rand -hex 32）与 GEMINI_API_KEY
-docker compose up -d postgres     # 自带 pgvector 的 PostgreSQL
+cp .env.example .env              # 填 AGENT_SECRET_KEY（openssl rand -hex 32）
+docker compose up -d postgres     # PostgreSQL（镜像自带 pgvector，早期迁移要建这个扩展）
 pnpm prisma:generate && pnpm prisma:migrate
 pnpm dev
 ```
@@ -127,14 +126,13 @@ pnpm dev
 然后打开管理台 `http://localhost:5174`，在「模型接入」页添加服务商和模型，并勾选「前台可见」，就可以在 `http://localhost:5173` 对话了。
 
 <details>
-<summary>开启检索（Demo 文章 + 向量索引）</summary>
+<summary>灌入 Demo 文章（供 search_articles 工具查询）</summary>
 
 ```bash
 node --env-file=.env --import tsx apps/api/scripts/seed.ts     # 灌入 68 篇 Demo 文章（幂等）
-pnpm --filter @agent/api index:articles -- --mode=incremental  # 构建向量索引（调用 Gemini）
 ```
 
-不做这两步，普通聊天照常可用，检索工具会因为没有 active index 而 fail closed。自己装 PostgreSQL 必须带 pgvector 扩展。全部配置见 [`.env.example`](./.env.example)。
+不灌也能正常聊天，只是 `search_articles` 查不到文章。自己装 PostgreSQL 必须带 pgvector 扩展，早期迁移要建它。全部配置见 [`.env.example`](./.env.example)。
 
 </details>
 
