@@ -1,259 +1,83 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
-import { useI18n } from 'vue-i18n'
-import { RouterLink } from 'vue-router'
+import { useTemplateRef } from 'vue'
 
-import AppIcon from '@/components/common/AppIcon.vue'
-import LanguageSwitcher from '@/components/common/LanguageSwitcher.vue'
-import HeroAccentBackdrop from './HeroAccentBackdrop.vue'
-import HomeAnimatedPlaceholder from './HomeAnimatedPlaceholder.vue'
-import ProcessMap from './ProcessMap.vue'
+import HomeHeroDemo from '@/components/home/HomeHeroDemo.vue'
 
-const { t } = useI18n()
-
-const homeInput = ref('')
-const homeTopicRef = ref<HTMLTextAreaElement | null>(null)
-const isHomeInputFocused = ref(false)
-const desktopWorkflowQuery = '(min-width: 1024px)'
-const shouldRenderProcessMap = ref(isDesktopWorkflowViewport())
-
-let desktopWorkflowMediaQuery: MediaQueryList | null = null
-
-const navItems = [
-  { labelKey: 'home.navigation.product', href: '#product', dropdown: true },
-  { labelKey: 'home.navigation.workflow', href: '#workflow', dropdown: false },
-  { labelKey: 'home.navigation.useCases', href: '#workspace-entry', dropdown: true },
-  { labelKey: 'home.navigation.pricing', href: '#workspace-entry', dropdown: false },
-  { labelKey: 'home.navigation.resources', href: '#workflow', dropdown: true },
-] as const
-
-const homePromptMessages = computed(() => [
-  t('home.form.animatedPrompts.question'),
-])
-
-const shouldShowAnimatedPrompt = computed(() => {
-  return !isHomeInputFocused.value && homeInput.value.trim().length === 0
-})
-
-const homeSuggestions = computed(() => [
-  { key: 'ask', label: t('home.suggestions.ask.label'), prompt: t('home.suggestions.ask.prompt') },
-  { key: 'search', label: t('home.suggestions.search.label'), prompt: t('home.suggestions.search.prompt') },
-  { key: 'capabilities', label: t('home.suggestions.capabilities.label'), prompt: t('home.suggestions.capabilities.prompt') },
-])
-
-/**
- * 点击示例任务胶囊：把对应 prompt 填入首页输入框并聚焦，形成从示例到输入的引导。
- */
-async function applySuggestion(prompt: string): Promise<void> {
-  homeInput.value = prompt
-  await nextTick()
-  const textarea = homeTopicRef.value
-  if (!textarea)
-    return
-
-  textarea.focus()
-  textarea.setSelectionRange(prompt.length, prompt.length)
-}
-
-onMounted(() => {
-  if (typeof window === 'undefined')
-    return
-
-  desktopWorkflowMediaQuery = window.matchMedia(desktopWorkflowQuery)
-  shouldRenderProcessMap.value = desktopWorkflowMediaQuery.matches
-  desktopWorkflowMediaQuery.addEventListener('change', handleDesktopWorkflowChange)
-})
-
-onUnmounted(() => {
-  desktopWorkflowMediaQuery?.removeEventListener('change', handleDesktopWorkflowChange)
-  desktopWorkflowMediaQuery = null
-})
-
-function handleDesktopWorkflowChange(event: MediaQueryListEvent): void {
-  shouldRenderProcessMap.value = event.matches
-}
-
-function isDesktopWorkflowViewport(): boolean {
-  if (typeof window === 'undefined')
-    return false
-
-  return window.matchMedia(desktopWorkflowQuery).matches
-}
+const demo = useTemplateRef('demo')
 </script>
 
 <template>
-  <main id="product" class="relative min-h-screen overflow-x-hidden bg-[#101312] text-[#f5eee4]">
-    <div class="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_30%,rgba(221,180,137,0.08),transparent_34%),linear-gradient(115deg,rgba(26,31,28,0.98)_0%,rgba(13,14,13,0.99)_50%,rgba(31,22,17,0.98)_100%)]" />
-    <HeroAccentBackdrop />
-    <div class="pointer-events-none absolute inset-0 opacity-[0.026] [background-image:linear-gradient(rgba(255,255,255,0.16)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.14)_1px,transparent_1px)] [background-size:56px_56px]" />
-    <div class="pointer-events-none absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-[#d7b18a]/10 to-transparent" />
-    <div class="pointer-events-none absolute inset-x-0 bottom-0 h-56 bg-gradient-to-t from-[#070806]/72 to-transparent" />
-
-    <section class="relative z-10 mx-auto flex min-h-screen w-[calc(100vw-32px)] max-w-[1600px] flex-col pb-6 pt-5 sm:w-[calc(100vw-64px)] lg:w-[calc(100vw-96px)] min-[1800px]:w-[calc(100vw-360px)] min-[1800px]:pb-8 min-[1800px]:pt-6">
-      <header class="mx-auto flex h-12 w-full max-w-[1360px] items-center gap-8 min-[1800px]:max-w-[1440px]">
-        <RouterLink
-          to="/"
-          class="flex min-w-0 items-center gap-3 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-[#d7b18a]/45"
-          :aria-label="t('home.header.logoAria')"
-        >
-          <span class="flex size-8 shrink-0 items-center justify-center text-[#f1d2ae]">
-            <AppIcon name="tabler:sparkles" :size="30" />
-          </span>
-          <span class="min-w-0">
-            <span class="block text-xl font-bold leading-6 text-[#fff7ed]">{{ t('common.appName') }}</span>
-          </span>
-        </RouterLink>
-
-        <nav class="ml-6 hidden items-center gap-8 xl:flex min-[1800px]:gap-9" :aria-label="t('home.navigation.ariaLabel')">
-          <a
-            v-for="item in navItems"
-            :key="item.href"
-            :href="item.href"
-            class="inline-flex items-center gap-1.5 text-base font-medium text-[#e8e2d8]/82 transition hover:text-[#fff7ed] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d7b18a]/40"
-          >
-            <span>{{ t(item.labelKey) }}</span>
-            <AppIcon
-              v-if="item.dropdown"
-              name="tabler:chevron-down"
-              :size="14"
-            />
-          </a>
-        </nav>
-
-        <div class="ml-auto flex items-center justify-end gap-2 sm:gap-3">
-          <LanguageSwitcher variant="home" />
-
-          <RouterLink
-            to="/workspace"
-            class="inline-flex h-10 w-10 shrink-0 items-center justify-center gap-2 rounded-lg border border-white/16 bg-white/[0.025] px-0 text-sm font-medium text-[#f0e5d8] transition hover:-translate-y-0.5 hover:border-white/24 hover:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-[#d7c5aa]/40 sm:h-11 sm:w-auto sm:px-5"
-            :aria-label="t('home.actions.openWorkspaceAria')"
-          >
-            <span class="hidden sm:inline">{{ t('home.actions.openWorkspace') }}</span>
-            <AppIcon name="tabler:arrow-up-right" :size="17" />
+  <header id="top" class="hero">
+    <div class="wrap hero-grid">
+      <div class="hero-copy">
+        <h1 class="display">
+          Ask your company&rsquo;s data. <span class="line2">Share what you <span class="hl">find.</span></span>
+        </h1>
+        <p class="lede">
+          Connect the data your team runs on, ask in plain words, and get reports and charts the whole team can open.
+        </p>
+        <div class="cta-row">
+          <RouterLink class="btn btn-primary" to="/workspace">
+            Start asking <svg class="ic ic-go" aria-hidden="true"><use href="#i-go" /></svg>
           </RouterLink>
+          <button id="tourBtn" class="btn btn-ghost" type="button" @click="demo?.playTour()">
+            <span class="play-dot"><svg class="ic" aria-hidden="true"><use href="#i-play" /></svg></span>Watch the tour
+          </button>
         </div>
-      </header>
-
-      <div class="seo-hero-stage mx-auto flex w-full flex-1 flex-col">
-        <section id="workflow" class="hidden min-w-0 items-center pt-14 lg:flex" :aria-label="t('home.workflow.ariaLabel')">
-          <div
-            v-if="shouldRenderProcessMap"
-            class="relative mx-auto h-[clamp(350px,38dvh,400px)] w-full overflow-visible min-[1800px]:h-[clamp(390px,34dvh,440px)]"
-          >
-            <ProcessMap class="absolute inset-0 z-10 h-full w-full translate-y-7 min-[1800px]:translate-y-9" />
-          </div>
-        </section>
-
-        <section class="relative z-10 mx-auto w-full pb-4 pt-3 text-center lg:pt-[clamp(2rem,5dvh,4.5rem)]">
-          <h1 class="seo-home-title mx-auto max-w-[1220px] text-[38px] font-normal leading-[1.05] text-[#fff8ef] sm:text-5xl lg:text-[58px] min-[1800px]:max-w-[1360px] min-[1800px]:text-[72px]">
-            {{ t('home.hero.title') }}
-          </h1>
-
-          <p class="mx-auto mt-4 max-w-[690px] text-lg font-medium leading-8 text-[#d4ddd0]/70 min-[1800px]:max-w-[820px] min-[1800px]:text-xl">
-            {{ t('home.hero.description') }}
-          </p>
-
-          <div id="workspace-entry" class="mt-7 flex flex-col justify-center gap-3 sm:flex-row sm:items-center min-[1800px]:mt-8">
-            <RouterLink
-              to="/workspace"
-              class="inline-flex h-13 min-w-[230px] items-center justify-center gap-7 rounded-lg bg-[#eee3d2] px-7 text-base font-semibold text-[#111412] shadow-[0_8px_18px_rgba(0,0,0,0.24)] transition hover:-translate-y-0.5 hover:bg-[#fff3e1] focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-[#e8d7bf]/45 min-[1800px]:h-14 min-[1800px]:min-w-[250px]"
-              :aria-label="t('home.actions.analyzeAria')"
-            >
-              {{ t('home.actions.analyze') }}
-              <AppIcon name="tabler:arrow-right" :size="18" />
-            </RouterLink>
-
-            <a
-              href="#workflow"
-              class="inline-flex h-13 min-w-[188px] items-center justify-center gap-2 rounded-lg border border-white/16 bg-white/[0.02] px-5 text-base font-medium text-[#e9e1d7]/86 transition hover:bg-white/[0.06] hover:text-[#fff7ed] focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-[#f0c18f]/35 min-[1800px]:h-14 min-[1800px]:min-w-[210px]"
-            >
-              {{ t('home.actions.viewExample') }}
-            </a>
-          </div>
-
-          <div
-            role="group"
-            :aria-label="t('home.suggestions.ariaLabel')"
-            class="mt-9 flex flex-col items-center gap-3 min-[1800px]:mt-11"
-          >
-            <span class="text-sm font-medium tracking-wide text-[#cdd5cb]/55">{{ t('home.suggestions.hint') }}</span>
-            <div class="flex flex-wrap justify-center gap-2.5">
-              <button
-                v-for="item in homeSuggestions"
-                :key="item.key"
-                type="button"
-                class="group inline-flex items-center gap-2 rounded-full border border-white/12 bg-white/[0.03] px-4 py-2 text-sm font-medium text-[#e6ddd0]/85 transition hover:-translate-y-0.5 hover:border-white/22 hover:bg-white/[0.07] hover:text-[#fff7ed] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d7b18a]/40 min-[1800px]:text-[15px]"
-                @click="applySuggestion(item.prompt)"
-              >
-                <AppIcon name="tabler:sparkles" :size="15" class="text-[#e7c9a0] transition group-hover:text-[#f4d8b0]" />
-                {{ item.label }}
-              </button>
-            </div>
-          </div>
-        </section>
-
-        <form
-          class="relative z-10 mx-auto mb-[clamp(0.75rem,2dvh,1.5rem)] mt-auto w-full max-w-[1068px] rounded-xl border border-white/12 bg-[#151817]/88 p-4 transition-colors focus-within:border-[#d8c8ad]/42 focus-within:bg-[#171b19]/94 focus-within:ring-1 focus-within:ring-[#d8c8ad]/18 min-[1800px]:max-w-[1180px] min-[1800px]:p-5"
-          :aria-label="t('home.form.ariaLabel')"
-          @submit.prevent
-        >
-          <div class="flex min-h-[120px] flex-col min-[1800px]:min-h-[134px]">
-            <label class="sr-only" for="home-question">{{ t('home.form.topicLabel') }}</label>
-            <div class="relative min-h-[54px] min-[1800px]:min-h-[60px]">
-              <HomeAnimatedPlaceholder
-                :messages="homePromptMessages"
-                :visible="shouldShowAnimatedPrompt"
-              />
-
-              <textarea
-                id="home-question"
-                ref="homeTopicRef"
-                v-model="homeInput"
-                class="relative z-10 block min-h-[54px] w-full resize-none bg-transparent px-1 py-1 text-base font-medium leading-7 text-[#eee4d9] outline-none placeholder:text-transparent min-[1800px]:min-h-[60px] min-[1800px]:text-lg"
-                rows="2"
-                placeholder=""
-                :aria-placeholder="t('home.form.placeholder')"
-                @blur="isHomeInputFocused = false"
-                @focus="isHomeInputFocused = true"
-              />
-            </div>
-
-            <div class="mt-auto flex min-w-0 items-end justify-between gap-3 pt-5">
-              <span class="inline-flex h-10 min-w-0 items-center gap-2 rounded-lg border border-white/10 bg-black/26 px-3 text-xs font-medium text-[#e5d8c8]">
-                <AppIcon name="tabler:sparkles" :size="16" />
-                <span class="truncate">DeepSeek Flash</span>
-                <AppIcon name="tabler:chevron-down" :size="15" />
-              </span>
-
-              <button
-                type="submit"
-                class="inline-flex size-11 shrink-0 items-center justify-center rounded-lg bg-[#eee3d2] text-[#111412] transition hover:-translate-y-0.5 hover:bg-[#fff3e1] focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-[#e8d7bf]/42 min-[1800px]:size-12"
-                :aria-label="t('home.form.submit')"
-                :title="t('home.form.submit')"
-              >
-                <AppIcon name="tabler:arrow-right" :size="22" />
-              </button>
-            </div>
-          </div>
-        </form>
       </div>
-    </section>
-  </main>
+
+      <div class="hero-stage">
+        <div class="glow" aria-hidden="true" />
+        <HomeHeroDemo ref="demo" />
+      </div>
+    </div>
+  </header>
 </template>
 
 <style scoped>
-.seo-home-title {
-  font-family: "Libre Baskerville", Georgia, ui-serif, serif;
-  letter-spacing: 0;
+/* ---------- hero ---------- */
+.hero {
+  position: relative; overflow: clip;
+  padding-block: clamp(112px, 10vw, 140px) clamp(80px, 8vw, 120px);
+  background: radial-gradient(1100px 560px at 50% -12%, var(--surface) 0%, transparent 72%), var(--ground);
 }
-
-.seo-hero-stage {
-  max-width: min(100%, 1360px);
+/* dappled light: soft palm shadows (Unsplash photo 1789302557549), multiplied onto the warm ground */
+.hero::before {
+  content: ""; position: absolute; inset: 0 0 auto; height: min(100%, 1000px); pointer-events: none;
+  background: var(--palm) 50% 35% / cover no-repeat;
+  mix-blend-mode: multiply; opacity: .34;
+  filter: sepia(.35) brightness(1.1) contrast(1.05);
+  -webkit-mask-image: linear-gradient(#000 40%, transparent 100%);
+  mask-image: linear-gradient(#000 40%, transparent 100%);
+  transform-origin: 50% 0;
+  animation: sway 24s ease-in-out infinite alternate;
 }
-
-@media (min-width: 1800px) {
-  .seo-hero-stage {
-    max-width: min(100%, 1440px);
-  }
+@keyframes sway {
+  from { transform: translate3d(-1%, 0, 0) rotate(-.5deg) scale(1.05); }
+  to { transform: translate3d(1%, .8%, 0) rotate(.5deg) scale(1.07); }
 }
+.hero-stage > .glow { left: -11%; right: -11%; top: 6%; height: 80%; }
+.hero-grid {
+  position: relative; z-index: 1;
+  display: flex; flex-direction: column; align-items: center; gap: clamp(34px, 3.6vw, 50px);
+}
+.hero-copy { display: flex; flex-direction: column; align-items: center; max-width: 1000px; text-align: center; }
+.hero-copy .cta-row { justify-content: center; margin-top: 28px; }
+.display {
+  font: 600 clamp(38px, 4.6vw, 62px)/1.08 var(--f-display);
+  letter-spacing: -.035em; text-wrap: balance;
+}
+.display .line2 { display: block; color: var(--ink-3); }
+.display .hl {
+  color: var(--ink);
+  background: linear-gradient(var(--wheat), var(--wheat)) no-repeat 0 88% / 100% .28em;
+  animation: marker 1.1s .95s cubic-bezier(.6, 0, .2, 1) both;
+}
+@keyframes marker { from { background-size: 0 .3em; } }
+.lede { margin-top: 18px; max-width: 34em; font-size: clamp(17px, 1.3vw, 19px); line-height: 1.55; color: var(--ink-2); }
+.hero-stage { position: relative; width: min(1200px, 100%); padding-bottom: 48px; }
+.js-motion .hero-copy > * { animation: rise 1s cubic-bezier(.2, .7, .2, 1) both; }
+.js-motion .hero-copy > :nth-child(2) { animation-delay: .1s; }
+.js-motion .hero-copy > :nth-child(3) { animation-delay: .2s; }
+@keyframes rise { from { opacity: 0; translate: 0 22px; } }
 </style>
