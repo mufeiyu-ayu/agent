@@ -120,10 +120,8 @@ test('Issue #94：Header 与 Sampling 展示 reasoning / cache Usage', async ({ 
   await expect(details).toContainText('推理 Token')
   await expect(details).toContainText('缓存命中 Token')
   await expect(details).toContainText('缓存未命中 Token')
-  // 先关掉头部弹层：它盖在检查器顶部的标签栏上。
-  await detailsButton.click()
-  await expect(details).toBeHidden()
-
+  // 不先关弹层，接着点时间线和检查器标签：弹层向左展开、两列排布，淡出途中也不压在标签栏上。
+  // 改回原来的 bottomRight 单列时，这里点「用量」会落在弹层上，下面的断言失败。
   await selectTimelineItem(page, '模型采样')
   await page.getByRole('tab', { name: '用量' }).click()
   await expect(page.locator(INSPECTOR)).toContainText('推理 Token')

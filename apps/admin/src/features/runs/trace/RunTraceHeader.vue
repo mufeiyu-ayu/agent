@@ -68,7 +68,7 @@ async function copyRunId() {
         <span class="trace-header__stat-value">{{ formatTokens(run.usage.totalTokens, locale) }}</span>
       </span>
 
-      <Popover v-model:open="detailsOpen" trigger="click" placement="bottomRight">
+      <Popover v-model:open="detailsOpen" trigger="click" placement="leftTop">
         <template #content>
           <dl class="trace-header__details">
             <dt>{{ t('runDetail.fields.inputTokens') }}</dt>
@@ -257,8 +257,9 @@ async function copyRunId() {
 
 .trace-header__details {
   display: grid;
-  min-width: 240px;
-  grid-template-columns: max-content minmax(0, 1fr);
+  min-width: 480px;
+  /* 两组「名称 值」并排：弹层矮一半，展开时不会压到右侧检查器的标签栏。 */
+  grid-template-columns: max-content minmax(0, 1fr) max-content minmax(0, 1fr);
   gap: 7px 18px;
   margin: 0;
 }
