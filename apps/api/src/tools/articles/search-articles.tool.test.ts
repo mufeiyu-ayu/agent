@@ -3,7 +3,7 @@ import type {
   PrismaService,
 } from '../../prisma/prisma.service.js'
 import type {
-  ToolExecutionContext,
+  ToolInvocationContext,
   ValidatedToolInvocation,
 } from '../core/tool.types.js'
 import type { SearchArticlesInput } from './search-articles.tool.js'
@@ -38,7 +38,7 @@ describe('search_articles', () => {
     const { invocationService } = createTools(fakePrisma)
     const context = createContext()
 
-    const result = await invocationService.invoke(
+    const { result } = await invocationService.invoke(
       createEnvelope({ query: '  Alpha%_\\  ', languageCode: ' ZH-CN ', limit: 10 }),
       context,
     )
@@ -118,7 +118,7 @@ describe('search_articles', () => {
     ]
 
     for (const input of invalidInputs) {
-      const result = await invocationService.invoke(
+      const { result } = await invocationService.invoke(
         createEnvelope(input),
         createContext(),
       )
@@ -135,7 +135,7 @@ describe('search_articles', () => {
     const fakePrisma = new FakePrismaService()
     const { invocationService } = createTools(fakePrisma)
 
-    const result = await invocationService.invoke(
+    const { result } = await invocationService.invoke(
       createEnvelope({ query: 'missing' }),
       createContext(),
     )
@@ -327,10 +327,11 @@ function createValidatedInvocation(
 
 function createContext(
   signal = new AbortController().signal,
-): ToolExecutionContext {
+): ToolInvocationContext {
   return {
     databaseDeadline: createDatabaseDeadline(signal),
     signal,
+    argumentsTruncated: false,
   }
 }
 

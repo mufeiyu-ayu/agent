@@ -1,27 +1,35 @@
-import type { SearchArticlesTool } from './articles/search-articles.tool.js'
+import type { ModuleRef } from '@nestjs/core'
 
 import assert from 'node:assert/strict'
 // 项目本轮使用 Node 原生测试运行器，不引入额外测试框架。
 // eslint-disable-next-line test/no-import-node-test
 import { describe, it, mock } from 'node:test'
-import { searchArticlesDefinition } from './articles/search-articles.tool.js'
 import { ToolRegistryService } from './core/tool-registry.service.js'
-import { TOOL_DEFINITIONS } from './tool-definitions.js'
+import { TOOL_DEFINITIONS, TOOLS } from './tool-definitions.js'
 import { ToolsModule } from './tools.module.js'
 
 describe('ToolsModule', () => {
-  it('只注册 search_articles，与共用清单一致', () => {
+  it('Registry 中的工具与清单一一对应且顺序一致', () => {
     const registry = new ToolRegistryService()
     const register = mock.method(registry, 'register')
-    const toolsModule = new ToolsModule(registry, {} as SearchArticlesTool)
+    // 每个执行器类一个替身实例，ModuleRef 按类取实例。
+    const executors = new Map(TOOLS.map(tool => [tool.executor, { stubFor: tool.definition.name }] as const))
+    const moduleRef = { get: (type: unknown) => executors.get(type as never) } as unknown as ModuleRef
 
-    assert.ok(toolsModule, 'toolsModule')
-    assert.deepEqual(
-      register.mock.calls.map(call => call.arguments[0].definition),
-      [searchArticlesDefinition],
-    )
-    // 共用清单里的每个定义都必须被模块注册，否则 Run allowlist 会暴露一个 Registry 里没有的工具。
-    assert.deepEqual(TOOL_DEFINITIONS, [searchArticlesDefinition])
-    assert.equal(registry.get('search_articles')?.definition, searchArticlesDefinition)
+    new ToolsModule(registry, moduleRef).onModuleInit()
+
+    const registered = register.mock.calls.map(call => call.arguments[0])
+    // providers 由清单展开：执行器类不在里面，真实 Nest 里 ModuleRef 取不到实例。
+    const providers = Reflect.getMetadata('providers', ToolsModule) as unknown[]
+
+    assert.equal(registered.length, TOOLS.length)
+    TOOLS.forEach((tool, index) => {
+      assert.equal(providers.includes(tool.executor), true, tool.definition.name)
+      assert.equal(registered[index]?.definition, tool.definition, tool.definition.name)
+      assert.equal(registered[index]?.executor, executors.get(tool.executor), tool.definition.name)
+      assert.equal(registry.get(tool.definition.name)?.definition, tool.definition, tool.definition.name)
+    })
+    // Run 暴露给模型的工具与 Admin 概览读的派生定义，和清单同序。
+    assert.deepEqual(TOOL_DEFINITIONS, TOOLS.map(tool => tool.definition))
   })
 })

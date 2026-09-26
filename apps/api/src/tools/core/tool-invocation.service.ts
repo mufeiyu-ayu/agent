@@ -1,6 +1,9 @@
 import type { DatabaseOperationDeadline } from '../../prisma/prisma.service.js'
 import type {
+  RegisteredTool,
   ToolExecutionContext,
+  ToolInvocationContext,
+  ToolInvocationResult,
   ToolResult,
   UnvalidatedToolCallEnvelope,
   ValidatedToolInvocation,
@@ -8,6 +11,7 @@ import type {
 import { Inject, Injectable, Logger } from '@nestjs/common'
 
 import { DatabaseOperationDeadlineExceededError } from '../../prisma/prisma.service.js'
+import { normalizeToolObservation } from './tool-observation.js'
 import { ToolRegistryService } from './tool-registry.service.js'
 
 @Injectable()
@@ -19,21 +23,34 @@ export class ToolInvocationService {
     private readonly registry: ToolRegistryService,
   ) {}
 
+  /**
+   * 一次工具调用的全部判定都在这里：截断批次、查找、参数校验、执行、Observation 修剪，
+   * 以及参数是否经过校验。用户停止、Run deadline 这类外部中断照常抛出，由 Runtime 归因。
+   */
   async invoke(
     envelope: UnvalidatedToolCallEnvelope,
-    context: ToolExecutionContext,
-  ): Promise<ToolResult> {
+    context: ToolInvocationContext,
+  ): Promise<ToolInvocationResult> {
     // 工具调用开始前先响应已触发的外部中断，避免继续查找、校验或执行工具。
     context.signal.throwIfAborted()
+
+    // 模型输出达到长度限制，arguments 可能不完整：整批不查找、不校验、不执行，由模型下一轮重发。
+    if (context.argumentsTruncated) {
+      return toInvocationResult({
+        ok: false,
+        code: 'truncated_arguments',
+        modelContent: `工具 ${envelope.toolName} 的参数因模型输出达到长度限制而不完整，本次未执行；仍需要时请重新发起调用。`,
+      }, false)
+    }
 
     const tool = this.registry.get(envelope.toolName)
 
     if (!tool) {
-      return {
+      return toInvocationResult({
         ok: false,
         code: 'unknown_tool',
         modelContent: `工具 ${envelope.toolName} 不存在。`,
-      }
+      }, false)
     }
 
     // 将模型返回的 arguments JSON 解析为对象，再通过工具输入契约校验并规范化。
@@ -43,13 +60,28 @@ export class ToolInvocationService {
       input = tool.definition.input.parse(JSON.parse(envelope.rawArgumentsJson))
     }
     catch {
-      return {
+      return toInvocationResult({
         ok: false,
         code: 'invalid_arguments',
         modelContent: `工具 ${envelope.toolName} 的参数无效。`,
-      }
+      }, false, tool.definition.maxObservationChars)
     }
 
+    // 参数已通过校验：之后无论成功、超时还是执行失败，回喂与落库的都是原参数。
+    return toInvocationResult(
+      await this.runExecutor(tool, envelope, input, context),
+      true,
+      tool.definition.maxObservationChars,
+    )
+  }
+
+  /** 执行器与 timeout / 外部中断赛跑，按先到的结局收成 ToolResult；外部中断与 Run 的数据库 deadline 照常抛出。 */
+  private async runExecutor(
+    tool: RegisteredTool,
+    envelope: UnvalidatedToolCallEnvelope,
+    input: unknown,
+    context: ToolExecutionContext,
+  ): Promise<ToolResult> {
     // 将校验后的输入与服务端工具名组装为执行器唯一允许接收的可信调用。
     const invocation: ValidatedToolInvocation = {
       toolName: tool.definition.name,
@@ -138,7 +170,7 @@ export class ToolInvocationService {
           if (outcome.error instanceof DatabaseOperationDeadlineExceededError)
             throw outcome.error
 
-          // 模型与 Step 只拿到脱敏的「执行失败」，真实原因（如 Embedding 服务连不上）只进服务端日志；
+          // 模型与 Step 只拿到脱敏的「执行失败」，真实原因（异常名与 message）只进服务端日志；
           // callId 与 tool Step 落库的一致，用来对上 Run Trace。记日志失败不能改变返回结果。
           try {
             const error = outcome.error
@@ -165,6 +197,22 @@ export class ToolInvocationService {
       clearTimeout(timeoutId)
       context.signal.removeEventListener('abort', handleRunAbort)
     }
+  }
+}
+
+/**
+ * 第一道截断：按工具自己的字数上限修剪回喂给模型的正文（不超过全局硬上限；找不到工具或截断批次直接用硬上限），
+ * 超了就截断并前后加说明，让模型知道看到的不完整。第二道按整轮上下文预算缩，在 Context Planner 的 plan() 里。
+ */
+function toInvocationResult(
+  result: ToolResult,
+  argumentsValidated: boolean,
+  maxObservationChars?: number,
+): ToolInvocationResult {
+  return {
+    result,
+    argumentsValidated,
+    observation: normalizeToolObservation(result.modelContent, maxObservationChars),
   }
 }
 

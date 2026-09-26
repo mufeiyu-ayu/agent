@@ -4,14 +4,14 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
 import {
-  normalizeArticleRetrievalInput,
+  parseSearchArticlesInput,
   toArticleExcerpt,
 } from './search-articles.tool.js'
 
 describe('search_articles 输入规范化与摘录', () => {
   it('使用唯一规则规范化 query、languageCode 和 limit', () => {
     assert.deepEqual(
-      normalizeArticleRetrievalInput({
+      parseSearchArticlesInput({
         query: '  Alpha%_\\  ',
         languageCode: ' ZH-CN ',
         limit: 10,
@@ -23,7 +23,7 @@ describe('search_articles 输入规范化与摘录', () => {
       },
     )
     assert.deepEqual(
-      normalizeArticleRetrievalInput({ query: 'seo' }),
+      parseSearchArticlesInput({ query: 'seo' }),
       { query: 'seo', limit: 5 },
     )
   })
@@ -45,19 +45,19 @@ describe('search_articles 输入规范化与摘录', () => {
 
     for (const input of invalidInputs) {
       assert.throws(
-        () => normalizeArticleRetrievalInput(input),
-        /invalid article retrieval/,
+        () => parseSearchArticlesInput(input),
+        /invalid search_articles/,
       )
     }
   })
 
   it('同一规范化函数可直接复核已规范化的 query', () => {
-    const query = normalizeArticleRetrievalInput({
+    const query = parseSearchArticlesInput({
       query: '  seo  ',
       languageCode: ' EN ',
     })
 
-    assert.deepEqual(normalizeArticleRetrievalInput(query), query)
+    assert.deepEqual(parseSearchArticlesInput(query), query)
   })
 
   it('生成不含 HTML、压缩空白且 Unicode-safe 的 500 字符 excerpt', () => {

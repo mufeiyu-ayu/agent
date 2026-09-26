@@ -14,11 +14,10 @@ import type {
   DeadlineTransaction,
   PrismaService,
 } from '../prisma/prisma.service.js'
-import type { ToolInvocationService } from '../tools/core/tool-invocation.service.js'
-import type { ToolRegistryService } from '../tools/core/tool-registry.service.js'
 import type {
-  ToolDefinition,
   ToolExecutionContext,
+  ToolInvocationContext,
+  ToolInvocationResult,
   ToolResult,
   UnvalidatedToolCallEnvelope,
 } from '../tools/core/tool.types.js'
@@ -64,6 +63,10 @@ import {
   DatabaseCommitOutcomeUnknownError,
   DatabaseOperationDeadlineExceededError,
 } from '../prisma/prisma.service.js'
+import { ToolInvocationService } from '../tools/core/tool-invocation.service.js'
+import { normalizeToolObservation } from '../tools/core/tool-observation.js'
+import { ToolRegistryService } from '../tools/core/tool-registry.service.js'
+import { TOOL_DEFINITIONS } from '../tools/tool-definitions.js'
 import {
   AgentRunTerminalizationError,
   ContextTokenEstimationError,
@@ -76,6 +79,10 @@ import {
   toFeedbackArgumentsJson,
 } from './context/model-context.js'
 import { SamplingContextPlanner } from './context/sampling-context-planner.js'
+
+// 模型每轮看到的就是工具清单、与清单同序；不写死名字，清单加工具时 runtime 用例不用跟着改。
+// 清单里少了 search_articles 时，大量以它为工具的用例会因 unknown_tool 失败，不靠这里兜。
+const MODEL_TOOL_NAMES = TOOL_DEFINITIONS.map(definition => definition.name)
 
 describe('AgentRuntimeService model stream', () => {
   it('保持普通文本流的现有完成行为', async () => {
@@ -106,7 +113,7 @@ describe('AgentRuntimeService model stream', () => {
     assert.equal(harness.toolInvocations.length, 0)
     assert.deepEqual(
       harness.llmCalls[0]?.options?.tools?.map(tool => tool.name),
-      ['search_articles'],
+      MODEL_TOOL_NAMES,
     )
     assert.equal(harness.llmCalls[0]?.options?.request.model, 'deepseek-v4-flash')
     assert.equal(harness.llmCalls[0]?.options?.request.maxOutputTokens, 65_536)
@@ -213,25 +220,6 @@ describe('AgentRuntimeService model stream', () => {
     assert.deepEqual(harness.recorder.failedRunIds, [])
     assert.deepEqual(harness.recorder.abortedRunIds, [])
     assertNoUnfinishedSteps(harness)
-  })
-
-  it('Registry 缺少 allowlist 工具时跳过该工具，不伪造定义', async () => {
-    const harness = createHarness(
-      () => toModelStream([
-        { type: 'text_delta', delta: '好' },
-        { type: 'response_completed', finishReason: 'stop' },
-      ]),
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      [],
-    )
-
-    const events = await collectEvents(harness.run())
-
-    assert.equal(events.at(-1)?.type, 'run_completed')
-    assert.deepEqual(harness.llmCalls[0]?.options?.tools, [])
   })
 
   it('会话不存在时产出稳定失败分类且不创建 Message 或 Run', async () => {
@@ -540,7 +528,6 @@ describe('AgentRuntimeService model stream', () => {
       undefined,
       {},
       new TestTokenEstimator(),
-      undefined,
       new AlwaysFailingTokenEstimator(),
     )
 
@@ -746,7 +733,7 @@ describe('AgentRuntimeService model stream', () => {
     assert.equal(harness.llmCalls.length, 2)
     assert.deepEqual(
       harness.llmCalls.map(call => call.options?.tools?.map(tool => tool.name)),
-      [['search_articles'], ['search_articles']],
+      [MODEL_TOOL_NAMES, MODEL_TOOL_NAMES],
     )
     assert.deepEqual(
       harness.llmCalls.map(call => call.options?.request.reasoningEffort),
@@ -1211,7 +1198,7 @@ describe('AgentRuntimeService model stream', () => {
     )
     assert.deepEqual(
       harness.llmCalls.map(call => call.options?.tools?.map(tool => tool.name)),
-      Array.from({ length: 3 }, () => ['search_articles']),
+      Array.from({ length: 3 }).fill(MODEL_TOOL_NAMES),
     )
     assert.deepEqual(harness.toolInvocations, [
       {
@@ -1379,7 +1366,7 @@ describe('AgentRuntimeService model stream', () => {
     assertNoUnfinishedSteps(harness)
   })
 
-  it('拒绝执行全局已注册但本 Run 未开放的工具', async () => {
+  it('拒绝执行工具清单之外的工具', async () => {
     const secretContent = '不应回填给模型的未授权结果'
     let hiddenExecutorCalls = 0
     const streams: ModelStreamEvent[][] = [
@@ -1410,7 +1397,7 @@ describe('AgentRuntimeService model stream', () => {
 
     assert.deepEqual(
       harness.llmCalls.map(call => call.options?.tools?.map(tool => tool.name)),
-      [['search_articles'], ['search_articles']],
+      [MODEL_TOOL_NAMES, MODEL_TOOL_NAMES],
     )
     assert.equal(harness.toolInvocations.length, 0)
     assert.equal(hiddenExecutorCalls, 0)
@@ -1458,7 +1445,7 @@ describe('AgentRuntimeService model stream', () => {
     const toolStep = findStep(harness, 'tool_execution')
 
     assert.equal(toolStep?.status, AgentStepStatus.FAILED)
-    // 未开放工具的参数没有经过校验：落库的是回喂给模型的 `{"arguments": raw}` 形状。
+    // 清单外工具的参数没有经过校验：落库的是回喂给模型的 `{"arguments": raw}` 形状。
     assert.deepEqual(toolStep?.input, {
       callId: 'call-hidden',
       toolName: 'hidden_admin_tool',
@@ -3693,31 +3680,6 @@ type InvokeTool = (
   context: ToolExecutionContext,
 ) => Promise<ToolResult>
 
-const searchArticlesDefinition: ToolDefinition = {
-  name: 'search_articles',
-  version: '1.0.0',
-  description: '按关键词搜索文章。',
-  input: {
-    schema: {
-      type: 'object',
-      properties: {
-        query: { type: 'string' },
-      },
-      required: ['query'],
-      additionalProperties: false,
-    },
-    parse: value => value,
-  },
-  timeoutMs: 1_000,
-  maxObservationChars: 16_000,
-}
-
-const hiddenAdminDefinition: ToolDefinition = {
-  ...searchArticlesDefinition,
-  name: 'hidden_admin_tool',
-  description: '不属于本 Run allowlist 的测试工具。',
-}
-
 const successfulToolResult: ToolResult = {
   ok: true,
   modelContent: '找到 1 篇相关文章。',
@@ -3729,18 +3691,10 @@ function createHarness(
   invokeTool: InvokeTool = async () => successfulToolResult,
   policy: Partial<AgentRuntimePolicy> = {},
   tokenEstimator: TokenEstimator = new TestTokenEstimator(),
-  registeredToolNames?: string[],
   // 生产中 runtime 与 planner 共用同一个 estimator 实例；只在需要把估算故障
   // 精确注入到 plan() 边界时才单独提供。
   plannerTokenEstimator: TokenEstimator = tokenEstimator,
 ) {
-  const registeredDefinitions = [
-    hiddenAdminDefinition,
-    searchArticlesDefinition,
-  ].filter(definition => (
-    registeredToolNames === undefined
-    || registeredToolNames.includes(definition.name)
-  ))
   const prisma = new FakePrismaService()
   const recorder = new FakeAgentRunRecorderService(prisma)
   const llmCalls: Array<{
@@ -3780,7 +3734,6 @@ function createHarness(
         ...policy,
       },
     } as AgentRuntimePolicyService,
-    new FakeToolRegistryService(registeredDefinitions) as unknown as ToolRegistryService,
     tokenEstimator,
     new SamplingContextPlanner(plannerTokenEstimator),
   )
@@ -3811,31 +3764,34 @@ function createHarness(
   }
 }
 
-class FakeToolRegistryService {
-  constructor(private readonly definitions: ToolDefinition[]) {}
-
-  get(name: string): { definition: ToolDefinition } | undefined {
-    const definition = this.definitions.find(
-      candidate => candidate.name === name,
-    )
-
-    return definition ? { definition } : undefined
-  }
-}
-
+/** 顶替真实 invoke：清单里的工具交给用例模拟执行结局，并记为一次执行。 */
 class FakeToolInvocationService {
   readonly invocations: UnvalidatedToolCallEnvelope[] = []
   readonly contexts: ToolExecutionContext[] = []
+  // 截断批次与清单外的工具名走真实 invoke（Registry 为空，到不了执行）：文案、observation 与生产同源。
+  private readonly notExecuted = new ToolInvocationService(new ToolRegistryService())
 
   constructor(private readonly invokeTool: InvokeTool) {}
 
   async invoke(
     envelope: UnvalidatedToolCallEnvelope,
-    context: ToolExecutionContext,
-  ): Promise<ToolResult> {
+    context: ToolInvocationContext,
+  ): Promise<ToolInvocationResult> {
+    const definition = TOOL_DEFINITIONS.find(candidate => candidate.name === envelope.toolName)
+
+    if (context.argumentsTruncated || !definition)
+      return await this.notExecuted.invoke(envelope, context)
+
     this.invocations.push(envelope)
     this.contexts.push(context)
-    return await this.invokeTool(envelope, context)
+    const result = await this.invokeTool(envelope, context)
+
+    return {
+      result,
+      // 用例用 invalid_arguments 模拟参数没通过 input.parse；其余结局都发生在校验之后。
+      argumentsValidated: result.ok || result.code !== 'invalid_arguments',
+      observation: normalizeToolObservation(result.modelContent, definition.maxObservationChars),
+    }
   }
 }
 

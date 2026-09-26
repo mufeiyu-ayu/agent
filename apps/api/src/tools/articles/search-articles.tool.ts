@@ -36,7 +36,7 @@ export const searchArticlesDefinition: ToolDefinition<SearchArticlesInput> = {
       required: ['query'],
       additionalProperties: false,
     },
-    parse: normalizeArticleRetrievalInput,
+    parse: parseSearchArticlesInput,
   },
   timeoutMs: 5_000,
   maxObservationChars: 16_000,
@@ -130,36 +130,36 @@ export async function queryArticles(
   }
 }
 
-export function normalizeArticleRetrievalInput(
+export function parseSearchArticlesInput(
   value: unknown,
 ): SearchArticlesInput {
   if (typeof value !== 'object' || value === null || Array.isArray(value))
-    throw new Error('invalid article retrieval input')
+    throw new Error('invalid search_articles input')
 
   const record = value as Record<string, unknown>
   const allowedKeys = new Set(['query', 'languageCode', 'limit'])
 
   if (Object.keys(record).some(key => !allowedKeys.has(key)))
-    throw new Error('invalid article retrieval input')
+    throw new Error('invalid search_articles input')
 
   if (typeof record.query !== 'string')
-    throw new Error('invalid article retrieval query')
+    throw new Error('invalid search_articles query')
 
   const query = record.query.trim()
 
   if (query.length === 0 || query.length > MAX_QUERY_LENGTH)
-    throw new Error('invalid article retrieval query')
+    throw new Error('invalid search_articles query')
 
   let languageCode: string | undefined
 
   if (Object.hasOwn(record, 'languageCode')) {
     if (typeof record.languageCode !== 'string')
-      throw new Error('invalid article retrieval languageCode')
+      throw new Error('invalid search_articles languageCode')
 
     languageCode = record.languageCode.trim().toLowerCase()
 
     if (languageCode.length === 0 || languageCode.length > MAX_LANGUAGE_CODE_LENGTH)
-      throw new Error('invalid article retrieval languageCode')
+      throw new Error('invalid search_articles languageCode')
   }
 
   let limit = DEFAULT_LIMIT
@@ -171,7 +171,7 @@ export function normalizeArticleRetrievalInput(
       || record.limit < 1
       || record.limit > MAX_LIMIT
     ) {
-      throw new Error('invalid article retrieval limit')
+      throw new Error('invalid search_articles limit')
     }
 
     limit = record.limit

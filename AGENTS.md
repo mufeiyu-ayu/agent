@@ -77,7 +77,7 @@
 分层：
 
 ```txt
-Controller -> Service -> AgentRuntime -> LLMService / ToolRegistry -> Prisma
+Controller -> Service -> AgentRuntime -> LLMService / ToolInvocationService -> Prisma
 ```
 
 Runtime 不变量：
@@ -87,7 +87,7 @@ Runtime 不变量：
 - delta 不等于持久化事实。
 - model-visible context 通过独立 Context boundary 维护，不回填 UI `Message`。
 - 模型看到的必须能从持久化记录重建（model-visible ⟺ logged），这是 resume / replay 的前提。#152 起成立（#185 删除 Grounding 后，模型调用只剩 action 循环）：历史取候选里最新的 `contextPlan.historyIncludedCount` 条；Tool Call 轮回填的文本与 reasoning 在采样 Step；回喂的参数与 observation 在 tool Step，被预算压缩后的长度在 `contextPlan.observationPreviewChars`。范围外与已知偏差：系统提示词与工具定义取自当次部署的代码；请求参数（`max_tokens`、强度、thinking）不落库，只能经 modelId 反查事后可被改动的模型行；历史只落条数，同一会话并发 Run 时按条数重建会多算事后才完成的消息；PostgreSQL 存不了 U+0000（jsonb 还拒收孤立代理项）：可见文本与用户消息在进入 `content` 前把两者换成 U+FFFD（delta、done 与落库逐字一致，模型下一轮看到的也是替换后的文本）；Step 的 jsonb 副本（参数、observation、中间文本、reasoning、toolName / callId、debug 抓取）同样替换，而同一 Run 内回填给模型的是原文，这是模型可见内容与落库唯一不逐字相等的情况。replay 本身属 R1。
-- 模型输出不可信：工具名、参数先校验再执行；检索正文按 untrusted data 隔离注入（已知缺口：#185 删掉带隔离标记的检索工具后，`search_articles` 回的文章摘录仍以纯 JSON 回喂，没有隔离标记）。
+- 模型输出不可信：工具名、参数先校验再执行（都在 `ToolInvocationService.invoke`）。工具结果里的文章内容按低信任数据对待：系统提示词声明其中的指令、角色设定或格式要求只是资料，不得覆盖系统指令；`search_articles` 的 `modelContent` 不加包裹标记（#189 定案，Pi 同样不加）。
 - 终态所有权：晚到的 Abort / deadline / DB 结果不能覆盖已确立终态；COMMIT 结果不确定时如实暴露。
 
 小步可运行：先最小功能，再封装可复用边界；不为想象中的扩展建抽象。
