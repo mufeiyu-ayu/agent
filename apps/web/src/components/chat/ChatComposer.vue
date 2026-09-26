@@ -41,7 +41,7 @@ const emit = defineEmits<{
 
 const { t } = useI18n()
 
-const PLACEHOLDER_HINT_KEYS = ['ask', 'cite', 'search', 'summarize'] as const
+const PLACEHOLDER_HINT_KEYS = ['ask', 'search'] as const
 
 /**
  * 输入法组合拼音期间 v-model 要到 compositionend 才更新，message 仍为空；

@@ -36,11 +36,6 @@ defineProps<{
           </p>
           <span class="mt-2 block h-2 w-full rounded-full bg-white/[0.06]" aria-hidden="true" />
           <span class="mt-1.5 block h-2 w-7/12 rounded-full bg-white/[0.05]" aria-hidden="true" />
-          <p class="mt-5 text-[10px] font-bold uppercase leading-none tracking-normal text-[#6f665f]">
-            Sources
-          </p>
-          <span class="mt-2 block h-2 w-8/12 rounded-full bg-white/[0.06]" aria-hidden="true" />
-          <span class="mt-1.5 block h-2 w-full rounded-full bg-white/[0.05]" aria-hidden="true" />
           <p class="sr-only">
             {{ brief.status }}
           </p>
@@ -55,26 +50,6 @@ defineProps<{
           <span class="block h-1.5 w-10/12 rounded-full bg-white/[0.07]" />
           <span class="block h-1.5 w-11/12 rounded-full bg-white/[0.055]" />
           <span class="block h-1.5 w-8/12 rounded-full bg-white/[0.05]" />
-        </div>
-      </div>
-
-      <div class="mt-6">
-        <p class="text-[10px] font-bold uppercase leading-none tracking-normal text-[#6f665f]">
-          Citations
-        </p>
-        <div class="mt-3 space-y-2" aria-hidden="true">
-          <span class="block h-1.5 w-full rounded-full bg-white/[0.07]" />
-          <span class="block h-1.5 w-10/12 rounded-full bg-white/[0.055]" />
-        </div>
-      </div>
-
-      <div class="mt-6">
-        <p class="text-[10px] font-bold uppercase leading-none tracking-normal text-[#6f665f]">
-          Evidence check
-        </p>
-        <div class="mt-3 space-y-2" aria-hidden="true">
-          <span class="block h-1.5 w-7/12 rounded-full bg-white/[0.06]" />
-          <span class="block h-1.5 w-9/12 rounded-full bg-white/[0.05]" />
         </div>
       </div>
 

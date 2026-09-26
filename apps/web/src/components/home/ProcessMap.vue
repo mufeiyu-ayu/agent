@@ -80,61 +80,12 @@ const rightProcessCards: ProcessCardConfig[] = [
     compact: true,
     items: [],
   },
-  {
-    id: 'semantic-retrieval',
-    eyebrow: 'Retrieval',
-    title: 'Semantic retrieval',
-    description: 'Vector · Hybrid · Rank',
-    icon: 'tabler:search',
-    tone: 'moss',
-    side: 'right',
-    indexLabel: '05',
-    compact: true,
-    items: [],
-  },
-  {
-    id: 'article-detail',
-    eyebrow: 'Detail',
-    title: 'Article detail',
-    description: 'Full text · Sections',
-    icon: 'tabler:list-details',
-    tone: 'sand',
-    side: 'right',
-    indexLabel: '06',
-    compact: true,
-    items: [],
-  },
-  {
-    id: 'citation-check',
-    eyebrow: 'Verify',
-    title: 'Citation check',
-    description: 'Evidence · Sources',
-    icon: 'tabler:link',
-    tone: 'moss',
-    side: 'right',
-    indexLabel: '07',
-    compact: true,
-    items: [],
-  },
 ]
 
 const briefPreview: BriefPreviewConfig = {
-  id: 'grounded-answer',
-  fileName: 'Grounded answer',
+  id: 'answer',
+  fileName: 'Answer',
   status: 'Ready for review',
-  summary: 'A grounded answer with cited sources, server-checked evidence, and a full run trace.',
-  updatedLabel: 'Grounded',
-  sections: [
-    { id: 'sources', label: 'Sources', value: '2 cited', tone: 'title' },
-    { id: 'steps', label: 'Steps', value: '4 steps', tone: 'meta' },
-    { id: 'check', label: 'Check', value: 'Pass', tone: 'check' },
-  ],
-  lines: [
-    { id: 'line-1', width: 'full' },
-    { id: 'line-2', width: 'wide' },
-    { id: 'line-3', width: 'medium' },
-    { id: 'line-4', width: 'short' },
-  ],
 }
 
 const flowViewBox: FlowViewBox = {
@@ -276,9 +227,7 @@ const signalParticles = Array.from({ length: 150 }, (_, index) => {
   --center-x: 39%;
   --center-y: calc(var(--left-top) + var(--left-height) / 2);
   --right-x: 57%;
-  --right-top: 30px;
   --right-width: 220px;
-  --right-gap: 18px;
   --brief-width: 280px;
   --brief-top: 12px;
 }
@@ -303,12 +252,12 @@ const signalParticles = Array.from({ length: 150 }, (_, index) => {
 
 .seo-right-stack {
   position: absolute;
-  top: var(--right-top);
+  top: var(--center-y);
   left: var(--right-x);
   display: flex;
   width: var(--right-width);
   flex-direction: column;
-  gap: var(--right-gap);
+  transform: translateY(-50%);
 }
 
 .seo-brief-slot {
@@ -349,9 +298,7 @@ const signalParticles = Array.from({ length: 150 }, (_, index) => {
     --left-height: 354px;
     --center-x: 39%;
     --right-x: 57%;
-    --right-top: 36px;
     --right-width: 230px;
-    --right-gap: 20px;
     --brief-width: 300px;
     --brief-top: 18px;
   }

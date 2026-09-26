@@ -40,8 +40,6 @@ export const AGENT_RUN_ERROR_CODES = [
   'estimator_failure',
   // 采样轮数或 Tool Call 预算耗尽仍没有最终回答。
   'loop_limit',
-  // 回答未能通过引用校验或结构化提交。
-  'grounding_failed',
   // 数据库、工具执行等其余服务端故障。
   'internal',
 ] as const

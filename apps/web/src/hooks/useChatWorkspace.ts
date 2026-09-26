@@ -30,10 +30,6 @@ import {
   mapMessagesToConversationTurns,
   sortConversationsByUpdatedAt,
 } from '../utils/conversation-turns'
-import {
-  applyStreamDoneToMessage,
-  withoutMessageGrounding,
-} from '../utils/message-grounding'
 
 const CHAT_REQUEST_INTERVAL_MS = 800
 const DEFAULT_MESSAGE_TIMEOUT_MS = 3600
@@ -605,11 +601,16 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
     const hasUpdatedMessage = updateMessageById(
       event.conversationId,
       event.assistantMessageId,
-      currentMessage => applyStreamDoneToMessage(currentMessage, event),
+      currentMessage => ({
+        ...currentMessage,
+        content: event.content,
+        status: 'COMPLETED',
+        updatedAt: event.generatedAt,
+      }),
     )
 
     if (!hasUpdatedMessage) {
-      upsertMessageInConversation(applyStreamDoneToMessage({
+      upsertMessageInConversation({
         id: event.assistantMessageId,
         conversationId: event.conversationId,
         role: 'ASSISTANT',
@@ -617,7 +618,7 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
         status: 'COMPLETED',
         createdAt: event.generatedAt,
         updatedAt: event.generatedAt,
-      }, event))
+      })
     }
   }
 
@@ -699,7 +700,7 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
     const hasUpdatedMessage = updateMessageById(
       conversationId,
       assistantMessageId,
-      currentMessage => withoutMessageGrounding({
+      currentMessage => ({
         ...currentMessage,
         content: content ?? currentMessage.content,
         status: 'ABORTED',
@@ -710,7 +711,7 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
     if (hasUpdatedMessage)
       return
 
-    upsertMessageInConversation(withoutMessageGrounding({
+    upsertMessageInConversation({
       id: assistantMessageId,
       conversationId,
       role: 'ASSISTANT',
@@ -718,7 +719,7 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
       status: 'ABORTED',
       createdAt: now,
       updatedAt: now,
-    }))
+    })
   }
 
   function markAssistantMessageFailed(
@@ -729,7 +730,7 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
     const hasUpdatedMessage = updateMessageById(
       conversationId,
       assistantMessageId,
-      currentMessage => withoutMessageGrounding({
+      currentMessage => ({
         ...currentMessage,
         content: currentMessage.content || nextErrorMessage,
         status: 'FAILED',
@@ -740,7 +741,7 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
     if (!hasUpdatedMessage) {
       const now = createMessageTimestamp()
 
-      upsertMessageInConversation(withoutMessageGrounding({
+      upsertMessageInConversation({
         id: assistantMessageId,
         conversationId,
         role: 'ASSISTANT',
@@ -748,7 +749,7 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
         status: 'FAILED',
         createdAt: now,
         updatedAt: now,
-      }))
+      })
     }
   }
 
@@ -854,7 +855,6 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
       status: 'PENDING',
       createdAt: now,
       updatedAt: now,
-      grounding: null,
     }
   }
 
@@ -871,7 +871,6 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
       status: 'STREAMING',
       createdAt,
       updatedAt: createdAt,
-      grounding: null,
     }
   }
 
@@ -886,7 +885,6 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
       status: 'ABORTED',
       createdAt: now,
       updatedAt: now,
-      grounding: null,
     }
   }
 

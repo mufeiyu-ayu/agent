@@ -27,7 +27,6 @@ export function runRecord(): AdminRunDetailRecord {
       content: '已根据站内资料回答。',
       createdAt: new Date('2026-08-09T00:00:00.100Z'),
       updatedAt: new Date('2026-08-09T00:00:03.000Z'),
-      grounding: null,
     },
     steps: [],
   }

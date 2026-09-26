@@ -29,7 +29,6 @@
 - 模型写了半段回答，接着**同时要调两个工具**；
 - 输出撞上 Token 上限，工具参数**被截断**；
 - 工具还在跑，用户**关掉了页面**；
-- 模型**引用了一个根本不存在的来源**；
 - 请求失败、重试，结果**晚到的结果想覆盖**一个已经结束的 Run。
 
 框架把这些决策藏在抽象后面。这个项目把每一种情况都写成显式、带测试的 TypeScript，打开文件就能看到到底发生了什么。
@@ -44,13 +43,9 @@
 
 ## 亮点
 
-### 🔍 模型伪造不了的引用
-
-回答依赖检索到的文档时，模型不能随手写个 `[1]`。它必须通过结构化工具提交答案，服务端把每个引用与本次 Run 里检索工具真实返回的证据逐条核对。模型给不出合法提交，这次 Run 就 fail closed，而不是把没人核实过的来源展示给用户。
-
 ### 🛑 一次 Run，只有一个终态
 
-用户中止、deadline、晚到的数据库结果都在抢终态，只有第一个生效。消息、引用、Step 和 Run 在同一个事务里提交。提交结果不确定时如实报告，不伪装成功。
+用户中止、deadline、晚到的数据库结果都在抢终态，只有第一个生效。消息、Step 和 Run 在同一个事务里提交。提交结果不确定时如实报告，不伪装成功。
 
 ### 🧭 每一步都有记录
 
@@ -89,8 +84,6 @@ for (let round = 1; round <= policy.maxSamplingRounds; round++) {
     context.appendToolExchange(call, result) // 作为不可信数据回喂给模型
   }
 }
-
-await finalizeGroundedAnswer() // 服务端校验引用，单事务提交
 ```
 
 真实代码还要处理流式 delta、中止与 deadline、Step 记录，但仍然是一个能从头读到尾的文件。
@@ -103,7 +96,6 @@ flowchart LR
     Admin[运维控制台] --> AdminAPI[Admin API]
     API --> Runtime[Agent Runtime]
     Runtime --> Context[模型上下文<br/>Token 预算 · 裁剪]
-    Runtime --> Grounding[Grounding<br/>证据登记 · 引用校验]
     Runtime --> LLM["@agent/ai<br/>OpenAI-compatible 客户端"]
     LLM -->|SSE| Providers([DeepSeek · GPT · Grok · Gemini])
     Runtime --> Tools[工具] --> Retrieval[混合检索<br/>lexical + vector，RRF]
@@ -115,8 +107,8 @@ flowchart LR
 | 模块 | 做什么 |
 | --- | --- |
 | `apps/api` | NestJS API：Agent Runtime、工具、检索与索引、模型接入配置 |
-| `apps/web` | Vue 3 对话前台，流式 Markdown 渲染与来源卡片 |
-| `apps/admin` | 运维控制台：概览、会话记录、Run Trace、检索审计、模型接入 |
+| `apps/web` | Vue 3 对话前台，流式 Markdown 渲染 |
+| `apps/admin` | 运维控制台：概览、会话记录、Run Trace、模型接入 |
 | `packages/ai` | 不依赖框架的模型客户端：流适配、重试、错误（零 Nest、零 Prisma） |
 | `packages/contracts` | 前后端共享的类型 |
 
@@ -135,7 +127,7 @@ pnpm dev
 然后打开管理台 `http://localhost:5174`，在「模型接入」页添加服务商和模型，并勾选「前台可见」，就可以在 `http://localhost:5173` 对话了。
 
 <details>
-<summary>开启检索与引用（Demo 文章 + 向量索引）</summary>
+<summary>开启检索（Demo 文章 + 向量索引）</summary>
 
 ```bash
 node --env-file=.env --import tsx apps/api/scripts/seed.ts     # 灌入 68 篇 Demo 文章（幂等）
@@ -156,16 +148,14 @@ pnpm --filter @agent/api index:articles -- --mode=incremental  # 构建向量索
 | 2 | [`agent-runtime.service.ts`](./apps/api/src/agent-runtime/agent-runtime.service.ts) | 主循环：采样、分派、执行工具、续轮、收尾 |
 | 3 | [`sampling-context-planner.ts`](./apps/api/src/agent-runtime/context/sampling-context-planner.ts) | 模型每轮看到什么，超预算时先删谁 |
 | 4 | [`openai-completions-stream.ts`](./packages/ai/src/api/openai-completions-stream.ts) | 服务商的流怎样变成干净的事件 |
-| 5 | [`grounded-answer.validator.ts`](./apps/api/src/agent-runtime/grounding/grounded-answer.validator.ts) | 每个引用怎样与本次 Run 真实检索到的证据逐条核对（证明来源身份，不证明每个断言为真） |
-| 6 | [`agent-run-recorder.service.ts`](./apps/api/src/agent-runtime/lifecycle/agent-run-recorder.service.ts) | 终态所有权与原子提交 |
+| 5 | [`agent-run-recorder.service.ts`](./apps/api/src/agent-runtime/lifecycle/agent-run-recorder.service.ts) | 终态所有权与原子提交 |
 
 读代码前先猜答案，每个答案都有对应的测试：
 
 1. 模型先写一段话，再在同一轮调用两个工具，会发生什么？
 2. 输出在工具参数写到一半时撞上 Token 上限，工具还会执行吗？
 3. 工具执行中用户关掉了页面，终态由谁写入？
-4. 模型编了一个不存在的引用 key，用户会看到什么？
-5. 响应开始之前的 429，和流进行到一半时连接断开，处理有什么不同？
+4. 响应开始之前的 429，和流进行到一半时连接断开，处理有什么不同？
 
 ## 什么时候该用框架
 
@@ -173,7 +163,7 @@ pnpm --filter @agent/api index:articles -- --mode=incremental  # 构建向量索
 
 ## 路线
 
-已完成：流式对话、有界 Agent Loop、同轮多工具调用、上下文工程、带引用校验的 Grounded Retrieval、多模型接入、运维控制台。
+已完成：流式对话、有界 Agent Loop、同轮多工具调用、上下文工程、多模型接入、运维控制台。
 
 接下来的每一项都由真实使用触发：
 

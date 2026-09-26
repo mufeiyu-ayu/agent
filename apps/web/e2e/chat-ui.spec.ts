@@ -476,6 +476,38 @@ test('#169 AC-08：用户消息落库前就失败（会话不存在等）不移�
   await expect(titles).toHaveText(['较新的会话', '落地页 SEO 诊断'])
 })
 
+test('服务端 aborted 事件：会话内显示「已停止生成」', async ({ page }) => {
+  const [start, firstDelta] = toNdjsonLines()
+  await installApiRoutes(page, () => [])
+  await installBrowserStubs(page, {
+    lines: [start, firstDelta, JSON.stringify({
+      type: 'aborted',
+      conversationId: CONVERSATION_ID,
+      assistantMessageId: 'assistant-live',
+      content: '先确认 H1 与 title 是否表达同一个意图，',
+    })],
+    holdBeforeIndex: -1,
+  })
+  await page.goto('/workspace')
+  await page.getByRole('textbox').first().fill('帮我看看这个落地页的标题结构')
+  await page.getByRole('button', { name: '发送消息' }).click()
+
+  await expect(page.getByText('已停止生成').first()).toBeVisible()
+})
+
+test('本地点「停止生成」：会话内显示「已停止生成」', async ({ page }) => {
+  await installApiRoutes(page, () => [])
+  await installBrowserStubs(page, { lines: toNdjsonLines(), holdBeforeIndex: 3 })
+  await page.goto('/workspace')
+  await page.getByRole('textbox').first().fill('帮我看看这个落地页的标题结构')
+  await page.getByRole('button', { name: '发送消息' }).click()
+
+  await expect(page.getByText('再检查内链锚文本。')).toBeVisible()
+  await page.getByRole('button', { name: '停止生成' }).click()
+
+  await expect(page.getByText('已停止生成')).toBeVisible()
+})
+
 test('#155：同一帧内到达的多个 delta 合并成一次消息写入，终态前全部写入', async ({ page }) => {
   const identity = { conversationId: CONVERSATION_ID, assistantMessageId: 'assistant-live' }
   const [start] = toNdjsonLines()

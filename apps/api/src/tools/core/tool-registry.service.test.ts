@@ -63,7 +63,6 @@ function createEchoTool(
       },
       timeoutMs: 1_000,
       maxObservationChars: 8_000,
-      evidencePolicy: 'discovery_only',
     },
     executor: { execute },
   }

@@ -35,8 +35,6 @@ export const searchArticlesDefinition: ToolDefinition<SearchArticlesInput> = {
   },
   timeoutMs: 5_000,
   maxObservationChars: 16_000,
-  // 关键词发现结果不是回答证据：它没有语义相关性判断，也没有可引用的片段。
-  evidencePolicy: 'discovery_only',
 }
 
 @Injectable()

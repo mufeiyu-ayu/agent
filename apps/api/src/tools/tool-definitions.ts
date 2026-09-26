@@ -1,6 +1,4 @@
-import { getArticleDetailDefinition } from './articles/get-article-detail.tool.js'
 import { searchArticlesDefinition } from './articles/search-articles.tool.js'
-import { retrieveArticleContextDefinition } from './retrieval/retrieve-article-context.tool.js'
 
 /**
  * 全部服务端工具定义，顺序即暴露给模型的顺序。
@@ -9,6 +7,4 @@ import { retrieveArticleContextDefinition } from './retrieval/retrieve-article-c
  */
 export const TOOL_DEFINITIONS = [
   searchArticlesDefinition,
-  getArticleDetailDefinition,
-  retrieveArticleContextDefinition,
 ]

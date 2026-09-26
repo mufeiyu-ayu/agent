@@ -1,5 +1,5 @@
 import type { MessageInputItem } from '@agent/ai'
-import type { MessageGroundingV1, ReasoningEffort } from '@agent/contracts'
+import type { ReasoningEffort } from '@agent/contracts'
 import type { ResolvedLlmModel } from '../llm/llm-model-config.service.js'
 
 export type AgentRuntimeEvent
@@ -24,8 +24,6 @@ export type AgentRuntimeEvent
     assistantMessageId: string
     content: string
     generatedAt: string
-    /** 仅 Evidence-backed 回答携带；普通回答没有 Grounding。 */
-    grounding?: MessageGroundingV1
   }
   | AgentRuntimeRunFailedEvent
   | {

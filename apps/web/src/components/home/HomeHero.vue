@@ -29,8 +29,6 @@ const navItems = [
 
 const homePromptMessages = computed(() => [
   t('home.form.animatedPrompts.question'),
-  t('home.form.animatedPrompts.retrieve'),
-  t('home.form.animatedPrompts.followUp'),
 ])
 
 const shouldShowAnimatedPrompt = computed(() => {

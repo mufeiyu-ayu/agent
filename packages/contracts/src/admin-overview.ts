@@ -36,7 +36,7 @@ export interface AdminOverviewLatency {
 }
 
 /**
- * 模型调用 = action sampling Step 与 grounded finalization attempt 中，有 usage 或以 llm_* 类别失败的；
+ * 模型调用 = 有 usage 或以 llm_* 类别失败的 action sampling Step；
  * 估算失败、上下文溢出、请求前取消的采样从未发出请求，不算调用。
  */
 export interface AdminOverviewUsage {
@@ -64,7 +64,7 @@ export interface AdminOverviewModelItem {
   callCount: number
   /** 以 llm_* 类别失败的调用 ÷ callCount，0–1。 */
   failureRate: number
-  /** action sampling 的首 token 时间 p50（毫秒）；finalization 不记这一项，没有记录时为 null。 */
+  /** action sampling 的首 token 时间 p50（毫秒）；没有记录时为 null。 */
   firstTokenP50Ms: number | null
   /** 成功的 action sampling 的 endedAt − startedAt p50（毫秒）；没有时为 null。 */
   samplingDurationP50Ms: number | null

@@ -41,11 +41,10 @@ export const ADMIN_RUN_LIST_SELECT = {
   },
 } as const satisfies Prisma.AgentRunSelect
 
-/** 列表统计需要的 Step 类型；grounded finalization 的 attempt 也是真实模型调用。 */
+/** 列表统计需要的 Step 类型。 */
 const LIST_STEP_TYPES = [
   AGENT_STEP_TYPES.modelSampling,
   AGENT_STEP_TYPES.toolExecution,
-  AGENT_STEP_TYPES.groundedFinalization,
 ]
 
 export const ADMIN_RUN_DETAIL_SELECT = {
@@ -76,10 +75,6 @@ export const ADMIN_RUN_DETAIL_SELECT = {
       content: true,
       createdAt: true,
       updatedAt: true,
-      // MessageGrounding 整行读取：projector 只消费 `toOwnedMessageGroundingV1`
-      // 需要的字段，归属与合法性仍在投影时复核；这里不再逐列列举 Message 持久化
-      // 契约的字段名，Admin 读模型不承载它们。
-      grounding: true,
     },
   },
   steps: {
@@ -182,7 +177,7 @@ export class AdminRunsService {
   }
 
   /**
-   * 列表页的 Step 行：采样 Step 只取 usage / errorCode 与模型快照，finalization 只取 attempts，
+   * 列表页的 Step 行：采样 Step 只取 usage / errorCode 与模型快照，
    * 另带失败 / 中断 Run 在终态事务里收口的 Step（取失败文案）；不读整列 output，
    * debug 捕获（单条可达数十 KB）不出数据库。
    */
@@ -203,11 +198,8 @@ export class AdminRunsService {
         CASE WHEN s."type" = ${AGENT_STEP_TYPES.modelSampling}
           THEN jsonb_build_object('initialContext', s."input" -> 'initialContext')
         END AS "input",
-        CASE s."type"
-          WHEN ${AGENT_STEP_TYPES.modelSampling}
-            THEN jsonb_build_object('usage', s."output" -> 'usage', 'errorCode', s."output" -> 'errorCode')
-          WHEN ${AGENT_STEP_TYPES.groundedFinalization}
-            THEN jsonb_build_object('attempts', s."output" -> 'attempts')
+        CASE WHEN s."type" = ${AGENT_STEP_TYPES.modelSampling}
+          THEN jsonb_build_object('usage', s."output" -> 'usage', 'errorCode', s."output" -> 'errorCode')
         END AS "output"
       FROM "AgentStep" s
       JOIN "AgentRun" r ON r."id" = s."runId"

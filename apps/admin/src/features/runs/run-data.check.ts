@@ -1,7 +1,5 @@
 import type {
   AdminContextInspector,
-  AdminRetrievalCallSummary,
-  AdminRetrievalInspector,
   AdminRunDetail,
   AdminRunListItem,
   AdminRunListResponse,
@@ -32,12 +30,6 @@ import {
   readRunFailureDrilldown,
 } from './run.utils'
 import {
-  createRetrievalCallCards,
-  createRetrievalInspectorCounts,
-  resolveCallStatusTone,
-  toTagColor,
-} from './trace/retrieval-inspector.presenter'
-import {
   createRunTraceProjection,
   filterTraceRecords,
   getVisibleTraceRecords,
@@ -57,7 +49,6 @@ async function main(): Promise<void> {
     await checkDetailStateAndRaceFencing()
     checkPartialTraceAndInspectors()
     checkRunTraceProjection()
-    checkRetrievalInspector()
     checkProductionSources()
     console.log('admin run data checks passed')
   }
@@ -396,7 +387,6 @@ function checkProductionSources(): void {
     'InspectorTextBlock',
     'ToolExecutionInspector',
     'RequestInspector',
-    'GroundedFinalizationInspector',
   ]) {
     const source = readFileSync(new URL(`./trace/inspectors/${name}.vue`, import.meta.url), 'utf8')
 
@@ -422,270 +412,6 @@ function checkProductionSources(): void {
   assert.doesNotMatch(ledgerSource, /sampling\.requestedModel|formatRequestedModel/)
 
   assert.equal(existsSync(new URL('./run.mocks.ts', import.meta.url)), false)
-
-  // Retrieval 视图必须只消费 typed contract：不得解析原始 JSON。
-  const retrievalInspectorSource = readFileSync(
-    new URL('./trace/inspectors/RetrievalInspector.vue', import.meta.url),
-    'utf8',
-  )
-  assert.match(retrievalInspectorSource, /inspector\.retrievalCalls/)
-  assert.match(retrievalInspectorSource, /inspector\.citations/)
-  assert.doesNotMatch(retrievalInspectorSource, /inputSummary|outputSummary|safeRawData/)
-  assert.doesNotMatch(retrievalInspectorSource, /citationKey|excerpt|slug|distance|embedding/)
-  assert.doesNotMatch(retrievalInspectorSource, /JSON\.parse|JSON\.stringify/)
-  // 三态色调必须走 presenter 纯函数，不得回到「非 false 即绿」的二元判断。
-  assert.match(retrievalInspectorSource, /resolveCallStatusTone/)
-  assert.doesNotMatch(retrievalInspectorSource, /ok === false \? 'red' : 'green'/)
-  // 证据引用身份数是三态：未知必须走「未记录」占位，不得用 ?? 0 顶替。
-  assert.match(retrievalInspectorSource, /show\(counts\.value\.evidenceRefCount\)/)
-  assert.doesNotMatch(retrievalInspectorSource, /evidenceRefCount \?\? 0/)
-
-  const presenterSource = readFileSync(
-    new URL('./trace/retrieval-inspector.presenter.ts', import.meta.url),
-    'utf8',
-  )
-  assert.doesNotMatch(presenterSource, /inputSummary|outputSummary|safeRawData/)
-}
-
-function checkRetrievalInspector(): void {
-  const traceDetail = createTraceDetail(1)
-  const cards = createRetrievalCallCards(traceDetail.retrievalInspector, traceDetail.timeline)
-  const counts = createRetrievalInspectorCounts(cards, traceDetail.retrievalInspector.citations)
-
-  // 工具身份与执行结果按 stepId 从 timeline 的 tool step 取。
-  assert.equal(cards.length, 1)
-  assert.equal(cards[0]?.stepId, 'trace-tool-1')
-  assert.equal(cards[0]?.callId, 'trace-call-1')
-  assert.equal(cards[0]?.toolName, 'search_articles')
-  assert.equal(cards[0]?.ok, true)
-  assert.equal(cards[0]?.code, null)
-  assert.equal(cards[0]?.truncated, false)
-  // candidate、evidence 与 cited 必须分别可读，不能互相顶替。
-  assert.equal(counts.callCount, 1)
-  assert.equal(counts.failedCallCount, 0)
-  assert.equal(counts.candidateCount, 3)
-  assert.equal(counts.evidenceRefCount, 3)
-  assert.equal(counts.citedSourceCount, 2)
-  assert.equal(counts.citationCount, 2)
-  assert.equal(counts.matchedCitationCount, 2)
-
-  // stepId 在 timeline 里找不到 tool step 时，工具身份与结果为 null。
-  const orphanCards = createRetrievalCallCards(traceDetail.retrievalInspector, [])
-  assert.equal(orphanCards[0]?.toolName, null)
-  assert.equal(orphanCards[0]?.ok, null)
-  assert.equal(resolveCallStatusTone(orphanCards[0]!.ok), 'neutral')
-
-  const runningDetail = createRunningDetail()
-  const runningCounts = createRetrievalInspectorCounts(
-    createRetrievalCallCards(runningDetail.retrievalInspector, runningDetail.timeline),
-    runningDetail.retrievalInspector.citations,
-  )
-
-  assert.equal(runningCounts.citationCount, null)
-  assert.equal(runningCounts.citedSourceCount, null)
-  assert.equal(runningCounts.matchedCitationCount, null)
-
-  const unmatchedCounts = createRetrievalInspectorCounts(
-    cards,
-    [{ ...availableCitations()[0]!, matchedCallIds: [] }],
-  )
-
-  assert.equal(unmatchedCounts.matchedCitationCount, 0)
-  assert.equal(unmatchedCounts.citationCount, 1)
-
-  checkCallStatusTone()
-  checkCandidateCountRendering(traceDetail.timeline)
-  checkEvidenceRefCountRendering(createTraceDetail(2).timeline)
-}
-
-/**
- * Tool 调用结果必须是三态。
- *
- * `ok=null` 表示结果未记录：既不能显示成功文案，也不能沿用成功色。
- */
-function checkCallStatusTone(): void {
-  assert.equal(resolveCallStatusTone(true), 'success')
-  assert.equal(resolveCallStatusTone(false), 'error')
-  assert.equal(resolveCallStatusTone(null), 'neutral')
-
-  assert.equal(toTagColor(resolveCallStatusTone(true)), 'green')
-  assert.equal(toTagColor(resolveCallStatusTone(false)), 'red')
-  assert.equal(toTagColor(resolveCallStatusTone(null)), 'default')
-  assert.notEqual(toTagColor(resolveCallStatusTone(null)), 'green')
-}
-
-/** zero-hit 的 0 与「候选数量未记录」的 null 必须走不同的展示分支。 */
-function checkCandidateCountRendering(timeline: AdminRunTimelineItem[]): void {
-  const zeroHit = createRetrievalInspector({
-    retrievalCalls: [{
-      ...createAvailableRetrievalInspector().retrievalCalls[0]!,
-      sourceCount: 0,
-      chunkEvidenceCount: 0,
-      refs: [],
-    }],
-  })
-  const unknown = createRetrievalInspector({
-    retrievalCalls: [{
-      ...createAvailableRetrievalInspector().retrievalCalls[0]!,
-      sourceCount: null,
-      chunkEvidenceCount: null,
-      strategy: null,
-      refs: [],
-    }],
-  })
-  const failedTimeline = timeline.map(item => (
-    item.kind === 'known' && item.type === 'tool_execution'
-      ? { ...item, ok: false, code: 'timeout' as const }
-      : item
-  ))
-
-  const zeroHitCards = createRetrievalCallCards(zeroHit, timeline)
-  const unknownCards = createRetrievalCallCards(unknown, timeline)
-  const failedCards = createRetrievalCallCards(unknown, failedTimeline)
-
-  assert.equal(createRetrievalInspectorCounts(zeroHitCards, zeroHit.citations).candidateCount, 0)
-  assert.equal(createRetrievalInspectorCounts(zeroHitCards, zeroHit.citations).evidenceRefCount, 0)
-  assert.equal(createRetrievalInspectorCounts(unknownCards, unknown.citations).candidateCount, null)
-  assert.equal(createRetrievalInspectorCounts(unknownCards, unknown.citations).evidenceRefCount, null)
-  assert.equal(createRetrievalInspectorCounts(failedCards, unknown.citations).failedCallCount, 1)
-  assert.equal(resolveCallStatusTone(failedCards[0]!.ok), 'error')
-}
-
-/**
- * 证据引用身份数必须区分「明确记录为 0」与「没有摘要、数量未知」。
- *
- * `get_article_detail` 命中时只提交 evidence 不写 summary，presenter 收到
- * `sourceCount=null`、`refs=[]`；Registry 实际可能已有 1 条 article 证据，
- * 不能把它显示成确定的 0，也不能把已知 call 的数量当成整个 Run 的总数。
- */
-function checkEvidenceRefCountRendering(timeline: AdminRunTimelineItem[]): void {
-  const knownCall = createAvailableRetrievalInspector().retrievalCalls[0]!
-  const detailCall: AdminRetrievalCallSummary = {
-    stepId: 'trace-tool-2',
-    query: null,
-    strategy: null,
-    sourceCount: null,
-    chunkEvidenceCount: null,
-    refs: [],
-  }
-  const overlappingCall: AdminRetrievalCallSummary = {
-    ...knownCall,
-    stepId: 'trace-tool-2',
-    sourceCount: 2,
-    chunkEvidenceCount: 1,
-    refs: [
-      { sourceId: 11, chunkId: 'chunk-a' },
-      { sourceId: 21, chunkId: null },
-    ],
-  }
-  const counts = (
-    retrievalCalls: AdminRetrievalCallSummary[],
-    calls: AdminRunTimelineItem[] = timeline,
-  ) => createRetrievalInspectorCounts(
-    createRetrievalCallCards(createRetrievalInspector({ retrievalCalls }), calls),
-    null,
-  )
-  const withToolStep = (
-    id: string,
-    patch: Partial<Extract<AdminRunTimelineItem, { type: 'tool_execution' }>>,
-  ) => timeline.map(item => (
-    item.kind === 'known' && item.type === 'tool_execution' && item.id === id
-      ? { ...item, ...patch }
-      : item
-  ))
-
-  // 成功、有 evidence、无 summary：数量未知，不是 0。
-  assert.equal(counts([detailCall]).evidenceRefCount, null)
-  // 所有摘要完整：按 sourceId:chunkId 精确去重（11:chunk-a 重复只算一次）。
-  assert.equal(counts([knownCall, overlappingCall]).evidenceRefCount, 4)
-  // 已知与未知混合：不能把已知的 3 当成总数。
-  assert.equal(counts([knownCall, detailCall]).evidenceRefCount, null)
-  // summary 声明 5 条却只投影出 3 条（非法 ref 被跳过或只写了前 N 条）：数量未知，不是偏小的 3。
-  assert.equal(
-    counts([{ ...knownCall, sourceCount: 5 }]).evidenceRefCount,
-    null,
-  )
-  // 明确失败的调用不向 Registry 提交引用，0 是可确认的事实，总数仍为已知的 3。
-  assert.equal(
-    counts([knownCall, detailCall], withToolStep('trace-tool-2', { ok: false, code: 'timeout' }))
-      .evidenceRefCount,
-    3,
-  )
-  // 失败调用即使带着 summary refs 也不向 Registry 提交引用：不计入，总数仍是已知的 3。
-  assert.equal(
-    counts(
-      [knownCall, { ...overlappingCall, refs: [{ sourceId: 31, chunkId: 'chunk-x' }], sourceCount: 1 }],
-      withToolStep('trace-tool-2', { ok: false, code: 'timeout' }),
-    ).evidenceRefCount,
-    3,
-  )
-  // 运行中 / 结果未记录（ok=null）且无摘要：未知。
-  assert.equal(
-    counts([knownCall, detailCall], withToolStep('trace-tool-2', { ok: null, status: 'RUNNING' }))
-      .evidenceRefCount,
-    null,
-  )
-  // 在 timeline 找不到 tool step（ok=null）同样是未知。
-  assert.equal(counts([detailCall], []).evidenceRefCount, null)
-}
-
-function createRetrievalInspector(
-  overrides: Partial<AdminRetrievalInspector> = {},
-): AdminRetrievalInspector {
-  return {
-    ...createAvailableRetrievalInspector(),
-    ...overrides,
-  }
-}
-
-function createAvailableRetrievalInspector(): AdminRetrievalInspector {
-  return {
-    retrievalCalls: [{
-      stepId: 'trace-tool-1',
-      query: null,
-      strategy: { name: 'hybrid_rrf', version: '2' },
-      sourceCount: 3,
-      chunkEvidenceCount: 2,
-      refs: [
-        { sourceId: 11, chunkId: 'chunk-a' },
-        { sourceId: 12, chunkId: null },
-        { sourceId: 13, chunkId: 'chunk-c' },
-      ],
-    }],
-    citations: availableCitations(),
-  }
-}
-
-function availableCitations(): NonNullable<AdminRetrievalInspector['citations']> {
-  return [
-    {
-      citationId: 'cit_00000000000000000000000000000001',
-      sourceId: 11,
-      chunkId: 'chunk-a',
-      title: '示例文章 1',
-      sectionPath: '指南 / 基础',
-      languageCode: 'zh-CN',
-      strategy: { name: 'hybrid_rrf', version: '2' },
-      matchedCallIds: ['trace-call-1'],
-    },
-    {
-      citationId: 'cit_00000000000000000000000000000002',
-      sourceId: 12,
-      chunkId: null,
-      title: '示例文章 2',
-      sectionPath: null,
-      languageCode: 'zh-CN',
-      strategy: { name: 'hybrid_rrf', version: '2' },
-      matchedCallIds: ['trace-call-1'],
-    },
-  ]
-}
-
-function createPartialRetrievalInspector(): AdminRetrievalInspector {
-  return {
-    ...createAvailableRetrievalInspector(),
-    citations: null,
-  }
 }
 
 async function checkQuerySerialization(): Promise<void> {
@@ -1053,7 +779,8 @@ function createTraceDetail(toolCount: 0 | 1 | 2): AdminRunDetail {
     if (index > toolCount)
       continue
 
-    const toolName = index === 1 ? 'search_articles' : 'get_article_detail'
+    // 第二个工具用另一个名字，按工具名搜索时它是必须被排除的反例。
+    const toolName = index === 1 ? 'search_articles' : 'other_tool'
     timeline.push({
       id: `trace-tool-${index}`,
       kind: 'known',
@@ -1129,7 +856,6 @@ function createTraceDetail(toolCount: 0 | 1 | 2): AdminRunDetail {
     ],
     // 反转输入，确保 presenter 而不是 fixture 顺序决定 Ledger。
     timeline: [...timeline].reverse(),
-    retrievalInspector: createAvailableRetrievalInspector(),
   }
 }
 
@@ -1219,7 +945,6 @@ function createRunningDetail(): AdminRunDetail {
       updatedAt: startedAt,
     }],
     timeline: [generic, sampling],
-    retrievalInspector: createPartialRetrievalInspector(),
   }
 }
 

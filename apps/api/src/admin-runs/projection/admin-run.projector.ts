@@ -26,10 +26,6 @@ import {
 
 import { AGENT_STEP_TYPES } from '../../agent-runtime/lifecycle/agent-run-recorder.service.js'
 import {
-  projectAdminRetrievalInspector,
-  projectGroundedFinalizationStep,
-} from './retrieval-inspector.projector.js'
-import {
   elapsedMs,
   readAllowedString,
   readBoolean,
@@ -87,7 +83,7 @@ export function projectAdminRunListItem(
   run: AdminRunListRecord,
   model: AdminModelRef | null,
 ): AdminRunListItem {
-  const modelCalls = aggregateRunModelCalls(run.steps, run.errorCode)
+  const modelCalls = aggregateRunModelCalls(run.steps)
 
   return {
     id: run.id,
@@ -169,10 +165,6 @@ export function projectAdminRunDetail(
     timeline: [...run.steps]
       .sort(compareSteps)
       .map(step => projectTimelineItem(step, historyCandidateCount)),
-    retrievalInspector: projectAdminRetrievalInspector({
-      steps: run.steps,
-      assistantMessage: run.assistantMessage,
-    }),
   }
 }
 
@@ -191,8 +183,6 @@ function projectTimelineItem(
       return projectModelSampling(step, input, output, historyCandidateCount)
     case AGENT_STEP_TYPES.toolExecution:
       return projectToolExecution(step, input, output)
-    case AGENT_STEP_TYPES.groundedFinalization:
-      return projectGroundedFinalizationStep(step, knownStepBase(step))
     case AGENT_STEP_TYPES.assistantOutput:
       return projectAssistantOutput(step, input)
     default:

@@ -8,10 +8,6 @@ export type FlowStreamDelay = 'none' | 'short' | 'medium' | 'long'
 
 export type ProcessCardHeight = 'short' | 'medium' | 'tall'
 
-export type BriefLineWidth = 'full' | 'wide' | 'medium' | 'short' | 'tiny'
-
-export type BriefSectionTone = 'title' | 'meta' | 'check'
-
 export interface ProcessItem {
   id: string
   label: string
@@ -47,26 +43,10 @@ export interface CenterNodeConfig {
   metrics: CenterMetric[]
 }
 
-export interface BriefPreviewLine {
-  id: string
-  width: BriefLineWidth
-}
-
-export interface BriefPreviewSection {
-  id: string
-  label: string
-  value: string
-  tone: BriefSectionTone
-}
-
 export interface BriefPreviewConfig {
   id: string
   fileName: string
   status: string
-  summary: string
-  updatedLabel: string
-  sections: BriefPreviewSection[]
-  lines: BriefPreviewLine[]
 }
 
 export interface FlowPoint {

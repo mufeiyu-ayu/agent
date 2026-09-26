@@ -1,9 +1,5 @@
 import type { JsonObjectSchema } from '@agent/ai'
 import type { DatabaseOperationDeadline } from '../../prisma/prisma.service.js'
-import type {
-  ToolEvidencePolicy,
-  ToolEvidenceProjection,
-} from './tool-evidence.js'
 
 /** 将模型可见 Schema 与服务端运行时解析绑定为同一个输入契约。 */
 export interface ToolInputContract<TInput> {
@@ -20,12 +16,6 @@ export interface ToolDefinition<TInput = unknown> {
   timeoutMs: number
   /** 该工具允许发送给模型的 Observation 字符预算。 */
   maxObservationChars: number
-  /**
-   * 该工具的结果能否成为回答证据。由服务端定义，模型 arguments 无法改变。
-   *
-   * 必填而非可选：新工具漏声明时应该在 typecheck 阶段就失败，而不是默默不产生证据。
-   */
-  evidencePolicy: ToolEvidencePolicy
 }
 
 /** 模型提出、但尚未经过工具查找和参数验证的调用。 */
@@ -47,33 +37,10 @@ export interface ToolExecutionContext {
   signal: AbortSignal
 }
 
-export type JsonPrimitive = boolean | null | number | string
-
-export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue }
-
-/**
- * 工具自愿提供的、可安全持久化到 AgentStep 的摘要。
- *
- * 与 `modelContent`（模型可见文本）和 `evidence`（可引用证据）是三种不同投影：
- * 这里只允许放不含正文、excerpt、向量、内部距离和 credential 的元数据。
- *
- * 类型上限定为 JSON-compatible；运行时仍由 `normalizeToolStepSummary` 在持久化
- * 之前 fail closed 校验，不信任任何 Tool 的类型断言。
- */
-export type ToolStepSummary = Record<string, JsonValue>
-
 export type ToolResult
   = | {
     ok: true
     modelContent: string
-    stepSummary?: ToolStepSummary
-    /**
-     * 工具自愿提交的、可进入 Run Evidence Registry 的证据引用。
-     *
-     * 只有 `evidencePolicy: 'eligible'` 的工具才会被 Runtime 采纳；
-     * 运行时仍由 `normalizeToolEvidenceProjection` 逐条 fail closed 校验。
-     */
-    evidence?: ToolEvidenceProjection
   }
   | {
     ok: false

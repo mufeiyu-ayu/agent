@@ -238,8 +238,7 @@ export class AdminOverviewService {
 
 /**
  * 窗口内 Run 的全部真实模型调用，口径与运行列表 `aggregateRunModelCalls` 相同：
- * action sampling Step 与 finalization attempt 中，有 usage 或以 llm_* 类别失败的才算。
- * finalization 的模型取同一 Run 第一条采样的快照，首 token 时间与时长只有 action sampling 记录。
+ * 有 usage 或以 llm_* 类别失败的 action sampling Step 才算。
  */
 function modelCallsSql(windowStart: Prisma.Sql): Prisma.Sql {
   const llmCodes = Prisma.join([...LLM_CALL_ERROR_CODES])
@@ -247,14 +246,13 @@ function modelCallsSql(windowStart: Prisma.Sql): Prisma.Sql {
 
   return Prisma.sql`
     WITH window_runs AS (
-      SELECT r."id", r."errorCode"
+      SELECT r."id"
       FROM "AgentRun" r
       WHERE r."createdAt" >= ${windowStart}
     ),
     sampling AS (
       SELECT
         s."runId",
-        s."sequence",
         s."status",
         s."startedAt",
         s."endedAt",
@@ -268,11 +266,6 @@ function modelCallsSql(windowStart: Prisma.Sql): Prisma.Sql {
       JOIN window_runs r ON r."id" = s."runId"
       WHERE s."type" = ${AGENT_STEP_TYPES.modelSampling}
     ),
-    run_models AS (
-      SELECT DISTINCT ON (s."runId") s."runId", s."modelId", s."resolvedModel"
-      FROM sampling s
-      ORDER BY s."runId", s."sequence"
-    ),
     raw_calls AS (
       SELECT
         s."runId",
@@ -285,22 +278,6 @@ function modelCallsSql(windowStart: Prisma.Sql): Prisma.Sql {
           THEN (extract(epoch FROM s."endedAt" - s."startedAt") * 1000)::float8
         END AS "durationMs"
       FROM sampling s
-      UNION ALL
-      SELECT
-        f."runId",
-        m."modelId",
-        m."resolvedModel",
-        a."attempt" -> 'usage',
-        coalesce(jsonb_typeof(a."attempt" -> 'samplingFailure') = 'string' AND r."errorCode" IN (${llmCodes}), false),
-        NULL,
-        NULL
-      FROM "AgentStep" f
-      JOIN window_runs r ON r."id" = f."runId"
-      LEFT JOIN run_models m ON m."runId" = f."runId"
-      CROSS JOIN LATERAL jsonb_array_elements(
-        CASE WHEN jsonb_typeof(f."output" -> 'attempts') = 'array' THEN f."output" -> 'attempts' ELSE '[]'::jsonb END
-      ) AS a("attempt")
-      WHERE f."type" = ${AGENT_STEP_TYPES.groundedFinalization}
     ),
     calls AS (
       SELECT

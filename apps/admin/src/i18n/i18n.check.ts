@@ -14,8 +14,6 @@ import { messages } from './messages'
 const DYNAMIC_KEY_PREFIXES: Array<{ prefix: string, reason: string }> = [
   { prefix: 'overview.trend.status.', reason: '趋势图按 AgentRunStatus 枚举值拼接' },
   { prefix: 'runTrace.errorCodes.', reason: 'Run 失败类别按 AgentRunErrorCode 枚举值拼接' },
-  { prefix: 'retrieval.evidenceAvailability.', reason: '按 MessageEvidenceAvailability 枚举值拼接' },
-  { prefix: 'retrieval.outcome.', reason: '按 MessageGroundingOutcome 枚举值拼接' },
   { prefix: 'eventDetail.context.outcome.', reason: 'Context Inspector 按 outcome 枚举值拼接' },
   { prefix: 'llmModels.families.', reason: '服务商家族按 LlmProviderFamily 枚举值拼接' },
   // 数字字段的校验文案按字段名拼接；同名的字段标签键是字面量引用，不在豁免之列。
