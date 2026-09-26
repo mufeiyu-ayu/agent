@@ -7,7 +7,7 @@
 ```text
 阶段 1-8：Completed
 当前阶段：本项目源码阅读（工作台第 0 档）
-Active Agent Task：#193 首页替换为设计稿（路线外，只动前台展示层），已实现、待验收
+Active Agent Task：无
 Next：源码阅读（第 0 档）从异常断点接着读；RAG 清理三步已随 #189 结束
 Gated：#117 Responses API adapter（2026-09-18）、web_fetch（2026-09-19），触发条件见看板
 产品方向：内部数据工作台（2026-09-20 定案，docs/research/workbench-direction.md），未立 Issue；档、顺序与触发只在其第 7 节
@@ -19,7 +19,7 @@ Admin Task 4：Planned
 
 | 任务 | 状态 | 说明 |
 | --- | --- | --- |
-| #193 首页替换为设计稿 Agent for Teams（百分百还原） | Active | 实施状态：已实现 / 验收状态：待验收。桌面 HTML 原稿移植成 `/` 首页并删旧首页，对原稿做像素比对验收；路线外，只动前台展示层 |
+| #193 首页替换为设计稿 Agent for Teams（百分百还原） | Completed | 设计稿移植成 `/` 首页并删旧首页，对原稿像素比对 33 张全部达标。PR #194 |
 | #191 全仓测试统一到 Vitest | Completed | 六个 Vitest 项目，入口收成 `test` / `test:db` / `test:e2e`，删 22 条低价值测试，新增 `docs/testing.md`。PR #192 |
 | #189 tools 模板化（RAG 清理第 3 步） | Completed | 一次工具调用的判定收进 `invoke`，工具清单只在 `TOOLS`，文章摘录按低信任数据声明。PR #190 |
 | #187 删除检索、索引与 embedding（RAG 清理第 2 步） | Completed | 删 `retrieval/`、`article-indexing/`、`embeddings/` 约 1 万行，`search_articles` 查询收回 tools。PR #188 |
