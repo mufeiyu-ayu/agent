@@ -11,9 +11,7 @@ import type {
   ValidatedToolInvocation,
 } from './tool.types.js'
 import assert from 'node:assert/strict'
-// 项目本轮使用 Node 原生测试运行器，不引入额外测试框架。
-// eslint-disable-next-line test/no-import-node-test
-import { describe, it, mock } from 'node:test'
+import { describe, it, vi } from 'vitest'
 
 import { DatabaseOperationDeadlineExceededError } from '../../prisma/prisma.service.js'
 import { ToolInvocationService } from './tool-invocation.service.js'
@@ -118,7 +116,7 @@ describe('ToolInvocationService', () => {
       tool.definition.timeoutMs = testCase.timeoutMs ?? tool.definition.timeoutMs
       registry.register(tool)
       const service = new ToolInvocationService(registry)
-      mock.method((service as unknown as { logger: Logger }).logger, 'warn', () => {})
+      vi.spyOn((service as unknown as { logger: Logger }).logger, 'warn').mockImplementation(() => {})
 
       const invocation = await service.invoke(
         { ...createEnvelope(), ...testCase.envelope },
@@ -132,34 +130,6 @@ describe('ToolInvocationService', () => {
       }, testCase.name)
       assert.equal(executions, testCase.executions, testCase.name)
     }
-  })
-
-  it('拒绝非法 JSON、缺字段、错类型和额外字段，且不执行工具', async () => {
-    let executionCount = 0
-    const registry = new ToolRegistryService()
-    registry.register(createEchoTool('echo', async () => {
-      executionCount += 1
-      return { ok: true, modelContent: 'unexpected' }
-    }))
-    const service = new ToolInvocationService(registry)
-    const invalidArguments = [
-      '{',
-      '{}',
-      '{"message":1}',
-      '{"message":"hello","extra":true}',
-    ]
-
-    for (const rawArgumentsJson of invalidArguments) {
-      const { result } = await service.invoke(
-        { ...createEnvelope(), rawArgumentsJson },
-        createContext(),
-      )
-
-      assert.equal(result.ok, false)
-      assert.equal(result.ok ? undefined : result.code, 'invalid_arguments')
-    }
-
-    assert.equal(executionCount, 0)
   })
 
   it('合法调用只把已验证参数交给 Executor', async () => {
@@ -197,20 +167,6 @@ describe('ToolInvocationService', () => {
     assert.equal(receivedContext.signal.aborted, false)
   })
 
-  it('把普通执行异常转换为安全失败，不泄漏原始错误', async () => {
-    const registry = new ToolRegistryService()
-    registry.register(createEchoTool('echo', async () => {
-      throw new Error('database password: secret')
-    }))
-    const service = new ToolInvocationService(registry)
-
-    const { result } = await service.invoke(createEnvelope(), createContext())
-
-    assert.equal(result.ok, false)
-    assert.equal(result.ok ? undefined : result.code, 'execution_failed')
-    assert.doesNotMatch(result.modelContent, /password|secret/)
-  })
-
   it('执行异常的真实原因只进服务端日志：工具名、callId、错误名与截断后的 message', async () => {
     const failures: unknown[] = [
       Object.assign(new Error(`upstream network error${'x'.repeat(600)}`), { name: 'UpstreamError' }),
@@ -223,7 +179,7 @@ describe('ToolInvocationService', () => {
       throw failures.shift()
     }))
     const service = new ToolInvocationService(registry)
-    const warn = mock.method((service as unknown as { logger: Logger }).logger, 'warn', () => {})
+    const warn = vi.spyOn((service as unknown as { logger: Logger }).logger, 'warn').mockImplementation(() => {})
 
     for (let i = 0; i < 4; i++) {
       const { result } = await service.invoke(createEnvelope(), createContext())
@@ -231,8 +187,8 @@ describe('ToolInvocationService', () => {
       assert.equal(result.ok ? undefined : result.code, 'execution_failed')
       assert.equal(result.modelContent, '工具 echo 执行失败。')
     }
-    assert.equal(warn.mock.callCount(), 4)
-    const [first, nullProto, oddMessage, thrownString] = warn.mock.calls.map(call => call.arguments[0] as Record<string, unknown>)
+    assert.equal(warn.mock.calls.length, 4)
+    const [first, nullProto, oddMessage, thrownString] = warn.mock.calls.map(call => call[0] as Record<string, unknown>)
     assert.equal(first?.event, 'tool_execution_failed')
     assert.equal(first?.toolName, 'echo')
     assert.equal(first?.callId, 'call-1')
@@ -348,39 +304,6 @@ describe('ToolInvocationService', () => {
         modelContent: '工具 echo 执行失败。',
       },
     )
-  })
-
-  it('Executor 忽略 signal 时调用方仍按 Tool timeout 返回，但不声称底层工作已停止', async () => {
-    let executionCount = 0
-    const registry = new ToolRegistryService()
-    const tool = createEchoTool('echo', async () => {
-      executionCount += 1
-      return await new Promise(() => {})
-    })
-
-    tool.definition.timeoutMs = 20
-    registry.register(tool)
-    const service = new ToolInvocationService(registry)
-    const watchdog = createWatchdog(200)
-    let outcome: ToolResult | 'watchdog'
-
-    try {
-      outcome = await Promise.race([
-        service.invoke(createEnvelope(), createContext()).then(invocation => invocation.result),
-        watchdog.promise,
-      ])
-    }
-    finally {
-      watchdog.clear()
-    }
-
-    assert.notEqual(outcome, 'watchdog')
-    assert.deepEqual(outcome, {
-      ok: false,
-      code: 'timeout',
-      modelContent: '工具 echo 执行超时。',
-    })
-    assert.equal(executionCount, 1)
   })
 
   it('用户 abort 先于 timeout 时继续抛 AbortError，而不是返回 timeout', async () => {

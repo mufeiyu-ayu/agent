@@ -130,14 +130,15 @@ DTO class 用于 `@Body()` / `@Param()` 时，必须保留运行时值导入，�
 
 ## 10. 验证规则
 
-按改动范围运行最小必要验证：
+按改动范围运行最小必要验证；测试放哪、测什么、四个测试入口与真实库测试见 [`docs/testing.md`](./docs/testing.md)。
 
 | 改动范围 | 推荐验证 |
 | --- | --- |
 | TypeScript / shared contracts | `pnpm typecheck` |
 | 通用 lint | `pnpm lint` |
-| 前端 | `pnpm --filter @agent/web typecheck`、`lint`、`test`，必要时 `build`；admin 用 `pnpm --filter @agent/admin test`（check 脚本） |
-| 后端 | `pnpm --filter @agent/api typecheck`、`lint` |
+| 单测 | `pnpm test`（全部），或 `pnpm --filter <包> test` 只跑一个包 |
+| 前端 | `pnpm --filter @agent/web typecheck`、`lint`、`test`，必要时 `build`；admin 同样；交互改动加 `pnpm test:e2e` |
+| 后端 | `pnpm --filter @agent/api typecheck`、`lint`、`test`；涉及事务、deadline、落库时加 `pnpm test:db` |
 | Prisma | `pnpm prisma:generate`、`pnpm exec prisma validate` |
 | docs-only | `git diff --check`，必要时手动检查链接和结构 |
 

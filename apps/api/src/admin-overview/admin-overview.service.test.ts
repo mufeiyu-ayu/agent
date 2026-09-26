@@ -8,9 +8,7 @@ import type {
   RunBucketRow,
 } from './admin-overview.service.js'
 import assert from 'node:assert/strict'
-// 项目使用 Node 原生测试运行器，不为 Admin 查询引入额外测试框架。
-// eslint-disable-next-line test/no-import-node-test
-import { describe, it } from 'node:test'
+import { describe, it } from 'vitest'
 
 import {
   AdminOverviewService,

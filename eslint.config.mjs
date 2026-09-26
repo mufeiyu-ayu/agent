@@ -44,5 +44,13 @@ export default antfu({
     'no-console': ['error', {
       allow: ['log', 'warn', 'error'],
     }],
+    // 测试标题是中文或以类名、HTTP 方法、AC 编号开头，不要求小写开头。
+    'test/prefer-lowercase-title': 'off',
+  },
+}, {
+  // 管理台展示的参数、observation、模型文本都是不可信数据，一律按文本渲染；前台 Markdown 渲染另有净化，不受此限。
+  files: ['apps/admin/**/*.vue'],
+  rules: {
+    'vue/no-v-html': 'error',
   },
 })

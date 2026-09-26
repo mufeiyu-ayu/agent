@@ -1,6 +1,8 @@
 import type { AdminLlmModel, AdminLlmModelTestResult, AdminLlmProvider } from '@agent/contracts'
 import assert from 'node:assert/strict'
 
+import { afterEach, describe, it } from 'vitest'
+
 import { createLlmModelsState } from './llm-models.state'
 
 interface FetchCall {
@@ -9,24 +11,19 @@ interface FetchCall {
   body: unknown
 }
 
-void main()
-
-async function main(): Promise<void> {
+describe('模型接入状态', () => {
   const originalFetch = globalThis.fetch
 
-  try {
-    await checkStaleTestResultsAreDropped()
-    await checkAbortedFetchIsSilent()
-    await checkFailedBatchReleasesRemainingNames()
-    await checkProviderUpdateReloadsModels()
-    await checkCredentialChangeDropsTestResults()
-  }
-  finally {
+  afterEach(() => {
     globalThis.fetch = originalFetch
-  }
+  })
 
-  console.log('admin llm models state checks passed')
-}
+  it('AC-02 旧弹窗的测试响应晚到时丢弃，结果与新建提交只来自当前弹窗', checkStaleTestResultsAreDropped)
+  it('AC-03 拉取或测试被中止时静默结束，不抛 AbortError', checkAbortedFetchIsSilent)
+  it('超过一批时首批失败：这批与没发出的批次都记失败，不停在测试中', checkFailedBatchReleasesRemainingNames)
+  it('AC-01 家族 / 地址 / 密钥 / 使用代理变了才重载模型表', checkProviderUpdateReloadsModels)
+  it('#170 / #179 凭据变更后作废拉取名单与测试结论，提交不带旧结论', checkCredentialChangeDropsTestResults)
+})
 
 /**
  * AC-02：A 的测试还在路上就关弹窗，再给 B 拉取并测试同名模型；A 的响应晚到，

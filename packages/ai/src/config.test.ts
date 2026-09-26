@@ -1,8 +1,7 @@
 import assert from 'node:assert/strict'
-// eslint-disable-next-line test/no-import-node-test
-import { describe, it } from 'node:test'
-
 import { familyCompatOf } from '@agent/contracts'
+
+import { describe, it } from 'vitest'
 
 import { resolveChatRequestConfig } from './config.js'
 

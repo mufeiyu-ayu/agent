@@ -14,7 +14,9 @@
     "dev:admin": "pnpm --filter @agent/admin dev",
     "dev:web": "pnpm --filter @agent/web dev",
     "dev:apps": "node scripts/dev-apps.mjs",
-    "test:dev-apps": "node --test scripts/dev-apps.test.mjs",
+    "test": "vitest run --project '!db'",
+    "test:db": "node --env-file-if-exists=.env node_modules/vitest/vitest.mjs run --project db",
+    "test:e2e": "pnpm --filter @agent/contracts build && pnpm --filter @agent/web --filter @agent/admin --workspace-concurrency=1 exec playwright test",
     "build:admin": "pnpm --filter @agent/admin build",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
@@ -27,11 +29,14 @@
   },
   "devDependencies": {
     "@antfu/eslint-config": "^9.0.0",
+    "@swc/core": "^1.16.2",
     "@types/node": "^24.19.0",
     "dotenv": "^17.4.2",
     "eslint": "^10.4.0",
     "prisma": "^7.8.0",
     "tsx": "^4.22.3",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "unplugin-swc": "^2.0.0",
+    "vitest": "^5.0.2"
   }
 }

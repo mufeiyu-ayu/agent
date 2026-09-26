@@ -15,9 +15,7 @@ import { randomUUID } from 'node:crypto'
 import { readdir, readFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import process from 'node:process'
-// 项目使用 Node 原生测试运行器，不为 DB integration 引入额外测试框架。
-// eslint-disable-next-line test/no-import-node-test
-import { after, before, describe, it } from 'node:test'
+import { afterAll, beforeAll, describe, it } from 'vitest'
 import {
   AgentRunStatus,
   AgentStepStatus,
@@ -37,13 +35,13 @@ const testDatabaseUrl = process.env.TEST_DATABASE_URL?.trim()
 
 if (!testDatabaseUrl) {
   throw new Error(
-    'agent runtime DB integration 需要 TEST_DATABASE_URL 指向隔离数据库',
+    '缺少 TEST_DATABASE_URL：先 docker compose --profile integration up -d postgres-test，再按 .env.example 在根目录 .env 配置',
   )
 }
 
 if (testDatabaseUrl === process.env.DATABASE_URL?.trim()) {
   throw new Error(
-    'TEST_DATABASE_URL 不得与 DATABASE_URL 相同，禁止在开发库上运行 DB integration',
+    'TEST_DATABASE_URL 不得与 DATABASE_URL 相同，禁止在开发库上运行真实库测试',
   )
 }
 
@@ -69,12 +67,12 @@ interface AdminClient {
   release: (error?: Error) => void
 }
 
-describe('AgentRuntime PostgreSQL integration', { concurrency: 1 }, () => {
+describe('AgentRuntime PostgreSQL integration', () => {
   const schema = `runtime_test_${randomUUID().replaceAll('-', '')}`
   let adminPool: AdminPool
   let prisma: PrismaService
 
-  before(async () => {
+  beforeAll(async () => {
     assert.ok(testDatabaseUrl, 'testDatabaseUrl')
     assert.match(schema, /^runtime_test_[a-f\d]+$/)
     adminPool = new PgPool({
@@ -113,7 +111,7 @@ describe('AgentRuntime PostgreSQL integration', { concurrency: 1 }, () => {
     await prisma.$connect()
   })
 
-  after(async () => {
+  afterAll(async () => {
     await prisma?.$disconnect()
     if (adminPool) {
       assert.match(schema, /^runtime_test_[a-f\d]+$/)

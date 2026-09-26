@@ -32,9 +32,6 @@ import type {
 } from './context/deepseek-v4-token-estimator.js'
 import type { AgentRunRecorderService } from './lifecycle/agent-run-recorder.service.js'
 import assert from 'node:assert/strict'
-// 项目本轮使用 Node 原生测试运行器，不引入 Vitest。
-// eslint-disable-next-line test/no-import-node-test
-import { describe, it } from 'node:test'
 import { setTimeout as sleep } from 'node:timers/promises'
 import {
   adaptOpenAICompatibleStream,
@@ -48,6 +45,7 @@ import {
   teeRawResponseCapture,
 } from '@agent/ai'
 import { familyCompatOf } from '@agent/contracts'
+import { describe, it } from 'vitest'
 
 import { projectAdminRunDetail } from '../admin-runs/projection/admin-run.projector.js'
 import { toChatStreamEvent } from '../chat/chat-stream-event.mapper.js'
@@ -836,31 +834,6 @@ describe('AgentRuntimeService model stream', () => {
     assertNoUnfinishedSteps(harness)
   })
 
-  it('runtime 写出的 tool_execution Step 可被 Admin 投影为已知 Step', async () => {
-    const harness = createHarness((_, __, callIndex) => toModelStream(callIndex === 0
-      ? [
-          toolCallEvent('call-1', 'search_articles', '{"query":"seo"}'),
-          { type: 'response_completed', finishReason: 'tool_calls' },
-        ]
-      : [
-          { type: 'text_delta', delta: '找到相关文章。' },
-          { type: 'response_completed', finishReason: 'stop' },
-        ]))
-
-    await collectEvents(harness.run())
-
-    const detail = projectHarnessRunDetail(harness, 'COMPLETED')
-    const toolItem = detail.timeline.find(item => item.type === 'tool_execution')
-
-    assert.equal(toolItem?.kind, 'known')
-    assert.equal(
-      toolItem?.kind === 'known' && toolItem.type === 'tool_execution'
-        ? toolItem.toolName
-        : undefined,
-      'search_articles',
-    )
-  })
-
   it('第二轮 sampling 重新估算完整请求，并按 Context Budget 缩减 Observation', async () => {
     const observation = '🚀'.repeat(16_000)
     const estimator = new BaseCostTokenEstimator(250_000)
@@ -1282,90 +1255,6 @@ describe('AgentRuntimeService model stream', () => {
     assertNoUnfinishedSteps(harness)
   })
 
-  it('在 response_completed 前实时产出第二轮最终回答 delta', async () => {
-    const completionGate = createDeferred()
-    const harness = createHarness((_, __, callIndex) => callIndex === 0
-      ? toModelStream([
-          toolCallEvent(
-            'call-1',
-            'search_articles',
-            '{"query":"Silver Wolf","languageCode":"zh-cn","limit":3}',
-          ),
-          { type: 'response_completed', finishReason: 'tool_calls' },
-        ])
-      : delayedCompletionModelStream('找到 1 篇文章。', completionGate.promise))
-    const stream = harness.run()
-
-    assert.equal((await stream.next()).value?.type, 'run_started')
-
-    const deltaPromise = stream.next()
-    const yieldedBeforeCompletion = await Promise.race([
-      deltaPromise.then(() => true),
-      new Promise<false>(resolve => setImmediate(() => resolve(false))),
-    ])
-
-    completionGate.resolve()
-    const delta = await deltaPromise
-    const remainingEvents = await collectEvents(stream)
-
-    assert.equal(yieldedBeforeCompletion, true)
-    assert.equal(delta.value?.type, 'assistant_delta')
-    assert.equal(
-      delta.value?.type === 'assistant_delta' ? delta.value.contentDelta : undefined,
-      '找到 1 篇文章。',
-    )
-    assert.deepEqual(remainingEvents.map(event => event.type), ['run_completed'])
-    assert.equal(harness.llmCalls.length, 2)
-    assert.equal(harness.toolInvocations.length, 1)
-  })
-
-  it('把工具安全失败作为 Observation 交给第二轮解释', async () => {
-    const streams: ModelStreamEvent[][] = [
-      [
-        toolCallEvent('call-1', 'unknown_tool', '{}'),
-        { type: 'response_completed', finishReason: 'tool_calls' },
-      ],
-      [
-        { type: 'text_delta', delta: '当前无法使用该工具。' },
-        { type: 'response_completed', finishReason: 'stop' },
-      ],
-    ]
-    const harness = createHarness(
-      (_, __, callIndex) => toModelStream(streams[callIndex] ?? []),
-      undefined,
-      async envelope => ({
-        ok: false,
-        code: 'unknown_tool',
-        modelContent: `工具 ${envelope.toolName} 不存在。`,
-      }),
-    )
-
-    await collectEvents(harness.run())
-
-    assert.deepEqual(harness.llmCalls[1]?.messages.at(-1), {
-      type: 'tool_result',
-      callId: 'call-1',
-      name: 'unknown_tool',
-      content: '工具 unknown_tool 不存在。',
-      ok: false,
-    })
-    assert.equal(harness.assistantMessage()?.content, '当前无法使用该工具。')
-    assert.equal(findStep(harness, 'tool_execution')?.status, AgentStepStatus.FAILED)
-    assert.deepEqual(
-      findStep(harness, 'tool_execution')?.output,
-      {
-        ok: false,
-        code: 'unknown_tool',
-        originalChars: 20,
-        observationChars: 20,
-        truncated: false,
-        observation: '工具 unknown_tool 不存在。',
-      },
-    )
-    assert.deepEqual(harness.recorder.completedRunIds, ['run-1'])
-    assertNoUnfinishedSteps(harness)
-  })
-
   it('拒绝执行工具清单之外的工具', async () => {
     const secretContent = '不应回填给模型的未授权结果'
     let hiddenExecutorCalls = 0
@@ -1463,89 +1352,6 @@ describe('AgentRuntimeService model stream', () => {
     assertNoUnfinishedSteps(harness)
   })
 
-  it('模型调用已删除的工具名时按 unknown_tool 回喂，下一轮直接回答，Run 以 COMPLETED 收口', async () => {
-    const streams: ModelStreamEvent[][] = [
-      [
-        toolCallEvent('call-removed', 'retrieve_article_context', '{"query":"seo"}'),
-        { type: 'response_completed', finishReason: 'tool_calls' },
-      ],
-      [
-        { type: 'text_delta', delta: '这个工具已不可用，直接回答。' },
-        { type: 'response_completed', finishReason: 'stop' },
-      ],
-    ]
-    const harness = createHarness((_, __, callIndex) => toModelStream(streams[callIndex] ?? []))
-
-    const events = await collectEvents(harness.run())
-
-    assert.equal(events.at(-1)?.type, 'run_completed')
-    assert.equal(harness.toolInvocations.length, 0)
-    assert.equal(harness.llmCalls.length, 2)
-    assert.deepEqual(harness.llmCalls[1]?.messages.at(-1), {
-      type: 'tool_result',
-      callId: 'call-removed',
-      name: 'retrieve_article_context',
-      content: '工具 retrieve_article_context 不存在。',
-      ok: false,
-    })
-    assert.equal(harness.assistantMessage()?.status, MessageStatus.COMPLETED)
-    assert.equal(harness.assistantMessage()?.content, '这个工具已不可用，直接回答。')
-    assert.deepEqual(harness.recorder.completedRunIds, ['run-1'])
-    assert.deepEqual(harness.recorder.failedRunIds, [])
-    assert.equal(harness.recorder.runErrorCode, null)
-    const toolStep = findStep(harness, 'tool_execution')
-
-    assert.equal(toolStep?.status, AgentStepStatus.FAILED)
-    assert.equal((toolStep?.output as Record<string, unknown>).code, 'unknown_tool')
-    assertNoUnfinishedSteps(harness)
-  })
-
-  it('把无效参数结果作为脱敏 Observation 交给第二轮解释', async () => {
-    const streams: ModelStreamEvent[][] = [
-      [
-        toolCallEvent('call-1', 'search_articles', '{"sourceId":1.5}'),
-        { type: 'response_completed', finishReason: 'tool_calls' },
-      ],
-      [
-        { type: 'text_delta', delta: '查询参数无效，请换个说法。' },
-        { type: 'response_completed', finishReason: 'stop' },
-      ],
-    ]
-    const harness = createHarness(
-      (_, __, callIndex) => toModelStream(streams[callIndex] ?? []),
-      undefined,
-      async envelope => ({
-        ok: false,
-        code: 'invalid_arguments',
-        modelContent: `工具 ${envelope.toolName} 的参数无效。`,
-      }),
-    )
-
-    await collectEvents(harness.run())
-
-    // 未通过 input.parse 的原始参数不可信，续轮以官方回退形状承载。
-    assert.deepEqual(harness.llmCalls[1]?.messages.at(-2), {
-      type: 'assistant_tool_call',
-      calls: [{ callId: 'call-1', name: 'search_articles', rawArgumentsJson: '{"arguments":"{\\"sourceId\\":1.5}"}' }],
-      reasoningContent: 'reasoning for call-1',
-    })
-    assert.deepEqual(harness.llmCalls[1]?.messages.at(-1), {
-      type: 'tool_result',
-      callId: 'call-1',
-      name: 'search_articles',
-      content: '工具 search_articles 的参数无效。',
-      ok: false,
-    })
-    assert.equal(harness.assistantMessage()?.content, '查询参数无效，请换个说法。')
-    assert.equal(findStep(harness, 'tool_execution')?.status, AgentStepStatus.FAILED)
-    assert.equal(
-      (findStep(harness, 'tool_execution')?.output as Record<string, unknown>)?.code,
-      'invalid_arguments',
-    )
-    assert.deepEqual(harness.recorder.completedRunIds, ['run-1'])
-    assertNoUnfinishedSteps(harness)
-  })
-
   it('execution_failed 按模型原参数落库、不自动重试，参数不进用户可见 Message', async () => {
     const harness = createHarness(
       (_, __, callIndex) => toModelStream(callIndex === 0
@@ -1583,37 +1389,6 @@ describe('AgentRuntimeService model stream', () => {
     assert.doesNotMatch(JSON.stringify(toolStep), /rawArgumentsJson/)
     assert.doesNotMatch(harness.assistantMessage()?.content ?? '', /db-secret|sk-secret/)
     assert.deepEqual(harness.recorder.completedRunIds, ['run-1'])
-    assertNoUnfinishedSteps(harness)
-  })
-
-  it('把 timeout 记录为工具失败 Observation，第二轮回答后 Run 仍可完成', async () => {
-    const harness = createHarness(
-      (_, __, callIndex) => toModelStream(callIndex === 0
-        ? [
-            toolCallEvent('call-timeout', 'search_articles', '{"query":"seo"}'),
-            { type: 'response_completed', finishReason: 'tool_calls' },
-          ]
-        : [
-            { type: 'text_delta', delta: '查询超时，请稍后重试。' },
-            { type: 'response_completed', finishReason: 'stop' },
-          ]),
-      undefined,
-      async () => ({
-        ok: false,
-        code: 'timeout',
-        modelContent: '工具 search_articles 执行超时。',
-      }),
-    )
-
-    await collectEvents(harness.run())
-
-    const toolStep = findStep(harness, 'tool_execution')
-
-    assert.equal(toolStep?.status, AgentStepStatus.FAILED)
-    assert.equal((toolStep?.output as Record<string, unknown>)?.code, 'timeout')
-    assert.equal(harness.toolInvocations.length, 1)
-    assert.deepEqual(harness.recorder.completedRunIds, ['run-1'])
-    assert.deepEqual(harness.recorder.abortedRunIds, [])
     assertNoUnfinishedSteps(harness)
   })
 

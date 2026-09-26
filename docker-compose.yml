@@ -22,7 +22,7 @@ services:
       timeout: 3s
       retries: 10
 
-  # 通用隔离测试库：DB 测试（如 test:runtime-db）经 TEST_DATABASE_URL 连它，不碰开发库。
+  # 通用隔离测试库：真实库测试（pnpm test:db）经 TEST_DATABASE_URL 连它，不碰开发库。
   # 镜像与主库一致，理由同上：测试会从第一条迁移起建库。
   postgres-test:
     image: pgvector/pgvector:0.8.6-pg16-bookworm

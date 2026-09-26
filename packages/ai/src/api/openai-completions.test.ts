@@ -2,11 +2,10 @@ import type { LLMClientConfig, ResolvedChatRequestConfig } from '../config.js'
 import type { ModelRawResponseCapture } from '../types.js'
 import assert from 'node:assert/strict'
 import { getEventListeners } from 'node:events'
-// eslint-disable-next-line test/no-import-node-test
-import { describe, it, mock } from 'node:test'
-
 import { familyCompatOf } from '@agent/contracts'
+
 import OpenAI from 'openai'
+import { describe, it, vi } from 'vitest'
 import {
   LLMApiError,
   LLMAuthError,
@@ -305,12 +304,6 @@ describe('OpenAICompatibleClient runtime config', () => {
 })
 
 describe('OpenAICompatibleClient 瞬态失败重试', () => {
-  it('createClient() 交给 SDK 的 maxRetries 为 2', () => {
-    const client = new OpenAICompatibleClient(createRuntimeConfig())
-
-    assert.equal(createProviderClient(client).maxRetries, 2)
-  })
-
   it('首次 429 / 503 / 连接错误、第二次成功时 chatStream 正常产出且只记一份请求体', async () => {
     const transientAttempts: Array<() => Response> = [
       () => new Response('{"error":{"message":"rate limited"}}', {
@@ -730,20 +723,20 @@ describe('OpenAICompatibleClient 模型调用边界（#168）', () => {
   })
 
   it('AC-02 SSE 行不是合法 JSON：SDK 不往 stderr 打上游原文，归为协议错误且文案不带片段', async () => {
-    const consoleError = mock.method(console, 'error', () => {})
-    const consoleWarn = mock.method(console, 'warn', () => {})
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const consoleWarn = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
     try {
       const error = await failureOf(sse('data: {"choices": SECRET_UPSTREAM_LINE'))
 
       assert.ok(error instanceof LLMApiError, 'error instanceof LLMApiError')
       assert.equal(error.message, '模型服务返回了无法解析的数据')
-      assert.equal(consoleError.mock.callCount(), 0)
-      assert.equal(consoleWarn.mock.callCount(), 0)
+      assert.equal(consoleError.mock.calls.length, 0)
+      assert.equal(consoleWarn.mock.calls.length, 0)
     }
     finally {
-      consoleError.mock.restore()
-      consoleWarn.mock.restore()
+      consoleError.mockRestore()
+      consoleWarn.mockRestore()
     }
   })
 

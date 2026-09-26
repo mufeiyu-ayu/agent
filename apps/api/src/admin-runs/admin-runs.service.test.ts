@@ -1,10 +1,8 @@
 import type { Prisma } from '../generated/prisma/client.js'
 import type { PrismaService } from '../prisma/prisma.service.js'
 import assert from 'node:assert/strict'
-// 项目使用 Node 原生测试运行器，不为 Admin 查询引入额外测试框架。
-// eslint-disable-next-line test/no-import-node-test
-import { describe, it } from 'node:test'
 import { BadRequestException, NotFoundException } from '@nestjs/common'
+import { describe, it } from 'vitest'
 
 import { AdminRunsService } from './admin-runs.service.js'
 import { runRecord, step } from './projection/__fixtures__.js'
@@ -165,7 +163,7 @@ describe('Admin Run projector', () => {
     assert.equal(detail.usage.totalTokens, 83)
   })
 
-  it('AC-03：tool step input 缺 callId 仍是 known Step，仅 callId 为 null', () => {
+  it('AC-03：tool step 缺 callId、参数与 observation 仍是 known Step，缺的字段为 null', () => {
     const record = createRunRecord()
     const tool = record.steps.find(step => step.sequence === 4)!
     delete (tool.input as Record<string, unknown>).callId
@@ -174,6 +172,9 @@ describe('Admin Run projector', () => {
 
     assert.ok(item?.kind === 'known' && item.type === 'tool_execution', 'item?.kind === \'known\' && item.type === \'tool_execution\'')
     assert.equal(item.callId, null)
+    // 被中断的工具 Step 与字段上线前的旧 Step 都没有这两个键：投影为 null，前端显示「未记录」，不回落到别的字段。
+    assert.equal(item.arguments, null)
+    assert.equal(item.observation, null)
     assert.equal(item.toolName, 'search_articles')
     assert.equal(item.ok, true)
     assert.equal(item.truncated, true)
@@ -204,58 +205,6 @@ describe('Admin Run projector', () => {
     assert.equal(item.usage, null)
     assert.equal(item.contextInspector.outcome, null)
     assert.equal(item.contextInspector.resolvedModel, null)
-  })
-
-  it('AC-04：#124 之前落库的 Run 全部投影为 known 且忽略多余字段', () => {
-    const detail = projectAdminRunDetail(createLegacyRunRecord(), null)
-    const serialized = JSON.stringify(detail)
-
-    assert.deepEqual(
-      detail.timeline.map(item => [item.type, item.kind]),
-      [
-        ['receive_user_message', 'generic'],
-        ['load_conversation_history', 'known'],
-        ['model_sampling', 'known'],
-        ['tool_execution', 'known'],
-        ['model_sampling', 'known'],
-        // #185 删除后不再有这类 Step：老数据按通用 Step 显示。
-        ['grounded_finalization', 'generic'],
-        ['assistant_output', 'known'],
-      ],
-    )
-    assert.doesNotMatch(
-      serialized,
-      /toolVersion|executionAttempt|retryable|rawArgumentsChars|requestedModel|textChars|contentLength|estimatorStrategyId|contextWindowTokens|exchangeIndex|toolCeilingTruncated|recordedDurationMs/,
-    )
-    assert.doesNotMatch(serialized, /DO_NOT_LEAK/)
-
-    const sampling = detail.timeline.find(item => item.sequence === 3)
-    assert.ok(sampling?.kind === 'known' && sampling.type === 'model_sampling', 'sampling?.kind === \'known\' && sampling.type === \'model_sampling\'')
-    // 旧 contextPlan 带过 historyIncludedCount，照读；候选条数取自 load_conversation_history。
-    assert.deepEqual(sampling.contextInspector, {
-      outcome: 'success',
-      resolvedModel: 'deepseek-v4-flash',
-      providerId: null,
-      modelId: null,
-      resolvedInputBudgetTokens: 262_144,
-      estimatedInputTokens: 120_000,
-      historyIncludedCount: 2,
-      historyCandidateCount: 2,
-    })
-    assert.equal(sampling.intermediateText, null)
-    assert.equal(sampling.reasoningContent, null)
-
-    // 旧 Run 没有落参数与 observation：投影为 null，不报错。已删除工具的老 Step 照常按工具 Step 显示。
-    const tool = detail.timeline.find(item => item.sequence === 4)
-    assert.ok(tool?.kind === 'known' && tool.type === 'tool_execution', 'tool?.kind === \'known\' && tool.type === \'tool_execution\'')
-    assert.equal(tool.toolName, 'retrieve_article_context')
-    assert.equal(tool.ok, true)
-    assert.equal(tool.arguments, null)
-    assert.equal(tool.observation, null)
-
-    // 第 6 步这类老 Step 的 attempt 不再计入模型调用，只剩两次 action sampling。
-    assert.equal(detail.samplingCount, 2)
-    assert.equal(detail.usage.totalTokens, 15 + 28)
   })
 
   it('四类已知 Step 使用 allowlist，unknown Step 安全降级且 Timeline 按 sequence 排序', () => {
@@ -492,14 +441,14 @@ describe('Admin Run projector', () => {
     assert.equal(failedSamplingItem.firstTokenMs, 812)
     assert.equal(failedSamplingItem.errorCode, 'llm_auth')
 
-    // 字段上线前的旧 Run：列为 null、Step output 没有这两个键，前端显示「未记录」。
-    const legacyDetail = projectAdminRunDetail(createLegacyRunRecord(), null)
-    const legacySampling = legacyDetail.timeline.find(item => item.sequence === 3)
+    // #151 之前的 Run：列为 null、Step output 没有这两个键，投影为 null，前端显示「未记录」。
+    const unrecordedDetail = projectAdminRunDetail(createRunRecord(), null)
+    const unrecordedSampling = unrecordedDetail.timeline.find(item => item.sequence === 3)
 
-    assert.equal(legacyDetail.errorCode, null)
-    assert.ok(legacySampling?.kind === 'known' && legacySampling.type === 'model_sampling', 'legacySampling?.kind === \'known\' && legacySampling.type === \'model_sampling\'')
-    assert.equal(legacySampling.firstTokenMs, null)
-    assert.equal(legacySampling.errorCode, null)
+    assert.equal(unrecordedDetail.errorCode, null)
+    assert.ok(unrecordedSampling?.kind === 'known' && unrecordedSampling.type === 'model_sampling', 'unrecordedSampling?.kind === \'known\' && unrecordedSampling.type === \'model_sampling\'')
+    assert.equal(unrecordedSampling.firstTokenMs, null)
+    assert.equal(unrecordedSampling.errorCode, null)
 
     const corrupted = createRunRecord()
     corrupted.errorCode = 'not_a_code'
@@ -765,123 +714,6 @@ function createRunRecord() {
         messageLength: 14,
         prompt: 'DO_NOT_LEAK',
       },
-    }),
-  ]
-
-  return record
-}
-
-/** #124 之前 runtime 落库的真实形状：含已停写字段（第 6 步只留计数相关的 attempts）。 */
-function createLegacyRunRecord() {
-  const record = createRunRecord()
-
-  record.steps = [
-    step(1, 'receive_user_message', {
-      input: { messageId: 'message-user', messageLength: 14 },
-    }),
-    step(2, 'load_conversation_history', {
-      input: { limit: 20 },
-      output: { messageCount: 2, candidateCount: 2, excludedCount: 0, excludedReason: null },
-    }),
-    step(3, 'model_sampling', {
-      input: {
-        samplingIndex: 1,
-        samplingAttemptId: 'run-1:sampling-1',
-        requestedModel: null,
-        candidateMessageCount: 4,
-        toolCount: 3,
-        initialContext: safeInitialContext(),
-      },
-      output: {
-        samplingAttemptId: 'run-1:sampling-1',
-        messageCount: 4,
-        finishReason: 'tool_calls',
-        usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
-        toolCallCount: 1,
-        textChars: 0,
-        durationMs: 500,
-        contextPlan: {
-          samplingIndex: 1,
-          resolvedInputBudgetTokens: 262_144,
-          estimatedInputTokens: 120_000,
-          historyCandidateCount: 2,
-          historyIncludedCount: 2,
-          historyExcludedCount: 0,
-          toolExchangeCount: 0,
-          observations: [],
-          overflowReason: null,
-          estimatorStrategyId: 'deepseek-v4-official-b5968e9',
-        },
-      },
-    }),
-    step(4, 'tool_execution', {
-      input: {
-        callId: 'call-1',
-        toolName: 'retrieve_article_context',
-        toolVersion: '1',
-        samplingAttemptId: 'run-1:sampling-1',
-        executionAttempt: 1,
-        rawArgumentsChars: 48,
-      },
-      output: {
-        ok: true,
-        originalChars: 4_000,
-        observationChars: 3_000,
-        truncated: true,
-        durationMs: 420,
-      },
-    }),
-    step(5, 'model_sampling', {
-      input: {
-        samplingIndex: 2,
-        samplingAttemptId: 'run-1:sampling-2',
-        requestedModel: null,
-        candidateMessageCount: 6,
-        toolCount: 3,
-        initialContext: safeInitialContext(),
-      },
-      output: {
-        samplingAttemptId: 'run-1:sampling-2',
-        messageCount: 6,
-        finishReason: 'stop',
-        usage: { inputTokens: 20, outputTokens: 8, totalTokens: 28 },
-        toolCallCount: 0,
-        textChars: 40,
-        durationMs: 350,
-        contextPlan: {
-          samplingIndex: 2,
-          resolvedInputBudgetTokens: 262_144,
-          estimatedInputTokens: 180_000,
-          historyCandidateCount: 2,
-          historyIncludedCount: 2,
-          historyExcludedCount: 0,
-          toolExchangeCount: 1,
-          observations: [{
-            exchangeIndex: 0,
-            originalChars: 4_000,
-            toolCeilingChars: 3_000,
-            finalChars: 3_000,
-            toolCeilingTruncated: true,
-            contextBudgetTruncated: false,
-          }],
-          overflowReason: null,
-          estimatorStrategyId: 'deepseek-v4-official-b5968e9',
-        },
-      },
-    }),
-    step(6, 'grounded_finalization', {
-      output: {
-        attemptCount: 1,
-        attempts: [{
-          attempt: 1,
-          ok: true,
-          usage: { inputTokens: 6, outputTokens: 3, totalTokens: 9 },
-        }],
-      },
-    }),
-    step(7, 'assistant_output', {
-      input: { assistantMessageId: 'message-assistant' },
-      output: { contentLength: 40 },
     }),
   ]
 

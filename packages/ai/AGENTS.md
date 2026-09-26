@@ -39,6 +39,6 @@ scripts/record-tool-call-stream-fixtures.ts  # 一次性手动录制脚本：用
 
 ## 验证
 
-`pnpm --filter @agent/ai typecheck`、`lint`、`test`（node:test）。`scripts/` 不在 tsconfig include 里，只过 lint。
+`pnpm --filter @agent/ai typecheck`、`lint`、`test`（Vitest）。`scripts/` 不在 tsconfig include 里，只过 lint。
 
-`package.json` 的 `exports` 里 `types` 指向 `src`、`import` 指向 `dist`：typecheck 读 src，node 运行时与 api 的 `test:*`（tsx）读 dist。`pnpm dev` 只在启动时构建一次本包，改了 `src` 后要重启 dev 或先 `pnpm --filter @agent/ai build`，再跑 api 测试。
+`package.json` 的 `exports` 里 `types` 指向 `src`、`import` 指向 `dist`：typecheck 读 src，node 运行时读 dist；测试经 Vitest 别名直接读 src，不需要先 build。`pnpm dev` 会 watch 本包并重建 dist。

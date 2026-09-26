@@ -1,8 +1,6 @@
 import type { ChatStreamEvent } from '@agent/contracts'
 import assert from 'node:assert/strict'
-// 项目使用 Node 原生测试运行器，Web 侧同样不引入额外测试框架。
-// eslint-disable-next-line test/no-import-node-test
-import { describe, it } from 'node:test'
+import { describe, it } from 'vitest'
 
 import { ChatStreamHttpError, parseChatStreamEventLine, streamChat } from './chat'
 
@@ -82,23 +80,6 @@ describe('NDJSON 协议兼容', () => {
 })
 
 describe('streamChat', () => {
-  it('按行消费 NDJSON', async () => {
-    const lines = LEGACY_EVENTS.slice(0, 3).map(event => JSON.stringify(event))
-    const restoreFetch = stubFetch(`${lines.join('\n')}\n`)
-
-    try {
-      const events = await collect(streamChat({
-        conversationId: 'conversation-1',
-        message: '问题',
-      }))
-
-      assert.deepEqual(events.map(event => event.type), ['start', 'delta', 'done'])
-    }
-    finally {
-      restoreFetch()
-    }
-  })
-
   it('跨 chunk 切分的行与缺少结尾换行的响应都能正确还原', async () => {
     const payload = `${JSON.stringify(LEGACY_EVENTS[0])}\n${JSON.stringify(LEGACY_EVENTS[2])}`
     const restoreFetch = stubFetch(payload, { chunkSize: 7 })

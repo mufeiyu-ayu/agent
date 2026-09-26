@@ -7,12 +7,11 @@ import assert from 'node:assert/strict'
 import { once } from 'node:events'
 import { createServer } from 'node:http'
 import { connect } from 'node:net'
-// eslint-disable-next-line test/no-import-node-test
-import { after, before, describe, it } from 'node:test'
 import { LLMNetworkError } from '@agent/ai'
 import { familyCompatOf } from '@agent/contracts'
 import { BadRequestException } from '@nestjs/common'
 import { Agent, getGlobalDispatcher, ProxyAgent } from 'undici'
+import { afterAll, beforeAll, describe, it, onTestFinished, vi } from 'vitest'
 
 import { LlmModelConfigService } from '../llm/llm-model-config.service.js'
 import { LlmProxyError } from '../llm/llm.errors.js'
@@ -201,11 +200,11 @@ function isBaseUrlChangeRejected(error: unknown): boolean {
 describe('AdminLlmService 凭据：库里的密钥只发往库里的地址', () => {
   let upstream: FakeUpstream
 
-  before(async () => {
+  beforeAll(async () => {
     upstream = await startFakeUpstream()
   })
 
-  after(async () => {
+  afterAll(async () => {
     await upstream.close()
   })
 
@@ -313,12 +312,12 @@ describe('LLMService 出站代理分流', () => {
   let upstream: FakeUpstream
   let proxy: LoggingProxy
 
-  before(async () => {
+  beforeAll(async () => {
     upstream = await startFakeUpstream()
     proxy = await startLoggingProxy()
   })
 
-  after(async () => {
+  afterAll(async () => {
     await upstream.close()
     await proxy.close()
   })
@@ -341,15 +340,16 @@ describe('LLMService 出站代理分流', () => {
     }
   }
 
-  it('useProxy=true 的三条路径都经过代理；useProxy=false 的三条路径代理记录为零；全局 dispatcher 不被替换', async (t) => {
+  it('useProxy=true 的三条路径都经过代理；useProxy=false 的三条路径代理记录为零；全局 dispatcher 不被替换', async () => {
     const globalDispatcher = getGlobalDispatcher()
     // SDK 建 client 时取全局 fetch，并把 fetchOptions.dispatcher 并进每次请求：截下它，直接断言用的是哪个 agent。
     const realFetch = globalThis.fetch
     const dispatchers: unknown[] = []
-    t.mock.method(globalThis, 'fetch', (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation((input: Parameters<typeof fetch>[0], init?: RequestInit) => {
       dispatchers.push((init as { dispatcher?: unknown } | undefined)?.dispatcher)
       return realFetch(input, init)
     })
+    onTestFinished(() => fetchSpy.mockRestore())
     const llmService = createProxiedLlmService(proxy.origin)
     const upstreamHost = new URL(upstream.origin).host
     proxy.connections.length = 0

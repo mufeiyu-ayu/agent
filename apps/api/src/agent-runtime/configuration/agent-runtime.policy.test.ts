@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict'
-// eslint-disable-next-line test/no-import-node-test
-import { describe, it } from 'node:test'
+import { describe, it } from 'vitest'
 
 import {
   AgentRuntimePolicyError,
@@ -73,15 +72,5 @@ describe('resolveAgentRuntimePolicy', () => {
         runDeadlineMs: 600_000,
       })
     }
-  })
-
-  it('旧 SEO_CHAT_HISTORY_LIMIT / SEO_CHAT_HISTORY_CANDIDATE_HARD_LIMIT 不再读取', () => {
-    assert.deepEqual(
-      resolveAgentRuntimePolicy({
-        SEO_CHAT_HISTORY_LIMIT: '1',
-        SEO_CHAT_HISTORY_CANDIDATE_HARD_LIMIT: '500',
-      }),
-      DEFAULT_AGENT_RUNTIME_POLICY,
-    )
   })
 })

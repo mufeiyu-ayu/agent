@@ -34,9 +34,9 @@ runtime：result 定 Step 的 ok / code；argumentsValidated 定回喂参数的�
    - 执行器类：`@Injectable()`，实现 `ToolExecutor<输入类型>`，依赖用 `@Inject` 注入（`SearchArticlesTool` 注入 `PrismaService`）；只收到校验过的输入，查询时尊重 `context.signal` 与 `context.databaseDeadline`；成功返回 `{ ok: true, modelContent }`，失败直接抛错交给 `invoke` 脱敏，不要自己返回 `invalid_arguments` 等只该由 `invoke` 给出的 code。
 2. 在 `tool-definitions.ts` 的 `TOOLS` 加一行 `toolEntry(definition, 执行器类)`（两者输入类型不一致时编译不过）：模型可见的工具、Registry 注册与 Admin 概览的工具名都跟着变。执行器依赖的 Nest 模块不在 `ToolsModule.imports` 里时一并加上。
 3. 在系统提示词（`chat/prompts/agent.prompt.ts`）写清这个工具什么时候用、什么时候不用。
-4. 测试放在工具旁边（如 `articles/search-articles.*.test.ts`），测三件事：
+4. 测试放在工具文件旁边（如 `articles/search-articles.tool.test.ts`），测三件事：
    - `parse`：合法输入的规范化结果；缺字段、错类型、额外字段、越界都抛错；
    - 执行器：用假依赖断言查询条件与 `modelContent`，signal 已中断时不开始查询；
    - 经 `ToolInvocationService` 走一遍：合法参数得到预期结果，参数无效时不执行、返回 `invalid_arguments`。
 
-`invoke` 自己的分支（截断批次、查找、超时、脱敏、`argumentsValidated`）在 `core/tool-invocation.service.test.ts`，新工具不用重复测。
+`invoke` 自己的分支（截断批次、查找、超时、脱敏、`argumentsValidated`）在 `core/tool-invocation.service.test.ts`，新工具不用重复测。测试文件按命名放好就会被 `pnpm --filter @agent/api test` 运行，不用登记；写法见 `docs/testing.md`。

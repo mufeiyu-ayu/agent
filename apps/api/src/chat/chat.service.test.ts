@@ -6,11 +6,9 @@ import type {
 } from '../agent-runtime/agent-runtime.types.js'
 import type { LlmModelConfigService } from '../llm/llm-model-config.service.js'
 import assert from 'node:assert/strict'
-// 项目使用 Node 原生测试运行器，不引入新测试框架。
-// eslint-disable-next-line test/no-import-node-test
-import { describe, it } from 'node:test'
-
 import { BadRequestException } from '@nestjs/common'
+
+import { describe, it } from 'vitest'
 
 import { createResolvedLlmModel } from '../llm/__fixtures__.js'
 import { LlmModelUnavailableError } from '../llm/llm.errors.js'

@@ -34,4 +34,4 @@ src/main.ts -> src/App.vue -> src/router/index.ts   # 两个页面：/ 首页、
 
 ## 验证
 
-`pnpm --filter @agent/web typecheck`、`lint`、`test`（node:test 单测，清单在 `package.json`），必要时 `build`；浏览器回归用 `test:e2e`（Playwright）。
+`pnpm --filter @agent/web typecheck`、`lint`、`test`（Vitest 单测），必要时 `build`；浏览器回归用根目录 `pnpm test:e2e`（Playwright）。测试规范见 `docs/testing.md`。

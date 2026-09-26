@@ -3,9 +3,7 @@ import type { DeadlineTransaction } from './prisma.service.js'
 import assert from 'node:assert/strict'
 import { createRequire } from 'node:module'
 import process from 'node:process'
-// 项目使用 Node 原生测试运行器，不为真实数据库验证引入额外框架。
-// eslint-disable-next-line test/no-import-node-test
-import { after, before, describe, it } from 'node:test'
+import { afterAll, beforeAll, describe, it } from 'vitest'
 
 import { PrismaClient } from '../generated/prisma/client.js'
 import {
@@ -51,19 +49,23 @@ interface PgPoolConstructor {
 
 const { Pool } = createRequire(import.meta.url)('pg') as { Pool: PgPoolConstructor }
 
-const connectionString = process.env.DATABASE_URL?.trim()
+// 真实库测试只连隔离库：缺了就失败而不是跳过，与开发库相同时拒绝运行。
+const connectionString = process.env.TEST_DATABASE_URL?.trim()
 
 if (!connectionString)
-  throw new Error('运行真实数据库验证前请在项目根目录 .env 中设置 DATABASE_URL')
+  throw new Error('缺少 TEST_DATABASE_URL：先 docker compose --profile integration up -d postgres-test，再按 .env.example 在根目录 .env 配置')
+
+if (connectionString === process.env.DATABASE_URL?.trim())
+  throw new Error('TEST_DATABASE_URL 不得与 DATABASE_URL 相同，禁止在开发库上运行真实库测试')
 
 describe('PrismaService database deadline reliability', () => {
-  const prisma = new PrismaService()
+  const prisma = new PrismaService(connectionString)
 
-  before(async () => {
+  beforeAll(async () => {
     await prisma.$connect()
   })
 
-  after(async () => {
+  afterAll(async () => {
     await prisma.$disconnect()
   })
 

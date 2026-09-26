@@ -19,7 +19,7 @@
     "build": "tsc",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src scripts",
-    "test": "pnpm --filter @agent/contracts build && tsx --test $(find src -name '*.test.ts')"
+    "test": "vitest run --root ../.. --project ai"
   },
   "dependencies": {
     "@agent/contracts": "workspace:*",

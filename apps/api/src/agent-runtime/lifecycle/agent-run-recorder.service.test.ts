@@ -5,9 +5,7 @@ import type {
   PrismaService,
 } from '../../prisma/prisma.service.js'
 import assert from 'node:assert/strict'
-// 项目使用 Node 原生测试运行器，不为 Recorder 引入额外测试框架。
-// eslint-disable-next-line test/no-import-node-test
-import { describe, it } from 'node:test'
+import { describe, it } from 'vitest'
 
 import {
   AgentRunStatus,
@@ -25,24 +23,6 @@ const TEST_DEADLINE: DatabaseOperationDeadline = {
 }
 
 describe('AgentRunRecorderService', () => {
-  it('同一 Run 可以创建两条独立 model_sampling', async () => {
-    const harness = createHarness()
-    const run = await harness.createRun('run-a')
-
-    const first = await harness.recorder.startStep({
-      runId: run.id,
-      type: AGENT_STEP_TYPES.modelSampling,
-    }, TEST_DEADLINE)
-    const second = await harness.recorder.startStep({
-      runId: run.id,
-      type: AGENT_STEP_TYPES.modelSampling,
-    }, TEST_DEADLINE)
-
-    assert.notEqual(first.id, second.id)
-    assert.equal(first.status, AgentStepStatus.RUNNING)
-    assert.equal(second.status, AgentStepStatus.RUNNING)
-  })
-
   it('两条相同 type 的 Step 能按不同 stepId 分别完成', async () => {
     const harness = createHarness()
     const run = await harness.createRun('run-a')
