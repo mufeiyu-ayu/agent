@@ -66,6 +66,8 @@
 
 2026-09-20 方向变化：第二 provider 由 #142（2026-09-20 合并，模型配置入库、接入公司中转站）与 #146（2026-09-22 合并，各家族协议差异收口为 compat 表）落地，前台可选 DeepSeek 与经中转站的 GPT / Grok / Gemini，推翻工作台方向第 9 节「现在接第二模型」的否决。
 
+2026-09-26 方向变化：用户定案删除阶段 8 的 RAG 与 Grounding 全链路（工作台短期不用，将来的知识库也不是文章检索），只留 `search_articles` 作工具模板与 `Article` 表；阶段 8 的 Completed 记录保留为历史。三步顺序与理由见 [工作台方向](./research/workbench-direction.md) 第 9 节删除记录。
+
 2026-09-16 对照 Pi 做过度设计审查后再立三件，排在 #115 前：#118 删死代码与单实现抽象（零行为变化）、#119 历史裁剪合一、#120 抽出 `packages/ai`。`packages/ai` 提前的理由是 #115 / #117 全落在模型层；`packages/agent` 仍在 R2。2026-09-17 再立 #124 把 `packages/ai` 目录按 Pi 分层整理（单一 `types.ts`、按协议命名的 `api/`），同日合并。2026-09-18 立 #126 把 Admin Run 读模型去过度设计（删常量 / 重复 / 可信度字段与读时校验，projector 改逐字段读取，净减 5,611 行），同日合并；同日再立 #127 收敛 `packages/ai` 运行时配置（`LLMRuntimeConfig` 只剩三个必填 env 与 debug 开关，timeout 与 `max_tokens` 默认值改代码常量，删应用硬上限层与 4 个 `LLM_*` env），同日合并。其余结构性问题不单独立项，分别归 #116（重复校验、消息类型合并）、R1（debug 捕获）、R2（ModelContext 协议）。
 
 ## 当前明确后置
