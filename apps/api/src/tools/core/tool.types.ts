@@ -1,5 +1,6 @@
 import type { JsonObjectSchema } from '@agent/ai'
 import type { DatabaseOperationDeadline } from '../../prisma/prisma.service.js'
+import type { NormalizedToolObservation } from './tool-observation.js'
 
 /** 将模型可见 Schema 与服务端运行时解析绑定为同一个输入契约。 */
 export interface ToolInputContract<TInput> {
@@ -37,6 +38,12 @@ export interface ToolExecutionContext {
   signal: AbortSignal
 }
 
+/** Runtime 交给 `invoke` 的上下文：执行上下文加上本批 arguments 是否被截断。 */
+export interface ToolInvocationContext extends ToolExecutionContext {
+  /** 模型输出达到长度限制，arguments 可能不完整：`invoke` 不查找、不校验、不执行。 */
+  argumentsTruncated: boolean
+}
+
 export type ToolResult
   = | {
     ok: true
@@ -48,11 +55,20 @@ export type ToolResult
       | 'execution_failed'
       | 'invalid_arguments'
       | 'timeout'
-      // 仅由 Runtime 合成：模型输出达到长度限制、arguments 不完整，本次未执行。
+      // 模型输出达到长度限制、arguments 不完整，本次未执行。
       | 'truncated_arguments'
       | 'unknown_tool'
     modelContent: string
   }
+
+/** `invoke` 对一次调用给出的全部事实；Runtime 只拿它记账与回喂，不再自己推断。 */
+export interface ToolInvocationResult {
+  result: ToolResult
+  /** 参数是否通过了 `input.parse`：通过后才超时或执行失败的调用也是 true。 */
+  argumentsValidated: boolean
+  /** 按该工具的 Observation 预算修剪后回喂给模型的正文。 */
+  observation: NormalizedToolObservation
+}
 
 export interface ToolExecutor<TInput> {
   execute: (

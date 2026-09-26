@@ -1,10 +1,13 @@
 import type { Logger } from '@nestjs/common'
 import type { DatabaseOperationDeadline } from '../../prisma/prisma.service.js'
+import type { NormalizedToolObservation } from './tool-observation.js'
 import type {
   RegisteredTool,
   ToolExecutionContext,
   ToolExecutor,
+  ToolInvocationContext,
   ToolResult,
+  UnvalidatedToolCallEnvelope,
   ValidatedToolInvocation,
 } from './tool.types.js'
 import assert from 'node:assert/strict'
@@ -14,6 +17,7 @@ import { describe, it, mock } from 'node:test'
 
 import { DatabaseOperationDeadlineExceededError } from '../../prisma/prisma.service.js'
 import { ToolInvocationService } from './tool-invocation.service.js'
+import { normalizeToolObservation } from './tool-observation.js'
 import { ToolRegistryService } from './tool-registry.service.js'
 
 interface EchoInput {
@@ -21,17 +25,113 @@ interface EchoInput {
 }
 
 describe('ToolInvocationService', () => {
-  it('未知工具返回结构化失败', async () => {
-    const service = new ToolInvocationService(new ToolRegistryService())
-
-    assert.deepEqual(
-      await service.invoke(createEnvelope('missing_tool'), createContext()),
+  it('argumentsValidated 与 observation 按 invoke 实际走到的分支给出', async () => {
+    const longMessage = 'x'.repeat(8_001)
+    const cases: Array<{
+      name: string
+      envelope?: Partial<UnvalidatedToolCallEnvelope>
+      argumentsTruncated?: boolean
+      timeoutMs?: number
+      execute?: ToolExecutor<EchoInput>['execute']
+      result: ToolResult
+      argumentsValidated: boolean
+      observation: NormalizedToolObservation
+      executions: number
+    }> = [
       {
-        ok: false,
-        code: 'unknown_tool',
-        modelContent: '工具 missing_tool 不存在。',
+        name: '成功',
+        envelope: { rawArgumentsJson: JSON.stringify({ message: longMessage }) },
+        result: { ok: true, modelContent: longMessage },
+        argumentsValidated: true,
+        // 按 echo 自己的 maxObservationChars（8_000）修剪，不是全局硬上限。
+        observation: normalizeToolObservation(longMessage, 8_000),
+        executions: 1,
       },
-    )
+      {
+        name: '未知工具',
+        envelope: { toolName: 'missing_tool' },
+        result: { ok: false, code: 'unknown_tool', modelContent: '工具 missing_tool 不存在。' },
+        argumentsValidated: false,
+        observation: untrimmed('工具 missing_tool 不存在。'),
+        executions: 0,
+      },
+      {
+        name: '非法 JSON',
+        envelope: { rawArgumentsJson: '{' },
+        result: { ok: false, code: 'invalid_arguments', modelContent: '工具 echo 的参数无效。' },
+        argumentsValidated: false,
+        observation: untrimmed('工具 echo 的参数无效。'),
+        executions: 0,
+      },
+      {
+        name: 'parse 拒绝',
+        envelope: { rawArgumentsJson: '{"message":1}' },
+        result: { ok: false, code: 'invalid_arguments', modelContent: '工具 echo 的参数无效。' },
+        argumentsValidated: false,
+        observation: untrimmed('工具 echo 的参数无效。'),
+        executions: 0,
+      },
+      {
+        // 参数本身合法，也不执行：截断批次整批都不可信。
+        name: '截断批次',
+        argumentsTruncated: true,
+        result: {
+          ok: false,
+          code: 'truncated_arguments',
+          modelContent: '工具 echo 的参数因模型输出达到长度限制而不完整，本次未执行；仍需要时请重新发起调用。',
+        },
+        argumentsValidated: false,
+        observation: untrimmed('工具 echo 的参数因模型输出达到长度限制而不完整，本次未执行；仍需要时请重新发起调用。'),
+        executions: 0,
+      },
+      {
+        name: '超时：校验通过后才失败',
+        timeoutMs: 20,
+        execute: async () => await new Promise(() => {}),
+        result: { ok: false, code: 'timeout', modelContent: '工具 echo 执行超时。' },
+        argumentsValidated: true,
+        observation: untrimmed('工具 echo 执行超时。'),
+        executions: 1,
+      },
+      {
+        name: '执行失败：校验通过后才失败',
+        execute: async () => {
+          throw new Error('database password: secret')
+        },
+        result: { ok: false, code: 'execution_failed', modelContent: '工具 echo 执行失败。' },
+        argumentsValidated: true,
+        observation: untrimmed('工具 echo 执行失败。'),
+        executions: 1,
+      },
+    ]
+
+    for (const testCase of cases) {
+      let executions = 0
+      const registry = new ToolRegistryService()
+      const tool = createEchoTool('echo', async (invocation, context) => {
+        executions += 1
+        return testCase.execute
+          ? await testCase.execute(invocation, context)
+          : { ok: true, modelContent: invocation.input.message }
+      })
+
+      tool.definition.timeoutMs = testCase.timeoutMs ?? tool.definition.timeoutMs
+      registry.register(tool)
+      const service = new ToolInvocationService(registry)
+      mock.method((service as unknown as { logger: Logger }).logger, 'warn', () => {})
+
+      const invocation = await service.invoke(
+        { ...createEnvelope(), ...testCase.envelope },
+        { ...createContext(), argumentsTruncated: testCase.argumentsTruncated ?? false },
+      )
+
+      assert.deepEqual(invocation, {
+        result: testCase.result,
+        argumentsValidated: testCase.argumentsValidated,
+        observation: testCase.observation,
+      }, testCase.name)
+      assert.equal(executions, testCase.executions, testCase.name)
+    }
   })
 
   it('拒绝非法 JSON、缺字段、错类型和额外字段，且不执行工具', async () => {
@@ -50,7 +150,7 @@ describe('ToolInvocationService', () => {
     ]
 
     for (const rawArgumentsJson of invalidArguments) {
-      const result = await service.invoke(
+      const { result } = await service.invoke(
         { ...createEnvelope(), rawArgumentsJson },
         createContext(),
       )
@@ -78,7 +178,7 @@ describe('ToolInvocationService', () => {
     const context = createContext()
     const startedAt = Date.now()
 
-    const result = await service.invoke(createEnvelope(), context)
+    const { result } = await service.invoke(createEnvelope(), context)
 
     assert.deepEqual(result, {
       ok: true,
@@ -104,7 +204,7 @@ describe('ToolInvocationService', () => {
     }))
     const service = new ToolInvocationService(registry)
 
-    const result = await service.invoke(createEnvelope(), createContext())
+    const { result } = await service.invoke(createEnvelope(), createContext())
 
     assert.equal(result.ok, false)
     assert.equal(result.ok ? undefined : result.code, 'execution_failed')
@@ -113,7 +213,7 @@ describe('ToolInvocationService', () => {
 
   it('执行异常的真实原因只进服务端日志：工具名、callId、错误名与截断后的 message', async () => {
     const failures: unknown[] = [
-      Object.assign(new Error(`embedding network error${'x'.repeat(600)}`), { name: 'EmbeddingError' }),
+      Object.assign(new Error(`upstream network error${'x'.repeat(600)}`), { name: 'UpstreamError' }),
       Object.create(null),
       Object.assign(new Error('x'), { message: { nested: true } }),
       'ECONNRESET',
@@ -126,7 +226,7 @@ describe('ToolInvocationService', () => {
     const warn = mock.method((service as unknown as { logger: Logger }).logger, 'warn', () => {})
 
     for (let i = 0; i < 4; i++) {
-      const result = await service.invoke(createEnvelope(), createContext())
+      const { result } = await service.invoke(createEnvelope(), createContext())
 
       assert.equal(result.ok ? undefined : result.code, 'execution_failed')
       assert.equal(result.modelContent, '工具 echo 执行失败。')
@@ -136,9 +236,9 @@ describe('ToolInvocationService', () => {
     assert.equal(first?.event, 'tool_execution_failed')
     assert.equal(first?.toolName, 'echo')
     assert.equal(first?.callId, 'call-1')
-    assert.equal(first?.errorName, 'EmbeddingError')
+    assert.equal(first?.errorName, 'UpstreamError')
     assert.equal((first?.message as string).length, 500)
-    assert.match(first?.message as string, /^embedding network error/)
+    assert.match(first?.message as string, /^upstream network error/)
     assert.deepEqual([nullProto?.errorName, nullProto?.message], ['object', ''])
     assert.deepEqual([oddMessage?.errorName, oddMessage?.message], ['Error', ''])
     assert.deepEqual([thrownString?.errorName, thrownString?.message], ['string', 'ECONNRESET'])
@@ -156,7 +256,7 @@ describe('ToolInvocationService', () => {
     registry.register(tool)
     const service = new ToolInvocationService(registry)
     const context = createContext()
-    const result = await service.invoke(createEnvelope(), context)
+    const { result } = await service.invoke(createEnvelope(), context)
 
     assert.ok(receivedDeadline, 'receivedDeadline')
     assert.ok(receivedDeadline.deadlineAt < context.databaseDeadline.deadlineAt, 'receivedDeadline.deadlineAt < context.databaseDeadline.deadlineAt')
@@ -190,7 +290,7 @@ describe('ToolInvocationService', () => {
     )
   })
 
-  it('已触发的 AbortSignal 优先于工具查找和参数验证，且不执行工具', async () => {
+  it('已触发的 AbortSignal 优先于截断批次、工具查找和参数验证，且不执行工具', async () => {
     let executionCount = 0
     const registry = new ToolRegistryService()
     registry.register(createEchoTool('echo', async () => {
@@ -201,15 +301,16 @@ describe('ToolInvocationService', () => {
     const abortController = new AbortController()
     abortController.abort()
 
-    const envelopes = [
-      createEnvelope('missing_tool'),
-      { ...createEnvelope(), rawArgumentsJson: '{' },
-      createEnvelope(),
+    const calls = [
+      { envelope: createEnvelope(), argumentsTruncated: true },
+      { envelope: createEnvelope('missing_tool'), argumentsTruncated: false },
+      { envelope: { ...createEnvelope(), rawArgumentsJson: '{' }, argumentsTruncated: false },
+      { envelope: createEnvelope(), argumentsTruncated: false },
     ]
 
-    for (const envelope of envelopes) {
+    for (const { envelope, argumentsTruncated } of calls) {
       await assert.rejects(
-        service.invoke(envelope, createContext(abortController.signal)),
+        service.invoke(envelope, { ...createContext(abortController.signal), argumentsTruncated }),
         { name: 'AbortError' },
       )
     }
@@ -240,7 +341,7 @@ describe('ToolInvocationService', () => {
     const service = new ToolInvocationService(registry)
 
     assert.deepEqual(
-      await service.invoke(createEnvelope(), createContext()),
+      (await service.invoke(createEnvelope(), createContext())).result,
       {
         ok: false,
         code: 'execution_failed',
@@ -265,7 +366,7 @@ describe('ToolInvocationService', () => {
 
     try {
       outcome = await Promise.race([
-        service.invoke(createEnvelope(), createContext()),
+        service.invoke(createEnvelope(), createContext()).then(invocation => invocation.result),
         watchdog.promise,
       ])
     }
@@ -324,7 +425,7 @@ describe('ToolInvocationService', () => {
     registry.register(tool)
     const service = new ToolInvocationService(registry)
 
-    const result = await service.invoke(createEnvelope(), createContext())
+    const { result } = await service.invoke(createEnvelope(), createContext())
 
     assert.equal(result.ok, false)
     assert.equal(result.ok ? undefined : result.code, 'timeout')
@@ -346,7 +447,7 @@ describe('ToolInvocationService', () => {
       process.on('unhandledRejection', onUnhandledRejection)
 
       try {
-        const result = await service.invoke(createEnvelope(), createContext())
+        const { result } = await service.invoke(createEnvelope(), createContext())
 
         if (lateOutcome === 'resolve') {
           deferred.resolve({
@@ -456,11 +557,18 @@ function createEnvelope(toolName = 'echo') {
   }
 }
 
-function createContext(signal = new AbortController().signal): ToolExecutionContext {
+function createContext(signal = new AbortController().signal): ToolInvocationContext {
   return {
     databaseDeadline: createDatabaseDeadline(signal),
     signal,
+    argumentsTruncated: false,
   }
+}
+
+function untrimmed(content: string): NormalizedToolObservation {
+  const chars = [...content].length
+
+  return { content, originalChars: chars, observationChars: chars, truncated: false }
 }
 
 function createDatabaseDeadline(signal: AbortSignal): DatabaseOperationDeadline {

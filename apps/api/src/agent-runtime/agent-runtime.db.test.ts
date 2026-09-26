@@ -26,10 +26,6 @@ import {
 } from '../generated/prisma/client.js'
 import { createResolvedLlmModel } from '../llm/__fixtures__.js'
 import { PrismaService } from '../prisma/prisma.service.js'
-import {
-  searchArticlesDefinition,
-  SearchArticlesTool,
-} from '../tools/articles/search-articles.tool.js'
 import { ToolInvocationService } from '../tools/core/tool-invocation.service.js'
 import { ToolRegistryService } from '../tools/core/tool-registry.service.js'
 import { AgentRuntimeService } from './agent-runtime.service.js'
@@ -349,14 +345,6 @@ describe('AgentRuntime PostgreSQL integration', { concurrency: 1 }, () => {
       captureModelIO?: boolean
     } = {},
   ) {
-    const registry = new ToolRegistryService()
-
-    // 与生产装配一致：allowlist 里的 search_articles 已注册，本文件的用例不调用它。
-    registry.register({
-      definition: searchArticlesDefinition,
-      executor: new SearchArticlesTool(prisma),
-    })
-
     let callIndex = 0
     const llmCalls: ModelInputItem[][] = []
     const llmService = {
@@ -381,7 +369,8 @@ describe('AgentRuntime PostgreSQL integration', { concurrency: 1 }, () => {
       llmService,
       prisma,
       new AgentRunRecorderService(prisma),
-      new ToolInvocationService(registry),
+      // 本文件的用例只调用清单外的工具名（走 unknown_tool），Registry 留空即可。
+      new ToolInvocationService(new ToolRegistryService()),
       {
         value: {
           historyCandidateHardLimit: 1_000,
@@ -390,7 +379,6 @@ describe('AgentRuntime PostgreSQL integration', { concurrency: 1 }, () => {
           runDeadlineMs: options.runDeadlineMs ?? 60_000,
         },
       } as AgentRuntimePolicyService,
-      registry,
       tokenEstimator,
       new SamplingContextPlanner(tokenEstimator),
     )

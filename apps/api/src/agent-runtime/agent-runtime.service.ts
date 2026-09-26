@@ -13,8 +13,7 @@ import type {
 import type { DatabaseOperationDeadline } from '../prisma/prisma.service.js'
 import type { NormalizedToolObservation } from '../tools/core/tool-observation.js'
 import type {
-  ToolDefinition,
-  ToolResult,
+  ToolInvocationResult,
   UnvalidatedToolCallEnvelope,
 } from '../tools/core/tool.types.js'
 import type {
@@ -55,11 +54,6 @@ import {
   PrismaService,
 } from '../prisma/prisma.service.js'
 import { ToolInvocationService } from '../tools/core/tool-invocation.service.js'
-import {
-  normalizeToolObservation,
-  TOOL_OBSERVATION_HARD_MAX_CHARS,
-} from '../tools/core/tool-observation.js'
-import { ToolRegistryService } from '../tools/core/tool-registry.service.js'
 import { TOOL_DEFINITIONS } from '../tools/tool-definitions.js'
 import {
   AGENT_RUN_DEADLINE_EXCEEDED_MESSAGE,
@@ -135,9 +129,6 @@ export class AgentRuntimeService {
     @Inject(AgentRuntimePolicyService)
     private readonly runtimePolicyService: AgentRuntimePolicyService,
 
-    @Inject(ToolRegistryService)
-    private readonly toolRegistryService: ToolRegistryService,
-
     @Inject(DeepSeekV4TokenEstimator)
     private readonly tokenEstimator: TokenEstimator,
 
@@ -188,7 +179,7 @@ export class AgentRuntimeService {
 
       // 配置解析时机保持在 Run 落库之后：请求级配置错误仍走既有 failRun
       // 终态化，不改变 Run 生命周期语义。
-      const { request: resolvedRequestConfig, toolDefinitions, modelTools }
+      const { request: resolvedRequestConfig, modelTools }
         = this.resolveRunConfiguration(input, runtimePolicy)
       const loadHistoryStep = await this.agentRunRecorderService.startStep({
         runId: currentAgentRunId,
@@ -505,8 +496,6 @@ export class AgentRuntimeService {
 
           // toos 相关
           calls, // 模型要调用的工具
-          // 记账用
-          toolDefinitions, // 我们的工具
           argumentsTruncated, // 模型输出是否被截断，arguments 可能不完整
 
           // 情况 2 用不上
@@ -735,6 +724,7 @@ export class AgentRuntimeService {
 
   /**
    * 执行一轮采样给出的全部 Tool Call：返回与 calls 一一对应的回填结果。
+   * 查找、截断批次、校验、执行与修剪都由 invoke 判定，这里只开关 Step、记账与收集回喂内容。
    * 某个 call 被停止、deadline 或工具自身抛错打断时，先确立终态原因，再把该 Step 的失败归因
    * 写进 terminal.stepFailure，然后原样抛出：外层 catch 要靠原异常判断终止来源。
    */
@@ -742,7 +732,6 @@ export class AgentRuntimeService {
     runId: string
     samplingAttemptId: string
     calls: UnvalidatedToolCallEnvelope[]
-    toolDefinitions: ToolDefinition[]
     argumentsTruncated: boolean
     runCancellation: RunCancellation
     terminal: RunTerminalSlots
@@ -751,7 +740,6 @@ export class AgentRuntimeService {
       runId,
       samplingAttemptId,
       calls,
-      toolDefinitions,
       argumentsTruncated,
       runCancellation,
       terminal,
@@ -766,9 +754,6 @@ export class AgentRuntimeService {
 
     // 顺序执行，每个 call 一个 tool_execution Step；当前工具只读，并行没有收益。
     for (const call of calls) {
-      const toolDefinition = toolDefinitions.find(
-        definition => definition.name === call.toolName,
-      )
       // callId / toolName 是模型原样给的，落库副本同样要能进 jsonb。
       const toolStepInput = {
         callId: toPersistableText(call.callId),
@@ -782,33 +767,14 @@ export class AgentRuntimeService {
         type: AGENT_STEP_TYPES.toolExecution,
         input: toolStepInput,
       }, databaseDeadline)
-      let toolResult: ToolResult
+      let invocation: ToolInvocationResult
 
       try {
-        // 情况 A：模型输出被截断，arguments 可能不完整，直接编一份失败结果。
-        if (argumentsTruncated) {
-          toolResult = {
-            ok: false,
-            code: 'truncated_arguments',
-            modelContent: `工具 ${call.toolName} 的参数因模型输出达到长度限制而不完整，本次未执行；仍需要时请重新发起调用。`,
-          }
-        }
-        // 情况 B：模型输出的工具名在服务端不存在，直接编一份失败结果。
-        else if (!toolDefinition) {
-          toolResult = {
-            ok: false,
-            code: 'unknown_tool',
-            modelContent: `工具 ${call.toolName} 不存在。`,
-          }
-        }
-        // 情况 C：真正执行 ，tools 走这
-        else {
-          // 执行工具拿到工具结果
-          toolResult = await this.toolInvocationService.invoke(
-            call,
-            { signal: runSignal, databaseDeadline },
-          )
-        }
+        // 截断批次、查无此工具、参数无效都由 invoke 直接返回失败结果，只有校验通过的调用才真正执行。
+        invocation = await this.toolInvocationService.invoke(
+          call,
+          { signal: runSignal, databaseDeadline, argumentsTruncated },
+        )
         runCancellation.throwIfUnavailable()
       }
       catch (error) {
@@ -826,19 +792,9 @@ export class AgentRuntimeService {
         throw error
       }
 
-      // 第一道截断：按工具自己的字数上限修剪回喂给模型的正文（不超过全局硬上限），
-      // 超了就截断并前后加说明，让模型知道看到的不完整。第二道按整轮上下文预算缩，在 plan() 里。
-      const observation = normalizeToolObservation(
-        toolResult.modelContent,
-        toolDefinition?.maxObservationChars
-        ?? TOOL_OBSERVATION_HARD_MAX_CHARS,
-      )
-      // 只有 ToolInvocationService 经 input.parse 校验后执行的调用，参数才可信；
-      // 这三个 code 都发生在校验之前或根本没有校验，其余 code 都在校验通过之后。
-      const argumentsValidated = toolResult.ok
-        || (toolResult.code !== 'truncated_arguments' // 截断：根本没校验
-          && toolResult.code !== 'unknown_tool' // 查无此工具
-          && toolResult.code !== 'invalid_arguments') // 校验未通过
+      // observation 已按工具上限修剪（第一道截断，第二道在 plan() 里按整轮预算缩）；
+      // argumentsValidated 是 invoke 按实际走到的分支给出的：只有通过 input.parse 的调用参数才可信。
+      const { result: toolResult, argumentsValidated, observation } = invocation
       // 回喂给模型的参数表示只算这一次：同一个字符串既落库，也进下一轮的 ModelContext。
       const feedbackArgumentsJson = toFeedbackArgumentsJson(
         call.rawArgumentsJson,
@@ -945,31 +901,17 @@ export class AgentRuntimeService {
   }
 
   /**
-   * 解析一次 Run 的请求级配置：allowlist 内的 Tool 定义、模型可见 Tool
-   * 说明与 resolved 模型请求配置（模型行快照 + 请求级 reasoningEffort）。
-   * 模型行的数值约束在 Admin 写入时由 `assertModelRowValid` 把关，这里不再校验；
-   * Registry 缺失 allowlisted Tool 时按现状跳过，不伪造定义。
+   * 解析一次 Run 的请求级配置：模型可见 Tool 说明与 resolved 模型请求配置（模型行快照 + 请求级 reasoningEffort）。
+   * 模型行的数值约束在 Admin 写入时由 `assertModelRowValid` 把关，这里不再校验。
    */
   private resolveRunConfiguration(
     input: RunTurnStreamInput,
     runtimePolicy: AgentRuntimePolicy,
   ) {
-    // allowlist 就是 TOOL_DEFINITIONS 的顺序；定义仍以 Registry 实际注册的为准。
-    const toolDefinitions = TOOL_DEFINITIONS.flatMap(({ name }) => {
-      const definition = this.toolRegistryService.get(name)?.definition
-
-      if (!definition) {
-        this.logger.warn(`allowlist 工具 ${name} 未在 Registry 注册，本次 Run 不暴露该工具`)
-
-        return []
-      }
-
-      return [definition]
-    })
-    // 模型只看到名称、说明与输入 Schema；timeout 与 Observation 预算留在服务端。
+    // 顺序即工具清单的顺序；模型只看到名称、说明与输入 Schema，timeout 与 Observation 预算留在服务端。
     const modelTools = runtimePolicy.maxToolCalls === 0
       ? []
-      : toolDefinitions.map(definition => ({
+      : TOOL_DEFINITIONS.map(definition => ({
           name: definition.name,
           description: definition.description,
           inputSchema: definition.input.schema,
@@ -980,7 +922,7 @@ export class AgentRuntimeService {
         : { reasoningEffort: input.reasoningEffort }),
     })
 
-    return { request, toolDefinitions, modelTools }
+    return { request, modelTools }
   }
 
   /**

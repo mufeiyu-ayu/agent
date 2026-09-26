@@ -12,7 +12,7 @@
 | 模型行 | 服务商地址与加密 API Key（`LlmProvider`）、wireName / context window / 输出上限 / 默认 `reasoningEffort` / 前台可见与默认（`LlmModel`），由管理台「模型接入」人工维护，不从接口猜 | 数据库（`prisma/schema.prisma`）；写侧 `apps/api/src/admin-llm/admin-llm.service.ts`（`assertModelRowValid`）与导入预设 `llm-model-presets.ts`；读侧 `apps/api/src/llm/llm-model-config.service.ts`（`resolveModel` 在每个 Run 前解析成快照）；前台下拉只读 `/api/llm/models`，不再有前端名单 | Admin 写入时校验；Run 开始前解析 |
 | 家族协议差异 | 各家族的 thinking 格式、Tool Call 是否必须回 `reasoning_content`、`reasoning_effort` 可选值（#142 / #146） | `packages/contracts/src/admin-llm.ts` 的 `LLM_FAMILY_CAPABILITIES` compat 表 | 编译期 |
 | 请求级覆盖 | HTTP 请求可选 `model`（模型行 id）与 `reasoningEffort`；请求体没有 temperature / maxTokens，模型名与输出上限只取模型行 | `apps/api/src/chat/dto/chat.dto.ts`（`reasoningEffort` 按 `REASONING_EFFORTS` 做 `IsIn`）→ `LlmModelConfigService.resolveModel`（模型不存在 / 不可见 / Provider 停用 / 强度不属于该家族即不可用）→ `packages/ai/src/config.ts`（`resolveChatRequestConfig`：请求级只能覆盖 `reasoningEffort`） | DTO 走全局校验；不可用模型由 `ChatService` 转 400 |
-| 单次 Run 组合配置 | 一次 Agent Run 的 resolved 请求配置 + Tool allowlist | `apps/api/src/agent-runtime/agent-runtime.service.ts`（私有方法 `resolveRunConfiguration`；allowlist 来自 `apps/api/src/tools/tool-definitions.ts` 的 `TOOL_DEFINITIONS`，#136 起与 Admin 投影共用） | Run 内、AgentRun 落库后解析 |
+| 单次 Run 组合配置 | 一次 Agent Run 的 resolved 请求配置 + 模型可见 Tool | `apps/api/src/agent-runtime/agent-runtime.service.ts`（私有方法 `resolveRunConfiguration`；模型可见 Tool 直接取 `apps/api/src/tools/tool-definitions.ts` 的 `TOOL_DEFINITIONS`，它由唯一的工具清单 `TOOLS` 派生，与 Admin 投影共用，#189 起不再经 Registry 核对） | Run 内、AgentRun 落库后解析 |
 | Tool Policy | 每个 Tool 的 timeout、Observation 预算（`risk / requiresApproval / idempotent` 已于 #136 删除，审批状态到 R3 按运行时设计重加） | 各 Tool 自己的 definition（`apps/api/src/tools/**`，类型见 `tools/core/tool.types.ts`） | 注册时 + 编译期 |
 | 公共契约 | 前后端共享协议与类型 | `packages/contracts/` | 编译期 |
 | 算法不变量 | Context budget 比例、TokenEstimator、首轮历史裁剪（planner）、Observation 硬上限等 | 各算法文件内常量与函数（如 `initial-context.ts`、`sampling-context-planner.ts`、`tool-observation.ts`） | 不可由环境变量改变 |
@@ -27,9 +27,9 @@ ChatService → LlmModelConfigService.resolveModel()（模型行 + Provider 凭�
 
 AgentRuntimePolicyService.value（启动期已校验）───────┐
 resolveChatRequestConfig(input.model.profile)（@agent/ai）─┼─→ AgentRuntimeService.resolveRunConfiguration()
-ToolRegistryService.get(name) ────────────────────────┘        │
+TOOL_DEFINITIONS（由工具清单 TOOLS 派生）─────────────┘        │
                                                           ▼
-                                          { request, toolDefinitions, modelTools }
+                                          { request, modelTools }
                                                           │
                                                           ▼
                                                AgentRuntimeService.runTurnStream()
@@ -38,7 +38,7 @@ ToolRegistryService.get(name) ────────────────�
 
 要点：
 
-- 本轮用哪个模型行、哪把 Provider 凭据看 `ChatService` 调的 `resolveModel`；多大预算、暴露哪些 Tool 看 `agent-runtime.service.ts` 的 `resolveRunConfiguration`。
+- 本轮用哪个模型行、哪把 Provider 凭据看 `ChatService` 调的 `resolveModel`；多大预算看 `agent-runtime.service.ts` 的 `resolveRunConfiguration`，暴露哪些 Tool 看工具清单 `tools/tool-definitions.ts`。
 - `ResolvedChatRequestConfig` 携带 `contextWindowTokens`，Runtime 不再穿透 LLM 边界补查 Model Profile。
 - 模型行的数值约束只在 Admin 写入时由 `assertModelRowValid` 把关；Runtime 与 `@agent/ai` client 不再重校验，不会产生第二份事实。
 - 配置解析时机保持在 userMessage / AgentRun 落库之后：请求级配置错误仍走既有 `failRun` 终态化。

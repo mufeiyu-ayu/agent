@@ -1,33 +1,33 @@
+import type { OnModuleInit } from '@nestjs/common'
 import { Inject, Module } from '@nestjs/common'
+import { ModuleRef } from '@nestjs/core'
 
 import { PrismaModule } from '../prisma/prisma.module.js'
-import {
-  searchArticlesDefinition,
-  SearchArticlesTool,
-} from './articles/search-articles.tool.js'
 import { ToolInvocationService } from './core/tool-invocation.service.js'
 import { ToolRegistryService } from './core/tool-registry.service.js'
+import { TOOLS } from './tool-definitions.js'
 
 @Module({
   imports: [PrismaModule],
   providers: [
     ToolRegistryService,
     ToolInvocationService,
-    SearchArticlesTool,
+    ...TOOLS.map(tool => tool.executor),
   ],
-  exports: [ToolRegistryService, ToolInvocationService],
+  exports: [ToolInvocationService],
 })
-export class ToolsModule {
+export class ToolsModule implements OnModuleInit {
   constructor(
     @Inject(ToolRegistryService)
-    registry: ToolRegistryService,
+    private readonly registry: ToolRegistryService,
 
-    @Inject(SearchArticlesTool)
-    searchArticlesTool: SearchArticlesTool,
-  ) {
-    registry.register({
-      definition: searchArticlesDefinition,
-      executor: searchArticlesTool,
-    })
+    @Inject(ModuleRef)
+    private readonly moduleRef: ModuleRef,
+  ) {}
+
+  // 放在 onModuleInit：构造函数执行时执行器可能还没构造，ModuleRef 取到的只是 Nest 的占位对象。
+  onModuleInit(): void {
+    for (const { definition, executor } of TOOLS)
+      this.registry.register({ definition, executor: this.moduleRef.get(executor) })
   }
 }

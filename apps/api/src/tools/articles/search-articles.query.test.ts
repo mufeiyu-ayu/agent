@@ -8,7 +8,7 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
 import {
-  normalizeArticleRetrievalInput,
+  parseSearchArticlesInput,
   queryArticles,
 } from './search-articles.tool.js'
 
@@ -25,7 +25,7 @@ describe('queryArticles', () => {
     })
     const context = createContext()
 
-    const result = await queryArticles(fakePrisma as unknown as PrismaService, normalizeArticleRetrievalInput({
+    const result = await queryArticles(fakePrisma as unknown as PrismaService, parseSearchArticlesInput({
       query: '  Alpha%_\\  ',
       languageCode: ' ZH-CN ',
       limit: 10,
