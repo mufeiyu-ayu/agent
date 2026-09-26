@@ -45,7 +45,7 @@
 | `docs/research/README.md` | 研究入口：pi-reference、补充参照与参照实现方法 |
 | `docs/research/pi-reference/learning-method.md` | 参照实现的六问与每步产物 |
 | `docs/workflow.md` | 单角色流程、硬约束与共用定义；`AGENTS.md` 自动导入 |
-| `docs/work-log.md` | 已发生事实 |
+| `docs/work-log.md` | 粗粒度时间线：Issue 合并、方向定案、协作规则变化 |
 | `docs/tasks/completed/` | 已完成阶段与任务的归档 |
 
 当前阶段：本项目源码阅读（工作台第 0 档）。Active / Next / Gated 与已合并任务只看 `docs/tasks/README.md`，这里不复制。
@@ -149,16 +149,16 @@ DTO class 用于 `@Body()` / `@Param()` 时，必须保留运行时值导入，�
 | 情况 | 需要更新 |
 | --- | --- |
 | 设计对比、学习笔记、复盘 | `docs/research/**` |
-| Issue 合并后 | 对应 `docs/tasks/**` 状态、`docs/work-log.md` 一条事实；路线或触发变了才改 `docs/research/workbench-direction.md` 第 7 节 |
+| Issue 合并后 | 对应 `docs/tasks/**` 状态（看板行一句话加 PR 号）、`docs/work-log.md` 一句话；路线或触发变了才改 `docs/research/workbench-direction.md` 第 7 节 |
 | 阶段完成 | 精简归档到 `docs/tasks/completed/`，更新 `docs/roadmap.md` 阶段表 |
-| 协作规则变化 | 流程与硬约束改 `docs/workflow.md`，其余工具无关内容改 `AGENTS.md`；工具专属内容改对应载体；`docs/work-log.md` 一条事实 |
+| 协作规则变化 | 流程与硬约束改 `docs/workflow.md`，其余工具无关内容改 `AGENTS.md`；工具专属内容改对应载体；`docs/work-log.md` 一句话 |
 | 新增 / 移动 / 删除模块或核心文件 | 对应 app / 包根目录的 `AGENTS.md` 导图，与代码同一次提交；普通文件增删不更新 |
-| 小修 typo / 样式微调 | 可不更新 docs，commit 说明即可 |
+| 小改动、小修 typo / 样式微调 | 不更新 work-log，commit message 就是记录 |
 
 原则：
 
 - 当前状态只写 `docs/tasks/README.md`，其他文档放指针，不复制快照。
-- `work-log` 只写真实已发生事实，保持简洁。
+- `work-log` 只写真实已发生的事实，每条一句话；改动清单、验证命令与验收证据留在 commit 和 PR，不抄进 work-log 或看板。
 - 不把计划写成已完成事实；候选子系统不写成 Active。
 - 不把研究长文写进 `docs/tasks/`。
 - docs 更新范围不确定时先确认边界。

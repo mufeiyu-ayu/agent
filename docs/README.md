@@ -20,7 +20,7 @@
 | [research/README.md](./research/README.md) | 研究入口：Pi 参照、Phase 8 设计依据、配置地图 |
 | [research/pi-reference/README.md](./research/pi-reference/README.md) | Pi 参考知识库：模块正文、8 张图、实现路线 |
 | [research/pi-reference/roadmap.md](./research/pi-reference/roadmap.md) | 每步（R0～R5、web_fetch）的 Pi 素材与证明完成 |
-| [work-log.md](./work-log.md) | 已发生事实 |
+| [work-log.md](./work-log.md) | 粗粒度时间线：Issue 合并、方向定案、协作规则变化 |
 
 ## 事实来源
 

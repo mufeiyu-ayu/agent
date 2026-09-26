@@ -36,7 +36,7 @@ description: 执行本项目 GitHub Issue 的实现、Review、验收、合并�
 
 1. 只实现 Issue 的目标、范围和验收标准。
 2. 先复用真实代码中的相邻模式；保持小步可运行，不为可能的未来需求增加抽象。
-3. 实现完成且必要验证通过后，更新任务文档（没有任务文档时改 `docs/tasks/README.md` 的看板行）的验证结果和 GitHub 交付记录，并设置：
+3. 实现完成且必要验证通过后，更新任务文档（没有任务文档时改 `docs/tasks/README.md` 的看板行：一句话说明做成了什么加 PR 号，验证结果写在 PR 里），并设置：
    - `实施状态：已实现`
    - `验收状态：待验收`
 4. 实现未完成、验证失败或任务受阻时，保留任务文档原状态并记录阻塞原因；不得写成“已实现、待验收”。
@@ -83,14 +83,14 @@ description: 执行本项目 GitHub Issue 的实现、Review、验收、合并�
 
 1. 读取 Issue 最新规格与决策记录、PR 最新 head 的 diff、commit 前 `<review 命令>` 的结论与处理结果、验证命令与真实输出。
 2. 对每条验收标准逐条给出 PASS / FAIL / 未验证，并注明证据位置；边界、失败路径和长链路集成必须有对应证据。“测试命令成功”或“代码看起来合理”不单独构成 PASS。
-3. 全部 PASS：把任务文档或看板行更新为 `实施状态：已实现`、`验收状态：已通过`，更新 `docs/tasks/README.md`（当前状态只在这里），记录一条 `docs/work-log.md` 事实；路线或触发变了才改 `docs/research/workbench-direction.md` 第 7 节；阶段完成时归档到 `docs/tasks/completed/` 并更新 `docs/roadmap.md` 阶段表。收口改动在原 PR 分支 commit 并 push。
+3. 全部 PASS：任务文档更新为 `实施状态：已实现`、`验收状态：已通过`；看板行状态改为 `Completed`，说明改为一句话加 PR 号（Completed 即已实现且已通过，不再写两个维度），更新 `docs/tasks/README.md` 的当前状态（只在这里），在 `docs/work-log.md` 记一句话加 Issue / PR 号（格式见该文件的记录规则）；路线或触发变了才改 `docs/research/workbench-direction.md` 第 7 节；阶段完成时归档到 `docs/tasks/completed/` 并更新 `docs/roadmap.md` 阶段表。收口改动在原 PR 分支 commit 并 push。
 4. 任一 FAIL 或未验证：停在 PR，在会话和 PR 评论里说明原因与所需改动，不合并；修复后回到第 4 步重新验证并重新验收。
 
 ## 8. 合并与分支清理
 
 验收 PASS 后直接执行，不再等待单独授权；用户事先要求停在 PR 时跳过本节并汇报：
 
-1. 再次确认任务文档或看板行为 `验收状态：已通过`，远程分支 head 与验收时一致；不一致则重新验收。
+1. 再次确认任务文档为 `验收状态：已通过`、看板行为 `Completed`，远程分支 head 与验收时一致；不一致则重新验收。
 2. 合并到 `master`；PR 若为 Draft，先转 Ready 再合并。
 3. fast-forward 同步本地 `master`，确认合并内容已落入主分支。
 4. 删除远程 Issue 分支；GitHub 已自动删除则视为完成。
