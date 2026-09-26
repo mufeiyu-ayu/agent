@@ -535,6 +535,8 @@ export class AgentRuntimeService {
         // 每个 call 记一条失败 Step 并作为 observation 回喂，下一轮由模型自行重发。
         const argumentsTruncated
           = samplingDecision.summary.finishReason === 'length'
+
+        // 拿到执行工具的结果
         const toolBatch = await this.executeToolBatch({
           // 记账
           runId: currentAgentRunId,
@@ -555,12 +557,28 @@ export class AgentRuntimeService {
 
         evidenceRegistry = toolBatch.evidenceRegistry
         runCancellation.throwIfUnavailable()
+        // 把「模型叫了什么工具」和「工具回了什么」配成一组来回，放进上下文（此时还没发给模型）。
+        // 示例（search_articles 查 Genshin 那次 Run），modelContext 里多出的这一组：
+        // {
+        //   exchangeIndex: 0,                  // 本 Run 第 1 组来回
+        //   assistantCall: {                   // 模型说：我要调这个
+        //     type: 'assistant_tool_call',
+        //     calls: [{ callId: 'call_00_7UAglwcS…', name: 'search_articles', rawArgumentsJson: '{"query": "Genshin", "limit": 10}' }],
+        //     reasoningContent: 'The user wants a list of articles with "Genshin" in the title. Use search_articles.',
+        //     // intermediateText 为空，所以没有 content
+        //   },
+        //   results: [{                        // 工具说：结果是这个，靠同一个 callId 与上面配对
+        //     toolResult: { type: 'tool_result', callId: 'call_00_7UAglwcS…', name: 'search_articles', content: '共找到 16 篇匹配文章，…', ok: true },
+        //   }],
+        // }
         modelContext.appendToolExchange({
-          calls,
-          intermediateText: samplingDecision.intermediateText,
-          reasoningContent: samplingDecision.reasoningContent,
-          results: toolBatch.toolResults,
+          calls, // 模型要调用的工具
+          intermediateText: samplingDecision.intermediateText, // 模型这轮要说的话
+          reasoningContent: samplingDecision.reasoningContent, // 模型这轮的思考文本
+          results: toolBatch.toolResults, // 工具执行官
         })
+
+        // modelContext 多了下面这组
       }
 
       if (!hasFinalAnswer) {
@@ -830,6 +848,8 @@ export class AgentRuntimeService {
         toolName: toPersistableText(call.toolName),
         samplingAttemptId,
       }
+
+      // 创建执行工具的 step
       const toolStep = await this.agentRunRecorderService.startStep({
         runId,
         type: AGENT_STEP_TYPES.toolExecution,
@@ -894,9 +914,9 @@ export class AgentRuntimeService {
       // 只有 ToolInvocationService 经 input.parse 校验后执行的调用，参数才可信；
       // 这三个 code 都发生在校验之前或根本没有校验，其余 code 都在校验通过之后。
       const argumentsValidated = toolResult.ok
-        || (toolResult.code !== 'truncated_arguments'
-          && toolResult.code !== 'unknown_tool'
-          && toolResult.code !== 'invalid_arguments')
+        || (toolResult.code !== 'truncated_arguments' // 截断：根本没校验
+          && toolResult.code !== 'unknown_tool' // 查无此工具
+          && toolResult.code !== 'invalid_arguments') // 校验未通过
       // 回喂给模型的参数表示只算这一次：同一个字符串既落库，也进下一轮的 ModelContext。
       const feedbackArgumentsJson = toFeedbackArgumentsJson(
         call.rawArgumentsJson,
@@ -922,6 +942,7 @@ export class AgentRuntimeService {
       }
 
       if (toolResult.ok) {
+        // 工具执行成功：写入 Step output，下一轮回喂给模型的参数也写进 Step input。
         await this.agentRunRecorderService.completeStep(
           toolStep.id,
           databaseDeadline,
