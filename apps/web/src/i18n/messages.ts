@@ -2,10 +2,6 @@ export const messages = {
   'zh-CN': {
     common: {
       appName: 'Agent 工作台',
-      languageSwitcher: {
-        ariaLabel: '切换界面语言',
-        placeholder: '语言',
-      },
       languages: {
         zh: '中文',
         en: 'English',
@@ -14,58 +10,6 @@ export const messages = {
         close: '关闭',
         refreshBalance: '刷新余额',
         closeAlert: '关闭提示',
-      },
-    },
-    home: {
-      header: {
-        logoAria: '返回 Agent 工作台首页',
-      },
-      navigation: {
-        ariaLabel: '首页导航',
-        product: '产品',
-        workflow: '工作流',
-        useCases: '使用场景',
-        pricing: '价格',
-        resources: '资源',
-      },
-      workflow: {
-        ariaLabel: 'Agent 工作流示意',
-      },
-      hero: {
-        title: '把站内知识变成回答',
-        description: '一个面向知识库问答与多轮对话的 Agent 工作台。',
-      },
-      actions: {
-        openWorkspace: '打开工作台',
-        openWorkspaceAria: '打开 Agent 工作台',
-        analyze: '开始对话',
-        analyzeAria: '在 Agent 工作台开始对话',
-        viewExample: '查看示例',
-      },
-      suggestions: {
-        ariaLabel: '示例任务',
-        hint: '从一个示例开始：',
-        ask: {
-          label: '基于站内资料提问',
-          prompt: '请基于站内文章回答我的问题。我会在下一条消息里描述问题。',
-        },
-        search: {
-          label: '按关键词找文章',
-          prompt: '帮我按关键词查找站内已有文章，列出标题、简介和 sourceId。我会给出关键词。',
-        },
-        capabilities: {
-          label: '了解它能做什么',
-          prompt: '介绍一下你能做什么：可以查哪些资料、有哪些工具。',
-        },
-      },
-      form: {
-        ariaLabel: 'Agent 静态输入示例',
-        topicLabel: '你的问题',
-        placeholder: '输入问题，或描述你想了解的内容...',
-        animatedPrompts: {
-          question: '输入一个问题，从站内资料里找答案...',
-        },
-        submit: '提交示例',
       },
     },
     navigation: {
@@ -204,10 +148,6 @@ export const messages = {
   'en-US': {
     common: {
       appName: 'Agent Workspace',
-      languageSwitcher: {
-        ariaLabel: 'Switch interface language',
-        placeholder: 'Language',
-      },
       languages: {
         zh: '中文',
         en: 'English',
@@ -216,58 +156,6 @@ export const messages = {
         close: 'Close',
         refreshBalance: 'Refresh balance',
         closeAlert: 'Close alert',
-      },
-    },
-    home: {
-      header: {
-        logoAria: 'Back to Agent workspace home',
-      },
-      navigation: {
-        ariaLabel: 'Home navigation',
-        product: 'Product',
-        workflow: 'How it works',
-        useCases: 'Use cases',
-        pricing: 'Pricing',
-        resources: 'Resources',
-      },
-      workflow: {
-        ariaLabel: 'Agent workflow visual',
-      },
-      hero: {
-        title: 'Turn your articles into answers',
-        description: 'An agent workspace for knowledge base Q&A and conversation.',
-      },
-      actions: {
-        openWorkspace: 'Open workspace',
-        openWorkspaceAria: 'Open Agent workspace',
-        analyze: 'Start a chat',
-        analyzeAria: 'Start a chat in the Agent workspace',
-        viewExample: 'View example',
-      },
-      suggestions: {
-        ariaLabel: 'Example tasks',
-        hint: 'Start from an example:',
-        ask: {
-          label: 'Ask the knowledge base',
-          prompt: 'Answer my question from the article library. I will describe the question in my next message.',
-        },
-        search: {
-          label: 'Find articles by keyword',
-          prompt: 'Find existing articles in the library by keyword and list their titles, summaries, and sourceIds. I will provide the keywords.',
-        },
-        capabilities: {
-          label: 'See what it can do',
-          prompt: 'Tell me what you can do: which material you can look up and which tools you have.',
-        },
-      },
-      form: {
-        ariaLabel: 'Agent static input example',
-        topicLabel: 'Your question',
-        placeholder: 'Ask a question or describe what you need...',
-        animatedPrompts: {
-          question: 'Ask a question and get answers from your articles...',
-        },
-        submit: 'Submit static example',
       },
     },
     navigation: {
