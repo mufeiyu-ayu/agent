@@ -1,10 +1,10 @@
 services:
   postgres:
-    # 主库必须使用含 pgvector 的镜像：Article Embedding Index migration 会执行
-    # CREATE EXTENSION vector，普通 postgres:16-alpine 缺扩展会直接失败。
-    # 版本与下方 integration 测试库保持一致。
+    # 主库必须使用含 pgvector 的镜像：迁移历史里 20260814090000 会执行
+    # CREATE EXTENSION vector（向量表已删，扩展保留），普通 postgres:16-alpine 从零建库会直接失败。
+    # 版本与下方隔离测试库保持一致。
     # 注意：从旧 alpine 镜像迁移的已有数据卷存在 musl→glibc collation 差异，
-    # 建议重置卷后重建（开发数据可由 seed / index 重建），见 README Getting started。
+    # 建议重置卷后重建（开发数据可由 seed 重建）。
     image: pgvector/pgvector:0.8.6-pg16-bookworm
     container_name: agent-postgres
     restart: unless-stopped
@@ -22,9 +22,11 @@ services:
       timeout: 3s
       retries: 10
 
-  postgres-vector-test:
+  # 通用隔离测试库：DB 测试（如 test:runtime-db）经 TEST_DATABASE_URL 连它，不碰开发库。
+  # 镜像与主库一致，理由同上：测试会从第一条迁移起建库。
+  postgres-test:
     image: pgvector/pgvector:0.8.6-pg16-bookworm
-    container_name: agent-postgres-vector-test
+    container_name: agent-postgres-test
     profiles: [integration]
     environment:
       POSTGRES_DB: agent_integration
@@ -33,7 +35,7 @@ services:
     ports:
       - '127.0.0.1:5433:5432'
     volumes:
-      - postgres-vector-test-data:/var/lib/postgresql/data
+      - postgres-test-data:/var/lib/postgresql/data
     healthcheck:
       test: [CMD-SHELL, pg_isready -U postgres]
       interval: 5s
@@ -42,4 +44,4 @@ services:
 
 volumes:
   postgres-data:
-  postgres-vector-test-data:
+  postgres-test-data:

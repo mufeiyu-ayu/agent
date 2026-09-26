@@ -26,7 +26,6 @@ import {
 } from '../generated/prisma/client.js'
 import { createResolvedLlmModel } from '../llm/__fixtures__.js'
 import { PrismaService } from '../prisma/prisma.service.js'
-import { PrismaArticleRetriever } from '../retrieval/retrievers/prisma-article-retriever.js'
 import {
   searchArticlesDefinition,
   SearchArticlesTool,
@@ -38,17 +37,17 @@ import { SamplingContextPlanner } from './context/sampling-context-planner.js'
 import { AgentRunRecorderService } from './lifecycle/agent-run-recorder.service.js'
 
 // 本入口不允许 skip：缺少隔离数据库时必须显式失败，而不是假装通过。
-const testDatabaseUrl = process.env.ARTICLE_INDEX_TEST_DATABASE_URL?.trim()
+const testDatabaseUrl = process.env.TEST_DATABASE_URL?.trim()
 
 if (!testDatabaseUrl) {
   throw new Error(
-    'agent runtime DB integration 需要 ARTICLE_INDEX_TEST_DATABASE_URL 指向隔离数据库',
+    'agent runtime DB integration 需要 TEST_DATABASE_URL 指向隔离数据库',
   )
 }
 
 if (testDatabaseUrl === process.env.DATABASE_URL?.trim()) {
   throw new Error(
-    'ARTICLE_INDEX_TEST_DATABASE_URL 不得与 DATABASE_URL 相同，禁止在开发库上运行 DB integration',
+    'TEST_DATABASE_URL 不得与 DATABASE_URL 相同，禁止在开发库上运行 DB integration',
   )
 }
 
@@ -355,7 +354,7 @@ describe('AgentRuntime PostgreSQL integration', { concurrency: 1 }, () => {
     // 与生产装配一致：allowlist 里的 search_articles 已注册，本文件的用例不调用它。
     registry.register({
       definition: searchArticlesDefinition,
-      executor: new SearchArticlesTool(new PrismaArticleRetriever(prisma)),
+      executor: new SearchArticlesTool(prisma),
     })
 
     let callIndex = 0

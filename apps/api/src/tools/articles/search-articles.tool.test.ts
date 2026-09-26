@@ -12,7 +12,6 @@ import assert from 'node:assert/strict'
 // eslint-disable-next-line test/no-import-node-test
 import { describe, it } from 'node:test'
 
-import { PrismaArticleRetriever } from '../../retrieval/retrievers/prisma-article-retriever.js'
 import { ToolInvocationService } from '../core/tool-invocation.service.js'
 import { ToolRegistryService } from '../core/tool-registry.service.js'
 import {
@@ -150,7 +149,7 @@ describe('search_articles', () => {
 
   it('Executor 在 transaction acquisition 前响应已触发的 Tool signal', async () => {
     const fakePrisma = new FakePrismaService()
-    const tool = new SearchArticlesTool(createRetriever(fakePrisma))
+    const tool = new SearchArticlesTool(fakePrisma as unknown as PrismaService)
     const abortController = new AbortController()
 
     abortController.abort()
@@ -171,7 +170,7 @@ describe('search_articles', () => {
     const fakePrisma = new FakePrismaService({
       beforeTransactionCallback: () => abortController.abort(),
     })
-    const tool = new SearchArticlesTool(createRetriever(fakePrisma))
+    const tool = new SearchArticlesTool(fakePrisma as unknown as PrismaService)
     const context = createContext(abortController.signal)
 
     await assert.rejects(
@@ -191,7 +190,7 @@ describe('search_articles', () => {
     const fakePrisma = new FakePrismaService({
       afterCount: () => abortController.abort(),
     })
-    const tool = new SearchArticlesTool(createRetriever(fakePrisma))
+    const tool = new SearchArticlesTool(fakePrisma as unknown as PrismaService)
 
     await assert.rejects(
       tool.execute(
@@ -296,7 +295,7 @@ interface FakeFindManyArguments {
 function createTools(fakePrisma = new FakePrismaService()) {
   const registry = new ToolRegistryService()
   const searchArticlesTool = new SearchArticlesTool(
-    createRetriever(fakePrisma),
+    fakePrisma as unknown as PrismaService,
   )
   registry.register({
     definition: searchArticlesDefinition,
@@ -307,10 +306,6 @@ function createTools(fakePrisma = new FakePrismaService()) {
     registry,
     invocationService: new ToolInvocationService(registry),
   }
-}
-
-function createRetriever(fakePrisma: FakePrismaService): PrismaArticleRetriever {
-  return new PrismaArticleRetriever(fakePrisma as unknown as PrismaService)
 }
 
 function createEnvelope(input: Record<string, unknown>) {

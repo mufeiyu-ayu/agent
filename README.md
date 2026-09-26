@@ -13,7 +13,7 @@ No LangChain. No LangGraph. No workflow engine. Just the loop, the edge cases, a
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)
 ![NestJS](https://img.shields.io/badge/NestJS-11-E0234E?logo=nestjs&logoColor=white)
 ![Vue](https://img.shields.io/badge/Vue-3.5-4FC08D?logo=vuedotjs&logoColor=white)
-![PostgreSQL](https://img.shields.io/badge/PostgreSQL-pgvector-4169E1?logo=postgresql&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white)
 ![Tests](https://img.shields.io/badge/tests-700%2B-brightgreen)
 
 [Why](#why-this-exists) · [Highlights](#highlights) · [The loop](#the-whole-loop-in-one-screen) · [Quick start](#quick-start) · [Learn from it](#learn-agent-engineering-from-it) · [Roadmap](#roadmap)
@@ -98,15 +98,14 @@ flowchart LR
     Runtime --> Context[Model context<br/>token budget · trimming]
     Runtime --> LLM["@agent/ai<br/>OpenAI-compatible client"]
     LLM -->|SSE| Providers([DeepSeek · GPT · Grok · Gemini])
-    Runtime --> Tools[Tools] --> Retrieval[Hybrid retrieval<br/>lexical + vector, RRF]
-    Retrieval --> DB[(PostgreSQL<br/>+ pgvector)]
+    Runtime --> Tools[Tools<br/>keyword article search] --> DB[(PostgreSQL)]
     Runtime --> Recorder[Run / Step recorder] --> DB
     AdminAPI --> DB
 ```
 
 | Layer | What it does |
 | --- | --- |
-| `apps/api` | NestJS API: agent runtime, tools, retrieval and indexing, model provider config |
+| `apps/api` | NestJS API: agent runtime, tools, model provider config |
 | `apps/web` | Vue 3 chat app with streaming Markdown |
 | `apps/admin` | Admin console: overview, conversations, run trace, model providers |
 | `packages/ai` | Framework-free model client: stream adapter, retries, errors (no Nest, no Prisma) |
@@ -114,12 +113,12 @@ flowchart LR
 
 ## Quick start
 
-You need Node.js `^20.19.0` or `>=22.12.0`, pnpm `10.32.1`, Docker, an API key for any OpenAI-compatible model provider, and a Gemini API key for the retrieval pipeline.
+You need Node.js `^20.19.0` or `>=22.12.0`, pnpm `10.32.1`, Docker, and an API key for any OpenAI-compatible model provider.
 
 ```bash
 corepack enable && pnpm install
-cp .env.example .env              # set AGENT_SECRET_KEY (openssl rand -hex 32) and GEMINI_API_KEY
-docker compose up -d postgres     # PostgreSQL with pgvector
+cp .env.example .env              # set AGENT_SECRET_KEY (openssl rand -hex 32)
+docker compose up -d postgres     # PostgreSQL (the image ships pgvector, which an early migration needs)
 pnpm prisma:generate && pnpm prisma:migrate
 pnpm dev
 ```
@@ -127,14 +126,13 @@ pnpm dev
 Then open the admin console at `http://localhost:5174`, go to the model provider page (「模型接入」), add a provider and a model, and mark it visible. Chat at `http://localhost:5173`.
 
 <details>
-<summary>Enable retrieval (demo articles + vector index)</summary>
+<summary>Load demo articles (for the search_articles tool)</summary>
 
 ```bash
 node --env-file=.env --import tsx apps/api/scripts/seed.ts     # load 68 demo articles (idempotent)
-pnpm --filter @agent/api index:articles -- --mode=incremental  # build the vector index (calls Gemini)
 ```
 
-Without these, plain chat still works, and the retrieval tool fails closed because there is no active index. If you run PostgreSQL yourself, it needs the pgvector extension. See [`.env.example`](./.env.example) for every setting.
+Without them, plain chat still works; `search_articles` just finds no articles. If you run PostgreSQL yourself, it needs the pgvector extension, because an early migration creates it. See [`.env.example`](./.env.example) for every setting.
 
 </details>
 

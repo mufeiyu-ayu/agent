@@ -14,7 +14,7 @@
 
 ## 1. 项目定位
 
-从零手写的 TypeScript Agent Runtime：NestJS API + Vue Web / Admin + Prisma / PostgreSQL / pgvector，不依赖 LangChain / LangGraph / workflow 引擎。Phase 1-8 已完成：流式对话、AgentRun / AgentStep 编排、Tool Calling、Context Engineering、Admin 可观测性；Phase 8 的 Grounded Retrieval 与服务端引用校验按 2026-09-26 定案删除（`docs/research/workbench-direction.md` 第 9 节删除记录）。
+从零手写的 TypeScript Agent Runtime：NestJS API + Vue Web / Admin + Prisma / PostgreSQL（镜像须带 pgvector：早期迁移建扩展，向量表已删），不依赖 LangChain / LangGraph / workflow 引擎。Phase 1-8 已完成：流式对话、AgentRun / AgentStep 编排、Tool Calling、Context Engineering、Admin 可观测性；Phase 8 的 Grounded Retrieval 与服务端引用校验按 2026-09-26 定案删除（`docs/research/workbench-direction.md` 第 9 节删除记录）。
 
 **定案的方向**
 - 2026-09-15：完成当前源码学习后，面向云端 Agent 产品演进，以 Pi 为主要架构与组织方式参照（`docs/research/pi-reference/`）；旧 Codex 调研、reference 与阶段路线已按用户要求删除。DeepSeek Harness 保留补充对照。参照素材供 AI 实现时查阅，用户不读 Pi 代码；参照用于对比取舍，不照抄；研究完成不代表重构已启动。

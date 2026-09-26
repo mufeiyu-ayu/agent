@@ -2,36 +2,20 @@ import type {
   DatabaseOperationDeadline,
   PrismaService,
 } from '../../prisma/prisma.service.js'
-import type {
-  ArticleRetriever,
-  DatabaseArticleRetrievalExecutionContext,
-} from '../article-retrieval.js'
 import assert from 'node:assert/strict'
 // 项目本轮使用 Node 原生测试运行器，不引入额外测试框架。
 // eslint-disable-next-line test/no-import-node-test
 import { describe, it } from 'node:test'
 
-import { PrismaArticleRetriever } from './prisma-article-retriever.js'
+import {
+  normalizeArticleRetrievalInput,
+  queryArticles,
+} from './search-articles.tool.js'
 
 const FULL_CONTENT = `<p>${'alpha article content 🚀 '.repeat(30)}</p>`
 
-describe('PrismaArticleRetriever', () => {
-  it('在编译期符合包含 databaseDeadline 的 Retrieval Contract', () => {
-    const retriever = new PrismaArticleRetriever(
-      new FakePrismaService() as unknown as PrismaService,
-    )
-    const contract: ArticleRetriever<DatabaseArticleRetrievalExecutionContext> = retriever
-
-    // @ts-expect-error 生产 Retriever 的 context 必须包含 databaseDeadline。
-    const missingDeadline: Parameters<typeof contract.retrieve>[1] = {
-      signal: new AbortController().signal,
-    }
-
-    assert.equal(contract, retriever)
-    assert.ok(missingDeadline.signal, 'missingDeadline.signal')
-  })
-
-  it('保持 lexical 查询条件、顺序、deadline、excerpt 和稳定 rank', async () => {
+describe('queryArticles', () => {
+  it('保持 lexical 查询条件、顺序、deadline 和 excerpt', async () => {
     const fakePrisma = new FakePrismaService({
       total: 12,
       records: [
@@ -39,16 +23,13 @@ describe('PrismaArticleRetriever', () => {
         createRecord(9, '<p>second result</p>'),
       ],
     })
-    const retriever = new PrismaArticleRetriever(
-      fakePrisma as unknown as PrismaService,
-    )
     const context = createContext()
 
-    const result = await retriever.retrieve({
+    const result = await queryArticles(fakePrisma as unknown as PrismaService, normalizeArticleRetrievalInput({
       query: '  Alpha%_\\  ',
       languageCode: ' ZH-CN ',
       limit: 10,
-    }, context)
+    }), context)
 
     assert.deepEqual(fakePrisma.transactionDeadlines, [context.databaseDeadline])
     assert.equal(fakePrisma.executeCount, 2)
@@ -82,31 +63,19 @@ describe('PrismaArticleRetriever', () => {
       { updatedAt: 'desc' },
       { sourceId: 'asc' },
     ])
-    assert.deepEqual(result.query, {
-      query: 'Alpha%_\\',
-      languageCode: 'zh-cn',
-      limit: 10,
-    })
-    assert.deepEqual(result.strategy, {
-      name: 'prisma_lexical',
-      version: '1',
-    })
     assert.equal(result.total, 12)
-    assert.deepEqual(result.hits.map(hit => hit.rank), [1, 2])
     assert.equal([...result.hits[0]!.excerpt].length, 500)
     assert.equal(Object.hasOwn(result.hits[0] ?? {}, 'content'), false)
   })
 
   it('在 transaction acquisition 前响应已触发的 AbortSignal', async () => {
     const fakePrisma = new FakePrismaService()
-    const retriever = new PrismaArticleRetriever(
-      fakePrisma as unknown as PrismaService,
-    )
     const abortController = new AbortController()
     abortController.abort()
 
     await assert.rejects(
-      retriever.retrieve(
+      queryArticles(
+        fakePrisma as unknown as PrismaService,
         { query: 'seo', limit: 5 },
         createContext(abortController.signal),
       ),
@@ -121,13 +90,10 @@ describe('PrismaArticleRetriever', () => {
     const fakePrisma = new FakePrismaService({
       beforeTransactionCallback: () => abortController.abort(),
     })
-    const retriever = new PrismaArticleRetriever(
-      fakePrisma as unknown as PrismaService,
-    )
     const context = createContext(abortController.signal)
 
     await assert.rejects(
-      retriever.retrieve({ query: 'seo', limit: 5 }, context),
+      queryArticles(fakePrisma as unknown as PrismaService, { query: 'seo', limit: 5 }, context),
       { name: 'AbortError' },
     )
     assert.deepEqual(fakePrisma.transactionDeadlines, [context.databaseDeadline])
@@ -139,12 +105,10 @@ describe('PrismaArticleRetriever', () => {
     const fakePrisma = new FakePrismaService({
       afterCount: () => abortController.abort(),
     })
-    const retriever = new PrismaArticleRetriever(
-      fakePrisma as unknown as PrismaService,
-    )
 
     await assert.rejects(
-      retriever.retrieve(
+      queryArticles(
+        fakePrisma as unknown as PrismaService,
         { query: 'seo', limit: 5 },
         createContext(abortController.signal),
       ),
@@ -159,12 +123,10 @@ describe('PrismaArticleRetriever', () => {
       records: [createRecord(7, FULL_CONTENT)],
       afterFindMany: () => abortController.abort(),
     })
-    const retriever = new PrismaArticleRetriever(
-      fakePrisma as unknown as PrismaService,
-    )
 
     await assert.rejects(
-      retriever.retrieve(
+      queryArticles(
+        fakePrisma as unknown as PrismaService,
         { query: 'seo', limit: 5 },
         createContext(abortController.signal),
       ),

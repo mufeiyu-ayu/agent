@@ -1,7 +1,6 @@
 import { Inject, Module } from '@nestjs/common'
 
 import { PrismaModule } from '../prisma/prisma.module.js'
-import { PrismaArticleRetriever } from '../retrieval/retrievers/prisma-article-retriever.js'
 import {
   searchArticlesDefinition,
   SearchArticlesTool,
@@ -14,7 +13,6 @@ import { ToolRegistryService } from './core/tool-registry.service.js'
   providers: [
     ToolRegistryService,
     ToolInvocationService,
-    PrismaArticleRetriever,
     SearchArticlesTool,
   ],
   exports: [ToolRegistryService, ToolInvocationService],

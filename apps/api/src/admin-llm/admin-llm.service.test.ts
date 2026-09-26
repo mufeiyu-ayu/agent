@@ -8,11 +8,11 @@ import { once } from 'node:events'
 import { createServer } from 'node:http'
 import { connect } from 'node:net'
 // eslint-disable-next-line test/no-import-node-test
-import { after, afterEach, before, describe, it } from 'node:test'
+import { after, before, describe, it } from 'node:test'
 import { LLMNetworkError } from '@agent/ai'
 import { familyCompatOf } from '@agent/contracts'
 import { BadRequestException } from '@nestjs/common'
-import { getGlobalDispatcher, setGlobalDispatcher } from 'undici'
+import { Agent, getGlobalDispatcher, ProxyAgent } from 'undici'
 
 import { LlmModelConfigService } from '../llm/llm-model-config.service.js'
 import { LlmProxyError } from '../llm/llm.errors.js'
@@ -308,19 +308,14 @@ describe('AdminLlmService.updateProvider：换地址必须同时换密钥', () =
   })
 })
 
-/** #179：勾选「使用代理」的服务商经 OUTBOUND_PROXY_URL，没勾的显式直连，即使全局出口已装成代理。 */
+/** #179：勾选「使用代理」的服务商经 OUTBOUND_PROXY_URL，没勾的显式直连；#187 起不再替换进程的全局 dispatcher。 */
 describe('LLMService 出站代理分流', () => {
   let upstream: FakeUpstream
   let proxy: LoggingProxy
-  const originalDispatcher = getGlobalDispatcher()
 
   before(async () => {
     upstream = await startFakeUpstream()
     proxy = await startLoggingProxy()
-  })
-
-  afterEach(() => {
-    setGlobalDispatcher(originalDispatcher)
   })
 
   after(async () => {
@@ -346,11 +341,17 @@ describe('LLMService 出站代理分流', () => {
     }
   }
 
-  it('useProxy=true 的三条路径都经过代理；useProxy=false 的三条路径代理记录为零（全局出口已装成代理，启动后第一次请求即生效）', async () => {
+  it('useProxy=true 的三条路径都经过代理；useProxy=false 的三条路径代理记录为零；全局 dispatcher 不被替换', async (t) => {
+    const globalDispatcher = getGlobalDispatcher()
+    // SDK 建 client 时取全局 fetch，并把 fetchOptions.dispatcher 并进每次请求：截下它，直接断言用的是哪个 agent。
+    const realFetch = globalThis.fetch
+    const dispatchers: unknown[] = []
+    t.mock.method(globalThis, 'fetch', (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+      dispatchers.push((init as { dispatcher?: unknown } | undefined)?.dispatcher)
+      return realFetch(input, init)
+    })
     const llmService = createProxiedLlmService(proxy.origin)
     const upstreamHost = new URL(upstream.origin).host
-    // 与 API 启动相同：全局出口装成代理；没勾选的服务商仍须直连。
-    llmService.onModuleInit()
     proxy.connections.length = 0
     upstream.requests.length = 0
     upstream.remotePorts.length = 0
@@ -365,10 +366,13 @@ describe('LLMService 出站代理分流', () => {
     assert.ok(proxy.connections.length > 0, 'proxy.connections.length > 0')
     assert.ok(proxy.connections.every(item => item.target === upstreamHost), 'proxy.connections.every(item => item.target === upstreamHost)')
     assert.ok(upstream.remotePorts.every(port => proxy.tunnelPorts.has(port)), 'upstream.remotePorts.every(port => proxy.tunnelPorts.has(port))')
+    assert.equal(dispatchers.length, 3)
+    assert.ok(dispatchers.every(dispatcher => dispatcher instanceof ProxyAgent), 'useProxy=true 的请求都显式传代理 agent')
 
     proxy.connections.length = 0
     upstream.requests.length = 0
     upstream.remotePorts.length = 0
+    dispatchers.length = 0
 
     const direct = await exerciseAllPaths(llmService, false)
 
@@ -378,6 +382,13 @@ describe('LLMService 出站代理分流', () => {
     assert.equal(upstream.requests.length, 3)
     assert.deepEqual(proxy.connections, [])
     assert.ok(upstream.remotePorts.every(port => !proxy.tunnelPorts.has(port)), 'upstream.remotePorts.every(port => !proxy.tunnelPorts.has(port))')
+    // 不显式传、或传了全局 dispatcher，都算没按 useProxy=false 选直连 agent。
+    assert.equal(dispatchers.length, 3)
+    assert.ok(
+      dispatchers.every(dispatcher => dispatcher instanceof Agent && dispatcher !== globalDispatcher),
+      'useProxy=false 的请求都显式传直连 agent',
+    )
+    assert.equal(getGlobalDispatcher(), globalDispatcher)
   })
 
   it('勾选了但本机没配代理：聊天、探活、拉取模型都按 LLMNetworkError 失败，点明缺 OUTBOUND_PROXY_URL，不静默直连', async () => {

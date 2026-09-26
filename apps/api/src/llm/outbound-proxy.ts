@@ -1,5 +1,5 @@
 import { LLMConfigError } from '@agent/ai'
-import { ProxyAgent, setGlobalDispatcher } from 'undici'
+import { ProxyAgent } from 'undici'
 
 /**
  * 出站代理：地址只来自 `.env` 的 `OUTBOUND_PROXY_URL`，是这台机器的网络条件，不是服务商的属性。
@@ -47,18 +47,7 @@ export function resolveOutboundProxyConfig(env: NodeJS.ProcessEnv): OutboundProx
   }
 }
 
-/** 代理 agent 只在这里构造：API 的 `LLMService` 与 CLI 入口用同一份选项。 */
+/** 代理 agent 只在这里构造，`LLMService` 在构造时建一个、全进程共用。 */
 export function createOutboundProxyAgent(config: OutboundProxyConfig): ProxyAgent {
   return new ProxyAgent(config.url)
-}
-
-/**
- * CLI 入口用：不经 Nest 启动，同样把代理装成进程的全局出口，embedding 由此走代理。
- * API 进程由 `LLMService` 在启动阶段装，并与模型请求共用同一个代理 agent。
- */
-export function installOutboundProxyFromEnv(env: NodeJS.ProcessEnv): void {
-  const config = resolveOutboundProxyConfig(env)
-
-  if (config)
-    setGlobalDispatcher(createOutboundProxyAgent(config))
 }
