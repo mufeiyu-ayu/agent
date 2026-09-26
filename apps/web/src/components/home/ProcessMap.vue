@@ -44,7 +44,7 @@ const leftProcessCards: ProcessCardConfig[] = [
     id: 'article-library',
     eyebrow: 'Knowledge',
     title: 'Article library',
-    description: 'Chunks · Vectors',
+    description: 'Titles · Content',
     icon: 'tabler:target',
     tone: 'moss',
     side: 'left',
