@@ -127,7 +127,9 @@ export async function* streamModelSampling(
         toolName: toolCall.name,
         rawArgumentsJson: toolCall.argumentsJson,
       })),
+      // 调用工具前模型可能已经生成了部分文本，作为 intermediateText 回填模型。
       intermediateText: textChunks.join(''),
+      // 模型在生成工具调用前可能已经生成了部分推理内容，作为 reasoningContent 回填模型。
       reasoningContent,
       summary: buildSummary(),
     }

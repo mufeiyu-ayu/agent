@@ -322,7 +322,7 @@ export class AgentRuntimeService {
       ) {
         runCancellation.throwIfUnavailable()
         const samplingAttemptId = `${currentAgentRunId}:sampling-${samplingAttempt}`
-        // 模型采样 step 创建完成
+        //  创建模型采样 step
         const samplingStep = await this.agentRunRecorderService.startStep({
           runId: currentAgentRunId,
           type: AGENT_STEP_TYPES.modelSampling,
@@ -449,6 +449,7 @@ export class AgentRuntimeService {
             samplingResult = await sampling.next()
           }
           samplingDecision = samplingResult.value
+          // 备份 一个，给后面 catch 用
           completedSamplingDecision = samplingDecision
 
           runCancellation.throwIfUnavailable()
@@ -535,15 +536,21 @@ export class AgentRuntimeService {
         const argumentsTruncated
           = samplingDecision.summary.finishReason === 'length'
         const toolBatch = await this.executeToolBatch({
+          // 记账
           runId: currentAgentRunId,
           samplingAttemptId,
-          calls,
-          toolDefinitions,
-          argumentsTruncated,
-          runCancellation,
-          evidenceRegistry,
+
+          // toos 相关
+          calls, // 模型要调用的工具
+          // 记账用
+          toolDefinitions, // 我们的工具
+          argumentsTruncated, // 模型输出是否被截断，arguments 可能不完整
+
+          // 情况 2 用不上
+          runCancellation, // 本轮 sampling 的取消信号
+          evidenceRegistry, // tools 情况为 undefined
           // 某个 call 被打断时把该 Step 的失败归因写进 terminal.stepFailure，由外层 catch 收口。
-          terminal,
+          terminal, // 出错时写失败归因
         })
 
         evidenceRegistry = toolBatch.evidenceRegistry
@@ -802,11 +809,14 @@ export class AgentRuntimeService {
       terminal,
     } = input
     const { signal: runSignal, databaseDeadline } = runCancellation
+
+    // tools 情况不用，为 undefined
     let evidenceRegistry = input.evidenceRegistry
+
     const toolResults: Array<{
-      observation: NormalizedToolObservation
+      observation: NormalizedToolObservation // 回喂给模型的正文，
       ok: boolean
-      feedbackArgumentsJson: string
+      feedbackArgumentsJson: string // 下一轮回喂给模型的参数
     }> = []
 
     // 顺序执行，每个 call 一个 tool_execution Step；当前工具只读，并行没有收益。
@@ -828,6 +838,7 @@ export class AgentRuntimeService {
       let toolResult: ToolResult
 
       try {
+        // 情况 A：模型输出被截断，arguments 可能不完整，直接编一份失败结果。
         if (argumentsTruncated) {
           toolResult = {
             ok: false,
@@ -835,6 +846,7 @@ export class AgentRuntimeService {
             modelContent: `工具 ${call.toolName} 的参数因模型输出达到长度限制而不完整，本次未执行；仍需要时请重新发起调用。`,
           }
         }
+        // 情况 B：模型输出的工具名在服务端不存在，直接编一份失败结果。
         else if (!toolDefinition) {
           toolResult = {
             ok: false,
@@ -842,8 +854,9 @@ export class AgentRuntimeService {
             modelContent: `工具 ${call.toolName} 不存在。`,
           }
         }
+        // 情况 C：真正执行 ，tools 走这
         else {
-          // 拿到工具执行的结果
+          // 执行工具拿到工具结果
           toolResult = await this.toolInvocationService.invoke(
             call,
             { signal: runSignal, databaseDeadline },
