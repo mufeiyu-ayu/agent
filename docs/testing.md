@@ -21,7 +21,7 @@
 | `pnpm test:db` | 改了事务、deadline、落库清洗等只有真实 PostgreSQL 才能验证的行为 |
 | `pnpm test:e2e` | 改了前台对话或管理台交互；依次跑两个 app 的 Playwright，用本机 Chrome |
 
-单跑文件或按标题过滤：`pnpm exec vitest run <路径>`、`pnpm exec vitest run -t <标题片段>`，去掉 `run` 进入 watch。单跑一个 app 的 e2e：先 `pnpm --filter @agent/contracts build`，再 `pnpm --filter @agent/admin exec playwright test`。
+单跑文件或按标题过滤：`pnpm test <路径>`、`pnpm test -t <标题片段>`；watch 用 `pnpm exec vitest --project <项目名>`。不带 `--project` 直接跑 vitest 会连 db 项目一起收集，没加载 `.env` 时两个真实库文件会在导入时报错。单跑一个 app 的 e2e：先 `pnpm --filter @agent/contracts build`，再 `pnpm --filter @agent/admin exec playwright test`。
 
 ## 写法
 
@@ -48,7 +48,7 @@
 
 不测：
 
-- 源码文本（用正则匹配 `.ts` / `.vue` 的内容）；要守的行为用单测或 e2e 验证；
+- 源码文本（用正则匹配 `.ts` / `.vue` 的内容）；要守的行为用单测、e2e 或 lint 规则验证（如 admin 的 `vue/no-v-html`）；
 - 内部调用顺序、私有字段等不影响可观察行为的细节；
 - 已有用例覆盖的同一行为（同一条代码路径换个入参再测一遍）；
 - 只为已删功能的老数据保留的兼容分支；「未知 Step 类型按通用 Step 显示」这类通用兜底除外。
