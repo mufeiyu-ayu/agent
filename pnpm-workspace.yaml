@@ -1,5 +1,7 @@
 shellEmulator: true
 trustPolicy: no-downgrade
+# Node 版本不符 package.json 的 engines（.nvmrc 为准）时直接拒绝安装，而不是只打一行 WARN。
+engineStrict: true
 packages:
   - 'apps/*'
   - 'packages/*'
