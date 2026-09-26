@@ -28,13 +28,13 @@
     "lint:fix": "eslint . --fix"
   },
   "devDependencies": {
-    "@antfu/eslint-config": "^9.0.0",
+    "@antfu/eslint-config": "^9.5.1",
     "@swc/core": "^1.16.2",
     "@types/node": "^24.19.0",
     "dotenv": "^17.4.2",
-    "eslint": "^10.4.0",
-    "prisma": "^7.8.0",
-    "tsx": "^4.22.3",
+    "eslint": "^10.11.0",
+    "prisma": "^7.9.0",
+    "tsx": "^4.23.15",
     "typescript": "^6.0.3",
     "unplugin-swc": "^2.0.0",
     "vitest": "^5.0.2"

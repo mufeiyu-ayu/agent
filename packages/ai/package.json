@@ -23,11 +23,11 @@
   },
   "dependencies": {
     "@agent/contracts": "workspace:*",
-    "openai": "^6.45.0"
+    "openai": "^6.49.0"
   },
   "devDependencies": {
     "@types/node": "^24.19.0",
-    "tsx": "^4.22.3",
+    "tsx": "^4.23.15",
     "typescript": "^6.0.3"
   }
 }

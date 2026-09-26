@@ -53,4 +53,10 @@ export default antfu({
   rules: {
     'vue/no-v-html': 'error',
   },
+}, {
+  // antfu 默认还要求 minimumReleaseAgeExcludePrune，那是 pnpm 11 的设置，pnpm 10 不认；只保留另外两项。
+  files: ['pnpm-workspace.yaml'],
+  rules: {
+    'pnpm/yaml-enforce-settings': ['error', { settings: { shellEmulator: true, trustPolicy: 'no-downgrade' } }],
+  },
 })

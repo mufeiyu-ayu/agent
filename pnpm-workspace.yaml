@@ -1,11 +1,13 @@
-# Node 版本不符 package.json 的 engines（.nvmrc 为准）时直接拒绝安装，而不是只打一行 WARN。
-engineStrict: true
-shellEmulator: true
 trustPolicy: no-downgrade
 # vitest 的传递依赖：3.2.2（2025-01）与带 provenance 的 3.2.1 同一维护者，只是发布时没带证明；
 # 已核对两版包内容，差异是 WeakRef 与栈信息的修复。只放行这一个精确版本。
 trustPolicyExclude:
   - why-is-node-running@3.2.2
+
+shellEmulator: true
+# Node 版本不符 package.json 的 engines（.nvmrc 为准）时直接拒绝安装，而不是只打一行 WARN。
+engineStrict: true
+
 packages:
   - 'apps/*'
   - 'packages/*'

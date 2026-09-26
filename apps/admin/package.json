@@ -15,20 +15,20 @@
     "@agent/contracts": "workspace:*",
     "@ant-design/icons-vue": "^7.0.1",
     "ant-design-vue": "^4.2.6",
-    "dayjs": "^1.11.21",
+    "dayjs": "^1.11.23",
     "echarts": "^6.1.0",
     "pinia": "^3.0.4",
-    "vue": "^3.5.25",
-    "vue-echarts": "^8.1.0",
-    "vue-i18n": "^11.4.6",
+    "vue": "^3.5.43",
+    "vue-echarts": "^8.3.0",
+    "vue-i18n": "^11.4.12",
     "vue-json-pretty": "^2.6.0",
-    "vue-router": "^5.1.0"
+    "vue-router": "^5.3.1"
   },
   "devDependencies": {
-    "@playwright/test": "1.62.1",
-    "@vitejs/plugin-vue": "^6.0.3",
+    "@playwright/test": "1.63.0",
+    "@vitejs/plugin-vue": "^6.0.9",
     "typescript": "^6.0.3",
-    "vite": "^7.2.4",
-    "vue-tsc": "^3.1.7"
+    "vite": "^7.3.6",
+    "vue-tsc": "^3.3.11"
   }
 }
