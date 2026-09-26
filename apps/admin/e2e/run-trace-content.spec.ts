@@ -23,6 +23,21 @@ async function selectTimelineItem(page: Page, title: string): Promise<void> {
   await page.locator(`.trace-ledger strong:text-is("${title}")`).first().click()
 }
 
+/** Run Trace 不得把密钥、SQL 或服务端堆栈带进 DOM。 */
+const FORBIDDEN_DOM_PATTERNS = [
+  /select\s+\*\s+from/i,
+  /authorization|api[_-]?key|bearer\s/i,
+  /at\s+\w+\s+\(.*:\d+:\d+\)/,
+] as const
+
+async function expectNoForbiddenText(page: Page): Promise<void> {
+  // 同时覆盖可见文本、title、data-* 与隐藏节点：整棵子树的 HTML 都要干净。
+  const html = await page.locator('.run-trace-workspace').innerHTML()
+
+  for (const pattern of FORBIDDEN_DOM_PATTERNS)
+    expect(html).not.toMatch(pattern)
+}
+
 test.describe('Issue #152 Run Trace 展示模型可见内容', () => {
   test('AC-06：工具详情显示格式化参数与默认折叠的 observation，<script> 按原文显示且不执行', async ({ page }) => {
     await openRunDetail(page, createModelVisibleContentDetail())
@@ -98,16 +113,21 @@ test.describe('Issue #152 Run Trace 展示模型可见内容', () => {
 test('Issue #94：Header 与 Sampling 展示 reasoning / cache Usage', async ({ page }) => {
   await openRunDetail(page, createAnsweredDetail())
 
-  await page.locator('.trace-header').getByRole('button', { name: '详情' }).click()
+  const detailsButton = page.locator('.trace-header').getByRole('button', { name: '详情' })
   const details = page.locator('.trace-header__details')
 
+  await detailsButton.click()
   await expect(details).toContainText('推理 Token')
   await expect(details).toContainText('缓存命中 Token')
   await expect(details).toContainText('缓存未命中 Token')
+  // 先关掉头部弹层：它盖在检查器顶部的标签栏上。
+  await detailsButton.click()
+  await expect(details).toBeHidden()
 
   await selectTimelineItem(page, '模型采样')
   await page.getByRole('tab', { name: '用量' }).click()
   await expect(page.locator(INSPECTOR)).toContainText('推理 Token')
   await expect(page.locator(INSPECTOR)).toContainText('缓存命中 Token')
   await expect(page.locator(INSPECTOR)).toContainText('缓存未命中 Token')
+  await expectNoForbiddenText(page)
 })
