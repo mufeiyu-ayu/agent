@@ -47,6 +47,7 @@ export async function* adaptOpenAICompatibleStream(
   let hasStartedReasoning = false
   let hasStartedToolCall = false
   let finishReason: ModelFinishReason | undefined
+  let rawFinishReason: string | undefined
 
   for await (const chunk of chunks) {
     // 各家真实流都带 choices 数组（只带 usage 的末尾 chunk 是空数组，个别中转站连空数组也省掉）；
@@ -122,10 +123,14 @@ export async function* adaptOpenAICompatibleStream(
         // - tool_calls：调用请求已生成完，判 tool_call
         // - length：撞到 max_tokens；有调用就判 tool_call 按截断回喂，没有就抛错
         // - content_filter：被服务商内容审核截断，抛错
-        // - unknown：其余原始值（如 DeepSeek 的 insufficient_system_resource），抛错
+        // - unknown：其余原始值（如 DeepSeek 的 insufficient_system_resource），抛错；
+        //   这是异常结束，已收到的 Tool Call 分片不可信，不组装也不在这里报协议错，统一由上层按未知原因报失败
         finishReason = normalizeFinishReason(choice.finish_reason)
 
-        const toolCalls = toolCallAccumulator.finalize(finishReason === 'length')
+        if (finishReason === 'unknown')
+          rawFinishReason = toRawFinishReason(choice.finish_reason)
+
+        const toolCalls = finishReason === 'unknown' ? [] : toolCallAccumulator.finalize(finishReason === 'length')
         const reasoningContent = reasoningContentChunks.join('')
 
         // Runtime 只按 finish reason 分派：带 Tool Call 的 stop 不归一，调用就会被当成最终回答丢掉。
@@ -174,6 +179,7 @@ export async function* adaptOpenAICompatibleStream(
   yield {
     type: 'response_completed',
     finishReason,
+    ...(rawFinishReason ? { rawFinishReason } : {}),
   }
 }
 
@@ -187,6 +193,14 @@ function normalizeFinishReason(finishReason: string): ModelFinishReason {
     default:
       return 'unknown'
   }
+}
+
+/**
+ * 原值会进用户可见的失败文案：只收由字母与下划线组成、不超过 64 个字符的值（各家已知的 finish_reason 都是这种形状），
+ * 带数字或连字符的（可能是回显的 key 之类）、非字符串（兼容端点不受 SDK 类型约束）一律不带。
+ */
+function toRawFinishReason(finishReason: unknown): string | undefined {
+  return typeof finishReason === 'string' && /^[a-z_]{1,64}$/i.test(finishReason) ? finishReason : undefined
 }
 
 /**

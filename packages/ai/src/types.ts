@@ -79,6 +79,8 @@ export type ModelStreamEvent
   | {
     type: 'response_completed'
     finishReason: ModelFinishReason
+    /** finishReason 为 unknown 时上游给的原值，只留协议标识形状的值（它会进失败文案）；其余情况省略。 */
+    rawFinishReason?: string
   }
 
 /** 合并流式 usage 分片；没有任何已知字段时保持 null，绝不补零。 */

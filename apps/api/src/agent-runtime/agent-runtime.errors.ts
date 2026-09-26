@@ -71,12 +71,16 @@ export class ModelSamplingIncompleteError extends Error {
     this.name = 'ModelSamplingIncompleteError'
   }
 
+  /** `rawFinishReason` 是 adapter 清洗过的上游原值，只对 unknown 带进文案，便于区分资源不足、上游中止等原因。 */
   static fromFinishReason(
     finishReason: IncompleteFinishReason,
     summary?: ModelSamplingSummary,
+    rawFinishReason?: string,
   ): ModelSamplingIncompleteError {
     return new ModelSamplingIncompleteError(
-      INCOMPLETE_FINISH_REASON_MESSAGES[finishReason],
+      finishReason === 'unknown' && rawFinishReason
+        ? `模型以未知原因（${rawFinishReason}）结束，当前回答未被标记为成功。`
+        : INCOMPLETE_FINISH_REASON_MESSAGES[finishReason],
       summary,
     )
   }

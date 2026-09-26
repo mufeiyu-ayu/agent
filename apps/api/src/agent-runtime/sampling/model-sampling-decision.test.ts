@@ -312,6 +312,26 @@ describe('streamModelSampling', () => {
       )
     }
   })
+
+  it('unknown 带上游原值时失败文案带上它，没带时文案不变', async () => {
+    const cases: Array<[string | undefined, string]> = [
+      ['insufficient_system_resource', '模型以未知原因（insufficient_system_resource）结束，当前回答未被标记为成功。'],
+      [undefined, '模型以未知原因结束，当前回答未被标记为成功。'],
+    ]
+
+    for (const [rawFinishReason, message] of cases) {
+      await assert.rejects(
+        collectSampling([
+          { type: 'response_completed', finishReason: 'unknown', ...(rawFinishReason ? { rawFinishReason } : {}) },
+        ]),
+        (error) => {
+          assert.ok(error instanceof ModelSamplingIncompleteError, 'error instanceof ModelSamplingIncompleteError')
+          assert.equal(error.message, message)
+          return true
+        },
+      )
+    }
+  })
 })
 
 function createClock(

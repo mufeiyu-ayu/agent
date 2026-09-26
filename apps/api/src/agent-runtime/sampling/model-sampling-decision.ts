@@ -55,6 +55,7 @@ export async function* streamModelSampling(
   const toolCalls: UnvalidatedModelToolCall[] = []
   let reasoningContent = ''
   let finishReason: ModelFinishReason | undefined
+  let rawFinishReason: string | undefined
   let usage: ModelUsage | null = null
   let textChars = 0
   let firstTokenMs: number | null = null
@@ -98,6 +99,7 @@ export async function* streamModelSampling(
 
         case 'response_completed':
           finishReason = event.finishReason
+          rawFinishReason = event.rawFinishReason
           break
       }
     }
@@ -139,6 +141,7 @@ export async function* streamModelSampling(
     throw ModelSamplingIncompleteError.fromFinishReason(
       finishReason,
       buildSummary(),
+      rawFinishReason,
     )
   }
 

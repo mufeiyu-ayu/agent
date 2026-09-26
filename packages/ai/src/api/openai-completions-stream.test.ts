@@ -1,5 +1,5 @@
 import type { ChatCompletionChunk } from 'openai/resources/chat/completions'
-import type { ModelUsage } from '../types.js'
+import type { ModelStreamEvent, ModelUsage } from '../types.js'
 import type { AdaptStreamOptions } from './openai-completions-stream.js'
 import assert from 'node:assert/strict'
 
@@ -455,21 +455,38 @@ describe('adaptOpenAICompatibleStream', () => {
   })
 
   it('归一化 length、content_filter 和未知 finish reason', async () => {
-    const cases: Array<[ChatCompletionChunk.Choice['finish_reason'], string]> = [
-      ['length', 'length'],
-      ['content_filter', 'content_filter'],
-      ['provider_specific' as ChatCompletionChunk.Choice['finish_reason'], 'unknown'],
+    const cases: Array<[unknown, ModelStreamEvent]> = [
+      ['length', { type: 'response_completed', finishReason: 'length' }],
+      ['content_filter', { type: 'response_completed', finishReason: 'content_filter' }],
+      // 不认识的值归 unknown：字母加下划线的原值随事件带出；带数字 / 连字符（形似 key）、标记、超过 64 个字符或不是字符串的不带。
+      ['insufficient_system_resource', { type: 'response_completed', finishReason: 'unknown', rawFinishReason: 'insufficient_system_resource' }],
+      ['sk-live0123456789abcdef', { type: 'response_completed', finishReason: 'unknown' }],
+      ['bad <b>reason</b>', { type: 'response_completed', finishReason: 'unknown' }],
+      ['x'.repeat(65), { type: 'response_completed', finishReason: 'unknown' }],
+      [500, { type: 'response_completed', finishReason: 'unknown' }],
     ]
 
     for (const [finishReason, expected] of cases) {
       const events = await collectEvents(adapt(toStream([
-        createChunk({ finishReason }),
+        createChunk({ finishReason: finishReason as ChatCompletionChunk.Choice['finish_reason'] }),
       ])))
 
-      assert.deepEqual(events, [
-        { type: 'response_completed', finishReason: expected },
-      ])
+      assert.deepEqual(events, [expected])
     }
+  })
+
+  it('unknown 结束时不组装已收到的 Tool Call 分片，也不报协议错，只带出原值', async () => {
+    const events = await collectEvents(adapt(toStream([
+      createChunk({
+        delta: { tool_calls: [toolCallDelta(0, { id: 'call-1', name: 'search_articles' })] },
+      }),
+      createChunk({ finishReason: 'insufficient_system_resource' as ChatCompletionChunk.Choice['finish_reason'] }),
+    ])))
+
+    assert.deepEqual(events, [
+      { type: 'tool_call_started' },
+      { type: 'response_completed', finishReason: 'unknown', rawFinishReason: 'insufficient_system_resource' },
+    ])
   })
 
   it('拒绝没有 finish reason 的不完整流', async () => {
