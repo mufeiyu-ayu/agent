@@ -223,7 +223,7 @@ function isDesktopWorkflowViewport(): boolean {
             <div class="mt-auto flex min-w-0 items-end justify-between gap-3 pt-5">
               <span class="inline-flex h-10 min-w-0 items-center gap-2 rounded-lg border border-white/10 bg-black/26 px-3 text-xs font-medium text-[#e5d8c8]">
                 <AppIcon name="tabler:sparkles" :size="16" />
-                <span class="truncate">DeepSeek V4 Flash</span>
+                <span class="truncate">DeepSeek Flash</span>
                 <AppIcon name="tabler:chevron-down" :size="15" />
               </span>
 

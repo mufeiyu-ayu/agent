@@ -15,7 +15,7 @@ import { OpenAICompatibleClient } from './openai-completions.js'
  * - `*.tool-call.sse`：`scripts/record-tool-call-stream-fixtures.ts` 录下的真实 Tool Call 流原文，
  *   经 fake fetch 交给真实 `OpenAICompatibleClient`，走 SDK 的 SSE 解析与生产 compat（DeepSeek 要求 reasoning_content）。
  * - `*.response.json`：`scripts/export-raw-response-fixtures.ts` 从本机 `AgentStep.debugRawResponse` 导出的非流式聚合响应。
- * - `*.chunks.json`：按同一家族真实流形状手工整理的最小 chunk 序列（含 usage chunk），不是抓包原样。
+ * - `*.chunks.json`：按同一家族真实流形状手工整理的最小 chunk 序列（含 usage；DeepSeek 直连的 usage 与 finish_reason 同一个 chunk），不是抓包原样。
  *
  * 期望值全部写死：fixture 里任一被读取的字段名或 compat 表取值变了，这里就会红。
  * 落库时 `reasoning_content` 已被剥掉，`*.response.json` 只覆盖 usage 与 Tool Call 身份。

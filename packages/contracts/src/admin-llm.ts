@@ -38,7 +38,8 @@ export interface LlmFamilyCompat {
 /**
  * 各家族的协议事实，只此一处：compat 字段见 `LlmFamilyCompat`；
  * `reasoningEfforts` 是 `reasoning_effort` 可取值，按官方文档，空数组表示该家族不认这个参数。
- * 模型行默认值与请求级覆盖都只能取所属家族的值。中转站会把参数透传给上游，直连官方时同一张表照用。
+ * 模型行默认值与请求级覆盖都只能取所属家族的值。中转站会把参数透传给上游；直连官方时取值照用，
+ * 但直连 OpenAI 带工具另有限制，见 `packages/ai/AGENTS.md` 的已知限制。
  */
 export const LLM_FAMILY_CAPABILITIES = {
   deepseek: { thinkingFormat: 'deepseek', requiresReasoningContent: true, toolCallIndexOptional: false, toolCallsMayFinishWithStop: false, reasoningEfforts: ['low', 'high', 'max'] },
