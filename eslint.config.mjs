@@ -37,6 +37,8 @@ export default antfu({
     '**/dist',
     '**/node_modules',
     'apps/api/src/generated/prisma',
+    // 研究资料：摘录的 Pi 源码按原文保留、图表构建脚本不属于产品代码，不参与 lint。
+    'docs/research/**',
   ],
   rules: {
     'no-console': ['error', {
