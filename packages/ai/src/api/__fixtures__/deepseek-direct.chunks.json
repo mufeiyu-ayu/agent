@@ -1,6 +1,6 @@
 {
   "family": "deepseek",
-  "note": "DeepSeek 直连（api.deepseek.com，thinking enabled）的 Tool Call 流：reasoning_content 先于 tool_calls，usage 在结束 choice 之后单独返回，缓存同时给顶层 prompt_cache_* 与 prompt_tokens_details.cached_tokens。",
+  "note": "DeepSeek 直连（api.deepseek.com，thinking enabled）的 Tool Call 流：reasoning_content 先于 tool_calls，usage 与 finish_reason 在同一个 chunk（官方不单独下发只含 usage 的块），缓存同时给顶层 prompt_cache_* 与 prompt_tokens_details.cached_tokens。",
   "chunks": [
     {
       "id": "ds-1",
@@ -114,14 +114,7 @@
           "delta": {},
           "finish_reason": "tool_calls"
         }
-      ]
-    },
-    {
-      "id": "ds-1",
-      "object": "chat.completion.chunk",
-      "created": 1758515880,
-      "model": "deepseek-flash",
-      "choices": [],
+      ],
       "usage": {
         "prompt_tokens": 1304,
         "completion_tokens": 21,

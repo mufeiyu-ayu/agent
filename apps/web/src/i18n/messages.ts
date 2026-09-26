@@ -203,7 +203,6 @@ export const messages = {
       reasoningEffortDefault: '默认',
       reasoningEffortDefaultWith: '默认（{effort}）',
       reasoningEffort: {
-        minimal: 'Minimal',
         low: 'Low',
         medium: 'Medium',
         high: 'High',
@@ -432,7 +431,6 @@ export const messages = {
       reasoningEffortDefault: 'Default',
       reasoningEffortDefaultWith: 'Default ({effort})',
       reasoningEffort: {
-        minimal: 'Minimal',
         low: 'Low',
         medium: 'Medium',
         high: 'High',

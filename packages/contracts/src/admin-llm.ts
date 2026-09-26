@@ -20,12 +20,13 @@ export type LlmProviderFamily = typeof LLM_PROVIDER_FAMILIES[number]
  * 差异只写在这张表里，不按家族各写一个 adapter。对照 Pi 的 `OpenAICompletionsCompat`。
  * - `thinkingFormat`：请求体的思考开关。`'deepseek'` 发 `thinking: { type: 'enabled' }`；null 不发。
  * - `requiresReasoningContent`：Tool Call 必须回 `reasoning_content`（DeepSeek thinking 续轮回填需要）；字段必须存在，模型没思考时回空串；
- *   中转站后面的 gpt / grok / gemini 只回 `reasoning_tokens` 不回正文，不能要求。
+ *   中转站后面的 gpt / gemini / grok-4.6-latest 不回推理正文，grok-4.6 会回（有就原样回填，2026-09-26 实测上游接受），都不能要求。
  * - `toolCallIndexOptional`：流式 tool_calls 分片可以不带 `index`，每个这样的分片就是一个完整调用，取还没被占用的最小槽位（不与显式 index 撞号）。
  * - `toolCallsMayFinishWithStop`：带 Tool Call 时 `finish_reason` 可能是 `stop`，按 `tool_calls` 处理。
  *   后两条来自 Google 官方 OpenAI 兼容端点的真实流（#157 fixture `gemini-direct.tool-call.sse`），其余家族保持严格。
  *   它们只让首轮 Tool Call 能被解析；直连 Google 的 Gemini 3 续轮还要回传 `extra_content.google.thought_signature`，
- *   当前不保存也不回填，工具循环在第二次请求会 400（证据见 #157 评论）。
+ *   当前不保存也不回填，工具循环在第二次请求会 400（证据见 #157 评论）。经公司中转站时 finish_reason 就是 `tool_calls`，
+ *   续轮不回签名也能通过（2026-09-26 实测），这两条放宽与签名问题只在直连 Google 时出现。
  */
 export interface LlmFamilyCompat {
   thinkingFormat: 'deepseek' | null
@@ -41,8 +42,9 @@ export interface LlmFamilyCompat {
  */
 export const LLM_FAMILY_CAPABILITIES = {
   deepseek: { thinkingFormat: 'deepseek', requiresReasoningContent: true, toolCallIndexOptional: false, toolCallsMayFinishWithStop: false, reasoningEfforts: ['low', 'high', 'max'] },
-  openai: { thinkingFormat: null, requiresReasoningContent: false, toolCallIndexOptional: false, toolCallsMayFinishWithStop: false, reasoningEfforts: ['minimal', 'low', 'medium', 'high', 'xhigh'] },
-  grok: { thinkingFormat: null, requiresReasoningContent: false, toolCallIndexOptional: false, toolCallsMayFinishWithStop: false, reasoningEfforts: ['low', 'high'] },
+  // gpt-5.5 / 5.6 / 6 系的交集：没有型号支持 minimal；none（gpt-6-astra 拒收）与 max（gpt-5.5 不支持）因型号而异，不放。
+  openai: { thinkingFormat: null, requiresReasoningContent: false, toolCallIndexOptional: false, toolCallsMayFinishWithStop: false, reasoningEfforts: ['low', 'medium', 'high', 'xhigh'] },
+  grok: { thinkingFormat: null, requiresReasoningContent: false, toolCallIndexOptional: false, toolCallsMayFinishWithStop: false, reasoningEfforts: ['low', 'medium', 'high', 'xhigh'] },
   // Google 官方支持 low / medium / high，但中转站的 Gemini 已把档位写进模型名，且不回推理 token 无法验证透传；直连官方时再放开。
   gemini: { thinkingFormat: null, requiresReasoningContent: false, toolCallIndexOptional: true, toolCallsMayFinishWithStop: true, reasoningEfforts: [] },
   claude: { thinkingFormat: null, requiresReasoningContent: false, toolCallIndexOptional: false, toolCallsMayFinishWithStop: false, reasoningEfforts: ['low', 'medium', 'high'] },

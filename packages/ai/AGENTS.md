@@ -31,6 +31,11 @@ scripts/record-tool-call-stream-fixtures.ts  # 一次性手动录制脚本：用
 - SDK 读响应体时遇到 abort 会静默结束迭代：`chatStream` 先看 signal，已 aborted 就按 abort 抛（不报成缺 finish reason）；raw capture 在 signal 已 aborted 或没见到 finish_reason 时标 partial。
 - 错误文案不带厂商名，各家 OpenAI-compatible 端点共用同一套状态码含义。上游 body 原文不进文案：400 / 422 / 5xx 与未单独映射的状态码（后者只报 `HTTP ${status}`）仅当 JSON body 的 `error` 是对象时在文案末尾附摘要——字符串 code / type 与去掉控制 / 格式字符、截断到 200 字符的 message，其中出现的本次请求 key 先换成 `***` 再截断；401 / 402 / 403 / 429 只有固定文案；中转站把上游故障包成的 400 + `type: upstream_error` 归 `LLMServerError`（#175）。完整 APIError 留在异常的 `detail` 上，目前没有代码记录它。流内夹带的 error 对象带 HTTP 状态码（数值或三位数字字符串）时与响应状态码同表归类；上游 JSON 解析失败（SSE 行或元数据响应体）与既没有 `choices` 也没有 `usage` 的数据块归协议错误（`LLMApiError`），不当网络错误。SDK 客户端 `logLevel: 'off'`，解析失败时不再把上游原文打到 stderr（SDK 只在 Assistants 的 `thread.*` 事件分支直接调 `console.error`，Chat Completions 流走不到）。
 
+## 已知限制（只在直连官方时暴露，2026-09-26 文档对照与实测）
+
+- 直连 OpenAI：GPT ≥ 5.4 在 Chat Completions 上带 tools 时 `reasoning_effort` 只能是 `none`，gpt-6-astra 调工具必须走 Responses；`max_tokens` 已废弃，改用 `max_completion_tokens`。公司中转站上游就是 Responses（响应 id 为 `resp_`），现在的组合才可用；要直连须先做 Responses 适配。
+- 直连 Google Gemini 3：续轮必须原样回传 `tool_calls[].extra_content.google.thought_signature`（缺了 400，本包目前不保存），tool 消息应带 `name`（官方示例都带）。经公司中转站实测两者都不需要。
+
 ## 验证
 
 `pnpm --filter @agent/ai typecheck`、`lint`、`test`（node:test）。`scripts/` 不在 tsconfig include 里，只过 lint。
