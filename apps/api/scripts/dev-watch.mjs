@@ -4,6 +4,10 @@ import process from 'node:process'
 const tscCommand = process.platform === 'win32' ? 'tsc.cmd' : 'tsc'
 const commands = [
   [tscCommand, ['--watch', '--preserveWatchOutput']],
+  // 两个共享包也 watch：改了源码就重新生成 dist，下面的 node --watch 追踪到 import 的 dist 变化后重启 API。
+  // predev 的一次性编译保留，保证首次启动时 dist 已存在。
+  [tscCommand, ['--watch', '--preserveWatchOutput', '-p', '../../packages/contracts']],
+  [tscCommand, ['--watch', '--preserveWatchOutput', '-p', '../../packages/ai']],
   [process.execPath, [
     '--env-file-if-exists=../../.env',
     '--watch',
