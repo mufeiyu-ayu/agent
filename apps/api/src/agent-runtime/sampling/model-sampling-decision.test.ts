@@ -130,7 +130,7 @@ describe('streamModelSampling', () => {
     const { decision } = await collectSampling([
       { type: 'tool_call_started' },
       toolCallEvent('call-1', 'search_articles', '{"query":"seo"}', '两个都查。', 0),
-      toolCallEvent('call-2', 'get_article_detail', '{"sourceId":1}', '两个都查。', 1),
+      toolCallEvent('call-2', 'search_articles', '{"query":"geo"}', '两个都查。', 1),
       { type: 'response_completed', finishReason: 'tool_calls' },
     ])
 

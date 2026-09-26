@@ -17,7 +17,7 @@ Object.defineProperty(performance, 'now', { configurable: true, value: () => now
 
 const { useStreamingMarkdown } = await import('./useStreamingMarkdown')
 
-/** 流式中一次性到达 `backlog` 个字符并立刻结束（Grounding 重放后紧跟 done），返回放完所用的时间。 */
+/** 流式中一次性到达 `backlog` 个字符并立刻结束，返回放完所用的时间。 */
 async function settleDuration(backlog: number): Promise<number> {
   now = 0
   frames.length = 0

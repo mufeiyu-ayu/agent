@@ -203,10 +203,8 @@ describe('AdminOverviewService stats', () => {
     }
     const toolQueries = queries.filter(query => query.values.includes('unknown_tool'))
     assert.equal(toolQueries.length, 2)
-    for (const query of toolQueries) {
+    for (const query of toolQueries)
       assert.ok(query.values.includes('search_articles'), 'query.values.includes(\'search_articles\')')
-      assert.ok(query.values.includes('retrieve_article_context'), 'query.values.includes(\'retrieve_article_context\')')
-    }
 
     assert.equal(stats.bucket, 'hour')
     assert.equal(stats.points.length, 25)

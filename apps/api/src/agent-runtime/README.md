@@ -20,7 +20,6 @@
 | `lifecycle/` | Run / Step 持久化与取消、deadline、终态竞争 |
 | `context/` | Model Context、History Selection、Token 估算与每轮 Context Plan |
 | `sampling/` | 模型流到 Sampling Decision 的转换与安全 Debug 捕获 |
-| `grounding/` | Evidence Registry、Grounded Finalization、Citation 校验与安全投影 |
 
 ## 主调用链
 
@@ -32,7 +31,6 @@ ChatService（LlmModelConfigService.resolveModel 解析模型行快照）
   -> context: select and plan model-visible input
   -> sampling: consume model stream and return decision
   -> executeToolBatch()（私有方法）：顺序执行一批 Tool Call，每个 call 一个 tool_execution Step，经 ToolInvocationService
-  -> finalizeGroundedAnswer()（私有异步生成器，建立 Grounding Session 后才走）：grounded_finalization Step 校验草稿，通过后重放已校验正文
   -> lifecycle: atomic terminalization
 ```
 

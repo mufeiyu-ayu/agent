@@ -18,7 +18,6 @@ import { useWorkspaceTheme } from '../hooks/useWorkspaceTheme'
 const navigationConfig = [
   { id: 'knowledge-qa', labelKey: 'navigation.knowledgeQa', icon: 'tabler:file-search', active: true },
   { id: 'article-search', labelKey: 'navigation.articleSearch', icon: 'tabler:bulb' },
-  { id: 'cited-sources', labelKey: 'navigation.citedSources', icon: 'tabler:article' },
   { id: 'run-trace', labelKey: 'navigation.runTrace', icon: 'tabler:checklist' },
   { id: 'history', labelKey: 'navigation.history', icon: 'tabler:history' },
   { id: 'settings', labelKey: 'navigation.settings', icon: 'tabler:settings' },

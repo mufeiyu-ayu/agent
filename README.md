@@ -29,7 +29,6 @@ Most agent tutorials end at "call the model in a `while` loop". Real agents brea
 - the model writes half an answer, then asks for **two tools at once**;
 - the tool arguments get **cut off** because the output hit its token limit;
 - the user **closes the tab** while a tool is still running;
-- the model **cites a source that doesn't exist**;
 - a request fails, gets retried, and a **late result tries to overwrite** a run that already ended.
 
 Frameworks hide these decisions behind abstractions. This project handles every one of them in explicit, tested TypeScript, so you can open a file and see exactly what happens.
@@ -44,13 +43,9 @@ Frameworks hide these decisions behind abstractions. This project handles every 
 
 ## Highlights
 
-### 🔍 Citations the model can't fake
-
-When an answer relies on retrieved documents, the model can't just type `[1]`. It must submit the answer through a structured tool, and the server checks every citation against the evidence the retrieval tools actually returned in that run. If the model can't produce a valid submission, the run fails closed instead of showing sources nobody verified.
-
 ### 🛑 One run, one final state
 
-User aborts, deadlines, and late database results all race for the final state, and only the first one wins. The message, its citations, the steps, and the run are committed in a single transaction. When the commit outcome is uncertain, the system reports it instead of faking success.
+User aborts, deadlines, and late database results all race for the final state, and only the first one wins. The message, the steps, and the run are committed in a single transaction. When the commit outcome is uncertain, the system reports it instead of faking success.
 
 ### 🧭 Every step on the record
 
@@ -89,8 +84,6 @@ for (let round = 1; round <= policy.maxSamplingRounds; round++) {
     context.appendToolExchange(call, result) // fed back as untrusted data
   }
 }
-
-await finalizeGroundedAnswer() // server-verified citations, one transaction
 ```
 
 The real version adds streaming deltas, abort and deadline handling, and step recording. It is still one file you can read top to bottom.
@@ -103,7 +96,6 @@ flowchart LR
     Admin[Admin console] --> AdminAPI[Admin API]
     API --> Runtime[Agent Runtime]
     Runtime --> Context[Model context<br/>token budget · trimming]
-    Runtime --> Grounding[Grounding<br/>evidence · citation checks]
     Runtime --> LLM["@agent/ai<br/>OpenAI-compatible client"]
     LLM -->|SSE| Providers([DeepSeek · GPT · Grok · Gemini])
     Runtime --> Tools[Tools] --> Retrieval[Hybrid retrieval<br/>lexical + vector, RRF]
@@ -115,8 +107,8 @@ flowchart LR
 | Layer | What it does |
 | --- | --- |
 | `apps/api` | NestJS API: agent runtime, tools, retrieval and indexing, model provider config |
-| `apps/web` | Vue 3 chat app with streaming Markdown and source cards |
-| `apps/admin` | Admin console: overview, conversations, run trace, retrieval audit, model providers |
+| `apps/web` | Vue 3 chat app with streaming Markdown |
+| `apps/admin` | Admin console: overview, conversations, run trace, model providers |
 | `packages/ai` | Framework-free model client: stream adapter, retries, errors (no Nest, no Prisma) |
 | `packages/contracts` | Types shared by frontend and backend |
 
@@ -135,7 +127,7 @@ pnpm dev
 Then open the admin console at `http://localhost:5174`, go to the model provider page (「模型接入」), add a provider and a model, and mark it visible. Chat at `http://localhost:5173`.
 
 <details>
-<summary>Enable retrieval and citations (demo articles + vector index)</summary>
+<summary>Enable retrieval (demo articles + vector index)</summary>
 
 ```bash
 node --env-file=.env --import tsx apps/api/scripts/seed.ts     # load 68 demo articles (idempotent)
@@ -156,16 +148,14 @@ Follow one request from the HTTP call to the database, in this order:
 | 2 | [`agent-runtime.service.ts`](./apps/api/src/agent-runtime/agent-runtime.service.ts) | The main loop: sample, dispatch, run tools, continue, finish |
 | 3 | [`sampling-context-planner.ts`](./apps/api/src/agent-runtime/context/sampling-context-planner.ts) | What the model sees each round, and what gets dropped first |
 | 4 | [`openai-completions-stream.ts`](./packages/ai/src/api/openai-completions-stream.ts) | How a provider's stream becomes clean events |
-| 5 | [`grounded-answer.validator.ts`](./apps/api/src/agent-runtime/grounding/grounded-answer.validator.ts) | How every citation is checked against the evidence the run actually retrieved (source identity, not the truth of each claim) |
-| 6 | [`agent-run-recorder.service.ts`](./apps/api/src/agent-runtime/lifecycle/agent-run-recorder.service.ts) | Final-state ownership and atomic commits |
+| 5 | [`agent-run-recorder.service.ts`](./apps/api/src/agent-runtime/lifecycle/agent-run-recorder.service.ts) | Final-state ownership and atomic commits |
 
 Try to answer these before reading the code. Every answer has a test:
 
 1. The model writes some text, then calls two tools in the same turn. What happens?
 2. The output hits its token limit mid-arguments. Do the tools still run?
 3. The user closes the page while a tool is running. Who writes the final state?
-4. The model invents a citation key. What does the user see?
-5. How is a 429 before the response starts handled differently from a connection that drops mid-stream?
+4. How is a 429 before the response starts handled differently from a connection that drops mid-stream?
 
 ## When to use a framework instead
 
@@ -173,7 +163,7 @@ Use LangChain, LangGraph, or the Vercel AI SDK when you want to ship quickly and
 
 ## Roadmap
 
-Done: streaming chat, a bounded agent loop, multiple tool calls per turn, context engineering, grounded retrieval with verified citations, multi-provider support, and an admin console.
+Done: streaming chat, a bounded agent loop, multiple tool calls per turn, context engineering, multi-provider support, and an admin console.
 
 Next, each triggered by real usage:
 

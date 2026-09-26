@@ -14,9 +14,7 @@ export interface SamplingUsageStepRecord {
 }
 
 /** 每个指标独立求和：任一条目该指标为 null，则该指标为 null，其余指标照常。 */
-export function aggregateSamplingUsage(
-  usages: Array<AdminRunTokenUsage | null>,
-): AdminRunTokenUsage {
+function aggregateSamplingUsage(usages: AdminRunTokenUsage[]): AdminRunTokenUsage {
   return {
     inputTokens: sumCompleteUsage(usages, 'inputTokens'),
     outputTokens: sumCompleteUsage(usages, 'outputTokens'),
@@ -33,38 +31,27 @@ export interface RunModelCallAggregate {
 }
 
 /**
- * Run 真实发出的模型调用次数与 Token，与概览 SQL 同一口径：action sampling Step 与 finalization
- * attempt 中，有 usage 或以 llm_* 类别失败的才算。finalization attempt 不单独记类别，
- * 它的采样故障就是 Run 的终态原因，所以按 Run 的 errorCode 判断。
+ * Run 真实发出的模型调用次数与 Token，与概览 SQL 同一口径：有 usage 或以 llm_* 类别失败的
+ * action sampling Step 才算。
  * Token 只汇总带 usage 的调用：请求失败的调用没有用量，不让它把整条 Run 的 Token 变成未记录。
  */
 export function aggregateRunModelCalls(
   steps: SamplingUsageStepRecord[],
-  runErrorCode: string | null,
 ): RunModelCallAggregate {
   const usages: AdminRunTokenUsage[] = []
   let count = 0
-  const record = (usage: AdminRunTokenUsage | null, failedUpstream: boolean) => {
-    if (usage)
-      usages.push(usage)
-    if (usage || failedUpstream)
-      count += 1
-  }
 
   for (const step of steps) {
-    if (step.type === AGENT_STEP_TYPES.modelSampling) {
-      const output = readObject(step.output)
-      record(projectTokenUsage(output), isLlmCallErrorCode(output?.errorCode))
-    }
-    else if (step.type === AGENT_STEP_TYPES.groundedFinalization) {
-      for (const attempt of readFinalizationAttempts(step.output)) {
-        const attemptRecord = readObject(attempt)
-        record(
-          projectTokenUsage(attemptRecord),
-          typeof attemptRecord?.samplingFailure === 'string' && isLlmCallErrorCode(runErrorCode),
-        )
-      }
-    }
+    if (step.type !== AGENT_STEP_TYPES.modelSampling)
+      continue
+
+    const output = readObject(step.output)
+    const usage = projectTokenUsage(output)
+
+    if (usage)
+      usages.push(usage)
+    if (usage || isLlmCallErrorCode(output?.errorCode))
+      count += 1
   }
 
   return { count, usage: aggregateSamplingUsage(usages) }
@@ -72,12 +59,6 @@ export function aggregateRunModelCalls(
 
 function isLlmCallErrorCode(value: unknown): boolean {
   return typeof value === 'string' && (LLM_CALL_ERROR_CODES as readonly string[]).includes(value)
-}
-
-/** 读取 finalization output 的 attempts；不是数组时视为没有记录到任何 attempt。 */
-export function readFinalizationAttempts(output: unknown): unknown[] {
-  const attempts = readObject(output)?.attempts
-  return Array.isArray(attempts) ? attempts : []
 }
 
 export function projectTokenUsage(
@@ -98,7 +79,7 @@ export function projectTokenUsage(
 }
 
 function sumCompleteUsage(
-  usages: Array<AdminRunTokenUsage | null>,
+  usages: AdminRunTokenUsage[],
   key: keyof AdminRunTokenUsage,
 ): number | null {
   if (usages.length === 0)
@@ -106,8 +87,8 @@ function sumCompleteUsage(
 
   let total = 0
   for (const usage of usages) {
-    const value = usage?.[key]
-    if (value === null || value === undefined)
+    const value = usage[key]
+    if (value === null)
       return null
 
     total += value

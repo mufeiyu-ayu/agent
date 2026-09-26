@@ -87,7 +87,7 @@ const showFloatingLoading = computed(() => {
             <template
               v-for="(turn, turnIndex) in turns"
               :key="turn.id"
-              v-memo="[turn.userMessage, turn.createdAt, turn.reply, turn.status, turn.errorMessage, turn.grounding, anchorLatestTurn && turnIndex === turns.length - 1, locale]"
+              v-memo="[turn.userMessage, turn.createdAt, turn.reply, turn.status, turn.errorMessage, anchorLatestTurn && turnIndex === turns.length - 1, locale]"
             >
               <!-- eslint-enable vue/no-useless-template-attributes -->
               <AgentMessage
@@ -114,7 +114,6 @@ const showFloatingLoading = computed(() => {
                   v-if="turn.reply && (turn.status !== 'error' || turn.reply !== turn.errorMessage)"
                   :text="turn.reply"
                   :is-streaming="turn.status === 'generating'"
-                  :grounding="turn.status === 'success' ? turn.grounding : undefined"
                 />
                 <div
                   v-if="turn.status === 'error'"

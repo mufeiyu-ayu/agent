@@ -14,7 +14,7 @@
 
 ## 1. 项目定位
 
-从零手写的 TypeScript Agent Runtime：NestJS API + Vue Web / Admin + Prisma / PostgreSQL / pgvector，不依赖 LangChain / LangGraph / workflow 引擎。Phase 1-8 已完成：流式对话、AgentRun / AgentStep 编排、Tool Calling、Context Engineering、Grounded Retrieval 与服务端校验的引用、Admin 可观测性。
+从零手写的 TypeScript Agent Runtime：NestJS API + Vue Web / Admin + Prisma / PostgreSQL / pgvector，不依赖 LangChain / LangGraph / workflow 引擎。Phase 1-8 已完成：流式对话、AgentRun / AgentStep 编排、Tool Calling、Context Engineering、Admin 可观测性；Phase 8 的 Grounded Retrieval 与服务端引用校验按 2026-09-26 定案删除（`docs/research/workbench-direction.md` 第 9 节删除记录）。
 
 **定案的方向**
 - 2026-09-15：完成当前源码学习后，面向云端 Agent 产品演进，以 Pi 为主要架构与组织方式参照（`docs/research/pi-reference/`）；旧 Codex 调研、reference 与阶段路线已按用户要求删除。DeepSeek Harness 保留补充对照。参照素材供 AI 实现时查阅，用户不读 Pi 代码；参照用于对比取舍，不照抄；研究完成不代表重构已启动。
@@ -86,8 +86,8 @@ Runtime 不变量：
 - UI message ≠ model message ≠ runtime event ≠ 持久化轨迹，各自独立契约。
 - delta 不等于持久化事实。
 - model-visible context 通过独立 Context boundary 维护，不回填 UI `Message`。
-- 模型看到的必须能从持久化记录重建（model-visible ⟺ logged），这是 resume / replay 的前提。#152 起在 action 循环内成立：历史取候选里最新的 `contextPlan.historyIncludedCount` 条；Tool Call 轮回填的文本与 reasoning 在采样 Step；回喂的参数与 observation 在 tool Step，被预算压缩后的长度在 `contextPlan.observationPreviewChars`；finalization 提示词的服务端标量在 finalization Step。范围外与已知偏差：系统提示词与工具定义取自当次部署的代码；请求参数（`max_tokens`、强度、thinking）不落库，只能经 modelId 反查事后可被改动的模型行；finalization 的证据清单与回答草稿不落库；历史只落条数，同一会话并发 Run 时按条数重建会多算事后才完成的消息；PostgreSQL 存不了 U+0000（jsonb 还拒收孤立代理项）：可见文本、Grounding 回答与用户消息在进入 `content` 前把两者换成 U+FFFD（delta、done 与落库逐字一致，模型下一轮看到的也是替换后的文本）；Step 的 jsonb 副本（参数、observation、中间文本、reasoning、toolName / callId、debug 抓取）同样替换，而同一 Run 内回填给模型的是原文，这是模型可见内容与落库唯一不逐字相等的情况。replay 本身属 R1。
-- 模型输出不可信：工具名、参数、引用 key 先校验再执行；检索正文按 untrusted data 隔离注入。
+- 模型看到的必须能从持久化记录重建（model-visible ⟺ logged），这是 resume / replay 的前提。#152 起成立（#185 删除 Grounding 后，模型调用只剩 action 循环）：历史取候选里最新的 `contextPlan.historyIncludedCount` 条；Tool Call 轮回填的文本与 reasoning 在采样 Step；回喂的参数与 observation 在 tool Step，被预算压缩后的长度在 `contextPlan.observationPreviewChars`。范围外与已知偏差：系统提示词与工具定义取自当次部署的代码；请求参数（`max_tokens`、强度、thinking）不落库，只能经 modelId 反查事后可被改动的模型行；历史只落条数，同一会话并发 Run 时按条数重建会多算事后才完成的消息；PostgreSQL 存不了 U+0000（jsonb 还拒收孤立代理项）：可见文本与用户消息在进入 `content` 前把两者换成 U+FFFD（delta、done 与落库逐字一致，模型下一轮看到的也是替换后的文本）；Step 的 jsonb 副本（参数、observation、中间文本、reasoning、toolName / callId、debug 抓取）同样替换，而同一 Run 内回填给模型的是原文，这是模型可见内容与落库唯一不逐字相等的情况。replay 本身属 R1。
+- 模型输出不可信：工具名、参数先校验再执行；检索正文按 untrusted data 隔离注入（已知缺口：#185 删掉带隔离标记的检索工具后，`search_articles` 回的文章摘录仍以纯 JSON 回喂，没有隔离标记）。
 - 终态所有权：晚到的 Abort / deadline / DB 结果不能覆盖已确立终态；COMMIT 结果不确定时如实暴露。
 
 小步可运行：先最小功能，再封装可复用边界；不为想象中的扩展建抽象。

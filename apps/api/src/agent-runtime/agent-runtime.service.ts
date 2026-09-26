@@ -3,14 +3,13 @@ import type {
   MessageInputItem,
   ModelUsage,
 } from '@agent/ai'
-import type { AgentRunErrorCode, MessageGroundingV1 } from '@agent/contracts'
+import type { AgentRunErrorCode } from '@agent/contracts'
 import type {
   Message,
   Prisma,
   MessageRole as PrismaMessageRole,
   MessageStatus as PrismaMessageStatus,
 } from '../generated/prisma/client.js'
-import type { LlmProviderCredentials } from '../llm/llm-model-config.service.js'
 import type { DatabaseOperationDeadline } from '../prisma/prisma.service.js'
 import type { NormalizedToolObservation } from '../tools/core/tool-observation.js'
 import type {
@@ -26,11 +25,7 @@ import type { AgentRuntimePolicy } from './configuration/agent-runtime.policy.js
 import type { TokenEstimator } from './context/deepseek-v4-token-estimator.js'
 import type { InitialContextSummary } from './context/initial-context.js'
 import type { SamplingContextPlanSummary } from './context/sampling-context-planner.js'
-import type { GroundedFinalizationAttemptSummary } from './grounding/grounded-answer.finalizer.js'
-import type {
-  CloseAgentStepInput,
-  CloseAgentStepMetadata,
-} from './lifecycle/agent-run-recorder.service.js'
+import type { CloseAgentStepInput } from './lifecycle/agent-run-recorder.service.js'
 import type {
   RunCancellation,
   RunTerminationSource,
@@ -65,7 +60,6 @@ import {
   TOOL_OBSERVATION_HARD_MAX_CHARS,
 } from '../tools/core/tool-observation.js'
 import { ToolRegistryService } from '../tools/core/tool-registry.service.js'
-import { normalizeToolStepSummary } from '../tools/core/tool-step-summary.js'
 import { TOOL_DEFINITIONS } from '../tools/tool-definitions.js'
 import {
   AGENT_RUN_DEADLINE_EXCEEDED_MESSAGE,
@@ -83,15 +77,6 @@ import {
   SamplingContextBudgetExceededError,
   SamplingContextPlanner,
 } from './context/sampling-context-planner.js'
-import { submitGroundedAnswerToolSpec } from './grounding/grounded-answer.contract.js'
-import {
-  GroundedFinalizationFailedError,
-  GroundedFinalizationSamplingError,
-  runGroundedFinalization,
-} from './grounding/grounded-answer.finalizer.js'
-import { toMessageGroundingV1 } from './grounding/message-grounding.projector.js'
-import { RunEvidenceRegistry } from './grounding/run-evidence-registry.js'
-import { toValidatedAnswerChunks } from './grounding/validated-answer-replay.js'
 import {
   AGENT_STEP_TYPES,
   AgentRunRecorderService,
@@ -110,8 +95,6 @@ import { streamModelSampling } from './sampling/model-sampling-decision.js'
 
 /** 用户停止（或消费者提前断开）时中断的 Step 文案；Run 与 Message 走 ABORTED，不写失败文案。 */
 const RUN_ABORTED_MESSAGE = '用户已停止生成。'
-/** finalization 流不合协议、又没有更具体原因时的文案（沿用改动前的说法）。 */
-const MODEL_NO_RESULT_MESSAGE = '模型服务暂时没有返回结果，请稍后重试。'
 /** 数据库、工具执行等服务端自身故障的文案：不能说成模型服务的问题。 */
 const RUN_INTERNAL_FAILURE_MESSAGE = '服务端未能完成本轮回答，请稍后重试。'
 
@@ -124,12 +107,10 @@ interface ActiveSamplingClose {
 
 /** 被多个阶段写入、终态收口时读取的 Run 状态。 */
 interface RunTerminalSlots {
-  /** 用户可见正文：action 循环推可见文本、Grounding 重放时追加；完成与中断时原样写进 Message，失败时为空则换成失败文案。 */
+  /** 用户可见正文：action 循环推可见文本时追加；完成与中断时原样写进 Message，失败时为空则换成失败文案。 */
   content: string
-  /** 被打断的 Step 与归因文案：sampling / 工具执行 / grounded finalization 的 catch 与 finally 兜底写入；abortRun / failRun 按它关闭该 Step。 */
+  /** 被打断的 Step 与归因文案：sampling / 工具执行的 catch 与 finally 兜底写入；abortRun / failRun 按它关闭该 Step。 */
   stepFailure?: CloseAgentStepInput
-  /** 失败 / 中断时仍需落库的最新安全 output：只由 grounded finalization 写入；abortRun / failRun 带着它关闭仍未结束的该 Step。 */
-  stepMetadata?: CloseAgentStepMetadata
   /** 进行中的 action sampling：每轮开流时写入，收完或进 catch 时清空；消费者 return() 时 finally 按它关流并记中断 Step。 */
   samplingClose?: ActiveSamplingClose | undefined
 }
@@ -277,8 +258,8 @@ export class AgentRuntimeService {
       }
 
       let assistantOutputStepId: string | undefined
-      // 用户可见输出一开始就启动该 Step：非 Grounding 模式下 Tool Call 之前的中间文本也是
-      // 可见输出，因此它可能早于本轮的 tool_execution Step 创建，并在整个工具循环期间保持 RUNNING。
+      // 用户可见输出一开始就启动该 Step：Tool Call 之前的中间文本也是可见输出，
+      // 因此它可能早于本轮的 tool_execution Step 创建，并在整个工具循环期间保持 RUNNING。
       const startAssistantOutputStep = async (): Promise<void> => {
         if (assistantOutputStepId)
           return
@@ -293,8 +274,8 @@ export class AgentRuntimeService {
         assistantOutputStepId = step.id
       }
 
-      // Initial Context、后续 Sampling 与 Grounded finalization 共用同一份
-      // resolved 请求配置；它直接取自 Run 开始时的模型行快照，Run 中途不会漂移。
+      // Initial Context 与各轮 Sampling 共用同一份 resolved 请求配置；
+      // 它直接取自 Run 开始时的模型行快照，Run 中途不会漂移。
       const chatStreamOptions: ChatStreamOptions = {
         request: resolvedRequestConfig,
         signal: runSignal,
@@ -304,16 +285,8 @@ export class AgentRuntimeService {
       // 只有某轮 Sampling 返回 final_answer 才置为 true；
       // 轮数耗尽后仍为 false 表示 Agent Loop 未正常完成。
       let hasFinalAnswer = false
-      // 已发起的普通 action Tool Call 次数，按 call 计数（同轮多个 call 各算一次），
-      // 用于限制 maxToolCalls；不计入 Grounded finalization 使用的终态提交工具。
+      // 已发起的 Tool Call 次数，按 call 计数（同轮多个 call 各算一次），用于限制 maxToolCalls。
       let toolCallCount = 0
-      // Grounding Session：首次调用 evidence-eligible Tool 时建立，
-      // 用于累积检索证据、零命中或工具失败等事实；建立后最终回答
-      // 必须经过结构化 finalization，草稿不再直接流给用户。
-      let evidenceRegistry: RunEvidenceRegistry | undefined
-      // Grounding Session 建立后暂存最终回答那一轮的模型草稿；校验通过前不 yield 给前端，
-      // 也不写入 Assistant Message.content。带 Tool Call 的轮次文本不进这里，只回填模型。
-      let hiddenFinalDraft = ''
 
       for (
         let samplingAttempt = 1;
@@ -344,8 +317,6 @@ export class AgentRuntimeService {
         let completedSamplingDecision: SamplingDecision | undefined
         // Context Planner 本轮的规划结果；落库的字段见 toPersistedContextPlan。
         let contextPlanSummary: SamplingContextPlanSummary | undefined
-        // Grounding Session 建立后本轮暂存的文本；流结束前不知道它是草稿还是 Tool Call 前的中间文本。
-        let roundHiddenText = ''
         // 本轮是否已推出可见文本：只在本轮第一个 delta 前和上一轮的文本分段。
         let roundTextStarted = false
 
@@ -421,30 +392,22 @@ export class AgentRuntimeService {
           while (!samplingResult.done) {
             runCancellation.throwIfUnavailable()
 
-            if (evidenceRegistry) {
-              // 已建立 Grounding Session：文本只留在服务端内存，
-              // 校验通过前既不发 assistant_delta，也不写入 Message.content。
-              roundHiddenText += samplingResult.value
-            }
-            else {
-              // 尚未建立 Grounding Session：文本实时推给前端。若本轮随后由 evidence-eligible
-              // Tool 建立 Session，这段已推出的 delta 不可撤回，按 Issue #116 决策保留在 content。
-              await startAssistantOutputStep()
-              // 推出去的 delta 与写进 Message.content 的是同一个替换后的串。
-              const visibleText = toPersistableText(samplingResult.value)
-              const contentDelta = roundTextStarted
-                ? visibleText
-                : separateFromPreviousText(terminal.content, visibleText)
+            // 文本实时推给前端；Tool Call 轮的中间文本同样推出，并随 tool_calls 回填模型。
+            await startAssistantOutputStep()
+            // 推出去的 delta 与写进 Message.content 的是同一个替换后的串。
+            const visibleText = toPersistableText(samplingResult.value)
+            const contentDelta = roundTextStarted
+              ? visibleText
+              : separateFromPreviousText(terminal.content, visibleText)
 
-              roundTextStarted = true
-              terminal.content += contentDelta
-              yield {
-                type: 'assistant_delta',
-                runId: currentAgentRunId,
-                conversationId: input.conversationId,
-                assistantMessageId,
-                contentDelta,
-              }
+            roundTextStarted = true
+            terminal.content += contentDelta
+            yield {
+              type: 'assistant_delta',
+              runId: currentAgentRunId,
+              conversationId: input.conversationId,
+              assistantMessageId,
+              contentDelta,
             }
             samplingResult = await sampling.next()
           }
@@ -517,8 +480,6 @@ export class AgentRuntimeService {
         runCancellation.throwIfUnavailable()
 
         if (samplingDecision.type === 'final_answer') {
-          // Grounding 模式下只有最终回答这一轮的文本才是待校验草稿。
-          hiddenFinalDraft = roundHiddenText
           hasFinalAnswer = true
           break
         }
@@ -537,7 +498,7 @@ export class AgentRuntimeService {
           = samplingDecision.summary.finishReason === 'length'
 
         // 拿到执行工具的结果
-        const toolBatch = await this.executeToolBatch({
+        const toolResults = await this.executeToolBatch({
           // 记账
           runId: currentAgentRunId,
           samplingAttemptId,
@@ -550,12 +511,10 @@ export class AgentRuntimeService {
 
           // 情况 2 用不上
           runCancellation, // 本轮 sampling 的取消信号
-          evidenceRegistry, // tools 情况为 undefined
           // 某个 call 被打断时把该 Step 的失败归因写进 terminal.stepFailure，由外层 catch 收口。
           terminal, // 出错时写失败归因
         })
 
-        evidenceRegistry = toolBatch.evidenceRegistry
         runCancellation.throwIfUnavailable()
         // 把「模型叫了什么工具」和「工具回了什么」配成一组来回，放进上下文（此时还没发给模型）。
         // 示例（search_articles 查 Genshin 那次 Run），modelContext 里多出的这一组：
@@ -575,7 +534,7 @@ export class AgentRuntimeService {
           calls, // 模型要调用的工具
           intermediateText: samplingDecision.intermediateText, // 模型这轮要说的话
           reasoningContent: samplingDecision.reasoningContent, // 模型这轮的思考文本
-          results: toolBatch.toolResults, // 工具执行官
+          results: toolResults, // 工具执行官
         })
 
         // modelContext 多了下面这组
@@ -583,26 +542,6 @@ export class AgentRuntimeService {
 
       if (!hasFinalAnswer) {
         throw new AgentLoopLimitExceededError()
-      }
-
-      runCancellation.throwIfUnavailable()
-
-      let grounding: MessageGroundingV1 | undefined
-      let finalizationCommit: CloseAgentStepMetadata | undefined
-
-      if (evidenceRegistry) {
-        ({ grounding, finalizationCommit } = yield* this.finalizeGroundedAnswer({
-          runId: currentAgentRunId,
-          conversationId: input.conversationId,
-          assistantMessageId,
-          provider: input.model.provider,
-          chatStreamOptions,
-          evidenceRegistry,
-          hiddenFinalDraft,
-          runCancellation,
-          terminal,
-          startAssistantOutputStep,
-        }))
       }
 
       runCancellation.throwIfUnavailable()
@@ -615,8 +554,6 @@ export class AgentRuntimeService {
           assistantMessageId,
           assistantOutputStepId: assistantOutputStepId!,
           content: terminal.content,
-          ...(grounding ? { grounding } : {}),
-          ...(finalizationCommit ? { finalizationStep: finalizationCommit } : {}),
         },
         databaseDeadline,
         runCancellation.claimCompletion,
@@ -632,7 +569,6 @@ export class AgentRuntimeService {
         assistantMessageId,
         content: terminal.content,
         generatedAt: completedMessage.updatedAt.toISOString(),
-        ...(grounding ? { grounding } : {}),
       }
     }
     catch (error) {
@@ -680,7 +616,6 @@ export class AgentRuntimeService {
                 terminal.content,
               ),
               terminal.stepFailure,
-              terminal.stepMetadata,
             )
           }
           catch (terminalizationCause) {
@@ -725,7 +660,6 @@ export class AgentRuntimeService {
               terminal.content || errorMessage,
             ),
             terminal.stepFailure,
-            terminal.stepMetadata,
           )
         }
         catch (terminalizationCause) {
@@ -782,7 +716,6 @@ export class AgentRuntimeService {
               terminal.content,
             ),
             terminal.stepFailure,
-            terminal.stepMetadata,
           )
         }
         catch (terminalizationCause) {
@@ -801,11 +734,9 @@ export class AgentRuntimeService {
   }
 
   /**
-   * 执行一轮采样给出的全部 Tool Call：返回与 calls 一一对应的回填结果，以及登记过本批
-   * eligible 结果的 Evidence Registry（传入的沿用，否则由本批第一个 eligible 调用建立）。
+   * 执行一轮采样给出的全部 Tool Call：返回与 calls 一一对应的回填结果。
    * 某个 call 被停止、deadline 或工具自身抛错打断时，先确立终态原因，再把该 Step 的失败归因
    * 写进 terminal.stepFailure，然后原样抛出：外层 catch 要靠原异常判断终止来源。
-   * 抛出时本批才建立的 Registry 不会回到外层；外层 catch / finally 目前不读它，要读须先改成外层持有。
    */
   private async executeToolBatch(input: {
     runId: string
@@ -814,7 +745,6 @@ export class AgentRuntimeService {
     toolDefinitions: ToolDefinition[]
     argumentsTruncated: boolean
     runCancellation: RunCancellation
-    evidenceRegistry: RunEvidenceRegistry | undefined
     terminal: RunTerminalSlots
   }) {
     const {
@@ -827,9 +757,6 @@ export class AgentRuntimeService {
       terminal,
     } = input
     const { signal: runSignal, databaseDeadline } = runCancellation
-
-    // tools 情况不用，为 undefined
-    let evidenceRegistry = input.evidenceRegistry
 
     const toolResults: Array<{
       observation: NormalizedToolObservation // 回喂给模型的正文，
@@ -906,11 +833,6 @@ export class AgentRuntimeService {
         toolDefinition?.maxObservationChars
         ?? TOOL_OBSERVATION_HARD_MAX_CHARS,
       )
-      // 工具自愿提供的安全摘要；未通过 JSON / 体积 / 深度校验时整项跳过，
-      // 既不写入 AgentStep，也不影响 Tool Result 与本轮 Run 的收口。
-      const toolSummary = toolResult.ok
-        ? normalizeToolStepSummary(toolResult.stepSummary)
-        : undefined
       // 只有 ToolInvocationService 经 input.parse 校验后执行的调用，参数才可信；
       // 这三个 code 都发生在校验之前或根本没有校验，其余 code 都在校验通过之后。
       const argumentsValidated = toolResult.ok
@@ -932,7 +854,6 @@ export class AgentRuntimeService {
         output: {
           ok: toolResult.ok,
           ...(toolResult.ok ? {} : { code: toolResult.code }),
-          ...(toolSummary ? { toolSummary } : {}),
           originalChars: observation.originalChars,
           observationChars: observation.observationChars,
           truncated: observation.truncated,
@@ -960,20 +881,6 @@ export class AgentRuntimeService {
         )
       }
 
-      // Evidence policy 由服务端 Tool Definition 声明，模型 arguments 无法改变；
-      // zero-hit、not found 和执行失败同样建立 Session，它们是不同的证据事实。
-      // 参数没通过校验的调用（截断批次、invalid_arguments）根本没有执行，不构成任何证据事实。
-      if (argumentsValidated && toolDefinition?.evidencePolicy === 'eligible') {
-        evidenceRegistry ??= new RunEvidenceRegistry()
-        evidenceRegistry.recordEligibleToolOutcome({
-          toolName: toolDefinition.name,
-          ok: toolResult.ok,
-          // 始终原样传入：缺失投影本身就是需要被记录为 evidence failure 的事实，
-          // 不能在这里先过滤掉再让 Registry 误判成合法零命中。
-          evidence: toolResult.ok ? toolResult.evidence : undefined,
-        })
-      }
-
       toolResults.push({
         observation,
         ok: toolResult.ok,
@@ -981,153 +888,7 @@ export class AgentRuntimeService {
       })
     }
 
-    return { toolResults, evidenceRegistry }
-  }
-
-  /**
-   * Grounding Session 建立后的收尾：开 grounded_finalization Step，校验隐藏草稿并投影成 Message Grounding，
-   * 通过后经 assistant_delta 重放已校验正文，返回终态事务要一并提交的 grounding 与 finalization Step 收口内容。
-   * finalization Step 在重放期间保持 RUNNING，最新安全 output 始终在 terminal.stepMetadata：出错时先把
-   * 该 Step 的失败归因写进 terminal.stepFailure 再原样抛出；消费者提前 return() 不经过这里的 catch，
-   * 外层 finally 只按 terminal.stepMetadata 收口。
-   */
-  private async* finalizeGroundedAnswer(input: {
-    runId: string
-    conversationId: string
-    assistantMessageId: string
-    provider: LlmProviderCredentials
-    chatStreamOptions: ChatStreamOptions
-    evidenceRegistry: RunEvidenceRegistry
-    hiddenFinalDraft: string
-    runCancellation: RunCancellation
-    terminal: RunTerminalSlots
-    startAssistantOutputStep: () => Promise<void>
-  }): AsyncGenerator<AgentRuntimeEvent, {
-    grounding: MessageGroundingV1
-    finalizationCommit: CloseAgentStepMetadata
-  }> {
-    const {
-      runId,
-      conversationId,
-      assistantMessageId,
-      provider,
-      chatStreamOptions,
-      evidenceRegistry,
-      hiddenFinalDraft,
-      runCancellation,
-      terminal,
-      startAssistantOutputStep,
-    } = input
-    const { databaseDeadline } = runCancellation
-    // closeFinalizationStep 读 grounding 的当前值：投影通过前为空。
-    let grounding: MessageGroundingV1 | undefined
-    let finalizationCommit: CloseAgentStepMetadata | undefined
-
-    const finalizationStep = await this.agentRunRecorderService.startStep({
-      runId,
-      type: AGENT_STEP_TYPES.groundedFinalization,
-      input: {
-        assistantMessageId,
-        evidenceAvailability: evidenceRegistry.evidenceAvailability(),
-        registryRefCount: evidenceRegistry.summary().refCount,
-      },
-    }, databaseDeadline)
-    const registry = evidenceRegistry
-    // Runtime 自己持有 attempt 事实：模型调用一开始就记账，
-    // 不依赖某一种错误类型是否恰好把 attempts 带出来。
-    const finalizationAttempts: GroundedFinalizationAttemptSummary[] = []
-    const closeFinalizationStep = (error?: unknown): void => {
-      terminal.stepMetadata = {
-        id: finalizationStep.id,
-        output: this.toFinalizationStepOutput(
-          registry,
-          finalizationAttempts,
-          grounding,
-          error,
-        ),
-      }
-    }
-
-    closeFinalizationStep()
-
-    try {
-      const finalization = await runGroundedFinalization({
-        draft: hiddenFinalDraft,
-        registry,
-        assertAvailable: runCancellation.throwIfUnavailable,
-        onAttempt: (summary) => {
-          finalizationAttempts.push(summary)
-          closeFinalizationStep()
-        },
-        // finalization 只暴露终态输出契约，没有任何 action Tool，
-        // 因此不可能借这一轮继续调用工具或扩展 action-loop 预算。
-        sample: items => this.llmService.chatStream(provider, items, {
-          ...chatStreamOptions,
-          tools: [submitGroundedAnswerToolSpec],
-        }),
-      })
-
-      // done 事件与 Messages API 必须来自同一个 durable safe projector：
-      // 这里先按持久化形状过一遍投影，投影不通过就 fail closed，不写库也不外发。
-      const projected = toMessageGroundingV1(finalization.validated.grounding)
-
-      if (!projected) {
-        throw new GroundedFinalizationFailedError(
-          'schema_invalid',
-          finalization.attempts,
-        )
-      }
-
-      grounding = projected
-      // finalization Step 在 replay 期间保持 RUNNING：只有 replay 全部完成、
-      // 终态事务提交成功，它才和 Message / Grounding / Run 一起变成 COMPLETED。
-      finalizationCommit = {
-        id: finalizationStep.id,
-        output: this.toFinalizationStepOutput(
-          registry,
-          finalizationAttempts,
-          grounding,
-        ),
-      }
-      // 成功后的失败路径（replay Abort / Step 失败 / 终态事务回滚）
-      // 同样保留这份已经成立的 attempt 与 usage。
-      closeFinalizationStep()
-
-      runCancellation.throwIfUnavailable()
-      await startAssistantOutputStep()
-
-      // 校验通过后才通过既有 assistant_delta 重放正文；Session 建立前已推出的中间文本
-      // 与回答之间同样分段。chunks 拼接逐字符等于 persisted content 与 done.content。
-      for (const contentDelta of toValidatedAnswerChunks(
-        separateFromPreviousText(terminal.content, toPersistableText(finalization.validated.answer)),
-      )) {
-        runCancellation.throwIfUnavailable()
-        terminal.content += contentDelta
-        yield {
-          type: 'assistant_delta',
-          runId,
-          conversationId,
-          assistantMessageId,
-          contentDelta,
-        }
-      }
-    }
-    catch (error) {
-      closeFinalizationStep(error)
-      // 与 action sampling 同理：先确立终态原因，Step 文案再跟 Run 走同一套归因。
-      claimRunTermination(runCancellation, error)
-      terminal.stepFailure = {
-        id: finalizationStep.id,
-        errorMessage: describeRunFailure(
-          runCancellation.source,
-          runCancellation.reason ?? error,
-        ).message,
-        output: terminal.stepMetadata!.output,
-      }
-      throw error
-    }
-
-    return { grounding, finalizationCommit }
+    return toolResults
   }
 
   /**
@@ -1205,7 +966,7 @@ export class AgentRuntimeService {
 
       return [definition]
     })
-    // 模型只看到名称、说明与输入 Schema；timeout、Observation 预算与 evidence policy 留在服务端。
+    // 模型只看到名称、说明与输入 Schema；timeout 与 Observation 预算留在服务端。
     const modelTools = runtimePolicy.maxToolCalls === 0
       ? []
       : toolDefinitions.map(definition => ({
@@ -1473,61 +1234,6 @@ export class AgentRuntimeService {
       toolCallCount: capture.toolCallCount,
     })
   }
-
-  /**
-   * finalization Step 的 bounded 审计输出。
-   *
-   * 刻意不写入 finalization Prompt、reasoning、hidden draft、证据 excerpt 全文
-   * 和 citationKey；只保留可审计的计数、状态与安全错误类别。提示词里服务端派生的
-   * 标量（`buildFinalizationInput` 的 system 段）全部落库，与模型看到的一致。
-   */
-  private toFinalizationStepOutput(
-    registry: RunEvidenceRegistry,
-    attempts: GroundedFinalizationAttemptSummary[],
-    grounding?: MessageGroundingV1,
-    error?: unknown,
-  ): Prisma.InputJsonValue {
-    const summary = registry.summary()
-
-    return {
-      evidenceAvailability: summary.evidenceAvailability,
-      registryRefCount: summary.refCount,
-      registryTruncated: summary.registryTruncated,
-      eligibleToolCallCount: summary.eligibleToolCallCount,
-      eligibleToolFailureCount: summary.eligibleToolFailureCount,
-      attemptCount: attempts.length,
-      attempts: attempts.map(attempt => ({
-        attempt: attempt.attempt,
-        ok: attempt.ok,
-        ...(attempt.rejectionCode
-          ? { rejectionCode: attempt.rejectionCode }
-          : {}),
-        // 采样故障与「模型说错了」在审计里必须能逐 attempt 区分开。
-        ...(attempt.samplingFailure
-          ? { samplingFailure: attempt.samplingFailure }
-          : {}),
-        usage: toPersistedModelUsage(attempt.usage),
-      })),
-      ...(grounding
-        ? {
-            outcome: grounding.outcome,
-            citationCount: grounding.citations.length,
-          }
-        : {}),
-      ...(error instanceof GroundedFinalizationFailedError
-        ? { failureReason: 'validation_failed', rejectionCode: error.rejectionCode }
-        : {}),
-      // Provider 流不完整与「模型说错了」必须能在审计里区分开。
-      ...(error instanceof GroundedFinalizationSamplingError
-        ? { failureReason: 'sampling_incomplete', samplingFailure: error.failure }
-        : {}),
-      ...(error !== undefined
-        && !(error instanceof GroundedFinalizationFailedError)
-        && !(error instanceof GroundedFinalizationSamplingError)
-        ? { failureReason: 'finalization_incomplete' }
-        : {}),
-    }
-  }
 }
 
 interface RunFailure {
@@ -1553,10 +1259,8 @@ function describeRunFailure(
     return { errorCode: 'deadline', message: AGENT_RUN_DEADLINE_EXCEEDED_MESSAGE, rootCause: reason }
 
   // 流读取失败时，采样包装只说明「这一轮没完整结束」，真实原因在 cause 上。
-  const rootCause = (
-    reason instanceof ModelSamplingIncompleteError
-    || reason instanceof GroundedFinalizationSamplingError
-  ) && reason.cause !== undefined
+  const rootCause = reason instanceof ModelSamplingIncompleteError
+    && reason.cause !== undefined
     ? reason.cause
     : reason
 
@@ -1589,12 +1293,6 @@ function describeRuntimeError(
   // 模型没以 stop / tool_calls 完整结束（length / content_filter / unknown / 缺 response_completed）。
   if (error instanceof ModelSamplingIncompleteError)
     return { errorCode: 'llm_protocol', message: error.message }
-  // finalization 流本身不合协议：缺完成事件、多次提交、未知工具或 finish reason 不对。
-  if (error instanceof GroundedFinalizationSamplingError)
-    return { errorCode: 'llm_protocol', message: MODEL_NO_RESULT_MESSAGE }
-  // 引用校验失败必须与「知识库没有答案」区分开，不能伪装成 zero-hit。
-  if (error instanceof GroundedFinalizationFailedError)
-    return { errorCode: 'grounding_failed', message: error.message }
   if (error instanceof AgentLoopLimitExceededError)
     return { errorCode: 'loop_limit', message: error.message }
   if (error instanceof ContextBudgetExceededError)
@@ -1655,9 +1353,9 @@ function toPersistedContextPlan(
 }
 
 /**
- * Tool Call 轮随 assistant 消息回填给模型的内容：本轮文本（含 Grounding 模式下没推给用户的那段）
- * 与 reasoning continuation。DeepSeek 家族续轮一律回填 `reasoning_content`（模型没思考时为空串），
- * 这里仍只在非空时落库，重建时缺失即视为空串。final_answer 轮的文本是最终回答或待校验草稿，不在这里。
+ * Tool Call 轮随 assistant 消息回填给模型的内容：本轮文本与 reasoning continuation。
+ * DeepSeek 家族续轮一律回填 `reasoning_content`（模型没思考时为空串），这里仍只在非空时落库，
+ * 重建时缺失即视为空串。final_answer 轮的文本是最终回答，不在这里。
  */
 function toPersistedSamplingContent(
   decision: SamplingDecision,

@@ -16,7 +16,7 @@ const INSPECTOR = '.run-trace-inspector'
 async function openRunDetail(page: Page, detail: AdminRunDetail): Promise<void> {
   await installRunDetail(page, detail)
   await page.goto(`/runs/${RUN_ID}`)
-  await expect(page.locator('[data-testid="inspector-view-switch"]')).toBeVisible()
+  await expect(page.locator(INSPECTOR)).toBeVisible()
 }
 
 async function selectTimelineItem(page: Page, title: string): Promise<void> {
@@ -55,7 +55,7 @@ test.describe('Issue #152 Run Trace 展示模型可见内容', () => {
     await expect(observation.locator('pre')).toHaveText('第二个工具的结果')
   })
 
-  test('AC-06：采样详情显示中间文本、本轮历史与默认折叠的 reasoning，finalization 显示三个标量，Retrieval 显示 query', async ({ page }) => {
+  test('AC-06：采样详情显示中间文本、本轮历史与默认折叠的 reasoning', async ({ page }) => {
     await openRunDetail(page, createModelVisibleContentDetail())
     await selectTimelineItem(page, '模型采样')
 
@@ -70,16 +70,6 @@ test.describe('Issue #152 Run Trace 展示模型可见内容', () => {
     await reasoning.locator('summary').click()
     await expect(reasoning.locator('pre')).toHaveText('用户在问 SEO 指南，应先检索。')
 
-    await selectTimelineItem(page, '校验回答引用')
-    await inspector.getByRole('tab', { name: '安全 I/O' }).click()
-    await expect(inspector.locator('dt:text-is("Registry 已截断") + dd')).toHaveText('否')
-    await expect(inspector.locator('dt:text-is("证据类工具调用") + dd')).toHaveText('1')
-    await expect(inspector.locator('dt:text-is("证据类工具失败") + dd')).toHaveText('0')
-
-    await page.locator('[data-testid="inspector-view-switch"]').getByText('检索', { exact: true }).click()
-    await expect(page.locator('[data-testid="retrieval-calls"]')).toContainText('SEO 指南')
-
-    await page.locator('[data-testid="inspector-view-switch"]').getByText('事件', { exact: true }).click()
     await selectTimelineItem(page, '加载会话历史')
     await expect(inspector.locator('dt:text-is("候选历史条数") + dd')).toHaveText('3')
   })
@@ -103,4 +93,21 @@ test.describe('Issue #152 Run Trace 展示模型可见内容', () => {
     await expect(inspector.locator('dt:text-is("本轮历史") + dd')).toHaveText('选入 未记录 / 候选 2 条')
     expect(errors).toEqual([])
   })
+})
+
+test('Issue #94：Header 与 Sampling 展示 reasoning / cache Usage', async ({ page }) => {
+  await openRunDetail(page, createAnsweredDetail())
+
+  await page.locator('.trace-header').getByRole('button', { name: '详情' }).click()
+  const details = page.locator('.trace-header__details')
+
+  await expect(details).toContainText('推理 Token')
+  await expect(details).toContainText('缓存命中 Token')
+  await expect(details).toContainText('缓存未命中 Token')
+
+  await selectTimelineItem(page, '模型采样')
+  await page.getByRole('tab', { name: '用量' }).click()
+  await expect(page.locator(INSPECTOR)).toContainText('推理 Token')
+  await expect(page.locator(INSPECTOR)).toContainText('缓存命中 Token')
+  await expect(page.locator(INSPECTOR)).toContainText('缓存未命中 Token')
 })

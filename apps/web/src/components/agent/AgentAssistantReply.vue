@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import type { MessageGroundingV1 } from '@agent/contracts'
-
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
@@ -8,14 +6,11 @@ import AppIcon from '@/components/common/AppIcon.vue'
 import AppTooltip from '@/components/common/AppTooltip.vue'
 import { useCopyFeedback } from '@/hooks/useCopyFeedback'
 
-import AgentGroundingPanel from './AgentGroundingPanel.vue'
 import AgentMarkdownContent from './AgentMarkdownContent.vue'
 
 const props = defineProps<{
   text: string
   isStreaming?: boolean
-  /** 只有已完成回答才会拿到 Grounding；streaming、error 与 aborted 分支不传。 */
-  grounding?: MessageGroundingV1 | null
 }>()
 
 const { t } = useI18n()
@@ -34,11 +29,6 @@ function copyReply(event: MouseEvent) {
     <AgentMarkdownContent
       :text="text"
       :is-streaming="isStreaming"
-    />
-
-    <AgentGroundingPanel
-      v-if="!isStreaming && grounding"
-      :grounding="grounding"
     />
 
     <div class="mt-2 flex h-8 items-center gap-1 opacity-0 transition-opacity duration-150 group-hover/reply:opacity-100 group-focus-within/reply:opacity-100">

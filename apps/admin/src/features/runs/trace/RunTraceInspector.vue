@@ -1,39 +1,27 @@
 <script setup lang="ts">
 import type {
   AdminGenericStep,
-  AdminGroundedFinalizationStep,
   AdminModelSamplingStep,
-  AdminRetrievalInspector,
   AdminRunTimelineItem,
 } from '@agent/contracts'
 import type { TraceRecord, TraceRequestGroup } from './run-trace.model'
-import { Empty, Segmented, Tag } from 'ant-design-vue'
-import { computed, ref } from 'vue'
+import { Empty, Tag } from 'ant-design-vue'
+import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import RunStatusTag from '../components/RunStatusTag.vue'
 import { knownTimelineInspectorKeys, knownTimelineTitleKeys } from '../run.utils'
 import GenericInspector from './inspectors/GenericInspector.vue'
-import GroundedFinalizationInspector from './inspectors/GroundedFinalizationInspector.vue'
 import MessageInspector from './inspectors/MessageInspector.vue'
 import RequestInspector from './inspectors/RequestInspector.vue'
-import RetrievalInspector from './inspectors/RetrievalInspector.vue'
 import ToolExecutionInspector from './inspectors/ToolExecutionInspector.vue'
 
 const props = defineProps<{
   record: TraceRecord | undefined
   requestGroup: TraceRequestGroup | undefined
-  retrievalInspector: AdminRetrievalInspector
-  timeline: AdminRunTimelineItem[]
 }>()
 
 const { t } = useI18n()
-/** Event 保持默认视图；切到 Retrieval 只换右栏内容，不改动 timeline 选中态。 */
-const view = ref<'event' | 'retrieval'>('event')
-const viewOptions = computed(() => [
-  { value: 'event', label: t('retrieval.views.event') },
-  { value: 'retrieval', label: t('retrieval.views.retrieval') },
-])
 const item = computed(() => props.record?.item)
 type MessageTimelineItem = Extract<
   AdminRunTimelineItem,
@@ -64,13 +52,6 @@ const messageItem = computed<MessageTimelineItem | undefined>(() => {
 const genericItem = computed<AdminGenericStep | undefined>(() => item.value?.kind === 'generic'
   ? item.value
   : undefined)
-const finalizationItem = computed<AdminGroundedFinalizationStep | undefined>(() => {
-  const selected = item.value
-
-  return selected?.kind === 'known' && selected.type === 'grounded_finalization'
-    ? selected
-    : undefined
-})
 const requestNumber = computed(() => props.requestGroup?.number
   ?? props.record?.requestNumber
   ?? sampling.value?.samplingIndex
@@ -100,23 +81,7 @@ const title = computed(() => {
 
 <template>
   <aside class="run-trace-inspector" :aria-label="t('runTrace.inspector.ariaLabel')">
-    <div class="run-trace-inspector__switch">
-      <Segmented
-        v-model:value="view"
-        size="small"
-        :options="viewOptions"
-        :aria-label="t('retrieval.views.ariaLabel')"
-        data-testid="inspector-view-switch"
-      />
-    </div>
-
-    <template v-if="view === 'retrieval'">
-      <div class="run-trace-inspector__body">
-        <RetrievalInspector :inspector="retrievalInspector" :timeline="timeline" />
-      </div>
-    </template>
-
-    <template v-else-if="record && item">
+    <template v-if="record && item">
       <header class="run-trace-inspector__header">
         <div class="run-trace-inspector__identity">
           <h3 :title="title">
@@ -148,10 +113,6 @@ const title = computed(() => {
           v-else-if="item.kind === 'known' && item.type === 'tool_execution'"
           :item="item"
         />
-        <GroundedFinalizationInspector
-          v-else-if="finalizationItem"
-          :item="finalizationItem"
-        />
         <MessageInspector
           v-else-if="messageItem"
           :item="messageItem"
@@ -179,23 +140,6 @@ const title = computed(() => {
   overflow: hidden;
   color: var(--admin-text);
   background: var(--admin-surface-muted);
-}
-
-.run-trace-inspector__switch {
-  position: sticky;
-  z-index: 3;
-  top: 0;
-  display: flex;
-  flex: none;
-  min-width: 0;
-  padding: 14px 16px 0;
-  background: var(--admin-surface-muted);
-}
-
-.run-trace-inspector__switch :deep(.ant-segmented) {
-  min-width: 0;
-  max-width: 100%;
-  overflow-x: auto;
 }
 
 .run-trace-inspector__header {

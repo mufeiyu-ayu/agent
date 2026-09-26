@@ -44,21 +44,11 @@ export type {
   AdminDebugModelIOCapture,
   AdminDebugModelResponseCapture,
   AdminGenericStep,
-  AdminGroundedAnswerRejectionCode,
-  AdminGroundedCitationSummary,
-  AdminGroundedFinalizationFailureReason,
-  AdminGroundedFinalizationSamplingFailure,
-  AdminGroundedFinalizationStep,
   AdminLoadConversationHistoryStep,
   AdminModelFinishReason,
   AdminModelRef,
   AdminModelSamplingStep,
-  AdminRetrievalCallSummary,
-  AdminRetrievalInspector,
-  AdminRetrievalSourceRef,
-  AdminRetrievalStrategy,
   AdminRunDetail,
-  AdminRunKnownTimelineItemBase,
   AdminRunListItem,
   AdminRunListResponse,
   AdminRunMessage,
@@ -70,9 +60,6 @@ export type {
   AdminToolResultCode,
 } from './admin-run.js'
 export {
-  ADMIN_GROUNDED_ANSWER_REJECTION_CODES,
-  ADMIN_GROUNDED_FINALIZATION_FAILURE_REASONS,
-  ADMIN_GROUNDED_FINALIZATION_SAMPLING_FAILURES,
   ADMIN_MODEL_FINISH_REASONS,
   ADMIN_TOOL_RESULT_CODES,
 } from './admin-run.js'
@@ -112,17 +99,3 @@ export type {
   MessageStatus,
   UpdateConversationRequest,
 } from './conversation.js'
-export type {
-  MessageCitationGranularity,
-  MessageCitationV1,
-  MessageEvidenceAvailability,
-  MessageGroundingOutcome,
-  MessageGroundingV1,
-} from './grounding.js'
-export {
-  MESSAGE_EVIDENCE_AVAILABILITIES,
-  MESSAGE_GROUNDING_MAX_CITATIONS,
-  MESSAGE_GROUNDING_OUTCOMES,
-  MESSAGE_GROUNDING_SCHEMA_VERSION,
-  parseMessageGroundingV1,
-} from './grounding.js'

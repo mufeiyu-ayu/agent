@@ -33,7 +33,6 @@ const timeOptions: Intl.DateTimeFormatOptions = {
 
 export const knownTimelineTitleKeys = {
   assistant_output: 'timeline.titles.assistantOutput',
-  grounded_finalization: 'timeline.titles.groundedFinalization',
   load_conversation_history: 'timeline.titles.loadConversationHistory',
   model_sampling: 'timeline.titles.modelSampling',
   tool_execution: 'timeline.titles.toolExecution',
@@ -41,7 +40,6 @@ export const knownTimelineTitleKeys = {
 
 export const knownTimelineInspectorKeys = {
   assistant_output: 'timeline.inspectors.assistantOutput',
-  grounded_finalization: 'timeline.inspectors.groundedFinalization',
   load_conversation_history: 'timeline.inspectors.loadConversationHistory',
   model_sampling: 'timeline.inspectors.modelSampling',
   tool_execution: 'timeline.inspectors.toolExecution',

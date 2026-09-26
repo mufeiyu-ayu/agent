@@ -32,8 +32,8 @@ export const messages = {
         ariaLabel: 'Agent 工作流示意',
       },
       hero: {
-        title: '把站内知识变成有据可查的回答',
-        description: '一个面向知识库问答与多轮对话的 Agent 工作台，让每条回答都基于可核对的站内资料。',
+        title: '把站内知识变成回答',
+        description: '一个面向知识库问答与多轮对话的 Agent 工作台。',
       },
       actions: {
         openWorkspace: '打开工作台',
@@ -47,7 +47,7 @@ export const messages = {
         hint: '从一个示例开始：',
         ask: {
           label: '基于站内资料提问',
-          prompt: '请基于站内文章回答我的问题，并注明引用来源。我会在下一条消息里描述问题。',
+          prompt: '请基于站内文章回答我的问题。我会在下一条消息里描述问题。',
         },
         search: {
           label: '按关键词找文章',
@@ -55,7 +55,7 @@ export const messages = {
         },
         capabilities: {
           label: '了解它能做什么',
-          prompt: '介绍一下你能做什么：可以查哪些资料、有哪些工具、什么情况下会引用来源。',
+          prompt: '介绍一下你能做什么：可以查哪些资料、有哪些工具。',
         },
       },
       form: {
@@ -64,8 +64,6 @@ export const messages = {
         placeholder: '输入问题，或描述你想了解的内容...',
         animatedPrompts: {
           question: '输入一个问题，从站内资料里找答案...',
-          retrieve: '让 Agent 检索相关文章并注明来源...',
-          followUp: '继续追问，回答会带上可核对的引用...',
         },
         submit: '提交示例',
       },
@@ -73,7 +71,6 @@ export const messages = {
     navigation: {
       knowledgeQa: '知识库问答',
       articleSearch: '文章检索',
-      citedSources: '引用来源',
       runTrace: '运行轨迹',
       history: '历史对话',
       settings: '设置',
@@ -153,48 +150,25 @@ export const messages = {
           generating: '正在生成...',
         },
       },
-      grounding: {
-        status: {
-          answered: '这条回答引用了检索到的资料。',
-          conflicting: '检索到的资料之间存在冲突，请自行核对下面的内容。',
-          insufficientWithEvidence: '检索到了相关资料，但内容不足以支撑确定结论。',
-          insufficientNone: '本次没有检索到可用资料，无法据此确认。',
-          insufficientUnavailable: '本次检索能力暂时不可用，没有取到任何资料。',
-        },
-        note: {
-          partial: '本次有部分资料链未能取到，下面只列出通过来源校验的内容。',
-        },
-        sources: {
-          answered: '引用来源（{count}）',
-          checked: '已检查的资料（{count}）',
-          conflicting: '存在冲突的资料（{count}）',
-        },
-        granularity: {
-          article: '整篇文章',
-          chunk: '文章片段',
-        },
-      },
       starterPrompts: {
         ask: {
           label: '基于站内资料提问',
-          prompt: '请基于站内文章回答我的问题，并注明引用来源；资料不足时直接说明无法确认。我会在下一条消息里描述问题。',
+          prompt: '请基于站内文章回答我的问题；资料不足时直接说明无法确认。我会在下一条消息里描述问题。',
         },
         search: {
           label: '按关键词找文章',
-          prompt: '请帮我按关键词查找站内已有文章，列出标题、简介和 sourceId，方便我进一步读取全文。我会给出关键词。',
+          prompt: '请帮我按关键词查找站内已有文章，列出标题、简介和 sourceId。我会给出关键词。',
         },
         capabilities: {
           label: '了解它能做什么',
-          prompt: '请介绍一下你能做什么：可以查哪些资料、有哪些工具、什么情况下会引用来源，以及什么情况下会说明无法确认。',
+          prompt: '请介绍一下你能做什么：可以查哪些资料、有哪些工具，以及什么情况下会说明无法确认。',
         },
       },
     },
     composer: {
       placeholderHints: {
         ask: '输入你的问题，或让我检索站内资料…',
-        cite: '问问站内文章里是怎么说的…',
         search: '按关键词找找相关文章…',
-        summarize: '让我读完一篇文章，替你总结要点…',
       },
       modelSelectAria: '选择模型与思考强度',
       modelPlaceholder: '选择模型',
@@ -211,7 +185,7 @@ export const messages = {
       },
       replyPlaceholder: '继续追问…',
       attachSoon: '添加内容（即将支持）',
-      disclaimer: '回答由 AI 生成，可能出错，请核对引用来源。',
+      disclaimer: '回答由 AI 生成，可能出错。',
       send: '发送消息',
       stop: '停止生成',
     },
@@ -260,8 +234,8 @@ export const messages = {
         ariaLabel: 'Agent workflow visual',
       },
       hero: {
-        title: 'Turn your articles into cited answers',
-        description: 'An agent workspace for knowledge base Q&A and conversation that stays grounded in your own sources.',
+        title: 'Turn your articles into answers',
+        description: 'An agent workspace for knowledge base Q&A and conversation.',
       },
       actions: {
         openWorkspace: 'Open workspace',
@@ -275,7 +249,7 @@ export const messages = {
         hint: 'Start from an example:',
         ask: {
           label: 'Ask the knowledge base',
-          prompt: 'Answer my question from the article library and cite your sources. I will describe the question in my next message.',
+          prompt: 'Answer my question from the article library. I will describe the question in my next message.',
         },
         search: {
           label: 'Find articles by keyword',
@@ -283,7 +257,7 @@ export const messages = {
         },
         capabilities: {
           label: 'See what it can do',
-          prompt: 'Tell me what you can do: which material you can look up, which tools you have, and when you cite sources.',
+          prompt: 'Tell me what you can do: which material you can look up and which tools you have.',
         },
       },
       form: {
@@ -292,8 +266,6 @@ export const messages = {
         placeholder: 'Ask a question or describe what you need...',
         animatedPrompts: {
           question: 'Ask a question and get answers from your articles...',
-          retrieve: 'Let the agent retrieve articles and cite the sources...',
-          followUp: 'Keep asking; every reply carries checkable citations...',
         },
         submit: 'Submit static example',
       },
@@ -301,7 +273,6 @@ export const messages = {
     navigation: {
       knowledgeQa: 'Knowledge Q&A',
       articleSearch: 'Article search',
-      citedSources: 'Cited sources',
       runTrace: 'Run trace',
       history: 'Chat history',
       settings: 'Settings',
@@ -381,48 +352,25 @@ export const messages = {
           generating: 'Generating...',
         },
       },
-      grounding: {
-        status: {
-          answered: 'This reply cites material found by retrieval.',
-          conflicting: 'The retrieved material disagrees. Check the sources below yourself.',
-          insufficientWithEvidence: 'Related material was found, but it is not enough to support a firm conclusion.',
-          insufficientNone: 'No usable material was found for this question, so nothing could be confirmed.',
-          insufficientUnavailable: 'Retrieval was temporarily unavailable, so no material was fetched.',
-        },
-        note: {
-          partial: 'Part of the evidence chain could not be fetched. Only material that passed source validation is listed.',
-        },
-        sources: {
-          answered: 'Cited sources ({count})',
-          checked: 'Material checked ({count})',
-          conflicting: 'Conflicting material ({count})',
-        },
-        granularity: {
-          article: 'Full article',
-          chunk: 'Article section',
-        },
-      },
       starterPrompts: {
         ask: {
           label: 'Ask the knowledge base',
-          prompt: 'Please answer my question from the article library and cite your sources. If the material is not enough, say so instead of guessing. I will describe the question in my next message.',
+          prompt: 'Please answer my question from the article library. If the material is not enough, say so instead of guessing. I will describe the question in my next message.',
         },
         search: {
           label: 'Find articles by keyword',
-          prompt: 'Please find existing articles in the library by keyword and list their titles, summaries, and sourceIds so I can read the full text later. I will provide the keywords.',
+          prompt: 'Please find existing articles in the library by keyword and list their titles, summaries, and sourceIds. I will provide the keywords.',
         },
         capabilities: {
           label: 'See what it can do',
-          prompt: 'Please tell me what you can do: which material you can look up, which tools you have, when you cite sources, and when you will say something cannot be confirmed.',
+          prompt: 'Please tell me what you can do: which material you can look up, which tools you have, and when you will say something cannot be confirmed.',
         },
       },
     },
     composer: {
       placeholderHints: {
         ask: 'Ask a question or have me search the article library…',
-        cite: 'Ask what the articles say about a topic…',
         search: 'Find related articles by keyword…',
-        summarize: 'Have me read an article and sum it up…',
       },
       modelSelectAria: 'Select model and reasoning effort',
       modelPlaceholder: 'Select a model',
@@ -439,7 +387,7 @@ export const messages = {
       },
       replyPlaceholder: 'Reply…',
       attachSoon: 'Add content (coming soon)',
-      disclaimer: 'Answers are AI-generated and may be wrong. Check the cited sources.',
+      disclaimer: 'Answers are AI-generated and may be wrong.',
       send: 'Send message',
       stop: 'Stop generation',
     },

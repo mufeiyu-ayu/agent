@@ -15,7 +15,7 @@
 | 上下文 | source-aware `ModelContext`、每轮 `SamplingContextPlanner`、历史预算/Observation 治理 | branch context、compaction、request transforms | 保留预算与不可信数据边界；建立可持久化有效输入的契约 |
 | 运行记录 | Prisma Conversation / Message / AgentRun / AgentStep；Step input/output 记录统计及可选 debug payload | 旧 JSONL 与新 Session 的 branch/op/journal 是不同层级 | AgentStep 不是可恢复 operation journal，不能直接当 replay 驱动日志 |
 | 断线 | HTTP `close` 且响应未正常结束 → AbortController.abort；继续 drain generator 完成 ABORTED 收口 | durable 路径将 observer、attachment、lane operation 分开 | 云端运行独立于订阅，需要改变命令/观察协议与所有权；不能只删 abort |
-| Grounding | EvidenceRegistry、structured finalization、服务端 Citation identity 校验、MessageGrounding、Web/Admin typed projection | Pi 核心不替我们提供这套 RAG 引用事实 | 保留为我们的产品能力，迁移时放在明确的 runtime 扩展边界 |
+| Grounding | 已删除（#185）：2026-09-26 定案删除 RAG 与 Grounding 全链路（[workbench-direction](../workbench-direction.md) 第 9 节删除记录），只留 `search_articles` 作工具模板 | Pi 核心不提供 RAG 引用事实 | 不再保留；检索、索引与 embedding 的孤儿代码随第 ② 步删除 |
 | 安全 | 模型 Tool Call 先校验，Observation 治理；api 目前没有任何 Nest Guard，即零鉴权，Admin Task 4 的 Auth/RBAC 仍 Planned | 本机默认权限，实验 protocol 也不等于租户授权 | 鉴权触发为「第一个同事要用」（工作台方向第 7 节第 3 档，2026-09-23），此前只做低成本加固；审批与副作用隔离随 R3 |
 
 源码入口：
@@ -55,23 +55,21 @@ apps/api/src/
     context/        # 已有：source-aware context 与预算
     sampling/       # 已有：模型事件到业务决策
     lifecycle/      # 已有：Run/Step 与取消、deadline
-    grounding/      # 已有：引用事实与 finalization
   llm/              # 已有：Nest 壳读侧（LLMService 门面、LlmModelConfigService 解析模型行、api-key-cipher、LLMRuntimeConfigService 只读主密钥与 debug 开关）
   admin-llm/        # 已有（#142）：模型配置写侧（服务商 / 模型 CRUD、拉取、探测、导入预设）
   tools/            # 已有：registry/invocation/observation 归一化（硬上限 128k 字符）
 packages/ai/        # 已有（#120）：OpenAICompatibleClient、流适配、ModelStreamEvent / ModelInputItem / ModelToolSpec、LLM 错误、LLMModelProfile 类型与 resolveChatRequestConfig；零 Nest、零 Prisma。模型行与凭据来自数据库（#142 删了 resolveLLMRuntimeConfig 与硬编码模型表）
-packages/contracts/ # 已有：ChatStreamEvent、MessageGroundingV1、AgentRun/AgentStep 投影；R1/R4 改协议先动这里
+packages/contracts/ # 已有：ChatStreamEvent、AgentRun/AgentStep 投影；R1/R4 改协议先动这里
 ```
 
-R2 起新写的循环、operation 状态、工具契约进 `packages/agent`，并依赖 `@agent/ai` 的模型类型；上面各目录按被替换的节奏迁入，Grounding 拆校验规则进包、落库留 apps。对应 Issue 定案前不建新目录。
+R2 起新写的循环、operation 状态、工具契约进 `packages/agent`，并依赖 `@agent/ai` 的模型类型；上面各目录按被替换的节奏迁入。对应 Issue 定案前不建新目录。
 
 ## 4. 迁移时必须保留的东西
 
 1. 终态所有权与 COMMIT 不确定性的诚实表达；新恢复逻辑不能覆盖已确立的终态。
 2. Tool Call / Result 配对、来源 identity、runtime policy 与 deadline；减少代码不能减少边界检查。
-3. Grounding Session 之后的草稿隐藏、引用 identity 校验、持久化 Grounding 与前端 fail-closed normalization。
-4. Web/Admin 的 typed projection 与脱敏边界。Pi 的 transcript 不应直接代替我们的 UI/API contract。
-5. 当前可运行链路。正式改动逐 Issue 验证，不以“像 Pi”为理由一次迁移数据库、流协议与整个前端。
+3. Web/Admin 的 typed projection 与脱敏边界。Pi 的 transcript 不应直接代替我们的 UI/API contract。
+4. 当前可运行链路。正式改动逐 Issue 验证，不以“像 Pi”为理由一次迁移数据库、流协议与整个前端。
 
 ## 5. 当前状态不由研究重写
 

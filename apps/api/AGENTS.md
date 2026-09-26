@@ -18,8 +18,8 @@ Prisma schema 在仓库根 `prisma/`，生成的 client 在 `src/generated/prism
 | 目录 | 职责 | 核心文件 |
 | --- | --- | --- |
 | `chat/` | 前台对话入口：DTO、系统提示词、NDJSON 流协议适配 | `chat.controller.ts`（`POST /api/chat/stream`）、`chat.service.ts`、`prompts/` |
-| `agent-runtime/` | 一次用户输入的 AgentRun 编排；子目录按领域分：`context`（模型可见上下文）、`sampling`（采样决策 / 调试捕获）、`grounding`（证据与引用校验）、`lifecycle`（Run / Step 记录与取消）、`configuration`（运行策略） | `agent-runtime.service.ts`（主循环）、`agent-runtime.types.ts`；细节见目录内 `README.md` |
-| `tools/` | Tool Calling：注册、参数校验、执行、Observation 预算；`articles/`、`retrieval/` 是具体工具 | `tool-definitions.ts`（工具清单）、`core/tool-registry.service.ts`、`core/tool-invocation.service.ts` |
+| `agent-runtime/` | 一次用户输入的 AgentRun 编排；子目录按领域分：`context`（模型可见上下文）、`sampling`（采样决策 / 调试捕获）、`lifecycle`（Run / Step 记录与取消）、`configuration`（运行策略） | `agent-runtime.service.ts`（主循环）、`agent-runtime.types.ts`；细节见目录内 `README.md` |
+| `tools/` | Tool Calling：注册、参数校验、执行、Observation 预算；`articles/` 是具体工具（只有 `search_articles`） | `tool-definitions.ts`（工具清单）、`core/tool-registry.service.ts`、`core/tool-invocation.service.ts` |
 | `retrieval/` | 文章检索契约、策略与评估 | `article-retrieval.ts`、`hybrid-article-retrieval.runtime.ts`；见目录 `README.md` |
 | `article-indexing/` | 文章分块与向量索引 | `article-chunking.ts`（Facade）、`article-indexer.ts`；见目录 `README.md` |
 | `embeddings/` | Gemini embedding 接入，常量在 `embedding-provider.ts`；SDK 没有 dispatcher 入口，代理只经全局出口 | `gemini-embedding.provider.ts` |
@@ -33,13 +33,13 @@ Prisma schema 在仓库根 `prisma/`，生成的 client 在 `src/generated/prism
 ## 不变量
 
 - 模型看到的必须能从持久化记录重建：action 循环内成立，落在哪些 Step 字段与范围外的部分见根 `AGENTS.md` 第 6 节；新增模型可见内容时同一次改动里落库。`AgentStep` 是系统执行过程，采样 Step 的 `reasoningContent` 只是为重建而存的回填内容。
-- 模型输出不可信：工具名、参数、引用 key 先校验再执行；检索正文按 untrusted data 注入。
+- 模型输出不可信：工具名、参数先校验再执行；检索正文按 untrusted data 注入（已知缺口：`search_articles` 的文章摘录以纯 JSON 回喂，没有隔离标记）。
 - 终态所有权：晚到的 Abort / deadline / DB 结果不能覆盖已确立终态。
 - 失败归因同源：Run 的 `errorCode`、失败采样 Step 的文案与前台 error 事件都在终态确立后由 `agent-runtime.service.ts` 的 `describeRunFailure` 一处得出；LLMError 的用户文案与 `AllExceptionsFilter` 共用 `common/utils/llm-error-message.util.ts`。
 - 服务商 API Key 只以密文入库，任何接口只回显尾四位；主密钥 `AGENT_SECRET_KEY` 只在 `llm/` 内使用。库里的密钥只发往库里的地址：拉取 / 测试只带 providerId 时用库里的 baseUrl，换地址（含 PATCH 服务商）必须同时重填 key；余额只查 https 的官方 DeepSeek 账号，响应只投影声明字段。
 - 出站代理：地址只在 `.env` 的 `OUTBOUND_PROXY_URL`（不读 `HTTPS_PROXY` / `NO_PROXY`），`LLMService` 在启动阶段把唯一的代理 agent 装成全局出口（embedding 经它），模型请求按服务商 `useProxy` 显式传代理或直连 dispatcher；勾选了但没配时失败（`llm_network`），不静默直连。进文案、接口与日志的只有去掉凭据的 `协议://主机:端口`。CLI 入口不经 Nest，各自调 `installOutboundProxyFromEnv`。
 - 家族协议事实（thinking / reasoning_effort 取值）只在 `@agent/contracts` 的 `LLM_FAMILY_CAPABILITIES` 一处。
-- 管理台「模型调用」口径同源：有 usage 或以 llm_* 类别失败的 action sampling / finalization attempt 才算，运行列表与 Run Trace 走 `sampling-usage.projector.ts` 的 `aggregateRunModelCalls`，概览 SQL 复用同文件的 `LLM_CALL_ERROR_CODES`；改一处要同步另一处。
+- 管理台「模型调用」口径同源：有 usage 或以 llm_* 类别失败的 action sampling 才算，运行列表与 Run Trace 走 `sampling-usage.projector.ts` 的 `aggregateRunModelCalls`，概览 SQL 复用同文件的 `LLM_CALL_ERROR_CODES`；改一处要同步另一处。
 
 ## 验证
 

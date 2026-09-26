@@ -79,60 +79,6 @@ describe('Admin Run projector', () => {
     )
   })
 
-  it('AC-06：2 次 sampling + 1 次 finalization（2 attempts）的 totalTokens 等于 4 次调用之和', () => {
-    const record = createRunRecord()
-    record.steps = [
-      ...record.steps.filter(step => step.sequence !== 7),
-      step(10, 'grounded_finalization', {
-        input: groundedFinalizationInput(),
-        output: groundedFinalizationOutput([
-          { ok: false, usage: { inputTokens: 5, outputTokens: 2, totalTokens: 7 } },
-          { ok: true, usage: { inputTokens: 6, outputTokens: 3, totalTokens: 9 } },
-        ]),
-      }),
-    ]
-
-    const item = projectAdminRunListItem(record, null)
-    const detail = projectAdminRunDetail(record, null)
-    const stepUsages = detail.timeline.flatMap(candidate => (
-      candidate.kind === 'known'
-      && (candidate.type === 'model_sampling' || candidate.type === 'grounded_finalization')
-        ? [candidate.usage]
-        : []
-    ))
-
-    // 2 次 action sampling + 2 次 finalization attempt。
-    assert.equal(item.samplingCount, 4)
-    assert.equal(item.usage.totalTokens, 15 + 28 + 7 + 9)
-    assert.equal(
-      stepUsages.reduce((total, usage) => total + (usage?.totalTokens ?? 0), 0),
-      item.usage.totalTokens,
-    )
-
-    // 任一调用缺 totalTokens 时该项为 null，其余项照常。
-    const output = record.steps.find(candidate => candidate.sequence === 10)!
-      .output as { attempts: Array<{ usage: Record<string, unknown> }> }
-    delete output.attempts[1]!.usage.totalTokens
-
-    const partial = projectAdminRunListItem(record, null)
-
-    assert.equal(partial.usage.totalTokens, null)
-    assert.equal(partial.usage.inputTokens, 10 + 20 + 5 + 6)
-    assert.equal(partial.usage.outputTokens, 5 + 8 + 2 + 3)
-  })
-
-  it('finalization attempts 缺失或不是数组时不计入次数，usage 不受影响', () => {
-    for (const output of [null, { attemptCount: 1 }, { attempts: 'not-an-array' }]) {
-      const record = createRunRecord()
-      record.steps = [...record.steps, step(10, 'grounded_finalization', { output })]
-
-      const item = projectAdminRunListItem(record, null)
-
-      assert.equal(item.samplingCount, 3)
-      assert.equal(item.usage.totalTokens, 83)
-    }
-  })
-
   it('调用口径与概览一致：没有 usage 又不是 llm_* 失败的不算调用，也不把 Token 变成未记录', () => {
     const record = createRunRecord()
     record.steps = [
@@ -140,9 +86,6 @@ describe('Admin Run projector', () => {
       // 估算失败 / 上下文溢出 / 请求前取消：从未发出请求。
       step(10, 'model_sampling', { status: 'FAILED', output: { contextFailureReason: 'estimator_failure' } }),
       step(11, 'model_sampling', { status: 'ABORTED', output: { usage: null, errorCode: 'aborted' } }),
-      step(12, 'grounded_finalization', {
-        output: groundedFinalizationOutput([{ ok: true, usage: null }]),
-      }),
     ]
 
     const item = projectAdminRunListItem(record, null)
@@ -154,37 +97,22 @@ describe('Admin Run projector', () => {
   it('以 llm_* 类别失败的调用计入次数，Token 只汇总带 usage 的调用', () => {
     const record = createRunRecord()
     record.status = 'FAILED'
-    record.errorCode = 'llm_network'
+    record.errorCode = 'llm_auth'
     record.steps = [
       ...record.steps,
       step(10, 'model_sampling', { status: 'FAILED', output: { usage: null, errorCode: 'llm_auth' } }),
-      step(11, 'grounded_finalization', {
-        status: 'FAILED',
-        output: {
-          attempts: [
-            { attempt: 1, ok: false, usage: { inputTokens: 5, outputTokens: 2, totalTokens: 7 } },
-            // finalization 的采样故障就是 Run 的终态原因，按 Run 的 errorCode 判断。
-            { attempt: 2, ok: false, samplingFailure: 'stream_failed', usage: null },
-          ],
-        },
-      }),
     ]
 
     const failed = projectAdminRunListItem(record, null)
 
-    assert.equal(failed.samplingCount, 3 + 1 + 2)
-    assert.equal(failed.usage.totalTokens, 83 + 7)
-
-    // 同样的 attempt，Run 是用户停止：请求是否发出无从确认，不算调用。
-    record.status = 'ABORTED'
-    record.errorCode = 'aborted'
-    assert.equal(projectAdminRunListItem(record, null).samplingCount, 3 + 1 + 1)
+    assert.equal(failed.samplingCount, 3 + 1)
+    assert.equal(failed.usage.totalTokens, 83)
   })
 
   it('失败文案只认终态事务里与 Run 一起收口的 Step；成功 Run 与两 Step 之间中断为 null', () => {
     const record = createRunRecord()
     // 更早失败、已回喂模型的工具 Step：有自己的 endedAt，与终态无关。
-    record.steps.find(candidate => candidate.sequence === 6)!.errorMessage = '工具 get_article_detail 返回 invalid_arguments。'
+    record.steps.find(candidate => candidate.sequence === 6)!.errorMessage = '工具 search_articles 返回 invalid_arguments。'
 
     assert.equal(projectAdminRunListItem(record, null).failureMessage, null)
 
@@ -290,14 +218,14 @@ describe('Admin Run projector', () => {
         ['model_sampling', 'known'],
         ['tool_execution', 'known'],
         ['model_sampling', 'known'],
-        ['grounded_finalization', 'known'],
+        // #185 删除后不再有这类 Step：老数据按通用 Step 显示。
+        ['grounded_finalization', 'generic'],
         ['assistant_output', 'known'],
       ],
     )
-    // registryTruncated / eligibleToolCallCount 是 #152 起的契约字段（旧 Run 恰好也写过），不在忽略之列。
     assert.doesNotMatch(
       serialized,
-      /toolVersion|executionAttempt|retryable|rawArgumentsChars|requestedModel|textChars|schemaVersion|citationIntegrity|contentLength|estimatorStrategyId|contextWindowTokens|exchangeIndex|toolCeilingTruncated|submittedCitationKeyCount|recordedDurationMs/,
+      /toolVersion|executionAttempt|retryable|rawArgumentsChars|requestedModel|textChars|contentLength|estimatorStrategyId|contextWindowTokens|exchangeIndex|toolCeilingTruncated|recordedDurationMs/,
     )
     assert.doesNotMatch(serialized, /DO_NOT_LEAK/)
 
@@ -317,27 +245,20 @@ describe('Admin Run projector', () => {
     assert.equal(sampling.intermediateText, null)
     assert.equal(sampling.reasoningContent, null)
 
-    // 旧 Run 没有落参数与 observation：投影为 null，不报错。
+    // 旧 Run 没有落参数与 observation：投影为 null，不报错。已删除工具的老 Step 照常按工具 Step 显示。
     const tool = detail.timeline.find(item => item.sequence === 4)
     assert.ok(tool?.kind === 'known' && tool.type === 'tool_execution', 'tool?.kind === \'known\' && tool.type === \'tool_execution\'')
     assert.equal(tool.toolName, 'retrieve_article_context')
     assert.equal(tool.ok, true)
     assert.equal(tool.arguments, null)
     assert.equal(tool.observation, null)
-    assert.equal(detail.retrievalInspector.retrievalCalls[0]?.query, null)
 
-    const finalization = detail.timeline.find(item => item.sequence === 6)
-    assert.ok(finalization?.kind === 'known' && finalization.type === 'grounded_finalization', 'finalization?.kind === \'known\' && finalization.type === \'grounded_finalization\'')
-    assert.equal(finalization.evidenceAvailability, 'available')
-    assert.equal(finalization.outcome, 'answered')
-    assert.equal(finalization.attemptCount, 1)
-    assert.equal(finalization.registryRefCount, 2)
-    assert.equal(finalization.usage?.totalTokens, 9)
-    assert.equal(detail.samplingCount, 3)
-    assert.equal(detail.retrievalInspector.retrievalCalls.length, 1)
+    // 第 6 步这类老 Step 的 attempt 不再计入模型调用，只剩两次 action sampling。
+    assert.equal(detail.samplingCount, 2)
+    assert.equal(detail.usage.totalTokens, 15 + 28)
   })
 
-  it('五类已知 Step 使用 allowlist，unknown Step 安全降级且 Timeline 按 sequence 排序', () => {
+  it('四类已知 Step 使用 allowlist，unknown Step 安全降级且 Timeline 按 sequence 排序', () => {
     const detail = projectAdminRunDetail(createRunRecord(), null)
     const serialized = JSON.stringify(detail)
 
@@ -535,7 +456,6 @@ describe('Admin Run projector', () => {
     assert.equal(abortedDetail.timeline.at(-1)?.kind, 'known')
     assert.equal(abortedDetail.timeline.at(-1)?.status, 'ABORTED')
     assert.deepEqual(abortedDetail.messages.map(message => message.role), ['USER'])
-    assert.equal(abortedDetail.retrievalInspector.citations, null)
   })
 
   it('Message 固定按 Run 的 user / assistant 关系排序，不用同毫秒 ID 猜顺序', () => {
@@ -683,8 +603,8 @@ describe('AdminRunsService', () => {
     assert.doesNotMatch(query.sql, /debug/i)
     // 整列只能出现在 `->` 左边（取路径）或作为别名，不能被原样选出。
     assert.doesNotMatch(query.sql, /(?<!AS )"(input|output)"(?!\s*->)/)
-    // 三类统计 Step 都在参数里，且只查本页的 Run。
-    for (const type of ['model_sampling', 'tool_execution', 'grounded_finalization'])
+    // 两类统计 Step 都在参数里，且只查本页的 Run。
+    for (const type of ['model_sampling', 'tool_execution'])
       assert.ok(query.values.includes(type), 'query.values.includes(type)')
     assert.ok(query.values.some(value => Array.isArray(value) && value.includes('run-1')), 'query.values.some(value => Array.isArray(value) && value.includes(\'run-1\'))')
   })
@@ -722,39 +642,6 @@ describe('AdminRunsService', () => {
     const legacy = createServiceHarness()
     assert.equal((await legacy.service.list({})).items[0]?.model, null)
     assert.equal(legacy.calls.llmModelFindMany.length, 0)
-  })
-
-  it('列表统计包含 grounded finalization 的采样次数与 Token', async () => {
-    const harness = createServiceHarness({ list: createGroundedListRecord() })
-
-    const response = await harness.service.list({})
-    const item = response.items[0]
-
-    // 3 次 action sampling + 1 次 finalization attempt。
-    assert.equal(item?.samplingCount, 4)
-    assert.deepEqual(item?.usage, {
-      inputTokens: 60 + 4,
-      outputTokens: 23 + 1,
-      totalTokens: 83 + 5,
-      reasoningTokens: null,
-      promptCacheHitTokens: null,
-      promptCacheMissTokens: null,
-    })
-  })
-
-  it('详情查询把 MessageGrounding 整行交给 projector', async () => {
-    const harness = createServiceHarness()
-
-    const detail = await harness.service.getDetail('run-1')
-
-    assert.equal(
-      (harness.calls.findUnique[0]?.select as {
-        assistantMessage?: { select?: { grounding?: boolean } }
-      }).assistantMessage?.select?.grounding,
-      true,
-    )
-    assert.equal(detail.id, 'run-1')
-    assert.equal(detail.timeline.length, 9)
   })
 
   it('拒绝反向日期范围', async () => {
@@ -810,7 +697,7 @@ function createRunRecord() {
       status: 'FAILED',
       input: {
         callId: 'call-2',
-        toolName: 'get_article_detail',
+        toolName: 'search_articles',
         samplingAttemptId: 'run-1:sampling-2',
         rawArgumentsJson: 'DO_NOT_LEAK',
       },
@@ -884,7 +771,7 @@ function createRunRecord() {
   return record
 }
 
-/** #124 之前 runtime 落库的真实形状：含全部已停写字段。 */
+/** #124 之前 runtime 落库的真实形状：含已停写字段（第 6 步只留计数相关的 attempts）。 */
 function createLegacyRunRecord() {
   const record = createRunRecord()
 
@@ -942,17 +829,6 @@ function createLegacyRunRecord() {
         observationChars: 3_000,
         truncated: true,
         durationMs: 420,
-        toolSummary: {
-          status: 'candidates_returned',
-          answerStatus: 'unverified',
-          strategy: { name: 'hybrid_rrf', version: '2' },
-          sourceCount: 2,
-          chunkEvidenceCount: 2,
-          sources: [
-            { sourceId: 11, chunkId: 'chunk-a' },
-            { sourceId: 12, chunkId: 'chunk-b' },
-          ],
-        },
       },
     }),
     step(5, 'model_sampling', {
@@ -994,31 +870,13 @@ function createLegacyRunRecord() {
       },
     }),
     step(6, 'grounded_finalization', {
-      input: {
-        assistantMessageId: 'message-assistant',
-        evidenceAvailability: 'available',
-        registryRefCount: 2,
-        registryTruncated: false,
-      },
       output: {
-        evidenceAvailability: 'available',
-        registryRefCount: 2,
-        registryTruncated: false,
-        eligibleToolCallCount: 1,
-        eligibleToolFailureCount: 0,
         attemptCount: 1,
         attempts: [{
           attempt: 1,
           ok: true,
-          submittedCitationKeyCount: 1,
           usage: { inputTokens: 6, outputTokens: 3, totalTokens: 9 },
-          durationMs: 500,
         }],
-        outcome: 'answered',
-        citationCount: 1,
-        citationIntegrity: 'validated',
-        faithfulnessStatus: 'not_evaluated',
-        schemaVersion: 1,
       },
     }),
     step(7, 'assistant_output', {
@@ -1028,35 +886,6 @@ function createLegacyRunRecord() {
   ]
 
   return record
-}
-
-/** Runtime 在 startStep 就写入的 Registry 快照与归属事实。 */
-function groundedFinalizationInput() {
-  return {
-    assistantMessageId: 'message-assistant',
-    evidenceAvailability: 'available',
-    registryRefCount: 2,
-  }
-}
-
-function groundedFinalizationOutput(
-  attempts: Array<{
-    ok: boolean
-    usage: { inputTokens: number, outputTokens: number, totalTokens: number } | null
-  }>,
-) {
-  return {
-    evidenceAvailability: 'available',
-    registryRefCount: 2,
-    attemptCount: attempts.length,
-    attempts: attempts.map((attempt, index) => ({
-      attempt: index + 1,
-      ok: attempt.ok,
-      usage: attempt.usage,
-    })),
-    outcome: 'answered',
-    citationCount: 1,
-  }
 }
 
 function attachContextMetadata(record: ReturnType<typeof createRunRecord>): void {
@@ -1165,11 +994,11 @@ function createServiceHarness(options: {
         return options.detail === undefined ? record : options.detail
       },
     },
-    // 模拟列表 Step SQL 的真实行为：只回三类统计 Step 与失败 / 中断 Run 终态收口的带错误文案 Step，JSON 只留需要的路径。
+    // 模拟列表 Step SQL 的真实行为：只回两类统计 Step 与失败 / 中断 Run 终态收口的带错误文案 Step，JSON 只留需要的路径。
     async $queryRaw(query: Prisma.Sql) {
       calls.queryRaw.push(query)
       return listRecord.steps
-        .filter(candidate => ['model_sampling', 'tool_execution', 'grounded_finalization'].includes(candidate.type)
+        .filter(candidate => ['model_sampling', 'tool_execution'].includes(candidate.type)
           || (candidate.errorMessage !== null
             && (listRecord.status === 'FAILED' || listRecord.status === 'ABORTED')
             && candidate.endedAt?.getTime() === listRecord.endedAt?.getTime()))
@@ -1203,25 +1032,6 @@ function toListStepRow(runId: string, candidate: ReturnType<typeof step>) {
     input: candidate.type === 'model_sampling' ? { initialContext: input?.initialContext ?? null } : null,
     output: candidate.type === 'model_sampling'
       ? { usage: output?.usage ?? null, errorCode: output?.errorCode ?? null }
-      : candidate.type === 'grounded_finalization'
-        ? { attempts: output?.attempts ?? null }
-        : null,
+      : null,
   }
-}
-
-/** 列表 Run 记录：追加一次成功的 finalization attempt。 */
-function createGroundedListRecord() {
-  const record = createRunRecord()
-
-  record.steps = [
-    ...record.steps,
-    step(10, 'grounded_finalization', {
-      input: groundedFinalizationInput(),
-      output: groundedFinalizationOutput([
-        { ok: true, usage: { inputTokens: 4, outputTokens: 1, totalTokens: 5 } },
-      ]),
-    }),
-  ]
-
-  return record
 }
