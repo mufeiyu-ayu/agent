@@ -3,9 +3,7 @@ import type { ModelStreamEvent, ModelUsage } from '../types.js'
 import type { AdaptStreamOptions } from './openai-completions-stream.js'
 import assert from 'node:assert/strict'
 
-// 项目本轮使用 Node 原生测试运行器，不引入 Vitest。
-// eslint-disable-next-line test/no-import-node-test
-import { describe, it } from 'node:test'
+import { describe, it } from 'vitest'
 import { LLMApiError } from '../errors.js'
 import { adaptOpenAICompatibleStream } from './openai-completions-stream.js'
 import {

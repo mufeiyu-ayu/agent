@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict'
-// eslint-disable-next-line test/no-import-node-test
-import test from 'node:test'
+import { it } from 'vitest'
 
 import { nextTick, ref } from 'vue'
 
@@ -41,7 +40,7 @@ async function settleDuration(backlog: number): Promise<number> {
   assert.fail(`积压 ${backlog} 字在 1.6s 内都没放完`)
 }
 
-test('#169 AC-05 流结束时积压多少都在 150ms 内提交完整正文', async () => {
+it('#169 AC-05 流结束时积压多少都在 150ms 内提交完整正文', async () => {
   for (const backlog of [20, 500, 2000])
     assert.ok(await settleDuration(backlog) <= 150, `积压 ${backlog} 字`)
 })

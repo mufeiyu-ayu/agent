@@ -1,10 +1,9 @@
 import type { RenderMarkdownBlocksOptions } from './markdown-blocks'
 
 import assert from 'node:assert/strict'
-// eslint-disable-next-line test/no-import-node-test
-import test from 'node:test'
-
 import MarkdownIt from 'markdown-it'
+
+import { it } from 'vitest'
 
 import { highlightCode } from './code-highlighter'
 import { renderMarkdownBlocks } from './markdown-blocks'
@@ -23,12 +22,12 @@ function firstHtml(text: string, options?: RenderMarkdownBlocksOptions) {
   return block.type === 'markdown' ? block.html : ''
 }
 
-test('空文档与普通段落', () => {
+it('空文档与普通段落', () => {
   assert.deepEqual(blocksOf(''), [])
   assert.deepEqual(blocksOf('正文'), [{ type: 'markdown', html: '<p>正文</p>\n' }])
 })
 
-test('顶层围栏形成稳定卡片，原样保留空白与缩进', () => {
+it('顶层围栏形成稳定卡片，原样保留空白与缩进', () => {
   assert.deepEqual(blocksOf('前文\n```ts\n\n    const a = 1\n\n```\n后文'), [
     { type: 'markdown', html: '<p>前文</p>\n' },
     { type: 'code', language: 'ts', code: '\n    const a = 1\n\n', isOpen: false },
@@ -36,7 +35,7 @@ test('顶层围栏形成稳定卡片，原样保留空白与缩进', () => {
   ])
 })
 
-test('开头围栏即建立卡片，不把无语言开头误判为已闭合', () => {
+it('开头围栏即建立卡片，不把无语言开头误判为已闭合', () => {
   for (const input of ['```', '```html', '~~~json']) {
     const blocks = blocksOf(input)
     assert.equal(blocks.length, 1)
@@ -48,20 +47,20 @@ test('开头围栏即建立卡片，不把无语言开头误判为已闭合', ()
   }
 })
 
-test('未闭合代码保留缩进，完成状态由调用方而非围栏决定', () => {
+it('未闭合代码保留缩进，完成状态由调用方而非围栏决定', () => {
   assert.deepEqual(blocksOf('```svg\n  <svg>'), [
     { type: 'code', language: 'svg', code: '  <svg>', isOpen: true },
   ])
 })
 
-test('行内反引号与代码字符串中的反引号不是围栏', () => {
+it('行内反引号与代码字符串中的反引号不是围栏', () => {
   assert.equal(blocksOf('文字 ```js``` 文字')[0].type, 'markdown')
   assert.deepEqual(blocksOf('```js\nconst s = "```"\n```'), [
     { type: 'code', language: 'js', code: 'const s = "```"\n', isOpen: false },
   ])
 })
 
-test('围栏长度、波浪线、info 字符串与 CRLF 按 CommonMark 处理', () => {
+it('围栏长度、波浪线、info 字符串与 CRLF 按 CommonMark 处理', () => {
   for (const fence of ['````', '~~~~']) {
     assert.deepEqual(blocksOf(`${fence}c++ title=x\r\nbody\r\n${fence}  \r\n`), [
       { type: 'code', language: 'c++', code: 'body\n', isOpen: false },
@@ -72,26 +71,26 @@ test('围栏长度、波浪线、info 字符串与 CRLF 按 CommonMark 处理', 
   ])
 })
 
-test('列表与引用内围栏不打断 HTML 层级', () => {
+it('列表与引用内围栏不打断 HTML 层级', () => {
   const list = html('1. 前文\n\n   ```text\n   code\n   ```\n\n   后文\n\n2. 第二项')
   assert.match(list, /<ol>\s*<li>[\s\S]*<pre><code[\s\S]*后文[\s\S]*<\/li>\s*<li>\s*<p>第二项/)
   assert.match(html('> ```text\n> quoted\n> ```'), /<blockquote>\s*<pre><code[\s\S]*quoted[\s\S]*<\/pre>\s*<\/blockquote>/)
 })
 
-test('跨围栏 reference links 仍使用整篇 env', () => {
+it('跨围栏 reference links 仍使用整篇 env', () => {
   const rendered = html('[link][id]\n\n```text\nx\n```\n\n[id]: https://example.com')
   assert.match(rendered, /href="https:\/\/example.com"/)
   assert.match(rendered, /target="_blank" rel="noreferrer noopener"/)
 })
 
-test('模型 HTML 与危险链接不能执行', () => {
+it('模型 HTML 与危险链接不能执行', () => {
   const rendered = html('<script>alert(1)</script>\n[x](javascript:alert(1))\n[x](data:text/html;base64,eA==)')
   assert.doesNotMatch(rendered, /<script|href="(?:javascript|data):/)
   assert.match(rendered, /&lt;script&gt;/)
   assert.equal(highlightCode('<img onerror="x">', 'unknown'), '&lt;img onerror=&quot;x&quot;&gt;')
 })
 
-test('注册的语言别名可高亮，大代码不运行全量语法高亮也不截断', () => {
+it('注册的语言别名可高亮，大代码不运行全量语法高亮也不截断', () => {
   assert.match(highlightCode('const a = 1', 'js'), /hljs-keyword/)
   assert.match(highlightCode('<svg></svg>', 'svg'), /hljs-tag/)
   const large = 'const a = "<script>";\n'.repeat(2000)
@@ -100,7 +99,7 @@ test('注册的语言别名可高亮，大代码不运行全量语法高亮也�
   assert.equal(highlighted, large.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'))
 })
 
-test('顶层块各自输出，流式时只有尾块变化，前面块的 HTML 字符串不变', () => {
+it('顶层块各自输出，流式时只有尾块变化，前面块的 HTML 字符串不变', () => {
   const first = renderMarkdownBlocks('# 标题\n\n第一段\n\n- 项一\n- 项二\n\n第二', { streaming: true })
   assert.equal(first.blocks.length, 4)
   assert.deepEqual(first.blocks.map(block => block.type), ['markdown', 'markdown', 'markdown', 'markdown'])
@@ -111,7 +110,7 @@ test('顶层块各自输出，流式时只有尾块变化，前面块的 HTML �
   assert.equal(second.cache.html.size, 3)
 })
 
-test('流式时只对尾块补齐未闭合标记，围栏尾块与非流式不补', () => {
+it('流式时只对尾块补齐未闭合标记，围栏尾块与非流式不补', () => {
   assert.equal(blocksOf('**a**\n\n先说 **结论', { streaming: true }).length, 2)
   assert.match(html('**a**\n\n先说 **结论', { streaming: true }), /<p>先说 <strong>结论<\/strong><\/p>/)
   assert.match(html('先说 **结论'), /<p>先说 \*\*结论<\/p>/)
@@ -120,12 +119,12 @@ test('流式时只对尾块补齐未闭合标记，围栏尾块与非流式不�
   ])
 })
 
-test('尾块补齐后仍保留其后的 reference 定义', () => {
+it('尾块补齐后仍保留其后的 reference 定义', () => {
   const rendered = firstHtml('[x][doc]\n\n先说 **结论\n\n[doc]: https://example.com', { streaming: true })
   assert.match(rendered, /href="https:\/\/example.com"/)
 })
 
-test('reference 定义的 label 或 href 变化都会让前面块重新解析而不是命中缓存', () => {
+it('reference 定义的 label 或 href 变化都会让前面块重新解析而不是命中缓存', () => {
   const first = renderMarkdownBlocks('[link][id]\n\n中间')
   assert.doesNotMatch(firstHtml('[link][id]\n\n中间'), /href=/)
   const second = renderMarkdownBlocks('[link][id]\n\n中间\n\n[id]: https://exam', { cache: first.cache })
@@ -134,7 +133,7 @@ test('reference 定义的 label 或 href 变化都会让前面块重新解析而
   assert.match(third.blocks[0].type === 'markdown' ? third.blocks[0].html : '', /href="https:\/\/example.com"/)
 })
 
-test('尾块补齐时前面块的 HTML 与 reference 都沿用第一次解析', () => {
+it('尾块补齐时前面块的 HTML 与 reference 都沿用第一次解析', () => {
   const text = '[id]: https://example.com\n\n[x][id]\n\n- 项\n\n先说 **结论'
   const { blocks, cache } = renderMarkdownBlocks(text, { streaming: true })
   assert.equal(blocks.length, 3)
@@ -146,7 +145,7 @@ test('尾块补齐时前面块的 HTML 与 reference 都沿用第一次解析', 
   assert.match(rendered[1].type === 'markdown' ? rendered[1].html : '', /href="https:\/\/example.com"[\s\S]*<strong>重<\/strong>/)
 })
 
-test('流式中文末只有 - / = 的下一行不先渲染成标题，换行之后才是真标题', () => {
+it('流式中文末只有 - / = 的下一行不先渲染成标题，换行之后才是真标题', () => {
   for (const text of ['要点如下：\n-', '要点如下：\n- ', '结论\n=', '结论\n==', '第一行\n第二行\n---', '1. 第一点：\n   -', '> 要点如下：\n> -', '- 说明：\n  - ']) {
     assert.doesNotMatch(html(text, { streaming: true }), /<h\d/, text)
   }
@@ -157,7 +156,7 @@ test('流式中文末只有 - / = 的下一行不先渲染成标题，换行之�
   assert.match(html('要点如下：\n- 第一项', { streaming: true }), /<p>要点如下：<\/p>\n<ul>\n<li>第一项<\/li>/)
 })
 
-test('列表、表格、URL、反引号在流式中间态不多出标记或代码', () => {
+it('列表、表格、URL、反引号在流式中间态不多出标记或代码', () => {
   const cases: Array<[string, RegExp]> = [
     ['- 匹配 *.ts 文件\n- 其他', /<li>其他<\/li>/],
     ['- 2**10 很大\n- 其他', /<li>其他<\/li>/],
@@ -172,7 +171,7 @@ test('列表、表格、URL、反引号在流式中间态不多出标记或代�
   }
 })
 
-test('图片渲染成链接而不是 <img>，链接内的图片只留文字', () => {
+it('图片渲染成链接而不是 <img>，链接内的图片只留文字', () => {
   const rendered = html('![x](http://127.0.0.1:9/leak.png)\n\n![](http://a/b.png)\n\n[![CI](http://a/b.svg)](http://c)\n\n![<b>x</b>](http://a/"b)')
   assert.doesNotMatch(rendered, /<img/)
   assert.match(rendered, /<a href="http:\/\/127\.0\.0\.1:9\/leak\.png" target="_blank" rel="noreferrer noopener">x<\/a>/)
@@ -184,14 +183,14 @@ test('图片渲染成链接而不是 <img>，链接内的图片只留文字', ()
   assert.match(html('[![](http://a/b.png)](http://c)'), /<a href="http:\/\/c" target="_blank" rel="noreferrer noopener">http:\/\/a\/b\.png<\/a>/)
 })
 
-test('嵌套未闭合围栏：到达文末与否不命中同一份缓存', () => {
+it('嵌套未闭合围栏：到达文末与否不命中同一份缓存', () => {
   const first = renderMarkdownBlocks('> ```\n> 引用')
   const cached = renderMarkdownBlocks('> ```\n> 引用\n', { cache: first.cache })
   assert.deepEqual(cached.blocks, renderMarkdownBlocks('> ```\n> 引用\n').blocks)
 })
 
 /** 审查时对比脚本的缩小版：随机拼出的文档，每个前缀的缓存渲染都要与全新渲染逐字相同。 */
-test('随机文档的每个前缀：缓存渲染与全新渲染结果一致', () => {
+it('随机文档的每个前缀：缓存渲染与全新渲染结果一致', () => {
   const fragments = [
     '段落 **粗体** 与 *斜体* 还有 `code`',
     '> 引用一行',
@@ -234,7 +233,7 @@ test('随机文档的每个前缀：缓存渲染与全新渲染结果一致', ()
   }
 })
 
-test('#169 AC-01 全角标点紧贴 ** 的中文强调在终态成对，流式中间态不在粗体与字面 ** 之间翻转', () => {
+it('#169 AC-01 全角标点紧贴 ** 的中文强调在终态成对，流式中间态不在粗体与字面 ** 之间翻转', () => {
   for (const text of ['**结论：**后文', '**大逃杀（Battle Royale）**这一品类', '**「标题」**正文'])
     assert.match(html(text), /<strong>/)
   assert.equal(html('a **b** c'), '<p>a <strong>b</strong> c</p>\n')
@@ -251,7 +250,7 @@ test('#169 AC-01 全角标点紧贴 ** 的中文强调在终态成对，流式�
   }
 })
 
-test('#169 AC-02 当前行的字面 * 不被补成强调，这一行换行后按终态显示', () => {
+it('#169 AC-02 当前行的字面 * 不被补成强调，这一行换行后按终态显示', () => {
   for (const text of ['计算 2*3 = 6，然后', '- 匹配 *.ts 文件', '- 2**10 很大', '$x*y$ 继续']) {
     assert.doesNotMatch(html(text, { streaming: true }), /<em>|<strong>/, text)
     assert.equal(html(`${text}\n`, { streaming: true }), html(`${text}\n`), `${text} 换行后`)
@@ -262,12 +261,12 @@ test('#169 AC-02 当前行的字面 * 不被补成强调，这一行换行后按
   assert.equal(html('**加粗\n', { streaming: true }), html('**加粗\n'))
 })
 
-test('#169 AC-03 无前导竖线的表格与代码段里的 \\| 在流式中不多出标记', () => {
+it('#169 AC-03 无前导竖线的表格与代码段里的 \\| 在流式中不多出标记', () => {
   assert.doesNotMatch(html('a | b\n--|--\n*x | y', { streaming: true }), /<em>|y\*/)
   assert.doesNotMatch(html('| h | g |\n|---|---|\n| a | `x\\|y **z` 后', { streaming: true }), /\*\*<\/td>|<strong>/)
 })
 
-test('#169 AC-04 标题逐字到达加平滑放出切点，任何一帧都没有空标题', () => {
+it('#169 AC-04 标题逐字到达加平滑放出切点，任何一帧都没有空标题', () => {
   const text = '先查一下。\n\n## 标题\n\n# 一级\n正文'
   for (let index = 1; index <= text.length; index++) {
     const shown = text.slice(0, alignRevealBoundary(text, index))
@@ -275,7 +274,7 @@ test('#169 AC-04 标题逐字到达加平滑放出切点，任何一帧都没有
   }
 })
 
-test('#169 AC-06 裸链接在全角标点处结束，后文照常解析', () => {
+it('#169 AC-06 裸链接在全角标点处结束，后文照常解析', () => {
   assert.match(html('见 https://x.com/a。**注意**'), /<a href="https:\/\/x\.com\/a" [^>]*>https:\/\/x\.com\/a<\/a>。<strong>注意<\/strong>/)
   assert.match(html('（https://x.com/a）后面'), /href="https:\/\/x\.com\/a"/)
   assert.match(html('访问 www.x.com，然后'), /href="http:\/\/www\.x\.com"/)
@@ -284,7 +283,7 @@ test('#169 AC-06 裸链接在全角标点处结束，后文照常解析', () => 
   assert.equal(html('见 https://x.com/a。**注意', { streaming: true }), html('见 https://x.com/a。**注意**'))
 })
 
-test('#169 AC-07 大量图片的链接判断是一次遍历，耗时与 markdown-it 基线同量级', () => {
+it('#169 AC-07 大量图片的链接判断是一次遍历，耗时与 markdown-it 基线同量级', () => {
   const text = Array.from({ length: 16_000 }, (_, index) => `![i${index}](https://x.com/${index}.png)`).join(' ')
   const baseline = new MarkdownIt({ linkify: true })
   // 各取 3 次里最快的一次，减少 GC 与调度抖动。

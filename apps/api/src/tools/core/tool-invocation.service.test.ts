@@ -11,9 +11,7 @@ import type {
   ValidatedToolInvocation,
 } from './tool.types.js'
 import assert from 'node:assert/strict'
-// 项目本轮使用 Node 原生测试运行器，不引入额外测试框架。
-// eslint-disable-next-line test/no-import-node-test
-import { describe, it, mock } from 'node:test'
+import { describe, it, vi } from 'vitest'
 
 import { DatabaseOperationDeadlineExceededError } from '../../prisma/prisma.service.js'
 import { ToolInvocationService } from './tool-invocation.service.js'
@@ -118,7 +116,7 @@ describe('ToolInvocationService', () => {
       tool.definition.timeoutMs = testCase.timeoutMs ?? tool.definition.timeoutMs
       registry.register(tool)
       const service = new ToolInvocationService(registry)
-      mock.method((service as unknown as { logger: Logger }).logger, 'warn', () => {})
+      vi.spyOn((service as unknown as { logger: Logger }).logger, 'warn').mockImplementation(() => {})
 
       const invocation = await service.invoke(
         { ...createEnvelope(), ...testCase.envelope },
@@ -223,7 +221,7 @@ describe('ToolInvocationService', () => {
       throw failures.shift()
     }))
     const service = new ToolInvocationService(registry)
-    const warn = mock.method((service as unknown as { logger: Logger }).logger, 'warn', () => {})
+    const warn = vi.spyOn((service as unknown as { logger: Logger }).logger, 'warn').mockImplementation(() => {})
 
     for (let i = 0; i < 4; i++) {
       const { result } = await service.invoke(createEnvelope(), createContext())
@@ -231,8 +229,8 @@ describe('ToolInvocationService', () => {
       assert.equal(result.ok ? undefined : result.code, 'execution_failed')
       assert.equal(result.modelContent, '工具 echo 执行失败。')
     }
-    assert.equal(warn.mock.callCount(), 4)
-    const [first, nullProto, oddMessage, thrownString] = warn.mock.calls.map(call => call.arguments[0] as Record<string, unknown>)
+    assert.equal(warn.mock.calls.length, 4)
+    const [first, nullProto, oddMessage, thrownString] = warn.mock.calls.map(call => call[0] as Record<string, unknown>)
     assert.equal(first?.event, 'tool_execution_failed')
     assert.equal(first?.toolName, 'echo')
     assert.equal(first?.callId, 'call-1')

@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict'
-// eslint-disable-next-line test/no-import-node-test
-import { describe, it } from 'node:test'
+import { describe, it } from 'vitest'
 
 import {
   MODEL_IO_DEBUG_CAPTURE_MAX_JSON_CHARS,

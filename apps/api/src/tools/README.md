@@ -39,4 +39,4 @@ runtime：result 定 Step 的 ok / code；argumentsValidated 定回喂参数的�
    - 执行器：用假依赖断言查询条件与 `modelContent`，signal 已中断时不开始查询；
    - 经 `ToolInvocationService` 走一遍：合法参数得到预期结果，参数无效时不执行、返回 `invalid_arguments`。
 
-`invoke` 自己的分支（截断批次、查找、超时、脱敏、`argumentsValidated`）在 `core/tool-invocation.service.test.ts`，新工具不用重复测。
+`invoke` 自己的分支（截断批次、查找、超时、脱敏、`argumentsValidated`）在 `core/tool-invocation.service.test.ts`，新工具不用重复测。测试文件按命名放好就会被 `pnpm --filter @agent/api test` 运行，不用登记；写法见 `docs/testing.md`。

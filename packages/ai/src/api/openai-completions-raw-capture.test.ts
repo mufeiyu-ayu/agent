@@ -1,8 +1,7 @@
 import type { ChatCompletionChunk } from 'openai/resources/chat/completions'
 import type { ModelRawResponseCapture, ModelStreamEvent } from '../types.js'
 import assert from 'node:assert/strict'
-// eslint-disable-next-line test/no-import-node-test
-import { describe, it } from 'node:test'
+import { describe, it } from 'vitest'
 
 import { LLMApiError } from '../errors.js'
 import { teeRawResponseCapture } from './openai-completions-raw-capture.js'

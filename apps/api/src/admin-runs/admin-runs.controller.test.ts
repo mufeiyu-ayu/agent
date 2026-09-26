@@ -3,8 +3,7 @@ import 'reflect-metadata'
 
 import type { INestApplication } from '@nestjs/common'
 import assert from 'node:assert/strict'
-// eslint-disable-next-line test/no-import-node-test
-import { describe, it } from 'node:test'
+import { describe, it } from 'vitest'
 import { Module, NotFoundException } from '@nestjs/common'
 import { NestFactory } from '@nestjs/core'
 

@@ -1,8 +1,7 @@
 import assert from 'node:assert/strict'
 import { Buffer } from 'node:buffer'
-// eslint-disable-next-line test/no-import-node-test
-import { describe, it } from 'node:test'
 import { LLMConfigError } from '@agent/ai'
+import { describe, it } from 'vitest'
 
 import { createApiKeyCipher, toApiKeyLast4 } from './api-key-cipher.js'
 import { resolveLlmEnvConfig } from './llm-runtime-config.service.js'

@@ -1,5 +1,6 @@
 import type { AdminOverviewStats } from '@agent/contracts'
 import assert from 'node:assert/strict'
+import { describe, it } from 'vitest'
 
 import {
   toBalanceText,
@@ -10,59 +11,67 @@ import {
   toOverviewTrend,
 } from './overview.model'
 
-const stats = createStats()
+describe('overview.model', () => {
+  const stats = createStats()
 
-// 失败原因：占比按窗口内失败 / 中止 Run 算，未记录一行没有可筛选的类别。
-assert.deepEqual(toFailureReasonRows(stats), [
-  { key: 'llm_auth', errorCode: 'llm_auth', count: 3, share: 0.75 },
-  { key: 'unrecorded', errorCode: null, count: 1, share: 0.25 },
-])
-assert.deepEqual(toFailureReasonRows({ ...stats, health: { ...stats.health, failureReasons: [] } }), [])
+  it('失败原因：占比按窗口内失败 / 中止 Run 算，未记录一行没有可筛选的类别', () => {
+    assert.deepEqual(toFailureReasonRows(stats), [
+      { key: 'llm_auth', errorCode: 'llm_auth', count: 3, share: 0.75 },
+      { key: 'unrecorded', errorCode: null, count: 1, share: 0.25 },
+    ])
+    assert.deepEqual(toFailureReasonRows({ ...stats, health: { ...stats.health, failureReasons: [] } }), [])
+  })
 
-// 下钻：7d / 30d 的首尾桶是上海零点，日期就是窗口首尾两天。
-assert.deepEqual(toFailureReasonRunsLocation('llm_auth', stats), {
-  name: 'runs',
-  query: { errorCode: 'llm_auth', dateFrom: '2026-09-21', dateTo: '2026-09-23' },
+  it('下钻：日期是窗口首尾两天所在的上海日', () => {
+    // 7d / 30d 的首尾桶是上海零点，日期就是窗口首尾两天。
+    assert.deepEqual(toFailureReasonRunsLocation('llm_auth', stats), {
+      name: 'runs',
+      query: { errorCode: 'llm_auth', dateFrom: '2026-09-21', dateTo: '2026-09-23' },
+    })
+    // 24h：首桶 UTC 06:00 是上海 14:00，仍按所在上海日。
+    assert.deepEqual(toFailureReasonRunsLocation('deadline', {
+      ...stats,
+      bucket: 'hour',
+      points: [point('2026-09-21T06:00:00.000Z'), point('2026-09-22T06:00:00.000Z')],
+    }), {
+      name: 'runs',
+      query: { errorCode: 'deadline', dateFrom: '2026-09-21', dateTo: '2026-09-22' },
+    })
+  })
+
+  it('模型与工具行', () => {
+    // 模型：旧采样没有 modelId 按 wire name 出 key；没有家族（旧采样 / 已删除）按 other 显示。
+    // 快照里没有任何模型信息：显示名为 null，由组件显示「未记录」。
+    assert.deepEqual(toOverviewModelRows(stats).map(row => [row.key, row.family, row.deleted, row.displayName]), [
+      ['model-1', 'deepseek', false, 'DeepSeek V4 Flash'],
+      ['model-gone', 'other', true, 'grok-4.6'],
+      ['wire:legacy-model', 'other', false, 'legacy-model'],
+      ['unrecorded', 'other', false, null],
+    ])
+
+    // 工具：unknown_tool 一行单独标出。
+    assert.deepEqual(toOverviewToolRows(stats).map(row => [row.name, row.unknown, row.failureCodes.length]), [
+      ['search_articles', false, 0],
+      ['unknown_tool', true, 1],
+    ])
+  })
+
+  it('趋势按状态拆成堆叠序列，全零时 hasData 为 false', () => {
+    const trend = toOverviewTrend(stats)
+    assert.deepEqual(trend.labels, ['09-21', '09-22', '09-23'])
+    assert.deepEqual(trend.runsByStatus.COMPLETED, [0, 2, 5])
+    assert.deepEqual(trend.runsByStatus.FAILED, [0, 1, 3])
+    assert.deepEqual(trend.totalTokens, [0, 1_200, 3_400])
+    assert.equal(trend.hasData, true)
+    assert.equal(toOverviewTrend({ ...stats, points: [point('2026-09-21T16:00:00.000Z')] }).hasData, false)
+  })
+
+  it('余额文案', () => {
+    assert.equal(toBalanceText({ available: true, currency: 'CNY', totalBalance: '12.34' }, '不可用'), '12.34 CNY')
+    assert.equal(toBalanceText({ available: false, currency: null, totalBalance: null }, '不可用'), '不可用')
+    assert.equal(toBalanceText(undefined, '不可用'), '不可用')
+  })
 })
-// 24h：首桶 UTC 06:00 是上海 14:00，仍按所在上海日。
-assert.deepEqual(toFailureReasonRunsLocation('deadline', {
-  ...stats,
-  bucket: 'hour',
-  points: [point('2026-09-21T06:00:00.000Z'), point('2026-09-22T06:00:00.000Z')],
-}), {
-  name: 'runs',
-  query: { errorCode: 'deadline', dateFrom: '2026-09-21', dateTo: '2026-09-22' },
-})
-
-// 模型：旧采样没有 modelId 按 wire name 出 key；没有家族（旧采样 / 已删除）按 other 显示。
-// 快照里没有任何模型信息：显示名为 null，由组件显示「未记录」。
-assert.deepEqual(toOverviewModelRows(stats).map(row => [row.key, row.family, row.deleted, row.displayName]), [
-  ['model-1', 'deepseek', false, 'DeepSeek V4 Flash'],
-  ['model-gone', 'other', true, 'grok-4.6'],
-  ['wire:legacy-model', 'other', false, 'legacy-model'],
-  ['unrecorded', 'other', false, null],
-])
-
-// 工具：unknown_tool 一行单独标出。
-assert.deepEqual(toOverviewToolRows(stats).map(row => [row.name, row.unknown, row.failureCodes.length]), [
-  ['search_articles', false, 0],
-  ['unknown_tool', true, 1],
-])
-
-// 趋势：按状态拆成堆叠序列，全零时 hasData 为 false。
-const trend = toOverviewTrend(stats)
-assert.deepEqual(trend.labels, ['09-21', '09-22', '09-23'])
-assert.deepEqual(trend.runsByStatus.COMPLETED, [0, 2, 5])
-assert.deepEqual(trend.runsByStatus.FAILED, [0, 1, 3])
-assert.deepEqual(trend.totalTokens, [0, 1_200, 3_400])
-assert.equal(trend.hasData, true)
-assert.equal(toOverviewTrend({ ...stats, points: [point('2026-09-21T16:00:00.000Z')] }).hasData, false)
-
-assert.equal(toBalanceText({ available: true, currency: 'CNY', totalBalance: '12.34' }, '不可用'), '12.34 CNY')
-assert.equal(toBalanceText({ available: false, currency: null, totalBalance: null }, '不可用'), '不可用')
-assert.equal(toBalanceText(undefined, '不可用'), '不可用')
-
-console.log('overview model checks passed')
 
 function point(bucketStart: string, overrides: Partial<AdminOverviewStats['points'][number]> = {}): AdminOverviewStats['points'][number] {
   return {

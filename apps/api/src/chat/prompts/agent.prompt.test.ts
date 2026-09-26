@@ -1,7 +1,5 @@
 import assert from 'node:assert/strict'
-// 项目使用 Node 原生测试运行器，不引入新测试框架。
-// eslint-disable-next-line test/no-import-node-test
-import { describe, it } from 'node:test'
+import { describe, it } from 'vitest'
 
 import { AGENT_INSTRUCTIONS } from './agent.prompt.js'
 

@@ -4,8 +4,7 @@ import type {
 } from '@agent/ai'
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
-// eslint-disable-next-line test/no-import-node-test
-import { describe, it } from 'node:test'
+import { describe, it } from 'vitest'
 
 import { ContextTokenEstimationError } from '../agent-runtime.errors.js'
 import {

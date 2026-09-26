@@ -32,9 +32,6 @@ import type {
 } from './context/deepseek-v4-token-estimator.js'
 import type { AgentRunRecorderService } from './lifecycle/agent-run-recorder.service.js'
 import assert from 'node:assert/strict'
-// 项目本轮使用 Node 原生测试运行器，不引入 Vitest。
-// eslint-disable-next-line test/no-import-node-test
-import { describe, it } from 'node:test'
 import { setTimeout as sleep } from 'node:timers/promises'
 import {
   adaptOpenAICompatibleStream,
@@ -48,6 +45,7 @@ import {
   teeRawResponseCapture,
 } from '@agent/ai'
 import { familyCompatOf } from '@agent/contracts'
+import { describe, it } from 'vitest'
 
 import { projectAdminRunDetail } from '../admin-runs/projection/admin-run.projector.js'
 import { toChatStreamEvent } from '../chat/chat-stream-event.mapper.js'

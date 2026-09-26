@@ -125,6 +125,8 @@ pnpm dev
 
 Then open the admin console at `http://localhost:5174`, go to the model provider page (「模型接入」), add a provider and a model, and mark it visible. Chat at `http://localhost:5173`.
 
+Run the tests with `pnpm test` (no database needed). The database and browser suites are described in [`docs/testing.md`](./docs/testing.md) (Chinese).
+
 <details>
 <summary>Load demo articles (for the search_articles tool)</summary>
 

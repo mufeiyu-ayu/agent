@@ -3,8 +3,7 @@ import 'reflect-metadata'
 
 import type { ArgumentMetadata } from '@nestjs/common'
 import assert from 'node:assert/strict'
-// eslint-disable-next-line test/no-import-node-test
-import { describe, it } from 'node:test'
+import { describe, it } from 'vitest'
 import { CHAT_MESSAGE_MAX_CHARS } from '@agent/contracts'
 import { BadRequestException } from '@nestjs/common'
 import { validate } from 'class-validator'

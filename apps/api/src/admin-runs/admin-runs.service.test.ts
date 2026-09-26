@@ -1,10 +1,8 @@
 import type { Prisma } from '../generated/prisma/client.js'
 import type { PrismaService } from '../prisma/prisma.service.js'
 import assert from 'node:assert/strict'
-// 项目使用 Node 原生测试运行器，不为 Admin 查询引入额外测试框架。
-// eslint-disable-next-line test/no-import-node-test
-import { describe, it } from 'node:test'
 import { BadRequestException, NotFoundException } from '@nestjs/common'
+import { describe, it } from 'vitest'
 
 import { AdminRunsService } from './admin-runs.service.js'
 import { runRecord, step } from './projection/__fixtures__.js'

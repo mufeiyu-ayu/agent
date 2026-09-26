@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict'
-// eslint-disable-next-line test/no-import-node-test
-import { it } from 'node:test'
+import { it } from 'vitest'
 
 import { formatMessageTime } from './time-format'
 

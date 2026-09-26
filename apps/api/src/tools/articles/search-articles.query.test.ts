@@ -3,9 +3,7 @@ import type {
   PrismaService,
 } from '../../prisma/prisma.service.js'
 import assert from 'node:assert/strict'
-// 项目本轮使用 Node 原生测试运行器，不引入额外测试框架。
-// eslint-disable-next-line test/no-import-node-test
-import { describe, it } from 'node:test'
+import { describe, it } from 'vitest'
 
 import {
   parseSearchArticlesInput,

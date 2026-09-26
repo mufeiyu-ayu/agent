@@ -8,8 +8,7 @@ import type {
   TokenEstimatorInput,
 } from './deepseek-v4-token-estimator.js'
 import assert from 'node:assert/strict'
-// eslint-disable-next-line test/no-import-node-test
-import { describe, it } from 'node:test'
+import { describe, it } from 'vitest'
 
 import { normalizeToolObservation } from '../../tools/core/tool-observation.js'
 import { ContextBudgetExceededError } from '../agent-runtime.errors.js'
@@ -510,7 +509,7 @@ describe('SamplingContextPlanner 首轮历史裁剪（迁自旧的初始上下�
     assert.ok(largerOutput < largeModel, 'largerOutput < largeModel')
   })
 
-  it('AC-02 真实 tokenizer：固定消息集上新算法保留最大的最新连续后缀，并记录与旧算法的差分', (t) => {
+  it('AC-02 真实 tokenizer：固定消息集上新算法保留最大的最新连续后缀，并记录与旧算法的差分', async ({ annotate }) => {
     const estimator = new DeepSeekV4TokenEstimator()
     const history = historyMessages(
       120,
@@ -537,7 +536,7 @@ describe('SamplingContextPlanner 首轮历史裁剪（迁自旧的初始上下�
 
     // Issue AC-02：真实 tokenizer 下新旧条数差异只记录不阻塞，以新算法为准；
     // 这里只断言新算法自洽：最新连续后缀、不超预算、再多一条就超预算。
-    t.diagnostic(`budget=${budget} legacy=${legacyCount} planner=${includedCount}`)
+    await annotate(`budget=${budget} legacy=${legacyCount} planner=${includedCount}`)
     assert.ok(includedCount > 0 && includedCount < history.length, 'includedCount > 0 && includedCount < history.length')
     assert.deepEqual(
       includedHistoryContents(plan),

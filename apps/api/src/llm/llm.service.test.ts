@@ -1,10 +1,9 @@
 import type { PrismaService } from '../prisma/prisma.service.js'
 import type { LLMRuntimeConfigService } from './llm-runtime-config.service.js'
 import assert from 'node:assert/strict'
-// eslint-disable-next-line test/no-import-node-test
-import { afterEach, describe, it } from 'node:test'
 import { LLMApiError, LLMNetworkError } from '@agent/ai'
 import { familyCompatOf, reasoningEffortsOf } from '@agent/contracts'
+import { afterEach, describe, it } from 'vitest'
 
 import { createApiKeyCipher } from './api-key-cipher.js'
 import { LlmModelConfigService } from './llm-model-config.service.js'

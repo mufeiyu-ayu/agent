@@ -3,9 +3,8 @@ import type { ChatCompletionChunk } from 'openai/resources/chat/completions'
 import type { ModelRawResponseCapture, ModelStreamEvent, ModelUsage } from '../types.js'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-// eslint-disable-next-line test/no-import-node-test
-import { describe, it } from 'node:test'
 import { familyCompatOf, LLM_FAMILY_CAPABILITIES } from '@agent/contracts'
+import { describe, it } from 'vitest'
 
 import { adaptOpenAICompatibleStream } from './openai-completions-stream.js'
 import { OpenAICompatibleClient } from './openai-completions.js'

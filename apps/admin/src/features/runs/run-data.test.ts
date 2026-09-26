@@ -11,6 +11,7 @@ import type {
 import assert from 'node:assert/strict'
 import { existsSync, readFileSync } from 'node:fs'
 import { createPinia, setActivePinia } from 'pinia'
+import { afterEach, describe, it } from 'vitest'
 
 import { i18n } from '@/i18n'
 import { AdminRunApiError, formatAdminRunError } from '../shared/admin-api'
@@ -37,25 +38,21 @@ import {
   resolveTraceSelection,
 } from './trace/run-trace.presenter'
 
-void main()
-
-async function main(): Promise<void> {
+describe('Run 数据', () => {
   const originalFetch = globalThis.fetch
 
-  try {
-    await checkQuerySerialization()
-    await checkApiErrors()
-    await checkListStateAndRaceFencing()
-    await checkDetailStateAndRaceFencing()
-    checkPartialTraceAndInspectors()
-    checkRunTraceProjection()
-    checkProductionSources()
-    console.log('admin run data checks passed')
-  }
-  finally {
+  afterEach(() => {
     globalThis.fetch = originalFetch
-  }
-}
+  })
+
+  it('列表查询序列化、失败原因下钻与请求地址', checkQuerySerialization)
+  it('网络错误、404 与非 JSON 响应映射为 AdminRunApiError，文案随语言切换', checkApiErrors)
+  it('列表状态：旧请求晚到不覆盖新结果，分页 / 筛选 / 失败重试 / 越界回退 / 重置', checkListStateAndRaceFencing)
+  it('详情状态：四种状态、404、失败重试，旧请求与切换路由后的响应不覆盖当前 Run', checkDetailStateAndRaceFencing)
+  it('RUNNING 的部分轨迹与 Inspector 格式化', checkPartialTraceAndInspectors)
+  it('Run Trace 投影：请求分组、折叠与搜索、工具关联失效降级、部分计时、generic 不泄露字段', checkRunTraceProjection)
+  it('生产源码不引用 mock，Inspector 不用 v-html 且只读 typed 字段', checkProductionSources)
+})
 
 function checkPartialTraceAndInspectors(): void {
   const detail = createRunningDetail()

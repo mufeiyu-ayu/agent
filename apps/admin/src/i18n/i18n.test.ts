@@ -3,6 +3,7 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import dayjs from 'dayjs'
+import { describe, it } from 'vitest'
 
 import { i18n, resolveAdminLocale } from './index'
 import { messages } from './messages'
@@ -23,18 +24,29 @@ const DYNAMIC_KEY_PREFIXES: Array<{ prefix: string, reason: string }> = [
   }))),
 ]
 
-assert.equal(resolveAdminLocale('en-US', 'zh-CN'), 'en-US')
-assert.equal(resolveAdminLocale(null, 'en-GB'), 'en-US')
-assert.equal(resolveAdminLocale('unknown', 'zh-CN'), 'zh-CN')
-assert.equal(dayjs('2026-08-10').locale('zh-cn').format('ddd'), '周一')
-assert.deepEqual(getKeys(messages['zh-CN']), getKeys(messages['en-US']))
-assert.deepEqual(findUnreferencedKeys(getKeys(messages['zh-CN'])), [], '以上键在 src 里没有被引用')
-i18n.global.locale.value = 'en-US'
-assert.equal(i18n.global.t('navigation.runs'), 'Runs')
-i18n.global.locale.value = 'zh-CN'
-assert.equal(i18n.global.t('navigation.runs'), '运行记录')
+describe('admin i18n', () => {
+  it('语言解析：存储值优先，其次按浏览器语言回落', () => {
+    assert.equal(resolveAdminLocale('en-US', 'zh-CN'), 'en-US')
+    assert.equal(resolveAdminLocale(null, 'en-GB'), 'en-US')
+    assert.equal(resolveAdminLocale('unknown', 'zh-CN'), 'zh-CN')
+    assert.equal(dayjs('2026-08-10').locale('zh-cn').format('ddd'), '周一')
+  })
 
-console.log('admin i18n checks passed')
+  it('中英键集合一致', () => {
+    assert.deepEqual(getKeys(messages['zh-CN']), getKeys(messages['en-US']))
+  })
+
+  it('每个键在 src 里被引用', () => {
+    assert.deepEqual(findUnreferencedKeys(getKeys(messages['zh-CN'])), [], '以上键在 src 里没有被引用')
+  })
+
+  it('切换语言后按当前语言取文案', () => {
+    i18n.global.locale.value = 'en-US'
+    assert.equal(i18n.global.t('navigation.runs'), 'Runs')
+    i18n.global.locale.value = 'zh-CN'
+    assert.equal(i18n.global.t('navigation.runs'), '运行记录')
+  })
+})
 
 function getKeys(value: object, prefix = ''): string[] {
   return Object.entries(value)
@@ -45,7 +57,7 @@ function getKeys(value: object, prefix = ''): string[] {
     .sort()
 }
 
-/** 键的完整字面量（单引号 / 双引号 / 反引号）至少在 src 的 .ts / .vue 里出现一次；文案本身与 check 脚本不算引用。 */
+/** 键的完整字面量（单引号 / 双引号 / 反引号）至少在 src 的 .ts / .vue 里出现一次；文案本身与测试文件不算引用。 */
 function findUnreferencedKeys(keys: string[]): string[] {
   const srcDir = fileURLToPath(new URL('..', import.meta.url))
   const source = listSourceFiles(srcDir)
@@ -66,7 +78,7 @@ function listSourceFiles(dir: string): string[] {
       return listSourceFiles(path)
 
     return /\.(?:ts|vue)$/.test(entry.name)
-      && !entry.name.endsWith('.check.ts')
+      && !entry.name.endsWith('.test.ts')
       && path !== fileURLToPath(new URL('./messages.ts', import.meta.url))
       ? [path]
       : []

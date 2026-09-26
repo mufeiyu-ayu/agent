@@ -125,6 +125,8 @@ pnpm dev
 
 然后打开管理台 `http://localhost:5174`，在「模型接入」页添加服务商和模型，并勾选「前台可见」，就可以在 `http://localhost:5173` 对话了。
 
+跑测试用 `pnpm test`（不需要数据库）；真实库测试与浏览器测试见 [`docs/testing.md`](./docs/testing.md)。
+
 <details>
 <summary>灌入 Demo 文章（供 search_articles 工具查询）</summary>
 

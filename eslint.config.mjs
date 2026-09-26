@@ -44,5 +44,7 @@ export default antfu({
     'no-console': ['error', {
       allow: ['log', 'warn', 'error'],
     }],
+    // 测试标题是中文或以类名、HTTP 方法、AC 编号开头，不要求小写开头。
+    'test/prefer-lowercase-title': 'off',
   },
 })
