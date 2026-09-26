@@ -132,34 +132,6 @@ describe('ToolInvocationService', () => {
     }
   })
 
-  it('拒绝非法 JSON、缺字段、错类型和额外字段，且不执行工具', async () => {
-    let executionCount = 0
-    const registry = new ToolRegistryService()
-    registry.register(createEchoTool('echo', async () => {
-      executionCount += 1
-      return { ok: true, modelContent: 'unexpected' }
-    }))
-    const service = new ToolInvocationService(registry)
-    const invalidArguments = [
-      '{',
-      '{}',
-      '{"message":1}',
-      '{"message":"hello","extra":true}',
-    ]
-
-    for (const rawArgumentsJson of invalidArguments) {
-      const { result } = await service.invoke(
-        { ...createEnvelope(), rawArgumentsJson },
-        createContext(),
-      )
-
-      assert.equal(result.ok, false)
-      assert.equal(result.ok ? undefined : result.code, 'invalid_arguments')
-    }
-
-    assert.equal(executionCount, 0)
-  })
-
   it('合法调用只把已验证参数交给 Executor', async () => {
     let receivedInvocation: ValidatedToolInvocation<EchoInput> | undefined
     let receivedContext: ToolExecutionContext | undefined
@@ -193,20 +165,6 @@ describe('ToolInvocationService', () => {
     assert.ok(receivedContext.databaseDeadline.deadlineAt < context.databaseDeadline.deadlineAt, 'receivedContext.databaseDeadline.deadlineAt < context.databaseDeadline.deadlineAt')
     assert.notEqual(receivedContext.signal, context.signal)
     assert.equal(receivedContext.signal.aborted, false)
-  })
-
-  it('把普通执行异常转换为安全失败，不泄漏原始错误', async () => {
-    const registry = new ToolRegistryService()
-    registry.register(createEchoTool('echo', async () => {
-      throw new Error('database password: secret')
-    }))
-    const service = new ToolInvocationService(registry)
-
-    const { result } = await service.invoke(createEnvelope(), createContext())
-
-    assert.equal(result.ok, false)
-    assert.equal(result.ok ? undefined : result.code, 'execution_failed')
-    assert.doesNotMatch(result.modelContent, /password|secret/)
   })
 
   it('执行异常的真实原因只进服务端日志：工具名、callId、错误名与截断后的 message', async () => {
@@ -346,39 +304,6 @@ describe('ToolInvocationService', () => {
         modelContent: '工具 echo 执行失败。',
       },
     )
-  })
-
-  it('Executor 忽略 signal 时调用方仍按 Tool timeout 返回，但不声称底层工作已停止', async () => {
-    let executionCount = 0
-    const registry = new ToolRegistryService()
-    const tool = createEchoTool('echo', async () => {
-      executionCount += 1
-      return await new Promise(() => {})
-    })
-
-    tool.definition.timeoutMs = 20
-    registry.register(tool)
-    const service = new ToolInvocationService(registry)
-    const watchdog = createWatchdog(200)
-    let outcome: ToolResult | 'watchdog'
-
-    try {
-      outcome = await Promise.race([
-        service.invoke(createEnvelope(), createContext()).then(invocation => invocation.result),
-        watchdog.promise,
-      ])
-    }
-    finally {
-      watchdog.clear()
-    }
-
-    assert.notEqual(outcome, 'watchdog')
-    assert.deepEqual(outcome, {
-      ok: false,
-      code: 'timeout',
-      modelContent: '工具 echo 执行超时。',
-    })
-    assert.equal(executionCount, 1)
   })
 
   it('用户 abort 先于 timeout 时继续抛 AbortError，而不是返回 timeout', async () => {

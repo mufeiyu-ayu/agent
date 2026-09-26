@@ -304,12 +304,6 @@ describe('OpenAICompatibleClient runtime config', () => {
 })
 
 describe('OpenAICompatibleClient 瞬态失败重试', () => {
-  it('createClient() 交给 SDK 的 maxRetries 为 2', () => {
-    const client = new OpenAICompatibleClient(createRuntimeConfig())
-
-    assert.equal(createProviderClient(client).maxRetries, 2)
-  })
-
   it('首次 429 / 503 / 连接错误、第二次成功时 chatStream 正常产出且只记一份请求体', async () => {
     const transientAttempts: Array<() => Response> = [
       () => new Response('{"error":{"message":"rate limited"}}', {

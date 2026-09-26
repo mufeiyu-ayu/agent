@@ -13,25 +13,113 @@ import { describe, it } from 'vitest'
 import { ToolInvocationService } from '../core/tool-invocation.service.js'
 import { ToolRegistryService } from '../core/tool-registry.service.js'
 import {
+  parseSearchArticlesInput,
+  queryArticles,
   searchArticlesDefinition,
   SearchArticlesTool,
+  toArticleExcerpt,
 } from './search-articles.tool.js'
 
 const FULL_CONTENT = `<p>${'alpha article content '.repeat(30)}</p>`
+const ALPHA_ARTICLE: FakeArticleRecord = {
+  sourceId: 7,
+  slug: 'alpha-article',
+  languageCode: 'zh-cn',
+  title: 'Alpha Article',
+  seoTitle: 'Alpha SEO',
+  seoDescription: null,
+  content: FULL_CONTENT,
+}
+
+describe('search_articles 输入规范化与摘录', () => {
+  it('使用唯一规则规范化 query、languageCode 和 limit', () => {
+    assert.deepEqual(
+      parseSearchArticlesInput({
+        query: '  Alpha%_\\  ',
+        languageCode: ' ZH-CN ',
+        limit: 10,
+      }),
+      {
+        query: 'Alpha%_\\',
+        languageCode: 'zh-cn',
+        limit: 10,
+      },
+    )
+    assert.deepEqual(
+      parseSearchArticlesInput({ query: 'seo' }),
+      { query: 'seo', limit: 5 },
+    )
+  })
+
+  it('拒绝非法查询、语言、limit 和额外字段', () => {
+    const invalidInputs = [
+      null,
+      [],
+      {},
+      { query: '   ' },
+      { query: 'x'.repeat(101) },
+      { query: 'seo', languageCode: '   ' },
+      { query: 'seo', languageCode: 'x'.repeat(21) },
+      { query: 'seo', limit: 0 },
+      { query: 'seo', limit: 11 },
+      { query: 'seo', limit: 1.5 },
+      { query: 'seo', extra: true },
+    ]
+
+    for (const input of invalidInputs) {
+      assert.throws(
+        () => parseSearchArticlesInput(input),
+        /invalid search_articles/,
+      )
+    }
+  })
+
+  it('同一规范化函数可直接复核已规范化的 query', () => {
+    const query = parseSearchArticlesInput({
+      query: '  seo  ',
+      languageCode: ' EN ',
+    })
+
+    assert.deepEqual(parseSearchArticlesInput(query), query)
+  })
+
+  it('生成不含 HTML、压缩空白且 Unicode-safe 的 500 字符 excerpt', () => {
+    const excerpt = toArticleExcerpt(
+      `<article><h1> 标题 </h1><p>${'内容 🚀\n'.repeat(200)}</p></article>`,
+    )
+
+    assert.equal([...excerpt].length, 500)
+    assert.doesNotMatch(excerpt, /<article>|<h1>|<p>|\n/)
+    assert.doesNotMatch(excerpt, /\s{2,}/)
+    assert.ok(excerpt.includes('🚀'), 'excerpt.includes(\'🚀\')')
+  })
+})
+
+describe('queryArticles', () => {
+  it('findMany 后 Abort 时不返回迟到正常结果', async () => {
+    const abortController = new AbortController()
+    const fakePrisma = new FakePrismaService({
+      records: [ALPHA_ARTICLE],
+      afterFindMany: () => abortController.abort(),
+    })
+
+    await assert.rejects(
+      queryArticles(
+        fakePrisma as unknown as PrismaService,
+        { query: 'seo', limit: 5 },
+        createContext(abortController.signal),
+      ),
+      { name: 'AbortError' },
+    )
+    assert.deepEqual(fakePrisma.queryOrder, ['count', 'findMany'])
+  })
+})
 
 describe('search_articles', () => {
   it('校验并规范化参数，查询总数和受控精简结果', async () => {
     const fakePrisma = new FakePrismaService({
       total: 12,
-      records: [{
-        sourceId: 7,
-        slug: 'alpha-article',
-        languageCode: 'zh-cn',
-        title: 'Alpha Article',
-        seoTitle: 'Alpha SEO',
-        seoDescription: null,
-        content: FULL_CONTENT,
-      }],
+      records: [ALPHA_ARTICLE],
     })
     const { invocationService } = createTools(fakePrisma)
     const context = createContext()
@@ -218,6 +306,7 @@ interface FakePrismaOptions {
   records?: FakeArticleRecord[]
   beforeTransactionCallback?: () => void
   afterCount?: () => void
+  afterFindMany?: () => void
 }
 
 class FakePrismaService {
@@ -242,6 +331,7 @@ class FakePrismaService {
         this.queryOrder.push('findMany')
         this.findManyStartedBeforeCountCompleted = !this.countCompleted
         this.findManyArguments.push(arguments_)
+        this.options.afterFindMany?.()
         return this.options.records ?? []
       },
     },

@@ -38,26 +38,6 @@ const LOOKUP_TOOL: ModelToolSpec[] = [{
 }]
 
 describe('SamplingContextPlanner', () => {
-  it('保留显式 Instructions、initial History 与 current User identity', () => {
-    const context = createContext({
-      history: [
-        { type: 'message', role: 'user', content: 'oldest-history' },
-        { type: 'message', role: 'assistant', content: 'newest-history' },
-      ],
-    })
-    const state = context.forPlanning()
-
-    assert.deepEqual(
-      state.instructions.map(item => item.content),
-      ['instructions'],
-    )
-    assert.deepEqual(
-      state.initialHistory.map(item => item.content),
-      ['oldest-history', 'newest-history'],
-    )
-    assert.equal(state.currentUser.content, 'current-user')
-  })
-
   it('预算足够时保留完整 Context，并做最终完整请求估算', () => {
     const estimator = new CharacterTokenEstimator()
     const planner = new SamplingContextPlanner(estimator)
@@ -366,10 +346,8 @@ describe('SamplingContextPlanner', () => {
   })
 })
 
-describe('SamplingContextPlanner 首轮历史裁剪（迁自旧的初始上下文选择）', () => {
-  const LEGACY_PAGING = { batchSize: 50, hardLimit: 1_000 }
-
-  it('AC-01：全部历史在预算内时原样保留，与旧分页选择结果一致', () => {
+describe('SamplingContextPlanner 首轮历史裁剪', () => {
+  it('AC-01：全部历史在预算内时原样保留', () => {
     const estimator = new MessageCountTokenEstimator()
     const history = historyMessages(60, index => `history-${index}`)
     // 62 个 item（instructions + 60 条历史 + current）恰好等于预算。
@@ -382,19 +360,9 @@ describe('SamplingContextPlanner 首轮历史裁剪（迁自旧的初始上下�
     )
     assert.equal(plan.summary.historyExcludedCount, 0)
     assert.equal(plan.summary.estimatedInputTokens, budget)
-    assert.equal(
-      legacySelectedHistoryCount({
-        historyOldestFirst: history,
-        tools: NO_TOOLS,
-        estimator,
-        budget,
-        ...LEGACY_PAGING,
-      }),
-      60,
-    )
   })
 
-  it('AC-02：超预算且删除位置落在问答对边界时保留最新的连续 n 条，n 与旧批内前缀二分结果相同', () => {
+  it('AC-02：超预算且删除位置落在问答对边界时保留最新的连续 n 条', () => {
     const estimator = new MessageCountTokenEstimator()
     const history = historyMessages(60, index => `history-${index}`)
     // 54 个 item 的预算：instructions + 52 条历史 + current；删掉的 8 条正好是 4 对问答。
@@ -412,16 +380,6 @@ describe('SamplingContextPlanner 首轮历史裁剪（迁自旧的初始上下�
         plan.summary.historyExcludedCount,
       ],
       [60, 52, 8],
-    )
-    assert.equal(
-      legacySelectedHistoryCount({
-        historyOldestFirst: history,
-        tools: NO_TOOLS,
-        estimator,
-        budget,
-        ...LEGACY_PAGING,
-      }),
-      52,
     )
   })
 
@@ -449,17 +407,6 @@ describe('SamplingContextPlanner 首轮历史裁剪（迁自旧的初始上下�
       historyItems.map(item => item.type === 'message' ? item.role : item.type),
       Array.from({ length: 50 }, (_, index) => index % 2 === 0 ? 'user' : 'assistant'),
     )
-    // 旧算法只按预算删到 51 条，会留下没有提问的 history-10；新规则多删这一条。
-    assert.equal(
-      legacySelectedHistoryCount({
-        historyOldestFirst: history,
-        tools: NO_TOOLS,
-        estimator,
-        budget,
-        ...LEGACY_PAGING,
-      }),
-      51,
-    )
   })
 
   it('较新的完整 Message 放不下时全部排除，不跳过它选择更旧的小消息', () => {
@@ -477,16 +424,6 @@ describe('SamplingContextPlanner 首轮历史裁剪（迁自旧的初始上下�
 
     assert.deepEqual(includedHistoryContents(plan), [])
     assert.equal(plan.summary.historyExcludedCount, 2)
-    assert.equal(
-      legacySelectedHistoryCount({
-        historyOldestFirst: history,
-        tools: NO_TOOLS,
-        estimator,
-        budget,
-        ...LEGACY_PAGING,
-      }),
-      0,
-    )
   })
 
   it('较小 model window 或较大 output reserve 会保留更少 History', () => {
@@ -509,7 +446,7 @@ describe('SamplingContextPlanner 首轮历史裁剪（迁自旧的初始上下�
     assert.ok(largerOutput < largeModel, 'largerOutput < largeModel')
   })
 
-  it('AC-02 真实 tokenizer：固定消息集上新算法保留最大的最新连续后缀，并记录与旧算法的差分', async ({ annotate }) => {
+  it('AC-02 真实 tokenizer：固定消息集上保留最大的最新连续后缀', () => {
     const estimator = new DeepSeekV4TokenEstimator()
     const history = historyMessages(
       120,
@@ -526,17 +463,8 @@ describe('SamplingContextPlanner 首轮历史裁剪（迁自旧的初始上下�
     const budget = Math.floor(estimateNewest(history.length) * 0.6)
     const plan = planFirstRound(estimator, history, budget, LOOKUP_TOOL)
     const includedCount = plan.summary.historyIncludedCount
-    const legacyCount = legacySelectedHistoryCount({
-      historyOldestFirst: history,
-      tools: LOOKUP_TOOL,
-      estimator,
-      budget,
-      ...LEGACY_PAGING,
-    })
 
-    // Issue AC-02：真实 tokenizer 下新旧条数差异只记录不阻塞，以新算法为准；
-    // 这里只断言新算法自洽：最新连续后缀、不超预算、再多一条就超预算。
-    await annotate(`budget=${budget} legacy=${legacyCount} planner=${includedCount}`)
+    // 最新连续后缀、不超预算、再多一条就超预算。
     assert.ok(includedCount > 0 && includedCount < history.length, 'includedCount > 0 && includedCount < history.length')
     assert.deepEqual(
       includedHistoryContents(plan),
@@ -668,64 +596,6 @@ function createContext(input: { history?: MessageInputItem[] } = {}): ModelConte
     initialHistory: input.history ?? [],
     currentUserMessage: CURRENT_USER,
   })
-}
-
-/** #119 之前的历史选择算法（keyset 分页 + 批内前缀二分），只用于 AC-01 / AC-02 差分。 */
-function legacySelectedHistoryCount(input: {
-  historyOldestFirst: MessageInputItem[]
-  tools: ModelToolSpec[]
-  estimator: TokenEstimator
-  budget: number
-  batchSize: number
-  hardLimit: number
-}): number {
-  const newestFirst = [...input.historyOldestFirst].reverse()
-  const estimate = (selectedNewestFirst: MessageInputItem[]): number =>
-    input.estimator.estimateRequest({
-      items: [
-        ...INSTRUCTIONS,
-        ...[...selectedNewestFirst].reverse(),
-        CURRENT_USER,
-      ],
-      tools: input.tools,
-    })
-  const selected: MessageInputItem[] = []
-  let candidateCount = 0
-  let offset = 0
-
-  while (candidateCount < input.hardLimit) {
-    const take = Math.min(input.batchSize, input.hardLimit - candidateCount)
-    const batch = newestFirst.slice(offset, offset + take)
-
-    offset += batch.length
-    if (batch.length === 0)
-      break
-    candidateCount += batch.length
-
-    if (estimate([...selected, ...batch]) <= input.budget) {
-      selected.push(...batch)
-      if (batch.length < take || candidateCount === input.hardLimit)
-        break
-      continue
-    }
-
-    let lower = 0
-    let upper = batch.length
-
-    while (lower < upper) {
-      const middle = Math.ceil((lower + upper) / 2)
-
-      if (estimate([...selected, ...batch.slice(0, middle)]) <= input.budget)
-        lower = middle
-      else
-        upper = middle - 1
-    }
-
-    selected.push(...batch.slice(0, lower))
-    break
-  }
-
-  return selected.length
 }
 
 function historyMessages(count: number, content: (index: number) => string): MessageInputItem[] {

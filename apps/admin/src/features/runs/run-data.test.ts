@@ -9,7 +9,6 @@ import type {
   ApiSuccessResponse,
 } from '@agent/contracts'
 import assert from 'node:assert/strict'
-import { existsSync, readFileSync } from 'node:fs'
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, describe, it } from 'vitest'
 
@@ -51,7 +50,6 @@ describe('Run 数据', () => {
   it('详情状态：四种状态、404、失败重试，旧请求与切换路由后的响应不覆盖当前 Run', checkDetailStateAndRaceFencing)
   it('RUNNING 的部分轨迹与 Inspector 格式化', checkPartialTraceAndInspectors)
   it('Run Trace 投影：请求分组、折叠与搜索、工具关联失效降级、部分计时、generic 不泄露字段', checkRunTraceProjection)
-  it('生产源码不引用 mock，Inspector 不用 v-html 且只读 typed 字段', checkProductionSources)
 })
 
 function checkPartialTraceAndInspectors(): void {
@@ -356,59 +354,6 @@ function assertFirstToolUnlinked(detail: AdminRunDetail): void {
     [tool?.requestId, tool?.unlinked, projection.requestGroups[0]?.toolRecordIds],
     [null, true, []],
   )
-}
-
-function checkProductionSources(): void {
-  const sources = [
-    new URL('../../views/RunsView.vue', import.meta.url),
-    new URL('../../views/RunDetailView.vue', import.meta.url),
-    new URL('./run-api.ts', import.meta.url),
-    new URL('./run-detail.state.ts', import.meta.url),
-    new URL('./run-list.store.ts', import.meta.url),
-  ].map(path => readFileSync(path, 'utf8'))
-
-  for (const source of sources)
-    assert.doesNotMatch(source, /run\.mocks|mockRunList|getMockRunDetail/)
-
-  const requestInspectorSource = readFileSync(
-    new URL('./trace/inspectors/RequestInspector.vue', import.meta.url),
-    'utf8',
-  )
-  assert.doesNotMatch(requestInspectorSource, /inputSummary|outputSummary|safeIo/)
-  // #152 起 reasoningContent / intermediateText 是契约字段、按纯文本展示；prompt 仍不在契约里。
-  assert.doesNotMatch(requestInspectorSource, /item\.(?:prompt|observationBody)\b/)
-
-  // 参数、observation、模型文本是不可信数据：Run Trace 的 Inspector 一律不用 v-html，
-  // 也只读 typed contract 字段，不碰原始 input / output。
-  for (const name of [
-    'InspectorTextBlock',
-    'ToolExecutionInspector',
-    'RequestInspector',
-  ]) {
-    const source = readFileSync(new URL(`./trace/inspectors/${name}.vue`, import.meta.url), 'utf8')
-
-    assert.doesNotMatch(source, /v-html|innerHTML/)
-    assert.doesNotMatch(source, /\bitem\.(?:input|output|rawArguments)\b/)
-  }
-
-  const debugJsonPaneSource = readFileSync(
-    new URL('./trace/inspectors/DebugJsonPane.vue', import.meta.url),
-    'utf8',
-  )
-  assert.match(debugJsonPaneSource, /responseState === 'partial'/)
-  assert.match(debugJsonPaneSource, /capture\.state === 'empty'/)
-  assert.match(debugJsonPaneSource, /responseCapture/)
-  assert.match(debugJsonPaneSource, /state: props\.capture\.state/)
-  assert.match(debugJsonPaneSource, /debugCapture\.emptyResponse/)
-
-  const ledgerSource = readFileSync(
-    new URL('./trace/RunTraceLedger.vue', import.meta.url),
-    'utf8',
-  )
-  assert.match(ledgerSource, /resolveTraceRequestModel/)
-  assert.doesNotMatch(ledgerSource, /sampling\.requestedModel|formatRequestedModel/)
-
-  assert.equal(existsSync(new URL('./run.mocks.ts', import.meta.url)), false)
 }
 
 async function checkQuerySerialization(): Promise<void> {

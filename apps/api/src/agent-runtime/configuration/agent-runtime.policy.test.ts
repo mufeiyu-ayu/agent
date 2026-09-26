@@ -73,14 +73,4 @@ describe('resolveAgentRuntimePolicy', () => {
       })
     }
   })
-
-  it('旧 SEO_CHAT_HISTORY_LIMIT / SEO_CHAT_HISTORY_CANDIDATE_HARD_LIMIT 不再读取', () => {
-    assert.deepEqual(
-      resolveAgentRuntimePolicy({
-        SEO_CHAT_HISTORY_LIMIT: '1',
-        SEO_CHAT_HISTORY_CANDIDATE_HARD_LIMIT: '500',
-      }),
-      DEFAULT_AGENT_RUNTIME_POLICY,
-    )
-  })
 })
