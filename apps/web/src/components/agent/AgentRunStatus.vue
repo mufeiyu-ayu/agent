@@ -2,7 +2,7 @@
 import type { Directive } from 'vue'
 import type { TurnRun } from '../../types/chat'
 
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import { useRunStatus } from '@/hooks/useRunStatus'
@@ -57,6 +57,14 @@ function toggle() {
   if (expandable.value)
     expanded.value = !expanded.value
 }
+
+/** 呼吸点挂上后就不再卸载（start 前就停止或出错时也要淡出）；从接口加载的历史轮次始终不挂。 */
+const dotMounted = ref(!!props.run || props.waiting)
+
+watch(() => !!props.run || props.waiting, (active) => {
+  if (active)
+    dotMounted.value = true
+})
 
 // ---------- 尾点：没有状态行时跟在正文最后一个字后面（位置由 useTrailingDot 量） ----------
 const rootRef = ref<HTMLElement>()
@@ -153,8 +161,8 @@ const floatStyle = computed(() => {
       </Transition>
     </div>
 
-    <!-- 收起时 inert：看不见的步骤行与链接不能被 Tab 聚焦，也不被读屏读到 -->
-    <div v-if="expandable && run" class="run-grow" :class="{ 'is-open': expanded }" :inert="!expanded">
+    <!-- 只在有状态行时存在（点状态行才能展开）；收起时 inert：看不见的步骤行与链接不能被 Tab 聚焦，也不被读屏读到 -->
+    <div v-if="hasRow && expandable && run" class="run-grow" :class="{ 'is-open': expanded }" :inert="!expanded">
       <div>
         <AgentRunTimeline :steps="run.steps" />
       </div>
@@ -165,11 +173,11 @@ const floatStyle = computed(() => {
     </div>
 
     <!--
-      呼吸点只挂在本页发出的轮次上（历史轮次没有）；隐藏时只淡出、暂停动画，不卸载：
-      done 之后正文还会收尾放字，淡出途中尾点仍要跟着字走，离场过渡中的元素 Vue 不再更新。
+      隐藏时只淡出、暂停动画，不卸载：done 之后正文还会收尾放字，
+      淡出途中尾点仍要跟着字走，而离场过渡中的元素 Vue 不再更新。
     -->
     <span
-      v-if="run || waiting"
+      v-if="dotMounted"
       class="run-dot"
       data-run-dot
       :class="{ 'is-visible': dotVisible }"
@@ -179,13 +187,16 @@ const floatStyle = computed(() => {
       <svg :width="ICON_PX" :height="ICON_PX" viewBox="0 0 16 16"><circle v-pulse-sync cx="8" cy="8" r="3.4" fill="currentColor" /></svg>
     </span>
 
-    <span v-if="floating && trail" class="run-float" :style="floatStyle" role="status">
-      <Transition name="run-swap" appear>
-        <span :key="liveKey" class="run-text-item">
-          <span v-pulse-sync class="run-label is-live">{{ liveText.label }}<b v-if="liveText.object">{{ ` ${liveText.object}` }}</b></span>
-        </span>
-      </Transition>
-    </span>
+    <!-- 浮层整体淡入淡出；里面换字与状态行一样交叉淡化 -->
+    <Transition name="run-swap">
+      <span v-if="floating && trail" class="run-float" :style="floatStyle" role="status">
+        <Transition name="run-swap">
+          <span :key="liveKey" class="run-text-item">
+            <span v-pulse-sync class="run-label is-live">{{ liveText.label }}<b v-if="liveText.object">{{ ` ${liveText.object}` }}</b></span>
+          </span>
+        </Transition>
+      </span>
+    </Transition>
   </div>
 </template>
 

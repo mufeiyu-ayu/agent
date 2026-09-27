@@ -15,6 +15,7 @@ import type {
   PrismaService,
 } from '../prisma/prisma.service.js'
 import type {
+  ToolDisplay,
   ToolExecutionContext,
   ToolInvocationContext,
   ToolInvocationResult,
@@ -3391,7 +3392,7 @@ describe('工具进度事件（#208）', () => {
     ])
   })
 
-  it('AC-02 事件字段：started 带展示参数，finished 带 display；chat 流去掉 runId；display 不进 observation、Step 与模型请求', async () => {
+  it('AC-02 事件字段：started 带展示参数，finished 带 display；chat 流只带协议字段；display 不进 observation、Step 与模型请求', async () => {
     const display = { finalUrl: 'https://ui-only.example/final', title: '界面标题', chars: 1234 }
     const harness = createHarness(
       (_, __, callIndex) => callIndex === 0
@@ -3404,7 +3405,8 @@ describe('工具进度事件（#208）', () => {
             { type: 'response_completed', finishReason: 'stop' },
           ]),
       undefined,
-      async () => ({ ok: true, modelContent: '网页正文', display }),
+      // 工具在 display 里多带的字段（secret）不能出现在 chat 流里。
+      async () => ({ ok: true, modelContent: '网页正文', display: { ...display, secret: 'ui-only-extra' } as ToolDisplay }),
     )
 
     const events = (await collectEvents(harness.run())).map(toChatStreamEvent)
