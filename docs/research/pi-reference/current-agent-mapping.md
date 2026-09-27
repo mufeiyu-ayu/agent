@@ -15,7 +15,7 @@
 | 上下文 | source-aware `ModelContext`、每轮 `SamplingContextPlanner`、历史预算/Observation 治理 | branch context、compaction、request transforms | 保留预算与不可信数据边界；建立可持久化有效输入的契约 |
 | 运行记录 | Prisma Conversation / Message / AgentRun / AgentStep；Step input/output 记录统计及可选 debug payload | 旧 JSONL 与新 Session 的 branch/op/journal 是不同层级 | AgentStep 不是可恢复 operation journal，不能直接当 replay 驱动日志 |
 | 断线 | HTTP `close` 且响应未正常结束 → AbortController.abort；继续 drain generator 完成 ABORTED 收口 | durable 路径将 observer、attachment、lane operation 分开 | 云端运行独立于订阅，需要改变命令/观察协议与所有权；不能只删 abort |
-| Grounding | 已删除（#185）：2026-09-26 定案删除 RAG 与 Grounding 全链路（[workbench-direction](../workbench-direction.md) 第 9 节删除记录），只留 `search_articles` 作工具模板 | Pi 核心不提供 RAG 引用事实 | 不再保留；检索、索引与 embedding 的孤儿代码随第 ② 步删除 |
+| Grounding | 已删除（#185）：2026-09-26 定案删除 RAG 与 Grounding 全链路（[workbench-direction](../workbench-direction.md) 第 9 节删除记录），只留 `search_articles` 作工具模板（#204 删除，`web_search` 接替） | Pi 核心不提供 RAG 引用事实 | 不再保留；检索、索引与 embedding 的孤儿代码随第 ② 步删除 |
 | 安全 | 模型 Tool Call 先校验，Observation 治理；api 目前没有任何 Nest Guard，即零鉴权，Admin Task 4 的 Auth/RBAC 仍 Planned | 本机默认权限，实验 protocol 也不等于租户授权 | 鉴权随第一期上线进工作台方向第 7 节第 1 档（2026-09-27）；审批与副作用隔离随 R3 |
 
 源码入口：

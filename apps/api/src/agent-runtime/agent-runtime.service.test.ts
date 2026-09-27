@@ -79,7 +79,7 @@ import {
 import { SamplingContextPlanner } from './context/sampling-context-planner.js'
 
 // 模型每轮看到的就是工具清单、与清单同序；不写死名字，清单加工具时 runtime 用例不用跟着改。
-// 清单里少了 search_articles 时，大量以它为工具的用例会因 unknown_tool 失败，不靠这里兜。
+// 清单里少了 web_search 时，大量以它为工具的用例会因 unknown_tool 失败，不靠这里兜。
 const MODEL_TOOL_NAMES = TOOL_DEFINITIONS.map(definition => definition.name)
 
 describe('AgentRuntimeService model stream', () => {
@@ -436,7 +436,7 @@ describe('AgentRuntimeService model stream', () => {
     const harness = createHarness(
       (_, __, callIndex) => toModelStream(callIndex === 0
         ? [
-            toolCallEvent('call-history', 'search_articles', '{"query":"seo"}'),
+            toolCallEvent('call-history', 'web_search', '{"query":"seo"}'),
             { type: 'response_completed', finishReason: 'tool_calls' },
           ]
         : [
@@ -695,7 +695,7 @@ describe('AgentRuntimeService model stream', () => {
   it('执行一次工具并把 Observation 回填第二轮模型输入', async () => {
     const streams: ModelStreamEvent[][] = [
       [
-        toolCallEvent('call-1', 'search_articles', '{"query":"SP Himeko"}'),
+        toolCallEvent('call-1', 'web_search', '{"query":"SP Himeko"}'),
         {
           type: 'usage',
           usage: { inputTokens: 10, outputTokens: 2, totalTokens: 12 },
@@ -725,7 +725,7 @@ describe('AgentRuntimeService model stream', () => {
     ])
     assert.deepEqual(harness.toolInvocations, [{
       callId: 'call-1',
-      toolName: 'search_articles',
+      toolName: 'web_search',
       rawArgumentsJson: '{"query":"SP Himeko"}',
     }])
     assert.equal(harness.llmCalls.length, 2)
@@ -745,13 +745,13 @@ describe('AgentRuntimeService model stream', () => {
       },
       {
         type: 'assistant_tool_call',
-        calls: [{ callId: 'call-1', name: 'search_articles', rawArgumentsJson: '{"query":"SP Himeko"}' }],
+        calls: [{ callId: 'call-1', name: 'web_search', rawArgumentsJson: '{"query":"SP Himeko"}' }],
         reasoningContent: 'reasoning for call-1',
       },
       {
         type: 'tool_result',
         callId: 'call-1',
-        name: 'search_articles',
+        name: 'web_search',
         content: '找到 1 篇相关文章。',
         ok: true,
       },
@@ -820,7 +820,7 @@ describe('AgentRuntimeService model stream', () => {
     const toolStep = harness.recorder.steps[2]
     assert.deepEqual(toolStep?.input, {
       callId: 'call-1',
-      toolName: 'search_articles',
+      toolName: 'web_search',
       samplingAttemptId: 'run-1:sampling-1',
       arguments: '{"query":"SP Himeko"}',
     })
@@ -835,12 +835,12 @@ describe('AgentRuntimeService model stream', () => {
   })
 
   it('第二轮 sampling 重新估算完整请求，并按 Context Budget 缩减 Observation', async () => {
-    const observation = '🚀'.repeat(16_000)
-    const estimator = new BaseCostTokenEstimator(250_000)
+    const observation = '🚀'.repeat(8_000)
+    const estimator = new BaseCostTokenEstimator(256_000)
     const harness = createHarness(
       (_, __, callIndex) => toModelStream(callIndex === 0
         ? [
-            toolCallEvent('call-budget', 'search_articles', '{"query":"seo"}'),
+            toolCallEvent('call-budget', 'web_search', '{"query":"seo"}'),
             { type: 'response_completed', finishReason: 'tool_calls' },
           ]
         : [
@@ -868,7 +868,7 @@ describe('AgentRuntimeService model stream', () => {
     if (plannedObservation?.type !== 'tool_result')
       assert.fail('expected tool_result')
     assert.ok([...plannedObservation.content].length < [...observation].length, '[...plannedObservation.content].length < [...observation].length')
-    assert.ok([...plannedObservation.content].length <= 16_000, '[...plannedObservation.content].length <= 16_000')
+    assert.ok([...plannedObservation.content].length <= 8_000, '[...plannedObservation.content].length <= 8_000')
     assert.match(plannedObservation.content, /Context Budget|context_budget|上下文预算/i)
     assert.ok(estimator.estimateRequest({
       items: followUpItems,
@@ -910,7 +910,7 @@ describe('AgentRuntimeService model stream', () => {
     const harness = createHarness(
       (_, __, callIndex) => toModelStream(callIndex === 0
         ? [
-            toolCallEvent('call-history', 'search_articles', '{"query":"seo"}'),
+            toolCallEvent('call-history', 'web_search', '{"query":"seo"}'),
             { type: 'response_completed', finishReason: 'tool_calls' },
           ]
         : [
@@ -962,11 +962,11 @@ describe('AgentRuntimeService model stream', () => {
     const latestObservation = '新'.repeat(8_000)
     const streams: ModelStreamEvent[][] = [
       [
-        toolCallEvent('call-old', 'search_articles', '{"query":"seo"}'),
+        toolCallEvent('call-old', 'web_search', '{"query":"seo"}'),
         { type: 'response_completed', finishReason: 'tool_calls' },
       ],
       [
-        toolCallEvent('call-new', 'search_articles', '{"query":"sitemap"}'),
+        toolCallEvent('call-new', 'web_search', '{"query":"sitemap"}'),
         { type: 'response_completed', finishReason: 'tool_calls' },
       ],
       [
@@ -1026,7 +1026,7 @@ describe('AgentRuntimeService model stream', () => {
     const harness = createHarness(
       (_, __, callIndex) => toModelStream(callIndex === 0
         ? [
-            toolCallEvent('call-overflow', 'search_articles', '{"query":"seo"}'),
+            toolCallEvent('call-overflow', 'web_search', '{"query":"seo"}'),
             { type: 'response_completed', finishReason: 'tool_calls' },
           ]
         : [
@@ -1080,7 +1080,7 @@ describe('AgentRuntimeService model stream', () => {
     const harness = createHarness(
       (_, __, callIndex) => toModelStream(callIndex === 0
         ? [
-            toolCallEvent('call-estimator', 'search_articles', '{"query":"seo"}'),
+            toolCallEvent('call-estimator', 'web_search', '{"query":"seo"}'),
             { type: 'response_completed', finishReason: 'tool_calls' },
           ]
         : [
@@ -1127,7 +1127,7 @@ describe('AgentRuntimeService model stream', () => {
       [
         toolCallEvent(
           'call-search',
-          'search_articles',
+          'web_search',
           '{"query":"seo"}',
           firstReasoning,
         ),
@@ -1136,7 +1136,7 @@ describe('AgentRuntimeService model stream', () => {
       [
         toolCallEvent(
           'call-search-2',
-          'search_articles',
+          'web_search',
           '{"query":"sitemap"}',
           secondReasoning,
         ),
@@ -1176,12 +1176,12 @@ describe('AgentRuntimeService model stream', () => {
     assert.deepEqual(harness.toolInvocations, [
       {
         callId: 'call-search',
-        toolName: 'search_articles',
+        toolName: 'web_search',
         rawArgumentsJson: '{"query":"seo"}',
       },
       {
         callId: 'call-search-2',
-        toolName: 'search_articles',
+        toolName: 'web_search',
         rawArgumentsJson: '{"query":"sitemap"}',
       },
     ])
@@ -1193,25 +1193,25 @@ describe('AgentRuntimeService model stream', () => {
       },
       {
         type: 'assistant_tool_call',
-        calls: [{ callId: 'call-search', name: 'search_articles', rawArgumentsJson: '{"query":"seo"}' }],
+        calls: [{ callId: 'call-search', name: 'web_search', rawArgumentsJson: '{"query":"seo"}' }],
         reasoningContent: firstReasoning,
       },
       {
         type: 'tool_result',
         callId: 'call-search',
-        name: 'search_articles',
+        name: 'web_search',
         content: '搜索到 sourceId=24。',
         ok: true,
       },
       {
         type: 'assistant_tool_call',
-        calls: [{ callId: 'call-search-2', name: 'search_articles', rawArgumentsJson: '{"query":"sitemap"}' }],
+        calls: [{ callId: 'call-search-2', name: 'web_search', rawArgumentsJson: '{"query":"sitemap"}' }],
         reasoningContent: secondReasoning,
       },
       {
         type: 'tool_result',
         callId: 'call-search-2',
-        name: 'search_articles',
+        name: 'web_search',
         content: '搜索到 sourceId=31。',
         ok: true,
       },
@@ -1358,7 +1358,7 @@ describe('AgentRuntimeService model stream', () => {
         ? [
             toolCallEvent(
               'call-secret',
-              'search_articles',
+              'web_search',
               '{"query":"seo","password":"db-secret","token":"sk-secret"}',
             ),
             { type: 'response_completed', finishReason: 'tool_calls' },
@@ -1371,7 +1371,7 @@ describe('AgentRuntimeService model stream', () => {
       async () => ({
         ok: false,
         code: 'execution_failed',
-        modelContent: '工具 search_articles 执行失败。',
+        modelContent: '工具 web_search 执行失败。',
       }),
     )
 
@@ -1397,7 +1397,7 @@ describe('AgentRuntimeService model stream', () => {
     const harness = createHarness(
       (_, __, callIndex) => toModelStream(callIndex === 0
         ? [
-            toolCallEvent('call-large', 'search_articles', '{"query":"seo"}'),
+            toolCallEvent('call-large', 'web_search', '{"query":"seo"}'),
             { type: 'response_completed', finishReason: 'tool_calls' },
           ]
         : [
@@ -1419,7 +1419,7 @@ describe('AgentRuntimeService model stream', () => {
       : ''
     const toolOutput = findStep(harness, 'tool_execution')?.output as Record<string, unknown>
 
-    assert.ok([...observationContent].length <= 16_000, '[...observationContent].length <= 16_000')
+    assert.ok([...observationContent].length <= 8_000, '[...observationContent].length <= 8_000')
     assert.match(observationContent, /truncated|截断/)
     assert.doesNotMatch(observationContent, /\uFFFD/)
     assert.equal(toolOutput.originalChars, 16_100)
@@ -1437,8 +1437,8 @@ describe('AgentRuntimeService model stream', () => {
       [
         { type: 'text_delta', delta: '先查两篇。' },
         { type: 'tool_call_started' },
-        toolCallEvent('call-1', 'search_articles', '{"query":"seo"}', '两个都查。', 0),
-        toolCallEvent('call-2', 'search_articles', '{"query":"sitemap"}', '两个都查。', 1),
+        toolCallEvent('call-1', 'web_search', '{"query":"seo"}', '两个都查。', 0),
+        toolCallEvent('call-2', 'web_search', '{"query":"sitemap"}', '两个都查。', 1),
         { type: 'response_completed', finishReason: 'tool_calls' },
       ],
       [
@@ -1495,14 +1495,14 @@ describe('AgentRuntimeService model stream', () => {
       {
         type: 'assistant_tool_call',
         calls: [
-          { callId: 'call-1', name: 'search_articles', rawArgumentsJson: '{"query":"seo"}' },
-          { callId: 'call-2', name: 'search_articles', rawArgumentsJson: '{"query":"sitemap"}' },
+          { callId: 'call-1', name: 'web_search', rawArgumentsJson: '{"query":"seo"}' },
+          { callId: 'call-2', name: 'web_search', rawArgumentsJson: '{"query":"sitemap"}' },
         ],
         reasoningContent: '两个都查。',
         content: '先查两篇。',
       },
-      { type: 'tool_result', callId: 'call-1', name: 'search_articles', content: '结果 call-1', ok: true },
-      { type: 'tool_result', callId: 'call-2', name: 'search_articles', content: '结果 call-2', ok: true },
+      { type: 'tool_result', callId: 'call-1', name: 'web_search', content: '结果 call-1', ok: true },
+      { type: 'tool_result', callId: 'call-2', name: 'web_search', content: '结果 call-2', ok: true },
     ])
     assert.equal(
       (findStep(harness, 'model_sampling')?.output as { toolCallCount: number }).toolCallCount,
@@ -1516,12 +1516,12 @@ describe('AgentRuntimeService model stream', () => {
       [
         { type: 'text_delta', delta: '先查' },
         { type: 'text_delta', delta: '一下。' },
-        toolCallEvent('call-1', 'search_articles', '{"query":"seo"}'),
+        toolCallEvent('call-1', 'web_search', '{"query":"seo"}'),
         { type: 'response_completed', finishReason: 'tool_calls' },
       ],
       // 没有文本的工具轮不推 delta，也不产生分隔。
       [
-        toolCallEvent('call-2', 'search_articles', '{"query":"sitemap"}'),
+        toolCallEvent('call-2', 'web_search', '{"query":"sitemap"}'),
         { type: 'response_completed', finishReason: 'tool_calls' },
       ],
       [
@@ -1561,7 +1561,7 @@ describe('AgentRuntimeService model stream', () => {
       const streams: ModelStreamEvent[][] = [
         [
           { type: 'text_delta', delta: intermediate },
-          toolCallEvent('call-1', 'search_articles', '{"query":"seo"}'),
+          toolCallEvent('call-1', 'web_search', '{"query":"seo"}'),
           { type: 'response_completed', finishReason: 'tool_calls' },
         ],
         [
@@ -1579,9 +1579,9 @@ describe('AgentRuntimeService model stream', () => {
 
   it('本轮 call 数超过剩余预算时整体拒绝，任何 call 都不执行', async () => {
     const harness = createHarness(() => toModelStream([
-      toolCallEvent('call-1', 'search_articles', '{"query":"a"}', 'reason', 0),
-      toolCallEvent('call-2', 'search_articles', '{"query":"b"}', 'reason', 1),
-      toolCallEvent('call-3', 'search_articles', '{"query":"c"}', 'reason', 2),
+      toolCallEvent('call-1', 'web_search', '{"query":"a"}', 'reason', 0),
+      toolCallEvent('call-2', 'web_search', '{"query":"b"}', 'reason', 1),
+      toolCallEvent('call-3', 'web_search', '{"query":"c"}', 'reason', 2),
       { type: 'response_completed', finishReason: 'tool_calls' },
     ]))
 
@@ -1616,15 +1616,15 @@ describe('AgentRuntimeService model stream', () => {
         providerChunk({ reasoning_content: '需要查两篇。' } as ChatCompletionChunk.Choice.Delta),
         providerChunk({
           tool_calls: [
-            { index: 0, id: 'call-empty', type: 'function', function: { name: 'search_articles' } },
-            { index: 1, id: 'call-partial', type: 'function', function: { name: 'search_articles', arguments: '{"query":' } },
+            { index: 0, id: 'call-empty', type: 'function', function: { name: 'web_search' } },
+            { index: 1, id: 'call-partial', type: 'function', function: { name: 'web_search', arguments: '{"query":' } },
             { index: 2, type: 'function', function: { name: 'search_', arguments: '{"q' } },
           ],
         } as ChatCompletionChunk.Choice.Delta),
         providerChunk({}, 'length'),
       ])),
       () => toModelStream([
-        toolCallEvent('call-retry', 'search_articles', '{"query":"seo"}'),
+        toolCallEvent('call-retry', 'web_search', '{"query":"seo"}'),
         { type: 'response_completed', finishReason: 'tool_calls' },
       ]),
       () => toModelStream([
@@ -1669,23 +1669,23 @@ describe('AgentRuntimeService model stream', () => {
       {
         type: 'assistant_tool_call',
         calls: [
-          { callId: 'call-empty', name: 'search_articles', rawArgumentsJson: '{"arguments":""}' },
-          { callId: 'call-partial', name: 'search_articles', rawArgumentsJson: '{"arguments":"{\\"query\\":"}' },
+          { callId: 'call-empty', name: 'web_search', rawArgumentsJson: '{"arguments":""}' },
+          { callId: 'call-partial', name: 'web_search', rawArgumentsJson: '{"arguments":"{\\"query\\":"}' },
         ],
         reasoningContent: '需要查两篇。',
       },
       {
         type: 'tool_result',
         callId: 'call-empty',
-        name: 'search_articles',
-        content: '工具 search_articles 的参数因模型输出达到长度限制而不完整，本次未执行；仍需要时请重新发起调用。',
+        name: 'web_search',
+        content: '工具 web_search 的参数因模型输出达到长度限制而不完整，本次未执行；仍需要时请重新发起调用。',
         ok: false,
       },
       {
         type: 'tool_result',
         callId: 'call-partial',
-        name: 'search_articles',
-        content: '工具 search_articles 的参数因模型输出达到长度限制而不完整，本次未执行；仍需要时请重新发起调用。',
+        name: 'web_search',
+        content: '工具 web_search 的参数因模型输出达到长度限制而不完整，本次未执行；仍需要时请重新发起调用。',
         ok: false,
       },
     ])
@@ -1743,7 +1743,7 @@ describe('AgentRuntimeService model stream', () => {
               id: 'call-truncated',
               type: 'function',
               function: {
-                name: 'search_articles',
+                name: 'web_search',
                 ...(rawArguments ? { arguments: rawArguments } : {}),
               },
             }],
@@ -1751,7 +1751,7 @@ describe('AgentRuntimeService model stream', () => {
           providerChunk({}, 'length'),
         ])),
         () => toModelStream([
-          toolCallEvent('call-retry', 'search_articles', '{"query":"seo"}'),
+          toolCallEvent('call-retry', 'web_search', '{"query":"seo"}'),
           { type: 'response_completed', finishReason: 'tool_calls' },
         ]),
         () => toModelStream([
@@ -1807,7 +1807,7 @@ describe('AgentRuntimeService model stream', () => {
           type: 'assistant_tool_call',
           calls: [{
             callId: 'call-truncated',
-            name: 'search_articles',
+            name: 'web_search',
             rawArgumentsJson: JSON.stringify({ arguments: rawArguments }),
           }],
           reasoningContent: '需要查。',
@@ -1815,15 +1815,15 @@ describe('AgentRuntimeService model stream', () => {
         {
           type: 'tool_result',
           callId: 'call-truncated',
-          name: 'search_articles',
-          content: '工具 search_articles 的参数因模型输出达到长度限制而不完整，本次未执行；仍需要时请重新发起调用。',
+          name: 'web_search',
+          content: '工具 web_search 的参数因模型输出达到长度限制而不完整，本次未执行；仍需要时请重新发起调用。',
           ok: false,
         },
       ], label)
       // 已校验的重发调用原样续传（对照）。
       assert.deepEqual(harness.llmCalls[2]?.messages.at(-2), {
         type: 'assistant_tool_call',
-        calls: [{ callId: 'call-retry', name: 'search_articles', rawArgumentsJson: '{"query":"seo"}' }],
+        calls: [{ callId: 'call-retry', name: 'web_search', rawArgumentsJson: '{"query":"seo"}' }],
         reasoningContent: 'reasoning for call-retry',
       }, label)
       // 每一轮发出的请求，就是生产 estimator 最后一次估算的那份输入。
@@ -1839,7 +1839,7 @@ describe('AgentRuntimeService model stream', () => {
   it('invalid_arguments 与 unknown_tool 回喂的未校验参数经生产 estimator 仍能续轮', async () => {
     const productionEstimator = new DeepSeekV4TokenEstimator()
     const cases = [
-      { toolName: 'search_articles', code: 'invalid_arguments' },
+      { toolName: 'web_search', code: 'invalid_arguments' },
       { toolName: 'not_a_tool', code: 'unknown_tool' },
     ] as const
 
@@ -1897,7 +1897,7 @@ describe('AgentRuntimeService model stream', () => {
   it('length 后没有任何可配对 Tool Call 时按不完整回答失败', async () => {
     const harness = createHarness(() => adaptDeepSeekStream(toProviderStream([
       providerChunk({
-        tool_calls: [{ index: 0, type: 'function', function: { name: 'search_articles', arguments: '{"q' } }],
+        tool_calls: [{ index: 0, type: 'function', function: { name: 'web_search', arguments: '{"q' } }],
       } as ChatCompletionChunk.Choice.Delta),
       providerChunk({}, 'length'),
     ])))
@@ -1951,7 +1951,7 @@ describe('AgentRuntimeService model stream', () => {
     // 第二轮 assistant 消息 content 等于该文本且带 tool_calls。
     assert.deepEqual(harness.llmCalls[1]?.messages[1], {
       type: 'assistant_tool_call',
-      calls: [{ callId: 'call-1', name: 'search_articles', rawArgumentsJson: '{"query":"seo"}' }],
+      calls: [{ callId: 'call-1', name: 'web_search', rawArgumentsJson: '{"query":"seo"}' }],
       reasoningContent: 'REASONING_NOT_IN_DEBUG_CAPTURE',
       content: intermediate,
     })
@@ -1966,15 +1966,15 @@ describe('AgentRuntimeService model stream', () => {
   it('第三轮再次请求工具时拒绝第三次执行且不发起第四轮 sampling', async () => {
     const streams: ModelStreamEvent[][] = [
       [
-        toolCallEvent('call-1', 'search_articles', '{"query":"seo"}'),
+        toolCallEvent('call-1', 'web_search', '{"query":"seo"}'),
         { type: 'response_completed', finishReason: 'tool_calls' },
       ],
       [
-        toolCallEvent('call-2', 'search_articles', '{"query":"sitemap"}'),
+        toolCallEvent('call-2', 'web_search', '{"query":"sitemap"}'),
         { type: 'response_completed', finishReason: 'tool_calls' },
       ],
       [
-        toolCallEvent('call-3', 'search_articles', '{"query":"vue"}'),
+        toolCallEvent('call-3', 'web_search', '{"query":"vue"}'),
         { type: 'response_completed', finishReason: 'tool_calls' },
       ],
     ]
@@ -2339,7 +2339,7 @@ describe('AgentRuntimeService model stream', () => {
     const abortController = new AbortController()
     const harness = createHarness(
       () => toModelStream([
-        toolCallEvent('call-1', 'search_articles', '{"query":"seo"}'),
+        toolCallEvent('call-1', 'web_search', '{"query":"seo"}'),
         { type: 'response_completed', finishReason: 'tool_calls' },
       ]),
       abortController.signal,
@@ -2378,7 +2378,7 @@ describe('AgentRuntimeService model stream', () => {
         return toModelStream([
           toolCallEvent(
             `call-${callIndex + 1}`,
-            'search_articles',
+            'web_search',
             callIndex === 0 ? '{"query":"seo"}' : '{"query":"sitemap"}',
           ),
           { type: 'response_completed', finishReason: 'tool_calls' },
@@ -2443,7 +2443,7 @@ describe('AgentRuntimeService model stream', () => {
   it('工具执行本身抛错时 Step 记工具失败，Run 归为 internal 且不说成模型问题', async () => {
     const harness = createHarness(
       () => toModelStream([
-        toolCallEvent('call-1', 'search_articles', '{"query":"seo"}'),
+        toolCallEvent('call-1', 'web_search', '{"query":"seo"}'),
         { type: 'response_completed', finishReason: 'tool_calls' },
       ]),
       undefined,
@@ -2468,7 +2468,7 @@ describe('AgentRuntimeService model stream', () => {
   it('Run deadline 会取消 in-flight Tool Execution 且不发起下一轮 sampling', async () => {
     const harness = createHarness(
       () => toModelStream([
-        toolCallEvent('call-1', 'search_articles', '{"query":"seo"}'),
+        toolCallEvent('call-1', 'web_search', '{"query":"seo"}'),
         { type: 'response_completed', finishReason: 'tool_calls' },
       ]),
       undefined,
@@ -2942,12 +2942,12 @@ describe('Run 轨迹补齐模型可见内容', () => {
     const streams: ModelStreamEvent[][] = [
       [
         { type: 'text_delta', delta: '先查两处。' },
-        toolCallEvent('call-bad', 'search_articles', '{"query":', '第一轮推理', 0),
-        toolCallEvent('call-ok', 'search_articles', '{"query":"seo"}', '第一轮推理', 1),
+        toolCallEvent('call-bad', 'web_search', '{"query":', '第一轮推理', 0),
+        toolCallEvent('call-ok', 'web_search', '{"query":"seo"}', '第一轮推理', 1),
         { type: 'response_completed', finishReason: 'tool_calls' },
       ],
       [
-        toolCallEvent('call-second', 'search_articles', '{"query":"sitemap"}', '第二轮推理'),
+        toolCallEvent('call-second', 'web_search', '{"query":"sitemap"}', '第二轮推理'),
         { type: 'response_completed', finishReason: 'tool_calls' },
       ],
       [
@@ -3000,7 +3000,7 @@ describe('Run 轨迹补齐模型可见内容', () => {
     )
     assert.deepEqual(
       toolSteps.map(step => (step.output as Record<string, unknown>).observation),
-      ['工具 search_articles 的参数无效。', '结果 call-ok\n第二行', '结果 call-second\n第二行'],
+      ['工具 web_search 的参数无效。', '结果 call-ok\n第二行', '结果 call-second\n第二行'],
     )
     // 中间文本：只有第 1 轮有，等于第 2 轮请求里 assistant 消息的 content。
     assert.deepEqual(
@@ -3029,7 +3029,7 @@ describe('Run 轨迹补齐模型可见内容', () => {
     )
     assert.deepEqual(
       samplingSteps.map(step => readContextPlan(step).observationPreviewChars),
-      [[], [25, 14], [25, 14, 18]],
+      [[], [20, 14], [20, 14, 18]],
     )
 
     // AC-06 跨层：新字段经 Admin projector 原样投影。
@@ -3107,11 +3107,11 @@ describe('Run 轨迹补齐模型可见内容', () => {
     const latestObservation = '新'.repeat(8_000)
     const streams: ModelStreamEvent[][] = [
       [
-        toolCallEvent('call-old', 'search_articles', '{"query":"seo"}'),
+        toolCallEvent('call-old', 'web_search', '{"query":"seo"}'),
         { type: 'response_completed', finishReason: 'tool_calls' },
       ],
       [
-        toolCallEvent('call-new', 'search_articles', '{"query":"sitemap"}'),
+        toolCallEvent('call-new', 'web_search', '{"query":"sitemap"}'),
         { type: 'response_completed', finishReason: 'tool_calls' },
       ],
       [
@@ -3156,8 +3156,8 @@ describe('Run 轨迹补齐模型可见内容', () => {
         providerChunk({ reasoning_content: '需要查两篇。' } as ChatCompletionChunk.Choice.Delta),
         providerChunk({
           tool_calls: [
-            { index: 0, id: 'call-empty', type: 'function', function: { name: 'search_articles' } },
-            { index: 1, id: 'call-partial', type: 'function', function: { name: 'search_articles', arguments: '{"query":' } },
+            { index: 0, id: 'call-empty', type: 'function', function: { name: 'web_search' } },
+            { index: 1, id: 'call-partial', type: 'function', function: { name: 'web_search', arguments: '{"query":' } },
           ],
         } as ChatCompletionChunk.Choice.Delta),
         providerChunk({}, 'length'),
@@ -3193,7 +3193,7 @@ describe('Run 轨迹补齐模型可见内容', () => {
       () => sseResponse([
         sseData({ reasoning_content: '先想想要查' }),
         sseData({ reasoning_content: '什么关键词。' }),
-        sseData({ tool_calls: [{ index: 0, id: 'call-1', type: 'function', function: { name: 'search_articles', arguments: '{"query":"seo"}' } }] }),
+        sseData({ tool_calls: [{ index: 0, id: 'call-1', type: 'function', function: { name: 'web_search', arguments: '{"query":"seo"}' } }] }),
         sseData({}, 'tool_calls'),
         'data: [DONE]',
       ]),
@@ -3223,7 +3223,7 @@ describe('Run 轨迹补齐模型可见内容', () => {
   it('AC-03 非 DeepSeek 家族（上游不给 reasoning_content）：采样 Step 不写 reasoningContent，请求体也不回填', async () => {
     const provider = createFakeFetchProvider([
       () => sseResponse([
-        sseData({ tool_calls: [{ index: 0, id: 'call-1', type: 'function', function: { name: 'search_articles', arguments: '{"query":"seo"}' } }] }),
+        sseData({ tool_calls: [{ index: 0, id: 'call-1', type: 'function', function: { name: 'web_search', arguments: '{"query":"seo"}' } }] }),
         sseData({}, 'tool_calls'),
         'data: [DONE]',
       ]),
@@ -3253,7 +3253,7 @@ describe('Run 轨迹补齐模型可见内容', () => {
     const streams: ModelStreamEvent[][] = [
       [
         { type: 'text_delta', delta: '先查\u0000一下\uD83D。' },
-        toolCallEvent('call-1', 'search_articles', '{"query":"a\u0000b"}', '推理\u0000内容'),
+        toolCallEvent('call-1', 'web_search', '{"query":"a\u0000b"}', '推理\u0000内容'),
         { type: 'response_completed', finishReason: 'tool_calls' },
       ],
       [
@@ -3298,8 +3298,8 @@ describe('Run 轨迹补齐模型可见内容', () => {
     const abortController = new AbortController()
     const harness = createHarness(
       () => toModelStream([
-        toolCallEvent('call-done', 'search_articles', '{"query":"seo"}', '推理', 0),
-        toolCallEvent('call-cut', 'search_articles', '{"query":"sitemap"}', '推理', 1),
+        toolCallEvent('call-done', 'web_search', '{"query":"seo"}', '推理', 0),
+        toolCallEvent('call-cut', 'web_search', '{"query":"sitemap"}', '推理', 1),
         { type: 'response_completed', finishReason: 'tool_calls' },
       ]),
       abortController.signal,
@@ -3322,8 +3322,8 @@ describe('Run 轨迹补齐模型可见内容', () => {
   it('AC-05 同轮第二个工具执行中 Run deadline 到期：已收口的 tool Step 带参数与 observation，被中断的 Step 两者都不写', async () => {
     const harness = createHarness(
       () => toModelStream([
-        toolCallEvent('call-done', 'search_articles', '{"query":"seo"}', '推理', 0),
-        toolCallEvent('call-cut', 'search_articles', '{"query":"sitemap"}', '推理', 1),
+        toolCallEvent('call-done', 'web_search', '{"query":"seo"}', '推理', 0),
+        toolCallEvent('call-cut', 'web_search', '{"query":"sitemap"}', '推理', 1),
         { type: 'response_completed', finishReason: 'tool_calls' },
       ]),
       undefined,
@@ -4209,7 +4209,7 @@ function assertInterruptedToolSteps(
   // 未收口的 Step 只保留开始时的 input，没有参数，也没有 observation。
   assert.deepEqual(cut?.input, {
     callId: 'call-cut',
-    toolName: 'search_articles',
+    toolName: 'web_search',
     samplingAttemptId: 'run-1:sampling-1',
   })
   assert.equal(cut?.output, null)
@@ -4267,7 +4267,7 @@ function capturedTextThenToolCallModelStream(
           id: 'call-1',
           type: 'function',
           function: {
-            name: 'search_articles',
+            name: 'web_search',
             arguments: '{"query":"seo"}',
           },
         }],

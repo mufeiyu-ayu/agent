@@ -127,16 +127,7 @@ pnpm dev
 
 跑测试用 `pnpm test`（不需要数据库）；真实库测试与浏览器测试见 [`docs/testing.md`](./docs/testing.md)。
 
-<details>
-<summary>灌入 Demo 文章（供 search_articles 工具查询）</summary>
-
-```bash
-node --env-file=.env --import tsx apps/api/scripts/seed.ts     # 灌入 68 篇 Demo 文章（幂等）
-```
-
-不灌也能正常聊天，只是 `search_articles` 查不到文章。自己装 PostgreSQL 必须带 pgvector 扩展，早期迁移要建它。全部配置见 [`.env.example`](./.env.example)。
-
-</details>
+自己装 PostgreSQL 必须带 pgvector 扩展，早期迁移要建它。全部配置见 [`.env.example`](./.env.example)；配上 `SERPER_API_KEY` 才能用 `web_search` 联网搜索。
 
 ## 拿它学 Agent 工程
 

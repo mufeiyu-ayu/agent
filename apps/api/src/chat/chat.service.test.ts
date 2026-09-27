@@ -9,12 +9,12 @@ import type { LlmModelConfigService } from '../llm/llm-model-config.service.js'
 import assert from 'node:assert/strict'
 import { BadRequestException } from '@nestjs/common'
 
-import { describe, it } from 'vitest'
+import { describe, it, vi } from 'vitest'
 
 import { createResolvedLlmModel } from '../llm/__fixtures__.js'
 import { LlmModelUnavailableError } from '../llm/llm.errors.js'
 import { ChatService } from './chat.service.js'
-import { AGENT_INSTRUCTIONS } from './prompts/agent.prompt.js'
+import { buildAgentInstructions } from './prompts/agent.prompt.js'
 
 const GENERATED_AT = '2026-07-18T08:00:00.000Z'
 const RESOLVED_MODEL = createResolvedLlmModel()
@@ -25,9 +25,15 @@ describe('ChatService', () => {
     const harness = createHarness([runCompletedEvent('流式回答')])
     const input = createInput('model-deepseek-v4-flash', 'max')
 
-    await collectEvents(await harness.service.chatStream('user-1', input, {
-      signal: abortController.signal,
-    }))
+    vi.useFakeTimers({ now: new Date(GENERATED_AT), toFake: ['Date'] })
+    try {
+      await collectEvents(await harness.service.chatStream('user-1', input, {
+        signal: abortController.signal,
+      }))
+    }
+    finally {
+      vi.useRealTimers()
+    }
 
     assert.equal(harness.runtime.inputs.length, 1)
     const [streamInput] = harness.runtime.inputs
@@ -40,7 +46,8 @@ describe('ChatService', () => {
       userContent: '用户问题',
       model: RESOLVED_MODEL,
       reasoningEffort: 'max',
-      instructions: AGENT_INSTRUCTIONS,
+      // 提示词里的日期取 Run 开始时间。
+      instructions: buildAgentInstructions(new Date(GENERATED_AT)),
     })
     assert.equal(streamInput.signal, abortController.signal)
 

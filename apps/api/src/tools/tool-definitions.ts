@@ -1,13 +1,13 @@
 import type { Type } from '@nestjs/common'
 import type { ToolDefinition, ToolExecutor } from './core/tool.types.js'
-import { searchArticlesDefinition, SearchArticlesTool } from './articles/search-articles.tool.js'
+import { webSearchDefinition, WebSearchTool } from './web/web-search.tool.js'
 
 /**
  * 唯一的工具清单，顺序即暴露给模型的顺序：新增工具在这里加一行，就完成注册与暴露。
  * 执行器依赖的 Nest 模块与系统提示词里的用法说明另见 `tools/README.md`。
  */
 export const TOOLS = [
-  toolEntry(searchArticlesDefinition, SearchArticlesTool),
+  toolEntry(webSearchDefinition, WebSearchTool),
 ]
 
 /** 由清单派生：Run 暴露给模型的工具与 Admin 概览的工具名都读它。 */
