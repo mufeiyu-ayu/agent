@@ -8,6 +8,7 @@ NestJS API。给模型的路径导图：只写入口、分层、核心文件与�
 src/main.ts                      # 启动，全局前缀 /api，端口 PORT（默认 3000）；只监听 127.0.0.1、不开 CORS，局域网访问走 Vite 代理
 src/app.module.ts                # 装配所有业务模块
 src/common/bootstrap/register-app-globals.ts   # 全局校验管道 / 响应包装 / 异常过滤 / requestId；Controller 不重复实现
+src/auth/auth.guard.ts           # 全局 Guard（APP_GUARD）：写请求校验 Origin、默认要求登录、admin/* 要求 ADMIN；公开接口用 @Public()
 Controller -> Service -> AgentRuntime -> LLMService / ToolInvocationService -> Prisma
 ```
 
@@ -22,13 +23,16 @@ Prisma schema 在仓库根 `prisma/`，生成的 client 在 `src/generated/prism
 | `tools/` | Tool Calling：一次调用的全部判定（截断批次、查找、参数校验、执行、Observation 修剪、`argumentsValidated`）都在 `invoke`，runtime 只记账与回喂；`core/` 是框架，`articles/` 是具体工具（只有 `search_articles`）；写新工具见目录内 `README.md` | `tool-definitions.ts`（唯一的工具清单）、`core/tool-invocation.service.ts`（`invoke`）、`tools.module.ts`（按清单注册） |
 | `llm/` | LLM 的 Nest 壳（读侧）：模型行解析、密钥 cipher 唯一持有、前台模型下拉与余额 | `llm.service.ts`（`@agent/ai` 门面）、`llm-model-config.service.ts`（`resolveModel` / `listVisibleModels`）、`api-key-cipher.ts`、`llm-runtime-config.service.ts`（只读 env，不对外导出）、`outbound-proxy.ts`（`OUTBOUND_PROXY_URL` 解析与代理 agent 构造） |
 | `admin-llm/` | LLM 配置的写侧：服务商 / 模型 CRUD、拉取、探测、导入预设 | `admin-llm.service.ts`、`llm-model-presets.ts`（按家族的官方上限与默认强度） |
-| `conversations/` | 会话与消息的 CRUD | `conversations.service.ts`、`messages.service.ts` |
+| `auth/` | 登录：服务端 Session + httpOnly Cookie、scrypt 密码、账号锁定与 IP 限流、改密码 | `auth.guard.ts`、`auth.service.ts`、`auth.decorators.ts`（`@Public` / `@AllowPendingPasswordChange` / `@CurrentAuth`）、`password.ts`、`session-cookie.ts` |
+| `admin-users/` | 管理员建号、停用、重置密码、改角色 | `admin-users.service.ts` |
+| `conversations/` | 会话与消息的 CRUD，只操作当前用户自己的会话 | `conversations.service.ts`、`messages.service.ts` |
 | `admin-runs/` `admin-conversations/` `admin-overview/` | 管理台只读投影；概览与运行列表用 SQL 只取 Step JSON 的必要路径 | `admin-runs/projection/`（Run Trace 读模型）、`admin-runs/admin-model-refs.ts`（按 modelId 关联模型行）、`admin-overview/admin-overview.service.ts`（窗口聚合 SQL）；见 `admin-runs/README.md` |
 | `prisma/` | `PrismaService` 与连接可靠性 | `prisma.service.ts` |
 | `common/` | 全局管道 / 拦截器 / 过滤器 / 中间件 / 工具 | `bootstrap/register-app-globals.ts` |
 
 ## 不变量
 
+- 鉴权在后端：全局 Guard 默认拦截，新接口不标 `@Public()` 就要登录，`admin/*` Controller 自动要求 ADMIN。会话归属按 `userId` 过滤，别人的会话与不存在的一律 404（`conversations`、`messages`、`chat/stream`）；`admin-*` 可观测看全部。库里只存密码的 scrypt 串与 token 的 SHA-256；停用、重置密码、改角色删该用户全部 Session，自己改密码保留当前这条。首个管理员用 `pnpm create-admin`（`scripts/create-admin.ts`）建，同时认领无主存量会话。
 - 模型看到的必须能从持久化记录重建：action 循环内成立，落在哪些 Step 字段与范围外的部分见根 `AGENTS.md` 第 6 节；新增模型可见内容时同一次改动里落库。`AgentStep` 是系统执行过程，采样 Step 的 `reasoningContent` 只是为重建而存的回填内容。
 - 模型输出不可信：工具名、参数先在 `invoke` 里校验再执行。工具结果里的文章内容是低信任数据：系统提示词声明其中的指令、角色设定或格式要求只是资料，不得覆盖系统指令；`modelContent` 不加包裹标记。
 - 终态所有权：晚到的 Abort / deadline / DB 结果不能覆盖已确立终态。

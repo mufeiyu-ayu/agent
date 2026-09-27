@@ -2,17 +2,21 @@
 import {
   CommentOutlined,
   DashboardOutlined,
+  LogoutOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   ProfileOutlined,
   SettingOutlined,
+  TeamOutlined,
   UserOutlined,
 } from '@ant-design/icons-vue'
-import { Popover } from 'ant-design-vue'
+import { App as AntApp, Button, Popover } from 'ant-design-vue'
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 
+import { useAuth } from '@/features/auth/auth.state'
+import { formatAdminRunError } from '@/features/shared/admin-api'
 import { resolveActiveMenuPath } from '@/lib/admin-state'
 import AdminLogo from './AdminLogo.vue'
 import LanguageSwitcher from './LanguageSwitcher.vue'
@@ -36,12 +40,34 @@ const sections = [
       { path: '/llm-models', labelKey: 'navigation.llmModels', icon: SettingOutlined },
     ],
   },
+  {
+    labelKey: 'navigation.system',
+    items: [
+      { path: '/users', labelKey: 'navigation.users', icon: TeamOutlined },
+    ],
+  },
 ]
 
 const route = useRoute()
+const router = useRouter()
+const { message } = AntApp.useApp()
+const { currentUser, signOut } = useAuth()
 const { t } = useI18n()
 const activeMenuPath = computed(() => resolveActiveMenuPath(route))
 const quickActionsOpen = ref(false)
+
+async function logout() {
+  quickActionsOpen.value = false
+  try {
+    await signOut()
+  }
+  catch (error) {
+    void message.error(formatAdminRunError(error))
+    return
+  }
+
+  await router.replace({ name: 'login' })
+}
 </script>
 
 <template>
@@ -95,10 +121,16 @@ const quickActionsOpen = ref(false)
             <span class="admin-quick-actions__avatar">
               <UserOutlined />
             </span>
-            <span>
-              <strong>{{ t('common.developer') }}</strong>
-              <small>{{ t('common.consoleUser') }}</small>
+            <span class="admin-quick-actions__identity">
+              <strong>{{ currentUser?.email }}</strong>
+              <small>{{ t('users.roles.ADMIN') }}</small>
             </span>
+            <Button size="small" @click="logout">
+              <template #icon>
+                <LogoutOutlined />
+              </template>
+              {{ t('auth.logout') }}
+            </Button>
           </div>
 
           <div class="admin-quick-actions__toolbar">
@@ -278,9 +310,17 @@ const quickActionsOpen = ref(false)
   font-size: var(--admin-font-md);
 }
 
-.admin-quick-actions__user > span:last-child {
+.admin-quick-actions__identity {
   display: grid;
+  min-width: 0;
+  flex: 1;
   line-height: 1.1;
+}
+
+.admin-quick-actions__identity strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .admin-quick-actions__user strong {

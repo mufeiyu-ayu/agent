@@ -4,6 +4,8 @@ import type {
   ChatStreamEvent,
 } from '@agent/contracts'
 
+import { handleAuthFailure } from './http'
+
 interface StreamChatOptions {
   signal?: AbortSignal
 }
@@ -172,18 +174,16 @@ function isChatStreamEvent(value: unknown): value is ChatStreamEvent {
 }
 
 async function readStreamHttpError(response: Response): Promise<ChatStreamHttpError> {
-  try {
-    const payload = await response.json() as Partial<ApiErrorResponse>
+  // 非 JSON 错误响应时使用 HTTP 状态码兜底。
+  const payload = await response.json().catch(() => undefined) as Partial<ApiErrorResponse> | undefined
 
-    if (typeof payload.message === 'string') {
-      const details = payload.error?.details
-      const isModelUnavailable = response.status === 400 && !(Array.isArray(details) && details.length > 0)
+  handleAuthFailure(response.status, payload)
 
-      return new ChatStreamHttpError(payload.message, response.status, isModelUnavailable)
-    }
-  }
-  catch {
-    // 非 JSON 错误响应时使用 HTTP 状态码兜底。
+  if (typeof payload?.message === 'string') {
+    const details = payload.error?.details
+    const isModelUnavailable = response.status === 400 && !(Array.isArray(details) && details.length > 0)
+
+    return new ChatStreamHttpError(payload.message, response.status, isModelUnavailable)
   }
 
   return new ChatStreamHttpError(`请求失败（${response.status}）`, response.status, false)

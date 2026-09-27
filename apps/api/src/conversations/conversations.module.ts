@@ -10,5 +10,6 @@ import { MessagesService } from './messages.service.js'
   imports: [PrismaModule],
   controllers: [ConversationsController, MessagesController],
   providers: [ConversationsService, MessagesService],
+  exports: [ConversationsService],
 })
 export class ConversationsModule {}

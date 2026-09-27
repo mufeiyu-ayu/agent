@@ -7,6 +7,7 @@
 ```txt
 src/index.ts             # 唯一导出面，新增类型必须在这里 export
 src/api-response.ts      # 全局响应包装 { success, code, message, data }
+src/auth.ts              # 登录与用户管理：USER_ROLES、密码长度、PASSWORD_CHANGE_REQUIRED 错误码、AuthUser / AdminUser 与请求形状
 src/chat.ts              # ChatRequest / ChatModelOption / NDJSON 流事件（start / delta / done / error / aborted）、消息字数上限
 src/conversation.ts      # 会话与消息
 src/agent-run.ts         # AgentRun / AgentStep 的对外形状、Run 失败类别 AGENT_RUN_ERROR_CODES（唯一来源）

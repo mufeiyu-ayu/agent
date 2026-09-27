@@ -5,7 +5,7 @@ Vue 3 前台（Vite，端口 5173）。给模型的路径导图：只写入口�
 ## 入口与分层
 
 ```txt
-src/main.ts -> src/App.vue -> src/router/index.ts   # 两个页面：/ 首页、/workspace 对话工作区
+src/main.ts -> src/App.vue -> src/router/index.ts   # / 首页（公开）、/login、/change-password、/workspace；路由守卫按 useAuth 判登录与强制改密码
 页面（views）负责组合 -> 组件（components）负责渲染 -> hooks 负责状态 / 请求 / 副作用 -> api 负责 HTTP -> utils 只放纯函数
 ```
 
@@ -13,9 +13,9 @@ src/main.ts -> src/App.vue -> src/router/index.ts   # 两个页面：/ 首页、
 
 | 目录 | 职责 | 核心文件 |
 | --- | --- | --- |
-| `views/` | `HomeView.vue` 首页（组合各部分，放跨部分共用样式）、`ChatWorkspaceView.vue` 对话工作区（组合所有对话 hooks 与组件） | |
-| `hooks/` | 状态与副作用 | `useChatWorkspace.ts`（会话、发送、NDJSON 流消费、中断）、`useLlmRuntime.ts`（模型下拉、思考强度、余额）、`useStreamingMarkdown.ts`（流式正文按帧平滑放出、按顶层块记忆化）；首页动效：`useHeroTour.ts`（演示窗口时间轴）、`useConnectRouting.ts`（Connect 打字与路由）、`useHomeMotion.ts`（滚动编排与场景入场） |
-| `api/` | HTTP | `http.ts`（axios 实例，自动解包 `{ success, data }`）、`chat.ts`（`POST /api/chat/stream` 流读取）、`conversations.ts`、`llm.ts` |
+| `views/` | `HomeView.vue` 首页（组合各部分，放跨部分共用样式）、`ChatWorkspaceView.vue` 对话工作区（组合所有对话 hooks 与组件）、`LoginView.vue`、`ChangePasswordView.vue` | |
+| `hooks/` | 状态与副作用 | `useAuth.ts`（当前用户单例、登录 / 退出 / 改密码）、`useChatWorkspace.ts`（会话、发送、NDJSON 流消费、中断）、`useLlmRuntime.ts`（模型下拉、思考强度、余额）、`useStreamingMarkdown.ts`（流式正文按帧平滑放出、按顶层块记忆化）；首页动效：`useHeroTour.ts`（演示窗口时间轴）、`useConnectRouting.ts`（Connect 打字与路由）、`useHomeMotion.ts`（滚动编排与场景入场） |
+| `api/` | HTTP | `http.ts`（axios 实例，自动解包 `{ success, data }`；`handleAuthFailure` 把 401 / 需改密码的 403 统一跳页，流式请求共用）、`auth.ts`、`chat.ts`（`POST /api/chat/stream` 流读取）、`conversations.ts`、`llm.ts` |
 | `components/chat/` | `ChatComposer.vue`：空态大输入框 / 对话中单行胶囊两套布局、随内容增高；`ChatModelMenu.vue`：模型与思考强度下拉；`ChatTypewriterPlaceholder.vue`：空态打字机提示 | |
 | `components/agent/` | 对话消息渲染：Markdown、限高代码卡片（无执行 / 预览能力） | `AgentConversation.vue`、`AgentMarkdownContent.vue`（流式正文渲染入口，块列表来自 `useStreamingMarkdown`）、`AgentCodeBlock.vue` |
 | `components/common/` | 通用基础设施：图标、语义悬浮提示、全局消息 | `AppIcon.vue`、`AppTooltip.vue`、`AppMessage.vue` |

@@ -20,28 +20,30 @@ export class ConversationsService {
     private readonly prismaService: PrismaService,
   ) {}
 
-  async create(input: CreateConversationDto): Promise<Conversation> {
+  async create(userId: string, input: CreateConversationDto): Promise<Conversation> {
     const title = normalizeConversationTitle(input.title)
 
     const conversation = await this.prismaService.conversation.create({
       data: {
         title,
+        userId,
       },
     })
 
     return toConversationResponse(conversation)
   }
 
-  async list(input: ListConversationsQueryDto): Promise<ListConversationsResponse> {
+  async list(userId: string, input: ListConversationsQueryDto): Promise<ListConversationsResponse> {
     const limit = normalizeConversationPageSize(input.limit)
     const cursor = input.cursor?.trim()
 
     if (cursor) {
-      await this.assertConversationExists(cursor)
+      await this.assertOwnConversation(userId, cursor)
     }
 
     const conversations = await this.prismaService.conversation.findMany({
       where: {
+        userId,
         messages: {
           some: {},
         },
@@ -68,14 +70,14 @@ export class ConversationsService {
     }
   }
 
-  async update(conversationId: string, input: UpdateConversationDto): Promise<Conversation> {
+  async update(userId: string, conversationId: string, input: UpdateConversationDto): Promise<Conversation> {
     const title = input.title.trim()
 
     if (!title) {
       throw new BadRequestException('会话标题不能为空')
     }
 
-    await this.assertConversationExists(conversationId)
+    await this.assertOwnConversation(userId, conversationId)
 
     const conversation = await this.prismaService.conversation.update({
       where: {
@@ -89,8 +91,8 @@ export class ConversationsService {
     return toConversationResponse(conversation)
   }
 
-  async delete(conversationId: string): Promise<DeleteConversationResponse> {
-    await this.assertConversationExists(conversationId)
+  async delete(userId: string, conversationId: string): Promise<DeleteConversationResponse> {
+    await this.assertOwnConversation(userId, conversationId)
 
     await this.prismaService.conversation.delete({
       where: {
@@ -104,10 +106,12 @@ export class ConversationsService {
     }
   }
 
-  private async assertConversationExists(conversationId: string): Promise<void> {
-    const conversation = await this.prismaService.conversation.findUnique({
+  /** 别人的会话与不存在的会话同样 404，不暴露存在性；messages 与 chat/stream 共用。 */
+  async assertOwnConversation(userId: string, conversationId: string): Promise<void> {
+    const conversation = await this.prismaService.conversation.findFirst({
       where: {
         id: conversationId,
+        userId,
       },
       select: {
         id: true,

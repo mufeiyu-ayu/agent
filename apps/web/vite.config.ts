@@ -15,6 +15,8 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    // 写请求校验 Origin（APP_ORIGINS 缺省含 5173），端口被占时直接报错，不悄悄换端口。
+    strictPort: true,
     proxy: {
       '/api': {
         target: apiProxyTarget,

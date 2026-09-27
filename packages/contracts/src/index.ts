@@ -76,6 +76,17 @@ export type {
   ApiSuccessResponse,
 } from './api-response.js'
 export type {
+  AdminUser,
+  AuthUser,
+  ChangePasswordRequest,
+  CreateAdminUserRequest,
+  LoginRequest,
+  ResetAdminUserPasswordRequest,
+  UpdateAdminUserRequest,
+  UserRole,
+} from './auth.js'
+export { PASSWORD_CHANGE_REQUIRED, PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH, USER_ROLES } from './auth.js'
+export type {
   ChatModelOption,
   ChatRequest,
   ChatStreamAbortedEvent,

@@ -14,6 +14,8 @@ import type { Page } from '@playwright/test'
 
 export const RUN_ID = 'run-e2e-1'
 
+export const E2E_ADMIN = { id: 'admin-1', email: 'admin@example.com', role: 'ADMIN', mustChangePassword: false }
+
 const START = '2026-08-16T00:00:00.000Z'
 const END = '2026-08-16T00:00:05.000Z'
 
@@ -21,6 +23,12 @@ export async function installRunDetail(
   page: Page,
   detail: AdminRunDetail,
 ): Promise<void> {
+  // #195 起管理台要求管理员登录。
+  await page.route('**/api/auth/me', route => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({ success: true, data: E2E_ADMIN }),
+  }))
   await page.route('**/api/admin/runs/**', async (route) => {
     await route.fulfill({
       status: 200,

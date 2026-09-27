@@ -8,7 +8,7 @@
 阶段 1-8：Completed
 当前阶段：工作台第 1 档（第一期上线）
 Active Agent Task：无
-Next：#195 邮箱密码登录、会话按人隔离与用户管理（第一期 ①，之后是 ② 部署、③ 联网搜索）
+Next：第一期 ② 部署（未立 Issue；须设 trust proxy，见 PR #196），之后 ③ 联网搜索
 Gated：#117 Responses API adapter（2026-09-18），触发条件见看板
 产品方向：给 topuplist 运营用的 AI 工作台，分两期、上云、gsc 延后（2026-09-20 定案、2026-09-27 改为两期，docs/research/workbench-direction.md）；档、顺序与触发只在其第 7 节
 候选子系统：session 事件流与 replay、审批门、compaction、定时任务（未立 Issue，各自的档见 workbench 第 7 节）
@@ -19,6 +19,7 @@ Admin Task 4：Planned
 
 | 任务 | 状态 | 说明 |
 | --- | --- | --- |
+| #195 邮箱密码登录、会话隔离与用户管理 | Completed | 全局 Guard + Session Cookie，会话按人隔离，管理台用户列表与 `pnpm create-admin`。PR #196 |
 | #193 首页替换为设计稿 Agent for Teams（百分百还原） | Completed | 设计稿移植成 `/` 首页并删旧首页，对原稿像素比对 33 张全部达标。PR #194 |
 | #191 全仓测试统一到 Vitest | Completed | 六个 Vitest 项目，入口收成 `test` / `test:db` / `test:e2e`，删 22 条低价值测试，新增 `docs/testing.md`。PR #192 |
 | #189 tools 模板化（RAG 清理第 3 步） | Completed | 一次工具调用的判定收进 `invoke`，工具清单只在 `TOOLS`，文章摘录按低信任数据声明。PR #190 |
@@ -58,7 +59,6 @@ Admin Task 4：Planned
 | #156 低成本安全加固 | Completed | 库内密钥只发往库内地址，地址与密钥成对写入。PR #164 |
 | #158 运行时小修 | Completed | 跨轮文本保证空行，planner 成对删历史，测试入口补漏。PR #166 |
 | #157 真实 Tool Call 流 fixture | Completed | 四家真实 Tool Call SSE 录制后经 client 回放测试。PR #165 |
-| #195 邮箱密码登录、会话隔离与用户管理 | Next | 实施状态：未开始 / 验收状态：未验收。第一期 ①，高风险（鉴权 + migration），review `xhigh` |
 | AI 工作台两期 | Planned | 第一期：登录 + 联网搜索 + 部署香港云服务器；第二期：我的页面（查询工具、沙箱、打开即重新取数、对话改页）；gsc 迁移延后；档、触发、里程碑见 [workbench-direction](../research/workbench-direction.md) 第 7 节；一次只立一个 Issue |
 | Grok Grounding 收尾不调用提交工具 | 已放弃 | 2026-09-26 记录；同日用户定案删除 Grounding（#185），问题随之消失，不再立 Issue。原记录见 git 历史 |
 | `web_fetch` 第一个真实工具 | Planned | 只读、SSRF 防护、untrusted observation，范围见 [pi-reference roadmap](../research/pi-reference/roadmap.md)。2026-09-19 转 Gated；2026-09-27 解除：运营要看新闻、查网站，与联网搜索一起进工作台第 1 档 |

@@ -21,6 +21,7 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
+    "create-admin": "pnpm --filter @agent/api exec node --env-file-if-exists=../../.env --import tsx scripts/create-admin.ts",
     "typecheck": "pnpm typecheck:workspaces",
     "typecheck:apps": "pnpm --recursive --filter './apps/*' typecheck",
     "typecheck:workspaces": "pnpm --recursive --filter './apps/*' --filter './packages/*' typecheck",

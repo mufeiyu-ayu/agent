@@ -36,8 +36,10 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
+  changePassword: []
   deleteChat: [chatId: string]
   loadMoreChats: []
+  logout: []
   newChat: []
   openSettings: []
   refreshBalance: []
@@ -271,6 +273,22 @@ function handleBalanceSelect(event: Event) {
             >
               <AppIcon name="tabler:settings" :size="16" class="text-agent-ink-muted" />
               {{ t('layout.settings.open') }}
+            </DropdownMenuItem>
+
+            <DropdownMenuItem
+              class="flex cursor-pointer items-center gap-2.5 rounded-xl px-3 py-2 text-sm outline-none transition data-[highlighted]:bg-agent-surface-sunken/50"
+              @select="emit('changePassword')"
+            >
+              <AppIcon name="tabler:key" :size="16" class="text-agent-ink-muted" />
+              {{ t('auth.menu.changePassword') }}
+            </DropdownMenuItem>
+
+            <DropdownMenuItem
+              class="flex cursor-pointer items-center gap-2.5 rounded-xl px-3 py-2 text-sm outline-none transition data-[highlighted]:bg-agent-surface-sunken/50"
+              @select="emit('logout')"
+            >
+              <AppIcon name="tabler:logout" :size="16" class="text-agent-ink-muted" />
+              {{ t('auth.menu.logout') }}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenuPortal>
