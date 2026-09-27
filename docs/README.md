@@ -17,6 +17,7 @@
 | [tasks/admin-console.md](./tasks/admin-console.md) | Admin Console 支线，Task 4 Planned |
 | [workflow.md](./workflow.md) | 单角色流程、硬约束、Issue 模板与任务状态 |
 | [testing.md](./testing.md) | 测试放哪、测什么、四个测试入口与真实库测试 |
+| [deploy.md](./deploy.md) | 线上服务器登录、初始化记录、常用操作与部署（不含 IP 与密钥） |
 | [research/README.md](./research/README.md) | 研究入口：Pi 参照、Phase 8 设计依据、配置地图 |
 | [research/pi-reference/README.md](./research/pi-reference/README.md) | Pi 参考知识库：模块正文、8 张图、实现路线 |
 | [research/pi-reference/roadmap.md](./research/pi-reference/roadmap.md) | 每步（R0～R5、web_fetch）的 Pi 素材与证明完成 |
