@@ -56,9 +56,51 @@ enum AgentStepStatus {
   ABORTED // 因整次 run 被中断而未完成
 }
 
+// ─── 账号与登录（Issue #195）────────────────────────
+// 两种角色：管理员进管理台、管理账号；成员只用前台。
+enum UserRole {
+  ADMIN
+  MEMBER
+}
+
+model User {
+  id                 String    @id @default(cuid())
+  // 登录标识，存小写；后续 Google 登录按邮箱匹配。
+  email              String    @unique
+  // scrypt 自描述串：算法、参数、salt、哈希都在里面，换参数不用迁移。
+  passwordHash       String
+  role               UserRole  @default(MEMBER)
+  disabled           Boolean   @default(false)
+  // 管理员建号或重置密码后为真，登录后必须先改密码。
+  mustChangePassword Boolean   @default(true)
+  // 连续失败次数与锁定截止时间存库，重启不丢。
+  failedLoginCount   Int       @default(0)
+  lockedUntil        DateTime?
+  lastLoginAt        DateTime?
+  sessions           Session[]
+  conversations      Conversation[]
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+}
+
+// 服务端 Session：Cookie 里是随机 token，库里只存它的 SHA-256。
+model Session {
+  id        String   @id @default(cuid())
+  tokenHash String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
 model Conversation {
   id        String     @id @default(cuid())
   title     String
+  // 归属用户。可空：存量会话迁移时还没有用户，由 create-admin 脚本回填；新会话一律写入。
+  userId    String?
+  user      User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
   messages  Message[]
   agentRuns AgentRun[]
   createdAt DateTime   @default(now())
@@ -66,6 +108,8 @@ model Conversation {
 
   // 会话列表按「最近活跃」排序，给 updatedAt 加索引。
   @@index([updatedAt])
+  // 前台只列自己的会话。
+  @@index([userId, updatedAt])
 }
 
 model Message {

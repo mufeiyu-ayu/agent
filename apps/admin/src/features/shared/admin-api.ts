@@ -1,4 +1,5 @@
-import type { ApiSuccessResponse } from '@agent/contracts'
+import type { ApiErrorResponse, ApiSuccessResponse } from '@agent/contracts'
+import { PASSWORD_CHANGE_REQUIRED } from '@agent/contracts'
 import { i18n } from '@/i18n'
 
 /** admin 通用 JSON 请求层：runs / conversations 等所有 admin feature 共用。 */
@@ -74,6 +75,8 @@ export async function requestAdminRun<T>(
 
   const payload = await readJson(response)
 
+  handleAuthFailure(url, response.status, payload)
+
   if (!response.ok || !isSuccessResponse<T>(payload)) {
     throw new AdminRunApiError(
       response.status,
@@ -82,6 +85,26 @@ export async function requestAdminRun<T>(
   }
 
   return payload.data
+}
+
+// 登录、查当前用户、退出的 401 由调用方自己处理，不触发跳转。
+const AUTH_PROBE_URLS = new Set(['/api/auth/login', '/api/auth/me', '/api/auth/logout'])
+
+/** 登录失效（401）回登录页，需要先改密码（403）去改密码页；都带上当前页，完成后回来。 */
+function handleAuthFailure(url: string, status: number, payload: unknown): void {
+  if (AUTH_PROBE_URLS.has(url))
+    return
+
+  const code = (payload as Partial<ApiErrorResponse> | undefined)?.error?.error
+  const target = status === 401
+    ? '/login'
+    : status === 403 && code === PASSWORD_CHANGE_REQUIRED ? '/change-password' : undefined
+
+  if (!target || window.location.pathname === target)
+    return
+
+  const redirect = `${window.location.pathname}${window.location.search}`
+  window.location.assign(`${target}?redirect=${encodeURIComponent(redirect)}`)
 }
 
 async function readJson(response: Response): Promise<unknown> {

@@ -4,6 +4,7 @@ import type {
   AgentRuntimeRunFailedEvent,
   RunTurnStreamInput,
 } from '../agent-runtime/agent-runtime.types.js'
+import type { ConversationsService } from '../conversations/conversations.service.js'
 import type { LlmModelConfigService } from '../llm/llm-model-config.service.js'
 import assert from 'node:assert/strict'
 import { BadRequestException } from '@nestjs/common'
@@ -24,7 +25,7 @@ describe('ChatService', () => {
     const harness = createHarness([runCompletedEvent('流式回答')])
     const input = createInput('model-deepseek-v4-flash', 'max')
 
-    await collectEvents(await harness.service.chatStream(input, {
+    await collectEvents(await harness.service.chatStream('user-1', input, {
       signal: abortController.signal,
     }))
 
@@ -51,7 +52,7 @@ describe('ChatService', () => {
   it('省略 model / reasoningEffort / signal 时解析默认模型，不向 Runtime 传 undefined 键', async () => {
     const harness = createHarness([runCompletedEvent('回答')])
 
-    await collectEvents(await harness.service.chatStream(createInput()))
+    await collectEvents(await harness.service.chatStream('user-1', createInput()))
 
     const [streamInput] = harness.runtime.inputs
 
@@ -69,7 +70,7 @@ describe('ChatService', () => {
     const harness = createHarness([runCompletedEvent('回答')])
 
     await assert.rejects(
-      harness.service.chatStream(createInput('model-hidden')),
+      harness.service.chatStream('user-1', createInput('model-hidden')),
       (error: unknown) => {
         assert.ok(error instanceof BadRequestException, 'error instanceof BadRequestException')
         assert.equal(error.message, '请求的模型未对前台开放')
@@ -88,7 +89,7 @@ describe('ChatService', () => {
       runAbortedEvent('部分回答'),
     ])
 
-    const events = await collectEvents(await harness.service.chatStream(createInput()))
+    const events = await collectEvents(await harness.service.chatStream('user-1', createInput()))
 
     assert.deepEqual(events, [
       {
@@ -160,9 +161,12 @@ function createHarness(...eventSequences: AgentRuntimeEvent[][]) {
       return RESOLVED_MODEL
     },
   }
+  // 会话归属由真实库测试覆盖（auth.db.test.ts），这里的会话都属于 user-1。
+  const conversations = { assertOwnConversation: async () => {} }
   const service = new ChatService(
     runtime as unknown as AgentRuntimeService,
     modelConfig as unknown as LlmModelConfigService,
+    conversations as unknown as ConversationsService,
   )
 
   return { runtime, modelConfig, service }

@@ -3,6 +3,7 @@ import type { ChatDto } from './dto/chat.dto.js'
 import { BadRequestException, Inject, Injectable } from '@nestjs/common'
 
 import { AgentRuntimeService } from '../agent-runtime/agent-runtime.service.js'
+import { ConversationsService } from '../conversations/conversations.service.js'
 import { LlmModelConfigService } from '../llm/llm-model-config.service.js'
 import { LlmModelUnavailableError } from '../llm/llm.errors.js'
 import { toChatStreamEvent } from './chat-stream-event.mapper.js'
@@ -19,16 +20,21 @@ export class ChatService {
     private readonly agentRuntimeService: AgentRuntimeService,
     @Inject(LlmModelConfigService)
     private readonly llmModelConfigService: LlmModelConfigService,
+    @Inject(ConversationsService)
+    private readonly conversationsService: ConversationsService,
   ) {}
 
   /**
-   * 先解析模型行再返回事件流：模型不可用要在写出 NDJSON 头之前变成 400，
-   * 所以这里不是 async generator，而是解析完成后再交出 generator。
+   * 先校验会话归属、解析模型行再返回事件流：别人的会话（404）与模型不可用（400）
+   * 都要在写出 NDJSON 头之前抛出，所以这里不是 async generator，而是校验完成后再交出 generator。
    */
   async chatStream(
+    userId: string,
     input: ChatDto,
     options: ChatStreamOptions = {},
   ): Promise<AsyncGenerator<ChatStreamEvent>> {
+    await this.conversationsService.assertOwnConversation(userId, input.conversationId)
+
     const model = await this.resolveModel(input.model, input.reasoningEffort)
 
     return this.mapRuntimeEvents(this.agentRuntimeService.runTurnStream({

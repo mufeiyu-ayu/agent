@@ -1,7 +1,9 @@
 import type { ChatStreamEvent } from '@agent/contracts'
 import type { ServerResponse } from 'node:http'
+import type { AuthContext } from '../auth/auth.decorators.js'
 import { Body, Controller, HttpStatus, Inject, Logger, Post, Res } from '@nestjs/common'
 
+import { CurrentAuth } from '../auth/auth.decorators.js'
 import { ChatService } from './chat.service.js'
 // DTO classes are required at runtime for Nest decorator metadata.
 // eslint-disable-next-line ts/consistent-type-imports
@@ -18,6 +20,7 @@ export class ChatController {
 
   @Post('stream')
   async chatStream(
+    @CurrentAuth() auth: AuthContext,
     @Body() body: ChatDto,
     @Res() response: ServerResponse,
   ): Promise<void> {
@@ -29,9 +32,9 @@ export class ChatController {
       }
     })
 
-    // 模型行解析在写出响应头之前完成：模型不可用时抛 BadRequestException，
-    // 由全局异常过滤器返回 400 JSON，而不是一条空的 NDJSON 流。
-    const events = await this.chatService.chatStream(body, {
+    // 会话归属与模型行解析在写出响应头之前完成：别人的会话抛 404、模型不可用抛 400，
+    // 由全局异常过滤器返回 JSON，而不是一条空的 NDJSON 流。
+    const events = await this.chatService.chatStream(auth.user.id, body, {
       signal: abortController.signal,
     })
 

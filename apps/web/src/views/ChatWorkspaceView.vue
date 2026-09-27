@@ -3,6 +3,7 @@ import type { AgentNavigationItem, AgentPlatformUser } from '../types/agent-plat
 
 import { computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRouter } from 'vue-router'
 
 import workspaceBgOliveEmberDeepUrl from '../assets/bg-olive.webp'
 import workspaceBgAiBalancedUrl from '../assets/bg-warm.webp'
@@ -11,6 +12,7 @@ import ChatComposer from '../components/chat/ChatComposer.vue'
 import AppIcon from '../components/common/AppIcon.vue'
 import AppMessage from '../components/common/AppMessage.vue'
 import AppShell from '../components/layout/AppShell.vue'
+import { useAuth } from '../hooks/useAuth'
 import { useChatWorkspace } from '../hooks/useChatWorkspace'
 import { useLlmRuntime } from '../hooks/useLlmRuntime'
 import { useWorkspaceTheme } from '../hooks/useWorkspaceTheme'
@@ -23,11 +25,11 @@ const navigationConfig = [
   { id: 'settings', labelKey: 'navigation.settings', icon: 'tabler:settings' },
 ] as const
 
-const user: AgentPlatformUser = {
-  name: 'ayu',
-}
-
 const { t } = useI18n()
+const router = useRouter()
+const { currentUser, signOut } = useAuth()
+
+const user = computed<AgentPlatformUser>(() => ({ name: currentUser.value?.email ?? '' }))
 
 const {
   workspaceTheme,
@@ -76,8 +78,21 @@ const {
   loadMoreConversations,
   sendMessage,
   stopGeneration,
+  showMessage,
   hideMessage,
 } = useChatWorkspace({ onModelUnavailable: loadModels })
+
+async function logout() {
+  try {
+    await signOut()
+  }
+  catch {
+    showMessage(t('auth.logoutFailed'), 'error')
+    return
+  }
+
+  await router.replace({ name: 'login' })
+}
 
 // 请求真正发出（未被节流 / 生成中拦下）才算用户已经看到模型替换提示。
 watch(status, (next) => {
@@ -129,8 +144,10 @@ function send() {
     :user="user"
     :workspace-background="workspaceBackground"
     :workspace-theme="workspaceTheme"
+    @change-password="router.push({ name: 'change-password', query: { redirect: '/workspace' } })"
     @delete-chat="deleteConversationById"
     @load-more-chats="loadMoreConversations"
+    @logout="logout"
     @new-chat="resetWorkspace"
     @refresh-balance="refreshBalance"
     @rename-chat="renameConversationById"

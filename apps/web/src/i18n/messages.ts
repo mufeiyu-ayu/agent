@@ -12,6 +12,31 @@ export const messages = {
         closeAlert: '关闭提示',
       },
     },
+    auth: {
+      fallbackError: '请求失败，请稍后重试',
+      fields: {
+        email: '邮箱',
+        password: '密码',
+        currentPassword: '当前密码',
+        newPassword: '新密码（至少 {min} 位）',
+        confirmPassword: '确认新密码',
+      },
+      login: {
+        title: '登录',
+        submit: '登录',
+      },
+      changePassword: {
+        title: '修改密码',
+        required: '首次登录或密码被重置，请先设置新密码',
+        mismatch: '两次输入的新密码不一致',
+        submit: '保存新密码',
+      },
+      menu: {
+        changePassword: '修改密码',
+        logout: '退出登录',
+      },
+      logoutFailed: '退出失败，请稍后重试',
+    },
     navigation: {
       knowledgeQa: '知识库问答',
       articleSearch: '文章检索',
@@ -157,6 +182,31 @@ export const messages = {
         refreshBalance: 'Refresh balance',
         closeAlert: 'Close alert',
       },
+    },
+    auth: {
+      fallbackError: 'Request failed, please try again',
+      fields: {
+        email: 'Email',
+        password: 'Password',
+        currentPassword: 'Current password',
+        newPassword: 'New password (at least {min} characters)',
+        confirmPassword: 'Confirm new password',
+      },
+      login: {
+        title: 'Sign in',
+        submit: 'Sign in',
+      },
+      changePassword: {
+        title: 'Change password',
+        required: 'Please set a new password before continuing',
+        mismatch: 'The new passwords do not match',
+        submit: 'Save new password',
+      },
+      menu: {
+        changePassword: 'Change password',
+        logout: 'Sign out',
+      },
+      logoutFailed: 'Sign-out failed, please try again',
     },
     navigation: {
       knowledgeQa: 'Knowledge Q&A',

@@ -1117,6 +1117,7 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
     loadMoreConversations,
     sendMessage,
     stopGeneration,
+    showMessage,
     hideMessage,
   }
 }

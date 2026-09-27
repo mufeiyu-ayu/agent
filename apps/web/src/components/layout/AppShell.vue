@@ -33,8 +33,10 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
+  changePassword: []
   deleteChat: [chatId: string]
   loadMoreChats: []
+  logout: []
   newChat: []
   refreshBalance: []
   renameChat: [chatId: string, title: string]
@@ -103,8 +105,10 @@ function openSettings() {
       :navigation-items="props.navigationItems"
       :recent-chats="props.recentChats"
       :user="props.user"
+      @change-password="emit('changePassword')"
       @delete-chat="handleDeleteChat"
       @load-more-chats="emit('loadMoreChats')"
+      @logout="emit('logout')"
       @new-chat="handleNewChat"
       @open-settings="openSettings"
       @refresh-balance="emit('refreshBalance')"
@@ -137,8 +141,10 @@ function openSettings() {
           :recent-chats="props.recentChats"
           :user="props.user"
           mobile
+          @change-password="emit('changePassword')"
           @delete-chat="handleDeleteChat"
           @load-more-chats="emit('loadMoreChats')"
+          @logout="emit('logout')"
           @new-chat="handleNewChat"
           @open-settings="openSettings"
           @refresh-balance="emit('refreshBalance')"
