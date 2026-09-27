@@ -12,8 +12,12 @@ defineProps<{
 
 <style scoped>
 .page-container {
+  display: flex;
   width: min(1180px, 100%);
+  flex: 1;
+  flex-direction: column;
   margin: 0 auto;
+  padding-bottom: 24px;
 }
 
 .page-container.is-wide {

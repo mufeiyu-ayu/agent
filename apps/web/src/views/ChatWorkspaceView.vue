@@ -94,7 +94,8 @@ async function logout() {
     return
   }
 
-  await router.replace({ name: 'login' })
+  // 主动退出回首页，不弹登录框
+  await router.replace('/')
 }
 
 // 请求真正发出（未被节流 / 生成中拦下）才算用户已经看到模型替换提示。

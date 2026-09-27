@@ -6,7 +6,7 @@ import logoUrl from '@/assets/logo.webp'
   <footer class="foot">
     <div class="wrap foot-grid">
       <div>
-        <a class="brand" href="#top" aria-label="Agent home"><img :src="logoUrl" alt="">Agent</a>
+        <a class="brand" href="#top" aria-label="Kuro home"><img :src="logoUrl" alt="">Kuro</a>
         <p class="tag">
           The AI analyst your whole team shares.
         </p>
@@ -20,7 +20,7 @@ import logoUrl from '@/assets/logo.webp'
         <ul><li><a href="#">Docs</a></li><li><a href="#">Changelog</a></li><li><a href="#">Contact</a></li></ul>
       </div>
       <p class="small">
-        © 2026 Agent<br>Built for teams that run on data.
+        © 2026 Kuro<br>Built for teams that run on data.
       </p>
     </div>
   </footer>

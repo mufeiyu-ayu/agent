@@ -159,7 +159,7 @@ async function copyRunId() {
   transform: translateY(1px);
 }
 
-.trace-header :deep(.run-status-tag) {
+.trace-header :deep(.run-status) {
   font-size: var(--admin-font-2xs);
 }
 

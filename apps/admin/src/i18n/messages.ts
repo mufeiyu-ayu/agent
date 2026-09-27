@@ -1,14 +1,22 @@
 export const messages = {
   'zh-CN': {
     common: {
-      appName: 'Agent Console',
-      local: '本地',
+      appName: 'Kuro Console',
       generic: '通用',
+      status: {
+        COMPLETED: '已完成',
+        FAILED: '失败',
+        ABORTED: '已中止',
+        RUNNING: '运行中',
+        PENDING: '等待中',
+        STREAMING: '生成中',
+      },
       yes: '是',
       no: '否',
       chars: '{count} 个字符',
       items: '{count} 项',
       actions: {
+        openDetail: '打开详情',
         search: '搜索',
         reset: '重置',
         retry: '重试',
@@ -41,7 +49,6 @@ export const messages = {
       expandSidebar: '展开侧边栏',
       collapseSidebar: '折叠侧边栏',
       collapseMenu: '收起菜单',
-      quickActions: '控制台',
       backToOverview: '返回概览',
     },
     theme: {
@@ -80,7 +87,8 @@ export const messages = {
       },
       trend: {
         title: '运行与 Token 趋势',
-        subtitle: '按状态堆叠的运行数为左轴，Token 总量为右轴',
+        subtitle: '运行数按状态堆叠，可切换查看 Token 总量',
+        metricRuns: '运行数',
         status: {
           COMPLETED: '完成',
           FAILED: '失败',
@@ -124,7 +132,7 @@ export const messages = {
           avgDuration: '平均耗时',
         },
         unknownHint: '不在当前工具清单里的名字：模型编造，或工具已下线 / 改名',
-        empty: '暂无工具调用；Agent 执行带检索或检查的任务后，这里会展示各工具的健康情况。',
+        empty: '暂无工具调用；Kuro 执行带检索或检查的任务后，这里会展示各工具的健康情况。',
       },
       balance: {
         unavailable: '不可用',
@@ -133,7 +141,8 @@ export const messages = {
       },
     },
     runs: {
-      title: 'Agent 运行记录',
+      title: '运行记录',
+      description: '用户每次提问触发一次运行，可按状态、失败类别和日期筛选',
       summaryLabel: '运行摘要',
       summary: {
         total: '运行总数',
@@ -171,13 +180,12 @@ export const messages = {
       },
       modelDeleted: '已删除',
       loadFailed: '运行列表加载失败',
-      inspect: '查看运行详情',
-      inspectAria: '查看 {id}',
       empty: '没有匹配的 Run，请调整筛选条件。',
       showing: '当前显示 {count} 条，共 {total} 条运行记录',
     },
     conversations: {
       title: '会话记录',
+      description: '每个会话是一段长期对话，点开查看消息与其中的运行',
       columns: {
         id: '会话 ID',
         title: '标题',
@@ -187,8 +195,6 @@ export const messages = {
         createdAt: '创建时间',
       },
       loadFailed: '会话列表加载失败',
-      inspect: '查看会话详情',
-      inspectAria: '查看 {id}',
       empty: '还没有会话记录。',
       showing: '当前显示 {count} 条，共 {total} 条会话',
     },
@@ -430,6 +436,7 @@ export const messages = {
       },
       login: {
         title: '登录',
+        subtitle: '运行健康、会话轨迹、模型与用户，都在这里管理',
         submit: '登录',
       },
       changePassword: {
@@ -445,6 +452,7 @@ export const messages = {
       google: {
         or: '或',
         button: '使用 Google 登录',
+        redirecting: '正在前往 Google…',
         pendingTitle: '等待管理员审核',
         pendingBody: '你的 Google 账号已提交使用申请，管理员通过后再登录即可使用。',
         back: '返回登录',
@@ -455,6 +463,8 @@ export const messages = {
       },
     },
     users: {
+      loadFailed: '用户列表加载失败',
+      total: '共 {count} 位用户',
       title: '用户列表',
       description: '管理员在这里建号、审核 Google 登录申请、停用、重置密码与改角色；新建与重置后，本人首次登录必须改密码。',
       create: '新建用户',
@@ -499,7 +509,7 @@ export const messages = {
       passwordReset: '已重置密码，该账号已下线',
     },
     notFound: {
-      description: '你访问的页面不存在，或尚未纳入 Agent Console。',
+      description: '你访问的页面不存在，或尚未纳入 Kuro Console。',
       back: '返回概览',
     },
     llmModels: {
@@ -614,14 +624,22 @@ export const messages = {
   },
   'en-US': {
     common: {
-      appName: 'Agent Console',
-      local: 'Local',
+      appName: 'Kuro Console',
+      status: {
+        COMPLETED: 'Completed',
+        FAILED: 'Failed',
+        ABORTED: 'Aborted',
+        RUNNING: 'Running',
+        PENDING: 'Pending',
+        STREAMING: 'Streaming',
+      },
       generic: 'Generic',
       yes: 'Yes',
       no: 'No',
       chars: '{count} chars',
       items: '{count} items',
       actions: {
+        openDetail: 'Open details',
         search: 'Search',
         reset: 'Reset',
         retry: 'Retry',
@@ -654,7 +672,6 @@ export const messages = {
       expandSidebar: 'Expand sidebar',
       collapseSidebar: 'Collapse sidebar',
       collapseMenu: 'Collapse menu',
-      quickActions: 'Console',
       backToOverview: 'Back to Overview',
     },
     theme: {
@@ -693,7 +710,8 @@ export const messages = {
       },
       trend: {
         title: 'Runs & Tokens',
-        subtitle: 'Runs stacked by status on the left axis, total tokens on the right',
+        subtitle: 'Runs stacked by status; switch to see total tokens',
+        metricRuns: 'Runs',
         status: {
           COMPLETED: 'Completed',
           FAILED: 'Failed',
@@ -746,7 +764,8 @@ export const messages = {
       },
     },
     runs: {
-      title: 'Agent Runs',
+      title: 'Runs',
+      description: 'One run per user question; filter by status, failure category and date',
       summaryLabel: 'Run summary',
       summary: {
         total: 'Total Runs',
@@ -784,13 +803,12 @@ export const messages = {
       },
       modelDeleted: 'Deleted',
       loadFailed: 'Unable to load Runs',
-      inspect: 'Inspect Run',
-      inspectAria: 'Inspect {id}',
       empty: 'No matching Runs. Adjust the filters and try again.',
       showing: 'Showing {count} of {total} Runs',
     },
     conversations: {
       title: 'Conversations',
+      description: 'Each conversation is a long-lived chat; open one to see its messages and runs',
       columns: {
         id: 'Conversation ID',
         title: 'Title',
@@ -800,8 +818,6 @@ export const messages = {
         createdAt: 'Created At',
       },
       loadFailed: 'Unable to load Conversations',
-      inspect: 'Inspect Conversation',
-      inspectAria: 'Inspect {id}',
       empty: 'No Conversations yet.',
       showing: 'Showing {count} of {total} Conversations',
     },
@@ -1043,6 +1059,7 @@ export const messages = {
       },
       login: {
         title: 'Sign in',
+        subtitle: 'Runs, conversations, models and users in one console',
         submit: 'Sign in',
       },
       changePassword: {
@@ -1058,6 +1075,7 @@ export const messages = {
       google: {
         or: 'or',
         button: 'Sign in with Google',
+        redirecting: 'Redirecting to Google…',
         pendingTitle: 'Waiting for approval',
         pendingBody: 'Your Google account has requested access. Sign in again once an administrator approves it.',
         back: 'Back to sign in',
@@ -1068,6 +1086,8 @@ export const messages = {
       },
     },
     users: {
+      loadFailed: 'Unable to load users',
+      total: '{count} users',
       title: 'Users',
       description: 'Create accounts, review Google sign-in requests, disable accounts, reset passwords and change roles. New and reset accounts must change the password on first sign-in.',
       create: 'New user',
@@ -1112,7 +1132,7 @@ export const messages = {
       passwordReset: 'Password reset; the user is signed out',
     },
     notFound: {
-      description: 'The page does not exist or is not available in Agent Console yet.',
+      description: 'The page does not exist or is not available in Kuro Console yet.',
       back: 'Back to Overview',
     },
     llmModels: {

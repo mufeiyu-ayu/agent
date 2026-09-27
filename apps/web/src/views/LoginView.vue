@@ -32,9 +32,7 @@ useGoogleOneTap((outcome: OneTapOutcome) => {
 </script>
 
 <template>
-  <main class="grid min-h-screen place-items-center bg-agent-canvas px-4 text-agent-ink">
-    <div class="w-full max-w-sm rounded-xl border border-agent-border-soft bg-agent-surface-raised p-6 shadow-sm">
-      <LoginForm v-model:notice="notice" :redirect="redirect" @success="enter" />
-    </div>
+  <main class="min-h-screen bg-[oklch(0.955_0.007_72)]">
+    <LoginForm v-model:notice="notice" :redirect="redirect" page @success="enter" />
   </main>
 </template>

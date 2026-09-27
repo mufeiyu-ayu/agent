@@ -1,7 +1,7 @@
 export const messages = {
   'zh-CN': {
     common: {
-      appName: 'Agent 工作台',
+      appName: 'Kuro 工作台',
       languages: {
         zh: '中文',
         en: 'English',
@@ -22,8 +22,17 @@ export const messages = {
         confirmPassword: '确认新密码',
       },
       login: {
-        title: '登录',
+        title: '登录 Kuro',
+        subtitle: '回到你的工作台，接着上次的对话',
+        tagline: '用大白话问公司的数据，把发现分享给团队。',
+        taglineNote: '接入团队每天在用的数据，问一句，得到全组都能打开的报表和图表。',
         submit: '登录',
+        submitting: '登录中…',
+        showPassword: '显示',
+        hidePassword: '隐藏',
+        otherMethods: '或',
+        backHome: '返回首页',
+        privacy: '隐私说明',
       },
       changePassword: {
         title: '修改密码',
@@ -36,9 +45,12 @@ export const messages = {
         logout: '退出登录',
       },
       logoutFailed: '退出失败，请稍后重试',
+      apple: {
+        unavailable: 'Apple 登录暂未开放',
+      },
       google: {
-        or: '或',
         button: '使用 Google 登录',
+        redirecting: '正在前往…',
         pendingTitle: '等待管理员审核',
         pendingBody: '你的 Google 账号已提交使用申请，管理员通过后再登录即可使用。',
         back: '返回登录',
@@ -183,7 +195,7 @@ export const messages = {
   },
   'en-US': {
     common: {
-      appName: 'Agent Workspace',
+      appName: 'Kuro Workspace',
       languages: {
         zh: '中文',
         en: 'English',
@@ -204,8 +216,17 @@ export const messages = {
         confirmPassword: 'Confirm new password',
       },
       login: {
-        title: 'Sign in',
+        title: 'Sign in to Kuro',
+        subtitle: 'Pick up your workspace where you left off',
+        tagline: 'Ask your company’s data. Share what you find.',
+        taglineNote: 'Connect the data your team runs on, ask in plain words, and get reports the whole team can open.',
         submit: 'Sign in',
+        submitting: 'Signing in…',
+        showPassword: 'Show',
+        hidePassword: 'Hide',
+        otherMethods: 'or',
+        backHome: 'Back to home',
+        privacy: 'Privacy',
       },
       changePassword: {
         title: 'Change password',
@@ -218,9 +239,12 @@ export const messages = {
         logout: 'Sign out',
       },
       logoutFailed: 'Sign-out failed, please try again',
+      apple: {
+        unavailable: 'Sign in with Apple is not available yet',
+      },
       google: {
-        or: 'or',
         button: 'Sign in with Google',
+        redirecting: 'Redirecting…',
         pendingTitle: 'Waiting for approval',
         pendingBody: 'Your Google account has requested access. Sign in again once an administrator approves it.',
         back: 'Back to sign in',

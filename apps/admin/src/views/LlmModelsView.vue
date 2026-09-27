@@ -367,8 +367,8 @@ function handleProbeVisibleModels() {
 .llm-workspace {
   display: grid;
   grid-template-columns: 320px minmax(0, 1fr);
-  /* 填满内容区：AdminLayout 的 .admin-content 是视口减头部与 tabs，上下各 20px 内边距。 */
-  height: calc(100vh - var(--admin-header-height) - var(--admin-tabs-height) - 40px);
+  /* 填满内容区：视口减顶栏，再减外壳上下各 8px、内容区顶部 20px、PageContainer 底部 24px。 */
+  height: calc(100vh - var(--admin-header-height) - var(--admin-tabs-height) - 60px);
   min-height: 560px;
   border: 1px solid var(--admin-border);
   border-radius: var(--admin-radius-md);

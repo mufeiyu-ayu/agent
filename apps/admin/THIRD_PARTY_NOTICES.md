@@ -40,3 +40,33 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+## Cool Admin Vue
+
+- 上游仓库：<https://github.com/cool-team-official/cool-admin-vue>（分支 `8.x`）
+- 许可证：MIT
+- Copyright (c) 2025 厦门闪酷科技开发有限公司
+
+`src/views/LoginView.vue` 的左侧流动背景取自其登录页 `src/modules/base/pages/login/static/bg.svg`：两片十瓣波浪形的路径数据与摆放位置，旋转动画由 SMIL `animateTransform` 改为 CSS 动画（以便尊重 `prefers-reduced-motion`），配色换成本项目的森林绿。没有复制其他代码、Logo 或依赖。
+
+### MIT License
+
+Copyright (c) 2025 厦门闪酷科技开发有限公司
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.

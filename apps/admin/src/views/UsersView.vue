@@ -4,7 +4,6 @@ import type { FormInstance, TableColumnsType } from 'ant-design-vue'
 import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH, USER_ROLES, USER_STATUSES, userDisplayName } from '@agent/contracts'
 import { PlusOutlined } from '@ant-design/icons-vue'
 import {
-  Alert,
   App as AntApp,
   Button,
   Form,
@@ -15,12 +14,11 @@ import {
   Popconfirm,
   Select,
   Space,
-  Table,
-  Tag,
 } from 'ant-design-vue'
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
+import DataTable from '@/components/common/DataTable.vue'
 import PageContainer from '@/components/common/PageContainer.vue'
 import PageHeader from '@/components/common/PageHeader.vue'
 import UserAvatar from '@/components/common/UserAvatar.vue'
@@ -55,9 +53,12 @@ const columns = computed<TableColumnsType<AdminUser>>(() => [
 const roleOptions = computed(() => USER_ROLES.map(role => ({ value: role, label: t(`users.roles.${role}`) })))
 const passwordRules = computed(() => [{ required: true, min: PASSWORD_MIN_LENGTH, max: PASSWORD_MAX_LENGTH, message: t('users.passwordLength', { min: PASSWORD_MIN_LENGTH }) }])
 
-/** Table 的 bodyCell record 未带类型，这里收窄。 */
-function asUser(record: unknown): AdminUser {
-  return record as AdminUser
+function userTone(user: AdminUser): 'success' | 'warning' | 'danger' {
+  if (user.status === 'DISABLED')
+    return 'danger'
+  if (user.status === 'PENDING' || user.mustChangePassword)
+    return 'warning'
+  return 'success'
 }
 
 async function run(action: () => Promise<void>, successKey: string) {
@@ -132,7 +133,7 @@ async function submitReset() {
 </script>
 
 <template>
-  <PageContainer>
+  <PageContainer wide>
     <PageHeader :title="t('users.title')" :description="t('users.description')">
       <template #actions>
         <Button type="primary" @click="openCreate">
@@ -144,85 +145,78 @@ async function submitReset() {
       </template>
     </PageHeader>
 
-    <Alert v-if="state.error.value" type="error" :message="state.error.value" show-icon class="users-error" />
-
-    <Table
+    <DataTable
       row-key="id"
       :columns="columns"
       :data-source="state.users.value"
       :loading="state.loading.value"
-      :pagination="false"
+      :error="state.error.value"
+      :error-title="t('users.loadFailed')"
+      :summary="t('users.total', { count: state.users.value.length })"
+      @retry="state.load"
     >
       <template #bodyCell="{ column, record }">
         <template v-if="column.key === 'user'">
           <span class="users-identity">
-            <UserAvatar :user="asUser(record)" />
+            <UserAvatar :user="record" />
             <span>
-              <strong>{{ userDisplayName(asUser(record)) }}</strong>
-              <small>{{ asUser(record).email }}</small>
+              <strong>{{ userDisplayName(record) }}</strong>
+              <small>{{ record.email }}</small>
             </span>
           </span>
         </template>
         <template v-else-if="column.key === 'role'">
-          <Tag :color="asUser(record).role === 'ADMIN' ? 'blue' : undefined">
-            {{ t(`users.roles.${asUser(record).role}`) }}
-          </Tag>
+          <span class="users-role-badge" :class="{ 'is-admin': record.role === 'ADMIN' }">
+            {{ t(`users.roles.${record.role}`) }}
+          </span>
         </template>
         <template v-else-if="column.key === 'status'">
-          <Tag v-if="asUser(record).status === 'PENDING'" color="gold">
-            {{ t('users.statuses.PENDING') }}
-          </Tag>
-          <Tag v-else-if="asUser(record).status === 'DISABLED'" color="red">
-            {{ t('users.statuses.DISABLED') }}
-          </Tag>
-          <Tag v-else-if="asUser(record).mustChangePassword" color="orange">
-            {{ t('users.mustChangePassword') }}
-          </Tag>
-          <Tag v-else color="green">
-            {{ t('users.statuses.ACTIVE') }}
-          </Tag>
+          <span class="users-status" :class="`is-${userTone(record)}`">
+            <i />
+            {{ record.status === 'ACTIVE' && record.mustChangePassword ? t('users.mustChangePassword') : t(`users.statuses.${record.status}`) }}
+          </span>
         </template>
         <template v-else-if="column.key === 'lastLoginAt'">
-          {{ formatDateTime(asUser(record).lastLoginAt, locale) }}
+          <span class="users-muted">{{ formatDateTime(record.lastLoginAt, locale) }}</span>
         </template>
         <template v-else-if="column.key === 'actions'">
           <!-- 待审核只给通过 / 拒绝；拒绝后该邮箱不能再申请，管理员之后可手动启用。 -->
-          <Space v-if="asUser(record).status === 'PENDING'">
-            <Button size="small" type="primary" :disabled="state.submitting.value" @click="setStatus(asUser(record), 'ACTIVE')">
+          <Space v-if="record.status === 'PENDING'">
+            <Button size="small" type="primary" :disabled="state.submitting.value" @click="setStatus(record, 'ACTIVE')">
               {{ t('users.approve') }}
             </Button>
-            <Popconfirm :title="t('users.confirmReject', { email: asUser(record).email })" @confirm="setStatus(asUser(record), 'DISABLED')">
+            <Popconfirm :title="t('users.confirmReject', { email: record.email })" @confirm="setStatus(record, 'DISABLED')">
               <Button size="small" danger :disabled="state.submitting.value">
                 {{ t('users.reject') }}
               </Button>
             </Popconfirm>
           </Space>
           <!-- 自己那行不给操作：改角色、重置密码、停用都会删掉自己的 Session。 -->
-          <Space v-else-if="asUser(record).id !== currentUser?.id">
+          <Space v-else-if="record.id !== currentUser?.id">
             <Select
               size="small"
-              :value="asUser(record).role"
+              :value="record.role"
               :options="roleOptions"
               :disabled="state.submitting.value"
               :aria-label="t('users.columns.role')"
               class="users-role"
-              @change="changeRole(asUser(record), $event as UserRole)"
+              @change="changeRole(record, $event as UserRole)"
             />
-            <Button size="small" :disabled="state.submitting.value" @click="openReset(asUser(record))">
+            <Button size="small" :disabled="state.submitting.value" @click="openReset(record)">
               {{ t('users.resetPassword') }}
             </Button>
             <Popconfirm
-              :title="t(asUser(record).status === 'DISABLED' ? 'users.confirmEnable' : 'users.confirmDisable', { email: asUser(record).email })"
-              @confirm="setStatus(asUser(record), asUser(record).status === 'DISABLED' ? 'ACTIVE' : 'DISABLED')"
+              :title="t(record.status === 'DISABLED' ? 'users.confirmEnable' : 'users.confirmDisable', { email: record.email })"
+              @confirm="setStatus(record, record.status === 'DISABLED' ? 'ACTIVE' : 'DISABLED')"
             >
-              <Button size="small" :danger="asUser(record).status !== 'DISABLED'" :disabled="state.submitting.value">
-                {{ t(asUser(record).status === 'DISABLED' ? 'users.enable' : 'users.disable') }}
+              <Button size="small" :danger="record.status !== 'DISABLED'" :disabled="state.submitting.value">
+                {{ t(record.status === 'DISABLED' ? 'users.enable' : 'users.disable') }}
               </Button>
             </Popconfirm>
           </Space>
         </template>
       </template>
-    </Table>
+    </DataTable>
 
     <Modal
       v-model:open="createOpen"
@@ -263,10 +257,6 @@ async function submitReset() {
 </template>
 
 <style scoped>
-.users-error {
-  margin-bottom: 16px;
-}
-
 .users-role {
   width: 96px;
 }
@@ -277,8 +267,63 @@ async function submitReset() {
   gap: 10px;
 }
 
+.users-identity strong {
+  font-weight: 500;
+}
+
 .users-identity small {
   display: block;
   color: var(--admin-text-muted);
+  font-size: var(--admin-font-xs);
+}
+
+.users-role-badge {
+  color: var(--admin-text-muted);
+}
+
+.users-role-badge.is-admin {
+  padding: 2px 8px;
+  border-radius: 999px;
+  color: var(--admin-primary);
+  font-weight: 500;
+  background: var(--admin-primary-soft);
+}
+
+.users-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.users-status i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+
+.users-status.is-success i {
+  background: var(--admin-success);
+}
+
+.users-status.is-warning {
+  color: var(--admin-warning);
+}
+
+.users-status.is-warning i {
+  background: var(--admin-warning);
+}
+
+.users-status.is-danger {
+  color: var(--admin-danger);
+}
+
+.users-status.is-danger i {
+  background: var(--admin-danger);
+}
+
+.users-muted {
+  color: var(--admin-text-muted);
+  font-variant-numeric: tabular-nums;
 }
 </style>

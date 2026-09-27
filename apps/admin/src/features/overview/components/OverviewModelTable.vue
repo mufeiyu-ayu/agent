@@ -200,7 +200,7 @@ const columns = computed<TableColumnsType<OverviewModelRow>>(() => [
   grid-column: 1 / -1;
   height: 4px;
   border-radius: 2px;
-  background: var(--admin-bg-deep);
+  background: var(--admin-hover);
   overflow: hidden;
 }
 

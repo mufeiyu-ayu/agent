@@ -23,65 +23,51 @@ const antLocale = computed(() => locale.value === 'en-US' ? enUS : zhCN)
  */
 const seedColors = {
   light: {
-    colorPrimary: '#0284c7', // 2024–2026 前沿云基础设施 Glacier Ice Cyan 冰川极光青（Neon DB / Railway 风格）
+    colorPrimary: '#135230', // 森林绿 tint
     colorBgContainer: '#ffffff',
     colorBgElevated: '#ffffff',
-    colorBgLayout: '#f4f5f7',
-    colorBorderSecondary: '#e5e7eb',
-    colorText: '#1f2937',
-    colorTextSecondary: '#6b7280',
+    colorBgLayout: '#fcfcf9',
+    colorBorderSecondary: '#ebebe8',
+    colorText: '#1d1d1f',
+    colorTextSecondary: '#6e6e73',
   },
   dark: {
-    colorPrimary: '#38bdf8', // 暗色模式高透光赛博电光青
-    colorBgContainer: '#12161f',
-    colorBgElevated: '#1a1f2c',
-    colorBgLayout: '#0d1117',
-    colorBorderSecondary: '#2d3342',
-    colorText: '#f3f4f6',
-    colorTextSecondary: '#9ca3af',
+    colorPrimary: '#4f9a6c',
+    colorBgContainer: '#252528',
+    colorBgElevated: '#2c2c2f',
+    colorBgLayout: '#1e1e20',
+    colorBorderSecondary: '#333336',
+    colorText: '#f5f5f7',
+    colorTextSecondary: '#a1a1a6',
   },
 } as const
 
 const themeConfig = computed<ThemeConfig>(() => {
   const dark = preferences.resolvedTheme === 'dark'
+  const seeds = dark ? seedColors.dark : seedColors.light
 
   return {
     algorithm: dark ? antdTheme.darkAlgorithm : antdTheme.defaultAlgorithm,
     token: {
-      ...(dark ? seedColors.dark : seedColors.light),
+      ...seeds,
+      colorError: dark ? '#e86156' : '#ba3630',
+      colorWarning: dark ? '#ca933e' : '#a97416',
+      colorSuccess: dark ? '#5aa877' : '#307a4f',
+      colorInfo: seeds.colorPrimary,
+      colorLink: seeds.colorPrimary,
       borderRadius: 8,
       fontFamily: 'var(--admin-font-family)',
       fontSize: 14,
     },
     components: {
       Button: {
-        controlHeight: 34,
+        controlHeight: 32,
         borderRadius: 8,
         primaryColor: '#ffffff',
       },
-      Switch: {
-        colorPrimary: dark ? '#38bdf8' : '#0284c7',
-        colorPrimaryHover: dark ? '#7dd3fc' : '#0369a1',
-      },
       Card: {
         paddingLG: 20,
-      },
-      Input: {
-        borderRadius: 8,
-        activeBorderColor: dark ? '#38bdf8' : '#0284c7',
-        hoverBorderColor: dark ? '#0284c7' : '#38bdf8',
-      },
-      InputNumber: {
-        borderRadius: 8,
-        activeBorderColor: dark ? '#38bdf8' : '#0284c7',
-        hoverBorderColor: dark ? '#0284c7' : '#38bdf8',
-      },
-      Select: {
-        borderRadius: 8,
-        colorPrimary: dark ? '#38bdf8' : '#0284c7',
-        colorPrimaryHover: dark ? '#7dd3fc' : '#0369a1',
-        activeBorderColor: dark ? '#38bdf8' : '#0284c7',
-        hoverBorderColor: dark ? '#0284c7' : '#38bdf8',
+        borderRadiusLG: 12,
       },
       Menu: {
         itemBorderRadius: 8,
@@ -90,13 +76,16 @@ const themeConfig = computed<ThemeConfig>(() => {
         itemMarginInline: 8,
       },
       Segmented: {
-        borderRadius: 8,
-        bgColorSelected: dark ? '#27272a' : '#ffffff',
+        borderRadius: 999,
+        borderRadiusSM: 999,
+        borderRadiusXS: 999,
+        bgColorSelected: dark ? '#3a3a3d' : '#ffffff',
       },
       Table: {
         tableHeaderBg: 'transparent',
         tableHeaderCellSplitColor: 'transparent',
-        tableRowHoverBg: dark ? '#202432' : '#f5f7fa',
+        // 不透明：固定列悬停时要盖住下面滚过去的单元格
+        tableRowHoverBg: dark ? '#262628' : '#f4f4f1',
       },
     },
   }

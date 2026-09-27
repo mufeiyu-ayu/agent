@@ -330,7 +330,8 @@ function resetInspectorWidth() {
   display: flex;
   min-width: 0;
   /* 视口高度扣掉头部、路由标签与页面外框，随 token 自动跟随 */
-  height: calc(100dvh - var(--admin-header-height) - var(--admin-tabs-height) - 68px);
+  /* 原来的 68px 再加新外壳多出的 20px（外壳上下各 8px + PageContainer 底部 24px − 原内容区底部 20px） */
+  height: calc(100dvh - var(--admin-header-height) - var(--admin-tabs-height) - 88px);
   min-height: 590px;
   flex-direction: column;
   overflow: hidden;

@@ -1,16 +1,13 @@
 <script setup lang="ts">
 import type { TableColumnsType } from 'ant-design-vue'
 import type { RunListItem } from '@/features/runs/run.model'
-import { EyeOutlined, RobotOutlined, UserOutlined } from '@ant-design/icons-vue'
+import { RobotOutlined, UserOutlined } from '@ant-design/icons-vue'
 import {
-  Alert,
   Button,
   Card,
   Empty,
-  Pagination,
   Result,
   Skeleton,
-  Table,
   TabPane,
   Tabs,
   Tooltip,
@@ -19,6 +16,7 @@ import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 
+import DataTable from '@/components/common/DataTable.vue'
 import PageContainer from '@/components/common/PageContainer.vue'
 import { createConversationDetailState } from '@/features/conversations/conversation-detail.state'
 import RunStatusTag from '@/features/runs/components/RunStatusTag.vue'
@@ -58,13 +56,12 @@ const runsState = createPagedListState<RunListItem>(
 )
 
 const runColumns = computed<TableColumnsType<RunListItem>>(() => [
-  { title: t('runs.columns.runId'), dataIndex: 'id', key: 'id', width: 176, fixed: 'left' },
-  { title: t('runs.columns.question'), dataIndex: 'questionPreview', key: 'question', width: 220 },
-  { title: t('runs.columns.status'), dataIndex: 'status', key: 'status', width: 92 },
-  { title: t('runs.columns.tokens'), dataIndex: ['usage', 'totalTokens'], key: 'tokens', width: 78, align: 'right' },
-  { title: t('runs.columns.duration'), dataIndex: 'durationMs', key: 'duration', width: 78, align: 'right' },
-  { title: t('runs.columns.createdAt'), dataIndex: 'createdAt', key: 'createdAt', width: 126 },
-  { title: '', key: 'action', width: 54, fixed: 'right', align: 'center' },
+  { title: t('runs.columns.question'), dataIndex: 'questionPreview', key: 'question', width: 260, ellipsis: true },
+  { title: t('runs.columns.status'), dataIndex: 'status', key: 'status', width: 100 },
+  { title: t('runs.columns.tokens'), dataIndex: ['usage', 'totalTokens'], key: 'tokens', width: 90, align: 'right' },
+  { title: t('runs.columns.duration'), dataIndex: 'durationMs', key: 'duration', width: 90, align: 'right' },
+  { title: t('runs.columns.createdAt'), dataIndex: 'createdAt', key: 'createdAt', width: 130 },
+  { title: t('runs.columns.runId'), dataIndex: 'id', key: 'id', width: 220 },
 ])
 
 // ponytail: transcript API 仍一次性返回全部消息（Issue #88 决策，payload 小），
@@ -122,10 +119,10 @@ onBeforeUnmount(() => {
   transcriptObserver?.disconnect()
 })
 
-function getRunDetailLocation(runId: string) {
+function getRunDetailLocation(record: RunListItem) {
   return {
     name: 'run-detail',
-    params: { runId },
+    params: { runId: record.id },
   }
 }
 
@@ -218,45 +215,31 @@ function handleRunsPageChange(page: number, pageSize: number) {
           </TabPane>
 
           <TabPane key="runs" :tab="t('conversationDetail.tabs.runs')">
-            <Alert
-              v-if="runsState.error.value"
-              class="runs-error"
-              type="error"
-              show-icon
-              :message="t('runs.loadFailed')"
-              :description="runsState.error.value"
-            >
-              <template #action>
-                <Button
-                  size="small"
-                  :loading="runsState.loading.value"
-                  @click="runsState.retry"
-                >
-                  {{ t('common.actions.retry') }}
-                </Button>
-              </template>
-            </Alert>
-
-            <Table
-              v-else
-              class="runs-table"
+            <DataTable
+              compact
               :columns="runColumns"
               :data-source="runsState.items.value"
-              :loading="runsState.loading.value"
-              :pagination="false"
               row-key="id"
-              size="small"
-              :scroll="{ x: 810 }"
+              :loading="runsState.loading.value"
+              :error="runsState.error.value"
+              :error-title="t('runs.loadFailed')"
+              :empty-text="t('conversationDetail.runsEmpty')"
+              :scroll-x="930"
+              :pagination="{
+                current: runsState.currentPage.value,
+                pageSize: runsState.pageSize.value,
+                total: runsState.pagination.value.totalItems,
+              }"
+              :summary="t('runs.showing', {
+                count: runsState.items.value.length,
+                total: runsState.pagination.value.totalItems,
+              })"
+              :row-to="getRunDetailLocation"
+              @page-change="handleRunsPageChange"
+              @retry="runsState.retry"
             >
               <template #bodyCell="{ column, record }">
-                <template v-if="column.key === 'id'">
-                  <Tooltip :title="record.id">
-                    <RouterLink class="run-id" :to="getRunDetailLocation(record.id)">
-                      {{ record.id }}
-                    </RouterLink>
-                  </Tooltip>
-                </template>
-                <template v-else-if="column.key === 'question'">
+                <template v-if="column.key === 'question'">
                   <Tooltip :title="record.questionPreview">
                     <span class="question-preview">{{ record.questionPreview }}</span>
                   </Tooltip>
@@ -273,48 +256,11 @@ function handleRunsPageChange(page: number, pageSize: number) {
                 <template v-else-if="column.key === 'createdAt'">
                   <span class="numeric-cell">{{ formatShortDateTime(record.createdAt, locale) }}</span>
                 </template>
-                <template v-else-if="column.key === 'action'">
-                  <Tooltip :title="t('runs.inspect')">
-                    <Button
-                      type="text"
-                      shape="circle"
-                      size="small"
-                      :aria-label="t('runs.inspectAria', { id: record.id })"
-                      @click="router.push(getRunDetailLocation(record.id))"
-                    >
-                      <template #icon>
-                        <EyeOutlined />
-                      </template>
-                    </Button>
-                  </Tooltip>
+                <template v-else-if="column.key === 'id'">
+                  <span class="run-id">{{ record.id }}</span>
                 </template>
               </template>
-
-              <template #emptyText>
-                <Empty
-                  v-if="!runsState.loading.value && !runsState.error.value"
-                  :description="t('conversationDetail.runsEmpty')"
-                />
-              </template>
-            </Table>
-
-            <footer v-if="!runsState.error.value" class="runs-footer">
-              <span>
-                {{ t('runs.showing', {
-                  count: runsState.items.value.length,
-                  total: runsState.pagination.value.totalItems,
-                }) }}
-              </span>
-              <Pagination
-                :current="runsState.currentPage.value"
-                :page-size="runsState.pageSize.value"
-                :total="runsState.pagination.value.totalItems"
-                :page-size-options="['8', '20', '50']"
-                show-size-changer
-                size="small"
-                @change="handleRunsPageChange"
-              />
-            </footer>
+            </DataTable>
           </TabPane>
         </Tabs>
       </Card>
@@ -577,31 +523,11 @@ function handleRunsPageChange(page: number, pageSize: number) {
   flex: none;
 }
 
-.runs-error {
-  margin: 12px 14px;
-}
-
-.runs-table :deep(.ant-table-thead > tr > th) {
-  height: 44px;
-  border-bottom: 1px solid var(--admin-border);
-  color: var(--admin-text-muted);
-  font-size: var(--admin-font-xs);
-  font-weight: 600;
-  letter-spacing: 0.01em;
-  white-space: nowrap;
-}
-
-.runs-table :deep(.ant-table-tbody > tr > td) {
-  height: 50px;
-  color: var(--admin-text-muted);
-  font-size: var(--admin-font-sm);
-}
-
 .run-id {
   display: block;
   overflow: hidden;
-  color: var(--admin-primary);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--admin-text-muted);
+  font-family: var(--admin-font-mono);
   font-size: var(--admin-font-xs);
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -619,22 +545,5 @@ function handleRunsPageChange(page: number, pageSize: number) {
   color: var(--admin-text-muted);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
-}
-
-.runs-footer {
-  display: flex;
-  min-height: 52px;
-  flex: none;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  margin-top: auto;
-  padding: 10px 16px;
-  border-top: 1px solid var(--admin-border);
-}
-
-.runs-footer > span {
-  color: var(--admin-text-subtle);
-  font-size: var(--admin-font-xs);
 }
 </style>

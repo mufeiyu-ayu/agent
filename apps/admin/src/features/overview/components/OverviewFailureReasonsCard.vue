@@ -92,7 +92,7 @@ function label(errorCode: AgentRunErrorCode | null): string {
 
 .failure-item.is-link:hover,
 .failure-item.is-link:focus-visible {
-  background: var(--admin-bg-deep);
+  background: var(--admin-hover);
   outline: none;
 }
 
@@ -126,7 +126,7 @@ function label(errorCode: AgentRunErrorCode | null): string {
   grid-area: bar;
   height: 4px;
   border-radius: 2px;
-  background: var(--admin-bg-deep);
+  background: var(--admin-hover);
   overflow: hidden;
 }
 
@@ -134,7 +134,7 @@ function label(errorCode: AgentRunErrorCode | null): string {
   display: block;
   height: 100%;
   border-radius: 2px;
-  background: var(--admin-danger-strong);
+  background: var(--admin-danger);
 }
 
 .failure-item__fill.is-muted {
