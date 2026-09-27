@@ -15,6 +15,11 @@
 ### 正式改动流程
 
 ```text
+产品讨论（按需，可与讨论会话同一会话）
+  用户：「聊产品」「这个功能怎么设计」
+  AI：用 product-brainstorming 讨论；定下的结论按 write-spec 的结构写进产品方案（Claude Docs）
+  只改想法、没定到要开发时，只更新产品方案，不建 Issue
+
 讨论会话
   用户：「下一步做什么」
   AI：按 workbench-direction 第 7 节与 docs/tasks/README.md 提议一个任务，讲现有代码的事实与缺点
@@ -35,6 +40,7 @@
 
 | 触发语 | 执行方式 |
 | --- | --- |
+| 「聊产品」「这个功能怎么设计」 | 该工具的 `product-brainstorming` skill 讨论，结论按 `write-spec` 的结构写进产品方案；不建 Issue、不改任务状态 |
 | 「下一步做什么」「下一阶段做什么」 | AI 按 `docs/research/workbench-direction.md` 第 7 节（顺序与触发）与 `docs/tasks/README.md`（当前状态）提议一个任务，从现有代码的事实与缺点讲起；该步的 Pi 素材与证明完成查 `docs/research/pi-reference/roadmap.md`；不建 Issue |
 | 「完成 Issue #N」「读取 Issue #N 并实现」 | 该工具的 `github-issue-workflow` skill，默认一路执行到合并与收口 |
 | 「处理 PR #N 的 Review」 | 该工具的 `github-pr-review-fix` skill；仅在用户明确要求处理 PR 上的外部 Review 评论时使用，不是默认步骤 |
@@ -49,7 +55,8 @@
 - Review 与验收都由实现会话完成：commit 前的 `<review 命令>` 是唯一必需的 review，不等待也不依赖任何远程自动 Review；仓库里第三方 Review bot 的评论不阻塞流程。
 - 高风险 Issue 指涉及持久化、恢复、owner fencing、审批、鉴权或数据库 migration 的改动：`<review 命令>` 用工具适配文件里高风险对应的档位；验收标准必须包含路线对应步骤「证明完成」列出的故障注入场景，缺一条不 PASS；不对应路线某一步的高风险 Issue，在 Issue 里自拟故障注入 AC。
 - 路线守门：用户提出偏离路线顺序的任务时，AI 先对照路线说明它的位置与现在做的代价，再由用户决定，不因一句话就跳步；一次只聊一个任务。
-- Issue 是唯一规格：讨论不产出中间文件；改什么、为什么、验收看什么未经用户拍板不建 Issue；Issue 必须自足，实现会话只看 Issue 与代码；开工前把已确认的补充决定并入正文，评论不作为规格。
+- 产品方案与开发方案分开：产品方案只有一份，在 Claude Docs《Agent 产品方案》（https://claude.ai/code/artifact/7661407e-99ef-4336-be08-3d89e2d9331d），写做什么、为什么、给谁用、不做什么、怎样算做成，需求只标 P0 / P1 / P2，不排任务顺序（顺序只在 `workbench-direction.md` 第 7 节）；仓库里不放 PRD 文件。开发方案就是 Issue：从产品方案里挑一条需求聊成一个任务单元，把相关的目标与不做抄进 Issue 正文，文档链接只作背景。
+- Issue 是唯一规格：讨论不产出中间文件（产品方案除外）；改什么、为什么、验收看什么未经用户拍板不建 Issue；Issue 必须自足，实现会话只看 Issue 与代码；开工前把已确认的补充决定并入正文，评论不作为规格。
 - Issue 必须写「不过度设计」边界：范围只列本次要改的行为；不为想象中的扩展加抽象、接口、配置项或分层；一个实现的接口不抽，一个消费者的模块不拆，出现第二个真实用例再泛化。Review 时把「比 Issue 范围多出来的抽象」当 finding 处理。
 
 ## 2. 各流程共用的硬约束
