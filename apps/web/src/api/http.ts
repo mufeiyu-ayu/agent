@@ -21,8 +21,8 @@ http.interceptors.response.use((response) => {
   return Promise.reject(error)
 })
 
-// 登录、查当前用户、退出的 401 由调用方自己处理，不触发跳转。
-const AUTH_PROBE_URLS = new Set(['/api/auth/login', '/api/auth/me', '/api/auth/logout'])
+// 登录、查当前用户、退出、One Tap 的 401 由调用方自己处理，不触发跳转。
+const AUTH_PROBE_URLS = new Set(['/api/auth/login', '/api/auth/me', '/api/auth/logout', '/api/auth/google/one-tap'])
 
 /** 登录失效（401）回登录页，需要先改密码（403）去改密码页；都带上当前页，完成后回来。 */
 export function handleAuthFailure(status: number | undefined, payload: unknown, url?: string) {

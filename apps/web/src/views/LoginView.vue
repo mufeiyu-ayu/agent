@@ -1,87 +1,40 @@
 <script setup lang="ts">
-import type { ApiErrorResponse } from '@agent/contracts'
-import { isAxiosError } from 'axios'
-import { ref } from 'vue'
-import { useI18n } from 'vue-i18n'
+import type { AuthUser, GoogleLoginResult } from '@agent/contracts'
+import type { OneTapOutcome } from '@/hooks/useGoogleLogin'
+import { GOOGLE_LOGIN_RESULTS } from '@agent/contracts'
+import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
-import { Button } from '@/components/ui/button'
-import { useAuth } from '@/hooks/useAuth'
+import LoginForm from '@/components/auth/LoginForm.vue'
+import { useGoogleOneTap } from '@/hooks/useGoogleLogin'
 import { safeRedirect } from '@/utils/safe-redirect'
 
-const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
-const { signIn } = useAuth()
+const redirect = computed(() => safeRedirect(route.query.redirect))
+// Google 回调没能直接进站时带回 ?google=<GOOGLE_LOGIN_RESULTS 之一>。
+const notice = ref<GoogleLoginResult | null>(
+  GOOGLE_LOGIN_RESULTS.find(result => result === route.query.google) ?? null,
+)
 
-const email = ref('')
-const password = ref('')
-const error = ref('')
-const submitting = ref(false)
-
-async function submit() {
-  error.value = ''
-  submitting.value = true
-
-  try {
-    const user = await signIn({ email: email.value, password: password.value })
-    const redirect = safeRedirect(route.query.redirect)
-
-    await router.replace(user.mustChangePassword
-      ? { name: 'change-password', query: { redirect } }
-      : redirect)
-  }
-  catch (caught) {
-    error.value = isAxiosError<ApiErrorResponse>(caught) && caught.response?.data?.message
-      ? caught.response.data.message
-      : t('auth.fallbackError')
-  }
-  finally {
-    submitting.value = false
-  }
+async function enter(user: AuthUser) {
+  await router.replace(user.mustChangePassword
+    ? { name: 'change-password', query: { redirect: redirect.value } }
+    : redirect.value)
 }
+
+useGoogleOneTap((outcome: OneTapOutcome) => {
+  if ('user' in outcome)
+    void enter(outcome.user)
+  else
+    notice.value = outcome.notice
+})
 </script>
 
 <template>
   <main class="grid min-h-screen place-items-center bg-agent-canvas px-4 text-agent-ink">
-    <form class="w-full max-w-sm rounded-xl border border-agent-border-soft bg-agent-surface-raised p-6 shadow-sm" @submit.prevent="submit">
-      <h1 class="mb-6 text-xl font-semibold">
-        {{ t('auth.login.title') }}
-      </h1>
-
-      <label class="mb-4 block text-sm">
-        <span class="mb-1.5 block text-agent-ink-soft">{{ t('auth.fields.email') }}</span>
-        <input v-model="email" type="email" autocomplete="username" required class="auth-input">
-      </label>
-
-      <label class="mb-4 block text-sm">
-        <span class="mb-1.5 block text-agent-ink-soft">{{ t('auth.fields.password') }}</span>
-        <input v-model="password" type="password" autocomplete="current-password" required class="auth-input">
-      </label>
-
-      <p v-if="error" role="alert" class="mb-4 text-sm text-red-600">
-        {{ error }}
-      </p>
-
-      <Button type="submit" size="lg" class="w-full" :disabled="submitting">
-        {{ t('auth.login.submit') }}
-      </Button>
-    </form>
+    <div class="w-full max-w-sm rounded-xl border border-agent-border-soft bg-agent-surface-raised p-6 shadow-sm">
+      <LoginForm v-model:notice="notice" :redirect="redirect" @success="enter" />
+    </div>
   </main>
 </template>
-
-<style scoped>
-.auth-input {
-  width: 100%;
-  height: 2.5rem;
-  border: 1px solid var(--agent-border);
-  border-radius: 0.5rem;
-  background: var(--agent-surface);
-  padding: 0 0.75rem;
-  outline: none;
-}
-
-.auth-input:focus-visible {
-  border-color: var(--agent-focus);
-}
-</style>

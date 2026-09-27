@@ -38,6 +38,7 @@ try {
     passwordHash: await hashPassword(password),
     role: 'ADMIN',
     disabled: false,
+    pendingApproval: false,
     mustChangePassword: false,
     failedLoginCount: 0,
     lockedUntil: null,

@@ -13,9 +13,9 @@ import {
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-import userAvatarUrl from '@/assets/avatar-user.jpg'
 import brandLogoUrl from '@/assets/logo.webp'
 import AppIcon from '@/components/common/AppIcon.vue'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { dropdownMenuPanelClass } from '@/components/ui/dropdown-menu'
 
 import ConversationList from './ConversationList.vue'
@@ -232,7 +232,13 @@ function handleBalanceSelect(event: Event) {
           class="flex items-center rounded-lg text-left transition hover:bg-agent-surface-sunken/45 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-agent-focus/40 data-[state=open]:bg-agent-surface-sunken/55"
           :class="collapsed ? 'size-11 justify-center' : 'h-11 w-full gap-2.5 px-2.5'"
         >
-          <img :src="userAvatarUrl" alt="" class="size-7 shrink-0 rounded-full object-cover">
+          <!-- 头像取不到（没有、或国内未开梯子时 Google 图床打不开）时显示首字母。 -->
+          <Avatar class="size-7">
+            <AvatarImage v-if="user.avatarUrl" :src="user.avatarUrl" referrer-policy="no-referrer" alt="" />
+            <AvatarFallback class="bg-agent-surface-sunken text-xs font-medium text-agent-ink">
+              {{ user.initial }}
+            </AvatarFallback>
+          </Avatar>
           <template v-if="!collapsed">
             <span class="min-w-0 flex-1 truncate text-sm text-agent-ink">{{ user.name }}</span>
             <AppIcon name="tabler:selector" :size="16" class="shrink-0 text-agent-ink-muted" />

@@ -43,9 +43,9 @@ class AdminProbeController {
 
 const ALLOWED_ORIGIN = 'http://localhost:5173'
 const SESSIONS: Record<string, AuthUser> = {
-  'member-token': { id: 'member', email: 'member@example.com', role: 'MEMBER', mustChangePassword: false },
-  'admin-token': { id: 'admin', email: 'admin@example.com', role: 'ADMIN', mustChangePassword: false },
-  'pending-token': { id: 'pending', email: 'pending@example.com', role: 'MEMBER', mustChangePassword: true },
+  'member-token': { id: 'member', email: 'member@example.com', name: null, avatarUrl: null, role: 'MEMBER', mustChangePassword: false },
+  'admin-token': { id: 'admin', email: 'admin@example.com', name: null, avatarUrl: null, role: 'ADMIN', mustChangePassword: false },
+  'pending-token': { id: 'pending', email: 'pending@example.com', name: null, avatarUrl: null, role: 'MEMBER', mustChangePassword: true },
 }
 
 const authService = {

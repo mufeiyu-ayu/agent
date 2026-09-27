@@ -3,6 +3,7 @@ import type { User } from '../generated/prisma/client.js'
 import type { CreateAdminUserDto, UpdateAdminUserDto } from './dto/admin-users.dto.js'
 import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common'
 
+import { userStatus } from '../auth/auth.service.js'
 import { hashPassword } from '../auth/password.js'
 import { PrismaService } from '../prisma/prisma.service.js'
 
@@ -40,19 +41,23 @@ export class AdminUsersService {
     }
   }
 
-  /** 停用 / 启用、改角色；停用或改角色时该用户全部 Session 立即失效。 */
+  /**
+   * 启用 / 停用、改角色；待审核账号「通过」即启用、「拒绝」即停用（Google 再登录也是停用的统一失败，不会再建申请）。
+   * 状态或角色变了，该用户全部 Session 立即失效。
+   */
   async update(actorId: string, userId: string, input: UpdateAdminUserDto): Promise<AdminUser> {
     const target = await this.findOrThrow(userId)
-    const disabled = input.disabled ?? target.disabled
+    const current = userStatus(target)
+    const status = input.status ?? current
     const role = input.role ?? target.role
 
-    if (userId === actorId && disabled && !target.disabled)
+    if (userId === actorId && status !== 'ACTIVE' && current === 'ACTIVE')
       throw new BadRequestException('不能停用自己')
 
     // ponytail: 两个管理员同时互相降级的竞态不处理，5～30 人规模碰不到；要防就改成 Serializable 事务。
-    if (target.role === 'ADMIN' && !target.disabled && (role !== 'ADMIN' || disabled)) {
+    if (target.role === 'ADMIN' && current === 'ACTIVE' && (role !== 'ADMIN' || status !== 'ACTIVE')) {
       const otherActiveAdmins = await this.prismaService.user.count({
-        where: { role: 'ADMIN', disabled: false, id: { not: userId } },
+        where: { role: 'ADMIN', disabled: false, pendingApproval: false, id: { not: userId } },
       })
 
       if (otherActiveAdmins === 0)
@@ -60,8 +65,8 @@ export class AdminUsersService {
     }
 
     const [user] = await this.prismaService.$transaction([
-      this.prismaService.user.update({ where: { id: userId }, data: { disabled, role } }),
-      ...(disabled !== target.disabled || role !== target.role
+      this.prismaService.user.update({ where: { id: userId }, data: { disabled: status === 'DISABLED', pendingApproval: status === 'PENDING', role } }),
+      ...(status !== current || role !== target.role
         ? [this.prismaService.session.deleteMany({ where: { userId } })]
         : []),
     ])
@@ -69,7 +74,7 @@ export class AdminUsersService {
     return toAdminUser(user)
   }
 
-  /** 设新的临时密码：解除锁定、要求下次登录改密码，旧 Session 全部失效。 */
+  /** 设新的临时密码：解除锁定、要求下次登录改密码，旧 Session 全部失效。没有密码的 Google 账号也用它拿到密码。 */
   async resetPassword(userId: string, password: string): Promise<AdminUser> {
     await this.findOrThrow(userId)
 
@@ -103,8 +108,10 @@ function toAdminUser(user: User): AdminUser {
   return {
     id: user.id,
     email: user.email,
+    name: user.name,
+    avatarUrl: user.avatarUrl,
     role: user.role,
-    disabled: user.disabled,
+    status: userStatus(user),
     mustChangePassword: user.mustChangePassword,
     lastLoginAt: user.lastLoginAt?.toISOString() ?? null,
     createdAt: user.createdAt.toISOString(),

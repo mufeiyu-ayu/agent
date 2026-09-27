@@ -1,4 +1,4 @@
-import type { ChangePasswordRequest, LoginRequest } from '@agent/contracts'
+import type { ChangePasswordRequest, GoogleOneTapRequest, LoginRequest } from '@agent/contracts'
 import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from '@agent/contracts'
 import { Transform } from 'class-transformer'
 import { IsNotEmpty, IsString, MaxLength, MinLength } from 'class-validator'
@@ -32,4 +32,12 @@ export class ChangePasswordDto implements ChangePasswordRequest {
   @MinLength(PASSWORD_MIN_LENGTH)
   @MaxLength(PASSWORD_MAX_LENGTH)
   newPassword!: string
+}
+
+export class GoogleOneTapDto implements GoogleOneTapRequest {
+  // Google 的 ID token 一般 1～2KB，8KB 足够且挡住超大输入。
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(8192)
+  credential!: string
 }

@@ -1,5 +1,5 @@
-import type { AuthUser } from '@agent/contracts'
-import type { User } from '../generated/prisma/client.js'
+import type { AuthUser, UserStatus } from '@agent/contracts'
+import type { Prisma, User } from '../generated/prisma/client.js'
 import type { AuthContext } from './auth.decorators.js'
 import type { ChangePasswordDto, LoginDto } from './dto/auth.dto.js'
 import { randomBytes } from 'node:crypto'
@@ -62,47 +62,79 @@ export class AuthService {
       dummyPasswordHash = undefined
       throw error
     })
+    // Google 注册的账号没有密码，同样拿假哈希比对，结果必然失败。
     const passwordMatches = await verifyPassword(input.password, user?.passwordHash ?? await dummyPasswordHash)
     const now = new Date()
     const locked = user?.lockedUntil != null && user.lockedUntil > now
+    const active = user !== null && userStatus(user) === 'ACTIVE'
 
-    if (!user || user.disabled || locked || !passwordMatches) {
+    if (!user || !active || locked || !passwordMatches) {
       this.recordFailure(`ip:${ip}`)
 
-      if (user && !user.disabled && !locked)
+      if (user && active && !locked)
         await this.recordAccountFailure(user.id)
 
       throw new UnauthorizedException(LOGIN_FAILED_MESSAGE)
     }
 
+    // 带条件写：scrypt 期间并发的失败请求可能已把账号锁上。
+    const session = await this.createSession(user.id, {
+      condition: { OR: [{ lockedUntil: null }, { lockedUntil: { lte: now } }] },
+      resetPasswordLock: true,
+      now,
+    })
+
+    if (!session)
+      throw new UnauthorizedException(LOGIN_FAILED_MESSAGE)
+
+    return session
+  }
+
+  /**
+   * 给启用中的账号发 Session，密码与 Google 登录共用。带条件写：校验期间管理员可能已停用该账号，
+   * 此时返回 null、不发 Session。只有密码登录成功才清密码失败计数与锁定：Google 登录清掉它，
+   * 正在爆破密码的人就又多了几次机会。
+   */
+  async createSession(
+    userId: string,
+    options: { condition?: Prisma.UserWhereInput, resetPasswordLock: boolean, now?: Date },
+  ): Promise<{ user: AuthUser, token: string } | null> {
+    const now = options.now ?? new Date()
     const token = createSessionToken()
-    const updatedUser = await this.prismaService.$transaction(async (tx) => {
-      // 带条件写：scrypt 期间并发的失败请求可能已把账号锁上或管理员已停用，此时不发 Session。
+    const user = await this.prismaService.$transaction(async (tx) => {
       const { count } = await tx.user.updateMany({
-        where: { id: user.id, disabled: false, OR: [{ lockedUntil: null }, { lockedUntil: { lte: now } }] },
-        data: { failedLoginCount: 0, lockedUntil: null, lastLoginAt: now },
+        where: { ...options.condition, id: userId, disabled: false, pendingApproval: false },
+        data: { lastLoginAt: now, ...(options.resetPasswordLock ? { failedLoginCount: 0, lockedUntil: null } : {}) },
       })
 
       if (count === 0)
         return null
 
       // 顺手清掉这个人已过期的 Session，表不会无限长。
-      await tx.session.deleteMany({ where: { userId: user.id, expiresAt: { lte: now } } })
+      await tx.session.deleteMany({ where: { userId, expiresAt: { lte: now } } })
       await tx.session.create({
         data: {
           tokenHash: hashSessionToken(token),
-          userId: user.id,
+          userId,
           expiresAt: new Date(now.getTime() + SESSION_TTL_MS),
         },
       })
 
-      return tx.user.findUniqueOrThrow({ where: { id: user.id } })
+      return tx.user.findUniqueOrThrow({ where: { id: userId } })
     })
 
-    if (!updatedUser)
-      throw new UnauthorizedException(LOGIN_FAILED_MESSAGE)
+    return user ? { user: toAuthUser(user), token } : null
+  }
 
-    return { user: toAuthUser(updatedUser), token }
+  /**
+   * 未登录就能调的 Google 回调、One Tap 与 nonce 签发：按 key（含 IP）计每一次请求（不只是失败），15 分钟内超过上限直接 429。
+   * 与密码登录的失败计数分开记，免得同一出口 IP 的同事正常 Google 登录挤占密码登录的额度。
+   */
+  throttleGoogleAttempt(key: string, limit = IP_FAILURE_LIMIT): void {
+    if (this.isBlocked(key, limit))
+      throw new HttpException('登录尝试过于频繁，请稍后再试', HttpStatus.TOO_MANY_REQUESTS)
+
+    this.recordFailure(key)
   }
 
   /** Cookie token → 当前用户；Session 不存在、已过期或用户已停用都返回 null。 */
@@ -112,7 +144,7 @@ export class AuthService {
       include: { user: true },
     })
 
-    if (!session || session.expiresAt <= new Date() || session.user.disabled)
+    if (!session || session.expiresAt <= new Date() || userStatus(session.user) !== 'ACTIVE')
       return null
 
     return { user: toAuthUser(session.user), sessionId: session.id }
@@ -132,7 +164,8 @@ export class AuthService {
     if (this.isBlocked(failureKey, SESSION_FAILURE_LIMIT))
       throw new BadRequestException('尝试次数过多，请 15 分钟后再试')
 
-    if (!await verifyPassword(input.currentPassword, user.passwordHash)) {
+    // 没有密码的 Google 账号不能自己设密码，要密码找管理员重置。
+    if (!user.passwordHash || !await verifyPassword(input.currentPassword, user.passwordHash)) {
       this.recordFailure(failureKey)
       throw new BadRequestException('当前密码错误')
     }
@@ -197,10 +230,17 @@ export class AuthService {
   }
 }
 
+/** 库里的两个布尔 → 对外的三态；停用优先（旧版本停用了待审核账号时两者都为真）。 */
+export function userStatus(user: Pick<User, 'disabled' | 'pendingApproval'>): UserStatus {
+  return user.disabled ? 'DISABLED' : user.pendingApproval ? 'PENDING' : 'ACTIVE'
+}
+
 export function toAuthUser(user: User): AuthUser {
   return {
     id: user.id,
     email: user.email,
+    name: user.name,
+    avatarUrl: user.avatarUrl,
     role: user.role,
     mustChangePassword: user.mustChangePassword,
   }

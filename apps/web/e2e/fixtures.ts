@@ -10,7 +10,7 @@ import type { Page } from '@playwright/test'
 
 export const CONVERSATION_ID = 'conversation-1'
 
-export const E2E_USER = { id: 'user-1', email: 'operator@example.com', role: 'MEMBER', mustChangePassword: false }
+export const E2E_USER = { id: 'user-1', email: 'operator@example.com', name: null as string | null, avatarUrl: null as string | null, role: 'MEMBER', mustChangePassword: false }
 
 export function toNdjsonLines(): string[] {
   return [
@@ -144,6 +144,8 @@ export async function installApiRoutes(
 
   // 默认已登录（#195 起 /workspace 需要登录）；登录流程的用例自己覆盖这条路由。
   await page.route('**/api/auth/me', route => route.fulfill(json(E2E_USER)))
+  // 默认未开启 Google 登录（#198）；Google 相关用例自己覆盖。
+  await page.route('**/api/auth/config', route => route.fulfill(json({ googleClientId: null })))
 
   // 与 `/api/llm/models` 的 ChatModelOption[] 契约对齐（#142 起）：三档强度、默认 High。
   await page.route('**/api/llm/models', route => route.fulfill(json([{

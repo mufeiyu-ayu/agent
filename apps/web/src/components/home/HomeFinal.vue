@@ -1,3 +1,7 @@
+<script setup lang="ts">
+import HomeStartLink from '@/components/home/HomeStartLink.vue'
+</script>
+
 <template>
   <section id="start" class="final">
     <div class="wrap">
@@ -11,9 +15,9 @@
             Connect a source, invite your team, and share your first report.
           </p>
           <div class="cta-row" data-reveal style="--i:2">
-            <RouterLink class="btn btn-primary" to="/workspace">
+            <HomeStartLink class="btn btn-primary">
               Start asking <svg class="ic ic-go" aria-hidden="true"><use href="#i-go" /></svg>
-            </RouterLink>
+            </HomeStartLink>
             <a class="btn btn-ghost" href="#">Book a demo</a>
           </div>
         </div>

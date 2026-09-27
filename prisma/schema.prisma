@@ -65,12 +65,20 @@ enum UserRole {
 
 model User {
   id                 String    @id @default(cuid())
-  // 登录标识，存小写；后续 Google 登录按邮箱匹配。
+  // 登录标识，存小写；Google 首次登录时按它匹配已有账号。
   email              String    @unique
-  // scrypt 自描述串：算法、参数、salt、哈希都在里面，换参数不用迁移。
-  passwordHash       String
+  // scrypt 自描述串：算法、参数、salt、哈希都在里面，换参数不用迁移。Google 注册的账号没有密码。
+  passwordHash       String?
+  // Google 账号的稳定 ID（id_token 的 sub）；绑定后按它找人，邮箱变了也不改绑。
+  googleSub          String?   @unique
+  // 昵称与头像地址来自 Google 的 name / picture，每次 Google 登录时更新；密码账号为空。
+  name               String?
+  avatarUrl          String?
   role               UserRole  @default(MEMBER)
+  // 对外是三态（启用 / 待审核 / 停用，停用优先），库里用两个布尔：迁移只加不删，回退到旧版本仍能运行。
+  // 陌生 Google 账号登录后待审核；管理员通过 → 两者皆假，拒绝 → 停用。
   disabled           Boolean   @default(false)
+  pendingApproval    Boolean   @default(false)
   // 管理员建号或重置密码后为真，登录后必须先改密码。
   mustChangePassword Boolean   @default(true)
   // 连续失败次数与锁定截止时间存库，重启不丢。

@@ -20,12 +20,7 @@ const DEFAULT_APP_ORIGINS = 'http://localhost:5173,http://localhost:5174'
  */
 @Injectable()
 export class AuthGuard implements CanActivate {
-  private readonly allowedOrigins = new Set(
-    (process.env.APP_ORIGINS?.trim() || DEFAULT_APP_ORIGINS)
-      .split(',')
-      .map(origin => origin.trim().replace(/\/+$/, ''))
-      .filter(Boolean),
-  )
+  private readonly allowedOrigins = new Set(readAppOrigins())
 
   constructor(
     @Inject(Reflector)
@@ -62,6 +57,14 @@ export class AuthGuard implements CanActivate {
 
     return true
   }
+}
+
+/** 前台 / 管理台的站点地址（`APP_ORIGINS`）：写请求的 Origin 白名单，也是 Google 回调地址的来源。 */
+export function readAppOrigins(): string[] {
+  return (process.env.APP_ORIGINS?.trim() || DEFAULT_APP_ORIGINS)
+    .split(',')
+    .map(origin => origin.trim().replace(/\/+$/, ''))
+    .filter(Boolean)
 }
 
 function isAdminController(path: string | string[] | undefined): boolean {

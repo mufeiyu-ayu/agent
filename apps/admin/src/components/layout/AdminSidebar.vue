@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { userDisplayName } from '@agent/contracts'
 import {
   CommentOutlined,
   DashboardOutlined,
@@ -8,13 +9,13 @@ import {
   ProfileOutlined,
   SettingOutlined,
   TeamOutlined,
-  UserOutlined,
 } from '@ant-design/icons-vue'
 import { App as AntApp, Button, Popover } from 'ant-design-vue'
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 
+import UserAvatar from '@/components/common/UserAvatar.vue'
 import { useAuth } from '@/features/auth/auth.state'
 import { formatAdminRunError } from '@/features/shared/admin-api'
 import { resolveActiveMenuPath } from '@/lib/admin-state'
@@ -118,11 +119,9 @@ async function logout() {
       <template #content>
         <section class="admin-quick-actions" :aria-label="t('navigation.quickActions')">
           <div class="admin-quick-actions__user">
-            <span class="admin-quick-actions__avatar">
-              <UserOutlined />
-            </span>
+            <UserAvatar v-if="currentUser" :user="currentUser" />
             <span class="admin-quick-actions__identity">
-              <strong>{{ currentUser?.email }}</strong>
+              <strong>{{ currentUser && userDisplayName(currentUser) }}</strong>
               <small>{{ t('users.roles.ADMIN') }}</small>
             </span>
             <Button size="small" @click="logout">
@@ -296,18 +295,6 @@ async function logout() {
   gap: 10px;
   padding: 12px;
   border-bottom: 1px solid var(--admin-border);
-}
-
-.admin-quick-actions__avatar {
-  display: grid;
-  width: 32px;
-  height: 32px;
-  flex: 0 0 32px;
-  place-items: center;
-  border-radius: 50%;
-  color: var(--admin-primary);
-  background: var(--admin-primary-soft);
-  font-size: var(--admin-font-md);
 }
 
 .admin-quick-actions__identity {

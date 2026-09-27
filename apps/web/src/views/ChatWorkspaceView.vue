@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { AgentNavigationItem, AgentPlatformUser } from '../types/agent-platform'
 
+import { userDisplayName, userInitial } from '@agent/contracts'
 import { computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
@@ -29,7 +30,9 @@ const { t } = useI18n()
 const router = useRouter()
 const { currentUser, signOut } = useAuth()
 
-const user = computed<AgentPlatformUser>(() => ({ name: currentUser.value?.email ?? '' }))
+const user = computed<AgentPlatformUser>(() => currentUser.value
+  ? { name: userDisplayName(currentUser.value), initial: userInitial(currentUser.value), avatarUrl: currentUser.value.avatarUrl }
+  : { name: '', initial: '', avatarUrl: null })
 
 const {
   workspaceTheme,

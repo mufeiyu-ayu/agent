@@ -1,7 +1,11 @@
 <script setup lang="ts">
-import { useTemplateRef } from 'vue'
+import type { GoogleLoginResult } from '@agent/contracts'
+import { computed, onMounted, provide, ref, useTemplateRef } from 'vue'
+import { useRouter } from 'vue-router'
 
 import palmUrl from '@/assets/hero-palm.jpg'
+import LoginDialog from '@/components/auth/LoginDialog.vue'
+import { HOME_LOGIN } from '@/components/home/home-login'
 import HomeBuild from '@/components/home/HomeBuild.vue'
 import HomeConnect from '@/components/home/HomeConnect.vue'
 import HomeFinal from '@/components/home/HomeFinal.vue'
@@ -11,10 +15,40 @@ import HomeKnow from '@/components/home/HomeKnow.vue'
 import HomeNav from '@/components/home/HomeNav.vue'
 import HomeSecure from '@/components/home/HomeSecure.vue'
 import HomeShare from '@/components/home/HomeShare.vue'
+import { useAuth } from '@/hooks/useAuth'
+import { useGoogleOneTap } from '@/hooks/useGoogleLogin'
 import { homeMotion, useHomeScroll } from '@/hooks/useHomeMotion'
 
 const motion = homeMotion()
 useHomeScroll(useTemplateRef('root'), motion)
+
+const router = useRouter()
+const { currentUser, loadCurrentUser } = useAuth()
+const loginOpen = ref(false)
+const loginNotice = ref<GoogleLoginResult | null>(null)
+
+provide(HOME_LOGIN, {
+  loggedIn: computed(() => currentUser.value !== null),
+  openLogin: () => {
+    loginNotice.value = null
+    loginOpen.value = true
+  },
+})
+
+// 查不到登录态（API 不可用）时按未登录展示，点按钮弹登录框。
+onMounted(() => {
+  void loadCurrentUser().catch(() => undefined)
+})
+
+useGoogleOneTap((outcome) => {
+  if ('user' in outcome) {
+    void router.push(outcome.user.mustChangePassword ? { name: 'change-password', query: { redirect: '/workspace' } } : '/workspace')
+    return
+  }
+
+  loginNotice.value = outcome.notice
+  loginOpen.value = true
+})
 </script>
 
 <template>
@@ -55,6 +89,7 @@ useHomeScroll(useTemplateRef('root'), motion)
       <HomeFinal />
     </main>
     <HomeFooter />
+    <LoginDialog v-model:open="loginOpen" v-model:notice="loginNotice" />
   </div>
 </template>
 
