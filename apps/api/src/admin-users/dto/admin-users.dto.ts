@@ -3,10 +3,11 @@ import type {
   ResetAdminUserPasswordRequest,
   UpdateAdminUserRequest,
   UserRole,
+  UserStatus,
 } from '@agent/contracts'
 import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH, USER_ROLES } from '@agent/contracts'
 import { Transform } from 'class-transformer'
-import { IsBoolean, IsEmail, IsIn, IsNotEmpty, IsOptional, IsString, MaxLength, MinLength } from 'class-validator'
+import { IsEmail, IsIn, IsNotEmpty, IsOptional, IsString, MaxLength, MinLength } from 'class-validator'
 
 import { normalizeEmail } from '../../auth/dto/auth.dto.js'
 
@@ -26,9 +27,10 @@ export class CreateAdminUserDto implements CreateAdminUserRequest {
 }
 
 export class UpdateAdminUserDto implements UpdateAdminUserRequest {
+  // 只能启用或停用；待审核只由 Google 首登产生，不能改回去。
   @IsOptional()
-  @IsBoolean()
-  disabled?: boolean
+  @IsIn(['ACTIVE', 'DISABLED'])
+  status?: Exclude<UserStatus, 'PENDING'>
 
   @IsOptional()
   @IsIn([...USER_ROLES])

@@ -2,6 +2,7 @@
 import { useTemplateRef } from 'vue'
 
 import HomeHeroDemo from '@/components/home/HomeHeroDemo.vue'
+import HomeStartLink from '@/components/home/HomeStartLink.vue'
 
 const demo = useTemplateRef('demo')
 </script>
@@ -17,9 +18,9 @@ const demo = useTemplateRef('demo')
           Connect the data your team runs on, ask in plain words, and get reports and charts the whole team can open.
         </p>
         <div class="cta-row">
-          <RouterLink class="btn btn-primary" to="/workspace">
+          <HomeStartLink class="btn btn-primary">
             Start asking <svg class="ic ic-go" aria-hidden="true"><use href="#i-go" /></svg>
-          </RouterLink>
+          </HomeStartLink>
           <button id="tourBtn" class="btn btn-ghost" type="button" @click="demo?.playTour()">
             <span class="play-dot"><svg class="ic" aria-hidden="true"><use href="#i-play" /></svg></span>Watch the tour
           </button>

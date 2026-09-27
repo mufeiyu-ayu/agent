@@ -214,8 +214,8 @@ describe('鉴权与会话隔离（真实库）', { timeout: 60_000 }, () => {
     assert.equal(token.length, 43)
     assert.ok(sessions.some(session => session.tokenHash === createHash('sha256').update(token).digest('hex')))
     assert.ok(sessions.every(session => !session.tokenHash.includes(token)))
-    assert.match(user.passwordHash, /^scrypt\$131072\$8\$1\$/)
-    assert.ok(!user.passwordHash.includes(ADMIN_PASSWORD))
+    assert.match(user.passwordHash!, /^scrypt\$131072\$8\$1\$/)
+    assert.ok(!user.passwordHash!.includes(ADMIN_PASSWORD))
     assert.ok(user.lastLoginAt)
   })
 
@@ -230,9 +230,9 @@ describe('鉴权与会话隔离（真实库）', { timeout: 60_000 }, () => {
     assert.equal(created.body.data.mustChangePassword, true)
     assert.equal((await api('/admin/users', { method: 'POST', cookie: adminCookie, body: { email: 'second-admin@example.com', password: 'another-pw-1', role: 'MEMBER' } })).status, 409)
     // 第二个管理员停用后，自己就是最后一个启用中的管理员。
-    assert.equal((await api(`/admin/users/${created.body.data.id}`, { method: 'PATCH', cookie: adminCookie, body: { disabled: true } })).status, 200)
+    assert.equal((await api(`/admin/users/${created.body.data.id}`, { method: 'PATCH', cookie: adminCookie, body: { status: 'DISABLED' } })).status, 200)
 
-    const disableSelf = await api(`/admin/users/${adminId}`, { method: 'PATCH', cookie: adminCookie, body: { disabled: true } })
+    const disableSelf = await api(`/admin/users/${adminId}`, { method: 'PATCH', cookie: adminCookie, body: { status: 'DISABLED' } })
     const demoteSelf = await api(`/admin/users/${adminId}`, { method: 'PATCH', cookie: adminCookie, body: { role: 'MEMBER' } })
     const after = await prisma.user.findUniqueOrThrow({ where: { id: adminId } })
 
@@ -283,9 +283,9 @@ describe('鉴权与会话隔离（真实库）', { timeout: 60_000 }, () => {
     // ① 停用
     let cookies = await loginTwice('c-password-1')
     assert.deepEqual(await statuses(cookies), [200, 200])
-    assert.equal((await api(`/admin/users/${user.id}`, { method: 'PATCH', cookie: adminCookie, body: { disabled: true } })).status, 200)
+    assert.equal((await api(`/admin/users/${user.id}`, { method: 'PATCH', cookie: adminCookie, body: { status: 'DISABLED' } })).status, 200)
     assert.deepEqual(await statuses(cookies), [401, 401])
-    assert.equal((await api(`/admin/users/${user.id}`, { method: 'PATCH', cookie: adminCookie, body: { disabled: false } })).status, 200)
+    assert.equal((await api(`/admin/users/${user.id}`, { method: 'PATCH', cookie: adminCookie, body: { status: 'ACTIVE' } })).status, 200)
 
     // ② 重置密码
     cookies = await loginTwice('c-password-1')

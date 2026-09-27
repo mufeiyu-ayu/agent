@@ -18,8 +18,9 @@ export type RequestWithId = HttpRequestLike & {
   requestId?: string
 }
 
+/** 不带查询串：它会进错误响应与日志，而 Google 回调的查询串里有授权码。 */
 export function getRequestPath(request: HttpRequestLike): string {
-  return request.originalUrl || request.url || ''
+  return (request.originalUrl || request.url || '').split('?')[0]!
 }
 
 export function getRequestId(request: RequestWithId): string | undefined {

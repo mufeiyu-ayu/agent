@@ -1,4 +1,4 @@
-import type { AuthUser, ChangePasswordRequest, LoginRequest } from '@agent/contracts'
+import type { AuthConfig, AuthUser, ChangePasswordRequest, LoginRequest } from '@agent/contracts'
 
 import { AdminRunApiError, requestAdminRun } from '../shared/admin-api'
 
@@ -24,4 +24,14 @@ export function logout(): Promise<{ ok: true }> {
 
 export function changePassword(input: ChangePasswordRequest): Promise<AuthUser> {
   return requestAdminRun<AuthUser>('/api/auth/change-password', {}, { method: 'POST', body: input })
+}
+
+export function fetchAuthConfig(): Promise<AuthConfig> {
+  return requestAdminRun<AuthConfig>('/api/auth/config', {})
+}
+
+/** Google 重定向登录：整页跳走。回跳地址带上部署前缀（线上管理台在 /admin/ 下），后端据此回到管理台。 */
+export function startGoogleLogin(redirect: string): void {
+  const target = `${import.meta.env.BASE_URL.replace(/\/$/, '')}${redirect}`
+  window.location.assign(`/api/auth/google/start?redirect=${encodeURIComponent(target)}`)
 }

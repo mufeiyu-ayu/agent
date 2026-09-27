@@ -14,5 +14,8 @@ export interface AgentRecentChat {
 }
 
 export interface AgentPlatformUser {
+  /** 显示名与首字母按 `userDisplayName` / `userInitial` 算好；头像取不到时显示首字母。 */
   name: string
+  initial: string
+  avatarUrl: string | null
 }

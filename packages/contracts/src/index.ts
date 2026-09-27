@@ -77,15 +77,31 @@ export type {
 } from './api-response.js'
 export type {
   AdminUser,
+  AuthConfig,
   AuthUser,
   ChangePasswordRequest,
   CreateAdminUserRequest,
+  GoogleLoginResult,
+  GoogleOneTapNonce,
+  GoogleOneTapRequest,
+  GoogleOneTapResult,
   LoginRequest,
   ResetAdminUserPasswordRequest,
   UpdateAdminUserRequest,
+  UserProfile,
   UserRole,
+  UserStatus,
 } from './auth.js'
-export { PASSWORD_CHANGE_REQUIRED, PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH, USER_ROLES } from './auth.js'
+export {
+  GOOGLE_LOGIN_RESULTS,
+  PASSWORD_CHANGE_REQUIRED,
+  PASSWORD_MAX_LENGTH,
+  PASSWORD_MIN_LENGTH,
+  USER_ROLES,
+  USER_STATUSES,
+  userDisplayName,
+  userInitial,
+} from './auth.js'
 export type {
   ChatModelOption,
   ChatRequest,

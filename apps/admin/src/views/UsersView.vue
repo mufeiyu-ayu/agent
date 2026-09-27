@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import type { AdminUser, UserRole } from '@agent/contracts'
+import type { AdminUser, UserRole, UserStatus } from '@agent/contracts'
 import type { FormInstance, TableColumnsType } from 'ant-design-vue'
-import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH, USER_ROLES } from '@agent/contracts'
+import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH, USER_ROLES, USER_STATUSES, userDisplayName } from '@agent/contracts'
 import { PlusOutlined } from '@ant-design/icons-vue'
 import {
   Alert,
@@ -23,6 +23,7 @@ import { useI18n } from 'vue-i18n'
 
 import PageContainer from '@/components/common/PageContainer.vue'
 import PageHeader from '@/components/common/PageHeader.vue'
+import UserAvatar from '@/components/common/UserAvatar.vue'
 import { useAuth } from '@/features/auth/auth.state'
 import { formatDateTime } from '@/features/runs/run.utils'
 import { formatAdminRunError } from '@/features/shared/admin-api'
@@ -38,9 +39,16 @@ onMounted(() => {
 })
 
 const columns = computed<TableColumnsType<AdminUser>>(() => [
-  { key: 'email', dataIndex: 'email', title: t('users.columns.email') },
+  { key: 'user', title: t('users.columns.user') },
   { key: 'role', title: t('users.columns.role'), width: 120 },
-  { key: 'status', title: t('users.columns.status'), width: 160 },
+  {
+    key: 'status',
+    title: t('users.columns.status'),
+    width: 160,
+    // 按状态筛选：待审核的申请在这里找，不另做提醒。
+    filters: USER_STATUSES.map(status => ({ text: t(`users.statuses.${status}`), value: status })),
+    onFilter: (value, record) => record.status === value,
+  },
   { key: 'lastLoginAt', title: t('users.columns.lastLoginAt'), width: 190 },
   { key: 'actions', title: t('users.columns.actions'), width: 280 },
 ])
@@ -62,8 +70,12 @@ async function run(action: () => Promise<void>, successKey: string) {
   }
 }
 
-function toggleDisabled(user: AdminUser) {
-  void run(() => state.update(user.id, { disabled: !user.disabled }), user.disabled ? 'users.enabled' : 'users.disabled')
+/** 通过待审核 / 启用 → ACTIVE；拒绝待审核 / 停用 → DISABLED。 */
+function setStatus(user: AdminUser, status: Exclude<UserStatus, 'PENDING'>) {
+  const successKey = user.status === 'PENDING'
+    ? status === 'ACTIVE' ? 'users.approved' : 'users.rejected'
+    : status === 'ACTIVE' ? 'users.enabled' : 'users.disabled'
+  void run(() => state.update(user.id, { status }), successKey)
 }
 
 function changeRole(user: AdminUser, role: UserRole) {
@@ -142,28 +154,51 @@ async function submitReset() {
       :pagination="false"
     >
       <template #bodyCell="{ column, record }">
-        <template v-if="column.key === 'role'">
+        <template v-if="column.key === 'user'">
+          <span class="users-identity">
+            <UserAvatar :user="asUser(record)" />
+            <span>
+              <strong>{{ userDisplayName(asUser(record)) }}</strong>
+              <small>{{ asUser(record).email }}</small>
+            </span>
+          </span>
+        </template>
+        <template v-else-if="column.key === 'role'">
           <Tag :color="asUser(record).role === 'ADMIN' ? 'blue' : undefined">
             {{ t(`users.roles.${asUser(record).role}`) }}
           </Tag>
         </template>
         <template v-else-if="column.key === 'status'">
-          <Tag v-if="asUser(record).disabled" color="red">
-            {{ t('users.status.disabled') }}
+          <Tag v-if="asUser(record).status === 'PENDING'" color="gold">
+            {{ t('users.statuses.PENDING') }}
+          </Tag>
+          <Tag v-else-if="asUser(record).status === 'DISABLED'" color="red">
+            {{ t('users.statuses.DISABLED') }}
           </Tag>
           <Tag v-else-if="asUser(record).mustChangePassword" color="orange">
-            {{ t('users.status.pending') }}
+            {{ t('users.mustChangePassword') }}
           </Tag>
           <Tag v-else color="green">
-            {{ t('users.status.active') }}
+            {{ t('users.statuses.ACTIVE') }}
           </Tag>
         </template>
         <template v-else-if="column.key === 'lastLoginAt'">
           {{ formatDateTime(asUser(record).lastLoginAt, locale) }}
         </template>
         <template v-else-if="column.key === 'actions'">
+          <!-- 待审核只给通过 / 拒绝；拒绝后该邮箱不能再申请，管理员之后可手动启用。 -->
+          <Space v-if="asUser(record).status === 'PENDING'">
+            <Button size="small" type="primary" :disabled="state.submitting.value" @click="setStatus(asUser(record), 'ACTIVE')">
+              {{ t('users.approve') }}
+            </Button>
+            <Popconfirm :title="t('users.confirmReject', { email: asUser(record).email })" @confirm="setStatus(asUser(record), 'DISABLED')">
+              <Button size="small" danger :disabled="state.submitting.value">
+                {{ t('users.reject') }}
+              </Button>
+            </Popconfirm>
+          </Space>
           <!-- 自己那行不给操作：改角色、重置密码、停用都会删掉自己的 Session。 -->
-          <Space v-if="asUser(record).id !== currentUser?.id">
+          <Space v-else-if="asUser(record).id !== currentUser?.id">
             <Select
               size="small"
               :value="asUser(record).role"
@@ -177,11 +212,11 @@ async function submitReset() {
               {{ t('users.resetPassword') }}
             </Button>
             <Popconfirm
-              :title="t(asUser(record).disabled ? 'users.confirmEnable' : 'users.confirmDisable', { email: asUser(record).email })"
-              @confirm="toggleDisabled(asUser(record))"
+              :title="t(asUser(record).status === 'DISABLED' ? 'users.confirmEnable' : 'users.confirmDisable', { email: asUser(record).email })"
+              @confirm="setStatus(asUser(record), asUser(record).status === 'DISABLED' ? 'ACTIVE' : 'DISABLED')"
             >
-              <Button size="small" :danger="!asUser(record).disabled" :disabled="state.submitting.value">
-                {{ t(asUser(record).disabled ? 'users.enable' : 'users.disable') }}
+              <Button size="small" :danger="asUser(record).status !== 'DISABLED'" :disabled="state.submitting.value">
+                {{ t(asUser(record).status === 'DISABLED' ? 'users.enable' : 'users.disable') }}
               </Button>
             </Popconfirm>
           </Space>
@@ -234,5 +269,16 @@ async function submitReset() {
 
 .users-role {
   width: 96px;
+}
+
+.users-identity {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.users-identity small {
+  display: block;
+  color: var(--admin-text-muted);
 }
 </style>

@@ -72,6 +72,19 @@ ssh agent-hk '[ -f /var/run/reboot-required ] && echo 需要重启 || echo 无�
 
 5. 登录 `https://askkuro.com/admin/`，在「模型接入」配置服务商与模型。
 
+### Google 登录
+
+Google 侧（项目 `kuro`，与 gsc 的项目分开）已按 #198 配好，换项目或重建客户端时照此操作：
+
+1. Google Cloud「Google Auth Platform」：Branding 填应用名、首页 `https://askkuro.com`、授权域 `askkuro.com`、隐私政策 `https://askkuro.com/privacy`；受众选「外部」并发布为正式版（只用 `openid email profile`，不需要审核，不受 100 个测试用户上限限制）。
+2. 「客户端」新建「Web 应用」类型的 OAuth 客户端：
+   - 已获授权的重定向 URI：`https://askkuro.com/api/auth/google/callback`、`http://localhost:5173/api/auth/google/callback`、`http://localhost:5174/api/auth/google/callback`；
+   - 已获授权的 JavaScript 来源（One Tap 要用）：`https://askkuro.com`、`http://localhost:5173`、`http://localhost:5174`。
+3. 客户端 ID 与密钥只写进 `.env`：本机是仓库根 `.env`，线上是服务器 `~/kuro/.env`（`GOOGLE_OAUTH_CLIENT_ID=`、`GOOGLE_OAUTH_CLIENT_SECRET=` 两行，用编辑器在服务器上填，不经 shell 历史），再按上文让 api 重新读取 `.env`。两项缺一项时 Google 登录整体关闭，其他功能不受影响。
+4. 陌生 Google 账号登录后是「待审核」，管理员在管理台「系统管理 → 用户列表」按状态筛选后通过或拒绝。
+
+回调地址由 `APP_ORIGINS` 拼出，不读请求头里的 Host；本机开发访问 Google 走 `OUTBOUND_PROXY_URL`，线上直连。
+
 ### 日常
 
 - `pnpm ship`：检查（在 master、工作区干净、与 `origin/master` 一致，`pnpm typecheck` / `lint` / `test` 通过）→ 构建两个镜像 → 直传 → 迁移前备份 → `prisma migrate deploy` → 换上新版本 → 健康检查 `https://askkuro.com/api/health`（90 秒内不通过就自动切回上一个版本并以非零退出）→ 记录版本，删掉超出 5 个的旧镜像与编排、超出 5 份的备份。换版本时容器启动报错同样自动切回；更早的步骤失败就停在那里，已在跑的版本不受影响（迁移已执行的除外）。当前已是这个版本时拒绝执行。

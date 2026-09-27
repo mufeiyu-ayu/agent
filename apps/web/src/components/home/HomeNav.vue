@@ -1,5 +1,10 @@
 <script setup lang="ts">
 import logoUrl from '@/assets/logo.webp'
+import HomeStartLink from '@/components/home/HomeStartLink.vue'
+
+import { useHomeLogin } from './home-login'
+
+const { loggedIn, openLogin } = useHomeLogin()
 </script>
 
 <template>
@@ -12,9 +17,17 @@ import logoUrl from '@/assets/logo.webp'
         <a href="#security">Security</a>
         <a href="#know">Knowledge</a>
       </div>
-      <RouterLink class="btn btn-primary" to="/workspace">
-        Start asking
-      </RouterLink>
+      <div class="nav-actions">
+        <RouterLink v-if="loggedIn" class="btn btn-ghost" to="/workspace">
+          Open workspace
+        </RouterLink>
+        <button v-else class="btn btn-ghost" type="button" @click="openLogin">
+          Log in
+        </button>
+        <HomeStartLink class="btn btn-primary">
+          Start asking
+        </HomeStartLink>
+      </div>
     </div>
   </nav>
 </template>
@@ -35,11 +48,12 @@ import logoUrl from '@/assets/logo.webp'
 .nav-links { display: flex; gap: 30px; margin-left: auto; font-size: 15px; font-weight: 500; }
 .nav-links a { text-decoration: none; color: var(--ink-2); transition: color .2s; }
 .nav-links a:hover { color: var(--ink); }
+.nav-actions { display: flex; gap: 10px; }
 .nav .btn { height: 42px; padding: 0 18px; font-size: 14.5px; }
 .nav.is-hidden { translate: 0 -110%; }
 .nav:focus-within { translate: 0 0; }
 @media (max-width: 760px) {
   .nav-links { display: none; }
-  .nav .btn { margin-left: auto; }
+  .nav-actions { margin-left: auto; }
 }
 </style>

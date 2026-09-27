@@ -14,7 +14,7 @@ import type { Page } from '@playwright/test'
 
 export const RUN_ID = 'run-e2e-1'
 
-export const E2E_ADMIN = { id: 'admin-1', email: 'admin@example.com', role: 'ADMIN', mustChangePassword: false }
+export const E2E_ADMIN = { id: 'admin-1', email: 'admin@example.com', name: null as string | null, avatarUrl: null as string | null, role: 'ADMIN', mustChangePassword: false }
 
 const START = '2026-08-16T00:00:00.000Z'
 const END = '2026-08-16T00:00:05.000Z'

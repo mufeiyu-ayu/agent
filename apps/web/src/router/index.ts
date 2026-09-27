@@ -12,10 +12,16 @@ export const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
     {
-      // 落地页纯静态、不调 API，不需要登录。
+      // 落地页公开；只问一次登录态与 Google 配置，决定按钮进工作台还是弹登录框。
       path: '/',
       name: 'home',
       component: () => import('@/views/HomeView.vue'),
+    },
+    {
+      // Google 同意屏幕登记的隐私政策地址，纯静态、不调 API。
+      path: '/privacy',
+      name: 'privacy',
+      component: () => import('@/views/PrivacyView.vue'),
     },
     {
       path: '/login',

@@ -1,4 +1,4 @@
-import type { AuthUser, ChangePasswordRequest, LoginRequest } from '@agent/contracts'
+import type { AuthConfig, AuthUser, ChangePasswordRequest, GoogleOneTapNonce, GoogleOneTapResult, LoginRequest } from '@agent/contracts'
 import { isAxiosError } from 'axios'
 
 import { http } from './http'
@@ -25,4 +25,16 @@ export async function logout(): Promise<void> {
 
 export async function changePassword(payload: ChangePasswordRequest): Promise<AuthUser> {
   return (await http.post<AuthUser>('/api/auth/change-password', payload)).data
+}
+
+export async function fetchAuthConfig(): Promise<AuthConfig> {
+  return (await http.get<AuthConfig>('/api/auth/config')).data
+}
+
+export async function fetchOneTapNonce(): Promise<string> {
+  return (await http.post<GoogleOneTapNonce>('/api/auth/google/one-tap/nonce')).data.nonce
+}
+
+export async function loginWithOneTap(credential: string): Promise<GoogleOneTapResult> {
+  return (await http.post<GoogleOneTapResult>('/api/auth/google/one-tap', { credential })).data
 }

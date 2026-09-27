@@ -1,8 +1,8 @@
-import type { AuthUser, ChangePasswordRequest, LoginRequest } from '@agent/contracts'
+import type { AuthUser, ChangePasswordRequest, GoogleOneTapResult, LoginRequest } from '@agent/contracts'
 import { isAxiosError } from 'axios'
 import { readonly, ref } from 'vue'
 
-import { changePassword, fetchCurrentUser, login, logout } from '@/api/auth'
+import { changePassword, fetchCurrentUser, login, loginWithOneTap, logout } from '@/api/auth'
 
 // 登录态是全应用单例：路由守卫与各页面共享同一份。
 const currentUser = ref<AuthUser | null>(null)
@@ -33,6 +33,14 @@ export function useAuth() {
       const user = await login(payload)
       setCurrentUser(user)
       return user
+    },
+    async signInWithOneTap(credential: string): Promise<GoogleOneTapResult> {
+      const result = await loginWithOneTap(credential)
+
+      if (result.status === 'ok')
+        setCurrentUser(result.user)
+
+      return result
     },
     async signOut() {
       // 只有 401（Session 已失效）算已退出；403 / 网络失败时 Cookie 仍有效，照实抛出，不假装退出。

@@ -47,7 +47,7 @@ export function resolveOutboundProxyConfig(env: NodeJS.ProcessEnv): OutboundProx
   }
 }
 
-/** 代理 agent 只在这里构造，`LLMService` 在构造时建一个、全进程共用。 */
+/** 代理 agent 只在这里构造：`LLMService` 与 `GoogleAuthService` 各在构造时建一个。 */
 export function createOutboundProxyAgent(config: OutboundProxyConfig): ProxyAgent {
   return new ProxyAgent(config.url)
 }
