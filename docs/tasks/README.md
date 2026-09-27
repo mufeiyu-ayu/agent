@@ -8,7 +8,7 @@
 阶段 1-8：Completed
 当前阶段：工作台第 1 档（第一期上线）
 Active Agent Task：无
-Next：第一期 ③ 联网搜索（Issue 未建）；开放给运营前先做第 0.5 档真实对话验证
+Next：#198 使用 Google 登录（Google 侧已配好）；之后第一期 ③ 联网搜索（Issue 未建）；开放给运营前先做第 0.5 档真实对话验证
 Gated：#117 Responses API adapter（2026-09-18），触发条件见看板
 产品方向：给 topuplist 运营用的 AI 工作台，分两期、上云、gsc 延后（2026-09-20 定案、2026-09-27 改为两期，docs/research/workbench-direction.md）；档、顺序与触发只在其第 7 节
 候选子系统：session 事件流与 replay、审批门、compaction、定时任务（未立 Issue，各自的档见 workbench 第 7 节）
@@ -19,6 +19,7 @@ Admin Task 4：Closed（2026-09-27：Auth 由 #195 完成；RBAC 不做（两种
 
 | 任务 | 状态 | 说明 |
 | --- | --- | --- |
+| #198 使用 Google 登录，陌生账号进入待审核 | Next | 实施状态：未开始 / 验收状态：未验收。Google Cloud 项目 kuro 与客户端 kuro-web 已配好；高风险，review `xhigh` |
 | #197 pnpm ship 一键部署与版本回退 | Completed | 上线 `https://askkuro.com`（管理台 `/admin/`），`pnpm ship` 构建直传、迁移前备份、健康检查失败自动切回，`pnpm ship:rollback` 只回退代码。PR #199 |
 | #195 邮箱密码登录、会话隔离与用户管理 | Completed | 全局 Guard + Session Cookie，会话按人隔离，管理台用户列表与 `pnpm create-admin`。PR #196 |
 | #193 首页替换为设计稿 Agent for Teams（百分百还原） | Completed | 设计稿移植成 `/` 首页并删旧首页，对原稿像素比对 33 张全部达标。PR #194 |
