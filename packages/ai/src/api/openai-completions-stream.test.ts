@@ -11,12 +11,33 @@ import {
   toOpenAIModelInputItem,
 } from './openai-completions.js'
 
-/** 默认按严格家族适配：缺 index 与带 Tool Call 的 stop 都报错。 */
-function adapt(
+/**
+ * 默认按严格家族适配：缺 index 与带 Tool Call 的 stop 都报错。
+ * reasoning_delta（#209）在这里剥离并校验：只在 reasoning_started 之后、结束事件之前出现，分片拼起来等于
+ * tool_call_completed 回填的 reasoningContent；既有用例照旧比对其余事件，顺序另由「reasoning 原文」一组断言。
+ */
+async function* adapt(
   chunks: AsyncIterable<ChatCompletionChunk>,
   options: AdaptStreamOptions = {},
-) {
-  return adaptOpenAICompatibleStream(chunks, options)
+): AsyncGenerator<ModelStreamEvent> {
+  let reasoning = ''
+  let reasoningStarted = false
+  let completed = false
+
+  for await (const event of adaptOpenAICompatibleStream(chunks, options)) {
+    if (event.type === 'reasoning_delta') {
+      assert.ok(reasoningStarted && !completed && event.delta.length > 0, 'reasoning_delta 位置或内容不对')
+      reasoning += event.delta
+      continue
+    }
+    if (event.type === 'reasoning_started')
+      reasoningStarted = true
+    if (event.type === 'tool_call_completed')
+      assert.equal(event.reasoningContent, reasoning)
+    if (event.type === 'response_completed')
+      completed = true
+    yield event
+  }
 }
 
 describe('OpenAI-compatible request mapping', () => {
@@ -176,9 +197,74 @@ describe('OpenAI-compatible request mapping', () => {
   })
 })
 
+describe('reasoning 原文（#209）', () => {
+  it('每片 reasoning_content 原样依序发出 reasoning_delta，拼起来等于 reasoningContent；reasoning_started 仍只发一次', async () => {
+    const events = await collectEvents(adaptOpenAICompatibleStream(toStream([
+      createChunk({ delta: { reasoning_content: '' } }),
+      createChunk({ delta: { reasoning_content: '用户要查' } }),
+      createChunk({ delta: { reasoning_content: ' seo，\n' } }),
+      createChunk({ delta: { reasoning_content: '先检索。' } }),
+      createChunk({ delta: { tool_calls: [toolCallDelta(0, { id: 'call_1', name: 'search_articles', argumentsJson: '{}' })] } }),
+      createChunk({ delta: {}, finishReason: 'tool_calls' }),
+    ]), {}))
+
+    assert.deepEqual(events.slice(0, 4), [
+      { type: 'reasoning_started' },
+      { type: 'reasoning_delta', delta: '用户要查' },
+      { type: 'reasoning_delta', delta: ' seo，\n' },
+      { type: 'reasoning_delta', delta: '先检索。' },
+    ])
+
+    const completed = events.find(event => event.type === 'tool_call_completed')
+
+    assert.equal(completed?.type === 'tool_call_completed' && completed.reasoningContent, '用户要查 seo，\n先检索。')
+    assert.equal(events.filter(event => event.type === 'reasoning_started').length, 1)
+  })
+
+  it('同一 chunk 里 reasoning、tool_calls、content 同时到：思考原文排在 Tool Call 与正文之前', async () => {
+    const events = await collectEvents(adaptOpenAICompatibleStream(toStream([
+      createChunk({
+        delta: {
+          reasoning_content: '要查。',
+          content: '稍等',
+          tool_calls: [toolCallDelta(0, { id: 'call_1', name: 'search_articles', argumentsJson: '{}' })],
+        },
+        finishReason: 'tool_calls',
+      }),
+    ]), {}))
+
+    assert.deepEqual(events.slice(0, 4).map(event => event.type), ['reasoning_started', 'reasoning_delta', 'tool_call_started', 'text_delta'])
+  })
+
+  it('不是字符串的 reasoning_content 不发 reasoning_delta，reasoning_started 与回填照旧', async () => {
+    const events = await collectEvents(adaptOpenAICompatibleStream(toStream([
+      createChunk({ delta: { reasoning_content: 42 as unknown as string } }),
+      createChunk({ delta: { tool_calls: [toolCallDelta(0, { id: 'call_1', name: 'search_articles', argumentsJson: '{}' })] } }),
+      createChunk({ delta: {}, finishReason: 'tool_calls' }),
+    ]), {}))
+
+    assert.deepEqual(events.map(event => event.type), ['reasoning_started', 'tool_call_started', 'tool_call_completed', 'response_completed'])
+    assert.equal(events[2]?.type === 'tool_call_completed' && events[2].reasoningContent, '42')
+  })
+
+  it('没有 tool_calls 的一轮同样发出 reasoning_delta，排在正文之前', async () => {
+    const events = await collectEvents(adaptOpenAICompatibleStream(toStream([
+      createChunk({ delta: { reasoning_content: '直接回答。' } }),
+      createChunk({ delta: { content: '好' }, finishReason: 'stop' }),
+    ]), {}))
+
+    assert.deepEqual(events, [
+      { type: 'reasoning_started' },
+      { type: 'reasoning_delta', delta: '直接回答。' },
+      { type: 'text_delta', delta: '好' },
+      { type: 'response_completed', finishReason: 'stop' },
+    ])
+  })
+})
+
 describe('adaptOpenAICompatibleStream', () => {
   it('保留文本、usage 和 stop 完成事件的顺序', async () => {
-    const reasoningSecret = 'final-reasoning-must-not-leak'
+    const reasoningSecret = 'final-reasoning-only-in-reasoning-delta'
     const events = await collectEvents(adapt(toStream([
       createChunk({ delta: { reasoning_content: reasoningSecret } }),
       createChunk({ delta: { content: '你' } }),
@@ -198,7 +284,7 @@ describe('adaptOpenAICompatibleStream', () => {
       }),
     ])))
 
-    // reasoning 只以一个不带正文的 reasoning_started 标记到达时间，正文不进事件流。
+    // reasoning 正文只以 reasoning_delta 发出（adapt 已剥离并校验），其余事件都不带它。
     assert.deepEqual(events, [
       { type: 'reasoning_started' },
       { type: 'text_delta', delta: '你' },

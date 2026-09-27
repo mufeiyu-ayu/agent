@@ -72,6 +72,19 @@ describe('NDJSON 协议兼容', () => {
     }
   })
 
+  it('#209 思考原文事件：合法的原样解析，delta 不是字符串时 fail closed', () => {
+    const event: ChatStreamEvent = { type: 'reasoning_delta', conversationId: 'c', assistantMessageId: 'a', delta: '先搜一下。\n' }
+
+    assert.deepEqual(parseChatStreamEventLine(JSON.stringify(event)), event)
+    for (const invalid of [
+      { type: 'reasoning_delta', conversationId: 'c', assistantMessageId: 'a' },
+      { type: 'reasoning_delta', conversationId: 'c', assistantMessageId: 'a', delta: 1 },
+      { type: 'reasoning_delta', conversationId: 'c', delta: '想' },
+    ]) {
+      assert.throws(() => parseChatStreamEventLine(JSON.stringify(invalid)), /流式响应事件格式不正确/, JSON.stringify(invalid))
+    }
+  })
+
   it('未知 top-level event type 继续 fail closed', () => {
     assert.throws(
       () => parseChatStreamEventLine(JSON.stringify({

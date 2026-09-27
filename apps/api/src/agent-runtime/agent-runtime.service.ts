@@ -395,22 +395,35 @@ export class AgentRuntimeService {
           while (!samplingResult.done) {
             runCancellation.throwIfUnavailable()
 
-            // 文本实时推给前端；Tool Call 轮的中间文本同样推出，并随 tool_calls 回填模型。
-            await startAssistantOutputStep()
-            // 推出去的 delta 与写进 Message.content 的是同一个替换后的串。
-            const visibleText = toPersistableText(samplingResult.value)
-            const contentDelta = roundTextStarted
-              ? visibleText
-              : separateFromPreviousText(terminal.content, visibleText)
+            if (samplingResult.value.kind === 'reasoning') {
+              // 思考原文只推给界面（#209）：不开输出 Step、不进 Message.content、不参与正文分段；
+              // 与正文同样先做字符替换，流里的文本口径一致。
+              yield {
+                type: 'reasoning_delta',
+                runId: currentAgentRunId,
+                conversationId: input.conversationId,
+                assistantMessageId,
+                delta: toPersistableText(samplingResult.value.delta),
+              }
+            }
+            else {
+              // 文本实时推给前端；Tool Call 轮的中间文本同样推出，并随 tool_calls 回填模型。
+              await startAssistantOutputStep()
+              // 推出去的 delta 与写进 Message.content 的是同一个替换后的串。
+              const visibleText = toPersistableText(samplingResult.value.delta)
+              const contentDelta = roundTextStarted
+                ? visibleText
+                : separateFromPreviousText(terminal.content, visibleText)
 
-            roundTextStarted = true
-            terminal.content += contentDelta
-            yield {
-              type: 'assistant_delta',
-              runId: currentAgentRunId,
-              conversationId: input.conversationId,
-              assistantMessageId,
-              contentDelta,
+              roundTextStarted = true
+              terminal.content += contentDelta
+              yield {
+                type: 'assistant_delta',
+                runId: currentAgentRunId,
+                conversationId: input.conversationId,
+                assistantMessageId,
+                contentDelta,
+              }
             }
             samplingResult = await sampling.next()
           }

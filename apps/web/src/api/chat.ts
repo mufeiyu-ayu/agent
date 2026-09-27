@@ -145,6 +145,12 @@ function isChatStreamEvent(value: unknown): value is ChatStreamEvent {
         && typeof value.assistantMessageId === 'string'
         && typeof value.contentDelta === 'string'
       )
+    case 'reasoning_delta':
+      return (
+        typeof value.conversationId === 'string'
+        && typeof value.assistantMessageId === 'string'
+        && typeof value.delta === 'string'
+      )
     case 'tool_started':
       return (
         typeof value.conversationId === 'string'

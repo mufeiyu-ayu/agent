@@ -111,6 +111,7 @@ export type {
   ChatStreamDoneEvent,
   ChatStreamErrorEvent,
   ChatStreamEvent,
+  ChatStreamReasoningDeltaEvent,
   ChatStreamStartEvent,
   ChatStreamToolFinishedEvent,
   ChatStreamToolStartedEvent,

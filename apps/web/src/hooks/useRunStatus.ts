@@ -1,16 +1,27 @@
 import type { TurnRun, TurnRunStep } from '../types/chat'
 
-import { computed, onScopeDispose, ref, watch } from 'vue'
+import { computed, onScopeDispose, ref, shallowRef, watch } from 'vue'
+
+import { liveThought } from '../utils/run-status'
 
 /** 满 1 秒还没有正文才出现状态行（Nielsen 响应时间界限：1 秒内不打断用户思路，无需提示）。 */
 export const RUN_ROW_DELAY_MS = 1000
 /** 状态行每个状态至少停留这么久才换下一个，避免搜索秒回时一闪一闪。 */
 export const RUN_MIN_DWELL_MS = 1200
+/** 思考短句要读完一句话，停得比步骤久一些（#209）。 */
+export const THOUGHT_MIN_DWELL_MS = 1500
 const SECOND_MS = 1000
+
+/** 状态行显示的内容：工具步骤在 steps 里的下标，或思考（这一轮最新一句写完的话，没有就是「思考中」）。 */
+interface RunTarget {
+  key: string
+  step?: number
+  thought?: string
+}
 
 /**
  * 等待过程的显示状态（#208）：何时有状态行、呼吸点在哪、当前显示哪个步骤、计时。
- * 数据来自 `TurnRun`，这里只管时间：1 秒阈值、整秒计时、最短停留与排队（只留最新一个）。
+ * 数据来自 `TurnRun`，这里只管时间：1 秒阈值、整秒计时、最短停留与排队（只留最新一个）；思考短句（#209）同样排队。
  *
  * @param run 本轮的等待过程；start 之前为 undefined
  * @param waiting 已发出、还没收到 start
@@ -35,46 +46,62 @@ export function useRunStatus(run: () => TurnRun | undefined, waiting: () => bool
   const floating = computed(() => live.value && !hasRow.value && run()?.answerAt !== undefined)
   const labelVisible = computed(() => live.value && (hasRow.value || floating.value))
 
-  /** 最新的目标：进行中的工具步骤在 steps 里的下标（工具顺序执行，tool 阶段就是最后一步），没有就是思考中。 */
-  const target = computed<number | undefined>(() => {
+  /** 最新的目标：进行中的工具步骤（工具顺序执行，tool 阶段就是最后一步），没有就是思考。 */
+  const target = computed<RunTarget>(() => {
     const current = run()
 
-    return current?.phase === 'tool' ? current.steps.length - 1 : undefined
+    if (current?.phase === 'tool')
+      return { key: `step:${current.steps.length - 1}`, step: current.steps.length - 1 }
+
+    const thought = current && liveThought(current)
+
+    // 带上这一轮的步骤数：不同轮次出现同一句话也算换了；句末右引号 / 右括号晚一批到时仍是同一句，不重新停留。
+    return thought
+      ? { key: `thought:${current.steps.length}:${thought.replace(/["'”’」』）)\]]+$/, '')}`, thought }
+      : { key: 'thinking' }
   })
-  /** 实际显示的步骤下标（undefined = 思考中）：受最短停留约束，落后于 target。 */
-  const shownIndex = ref(target.value)
+  /** 实际显示的内容：受最短停留约束，落后于 target。 */
+  const shown = shallowRef(target.value)
   let shownAt = performance.now()
   let dwellTimer: ReturnType<typeof setTimeout> | undefined
 
-  /** 换成 index；appeared 表示刚出现，即使和上次一样也从现在起算停留。 */
-  function show(index: number | undefined, appeared = false) {
+  /** 换成最新目标；appeared 表示刚出现，即使和上次一样也从现在起算停留。 */
+  function show(appeared = false) {
     clearTimeout(dwellTimer)
     dwellTimer = undefined
-    if (appeared || index !== shownIndex.value) {
-      shownIndex.value = index
+    if (appeared || target.value.key !== shown.value.key) {
+      shown.value = target.value
       shownAt = performance.now()
     }
   }
 
-  // 刚出现（状态行出现、摘要变回进行中、浮层出现）立刻显示最新目标；之后换字先停够最短时间，
+  // 刚出现（状态行出现、摘要变回进行中、浮层出现）立刻显示最新目标；之后换字先停够当前内容的最短时间，
   // 期间再来的事件只把目标换成最新的（每次都重新排），到点显示最新的那个。
-  watch([labelVisible, target], ([visible, index], [wasVisible]) => {
+  watch([labelVisible, () => target.value.key], ([visible], [wasVisible]) => {
     clearTimeout(dwellTimer)
     dwellTimer = undefined
     if (!visible)
       return
     if (!wasVisible)
-      return show(index, true)
+      return show(true)
 
-    const wait = shownAt + RUN_MIN_DWELL_MS - performance.now()
+    const dwell = shown.value.thought ? THOUGHT_MIN_DWELL_MS : RUN_MIN_DWELL_MS
+    const wait = shownAt + dwell - performance.now()
 
     if (wait <= 0)
-      show(index)
+      show()
     else
-      dwellTimer = setTimeout(show, wait, index)
+      dwellTimer = setTimeout(show, wait)
   }, { flush: 'sync' })
+  const shownKey = computed(() => shown.value.key)
+  // 同一句补上了右引号：换成补全后的文字，停留照旧计。
+  watch(target, (next) => {
+    if (next.key === shown.value.key)
+      shown.value = next
+  }, { flush: 'sync' })
+  const shownThought = computed(() => shown.value.thought)
   const shownStep = computed<TurnRunStep | undefined>(() =>
-    shownIndex.value === undefined ? undefined : run()?.steps[shownIndex.value])
+    shown.value.step === undefined ? undefined : run()?.steps[shown.value.step])
 
   // 进行中每到整秒走一次钟（计时，以及没有状态行时的 1 秒阈值）；写正文与结束后不走。
   let tickTimer: ReturnType<typeof setTimeout> | undefined
@@ -117,5 +144,5 @@ export function useRunStatus(run: () => TurnRun | undefined, waiting: () => bool
   })
   const dotTrailing = computed(() => !hasRow.value && run()?.answerAt !== undefined)
 
-  return { hasRow, live, floating, shownIndex, shownStep, seconds, dotVisible, dotTrailing }
+  return { hasRow, live, floating, shownKey, shownStep, shownThought, seconds, dotVisible, dotTrailing }
 }

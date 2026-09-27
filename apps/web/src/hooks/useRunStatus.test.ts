@@ -35,7 +35,7 @@ function createTurn(locale: 'zh-CN' | 'en-US' = 'zh-CN') {
 
     if (status.hasRow.value) {
       if (status.live.value) {
-        const text = runStatusText(status.shownStep.value, t)
+        const text = runStatusText(status.shownStep.value, t, status.shownThought.value)
         const seconds = status.seconds.value >= 1 ? ` · ${t('conversation.run.seconds', { n: status.seconds.value })}` : ''
 
         parts.push(`行[${text.label}${text.object ? ` ${text.object}` : ''}${seconds}]`)
@@ -49,7 +49,7 @@ function createTurn(locale: 'zh-CN' | 'en-US' = 'zh-CN') {
     if (status.dotVisible.value)
       parts.push(status.dotTrailing.value ? '尾点' : '呼吸点')
     if (status.floating.value) {
-      const text = runStatusText(status.shownStep.value, t)
+      const text = runStatusText(status.shownStep.value, t, status.shownThought.value)
 
       parts.push(`浮层[${text.label}${text.object ? ` ${text.object}` : ''}]`)
     }
@@ -86,6 +86,7 @@ const search = (callId: string, query: string) => ({ type: 'tool_started', callI
 const fetchPage = (callId: string, url: string) => ({ type: 'tool_started', callId, toolName: 'web_fetch', url }) as const
 const finished = (callId: string, extra: Record<string, unknown> = {}) => ({ type: 'tool_finished', callId, ok: true, ...extra }) as const
 const delta = { type: 'delta', contentDelta: '正文' } as const
+const think = (text: string) => ({ type: 'reasoning_delta', delta: text }) as const
 
 beforeEach(() => {
   vi.useFakeTimers()
@@ -236,6 +237,7 @@ describe('#208 等待过程的显示（假时钟）', () => {
       phase: 'ended',
       toolBeforeAnswer: steps.length > 0,
       steps,
+      thoughts: [],
     })
     const step = (toolName: string, status: 'ok' | 'failed' = 'ok') => ({ callId: `${toolName}-${Math.random()}`, toolName, status })
     const cases: Array<[TurnRun, string, string]> = [
@@ -284,5 +286,78 @@ describe('#208 等待过程的显示（假时钟）', () => {
     turn.emit(finished('call-1'))
     turn.emit({ type: 'tool_started', callId: 'call-2', toolName: 'lookup_order' })
     assert.equal(at(turn, 3400), '行[Using tool lookup_order · 3s] 呼吸点')
+  })
+})
+
+describe('#209 状态行的思考短句（假时钟）', () => {
+  it('有思考原文：换成最新一句写完的话，每句至少停 1.5 秒、只留最新一句；新一轮不沿用上一轮；工具与正文照原规则', () => {
+    const turn = createTurn()
+
+    turn.start()
+    turn.emit(think('用户想知道 React 19.2 官方列了哪些新特性，'))
+    // 还没写完第一句。
+    assert.equal(at(turn, 1000), '行[思考中 · 1 秒] 呼吸点')
+    turn.emit(think('先找到官方发布说明。'))
+    // 「思考中」从 1.0s 出现，停够 1.2 秒才换。
+    assert.equal(at(turn, 2199), '行[思考中 · 2 秒] 呼吸点')
+    assert.equal(at(turn, 2200), '行[用户想知道 React 19.2 官方列了哪些新特性，先找到官方发布说明。 · 2 秒] 呼吸点')
+    turn.emit(think('搜索关键词用英文。'))
+    at(turn, 2500)
+    turn.emit(think('再加上 release notes。'))
+    // 1.5 秒内又写完两句：到点只显示最新一句，中间那句跳过。
+    assert.equal(at(turn, 3699), '行[用户想知道 React 19.2 官方列了哪些新特性，先找到官方发布说明。 · 3 秒] 呼吸点')
+    assert.equal(at(turn, 3700), '行[再加上 release notes。 · 3 秒] 呼吸点')
+    assert.ok(!turn.history.some(frame => frame.includes('搜索关键词用英文')))
+    turn.emit(search('call-1', 'React 19.2'))
+    assert.equal(at(turn, 5199), '行[再加上 release notes。 · 5 秒] 呼吸点')
+    assert.equal(at(turn, 5200), '行[搜索 React 19.2 · 5 秒] 呼吸点')
+    turn.emit(finished('call-1'))
+    turn.emit(think('结果'))
+    // 新一轮只写了半句：回到「思考中」，不沿用上一轮的句子。
+    assert.equal(at(turn, 6400), '行[思考中 · 6 秒] 呼吸点')
+    turn.emit(think('足够回答了。'))
+    assert.equal(at(turn, 7599), '行[思考中 · 7 秒] 呼吸点')
+    assert.equal(at(turn, 7600), '行[结果足够回答了。 · 7 秒] 呼吸点')
+    turn.emit(delta)
+    assert.equal(at(turn, 7700), '摘要[已搜索 1 次 · 用时 7 秒]')
+  })
+
+  it('句末的右引号晚一批才到：仍是同一句，文字补全但不重新停留', () => {
+    const turn = createTurn()
+
+    turn.start()
+    turn.emit(think('用户问：“React 19.2 有哪些新特性？'))
+    assert.equal(at(turn, 1000), '行[用户问：“React 19.2 有哪些新特性？ · 1 秒] 呼吸点')
+    turn.emit(think('”先搜'))
+    assert.equal(at(turn, 1100), '行[用户问：“React 19.2 有哪些新特性？” · 1 秒] 呼吸点')
+    turn.emit(think('索官方博客。'))
+    // 停留从 1.0s 起算，不因补上引号重新计。
+    assert.equal(at(turn, 2499), '行[用户问：“React 19.2 有哪些新特性？” · 2 秒] 呼吸点')
+    assert.equal(at(turn, 2500), '行[先搜索官方博客。 · 2 秒] 呼吸点')
+  })
+
+  it('没有思考原文（GPT、Gemini）：同样的过程全程是「思考中」', () => {
+    const turn = createTurn()
+
+    turn.start()
+    assert.equal(at(turn, 2200), '行[思考中 · 2 秒] 呼吸点')
+    turn.emit(search('call-1', 'React 19.2'))
+    assert.equal(at(turn, 3700), '行[搜索 React 19.2 · 3 秒] 呼吸点')
+    turn.emit(finished('call-1'))
+    assert.equal(at(turn, 6400), '行[思考中 · 6 秒] 呼吸点')
+    turn.emit(delta)
+    assert.equal(at(turn, 7700), '摘要[已搜索 1 次 · 用时 6 秒]')
+  })
+
+  it('正文开始后才调工具：尾点旁的浮层同样显示思考短句', () => {
+    const turn = createTurn()
+
+    turn.start()
+    turn.emit(delta)
+    turn.emit(search('call-1', 'a'))
+    assert.equal(at(turn, 100), '尾点 浮层[搜索 a]')
+    turn.emit(finished('call-1'))
+    turn.emit(think('再补一句说明。'))
+    assert.equal(at(turn, 1300), '尾点 浮层[再补一句说明。]')
   })
 })

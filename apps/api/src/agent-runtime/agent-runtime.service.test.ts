@@ -1239,7 +1239,8 @@ describe('AgentRuntimeService model stream', () => {
     )
     assert.equal(harness.assistantMessage()?.content, '已基于两次查询生成 SEO 建议。')
     assert.equal(events.at(-1)?.type, 'run_completed')
-    // reasoning 只随 assistant 消息回填模型，前台事件与 Message 都不带。
+    // 回填用的 reasoningContent 只随 assistant 消息回填模型，不经事件与 Message 外泄
+    // （这条假流没有 reasoning_delta；前台看到的思考原文只来自 reasoning_delta，见 #209 用例）。
     assert.doesNotMatch(
       JSON.stringify({
         events,
@@ -1256,6 +1257,73 @@ describe('AgentRuntimeService model stream', () => {
       [firstReasoning, secondReasoning, undefined],
     )
     assertNoUnfinishedSteps(harness)
+  })
+
+  it('#209 思考原文作为 reasoning_delta 转发；Message、Step 落库与下一轮模型请求和没有思考分片时逐字一致', async () => {
+    const reasoningRounds = [['先搜\0一下', ' seo。'], ['整理结果。']]
+    const streamsOf = (withReasoning: boolean): ModelStreamEvent[][] => [
+      [
+        { type: 'reasoning_started' },
+        ...(withReasoning ? reasoningRounds[0]!.map(delta => ({ type: 'reasoning_delta' as const, delta })) : []),
+        toolCallEvent('call-search', 'web_search', '{"query":"seo"}', reasoningRounds[0]!.join('')),
+        { type: 'response_completed', finishReason: 'tool_calls' },
+      ],
+      [
+        { type: 'reasoning_started' },
+        ...(withReasoning ? reasoningRounds[1]!.map(delta => ({ type: 'reasoning_delta' as const, delta })) : []),
+        { type: 'text_delta', delta: '结论。' },
+        { type: 'response_completed', finishReason: 'stop' },
+      ],
+    ]
+    const runScenario = async (withReasoning: boolean) => {
+      const streams = streamsOf(withReasoning)
+      const harness = createHarness((_, __, callIndex) => toModelStream(streams[callIndex] ?? []))
+      const events = await collectEvents(harness.run())
+
+      assertNoUnfinishedSteps(harness)
+
+      return {
+        events,
+        message: harness.assistantMessage()?.content,
+        // 时间与首 token 毫秒数随真实时钟变化，其余字段逐字比对。
+        steps: harness.recorder.steps.map(({ type, sequence, status, input, output }) => {
+          const { firstTokenMs: _firstTokenMs, ...rest } = (output ?? {}) as Record<string, unknown>
+
+          return { type, sequence, status, input, output: rest }
+        }),
+        modelRequests: harness.llmCalls.map(call => call.messages),
+      }
+    }
+    const without = await runScenario(false)
+    const withReasoning = await runScenario(true)
+
+    assert.deepEqual(
+      withReasoning.events.flatMap(event => event.type === 'reasoning_delta' ? [event.delta] : []),
+      ['先搜\uFFFD一下', ' seo。', '整理结果。'],
+    )
+    assert.deepEqual(
+      withReasoning.events.filter(event => event.type !== 'reasoning_delta').map(event => event.type),
+      without.events.map(event => event.type),
+    )
+    // 思考原文排在本轮正文与工具事件之前。
+    assert.deepEqual(withReasoning.events.map(event => event.type), [
+      'run_started',
+      'reasoning_delta',
+      'reasoning_delta',
+      'tool_started',
+      'tool_finished',
+      'reasoning_delta',
+      'assistant_delta',
+      'run_completed',
+    ])
+    assert.deepEqual(
+      withReasoning.events.filter(event => event.type === 'reasoning_delta').map(toChatStreamEvent)[0],
+      { type: 'reasoning_delta', conversationId: 'conversation-1', assistantMessageId: withReasoning.events.find(event => event.type === 'run_started')?.assistantMessageId, delta: '先搜\uFFFD一下' },
+    )
+    assert.equal(withReasoning.message, '结论。')
+    assert.deepEqual(withReasoning.message, without.message)
+    assert.deepEqual(withReasoning.steps, without.steps)
+    assert.deepEqual(withReasoning.modelRequests, without.modelRequests)
   })
 
   it('拒绝执行工具清单之外的工具', async () => {
@@ -1947,9 +2015,11 @@ describe('AgentRuntimeService model stream', () => {
     const samplingStep = findStep(harness, 'model_sampling')
     const output = samplingStep?.output as Record<string, unknown>
 
+    // 真实流里的 reasoning_content 同样作为 reasoning_delta 推给界面（#209）。
     assert.deepEqual(events.map(event => event.type), [
       'run_started',
       'assistant_delta',
+      'reasoning_delta',
       'tool_started',
       'tool_finished',
       'assistant_delta',

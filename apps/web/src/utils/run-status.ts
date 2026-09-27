@@ -25,7 +25,7 @@ export interface RunStepText {
 }
 
 export function startRun(now: number): TurnRun {
-  return { startedAt: now, phase: 'waiting', toolBeforeAnswer: false, steps: [] }
+  return { startedAt: now, phase: 'waiting', toolBeforeAnswer: false, steps: [], thoughts: [] }
 }
 
 /** 按流事件推进等待过程；没有变化时返回原对象，调用方据此跳过写入。 */
@@ -34,6 +34,23 @@ export function applyRunEvent(run: TurnRun, event: ChatStreamEvent, now: number)
     return run
 
   switch (event.type) {
+    case 'reasoning_delta': {
+      // 一轮只在思考中（start 或 tool_finished 之后）收原文，到 tool_started 或正文开始为止；
+      // 同一轮的步骤数不变，所以末尾那段 at 相同就是这一轮，接着拼。
+      if (run.phase !== 'waiting' || !event.delta)
+        return run
+
+      const at = run.steps.length
+      const last = run.thoughts.at(-1)
+
+      return {
+        ...run,
+        thoughts: last?.at === at
+          ? [...run.thoughts.slice(0, -1), { at, text: last.text + event.delta }]
+          : [...run.thoughts, { at, text: event.delta }],
+      }
+    }
+
     case 'tool_started':
       return {
         ...run,
@@ -95,10 +112,10 @@ export function endRun(run: TurnRun, now: number, outcome: NonNullable<TurnRun['
   }
 }
 
-/** 进行中的状态行文字：思考中，或当前工具步骤。 */
-export function runStatusText(step: TurnRunStep | undefined, t: Translate): RunStatusText {
+/** 进行中的状态行文字：当前工具步骤；没有工具时是思考短句，还没有短句就是「思考中」。 */
+export function runStatusText(step: TurnRunStep | undefined, t: Translate, thought?: string): RunStatusText {
   if (!step)
-    return { label: t('conversation.run.thinking') }
+    return { label: thought || t('conversation.run.thinking') }
 
   switch (step.toolName) {
     case 'web_search':
@@ -176,6 +193,58 @@ export function runStepText(step: TurnRunStep, t: Translate, locale: string): Ru
     default:
       return { verb: t('conversation.run.steps.tool'), object: step.toolName, meta: outcome }
   }
+}
+
+/**
+ * 句末：中文句号 / 叹号 / 问号、换行，或后面跟着空白的英文 . ! ?（「19.2」里的点不算，流末尾的点等下一片再定）；
+ * 紧跟的右引号、右括号归前一句（中文句末后的 ASCII 引号分不清左右，不归）。不用 lookbehind：Safari 16.4 之前不支持，整个模块会加载失败。
+ */
+const SENTENCE_END = /[。！？][”’」』）)\]]*|\n|[.!?]["'”’)\]]*(?=\s)/g
+/** 缩写里的点不算句末（看点之前的几个字）。 */
+const ABBREVIATION_BEFORE_DOT = /(?:^|[^a-z])(?:e\.g|i\.e|vs)$/i
+/** 短于这个字数的句子（「好的。」「嗯。」）跳过，取更早的一句。 */
+const MIN_THOUGHT_CHARS = 6
+
+/**
+ * 思考短句（#209）：原文里最新一句写完的话，去掉 Markdown 符号、合并空白；短句跳过。
+ * complete 为 true 时这一轮已结束，末尾没有句末标点的半句也算写完。
+ */
+export function latestThoughtSentence(text: string, complete = false): string | undefined {
+  const source = complete ? `${text}\n` : text
+  const ends = [...source.matchAll(SENTENCE_END)]
+    .filter(match => !(match[0].startsWith('.') && ABBREVIATION_BEFORE_DOT.test(source.slice(Math.max(0, match.index - 4), match.index))))
+    .map(match => match.index + match[0].length)
+
+  for (let index = ends.length - 1; index >= 0; index--) {
+    const sentence = plainThought(source.slice(ends[index - 1] ?? 0, ends[index]))
+
+    if ([...sentence].length >= MIN_THOUGHT_CHARS)
+      return sentence
+  }
+}
+
+/** 状态行上的思考短句：只取这一轮（没有新步骤之后）的原文，上一轮的不沿用。 */
+export function liveThought(run: TurnRun): string | undefined {
+  const last = run.thoughts.at(-1)
+
+  return run.phase === 'waiting' && last?.at === run.steps.length ? latestThoughtSentence(last.text) : undefined
+}
+
+/** 时间线思考行的文字：这一轮最后一句写完的话；都太短时用整段（本来就短）。 */
+export function thoughtTitle(text: string): string {
+  return latestThoughtSentence(text, true) ?? plainThought(text)
+}
+
+/** 去掉行首的标题 / 引用 / 列表符号（可嵌套，如「> - 」）与行内的加粗、代码、删除线标记，合并空白；单个 * 与 _ 保留（乘号、__init__）。 */
+function plainThought(text: string): string {
+  return text
+    .trimStart()
+    // 分隔线（*** / - - -）整行不算文字。
+    .replace(/^(?:[-*_]\s*){3,}$/, '')
+    .replace(/^(?:(?:#{1,6}|[-*+])\s+|>\s*)+/, '')
+    .replace(/\*\*|`+|~~/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
 }
 
 /** 整秒；不到 1 秒写「不到 1 秒」。 */

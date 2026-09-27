@@ -186,6 +186,8 @@ test('#208 AC-08 带工具的慢回答：状态行与正文全程零移动，换
   await expect(timeline).toContainText('React 19.2 release')
   await expect(timeline).toContainText('10 条结果')
   await expect(timeline).toContainText('React 19.2 – React')
+  // 拿不到思考原文的模型：时间线里只有工具步骤，没有思考行（#209）。
+  await expect(timeline.locator('li')).toHaveCount(2)
   await timeline.getByRole('button', { name: /React 19.2 release/ }).click()
   await expect(timeline.getByRole('link', { name: /React 19.2 来源 1\b/ })).toHaveAttribute('href', 'https://source1.example/react-19-2')
   await expect(timeline.getByRole('link', { name: /React 19.2 来源/ })).toHaveCount(5)
@@ -224,4 +226,91 @@ test('#208 AC-08 1 秒内开始的快回答：没有状态行，正文零移动�
     expect(dot.x - (char.x + char.w), '尾点紧跟末尾文字').toBeLessThan(14)
     expect(Math.abs(dot.y - center(char).y), '尾点与末尾文字同一行').toBeLessThanOrEqual(3)
   }
+})
+
+test('#209 AC-05 思考短句：状态行随思考换字时状态行与正文全程零移动，展开思考行后完整思考限高、可滚动', async ({ page }) => {
+  const LONG = '官方博客通常会按功能分节列出新特性，每一节都有示例代码和迁移说明，这次要特别留意 Activity 组件、useEffectEvent 和性能面板这三部分的描述是否与社区总结一致。'
+  const FILLER = Array.from({ length: 7 }, (_, index) => `第 ${index + 1} 段：先确认官方博客的发布日期，再核对每个新特性的名称和用途，避免把实验性功能当成正式特性写进回答里。\n\n`)
+  const think = (delta: string) => line({ type: 'reasoning_delta', delta })
+
+  await installApiRoutes(page, () => [])
+  await installBrowserStubs(page, {
+    lines: [
+      start,
+      think('用户想知道 React 19.2 官方列了哪些新特性，'),
+      think('先找到官方发布说明。\n\n'),
+      ...FILLER.map(think),
+      think(LONG),
+      // 紧跟着 tool_started 到达（间隔远小于前台 200ms 的写入节流）：这一句要先写进这一轮，不能丢。
+      think('再确认一下英文关键词。'),
+      line({ type: 'tool_started', callId: 'call-search', toolName: 'web_search', query: 'React 19.2 release' }),
+      line({ type: 'tool_finished', callId: 'call-search', ok: true, results: SOURCES }),
+      think('结果够用了，可以开始回答。'),
+      ...ANSWER.map(contentDelta => line({ type: 'delta', contentDelta })),
+      line({ type: 'done', content: ANSWER.join(''), generatedAt: '2026-09-28T00:00:00.000Z' }),
+    ],
+    holdBeforeIndex: -1,
+    // 0.3s 半句 → 0.8s 第一句 → 0.9~1.5s 七段（1.0s 状态行出现，停 1.5 秒后到 2.5s 直接换到第 7 段）
+    // → 3.0s 超长一句（4.0s 换上）→ 4.5s 最后一句与搜索同时到（5.5s 换成搜索）→ 6.0s 搜完 → 6.2s 第二轮一句（6.7s 换上）→ 8.0s 正文。
+    delaysMs: [0, 300, 500, ...FILLER.map(() => 100), 1500, 1500, 0, 1500, 200, 1800, ...ANSWER.slice(1).map(() => 120), 200],
+  })
+
+  await send(page, 'React 19.2 官方博客里列了哪些新特性？')
+  const row = page.locator('[data-run-row]')
+  await expect(row).toContainText('第 7 段：先确认官方博客的发布日期', { timeout: 5_000 })
+  await expect(row).toContainText('官方博客通常会按功能分节列出新特性', { timeout: 5_000 })
+  // 超长一句单行省略：状态行不换行、不撑出正文宽度。
+  const label = row.locator('.run-label').last()
+  expect(await label.evaluate(element => element.scrollWidth > element.clientWidth)).toBe(true)
+  await expect(row).toContainText('搜索 React 19.2 release', { timeout: 5_000 })
+  await expect(row).toContainText('结果够用了，可以开始回答。', { timeout: 5_000 })
+  await expect(row).toContainText('已搜索 1 次', { timeout: 10_000 })
+  await expect(page.getByRole('button', { name: '停止生成' })).toHaveCount(0, { timeout: 10_000 })
+  await page.waitForTimeout(600)
+  const frames = await stopRecording(page)
+
+  expectStill(frames, frame => frame.row, true, '状态行')
+  expectStill(frames, frame => frame.para, false, '正文首段')
+
+  // 时间线：两轮思考与搜索按时间交错，思考行文字是这一轮最后一句（紧贴 tool_started 到达的那句也在）。
+  await row.click()
+  const timeline = page.locator('[data-run-timeline]')
+  await expect(timeline).toBeVisible()
+  await expect(timeline.locator('li')).toHaveCount(3)
+  await expect(timeline.locator('li').nth(0)).toContainText('再确认一下英文关键词。')
+  await expect(timeline.locator('li').nth(1)).toContainText('React 19.2 release')
+  await expect(timeline.locator('li').nth(2)).toContainText('结果够用了，可以开始回答。')
+
+  // 完整思考默认折叠；点开后限高约 7 行、可滚动，纯文本分段。
+  await expect(page.locator('[data-run-thought]')).toHaveCount(0)
+  await timeline.getByRole('button', { name: /再确认一下英文关键词/ }).click()
+  const thought = page.locator('[data-run-thought]')
+  await expect(thought).toBeVisible()
+  await expect(thought.locator('p')).toHaveCount(9)
+  await expect(thought.locator('p').last()).toHaveText(`${LONG}再确认一下英文关键词。`)
+  await expect(thought).toHaveClass(/is-overflowing/)
+  const metrics = await thought.evaluate((element) => {
+    const style = getComputedStyle(element)
+    const before = element.scrollTop
+
+    element.scrollTop = element.scrollHeight
+
+    return {
+      client: element.clientHeight,
+      scroll: element.scrollHeight,
+      lineHeight: Number.parseFloat(style.lineHeight),
+      fontSize: Number.parseFloat(style.fontSize),
+      overflowY: style.overflowY,
+      scrolled: element.scrollTop - before,
+    }
+  })
+  expect(metrics.overflowY).toBe('auto')
+  expect(metrics.scroll, '内容超出限高').toBeGreaterThan(metrics.client)
+  expect(metrics.client, '限高约 7 行（加底部渐隐留白）').toBeLessThanOrEqual(metrics.lineHeight * 7 + metrics.fontSize * 1.5 + 1)
+  expect(metrics.client).toBeGreaterThan(metrics.lineHeight * 6)
+  expect(metrics.scrolled, '可以滚动').toBeGreaterThan(0)
+
+  // 第二轮只有一句：不超出限高，没有底部渐隐与留白。
+  await timeline.getByRole('button', { name: /结果够用了/ }).click()
+  await expect(page.locator('[data-run-thought]').nth(1)).not.toHaveClass(/is-overflowing/)
 })

@@ -26,7 +26,7 @@ describe('streamModelSampling', () => {
     assert.equal(yieldedBeforeCompletion, true)
     assert.deepEqual(await firstDeltaPromise, {
       done: false,
-      value: '实时',
+      value: { kind: 'text', delta: '实时' },
     })
 
     completionGate.resolve()
@@ -181,6 +181,31 @@ describe('streamModelSampling', () => {
 
     assert.deepEqual(deltas, ['答'])
     assert.equal(decision.summary.firstTokenMs, 30)
+  })
+
+  it('思考原文与正文分开 yield，textChars、firstTokenMs、intermediateText 与没有思考原文时一致（#209）', async () => {
+    const withoutReasoning: ModelStreamEvent[] = [
+      { type: 'reasoning_started' },
+      { type: 'text_delta', delta: '先查' },
+      { type: 'tool_call_started' },
+      toolCallEvent('call-1', 'web_search', '{"query":"seo"}', '要搜索。再看看。'),
+      { type: 'response_completed', finishReason: 'tool_calls' },
+    ]
+    const withReasoning: ModelStreamEvent[] = [
+      withoutReasoning[0]!,
+      { type: 'reasoning_delta', delta: '要搜索。' },
+      { type: 'reasoning_delta', delta: '再看看。' },
+      ...withoutReasoning.slice(1),
+    ]
+    const clock = () => createClock([1_000, 1_030, 1_900])
+    const before = await collectSampling(withoutReasoning, 'run-1:sampling-1', undefined, clock())
+    const after = await collectSampling(withReasoning, 'run-1:sampling-1', undefined, clock())
+
+    assert.deepEqual(after.reasoning, ['要搜索。', '再看看。'])
+    assert.deepEqual(after.deltas, ['先查'])
+    assert.deepEqual(after.decision, before.decision)
+    assert.equal(after.decision.summary.textChars, 2)
+    assert.equal(after.decision.summary.firstTokenMs, 30)
   })
 
   it('首 token 只认生成事件：先到的 usage 不算，空正文 stop 为 null', async () => {
@@ -352,16 +377,18 @@ async function collectSampling(
     now,
   )
   const deltas: string[] = []
+  const reasoning: string[] = []
   let result = await sampling.next()
 
   while (!result.done) {
-    deltas.push(result.value)
+    (result.value.kind === 'text' ? deltas : reasoning).push(result.value.delta)
     result = await sampling.next()
   }
 
   return {
     decision: result.value,
     deltas,
+    reasoning,
   }
 }
 

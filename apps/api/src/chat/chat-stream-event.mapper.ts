@@ -19,6 +19,14 @@ export function toChatStreamEvent(event: AgentRuntimeEvent): ChatStreamEvent {
         contentDelta: event.contentDelta,
       }
 
+    case 'reasoning_delta':
+      return {
+        type: 'reasoning_delta',
+        conversationId: event.conversationId,
+        assistantMessageId: event.assistantMessageId,
+        delta: event.delta,
+      }
+
     case 'tool_started':
       return {
         type: 'tool_started',
