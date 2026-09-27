@@ -1,12 +1,17 @@
 import type { AdminRunPagination } from './admin-run.js'
+import type { UserProfile } from './auth.js'
 import type {
   MessageRole,
   MessageStatus,
 } from './conversation.js'
 
+/** 会话所属用户；#195 之前的存量会话可能没有归属，此时为 null。 */
+export type AdminConversationUser = UserProfile & { id: string }
+
 export interface AdminConversationListItem {
   id: string
   title: string
+  user: AdminConversationUser | null
   messageCount: number
   runCount: number
   createdAt: string
@@ -33,6 +38,7 @@ export interface AdminConversationMessage {
 export interface AdminConversationDetail {
   id: string
   title: string
+  user: AdminConversationUser | null
   runCount: number
   createdAt: string
   updatedAt: string

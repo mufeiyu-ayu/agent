@@ -15,6 +15,8 @@ import { afterAll, beforeAll, describe, it, onTestFinished, vi } from 'vitest'
 import { Module } from '@nestjs/common'
 import { APP_GUARD, NestFactory } from '@nestjs/core'
 
+import { AdminConversationsController } from '../admin-conversations/admin-conversations.controller.js'
+import { AdminConversationsService } from '../admin-conversations/admin-conversations.service.js'
 import { AdminUsersController } from '../admin-users/admin-users.controller.js'
 import { AdminUsersService } from '../admin-users/admin-users.service.js'
 import { AgentRuntimeService } from '../agent-runtime/agent-runtime.service.js'
@@ -88,12 +90,13 @@ describe('鉴权与会话隔离（真实库）', { timeout: 60_000 }, () => {
     prisma = new PrismaService(schemaUrl)
 
     @Module({
-      controllers: [AuthController, AdminUsersController, ConversationsController, MessagesController, ChatController],
+      controllers: [AuthController, AdminUsersController, AdminConversationsController, ConversationsController, MessagesController, ChatController],
       providers: [
         { provide: PrismaService, useValue: prisma },
         { provide: APP_GUARD, useClass: AuthGuard },
         AuthService,
         AdminUsersService,
+        AdminConversationsService,
         ConversationsService,
         MessagesService,
         ChatService,
@@ -270,6 +273,51 @@ describe('鉴权与会话隔离（真实库）', { timeout: 60_000 }, () => {
     assert.equal((await api(`/conversations/${conversationId}/messages`, { cookie: a })).body.data.length, 1)
     assert.equal((await api('/chat/stream', { method: 'POST', cookie: a, body: { conversationId, message: '继续' } })).status, 200)
     assert.deepEqual(runtimeCalls.map(call => call.conversationId), [conversationId])
+  })
+
+  it('#201 会话记录按用户与最近活跃时间筛选，与分页共存；非法参数 400，成员 403', async () => {
+    const owner = await createUser('owner-201@example.com', 'owner-201-pw')
+    const other = await createUser('other-201@example.com', 'other-201-pw')
+    const at = (day: number) => new Date(`2026-08-${String(day).padStart(2, '0')}T04:00:00.000Z`)
+    // 同一用户 5 个会话分布在 8 月 1～5 日，另一个用户与无主会话各 1 个落在同一窗口内。
+    for (let day = 1; day <= 5; day++)
+      await prisma.conversation.create({ data: { title: `owner-${day}`, userId: owner.id, createdAt: at(day), updatedAt: at(day) } })
+    await prisma.conversation.create({ data: { title: 'other-3', userId: other.id, createdAt: at(3), updatedAt: at(3) } })
+    await prisma.conversation.create({ data: { title: 'orphan-3', createdAt: at(3), updatedAt: at(3) } })
+    const list = (query: string) => api(`/admin/conversations?${query}`, { cookie: adminCookie })
+    const titles = (result: ApiResult) => result.body.data.items.map((item: { title: string }) => item.title)
+
+    const byUser = await list(`userId=${owner.id}&pageSize=2&page=2`)
+    assert.equal(byUser.status, 200)
+    assert.deepEqual(titles(byUser), ['owner-3', 'owner-2'])
+    assert.deepEqual(byUser.body.data.pagination, { page: 2, pageSize: 2, totalItems: 5, totalPages: 3 })
+    assert.deepEqual(byUser.body.data.items[0].user, { id: owner.id, email: 'owner-201@example.com', name: null, avatarUrl: null })
+
+    const window = 'dateFrom=2026-08-02T00:00:00%2B08:00&dateTo=2026-08-04T23:59:59.999%2B08:00'
+    const byTime = await list(`${window}&pageSize=10`)
+    // 同一 updatedAt 的三条按 id 排，顺序不固定，只核对集合与首尾。
+    assert.deepEqual([...titles(byTime)].sort(), ['orphan-3', 'other-3', 'owner-2', 'owner-3', 'owner-4'])
+    assert.equal(titles(byTime)[0], 'owner-4')
+    assert.equal(titles(byTime)[4], 'owner-2')
+    assert.equal(byTime.body.data.pagination.totalItems, 5)
+    assert.equal(byTime.body.data.items.find((item: { title: string }) => item.title === 'orphan-3').user, null)
+
+    const both = await list(`${window}&userId=${owner.id}&pageSize=2`)
+    assert.deepEqual(titles(both), ['owner-4', 'owner-3'])
+    assert.deepEqual(both.body.data.pagination, { page: 1, pageSize: 2, totalItems: 3, totalPages: 2 })
+
+    const detail = await api(`/admin/conversations/${byUser.body.data.items[0].id}`, { cookie: adminCookie })
+    assert.equal(detail.body.data.user.email, 'owner-201@example.com')
+
+    const missingUser = await list('userId=no-such-user')
+    assert.equal(missingUser.status, 200)
+    assert.equal(missingUser.body.data.pagination.totalItems, 0)
+    assert.equal((await list('dateFrom=2026-08-01')).status, 400)
+    assert.equal((await list('dateFrom=not-a-date')).status, 400)
+    assert.equal((await list('dateFrom=2026-08-05T00:00:00Z&dateTo=2026-08-01T00:00:00Z')).status, 400)
+
+    const member = (await login('other-201@example.com', 'other-201-pw')).cookie
+    assert.equal((await api('/admin/conversations', { cookie: member })).status, 403)
   })
 
   it('AC-05 / AC-09 停用、重置密码、改角色、改密码后旧 Session 立即 401（改密码保留当前）', async () => {

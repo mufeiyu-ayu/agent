@@ -18,6 +18,7 @@ import { useRoute, useRouter } from 'vue-router'
 
 import DataTable from '@/components/common/DataTable.vue'
 import PageContainer from '@/components/common/PageContainer.vue'
+import UserIdentity from '@/components/common/UserIdentity.vue'
 import { createConversationDetailState } from '@/features/conversations/conversation-detail.state'
 import RunStatusTag from '@/features/runs/components/RunStatusTag.vue'
 import { fetchAdminRuns } from '@/features/runs/run-api'
@@ -156,6 +157,13 @@ function handleRunsPageChange(page: number, pageSize: number) {
             <code :title="conversation.id">{{ conversation.id }}</code>
           </div>
           <dl class="conversation-header__meta">
+            <div>
+              <dt>{{ t('conversationDetail.fields.user') }}</dt>
+              <dd>
+                <UserIdentity v-if="conversation.user" :user="conversation.user" :size="24" />
+                <span v-else>{{ t('conversations.unowned') }}</span>
+              </dd>
+            </div>
             <div>
               <dt>{{ t('conversationDetail.fields.messages') }}</dt>
               <dd>{{ conversation.messages.length.toLocaleString(locale) }}</dd>

@@ -64,7 +64,8 @@ export function fetchAdminRunDetail(
   )
 }
 
-function toShanghaiDayBoundary(
+/** 日期选择器的 YYYY-MM-DD 转成上海时区当天起止时刻；会话记录的时间筛选同样用它。 */
+export function toShanghaiDayBoundary(
   date: string,
   boundary: 'start' | 'end',
 ): string {
@@ -76,7 +77,7 @@ function toShanghaiDayBoundary(
     : `${date}T23:59:59.999+08:00`
 }
 
-function isCalendarDate(value: string): boolean {
+export function isCalendarDate(value: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value))
     return false
 

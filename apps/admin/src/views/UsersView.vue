@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { AdminUser, UserRole, UserStatus } from '@agent/contracts'
 import type { FormInstance, TableColumnsType } from 'ant-design-vue'
-import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH, USER_ROLES, USER_STATUSES, userDisplayName } from '@agent/contracts'
+import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH, USER_ROLES, USER_STATUSES } from '@agent/contracts'
 import { PlusOutlined } from '@ant-design/icons-vue'
 import {
   App as AntApp,
@@ -17,17 +17,19 @@ import {
 } from 'ant-design-vue'
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRouter } from 'vue-router'
 
 import DataTable from '@/components/common/DataTable.vue'
 import PageContainer from '@/components/common/PageContainer.vue'
 import PageHeader from '@/components/common/PageHeader.vue'
-import UserAvatar from '@/components/common/UserAvatar.vue'
+import UserIdentity from '@/components/common/UserIdentity.vue'
 import { useAuth } from '@/features/auth/auth.state'
 import { formatDateTime } from '@/features/runs/run.utils'
 import { formatAdminRunError } from '@/features/shared/admin-api'
 import { createUsersState } from '@/features/users/users.state'
 
 const { t, locale } = useI18n()
+const router = useRouter()
 const { message } = AntApp.useApp()
 const { currentUser } = useAuth()
 const state = createUsersState()
@@ -48,7 +50,7 @@ const columns = computed<TableColumnsType<AdminUser>>(() => [
     onFilter: (value, record) => record.status === value,
   },
   { key: 'lastLoginAt', title: t('users.columns.lastLoginAt'), width: 190 },
-  { key: 'actions', title: t('users.columns.actions'), width: 280 },
+  { key: 'actions', title: t('users.columns.actions'), width: 380 },
 ])
 const roleOptions = computed(() => USER_ROLES.map(role => ({ value: role, label: t(`users.roles.${role}`) })))
 const passwordRules = computed(() => [{ required: true, min: PASSWORD_MIN_LENGTH, max: PASSWORD_MAX_LENGTH, message: t('users.passwordLength', { min: PASSWORD_MIN_LENGTH }) }])
@@ -157,13 +159,7 @@ async function submitReset() {
     >
       <template #bodyCell="{ column, record }">
         <template v-if="column.key === 'user'">
-          <span class="users-identity">
-            <UserAvatar :user="record" />
-            <span>
-              <strong>{{ userDisplayName(record) }}</strong>
-              <small>{{ record.email }}</small>
-            </span>
-          </span>
+          <UserIdentity :user="record" />
         </template>
         <template v-else-if="column.key === 'role'">
           <span class="users-role-badge" :class="{ 'is-admin': record.role === 'ADMIN' }">
@@ -180,6 +176,9 @@ async function submitReset() {
           <span class="users-muted">{{ formatDateTime(record.lastLoginAt, locale) }}</span>
         </template>
         <template v-else-if="column.key === 'actions'">
+          <Button size="small" class="users-conversations" @click="router.push({ name: 'conversations', query: { userId: record.id } })">
+            {{ t('users.viewConversations') }}
+          </Button>
           <!-- 待审核只给通过 / 拒绝；拒绝后该邮箱不能再申请，管理员之后可手动启用。 -->
           <Space v-if="record.status === 'PENDING'">
             <Button size="small" type="primary" :disabled="state.submitting.value" @click="setStatus(record, 'ACTIVE')">
@@ -261,20 +260,8 @@ async function submitReset() {
   width: 96px;
 }
 
-.users-identity {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.users-identity strong {
-  font-weight: 500;
-}
-
-.users-identity small {
-  display: block;
-  color: var(--admin-text-muted);
-  font-size: var(--admin-font-xs);
+.users-conversations {
+  margin-right: 8px;
 }
 
 .users-role-badge {
