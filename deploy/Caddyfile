@@ -1,0 +1,45 @@
+{
+	# 防火墙只放行 TCP 443：不宣告 HTTP/3，免得浏览器先试 UDP 再回落。
+	servers {
+		protocols h1 h2
+	}
+}
+
+# 前台 / 管理台共用：带 hash 的 /assets/* 长缓存、不存在直接 404（旧版本分片在新镜像里已不存在，不能回退成 HTML）；
+# 其余路径回退到 index.html（SPA），且不缓存，部署后刷新即拿到新入口。
+(spa) {
+	root * {args[0]}
+	encode zstd gzip
+	handle /assets/* {
+		@exists file
+		header @exists Cache-Control "public, max-age=31536000, immutable"
+		file_server
+	}
+	handle {
+		header Cache-Control no-cache
+		try_files {path} /index.html
+		file_server
+	}
+}
+
+# 站点地址写域名，Caddy 自动申请 Let's Encrypt 证书，并把 http:// 永久跳转到 https://。
+askkuro.com {
+	# 对话接口是 NDJSON 流（分块传输、没有 Content-Length），Caddy 对这类响应逐块立即 flush，不缓冲。
+	handle /api/* {
+		reverse_proxy api:3000 {
+			# 空闲连接要比 Node 的 keepAliveTimeout（5s）先关，否则复用到 Node 刚关掉的连接，POST 直接 502。
+			transport http {
+				keepalive 4s
+			}
+		}
+	}
+
+	redir /admin /admin/
+	handle_path /admin/* {
+		import spa /srv/admin
+	}
+
+	handle {
+		import spa /srv/web
+	}
+}

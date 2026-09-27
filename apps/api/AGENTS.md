@@ -5,7 +5,7 @@ NestJS API。给模型的路径导图：只写入口、分层、核心文件与�
 ## 入口与分层
 
 ```txt
-src/main.ts                      # 启动，全局前缀 /api，端口 PORT（默认 3000）；只监听 127.0.0.1、不开 CORS，局域网访问走 Vite 代理
+src/main.ts                      # 启动，全局前缀 /api，端口 PORT（默认 3000）；监听 API_HOST（默认 127.0.0.1，容器里 0.0.0.0）、不开 CORS；TRUST_PROXY 设了才信任反代
 src/app.module.ts                # 装配所有业务模块
 src/common/bootstrap/register-app-globals.ts   # 全局校验管道 / 响应包装 / 异常过滤 / requestId；Controller 不重复实现
 src/auth/auth.guard.ts           # 全局 Guard（APP_GUARD）：写请求校验 Origin、默认要求登录、admin/* 要求 ADMIN；公开接口用 @Public()
@@ -32,7 +32,7 @@ Prisma schema 在仓库根 `prisma/`，生成的 client 在 `src/generated/prism
 
 ## 不变量
 
-- 鉴权在后端：全局 Guard 默认拦截，新接口不标 `@Public()` 就要登录，`admin/*` Controller 自动要求 ADMIN。会话归属按 `userId` 过滤，别人的会话与不存在的一律 404（`conversations`、`messages`、`chat/stream`）；`admin-*` 可观测看全部。库里只存密码的 scrypt 串与 token 的 SHA-256；停用、重置密码、改角色删该用户全部 Session，自己改密码保留当前这条。首个管理员用 `pnpm create-admin`（`scripts/create-admin.ts`）建，同时认领无主存量会话。
+- 鉴权在后端：全局 Guard 默认拦截，新接口不标 `@Public()` 就要登录，`admin/*` Controller 自动要求 ADMIN。会话归属按 `userId` 过滤，别人的会话与不存在的一律 404（`conversations`、`messages`、`chat/stream`）；`admin-*` 可观测看全部。库里只存密码的 scrypt 串与 token 的 SHA-256；停用、重置密码、改角色删该用户全部 Session，自己改密码保留当前这条。首个管理员用 `pnpm create-admin`（`src/create-admin.ts`，生产镜像里是 `node dist/create-admin.js`）建，同时认领无主存量会话。
 - 模型看到的必须能从持久化记录重建：action 循环内成立，落在哪些 Step 字段与范围外的部分见根 `AGENTS.md` 第 6 节；新增模型可见内容时同一次改动里落库。`AgentStep` 是系统执行过程，采样 Step 的 `reasoningContent` 只是为重建而存的回填内容。
 - 模型输出不可信：工具名、参数先在 `invoke` 里校验再执行。工具结果里的文章内容是低信任数据：系统提示词声明其中的指令、角色设定或格式要求只是资料，不得覆盖系统指令；`modelContent` 不加包裹标记。
 - 终态所有权：晚到的 Abort / deadline / DB 结果不能覆盖已确立终态。

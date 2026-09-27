@@ -1,15 +1,15 @@
 // 建管理员并把无主的存量会话归给他。重复执行不会重复建号，而是按这次的密码重置（用于恢复管理员）。
 // 用法：ADMIN_EMAIL=... ADMIN_PASSWORD=... pnpm create-admin，或 pnpm create-admin --email ... --password ...
 // 密码走环境变量更好：命令行参数会留在 shell 历史里。
-/* eslint-disable perfectionist/sort-imports */
+/* eslint-disable perfectionist/sort-imports, antfu/no-top-level-await -- 一次性 CLI 入口，与 main.ts 同为 dist 下的可执行文件 */
 import 'reflect-metadata'
 import process from 'node:process'
 import { parseArgs } from 'node:util'
 
-import { hashPassword } from '../src/auth/password.js'
-import { PrismaService } from '../src/prisma/prisma.service.js'
+import { hashPassword } from './auth/password.js'
+import { PrismaService } from './prisma/prisma.service.js'
 
-// 与 @agent/contracts 的 PASSWORD_MIN_LENGTH / PASSWORD_MAX_LENGTH 一致；脚本直接跑源码，不依赖 contracts 的 dist。
+// 与 @agent/contracts 的 PASSWORD_MIN_LENGTH / PASSWORD_MAX_LENGTH 一致；开发时 tsx 直接跑源码，不依赖 contracts 的 dist。
 const PASSWORD_MIN_LENGTH = 8
 const PASSWORD_MAX_LENGTH = 128
 

@@ -62,6 +62,7 @@
 | `packages/ai/AGENTS.md` | `@agent/ai` 模型客户端：文件清单与协议不变量 |
 | `packages/contracts/AGENTS.md` | `@agent/contracts` 共享协议：文件清单与改协议的连带范围 |
 | `prisma/` | schema、migration、fixtures；生成的 client 在 `apps/api/src/generated/prisma` |
+| `deploy/`、`scripts/ship/` | 线上镜像（`Dockerfile` 的 api / caddy 两个 target）、`Caddyfile`、生产 `compose.yml`；`pnpm ship` / `pnpm ship:rollback` 部署与回退，用法见 `docs/deploy.md` |
 | `docs/tasks/`、`docs/research/` | 任务状态与归档；参照物研究、设计笔记与复盘 |
 
 修改某个 app / 包的代码前先读它的导图；改完再确认：`docs/tasks/README.md` 当前状态；相邻 service / controller / hook / component / utils / contract 能否复用；是否涉及 Prisma schema、contracts、前后端协议或 docs 同步。导图由模型自己维护：新增、移动、删除了导图里提到的模块或核心文件，同一次提交里同步导图。
