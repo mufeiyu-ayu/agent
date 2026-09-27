@@ -100,11 +100,18 @@ function handleAuthFailure(url: string, status: number, payload: unknown): void 
     ? '/login'
     : status === 403 && code === PASSWORD_CHANGE_REQUIRED ? '/change-password' : undefined
 
-  if (!target || window.location.pathname === target)
+  if (!target)
     return
 
-  const redirect = `${window.location.pathname}${window.location.search}`
-  window.location.assign(`${target}?redirect=${encodeURIComponent(redirect)}`)
+  // 线上挂在 /admin/ 下：跳转地址加上 base，回跳参数是去掉 base 的路由路径（交给 router）。
+  const base = import.meta.env.BASE_URL.replace(/\/$/, '')
+  const routePath = window.location.pathname.slice(base.length) || '/'
+
+  if (routePath === target)
+    return
+
+  const redirect = `${routePath}${window.location.search}`
+  window.location.assign(`${base}${target}?redirect=${encodeURIComponent(redirect)}`)
 }
 
 async function readJson(response: Response): Promise<unknown> {

@@ -1,0 +1,12 @@
+**/node_modules
+**/dist
+**/.env
+**/e2e/.artifacts
+.git
+.claude
+.pi
+.vscode
+docs
+data
+tmp
+apps/api/src/generated

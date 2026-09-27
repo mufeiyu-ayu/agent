@@ -122,7 +122,7 @@ describe('鉴权与会话隔离（真实库）', { timeout: 60_000 }, () => {
     }
 
     app = await NestFactory.create(TestModule, { logger: ['error', 'warn'] })
-    // 只为 AC-08 用 X-Forwarded-Proto 模拟 HTTPS；部署时的 trust proxy 属于部署 Issue。
+    // 只为 AC-08 用 X-Forwarded-Proto 模拟 HTTPS；线上由 main.ts 按 TRUST_PROXY 设置。
     app.getHttpAdapter().getInstance().set('trust proxy', 'loopback')
     registerAppGlobals(app)
     await app.listen(0, '127.0.0.1')
@@ -178,7 +178,7 @@ describe('鉴权与会话隔离（真实库）', { timeout: 60_000 }, () => {
   it('AC-11 CLI 在空库建管理员并认领无主会话；重复执行不重复建号，而是重置密码并解锁', async () => {
     const orphan = await prisma.conversation.create({ data: { title: '存量会话' } })
     secrets.add(ADMIN_PASSWORD)
-    const runScript = () => promisify(execFile)(process.execPath, ['--import', 'tsx', 'scripts/create-admin.ts'], {
+    const runScript = () => promisify(execFile)(process.execPath, ['--import', 'tsx', 'src/create-admin.ts'], {
       cwd: API_DIR,
       env: { ...process.env, DATABASE_URL: schemaUrl, ADMIN_EMAIL: ' Admin@Example.com ', ADMIN_PASSWORD },
     })

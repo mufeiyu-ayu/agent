@@ -1,0 +1,55 @@
+# 线上编排：pnpm ship 按版本上传为服务器 ~/kuro/compose.<版本>.yml，切换成功后复制为 compose.yml（手工操作用它）。
+# KURO_VERSION 是镜像标签（commit 短哈希），由 ship 脚本传入；手工执行 compose 时先
+#   export KURO_VERSION=$(cat ~/kuro/current)
+# 密钥只在同目录的 .env（权限 600），见 docs/deploy.md。
+name: kuro
+
+services:
+  postgres:
+    # 与本地开发同一个镜像：早期迁移会 CREATE EXTENSION vector。
+    image: pgvector/pgvector:0.8.6-pg16-bookworm
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: agent
+      POSTGRES_USER: agent
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?.env 缺 POSTGRES_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # 走 TCP：初始化期间只监听 socket 的临时实例不算就绪。
+      test: [CMD-SHELL, pg_isready -h 127.0.0.1 -U agent -d agent]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    image: kuro-api:${KURO_VERSION:?未设置 KURO_VERSION}
+    restart: unless-stopped
+    # tini 做 PID 1 转发 SIGTERM，docker stop 不用等满 10 秒被强杀。
+    init: true
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://agent:${POSTGRES_PASSWORD}@postgres:5432/agent?schema=public
+      # 不映射端口，只在 Docker 网络内给 Caddy 访问；只信任同网络（私有地址段）里的反代。
+      API_HOST: 0.0.0.0
+      TRUST_PROXY: uniquelocal
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  caddy:
+    image: kuro-caddy:${KURO_VERSION:?未设置 KURO_VERSION}
+    restart: unless-stopped
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - api
+
+volumes:
+  pgdata:
+  caddy-data:
+  caddy-config:
