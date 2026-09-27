@@ -41,7 +41,7 @@ Admin Console 面向项目开发、调试和运行过程复盘。它是 Agent �
 | Phase 8 Task 3C | Completed | Retrieval / Finalization / Citation Inspector | #62 / #63 / `20f838fb` / [文档](./completed/phase-08-grounded-retrieval.md) |
 | Enhancement 2 | Completed | 会话记录入口（会话列表 / transcript / 会话内 runs） | #88 / #89 / `e059cebb` / [文档](./completed/admin-console/enhancement-02-conversations-entry.md) |
 | Enhancement 3 | Completed | Overview 数据仪表盘（Token/调用/模型/工具统计 + 余额） | #90 / #91 / `3108a5f` / [文档](./completed/admin-console/enhancement-03-overview-dashboard.md) |
-| Task 4 | Planned | 登录、权限、敏感信息脱敏 | 未创建 |
+| Task 4 | Closed | 登录、权限、敏感信息脱敏 | Auth 由 #195 / PR #196 完成 |
 
 ## 已完成基线
 
@@ -109,16 +109,7 @@ Context / Tool / Message / Retrieval / Finalization Inspector
 
 ## Task 4：登录、权限与敏感信息脱敏
 
-保持 Planned。触发为「第一个同事要用」（2026-09-23 用户决定，局域网可达本身不算；此前只做低成本加固，即 #156）。当前 Admin Console 仍不等于可直接公网暴露的生产后台。
-
-Task 4 启动前需要重新讨论：
-
-- 登录与 Session；
-- Role / Permission；
-- 用户与团队边界（多租户已否决，见 `docs/research/workbench-direction.md` 第 9 节）；
-- API 权限；
-- 更严格的敏感字段治理；
-- 部署与审计要求。
+2026-09-27 收口，不再作为待办：登录与 Session、会话按人隔离、`/api/admin/*` 仅管理员、管理台用户列表由 #195（PR #196）完成；RBAC 不做，只有管理员与成员两种角色（工作台第一期定案）；敏感字段治理由 #156 覆盖（密钥只回显尾四位、不回显上游 body），其余真实需要时另立 Issue。
 
 ## 后续演进原则
 

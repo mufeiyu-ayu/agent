@@ -12,7 +12,7 @@ Next：第一期 ② 部署（未立 Issue；须设 trust proxy，见 PR #196）
 Gated：#117 Responses API adapter（2026-09-18），触发条件见看板
 产品方向：给 topuplist 运营用的 AI 工作台，分两期、上云、gsc 延后（2026-09-20 定案、2026-09-27 改为两期，docs/research/workbench-direction.md）；档、顺序与触发只在其第 7 节
 候选子系统：session 事件流与 replay、审批门、compaction、定时任务（未立 Issue，各自的档见 workbench 第 7 节）
-Admin Task 4：Planned
+Admin Task 4：Closed（2026-09-27：Auth 由 #195 完成；RBAC 不做（两种角色已定）；敏感字段治理由 #156 覆盖，其余按需立项）
 ```
 
 ## 看板
@@ -62,7 +62,7 @@ Admin Task 4：Planned
 | AI 工作台两期 | Planned | 第一期：登录 + 联网搜索 + 部署香港云服务器；第二期：我的页面（查询工具、沙箱、打开即重新取数、对话改页）；gsc 迁移延后；档、触发、里程碑见 [workbench-direction](../research/workbench-direction.md) 第 7 节；一次只立一个 Issue |
 | Grok Grounding 收尾不调用提交工具 | 已放弃 | 2026-09-26 记录；同日用户定案删除 Grounding（#185），问题随之消失，不再立 Issue。原记录见 git 历史 |
 | `web_fetch` 第一个真实工具 | Planned | 只读、SSRF 防护、untrusted observation，范围见 [pi-reference roadmap](../research/pi-reference/roadmap.md)。2026-09-19 转 Gated；2026-09-27 解除：运营要看新闻、查网站，与联网搜索一起进工作台第 1 档 |
-| Admin Console Task 4 | Planned | Auth / RBAC；触发条件见 [roadmap.md](../roadmap.md) 后置清单 |
+| Admin Console Task 4 | Closed | 2026-09-27 收口：Auth 由 #195 完成；RBAC 不做（两种角色已定）；敏感字段治理由 #156 覆盖，其余按需立项 |
 | 已完成 | Completed | Phase 2–8、横向任务 #92 / #94 / #98 / #101–#104、Admin Console Task 0–3 与 Enhancement 1–3，归档在 [completed/](./completed/) |
 | 翻译质检站 #109 / #111 | 已删除 | 2026-09-05 经 #113 / PR #114 删除全部代码与数据模型 |
 
@@ -83,5 +83,5 @@ Admin Task 4：Planned
 - Issue 建立前不得修改正式代码（`docs/workflow.md` 第 2 节的小改动例外除外）；Issue 实质性变化后先更新 Issue 再继续；
 - 实现后先写「已实现、待验收」，验收 PASS 后才写「已通过」；
 - 看板行只写一句话说明做成了什么，加 PR 号；改动清单、验证命令、测试数与逐条验收证据写在 PR 里，不抄进看板；
-- 只在真实使用卡住、源码阅读发现缺陷或缺口被明确命中时建 Issue；Admin Task 4、并行 Tool Call、Memory、MCP、Multi-agent 不自动进入实现；
+- 只在真实使用卡住、源码阅读发现缺陷或缺口被明确命中时建 Issue；并行 Tool Call、Memory、MCP、Multi-agent 不自动进入实现；
 - 流程、Issue 模板与任务状态定义见 [`../workflow.md`](../workflow.md)。

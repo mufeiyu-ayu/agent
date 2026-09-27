@@ -91,7 +91,7 @@
 
 ## Admin Console 支线
 
-目标与已完成基线见 [`tasks/admin-console.md`](./tasks/admin-console.md)，各任务状态只看看板。Task 4（登录 / 权限 / 脱敏）不因 Inspector 完成而自动启动，触发见上面的后置清单。
+目标与已完成基线见 [`tasks/admin-console.md`](./tasks/admin-console.md)，各任务状态只看看板。Task 4（登录 / 权限 / 脱敏）已于 2026-09-27 收口：Auth 由 #195 完成，RBAC 不做。
 
 ## 当前正式动作
 
