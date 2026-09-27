@@ -58,13 +58,15 @@
 - compaction；
 - 定时任务 / jobs。
 
-它们在 [工作台方向](./research/workbench-direction.md) 第 7 节的位置：session 事件流与 replay 拆在第 2 档 R2（关页续跑）与「后」行 R1（可重建）；审批门是第 2 档 R3；compaction 与定时任务在「后」行。立项条件：真实使用卡住、源码阅读发现缺陷，或缺口被明确命中；三者都不满足时不立 Issue。候选不等于 Next，不因为“成熟项目有”就做。
+它们在 [工作台方向](./research/workbench-direction.md) 第 7 节的位置：session 事件流与 replay 拆在第 3 档 R2（关页续跑）与「后」行 R1（可重建）；审批门是第 3 档 R3；compaction 与定时任务在「后」行。立项条件：真实使用卡住、源码阅读发现缺陷，或缺口被明确命中；三者都不满足时不立 Issue。候选不等于 Next，不因为“成熟项目有”就做。
 
 2026-09-05 首批按「源码阅读发现缺陷」立项，主题是运行时健壮性：#115 模型调用零重试与 Loop 默认上限；#116 同轮「文本 + Tool Call」与多个 Tool Call 直接 FAILED；#117 DeepSeek Responses API adapter 与 Chat 并存。三件合起来是 Durable Execution 缺口的前半段（失败分类与重试单元），session 事件流与 replay 在其后。
 
 2026-09-20 产品方向定案：合并公司 gsc 数据观测项目为内部数据工作台，固定页面是基础、agent 对话是补充，runtime 以它为唯一真实负载；OS sandbox 进第 1 档，各步触发条件具体化；定案、边界、否决项与未决见 [内部数据工作台方向](./research/workbench-direction.md)。2026-09-23 路线正文按其第 7、8 节对齐：顺序与触发只在第 7 节，本文不再维护顺序。
 
 2026-09-20 方向变化：第二 provider 由 #142（2026-09-20 合并，模型配置入库、接入公司中转站）与 #146（2026-09-22 合并，各家族协议差异收口为 compat 表）落地，前台可选 DeepSeek 与经中转站的 GPT / Grok / Gemini，推翻工作台方向第 9 节「现在接第二模型」的否决。
+
+2026-09-27 方向变化：按产品讨论改为「给 topuplist 运营用的 AI 工作台」两期：第一期登录 + 联网搜索 + 部署香港云服务器，第二期「我的页面」；gsc 网站当作不存在、迁移延后；推翻工作台方向「不做外网部署」与「agent 替代固定页面」两条原判断，产品方案在 Claude Docs《Agent 产品方案》，顺序见 [工作台方向](./research/workbench-direction.md) 第 7 节。
 
 2026-09-26 方向变化：用户定案删除阶段 8 的 RAG 与 Grounding 全链路（工作台短期不用，将来的知识库也不是文章检索），只留 `search_articles` 作工具模板与 `Article` 表；阶段 8 的 Completed 记录保留为历史。三步顺序与理由见 [工作台方向](./research/workbench-direction.md) 第 9 节删除记录。
 
@@ -79,14 +81,13 @@
 - Agentic Retrieval、复杂 rerank / query rewrite；
 - LangChain / LangGraph / 独立 Vector DB；
 - DeepSeek Responses adapter（#117 Gated）；
-- 登录权限 / Admin Auth / RBAC（Task 4）：2026-09-23 用户决定暂缓，API 与模型配置都是公司内部资产，现在做完整鉴权会拖慢学习节奏。触发为「第一个同事要用」（工作台第 3 档），局域网可达本身不算；此前只做低成本加固（#156）。R2/R1 的持久契约先带 owner 字段，只补字段不建 Guard；
-- `web_fetch`（Gated）：2026-09-23 用户确认以后仍要做，放在工作台第 7 节「后」行；触发为用户或工作台需要读外部网页；
+- RBAC 与细粒度权限：第一期只做账号密码登录与每人对话隔离（2026-09-27 进工作台第 1 档）；角色、按组授权等真实需要时再做；
 - 长会话首轮同步分词：会阻塞事件循环，实测 1000 条 × 约 2.4k 字符的历史要 4.6s；当前 dev 库最长的会话只有 18 条，2026-09-23 决定暂不处理。触发为真实会话超过约 200 条，或首轮 plan 超过 500ms；
 - `packages/ai` / `packages/contracts` 的 src / dist 构建方式：typecheck 读 src，运行时与 api 测试读 dist，dev 期间不重建。2026-09-23 用户决定保留，只修导图描述；触发为 dist 过期造成一次真实误判；
 - 并行 Tool Call；
 - Memory、MCP、Multi-agent。
 
-已移出后置：OS sandbox 于 2026-09-20 进工作台第 1 档；OpenAI / Gemini 等第二 provider 已由 #142 / #146 落地。多租户已否决（工作台方向第 9 节），不在后置清单。
+已移出后置：OS sandbox 于 2026-09-20 进工作台（现第 2 档）；登录与 `web_fetch` 于 2026-09-27 进工作台第 1 档；OpenAI / Gemini 等第二 provider 已由 #142 / #146 落地。多租户已否决（工作台方向第 9 节），不在后置清单。
 
 ## Admin Console 支线
 

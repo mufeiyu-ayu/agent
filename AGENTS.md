@@ -18,7 +18,7 @@
 
 **定案的方向**
 - 2026-09-15：完成当前源码学习后，面向云端 Agent 产品演进，以 Pi 为主要架构与组织方式参照（`docs/research/pi-reference/`）；旧 Codex 调研、reference 与阶段路线已按用户要求删除。DeepSeek Harness 保留补充对照。参照素材供 AI 实现时查阅，用户不读 Pi 代码；参照用于对比取舍，不照抄；研究完成不代表重构已启动。
-- 2026-09-20：合并公司 gsc 数据观测项目为内部数据工作台（固定页面是基础、agent 对话是补充，本机 Docker 局域网），runtime 以它为唯一真实负载；定案、边界与否决项见 `docs/research/workbench-direction.md`，顺序与触发只在它的第 7 节（2026-09-23 路线正文已对齐）。
+- 2026-09-20 定案、2026-09-27 改为两期：给 topuplist 运营用的 AI 工作台（一个对话入口，部署香港云服务器）；第一期登录 + 联网搜索 + 部署，第二期「我的页面」，gsc 迁移延后；runtime 以它为唯一真实负载。产品方案在 Claude Docs《Agent 产品方案》，路线、边界与否决项见 `docs/research/workbench-direction.md`，顺序与触发只在它的第 7 节。
 - 当前能力缺口四块：Human-in-the-loop / 审批、Durable Execution / resume 与 replay、长期 Memory、成本与延迟。子系统只在真实使用卡住、源码阅读发现缺陷或缺口被明确命中时才立项，不因为「成熟项目有」就做。
 
 ## 2. 用户与沟通
@@ -94,7 +94,7 @@ Runtime 不变量：
 
 不引入：Multi-agent、LangGraph / workflow engine、MCP marketplace、本地模型部署、微调。
 
-后置（作为 harness 候选子系统，立项前不做）：并行 Tool Call、Memory、MCP。OS sandbox 已随 2026-09-20 定案进入第 1 档。
+后置（作为 harness 候选子系统，立项前不做）：并行 Tool Call、Memory、MCP。OS sandbox 已随 2026-09-20 定案进入工作台路线（现第 2 档）。
 
 ## 7. NestJS 约束
 

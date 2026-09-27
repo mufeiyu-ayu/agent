@@ -11,7 +11,7 @@
 | 文档 | 用途 |
 | --- | --- |
 | [roadmap.md](./roadmap.md) | 阶段路线、方向定案、后置清单 |
-| [research/workbench-direction.md](./research/workbench-direction.md) | 内部数据工作台方向；第 7 节是唯一的顺序与触发来源 |
+| [research/workbench-direction.md](./research/workbench-direction.md) | 工作台方向（两期、上云、gsc 延后）；第 7 节是唯一的顺序与触发来源 |
 | [tasks/README.md](./tasks/README.md) | 正式任务看板与状态事实来源 |
 | [tasks/completed/](./tasks/completed/) | 已完成阶段与横向任务的归档 |
 | [tasks/admin-console.md](./tasks/admin-console.md) | Admin Console 支线，Task 4 Planned |

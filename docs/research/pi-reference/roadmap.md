@@ -2,7 +2,7 @@
 
 ## 目的与状态
 
-**顺序、进入条件与档级估算以 [内部数据工作台方向](../workbench-direction.md) 第 7 节为准**（2026-09-23 对齐）；本文只保留每一步做什么、「证明完成」与 AI 动手前查的 Pi 素材，R 编号只作步骤名。任务状态以 `docs/tasks/README.md` 为准。用户不读 Pi 代码；Pi 素材是 AI 在替用户写代码时自行查阅的参照。本文不是 Active Task，也不表示以下实现已获批准。
+**顺序、进入条件与档级估算以 [工作台方向](../workbench-direction.md) 第 7 节为准**（2026-09-23 对齐，2026-09-27 改为两期）；本文只保留每一步做什么、「证明完成」与 AI 动手前查的 Pi 素材，R 编号只作步骤名。任务状态以 `docs/tasks/README.md` 为准。用户不读 Pi 代码；Pi 素材是 AI 在替用户写代码时自行查阅的参照。本文不是 Active Task，也不表示以下实现已获批准。
 
 多租户已否决（workbench 第 9 节）：下文的「租户」按「用户 / 团队」读，隔离边界是人与团队，不是 tenant。
 
@@ -66,7 +66,7 @@
 
 ### R3 工具结果未知时的恢复与审批
 
-将"工具尚未调用""外部动作可能已发生""结果已知未发布""已发布"分开。为外部写工具定义 idempotency key / receipt / 查询结果或人工处理方式；审批决定必须绑定 operation、工具、参数摘要与权限版本。恢复时重新核对当前权限。api 的身份边界（当前零 Guard）不等本步：R2/R1 的持久契约先带 owner 字段，服务端鉴权的触发是「第一个同事要用」（workbench 第 7 节第 3 档，2026-09-23）。
+将"工具尚未调用""外部动作可能已发生""结果已知未发布""已发布"分开。为外部写工具定义 idempotency key / receipt / 查询结果或人工处理方式；审批决定必须绑定 operation、工具、参数摘要与权限版本。恢复时重新核对当前权限。api 的身份边界（当前零 Guard）不等本步：R2/R1 的持久契约先带 owner 字段，服务端鉴权随第一期上线进 workbench 第 7 节第 1 档（2026-09-27）。
 
 **证明完成**：逐个注入执行前、执行后提交前、提交结果未知的崩溃；safe 工具符合重放策略；unsafe 工具不会重复写；审批等待可跨重启；取消审批不执行工具；租户 A 不能引用 B 的 receipt/approval/workspace；审批后、恢复前撤销主体权限，工具不执行；工具版本或 schema 变更后，旧审批不与新实现无条件混用；结果未知后模型换新 toolCallId 重发同一业务动作，幂等键绑定业务意图而非参数 hash，不绕过对账与审批。
 
@@ -92,7 +92,7 @@
 | 长期 Memory | 用户持续需要跨会话召回，且可控制写入/删除 | 记忆与检索正文的来源、权限、过期、删除可验证 | Pi 无直接参照 |
 | 定时任务 | 出现具体周期任务 | 稳定 operation identity、去重、错过执行策略、取消/重试规则 | Pi 无直接参照 |
 | Delta/更紧凑协议 | 测得完整 snapshot 流量或复制 CPU 成为瓶颈 | 带宽/CPU 对比及 gap/rebase 正确性 | [wire/delta](./modules/wire-delta-coverage.md) |
-| 独立 worker | 需要长任务资源隔离（OS sandbox 已进工作台第 1 档，不在此列） | 资源/网络/凭据边界、owner失效与关闭语义 | [实验宿主 §2](./modules/experimental-host.md) |
+| 独立 worker | 需要长任务资源隔离（OS sandbox 已进工作台第 2 档，不在此列） | 资源/网络/凭据边界、owner失效与关闭语义 | [实验宿主 §2](./modules/experimental-host.md) |
 | 并行工具 | 顺序执行延迟显著且工具独立 | 顺序发布、并发上限、取消、共享资源隔离 | [运行内核 §5](./modules/runtime-session.md) |
 | 测试方法 | 任一步需要可重放故障样例 | faux provider、GatingStorage 思路 | [模型/评估 §9](./modules/model-telemetry-evals.md)、[工程工具](./modules/repository-tooling.md) |
 
@@ -107,7 +107,7 @@
 | R0 #115–116 | 已合并（2026-09-18 / 2026-09-19） | 完成 |
 | R2 运行解耦（含分包） | `harness/runtime` 的 lane/drive/checkpoint；包结构参照 `agent / ai / coding-agent` | 3～4 周 |
 | R1 durable 事实 | `harness/session` + `drive/recovery` | 3 周 |
-| R3 工具 journal 与审批（鉴权改在工作台第 3 档，2026-09-23） | `drive/tools` + `execution/tools`；审批与租户 Pi 无参照 | 4～5 周 |
+| R3 工具 journal 与审批（鉴权 2026-09-27 进工作台第 1 档） | `drive/tools` + `execution/tools`；审批与租户 Pi 无参照 | 4～5 周 |
 | R4 多端订阅与 Web 改造 | `Lane.watch` + Transcript + 服务端缓冲 | 4 周 |
 
 前提：PostgreSQL 事务边界要重新设计（Pi 的 MutationLine 是进程内），Grounding 迁到新 operation 模型下而不重写。
