@@ -1,3 +1,5 @@
+import type { ChatStreamToolFinishedEvent, ChatStreamToolStartedEvent } from '@agent/contracts'
+
 export type GenerationStatus = 'empty' | 'idle' | 'thinking' | 'generating' | 'done' | 'error' | 'aborted'
 
 export type ConversationTurnStatus = 'thinking' | 'generating' | 'success' | 'error' | 'aborted'
@@ -10,6 +12,38 @@ export interface ConversationTurn {
   reply?: string
   generatedAt?: string
   errorMessage?: string
+  /** 本轮的等待过程；只有当前页面里发出的轮次才有（刷新后没有，#208）。 */
+  run?: TurnRun
+}
+
+/**
+ * 一次工具调用在界面上的进度与结果：字段取自 tool_started / tool_finished 事件（协议只在 contracts 维护一处）。
+ * 在 steps 里的下标就是它的身份：不同轮次的 callId 可能重复。
+ */
+export interface TurnRunStep
+  extends Pick<ChatStreamToolStartedEvent, 'callId' | 'toolName' | 'query' | 'url'>,
+  Pick<ChatStreamToolFinishedEvent, 'failure' | 'results' | 'finalUrl' | 'title' | 'chars'> {
+  /** stopped：执行中被停止或出错打断，没有等到 tool_finished。 */
+  status: 'running' | 'ok' | 'failed' | 'stopped'
+}
+
+/**
+ * 一轮回答的等待过程（#208）：waiting 是思考中（start 之后、tool_finished 之后），
+ * tool 是工具执行中，answering 是正文在写，ended 是 done / error / aborted 或本地停止之后。
+ * 时间都是 performance.now()：单调时钟，系统校时不会让状态行消失或计时倒退。
+ */
+export interface TurnRun {
+  /** start 事件到达的时刻：计时、1 秒阈值与「用时」都从这里算。 */
+  startedAt: number
+  /** 第一段正文到达的时刻。 */
+  answerAt?: number
+  endedAt?: number
+  phase: 'waiting' | 'tool' | 'answering' | 'ended'
+  /** 怎么结束的：本地停止记为 aborted，网络等异常记为 error。 */
+  outcome?: 'done' | 'error' | 'aborted'
+  /** 正文开始前调过工具：这一轮一定有状态行。 */
+  toolBeforeAnswer: boolean
+  steps: TurnRunStep[]
 }
 
 export type AppMessageType = 'error' | 'success' | 'info'

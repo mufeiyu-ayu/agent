@@ -145,6 +145,28 @@ function isChatStreamEvent(value: unknown): value is ChatStreamEvent {
         && typeof value.assistantMessageId === 'string'
         && typeof value.contentDelta === 'string'
       )
+    case 'tool_started':
+      return (
+        typeof value.conversationId === 'string'
+        && typeof value.assistantMessageId === 'string'
+        && typeof value.callId === 'string'
+        && typeof value.toolName === 'string'
+        && isOptionalString(value.query)
+        && isOptionalString(value.url)
+      )
+    case 'tool_finished':
+      return (
+        typeof value.conversationId === 'string'
+        && typeof value.assistantMessageId === 'string'
+        && typeof value.callId === 'string'
+        && typeof value.ok === 'boolean'
+        && (value.failure === undefined || value.failure === 'timeout' || value.failure === 'failed')
+        && (value.results === undefined || (Array.isArray(value.results) && value.results.every(result =>
+          isRecord(result) && typeof result.title === 'string' && typeof result.url === 'string')))
+        && isOptionalString(value.finalUrl)
+        && isOptionalString(value.title)
+        && (value.chars === undefined || typeof value.chars === 'number')
+      )
     case 'done':
       return (
         typeof value.conversationId === 'string'
@@ -187,6 +209,10 @@ async function readStreamHttpError(response: Response): Promise<ChatStreamHttpEr
   }
 
   return new ChatStreamHttpError(`请求失败（${response.status}）`, response.status, false)
+}
+
+function isOptionalString(value: unknown): boolean {
+  return value === undefined || typeof value === 'string'
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

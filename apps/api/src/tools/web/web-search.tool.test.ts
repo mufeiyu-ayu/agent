@@ -10,6 +10,7 @@ import { ToolRegistryService } from '../core/tool-registry.service.js'
 import {
   formatSearchResults,
   parseWebSearchInput,
+  searchSources,
   SERPER_SEARCH_URL,
   webSearchDefinition,
   WebSearchTool,
@@ -89,7 +90,23 @@ describe('web_search 执行器', () => {
         '标题：T1\n链接：https://1.example\n摘要：S1\n日期：2 days ago',
         '标题：T2\n链接：https://2.example\n摘要：S2',
       ].join('\n\n'),
+      // 给界面的来源只有 organic 的标题与链接，不含 answerBox。
+      display: { results: [{ title: 'T1', url: 'https://1.example' }, { title: 'T2', url: 'https://2.example' }] },
     })
+  })
+
+  it('#208 AC-06 来源列表最多 10 条、只含 title / url，跳过没有链接的条目', () => {
+    const organic = [
+      { title: 'no link' },
+      ...Array.from({ length: 12 }, (_, index) => ({ title: ` T${index} `, link: `https://${index}.example`, snippet: 'S', date: 'd', position: index })),
+    ]
+    const sources = searchSources({ organic })
+
+    assert.equal(sources.length, 10)
+    assert.deepEqual(sources[0], { title: 'T0', url: 'https://0.example' })
+    assert.ok(sources.every(source => Object.keys(source).join() === 'title,url'))
+    assert.deepEqual(searchSources({ organic: [{ link: 'https://x.example' }] }), [{ title: '', url: 'https://x.example' }])
+    assert.deepEqual(searchSources(null), [])
   })
 
   it('answerBox 先读 answer；空结果、organic 缺失或格式不对、单条缺 link 时不抛错', () => {

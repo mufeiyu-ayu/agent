@@ -44,10 +44,23 @@ export interface ToolInvocationContext extends ToolExecutionContext {
   argumentsTruncated: boolean
 }
 
+/** 只给界面看的结构化结果（#208）：随 tool_finished 事件发给前台，不进模型上下文、不落库。 */
+export interface ToolDisplay {
+  /** web_search：来源列表。 */
+  results?: Array<{ title: string, url: string }>
+  /** web_fetch：重定向后的最终地址、网页标题与正文字数。 */
+  finalUrl?: string
+  title?: string
+  chars?: number
+  /** 模型拿到了说明、但界面上算失败的情况（如网页内容类型不支持）。 */
+  failure?: 'timeout' | 'failed'
+}
+
 export type ToolResult
   = | {
     ok: true
     modelContent: string
+    display?: ToolDisplay
   }
   | {
     ok: false

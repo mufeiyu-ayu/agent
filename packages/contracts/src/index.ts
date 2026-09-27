@@ -112,6 +112,8 @@ export type {
   ChatStreamErrorEvent,
   ChatStreamEvent,
   ChatStreamStartEvent,
+  ChatStreamToolFinishedEvent,
+  ChatStreamToolStartedEvent,
 } from './chat.js'
 export {
   CHAT_MESSAGE_MAX_CHARS,

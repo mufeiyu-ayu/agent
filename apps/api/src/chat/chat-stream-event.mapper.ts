@@ -19,6 +19,32 @@ export function toChatStreamEvent(event: AgentRuntimeEvent): ChatStreamEvent {
         contentDelta: event.contentDelta,
       }
 
+    case 'tool_started':
+      return {
+        type: 'tool_started',
+        conversationId: event.conversationId,
+        assistantMessageId: event.assistantMessageId,
+        callId: event.callId,
+        toolName: event.toolName,
+        ...(event.query === undefined ? {} : { query: event.query }),
+        ...(event.url === undefined ? {} : { url: event.url }),
+      }
+
+    // 逐字段列出：工具在 display 里多带的字段不会发到浏览器。
+    case 'tool_finished':
+      return {
+        type: 'tool_finished',
+        conversationId: event.conversationId,
+        assistantMessageId: event.assistantMessageId,
+        callId: event.callId,
+        ok: event.ok,
+        ...(event.failure === undefined ? {} : { failure: event.failure }),
+        ...(event.results === undefined ? {} : { results: event.results }),
+        ...(event.finalUrl === undefined ? {} : { finalUrl: event.finalUrl }),
+        ...(event.title === undefined ? {} : { title: event.title }),
+        ...(event.chars === undefined ? {} : { chars: event.chars }),
+      }
+
     case 'run_completed':
       return {
         type: 'done',

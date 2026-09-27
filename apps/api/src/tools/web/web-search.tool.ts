@@ -12,7 +12,7 @@ import { fetch } from 'undici'
 import { createOutboundDispatcher } from '../../llm/outbound-proxy.js'
 
 export const SERPER_SEARCH_URL = 'https://google.serper.dev/search'
-const MAX_QUERY_LENGTH = 200
+export const MAX_QUERY_LENGTH = 200
 const RESULT_COUNT = 10
 const LOG_BODY_CHARS = 200
 // 含汉字就按中文搜（不带 hl 时 Google 容易返回繁体结果）；带假名或谚文的是日文 / 韩文，不加。
@@ -78,11 +78,15 @@ export class WebSearchTool implements ToolExecutor<WebSearchInput> {
       throw new Error(`web search failed with HTTP ${response.status}`)
     }
 
-    const modelContent = formatSearchResults(await response.json())
+    const data: unknown = await response.json()
 
     context.signal.throwIfAborted()
 
-    return { ok: true as const, modelContent }
+    return {
+      ok: true as const,
+      modelContent: formatSearchResults(data),
+      display: { results: searchSources(data) },
+    }
   }
 }
 
@@ -117,14 +121,7 @@ export function formatSearchResults(data: unknown): string {
   if (answer)
     blocks.push(['直接答案：', answer, text(answerBox.link)].filter(Boolean).join('\n'))
 
-  const organic = Array.isArray(record.organic) ? record.organic : []
-
-  for (const item of organic.map(asRecord)) {
-    const link = text(item.link)
-
-    if (!link)
-      continue
-
+  for (const { item, link } of organicResults(record)) {
     const date = text(item.date)
     blocks.push([
       `标题：${text(item.title) ?? ''}`,
@@ -135,6 +132,24 @@ export function formatSearchResults(data: unknown): string {
   }
 
   return blocks.length === 0 ? '没有找到结果' : blocks.join('\n\n')
+}
+
+/** 给界面的来源列表（#208）：与 modelContent 里的结果同序，只取标题与链接。 */
+export function searchSources(data: unknown): Array<{ title: string, url: string }> {
+  return organicResults(asRecord(data))
+    .slice(0, RESULT_COUNT)
+    .map(({ item, link }) => ({ title: text(item.title) ?? '', url: link }))
+}
+
+/** 有链接的 organic 结果；没有链接的条目跳过。 */
+function organicResults(record: Record<string, unknown>) {
+  const organic = Array.isArray(record.organic) ? record.organic : []
+
+  return organic.map(asRecord).flatMap((item) => {
+    const link = text(item.link)
+
+    return link ? [{ item, link }] : []
+  })
 }
 
 function asRecord(value: unknown): Record<string, unknown> {

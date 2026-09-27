@@ -15,6 +15,7 @@ import type {
   PrismaService,
 } from '../prisma/prisma.service.js'
 import type {
+  ToolDisplay,
   ToolExecutionContext,
   ToolInvocationContext,
   ToolInvocationResult,
@@ -69,7 +70,7 @@ import {
   AgentRunTerminalizationError,
   ContextTokenEstimationError,
 } from './agent-runtime.errors.js'
-import { AgentRuntimeService } from './agent-runtime.service.js'
+import { AgentRuntimeService, toToolProgressArguments } from './agent-runtime.service.js'
 import { DeepSeekV4TokenEstimator } from './context/deepseek-v4-token-estimator.js'
 import {
   flattenPlanningState,
@@ -719,6 +720,8 @@ describe('AgentRuntimeService model stream', () => {
 
     assert.deepEqual(events.map(event => event.type), [
       'run_started',
+      'tool_started',
+      'tool_finished',
       'assistant_delta',
       'assistant_delta',
       'run_completed',
@@ -1310,10 +1313,12 @@ describe('AgentRuntimeService model stream', () => {
     )
     assert.deepEqual(runtimeEvents.map(event => event.type), [
       'run_started',
+      'tool_started',
+      'tool_finished',
       'assistant_delta',
       'run_completed',
     ])
-    assert.deepEqual(chatEvents.map(event => event.type), ['start', 'delta', 'done'])
+    assert.deepEqual(chatEvents.map(event => event.type), ['start', 'tool_started', 'tool_finished', 'delta', 'done'])
     assert.equal(harness.assistantMessage()?.status, MessageStatus.COMPLETED)
     assert.deepEqual(harness.recorder.completedRunIds, ['run-1'])
     assert.deepEqual(harness.recorder.failedRunIds, [])
@@ -1460,6 +1465,10 @@ describe('AgentRuntimeService model stream', () => {
     assert.deepEqual(events.map(event => event.type), [
       'run_started',
       'assistant_delta',
+      'tool_started',
+      'tool_finished',
+      'tool_started',
+      'tool_finished',
       'assistant_delta',
       'run_completed',
     ])
@@ -1941,6 +1950,8 @@ describe('AgentRuntimeService model stream', () => {
     assert.deepEqual(events.map(event => event.type), [
       'run_started',
       'assistant_delta',
+      'tool_started',
+      'tool_finished',
       'assistant_delta',
       'run_completed',
     ])
@@ -3343,6 +3354,220 @@ describe('Run 轨迹补齐模型可见内容', () => {
     assert.equal(events.at(-1)?.type, 'run_failed')
     assert.equal(harness.recorder.runErrorCode, 'deadline')
     assertInterruptedToolSteps(harness, AgentStepStatus.FAILED)
+  })
+})
+
+describe('工具进度事件（#208）', () => {
+  it('AC-02 一轮两个 call：tool_started(A) → tool_finished(A) → tool_started(B) → tool_finished(B) 之后才进入下一轮采样，display 只进事件', async () => {
+    const display = { results: [{ title: '界面来源', url: 'https://ui-only.example/' }] }
+    const harness = createHarness(
+      (_, __, callIndex) => callIndex === 0
+        ? toModelStream([
+            toolCallEvent('call-a', 'web_search', '{"query":"seo"}', '推理', 0),
+            toolCallEvent('call-b', 'web_fetch', '{"url":"https://b.example/page"}', '推理', 1),
+            { type: 'response_completed', finishReason: 'tool_calls' },
+          ])
+        : toModelStream([
+            { type: 'text_delta', delta: '完成。' },
+            { type: 'response_completed', finishReason: 'stop' },
+          ]),
+      undefined,
+      async envelope => ({ ok: true, modelContent: `结果 ${envelope.callId}`, display }),
+    )
+    const generator = harness.run()
+    const trace: string[] = []
+
+    // 每拿到一个事件记下此刻已执行的工具数与模型调用数：证明事件与执行的先后。
+    for await (const event of generator)
+      trace.push(`${event.type}${'callId' in event ? `:${event.callId}` : ''} tools=${harness.toolInvocations.length} llm=${harness.llmCalls.length}`)
+
+    assert.deepEqual(trace, [
+      'run_started tools=0 llm=0',
+      'tool_started:call-a tools=0 llm=1',
+      'tool_finished:call-a tools=1 llm=1',
+      'tool_started:call-b tools=1 llm=1',
+      'tool_finished:call-b tools=2 llm=1',
+      'assistant_delta tools=2 llm=2',
+      'run_completed tools=2 llm=2',
+    ])
+  })
+
+  it('AC-02 事件字段：started 带展示参数，finished 带 display；chat 流只带协议字段；display 不进 observation、Step 与模型请求', async () => {
+    const display = { finalUrl: 'https://ui-only.example/final', title: '界面标题', chars: 1234 }
+    const harness = createHarness(
+      (_, __, callIndex) => callIndex === 0
+        ? toModelStream([
+            toolCallEvent('call-a', 'web_fetch', '{"url":"https://a.example/"}'),
+            { type: 'response_completed', finishReason: 'tool_calls' },
+          ])
+        : toModelStream([
+            { type: 'text_delta', delta: '完成。' },
+            { type: 'response_completed', finishReason: 'stop' },
+          ]),
+      undefined,
+      // 工具在 display 里多带的字段（secret）不能出现在 chat 流里。
+      async () => ({ ok: true, modelContent: '网页正文', display: { ...display, secret: 'ui-only-extra' } as ToolDisplay }),
+    )
+
+    const events = (await collectEvents(harness.run())).map(toChatStreamEvent)
+
+    assert.deepEqual(events.filter(event => event.type.startsWith('tool_')), [
+      {
+        type: 'tool_started',
+        conversationId: 'conversation-1',
+        assistantMessageId: 'message-2',
+        callId: 'call-a',
+        toolName: 'web_fetch',
+        url: 'https://a.example/',
+      },
+      {
+        type: 'tool_finished',
+        conversationId: 'conversation-1',
+        assistantMessageId: 'message-2',
+        callId: 'call-a',
+        ok: true,
+        ...display,
+      },
+    ])
+    assert.deepEqual(findStep(harness, 'tool_execution')?.output, {
+      ok: true,
+      originalChars: 4,
+      observationChars: 4,
+      truncated: false,
+      observation: '网页正文',
+    })
+    assert.doesNotMatch(
+      JSON.stringify({ steps: harness.recorder.steps, llmCalls: harness.llmCalls.map(call => call.messages) }),
+      /ui-only|界面标题|1234/,
+    )
+  })
+
+  it('AC-03 截断批次、未知工具、参数无效、执行失败、display 标了失败的各发一对事件，failure=failed；工具超时 failure=timeout', async () => {
+    const streams: Array<() => AsyncGenerator<ModelStreamEvent>> = [
+      // 截断批次：arguments 不完整，整批不执行。
+      () => adaptDeepSeekStream(toProviderStream([
+        providerChunk({
+          tool_calls: [{ index: 0, id: 'call-truncated', type: 'function', function: { name: 'web_search', arguments: '{"query":' } }],
+        } as ChatCompletionChunk.Choice.Delta),
+        providerChunk({}, 'length'),
+      ])),
+      () => toModelStream([
+        toolCallEvent('call-unknown', 'hidden_tool', '{}', '推理', 0),
+        toolCallEvent('call-invalid', 'web_search', '{"query":""}', '推理', 1),
+        toolCallEvent('call-failed', 'web_search', '{"query":"a"}', '推理', 2),
+        toolCallEvent('call-timeout', 'web_fetch', '{"url":"https://slow.example/"}', '推理', 3),
+        toolCallEvent('call-unsupported', 'web_fetch', '{"url":"https://a.example/x.pdf"}', '推理', 4),
+        { type: 'response_completed', finishReason: 'tool_calls' },
+      ]),
+      () => toModelStream([
+        { type: 'text_delta', delta: '完成。' },
+        { type: 'response_completed', finishReason: 'stop' },
+      ]),
+    ]
+    const outcomes: Record<string, ToolResult> = {
+      'call-invalid': { ok: false, code: 'invalid_arguments', modelContent: '参数无效。' },
+      'call-failed': { ok: false, code: 'execution_failed', modelContent: '执行失败。' },
+      'call-timeout': { ok: false, code: 'timeout', modelContent: '执行超时。' },
+      // 模型拿到说明（ok），界面上由 display 标成失败。
+      'call-unsupported': { ok: true, modelContent: '不支持的内容类型：application/pdf', display: { failure: 'failed' } },
+    }
+    const harness = createHarness(
+      (_, __, callIndex) => streams[callIndex]!(),
+      undefined,
+      async envelope => outcomes[envelope.callId]!,
+      { maxToolCalls: 6 },
+    )
+
+    const events = await collectEvents(harness.run())
+    const toolEvents = events
+      .filter(event => event.type === 'tool_started' || event.type === 'tool_finished')
+      .map(event => event.type === 'tool_started'
+        ? `started:${event.callId}`
+        : `finished:${event.callId}:${event.ok}:${event.failure}`)
+
+    assert.deepEqual(toolEvents, [
+      'started:call-truncated',
+      'finished:call-truncated:false:failed',
+      'started:call-unknown',
+      'finished:call-unknown:false:failed',
+      'started:call-invalid',
+      'finished:call-invalid:false:failed',
+      'started:call-failed',
+      'finished:call-failed:false:failed',
+      'started:call-timeout',
+      'finished:call-timeout:false:timeout',
+      'started:call-unsupported',
+      'finished:call-unsupported:false:failed',
+    ])
+    assert.equal(events.at(-1)?.type, 'run_completed')
+  })
+
+  for (const interruption of ['用户停止', 'Run deadline'] as const) {
+    it(`AC-04 同轮第二个工具执行中${interruption}：被打断的 call 只有 tool_started，终态事件照旧`, async () => {
+      const abortController = new AbortController()
+      const harness = createHarness(
+        () => toModelStream([
+          toolCallEvent('call-done', 'web_search', '{"query":"seo"}', '推理', 0),
+          toolCallEvent('call-cut', 'web_search', '{"query":"sitemap"}', '推理', 1),
+          { type: 'response_completed', finishReason: 'tool_calls' },
+        ]),
+        interruption === '用户停止' ? abortController.signal : undefined,
+        async (envelope, context) => {
+          if (envelope.callId === 'call-done')
+            return { ok: true, modelContent: '已完成的结果。' }
+
+          if (interruption === '用户停止')
+            abortController.abort()
+          await waitForAbort(context.signal)
+          context.signal.throwIfAborted()
+          return { ok: true, modelContent: '不会落库的结果。' }
+        },
+        interruption === 'Run deadline' ? { runDeadlineMs: 200 } : {},
+      )
+
+      const events = await collectEvents(harness.run())
+
+      assert.deepEqual(events.map(event => event.type === 'tool_started' || event.type === 'tool_finished'
+        ? `${event.type}:${event.callId}`
+        : event.type), [
+        'run_started',
+        'tool_started:call-done',
+        'tool_finished:call-done',
+        'tool_started:call-cut',
+        interruption === '用户停止' ? 'run_aborted' : 'run_failed',
+      ])
+      assertInterruptedToolSteps(harness, interruption === '用户停止' ? AgentStepStatus.ABORTED : AgentStepStatus.FAILED)
+    })
+  }
+
+  it('消费者在 tool_started / tool_finished 处 return()：不留 RUNNING 的 Step，Run 收口为 ABORTED', async () => {
+    for (const stopAt of ['tool_started', 'tool_finished'] as const) {
+      const harness = createHarness(() => toModelStream([
+        toolCallEvent('call-1', 'web_search', '{"query":"seo"}'),
+        { type: 'response_completed', finishReason: 'tool_calls' },
+      ]))
+      const generator = harness.run()
+
+      for (let result = await generator.next(); !result.done; result = await generator.next()) {
+        if (result.value.type === stopAt)
+          break
+      }
+      await generator.return(undefined)
+
+      assert.deepEqual(harness.recorder.abortedRunIds, ['run-1'], stopAt)
+      assert.equal(harness.toolInvocations.length, stopAt === 'tool_started' ? 0 : 1, stopAt)
+      assertNoUnfinishedSteps(harness)
+    }
+  })
+
+  it('AC-05 展示参数：非法 JSON、非对象、非字符串都省略，超长按上限截断，不抛异常', () => {
+    assert.deepEqual(toToolProgressArguments('{"query":"seo","url":"https://a.example/"}'), { query: 'seo', url: 'https://a.example/' })
+    for (const raw of ['', '{"query":', 'null', '[]', '"seo"', '1', '{"query":1,"url":{"href":"x"}}', '{"q":"seo"}'])
+      assert.deepEqual(toToolProgressArguments(raw), {}, raw)
+    assert.deepEqual(toToolProgressArguments(JSON.stringify({ query: 'q'.repeat(300), url: `https://a.example/${'u'.repeat(3000)}` })), {
+      query: 'q'.repeat(200),
+      url: `https://a.example/${'u'.repeat(3000)}`.slice(0, 2048),
+    })
   })
 })
 

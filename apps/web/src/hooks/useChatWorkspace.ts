@@ -11,10 +11,11 @@ import type {
   AppMessageState,
   AppMessageType,
   GenerationStatus,
+  TurnRun,
 } from '../types/chat'
 
 import { isAxiosError } from 'axios'
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, shallowRef } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import { ChatStreamHttpError, streamChat } from '../api/chat'
@@ -30,6 +31,7 @@ import {
   mapMessagesToConversationTurns,
   sortConversationsByUpdatedAt,
 } from '../utils/conversation-turns'
+import { applyRunEvent, endRun, startRun } from '../utils/run-status'
 
 const CHAT_REQUEST_INTERVAL_MS = 800
 const DEFAULT_MESSAGE_TIMEOUT_MS = 3600
@@ -57,6 +59,8 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
   const hasMoreConversations = ref(false)
   const conversationError = ref('')
   const localTurnErrors = ref<Record<string, string>>({})
+  // 每轮的等待过程（#208），按助手消息 id 存在页面内存里；刷新后没有，还原属于 C2。
+  const turnRuns = shallowRef<Record<string, TurnRun>>({})
   const appMessage = ref<AppMessageState>({
     visible: false,
     type: 'info',
@@ -99,6 +103,7 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
     return mapMessagesToConversationTurns(messages.value, {
       activeTurnId,
       turnErrors: localTurnErrors.value,
+      runs: turnRuns.value,
     })
   })
 
@@ -275,8 +280,14 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
           continue
 
         if (event.type === 'delta') {
+          updateTurnRun(event.assistantMessageId, run => applyRunEvent(run, event, performance.now()))
           handleStreamDeltaEvent(event)
           status.value = 'generating'
+          continue
+        }
+
+        if (event.type === 'tool_started' || event.type === 'tool_finished') {
+          updateTurnRun(event.assistantMessageId, run => applyRunEvent(run, event, performance.now()))
           continue
         }
 
@@ -289,6 +300,7 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
           // stop 先于排队中的 start 到达时会先建 ABORTED 占位；真实助手
           // 消息从这里开始接管，移除占位避免出现两条中止气泡。
           removeAbortedPlaceholderForRequest(streamRequestId)
+          turnRuns.value = { ...turnRuns.value, [event.assistantMessageId]: startRun(performance.now()) }
           handleStreamStartEvent(event, pendingMessage)
           message.value = ''
           status.value = 'generating'
@@ -299,6 +311,7 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
 
         if (event.type === 'done') {
           hasFinalStreamEvent = true
+          endTurnRun(event.assistantMessageId, 'done')
           handleStreamDoneEvent(event)
           activeTurnId = null
           clearActiveStreamState(streamRequestId)
@@ -309,6 +322,8 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
 
         if (event.type === 'error') {
           hasFinalStreamEvent = true
+          if (assistantMessageId)
+            endTurnRun(assistantMessageId, 'error')
           errorMessage.value = event.message
           // 用户消息已落库后才失败（没发 start，比如必带内容超预算）：会话 updatedAt 已变，侧栏同步。
           if (event.userMessagePersisted)
@@ -322,6 +337,7 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
         }
 
         hasFinalStreamEvent = true
+        endTurnRun(event.assistantMessageId, 'aborted')
         handleStreamAbortedEvent(event)
         activeTurnId = null
         clearActiveStreamState(streamRequestId)
@@ -345,9 +361,14 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
         return
 
       if (isAbortError(error)) {
+        if (assistantMessageId)
+          endTurnRun(assistantMessageId, 'aborted')
         markGenerationAborted(targetConversationId, assistantMessageId, streamRequestId)
         return
       }
+
+      if (assistantMessageId)
+        endTurnRun(assistantMessageId, 'error')
 
       const nextErrorMessage = getRequestErrorMessage(error)
 
@@ -379,6 +400,24 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
     }
   }
 
+  /** 终态事件到达、本地停止或流异常时收尾本轮的等待过程：没等到 tool_finished 的步骤记为已停止。 */
+  function endTurnRun(assistantMessageId: string, outcome: NonNullable<TurnRun['outcome']>) {
+    updateTurnRun(assistantMessageId, run => endRun(run, performance.now(), outcome))
+  }
+
+  function updateTurnRun(assistantMessageId: string, update: (run: TurnRun) => TurnRun) {
+    const run = turnRuns.value[assistantMessageId]
+
+    if (!run)
+      return
+
+    const next = update(run)
+
+    // 没有变化（如同一段正文里的后续 delta）不写入，不触发轮次重算。
+    if (next !== run)
+      turnRuns.value = { ...turnRuns.value, [assistantMessageId]: next }
+  }
+
   function stopGeneration() {
     if (!isGenerationInProgress())
       return
@@ -389,6 +428,8 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
 
     activeAbortController?.abort()
     flushPendingDelta()
+    if (assistantMessageId)
+      endTurnRun(assistantMessageId, 'aborted')
     markGenerationAborted(conversationId, assistantMessageId, streamRequestId)
   }
 

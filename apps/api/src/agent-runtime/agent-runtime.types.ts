@@ -1,6 +1,7 @@
 import type { MessageInputItem } from '@agent/ai'
 import type { ReasoningEffort } from '@agent/contracts'
 import type { ResolvedLlmModel } from '../llm/llm-model-config.service.js'
+import type { ToolDisplay } from '../tools/core/tool.types.js'
 
 export type AgentRuntimeEvent
   = | {
@@ -17,6 +18,26 @@ export type AgentRuntimeEvent
     assistantMessageId: string
     contentDelta: string
   }
+  // 工具进度（#208）：只给界面，不落库、不进模型上下文。
+  | {
+    type: 'tool_started'
+    runId: string
+    conversationId: string
+    assistantMessageId: string
+    callId: string
+    toolName: string
+    /** 从模型参数里尽力取出的查询词 / 网址，只用于展示。 */
+    query?: string
+    url?: string
+  }
+  | ({
+    type: 'tool_finished'
+    runId: string
+    conversationId: string
+    assistantMessageId: string
+    callId: string
+    ok: boolean
+  } & ToolDisplay)
   | {
     type: 'run_completed'
     runId: string
