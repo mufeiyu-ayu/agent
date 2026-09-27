@@ -2,13 +2,11 @@ import type { OnModuleInit } from '@nestjs/common'
 import { Inject, Module } from '@nestjs/common'
 import { ModuleRef } from '@nestjs/core'
 
-import { PrismaModule } from '../prisma/prisma.module.js'
 import { ToolInvocationService } from './core/tool-invocation.service.js'
 import { ToolRegistryService } from './core/tool-registry.service.js'
 import { TOOLS } from './tool-definitions.js'
 
 @Module({
-  imports: [PrismaModule],
   providers: [
     ToolRegistryService,
     ToolInvocationService,

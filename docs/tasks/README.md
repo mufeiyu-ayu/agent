@@ -8,7 +8,7 @@
 阶段 1-8：Completed
 当前阶段：工作台第 1 档（第一期上线）
 Active Agent Task：无
-Next：第一期 ③ 联网搜索（Issue 未建）；开放给运营前先做第 0.5 档真实对话验证
+Next：第一期 ③ 联网的后半：web_fetch（Issue B，未建）；开放给运营前先做第 0.5 档真实对话验证
 Gated：#117 Responses API adapter（2026-09-18），触发条件见看板
 产品方向：给 topuplist 运营用的 AI 工作台，分两期、上云、gsc 延后（2026-09-20 定案、2026-09-27 改为两期，docs/research/workbench-direction.md）；档、顺序与触发只在其第 7 节
 候选子系统：session 事件流与 replay、审批门、compaction、定时任务（未立 Issue，各自的档见 workbench 第 7 节）
@@ -19,6 +19,7 @@ Admin Task 4：Closed（2026-09-27：Auth 由 #195 完成；RBAC 不做（两种
 
 | 任务 | 状态 | 说明 |
 | --- | --- | --- |
+| #204 联网搜索 web_search 与系统提示词重写 | Completed | 模型可经 Serper 查 Google 并附来源，提示词改为 Kuro 并注入北京时间日期，删 `search_articles`。PR #205 |
 | #201 会话记录按用户查找 | Completed | 会话记录显示所属用户，可按用户与最近活跃时间筛选（条件在地址栏），用户列表「查看对话」直达。PR #203 |
 | #198 使用 Google 登录，陌生账号进入待审核 | Completed | 重定向登录 + One Tap 上线，陌生账号待管理员审核，首页登录改弹窗，前台与管理台显示头像昵称。PR #200 |
 | #197 pnpm ship 一键部署与版本回退 | Completed | 上线 `https://askkuro.com`（管理台 `/admin/`），`pnpm ship` 构建直传、迁移前备份、健康检查失败自动切回，`pnpm ship:rollback` 只回退代码。PR #199 |

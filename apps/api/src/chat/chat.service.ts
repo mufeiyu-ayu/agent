@@ -7,7 +7,7 @@ import { ConversationsService } from '../conversations/conversations.service.js'
 import { LlmModelConfigService } from '../llm/llm-model-config.service.js'
 import { LlmModelUnavailableError } from '../llm/llm.errors.js'
 import { toChatStreamEvent } from './chat-stream-event.mapper.js'
-import { AGENT_INSTRUCTIONS } from './prompts/agent.prompt.js'
+import { buildAgentInstructions } from './prompts/agent.prompt.js'
 
 interface ChatStreamOptions {
   signal?: AbortSignal
@@ -45,8 +45,8 @@ export class ChatService {
         ? { reasoningEffort: input.reasoningEffort }
         : {}),
       ...(options.signal ? { signal: options.signal } : {}),
-      /** 系统提示词 */
-      instructions: AGENT_INSTRUCTIONS,
+      /** 系统提示词：日期取收到请求的时刻，与 Run 创建时间只差毫秒 */
+      instructions: buildAgentInstructions(new Date()),
     }))
   }
 

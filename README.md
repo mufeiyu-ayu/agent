@@ -127,16 +127,7 @@ Then open the admin console at `http://localhost:5174`, go to the model provider
 
 Run the tests with `pnpm test` (no database needed). The database and browser suites are described in [`docs/testing.md`](./docs/testing.md) (Chinese).
 
-<details>
-<summary>Load demo articles (for the search_articles tool)</summary>
-
-```bash
-node --env-file=.env --import tsx apps/api/scripts/seed.ts     # load 68 demo articles (idempotent)
-```
-
-Without them, plain chat still works; `search_articles` just finds no articles. If you run PostgreSQL yourself, it needs the pgvector extension, because an early migration creates it. See [`.env.example`](./.env.example) for every setting.
-
-</details>
+If you run PostgreSQL yourself, it needs the pgvector extension, because an early migration creates it. See [`.env.example`](./.env.example) for every setting; set `SERPER_API_KEY` to enable the `web_search` tool.
 
 ## Learn agent engineering from it
 
