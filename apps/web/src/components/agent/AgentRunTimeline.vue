@@ -1,13 +1,14 @@
 <script setup lang="ts">
-import type { TurnRunStep } from '../../types/chat'
+import type { Directive } from 'vue'
+import type { TurnRun, TurnRunStep, TurnRunThought } from '../../types/chat'
 
 import { computed, reactive } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-import { runStepText, safeHref, siteName } from '@/utils/run-status'
+import { runStepText, safeHref, siteName, thoughtTitle } from '@/utils/run-status'
 
 const props = defineProps<{
-  steps: TurnRunStep[]
+  run: TurnRun
 }>()
 
 /** 搜索来源最多列 5 条，其余写「还有 k 条」。 */
@@ -16,14 +17,57 @@ const MAX_SOURCES = 5
 const FALLBACK_COLORS = ['#b4552b', '#3d7a5a', '#4a6fa5', '#8a5a9e', '#9a7b2f', '#5b6b73']
 
 const { t, locale } = useI18n()
-const open = reactive<Record<number, boolean>>({})
+const open = reactive<Record<string, boolean>>({})
 /** 打开过的行才渲染内容：网站图标只在用户点开那一步时才去请求。 */
-const rendered = reactive<Record<number, boolean>>({})
+const rendered = reactive<Record<string, boolean>>({})
 /** 按图标地址记加载失败的，失败的换成首字母。 */
 const brokenIcons = reactive<Record<string, boolean>>({})
 
+/** 时间线的一行：工具步骤，或一轮思考（#209）。 */
+interface TimelineItem {
+  key: string
+  icon: 'search' | 'page' | 'tool' | 'fail' | 'thought'
+  failed: boolean
+  text: { verb?: string, object: string, meta?: string }
+  /** 思考行：完整思考按空行分段。 */
+  paragraphs?: string[]
+  pageHref?: string
+  sources: Array<{ href: string, title: string, site: string, icon: string }>
+  moreSources: number
+  reason?: string
+  expandable: boolean
+}
+
+/** 思考行（#209）排在同一轮的步骤之前：第 i 步之前的那一轮思考 at 为 i，最后一轮在所有步骤之后。 */
+const items = computed<TimelineItem[]>(() => {
+  // 去掉 Markdown 符号后没有文字的一轮不出行。
+  const thoughtsAt = (at: number) => props.run.thoughts
+    .filter(thought => thought.at === at)
+    .map(thoughtItem)
+    .filter(item => item.text.object)
+
+  return [
+    ...props.run.steps.flatMap((step, index) => [...thoughtsAt(index), stepItem(step, index)]),
+    ...thoughtsAt(props.run.steps.length),
+  ]
+})
+
+function thoughtItem(thought: TurnRunThought): TimelineItem {
+  return {
+    key: `thought:${thought.at}`,
+    icon: 'thought',
+    failed: false,
+    text: { object: thoughtTitle(thought.text) },
+    // 纯文本：按空行分段，段内换行由 CSS 保留。
+    paragraphs: thought.text.trim().split(/\n\s*\n/),
+    sources: [],
+    moreSources: 0,
+    expandable: true,
+  }
+}
+
 // 步骤按下标识别：不同轮次的 callId 可能重复。
-const items = computed(() => props.steps.map((step, index) => {
+function stepItem(step: TurnRunStep, index: number): TimelineItem {
   const failed = step.status === 'failed'
   const pageHref = step.toolName === 'web_fetch' && step.status === 'ok' ? safeHref(step.finalUrl) : undefined
   const sources = step.toolName === 'web_search' && step.status === 'ok'
@@ -37,10 +81,9 @@ const items = computed(() => props.steps.map((step, index) => {
     : []
 
   return {
-    index,
-    step,
-    failed,
+    key: `step:${index}`,
     icon: failed ? 'fail' : step.toolName === 'web_search' ? 'search' : step.toolName === 'web_fetch' ? 'page' : 'tool',
+    failed,
     text: runStepText(step, t, locale.value),
     pageHref,
     sources: sources.slice(0, MAX_SOURCES),
@@ -52,11 +95,18 @@ const items = computed(() => props.steps.map((step, index) => {
       : undefined,
     expandable: failed || !!pageHref || sources.length > 0,
   }
-}))
+}
 
-function toggle(index: number) {
-  rendered[index] = true
-  open[index] = !open[index]
+/** 完整思考超出限高时才加底部渐隐：短的思考不留那段空白。内容在结束后不再变，挂载时量一次。 */
+const vOverflowFade: Directive<HTMLElement> = {
+  mounted(el) {
+    el.classList.toggle('is-overflowing', el.scrollHeight > el.clientHeight)
+  },
+}
+
+function toggle(key: string) {
+  rendered[key] = true
+  open[key] = !open[key]
 }
 
 function fallbackColor(site: string): string {
@@ -68,7 +118,7 @@ function fallbackColor(site: string): string {
   <ol class="run-timeline" data-run-timeline>
     <li
       v-for="item in items"
-      :key="item.index"
+      :key="item.key"
       class="run-tl-item"
       :class="{ 'is-failed': item.failed }"
     >
@@ -80,6 +130,9 @@ function fallbackColor(site: string): string {
             </template>
             <template v-else-if="item.icon === 'page'">
               <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" /><path d="M14 3v5h5M9 13h6M9 17h4" />
+            </template>
+            <template v-else-if="item.icon === 'thought'">
+              <path d="M12 3.5l1.9 5.1a2 2 0 0 0 1.5 1.5l5.1 1.9-5.1 1.9a2 2 0 0 0-1.5 1.5L12 20.5l-1.9-5.1a2 2 0 0 0-1.5-1.5L3.5 12l5.1-1.9a2 2 0 0 0 1.5-1.5z" />
             </template>
             <template v-else-if="item.icon === 'fail'">
               <circle cx="12" cy="12" r="9" opacity=".3" /><path d="M12 8v5M12 16.5v.01" />
@@ -94,21 +147,27 @@ function fallbackColor(site: string): string {
         class="run-tl-head"
         :role="item.expandable ? 'button' : undefined"
         :tabindex="item.expandable ? 0 : undefined"
-        :aria-expanded="item.expandable ? !!open[item.index] : undefined"
-        @click="item.expandable && toggle(item.index)"
-        @keydown.enter.space.prevent="item.expandable && toggle(item.index)"
+        :aria-expanded="item.expandable ? !!open[item.key] : undefined"
+        @click="item.expandable && toggle(item.key)"
+        @keydown.enter.space.prevent="item.expandable && toggle(item.key)"
       >
-        <span class="run-tl-verb">{{ item.text.verb }}</span>
+        <span v-if="item.text.verb" class="run-tl-verb">{{ item.text.verb }}</span>
         <span class="run-tl-object">{{ item.text.object }}</span>
         <span v-if="item.text.meta" class="run-tl-meta">{{ item.text.meta }}</span>
         <svg v-if="item.expandable" class="run-tl-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M9 6l6 6-6 6" />
         </svg>
       </div>
-      <div v-if="item.expandable" class="run-tl-body" :class="{ 'is-open': open[item.index] }" :inert="!open[item.index]">
+      <div v-if="item.expandable" class="run-tl-body" :class="{ 'is-open': open[item.key] }" :inert="!open[item.key]">
         <div>
-          <div v-if="rendered[item.index]" class="run-tl-body-inner">
-            <template v-if="item.sources.length">
+          <div v-if="rendered[item.key]" class="run-tl-body-inner">
+            <!-- 完整思考：纯文本，限高可滚动；tabindex 让键盘也能滚动 -->
+            <div v-if="item.paragraphs" v-overflow-fade class="run-thought" tabindex="0" data-run-thought>
+              <p v-for="(paragraph, paragraphIndex) in item.paragraphs" :key="paragraphIndex">
+                {{ paragraph }}
+              </p>
+            </div>
+            <template v-else-if="item.sources.length">
               <a
                 v-for="(source, sourceIndex) in item.sources"
                 :key="sourceIndex"
@@ -344,6 +403,46 @@ function fallbackColor(site: string): string {
   font-size: 8.5px;
   font-weight: 700;
   object-fit: contain;
+}
+
+/* 完整思考：灰色小字，限高约 7 行、可滚动 */
+.run-thought {
+  --run-thought-fade: 1.5em;
+
+  max-height: calc(1.7em * 7 + var(--run-thought-fade));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border-radius: 4px;
+  color: var(--agent-ink-muted);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+/* 底部渐隐（只在超出限高时）：贴底的底色渐变，不用 mask（mask 会连焦点框一起裁掉）；它本身占一段底边，滚到底时最后一行不被遮住 */
+.run-thought.is-overflowing::after {
+  content: '';
+  position: sticky;
+  bottom: 0;
+  display: block;
+  height: var(--run-thought-fade);
+  background: linear-gradient(to bottom, transparent, var(--agent-canvas));
+  pointer-events: none;
+}
+
+/* 父级裁切了溢出，焦点框画在框内 */
+.run-thought:focus-visible {
+  outline: 2px solid color-mix(in oklch, var(--agent-copper) 45%, transparent);
+  outline-offset: -2px;
+}
+
+.run-thought p {
+  margin: 0 0 0.7em;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
+.run-thought p:last-child {
+  margin-bottom: 0;
 }
 
 .run-note {

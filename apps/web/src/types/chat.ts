@@ -28,6 +28,15 @@ export interface TurnRunStep
 }
 
 /**
+ * 一轮思考的原文（#209）：一轮从 start 或 tool_finished 开始，到下一个 tool_started 或正文开始为止。
+ * 同一轮开始时的步骤数各不相同，时间线据此把思考行排在第 `at` 个步骤之前。
+ */
+export interface TurnRunThought {
+  at: number
+  text: string
+}
+
+/**
  * 一轮回答的等待过程（#208）：waiting 是思考中（start 之后、tool_finished 之后），
  * tool 是工具执行中，answering 是正文在写，ended 是 done / error / aborted 或本地停止之后。
  * 时间都是 performance.now()：单调时钟，系统校时不会让状态行消失或计时倒退。
@@ -44,6 +53,8 @@ export interface TurnRun {
   /** 正文开始前调过工具：这一轮一定有状态行。 */
   toolBeforeAnswer: boolean
   steps: TurnRunStep[]
+  /** 有思考原文的模型才有（#209），拿不到的模型始终为空。 */
+  thoughts: TurnRunThought[]
 }
 
 export type AppMessageType = 'error' | 'success' | 'info'

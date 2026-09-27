@@ -23,6 +23,12 @@ export interface ModelSamplingSummary {
   firstTokenMs: number | null
 }
 
+/** 采样过程中实时往外推的一段：正文（进 Message.content）或思考原文（只给界面显示，#209）。 */
+export interface SamplingDelta {
+  kind: 'text' | 'reasoning'
+  delta: string
+}
+
 export type SamplingDecision
   = | {
     type: 'final_answer'
@@ -39,18 +45,18 @@ export type SamplingDecision
   }
 
 /**
- * 函数职责：实时转发模型文本，并在流结束后只按 finishReason 分派本轮决策。
+ * 函数职责：实时转发模型文本与思考原文，并在流结束后只按 finishReason 分派本轮决策。
  *
  * 流协议不变量（finish 后无事件、tool_calls 必带完整 call 与 reasoning、非
  * tool_calls / length 不带 call、同批 call id 不重复）由 Provider adapter 负责，这里不重复校验。
  *
- * 执行方式：每轮模型请求只调用一次本函数；内部循环消费多个模型事件，文本通过 yield 分段返回，模型流结束后再通过 return 返回最终决策。
+ * 执行方式：每轮模型请求只调用一次本函数；内部循环消费多个模型事件，文本与思考原文通过 yield 分段返回，模型流结束后再通过 return 返回最终决策。
  */
 export async function* streamModelSampling(
   events: AsyncIterable<ModelStreamEvent>,
   samplingAttemptId: string,
   now: () => number = Date.now,
-): AsyncGenerator<string, SamplingDecision> {
+): AsyncGenerator<SamplingDelta, SamplingDecision> {
   const textChunks: string[] = []
   const toolCalls: UnvalidatedModelToolCall[] = []
   let reasoningContent = ''
@@ -79,7 +85,12 @@ export async function* streamModelSampling(
           firstTokenMs ??= Math.max(0, now() - requestedAt)
           textChars += event.delta.length
           textChunks.push(event.delta)
-          yield event.delta
+          yield { kind: 'text', delta: event.delta }
+          break
+
+        // 首 token 时间已由先到的 reasoning_started 记下；思考原文不计入 textChars、不进 intermediateText。
+        case 'reasoning_delta':
+          yield { kind: 'reasoning', delta: event.delta }
           break
 
         case 'reasoning_started':

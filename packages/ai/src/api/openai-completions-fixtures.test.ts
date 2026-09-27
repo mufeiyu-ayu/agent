@@ -235,9 +235,12 @@ describe('各家族真实 Tool Call 流 fixture（原始 SSE 经 SDK 解析）',
         choices: Array<{ message: { tool_calls?: Array<{ id: string, function: { name: string } }> } }>
       } | undefined)?.choices[0]?.message.tool_calls ?? []
 
+      const { rest, reasoningDeltas } = splitReasoningDeltas(events)
+
       assert.equal(harness.fetchCalls, 1)
       assert.equal(compat.requiresReasoningContent, expected.requiresReasoningContent)
-      assert.deepEqual(events, expected.events)
+      assert.deepEqual(rest, expected.events)
+      assertReasoningDeltas(rest, reasoningDeltas)
       assert.equal(captured?.state, 'complete')
       assert.deepEqual(
         capturedToolCalls.map(toolCall => [toolCall.id, toolCall.function.name]),
@@ -289,10 +292,34 @@ describe('各家族真实响应 fixture', () => {
         },
       ))
 
-      assert.deepEqual(events, CHUNK_EXPECTATIONS[key])
+      const { rest, reasoningDeltas } = splitReasoningDeltas(events)
+
+      assert.deepEqual(rest, CHUNK_EXPECTATIONS[key])
+      assertReasoningDeltas(rest, reasoningDeltas)
     })
   }
 })
+
+/** reasoning_delta（#209）单独断言，其余事件与既有期望逐字比对。 */
+function splitReasoningDeltas(events: ModelStreamEvent[]) {
+  return {
+    rest: events.filter(event => event.type !== 'reasoning_delta'),
+    reasoningDeltas: events.flatMap(event => event.type === 'reasoning_delta' ? [event.delta] : []),
+  }
+}
+
+/**
+ * 有思考原文的家族（fixture 里只有 DeepSeek；录制的 grok 流没有 reasoning_content）：分片依序拼起来等于回填的 reasoningContent；
+ * 没有的（gpt、gemini、grok）一个 reasoning_delta 都不发。
+ */
+function assertReasoningDeltas(rest: ModelStreamEvent[], reasoningDeltas: string[]) {
+  const completed = rest.find(event => event.type === 'tool_call_completed')
+  const reasoningContent = completed?.type === 'tool_call_completed' ? completed.reasoningContent : ''
+
+  assert.equal(reasoningDeltas.join(''), reasoningContent)
+  assert.equal(reasoningDeltas.length > 0, rest.some(event => event.type === 'reasoning_started'))
+  assert.ok(reasoningDeltas.every(delta => delta.length > 0))
+}
 
 /** 真实 SDK client（沿用生产 createClient 的配置）+ 只回放一份 SSE 原文的 fake fetch。 */
 function createSseHarness(sse: string) {

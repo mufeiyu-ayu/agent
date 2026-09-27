@@ -18,6 +18,14 @@ export type AgentRuntimeEvent
     assistantMessageId: string
     contentDelta: string
   }
+  // 思考原文分片（#209）：只给界面，不落库、不进 Message.content 与模型上下文。
+  | {
+    type: 'reasoning_delta'
+    runId: string
+    conversationId: string
+    assistantMessageId: string
+    delta: string
+  }
   // 工具进度（#208）：只给界面，不落库、不进模型上下文。
   | {
     type: 'tool_started'

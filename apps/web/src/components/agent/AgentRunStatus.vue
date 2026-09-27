@@ -7,7 +7,7 @@ import { useI18n } from 'vue-i18n'
 
 import { useRunStatus } from '@/hooks/useRunStatus'
 import { RUN_DOT_PX as ICON_PX, useTrailingDot } from '@/hooks/useTrailingDot'
-import { runStatusText, runSummaryText } from '@/utils/run-status'
+import { runStatusText, runSummaryText, thoughtTitle } from '@/utils/run-status'
 
 import AgentRunTimeline from './AgentRunTimeline.vue'
 
@@ -28,7 +28,7 @@ const FLOAT_MIN_WIDTH_PX = 160
 const FLOAT_LINE_PX = 26
 
 const { t, locale } = useI18n()
-const { hasRow, live, floating, shownIndex, shownStep, seconds, dotVisible, dotTrailing } = useRunStatus(() => props.run, () => props.waiting)
+const { hasRow, live, floating, shownKey, shownStep, shownThought, seconds, dotVisible, dotTrailing } = useRunStatus(() => props.run, () => props.waiting)
 
 const vPulseSync: Directive<HTMLElement | SVGElement> = {
   mounted(el) {
@@ -36,8 +36,8 @@ const vPulseSync: Directive<HTMLElement | SVGElement> = {
   },
 }
 
-const liveText = computed(() => runStatusText(shownStep.value, t))
-const liveKey = computed(() => `live:${shownIndex.value ?? 'thinking'}:${locale.value}`)
+const liveText = computed(() => runStatusText(shownStep.value, t, shownThought.value))
+const liveKey = computed(() => `live:${shownKey.value}:${locale.value}`)
 const summary = computed(() => props.run && runSummaryText(props.run, t))
 const summaryKey = computed(() => `summary:${JSON.stringify(summary.value)}`)
 /** 结束图标：正常完成打勾；有失败步骤或出错用提示；用户停止用停止符号。 */
@@ -49,8 +49,9 @@ const endIcon = computed(() => {
 
   return run?.outcome === 'error' || run?.steps.some(step => step.status === 'failed') ? 'warn' : 'check'
 })
-/** 摘要定稿（done / error / aborted）且有工具步骤才能展开。 */
-const expandable = computed(() => props.run?.phase === 'ended' && props.run.steps.length > 0)
+/** 摘要定稿（done / error / aborted）且有工具步骤或思考原文才能展开。 */
+const expandable = computed(() => props.run?.phase === 'ended'
+  && (props.run.steps.length > 0 || props.run.thoughts.some(thought => thoughtTitle(thought.text))))
 const expanded = ref(false)
 
 function toggle() {
@@ -132,8 +133,9 @@ const floatStyle = computed(() => {
       </span>
       <span class="run-text" role="status">
         <Transition name="run-swap" appear>
-          <span v-if="live" :key="liveKey" class="run-text-item" data-run-text>
-            <span v-pulse-sync class="run-label is-live">{{ liveText.label }}<b v-if="liveText.object">{{ ` ${liveText.object}` }}</b></span>
+          <!-- 思考短句每一两秒换一句，不进读屏播报（aria-hidden），只播步骤与阶段变化 -->
+          <span v-if="live" :key="liveKey" class="run-text-item is-live" data-run-text>
+            <span v-pulse-sync class="run-label is-live" :aria-hidden="shownThought ? 'true' : undefined">{{ liveText.label }}<b v-if="liveText.object">{{ ` ${liveText.object}` }}</b></span>
             <!-- 计时每秒变一次，不进读屏播报 -->
             <span class="run-meta" :class="{ 'is-pending': seconds < 1 }" aria-hidden="true">{{ t('conversation.run.seconds', { n: seconds }) }}</span>
           </span>
@@ -164,7 +166,7 @@ const floatStyle = computed(() => {
     <!-- 只在有状态行时存在（点状态行才能展开）；收起时 inert：看不见的步骤行与链接不能被 Tab 聚焦，也不被读屏读到 -->
     <div v-if="hasRow && expandable && run" class="run-grow" :class="{ 'is-open': expanded }" :inert="!expanded">
       <div>
-        <AgentRunTimeline :steps="run.steps" />
+        <AgentRunTimeline :run="run" />
       </div>
     </div>
 
@@ -191,8 +193,8 @@ const floatStyle = computed(() => {
     <Transition name="run-swap">
       <span v-if="floating && trail" class="run-float" :style="floatStyle" role="status">
         <Transition name="run-swap">
-          <span :key="liveKey" class="run-text-item">
-            <span v-pulse-sync class="run-label is-live">{{ liveText.label }}<b v-if="liveText.object">{{ ` ${liveText.object}` }}</b></span>
+          <span :key="liveKey" class="run-text-item is-live">
+            <span v-pulse-sync class="run-label is-live" :aria-hidden="shownThought ? 'true' : undefined">{{ liveText.label }}<b v-if="liveText.object">{{ ` ${liveText.object}` }}</b></span>
           </span>
         </Transition>
       </span>
@@ -287,6 +289,21 @@ const floatStyle = computed(() => {
   white-space: nowrap;
   /* 常驻合成层：动画开始 / 结束时字形渲染不切换，不会闪一下 */
   will-change: opacity;
+}
+
+/* 进行中：文字过长（思考短句）时只省略文字本身，末尾的计时照常显示；摘要仍整体从末尾省略 */
+.run-text-item.is-live {
+  display: flex;
+}
+
+.run-text-item.is-live .run-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.run-text-item.is-live .run-meta {
+  flex: none;
 }
 
 .run-label b {

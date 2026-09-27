@@ -6,7 +6,7 @@ import { describe, it } from 'vitest'
 import { createI18n } from 'vue-i18n'
 
 import { messages } from '../i18n/messages'
-import { applyRunEvent, endRun, runStepText, safeHref, siteName, startRun } from './run-status'
+import { applyRunEvent, endRun, latestThoughtSentence, liveThought, runStepText, safeHref, siteName, startRun, thoughtTitle } from './run-status'
 
 const ids = { conversationId: 'c', assistantMessageId: 'a' }
 
@@ -32,6 +32,7 @@ describe('#208 等待过程的数据', () => {
         { callId: 's', toolName: 'web_search', query: 'seo', status: 'ok', results: [{ title: 'T', url: 'https://a.example/' }] },
         { callId: 'f', toolName: 'web_fetch', url: 'https://b.example/', status: 'running' },
       ],
+      thoughts: [],
     })
 
     const answering = applyRunEvent(run, { ...ids, type: 'delta', contentDelta: '文' }, 500)
@@ -122,5 +123,100 @@ describe('#208 等待过程的数据', () => {
       assert.equal(safeHref(url), undefined, String(url))
     assert.equal(siteName('https://www.react.dev/blog'), 'react.dev')
     assert.equal(siteName('不是网址'), '不是网址')
+  })
+})
+
+describe('#209 思考原文', () => {
+  const reasoning = (delta: string): ChatStreamEvent => ({ ...ids, type: 'reasoning_delta', delta })
+
+  it('思考短句：最新一句写完的话，中英文句末、没写完的不算、小数点不算句末', () => {
+    assert.equal(latestThoughtSentence('用户想知道 React 19.2 官方列了哪些新特性，'), undefined)
+    assert.equal(latestThoughtSentence('用户想知道 React 19.2 官方列了哪些新特性。先找'), '用户想知道 React 19.2 官方列了哪些新特性。')
+    assert.equal(latestThoughtSentence('第一句话写完了。第二句也写完了！还在写'), '第二句也写完了！')
+    assert.equal(latestThoughtSentence('要不要再搜一次呢？'), '要不要再搜一次呢？')
+    assert.equal(latestThoughtSentence('先列出三个要点\n然后'), '先列出三个要点')
+    // 英文句末要等到后面的空白才算写完：流末尾的点可能是小数点。
+    assert.equal(latestThoughtSentence('The user asks about React 19.'), undefined)
+    assert.equal(latestThoughtSentence('The user asks about React 19.2 features. Let me'), 'The user asks about React 19.2 features.')
+    assert.equal(latestThoughtSentence('Is this the official list? Maybe'), 'Is this the official list?')
+    // 右引号、右括号归前一句；e.g. / i.e. / vs. 不算句末。
+    assert.equal(latestThoughtSentence('用户问：“React 19.2 有哪些新特性？”我需要先搜'), '用户问：“React 19.2 有哪些新特性？”')
+    assert.equal(latestThoughtSentence('用户问：“有哪些新特性？”我需要先搜索官方博客。'), '我需要先搜索官方博客。')
+    assert.equal(latestThoughtSentence('我需要先搜索。"React 19.2"是最新版本。'), '"React 19.2"是最新版本。')
+    assert.equal(latestThoughtSentence('Check the notes (see the blog.) Then'), 'Check the notes (see the blog.)')
+    assert.equal(latestThoughtSentence('We should check the docs, e.g. the release notes. Then'), 'We should check the docs, e.g. the release notes.')
+    assert.equal(latestThoughtSentence('Compare React vs. Vue signals. Then'), 'Compare React vs. Vue signals.')
+    assert.equal(latestThoughtSentence('E.g. this is fine. Then'), 'E.g. this is fine.')
+    // 词尾恰好是 vs 的单词照常断句。
+    assert.equal(latestThoughtSentence('Draw it on the canvas. Then'), 'Draw it on the canvas.')
+  })
+
+  it('思考短句：去掉 Markdown 符号、合并空白，短句跳过取更早的一句，超长原样交给 CSS 省略', () => {
+    assert.equal(latestThoughtSentence('## **先查官方博客**\n'), '先查官方博客')
+    assert.equal(latestThoughtSentence('- 看 `useEffectEvent` 的   文档。'), '看 useEffectEvent 的 文档。')
+    assert.equal(latestThoughtSentence('> 引用里的一句话。'), '引用里的一句话。')
+    assert.equal(latestThoughtSentence('> - 引用里的列表项内容。'), '引用里的列表项内容。')
+    // 单个 * 与 _ 不是强调标记：乘号、Python 的 __init__ 保留。
+    assert.equal(latestThoughtSentence('Use __init__ and a * b here. '), 'Use __init__ and a * b here.')
+    assert.equal(latestThoughtSentence('先搜官方发布说明。好的。嗯。'), '先搜官方发布说明。')
+    assert.equal(latestThoughtSentence('好的。嗯。'), undefined)
+    // 列表序号「1.」后跟空格会被切成一句，但太短会被跳过。
+    assert.equal(latestThoughtSentence('1. 先读官方博客\n2. '), '先读官方博客')
+
+    const long = `${'很长的一句思考'.repeat(40)}。`
+
+    assert.equal(latestThoughtSentence(long), long)
+  })
+
+  it('时间线文字：这一轮结束后末尾没有句末标点的半句也算写完；都太短时用整段', () => {
+    assert.equal(thoughtTitle('先找官方说明。然后对比社区总结'), '然后对比社区总结')
+    assert.equal(thoughtTitle('The user wants the list. Search the blog'), 'Search the blog')
+    assert.equal(thoughtTitle('嗯。'), '嗯。')
+    // 只有 Markdown 符号的一轮没有可显示的文字，时间线不出这一行。
+    assert.equal(thoughtTitle('***\n'), '')
+  })
+
+  it('按轮切分：start 与每个 tool_finished 之后开始新一轮，到 tool_started 或正文开始为止', () => {
+    const events: ChatStreamEvent[] = [
+      reasoning('先搜'),
+      reasoning('一下。'),
+      { ...ids, type: 'tool_started', callId: 's', toolName: 'web_search', query: 'seo' },
+      // 工具执行中不收原文。
+      reasoning('不该出现'),
+      { ...ids, type: 'tool_finished', callId: 's', ok: true },
+      reasoning('结果够了。'),
+      { ...ids, type: 'delta', contentDelta: '答' },
+      // 正文开始后不再收这一轮的原文。
+      reasoning('不该出现'),
+      reasoning(''),
+    ]
+    let run = startRun(0)
+
+    for (const event of events)
+      run = applyRunEvent(run, event, 1)
+
+    assert.deepEqual(run.thoughts, [{ at: 0, text: '先搜一下。' }, { at: 1, text: '结果够了。' }])
+    // 空分片与结束后的原文都不产生新对象。
+    assert.equal(applyRunEvent(run, reasoning(''), 2), run)
+
+    const ended = endRun(run, 3, 'done')
+
+    assert.equal(applyRunEvent(ended, reasoning('晚到'), 4), ended)
+  })
+
+  it('状态行只取这一轮的原文：新一轮还没写完第一句时是「思考中」，不沿用上一轮', () => {
+    let run = startRun(0)
+
+    run = applyRunEvent(run, reasoning('第一轮的思考写完了。'), 1)
+    assert.equal(liveThought(run), '第一轮的思考写完了。')
+
+    run = applyRunEvent(run, { ...ids, type: 'tool_started', callId: 's', toolName: 'web_search' }, 2)
+    assert.equal(liveThought(run), undefined)
+    run = applyRunEvent(run, { ...ids, type: 'tool_finished', callId: 's', ok: true }, 3)
+    assert.equal(liveThought(run), undefined)
+    run = applyRunEvent(run, reasoning('第二轮还没写完'), 4)
+    assert.equal(liveThought(run), undefined)
+    run = applyRunEvent(run, reasoning('，现在写完了。'), 5)
+    assert.equal(liveThought(run), '第二轮还没写完，现在写完了。')
   })
 })

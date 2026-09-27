@@ -31,6 +31,7 @@ export interface ChatModelOption {
 export type ChatStreamEvent
   = | ChatStreamStartEvent
     | ChatStreamDeltaEvent
+    | ChatStreamReasoningDeltaEvent
     | ChatStreamToolStartedEvent
     | ChatStreamToolFinishedEvent
     | ChatStreamDoneEvent
@@ -49,6 +50,17 @@ export interface ChatStreamDeltaEvent {
   conversationId: string
   assistantMessageId: string
   contentDelta: string
+}
+
+/**
+ * 模型思考原文的一个分片（#209）：只有返回思考原文的模型（DeepSeek 等）才有，原样转发、不拼接；
+ * 只给界面显示，不落库、不进 `Message.content` 与模型上下文，刷新后没有。前台一律按纯文本渲染。
+ */
+export interface ChatStreamReasoningDeltaEvent {
+  type: 'reasoning_delta'
+  conversationId: string
+  assistantMessageId: string
+  delta: string
 }
 
 /**

@@ -38,6 +38,7 @@ const DEFAULT_MESSAGE_TIMEOUT_MS = 3600
 const ERROR_MESSAGE_TIMEOUT_MS = 6400
 const CONVERSATION_PAGE_SIZE = 20
 const CONVERSATION_TITLE_MAX_LENGTH = 28
+const REASONING_FLUSH_MS = 200
 
 interface UseChatWorkspaceOptions {
   /** 发送因模型行不可用被拒（HTTP 400）：由调用方重新拉取模型列表并纠正选中项。 */
@@ -84,6 +85,10 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
     content: string
   } | null = null
   let deltaFrame: number | undefined
+  // 思考原文（#209）先攒着、每 REASONING_FLUSH_MS 写入一次：写进 turnRuns 会重算全部轮次，而界面只在一句话写完时变、
+  // 每句至少停 1.5 秒，不必逐帧写。其余事件到达前、终态与停止时也会先写入。
+  let pendingReasoning: Extract<ChatStreamEvent, { type: 'reasoning_delta' }> | null = null
+  let reasoningTimer: number | undefined
   // start 事件前 abort 的占位消息：同一次请求只允许创建一条（stopGeneration
   // 与 catch 的 abort 分支会先后进入 markGenerationAborted）；若排队中的
   // start 事件随后到达，真实助手消息会取代它，占位必须移除。
@@ -128,6 +133,8 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
 
     if (deltaFrame !== undefined)
       cancelAnimationFrame(deltaFrame)
+
+    window.clearTimeout(reasoningTimer)
 
     if (messageTimer !== undefined)
       window.clearTimeout(messageTimer)
@@ -278,6 +285,14 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
       })) {
         if (event.conversationId !== targetConversationId)
           continue
+
+        if (event.type === 'reasoning_delta') {
+          handleStreamReasoningDeltaEvent(event)
+          continue
+        }
+
+        // 攒着的思考原文属于这个事件之前的那一轮：先写入，正文开始或 tool_started 之后就不再收这一轮的原文。
+        flushPendingReasoning()
 
         if (event.type === 'delta') {
           updateTurnRun(event.assistantMessageId, run => applyRunEvent(run, event, performance.now()))
@@ -606,11 +621,35 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
     deltaFrame ??= requestAnimationFrame(flushPendingDelta)
   }
 
+  function handleStreamReasoningDeltaEvent(event: Extract<ChatStreamEvent, { type: 'reasoning_delta' }>) {
+    if (pendingReasoning && pendingReasoning.assistantMessageId !== event.assistantMessageId)
+      flushPendingReasoning()
+
+    if (pendingReasoning)
+      pendingReasoning.delta += event.delta
+    else
+      pendingReasoning = { ...event }
+
+    reasoningTimer ??= window.setTimeout(flushPendingReasoning, REASONING_FLUSH_MS)
+  }
+
+  function flushPendingReasoning() {
+    const reasoning = pendingReasoning
+
+    window.clearTimeout(reasoningTimer)
+    reasoningTimer = undefined
+    pendingReasoning = null
+    if (reasoning)
+      updateTurnRun(reasoning.assistantMessageId, run => applyRunEvent(run, reasoning, performance.now()))
+  }
+
   function flushPendingDelta() {
     if (deltaFrame !== undefined) {
       cancelAnimationFrame(deltaFrame)
       deltaFrame = undefined
     }
+
+    flushPendingReasoning()
 
     const delta = pendingDelta
 

@@ -67,7 +67,8 @@ export async function* adaptOpenAICompatibleStream(
       const reasoningContentDelta = providerDelta.reasoning_content
       const contentDelta = providerDelta.content
 
-      // 处理思考模型的 reasoning_content：只要有 reasoning_content，就算是思考模型，首个 reasoning_content 到达时发 reasoning_started 事件。
+      // 处理思考模型的 reasoning_content：只要有 reasoning_content，就算是思考模型，首个 reasoning_content 到达时发 reasoning_started 事件；
+      // 每片原文再原样作为 reasoning_delta 发出（只给界面显示），回填模型仍用 tool_call_completed.reasoningContent。
       if (reasoningContentDelta) {
         reasoningContentChunks.push(reasoningContentDelta)
 
@@ -75,6 +76,10 @@ export async function* adaptOpenAICompatibleStream(
           hasStartedReasoning = true
           yield { type: 'reasoning_started' }
         }
+
+        // 兼容端点不受 SDK 类型约束：不是字符串的值不发给界面，免得一路传到文本清洗与浏览器才出错。
+        if (typeof reasoningContentDelta === 'string')
+          yield { type: 'reasoning_delta', delta: reasoningContentDelta }
       }
 
       const toolCallDeltas = providerDelta.tool_calls ?? []
