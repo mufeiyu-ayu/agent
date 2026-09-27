@@ -1,5 +1,9 @@
 import type { MessageInputItem } from '@agent/ai'
-import type { ReasoningEffort } from '@agent/contracts'
+import type {
+  ChatStreamToolFinishedEvent,
+  ChatStreamToolStartedEvent,
+  ReasoningEffort,
+} from '@agent/contracts'
 import type { ResolvedLlmModel } from '../llm/llm-model-config.service.js'
 
 export type AgentRuntimeEvent
@@ -17,6 +21,9 @@ export type AgentRuntimeEvent
     assistantMessageId: string
     contentDelta: string
   }
+  // 工具进度（#208）：只给界面，不落库、不进模型上下文；字段与 chat 流事件一致，只多 runId。
+  | (ChatStreamToolStartedEvent & { runId: string })
+  | (ChatStreamToolFinishedEvent & { runId: string })
   | {
     type: 'run_completed'
     runId: string

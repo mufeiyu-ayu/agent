@@ -46,6 +46,8 @@ export interface StreamPlan {
   lines: string[]
   /** 在推送这一行之前挂起，等待测试显式放行；`-1` 表示不挂起。 */
   holdBeforeIndex: number
+  /** 推送每一行之前先等多少毫秒（#208 按时间节奏推送）；省略时不等。 */
+  delaysMs?: number[]
 }
 
 declare global {
@@ -103,6 +105,9 @@ export async function installBrowserStubs(
                   release = resolve
                 })
               }
+
+              if (streamPlan.delaysMs?.[index])
+                await new Promise(resolve => setTimeout(resolve, streamPlan.delaysMs![index]))
 
               controller.enqueue(encoder.encode(`${line}\n`))
               await new Promise(resolve => setTimeout(resolve, 20))

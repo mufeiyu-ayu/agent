@@ -19,6 +19,13 @@ export function toChatStreamEvent(event: AgentRuntimeEvent): ChatStreamEvent {
         contentDelta: event.contentDelta,
       }
 
+    case 'tool_started':
+    case 'tool_finished': {
+      const { runId: _, ...toolEvent } = event
+
+      return toolEvent
+    }
+
     case 'run_completed':
       return {
         type: 'done',

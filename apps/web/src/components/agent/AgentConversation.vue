@@ -12,6 +12,7 @@ import { useWorkspaceTheme } from '@/hooks/useWorkspaceTheme'
 
 import AgentAssistantReply from './AgentAssistantReply.vue'
 import AgentMessage from './AgentMessage.vue'
+import AgentRunStatus from './AgentRunStatus.vue'
 import AgentUserMessage from './AgentUserMessage.vue'
 
 const props = defineProps<{
@@ -87,7 +88,7 @@ const showFloatingLoading = computed(() => {
             <template
               v-for="(turn, turnIndex) in turns"
               :key="turn.id"
-              v-memo="[turn.userMessage, turn.createdAt, turn.reply, turn.status, turn.errorMessage, anchorLatestTurn && turnIndex === turns.length - 1, locale]"
+              v-memo="[turn.userMessage, turn.createdAt, turn.reply, turn.status, turn.errorMessage, turn.run, anchorLatestTurn && turnIndex === turns.length - 1, locale]"
             >
               <!-- eslint-enable vue/no-useless-template-attributes -->
               <AgentMessage
@@ -101,20 +102,17 @@ const showFloatingLoading = computed(() => {
                 role="agent"
                 :class="anchorLatestTurn && turnIndex === turns.length - 1 ? 'min-h-[75dvh]' : undefined"
               >
-                <div
-                  v-if="(turn.status === 'thinking' || turn.status === 'generating') && !turn.reply"
-                  role="status"
-                  class="inline-flex h-10 items-center gap-2"
-                >
-                  <AppIcon name="tabler:sparkles" :size="15" class="thinking-glyph text-agent-copper" />
-                  <span class="thinking-shimmer text-base tracking-wider">{{ t('conversation.thinking') }}</span>
-                </div>
-
-                <AgentAssistantReply
-                  v-if="turn.reply && (turn.status !== 'error' || turn.reply !== turn.errorMessage)"
-                  :text="turn.reply"
-                  :is-streaming="turn.status === 'generating'"
-                />
+                <!--
+                  等待过程：呼吸点、状态行与摘要（#208），正文作为插槽放在状态行下方。
+                  waiting：已发出还没收到 start；或从接口读到还在生成、没有正文的消息（本页没有它的 run）。
+                -->
+                <AgentRunStatus :run="turn.run" :waiting="turn.status === 'thinking' || (turn.status === 'generating' && !turn.reply)">
+                  <AgentAssistantReply
+                    v-if="turn.reply && (turn.status !== 'error' || turn.reply !== turn.errorMessage)"
+                    :text="turn.reply"
+                    :is-streaming="turn.status === 'generating'"
+                  />
+                </AgentRunStatus>
                 <div
                   v-if="turn.status === 'error'"
                   class="mt-2 inline-flex max-w-[620px] items-start gap-2.5 rounded-2xl border border-agent-copper/30 bg-agent-copper-soft px-4 py-3 text-sm font-semibold leading-6 text-agent-ink-soft"
@@ -203,47 +201,8 @@ const showFloatingLoading = computed(() => {
   animation-delay: 0s;
 }
 
-/* 等待首个回复片段时的流光文字：高光带从左向右扫过 */
-.thinking-shimmer {
-  font-family: "ZCOOL KuaiLe", sans-serif;
-  background: linear-gradient(
-    90deg,
-    var(--agent-ink-faint) 0%,
-    var(--agent-ink-faint) 40%,
-    var(--agent-ink) 50%,
-    var(--agent-ink-faint) 60%,
-    var(--agent-ink-faint) 100%
-  );
-  background-size: 250% 100%;
-  background-clip: text;
-  -webkit-background-clip: text;
-  color: transparent;
-  animation: thinking-shimmer 2s linear infinite;
-}
-
-@keyframes thinking-shimmer {
-  from { background-position: 100% 0; }
-  to { background-position: 0% 0; }
-}
-
-/* 前导星芒：缓慢呼吸并微转，与流光同一节奏 */
-.thinking-glyph {
-  animation: thinking-glyph 2s ease-in-out infinite;
-}
-
-@keyframes thinking-glyph {
-  0%, 100% { opacity: 0.45; transform: scale(0.9) rotate(0deg); }
-  50% { opacity: 1; transform: scale(1.05) rotate(15deg); }
-}
-
 @media (prefers-reduced-motion: reduce) {
   .dot-bounce { animation: none; }
-  .thinking-glyph { animation: none; }
-  .thinking-shimmer {
-    animation: none;
-    background: none;
-    color: var(--agent-ink-muted);
-  }
   .floating-loading-enter-active,
   .floating-loading-leave-active { transition: none; }
 }

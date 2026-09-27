@@ -3,6 +3,7 @@ import type {
   ToolDefinition,
   ToolExecutionContext,
   ToolExecutor,
+  ToolResult,
   ValidatedToolInvocation,
 } from '../core/tool.types.js'
 import type { PageText } from './page-text.worker.js'
@@ -17,7 +18,7 @@ import { createOutboundDispatcher } from '../../llm/outbound-proxy.js'
 import { assertPublicHost, guardedLookup } from './ssrf-guard.js'
 
 // 请求
-const MAX_URL_LENGTH = 2048
+export const MAX_URL_LENGTH = 2048
 const MAX_REDIRECTS = 5
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308])
 const USER_AGENT = 'Mozilla/5.0 (compatible; KuroBot/1.0; +https://askkuro.com)'
@@ -100,7 +101,7 @@ export class WebFetchTool implements ToolExecutor<WebFetchInput> {
       const location = REDIRECT_STATUSES.has(response.status) ? response.headers.get('location') : null
 
       if (location === null)
-        return { ok: true as const, modelContent: await readPage(response, url, context.signal) }
+        return await readPage(response, url, context.signal)
 
       await response.body?.cancel()
 
@@ -148,8 +149,11 @@ function unwrapFetchError(error: unknown): unknown {
   return cause instanceof AggregateError ? new Error(cause.errors.map(String).join('; ')) : cause
 }
 
-/** 最终响应 → modelContent：`标题：`、`链接：<最终地址>`、空行、正文。纯文本也带这个开头，「链接：」一行只能是这里写的。 */
-async function readPage(response: Response, url: URL, signal: AbortSignal): Promise<string> {
+/**
+ * 最终响应 → modelContent：`标题：`、`链接：<最终地址>`、空行、正文。纯文本也带这个开头，「链接：」一行只能是这里写的。
+ * display 给界面（#208）：最终地址、标题与正文字数；不支持的类型模型会拿到说明，界面上算未能完成。
+ */
+async function readPage(response: Response, url: URL, signal: AbortSignal): Promise<ToolResult> {
   if (!response.ok) {
     await response.body?.cancel()
     throw new Error(`web_fetch: HTTP ${response.status}`)
@@ -160,7 +164,7 @@ async function readPage(response: Response, url: URL, signal: AbortSignal): Prom
 
   if (mimeType && !TEXT_TYPES.has(mimeType)) {
     await response.body?.cancel()
-    return `不支持的内容类型：${mimeType}`
+    return { ok: true, modelContent: `不支持的内容类型：${mimeType}`, display: { failure: 'failed' } }
   }
 
   const bytes = await readBody(response)
@@ -168,12 +172,17 @@ async function readPage(response: Response, url: URL, signal: AbortSignal): Prom
   const isHtml = mimeType ? mimeType !== 'text/plain' : HTML_START_PATTERN.test(bytes.subarray(0, 1024).toString('latin1'))
 
   if (!mimeType && !isHtml)
-    return '不支持的内容类型：未知'
+    return { ok: true, modelContent: '不支持的内容类型：未知', display: { failure: 'failed' } }
 
   const text = decodeBody(bytes, contentType, isHtml)
   const page = isHtml ? await extractPageText(text, signal) : { title: '', text }
+  const body = page.text.trim()
 
-  return [`标题：${page.title}`, `链接：${url.href}`, '', page.text.trim() || EMPTY_PAGE].join('\n')
+  return {
+    ok: true,
+    modelContent: [`标题：${page.title}`, `链接：${url.href}`, '', body || EMPTY_PAGE].join('\n'),
+    display: { finalUrl: url.href, title: page.title, chars: body.length },
+  }
 }
 
 /** 按流读取，超过上限立即中断：不信任 Content-Length，内存不随响应体增长。 */

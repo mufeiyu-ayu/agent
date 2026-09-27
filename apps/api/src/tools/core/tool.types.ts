@@ -1,4 +1,5 @@
 import type { JsonObjectSchema } from '@agent/ai'
+import type { ChatStreamToolFinishedEvent } from '@agent/contracts'
 import type { DatabaseOperationDeadline } from '../../prisma/prisma.service.js'
 import type { NormalizedToolObservation } from './tool-observation.js'
 
@@ -44,10 +45,17 @@ export interface ToolInvocationContext extends ToolExecutionContext {
   argumentsTruncated: boolean
 }
 
+/**
+ * 只给界面看的结构化结果（#208）：随 tool_finished 事件发给前台，不进模型上下文、不落库。
+ * failure：模型拿到了说明、但界面上算失败的情况（如网页内容类型不支持）。
+ */
+export type ToolDisplay = Pick<ChatStreamToolFinishedEvent, 'results' | 'finalUrl' | 'title' | 'chars' | 'failure'>
+
 export type ToolResult
   = | {
     ok: true
     modelContent: string
+    display?: ToolDisplay
   }
   | {
     ok: false

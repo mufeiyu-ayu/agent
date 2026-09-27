@@ -282,7 +282,8 @@ describe('web_fetch 下载', () => {
     const pdf = await service.invoke(createEnvelope({ url: PUBLIC_URL }), createContext())
     const notFound = await service.invoke(createEnvelope({ url: PUBLIC_URL }), createContext())
 
-    assert.deepEqual(pdf.result, { ok: true, modelContent: '不支持的内容类型：application/pdf' })
+    // 模型拿到说明；界面上算未能完成（#208）。
+    assert.deepEqual(pdf.result, { ok: true, modelContent: '不支持的内容类型：application/pdf', display: { failure: 'failed' } })
     assert.equal(pulled, false)
     assert.equal(notFound.result.ok ? 'ok' : notFound.result.code, 'execution_failed')
     assert.ok(logs.some(log => log.includes('web_fetch: HTTP 404')))
@@ -360,6 +361,12 @@ describe('web_fetch 正文提取', () => {
     assert.deepEqual(lines.slice(0, 3), ['标题：文章标题', '链接：http://93.184.216.34/news/1', ''])
     assert.equal(lines.filter(line => /^第 \d 段正文：.+，这样它才会把 article 识别为正文主体，而不是侧栏或导航。$/.test(line)).length, 5)
     assert.doesNotMatch(result.modelContent, /新闻导航|侧栏热门|版权所有|脚本内容|正文里的脚本|color: red/)
+    // #208 AC-06：给界面的是重定向后的最终地址、标题与正文字数。
+    assert.deepEqual(result.ok && result.display, {
+      finalUrl: 'http://93.184.216.34/news/1',
+      title: '文章标题',
+      chars: lines.slice(3).join('\n').length,
+    })
   })
 
   it('编码：BOM > Content-Type > <meta charset>（含靠后的 http-equiv）> UTF-8；header 的标签不认识时退回 meta；meta 写 UTF-16 按 UTF-8', async () => {

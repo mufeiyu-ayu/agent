@@ -13,6 +13,7 @@ import type {
 import type { DatabaseOperationDeadline } from '../prisma/prisma.service.js'
 import type { NormalizedToolObservation } from '../tools/core/tool-observation.js'
 import type {
+  ToolDisplay,
   ToolInvocationResult,
   UnvalidatedToolCallEnvelope,
 } from '../tools/core/tool.types.js'
@@ -55,6 +56,8 @@ import {
 } from '../prisma/prisma.service.js'
 import { ToolInvocationService } from '../tools/core/tool-invocation.service.js'
 import { TOOL_DEFINITIONS } from '../tools/tool-definitions.js'
+import { MAX_URL_LENGTH } from '../tools/web/web-fetch.tool.js'
+import { MAX_QUERY_LENGTH } from '../tools/web/web-search.tool.js'
 import {
   AGENT_RUN_DEADLINE_EXCEEDED_MESSAGE,
   AgentLoopLimitExceededError,
@@ -91,6 +94,15 @@ import { streamModelSampling } from './sampling/model-sampling-decision.js'
 const RUN_ABORTED_MESSAGE = '用户已停止生成。'
 /** 数据库、工具执行等服务端自身故障的文案：不能说成模型服务的问题。 */
 const RUN_INTERNAL_FAILURE_MESSAGE = '服务端未能完成本轮回答，请稍后重试。'
+
+/** 一个 call 回喂给下一轮模型的内容。 */
+interface ToolFeedback {
+  /** 回喂给模型的正文。 */
+  observation: NormalizedToolObservation
+  ok: boolean
+  /** 下一轮回喂给模型的参数。 */
+  feedbackArgumentsJson: string
+}
 
 interface ActiveSamplingClose {
   close: () => Promise<void>
@@ -488,11 +500,14 @@ export class AgentRuntimeService {
         const argumentsTruncated
           = samplingDecision.summary.finishReason === 'length'
 
-        // 拿到执行工具的结果
-        const toolResults = await this.executeToolBatch({
+        // 拿到执行工具的结果；执行过程中逐个推出 tool_started / tool_finished 给前台显示进度。
+        const toolResults = yield* this.executeToolBatch({
           // 记账
           runId: currentAgentRunId,
           samplingAttemptId,
+          // 进度事件
+          conversationId: input.conversationId,
+          assistantMessageId,
 
           // toos 相关
           calls, // 模型要调用的工具
@@ -727,33 +742,46 @@ export class AgentRuntimeService {
    * 查找、截断批次、校验、执行与修剪都由 invoke 判定，这里只开关 Step、记账与收集回喂内容。
    * 某个 call 被停止、deadline 或工具自身抛错打断时，先确立终态原因，再把该 Step 的失败归因
    * 写进 terminal.stepFailure，然后原样抛出：外层 catch 要靠原异常判断终止来源。
+   * 每个 call 在开 Step 前推出 tool_started、Step 收口后推出 tool_finished（被打断的不推）：
+   * yield 点都落在没有进行中 tool Step 的位置，消费者此时 return() 不会留下 RUNNING 的 Step。
    */
-  private async executeToolBatch(input: {
+  private async* executeToolBatch(input: {
     runId: string
     samplingAttemptId: string
+    conversationId: string
+    assistantMessageId: string
     calls: UnvalidatedToolCallEnvelope[]
     argumentsTruncated: boolean
     runCancellation: RunCancellation
     terminal: RunTerminalSlots
-  }) {
+  }): AsyncGenerator<AgentRuntimeEvent, ToolFeedback[]> {
     const {
       runId,
       samplingAttemptId,
+      conversationId,
+      assistantMessageId,
       calls,
       argumentsTruncated,
       runCancellation,
       terminal,
     } = input
+    const progress = { runId, conversationId, assistantMessageId }
     const { signal: runSignal, databaseDeadline } = runCancellation
 
-    const toolResults: Array<{
-      observation: NormalizedToolObservation // 回喂给模型的正文，
-      ok: boolean
-      feedbackArgumentsJson: string // 下一轮回喂给模型的参数
-    }> = []
+    const toolResults: ToolFeedback[] = []
 
     // 顺序执行，每个 call 一个 tool_execution Step；当前工具只读，并行没有收益。
     for (const call of calls) {
+      // 消费者在上一个 tool_finished 处暂停期间可能已停止或到期：不推一个不会执行的 tool_started。
+      runCancellation.throwIfUnavailable()
+      yield {
+        type: 'tool_started',
+        ...progress,
+        callId: call.callId,
+        toolName: call.toolName,
+        ...toToolProgressArguments(call.rawArgumentsJson),
+      }
+
       // callId / toolName 是模型原样给的，落库副本同样要能进 jsonb。
       const toolStepInput = {
         callId: toPersistableText(call.callId),
@@ -837,6 +865,18 @@ export class AgentRuntimeService {
         )
       }
 
+      // 成功时带工具给界面的 display（可能自己标了 failure）；失败只分超时与其他。
+      const display: ToolDisplay | undefined = toolResult.ok
+        ? toolResult.display
+        : { failure: toolResult.code === 'timeout' ? 'timeout' : 'failed' }
+
+      yield {
+        type: 'tool_finished',
+        ...progress,
+        callId: call.callId,
+        ok: !display?.failure,
+        ...display,
+      }
       toolResults.push({
         observation,
         ok: toolResult.ok,
@@ -1312,6 +1352,26 @@ function toPersistedSamplingContent(
     ...(decision.reasoningContent
       ? { reasoningContent: toPersistableText(decision.reasoningContent) }
       : {}),
+  }
+}
+
+/** tool_started 给界面显示的参数（#208）：只用于展示，解析失败或不是字符串就不带，按长度截断。 */
+export function toToolProgressArguments(rawArgumentsJson: string): { query?: string, url?: string } {
+  let args: unknown
+
+  try {
+    args = JSON.parse(rawArgumentsJson)
+  }
+  catch {
+    return {}
+  }
+
+  const { query, url } = typeof args === 'object' && args !== null ? args as Record<string, unknown> : {}
+
+  return {
+    // 截断长度与 web_search / web_fetch 自己的参数上限一致。
+    ...(typeof query === 'string' ? { query: query.slice(0, MAX_QUERY_LENGTH) } : {}),
+    ...(typeof url === 'string' ? { url: url.slice(0, MAX_URL_LENGTH) } : {}),
   }
 }
 

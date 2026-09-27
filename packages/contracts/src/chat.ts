@@ -31,6 +31,8 @@ export interface ChatModelOption {
 export type ChatStreamEvent
   = | ChatStreamStartEvent
     | ChatStreamDeltaEvent
+    | ChatStreamToolStartedEvent
+    | ChatStreamToolFinishedEvent
     | ChatStreamDoneEvent
     | ChatStreamErrorEvent
     | ChatStreamAbortedEvent
@@ -47,6 +49,42 @@ export interface ChatStreamDeltaEvent {
   conversationId: string
   assistantMessageId: string
   contentDelta: string
+}
+
+/**
+ * 工具开始执行（#208）：只给界面显示进度，不落库、不进模型上下文。
+ * `query` / `url` 是模型给的参数，仅供展示：尽力取出、按长度截断，取不到就没有；前台一律按纯文本渲染。
+ */
+export interface ChatStreamToolStartedEvent {
+  type: 'tool_started'
+  conversationId: string
+  assistantMessageId: string
+  callId: string
+  /** 模型给的工具名，原样。 */
+  toolName: string
+  /** web_search 的查询词，最多 200 字符。 */
+  query?: string
+  /** web_fetch 的网址，最多 2048 字符。 */
+  url?: string
+}
+
+/** 工具执行结束（#208）：用户停止或到 deadline 时不发，由随后的 aborted / error 收尾。 */
+export interface ChatStreamToolFinishedEvent {
+  type: 'tool_finished'
+  conversationId: string
+  assistantMessageId: string
+  callId: string
+  ok: boolean
+  /** ok 为 false 时：timeout 是工具超时，其余（截断、未知工具、参数无效、执行失败）都是 failed。 */
+  failure?: 'timeout' | 'failed'
+  /** web_search 成功：来源列表，最多 10 条。 */
+  results?: Array<{ title: string, url: string }>
+  /** web_fetch 成功：重定向后的最终地址。 */
+  finalUrl?: string
+  /** web_fetch 成功：网页标题。 */
+  title?: string
+  /** web_fetch 成功：正文字数。 */
+  chars?: number
 }
 
 export interface ChatStreamDoneEvent {

@@ -47,6 +47,31 @@ describe('NDJSON 协议兼容', () => {
     }
   })
 
+  it('#208 工具进度事件：合法的原样解析，字段类型不对时 fail closed', () => {
+    const events: ChatStreamEvent[] = [
+      { type: 'tool_started', conversationId: 'c', assistantMessageId: 'a', callId: 'call-1', toolName: 'web_search', query: 'seo' },
+      { type: 'tool_started', conversationId: 'c', assistantMessageId: 'a', callId: 'call-2', toolName: 'hidden_tool' },
+      { type: 'tool_finished', conversationId: 'c', assistantMessageId: 'a', callId: 'call-1', ok: true, results: [{ title: 'T', url: 'https://a.example/' }] },
+      { type: 'tool_finished', conversationId: 'c', assistantMessageId: 'a', callId: 'call-3', ok: true, finalUrl: 'https://a.example/', title: '', chars: 0 },
+      { type: 'tool_finished', conversationId: 'c', assistantMessageId: 'a', callId: 'call-2', ok: false, failure: 'failed' },
+    ]
+
+    for (const event of events)
+      assert.deepEqual(parseChatStreamEventLine(JSON.stringify(event)), event)
+
+    const base = { conversationId: 'c', assistantMessageId: 'a', callId: 'call-1' }
+    for (const invalid of [
+      { ...base, type: 'tool_started' },
+      { ...base, type: 'tool_started', toolName: 'web_fetch', url: 1 },
+      { ...base, type: 'tool_finished' },
+      { ...base, type: 'tool_finished', ok: false, failure: 'blocked' },
+      { ...base, type: 'tool_finished', ok: true, results: [{ title: 'T' }] },
+      { ...base, type: 'tool_finished', ok: true, chars: '10' },
+    ]) {
+      assert.throws(() => parseChatStreamEventLine(JSON.stringify(invalid)), /流式响应事件格式不正确/, JSON.stringify(invalid))
+    }
+  })
+
   it('未知 top-level event type 继续 fail closed', () => {
     assert.throws(
       () => parseChatStreamEventLine(JSON.stringify({

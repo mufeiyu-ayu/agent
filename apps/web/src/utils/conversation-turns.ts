@@ -1,9 +1,11 @@
 import type { Conversation, ConversationMessage } from '@agent/contracts'
-import type { ConversationTurn, ConversationTurnStatus } from '../types/chat'
+import type { ConversationTurn, ConversationTurnStatus, TurnRun } from '../types/chat'
 
 interface MapConversationMessagesOptions {
   activeTurnId: string | null
   turnErrors: Record<string, string>
+  /** 按助手消息 id 的等待过程；只有当前页面里发出的轮次才有。 */
+  runs?: Record<string, TurnRun>
 }
 
 /**
@@ -42,6 +44,11 @@ export function mapMessagesToConversationTurns(
     currentTurn.reply = item.content
     currentTurn.generatedAt = item.updatedAt
     currentTurn.status = mapAssistantMessageStatus(item.status)
+
+    const run = options.runs?.[item.id]
+
+    if (run)
+      currentTurn.run = run
 
     if (item.status === 'FAILED') {
       currentTurn.errorMessage = errorMessage ?? item.content
