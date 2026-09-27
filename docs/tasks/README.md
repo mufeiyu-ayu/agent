@@ -19,6 +19,7 @@ Admin Task 4：Closed（2026-09-27：Auth 由 #195 完成；RBAC 不做（两种
 
 | 任务 | 状态 | 说明 |
 | --- | --- | --- |
+| #201 会话记录按用户查找 | Completed | 会话记录显示所属用户，可按用户与最近活跃时间筛选（条件在地址栏），用户列表「查看对话」直达。PR #203 |
 | #198 使用 Google 登录，陌生账号进入待审核 | Completed | 重定向登录 + One Tap 上线，陌生账号待管理员审核，首页登录改弹窗，前台与管理台显示头像昵称。PR #200 |
 | #197 pnpm ship 一键部署与版本回退 | Completed | 上线 `https://askkuro.com`（管理台 `/admin/`），`pnpm ship` 构建直传、迁移前备份、健康检查失败自动切回，`pnpm ship:rollback` 只回退代码。PR #199 |
 | #195 邮箱密码登录、会话隔离与用户管理 | Completed | 全局 Guard + Session Cookie，会话按人隔离，管理台用户列表与 `pnpm create-admin`。PR #196 |

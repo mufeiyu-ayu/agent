@@ -2,13 +2,15 @@ import type {
   AdminConversationDetail,
   AdminConversationListResponse,
 } from '@agent/contracts'
+import type { Prisma } from '../generated/prisma/client.js'
 import type { ListAdminConversationsQueryDto } from './dto/admin-conversations.dto.js'
-import { Inject, Injectable, NotFoundException } from '@nestjs/common'
+import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common'
 
 import { PrismaService } from '../prisma/prisma.service.js'
 
 const DEFAULT_PAGE = 1
 const DEFAULT_PAGE_SIZE = 20
+const USER_SELECT = { select: { id: true, email: true, name: true, avatarUrl: true } } as const
 
 @Injectable()
 export class AdminConversationsService {
@@ -20,9 +22,11 @@ export class AdminConversationsService {
   async list(input: ListAdminConversationsQueryDto): Promise<AdminConversationListResponse> {
     const page = input.page ?? DEFAULT_PAGE
     const pageSize = input.pageSize ?? DEFAULT_PAGE_SIZE
+    const where = createConversationWhere(input)
 
     const [conversations, totalItems] = await Promise.all([
       this.prismaService.conversation.findMany({
+        where,
         orderBy: [
           { updatedAt: 'desc' },
           { id: 'desc' },
@@ -34,6 +38,7 @@ export class AdminConversationsService {
           title: true,
           createdAt: true,
           updatedAt: true,
+          user: USER_SELECT,
           _count: {
             select: {
               messages: true,
@@ -42,13 +47,14 @@ export class AdminConversationsService {
           },
         },
       }),
-      this.prismaService.conversation.count(),
+      this.prismaService.conversation.count({ where }),
     ])
 
     return {
       items: conversations.map(conversation => ({
         id: conversation.id,
         title: conversation.title,
+        user: conversation.user,
         messageCount: conversation._count.messages,
         runCount: conversation._count.agentRuns,
         createdAt: conversation.createdAt.toISOString(),
@@ -76,6 +82,7 @@ export class AdminConversationsService {
         title: true,
         createdAt: true,
         updatedAt: true,
+        user: USER_SELECT,
         messages: {
           // 同毫秒消息用 id 兜底，保证 transcript 顺序确定。
           orderBy: [
@@ -104,6 +111,7 @@ export class AdminConversationsService {
     return {
       id: conversation.id,
       title: conversation.title,
+      user: conversation.user,
       runCount: conversation._count.agentRuns,
       createdAt: conversation.createdAt.toISOString(),
       updatedAt: conversation.updatedAt.toISOString(),
@@ -115,5 +123,26 @@ export class AdminConversationsService {
         createdAt: message.createdAt.toISOString(),
       })),
     }
+  }
+}
+
+/** 不存在的 userId 不报错，按条件查出空列表。 */
+function createConversationWhere(input: ListAdminConversationsQueryDto): Prisma.ConversationWhereInput {
+  const dateFrom = input.dateFrom ? new Date(input.dateFrom) : undefined
+  const dateTo = input.dateTo ? new Date(input.dateTo) : undefined
+
+  if (dateFrom && dateTo && dateFrom > dateTo)
+    throw new BadRequestException('dateFrom 不能晚于 dateTo')
+
+  return {
+    ...(input.userId ? { userId: input.userId } : {}),
+    ...(dateFrom || dateTo
+      ? {
+          updatedAt: {
+            ...(dateFrom ? { gte: dateFrom } : {}),
+            ...(dateTo ? { lte: dateTo } : {}),
+          },
+        }
+      : {}),
   }
 }

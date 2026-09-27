@@ -3,6 +3,7 @@ export type {
   AdminConversationListItem,
   AdminConversationListResponse,
   AdminConversationMessage,
+  AdminConversationUser,
 } from './admin-conversation.js'
 export type {
   AdminLlmCredentialsInput,

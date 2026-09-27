@@ -193,7 +193,14 @@ export const messages = {
         runs: '运行',
         updatedAt: '最近活跃',
         createdAt: '创建时间',
+        user: '所属用户',
       },
+      filters: {
+        user: '按用户筛选',
+        userPlaceholder: '输入邮箱搜索用户',
+        dateRange: '最近活跃时间',
+      },
+      unowned: '未归属',
       loadFailed: '会话列表加载失败',
       empty: '还没有会话记录。',
       showing: '当前显示 {count} 条，共 {total} 条会话',
@@ -205,6 +212,7 @@ export const messages = {
         runs: '运行记录',
       },
       fields: {
+        user: '所属用户',
         messages: '消息数',
         runs: '运行次数',
         createdAt: '创建时间',
@@ -468,6 +476,7 @@ export const messages = {
       title: '用户列表',
       description: '管理员在这里建号、审核 Google 登录申请、停用、重置密码与改角色；新建与重置后，本人首次登录必须改密码。',
       create: '新建用户',
+      viewConversations: '查看对话',
       columns: {
         user: '用户',
         email: '邮箱',
@@ -816,7 +825,14 @@ export const messages = {
         runs: 'Runs',
         updatedAt: 'Last Active',
         createdAt: 'Created At',
+        user: 'User',
       },
+      filters: {
+        user: 'Filter by user',
+        userPlaceholder: 'Search users by email',
+        dateRange: 'Last active',
+      },
+      unowned: 'Unassigned',
       loadFailed: 'Unable to load Conversations',
       empty: 'No Conversations yet.',
       showing: 'Showing {count} of {total} Conversations',
@@ -828,6 +844,7 @@ export const messages = {
         runs: 'Runs',
       },
       fields: {
+        user: 'User',
         messages: 'Messages',
         runs: 'Runs',
         createdAt: 'Created',
@@ -1091,6 +1108,7 @@ export const messages = {
       title: 'Users',
       description: 'Create accounts, review Google sign-in requests, disable accounts, reset passwords and change roles. New and reset accounts must change the password on first sign-in.',
       create: 'New user',
+      viewConversations: 'Conversations',
       columns: {
         user: 'User',
         email: 'Email',
