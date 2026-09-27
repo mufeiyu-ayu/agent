@@ -15,6 +15,7 @@
 
 | 日期 | 事项 |
 | --- | --- |
+| 2026-09-28 | 协作规则：commit 前 review 连同首轮最多 4 轮（原为首轮 + 复审 2 轮） |
 | 2026-09-28 | 对话等待过程：呼吸点、单行步骤状态（新增 `tool_started` / `tool_finished` 事件）与可展开的时间线摘要，本地验收，未上线（#208 / PR #210） |
 | 2026-09-27 | 读网页 `web_fetch`：服务器直接抓网页，每一跳防 SSRF（含 DNS 换绑），正文在 worker 里用 Readability 提取（#206 / PR #207） |
 | 2026-09-27 | 联网搜索 `web_search`（Serper 查 Google）上线本地，提示词改为 Kuro 并注入日期，删 `search_articles`（#204 / PR #205） |

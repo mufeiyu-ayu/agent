@@ -30,7 +30,7 @@ description: 处理本项目 GitHub Pull Request 上的外部 Review 评论（�
 3. 运行受影响的最小必要验证，并补充 Review 指出的缺失测试。
 4. 只暂存本轮修复文件，使用中文 `fix: 简短说明` 创建 commit。
 5. push 到原 PR 分支，更新 PR 说明或评论中的验证结果，resolve 已处理的 threads。
-6. 修改了功能代码或重要边界时，push 后再次触发 `<review 命令>` 复审；仅回复、resolve thread 或 docs 收口时不重复触发。复审最多 2 轮。
+6. 修改了功能代码或重要边界时，push 后再次触发 `<review 命令>` 复审；仅回复、resolve thread 或 docs 收口时不重复触发。复审最多 3 轮（与 commit 前 review 同一上限：连同首轮最多 4 轮）。
 
 ## 4. 收口
 
