@@ -6,11 +6,11 @@
 
 ```text
 阶段 1-8：Completed
-当前阶段：本项目源码阅读（工作台第 0 档）
+当前阶段：工作台第 1 档（第一期上线）
 Active Agent Task：无
-Next：源码阅读（第 0 档）从异常断点接着读；RAG 清理三步已随 #189 结束
+Next：#195 邮箱密码登录、会话按人隔离与用户管理（第一期 ①，之后是 ② 部署、③ 联网搜索）
 Gated：#117 Responses API adapter（2026-09-18），触发条件见看板
-产品方向：给 topuplist 运营用的 AI 工作台，分两期、上云、gsc 延后（2026-09-20 定案、2026-09-27 改为两期，docs/research/workbench-direction.md），未立 Issue；档、顺序与触发只在其第 7 节
+产品方向：给 topuplist 运营用的 AI 工作台，分两期、上云、gsc 延后（2026-09-20 定案、2026-09-27 改为两期，docs/research/workbench-direction.md）；档、顺序与触发只在其第 7 节
 候选子系统：session 事件流与 replay、审批门、compaction、定时任务（未立 Issue，各自的档见 workbench 第 7 节）
 Admin Task 4：Planned
 ```
@@ -58,6 +58,7 @@ Admin Task 4：Planned
 | #156 低成本安全加固 | Completed | 库内密钥只发往库内地址，地址与密钥成对写入。PR #164 |
 | #158 运行时小修 | Completed | 跨轮文本保证空行，planner 成对删历史，测试入口补漏。PR #166 |
 | #157 真实 Tool Call 流 fixture | Completed | 四家真实 Tool Call SSE 录制后经 client 回放测试。PR #165 |
+| #195 邮箱密码登录、会话隔离与用户管理 | Next | 实施状态：未开始 / 验收状态：未验收。第一期 ①，高风险（鉴权 + migration），review `xhigh` |
 | AI 工作台两期 | Planned | 第一期：登录 + 联网搜索 + 部署香港云服务器；第二期：我的页面（查询工具、沙箱、打开即重新取数、对话改页）；gsc 迁移延后；档、触发、里程碑见 [workbench-direction](../research/workbench-direction.md) 第 7 节；一次只立一个 Issue |
 | Grok Grounding 收尾不调用提交工具 | 已放弃 | 2026-09-26 记录；同日用户定案删除 Grounding（#185），问题随之消失，不再立 Issue。原记录见 git 历史 |
 | `web_fetch` 第一个真实工具 | Planned | 只读、SSRF 防护、untrusted observation，范围见 [pi-reference roadmap](../research/pi-reference/roadmap.md)。2026-09-19 转 Gated；2026-09-27 解除：运营要看新闻、查网站，与联网搜索一起进工作台第 1 档 |
