@@ -6,9 +6,9 @@ import { Buffer } from 'node:buffer'
 import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
 import process from 'node:process'
 import { HttpException, HttpStatus, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common'
-import { fetch, getGlobalDispatcher } from 'undici'
+import { fetch } from 'undici'
 
-import { createOutboundProxyAgent, resolveOutboundProxyConfig } from '../llm/outbound-proxy.js'
+import { createOutboundDispatcher } from '../llm/outbound-proxy.js'
 import { PrismaService } from '../prisma/prisma.service.js'
 import { readAppOrigins } from './auth.guard.js'
 import { AuthService, userStatus } from './auth.service.js'
@@ -63,11 +63,8 @@ export class GoogleAuthService {
   private readonly clientId = process.env.GOOGLE_OAUTH_CLIENT_ID?.trim() || null
   private readonly clientSecret = process.env.GOOGLE_OAUTH_CLIENT_SECRET?.trim() || null
   private readonly origins = readAppOrigins()
-  // 本机开发访问 Google 要走代理；线上不配 OUTBOUND_PROXY_URL 就直连。不替换进程的全局 dispatcher。
-  private readonly dispatcher: Dispatcher = (() => {
-    const proxy = resolveOutboundProxyConfig(process.env)
-    return proxy ? createOutboundProxyAgent(proxy) : getGlobalDispatcher()
-  })()
+  // 本机开发访问 Google 要走代理；线上不配 OUTBOUND_PROXY_URL 就直连。
+  private readonly dispatcher: Dispatcher = createOutboundDispatcher()
 
   // 流程 Cookie 的签名密钥：进程内随机，重启后进行中的登录失效（重新点一次即可）。
   private readonly flowKey = randomBytes(32)

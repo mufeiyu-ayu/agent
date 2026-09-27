@@ -56,7 +56,7 @@ ssh agent-hk '[ -f /var/run/reboot-required ] && echo 需要重启 || echo 无�
    ssh agent-hk 'mkdir -p ~/kuro && cd ~/kuro && test ! -e .env && umask 077 && printf "POSTGRES_PASSWORD=%s\nAGENT_SECRET_KEY=%s\nAPP_ORIGINS=https://askkuro.com\n" "$(openssl rand -hex 24)" "$(openssl rand -hex 32)" > .env && ls -l .env'
    ```
 
-   其余可选变量（`AGENT_*`、`OUTBOUND_PROXY_URL` 等）按 `.env.example` 追加到这个文件，改完在服务器上 `cd ~/kuro && export KURO_VERSION=$(cat current) && docker compose up -d` 生效（`pnpm ship` 拒绝重复部署当前版本）。`API_HOST`、`TRUST_PROXY`、`DATABASE_URL` 由 `compose.yml` 设置，不写进 `.env`。
+   其余可选变量（`AGENT_*` 等）按 `.env.example` 追加到这个文件；线上不配 `OUTBOUND_PROXY_URL`：配了之后 `web_fetch` 由代理解析域名，连接时的 SSRF 检查失效。改完在服务器上 `cd ~/kuro && export KURO_VERSION=$(cat current) && docker compose up -d` 生效（`pnpm ship` 拒绝重复部署当前版本）。`API_HOST`、`TRUST_PROXY`、`DATABASE_URL` 由 `compose.yml` 设置，不写进 `.env`。
 
 3. 在 master 上执行 `pnpm ship`。首次会拉 Postgres 镜像、申请证书，稍慢。
 
