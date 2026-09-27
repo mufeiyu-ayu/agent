@@ -1,5 +1,7 @@
+import type { Dispatcher } from 'undici'
+import process from 'node:process'
 import { LLMConfigError } from '@agent/ai'
-import { ProxyAgent } from 'undici'
+import { getGlobalDispatcher, ProxyAgent } from 'undici'
 
 /**
  * 出站代理：地址只来自 `.env` 的 `OUTBOUND_PROXY_URL`，是这台机器的网络条件，不是服务商的属性。
@@ -47,7 +49,17 @@ export function resolveOutboundProxyConfig(env: NodeJS.ProcessEnv): OutboundProx
   }
 }
 
-/** 代理 agent 只在这里构造：`LLMService`、`GoogleAuthService` 与 `WebSearchTool` 各在构造时建一个。 */
+/** 代理 agent 只在这里构造：`LLMService` 与下面的 `createOutboundDispatcher` 各建一个。 */
 export function createOutboundProxyAgent(config: OutboundProxyConfig): ProxyAgent {
   return new ProxyAgent(config.url)
+}
+
+/**
+ * 配了 `OUTBOUND_PROXY_URL` 返回代理 agent，没配返回 `direct`（默认是进程的全局 dispatcher），不替换全局 dispatcher。
+ * `GoogleAuthService`、`WebSearchTool`、`WebFetchTool` 构造时各调一次；`LLMService` 按服务商的勾选另行决定。
+ */
+export function createOutboundDispatcher(direct: Dispatcher = getGlobalDispatcher()): Dispatcher {
+  const proxy = resolveOutboundProxyConfig(process.env)
+
+  return proxy ? createOutboundProxyAgent(proxy) : direct
 }

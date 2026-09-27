@@ -1,5 +1,6 @@
 import type { Type } from '@nestjs/common'
 import type { ToolDefinition, ToolExecutor } from './core/tool.types.js'
+import { webFetchDefinition, WebFetchTool } from './web/web-fetch.tool.js'
 import { webSearchDefinition, WebSearchTool } from './web/web-search.tool.js'
 
 /**
@@ -8,6 +9,7 @@ import { webSearchDefinition, WebSearchTool } from './web/web-search.tool.js'
  */
 export const TOOLS = [
   toolEntry(webSearchDefinition, WebSearchTool),
+  toolEntry(webFetchDefinition, WebFetchTool),
 ]
 
 /** 由清单派生：Run 暴露给模型的工具与 Admin 概览的工具名都读它。 */

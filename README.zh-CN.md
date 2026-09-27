@@ -98,7 +98,7 @@ flowchart LR
     Runtime --> Context[模型上下文<br/>Token 预算 · 裁剪]
     Runtime --> LLM["@agent/ai<br/>OpenAI-compatible 客户端"]
     LLM -->|SSE| Providers([DeepSeek · GPT · Grok · Gemini])
-    Runtime --> Tools[工具<br/>文章关键词搜索] --> DB[(PostgreSQL)]
+    Runtime --> Tools[工具<br/>联网搜索 · 读网页] --> Internet([Google · 网页])
     Runtime --> Recorder[Run / Step 记录] --> DB
     AdminAPI --> DB
 ```

@@ -7,7 +7,7 @@ Tool Calling 的框架与具体工具。一次工具调用的全部判定都在 
 | 位置 | 放什么 |
 | --- | --- |
 | `core/` | 框架，与具体工具无关：类型（`tool.types.ts`）、Registry、`invoke`、Observation 修剪（`tool-observation.ts`） |
-| `web/` | 具体工具：`web_search` 的定义、执行器、参数解析与结果拼装都在 `web-search.tool.ts`（经 Serper 查 Google） |
+| `web/` | 具体工具，每个工具的定义、执行器、参数解析与结果拼装在一个文件：`web-search.tool.ts`（经 Serper 查 Google）、`web-fetch.tool.ts`（服务器直接抓网页）；只给 `web_fetch` 用的两个文件：`ssrf-guard.ts`（SSRF 检查）、`page-text.worker.ts`（在 worker 线程里用 Readability 提取正文） |
 | `tool-definitions.ts` | 唯一的工具清单 `TOOLS`（定义 + 执行器类）；`TOOL_DEFINITIONS` 由它派生 |
 | `tools.module.ts` | 按清单把执行器放进 providers，`onModuleInit` 时成对注册进 Registry |
 

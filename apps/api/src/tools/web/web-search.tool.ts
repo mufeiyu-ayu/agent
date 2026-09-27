@@ -7,9 +7,9 @@ import type {
 } from '../core/tool.types.js'
 import process from 'node:process'
 import { Injectable, Logger } from '@nestjs/common'
-import { fetch, getGlobalDispatcher } from 'undici'
+import { fetch } from 'undici'
 
-import { createOutboundProxyAgent, resolveOutboundProxyConfig } from '../../llm/outbound-proxy.js'
+import { createOutboundDispatcher } from '../../llm/outbound-proxy.js'
 
 export const SERPER_SEARCH_URL = 'https://google.serper.dev/search'
 const MAX_QUERY_LENGTH = 200
@@ -46,11 +46,8 @@ export const webSearchDefinition: ToolDefinition<WebSearchInput> = {
 @Injectable()
 export class WebSearchTool implements ToolExecutor<WebSearchInput> {
   private readonly logger = new Logger(WebSearchTool.name)
-  // 与 GoogleAuthService 同一写法：配了 OUTBOUND_PROXY_URL 走代理，没配直连，不替换全局 dispatcher。
-  readonly dispatcher: Dispatcher = (() => {
-    const proxy = resolveOutboundProxyConfig(process.env)
-    return proxy ? createOutboundProxyAgent(proxy) : getGlobalDispatcher()
-  })()
+  // 配了 OUTBOUND_PROXY_URL 走代理，没配直连。
+  readonly dispatcher: Dispatcher = createOutboundDispatcher()
 
   async execute(
     invocation: ValidatedToolInvocation<WebSearchInput>,

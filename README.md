@@ -98,7 +98,7 @@ flowchart LR
     Runtime --> Context[Model context<br/>token budget · trimming]
     Runtime --> LLM["@agent/ai<br/>OpenAI-compatible client"]
     LLM -->|SSE| Providers([DeepSeek · GPT · Grok · Gemini])
-    Runtime --> Tools[Tools<br/>keyword article search] --> DB[(PostgreSQL)]
+    Runtime --> Tools[Tools<br/>web search · web fetch] --> Internet([Google · web pages])
     Runtime --> Recorder[Run / Step recorder] --> DB
     AdminAPI --> DB
 ```
