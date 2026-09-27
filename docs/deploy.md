@@ -20,14 +20,89 @@
 | 时区 | `Asia/Shanghai`（`sudo timedatectl set-timezone Asia/Shanghai`；购买时已是） | `sudo timedatectl set-timezone <原时区>` |
 | 应用目录 | `~/kuro`：`compose.yml`、`.env`（600）、`current`、`releases`、`backups/`，见「部署」 | — |
 
-## 常用命令
+## 线上地图（排查先看这里）
+
+2026-09-27 实测。版本号、资源占用这类会变的数字，以服务器上的实时结果为准；结构变了（加容器、改编排、改 `.env` 的变量）要同步改这一节。
+
+### 请求链路
+
+```text
+浏览器 ──443──> caddy（kuro-caddy-1：自动 HTTPS，只开 h1 / h2）
+                  ├─ /          → 前台静态文件 /srv/web（SPA）
+                  ├─ /admin/    → 管理台静态文件 /srv/admin（SPA）
+                  └─ /api/*     → reverse_proxy api:3000（NDJSON 流逐块 flush；keepalive 4s，比 Node 的 5s 先关）
+api（kuro-api-1：Nest，0.0.0.0:3000，不映射到宿主机）
+  ├─ postgres:5432（kuro-postgres-1，只在 Docker 网络内）
+  └─ 外网一律直连、不走代理：模型服务商、Google 登录、Serper、web_fetch 打开的网站
+```
+
+### 容器、网络与配置
+
+| 项 | 内容 |
+| --- | --- |
+| compose 项目 | `kuro`；网络 `kuro_default`（bridge，只有 IPv4，`172.18.0.0/16`）；卷 `kuro_pgdata`（数据库）、`kuro_caddy-data`（证书）、`kuro_caddy-config` |
+| 容器 | `kuro-caddy-1`（80 / 443 映射到宿主机）、`kuro-api-1`（3000 只在网络内）、`kuro-postgres-1`（库 `agent`、用户 `agent`，5432 只在网络内） |
+| 宿主机监听 | 22、80、443，外加 systemd-resolved 的本机 53；数据库和 api 都不对外 |
+| 镜像 | `kuro-api:<版本>` 约 620 MB、`kuro-caddy:<版本>` 约 66 MB，服务器留最近 5 个版本；api 镜像是 Node 24，tini 做 PID 1 |
+| api 的环境变量 | 只从 `~/kuro/.env` 读（`env_file`），再加 compose 里写死的 `DATABASE_URL`、`API_HOST=0.0.0.0`、`TRUST_PROXY=uniquelocal`。线上 `.env` 现有的变量名：`AGENT_SECRET_KEY`、`APP_ORIGINS`、`GOOGLE_OAUTH_CLIENT_ID`、`GOOGLE_OAUTH_CLIENT_SECRET`、`POSTGRES_PASSWORD`、`SERPER_API_KEY`（值只在服务器）。**没有 `OUTBOUND_PROXY_URL`**：`web_fetch` 连接时的 SSRF 检查靠直连生效 |
+| 模型服务商与模型 | 在库里（管理台「模型接入」），不在 `.env`；API Key 用 `AGENT_SECRET_KEY` 加密后入库 |
+
+### 与本地开发的差异
+
+| 项 | 本地 | 线上 |
+| --- | --- | --- |
+| 出站 | `.env` 配了 `OUTBOUND_PROXY_URL`（Clash），Google、Serper、`web_fetch` 走代理 | 直连 |
+| 进程 | `pnpm dev`：tsc watch + `node --watch dist/main.js`。tsc watch 偶尔漏编译，验证前在 `apps/api` 手动 `npx tsc -p .`；`--watch` 下 worker 会收到 Node 的 `watch:import` 消息 | `node dist/main.js` |
+| 时区 | 北京时间 | 宿主机是 `Asia/Shanghai`，**容器是 UTC**（没设 `TZ`）：api 日志、库里的时间都比北京时间少 8 小时，caddy 日志的 `ts` 是 Unix 秒 |
+| 数据库 | 容器 `agent-postgres`，库 `agent_ai_seo` | 容器 `kuro-postgres-1`，库 `agent` |
+| IPv6 | 随本机网络 | Docker 网络只有 IPv4，只解析出 IPv6 地址的网站连不上 |
+
+### 日志
+
+- `docker compose logs` 只看得到当前容器的日志：**每次 `pnpm ship` 都会重建 api 与 caddy 容器，旧日志随之消失**；单个容器的日志最多 10 MB × 3 份。更早的问题查库里的 Run / Step 记录（管理台 Run Trace）。
+- api 日志是 Nest 默认格式，带 ANSI 颜色码。对象日志会分多行打印。工具执行失败的真实原因只写在日志里：事件是 `tool_execution_failed`，带 `toolName`、`callId`、`errorName`、`message`，其中 `callId` 与 Run Trace 里 tool Step 的一致。模型调用失败的类别在 Run 的 `errorCode`。
+
+### 排查命令
 
 ```bash
-ssh agent-hk 'uptime; free -h; df -h /'
-ssh agent-hk 'docker ps'
-ssh agent-hk 'docker logs --tail 200 <容器名>'
-ssh agent-hk '[ -f /var/run/reboot-required ] && echo 需要重启 || echo 无需重启'
+ssh agent-hk
+cd ~/kuro && export KURO_VERSION=$(cat current)           # 之后的 docker compose 命令都依赖它
+cat current releases                                        # 当前版本与部署历史（北京时间）
+docker compose ps
+docker compose logs --since 30m --no-log-prefix api         # --since 按真实时间算，不受容器时区影响
+docker compose logs --no-log-prefix api | grep -B3 -A4 <callId>   # 从 Run Trace 的 callId 找工具失败原因
+curl -s https://askkuro.com/api/health
+uptime; free -h; df -h /; docker stats --no-stream
+[ -f /var/run/reboot-required ] && echo 需要重启 || echo 无需重启
+# 只读查库（时间是 UTC）
+docker compose exec -T postgres psql -U agent -d agent -c 'select id, status, "errorCode", "createdAt" from "AgentRun" order by "createdAt" desc limit 10'
 ```
+
+在线上容器里直接试 `web_fetch`：另起一个 node 进程，不影响服务，也不在服务器上留文件。脚本要从 stdin 读，因为 `node -e` 的参数会被正文提取的 worker 继承，导致出错。
+
+```bash
+ssh agent-hk 'cd ~/kuro && export KURO_VERSION=$(cat current) && docker compose exec -T api node -' <<'EOF'
+require('reflect-metadata')
+;(async () => {
+  const { WebFetchTool } = await import('/app/apps/api/dist/tools/web/web-fetch.tool.js')
+  const tool = new WebFetchTool()
+  for (const url of ['https://example.com/', 'http://postgres:5432/']) {
+    try {
+      const { modelContent } = await tool.execute({ toolName: 'web_fetch', input: { url } }, { signal: AbortSignal.timeout(15000), databaseDeadline: {} })
+      console.log('OK ', url, modelContent.slice(0, 60))
+    }
+    catch (error) {
+      console.log('ERR', url, error.message)
+    }
+  }
+})()
+EOF
+```
+
+### 资源与耗时基线（2026-09-27）
+
+- 2 核、7.5 GiB 内存，三个容器常驻约 0.2 GiB（api 约 160 MiB），整机已用约 0.9 GiB；79 GB 磁盘用了 12%，Docker 镜像共约 3 GB，数据库备份每份不到 100 KB。
+- `pnpm ship` 全程约 5～6 分钟：本地检查与构建约 1 分钟（有缓存时）；经 ssh 上传两个镜像约 3～4 分钟，家里上行约 1.5 MB/s，压缩后约 300 MB；备份、切换与健康检查约 1 分钟。上传慢不是卡住，可以看 ssh 进程的发送字节数确认进度。
 
 ## 部署
 
