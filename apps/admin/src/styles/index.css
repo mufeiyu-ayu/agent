@@ -1,10 +1,12 @@
 :root {
-  --admin-font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+  --admin-font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Helvetica Neue", "Microsoft YaHei", sans-serif;
+  --admin-font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
   --admin-header-height: 0px;
-  --admin-logo-height: 52px;
-  --admin-tabs-height: 40px;
-  --admin-sidebar-width: 224px;
-  --admin-sidebar-collapsed-width: 60px;
+  --admin-tabs-height: 44px;
+  --admin-sidebar-width: 264px;
+  --admin-sidebar-collapsed-width: 72px;
+  /* 内容面板与画布四周的间距 */
+  --admin-shell-gap: 8px;
 
   /* 字号阶梯：11px 为全局下限，正文与表格内容不低于 12px */
   --admin-font-2xs: 11px;
@@ -16,77 +18,82 @@
   --admin-font-2xl: 24px;
 
   /* 圆角阶梯：控件 / 卡片 / 大容器分级 */
-  --admin-radius-sm: 6px;
+  --admin-radius-sm: 8px;
   --admin-radius-md: 10px;
   --admin-radius-lg: 14px;
 
-  /* 2024–2026 前沿云端与 AI 基础设施色板（Neon DB / Railway / Fly.io 冰川极光青体系） */
-  --admin-primary: hsl(200deg 98% 39%);
-  --admin-primary-hover: hsl(201deg 96% 32%);
-  --admin-primary-soft: hsl(200deg 98% 39% / 9%);
-  --admin-success: hsl(158deg 42% 40%);
-  --admin-success-strong: hsl(158deg 48% 28%);
-  --admin-success-soft: hsl(158deg 42% 40% / 10%);
-  --admin-warning: hsl(32deg 78% 46%);
-  --admin-warning-strong: hsl(28deg 75% 36%);
-  --admin-warning-soft: hsl(32deg 78% 46% / 11%);
-  --admin-danger: hsl(348deg 62% 50%);
-  --admin-danger-strong: hsl(348deg 62% 43%);
-  --admin-danger-soft: hsl(348deg 62% 50% / 10%);
+  /* macOS Tahoe 式：浅灰绿画布 + 近白内容面板，森林绿作 tint（设计稿 ~/Desktop/agent-admin-design/variants/macos-v2.html 方案 A） */
+  --admin-primary: #135230;
+  --admin-primary-hover: #024726;
+  --admin-primary-soft: rgb(19 82 48 / 10%);
+  --admin-success: #307a4f;
+  --admin-success-strong: #135230;
+  --admin-success-soft: rgb(48 122 79 / 11%);
+  --admin-warning: #a97416;
+  --admin-warning-strong: #8a5d0f;
+  --admin-warning-soft: rgb(169 116 22 / 11%);
+  --admin-danger: #ba3630;
+  --admin-danger-strong: #9e2a25;
+  --admin-danger-soft: rgb(221 87 78 / 12%);
 
-  /* 面板层级：页面底与卡片只差约 2% 亮度——有深度但无接缝（参照 shadcn background/card 与 Radix gray 1/2 的用法） */
-  --admin-bg-deep: hsl(220deg 14% 96.5%);
-  --admin-surface: hsl(0deg 0% 100%);
-  --admin-surface-muted: hsl(220deg 14% 96%);
-  --admin-surface-raised: hsl(0deg 0% 100%);
+  /* 画布（侧栏所在的底）→ 内容面板 → 卡片 */
+  --admin-canvas: #e9f0ea;
+  --admin-bg-deep: #fcfcf9;
+  --admin-surface: #ffffff;
+  --admin-surface-muted: #f5f6f3;
+  --admin-surface-raised: #ffffff;
 
-  --admin-text: hsl(220deg 13% 18%);
-  --admin-text-muted: hsl(220deg 9% 46%);
-  --admin-text-subtle: hsl(220deg 9% 62%);
-  --admin-border: hsl(220deg 16% 92%);
-  --admin-border-strong: hsl(220deg 14% 86%);
-  --admin-hover: hsl(220deg 20% 94%);
+  --admin-text: #1d1d1f;
+  --admin-text-muted: #6e6e73;
+  --admin-text-subtle: #8e8e93;
+  --admin-border: #ebebe8;
+  --admin-border-strong: #dcdcd8;
+  --admin-hover: rgb(0 0 0 / 4.5%);
+  /* 同一悬停色的不透明版：固定列要盖住下面滚过去的单元格 */
+  --admin-hover-solid: color-mix(in srgb, #000 4.5%, var(--admin-bg-deep));
 
-  /* 阴影阶梯：卡片贴地，浮层抬起 */
-  --admin-shadow-sm: 0 1px 2px hsl(220deg 40% 20% / 4%), 0 1px 3px hsl(220deg 40% 20% / 3%);
-  --admin-shadow-md: 0 2px 4px hsl(220deg 40% 20% / 4%), 0 10px 24px -8px hsl(220deg 40% 20% / 10%);
+  --admin-shadow-sm: 0 0 0 0.5px rgb(0 0 0 / 6%), 0 1px 2px rgb(0 0 0 / 4%);
+  --admin-shadow-md: 0 0 0 0.5px rgb(0 0 0 / 6%), 0 1px 3px rgb(0 0 0 / 5%), 0 12px 32px -16px rgb(0 0 0 / 16%);
+  --admin-shadow-panel: 0 0 0 0.5px rgb(40 70 50 / 9%), 0 1px 3px rgb(30 60 40 / 5%), 0 12px 32px -16px rgb(30 60 40 / 16%);
 
   color-scheme: light;
   font-family: var(--admin-font-family);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
 }
 
 :root[data-theme='dark'] {
-  --admin-primary: hsl(198deg 93% 60%);
-  --admin-primary-hover: hsl(199deg 95% 74%);
-  --admin-primary-soft: hsl(198deg 93% 60% / 15%);
-  --admin-success: hsl(158deg 38% 55%);
-  --admin-success-strong: hsl(158deg 42% 64%);
-  --admin-success-soft: hsl(158deg 38% 55% / 14%);
-  --admin-warning: hsl(35deg 68% 60%);
-  --admin-warning-strong: hsl(35deg 72% 67%);
-  --admin-warning-soft: hsl(35deg 68% 60% / 14%);
-  --admin-danger: hsl(350deg 65% 68%);
-  --admin-danger-strong: hsl(350deg 68% 74%);
-  --admin-danger-soft: hsl(350deg 65% 68% / 14%);
+  --admin-primary: #4f9a6c;
+  --admin-primary-hover: #66b183;
+  --admin-primary-soft: rgb(79 154 108 / 16%);
+  --admin-success: #5aa877;
+  --admin-success-strong: #82cb9b;
+  --admin-success-soft: rgb(90 168 119 / 15%);
+  --admin-warning: #ca933e;
+  --admin-warning-strong: #e0ae5f;
+  --admin-warning-soft: rgb(202 147 62 / 15%);
+  --admin-danger: #e86156;
+  --admin-danger-strong: #f47c70;
+  --admin-danger-soft: rgb(232 97 86 / 16%);
 
-  /* Linear 式深蓝夜色：黑带明显冷调（饱和度 19–22%），elevation 靠亮度阶梯而非阴影；
-     边框用半透明冷白，叠在不同深浅面板上自然分层，比实心灰轻。 */
-  --admin-bg-deep: hsl(228deg 22% 7.5%);
-  --admin-surface: hsl(227deg 20% 10.5%);
-  --admin-surface-muted: hsl(228deg 21% 8.8%);
-  --admin-surface-raised: hsl(226deg 19% 13.5%);
+  --admin-canvas: #161618;
+  --admin-bg-deep: #1e1e20;
+  --admin-surface: #252528;
+  --admin-surface-muted: #1b1b1d;
+  --admin-surface-raised: #2c2c2f;
 
-  --admin-text: hsl(224deg 30% 94%);
-  --admin-text-muted: hsl(223deg 14% 68%);
-  --admin-text-subtle: hsl(224deg 11% 52%);
-  --admin-border: hsl(226deg 70% 88% / 10%);
-  --admin-border-strong: hsl(226deg 70% 88% / 17%);
-  --admin-hover: hsl(225deg 22% 16%);
+  --admin-text: #f5f5f7;
+  --admin-text-muted: #a1a1a6;
+  --admin-text-subtle: #7c7c80;
+  --admin-border: rgb(255 255 255 / 9%);
+  --admin-border-strong: rgb(255 255 255 / 15%);
+  --admin-hover: rgb(255 255 255 / 6%);
+  --admin-hover-solid: color-mix(in srgb, #fff 6%, var(--admin-bg-deep));
 
-  --admin-shadow-sm: 0 1px 2px hsl(230deg 45% 2% / 40%);
-  --admin-shadow-md: 0 2px 4px hsl(230deg 45% 2% / 40%), 0 10px 24px -8px hsl(230deg 45% 2% / 55%);
+  --admin-shadow-sm: 0 0 0 0.5px rgb(255 255 255 / 8%), 0 1px 2px rgb(0 0 0 / 30%);
+  --admin-shadow-md: 0 0 0 0.5px rgb(255 255 255 / 8%), 0 12px 32px -14px rgb(0 0 0 / 60%);
+  --admin-shadow-panel: 0 0 0 0.5px rgb(255 255 255 / 8%), 0 12px 32px -14px rgb(0 0 0 / 60%);
 
   color-scheme: dark;
 }
@@ -109,7 +116,7 @@
 
 html {
   min-width: 1024px;
-  background: var(--admin-bg-deep);
+  background: var(--admin-canvas);
 }
 
 body {
@@ -117,7 +124,7 @@ body {
   min-height: 100vh;
   margin: 0;
   color: var(--admin-text);
-  background: var(--admin-bg-deep);
+  background: var(--admin-canvas);
   font-family: var(--admin-font-family);
   font-size: var(--admin-font-md);
 }
@@ -142,8 +149,7 @@ a:focus-visible {
 }
 
 ::selection {
-  color: #fff;
-  background: var(--admin-primary);
+  background: var(--admin-primary-soft);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -153,4 +159,51 @@ a:focus-visible {
     scroll-behavior: auto !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/* macOS 式分段控件：内凹轨道 + 白色浮起胶囊 */
+.ant-segmented {
+  padding: 3px;
+  background: var(--admin-hover);
+  box-shadow: inset 0 0.5px 1.5px rgb(0 0 0 / 10%);
+}
+
+.ant-segmented .ant-segmented-item-selected,
+.ant-segmented .ant-segmented-thumb {
+  box-shadow: 0 0 0 0.5px rgb(0 0 0 / 8%), 0 1px 3px rgb(0 0 0 / 12%);
+}
+
+/* 表格：透明底、表头无分隔竖线、行线用细线，贴合内容面板 */
+.ant-table-wrapper .ant-table {
+  background: transparent;
+}
+
+.ant-table-wrapper .ant-table-thead > tr > th {
+  color: var(--admin-text-muted);
+  font-weight: 500;
+  background: transparent;
+}
+
+.ant-table-wrapper .ant-table-thead > tr > th::before {
+  display: none;
+}
+
+.ant-table-wrapper .ant-table-thead > tr > th,
+.ant-table-wrapper .ant-table-tbody > tr > td {
+  border-bottom: 0.5px solid var(--admin-border-strong);
+}
+
+/* 分页：当前页是浅绿胶囊，不再是描边方块 */
+.ant-pagination .ant-pagination-item {
+  border: 0;
+  border-radius: 999px;
+}
+
+.ant-pagination .ant-pagination-item-active {
+  background: var(--admin-primary-soft);
+}
+
+.ant-pagination .ant-pagination-item-active a {
+  color: var(--admin-primary);
+  font-weight: 600;
 }

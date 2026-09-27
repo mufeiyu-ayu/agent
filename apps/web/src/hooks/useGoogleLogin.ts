@@ -69,8 +69,30 @@ export function useGoogleClientId() {
 }
 
 /** Google 重定向登录：整页跳走，回来时已登录（或在登录页看到待审核 / 失败）。 */
-export function startGoogleLogin(redirect: string): void {
+function startGoogleLogin(redirect: string): void {
   window.location.assign(`/api/auth/google/start?redirect=${encodeURIComponent(redirect)}`)
+}
+
+/**
+ * 整页跳去 Google 的按钮状态：点了立刻 loading，保持到页面离开；
+ * 从 Google 页面按浏览器返回时页面可能来自 bfcache，这时复位。
+ */
+export function useGoogleRedirect() {
+  const redirecting = ref(false)
+
+  function resetOnPageShow(event: PageTransitionEvent) {
+    if (event.persisted)
+      redirecting.value = false
+  }
+  onMounted(() => window.addEventListener('pageshow', resetOnPageShow))
+  onBeforeUnmount(() => window.removeEventListener('pageshow', resetOnPageShow))
+
+  function start(redirect: string) {
+    redirecting.value = true
+    startGoogleLogin(redirect)
+  }
+
+  return { redirecting, start }
 }
 
 export type OneTapOutcome = { user: AuthUser } | { notice: GoogleLoginResult }

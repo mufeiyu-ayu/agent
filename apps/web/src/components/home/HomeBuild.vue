@@ -18,7 +18,7 @@ useSceneEntrance(useTemplateRef('stack'), (phase) => {
   <section class="scene build" data-parallax>
     <div class="wrap grid12">
       <div class="visual">
-        <div ref="stack" class="stack" data-scene="build" aria-label="Three things Agent can build: a table, a chart and a report">
+        <div ref="stack" class="stack" data-scene="build" aria-label="Three things Kuro can build: a table, a chart and a report">
           <div class="art-slot slot-table">
             <article class="art">
               <header class="art-head">

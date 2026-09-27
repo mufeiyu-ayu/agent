@@ -37,7 +37,7 @@ useSceneEntrance(panel, (phase, el) => {
             AI never touches your database.
           </h2>
           <p class="body" data-reveal style="--i:2">
-            Your team decides what Agent can reach: read-only operations behind a gateway, never raw access. It asks as the person asking, sees only what they&rsquo;re allowed to see, and every call is logged.
+            Your team decides what Kuro can reach: read-only operations behind a gateway, never raw access. It asks as the person asking, sees only what they&rsquo;re allowed to see, and every call is logged.
           </p>
         </div>
         <div class="kinds" aria-hidden="true" data-reveal style="--i:3">

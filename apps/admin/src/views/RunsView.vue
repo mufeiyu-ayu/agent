@@ -3,28 +3,12 @@ import type { AgentRunErrorCode } from '@agent/contracts'
 import type { TableColumnsType } from 'ant-design-vue'
 import type { RunListItem, RunStatus } from '@/features/runs/run.model'
 import { AGENT_RUN_ERROR_CODES } from '@agent/contracts'
+import { RedoOutlined, SearchOutlined } from '@ant-design/icons-vue'
 import {
-  BarsOutlined,
-  CheckCircleOutlined,
-  ClockCircleOutlined,
-  CloseCircleOutlined,
-  EyeOutlined,
-  RedoOutlined,
-  SearchOutlined,
-} from '@ant-design/icons-vue'
-import {
-  Alert,
   Button,
-  Card,
-  Empty,
-  Form,
-  FormItem,
   Input,
-  Pagination,
   RangePicker,
   Select,
-  Skeleton,
-  Table,
   Tag,
   Tooltip,
 } from 'ant-design-vue'
@@ -32,7 +16,9 @@ import { computed, onBeforeUnmount, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 
+import DataTable from '@/components/common/DataTable.vue'
 import PageContainer from '@/components/common/PageContainer.vue'
+import PageHeader from '@/components/common/PageHeader.vue'
 import RunStatusTag from '@/features/runs/components/RunStatusTag.vue'
 import { useRunListStore } from '@/features/runs/run-list.store'
 import {
@@ -48,18 +34,17 @@ const runListStore = useRunListStore()
 const { locale, t } = useI18n()
 
 const columns = computed<TableColumnsType<RunListItem>>(() => [
-  { title: t('runs.columns.runId'), dataIndex: 'id', key: 'id', width: 176, fixed: 'left' },
-  { title: t('runs.columns.question'), dataIndex: 'questionPreview', key: 'question', width: 220 },
-  { title: t('runs.columns.conversation'), dataIndex: 'conversationId', key: 'conversation', width: 150 },
-  { title: t('runs.columns.model'), key: 'model', width: 150 },
-  { title: t('runs.columns.status'), dataIndex: 'status', key: 'status', width: 92 },
+  { title: t('runs.columns.question'), dataIndex: 'questionPreview', key: 'question', width: 280, fixed: 'left' },
+  { title: t('runs.columns.status'), dataIndex: 'status', key: 'status', width: 100 },
   { title: t('runs.columns.failure'), key: 'failure', width: 140 },
-  { title: t('runs.columns.tools'), dataIndex: 'toolCallCount', key: 'tools', width: 62, align: 'center' },
-  { title: t('runs.columns.samples'), dataIndex: 'samplingCount', key: 'samplings', width: 72, align: 'center' },
-  { title: t('runs.columns.tokens'), dataIndex: ['usage', 'totalTokens'], key: 'tokens', width: 78, align: 'right' },
-  { title: t('runs.columns.duration'), dataIndex: 'durationMs', key: 'duration', width: 78, align: 'right' },
-  { title: t('runs.columns.createdAt'), dataIndex: 'createdAt', key: 'createdAt', width: 126 },
-  { title: '', key: 'action', width: 54, fixed: 'right', align: 'center' },
+  { title: t('runs.columns.model'), key: 'model', width: 170 },
+  { title: t('runs.columns.tools'), dataIndex: 'toolCallCount', key: 'tools', width: 70, align: 'right' },
+  { title: t('runs.columns.samples'), dataIndex: 'samplingCount', key: 'samplings', width: 70, align: 'right' },
+  { title: t('runs.columns.tokens'), dataIndex: ['usage', 'totalTokens'], key: 'tokens', width: 90, align: 'right' },
+  { title: t('runs.columns.duration'), dataIndex: 'durationMs', key: 'duration', width: 90, align: 'right' },
+  { title: t('runs.columns.createdAt'), dataIndex: 'createdAt', key: 'createdAt', width: 130 },
+  { title: t('runs.columns.runId'), dataIndex: 'id', key: 'id', width: 220 },
+  { title: t('runs.columns.conversation'), dataIndex: 'conversationId', key: 'conversation', width: 220 },
 ])
 
 const statusOptions: Array<{ label: string, value: RunStatus }> = [
@@ -89,10 +74,10 @@ onMounted(() => {
 })
 onBeforeUnmount(runListStore.cancel)
 
-function getRunDetailLocation(runId: string) {
+function getRunDetailLocation(record: RunListItem) {
   return {
     name: 'run-detail',
-    params: { runId },
+    params: { runId: record.id },
   }
 }
 
@@ -107,91 +92,98 @@ function handlePageChange(page: number, pageSize: number) {
 </script>
 
 <template>
-  <PageContainer wide class="runs-page">
-    <h1 class="sr-only">
-      {{ t('runs.title') }}
-    </h1>
+  <PageContainer wide>
+    <PageHeader :title="t('runs.title')" :description="t('runs.description')" />
 
-    <section class="summary-grid" :aria-label="t('runs.summaryLabel')">
-      <Card class="summary-card" :bordered="false">
-        <span class="summary-card__icon is-blue"><BarsOutlined /></span>
-        <div>
-          <small>{{ t('runs.summary.total') }}</small>
-          <strong>{{ runListStore.summary.totalRuns }}</strong>
-          <p>{{ t('runs.summary.totalHint') }}</p>
-        </div>
-      </Card>
-      <Card class="summary-card" :bordered="false">
-        <span class="summary-card__icon is-green"><CheckCircleOutlined /></span>
-        <div>
-          <small>{{ t('runs.summary.completed') }}</small>
-          <strong>{{ runListStore.summary.statusCounts.COMPLETED }}</strong>
-          <p>{{ t('runs.summary.completedHint') }}</p>
-        </div>
-      </Card>
-      <Card class="summary-card" :bordered="false">
-        <span class="summary-card__icon is-amber"><ClockCircleOutlined /></span>
-        <div>
-          <small>{{ t('runs.summary.running') }}</small>
-          <strong>{{ runListStore.summary.statusCounts.RUNNING }}</strong>
-          <p>{{ t('runs.summary.runningHint') }}</p>
-        </div>
-      </Card>
-      <Card class="summary-card" :bordered="false">
-        <span class="summary-card__icon is-red"><CloseCircleOutlined /></span>
-        <div>
-          <small>{{ t('runs.summary.failed') }}</small>
-          <strong>
-            {{ runListStore.summary.statusCounts.FAILED + runListStore.summary.statusCounts.ABORTED }}
-          </strong>
-          <p>
-            {{ t('runs.summary.failedHint', {
-              failed: runListStore.summary.statusCounts.FAILED,
-              aborted: runListStore.summary.statusCounts.ABORTED,
-            }) }}
-          </p>
-        </div>
-      </Card>
+    <section class="run-summary" :aria-label="t('runs.summaryLabel')">
+      <div class="run-summary__item">
+        <span>{{ t('runs.summary.total') }}</span>
+        <strong>{{ runListStore.summary.totalRuns }}</strong>
+        <small>{{ t('runs.summary.totalHint') }}</small>
+      </div>
+      <div class="run-summary__item">
+        <span>{{ t('runs.summary.completed') }}</span>
+        <strong>{{ runListStore.summary.statusCounts.COMPLETED }}</strong>
+        <small>{{ t('runs.summary.completedHint') }}</small>
+      </div>
+      <div class="run-summary__item">
+        <span>{{ t('runs.summary.running') }}</span>
+        <strong>{{ runListStore.summary.statusCounts.RUNNING }}</strong>
+        <small>{{ t('runs.summary.runningHint') }}</small>
+      </div>
+      <div class="run-summary__item">
+        <span>{{ t('runs.summary.failed') }}</span>
+        <strong :class="{ 'is-danger': runListStore.summary.statusCounts.FAILED > 0 }">
+          {{ runListStore.summary.statusCounts.FAILED + runListStore.summary.statusCounts.ABORTED }}
+        </strong>
+        <small>
+          {{ t('runs.summary.failedHint', {
+            failed: runListStore.summary.statusCounts.FAILED,
+            aborted: runListStore.summary.statusCounts.ABORTED,
+          }) }}
+        </small>
+      </div>
     </section>
 
-    <Card class="filter-card" :bordered="false">
-      <Form class="run-filters" layout="vertical" @submit.prevent="runListStore.applyFilters">
-        <FormItem :label="t('runs.filters.query')">
+    <DataTable
+      :columns="columns"
+      :data-source="runListStore.items"
+      row-key="id"
+      :loading="runListStore.loading"
+      :error="runListStore.error"
+      :error-title="t('runs.loadFailed')"
+      :empty-text="t('runs.empty')"
+      :scroll-x="1_620"
+      :pagination="{
+        current: runListStore.currentPage,
+        pageSize: runListStore.pageSize,
+        total: runListStore.pagination.totalItems,
+      }"
+      :summary="t('runs.showing', {
+        count: runListStore.items.length,
+        total: runListStore.pagination.totalItems,
+      })"
+      :row-to="getRunDetailLocation"
+      @page-change="handlePageChange"
+      @retry="runListStore.retry"
+    >
+      <template #toolbar>
+        <form class="run-filters" @submit.prevent="runListStore.applyFilters">
           <Input
             v-model:value="runListStore.draftFilters.query"
+            class="run-filters__query"
             allow-clear
+            :aria-label="t('runs.filters.query')"
             :placeholder="t('runs.filters.queryPlaceholder')"
-          />
-        </FormItem>
-        <FormItem :label="t('runs.filters.status')">
+          >
+            <template #prefix>
+              <SearchOutlined class="run-filters__icon" />
+            </template>
+          </Input>
           <Select
             v-model:value="runListStore.draftFilters.status"
+            class="run-filters__select"
             allow-clear
+            :aria-label="t('runs.filters.status')"
             :options="statusOptions"
             :placeholder="t('runs.filters.allStatuses')"
           />
-        </FormItem>
-        <FormItem :label="t('runs.filters.errorCode')">
           <Select
             v-model:value="runListStore.draftFilters.errorCode"
+            class="run-filters__select is-wide"
             allow-clear
+            :aria-label="t('runs.filters.errorCode')"
             :options="errorCodeOptions"
             :placeholder="t('runs.filters.allErrorCodes')"
           />
-        </FormItem>
-        <FormItem :label="t('runs.filters.dateRange')">
           <RangePicker
             v-model:value="runListStore.dateRange"
             class="run-filters__range"
             value-format="YYYY-MM-DD"
+            :aria-label="t('runs.filters.dateRange')"
             :placeholder="[t('runs.filters.from'), t('runs.filters.to')]"
           />
-        </FormItem>
-        <div class="run-filters__actions">
           <Button type="primary" html-type="submit">
-            <template #icon>
-              <SearchOutlined />
-            </template>
             {{ t('common.actions.search') }}
           </Button>
           <Button html-type="button" @click="runListStore.resetFilters">
@@ -200,405 +192,197 @@ function handlePageChange(page: number, pageSize: number) {
             </template>
             {{ t('common.actions.reset') }}
           </Button>
-        </div>
-      </Form>
-    </Card>
+        </form>
+      </template>
 
-    <Card class="table-card" :bordered="false">
-      <Alert
-        v-if="runListStore.error"
-        class="table-error"
-        type="error"
-        show-icon
-        :message="t('runs.loadFailed')"
-        :description="runListStore.error"
-      >
-        <template #action>
-          <Button
-            size="small"
-            :loading="runListStore.loading"
-            @click="runListStore.retry"
+      <template #bodyCell="{ column, record }">
+        <template v-if="column.key === 'question'">
+          <Tooltip :title="record.questionPreview">
+            <span class="question-preview">{{ record.questionPreview }}</span>
+          </Tooltip>
+        </template>
+        <template v-else-if="column.key === 'id'">
+          <span class="mono-cell">{{ record.id }}</span>
+        </template>
+        <template v-else-if="column.key === 'conversation'">
+          <RouterLink
+            class="mono-cell is-link"
+            :to="{ name: 'conversation-detail', params: { conversationId: record.conversationId } }"
           >
-            {{ t('common.actions.retry') }}
-          </Button>
+            {{ record.conversationId }}
+          </RouterLink>
         </template>
-      </Alert>
-
-      <Skeleton
-        v-else-if="runListStore.loading && !runListStore.items.length"
-        active
-        class="table-skeleton"
-        :paragraph="{ rows: 6 }"
-      />
-
-      <Table
-        v-else
-        class="runs-table"
-        :columns="columns"
-        :data-source="runListStore.items"
-        :loading="runListStore.loading"
-        :pagination="false"
-        row-key="id"
-        size="small"
-        :scroll="{ x: 1_540 }"
-      >
-        <template #bodyCell="{ column, record }">
-          <template v-if="column.key === 'id'">
-            <Tooltip :title="record.id">
-              <RouterLink class="run-id" :to="getRunDetailLocation(record.id)">
-                {{ record.id }}
-              </RouterLink>
-            </Tooltip>
-          </template>
-          <template v-else-if="column.key === 'question'">
-            <Tooltip :title="record.questionPreview">
-              <span class="question-preview">{{ record.questionPreview }}</span>
-            </Tooltip>
-          </template>
-          <template v-else-if="column.key === 'conversation'">
-            <Tooltip :title="record.conversationId">
-              <RouterLink
-                class="run-id"
-                :to="{ name: 'conversation-detail', params: { conversationId: record.conversationId } }"
-              >
-                {{ record.conversationId }}
-              </RouterLink>
-            </Tooltip>
-          </template>
-          <template v-else-if="column.key === 'model'">
-            <Tooltip v-if="record.model" :title="record.model.wireName">
-              <span class="model-name">
-                <span class="model-name__text">{{ record.model.displayName }}</span>
-                <Tag v-if="record.model.deleted" class="model-name__tag">{{ t('runs.modelDeleted') }}</Tag>
-              </span>
-            </Tooltip>
-            <span v-else class="unrecorded-cell">{{ t('runTrace.inspector.unavailable') }}</span>
-          </template>
-          <template v-else-if="column.key === 'status'">
-            <RunStatusTag :status="record.status" />
-          </template>
-          <template v-else-if="column.key === 'failure'">
-            <template v-if="record.status === 'FAILED' || record.status === 'ABORTED'">
-              <Tooltip :title="record.failureMessage ?? undefined">
-                <span v-if="record.errorCode" class="failure-cell">{{ errorCodeLabel(record.errorCode) }}</span>
-                <span v-else class="unrecorded-cell">{{ t('runTrace.inspector.unavailable') }}</span>
-              </Tooltip>
-            </template>
-            <span v-else class="unrecorded-cell">—</span>
-          </template>
-          <template v-else-if="column.key === 'tokens'">
-            <span class="numeric-cell">{{ formatTokens(record.usage.totalTokens, locale) }}</span>
-          </template>
-          <template v-else-if="column.key === 'duration'">
-            <span class="numeric-cell">{{ formatDuration(record.durationMs) }}</span>
-          </template>
-          <template v-else-if="column.key === 'createdAt'">
-            <span class="date-cell">{{ formatShortDateTime(record.createdAt, locale) }}</span>
-          </template>
-          <template v-else-if="column.key === 'action'">
-            <Tooltip :title="t('runs.inspect')">
-              <Button
-                type="text"
-                shape="circle"
-                size="small"
-                :aria-label="t('runs.inspectAria', { id: record.id })"
-                @click="router.push(getRunDetailLocation(record.id))"
-              >
-                <template #icon>
-                  <EyeOutlined />
-                </template>
-              </Button>
-            </Tooltip>
-          </template>
+        <template v-else-if="column.key === 'model'">
+          <Tooltip v-if="record.model" :title="record.model.wireName">
+            <span class="model-name">
+              <span class="model-name__text">{{ record.model.displayName }}</span>
+              <Tag v-if="record.model.deleted" class="model-name__tag">{{ t('runs.modelDeleted') }}</Tag>
+            </span>
+          </Tooltip>
+          <span v-else class="muted-cell">{{ t('runTrace.inspector.unavailable') }}</span>
         </template>
-
-        <template #emptyText>
-          <Empty
-            v-if="!runListStore.loading && !runListStore.error"
-            :description="t('runs.empty')"
-          />
+        <template v-else-if="column.key === 'status'">
+          <RunStatusTag :status="record.status" />
         </template>
-      </Table>
-
-      <footer v-if="!runListStore.error" class="table-card__footer">
-        <span>
-          {{ t('runs.showing', {
-            count: runListStore.items.length,
-            total: runListStore.pagination.totalItems,
-          }) }}
-        </span>
-        <Pagination
-          :current="runListStore.currentPage"
-          :page-size="runListStore.pageSize"
-          :total="runListStore.pagination.totalItems"
-          :page-size-options="['8', '20', '50']"
-          show-size-changer
-          size="small"
-          @change="handlePageChange"
-        />
-      </footer>
-    </Card>
+        <template v-else-if="column.key === 'failure'">
+          <template v-if="record.status === 'FAILED' || record.status === 'ABORTED'">
+            <Tooltip :title="record.failureMessage ?? undefined">
+              <span v-if="record.errorCode" class="failure-cell">{{ errorCodeLabel(record.errorCode) }}</span>
+              <span v-else class="muted-cell">{{ t('runTrace.inspector.unavailable') }}</span>
+            </Tooltip>
+          </template>
+          <span v-else class="muted-cell">—</span>
+        </template>
+        <template v-else-if="column.key === 'tools' || column.key === 'samplings'">
+          <span class="numeric-cell">{{ column.key === 'tools' ? record.toolCallCount : record.samplingCount }}</span>
+        </template>
+        <template v-else-if="column.key === 'tokens'">
+          <span class="numeric-cell">{{ formatTokens(record.usage.totalTokens, locale) }}</span>
+        </template>
+        <template v-else-if="column.key === 'duration'">
+          <span class="numeric-cell">{{ formatDuration(record.durationMs) }}</span>
+        </template>
+        <template v-else-if="column.key === 'createdAt'">
+          <span class="numeric-cell">{{ formatShortDateTime(record.createdAt, locale) }}</span>
+        </template>
+      </template>
+    </DataTable>
   </PageContainer>
 </template>
 
 <style scoped>
-/* 卡片按内容自适应高度，不再撑满视口；数据少时下方露出页面底色 */
-.runs-page {
-  display: flex;
-  flex-direction: column;
-}
-
-.summary-grid {
+/* 摘要：与概览同一种细线分隔的指标条 */
+.run-summary {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 14px;
+  margin-bottom: 18px;
+  padding: 14px 0;
+  border-block: 0.5px solid var(--admin-border-strong);
 }
 
-.summary-card,
-.filter-card,
-.table-card {
-  border: 1px solid var(--admin-border);
-  border-radius: var(--admin-radius-md);
-  background: var(--admin-surface);
-  box-shadow: var(--admin-shadow-sm);
-}
-
-.summary-card :deep(.ant-card-body) {
-  display: flex;
-  min-height: 100px;
-  align-items: center;
-  gap: 14px;
-  padding: 18px;
-}
-
-.summary-card__icon {
+.run-summary__item {
   display: grid;
-  width: 40px;
-  height: 40px;
-  flex: 0 0 40px;
-  place-items: center;
-  border-radius: var(--admin-radius-md);
-  font-size: var(--admin-font-lg);
+  gap: 2px;
+  min-width: 0;
+  padding: 0 16px;
+  box-shadow: inset 0.5px 0 0 var(--admin-border-strong);
 }
 
-.summary-card__icon.is-blue {
-  color: var(--admin-primary);
-  background: var(--admin-primary-soft);
+.run-summary__item:first-child {
+  padding-left: 4px;
+  box-shadow: none;
 }
 
-.summary-card__icon.is-green {
-  color: var(--admin-success-strong);
-  background: var(--admin-success-soft);
-}
-
-.summary-card__icon.is-amber {
-  color: var(--admin-warning-strong);
-  background: var(--admin-warning-soft);
-}
-
-.summary-card__icon.is-red {
-  color: var(--admin-danger-strong);
-  background: var(--admin-danger-soft);
-}
-
-.summary-card small,
-.summary-card strong,
-.summary-card p {
-  display: block;
-}
-
-.summary-card small {
+.run-summary__item span {
   color: var(--admin-text-muted);
   font-size: var(--admin-font-xs);
-  font-weight: 600;
+  font-weight: 500;
 }
 
-.summary-card strong {
-  margin-top: 4px;
+.run-summary__item strong {
   color: var(--admin-text);
-  font-size: var(--admin-font-2xl);
-  font-weight: 650;
-  letter-spacing: -0.025em;
-  line-height: 1.15;
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
 }
 
-.summary-card p {
-  margin: 3px 0 0;
-  color: var(--admin-text-subtle);
-  font-size: var(--admin-font-2xs);
+.run-summary__item strong.is-danger {
+  color: var(--admin-danger);
 }
 
-.filter-card,
-.table-card {
-  margin-top: 14px;
-}
-
-.filter-card :deep(.ant-card-body) {
-  padding: 16px 18px 14px;
+.run-summary__item small {
+  overflow: hidden;
+  color: var(--admin-text-muted);
+  font-size: 11.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .run-filters {
-  display: grid;
-  grid-template-columns:
-    minmax(210px, 1.25fr)
-    minmax(120px, 0.72fr)
-    minmax(150px, 0.9fr)
-    minmax(230px, 1.2fr)
-    auto;
-  align-items: end;
-  gap: 14px;
-}
-
-.run-filters :deep(.ant-form-item) {
-  margin-bottom: 0;
-}
-
-.run-filters :deep(.ant-form-item-label) {
-  padding-bottom: 5px;
-}
-
-.run-filters :deep(.ant-form-item-label > label) {
-  height: auto;
-  color: var(--admin-text-muted);
-  font-size: var(--admin-font-xs);
-  font-weight: 600;
-}
-
-.run-filters__range {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
   width: 100%;
 }
 
-.run-filters__actions {
-  display: flex;
-  gap: 8px;
+.run-filters__query {
+  width: 260px;
 }
 
-.table-card {
-  display: flex;
-  flex-direction: column;
+.run-filters__icon {
+  color: var(--admin-text-subtle);
 }
 
-.table-card :deep(> .ant-card-body) {
-  display: flex;
-  min-width: 0;
-  min-height: 180px;
-  flex-direction: column;
-  padding: 0;
+.run-filters__select {
+  width: 130px;
 }
 
-.table-error {
-  margin: 12px 14px 0;
+.run-filters__select.is-wide {
+  width: 170px;
 }
 
-.table-skeleton {
-  padding: 22px 18px;
-}
-
-.runs-table :deep(.ant-table) {
-  border-radius: var(--admin-radius-md) var(--admin-radius-md) 0 0;
-}
-
-.runs-table :deep(.ant-table-thead > tr > th) {
-  height: 44px;
-  border-bottom: 1px solid var(--admin-border);
-  color: var(--admin-text-muted);
-  font-size: var(--admin-font-xs);
-  font-weight: 600;
-  letter-spacing: 0.01em;
-  white-space: nowrap;
-}
-
-.runs-table :deep(.ant-table-tbody > tr > td) {
-  height: 50px;
-  color: var(--admin-text-muted);
-  font-size: var(--admin-font-sm);
-}
-
-.run-id {
-  display: block;
-  overflow: hidden;
-  color: var(--admin-primary);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: var(--admin-font-xs);
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.run-filters__range {
+  width: 250px;
 }
 
 .question-preview {
   display: block;
   overflow: hidden;
-  color: var(--admin-text);
+  font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+.mono-cell {
+  display: block;
+  overflow: hidden;
+  color: var(--admin-text-muted);
+  font-family: var(--admin-font-mono);
+  font-size: var(--admin-font-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mono-cell.is-link:hover {
+  color: var(--admin-primary);
+  text-decoration: underline;
+}
+
 .model-name {
   display: flex;
-  align-items: center;
-  gap: 4px;
   min-width: 0;
-  color: var(--admin-text);
+  align-items: center;
+  gap: 6px;
 }
 
 .model-name__text {
-  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .model-name__tag {
-  flex-shrink: 0;
+  flex: none;
   margin: 0;
   font-size: 10px;
   line-height: 16px;
-  padding: 0 4px;
 }
 
 .failure-cell {
-  color: var(--admin-danger-strong);
-  white-space: nowrap;
+  color: var(--admin-danger);
+  font-weight: 500;
 }
 
-.unrecorded-cell {
+.muted-cell {
   color: var(--admin-text-subtle);
-  white-space: nowrap;
 }
 
-.numeric-cell,
-.date-cell {
+.numeric-cell {
   color: var(--admin-text-muted);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
-}
-
-.table-card__footer {
-  display: flex;
-  min-height: 52px;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  margin-top: auto;
-  padding: 10px 16px;
-  border-top: 1px solid var(--admin-border);
-}
-
-.table-card__footer > span {
-  color: var(--admin-text-subtle);
-  font-size: var(--admin-font-xs);
-}
-
-@media (max-width: 1240px) {
-  .summary-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .run-filters {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .run-filters__actions {
-    justify-content: flex-end;
-  }
 }
 </style>

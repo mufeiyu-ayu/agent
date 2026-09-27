@@ -1,17 +1,17 @@
 <script setup lang="ts">
 defineProps<{
-  eyebrow?: string
   title: string
-  description: string
+  description?: string
 }>()
 </script>
 
 <template>
   <header class="page-header">
-    <div>
-      <span v-if="eyebrow" class="page-header__eyebrow">{{ eyebrow }}</span>
+    <div class="page-header__titles">
       <h1>{{ title }}</h1>
-      <p>{{ description }}</p>
+      <p v-if="description">
+        {{ description }}
+      </p>
     </div>
     <div v-if="$slots.actions" class="page-header__actions">
       <slot name="actions" />
@@ -22,39 +22,35 @@ defineProps<{
 <style scoped>
 .page-header {
   display: flex;
-  align-items: end;
+  align-items: center;
   justify-content: space-between;
   gap: 20px;
-  margin-bottom: 18px;
+  padding: 4px 4px 18px;
 }
 
-.page-header__eyebrow {
-  display: block;
-  margin-bottom: 7px;
-  color: var(--admin-primary);
-  font-size: var(--admin-font-2xs);
-  font-weight: 700;
-  letter-spacing: 0.13em;
-  text-transform: uppercase;
+.page-header__titles {
+  min-width: 0;
 }
 
 h1 {
   margin: 0;
   color: var(--admin-text);
-  font-size: var(--admin-font-2xl);
+  font-size: 22px;
   font-weight: 650;
-  letter-spacing: -0.025em;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
 }
 
 p {
-  max-width: 680px;
-  margin: 7px 0 0;
+  margin: 4px 0 0;
   color: var(--admin-text-muted);
   font-size: var(--admin-font-sm);
-  line-height: 1.65;
 }
 
 .page-header__actions {
+  display: flex;
   flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
 }
 </style>

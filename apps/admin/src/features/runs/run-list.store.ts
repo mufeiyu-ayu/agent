@@ -11,7 +11,7 @@ import { computed, reactive, ref, shallowRef } from 'vue'
 import { formatAdminRunError } from '../shared/admin-api'
 import { fetchAdminRuns } from './run-api'
 
-export const defaultRunListPageSize = 8
+export const defaultRunListPageSize = 20
 
 export const useRunListStore = defineStore('run-list', () => {
   const draftFilters = reactive<RunFilters>(createDefaultFilters())

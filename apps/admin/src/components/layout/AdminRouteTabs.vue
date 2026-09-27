@@ -80,29 +80,24 @@ function getTabTitle(tab: RouteTab): string {
 </template>
 
 <style scoped>
+/* 面板顶部的已访问页面：macOS 式胶囊，不再是浏览器标签页 */
 .route-tabs {
-  position: sticky;
-  z-index: 19;
-  top: var(--admin-header-height);
   display: flex;
-  height: var(--admin-tabs-height);
-  align-items: end;
-  gap: 3px;
-  padding: 5px 12px 0;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+  gap: 4px;
   overflow-x: auto;
-  border-bottom: 1px solid var(--admin-border);
-  background: var(--admin-surface);
+  scrollbar-width: thin;
 }
 
 .route-tab {
-  position: relative;
   display: flex;
-  height: 32px;
+  height: 28px;
+  flex: none;
   align-items: center;
-  border: 1px solid transparent;
-  border-radius: 7px 7px 0 0;
+  border-radius: 999px;
   color: var(--admin-text-muted);
-  background: transparent;
 }
 
 .route-tab:hover {
@@ -111,25 +106,10 @@ function getTabTitle(tab: RouteTab): string {
 }
 
 .route-tab.is-active {
-  border-color: var(--admin-border);
-  border-bottom-color: var(--admin-bg-deep);
-  color: var(--admin-primary);
-  background: var(--admin-bg-deep);
-}
-
-.route-tab::before {
-  position: absolute;
-  right: 8px;
-  bottom: -1px;
-  left: 8px;
-  height: 2px;
-  border-radius: 2px 2px 0 0;
-  background: transparent;
-  content: '';
-}
-
-.route-tab.is-active::before {
-  background: var(--admin-primary);
+  color: var(--admin-text);
+  font-weight: 500;
+  background: var(--admin-surface);
+  box-shadow: var(--admin-shadow-sm);
 }
 
 .route-tab button {

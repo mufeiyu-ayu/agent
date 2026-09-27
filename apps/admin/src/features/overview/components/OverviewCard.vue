@@ -27,21 +27,12 @@ defineProps<{
 </template>
 
 <style scoped>
+/* 概览分区不再是卡片：直接铺在内容面板上，分区之间由父级的细线隔开 */
 .overview-card {
   display: flex;
   flex-direction: column;
   min-width: 0;
-  border: 1px solid var(--admin-border);
-  border-radius: 12px;
-  background: var(--admin-surface);
-  box-shadow: var(--admin-shadow-sm);
-  padding: 16px 20px;
-  transition: border-color 200ms ease, box-shadow 200ms ease;
-}
-
-.overview-card:hover {
-  border-color: var(--admin-border-strong);
-  box-shadow: var(--admin-shadow-md);
+  padding: 18px 4px 20px;
 }
 
 .overview-card__head {
@@ -49,7 +40,7 @@ defineProps<{
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 12px;
+  margin-bottom: 14px;
 }
 
 .overview-card__titles {
@@ -59,16 +50,16 @@ defineProps<{
 .overview-card__title {
   margin: 0;
   color: var(--admin-text);
-  font-size: 16px;
-  font-weight: 700;
+  font-size: 15px;
+  font-weight: 600;
   letter-spacing: -0.01em;
   line-height: 1.3;
 }
 
 .overview-card__subtitle {
-  margin: 2px 0 0;
-  color: var(--admin-text-subtle);
-  font-size: 11px;
+  margin: 3px 0 0;
+  color: var(--admin-text-muted);
+  font-size: var(--admin-font-xs);
 }
 
 .overview-card__actions {

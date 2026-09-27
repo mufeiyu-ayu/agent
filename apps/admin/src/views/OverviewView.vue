@@ -195,15 +195,28 @@ function openFailureReason(errorCode: AgentRunErrorCode) {
 .overview-grid {
   display: flex;
   flex-direction: column;
-  gap: 14px;
   min-width: 0;
+  border-top: 0.5px solid var(--admin-border-strong);
+}
+
+/* 分区之间只用细线隔开，不套卡片 */
+.overview-grid > * + * {
+  border-top: 0.5px solid var(--admin-border-strong);
 }
 
 .overview-grid__health {
   display: grid;
-  grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr);
-  gap: 14px;
+  grid-template-columns: minmax(0, 2fr) minmax(300px, 1fr);
   align-items: stretch;
+}
+
+.overview-grid__health > :first-child {
+  padding-right: 20px;
+}
+
+.overview-grid__health > :last-child {
+  padding-left: 20px;
+  box-shadow: inset 0.5px 0 0 var(--admin-border-strong);
 }
 
 .overview-grid > * {
@@ -231,6 +244,15 @@ function openFailureReason(errorCode: AgentRunErrorCode) {
 @media (max-width: 1240px) {
   .overview-grid__health {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .overview-grid__health > :first-child {
+    padding-right: 4px;
+  }
+
+  .overview-grid__health > :last-child {
+    padding-left: 4px;
+    box-shadow: inset 0 0.5px 0 var(--admin-border-strong);
   }
 }
 </style>

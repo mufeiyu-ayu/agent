@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { App as AntApp, Button, Result } from 'ant-design-vue'
+import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 
@@ -11,12 +12,18 @@ const router = useRouter()
 const { message } = AntApp.useApp()
 const { currentUser, signOut } = useAuth()
 
+const loggingOut = ref(false)
+
 async function logout() {
+  if (loggingOut.value)
+    return
+  loggingOut.value = true
   try {
     await signOut()
   }
   catch (error) {
     void message.error(formatAdminRunError(error))
+    loggingOut.value = false
     return
   }
 
@@ -28,7 +35,7 @@ async function logout() {
   <main class="forbidden">
     <Result status="403" :title="t('auth.forbidden.title')" :sub-title="t('auth.forbidden.description', { email: currentUser?.email ?? '' })">
       <template #extra>
-        <Button type="primary" @click="logout">
+        <Button type="primary" :loading="loggingOut" @click="logout">
           {{ t('auth.logout') }}
         </Button>
       </template>

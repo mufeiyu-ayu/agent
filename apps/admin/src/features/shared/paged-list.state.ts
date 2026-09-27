@@ -11,7 +11,7 @@ export interface PagedResult<T> {
 /** 无过滤表单的简单分页列表状态：会话列表与会话内运行列表复用。 */
 export function createPagedListState<T>(
   fetchPage: (page: number, pageSize: number, signal: AbortSignal) => Promise<PagedResult<T>>,
-  defaultPageSize = 8,
+  defaultPageSize = 20,
 ) {
   const items = shallowRef<T[]>([])
   const currentPage = ref(1)

@@ -31,7 +31,7 @@ export function useHomeScroll(root: Readonly<Ref<HTMLElement | null>>, motion: b
   onMounted(() => {
     previousTitle = document.title
     previousScrollBehavior = html.style.scrollBehavior
-    document.title = 'Agent for Teams'
+    document.title = 'Kuro for Teams'
     if (!reducedMotion())
       html.style.scrollBehavior = 'smooth'
 

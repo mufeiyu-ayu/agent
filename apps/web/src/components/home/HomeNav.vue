@@ -10,7 +10,7 @@ const { loggedIn, openLogin } = useHomeLogin()
 <template>
   <nav id="nav" class="nav" aria-label="Main">
     <div class="wrap nav-inner">
-      <a class="brand" href="#top" aria-label="Agent home"><img :src="logoUrl" alt="">Agent</a>
+      <a class="brand" href="#top" aria-label="Kuro home"><img :src="logoUrl" alt="">Kuro</a>
       <div class="nav-links">
         <a href="#product">Product</a>
         <a href="#share">Teams</a>

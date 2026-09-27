@@ -107,30 +107,34 @@ const tiles = computed<KpiTile[]>(() => {
 .kpi-grid {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 18px 24px;
 }
 
 .kpi-tile {
   display: flex;
   flex-direction: column;
   min-width: 0;
-  gap: 4px;
+  gap: 3px;
+  padding: 2px 16px;
+  box-shadow: inset 0.5px 0 0 var(--admin-border-strong);
+}
+
+.kpi-tile:first-child {
+  padding-left: 0;
+  box-shadow: none;
 }
 
 .kpi-tile__label {
-  color: var(--admin-text-subtle);
-  font-size: 11px;
-  font-weight: 650;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  color: var(--admin-text-muted);
+  font-size: var(--admin-font-xs);
+  font-weight: 500;
 }
 
 .kpi-tile__value {
   color: var(--admin-text);
-  font-size: 22px;
-  font-weight: 750;
-  letter-spacing: -0.03em;
-  line-height: 1.1;
+  font-size: 25px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
@@ -141,21 +145,22 @@ const tiles = computed<KpiTile[]>(() => {
 
 .kpi-tile__detail {
   color: var(--admin-text-muted);
-  font-size: 12px;
+  font-size: 11.5px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
 @media (max-width: 1240px) {
   .kpi-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+    row-gap: 16px;
   }
-}
 
-@media (max-width: 720px) {
-  .kpi-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .kpi-tile:nth-child(3n + 1) {
+    padding-left: 0;
+    box-shadow: none;
   }
 }
 </style>
