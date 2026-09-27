@@ -20,6 +20,7 @@ export default defineConfig({
         test: {
           name: 'api',
           include: ['apps/api/src/**/*.test.ts'],
+          setupFiles: ['apps/api/vitest.setup.ts'],
           exclude: ['**/*.db.test.ts'],
         },
       },
@@ -29,6 +30,7 @@ export default defineConfig({
           // 真实库测试只由 pnpm test:db 运行，文件之间串行。
           name: 'db',
           include: ['apps/api/src/**/*.db.test.ts'],
+          setupFiles: ['apps/api/vitest.setup.ts'],
           fileParallelism: false,
         },
       },
