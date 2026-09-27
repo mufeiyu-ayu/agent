@@ -8,7 +8,7 @@
 阶段 1-8：Completed
 当前阶段：工作台第 1 档（第一期上线）
 Active Agent Task：无
-Next：第一期 ② 部署（未立 Issue；须设 trust proxy，见 PR #196），之后 ③ 联网搜索
+Next：#197 `pnpm ship` 一键部署到 askkuro.com（第一期 ②），之后 ③ 联网搜索
 Gated：#117 Responses API adapter（2026-09-18），触发条件见看板
 产品方向：给 topuplist 运营用的 AI 工作台，分两期、上云、gsc 延后（2026-09-20 定案、2026-09-27 改为两期，docs/research/workbench-direction.md）；档、顺序与触发只在其第 7 节
 候选子系统：session 事件流与 replay、审批门、compaction、定时任务（未立 Issue，各自的档见 workbench 第 7 节）
@@ -19,6 +19,7 @@ Admin Task 4：Closed（2026-09-27：Auth 由 #195 完成；RBAC 不做（两种
 
 | 任务 | 状态 | 说明 |
 | --- | --- | --- |
+| #197 pnpm ship 一键部署与版本回退 | Next | 实施状态：未开始 / 验收状态：未验收。第一期 ②，review `xhigh` |
 | #195 邮箱密码登录、会话隔离与用户管理 | Completed | 全局 Guard + Session Cookie，会话按人隔离，管理台用户列表与 `pnpm create-admin`。PR #196 |
 | #193 首页替换为设计稿 Agent for Teams（百分百还原） | Completed | 设计稿移植成 `/` 首页并删旧首页，对原稿像素比对 33 张全部达标。PR #194 |
 | #191 全仓测试统一到 Vitest | Completed | 六个 Vitest 项目，入口收成 `test` / `test:db` / `test:e2e`，删 22 条低价值测试，新增 `docs/testing.md`。PR #192 |
