@@ -83,7 +83,7 @@ Controller -> Service -> AgentRuntime -> LLMService / ToolInvocationService -> P
 
 Runtime 不变量：
 
-- `Conversation` 是长期会话；`Message` 是用户可见消息；`AgentRun` 是一次用户输入触发的运行；`AgentStep` 是系统执行过程，不是模型真实 chain-of-thought；采样 Step 的 `reasoningContent` 只是 Tool Call 轮回填给模型、为重建而存的内容。
+- `Conversation` 是长期会话；`Message` 是用户可见消息；`AgentRun` 是一次用户输入触发的运行；`AgentStep` 是系统执行过程，不是模型真实 chain-of-thought；Tool Call 轮采样 Step 的 `reasoningContent` 是回填给模型、为重建而存的内容；最后一轮（final answer）与被停止 / 失败、没收完的那一轮的 `reasoningContent`、tool Step 的 `display` 与采样 Step 的 `answerStartedMs` 只为刷新后还原界面（#212），不属于模型可见内容；只有收完的 Tool Call 轮（finishReason 为 `tool_calls` / `length` 且有 call）的 `reasoningContent` 是回填内容。
 - UI message ≠ model message ≠ runtime event ≠ 持久化轨迹，各自独立契约。
 - delta 不等于持久化事实。
 - model-visible context 通过独立 Context boundary 维护，不回填 UI `Message`。

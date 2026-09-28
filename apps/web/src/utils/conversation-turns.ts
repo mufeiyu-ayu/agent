@@ -1,11 +1,22 @@
 import type { Conversation, ConversationMessage } from '@agent/contracts'
 import type { ConversationTurn, ConversationTurnStatus, TurnRun } from '../types/chat'
 
+import { restoreRun } from './run-status'
+
 interface MapConversationMessagesOptions {
   activeTurnId: string | null
   turnErrors: Record<string, string>
-  /** 按助手消息 id 的等待过程；只有当前页面里发出的轮次才有。 */
+  /** 按助手消息 id 的等待过程；只有当前页面里发出的轮次才有，优先于接口下发的 activity。 */
   runs?: Record<string, TurnRun>
+  /** 其余回答的等待过程：restoreMessageRun，或调用方带缓存的同一个函数。 */
+  restoredRun: (message: ConversationMessage) => TurnRun | undefined
+}
+
+/** 已结束的回答才还原；还在生成的（或进程中断遗留的）没有摘要可给。 */
+const RESTORED_OUTCOMES: Partial<Record<ConversationMessage['status'], NonNullable<TurnRun['outcome']>>> = {
+  COMPLETED: 'done',
+  FAILED: 'error',
+  ABORTED: 'aborted',
 }
 
 /**
@@ -45,7 +56,7 @@ export function mapMessagesToConversationTurns(
     currentTurn.generatedAt = item.updatedAt
     currentTurn.status = mapAssistantMessageStatus(item.status)
 
-    const run = options.runs?.[item.id]
+    const run = options.runs?.[item.id] ?? options.restoredRun(item)
 
     if (run)
       currentTurn.run = run
@@ -82,6 +93,13 @@ export function compareMessagesByCreatedAt(
   next: ConversationMessage,
 ): number {
   return new Date(current.createdAt).getTime() - new Date(next.createdAt).getTime()
+}
+
+/** 接口消息的等待过程（#212）：已结束的回答按 activity 还原，结局取自消息状态。 */
+export function restoreMessageRun(message: ConversationMessage): TurnRun | undefined {
+  const outcome = RESTORED_OUTCOMES[message.status]
+
+  return message.activity && outcome ? restoreRun(message.activity, outcome) : undefined
 }
 
 function getUserMessageTurnStatus(

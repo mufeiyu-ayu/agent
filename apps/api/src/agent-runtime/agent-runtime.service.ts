@@ -56,8 +56,7 @@ import {
 } from '../prisma/prisma.service.js'
 import { ToolInvocationService } from '../tools/core/tool-invocation.service.js'
 import { TOOL_DEFINITIONS } from '../tools/tool-definitions.js'
-import { MAX_URL_LENGTH } from '../tools/web/web-fetch.tool.js'
-import { MAX_QUERY_LENGTH } from '../tools/web/web-search.tool.js'
+import { toToolProgressArguments } from '../tools/web/tool-progress-arguments.js'
 import {
   AGENT_RUN_DEADLINE_EXCEEDED_MESSAGE,
   AgentLoopLimitExceededError,
@@ -251,6 +250,12 @@ export class AgentRuntimeService {
         databaseDeadline,
       )
       const assistantMessageId = assistantMessage.id
+      // 「用时」的起点：run_started 推出的时刻，与前台计时的起点（收到 start 事件）对齐（#212）；
+      // 与前台一样用单调时钟，系统校时不影响。
+      const runStartedAt = performance.now()
+      // 第一段正文（不只是空白）到达时距起点的毫秒数；此后收口的每个采样 Step 都带上，刷新后还原「用时」。
+      let answerStartedMs: number | undefined
+      const answerStartedOutput = () => answerStartedMs === undefined ? {} : { answerStartedMs }
 
       yield {
         type: 'run_started',
@@ -322,6 +327,8 @@ export class AgentRuntimeService {
         let contextPlanSummary: SamplingContextPlanSummary | undefined
         // 本轮是否已推出可见文本：只在本轮第一个 delta 前和上一轮的文本分段。
         let roundTextStarted = false
+        // 本轮推给界面的思考原文（与 reasoning_delta 同一份）：最终回答轮与没收完的一轮按它落库，只为刷新后还原（#212）。
+        let roundReasoning = ''
 
         try {
           // 每轮请求模型前重新规划完整输入：首轮把一次读到的全部历史按预算裁剪；
@@ -385,6 +392,8 @@ export class AgentRuntimeService {
                   contextPlanSummary,
                   debugModelIO,
                 ),
+                ...toPersistedSamplingContent(undefined, roundReasoning),
+                ...answerStartedOutput(),
                 // 与 abortRun 写入 Run 的类别一致。
                 errorCode: 'aborted',
               },
@@ -398,12 +407,15 @@ export class AgentRuntimeService {
             if (samplingResult.value.kind === 'reasoning') {
               // 思考原文只推给界面（#209）：不开输出 Step、不进 Message.content、不参与正文分段；
               // 与正文同样先做字符替换，流里的文本口径一致。
+              const reasoningDelta = toPersistableText(samplingResult.value.delta)
+
+              roundReasoning += reasoningDelta
               yield {
                 type: 'reasoning_delta',
                 runId: currentAgentRunId,
                 conversationId: input.conversationId,
                 assistantMessageId,
-                delta: toPersistableText(samplingResult.value.delta),
+                delta: reasoningDelta,
               }
             }
             else {
@@ -417,6 +429,9 @@ export class AgentRuntimeService {
 
               roundTextStarted = true
               terminal.content += contentDelta
+              // 与前台同一口径：只有空白（如调工具前先吐的换行）不算正文开始；向下取整，1 秒界限与整秒都按不满算。
+              if (answerStartedMs === undefined && contentDelta.trim())
+                answerStartedMs = Math.floor(performance.now() - runStartedAt)
               yield {
                 type: 'assistant_delta',
                 runId: currentAgentRunId,
@@ -442,7 +457,8 @@ export class AgentRuntimeService {
                   contextPlanSummary,
                   debugModelIO,
                 ),
-                ...toPersistedSamplingContent(samplingDecision),
+                ...toPersistedSamplingContent(samplingDecision, roundReasoning),
+                ...answerStartedOutput(),
               },
             },
           )
@@ -466,19 +482,18 @@ export class AgentRuntimeService {
             errorMessage: samplingFailure.message,
             output: {
               ...(completedSamplingDecision
-                ? {
-                    ...this.toSamplingStepOutput(
-                      completedSamplingDecision.summary,
-                      contextPlanSummary,
-                      debugModelIO,
-                    ),
-                    ...toPersistedSamplingContent(completedSamplingDecision),
-                  }
+                ? this.toSamplingStepOutput(
+                    completedSamplingDecision.summary,
+                    contextPlanSummary,
+                    debugModelIO,
+                  )
                 : this.toFailedSamplingStepOutput(
                     error,
                     contextPlanSummary,
                     debugModelIO,
                   )),
+              ...toPersistedSamplingContent(completedSamplingDecision, roundReasoning),
+              ...answerStartedOutput(),
               errorCode: samplingFailure.errorCode,
             },
           }
@@ -856,6 +871,9 @@ export class AgentRuntimeService {
           truncated: observation.truncated,
           // 回喂给模型的正文，已受 maxObservationChars 限制；后续轮次按预算缩短见 sampling Step 的 contextPlan。
           observation: toPersistableText(observation.content),
+          // 工具给界面的结果，与 tool_finished 同一份，只为刷新后还原时间线（#212），不进模型上下文；
+          // 工具失败时界面上的原因由 code 推出，不另存。
+          ...(toolResult.ok && toolResult.display ? { display: toPersistedToolDisplay(toolResult.display) } : {}),
         },
       }
 
@@ -1351,12 +1369,15 @@ function toPersistedContextPlan(
  * Tool Call 轮随 assistant 消息回填给模型的内容：本轮文本与 reasoning continuation。
  * DeepSeek 家族续轮一律回填 `reasoning_content`（模型没思考时为空串），这里仍只在非空时落库，
  * 重建时缺失即视为空串。final_answer 轮的文本是最终回答，不在这里。
+ * final_answer 轮与没收完的一轮（停止、失败，decision 为空）的思考不回填模型、不属于模型可见内容：
+ * 存的是推给界面的同一份原文，同样只在非空时写进 reasoningContent，只为刷新后还原时间线（#212）。
  */
 function toPersistedSamplingContent(
-  decision: SamplingDecision,
+  decision: SamplingDecision | undefined,
+  roundReasoning: string,
 ): Prisma.InputJsonObject {
-  if (decision.type !== 'tool_call')
-    return {}
+  if (decision?.type !== 'tool_call')
+    return roundReasoning ? { reasoningContent: roundReasoning } : {}
 
   return {
     ...(decision.intermediateText
@@ -1368,23 +1389,19 @@ function toPersistedSamplingContent(
   }
 }
 
-/** tool_started 给界面显示的参数（#208）：只用于展示，解析失败或不是字符串就不带，按长度截断。 */
-export function toToolProgressArguments(rawArgumentsJson: string): { query?: string, url?: string } {
-  let args: unknown
-
-  try {
-    args = JSON.parse(rawArgumentsJson)
-  }
-  catch {
-    return {}
-  }
-
-  const { query, url } = typeof args === 'object' && args !== null ? args as Record<string, unknown> : {}
-
+/**
+ * 落库的 display（#212）：只取 tool_finished 协议里的字段（工具多带的字段不存），
+ * 网页标题、地址来自外部，同样换掉 jsonb 存不了的字符。
+ */
+function toPersistedToolDisplay(display: ToolDisplay): Prisma.InputJsonObject {
   return {
-    // 截断长度与 web_search / web_fetch 自己的参数上限一致。
-    ...(typeof query === 'string' ? { query: query.slice(0, MAX_QUERY_LENGTH) } : {}),
-    ...(typeof url === 'string' ? { url: url.slice(0, MAX_URL_LENGTH) } : {}),
+    ...(display.failure === undefined ? {} : { failure: display.failure }),
+    ...(display.results === undefined
+      ? {}
+      : { results: display.results.map(({ title, url }) => ({ title: toPersistableText(title), url: toPersistableText(url) })) }),
+    ...(display.finalUrl === undefined ? {} : { finalUrl: toPersistableText(display.finalUrl) }),
+    ...(display.title === undefined ? {} : { title: toPersistableText(display.title) }),
+    ...(display.chars === undefined ? {} : { chars: display.chars }),
   }
 }
 

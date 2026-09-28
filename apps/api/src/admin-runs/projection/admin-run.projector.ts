@@ -208,6 +208,10 @@ function projectModelSampling(
   historyCandidateCount: number | null,
 ): AdminModelSamplingStep {
   const samplingIndex = readNonNegativeInteger(input, 'samplingIndex')
+  const finishReason = readAllowedString(output, 'finishReason', ADMIN_MODEL_FINISH_REASONS)
+  const toolCallCount = readNonNegativeInteger(output, 'toolCallCount')
+  // 只有收完的 Tool Call 轮才把思考回填模型；最终回答轮与没收完的一轮也存了思考（#212），只为前台还原，这里不列。
+  const fedBackToModel = !!toolCallCount && (finishReason === 'tool_calls' || finishReason === 'length')
 
   return {
     ...knownStepBase(step),
@@ -215,13 +219,13 @@ function projectModelSampling(
     // 轮次从 1 起算；0 只可能来自损坏数据，按读不出处理。
     samplingIndex: samplingIndex === 0 ? null : samplingIndex,
     samplingAttemptId: readString(input, 'samplingAttemptId'),
-    finishReason: readAllowedString(output, 'finishReason', ADMIN_MODEL_FINISH_REASONS),
+    finishReason,
     usage: projectTokenUsage(output),
-    toolCallCount: readNonNegativeInteger(output, 'toolCallCount'),
+    toolCallCount,
     firstTokenMs: readNonNegativeInteger(output, 'firstTokenMs'),
     errorCode: readAllowedString(output, 'errorCode', AGENT_RUN_ERROR_CODES),
     intermediateText: readText(output, 'intermediateText'),
-    reasoningContent: readText(output, 'reasoningContent'),
+    reasoningContent: fedBackToModel ? readText(output, 'reasoningContent') : null,
     contextInspector: projectContextInspector(input, output, historyCandidateCount),
     debugRequestBody: readDebugModelIOCaptureEnvelope(output?.debugRequestBody),
     debugRawResponse: readDebugModelResponseCapture(output),

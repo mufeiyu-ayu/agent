@@ -18,7 +18,7 @@ export type AgentRuntimeEvent
     assistantMessageId: string
     contentDelta: string
   }
-  // 思考原文分片（#209）：只给界面，不落库、不进 Message.content 与模型上下文。
+  // 思考原文分片（#209）：只给界面，不进 Message.content 与模型上下文；事件本身不落库（每轮完整思考随采样 Step 落库，#212）。
   | {
     type: 'reasoning_delta'
     runId: string
@@ -26,7 +26,7 @@ export type AgentRuntimeEvent
     assistantMessageId: string
     delta: string
   }
-  // 工具进度（#208）：只给界面，不落库、不进模型上下文。
+  // 工具进度（#208）：只给界面，不进模型上下文；事件本身不落库（display 随 tool Step 落库，#212）。
   | {
     type: 'tool_started'
     runId: string

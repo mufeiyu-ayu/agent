@@ -54,7 +54,7 @@ export interface ChatStreamDeltaEvent {
 
 /**
  * 模型思考原文的一个分片（#209）：只有返回思考原文的模型（DeepSeek 等）才有，原样转发、不拼接；
- * 只给界面显示，不落库、不进 `Message.content` 与模型上下文，刷新后没有。前台一律按纯文本渲染。
+ * 只给界面显示，不进 `Message.content` 与模型上下文；每轮的完整思考随采样 Step 落库，刷新后经 `ConversationMessage.activity` 还原（#212）。前台一律按纯文本渲染。
  */
 export interface ChatStreamReasoningDeltaEvent {
   type: 'reasoning_delta'
@@ -64,7 +64,7 @@ export interface ChatStreamReasoningDeltaEvent {
 }
 
 /**
- * 工具开始执行（#208）：只给界面显示进度，不落库、不进模型上下文。
+ * 工具开始执行（#208）：只给界面显示进度，不进模型上下文；事件本身不落库，刷新后经 `ConversationMessage.activity` 还原（#212）。
  * `query` / `url` 是模型给的参数，仅供展示：尽力取出、按长度截断，取不到就没有；前台一律按纯文本渲染。
  */
 export interface ChatStreamToolStartedEvent {

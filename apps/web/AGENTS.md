@@ -23,7 +23,7 @@ src/main.ts -> src/App.vue -> src/router/index.ts   # / 首页、/privacy（公�
 | `components/layout/` | 壳、头部、侧栏、会话列表、设置弹窗（主题 / 文字亮度 / 语言） | `AppShell.vue`、`SettingsDialog.vue` |
 | `components/home/` | 首页「Agent for Teams」各部分：导航、hero 与演示窗口、五个场景、收尾、页脚。按设计稿百分百还原：CSS 照搬原稿、只有英文、始终浅色，不接 i18n 与主题；「Start asking」未登录时弹登录框 | `HomeHeroDemo.vue`、`HomeStartLink.vue`、`home-login.ts`（HomeView 提供的登录态） |
 | `components/ui/` | shadcn 风格基础组件 | |
-| `utils/` | 纯函数：会话分轮、时间格式、Markdown 分块与高亮、流式尾块补齐、等待过程的事件归并、思考短句与文案、首页缓动 | `conversation-turns.ts`、`markdown-blocks.ts`、`streaming-markdown.ts`、`run-status.ts` |
+| `utils/` | 纯函数：会话分轮、时间格式、Markdown 分块与高亮、流式尾块补齐、等待过程的事件归并与刷新后还原（#212）、思考短句与文案、首页缓动 | `conversation-turns.ts`、`markdown-blocks.ts`、`streaming-markdown.ts`、`run-status.ts` |
 | `types/` | 前台内部类型；跨端协议一律从 `@agent/contracts` 取 | |
 | `i18n/` | 中英文案，`messages.test.ts` 校验两份键一致 | |
 

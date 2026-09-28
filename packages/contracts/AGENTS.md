@@ -10,7 +10,7 @@ src/api-response.ts      # 全局响应包装 { success, code, message, data }
 src/auth.ts              # 登录与用户管理：USER_ROLES / USER_STATUSES、密码长度、PASSWORD_CHANGE_REQUIRED 错误码、AuthUser / AdminUser、Google 登录的配置与结果形状；
                          # 唯一放实现的例外：userDisplayName / userInitial（前台与管理台显示用户必须一致的纯函数）
 src/chat.ts              # ChatRequest / ChatModelOption / NDJSON 流事件（start / delta / reasoning_delta / tool_started / tool_finished / done / error / aborted）、消息字数上限
-src/conversation.ts      # 会话与消息
+src/conversation.ts      # 会话与消息；回答的 activity（刷新后还原摘要行与时间线的精简数据，#212）
 src/agent-run.ts         # AgentRun / AgentStep 的对外形状、Run 失败类别 AGENT_RUN_ERROR_CODES（唯一来源）
 src/admin-llm.ts         # LLM 配置：LLM_PROVIDER_FAMILIES、LLM_FAMILY_CAPABILITIES（各家族 compat：thinkingFormat / requiresReasoningContent / toolCallIndexOptional / toolCallsMayFinishWithStop / reasoningEfforts，唯一来源）、Provider / Model 的读写形状
 src/admin-run.ts         # 管理台 Run Trace 读模型

@@ -46,7 +46,7 @@ import {
   teeRawResponseCapture,
 } from '@agent/ai'
 import { familyCompatOf } from '@agent/contracts'
-import { describe, it } from 'vitest'
+import { describe, it, onTestFinished, vi } from 'vitest'
 
 import { projectAdminRunDetail } from '../admin-runs/projection/admin-run.projector.js'
 import { toChatStreamEvent } from '../chat/chat-stream-event.mapper.js'
@@ -70,7 +70,7 @@ import {
   AgentRunTerminalizationError,
   ContextTokenEstimationError,
 } from './agent-runtime.errors.js'
-import { AgentRuntimeService, toToolProgressArguments } from './agent-runtime.service.js'
+import { AgentRuntimeService } from './agent-runtime.service.js'
 import { DeepSeekV4TokenEstimator } from './context/deepseek-v4-token-estimator.js'
 import {
   flattenPlanningState,
@@ -1259,7 +1259,7 @@ describe('AgentRuntimeService model stream', () => {
     assertNoUnfinishedSteps(harness)
   })
 
-  it('#209 思考原文作为 reasoning_delta 转发；Message、Step 落库与下一轮模型请求和没有思考分片时逐字一致', async () => {
+  it('#209 思考原文作为 reasoning_delta 转发；Message、Step 落库与下一轮模型请求和没有思考分片时逐字一致（#212 起最后一轮的思考只多存在最终采样 Step）', async () => {
     const reasoningRounds = [['先搜\0一下', ' seo。'], ['整理结果。']]
     const streamsOf = (withReasoning: boolean): ModelStreamEvent[][] => [
       [
@@ -1285,9 +1285,9 @@ describe('AgentRuntimeService model stream', () => {
       return {
         events,
         message: harness.assistantMessage()?.content,
-        // 时间与首 token 毫秒数随真实时钟变化，其余字段逐字比对。
+        // 时间、首 token 与正文开始的毫秒数随真实时钟变化，其余字段逐字比对。
         steps: harness.recorder.steps.map(({ type, sequence, status, input, output }) => {
-          const { firstTokenMs: _firstTokenMs, ...rest } = (output ?? {}) as Record<string, unknown>
+          const { firstTokenMs: _firstTokenMs, answerStartedMs: _answerStartedMs, ...rest } = (output ?? {}) as Record<string, unknown>
 
           return { type, sequence, status, input, output: rest }
         }),
@@ -1322,7 +1322,17 @@ describe('AgentRuntimeService model stream', () => {
     )
     assert.equal(withReasoning.message, '结论。')
     assert.deepEqual(withReasoning.message, without.message)
-    assert.deepEqual(withReasoning.steps, without.steps)
+    // #212：最后一轮（final answer）的思考只为界面还原存进它的采样 Step，没有思考分片时不写。
+    const finalSampling = (steps: typeof without.steps) => steps.filter(step => step.type === 'model_sampling').at(-1)!
+    const { reasoningContent: finalReasoning, ...finalRest } = finalSampling(withReasoning.steps).output
+
+    assert.equal(finalReasoning, '整理结果。')
+    assert.equal(Object.hasOwn(finalSampling(without.steps).output, 'reasoningContent'), false)
+    assert.deepEqual(finalRest, finalSampling(without.steps).output)
+    assert.deepEqual(
+      withReasoning.steps.filter(step => step !== finalSampling(withReasoning.steps)),
+      without.steps.filter(step => step !== finalSampling(without.steps)),
+    )
     assert.deepEqual(withReasoning.modelRequests, without.modelRequests)
   })
 
@@ -2352,11 +2362,12 @@ describe('AgentRuntimeService model stream', () => {
     await generator.next()
     await generator.return(undefined)
 
-    const { contextPlan: _, ...samplingOutput } = findStep(harness, 'model_sampling')
+    const { contextPlan: _, answerStartedMs, ...samplingOutput } = findStep(harness, 'model_sampling')
       ?.output as Record<string, unknown>
 
-    // 流没收完就没有 summary：不伪造 usage / firstTokenMs，只有失败类别。
+    // 流没收完就没有 summary：不伪造 usage / firstTokenMs，只有失败类别；正文已开始，所以带「用时」（#212）。
     assert.deepEqual(samplingOutput, { errorCode: 'aborted' })
+    assert.ok(Number.isSafeInteger(answerStartedMs) && (answerStartedMs as number) >= 0)
     assert.equal(findStep(harness, 'model_sampling')?.status, AgentStepStatus.ABORTED)
     assert.equal(findStep(harness, 'model_sampling')?.errorMessage, '用户已停止生成。')
     assert.equal(harness.recorder.runErrorCode, 'aborted')
@@ -3462,7 +3473,7 @@ describe('工具进度事件（#208）', () => {
     ])
   })
 
-  it('AC-02 事件字段：started 带展示参数，finished 带 display；chat 流只带协议字段；display 不进 observation、Step 与模型请求', async () => {
+  it('AC-02 事件字段：started 带展示参数，finished 带 display；chat 流只带协议字段；display 不进 observation 与模型请求（#212 起按协议字段存进 tool Step）', async () => {
     const display = { finalUrl: 'https://ui-only.example/final', title: '界面标题', chars: 1234 }
     const harness = createHarness(
       (_, __, callIndex) => callIndex === 0
@@ -3505,9 +3516,11 @@ describe('工具进度事件（#208）', () => {
       observationChars: 4,
       truncated: false,
       observation: '网页正文',
+      display,
     })
+    assert.doesNotMatch(JSON.stringify(harness.recorder.steps), /ui-only-extra/)
     assert.doesNotMatch(
-      JSON.stringify({ steps: harness.recorder.steps, llmCalls: harness.llmCalls.map(call => call.messages) }),
+      JSON.stringify(harness.llmCalls.map(call => call.messages)),
       /ui-only|界面标题|1234/,
     )
   })
@@ -3629,17 +3642,203 @@ describe('工具进度事件（#208）', () => {
       assertNoUnfinishedSteps(harness)
     }
   })
+})
 
-  it('AC-05 展示参数：非法 JSON、非对象、非字符串都省略，超长按上限截断，不抛异常', () => {
-    assert.deepEqual(toToolProgressArguments('{"query":"seo","url":"https://a.example/"}'), { query: 'seo', url: 'https://a.example/' })
-    for (const raw of ['', '{"query":', 'null', '[]', '"seo"', '1', '{"query":1,"url":{"href":"x"}}', '{"q":"seo"}'])
-      assert.deepEqual(toToolProgressArguments(raw), {}, raw)
-    assert.deepEqual(toToolProgressArguments(JSON.stringify({ query: 'q'.repeat(300), url: `https://a.example/${'u'.repeat(3000)}` })), {
-      query: 'q'.repeat(200),
-      url: `https://a.example/${'u'.repeat(3000)}`.slice(0, 2048),
-    })
+describe('刷新后还原要用的落库补齐（#212）', () => {
+  it('AC-01 web_search / web_fetch 成功与自标失败时 tool Step 存 display；工具失败不存；observation 与模型请求不变', async () => {
+    const searchDisplay: ToolDisplay = { results: [{ title: '来源\0标题', url: 'https://a.example/' }] }
+    const fetchDisplay: ToolDisplay = { failure: 'failed', finalUrl: 'https://b.example/final' }
+    const toolResults: Record<string, ToolResult> = {
+      'call-search': { ok: true, modelContent: '搜索结果', display: searchDisplay },
+      'call-fetch': { ok: true, modelContent: '不支持的内容类型', display: fetchDisplay },
+      'call-broken': { ok: false, code: 'execution_failed', modelContent: '执行失败' },
+    }
+    const harness = createHarness(
+      (_, __, callIndex) => callIndex === 0
+        ? toModelStream([
+            toolCallEvent('call-search', 'web_search', '{"query":"seo"}', '推理', 0),
+            toolCallEvent('call-fetch', 'web_fetch', '{"url":"https://b.example/"}', '推理', 1),
+            toolCallEvent('call-broken', 'web_search', '{"query":"x"}', '推理', 2),
+            { type: 'response_completed', finishReason: 'tool_calls' },
+          ])
+        : toModelStream([
+            { type: 'text_delta', delta: '完成。' },
+            { type: 'response_completed', finishReason: 'stop' },
+          ]),
+      undefined,
+      async envelope => toolResults[envelope.callId]!,
+      { maxToolCalls: 3 },
+    )
+
+    await collectEvents(harness.run())
+
+    const outputs = harness.recorder.steps
+      .filter(step => step.type === 'tool_execution')
+      .map(step => step.output as Record<string, unknown>)
+
+    // jsonb 存不了 U+0000：来自网页的标题同样换成 U+FFFD。
+    assert.deepEqual(outputs[0]?.display, { results: [{ title: '来源�标题', url: 'https://a.example/' }] })
+    assert.deepEqual(outputs[1]?.display, fetchDisplay)
+    assert.equal(Object.hasOwn(outputs[2]!, 'display'), false)
+    assert.deepEqual(outputs.map(output => output.observation), ['搜索结果', '不支持的内容类型', '执行失败'])
+    // 下一轮模型请求里只有 observation，没有 display 的任何字段。
+    assert.doesNotMatch(JSON.stringify(harness.llmCalls.map(call => call.messages)), /来源|a\.example|b\.example\/final/)
+    assertNoUnfinishedSteps(harness)
+  })
+
+  it('AC-02 最后一轮的思考只进采样 Step：下一次对话的模型请求里历史仍只有消息', async () => {
+    const harness = createHarness((_, __, callIndex) => toModelStream(callIndex === 0
+      ? [
+          { type: 'reasoning_started' },
+          { type: 'reasoning_delta', delta: '最后一轮的思考' },
+          { type: 'text_delta', delta: '第一轮回答' },
+          { type: 'response_completed', finishReason: 'stop' },
+        ]
+      : [
+          { type: 'text_delta', delta: '第二轮回答' },
+          { type: 'response_completed', finishReason: 'stop' },
+        ]))
+
+    await collectEvents(harness.run())
+    assert.equal((findStep(harness, 'model_sampling')?.output as Record<string, unknown>).reasoningContent, '最后一轮的思考')
+
+    await collectEvents(harness.run())
+    assert.deepEqual(harness.llmCalls[1]?.messages, [
+      { type: 'message', role: 'user', content: '问题' },
+      { type: 'message', role: 'assistant', content: '第一轮回答' },
+      { type: 'message', role: 'user', content: '问题' },
+    ])
+    assert.doesNotMatch(JSON.stringify(harness.llmCalls[1]?.messages), /最后一轮的思考/)
+  })
+
+  it('AC-02 停止或失败的一轮：已推给界面的思考同样存进它的采样 Step（管理台不当作回填内容）', async () => {
+    const reasoningOf = async (events: ModelStreamEvent[], stopAfter?: number) => {
+      const controller = new AbortController()
+      const harness = createHarness(
+        () => (async function* () {
+          for (const [index, event] of events.entries()) {
+            yield event
+            if (stopAfter === index)
+              controller.abort()
+          }
+        })(),
+        controller.signal,
+      )
+
+      await collectEvents(harness.run())
+      assertNoUnfinishedSteps(harness)
+
+      const output = findStep(harness, 'model_sampling')?.output as Record<string, unknown>
+      const projected = projectHarnessRunDetail(harness, 'FAILED').timeline.find(item => item.type === 'model_sampling')
+
+      return [output.reasoningContent, projected && 'reasoningContent' in projected ? projected.reasoningContent : 'missing']
+    }
+    const thinking: ModelStreamEvent[] = [
+      { type: 'reasoning_started' },
+      { type: 'reasoning_delta', delta: '想了\0很久' },
+      { type: 'reasoning_delta', delta: '还没想完' },
+    ]
+
+    // 缺 response_completed（流读取失败）、思考中途停止：存的是推给界面的同一份原文（已替换 U+0000）。
+    assert.deepEqual(await reasoningOf(thinking), ['想了\uFFFD很久还没想完', null])
+    assert.deepEqual(await reasoningOf(thinking, 1), ['想了\uFFFD很久', null])
+    assert.deepEqual(await reasoningOf(thinking.slice(0, 1), 0), [undefined, null])
+  })
+
+  it('AC-03 answerStartedMs 从 run_started 起算到第一段正文（假时钟）：先思考后正文时不等于 firstTokenMs，只有空白不算', async () => {
+    const clock = useFakeClock()
+    const harness = createHarness(() => clock.stream([
+      [1_000, { type: 'reasoning_started' }],
+      [1_500, { type: 'reasoning_delta', delta: '想一想' }],
+      [3_000, { type: 'text_delta', delta: '\n' }],
+      [4_200, { type: 'text_delta', delta: '答' }],
+      [4_300, { type: 'response_completed', finishReason: 'stop' }],
+    ]))
+
+    await collectEvents(harness.run())
+
+    const output = findStep(harness, 'model_sampling')?.output as Record<string, unknown>
+
+    assert.equal(output.answerStartedMs, 4_200)
+    assert.equal(output.firstTokenMs, 1_000)
+  })
+
+  it('AC-03 正文在 Tool Call 轮开始时，此后收口的采样 Step 都带同一个值', async () => {
+    const clock = useFakeClock()
+    const harness = createHarness((_, __, callIndex) => clock.stream(callIndex === 0
+      ? [
+          [1_200, { type: 'text_delta', delta: '先查一下。' }],
+          [1_300, toolCallEvent('call-1', 'web_search', '{"query":"seo"}')],
+          [1_400, { type: 'response_completed', finishReason: 'tool_calls' }],
+        ]
+      : [
+          [3_000, { type: 'text_delta', delta: '结论。' }],
+          [3_100, { type: 'response_completed', finishReason: 'stop' }],
+        ]))
+
+    await collectEvents(harness.run())
+
+    assert.deepEqual(
+      harness.recorder.steps
+        .filter(step => step.type === 'model_sampling')
+        .map(step => (step.output as Record<string, unknown>).answerStartedMs),
+      [1_200, 1_200],
+    )
+  })
+
+  it('AC-03 没出正文就失败或停止时不写 answerStartedMs；出了正文再停止时写', async () => {
+    const answerStartedMsOf = async (events: Array<[number, ModelStreamEvent]>, stopAfter?: number) => {
+      const clock = useFakeClock()
+      const controller = new AbortController()
+      const harness = createHarness(
+        () => clock.stream(events, { stopAfter, controller }),
+        controller.signal,
+      )
+
+      await collectEvents(harness.run())
+      assertNoUnfinishedSteps(harness)
+
+      return (findStep(harness, 'model_sampling')?.output as Record<string, unknown>).answerStartedMs
+    }
+    const thinking: Array<[number, ModelStreamEvent]> = [
+      [1_000, { type: 'reasoning_started' }],
+      [2_000, { type: 'reasoning_delta', delta: '想一想' }],
+    ]
+
+    // 流读取失败（缺 response_completed）、正文前停止：都没有正文。
+    assert.equal(await answerStartedMsOf(thinking), undefined)
+    assert.equal(await answerStartedMsOf(thinking, 1), undefined)
+    assert.equal(await answerStartedMsOf([...thinking, [2_500, { type: 'text_delta', delta: '部分' }]], 2), 2_500)
   })
 })
+
+/**
+ * 只假时钟（Date 给首 token 时间，performance 给 #212 的「用时」）：定时器仍是真的，deadline 与 sleep 照常工作。
+ * stream 按给定时刻（从创建时起算）推进时钟再吐事件；stopAfter 指定在第几个事件之后停止（abort）。
+ */
+function useFakeClock() {
+  let elapsed = 0
+
+  vi.useFakeTimers({ toFake: ['Date', 'performance'] })
+  onTestFinished(() => {
+    vi.useRealTimers()
+  })
+
+  return {
+    async* stream(
+      events: Array<[number, ModelStreamEvent]>,
+      stop: { stopAfter?: number | undefined, controller?: AbortController } = {},
+    ): AsyncGenerator<ModelStreamEvent> {
+      for (const [index, [at, event]] of events.entries()) {
+        vi.advanceTimersByTime(at - elapsed)
+        elapsed = at
+        yield event
+        if (stop.stopAfter === index)
+          stop.controller?.abort()
+      }
+    },
+  }
+}
 
 describe('ModelContext', () => {
   it('保持 direct-final、一次 Tool 和两次顺序 Tool 的 items', () => {
@@ -4529,11 +4728,16 @@ function withoutVolatileSamplingFields(value: unknown): unknown {
   if (typeof value !== 'object' || value === null || Array.isArray(value))
     return value
 
-  const { contextPlan: _, firstTokenMs, ...rest } = value as Record<string, unknown>
+  const { contextPlan: _, firstTokenMs, answerStartedMs, ...rest } = value as Record<string, unknown>
 
   assert.ok(
     firstTokenMs === null || (Number.isSafeInteger(firstTokenMs) && (firstTokenMs as number) >= 0),
     `firstTokenMs 应为非负整数或 null，实际 ${String(firstTokenMs)}`,
+  )
+  // 随真实时钟变化（#212）；没出正文时没有。
+  assert.ok(
+    answerStartedMs === undefined || (Number.isSafeInteger(answerStartedMs) && (answerStartedMs as number) >= 0),
+    `answerStartedMs 应为非负整数或不存在，实际 ${String(answerStartedMs)}`,
   )
   return rest
 }

@@ -314,3 +314,145 @@ test('#209 AC-05 思考短句：状态行随思考换字时状态行与正文全
   await timeline.getByRole('button', { name: /结果够用了/ }).click()
   await expect(page.locator('[data-run-thought]').nth(1)).not.toHaveClass(/is-overflowing/)
 })
+
+test('#212 AC-09 完成一轮后刷新、切换会话再切回：摘要行与展开的时间线与刷新前一致，还原时状态行无动画、零移动', async ({ page }) => {
+  const OTHER_ID = 'conversation-other'
+  const THOUGHTS = ['先找官方发布说明。', '资料够了，开始回答。']
+  const FETCHED = { finalUrl: 'https://react.dev/blog/2025/10/01/react-19-2', title: 'React 19.2 – React', chars: 6800 }
+  const json = (data: unknown) => ({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, code: 0, message: 'ok', data }) })
+  // 服务端在这一轮结束后返回的消息：activity 与流事件是同一份数据（#212）。
+  const persisted = [
+    { id: 'user-live', conversationId: CONVERSATION_ID, role: 'USER', content: 'React 19.2 官方博客里列了哪些新特性？', status: 'COMPLETED', createdAt: '2026-09-28T00:00:00.000Z', updatedAt: '2026-09-28T00:00:00.000Z' },
+    {
+      id: 'assistant-live',
+      conversationId: CONVERSATION_ID,
+      role: 'ASSISTANT',
+      content: ANSWER.join(''),
+      status: 'COMPLETED',
+      createdAt: '2026-09-28T00:00:01.000Z',
+      updatedAt: '2026-09-28T00:00:05.000Z',
+      activity: {
+        // 与下面的推送节奏一致：正文约在 3.5 秒开始。
+        answerStartedMs: 3_540,
+        toolBeforeAnswer: true,
+        items: [
+          { kind: 'thought', text: THOUGHTS[0] },
+          { kind: 'tool', callId: 'call-search', toolName: 'web_search', query: 'React 19.2 release', ok: true, durationMs: 620, results: SOURCES },
+          { kind: 'tool', callId: 'call-fetch', toolName: 'web_fetch', url: FETCHED.finalUrl, ok: true, durationMs: 620, ...FETCHED },
+          { kind: 'thought', text: THOUGHTS[1] },
+        ],
+      },
+    },
+  ] as const
+  let serverMessages: unknown[] = []
+
+  await page.route('**/favicon.ico', route => route.abort())
+  await installApiRoutes(page, () => serverMessages as never)
+  await page.route('**/api/conversations?*', route => route.fulfill(json({
+    items: [
+      { id: CONVERSATION_ID, title: '落地页 SEO 诊断', createdAt: '2026-08-17T08:00:00.000Z', updatedAt: '2026-08-17T09:00:00.000Z' },
+      { id: OTHER_ID, title: '另一个会话', createdAt: '2026-08-16T08:00:00.000Z', updatedAt: '2026-08-16T09:00:00.000Z' },
+    ],
+    nextCursor: null,
+  })))
+  await page.route(`**/api/conversations/${OTHER_ID}/messages`, route => route.fulfill(json([])))
+  await installBrowserStubs(page, {
+    lines: [
+      start,
+      line({ type: 'reasoning_delta', delta: THOUGHTS[0] }),
+      line({ type: 'tool_started', callId: 'call-search', toolName: 'web_search', query: 'React 19.2 release' }),
+      line({ type: 'tool_finished', callId: 'call-search', ok: true, results: SOURCES }),
+      line({ type: 'tool_started', callId: 'call-fetch', toolName: 'web_fetch', url: FETCHED.finalUrl }),
+      line({ type: 'tool_finished', callId: 'call-fetch', ok: true, ...FETCHED }),
+      line({ type: 'reasoning_delta', delta: THOUGHTS[1] }),
+      ...ANSWER.map(contentDelta => line({ type: 'delta', contentDelta })),
+      line({ type: 'done', content: ANSWER.join(''), generatedAt: '2026-09-28T00:00:05.000Z' }),
+    ],
+    holdBeforeIndex: -1,
+    delaysMs: [0, 300, 500, 600, 200, 600, 300, 900, ...ANSWER.slice(1).map(() => 80), 150],
+  })
+  // 每一帧记下状态行的位置、文字不透明度与正在跑的动画：刷新后的还原要一出现就是定稿，不淡入、不描绘、不移动。
+  await page.addInitScript(() => {
+    const frames: Array<{ y: number, opacity: number, animations: string[] }> = []
+
+    Object.assign(window, { __restoreFrames: frames })
+    const record = () => {
+      const row = document.querySelector('[data-run-row]')
+      const viewport = document.querySelector<HTMLElement>('[data-agent-conversation-viewport]')
+
+      if (row && viewport) {
+        const running = row.closest('.agent-run')!.getAnimations({ subtree: true }).filter(animation => animation.playState === 'running')
+
+        frames.push({
+          y: row.getBoundingClientRect().top - viewport.getBoundingClientRect().top + viewport.scrollTop,
+          opacity: [...row.querySelectorAll('[data-run-text]')].reduce((sum, element) => sum + Number(getComputedStyle(element).opacity), 0),
+          animations: running.map(animation => (animation as CSSAnimation).animationName ?? (animation as CSSTransition).transitionProperty),
+        })
+      }
+      requestAnimationFrame(record)
+    }
+    requestAnimationFrame(record)
+  })
+
+  const row = page.locator('[data-run-row]')
+  const timeline = page.locator('[data-run-timeline]')
+  /** 当前画面：摘要行文字、展开后每一行时间线，以及搜索这一步展开后的来源。 */
+  const view = async () => {
+    // 切回会话时先恢复滚动位置，期间整个会话区不可见（innerText 为空）。
+    await expect(row).toBeVisible()
+    await expect(row).toHaveAttribute('aria-expanded', 'false')
+    const summary = await row.textContent()
+
+    await row.click()
+    await expect(timeline).toBeVisible()
+    await timeline.getByRole('button', { name: /React 19.2 release/ }).click()
+    await expect(timeline.getByRole('link', { name: /React 19.2 来源/ })).toHaveCount(5)
+    await timeline.getByRole('button', { name: /React 19.2 – React/ }).click()
+    const result = {
+      summary,
+      steps: await timeline.locator('li .run-tl-head').allInnerTexts(),
+      sources: await timeline.getByRole('link', { name: /React 19.2 来源/ }).evaluateAll(links => links.map(link => link.getAttribute('href'))),
+      page: await timeline.getByRole('link', { name: '打开原网页' }).getAttribute('href'),
+    }
+
+    return result
+  }
+
+  await page.goto('/workspace')
+  await page.getByRole('textbox').first().fill('React 19.2 官方博客里列了哪些新特性？')
+  await page.getByRole('button', { name: '发送消息' }).click()
+  await expect(row).toContainText('已搜索 1 次、阅读 1 个网页', { timeout: 10_000 })
+  await expect(page.getByRole('button', { name: '停止生成' })).toHaveCount(0, { timeout: 10_000 })
+  await page.waitForTimeout(600)
+  const live = await view()
+
+  expect(live.summary).toMatch(/已搜索 1 次、阅读 1 个网页\s*用时 3 秒/)
+  expect(live.steps).toHaveLength(4)
+  serverMessages = [...persisted]
+
+  // 切到另一个会话再切回：还是离开前的样子（摘要收起）。
+  await page.getByText('另一个会话').click()
+  await expect(row).toHaveCount(0)
+  await page.getByText('落地页 SEO 诊断').click()
+  expect(await view()).toEqual(live)
+
+  // 刷新：本页内存里的过程没了，全靠接口下发的 activity 还原。
+  await page.reload()
+  await expect(row).toBeVisible()
+  await page.waitForTimeout(800)
+  const frames = await page.evaluate(() => (window as unknown as { __restoreFrames: Array<{ y: number, opacity: number, animations: string[] }> }).__restoreFrames)
+
+  expect(frames.length).toBeGreaterThan(10)
+  for (const frame of frames) {
+    expect(frame.animations, '还原的状态行没有动画').toEqual([])
+    expect(frame.opacity, '摘要一出现就完全显示').toBe(1)
+    expect(Math.abs(frame.y - frames[0]!.y), '状态行零移动').toBeLessThanOrEqual(0.5)
+  }
+  expect(await view()).toEqual(live)
+
+  // 刷新后再切走切回：重新拉取、按新消息重新还原，仍与刷新前一致（摘要收起）。
+  await page.getByText('另一个会话').click()
+  await expect(row).toHaveCount(0)
+  await page.getByText('落地页 SEO 诊断').click()
+  expect(await view()).toEqual(live)
+})

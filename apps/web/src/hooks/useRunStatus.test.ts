@@ -1,4 +1,4 @@
-import type { ChatStreamEvent } from '@agent/contracts'
+import type { ChatStreamEvent, MessageActivity } from '@agent/contracts'
 import type { TurnRun } from '../types/chat'
 
 import assert from 'node:assert/strict'
@@ -7,7 +7,7 @@ import { effectScope, ref, shallowRef } from 'vue'
 import { createI18n } from 'vue-i18n'
 
 import { messages } from '../i18n/messages'
-import { applyRunEvent, endRun, runStatusText, runSummaryText, startRun } from '../utils/run-status'
+import { applyRunEvent, endRun, restoreRun, runStatusText, runStepText, runSummaryText, startRun, thoughtTitle } from '../utils/run-status'
 import { useRunStatus } from './useRunStatus'
 
 const ids = { conversationId: 'c', assistantMessageId: 'a' }
@@ -72,6 +72,27 @@ function createTurn(locale: 'zh-CN' | 'en-US' = 'zh-CN') {
     },
     end(outcome: NonNullable<TurnRun['outcome']> = 'done') {
       run.value = endRun(run.value!, performance.now(), outcome)
+    },
+    /** 刷新后从接口还原（#212）：不经过流事件，一开始就是已结束。 */
+    restore(activity: MessageActivity, outcome: NonNullable<TurnRun['outcome']> = 'done') {
+      run.value = restoreRun(activity, outcome)
+      waiting.value = false
+    },
+    /** 展开后的时间线：每行的文字，思考行排在它之后的第一个步骤之前（与 AgentRunTimeline 同序）。 */
+    timeline(): string[] {
+      const current = run.value!
+      const thoughtsAt = (index: number) => current.thoughts
+        .filter(thought => thought.at === index)
+        .map(thought => `思考[${thoughtTitle(thought.text)}]`)
+
+      return [
+        ...current.steps.flatMap((step, index) => {
+          const text = runStepText(step, t, locale)
+
+          return [...thoughtsAt(index), `${text.verb} ${text.object}${text.meta ? ` · ${text.meta}` : ''}`]
+        }),
+        ...thoughtsAt(current.steps.length),
+      ]
     },
   }
 }
@@ -359,5 +380,162 @@ describe('#209 状态行的思考短句（假时钟）', () => {
     turn.emit(finished('call-1'))
     turn.emit(think('再补一句说明。'))
     assert.equal(at(turn, 1300), '尾点 浮层[再补一句说明。]')
+  })
+})
+
+describe('#212 刷新后还原：同一份数据，实时结束时与还原后的摘要、时间线完全一致', () => {
+  /** 一轮实时对话结束后的画面与时间线；时刻都从 start 起算。 */
+  function live(locale: 'zh-CN' | 'en-US', script: Array<[number, Record<string, unknown> & { type: ChatStreamEvent['type'] }]>, endAt: number, outcome: NonNullable<TurnRun['outcome']> = 'done') {
+    const turn = createTurn(locale)
+
+    // 同一用例里中英文各跑一遍：每轮从当前时刻重新起算。
+    origin = performance.now()
+    turn.start()
+    for (const [ms, event] of script) {
+      vi.advanceTimersByTime(ms - clock())
+      turn.emit(event)
+    }
+    vi.advanceTimersByTime(endAt - clock())
+    turn.end(outcome)
+
+    return { summary: turn.snapshot(), timeline: turn.timeline() }
+  }
+
+  function restored(locale: 'zh-CN' | 'en-US', activity: MessageActivity, outcome: NonNullable<TurnRun['outcome']> = 'done') {
+    const turn = createTurn(locale)
+
+    turn.restore(activity, outcome)
+    return { summary: turn.snapshot(), timeline: turn.timeline() }
+  }
+
+  const sources = [{ title: '来源', url: 'https://a.example/' }]
+  const cases: Array<{
+    name: string
+    script: Array<[number, Record<string, unknown> & { type: ChatStreamEvent['type'] }]>
+    endAt: number
+    outcome?: NonNullable<TurnRun['outcome']>
+    activity: MessageActivity
+    zh: string
+  }> = [
+    {
+      name: '先思考、搜索、读网页、再思考后回答',
+      script: [
+        [200, think('先搜一下。')],
+        [900, search('s', 'seo')],
+        [2_000, finished('s', { results: sources })],
+        [2_100, fetchPage('f', 'https://b.example/')],
+        [4_000, finished('f', { finalUrl: 'https://b.example/final', title: '网页标题', chars: 1234 })],
+        [4_500, think('整理结果。')],
+        [9_400, delta],
+      ],
+      endAt: 12_000,
+      activity: {
+        answerStartedMs: 9_400,
+        toolBeforeAnswer: true,
+        items: [
+          { kind: 'thought', text: '先搜一下。' },
+          { kind: 'tool', callId: 's', toolName: 'web_search', query: 'seo', ok: true, durationMs: 1_100, results: sources },
+          { kind: 'tool', callId: 'f', toolName: 'web_fetch', url: 'https://b.example/', ok: true, durationMs: 1_900, finalUrl: 'https://b.example/final', title: '网页标题', chars: 1234 },
+          { kind: 'thought', text: '整理结果。' },
+        ],
+      },
+      zh: '摘要[已搜索 1 次、阅读 1 个网页 · 用时 9 秒]',
+    },
+    {
+      name: '只有思考',
+      script: [[300, think('想一想这个问题。')], [2_500, delta]],
+      endAt: 5_000,
+      activity: { answerStartedMs: 2_500, toolBeforeAnswer: false, items: [{ kind: 'thought', text: '想一想这个问题。' }] },
+      zh: '摘要[已思考 2 秒]',
+    },
+    {
+      name: '工具失败：超时与自标失败',
+      script: [
+        [100, search('s', 'seo')],
+        [1_000, finished('s', { ok: false, failure: 'failed' })],
+        [1_100, fetchPage('f', 'https://b.example/')],
+        [16_000, finished('f', { ok: false, failure: 'timeout' })],
+        [17_000, delta],
+      ],
+      endAt: 18_000,
+      activity: {
+        answerStartedMs: 17_000,
+        toolBeforeAnswer: true,
+        items: [
+          { kind: 'tool', callId: 's', toolName: 'web_search', query: 'seo', ok: false, failure: 'failed' },
+          { kind: 'tool', callId: 'f', toolName: 'web_fetch', url: 'https://b.example/', ok: false, failure: 'timeout' },
+        ],
+      },
+      zh: '摘要[已搜索 1 次、阅读 1 个网页 · 用时 17 秒 · 2 步失败]',
+    },
+    {
+      name: '正文 1 秒内开始、之后才调工具：实时没有状态行，还原也没有',
+      script: [[400, delta], [600, search('s', 'seo')], [1_500, finished('s', { results: sources })]],
+      endAt: 3_000,
+      activity: { answerStartedMs: 400, toolBeforeAnswer: false, items: [{ kind: 'tool', callId: 's', toolName: 'web_search', query: 'seo', ok: true, results: sources }] },
+      zh: '无',
+    },
+    {
+      name: '只有思考且正文 1 秒内开始：没有状态行',
+      script: [[100, think('很快。')], [800, delta]],
+      endAt: 2_000,
+      activity: { answerStartedMs: 800, toolBeforeAnswer: false, items: [{ kind: 'thought', text: '很快。' }] },
+      zh: '无',
+    },
+  ]
+
+  for (const testCase of cases) {
+    it(`AC-08 ${testCase.name}（中英文）`, () => {
+      for (const locale of ['zh-CN', 'en-US'] as const) {
+        const liveView = live(locale, testCase.script, testCase.endAt, testCase.outcome)
+        const restoredView = restored(locale, testCase.activity, testCase.outcome)
+
+        assert.deepEqual(restoredView, liveView, `${locale}：${JSON.stringify(restoredView)}`)
+        if (locale === 'zh-CN')
+          assert.equal(restoredView.summary, testCase.zh)
+      }
+    })
+  }
+
+  it('AC-08 时间线逐行一致（中英文）：思考行在同一轮的步骤之前，最后一轮思考在最后', () => {
+    const view = restored('zh-CN', cases[0]!.activity)
+
+    assert.deepEqual(view.timeline, [
+      '思考[先搜一下。]',
+      '搜索 seo · 1 条结果',
+      '阅读 网页标题 · b.example · 约 1,234 字',
+      '思考[整理结果。]',
+    ])
+    assert.deepEqual(restored('en-US', cases[0]!.activity).timeline, [
+      '思考[先搜一下。]',
+      'Searched seo · 1 result',
+      'Read 网页标题 · b.example · ~1,234 chars',
+      '思考[整理结果。]',
+    ])
+  })
+
+  it('AC-08 降级：没有 display 不写结果数，被停止的步骤没有参数，没有 answerStartedMs 不写用时，没有最后一轮思考就少那一行', () => {
+    const old = restored('zh-CN', {
+      toolBeforeAnswer: true,
+      items: [
+        { kind: 'thought', text: 'Tool Call 轮的思考。' },
+        { kind: 'tool', callId: 's', toolName: 'web_search', query: 'seo', ok: true },
+        { kind: 'tool', callId: 'f', toolName: 'web_fetch', url: 'https://b.example/page', ok: true },
+      ],
+    })
+
+    assert.equal(old.summary, '摘要[已搜索 1 次、阅读 1 个网页]')
+    // 搜索行没有「n 条结果」，阅读行没有标题时写域名。
+    assert.deepEqual(old.timeline, ['思考[Tool Call 轮的思考。]', '搜索 seo', '阅读 b.example'])
+    // 被停止的步骤在库里没有参数（Step 没收口）：摘要与实时一致，时间线这一行只有动作与「已停止」。
+    const stopped = restored('zh-CN', { answerStartedMs: 1_500, toolBeforeAnswer: false, items: [{ kind: 'tool', callId: 'f', toolName: 'web_fetch', ok: false }] }, 'aborted')
+
+    assert.equal(stopped.summary, live('zh-CN', [[1_500, delta], [1_600, fetchPage('f', 'https://b.example/')]], 4_000, 'aborted').summary)
+    assert.equal(stopped.summary, '摘要[已停止 · 用时 1 秒]')
+    assert.deepEqual(stopped.timeline, ['阅读  · 已停止'])
+    // 停在正文前、没有用时：「已停止」「已思考」都不带时间。
+    assert.equal(restored('zh-CN', { toolBeforeAnswer: true, items: [{ kind: 'tool', callId: 'f', toolName: 'web_fetch', ok: false }] }, 'aborted').summary, '摘要[已停止]')
+    assert.equal(restored('zh-CN', { toolBeforeAnswer: false, items: [{ kind: 'thought', text: '想完了。' }] }).summary, '摘要[已思考]')
+    assert.equal(restored('en-US', { toolBeforeAnswer: false, items: [{ kind: 'thought', text: '想完了。' }] }).summary, '摘要[Thought]')
   })
 })

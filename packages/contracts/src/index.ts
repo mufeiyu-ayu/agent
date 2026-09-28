@@ -126,7 +126,12 @@ export type {
   DeleteConversationResponse,
   ListConversationsRequest,
   ListConversationsResponse,
+  MessageActivity,
+  MessageActivityItem,
+  MessageActivityThought,
+  MessageActivityTool,
   MessageRole,
   MessageStatus,
   UpdateConversationRequest,
 } from './conversation.js'
+export { RUN_ROW_DELAY_MS } from './conversation.js'

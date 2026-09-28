@@ -29,8 +29,8 @@ ChatService（LlmModelConfigService.resolveModel 解析模型行快照）
   -> lifecycle: create Run + cancellation（deadline 取自 configuration 的 policy）
   -> resolveRunConfiguration()（私有方法）：模型可见的 Tool 说明（来自工具清单 TOOL_DEFINITIONS）+ resolveChatRequestConfig
   -> context: select and plan model-visible input
-  -> sampling: consume model stream and return decision（正文推 assistant_delta；思考原文推 reasoning_delta，只给界面，不落库、不进正文与模型上下文）
-  -> executeToolBatch()（私有 async generator）：顺序处理一批 Tool Call，每个 call 一个 tool_execution Step；判定与执行都交给 ToolInvocationService.invoke，这里按它返回的 result / argumentsValidated / observation 记账与回喂；开 Step 前推 tool_started、收口后推 tool_finished（只给界面，不落库、不进模型上下文），被停止或 deadline 打断的 call 不推 tool_finished
+  -> sampling: consume model stream and return decision（正文推 assistant_delta；思考原文推 reasoning_delta，只给界面，不进正文与模型上下文；每轮完整思考随采样 Step 落库，只有收完的 Tool Call 轮是回填内容，最后一轮与被停止 / 失败那一轮的只为界面还原；第一段正文的时刻记成 answerStartedMs，此后收口的采样 Step 都带上）
+  -> executeToolBatch()（私有 async generator）：顺序处理一批 Tool Call，每个 call 一个 tool_execution Step；判定与执行都交给 ToolInvocationService.invoke，这里按它返回的 result / argumentsValidated / observation 记账与回喂；开 Step 前推 tool_started、收口后推 tool_finished（只给界面，不进模型上下文；工具给的 display 同时存进 tool Step，只为刷新后还原），被停止或 deadline 打断的 call 不推 tool_finished
   -> lifecycle: atomic terminalization
 ```
 
