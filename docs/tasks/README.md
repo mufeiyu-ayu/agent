@@ -19,7 +19,7 @@ Admin Task 4：Closed（2026-09-27：Auth 由 #195 完成；RBAC 不做（两种
 
 | 任务 | 状态 | 说明 |
 | --- | --- | --- |
-| #212 C2 刷新后还原：摘要行与时间线随消息下发 | 实施状态：已实现；验收状态：待验收 | tool Step 存 display、最后一轮采样 Step 存思考与 answerStartedMs，会话消息带 activity，刷新 / 切回后直接渲染定稿摘要。 |
+| #212 C2 刷新后还原：摘要行与时间线随消息下发 | 实施状态：已实现；验收状态：待验收 | tool Step 存 display、最后一轮采样 Step 存思考与 answerStartedMs，会话消息带 activity，刷新 / 切回后直接渲染定稿摘要。PR #213 |
 | #209 思考短句：状态行显示最新一句思考，时间线可展开完整思考 | Completed | 有思考原文的模型（DeepSeek）状态行换成最新一句写完的话，时间线每轮思考一行、可展开原文；新增 `reasoning_delta` 流事件，不落库。PR #211 |
 | #208 对话等待过程：呼吸点、单行步骤状态与摘要（实时） | Completed | 发出即有呼吸点，超 1 秒或用工具时单行状态原地换字，正文开始时变成可展开的时间线摘要，全程零位移。PR #210 |
 | #206 读网页 web_fetch：SSRF 防护与正文提取 | Completed | 模型可打开网页读正文：每一跳防 SSRF（含连接时防 DNS 换绑），正文在 worker 里用 Readability 提取。PR #207 |
