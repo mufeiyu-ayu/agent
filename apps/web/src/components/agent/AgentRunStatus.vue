@@ -29,6 +29,11 @@ const FLOAT_LINE_PX = 26
 
 const { t, locale } = useI18n()
 const { hasRow, live, floating, shownKey, shownStep, shownThought, seconds, dotVisible, dotTrailing } = useRunStatus(() => props.run, () => props.waiting)
+/**
+ * 挂载时就已结束（刷新后还原、切换会话再切回，#212）：直接显示定稿的摘要，
+ * 不播摘要淡入与勾的描绘，看起来和离开前一样。
+ */
+const settledAtMount = props.run?.phase === 'ended'
 
 const vPulseSync: Directive<HTMLElement | SVGElement> = {
   mounted(el) {
@@ -59,10 +64,10 @@ function toggle() {
     expanded.value = !expanded.value
 }
 
-/** 呼吸点挂上后就不再卸载（start 前就停止或出错时也要淡出）；从接口加载的历史轮次始终不挂。 */
-const dotMounted = ref(!!props.run || props.waiting)
+/** 呼吸点挂上后就不再卸载（start 前就停止或出错时也要淡出）；挂载时已结束的轮次始终不挂。 */
+const dotMounted = ref((!!props.run && !settledAtMount) || props.waiting)
 
-watch(() => !!props.run || props.waiting, (active) => {
+watch(() => (!!props.run && props.run.phase !== 'ended') || props.waiting, (active) => {
   if (active)
     dotMounted.value = true
 })
@@ -115,7 +120,7 @@ const floatStyle = computed(() => {
             v-if="!live && run"
             :key="endIcon"
             class="run-icon-svg"
-            :class="`is-${endIcon}`"
+            :class="[`is-${endIcon}`, { 'is-static': settledAtMount }]"
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
@@ -132,7 +137,7 @@ const floatStyle = computed(() => {
         </Transition>
       </span>
       <span class="run-text" role="status">
-        <Transition name="run-swap" appear>
+        <Transition name="run-swap" :appear="!settledAtMount">
           <!-- 思考短句每一两秒换一句，不进读屏播报（aria-hidden），只播步骤与阶段变化 -->
           <span v-if="live" :key="liveKey" class="run-text-item is-live" data-run-text>
             <span v-pulse-sync class="run-label is-live" :aria-hidden="shownThought ? 'true' : undefined">{{ liveText.label }}<b v-if="liveText.object">{{ ` ${liveText.object}` }}</b></span>
@@ -386,6 +391,10 @@ const floatStyle = computed(() => {
 .run-check-path {
   stroke-dasharray: 12;
   animation: run-check-draw 0.38s var(--run-ease-out) 0.08s both;
+}
+
+.run-icon-svg.is-static .run-check-path {
+  animation: none;
 }
 
 .run-chevron {

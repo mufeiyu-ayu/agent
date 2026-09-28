@@ -13,7 +13,7 @@ import { createOutboundDispatcher } from '../../llm/outbound-proxy.js'
 
 export const SERPER_SEARCH_URL = 'https://google.serper.dev/search'
 export const MAX_QUERY_LENGTH = 200
-const RESULT_COUNT = 10
+export const RESULT_COUNT = 10
 const LOG_BODY_CHARS = 200
 // 含汉字就按中文搜（不带 hl 时 Google 容易返回繁体结果）；带假名或谚文的是日文 / 韩文，不加。
 const HAN_PATTERN = /\p{Script=Han}/u

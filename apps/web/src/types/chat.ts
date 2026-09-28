@@ -12,7 +12,7 @@ export interface ConversationTurn {
   reply?: string
   generatedAt?: string
   errorMessage?: string
-  /** 本轮的等待过程；只有当前页面里发出的轮次才有（刷新后没有，#208）。 */
+  /** 本轮的等待过程：当前页面里发出的轮次来自流事件（#208），其余的由接口下发的 activity 还原（#212）。 */
   run?: TurnRun
 }
 
@@ -40,6 +40,7 @@ export interface TurnRunThought {
  * 一轮回答的等待过程（#208）：waiting 是思考中（start 之后、tool_finished 之后），
  * tool 是工具执行中，answering 是正文在写，ended 是 done / error / aborted 或本地停止之后。
  * 时间都是 performance.now()：单调时钟，系统校时不会让状态行消失或计时倒退。
+ * 刷新后还原的轮次（#212）一开始就是 ended：startedAt 记 0、answerAt 是接口给的毫秒数，没有 endedAt。
  */
 export interface TurnRun {
   /** start 事件到达的时刻：计时、1 秒阈值与「用时」都从这里算。 */

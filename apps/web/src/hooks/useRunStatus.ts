@@ -1,11 +1,10 @@
 import type { TurnRun, TurnRunStep } from '../types/chat'
 
+import { RUN_ROW_DELAY_MS } from '@agent/contracts'
 import { computed, onScopeDispose, ref, shallowRef, watch } from 'vue'
 
 import { liveThought } from '../utils/run-status'
 
-/** 满 1 秒还没有正文才出现状态行（Nielsen 响应时间界限：1 秒内不打断用户思路，无需提示）。 */
-export const RUN_ROW_DELAY_MS = 1000
 /** 状态行每个状态至少停留这么久才换下一个，避免搜索秒回时一闪一闪。 */
 export const RUN_MIN_DWELL_MS = 1200
 /** 思考短句要读完一句话，停得比步骤久一些（#209）。 */
@@ -34,8 +33,16 @@ export function useRunStatus(run: () => TurnRun | undefined, waiting: () => bool
   const hasRow = computed(() => {
     const current = run()
 
-    return !!current && (current.toolBeforeAnswer
-      || (current.answerAt ?? current.endedAt ?? now.value) - current.startedAt >= RUN_ROW_DELAY_MS)
+    if (!current)
+      return false
+
+    const end = current.answerAt ?? current.endedAt
+
+    // 刷新后还原的轮次（#212）没有正文开始与结束时刻：有 activity 就有状态行。
+    if (end === undefined && current.phase === 'ended')
+      return true
+
+    return current.toolBeforeAnswer || (end ?? now.value) - current.startedAt >= RUN_ROW_DELAY_MS
   })
   const live = computed(() => {
     const current = run()

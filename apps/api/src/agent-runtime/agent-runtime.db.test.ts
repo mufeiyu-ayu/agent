@@ -3,7 +3,9 @@ import type {
   ModelInputItem,
   ModelStreamEvent,
 } from '@agent/ai'
+import type { Prisma } from '../generated/prisma/client.js'
 import type { LLMService } from '../llm/llm.service.js'
+import type { RegisteredTool, ToolDefinition, ToolResult } from '../tools/core/tool.types.js'
 import type { AgentRuntimeEvent } from './agent-runtime.types.js'
 import type { AgentRuntimePolicyService } from './configuration/agent-runtime.policy.js'
 import type {
@@ -16,6 +18,8 @@ import { readdir, readFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import process from 'node:process'
 import { afterAll, beforeAll, describe, it } from 'vitest'
+import { ConversationsService } from '../conversations/conversations.service.js'
+import { MessagesService } from '../conversations/messages.service.js'
 import {
   AgentRunStatus,
   AgentStepStatus,
@@ -26,6 +30,8 @@ import { createResolvedLlmModel } from '../llm/__fixtures__.js'
 import { PrismaService } from '../prisma/prisma.service.js'
 import { ToolInvocationService } from '../tools/core/tool-invocation.service.js'
 import { ToolRegistryService } from '../tools/core/tool-registry.service.js'
+import { webFetchDefinition } from '../tools/web/web-fetch.tool.js'
+import { webSearchDefinition } from '../tools/web/web-search.tool.js'
 import { AgentRuntimeService } from './agent-runtime.service.js'
 import { SamplingContextPlanner } from './context/sampling-context-planner.js'
 import { AgentRunRecorderService } from './lifecycle/agent-run-recorder.service.js'
@@ -330,6 +336,177 @@ describe('AgentRuntime PostgreSQL integration', () => {
     assert.match(JSON.stringify(outputs[1]?.debugRequestBody), /先查�一下/)
   })
 
+  // ── #212 刷新后还原：runtime 真实落库 → listMessages 读回 activity ──
+
+  it('#212 AC-10 真实写入一轮带搜索、读网页与思考的运行后，listMessages 的 activity 正确且不带 observation', async () => {
+    const { userId, conversationId } = await createOwnedConversation()
+    // 2 万字的网页正文：必须进 observation，不能出现在接口返回里。
+    const pageText = `网页正文标记${'长'.repeat(20_000)}`
+    const harness = createHarness(
+      conversationId,
+      [
+        () => toModelStream([
+          { type: 'reasoning_started' },
+          { type: 'reasoning_delta', delta: '先搜一下。' },
+          toolCallEvent('call-search', 'web_search', '{"query":"seo"}', '先搜一下。', 0),
+          toolCallEvent('call-fetch', 'web_fetch', '{"url":"https://b.example/"}', '先搜一下。', 1),
+          { type: 'response_completed', finishReason: 'tool_calls' },
+        ]),
+        () => toModelStream([
+          { type: 'reasoning_started' },
+          { type: 'reasoning_delta', delta: '整理\u0000结果。' },
+          { type: 'text_delta', delta: '结论。' },
+          { type: 'response_completed', finishReason: 'stop' },
+        ]),
+      ],
+      undefined,
+      {
+        tools: [
+          fakeTool(webSearchDefinition, { ok: true, modelContent: '搜索结果', display: { results: [{ title: '来源', url: 'https://a.example/' }] } }),
+          fakeTool(webFetchDefinition, { ok: true, modelContent: pageText, display: { finalUrl: 'https://b.example/final', title: '网页标题', chars: pageText.length } }),
+        ],
+      },
+    )
+
+    assert.equal((await collectEvents(harness.run())).at(-1)?.type, 'run_completed')
+
+    const messages = await new MessagesService(prisma, new ConversationsService(prisma)).listMessages(userId, conversationId)
+    const [userMessage, assistantMessage] = messages
+    const activity = assistantMessage?.activity
+
+    assert.equal(Object.hasOwn(userMessage!, 'activity'), false)
+    assert.ok(activity, 'activity')
+    assert.ok(Number.isSafeInteger(activity.answerStartedMs) && activity.answerStartedMs! >= 0)
+    assert.equal(activity.toolBeforeAnswer, true)
+    assert.deepEqual(activity.items.map(item => item.kind === 'tool' ? { ...item, durationMs: typeof item.durationMs } : item), [
+      { kind: 'thought', text: '先搜一下。' },
+      { kind: 'tool', callId: 'call-search', toolName: 'web_search', query: 'seo', ok: true, durationMs: 'number', results: [{ title: '来源', url: 'https://a.example/' }] },
+      { kind: 'tool', callId: 'call-fetch', toolName: 'web_fetch', url: 'https://b.example/', ok: true, durationMs: 'number', finalUrl: 'https://b.example/final', title: '网页标题', chars: pageText.length },
+      // 最后一轮的思考经 jsonb 落库，U+0000 换成 U+FFFD。
+      { kind: 'thought', text: '整理�结果。' },
+    ])
+    assert.doesNotMatch(JSON.stringify(messages), /网页正文标记|搜索结果/)
+  })
+
+  it('#212 AC-05 / AC-10 旧格式与损坏数据、RUNNING 遗留、FAILED / ABORTED 运行：接口不抛错，按降级规则给出，其余消息照常', async () => {
+    const { userId, conversationId } = await createOwnedConversation()
+    const at = (seconds: number) => new Date(Date.UTC(2026, 8, 28, 8, 0, seconds))
+    const createTurn = async (
+      second: number,
+      run: { status: AgentRunStatus, messageStatus: MessageStatus },
+      steps: Array<{ type: string, status: AgentStepStatus, input?: Prisma.InputJsonValue, output?: Prisma.InputJsonValue }>,
+    ) => {
+      const user = await prisma.message.create({ data: { conversationId, role: MessageRole.USER, content: `问题 ${second}`, createdAt: at(second) } })
+      const assistant = await prisma.message.create({
+        data: { conversationId, role: MessageRole.ASSISTANT, content: `回答 ${second}`, status: run.messageStatus, createdAt: at(second + 1) },
+      })
+
+      await prisma.agentRun.create({
+        data: {
+          conversationId,
+          userMessageId: user.id,
+          assistantMessageId: assistant.id,
+          status: run.status,
+          createdAt: at(second),
+          steps: {
+            create: steps.map((step, index) => ({
+              sequence: index + 1,
+              type: step.type,
+              title: step.type,
+              status: step.status,
+              ...(step.input === undefined ? {} : { input: step.input }),
+              ...(step.output === undefined ? {} : { output: step.output }),
+              startedAt: at(second),
+              ...(step.status === AgentStepStatus.RUNNING ? {} : { endedAt: at(second + 1) }),
+            })),
+          },
+        },
+      })
+
+      return assistant.id
+    }
+    const sampling = 'model_sampling'
+    const tool = 'tool_execution'
+    const done = AgentStepStatus.COMPLETED
+
+    // C2 之前完成的运行：tool Step 没有 display，采样 Step 没有 answerStartedMs 与最后一轮思考。
+    const oldRun = await createTurn(0, { status: AgentRunStatus.COMPLETED, messageStatus: MessageStatus.COMPLETED }, [
+      { type: sampling, status: done, output: { toolCallCount: 1, reasoningContent: '旧的思考' } },
+      { type: tool, status: done, input: { callId: 'c1', toolName: 'web_search', arguments: '{"query":"seo"}' }, output: { ok: true, observation: '旧 observation' } },
+      { type: sampling, status: done, output: { toolCallCount: 0 } },
+    ])
+    // 损坏数据：output 为字符串、input 为数组、没有 output；tool Step 连工具名都没有，整条回答不出 activity。
+    const broken = await createTurn(10, { status: AgentRunStatus.COMPLETED, messageStatus: MessageStatus.COMPLETED }, [
+      { type: sampling, status: done, output: 'not-an-object' },
+      { type: tool, status: done, input: ['bad'], output: { ok: true, display: { results: 'bad', chars: 'many' } } },
+      { type: tool, status: done },
+    ])
+    // 进程中断遗留：Run / tool Step 停在 RUNNING。
+    const orphan = await createTurn(20, { status: AgentRunStatus.RUNNING, messageStatus: MessageStatus.STREAMING }, [
+      { type: sampling, status: done, output: { toolCallCount: 1 } },
+      { type: tool, status: AgentStepStatus.RUNNING, input: { callId: 'c2', toolName: 'web_fetch' } },
+    ])
+    // 工具执行中失败 / 停止：被打断的 Step 没有结果。
+    const failed = await createTurn(30, { status: AgentRunStatus.FAILED, messageStatus: MessageStatus.FAILED }, [
+      { type: sampling, status: done, output: { toolCallCount: 1 } },
+      { type: tool, status: AgentStepStatus.FAILED, input: { callId: 'c3', toolName: 'web_search' } },
+    ])
+    const aborted = await createTurn(40, { status: AgentRunStatus.ABORTED, messageStatus: MessageStatus.ABORTED }, [
+      { type: sampling, status: AgentStepStatus.ABORTED, output: { errorCode: 'aborted', answerStartedMs: 1_500 } },
+    ])
+
+    const messages = await new MessagesService(prisma, new ConversationsService(prisma)).listMessages(userId, conversationId)
+    const activityOf = (id: string) => messages.find(message => message.id === id)?.activity
+
+    assert.equal(messages.length, 10)
+    assert.deepEqual(activityOf(oldRun), {
+      toolBeforeAnswer: true,
+      items: [
+        { kind: 'thought', text: '旧的思考' },
+        { kind: 'tool', callId: 'c1', toolName: 'web_search', query: 'seo', ok: true, durationMs: 1_000 },
+      ],
+    })
+    assert.equal(activityOf(broken), undefined)
+    assert.equal(messages.find(message => message.id === broken)?.content, '回答 10')
+    assert.deepEqual(activityOf(orphan)?.items, [{ kind: 'tool', callId: 'c2', toolName: 'web_fetch', ok: false }])
+    assert.deepEqual(activityOf(failed)?.items, [{ kind: 'tool', callId: 'c3', toolName: 'web_search', ok: false, durationMs: 1_000 }])
+    assert.deepEqual(activityOf(aborted), { answerStartedMs: 1_500, toolBeforeAnswer: false, items: [] })
+    assert.doesNotMatch(JSON.stringify(messages), /旧 observation/)
+  })
+
+  it('#212 AC-04 一条回答对应多个运行时取最新的一个', async () => {
+    const { userId, conversationId } = await createOwnedConversation()
+    const user = await prisma.message.create({ data: { conversationId, role: MessageRole.USER, content: '问题' } })
+    const assistant = await prisma.message.create({ data: { conversationId, role: MessageRole.ASSISTANT, content: '回答' } })
+    const createRun = (createdAt: Date, query: string) => prisma.agentRun.create({
+      data: {
+        conversationId,
+        userMessageId: user.id,
+        assistantMessageId: assistant.id,
+        status: AgentRunStatus.COMPLETED,
+        createdAt,
+        steps: {
+          create: [{
+            sequence: 1,
+            type: 'tool_execution',
+            title: 'tool_execution',
+            status: AgentStepStatus.COMPLETED,
+            input: { callId: 'c', toolName: 'web_search', arguments: JSON.stringify({ query }) },
+            output: { ok: true },
+          }],
+        },
+      },
+    })
+
+    await createRun(new Date(Date.UTC(2026, 8, 28, 9)), '新的')
+    await createRun(new Date(Date.UTC(2026, 8, 28, 8)), '旧的')
+
+    const messages = await new MessagesService(prisma, new ConversationsService(prisma)).listMessages(userId, conversationId)
+    const item = messages[1]?.activity?.items[0]
+
+    assert.equal(item?.kind === 'tool' && item.query, '新的')
+  })
+
   // ── 脚手架 ──────────────────────────────────────────────
 
   function createHarness(
@@ -341,6 +518,8 @@ describe('AgentRuntime PostgreSQL integration', () => {
       runDeadlineMs?: number
       /** 模拟开启 AGENT_DEBUG_CAPTURE_MODEL_IO：把请求与拼好的正文交给 debugCapture 回调。 */
       captureModelIO?: boolean
+      /** 注册进 Registry 的工具；不给时 Registry 为空，调用一律走 unknown_tool。 */
+      tools?: RegisteredTool[]
     } = {},
   ) {
     let callIndex = 0
@@ -363,17 +542,21 @@ describe('AgentRuntime PostgreSQL integration', () => {
       },
     } as unknown as LLMService
     const tokenEstimator = new TestTokenEstimator()
+    const registry = new ToolRegistryService()
+
+    for (const tool of options.tools ?? [])
+      registry.register(tool)
+
     const service = new AgentRuntimeService(
       llmService,
       prisma,
       new AgentRunRecorderService(prisma),
-      // 本文件的用例只调用清单外的工具名（走 unknown_tool），Registry 留空即可。
-      new ToolInvocationService(new ToolRegistryService()),
+      new ToolInvocationService(registry),
       {
         value: {
           historyCandidateHardLimit: 1_000,
           maxSamplingRounds: 3,
-          maxToolCalls: 1,
+          maxToolCalls: options.tools ? 2 : 1,
           runDeadlineMs: options.runDeadlineMs ?? 60_000,
         },
       } as AgentRuntimePolicyService,
@@ -400,6 +583,16 @@ describe('AgentRuntime PostgreSQL integration', () => {
     })
 
     return conversation.id
+  }
+
+  /** listMessages 按归属校验：会话挂在一个真实用户名下。 */
+  async function createOwnedConversation(): Promise<{ userId: string, conversationId: string }> {
+    const user = await prisma.user.create({ data: { email: `${randomUUID()}@example.com` } })
+    const conversation = await prisma.conversation.create({
+      data: { title: 'activity integration', userId: user.id },
+    })
+
+    return { userId: user.id, conversationId: conversation.id }
   }
 
   async function requireAssistantMessage(conversationId: string) {
@@ -505,10 +698,17 @@ function toolCallEvent(
   callId: string,
   name: string,
   argumentsJson: string,
+  reasoningContent = '需要调用工具。',
+  index = 0,
 ): ModelStreamEvent {
   return {
     type: 'tool_call_completed',
-    toolCall: { providerCallId: callId, name, argumentsJson, index: 0 },
-    reasoningContent: '需要调用工具。',
+    toolCall: { providerCallId: callId, name, argumentsJson, index },
+    reasoningContent,
   }
+}
+
+/** 真实定义（参数校验、Observation 上限）+ 固定结局的执行器：不发网络请求。 */
+function fakeTool<TInput>(definition: ToolDefinition<TInput>, result: ToolResult): RegisteredTool {
+  return { definition, executor: { execute: async () => result } } as unknown as RegisteredTool
 }

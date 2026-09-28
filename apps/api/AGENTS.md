@@ -25,7 +25,7 @@ Prisma schema 在仓库根 `prisma/`，生成的 client 在 `src/generated/prism
 | `admin-llm/` | LLM 配置的写侧：服务商 / 模型 CRUD、拉取、探测、导入预设 | `admin-llm.service.ts`、`llm-model-presets.ts`（按家族的官方上限与默认强度） |
 | `auth/` | 登录：服务端 Session + httpOnly Cookie、scrypt 密码、账号锁定与 IP 限流、改密码；Google 重定向登录与 One Tap | `auth.guard.ts`、`auth.service.ts`（`createSession` 两种登录共用、`userStatus` 三态）、`auth.decorators.ts`（`@Public` / `@AllowPendingPasswordChange` / `@CurrentAuth`）、`password.ts`、`session-cookie.ts`、`google-auth.service.ts`（`signIn`：按 sub → 邮箱匹配 → 按状态处理）、`google-id-token.ts`（验签与声明校验） |
 | `admin-users/` | 管理员建号、停用 / 启用、审核待审核账号（通过 / 拒绝）、重置密码、改角色 | `admin-users.service.ts` |
-| `conversations/` | 会话与消息的 CRUD，只操作当前用户自己的会话 | `conversations.service.ts`、`messages.service.ts` |
+| `conversations/` | 会话与消息的 CRUD，只操作当前用户自己的会话；读消息时给回答带上 activity（#212：一次查询、jsonb 路径避开 observation） | `conversations.service.ts`、`messages.service.ts`、`message-activity.ts`（Step → activity 的降级投影） |
 | `admin-runs/` `admin-conversations/` `admin-overview/` | 管理台只读投影；概览与运行列表用 SQL 只取 Step JSON 的必要路径 | `admin-runs/projection/`（Run Trace 读模型）、`admin-runs/admin-model-refs.ts`（按 modelId 关联模型行）、`admin-overview/admin-overview.service.ts`（窗口聚合 SQL）；见 `admin-runs/README.md` |
 | `prisma/` | `PrismaService` 与连接可靠性 | `prisma.service.ts` |
 | `common/` | 全局管道 / 拦截器 / 过滤器 / 中间件 / 工具 | `bootstrap/register-app-globals.ts` |
@@ -33,7 +33,7 @@ Prisma schema 在仓库根 `prisma/`，生成的 client 在 `src/generated/prism
 ## 不变量
 
 - 鉴权在后端：全局 Guard 默认拦截，新接口不标 `@Public()` 就要登录，`admin/*` Controller 自动要求 ADMIN。会话归属按 `userId` 过滤，别人的会话与不存在的一律 404（`conversations`、`messages`、`chat/stream`）；`admin-*` 可观测看全部。库里只存密码的 scrypt 串与 token 的 SHA-256；停用、重置密码、改角色删该用户全部 Session，自己改密码保留当前这条。账号三态（启用 / 待审核 / 停用）在库里是 `disabled` 与 `pendingApproval` 两个布尔（迁移只加不删），一律经 `userStatus` 读。Google 登录（#198）：两种方式校验完都进 `GoogleAuthService.signIn`，绑定以 `sub` 为准，陌生账号建为待审核（上限 50）；回调地址只由 `APP_ORIGINS` 拼出；授权码、token、`code_verifier`、客户端密钥不进日志与响应（错误响应的 path 不带查询串）。首个管理员用 `pnpm create-admin`（`src/create-admin.ts`，生产镜像里是 `node dist/create-admin.js`）建，同时认领无主存量会话。
-- 模型看到的必须能从持久化记录重建：action 循环内成立，落在哪些 Step 字段与范围外的部分见根 `AGENTS.md` 第 6 节；新增模型可见内容时同一次改动里落库。`AgentStep` 是系统执行过程，采样 Step 的 `reasoningContent` 只是为重建而存的回填内容。
+- 模型看到的必须能从持久化记录重建：action 循环内成立，落在哪些 Step 字段与范围外的部分见根 `AGENTS.md` 第 6 节；新增模型可见内容时同一次改动里落库。`AgentStep` 是系统执行过程；收完的 Tool Call 轮采样 Step 的 `reasoningContent` 是为重建而存的回填内容；最后一轮与被停止 / 失败那一轮的 `reasoningContent`、tool Step 的 `display` 与 `answerStartedMs` 只为界面还原（#212）。
 - 模型输出不可信：工具名、参数先在 `invoke` 里校验再执行。工具结果里的网页内容是低信任数据：系统提示词声明其中的指令、角色设定或格式要求只是资料，不得覆盖系统指令；`modelContent` 不加包裹标记。
 - 终态所有权：晚到的 Abort / deadline / DB 结果不能覆盖已确立终态。
 - 失败归因同源：Run 的 `errorCode`、失败采样 Step 的文案与前台 error 事件都在终态确立后由 `agent-runtime.service.ts` 的 `describeRunFailure` 一处得出；LLMError 的用户文案与 `AllExceptionsFilter` 共用 `common/utils/llm-error-message.util.ts`。

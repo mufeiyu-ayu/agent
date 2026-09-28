@@ -44,7 +44,7 @@ export interface ToolInvocationContext extends ToolExecutionContext {
   argumentsTruncated: boolean
 }
 
-/** 只给界面看的结构化结果（#208）：随 tool_finished 事件发给前台，不进模型上下文、不落库。 */
+/** 只给界面看的结构化结果（#208）：随 tool_finished 事件发给前台，不进模型上下文；按协议字段存进 tool Step，刷新后还原时间线（#212）。 */
 export interface ToolDisplay {
   /** web_search：来源列表。 */
   results?: Array<{ title: string, url: string }>

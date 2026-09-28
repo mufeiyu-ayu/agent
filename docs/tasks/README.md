@@ -7,8 +7,8 @@
 ```text
 阶段 1-8：Completed
 当前阶段：工作台第 1 档（第一期上线）
-Active Agent Task：无
-Next：C2 刷新后还原（未建）→ D 正文渐显（未建）→ E 历史带上工具记录（未建）→ 第 0.5 档真实对话验证 → 统一上线（C2 起的 Issue 只在本地验收合并；#208、#209 已于 2026-09-28 按用户要求提前上线，504b4f26）
+Active Agent Task：#212 C2 刷新后还原（已实现，待验收）
+Next：D 正文渐显（未建）→ E 历史带上工具记录（未建）→ 第 0.5 档真实对话验证 → 统一上线（C2 起的 Issue 只在本地验收合并；#208、#209 已于 2026-09-28 按用户要求提前上线，504b4f26）
 Gated：#117 Responses API adapter（2026-09-18），触发条件见看板
 产品方向：给 topuplist 运营用的 AI 工作台，分两期、上云、gsc 延后（2026-09-20 定案、2026-09-27 改为两期，docs/research/workbench-direction.md）；档、顺序与触发只在其第 7 节
 候选子系统：session 事件流与 replay、审批门、compaction、定时任务（未立 Issue，各自的档见 workbench 第 7 节）
@@ -19,6 +19,7 @@ Admin Task 4：Closed（2026-09-27：Auth 由 #195 完成；RBAC 不做（两种
 
 | 任务 | 状态 | 说明 |
 | --- | --- | --- |
+| #212 C2 刷新后还原：摘要行与时间线随消息下发 | 实施状态：已实现；验收状态：待验收 | tool Step 存 display、最后一轮采样 Step 存思考与 answerStartedMs，会话消息带 activity，刷新 / 切回后直接渲染定稿摘要。 |
 | #209 思考短句：状态行显示最新一句思考，时间线可展开完整思考 | Completed | 有思考原文的模型（DeepSeek）状态行换成最新一句写完的话，时间线每轮思考一行、可展开原文；新增 `reasoning_delta` 流事件，不落库。PR #211 |
 | #208 对话等待过程：呼吸点、单行步骤状态与摘要（实时） | Completed | 发出即有呼吸点，超 1 秒或用工具时单行状态原地换字，正文开始时变成可展开的时间线摘要，全程零位移。PR #210 |
 | #206 读网页 web_fetch：SSRF 防护与正文提取 | Completed | 模型可打开网页读正文：每一跳防 SSRF（含连接时防 DNS 换绑），正文在 worker 里用 Readability 提取。PR #207 |

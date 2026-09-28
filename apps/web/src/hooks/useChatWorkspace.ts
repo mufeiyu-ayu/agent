@@ -29,6 +29,7 @@ import {
 import {
   compareMessagesByCreatedAt,
   mapMessagesToConversationTurns,
+  restoreMessageRun,
   sortConversationsByUpdatedAt,
 } from '../utils/conversation-turns'
 import { applyRunEvent, endRun, startRun } from '../utils/run-status'
@@ -60,8 +61,11 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
   const hasMoreConversations = ref(false)
   const conversationError = ref('')
   const localTurnErrors = ref<Record<string, string>>({})
-  // 每轮的等待过程（#208），按助手消息 id 存在页面内存里；刷新后没有，还原属于 C2。
+  // 每轮的等待过程（#208），按助手消息 id 存在页面内存里；刷新后由消息的 activity 还原（#212）。
   const turnRuns = shallowRef<Record<string, TurnRun>>({})
+  // 还原结果按消息对象记住：流式时每帧都会重算全部轮次，历史轮次的 run 要保持同一个对象，
+  // 否则 AgentConversation 的 v-memo 失效、每帧重渲染所有历史轮次。消息更新时换成新对象，自然重新还原。
+  const restoredRuns = new WeakMap<ConversationMessage, TurnRun | undefined>()
   const appMessage = ref<AppMessageState>({
     visible: false,
     type: 'info',
@@ -109,6 +113,7 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
       activeTurnId,
       turnErrors: localTurnErrors.value,
       runs: turnRuns.value,
+      restoredRun: restoredRunOf,
     })
   })
 
@@ -413,6 +418,13 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
 
       status.value = 'error'
     }
+  }
+
+  function restoredRunOf(message: ConversationMessage): TurnRun | undefined {
+    if (!restoredRuns.has(message))
+      restoredRuns.set(message, restoreMessageRun(message))
+
+    return restoredRuns.get(message)
   }
 
   /** 终态事件到达、本地停止或流异常时收尾本轮的等待过程：没等到 tool_finished 的步骤记为已停止。 */

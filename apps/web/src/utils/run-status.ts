@@ -1,6 +1,6 @@
-import type { ChatStreamEvent } from '@agent/contracts'
+import type { ChatStreamEvent, MessageActivity } from '@agent/contracts'
 import type { NamedValue } from 'vue-i18n'
-import type { TurnRun, TurnRunStep } from '../types/chat'
+import type { TurnRun, TurnRunStep, TurnRunThought } from '../types/chat'
 
 /** 组件里 useI18n() 的 t 与测试里带文案类型的 t 都能传进来。 */
 type Translate = (key: string, named?: NamedValue, plural?: number) => string
@@ -112,6 +112,49 @@ export function endRun(run: TurnRun, now: number, outcome: NonNullable<TurnRun['
   }
 }
 
+/**
+ * 由接口下发的 activity 还原一轮已结束的等待过程（#212）：与实时路径同一份步骤模型，摘要与时间线走同一组文案函数。
+ * 时间只还原「用时」：起点记 0、正文开始记 answerStartedMs，没有结束时刻；没有 answerStartedMs 时摘要不显示用时。
+ */
+export function restoreRun(activity: MessageActivity, outcome: NonNullable<TurnRun['outcome']>): TurnRun {
+  const steps: TurnRunStep[] = []
+  const thoughts: TurnRunThought[] = []
+
+  for (const item of activity.items) {
+    // 与实时路径一样：一轮思考排在它之后的第一个步骤之前。
+    if (item.kind === 'thought') {
+      thoughts.push({ at: steps.length, text: item.text })
+      continue
+    }
+
+    const { callId, toolName, query, url, ok, failure, results, finalUrl, title, chars } = item
+
+    steps.push({
+      callId,
+      toolName,
+      ...(query === undefined ? {} : { query }),
+      ...(url === undefined ? {} : { url }),
+      // ok 为 false 且没有 failure：执行中被停止或中断，与实时路径没等到 tool_finished 的步骤一样。
+      status: ok ? 'ok' : failure ? 'failed' : 'stopped',
+      ...(failure === undefined ? {} : { failure }),
+      ...(results === undefined ? {} : { results }),
+      ...(finalUrl === undefined ? {} : { finalUrl }),
+      ...(title === undefined ? {} : { title }),
+      ...(chars === undefined ? {} : { chars }),
+    })
+  }
+
+  return {
+    startedAt: 0,
+    ...(activity.answerStartedMs === undefined ? {} : { answerAt: activity.answerStartedMs }),
+    phase: 'ended',
+    outcome,
+    toolBeforeAnswer: activity.toolBeforeAnswer,
+    steps,
+    thoughts,
+  }
+}
+
 /** 进行中的状态行文字：当前工具步骤；没有工具时是思考短句，还没有短句就是「思考中」。 */
 export function runStatusText(step: TurnRunStep | undefined, t: Translate, thought?: string): RunStatusText {
   if (!step)
@@ -129,7 +172,8 @@ export function runStatusText(step: TurnRunStep | undefined, t: Translate, thoug
 
 /**
  * 摘要：有工具时「已搜索 n 次、阅读 m 个网页 · 用时 t」（只列出现过的类别，被停止的不计），有失败时加「· k 步失败」；
- * 只有思考时「已思考 t」；工具全被停止时「已停止 · 用时 t」。用时从 start 到正文开始，没有正文时到结束。
+ * 只有思考时「已思考 t」；工具全被停止时「已停止 · 用时 t」。用时从 start 到正文开始，没有正文时到结束；
+ * 两者都没有（刷新后还原、没出正文或旧数据，#212）时不写用时。
  */
 export function runSummaryText(run: TurnRun, t: Translate): RunSummaryText {
   const finished = run.steps.filter(step => step.status === 'ok' || step.status === 'failed')
@@ -140,7 +184,9 @@ export function runSummaryText(run: TurnRun, t: Translate): RunSummaryText {
   const reads = count('web_fetch')
   const others = count()
   const failed = finished.filter(step => step.status === 'failed').length
-  const took = formatRunSeconds((run.answerAt ?? run.endedAt ?? run.startedAt) - run.startedAt, t)
+  const end = run.answerAt ?? run.endedAt
+  const took = end === undefined ? undefined : formatRunSeconds(end - run.startedAt, t)
+  const meta = took === undefined ? {} : { meta: t('conversation.run.took', { time: took }) }
   const parts = [
     searches && t('conversation.run.searched', { n: searches }, searches),
     reads && t('conversation.run.readPages', { n: reads }, reads),
@@ -149,8 +195,8 @@ export function runSummaryText(run: TurnRun, t: Translate): RunSummaryText {
 
   if (parts.length === 0) {
     return run.steps.length === 0
-      ? { label: t('conversation.run.thought', { time: took }) }
-      : { label: t('conversation.run.stopped'), meta: t('conversation.run.took', { time: took }) }
+      ? { label: took === undefined ? t('conversation.run.thoughtDone') : t('conversation.run.thought', { time: took }) }
+      : { label: t('conversation.run.stopped'), ...meta }
   }
 
   const summary = t('conversation.run.summary', { parts: parts.join(t('conversation.run.partSeparator')) })
@@ -158,7 +204,7 @@ export function runSummaryText(run: TurnRun, t: Translate): RunSummaryText {
   return {
     // 英文各部分是小写短语，拼好后句首大写；中文不受影响。
     label: summary.charAt(0).toUpperCase() + summary.slice(1),
-    meta: t('conversation.run.took', { time: took }),
+    ...meta,
     ...(failed ? { warning: t('conversation.run.failedSteps', { n: failed }, failed) } : {}),
   }
 }
