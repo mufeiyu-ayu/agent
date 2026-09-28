@@ -7,7 +7,7 @@ import { highlightCode } from './code-highlighter'
 import { CJK_PUNCTUATION_CHARS, completeStreamingMarkdown } from './streaming-markdown'
 
 export type ParsedContentBlock
-  = | { type: 'markdown', html: string }
+  = | { type: 'markdown', html: string, tokens: Token[] }
     | { type: 'code', language: string, code: string, isOpen: boolean }
 
 /** 上一次渲染留下的块级 HTML 缓存；由调用方持有并原样传回，本模块不保存状态。 */
@@ -246,7 +246,7 @@ export function renderMarkdownBlocks(
       rendered = markdown.renderer.render(segment.tokens, markdown.options, env)
     if (key !== null)
       html.set(key, rendered)
-    blocks.push({ type: 'markdown', html: rendered })
+    blocks.push({ type: 'markdown', html: rendered, tokens: segment.tokens })
   }
 
   return { blocks, cache: { referencesKey, html } }

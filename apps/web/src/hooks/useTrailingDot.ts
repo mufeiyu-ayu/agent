@@ -7,7 +7,10 @@ export const RUN_DOT_PX = 16
 /** 尾点距最后一个字、代码卡片下方的距离。 */
 const TRAIL_GAP_PX = 1
 const TRAIL_BELOW_BLOCK_PX = 6
-/** 尾点淡出（0.3s）加正文收尾放字（约 0.15s）都结束后才停止观察，淡出途中仍跟着字走。 */
+/**
+ * 尾点淡出（0.3s）加正文收尾放字（至多 0.15s）都结束后才停止观察，淡出途中仍跟着字走。
+ * 之后的渐显（0.42s）与尾块切回 v-html 只改透明度、DOM 结构一致，字的位置不变，不用再量。
+ */
 const STOP_DELAY_MS = 500
 
 /**
@@ -31,26 +34,31 @@ export function useTrailingDot(
   let observedWidth = 0
   let stopTimer: ReturnType<typeof setTimeout> | undefined
 
-  /** 取正文末尾文字的矩形；最后一块是代码卡片时放在卡片下方行首。 */
+  /**
+   * 取正文末尾文字的矩形；最后一块是代码卡片时放在卡片下方行首。
+   * 尾块还没有字（`>`、`- ` 刚放出）时往前找：一批放出的字可能同时带出一个空的新块（#214）。
+   */
   function measure() {
-    const last = content.value?.querySelector('.agent-markdown-content')?.lastElementChild
-
-    if (!root.value || !last)
+    if (!root.value)
       return
 
     const origin = root.value.getBoundingClientRect()
 
-    if (!last.classList.contains('agent-markdown-prose')) {
-      const block = last.getBoundingClientRect()
+    for (let last = content.value?.querySelector('.agent-markdown-content')?.lastElementChild; last; last = last.previousElementSibling) {
+      if (!last.classList.contains('agent-markdown-prose')) {
+        const block = last.getBoundingClientRect()
 
-      trail.value = { x: block.left - origin.left + RUN_DOT_PX / 2, y: block.bottom - origin.top + TRAIL_BELOW_BLOCK_PX + RUN_DOT_PX / 2 }
-      return
+        trail.value = { x: block.left - origin.left + RUN_DOT_PX / 2, y: block.bottom - origin.top + TRAIL_BELOW_BLOCK_PX + RUN_DOT_PX / 2 }
+        return
+      }
+
+      const rect = lastCharRect(last)
+
+      if (rect) {
+        trail.value = { x: rect.right - origin.left + TRAIL_GAP_PX + RUN_DOT_PX / 2, y: rect.top + rect.height / 2 - origin.top }
+        return
+      }
     }
-
-    const rect = lastCharRect(last)
-
-    if (rect)
-      trail.value = { x: rect.right - origin.left + TRAIL_GAP_PX + RUN_DOT_PX / 2, y: rect.top + rect.height / 2 - origin.top }
   }
 
   function start() {

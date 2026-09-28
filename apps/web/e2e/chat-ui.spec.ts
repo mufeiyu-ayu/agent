@@ -342,6 +342,8 @@ test('#155：追加内容后立即收到终态，最终 DOM 与全文的一次�
     Object.assign(window.__chatUi.turns[1], { reply: full, status: 'success' })
   }, full)
   await expect(content.locator('h1')).toHaveText('结论')
+  // 最后一批淡入完、尾块切回 v-html 之后比较（#214）。
+  await expect(content.locator('.agent-markdown-fresh')).toHaveCount(0)
   const [rendered, expected] = await page.evaluate(async (full) => {
     const blocksPath = '/src/utils/markdown-blocks.ts'
     const { renderMarkdownBlocks } = await import(blocksPath)
@@ -357,6 +359,24 @@ test('#155：追加内容后立即收到终态，最终 DOM 与全文的一次�
     ]
   }, full)
   expect(rendered).toEqual(expected)
+})
+
+test('#214 AC-08 挂载时已有的正文不渐显：已结束的消息（含刷新还原）没有片段；流式中挂载只有之后追加的字进片段', async ({ page }) => {
+  await mountConversation(page, '已结束的回答，**加粗**。', 'success')
+  const content = page.locator('#chat-ui-test .agent-markdown-content').last()
+  await expect(content).toHaveText('已结束的回答，加粗。')
+  expect(await content.evaluate(element => element.getAnimations({ subtree: true }).length)).toBe(0)
+  await expect(content.locator('.agent-markdown-fresh')).toHaveCount(0)
+
+  // 重新打开页面、挂载时就在输出：模拟切回一个正在输出的会话。
+  await mountConversation(page, '切回时正在输出的回答，')
+  const remounted = page.locator('#chat-ui-test .agent-markdown-content').last()
+  await expect(remounted).toHaveText('切回时正在输出的回答，')
+  await expect(remounted.locator('.agent-markdown-fresh')).toHaveCount(0)
+  await updateReply(page, '切回时正在输出的回答，后面追加的字')
+  await expect(remounted.locator('.agent-markdown-fresh').first()).toBeAttached()
+  const fresh = await remounted.locator('.agent-markdown-fresh').allTextContents()
+  expect(fresh.join('')).toBe('后面追加的字'.slice(0, fresh.join('').length))
 })
 
 test('#155 AC-04：正文里的 Markdown 图片渲染成链接，浏览器不请求图片地址', async ({ page }) => {
