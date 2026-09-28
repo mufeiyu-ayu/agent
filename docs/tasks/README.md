@@ -8,10 +8,10 @@
 阶段 1-8：Completed
 当前阶段：工作台第 1 档（第一期上线）
 Active Agent Task：无
-Next：E 历史带上工具记录（未建）→ 第 0.5 档真实对话验证 → 统一上线（C2 起的 Issue 只在本地验收合并，#212、#214 已合并待上线；#208、#209 已于 2026-09-28 按用户要求提前上线，504b4f26）
+Next：E1 历史带回工具记录 → E2 前台上下文用量 → E3 上下文压缩（均未建，技术讨论见 docs/research/context-management.md）→ 第 0.5 档真实对话验证 → 统一上线（C2 起的 Issue 只在本地验收合并，#212、#214 已合并待上线；#208、#209 已于 2026-09-28 按用户要求提前上线，504b4f26）
 Gated：#117 Responses API adapter（2026-09-18），触发条件见看板
 产品方向：给 topuplist 运营用的 AI 工作台，分两期、上云、gsc 延后（2026-09-20 定案、2026-09-27 改为两期，docs/research/workbench-direction.md）；档、顺序与触发只在其第 7 节
-候选子系统：session 事件流与 replay、审批门、compaction、定时任务（未立 Issue，各自的档见 workbench 第 7 节）
+候选子系统：session 事件流与 replay、审批门、定时任务（未立 Issue，各自的档见 workbench 第 7 节；compaction 已作为 E3 进入第 1 档）
 Admin Task 4：Closed（2026-09-27：Auth 由 #195 完成；RBAC 不做（两种角色已定）；敏感字段治理由 #156 覆盖，其余按需立项）
 ```
 

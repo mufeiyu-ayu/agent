@@ -58,7 +58,7 @@
 - compaction；
 - 定时任务 / jobs。
 
-它们在 [工作台方向](./research/workbench-direction.md) 第 7 节的位置：session 事件流与 replay 拆在第 3 档 R2（关页续跑）与「后」行 R1（可重建）；审批门是第 3 档 R3；compaction 与定时任务在「后」行。立项条件：真实使用卡住、源码阅读发现缺陷，或缺口被明确命中；三者都不满足时不立 Issue。候选不等于 Next，不因为“成熟项目有”就做。
+它们在 [工作台方向](./research/workbench-direction.md) 第 7 节的位置：session 事件流与 replay 拆在第 3 档 R2（关页续跑）与「后」行 R1（可重建）；审批门是第 3 档 R3；compaction 已因真实使用命中（同一对话重复搜索）作为 E3 提前到第 1 档（2026-09-28）；定时任务在「后」行。立项条件：真实使用卡住、源码阅读发现缺陷，或缺口被明确命中；三者都不满足时不立 Issue。候选不等于 Next，不因为“成熟项目有”就做。
 
 2026-09-05 首批按「源码阅读发现缺陷」立项，主题是运行时健壮性：#115 模型调用零重试与 Loop 默认上限；#116 同轮「文本 + Tool Call」与多个 Tool Call 直接 FAILED；#117 DeepSeek Responses API adapter 与 Chat 并存。三件合起来是 Durable Execution 缺口的前半段（失败分类与重试单元），session 事件流与 replay 在其后。
 
