@@ -87,7 +87,7 @@ Run / Steps / MessageGrounding
 - 投影逐字段「能读就读、读不出就 null」，不再有 `available / partial / unavailable / not_applicable` 这类投影可用性状态，也不做跨字段、跨 Step 复核；
 - `citations` 只在 COMPLETED 助手消息带合法 Grounding 时有值，缺失或损坏为 null；
 - 证据身份数在引用未完整记录时显示「未记录」（PR #130）；
-- Prompt、reasoning、embedding、SQL、正文、secret 不进入 API / DOM。
+- Prompt、embedding、SQL、正文、secret 不进入 API / DOM；reasoning 只出现在采样检查器（回填模型的那几轮）与开启 debug 捕获时的请求体 / 原始响应（2026-09-28 起 debug 捕获不再剥离 `reasoning_content`，前台 #209 起已展示思考原文）。
 
 Task 3C 收口时的最终验证：Admin API tests 136、Grounding 168、DB integration 17、Chromium 12、repeat-each=3 为 36，均通过。
 

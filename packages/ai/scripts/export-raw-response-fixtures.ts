@@ -8,7 +8,7 @@
  * `api.deepseek.com` 拆成 `deepseek-direct` / `deepseek-relay`，其他家族一律经中转站。
  * 输出只带 key / family / wireName / response 与本机 Step 定位，不带服务商地址。
  *
- * 落库时 `toModelIODebugCaptureEnvelope` 已剥掉所有 `reasoning_content`，导出的响应永远不含它；
+ * debug 捕获落库时保留 `reasoning_content`（本机真实对话的思考原文），导出时在 SQL 里删掉，fixture 不带它；
  * reasoning_content 不变量由手工 `*.chunks.json` 覆盖，本脚本只负责 usage 与 Tool Call 身份的真实样本。
  *
  * 本包零 Prisma、零 pg 依赖，SQL 通过 `psql` 执行：默认走 compose 里的 dev 容器，
@@ -34,7 +34,7 @@ with sampling as (
     p.family,
     split_part(p."baseUrl", '/', 3) as host,
     m."wireName" as wire_name,
-    s.output -> 'debugRawResponse' -> 'value' as response,
+    (s.output -> 'debugRawResponse' -> 'value') #- '{choices,0,message,reasoning_content}' as response,
     coalesce(s.output -> 'debugRawResponse' -> 'value' -> 'choices' -> 0 -> 'message' ? 'tool_calls', false) as has_tool_calls
   from "AgentStep" s
   -- 按 Run 快照里的模型行 id 精确 join；wireName 只在 Provider 内唯一，同名模型跨 Provider 会错配 host。

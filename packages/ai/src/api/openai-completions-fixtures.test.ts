@@ -17,7 +17,7 @@ import { OpenAICompatibleClient } from './openai-completions.js'
  * - `*.chunks.json`：按同一家族真实流形状手工整理的最小 chunk 序列（含 usage；DeepSeek 直连的 usage 与 finish_reason 同一个 chunk），不是抓包原样。
  *
  * 期望值全部写死：fixture 里任一被读取的字段名或 compat 表取值变了，这里就会红。
- * 落库时 `reasoning_content` 已被剥掉，`*.response.json` 只覆盖 usage 与 Tool Call 身份。
+ * 导出脚本删掉了 `reasoning_content`，`*.response.json` 只覆盖 usage 与 Tool Call 身份。
  */
 
 type FixtureKey = keyof typeof RESPONSE_EXPECTATIONS

@@ -2043,14 +2043,18 @@ describe('AgentRuntimeService model stream', () => {
     assert.deepEqual(harness.llmCalls[1]?.messages[1], {
       type: 'assistant_tool_call',
       calls: [{ callId: 'call-1', name: 'web_search', rawArgumentsJson: '{"query":"seo"}' }],
-      reasoningContent: 'REASONING_NOT_IN_DEBUG_CAPTURE',
+      reasoningContent: 'REASONING_IN_DEBUG_CAPTURE',
       content: intermediate,
     })
     assert.equal((output.debugRawResponse as { state: string }).state, 'complete')
-    // 本轮回填模型的文本与 reasoning 作为内容事实落在采样 Step 上；debug 捕获照旧剔除 reasoning。
+    // 本轮回填模型的文本与 reasoning 作为内容事实落在采样 Step 上；debug 原始响应同样保留 reasoning_content。
     assert.equal(output.intermediateText, intermediate)
-    assert.equal(output.reasoningContent, 'REASONING_NOT_IN_DEBUG_CAPTURE')
-    assert.doesNotMatch(JSON.stringify(output.debugRawResponse), /REASONING_NOT_IN_DEBUG_CAPTURE/)
+    assert.equal(output.reasoningContent, 'REASONING_IN_DEBUG_CAPTURE')
+    assert.equal(
+      (output.debugRawResponse as { value: { choices: [{ message: { reasoning_content?: string } }] } })
+        .value.choices[0].message.reasoning_content,
+      'REASONING_IN_DEBUG_CAPTURE',
+    )
     assertNoUnfinishedSteps(harness)
   })
 
@@ -4760,7 +4764,7 @@ function capturedTextThenToolCallModelStream(
     toProviderStream([
       providerChunk({ content }),
       providerChunk({
-        reasoning_content: 'REASONING_NOT_IN_DEBUG_CAPTURE',
+        reasoning_content: 'REASONING_IN_DEBUG_CAPTURE',
         tool_calls: [{
           index: 0,
           id: 'call-1',

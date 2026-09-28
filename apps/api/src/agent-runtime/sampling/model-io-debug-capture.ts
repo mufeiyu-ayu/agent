@@ -36,9 +36,7 @@ export function toModelIODebugCaptureEnvelope(
   try {
     json = JSON.stringify(
       value,
-      (key, child) => key === 'reasoning_content'
-        ? undefined
-        : typeof child === 'string' ? toPersistableText(child) : child,
+      (_key, child) => typeof child === 'string' ? toPersistableText(child) : child,
     )
   }
   catch {
