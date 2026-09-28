@@ -1,7 +1,10 @@
 <script setup lang="ts">
-import { useStreamingMarkdown } from '@/hooks/useStreamingMarkdown'
+import { inject } from 'vue'
+
+import { FADE_INITIAL_TEXT, useStreamingMarkdown } from '@/hooks/useStreamingMarkdown'
 
 import AgentCodeBlock from './AgentCodeBlock.vue'
+import AgentMarkdownFadeBlock from './AgentMarkdownFadeBlock'
 
 const props = defineProps<{
   text: string
@@ -9,17 +12,20 @@ const props = defineProps<{
 }>()
 
 // 平滑放出、按顶层块记忆化与尾块补齐都在 hook 里；这里只渲染块列表。
-const blocks = useStreamingMarkdown(() => props.text, () => !!props.isStreaming)
+const blocks = useStreamingMarkdown(() => props.text, () => !!props.isStreaming, inject(FADE_INITIAL_TEXT, false))
 </script>
 
 <template>
   <div class="agent-markdown-content">
     <template v-for="(block, index) in blocks" :key="index">
       <div
-        v-if="block.type === 'markdown'"
+        v-if="block.type === 'markdown' && !block.fade"
         class="agent-markdown-prose"
         v-html="block.html"
       />
+      <div v-else-if="block.type === 'markdown'" class="agent-markdown-prose">
+        <AgentMarkdownFadeBlock :tokens="block.fade!.tokens" :batches="block.fade!.batches" />
+      </div>
       <AgentCodeBlock
         v-else
         :code="block.code"
@@ -31,6 +37,17 @@ const blocks = useStreamingMarkdown(() => props.text, () => !!props.isStreaming)
 </template>
 
 <style scoped>
+/* 只改透明度，不影响排版；时长由片段内联（FADE_MS）。 */
+.agent-markdown-prose :deep(.agent-markdown-fresh) {
+  animation: agent-markdown-fresh 0s cubic-bezier(0.22, 0.8, 0.24, 1) both;
+}
+
+@keyframes agent-markdown-fresh {
+  from {
+    opacity: 0;
+  }
+}
+
 .agent-markdown-content {
   color: var(--agent-ink-soft);
   font-size: 16px;

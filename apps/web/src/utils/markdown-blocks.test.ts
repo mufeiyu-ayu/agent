@@ -1,4 +1,4 @@
-import type { RenderMarkdownBlocksOptions } from './markdown-blocks'
+import type { ParsedContentBlock, RenderMarkdownBlocksOptions } from './markdown-blocks'
 
 import assert from 'node:assert/strict'
 import MarkdownIt from 'markdown-it'
@@ -9,8 +9,13 @@ import { highlightCode } from './code-highlighter'
 import { renderMarkdownBlocks } from './markdown-blocks'
 import { alignRevealBoundary } from './streaming-markdown'
 
+/** 断言只比 HTML，不比 token（渲染过的 link_open token 带上了 target / rel，缓存命中的没有）。 */
+function withoutTokens(blocks: ParsedContentBlock[]) {
+  return blocks.map(block => block.type === 'markdown' ? { type: block.type, html: block.html } : block)
+}
+
 function blocksOf(text: string, options?: RenderMarkdownBlocksOptions) {
-  return renderMarkdownBlocks(text, options).blocks
+  return withoutTokens(renderMarkdownBlocks(text, options).blocks)
 }
 
 function html(text: string, options?: RenderMarkdownBlocksOptions) {
@@ -104,8 +109,8 @@ it('顶层块各自输出，流式时只有尾块变化，前面块的 HTML 字�
   assert.equal(first.blocks.length, 4)
   assert.deepEqual(first.blocks.map(block => block.type), ['markdown', 'markdown', 'markdown', 'markdown'])
   const second = renderMarkdownBlocks('# 标题\n\n第一段\n\n- 项一\n- 项二\n\n第二段继续', { streaming: true, cache: first.cache })
-  assert.deepEqual(second.blocks.slice(0, 3), first.blocks.slice(0, 3))
-  assert.notDeepEqual(second.blocks[3], first.blocks[3])
+  assert.deepEqual(withoutTokens(second.blocks.slice(0, 3)), withoutTokens(first.blocks.slice(0, 3)))
+  assert.notDeepEqual(withoutTokens(second.blocks)[3], withoutTokens(first.blocks)[3])
   // 缓存只保留本次用到的块；最后一块依赖文末语义，不进缓存。
   assert.equal(second.cache.html.size, 3)
 })
@@ -186,7 +191,7 @@ it('图片渲染成链接而不是 <img>，链接内的图片只留文字', () =
 it('嵌套未闭合围栏：到达文末与否不命中同一份缓存', () => {
   const first = renderMarkdownBlocks('> ```\n> 引用')
   const cached = renderMarkdownBlocks('> ```\n> 引用\n', { cache: first.cache })
-  assert.deepEqual(cached.blocks, renderMarkdownBlocks('> ```\n> 引用\n').blocks)
+  assert.deepEqual(withoutTokens(cached.blocks), blocksOf('> ```\n> 引用\n'))
 })
 
 /** 审查时对比脚本的缩小版：随机拼出的文档，每个前缀的缓存渲染都要与全新渲染逐字相同。 */
@@ -227,7 +232,7 @@ it('随机文档的每个前缀：缓存渲染与全新渲染结果一致', () =
         const prefix = text.slice(0, end)
         const withCache = renderMarkdownBlocks(prefix, { streaming, cache })
         cache = withCache.cache
-        assert.deepEqual(withCache.blocks, renderMarkdownBlocks(prefix, { streaming }).blocks, JSON.stringify(prefix))
+        assert.deepEqual(withoutTokens(withCache.blocks), blocksOf(prefix, { streaming }), JSON.stringify(prefix))
       }
     }
   }

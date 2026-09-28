@@ -2,10 +2,11 @@
 import type { Directive } from 'vue'
 import type { TurnRun } from '../../types/chat'
 
-import { computed, ref, watch } from 'vue'
+import { computed, provide, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import { useRunStatus } from '@/hooks/useRunStatus'
+import { FADE_INITIAL_TEXT } from '@/hooks/useStreamingMarkdown'
 import { RUN_DOT_PX as ICON_PX, useTrailingDot } from '@/hooks/useTrailingDot'
 import { runStatusText, runSummaryText, thoughtTitle } from '@/utils/run-status'
 
@@ -34,6 +35,8 @@ const { hasRow, live, floating, shownKey, shownStep, shownThought, seconds, dotV
  * 不播摘要淡入与勾的描绘，看起来和离开前一样。
  */
 const settledAtMount = props.run?.phase === 'ended'
+// 挂载时还在等待：之后出现的正文是实时流刚放出的，第一段也要渐显（#214）。
+provide(FADE_INITIAL_TEXT, !!props.waiting)
 
 const vPulseSync: Directive<HTMLElement | SVGElement> = {
   mounted(el) {
