@@ -127,7 +127,7 @@ Then open the admin console at `http://localhost:5174`, go to the model provider
 
 Run the tests with `pnpm test` (no database needed). The database and browser suites are described in [`docs/testing.md`](./docs/testing.md) (Chinese).
 
-If you run PostgreSQL yourself, it needs the pgvector extension, because an early migration creates it. See [`.env.example`](./.env.example) for every setting; set `SERPER_API_KEY` to enable the `web_search` tool.
+If you run PostgreSQL yourself, it needs the pgvector extension, because an early migration creates it. See [`.env.example`](./.env.example) for every setting. Run limits and the Serper API key for the `web_search` tool live on the admin console's runtime settings page (「运行配置」).
 
 ## Learn agent engineering from it
 

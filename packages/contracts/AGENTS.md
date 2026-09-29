@@ -13,6 +13,7 @@ src/chat.ts              # ChatRequest / ChatModelOption / NDJSON 流事件（st
 src/conversation.ts      # 会话与消息；回答的 activity（刷新后还原摘要行与时间线的精简数据，#212）
 src/agent-run.ts         # AgentRun / AgentStep 的对外形状、Run 失败类别 AGENT_RUN_ERROR_CODES（唯一来源）
 src/admin-llm.ts         # LLM 配置：LLM_PROVIDER_FAMILIES、LLM_FAMILY_CAPABILITIES（各家族 compat：thinkingFormat / requiresReasoningContent / toolCallIndexOptional / toolCallsMayFinishWithStop / reasoningEfforts，唯一来源）、Provider / Model 的读写形状
+src/admin-runtime-config.ts   # 管理台「运行配置」读写形状与数值范围 RUNTIME_CONFIG_LIMITS（api DTO 与管理台表单共用）
 src/admin-run.ts         # 管理台 Run Trace 读模型
 src/admin-conversation.ts / src/admin-overview.ts   # 管理台其他读模型
 ```

@@ -14,6 +14,7 @@ import type {
   DeadlineTransaction,
   PrismaService,
 } from '../prisma/prisma.service.js'
+import type { RunLimits, RuntimeConfigSnapshot } from '../runtime-config/runtime-config.service.js'
 import type {
   ToolDisplay,
   ToolExecutionContext,
@@ -23,10 +24,6 @@ import type {
   UnvalidatedToolCallEnvelope,
 } from '../tools/core/tool.types.js'
 import type { AgentRuntimeEvent, RunTurnStreamInput } from './agent-runtime.types.js'
-import type {
-  AgentRuntimePolicy,
-  AgentRuntimePolicyService,
-} from './configuration/agent-runtime.policy.js'
 import type {
   TokenEstimator,
   TokenEstimatorInput,
@@ -62,6 +59,7 @@ import {
   DatabaseCommitOutcomeUnknownError,
   DatabaseOperationDeadlineExceededError,
 } from '../prisma/prisma.service.js'
+import { createRuntimeConfigSnapshot } from '../runtime-config/__fixtures__.js'
 import { ToolInvocationService } from '../tools/core/tool-invocation.service.js'
 import { normalizeToolObservation } from '../tools/core/tool-observation.js'
 import { ToolRegistryService } from '../tools/core/tool-registry.service.js'
@@ -140,6 +138,8 @@ describe('AgentRuntimeService model stream', () => {
       providerId: 'provider-deepseek',
       modelId: 'model-deepseek-v4-flash',
       resolvedInputBudgetTokens: 262_144,
+      // 给模型的工具名单随快照落库：运行配置事后可改，靠它还原这次给没给工具。
+      modelToolNames: TOOL_DEFINITIONS.map(definition => definition.name),
     })
     assert.deepEqual(
       withoutVolatileSamplingFields(harness.recorder.steps[1]?.output),
@@ -179,11 +179,8 @@ describe('AgentRuntimeService model stream', () => {
     assert.equal(initialContext.modelId, 'model-deepseek-v4-flash')
     assert.equal(harness.llmCalls[0]?.options?.request.model, initialContext.resolvedModel)
     assert.equal(harness.llmCalls[0]?.options?.request.maxOutputTokens, 4_096)
-    // 输出预留从窗口扣除后才是落库的输入预算：与 Provider 请求同一份 resolved 配置。
-    assert.equal(
-      initialContext.resolvedInputBudgetTokens,
-      Math.min(262_144, 1_000_000 - 4_096 - 16_384),
-    )
+    // 落库的输入预算原样取模型行的单次输入上限，不再按窗口与输出上限现算。
+    assert.equal(initialContext.resolvedInputBudgetTokens, 262_144)
     assert.equal(harness.llmCalls[0]?.options?.request.reasoningEffort, 'max')
     // Provider 凭据随快照传给 LLMService：整个 Run 用同一把 key。
     assert.equal(harness.llmCalls[0]?.provider.providerId, 'provider-deepseek')
@@ -212,6 +209,10 @@ describe('AgentRuntimeService model stream', () => {
     ])
     assert.equal(harness.llmCalls.length, 1)
     assert.deepEqual(harness.llmCalls[0]?.options?.tools, [])
+    assert.deepEqual(
+      ((harness.recorder.steps[1]?.input as Record<string, unknown>).initialContext as Record<string, unknown>).modelToolNames,
+      [],
+    )
     assert.equal(harness.toolInvocations.length, 0)
     assert.equal(harness.assistantMessage()?.content, '纯模型回答')
     assert.equal(harness.assistantMessage()?.status, MessageStatus.COMPLETED)
@@ -2056,6 +2057,59 @@ describe('AgentRuntimeService model stream', () => {
       'REASONING_IN_DEBUG_CAPTURE',
     )
     assertNoUnfinishedSteps(harness)
+  })
+
+  it('运行配置快照：关闭调试抓取时不给 client 回调、采样 Step 不带 debug 字段；Serper Key 原样交给工具上下文', async () => {
+    const harness = createHarness((_, options, callIndex) => callIndex === 0
+      ? capturedTextThenToolCallModelStream(options, '我先搜一下。')
+      : toModelStream([
+          { type: 'text_delta', delta: '找到了。' },
+          { type: 'response_completed', finishReason: 'stop' },
+        ]))
+    const serperApiKey = { status: 'set', value: 'serper-key-from-snapshot' } as const
+
+    const events = await collectEvents(harness.service.runTurnStream({
+      conversationId: 'conversation-1',
+      userContent: '问题',
+      runtimeConfig: createRuntimeConfigSnapshot({ debugCaptureModelIo: false, serperApiKey }),
+      instructions: [],
+    }))
+    const output = findStep(harness, 'model_sampling')?.output as Record<string, unknown>
+
+    assert.equal(events.at(-1)?.type, 'run_completed')
+    assert.deepEqual(harness.llmCalls.map(call => call.options?.debugCapture), [undefined, undefined])
+    assert.equal('debugRequestBody' in output, false)
+    assert.equal('debugRawResponse' in output, false)
+    assert.deepEqual(harness.toolExecutionContexts.map(context => context.serperApiKey), [serperApiKey])
+    assertNoUnfinishedSteps(harness)
+  })
+
+  it('运行限制取自本次 Run 的快照：同一个 service 上两个 Run 各按自己的 maxToolCalls 执行', async () => {
+    const toolThenAnswer = (callIndex: number) => toModelStream(callIndex % 2 === 0
+      ? [
+          toolCallEvent(`call-${callIndex}`, 'web_search', '{"query":"seo"}'),
+          { type: 'response_completed', finishReason: 'tool_calls' },
+        ]
+      : [
+          { type: 'text_delta', delta: '好' },
+          { type: 'response_completed', finishReason: 'stop' },
+        ])
+    const harness = createHarness((_, __, callIndex) => toolThenAnswer(callIndex))
+    const runWith = (maxToolCalls: number) => collectEvents(harness.service.runTurnStream({
+      conversationId: 'conversation-1',
+      userContent: '问题',
+      runtimeConfig: createRuntimeConfigSnapshot({ limits: { maxToolCalls } }),
+      instructions: [],
+    }))
+
+    // 第一个 Run 开始时的快照允许 1 次工具调用；第二个 Run 读到的是改成 0 之后的快照：不给模型工具。
+    assert.equal((await runWith(1)).at(-1)?.type, 'run_completed')
+    assert.equal(harness.toolInvocations.length, 1)
+    assert.equal(harness.llmCalls[0]?.options?.tools?.length, TOOL_DEFINITIONS.length)
+
+    await runWith(0)
+    assert.deepEqual(harness.llmCalls[2]?.options?.tools, [])
+    assert.equal(harness.toolInvocations.length, 1)
   })
 
   it('第三轮再次请求工具时拒绝第三次执行且不发起第四轮 sampling', async () => {
@@ -3962,7 +4016,7 @@ function createHarness(
   createModelStream: CreateModelStream,
   signal?: AbortSignal,
   invokeTool: InvokeTool = async () => successfulToolResult,
-  policy: Partial<AgentRuntimePolicy> = {},
+  limits: Partial<RunLimits> = {},
   tokenEstimator: TokenEstimator = new TestTokenEstimator(),
   // 生产中 runtime 与 planner 共用同一个 estimator 实例；只在需要把估算故障
   // 精确注入到 plan() 边界时才单独提供。
@@ -3998,23 +4052,19 @@ function createHarness(
     prisma as unknown as PrismaService,
     recorder as unknown as AgentRunRecorderService,
     toolInvocationService as unknown as ToolInvocationService,
-    {
-      value: {
-        historyCandidateHardLimit: 1_000,
-        maxSamplingRounds: 3,
-        maxToolCalls: 2,
-        runDeadlineMs: 600_000,
-        ...policy,
-      },
-    } as AgentRuntimePolicyService,
     tokenEstimator,
     new SamplingContextPlanner(plannerTokenEstimator),
   )
-  // 模型行快照由 ChatService 在 Run 之前解析；这里给用例一个默认快照，省得每处都写。
+  // 模型行与运行配置快照由 ChatService 在 Run 之前读好；这里给用例一份默认快照，省得每处都写。
+  // 默认打开调试抓取：fake 模型流总会回调 debugCapture，关掉时的行为单独覆盖。
+  const runtimeConfig = createRuntimeConfigSnapshot({
+    limits: { maxSamplingRounds: 3, maxToolCalls: 2, ...limits },
+    debugCaptureModelIo: true,
+  })
   const runTurnStream = runtimeService.runTurnStream.bind(runtimeService)
   const service = Object.assign(runtimeService, {
     runTurnStream: (input: TestRunTurnStreamInput) =>
-      runTurnStream({ model: createResolvedLlmModel(), ...input }),
+      runTurnStream({ model: createResolvedLlmModel(), runtimeConfig, ...input }),
   })
 
   return {
@@ -4752,7 +4802,10 @@ async function* toModelStream(
   yield* events
 }
 
-type TestRunTurnStreamInput = Omit<RunTurnStreamInput, 'model'> & { model?: ResolvedLlmModel }
+type TestRunTurnStreamInput = Omit<RunTurnStreamInput, 'model' | 'runtimeConfig'> & {
+  model?: ResolvedLlmModel
+  runtimeConfig?: RuntimeConfigSnapshot
+}
 
 function capturedTextThenToolCallModelStream(
   options: ChatStreamOptions | undefined,

@@ -10,21 +10,15 @@ import { resolveOutboundProxyConfig } from './outbound-proxy.js'
 const SECRET_KEY = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
 
 describe('resolveLlmEnvConfig', () => {
-  it('只读主密钥、debug 开关与出站代理，模型接入配置不再来自 env；标准代理变量不再读取', () => {
+  it('只读主密钥与出站代理，模型接入配置与运行配置不再来自 env；标准代理变量与残留的旧运行变量不读取', () => {
     assert.deepEqual(
       resolveLlmEnvConfig({
         AGENT_SECRET_KEY: ` ${SECRET_KEY} `,
         HTTPS_PROXY: 'http://127.0.0.1:7890',
         https_proxy: 'http://127.0.0.1:7890',
-      }),
-      { secretKey: SECRET_KEY, captureModelIO: false, outboundProxy: null },
-    )
-    assert.equal(
-      resolveLlmEnvConfig({
-        AGENT_SECRET_KEY: SECRET_KEY,
         AGENT_DEBUG_CAPTURE_MODEL_IO: 'true',
-      }).captureModelIO,
-      true,
+      }),
+      { secretKey: SECRET_KEY, outboundProxy: null },
     )
   })
 

@@ -155,7 +155,7 @@ export interface AdminLoadConversationHistoryStep extends AdminRunKnownTimelineI
 /**
  * debug 捕获的模型 I/O 原始 JSON 信封。
  *
- * 仅在 AGENT_DEBUG_CAPTURE_MODEL_IO 开启时产生；value 为 provider 原始 JSON，
+ * 仅在管理台「运行配置」打开「抓取模型原始请求」时产生；value 为 provider 原始 JSON，
  * 只用于观测展示，不参与任何业务逻辑。超过截断上限时只保留 preview 字符串。
  */
 export type AdminDebugModelIOCapture

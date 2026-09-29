@@ -22,7 +22,7 @@ const SNAPSHOT = {
 
 function createService(): LLMService {
   return new LLMService({
-    value: { secretKey: 'x'.repeat(32), captureModelIO: false, outboundProxy: null },
+    value: { secretKey: 'x'.repeat(32), outboundProxy: null },
   } as LLMRuntimeConfigService)
 }
 
@@ -159,7 +159,7 @@ describe('GET /api/llm/balance：只查 https 的官方 DeepSeek 账号', () => 
     globalThis.fetch = originalFetch
   })
 
-  const RUNTIME_CONFIG = { value: { secretKey: 'x'.repeat(32), captureModelIO: false } } as LLMRuntimeConfigService
+  const RUNTIME_CONFIG = { value: { secretKey: 'x'.repeat(32), outboundProxy: null } } as LLMRuntimeConfigService
 
   /**
    * fake prisma 只实现 findMany：返回「启用的 DeepSeek 服务商」；没有 llmModel，走到默认模型回退就会抛错。
@@ -208,7 +208,7 @@ describe('GET /api/llm/balance：只查 https 的官方 DeepSeek 账号', () => 
 })
 
 describe('模型解析：库里的 family 是原型链上的名字', () => {
-  const RUNTIME_CONFIG = { value: { secretKey: 'x'.repeat(32), captureModelIO: false } } as LLMRuntimeConfigService
+  const RUNTIME_CONFIG = { value: { secretKey: 'x'.repeat(32), outboundProxy: null } } as LLMRuntimeConfigService
 
   function createConfigService(family: string): LlmModelConfigService {
     const cipher = createApiKeyCipher(RUNTIME_CONFIG.value.secretKey)

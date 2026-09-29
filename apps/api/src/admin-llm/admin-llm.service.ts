@@ -29,14 +29,12 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common'
-import { ContextBudgetExceededError } from '../agent-runtime/agent-runtime.errors.js'
-import { DEFAULT_INITIAL_CONTEXT_POLICY, resolveInitialContextBudget } from '../agent-runtime/context/initial-context.js'
 import { Prisma } from '../generated/prisma/client.js'
 import { LlmModelConfigService } from '../llm/llm-model-config.service.js'
 import { LlmModelUnavailableError } from '../llm/llm.errors.js'
 import { LLMService } from '../llm/llm.service.js'
 import { PrismaService } from '../prisma/prisma.service.js'
-import { resolveImportedModelDefaults } from './llm-model-presets.js'
+import { INPUT_SAFETY_MARGIN_TOKENS, maxInputTokensCeiling, resolveImportedModelDefaults } from './llm-model-presets.js'
 
 type ProviderWithCount = LlmProvider & { _count: { models: number } }
 
@@ -247,9 +245,10 @@ export class AdminLlmService {
 
     // 局部更新按合并后的整行校验：默认与可见、强度与家族的约束不能被拆开绕过。
     assertModelRowValid({ ...next, family: current.provider.family })
-    // 只有可见行会被 Run 选中（resolveModel 拒绝隐藏行）：可见的行不论这次改了什么都必须有输入预算，
-    // 按合并后的整行算，拆成两次改也绕不过；隐藏行不校验，坏行可以先藏起来再修。
-    if (next.visible)
+    // 单次输入上限不能超过窗口容量：按合并后的整行算，拆成两次改（先调小窗口再保存别的字段）也绕不过；
+    // 隐藏行只在这次提交了三项 token 之一时才校验，坏行可以先藏起来再修；可见行不论改了什么都校验，
+    // 因为只有它会被 Run 选中（resolveModel 拒绝隐藏行），运行时不再截小。
+    if (next.visible || touchesTokenFields(patch))
       assertInputBudget(next)
 
     // 探活按 wireName、强度、maxOutput 发请求，这三项变了旧结论就不作数，表格回到「未测试」。
@@ -432,28 +431,35 @@ export class AdminLlmService {
 }
 
 /**
- * 上下文窗口扣掉输出上限与安全余量后必须还有输入预算。直接调运行时的 `resolveInitialContextBudget`，
- * 公式只有一份；否则这样的行能保存、能探活，每个 Run 却都在创建后才因预算失败。
+ * 单次输入上限就是运行时的输入预算，必须满足 1 ≤ maxInputTokens ≤ 窗口 − 输出上限 − 安全余量；
+ * 超出直接拒绝保存，运行时不再悄悄截小。
  */
-function assertInputBudget(row: { contextWindowTokens: number, maxOutputTokens: number }): void {
-  try {
-    resolveInitialContextBudget({
-      contextWindowTokens: row.contextWindowTokens,
-      resolvedMaxOutputTokens: row.maxOutputTokens,
-    })
-  }
-  catch (error) {
-    if (!(error instanceof ContextBudgetExceededError))
-      throw error
+function assertInputBudget(row: { contextWindowTokens: number, maxInputTokens: number, maxOutputTokens: number }): void {
+  const ceiling = maxInputTokensCeiling(row)
 
-    const margin = DEFAULT_INITIAL_CONTEXT_POLICY.safetyMarginTokens
-
+  if (ceiling < 1) {
     throw new BadRequestException(
-      `输入预算 = contextWindowTokens − maxOutputTokens − 安全余量 ${margin} 必须大于 0，`
-      + `当前为 ${row.contextWindowTokens} − ${row.maxOutputTokens} − ${margin} = `
-      + `${row.contextWindowTokens - row.maxOutputTokens - margin}；请调大上下文窗口或调小输出上限`,
+      `上下文窗口 − 最大输出 − 安全余量 ${fmt(INPUT_SAFETY_MARGIN_TOKENS)} 必须大于 0，`
+      + `当前为 ${fmt(row.contextWindowTokens)} − ${fmt(row.maxOutputTokens)} − ${fmt(INPUT_SAFETY_MARGIN_TOKENS)} = ${fmt(ceiling)}；`
+      + '请调大上下文窗口或调小最大输出',
     )
   }
+  if (row.maxInputTokens > ceiling) {
+    throw new BadRequestException(
+      `单次输入上限不能超过 上下文窗口 − 最大输出 − 安全余量 ${fmt(INPUT_SAFETY_MARGIN_TOKENS)} = ${fmt(ceiling)}，`
+      + `当前为 ${fmt(row.maxInputTokens)}`,
+    )
+  }
+}
+
+function touchesTokenFields(patch: Partial<UpdateAdminLlmModelDto>): boolean {
+  return patch.contextWindowTokens !== undefined
+    || patch.maxInputTokens !== undefined
+    || patch.maxOutputTokens !== undefined
+}
+
+function fmt(value: number): string {
+  return value.toLocaleString('en-US')
 }
 
 /**
@@ -568,6 +574,7 @@ function toAdminLlmModel(model: LlmModel): AdminLlmModel {
     wireName: model.wireName,
     displayName: model.displayName,
     contextWindowTokens: model.contextWindowTokens,
+    maxInputTokens: model.maxInputTokens,
     maxOutputTokens: model.maxOutputTokens,
     reasoningEffort: toReasoningEffort(model.reasoningEffort),
     visible: model.visible,

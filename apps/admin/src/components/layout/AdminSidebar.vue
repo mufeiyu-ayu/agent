@@ -2,6 +2,7 @@
 import {
   ApiOutlined,
   CommentOutlined,
+  ControlOutlined,
   DashboardOutlined,
   ProfileOutlined,
   TeamOutlined,
@@ -30,6 +31,7 @@ const sections = [
     labelKey: 'navigation.system',
     items: [
       { path: '/llm-models', labelKey: 'navigation.llmModels', icon: ApiOutlined },
+      { path: '/runtime-config', labelKey: 'navigation.runtimeConfig', icon: ControlOutlined },
       { path: '/users', labelKey: 'navigation.users', icon: TeamOutlined },
     ],
   },

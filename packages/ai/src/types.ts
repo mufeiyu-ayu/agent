@@ -181,7 +181,7 @@ export type ModelIODebugCaptureSide = 'request' | 'response'
 /**
  * debug 模型 I/O 捕获回调。
  *
- * 仅当 AGENT_DEBUG_CAPTURE_MODEL_IO 开启时由 client 调用；载荷是 provider
+ * 仅当 client 配置 `captureModelIO` 开启时调用（开关在管理台「运行配置」）；载荷是 provider
  * 原始 JSON，类型刻意保持 unknown——它只用于观测落库，不进入业务逻辑，
  * 不构成对"不暴露 OpenAI SDK 原始 response"边界的破例。
  */

@@ -152,6 +152,8 @@ export interface AdminLlmModel {
   /** 前台显示名。 */
   displayName: string
   contextWindowTokens: number
+  /** 单次请求最多发给模型的输入 token，即运行时的输入预算；不超过窗口 − 输出上限 − 安全余量。 */
+  maxInputTokens: number
   maxOutputTokens: number
   /** 默认发给服务商的 reasoning_effort；null 表示不发。 */
   reasoningEffort: ReasoningEffort | null
@@ -175,6 +177,7 @@ export interface AdminLlmModelInput {
   wireName: string
   displayName: string
   contextWindowTokens: number
+  maxInputTokens: number
   maxOutputTokens: number
   reasoningEffort: ReasoningEffort | null
   visible: boolean

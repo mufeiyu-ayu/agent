@@ -16,7 +16,6 @@
 
 | 目录 | 职责 |
 | --- | --- |
-| `configuration/` | Runtime Policy：启动期从 env 解析一次的历史候选上限、采样轮数、Tool Call 预算与 Run deadline（`agent-runtime.policy.ts`）。单次 Run 的配置组合不在这里，是 `agent-runtime.service.ts` 的私有方法 `resolveRunConfiguration` |
 | `lifecycle/` | Run / Step 持久化与取消、deadline、终态竞争 |
 | `context/` | Model Context、History Selection、Token 估算与每轮 Context Plan |
 | `sampling/` | 模型流到 Sampling Decision 的转换与安全 Debug 捕获 |
@@ -24,9 +23,9 @@
 ## 主调用链
 
 ```text
-ChatService（LlmModelConfigService.resolveModel 解析模型行快照）
+ChatService（LlmModelConfigService.resolveModel 解析模型行快照；RuntimeConfigService.loadSnapshot 读运行配置快照：运行限制、调试开关、Serper Key）
   -> AgentRuntimeService.runTurnStream()
-  -> lifecycle: create Run + cancellation（deadline 取自 configuration 的 policy）
+  -> lifecycle: create Run + cancellation（deadline 取自 input.runtimeConfig.limits）
   -> resolveRunConfiguration()（私有方法）：模型可见的 Tool 说明（来自工具清单 TOOL_DEFINITIONS）+ resolveChatRequestConfig
   -> context: select and plan model-visible input
   -> sampling: consume model stream and return decision（正文推 assistant_delta；思考原文推 reasoning_delta，只给界面，不进正文与模型上下文；每轮完整思考随采样 Step 落库，只有收完的 Tool Call 轮是回填内容，最后一轮与被停止 / 失败那一轮的只为界面还原；第一段正文的时刻记成 answerStartedMs，此后收口的采样 Step 都带上）

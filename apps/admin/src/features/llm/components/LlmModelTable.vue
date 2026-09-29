@@ -24,7 +24,7 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import LlmFamilyLogo from '@/features/llm/components/LlmFamilyLogo.vue'
-import { formatShortDateTime, formatTokens } from '@/features/runs/run.utils'
+import { formatShortDateTime } from '@/features/runs/run.utils'
 
 const props = defineProps<{
   models: AdminLlmModel[]
@@ -58,21 +58,36 @@ function effortOptionsOf(row: unknown) {
   return reasoningEffortsOf(family).map(value => ({ value, label: value }))
 }
 
+/** token 数一律千分位全写，与编辑弹窗一致。 */
+function formatThousands(value: number): string {
+  return value.toLocaleString('en-US')
+}
+
+function tokensTooltip(row: unknown): string {
+  const model = row as AdminLlmModel
+
+  return [
+    `${t('llmModels.models.form.contextWindowTokens')}: ${formatThousands(model.contextWindowTokens)}`,
+    `${t('llmModels.models.form.maxInputTokens')}: ${formatThousands(model.maxInputTokens)}`,
+    `${t('llmModels.models.form.maxOutputTokens')}: ${formatThousands(model.maxOutputTokens)}`,
+  ].join(' / ')
+}
+
 const columns = computed<TableColumnsType<AdminLlmModel>>(() => [
   {
     title: t('llmModels.models.columns.provider'),
     key: 'provider',
-    width: '16%',
+    width: '14%',
   },
   {
     title: t('llmModels.models.columns.displayName'),
     key: 'nameInfo',
-    width: '26%',
+    width: '19%',
   },
   {
     title: t('llmModels.models.columns.tokens'),
     key: 'tokens',
-    width: '17%',
+    width: '29%',
   },
   {
     title: t('llmModels.models.columns.reasoningEffort'),
@@ -180,11 +195,13 @@ function onEdit(record: unknown) {
 
         <!-- 3. Tokens 列 -->
         <template v-else-if="column.key === 'tokens'">
-          <Tooltip :title="`${t('llmModels.models.form.contextWindowTokens')}: ${record.contextWindowTokens.toLocaleString()} / ${t('llmModels.models.form.maxOutputTokens')}: ${record.maxOutputTokens.toLocaleString()}`">
+          <Tooltip :title="tokensTooltip(record)">
             <div class="tokens-cell">
-              <span class="token-val">{{ formatTokens(record.contextWindowTokens) }}</span>
+              <span class="token-val">{{ formatThousands(record.contextWindowTokens) }}</span>
               <span class="token-separator">/</span>
-              <span class="token-val is-output">{{ formatTokens(record.maxOutputTokens) }}</span>
+              <span class="token-val">{{ formatThousands(record.maxInputTokens) }}</span>
+              <span class="token-separator">/</span>
+              <span class="token-val is-output">{{ formatThousands(record.maxOutputTokens) }}</span>
             </div>
           </Tooltip>
         </template>

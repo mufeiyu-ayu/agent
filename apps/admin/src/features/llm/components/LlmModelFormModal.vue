@@ -2,7 +2,9 @@
 import type { AdminLlmModel, AdminLlmModelInput, LlmProviderFamily, ReasoningEffort } from '@agent/contracts'
 import type { FormInstance, Rule } from 'ant-design-vue/es/form'
 import { reasoningEffortsOf } from '@agent/contracts'
+import { QuestionCircleOutlined } from '@ant-design/icons-vue'
 import {
+  Divider,
   Form,
   FormItem,
   Input,
@@ -10,6 +12,7 @@ import {
   Modal,
   Select,
   Switch,
+  Tooltip,
 } from 'ant-design-vue'
 import { computed, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -40,6 +43,7 @@ interface FormState {
   wireName: string
   displayName: string
   contextWindowTokens: number
+  maxInputTokens: number
   maxOutputTokens: number
   /** 空串表示不发，提交时转成 null。 */
   reasoningEffort: ReasoningEffort | ''
@@ -52,6 +56,7 @@ const formState = reactive<FormState>({
   wireName: '',
   displayName: '',
   contextWindowTokens: 128000,
+  maxInputTokens: 103424,
   maxOutputTokens: 8192,
   reasoningEffort: '',
   visible: true,
@@ -75,10 +80,20 @@ const rules = computed<Record<string, Rule[]>>(() => ({
     },
   ],
   contextWindowTokens: positiveIntRules('contextWindowTokens'),
+  maxInputTokens: positiveIntRules('maxInputTokens'),
   maxOutputTokens: positiveIntRules('maxOutputTokens'),
 }))
 
-function positiveIntRules(field: 'contextWindowTokens' | 'maxOutputTokens'): Rule[] {
+/** token 输入框显示千分位，v-model 里仍是数字。 */
+function formatThousands(value: string | number): string {
+  return String(value).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+}
+
+function parseThousands(value: string): string {
+  return value.replace(/,/g, '')
+}
+
+function positiveIntRules(field: 'contextWindowTokens' | 'maxInputTokens' | 'maxOutputTokens'): Rule[] {
   return [
     { required: true, message: t(`llmModels.models.form.${field}Required`), trigger: 'blur' },
     {
@@ -100,6 +115,7 @@ watch(
     formState.wireName = props.model.wireName
     formState.displayName = props.model.displayName
     formState.contextWindowTokens = props.model.contextWindowTokens
+    formState.maxInputTokens = props.model.maxInputTokens
     formState.maxOutputTokens = props.model.maxOutputTokens
     // 行上的强度可能落后于刚改过的家族：新家族不认就置空，免得整行提交被服务端按家族校验打回。
     // 家族未知（服务商列表还没回来）时不动，交给服务端校验。
@@ -126,6 +142,7 @@ async function handleOk() {
     wireName: formState.wireName.trim(),
     displayName: formState.displayName.trim(),
     contextWindowTokens: Math.floor(formState.contextWindowTokens),
+    maxInputTokens: Math.floor(formState.maxInputTokens),
     maxOutputTokens: Math.floor(formState.maxOutputTokens),
     reasoningEffort: formState.reasoningEffort || null,
     visible: formState.visible,
@@ -157,6 +174,9 @@ async function handleOk() {
       layout="vertical"
       class="model-form"
     >
+      <Divider orientation="left" orientation-margin="0" class="form-divider">
+        {{ t('llmModels.models.form.groups.basic') }}
+      </Divider>
       <div class="form-row">
         <FormItem
           :label="t('llmModels.models.form.wireName')"
@@ -181,6 +201,9 @@ async function handleOk() {
         </FormItem>
       </div>
 
+      <Divider orientation="left" orientation-margin="0" class="form-divider">
+        {{ t('llmModels.models.form.groups.contextOutput') }}
+      </Divider>
       <div class="form-row">
         <FormItem
           :label="t('llmModels.models.form.contextWindowTokens')"
@@ -191,10 +214,33 @@ async function handleOk() {
             v-model:value="formState.contextWindowTokens"
             :min="1"
             :step="1024"
+            :formatter="formatThousands"
+            :parser="parseThousands"
             class="full-width"
           />
         </FormItem>
 
+        <FormItem name="maxInputTokens" class="form-col">
+          <template #label>
+            <span class="label-with-tip">
+              {{ t('llmModels.models.form.maxInputTokens') }}
+              <Tooltip :title="t('llmModels.models.form.maxInputTokensTip')">
+                <QuestionCircleOutlined class="label-tip" />
+              </Tooltip>
+            </span>
+          </template>
+          <InputNumber
+            v-model:value="formState.maxInputTokens"
+            :min="1"
+            :step="1024"
+            :formatter="formatThousands"
+            :parser="parseThousands"
+            class="full-width"
+          />
+        </FormItem>
+      </div>
+
+      <div class="form-row">
         <FormItem
           :label="t('llmModels.models.form.maxOutputTokens')"
           name="maxOutputTokens"
@@ -204,12 +250,12 @@ async function handleOk() {
             v-model:value="formState.maxOutputTokens"
             :min="1"
             :step="1024"
+            :formatter="formatThousands"
+            :parser="parseThousands"
             class="full-width"
           />
         </FormItem>
-      </div>
 
-      <div class="form-row">
         <FormItem
           :label="t('llmModels.models.form.reasoningEffort')"
           name="reasoningEffort"
@@ -225,7 +271,12 @@ async function handleOk() {
             @change="(value) => { formState.reasoningEffort = (value ?? '') as ReasoningEffort | '' }"
           />
         </FormItem>
+      </div>
 
+      <Divider orientation="left" orientation-margin="0" class="form-divider">
+        {{ t('llmModels.models.form.groups.display') }}
+      </Divider>
+      <div class="form-row">
         <FormItem
           :label="t('llmModels.models.form.sortOrder')"
           name="sortOrder"
@@ -237,6 +288,7 @@ async function handleOk() {
             class="full-width"
           />
         </FormItem>
+        <div class="form-col" />
       </div>
 
       <!-- 优雅并排的双列轻量开关，彻底去除冗余长文案 -->
@@ -265,7 +317,25 @@ async function handleOk() {
 
 <style scoped>
 .model-form {
-  margin-top: 14px;
+  margin-top: 4px;
+}
+
+.form-divider {
+  margin: 10px 0 12px;
+  color: var(--admin-text);
+  font-size: var(--admin-font-sm);
+  font-weight: 600;
+}
+
+.label-with-tip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.label-tip {
+  color: var(--admin-text-muted);
+  cursor: help;
 }
 
 .form-row {

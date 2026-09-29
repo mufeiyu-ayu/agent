@@ -83,7 +83,8 @@ export class LLMService {
     options: ChatStreamOptions,
   ): AsyncGenerator<ModelStreamEvent> {
     try {
-      yield* this.createClient(provider).chatStream(messages, options)
+      // 调试抓取的开关在运行配置里：runtime 只在开关打开时给 debugCapture 回调，这里据此开 client 的抓取。
+      yield* this.createClient(provider, options.debugCapture !== undefined).chatStream(messages, options)
     }
     catch (error) {
       // 调用方 abort 之后的失败由 runtime 按取消来源归因，不加代理上下文。
@@ -186,11 +187,11 @@ export class LLMService {
     }
   }
 
-  private createClient(provider: LlmProviderCredentials): OpenAICompatibleClient {
+  private createClient(provider: LlmProviderCredentials, captureModelIO = false): OpenAICompatibleClient {
     return new OpenAICompatibleClient({
       apiKey: provider.apiKey,
       baseUrl: provider.baseUrl,
-      captureModelIO: this.runtimeConfigService.value.captureModelIO,
+      captureModelIO,
       fetchOptions: { dispatcher: this.dispatcherFor(provider) },
     })
   }

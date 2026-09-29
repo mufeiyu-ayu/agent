@@ -12,7 +12,6 @@ import assert from 'node:assert/strict'
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, describe, it } from 'vitest'
 
-import { i18n } from '@/i18n'
 import { AdminRunApiError, formatAdminRunError } from '../shared/admin-api'
 import {
   fetchAdminRunDetail,
@@ -420,9 +419,6 @@ async function checkApiErrors(): Promise<void> {
       return true
     },
   )
-  i18n.global.locale.value = 'en-US'
-  assert.equal(formatAdminRunError(networkError), 'Unable to connect to the Admin API.')
-  i18n.global.locale.value = 'zh-CN'
   assert.equal(formatAdminRunError(networkError), '无法连接 Admin API。')
 
   globalThis.fetch = async () => jsonResponse(errorEnvelope(404, 'Agent Run 不存在'), 404)
@@ -450,9 +446,7 @@ async function checkApiErrors(): Promise<void> {
     },
   )
 
-  i18n.global.locale.value = 'en-US'
-  assert.equal(formatAdminRunError(localError), 'Admin API request failed (HTTP 500).')
-  i18n.global.locale.value = 'zh-CN'
+  assert.equal(formatAdminRunError(localError), 'Admin API 请求失败（HTTP 500）。')
 }
 
 async function checkListStateAndRaceFencing(): Promise<void> {

@@ -52,13 +52,15 @@ const userOptions = computed(() => users.value.map(user => ({
 })))
 
 const columns = computed<TableColumnsType<AdminConversationListItem>>(() => [
-  { title: t('conversations.columns.title'), dataIndex: 'title', key: 'title', ellipsis: true },
-  { title: t('conversations.columns.user'), key: 'user', width: 240 },
-  { title: t('conversations.columns.id'), dataIndex: 'id', key: 'id', width: 230 },
-  { title: t('conversations.columns.messages'), dataIndex: 'messageCount', key: 'messages', width: 80, align: 'right' },
-  { title: t('conversations.columns.runs'), dataIndex: 'runCount', key: 'runs', width: 80, align: 'right' },
-  { title: t('conversations.columns.updatedAt'), dataIndex: 'updatedAt', key: 'updatedAt', width: 140 },
-  { title: t('conversations.columns.createdAt'), dataIndex: 'createdAt', key: 'createdAt', width: 140 },
+  // 按比例分宽：宽屏多出的空间各列一起分，不再全部堆给标题；窄屏由 scroll-x 兜底横向滚动。
+  // 合计 97%，给 DataTable 追加的 36px 箭头列留出余量；会话 ID 在最窄的 1100px 下也能完整显示。
+  { title: t('conversations.columns.title'), dataIndex: 'title', key: 'title', width: '26%', ellipsis: true },
+  { title: t('conversations.columns.user'), key: 'user', width: '19%' },
+  { title: t('conversations.columns.id'), dataIndex: 'id', key: 'id', width: '20%' },
+  { title: t('conversations.columns.messages'), dataIndex: 'messageCount', key: 'messages', width: '7%', align: 'right' },
+  { title: t('conversations.columns.runs'), dataIndex: 'runCount', key: 'runs', width: '7%', align: 'right' },
+  { title: t('conversations.columns.updatedAt'), dataIndex: 'updatedAt', key: 'updatedAt', width: '9%', align: 'right' },
+  { title: t('conversations.columns.createdAt'), dataIndex: 'createdAt', key: 'createdAt', width: '9%', align: 'right' },
 ])
 
 onMounted(() => {
@@ -178,7 +180,7 @@ function handlePageChange(page: number, pageSize: number) {
           <span v-else class="muted-cell">{{ t('conversations.unowned') }}</span>
         </template>
         <template v-else-if="column.key === 'id'">
-          <span class="mono-cell">{{ record.id }}</span>
+          <span class="mono-cell" :title="record.id">{{ record.id }}</span>
         </template>
         <template v-else-if="column.key === 'messages' || column.key === 'runs'">
           <span class="numeric-cell">{{ column.key === 'messages' ? record.messageCount : record.runCount }}</span>

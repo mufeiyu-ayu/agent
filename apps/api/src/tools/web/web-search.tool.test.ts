@@ -1,4 +1,5 @@
 import type { DatabaseOperationDeadline } from '../../prisma/prisma.service.js'
+import type { SerperApiKey } from '../../runtime-config/runtime-config.service.js'
 import type { ToolInvocationContext } from '../core/tool.types.js'
 import assert from 'node:assert/strict'
 import { Logger } from '@nestjs/common'
@@ -26,7 +27,6 @@ vi.mock('undici', async importOriginal => ({
 const API_KEY = 'test-serper-key-abcd'
 
 beforeEach(() => {
-  vi.stubEnv('SERPER_API_KEY', API_KEY)
   vi.stubEnv('OUTBOUND_PROXY_URL', '')
   fetchMock.mockReset()
 })
@@ -169,7 +169,7 @@ describe('web_search 经 ToolInvocationService', () => {
     assert.equal(fetchMock.mock.calls.length, 1)
   })
 
-  it('未配密钥、Serper 返回 401 / 403 / 429 / 5xx 时得到 execution_failed，日志有状态码与响应摘要且不含密钥', async () => {
+  it('未配密钥、密钥解不开、Serper 返回 401 / 403 / 429 / 5xx 时得到 execution_failed，日志有状态码与响应摘要且不含密钥', async () => {
     const logs: string[] = []
     const record = (...args: unknown[]) => void logs.push(JSON.stringify(args))
     vi.spyOn(Logger.prototype, 'error').mockImplementation(record)
@@ -183,14 +183,18 @@ describe('web_search 经 ToolInvocationService', () => {
       outcomes.push(result.ok ? 'ok' : `${result.code}:${result.modelContent}`)
     }
 
-    vi.stubEnv('SERPER_API_KEY', '')
-    const { result } = await invocationService.invoke(createEnvelope({ query: 'a' }), createContext())
-    outcomes.push(result.ok ? 'ok' : `${result.code}:${result.modelContent}`)
+    // 没配 Key、主密钥更换后解不开：和 HTTP 失败一样只让这次搜索失败，原因只进日志。
+    for (const serperApiKey of [{ status: 'missing' }, { status: 'undecryptable' }] as const) {
+      const { result } = await invocationService.invoke(createEnvelope({ query: 'a' }), createContext(undefined, serperApiKey))
+      outcomes.push(result.ok ? 'ok' : `${result.code}:${result.modelContent}`)
+    }
 
-    assert.deepEqual(outcomes, Array.from({ length: 6 }).fill('execution_failed:工具 web_search 执行失败。'))
+    assert.deepEqual(outcomes, Array.from({ length: 7 }).fill('execution_failed:工具 web_search 执行失败。'))
     for (const status of [401, 403, 429, 500, 503])
       assert.ok(logs.some(log => log.includes(`Serper HTTP ${status} {\\"message\\":\\"status ${status}\\"}`)), `log ${status}`)
-    assert.ok(logs.some(log => log.includes('未配置 SERPER_API_KEY')), 'log missing key')
+    assert.ok(logs.some(log => log.includes('未配置 Serper API Key')), 'log missing key')
+    assert.ok(logs.some(log => log.includes('Serper API Key 无法解密')), 'log undecryptable key')
+    assert.equal(fetchMock.mock.calls.length, 5, '没有可用 Key 时不发请求')
     assert.ok(logs.some(log => log.includes('web search failed with HTTP 429')), 'error message logged')
     assert.ok(!logs.join('\n').includes(API_KEY), 'logs must not contain the key')
     assert.ok(!outcomes.join('\n').includes(API_KEY), 'modelContent must not contain the key')
@@ -211,11 +215,14 @@ function createEnvelope(input: Record<string, unknown>) {
   return { callId: 'call-web-1', toolName: 'web_search', rawArgumentsJson: JSON.stringify(input) }
 }
 
-function createContext(signal = new AbortController().signal): ToolInvocationContext {
+function createContext(
+  signal = new AbortController().signal,
+  serperApiKey: SerperApiKey = { status: 'set', value: API_KEY },
+): ToolInvocationContext {
   const databaseDeadline: DatabaseOperationDeadline = {
     deadlineAt: Date.now() + 60_000,
     signal,
     createTimeoutError: () => new Error('test database deadline exceeded'),
   }
-  return { databaseDeadline, signal, argumentsTruncated: false }
+  return { databaseDeadline, signal, argumentsTruncated: false, serperApiKey }
 }

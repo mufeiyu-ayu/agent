@@ -12,6 +12,7 @@ import { ChatModule } from './chat/chat.module.js'
 import { RequestIdMiddleware } from './common/middleware/request-id.middleware.js'
 import { ConversationsModule } from './conversations/conversations.module.js'
 import { LlmModule } from './llm/llm.module.js'
+import { RuntimeConfigModule } from './runtime-config/runtime-config.module.js'
 import { ToolsModule } from './tools/tools.module.js'
 
 @Module({
@@ -25,6 +26,7 @@ import { ToolsModule } from './tools/tools.module.js'
     LlmModule,
     ChatModule,
     ConversationsModule,
+    RuntimeConfigModule,
     ToolsModule,
   ],
   controllers: [AppController],

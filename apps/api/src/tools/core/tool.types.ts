@@ -1,5 +1,6 @@
 import type { JsonObjectSchema } from '@agent/ai'
 import type { DatabaseOperationDeadline } from '../../prisma/prisma.service.js'
+import type { SerperApiKey } from '../../runtime-config/runtime-config.service.js'
 import type { NormalizedToolObservation } from './tool-observation.js'
 
 /** 将模型可见 Schema 与服务端运行时解析绑定为同一个输入契约。 */
@@ -36,6 +37,8 @@ export interface ValidatedToolInvocation<TInput = unknown> {
 export interface ToolExecutionContext {
   databaseDeadline: DatabaseOperationDeadline
   signal: AbortSignal
+  /** 本次问答运行配置快照里的 Serper Key（#216），只有 web_search 用。 */
+  serperApiKey: SerperApiKey
 }
 
 /** Runtime 交给 `invoke` 的上下文：执行上下文加上本批 arguments 是否被截断。 */

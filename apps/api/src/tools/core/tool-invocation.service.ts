@@ -130,6 +130,7 @@ export class ToolInvocationService {
       .then(() => tool.executor.execute(invocation, {
         databaseDeadline,
         signal: executionController.signal,
+        serperApiKey: context.serperApiKey,
       }))
       .then<ToolInvocationOutcome, ToolInvocationOutcome>(
         result => ({ type: 'result', result }),

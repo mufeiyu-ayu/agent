@@ -485,6 +485,7 @@ function createContext(signal = new AbortController().signal): ToolInvocationCon
     databaseDeadline: createDatabaseDeadline(signal),
     signal,
     argumentsTruncated: false,
+    serperApiKey: { status: 'missing' },
   }
 }
 

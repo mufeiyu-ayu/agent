@@ -13,10 +13,7 @@ import { describe, it } from 'vitest'
 import { normalizeToolObservation } from '../../tools/core/tool-observation.js'
 import { ContextBudgetExceededError } from '../agent-runtime.errors.js'
 import { DeepSeekV4TokenEstimator } from './deepseek-v4-token-estimator.js'
-import {
-  resolveInitialContextBudget,
-  summarizeInitialContext,
-} from './initial-context.js'
+import { summarizeInitialContext } from './initial-context.js'
 import { flattenPlanningState, ModelContext } from './model-context.js'
 import {
   SamplingContextBudgetExceededError,
@@ -426,24 +423,15 @@ describe('SamplingContextPlanner 首轮历史裁剪', () => {
     assert.equal(plan.summary.historyExcludedCount, 2)
   })
 
-  it('较小 model window 或较大 output reserve 会保留更少 History', () => {
+  it('较小的单次输入上限会保留更少 History', () => {
     const estimator = new CharacterTokenEstimator()
     const history = historyMessages(20, () => 'x'.repeat(10))
-    const includedCount = (
-      contextWindowTokens: number,
-      resolvedMaxOutputTokens: number,
-    ): number => planFirstRound(
-      estimator,
-      history,
-      resolveInitialContextBudget({ contextWindowTokens, resolvedMaxOutputTokens }),
-    ).summary.historyIncludedCount
-    const smallModel = includedCount(16_550, 100)
-    const largeModel = includedCount(16_800, 100)
-    const largerOutput = includedCount(16_800, 300)
+    const includedCount = (budget: number): number => planFirstRound(estimator, history, budget)
+      .summary
+      .historyIncludedCount
 
-    assert.equal(largeModel, 20)
-    assert.ok(smallModel < largeModel, 'smallModel < largeModel')
-    assert.ok(largerOutput < largeModel, 'largerOutput < largeModel')
+    assert.equal(includedCount(316), 20)
+    assert.ok(includedCount(66) < includedCount(316), 'includedCount(66) < includedCount(316)')
   })
 
   it('AC-02 真实 tokenizer：固定消息集上保留最大的最新连续后缀', () => {
@@ -485,8 +473,7 @@ describe('SamplingContextPlanner 首轮历史裁剪', () => {
       resolvedModel: 'deepseek-v4-flash',
       providerId: 'provider-deepseek',
       modelId: 'model-deepseek-v4-flash',
-      contextWindowTokens: 1_000_000,
-      resolvedMaxOutputTokens: 65_536,
+      resolvedInputBudgetTokens: budget,
       context,
       tools: NO_TOOLS,
       tokenEstimator: estimator,
@@ -511,19 +498,18 @@ describe('summarizeInitialContext', () => {
   const summarize = (input: {
     history: MessageInputItem[]
     estimator?: TokenEstimator
-    contextWindowTokens?: number
+    resolvedInputBudgetTokens?: number
   }) => summarizeInitialContext({
     resolvedModel: 'deepseek-v4-flash',
     providerId: 'provider-deepseek',
     modelId: 'model-deepseek-v4-flash',
-    contextWindowTokens: input.contextWindowTokens ?? 17_010,
-    resolvedMaxOutputTokens: 100,
+    resolvedInputBudgetTokens: input.resolvedInputBudgetTokens ?? 526,
     context: createContext({ history: input.history }),
     tools: NO_TOOLS,
     tokenEstimator: input.estimator ?? new MessageCountTokenEstimator(),
   })
 
-  it('只估算必带内容，不裁剪也不估算全部候选', () => {
+  it('输入预算原样取模型行的单次输入上限；只估算必带内容，不裁剪也不估算全部候选', () => {
     const history = historyMessages(60, index => `history-${index}`)
     const summary = summarize({ history })
 
@@ -544,8 +530,7 @@ describe('summarizeInitialContext', () => {
       resolvedModel: 'deepseek-v4-flash',
       providerId: 'provider-deepseek',
       modelId: 'model-deepseek-v4-flash',
-      contextWindowTokens: 17_010,
-      resolvedMaxOutputTokens: 100,
+      resolvedInputBudgetTokens: 526,
       context,
       tools: NO_TOOLS,
       tokenEstimator: new MessageCountTokenEstimator(),
@@ -559,31 +544,7 @@ describe('summarizeInitialContext', () => {
       () => summarize({
         history: [],
         estimator: new FixedTokenEstimator(600),
-        contextWindowTokens: 17_000,
-      }),
-      ContextBudgetExceededError,
-    )
-  })
-})
-
-describe('resolveInitialContextBudget', () => {
-  it('同时受 application cap、model window、output reserve 和 safety margin 约束', () => {
-    assert.equal(resolveInitialContextBudget({
-      contextWindowTokens: 1_000_000,
-      resolvedMaxOutputTokens: 65_536,
-    }), 262_144)
-    assert.equal(resolveInitialContextBudget({
-      contextWindowTokens: 200_000,
-      resolvedMaxOutputTokens: 65_536,
-    }), 118_080)
-    assert.equal(resolveInitialContextBudget({
-      contextWindowTokens: 200_000,
-      resolvedMaxOutputTokens: 100_000,
-    }), 83_616)
-    assert.throws(
-      () => resolveInitialContextBudget({
-        contextWindowTokens: 16_384,
-        resolvedMaxOutputTokens: 0,
+        resolvedInputBudgetTokens: 516,
       }),
       ContextBudgetExceededError,
     )

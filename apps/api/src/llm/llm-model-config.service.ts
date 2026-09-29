@@ -23,6 +23,8 @@ export interface ResolvedLlmModel {
   modelId: string
   provider: LlmProviderCredentials
   profile: LLMModelProfile
+  /** 单次请求最多发给模型的输入 token，即本次 Run 的输入预算；保存模型行时已校验不超过窗口容量。 */
+  maxInputTokens: number
 }
 
 /** 读数据库里的模型配置并持有唯一一份密钥 cipher；Admin 的写操作在 admin-llm 模块，加密经这里。 */
@@ -39,7 +41,7 @@ export class LlmModelConfigService {
     this.cipher = createApiKeyCipher(runtimeConfigService.value.secretKey)
   }
 
-  /** Admin 写入 Provider 时用：加密后的密文与回显用的尾四位。 */
+  /** Admin 写入 Provider 与运行配置里的 Serper Key 时用：加密后的密文与回显用的尾四位。 */
   encryptApiKey(apiKey: string): { apiKeyEncrypted: string, apiKeyLast4: string } {
     return {
       apiKeyEncrypted: this.cipher.encrypt(apiKey),
@@ -100,7 +102,13 @@ export class LlmModelConfigService {
         compat: familyCompatOf(model.provider.family),
         reasoningEffort: model.reasoningEffort as ReasoningEffort | null,
       },
+      maxInputTokens: model.maxInputTokens,
     }
+  }
+
+  /** 解密库里的第三方密钥（运行配置的 Serper Key）；主密钥更换后解不开时原样抛出，由调用方决定怎么降级。 */
+  decryptApiKey(apiKeyEncrypted: string): string {
+    return this.cipher.decrypt(apiKeyEncrypted)
   }
 
   /**

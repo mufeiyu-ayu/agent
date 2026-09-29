@@ -543,5 +543,5 @@ function createContext(signal = new AbortController().signal): ToolInvocationCon
     signal,
     createTimeoutError: () => new Error('test database deadline exceeded'),
   }
-  return { databaseDeadline, signal, argumentsTruncated: false }
+  return { databaseDeadline, signal, argumentsTruncated: false, serperApiKey: { status: 'missing' } }
 }

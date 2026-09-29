@@ -1,5 +1,5 @@
 /**
- * 一次性、只读：从本机 dev 库的 `AgentStep.debugRawResponse`（AGENT_DEBUG_CAPTURE_MODEL_IO 开启时
+ * 一次性、只读：从本机 dev 库的 `AgentStep.debugRawResponse`（运行配置打开「抓取模型原始请求」时
  * 由 `teeRawResponseCapture` 聚合出的非流式响应）为每个家族导出一份真实响应 fixture，
  * 落在 `src/api/__fixtures__/<key>.response.json`，供 `openai-completions-fixtures.test.ts` 回归。
  *
@@ -81,7 +81,7 @@ const raw = execFileSync(command!, [...commandArgs, '-Atc', SQL], { encoding: 'u
 
 // 没有任何可导出的 Step 时 json_agg 为 NULL，psql -At 输出空串。
 if (raw === '') {
-  console.error('库里没有 state = complete 的 debugRawResponse，先开启 AGENT_DEBUG_CAPTURE_MODEL_IO 跑几轮对话')
+  console.error('库里没有 state = complete 的 debugRawResponse，先在管理台「运行配置」打开「抓取模型原始请求」跑几轮对话')
   process.exit(1)
 }
 

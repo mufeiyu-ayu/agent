@@ -2,7 +2,7 @@ import type { LLMModelProfile } from '@agent/ai'
 import type { ResolvedLlmModel } from './llm-model-config.service.js'
 import { familyCompatOf } from '@agent/contracts'
 
-/** 测试用的模型行快照：上下文按 DeepSeek V4 Flash 的 1M，输出上限 65_536 是测试常量（生产预设为 384k），预算断言依赖它。 */
+/** 测试用的模型行快照：上下文按 DeepSeek V4 Flash 的 1M，输出上限 65_536 是测试常量（生产预设为 384k）；单次输入上限 262_144 是迁移前存量行的值，预算断言依赖它。 */
 export function createResolvedLlmModel(
   profile: Partial<LLMModelProfile> = {},
 ): ResolvedLlmModel {
@@ -22,5 +22,6 @@ export function createResolvedLlmModel(
       reasoningEffort: 'high',
       ...profile,
     },
+    maxInputTokens: 262_144,
   }
 }
