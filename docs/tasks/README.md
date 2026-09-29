@@ -8,7 +8,7 @@
 阶段 1-8：Completed
 当前阶段：工作台第 1 档（第一期上线）
 Active Agent Task：无
-Next：E1 历史带回工具记录 → E2 前台上下文用量 → E3 上下文压缩（均未建，技术讨论见 docs/research/context-management.md）→ 第 0.5 档真实对话验证 → 统一上线（C2 起的 Issue 只在本地验收合并，#212、#214、#216 已合并待上线（#216 上线前先在线上管理台「运行配置」填 Serper Key，再删线上 `.env` 的 `SERPER_API_KEY`）；#208、#209 已于 2026-09-28 按用户要求提前上线，504b4f26）
+Next：#218 E1 历史带回工具记录（已建，待实现）→ 与 #212、#214、#216 一起上线 → E3 后台静默压缩（未建；原 E2 前台用量已取消，技术讨论见 docs/research/context-management.md）→ 第 0.5 档真实对话验证（C2 起的 Issue 只在本地验收合并，#212、#214、#216 已合并待上线（上线前先在线上管理台「运行配置」填 Serper Key；线上 `.env` 的 `SERPER_API_KEY` 先保留，确认稳定再删，回退到 504b4f26 时搜索仍可用）；#208、#209 已于 2026-09-28 按用户要求提前上线，504b4f26）
 Gated：#117 Responses API adapter（2026-09-18），触发条件见看板
 产品方向：给 topuplist 运营用的 AI 工作台，分两期、上云、gsc 延后（2026-09-20 定案、2026-09-27 改为两期，docs/research/workbench-direction.md）；档、顺序与触发只在其第 7 节
 候选子系统：session 事件流与 replay、审批门、定时任务（未立 Issue，各自的档见 workbench 第 7 节；compaction 已作为 E3 进入第 1 档）
