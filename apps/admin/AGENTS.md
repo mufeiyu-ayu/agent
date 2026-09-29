@@ -23,10 +23,10 @@ views 组合 -> features/<领域>/ 的 state + api + components -> features/shar
 | `features/runtime-config/` | 系统管理 → 运行配置：运行限制、Serper Key、调试开关，整页一个保存（时限按秒编辑、按毫秒提交） | `runtime-config.state.ts`（加载、保存与表单映射）、`runtime-config-api.ts` |
 | `features/auth/` | 当前用户单例、登录 / 退出 / 改密码、回跳地址校验、Google 重定向登录（管理台不做 One Tap） | `auth.state.ts`、`auth-api.ts` |
 | `features/users/` | 系统管理 → 用户列表：建号、按状态筛选、审核待审核账号（通过 / 拒绝）、停用、重置密码、改角色 | `users.state.ts`、`users-api.ts` |
-| `components/layout/` | 侧栏（分组 → 菜单项）、面板顶栏里的收起按钮、路由 tab、主题与语言切换、账号菜单（退出） | `AdminSidebar.vue`（菜单项在这里） |
+| `components/layout/` | 侧栏（分组 → 菜单项）、面板顶栏里的收起按钮、路由 tab、主题切换、账号菜单（退出） | `AdminSidebar.vue`（菜单项在这里） |
 | `components/common/` | 页面容器与页头、列表表格（表头吸顶、分页贴底、整行跳转，列表页统一用它）、空态、用户头像（图片加载失败回退首字母）与头像 + 名字 + 邮箱 | `DataTable.vue`、`UserAvatar.vue`、`UserIdentity.vue` |
 | `lib/` `stores/` | 主题 / 侧栏偏好与路由 tab 的持久化 | `admin-state.ts` |
-| `i18n/` | 中英文案，`i18n.test.ts` 校验中英键一致 | |
+| `i18n/` | 文案字典，只有中文（不做多语言），页面经 `t()` 取用 | |
 | `styles/index.css` | 设计 token（颜色 / 圆角 / 阴影 CSS 变量） | |
 
 ## 约束

@@ -7,7 +7,6 @@ import { RouterView } from 'vue-router'
 import AdminRouteTabs from '@/components/layout/AdminRouteTabs.vue'
 import AdminSidebar from '@/components/layout/AdminSidebar.vue'
 import AdminUserMenu from '@/components/layout/AdminUserMenu.vue'
-import LanguageSwitcher from '@/components/layout/LanguageSwitcher.vue'
 import ThemeToggle from '@/components/layout/ThemeToggle.vue'
 import { useAdminPreferencesStore } from '@/stores/preferences'
 
@@ -38,7 +37,6 @@ const { t } = useI18n()
         <AdminRouteTabs />
         <div class="admin-topbar__actions">
           <ThemeToggle />
-          <LanguageSwitcher />
           <AdminUserMenu />
         </div>
       </header>

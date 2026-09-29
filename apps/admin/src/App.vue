@@ -2,7 +2,6 @@
 import type { ThemeConfig } from 'ant-design-vue/es/config-provider/context'
 
 import { App as AntApp, theme as antdTheme, ConfigProvider } from 'ant-design-vue'
-import enUS from 'ant-design-vue/es/locale/en_US'
 import zhCN from 'ant-design-vue/es/locale/zh_CN'
 
 import { computed, watch } from 'vue'
@@ -13,9 +12,7 @@ import { useAdminPreferencesStore } from '@/stores/preferences'
 
 const preferences = useAdminPreferencesStore()
 const route = useRoute()
-const { locale, t } = useI18n()
-
-const antLocale = computed(() => locale.value === 'en-US' ? enUS : zhCN)
+const { t } = useI18n()
 
 /**
  * ant-design-vue 的 token 需要真实色值参与派生计算，无法直接消费 CSS 变量，
@@ -91,14 +88,14 @@ const themeConfig = computed<ThemeConfig>(() => {
   }
 })
 
-watch([() => route.meta.titleKey, locale], () => {
+watch(() => route.meta.titleKey, () => {
   const title = route.meta.titleKey ? t(route.meta.titleKey) : route.meta.title
   document.title = title ? `${title} · ${t('common.appName')}` : t('common.appName')
 }, { immediate: true })
 </script>
 
 <template>
-  <ConfigProvider :locale="antLocale" :theme="themeConfig">
+  <ConfigProvider :locale="zhCN" :theme="themeConfig">
     <AntApp>
       <RouterView />
     </AntApp>

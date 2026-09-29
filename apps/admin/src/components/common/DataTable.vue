@@ -60,7 +60,7 @@ const ROW_LINK_KEY = '__row-link'
 
 const tableColumns = computed(() => (
   props.rowTo
-    ? [...props.columns, { key: ROW_LINK_KEY, width: 36, align: 'right' as const }]
+    ? [...props.columns, { key: ROW_LINK_KEY, width: 36, align: 'right' as const, className: 'data-table__row-link-cell' }]
     : props.columns
 ))
 
@@ -240,6 +240,11 @@ function handlePageChange(page: number, pageSize: number) {
 .data-table__table :deep(.ant-table-cell-fix-left),
 .data-table__table :deep(.ant-table-cell-fix-right) {
   background: var(--admin-bg-deep);
+}
+
+/* 箭头列 36px = 左右各 6px + 24px 按钮；沿用默认 16px 内边距会把按钮挤出单元格，宽屏也出现横向滚动条 */
+.data-table__table :deep(.data-table__row-link-cell) {
+  padding-inline: 6px !important;
 }
 
 .data-table__chevron {

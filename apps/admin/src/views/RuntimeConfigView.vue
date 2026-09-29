@@ -7,13 +7,13 @@ import {
   Alert,
   App as AntApp,
   Button,
-  Divider,
   Form,
   FormItem,
   InputNumber,
   InputPassword,
   Skeleton,
   Switch,
+  Tag,
   Tooltip,
 } from 'ant-design-vue'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
@@ -107,7 +107,7 @@ async function save() {
 </script>
 
 <template>
-  <PageContainer>
+  <PageContainer wide>
     <PageHeader :title="t('runtimeConfig.title')">
       <template #actions>
         <Button
@@ -137,117 +137,204 @@ async function save() {
 
     <Skeleton v-else-if="!state.config.value" active :paragraph="{ rows: 8 }" />
 
-    <section v-else class="config-card">
-      <Form
-        ref="formRef"
-        :model="form"
-        :rules="rules"
-        layout="vertical"
-        :disabled="state.saving.value"
-        class="config-form"
-      >
-        <Divider orientation="left" orientation-margin="0" class="config-divider">
+    <Form
+      v-else
+      ref="formRef"
+      :model="form"
+      :rules="rules"
+      :disabled="state.saving.value"
+      layout="vertical"
+      class="settings"
+    >
+      <!-- 宽屏两栏：左边运行限制，右边联网搜索与调试；每组是一块面板，一项一行 -->
+      <section class="settings-group">
+        <h2 class="settings-group__title">
           {{ t('runtimeConfig.groups.limits') }}
-        </Divider>
-        <div class="config-grid">
-          <FormItem v-for="field in limitFields" :key="field" :name="field">
-            <template #label>
-              <span class="config-label">
-                {{ t(`runtimeConfig.fields.${field}`) }}
-                <Tooltip :title="t(`runtimeConfig.tips.${field}`)">
-                  <QuestionCircleOutlined class="config-label__tip" />
-                </Tooltip>
-              </span>
-            </template>
-            <!-- 不设 min / max：失焦时自动夹到边界会让超范围的输入悄悄变值，交给校验提示。 -->
-            <InputNumber v-model:value="form[field]" class="full-width" />
-          </FormItem>
+        </h2>
+        <div class="settings-panel">
+          <div v-for="field in limitFields" :key="field" class="settings-row">
+            <label :for="`runtime-config-${field}`" class="settings-row__label">
+              {{ t(`runtimeConfig.fields.${field}`) }}
+              <Tooltip :title="t(`runtimeConfig.tips.${field}`)">
+                <QuestionCircleOutlined class="settings-row__tip" />
+              </Tooltip>
+            </label>
+            <FormItem :name="field" class="settings-row__control">
+              <!-- 不设 min / max：失焦时自动夹到边界会让超范围的输入悄悄变值，交给校验提示。 -->
+              <InputNumber
+                :id="`runtime-config-${field}`"
+                v-model:value="form[field]"
+                :addon-after="t(`runtimeConfig.units.${field}`)"
+                class="settings-number"
+              />
+            </FormItem>
+          </div>
         </div>
+      </section>
 
-        <Divider orientation="left" orientation-margin="0" class="config-divider">
-          {{ t('runtimeConfig.groups.webSearch') }}
-        </Divider>
-        <div class="config-grid">
-          <FormItem name="serperApiKey">
-            <template #label>
-              <span class="config-label">
-                {{ t('runtimeConfig.fields.serperApiKey') }}
-                <Tooltip :title="t('runtimeConfig.tips.serperApiKey')">
-                  <QuestionCircleOutlined class="config-label__tip" />
-                </Tooltip>
-              </span>
-            </template>
-            <InputPassword
-              v-model:value="form.serperApiKey"
-              :placeholder="serperPlaceholder"
-              autocomplete="new-password"
-            />
-          </FormItem>
-        </div>
+      <div class="settings-column">
+        <section class="settings-group">
+          <h2 class="settings-group__title">
+            {{ t('runtimeConfig.groups.webSearch') }}
+          </h2>
+          <div class="settings-panel">
+            <div class="settings-row">
+              <!-- 状态标签放在 label 外面：不算进输入框的名字 -->
+              <div class="settings-row__name">
+                <label for="runtime-config-serperApiKey" class="settings-row__label">
+                  {{ t('runtimeConfig.fields.serperApiKey') }}
+                  <Tooltip :title="t('runtimeConfig.tips.serperApiKey')">
+                    <QuestionCircleOutlined class="settings-row__tip" />
+                  </Tooltip>
+                </label>
+                <Tag
+                  :color="state.config.value.serperApiKeyLast4 ? 'success' : 'default'"
+                  :bordered="false"
+                >
+                  {{ state.config.value.serperApiKeyLast4 ? t('runtimeConfig.configured') : t('runtimeConfig.notConfigured') }}
+                </Tag>
+              </div>
+              <FormItem name="serperApiKey" class="settings-row__control">
+                <InputPassword
+                  id="runtime-config-serperApiKey"
+                  v-model:value="form.serperApiKey"
+                  :placeholder="serperPlaceholder"
+                  autocomplete="new-password"
+                  class="settings-secret"
+                />
+              </FormItem>
+            </div>
+          </div>
+        </section>
 
-        <Divider orientation="left" orientation-margin="0" class="config-divider">
-          {{ t('runtimeConfig.groups.debug') }}
-        </Divider>
-        <div class="config-switch">
-          <Switch id="runtime-config-debug" v-model:checked="form.debugCaptureModelIo" />
-          <label for="runtime-config-debug" class="config-label">
-            {{ t('runtimeConfig.fields.debugCaptureModelIo') }}
-          </label>
-          <Tooltip :title="t('runtimeConfig.tips.debugCaptureModelIo')">
-            <QuestionCircleOutlined class="config-label__tip" />
-          </Tooltip>
-        </div>
-      </Form>
-    </section>
+        <section class="settings-group">
+          <h2 class="settings-group__title">
+            {{ t('runtimeConfig.groups.debug') }}
+          </h2>
+          <div class="settings-panel">
+            <div class="settings-row">
+              <label for="runtime-config-debug" class="settings-row__label">
+                {{ t('runtimeConfig.fields.debugCaptureModelIo') }}
+                <Tooltip :title="t('runtimeConfig.tips.debugCaptureModelIo')">
+                  <QuestionCircleOutlined class="settings-row__tip" />
+                </Tooltip>
+              </label>
+              <div class="settings-row__switch">
+                <Switch id="runtime-config-debug" v-model:checked="form.debugCaptureModelIo" />
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </Form>
   </PageContainer>
 </template>
 
 <style scoped>
-.config-card {
-  padding: 8px 24px 24px;
+.settings {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  gap: 28px;
+}
+
+.settings-column {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+.settings-group__title {
+  margin: 0 0 10px 4px;
+  color: var(--admin-text);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.settings-panel {
+  overflow: hidden;
   border: 1px solid var(--admin-border);
   border-radius: var(--admin-radius-lg);
   background: var(--admin-surface);
 }
 
-.config-divider {
-  margin: 18px 0 14px;
-  color: var(--admin-text);
-  font-size: var(--admin-font-sm);
-  font-weight: 600;
+/* 顶部对齐、名称与开关按输入框高度（32px）居中：校验提示出现时只是这一行变高，不压住控件 */
+.settings-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 16px 20px;
 }
 
-.config-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0 20px;
+.settings-row + .settings-row {
+  border-top: 1px solid var(--admin-border);
 }
 
-.config-label {
+.settings-row__label {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  min-width: 0;
+  flex-shrink: 0;
+  height: 32px;
   color: var(--admin-text);
+  font-size: var(--admin-font-md);
+  font-weight: 500;
+  white-space: nowrap;
 }
 
-.config-label__tip {
-  color: var(--admin-text-muted);
+.settings-row__tip {
+  color: var(--admin-text-subtle);
+  font-size: 13px;
   cursor: help;
 }
 
-.config-switch {
+.settings-row__name {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.settings-row__switch {
   display: flex;
   align-items: center;
-  gap: 10px;
+  height: 32px;
 }
 
-.full-width {
-  width: 100%;
+.settings-row__control {
+  flex: 0 1 auto;
+  min-width: 0;
+  margin-bottom: 0;
 }
 
-@media (max-width: 720px) {
-  .config-grid {
+.settings-number {
+  width: 180px;
+}
+
+.settings-secret {
+  width: 300px;
+  max-width: 100%;
+}
+
+@media (max-width: 1200px) {
+  .settings {
     grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .settings-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .settings-number,
+  .settings-secret {
+    width: 100%;
   }
 }
 </style>

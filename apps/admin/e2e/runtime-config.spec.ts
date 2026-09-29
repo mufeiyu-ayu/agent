@@ -47,21 +47,22 @@ async function installRuntimeConfig(page: Page) {
   return patches
 }
 
-test('运行配置：三组分割线，没改动时保存不可点，改完保存带 loading，成功后回到不可点并显示 Key 尾号', async ({ page }) => {
+test('运行配置：三组分区，没改动时保存不可点，改完保存带 loading，成功后回到不可点并显示 Key 尾号', async ({ page }) => {
   const patches = await installRuntimeConfig(page)
 
   await page.goto('/runtime-config')
   await expect(page.getByRole('link', { name: '运行配置' })).toHaveAttribute('aria-current', 'page')
   for (const group of ['运行限制', '联网搜索', '调试'])
-    await expect(page.getByRole('separator').filter({ hasText: group })).toBeVisible()
+    await expect(page.getByRole('heading', { name: group })).toBeVisible()
 
   const save = page.getByRole('button', { name: /保\s*存/ })
   await expect(save).toBeDisabled()
-  await expect(page.getByLabel('单次最长时间（秒）')).toHaveValue('600')
-  await expect(page.getByLabel('Serper API Key')).toHaveAttribute('placeholder', '未配置')
+  await expect(page.getByLabel('单次最长时间')).toHaveValue('600')
+  await expect(page.getByLabel('Serper API Key')).toHaveAttribute('placeholder', '粘贴 Serper API Key')
+  await expect(page.getByText('未配置')).toBeVisible()
 
   await page.getByLabel('单次最多调用工具').fill('3')
-  await page.getByLabel('单次最长时间（秒）').fill('120')
+  await page.getByLabel('单次最长时间').fill('120')
   await page.getByLabel('Serper API Key').fill('  sk-serper-9f3a  ')
   await page.getByLabel('抓取模型原始请求').click()
   await expect(save).toBeEnabled()
@@ -71,7 +72,8 @@ test('运行配置：三组分割线，没改动时保存不可点，改完保�
   await expect(page.getByText('运行配置已保存，下一次问答生效')).toBeVisible()
   await expect(save).toBeDisabled()
   await expect(page.getByLabel('Serper API Key')).toHaveValue('')
-  await expect(page.getByLabel('Serper API Key')).toHaveAttribute('placeholder', '已配置，尾号 9f3a；留空不改')
+  await expect(page.getByLabel('Serper API Key')).toHaveAttribute('placeholder', '尾号 9f3a，留空不改')
+  await expect(page.getByText('已配置')).toBeVisible()
   expect(patches).toEqual([{
     maxSamplingRounds: 10,
     maxToolCalls: 3,
