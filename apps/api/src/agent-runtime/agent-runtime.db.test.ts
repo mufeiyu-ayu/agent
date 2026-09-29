@@ -5,9 +5,9 @@ import type {
 } from '@agent/ai'
 import type { Prisma } from '../generated/prisma/client.js'
 import type { LLMService } from '../llm/llm.service.js'
+import type { SerperApiKey } from '../runtime-config/runtime-config.service.js'
 import type { RegisteredTool, ToolDefinition, ToolResult } from '../tools/core/tool.types.js'
 import type { AgentRuntimeEvent } from './agent-runtime.types.js'
-import type { AgentRuntimePolicyService } from './configuration/agent-runtime.policy.js'
 import type {
   TokenEstimator,
   TokenEstimatorInput,
@@ -17,7 +17,8 @@ import { randomUUID } from 'node:crypto'
 import { readdir, readFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import process from 'node:process'
-import { afterAll, beforeAll, describe, it } from 'vitest'
+import { Logger } from '@nestjs/common'
+import { afterAll, beforeAll, describe, it, onTestFinished, vi } from 'vitest'
 import { ConversationsService } from '../conversations/conversations.service.js'
 import { MessagesService } from '../conversations/messages.service.js'
 import {
@@ -28,10 +29,11 @@ import {
 } from '../generated/prisma/client.js'
 import { createResolvedLlmModel } from '../llm/__fixtures__.js'
 import { PrismaService } from '../prisma/prisma.service.js'
+import { createRuntimeConfigSnapshot } from '../runtime-config/__fixtures__.js'
 import { ToolInvocationService } from '../tools/core/tool-invocation.service.js'
 import { ToolRegistryService } from '../tools/core/tool-registry.service.js'
 import { webFetchDefinition } from '../tools/web/web-fetch.tool.js'
-import { webSearchDefinition } from '../tools/web/web-search.tool.js'
+import { webSearchDefinition, WebSearchTool } from '../tools/web/web-search.tool.js'
 import { AgentRuntimeService } from './agent-runtime.service.js'
 import { SamplingContextPlanner } from './context/sampling-context-planner.js'
 import { AgentRunRecorderService } from './lifecycle/agent-run-recorder.service.js'
@@ -388,6 +390,48 @@ describe('AgentRuntime PostgreSQL integration', () => {
     assert.doesNotMatch(JSON.stringify(messages), /网页正文标记|搜索结果/)
   })
 
+  it('#216 AC-08(c) Serper Key 解不开：web_search 失败并在日志写明原因，同一轮的其他工具与整次对话正常完成', async () => {
+    const logs: string[] = []
+
+    vi.spyOn(Logger.prototype, 'error').mockImplementation((...args: unknown[]) => void logs.push(args.join(' ')))
+    onTestFinished(() => void vi.restoreAllMocks())
+
+    const conversationId = await createConversation()
+    const harness = createHarness(
+      conversationId,
+      [
+        () => toModelStream([
+          toolCallEvent('call-search', 'web_search', '{"query":"seo"}', undefined, 0),
+          toolCallEvent('call-fetch', 'web_fetch', '{"url":"https://b.example/"}', undefined, 1),
+          { type: 'response_completed', finishReason: 'tool_calls' },
+        ]),
+        () => toModelStream([
+          { type: 'text_delta', delta: '搜索暂时不可用，按网页内容回答。' },
+          { type: 'response_completed', finishReason: 'stop' },
+        ]),
+      ],
+      undefined,
+      {
+        tools: [
+          { definition: webSearchDefinition, executor: new WebSearchTool() } as unknown as RegisteredTool,
+          fakeTool(webFetchDefinition, { ok: true, modelContent: '网页正文', display: { finalUrl: 'https://b.example/', title: '网页', chars: 4 } }),
+        ],
+        serperApiKey: { status: 'undecryptable' },
+      },
+    )
+
+    assert.equal((await collectEvents(harness.run())).at(-1)?.type, 'run_completed')
+
+    const toolSteps = await prisma.agentStep.findMany({
+      where: { run: { conversationId }, type: 'tool_execution' },
+      orderBy: { sequence: 'asc' },
+    })
+
+    assert.deepEqual(toolSteps.map(step => (step.output as { ok?: boolean, code?: string }).code ?? 'ok'), ['execution_failed', 'ok'])
+    assert.ok(logs.some(log => log.includes('Serper API Key 无法解密')), '日志写明原因')
+    assert.equal((await requireAssistantMessage(conversationId)).content, '搜索暂时不可用，按网页内容回答。')
+  })
+
   it('#212 AC-05 / AC-10 旧格式与损坏数据、RUNNING 遗留、FAILED / ABORTED 运行：接口不抛错，按降级规则给出，其余消息照常', async () => {
     const { userId, conversationId } = await createOwnedConversation()
     const at = (seconds: number) => new Date(Date.UTC(2026, 8, 28, 8, 0, seconds))
@@ -516,10 +560,12 @@ describe('AgentRuntime PostgreSQL integration', () => {
     options: {
       userContent?: string
       runDeadlineMs?: number
-      /** 模拟开启 AGENT_DEBUG_CAPTURE_MODEL_IO：把请求与拼好的正文交给 debugCapture 回调。 */
+      /** 模拟运行配置打开「抓取模型原始请求」：把请求与拼好的正文交给 debugCapture 回调。 */
       captureModelIO?: boolean
       /** 注册进 Registry 的工具；不给时 Registry 为空，调用一律走 unknown_tool。 */
       tools?: RegisteredTool[]
+      /** 运行配置快照里的 Serper Key；不给时为没配。 */
+      serperApiKey?: SerperApiKey
     } = {},
   ) {
     let callIndex = 0
@@ -552,14 +598,6 @@ describe('AgentRuntime PostgreSQL integration', () => {
       prisma,
       new AgentRunRecorderService(prisma),
       new ToolInvocationService(registry),
-      {
-        value: {
-          historyCandidateHardLimit: 1_000,
-          maxSamplingRounds: 3,
-          maxToolCalls: options.tools ? 2 : 1,
-          runDeadlineMs: options.runDeadlineMs ?? 60_000,
-        },
-      } as AgentRuntimePolicyService,
       tokenEstimator,
       new SamplingContextPlanner(tokenEstimator),
     )
@@ -570,6 +608,15 @@ describe('AgentRuntime PostgreSQL integration', () => {
         conversationId,
         userContent: options.userContent ?? 'SEO 是什么',
         model: createResolvedLlmModel(),
+        runtimeConfig: createRuntimeConfigSnapshot({
+          limits: {
+            maxSamplingRounds: 3,
+            maxToolCalls: options.tools ? 2 : 1,
+            runDeadlineMs: options.runDeadlineMs ?? 60_000,
+          },
+          debugCaptureModelIo: options.captureModelIO ?? false,
+          ...(options.serperApiKey ? { serperApiKey: options.serperApiKey } : {}),
+        }),
         reasoningEffort: 'high',
         ...(signal ? { signal } : {}),
         instructions: [],

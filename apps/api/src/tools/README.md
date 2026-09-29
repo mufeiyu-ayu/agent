@@ -15,7 +15,7 @@ Tool Calling 的框架与具体工具。一次工具调用的全部判定都在 
 
 ```text
 AgentRuntimeService.executeToolBatch：每个 call 开一个 tool_execution Step
-  -> ToolInvocationService.invoke(call, { signal, databaseDeadline, argumentsTruncated })
+  -> ToolInvocationService.invoke(call, { signal, databaseDeadline, argumentsTruncated, serperApiKey })
        外部中断先抛 -> 截断批次直接失败 -> 按名字查找 -> JSON.parse + input.parse
        -> 执行器与 timeout / 停止赛跑 -> 按工具的 maxObservationChars 修剪
   <- { result, argumentsValidated, observation }

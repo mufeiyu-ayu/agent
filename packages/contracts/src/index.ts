@@ -64,6 +64,8 @@ export {
   ADMIN_MODEL_FINISH_REASONS,
   ADMIN_TOOL_RESULT_CODES,
 } from './admin-run.js'
+export type { AdminRuntimeConfig, AdminRuntimeConfigInput } from './admin-runtime-config.js'
+export { RUNTIME_CONFIG_LIMITS } from './admin-runtime-config.js'
 export type {
   AgentRunErrorCode,
   AgentRunStatus,

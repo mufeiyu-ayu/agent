@@ -21,7 +21,7 @@
 源码入口：
 
 - [Runtime 导航](../../../apps/api/src/agent-runtime/README.md)
-- [policy](../../../apps/api/src/agent-runtime/configuration/agent-runtime.policy.ts)
+- [运行配置](../../../apps/api/src/runtime-config/runtime-config.service.ts)
 - [SamplingDecision](../../../apps/api/src/agent-runtime/sampling/model-sampling-decision.ts)
 - [LLM client](../../../packages/ai/src/api/openai-completions.ts)
 - [HTTP 断线](../../../apps/api/src/chat/chat.controller.ts)
@@ -32,7 +32,7 @@
 当前 [Runtime](../../../apps/api/src/agent-runtime/agent-runtime.service.ts) 原文节选：
 
 ```ts
-// debug 捕获暂存：只有 AGENT_DEBUG_CAPTURE_MODEL_IO 开启时 client 才会回调，
+// debug 捕获暂存：只有运行配置打开「抓取模型原始请求」时才给 client 回调，
 // 开关关闭时始终为空对象，落库输出与现状完全一致。
 const debugModelIO: DebugModelIOCaptured = {
   runId: currentAgentRunId,
@@ -51,11 +51,11 @@ Pi 也有同样需要审慎对待的边界：branch history 可恢复，但 exte
 ```text
 apps/api/src/
   agent-runtime/
-    configuration/  # 已有：Runtime Policy（启动期从 env 解析一次）；单次 Run 的配置组合是 service 私有方法 resolveRunConfiguration
     context/        # 已有：source-aware context 与预算
     sampling/       # 已有：模型事件到业务决策
     lifecycle/      # 已有：Run/Step 与取消、deadline
-  llm/              # 已有：Nest 壳读侧（LLMService 门面、LlmModelConfigService 解析模型行、api-key-cipher、LLMRuntimeConfigService 只读主密钥与 debug 开关）
+  llm/              # 已有：Nest 壳读侧（LLMService 门面、LlmModelConfigService 解析模型行、api-key-cipher、LLMRuntimeConfigService 只读主密钥与出站代理）
+  runtime-config/   # 已有：运行配置单行表（运行限制、调试开关、Serper Key），每次问答读快照传给 runtime
   admin-llm/        # 已有（#142）：模型配置写侧（服务商 / 模型 CRUD、拉取、探测、导入预设）
   tools/            # 已有：registry/invocation/observation 归一化（硬上限 128k 字符）
 packages/ai/        # 已有（#120）：OpenAICompatibleClient、流适配、ModelStreamEvent / ModelInputItem / ModelToolSpec、LLM 错误、LLMModelProfile 类型与 resolveChatRequestConfig；零 Nest、零 Prisma。模型行与凭据来自数据库（#142 删了 resolveLLMRuntimeConfig 与硬编码模型表）

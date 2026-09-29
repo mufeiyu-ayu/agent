@@ -1,6 +1,7 @@
 import type { MessageInputItem } from '@agent/ai'
 import type { ReasoningEffort } from '@agent/contracts'
 import type { ResolvedLlmModel } from '../llm/llm-model-config.service.js'
+import type { RuntimeConfigSnapshot } from '../runtime-config/runtime-config.service.js'
 import type { ToolDisplay } from '../tools/core/tool.types.js'
 
 export type AgentRuntimeEvent
@@ -83,6 +84,8 @@ export interface RunTurnStreamInput {
   userContent: string
   /** Run 开始前解析好的模型配置快照：整个 Run 用同一份，后台改配置对下一个 Run 生效。 */
   model: ResolvedLlmModel
+  /** Run 开始前读好的运行配置快照（运行限制、调试开关、Serper Key）：整个 Run 用同一份。 */
+  runtimeConfig: RuntimeConfigSnapshot
   /** 请求级覆盖模型行的默认 reasoning_effort；省略时用模型行的。 */
   reasoningEffort?: ReasoningEffort
   signal?: AbortSignal

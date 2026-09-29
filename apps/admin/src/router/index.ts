@@ -88,6 +88,12 @@ export const router = createRouter({
           meta: { title: 'Model Access', titleKey: 'navigation.llmModels', tab: true },
         },
         {
+          path: 'runtime-config',
+          name: 'runtime-config',
+          component: () => import('@/views/RuntimeConfigView.vue'),
+          meta: { title: 'Runtime Settings', titleKey: 'navigation.runtimeConfig', tab: true },
+        },
+        {
           path: 'users',
           name: 'users',
           component: () => import('@/views/UsersView.vue'),

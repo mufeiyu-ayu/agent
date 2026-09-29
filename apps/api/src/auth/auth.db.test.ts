@@ -30,6 +30,7 @@ import { MessagesService } from '../conversations/messages.service.js'
 import { createResolvedLlmModel } from '../llm/__fixtures__.js'
 import { LlmModelConfigService } from '../llm/llm-model-config.service.js'
 import { PrismaService } from '../prisma/prisma.service.js'
+import { RuntimeConfigService } from '../runtime-config/runtime-config.service.js'
 import { AuthController } from './auth.controller.js'
 import { AuthGuard } from './auth.guard.js'
 import { AuthService, LOGIN_FAILED_MESSAGE } from './auth.service.js'
@@ -109,6 +110,8 @@ describe('鉴权与会话隔离（真实库）', { timeout: 60_000 }, () => {
           },
         },
         { provide: LlmModelConfigService, useValue: { resolveModel: async () => createResolvedLlmModel() } },
+        // 运行配置读的是迁移插入的那一行（没配 Serper Key，用不到解密）。
+        RuntimeConfigService,
       ],
     })
     class TestModule {}

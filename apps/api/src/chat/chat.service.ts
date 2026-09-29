@@ -6,6 +6,7 @@ import { AgentRuntimeService } from '../agent-runtime/agent-runtime.service.js'
 import { ConversationsService } from '../conversations/conversations.service.js'
 import { LlmModelConfigService } from '../llm/llm-model-config.service.js'
 import { LlmModelUnavailableError } from '../llm/llm.errors.js'
+import { RuntimeConfigService } from '../runtime-config/runtime-config.service.js'
 import { toChatStreamEvent } from './chat-stream-event.mapper.js'
 import { buildAgentInstructions } from './prompts/agent.prompt.js'
 
@@ -22,11 +23,14 @@ export class ChatService {
     private readonly llmModelConfigService: LlmModelConfigService,
     @Inject(ConversationsService)
     private readonly conversationsService: ConversationsService,
+    @Inject(RuntimeConfigService)
+    private readonly runtimeConfigService: RuntimeConfigService,
   ) {}
 
   /**
-   * 先校验会话归属、解析模型行再返回事件流：别人的会话（404）与模型不可用（400）
-   * 都要在写出 NDJSON 头之前抛出，所以这里不是 async generator，而是校验完成后再交出 generator。
+   * 先校验会话归属、解析模型行、读运行配置再返回事件流：别人的会话（404）、模型不可用（400）与
+   * 运行配置读不到（503）都要在写出 NDJSON 头、写入任何消息之前抛出，所以这里不是 async generator，
+   * 而是校验完成后再交出 generator。
    */
   async chatStream(
     userId: string,
@@ -36,11 +40,14 @@ export class ChatService {
     await this.conversationsService.assertOwnConversation(userId, input.conversationId)
 
     const model = await this.resolveModel(input.model, input.reasoningEffort)
+    // 与模型行一样是本次问答的快照：后台修改对下一次问答生效。
+    const runtimeConfig = await this.runtimeConfigService.loadSnapshot()
 
     return this.mapRuntimeEvents(this.agentRuntimeService.runTurnStream({
       conversationId: input.conversationId,
       userContent: input.message,
       model,
+      runtimeConfig,
       ...(input.reasoningEffort
         ? { reasoningEffort: input.reasoningEffort }
         : {}),

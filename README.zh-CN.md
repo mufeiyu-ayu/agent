@@ -127,7 +127,7 @@ pnpm dev
 
 跑测试用 `pnpm test`（不需要数据库）；真实库测试与浏览器测试见 [`docs/testing.md`](./docs/testing.md)。
 
-自己装 PostgreSQL 必须带 pgvector 扩展，早期迁移要建它。全部配置见 [`.env.example`](./.env.example)；配上 `SERPER_API_KEY` 才能用 `web_search` 联网搜索。
+自己装 PostgreSQL 必须带 pgvector 扩展，早期迁移要建它。全部环境变量见 [`.env.example`](./.env.example)；运行限制与 `web_search` 联网搜索用的 Serper API Key 在管理台「运行配置」页填写。
 
 ## 拿它学 Agent 工程
 

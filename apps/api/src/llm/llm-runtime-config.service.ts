@@ -12,8 +12,6 @@ const FORMER_PLACEHOLDER_SECRET_KEY = 'replace-with-openssl-rand-hex-32-output'
 export interface LlmEnvConfig {
   /** 加密 Provider API Key 的主密钥；模型与密钥本身都在数据库里。 */
   secretKey: string
-  /** debug 开关：是否捕获 provider 原始请求 / 响应 JSON，默认关闭。 */
-  captureModelIO: boolean
   /** `OUTBOUND_PROXY_URL`；没配为 null，勾选了「使用代理」的服务商此时请求直接失败。 */
   outboundProxy: OutboundProxyConfig | null
 }
@@ -37,18 +35,11 @@ export function resolveLlmEnvConfig(env: NodeJS.ProcessEnv): LlmEnvConfig {
 
   return {
     secretKey,
-    captureModelIO: readBooleanFlag(env, 'AGENT_DEBUG_CAPTURE_MODEL_IO'),
     outboundProxy: resolveOutboundProxyConfig(env),
   }
 }
 
-function readBooleanFlag(env: NodeJS.ProcessEnv, name: string): boolean {
-  const value = env[name]?.trim().toLowerCase()
-
-  return value === '1' || value === 'true'
-}
-
-/** 启动期读一次 env：主密钥、debug 开关与出站代理地址；模型接入配置全部来自数据库。 */
+/** 启动期读一次 env：主密钥与出站代理地址；模型接入配置与运行配置全部来自数据库。 */
 @Injectable()
 export class LLMRuntimeConfigService {
   readonly value = resolveLlmEnvConfig(process.env)

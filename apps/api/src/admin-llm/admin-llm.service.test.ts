@@ -2,7 +2,6 @@ import type { AddressInfo } from 'node:net'
 import type { LlmModel, LlmProvider } from '../generated/prisma/client.js'
 import type { LLMRuntimeConfigService } from '../llm/llm-runtime-config.service.js'
 import type { PrismaService } from '../prisma/prisma.service.js'
-import type { UpdateAdminLlmModelDto } from './dto/admin-llm.dto.js'
 import assert from 'node:assert/strict'
 import { once } from 'node:events'
 import { createServer } from 'node:http'
@@ -12,15 +11,17 @@ import { familyCompatOf } from '@agent/contracts'
 import { BadRequestException } from '@nestjs/common'
 import { Agent, getGlobalDispatcher, ProxyAgent } from 'undici'
 import { afterAll, beforeAll, describe, it, onTestFinished, vi } from 'vitest'
+import { createAppValidationPipe } from '../common/pipes/app-validation.pipe.js'
 
 import { LlmModelConfigService } from '../llm/llm-model-config.service.js'
 import { LlmProxyError } from '../llm/llm.errors.js'
 import { LLMService } from '../llm/llm.service.js'
 import { resolveOutboundProxyConfig } from '../llm/outbound-proxy.js'
 import { AdminLlmService } from './admin-llm.service.js'
+import { UpdateAdminLlmModelDto } from './dto/admin-llm.dto.js'
 
 const RUNTIME_CONFIG = {
-  value: { secretKey: 'x'.repeat(32), captureModelIO: false, outboundProxy: null },
+  value: { secretKey: 'x'.repeat(32), outboundProxy: null },
 } as LLMRuntimeConfigService
 const STORED_API_KEY = 'sk-test-stored-not-real'
 const NEW_API_KEY = 'sk-test-new-not-real'
@@ -551,8 +552,11 @@ describe('AdminLlmService：使用代理的勾选', () => {
   })
 })
 
-/** #170：只有可见行会被 Run 选中，可见行不论改了什么都按运行时公式校验输入预算。 */
-describe('AdminLlmService.updateModel 输入预算', () => {
+/**
+ * #216：单次输入上限就是运行时的输入预算，保存时校验 1 ≤ maxInputTokens ≤ 窗口 − 最大输出 − 16,384；
+ * 可见行不论改了什么都校验（#170），隐藏行提交了 token 字段时校验。
+ */
+describe('AdminLlmService.updateModel 单次输入上限', () => {
   function createModelService(row: Partial<LlmModel>) {
     const provider = { id: 'provider-1', family: 'openai' } as LlmProvider
     let model: LlmModel & { provider: LlmProvider } = {
@@ -561,6 +565,7 @@ describe('AdminLlmService.updateModel 输入预算', () => {
       wireName: 'gpt-test',
       displayName: '旧名',
       contextWindowTokens: 1_000_000,
+      maxInputTokens: 262_144,
       maxOutputTokens: 65_536,
       reasoningEffort: null,
       visible: true,
@@ -588,9 +593,9 @@ describe('AdminLlmService.updateModel 输入预算', () => {
     return new AdminLlmService(prisma, new LLMService(RUNTIME_CONFIG), new LlmModelConfigService(prisma, RUNTIME_CONFIG))
   }
 
-  // 32768 − 16384 − 安全余量 16384 = 0：能保存，但每次 Run 都会因预算失败。
-  const BROKEN = { contextWindowTokens: 32_768, maxOutputTokens: 16_384 }
-  const isBudgetRejected = (error: unknown) => error instanceof BadRequestException && /输入预算/.test(error.message)
+  // 32768 − 16384 − 安全余量 16384 = 0：窗口放不下任何输入。
+  const BROKEN = { contextWindowTokens: 32_768, maxOutputTokens: 16_384, maxInputTokens: 1 }
+  const isBudgetRejected = (error: unknown) => error instanceof BadRequestException && /安全余量/.test(error.message)
 
   it('可见的坏行只改显示名也返回 400', async () => {
     await assert.rejects(
@@ -613,5 +618,34 @@ describe('AdminLlmService.updateModel 输入预算', () => {
     const renamed = await createModelService({}).updateModel('model-1', { displayName: '新名' } as UpdateAdminLlmModelDto)
 
     assert.equal(renamed.displayName, '新名')
+  })
+
+  it('单次输入上限传 null 在全局校验管道返回 400，省略才算不改', async () => {
+    const pipe = createAppValidationPipe()
+    const metadata = { type: 'body', metatype: UpdateAdminLlmModelDto } as const
+
+    await assert.rejects(pipe.transform({ maxInputTokens: null }, metadata), BadRequestException)
+    await assert.rejects(pipe.transform({ maxInputTokens: 0 }, metadata), BadRequestException)
+    assert.equal((await pipe.transform({ displayName: '新名' }, metadata)).maxInputTokens, undefined)
+  })
+
+  it('单次输入上限等于 窗口 − 最大输出 − 16,384 时保存，多 1 返回 400；隐藏行提交 token 字段也校验', async () => {
+    // 1,000,000 − 65,536 − 16,384 = 918,080
+    const saved = await createModelService({}).updateModel('model-1', { maxInputTokens: 918_080 } as UpdateAdminLlmModelDto)
+
+    assert.equal(saved.maxInputTokens, 918_080)
+
+    for (const visible of [true, false]) {
+      await assert.rejects(
+        createModelService({ visible }).updateModel('model-1', { maxInputTokens: 918_081 } as UpdateAdminLlmModelDto),
+        (error: unknown) => error instanceof BadRequestException
+          && error.message === '单次输入上限不能超过 上下文窗口 − 最大输出 − 安全余量 16,384 = 918,080，当前为 918,081',
+      )
+    }
+    // 调小窗口、不动输入上限：按合并后的整行校验，拆开改也绕不过。
+    await assert.rejects(
+      createModelService({}).updateModel('model-1', { contextWindowTokens: 200_000 } as UpdateAdminLlmModelDto),
+      /单次输入上限不能超过/,
+    )
   })
 })

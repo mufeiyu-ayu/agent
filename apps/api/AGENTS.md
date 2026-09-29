@@ -19,10 +19,11 @@ Prisma schema 在仓库根 `prisma/`，生成的 client 在 `src/generated/prism
 | 目录 | 职责 | 核心文件 |
 | --- | --- | --- |
 | `chat/` | 前台对话入口：DTO、系统提示词、NDJSON 流协议适配 | `chat.controller.ts`（`POST /api/chat/stream`）、`chat.service.ts`、`prompts/` |
-| `agent-runtime/` | 一次用户输入的 AgentRun 编排；子目录按领域分：`context`（模型可见上下文）、`sampling`（采样决策 / 调试捕获）、`lifecycle`（Run / Step 记录与取消）、`configuration`（运行策略） | `agent-runtime.service.ts`（主循环）、`agent-runtime.types.ts`；细节见目录内 `README.md` |
-| `tools/` | Tool Calling：一次调用的全部判定（截断批次、查找、参数校验、执行、Observation 修剪、`argumentsValidated`）都在 `invoke`，runtime 只记账与回喂；`core/` 是框架，`web/` 是具体工具（`web_search` 经 Serper 查 Google，密钥 `SERPER_API_KEY`；`web_fetch` 由服务器直接抓网页，SSRF 检查在 `web/ssrf-guard.ts`，正文提取在 `web/page-text.worker.ts`）；写新工具见目录内 `README.md` | `tool-definitions.ts`（唯一的工具清单）、`core/tool-invocation.service.ts`（`invoke`）、`tools.module.ts`（按清单注册） |
-| `llm/` | LLM 的 Nest 壳（读侧）：模型行解析、密钥 cipher 唯一持有、前台模型下拉与余额 | `llm.service.ts`（`@agent/ai` 门面）、`llm-model-config.service.ts`（`resolveModel` / `listVisibleModels`）、`api-key-cipher.ts`、`llm-runtime-config.service.ts`（只读 env，不对外导出）、`outbound-proxy.ts`（`OUTBOUND_PROXY_URL` 解析与代理 agent 构造） |
-| `admin-llm/` | LLM 配置的写侧：服务商 / 模型 CRUD、拉取、探测、导入预设 | `admin-llm.service.ts`、`llm-model-presets.ts`（按家族的官方上限与默认强度） |
+| `agent-runtime/` | 一次用户输入的 AgentRun 编排；子目录按领域分：`context`（模型可见上下文）、`sampling`（采样决策 / 调试捕获）、`lifecycle`（Run / Step 记录与取消）；运行限制随 `input.runtimeConfig` 快照传入 | `agent-runtime.service.ts`（主循环）、`agent-runtime.types.ts`；细节见目录内 `README.md` |
+| `tools/` | Tool Calling：一次调用的全部判定（截断批次、查找、参数校验、执行、Observation 修剪、`argumentsValidated`）都在 `invoke`，runtime 只记账与回喂；`core/` 是框架，`web/` 是具体工具（`web_search` 经 Serper 查 Google，密钥随运行配置快照经执行上下文传入；`web_fetch` 由服务器直接抓网页，SSRF 检查在 `web/ssrf-guard.ts`，正文提取在 `web/page-text.worker.ts`）；写新工具见目录内 `README.md` | `tool-definitions.ts`（唯一的工具清单）、`core/tool-invocation.service.ts`（`invoke`）、`tools.module.ts`（按清单注册） |
+| `llm/` | LLM 的 Nest 壳（读侧）：模型行解析、密钥 cipher 唯一持有、前台模型下拉与余额 | `llm.service.ts`（`@agent/ai` 门面）、`llm-model-config.service.ts`（`resolveModel` / `listVisibleModels`）、`api-key-cipher.ts`、`llm-runtime-config.service.ts`（只读 env：主密钥与出站代理，不对外导出）、`outbound-proxy.ts`（`OUTBOUND_PROXY_URL` 解析与代理 agent 构造） |
+| `admin-llm/` | LLM 配置的写侧：服务商 / 模型 CRUD、拉取、探测、导入预设；单次输入上限保存时校验 ≤ 窗口 − 输出上限 − 安全余量 | `admin-llm.service.ts`、`llm-model-presets.ts`（按家族的官方上限与默认强度、安全余量） |
+| `runtime-config/` | 运行配置（#216）：单行表 `RuntimeConfig` 的读写，`GET` / `PATCH /api/admin/runtime-config`；`ChatService` 在写入任何消息前读快照，读不到返回 503，没有 env 兜底 | `runtime-config.service.ts`（`loadSnapshot` / `update`） |
 | `auth/` | 登录：服务端 Session + httpOnly Cookie、scrypt 密码、账号锁定与 IP 限流、改密码；Google 重定向登录与 One Tap | `auth.guard.ts`、`auth.service.ts`（`createSession` 两种登录共用、`userStatus` 三态）、`auth.decorators.ts`（`@Public` / `@AllowPendingPasswordChange` / `@CurrentAuth`）、`password.ts`、`session-cookie.ts`、`google-auth.service.ts`（`signIn`：按 sub → 邮箱匹配 → 按状态处理）、`google-id-token.ts`（验签与声明校验） |
 | `admin-users/` | 管理员建号、停用 / 启用、审核待审核账号（通过 / 拒绝）、重置密码、改角色 | `admin-users.service.ts` |
 | `conversations/` | 会话与消息的 CRUD，只操作当前用户自己的会话；读消息时给回答带上 activity（#212：一次查询、jsonb 路径避开 observation） | `conversations.service.ts`、`messages.service.ts`、`message-activity.ts`（Step → activity 的降级投影） |
@@ -37,7 +38,7 @@ Prisma schema 在仓库根 `prisma/`，生成的 client 在 `src/generated/prism
 - 模型输出不可信：工具名、参数先在 `invoke` 里校验再执行。工具结果里的网页内容是低信任数据：系统提示词声明其中的指令、角色设定或格式要求只是资料，不得覆盖系统指令；`modelContent` 不加包裹标记。
 - 终态所有权：晚到的 Abort / deadline / DB 结果不能覆盖已确立终态。
 - 失败归因同源：Run 的 `errorCode`、失败采样 Step 的文案与前台 error 事件都在终态确立后由 `agent-runtime.service.ts` 的 `describeRunFailure` 一处得出；LLMError 的用户文案与 `AllExceptionsFilter` 共用 `common/utils/llm-error-message.util.ts`。
-- 服务商 API Key 只以密文入库，任何接口只回显尾四位；主密钥 `AGENT_SECRET_KEY` 只在 `llm/` 内使用。库里的密钥只发往库里的地址：拉取 / 测试只带 providerId 时用库里的 baseUrl，换地址（含 PATCH 服务商）必须同时重填 key；余额只查 https 的官方 DeepSeek 账号，响应只投影声明字段。
+- 服务商 API Key 与运行配置的 Serper Key 只以密文入库，任何接口只回显尾四位，加解密都经 `LlmModelConfigService` 的 cipher；主密钥 `AGENT_SECRET_KEY` 只在 `llm/` 内使用。库里的密钥只发往库里的地址：拉取 / 测试只带 providerId 时用库里的 baseUrl，换地址（含 PATCH 服务商）必须同时重填 key；余额只查 https 的官方 DeepSeek 账号，响应只投影声明字段。
 - 出站代理：地址只在 `.env` 的 `OUTBOUND_PROXY_URL`（不读 `HTTPS_PROXY` / `NO_PROXY`），`LLMService`、`GoogleAuthService`、`WebSearchTool` 与 `WebFetchTool` 各持有一个代理 agent（都由 `outbound-proxy.ts` 构造），模型请求按服务商 `useProxy` 显式传代理或直连 dispatcher，Google 登录、联网搜索与读网页配了代理就走代理，不替换进程的全局 dispatcher；勾选了但没配时失败（`llm_network`），不静默直连。进文案、接口与日志的只有去掉凭据的 `协议://主机:端口`。
 - `web_fetch` 的网址与网页都不可信（#206）：每一跳（含重定向，手动跟、最多 5 跳）请求前解析出全部地址过黑名单，直连时 undici Agent 的 `connect.lookup` 在连接那一刻再校验一次防 DNS 换绑；走代理时由代理解析域名，连接时的检查失效，所以线上不配 `OUTBOUND_PROXY_URL`。HTML 解析与 Readability 是同步计算，只在 worker 线程里跑，超时或停止时终止 worker，不在主线程解析网页。
 - 家族协议事实（thinking / reasoning_effort 取值）只在 `@agent/contracts` 的 `LLM_FAMILY_CAPABILITIES` 一处。

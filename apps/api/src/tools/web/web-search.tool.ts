@@ -1,11 +1,11 @@
 import type { Dispatcher } from 'undici'
+import type { SerperApiKey } from '../../runtime-config/runtime-config.service.js'
 import type {
   ToolDefinition,
   ToolExecutionContext,
   ToolExecutor,
   ValidatedToolInvocation,
 } from '../core/tool.types.js'
-import process from 'node:process'
 import { Injectable, Logger } from '@nestjs/common'
 import { fetch } from 'undici'
 
@@ -55,12 +55,7 @@ export class WebSearchTool implements ToolExecutor<WebSearchInput> {
   ) {
     context.signal.throwIfAborted()
 
-    const apiKey = process.env.SERPER_API_KEY?.trim()
-
-    if (!apiKey) {
-      this.logger.error('web_search 失败：未配置 SERPER_API_KEY')
-      throw new Error('web search is not configured')
-    }
+    const apiKey = this.requireApiKey(context.serperApiKey)
 
     const { query } = invocation.input
     const response = await fetch(SERPER_SEARCH_URL, {
@@ -87,6 +82,18 @@ export class WebSearchTool implements ToolExecutor<WebSearchInput> {
       modelContent: formatSearchResults(data),
       display: { results: searchSources(data) },
     }
+  }
+
+  /** 没配或解不开时只让这次搜索失败（execution_failed），原因只进日志，不给模型。 */
+  private requireApiKey(serperApiKey: SerperApiKey): string {
+    if (serperApiKey.status === 'set')
+      return serperApiKey.value
+
+    this.logger.error(serperApiKey.status === 'missing'
+      ? 'web_search 失败：未配置 Serper API Key，请在管理台「运行配置」填写'
+      : 'web_search 失败：Serper API Key 无法解密（AGENT_SECRET_KEY 已更换或密文损坏），请在管理台「运行配置」重新填写')
+
+    throw new Error('web search is not configured')
   }
 }
 

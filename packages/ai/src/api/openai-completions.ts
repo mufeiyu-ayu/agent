@@ -41,7 +41,7 @@ import { adaptOpenAICompatibleStream } from './openai-completions-stream.js'
 /**
  * 显式传给 SDK 的每类请求超时，不依赖 SDK 默认值；没有部署差异需求前不做 env。
  * SDK timeout 只约束到首个响应头，且重试时每次尝试各自计时；Agent Loop 只走
- * `chatStream`，流正文阶段只受 `AGENT_RUN_DEADLINE_MS` 的 abort 约束；
+ * `chatStream`，流正文阶段只受运行配置里单次 Run 时限的 abort 约束；
  * 非流式 `chat` 的 60s 只适合短输出。
  */
 const METADATA_REQUEST_TIMEOUT_MS = 10_000

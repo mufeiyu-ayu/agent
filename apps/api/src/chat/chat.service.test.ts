@@ -6,18 +6,21 @@ import type {
 } from '../agent-runtime/agent-runtime.types.js'
 import type { ConversationsService } from '../conversations/conversations.service.js'
 import type { LlmModelConfigService } from '../llm/llm-model-config.service.js'
+import type { RuntimeConfigService } from '../runtime-config/runtime-config.service.js'
 import assert from 'node:assert/strict'
-import { BadRequestException } from '@nestjs/common'
+import { BadRequestException, ServiceUnavailableException } from '@nestjs/common'
 
 import { describe, it, vi } from 'vitest'
 
 import { createResolvedLlmModel } from '../llm/__fixtures__.js'
 import { LlmModelUnavailableError } from '../llm/llm.errors.js'
+import { createRuntimeConfigSnapshot } from '../runtime-config/__fixtures__.js'
 import { ChatService } from './chat.service.js'
 import { buildAgentInstructions } from './prompts/agent.prompt.js'
 
 const GENERATED_AT = '2026-07-18T08:00:00.000Z'
 const RESOLVED_MODEL = createResolvedLlmModel()
+const RUNTIME_CONFIG = createRuntimeConfigSnapshot({ limits: { maxToolCalls: 3 } })
 
 describe('ChatService', () => {
   it('流式入口把 DTO 映射为 RunTurnStreamInput，透传 signal，只注入系统提示词', async () => {
@@ -39,12 +42,14 @@ describe('ChatService', () => {
     const [streamInput] = harness.runtime.inputs
 
     assert.ok(streamInput, 'streamInput')
-    // 模型行 id 在进入 Runtime 之前就解析成快照：Run 开始后后台改配置不影响本次。
+    // 模型行与运行配置在进入 Runtime 之前就读成快照：Run 开始后后台改配置不影响本次。
     assert.deepEqual(harness.modelConfig.resolvedIds, ['model-deepseek-v4-flash'])
+    assert.equal(harness.runtimeConfig.loads, 1)
     assert.deepEqual(withoutSignal(streamInput), {
       conversationId: 'conversation-1',
       userContent: '用户问题',
       model: RESOLVED_MODEL,
+      runtimeConfig: RUNTIME_CONFIG,
       reasoningEffort: 'max',
       // 提示词里的日期取 Run 开始时间。
       instructions: buildAgentInstructions(new Date(GENERATED_AT)),
@@ -69,8 +74,25 @@ describe('ChatService', () => {
       'conversationId',
       'instructions',
       'model',
+      'runtimeConfig',
       'userContent',
     ])
+  })
+
+  it('运行配置读不到（读库失败或行缺失）时在返回事件流之前抛 503，Runtime 不会启动、不写任何消息', async () => {
+    const harness = createHarness([runCompletedEvent('回答')])
+
+    harness.runtimeConfig.failure = new ServiceUnavailableException('读取运行配置失败，请稍后重试')
+
+    await assert.rejects(
+      harness.service.chatStream('user-1', createInput()),
+      (error: unknown) => {
+        assert.ok(error instanceof ServiceUnavailableException, 'error instanceof ServiceUnavailableException')
+        assert.equal(error.message, '读取运行配置失败，请稍后重试')
+        return true
+      },
+    )
+    assert.equal(harness.runtime.inputs.length, 0)
   })
 
   it('模型不可用时在返回事件流之前抛 400，Runtime 不会启动', async () => {
@@ -170,13 +192,26 @@ function createHarness(...eventSequences: AgentRuntimeEvent[][]) {
   }
   // 会话归属由真实库测试覆盖（auth.db.test.ts），这里的会话都属于 user-1。
   const conversations = { assertOwnConversation: async () => {} }
+  const runtimeConfig = {
+    loads: 0,
+    failure: undefined as Error | undefined,
+    loadSnapshot: async () => {
+      runtimeConfig.loads += 1
+
+      if (runtimeConfig.failure)
+        throw runtimeConfig.failure
+
+      return RUNTIME_CONFIG
+    },
+  }
   const service = new ChatService(
     runtime as unknown as AgentRuntimeService,
     modelConfig as unknown as LlmModelConfigService,
     conversations as unknown as ConversationsService,
+    runtimeConfig as unknown as RuntimeConfigService,
   )
 
-  return { runtime, modelConfig, service }
+  return { runtime, modelConfig, runtimeConfig, service }
 }
 
 function createInput(model?: string, reasoningEffort?: 'low' | 'high' | 'max') {

@@ -32,7 +32,7 @@ export class ChatController {
       }
     })
 
-    // 会话归属与模型行解析在写出响应头之前完成：别人的会话抛 404、模型不可用抛 400，
+    // 会话归属、模型行解析与运行配置读取在写出响应头之前完成：别人的会话抛 404、模型不可用抛 400、运行配置读不到抛 503，
     // 由全局异常过滤器返回 JSON，而不是一条空的 NDJSON 流。
     const events = await this.chatService.chatStream(auth.user.id, body, {
       signal: abortController.signal,

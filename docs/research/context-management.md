@@ -11,7 +11,7 @@
 | 项 | 现状 | 位置 |
 | --- | --- | --- |
 | 历史 | 只带之前各轮已完成的「用户问题 + 最终回答」，工具调用与结果都不带（#119 / #152 的设计，当时只有站内文章工具） | `apps/api/src/agent-runtime/agent-runtime.service.ts` 读历史处 |
-| 输入预算 | `min(262,144, 窗口 − 最大输出 − 16,384)`；DeepSeek 窗口 1M，实际按 262K 封顶 | `apps/api/src/agent-runtime/context/initial-context.ts` |
+| 输入预算 | 模型行的单次输入上限 `LlmModel.maxInputTokens`（#216，存量行迁移为 262,144），保存时校验不超过 窗口 − 最大输出 − 16,384 | `apps/api/src/admin-llm/admin-llm.service.ts`（校验）、`agent-runtime/context/initial-context.ts`（使用） |
 | 超预算 | 只在当前 Run 内：本地 DeepSeek V4 估算器算 token，从最旧的历史删起，再截短本 Run 的工具结果；超了记进 `contextPlan` | `context/sampling-context-planner.ts` |
 | 单条工具结果 | 硬上限 128,000 字符 | `apps/api/src/tools/core/tool-observation.ts` |
 | 真实用量 | 每次采样的 provider usage（输入、总量、缓存命中）存在 AgentStep 的 `output.usage`，目前只有管理台概览在用 | `apps/api/src/admin-overview/admin-overview.service.ts` |

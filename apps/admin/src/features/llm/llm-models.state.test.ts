@@ -279,6 +279,7 @@ function model(id: string, reasoningEffort: AdminLlmModel['reasoningEffort']): A
     wireName: 'm',
     displayName: 'm',
     contextWindowTokens: 65_536,
+    maxInputTokens: 262_144,
     maxOutputTokens: 8_192,
     reasoningEffort,
     visible: true,

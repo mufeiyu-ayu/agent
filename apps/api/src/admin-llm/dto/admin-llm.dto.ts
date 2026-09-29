@@ -24,6 +24,7 @@ import {
   Max,
   MaxLength,
   Min,
+  ValidateIf,
   ValidateNested,
 } from 'class-validator'
 
@@ -185,6 +186,13 @@ export class UpdateAdminLlmModelDto implements Partial<AdminLlmModelInput> {
   @Min(1)
   @Max(TOKENS_MAX)
   contextWindowTokens?: number
+
+  /** 不超过窗口 − 输出上限 − 安全余量，跨字段约束在 service 里按合并后的整行查；只有省略才算不改，null 返回 400。 */
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsInt()
+  @Min(1)
+  @Max(TOKENS_MAX)
+  maxInputTokens?: number
 
   @IsOptional()
   @IsInt()

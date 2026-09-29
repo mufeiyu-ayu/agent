@@ -1,6 +1,7 @@
 import type {
   ChatStreamOptions,
   MessageInputItem,
+  ModelToolSpec,
   ModelUsage,
 } from '@agent/ai'
 import type { AgentRunErrorCode } from '@agent/contracts'
@@ -11,6 +12,7 @@ import type {
   MessageStatus as PrismaMessageStatus,
 } from '../generated/prisma/client.js'
 import type { DatabaseOperationDeadline } from '../prisma/prisma.service.js'
+import type { RunLimits, SerperApiKey } from '../runtime-config/runtime-config.service.js'
 import type { NormalizedToolObservation } from '../tools/core/tool-observation.js'
 import type {
   ToolDisplay,
@@ -21,7 +23,6 @@ import type {
   AgentRuntimeEvent,
   RunTurnStreamInput,
 } from './agent-runtime.types.js'
-import type { AgentRuntimePolicy } from './configuration/agent-runtime.policy.js'
 import type { TokenEstimator } from './context/deepseek-v4-token-estimator.js'
 import type { InitialContextSummary } from './context/initial-context.js'
 import type { SamplingContextPlanSummary } from './context/sampling-context-planner.js'
@@ -65,7 +66,6 @@ import {
   ContextTokenEstimationError,
   ModelSamplingIncompleteError,
 } from './agent-runtime.errors.js'
-import { AgentRuntimePolicyService } from './configuration/agent-runtime.policy.js'
 import { DeepSeekV4TokenEstimator } from './context/deepseek-v4-token-estimator.js'
 import { summarizeInitialContext } from './context/initial-context.js'
 import { ModelContext, toFeedbackArgumentsJson } from './context/model-context.js'
@@ -137,9 +137,6 @@ export class AgentRuntimeService {
     @Inject(ToolInvocationService)
     private readonly toolInvocationService: ToolInvocationService,
 
-    @Inject(AgentRuntimePolicyService)
-    private readonly runtimePolicyService: AgentRuntimePolicyService,
-
     @Inject(DeepSeekV4TokenEstimator)
     private readonly tokenEstimator: TokenEstimator,
 
@@ -178,12 +175,12 @@ export class AgentRuntimeService {
       const currentAgentRunId = agentRun.id
 
       agentRunId = currentAgentRunId
-      // Run deadline 必须先于请求级配置解析生效；policy 是启动期已校验的非抛错读取。
-      const runtimePolicy = this.runtimePolicyService.value
+      // Run deadline 必须先于请求级配置解析生效；运行限制取自 ChatService 在 Run 开始前读好的快照，这里不会抛错。
+      const runLimits = input.runtimeConfig.limits
 
       runCancellation = createRunCancellation(
         input.signal,
-        runtimePolicy.runDeadlineMs,
+        runLimits.runDeadlineMs,
       )
       const runSignal = runCancellation.signal
       const databaseDeadline = runCancellation.databaseDeadline
@@ -191,7 +188,7 @@ export class AgentRuntimeService {
       // 配置解析时机保持在 Run 落库之后：请求级配置错误仍走既有 failRun
       // 终态化，不改变 Run 生命周期语义。
       const { request: resolvedRequestConfig, modelTools }
-        = this.resolveRunConfiguration(input, runtimePolicy)
+        = this.resolveRunConfiguration(input, runLimits)
       const loadHistoryStep = await this.agentRunRecorderService.startStep({
         runId: currentAgentRunId,
         type: AGENT_STEP_TYPES.loadConversationHistory,
@@ -202,7 +199,7 @@ export class AgentRuntimeService {
       const historyCandidates = await this.listRecentMessageCandidates(
         input.conversationId,
         userMessage,
-        runtimePolicy.historyCandidateHardLimit,
+        runLimits.historyCandidateHardLimit,
         databaseDeadline,
       )
       runCancellation.throwIfUnavailable()
@@ -225,8 +222,7 @@ export class AgentRuntimeService {
         resolvedModel: resolvedRequestConfig.model,
         providerId: input.model.provider.providerId,
         modelId: input.model.modelId,
-        contextWindowTokens: resolvedRequestConfig.contextWindowTokens,
-        resolvedMaxOutputTokens: resolvedRequestConfig.maxOutputTokens,
+        resolvedInputBudgetTokens: input.model.maxInputTokens,
         context: modelContext,
         tools: modelTools,
         tokenEstimator: this.tokenEstimator,
@@ -298,7 +294,7 @@ export class AgentRuntimeService {
 
       for (
         let samplingAttempt = 1;
-        samplingAttempt <= runtimePolicy.maxSamplingRounds;
+        samplingAttempt <= runLimits.maxSamplingRounds;
         samplingAttempt += 1
       ) {
         runCancellation.throwIfUnavailable()
@@ -310,10 +306,10 @@ export class AgentRuntimeService {
           input: {
             samplingIndex: samplingAttempt,
             samplingAttemptId,
-            initialContext: toPersistedInitialContext(initialContext),
+            initialContext: toPersistedInitialContext(initialContext, modelTools),
           },
         }, databaseDeadline)
-        // debug 捕获暂存：只有 AGENT_DEBUG_CAPTURE_MODEL_IO 开启时 client 才会回调，
+        // debug 捕获暂存：只有运行配置打开「抓取模型原始请求」时才给 client 回调，
         // 开关关闭时始终为空对象，落库输出与现状完全一致。
         const debugModelIO: DebugModelIOCaptured = {
           runId: currentAgentRunId,
@@ -352,17 +348,21 @@ export class AgentRuntimeService {
               contextPlan.items,
               {
                 ...chatStreamOptions,
-                debugCapture: {
-                  onRequest: (requestBody) => {
-                    debugModelIO.requestBody = requestBody
-                  },
-                  onResponse: (responseCapture) => {
-                    debugModelIO.rawResponse = responseCapture
-                  },
-                  onCaptureError: (side) => {
-                    this.recordDebugCaptureFailure(debugModelIO, side)
-                  },
-                },
+                ...(input.runtimeConfig.debugCaptureModelIo
+                  ? {
+                      debugCapture: {
+                        onRequest: (requestBody) => {
+                          debugModelIO.requestBody = requestBody
+                        },
+                        onResponse: (responseCapture) => {
+                          debugModelIO.rawResponse = responseCapture
+                        },
+                        onCaptureError: (side) => {
+                          this.recordDebugCaptureFailure(debugModelIO, side)
+                        },
+                      },
+                    }
+                  : {}),
               },
             ),
             samplingAttemptId,
@@ -518,7 +518,7 @@ export class AgentRuntimeService {
         const { calls } = samplingDecision
 
         // 本轮 call 数超过剩余预算：在执行任何 call 之前整体拒绝，没有部分副作用。
-        if (toolCallCount + calls.length > runtimePolicy.maxToolCalls)
+        if (toolCallCount + calls.length > runLimits.maxToolCalls)
           throw new AgentLoopLimitExceededError()
 
         toolCallCount += calls.length
@@ -540,6 +540,7 @@ export class AgentRuntimeService {
           // toos 相关
           calls, // 模型要调用的工具
           argumentsTruncated, // 模型输出是否被截断，arguments 可能不完整
+          serperApiKey: input.runtimeConfig.serperApiKey, // 运行配置快照里的 Serper Key，只有 web_search 用
 
           // 情况 2 用不上
           runCancellation, // 本轮 sampling 的取消信号
@@ -780,6 +781,7 @@ export class AgentRuntimeService {
     assistantMessageId: string
     calls: UnvalidatedToolCallEnvelope[]
     argumentsTruncated: boolean
+    serperApiKey: SerperApiKey
     runCancellation: RunCancellation
     terminal: RunTerminalSlots
   }): AsyncGenerator<AgentRuntimeEvent, ToolFeedback[]> {
@@ -790,6 +792,7 @@ export class AgentRuntimeService {
       assistantMessageId,
       calls,
       argumentsTruncated,
+      serperApiKey,
       runCancellation,
       terminal,
     } = input
@@ -829,7 +832,7 @@ export class AgentRuntimeService {
         // 截断批次、查无此工具、参数无效都由 invoke 直接返回失败结果，只有校验通过的调用才真正执行。
         invocation = await this.toolInvocationService.invoke(
           call,
-          { signal: runSignal, databaseDeadline, argumentsTruncated },
+          { signal: runSignal, databaseDeadline, argumentsTruncated, serperApiKey },
         )
         runCancellation.throwIfUnavailable()
       }
@@ -977,10 +980,10 @@ export class AgentRuntimeService {
    */
   private resolveRunConfiguration(
     input: RunTurnStreamInput,
-    runtimePolicy: AgentRuntimePolicy,
+    runLimits: RunLimits,
   ) {
     // 顺序即工具清单的顺序；模型只看到名称、说明与输入 Schema，timeout 与 Observation 预算留在服务端。
-    const modelTools = runtimePolicy.maxToolCalls === 0
+    const modelTools = runLimits.maxToolCalls === 0
       ? []
       : TOOL_DEFINITIONS.map(definition => ({
           name: definition.name,
@@ -1334,15 +1337,21 @@ function toLlmErrorCode(error: LLMError): AgentRunErrorCode {
   return 'llm_protocol'
 }
 
-/** 落库的裁剪前快照：InitialContextSummary 的四个字段原样写入；候选历史条数在 load_conversation_history 的 output。 */
+/**
+ * 落库的裁剪前快照：InitialContextSummary 的字段原样写入，再加上 `modelToolNames`；候选历史条数在 load_conversation_history 的 output。
+ * `modelToolNames` 是本 Run 给模型的工具名单：给不给工具取决于运行配置的 maxToolCalls，
+ * 那一行事后可改，所以按名单落库；工具定义本身取自当次部署的代码（已知偏差）。
+ */
 function toPersistedInitialContext(
   initialContext: InitialContextSummary,
+  modelTools: ModelToolSpec[],
 ): Prisma.InputJsonObject {
   return {
     resolvedModel: initialContext.resolvedModel,
     providerId: initialContext.providerId,
     modelId: initialContext.modelId,
     resolvedInputBudgetTokens: initialContext.resolvedInputBudgetTokens,
+    modelToolNames: modelTools.map(tool => tool.name),
   }
 }
 
