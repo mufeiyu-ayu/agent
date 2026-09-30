@@ -1,5 +1,6 @@
 import type {
   ChatStreamOptions,
+  MessageInputItem,
   ModelFinishReason,
   ModelInputItem,
   ModelStreamEvent,
@@ -24,11 +25,7 @@ import type {
   UnvalidatedToolCallEnvelope,
 } from '../tools/core/tool.types.js'
 import type { AgentRuntimeEvent, RunTurnStreamInput } from './agent-runtime.types.js'
-import type { HistoryStepRow } from './context/conversation-history.js'
-import type {
-  TokenEstimator,
-  TokenEstimatorInput,
-} from './context/token-estimate.js'
+import type { HistoryRunRow, HistoryStepRow } from './context/conversation-history.js'
 import type { AgentRunRecorderService } from './lifecycle/agent-run-recorder.service.js'
 import assert from 'node:assert/strict'
 import { setTimeout as sleep } from 'node:timers/promises'
@@ -68,13 +65,10 @@ import { ToolRegistryService } from '../tools/core/tool-registry.service.js'
 import { TOOL_DEFINITIONS } from '../tools/tool-definitions.js'
 import { AgentRunTerminalizationError } from './agent-runtime.errors.js'
 import { AgentRuntimeService } from './agent-runtime.service.js'
-import {
-  flattenPlanningState,
-  ModelContext,
-  toFeedbackArgumentsJson,
-} from './context/model-context.js'
-import { SamplingContextPlanner } from './context/sampling-context-planner.js'
-import { estimateRequestTokens, RoughTokenEstimator, roughTokens } from './context/token-estimate.js'
+import { SUMMARIZATION_SYSTEM_PROMPT } from './context/compaction.js'
+import { ContextCompactionService } from './context/context-compaction.service.js'
+import { historySummaryMessage, turnSummaryMessage } from './context/conversation-history.js'
+import { estimateRequestTokens, roughTokens } from './context/token-estimate.js'
 
 // 模型每轮看到的就是工具清单、与清单同序；不写死名字，清单加工具时 runtime 用例不用跟着改。
 // 清单里少了 web_search 时，大量以它为工具的用例会因 unknown_tool 失败，不靠这里兜。
@@ -236,7 +230,8 @@ describe('AgentRuntimeService model stream', () => {
       message => message.content === '问题',
     )!
 
-    assert.deepEqual(harness.prisma.findManyArguments, [{
+    // 只看本 Run 读历史的那一次（带当前问题上界）；问答结束后检查点 B 在后台另读一次，不带上界。
+    assert.deepEqual(harness.prisma.findManyArguments.filter(arguments_ => arguments_.where.OR), [{
       where: {
         conversationId: 'conversation-1',
         status: MessageStatus.COMPLETED,
@@ -347,8 +342,8 @@ describe('AgentRuntimeService model stream', () => {
 
     await collectEvents(harness.run())
 
-    // 不再 keyset 翻页：整段历史只有一次 findMany，且只带当前用户消息上界。
-    assert.equal(harness.prisma.findManyArguments.length, 1)
+    // 不再 keyset 翻页：本 Run 整段历史只有一次 findMany，且只带当前用户消息上界。
+    assert.equal(harness.prisma.findManyArguments.filter(arguments_ => arguments_.where.OR).length, 1)
     const contents = (harness.llmCalls[0]?.messages ?? [])
       .filter(item => item.type === 'message')
       .map(item => item.content)
@@ -374,7 +369,7 @@ describe('AgentRuntimeService model stream', () => {
     const events = await collectEvents(harness.run())
 
     assert.equal(events.at(-1)?.type, 'run_completed')
-    assert.equal(harness.prisma.findManyArguments.length, 1)
+    assert.equal(harness.prisma.findManyArguments.filter(arguments_ => arguments_.where.OR).length, 1)
     assert.equal(Object.hasOwn(harness.prisma.findManyArguments[0]!, 'take'), false)
     const contents = (harness.llmCalls[0]?.messages ?? [])
       .filter(item => item.type === 'message')
@@ -401,34 +396,19 @@ describe('AgentRuntimeService model stream', () => {
       status: MessageStatus.COMPLETED,
       createdAt: new Date(Date.UTC(2026, 0, 1, 0, 0, second)),
     })
-    const row = (assistantMessageId: string, userMessageId: string, fields: Partial<HistoryStepRow>): HistoryStepRow => ({
-      userMessageId,
-      assistantMessageId,
-      sequence: null,
-      type: null,
-      samplingAttemptId: null,
-      toolCallCount: null,
-      intermediateText: null,
-      callId: null,
-      toolName: null,
-      arguments: null,
-      observation: null,
-      ok: null,
-      ...fields,
-    })
-
     seed('u1', '第一问', MessageRole.USER, 1)
     seed('a1', '先搜一下。\n\n第一答', MessageRole.ASSISTANT, 2)
     seed('u2', '第二问', MessageRole.USER, 3)
     seed('a2', '第二答', MessageRole.ASSISTANT, 4)
+    harness.prisma.historyRuns = [historyRun('r1', 'u1', 'a1'), historyRun('r2', 'u2', 'a2')]
     harness.prisma.historyStepRows = [
-      row('a1', 'u1', { sequence: 2, type: 'model_sampling', samplingAttemptId: 'r1:sampling-1', toolCallCount: 1, intermediateText: '先搜一下。' }),
-      row('a1', 'u1', { sequence: 3, type: 'tool_execution', samplingAttemptId: 'r1:sampling-1', callId: 'call-1', toolName: 'web_search', arguments: '{"query":"react"}', observation: '搜索结果', ok: true }),
-      row('a1', 'u1', { sequence: 5, type: 'model_sampling', samplingAttemptId: 'r1:sampling-2', toolCallCount: 0 }),
+      historyStep('r1', { sequence: 2, type: 'model_sampling', samplingAttemptId: 'r1:sampling-1', toolCallCount: 1, intermediateText: '先搜一下。' }),
+      historyStep('r1', { sequence: 3, type: 'tool_execution', samplingAttemptId: 'r1:sampling-1', callId: 'call-1', toolName: 'web_search', arguments: '{"query":"react"}', observation: '搜索结果', ok: true }),
+      historyStep('r1', { sequence: 5, type: 'model_sampling', samplingAttemptId: 'r1:sampling-2', toolCallCount: 0 }),
       // 第二次问答的工具 Step 没收口（被停止或进程中断）：没有 observation。
-      row('a2', 'u2', { sequence: 2, type: 'model_sampling', samplingAttemptId: 'r2:sampling-1', toolCallCount: 1 }),
-      row('a2', 'u2', { sequence: 3, type: 'tool_execution', samplingAttemptId: 'r2:sampling-1', callId: 'call-2', toolName: 'web_search', arguments: '{"query":"vue"}' }),
-      row('a2', 'u2', { sequence: 5, type: 'model_sampling', samplingAttemptId: 'r2:sampling-2', toolCallCount: 0 }),
+      historyStep('r2', { sequence: 2, type: 'model_sampling', samplingAttemptId: 'r2:sampling-1', toolCallCount: 1 }),
+      historyStep('r2', { sequence: 3, type: 'tool_execution', samplingAttemptId: 'r2:sampling-1', callId: 'call-2', toolName: 'web_search', arguments: '{"query":"vue"}' }),
+      historyStep('r2', { sequence: 5, type: 'model_sampling', samplingAttemptId: 'r2:sampling-2', toolCallCount: 0 }),
     ]
 
     const events = await collectEvents(harness.run())
@@ -463,6 +443,7 @@ describe('AgentRuntimeService model stream', () => {
 
     harness.prisma.seedMessage({ id: 'u1', content: '旧问题', status: MessageStatus.COMPLETED, createdAt: new Date('2026-01-01T00:00:01.000Z') })
     harness.prisma.seedMessage({ id: 'a1', content: '旧回答', role: MessageRole.ASSISTANT, status: MessageStatus.COMPLETED, createdAt: new Date('2026-01-01T00:00:02.000Z') })
+    harness.prisma.historyRuns = [historyRun('r1', 'u1', 'a1')]
     harness.prisma.historyStepQueryError = new Error('connection reset')
 
     const events = await collectEvents(harness.run())
@@ -478,118 +459,6 @@ describe('AgentRuntimeService model stream', () => {
     // 助手消息在读完历史之后才建：失败时还没有它，只有种进去的旧回答。
     assert.deepEqual(harness.prisma.messages.filter(message => message.role === MessageRole.ASSISTANT).map(message => message.id), ['a1'])
     assertNoUnfinishedSteps(harness)
-  })
-
-  it('首轮超预算时由 planner 删最旧历史：initialContext 保持裁剪前值，contextPlan 记录删减数，Admin 投影不降级', async () => {
-    const harness = createHarness(
-      (_, __, callIndex) => toModelStream(callIndex === 0
-        ? [
-            toolCallEvent('call-history', 'web_search', '{"query":"seo"}'),
-            { type: 'response_completed', finishReason: 'tool_calls' },
-          ]
-        : [
-            { type: 'text_delta', delta: '完成。' },
-            { type: 'response_completed', finishReason: 'stop' },
-          ]),
-      undefined,
-      async () => ({
-        ok: true,
-        modelContent: '短 Observation',
-      }),
-      {},
-      new BaseCostTokenEstimator(250_000),
-    )
-    // 预算 262_144 − 基础 250_000 只容得下 2 条 5_000 字历史 + 当前消息 + 工具。
-    const historyContents = [1, 2, 3].map(
-      index => String(index).padEnd(5_000, '旧'),
-    )
-
-    for (const [index, content] of historyContents.entries()) {
-      harness.prisma.seedMessage({
-        id: `history-${index + 1}`,
-        content,
-        status: MessageStatus.COMPLETED,
-        createdAt: new Date(`2026-01-01T00:00:0${index + 1}.000Z`),
-      })
-    }
-
-    const events = await collectEvents(harness.run())
-
-    assert.equal(events.at(-1)?.type, 'run_completed')
-    assert.equal(harness.llmCalls.length, 2)
-    // 首轮模型输入只保留最新的连续 2 条，顺序不变。
-    assert.deepEqual(
-      (harness.llmCalls[0]?.messages ?? [])
-        .filter(item => item.type === 'message')
-        .map(item => item.content),
-      [historyContents[1], historyContents[2], '问题'],
-    )
-    // 读取阶段全部候选进入 ModelContext，不做预算排除。
-    assert.deepEqual(findStep(harness, 'load_conversation_history')?.output, {
-      messageCount: 3,
-    })
-    const [firstSampling, secondSampling] = harness.recorder.steps.filter(
-      step => step.type === 'model_sampling',
-    )
-    const firstInput = firstSampling?.input as Record<string, unknown>
-    const firstInitialContext = firstInput.initialContext as Record<string, unknown>
-    const firstContextPlan = (firstSampling?.output as Record<string, unknown>)
-      .contextPlan as Record<string, unknown>
-
-    // 预算删减体现在模型输入与 contextPlan；选入条数与请求的一致性见「Run 轨迹补齐模型可见内容」AC-02。
-    assert.equal(firstContextPlan.historyIncludedCount, 2)
-    assert.equal(firstContextPlan.resolvedInputBudgetTokens, firstInitialContext.resolvedInputBudgetTokens)
-    assert.ok(Number(firstContextPlan.estimatedInputTokens) <= Number(firstContextPlan.resolvedInputBudgetTokens), 'Number(firstContextPlan.estimatedInputTokens) <= Number(firstContextPlan.resolvedInputBudgetTokens)')
-    // 第二轮：initialContext 快照不变，Tool Exchange 成对进入输入。
-    const secondInput = secondSampling?.input as Record<string, unknown>
-
-    assert.deepEqual(secondInput.initialContext, firstInitialContext)
-    assert.deepEqual(
-      (harness.llmCalls[1]?.messages ?? [])
-        .filter(item => item.type === 'message')
-        .map(item => item.content),
-      [historyContents[1], historyContents[2], '问题'],
-    )
-    assertNoUnfinishedSteps(harness)
-
-    // AC-04 跨层：runtime 真实写出的 Step 经 Admin projector 投影。
-    const detail = projectHarnessRunDetail(harness, 'COMPLETED')
-    const inspectors = detail.timeline.flatMap(item => (
-      item.kind === 'known' && item.type === 'model_sampling'
-        ? [item.contextInspector]
-        : []
-    ))
-
-    assert.deepEqual(
-      inspectors.map(inspector => inspector.outcome),
-      ['success', 'success'],
-    )
-  })
-
-  it('mandatory Context 超预算时不调用 Provider', async () => {
-    const harness = createHarness(
-      () => toModelStream([{ type: 'response_completed', finishReason: 'stop' }]),
-      undefined,
-      undefined,
-      {},
-      new OverflowTokenEstimator(),
-    )
-
-    const events = await collectEvents(harness.run())
-
-    assert.deepEqual(events.map(event => event.type), ['run_failed'])
-    assert.equal(events[0]?.type, 'run_failed')
-    if (events[0]?.type !== 'run_failed')
-      assert.fail('expected run_failed')
-    assert.match(events[0].message, /Mandatory Context/)
-    // 用户消息已落库、会话 updatedAt 已变：前台要据此同步侧栏（#169）。
-    assert.equal(events[0].userMessagePersisted, true)
-    assert.equal(harness.llmCalls.length, 0)
-    assert.equal(harness.assistantMessage(), undefined)
-    assert.equal(
-      findStep(harness, 'load_conversation_history')?.status,
-      AgentStepStatus.FAILED,
-    )
   })
 
   it('在 response_completed 前实时产出普通回答 delta', async () => {
@@ -764,7 +633,7 @@ describe('AgentRuntimeService model stream', () => {
         toolCallCount: 0,
       },
     ])
-    // contextPlan：预算、估算之外只落两项 planner 决策。
+    // contextPlan：预算、估算之外落本轮基于的压缩记录、本轮压缩 Step 与未覆盖的历史条数（#220）。
     assert.deepEqual(
       samplingSteps.map((step) => {
         const {
@@ -776,8 +645,8 @@ describe('AgentRuntimeService model stream', () => {
         return plan
       }),
       [
-        { overflowReason: null, historyIncludedCount: 0, observationPreviewChars: [] },
-        { overflowReason: null, historyIncludedCount: 0, observationPreviewChars: [11] },
+        { compactionId: null, turnCompactionStepId: null, historyIncludedCount: 0 },
+        { compactionId: null, turnCompactionStepId: null, historyIncludedCount: 0 },
       ],
     )
     const toolStep = harness.recorder.steps[2]
@@ -811,262 +680,18 @@ describe('AgentRuntimeService model stream', () => {
           ]),
       undefined,
       async () => ({ ok: true, modelContent: '工具结果正文' }),
-      {},
-      new RoughTokenEstimator(),
     )
 
     await collectEvents(harness.run())
 
     const estimates = harness.recorder.steps
       .filter(step => step.type === 'model_sampling')
-      .map(step => (readContextPlan(step) as { estimatedInputTokens?: number }).estimatedInputTokens)
+      .map(step => readContextPlan(step).estimatedInputTokens)
 
     assert.deepEqual(estimates, [
       estimateRequestTokens({ items: harness.llmCalls[0]!.messages, tools: harness.llmCalls[0]!.options!.tools! }),
       5_120 + roughTokens('工具结果正文'),
     ])
-  })
-
-  it('第二轮 sampling 重新估算完整请求，并按 Context Budget 缩减 Observation', async () => {
-    const observation = '🚀'.repeat(8_000)
-    const estimator = new BaseCostTokenEstimator(256_000)
-    const harness = createHarness(
-      (_, __, callIndex) => toModelStream(callIndex === 0
-        ? [
-            toolCallEvent('call-budget', 'web_search', '{"query":"seo"}'),
-            { type: 'response_completed', finishReason: 'tool_calls' },
-          ]
-        : [
-            { type: 'text_delta', delta: '已按预算处理。' },
-            { type: 'response_completed', finishReason: 'stop' },
-          ]),
-      undefined,
-      async () => ({
-        ok: true,
-        modelContent: observation,
-      }),
-      {},
-      estimator,
-    )
-
-    const events = await collectEvents(harness.run())
-    const followUpItems = harness.llmCalls[1]?.messages ?? []
-    const plannedObservation = followUpItems.find(
-      item => item.type === 'tool_result',
-    )
-
-    assert.equal(events.at(-1)?.type, 'run_completed')
-    assert.equal(harness.llmCalls.length, 2)
-    assert.equal(plannedObservation?.type, 'tool_result')
-    if (plannedObservation?.type !== 'tool_result')
-      assert.fail('expected tool_result')
-    assert.ok([...plannedObservation.content].length < [...observation].length, '[...plannedObservation.content].length < [...observation].length')
-    assert.ok([...plannedObservation.content].length <= 8_000, '[...plannedObservation.content].length <= 8_000')
-    assert.match(plannedObservation.content, /Context Budget|context_budget|上下文预算/i)
-    assert.ok(estimator.estimateRequest({
-      items: followUpItems,
-      tools: harness.llmCalls[1]?.options?.tools ?? [],
-    }) <= 262_144, 'estimator.estimateRequest({ items: followUpItems, tools: harness.llmCalls[1]?.options?.tools ?? [], }) <= 262_144')
-    assert.ok(estimator.inputs.some(input => input.items.some(
-      item => item.type === 'tool_result',
-    )), 'estimator.inputs.some(input => input.items.some( item => item.type === \'tool_result\', ))')
-    const contextPlan = harness.recorder.steps
-      .filter(step => step.type === 'model_sampling')[1]
-      ?.output as Record<string, unknown>
-
-    assert.deepEqual(
-      Object.keys(contextPlan.contextPlan as Record<string, unknown>),
-      [
-        'resolvedInputBudgetTokens',
-        'estimatedInputTokens',
-        'overflowReason',
-        'historyIncludedCount',
-        'observationPreviewChars',
-      ],
-    )
-    // 压缩后实际送入的字符数；tool Step 里的 observation 仍是压缩前、受工具上限约束的正文。
-    assert.deepEqual(
-      (contextPlan.contextPlan as Record<string, unknown>).observationPreviewChars,
-      [[...plannedObservation.content].length],
-    )
-    assert.equal(
-      (findStep(harness, 'tool_execution')?.output as Record<string, unknown>).observation,
-      observation,
-    )
-    assert.doesNotMatch(JSON.stringify(contextPlan.contextPlan), /🚀/)
-    assertNoUnfinishedSteps(harness)
-  })
-
-  it('follow-up 超预算时先排除最旧 initial History，且不修改数据库 Message', async () => {
-    const historyContent = '旧'.repeat(8_000)
-    const observationContent = '新'.repeat(8_000)
-    const harness = createHarness(
-      (_, __, callIndex) => toModelStream(callIndex === 0
-        ? [
-            toolCallEvent('call-history', 'web_search', '{"query":"seo"}'),
-            { type: 'response_completed', finishReason: 'tool_calls' },
-          ]
-        : [
-            { type: 'text_delta', delta: '完成。' },
-            { type: 'response_completed', finishReason: 'stop' },
-          ]),
-      undefined,
-      async () => ({
-        ok: true,
-        modelContent: observationContent,
-      }),
-      {},
-      new BaseCostTokenEstimator(250_000),
-    )
-    const createdAt = new Date('2026-01-01T00:00:00.000Z')
-
-    harness.prisma.seedMessage({
-      id: 'history-oldest',
-      content: historyContent,
-      status: MessageStatus.COMPLETED,
-      createdAt,
-    })
-
-    await collectEvents(harness.run())
-
-    assert.equal(harness.llmCalls[0]?.messages.some(
-      item => item.type === 'message' && item.content === historyContent,
-    ), true)
-    assert.equal(harness.llmCalls[1]?.messages.some(
-      item => item.type === 'message' && item.content === historyContent,
-    ), false)
-    assert.equal(harness.llmCalls[1]?.messages.some(
-      item => item.type === 'tool_result' && item.content === observationContent,
-    ), true)
-    assert.equal(
-      harness.prisma.messages.find(message => message.id === 'history-oldest')?.content,
-      historyContent,
-    )
-    // 第二轮输入：最旧历史已被排除，只剩当前问题 + Tool Call + Tool Result。
-    assert.equal(harness.llmCalls[1]?.messages.length, 3)
-    assert.equal(harness.llmCalls[1]?.messages.some(
-      item => item.type === 'message' && item.content === historyContent,
-    ), false)
-    assertNoUnfinishedSteps(harness)
-  })
-
-  it('第三轮超预算时优先缩减较旧 Observation，保留最新 Observation', async () => {
-    const olderObservation = '旧'.repeat(8_000)
-    const latestObservation = '新'.repeat(8_000)
-    const streams: ModelStreamEvent[][] = [
-      [
-        toolCallEvent('call-old', 'web_search', '{"query":"seo"}'),
-        { type: 'response_completed', finishReason: 'tool_calls' },
-      ],
-      [
-        toolCallEvent('call-new', 'web_search', '{"query":"sitemap"}'),
-        { type: 'response_completed', finishReason: 'tool_calls' },
-      ],
-      [
-        { type: 'text_delta', delta: '完成。' },
-        { type: 'response_completed', finishReason: 'stop' },
-      ],
-    ]
-    const estimator = new BaseCostTokenEstimator(249_000)
-    const harness = createHarness(
-      (_, __, callIndex) => toModelStream(streams[callIndex] ?? []),
-      undefined,
-      async envelope => ({
-        ok: true,
-        modelContent: envelope.callId === 'call-old'
-          ? olderObservation
-          : latestObservation,
-      }),
-      {},
-      estimator,
-    )
-
-    await collectEvents(harness.run())
-
-    const thirdRoundResults = (harness.llmCalls[2]?.messages ?? []).filter(
-      item => item.type === 'tool_result',
-    )
-
-    assert.equal(harness.llmCalls.length, 3)
-    assert.deepEqual(
-      harness.llmCalls.map(call => call.options?.request.reasoningEffort),
-      ['high', 'high', 'high'],
-    )
-    assert.equal(thirdRoundResults.length, 2)
-    assert.equal(thirdRoundResults[0]?.type, 'tool_result')
-    assert.equal(thirdRoundResults[1]?.type, 'tool_result')
-    if (
-      thirdRoundResults[0]?.type !== 'tool_result'
-      || thirdRoundResults[1]?.type !== 'tool_result'
-    ) {
-      assert.fail('expected paired tool results')
-    }
-    assert.ok([...thirdRoundResults[0].content].length < [...olderObservation].length, '[...thirdRoundResults[0].content].length < [...olderObservation].length')
-    assert.equal(thirdRoundResults[1].content, latestObservation)
-    assert.deepEqual(thirdRoundResults.map(item => item.callId), [
-      'call-old',
-      'call-new',
-    ])
-    assert.equal(harness.llmCalls.every(call => estimator.estimateRequest({
-      items: call.messages,
-      tools: call.options?.tools ?? [],
-    }) <= 262_144), true)
-    assertNoUnfinishedSteps(harness)
-  })
-
-  it('最小 Tool Exchange 仍超预算时阻止对应轮次 Provider 调用并稳定失败', async () => {
-    const observationSecret = 'overflow-observation-secret'
-    const harness = createHarness(
-      (_, __, callIndex) => toModelStream(callIndex === 0
-        ? [
-            toolCallEvent('call-overflow', 'web_search', '{"query":"seo"}'),
-            { type: 'response_completed', finishReason: 'tool_calls' },
-          ]
-        : [
-            { type: 'text_delta', delta: '不应调用' },
-            { type: 'response_completed', finishReason: 'stop' },
-          ]),
-      undefined,
-      async () => ({
-        ok: true,
-        modelContent: `无法容纳的 Observation ${observationSecret}`,
-      }),
-      {},
-      new FollowUpOverflowTokenEstimator(),
-    )
-
-    const events = await collectEvents(harness.run())
-    const failedEvent = events.at(-1)
-    const samplingSteps = harness.recorder.steps.filter(
-      step => step.type === 'model_sampling',
-    )
-
-    assert.equal(failedEvent?.type, 'run_failed')
-    assert.match(
-      failedEvent?.type === 'run_failed' ? failedEvent.message : '',
-      /Context|上下文|预算/,
-    )
-    assert.equal(harness.llmCalls.length, 1)
-    assert.equal(samplingSteps.length, 2)
-    assert.equal(samplingSteps[1]?.status, AgentStepStatus.FAILED)
-    assert.equal(
-      ((samplingSteps[1]?.output as Record<string, unknown>)
-        ?.contextPlan as Record<string, unknown>)?.overflowReason,
-      'minimum_context',
-    )
-    assert.equal(harness.assistantMessage()?.status, MessageStatus.FAILED)
-    assert.deepEqual(harness.recorder.failedRunIds, ['run-1'])
-    assert.equal(
-      (findStep(harness, 'tool_execution')?.output as Record<string, unknown>).observation,
-      `无法容纳的 Observation ${observationSecret}`,
-    )
-    // 正文只落在 tool Step 的 observation：事件、Message 与采样 Step（含 overflow 的 contextPlan）都不带。
-    assert.doesNotMatch(JSON.stringify({
-      events,
-      steps: harness.recorder.steps.filter(step => step.type !== 'tool_execution'),
-      message: harness.assistantMessage(),
-    }), new RegExp(observationSecret))
-    assertNoUnfinishedSteps(harness)
   })
 
   it('按模型决策执行 search -> search -> final 三轮路径', async () => {
@@ -1735,8 +1360,7 @@ describe('AgentRuntimeService model stream', () => {
     assertNoUnfinishedSteps(harness)
   })
 
-  it('length 截断的原始参数经生产 estimator 仍能续轮：未校验参数以官方回退形状回喂，estimator 输入与实际请求一致', async () => {
-    const productionEstimator = new RoughTokenEstimator()
+  it('length 截断的原始参数仍能续轮：未校验参数以官方回退形状回喂', async () => {
     // 同一根因的全部边界：空、半截对象、非对象 JSON、特殊数值，以及完整对象对照。
     const rawArgumentsSamples = [
       '',
@@ -1756,17 +1380,6 @@ describe('AgentRuntimeService model stream', () => {
 
     for (const rawArguments of rawArgumentsSamples) {
       const label = `raw=${JSON.stringify(rawArguments)}`
-      const estimatedInputs: ModelInputItem[][] = []
-      // 只旁路记录，估算仍是生产实现。
-      const recordingEstimator: TokenEstimator = {
-        estimateRequest: (input) => {
-          estimatedInputs.push(structuredClone(input.items))
-
-          return productionEstimator.estimateRequest(input)
-        },
-      }
-      // 每次真正发请求时，estimator 最后一次看到的输入。
-      const estimatedAtRequest: Array<ModelInputItem[] | undefined> = []
       const streams: Array<() => AsyncGenerator<ModelStreamEvent>> = [
         () => adaptDeepSeekStream(toProviderStream([
           providerChunk({ reasoning_content: '需要查。' } as ChatCompletionChunk.Choice.Delta),
@@ -1792,17 +1405,7 @@ describe('AgentRuntimeService model stream', () => {
           { type: 'response_completed', finishReason: 'stop' },
         ]),
       ]
-      const harness = createHarness(
-        (_, __, callIndex) => {
-          estimatedAtRequest.push(estimatedInputs.at(-1))
-
-          return streams[callIndex]!()
-        },
-        undefined,
-        undefined,
-        {},
-        recordingEstimator,
-      )
+      const harness = createHarness((_, __, callIndex) => streams[callIndex]!())
 
       // 与真实入口一致，带 system 消息。
       const events = await collectEvents(harness.service.runTurnStream({
@@ -1859,18 +1462,11 @@ describe('AgentRuntimeService model stream', () => {
         calls: [{ callId: 'call-retry', name: 'web_search', rawArgumentsJson: '{"query":"seo"}' }],
         reasoningContent: 'reasoning for call-retry',
       }, label)
-      // 每一轮发出的请求，就是生产 estimator 最后一次估算的那份输入。
-      assert.deepEqual(
-        estimatedAtRequest,
-        harness.llmCalls.map(call => call.messages),
-        label,
-      )
       assertNoUnfinishedSteps(harness)
     }
   })
 
-  it('invalid_arguments 与 unknown_tool 回喂的未校验参数经生产 estimator 仍能续轮', async () => {
-    const productionEstimator = new RoughTokenEstimator()
+  it('invalid_arguments 与 unknown_tool 回喂的未校验参数仍能续轮', async () => {
     const cases = [
       { toolName: 'web_search', code: 'invalid_arguments' },
       { toolName: 'not_a_tool', code: 'unknown_tool' },
@@ -1895,8 +1491,6 @@ describe('AgentRuntimeService model stream', () => {
             code: 'invalid_arguments',
             modelContent: `工具 ${envelope.toolName} 的参数无效。`,
           }),
-          undefined,
-          productionEstimator,
         )
 
         const events = await collectEvents(harness.service.runTurnStream({
@@ -3078,15 +2672,10 @@ describe('Run 轨迹补齐模型可见内容', () => {
       harness.llmCalls.map(call => countHistoryMessages(call.messages)),
     )
     assert.deepEqual(harness.llmCalls.map(call => countHistoryMessages(call.messages)), [2, 2, 2])
-    // 每轮每个 tool result 实际送入的字符数，按 exchange、call 顺序。
+    // 没有压缩：每轮都不基于压缩记录与本轮压缩 Step（#220 起 tool result 原样送入，不再记缩短后的长度）。
     assert.deepEqual(
-      samplingSteps.map(step => readContextPlan(step).observationPreviewChars),
-      harness.llmCalls.map(call => call.messages.flatMap(item =>
-        item.type === 'tool_result' ? [[...item.content].length] : [])),
-    )
-    assert.deepEqual(
-      samplingSteps.map(step => readContextPlan(step).observationPreviewChars),
-      [[], [20, 14], [20, 14, 18]],
+      samplingSteps.map(step => [readContextPlan(step).compactionId, readContextPlan(step).turnCompactionStepId]),
+      [[null, null], [null, null], [null, null]],
     )
 
     // AC-06 跨层：新字段经 Admin projector 原样投影。
@@ -3115,96 +2704,6 @@ describe('Run 轨迹补齐模型可见内容', () => {
       [[2, 2], [2, 2], [2, 2]],
     )
     assertNoUnfinishedSteps(harness)
-  })
-
-  it('AC-02 首轮超预算裁剪历史：historyIncludedCount 小于候选条数，且与首轮请求里的历史条数一致', async () => {
-    const harness = createHarness(
-      () => toModelStream([
-        { type: 'text_delta', delta: '完成。' },
-        { type: 'response_completed', finishReason: 'stop' },
-      ]),
-      undefined,
-      undefined,
-      {},
-      new BaseCostTokenEstimator(250_000),
-    )
-
-    // 预算 262_144 − 基础 250_000 只容得下 2 条 5_000 字历史 + 当前消息 + 工具。
-    for (const index of [1, 2, 3]) {
-      harness.prisma.seedMessage({
-        id: `history-${index}`,
-        content: String(index).padEnd(5_000, '旧'),
-        status: MessageStatus.COMPLETED,
-        createdAt: new Date(`2026-01-01T00:00:0${index}.000Z`),
-      })
-    }
-
-    await collectEvents(harness.run())
-
-    const plan = readContextPlan(findStep(harness, 'model_sampling'))
-
-    assert.deepEqual(findStep(harness, 'load_conversation_history')?.output, { messageCount: 3 })
-    assert.equal(plan.historyIncludedCount, 2)
-    assert.equal(countHistoryMessages(harness.llmCalls[0]?.messages ?? []), 2)
-
-    const sampling = projectHarnessRunDetail(harness, 'COMPLETED').timeline.find(
-      item => item.kind === 'known' && item.type === 'model_sampling',
-    )
-
-    assert.deepEqual(
-      sampling?.kind === 'known' && sampling.type === 'model_sampling'
-        ? [sampling.contextInspector.historyIncludedCount, sampling.contextInspector.historyCandidateCount]
-        : undefined,
-      [2, 3],
-    )
-  })
-
-  it('AC-02 后续轮压缩 observation：observationPreviewChars 记压缩后实际送入的长度，tool Step 仍是压缩前正文', async () => {
-    const olderObservation = '旧'.repeat(8_000)
-    const latestObservation = '新'.repeat(8_000)
-    const streams: ModelStreamEvent[][] = [
-      [
-        toolCallEvent('call-old', 'web_search', '{"query":"seo"}'),
-        { type: 'response_completed', finishReason: 'tool_calls' },
-      ],
-      [
-        toolCallEvent('call-new', 'web_search', '{"query":"sitemap"}'),
-        { type: 'response_completed', finishReason: 'tool_calls' },
-      ],
-      [
-        { type: 'text_delta', delta: '完成。' },
-        { type: 'response_completed', finishReason: 'stop' },
-      ],
-    ]
-    const harness = createHarness(
-      (_, __, callIndex) => toModelStream(streams[callIndex] ?? []),
-      undefined,
-      async envelope => ({
-        ok: true,
-        modelContent: envelope.callId === 'call-old' ? olderObservation : latestObservation,
-      }),
-      {},
-      new BaseCostTokenEstimator(249_000),
-    )
-
-    await collectEvents(harness.run())
-
-    const samplingSteps = harness.recorder.steps.filter(step => step.type === 'model_sampling')
-    const thirdRoundLengths = (harness.llmCalls[2]?.messages ?? []).flatMap(item =>
-      item.type === 'tool_result' ? [[...item.content].length] : [])
-
-    assert.equal(harness.llmCalls.length, 3)
-    // 第 2 轮放得下；第 3 轮较旧的 observation 被压缩，最新的保持原长。
-    assert.deepEqual(readContextPlan(samplingSteps[1]).observationPreviewChars, [8_000])
-    assert.deepEqual(readContextPlan(samplingSteps[2]).observationPreviewChars, thirdRoundLengths)
-    assert.ok(thirdRoundLengths[0]! < 8_000, 'thirdRoundLengths[0]! < 8_000')
-    assert.equal(thirdRoundLengths[1], 8_000)
-    assert.deepEqual(
-      harness.recorder.steps
-        .filter(step => step.type === 'tool_execution')
-        .map(step => (step.output as Record<string, unknown>).observation),
-      [olderObservation, latestObservation],
-    )
   })
 
   it('AC-02 参数因 length 截断整批不执行：tool Step 的 arguments 是回喂给模型的 {"arguments": raw} 形状', async () => {
@@ -3803,98 +3302,664 @@ function useFakeClock() {
   }
 }
 
-describe('ModelContext', () => {
-  it('保持 direct-final、一次 Tool 和两次顺序 Tool 的 items', () => {
-    const context = ModelContext.fromHistory({
-      instructions: [{ type: 'message', role: 'system', content: 'SYS' }],
-      initialHistory: [],
-      currentUserMessage: { type: 'message', role: 'user', content: 'USER' },
-    })
+describe('上下文自动压缩（#220）', () => {
+  /** 触发线 4,000 的模型：用例按粗估（ASCII 每 4 个字符 1 token）构造体积。 */
+  const SMALL_MODEL: ResolvedLlmModel = { ...createResolvedLlmModel(), maxInputTokens: 4_000 }
+  const SUMMARY_TEXT = '## Goal\n- 摘要正文'
 
-    assert.deepEqual(flattenPlanningState(context.forPlanning()), [
-      { type: 'message', role: 'system', content: 'SYS' },
-      { type: 'message', role: 'user', content: 'USER' },
-    ])
+  type Harness = ReturnType<typeof createHarness>
+  type StreamFactory = (index: number, messages: ModelInputItem[], options: ChatStreamOptions | undefined) => AsyncGenerator<ModelStreamEvent>
 
-    context.appendToolExchange({
-      calls: [{ callId: 'c1', toolName: 't1' }],
-      intermediateText: 'I',
-      reasoningContent: 'R',
-      results: [{
-        observation: {
-          content: 'O',
-          originalChars: 1,
-          observationChars: 1,
-          truncated: false,
-        },
-        ok: true,
-        feedbackArgumentsJson: 'A',
-      }],
-    })
+  function isSummaryCall(messages: ModelInputItem[]): boolean {
+    const [first] = messages
 
-    assert.deepEqual(flattenPlanningState(context.forPlanning()).slice(-2), [
-      {
-        type: 'assistant_tool_call',
-        calls: [{ callId: 'c1', name: 't1', rawArgumentsJson: 'A' }],
-        reasoningContent: 'R',
-        content: 'I',
-      },
-      {
-        type: 'tool_result',
-        callId: 'c1',
-        name: 't1',
-        content: 'O',
-        ok: true,
-      },
-    ])
-    assert.equal(flattenPlanningState(context.forPlanning()).length, 4)
+    return first?.type === 'message' && first.role === 'system' && first.content === SUMMARIZATION_SYSTEM_PROMPT
+  }
 
-    context.appendToolExchange({
-      calls: [
-        { callId: 'c2', toolName: 't2' },
-        { callId: 'c3', toolName: 't3' },
-      ],
-      intermediateText: 'J',
-      reasoningContent: 'S',
-      results: [
-        {
-          observation: { content: 'P', originalChars: 1, observationChars: 1, truncated: false },
-          ok: false,
-          // 未校验的原始参数：续轮用官方回退形状承载，原文保留在值里。
-          feedbackArgumentsJson: toFeedbackArgumentsJson('B', false),
-        },
-        {
-          observation: { content: 'Q', originalChars: 1, observationChars: 1, truncated: false },
-          ok: true,
-          feedbackArgumentsJson: toFeedbackArgumentsJson('C', true),
-        },
-      ],
-    })
+  /** 摘要调用与采样调用分开计数、分开给流。 */
+  function routed(input: { sampling: StreamFactory, summary?: StreamFactory }): CreateModelStream {
+    let samplingIndex = 0
+    let summaryIndex = 0
 
-    // 同轮两个 call：一条 assistant 消息带 calls[]，后接两条按 callId 配对的 tool_result。
-    assert.deepEqual(flattenPlanningState(context.forPlanning()).slice(-3), [
-      {
-        type: 'assistant_tool_call',
-        calls: [
-          { callId: 'c2', name: 't2', rawArgumentsJson: '{"arguments":"B"}' },
-          { callId: 'c3', name: 't3', rawArgumentsJson: 'C' },
-        ],
-        reasoningContent: 'S',
-        content: 'J',
-      },
-      { type: 'tool_result', callId: 'c2', name: 't2', content: 'P', ok: false },
-      { type: 'tool_result', callId: 'c3', name: 't3', content: 'Q', ok: true },
-    ])
-    assert.equal(flattenPlanningState(context.forPlanning()).length, 7)
-    assert.throws(
-      () => context.appendToolExchange({
-        calls: [],
-        intermediateText: '',
-        reasoningContent: '',
-        results: [],
+    return (messages, options) => isSummaryCall(messages)
+      ? (input.summary ?? (() => toModelStream(summaryEvents())))(summaryIndex++, messages, options)
+      : input.sampling(samplingIndex++, messages, options)
+  }
+
+  function summaryEvents(text = SUMMARY_TEXT): ModelStreamEvent[] {
+    return [
+      { type: 'text_delta', delta: text },
+      { type: 'usage', usage: { inputTokens: 900, outputTokens: 60 } },
+      { type: 'response_completed', finishReason: 'stop' },
+    ]
+  }
+
+  function finalAnswer(text = '好的。'): AsyncGenerator<ModelStreamEvent> {
+    return toModelStream([{ type: 'text_delta', delta: text }, { type: 'response_completed', finishReason: 'stop' }])
+  }
+
+  function toolRound(callId: string): AsyncGenerator<ModelStreamEvent> {
+    return toModelStream([toolCallEvent(callId, 'web_fetch', '{"url":"https://example.com/"}'), { type: 'response_completed', finishReason: 'tool_calls' }])
+  }
+
+  async function* failingStream(error: unknown, events: ModelStreamEvent[] = []): AsyncGenerator<ModelStreamEvent> {
+    yield* events
+    throw error
+  }
+
+  /** 之前的问答：每组一问一答，回答是 answerChars 个 ASCII 字符（约 answerChars / 4 token），Run 都已完成。 */
+  function seedHistory(harness: Harness, count: number, answerChars: number): void {
+    for (let index = 1; index <= count; index += 1) {
+      harness.prisma.seedMessage({ id: `u${index}`, content: `第 ${index} 问`, status: MessageStatus.COMPLETED, createdAt: new Date(Date.UTC(2026, 8, 29, 0, 0, index * 2)) })
+      harness.prisma.seedMessage({ id: `a${index}`, role: MessageRole.ASSISTANT, content: `${index}`.padEnd(answerChars, 'x'), status: MessageStatus.COMPLETED, createdAt: new Date(Date.UTC(2026, 8, 29, 0, 0, index * 2 + 1)) })
+      harness.prisma.historyRuns.push(historyRun(`r${index}`, `u${index}`, `a${index}`))
+    }
+  }
+
+  function run(harness: Harness, options: {
+    userContent?: string
+    instructions?: MessageInputItem[]
+    model?: ResolvedLlmModel
+    keepRecentTokens?: number
+    runDeadlineMs?: number
+    signal?: AbortSignal
+  } = {}): Promise<AgentRuntimeEvent[]> {
+    return collectEvents(harness.service.runTurnStream({
+      conversationId: 'conversation-1',
+      userContent: options.userContent ?? '新问题',
+      instructions: options.instructions ?? [],
+      model: options.model ?? SMALL_MODEL,
+      runtimeConfig: createRuntimeConfigSnapshot({
+        compactionKeepRecentTokens: options.keepRecentTokens ?? 20_000,
+        limits: { runDeadlineMs: options.runDeadlineMs ?? 600_000 },
       }),
-      RangeError,
+      ...(options.signal ? { signal: options.signal } : {}),
+    }))
+  }
+
+  const stepTrail = (harness: Harness) => harness.recorder.steps.map(step => [step.type, step.status])
+  const samplingCalls = (harness: Harness) => harness.llmCalls.filter(call => !isSummaryCall(call.messages))
+  const summaryCalls = (harness: Harness) => harness.llmCalls.filter(call => isSummaryCall(call.messages))
+  const compactionSteps = (harness: Harness) => harness.recorder.steps.filter(step => step.type === 'context_compaction')
+  const userMessage = (content: string): ModelInputItem => ({ type: 'message', role: 'user', content })
+  const answer = (content: string): ModelInputItem => ({ type: 'message', role: 'assistant', content })
+
+  it('AC-06 检查点 A：run_started 之后、开采样 Step 之前把较早的问答写成摘要，这次调用就用上；AC-04 摘要请求用 Run 的模型快照、不带工具、关掉 DeepSeek 思考', async () => {
+    const harness = createHarness(routed({ sampling: () => finalAnswer() }))
+    const question = 'q'.repeat(10_000)
+
+    // 当前问题约 2,500 token + 6 组各约 253 token + 工具定义 190，超过触发线 4,000；
+    // 保留预算 min(20,000, 1,000) 放得下最新三组，较早的三组一块就能摘要完。
+    seedHistory(harness, 6, 1_000)
+
+    const events = await run(harness, { userContent: question })
+
+    assert.deepEqual(events.map(event => event.type), ['run_started', 'assistant_delta', 'run_completed'])
+    assert.deepEqual(stepTrail(harness), [
+      ['load_conversation_history', AgentStepStatus.COMPLETED],
+      ['context_compaction', AgentStepStatus.COMPLETED],
+      ['model_sampling', AgentStepStatus.COMPLETED],
+      ['assistant_output', AgentStepStatus.COMPLETED],
+    ])
+
+    const [step] = compactionSteps(harness)
+    const output = step?.output as Record<string, unknown>
+    const [record] = harness.prisma.compactions
+
+    assert.deepEqual(step?.input, { kind: 'history' })
+    assert.deepEqual({ ...output, durationMs: typeof output.durationMs }, {
+      compactionId: 'compaction-1',
+      tokensBefore: output.tokensBefore,
+      usage: { inputTokens: 900, outputTokens: 60 },
+      durationMs: 'number',
+    })
+    assert.ok((output.tokensBefore as number) > 4_000, 'tokensBefore 是触发这次压缩的估算')
+    assert.deepEqual({ ...record, createdAt: undefined }, {
+      id: 'compaction-1',
+      conversationId: 'conversation-1',
+      runId: 'run-1',
+      reason: 'threshold',
+      summary: SUMMARY_TEXT,
+      coveredGroupIds: ['u1', 'u2', 'u3'],
+      answerOnlyGroupId: null,
+      readAt: harness.prisma.readAt,
+      tokensBefore: output.tokensBefore,
+      usage: { inputTokens: 900, outputTokens: 60 },
+      modelId: SMALL_MODEL.modelId,
+      createdAt: undefined,
+    })
+
+    // 这次调用：摘要消息 + 保留的最新三组 + 当前问题；contextPlan 记下基于哪条记录。
+    assert.deepEqual(samplingCalls(harness)[0]?.messages, [
+      historySummaryMessage(SUMMARY_TEXT),
+      ...[4, 5, 6].flatMap(index => [userMessage(`第 ${index} 问`), answer(`${index}`.padEnd(1_000, 'x'))]),
+      userMessage(question),
+    ])
+    assert.deepEqual(
+      { ...readContextPlan(findStep(harness, 'model_sampling')), estimatedInputTokens: undefined },
+      { resolvedInputBudgetTokens: 4_000, estimatedInputTokens: undefined, compactionId: 'compaction-1', turnCompactionStepId: null, historyIncludedCount: 6 },
     )
+
+    // 摘要请求：Run 的模型与服务商、不带工具、思考关掉、输出上限 min(13107, 最大输出)。
+    const [summary] = summaryCalls(harness)
+
+    assert.equal(summary?.provider, SMALL_MODEL.provider)
+    assert.deepEqual(summary?.options?.request, {
+      model: 'deepseek-v4-flash',
+      contextWindowTokens: 1_000_000,
+      maxOutputTokens: 13_107,
+      compat: familyCompatOf('deepseek'),
+      thinking: 'disabled',
+    })
+    assert.equal(summary?.options?.tools, undefined)
+    assert.equal(summary?.messages.length, 2)
+    assert.match((summary?.messages[1] as { content: string }).content, /^<conversation>\n\[User\] \(2026-09-29\): 第 1 问\n\n\[Assistant\]: 1x+\n\n\[User\] \(2026-09-29\): 第 2 问/)
+    assert.match((summary?.messages[1] as { content: string }).content, /\n<\/conversation>\n\nThe messages above are a conversation to summarize\./)
+    assertNoUnfinishedSteps(harness)
+  })
+
+  it('AC-04 其他家族取最低一档 reasoning_effort、列表为空不发；输出上限不超过模型最大输出', async () => {
+    const cases = [
+      { family: 'openai', expected: { reasoningEffort: 'low' } },
+      { family: 'gemini', expected: {} },
+    ] as const
+
+    for (const { family, expected } of cases) {
+      const harness = createHarness(routed({ sampling: () => finalAnswer() }))
+      const model = { ...createResolvedLlmModel({ compat: familyCompatOf(family), maxOutputTokens: 8_192 }), family, maxInputTokens: 4_000 }
+
+      seedHistory(harness, 8, 2_000)
+      await run(harness, { model })
+
+      assert.deepEqual(summaryCalls(harness)[0]?.options?.request, {
+        model: 'deepseek-v4-flash',
+        contextWindowTokens: 1_000_000,
+        maxOutputTokens: 8_192,
+        compat: familyCompatOf(family),
+        ...expected,
+      }, family)
+    }
+  })
+
+  it('AC-04 / AC-08(a) 摘要失败（length、正文为空、5xx 重试耗尽、网络错误）：记 FAILED 的压缩 Step，这次按未压缩的内容照常回答', async () => {
+    const cases: Array<[string, () => AsyncGenerator<ModelStreamEvent>, RegExp]> = [
+      ['length', () => toModelStream([{ type: 'text_delta', delta: '半截' }, { type: 'response_completed', finishReason: 'length' }]), /^写摘要失败：模型输出达到长度限制/],
+      ['空正文', () => toModelStream([{ type: 'text_delta', delta: '  ' }, { type: 'response_completed', finishReason: 'stop' }]), /^写摘要失败：摘要正文为空。$/],
+      ['5xx', () => failingStream(new LLMServerError(503)), /^写摘要失败：服务商服务器繁忙（503）/],
+      ['网络错误', () => failingStream(new LLMNetworkError(new Error('socket hang up'))), /^写摘要失败：LLM API 网络请求失败/],
+    ]
+
+    for (const [label, summary, reason] of cases) {
+      const harness = createHarness(routed({ sampling: () => finalAnswer(), summary }))
+
+      seedHistory(harness, 8, 2_000)
+
+      const events = await run(harness)
+      const [step] = compactionSteps(harness)
+
+      assert.equal(events.at(-1)?.type, 'run_completed', label)
+      assert.equal(step?.status, AgentStepStatus.FAILED, label)
+      assert.match(step?.errorMessage ?? '', reason, label)
+      assert.equal(harness.prisma.compactions.length, 0, label)
+      // 没压缩：全部 8 组原样发出。
+      assert.equal(samplingCalls(harness)[0]?.messages.length, 17, label)
+      assert.equal(readContextPlan(findStep(harness, 'model_sampling')).compactionId, null, label)
+      assertNoUnfinishedSteps(harness)
+    }
+  })
+
+  it('AC-08(i) 长会话首次提问：按整组分块逐块摘要（第 2 块起用 UPDATE 滚动），每块一条完整记录、覆盖范围逐块累计，本次问答成功', async () => {
+    const harness = createHarness(routed({
+      sampling: () => finalAnswer(),
+      summary: index => toModelStream(summaryEvents(`摘要 ${index + 1}`)),
+    }))
+
+    // 30 组各约 503 token，共约 15,000，远超触发线 4,000；块预算 0.5 × 4,000 = 2,000，每块放得下 3 组。
+    seedHistory(harness, 30, 2_000)
+
+    const events = await run(harness)
+    const records = harness.prisma.compactions
+    const requests = summaryCalls(harness).map(call => (call.messages[1] as { content: string }).content)
+
+    assert.equal(events.at(-1)?.type, 'run_completed')
+    assert.deepEqual(records.map(record => record.coveredGroupIds.length), [3, 6, 9, 12, 15, 18, 21, 24, 27, 29])
+    assert.deepEqual(records.at(-1)?.coveredGroupIds, Array.from({ length: 29 }, (_, index) => `u${index + 1}`))
+    assert.ok(records.every(record => record.readAt.getTime() === harness.prisma.readAt.getTime() && record.reason === 'threshold' && record.answerOnlyGroupId === null))
+    assert.deepEqual(
+      compactionSteps(harness).map(step => [step.status, (step.output as { compactionId: string }).compactionId]),
+      records.map(record => [AgentStepStatus.COMPLETED, record.id]),
+    )
+    for (const [index, request] of requests.entries()) {
+      const conversation = request.slice(0, request.indexOf('</conversation>'))
+
+      assert.ok(roughTokens(conversation) <= 2_000, `第 ${index + 1} 块 ${roughTokens(conversation)} token`)
+      if (index === 0)
+        assert.doesNotMatch(request, /<previous-summary>/)
+      else
+        assert.match(request, new RegExp(`</conversation>\\n\\n<previous-summary>\\n摘要 ${index}\\n</previous-summary>\\n\\nThe messages above are NEW conversation messages`))
+    }
+    assert.deepEqual(samplingCalls(harness)[0]?.messages, [
+      historySummaryMessage('摘要 10'),
+      userMessage('第 30 问'),
+      answer('30'.padEnd(2_000, 'x')),
+      userMessage('新问题'),
+    ])
+    assert.equal(readContextPlan(findStep(harness, 'model_sampling')).compactionId, records.at(-1)?.id)
+    assertNoUnfinishedSteps(harness)
+  })
+
+  it('AC-06 检查点 B：run_completed 之后在后台发起、不被等待，只在下一次问答的历史超过触发线 0.8 时压缩；下一次问答不等它', async () => {
+    const release = createDeferred()
+    const completedWhenBStarted: boolean[] = []
+    const harness = createHarness(routed({
+      sampling: () => finalAnswer(),
+      async* summary() {
+        completedWhenBStarted.push(harness.recorder.completedRunIds.length > 0)
+        await release.promise
+        yield* summaryEvents('## Goal\n- 后台摘要')
+      },
+    }))
+
+    // 系统提示词 1,500 + 4 组约 1,612 + 工具定义 190：这次问答没超触发线（不压），
+    // 加上这次的问答后超过 0.8 × 4,000 = 3,200；保留预算 1,000 放得下这次与最新两组。
+    const instructions: MessageInputItem[] = [{ type: 'message', role: 'system', content: 's'.repeat(6_000) }]
+
+    seedHistory(harness, 4, 1_600)
+
+    const events = await run(harness, { instructions })
+
+    assert.equal(events.at(-1)?.type, 'run_completed')
+    assert.equal(compactionSteps(harness).length, 0)
+    assert.equal(harness.afterRunCompactions.length, 1)
+    // run_completed 已推出，B 还卡在摘要调用里：没有记录。
+    await sleep(0)
+    assert.deepEqual(completedWhenBStarted, [true])
+    assert.equal(harness.prisma.compactions.length, 0)
+
+    // 下一次问答不等 B：它自己的估算没超触发线，直接用当时的历史。
+    const second = await run(harness, { userContent: '再问一句', instructions })
+
+    assert.equal(second.at(-1)?.type, 'run_completed')
+    assert.equal(harness.prisma.compactions.length, 0)
+
+    release.resolve()
+    await Promise.all(harness.afterRunCompactions)
+
+    const [record] = harness.prisma.compactions
+
+    assert.deepEqual(
+      [record?.reason, record?.runId, record?.summary, record?.coveredGroupIds],
+      ['after_run', 'run-1', '## Goal\n- 后台摘要', ['u1', 'u2']],
+    )
+    // B 不写 Step。
+    assert.equal(compactionSteps(harness).length, 0)
+  })
+
+  it('AC-06 检查点 B：下一次问答的历史没超过触发线 0.8 时只读不压', async () => {
+    const harness = createHarness(routed({ sampling: () => finalAnswer() }))
+
+    seedHistory(harness, 3, 2_000)
+    await run(harness)
+    await Promise.all(harness.afterRunCompactions)
+
+    assert.equal(summaryCalls(harness).length, 0)
+    assert.equal(harness.prisma.compactions.length, 0)
+  })
+
+  it('AC-08(g) 后台压缩的上游卡住到时限结束、写表时库不可用：都只记日志，Promise 不拒绝', async () => {
+    for (const failure of ['上游卡住', '库不可用'] as const) {
+      const harness = createHarness(routed({
+        sampling: () => finalAnswer(),
+        summary: failure === '上游卡住'
+          ? async function* (_index, _messages, options) {
+            await waitForAbort(options!.signal!)
+            yield* failingStream(new Error('摘要请求被取消'))
+          }
+          : () => toModelStream(summaryEvents()),
+      }))
+      const warnings: Array<Record<string, unknown>> = []
+
+      Object.defineProperty(harness.compactionService, 'logger', { value: { warn: (warning: Record<string, unknown>) => warnings.push(warning) } })
+      if (failure === '库不可用')
+        harness.prisma.compactionCreateError = new Error('database unavailable')
+      seedHistory(harness, 6, 2_100)
+      // 后台时限取本 Run 快照的单次最长时间。
+      await run(harness, { runDeadlineMs: 200 })
+      await Promise.all(harness.afterRunCompactions)
+
+      assert.equal(harness.prisma.compactions.length, 0, failure)
+      assert.deepEqual(warnings.map(warning => [warning.event, warning.runId, typeof warning.durationMs]), [
+        ['after_run_compaction_failed', 'run-1', 'number'],
+      ], failure)
+    }
+  })
+
+  it('AC-08(h) 后台任务随进程重启丢失：下一次提问由检查点 A 同步压缩，结果正确', async () => {
+    // 第一次问答的回答较长：它把历史推过触发线，本该由检查点 B 预压。
+    const harness = createHarness(routed({ sampling: index => finalAnswer(index === 0 ? 'y'.repeat(2_000) : '好的。') }))
+
+    // 模拟丢失：检查点 B 什么都没做。
+    harness.compactionService.compactAfterRun = async () => {}
+    seedHistory(harness, 7, 2_000)
+    await run(harness, { userContent: '第一问（这次）' })
+
+    assert.equal(harness.prisma.compactions.length, 0)
+
+    await run(harness, { userContent: '下一问' })
+
+    const [record] = harness.prisma.compactions
+
+    assert.equal(record?.reason, 'threshold')
+    assert.deepEqual(samplingCalls(harness).at(-1)?.messages.at(0), historySummaryMessage(SUMMARY_TEXT))
+    assert.deepEqual(samplingCalls(harness).at(-1)?.messages.at(-1), userMessage('下一问'))
+  })
+
+  it('AC-06 检查点 C：服务商报超长时失败的采样照常收口、不推失败事件，强制压缩后新开采样重试成功；管理台轨迹照常投影', async () => {
+    // 触发线 8,000：估算没超线，检查点 A 不压；服务商按自己的上限报超长。
+    const model = { ...SMALL_MODEL, maxInputTokens: 8_000 }
+    const harness = createHarness(routed({
+      sampling: index => index === 0 ? failingStream(new LLMContextOverflowError(400)) : finalAnswer(),
+    }))
+
+    seedHistory(harness, 8, 2_000)
+
+    const events = await run(harness, { model })
+    const failedSampling = harness.recorder.steps.find(step => step.type === 'model_sampling')
+
+    assert.deepEqual(events.map(event => event.type), ['run_started', 'assistant_delta', 'run_completed'])
+    assert.deepEqual(stepTrail(harness), [
+      ['load_conversation_history', AgentStepStatus.COMPLETED],
+      ['model_sampling', AgentStepStatus.FAILED],
+      ['context_compaction', AgentStepStatus.COMPLETED],
+      ['model_sampling', AgentStepStatus.COMPLETED],
+      ['assistant_output', AgentStepStatus.COMPLETED],
+    ])
+    assert.equal(failedSampling?.errorMessage, getAiExceptionMessage(new LLMContextOverflowError(400)))
+    assert.equal((failedSampling?.output as Record<string, unknown>).errorCode, 'llm_context_overflow')
+    assert.equal(harness.prisma.compactions[0]?.reason, 'overflow')
+    assert.deepEqual(samplingCalls(harness)[1]?.messages[0], historySummaryMessage(SUMMARY_TEXT))
+    assert.deepEqual(harness.recorder.completedRunIds, ['run-1'])
+    assertNoUnfinishedSteps(harness)
+
+    const samplingItems = projectHarnessRunDetail(harness, 'COMPLETED').timeline.flatMap(item => item.kind === 'known' && item.type === 'model_sampling' ? [item] : [])
+
+    assert.deepEqual(samplingItems.map(item => [item.samplingIndex, item.errorCode]), [[1, 'llm_context_overflow'], [2, null]])
+  })
+
+  it('AC-08(b) 连续两次报超长、或强制压缩失败：Run 以 llm_context_overflow 失败并正常收口，前台显示超长文案', async () => {
+    const overflowMessage = getAiExceptionMessage(new LLMContextOverflowError(400))
+    const model = { ...SMALL_MODEL, maxInputTokens: 8_000 }
+    const cases: Array<[string, Parameters<typeof routed>[0], string[][]]> = [
+      ['连续两次超长', { sampling: () => failingStream(new LLMContextOverflowError(400)) }, [
+        ['load_conversation_history', AgentStepStatus.COMPLETED],
+        ['model_sampling', AgentStepStatus.FAILED],
+        ['context_compaction', AgentStepStatus.COMPLETED],
+        ['model_sampling', AgentStepStatus.FAILED],
+      ]],
+      ['强制压缩失败', {
+        sampling: () => failingStream(new LLMContextOverflowError(400)),
+        summary: () => toModelStream([{ type: 'response_completed', finishReason: 'length' }]),
+      }, [
+        ['load_conversation_history', AgentStepStatus.COMPLETED],
+        ['model_sampling', AgentStepStatus.FAILED],
+        ['context_compaction', AgentStepStatus.FAILED],
+      ]],
+    ]
+
+    for (const [label, streams, trail] of cases) {
+      const harness = createHarness(routed(streams))
+
+      seedHistory(harness, 8, 2_000)
+
+      const events = await run(harness, { model })
+      const failed = events.at(-1)
+
+      assert.equal(failed?.type, 'run_failed', label)
+      assert.equal(failed?.type === 'run_failed' ? failed.message : undefined, overflowMessage, label)
+      assert.equal(harness.recorder.runErrorCode, 'llm_context_overflow', label)
+      assert.deepEqual(stepTrail(harness), trail, label)
+      assert.equal(harness.assistantMessage()?.status, MessageStatus.FAILED, label)
+      assertNoUnfinishedSteps(harness)
+    }
+  })
+
+  it('AC-08(f) 本次采样已推出 delta（含思考）后遇到超长：不重试，按失败收口', async () => {
+    for (const pushed of [
+      { type: 'text_delta', delta: '先说一半' },
+      { type: 'reasoning_delta', delta: '想了一半' },
+    ] as ModelStreamEvent[]) {
+      const harness = createHarness(routed({ sampling: () => failingStream(new LLMContextOverflowError(undefined), [pushed]) }))
+
+      seedHistory(harness, 8, 2_000)
+
+      const events = await run(harness, { model: { ...SMALL_MODEL, maxInputTokens: 8_000 } })
+
+      assert.equal(events.at(-1)?.type, 'run_failed', pushed.type)
+      assert.equal(compactionSteps(harness).length, 0, pushed.type)
+      assert.equal(samplingCalls(harness).length, 1, pushed.type)
+      assert.equal(harness.recorder.runErrorCode, 'llm_context_overflow', pushed.type)
+    }
+  })
+
+  it('AC-06 成功采样后再次超长可以再救一次；AC-07 C 的强制压缩后、重试成功前 A 不再压', async () => {
+    const summaries: string[] = []
+    const harness = createHarness(routed({
+      sampling: (index) => {
+        switch (index) {
+          case 0: return toModelStream([toolCallEvent('call-1', 'web_fetch', '{"url":"https://a.example/"}'), { type: 'usage', usage: { inputTokens: 10, outputTokens: 1 } }, { type: 'response_completed', finishReason: 'tool_calls' }])
+          case 1: return toModelStream([toolCallEvent('call-2', 'web_fetch', '{"url":"https://b.example/"}'), { type: 'usage', usage: { inputTokens: 10, outputTokens: 1 } }, { type: 'response_completed', finishReason: 'tool_calls' }])
+          case 2: return failingStream(new LLMContextOverflowError(400))
+          case 3: return toModelStream([toolCallEvent('call-3', 'web_fetch', '{"url":"https://c.example/"}'), { type: 'usage', usage: { inputTokens: 10, outputTokens: 1 } }, { type: 'response_completed', finishReason: 'tool_calls' }])
+          case 4: return failingStream(new LLMContextOverflowError(400))
+          default: return finalAnswer()
+        }
+      },
+      summary: (index, messages) => {
+        summaries.push((messages[1] as { content: string }).content)
+        // 第 2 次（本轮）失败：历史那层成了，强制压缩仍算压成。
+        return index === 1
+          ? toModelStream([{ type: 'response_completed', finishReason: 'length' }])
+          : toModelStream(summaryEvents(`摘要 ${index}`))
+      },
+    }), undefined, async () => ({ ok: true, modelContent: 'z'.repeat(12_000) }))
+
+    // 用量锚点很小：检查点 A 的估算一直不超线；服务商按自己的上限报超长。历史一块就能摘要完。
+    seedHistory(harness, 6, 1_000)
+
+    const events = await run(harness, { keepRecentTokens: 10 })
+
+    assert.equal(events.at(-1)?.type, 'run_completed')
+    assert.deepEqual(stepTrail(harness).filter(([type]) => type !== 'tool_execution'), [
+      ['load_conversation_history', AgentStepStatus.COMPLETED],
+      ['model_sampling', AgentStepStatus.COMPLETED],
+      ['model_sampling', AgentStepStatus.COMPLETED],
+      // 第 1 次超长：历史层压成，本轮层失败；重试前检查点 A 不再压（仍超线、本轮也有新内容）。
+      ['model_sampling', AgentStepStatus.FAILED],
+      ['context_compaction', AgentStepStatus.COMPLETED],
+      ['context_compaction', AgentStepStatus.FAILED],
+      ['model_sampling', AgentStepStatus.COMPLETED],
+      // 重试成功后再次超长：再救一次（本轮层）。
+      ['model_sampling', AgentStepStatus.FAILED],
+      ['context_compaction', AgentStepStatus.COMPLETED],
+      ['model_sampling', AgentStepStatus.COMPLETED],
+      ['assistant_output', AgentStepStatus.COMPLETED],
+    ])
+    assert.equal(summaries.length, 3)
+    assert.deepEqual(compactionSteps(harness).map(step => (step.input as { kind: string }).kind), ['history', 'turn', 'turn'])
+  })
+
+  it('AC-07 两层都没有新内容时不压、不算一次尝试：当前问题本身就超线', async () => {
+    const harness = createHarness(routed({ sampling: () => finalAnswer() }))
+    const events = await run(harness, { userContent: 'q'.repeat(20_000) })
+
+    assert.equal(events.at(-1)?.type, 'run_completed')
+    assert.equal(compactionSteps(harness).length, 0)
+    assert.equal(summaryCalls(harness).length, 0)
+  })
+
+  it('AC-07 连续 2 次无效后停用阈值压缩、只剩 C；AC-09 超线时不删历史、不截短工具结果', async () => {
+    const harness = createHarness(routed({
+      sampling: index => index < 2 ? toolRound(`call-${index}`) : index === 2 ? failingStream(new LLMContextOverflowError(400)) : finalAnswer(),
+      summary: index => index < 2
+        ? toModelStream([{ type: 'response_completed', finishReason: 'length' }])
+        : toModelStream(summaryEvents()),
+    }), undefined, async () => ({ ok: true, modelContent: 'o'.repeat(8_000) }))
+
+    // 当前问题约 3,000 token，5 组历史约 1,265 token（一块就能摘要完），合起来超过触发线。
+    seedHistory(harness, 5, 1_000)
+
+    const events = await run(harness, { keepRecentTokens: 10, userContent: 'q'.repeat(12_000) })
+
+    assert.equal(events.at(-1)?.type, 'run_completed')
+    assert.deepEqual(stepTrail(harness).filter(([type]) => type !== 'tool_execution'), [
+      ['load_conversation_history', AgentStepStatus.COMPLETED],
+      ['context_compaction', AgentStepStatus.FAILED],
+      ['model_sampling', AgentStepStatus.COMPLETED],
+      ['context_compaction', AgentStepStatus.FAILED],
+      ['model_sampling', AgentStepStatus.COMPLETED],
+      // 已停用：超线也不再压；服务商报超长时 C 照常救（先历史、压完仍超线再本轮）。
+      ['model_sampling', AgentStepStatus.FAILED],
+      ['context_compaction', AgentStepStatus.COMPLETED],
+      ['context_compaction', AgentStepStatus.COMPLETED],
+      ['model_sampling', AgentStepStatus.COMPLETED],
+      ['assistant_output', AgentStepStatus.COMPLETED],
+    ])
+    // 压缩失败期间：5 组历史全部原样发出，工具结果也不截短。
+    const third = samplingCalls(harness)[2]!.messages
+
+    assert.equal(third.filter(item => item.type === 'message').length, 11)
+    assert.deepEqual(third.filter(item => item.type === 'tool_result').map(item => item.content.length), [8_000, 8_000])
+  })
+
+  it('AC-07 一次有效压缩把连续无效计数清零', async () => {
+    const harness = createHarness(routed({
+      sampling: index => index < 5 ? toolRound(`call-${index}`) : finalAnswer(),
+      // 历史失败 → 历史成功（有效，清零）→ 本轮失败 → 本轮失败（第 2 次连续无效，停用）。
+      summary: index => index === 1 ? toModelStream(summaryEvents()) : toModelStream([{ type: 'response_completed', finishReason: 'length' }]),
+    }), undefined, async () => ({ ok: true, modelContent: 'o'.repeat(2_000) }))
+
+    // 当前问题约 2,500 token + 6 组历史约 1,518 token：第 1 次调用前就超线；历史压成后回到线内（有效）。
+    seedHistory(harness, 6, 1_000)
+    await run(harness, { keepRecentTokens: 10, userContent: 'q'.repeat(10_000) })
+
+    assert.deepEqual(compactionSteps(harness).map(step => [(step.input as { kind: string }).kind, step.status]), [
+      ['history', AgentStepStatus.FAILED],
+      ['history', AgentStepStatus.COMPLETED],
+      ['turn', AgentStepStatus.FAILED],
+      ['turn', AgentStepStatus.FAILED],
+    ])
+  })
+
+  it('AC-07 长工具循环：工具结果持续增长，同一 Run 内本轮压缩 ≥ 3 次后正常给出最终回答；首次 TURN_PREFIX，之后 UPDATE 滚动', async () => {
+    const harness = createHarness(routed({
+      sampling: index => index < 14 ? toolRound(`call-${index + 1}`) : finalAnswer('全部看完了。'),
+      summary: (index, messages) => {
+        void messages
+        return toModelStream(summaryEvents(`前缀摘要 ${index + 1}`))
+      },
+    }), undefined, async () => ({ ok: true, modelContent: 'w'.repeat(4_000) }))
+    const events = await run(harness)
+    const turns = compactionSteps(harness)
+    const requests = summaryCalls(harness)
+
+    assert.equal(events.at(-1)?.type, 'run_completed')
+    assert.equal(harness.assistantMessage()?.content, '全部看完了。')
+    assert.ok(turns.length >= 3, `本轮压缩 ${turns.length} 次`)
+    assert.ok(turns.every(step => step.status === AgentStepStatus.COMPLETED && (step.input as { kind: string }).kind === 'turn'))
+    // 首次：TURN_PREFIX，带当前问题，输出上限 8,192；之后：旧前缀摘要进 <previous-summary>，UPDATE，13,107。
+    assert.match((requests[0]!.messages[1] as { content: string }).content, /^<conversation>\n\[User\] \(\d{4}-\d{2}-\d{2}\): 新问题\n\n/)
+    assert.match((requests[0]!.messages[1] as { content: string }).content, /This is the PREFIX of a turn that was too large to keep\./)
+    assert.equal(requests[0]!.options?.request.maxOutputTokens, 8_192)
+    for (const [index, request] of requests.slice(1).entries()) {
+      const text = (request.messages[1] as { content: string }).content
+
+      assert.match(text, new RegExp(`<previous-summary>\\n前缀摘要 ${index + 1}\\n</previous-summary>`))
+      assert.match(text, /The messages above are NEW conversation messages/)
+      assert.doesNotMatch(text, /\[User\]/)
+      assert.equal(request.options?.request.maxOutputTokens, 13_107)
+    }
+
+    // 压缩后的请求：当前问题原样，其后是前缀摘要与保留的工具轮（本 Run 内 reasoning 是原文）。
+    const lastTurn = turns.at(-1)!
+    const keptFrom = (lastTurn.input as { keptFromSamplingAttemptId: string }).keptFromSamplingAttemptId
+    const finalRequest = samplingCalls(harness).at(-1)!.messages
+
+    assert.deepEqual(finalRequest.slice(0, 2), [userMessage('新问题'), turnSummaryMessage((lastTurn.output as { summary: string }).summary)])
+    assert.equal(finalRequest[2]?.type === 'assistant_tool_call' ? finalRequest[2].reasoningContent : undefined, `reasoning for call-${keptFrom.split('sampling-')[1]}`)
+    assert.equal(readContextPlan(harness.recorder.steps.filter(step => step.type === 'model_sampling').at(-1)).turnCompactionStepId, lastTurn.id)
+    assertNoUnfinishedSteps(harness)
+  })
+
+  it('AC-08(e) 同步压缩中用户停止：压缩请求被取消，Run 与 Message 为 ABORTED，压缩 Step 随 Run 收成 ABORTED，没有记录', async () => {
+    const controller = new AbortController()
+    const harness = createHarness(routed({
+      sampling: () => finalAnswer(),
+      async* summary(_index, _messages, options) {
+        controller.abort()
+        await waitForAbort(options!.signal!)
+        yield* failingStream(new Error('摘要请求被取消'))
+      },
+    }))
+
+    seedHistory(harness, 8, 2_000)
+
+    const events = await run(harness, { signal: controller.signal })
+
+    assert.deepEqual(events.map(event => event.type), ['run_started', 'run_aborted'])
+    assert.equal(harness.recorder.runErrorCode, 'aborted')
+    assert.equal(harness.assistantMessage()?.status, MessageStatus.ABORTED)
+    assert.deepEqual(stepTrail(harness), [
+      ['load_conversation_history', AgentStepStatus.COMPLETED],
+      ['context_compaction', AgentStepStatus.ABORTED],
+    ])
+    assert.equal(harness.prisma.compactions.length, 0)
+    assert.equal(samplingCalls(harness).length, 0)
+  })
+
+  it('AC-08(e) 停止发生在记录插入之后：记录完整保留、Step 为 ABORTED，下一次问答照常使用它', async () => {
+    const controller = new AbortController()
+    const harness = createHarness(routed({ sampling: () => finalAnswer() }))
+    const create = harness.prisma.conversationCompaction.create
+
+    harness.prisma.conversationCompaction.create = async (input) => {
+      const record = await create(input)
+
+      controller.abort()
+      return record
+    }
+    seedHistory(harness, 8, 2_000)
+
+    const events = await run(harness, { signal: controller.signal })
+
+    assert.equal(events.at(-1)?.type, 'run_aborted')
+    assert.equal(compactionSteps(harness)[0]?.status, AgentStepStatus.ABORTED)
+    assert.equal(harness.prisma.compactions[0]?.summary, SUMMARY_TEXT)
+
+    await run(harness, { userContent: '接着问' })
+
+    assert.deepEqual(samplingCalls(harness).at(-1)?.messages[0], historySummaryMessage(SUMMARY_TEXT))
+  })
+
+  it('AC-08(e) 同步压缩中到达时限：压缩请求被取消，Run 以 deadline 失败，压缩 Step 随 Run 收口', async () => {
+    const harness = createHarness(routed({
+      sampling: () => finalAnswer(),
+      async* summary(_index, _messages, options) {
+        await waitForAbort(options!.signal!)
+        yield* failingStream(new Error('摘要请求被取消'))
+      },
+    }))
+
+    seedHistory(harness, 8, 2_000)
+
+    const events = await run(harness, { runDeadlineMs: 50 })
+
+    assert.equal(events.at(-1)?.type, 'run_failed')
+    assert.equal(harness.recorder.runErrorCode, 'deadline')
+    assert.deepEqual(stepTrail(harness), [
+      ['load_conversation_history', AgentStepStatus.COMPLETED],
+      ['context_compaction', AgentStepStatus.FAILED],
+    ])
+    assert.equal(harness.prisma.compactions.length, 0)
   })
 })
 
@@ -3922,10 +3987,6 @@ function createHarness(
   signal?: AbortSignal,
   invokeTool: InvokeTool = async () => successfulToolResult,
   limits: Partial<RunLimits> = {},
-  tokenEstimator: TokenEstimator = new TestTokenEstimator(),
-  // 生产中 runtime 与 planner 共用同一个 estimator 实例；只在需要把估算故障
-  // 精确注入到 plan() 边界时才单独提供。
-  plannerTokenEstimator: TokenEstimator = tokenEstimator,
 ) {
   const prisma = new FakePrismaService()
   const recorder = new FakeAgentRunRecorderService(prisma)
@@ -3952,13 +4013,27 @@ function createHarness(
     },
   } as unknown as LLMService
   const toolInvocationService = new FakeToolInvocationService(invokeTool)
+  const compactionService = new ContextCompactionService(
+    llmService,
+    prisma as unknown as PrismaService,
+    recorder as unknown as AgentRunRecorderService,
+  )
+  // 检查点 B 不被 runtime await：记下它返回的 Promise，用例需要时等它跑完再断言。
+  const afterRunCompactions: Array<Promise<void>> = []
+  const compactAfterRun = compactionService.compactAfterRun.bind(compactionService)
+
+  compactionService.compactAfterRun = (input) => {
+    const done = compactAfterRun(input)
+
+    afterRunCompactions.push(done)
+    return done
+  }
   const runtimeService = new AgentRuntimeService(
     llmService,
     prisma as unknown as PrismaService,
     recorder as unknown as AgentRunRecorderService,
     toolInvocationService as unknown as ToolInvocationService,
-    tokenEstimator,
-    new SamplingContextPlanner(plannerTokenEstimator),
+    compactionService,
   )
   // 模型行与运行配置快照由 ChatService 在 Run 之前读好；这里给用例一份默认快照，省得每处都写。
   // 默认打开调试抓取：fake 模型流总会回调 debugCapture，关掉时的行为单独覆盖。
@@ -3977,11 +4052,14 @@ function createHarness(
     prisma,
     recorder,
     service,
+    compactionService,
+    afterRunCompactions,
     toolInvocations: toolInvocationService.invocations,
     toolExecutionContexts: toolInvocationService.contexts,
-    assistantMessage: () => prisma.messages.find(
+    // 取最后一条：用例可能先种下之前问答的回答。
+    assistantMessage: () => prisma.messages.filter(
       message => message.role === MessageRole.ASSISTANT,
-    ),
+    ).at(-1),
     run: () => service.runTurnStream({
       conversationId: 'conversation-1',
       userContent: '问题',
@@ -4026,10 +4104,17 @@ class FakeToolInvocationService {
 class FakePrismaService {
   readonly messages: Message[] = []
   readonly findManyArguments: FakeMessageFindManyArguments[] = []
-  /** 读历史时第二条查询（回答所属 Run 的采样与工具 Step）返回的行；用例按需填入。 */
+  /** 读历史时各用户消息的 Run（配对问答、判断能否进摘要）；用例按需填入。 */
+  historyRuns: HistoryRunRow[] = []
+  /** 读历史时回答所属 Run 的采样、工具与本轮压缩 Step；按查询里的 runId 过滤后返回。 */
   historyStepRows: HistoryStepRow[] = []
   historyStepQueryError: unknown
   historyStepQueryCount = 0
+  /** 历史压缩记录（#220）：读历史取 readAt、createdAt、id 最新的一条。 */
+  readonly compactions: FakeCompactionRecord[] = []
+  compactionCreateError: unknown
+  /** 读历史快照里 `SELECT now()` 的值。 */
+  readAt = new Date('2026-09-30T08:00:00.000Z')
   conversationExists = true
   deadlineTransactionError: unknown
   nextMessageCreatedAt: Date | undefined
@@ -4068,7 +4153,8 @@ class FakePrismaService {
         .filter(message =>
           message.conversationId === arguments_.where.conversationId
           && message.status === arguments_.where.status
-          && isStrictlyBefore(message, arguments_.where.OR))
+          // 检查点 B 读下一次问答的历史：没有上界。
+          && (!arguments_.where.OR || isStrictlyBefore(message, arguments_.where.OR)))
         .sort((left, right) =>
           left.createdAt.getTime() - right.createdAt.getTime()
           || left.id.localeCompare(right.id))
@@ -4122,13 +4208,49 @@ class FakePrismaService {
     return await operation(this)
   }
 
-  /** runtime 只有读历史 Step 这一条 raw 查询。 */
-  async $queryRaw(): Promise<HistoryStepRow[]> {
+  readonly agentRun = {
+    findMany: async ({ where }: { where: { conversationId: string, userMessageId: { in: string[] } } }): Promise<HistoryRunRow[]> =>
+      structuredClone(this.historyRuns.filter(run => where.userMessageId.in.includes(run.userMessageId))),
+  }
+
+  readonly conversationCompaction = {
+    findFirst: async ({ where }: { where: { conversationId: string } }) => {
+      const latest = this.compactions
+        .filter(record => record.conversationId === where.conversationId)
+        .sort((left, right) => right.readAt.getTime() - left.readAt.getTime()
+          || right.createdAt.getTime() - left.createdAt.getTime()
+          || right.id.localeCompare(left.id))
+        .at(0)
+
+      return latest ? toCompactionSelect(latest) : null
+    },
+    create: async ({ data }: { data: Omit<FakeCompactionRecord, 'id' | 'createdAt'> }) => {
+      if (this.compactionCreateError !== undefined)
+        throw this.compactionCreateError
+
+      const record = {
+        id: `compaction-${this.compactions.length + 1}`,
+        createdAt: new Date(Date.now() + this.compactions.length),
+        ...structuredClone(data),
+      }
+
+      this.compactions.push(record)
+      return toCompactionSelect(record)
+    },
+  }
+
+  /** 读历史的两条 raw 查询：快照时刻（`SELECT now()`）与回答所属 Run 的 Step。 */
+  async $queryRaw(query: TemplateStringsArray | { values: unknown[] }): Promise<unknown[]> {
+    if (Array.isArray(query))
+      return [{ readAt: this.readAt }]
+
     this.historyStepQueryCount += 1
     if (this.historyStepQueryError !== undefined)
       throw this.historyStepQueryError
 
-    return structuredClone(this.historyStepRows)
+    const runIds = (query as { values: unknown[] }).values.find(Array.isArray) as string[]
+
+    return structuredClone(this.historyStepRows.filter(row => runIds.includes(row.runId)))
   }
 
   async withDeadlineTransaction<T>(
@@ -4190,9 +4312,33 @@ interface FakeMessageFindManyArguments {
   where: {
     conversationId: string
     status: Message['status']
-    OR: FakeStrictlyBeforeOr
+    OR?: FakeStrictlyBeforeOr
   }
   orderBy: Array<{ createdAt: 'asc' } | { id: 'asc' }>
+}
+
+interface FakeCompactionRecord {
+  id: string
+  conversationId: string
+  runId: string | null
+  reason: string
+  summary: string
+  coveredGroupIds: string[]
+  answerOnlyGroupId: string | null
+  readAt: Date
+  tokensBefore: number
+  usage?: unknown
+  modelId: string
+  createdAt: Date
+}
+
+function toCompactionSelect(record: FakeCompactionRecord) {
+  return {
+    id: record.id,
+    summary: record.summary,
+    coveredGroupIds: [...record.coveredGroupIds],
+    answerOnlyGroupId: record.answerOnlyGroupId,
+  }
 }
 
 function isStrictlyBefore(
@@ -4204,56 +4350,6 @@ function isStrictlyBefore(
   return message.createdAt < boundDate
     || (message.createdAt.getTime() === boundDate.getTime()
       && message.id < sameCreatedAt.id.lt)
-}
-
-class TestTokenEstimator implements TokenEstimator {
-  estimateRequest(input: TokenEstimatorInput): number {
-    return input.items.reduce(
-      (tokens, item) => tokens + countModelInputCharacters(item) + 1,
-      input.tools.length,
-    )
-  }
-}
-
-class OverflowTokenEstimator implements TokenEstimator {
-  estimateRequest(_input: TokenEstimatorInput): number {
-    return 300_000
-  }
-}
-
-class BaseCostTokenEstimator implements TokenEstimator {
-  readonly inputs: TokenEstimatorInput[] = []
-
-  constructor(private readonly baseTokens: number) {}
-
-  estimateRequest(input: TokenEstimatorInput): number {
-    this.inputs.push(structuredClone(input))
-
-    return input.items.reduce(
-      (tokens, item) => tokens + countModelInputCharacters(item) + 1,
-      this.baseTokens + input.tools.length,
-    )
-  }
-}
-
-class FollowUpOverflowTokenEstimator implements TokenEstimator {
-  estimateRequest(input: TokenEstimatorInput): number {
-    return input.items.some(item => item.type === 'tool_result') ? 300_000 : 1
-  }
-}
-
-function countModelInputCharacters(item: ModelInputItem): number {
-  switch (item.type) {
-    case 'message':
-    case 'tool_result':
-      return [...item.content].length
-    case 'assistant_tool_call':
-      return [
-        ...item.calls.flatMap(call => [call.callId, call.name, call.rawArgumentsJson]),
-        item.reasoningContent,
-        item.content ?? '',
-      ].reduce((total, value) => total + [...value].length, 0)
-  }
 }
 
 class FakeAgentRunRecorderService {
@@ -4409,7 +4505,8 @@ class FakeAgentRunRecorderService {
     }
     this.runErrorCode = errorCode
     this.closeMessage(assistantMessage, MessageStatus.FAILED)
-    if (failedStep) {
+    // 与真实 Recorder 一致：归因的 Step 已收口（检查点 C 压缩失败后）时不再改它。
+    if (failedStep && this.steps.find(step => step.id === failedStep.id)?.status === AgentStepStatus.RUNNING) {
       this.transitionStep(failedStep.id, AgentStepStatus.FAILED, failedStep)
     }
     this.closeUnfinishedSteps(runId, AgentStepStatus.FAILED, errorMessage)
@@ -4615,9 +4712,33 @@ function toolExchangesFromSteps(
     })
 }
 
+function historyRun(id: string, userMessageId: string, assistantMessageId: string | null, status: HistoryRunRow['status'] = 'COMPLETED'): HistoryRunRow {
+  return { id, userMessageId, assistantMessageId, status }
+}
+
+function historyStep(runId: string, fields: Partial<HistoryStepRow> & Pick<HistoryStepRow, 'sequence' | 'type'>): HistoryStepRow {
+  return {
+    runId,
+    samplingAttemptId: null,
+    toolCallCount: null,
+    intermediateText: null,
+    callId: null,
+    toolName: null,
+    arguments: null,
+    observation: null,
+    ok: null,
+    keptFromSamplingAttemptId: null,
+    summary: null,
+    ...fields,
+  }
+}
+
 function readContextPlan(step: RecordedAgentStep | undefined): {
+  resolvedInputBudgetTokens?: number
+  estimatedInputTokens?: number
+  compactionId?: string | null
+  turnCompactionStepId?: string | null
   historyIncludedCount?: number
-  observationPreviewChars?: number[]
 } {
   return (step?.output as { contextPlan: Record<string, never> }).contextPlan
 }

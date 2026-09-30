@@ -559,7 +559,7 @@ describe('PrismaService database deadline reliability', () => {
         () => {
           commitOwned = true
         },
-        60,
+        { commitOutcomeTimeoutMs: 60 },
       ))
       const elapsedMs = Date.now() - startedAt
       const pendingResult = await prisma.$queryRawUnsafe<Array<{ count: number }>>(

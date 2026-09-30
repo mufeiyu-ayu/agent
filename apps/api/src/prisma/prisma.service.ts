@@ -77,12 +77,19 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
     super({ adapter })
   }
 
+  /**
+   * `options.isolationLevel` 省略时用数据库默认的 READ COMMITTED；读一份一致的快照（如读历史）时传 RepeatableRead。
+   */
   async withDeadlineTransaction<T>(
     deadline: DatabaseOperationDeadline,
     callback: (transaction: DeadlineTransaction) => Promise<T>,
     onCommitOwned?: () => void,
-    commitOutcomeTimeoutMs = DATABASE_COMMIT_OUTCOME_TIMEOUT_MS,
+    options: {
+      commitOutcomeTimeoutMs?: number
+      isolationLevel?: Prisma.TransactionIsolationLevel
+    } = {},
   ): Promise<T> {
+    const { commitOutcomeTimeoutMs = DATABASE_COMMIT_OUTCOME_TIMEOUT_MS, isolationLevel } = options
     const transactionTimeoutMs = remainingTimeoutMs(deadline)
     const commitState: CommitState = { started: false }
     const transactionPromise = this.$transaction(async (prisma) => {
@@ -142,6 +149,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
       // 仍由 RollbackSafePrismaPg 在 Prisma discard 路径真实发出 ROLLBACK。
       maxWait: PRISMA_TRANSACTION_START_TIMEOUT_MS,
       timeout: transactionTimeoutMs,
+      ...(isolationLevel ? { isolationLevel } : {}),
     })
 
     // 这里只限制调用方等待并隔离迟到结果，不代表底层 acquisition 已取消。

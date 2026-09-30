@@ -11,8 +11,7 @@ import { Logger, ServiceUnavailableException } from '@nestjs/common'
 import { afterAll, beforeAll, describe, it, onTestFinished, vi } from 'vitest'
 
 import { AgentRuntimeService } from '../agent-runtime/agent-runtime.service.js'
-import { SamplingContextPlanner } from '../agent-runtime/context/sampling-context-planner.js'
-import { RoughTokenEstimator } from '../agent-runtime/context/token-estimate.js'
+import { ContextCompactionService } from '../agent-runtime/context/context-compaction.service.js'
 import { AgentRunRecorderService } from '../agent-runtime/lifecycle/agent-run-recorder.service.js'
 import { ChatService } from '../chat/chat.service.js'
 import { createResolvedLlmModel } from '../llm/__fixtures__.js'
@@ -35,6 +34,8 @@ const THIS_MIGRATION = '20260929120000_runtime_config'
 /** #218：删掉模型轮数、工具次数与历史条数三列。 */
 const DROP_LOOP_LIMITS_MIGRATION = '20260930120000_drop_run_loop_limits'
 const DROPPED_COLUMNS = ['maxSamplingRounds', 'maxToolCalls', 'historyCandidateHardLimit']
+/** #220：压缩保留最近 Tokens 列与历史压缩记录表。 */
+const COMPACTION_MIGRATION = '20260930130000_conversation_compaction'
 const SECRET_KEY = 'a'.repeat(64)
 const { Pool: PgPool } = createRequire(import.meta.url)('pg') as {
   Pool: new (options: { connectionString: string, max: number }) => {
@@ -110,6 +111,33 @@ describe('运行配置（真实库）', { timeout: 60_000 }, () => {
       serperApiKeyEncrypted: null,
       serperApiKeyLast4: null,
     })
+  })
+
+  it('#220 AC-08(k) 在已有运行配置行的库上加压缩列与压缩记录表：新列取默认 20,000、原值保留、范围外被拒；删会话时压缩记录随之删除', async () => {
+    const legacySchema = `runtime_config_legacy_${randomUUID().replaceAll('-', '')}`
+    const table = (name: string) => `"${legacySchema}"."${name}"`
+
+    onTestFinished(() => dropSchema(legacySchema))
+    await applyMigrations(legacySchema, name => name < COMPACTION_MIGRATION)
+    await adminPool.query(`UPDATE ${table('RuntimeConfig')} SET "runDeadlineMs" = 90000, "debugCaptureModelIo" = true, "serperApiKeyEncrypted" = 'v1:cipher', "serperApiKeyLast4" = '9f3a'`)
+    await applyMigrations(legacySchema, name => name === COMPACTION_MIGRATION, false)
+
+    const { rows } = await adminPool.query(`SELECT "id", "runDeadlineMs", "debugCaptureModelIo", "serperApiKeyEncrypted", "serperApiKeyLast4", "compactionKeepRecentTokens" FROM ${table('RuntimeConfig')}`)
+
+    assert.deepEqual(rows, [{ id: 1, runDeadlineMs: 90_000, debugCaptureModelIo: true, serperApiKeyEncrypted: 'v1:cipher', serperApiKeyLast4: '9f3a', compactionKeepRecentTokens: 20_000 }])
+    for (const value of [999, 200_001])
+      await assert.rejects(adminPool.query(`UPDATE ${table('RuntimeConfig')} SET "compactionKeepRecentTokens" = ${value}`), /RuntimeConfig_compaction_keep_recent/)
+
+    // 旧代码不认识新表，删会话只删 Conversation 行：压缩记录随外键级联删除，不挡住删除。
+    await adminPool.query(`INSERT INTO ${table('Conversation')} ("id", "title", "updatedAt") VALUES ('c1', '带压缩记录', now())`)
+    await adminPool.query(`INSERT INTO ${table('Message')} ("id", "conversationId", "role", "content", "updatedAt") VALUES ('m1', 'c1', 'USER', '第 1 问', now())`)
+    await adminPool.query(`INSERT INTO ${table('AgentRun')} ("id", "conversationId", "userMessageId", "status", "updatedAt") VALUES ('r1', 'c1', 'm1', 'COMPLETED', now())`)
+    await adminPool.query(`INSERT INTO ${table('ConversationCompaction')} ("id", "conversationId", "runId", "reason", "summary", "coveredGroupIds", "readAt", "tokensBefore", "modelId") VALUES ('k1', 'c1', 'r1', 'after_run', '摘要', ARRAY['m1'], now(), 300000, 'model')`)
+    await adminPool.query(`DELETE FROM ${table('Conversation')} WHERE "id" = 'c1'`)
+
+    const { rows: [left] } = await adminPool.query(`SELECT count(*)::int AS "count" FROM ${table('ConversationCompaction')}`)
+
+    assert.equal(left?.count, 0)
   })
 
   it('AC-05 已有模型行的单次输入上限等于迁移前运行时算出的输入预算', async () => {
@@ -283,14 +311,13 @@ function createChatService(prisma: PrismaService, runtimeConfigService: RuntimeC
       yield { type: 'response_completed', finishReason: 'stop' }
     },
   } as unknown as LLMService
-  const estimator = new RoughTokenEstimator()
+  const recorder = new AgentRunRecorderService(prisma)
   const runtime = new AgentRuntimeService(
     llmService,
     prisma,
-    new AgentRunRecorderService(prisma),
+    recorder,
     new ToolInvocationService(new ToolRegistryService()),
-    estimator,
-    new SamplingContextPlanner(estimator),
+    new ContextCompactionService(llmService, prisma, recorder),
   )
   const modelConfig = { resolveModel: async () => createResolvedLlmModel() } as unknown as LlmModelConfigService
   const conversations = { assertOwnConversation: async () => {} } as unknown as ConversationsService

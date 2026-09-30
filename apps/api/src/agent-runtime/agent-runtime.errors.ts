@@ -12,14 +12,6 @@ export class AgentRunDeadlineExceededError extends Error {
   }
 }
 
-/** Mandatory Context 已经无法在模型请求预算内安全保留。 */
-export class ContextBudgetExceededError extends Error {
-  constructor() {
-    super('Mandatory Context 超出本轮输入预算，未调用模型。')
-    this.name = 'ContextBudgetExceededError'
-  }
-}
-
 /** 终态持久化失败；原始 Run 原因不能被 cleanup 错误覆盖。 */
 export class AgentRunTerminalizationError extends Error {
   constructor(

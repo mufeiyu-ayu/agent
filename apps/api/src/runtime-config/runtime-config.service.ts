@@ -29,6 +29,8 @@ export type SerperApiKey
 /** 一次问答开始前读取的运行配置快照：整个 Run 只用这一份，后台修改对下一次问答生效。 */
 export interface RuntimeConfigSnapshot {
   limits: RunLimits
+  /** 上下文压缩保留最近原文的 token 数；实际取 min(它, 模型单次输入上限的 1/4)（#220）。 */
+  compactionKeepRecentTokens: number
   debugCaptureModelIo: boolean
   serperApiKey: SerperApiKey
 }
@@ -56,6 +58,7 @@ export class RuntimeConfigService {
       limits: {
         runDeadlineMs: row.runDeadlineMs,
       },
+      compactionKeepRecentTokens: row.compactionKeepRecentTokens,
       debugCaptureModelIo: row.debugCaptureModelIo,
       serperApiKey: this.decryptSerperApiKey(row.serperApiKeyEncrypted),
     }

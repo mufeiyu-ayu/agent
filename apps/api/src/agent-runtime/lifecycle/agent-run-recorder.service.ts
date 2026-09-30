@@ -23,6 +23,8 @@ export const AGENT_STEP_TYPES = {
   toolExecution: 'tool_execution',
   /** 生成助手回复 */
   assistantOutput: 'assistant_output',
+  /** 上下文压缩：把较早的历史或本次问答前面的工具步骤写成摘要（#220） */
+  contextCompaction: 'context_compaction',
 } as const
 
 export type AgentStepType = typeof AGENT_STEP_TYPES[keyof typeof AGENT_STEP_TYPES]
@@ -32,6 +34,7 @@ const AGENT_STEP_TITLES: Record<AgentStepType, string> = {
   model_sampling: '模型采样',
   tool_execution: '执行工具',
   assistant_output: '生成助手回复',
+  context_compaction: '上下文压缩',
 }
 
 const UNFINISHED_STEP_STATUSES = [

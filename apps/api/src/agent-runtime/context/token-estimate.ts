@@ -3,7 +3,6 @@ import type {
   ModelToolSpec,
 } from '@agent/ai'
 import { Buffer } from 'node:buffer'
-import { Injectable } from '@nestjs/common'
 
 /**
  * 粗估 token（照抄 Codex `utils/string/src/truncate.rs` 的 approx_token_count）：UTF-8 字节数 ÷ 4，向上取整。
@@ -31,27 +30,10 @@ export function estimateItemTokens(item: ModelInputItem): number {
   }
 }
 
-export interface TokenEstimatorInput {
-  items: ModelInputItem[]
-  tools: ModelToolSpec[]
-}
-
-/** 整份请求全部粗估：各输入项，加上工具定义（我们加的：Pi 只算消息；我们每次问答都从库重建，要估整份请求）。 */
-export function estimateRequestTokens(input: TokenEstimatorInput): number {
+/** 整份请求全部粗估：各输入项，加上工具定义（我们加的：Pi 890f920 只算消息；我们每次问答都从库重建，要估整份请求）。 */
+export function estimateRequestTokens(input: { items: ModelInputItem[], tools: ModelToolSpec[] }): number {
   return input.items.reduce(
     (tokens, item) => tokens + estimateItemTokens(item),
     roughTokens(JSON.stringify(input.tools)),
   )
-}
-
-/** Context planning 只依赖该边界。 */
-export interface TokenEstimator {
-  estimateRequest: (input: TokenEstimatorInput) => number
-}
-
-@Injectable()
-export class RoughTokenEstimator implements TokenEstimator {
-  estimateRequest(input: TokenEstimatorInput): number {
-    return estimateRequestTokens(input)
-  }
 }

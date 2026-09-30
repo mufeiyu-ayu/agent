@@ -21,6 +21,8 @@ export interface LlmProviderCredentials {
 /** 一次 Run 开始时解析并快照的模型配置；整个 Run 只用这一份。 */
 export interface ResolvedLlmModel {
   modelId: string
+  /** 服务商家族（库里的自由字符串，取值见 contracts 的 LLM_PROVIDER_FAMILIES）；写上下文摘要时按它取最低思考强度。 */
+  family: string
   provider: LlmProviderCredentials
   profile: LLMModelProfile
   /** 单次请求最多发给模型的输入 token，即本次 Run 的输入预算；保存模型行时已校验不超过窗口容量。 */
@@ -94,6 +96,7 @@ export class LlmModelConfigService {
 
     return {
       modelId: model.id,
+      family: model.provider.family,
       provider: this.toCredentials(model.provider),
       profile: {
         wireName: model.wireName,
