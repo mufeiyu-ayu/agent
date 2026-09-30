@@ -17,7 +17,7 @@
 从零手写的 TypeScript Agent Runtime：NestJS API + Vue Web / Admin + Prisma / PostgreSQL（镜像须带 pgvector：早期迁移建扩展，向量表已删），不依赖 LangChain / LangGraph / workflow 引擎。Phase 1-8 已完成：流式对话、AgentRun / AgentStep 编排、Tool Calling、Context Engineering、Admin 可观测性；Phase 8 的 Grounded Retrieval 与服务端引用校验按 2026-09-26 定案删除（`docs/research/workbench-direction.md` 第 9 节删除记录）。
 
 **定案的方向**
-- 2026-09-15：完成当前源码学习后，面向云端 Agent 产品演进，以 Pi 为主要架构与组织方式参照（`docs/research/pi-reference/`）；旧 Codex 调研、reference 与阶段路线已按用户要求删除。DeepSeek Harness 保留补充对照。参照素材供 AI 实现时查阅，用户不读 Pi 代码；参照用于对比取舍，不照抄；研究完成不代表重构已启动。
+- 2026-09-15：完成当前源码学习后，面向云端 Agent 产品演进，以 Pi 为主要架构与组织方式参照（`docs/research/pi-reference/`）；旧 Codex 调研、reference 与阶段路线已按用户要求删除。DeepSeek Harness 保留补充对照。参照素材供 AI 实现时查阅，用户不读 Pi 代码；参照用于对比取舍：runtime 核心机制默认照抄成熟开源项目（优先 Pi，opencode、Codex 交叉核对），自己加的单独标明理由；研究完成不代表重构已启动。
 - 2026-09-20 定案、2026-09-27 改为两期：给 topuplist 运营用的 AI 工作台（一个对话入口，部署香港云服务器）；第一期登录 + 联网搜索 + 部署，第二期「我的页面」，gsc 迁移延后；runtime 以它为唯一真实负载。产品方案在 Claude Docs《Agent 产品方案》，路线、边界与否决项见 `docs/research/workbench-direction.md`，顺序与触发只在它的第 7 节。
 - 当前能力缺口四块：Human-in-the-loop / 审批、Durable Execution / resume 与 replay、长期 Memory、成本与延迟。子系统只在真实使用卡住、源码阅读发现缺陷或缺口被明确命中时才立项，不因为「成熟项目有」就做。
 
@@ -27,7 +27,7 @@
 
 - 始终中文。代码标识符、命令、日志、错误信息、协议字段、文件名保持原文。
 - 默认 TypeScript / NestJS / Vue；不默认 Python、Rust。
-- 讲 agent 设计必须对照真实实现，当前优先 Pi（必要时补充 Claude Code、Codex、DeepSeek Harness、OpenClaw、OpenAI Agents SDK、LangGraph），说清「他们怎么做、我们为什么一样或不一样」，不空谈概念。
+- 讲 agent 设计必须对照真实实现，当前优先 Pi，opencode、Codex 交叉核对（必要时补充 Claude Code、DeepSeek Harness、OpenClaw、OpenAI Agents SDK、LangGraph），说清「他们怎么做、我们为什么一样或不一样」，不空谈概念。
 - 只给必要信息：结论、取舍和证据；不补可选评论。
 - 澄清或拷问一轮最多 2 个问题，一句话问、一句话给推荐。
 - 方向、方案、Issue 先讨论，用户点头后才写正式文档或建 Issue；讨论期间只给观点和草稿。
