@@ -19,10 +19,7 @@ describe('PATCH /api/admin/runtime-config', () => {
 
     await withApp(service, async (baseUrl) => {
       const response = await patch(baseUrl, {
-        maxSamplingRounds: 1,
-        maxToolCalls: 0,
         runDeadlineMs: 2_147_483_647,
-        historyCandidateHardLimit: 50,
         debugCaptureModelIo: true,
         serperApiKey: '  sk-serper  ',
       })
@@ -30,10 +27,7 @@ describe('PATCH /api/admin/runtime-config', () => {
       assert.equal(response.status, 200)
     })
     assert.deepEqual(service.updates, [{
-      maxSamplingRounds: 1,
-      maxToolCalls: 0,
       runDeadlineMs: 2_147_483_647,
-      historyCandidateHardLimit: 50,
       debugCaptureModelIo: true,
       serperApiKey: 'sk-serper',
     }])
@@ -42,24 +36,23 @@ describe('PATCH /api/admin/runtime-config', () => {
   it('超出范围、非整数、null、字符串形式的数字与开关、Key 过长或多出字段时返回 400，不进 service', async () => {
     const service = createService()
     const invalidBodies = [
-      { maxSamplingRounds: 0 },
-      { maxSamplingRounds: 2_147_483_648 },
-      { maxToolCalls: -1 },
       { runDeadlineMs: 0 },
       { runDeadlineMs: 2_147_483_648 },
-      { historyCandidateHardLimit: 49 },
-      { historyCandidateHardLimit: 1_001 },
-      { maxSamplingRounds: 1.5 },
+      { runDeadlineMs: 1.5 },
       { serperApiKey: 'x'.repeat(513) },
       // 列都是 NOT NULL；隐式转换会把这些字符串变成 true / 0 / 3，必须按原值拒掉。
-      { maxToolCalls: null },
+      { runDeadlineMs: null },
       { debugCaptureModelIo: null },
       { debugCaptureModelIo: 'false' },
-      { maxToolCalls: '' },
-      { maxToolCalls: '3' },
+      { runDeadlineMs: '' },
+      { runDeadlineMs: '3000' },
       { serperApiKey: true },
       { serperApiKey: 12345 },
       { serperApiKeyLast4: 'abcd' },
+      // #218 删掉的三项：白名单外的字段一律 400。
+      { maxSamplingRounds: 10 },
+      { maxToolCalls: 8 },
+      { historyCandidateHardLimit: 1_000 },
     ]
 
     await withApp(service, async (baseUrl) => {
@@ -74,10 +67,7 @@ describe('PATCH /api/admin/runtime-config', () => {
 })
 
 const CONFIG: AdminRuntimeConfig = {
-  maxSamplingRounds: 10,
-  maxToolCalls: 8,
   runDeadlineMs: 600_000,
-  historyCandidateHardLimit: 1_000,
   debugCaptureModelIo: false,
   serperApiKeyLast4: null,
   updatedAt: '2026-09-29T00:00:00.000Z',

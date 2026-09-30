@@ -53,7 +53,7 @@ Each run is stored as a sequence of steps: history loading, every model call, ev
 
 ### 📏 Context engineering with real token budgets
 
-Each run gets its own model context. Tokens are estimated with a local DeepSeek tokenizer (an approximation for other model families), history is trimmed oldest-first in question–answer pairs to fit the budget, and tool output is treated as untrusted data with its own size limits.
+Each run gets its own model context. Tokens are estimated with a local DeepSeek tokenizer (an approximation for other model families), history (earlier tool calls and their results included) is trimmed oldest-first, one whole question–answer at a time, to fit the budget, and tool output is treated as untrusted data with its own size limits.
 
 ### 🔌 OpenAI-compatible providers
 
@@ -68,16 +68,13 @@ Non-trivial changes start as an issue with current-code facts, out-of-scope item
 A simplified view of the core loop in [`agent-runtime.service.ts`](./apps/api/src/agent-runtime/agent-runtime.service.ts):
 
 ```ts
-for (let round = 1; round <= policy.maxSamplingRounds; round++) {
-  const input = planner.plan(context, budget) // what the model sees this round
+// No cap on rounds or tool calls: the model keeps going until it answers; only the run deadline stops it.
+while (true) {
+  const input = planner.plan(context, budget) // what the model sees this round, earlier tool calls included
   const decision = await streamModelSampling(llm.chatStream(input))
 
   if (decision.type === 'final_answer')
     break
-
-  // Too many tool calls? Reject the whole batch before anything runs.
-  if (toolCallCount + decision.calls.length > policy.maxToolCalls)
-    throw new AgentLoopLimitExceededError()
 
   for (const call of decision.calls) { // several calls per turn, in order
     const result = await tools.invoke(call) // validate args, time out, cap output
@@ -127,7 +124,7 @@ Then open the admin console at `http://localhost:5174`, go to the model provider
 
 Run the tests with `pnpm test` (no database needed). The database and browser suites are described in [`docs/testing.md`](./docs/testing.md) (Chinese).
 
-If you run PostgreSQL yourself, it needs the pgvector extension, because an early migration creates it. See [`.env.example`](./.env.example) for every setting. Run limits and the Serper API key for the `web_search` tool live on the admin console's runtime settings page (「运行配置」).
+If you run PostgreSQL yourself, it needs the pgvector extension, because an early migration creates it. See [`.env.example`](./.env.example) for every setting. The run deadline and the Serper API key for the `web_search` tool live on the admin console's runtime settings page (「运行配置」).
 
 ## Learn agent engineering from it
 

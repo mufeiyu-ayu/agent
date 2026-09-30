@@ -5,10 +5,7 @@ import { describe, it } from 'vitest'
 import { isRuntimeConfigDirty, toRuntimeConfigForm, toRuntimeConfigInput } from './runtime-config.state'
 
 const CONFIG: AdminRuntimeConfig = {
-  maxSamplingRounds: 10,
-  maxToolCalls: 8,
   runDeadlineMs: 600_000,
-  historyCandidateHardLimit: 1_000,
   debugCaptureModelIo: false,
   serperApiKeyLast4: 'abcd',
   updatedAt: '2026-09-29T00:00:00.000Z',
@@ -21,10 +18,7 @@ describe('运行配置表单映射', () => {
     assert.equal(form.runDeadlineSeconds, 600)
     assert.equal(form.serperApiKey, '')
     assert.deepEqual(toRuntimeConfigInput({ ...form, runDeadlineSeconds: 90 }), {
-      maxSamplingRounds: 10,
-      maxToolCalls: 8,
       runDeadlineMs: 90_000,
-      historyCandidateHardLimit: 1_000,
       debugCaptureModelIo: false,
     })
     assert.equal(toRuntimeConfigInput({ ...form, serperApiKey: '  sk-new  ' }).serperApiKey, 'sk-new')
@@ -36,7 +30,7 @@ describe('运行配置表单映射', () => {
     assert.equal(isRuntimeConfigDirty(form, CONFIG), false)
     assert.equal(isRuntimeConfigDirty({ ...form, serperApiKey: '   ' }, CONFIG), false)
     assert.equal(isRuntimeConfigDirty({ ...form, serperApiKey: 'sk' }, CONFIG), true)
-    assert.equal(isRuntimeConfigDirty({ ...form, maxToolCalls: 0 }, CONFIG), true)
+    assert.equal(isRuntimeConfigDirty({ ...form, runDeadlineSeconds: 120 }, CONFIG), true)
     assert.equal(isRuntimeConfigDirty({ ...form, debugCaptureModelIo: true }, CONFIG), true)
   })
 })

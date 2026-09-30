@@ -53,7 +53,7 @@
 
 ### 📏 按真实 Token 预算做上下文工程
 
-每次 Run 有独立的模型上下文。Token 用本地 DeepSeek tokenizer 估算（其他家族按它近似），超预算时从最旧的历史开始按问答对裁剪，工具输出按不可信数据处理并有单独的长度上限。
+每次 Run 有独立的模型上下文。Token 用本地 DeepSeek tokenizer 估算（其他家族按它近似），历史带上之前问答的工具调用与结果，超预算时从最旧的问答开始整次裁剪，工具输出按不可信数据处理并有单独的长度上限。
 
 ### 🔌 接 OpenAI-compatible 服务商
 
@@ -68,16 +68,13 @@ DeepSeek 官方 API 和 OpenAI-compatible 中转站（GPT / Grok / Gemini）用�
 [`agent-runtime.service.ts`](./apps/api/src/agent-runtime/agent-runtime.service.ts) 主循环的简化版：
 
 ```ts
-for (let round = 1; round <= policy.maxSamplingRounds; round++) {
-  const input = planner.plan(context, budget) // 这一轮模型能看到什么
+// 不限轮数与工具调用次数：模型一直做到给出回答，只由单次最长时间兜底。
+while (true) {
+  const input = planner.plan(context, budget) // 这一轮模型能看到什么，含之前问答的工具记录
   const decision = await streamModelSampling(llm.chatStream(input))
 
   if (decision.type === 'final_answer')
     break
-
-  // 工具调用超预算？在执行任何一个之前整批拒绝。
-  if (toolCallCount + decision.calls.length > policy.maxToolCalls)
-    throw new AgentLoopLimitExceededError()
 
   for (const call of decision.calls) { // 一轮多个调用，按顺序执行
     const result = await tools.invoke(call) // 校验参数、超时、限制输出长度
@@ -127,7 +124,7 @@ pnpm dev
 
 跑测试用 `pnpm test`（不需要数据库）；真实库测试与浏览器测试见 [`docs/testing.md`](./docs/testing.md)。
 
-自己装 PostgreSQL 必须带 pgvector 扩展，早期迁移要建它。全部环境变量见 [`.env.example`](./.env.example)；运行限制与 `web_search` 联网搜索用的 Serper API Key 在管理台「运行配置」页填写。
+自己装 PostgreSQL 必须带 pgvector 扩展，早期迁移要建它。全部环境变量见 [`.env.example`](./.env.example)；单次最长时间与 `web_search` 联网搜索用的 Serper API Key 在管理台「运行配置」页填写。
 
 ## 拿它学 Agent 工程
 

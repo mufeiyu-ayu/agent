@@ -6,10 +6,7 @@ import { fetchRuntimeConfig, updateRuntimeConfig } from './runtime-config-api'
 
 /** 表单里的时限按秒编辑，接口按毫秒存。 */
 export interface RuntimeConfigForm {
-  maxSamplingRounds: number
-  maxToolCalls: number
   runDeadlineSeconds: number
-  historyCandidateHardLimit: number
   debugCaptureModelIo: boolean
   /** 留空表示不改。 */
   serperApiKey: string
@@ -17,10 +14,7 @@ export interface RuntimeConfigForm {
 
 export function toRuntimeConfigForm(config: AdminRuntimeConfig): RuntimeConfigForm {
   return {
-    maxSamplingRounds: config.maxSamplingRounds,
-    maxToolCalls: config.maxToolCalls,
     runDeadlineSeconds: Math.round(config.runDeadlineMs / 1000),
-    historyCandidateHardLimit: config.historyCandidateHardLimit,
     debugCaptureModelIo: config.debugCaptureModelIo,
     serperApiKey: '',
   }
@@ -30,10 +24,7 @@ export function toRuntimeConfigInput(form: RuntimeConfigForm): AdminRuntimeConfi
   const serperApiKey = form.serperApiKey.trim()
 
   return {
-    maxSamplingRounds: form.maxSamplingRounds,
-    maxToolCalls: form.maxToolCalls,
     runDeadlineMs: form.runDeadlineSeconds * 1000,
-    historyCandidateHardLimit: form.historyCandidateHardLimit,
     debugCaptureModelIo: form.debugCaptureModelIo,
     ...(serperApiKey ? { serperApiKey } : {}),
   }

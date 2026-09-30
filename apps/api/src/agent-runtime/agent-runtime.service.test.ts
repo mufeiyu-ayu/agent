@@ -24,6 +24,7 @@ import type {
   UnvalidatedToolCallEnvelope,
 } from '../tools/core/tool.types.js'
 import type { AgentRuntimeEvent, RunTurnStreamInput } from './agent-runtime.types.js'
+import type { HistoryStepRow } from './context/conversation-history.js'
 import type {
   TokenEstimator,
   TokenEstimatorInput,
@@ -186,42 +187,6 @@ describe('AgentRuntimeService model stream', () => {
     assert.equal(harness.llmCalls[0]?.provider.providerId, 'provider-deepseek')
   })
 
-  it('零 Tool Budget 时不向模型暴露 Tool 并正常完成', async () => {
-    const harness = createHarness(
-      () => toModelStream([
-        { type: 'text_delta', delta: '纯模型回答' },
-        { type: 'response_completed', finishReason: 'stop' },
-      ]),
-      undefined,
-      undefined,
-      {
-        maxSamplingRounds: 1,
-        maxToolCalls: 0,
-      },
-    )
-
-    const events = await collectEvents(harness.run())
-
-    assert.deepEqual(events.map(event => event.type), [
-      'run_started',
-      'assistant_delta',
-      'run_completed',
-    ])
-    assert.equal(harness.llmCalls.length, 1)
-    assert.deepEqual(harness.llmCalls[0]?.options?.tools, [])
-    assert.deepEqual(
-      ((harness.recorder.steps[1]?.input as Record<string, unknown>).initialContext as Record<string, unknown>).modelToolNames,
-      [],
-    )
-    assert.equal(harness.toolInvocations.length, 0)
-    assert.equal(harness.assistantMessage()?.content, '纯模型回答')
-    assert.equal(harness.assistantMessage()?.status, MessageStatus.COMPLETED)
-    assert.deepEqual(harness.recorder.completedRunIds, ['run-1'])
-    assert.deepEqual(harness.recorder.failedRunIds, [])
-    assert.deepEqual(harness.recorder.abortedRunIds, [])
-    assertNoUnfinishedSteps(harness)
-  })
-
   it('会话不存在时产出稳定失败分类且不创建 Message 或 Run', async () => {
     const harness = createHarness(() => toModelStream([]))
 
@@ -240,7 +205,7 @@ describe('AgentRuntimeService model stream', () => {
     assert.equal(harness.llmCalls.length, 0)
   })
 
-  it('一次读取 previous COMPLETED 历史到硬上限，允许超过 40 条且当前输入恰好一次', async () => {
+  it('一次读取 previous COMPLETED 的全部历史（不按条数截断），当前输入恰好一次', async () => {
     const harness = createHarness(() => toModelStream([
       { type: 'response_completed', finishReason: 'stop' },
     ]))
@@ -286,10 +251,9 @@ describe('AgentRuntimeService model stream', () => {
         ],
       },
       orderBy: [
-        { createdAt: 'desc' },
-        { id: 'desc' },
+        { createdAt: 'asc' },
+        { id: 'asc' },
       ],
-      take: 1_000,
     }])
     const firstSamplingMessages = harness.llmCalls[0]?.messages ?? []
     const contents = firstSamplingMessages
@@ -368,7 +332,7 @@ describe('AgentRuntimeService model stream', () => {
     ])
   })
 
-  it('createdAt 相同时按 id 倒序一次读取，并恢复稳定时间顺序', async () => {
+  it('createdAt 相同时按 id 排序一次读取，保持稳定时间顺序', async () => {
     const harness = createHarness(() => toModelStream([
       { type: 'response_completed', finishReason: 'stop' },
     ]))
@@ -397,20 +361,15 @@ describe('AgentRuntimeService model stream', () => {
     ])
   })
 
-  it('读取条数触到硬上限时只保留最新的候选，load_conversation_history 记读入条数', async () => {
-    const harness = createHarness(
-      () => toModelStream([{ type: 'response_completed', finishReason: 'stop' }]),
-      undefined,
-      undefined,
-      { historyCandidateHardLimit: 50 },
-    )
+  it('#218 AC-05 历史不按条数截断：超过原来 1,000 条上限的 1,200 条候选全部读出，预算够时全部进入首轮请求', async () => {
+    const harness = createHarness(() => toModelStream([{ type: 'response_completed', finishReason: 'stop' }]))
 
-    for (let index = 1; index <= 60; index += 1) {
+    for (let index = 1; index <= 1_200; index += 1) {
       harness.prisma.seedMessage({
-        id: `history-${String(index).padStart(3, '0')}`,
+        id: `history-${String(index).padStart(4, '0')}`,
         content: `历史消息 ${index}`,
         status: MessageStatus.COMPLETED,
-        createdAt: new Date(Date.UTC(2026, 0, 1, 0, 0, index)),
+        createdAt: new Date(Date.UTC(2026, 0, 1, 0, 0, 0, index)),
       })
     }
 
@@ -418,19 +377,108 @@ describe('AgentRuntimeService model stream', () => {
 
     assert.equal(events.at(-1)?.type, 'run_completed')
     assert.equal(harness.prisma.findManyArguments.length, 1)
-    assert.equal(harness.prisma.findManyArguments[0]?.take, 50)
+    assert.equal(Object.hasOwn(harness.prisma.findManyArguments[0]!, 'take'), false)
     const contents = (harness.llmCalls[0]?.messages ?? [])
       .filter(item => item.type === 'message')
       .map(item => item.content)
 
     assert.deepEqual(contents, [
-      ...Array.from({ length: 50 }, (_, index) => `历史消息 ${index + 11}`),
+      ...Array.from({ length: 1_200 }, (_, index) => `历史消息 ${index + 1}`),
       '问题',
     ])
-    const loadHistoryStep = findStep(harness, 'load_conversation_history')
+    assert.deepEqual(findStep(harness, 'load_conversation_history')?.output, { messageCount: 1_200 })
+    assert.equal(readContextPlan(findStep(harness, 'model_sampling'))?.historyIncludedCount, 1_200)
+    assertNoUnfinishedSteps(harness)
+  })
 
-    assert.equal(loadHistoryStep?.input, null)
-    assert.deepEqual(loadHistoryStep?.output, { messageCount: 50 })
+  it('#218 历史带回之前问答的工具记录；AC-06(c) 某次问答的 tool Step 缺 observation 时只退回这一次的一问一答，请求照常发出', async () => {
+    const harness = createHarness(() => toModelStream([
+      { type: 'text_delta', delta: '好' },
+      { type: 'response_completed', finishReason: 'stop' },
+    ]))
+    const seed = (id: string, content: string, role: Message['role'], second: number) => harness.prisma.seedMessage({
+      id,
+      content,
+      role,
+      status: MessageStatus.COMPLETED,
+      createdAt: new Date(Date.UTC(2026, 0, 1, 0, 0, second)),
+    })
+    const row = (assistantMessageId: string, userMessageId: string, fields: Partial<HistoryStepRow>): HistoryStepRow => ({
+      userMessageId,
+      assistantMessageId,
+      sequence: null,
+      type: null,
+      samplingAttemptId: null,
+      toolCallCount: null,
+      intermediateText: null,
+      callId: null,
+      toolName: null,
+      arguments: null,
+      observation: null,
+      ok: null,
+      ...fields,
+    })
+
+    seed('u1', '第一问', MessageRole.USER, 1)
+    seed('a1', '先搜一下。\n\n第一答', MessageRole.ASSISTANT, 2)
+    seed('u2', '第二问', MessageRole.USER, 3)
+    seed('a2', '第二答', MessageRole.ASSISTANT, 4)
+    harness.prisma.historyStepRows = [
+      row('a1', 'u1', { sequence: 2, type: 'model_sampling', samplingAttemptId: 'r1:sampling-1', toolCallCount: 1, intermediateText: '先搜一下。' }),
+      row('a1', 'u1', { sequence: 3, type: 'tool_execution', samplingAttemptId: 'r1:sampling-1', callId: 'call-1', toolName: 'web_search', arguments: '{"query":"react"}', observation: '搜索结果', ok: true }),
+      row('a1', 'u1', { sequence: 5, type: 'model_sampling', samplingAttemptId: 'r1:sampling-2', toolCallCount: 0 }),
+      // 第二次问答的工具 Step 没收口（被停止或进程中断）：没有 observation。
+      row('a2', 'u2', { sequence: 2, type: 'model_sampling', samplingAttemptId: 'r2:sampling-1', toolCallCount: 1 }),
+      row('a2', 'u2', { sequence: 3, type: 'tool_execution', samplingAttemptId: 'r2:sampling-1', callId: 'call-2', toolName: 'web_search', arguments: '{"query":"vue"}' }),
+      row('a2', 'u2', { sequence: 5, type: 'model_sampling', samplingAttemptId: 'r2:sampling-2', toolCallCount: 0 }),
+    ]
+
+    const events = await collectEvents(harness.run())
+
+    assert.equal(events.at(-1)?.type, 'run_completed')
+    assert.equal(harness.prisma.historyStepQueryCount, 1)
+    assert.deepEqual(harness.llmCalls[0]?.messages, [
+      { type: 'message', role: 'user', content: '第一问' },
+      {
+        type: 'assistant_tool_call',
+        calls: [{ callId: 'call-1', name: 'web_search', rawArgumentsJson: '{"query":"react"}' }],
+        reasoningContent: '',
+        content: '先搜一下。',
+      },
+      { type: 'tool_result', callId: 'call-1', name: 'web_search', content: '搜索结果', ok: true },
+      { type: 'message', role: 'assistant', content: '第一答' },
+      { type: 'message', role: 'user', content: '第二问' },
+      { type: 'message', role: 'assistant', content: '第二答' },
+      { type: 'message', role: 'user', content: '问题' },
+    ])
+    // 候选与选入仍按 Message 条数记。
+    assert.deepEqual(findStep(harness, 'load_conversation_history')?.output, { messageCount: 4 })
+    assert.equal(readContextPlan(findStep(harness, 'model_sampling'))?.historyIncludedCount, 4)
+    assertNoUnfinishedSteps(harness)
+  })
+
+  it('#218 AC-06(b) 读历史时查 Step 失败：调用模型前失败并收口为 FAILED，不带着半截历史发请求', async () => {
+    const harness = createHarness(() => toModelStream([
+      { type: 'text_delta', delta: '不应调用模型' },
+      { type: 'response_completed', finishReason: 'stop' },
+    ]))
+
+    harness.prisma.seedMessage({ id: 'u1', content: '旧问题', status: MessageStatus.COMPLETED, createdAt: new Date('2026-01-01T00:00:01.000Z') })
+    harness.prisma.seedMessage({ id: 'a1', content: '旧回答', role: MessageRole.ASSISTANT, status: MessageStatus.COMPLETED, createdAt: new Date('2026-01-01T00:00:02.000Z') })
+    harness.prisma.historyStepQueryError = new Error('connection reset')
+
+    const events = await collectEvents(harness.run())
+
+    assert.deepEqual(events.map(event => event.type), ['run_failed'])
+    assert.equal(harness.prisma.historyStepQueryCount, 1)
+    assert.equal(harness.llmCalls.length, 0)
+    assert.deepEqual(harness.recorder.steps.map(step => [step.type, step.status]), [
+      ['load_conversation_history', AgentStepStatus.FAILED],
+    ])
+    assert.equal(harness.recorder.runErrorCode, 'internal')
+    assert.deepEqual(harness.recorder.failedRunIds, ['run-1'])
+    // 助手消息在读完历史之后才建：失败时还没有它，只有种进去的旧回答。
+    assert.deepEqual(harness.prisma.messages.filter(message => message.role === MessageRole.ASSISTANT).map(message => message.id), ['a1'])
     assertNoUnfinishedSteps(harness)
   })
 
@@ -1665,35 +1713,36 @@ describe('AgentRuntimeService model stream', () => {
     }
   })
 
-  it('本轮 call 数超过剩余预算时整体拒绝，任何 call 都不执行', async () => {
-    const harness = createHarness(() => toModelStream([
-      toolCallEvent('call-1', 'web_search', '{"query":"a"}', 'reason', 0),
-      toolCallEvent('call-2', 'web_search', '{"query":"b"}', 'reason', 1),
-      toolCallEvent('call-3', 'web_search', '{"query":"c"}', 'reason', 2),
-      { type: 'response_completed', finishReason: 'tool_calls' },
-    ]))
+  it('#218 AC-05 不限轮数与工具调用次数：模型连续 12 轮调工具（共 14 次，超过原来的 10 轮、8 次）后照常给出回答', async () => {
+    const harness = createHarness((_, __, callIndex) => toModelStream(callIndex < 12
+      ? [
+          toolCallEvent(`call-${callIndex}-a`, 'web_search', `{"query":"q${callIndex}"}`, 'reason', 0),
+          // 第一轮一次给三个 call：原来的剩余预算整批拒绝。
+          ...(callIndex === 0
+            ? [
+                toolCallEvent('call-0-b', 'web_search', '{"query":"b"}', 'reason', 1),
+                toolCallEvent('call-0-c', 'web_search', '{"query":"c"}', 'reason', 2),
+              ]
+            : []),
+          { type: 'response_completed', finishReason: 'tool_calls' },
+        ]
+      : [
+          { type: 'text_delta', delta: '查完了。' },
+          { type: 'response_completed', finishReason: 'stop' },
+        ]))
 
     const events = await collectEvents(harness.run())
-    const finalEvent = events.at(-1)
 
-    assert.equal(finalEvent?.type, 'run_failed')
-    assert.match(
-      finalEvent?.type === 'run_failed' ? finalEvent.message : '',
-      /执行上限/,
-    )
-    assert.equal(harness.toolInvocations.length, 0)
-    assert.equal(harness.llmCalls.length, 1)
-    assert.deepEqual(harness.recorder.steps.map(step => step.type), [
-      'load_conversation_history',
-      'model_sampling',
-    ])
-    assert.equal(findStep(harness, 'model_sampling')?.status, AgentStepStatus.COMPLETED)
-    assert.equal(
-      (findStep(harness, 'model_sampling')?.output as { toolCallCount: number }).toolCallCount,
-      3,
-    )
-    assert.deepEqual(harness.recorder.failedRunIds, ['run-1'])
-    assert.equal(harness.assistantMessage()?.status, MessageStatus.FAILED)
+    assert.equal(events.at(-1)?.type, 'run_completed')
+    assert.equal(harness.llmCalls.length, 13)
+    assert.equal(harness.toolInvocations.length, 14)
+    assert.equal(harness.assistantMessage()?.content, '查完了。')
+    // 每轮都给模型完整的工具清单。
+    assert.ok(harness.llmCalls.every(call => call.options?.tools?.length === TOOL_DEFINITIONS.length))
+    // 最后一轮请求里 12 组工具来回都在，调用与结果成对。
+    assert.equal(harness.llmCalls.at(-1)?.messages.filter(item => item.type === 'assistant_tool_call').length, 12)
+    assert.equal(harness.llmCalls.at(-1)?.messages.filter(item => item.type === 'tool_result').length, 14)
+    assert.deepEqual(harness.recorder.completedRunIds, ['run-1'])
     assertNoUnfinishedSteps(harness)
   })
 
@@ -1724,7 +1773,6 @@ describe('AgentRuntimeService model stream', () => {
       (_, __, callIndex) => streams[callIndex]!(),
       undefined,
       undefined,
-      { maxToolCalls: 3 },
     )
 
     const events = await collectEvents(harness.run())
@@ -1855,7 +1903,7 @@ describe('AgentRuntimeService model stream', () => {
         },
         undefined,
         undefined,
-        { maxToolCalls: 3 },
+        {},
         recordingEstimator,
       )
 
@@ -2081,81 +2129,6 @@ describe('AgentRuntimeService model stream', () => {
     assert.equal('debugRequestBody' in output, false)
     assert.equal('debugRawResponse' in output, false)
     assert.deepEqual(harness.toolExecutionContexts.map(context => context.serperApiKey), [serperApiKey])
-    assertNoUnfinishedSteps(harness)
-  })
-
-  it('运行限制取自本次 Run 的快照：同一个 service 上两个 Run 各按自己的 maxToolCalls 执行', async () => {
-    const toolThenAnswer = (callIndex: number) => toModelStream(callIndex % 2 === 0
-      ? [
-          toolCallEvent(`call-${callIndex}`, 'web_search', '{"query":"seo"}'),
-          { type: 'response_completed', finishReason: 'tool_calls' },
-        ]
-      : [
-          { type: 'text_delta', delta: '好' },
-          { type: 'response_completed', finishReason: 'stop' },
-        ])
-    const harness = createHarness((_, __, callIndex) => toolThenAnswer(callIndex))
-    const runWith = (maxToolCalls: number) => collectEvents(harness.service.runTurnStream({
-      conversationId: 'conversation-1',
-      userContent: '问题',
-      runtimeConfig: createRuntimeConfigSnapshot({ limits: { maxToolCalls } }),
-      instructions: [],
-    }))
-
-    // 第一个 Run 开始时的快照允许 1 次工具调用；第二个 Run 读到的是改成 0 之后的快照：不给模型工具。
-    assert.equal((await runWith(1)).at(-1)?.type, 'run_completed')
-    assert.equal(harness.toolInvocations.length, 1)
-    assert.equal(harness.llmCalls[0]?.options?.tools?.length, TOOL_DEFINITIONS.length)
-
-    await runWith(0)
-    assert.deepEqual(harness.llmCalls[2]?.options?.tools, [])
-    assert.equal(harness.toolInvocations.length, 1)
-  })
-
-  it('第三轮再次请求工具时拒绝第三次执行且不发起第四轮 sampling', async () => {
-    const streams: ModelStreamEvent[][] = [
-      [
-        toolCallEvent('call-1', 'web_search', '{"query":"seo"}'),
-        { type: 'response_completed', finishReason: 'tool_calls' },
-      ],
-      [
-        toolCallEvent('call-2', 'web_search', '{"query":"sitemap"}'),
-        { type: 'response_completed', finishReason: 'tool_calls' },
-      ],
-      [
-        toolCallEvent('call-3', 'web_search', '{"query":"vue"}'),
-        { type: 'response_completed', finishReason: 'tool_calls' },
-      ],
-    ]
-    const harness = createHarness((_, __, callIndex) =>
-      toModelStream(streams[callIndex] ?? []))
-
-    const events = await collectEvents(harness.run())
-    const finalEvent = events.at(-1)
-
-    assert.equal(finalEvent?.type, 'run_failed')
-    assert.match(
-      finalEvent?.type === 'run_failed' ? finalEvent.message : '',
-      /执行上限/,
-    )
-    assert.deepEqual(
-      harness.toolInvocations.map(invocation => invocation.callId),
-      ['call-1', 'call-2'],
-    )
-    assert.equal(harness.llmCalls.length, 3)
-    assert.equal(
-      harness.recorder.steps.filter(step => step.type === 'tool_execution').length,
-      2,
-    )
-    assert.equal(harness.assistantMessage()?.status, MessageStatus.FAILED)
-    assert.deepEqual(harness.recorder.failedRunIds, ['run-1'])
-    const samplingSteps = harness.recorder.steps.filter(
-      step => step.type === 'model_sampling',
-    )
-    assert.deepEqual(
-      samplingSteps.map(step => step.status),
-      Array.from({ length: 3 }).fill(AgentStepStatus.COMPLETED),
-    )
     assertNoUnfinishedSteps(harness)
   })
 
@@ -2649,6 +2622,32 @@ describe('AgentRuntimeService model stream', () => {
     assertNoUnfinishedSteps(harness)
   })
 
+  it('#218 AC-06(d) 模型一直调工具：不再有次数上限，到「单次最长时间」按时限终态结束，不无限循环', async () => {
+    const harness = createHarness(
+      (_, __, callIndex) => toModelStream([
+        toolCallEvent(`call-${callIndex}`, 'web_search', '{"query":"again"}'),
+        { type: 'response_completed', finishReason: 'tool_calls' },
+      ]),
+      undefined,
+      async () => {
+        await sleep(5)
+        return { ok: true, modelContent: '再查一次。' }
+      },
+      { runDeadlineMs: 200 },
+    )
+
+    const events = await collectEvents(harness.run())
+    const finalEvent = events.at(-1)
+
+    assert.equal(finalEvent?.type, 'run_failed')
+    assert.equal(finalEvent.message, 'Agent Run 已达到执行时限。')
+    // 一直在调工具，停下的原因是时限；超过原来 10 轮上限的确定性证明见 AC-05 的用例。
+    assert.ok(harness.llmCalls.length >= 2, `模型调用 ${harness.llmCalls.length} 轮`)
+    assert.equal(harness.recorder.runErrorCode, 'deadline')
+    assert.deepEqual(harness.recorder.failedRunIds, ['run-1'])
+    assertNoUnfinishedSteps(harness)
+  })
+
   it('Run-budget DB timeout 归因为 deadline 且不开始 sampling', async () => {
     const harness = createHarness(() => toModelStream([
       { type: 'response_completed', finishReason: 'stop' },
@@ -3115,7 +3114,6 @@ describe('Run 轨迹补齐模型可见内容', () => {
             modelContent: `工具 ${envelope.toolName} 的参数无效。`,
           }
         : { ok: true, modelContent: `结果 ${envelope.callId}\n第二行` },
-      { maxToolCalls: 3 },
     )
 
     for (const [index, content] of ['旧问题', '旧回答'].entries()) {
@@ -3616,7 +3614,6 @@ describe('工具进度事件（#208）', () => {
       (_, __, callIndex) => streams[callIndex]!(),
       undefined,
       async envelope => outcomes[envelope.callId]!,
-      { maxToolCalls: 6 },
     )
 
     const events = await collectEvents(harness.run())
@@ -3725,7 +3722,6 @@ describe('刷新后还原要用的落库补齐（#212）', () => {
           ]),
       undefined,
       async envelope => toolResults[envelope.callId]!,
-      { maxToolCalls: 3 },
     )
 
     await collectEvents(harness.run())
@@ -4058,7 +4054,7 @@ function createHarness(
   // 模型行与运行配置快照由 ChatService 在 Run 之前读好；这里给用例一份默认快照，省得每处都写。
   // 默认打开调试抓取：fake 模型流总会回调 debugCapture，关掉时的行为单独覆盖。
   const runtimeConfig = createRuntimeConfigSnapshot({
-    limits: { maxSamplingRounds: 3, maxToolCalls: 2, ...limits },
+    limits,
     debugCaptureModelIo: true,
   })
   const runTurnStream = runtimeService.runTurnStream.bind(runtimeService)
@@ -4121,6 +4117,10 @@ class FakeToolInvocationService {
 class FakePrismaService {
   readonly messages: Message[] = []
   readonly findManyArguments: FakeMessageFindManyArguments[] = []
+  /** 读历史时第二条查询（回答所属 Run 的采样与工具 Step）返回的行；用例按需填入。 */
+  historyStepRows: HistoryStepRow[] = []
+  historyStepQueryError: unknown
+  historyStepQueryCount = 0
   conversationExists = true
   deadlineTransactionError: unknown
   nextMessageCreatedAt: Date | undefined
@@ -4161,9 +4161,8 @@ class FakePrismaService {
           && message.status === arguments_.where.status
           && isStrictlyBefore(message, arguments_.where.OR))
         .sort((left, right) =>
-          right.createdAt.getTime() - left.createdAt.getTime()
-          || right.id.localeCompare(left.id))
-        .slice(0, arguments_.take)
+          left.createdAt.getTime() - right.createdAt.getTime()
+          || left.id.localeCompare(right.id))
     },
     findUniqueOrThrow: async ({ where }: { where: Pick<Message, 'id'> }): Promise<Message> => {
       const message = this.messages.find(candidate => candidate.id === where.id)
@@ -4212,6 +4211,15 @@ class FakePrismaService {
 
   async $transaction<T>(operation: (prisma: FakePrismaService) => Promise<T>): Promise<T> {
     return await operation(this)
+  }
+
+  /** runtime 只有读历史 Step 这一条 raw 查询。 */
+  async $queryRaw(): Promise<HistoryStepRow[]> {
+    this.historyStepQueryCount += 1
+    if (this.historyStepQueryError !== undefined)
+      throw this.historyStepQueryError
+
+    return structuredClone(this.historyStepRows)
   }
 
   async withDeadlineTransaction<T>(
@@ -4275,8 +4283,7 @@ interface FakeMessageFindManyArguments {
     status: Message['status']
     OR: FakeStrictlyBeforeOr
   }
-  orderBy: Array<{ createdAt: 'desc' } | { id: 'desc' }>
-  take: number
+  orderBy: Array<{ createdAt: 'asc' } | { id: 'asc' }>
 }
 
 function isStrictlyBefore(

@@ -285,21 +285,16 @@ model LlmModel {
 }
 
 // ─── 运行配置（Issue #216）──────────────────────────────
-// 只有一行（id 固定为 1，migration 插入、CHECK 约束兜底；各项范围也有 CHECK）：运行限制、调试开关与联网搜索的 Serper Key。
+// 只有一行（id 固定为 1，migration 插入、CHECK 约束兜底；时限下限也有 CHECK）：单次最长时间、调试开关与联网搜索的 Serper Key。
 // 每次问答开始时读一次作为快照，进行中的问答不受后台修改影响；没有环境变量兜底，行缺失就明确报错。
 model RuntimeConfig {
-  id                        Int      @id @default(1)
-  // 单次问答最多调用模型几轮、最多执行几次工具调用（按 call 计）。
-  maxSamplingRounds         Int
-  maxToolCalls              Int
-  // 单次问答正常执行阶段的最长时间，单位毫秒；管理台按秒显示。
-  runDeadlineMs             Int
-  // 一次查询最多读取的历史候选条数，不是最终进入模型的条数。
-  historyCandidateHardLimit Int
+  id                    Int      @id @default(1)
+  // 单次问答正常执行阶段的最长时间，单位毫秒；管理台按秒显示。一次问答不限轮数与工具调用次数，只由它兜底。
+  runDeadlineMs         Int
   // 是否抓取模型原始请求 / 响应 JSON 写进采样 Step。
-  debugCaptureModelIo       Boolean
+  debugCaptureModelIo   Boolean
   // Serper Key 与服务商 Key 同样用 AGENT_SECRET_KEY 派生的密钥加密，只回显尾四位；没配为 null。
-  serperApiKeyEncrypted     String?
-  serperApiKeyLast4         String?
-  updatedAt                 DateTime @updatedAt
+  serperApiKeyEncrypted String?
+  serperApiKeyLast4     String?
+  updatedAt             DateTime @updatedAt
 }

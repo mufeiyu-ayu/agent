@@ -14,14 +14,8 @@ const RUNTIME_CONFIG_ID = 1
 const CONFIG_MISSING = '运行配置缺失，请联系管理员'
 const CONFIG_READ_FAILED = '读取运行配置失败，请稍后重试'
 
-/** 单次问答的运行限制。 */
+/** 单次问答的运行限制：不限轮数与工具调用次数（#218），只有时限兜底。 */
 export interface RunLimits {
-  /** 一次查询最多读取的历史候选条数，不是最终进入模型的条数。 */
-  readonly historyCandidateHardLimit: number
-  /** 最多允许发起的模型采样轮数。 */
-  readonly maxSamplingRounds: number
-  /** 最多允许执行的工具调用次数，按 call 计数，同轮多个 call 各算一次。 */
-  readonly maxToolCalls: number
   /** 正常执行阶段的最长时间，单位毫秒。 */
   readonly runDeadlineMs: number
 }
@@ -60,9 +54,6 @@ export class RuntimeConfigService {
 
     return {
       limits: {
-        historyCandidateHardLimit: row.historyCandidateHardLimit,
-        maxSamplingRounds: row.maxSamplingRounds,
-        maxToolCalls: row.maxToolCalls,
         runDeadlineMs: row.runDeadlineMs,
       },
       debugCaptureModelIo: row.debugCaptureModelIo,
@@ -76,13 +67,13 @@ export class RuntimeConfigService {
 
   /** 只 UPDATE 固定的那一行，从不插入：并发保存在行锁上串行，后提交的为准，不会多出行。 */
   async update(input: UpdateRuntimeConfigDto): Promise<AdminRuntimeConfig> {
-    const { serperApiKey, ...limits } = input
+    const { serperApiKey, ...values } = input
 
     try {
       const row = await this.prismaService.runtimeConfig.update({
         where: { id: RUNTIME_CONFIG_ID },
         data: {
-          ...omitUndefined(limits),
+          ...omitUndefined(values),
           // 空串与省略同义：管理台表单留空就是不改。
           ...(serperApiKey ? toSerperApiKeyColumns(this.llmModelConfigService.encryptApiKey(serperApiKey)) : {}),
         },
@@ -143,10 +134,7 @@ function toSerperApiKeyColumns(encrypted: { apiKeyEncrypted: string, apiKeyLast4
 
 function toAdminRuntimeConfig(row: RuntimeConfig): AdminRuntimeConfig {
   return {
-    maxSamplingRounds: row.maxSamplingRounds,
-    maxToolCalls: row.maxToolCalls,
     runDeadlineMs: row.runDeadlineMs,
-    historyCandidateHardLimit: row.historyCandidateHardLimit,
     debugCaptureModelIo: row.debugCaptureModelIo,
     serperApiKeyLast4: row.serperApiKeyLast4,
     updatedAt: row.updatedAt.toISOString(),
