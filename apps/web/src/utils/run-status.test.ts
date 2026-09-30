@@ -6,7 +6,7 @@ import { describe, it } from 'vitest'
 import { createI18n } from 'vue-i18n'
 
 import { messages } from '../i18n/messages'
-import { applyRunEvent, endRun, latestThoughtSentence, liveThought, runStepText, safeHref, siteName, startRun, thoughtTitle } from './run-status'
+import { applyRunEvent, endRun, latestThoughtSentence, liveThought, runStepText, safeHref, siteName, startRun, thoughtHasMore, thoughtTitle } from './run-status'
 
 const ids = { conversationId: 'c', assistantMessageId: 'a' }
 
@@ -174,6 +174,14 @@ describe('#209 思考原文', () => {
     assert.equal(thoughtTitle('嗯。'), '嗯。')
     // 只有 Markdown 符号的一轮没有可显示的文字，时间线不出这一行。
     assert.equal(thoughtTitle('***\n'), '')
+  })
+
+  it('时间线思考行：原文去掉 Markdown 符号后只剩标题这一句时不展开', () => {
+    assert.equal(thoughtHasMore('**Designing adaptable 3-day plan with city prompt**'), false)
+    assert.equal(thoughtHasMore('先找官方发布说明。'), false)
+    assert.equal(thoughtHasMore('嗯。'), false)
+    assert.equal(thoughtHasMore('先找官方说明。然后对比社区总结'), true)
+    assert.equal(thoughtHasMore('**Planning the answer**\n\nI should list the options first.'), true)
   })
 
   it('按轮切分：start 与每个 tool_finished 之后开始新一轮，到 tool_started 或正文开始为止', () => {

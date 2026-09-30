@@ -281,6 +281,11 @@ export function thoughtTitle(text: string): string {
   return latestThoughtSentence(text, true) ?? plainThought(text)
 }
 
+/** 时间线思考行能否展开：原文去掉 Markdown 符号后就是标题这一句时（如 GPT 只给一行摘要标题），展开只会重复一遍。 */
+export function thoughtHasMore(text: string): boolean {
+  return plainThought(text) !== thoughtTitle(text)
+}
+
 /** 去掉行首的标题 / 引用 / 列表符号（可嵌套，如「> - 」）与行内的加粗、代码、删除线标记，合并空白；单个 * 与 _ 保留（乘号、__init__）。 */
 function plainThought(text: string): string {
   return text

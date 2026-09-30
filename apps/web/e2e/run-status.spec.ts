@@ -245,7 +245,7 @@ test('#209 AC-05 思考短句：状态行随思考换字时状态行与正文全
       think('再确认一下英文关键词。'),
       line({ type: 'tool_started', callId: 'call-search', toolName: 'web_search', query: 'React 19.2 release' }),
       line({ type: 'tool_finished', callId: 'call-search', ok: true, results: SOURCES }),
-      think('结果够用了，可以开始回答。'),
+      think('搜到了官方博客。结果够用了，可以开始回答。'),
       ...ANSWER.map(contentDelta => line({ type: 'delta', contentDelta })),
       line({ type: 'done', content: ANSWER.join(''), generatedAt: '2026-09-28T00:00:00.000Z' }),
     ],
@@ -310,7 +310,7 @@ test('#209 AC-05 思考短句：状态行随思考换字时状态行与正文全
   expect(metrics.client).toBeGreaterThan(metrics.lineHeight * 6)
   expect(metrics.scrolled, '可以滚动').toBeGreaterThan(0)
 
-  // 第二轮只有一句：不超出限高，没有底部渐隐与留白。
+  // 第二轮只有两句：不超出限高，没有底部渐隐与留白。
   await timeline.getByRole('button', { name: /结果够用了/ }).click()
   await expect(page.locator('[data-run-thought]').nth(1)).not.toHaveClass(/is-overflowing/)
 })
@@ -405,6 +405,9 @@ test('#212 AC-09 完成一轮后刷新、切换会话再切回：摘要行与展
 
     await row.click()
     await expect(timeline).toBeVisible()
+    // 只有一句的思考行不能展开：展开也是同一句。
+    await expect(timeline.locator('li').first()).toContainText(THOUGHTS[0])
+    await expect(timeline.getByRole('button', { name: THOUGHTS[0] })).toHaveCount(0)
     await timeline.getByRole('button', { name: /React 19.2 release/ }).click()
     await expect(timeline.getByRole('link', { name: /React 19.2 来源/ })).toHaveCount(5)
     await timeline.getByRole('button', { name: /React 19.2 – React/ }).click()

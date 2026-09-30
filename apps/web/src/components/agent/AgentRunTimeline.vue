@@ -5,7 +5,7 @@ import type { TurnRun, TurnRunStep, TurnRunThought } from '../../types/chat'
 import { computed, reactive } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-import { runStepText, safeHref, siteName, thoughtTitle } from '@/utils/run-status'
+import { runStepText, safeHref, siteName, thoughtHasMore, thoughtTitle } from '@/utils/run-status'
 
 const props = defineProps<{
   run: TurnRun
@@ -53,16 +53,18 @@ const items = computed<TimelineItem[]>(() => {
 })
 
 function thoughtItem(thought: TurnRunThought): TimelineItem {
+  const expandable = thoughtHasMore(thought.text)
+
   return {
     key: `thought:${thought.at}`,
     icon: 'thought',
     failed: false,
     text: { object: thoughtTitle(thought.text) },
     // 纯文本：按空行分段，段内换行由 CSS 保留。
-    paragraphs: thought.text.trim().split(/\n\s*\n/),
+    ...(expandable ? { paragraphs: thought.text.trim().split(/\n\s*\n/) } : {}),
     sources: [],
     moreSources: 0,
-    expandable: true,
+    expandable,
   }
 }
 
