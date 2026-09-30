@@ -13,7 +13,7 @@ import { Inject, Injectable } from '@nestjs/common'
 
 import { ContextBudgetExceededError } from '../agent-runtime.errors.js'
 import { DeepSeekV4TokenEstimator } from './deepseek-v4-token-estimator.js'
-import { flattenPlanningState } from './model-context.js'
+import { countHistoryMessages, flattenPlanningState } from './model-context.js'
 
 export interface SamplingContextObservationSummary {
   exchangeIndex: number
@@ -72,9 +72,9 @@ export class SamplingContextPlanner {
       items: flattenPlanningState(state),
       tools: input.tools,
     })
-    // 核心执行状态：本轮 Planner 决定从最旧处删除多少条 initialHistory；
+    // 核心执行状态：本轮 Planner 决定从最旧处删除几次问答（整组删，调用与结果不会被拆开）；
     // 只有整份计划通过预算后，commitPlan() 才会把该数量正式应用回 ModelContext。
-    let excludedOldestHistoryCount = 0
+    let excludedOldestHistoryGroups = 0
     // 第一次真正计算当前工作副本的完整输入 Token；
     // 后续每次删除历史或缩短 Tool Result 后都会重新赋值。
     let estimatedInputTokens = estimate()
@@ -82,7 +82,7 @@ export class SamplingContextPlanner {
     // 第一层降级：初次估算超预算时，先从最旧历史开始删减，
     // 并用修改后的 state 重新计算 Token；未超预算则保持 0 条删除。
     if (estimatedInputTokens > input.resolvedInputBudgetTokens) {
-      excludedOldestHistoryCount = excludeOldestHistory(
+      excludedOldestHistoryGroups = excludeOldestHistory(
         state,
         estimate,
         input.resolvedInputBudgetTokens,
@@ -118,8 +118,8 @@ export class SamplingContextPlanner {
     // 预算已确认通过，现在才把有效缩减正式同步回当前 Run 的原内存
     // ModelContext，供后续 Sampling 继续使用；不会删除或修改数据库 Message。
     input.context.commitPlan({
-      // 从原 ModelContext.initialHistory 开头永久移除的最旧历史条数。
-      excludedOldestHistoryCount,
+      // 从原 ModelContext.initialHistory 开头永久移除的最旧问答组数。
+      excludedOldestHistoryGroups,
       // 按 exchangeIndex / resultIndex 把工作副本中最终的 Tool Result 文本与预览长度同步回去。
       observations: state.toolExchanges.flatMap(exchange =>
         exchange.results.map((result, resultIndex) => ({
@@ -155,13 +155,16 @@ function toPlanSummary(
   estimatedInputTokens: number,
   overflowReason: SamplingContextPlanSummary['overflowReason'],
 ): SamplingContextPlanSummary {
+  // 按 Message 条数记：保留的是最新的若干次完整问答，按条数与 tool Step 即可还原当时的历史。
+  const historyIncludedCount = countHistoryMessages(state.initialHistory)
+
   return {
     resolvedInputBudgetTokens: input.resolvedInputBudgetTokens,
     estimatedInputTokens,
     historyCandidateCount: state.initialHistoryCandidateCount,
-    historyIncludedCount: state.initialHistory.length,
+    historyIncludedCount,
     historyExcludedCount:
-      state.initialHistoryCandidateCount - state.initialHistory.length,
+      state.initialHistoryCandidateCount - historyIncludedCount,
     observations: state.toolExchanges.flatMap(exchange =>
       exchange.results.map((result, resultIndex) =>
         toObservationSummary(exchange.exchangeIndex, resultIndex, result))),
@@ -169,6 +172,7 @@ function toPlanSummary(
   }
 }
 
+/** 二分出最少要从最旧处删掉几次问答：单位是组，保留部分总从一次完整问答开始，不会只剩结果或只剩调用。 */
 function excludeOldestHistory(
   state: ModelContextPlanningState,
   estimate: () => number,
@@ -188,20 +192,15 @@ function excludeOldestHistory(
   let upper = history.length
 
   while (lower < upper) {
-    const excludedCount = Math.floor((lower + upper) / 2)
+    const excludedGroups = Math.floor((lower + upper) / 2)
 
-    state.initialHistory = history.slice(excludedCount)
+    state.initialHistory = history.slice(excludedGroups)
 
     if (estimate() <= budget)
-      upper = excludedCount
+      upper = excludedGroups
     else
-      lower = excludedCount + 1
+      lower = excludedGroups + 1
   }
-
-  // 删除位置落在一问一答中间时把整对删掉：保留部分从 user 消息开始，裁剪不会留下没有提问的回答。
-  // 多删只会更省，plan() 随后仍会重估。候选读取触到硬上限时最旧一条本身就可能是回答，不在这里处理。
-  while (lower < history.length && history[lower]!.role !== 'user')
-    lower += 1
 
   state.initialHistory = history.slice(lower)
 
@@ -215,6 +214,11 @@ function shrinkObservations(
 ): void {
   // 从最旧一轮的第一个 call 开始，逐个 Tool Result 尝试缩短。
   for (const result of state.toolExchanges.flatMap(exchange => exchange.results)) {
+    // 已缩到 0 的再缩也不会更短，结果与不跳过相同：省掉两次整份输入的估算。工具调用不限次数（#218）后结果可能很多，
+    // 不跳过的话每轮 plan() 的估算次数随结果数增长。
+    if (result.contextBudgetPreviewChars === 0)
+      continue
+
     const sourceCodePoints = Array.from(
       result.observation.previewContent ?? result.observation.content,
     )

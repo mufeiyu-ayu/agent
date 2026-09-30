@@ -22,11 +22,21 @@ export interface ModelContextToolExchange {
   results: ModelContextToolResult[]
 }
 
+/**
+ * 历史里的一次问答（#218）：用户问题，加上回答还原出的工具调用、工具结果与最终回答；可以只有问题。
+ * 超预算时按组整体删除，调用与结果不会被拆开。
+ */
+export interface HistoryGroup {
+  /** 这组对应几条 Message：contextPlan.historyIncludedCount 仍按 Message 条数记。 */
+  messageCount: number
+  items: ModelInputItem[]
+}
+
 /** Sampling Planner 使用的显式 source identity，不依赖 role 或数组位置反推。 */
 export interface ModelContextPlanningState {
   instructions: MessageInputItem[]
-  initialHistory: MessageInputItem[]
-  // 原始候选基准，只用于 plan summary 统计有多少条历史未纳入（内存统计，不落库）。
+  initialHistory: HistoryGroup[]
+  // 原始候选基准（Message 条数），只用于 plan summary 统计有多少条历史未纳入（内存统计，不落库）。
   // 不参与 Token 估算、历史删减决策或模型输入组装。
   initialHistoryCandidateCount: number
   currentUser: MessageInputItem
@@ -34,7 +44,8 @@ export interface ModelContextPlanningState {
 }
 
 export interface ModelContextPlanCommit {
-  excludedOldestHistoryCount: number
+  /** 从最旧处删掉几次问答（组数，不是条数）。 */
+  excludedOldestHistoryGroups: number
   observations: Array<{
     exchangeIndex: number
     resultIndex: number
@@ -45,7 +56,7 @@ export interface ModelContextPlanCommit {
 
 interface CreateModelContextInput {
   instructions: MessageInputItem[]
-  initialHistory: MessageInputItem[]
+  initialHistory: HistoryGroup[]
   currentUserMessage: MessageInputItem
 }
 
@@ -56,9 +67,9 @@ export class ModelContext {
   private constructor(
     // 核心输入：模型必须携带的指令消息；当前 Chat 入口中就是系统提示词。
     private readonly instructions: MessageInputItem[],
-    // 核心输入：一次查询读到的全部历史候选；每轮 plan() 超预算时从最旧删减。
-    private readonly initialHistory: MessageInputItem[],
-    // 创建时的候选总数基准，用它减去当前 initialHistory.length 得出累计有多少条历史
+    // 核心输入：读到的全部历史候选，按问答分组；每轮 plan() 超预算时从最旧的问答整组删减。
+    private readonly initialHistory: HistoryGroup[],
+    // 创建时的候选 Message 条数基准，用它减去当前各组条数之和得出累计有多少条历史
     // 未纳入模型上下文；只进 plan summary，不落库（Admin 的候选条数取自 load_conversation_history）。
     // 它不参与 Token 计算、历史删减决策或真正的模型输入。
     private readonly initialHistoryCandidateCount: number,
@@ -67,13 +78,13 @@ export class ModelContext {
   ) {}
 
   static fromHistory(input: CreateModelContextInput): ModelContext {
-    const initialHistory = input.initialHistory.map(cloneMessage)
+    const initialHistory = input.initialHistory.map(cloneHistoryGroup)
 
     return new ModelContext(
       input.instructions.map(cloneMessage),
       initialHistory,
       // 候选基准就是读取条数：全部候选都先进入 initialHistory，裁剪发生在 plan()。
-      initialHistory.length,
+      countHistoryMessages(initialHistory),
       cloneMessage(input.currentUserMessage),
     )
   }
@@ -81,7 +92,7 @@ export class ModelContext {
   forPlanning(): ModelContextPlanningState {
     return {
       instructions: this.instructions.map(cloneMessage),
-      initialHistory: this.initialHistory.map(cloneMessage),
+      initialHistory: this.initialHistory.map(cloneHistoryGroup),
       initialHistoryCandidateCount: this.initialHistoryCandidateCount,
       currentUser: cloneMessage(this.currentUser),
       toolExchanges: this.toolExchanges.map(exchange => ({
@@ -98,7 +109,7 @@ export class ModelContext {
 
   /** 仅接收 Planner 已完整重估并通过预算的单调收缩结果。 */
   commitPlan(input: ModelContextPlanCommit): void {
-    this.initialHistory.splice(0, input.excludedOldestHistoryCount)
+    this.initialHistory.splice(0, input.excludedOldestHistoryGroups)
 
     for (const observation of input.observations) {
       const result = this.toolExchanges[observation.exchangeIndex]
@@ -179,7 +190,7 @@ export class ModelContext {
  * 将 Planner 按来源分开维护的 Context 状态，按 Provider 需要的先后顺序
  * 摊平成一个 `ModelInputItem[]`。
  *
- * @description 输出顺序固定为 instructions -> initialHistory -> currentUser
+ * @description 输出顺序固定为 instructions -> initialHistory（各组依次展开）-> currentUser
  * -> 每组 assistant Tool Call 消息 / 逐个 Tool Result。本函数只复制和组装模型可见输入，
  * 不修改 `state`、不计算 Token，也不包含只用于统计的字段
  * `initialHistoryCandidateCount`。工具定义由调用方单独传给 TokenEstimator / Provider。
@@ -189,7 +200,7 @@ export function flattenPlanningState(
 ): ModelInputItem[] {
   return [
     ...state.instructions.map(cloneMessage),
-    ...state.initialHistory.map(cloneMessage),
+    ...state.initialHistory.flatMap(group => group.items.map(cloneInputItem)),
     cloneMessage(state.currentUser),
     ...state.toolExchanges.flatMap(exchange => [
       cloneAssistantCall(exchange.assistantCall),
@@ -217,8 +228,21 @@ export function toFeedbackArgumentsJson(
     : JSON.stringify({ arguments: rawArgumentsJson })
 }
 
+/** 各组的 Message 条数之和。 */
+export function countHistoryMessages(groups: HistoryGroup[]): number {
+  return groups.reduce((count, group) => count + group.messageCount, 0)
+}
+
 function cloneMessage(item: MessageInputItem): MessageInputItem {
   return { ...item }
+}
+
+function cloneHistoryGroup(group: HistoryGroup): HistoryGroup {
+  return { messageCount: group.messageCount, items: group.items.map(cloneInputItem) }
+}
+
+function cloneInputItem(item: ModelInputItem): ModelInputItem {
+  return item.type === 'assistant_tool_call' ? cloneAssistantCall(item) : { ...item }
 }
 
 function cloneAssistantCall(

@@ -16,10 +16,7 @@ function fulfill(route: Route, status: number, data: unknown, message = 'ok') {
 }
 
 const CONFIG: AdminRuntimeConfig = {
-  maxSamplingRounds: 10,
-  maxToolCalls: 8,
   runDeadlineMs: 600_000,
-  historyCandidateHardLimit: 1_000,
   debugCaptureModelIo: false,
   serperApiKeyLast4: null,
   updatedAt: '2026-09-29T00:00:00.000Z',
@@ -47,13 +44,15 @@ async function installRuntimeConfig(page: Page) {
   return patches
 }
 
-test('运行配置：三组分区，没改动时保存不可点，改完保存带 loading，成功后回到不可点并显示 Key 尾号', async ({ page }) => {
+test('运行配置：三组分区、只有三项配置，没改动时保存不可点，改完保存带 loading，成功后回到不可点并显示 Key 尾号', async ({ page }) => {
   const patches = await installRuntimeConfig(page)
 
   await page.goto('/runtime-config')
   await expect(page.getByRole('link', { name: '运行配置' })).toHaveAttribute('aria-current', 'page')
   for (const group of ['运行限制', '联网搜索', '调试'])
     await expect(page.getByRole('heading', { name: group })).toBeVisible()
+  // #218 删掉了模型轮数、工具次数与历史条数三项上限。
+  await expect(page.locator('.settings-row__label')).toHaveText(['单次最长时间', 'Serper API Key', '抓取模型原始请求'])
 
   const save = page.getByRole('button', { name: /保\s*存/ })
   await expect(save).toBeDisabled()
@@ -61,7 +60,6 @@ test('运行配置：三组分区，没改动时保存不可点，改完保存�
   await expect(page.getByLabel('Serper API Key')).toHaveAttribute('placeholder', '粘贴 Serper API Key')
   await expect(page.getByText('未配置')).toBeVisible()
 
-  await page.getByLabel('单次最多调用工具').fill('3')
   await page.getByLabel('单次最长时间').fill('120')
   await page.getByLabel('Serper API Key').fill('  sk-serper-9f3a  ')
   await page.getByLabel('抓取模型原始请求').click()
@@ -75,10 +73,7 @@ test('运行配置：三组分区，没改动时保存不可点，改完保存�
   await expect(page.getByLabel('Serper API Key')).toHaveAttribute('placeholder', '尾号 9f3a，留空不改')
   await expect(page.getByText('已配置')).toBeVisible()
   expect(patches).toEqual([{
-    maxSamplingRounds: 10,
-    maxToolCalls: 3,
     runDeadlineMs: 120_000,
-    historyCandidateHardLimit: 1_000,
     debugCaptureModelIo: true,
     serperApiKey: 'sk-serper-9f3a',
   }])
@@ -88,9 +83,9 @@ test('运行配置：超出范围时就地提示、不发请求；服务端拒�
   const patches = await installRuntimeConfig(page)
 
   await page.goto('/runtime-config')
-  await page.getByLabel('历史最多读取条数').fill('49')
+  await page.getByLabel('单次最长时间').fill('0')
   await page.getByRole('button', { name: /保\s*存/ }).click()
-  await expect(page.getByText('须为 50 到 1,000 之间的整数')).toBeVisible()
+  await expect(page.getByText('须为 1 到 2,147,483 之间的整数')).toBeVisible()
   expect(patches).toEqual([])
 
   // 与全局校验管道的真实响应同形：message 是通用文案，字段原因在 error.details。
@@ -104,10 +99,10 @@ test('运行配置：超出范围时就地提示、不发请求；服务端拒�
           success: false,
           code: 400,
           message: '请求参数校验失败',
-          error: { statusCode: 400, error: 'Bad Request', details: ['historyCandidateHardLimit must not be less than 50'] },
+          error: { statusCode: 400, error: 'Bad Request', details: ['runDeadlineMs must not be less than 1'] },
         }),
       }))
-  await page.getByLabel('历史最多读取条数').fill('500')
+  await page.getByLabel('单次最长时间').fill('500')
   await page.getByRole('button', { name: /保\s*存/ }).click()
   await expect(page.getByText('请求参数校验失败')).toBeVisible()
   await expect(page.getByRole('button', { name: /保\s*存/ })).toBeEnabled()

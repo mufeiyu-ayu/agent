@@ -14,36 +14,15 @@ const rawTrimmed = Transform(({ obj, key }) => {
 
   return typeof value === 'string' ? value.trim() : value
 })
-const { historyCandidateHardLimit, maxSamplingRounds, maxToolCalls, runDeadlineMs } = RUNTIME_CONFIG_LIMITS
+const { runDeadlineMs } = RUNTIME_CONFIG_LIMITS
 
 export class UpdateRuntimeConfigDto implements Partial<AdminRuntimeConfigInput> {
-  @unlessOmitted
-  @raw
-  @IsInt()
-  @Min(maxSamplingRounds.min)
-  @Max(maxSamplingRounds.max)
-  maxSamplingRounds?: number
-
-  @unlessOmitted
-  @raw
-  @IsInt()
-  @Min(maxToolCalls.min)
-  @Max(maxToolCalls.max)
-  maxToolCalls?: number
-
   @unlessOmitted
   @raw
   @IsInt()
   @Min(runDeadlineMs.min)
   @Max(runDeadlineMs.max)
   runDeadlineMs?: number
-
-  @unlessOmitted
-  @raw
-  @IsInt()
-  @Min(historyCandidateHardLimit.min)
-  @Max(historyCandidateHardLimit.max)
-  historyCandidateHardLimit?: number
 
   @unlessOmitted
   @raw

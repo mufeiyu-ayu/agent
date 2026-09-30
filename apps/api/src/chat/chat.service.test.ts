@@ -20,7 +20,7 @@ import { buildAgentInstructions } from './prompts/agent.prompt.js'
 
 const GENERATED_AT = '2026-07-18T08:00:00.000Z'
 const RESOLVED_MODEL = createResolvedLlmModel()
-const RUNTIME_CONFIG = createRuntimeConfigSnapshot({ limits: { maxToolCalls: 3 } })
+const RUNTIME_CONFIG = createRuntimeConfigSnapshot({ limits: { runDeadlineMs: 30_000 } })
 
 describe('ChatService', () => {
   it('流式入口把 DTO 映射为 RunTurnStreamInput，透传 signal，只注入系统提示词', async () => {

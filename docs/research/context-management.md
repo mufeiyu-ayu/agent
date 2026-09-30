@@ -1,6 +1,6 @@
 # 上下文管理：历史里的工具记录与压缩
 
-状态：技术讨论（2026-09-28 起，2026-09-29 更新），不是产品需求。这里只定大体要做什么与参照谁，每个 Issue 立项前再单独讨论细节，讨论时以本文为起点、补社区讨论。顺序只在 [workbench-direction.md](./workbench-direction.md) 第 7 节。原则：核心机制照抄成熟开源项目（优先 Pi，opencode 交叉核对），我们自己加的项单独标明理由；Claude Code 不开源，引用只能算官方文档。
+状态：技术讨论（2026-09-28 起，2026-09-30 按 #218 的实现更新），不是产品需求。这里只定大体要做什么与参照谁，每个 Issue 立项前再单独讨论细节，讨论时以本文为起点、补社区讨论。顺序只在 [workbench-direction.md](./workbench-direction.md) 第 7 节。原则：核心机制照抄成熟开源项目（优先 Pi，opencode 交叉核对），我们自己加的项单独标明理由；Claude Code 不开源，引用只能算官方文档。
 
 ## 1. 起因与现状
 
@@ -10,9 +10,9 @@
 
 | 项 | 现状 | 位置 |
 | --- | --- | --- |
-| 历史 | 只带之前各轮已完成的「用户问题 + 最终回答」，工具调用与结果都不带（#119 / #152 的设计，当时只有站内文章工具） | `apps/api/src/agent-runtime/agent-runtime.service.ts` 读历史处 |
+| 历史 | #218 前只带之前各轮已完成的「用户问题 + 最终回答」，工具调用与结果都不带（#119 / #152 的设计，当时只有站内文章工具）；#218 起按原生格式带回之前问答的工具调用与结果，见第 5 节 E1 | `apps/api/src/agent-runtime/agent-runtime.service.ts`（`loadConversationHistory`）、`agent-runtime/context/conversation-history.ts` |
 | 输入预算 | 模型行的单次输入上限 `LlmModel.maxInputTokens`（#216，存量行迁移为 262,144），保存时校验不超过 窗口 − 最大输出 − 16,384 | `apps/api/src/admin-llm/admin-llm.service.ts`（校验）、`agent-runtime/context/initial-context.ts`（使用） |
-| 超预算 | 只在当前 Run 内：本地 DeepSeek V4 估算器算 token，从最旧的历史删起，再截短本 Run 的工具结果；超了记进 `contextPlan` | `context/sampling-context-planner.ts` |
+| 超预算 | 只在当前 Run 内：本地 DeepSeek V4 估算器算 token，从最旧的历史删起（#218 起按整次问答删），再截短本 Run 的工具结果；超了记进 `contextPlan` | `context/sampling-context-planner.ts` |
 | 单条工具结果 | 硬上限 128,000 字符 | `apps/api/src/tools/core/tool-observation.ts` |
 | 真实用量 | 每次采样的 provider usage（输入、总量、缓存命中）存在 AgentStep 的 `output.usage`，目前只有管理台概览在用 | `apps/api/src/admin-overview/admin-overview.service.ts` |
 | 窗口大小 | 模型表 `LlmModel.contextWindowTokens` / `maxOutputTokens`，管理台人工维护 | `prisma/schema.prisma` |
@@ -67,7 +67,13 @@ Pi 撑住长任务靠的是压缩：coding-agent 在每次调用模型前检查�
 
 ## 5. 任务
 
-**E1 历史带回工具记录（#218）**：从 tool Step 按原生格式还原之前问答的工具调用与结果，原样带回，不缩短、不加读取时间、不回放思考；超预算时按整次问答删最旧的；同时删掉「单次最多调用模型」「单次最多调用工具」「历史最多读取条数」三项配置（代码与数据库列），一次问答不限步数，只保留「单次最长时间」兜底。规格以 Issue 为准。
+**E1 历史带回工具记录（#218）**：照抄 Pi / Codex / opencode，历史里按原生格式放回之前问答的工具调用与结果，原样带回，不缩短、不加读取时间、不回放思考；同时删掉「单次最多调用模型」「单次最多调用工具」「历史最多读取条数」三项配置（代码与数据库列），一次问答不限步数，只保留「单次最长时间」兜底。实际做法：
+
+- 读历史：先读会话里严格早于当前问题的全部已完成消息（不按条数截断），再用一次查询取回这些回答所属 Run 的采样与工具 Step，只取 jsonb 里还原要用的路径（参数、observation、中间文本、`toolCallCount`、`samplingAttemptId`），不读 debug 抓取。先消息后 Step 的顺序保证读到已完成的回答时它的 Step 都已提交。
+- 还原（`toHistoryGroups`）：问题与回答按 Run 的 `userMessageId` / `assistantMessageId` 配成一次问答，可以只有问题。带工具的回答还原成「每个工具调用轮一条带 `tool_calls` 的 assistant（中间文本作 content，`reasoning_content` 给空串）+ 逐个工具结果 + 最终回答」；参数（含没通过校验时的 `{"arguments": raw}` 包装）与 observation 原样带回。最终回答按 runtime 拼接各轮文字的同一规则（`separateFromPreviousText`）去掉前面已放进 `tool_calls` 消息的中间文本，同一段文字不出现两次。空的回答（含最后一轮没有文字时的最终回答）不带（部分服务商拒收空内容）。没有 Run 的旧回答按相邻位置并入前一组。
+- 退回：工具记录不完整（缺 Step、参数或 observation，`samplingAttemptId` 对不上，工具 Step 数不等于 `toolCallCount`）或回答前缀对不上时，这次问答只带一问一答；不看 Step 状态，`ok=false` 的调用、`finishReason=length` 的轮次照常还原。
+- 超预算：planner 的二分单位从「条」改成「一次问答」，不会拆开调用与结果；`contextPlan.historyIncludedCount` 仍按 Message 条数记。本 Run 内缩短工具结果时跳过已缩到 0 的旧结果（结果不变，只省估算），避免不限调用次数后每轮估算次数随结果数增长。
+- 已知退化：单次问答自己就超出单次输入上限时被整组删掉（连回答一起），由 E3 解决。
 
 **E2 前台上下文用量：取消（2026-09-29）**。我们是给运营用的云端产品，不是面向开发者的 Claude Code / Codex；用户在意的是能一直聊下去，Claude、ChatGPT 网页端也不显示用量、不给压缩按钮。真实用量已存在每次采样的 Step 里，管理台运行详情可查，排查够用。
 

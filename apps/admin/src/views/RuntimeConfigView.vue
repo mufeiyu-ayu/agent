@@ -33,42 +33,25 @@ const { message } = AntApp.useApp()
 const state = createRuntimeConfigState()
 const formRef = ref<FormInstance>()
 const form = reactive<RuntimeConfigForm>({
-  maxSamplingRounds: 0,
-  maxToolCalls: 0,
   runDeadlineSeconds: 0,
-  historyCandidateHardLimit: 0,
   debugCaptureModelIo: false,
   serperApiKey: '',
 })
 
 /** 时限在表单里按秒，上限由毫秒上限换算。 */
-const LIMITS = {
-  ...RUNTIME_CONFIG_LIMITS,
-  runDeadlineSeconds: { min: 1, max: Math.floor(RUNTIME_CONFIG_LIMITS.runDeadlineMs.max / 1000) },
-}
+const DEADLINE_SECONDS = { min: 1, max: Math.floor(RUNTIME_CONFIG_LIMITS.runDeadlineMs.max / 1000) }
 
-type LimitField = 'maxSamplingRounds' | 'maxToolCalls' | 'runDeadlineSeconds' | 'historyCandidateHardLimit'
-
-const limitFields: LimitField[] = ['maxSamplingRounds', 'maxToolCalls', 'runDeadlineSeconds', 'historyCandidateHardLimit']
-
-const rules = computed<Record<LimitField, Rule[]>>(() => ({
-  maxSamplingRounds: rangeRules('maxSamplingRounds'),
-  maxToolCalls: rangeRules('maxToolCalls'),
-  runDeadlineSeconds: rangeRules('runDeadlineSeconds'),
-  historyCandidateHardLimit: rangeRules('historyCandidateHardLimit'),
-}))
-
-function rangeRules(field: LimitField): Rule[] {
-  const { min, max } = LIMITS[field]
-
-  return [{
+const rules = computed<Record<'runDeadlineSeconds', Rule[]>>(() => ({
+  runDeadlineSeconds: [{
     validator: async (_rule: unknown, value: number | null) => {
+      const { min, max } = DEADLINE_SECONDS
+
       if (value === null || !Number.isInteger(value) || value < min || value > max)
         throw new Error(t('runtimeConfig.rangeInvalid', { min: min.toLocaleString('en-US'), max: max.toLocaleString('en-US') }))
     },
     trigger: 'change',
-  }]
-}
+  }],
+}))
 
 const dirty = computed(() => state.config.value !== null && isRuntimeConfigDirty(form, state.config.value))
 const serperPlaceholder = computed(() => state.config.value?.serperApiKeyLast4
@@ -152,19 +135,19 @@ async function save() {
           {{ t('runtimeConfig.groups.limits') }}
         </h2>
         <div class="settings-panel">
-          <div v-for="field in limitFields" :key="field" class="settings-row">
-            <label :for="`runtime-config-${field}`" class="settings-row__label">
-              {{ t(`runtimeConfig.fields.${field}`) }}
-              <Tooltip :title="t(`runtimeConfig.tips.${field}`)">
+          <div class="settings-row">
+            <label for="runtime-config-runDeadlineSeconds" class="settings-row__label">
+              {{ t('runtimeConfig.fields.runDeadlineSeconds') }}
+              <Tooltip :title="t('runtimeConfig.tips.runDeadlineSeconds')">
                 <QuestionCircleOutlined class="settings-row__tip" />
               </Tooltip>
             </label>
-            <FormItem :name="field" class="settings-row__control">
+            <FormItem name="runDeadlineSeconds" class="settings-row__control">
               <!-- 不设 min / max：失焦时自动夹到边界会让超范围的输入悄悄变值，交给校验提示。 -->
               <InputNumber
-                :id="`runtime-config-${field}`"
-                v-model:value="form[field]"
-                :addon-after="t(`runtimeConfig.units.${field}`)"
+                id="runtime-config-runDeadlineSeconds"
+                v-model:value="form.runDeadlineSeconds"
+                :addon-after="t('runtimeConfig.units.runDeadlineSeconds')"
                 class="settings-number"
               />
             </FormItem>

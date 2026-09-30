@@ -390,6 +390,75 @@ describe('AgentRuntime PostgreSQL integration', () => {
     assert.doesNotMatch(JSON.stringify(messages), /网页正文标记|搜索结果/)
   })
 
+  it('#218 AC-03 同一对话连问两次：第二次首轮采样的输入里带着第一次的工具调用与结果，与第一次当时回喂的逐字相同', async () => {
+    const conversationId = await createConversation()
+    const question = 'react19 有哪些新特性呀'
+    const tools = () => [
+      fakeTool(webSearchDefinition, { ok: true, modelContent: '搜索结果：React 19 发布' }),
+      fakeTool(webFetchDefinition, { ok: true, modelContent: '网页正文：Actions、use()' }),
+    ]
+    const first = createHarness(
+      conversationId,
+      [
+        () => toModelStream([
+          { type: 'text_delta', delta: '先查一下。' },
+          toolCallEvent('call-search', 'web_search', '{"query":"react 19"}', '要搜。', 0),
+          toolCallEvent('call-fetch', 'web_fetch', '{"url":"https://react.dev/blog"}', '要搜。', 1),
+          { type: 'response_completed', finishReason: 'tool_calls' },
+        ]),
+        () => toModelStream([
+          { type: 'text_delta', delta: 'React 19 新增了 Actions。' },
+          { type: 'response_completed', finishReason: 'stop' },
+        ]),
+      ],
+      undefined,
+      { userContent: question, tools: tools() },
+    )
+
+    assert.equal((await collectEvents(first.run())).at(-1)?.type, 'run_completed')
+    assert.equal((await requireAssistantMessage(conversationId)).content, '先查一下。\n\nReact 19 新增了 Actions。')
+
+    const second = createHarness(
+      conversationId,
+      [() => toModelStream([
+        { type: 'text_delta', delta: '上面查过了：React 19 新增了 Actions。' },
+        { type: 'response_completed', finishReason: 'stop' },
+      ])],
+      undefined,
+      { userContent: question, tools: tools() },
+    )
+
+    assert.equal((await collectEvents(second.run())).at(-1)?.type, 'run_completed')
+    assert.deepEqual(second.llmCalls[0], [
+      { type: 'message', role: 'user', content: question },
+      {
+        type: 'assistant_tool_call',
+        calls: [
+          { callId: 'call-search', name: 'web_search', rawArgumentsJson: '{"query":"react 19"}' },
+          { callId: 'call-fetch', name: 'web_fetch', rawArgumentsJson: '{"url":"https://react.dev/blog"}' },
+        ],
+        // 之前问答的思考不回放。
+        reasoningContent: '',
+        content: '先查一下。',
+      },
+      { type: 'tool_result', callId: 'call-search', name: 'web_search', content: '搜索结果：React 19 发布', ok: true },
+      { type: 'tool_result', callId: 'call-fetch', name: 'web_fetch', content: '网页正文：Actions、use()', ok: true },
+      // 中间文本已在上面的 tool_calls 消息里，最终回答不再重复。
+      { type: 'message', role: 'assistant', content: 'React 19 新增了 Actions。' },
+      { type: 'message', role: 'user', content: question },
+    ])
+    // 与第一次问答第二轮请求里回喂的工具来回逐字相同（除 reasoning 外）。
+    const replayed = first.llmCalls[1]!.slice(1).map(item => item.type === 'assistant_tool_call' ? { ...item, reasoningContent: '' } : item)
+
+    assert.deepEqual(second.llmCalls[0]!.slice(1, 4), replayed)
+
+    const [, secondRun] = await prisma.agentRun.findMany({ where: { conversationId }, orderBy: { createdAt: 'asc' } })
+    const samplingStep = (await listSteps(secondRun!.id)).find(step => step.type === 'model_sampling')
+
+    // 候选与选入仍按 Message 条数记：一问一答两条。
+    assert.equal((samplingStep?.output as { contextPlan?: { historyIncludedCount?: number } }).contextPlan?.historyIncludedCount, 2)
+  })
+
   it('#216 AC-08(c) Serper Key 解不开：web_search 失败并在日志写明原因，同一轮的其他工具与整次对话正常完成', async () => {
     const logs: string[] = []
 
@@ -610,8 +679,6 @@ describe('AgentRuntime PostgreSQL integration', () => {
         model: createResolvedLlmModel(),
         runtimeConfig: createRuntimeConfigSnapshot({
           limits: {
-            maxSamplingRounds: 3,
-            maxToolCalls: options.tools ? 2 : 1,
             runDeadlineMs: options.runDeadlineMs ?? 60_000,
           },
           debugCaptureModelIo: options.captureModelIO ?? false,

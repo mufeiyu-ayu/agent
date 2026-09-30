@@ -7,6 +7,7 @@ import type {
   TokenEstimator,
   TokenEstimatorInput,
 } from './deepseek-v4-token-estimator.js'
+import type { HistoryGroup } from './model-context.js'
 import assert from 'node:assert/strict'
 import { describe, it } from 'vitest'
 
@@ -380,7 +381,7 @@ describe('SamplingContextPlanner 首轮历史裁剪', () => {
     )
   })
 
-  it('AC-03 故障注入：删除位置落在一问一答中间时整对删除，保留部分从 user 开始且问答成对', () => {
+  it('AC-03 故障注入：删除位置落在一问一答中间时整对删除（按问答分组，二分以组为单位），保留部分从 user 开始且问答成对', () => {
     const estimator = new MessageCountTokenEstimator()
     const history = historyMessages(60, index => `history-${index}`)
     // 53 个 item 的预算：只删 9 条就够，第 10 条（history-10）是第 5 对的回答，提问已被删掉。
@@ -452,14 +453,15 @@ describe('SamplingContextPlanner 首轮历史裁剪', () => {
     const plan = planFirstRound(estimator, history, budget, LOOKUP_TOOL)
     const includedCount = plan.summary.historyIncludedCount
 
-    // 最新连续后缀、不超预算、再多一条就超预算。
+    // 最新连续后缀、不超预算、再多一次问答（两条）就超预算。
     assert.ok(includedCount > 0 && includedCount < history.length, 'includedCount > 0 && includedCount < history.length')
+    assert.equal(includedCount % 2, 0, '按问答整组保留')
     assert.deepEqual(
       includedHistoryContents(plan),
       history.slice(history.length - includedCount).map(message => message.content),
     )
     assert.ok(plan.summary.estimatedInputTokens <= budget, 'plan.summary.estimatedInputTokens <= budget')
-    assert.ok(estimateNewest(includedCount + 1) > budget, 'estimateNewest(includedCount + 1) > budget')
+    assert.ok(estimateNewest(includedCount + 2) > budget, 'estimateNewest(includedCount + 2) > budget')
   })
 
   it('1000 条超预算历史的首轮全量估算次数有上界', () => {
@@ -491,6 +493,103 @@ describe('SamplingContextPlanner 首轮历史裁剪', () => {
       estimator.callCount <= 1 + 3 + Math.ceil(Math.log2(history.length)),
       `estimate 调用 ${estimator.callCount} 次`,
     )
+  })
+})
+
+describe('SamplingContextPlanner 本 Run 工具结果很多时', () => {
+  it('#218 已缩到 0 的旧结果不再重复估算：每轮 plan 的估算次数不随结果数增长，旧结果保持不变', () => {
+    const estimator = new CharacterTokenEstimator()
+    const planner = new SamplingContextPlanner(estimator)
+    const build = () => {
+      const context = createContext()
+
+      for (let index = 1; index <= 20; index += 1)
+        appendExchange(context, `call-${index}`, 'x'.repeat(1_000))
+      return context
+    }
+    // 预算为 0 时全部结果都缩到 0 仍放不下：报错里的估算值就是全部缩到最短时的 token 数。
+    let minimalTokens = 0
+
+    try {
+      planner.plan({ context: build(), tools: NO_TOOLS, resolvedInputBudgetTokens: 0 })
+    }
+    catch (error) {
+      assert.ok(error instanceof SamplingContextBudgetExceededError)
+      minimalTokens = error.summary.estimatedInputTokens
+    }
+
+    const context = build()
+    // 第一轮：最旧的 19 个缩到 0，最新的一个留部分预览。
+    const first = planner.plan({ context, tools: NO_TOOLS, resolvedInputBudgetTokens: minimalTokens + 500 })
+    const before = estimator.inputs.length
+    // 下一轮预算更紧：只需要再缩最新的一个。
+    const second = planner.plan({ context, tools: NO_TOOLS, resolvedInputBudgetTokens: minimalTokens + 200 })
+    const estimates = estimator.inputs.length - before
+
+    assert.ok(estimates < 19, `第二轮估算 ${estimates} 次，不应为 19 个已缩到 0 的结果各估算两次`)
+    assert.ok(second.summary.estimatedInputTokens <= minimalTokens + 200)
+    assert.deepEqual(
+      second.summary.observations.slice(0, 19).map(observation => observation.finalChars),
+      first.summary.observations.slice(0, 19).map(observation => observation.finalChars),
+    )
+    assert.ok(second.summary.observations[19]!.finalChars < first.summary.observations[19]!.finalChars)
+  })
+})
+
+describe('SamplingContextPlanner 按问答整组删历史（#218 AC-04）', () => {
+  // 三次问答：带两个工具调用的、只有问题没有回答的、带一个工具调用的；每个 item 按 10 token 估算。
+  const groups: HistoryGroup[] = [
+    toolGroup('a', ['a1', 'a2']),
+    { messageCount: 1, items: [{ type: 'message', role: 'user', content: 'q-b' }] },
+    toolGroup('c', ['c1']),
+  ]
+  // 必带内容：instructions + current = 2 个 item。
+  const planWithBudget = (items: number) => new SamplingContextPlanner(new MessageCountTokenEstimator()).plan({
+    context: ModelContext.fromHistory({ instructions: INSTRUCTIONS, initialHistory: groups, currentUserMessage: CURRENT_USER }),
+    tools: NO_TOOLS,
+    resolvedInputBudgetTokens: items * 10,
+  })
+  const itemCount = (group: HistoryGroup) => group.items.length
+  const allItems = 2 + groups.reduce((total, group) => total + itemCount(group), 0)
+
+  it('二分边界：删 0 组、删部分、删光；historyIncludedCount 是保留问答的 Message 条数', () => {
+    const cases = [
+      // 全部放得下：一组不删。
+      { budget: allItems, keptGroups: 3, includedCount: 5 },
+      // 差一个 item：最旧那组整组删掉（5 个 item），不会只删它的用户问题。
+      { budget: allItems - 1, keptGroups: 2, includedCount: 3 },
+      // 只差到只剩最新一组：只有问题的那组也算一组，一起删掉。
+      { budget: 2 + itemCount(groups[2]!), keptGroups: 1, includedCount: 2 },
+      // 连最新一组都放不下：全部删光。
+      { budget: 2 + itemCount(groups[2]!) - 1, keptGroups: 0, includedCount: 0 },
+    ]
+
+    for (const { budget, keptGroups, includedCount } of cases) {
+      const plan = planWithBudget(budget)
+
+      assert.deepEqual(
+        plan.items.slice(INSTRUCTIONS.length, -1),
+        groups.slice(groups.length - keptGroups).flatMap(group => group.items),
+        `budget ${budget}`,
+      )
+      assert.deepEqual(
+        [plan.summary.historyCandidateCount, plan.summary.historyIncludedCount, plan.summary.historyExcludedCount],
+        [5, includedCount, 5 - includedCount],
+        `budget ${budget}`,
+      )
+    }
+  })
+
+  it('任意预算下保留部分都从某次问答的开头起：不会只剩工具结果或只剩调用', () => {
+    for (let budget = 2; budget <= allItems; budget += 1) {
+      const history = planWithBudget(budget).items.slice(INSTRUCTIONS.length, -1)
+      const suffixes = groups.map((_, index) => groups.slice(index).flatMap(group => group.items))
+
+      assert.ok(
+        history.length === 0 || suffixes.some(suffix => JSON.stringify(suffix) === JSON.stringify(history)),
+        `budget ${budget}`,
+      )
+    }
   })
 })
 
@@ -554,9 +653,45 @@ describe('summarizeInitialContext', () => {
 function createContext(input: { history?: MessageInputItem[] } = {}): ModelContext {
   return ModelContext.fromHistory({
     instructions: INSTRUCTIONS,
-    initialHistory: input.history ?? [],
+    initialHistory: toQuestionAnswerGroups(input.history ?? []),
     currentUserMessage: CURRENT_USER,
   })
+}
+
+/** 平铺的历史消息按问答分组：每条用户消息起一组，随后的回答并入这一组。 */
+function toQuestionAnswerGroups(messages: MessageInputItem[]): HistoryGroup[] {
+  const groups: HistoryGroup[] = []
+
+  for (const message of messages) {
+    const last = groups.at(-1)
+
+    if (message.role === 'assistant' && last) {
+      last.items.push(message)
+      last.messageCount += 1
+    }
+    else {
+      groups.push({ messageCount: 1, items: [message] })
+    }
+  }
+
+  return groups
+}
+
+/** 一次带工具的问答：用户问题 → 一轮 tool_calls 与逐个结果 → 最终回答。 */
+function toolGroup(name: string, callIds: string[]): HistoryGroup {
+  return {
+    messageCount: 2,
+    items: [
+      { type: 'message', role: 'user', content: `q-${name}` },
+      {
+        type: 'assistant_tool_call',
+        calls: callIds.map(callId => ({ callId, name: 'tool', rawArgumentsJson: JSON.stringify({ q: callId }) })),
+        reasoningContent: '',
+      },
+      ...callIds.map(callId => ({ type: 'tool_result' as const, callId, name: 'tool', content: `r-${callId}`, ok: true })),
+      { type: 'message', role: 'assistant', content: `a-${name}` },
+    ],
+  }
 }
 
 function historyMessages(count: number, content: (index: number) => string): MessageInputItem[] {

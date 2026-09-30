@@ -8,9 +8,6 @@ export function createRuntimeConfigSnapshot(
 
   return {
     limits: {
-      historyCandidateHardLimit: 1_000,
-      maxSamplingRounds: 10,
-      maxToolCalls: 8,
       runDeadlineMs: 600_000,
       ...limits,
     },

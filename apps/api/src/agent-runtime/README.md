@@ -23,11 +23,11 @@
 ## 主调用链
 
 ```text
-ChatService（LlmModelConfigService.resolveModel 解析模型行快照；RuntimeConfigService.loadSnapshot 读运行配置快照：运行限制、调试开关、Serper Key）
+ChatService（LlmModelConfigService.resolveModel 解析模型行快照；RuntimeConfigService.loadSnapshot 读运行配置快照：单次最长时间、调试开关、Serper Key）
   -> AgentRuntimeService.runTurnStream()
-  -> lifecycle: create Run + cancellation（deadline 取自 input.runtimeConfig.limits）
-  -> resolveRunConfiguration()（私有方法）：模型可见的 Tool 说明（来自工具清单 TOOL_DEFINITIONS）+ resolveChatRequestConfig
-  -> context: select and plan model-visible input
+  -> lifecycle: create Run + cancellation（deadline 取自 input.runtimeConfig.limits；不限轮数与工具调用次数，只由它兜底）
+  -> resolveRunConfiguration()（私有方法）：模型可见的 Tool 说明（工具清单 TOOL_DEFINITIONS 全部）+ resolveChatRequestConfig
+  -> context: 读全部历史候选（先读消息，再一次查询取回答所属 Run 的采样与工具 Step），toHistoryGroups 还原成按问答分组、带之前工具记录的输入；每轮 plan 超预算时整组删最旧的问答
   -> sampling: consume model stream and return decision（正文推 assistant_delta；思考原文推 reasoning_delta，只给界面，不进正文与模型上下文；每轮完整思考随采样 Step 落库，只有收完的 Tool Call 轮是回填内容，最后一轮与被停止 / 失败那一轮的只为界面还原；第一段正文的时刻记成 answerStartedMs，此后收口的采样 Step 都带上）
   -> executeToolBatch()（私有 async generator）：顺序处理一批 Tool Call，每个 call 一个 tool_execution Step；判定与执行都交给 ToolInvocationService.invoke，这里按它返回的 result / argumentsValidated / observation 记账与回喂；开 Step 前推 tool_started、收口后推 tool_finished（只给界面，不进模型上下文；工具给的 display 同时存进 tool Step，只为刷新后还原），被停止或 deadline 打断的 call 不推 tool_finished
   -> lifecycle: atomic terminalization

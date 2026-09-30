@@ -1,18 +1,16 @@
 import type {
   ChatStreamOptions,
-  MessageInputItem,
   ModelToolSpec,
   ModelUsage,
 } from '@agent/ai'
 import type { AgentRunErrorCode } from '@agent/contracts'
 import type {
   Message,
-  Prisma,
   MessageRole as PrismaMessageRole,
   MessageStatus as PrismaMessageStatus,
 } from '../generated/prisma/client.js'
 import type { DatabaseOperationDeadline } from '../prisma/prisma.service.js'
-import type { RunLimits, SerperApiKey } from '../runtime-config/runtime-config.service.js'
+import type { SerperApiKey } from '../runtime-config/runtime-config.service.js'
 import type { NormalizedToolObservation } from '../tools/core/tool-observation.js'
 import type {
   ToolDisplay,
@@ -23,6 +21,7 @@ import type {
   AgentRuntimeEvent,
   RunTurnStreamInput,
 } from './agent-runtime.types.js'
+import type { HistoryStepRow } from './context/conversation-history.js'
 import type { TokenEstimator } from './context/deepseek-v4-token-estimator.js'
 import type { InitialContextSummary } from './context/initial-context.js'
 import type { SamplingContextPlanSummary } from './context/sampling-context-planner.js'
@@ -49,7 +48,7 @@ import {
 } from '@agent/ai'
 import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common'
 import { getAiExceptionMessage } from '../common/utils/llm-error-message.util.js'
-import { MessageRole, MessageStatus } from '../generated/prisma/client.js'
+import { MessageRole, MessageStatus, Prisma } from '../generated/prisma/client.js'
 import { LLMService } from '../llm/llm.service.js'
 import {
   DatabaseCommitOutcomeUnknownError,
@@ -60,12 +59,12 @@ import { TOOL_DEFINITIONS } from '../tools/tool-definitions.js'
 import { toToolProgressArguments } from '../tools/web/tool-progress-arguments.js'
 import {
   AGENT_RUN_DEADLINE_EXCEEDED_MESSAGE,
-  AgentLoopLimitExceededError,
   AgentRunTerminalizationError,
   ContextBudgetExceededError,
   ContextTokenEstimationError,
   ModelSamplingIncompleteError,
 } from './agent-runtime.errors.js'
+import { separateFromPreviousText, toHistoryGroups } from './context/conversation-history.js'
 import { DeepSeekV4TokenEstimator } from './context/deepseek-v4-token-estimator.js'
 import { summarizeInitialContext } from './context/initial-context.js'
 import { ModelContext, toFeedbackArgumentsJson } from './context/model-context.js'
@@ -175,12 +174,11 @@ export class AgentRuntimeService {
       const currentAgentRunId = agentRun.id
 
       agentRunId = currentAgentRunId
-      // Run deadline 必须先于请求级配置解析生效；运行限制取自 ChatService 在 Run 开始前读好的快照，这里不会抛错。
-      const runLimits = input.runtimeConfig.limits
-
+      // Run deadline 必须先于请求级配置解析生效；时限取自 ChatService 在 Run 开始前读好的快照，这里不会抛错。
+      // 一次问答不限轮数与工具调用次数（#218），模型一直做到给出最终回答，只由这个时限兜底。
       runCancellation = createRunCancellation(
         input.signal,
-        runLimits.runDeadlineMs,
+        input.runtimeConfig.limits.runDeadlineMs,
       )
       const runSignal = runCancellation.signal
       const databaseDeadline = runCancellation.databaseDeadline
@@ -188,18 +186,18 @@ export class AgentRuntimeService {
       // 配置解析时机保持在 Run 落库之后：请求级配置错误仍走既有 failRun
       // 终态化，不改变 Run 生命周期语义。
       const { request: resolvedRequestConfig, modelTools }
-        = this.resolveRunConfiguration(input, runLimits)
+        = this.resolveRunConfiguration(input)
       const loadHistoryStep = await this.agentRunRecorderService.startStep({
         runId: currentAgentRunId,
         type: AGENT_STEP_TYPES.loadConversationHistory,
       }, databaseDeadline)
 
       // 查询前后各检查一次用户取消或 Run 超时；await 期间也可能发生。
+      // 查 Step 失败同样在这里抛出：此时还没调用模型，由 failRun 收口，不带着半截历史发请求。
       runCancellation.throwIfUnavailable()
-      const historyCandidates = await this.listRecentMessageCandidates(
+      const history = await this.loadConversationHistory(
         input.conversationId,
         userMessage,
-        runLimits.historyCandidateHardLimit,
         databaseDeadline,
       )
       runCancellation.throwIfUnavailable()
@@ -207,13 +205,11 @@ export class AgentRuntimeService {
       const modelContext = ModelContext.fromHistory({
         // 系统提示词
         instructions: input.instructions,
-        // 全部历史候选：数据库按「最新 -> 最旧」读取，模型上下文恢复为
-        // 「最旧 -> 最新」；首轮 plan() 超预算时从最旧删减
-        initialHistory: historyCandidates
-          .map(message => this.toLlmMessage(message))
-          .reverse(),
+        // 会话里的全部历史候选，按问答分组、最旧在前，带回之前问答的工具调用与结果；
+        // 不按条数截断，首轮 plan() 超预算时从最旧的问答整组删减
+        initialHistory: toHistoryGroups(history.messages, history.steps),
         // 当前用户消息
-        currentUserMessage: this.toLlmMessage(userMessage),
+        currentUserMessage: { type: 'message', role: 'user', content: userMessage.content },
       })
       // 裁剪前快照，写入每个 sampling Step 的 input.initialContext。
       // 估算失败或必带内容超预算都在这里抛出，此时 load_conversation_history
@@ -231,10 +227,10 @@ export class AgentRuntimeService {
         loadHistoryStep.id,
         databaseDeadline,
         {
-          // 候选历史条数：本次读入 ModelContext、尚未按预算裁剪的条数；
+          // 候选历史条数（Message 条数）：本次读入 ModelContext、尚未按预算裁剪的条数；
           // 每轮实际选入几条由该轮 plan() 决定，记在对应 sampling Step 的 contextPlan.historyIncludedCount。
           output: {
-            messageCount: historyCandidates.length,
+            messageCount: history.messages.length,
           },
         },
       )
@@ -286,17 +282,8 @@ export class AgentRuntimeService {
         tools: modelTools,
       }
 
-      // 只有某轮 Sampling 返回 final_answer 才置为 true；
-      // 轮数耗尽后仍为 false 表示 Agent Loop 未正常完成。
-      let hasFinalAnswer = false
-      // 已发起的 Tool Call 次数，按 call 计数（同轮多个 call 各算一次），用于限制 maxToolCalls。
-      let toolCallCount = 0
-
-      for (
-        let samplingAttempt = 1;
-        samplingAttempt <= runLimits.maxSamplingRounds;
-        samplingAttempt += 1
-      ) {
+      // 不限轮数：某轮 Sampling 返回 final_answer 才退出；用户停止、到达时限或出错时由各处 throwIfUnavailable / catch 结束。
+      for (let samplingAttempt = 1; ; samplingAttempt += 1) {
         runCancellation.throwIfUnavailable()
         const samplingAttemptId = `${currentAgentRunId}:sampling-${samplingAttempt}`
         //  创建模型采样 step
@@ -510,18 +497,10 @@ export class AgentRuntimeService {
 
         runCancellation.throwIfUnavailable()
 
-        if (samplingDecision.type === 'final_answer') {
-          hasFinalAnswer = true
+        if (samplingDecision.type === 'final_answer')
           break
-        }
 
         const { calls } = samplingDecision
-
-        // 本轮 call 数超过剩余预算：在执行任何 call 之前整体拒绝，没有部分副作用。
-        if (toolCallCount + calls.length > runLimits.maxToolCalls)
-          throw new AgentLoopLimitExceededError()
-
-        toolCallCount += calls.length
 
         // length：模型输出达到长度限制，arguments 可能不完整。整批一个都不执行，
         // 每个 call 记一条失败 Step 并作为 observation 回喂，下一轮由模型自行重发。
@@ -571,10 +550,6 @@ export class AgentRuntimeService {
         })
 
         // modelContext 多了下面这组
-      }
-
-      if (!hasFinalAnswer) {
-        throw new AgentLoopLimitExceededError()
       }
 
       runCancellation.throwIfUnavailable()
@@ -978,18 +953,13 @@ export class AgentRuntimeService {
    * 解析一次 Run 的请求级配置：模型可见 Tool 说明与 resolved 模型请求配置（模型行快照 + 请求级 reasoningEffort）。
    * 模型行的数值约束在 Admin 写入时由 `assertModelRowValid` 把关，这里不再校验。
    */
-  private resolveRunConfiguration(
-    input: RunTurnStreamInput,
-    runLimits: RunLimits,
-  ) {
-    // 顺序即工具清单的顺序；模型只看到名称、说明与输入 Schema，timeout 与 Observation 预算留在服务端。
-    const modelTools = runLimits.maxToolCalls === 0
-      ? []
-      : TOOL_DEFINITIONS.map(definition => ({
-          name: definition.name,
-          description: definition.description,
-          inputSchema: definition.input.schema,
-        }))
+  private resolveRunConfiguration(input: RunTurnStreamInput) {
+    // 工具始终全部提供给模型；顺序即工具清单的顺序。模型只看到名称、说明与输入 Schema，timeout 与 Observation 预算留在服务端。
+    const modelTools = TOOL_DEFINITIONS.map(definition => ({
+      name: definition.name,
+      description: definition.description,
+      inputSchema: definition.input.schema,
+    }))
     const request = resolveChatRequestConfig(input.model.profile, {
       ...(input.reasoningEffort === undefined
         ? {}
@@ -1000,39 +970,49 @@ export class AgentRuntimeService {
   }
 
   /**
-   * 一次按时间倒序读取严格早于当前用户消息的最近已完成消息，最多 take 条。
-   * 仅返回已完成消息；未完成消息不进入模型历史。
+   * 读当前用户消息之前的全部历史候选（#218）：严格更早的已完成消息，最旧在前，不按条数截断；
+   * 再用一次查询取回这些回答所属 Run 的采样与工具 Step，还原之前问答的工具调用与结果。
+   * 先读消息再读 Step（同 messages.service.ts 的约定）：Run 收口时先提交各 Step、再把回答改成终态，
+   * 读到已完成的回答时它的 Step 一定已提交（READ COMMITTED 下每条语句各取快照）。
    */
-  private async listRecentMessageCandidates(
+  private async loadConversationHistory(
     conversationId: string,
     currentUserUpperBound: Pick<Message, 'id' | 'createdAt'>,
-    take: number,
     databaseDeadline: DatabaseOperationDeadline,
-  ): Promise<Message[]> {
-    const messages = await this.prismaService.withDeadlineTransaction(
+  ): Promise<{ messages: Message[], steps: HistoryStepRow[] }> {
+    return await this.prismaService.withDeadlineTransaction(
       databaseDeadline,
-      transaction => transaction.execute(prisma => prisma.message.findMany({
-        where: {
-          conversationId,
-          status: MessageStatus.COMPLETED,
-          // 严格早于当前用户消息：createdAt 更早，或同一时刻 id 更小。
-          OR: [
-            { createdAt: { lt: currentUserUpperBound.createdAt } },
-            {
-              createdAt: currentUserUpperBound.createdAt,
-              id: { lt: currentUserUpperBound.id },
-            },
+      async (transaction) => {
+        const messages = await transaction.execute(prisma => prisma.message.findMany({
+          where: {
+            conversationId,
+            status: MessageStatus.COMPLETED,
+            // 严格早于当前用户消息：createdAt 更早，或同一时刻 id 更小。
+            OR: [
+              { createdAt: { lt: currentUserUpperBound.createdAt } },
+              {
+                createdAt: currentUserUpperBound.createdAt,
+                id: { lt: currentUserUpperBound.id },
+              },
+            ],
+          },
+          orderBy: [
+            { createdAt: 'asc' },
+            { id: 'asc' },
           ],
-        },
-        orderBy: [
-          { createdAt: 'desc' },
-          { id: 'desc' },
-        ],
-        take,
-      })),
-    )
+        }))
+        const answerIds = messages
+          .filter(message => message.role === MessageRole.ASSISTANT)
+          .map(message => message.id)
+        const steps = answerIds.length === 0
+          ? []
+          : await transaction.execute(prisma => prisma.$queryRaw<HistoryStepRow[]>(
+              historyStepsQuery(conversationId, answerIds),
+            ))
 
-    return messages
+        return { messages, steps }
+      },
+    )
   }
 
   private async createMessageAndTouchConversation(
@@ -1062,14 +1042,6 @@ export class AgentRuntimeService {
 
       return message
     })
-  }
-
-  private toLlmMessage(message: Message): MessageInputItem {
-    return {
-      type: 'message',
-      role: message.role === MessageRole.USER ? 'user' : 'assistant',
-      content: message.content,
-    }
   }
 
   private async assertConversationExists(conversationId: string): Promise<void> {
@@ -1309,8 +1281,6 @@ function describeRuntimeError(
   // 模型没以 stop / tool_calls 完整结束（length / content_filter / unknown / 缺 response_completed）。
   if (error instanceof ModelSamplingIncompleteError)
     return { errorCode: 'llm_protocol', message: error.message }
-  if (error instanceof AgentLoopLimitExceededError)
-    return { errorCode: 'loop_limit', message: error.message }
   if (error instanceof ContextBudgetExceededError)
     return { errorCode: 'context_overflow', message: error.message }
   if (error instanceof ContextTokenEstimationError)
@@ -1339,8 +1309,7 @@ function toLlmErrorCode(error: LLMError): AgentRunErrorCode {
 
 /**
  * 落库的裁剪前快照：InitialContextSummary 的字段原样写入，再加上 `modelToolNames`；候选历史条数在 load_conversation_history 的 output。
- * `modelToolNames` 是本 Run 给模型的工具名单：给不给工具取决于运行配置的 maxToolCalls，
- * 那一行事后可改，所以按名单落库；工具定义本身取自当次部署的代码（已知偏差）。
+ * `modelToolNames` 是本 Run 给模型的工具名单（当次部署的工具清单全部）；工具定义本身取自当次部署的代码（已知偏差）。
  */
 function toPersistedInitialContext(
   initialContext: InitialContextSummary,
@@ -1415,14 +1384,37 @@ function toPersistedToolDisplay(display: ToolDisplay): Prisma.InputJsonObject {
 }
 
 /**
- * 用户可见文本跨轮拼接时保证中间隔一个空行，新一轮的文本另起一段：否则以 `## 标题` 或列表开头的
- * 回答会粘进上一段，只隔单个换行也只是段内软换行；下个 Run 的历史里同样是粘连文本。
+ * 历史候选里回答所属 Run 的采样与工具 Step，一次查询取回，查询次数与问答数无关。
+ * 每条回答取最新的一次运行（同 messages.service.ts），没有采样与工具 Step 的 Run 也留一行，用来把回答对上问题。
+ * 每个 `->` 都会把整列 jsonb 解压一次：只对需要的类型取对应路径，不碰 debug 抓取、contextPlan 等字段。
  */
-function separateFromPreviousText(previous: string, next: string): string {
-  if (!previous || !next || previous.endsWith('\n\n'))
-    return next
+function historyStepsQuery(conversationId: string, answerIds: string[]): Prisma.Sql {
+  const sampling = AGENT_STEP_TYPES.modelSampling
+  const tool = AGENT_STEP_TYPES.toolExecution
 
-  return `${previous.endsWith('\n') ? '\n' : '\n\n'}${next}`
+  return Prisma.sql`
+    SELECT
+      r."userMessageId",
+      r."assistantMessageId",
+      s."sequence",
+      s."type",
+      s."input" -> 'samplingAttemptId' AS "samplingAttemptId",
+      CASE WHEN s."type" = ${sampling} THEN s."output" -> 'toolCallCount' END AS "toolCallCount",
+      CASE WHEN s."type" = ${sampling} THEN s."output" -> 'intermediateText' END AS "intermediateText",
+      CASE WHEN s."type" = ${tool} THEN s."input" -> 'callId' END AS "callId",
+      CASE WHEN s."type" = ${tool} THEN s."input" -> 'toolName' END AS "toolName",
+      CASE WHEN s."type" = ${tool} THEN s."input" -> 'arguments' END AS "arguments",
+      CASE WHEN s."type" = ${tool} THEN s."output" -> 'observation' END AS "observation",
+      CASE WHEN s."type" = ${tool} THEN s."output" -> 'ok' END AS "ok"
+    FROM (
+      SELECT DISTINCT ON (run."assistantMessageId") run."id", run."userMessageId", run."assistantMessageId"
+      FROM "AgentRun" run
+      WHERE run."conversationId" = ${conversationId}
+        AND run."assistantMessageId" = ANY(${answerIds})
+      ORDER BY run."assistantMessageId", run."createdAt" DESC, run."id" DESC
+    ) r
+    LEFT JOIN "AgentStep" s ON s."runId" = r."id" AND s."type" IN (${sampling}, ${tool})
+  `
 }
 
 function toPersistedModelUsage(

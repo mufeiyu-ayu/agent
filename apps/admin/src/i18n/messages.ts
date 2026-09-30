@@ -529,18 +529,12 @@ export const messages = {
         debug: '调试',
       },
       fields: {
-        maxSamplingRounds: '单次最多调用模型',
-        maxToolCalls: '单次最多调用工具',
         runDeadlineSeconds: '单次最长时间',
-        historyCandidateHardLimit: '历史最多读取条数',
         serperApiKey: 'Serper API Key',
         debugCaptureModelIo: '抓取模型原始请求',
       },
       tips: {
-        maxSamplingRounds: '一次问答最多请求模型几轮；每调用一轮工具，模型要再回答一轮',
-        maxToolCalls: '一次问答最多执行几次工具调用，同一轮的多个调用各算一次；0 表示不给模型工具',
-        runDeadlineSeconds: '一次问答从开始到结束的最长时间，超时后停止并提示',
-        historyCandidateHardLimit: '每次问答最多读取的历史消息条数；实际带给模型的还会按模型的单次输入上限从最早的开始裁剪',
+        runDeadlineSeconds: '一次问答从开始到结束的最长时间，超时后停止并提示；模型调用几轮、用几次工具不限，由它兜底',
         serperApiKey: '联网搜索经 Serper 查 Google；没填时搜索失败，对话照常',
         debugCaptureModelIo: '把每轮发给模型的请求和原始响应存进运行记录，在运行详情里查看；只在排查问题时打开',
       },
@@ -549,10 +543,7 @@ export const messages = {
       configured: '已配置',
       notConfigured: '未配置',
       units: {
-        maxSamplingRounds: '轮',
-        maxToolCalls: '次',
         runDeadlineSeconds: '秒',
-        historyCandidateHardLimit: '条',
       },
     },
     llmModels: {

@@ -38,7 +38,7 @@ export const AGENT_RUN_ERROR_CODES = [
   'context_overflow',
   // Token 估算器无法完成请求前估算。
   'estimator_failure',
-  // 采样轮数或 Tool Call 预算耗尽仍没有最终回答。
+  // 采样轮数或 Tool Call 预算耗尽仍没有最终回答；#218 删掉这两个上限后不再产生，只为显示历史记录保留。
   'loop_limit',
   // 数据库、工具执行等其余服务端故障。
   'internal',

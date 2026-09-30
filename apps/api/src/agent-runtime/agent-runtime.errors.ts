@@ -1,14 +1,6 @@
 import type { ModelFinishReason } from '@agent/ai'
 import type { ModelSamplingSummary } from './sampling/model-sampling-decision.js'
 
-/** Agent Loop 已耗尽服务端执行预算，不能伪装成正常回答。 */
-export class AgentLoopLimitExceededError extends Error {
-  constructor() {
-    super('Agent Loop 已达到执行上限，未产生最终回答。')
-    this.name = 'AgentLoopLimitExceededError'
-  }
-}
-
 /** Run 超时的用户可见文案；终态归因不依赖 deadline reason 的具体形状。 */
 export const AGENT_RUN_DEADLINE_EXCEEDED_MESSAGE = 'Agent Run 已达到执行时限。'
 

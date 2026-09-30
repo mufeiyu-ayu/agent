@@ -5,21 +5,12 @@
 
 /** 各项的闭区间；上限受 PostgreSQL INTEGER 与 Node 定时器上限（2^31 − 1）约束。 */
 export const RUNTIME_CONFIG_LIMITS = {
-  maxSamplingRounds: { min: 1, max: 2_147_483_647 },
-  maxToolCalls: { min: 0, max: 2_147_483_647 },
   runDeadlineMs: { min: 1, max: 2_147_483_647 },
-  historyCandidateHardLimit: { min: 50, max: 1_000 },
 } as const
 
 export interface AdminRuntimeConfig {
-  /** 单次问答最多调用模型几轮。 */
-  maxSamplingRounds: number
-  /** 单次问答最多执行几次工具调用，按 call 计；0 表示不给模型工具。 */
-  maxToolCalls: number
-  /** 单次问答正常执行阶段的最长时间，单位毫秒。 */
+  /** 单次问答正常执行阶段的最长时间，单位毫秒；一次问答不限轮数与工具调用次数，只由它兜底。 */
   runDeadlineMs: number
-  /** 一次查询最多读取的历史候选条数。 */
-  historyCandidateHardLimit: number
   /** 是否抓取模型原始请求 / 响应 JSON。 */
   debugCaptureModelIo: boolean
   /** Serper API Key 的尾四位；没配为 null，明文永不返回。 */
@@ -28,10 +19,7 @@ export interface AdminRuntimeConfig {
 }
 
 export interface AdminRuntimeConfigInput {
-  maxSamplingRounds: number
-  maxToolCalls: number
   runDeadlineMs: number
-  historyCandidateHardLimit: number
   debugCaptureModelIo: boolean
   /** 省略或空串表示不改。 */
   serperApiKey?: string
