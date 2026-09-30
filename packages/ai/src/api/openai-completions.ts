@@ -25,10 +25,12 @@ import OpenAI, {
   APIUserAbortError,
 } from 'openai'
 
+import { isContextOverflowMessage } from '../context-overflow.js'
 import {
   LLMApiError,
   LLMAuthError,
   LLMBalanceError,
+  LLMContextOverflowError,
   LLMError,
   LLMInvalidRequestError,
   LLMNetworkError,
@@ -62,8 +64,8 @@ type ChatCompletionBaseParams = Pick<
   ChatCompletionCreateParamsStreaming,
   'messages' | 'model' | 'max_tokens'
 > & {
-  /** 思考开关只对 compat.thinkingFormat 为 'deepseek' 的家族发。 */
-  thinking?: { type: 'enabled' }
+  /** 思考开关只对 compat.thinkingFormat 为 'deepseek' 的家族发；请求可以覆盖成关闭。 */
+  thinking?: { type: 'enabled' | 'disabled' }
   /** 任何家族配置了就发，取值按家族见 contracts 的 LLM_FAMILY_CAPABILITIES。 */
   reasoning_effort?: ReasoningEffort
 }
@@ -257,6 +259,10 @@ export class OpenAICompatibleClient {
     // code / type 与截断后的 message；完整 APIError 留在 `detail` 上。401 / 402 / 403 / 429 的文案已足够定位，不带摘要。
     const upstream = describeJsonErrorBody(error.error, this.clientConfig.apiKey)
 
+    // 输入超长先于一切按状态码的归类（照抄 Pi：只看报错原文），中转站包成 upstream_error 的也算。
+    if (isContextOverflowMessage(rawErrorTexts(error)))
+      return new LLMContextOverflowError(status, error, upstream)
+
     // 中转站把「中转站到上游失败」包成 400 + `upstream_error`（流内则 code 为 null），与请求体无关，
     // 按服务端故障归类；流内没有状态码时按网关故障记 502。沿用上游 401 / 429 等状态码的照常按状态码归类。
     // SDK 已把 error 对象的 type 放在 `error.type` 上。SDK 不重试 400，这类故障不会像 502 那样自动重试。
@@ -287,6 +293,21 @@ export class OpenAICompatibleClient {
         )
     }
   }
+}
+
+/**
+ * 识别输入超长用的未截断原文：SDK 拼了状态码的 message（非 JSON body 的原文只在这里）、上游 body 里的 message，
+ * 以及整个 error 对象（type / code 里的 `request_too_large`、`context_length_exceeded` 不在 message 里）。
+ */
+function rawErrorTexts(error: APIError): string[] {
+  const body: unknown = error.error
+  const bodyMessage = (body as { message?: unknown } | undefined)?.message
+
+  return [
+    error.message,
+    ...(typeof bodyMessage === 'string' ? [bodyMessage] : []),
+    ...(typeof body === 'object' && body !== null ? [JSON.stringify(body)] : []),
+  ]
 }
 
 /** 流内 error 对象的 `code` 是 4xx / 5xx 状态码（数值或三位数字字符串）时取出来；其余（含 200 这类业务码）为 undefined。 */
@@ -350,12 +371,15 @@ function rejectOnAbort<T>(
   })
 }
 
-/** thinking 开关按家族 compat 表决定格式，目前只有 DeepSeek 一种；reasoning_effort 任何家族配置了就发，中转站会透传给上游。 */
+/**
+ * thinking 开关按家族 compat 表决定格式，目前只有 DeepSeek 一种，默认开、请求可以关（写上下文摘要时）；
+ * reasoning_effort 任何家族配置了就发，中转站会透传给上游。
+ */
 function toThinkingParams(
   request: ResolvedChatRequestConfig,
 ): Pick<ChatCompletionBaseParams, 'thinking' | 'reasoning_effort'> {
   return {
-    ...(request.compat.thinkingFormat === 'deepseek' ? { thinking: { type: 'enabled' as const } } : {}),
+    ...(request.compat.thinkingFormat === 'deepseek' ? { thinking: { type: request.thinking ?? 'enabled' } } : {}),
     ...(request.reasoningEffort ? { reasoning_effort: request.reasoningEffort } : {}),
   }
 }

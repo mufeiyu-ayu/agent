@@ -34,6 +34,7 @@ const state = createRuntimeConfigState()
 const formRef = ref<FormInstance>()
 const form = reactive<RuntimeConfigForm>({
   runDeadlineSeconds: 0,
+  compactionKeepRecentTokens: 0,
   debugCaptureModelIo: false,
   serperApiKey: '',
 })
@@ -41,17 +42,29 @@ const form = reactive<RuntimeConfigForm>({
 /** 时限在表单里按秒，上限由毫秒上限换算。 */
 const DEADLINE_SECONDS = { min: 1, max: Math.floor(RUNTIME_CONFIG_LIMITS.runDeadlineMs.max / 1000) }
 
-const rules = computed<Record<'runDeadlineSeconds', Rule[]>>(() => ({
-  runDeadlineSeconds: [{
-    validator: async (_rule: unknown, value: number | null) => {
-      const { min, max } = DEADLINE_SECONDS
+const rules = computed<Record<'runDeadlineSeconds' | 'compactionKeepRecentTokens', Rule[]>>(() => ({
+  runDeadlineSeconds: [rangeRule(DEADLINE_SECONDS)],
+  compactionKeepRecentTokens: [rangeRule(RUNTIME_CONFIG_LIMITS.compactionKeepRecentTokens)],
+}))
 
+function rangeRule({ min, max }: { min: number, max: number }): Rule {
+  return {
+    validator: async (_rule: unknown, value: number | null) => {
       if (value === null || !Number.isInteger(value) || value < min || value > max)
         throw new Error(t('runtimeConfig.rangeInvalid', { min: min.toLocaleString('en-US'), max: max.toLocaleString('en-US') }))
     },
     trigger: 'change',
-  }],
-}))
+  }
+}
+
+/** Token 数输入框显示千分位，v-model 里仍是数字（同模型弹窗）。 */
+function formatThousands(value: string | number): string {
+  return String(value).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+}
+
+function parseThousands(value: string): string {
+  return value.replace(/,/g, '')
+}
 
 const dirty = computed(() => state.config.value !== null && isRuntimeConfigDirty(form, state.config.value))
 const serperPlaceholder = computed(() => state.config.value?.serperApiKeyLast4
@@ -148,6 +161,23 @@ async function save() {
                 id="runtime-config-runDeadlineSeconds"
                 v-model:value="form.runDeadlineSeconds"
                 :addon-after="t('runtimeConfig.units.runDeadlineSeconds')"
+                class="settings-number"
+              />
+            </FormItem>
+          </div>
+          <div class="settings-row">
+            <label for="runtime-config-compactionKeepRecentTokens" class="settings-row__label">
+              {{ t('runtimeConfig.fields.compactionKeepRecentTokens') }}
+              <Tooltip :title="t('runtimeConfig.tips.compactionKeepRecentTokens')">
+                <QuestionCircleOutlined class="settings-row__tip" />
+              </Tooltip>
+            </label>
+            <FormItem name="compactionKeepRecentTokens" class="settings-row__control">
+              <InputNumber
+                id="runtime-config-compactionKeepRecentTokens"
+                v-model:value="form.compactionKeepRecentTokens"
+                :formatter="formatThousands"
+                :parser="parseThousands"
                 class="settings-number"
               />
             </FormItem>

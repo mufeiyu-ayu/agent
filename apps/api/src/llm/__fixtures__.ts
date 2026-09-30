@@ -8,6 +8,7 @@ export function createResolvedLlmModel(
 ): ResolvedLlmModel {
   return {
     modelId: 'model-deepseek-v4-flash',
+    family: 'deepseek',
     provider: {
       providerId: 'provider-deepseek',
       baseUrl: 'https://api.deepseek.com/v1',

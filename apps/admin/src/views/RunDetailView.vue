@@ -16,7 +16,8 @@ import { useRoute, useRouter } from 'vue-router'
 import PageContainer from '@/components/common/PageContainer.vue'
 import RunStatusTag from '@/features/runs/components/RunStatusTag.vue'
 import { createRunDetailState } from '@/features/runs/run-detail.state'
-import { formatDateTime } from '@/features/runs/run.utils'
+import { formatDateTime, formatTokens } from '@/features/runs/run.utils'
+import InspectorTextBlock from '@/features/runs/trace/inspectors/InspectorTextBlock.vue'
 import RunTraceWorkspace from '@/features/runs/trace/RunTraceWorkspace.vue'
 
 const route = useRoute()
@@ -38,6 +39,11 @@ const {
 watch(run, () => {
   activeTab.value = 'trace'
 }, { immediate: true })
+
+// 问答结束后在后台为下一次问答预压的记录（#220 检查点 B）：不是 Step，单独列出。
+const backgroundCompactions = computed(() => run.value?.compactions.filter(
+  compaction => compaction.reason === 'after_run' && compaction.runId === run.value?.id,
+) ?? [])
 
 // AdminLayout 以 $route.path 为 key，每个路径独立实例：setup 加载一次即可。
 // 不再 watch runId——离场过渡期间 param 变化只会让垂死实例发无效请求、闪 404。
@@ -93,6 +99,32 @@ onBeforeUnmount(cancelRunLoad)
                   </time>
                 </header>
                 <p>{{ item.contentPreview }}</p>
+                <code>{{ item.id }}</code>
+              </article>
+            </div>
+          </TabPane>
+
+          <TabPane
+            v-if="backgroundCompactions.length"
+            key="compactions"
+            :tab="t('runDetail.tabs.compactions', { count: backgroundCompactions.length })"
+          >
+            <div class="message-list compaction-list">
+              <article
+                v-for="item in backgroundCompactions"
+                :key="item.id"
+                class="message-card"
+              >
+                <header>
+                  <span>{{ t('runDetail.compaction.meta', { groups: item.coveredGroupCount, tokens: formatTokens(item.tokensBefore, locale) }) }}</span>
+                  <time>{{ formatDateTime(item.createdAt, locale) }}</time>
+                </header>
+                <InspectorTextBlock
+                  :title="t('runDetail.compaction.summary')"
+                  :text="item.summary"
+                  :empty-text="t('runTrace.inspector.unavailable')"
+                  collapsible
+                />
                 <code>{{ item.id }}</code>
               </article>
             </div>
@@ -241,5 +273,15 @@ onBeforeUnmount(cancelRunLoad)
 
 .message-card code {
   overflow-wrap: anywhere;
+}
+
+.compaction-list {
+  padding-top: 14px;
+}
+
+.compaction-list header > span {
+  color: var(--admin-text);
+  font-size: var(--admin-font-sm);
+  font-weight: 600;
 }
 </style>

@@ -8,8 +8,6 @@ export const TOOL_OBSERVATION_HARD_MAX_CHARS = 128_000
 export interface NormalizedToolObservation {
   /** 实际发送给模型的文本；超限时为带截断提示的开头预览。 */
   content: string
-  /** 已受 Tool ceiling 约束、但不含 envelope 的正文预览，仅供 Context 层二次缩减。 */
-  previewContent?: string
   /** 工具原始返回文本的字符数。 */
   originalChars: number
   /** 规范化后 `content` 的字符数。 */
@@ -68,7 +66,6 @@ export function normalizeToolObservation(
 
     return {
       content,
-      previewContent: '',
       originalChars,
       observationChars: [...content].length,
       truncated: true,
@@ -82,7 +79,6 @@ export function normalizeToolObservation(
 
   return {
     content: normalizedContent,
-    previewContent: previewCodePoints.slice(0, previewChars).join(''),
     originalChars,
     observationChars: [...normalizedContent].length,
     truncated: true,

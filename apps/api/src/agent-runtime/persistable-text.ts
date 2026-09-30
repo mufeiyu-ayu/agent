@@ -6,6 +6,16 @@
  */
 export function toPersistableText(text: string): string {
   return text
-    .replaceAll('\0', '\uFFFD')
-    .replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '\uFFFD')
+    .replaceAll('\0', '�')
+    .replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '�')
+}
+
+/**
+ * 按 UTF-16 码元截到 maxChars；截断点落在代理对中间时少截一位，不留孤立高位代理
+ * （jsonb 拒收，部分服务商也拒收请求体里的孤立代理项）。
+ */
+export function truncateCodeUnits(text: string, maxChars: number): string {
+  const last = text.charCodeAt(maxChars - 1)
+
+  return text.slice(0, last >= 0xD800 && last <= 0xDBFF ? maxChars - 1 : maxChars)
 }

@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import type {
+  AdminContextCompactionStep,
   AdminGenericStep,
   AdminModelSamplingStep,
+  AdminRunDetail,
   AdminRunTimelineItem,
 } from '@agent/contracts'
 import type { TraceRecord, TraceRequestGroup } from './run-trace.model'
@@ -11,12 +13,14 @@ import { useI18n } from 'vue-i18n'
 
 import RunStatusTag from '../components/RunStatusTag.vue'
 import { knownTimelineInspectorKeys, knownTimelineTitleKeys } from '../run.utils'
+import ContextCompactionInspector from './inspectors/ContextCompactionInspector.vue'
 import GenericInspector from './inspectors/GenericInspector.vue'
 import MessageInspector from './inspectors/MessageInspector.vue'
 import RequestInspector from './inspectors/RequestInspector.vue'
 import ToolExecutionInspector from './inspectors/ToolExecutionInspector.vue'
 
 const props = defineProps<{
+  run: AdminRunDetail
   record: TraceRecord | undefined
   requestGroup: TraceRequestGroup | undefined
 }>()
@@ -52,6 +56,20 @@ const messageItem = computed<MessageTimelineItem | undefined>(() => {
 const genericItem = computed<AdminGenericStep | undefined>(() => item.value?.kind === 'generic'
   ? item.value
   : undefined)
+const compactionItem = computed<AdminContextCompactionStep | undefined>(() => item.value?.kind === 'known' && item.value.type === 'context_compaction'
+  ? item.value
+  : undefined)
+
+// 压缩记录与本轮压缩 Step 按 id 找：历史摘要在记录里，前缀摘要在那条 Step 上（#220）。
+function findCompaction(id: string | null) {
+  return id === null ? undefined : props.run.compactions.find(compaction => compaction.id === id)
+}
+
+function findTurnCompaction(id: string | null): AdminContextCompactionStep | undefined {
+  const step = id === null ? undefined : props.run.timeline.find(candidate => candidate.id === id)
+
+  return step?.kind === 'known' && step.type === 'context_compaction' ? step : undefined
+}
 const requestNumber = computed(() => props.requestGroup?.number
   ?? props.record?.requestNumber
   ?? sampling.value?.samplingIndex
@@ -108,6 +126,13 @@ const title = computed(() => {
         <RequestInspector
           v-if="sampling"
           :item="sampling"
+          :compaction="findCompaction(sampling.contextInspector.compactionId)"
+          :turn-compaction="findTurnCompaction(sampling.contextInspector.turnCompactionStepId)"
+        />
+        <ContextCompactionInspector
+          v-else-if="compactionItem"
+          :item="compactionItem"
+          :history-summary="findCompaction(compactionItem.compactionId)?.summary ?? null"
         />
         <ToolExecutionInspector
           v-else-if="item.kind === 'known' && item.type === 'tool_execution'"

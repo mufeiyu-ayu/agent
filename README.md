@@ -53,7 +53,7 @@ Each run is stored as a sequence of steps: history loading, every model call, ev
 
 ### 📏 Context engineering with real token budgets
 
-Each run gets its own model context. Tokens are estimated with a local DeepSeek tokenizer (an approximation for other model families), history (earlier tool calls and their results included) is trimmed oldest-first, one whole question–answer at a time, to fit the budget, and tool output is treated as untrusted data with its own size limits.
+Each run gets its own model context. Tokens are counted from the provider's reported usage plus a rough estimate (UTF-8 bytes ÷ 4) for what was added since. History includes earlier tool calls and their results. When it outgrows the model's input limit, older question–answers are summarized instead of dropped (in the background after a reply when possible), and a long tool loop summarizes its own earlier steps. Tool output is treated as untrusted data with its own size limits.
 
 ### 🔌 OpenAI-compatible providers
 
@@ -70,7 +70,8 @@ A simplified view of the core loop in [`agent-runtime.service.ts`](./apps/api/sr
 ```ts
 // No cap on rounds or tool calls: the model keeps going until it answers; only the run deadline stops it.
 while (true) {
-  const input = planner.plan(context, budget) // what the model sees this round, earlier tool calls included
+  await compaction.compactBeforeSampling(run) // over the input limit: summarize older history, then earlier tool rounds
+  const input = context.plan(tools) // what the model sees this round, earlier tool calls included
   const decision = await streamModelSampling(llm.chatStream(input))
 
   if (decision.type === 'final_answer')
@@ -92,7 +93,7 @@ flowchart LR
     Web[Vue chat app] -->|NDJSON stream| API[ChatController]
     Admin[Admin console] --> AdminAPI[Admin API]
     API --> Runtime[Agent Runtime]
-    Runtime --> Context[Model context<br/>token budget · trimming]
+    Runtime --> Context[Model context<br/>token budget · compaction]
     Runtime --> LLM["@agent/ai<br/>OpenAI-compatible client"]
     LLM -->|SSE| Providers([DeepSeek · GPT · Grok · Gemini])
     Runtime --> Tools[Tools<br/>web search · web fetch] --> Internet([Google · web pages])
@@ -134,7 +135,7 @@ Follow one request from the HTTP call to the database, in this order:
 | --- | --- | --- |
 | 1 | [`chat.controller.ts`](./apps/api/src/chat/chat.controller.ts) | How a closed browser tab becomes an abort signal |
 | 2 | [`agent-runtime.service.ts`](./apps/api/src/agent-runtime/agent-runtime.service.ts) | The main loop: sample, dispatch, run tools, continue, finish |
-| 3 | [`sampling-context-planner.ts`](./apps/api/src/agent-runtime/context/sampling-context-planner.ts) | What the model sees each round, and what gets dropped first |
+| 3 | [`context-compaction.service.ts`](./apps/api/src/agent-runtime/context/context-compaction.service.ts) | What happens when the context outgrows the model: what gets summarized, what stays verbatim |
 | 4 | [`openai-completions-stream.ts`](./packages/ai/src/api/openai-completions-stream.ts) | How a provider's stream becomes clean events |
 | 5 | [`agent-run-recorder.service.ts`](./apps/api/src/agent-runtime/lifecycle/agent-run-recorder.service.ts) | Final-state ownership and atomic commits |
 

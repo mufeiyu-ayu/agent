@@ -6,6 +6,7 @@ import { isRuntimeConfigDirty, toRuntimeConfigForm, toRuntimeConfigInput } from 
 
 const CONFIG: AdminRuntimeConfig = {
   runDeadlineMs: 600_000,
+  compactionKeepRecentTokens: 20_000,
   debugCaptureModelIo: false,
   serperApiKeyLast4: 'abcd',
   updatedAt: '2026-09-29T00:00:00.000Z',
@@ -16,9 +17,11 @@ describe('运行配置表单映射', () => {
     const form = toRuntimeConfigForm(CONFIG)
 
     assert.equal(form.runDeadlineSeconds, 600)
+    assert.equal(form.compactionKeepRecentTokens, 20_000)
     assert.equal(form.serperApiKey, '')
-    assert.deepEqual(toRuntimeConfigInput({ ...form, runDeadlineSeconds: 90 }), {
+    assert.deepEqual(toRuntimeConfigInput({ ...form, runDeadlineSeconds: 90, compactionKeepRecentTokens: 15_000 }), {
       runDeadlineMs: 90_000,
+      compactionKeepRecentTokens: 15_000,
       debugCaptureModelIo: false,
     })
     assert.equal(toRuntimeConfigInput({ ...form, serperApiKey: '  sk-new  ' }).serperApiKey, 'sk-new')
@@ -31,6 +34,7 @@ describe('运行配置表单映射', () => {
     assert.equal(isRuntimeConfigDirty({ ...form, serperApiKey: '   ' }, CONFIG), false)
     assert.equal(isRuntimeConfigDirty({ ...form, serperApiKey: 'sk' }, CONFIG), true)
     assert.equal(isRuntimeConfigDirty({ ...form, runDeadlineSeconds: 120 }, CONFIG), true)
+    assert.equal(isRuntimeConfigDirty({ ...form, compactionKeepRecentTokens: 15_000 }, CONFIG), true)
     assert.equal(isRuntimeConfigDirty({ ...form, debugCaptureModelIo: true }, CONFIG), true)
   })
 })

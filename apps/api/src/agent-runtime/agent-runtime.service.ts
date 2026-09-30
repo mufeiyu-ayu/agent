@@ -1,15 +1,15 @@
 import type {
   ChatStreamOptions,
   ModelToolSpec,
-  ModelUsage,
 } from '@agent/ai'
 import type { AgentRunErrorCode } from '@agent/contracts'
 import type {
   Message,
+  Prisma,
   MessageRole as PrismaMessageRole,
   MessageStatus as PrismaMessageStatus,
 } from '../generated/prisma/client.js'
-import type { DatabaseOperationDeadline } from '../prisma/prisma.service.js'
+import type { ResolvedLlmModel } from '../llm/llm-model-config.service.js'
 import type { SerperApiKey } from '../runtime-config/runtime-config.service.js'
 import type { NormalizedToolObservation } from '../tools/core/tool-observation.js'
 import type {
@@ -21,10 +21,8 @@ import type {
   AgentRuntimeEvent,
   RunTurnStreamInput,
 } from './agent-runtime.types.js'
-import type { HistoryStepRow } from './context/conversation-history.js'
-import type { TokenEstimator } from './context/deepseek-v4-token-estimator.js'
-import type { InitialContextSummary } from './context/initial-context.js'
-import type { SamplingContextPlanSummary } from './context/sampling-context-planner.js'
+import type { CompactionRun } from './context/context-compaction.service.js'
+import type { SamplingContextPlan } from './context/model-context.js'
 import type { CloseAgentStepInput } from './lifecycle/agent-run-recorder.service.js'
 import type {
   RunCancellation,
@@ -39,6 +37,7 @@ import type {
 import {
   LLMAuthError,
   LLMBalanceError,
+  LLMContextOverflowError,
   LLMError,
   LLMInvalidRequestError,
   LLMNetworkError,
@@ -48,7 +47,7 @@ import {
 } from '@agent/ai'
 import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common'
 import { getAiExceptionMessage } from '../common/utils/llm-error-message.util.js'
-import { MessageRole, MessageStatus, Prisma } from '../generated/prisma/client.js'
+import { MessageRole, MessageStatus } from '../generated/prisma/client.js'
 import { LLMService } from '../llm/llm.service.js'
 import {
   DatabaseCommitOutcomeUnknownError,
@@ -60,21 +59,16 @@ import { toToolProgressArguments } from '../tools/web/tool-progress-arguments.js
 import {
   AGENT_RUN_DEADLINE_EXCEEDED_MESSAGE,
   AgentRunTerminalizationError,
-  ContextBudgetExceededError,
-  ContextTokenEstimationError,
   ModelSamplingIncompleteError,
+  samplingFailureCause,
 } from './agent-runtime.errors.js'
-import { separateFromPreviousText, toHistoryGroups } from './context/conversation-history.js'
-import { DeepSeekV4TokenEstimator } from './context/deepseek-v4-token-estimator.js'
-import { summarizeInitialContext } from './context/initial-context.js'
+import { ContextCompactionService } from './context/context-compaction.service.js'
+import { loadConversationHistory, separateFromPreviousText } from './context/conversation-history.js'
 import { ModelContext, toFeedbackArgumentsJson } from './context/model-context.js'
-import {
-  SamplingContextBudgetExceededError,
-  SamplingContextPlanner,
-} from './context/sampling-context-planner.js'
 import {
   AGENT_STEP_TYPES,
   AgentRunRecorderService,
+  toPersistedModelUsage,
 } from './lifecycle/agent-run-recorder.service.js'
 import {
   claimRunTermination,
@@ -136,11 +130,8 @@ export class AgentRuntimeService {
     @Inject(ToolInvocationService)
     private readonly toolInvocationService: ToolInvocationService,
 
-    @Inject(DeepSeekV4TokenEstimator)
-    private readonly tokenEstimator: TokenEstimator,
-
-    @Inject(SamplingContextPlanner)
-    private readonly samplingContextPlanner: SamplingContextPlanner,
+    @Inject(ContextCompactionService)
+    private readonly contextCompactionService: ContextCompactionService,
   ) {}
 
   async* runTurnStream(input: RunTurnStreamInput): AsyncGenerator<AgentRuntimeEvent> {
@@ -195,45 +186,45 @@ export class AgentRuntimeService {
       // 查询前后各检查一次用户取消或 Run 超时；await 期间也可能发生。
       // 查 Step 失败同样在这里抛出：此时还没调用模型，由 failRun 收口，不带着半截历史发请求。
       runCancellation.throwIfUnavailable()
-      const history = await this.loadConversationHistory(
+      // 同一个快照里读最新压缩记录与严格早于当前问题的历史（#220）：被覆盖的问答由摘要代替，其余按问答分组、
+      // 最旧在前，带回之前问答的工具调用与结果（#218），不按条数截断。
+      const { history, messageCount } = await loadConversationHistory(
+        this.prismaService,
         input.conversationId,
         userMessage,
         databaseDeadline,
       )
       runCancellation.throwIfUnavailable()
 
-      const modelContext = ModelContext.fromHistory({
+      const modelContext = ModelContext.create({
         // 系统提示词
         instructions: input.instructions,
-        // 会话里的全部历史候选，按问答分组、最旧在前，带回之前问答的工具调用与结果；
-        // 不按条数截断，首轮 plan() 超预算时从最旧的问答整组删减
-        initialHistory: toHistoryGroups(history.messages, history.steps),
-        // 当前用户消息
-        currentUserMessage: { type: 'message', role: 'user', content: userMessage.content },
-      })
-      // 裁剪前快照，写入每个 sampling Step 的 input.initialContext。
-      // 估算失败或必带内容超预算都在这里抛出，此时 load_conversation_history
-      // 仍为 RUNNING，由 failRun 收口为 FAILED，不会创建 sampling Step，也不会调用模型。
-      const initialContext = summarizeInitialContext({
-        resolvedModel: resolvedRequestConfig.model,
-        providerId: input.model.provider.providerId,
-        modelId: input.model.modelId,
-        resolvedInputBudgetTokens: input.model.maxInputTokens,
-        context: modelContext,
-        tools: modelTools,
-        tokenEstimator: this.tokenEstimator,
+        history,
+        // 当前用户消息；创建时间给本轮压缩的摘要输入写日期
+        currentUser: { content: userMessage.content, createdAt: userMessage.createdAt },
       })
       await this.agentRunRecorderService.completeStep(
         loadHistoryStep.id,
         databaseDeadline,
         {
-          // 候选历史条数（Message 条数）：本次读入 ModelContext、尚未按预算裁剪的条数；
-          // 每轮实际选入几条由该轮 plan() 决定，记在对应 sampling Step 的 contextPlan.historyIncludedCount。
-          output: {
-            messageCount: history.messages.length,
-          },
+          // 读到的历史 Message 条数（含被压缩记录覆盖的）；发给模型的未覆盖部分条数记在各 sampling Step 的
+          // contextPlan.historyIncludedCount。
+          output: { messageCount },
         },
       )
+      // 本 Run 的压缩状态：检查点 A、C 都用它（#220）。
+      const compactionRun: CompactionRun = {
+        runId: currentAgentRunId,
+        conversationId: input.conversationId,
+        model: input.model,
+        keepRecentTokens: input.runtimeConfig.compactionKeepRecentTokens,
+        tools: modelTools,
+        context: modelContext,
+        cancellation: runCancellation,
+        loop: { attemptedSinceSampling: false, ineffectiveAttempts: 0 },
+      }
+      // 服务商报超长后已经压缩重试过、之后还没有成功采样（照 Pi：连续超长只救一次）。
+      let overflowRetried = false
 
       // 创建助手消息与 Run 关联必须同事务提交，避免 deadline 下留下未关联的 late Message。
       assistantMessage = await this.agentRunRecorderService.createAssistantMessage(
@@ -285,6 +276,8 @@ export class AgentRuntimeService {
       // 不限轮数：某轮 Sampling 返回 final_answer 才退出；用户停止、到达时限或出错时由各处 throwIfUnavailable / catch 结束。
       for (let samplingAttempt = 1; ; samplingAttempt += 1) {
         runCancellation.throwIfUnavailable()
+        // 检查点 A：估算超触发线就先压缩；压缩 Step 排在采样 Step 之前，采样耗时不含压缩，前台照旧显示「思考中」。
+        await this.contextCompactionService.compactBeforeSampling(compactionRun)
         const samplingAttemptId = `${currentAgentRunId}:sampling-${samplingAttempt}`
         //  创建模型采样 step
         const samplingStep = await this.agentRunRecorderService.startStep({
@@ -293,7 +286,7 @@ export class AgentRuntimeService {
           input: {
             samplingIndex: samplingAttempt,
             samplingAttemptId,
-            initialContext: toPersistedInitialContext(initialContext, modelTools),
+            initialContext: toPersistedInitialContext(input.model, resolvedRequestConfig.model, modelTools),
           },
         }, databaseDeadline)
         // debug 捕获暂存：只有运行配置打开「抓取模型原始请求」时才给 client 回调，
@@ -306,33 +299,28 @@ export class AgentRuntimeService {
         let samplingDecision: SamplingDecision
         // 模型流已正常收完时的决策；后续 Step 落库失败时仍可用于收口，统计与回填内容都已完整成立。
         let completedSamplingDecision: SamplingDecision | undefined
-        // Context Planner 本轮的规划结果；落库的字段见 toPersistedContextPlan。
-        let contextPlanSummary: SamplingContextPlanSummary | undefined
+        // 本轮发出的输入与估算，落库形态见 toPersistedContextPlan。
+        let contextPlan: Prisma.InputJsonObject | undefined
         // 本轮是否已推出可见文本：只在本轮第一个 delta 前和上一轮的文本分段。
         let roundTextStarted = false
         // 本轮推给界面的思考原文（与 reasoning_delta 同一份）：最终回答轮与没收完的一轮按它落库，只为刷新后还原（#212）。
         let roundReasoning = ''
+        // 本轮推出过任何 delta（含思考）：推出后遇到超长不再重试，已推给前台的内容撤不回。
+        let roundDeltaPushed = false
 
         try {
-          // 每轮请求模型前重新规划完整输入：首轮把一次读到的全部历史按预算裁剪；
-          // 后续轮次还要把上一轮模型产生的 assistant_tool_call 与后端产生的
-          // tool_result 成对加入输入，超预算时先删最旧历史，再缩短 Tool Observation。
-          const contextPlan = this.samplingContextPlanner.plan({
-            context: modelContext,
-            tools: modelTools,
-            resolvedInputBudgetTokens:
-              initialContext.resolvedInputBudgetTokens,
-          })
+          // 每轮请求模型前组装完整输入：历史（压缩记录的摘要 + 未覆盖的问答）、当前问题与本 Run 保留的工具轮，
+          // 不删减内容；估算、基于的压缩记录与本轮压缩 Step 随采样 Step 落库，用于重建本轮输入。
+          const plan = modelContext.plan(modelTools)
 
-          // 预算、估算与选入的历史条数、每个 Tool Result 送入的字符数随采样 Step 落库，用于重建本轮输入。
-          contextPlanSummary = contextPlan.summary
+          contextPlan = toPersistedContextPlan(plan, input.model.maxInputTokens)
 
           runCancellation.throwIfUnavailable()
           // 两层 async generator 此时只创建迭代器；首次 sampling.next() 才启动模型请求并拉取事件。
           const sampling = streamModelSampling(
             this.llmService.chatStream(
               input.model.provider,
-              contextPlan.items,
+              plan.items,
               {
                 ...chatStreamOptions,
                 ...(input.runtimeConfig.debugCaptureModelIo
@@ -376,7 +364,7 @@ export class AgentRuntimeService {
               output: {
                 ...this.toFailedSamplingStepOutput(
                   undefined,
-                  contextPlanSummary,
+                  contextPlan,
                   debugModelIO,
                 ),
                 ...toPersistedSamplingContent(undefined, roundReasoning),
@@ -397,6 +385,7 @@ export class AgentRuntimeService {
               const reasoningDelta = toPersistableText(samplingResult.value.delta)
 
               roundReasoning += reasoningDelta
+              roundDeltaPushed = true
               yield {
                 type: 'reasoning_delta',
                 runId: currentAgentRunId,
@@ -415,6 +404,7 @@ export class AgentRuntimeService {
                 : separateFromPreviousText(terminal.content, visibleText)
 
               roundTextStarted = true
+              roundDeltaPushed = true
               terminal.content += contentDelta
               // 与前台同一口径：只有空白（如调工具前先吐的换行）不算正文开始；向下取整，1 秒界限与整秒都按不满算。
               if (answerStartedMs === undefined && contentDelta.trim())
@@ -441,7 +431,7 @@ export class AgentRuntimeService {
               output: {
                 ...this.toSamplingStepOutput(
                   samplingDecision.summary,
-                  contextPlanSummary,
+                  contextPlan,
                   debugModelIO,
                 ),
                 ...toPersistedSamplingContent(samplingDecision, roundReasoning),
@@ -456,6 +446,51 @@ export class AgentRuntimeService {
 
           terminal.samplingClose = undefined
           await closeSampling?.close()
+          const failedSamplingOutput = (errorCode: AgentRunErrorCode) => ({
+            ...(completedSamplingDecision
+              ? this.toSamplingStepOutput(
+                  completedSamplingDecision.summary,
+                  contextPlan,
+                  debugModelIO,
+                )
+              : this.toFailedSamplingStepOutput(
+                  error,
+                  contextPlan,
+                  debugModelIO,
+                )),
+            ...toPersistedSamplingContent(completedSamplingDecision, roundReasoning),
+            ...answerStartedOutput(),
+            errorCode,
+          })
+
+          // 检查点 C（照抄 Pi，连续超长只救一次）：服务商报超长、终态还没确立、本轮没推出过任何 delta、
+          // 上次成功采样后还没救过、有可压缩的内容时，失败的采样 Step 照常收口（不发 run_failed），强制压缩一次后
+          // 新开采样重试；压缩失败时按原来的超长错误走下面的失败收口（Step 已收口，Run 收口时不再改它）。
+          if (
+            !runCancellation.source
+            && !roundDeltaPushed
+            && !overflowRetried
+            && isContextOverflow(error)
+            && this.contextCompactionService.canCompact(compactionRun)
+          ) {
+            const overflow = describeRunFailure(undefined, error)
+
+            overflowRetried = true
+            terminal.stepFailure = {
+              id: samplingStep.id,
+              errorMessage: overflow.message,
+              output: failedSamplingOutput(overflow.errorCode),
+            }
+            await this.agentRunRecorderService.failStep(samplingStep.id, databaseDeadline, terminal.stepFailure)
+            delete terminal.stepFailure
+            modelContext.forgetSamplingUsage()
+
+            if (await this.contextCompactionService.compactAfterOverflow(compactionRun)) {
+              this.logSamplingDebugCaptureClosed(debugModelIO, 'failure')
+              continue
+            }
+          }
+
           // 先确立终态原因再写 Step 归因：用户停止或 deadline 先到时，
           // 随后的流读取失败只是它们的后果，Step 不能记成模型故障。
           claimRunTermination(runCancellation, error)
@@ -467,22 +502,7 @@ export class AgentRuntimeService {
           terminal.stepFailure = {
             id: samplingStep.id,
             errorMessage: samplingFailure.message,
-            output: {
-              ...(completedSamplingDecision
-                ? this.toSamplingStepOutput(
-                    completedSamplingDecision.summary,
-                    contextPlanSummary,
-                    debugModelIO,
-                  )
-                : this.toFailedSamplingStepOutput(
-                    error,
-                    contextPlanSummary,
-                    debugModelIO,
-                  )),
-              ...toPersistedSamplingContent(completedSamplingDecision, roundReasoning),
-              ...answerStartedOutput(),
-              errorCode: samplingFailure.errorCode,
-            },
+            output: failedSamplingOutput(samplingFailure.errorCode),
           }
           this.logSamplingDebugCaptureClosed(
             debugModelIO,
@@ -499,6 +519,12 @@ export class AgentRuntimeService {
 
         if (samplingDecision.type === 'final_answer')
           break
+
+        // 同一次问答内，下一次估算以这次采样的真实用量为锚点，只粗估之后新增的工具结果。
+        modelContext.recordSamplingUsage(samplingDecision.summary.usage)
+        // 成功采样后复位：之后可以再压缩（检查点 A），再遇到超长也可以再救一次（检查点 C）。
+        compactionRun.loop.attemptedSinceSampling = false
+        overflowRetried = false
 
         const { calls } = samplingDecision
 
@@ -531,25 +557,29 @@ export class AgentRuntimeService {
         // 把「模型叫了什么工具」和「工具回了什么」配成一组来回，放进上下文（此时还没发给模型）。
         // 示例（search_articles 查 Genshin 那次 Run），modelContext 里多出的这一组：
         // {
-        //   exchangeIndex: 0,                  // 本 Run 第 1 组来回
+        //   samplingAttemptId: 'run-1:sampling-1', // 产出这一组的采样轮，本轮压缩按它记保留起点
         //   assistantCall: {                   // 模型说：我要调这个
         //     type: 'assistant_tool_call',
         //     calls: [{ callId: 'call_00_7UAglwcS…', name: 'search_articles', rawArgumentsJson: '{"query": "Genshin", "limit": 10}' }],
         //     reasoningContent: 'The user wants a list of articles with "Genshin" in the title. Use search_articles.',
         //     // intermediateText 为空，所以没有 content
         //   },
-        //   results: [{                        // 工具说：结果是这个，靠同一个 callId 与上面配对
-        //     toolResult: { type: 'tool_result', callId: 'call_00_7UAglwcS…', name: 'search_articles', content: '共找到 16 篇匹配文章，…', ok: true },
-        //   }],
+        //   results: [                         // 工具说：结果是这个，靠同一个 callId 与上面配对
+        //     { type: 'tool_result', callId: 'call_00_7UAglwcS…', name: 'search_articles', content: '共找到 16 篇匹配文章，…', ok: true },
+        //   ],
         // }
         modelContext.appendToolExchange({
+          samplingAttemptId,
           calls, // 模型要调用的工具
           intermediateText: samplingDecision.intermediateText, // 模型这轮要说的话
           reasoningContent: samplingDecision.reasoningContent, // 模型这轮的思考文本
-          results: toolResults, // 工具执行官
+          // 工具执行的结果：回喂正文、是否成功与回喂参数
+          results: toolResults.map(result => ({
+            content: result.observation.content,
+            ok: result.ok,
+            feedbackArgumentsJson: result.feedbackArgumentsJson,
+          })),
         })
-
-        // modelContext 多了下面这组
       }
 
       runCancellation.throwIfUnavailable()
@@ -568,6 +598,16 @@ export class AgentRuntimeService {
       )
       runCancellation.claimCompleted()
       terminalizationHandled = true
+      // 检查点 B：提交确认之后在后台提前压缩下一次问答的历史；不 await，不延迟 run_completed。
+      // 提交结果不确定（completeRun 抛错）的分支走 catch，不发起。
+      void this.contextCompactionService.compactAfterRun({
+        runId: currentAgentRunId,
+        conversationId: input.conversationId,
+        model: input.model,
+        runtimeConfig: input.runtimeConfig,
+        instructions: input.instructions,
+        tools: modelTools,
+      })
       runCancellation.dispose()
 
       yield {
@@ -826,7 +866,7 @@ export class AgentRuntimeService {
         throw error
       }
 
-      // observation 已按工具上限修剪（第一道截断，第二道在 plan() 里按整轮预算缩）；
+      // observation 已按工具上限修剪（唯一一道截断：上下文超限只靠压缩，之后原样回喂）；
       // argumentsValidated 是 invoke 按实际走到的分支给出的：只有通过 input.parse 的调用参数才可信。
       const { result: toolResult, argumentsValidated, observation } = invocation
       // 回喂给模型的参数表示只算这一次：同一个字符串既落库，也进下一轮的 ModelContext。
@@ -847,7 +887,7 @@ export class AgentRuntimeService {
           originalChars: observation.originalChars,
           observationChars: observation.observationChars,
           truncated: observation.truncated,
-          // 回喂给模型的正文，已受 maxObservationChars 限制；后续轮次按预算缩短见 sampling Step 的 contextPlan。
+          // 回喂给模型的正文，已受 maxObservationChars 限制，之后各轮原样回喂。
           observation: toPersistableText(observation.content),
           // 工具给界面的结果，与 tool_finished 同一份，只为刷新后还原时间线（#212），不进模型上下文；
           // 工具失败时界面上的原因由 code 推出，不另存。
@@ -969,52 +1009,6 @@ export class AgentRuntimeService {
     return { request, modelTools }
   }
 
-  /**
-   * 读当前用户消息之前的全部历史候选（#218）：严格更早的已完成消息，最旧在前，不按条数截断；
-   * 再用一次查询取回这些回答所属 Run 的采样与工具 Step，还原之前问答的工具调用与结果。
-   * 先读消息再读 Step（同 messages.service.ts 的约定）：Run 收口时先提交各 Step、再把回答改成终态，
-   * 读到已完成的回答时它的 Step 一定已提交（READ COMMITTED 下每条语句各取快照）。
-   */
-  private async loadConversationHistory(
-    conversationId: string,
-    currentUserUpperBound: Pick<Message, 'id' | 'createdAt'>,
-    databaseDeadline: DatabaseOperationDeadline,
-  ): Promise<{ messages: Message[], steps: HistoryStepRow[] }> {
-    return await this.prismaService.withDeadlineTransaction(
-      databaseDeadline,
-      async (transaction) => {
-        const messages = await transaction.execute(prisma => prisma.message.findMany({
-          where: {
-            conversationId,
-            status: MessageStatus.COMPLETED,
-            // 严格早于当前用户消息：createdAt 更早，或同一时刻 id 更小。
-            OR: [
-              { createdAt: { lt: currentUserUpperBound.createdAt } },
-              {
-                createdAt: currentUserUpperBound.createdAt,
-                id: { lt: currentUserUpperBound.id },
-              },
-            ],
-          },
-          orderBy: [
-            { createdAt: 'asc' },
-            { id: 'asc' },
-          ],
-        }))
-        const answerIds = messages
-          .filter(message => message.role === MessageRole.ASSISTANT)
-          .map(message => message.id)
-        const steps = answerIds.length === 0
-          ? []
-          : await transaction.execute(prisma => prisma.$queryRaw<HistoryStepRow[]>(
-              historyStepsQuery(conversationId, answerIds),
-            ))
-
-        return { messages, steps }
-      },
-    )
-  }
-
   private async createMessageAndTouchConversation(
     conversationId: string,
     role: PrismaMessageRole,
@@ -1090,7 +1084,7 @@ export class AgentRuntimeService {
 
   private toSamplingStepOutput(
     summary: ModelSamplingSummary,
-    contextPlan?: SamplingContextPlanSummary,
+    contextPlan?: Prisma.InputJsonObject,
     debugModelIO?: DebugModelIOCaptured,
   ) {
     return {
@@ -1099,38 +1093,26 @@ export class AgentRuntimeService {
       usage: toPersistedModelUsage(summary.usage),
       toolCallCount: summary.toolCallCount,
       firstTokenMs: summary.firstTokenMs,
-      ...(contextPlan
-        ? { contextPlan: toPersistedContextPlan(contextPlan) }
-        : {}),
+      ...(contextPlan ? { contextPlan } : {}),
       ...this.toDebugModelIOOutput(debugModelIO),
     }
   }
 
   private toFailedSamplingStepOutput(
     error: unknown,
-    contextPlan?: SamplingContextPlanSummary,
+    contextPlan?: Prisma.InputJsonObject,
     debugModelIO?: DebugModelIOCaptured,
   ) {
-    const failedContextPlan = contextPlan
-      ?? (error instanceof SamplingContextBudgetExceededError
-        ? error.summary
-        : undefined)
-
     if (error instanceof ModelSamplingIncompleteError && error.summary) {
       return this.toSamplingStepOutput(
         error.summary,
-        failedContextPlan,
+        contextPlan,
         debugModelIO,
       )
     }
 
     return {
-      ...(error instanceof ContextTokenEstimationError
-        ? { contextFailureReason: 'estimator_failure' as const }
-        : {}),
-      ...(failedContextPlan
-        ? { contextPlan: toPersistedContextPlan(failedContextPlan) }
-        : {}),
+      ...(contextPlan ? { contextPlan } : {}),
       ...this.toDebugModelIOOutput(debugModelIO),
     }
   }
@@ -1246,11 +1228,7 @@ function describeRunFailure(
   if (source === 'deadline')
     return { errorCode: 'deadline', message: AGENT_RUN_DEADLINE_EXCEEDED_MESSAGE, rootCause: reason }
 
-  // 流读取失败时，采样包装只说明「这一轮没完整结束」，真实原因在 cause 上。
-  const rootCause = reason instanceof ModelSamplingIncompleteError
-    && reason.cause !== undefined
-    ? reason.cause
-    : reason
+  const rootCause = samplingFailureCause(reason)
 
   if (rootCause instanceof LLMError) {
     return {
@@ -1281,12 +1259,13 @@ function describeRuntimeError(
   // 模型没以 stop / tool_calls 完整结束（length / content_filter / unknown / 缺 response_completed）。
   if (error instanceof ModelSamplingIncompleteError)
     return { errorCode: 'llm_protocol', message: error.message }
-  if (error instanceof ContextBudgetExceededError)
-    return { errorCode: 'context_overflow', message: error.message }
-  if (error instanceof ContextTokenEstimationError)
-    return { errorCode: 'estimator_failure', message: error.message }
 
   return undefined
+}
+
+/** 服务商报的输入超长。 */
+function isContextOverflow(error: unknown): boolean {
+  return samplingFailureCause(error) instanceof LLMContextOverflowError
 }
 
 function toLlmErrorCode(error: LLMError): AgentRunErrorCode {
@@ -1296,6 +1275,9 @@ function toLlmErrorCode(error: LLMError): AgentRunErrorCode {
     return 'llm_balance'
   if (error instanceof LLMRateLimitError)
     return 'llm_rate_limit'
+  // 先于它的父类 LLMInvalidRequestError。
+  if (error instanceof LLMContextOverflowError)
+    return 'llm_context_overflow'
   if (error instanceof LLMInvalidRequestError)
     return 'llm_invalid_request'
   if (error instanceof LLMServerError)
@@ -1308,38 +1290,37 @@ function toLlmErrorCode(error: LLMError): AgentRunErrorCode {
 }
 
 /**
- * 落库的裁剪前快照：InitialContextSummary 的字段原样写入，再加上 `modelToolNames`；候选历史条数在 load_conversation_history 的 output。
- * `modelToolNames` 是本 Run 给模型的工具名单（当次部署的工具清单全部）；工具定义本身取自当次部署的代码（已知偏差）。
+ * 每个 sampling Step 的 `input.initialContext`：本 Run 的模型快照、触发线（模型行「单次输入上限」）与给模型的工具名单
+ * （当次部署的工具清单全部）；工具定义本身取自当次部署的代码（已知偏差）。读到的历史条数在 load_conversation_history 的 output。
  */
 function toPersistedInitialContext(
-  initialContext: InitialContextSummary,
+  model: ResolvedLlmModel,
+  resolvedModel: string,
   modelTools: ModelToolSpec[],
 ): Prisma.InputJsonObject {
   return {
-    resolvedModel: initialContext.resolvedModel,
-    providerId: initialContext.providerId,
-    modelId: initialContext.modelId,
-    resolvedInputBudgetTokens: initialContext.resolvedInputBudgetTokens,
+    resolvedModel,
+    providerId: model.provider.providerId,
+    modelId: model.modelId,
+    resolvedInputBudgetTokens: model.maxInputTokens,
     modelToolNames: modelTools.map(tool => tool.name),
   }
 }
 
 /**
- * 预算与估算之外，只落两项 planner 决策：本轮选入几条历史（首轮超预算从最旧处删，后续轮次
- * 超预算还会继续删，所以每轮各记各的），以及每个 Tool Result 实际送入的字符数（按 exchange、
- * call 顺序，与 tool_execution Step 的先后一致）。它们与历史消息、Step 里的正文一起还原本轮输入。
+ * 本轮输入的还原依据（#220）：触发线与估算，本轮基于的历史压缩记录（摘要 + 覆盖集合）与本轮压缩 Step（前缀摘要 +
+ * 保留起点），以及未被覆盖的历史 Message 条数（同一会话并发时按条数重建）。它们与历史消息、Step 里的正文一起还原本轮输入。
  */
 function toPersistedContextPlan(
-  contextPlan: SamplingContextPlanSummary,
+  plan: SamplingContextPlan,
+  resolvedInputBudgetTokens: number,
 ): Prisma.InputJsonObject {
   return {
-    resolvedInputBudgetTokens: contextPlan.resolvedInputBudgetTokens,
-    estimatedInputTokens: contextPlan.estimatedInputTokens,
-    overflowReason: contextPlan.overflowReason,
-    historyIncludedCount: contextPlan.historyIncludedCount,
-    observationPreviewChars: contextPlan.observations.map(
-      observation => observation.finalChars,
-    ),
+    resolvedInputBudgetTokens,
+    estimatedInputTokens: plan.estimatedInputTokens,
+    compactionId: plan.compactionId,
+    turnCompactionStepId: plan.turnCompactionStepId,
+    historyIncludedCount: plan.historyIncludedCount,
   }
 }
 
@@ -1381,48 +1362,4 @@ function toPersistedToolDisplay(display: ToolDisplay): Prisma.InputJsonObject {
     ...(display.title === undefined ? {} : { title: toPersistableText(display.title) }),
     ...(display.chars === undefined ? {} : { chars: display.chars }),
   }
-}
-
-/**
- * 历史候选里回答所属 Run 的采样与工具 Step，一次查询取回，查询次数与问答数无关。
- * 每条回答取最新的一次运行（同 messages.service.ts），没有采样与工具 Step 的 Run 也留一行，用来把回答对上问题。
- * 每个 `->` 都会把整列 jsonb 解压一次：只对需要的类型取对应路径，不碰 debug 抓取、contextPlan 等字段。
- */
-function historyStepsQuery(conversationId: string, answerIds: string[]): Prisma.Sql {
-  const sampling = AGENT_STEP_TYPES.modelSampling
-  const tool = AGENT_STEP_TYPES.toolExecution
-
-  return Prisma.sql`
-    SELECT
-      r."userMessageId",
-      r."assistantMessageId",
-      s."sequence",
-      s."type",
-      s."input" -> 'samplingAttemptId' AS "samplingAttemptId",
-      CASE WHEN s."type" = ${sampling} THEN s."output" -> 'toolCallCount' END AS "toolCallCount",
-      CASE WHEN s."type" = ${sampling} THEN s."output" -> 'intermediateText' END AS "intermediateText",
-      CASE WHEN s."type" = ${tool} THEN s."input" -> 'callId' END AS "callId",
-      CASE WHEN s."type" = ${tool} THEN s."input" -> 'toolName' END AS "toolName",
-      CASE WHEN s."type" = ${tool} THEN s."input" -> 'arguments' END AS "arguments",
-      CASE WHEN s."type" = ${tool} THEN s."output" -> 'observation' END AS "observation",
-      CASE WHEN s."type" = ${tool} THEN s."output" -> 'ok' END AS "ok"
-    FROM (
-      SELECT DISTINCT ON (run."assistantMessageId") run."id", run."userMessageId", run."assistantMessageId"
-      FROM "AgentRun" run
-      WHERE run."conversationId" = ${conversationId}
-        AND run."assistantMessageId" = ANY(${answerIds})
-      ORDER BY run."assistantMessageId", run."createdAt" DESC, run."id" DESC
-    ) r
-    LEFT JOIN "AgentStep" s ON s."runId" = r."id" AND s."type" IN (${sampling}, ${tool})
-  `
-}
-
-function toPersistedModelUsage(
-  usage: ModelUsage | null,
-): Prisma.InputJsonObject | null {
-  return usage
-    ? Object.fromEntries(
-      Object.entries(usage).filter(([, value]) => value !== undefined),
-    ) as Prisma.InputJsonObject
-    : null
 }

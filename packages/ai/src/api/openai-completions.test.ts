@@ -10,6 +10,7 @@ import {
   LLMApiError,
   LLMAuthError,
   LLMBalanceError,
+  LLMContextOverflowError,
   LLMInvalidRequestError,
   LLMNetworkError,
   LLMRateLimitError,
@@ -190,6 +191,25 @@ describe('OpenAICompatibleClient runtime config', () => {
       assert.equal(wireBody.tools.length, 1)
       assert.deepEqual(wireBody.messages[1], expected)
     }
+  })
+
+  it('请求把思考关掉时 DeepSeek 发 thinking disabled；其他家族本来就不发 thinking，覆盖不改变请求体', async () => {
+    const harness = createHarness()
+    const { reasoningEffort: _reasoningEffort, ...deepseekWithoutEffort } = DEEPSEEK_REQUEST
+
+    await collectEvents(harness.client.chatStream(
+      [{ type: 'message', role: 'user', content: 'hello' }],
+      { request: { ...deepseekWithoutEffort, thinking: 'disabled' } },
+    ))
+    await collectEvents(harness.client.chatStream(
+      [{ type: 'message', role: 'user', content: 'hello' }],
+      { request: { ...RELAY_REQUEST, reasoningEffort: 'low', thinking: 'disabled' } },
+    ))
+
+    assert.deepEqual(harness.calls[0]?.params?.thinking, { type: 'disabled' })
+    assert.equal(Object.hasOwn(harness.calls[0]?.params ?? {}, 'reasoning_effort'), false)
+    assert.equal(Object.hasOwn(harness.calls[1]?.params ?? {}, 'thinking'), false)
+    assert.equal(harness.calls[1]?.params?.reasoning_effort, 'low')
   })
 
   it('非 reasoning 模型不发 thinking 参数，Tool Call 无 reasoning_content 也能完成', async () => {
@@ -818,6 +838,113 @@ describe('OpenAICompatibleClient 映射状态码保留上游原因（#175）', (
 
     assert.ok(server instanceof LLMServerError, 'server instanceof LLMServerError')
     assert.match(server.message, /（502）.*: \[bad_gateway\] upstream timeout$/)
+  })
+})
+
+describe('OpenAICompatibleClient 输入超长识别（#220）', () => {
+  const json = (status: number, body: unknown) => () => new Response(
+    JSON.stringify(body),
+    { status, headers: { 'Content-Type': 'application/json', 'retry-after': '0' } },
+  )
+  const inStream = (error: unknown) => () => new Response(
+    `data: ${JSON.stringify({ error })}\n\n`,
+    { status: 200, headers: { 'Content-Type': 'text/event-stream' } },
+  )
+  // Pi `packages/ai/src/utils/overflow.ts`（890f920）注释里各家的样例原文，X / Y 换成了数字。
+  const PI_SAMPLES = [
+    'prompt is too long: 213462 tokens > 200000 maximum',
+    'Your input exceeds the context window of this model',
+    'Requested token count exceeds the model\'s maximum context length of 131072 tokens',
+    'Input length (265330) exceeds model\'s maximum context length (262144).',
+    'The input token count (1196265) exceeds the maximum number of tokens allowed (1048575)',
+    'This model\'s maximum prompt length is 131072 but the request contains 537812 tokens',
+    'Please reduce the length of the messages or completion',
+    'This endpoint\'s maximum context length is 131072 tokens. However, you requested about 140000 tokens',
+    'Input length 140000 exceeds the maximum allowed input length of 131072 tokens.',
+    'The input (140000 tokens) is longer than the model\'s context length (131072 tokens).',
+    'the request exceeds the available context size, try increasing it',
+    'tokens to keep from the initial prompt is greater than the context length',
+    'prompt token count of 140000 exceeds the limit of 131072',
+    'invalid params, context window exceeds limit',
+    'Your request exceeded model token limit: 131072 (requested: 140000)',
+    'Prompt has 140000 tokens, but the configured context size is 131072 tokens',
+    'Prompt contains 140000 tokens ... too large for model with 131072 maximum context length',
+    'Prompt too long',
+    'Range of input length should be [1, 131072]',
+    'prompt too long; exceeded max context length by 8928 tokens',
+  ]
+
+  it('Pi 注释里的样例：400 / 413 / 流内报错（不看状态码）都归 LLMContextOverflowError', async () => {
+    for (const message of PI_SAMPLES) {
+      for (const response of [
+        json(400, { error: { type: 'invalid_request_error', message } }),
+        json(413, { error: { message } }),
+        inStream({ message }),
+      ]) {
+        const error = await failureOf(response)
+
+        assert.ok(error instanceof LLMContextOverflowError, `${message}：${String(error)}`)
+        // 仍是请求错误的一种：没单独处理它的调用方照旧按 400 类归类。
+        assert.ok(error instanceof LLMInvalidRequestError, 'error instanceof LLMInvalidRequestError')
+      }
+    }
+  })
+
+  it('非 JSON body、error 对象的 type / code 与中转站包成 upstream_error 的超长同样识别；文案带状态与摘要', async () => {
+    const plain = await failureOf(() => new Response(
+      'Input length (265330) exceeds model\'s maximum context length (262144).',
+      { status: 413, headers: { 'Content-Type': 'text/plain' } },
+    ))
+    // Pi 样例里的 Anthropic 413：超长只写在 type 里。
+    const byType = await failureOf(json(413, { error: { type: 'request_too_large', message: 'Request exceeds the maximum size' } }))
+    const byCode = await failureOf(json(400, { error: { code: 'context_length_exceeded', message: 'Bad request' } }))
+    const relayed = await failureOf(json(400, { error: { code: null, type: 'upstream_error', message: 'Your input exceeds the context window of this model' } }))
+    const relayedInStream = await failureOf(inStream({ code: null, type: 'upstream_error', message: 'Prompt too long' }))
+
+    for (const error of [plain, byType, byCode, relayed, relayedInStream])
+      assert.ok(error instanceof LLMContextOverflowError, String(error))
+    assert.equal((plain as Error).message, '输入超出模型的上下文上限（413）')
+    assert.equal(
+      (relayed as Error).message,
+      '输入超出模型的上下文上限（400）: [upstream_error] Your input exceeds the context window of this model',
+    )
+    assert.match((relayedInStream as Error).message, /^输入超出模型的上下文上限（流内报错）/)
+  })
+
+  it('真实报错原文（2026-09-30 各发一次超长请求）：DeepSeek 直连与中转站 GPT 能识别，中转站 Grok / Gemini 抹掉了原因', async () => {
+    const deepseek = await failureOf(json(400, { error: {
+      message: 'This model\'s maximum context length is 1048576 tokens. However, you requested 2600020 tokens (2600004 in the messages, 16 in the completion). Please reduce the length of the messages or completion. (request_id: de5f1ad7-5964-4e51-9cd0-c11651eb82ea)',
+      type: 'invalid_request_error',
+      param: null,
+      code: 'invalid_request_error',
+    } }))
+    // 中转站的 GPT 组回 502：SDK 先按 5xx 重试两次，识别发生在重试用尽之后。
+    const relayGpt = await failureOf(json(502, { error: {
+      message: 'Your input exceeds the context window of this model. Please adjust your input and try again.',
+      type: 'upstream_error',
+    } }), 3)
+    const relayGrok = await failureOf(json(400, { error: { message: 'Upstream error: 400', type: 'invalid_request_error' } }))
+    const relayGemini = await failureOf(json(400, { error: { code: null, message: 'Upstream request failed', param: null, type: 'upstream_error' } }))
+
+    assert.ok(deepseek instanceof LLMContextOverflowError, String(deepseek))
+    assert.ok(relayGpt instanceof LLMContextOverflowError, String(relayGpt))
+    assert.match((relayGpt as Error).message, /^输入超出模型的上下文上限（502）/)
+    // 没有可识别的原文，只能按原来的类别：不压缩重试。
+    assert.ok(relayGrok instanceof LLMInvalidRequestError && !(relayGrok instanceof LLMContextOverflowError), String(relayGrok))
+    assert.ok(relayGemini instanceof LLMServerError, String(relayGemini))
+  })
+
+  it('限流类不误判：带 too many tokens 的 429 与 Bedrock 限流原文按原来的类别', async () => {
+    const rateLimited = await failureOf(json(429, { error: { message: 'Rate limit reached: too many tokens per minute' } }), 3)
+    const tooManyRequests = await failureOf(json(400, { error: { message: 'Too many requests, too many tokens' } }))
+    const throttled = await failureOf(json(400, { error: { message: 'Throttling error: Too many tokens, please wait before trying again.' } }))
+    const ordinary = await failureOf(json(400, { error: { message: 'max_tokens too large' } }))
+
+    assert.ok(rateLimited instanceof LLMRateLimitError, String(rateLimited))
+    for (const error of [tooManyRequests, throttled, ordinary]) {
+      assert.ok(error instanceof LLMInvalidRequestError, String(error))
+      assert.ok(!(error instanceof LLMContextOverflowError), String(error))
+    }
   })
 })
 

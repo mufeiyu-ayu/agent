@@ -17,6 +17,7 @@ function fulfill(route: Route, status: number, data: unknown, message = 'ok') {
 
 const CONFIG: AdminRuntimeConfig = {
   runDeadlineMs: 600_000,
+  compactionKeepRecentTokens: 20_000,
   debugCaptureModelIo: false,
   serperApiKeyLast4: null,
   updatedAt: '2026-09-29T00:00:00.000Z',
@@ -44,23 +45,25 @@ async function installRuntimeConfig(page: Page) {
   return patches
 }
 
-test('运行配置：三组分区、只有三项配置，没改动时保存不可点，改完保存带 loading，成功后回到不可点并显示 Key 尾号', async ({ page }) => {
+test('运行配置：三组分区、四项配置，没改动时保存不可点，改完保存带 loading，成功后回到不可点并显示 Key 尾号', async ({ page }) => {
   const patches = await installRuntimeConfig(page)
 
   await page.goto('/runtime-config')
   await expect(page.getByRole('link', { name: '运行配置' })).toHaveAttribute('aria-current', 'page')
   for (const group of ['运行限制', '联网搜索', '调试'])
     await expect(page.getByRole('heading', { name: group })).toBeVisible()
-  // #218 删掉了模型轮数、工具次数与历史条数三项上限。
-  await expect(page.locator('.settings-row__label')).toHaveText(['单次最长时间', 'Serper API Key', '抓取模型原始请求'])
+  // #218 删掉了模型轮数、工具次数与历史条数三项上限；#220 加了压缩保留最近 Tokens。
+  await expect(page.locator('.settings-row__label')).toHaveText(['单次最长时间', '压缩保留最近 Tokens', 'Serper API Key', '抓取模型原始请求'])
 
   const save = page.getByRole('button', { name: /保\s*存/ })
   await expect(save).toBeDisabled()
   await expect(page.getByLabel('单次最长时间')).toHaveValue('600')
+  await expect(page.getByLabel('压缩保留最近 Tokens')).toHaveValue('20,000')
   await expect(page.getByLabel('Serper API Key')).toHaveAttribute('placeholder', '粘贴 Serper API Key')
   await expect(page.getByText('未配置')).toBeVisible()
 
   await page.getByLabel('单次最长时间').fill('120')
+  await page.getByLabel('压缩保留最近 Tokens').fill('15000')
   await page.getByLabel('Serper API Key').fill('  sk-serper-9f3a  ')
   await page.getByLabel('抓取模型原始请求').click()
   await expect(save).toBeEnabled()
@@ -72,8 +75,10 @@ test('运行配置：三组分区、只有三项配置，没改动时保存不�
   await expect(page.getByLabel('Serper API Key')).toHaveValue('')
   await expect(page.getByLabel('Serper API Key')).toHaveAttribute('placeholder', '尾号 9f3a，留空不改')
   await expect(page.getByText('已配置')).toBeVisible()
+  await expect(page.getByLabel('压缩保留最近 Tokens')).toHaveValue('15,000')
   expect(patches).toEqual([{
     runDeadlineMs: 120_000,
+    compactionKeepRecentTokens: 15_000,
     debugCaptureModelIo: true,
     serperApiKey: 'sk-serper-9f3a',
   }])
@@ -86,7 +91,12 @@ test('运行配置：超出范围时就地提示、不发请求；服务端拒�
   await page.getByLabel('单次最长时间').fill('0')
   await page.getByRole('button', { name: /保\s*存/ }).click()
   await expect(page.getByText('须为 1 到 2,147,483 之间的整数')).toBeVisible()
+  await page.getByLabel('单次最长时间').fill('600')
+  await page.getByLabel('压缩保留最近 Tokens').fill('999')
+  await page.getByRole('button', { name: /保\s*存/ }).click()
+  await expect(page.getByText('须为 1,000 到 200,000 之间的整数')).toBeVisible()
   expect(patches).toEqual([])
+  await page.getByLabel('压缩保留最近 Tokens').fill('20000')
 
   // 与全局校验管道的真实响应同形：message 是通用文案，字段原因在 error.details。
   await page.unroute('**/api/admin/runtime-config')
@@ -167,7 +177,7 @@ test('模型弹窗：三组分割线、单次输入上限带说明、token 千�
   await expect(dialog.getByLabel('最大输出 Tokens')).toHaveValue('384,000')
 
   await dialog.locator('.label-tip').hover()
-  await expect(page.getByRole('tooltip')).toHaveText('每次请求最多发给模型的内容，不超过上下文窗口；超出时从最早的历史开始裁剪')
+  await expect(page.getByRole('tooltip')).toHaveText('每次请求最多发给模型的内容；超出时自动把较早的对话整理成摘要')
 
   await dialog.getByLabel('单次输入上限 Tokens').fill('600000')
   await dialog.getByRole('button', { name: /确/ }).click()

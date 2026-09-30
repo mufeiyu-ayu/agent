@@ -101,6 +101,67 @@ export function createModelVisibleContentDetail(): AdminRunDetail {
   return detail
 }
 
+/**
+ * #220 之后带上下文压缩的 Run：第 1 次调模型前压了历史，第 2 次调模型前本轮压缩先失败一次、再成功一次；
+ * 问答结束后又在后台为下一次问答预压了一条记录。
+ */
+export const HISTORY_SUMMARY = '## Goal\n- 了解站内 SEO 指南\n\n## Sources\n- https://example.com/seo'
+export const TURN_SUMMARY = '## Original Request\n- 读三篇指南'
+export const BACKGROUND_SUMMARY = '## Goal\n- 后台预压的摘要'
+
+export function createCompactionDetail(): AdminRunDetail {
+  const compaction = (sequence: number, fields: Partial<Extract<AdminRunTimelineItem, { type: 'context_compaction' }>>): AdminRunTimelineItem => ({
+    id: `step-${sequence}`,
+    kind: 'known',
+    sequence,
+    type: 'context_compaction',
+    title: '上下文压缩',
+    status: 'COMPLETED',
+    startedAt: START,
+    endedAt: START,
+    durationMs: 21_000,
+    hasError: false,
+    layer: 'history',
+    tokensBefore: 280_000,
+    usage: { inputTokens: 90_000, outputTokens: 1_200, totalTokens: 91_200, reasoningTokens: null, promptCacheHitTokens: null, promptCacheMissTokens: null },
+    errorMessage: null,
+    compactionId: null,
+    keptFromSamplingAttemptId: null,
+    summary: null,
+    ...fields,
+  })
+  const detail = createDetail([
+    historyStep(),
+    compaction(2, { compactionId: 'compaction-1' }),
+    samplingStep(3, 'run-e2e-1:sampling-1', 'tool_calls'),
+    toolStep(4),
+    compaction(5, { status: 'FAILED', hasError: true, layer: 'turn', keptFromSamplingAttemptId: 'run-e2e-1:sampling-1', errorMessage: '写摘要失败：模型输出达到长度限制', usage: null }),
+    compaction(6, { layer: 'turn', keptFromSamplingAttemptId: 'run-e2e-1:sampling-1', summary: TURN_SUMMARY }),
+    samplingStep(7, 'run-e2e-1:sampling-2', 'stop'),
+    assistantOutputStep(8),
+  ])
+
+  detail.timeline = detail.timeline.map(item => item.kind === 'known' && item.type === 'model_sampling'
+    ? {
+        ...item,
+        contextInspector: {
+          ...item.contextInspector,
+          compactionId: 'compaction-1',
+          turnCompactionStepId: item.sequence === 7 ? 'step-6' : null,
+          historyIncludedCount: 2,
+          // #220 起没有「候选」条数。
+          historyCandidateCount: null,
+        },
+      }
+    : item)
+  detail.compactions = [
+    { id: 'compaction-1', runId: RUN_ID, reason: 'threshold', summary: HISTORY_SUMMARY, coveredGroupCount: 3, tokensBefore: 280_000, usage: null, createdAt: START },
+    { id: 'compaction-2', runId: RUN_ID, reason: 'after_run', summary: BACKGROUND_SUMMARY, coveredGroupCount: 5, tokensBefore: 220_000, usage: null, createdAt: END },
+  ]
+
+  return detail
+}
+
 function createDetail(timeline: AdminRunTimelineItem[]): AdminRunDetail {
   return {
     id: RUN_ID,
@@ -132,6 +193,7 @@ function createDetail(timeline: AdminRunTimelineItem[]): AdminRunDetail {
       updatedAt: START,
     }],
     timeline,
+    compactions: [],
   }
 }
 
@@ -193,6 +255,8 @@ function samplingStep(
       estimatedInputTokens: 1_200,
       historyIncludedCount: null,
       historyCandidateCount: 2,
+      compactionId: null,
+      turnCompactionStepId: null,
     },
   }
 }

@@ -53,7 +53,7 @@
 
 ### 📏 按真实 Token 预算做上下文工程
 
-每次 Run 有独立的模型上下文。Token 用本地 DeepSeek tokenizer 估算（其他家族按它近似），历史带上之前问答的工具调用与结果，超预算时从最旧的问答开始整次裁剪，工具输出按不可信数据处理并有单独的长度上限。
+每次 Run 有独立的模型上下文。Token 按服务商返回的真实用量加之后新增内容的粗估（UTF-8 字节数 ÷ 4）计数，历史带上之前问答的工具调用与结果。超过模型的单次输入上限时，较早的问答写成摘要而不是删掉（尽量在回答结束后于后台提前完成），长工具循环把自己前面的步骤写成摘要；工具输出按不可信数据处理并有单独的长度上限。
 
 ### 🔌 接 OpenAI-compatible 服务商
 
@@ -70,7 +70,8 @@ DeepSeek 官方 API 和 OpenAI-compatible 中转站（GPT / Grok / Gemini）用�
 ```ts
 // 不限轮数与工具调用次数：模型一直做到给出回答，只由单次最长时间兜底。
 while (true) {
-  const input = planner.plan(context, budget) // 这一轮模型能看到什么，含之前问答的工具记录
+  await compaction.compactBeforeSampling(run) // 超过单次输入上限：先把较早的历史写成摘要，再压本次前面的工具轮
+  const input = context.plan(tools) // 这一轮模型能看到什么，含之前问答的工具记录
   const decision = await streamModelSampling(llm.chatStream(input))
 
   if (decision.type === 'final_answer')
@@ -92,7 +93,7 @@ flowchart LR
     Web[Vue 对话前台] -->|NDJSON 流| API[ChatController]
     Admin[运维控制台] --> AdminAPI[Admin API]
     API --> Runtime[Agent Runtime]
-    Runtime --> Context[模型上下文<br/>Token 预算 · 裁剪]
+    Runtime --> Context[模型上下文<br/>Token 预算 · 压缩]
     Runtime --> LLM["@agent/ai<br/>OpenAI-compatible 客户端"]
     LLM -->|SSE| Providers([DeepSeek · GPT · Grok · Gemini])
     Runtime --> Tools[工具<br/>联网搜索 · 读网页] --> Internet([Google · 网页])
@@ -134,7 +135,7 @@ pnpm dev
 | --- | --- | --- |
 | 1 | [`chat.controller.ts`](./apps/api/src/chat/chat.controller.ts) | 用户关掉页面怎样变成 Abort 信号 |
 | 2 | [`agent-runtime.service.ts`](./apps/api/src/agent-runtime/agent-runtime.service.ts) | 主循环：采样、分派、执行工具、续轮、收尾 |
-| 3 | [`sampling-context-planner.ts`](./apps/api/src/agent-runtime/context/sampling-context-planner.ts) | 模型每轮看到什么，超预算时先删谁 |
+| 3 | [`context-compaction.service.ts`](./apps/api/src/agent-runtime/context/context-compaction.service.ts) | 上下文超过模型上限时，哪些写成摘要、哪些保留原文 |
 | 4 | [`openai-completions-stream.ts`](./packages/ai/src/api/openai-completions-stream.ts) | 服务商的流怎样变成干净的事件 |
 | 5 | [`agent-run-recorder.service.ts`](./apps/api/src/agent-runtime/lifecycle/agent-run-recorder.service.ts) | 终态所有权与原子提交 |
 

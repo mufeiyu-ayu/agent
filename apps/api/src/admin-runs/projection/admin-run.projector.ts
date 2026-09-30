@@ -1,6 +1,8 @@
 import type {
   AdminAssistantOutputStep,
+  AdminContextCompactionStep,
   AdminContextInspector,
+  AdminConversationCompaction,
   AdminDebugModelIOCapture,
   AdminDebugModelResponseCapture,
   AdminGenericStep,
@@ -17,7 +19,7 @@ import type {
 } from '@agent/contracts'
 import type { Prisma } from '../../generated/prisma/client.js'
 import type { ModelKey } from '../admin-model-refs.js'
-import type { ADMIN_RUN_DETAIL_SELECT } from '../admin-runs.service.js'
+import type { ADMIN_RUN_COMPACTION_SELECT, ADMIN_RUN_DETAIL_SELECT } from '../admin-runs.service.js'
 import {
   ADMIN_MODEL_FINISH_REASONS,
   ADMIN_TOOL_RESULT_CODES,
@@ -46,6 +48,7 @@ const QUESTION_PREVIEW_MAX_CHARS = 200
 const MESSAGE_PREVIEW_MAX_CHARS = 500
 const FAILURE_MESSAGE_MAX_CHARS = 300
 const SAFE_TEXT_MAX_CHARS = 128
+const COMPACTION_REASONS = ['threshold', 'overflow', 'after_run'] as const
 
 /**
  * 列表页的 Run 行：Run 列加上该 Run 的 Step 行。列表的 Step 行由 service 用 SQL 只取计数、usage、
@@ -77,6 +80,8 @@ export interface AdminRunListStepRecord {
 export type AdminRunDetailRecord = Prisma.AgentRunGetPayload<{ select: typeof ADMIN_RUN_DETAIL_SELECT }>
 type AdminRunDetailStepRecord = AdminRunDetailRecord['steps'][number]
 type AdminRunDetailMessageRecord = AdminRunDetailRecord['userMessage']
+/** 历史压缩记录的行（#220），由 service 按 `ADMIN_RUN_COMPACTION_SELECT` 读出。 */
+export type AdminRunCompactionRecord = Prisma.ConversationCompactionGetPayload<{ select: typeof ADMIN_RUN_COMPACTION_SELECT }>
 
 /** model 由 service 按 `readRunModelKey` 的结果关联模型行得出。 */
 export function projectAdminRunListItem(
@@ -124,6 +129,8 @@ export function readRunModelKey(steps: AdminRunListStepRecord[]): ModelKey | nul
  * 失败 / 中断 Run 的失败文案：终态事务用同一个时间戳收口 Run 与失败 Step，只认这批 Step；
  * 更早失败、已作为 observation 回喂模型的工具 Step 与终态无关。在两个 Step 之间中断时没有
  * 这样的 Step，返回 null。runtime 写入的都是用户可见的安全文案。
+ * 服务商报超长、强制压缩又失败时（#220），失败的采样 Step 在压缩前就已收口；本 Run 还没推出过正文时，
+ * 终态时没有 Step 一起收口，取最后一次以同一类别失败的采样。
  */
 function readFailureMessage(run: AdminRunListRecord): string | null {
   if ((run.status !== 'FAILED' && run.status !== 'ABORTED') || !run.endedAt)
@@ -134,6 +141,12 @@ function readFailureMessage(run: AdminRunListRecord): string | null {
     .filter(step => step.errorMessage && step.endedAt?.getTime() === runEndedAt)
     .sort(bySequence)
     .at(-1)
+    ?? (run.errorCode === 'llm_context_overflow'
+      ? run.steps
+          .filter(step => step.type === AGENT_STEP_TYPES.modelSampling && step.errorMessage && readObject(step.output)?.errorCode === run.errorCode)
+          .sort(bySequence)
+          .at(-1)
+      : undefined)
 
   return failed?.errorMessage ? toPreview(failed.errorMessage, FAILURE_MESSAGE_MAX_CHARS) : null
 }
@@ -143,11 +156,28 @@ function bySequence(left: { sequence: number }, right: { sequence: number }): nu
   return left.sequence - right.sequence
 }
 
+/** 本 Run 的采样基于的、与历史压缩 Step 写成的压缩记录 id（#220）；service 连同本 Run 写的记录一起读出。 */
+export function readReferencedCompactionIds(steps: AdminRunDetailStepRecord[]): string[] {
+  const ids = steps.flatMap((step) => {
+    const output = readObject(step.output)
+    const id = step.type === AGENT_STEP_TYPES.modelSampling
+      ? readString(readObject(output?.contextPlan), 'compactionId')
+      : step.type === AGENT_STEP_TYPES.contextCompaction
+        ? readString(output, 'compactionId')
+        : null
+
+    return id ? [id] : []
+  })
+
+  return [...new Set(ids)]
+}
+
 export function projectAdminRunDetail(
   run: AdminRunDetailRecord,
   model: AdminModelRef | null,
+  compactions: AdminRunCompactionRecord[] = [],
 ): AdminRunDetail {
-  // 候选历史条数是 Run 级事实，只记在 load_conversation_history；采样详情「选入 X / 候选 Y」要用它。
+  // 读到的历史条数是 Run 级事实，只记在 load_conversation_history；#220 之前的采样详情「选入 X / 候选 Y」要用它。
   const historyCandidateCount = readNonNegativeInteger(
     readObject(run.steps.find(
       step => step.type === AGENT_STEP_TYPES.loadConversationHistory,
@@ -165,6 +195,20 @@ export function projectAdminRunDetail(
     timeline: [...run.steps]
       .sort(compareSteps)
       .map(step => projectTimelineItem(step, historyCandidateCount)),
+    compactions: compactions.map(projectCompaction),
+  }
+}
+
+function projectCompaction(record: AdminRunCompactionRecord): AdminConversationCompaction {
+  return {
+    id: record.id,
+    runId: record.runId,
+    reason: toAllowedString(record.reason, COMPACTION_REASONS),
+    summary: record.summary,
+    coveredGroupCount: record.coveredGroupIds.length,
+    tokensBefore: record.tokensBefore,
+    usage: projectTokenUsage({ usage: record.usage }),
+    createdAt: record.createdAt.toISOString(),
   }
 }
 
@@ -185,6 +229,8 @@ function projectTimelineItem(
       return projectToolExecution(step, input, output)
     case AGENT_STEP_TYPES.assistantOutput:
       return projectAssistantOutput(step, input)
+    case AGENT_STEP_TYPES.contextCompaction:
+      return projectContextCompaction(step, input, output)
     default:
       return projectGenericStep(step)
   }
@@ -264,6 +310,24 @@ function projectAssistantOutput(
   }
 }
 
+function projectContextCompaction(
+  step: AdminRunDetailStepRecord,
+  input: Record<string, unknown> | null,
+  output: Record<string, unknown> | null,
+): AdminContextCompactionStep {
+  return {
+    ...knownStepBase(step),
+    type: AGENT_STEP_TYPES.contextCompaction,
+    layer: readAllowedString(input, 'kind', ['history', 'turn']),
+    tokensBefore: readNonNegativeInteger(output, 'tokensBefore'),
+    usage: projectTokenUsage(output),
+    errorMessage: step.errorMessage === null ? null : toPreview(step.errorMessage, FAILURE_MESSAGE_MAX_CHARS),
+    compactionId: readString(output, 'compactionId'),
+    keptFromSamplingAttemptId: readString(input, 'keptFromSamplingAttemptId'),
+    summary: readText(output, 'summary'),
+  }
+}
+
 function projectGenericStep(
   step: AdminRunDetailStepRecord,
 ): AdminGenericStep {
@@ -308,7 +372,8 @@ function projectMessage(message: AdminRunDetailMessageRecord): AdminRunMessage {
 
 /**
  * 按 sampling Step 的 `input.initialContext` 与 `output.contextPlan` 逐字段投影；
- * 候选历史条数是 Run 级事实，由调用方从 load_conversation_history 读好传入。
+ * 读到的历史条数是 Run 级事实，由调用方从 load_conversation_history 读好传入。
+ * outcome：#220 起按本轮的失败类别得出（服务商报超长），旧 Run 照旧读 contextFailureReason / overflowReason。
  *
  * 字段能读就读，读不出就 null；不做跨字段等式或跨 Step 序列检查。
  */
@@ -319,6 +384,9 @@ function projectContextInspector(
 ): AdminContextInspector {
   const initialContext = readObject(input?.initialContext)
   const contextPlan = readObject(output?.contextPlan)
+  // #220 起 contextPlan 总带 compactionId 键（没有为 null）：之前的按预算选入历史，「候选」条数只对它们有意义。
+  // 还没收口的采样没有 contextPlan，不当成旧的。
+  const budgetTrimmed = contextPlan !== null && !Object.hasOwn(contextPlan, 'compactionId')
   const contextFailureReason = readAllowedString(
     output,
     'contextFailureReason',
@@ -329,14 +397,18 @@ function projectContextInspector(
     'overflowReason',
     ['minimum_context'],
   )
+  const errorCode = readAllowedString(output, 'errorCode', AGENT_RUN_ERROR_CODES)
+
   return {
-    outcome: contextFailureReason === 'estimator_failure'
-      ? 'estimator_failure'
-      : overflowReason === 'minimum_context'
-        ? 'minimum_context_overflow'
-        : contextPlan
-          ? 'success'
-          : null,
+    outcome: errorCode === 'llm_context_overflow'
+      ? 'llm_context_overflow'
+      : contextFailureReason === 'estimator_failure'
+        ? 'estimator_failure'
+        : overflowReason === 'minimum_context'
+          ? 'minimum_context_overflow'
+          : contextPlan
+            ? 'success'
+            : null,
     resolvedModel: readString(initialContext, 'resolvedModel'),
     providerId: readString(initialContext, 'providerId'),
     modelId: readString(initialContext, 'modelId'),
@@ -345,7 +417,9 @@ function projectContextInspector(
       ?? readNonNegativeInteger(initialContext, 'resolvedInputBudgetTokens'),
     estimatedInputTokens: readNonNegativeInteger(contextPlan, 'estimatedInputTokens'),
     historyIncludedCount: readNonNegativeInteger(contextPlan, 'historyIncludedCount'),
-    historyCandidateCount,
+    historyCandidateCount: budgetTrimmed ? historyCandidateCount : null,
+    compactionId: readString(contextPlan, 'compactionId'),
+    turnCompactionStepId: readString(contextPlan, 'turnCompactionStepId'),
   }
 }
 

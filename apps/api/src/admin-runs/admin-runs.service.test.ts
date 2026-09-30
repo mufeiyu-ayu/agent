@@ -1,5 +1,6 @@
 import type { Prisma } from '../generated/prisma/client.js'
 import type { PrismaService } from '../prisma/prisma.service.js'
+import type { AdminRunCompactionRecord } from './projection/admin-run.projector.js'
 import assert from 'node:assert/strict'
 import { BadRequestException, NotFoundException } from '@nestjs/common'
 import { describe, it } from 'vitest'
@@ -361,6 +362,107 @@ describe('Admin Run projector', () => {
     assert.equal(noMetadata.contextInspector.outcome, null)
   })
 
+  it('#220 上下文压缩 Step：历史压缩带记录 id、本轮压缩带保留起点与前缀摘要、失败带原因与用量；压缩记录按覆盖组数与原因投影', () => {
+    const record = runRecord()
+
+    record.steps = [
+      step(2, 'context_compaction', {
+        input: { kind: 'history' },
+        output: { compactionId: 'compaction-1', tokensBefore: 280_000, usage: { inputTokens: 90_000, outputTokens: 1_200 }, durationMs: 21_000 },
+      }),
+      step(3, 'context_compaction', {
+        status: 'FAILED',
+        input: { kind: 'turn', keptFromSamplingAttemptId: 'run-1:sampling-4' },
+        output: { tokensBefore: 270_000, durationMs: 40 },
+        errorMessage: '写摘要失败：模型输出达到长度限制',
+      }),
+      step(4, 'context_compaction', {
+        input: { kind: 'turn', keptFromSamplingAttemptId: 'run-1:sampling-5' },
+        output: { summary: '## Original Request\n- 读八个网页', tokensBefore: 265_000, usage: { inputTokens: 60_000, outputTokens: 800 } },
+      }),
+      step(5, 'context_compaction', { input: { kind: 'unknown' }, output: 'not-an-object' }),
+    ]
+
+    const detail = projectAdminRunDetail(record, null, [{
+      id: 'compaction-1',
+      runId: 'run-1',
+      reason: 'threshold',
+      summary: '## Goal\n- 历史摘要',
+      coveredGroupIds: ['u1', 'u2', 'u3'],
+      tokensBefore: 280_000,
+      usage: { inputTokens: 90_000, outputTokens: 1_200 },
+      createdAt: new Date('2026-08-09T00:00:02.000Z'),
+    }, {
+      id: 'compaction-2',
+      runId: 'run-1',
+      reason: 'unexpected',
+      summary: '后台摘要',
+      coveredGroupIds: [],
+      tokensBefore: 200_000,
+      usage: null,
+      createdAt: new Date('2026-08-09T00:00:09.000Z'),
+    }])
+    const compactions = detail.timeline.flatMap(item => item.kind === 'known' && item.type === 'context_compaction'
+      ? [{ layer: item.layer, tokensBefore: item.tokensBefore, usage: item.usage?.inputTokens ?? null, errorMessage: item.errorMessage, compactionId: item.compactionId, keptFrom: item.keptFromSamplingAttemptId, summary: item.summary, hasError: item.hasError }]
+      : [])
+
+    assert.deepEqual(compactions, [
+      { layer: 'history', tokensBefore: 280_000, usage: 90_000, errorMessage: null, compactionId: 'compaction-1', keptFrom: null, summary: null, hasError: false },
+      { layer: 'turn', tokensBefore: 270_000, usage: null, errorMessage: '写摘要失败：模型输出达到长度限制', compactionId: null, keptFrom: 'run-1:sampling-4', summary: null, hasError: true },
+      { layer: 'turn', tokensBefore: 265_000, usage: 60_000, errorMessage: null, compactionId: null, keptFrom: 'run-1:sampling-5', summary: '## Original Request\n- 读八个网页', hasError: false },
+      { layer: null, tokensBefore: null, usage: null, errorMessage: null, compactionId: null, keptFrom: null, summary: null, hasError: false },
+    ])
+    assert.deepEqual(detail.compactions.map(({ id, reason, coveredGroupCount, usage }) => [id, reason, coveredGroupCount, usage?.outputTokens ?? null]), [
+      ['compaction-1', 'threshold', 3, 1_200],
+      ['compaction-2', null, 0, null],
+    ])
+    // 压缩调用不计入模型调用次数（概览与列表只算 action sampling）。
+    assert.equal(detail.samplingCount, 0)
+  })
+
+  it('#220 Context Inspector：新 Run 的 outcome 按本轮失败类别得出，带基于的压缩记录与本轮压缩 Step；旧 Run 照旧读 overflowReason', () => {
+    const record = runRecord()
+    const contextPlan = { resolvedInputBudgetTokens: 262_144, estimatedInputTokens: 300_000, compactionId: 'compaction-1', turnCompactionStepId: 'step-6', historyIncludedCount: 4 }
+
+    record.steps = [
+      step(1, 'load_conversation_history', { output: { messageCount: 6 } }),
+      step(3, 'model_sampling', { status: 'FAILED', output: { errorCode: 'llm_context_overflow', contextPlan } }),
+      step(7, 'model_sampling', { output: { finishReason: 'stop', contextPlan: { ...contextPlan, estimatedInputTokens: 120_000 } } }),
+      // #220 之前的 Run：contextPlan 带 overflowReason 与 observationPreviewChars。
+      step(8, 'model_sampling', { output: { finishReason: 'stop', contextPlan: { resolvedInputBudgetTokens: 262_144, estimatedInputTokens: 1_000, overflowReason: null, historyIncludedCount: 2, observationPreviewChars: [120] } } }),
+    ]
+
+    const inspectors = projectAdminRunDetail(record, null).timeline.flatMap(item => item.kind === 'known' && item.type === 'model_sampling'
+      ? [item.contextInspector]
+      : [])
+
+    assert.deepEqual(inspectors.map(({ outcome, compactionId, turnCompactionStepId, historyIncludedCount }) => [outcome, compactionId, turnCompactionStepId, historyIncludedCount]), [
+      ['llm_context_overflow', 'compaction-1', 'step-6', 4],
+      ['success', 'compaction-1', 'step-6', 4],
+      ['success', null, null, 2],
+    ])
+    // 「候选」条数只对按预算选入历史的旧 Run 有意义。
+    assert.deepEqual(inspectors.map(item => item.historyCandidateCount), [null, null, 6])
+  })
+
+  it('#220 服务商报超长、强制压缩也失败的 Run：终态时没有 Step 一起收口，失败文案取最后一次以同一类别失败的采样', () => {
+    const overflowMessage = '这次要处理的内容超出了模型一次能处理的范围。'
+    const record = runRecord()
+
+    record.status = 'FAILED'
+    record.errorCode = 'llm_context_overflow'
+    record.endedAt = new Date('2026-08-09T00:00:09.000Z')
+    record.steps = [
+      step(2, 'model_sampling', { status: 'FAILED', errorMessage: '更早一次被救回的超长', output: { errorCode: 'llm_context_overflow' } }),
+      step(4, 'model_sampling', { status: 'FAILED', errorMessage: overflowMessage, output: { errorCode: 'llm_context_overflow' } }),
+      step(5, 'context_compaction', { status: 'FAILED', errorMessage: '写摘要失败：模型输出达到长度限制', input: { kind: 'history' } }),
+    ]
+
+    assert.equal(projectAdminRunListItem(record, null).failureMessage, overflowMessage)
+    // 其他类别在两个 Step 之间失败时照旧为 null。
+    assert.equal(projectAdminRunListItem({ ...record, errorCode: 'internal' }, null).failureMessage, null)
+  })
+
   it('Run 四种状态都能投影且只有终态计算 duration', () => {
     for (const status of ['RUNNING', 'COMPLETED', 'FAILED', 'ABORTED'] as const) {
       const record = createRunRecord()
@@ -605,6 +707,27 @@ describe('AdminRunsService', () => {
     )
   })
 
+  it('#220 运行详情一次查询取回本 Run 写的压缩记录（含后台预压）与各次采样基于的记录', async () => {
+    const record = createRunRecord()
+
+    record.steps.push(
+      step(10, 'context_compaction', { input: { kind: 'history' }, output: { compactionId: 'compaction-written' } }),
+      step(11, 'model_sampling', { output: { finishReason: 'stop', contextPlan: { compactionId: 'compaction-earlier' } } }),
+      step(12, 'model_sampling', { output: { finishReason: 'stop', contextPlan: { compactionId: 'compaction-earlier' } } }),
+    )
+
+    const harness = createServiceHarness({
+      detail: record,
+      compactions: [{ id: 'compaction-after-run', runId: 'run-1', reason: 'after_run', summary: '后台摘要', coveredGroupIds: ['u1'], tokensBefore: 3_300, usage: null, createdAt: new Date('2026-08-09T00:00:09.000Z') }],
+    })
+    const detail = await harness.service.getDetail('run-1')
+
+    assert.deepEqual(harness.calls.compactionFindMany[0]?.where, {
+      OR: [{ runId: 'run-1' }, { id: { in: ['compaction-written', 'compaction-earlier'] } }],
+    })
+    assert.deepEqual(detail.compactions.map(item => [item.id, item.reason, item.summary]), [['compaction-after-run', 'after_run', '后台摘要']])
+  })
+
   it('Run 不存在时返回标准 404', async () => {
     const harness = createServiceHarness({ detail: null })
 
@@ -798,6 +921,7 @@ function createServiceHarness(options: {
   detail?: ReturnType<typeof createRunRecord> | null
   list?: ReturnType<typeof createRunRecord>
   models?: Array<{ id: string, displayName: string, wireName: string, provider: { family: string } }>
+  compactions?: AdminRunCompactionRecord[]
 } = {}) {
   const calls = {
     findMany: [] as Array<Record<string, unknown>>,
@@ -805,6 +929,7 @@ function createServiceHarness(options: {
     groupBy: [] as Array<Record<string, unknown>>,
     queryRaw: [] as Prisma.Sql[],
     llmModelFindMany: [] as Array<Record<string, unknown>>,
+    compactionFindMany: [] as Array<Record<string, unknown>>,
   }
   const record = createRunRecord()
   const listRecord = options.list ?? record
@@ -840,6 +965,12 @@ function createServiceHarness(options: {
       async findMany(args: Record<string, unknown>) {
         calls.llmModelFindMany.push(args)
         return options.models ?? []
+      },
+    },
+    conversationCompaction: {
+      async findMany(args: Record<string, unknown>) {
+        calls.compactionFindMany.push(args)
+        return options.compactions ?? []
       },
     },
   } as unknown as PrismaService

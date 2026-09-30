@@ -11,6 +11,7 @@ export function createRuntimeConfigSnapshot(
       runDeadlineMs: 600_000,
       ...limits,
     },
+    compactionKeepRecentTokens: 20_000,
     debugCaptureModelIo: false,
     serperApiKey: { status: 'missing' },
     ...rest,

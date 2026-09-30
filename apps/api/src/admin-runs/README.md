@@ -16,7 +16,7 @@
 
 | 文件 | 职责 |
 | --- | --- |
-| `admin-run.projector.ts` | Run List / Detail 的 facade 与 Timeline 组合，含 sampling Step 的 `initialContext` / `contextPlan` 逐字段读取（候选历史条数取自 load_conversation_history）；列表输入是显式的瘦身行，详情输入由 `ADMIN_RUN_DETAIL_SELECT` 派生 |
+| `admin-run.projector.ts` | Run List / Detail 的 facade 与 Timeline 组合，含 sampling Step 的 `initialContext` / `contextPlan` 逐字段读取（读到的历史条数取自 load_conversation_history）与 `context_compaction` Step；详情另带本 Run 写的与各次采样基于的历史压缩记录（service 一次查询取回）；列表输入是显式的瘦身行，详情输入由 `ADMIN_RUN_DETAIL_SELECT` 派生 |
 | `sampling-usage.projector.ts` | 模型调用口径（有 usage 或 llm_* 失败才算）、次数与 Usage 逐项求和；`LLM_CALL_ERROR_CODES` 与概览 SQL 共用 |
 | `safe-readers.ts` | 无领域状态的 primitive / JSON readers |
 | `__fixtures__.ts` | projector 测试用的 Run / Step 记录 builder |

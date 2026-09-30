@@ -8,10 +8,6 @@ import type { LLMService } from '../llm/llm.service.js'
 import type { SerperApiKey } from '../runtime-config/runtime-config.service.js'
 import type { RegisteredTool, ToolDefinition, ToolResult } from '../tools/core/tool.types.js'
 import type { AgentRuntimeEvent } from './agent-runtime.types.js'
-import type {
-  TokenEstimator,
-  TokenEstimatorInput,
-} from './context/deepseek-v4-token-estimator.js'
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { readdir, readFile } from 'node:fs/promises'
@@ -35,7 +31,7 @@ import { ToolRegistryService } from '../tools/core/tool-registry.service.js'
 import { webFetchDefinition } from '../tools/web/web-fetch.tool.js'
 import { webSearchDefinition, WebSearchTool } from '../tools/web/web-search.tool.js'
 import { AgentRuntimeService } from './agent-runtime.service.js'
-import { SamplingContextPlanner } from './context/sampling-context-planner.js'
+import { ContextCompactionService } from './context/context-compaction.service.js'
 import { AgentRunRecorderService } from './lifecycle/agent-run-recorder.service.js'
 
 // 本入口不允许 skip：缺少隔离数据库时必须显式失败，而不是假装通过。
@@ -656,19 +652,18 @@ describe('AgentRuntime PostgreSQL integration', () => {
           : stream
       },
     } as unknown as LLMService
-    const tokenEstimator = new TestTokenEstimator()
     const registry = new ToolRegistryService()
 
     for (const tool of options.tools ?? [])
       registry.register(tool)
 
+    const recorder = new AgentRunRecorderService(prisma)
     const service = new AgentRuntimeService(
       llmService,
       prisma,
-      new AgentRunRecorderService(prisma),
+      recorder,
       new ToolInvocationService(registry),
-      tokenEstimator,
-      new SamplingContextPlanner(tokenEstimator),
+      new ContextCompactionService(llmService, prisma, recorder),
     )
 
     return {
@@ -785,12 +780,6 @@ async function* withDebugCapture(
     toolCallCount: 0,
     rawResponse: { choices: [{ message: { content: text }, finish_reason: 'stop' }] },
   })
-}
-
-class TestTokenEstimator implements TokenEstimator {
-  estimateRequest(input: TokenEstimatorInput): number {
-    return input.items.length + input.tools.length
-  }
 }
 
 function withSearchPath(connectionString: string, schema: string): string {

@@ -39,6 +39,8 @@ export interface ResolvedChatRequestConfig {
   compat: LlmFamilyCompat
   /** 省略表示请求体不带 reasoning_effort。 */
   reasoningEffort?: ReasoningEffort
+  /** 关掉 compat 的思考开关（DeepSeek 发 `thinking: { type: 'disabled' }`）；省略时按家族照常开启。 */
+  thinking?: 'disabled'
 }
 
 export interface ChatRequestOverrides {

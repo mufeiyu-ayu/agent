@@ -20,17 +20,21 @@ describe('PATCH /api/admin/runtime-config', () => {
     await withApp(service, async (baseUrl) => {
       const response = await patch(baseUrl, {
         runDeadlineMs: 2_147_483_647,
+        compactionKeepRecentTokens: 200_000,
         debugCaptureModelIo: true,
         serperApiKey: '  sk-serper  ',
       })
 
       assert.equal(response.status, 200)
+      assert.equal((await patch(baseUrl, { compactionKeepRecentTokens: 1_000 })).status, 200)
     })
-    assert.deepEqual(service.updates, [{
+    assert.deepEqual(service.updates[0], {
       runDeadlineMs: 2_147_483_647,
+      compactionKeepRecentTokens: 200_000,
       debugCaptureModelIo: true,
       serperApiKey: 'sk-serper',
-    }])
+    })
+    assert.equal(service.updates[1]?.compactionKeepRecentTokens, 1_000)
   })
 
   it('超出范围、非整数、null、字符串形式的数字与开关、Key 过长或多出字段时返回 400，不进 service', async () => {
@@ -39,6 +43,12 @@ describe('PATCH /api/admin/runtime-config', () => {
       { runDeadlineMs: 0 },
       { runDeadlineMs: 2_147_483_648 },
       { runDeadlineMs: 1.5 },
+      // #220 压缩保留最近 Tokens：与数据库 CHECK 同一范围。
+      { compactionKeepRecentTokens: 999 },
+      { compactionKeepRecentTokens: 200_001 },
+      { compactionKeepRecentTokens: 20_000.5 },
+      { compactionKeepRecentTokens: null },
+      { compactionKeepRecentTokens: '20000' },
       { serperApiKey: 'x'.repeat(513) },
       // 列都是 NOT NULL；隐式转换会把这些字符串变成 true / 0 / 3，必须按原值拒掉。
       { runDeadlineMs: null },
@@ -68,6 +78,7 @@ describe('PATCH /api/admin/runtime-config', () => {
 
 const CONFIG: AdminRuntimeConfig = {
   runDeadlineMs: 600_000,
+  compactionKeepRecentTokens: 20_000,
   debugCaptureModelIo: false,
   serperApiKeyLast4: null,
   updatedAt: '2026-09-29T00:00:00.000Z',

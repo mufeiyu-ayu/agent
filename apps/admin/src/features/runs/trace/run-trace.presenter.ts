@@ -194,6 +194,7 @@ function toTraceEventType(item: AdminRunTimelineItem): TraceEventType {
 
   return {
     load_conversation_history: 'HISTORY',
+    context_compaction: 'COMPACT',
     model_sampling: 'MODEL',
     tool_execution: 'TOOL',
     assistant_output: 'OUTPUT',
@@ -240,6 +241,8 @@ function createRecordContent(
       return joinContent(item.toolName, item.code, item.title)
     case 'assistant_output':
       return joinContent(item.assistantMessageId, item.title)
+    case 'context_compaction':
+      return joinContent(item.layer, item.errorMessage, item.title)
   }
 }
 
@@ -262,6 +265,9 @@ function createSearchText(
   }
   else if (item.kind === 'known' && item.type === 'tool_execution') {
     values.push(item.toolName, item.code)
+  }
+  else if (item.kind === 'known' && item.type === 'context_compaction') {
+    values.push(item.layer)
   }
 
   return normalizeSearchText(values.filter(value => value !== null).join(' '))
@@ -319,7 +325,9 @@ function toTraceLane(item: AdminRunTimelineItem): TraceLane | null {
     return null
 
   switch (item.type) {
+    // 压缩改写的是发给模型的输入，与读历史同一泳道。
     case 'load_conversation_history':
+    case 'context_compaction':
       return 'input'
     case 'model_sampling':
       return 'model'

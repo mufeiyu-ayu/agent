@@ -7,6 +7,7 @@ import { fetchRuntimeConfig, updateRuntimeConfig } from './runtime-config-api'
 /** 表单里的时限按秒编辑，接口按毫秒存。 */
 export interface RuntimeConfigForm {
   runDeadlineSeconds: number
+  compactionKeepRecentTokens: number
   debugCaptureModelIo: boolean
   /** 留空表示不改。 */
   serperApiKey: string
@@ -15,6 +16,7 @@ export interface RuntimeConfigForm {
 export function toRuntimeConfigForm(config: AdminRuntimeConfig): RuntimeConfigForm {
   return {
     runDeadlineSeconds: Math.round(config.runDeadlineMs / 1000),
+    compactionKeepRecentTokens: config.compactionKeepRecentTokens,
     debugCaptureModelIo: config.debugCaptureModelIo,
     serperApiKey: '',
   }
@@ -25,6 +27,7 @@ export function toRuntimeConfigInput(form: RuntimeConfigForm): AdminRuntimeConfi
 
   return {
     runDeadlineMs: form.runDeadlineSeconds * 1000,
+    compactionKeepRecentTokens: form.compactionKeepRecentTokens,
     debugCaptureModelIo: form.debugCaptureModelIo,
     ...(serperApiKey ? { serperApiKey } : {}),
   }

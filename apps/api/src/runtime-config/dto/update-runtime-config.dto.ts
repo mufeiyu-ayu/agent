@@ -14,7 +14,7 @@ const rawTrimmed = Transform(({ obj, key }) => {
 
   return typeof value === 'string' ? value.trim() : value
 })
-const { runDeadlineMs } = RUNTIME_CONFIG_LIMITS
+const { runDeadlineMs, compactionKeepRecentTokens } = RUNTIME_CONFIG_LIMITS
 
 export class UpdateRuntimeConfigDto implements Partial<AdminRuntimeConfigInput> {
   @unlessOmitted
@@ -23,6 +23,13 @@ export class UpdateRuntimeConfigDto implements Partial<AdminRuntimeConfigInput> 
   @Min(runDeadlineMs.min)
   @Max(runDeadlineMs.max)
   runDeadlineMs?: number
+
+  @unlessOmitted
+  @raw
+  @IsInt()
+  @Min(compactionKeepRecentTokens.min)
+  @Max(compactionKeepRecentTokens.max)
+  compactionKeepRecentTokens?: number
 
   @unlessOmitted
   @raw

@@ -107,12 +107,13 @@ model Conversation {
   id        String     @id @default(cuid())
   title     String
   // 归属用户。可空：存量会话迁移时还没有用户，由 create-admin 脚本回填；新会话一律写入。
-  userId    String?
-  user      User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
-  messages  Message[]
-  agentRuns AgentRun[]
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
+  userId      String?
+  user        User?                    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  messages    Message[]
+  agentRuns   AgentRun[]
+  compactions ConversationCompaction[]
+  createdAt   DateTime                 @default(now())
+  updatedAt   DateTime                 @updatedAt
 
   // 会话列表按「最近活跃」排序，给 updatedAt 加索引。
   @@index([updatedAt])
@@ -168,6 +169,7 @@ model AgentRun {
   // 结束时间：运行中为空，进入终态（完成/失败/中断）时写入。
   endedAt            DateTime?
   steps              AgentStep[]
+  compactions        ConversationCompaction[]
   createdAt          DateTime       @default(now())
   updatedAt          DateTime       @updatedAt
 
@@ -214,6 +216,35 @@ model AgentStep {
   @@index([runId, type])
   @@index([status])
   @@index([createdAt])
+}
+
+// 历史压缩（Issue #220）：把已结束的之前问答写成摘要，每条记录自成完整，只存成功的。
+// 历史 = 最新一条记录的摘要 + 不在 coveredGroupIds 里的问答原文；原消息与 Step 一条不删。
+model ConversationCompaction {
+  id                String       @id @default(cuid())
+  conversationId    String
+  conversation      Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  // 触发它的 Run（问答中途压缩或问答结束后预压）；Run 删了记录照样有效。
+  runId             String?
+  run               AgentRun?    @relation(fields: [runId], references: [id], onDelete: SetNull)
+  // threshold（调模型前超触发线）/ after_run（问答结束后预压）/ overflow（服务商报超长）。
+  reason            String
+  summary           String
+  // 累计被摘要覆盖的问答组，组键 = 组内第一条消息的 id（通常是用户问题）。
+  coveredGroupIds   String[]
+  // 以「问题 + 回答全文」保留的边界组；它的完整内容已进摘要，不在 coveredGroupIds 里。
+  answerOnlyGroupId String?
+  // 读取历史快照的时刻：最新记录按 readAt、createdAt、id 倒序取第一条；分块写的几条 readAt 相同。
+  readAt            DateTime
+  // 触发这次压缩的估算 token。
+  tokensBefore      Int
+  // 这一条那次摘要调用的用量，形状同采样 Step 的 output.usage。
+  usage             Json?
+  // 写摘要用的模型行 id；不建外键：模型行会随服务商删除。
+  modelId           String
+  createdAt         DateTime     @default(now())
+
+  @@index([conversationId, readAt])
 }
 
 // 阶段 5 Tool Calling 的只读演示数据。
@@ -285,16 +316,18 @@ model LlmModel {
 }
 
 // ─── 运行配置（Issue #216）──────────────────────────────
-// 只有一行（id 固定为 1，migration 插入、CHECK 约束兜底；时限下限也有 CHECK）：单次最长时间、调试开关与联网搜索的 Serper Key。
+// 只有一行（id 固定为 1，migration 插入、CHECK 约束兜底；时限下限也有 CHECK）：单次最长时间、压缩保留最近 Tokens、调试开关与联网搜索的 Serper Key。
 // 每次问答开始时读一次作为快照，进行中的问答不受后台修改影响；没有环境变量兜底，行缺失就明确报错。
 model RuntimeConfig {
-  id                    Int      @id @default(1)
+  id                         Int      @id @default(1)
   // 单次问答正常执行阶段的最长时间，单位毫秒；管理台按秒显示。一次问答不限轮数与工具调用次数，只由它兜底。
-  runDeadlineMs         Int
+  runDeadlineMs              Int
   // 是否抓取模型原始请求 / 响应 JSON 写进采样 Step。
-  debugCaptureModelIo   Boolean
+  debugCaptureModelIo        Boolean
+  // 上下文压缩时保留最近原文的 token 数（#220）：实际取 min(它, 模型单次输入上限的 1/4)；CHECK 限 1,000～200,000。
+  compactionKeepRecentTokens Int      @default(20000)
   // Serper Key 与服务商 Key 同样用 AGENT_SECRET_KEY 派生的密钥加密，只回显尾四位；没配为 null。
-  serperApiKeyEncrypted String?
-  serperApiKeyLast4     String?
-  updatedAt             DateTime @updatedAt
+  serperApiKeyEncrypted      String?
+  serperApiKeyLast4          String?
+  updatedAt                  DateTime @updatedAt
 }

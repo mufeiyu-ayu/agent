@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import type {
+  AdminContextCompactionStep,
   AdminContextInspectorOutcome,
+  AdminConversationCompaction,
   AdminModelSamplingStep,
 } from '@agent/contracts'
 import { TabPane, Tabs } from 'ant-design-vue'
@@ -19,6 +21,10 @@ import InspectorTextBlock from './InspectorTextBlock.vue'
 
 const props = defineProps<{
   item: AdminModelSamplingStep
+  /** 本轮基于的历史压缩记录（#220）；没有或旧 Run 为 undefined。 */
+  compaction?: AdminConversationCompaction
+  /** 本轮基于的本轮压缩 Step（#220）。 */
+  turnCompaction?: AdminContextCompactionStep
 }>()
 
 const { locale, t } = useI18n()
@@ -57,6 +63,29 @@ const budgetFields = computed(() => {
 const adjustmentFields = computed(() => [
   { label: t('eventDetail.fields.contextOutcome'), value: contextOutcome(props.item.contextInspector.outcome) },
 ])
+
+// 记录或 Step 找不到（已删除）时显示 id；没有基于任何压缩显示「—」。
+const compactionFields = computed(() => {
+  const { compactionId, turnCompactionStepId } = props.item.contextInspector
+  const record = props.compaction
+
+  return [
+    {
+      label: t('eventDetail.fields.basedOnHistorySummary'),
+      value: record
+        ? t('eventDetail.compaction.record', {
+            reason: record.reason ? t(`eventDetail.compaction.reasons.${record.reason}`) : unavailable.value,
+            groups: record.coveredGroupCount,
+            time: formatDateTime(record.createdAt, locale.value),
+          })
+        : compactionId ?? '—',
+    },
+    {
+      label: t('eventDetail.fields.basedOnTurnSummary'),
+      value: props.turnCompaction ? `#${props.turnCompaction.sequence}` : turnCompactionStepId ?? '—',
+    },
+  ]
+})
 
 const usageFields = computed(() => [
   { label: t('eventDetail.fields.inputTokens'), value: tokens(props.item.usage?.inputTokens ?? null) },
@@ -112,17 +141,21 @@ function errorCode(): string {
   return status === 'FAILED' || status === 'ABORTED' ? unavailable.value : '—'
 }
 
-/** 「选入 X / 候选 Y 条」：两项都没记录时整行显示未记录，缺一项时那一项显示未记录。 */
+/**
+ * 本轮原文发出的历史条数。#220 之前按预算选入，显示「选入 X / 候选 Y 条」（缺一项时那一项显示未记录）；
+ * 之后没有候选条数，显示「未被覆盖部分 X 条」（没被压缩记录覆盖的部分）。
+ */
 function historySelection(): string {
   const { historyIncludedCount: included, historyCandidateCount: candidates } = props.item.contextInspector
 
-  if (included == null && candidates == null)
-    return unavailable.value
+  if (candidates != null) {
+    return t('eventDetail.context.historySelection', {
+      included: historyCount(included),
+      candidates: historyCount(candidates),
+    })
+  }
 
-  return t('eventDetail.context.historySelection', {
-    included: historyCount(included),
-    candidates: historyCount(candidates),
-  })
+  return included == null ? unavailable.value : t('eventDetail.context.historyUncovered', { count: included })
 }
 
 function historyCount(value: number | null | undefined): string {
@@ -161,6 +194,25 @@ function contextOutcome(value: AdminContextInspectorOutcome | null): string {
     <TabPane key="context" :tab="t('runTrace.inspector.tabs.context')">
       <InspectorFieldList :title="t('eventDetail.sections.contextBudget')" :items="budgetFields" />
       <InspectorFieldList :title="t('eventDetail.sections.contextAdjustments')" :items="adjustmentFields" />
+      <InspectorFieldList :title="t('eventDetail.sections.contextCompaction')" :items="compactionFields" />
+      <InspectorTextBlock
+        v-if="compaction"
+        :key="`${item.id}:history`"
+        :title="t('eventDetail.fields.basedOnHistorySummary')"
+        :text="compaction.summary"
+        :empty-text="unavailable"
+        collapsible
+        data-testid="sampling-history-summary"
+      />
+      <InspectorTextBlock
+        v-if="turnCompaction"
+        :key="`${item.id}:turn`"
+        :title="t('eventDetail.fields.basedOnTurnSummary')"
+        :text="turnCompaction.summary"
+        :empty-text="unavailable"
+        collapsible
+        data-testid="sampling-turn-summary"
+      />
     </TabPane>
 
     <TabPane key="usage" :tab="t('runTrace.inspector.tabs.usage')">
