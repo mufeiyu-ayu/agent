@@ -445,7 +445,7 @@ function turnCut(run: CompactionRun, keepBudget: number): number | undefined {
   return planTurnCompaction(
     run.context.exchanges,
     run.context.turnCompaction?.keptFrom ?? 0,
-    Math.max(0, keepBudget - run.context.historyRawTokens()),
+    keepBudget - run.context.historyRawTokens(),
   )
 }
 

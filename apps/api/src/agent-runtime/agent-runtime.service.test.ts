@@ -3891,6 +3891,37 @@ describe('上下文自动压缩（#220）', () => {
     assertNoUnfinishedSteps(harness)
   })
 
+  it('AC-03 本轮保留预算先扣掉历史里仍是原文的部分：历史原文越多，本轮保留的工具轮越少', async () => {
+    /** 第一次本轮压缩之后的那次请求里带着几轮工具来回（历史组都没有工具记录，数到的都是本 Run 保留的）。 */
+    async function keptRounds(historyGroups: number): Promise<number> {
+      const harness = createHarness(routed({
+        sampling: index => index < 15 ? toolRound(`call-${index + 1}`) : finalAnswer(),
+      }), undefined, async () => ({ ok: true, modelContent: 'w'.repeat(1_000) }))
+
+      seedHistory(harness, historyGroups, 1_000)
+
+      const events = await run(harness)
+      const steps = harness.recorder.steps
+      const compaction = steps.findIndex(step => step.type === 'context_compaction')
+
+      assert.ok(compaction >= 0, `${historyGroups} 组历史：没有触发本轮压缩`)
+      assert.equal((steps[compaction]!.input as { kind: string }).kind, 'turn')
+      assert.equal(events.at(-1)?.type, 'run_completed')
+      assertNoUnfinishedSteps(harness)
+
+      const next = steps.slice(compaction).find(step => step.type === 'model_sampling')!
+      const request = samplingCalls(harness)[(next.input as { samplingIndex: number }).samplingIndex - 1]!
+
+      return request.messages.filter(item => item.type === 'assistant_tool_call').length
+    }
+
+    // 保留预算 min(20,000, 1,000)，每轮约 265（工具结果 250 + 调用约 15）；每组历史约 253，都放得下、不压历史。
+    // 没有历史：放得下 3 轮（795）；1 组：扣到 747，放得下 2 轮（530）；2 组：扣到 494，只剩最新 1 轮。
+    assert.equal(await keptRounds(0), 3)
+    assert.equal(await keptRounds(1), 2)
+    assert.equal(await keptRounds(2), 1)
+  })
+
   it('AC-08(e) 同步压缩中用户停止：压缩请求被取消，Run 与 Message 为 ABORTED，压缩 Step 随 Run 收成 ABORTED，没有记录', async () => {
     const controller = new AbortController()
     const harness = createHarness(routed({

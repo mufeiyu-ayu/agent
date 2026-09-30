@@ -100,6 +100,17 @@ describe('ModelContext 输入顺序', () => {
     assert.equal(plan.historyIncludedCount, 4)
   })
 
+  it('历史里仍是原文的部分（本轮保留预算要先扣掉它）：不含摘要消息，边界组按退回形式计', () => {
+    const boundary = { ...group('u2', '边界问题', 'b'.repeat(40)), answer: [{ type: 'message' as const, role: 'assistant' as const, content: 'x'.repeat(4_000) }] }
+    const newest = group('u3', '新问题', 'c'.repeat(400))
+    const context = createContext({ groups: [group('u1', '旧问题', 'a'.repeat(4_000)), boundary, newest] })
+
+    context.applyHistoryCompaction({ id: 'compaction-1', summary: 's'.repeat(4_000), coveredGroupIds: ['u1'], answerOnlyGroupId: 'u2' })
+
+    // 边界问题 12 字节 → 3，40 → 10；新问题 9 → 3，400 → 100。
+    assert.equal(context.historyRawTokens(), 3 + 10 + 3 + 100)
+  })
+
   it('本轮压缩后：当前问题原样、其后是前缀摘要与保留起点起的工具轮，保留轮的 reasoning 是原文', () => {
     const context = createContext()
 
