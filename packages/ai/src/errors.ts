@@ -7,7 +7,7 @@
  *
  * | HTTP | 含义 |
  * |------|------|
- * | 400  | 请求格式错误（中转站的 `upstream_error` 除外，按 5xx 归类） |
+ * | 400  | 请求格式错误（中转站的 `upstream_error` 除外，按 5xx 归类；报错原文是输入超长的归 LLMContextOverflowError，任何状态码都一样） |
  * | 401  | API Key 认证失败 |
  * | 402  | 账户余额不足 |
  * | 403  | API Key 无权访问 |
@@ -83,6 +83,18 @@ export class LLMInvalidRequestError extends LLMError {
 
     super(`${desc}（${statusCode}），请根据错误提示修改请求体${upstream ? `: ${upstream}` : ''}`, detail)
     this.name = 'LLMInvalidRequestError'
+  }
+}
+
+/**
+ * 输入超出模型的上下文上限：报错原文命中 `context-overflow.ts` 的规则，不看状态码（400 / 413 / 流内报错都有）。
+ * 继承 400 类，没有单独处理它的调用方仍按请求错误归类；`upstream` 同 LLMServerError。
+ */
+export class LLMContextOverflowError extends LLMInvalidRequestError {
+  constructor(statusCode: number | undefined, detail?: unknown, upstream = '') {
+    super(400, detail, upstream)
+    this.name = 'LLMContextOverflowError'
+    this.message = `输入超出模型的上下文上限（${statusCode ?? '流内报错'}）${upstream ? `: ${upstream}` : ''}`
   }
 }
 

@@ -267,6 +267,7 @@ export const messages = {
         llm_balance: '余额不足',
         llm_rate_limit: '请求频率超限',
         llm_invalid_request: '请求参数错误',
+        llm_context_overflow: '压缩后仍超出模型上限',
         llm_server: '服务商服务端错误',
         llm_network: '网络连接失败',
         llm_protocol: '模型流异常',

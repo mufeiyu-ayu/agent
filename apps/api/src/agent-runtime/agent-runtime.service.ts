@@ -39,6 +39,7 @@ import type {
 import {
   LLMAuthError,
   LLMBalanceError,
+  LLMContextOverflowError,
   LLMError,
   LLMInvalidRequestError,
   LLMNetworkError,
@@ -1296,6 +1297,9 @@ function toLlmErrorCode(error: LLMError): AgentRunErrorCode {
     return 'llm_balance'
   if (error instanceof LLMRateLimitError)
     return 'llm_rate_limit'
+  // 先于它的父类 LLMInvalidRequestError。
+  if (error instanceof LLMContextOverflowError)
+    return 'llm_context_overflow'
   if (error instanceof LLMInvalidRequestError)
     return 'llm_invalid_request'
   if (error instanceof LLMServerError)

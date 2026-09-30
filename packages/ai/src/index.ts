@@ -19,6 +19,7 @@ export {
   LLMAuthError,
   LLMBalanceError,
   LLMConfigError,
+  LLMContextOverflowError,
   LLMError,
   LLMInvalidRequestError,
   LLMNetworkError,

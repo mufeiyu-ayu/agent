@@ -28,6 +28,8 @@ export const AGENT_RUN_ERROR_CODES = [
   'llm_rate_limit',
   // 上游 400 / 422，或模型配置无效。
   'llm_invalid_request',
+  // 服务商报输入超出模型的上下文上限：按报错原文识别，不看状态码（#220）。
+  'llm_context_overflow',
   // 上游 5xx（SDK 重试用尽）。
   'llm_server',
   // 连接失败、连接重置、请求超时。

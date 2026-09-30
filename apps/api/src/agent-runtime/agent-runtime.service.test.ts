@@ -37,6 +37,7 @@ import {
   LLMApiError,
   LLMAuthError,
   LLMBalanceError,
+  LLMContextOverflowError,
   LLMNetworkError,
   LLMRateLimitError,
   LLMServerError,
@@ -2865,6 +2866,18 @@ describe('Run 失败归因与首 token 时间（真实 SDK + fake fetch 故障�
       error: new LLMServerError(500),
       httpStatus: 500,
       fetchCount: 3,
+    },
+    // #220：报错原文是输入超长时不论状态码都归 llm_context_overflow，文案不再是「请求参数异常」。
+    {
+      name: '400 输入超长',
+      attempts: [() => new Response(
+        JSON.stringify({ error: { message: 'This model\'s maximum context length is 131072 tokens. However, you requested 140000 tokens.' } }),
+        { status: 400, headers: { 'Content-Type': 'application/json' } },
+      )],
+      errorCode: 'llm_context_overflow',
+      error: new LLMContextOverflowError(400),
+      httpStatus: 400,
+      fetchCount: 1,
     },
     {
       name: '流中途连接重置',

@@ -3,6 +3,7 @@ import {
   LLMApiError,
   LLMAuthError,
   LLMBalanceError,
+  LLMContextOverflowError,
   LLMInvalidRequestError,
   LLMNetworkError,
   LLMRateLimitError,
@@ -25,6 +26,11 @@ export function getAiExceptionMessage(exception: LLMError): string {
 
   if (exception instanceof LLMRateLimitError) {
     return 'AI 服务请求过于频繁，请稍后重试'
+  }
+
+  // 先于它的父类 LLMInvalidRequestError 判断。
+  if (exception instanceof LLMContextOverflowError) {
+    return '这次要处理的内容超出了模型一次能处理的范围。可以直接再发一次；如果仍然失败，请缩短问题或新建一个对话。'
   }
 
   if (exception instanceof LLMInvalidRequestError) {
