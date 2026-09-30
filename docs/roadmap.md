@@ -82,12 +82,11 @@
 - LangChain / LangGraph / 独立 Vector DB；
 - DeepSeek Responses adapter（#117 Gated）；
 - RBAC 与细粒度权限：第一期只做账号密码登录与每人对话隔离（2026-09-27 进工作台第 1 档）；角色、按组授权等真实需要时再做；
-- 长会话首轮同步分词：会阻塞事件循环，实测 1000 条 × 约 2.4k 字符的历史要 4.6s；当前 dev 库最长的会话只有 18 条，2026-09-23 决定暂不处理。触发为真实会话超过约 200 条，或首轮 plan 超过 500ms；
 - `packages/ai` / `packages/contracts` 的 src / dist 构建方式：typecheck 读 src，运行时与 api 测试读 dist，dev 期间不重建。2026-09-23 用户决定保留，只修导图描述；触发为 dist 过期造成一次真实误判；
 - 并行 Tool Call；
 - Memory、MCP、Multi-agent。
 
-已移出后置：OS sandbox 于 2026-09-20 进工作台（现第 2 档）；登录与 `web_fetch` 于 2026-09-27 进工作台第 1 档；OpenAI / Gemini 等第二 provider 已由 #142 / #146 落地。多租户已否决（工作台方向第 9 节），不在后置清单。
+已移出后置：OS sandbox 于 2026-09-20 进工作台（现第 2 档）；登录与 `web_fetch` 于 2026-09-27 进工作台第 1 档；长会话首轮同步分词随 #220 删掉本地分词器、改为粗估后不再存在；OpenAI / Gemini 等第二 provider 已由 #142 / #146 落地。多租户已否决（工作台方向第 9 节），不在后置清单。
 
 ## Admin Console 支线
 

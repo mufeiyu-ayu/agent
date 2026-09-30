@@ -1,3 +1,4 @@
+import type { ModelUsage } from '@agent/ai'
 import type { AgentRunErrorCode } from '@agent/contracts'
 import type { AgentRun, AgentStep, Message, Prisma } from '../../generated/prisma/client.js'
 import type {
@@ -13,6 +14,17 @@ import {
   MessageStatus,
 } from '../../generated/prisma/client.js'
 import { PrismaService } from '../../prisma/prisma.service.js'
+
+/** 用量的落库形态（采样 Step 的 output.usage、压缩 Step 与压缩记录的 usage 同一形状）：去掉缺失的字段。 */
+export function toPersistedModelUsage(
+  usage: ModelUsage | null,
+): Prisma.InputJsonObject | null {
+  return usage
+    ? Object.fromEntries(
+      Object.entries(usage).filter(([, value]) => value !== undefined),
+    ) as Prisma.InputJsonObject
+    : null
+}
 
 export const AGENT_STEP_TYPES = {
   /** 加载会话上下文 */

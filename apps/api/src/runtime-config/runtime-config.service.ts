@@ -138,6 +138,7 @@ function toSerperApiKeyColumns(encrypted: { apiKeyEncrypted: string, apiKeyLast4
 function toAdminRuntimeConfig(row: RuntimeConfig): AdminRuntimeConfig {
   return {
     runDeadlineMs: row.runDeadlineMs,
+    compactionKeepRecentTokens: row.compactionKeepRecentTokens,
     debugCaptureModelIo: row.debugCaptureModelIo,
     serperApiKeyLast4: row.serperApiKeyLast4,
     updatedAt: row.updatedAt.toISOString(),

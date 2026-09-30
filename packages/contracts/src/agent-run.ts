@@ -36,9 +36,9 @@ export const AGENT_RUN_ERROR_CODES = [
   'llm_network',
   // 流不完整或不合协议：缺 finish reason、length / content_filter 截断、未单独归类的 4xx 等。
   'llm_protocol',
-  // 必带 Context 超出输入预算，未调用模型。
+  // 必带 Context 超出输入预算，未调用模型；#220 改为超限只靠压缩后不再产生，只为显示历史记录保留。
   'context_overflow',
-  // Token 估算器无法完成请求前估算。
+  // Token 估算器无法完成请求前估算；#220 删掉本地分词器后不再产生，只为显示历史记录保留。
   'estimator_failure',
   // 采样轮数或 Tool Call 预算耗尽仍没有最终回答；#218 删掉这两个上限后不再产生，只为显示历史记录保留。
   'loop_limit',

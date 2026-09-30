@@ -66,6 +66,7 @@ describe('运行配置（真实库）', { timeout: 60_000 }, () => {
   it('AC-05 migration 插入唯一一行，取值等于原环境变量默认值；CHECK 约束拒绝第二行', async () => {
     assert.deepEqual(await service.getForAdmin().then(({ updatedAt: _, ...rest }) => rest), {
       runDeadlineMs: 600_000,
+      compactionKeepRecentTokens: 20_000,
       debugCaptureModelIo: false,
       serperApiKeyLast4: null,
     })
@@ -185,6 +186,16 @@ describe('运行配置（真实库）', { timeout: 60_000 }, () => {
     assert.equal((await service.loadSnapshot()).limits.runDeadlineMs, 60_000)
   })
 
+  it('#220 AC-12 压缩保留最近 Tokens 可读写，下一次问答的快照取新值；范围外的值数据库也拒绝', async () => {
+    const saved = await service.update({ compactionKeepRecentTokens: 15_000 })
+
+    assert.equal(saved.compactionKeepRecentTokens, 15_000)
+    assert.equal((await service.getForAdmin()).compactionKeepRecentTokens, 15_000)
+    assert.equal((await service.loadSnapshot()).compactionKeepRecentTokens, 15_000)
+    // 绕过管理台直接写库也写不进范围外的值。
+    await assert.rejects(adminPool.query(`UPDATE "${schema}"."RuntimeConfig" SET "compactionKeepRecentTokens" = 999`), /RuntimeConfig_compaction_keep_recent/)
+  })
+
   it('AC-08(c) 更换主密钥后 Key 解不开：快照标记为 undecryptable，不抛错', async () => {
     await service.update({ serperApiKey: 'serper-secret-key-9f3a' })
 
@@ -194,8 +205,8 @@ describe('运行配置（真实库）', { timeout: 60_000 }, () => {
   })
 
   it('AC-08(d) 并发保存两次：只 UPDATE 同一行，结果整行等于其中一次，不产生多行', async () => {
-    const first = { runDeadlineMs: 30_000, debugCaptureModelIo: true }
-    const second = { runDeadlineMs: 90_000, debugCaptureModelIo: false }
+    const first = { runDeadlineMs: 30_000, compactionKeepRecentTokens: 1_000, debugCaptureModelIo: true }
+    const second = { runDeadlineMs: 90_000, compactionKeepRecentTokens: 200_000, debugCaptureModelIo: false }
 
     for (let round = 0; round < 5; round++) {
       await Promise.all([service.update(first), service.update(second)])

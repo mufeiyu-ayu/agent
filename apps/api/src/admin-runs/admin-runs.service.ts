@@ -19,6 +19,7 @@ import { resolveAdminModelRefs } from './admin-model-refs.js'
 import {
   projectAdminRunDetail,
   projectAdminRunListItem,
+  readReferencedCompactionIds,
   readRunModelKey,
 } from './projection/admin-run.projector.js'
 
@@ -92,6 +93,18 @@ export const ADMIN_RUN_DETAIL_SELECT = {
     },
   },
 } as const satisfies Prisma.AgentRunSelect
+
+/** 运行详情里的历史压缩记录（#220）：只数覆盖了几组，不投影组键。 */
+export const ADMIN_RUN_COMPACTION_SELECT = {
+  id: true,
+  runId: true,
+  reason: true,
+  summary: true,
+  coveredGroupIds: true,
+  tokensBefore: true,
+  usage: true,
+  createdAt: true,
+} as const satisfies Prisma.ConversationCompactionSelect
 
 @Injectable()
 export class AdminRunsService {
@@ -171,9 +184,17 @@ export class AdminRunsService {
     if (!run)
       throw new NotFoundException('Agent Run 不存在或已被删除')
 
-    const [model] = await resolveAdminModelRefs(this.prismaService, [readRunModelKey(run.steps)])
+    const [[model], compactions] = await Promise.all([
+      resolveAdminModelRefs(this.prismaService, [readRunModelKey(run.steps)]),
+      // 本 Run 写的记录（含问答结束后的后台预压）与各次采样基于的记录，一次查询取回。
+      this.prismaService.conversationCompaction.findMany({
+        where: { OR: [{ runId: run.id }, { id: { in: readReferencedCompactionIds(run.steps) } }] },
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+        select: ADMIN_RUN_COMPACTION_SELECT,
+      }),
+    ])
 
-    return projectAdminRunDetail(run, model ?? null)
+    return projectAdminRunDetail(run, model ?? null, compactions)
   }
 
   /**

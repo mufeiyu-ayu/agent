@@ -358,7 +358,8 @@ function requestLabel(group: TraceRequestGroup): string {
   background: var(--admin-text-subtle);
 }
 
-.is-history .trace-ledger__kind i {
+.is-history .trace-ledger__kind i,
+.is-compact .trace-ledger__kind i {
   background: var(--admin-success);
 }
 

@@ -49,6 +49,7 @@ describe('Run 数据', () => {
   it('详情状态：四种状态、404、失败重试，旧请求与切换路由后的响应不覆盖当前 Run', checkDetailStateAndRaceFencing)
   it('RUNNING 的部分轨迹与 Inspector 格式化', checkPartialTraceAndInspectors)
   it('Run Trace 投影：请求分组、折叠与搜索、工具关联失效降级、部分计时、generic 不泄露字段', checkRunTraceProjection)
+  it('#220 上下文压缩 Step：独立事件、进输入泳道、不并入请求分组，可按层搜索', checkCompactionTrace)
 })
 
 function checkPartialTraceAndInspectors(): void {
@@ -639,6 +640,45 @@ async function checkDetailStateAndRaceFencing(): Promise<void> {
   state.cancel()
 }
 
+function checkCompactionTrace() {
+  const detail = createTraceDetail(1)
+
+  // 第 2 次调模型前压了一次本轮：插在工具之后、第 2 次采样之前。
+  for (const item of detail.timeline) {
+    if (item.sequence >= 5)
+      item.sequence += 1
+  }
+  detail.timeline.push({
+    id: 'trace-compaction',
+    kind: 'known',
+    sequence: 5,
+    type: 'context_compaction',
+    title: '上下文压缩',
+    status: 'COMPLETED',
+    ...traceTiming(5),
+    hasError: false,
+    layer: 'turn',
+    tokensBefore: 270_000,
+    usage: null,
+    errorMessage: null,
+    compactionId: null,
+    keptFromSamplingAttemptId: 'run-trace:sampling-1',
+    summary: '前缀摘要',
+  })
+
+  const projection = createRunTraceProjection(detail)
+  const record = projection.records.find(candidate => candidate.id === 'trace-compaction')
+
+  assert.equal(record?.eventType, 'COMPACT')
+  assert.equal(record?.requestId, null)
+  assert.equal(record?.unlinked, false)
+  assert.deepEqual(projection.records.map(candidate => candidate.id).slice(3, 6), ['trace-tool-1', 'trace-compaction', 'trace-model-2'])
+  assert.equal(projection.overviewSpans.find(span => span.recordId === 'trace-compaction')?.lane, 'input')
+  assert.deepEqual(filterTraceRecords(projection.records, 'turn').map(candidate => candidate.id), ['trace-compaction'])
+  // 请求分组不受影响：工具仍归第 1 次请求。
+  assert.deepEqual(projection.requestGroups.map(group => group.toolRecordIds), [['trace-tool-1'], []])
+}
+
 function createTraceDetail(toolCount: 0 | 1 | 2): AdminRunDetail {
   const timeline: AdminRunTimelineItem[] = [
     // 旧库仍可能带 receive_user_message：服务端投影为 generic。
@@ -792,6 +832,7 @@ function createTraceDetail(toolCount: 0 | 1 | 2): AdminRunDetail {
     ],
     // 反转输入，确保 presenter 而不是 fixture 顺序决定 Ledger。
     timeline: [...timeline].reverse(),
+    compactions: [],
   }
 }
 
@@ -881,6 +922,7 @@ function createRunningDetail(): AdminRunDetail {
       updatedAt: startedAt,
     }],
     timeline: [generic, sampling],
+    compactions: [],
   }
 }
 
@@ -896,6 +938,8 @@ function createContextInspector(
     estimatedInputTokens: 0,
     historyIncludedCount: 2,
     historyCandidateCount: 2,
+    compactionId: null,
+    turnCompactionStepId: null,
     ...overrides,
   }
 }

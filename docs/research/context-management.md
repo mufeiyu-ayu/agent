@@ -1,6 +1,6 @@
 # 上下文管理：历史里的工具记录与压缩
 
-状态：技术讨论（2026-09-28 起，2026-09-30 按 #218 的实现更新、E3 立为 #220），不是产品需求。这里只定大体要做什么与参照谁，每个 Issue 立项前再单独讨论细节，讨论时以本文为起点、补社区讨论。顺序只在 [workbench-direction.md](./workbench-direction.md) 第 7 节。原则：核心机制照抄成熟开源项目（优先 Pi，opencode 交叉核对），我们自己加的项单独标明理由；Claude Code 不开源，引用只能算官方文档。
+状态：技术讨论（2026-09-28 起，2026-09-30 按 #218、#220 的实现更新），不是产品需求。这里只定大体要做什么与参照谁，每个 Issue 立项前再单独讨论细节，讨论时以本文为起点、补社区讨论。顺序只在 [workbench-direction.md](./workbench-direction.md) 第 7 节。原则：核心机制照抄成熟开源项目（优先 Pi，opencode 交叉核对），我们自己加的项单独标明理由；Claude Code 不开源，引用只能算官方文档。
 
 ## 1. 起因与现状
 
@@ -10,13 +10,13 @@
 
 | 项 | 现状 | 位置 |
 | --- | --- | --- |
-| 历史 | #218 前只带之前各轮已完成的「用户问题 + 最终回答」，工具调用与结果都不带（#119 / #152 的设计，当时只有站内文章工具）；#218 起按原生格式带回之前问答的工具调用与结果，见第 5 节 E1 | `apps/api/src/agent-runtime/agent-runtime.service.ts`（`loadConversationHistory`）、`agent-runtime/context/conversation-history.ts` |
-| 输入预算 | 模型行的单次输入上限 `LlmModel.maxInputTokens`（#216，存量行迁移为 262,144），保存时校验不超过 窗口 − 最大输出 − 16,384 | `apps/api/src/admin-llm/admin-llm.service.ts`（校验）、`agent-runtime/context/initial-context.ts`（使用） |
-| 超预算 | 只在当前 Run 内：本地 DeepSeek V4 估算器算 token，从最旧的历史删起（#218 起按整次问答删），再截短本 Run 的工具结果；超了记进 `contextPlan` | `context/sampling-context-planner.ts` |
+| 历史 | #218 前只带之前各轮已完成的「用户问题 + 最终回答」，工具调用与结果都不带（#119 / #152 的设计，当时只有站内文章工具）；#218 起按原生格式带回之前问答的工具调用与结果，见第 5 节 E1；#220 起在一个快照里连同最新的压缩记录一起读 | `agent-runtime/context/conversation-history.ts`（`loadConversationHistory`） |
+| 输入预算 | 模型行的单次输入上限 `LlmModel.maxInputTokens`（#216，存量行迁移为 262,144），保存时校验不超过 窗口 − 最大输出 − 16,384；#220 起就是压缩的触发线 | `apps/api/src/admin-llm/admin-llm.service.ts`（校验）、`agent-runtime/context/context-compaction.service.ts`（使用） |
+| 超预算 | #220 前：本地 DeepSeek V4 估算器算 token，从最旧的历史删起，再截短本 Run 的工具结果。#220 起只靠压缩，不删历史、不截短工具结果，见第 5 节 E3 | `agent-runtime/context/compaction.ts`、`context-compaction.service.ts` |
 | 单条工具结果 | 硬上限 128,000 字符 | `apps/api/src/tools/core/tool-observation.ts` |
-| 真实用量 | 每次采样的 provider usage（输入、总量、缓存命中）存在 AgentStep 的 `output.usage`，目前只有管理台概览在用 | `apps/api/src/admin-overview/admin-overview.service.ts` |
+| 真实用量 | 每次采样的 provider usage（输入、总量、缓存命中）存在 AgentStep 的 `output.usage`；管理台概览在用，#220 起同一次问答内也作下一次估算的锚点 | `agent-runtime/context/model-context.ts`、`apps/api/src/admin-overview/admin-overview.service.ts` |
 | 窗口大小 | 模型表 `LlmModel.contextWindowTokens` / `maxOutputTokens`，管理台人工维护 | `prisma/schema.prisma` |
-| 压缩、前台用量 | 都没有 | —— |
+| 压缩 | #220 起自动压缩，没有手动入口；前台用量显示已取消（见第 5 节 E2） | 见第 5 节 E3 |
 
 工具参数与 observation 已在 tool Step 落库，历史带上工具记录不破坏「模型可见 ⟺ 落库」。
 
@@ -77,13 +77,19 @@ Pi 撑住长任务靠的是压缩：coding-agent 在每次调用模型前检查�
 
 **E2 前台上下文用量：取消（2026-09-29）**。我们是给运营用的云端产品，不是面向开发者的 Claude Code / Codex；用户在意的是能一直聊下去，Claude、ChatGPT 网页端也不显示用量、不给压缩按钮。真实用量已存在每次采样的 Step 里，管理台运行详情可查，排查够用。
 
-**E3 上下文自动压缩（#220，2026-09-30 定案）**：规格以 Issue 为准，这里只记方向与依据。用户无感，不做手动按钮；首先要撑住第二期沙箱写页面的长工具循环，同时让日常对话能一直聊下去。
+**E3 上下文自动压缩（#220）**：规格以 Issue 为准。用户无感，不做手动按钮；首先撑住第二期沙箱写页面的长工具循环，同时让日常对话能一直聊下去。下面是实际做法，照抄与我们加的项都已在代码注释里逐条标明。
 
-- **计数**：三家都没有本地分词器：Pi、Codex 用「上次服务端 usage + 新增部分粗估」决定何时压缩（Pi `compaction.ts:161,217,281`、Codex `history.rs:904`），opencode 只看上次 usage（`overflow.ts:31-33`）。粗估照抄 Codex 的 UTF-8 字节数 ÷ 4：本地 23 次真实调用，Pi 的 `chars/4` 只有实际的 0.40～0.91（中文越多越少），`bytes/4` 为 0.86～1.11。同一次问答内用上次 usage + 新增粗估；每次问答的第 1 次调用全量粗估，不跨问答用 usage：Pi 能跨问答用，是因为它回放思考（`packages/ai/src/api/openai-completions.ts:1330-1337`）且单用户不并发，我们历史不回放思考、同会话可并发。删掉本地 DeepSeek 分词器（#218 实测 20 次问答首轮 1.7s 的来源）。
+- **计数**（`context/token-estimate.ts`、`model-context.ts`）：三家都没有本地分词器（Pi `compaction.ts:161,217,281`、Codex `history.rs:904`、opencode `overflow.ts:31-33`）。粗估照抄 Codex 的 UTF-8 字节数 ÷ 4（本地 23 次真实调用，Pi 的 `chars/4` 只有实际的 0.40～0.91，`bytes/4` 为 0.86～1.11），系统提示词与工具定义也计入。同一次问答内 = 上次采样的输入 + 输出用量 + 之后新增的工具结果粗估；每次问答的第 1 次调用、上次采样失败或没有用量、上次采样之后压缩过时全部粗估。不跨问答用 usage：Pi 能跨问答用是因为它回放思考（`packages/ai/src/api/openai-completions.ts:1330-1337`）且单用户不并发。本地 DeepSeek 分词器已删。
 - **触发线**：模型行「单次输入上限」，按模型配置的绝对值，用户在管理台调。依据：DeepSeek V4 技术报告 MRCR 128K 内稳定、Flash 1M 时只有 0.49；Gemini / Grok 超 200K、OpenAI 超 272K 整包加价；编程助手常压到窗口 83%～98%，对话产品（Anthropic API 默认 150K、Open WebUI 80K）低得多。
-- **删兜底**：「整组删最旧问答 + 截短本次工具结果」是 Phase 7 自研的，三家都没有，超限只靠压缩。
-- **两层压缩**（我们加的，Pi 是单线程追加日志）：历史压缩只覆盖已结束的问答整组，落 `ConversationCompaction` 表，每条记录自成完整（累计覆盖集合）、取最新一条；本轮压缩在一次问答内部把前面的工具步骤写成前缀摘要，结束后这次问答按压缩后形态还原，做完页面马上追问修改时仍能看到最近几步原文。
-- **时机**：每次调模型前超线就同步压缩（照抄 Pi，有效压缩不限次数，连续 2 次无效停用）；服务商报超长时压缩后重试一次（照抄 Pi）；回答结束后超过 0.8 × 触发线在后台提前压缩（我们加的：Pi 的自动压缩其实是同步的，本地命令行里用户感觉不到；网页端下次提问不该等）。
-- **摘要**：当前对话模型、思考压到最低；照抄 Pi 的六栏模板与 UPDATE 滚动，加 Sources 栏、URL / 数字 / 日期一字不改、修改要求与否决方案必须保留、用用户的语言写，UPDATE 加 opencode「冲突时以新内容为准」。保留最近原文默认 20,000（照抄 Pi，运行配置全局一项，实际不超过触发线的 1/4）。
+- **两层**（我们加的，Pi 是单线程追加日志）：
+  - 历史压缩只覆盖已结束的问答整组，写 `ConversationCompaction` 表：每条记录自成完整（`coveredGroupIds` 累计），读历史取 `readAt`、`createdAt`、`id` 最新的一条，所以并发时哪条胜出都不丢、不重复内容。切点从最新的问答往回整组累加，放得下就保留；第一组放不下的若「问题 + 回答全文」放得下，就以这种形式保留（`answerOnlyGroupId`），完整内容进摘要。摘要输入超过触发线一半时按整组分块，每块一条记录。
+  - 本轮压缩把本 Run 前面的工具轮写成前缀摘要，记在 `context_compaction` Step 上；只切在某一轮开头，最少保留最新一轮，保留预算先扣掉历史里仍是原文的部分。Run 结束后这次问答在历史里按最后一条成功的本轮压缩还原（问题 + 前缀摘要 + 保留的工具轮 + 最终回答），追问时不用再调摘要模型。
+  - 读历史在一个 REPEATABLE READ 快照里（`readAt` 取事务的 `now()`），能否进摘要按快照判断：Run 全部终态，或没有 Run 但有回答；进行中的组不进摘要、不进覆盖集合。问答中途的压缩只用本 Run 开始时读到的快照，不重读。
+- **时机**：检查点 A 每次调模型前超触发线就同步压缩（先历史、仍超线再本轮），压缩 Step 排在采样 Step 之前；检查点 C 服务商报超长、本轮没推出过 delta 时，失败的采样 Step 照常收口、不发失败事件，强制压缩一次后重试，成功采样后复位（照抄 Pi 的「连续超长只救一次」）；检查点 B 问答成功提交后在后台预压，下一次问答的历史超过 0.8 × 触发线才压，不写 Step、失败只记日志，下一次问答不等它（我们加的：Pi 的自动压缩其实是同步的，网页端下次提问不该等）。
+- **防循环**：两层都没有新内容不压、不算一次尝试；两次尝试之间要有成功采样；一次尝试无效（摘要失败或压完仍超线）累计，连续 2 次后本 Run 只剩检查点 C，一次有效压缩清零（照抄 Pi 要有新内容；连续无效上限是我们加的）。
+- **摘要**：当前对话模型、不带工具，DeepSeek 关思考、其他家族取最低一档强度（OpenAI 兼容接口的 `max_tokens` 含思考）；照抄 Pi 的序列化（工具结果截到 2,000 字符）、六栏模板与 UPDATE 滚动，加 Sources 栏、问题的北京日期与 unanswered 标注、URL / 数字 / 日期一字不改、修改要求与否决方案必须保留、用用户的语言写，UPDATE 加 opencode「冲突时以新内容为准」。`length`、报错、正文为空都算失败。保留最近原文默认 20,000（照抄 Pi，运行配置全局一项，实际不超过触发线的 1/4）。
+- **超长识别**：`packages/ai` 照抄 Pi 的 `OVERFLOW_PATTERNS` / `NON_OVERFLOW_PATTERNS`，不看状态码；新错误码 `llm_context_overflow`。
+- **删掉的兜底**：「整组删最旧问答 + 截短本次工具结果」（Phase 7 自研，三家都没有）与必带内容检查。
+- **实测（AC-10，2026-09-30）**：20 次问答（每次 1 次搜索 + 2 次读网页，工具结果取上限长度，估算约 74.6 万 token）首轮 plan 0.5～0.6ms、读历史 12～28ms（#218 带分词器时首轮 1.7s）。真实 DeepSeek（deepseek-flash 官方直连）、触发线 262,144：一次历史压缩（18 次问答、压缩前 277,795）摘要输入 48,521 / 输出 2,958 token，整次 13.1 秒；一次本轮压缩（连续 43 次读网页、压缩前 262,304）输入 28,045 / 输出 2,943 token，整次 14.8 秒，压完回到 19,554。
 - **推迟到沙箱立项**：Pi 的「读过 / 改过的文件」清单、截断写文件类工具的超长参数、失败 Run 在工作区留下的文件、Run 时限。
 - 调研与评审过程：三家源码、社区踩坑（反复压缩、过期「进行中」、压缩后重答、摘要请求本身超长）、对话产品的触发线，以及两轮多方评审（沙箱编程、对话体验、运行时正确性、简化派）。

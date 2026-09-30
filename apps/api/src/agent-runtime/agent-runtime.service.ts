@@ -1,7 +1,6 @@
 import type {
   ChatStreamOptions,
   ModelToolSpec,
-  ModelUsage,
 } from '@agent/ai'
 import type { AgentRunErrorCode } from '@agent/contracts'
 import type {
@@ -61,6 +60,7 @@ import {
   AGENT_RUN_DEADLINE_EXCEEDED_MESSAGE,
   AgentRunTerminalizationError,
   ModelSamplingIncompleteError,
+  samplingFailureCause,
 } from './agent-runtime.errors.js'
 import { ContextCompactionService } from './context/context-compaction.service.js'
 import { loadConversationHistory, separateFromPreviousText } from './context/conversation-history.js'
@@ -68,6 +68,7 @@ import { ModelContext, toFeedbackArgumentsJson } from './context/model-context.j
 import {
   AGENT_STEP_TYPES,
   AgentRunRecorderService,
+  toPersistedModelUsage,
 } from './lifecycle/agent-run-recorder.service.js'
 import {
   claimRunTermination,
@@ -865,7 +866,7 @@ export class AgentRuntimeService {
         throw error
       }
 
-      // observation 已按工具上限修剪（第一道截断，第二道在 plan() 里按整轮预算缩）；
+      // observation 已按工具上限修剪（唯一一道截断：上下文超限只靠压缩，之后原样回喂）；
       // argumentsValidated 是 invoke 按实际走到的分支给出的：只有通过 input.parse 的调用参数才可信。
       const { result: toolResult, argumentsValidated, observation } = invocation
       // 回喂给模型的参数表示只算这一次：同一个字符串既落库，也进下一轮的 ModelContext。
@@ -886,7 +887,7 @@ export class AgentRuntimeService {
           originalChars: observation.originalChars,
           observationChars: observation.observationChars,
           truncated: observation.truncated,
-          // 回喂给模型的正文，已受 maxObservationChars 限制；后续轮次按预算缩短见 sampling Step 的 contextPlan。
+          // 回喂给模型的正文，已受 maxObservationChars 限制，之后各轮原样回喂。
           observation: toPersistableText(observation.content),
           // 工具给界面的结果，与 tool_finished 同一份，只为刷新后还原时间线（#212），不进模型上下文；
           // 工具失败时界面上的原因由 code 推出，不另存。
@@ -1227,11 +1228,7 @@ function describeRunFailure(
   if (source === 'deadline')
     return { errorCode: 'deadline', message: AGENT_RUN_DEADLINE_EXCEEDED_MESSAGE, rootCause: reason }
 
-  // 流读取失败时，采样包装只说明「这一轮没完整结束」，真实原因在 cause 上。
-  const rootCause = reason instanceof ModelSamplingIncompleteError
-    && reason.cause !== undefined
-    ? reason.cause
-    : reason
+  const rootCause = samplingFailureCause(reason)
 
   if (rootCause instanceof LLMError) {
     return {
@@ -1266,13 +1263,9 @@ function describeRuntimeError(
   return undefined
 }
 
-/** 服务商报的输入超长：流读取失败时真实错误挂在采样包装的 cause 上。 */
+/** 服务商报的输入超长。 */
 function isContextOverflow(error: unknown): boolean {
-  const rootCause = error instanceof ModelSamplingIncompleteError && error.cause !== undefined
-    ? error.cause
-    : error
-
-  return rootCause instanceof LLMContextOverflowError
+  return samplingFailureCause(error) instanceof LLMContextOverflowError
 }
 
 function toLlmErrorCode(error: LLMError): AgentRunErrorCode {
@@ -1369,14 +1362,4 @@ function toPersistedToolDisplay(display: ToolDisplay): Prisma.InputJsonObject {
     ...(display.title === undefined ? {} : { title: toPersistableText(display.title) }),
     ...(display.chars === undefined ? {} : { chars: display.chars }),
   }
-}
-
-function toPersistedModelUsage(
-  usage: ModelUsage | null,
-): Prisma.InputJsonObject | null {
-  return usage
-    ? Object.fromEntries(
-      Object.entries(usage).filter(([, value]) => value !== undefined),
-    ) as Prisma.InputJsonObject
-    : null
 }

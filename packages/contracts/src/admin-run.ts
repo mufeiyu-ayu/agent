@@ -41,6 +41,7 @@ export interface AdminRunListItem {
   errorCode: AgentRunErrorCode | null
   /**
    * 失败 / 中断 Run 在终态时与 Run 一起收口的 Step 的错误文案；更早失败、已回喂模型的工具 Step 不算。
+   * 服务商报超长、强制压缩又失败的 Run（#220）取最后一次以同一类别失败的采样。
    * 成功 / 运行中的 Run，以及在两个 Step 之间中断（没有 Step 随终态收口）时为 null。
    */
   failureMessage: string | null
@@ -109,8 +110,13 @@ export const ADMIN_TOOL_RESULT_CODES = [
 
 export type AdminToolResultCode = typeof ADMIN_TOOL_RESULT_CODES[number]
 
+/**
+ * 新 Run（#220 起）按采样的失败类别得出：服务商报输入超长为 llm_context_overflow，其余有 contextPlan 的为 success；
+ * minimum_context_overflow 与 estimator_failure 只出现在旧 Run（按 overflowReason / contextFailureReason 读）。
+ */
 export type AdminContextInspectorOutcome
   = | 'success'
+    | 'llm_context_overflow'
     | 'minimum_context_overflow'
     | 'estimator_failure'
 
@@ -123,10 +129,20 @@ export interface AdminContextInspector {
   modelId: string | null
   resolvedInputBudgetTokens: number | null
   estimatedInputTokens: number | null
-  /** 本轮 planner 选入的历史条数（超预算时从最旧处删减后剩下的）；#149 之后、#152 之前的 Run 没记录，为 null。 */
+  /**
+   * 本轮原文发出的历史 Message 条数：#220 起是未被历史压缩记录覆盖的部分，之前是 planner 按预算选入的条数；
+   * #149 之后、#152 之前的 Run 没记录，为 null。
+   */
   historyIncludedCount: number | null
-  /** 本次 Run 读入的候选历史条数，取自 load_conversation_history Step（#119 之前的 Run 那里记的是选入条数）；读不出为 null。 */
+  /**
+   * #220 之前按预算选入历史的 Run 才有：「选入 X / 候选 Y」的候选条数，取自 load_conversation_history Step
+   * （#119 之前的 Run 那里记的是选入条数）；#220 起与读不出都为 null。
+   */
   historyCandidateCount: number | null
+  /** 本轮基于的历史压缩记录（摘要在 AdminRunDetail.compactions）；没有或 #220 之前的 Run 为 null。 */
+  compactionId: string | null
+  /** 本轮基于的本轮压缩 Step（前缀摘要在那条 context_compaction Step 上）；没有或 #220 之前的 Run 为 null。 */
+  turnCompactionStepId: string | null
 }
 
 interface AdminRunTimelineItemBase {
@@ -148,7 +164,7 @@ export interface AdminRunKnownTimelineItemBase extends AdminRunTimelineItemBase 
 
 export interface AdminLoadConversationHistoryStep extends AdminRunKnownTimelineItemBase {
   type: 'load_conversation_history'
-  /** 候选历史条数（按预算裁剪前）；#119 之前的 Run 记的是选入条数。 */
+  /** 读到的历史条数（含被压缩记录覆盖的）；#119 之前的 Run 记的是选入条数。 */
   messageCount: number | null
 }
 
@@ -216,6 +232,25 @@ export interface AdminAssistantOutputStep extends AdminRunKnownTimelineItemBase 
   assistantMessageId: string | null
 }
 
+/** 上下文压缩（#220）：调模型前超触发线或服务商报超长时，在 Run 内把内容写成摘要的一次尝试。 */
+export interface AdminContextCompactionStep extends AdminRunKnownTimelineItemBase {
+  type: 'context_compaction'
+  /** 哪一层（Step 的 input.kind）：history 把较早的问答写成历史摘要，turn 把本 Run 前面的工具轮写成前缀摘要。读不出为 null。 */
+  layer: 'history' | 'turn' | null
+  /** 触发这次压缩的估算输入 Token。 */
+  tokensBefore: number | null
+  /** 这次摘要调用的用量；失败前没收到用量为 null。 */
+  usage: AdminRunTokenUsage | null
+  /** 失败原因（runtime 写的安全文案）；成功为 null。 */
+  errorMessage: string | null
+  /** 历史压缩写成的记录，摘要在 AdminRunDetail.compactions；失败或本轮压缩为 null。 */
+  compactionId: string | null
+  /** 本轮压缩：从这一轮采样起保留原文。 */
+  keptFromSamplingAttemptId: string | null
+  /** 本轮压缩的前缀摘要；失败或历史压缩为 null。 */
+  summary: string | null
+}
+
 /** 未知 `type` 的 Step（含旧库里已下线的 Step 类型，如 receive_user_message）。 */
 export interface AdminGenericStep extends AdminRunTimelineItemBase {
   kind: 'generic'
@@ -226,11 +261,29 @@ export type AdminRunTimelineItem
     | AdminModelSamplingStep
     | AdminToolExecutionStep
     | AdminAssistantOutputStep
+    | AdminContextCompactionStep
     | AdminGenericStep
+
+/** 历史压缩记录（#220）：较早的问答写成的摘要，每条自成完整。 */
+export interface AdminConversationCompaction {
+  id: string
+  /** 写它的 Run；Run 已删除为 null。 */
+  runId: string | null
+  /** threshold：调模型前超触发线；overflow：服务商报超长；after_run：问答结束后在后台预压。读不出为 null。 */
+  reason: 'threshold' | 'overflow' | 'after_run' | null
+  summary: string
+  /** 累计被摘要覆盖的问答组数。 */
+  coveredGroupCount: number
+  tokensBefore: number
+  usage: AdminRunTokenUsage | null
+  createdAt: string
+}
 
 export interface AdminRunDetail extends AdminRunListItem {
   assistantMessageId: string | null
   updatedAt: string
   messages: AdminRunMessage[]
   timeline: AdminRunTimelineItem[]
+  /** 本 Run 写的（Run 内与问答结束后的后台预压）与本 Run 各次采样基于的历史压缩记录，按写入先后。 */
+  compactions: AdminConversationCompaction[]
 }

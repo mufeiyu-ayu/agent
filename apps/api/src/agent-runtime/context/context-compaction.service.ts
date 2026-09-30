@@ -18,8 +18,8 @@ import { reasoningEffortsOf } from '@agent/contracts'
 import { Inject, Injectable, Logger } from '@nestjs/common'
 import { LLMService } from '../../llm/llm.service.js'
 import { DatabaseOperationDeadlineExceededError, PrismaService } from '../../prisma/prisma.service.js'
-import { ModelSamplingIncompleteError } from '../agent-runtime.errors.js'
-import { AGENT_STEP_TYPES, AgentRunRecorderService } from '../lifecycle/agent-run-recorder.service.js'
+import { ModelSamplingIncompleteError, samplingFailureCause } from '../agent-runtime.errors.js'
+import { AGENT_STEP_TYPES, AgentRunRecorderService, toPersistedModelUsage } from '../lifecycle/agent-run-recorder.service.js'
 import { toPersistableText } from '../persistable-text.js'
 import { streamModelSampling } from '../sampling/model-sampling-decision.js'
 import {
@@ -399,7 +399,7 @@ export class ContextCompactionService {
         throw error
 
       // 流读取失败时真实原因在 cause 上；length 等未完整结束的原因就是错误自身的文案。
-      const cause = error instanceof ModelSamplingIncompleteError && error.cause !== undefined ? error.cause : error
+      const cause = samplingFailureCause(error)
 
       return {
         ok: false,
@@ -449,10 +449,9 @@ function turnCut(run: CompactionRun, keepBudget: number): number | undefined {
   )
 }
 
-/** 用量按采样 Step 的 output.usage 同一形状落库：去掉缺失的字段，没有就不写。 */
+/** 用量按采样 Step 的 output.usage 同一形状落库；没有就不写（压缩记录的 Json? 列不能直接写 null）。 */
 function toUsageOutput(usage: ModelUsage | null): { usage?: Prisma.InputJsonObject } {
-  if (!usage)
-    return {}
+  const persisted = toPersistedModelUsage(usage)
 
-  return { usage: Object.fromEntries(Object.entries(usage).filter(([, value]) => value !== undefined)) as Prisma.InputJsonObject }
+  return persisted ? { usage: persisted } : {}
 }

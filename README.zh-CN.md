@@ -70,7 +70,8 @@ DeepSeek 官方 API 和 OpenAI-compatible 中转站（GPT / Grok / Gemini）用�
 ```ts
 // 不限轮数与工具调用次数：模型一直做到给出回答，只由单次最长时间兜底。
 while (true) {
-  const input = planner.plan(context, budget) // 这一轮模型能看到什么，含之前问答的工具记录
+  await compaction.compactBeforeSampling(run) // 超过单次输入上限：先把较早的历史写成摘要，再压本次前面的工具轮
+  const input = context.plan(tools) // 这一轮模型能看到什么，含之前问答的工具记录
   const decision = await streamModelSampling(llm.chatStream(input))
 
   if (decision.type === 'final_answer')
@@ -92,7 +93,7 @@ flowchart LR
     Web[Vue 对话前台] -->|NDJSON 流| API[ChatController]
     Admin[运维控制台] --> AdminAPI[Admin API]
     API --> Runtime[Agent Runtime]
-    Runtime --> Context[模型上下文<br/>Token 预算 · 裁剪]
+    Runtime --> Context[模型上下文<br/>Token 预算 · 压缩]
     Runtime --> LLM["@agent/ai<br/>OpenAI-compatible 客户端"]
     LLM -->|SSE| Providers([DeepSeek · GPT · Grok · Gemini])
     Runtime --> Tools[工具<br/>联网搜索 · 读网页] --> Internet([Google · 网页])

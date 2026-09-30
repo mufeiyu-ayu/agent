@@ -7,7 +7,7 @@ import type {
   AdminDebugModelResponseCapture,
 } from '@agent/contracts'
 
-import { toPersistableText } from '../persistable-text.js'
+import { toPersistableText, truncateCodeUnits } from '../persistable-text.js'
 
 /** 一轮采样内的关联信息与 debug 原始值；未开启时两侧载荷均为 undefined。 */
 export interface DebugModelIOCaptured {
@@ -47,17 +47,9 @@ export function toModelIODebugCaptureEnvelope(
     return undefined
 
   if (json.length > MODEL_IO_DEBUG_CAPTURE_MAX_JSON_CHARS) {
-    let preview = json.slice(0, MODEL_IO_DEBUG_CAPTURE_MAX_JSON_CHARS)
-    const lastCode = preview.charCodeAt(preview.length - 1)
-
-    // 截断点落在代理对中间会留下孤立高位代理，形成非法 JSON 字符串
-    // （Postgres jsonb 会拒绝），去掉最后一个 code unit。
-    if (lastCode >= 0xD800 && lastCode <= 0xDBFF)
-      preview = preview.slice(0, -1)
-
     return {
       truncated: true,
-      preview,
+      preview: truncateCodeUnits(json, MODEL_IO_DEBUG_CAPTURE_MAX_JSON_CHARS),
     }
   }
 

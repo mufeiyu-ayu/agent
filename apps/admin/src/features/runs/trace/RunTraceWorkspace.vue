@@ -305,6 +305,7 @@ function resetInspectorWidth() {
             @dblclick="resetInspectorWidth"
           />
           <RunTraceInspector
+            :run="run"
             :record="selectedRecord"
             :request-group="selectedRequestGroup"
           />

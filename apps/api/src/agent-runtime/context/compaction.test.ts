@@ -87,7 +87,7 @@ describe('历史压缩的范围与切点（#220 AC-02）', () => {
     assert.match(chunk!.conversation, /\[Assistant\]: a{4000}/)
   })
 
-  it('做过本轮压缩的组、上次的边界组都按它们在历史里的样子计量', () => {
+  it('做过本轮压缩的组按压缩后形态计量；上次的边界组按完整形态计量，又成了边界时仍以退回形式保留', () => {
     const turnCompacted = group('u2', 0, {
       answer: [turnSummaryMessage('前缀摘要'), { type: 'message', role: 'assistant', content: 'b'.repeat(400) }],
       answerOnly: [{ type: 'message', role: 'assistant', content: 'b'.repeat(8_000) }],
@@ -96,9 +96,12 @@ describe('历史压缩的范围与切点（#220 AC-02）', () => {
     const previous = { id: 'c-1', summary: '旧摘要', coveredGroupIds: ['u0'], answerOnlyGroupId: 'u1' }
     const oldBoundary = group('u1', 4_000, { answerOnly: [{ type: 'message', role: 'assistant', content: 'short' }] })
     const view = history([oldBoundary, turnCompacted], previous)
+    const room = tokens(oldBoundary, true) + tokens(turnCompacted)
 
-    // 两组都按当前样子放得下：没有新的可摘要组，不压。
-    assert.equal(planHistoryCompaction(view, tokens(oldBoundary, true) + tokens(turnCompacted)), undefined)
+    // 它又成了边界、仍以退回形式保留，之前没有新的可摘要组：新记录与现在的一样，不压。
+    assert.equal(planHistoryCompaction(view, room), undefined)
+    // 完整形态也放得下：同样不压。
+    assert.equal(planHistoryCompaction(view, tokens(oldBoundary) + tokens(turnCompacted)), undefined)
     // 再小一点：旧边界组进摘要（按退回形式序列化），不再作为边界组保留。
     const plan = planHistoryCompaction(view, tokens(turnCompacted))
     const [chunk] = historySummaryChunks(view, plan!, 1_000_000)
@@ -106,6 +109,14 @@ describe('历史压缩的范围与切点（#220 AC-02）', () => {
     assert.deepEqual([plan?.groups.map(item => item.key), plan?.answerOnlyGroupKey], [['u1'], undefined])
     assert.deepEqual([chunk?.coveredGroupIds, chunk?.answerOnlyGroupId], [['u0', 'u1'], null])
     assert.match(chunk!.conversation, /\[Assistant\]: short$/)
+
+    // 更早的一组上次还在进行、现在结束了：它进摘要，上次的边界组仍是边界、以退回形式保留（按完整形态它放不下）。
+    const early = group('u-early', 400)
+    const withEarly = planHistoryCompaction(history([early, oldBoundary, turnCompacted], previous), room)
+    const [earlyChunk] = historySummaryChunks(history([early, oldBoundary, turnCompacted], previous), withEarly!, 1_000_000)
+
+    assert.deepEqual([withEarly?.groups.map(item => item.key), withEarly?.answerOnlyGroupKey], [['u-early', 'u1'], 'u1'])
+    assert.deepEqual([earlyChunk?.coveredGroupIds, earlyChunk?.answerOnlyGroupId], [['u0', 'u-early'], 'u1'])
   })
 
   it('没有新的可摘要组时不压缩：全部放得下，或只剩进行中的组', () => {
@@ -187,7 +198,7 @@ describe('摘要请求的序列化与拼接（#220 AC-04）', () => {
   })
 
   it('本轮前缀带当前问题与本 Run 的思考；工具结果超过 2,000 字符截断并标出截掉的字符数，参数不截断', () => {
-    // 按 JS 字符串长度截（照 Pi），落在代理对中间也照截。
+    // 按 JS 字符串长度截（照 Pi）；第 2,000 个码元落在代理对中间时少截一位，不留孤立代理项（我们加的）。
     const long = `${'正'.repeat(1_999)}😀尾`
     const first = exchange(1, 0)
     const text = serializeTurnPrefix({
@@ -199,8 +210,9 @@ describe('摘要请求的序列化与拼接（#220 AC-04）', () => {
       '[User] (2026-09-30): 当前问题',
       '[Assistant thinking]: 思考 1',
       '[Assistant tool calls]: web_fetch(url="https://example.com/1")',
-      `[Tool result]: ${long.slice(0, 2_000)}\n\n[... ${long.length - 2_000} more characters truncated]`,
+      `[Tool result]: ${'正'.repeat(1_999)}\n\n[... ${long.length - 1_999} more characters truncated]`,
     ].join('\n\n'))
+    assert.doesNotMatch(text, /[\uD800-\uDBFF](?![\uDC00-\uDFFF])/)
     // UPDATE 时不再带问题。
     assert.match(serializeTurnPrefix({ question: undefined, exchanges: [exchange(2, 10)] }), /^\[Assistant thinking\]: 思考 2/)
   })

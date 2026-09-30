@@ -17,7 +17,7 @@ import { createRequire } from 'node:module'
 import process from 'node:process'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { LLMContextOverflowError } from '@agent/ai'
-import { afterAll, beforeAll, describe, it } from 'vitest'
+import { afterAll, afterEach, beforeAll, describe, it } from 'vitest'
 import { ConversationsService } from '../../conversations/conversations.service.js'
 import { MessagesService } from '../../conversations/messages.service.js'
 import {
@@ -80,6 +80,8 @@ type SummaryStream = (request: string) => AsyncGenerator<ModelStreamEvent>
 describe('上下文压缩（真实库，#220）', { timeout: 60_000 }, () => {
   const schema = `compaction_test_${randomUUID().replaceAll('-', '')}`
   const adminPool = new PgPool({ connectionString: testDatabaseUrl, max: 1 })
+  /** 各次问答结束后发起的检查点 B：用例结束时等它们跑完，不留在后台写库。 */
+  const afterRuns: Array<Promise<void>> = []
   let prisma: PrismaService
 
   beforeAll(async () => {
@@ -97,6 +99,10 @@ describe('上下文压缩（真实库，#220）', { timeout: 60_000 }, () => {
 
     prisma = new PrismaService(withSearchPath(testDatabaseUrl, schema))
     await prisma.$connect()
+  })
+
+  afterEach(async () => {
+    await Promise.all(afterRuns.splice(0))
   })
 
   afterAll(async () => {
@@ -250,6 +256,29 @@ describe('上下文压缩（真实库，#220）', { timeout: 60_000 }, () => {
 
     assert.deepEqual(next.samplingCalls[0]!.slice(-3), [userMessage('第 5 问'), assistantMessage('好的。'), userMessage('第 6 问')])
     assert.equal(readContextPlan(await firstSamplingStep(next.runId)).compactionId, record?.id)
+  })
+
+  it('AC-05 旧记录的边界组在本 Run 新写的记录里既没被覆盖、也不再是边界组：这次按完整形态发出，与按新记录重建的一致', async () => {
+    const conversationId = await createConversation()
+    // 更早的一组：上次压缩时还在进行（不在覆盖集合里），现在已结束。
+    const early = await seedGroup(conversationId, 0)
+    // 上次压缩的边界组：带一轮工具记录，以「问题 + 回答全文」保留。
+    const boundary = await seedGroup(conversationId, 1, AgentRunStatus.RUNNING)
+
+    await finishGroup(boundary, 1, AgentRunStatus.COMPLETED, { withTools: true })
+    for (let index = 2; index <= 3; index += 1)
+      await seedGroup(conversationId, index)
+    await prisma.conversationCompaction.create({
+      data: { conversationId, reason: 'threshold', summary: '覆盖：第 1 问', coveredGroupIds: [], answerOnlyGroupId: boundary.questionId, readAt: seedTime(3_600), tokensBefore: 5_000, modelId: MODEL.modelId },
+    })
+
+    // 当前问题约 2,750 token，加上历史超过触发线：新记录覆盖更早的那组，边界落在它上面。
+    const current = await ask(conversationId, 'q'.repeat(11_000))
+    const [, record] = await prisma.conversationCompaction.findMany({ where: { conversationId }, orderBy: { createdAt: 'asc' } })
+
+    assert.deepEqual([record?.coveredGroupIds, record?.answerOnlyGroupId], [[early.questionId], null])
+    assert.ok(current.samplingCalls[0]!.some(item => item.type === 'assistant_tool_call'), '上次的边界组按完整形态（带工具记录）发出')
+    assert.deepEqual(await rebuildSamplingInput(await firstSamplingStep(current.runId)), current.samplingCalls[0])
   })
 
   it('AC-08(c) 并发压缩：检查点 B 与下一次问答的 A 同时压、两个 Run 基于同一份旧记录各自覆盖不同的组；无论哪条记录的 readAt 更新，下一次问答都不丢组、不重复', async () => {
@@ -545,6 +574,7 @@ describe('上下文压缩（真实库，#220）', { timeout: 60_000 }, () => {
     // 检查点 B 不被 runtime await：记下它的 Promise，用例需要时等它跑完。
     compaction.compactAfterRun = (input) => {
       afterRun = options.skipAfterRun ? Promise.resolve() : ContextCompactionService.prototype.compactAfterRun.call(compaction, input)
+      afterRuns.push(afterRun)
       return afterRun
     }
 
@@ -611,7 +641,7 @@ describe('上下文压缩（真实库，#220）', { timeout: 60_000 }, () => {
     const covered = new Set(compaction?.coveredGroupIds)
     const paired = pairHistory(messages, runs).filter(group => !covered.has(group.key))
     const historySteps = await prisma.agentStep.findMany({
-      where: { runId: { in: paired.filter(group => group.key !== compaction?.answerOnlyGroupId).flatMap(group => group.answers.flatMap(answer => answer.runId ? [answer.runId] : [])) } },
+      where: { runId: { in: paired.flatMap(group => group.answers.flatMap(answer => answer.runId ? [answer.runId] : [])) } },
     })
     const groups = restoreGroups(paired, historySteps.flatMap(toHistoryStepRow))
 

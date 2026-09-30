@@ -123,10 +123,9 @@ export async function loadConversationHistory(
         }))
     const covered = new Set(compaction?.coveredGroupIds)
     const groups = pairHistory(messages, runs).filter(group => !covered.has(group.key))
-    // 边界组按退回形式出现，只用回答消息全文，也不查 Step。
-    const runIds = groups
-      .filter(group => group.key !== compaction?.answerOnlyGroupId)
-      .flatMap(group => group.answers.flatMap(answer => answer.runId ? [answer.runId] : []))
+    // 边界组也查 Step：它按退回形式发出，但本 Run 内新写的记录可能既不覆盖它、也不再以它为边界，
+    // 那之后要按完整形态发出，才与按新记录重建的一致。
+    const runIds = groups.flatMap(group => group.answers.flatMap(answer => answer.runId ? [answer.runId] : []))
     const steps = runIds.length === 0
       ? []
       : await transaction.execute(prisma => prisma.$queryRaw<HistoryStepRow[]>(historyStepsQuery(runIds)))
@@ -166,7 +165,12 @@ export function pairHistory(messages: Message[], runs: HistoryRunRow[]): PairedG
   for (const run of runs) {
     if (run.assistantMessageId)
       runByAnswer.set(run.assistantMessageId, run)
-    runsByQuestion.set(run.userMessageId, [...(runsByQuestion.get(run.userMessageId) ?? []), run])
+    const questionRuns = runsByQuestion.get(run.userMessageId)
+
+    if (questionRuns)
+      questionRuns.push(run)
+    else
+      runsByQuestion.set(run.userMessageId, [run])
   }
 
   const groups: Array<PairedGroup & { paired: boolean }> = []
@@ -222,8 +226,14 @@ export function pairHistory(messages: Message[], runs: HistoryRunRow[]): PairedG
 export function restoreGroups(groups: PairedGroup[], steps: HistoryStepRow[]): HistoryGroup[] {
   const stepsByRun = new Map<string, HistoryStepRow[]>()
 
-  for (const step of steps)
-    stepsByRun.set(step.runId, [...(stepsByRun.get(step.runId) ?? []), step])
+  for (const step of steps) {
+    const runSteps = stepsByRun.get(step.runId)
+
+    if (runSteps)
+      runSteps.push(step)
+    else
+      stepsByRun.set(step.runId, [step])
+  }
 
   return groups.map(group => ({
     key: group.key,

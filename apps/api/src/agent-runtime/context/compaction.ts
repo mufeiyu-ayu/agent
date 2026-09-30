@@ -2,6 +2,7 @@ import type { ModelInputItem } from '@agent/ai'
 import type { ConversationHistory, HistoryGroup } from './conversation-history.js'
 import type { ModelContextToolExchange } from './model-context.js'
 
+import { truncateCodeUnits } from '../persistable-text.js'
 import { groupItems } from './conversation-history.js'
 import { estimateItemTokens, roughTokens } from './token-estimate.js'
 
@@ -243,9 +244,13 @@ function formatArguments(rawArgumentsJson: string): string {
 }
 
 function truncateForSummary(text: string): string {
-  return text.length <= TOOL_RESULT_MAX_CHARS
-    ? text
-    : `${text.slice(0, TOOL_RESULT_MAX_CHARS)}\n\n[... ${text.length - TOOL_RESULT_MAX_CHARS} more characters truncated]`
+  if (text.length <= TOOL_RESULT_MAX_CHARS)
+    return text
+
+  // 不把代理对切成两半（我们加的，Pi 直接按码元切）。
+  const kept = truncateCodeUnits(text, TOOL_RESULT_MAX_CHARS)
+
+  return `${kept}\n\n[... ${text.length - kept.length} more characters truncated]`
 }
 
 /** 一次历史压缩要做什么。 */
@@ -257,9 +262,11 @@ export interface HistoryCompactionPlan {
 }
 
 /**
- * 历史压缩的切点（我们加的：会话级只覆盖问答整组，参考 opencode 整轮保留）：只看可摘要的组，从最新往回按每组
- * 在历史里的样子整组累加粗估，放得下就保留；第一组放不下的是边界组，它的退回形式放得下就以退回形式保留、
- * 完整内容进摘要，否则整组进摘要；更早的全部进摘要。没有新的可摘要组时返回 undefined（照 Pi `:817-819`）。
+ * 历史压缩的切点（我们加的：会话级只覆盖问答整组，参考 opencode 整轮保留）：只看可摘要的组，从最新往回按每组的
+ * 还原形态（做过本轮压缩的按压缩后形态）整组累加粗估，放得下就保留；第一组放不下的是边界组，它的退回形式放得下就
+ * 以退回形式保留、完整内容进摘要，否则整组进摘要；更早的全部进摘要。
+ * 上次的边界组也按还原形态计量：新记录不再以它为边界时，它按完整形态发出。它又成了边界、仍以退回形式保留，
+ * 而它之前没有新的可摘要组时，新记录与现在的一样，返回 undefined；全部放得下时同样返回 undefined（照 Pi `:817-819`）。
  */
 export function planHistoryCompaction(history: ConversationHistory, keepBudget: number): HistoryCompactionPlan | undefined {
   const candidates = history.groups.filter(group => group.summarizable)
@@ -269,8 +276,7 @@ export function planHistoryCompaction(history: ConversationHistory, keepBudget: 
   let boundaryIndex = candidates.length - 1
 
   for (; boundaryIndex >= 0; boundaryIndex -= 1) {
-    const group = candidates[boundaryIndex]!
-    const tokens = shownTokens(group, group.key === history.compaction?.answerOnlyGroupId)
+    const tokens = shownTokens(candidates[boundaryIndex]!, false)
 
     if (used + tokens > keepBudget)
       break
@@ -281,11 +287,12 @@ export function planHistoryCompaction(history: ConversationHistory, keepBudget: 
     return undefined
 
   const boundary = candidates[boundaryIndex]!
+  const answerOnlyGroupKey = used + shownTokens(boundary, true) <= keepBudget ? boundary.key : undefined
 
-  return {
-    groups: candidates.slice(0, boundaryIndex + 1),
-    answerOnlyGroupKey: used + shownTokens(boundary, true) <= keepBudget ? boundary.key : undefined,
-  }
+  if (boundaryIndex === 0 && answerOnlyGroupKey !== undefined && answerOnlyGroupKey === history.compaction?.answerOnlyGroupId)
+    return undefined
+
+  return { groups: candidates.slice(0, boundaryIndex + 1), answerOnlyGroupKey }
 }
 
 /** 历史摘要的一块：一次摘要调用的输入，与它成功后那条记录的覆盖范围。 */

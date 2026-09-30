@@ -61,3 +61,8 @@ export class ModelSamplingIncompleteError extends Error {
     )
   }
 }
+
+/** 采样失败的真实原因：流读取失败时，采样包装只说明「这一轮没完整结束」，服务商的错误在 cause 上。 */
+export function samplingFailureCause(error: unknown): unknown {
+  return error instanceof ModelSamplingIncompleteError && error.cause !== undefined ? error.cause : error
+}

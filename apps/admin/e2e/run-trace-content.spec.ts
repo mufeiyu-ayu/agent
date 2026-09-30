@@ -4,10 +4,14 @@ import type { Page } from '@playwright/test'
 import { expect, test } from '@playwright/test'
 
 import {
+  BACKGROUND_SUMMARY,
   createAnsweredDetail,
+  createCompactionDetail,
   createModelVisibleContentDetail,
+  HISTORY_SUMMARY,
   installRunDetail,
   RUN_ID,
+  TURN_SUMMARY,
   UNTRUSTED_OBSERVATION,
 } from './fixtures'
 
@@ -86,7 +90,7 @@ test.describe('Issue #152 Run Trace 展示模型可见内容', () => {
     await expect(reasoning.locator('pre')).toHaveText('用户在问 SEO 指南，应先检索。')
 
     await selectTimelineItem(page, '加载会话历史')
-    await expect(inspector.locator('dt:text-is("候选历史条数") + dd')).toHaveText('3')
+    await expect(inspector.locator('dt:text-is("读到的历史条数") + dd')).toHaveText('3')
   })
 
   test('AC-06：旧 Run 没有内容事实时显示「未记录」，页面不报错', async ({ page }) => {
@@ -106,7 +110,73 @@ test.describe('Issue #152 Run Trace 展示模型可见内容', () => {
     await expect(inspector.getByTestId('sampling-intermediate-text')).toHaveCount(0)
     await expect(inspector.getByTestId('sampling-reasoning')).toHaveCount(0)
     await expect(inspector.locator('dt:text-is("本轮历史") + dd')).toHaveText('选入 未记录 / 候选 2 条')
+    // #220 之前的 Run：没有基于任何压缩。
+    await page.getByRole('tab', { name: '上下文' }).click()
+    await expect(inspector.locator('dt:text-is("基于的历史摘要") + dd')).toHaveText('—')
+    await expect(inspector.getByTestId('sampling-history-summary')).toHaveCount(0)
     expect(errors).toEqual([])
+  })
+})
+
+test.describe('Issue #220 上下文压缩', () => {
+  test('AC-12：轨迹里能看到上下文压缩与摘要全文，失败的写明原因；请求详情显示基于的压缩；运行详情列出后台压缩', async ({ page }) => {
+    const errors: string[] = []
+
+    page.on('pageerror', error => errors.push(error.message))
+    await openRunDetail(page, createCompactionDetail())
+
+    const inspector = page.locator(INSPECTOR)
+    const compactions = page.locator('.trace-ledger strong:text-is("上下文压缩")')
+
+    await expect(compactions).toHaveCount(3)
+
+    // 历史压缩：摘要全文在压缩记录里，默认折叠。
+    await compactions.nth(0).click()
+    await expect(inspector.locator('dt:text-is("压缩层") + dd')).toHaveText('历史')
+    await expect(inspector.locator('dt:text-is("压缩记录 ID") + dd')).toHaveText('compaction-1')
+    const historySummary = inspector.getByTestId('compaction-summary')
+
+    await expect(historySummary.locator('pre')).toBeHidden()
+    await historySummary.locator('summary').click()
+    expect(await historySummary.locator('pre').textContent()).toBe(HISTORY_SUMMARY)
+    await page.screenshot({ path: 'e2e/.artifacts/issue-220-compaction-step.png', fullPage: true })
+
+    // 本轮压缩失败：写明原因，没有摘要。
+    await compactions.nth(1).click()
+    await expect(inspector.locator('dt:text-is("压缩层") + dd')).toHaveText('本轮')
+    await expect(inspector.locator('dt:text-is("失败原因") + dd')).toHaveText('写摘要失败：模型输出达到长度限制')
+    await expect(inspector.getByTestId('compaction-summary')).toHaveCount(0)
+
+    // 本轮压缩成功：前缀摘要在 Step 上。
+    await compactions.nth(2).click()
+    await expect(inspector.locator('dt:text-is("保留起点") + dd')).toHaveText('run-e2e-1:sampling-1')
+    await inspector.getByTestId('compaction-summary').locator('summary').click()
+    expect(await inspector.getByTestId('compaction-summary').locator('pre').textContent()).toBe(TURN_SUMMARY)
+
+    // 第 2 次调模型：基于的历史摘要与本轮摘要。
+    await page.locator('.trace-ledger strong:text-is("模型采样")').nth(1).click()
+    await expect(inspector.locator('dt:text-is("本轮历史") + dd')).toHaveText('未被覆盖部分 2 条')
+    await page.getByRole('tab', { name: '上下文' }).click()
+    await expect(inspector.locator('dt:text-is("基于的历史摘要") + dd')).toHaveText(/^调模型前超线 · 覆盖 3 组 · /)
+    await expect(inspector.locator('dt:text-is("基于的本轮摘要") + dd')).toHaveText('#6')
+    await inspector.getByTestId('sampling-turn-summary').locator('summary').click()
+    expect(await inspector.getByTestId('sampling-turn-summary').locator('pre').textContent()).toBe(TURN_SUMMARY)
+
+    // 后台压缩不是 Step：单独一个页签，只列问答结束后预压的那条。
+    await page.getByRole('tab', { name: '后台压缩（1）' }).click()
+    const background = page.locator('.compaction-list .message-card')
+
+    await expect(background).toHaveCount(1)
+    await expect(background).toContainText('问答结束后预压 · 覆盖 5 组 · 压缩前 220K Token')
+    await background.locator('summary').click()
+    expect(await background.locator('pre').textContent()).toBe(BACKGROUND_SUMMARY)
+    await page.screenshot({ path: 'e2e/.artifacts/issue-220-background-compaction.png', fullPage: true })
+    expect(errors).toEqual([])
+  })
+
+  test('AC-12：没有后台压缩的 Run 不显示后台压缩页签', async ({ page }) => {
+    await openRunDetail(page, createAnsweredDetail())
+    await expect(page.getByRole('tab', { name: /后台压缩/ })).toHaveCount(0)
   })
 })
 

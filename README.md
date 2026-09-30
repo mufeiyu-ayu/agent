@@ -70,7 +70,8 @@ A simplified view of the core loop in [`agent-runtime.service.ts`](./apps/api/sr
 ```ts
 // No cap on rounds or tool calls: the model keeps going until it answers; only the run deadline stops it.
 while (true) {
-  const input = planner.plan(context, budget) // what the model sees this round, earlier tool calls included
+  await compaction.compactBeforeSampling(run) // over the input limit: summarize older history, then earlier tool rounds
+  const input = context.plan(tools) // what the model sees this round, earlier tool calls included
   const decision = await streamModelSampling(llm.chatStream(input))
 
   if (decision.type === 'final_answer')
@@ -92,7 +93,7 @@ flowchart LR
     Web[Vue chat app] -->|NDJSON stream| API[ChatController]
     Admin[Admin console] --> AdminAPI[Admin API]
     API --> Runtime[Agent Runtime]
-    Runtime --> Context[Model context<br/>token budget · trimming]
+    Runtime --> Context[Model context<br/>token budget · compaction]
     Runtime --> LLM["@agent/ai<br/>OpenAI-compatible client"]
     LLM -->|SSE| Providers([DeepSeek · GPT · Grok · Gemini])
     Runtime --> Tools[Tools<br/>web search · web fetch] --> Internet([Google · web pages])

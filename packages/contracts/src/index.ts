@@ -40,8 +40,10 @@ export type {
 export { ADMIN_OVERVIEW_UNKNOWN_TOOL, ADMIN_OVERVIEW_WINDOWS } from './admin-overview.js'
 export type {
   AdminAssistantOutputStep,
+  AdminContextCompactionStep,
   AdminContextInspector,
   AdminContextInspectorOutcome,
+  AdminConversationCompaction,
   AdminDebugModelIOCapture,
   AdminDebugModelResponseCapture,
   AdminGenericStep,

@@ -2696,12 +2696,13 @@ describe('Run 轨迹补齐模型可见内容', () => {
       samplingItems.map(item => [item.intermediateText, item.reasoningContent]),
       [['先查两处。', '第一轮推理'], [null, '第二轮推理'], [null, null]],
     )
+    // #220 起没有「候选」条数：未被压缩记录覆盖的部分就是发出的原文。
     assert.deepEqual(
       samplingItems.map(item => [
         item.contextInspector.historyIncludedCount,
         item.contextInspector.historyCandidateCount,
       ]),
-      [[2, 2], [2, 2], [2, 2]],
+      [[2, null], [2, null], [2, null]],
     )
     assertNoUnfinishedSteps(harness)
   })

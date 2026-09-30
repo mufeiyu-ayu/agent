@@ -240,6 +240,11 @@ export const messages = {
       tabs: {
         trace: '轨迹',
         messages: '消息',
+        compactions: '后台压缩（{count}）',
+      },
+      compaction: {
+        meta: '问答结束后预压 · 覆盖 {groups} 组 · 压缩前 {tokens} Token',
+        summary: '摘要',
       },
       transcriptOnly: '仅展示用户可见对话',
       transcriptDescription: '这里不展示 system prompt、工具观察结果或内部采样消息。',
@@ -359,6 +364,7 @@ export const messages = {
       empty: '尚无持久化 Step',
       titles: {
         loadConversationHistory: '加载会话历史',
+        contextCompaction: '上下文压缩',
         modelSampling: '模型采样',
         toolExecution: '工具执行',
         assistantOutput: '助手输出',
@@ -366,6 +372,7 @@ export const messages = {
       inspectors: {
         generic: '通用检查器',
         loadConversationHistory: '会话历史检查器',
+        contextCompaction: '上下文压缩检查器',
         modelSampling: '模型采样检查器',
         toolExecution: '工具执行检查器',
         assistantOutput: '助手输出检查器',
@@ -375,6 +382,7 @@ export const messages = {
       sections: {
         contextBudget: 'Context Inspector · 预算',
         contextAdjustments: 'Context Inspector · 调整与结果',
+        contextCompaction: 'Context Inspector · 压缩',
       },
       fields: {
         sequence: '序号',
@@ -382,7 +390,7 @@ export const messages = {
         endedAt: '结束时间',
         duration: '耗时',
         hasError: '存在错误',
-        messageCount: '候选历史条数',
+        messageCount: '读到的历史条数',
         historySelection: '本轮历史',
         samplingIndex: '采样序号',
         attemptId: '尝试 ID',
@@ -410,15 +418,37 @@ export const messages = {
         code: '代码',
         truncated: '已截断',
         assistantMessageId: '助手消息 ID',
+        compactionLayer: '压缩层',
+        tokensBefore: '压缩前估算 Token',
+        keptFrom: '保留起点',
+        compactionId: '压缩记录 ID',
+        failureReason: '失败原因',
+        compactionSummary: '摘要',
+        basedOnHistorySummary: '基于的历史摘要',
+        basedOnTurnSummary: '基于的本轮摘要',
       },
       context: {
         historySelection: '选入 {included} / 候选 {candidates}',
         historyCount: '{count} 条',
+        historyUncovered: '未被覆盖部分 {count} 条',
         outcome: {
           success: 'Context 计划成功',
+          llm_context_overflow: '服务商报输入超长',
           minimum_context_overflow: '最小 Context 仍超出预算',
           estimator_failure: 'Context Token 估算失败',
         },
+      },
+      compaction: {
+        layers: {
+          history: '历史',
+          turn: '本轮',
+        },
+        reasons: {
+          threshold: '调模型前超线',
+          overflow: '服务商报超长',
+          after_run: '问答结束后预压',
+        },
+        record: '{reason} · 覆盖 {groups} 组 · {time}',
       },
     },
     errors: {
@@ -531,11 +561,13 @@ export const messages = {
       },
       fields: {
         runDeadlineSeconds: '单次最长时间',
+        compactionKeepRecentTokens: '压缩保留最近 Tokens',
         serperApiKey: 'Serper API Key',
         debugCaptureModelIo: '抓取模型原始请求',
       },
       tips: {
         runDeadlineSeconds: '一次问答从开始到结束的最长时间，超时后停止并提示；模型调用几轮、用几次工具不限，由它兜底',
+        compactionKeepRecentTokens: '对话超过模型的单次输入上限时，较早的内容整理成摘要，最近这么多 Token 保留原文；实际取它与单次输入上限的 1/4 中较小的',
         serperApiKey: '联网搜索经 Serper 查 Google；没填时搜索失败，对话照常',
         debugCaptureModelIo: '把每轮发给模型的请求和原始响应存进运行记录，在运行详情里查看；只在排查问题时打开',
       },
@@ -636,7 +668,7 @@ export const messages = {
           contextWindowTokensRequired: '请输入上下文 Tokens',
           contextWindowTokensInvalid: '上下文 Tokens 须为正整数',
           maxInputTokens: '单次输入上限 Tokens',
-          maxInputTokensTip: '每次请求最多发给模型的内容，不超过上下文窗口；超出时从最早的历史开始裁剪',
+          maxInputTokensTip: '每次请求最多发给模型的内容；超出时自动把较早的对话整理成摘要',
           maxInputTokensRequired: '请输入单次输入上限 Tokens',
           maxInputTokensInvalid: '单次输入上限 Tokens 须为正整数',
           maxOutputTokens: '最大输出 Tokens',
