@@ -37,7 +37,7 @@ research/
 | 资料 | 定位 |
 | --- | --- |
 | [Grounded Answer / Citation 设计](./phase-08-grounded-answer-citation-design.md) | Phase 8 实现前研究；实际 Task 0–3C 均已完成，状态看归档与当前代码 |
-| [上下文管理](./context-management.md) | E1（#218）/ E3 的技术讨论：现状、opencode / Claude / Codex / Pi 等参照、步数上限对照、共识与待讨论问题 |
+| [上下文管理](./context-management.md) | E1（#218）/ E3（#220）的技术讨论：现状、opencode / Claude / Codex / Pi 等参照、步数上限对照、共识与待讨论问题 |
 | [配置地图](./configuration-map.md) | 当前配置职责导航；具体默认值以源码和生效入口核对 |
 | [参照实现方法](./pi-reference/learning-method.md) | 每步六问、产物与防过度设计 |
 | DeepSeek Harness | 补充参照；本机 `/Users/ayu/Desktop/deepseek-harness`，另见 [上游仓库](https://github.com/deepseek-ai/deepseek-harness)；继续引用前先核对实际版本 |
