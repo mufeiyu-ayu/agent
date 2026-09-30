@@ -22,9 +22,9 @@ import type {
   RunTurnStreamInput,
 } from './agent-runtime.types.js'
 import type { HistoryStepRow } from './context/conversation-history.js'
-import type { TokenEstimator } from './context/deepseek-v4-token-estimator.js'
 import type { InitialContextSummary } from './context/initial-context.js'
 import type { SamplingContextPlanSummary } from './context/sampling-context-planner.js'
+import type { TokenEstimator } from './context/token-estimate.js'
 import type { CloseAgentStepInput } from './lifecycle/agent-run-recorder.service.js'
 import type {
   RunCancellation,
@@ -62,17 +62,16 @@ import {
   AGENT_RUN_DEADLINE_EXCEEDED_MESSAGE,
   AgentRunTerminalizationError,
   ContextBudgetExceededError,
-  ContextTokenEstimationError,
   ModelSamplingIncompleteError,
 } from './agent-runtime.errors.js'
 import { separateFromPreviousText, toHistoryGroups } from './context/conversation-history.js'
-import { DeepSeekV4TokenEstimator } from './context/deepseek-v4-token-estimator.js'
 import { summarizeInitialContext } from './context/initial-context.js'
 import { ModelContext, toFeedbackArgumentsJson } from './context/model-context.js'
 import {
   SamplingContextBudgetExceededError,
   SamplingContextPlanner,
 } from './context/sampling-context-planner.js'
+import { RoughTokenEstimator } from './context/token-estimate.js'
 import {
   AGENT_STEP_TYPES,
   AgentRunRecorderService,
@@ -137,7 +136,7 @@ export class AgentRuntimeService {
     @Inject(ToolInvocationService)
     private readonly toolInvocationService: ToolInvocationService,
 
-    @Inject(DeepSeekV4TokenEstimator)
+    @Inject(RoughTokenEstimator)
     private readonly tokenEstimator: TokenEstimator,
 
     @Inject(SamplingContextPlanner)
@@ -500,6 +499,9 @@ export class AgentRuntimeService {
 
         if (samplingDecision.type === 'final_answer')
           break
+
+        // 同一次问答内，下一次估算以这次采样的真实用量为锚点，只粗估之后新增的工具结果。
+        modelContext.recordSamplingUsage(samplingDecision.summary.usage)
 
         const { calls } = samplingDecision
 
@@ -1126,9 +1128,6 @@ export class AgentRuntimeService {
     }
 
     return {
-      ...(error instanceof ContextTokenEstimationError
-        ? { contextFailureReason: 'estimator_failure' as const }
-        : {}),
       ...(failedContextPlan
         ? { contextPlan: toPersistedContextPlan(failedContextPlan) }
         : {}),
@@ -1284,8 +1283,6 @@ function describeRuntimeError(
     return { errorCode: 'llm_protocol', message: error.message }
   if (error instanceof ContextBudgetExceededError)
     return { errorCode: 'context_overflow', message: error.message }
-  if (error instanceof ContextTokenEstimationError)
-    return { errorCode: 'estimator_failure', message: error.message }
 
   return undefined
 }

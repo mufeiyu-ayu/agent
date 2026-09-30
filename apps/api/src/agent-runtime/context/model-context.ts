@@ -2,10 +2,12 @@ import type {
   AssistantToolCallInputItem,
   MessageInputItem,
   ModelInputItem,
+  ModelUsage,
   ToolResultInputItem,
 } from '@agent/ai'
 import type { NormalizedToolObservation } from '../../tools/core/tool-observation.js'
 import type { UnvalidatedToolCallEnvelope } from '../../tools/core/tool.types.js'
+import { roughTokens } from './token-estimate.js'
 
 /** 一个 Tool Call 的结果：Tool Result 文本与供 Context Planner 二次缩短的来源。 */
 export interface ModelContextToolResult {
@@ -63,6 +65,11 @@ interface CreateModelContextInput {
 /** 单次 Run 内的 source-aware model-visible context；预算选择由 Sampling Planner 负责。 */
 export class ModelContext {
   private readonly toolExchanges: ModelContextToolExchange[] = []
+  /**
+   * 同一次问答内上一次采样的真实用量（输入 + 输出）与它发出时已有几组工具来回；每次问答第 1 次、上一次采样
+   * 没有可用用量、或之后改动过已发出的内容时为空。
+   */
+  private usageAnchor: { tokens: number, exchangeCount: number } | undefined
 
   private constructor(
     // 核心输入：模型必须携带的指令消息；当前 Chat 入口中就是系统提示词。
@@ -109,6 +116,8 @@ export class ModelContext {
 
   /** 仅接收 Planner 已完整重估并通过预算的单调收缩结果。 */
   commitPlan(input: ModelContextPlanCommit): void {
+    if (input.excludedOldestHistoryGroups > 0)
+      this.usageAnchor = undefined
     this.initialHistory.splice(0, input.excludedOldestHistoryGroups)
 
     for (const observation of input.observations) {
@@ -118,9 +127,42 @@ export class ModelContext {
       if (!result)
         throw new RangeError('Sampling Context Plan 包含未知 Tool Exchange')
 
+      if (result.toolResult.content !== observation.content)
+        this.usageAnchor = undefined
       result.toolResult.content = observation.content
       result.contextBudgetPreviewChars = observation.contextBudgetPreviewChars
     }
+  }
+
+  /**
+   * 一次采样成功收完后调用（照抄 Pi `estimateContextTokens`）：输入 + 输出用量可用就作下一次估算的锚点；
+   * 缺字段或为 0 时清掉，下一次全部粗估。
+   */
+  recordSamplingUsage(usage: ModelUsage | null): void {
+    const tokens = usage?.inputTokens !== undefined && usage.outputTokens !== undefined
+      ? usage.inputTokens + usage.outputTokens
+      : 0
+
+    this.usageAnchor = tokens > 0 ? { tokens, exchangeCount: this.toolExchanges.length } : undefined
+  }
+
+  /**
+   * 有锚点时的估算 = 锚点用量 + 之后新增的工具结果粗估；锚点那次采样的输出（tool_calls 消息）已含在输出用量里，
+   * 不重复计。没有锚点时返回 undefined，由调用方全部粗估。
+   */
+  estimateFromUsageAnchor(): number | undefined {
+    const anchor = this.usageAnchor
+
+    if (!anchor)
+      return undefined
+
+    return this.toolExchanges.slice(anchor.exchangeCount).reduce(
+      (tokens, exchange) => exchange.results.reduce(
+        (sum, result) => sum + roughTokens(result.toolResult.content),
+        tokens,
+      ),
+      anchor.tokens,
+    )
   }
 
   /**
@@ -212,12 +254,10 @@ export function flattenPlanningState(
 /**
  * 续轮表示里的 arguments。
  *
- * 通过工具输入契约校验的参数是键与值都在 DeepSeek estimator 已验证子集内的 JSON 对象，
- * 原样续传。未校验的原始参数（unknown_tool / invalid_arguments / truncated_arguments）
- * 可能是任意文本或非对象 JSON，统一用 DeepSeek 官方编码器对不可解析参数的回退形状
- * `{"arguments": raw}` 承载：原文一字不改保留在值里，wire 上是合法 JSON 对象，
- * Context Planner 估算的和实际发给 Provider 的是同一份表示。Runtime 每个 call 只调用一次，
- * 同一个字符串既进 appendToolExchange，也落 tool_execution Step 的 `input.arguments`。
+ * 通过工具输入契约校验的参数是 JSON 对象，原样续传。未校验的原始参数（unknown_tool /
+ * invalid_arguments / truncated_arguments）可能是任意文本或非对象 JSON，统一用 DeepSeek 官方编码器
+ * 对不可解析参数的回退形状 `{"arguments": raw}` 承载：原文一字不改保留在值里，wire 上是合法 JSON 对象。
+ * Runtime 每个 call 只调用一次，同一个字符串既进 appendToolExchange，也落 tool_execution Step 的 `input.arguments`。
  */
 export function toFeedbackArgumentsJson(
   rawArgumentsJson: string,

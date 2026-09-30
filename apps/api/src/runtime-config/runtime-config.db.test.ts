@@ -11,8 +11,8 @@ import { Logger, ServiceUnavailableException } from '@nestjs/common'
 import { afterAll, beforeAll, describe, it, onTestFinished, vi } from 'vitest'
 
 import { AgentRuntimeService } from '../agent-runtime/agent-runtime.service.js'
-import { DeepSeekV4TokenEstimator } from '../agent-runtime/context/deepseek-v4-token-estimator.js'
 import { SamplingContextPlanner } from '../agent-runtime/context/sampling-context-planner.js'
+import { RoughTokenEstimator } from '../agent-runtime/context/token-estimate.js'
 import { AgentRunRecorderService } from '../agent-runtime/lifecycle/agent-run-recorder.service.js'
 import { ChatService } from '../chat/chat.service.js'
 import { createResolvedLlmModel } from '../llm/__fixtures__.js'
@@ -283,7 +283,7 @@ function createChatService(prisma: PrismaService, runtimeConfigService: RuntimeC
       yield { type: 'response_completed', finishReason: 'stop' }
     },
   } as unknown as LLMService
-  const estimator = new DeepSeekV4TokenEstimator()
+  const estimator = new RoughTokenEstimator()
   const runtime = new AgentRuntimeService(
     llmService,
     prisma,

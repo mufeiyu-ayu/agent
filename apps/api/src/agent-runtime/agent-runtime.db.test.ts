@@ -11,7 +11,7 @@ import type { AgentRuntimeEvent } from './agent-runtime.types.js'
 import type {
   TokenEstimator,
   TokenEstimatorInput,
-} from './context/deepseek-v4-token-estimator.js'
+} from './context/token-estimate.js'
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { readdir, readFile } from 'node:fs/promises'

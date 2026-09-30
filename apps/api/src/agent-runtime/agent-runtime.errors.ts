@@ -20,14 +20,6 @@ export class ContextBudgetExceededError extends Error {
   }
 }
 
-/** 官方 tokenizer artifact 无法加载或编码，禁止静默退化估算。 */
-export class ContextTokenEstimationError extends Error {
-  constructor(readonly cause: unknown) {
-    super('DeepSeek V4 TokenEstimator 无法完成请求前估算。')
-    this.name = 'ContextTokenEstimationError'
-  }
-}
-
 /** 终态持久化失败；原始 Run 原因不能被 cleanup 错误覆盖。 */
 export class AgentRunTerminalizationError extends Error {
   constructor(

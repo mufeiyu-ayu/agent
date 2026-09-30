@@ -3,17 +3,17 @@ import type {
   ModelToolSpec,
 } from '@agent/ai'
 import type { NormalizedToolObservation } from '../../tools/core/tool-observation.js'
-import type { TokenEstimator } from './deepseek-v4-token-estimator.js'
 import type {
   ModelContext,
   ModelContextPlanningState,
   ModelContextToolResult,
 } from './model-context.js'
-import { Inject, Injectable } from '@nestjs/common'
+import type { TokenEstimator } from './token-estimate.js'
 
+import { Inject, Injectable } from '@nestjs/common'
 import { ContextBudgetExceededError } from '../agent-runtime.errors.js'
-import { DeepSeekV4TokenEstimator } from './deepseek-v4-token-estimator.js'
 import { countHistoryMessages, flattenPlanningState } from './model-context.js'
+import { RoughTokenEstimator } from './token-estimate.js'
 
 export interface SamplingContextObservationSummary {
   exchangeIndex: number
@@ -58,7 +58,7 @@ interface PlanSamplingContextInput {
 @Injectable()
 export class SamplingContextPlanner {
   constructor(
-    @Inject(DeepSeekV4TokenEstimator)
+    @Inject(RoughTokenEstimator)
     private readonly tokenEstimator: TokenEstimator,
   ) {}
 
@@ -75,9 +75,9 @@ export class SamplingContextPlanner {
     // 核心执行状态：本轮 Planner 决定从最旧处删除几次问答（整组删，调用与结果不会被拆开）；
     // 只有整份计划通过预算后，commitPlan() 才会把该数量正式应用回 ModelContext。
     let excludedOldestHistoryGroups = 0
-    // 第一次真正计算当前工作副本的完整输入 Token；
-    // 后续每次删除历史或缩短 Tool Result 后都会重新赋值。
-    let estimatedInputTokens = estimate()
+    // 同一次问答内有上一次采样的真实用量时，估算 = 用量 + 之后新增的工具结果粗估；否则整份粗估。
+    // 后续每次删除历史或缩短 Tool Result 后都按整份重新估算。
+    let estimatedInputTokens = input.context.estimateFromUsageAnchor() ?? estimate()
 
     // 第一层降级：初次估算超预算时，先从最旧历史开始删减，
     // 并用修改后的 state 重新计算 Token；未超预算则保持 0 条删除。

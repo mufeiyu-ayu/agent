@@ -28,7 +28,7 @@ import type { HistoryStepRow } from './context/conversation-history.js'
 import type {
   TokenEstimator,
   TokenEstimatorInput,
-} from './context/deepseek-v4-token-estimator.js'
+} from './context/token-estimate.js'
 import type { AgentRunRecorderService } from './lifecycle/agent-run-recorder.service.js'
 import assert from 'node:assert/strict'
 import { setTimeout as sleep } from 'node:timers/promises'
@@ -66,18 +66,15 @@ import { ToolInvocationService } from '../tools/core/tool-invocation.service.js'
 import { normalizeToolObservation } from '../tools/core/tool-observation.js'
 import { ToolRegistryService } from '../tools/core/tool-registry.service.js'
 import { TOOL_DEFINITIONS } from '../tools/tool-definitions.js'
-import {
-  AgentRunTerminalizationError,
-  ContextTokenEstimationError,
-} from './agent-runtime.errors.js'
+import { AgentRunTerminalizationError } from './agent-runtime.errors.js'
 import { AgentRuntimeService } from './agent-runtime.service.js'
-import { DeepSeekV4TokenEstimator } from './context/deepseek-v4-token-estimator.js'
 import {
   flattenPlanningState,
   ModelContext,
   toFeedbackArgumentsJson,
 } from './context/model-context.js'
 import { SamplingContextPlanner } from './context/sampling-context-planner.js'
+import { estimateRequestTokens, RoughTokenEstimator, roughTokens } from './context/token-estimate.js'
 
 // 模型每轮看到的就是工具清单、与清单同序；不写死名字，清单加工具时 runtime 用例不用跟着改。
 // 清单里少了 web_search 时，大量以它为工具的用例会因 unknown_tool 失败，不靠这里兜。
@@ -569,66 +566,6 @@ describe('AgentRuntimeService model stream', () => {
     )
   })
 
-  it('首轮 plan 内估算失败时 sampling Step 记 estimator_failure，Admin 投影为 partial', async () => {
-    // 前置快照用正常 estimator，只让 planner 的 plan() 内估算失败。
-    const harness = createHarness(
-      () => toModelStream([{ type: 'response_completed', finishReason: 'stop' }]),
-      undefined,
-      undefined,
-      {},
-      new TestTokenEstimator(),
-      new AlwaysFailingTokenEstimator(),
-    )
-
-    harness.prisma.seedMessage({
-      id: 'history-1',
-      content: '历史消息 1',
-      status: MessageStatus.COMPLETED,
-      createdAt: new Date('2026-01-01T00:00:01.000Z'),
-    })
-
-    const events = await collectEvents(harness.run())
-    const serialized = JSON.stringify({ events, steps: harness.recorder.steps })
-
-    assert.deepEqual(events.map(event => event.type), ['run_started', 'run_failed'])
-    assert.equal(harness.llmCalls.length, 0)
-    assert.equal(
-      findStep(harness, 'load_conversation_history')?.status,
-      AgentStepStatus.COMPLETED,
-    )
-    const samplingStep = findStep(harness, 'model_sampling')
-    const samplingOutput = samplingStep?.output as Record<string, unknown>
-    const initialContext = (samplingStep?.input as Record<string, unknown>)
-      .initialContext as Record<string, unknown>
-
-    assert.equal(samplingStep?.status, AgentStepStatus.FAILED)
-    assert.deepEqual(samplingOutput, {
-      contextFailureReason: 'estimator_failure',
-      errorCode: 'estimator_failure',
-    })
-    assert.equal(harness.recorder.runErrorCode, 'estimator_failure')
-    assert.equal(Object.hasOwn(samplingOutput, 'contextPlan'), false)
-    assert.equal(initialContext.resolvedInputBudgetTokens, 262_144)
-    assert.doesNotMatch(serialized, /initial-estimator-secret/)
-    assert.match(serialized, /TokenEstimator/)
-    assertNoUnfinishedSteps(harness)
-
-    const samplingItem = projectHarnessRunDetail(harness, 'FAILED').timeline.find(
-      item => item.type === 'model_sampling',
-    )
-
-    assert.equal(samplingItem?.kind, 'known')
-    assert.deepEqual(
-      samplingItem?.kind === 'known' && samplingItem.type === 'model_sampling'
-        ? [
-            samplingItem.contextInspector.outcome,
-            samplingItem.contextInspector.resolvedModel,
-          ]
-        : null,
-      ['estimator_failure', 'deepseek-v4-flash'],
-    )
-  })
-
   it('mandatory Context 超预算时不调用 Provider', async () => {
     const harness = createHarness(
       () => toModelStream([{ type: 'response_completed', finishReason: 'stop' }]),
@@ -653,33 +590,6 @@ describe('AgentRuntimeService model stream', () => {
       findStep(harness, 'load_conversation_history')?.status,
       AgentStepStatus.FAILED,
     )
-  })
-
-  it('initial Context estimator 失败时不伪造 model_sampling Step', async () => {
-    const harness = createHarness(
-      () => toModelStream([{ type: 'response_completed', finishReason: 'stop' }]),
-      undefined,
-      undefined,
-      {},
-      new AlwaysFailingTokenEstimator(),
-    )
-
-    const events = await collectEvents(harness.run())
-    const serialized = JSON.stringify({ events, steps: harness.recorder.steps })
-
-    assert.deepEqual(events.map(event => event.type), ['run_failed'])
-    assert.equal(harness.llmCalls.length, 0)
-    assert.equal(harness.assistantMessage(), undefined)
-    assert.equal(
-      harness.recorder.steps.some(step => step.type === 'model_sampling'),
-      false,
-    )
-    assert.equal(
-      findStep(harness, 'load_conversation_history')?.status,
-      AgentStepStatus.FAILED,
-    )
-    assert.match(serialized, /TokenEstimator/)
-    assert.doesNotMatch(serialized, /initial-estimator-secret/)
   })
 
   it('在 response_completed 前实时产出普通回答 delta', async () => {
@@ -885,6 +795,36 @@ describe('AgentRuntimeService model stream', () => {
       observation: '找到 1 篇相关文章。',
     })
     assertNoUnfinishedSteps(harness)
+  })
+
+  it('#220 AC-01 生产计数：第 1 次调用整份粗估；同一问答内之后 = 上次用量（输入 + 输出）+ 新增工具结果粗估', async () => {
+    const harness = createHarness(
+      (_, __, callIndex) => toModelStream(callIndex === 0
+        ? [
+            toolCallEvent('call-1', 'web_search', '{"query":"x"}'),
+            { type: 'usage', usage: { inputTokens: 5_000, outputTokens: 120, totalTokens: 5_120 } },
+            { type: 'response_completed', finishReason: 'tool_calls' },
+          ]
+        : [
+            { type: 'text_delta', delta: '好' },
+            { type: 'response_completed', finishReason: 'stop' },
+          ]),
+      undefined,
+      async () => ({ ok: true, modelContent: '工具结果正文' }),
+      {},
+      new RoughTokenEstimator(),
+    )
+
+    await collectEvents(harness.run())
+
+    const estimates = harness.recorder.steps
+      .filter(step => step.type === 'model_sampling')
+      .map(step => (readContextPlan(step) as { estimatedInputTokens?: number }).estimatedInputTokens)
+
+    assert.deepEqual(estimates, [
+      estimateRequestTokens({ items: harness.llmCalls[0]!.messages, tools: harness.llmCalls[0]!.options!.tools! }),
+      5_120 + roughTokens('工具结果正文'),
+    ])
   })
 
   it('第二轮 sampling 重新估算完整请求，并按 Context Budget 缩减 Observation', async () => {
@@ -1126,50 +1066,6 @@ describe('AgentRuntimeService model stream', () => {
       steps: harness.recorder.steps.filter(step => step.type !== 'tool_execution'),
       message: harness.assistantMessage(),
     }), new RegExp(observationSecret))
-    assertNoUnfinishedSteps(harness)
-  })
-
-  it('follow-up estimator 失败时不调用对应轮次 Provider，且不泄露 cause', async () => {
-    const harness = createHarness(
-      (_, __, callIndex) => toModelStream(callIndex === 0
-        ? [
-            toolCallEvent('call-estimator', 'web_search', '{"query":"seo"}'),
-            { type: 'response_completed', finishReason: 'tool_calls' },
-          ]
-        : [
-            { type: 'text_delta', delta: '不应调用' },
-            { type: 'response_completed', finishReason: 'stop' },
-          ]),
-      undefined,
-      async () => ({
-        ok: true,
-        modelContent: '普通 Observation',
-      }),
-      {},
-      new FollowUpFailingTokenEstimator(),
-    )
-
-    const events = await collectEvents(harness.run())
-    const serialized = JSON.stringify({
-      events,
-      steps: harness.recorder.steps,
-      message: harness.assistantMessage(),
-    })
-
-    assert.equal(events.at(-1)?.type, 'run_failed')
-    assert.equal(harness.llmCalls.length, 1)
-    assert.equal(
-      harness.recorder.steps.filter(step => step.type === 'model_sampling')[1]?.status,
-      AgentStepStatus.FAILED,
-    )
-    assert.equal(
-      (harness.recorder.steps.filter(
-        step => step.type === 'model_sampling',
-      )[1]?.output as Record<string, unknown>)?.contextFailureReason,
-      'estimator_failure',
-    )
-    assert.doesNotMatch(serialized, /estimator-secret/)
-    assert.match(serialized, /TokenEstimator/)
     assertNoUnfinishedSteps(harness)
   })
 
@@ -1840,8 +1736,8 @@ describe('AgentRuntimeService model stream', () => {
   })
 
   it('length 截断的原始参数经生产 estimator 仍能续轮：未校验参数以官方回退形状回喂，estimator 输入与实际请求一致', async () => {
-    const productionEstimator = new DeepSeekV4TokenEstimator()
-    // 同一根因的全部边界：空、半截对象、非对象 JSON、生产 renderer 已知拒绝的合法对象，以及完整对象对照。
+    const productionEstimator = new RoughTokenEstimator()
+    // 同一根因的全部边界：空、半截对象、非对象 JSON、特殊数值，以及完整对象对照。
     const rawArgumentsSamples = [
       '',
       '{"sourceId":',
@@ -1861,7 +1757,7 @@ describe('AgentRuntimeService model stream', () => {
     for (const rawArguments of rawArgumentsSamples) {
       const label = `raw=${JSON.stringify(rawArguments)}`
       const estimatedInputs: ModelInputItem[][] = []
-      // 只旁路记录，渲染与 tokenizer 仍是生产实现。
+      // 只旁路记录，估算仍是生产实现。
       const recordingEstimator: TokenEstimator = {
         estimateRequest: (input) => {
           estimatedInputs.push(structuredClone(input.items))
@@ -1908,7 +1804,7 @@ describe('AgentRuntimeService model stream', () => {
         recordingEstimator,
       )
 
-      // 生产 estimator 要求带工具的请求有 system 消息，与真实入口一致。
+      // 与真实入口一致，带 system 消息。
       const events = await collectEvents(harness.service.runTurnStream({
         conversationId: 'conversation-1',
         userContent: '问题',
@@ -1974,7 +1870,7 @@ describe('AgentRuntimeService model stream', () => {
   })
 
   it('invalid_arguments 与 unknown_tool 回喂的未校验参数经生产 estimator 仍能续轮', async () => {
-    const productionEstimator = new DeepSeekV4TokenEstimator()
+    const productionEstimator = new RoughTokenEstimator()
     const cases = [
       { toolName: 'web_search', code: 'invalid_arguments' },
       { toolName: 'not_a_tool', code: 'unknown_tool' },
@@ -4325,14 +4221,6 @@ class OverflowTokenEstimator implements TokenEstimator {
   }
 }
 
-class AlwaysFailingTokenEstimator implements TokenEstimator {
-  estimateRequest(_input: TokenEstimatorInput): number {
-    throw new ContextTokenEstimationError(
-      new Error('initial-estimator-secret'),
-    )
-  }
-}
-
 class BaseCostTokenEstimator implements TokenEstimator {
   readonly inputs: TokenEstimatorInput[] = []
 
@@ -4351,16 +4239,6 @@ class BaseCostTokenEstimator implements TokenEstimator {
 class FollowUpOverflowTokenEstimator implements TokenEstimator {
   estimateRequest(input: TokenEstimatorInput): number {
     return input.items.some(item => item.type === 'tool_result') ? 300_000 : 1
-  }
-}
-
-class FollowUpFailingTokenEstimator implements TokenEstimator {
-  estimateRequest(input: TokenEstimatorInput): number {
-    if (input.items.some(item => item.type === 'tool_result')) {
-      throw new ContextTokenEstimationError(new Error('estimator-secret'))
-    }
-
-    return 1
   }
 }
 

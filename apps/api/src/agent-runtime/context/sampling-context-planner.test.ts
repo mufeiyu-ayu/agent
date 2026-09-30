@@ -3,17 +3,15 @@ import type {
   ModelInputItem,
   ModelToolSpec,
 } from '@agent/ai'
+import type { HistoryGroup } from './model-context.js'
 import type {
   TokenEstimator,
   TokenEstimatorInput,
-} from './deepseek-v4-token-estimator.js'
-import type { HistoryGroup } from './model-context.js'
+} from './token-estimate.js'
 import assert from 'node:assert/strict'
 import { describe, it } from 'vitest'
 
-import { normalizeToolObservation } from '../../tools/core/tool-observation.js'
 import { ContextBudgetExceededError } from '../agent-runtime.errors.js'
-import { DeepSeekV4TokenEstimator } from './deepseek-v4-token-estimator.js'
 import { summarizeInitialContext } from './initial-context.js'
 import { flattenPlanningState, ModelContext } from './model-context.js'
 import {
@@ -24,16 +22,6 @@ import {
 const NO_TOOLS: ModelToolSpec[] = []
 const INSTRUCTIONS: MessageInputItem[] = [{ type: 'message', role: 'system', content: 'instructions' }]
 const CURRENT_USER: MessageInputItem = { type: 'message', role: 'user', content: 'current-user' }
-const LOOKUP_TOOL: ModelToolSpec[] = [{
-  name: 'tool',
-  description: 'Lookup.',
-  inputSchema: {
-    type: 'object',
-    properties: { q: { type: 'string' } },
-    required: ['q'],
-    additionalProperties: false,
-  },
-}]
 
 describe('SamplingContextPlanner', () => {
   it('预算足够时保留完整 Context，并做最终完整请求估算', () => {
@@ -270,34 +258,6 @@ describe('SamplingContextPlanner', () => {
     }])
   })
 
-  it('真实 tokenizer 二次缩减后仍不突破原 Tool ceiling', () => {
-    const estimator = new DeepSeekV4TokenEstimator()
-    const planner = new SamplingContextPlanner(estimator)
-    const context = createContext()
-    const observation = normalizeToolObservation('🚀'.repeat(16_100), 16_000)
-
-    context.appendToolExchange({
-      calls: [{ callId: 'call-ceiling', toolName: 'tool' }],
-      intermediateText: '',
-      reasoningContent: 'reason',
-      results: [{ observation, ok: true, feedbackArgumentsJson: '{"q":"emoji"}' }],
-    })
-    const fullTokens = estimator.estimateRequest({
-      items: flattenPlanningState(context.forPlanning()),
-      tools: LOOKUP_TOOL,
-    })
-    const plan = planner.plan({
-      context,
-      tools: LOOKUP_TOOL,
-      resolvedInputBudgetTokens: fullTokens - 1,
-    })
-    const result = plan.items.find(item => item.type === 'tool_result')
-
-    assert.equal(result?.type, 'tool_result')
-    assert.ok(Array.from(result?.content ?? '').length <= observation.observationChars, 'Array.from(result?.content ?? \'\').length <= observation.observationChars')
-    assert.ok(plan.summary.estimatedInputTokens <= fullTokens - 1, 'plan.summary.estimatedInputTokens <= fullTokens - 1')
-  })
-
   it('最小 Observation marker 仍超预算时 fail closed', () => {
     const estimator = new CharacterTokenEstimator()
     const planner = new SamplingContextPlanner(estimator)
@@ -433,35 +393,6 @@ describe('SamplingContextPlanner 首轮历史裁剪', () => {
 
     assert.equal(includedCount(316), 20)
     assert.ok(includedCount(66) < includedCount(316), 'includedCount(66) < includedCount(316)')
-  })
-
-  it('AC-02 真实 tokenizer：固定消息集上保留最大的最新连续后缀', () => {
-    const estimator = new DeepSeekV4TokenEstimator()
-    const history = historyMessages(
-      120,
-      index => `第 ${index} 条：${'站内 SEO 与检索。'.repeat(index % 5 + 1)}`,
-    )
-    const estimateNewest = (count: number): number => estimator.estimateRequest({
-      items: [
-        ...INSTRUCTIONS,
-        ...history.slice(history.length - count),
-        CURRENT_USER,
-      ],
-      tools: LOOKUP_TOOL,
-    })
-    const budget = Math.floor(estimateNewest(history.length) * 0.6)
-    const plan = planFirstRound(estimator, history, budget, LOOKUP_TOOL)
-    const includedCount = plan.summary.historyIncludedCount
-
-    // 最新连续后缀、不超预算、再多一次问答（两条）就超预算。
-    assert.ok(includedCount > 0 && includedCount < history.length, 'includedCount > 0 && includedCount < history.length')
-    assert.equal(includedCount % 2, 0, '按问答整组保留')
-    assert.deepEqual(
-      includedHistoryContents(plan),
-      history.slice(history.length - includedCount).map(message => message.content),
-    )
-    assert.ok(plan.summary.estimatedInputTokens <= budget, 'plan.summary.estimatedInputTokens <= budget')
-    assert.ok(estimateNewest(includedCount + 2) > budget, 'estimateNewest(includedCount + 2) > budget')
   })
 
   it('1000 条超预算历史的首轮全量估算次数有上界', () => {

@@ -41,7 +41,6 @@ COPY prisma/migrations prisma/migrations/
 COPY --from=build /app/packages/contracts/dist packages/contracts/dist/
 COPY --from=build /app/packages/ai/dist packages/ai/dist/
 COPY --from=build /app/apps/api/dist apps/api/dist/
-COPY apps/api/tokenizers apps/api/tokenizers/
 WORKDIR /app/apps/api
 USER node
 EXPOSE 3000

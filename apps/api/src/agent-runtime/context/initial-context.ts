@@ -1,6 +1,6 @@
 import type { ModelToolSpec } from '@agent/ai'
-import type { TokenEstimator } from './deepseek-v4-token-estimator.js'
 import type { ModelContext } from './model-context.js'
+import type { TokenEstimator } from './token-estimate.js'
 
 import { ContextBudgetExceededError } from '../agent-runtime.errors.js'
 import { flattenPlanningState } from './model-context.js'
@@ -19,7 +19,7 @@ export interface InitialContextSummary {
 }
 
 interface SummarizeInitialContextInput {
-  /** 本次 Run 解析后的模型名，写入快照供审计；token 估算当前一律用 DeepSeek V4 estimator。 */
+  /** 本次 Run 解析后的模型名，写入快照供审计。 */
   resolvedModel: string
   providerId: string
   modelId: string
