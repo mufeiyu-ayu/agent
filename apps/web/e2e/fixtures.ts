@@ -72,6 +72,9 @@ export async function installBrowserStubs(
 ) {
   await page.addInitScript(
     ({ plan: streamPlan }) => {
+      // 桩只属于工作台；不向隔离的 HTML 预览注入 Storage / fetch / clipboard。
+      if (window.top !== window)
+        return
       window.localStorage.setItem('agent-web-locale', 'zh-CN')
 
       const originalFetch = window.fetch.bind(window)

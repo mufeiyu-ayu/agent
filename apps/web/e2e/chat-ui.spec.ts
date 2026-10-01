@@ -82,7 +82,7 @@ test('代码卡片保持同一 DOM；闭合、终态未闭合、复制、键盘 
   await expect(card).toHaveAttribute('data-original', 'yes')
   await expect(card.getByRole('button', { name: '复制代码' })).toBeVisible()
   await expect(card.getByLabel('正在生成...')).toHaveCount(0)
-  await expect(card.getByRole('button', { name: '预览（暂不可用）' })).toHaveAttribute('aria-disabled', 'true')
+  await expect(card.getByRole('button', { name: '预览', exact: true })).toHaveCount(0)
 
   const copy = card.getByRole('button', { name: '复制代码' })
   await copy.focus()
