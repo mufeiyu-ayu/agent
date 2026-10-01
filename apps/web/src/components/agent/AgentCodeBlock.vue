@@ -1,12 +1,15 @@
 <script setup lang="ts">
-import { computed, onUnmounted, ref, watch } from 'vue'
+import { useObjectUrl } from '@vueuse/core'
+import { computed, inject, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import AppIcon from '@/components/common/AppIcon.vue'
 import AppTooltip from '@/components/common/AppTooltip.vue'
 import { useCopyFeedback } from '@/hooks/useCopyFeedback'
+import { HTML_PREVIEW } from '@/hooks/useHtmlPreview'
 import { useWorkspaceTheme } from '@/hooks/useWorkspaceTheme'
 import { highlightCode } from '@/utils/code-highlighter'
+import { isPreviewableHtml } from '@/utils/html-preview'
 
 const props = defineProps<{
   code: string
@@ -24,9 +27,21 @@ const displayLanguage = computed(() => {
   return !language || language === 'text' ? 'CODE' : language.toUpperCase()
 })
 const highlightedHtml = computed(() => highlightCode(props.code, props.language))
+const isHtml = computed(() => isPreviewableHtml(props.code, props.language))
+const preview = inject(HTML_PREVIEW, undefined)
+const codeSource = () => isHtml.value && !props.isStreaming ? props.code : ''
+const isCurrentPreview = computed(() => preview?.isOpen.value && preview.source.value === codeSource)
+const previewTitle = computed(() => t('conversation.actions.codeBlock.preview'))
+const downloadUrl = useObjectUrl(computed(() => isHtml.value && !props.isStreaming
+  ? new Blob([props.code], { type: 'text/html;charset=utf-8' })
+  : undefined))
 const codeScrollContainerRef = ref<HTMLElement | null>(null)
 let scrollRafId: number | undefined
 let userInterruptedScroll = false
+
+function openPreview(event: MouseEvent) {
+  preview?.open(codeSource, event.currentTarget as HTMLButtonElement)
+}
 
 function onScroll() {
   const viewport = codeScrollContainerRef.value
@@ -51,6 +66,7 @@ watch(
 )
 
 onUnmounted(() => {
+  preview?.release(codeSource)
   if (scrollRafId !== undefined)
     cancelAnimationFrame(scrollRafId)
 })
@@ -79,26 +95,40 @@ onUnmounted(() => {
           </span>
         </AppTooltip>
         <template v-else>
-          <AppTooltip :content="t('conversation.actions.codeBlock.code')">
+          <AppTooltip v-if="isHtml" :content="t('conversation.actions.codeBlock.code')">
             <button
               type="button"
               :aria-label="t('conversation.actions.codeBlock.code')"
-              aria-pressed="true"
+              :aria-pressed="!isCurrentPreview"
               class="code-action shadow-xs"
-              :class="isDark ? 'bg-white/10 text-white' : 'bg-white text-agent-ink'"
+              :class="!isCurrentPreview && (isDark ? 'bg-white/10 text-white' : 'bg-white text-agent-ink')"
+              @click="isCurrentPreview && preview?.close()"
             >
               <AppIcon name="tabler:code" :size="15" />
             </button>
           </AppTooltip>
-          <AppTooltip :content="t('conversation.actions.codeBlock.preview')">
+          <AppTooltip v-if="isHtml" :content="previewTitle">
             <button
               type="button"
-              :aria-label="t('conversation.actions.codeBlock.preview')"
-              aria-disabled="true"
-              class="code-action cursor-not-allowed opacity-60"
+              :aria-label="previewTitle"
+              :aria-pressed="!!isCurrentPreview"
+              :disabled="!preview"
+              class="code-action"
+              :class="isCurrentPreview && (isDark ? 'bg-white/10 text-white' : 'bg-white text-agent-ink')"
+              @click="openPreview"
             >
               <AppIcon name="tabler:player-play" :size="14" />
             </button>
+          </AppTooltip>
+          <AppTooltip v-if="isHtml" :content="t('conversation.actions.codeBlock.download')">
+            <a
+              :href="downloadUrl"
+              download="index.html"
+              :aria-label="t('conversation.actions.codeBlock.download')"
+              class="code-action"
+            >
+              <AppIcon name="tabler:download" :size="15" />
+            </a>
           </AppTooltip>
           <AppTooltip :content="copyLabel">
             <button

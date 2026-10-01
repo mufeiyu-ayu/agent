@@ -2,6 +2,8 @@
 import type { AgentNavigationItem, AgentPlatformUser } from '../types/agent-platform'
 
 import { userDisplayName, userInitial } from '@agent/contracts'
+import { useElementSize } from '@vueuse/core'
+import { SplitterGroup, SplitterPanel, SplitterResizeHandle } from 'reka-ui'
 import { computed, nextTick, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
@@ -9,12 +11,14 @@ import { useRouter } from 'vue-router'
 import workspaceBgOliveEmberDeepUrl from '../assets/bg-olive.webp'
 import workspaceBgAiBalancedUrl from '../assets/bg-warm.webp'
 import AgentConversation from '../components/agent/AgentConversation.vue'
+import HtmlPreviewPanel from '../components/agent/HtmlPreviewPanel.vue'
 import ChatComposer from '../components/chat/ChatComposer.vue'
 import AppIcon from '../components/common/AppIcon.vue'
 import AppMessage from '../components/common/AppMessage.vue'
 import AppShell from '../components/layout/AppShell.vue'
 import { useAuth } from '../hooks/useAuth'
 import { useChatWorkspace } from '../hooks/useChatWorkspace'
+import { useHtmlPreview } from '../hooks/useHtmlPreview'
 import { useLlmRuntime } from '../hooks/useLlmRuntime'
 import { useWorkspaceTheme } from '../hooks/useWorkspaceTheme'
 
@@ -86,6 +90,36 @@ const {
 } = useChatWorkspace({ onModelUnavailable: loadModels })
 
 const composer = ref<InstanceType<typeof ChatComposer> | null>(null)
+const workspaceElement = ref<HTMLElement | null>(null)
+const { width: workspaceWidth } = useElementSize(workspaceElement)
+const splitPreview = computed(() => workspaceWidth.value >= 720)
+const minPanelSize = computed(() => 320 / Math.max(716, workspaceWidth.value - 4) * 100)
+const previewDragging = ref(false)
+const chatPanel = ref<InstanceType<typeof SplitterPanel> | null>(null)
+const { isOpen: previewOpen, source: previewSource, close: closePreview, layout: previewLayout, rememberLayout } = useHtmlPreview(activeConversationId)
+const previewCode = computed(() => previewSource.value?.() ?? '')
+
+watch([previewOpen, splitPreview], async ([open, split]) => {
+  if (!open || !split) {
+    // Reka 通过 window mouseup 结束拖动；在收起/窄屏前主动结束，避免 iframe 吞掉晚到的松手。
+    if (previewDragging.value) {
+      window.dispatchEvent(new MouseEvent('mouseup'))
+      previewDragging.value = false
+    }
+    return
+  }
+  // 打开或恢复分栏后还原上次比例，两侧的最小宽度仍由 Splitter 约束。
+  const savedSize = previewLayout.value[0] ?? 50
+  await nextTick()
+  if (previewOpen.value && splitPreview.value)
+    chatPanel.value?.resize(savedSize)
+}, { flush: 'sync' })
+
+function onPreviewLayout(sizes: number[]) {
+  // 关闭时左栏放宽/右栏注销的过渡布局不能覆盖用户最后调整的比例。
+  if (previewOpen.value && splitPreview.value)
+    rememberLayout(sizes)
+}
 
 async function newChat() {
   resetWorkspace()
@@ -166,7 +200,7 @@ function send() {
     @rename-chat="renameConversationById"
     @select-chat="selectConversation"
   >
-    <div class="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+    <div ref="workspaceElement" class="relative flex min-h-0 min-w-0 flex-1 overflow-hidden">
       <AppMessage
         :visible="appMessage.visible"
         :type="appMessage.type"
@@ -174,69 +208,89 @@ function send() {
         @close="hideMessage"
       />
 
-      <div
-        v-if="showConversationEmptyState"
-        class="relative z-10 flex min-h-0 flex-1 flex-col items-center overflow-y-auto px-4 pb-6 pt-14 sm:px-6"
-      >
-        <div class="my-auto w-full max-w-[720px] pb-[8dvh]">
-          <h2 class="workspace-greeting text-center text-[28px] leading-snug text-agent-ink sm:text-[34px]">
-            <AppIcon name="tabler:asterisk" :size="26" class="mr-1.5 inline-block align-[-0.2em] text-agent-accent" />{{ t('conversation.emptyTitle') }}
-          </h2>
+      <SplitterGroup direction="horizontal" class="relative z-10 min-h-0 flex-1" @layout="onPreviewLayout">
+        <SplitterPanel id="chat" ref="chatPanel" :default-size="previewLayout[0]" :min-size="previewOpen && splitPreview ? minPanelSize : 0" :style="previewOpen && splitPreview ? { minWidth: '320px' } : undefined" class="flex min-h-0 min-w-0 flex-col">
+          <div
+            v-if="showConversationEmptyState"
+            class="relative z-10 flex min-h-0 flex-1 flex-col items-center overflow-y-auto px-4 pb-6 pt-14 sm:px-6"
+          >
+            <div class="my-auto w-full max-w-[720px] pb-[8dvh]">
+              <h2 class="workspace-greeting text-center text-[28px] leading-snug text-agent-ink sm:text-[34px]">
+                <AppIcon name="tabler:asterisk" :size="26" class="mr-1.5 inline-block align-[-0.2em] text-agent-accent" />{{ t('conversation.emptyTitle') }}
+              </h2>
 
-          <ChatComposer
-            ref="composer"
-            v-model:message="message"
-            v-model:selected-model="selectedModel"
-            v-model:selected-reasoning-effort="selectedReasoningEffort"
-            hero
-            class="mt-10"
-            :models="models"
-            :model-error="modelError"
-            :model-notice="modelNotice"
-            :status="status"
-            :message-character-count="messageCharacterCount"
-            @refresh-models="loadModels"
-            @send="send"
-            @stop="stopGeneration"
-          />
+              <ChatComposer
+                ref="composer"
+                v-model:message="message"
+                v-model:selected-model="selectedModel"
+                v-model:selected-reasoning-effort="selectedReasoningEffort"
+                hero
+                class="mt-10"
+                :models="models"
+                :model-error="modelError"
+                :model-notice="modelNotice"
+                :status="status"
+                :message-character-count="messageCharacterCount"
+                @refresh-models="loadModels"
+                @send="send"
+                @stop="stopGeneration"
+              />
 
-          <div class="mt-6 flex flex-wrap justify-center gap-2">
-            <button
-              v-for="prompt in starterPrompts"
-              :key="prompt.key"
-              type="button"
-              class="inline-flex h-8 items-center rounded-full border border-agent-border-soft px-3 text-[13px] text-agent-ink-soft transition hover:bg-agent-surface-raised hover:text-agent-ink focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-agent-focus/40"
-              @click="applySuggestedPrompt(prompt.prompt)"
-            >
-              {{ prompt.label }}
-            </button>
+              <div class="mt-6 flex flex-wrap justify-center gap-2">
+                <button
+                  v-for="prompt in starterPrompts"
+                  :key="prompt.key"
+                  type="button"
+                  class="inline-flex h-8 items-center rounded-full border border-agent-border-soft px-3 text-[13px] text-agent-ink-soft transition hover:bg-agent-surface-raised hover:text-agent-ink focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-agent-focus/40"
+                  @click="applySuggestedPrompt(prompt.prompt)"
+                >
+                  {{ prompt.label }}
+                </button>
+              </div>
+            </div>
           </div>
-        </div>
-      </div>
 
-      <div v-else class="relative z-10 flex min-h-0 flex-1 flex-col">
-        <AgentConversation
-          :anchor-latest-turn="shouldAnchorLatestTurn"
-          :conversation-id="activeConversationId"
-          :is-loading-messages="isLoadingMessages"
-          :turns="conversationTurns"
-        />
+          <div v-else data-chat-pane :inert="previewOpen && !splitPreview || undefined" class="relative z-10 flex min-h-0 min-w-0 flex-1 flex-col">
+            <AgentConversation
+              :anchor-latest-turn="shouldAnchorLatestTurn"
+              :conversation-id="activeConversationId"
+              :is-loading-messages="isLoadingMessages"
+              :turns="conversationTurns"
+            />
 
-        <ChatComposer
-          ref="composer"
-          v-model:message="message"
-          v-model:selected-model="selectedModel"
-          v-model:selected-reasoning-effort="selectedReasoningEffort"
-          :models="models"
-          :model-error="modelError"
-          :model-notice="modelNotice"
-          :status="status"
-          :message-character-count="messageCharacterCount"
-          @refresh-models="loadModels"
-          @send="send"
-          @stop="stopGeneration"
+            <ChatComposer
+              ref="composer"
+              v-model:message="message"
+              v-model:selected-model="selectedModel"
+              v-model:selected-reasoning-effort="selectedReasoningEffort"
+              :models="models"
+              :model-error="modelError"
+              :model-notice="modelNotice"
+              :status="status"
+              :message-character-count="messageCharacterCount"
+              @refresh-models="loadModels"
+              @send="send"
+              @stop="stopGeneration"
+            />
+          </div>
+        </SplitterPanel>
+        <SplitterResizeHandle
+          v-show="previewOpen && splitPreview"
+          :aria-label="t('conversation.actions.codeBlock.resizePreview')"
+          class="relative w-1 shrink-0 bg-agent-border-soft outline-none transition-colors hover:bg-agent-accent focus-visible:bg-agent-accent data-[state=drag]:bg-agent-accent"
+          @dragging="previewDragging = $event"
         />
-      </div>
+        <SplitterPanel v-show="previewOpen && splitPreview" id="preview" :default-size="previewLayout[1]" :min-size="previewOpen && splitPreview ? minPanelSize : 0" style="min-width: 320px" class="flex min-h-0 min-w-0">
+          <HtmlPreviewPanel v-if="previewOpen && splitPreview" :code="previewCode" @close="closePreview" />
+        </SplitterPanel>
+      </SplitterGroup>
+      <HtmlPreviewPanel
+        v-if="previewOpen && !splitPreview"
+        :code="previewCode"
+        focus-close
+        class="absolute inset-0 z-40"
+        @close="closePreview"
+      />
     </div>
   </AppShell>
 </template>
