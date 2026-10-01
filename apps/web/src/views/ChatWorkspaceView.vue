@@ -2,7 +2,7 @@
 import type { AgentNavigationItem, AgentPlatformUser } from '../types/agent-platform'
 
 import { userDisplayName, userInitial } from '@agent/contracts'
-import { computed, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 
@@ -85,6 +85,14 @@ const {
   hideMessage,
 } = useChatWorkspace({ onModelUnavailable: loadModels })
 
+const composer = ref<InstanceType<typeof ChatComposer> | null>(null)
+
+async function newChat() {
+  resetWorkspace()
+  await nextTick()
+  composer.value?.focus()
+}
+
 async function logout() {
   try {
     await signOut()
@@ -150,9 +158,10 @@ function send() {
     :workspace-theme="workspaceTheme"
     @change-password="router.push({ name: 'change-password', query: { redirect: '/workspace' } })"
     @delete-chat="deleteConversationById"
+    @focus-composer="composer?.focus()"
     @load-more-chats="loadMoreConversations"
     @logout="logout"
-    @new-chat="resetWorkspace"
+    @new-chat="newChat"
     @refresh-balance="refreshBalance"
     @rename-chat="renameConversationById"
     @select-chat="selectConversation"
@@ -175,6 +184,7 @@ function send() {
           </h2>
 
           <ChatComposer
+            ref="composer"
             v-model:message="message"
             v-model:selected-model="selectedModel"
             v-model:selected-reasoning-effort="selectedReasoningEffort"
@@ -213,6 +223,7 @@ function send() {
         />
 
         <ChatComposer
+          ref="composer"
           v-model:message="message"
           v-model:selected-model="selectedModel"
           v-model:selected-reasoning-effort="selectedReasoningEffort"

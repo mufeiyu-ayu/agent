@@ -38,6 +38,7 @@ const emit = defineEmits<{
   loadMoreChats: []
   logout: []
   newChat: []
+  focusComposer: []
   refreshBalance: []
   renameChat: [chatId: string, title: string]
   selectChat: [chatId: string]
@@ -45,6 +46,7 @@ const emit = defineEmits<{
 
 const sidebarCollapsed = ref(false)
 const mobileSidebarOpen = ref(false)
+let focusComposerAfterMobileClose = false
 const settingsOpen = ref(false)
 const { t } = useI18n()
 
@@ -63,8 +65,19 @@ function closeMobileSidebar() {
 }
 
 function handleNewChat() {
+  focusComposerAfterMobileClose = mobileSidebarOpen.value
   emit('newChat')
   closeMobileSidebar()
+}
+
+// 手机抽屉的默认焦点恢复晚于页面更新；新建时把焦点交给输入框。
+function restoreNewChatFocus(event: Event) {
+  if (!focusComposerAfterMobileClose)
+    return
+
+  focusComposerAfterMobileClose = false
+  event.preventDefault()
+  emit('focusComposer')
 }
 
 function handleSelectChat(chatId: string) {
@@ -122,6 +135,7 @@ function openSettings() {
         side="left"
         class="w-[288px] max-w-[calc(100vw-28px)] gap-0 border-r border-agent-border bg-agent-sidebar p-0 shadow-[20px_0_48px_rgb(61_49_36/10%)] duration-300 ease-[cubic-bezier(.22,1,.36,1)] will-change-transform data-[side=left]:data-[state=open]:slide-in-from-left-12 data-[side=left]:data-[state=closed]:slide-out-to-left-12 min-[960px]:hidden"
         :show-close-button="false"
+        @close-auto-focus="restoreNewChatFocus"
       >
         <SheetTitle class="sr-only">
           {{ t('layout.mobileNavigation.title') }}

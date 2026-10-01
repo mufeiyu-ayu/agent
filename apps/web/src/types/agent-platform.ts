@@ -11,6 +11,7 @@ export interface AgentRecentChat {
   id: string
   title: string
   active?: boolean
+  running?: boolean
 }
 
 export interface AgentPlatformUser {

@@ -216,11 +216,13 @@ function handleBalanceSelect(event: Event) {
         type="button"
         :title="chat.title"
         :aria-label="chat.title"
+        :aria-busy="chat.running || undefined"
         class="grid size-11 place-items-center rounded-xl text-agent-ink-muted transition hover:bg-agent-surface-sunken/45 hover:text-agent-ink focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-agent-focus/40"
         :class="{ 'bg-agent-surface-sunken/45 text-agent-accent ring-1 ring-agent-border-soft': chat.active }"
         @click="emit('selectChat', chat.id)"
       >
-        <AppIcon name="tabler:message-circle" :size="18" />
+        <span v-if="chat.running" class="size-2 rounded-full bg-agent-copper motion-safe:animate-[pulse-soft_2.4s_ease-in-out_infinite]" aria-hidden="true" />
+        <AppIcon v-else name="tabler:message-circle" :size="18" />
       </button>
     </div>
 

@@ -120,6 +120,7 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
       id: conversation.id,
       title: conversation.title,
       active: conversation.id === activeConversationId.value,
+      running: requests.get(conversation.id)?.active ?? false,
     }))
   })
 
