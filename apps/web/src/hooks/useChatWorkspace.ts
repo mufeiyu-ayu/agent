@@ -15,7 +15,7 @@ import type {
 } from '../types/chat'
 
 import { isAxiosError } from 'axios'
-import { computed, onMounted, onUnmounted, ref, shallowRef } from 'vue'
+import { computed, onMounted, onUnmounted, ref, shallowReactive, shallowRef } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import { ChatStreamHttpError, streamChat } from '../api/chat'
@@ -41,6 +41,24 @@ const CONVERSATION_PAGE_SIZE = 20
 const CONVERSATION_TITLE_MAX_LENGTH = 28
 const REASONING_FLUSH_MS = 200
 
+/** 工作区里一次请求独占的状态；空白视图先用本地 key，创建成功后绑定会话 id。 */
+interface ChatRequestState {
+  key: string
+  requestId: string
+  conversationId: string | null
+  controller: AbortController
+  requestedAt: number
+  active: boolean
+  status: GenerationStatus
+  error: string
+  turnId: string | null
+  assistantMessageId: string | null
+  pendingDelta: Extract<ChatStreamEvent, { type: 'delta' }> | null
+  deltaFrame?: number
+  pendingReasoning: Extract<ChatStreamEvent, { type: 'reasoning_delta' }> | null
+  reasoningTimer?: number
+}
+
 interface UseChatWorkspaceOptions {
   /** 发送因模型行不可用被拒（HTTP 400）：由调用方重新拉取模型列表并纠正选中项。 */
   onModelUnavailable?: () => void
@@ -49,8 +67,6 @@ interface UseChatWorkspaceOptions {
 export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
   const { t } = useI18n()
   const message = ref('')
-  const status = ref<GenerationStatus>('empty')
-  const errorMessage = ref('')
   const conversations = ref<Conversation[]>([])
   const activeConversationId = ref<string | null>(null)
   const messages = ref<ConversationMessage[]>([])
@@ -73,34 +89,16 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
   })
 
   let messageTimer: number | undefined
-  let lastChatRequestedAt = 0
-  let activeTurnId: string | null = null
   let messageLoadRunId = 0
   let conversationNextCursor: string | null = null
-  let activeAbortController: AbortController | null = null
-  let activeStreamRequestId: string | null = null
-  let activeStreamConversationId: string | null = null
-  let activeStreamAssistantMessageId: string | null = null
   let isUnmounted = false
-  // 同一帧内到达的 delta 先拼在一起，下一帧一次写入：每次写入都会复制消息数组、重算全部轮次。
-  let pendingDelta: {
-    conversationId: string
-    assistantMessageId: string
-    content: string
-  } | null = null
-  let deltaFrame: number | undefined
-  // 思考原文（#209）先攒着、每 REASONING_FLUSH_MS 写入一次：写进 turnRuns 会重算全部轮次，而界面只在一句话写完时变、
-  // 每句至少停 1.5 秒，不必逐帧写。其余事件到达前、终态与停止时也会先写入。
-  let pendingReasoning: Extract<ChatStreamEvent, { type: 'reasoning_delta' }> | null = null
-  let reasoningTimer: number | undefined
-  // start 事件前 abort 的占位消息：同一次请求只允许创建一条（stopGeneration
-  // 与 catch 的 abort 分支会先后进入 markGenerationAborted）；若排队中的
-  // start 事件随后到达，真实助手消息会取代它，占位必须移除。
-  let abortedPlaceholder: {
-    requestId: string | null
-    conversationId: string
-    messageId: string
-  } | null = null
+  const newConversationKey = ref(createClientMessageId())
+  // 每个会话只留最后一次请求，终态也保留，切回时可还原控件；旧回调只能更新自己。
+  const requests = shallowReactive(new Map<string, ChatRequestState>())
+  const currentViewKey = computed(() => activeConversationId.value ?? newConversationKey.value)
+  const currentRequest = computed(() => requests.get(currentViewKey.value))
+  const status = computed(() => currentRequest.value?.status ?? getSettledWorkspaceStatus())
+  const errorMessage = computed(() => currentRequest.value?.error ?? '')
   const conversationMessagesCache = new Map<string, ConversationMessage[]>()
   // 每次本地消息变更（流事件、乐观更新）都会推进版本号；消息加载用它
   // 识别「fetch 期间本地已被流终态更新」的过期快照。
@@ -110,7 +108,7 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
 
   const conversationTurns = computed(() => {
     return mapMessagesToConversationTurns(messages.value, {
-      activeTurnId,
+      activeTurnId: currentRequest.value?.active ? currentRequest.value.turnId : null,
       turnErrors: localTurnErrors.value,
       runs: turnRuns.value,
       restoredRun: restoredRunOf,
@@ -122,6 +120,7 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
       id: conversation.id,
       title: conversation.title,
       active: conversation.id === activeConversationId.value,
+      running: requests.get(conversation.id)?.active ?? false,
     }))
   })
 
@@ -134,12 +133,10 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
     // 不做跨页面恢复；同时清理提示消息定时器。isUnmounted 阻止
     // abort 之后才落地的异步续体再更新状态或重建定时器。
     isUnmounted = true
-    activeAbortController?.abort()
-
-    if (deltaFrame !== undefined)
-      cancelAnimationFrame(deltaFrame)
-
-    window.clearTimeout(reasoningTimer)
+    for (const request of requests.values()) {
+      request.controller.abort()
+      clearRequestBuffers(request)
+    }
 
     if (messageTimer !== undefined)
       window.clearTimeout(messageTimer)
@@ -160,9 +157,7 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
   }
 
   function resetWorkspace() {
-    if (isGenerationInProgress())
-      return
-
+    newConversationKey.value = createClientMessageId()
     activeConversationId.value = null
     clearActiveMessages()
     resetComposerState()
@@ -173,6 +168,10 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
       return
 
     shouldAnchorLatestTurn.value = false
+    const request = requests.get(conversationId)
+    // 消息数组此时仍属于上一视图，先按原选中身份刷入目标缓存，再切换展示。
+    if (request?.active)
+      flushPendingDelta(request)
     activeConversationId.value = conversationId
     applyCachedMessagesForConversation(conversationId)
     resetComposerState()
@@ -180,7 +179,8 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
   }
 
   async function deleteConversationById(conversationId: string) {
-    if (isGenerationInProgress())
+    // 保留原有生成中禁止删除的边界，包括当前没在看的请求。
+    if ([...requests.values()].some(request => request.active))
       return
 
     try {
@@ -188,8 +188,15 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
       conversationError.value = ''
 
       await deleteConversation(conversationId)
+      // DELETE 在途时用户仍可能发送；删除成功后先取消期间启动的请求，不能丢掉其句柄。
+      const request = requests.get(conversationId)
+      if (request?.active) {
+        request.controller.abort()
+        clearRequestBuffers(request)
+      }
       conversationMessagesCache.delete(conversationId)
       conversationMessagesVersion.delete(conversationId)
+      requests.delete(conversationId)
 
       const nextConversations = conversations.value.filter(item => item.id !== conversationId)
 
@@ -244,65 +251,69 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
     if (!canStartChatRequest())
       return
 
-    const messageContent = message.value.trim()
-    let targetConversationId = activeConversationId.value
-    let pendingMessage: ConversationMessage | undefined
-    let assistantMessageId: string | undefined
-    let hasFinalStreamEvent = false
-    const streamRequestId = createClientMessageId()
-    const abortController = new AbortController()
-
-    status.value = 'thinking'
-    errorMessage.value = ''
+    const submittedMessage = message.value
+    const messageContent = submittedMessage.trim()
+    const request = shallowReactive<ChatRequestState>({
+      key: currentViewKey.value,
+      requestId: createClientMessageId(),
+      conversationId: activeConversationId.value,
+      controller: new AbortController(),
+      requestedAt: Date.now(),
+      active: true,
+      status: 'thinking',
+      error: '',
+      turnId: null,
+      assistantMessageId: null,
+      pendingDelta: null,
+      pendingReasoning: null,
+    })
+    requests.set(request.key, request)
     shouldAnchorLatestTurn.value = true
-    activeAbortController = abortController
-    activeStreamRequestId = streamRequestId
-    activeStreamConversationId = targetConversationId
-    activeStreamAssistantMessageId = null
+    let pendingMessage: ConversationMessage | undefined
 
     try {
-      if (!targetConversationId) {
+      if (!request.conversationId) {
         const conversation = await createConversation({
           title: createConversationTitle(messageContent),
-        }, {
-          signal: abortController.signal,
-        })
+        }, { signal: request.controller.signal })
+
+        if (!ownsActiveRequest(request))
+          return
 
         upsertConversation(conversation)
-        activeConversationId.value = conversation.id
-        targetConversationId = conversation.id
-        activeStreamConversationId = conversation.id
+        const stillViewingOrigin = currentViewKey.value === request.key
+        requests.delete(request.key)
+        request.key = conversation.id
+        request.conversationId = conversation.id
+        requests.set(request.key, request)
+        if (stillViewingOrigin)
+          activeConversationId.value = conversation.id
       }
 
-      const request = buildChatRequest(
-        targetConversationId,
-        messageContent,
-        model,
-        reasoningEffort,
-      )
-      pendingMessage = createPendingUserMessage(targetConversationId, request.message)
-      activeTurnId = pendingMessage.id
-
+      const conversationId = request.conversationId
+      const payload = buildChatRequest(conversationId, messageContent, model, reasoningEffort)
+      pendingMessage = createPendingUserMessage(conversationId, payload.message)
+      request.turnId = pendingMessage.id
       upsertMessageInConversation(pendingMessage)
 
-      for await (const event of streamChat(request, {
-        signal: abortController.signal,
-      })) {
-        if (event.conversationId !== targetConversationId)
+      for await (const event of streamChat(payload, { signal: request.controller.signal })) {
+        // stop、卸载或同会话新请求接管之后，迟到的 start/delta/终态都不再写入。
+        if (!ownsActiveRequest(request))
+          break
+        if (event.conversationId !== conversationId)
           continue
 
         if (event.type === 'reasoning_delta') {
-          handleStreamReasoningDeltaEvent(event)
+          handleStreamReasoningDeltaEvent(request, event)
           continue
         }
 
-        // 攒着的思考原文属于这个事件之前的那一轮：先写入，正文开始或 tool_started 之后就不再收这一轮的原文。
-        flushPendingReasoning()
+        flushPendingReasoning(request)
 
         if (event.type === 'delta') {
           updateTurnRun(event.assistantMessageId, run => applyRunEvent(run, event, performance.now()))
-          handleStreamDeltaEvent(event)
-          status.value = 'generating'
+          handleStreamDeltaEvent(request, event)
+          request.status = 'generating'
           continue
         }
 
@@ -311,113 +322,103 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
           continue
         }
 
-        // 终态与 start 之前先写入攒着的 delta，保证它们看到的是完整正文。
-        flushPendingDelta()
+        flushPendingDelta(request)
 
         if (event.type === 'start') {
-          assistantMessageId = event.assistantMessageId
-          activeStreamAssistantMessageId = event.assistantMessageId
-          // stop 先于排队中的 start 到达时会先建 ABORTED 占位；真实助手
-          // 消息从这里开始接管，移除占位避免出现两条中止气泡。
-          removeAbortedPlaceholderForRequest(streamRequestId)
+          request.assistantMessageId = event.assistantMessageId
+          request.turnId = event.userMessageId
           turnRuns.value = { ...turnRuns.value, [event.assistantMessageId]: startRun(performance.now()) }
           handleStreamStartEvent(event, pendingMessage)
-          message.value = ''
-          status.value = 'generating'
-          // 后端写入用户消息后会话 updatedAt 才变；在此之前失败的请求不改侧栏顺序。
-          touchConversation(event.conversationId)
+          // 创建和 start 都可能在切走后到达，不抢选中会话，也不清掉另一视图的输入。
+          if (currentViewKey.value === request.key && message.value === submittedMessage)
+            message.value = ''
+          request.status = 'generating'
+          touchConversation(conversationId)
           continue
         }
 
         if (event.type === 'done') {
-          hasFinalStreamEvent = true
           endTurnRun(event.assistantMessageId, 'done')
           handleStreamDoneEvent(event)
-          activeTurnId = null
-          clearActiveStreamState(streamRequestId)
-          setStatusAfterStreamCompletion(event.conversationId, 'done')
-          touchConversation(event.conversationId)
-          continue
+          finishRequest(request, 'done')
+          touchConversation(conversationId)
+          break
         }
 
         if (event.type === 'error') {
-          hasFinalStreamEvent = true
-          if (assistantMessageId)
-            endTurnRun(assistantMessageId, 'error')
-          errorMessage.value = event.message
-          // 用户消息已落库后才失败（没发 start，比如必带内容超预算）：会话 updatedAt 已变，侧栏同步。
+          if (request.assistantMessageId)
+            endTurnRun(request.assistantMessageId, 'error')
+          request.error = event.message
           if (event.userMessagePersisted)
-            touchConversation(event.conversationId)
+            touchConversation(conversationId)
           handleStreamErrorEvent(event, pendingMessage)
-          activeTurnId = null
-          clearActiveStreamState(streamRequestId)
-          setStatusAfterStreamError(event.conversationId)
-          showMessage(event.message, 'error')
-          continue
+          finishRequest(request, 'error')
+          if (currentViewKey.value === request.key)
+            showMessage(event.message, 'error')
+          break
         }
 
-        hasFinalStreamEvent = true
         endTurnRun(event.assistantMessageId, 'aborted')
         handleStreamAbortedEvent(event)
-        activeTurnId = null
-        clearActiveStreamState(streamRequestId)
-        setStatusAfterStreamCompletion(event.conversationId, 'aborted')
+        finishRequest(request, 'aborted')
+        break
       }
 
-      if (!hasFinalStreamEvent) {
+      if (ownsActiveRequest(request))
         throw new Error('流式响应提前结束，请稍后重试')
-      }
     }
     catch (error) {
-      // 组件已卸载：不再更新任何状态，也不发无人消费的刷新请求。
-      if (isUnmounted)
+      // 已有终态、被停止、卸载或同会话新请求接管时，尾部异常不能再改旧/新任务。
+      if (!ownsActiveRequest(request))
         return
 
-      flushPendingDelta()
-
-      // done/error/aborted 已处理完终态：EOF 前的尾部异常（连接重置、
-      // 结尾残行解析失败）不能把已完成的回答翻成 FAILED。
-      if (hasFinalStreamEvent)
-        return
-
+      flushPendingDelta(request)
       if (isAbortError(error)) {
-        if (assistantMessageId)
-          endTurnRun(assistantMessageId, 'aborted')
-        markGenerationAborted(targetConversationId, assistantMessageId, streamRequestId)
+        markGenerationAborted(request)
         return
       }
 
-      if (assistantMessageId)
-        endTurnRun(assistantMessageId, 'error')
-
+      if (request.assistantMessageId)
+        endTurnRun(request.assistantMessageId, 'error')
       const nextErrorMessage = getRequestErrorMessage(error)
-
-      if (error instanceof ChatStreamHttpError && error.isModelUnavailable)
-        options.onModelUnavailable?.()
-
-      errorMessage.value = nextErrorMessage
-
-      if (assistantMessageId && targetConversationId) {
-        setLocalTurnError(assistantMessageId, nextErrorMessage)
-        markAssistantMessageFailed(targetConversationId, assistantMessageId, nextErrorMessage)
+      request.error = nextErrorMessage
+      if (request.assistantMessageId && request.conversationId) {
+        setLocalTurnError(request.assistantMessageId, nextErrorMessage)
+        markAssistantMessageFailed(request.conversationId, request.assistantMessageId, nextErrorMessage)
       }
       else if (pendingMessage) {
         setLocalTurnError(pendingMessage.id, nextErrorMessage)
       }
-
-      showMessage(nextErrorMessage, 'error')
-      activeTurnId = null
-      clearActiveStreamState(streamRequestId)
-
-      const failedConversationId = targetConversationId
-
-      if (failedConversationId) {
-        setStatusAfterStreamError(failedConversationId)
-        return
+      finishRequest(request, 'error')
+      if (currentViewKey.value === request.key) {
+        if (error instanceof ChatStreamHttpError && error.isModelUnavailable)
+          options.onModelUnavailable?.()
+        showMessage(nextErrorMessage, 'error')
       }
-
-      status.value = 'error'
     }
+    finally {
+      clearRequestBuffers(request)
+    }
+  }
+
+  function ownsActiveRequest(request: ChatRequestState): boolean {
+    return !isUnmounted && request.active && requests.get(request.key) === request
+  }
+
+  function finishRequest(request: ChatRequestState, nextStatus: GenerationStatus) {
+    request.active = false
+    request.turnId = null
+    request.status = nextStatus
+  }
+
+  function clearRequestBuffers(request: ChatRequestState) {
+    if (request.deltaFrame !== undefined)
+      cancelAnimationFrame(request.deltaFrame)
+    window.clearTimeout(request.reasoningTimer)
+    request.deltaFrame = undefined
+    request.reasoningTimer = undefined
+    request.pendingDelta = null
+    request.pendingReasoning = null
   }
 
   function restoredRunOf(message: ConversationMessage): TurnRun | undefined {
@@ -446,18 +447,13 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
   }
 
   function stopGeneration() {
-    if (!isGenerationInProgress())
+    const request = currentRequest.value
+    if (!request?.active)
       return
 
-    const streamRequestId = activeStreamRequestId
-    const conversationId = activeStreamConversationId
-    const assistantMessageId = activeStreamAssistantMessageId
-
-    activeAbortController?.abort()
-    flushPendingDelta()
-    if (assistantMessageId)
-      endTurnRun(assistantMessageId, 'aborted')
-    markGenerationAborted(conversationId, assistantMessageId, streamRequestId)
+    flushPendingDelta(request)
+    request.controller.abort()
+    markGenerationAborted(request)
   }
 
   async function loadConversationList() {
@@ -535,7 +531,7 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
 
       const nextMessages = await listConversationMessages(conversationId)
 
-      if (runId !== messageLoadRunId || conversationId !== activeConversationId.value)
+      if (isUnmounted || runId !== messageLoadRunId || conversationId !== activeConversationId.value)
         return
 
       // 两种情况都保留本地事实、丢弃服务端快照：该会话仍在流式中，或
@@ -544,7 +540,9 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
       const versionChanged
         = (conversationMessagesVersion.get(conversationId) ?? 0) !== versionBeforeLoad
 
-      if (activeStreamConversationId === conversationId || versionChanged) {
+      const request = requests.get(conversationId)
+      // 本地停止/网络失败可能还没反映在服务端，切回时保留其正文和终态。
+      if (request?.active || request?.status === 'error' || request?.status === 'aborted' || versionChanged) {
         const cachedMessages = conversationMessagesCache.get(conversationId)
 
         if (cachedMessages)
@@ -554,15 +552,13 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
       }
 
       setMessagesForConversation(conversationId, nextMessages)
-
-      if (!isGenerationInProgress())
-        status.value = getSettledWorkspaceStatus()
     }
     catch (error) {
-      if (runId !== messageLoadRunId)
+      if (isUnmounted || runId !== messageLoadRunId)
         return
 
-      clearActiveMessages()
+      if (!requests.get(conversationId)?.active)
+        clearActiveMessages()
       handleWorkspaceError(error)
     }
     finally {
@@ -601,7 +597,6 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
       updatedAt: now,
     })
     clearLocalTurnError(pendingMessage.id)
-    activeTurnId = event.userMessageId
 
     upsertMessageInConversation(createStreamingAssistantMessage(
       event.conversationId,
@@ -610,72 +605,49 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
     ))
   }
 
-  function handleStreamDeltaEvent(event: Extract<ChatStreamEvent, { type: 'delta' }>) {
-    if (pendingDelta && (
-      pendingDelta.conversationId !== event.conversationId
-      || pendingDelta.assistantMessageId !== event.assistantMessageId
-    )) {
-      flushPendingDelta()
-    }
-
-    if (pendingDelta) {
-      pendingDelta.content += event.contentDelta
-    }
-    else {
-      pendingDelta = {
-        conversationId: event.conversationId,
-        assistantMessageId: event.assistantMessageId,
-        content: event.contentDelta,
-      }
-    }
-
-    // 后台标签页不派发 rAF：攒到回前台的下一帧或终态事件时再写入，期间页面本来也不可见。
-    deltaFrame ??= requestAnimationFrame(flushPendingDelta)
-  }
-
-  function handleStreamReasoningDeltaEvent(event: Extract<ChatStreamEvent, { type: 'reasoning_delta' }>) {
-    if (pendingReasoning && pendingReasoning.assistantMessageId !== event.assistantMessageId)
-      flushPendingReasoning()
-
-    if (pendingReasoning)
-      pendingReasoning.delta += event.delta
+  function handleStreamDeltaEvent(request: ChatRequestState, event: Extract<ChatStreamEvent, { type: 'delta' }>) {
+    if (request.pendingDelta)
+      request.pendingDelta.contentDelta += event.contentDelta
     else
-      pendingReasoning = { ...event }
-
-    reasoningTimer ??= window.setTimeout(flushPendingReasoning, REASONING_FLUSH_MS)
+      request.pendingDelta = { ...event }
+    // 每条请求独立攒帧；后台标签页不派发 rAF，切回或终态前主动写入。
+    request.deltaFrame ??= requestAnimationFrame(() => flushPendingDelta(request))
   }
 
-  function flushPendingReasoning() {
-    const reasoning = pendingReasoning
+  function handleStreamReasoningDeltaEvent(request: ChatRequestState, event: Extract<ChatStreamEvent, { type: 'reasoning_delta' }>) {
+    if (request.pendingReasoning)
+      request.pendingReasoning.delta += event.delta
+    else
+      request.pendingReasoning = { ...event }
+    request.reasoningTimer ??= window.setTimeout(flushPendingReasoning, REASONING_FLUSH_MS, request)
+  }
 
-    window.clearTimeout(reasoningTimer)
-    reasoningTimer = undefined
-    pendingReasoning = null
-    if (reasoning)
+  function flushPendingReasoning(request: ChatRequestState) {
+    const reasoning = request.pendingReasoning
+    window.clearTimeout(request.reasoningTimer)
+    request.reasoningTimer = undefined
+    request.pendingReasoning = null
+    if (reasoning && ownsActiveRequest(request))
       updateTurnRun(reasoning.assistantMessageId, run => applyRunEvent(run, reasoning, performance.now()))
   }
 
-  function flushPendingDelta() {
-    if (deltaFrame !== undefined) {
-      cancelAnimationFrame(deltaFrame)
-      deltaFrame = undefined
+  function flushPendingDelta(request: ChatRequestState) {
+    if (request.deltaFrame !== undefined) {
+      cancelAnimationFrame(request.deltaFrame)
+      request.deltaFrame = undefined
     }
-
-    flushPendingReasoning()
-
-    const delta = pendingDelta
-
-    if (!delta)
+    flushPendingReasoning(request)
+    const delta = request.pendingDelta
+    request.pendingDelta = null
+    if (!delta || !ownsActiveRequest(request))
       return
-
-    pendingDelta = null
 
     const hasUpdatedMessage = updateMessageById(
       delta.conversationId,
       delta.assistantMessageId,
       currentMessage => ({
         ...currentMessage,
-        content: `${currentMessage.content}${delta.content}`,
+        content: `${currentMessage.content}${delta.contentDelta}`,
         status: 'STREAMING',
         updatedAt: createMessageTimestamp(),
       }),
@@ -684,7 +656,7 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
     if (!hasUpdatedMessage) {
       upsertMessageInConversation({
         ...createStreamingAssistantMessage(delta.conversationId, delta.assistantMessageId),
-        content: delta.content,
+        content: delta.contentDelta,
       })
     }
   }
@@ -732,55 +704,19 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
     markAssistantMessageAborted(event.conversationId, event.assistantMessageId, event.content)
   }
 
-  function markGenerationAborted(
-    conversationId: string | null,
-    assistantMessageId: string | null | undefined,
-    streamRequestId: string | null,
-  ) {
-    const shouldUpdateWorkspaceStatus = shouldUpdateActiveStreamState(streamRequestId)
-
-    if (!conversationId) {
-      if (shouldUpdateWorkspaceStatus) {
-        status.value = 'aborted'
-        activeTurnId = null
-        clearActiveStreamState(streamRequestId)
-      }
-
-      return
-    }
-
-    if (assistantMessageId) {
-      markAssistantMessageAborted(conversationId, assistantMessageId)
-    }
-    else if (abortedPlaceholder?.requestId !== streamRequestId) {
-      const placeholder = createAbortedAssistantMessage(conversationId)
-
-      abortedPlaceholder = {
-        requestId: streamRequestId,
-        conversationId,
-        messageId: placeholder.id,
-      }
-      upsertMessageInConversation(placeholder)
-    }
-
-    if (shouldUpdateWorkspaceStatus) {
-      activeTurnId = null
-      setStatusAfterStreamCompletion(conversationId, 'aborted')
-      clearActiveStreamState(streamRequestId)
-    }
-  }
-
-  function removeAbortedPlaceholderForRequest(streamRequestId: string) {
-    if (!abortedPlaceholder || abortedPlaceholder.requestId !== streamRequestId)
+  function markGenerationAborted(request: ChatRequestState) {
+    if (!ownsActiveRequest(request))
       return
 
-    const { conversationId, messageId } = abortedPlaceholder
-
-    abortedPlaceholder = null
-    setMessagesForConversation(
-      conversationId,
-      getMessagesForConversation(conversationId).filter(item => item.id !== messageId),
-    )
+    if (request.assistantMessageId && request.conversationId) {
+      endTurnRun(request.assistantMessageId, 'aborted')
+      markAssistantMessageAborted(request.conversationId, request.assistantMessageId)
+    }
+    else if (request.conversationId) {
+      // start 前停止只创建一次占位；终态立刻释放该会话，旧回调不再接管。
+      upsertMessageInConversation(createAbortedAssistantMessage(request.conversationId, request.requestId))
+    }
+    finishRequest(request, 'aborted')
   }
 
   function markAssistantMessageAborted(
@@ -966,11 +902,11 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
     }
   }
 
-  function createAbortedAssistantMessage(conversationId: string): ConversationMessage {
+  function createAbortedAssistantMessage(conversationId: string, requestId: string): ConversationMessage {
     const now = createMessageTimestamp()
 
     return {
-      id: createClientMessageId(),
+      id: `${requestId}-aborted`,
       conversationId,
       role: 'ASSISTANT',
       content: '',
@@ -1004,9 +940,6 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
   function applyCachedMessagesForConversation(conversationId: string) {
     messageLoadRunId += 1
 
-    if (!isGenerationInProgress())
-      activeTurnId = null
-
     const cachedMessages = conversationMessagesCache.get(conversationId)
 
     messages.value = cachedMessages ? [...cachedMessages] : []
@@ -1022,81 +955,23 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
   function clearActiveMessages() {
     messageLoadRunId += 1
     messages.value = []
-    localTurnErrors.value = {}
-    activeTurnId = null
+    isLoadingMessages.value = false
   }
 
   function resetComposerState() {
-    const shouldKeepGenerationStatus = isGenerationInProgress()
-
     message.value = ''
-    if (!shouldKeepGenerationStatus)
-      status.value = getSettledWorkspaceStatus()
-
-    errorMessage.value = ''
     hideMessage()
-    if (!shouldKeepGenerationStatus)
-      activeTurnId = null
-
     shouldAnchorLatestTurn.value = false
   }
 
   function canStartChatRequest(): boolean {
-    if (isGenerationInProgress())
-      return false
-
-    if (!message.value.trim())
-      return false
-
-    const now = Date.now()
-
-    if (now - lastChatRequestedAt < CHAT_REQUEST_INTERVAL_MS)
-      return false
-
-    lastChatRequestedAt = now
-
-    return true
-  }
-
-  function isGenerationInProgress(): boolean {
-    return activeStreamConversationId !== null
-      || status.value === 'thinking'
-      || status.value === 'generating'
-  }
-
-  function clearActiveStreamState(streamRequestId: string | null) {
-    if (streamRequestId && activeStreamRequestId !== streamRequestId)
-      return
-
-    activeAbortController = null
-    activeStreamRequestId = null
-    activeStreamConversationId = null
-    activeStreamAssistantMessageId = null
-  }
-
-  function shouldUpdateActiveStreamState(streamRequestId: string | null): boolean {
-    return !streamRequestId
-      || activeStreamRequestId === streamRequestId
-      || activeStreamRequestId === null
+    const request = currentRequest.value
+    return !isUnmounted && !request?.active && Boolean(message.value.trim())
+      && (!request || Date.now() - request.requestedAt >= CHAT_REQUEST_INTERVAL_MS)
   }
 
   function getSettledWorkspaceStatus(): GenerationStatus {
     return messages.value.length > 0 ? 'idle' : 'empty'
-  }
-
-  function setStatusAfterStreamCompletion(
-    conversationId: string,
-    nextStatus: Extract<GenerationStatus, 'done' | 'aborted'>,
-  ) {
-    status.value = conversationId === activeConversationId.value
-      ? nextStatus
-      : getSettledWorkspaceStatus()
-  }
-
-  function setStatusAfterStreamError(conversationId: string) {
-    status.value = conversationId === activeConversationId.value
-      ? 'error'
-      : getSettledWorkspaceStatus()
   }
 
   function setLocalTurnError(messageId: string, nextErrorMessage: string) {

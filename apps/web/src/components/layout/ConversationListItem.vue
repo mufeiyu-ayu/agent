@@ -108,11 +108,14 @@ function deleteChat() {
       type="button"
       class="flex h-8 w-full min-w-0 items-center gap-2 rounded-lg px-2.5 pr-8 text-left text-[13px] font-normal transition focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-agent-focus/40"
       :class="chat.active ? 'text-agent-ink' : 'text-agent-ink-soft'"
+      :aria-busy="chat.running || undefined"
       @click="selectChat"
     >
       <span
         class="size-2 shrink-0 rounded-full border"
-        :class="chat.active ? 'border-agent-ink-muted' : 'border-agent-ink-faint/80'"
+        :class="chat.running
+          ? 'border-transparent bg-agent-copper motion-safe:animate-[pulse-soft_2.4s_ease-in-out_infinite]'
+          : chat.active ? 'border-agent-ink-muted' : 'border-agent-ink-faint/80'"
         aria-hidden="true"
       />
       <span class="truncate">

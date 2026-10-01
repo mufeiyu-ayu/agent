@@ -89,8 +89,14 @@ watch(showPrimaryAction, async (show) => {
   if (show || !document.activeElement?.hasAttribute('data-composer-primary'))
     return
   await nextTick()
-  inputContainer.value?.querySelector('textarea')?.focus()
+  focus()
 }, { flush: 'pre' })
+
+function focus() {
+  inputContainer.value?.querySelector('textarea')?.focus()
+}
+
+defineExpose({ focus })
 
 function submitComposer() {
   if (isGenerationInProgress.value || !props.message.trim())
