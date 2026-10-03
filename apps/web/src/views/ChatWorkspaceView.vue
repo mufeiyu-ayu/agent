@@ -105,6 +105,8 @@ const previewCode = computed(() => previewSource.value?.() ?? '')
 const filesOpen = ref(false)
 const filesPanel = ref<InstanceType<typeof WorkspaceFilesPanel> | null>(null)
 const openingArtifact = ref(false)
+// 与 loading 分离：交付打开被重建取消后，仍不能自动改选当前最新文件。
+const filesAutoPreview = ref(true)
 let artifactRequest = 0
 const sideOpen = computed(() => previewOpen.value || filesOpen.value)
 const { snapshot: workspaceSnapshot, loading: workspaceLoading, error: workspaceError, refresh: refreshFiles, readFile } = useWorkspaceFiles(activeConversationId, status)
@@ -120,12 +122,21 @@ watch(activeConversationId, () => {
   filesOpen.value = false
   artifactRequest++
   openingArtifact.value = false
+  filesAutoPreview.value = true
   openedFilesFor = null
 })
 watch(filesOpen, (open) => {
   if (!open) {
     artifactRequest++
     openingArtifact.value = false
+  }
+}, { flush: 'sync' })
+watch(splitPreview, () => {
+  if (filesOpen.value && !filesAutoPreview.value) {
+    // 两个布局会重建面板：明确取消旧打开，让用户重新选择，不让旧 finally 恢复自动预览。
+    artifactRequest++
+    openingArtifact.value = false
+    showMessage(t('workspace.selectFile'))
   }
 }, { flush: 'sync' })
 watch(workspaceSnapshot, (snapshot) => {
@@ -145,6 +156,7 @@ async function openFiles(file?: WorkspaceFile) {
   if (file)
     filesOpen.value = false
   const request = ++artifactRequest
+  filesAutoPreview.value = !file
   openingArtifact.value = !!file
   void closePreview()
   if (!file)
@@ -361,7 +373,7 @@ function send() {
         />
         <SplitterPanel v-show="sideOpen && splitPreview" id="preview" :default-size="previewLayout[1]" :min-size="sideOpen && splitPreview ? minPanelSize : 0" style="min-width: 320px" class="flex min-h-0 min-w-0">
           <HtmlPreviewPanel v-if="previewOpen && splitPreview" :code="previewCode" @close="closePreview" />
-          <WorkspaceFilesPanel v-if="filesOpen && splitPreview" ref="filesPanel" :snapshot="workspaceSnapshot" :loading="workspaceLoading" :error="workspaceError" :conversation-id="activeConversationId" :read-file="readFile" :auto-preview="!openingArtifact" @refresh="refreshFiles" @close="filesOpen = false" />
+          <WorkspaceFilesPanel v-if="filesOpen && splitPreview" ref="filesPanel" :snapshot="workspaceSnapshot" :loading="workspaceLoading" :error="workspaceError" :conversation-id="activeConversationId" :read-file="readFile" :auto-preview="filesAutoPreview" @refresh="refreshFiles" @close="filesOpen = false" />
         </SplitterPanel>
       </SplitterGroup>
       <HtmlPreviewPanel
@@ -371,7 +383,7 @@ function send() {
         class="absolute inset-0 z-40"
         @close="closePreview"
       />
-      <WorkspaceFilesPanel v-if="filesOpen && !splitPreview" ref="filesPanel" :snapshot="workspaceSnapshot" :loading="workspaceLoading" :error="workspaceError" :conversation-id="activeConversationId" :read-file="readFile" :auto-preview="!openingArtifact" class="absolute inset-0 z-40" @refresh="refreshFiles" @close="filesOpen = false" />
+      <WorkspaceFilesPanel v-if="filesOpen && !splitPreview" ref="filesPanel" :snapshot="workspaceSnapshot" :loading="workspaceLoading" :error="workspaceError" :conversation-id="activeConversationId" :read-file="readFile" :auto-preview="filesAutoPreview" class="absolute inset-0 z-40" @refresh="refreshFiles" @close="filesOpen = false" />
     </div>
   </AppShell>
 </template>

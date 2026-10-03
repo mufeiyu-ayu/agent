@@ -369,6 +369,75 @@ test('R3：交付文件读取未结束时 revision 和 SHA 改变，不自动改
   assert.deepEqual(reads, [1, 2], '只有明确选择当前工作文件才读取 B')
 })
 
+for (const [from, to] of [[1400, 620], [620, 1400]] as const) {
+  test(`R3：跨断点 ${from}→${to} 重建面板后，旧 A 完成和再次刷新都不能自动打开 B`, async ({ page }) => {
+    await page.setViewportSize({ width: from, height: 900 })
+    const activity = { toolBeforeAnswer: true, items: [{ kind: 'tool' as const, callId: 'save', toolName: 'write', ok: true, workspace: { operation: 'write' as const, title: '保存页面', revision: 1, files: [file] } }] }
+    await installApiRoutes(page, () => [
+      { id: 'question', conversationId: CONVERSATION_ID, role: 'USER', content: '创建页面', status: 'COMPLETED', createdAt: '2026-10-02T00:00:00Z', updatedAt: '2026-10-02T00:00:00Z' },
+      { id: 'saved', conversationId: CONVERSATION_ID, role: 'ASSISTANT', content: '页面已保存', status: 'COMPLETED', activity, createdAt: '2026-10-02T00:00:01Z', updatedAt: '2026-10-02T00:00:01Z' },
+    ])
+    await installBrowserStubs(page, { lines: [], holdBeforeIndex: -1 })
+    let changed = false
+    let holdA = false
+    let finishA: (() => Promise<void>) | undefined
+    const reads: number[] = []
+    await page.route('**/api/conversations/*/workspace**', (route) => {
+      const url = new URL(route.request().url())
+      if (url.pathname.endsWith('/file')) {
+        const revision = Number(url.searchParams.get('revision'))
+        reads.push(revision)
+        const finish = () => route.fulfill({ json: { success: true, code: 0, data: { encoding: 'base64', content: Buffer.from(`<html><body><h1>Content ${revision === 1 ? 'A' : 'B'}</h1></body></html>`).toString('base64') } } })
+        if (holdA && revision === 1) {
+          finishA = finish
+          return
+        }
+        return finish()
+      }
+      return route.fulfill({ json: { success: true, code: 0, data: { ...snapshot, revision: changed ? 2 : 1, files: [{ ...file, sha256: changed ? 'b'.repeat(64) : file.sha256 }] } } })
+    })
+    await page.goto('/workspace')
+    const panel = page.locator('[data-workspace-files-panel]')
+    const frame = page.frameLocator('[data-workspace-files-panel] [data-html-preview-panel] > iframe').frameLocator('iframe')
+    await expect(frame.getByRole('heading', { name: 'Content A' })).toBeVisible()
+    await panel.getByRole('button', { name: '关闭文件面板' }).click()
+    reads.length = 0
+    holdA = true
+    await page.locator('[data-workspace-artifact]').getByRole('button', { name: '打开面板', exact: true }).click()
+    await expect.poll(() => Boolean(finishA)).toBe(true)
+    const oldPanel = await panel.elementHandle()
+    assert.ok(oldPanel)
+    await page.setViewportSize({ width: to, height: 900 })
+    await expect.poll(() => oldPanel.evaluate(element => element.isConnected)).toBe(false)
+    await expect(panel).toHaveCount(1)
+    changed = true
+    await panel.getByRole('button', { name: '刷新文件', exact: true }).click()
+    await expect(panel.getByText(/已保存版本 2/)).toBeVisible()
+    const oldResponse = page.waitForResponse(response => new URL(response.url()).pathname.endsWith('/workspace/file') && new URL(response.url()).searchParams.get('revision') === '1')
+    await finishA!()
+    await (await oldResponse).finished()
+    // 等浏览器完成旧读取的 Promise/框架更新，再触发 G；不能只验证重建瞬间。
+    await page.evaluate(() => new Promise<void>((resolve) => {
+      requestAnimationFrame(() => resolve())
+    }))
+    const refreshed = page.waitForResponse(response => new URL(response.url()).pathname.endsWith('/workspace'))
+    await panel.getByRole('button', { name: '刷新文件', exact: true }).click()
+    await (await refreshed).finished()
+    await expect(panel.getByRole('button', { name: '刷新文件', exact: true })).toBeEnabled()
+    if (reads.includes(2))
+      await expect(frame.getByRole('heading', { name: 'Content B' })).toBeVisible()
+    const previews = (await Promise.all(page.frames().filter(child => child !== page.mainFrame()).map(child => child.getByRole('heading').allTextContents()))).flat()
+    console.log('R3 remount before explicit selection:', JSON.stringify({ from, to, reads, previews }))
+    assert.deepEqual(reads, [1], '重建、旧 finally 和后续刷新均不能把交付 A 自动改为 B')
+    assert.equal(previews.some(text => text.includes('Content B')), false)
+    await expect(panel).not.toContainText('Content B')
+    await panel.getByRole('button', { name: file.path, exact: true }).click()
+    await expect(frame.getByRole('heading', { name: 'Content B' })).toBeVisible()
+    assert.deepEqual(reads, [1, 2], '只有明确选择当前 B 才读取 revision 2')
+    console.log('R3 remount after explicit selection:', JSON.stringify({ from, to, reads, preview: 'Content B' }))
+  })
+}
+
 test('下载途中当前文件被新版本删除时解除 loading，迟到结果不覆盖其他文件', async ({ page }) => {
   await installApiRoutes(page, () => [{ id: 'read-files', conversationId: CONVERSATION_ID, role: 'USER', content: '查看文件', status: 'COMPLETED', createdAt: '2026-10-02T00:00:00Z', updatedAt: '2026-10-02T00:00:00Z' }])
   await installBrowserStubs(page, { lines: [], holdBeforeIndex: -1 })
