@@ -5,6 +5,7 @@ import type { TurnRun, TurnRunStep, TurnRunThought } from '../../types/chat'
 import { computed, reactive } from 'vue'
 import { useI18n } from 'vue-i18n'
 
+import AppIcon from '@/components/common/AppIcon.vue'
 import { runStepText, safeHref, siteName, thoughtHasMore, thoughtTitle } from '@/utils/run-status'
 
 const props = defineProps<{
@@ -15,6 +16,15 @@ const props = defineProps<{
 const MAX_SOURCES = 5
 /** 网站图标加载失败时的首字母底色：按域名固定取一个。 */
 const FALLBACK_COLORS = ['#b4552b', '#3d7a5a', '#4a6fa5', '#8a5a9e', '#9a7b2f', '#5b6b73']
+const TOOL_ICONS: Record<string, string> = {
+  web_search: 'tabler:search',
+  web_fetch: 'tabler:world',
+  read: 'tabler:file-search',
+  write: 'tabler:file-plus',
+  edit: 'tabler:file-pencil',
+  bash: 'tabler:terminal-2',
+  topuplist_traffic: 'tabler:chart-line',
+}
 
 const { t, locale } = useI18n()
 const open = reactive<Record<string, boolean>>({})
@@ -25,8 +35,9 @@ const brokenIcons = reactive<Record<string, boolean>>({})
 
 /** 时间线的一行：工具步骤，或一轮思考（#209）。 */
 interface TimelineItem {
+  workspace?: TurnRunStep['workspace']
   key: string
-  icon: 'search' | 'page' | 'tool' | 'fail' | 'thought'
+  icon: string
   failed: boolean
   text: { verb?: string, object: string, meta?: string }
   /** 思考行：完整思考按空行分段。 */
@@ -57,7 +68,7 @@ function thoughtItem(thought: TurnRunThought): TimelineItem {
 
   return {
     key: `thought:${thought.at}`,
-    icon: 'thought',
+    icon: 'tabler:bulb',
     failed: false,
     text: { object: thoughtTitle(thought.text) },
     // 纯文本：按空行分段，段内换行由 CSS 保留。
@@ -84,9 +95,10 @@ function stepItem(step: TurnRunStep, index: number): TimelineItem {
 
   return {
     key: `step:${index}`,
-    icon: failed ? 'fail' : step.toolName === 'web_search' ? 'search' : step.toolName === 'web_fetch' ? 'page' : 'tool',
+    icon: failed ? 'tabler:alert-circle' : TOOL_ICONS[step.toolName] ?? 'tabler:tool',
     failed,
     text: runStepText(step, t, locale.value),
+    ...(step.workspace ? { workspace: step.workspace } : {}),
     pageHref,
     sources: sources.slice(0, MAX_SOURCES),
     moreSources: Math.max(0, sources.length - MAX_SOURCES),
@@ -95,7 +107,7 @@ function stepItem(step: TurnRunStep, index: number): TimelineItem {
           ? 'conversation.run.reason.timeout'
           : step.toolName === 'web_fetch' ? 'conversation.run.reason.fetchFailed' : 'conversation.run.reason.failed')
       : undefined,
-    expandable: failed || !!pageHref || sources.length > 0,
+    expandable: failed || !!pageHref || sources.length > 0 || !!step.workspace,
   }
 }
 
@@ -126,23 +138,7 @@ function fallbackColor(site: string): string {
     >
       <span class="run-tl-icon" aria-hidden="true">
         <span>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <template v-if="item.icon === 'search'">
-              <circle cx="11" cy="11" r="6.5" /><path d="M20 20l-4-4" />
-            </template>
-            <template v-else-if="item.icon === 'page'">
-              <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" /><path d="M14 3v5h5M9 13h6M9 17h4" />
-            </template>
-            <template v-else-if="item.icon === 'thought'">
-              <path d="M12 3.5l1.9 5.1a2 2 0 0 0 1.5 1.5l5.1 1.9-5.1 1.9a2 2 0 0 0-1.5 1.5L12 20.5l-1.9-5.1a2 2 0 0 0-1.5-1.5L3.5 12l5.1-1.9a2 2 0 0 0 1.5-1.5z" />
-            </template>
-            <template v-else-if="item.icon === 'fail'">
-              <circle cx="12" cy="12" r="9" opacity=".3" /><path d="M12 8v5M12 16.5v.01" />
-            </template>
-            <template v-else>
-              <path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L4 17v3h3l5.3-5.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.4-.6-.6-2.4z" />
-            </template>
-          </svg>
+          <AppIcon :name="item.icon" :size="16" />
         </span>
       </span>
       <div
@@ -167,6 +163,30 @@ function fallbackColor(site: string): string {
             <div v-if="item.paragraphs" v-overflow-fade class="run-thought" tabindex="0" data-run-thought>
               <p v-for="(paragraph, paragraphIndex) in item.paragraphs" :key="paragraphIndex">
                 {{ paragraph }}
+              </p>
+            </div>
+            <div v-else-if="item.workspace" class="workspace-tool-detail" data-workspace-tool-detail>
+              <template v-if="item.workspace.command">
+                <p>{{ t('workspace.command') }}</p>
+                <pre>{{ item.workspace.command }}</pre>
+              </template>
+              <template v-if="item.workspace.preview">
+                <p>{{ t('workspace.code') }}</p>
+                <pre>{{ item.workspace.preview }}</pre>
+              </template>
+              <template v-if="item.workspace.stdout">
+                <p>{{ t('workspace.stdout') }}</p>
+                <pre>{{ item.workspace.stdout }}</pre>
+              </template>
+              <template v-if="item.workspace.stderr">
+                <p>{{ t('workspace.stderr') }}</p>
+                <pre class="text-agent-error">{{ item.workspace.stderr }}</pre>
+              </template>
+              <p v-if="item.workspace.revision">
+                {{ t('workspace.savedVersion', { n: item.workspace.revision }) }}
+              </p>
+              <p v-if="item.reason" class="run-note">
+                {{ item.reason }}
               </p>
             </div>
             <template v-else-if="item.sources.length">
@@ -213,6 +233,8 @@ function fallbackColor(site: string): string {
 
 <style scoped>
 /* 时间线：不套卡片，一步一行，图标用一条细竖线串起来 */
+.workspace-tool-detail pre { max-height: 22rem; overflow: auto; padding: 0.75rem; margin: 0.5rem 0; background: var(--agent-surface-sunken); border-radius: 0.5rem; font: 12px/1.6 ui-monospace, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+.workspace-tool-detail p { color: var(--agent-ink-muted); font-size: 12px; }
 .run-timeline {
   --run-ease-out: cubic-bezier(0.22, 0.8, 0.24, 1);
   --run-ease-in-out: cubic-bezier(0.45, 0, 0.25, 1);
@@ -258,8 +280,8 @@ function fallbackColor(site: string): string {
 }
 
 .run-tl-icon svg {
-  width: 13px;
-  height: 13px;
+  width: 16px;
+  height: 16px;
 }
 
 .run-tl-item.is-failed .run-tl-icon > span {

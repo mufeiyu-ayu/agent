@@ -59,6 +59,7 @@ export function applyRunEvent(run: TurnRun, event: ChatStreamEvent, now: number)
         steps: [...run.steps, {
           callId: event.callId,
           toolName: event.toolName,
+          ...(event.workspace === undefined ? {} : { workspace: event.workspace }),
           ...(event.query === undefined ? {} : { query: event.query }),
           ...(event.url === undefined ? {} : { url: event.url }),
           status: 'running',
@@ -66,7 +67,7 @@ export function applyRunEvent(run: TurnRun, event: ChatStreamEvent, now: number)
       }
 
     case 'tool_finished': {
-      const { callId, ok, failure, results, finalUrl, title, chars } = event
+      const { callId, ok, failure, results, finalUrl, title, chars, workspace } = event
       // 工具顺序执行，结束的总是最后一步；只按 callId 找不行，不同轮次的 callId 可能重复。
       const steps = [...run.steps]
       const last = steps.at(-1)
@@ -76,6 +77,7 @@ export function applyRunEvent(run: TurnRun, event: ChatStreamEvent, now: number)
         steps[steps.length - 1] = {
           ...last,
           status: ok ? 'ok' : 'failed',
+          ...(workspace === undefined ? {} : { workspace: { ...last.workspace, ...workspace } }),
           ...(failure === undefined ? {} : { failure }),
           ...(results === undefined ? {} : { results }),
           ...(finalUrl === undefined ? {} : { finalUrl }),
@@ -127,11 +129,12 @@ export function restoreRun(activity: MessageActivity, outcome: NonNullable<TurnR
       continue
     }
 
-    const { callId, toolName, query, url, ok, failure, results, finalUrl, title, chars } = item
+    const { callId, toolName, query, url, ok, failure, results, finalUrl, title, chars, workspace } = item
 
     steps.push({
       callId,
       toolName,
+      ...(workspace === undefined ? {} : { workspace }),
       ...(query === undefined ? {} : { query }),
       ...(url === undefined ? {} : { url }),
       // ok 为 false 且没有 failure：执行中被停止或中断，与实时路径没等到 tool_finished 的步骤一样。
@@ -159,6 +162,9 @@ export function restoreRun(activity: MessageActivity, outcome: NonNullable<TurnR
 export function runStatusText(step: TurnRunStep | undefined, t: Translate, thought?: string): RunStatusText {
   if (!step)
     return { label: thought || t('conversation.run.thinking') }
+
+  if (step.workspace)
+    return withObject(t(`workspace.operations.${step.workspace.operation}`), step.workspace.path ?? step.workspace.title)
 
   switch (step.toolName) {
     case 'web_search':
@@ -214,6 +220,9 @@ export function runStepText(step: TurnRunStep, t: Translate, locale: string): Ru
   const outcome = step.status === 'failed'
     ? t(`conversation.run.failure.${step.failure ?? 'failed'}`)
     : step.status === 'stopped' ? t('conversation.run.stopped') : undefined
+
+  if (step.workspace)
+    return { verb: t(`workspace.operations.${step.workspace.operation}`), object: step.workspace.path ?? step.workspace.title, meta: outcome ?? (step.workspace.exitCode !== undefined ? `exit ${step.workspace.exitCode}` : undefined) }
 
   switch (step.toolName) {
     case 'web_search':

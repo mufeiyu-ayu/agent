@@ -11,3 +11,7 @@ engineStrict: true
 packages:
   - 'apps/*'
   - 'packages/*'
+
+overrides:
+  # OSS SDK 的 win-release 只调用 semver.satisfies；复用仓库已有的可信版本，保持信任检查开启。
+  win-release>semver: 7.8.5

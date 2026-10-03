@@ -44,6 +44,7 @@ export class ChatService {
     const runtimeConfig = await this.runtimeConfigService.loadSnapshot()
 
     return this.mapRuntimeEvents(this.agentRuntimeService.runTurnStream({
+      userId,
       conversationId: input.conversationId,
       userContent: input.message,
       model,

@@ -359,11 +359,10 @@ test('AC-08：离开工作区取消所有在途请求，迟到事件不再修改
   await select(page, '会话 B')
   await send(page, 'B 请求', 2)
   await start(page, 1)
-  await page.evaluate(async () => {
-    const routerPath = '/src/router/index.ts'
-    const { router } = await import(routerPath)
-    await router.push('/')
-  })
+  // 通过已挂载页面的导航离开，避免热更新时 import 出另一份未挂载的 router。
+  await page.getByRole('button', { name: '用户设置', exact: true }).click()
+  await page.getByRole('menuitem', { name: '修改密码', exact: true }).click()
+  await page.waitForURL('**/change-password**')
   await poll(page, 'aborted', [true, true])
   await push(page, 0, { type: 'delta', contentDelta: '卸载后不可见' })
   assert.equal(await page.getByText('卸载后不可见', { exact: true }).count(), 0)

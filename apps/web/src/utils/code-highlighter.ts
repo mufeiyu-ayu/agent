@@ -31,9 +31,9 @@ function escapeHtml(str: string): string {
 }
 
 /** 大代码保持完整纯文本，避免对任意长的模型输出反复运行正则高亮。 */
-export function highlightCode(code: string, language = ''): string {
+export function highlightCode(code: string, language = '', maxLength = 20_000): string {
   const normalizedLang = language.trim().toLowerCase()
-  if (code.length <= 20_000 && normalizedLang && hljs.getLanguage(normalizedLang)) {
+  if (code.length <= maxLength && normalizedLang && hljs.getLanguage(normalizedLang)) {
     try {
       return hljs.highlight(code, { language: normalizedLang, ignoreIllegals: true }).value
     }

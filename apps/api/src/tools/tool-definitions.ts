@@ -2,6 +2,8 @@ import type { Type } from '@nestjs/common'
 import type { ToolDefinition, ToolExecutor } from './core/tool.types.js'
 import { webFetchDefinition, WebFetchTool } from './web/web-fetch.tool.js'
 import { webSearchDefinition, WebSearchTool } from './web/web-search.tool.js'
+import { TopuplistTrafficTool, trafficDefinition } from './workspace/topuplist-traffic.tool.js'
+import { bashDefinition, BashTool, editDefinition, EditTool, readDefinition, ReadTool, writeDefinition, WriteTool } from './workspace/workspace-tools.js'
 
 /**
  * 唯一的工具清单，顺序即暴露给模型的顺序：新增工具在这里加一行，就完成注册与暴露。
@@ -10,6 +12,11 @@ import { webSearchDefinition, WebSearchTool } from './web/web-search.tool.js'
 export const TOOLS = [
   toolEntry(webSearchDefinition, WebSearchTool),
   toolEntry(webFetchDefinition, WebFetchTool),
+  toolEntry(readDefinition, ReadTool),
+  toolEntry(writeDefinition, WriteTool),
+  toolEntry(editDefinition, EditTool),
+  toolEntry(bashDefinition, BashTool),
+  toolEntry(trafficDefinition, TopuplistTrafficTool),
 ]
 
 /** 由清单派生：Run 暴露给模型的工具与 Admin 概览的工具名都读它。 */

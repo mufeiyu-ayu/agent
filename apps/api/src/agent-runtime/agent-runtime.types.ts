@@ -30,6 +30,7 @@ export type AgentRuntimeEvent
   // 工具进度（#208）：只给界面，不进模型上下文；事件本身不落库（display 随 tool Step 落库，#212）。
   | {
     type: 'tool_started'
+    workspace?: ToolDisplay['workspace']
     runId: string
     conversationId: string
     assistantMessageId: string
@@ -80,6 +81,8 @@ export interface AgentRuntimeRunFailedEvent {
 }
 
 export interface RunTurnStreamInput {
+  /** 由后端登录态提供，仅代码工具使用。 */
+  userId?: string
   conversationId: string
   userContent: string
   /** Run 开始前解析好的模型配置快照：整个 Run 用同一份，后台改配置对下一个 Run 生效。 */

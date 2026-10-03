@@ -58,13 +58,21 @@ const endIcon = computed(() => {
   return run?.outcome === 'error' || run?.steps.some(step => step.status === 'failed') ? 'warn' : 'check'
 })
 /** 摘要定稿（done / error / aborted）且有工具步骤或思考原文才能展开。 */
-const expandable = computed(() => props.run?.phase === 'ended'
+const hasWorkspaceSteps = computed(() => props.run?.steps.some(step => step.workspace) ?? false)
+const expandable = computed(() => !!props.run && (props.run.phase === 'ended' || hasWorkspaceSteps.value)
   && (props.run.steps.length > 0 || props.run.thoughts.some(thought => thoughtTitle(thought.text))))
 const expanded = ref(false)
+let manuallyToggled = false
+watch(hasWorkspaceSteps, (has) => {
+  if (has && !settledAtMount && !manuallyToggled)
+    expanded.value = true
+})
 
 function toggle() {
-  if (expandable.value)
+  if (expandable.value) {
+    manuallyToggled = true
     expanded.value = !expanded.value
+  }
 }
 
 /** 呼吸点挂上后就不再卸载（start 前就停止或出错时也要淡出）；挂载时已结束的轮次始终不挂。 */

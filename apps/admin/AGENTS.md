@@ -6,7 +6,7 @@ Vue 3 运维控制台（Vite，端口 5174，ant-design-vue）。给模型的路
 
 ```txt
 src/main.ts -> src/App.vue（主题 token）-> src/router/index.ts -> layouts/AdminLayout.vue
-路由：overview / conversations(:id) / runs(:id) / llm-models / runtime-config / users；login、change-password、forbidden 在布局外；守卫要求登录且为管理员，成员进 forbidden
+路由：overview / conversations(:id) / runs(:id) / workspaces / llm-models / runtime-config / users；login、change-password、forbidden 在布局外；守卫要求登录且为管理员，成员进 forbidden
 views 组合 -> features/<领域>/ 的 state + api + components -> features/shared 的通用请求与列表 / 详情状态基座
 ```
 
@@ -21,6 +21,7 @@ views 组合 -> features/<领域>/ 的 state + api + components -> features/shar
 | `features/overview/` | 概览：健康 / 延迟 / 用量 / 工具，统计与余额两路并行；不读模型目录，模型的可见 / 默认 / 探活只在模型接入页 | `overview.state.ts`（加载与派生）、`overview.model.ts`（纯映射，`overview.model.test.ts` 覆盖）、`components/`（KPI 含余额 / 趋势 / 失败原因（点击下钻运行列表）/ 模型表 / 工具表） |
 | `features/llm/` | 模型接入：服务商 / 模型 / 可见性 / 默认 / 推理强度 / 单次输入上限（token 数一律千分位） | `llm-models.state.ts`（状态与动作）、`llm-api.ts`、`components/LlmModelTable.vue`、`components/LlmProviderFormModal.vue` |
 | `features/runtime-config/` | 系统管理 → 运行配置：单次最长时间、压缩保留最近 Tokens、Serper Key、调试开关，整页一个保存（时限按秒编辑、按毫秒提交） | `runtime-config.state.ts`（加载、保存与表单映射）、`runtime-config-api.ts` |
+| `features/workspaces/` | 工作区监测：每个工作区一行汇总，行点击打开分页沙箱历史抽屉；已删除会话仍保留历史入口，单一刷新返回列表与云概况 | `workspaces.state.ts`、`workspaces-api.ts`、`WorkspaceHistoryDrawer.vue`、`views/WorkspacesView.vue` |
 | `features/auth/` | 当前用户单例、登录 / 退出 / 改密码、回跳地址校验、Google 重定向登录（管理台不做 One Tap） | `auth.state.ts`、`auth-api.ts` |
 | `features/users/` | 系统管理 → 用户列表：建号、按状态筛选、审核待审核账号（通过 / 拒绝）、停用、重置密码、改角色 | `users.state.ts`、`users-api.ts` |
 | `components/layout/` | 侧栏（分组 → 菜单项）、面板顶栏里的收起按钮、路由 tab、主题切换、账号菜单（退出） | `AdminSidebar.vue`（菜单项在这里） |

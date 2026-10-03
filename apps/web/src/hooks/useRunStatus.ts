@@ -29,7 +29,7 @@ export function useRunStatus(run: () => TurnRun | undefined, waiting: () => bool
   // 与 TurnRun 里的时间一样用单调时钟。
   const now = ref(performance.now())
 
-  // 数据是单调的（toolBeforeAnswer 与 answerAt 设了就不变、时钟只往前走），所以状态行出现后不会消失。
+  // 工具步骤只增加；模型先输出进度说明再调用工具，也必须能查看整轮过程。
   const hasRow = computed(() => {
     const current = run()
 
@@ -42,7 +42,7 @@ export function useRunStatus(run: () => TurnRun | undefined, waiting: () => bool
     if (end === undefined && current.phase === 'ended')
       return true
 
-    return current.toolBeforeAnswer || (end ?? now.value) - current.startedAt >= RUN_ROW_DELAY_MS
+    return current.steps.length > 0 || current.toolBeforeAnswer || (end ?? now.value) - current.startedAt >= RUN_ROW_DELAY_MS
   })
   const live = computed(() => {
     const current = run()

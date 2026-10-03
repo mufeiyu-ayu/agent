@@ -46,6 +46,7 @@ describe('ChatService', () => {
     assert.deepEqual(harness.modelConfig.resolvedIds, ['model-deepseek-v4-flash'])
     assert.equal(harness.runtimeConfig.loads, 1)
     assert.deepEqual(withoutSignal(streamInput), {
+      userId: 'user-1',
       conversationId: 'conversation-1',
       userContent: '用户问题',
       model: RESOLVED_MODEL,
@@ -76,6 +77,7 @@ describe('ChatService', () => {
       'model',
       'runtimeConfig',
       'userContent',
+      'userId',
     ])
   })
 
