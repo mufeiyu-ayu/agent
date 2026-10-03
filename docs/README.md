@@ -1,6 +1,6 @@
 # Docs
 
-本目录只做导航。正式任务状态以 [`tasks/README.md`](./tasks/README.md) 为准，顺序与触发以 [`research/workbench-direction.md`](./research/workbench-direction.md) 第 7 节为准，阶段路线以 [`roadmap.md`](./roadmap.md) 为准，协作流程以 [`workflow.md`](./workflow.md) 为准（`AGENTS.md` 自动导入）。
+本目录只做导航。正式任务状态以 [`tasks/README.md`](./tasks/README.md) 为准，顺序与触发以 [`research/workbench-direction.md`](./research/workbench-direction.md) 第 7 节为准，阶段路线以 [`roadmap.md`](./roadmap.md) 为准，协作流程以 [`workflow.md`](./workflow.md) 为准（正式交付时按需读取）。
 
 ## 当前状态
 
@@ -14,26 +14,28 @@
 | [research/workbench-direction.md](./research/workbench-direction.md) | 工作台方向（两期、上云、gsc 延后）；第 7 节是唯一的顺序与触发来源 |
 | [tasks/README.md](./tasks/README.md) | 正式任务看板与状态事实来源 |
 | [tasks/completed/](./tasks/completed/) | 已完成阶段与横向任务的归档 |
-| [tasks/admin-console.md](./tasks/admin-console.md) | Admin Console 支线，Task 4 Planned |
+| [tasks/admin-console.md](./tasks/admin-console.md) | Admin Console 支线目标与历史交付索引；任务状态只看看板 |
 | [workflow.md](./workflow.md) | 单角色流程、硬约束、Issue 模板与任务状态 |
 | [testing.md](./testing.md) | 测试放哪、测什么、四个测试入口与真实库测试 |
 | [deploy.md](./deploy.md) | 给 AI 的部署与线上排查指南：线上结构、部署与回退、日志与排查命令、常见操作（不含 IP 与密钥） |
-| [research/README.md](./research/README.md) | 研究入口：Pi 参照、Phase 8 设计依据、配置地图 |
+| [research/README.md](./research/README.md) | 研究入口：Pi 参照、Phase 8 历史设计依据、配置地图 |
 | [research/pi-reference/README.md](./research/pi-reference/README.md) | Pi 参考知识库：模块正文、8 张图、实现路线 |
 | [research/pi-reference/roadmap.md](./research/pi-reference/roadmap.md) | 每步（R0～R5、web_fetch）的 Pi 素材与证明完成 |
 | [work-log.md](./work-log.md) | 粗粒度时间线：Issue 合并、方向定案、协作规则变化 |
 
 ## 事实来源
 
-发生冲突时按以下顺序判断：
+不同资料回答不同问题，不把它们排成一条会互相覆盖的优先级：
 
-1. GitHub 当前代码、Issue、PR、commit 与真实验证；
-2. `docs/tasks/**`；
-3. `docs/workflow.md`；
-4. `docs/research/workbench-direction.md` 第 7 节（只管顺序与触发）；
-5. `docs/roadmap.md`；
-6. `docs/work-log.md`；
-7. 其余 `docs/research/**`。
+| 问题 | 事实来源 |
+| --- | --- |
+| 当前要做什么、做到哪一步、哪些动作已授权 | 用户当前明确目标、范围与已有授权；在系统和工具权限允许范围内优先于本地默认流程 |
+| 正式任务的实现规格与验收标准 | 最新 Issue 正文；评论中的补充先经确认并入正文，不由当前代码或研究资料反推规格 |
+| 实际实现与检查结果 | 当前 checkout 的代码、PR 最新 head、commit 和真实验证输出；区分未提交、已实现、已验收、已合并与已部署 |
+| 正式任务状态 | `docs/tasks/README.md`；阶段归档是历史记录，不覆盖当前看板 |
+| 顺序与启动条件 | `docs/research/workbench-direction.md` 第 7 节；roadmap 与 Pi 资料不另排顺序 |
+| 协作边界与交付方式 | 根 `AGENTS.md`、`docs/workflow.md` 与当前工具适配文件；本次指令可缩小或扩大默认范围 |
+| 过去做过什么、当时如何设计 | work-log、阶段归档与 research；先辨认日期和适用范围，再核对当前实现 |
 
 ## 维护原则
 

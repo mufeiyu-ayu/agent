@@ -1,0 +1,5 @@
+interface:
+  display_name: "记忆交接"
+  short_description: "按当前客户端支持的方式导出或导入项目记忆"
+policy:
+  allow_implicit_invocation: false

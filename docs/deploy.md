@@ -3,7 +3,7 @@
 给 AI 的部署与排查指南：线上是什么结构、怎么部署与回退、出了问题从哪查。只写现状，不记任务历史。
 
 - 公开仓库：不写 IP、密钥文件名、密码、token、`.env` 的值。
-- 服务器变更（改配置、重启、删文件、动数据库）先说明命令、影响、回滚并经用户确认；只读排查不用。结构变了（加容器、改编排、改 `.env` 的变量）同步改本文。
+- 操作服务器前读 `~/.agents/references/server-operations.md`，核对目标、命令、影响与恢复方式；按已有明确授权执行，范围未变不逐步重复确认。破坏性或授权范围外变更需具体授权；只读排查保持低开销、有界。结构变了（加容器、改编排、改 `.env` 的变量）同步改本文。
 - 版本号、资源占用这类会变的数字以服务器上的实时结果为准，本文的是 2026-09-27 的基线。
 
 ## 服务器
@@ -35,11 +35,11 @@ api（kuro-api-1：Nest，0.0.0.0:3000，不映射到宿主机）
 | compose 项目 | `kuro`；网络 `kuro_default`（bridge，只有 IPv4，`172.18.0.0/16`）；卷 `kuro_pgdata`（数据库）、`kuro_caddy-data`（证书）、`kuro_caddy-config` |
 | 容器 | `kuro-caddy-1`（80 / 443 映射到宿主机）、`kuro-api-1`（Node 24，tini 做 PID 1）、`kuro-postgres-1`（pgvector 镜像，库 `agent`、用户 `agent`）；api 与 postgres 都不对外 |
 | 镜像 | 在本机构建（`deploy/Dockerfile` 的 `api` / `caddy` 两个 target），标签是 commit 短哈希，经 ssh 直传，不用镜像仓库；`kuro-api` 约 620 MB、`kuro-caddy` 约 66 MB |
-| api 的环境变量 | 只从 `~/kuro/.env` 读（`env_file`），再加 compose 里写死的 `DATABASE_URL`、`API_HOST=0.0.0.0`、`TRUST_PROXY=uniquelocal`（这三项不写进 `.env`）。线上 `.env` 应有的变量名：`AGENT_SECRET_KEY`、`APP_ORIGINS`、`GOOGLE_OAUTH_CLIENT_ID`、`GOOGLE_OAUTH_CLIENT_SECRET`、`POSTGRES_PASSWORD`。`SERPER_API_KEY` 与 `AGENT_MAX_*` 等运行参数应用已不读，残留在 `.env` 里不影响运行，删掉即可 |
+| api 的环境变量 | 只从 `~/kuro/.env` 读（`env_file`），再加 compose 里写死的 `DATABASE_URL`、`API_HOST=0.0.0.0`、`TRUST_PROXY=uniquelocal`（这三项不写进 `.env`）。线上 `.env` 应有的变量名：`AGENT_SECRET_KEY`、`APP_ORIGINS`、`GOOGLE_OAUTH_CLIENT_ID`、`GOOGLE_OAUTH_CLIENT_SECRET`、`POSTGRES_PASSWORD`。当前应用已不读 `SERPER_API_KEY` 与 `AGENT_MAX_*`；但旧版本回退可能仍依赖它们，清理前核对保留的回退版本与看板决定，不能仅凭新代码不用就删除。新能力需要的其他变量按当前 `.env.example` 与对应模块核对 |
 | 不能配的 | `OUTBOUND_PROXY_URL`：配了之后 `web_fetch` 由代理解析域名，连接时的 SSRF 检查失效 |
 | 不能换的 | `AGENT_SECRET_KEY`：库里的服务商 API Key 与 Serper Key 用它加密，换掉就全部无法解密 |
 | 模型服务商与模型 | 在库里，管理台「模型接入」配置，不在 `.env` |
-| 运行配置 | 在库里，管理台「运行配置」配置：运行限制、调试抓取、联网搜索的 Serper API Key（库里只有密文，页面只显示尾四位）。Key 没填时搜索失败、对话照常；从 `.env` 迁过来时在这页重新填一次，再删掉 `.env` 里的 `SERPER_API_KEY` |
+| 运行配置 | 在库里，管理台「运行配置」配置：运行限制、调试抓取、联网搜索的 Serper API Key（库里只有密文，页面只显示尾四位）。Key 没填时搜索失败、对话照常；从 `.env` 迁过来时在这页重新填一次；旧 env Key 的清理需同时满足管理台已配置、回退版本不再依赖、用户已有对应清理授权 |
 
 服务器 `~/kuro`：
 

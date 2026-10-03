@@ -5,6 +5,7 @@ import type {
   DatabaseOperationDeadline,
   DeadlineTransaction,
 } from '../../prisma/prisma.service.js'
+import type { WorkspaceCommit } from '../../workspaces/workspace-files.js'
 import { Inject, Injectable } from '@nestjs/common'
 
 import {
@@ -66,6 +67,7 @@ interface StartAgentStepInput {
 }
 
 interface CompleteAgentStepInput {
+  workspaceCommit?: WorkspaceCommit
   /**
    * 收口时整体替换 Step input，与状态、output 同一事务写入。只用于执行结果出来才能确定的
    * 输入事实（tool Step 回喂给模型的参数形状取决于是否通过校验）；未收口的 Step 保持开始时的 input。
@@ -358,6 +360,16 @@ export class AgentRunRecorderService {
         throw new RecorderInvariantError(`AgentStep ${stepId} 不存在`)
 
       await this.assertRunningRunLocked(transaction, step.runId)
+      if (input.workspaceCommit) {
+        const commit = input.workspaceCommit
+        if (commit.runId !== step.runId)
+          throw new RecorderInvariantError('文件版本的 Run 身份不匹配')
+        const updated = await transaction.execute(prisma => prisma.conversationWorkspace.updateMany({
+          where: { conversationId: commit.conversationId, ownerRunId: step.runId, revision: commit.expectedRevision, leaseExpiresAt: { gt: new Date() } },
+          data: { files: commit.files as unknown as Prisma.InputJsonArray, revision: { increment: 1 }, state: 'running', lastError: null },
+        }))
+        this.assertSingleUpdate(updated.count, '工作文件提交未取得所有权或版本已改变')
+      }
       const result = await transaction.execute(prisma => prisma.agentStep.updateMany({
         where: {
           id: stepId,
@@ -373,7 +385,8 @@ export class AgentRunRecorderService {
       }))
 
       this.assertSingleUpdate(result.count, `AgentStep ${stepId} 已进入终态或尚未开始`)
-    })
+      // 文件指针开始 COMMIT 后必须等真实确认；晚到的停止不能伪装成回滚，超出确认预算则暴露未知。
+    }, input.workspaceCommit ? () => {} : undefined)
   }
 
   private async closeRunAndUnfinishedSteps(

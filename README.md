@@ -61,7 +61,7 @@ DeepSeek's official API and OpenAI-compatible relays (GPT / Grok / Gemini) share
 
 ### 🧪 Built like production, documented like a course
 
-Non-trivial changes start as an issue with current-code facts, out-of-scope items, and numbered acceptance criteria, then land through a PR with a local review and a per-criterion acceptance record. Small single-concern fixes may go straight to master after a local review, and the work log records every one of them. The history reads like a textbook of real agent problems.
+Non-trivial changes start as an issue with current-code facts, out-of-scope items, and numbered acceptance criteria, then land through a PR with a local review and a per-criterion acceptance record. Small single-concern fixes use a separate branch and local review without requiring an issue. Commit messages record those fixes; the work log tracks issue merges, direction decisions, and collaboration-rule changes. The history reads like a textbook of real agent problems.
 
 ## The whole loop in one screen
 

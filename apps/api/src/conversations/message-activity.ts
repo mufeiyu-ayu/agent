@@ -91,7 +91,11 @@ function toToolItem(step: MessageActivityStepRow, toolName: string): MessageActi
     callId: typeof step.callId === 'string' ? step.callId : '',
     toolName,
     // 与 tool_started 同一规则：取不到就没有、按参数上限截断。
-    ...(typeof step.arguments === 'string' ? toToolProgressArguments(unwrapFeedbackArguments(step.arguments)) : {}),
+    ...(typeof step.arguments === 'string' ? toToolProgressArguments(unwrapFeedbackArguments(step.arguments), toolName) : {}),
+    ...(isRecord(display.workspace) && typeof display.workspace.operation === 'string' && typeof display.workspace.title === 'string'
+      && ['read', 'write', 'edit', 'bash', 'traffic'].includes(display.workspace.operation)
+      ? { workspace: display.workspace as unknown as NonNullable<MessageActivityTool['workspace']> }
+      : {}),
     ok: step.ok === true && !failure,
     ...(failure ? { failure } : {}),
     ...(durationMs === undefined ? {} : { durationMs }),

@@ -20,6 +20,8 @@ import { ConversationsService } from '../conversations/conversations.service.js'
 import { LlmModelConfigService } from '../llm/llm-model-config.service.js'
 import { LLMController } from '../llm/llm.controller.js'
 import { LLMService } from '../llm/llm.service.js'
+import { AdminWorkspacesController } from '../workspaces/workspace.controller.js'
+import { WorkspaceMonitoringService } from '../workspaces/workspace-monitoring.service.js'
 import { AuthController } from './auth.controller.js'
 import { AuthGuard } from './auth.guard.js'
 import { AuthService } from './auth.service.js'
@@ -73,6 +75,7 @@ describe('AuthGuard（全局默认拦截）', () => {
         ChatController,
         LLMController,
         AdminRunsController,
+        AdminWorkspacesController,
       ],
       providers: [
         { provide: APP_GUARD, useClass: AuthGuard },
@@ -83,6 +86,7 @@ describe('AuthGuard（全局默认拦截）', () => {
         { provide: LLMService, useValue: {} },
         { provide: LlmModelConfigService, useValue: {} },
         { provide: AdminRunsService, useValue: { list: async () => ({ items: [] }) } },
+        { provide: WorkspaceMonitoringService, useValue: { overview: async (page: number, pageSize: number) => ({ page, pageSize }), refresh: async () => ({ refreshed: true }), history: async () => ({ items: [] }) } },
       ],
     })
     class TestModule {}
@@ -131,6 +135,17 @@ describe('AuthGuard（全局默认拦截）', () => {
   it('AC-02 新加的未标记 Controller 默认要求登录，登录后可访问', async () => {
     assert.equal((await request('/probe')).status, 401)
     assert.equal((await request('/probe', { token: 'member-token' })).status, 200)
+  })
+
+  it('工作区历史、云查询与核查操作只允许管理员，分页仍由全局 DTO 校验', async () => {
+    for (const [path, method] of [['/admin/workspaces', 'GET'], ['/admin/workspaces/c/history', 'GET'], ['/admin/workspaces/refresh', 'POST']]) {
+      assert.equal((await request(path!, { method: method!, origin: ALLOWED_ORIGIN })).status, 401)
+      assert.equal((await request(path!, { method: method!, token: 'member-token', origin: ALLOWED_ORIGIN })).status, 403)
+      assert.equal((await request(path!, { method: method!, token: 'admin-token', origin: ALLOWED_ORIGIN })).status, 200)
+    }
+    assert.equal((await request('/admin/workspaces?page=0&pageSize=51', { token: 'admin-token' })).status, 400)
+    assert.equal((await request('/admin/workspaces/c/history?page=0', { token: 'admin-token' })).status, 400)
+    assert.equal((await request('/admin/workspaces/refresh', { method: 'POST', token: 'admin-token', origin: 'https://untrusted.invalid' })).status, 403)
   })
 
   it('AC-04 成员访问 admin/* 返回 403（含新加的 admin Controller），管理员放行', async () => {

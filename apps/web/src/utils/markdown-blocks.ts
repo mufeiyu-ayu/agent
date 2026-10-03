@@ -35,7 +35,7 @@ const markdown = new MarkdownIt({
   breaks: true,
   html: false,
   linkify: true,
-  highlight: highlightCode,
+  highlight: (code, language) => highlightCode(code, language),
 }).use(markdownItCjkFriendly)
 
 type LinkifyMatch = NonNullable<ReturnType<typeof markdown.linkify.matchAtStart>>

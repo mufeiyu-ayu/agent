@@ -31,7 +31,7 @@ export interface DeleteConversationResponse {
 }
 
 /**
- * 等待过程出现状态行的界限（Nielsen 响应时间界限，#208）：正文前调过工具，或满这么久还没有正文。
+ * 等待过程出现状态行的界限（Nielsen 响应时间界限，#208）：调过工具，或满这么久还没有正文。
  * 前台判断状态行、后端决定是否下发 activity（#212）共用这一个值。
  */
 export const RUN_ROW_DELAY_MS = 1000
@@ -84,7 +84,7 @@ export interface MessageActivityThought {
  */
 export interface MessageActivityTool
   extends Pick<ChatStreamToolStartedEvent, 'callId' | 'toolName' | 'query' | 'url'>,
-  Pick<ChatStreamToolFinishedEvent, 'ok' | 'failure' | 'results' | 'finalUrl' | 'title' | 'chars'> {
+  Pick<ChatStreamToolFinishedEvent, 'ok' | 'failure' | 'results' | 'finalUrl' | 'title' | 'chars' | 'workspace'> {
   kind: 'tool'
   /** 步骤的起止时间差。 */
   durationMs?: number

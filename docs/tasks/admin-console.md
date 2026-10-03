@@ -1,12 +1,12 @@
 # Admin Console
 
-本文记录 Agent Runtime Console 的独立 Observability 支线。
+本文记录 Admin Console 的目标与历史交付索引。下文基线包含已删除的 Phase 8 Retrieval / Grounding，不能当作当前能力；现行目录与约束看 [`apps/admin/AGENTS.md`](../../apps/admin/AGENTS.md) 和 [`apps/api/AGENTS.md`](../../apps/api/AGENTS.md)。
 
 状态只在 [看板](./README.md) 维护；下表是各任务的目标与链接。2026-09-22 起管理台的改动（#148 概览接真实数据、#151 errorCode、#152 模型可见内容、#153 概览与运行列表重构、#154 模型接入页、#156 服务商改地址须重填密钥）以各自 Issue / PR 为准，不再在本文逐条归档。
 
 Admin Console 面向项目开发、调试和运行过程复盘。它是 Agent 主线事实的安全投影，不为了展示反向污染 Runtime Domain Model。
 
-## 产品目标
+## 历史产品目标
 
 长期用于查看：
 
@@ -20,7 +20,7 @@ Admin Console 面向项目开发、调试和运行过程复盘。它是 Agent �
 - 错误、时长与 Token Usage；
 - 后续 Approval / Recovery 等运行事实。
 
-## 技术基线
+## 历史技术基线
 
 - `apps/admin`：Vue 3 / Vite / TypeScript / Pinia / Ant Design Vue；
 - `apps/api`：NestJS 用户 API 与只读 Admin Observability API；
@@ -29,7 +29,7 @@ Admin Console 面向项目开发、调试和运行过程复盘。它是 Agent �
 - Admin View Model 与 Prisma Model 分层；
 - Vben 只作为视觉语言参考，不引入其运行时依赖。
 
-## 任务清单
+## 历史任务交付
 
 | Task | 状态 | 目标 | GitHub / 文档 |
 | --- | --- | --- | --- |
@@ -43,7 +43,7 @@ Admin Console 面向项目开发、调试和运行过程复盘。它是 Agent �
 | Enhancement 3 | Completed | Overview 数据仪表盘（Token/调用/模型/工具统计 + 余额） | #90 / #91 / `3108a5f` / [文档](./completed/admin-console/enhancement-03-overview-dashboard.md) |
 | Task 4 | Closed | 登录、权限、敏感信息脱敏 | Auth 由 #195 / PR #196 完成 |
 
-## 已完成基线
+## 历史交付基线
 
 ### Run Query 与 Trace
 
@@ -82,7 +82,7 @@ Run / Steps / MessageGrounding
   -> Event / Retrieval switch
 ```
 
-当前行为（#126 起）：
+当时行为（#126 起，Retrieval / Grounding 后续已删除）：
 
 - 投影逐字段「能读就读、读不出就 null」，不再有 `available / partial / unavailable / not_applicable` 这类投影可用性状态，也不做跨字段、跨 Step 复核；
 - `citations` 只在 COMPLETED 助手消息带合法 Grounding 时有值，缺失或损坏为 null；
@@ -91,7 +91,7 @@ Run / Steps / MessageGrounding
 
 Task 3C 收口时的最终验证：Admin API tests 136、Grounding 168、DB integration 17、Chromium 12、repeat-each=3 为 36，均通过。
 
-## 当前 Observability Baseline
+## 当时的 Observability Baseline
 
 ```text
 Agent Runtime durable trace

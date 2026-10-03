@@ -6,7 +6,8 @@ dist
 tmp/
 .impeccable/
 .playwright-mcp/
-.agents
+.agents/*
+!.agents/skills/
 
 /apps/api/src/generated/prisma
 /data/

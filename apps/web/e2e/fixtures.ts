@@ -154,6 +154,16 @@ export async function installApiRoutes(
   await page.route('**/api/auth/me', route => route.fulfill(json(E2E_USER)))
   // 默认未开启 Google 登录（#198）；Google 相关用例自己覆盖。
   await page.route('**/api/auth/config', route => route.fulfill(json({ googleClientId: null })))
+  await page.route('**/api/conversations/*/workspace', route => route.fulfill(json({
+    configured: false,
+    conversationId: CONVERSATION_ID,
+    revision: 0,
+    state: 'idle',
+    files: [],
+    lastOperation: null,
+    lastError: null,
+    updatedAt: null,
+  })))
 
   // 与 `/api/llm/models` 的 ChatModelOption[] 契约对齐（#142 起）：三档强度、默认 High。
   await page.route('**/api/llm/models', route => route.fulfill(json([{

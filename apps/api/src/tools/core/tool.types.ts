@@ -1,6 +1,8 @@
 import type { JsonObjectSchema } from '@agent/ai'
+import type { WorkspaceToolDisplay } from '@agent/contracts'
 import type { DatabaseOperationDeadline } from '../../prisma/prisma.service.js'
 import type { SerperApiKey } from '../../runtime-config/runtime-config.service.js'
+import type { WorkspaceCommit, WorkspaceExecution } from '../../workspaces/workspace-files.js'
 import type { NormalizedToolObservation } from './tool-observation.js'
 
 /** 将模型可见 Schema 与服务端运行时解析绑定为同一个输入契约。 */
@@ -35,6 +37,7 @@ export interface ValidatedToolInvocation<TInput = unknown> {
 
 /** 完全由服务端提供，不允许模型 arguments 覆盖。 */
 export interface ToolExecutionContext {
+  workspace?: WorkspaceExecution
   databaseDeadline: DatabaseOperationDeadline
   signal: AbortSignal
   /** 本次问答运行配置快照里的 Serper Key（#216），只有 web_search 用。 */
@@ -49,6 +52,7 @@ export interface ToolInvocationContext extends ToolExecutionContext {
 
 /** 只给界面看的结构化结果（#208）：随 tool_finished 事件发给前台，不进模型上下文；按协议字段存进 tool Step，刷新后还原时间线（#212）。 */
 export interface ToolDisplay {
+  workspace?: WorkspaceToolDisplay
   /** web_search：来源列表。 */
   results?: Array<{ title: string, url: string }>
   /** web_fetch：重定向后的最终地址、网页标题与正文字数。 */
@@ -62,6 +66,7 @@ export interface ToolDisplay {
 export type ToolResult
   = | {
     ok: true
+    workspaceCommit?: WorkspaceCommit
     modelContent: string
     display?: ToolDisplay
   }

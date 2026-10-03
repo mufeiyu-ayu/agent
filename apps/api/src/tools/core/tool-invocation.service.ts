@@ -131,6 +131,7 @@ export class ToolInvocationService {
         databaseDeadline,
         signal: executionController.signal,
         serperApiKey: context.serperApiKey,
+        ...(context.workspace ? { workspace: context.workspace } : {}),
       }))
       .then<ToolInvocationOutcome, ToolInvocationOutcome>(
         result => ({ type: 'result', result }),

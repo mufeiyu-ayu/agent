@@ -2,11 +2,13 @@ import type { OnModuleInit } from '@nestjs/common'
 import { Inject, Module } from '@nestjs/common'
 import { ModuleRef } from '@nestjs/core'
 
+import { WorkspacesModule } from '../workspaces/workspaces.module.js'
 import { ToolInvocationService } from './core/tool-invocation.service.js'
 import { ToolRegistryService } from './core/tool-registry.service.js'
 import { TOOLS } from './tool-definitions.js'
 
 @Module({
+  imports: [WorkspacesModule],
   providers: [
     ToolRegistryService,
     ToolInvocationService,
