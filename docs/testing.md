@@ -16,12 +16,14 @@
 
 | 命令 | 什么时候用 |
 | --- | --- |
-| `pnpm test` | 日常与提交前：全部单测；不需要数据库，也不需要先 build 共享包 |
+| `pnpm test` | 需要跨包或完整单测回归时；局部改动优先定向运行，不需要数据库或先 build 共享包 |
 | `pnpm --filter <包> test` | 只改了一个包（api / ai / web / admin）时单跑本包 |
 | `pnpm test:db` | 改了事务、deadline、落库清洗等只有真实 PostgreSQL 才能验证的行为 |
-| `pnpm test:e2e` | 改了前台对话或管理台交互；依次跑两个 app 的 Playwright，用本机 Chrome |
+| `pnpm test:e2e` | 需要两端完整浏览器回归时；局部交互优先对应 app / 场景，使用本机 Chrome |
 
-单跑文件或按标题过滤：`pnpm test <路径>`、`pnpm test -t <标题片段>`；watch 用 `pnpm exec vitest --project <项目名>`。不带 `--project` 直接跑 vitest 会连 db 项目一起收集，没加载 `.env` 时两个真实库文件会在导入时报错。单跑一个 app 的 e2e：先 `pnpm --filter @agent/contracts build`，再 `pnpm --filter @agent/admin exec playwright test`。
+单跑文件或按标题过滤：`pnpm test <路径>`、`pnpm test -t <标题片段>`；watch 用 `pnpm exec vitest --project <项目名>`。不带 `--project` 直接跑 vitest 会连 db 项目一起收集，缺少测试数据库环境时真实库用例会失败；单测检查使用上述排除 db 的入口。单跑一个 app 的 e2e：先 `pnpm --filter @agent/contracts build`，再 `pnpm --filter @agent/admin exec playwright test`（前台换成 `@agent/web`）；可附 spec 路径或 `-g <场景>` 定向运行。
+
+共享包 build 与 e2e 的准备命令会写 `dist`；API dev watcher 监听这些 import 并重启 API（`apps/api/scripts/dev-watch.mjs`），可能中断活动 Run。开发服务正在使用时，在独立 scratch worktree 执行这些检查；只读检查和直接读 src 的 Vitest 不需要先 build。必要检查通过后停止扩大或重复测试。
 
 ## 写法
 
@@ -34,7 +36,7 @@
 ## 真实库测试
 
 - 只连 `TEST_DATABASE_URL`（compose 的 `postgres-test`：库 `agent_integration`，端口 5433）；缺了或与 `DATABASE_URL` 相同时测试直接失败，不碰开发库。
-- 起库：`docker compose --profile integration up -d postgres-test`；跑完 `docker compose stop postgres-test`。
+- 起库：`docker compose --profile integration up -d postgres-test`；已有测试库可复用。只停止本次启动且不承载其他任务的测试容器，不在收尾时停掉他人正在使用的实例。
 - `pnpm test:db` 从根目录 `.env` 读这两个变量，命令行里已有的优先。
 - 每个测试自建独立 schema 或探针表，结束时删掉；文件之间串行执行。
 
@@ -42,7 +44,7 @@
 
 该测：
 
-- 不变量：终态所有权、模型可见 ⟺ 落库、失败归因同源、密钥与出站代理边界等（根 `AGENTS.md` 第 6 节）；
+- 不变量：终态所有权、模型可见 ⟺ 落库、失败归因同源、密钥与出站代理边界等（根 `AGENTS.md` 第 6 节；上下文重建的字段与例外见 [`context/README.md`](../apps/api/src/agent-runtime/context/README.md)）；
 - 边界：空值、超限、Unicode（代理对、U+0000）、迟到结果与并发；
 - 失败路径：上游错误、超时、取消、数据库失败时的收口与文案。
 

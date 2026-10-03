@@ -58,7 +58,7 @@
 
 ### R1 明确可重建的 Session 事实
 
-先讨论数据库契约：会话条目、分支 parent/tip、有效模型输入或其不可变引用；operation 身份与 owner 已在 R2 落地，这里不重做。现有 debug 捕获（`openai-completions-raw-capture.ts`、`model-io-debug-capture.ts` 约 500 行）在这里收成请求与响应两个回调，作为模型输入引用的来源，不另起一套。注意 #152（2026-09-23）已走了另一条路：action 循环内的模型可见内容（参数、observation、中间文本、历史条数、finalization 标量）按字段落进 Step，不存请求快照、不改 debug 捕获；R1 开工时以它为起点重新决定是否还要收 debug 捕获，剩余缺口见根 `AGENTS.md` 第 6 节的已知偏差。保留现有 UI Message 与 AgentStep 投影，避免一次替换全部历史表。
+先讨论数据库契约：会话条目、分支 parent/tip、有效模型输入或其不可变引用；operation 身份与 owner 已在 R2 落地，这里不重做。现有 debug 捕获（`openai-completions-raw-capture.ts`、`model-io-debug-capture.ts` 约 500 行）在这里收成请求与响应两个回调，作为模型输入引用的来源，不另起一套。注意 #152（2026-09-23）已走了另一条路：action 循环内的模型可见内容（参数、observation、中间文本、历史条数、finalization 标量）按字段落进 Step，不存请求快照、不改 debug 捕获；R1 开工时以它为起点重新决定是否还要收 debug 捕获，剩余缺口见[上下文与重建契约](../../../apps/api/src/agent-runtime/context/README.md) 中的已知偏差。保留现有 UI Message 与 AgentStep 投影，避免一次替换全部历史表。
 
 **证明完成**：同一持久化快照重建相同选中分支与请求配置；升级 prompt/tool schema 后旧记录仍能解释；compact 不破坏 Tool Call / Result 配对；数据库提交失败不能产生"内存成功、事实缺失"的继续运行。
 

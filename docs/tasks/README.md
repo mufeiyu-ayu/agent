@@ -94,8 +94,8 @@ Admin Task 4：Closed（2026-09-27：Auth 由 #195 完成；RBAC 不做（两种
 ## 规则
 
 - 一个 Issue 只对应一个任务单元；Planned / Next 不能替代正式 Issue；
-- Issue 建立前不得修改正式代码（`docs/workflow.md` 第 2 节的小改动例外除外）；Issue 实质性变化后先更新 Issue 再继续；
-- 实现后先写「已实现、待验收」，验收 PASS 后才写「已通过」；
+- Issue 建立前不得修改正式代码（授权的局部小改动与 docs-only 例外见 `docs/workflow.md` 第 1、3 节）；Issue 实质性变化后先更新 Issue 再继续；
+- 实现后先写「已实现、待验收」，验收 PASS 后才写「已通过」，PR 合并且事实核实后才标 Completed；
 - 看板行只写一句话说明做成了什么，加 PR 号；改动清单、验证命令、测试数与逐条验收证据写在 PR 里，不抄进看板；
 - 只在真实使用卡住、源码阅读发现缺陷或缺口被明确命中时建 Issue；并行 Tool Call、Memory、MCP、Multi-agent 不自动进入实现；
 - 流程、Issue 模板与任务状态定义见 [`../workflow.md`](../workflow.md)。
