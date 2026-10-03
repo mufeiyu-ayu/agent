@@ -1,7 +1,7 @@
 import type { ToolDefinition, ToolExecutionContext, ToolExecutor, ToolResult, ValidatedToolInvocation } from '../core/tool.types.js'
 import { Buffer } from 'node:buffer'
 import { Inject, Injectable } from '@nestjs/common'
-import { MAX_FILE_BYTES, WorkspaceOperationError, workspacePath } from '../../workspaces/workspace-files.js'
+import { MAX_FILE_BYTES, MAX_READ_OBSERVATION_CHARS, WorkspaceOperationError, workspacePath } from '../../workspaces/workspace-files.js'
 import { WorkspaceService } from '../../workspaces/workspace.service.js'
 
 interface ReadInput { path: string, offset: number, limit: number }
@@ -30,14 +30,14 @@ function integer(value: unknown, fallback: number, max: number): number {
 export const readDefinition: ToolDefinition<ReadInput> = {
   name: 'read',
   version: '1',
-  description: '读取当前会话沙箱 /workspace/project 下的 UTF-8 文件，返回带行号内容。offset 从 1 开始；先读再编辑。',
+  description: '读取当前会话沙箱 /workspace/project 下的 UTF-8 文件，按完整行返回。offset 从 1 开始，按 nextOffset 续读，null 才表示读完；超长单行返回可用 bash 执行的分段读取命令。先读再编辑。',
   timeoutMs: 120_000,
-  maxObservationChars: 24_000,
+  maxObservationChars: MAX_READ_OBSERVATION_CHARS,
   input: {
-    schema: { type: 'object', properties: { path: { type: 'string' }, offset: { type: 'integer', minimum: 1 }, limit: { type: 'integer', minimum: 1, maximum: 1000 } }, required: ['path'], additionalProperties: false },
+    schema: { type: 'object', properties: { path: { type: 'string' }, offset: { type: 'integer', minimum: 1, maximum: MAX_FILE_BYTES + 1 }, limit: { type: 'integer', minimum: 1, maximum: 1000 } }, required: ['path'], additionalProperties: false },
     parse(value) {
       const input = object(value, ['path', 'offset', 'limit'])
-      return { path: workspacePath(text(input.path, 500)), offset: integer(input.offset, 1, 1_000_000), limit: integer(input.limit, 200, 1000) }
+      return { path: workspacePath(text(input.path, 500)), offset: integer(input.offset, 1, MAX_FILE_BYTES + 1), limit: integer(input.limit, 200, 1000) }
     },
   },
 }
@@ -119,10 +119,6 @@ abstract class WorkspaceTool<T extends { path?: string, command?: string, title?
       const data = result as Record<string, unknown>
       if (data.timedOut === true)
         return { ok: false, code: 'timeout', modelContent: '命令执行超时，沙箱已终止；当前命令未保存的改动已舍弃，保留上次已保存版本。' }
-      if (typeof data.content === 'string' && data.content.length > 24_000) {
-        data.content = data.content.slice(0, 24_000)
-        data.truncated = true
-      }
       const commit = this.action === 'read' ? undefined : await this.workspaces.prepareCommit(execution, context.signal)
       const files = commit?.files.map(({ path, bytes, sha256 }) => ({ path, bytes, sha256 }))
       const workspace = {

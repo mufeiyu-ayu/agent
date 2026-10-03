@@ -614,6 +614,8 @@ export class AgentRuntimeService {
       })
       runCancellation.dispose()
 
+      // 先发布本地收尾 Promise，再交付终态；下一轮可按旧 owner 有界等待，不必阻塞完成事件。
+      void this.workspaces?.releaseRun(currentAgentRunId)
       yield {
         type: 'run_completed',
         runId: currentAgentRunId,
@@ -687,6 +689,8 @@ export class AgentRuntimeService {
           }
         }
 
+        if (agentRunId)
+          void this.workspaces?.releaseRun(agentRunId)
         if (assistantMessage) {
           yield {
             type: 'run_aborted',
@@ -733,6 +737,8 @@ export class AgentRuntimeService {
         }
       }
 
+      if (agentRunId)
+        void this.workspaces?.releaseRun(agentRunId)
       yield {
         type: 'run_failed',
         ...(agentRunId ? { runId: agentRunId } : {}),
@@ -973,6 +979,8 @@ export class AgentRuntimeService {
         : String(input.terminalizationCause),
     )
 
+    if (input.agentRunId)
+      void this.workspaces?.releaseRun(input.agentRunId)
     yield {
       type: 'run_failed',
       ...(input.agentRunId ? { runId: input.agentRunId } : {}),

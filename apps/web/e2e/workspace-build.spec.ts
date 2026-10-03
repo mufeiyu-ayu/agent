@@ -246,7 +246,7 @@ test('交互预览不能通过 WebRTC 或新 iframe 绕过网络与主应用隔�
   finally { socket.close() }
 })
 
-test('交付卡片等待最新文件版本，不在刷新尚未完成时用旧 revision 打开', async ({ page }) => {
+test('R3：交付卡片等待同 SHA 的最新 manifest revision，读取的仍是该次交付内容', async ({ page }) => {
   const activity = { toolBeforeAnswer: true, items: [{ kind: 'tool' as const, callId: 'save', toolName: 'write', ok: true, workspace: { operation: 'write' as const, title: '保存页面', revision: 1, files: [file] } }] }
   await installApiRoutes(page, () => [
     { id: 'question', conversationId: CONVERSATION_ID, role: 'USER', content: '创建页面', status: 'COMPLETED', createdAt: '2026-10-02T00:00:00Z', updatedAt: '2026-10-02T00:00:00Z' },
@@ -264,7 +264,7 @@ test('交付卡片等待最新文件版本，不在刷新尚未完成时用旧 r
       revisions.push(requested)
       if (requested !== revision)
         return route.fulfill({ status: 409, json: { success: false, message: '文件版本已更新' } })
-      return route.fulfill({ json: { success: true, code: 0, data: { encoding: 'base64', content: Buffer.from(`<html><body><h1>版本 ${revision}</h1></body></html>`).toString('base64') } } })
+      return route.fulfill({ json: { success: true, code: 0, data: { encoding: 'base64', content: Buffer.from('<html><body><h1>内容 A</h1></body></html>').toString('base64') } } })
     }
     if (revision === 2) {
       refreshRequested = true
@@ -272,12 +272,12 @@ test('交付卡片等待最新文件版本，不在刷新尚未完成时用旧 r
         releaseRefresh = resolve
       })
     }
-    return route.fulfill({ json: { success: true, code: 0, data: { ...snapshot, revision, files: [file] } } })
+    return route.fulfill({ json: { success: true, code: 0, data: { ...snapshot, revision, files: [file, { path: 'other.txt', bytes: 1, sha256: String(revision).repeat(64) }] } } })
   })
   await page.goto('/workspace')
   const panel = page.locator('[data-workspace-files-panel]')
   const frame = page.frameLocator('[data-workspace-files-panel] [data-html-preview-panel] > iframe').frameLocator('iframe')
-  await expect(frame.getByRole('heading', { name: '版本 1' })).toBeVisible()
+  await expect(frame.getByRole('heading', { name: '内容 A' })).toBeVisible()
   await panel.getByRole('button', { name: '关闭文件面板' }).click()
   revision = 2
   const button = page.locator('[data-workspace-artifact]').getByRole('button', { name: '打开面板', exact: true })
@@ -285,9 +285,88 @@ test('交付卡片等待最新文件版本，不在刷新尚未完成时用旧 r
   await expect.poll(() => refreshRequested).toBe(true)
   await expect(button).toBeDisabled()
   releaseRefresh!()
-  await expect(frame.getByRole('heading', { name: '版本 2' })).toBeVisible()
+  await expect(frame.getByRole('heading', { name: '内容 A' })).toBeVisible()
   await expect(button).toBeEnabled()
   assert.equal(revisions.at(-1), 2)
+})
+
+test('R3：点击旧交付卡期间文件 SHA 改变，不读取或展示同路径的新内容', async ({ page }) => {
+  const activity = { toolBeforeAnswer: true, items: [{ kind: 'tool' as const, callId: 'save', toolName: 'write', ok: true, workspace: { operation: 'write' as const, title: '保存页面', revision: 1, files: [file] } }] }
+  await installApiRoutes(page, () => [
+    { id: 'question', conversationId: CONVERSATION_ID, role: 'USER', content: '创建页面', status: 'COMPLETED', createdAt: '2026-10-02T00:00:00Z', updatedAt: '2026-10-02T00:00:00Z' },
+    { id: 'saved', conversationId: CONVERSATION_ID, role: 'ASSISTANT', content: '页面已保存', status: 'COMPLETED', activity, createdAt: '2026-10-02T00:00:01Z', updatedAt: '2026-10-02T00:00:01Z' },
+  ])
+  await installBrowserStubs(page, { lines: [], holdBeforeIndex: -1 })
+  let changed = false
+  let finishRefresh: (() => void) | undefined
+  const reads: number[] = []
+  await page.route('**/api/conversations/*/workspace**', async (route) => {
+    const url = new URL(route.request().url())
+    if (url.pathname.endsWith('/file')) {
+      const revision = Number(url.searchParams.get('revision'))
+      reads.push(revision)
+      return route.fulfill({ json: { success: true, code: 0, data: { encoding: 'base64', content: Buffer.from(`<html><body><h1>内容 ${revision === 1 ? 'A' : 'B'}</h1></body></html>`).toString('base64') } } })
+    }
+    if (changed)
+      await new Promise<void>((resolve) => { finishRefresh = resolve })
+    return route.fulfill({ json: { success: true, code: 0, data: { ...snapshot, revision: changed ? 2 : 1, files: [{ ...file, sha256: changed ? 'b'.repeat(64) : file.sha256 }] } } })
+  })
+  await page.goto('/workspace')
+  const panel = page.locator('[data-workspace-files-panel]')
+  const frame = page.frameLocator('[data-workspace-files-panel] [data-html-preview-panel] > iframe').frameLocator('iframe')
+  await expect(frame.getByRole('heading', { name: '内容 A' })).toBeVisible()
+  await panel.getByRole('button', { name: '关闭文件面板' }).click()
+  changed = true
+  const artifact = page.locator('[data-workspace-artifact]')
+  await artifact.getByRole('button', { name: '打开面板', exact: true }).click()
+  await expect.poll(() => Boolean(finishRefresh)).toBe(true)
+  finishRefresh!()
+  await expect(artifact).toHaveCount(0)
+  await expect(page.getByText('文件已更新或暂时不可用，请刷新列表后重新打开。', { exact: true })).toBeVisible()
+  await expect(panel).toHaveCount(0)
+  assert.equal(reads.includes(2), false, '不能让面板自动预览绕过交付身份检查')
+})
+
+test('R3：交付文件读取未结束时 revision 和 SHA 改变，不自动改读 B 或接收迟到的 A', async ({ page }) => {
+  const saved = { path: 'report.txt', bytes: 1, sha256: 'a'.repeat(64) }
+  const activity = { toolBeforeAnswer: true, items: [{ kind: 'tool' as const, callId: 'save', toolName: 'write', ok: true, workspace: { operation: 'write' as const, title: '保存文件', revision: 1, files: [saved] } }] }
+  await installApiRoutes(page, () => [
+    { id: 'question', conversationId: CONVERSATION_ID, role: 'USER', content: '创建文件', status: 'COMPLETED', createdAt: '2026-10-02T00:00:00Z', updatedAt: '2026-10-02T00:00:00Z' },
+    { id: 'saved', conversationId: CONVERSATION_ID, role: 'ASSISTANT', content: '文件已保存', status: 'COMPLETED', activity, createdAt: '2026-10-02T00:00:01Z', updatedAt: '2026-10-02T00:00:01Z' },
+  ])
+  await installBrowserStubs(page, { lines: [], holdBeforeIndex: -1 })
+  let changed = false
+  let finishOld: (() => Promise<void>) | undefined
+  const reads: number[] = []
+  await page.route('**/api/conversations/*/workspace**', (route) => {
+    const url = new URL(route.request().url())
+    if (url.pathname.endsWith('/file')) {
+      const revision = Number(url.searchParams.get('revision'))
+      reads.push(revision)
+      const finish = () => route.fulfill({ json: { success: true, code: 0, data: { encoding: 'base64', content: Buffer.from(revision === 1 ? '内容 A' : '内容 B').toString('base64') } } })
+      if (revision === 1) {
+        finishOld = finish
+        return
+      }
+      return finish()
+    }
+    return route.fulfill({ json: { success: true, code: 0, data: { ...snapshot, revision: changed ? 2 : 1, files: [{ ...saved, sha256: changed ? 'b'.repeat(64) : saved.sha256 }] } } })
+  })
+  await page.goto('/workspace')
+  const panel = page.locator('[data-workspace-files-panel]')
+  await page.locator('[data-workspace-artifact]').getByRole('button', { name: '打开面板', exact: true }).click()
+  await expect.poll(() => Boolean(finishOld)).toBe(true)
+  changed = true
+  await panel.getByRole('button', { name: '刷新文件', exact: true }).click()
+  await expect(panel.getByRole('alert')).toContainText('文件已更新')
+  assert.deepEqual(reads, [1])
+  const oldResponse = page.waitForResponse(response => new URL(response.url()).pathname.endsWith('/workspace/file'))
+  await finishOld!()
+  await (await oldResponse).finished()
+  await expect(panel).not.toContainText('内容 A')
+  await panel.getByRole('button', { name: saved.path, exact: true }).click()
+  await expect(panel.locator('[data-workspace-source]')).toContainText('内容 B')
+  assert.deepEqual(reads, [1, 2], '只有明确选择当前工作文件才读取 B')
 })
 
 test('下载途中当前文件被新版本删除时解除 loading，迟到结果不覆盖其他文件', async ({ page }) => {

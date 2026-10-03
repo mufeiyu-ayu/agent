@@ -6,6 +6,7 @@ export const WORKSPACE_ROOT = '/workspace/project'
 export const MAX_FILE_BYTES = 2 * 1024 * 1024
 export const MAX_WORKSPACE_BYTES = 8 * 1024 * 1024
 export const MAX_WORKSPACE_FILES = 200
+export const MAX_READ_OBSERVATION_CHARS = 24_000
 
 export interface StoredWorkspaceFile {
   path: string

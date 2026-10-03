@@ -25,7 +25,7 @@ const props = defineProps<{
   workspaceFiles: WorkspaceFile[]
   openingArtifact: boolean
 }>()
-const emit = defineEmits<{ openFile: [path: string] }>()
+const emit = defineEmits<{ openFile: [file: WorkspaceFile] }>()
 
 const { locale, t } = useI18n()
 const { workspaceTheme } = useWorkspaceTheme()

@@ -1,15 +1,17 @@
-import type { WorkspaceCloudService } from './workspace-cloud.service.js'
 import type { WorkspaceCommit } from './workspace-files.js'
 import assert from 'node:assert/strict'
 import { Buffer } from 'node:buffer'
 import { randomUUID } from 'node:crypto'
+import { once } from 'node:events'
 import { readdir, readFile } from 'node:fs/promises'
+import { createServer } from 'node:http'
 import { createRequire } from 'node:module'
 import process from 'node:process'
 import { afterAll, beforeAll, describe, it, vi } from 'vitest'
 import { AgentRunRecorderService } from '../agent-runtime/lifecycle/agent-run-recorder.service.js'
 import { AgentStepStatus } from '../generated/prisma/client.js'
 import { DatabaseCommitOutcomeUnknownError, PrismaService } from '../prisma/prisma.service.js'
+import { WorkspaceCloudService, WorkspaceCreatedError, WorkspaceCreationRejectedError } from './workspace-cloud.service.js'
 import { WorkspaceOperationError } from './workspace-files.js'
 import { WorkspaceMonitoringService } from './workspace-monitoring.service.js'
 import { WorkspaceService } from './workspace.service.js'
@@ -288,6 +290,275 @@ describe('工作文件 PostgreSQL 确认边界', () => {
     assert.equal(kills, 2)
   })
 
+  it('R1：下一轮等待同会话终态收尾；不同会话不被串行阻塞', async () => {
+    const first = await seed()
+    const other = await seed()
+    for (const fixture of [first, other])
+      await prisma.conversationWorkspace.update({ where: { conversationId: fixture.conversation.id }, data: { ownerRunId: null, leaseExpiresAt: null } })
+    let finishKill!: () => void
+    const killed = new Promise<void>((resolve) => {
+      finishKill = resolve
+    })
+    const creates: string[] = []
+    const cloud = { configured: true, sandboxConfiguration: { template: 'test', apiHost: 'test.invalid' }, create: async (runId: string) => {
+      creates.push(runId)
+      return { sandboxId: `s-${runId}`, kill: async () => {
+        if (runId === first.run.id)
+          await killed
+        return true
+      } }
+    }, request: async () => ({ written: true }) } as unknown as WorkspaceCloudService
+    const service = new WorkspaceService(prisma, cloud, new WorkspaceMonitoringService(prisma, cloud))
+    const execution = { userId: first.user.id, conversationId: first.conversation.id, runId: first.run.id, deadlineAt: Date.now() + 60000 }
+    const next = { ...execution, runId: randomUUID() }
+    const signal = new AbortController().signal
+    await service.fileOperation(execution, { action: 'write' }, signal)
+    await prisma.agentRun.update({ where: { id: first.run.id }, data: { status: 'COMPLETED' } })
+    const release = service.releaseRun(first.run.id)
+    let settled = false
+    const write = service.fileOperation(next, { action: 'write' }, signal).then(() => {
+      settled = true
+      return null
+    }, (error) => {
+      settled = true
+      return error
+    })
+    try {
+      await service.fileOperation({ userId: other.user.id, conversationId: other.conversation.id, runId: other.run.id, deadlineAt: execution.deadlineAt }, { action: 'write' }, signal)
+      await new Promise(resolve => setTimeout(resolve, 50))
+      assert.equal(settled, false, '下一轮应等待交接，而不是立即误报活跃并发')
+      assert.deepEqual(creates, [first.run.id, other.run.id])
+      finishKill()
+      assert.equal(await write, null)
+      assert.equal((await prisma.conversationWorkspace.findUniqueOrThrow({ where: { conversationId: first.conversation.id } })).ownerRunId, next.runId)
+    }
+    finally {
+      finishKill()
+      await Promise.allSettled([release, write])
+      await Promise.all([service.releaseRun(next.runId), service.releaseRun(other.run.id)])
+    }
+  })
+
+  it('R1：等待清理响应取消和 Run 预算，超时不清除旧 owner', async () => {
+    for (const cancel of [true, false]) {
+      const fixture = await seed()
+      await prisma.conversationWorkspace.update({ where: { conversationId: fixture.conversation.id }, data: { ownerRunId: null, leaseExpiresAt: null } })
+      let finish!: () => void
+      const pendingKill = new Promise<void>((resolve) => {
+        finish = resolve
+      })
+      let creates = 0
+      const cloud = { configured: true, sandboxConfiguration: { template: 'test', apiHost: 'test.invalid' }, create: async () => {
+        creates++
+        return { sandboxId: `pending-kill-${fixture.run.id}`, kill: async () => {
+          await pendingKill
+          return true
+        } }
+      }, request: async () => ({}) } as unknown as WorkspaceCloudService
+      const service = new WorkspaceService(prisma, cloud, new WorkspaceMonitoringService(prisma, cloud))
+      const execution = { userId: fixture.user.id, conversationId: fixture.conversation.id, runId: fixture.run.id, deadlineAt: Date.now() + 60000 }
+      await service.fileOperation(execution, { action: 'write' }, new AbortController().signal)
+      const release = service.releaseRun(execution.runId)
+      const controller = new AbortController()
+      const started = Date.now()
+      const next = service.fileOperation({ ...execution, runId: randomUUID(), deadlineAt: started + 500 }, { action: 'write' }, controller.signal)
+      const rejected = assert.rejects(next, cancel ? /handoff cancelled/ : /清理尚未确认.*停止等待/)
+      try {
+        if (cancel) {
+          await new Promise(resolve => setTimeout(resolve, 100))
+          controller.abort(new Error('handoff cancelled'))
+        }
+        await rejected
+        assert.ok(Date.now() - started < 1500)
+        assert.equal(creates, 1)
+        const row = await prisma.conversationWorkspace.findUniqueOrThrow({ where: { conversationId: fixture.conversation.id } })
+        assert.equal(row.ownerRunId, execution.runId)
+        assert.equal((await prisma.sandboxExecution.findFirstOrThrow({ where: { runId: execution.runId } })).releasedAt, null)
+      }
+      finally {
+        finish()
+        await release
+      }
+    }
+  })
+
+  it('R1：过期租约可交接，迟到的旧清理不能抹掉新 owner 和实例', async () => {
+    const fixture = await seed()
+    await prisma.conversationWorkspace.update({ where: { conversationId: fixture.conversation.id }, data: { ownerRunId: null, leaseExpiresAt: null } })
+    let finish!: () => void
+    const killed = new Promise<void>((resolve) => {
+      finish = resolve
+    })
+    const cloud = { configured: true, sandboxConfiguration: { template: 'test', apiHost: 'test.invalid' }, create: async (id: string) => ({ sandboxId: `s-${id}`, kill: async () => {
+      if (id === fixture.run.id)
+        await killed
+      return true
+    } }), request: async () => ({}) } as unknown as WorkspaceCloudService
+    const service = new WorkspaceService(prisma, cloud, new WorkspaceMonitoringService(prisma, cloud))
+    const execution = { userId: fixture.user.id, conversationId: fixture.conversation.id, runId: fixture.run.id, deadlineAt: Date.now() + 60000 }
+    const next = { ...execution, runId: randomUUID() }
+    const signal = new AbortController().signal
+    await service.fileOperation(execution, { action: 'write' }, signal)
+    const release = service.releaseRun(execution.runId)
+    try {
+      await prisma.conversationWorkspace.update({ where: { conversationId: fixture.conversation.id }, data: { leaseExpiresAt: new Date(0) } })
+      await service.fileOperation(next, { action: 'write' }, signal)
+      finish()
+      await release
+      const row = await prisma.conversationWorkspace.findUniqueOrThrow({ where: { conversationId: fixture.conversation.id } })
+      assert.equal(row.ownerRunId, next.runId)
+      assert.equal(row.sandboxId, `s-${next.runId}`)
+      assert.equal(row.state, 'write')
+    }
+    finally {
+      finish()
+      await release
+      await service.releaseRun(next.runId)
+    }
+  })
+
+  it('R2：确定拒绝记 create_failed 并清除自身租约，下一轮真正再次创建', async () => {
+    for (const status of [401, 429] as const) {
+      const fixture = await seed()
+      await prisma.conversationWorkspace.update({ where: { conversationId: fixture.conversation.id }, data: { ownerRunId: null, leaseExpiresAt: null } })
+      let attempts = 0
+      // HTTP → 错误分类由 workspace-cloud.service.test 的真实 SDK fixture 验证；这里验证真实数据库转换。
+      const cloud = { configured: true, sandboxConfiguration: { template: 'test', apiHost: 'test.invalid' }, create: async () => {
+        if (++attempts === 1)
+          throw new WorkspaceCreationRejectedError(status)
+        return { sandboxId: `retried-${fixture.run.id}`, kill: async () => true }
+      }, request: async () => ({}) } as unknown as WorkspaceCloudService
+      const service = new WorkspaceService(prisma, cloud, new WorkspaceMonitoringService(prisma, cloud))
+      const execution = { userId: fixture.user.id, conversationId: fixture.conversation.id, runId: fixture.run.id, deadlineAt: Date.now() + 600000 }
+      const next = { ...execution, runId: randomUUID() }
+      await assert.rejects(service.fileOperation(execution, { action: 'write' }, new AbortController().signal), WorkspaceCreationRejectedError)
+      const row = await prisma.conversationWorkspace.findUniqueOrThrow({ where: { conversationId: fixture.conversation.id } })
+      assert.equal(row.ownerRunId, null)
+      assert.equal(row.leaseExpiresAt, null)
+      assert.equal(row.state, 'error')
+      const history = await prisma.sandboxExecution.findFirstOrThrow({ where: { runId: execution.runId } })
+      assert.equal(history.state, 'create_failed')
+      assert.equal(history.sandboxId, null)
+      assert.equal(history.startedAt, null)
+      try {
+        await service.fileOperation(next, { action: 'write' }, new AbortController().signal)
+        assert.equal(attempts, 2)
+        assert.equal((await prisma.conversationWorkspace.findUniqueOrThrow({ where: { conversationId: fixture.conversation.id } })).ownerRunId, next.runId)
+      }
+      finally { await service.releaseRun(next.runId) }
+    }
+  })
+
+  it('R2：响应丢失保留 creation_unknown 和租约，不能假装未创建再开实例', async () => {
+    const fixture = await seed()
+    await prisma.conversationWorkspace.update({ where: { conversationId: fixture.conversation.id }, data: { ownerRunId: null, leaseExpiresAt: null } })
+    let attempts = 0
+    const cloud = { configured: true, sandboxConfiguration: { template: 'test', apiHost: 'test.invalid' }, create: async () => {
+      attempts++
+      throw new Error('response lost')
+    } } as unknown as WorkspaceCloudService
+    const service = new WorkspaceService(prisma, cloud, new WorkspaceMonitoringService(prisma, cloud))
+    const execution = { userId: fixture.user.id, conversationId: fixture.conversation.id, runId: fixture.run.id, deadlineAt: Date.now() + 600000 }
+    await assert.rejects(service.fileOperation(execution, { action: 'write' }, new AbortController().signal), /response lost/)
+    await service.releaseRun(execution.runId)
+    const row = await prisma.conversationWorkspace.findUniqueOrThrow({ where: { conversationId: fixture.conversation.id } })
+    assert.equal(row.ownerRunId, execution.runId)
+    assert.equal(row.state, 'creation_unknown')
+    assert.equal(row.leaseExpiresAt?.getTime(), execution.deadlineAt + 60000)
+    await service.reportError(execution, '同 Run 的工具重试失败')
+    assert.equal((await prisma.conversationWorkspace.findUniqueOrThrow({ where: { conversationId: fixture.conversation.id } })).state, 'creation_unknown')
+    await assert.rejects(service.fileOperation({ ...execution, runId: randomUUID() }, { action: 'write' }, new AbortController().signal), /状态尚未确认/)
+    assert.equal(attempts, 1)
+  })
+
+  it('R2：创建后的 SDK 检查或恢复失败保留实际实例，清理未知不能归为 create_failed', async () => {
+    for (const sdkFailure of [true, false]) {
+      const fixture = await seed()
+      await prisma.conversationWorkspace.update({ where: { conversationId: fixture.conversation.id }, data: { ownerRunId: null, leaseExpiresAt: null } })
+      let kills = 0
+      const sandbox = { sandboxId: `created-${fixture.run.id}`, kill: async () => {
+        kills++
+        throw new Error('kill response lost')
+      } }
+      const cloud = { configured: true, sandboxConfiguration: { template: 'test', apiHost: 'test.invalid' }, create: async () => {
+        if (sdkFailure)
+          throw new WorkspaceCreatedError(sandbox, new Date())
+        return sandbox
+      }, request: async () => { throw new WorkspaceCreationRejectedError(401) } } as unknown as WorkspaceCloudService
+      const service = new WorkspaceService(prisma, cloud, new WorkspaceMonitoringService(prisma, cloud))
+      await assert.rejects(service.fileOperation({ userId: fixture.user.id, conversationId: fixture.conversation.id, runId: fixture.run.id, deadlineAt: Date.now() + 60000 }, { action: 'write' }, new AbortController().signal))
+      const row = await prisma.conversationWorkspace.findUniqueOrThrow({ where: { conversationId: fixture.conversation.id } })
+      const history = await prisma.sandboxExecution.findFirstOrThrow({ where: { runId: fixture.run.id } })
+      assert.equal(kills, 1)
+      assert.equal(row.ownerRunId, fixture.run.id)
+      assert.equal(row.state, 'cleanup_pending')
+      assert.equal(row.sandboxId, sandbox.sandboxId)
+      assert.equal(history.state, 'cleanup_pending')
+      assert.equal(history.sandboxId, sandbox.sandboxId)
+      assert.equal(history.releasedAt, null)
+    }
+  })
+
+  it('R2：debug 环境下真实 SDK 的删除失败仍记 cleanup_pending，不假报释放', async () => {
+    const fixture = await seed()
+    await prisma.conversationWorkspace.update({ where: { conversationId: fixture.conversation.id }, data: { ownerRunId: null, leaseExpiresAt: null } })
+    const sandboxId = `debug-${fixture.run.id}`
+    let deletes = 0
+    const server = createServer((request, response) => {
+      response.setHeader('content-type', 'application/json')
+      if (request.method === 'POST') {
+        response.writeHead(201).end(JSON.stringify({ sandboxID: sandboxId, envdVersion: '0.0.1' }))
+      }
+      else {
+        deletes++
+        response.writeHead(429).end(JSON.stringify({ code: 429, message: 'fixture deletion rejected' }))
+      }
+    })
+    server.listen(0, '127.0.0.1')
+    await once(server, 'listening')
+    const address = server.address()
+    assert.ok(address && typeof address !== 'string')
+    for (const name of ['E2B_API_KEY', 'E2B_TEMPLATE', 'E2B_DOMAIN', 'OSS_ACCESS_KEY_ID', 'OSS_ACCESS_KEY_SECRET', 'OSS_BUCKET', 'OSS_REGION'])
+      vi.stubEnv(name, 'fixture-only')
+    vi.stubEnv('E2B_API_URL', `http://127.0.0.1:${address.port}`)
+    vi.stubEnv('OUTBOUND_PROXY_URL', '')
+    vi.stubEnv('E2B_DEBUG', 'true')
+    try {
+      const cloud = new WorkspaceCloudService()
+      const service = new WorkspaceService(prisma, cloud, new WorkspaceMonitoringService(prisma, cloud))
+      await assert.rejects(service.fileOperation({ userId: fixture.user.id, conversationId: fixture.conversation.id, runId: fixture.run.id, deadlineAt: Date.now() + 60000 }, { action: 'write' }, new AbortController().signal), WorkspaceCreatedError)
+      const row = await prisma.conversationWorkspace.findUniqueOrThrow({ where: { conversationId: fixture.conversation.id } })
+      const history = await prisma.sandboxExecution.findFirstOrThrow({ where: { runId: fixture.run.id } })
+      assert.equal(deletes, 2, 'SDK 后置回滚和业务补偿都必须真正请求 DELETE')
+      assert.equal(row.ownerRunId, fixture.run.id)
+      assert.equal(row.state, 'cleanup_pending')
+      assert.equal(row.sandboxId, sandboxId)
+      assert.equal(history.state, 'cleanup_pending')
+      assert.equal(history.releasedAt, null)
+      assert.equal(history.durationMs, null)
+    }
+    finally {
+      vi.unstubAllEnvs()
+      server.closeAllConnections()
+      await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()))
+    }
+  })
+
+  it('R2：确定失败的迟到补偿不能清除后来取得租约的 owner', async () => {
+    const fixture = await seed()
+    await prisma.conversationWorkspace.update({ where: { conversationId: fixture.conversation.id }, data: { ownerRunId: null, leaseExpiresAt: null } })
+    const cloud = { configured: true, sandboxConfiguration: { template: 'test', apiHost: 'test.invalid' }, create: async () => {
+      await prisma.conversationWorkspace.update({ where: { conversationId: fixture.conversation.id }, data: { ownerRunId: 'new-owner', sandboxId: 'new-instance', state: 'running' } })
+      throw new WorkspaceCreationRejectedError(401)
+    } } as unknown as WorkspaceCloudService
+    const service = new WorkspaceService(prisma, cloud, new WorkspaceMonitoringService(prisma, cloud))
+    await assert.rejects(service.fileOperation({ userId: fixture.user.id, conversationId: fixture.conversation.id, runId: fixture.run.id, deadlineAt: Date.now() + 60000 }, { action: 'write' }, new AbortController().signal))
+    const row = await prisma.conversationWorkspace.findUniqueOrThrow({ where: { conversationId: fixture.conversation.id } })
+    assert.equal(row.ownerRunId, 'new-owner')
+    assert.equal(row.sandboxId, 'new-instance')
+    assert.equal(row.state, 'running')
+  })
+
   it('抢占失败不能清除已经属于同一 Run 的租约或实例', async () => {
     const fixture = await seed()
     await prisma.conversationWorkspace.update({ where: { conversationId: fixture.conversation.id }, data: { sandboxId: 'existing-instance', state: 'running' } })
@@ -522,6 +793,9 @@ describe('工作文件 PostgreSQL 确认边界', () => {
     await service.releaseRun(fixture.run.id)
     const row = await prisma.sandboxExecution.findFirstOrThrow({ where: { runId: fixture.run.id } })
     assert.equal(row.state, 'cleanup_pending')
+    // R1：已失败的清理不是另一项活跃任务，不释放其可能仍存活的实例占用。
+    await assert.rejects(service.fileOperation({ userId: fixture.user.id, conversationId: fixture.conversation.id, runId: randomUUID(), deadlineAt: Date.now() + 60000 }, { action: 'write' }, new AbortController().signal), /状态尚未确认/)
+    assert.equal((await prisma.conversationWorkspace.findUniqueOrThrow({ where: { conversationId: fixture.conversation.id } })).ownerRunId, fixture.run.id)
     const restarted = new WorkspaceMonitoringService(prisma, cloud)
     await restarted.reconcile()
     assert.equal((await prisma.sandboxExecution.findUniqueOrThrow({ where: { id: row.id } })).state, 'cleanup_pending')

@@ -1,12 +1,12 @@
 import type { WorkspaceFile } from '@agent/contracts'
 import type { TurnRun } from '../types/chat'
 
-/** 只使用已收口工具的保存清单，且文件仍在当前工作区；有页面时优先交付页面。 */
+/** 交付卡代表该次回答保存的内容；只保留当前仍是同路径、同哈希的文件，不提供历史版本。 */
 export function workspaceArtifacts(run: TurnRun, currentFiles: WorkspaceFile[]): WorkspaceFile[] {
   const saved = run.steps.filter(step => step.status !== 'running' && step.status !== 'stopped'
     && (step.workspace?.revision ?? 0) > 0 && Array.isArray(step.workspace?.files)).at(-1)?.workspace?.files ?? []
-  const paths = new Set(saved.map(file => file.path))
-  const files = currentFiles.filter(file => paths.has(file.path))
+  const hashes = new Map(saved.map(file => [file.path, file.sha256]))
+  const files = currentFiles.filter(file => hashes.get(file.path) === file.sha256)
   const pages = files.filter(file => file.path.toLowerCase().endsWith('.html'))
   return pages.length ? pages : files
 }

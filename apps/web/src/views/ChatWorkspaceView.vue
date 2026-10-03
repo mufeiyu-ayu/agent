@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import type { AgentNavigationItem, AgentPlatformUser } from '../types/agent-platform'
+import type { WorkspaceFile } from '@agent/contracts'
 
+import type { AgentNavigationItem, AgentPlatformUser } from '../types/agent-platform'
 import { userDisplayName, userInitial } from '@agent/contracts'
 import { useElementSize } from '@vueuse/core'
 import { SplitterGroup, SplitterPanel, SplitterResizeHandle } from 'reka-ui'
@@ -109,11 +110,16 @@ const sideOpen = computed(() => previewOpen.value || filesOpen.value)
 const { snapshot: workspaceSnapshot, loading: workspaceLoading, error: workspaceError, refresh: refreshFiles, readFile } = useWorkspaceFiles(activeConversationId, status)
 let openedFilesFor: string | null = null
 watch(previewOpen, (open) => {
-  if (open)
+  if (open) {
     filesOpen.value = false
+    artifactRequest++
+    openingArtifact.value = false
+  }
 })
 watch(activeConversationId, () => {
   filesOpen.value = false
+  artifactRequest++
+  openingArtifact.value = false
   openedFilesFor = null
 })
 watch(filesOpen, (open) => {
@@ -125,25 +131,36 @@ watch(filesOpen, (open) => {
 watch(workspaceSnapshot, (snapshot) => {
   if (snapshot?.files.length && openedFilesFor !== activeConversationId.value) {
     openedFilesFor = activeConversationId.value
-    filesOpen.value = true
-    void closePreview()
+    if (!openingArtifact.value) {
+      filesOpen.value = true
+      void closePreview()
+    }
   }
 })
-async function openFiles(path?: string) {
+async function openFiles(file?: WorkspaceFile) {
   if (openingArtifact.value)
     return
   const conversationId = activeConversationId.value
+  // 交付卡先确认内容身份再挂载面板，避免自动预览或 revision watcher 抢先打开新内容。
+  if (file)
+    filesOpen.value = false
   const request = ++artifactRequest
-  openingArtifact.value = !!path
+  openingArtifact.value = !!file
   void closePreview()
-  filesOpen.value = true
+  if (!file)
+    filesOpen.value = true
   try {
     await refreshFiles()
-    if (path && request === artifactRequest && activeConversationId.value === conversationId && filesOpen.value) {
-      await nextTick()
-      if (request === artifactRequest && activeConversationId.value === conversationId)
-        await filesPanel.value?.openFile(path)
+    if (!file || request !== artifactRequest || activeConversationId.value !== conversationId)
+      return
+    if (workspaceError.value || !workspaceSnapshot.value?.files.some(current => current.path === file.path && current.sha256 === file.sha256)) {
+      showMessage(t('workspace.fileFailed'), 'error')
+      return
     }
+    filesOpen.value = true
+    await nextTick()
+    if (request === artifactRequest && activeConversationId.value === conversationId && filesOpen.value)
+      await filesPanel.value?.openFile(file.path, file.sha256)
   }
   finally {
     if (request === artifactRequest)
@@ -344,7 +361,7 @@ function send() {
         />
         <SplitterPanel v-show="sideOpen && splitPreview" id="preview" :default-size="previewLayout[1]" :min-size="sideOpen && splitPreview ? minPanelSize : 0" style="min-width: 320px" class="flex min-h-0 min-w-0">
           <HtmlPreviewPanel v-if="previewOpen && splitPreview" :code="previewCode" @close="closePreview" />
-          <WorkspaceFilesPanel v-if="filesOpen && splitPreview" ref="filesPanel" :snapshot="workspaceSnapshot" :loading="workspaceLoading" :error="workspaceError" :conversation-id="activeConversationId" :read-file="readFile" @refresh="refreshFiles" @close="filesOpen = false" />
+          <WorkspaceFilesPanel v-if="filesOpen && splitPreview" ref="filesPanel" :snapshot="workspaceSnapshot" :loading="workspaceLoading" :error="workspaceError" :conversation-id="activeConversationId" :read-file="readFile" :auto-preview="!openingArtifact" @refresh="refreshFiles" @close="filesOpen = false" />
         </SplitterPanel>
       </SplitterGroup>
       <HtmlPreviewPanel
@@ -354,7 +371,7 @@ function send() {
         class="absolute inset-0 z-40"
         @close="closePreview"
       />
-      <WorkspaceFilesPanel v-if="filesOpen && !splitPreview" ref="filesPanel" :snapshot="workspaceSnapshot" :loading="workspaceLoading" :error="workspaceError" :conversation-id="activeConversationId" :read-file="readFile" class="absolute inset-0 z-40" @refresh="refreshFiles" @close="filesOpen = false" />
+      <WorkspaceFilesPanel v-if="filesOpen && !splitPreview" ref="filesPanel" :snapshot="workspaceSnapshot" :loading="workspaceLoading" :error="workspaceError" :conversation-id="activeConversationId" :read-file="readFile" :auto-preview="!openingArtifact" class="absolute inset-0 z-40" @refresh="refreshFiles" @close="filesOpen = false" />
     </div>
   </AppShell>
 </template>

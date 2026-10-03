@@ -5,10 +5,11 @@ import type { Prisma } from '../generated/prisma/client.js'
 import type { StoredWorkspaceFile, WorkspaceCommit, WorkspaceExecution } from './workspace-files.js'
 import { Buffer } from 'node:buffer'
 import { randomUUID } from 'node:crypto'
+import { setTimeout as sleep } from 'node:timers/promises'
 import { BadRequestException, ConflictException, Inject, Injectable, Logger, NotFoundException, ServiceUnavailableException } from '@nestjs/common'
 import { PrismaService } from '../prisma/prisma.service.js'
 import { BASH_SCRIPT, FILE_SCRIPT } from './sandbox-scripts.js'
-import { WorkspaceCloudService } from './workspace-cloud.service.js'
+import { WorkspaceCloudService, WorkspaceCreatedError, WorkspaceCreationRejectedError } from './workspace-cloud.service.js'
 import { workspaceDb } from './workspace-db.js'
 import { fileHash, MAX_FILE_BYTES, MAX_WORKSPACE_BYTES, MAX_WORKSPACE_FILES, parseStoredFiles, WorkspaceOperationError, workspacePath } from './workspace-files.js'
 import { WorkspaceMonitoringService } from './workspace-monitoring.service.js'
@@ -205,14 +206,14 @@ export class WorkspaceService implements OnModuleDestroy {
 
   async reportError(execution: WorkspaceExecution, message: string): Promise<void> {
     await this.withDb(db => db.conversationWorkspace.updateMany({
-      where: { conversationId: execution.conversationId, ownerRunId: execution.runId },
+      where: { conversationId: execution.conversationId, ownerRunId: execution.runId, state: { notIn: ['creation_unknown', 'cleanup_pending', 'creating'] } },
       data: { state: 'running', lastError: message.slice(0, 400) },
     })).catch(() => this.logger.warn({ event: 'workspace_error_record_failed', runId: execution.runId }))
   }
 
   private async ensure(execution: WorkspaceExecution, signal: AbortSignal): Promise<RunningWorkspace> {
     signal.throwIfAborted()
-    await this.releasing.get(execution.runId)
+    await this.waitForRelease(execution.runId, execution, signal)
     signal.throwIfAborted()
     let pending = this.running.get(execution.runId)
     if (!pending) {
@@ -234,12 +235,38 @@ export class WorkspaceService implements OnModuleDestroy {
     return active
   }
 
+  private async waitForRelease(runId: string, execution: WorkspaceExecution, signal: AbortSignal): Promise<void> {
+    const cleanup = this.releasing.get(runId)
+    if (!cleanup)
+      return
+    signal.throwIfAborted()
+    const timer = new AbortController()
+    try {
+      await Promise.race([
+        cleanup,
+        sleep(Math.max(0, Math.min(30_000, execution.deadlineAt - Date.now())), undefined, { signal: AbortSignal.any([signal, timer.signal]) }).then(() => {
+          throw new WorkspaceOperationError('上一轮工作区清理尚未确认，已停止等待。')
+        }),
+      ])
+      signal.throwIfAborted()
+    }
+    catch (error) {
+      signal.throwIfAborted()
+      throw error
+    }
+    finally { timer.abort() }
+  }
+
   private async open(execution: WorkspaceExecution, signal: AbortSignal): Promise<RunningWorkspace> {
     const conversation = await this.withDb(db => this.assertOwner(execution.userId, execution.conversationId, db), signal)
     if (!this.cloud.configured)
       throw new WorkspaceOperationError('沙箱和文件存储尚未配置。')
     const { conversationId, userId, runId } = execution
-    await this.withDb(db => db.conversationWorkspace.upsert({ where: { conversationId }, create: { conversationId, userId }, update: {} }), signal)
+    const previous = await this.withDb(db => db.conversationWorkspace.upsert({ where: { conversationId }, create: { conversationId, userId }, update: {} }), signal)
+    // 只等待本进程已启动的收尾；未知实例/真实并发仍由数据库租约拒绝。过期的其他 Run 不阻止新 owner。
+    if (previous.ownerRunId && previous.leaseExpiresAt && previous.leaseExpiresAt.getTime() > Date.now())
+      await this.waitForRelease(previous.ownerRunId, execution, signal)
+    signal.throwIfAborted()
     let sandbox: Sandbox | undefined
     let historyId: string | undefined
     let startedAt: Date | undefined
@@ -253,7 +280,10 @@ export class WorkspaceService implements OnModuleDestroy {
       }), signal)
       if (acquired.count !== 1) {
         leaseAttempted = false
-        throw new WorkspaceOperationError('这个会话的工作区正在执行另一项任务，请稍后再试。')
+        const current = await this.withDb(db => db.conversationWorkspace.findUniqueOrThrow({ where: { conversationId }, select: { state: true } }), signal)
+        throw new WorkspaceOperationError(['creation_unknown', 'cleanup_pending'].includes(current.state)
+          ? '上一轮沙箱状态尚未确认，暂时不能创建新实例，请等待云端到期或核查。'
+          : '这个会话的工作区正在执行另一项任务，请稍后再试。')
       }
       signal.throwIfAborted()
       // 在提交前确定 ID，响应未知时仍可核查或标记未启动的创建请求。
@@ -286,12 +316,19 @@ export class WorkspaceService implements OnModuleDestroy {
       // 明确未取得租约时，不能清理另一个实例（包括同 Run 的另一个进程）的所有权。
       if (!leaseAttempted)
         throw error
-      let released = !creationStarted
-      if (sandbox) {
+      const resource = sandbox ?? (error instanceof WorkspaceCreatedError ? error.sandbox : undefined)
+      if (error instanceof WorkspaceCreatedError) {
+        startedAt = error.startedAt
+        if (historyId)
+          await this.monitoring.created(historyId, error.sandbox.sandboxId, startedAt).catch(() => {})
+      }
+      const notCreated = !creationStarted || (!resource && error instanceof WorkspaceCreationRejectedError)
+      let released = notCreated
+      if (resource) {
         try {
-          const confirmed = await sandbox.kill({ requestTimeoutMs: 15_000 })
+          const confirmed = await resource.kill({ requestTimeoutMs: 15_000 })
           if (historyId && startedAt)
-            await this.monitoring.released(historyId, sandbox.sandboxId, startedAt, confirmed)
+            await this.monitoring.released(historyId, resource.sandboxId, startedAt, confirmed)
           released = true
         }
         catch {
@@ -299,14 +336,14 @@ export class WorkspaceService implements OnModuleDestroy {
         }
       }
       if (historyId && !released)
-        await this.monitoring.unknown(historyId, sandbox ? 'cleanup_pending' : 'creation_unknown').catch(() => {})
-      else if (historyId && !creationStarted)
+        await this.monitoring.unknown(historyId, resource ? 'cleanup_pending' : 'creation_unknown').catch(() => {})
+      else if (historyId && notCreated)
         await this.monitoring.unknown(historyId, 'create_failed').catch(() => {})
       await this.withDb(db => db.conversationWorkspace.updateMany({
         where: { conversationId, ownerRunId: runId },
         data: {
-          ...(released ? { ownerRunId: null, leaseExpiresAt: null, sandboxId: null } : { sandboxId: sandbox?.sandboxId ?? null }),
-          state: released ? 'error' : sandbox ? 'cleanup_pending' : 'creation_unknown',
+          ...(released ? { ownerRunId: null, leaseExpiresAt: null, sandboxId: null } : { sandboxId: resource?.sandboxId ?? null }),
+          state: released ? 'error' : resource ? 'cleanup_pending' : 'creation_unknown',
           lastError: error instanceof WorkspaceOperationError ? error.message : '沙箱创建或文件恢复失败，实例状态需确认',
         },
       })).catch(() => this.logger.warn({ event: 'workspace_creation_cleanup_record_failed', runId }))

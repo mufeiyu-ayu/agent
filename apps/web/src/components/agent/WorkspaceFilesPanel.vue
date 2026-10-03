@@ -19,7 +19,8 @@ const props = defineProps<{
   loading: boolean
   error: string
   conversationId: string | null
-  readFile: (path: string) => Promise<{ bytes: Uint8Array, text: string }>
+  readFile: (path: string, expectedSha256?: string) => Promise<{ bytes: Uint8Array, text: string }>
+  autoPreview?: boolean
 }>()
 const emit = defineEmits<{ close: [], refresh: [] }>()
 const { t } = useI18n()
@@ -36,6 +37,7 @@ const fileError = ref('')
 const search = ref('')
 const collapsed = reactive(new Set<string>())
 let request = 0
+let expectedSha256: string | undefined
 const showEnvironment = ref(localStorage.getItem('kuro-show-environment') === 'true')
 watch(showEnvironment, value => localStorage.setItem('kuro-show-environment', String(value)))
 const stateLabel = computed(() => t(`workspace.states.${props.snapshot?.state ?? 'idle'}`))
@@ -68,7 +70,7 @@ watch([code, selected], () => {
 let autoPreviewed = false
 watch(() => props.snapshot?.files, (files) => {
   const html = files?.find(file => file.path.toLowerCase().endsWith('.html'))
-  if (html && !autoPreviewed && !selected.value) {
+  if (props.autoPreview !== false && html && !autoPreviewed && !selected.value) {
     autoPreviewed = true
     void open(html.path, true)
   }
@@ -77,6 +79,7 @@ watch(() => props.snapshot?.files, (files) => {
 watch(() => props.conversationId, () => {
   request++
   autoPreviewed = false
+  expectedSha256 = undefined
   selected.value = ''
   code.value = ''
   mode.value = 'code'
@@ -89,7 +92,7 @@ watch(() => props.snapshot?.revision, (next, previous) => {
   if (next === previous || previous === undefined || !selected.value)
     return
   if (props.snapshot?.files.some(file => file.path === selected.value)) {
-    void open(selected.value, mode.value === 'preview')
+    void open(selected.value, mode.value === 'preview', expectedSha256)
   }
   else {
     request++
@@ -135,8 +138,10 @@ function close() {
   emit('close')
 }
 
-async function open(path: string, preview = false) {
+async function open(path: string, preview = false, sha256?: string) {
   const current = ++request
+  expectedSha256 = sha256
+  autoPreviewed = true
   // 先确定读取目标，版本变化时才能重读它；不能用上一次成功打开的文件抢回选择。
   if (selected.value !== path) {
     selected.value = path
@@ -146,7 +151,13 @@ async function open(path: string, preview = false) {
   pending.value = true
   fileError.value = ''
   try {
-    const result = await props.readFile(path)
+    if (sha256 !== undefined && !props.snapshot?.files.some(file => file.path === path && file.sha256 === sha256)) {
+      code.value = ''
+      selected.value = ''
+      mode.value = 'code'
+      throw new Error('交付文件内容已改变')
+    }
+    const result = await props.readFile(path, sha256)
     if (current !== request)
       return
     code.value = result.text
@@ -162,14 +173,14 @@ async function open(path: string, preview = false) {
   }
 }
 
-defineExpose({ openFile: (path: string) => open(path, true) })
+defineExpose({ openFile: (path: string, sha256: string) => open(path, true, sha256) })
 
 async function download(path: string) {
   const current = ++request
   pending.value = true
   fileError.value = ''
   try {
-    const result = await props.readFile(path)
+    const result = await props.readFile(path, path === selected.value ? expectedSha256 : undefined)
     if (current !== request)
       return
     const url = URL.createObjectURL(new Blob([result.bytes as Uint8Array<ArrayBuffer>], { type: 'application/octet-stream' }))

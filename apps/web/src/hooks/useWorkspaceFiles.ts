@@ -90,12 +90,14 @@ export function useWorkspaceFiles(conversationId: Ref<string | null>, status: Re
     clearTimeout(timer)
   })
 
-  async function readFile(path: string): Promise<{ bytes: Uint8Array, text: string }> {
+  async function readFile(path: string, expectedSha256?: string): Promise<{ bytes: Uint8Array, text: string }> {
     const id = conversationId.value
     const revision = snapshot.value?.revision
     const requestEpoch = epoch
     if (!id || revision === undefined)
       throw new Error('文件尚未保存')
+    if (expectedSha256 !== undefined && !snapshot.value?.files.some(file => file.path === path && file.sha256 === expectedSha256))
+      throw new Error('交付文件已改变，请重新选择当前文件')
     const controller = new AbortController()
     fileControllers.add(controller)
     try {

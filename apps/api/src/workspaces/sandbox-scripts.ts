@@ -1,6 +1,8 @@
+import { MAX_READ_OBSERVATION_CHARS } from './workspace-files.js'
+
 // 固定的执行监督代码；用户代码只在沙箱中的非特权子进程里执行，平台凭据不传入环境。
 export const FILE_SCRIPT = String.raw`
-import os,sys,json,base64,stat,pwd
+import os,sys,json,base64,stat,pwd,shlex
 ROOT='/workspace/project'
 MAX_FILE=2097152
 MAX_TOTAL=8388608
@@ -77,7 +79,24 @@ try:
     elif action=='read':
         text=read(data['path']).decode('utf-8');lines=text.splitlines()
         start=data.get('offset',1)-1;limit=data.get('limit',200)
-        result={'path':data['path'],'totalLines':len(lines),'offset':start+1,'content':'\n'.join(str(i+start+1)+': '+line for i,line in enumerate(lines[start:start+limit])),'nextOffset':start+limit+1 if start+limit<len(lines) else None}
+        result={'path':data['path'],'totalLines':len(lines),'offset':start+1,'content':'','nextOffset':None}
+        # 与最终 observation 共用预算；按 JSON 转义后的 Unicode 字符数扣除整行。
+        # 32 字符余量覆盖 nextOffset 位数和 truncated 元数据，不把未返回的行算作已读。
+        remaining=${MAX_READ_OBSERVATION_CHARS}-len(json.dumps(result,ensure_ascii=False,separators=(',',':')))-32
+        selected=[];cursor=start
+        for index in range(start,min(start+limit,len(lines))):
+            line=str(index+1)+': '+lines[index]
+            size=len(json.dumps(line,ensure_ascii=False))-2+(2 if selected else 0)
+            if size>remaining:
+                result['truncated']=True
+                if not selected:
+                    command="import json,pathlib;line=pathlib.Path("+repr(data['path'])+").read_text(encoding='utf-8').splitlines()["+str(index)+"];start=0;part=line[start:start+1000];print(json.dumps({'content':part,'nextCharOffset':start+len(part) if start+len(part)<len(line) else None},ensure_ascii=False))"
+                    result['readCommand']='python3 -I -S -c '+shlex.quote(command)
+                    result['hint']='当前行超过读取预算，尚未返回；用 bash 执行 readCommand，将 start 改为 nextCharOffset 逐段续读；该行读完后用 read offset='+str(index+2)+' 读取后续行。'
+                break
+            selected.append(line);remaining-=size;cursor=index+1
+        result['content']='\n'.join(selected)
+        result['nextOffset']=cursor+1 if cursor<len(lines) else None
     elif action=='edit':
         text=read(data['path']).decode('utf-8');bom='\ufeff' if text.startswith('\ufeff') else ''
         if bom: text=text[1:]

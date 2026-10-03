@@ -64,6 +64,27 @@ it('切换会话后丢弃旧快照与下载结果，不把旧文件当作新会�
   finally { scope.stop() }
 })
 
+it('R3：交付身份按 SHA 校验，同 SHA 跨 revision 使用新 revision；内容改变时不发文件请求', async () => {
+  const file = { path: 'index.html', sha256: 'a', bytes: 1 }
+  vi.mocked(getWorkspace).mockResolvedValue({ ...snapshot(1), files: [file] })
+  vi.mocked(getWorkspaceFile).mockResolvedValue(new Uint8Array([65]))
+  const scope = effectScope()
+  const files = scope.run(() => useWorkspaceFiles(ref('a'), ref('idle')))!
+  try {
+    await files.refresh()
+    vi.mocked(getWorkspace).mockResolvedValue({ ...snapshot(2), files: [file] })
+    await files.refresh()
+    assert.equal((await files.readFile(file.path, file.sha256)).text, 'A')
+    assert.equal(vi.mocked(getWorkspaceFile).mock.calls.at(-1)![2], 2)
+    const calls = vi.mocked(getWorkspaceFile).mock.calls.length
+    vi.mocked(getWorkspace).mockResolvedValue({ ...snapshot(3), files: [{ ...file, sha256: 'b' }] })
+    await files.refresh()
+    await assert.rejects(files.readFile(file.path, file.sha256), /交付文件已改变/)
+    assert.equal(vi.mocked(getWorkspaceFile).mock.calls.length, calls)
+  }
+  finally { scope.stop() }
+})
+
 it('离开工作区取消文件读取，即使响应忽略取消也不能交付迟到文件', async () => {
   vi.mocked(getWorkspace).mockResolvedValue(snapshot(1))
   const scope = effectScope()

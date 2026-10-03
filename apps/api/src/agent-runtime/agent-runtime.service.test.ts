@@ -76,6 +76,39 @@ import { estimateRequestTokens, roughTokens } from './context/token-estimate.js'
 const MODEL_TOOL_NAMES = TOOL_DEFINITIONS.map(definition => definition.name)
 
 describe('AgentRuntimeService model stream', () => {
+  it('R1：交付终态事件前已启动工作区交接，云端 kill 尚未返回也不漏掉清理', async () => {
+    for (const terminal of ['run_completed', 'run_failed', 'run_aborted']) {
+      let finish!: () => void
+      const cleanup = new Promise<void>((resolve) => {
+        finish = resolve
+      })
+      const releaseRun = vi.fn(() => cleanup)
+      const workspaces = { cloud: { configured: true }, releaseRun } as unknown as WorkspaceService
+      const controller = new AbortController()
+      const harness = createHarness(() => {
+        if (terminal === 'run_failed')
+          throw new Error('fixture failure')
+        if (terminal === 'run_aborted')
+          controller.abort(new Error('fixture abort'))
+        return toModelStream([{ type: 'text_delta', delta: '完成' }, { type: 'response_completed', finishReason: 'stop' }])
+      }, controller.signal, undefined, {}, workspaces)
+      const stream = harness.run()
+      try {
+        while (true) {
+          const event = await stream.next()
+          assert.equal(event.done, false)
+          if (event.value?.type === terminal)
+            break
+        }
+        assert.ok(releaseRun.mock.calls.length > 0, `${terminal} 发出时下一轮必须已能找到收尾 Promise`)
+      }
+      finally {
+        finish()
+        await stream.return(undefined)
+      }
+    }
+  })
+
   it('保持普通文本流的现有完成行为', async () => {
     const harness = createHarness(() => toModelStream([
       { type: 'text_delta', delta: '你' },
@@ -525,7 +558,10 @@ describe('AgentRuntimeService model stream', () => {
 
   it('文件保存确认后才推工具完成和回喂；事务失败不发成功结果，两个分支都释放 Run 实例', async () => {
     for (const confirmed of [true, false]) {
-      const releaseRun = vi.fn(async () => {})
+      const releasedRuns = new Set<string>()
+      const releaseRun = async (id: string) => {
+        releasedRuns.add(id)
+      }
       const workspaces = { cloud: { configured: true }, releaseRun } as unknown as WorkspaceService
       const commit = { conversationId: 'conversation-1', runId: 'run-1', expectedRevision: 0, files: [] }
       const harness = createHarness((_, __, index) => toModelStream(index === 0
@@ -560,7 +596,7 @@ describe('AgentRuntimeService model stream', () => {
         assert.equal((findStep(harness, 'tool_execution')?.output as { observation: string }).observation, '已保存版本 1')
       }
       assert.equal(events.at(-1)?.type, confirmed ? 'run_completed' : 'run_failed')
-      assert.deepEqual(releaseRun.mock.calls, [['run-1']])
+      assert.deepEqual([...releasedRuns], ['run-1'])
     }
   })
 

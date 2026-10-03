@@ -7,7 +7,7 @@ import { workspaceArtifacts, workspaceFileType } from '../../utils/workspace-fil
 import AppIcon from '../common/AppIcon.vue'
 
 const props = defineProps<{ run: TurnRun, files: WorkspaceFile[], opening: boolean }>()
-const emit = defineEmits<{ openFile: [path: string] }>()
+const emit = defineEmits<{ openFile: [file: WorkspaceFile] }>()
 const { t } = useI18n()
 const artifacts = computed(() => workspaceArtifacts(props.run, props.files))
 
@@ -32,7 +32,7 @@ function formatBytes(bytes: number) {
         :title="artifacts[0]!.path"
         :aria-label="t('workspace.openFile', { path: artifacts[0]!.path })"
         class="group flex min-w-0 flex-1 items-center gap-2.5 rounded-lg px-2 py-1 text-left transition-colors hover:bg-agent-surface focus-visible:outline-2 focus-visible:outline-agent-focus disabled:cursor-wait disabled:opacity-50"
-        @click="emit('openFile', artifacts[0]!.path)"
+        @click="emit('openFile', artifacts[0]!)"
       >
         <span class="flex size-7 shrink-0 items-center justify-center rounded-md bg-agent-surface-sunken/40 text-agent-ink transition-transform group-hover:scale-105">
           <AppIcon :name="workspaceFileType(artifacts[0]!.path).icon" :size="17" />
@@ -50,7 +50,7 @@ function formatBytes(bytes: number) {
         :disabled="opening"
         :aria-label="t('workspace.openPanel')"
         class="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md border border-agent-border-soft bg-agent-surface px-2.5 text-xs font-medium text-agent-ink-soft shadow-2xs transition-colors hover:border-agent-border hover:bg-agent-surface-raised hover:text-agent-ink focus-visible:outline-2 focus-visible:outline-agent-focus disabled:cursor-wait disabled:opacity-50"
-        @click="emit('openFile', artifacts[0]!.path)"
+        @click="emit('openFile', artifacts[0]!)"
       >
         <AppIcon name="tabler:layout-columns" :size="14" class="text-agent-ink-muted" />
         <span>{{ t('workspace.openPanel') }}</span>
@@ -68,7 +68,7 @@ function formatBytes(bytes: number) {
           :disabled="opening"
           :aria-label="t('workspace.openPanel')"
           class="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md border border-agent-border-soft bg-agent-surface px-2.5 text-xs font-medium text-agent-ink-soft shadow-2xs transition-colors hover:border-agent-border hover:bg-agent-surface-raised hover:text-agent-ink focus-visible:outline-2 focus-visible:outline-agent-focus disabled:cursor-wait disabled:opacity-50"
-          @click="emit('openFile', artifacts[0]!.path)"
+          @click="emit('openFile', artifacts[0]!)"
         >
           <AppIcon name="tabler:layout-columns" :size="14" class="text-agent-ink-muted" />
           <span>{{ t('workspace.openPanel') }}</span>
@@ -84,7 +84,7 @@ function formatBytes(bytes: number) {
           :title="file.path"
           :aria-label="t('workspace.openFile', { path: file.path })"
           class="group flex min-w-0 items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left transition-colors hover:bg-agent-surface focus-visible:outline-2 focus-visible:outline-agent-focus disabled:cursor-wait disabled:opacity-50"
-          @click="emit('openFile', file.path)"
+          @click="emit('openFile', file)"
         >
           <span class="flex size-7 shrink-0 items-center justify-center rounded-md bg-agent-surface-sunken/40 text-agent-ink transition-transform group-hover:scale-105">
             <AppIcon :name="workspaceFileType(file.path).icon" :size="17" />

@@ -1,12 +1,29 @@
 import type { WorkspaceCloudInstance, WorkspaceCloudOverview } from '@agent/contracts'
+import type { SandboxApiOpts } from 'e2b'
 import type { StoredWorkspaceFile } from './workspace-files.js'
 import { Buffer } from 'node:buffer'
 import { randomUUID } from 'node:crypto'
 import process from 'node:process'
 import { Injectable } from '@nestjs/common'
 import OSS from 'ali-oss'
-import { Sandbox } from 'e2b'
+import { AuthenticationError, RateLimitError, Sandbox } from 'e2b'
 import { fileHash, MAX_FILE_BYTES, WorkspaceOperationError } from './workspace-files.js'
+
+/** 只标记已收到创建拒绝响应的情况；网络/创建后的失败仍视为结果未知。 */
+export class WorkspaceCreationRejectedError extends WorkspaceOperationError {
+  constructor(status: 401 | 429) {
+    super(status === 401 ? '沙箱创建被拒绝：认证失败，请检查服务配置。' : '沙箱创建被限流，未创建实例，请稍后再试。')
+    this.name = 'WorkspaceCreationRejectedError'
+  }
+}
+
+/** SDK 已确认创建、但尚未返回实例；保留实际 ID，让业务层仍能登记和清理。 */
+export class WorkspaceCreatedError extends WorkspaceOperationError {
+  constructor(readonly sandbox: Pick<Sandbox, 'sandboxId' | 'kill'>, readonly startedAt: Date) {
+    super('沙箱创建后的初始化失败，未执行文件操作。', true)
+    this.name = 'WorkspaceCreatedError'
+  }
+}
 
 /** 两家已选服务的 SDK 入口；凭据只在此处读取，不复制到沙箱环境。 */
 @Injectable()
@@ -39,11 +56,14 @@ export class WorkspaceCloudService {
     if (!this.configured)
       throw new WorkspaceOperationError('沙箱和文件存储尚未配置，请联系管理员。')
     const proxy = process.env.OUTBOUND_PROXY_URL?.trim()
-    return Sandbox.create(process.env.E2B_TEMPLATE!.trim(), {
+    const template = process.env.E2B_TEMPLATE!.trim()
+    const options = {
       apiKey: process.env.E2B_API_KEY!.trim(),
       apiUrl: process.env.E2B_API_URL!.trim(),
       domain: process.env.E2B_DOMAIN!.trim(),
       validateApiKey: false,
+      // 此适配器只管理云实例；创建、SDK 构造与清理不能被 E2B_DEBUG 切到本地短路。
+      debug: false,
       ...(proxy ? { proxy } : {}),
       timeoutMs: Math.max(60_000, timeoutMs),
       requestTimeoutMs: 20_000,
@@ -51,7 +71,44 @@ export class WorkspaceCloudService {
       secure: true,
       network: { allowPublicTraffic: false },
       metadata: { app: 'kuro', runId, ...(executionId ? { executionId } : {}) },
-    })
+    }
+    let createdId: string | undefined
+    let startedAt: Date | undefined
+    // 沿用 e2b 2.31.0 的创建/兼容检查；其后置检查通过 this.kill 回滚。
+    // 每次调用独立记录阶段，不修改 SDK 全局方法，也不从 message/stack 猜 HTTP 状态。
+    class Creation extends Sandbox {
+      static open() { return this.createSandbox(template, options.timeoutMs, options) }
+      static override kill(id: string, opts?: SandboxApiOpts) {
+        createdId = id
+        startedAt = new Date()
+        return super.kill(id, opts)
+      }
+    }
+    try {
+      const info = await Creation.open()
+      createdId = info.sandboxId
+      startedAt = new Date()
+      return new Sandbox({
+        ...options,
+        sandboxId: info.sandboxId,
+        envdVersion: info.envdVersion,
+        ...(info.sandboxDomain ? { sandboxDomain: info.sandboxDomain } : {}),
+        ...(info.envdAccessToken ? { envdAccessToken: info.envdAccessToken } : {}),
+        ...(info.trafficAccessToken ? { trafficAccessToken: info.trafficAccessToken } : {}),
+      })
+    }
+    catch (error) {
+      if (createdId) {
+        const sandboxId = createdId
+        throw new WorkspaceCreatedError({ sandboxId, kill: opts => Sandbox.kill(sandboxId, { ...options, ...opts }) }, startedAt!)
+      }
+      // SDK 的这两个拒绝类不带 statusCode；仅在尚未进入创建后阶段时确定未创建。
+      if (error instanceof AuthenticationError)
+        throw new WorkspaceCreationRejectedError(401)
+      if (error instanceof RateLimitError)
+        throw new WorkspaceCreationRejectedError(429)
+      throw error
+    }
   }
 
   /** 仅查询，不连接、唤醒或创建实例；成功的空列表与查询失败明确区分。 */
