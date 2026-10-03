@@ -108,7 +108,13 @@ async function runWrite(operation: () => Promise<void>): Promise<boolean> {
   }
 }
 
+const providerSubmitting = ref(false)
+const modelSubmitting = ref(false)
+
 async function handleSubmitProvider(input: AdminLlmProviderInput, wireNames: string[]) {
+  if (providerSubmitting.value)
+    return
+  providerSubmitting.value = true
   const provider = editingProvider.value
   const ok = await runWrite(async () => {
     if (!provider) {
@@ -124,8 +130,11 @@ async function handleSubmitProvider(input: AdminLlmProviderInput, wireNames: str
     }
   })
 
-  if (ok)
+  providerSubmitting.value = false
+  if (ok) {
     providerModalOpen.value = false
+    state.clearFetchedModelNames()
+  }
 }
 
 function handleDeleteProvider(id: string) {
@@ -151,11 +160,13 @@ function handleEditModel(model: AdminLlmModel) {
 async function handleSubmitModel(input: AdminLlmModelInput) {
   const model = editingModel.value
 
-  if (!model)
+  if (!model || modelSubmitting.value)
     return
 
+  modelSubmitting.value = true
   if (await runWrite(() => state.updateModel(model.id, input)))
     modelModalOpen.value = false
+  modelSubmitting.value = false
 }
 
 function handleDeleteModel(id: string) {
@@ -236,6 +247,7 @@ function handleProbeVisibleModels() {
             v-else
             :providers="state.providers.value"
             :selected-id="state.selectedProviderId.value"
+            :pending-writes="state.pendingWrites.value"
             :loading="state.providersLoading.value"
             @select="state.selectProvider"
             @edit="handleEditProvider"
@@ -316,6 +328,7 @@ function handleProbeVisibleModels() {
               :providers="state.providers.value"
               :loading="state.modelsLoading.value"
               :probing-ids="state.probingModelIds.value"
+              :pending-writes="state.pendingWrites.value"
               @edit="handleEditModel"
               @delete="handleDeleteModel"
               @toggle-visible="handleToggleModelVisible"
@@ -333,7 +346,7 @@ function handleProbeVisibleModels() {
       :open="providerModalOpen"
       :provider="editingProvider"
       :proxy-status="state.proxyStatus.value"
-      :submitting="state.submitting.value"
+      :submitting="providerSubmitting"
       :candidates="state.fetchedModelNames.value"
       :fetching-candidates="state.fetchingModels.value"
       :existing="providerModalExisting"
@@ -343,7 +356,7 @@ function handleProbeVisibleModels() {
       @test-models="handleTestInProviderForm"
       @credentials-change="state.setFormCredentials"
       @submit="handleSubmitProvider"
-      @cancel="providerModalOpen = false"
+      @cancel="providerModalOpen = false; state.clearFetchedModelNames()"
     />
 
     <LlmModelFormModal
@@ -351,7 +364,7 @@ function handleProbeVisibleModels() {
       :open="modelModalOpen"
       :model="editingModel"
       :family="editingModelFamily"
-      :submitting="state.submitting.value"
+      :submitting="modelSubmitting"
       @submit="handleSubmitModel"
       @cancel="modelModalOpen = false"
     />

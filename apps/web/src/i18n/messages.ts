@@ -8,6 +8,7 @@ export const messages = {
       empty: '生成的文件会保存在这里，可随时查看、下载或继续修改。',
       notConfigured: '工作文件服务尚未配置。',
       fileFailed: '文件已更新或暂时不可用，请刷新列表后重新打开。',
+      retry: '重试',
       savedVersion: '已保存版本 {n}',
       downloadFile: '下载 {path}',
       chooseFile: '选择文件',
@@ -259,6 +260,7 @@ export const messages = {
       stop: '停止生成',
     },
     runtime: {
+      modelsLoading: '正在读取模型…',
       balance: {
         loading: '正在读取余额',
         empty: '余额 --',
@@ -279,6 +281,7 @@ export const messages = {
       empty: 'Generated files are saved here. View, download or continue editing anytime.',
       notConfigured: 'Work files are not configured yet.',
       fileFailed: 'The file changed or is unavailable. Refresh the list and open it again.',
+      retry: 'Retry',
       savedVersion: 'Saved version {n}',
       downloadFile: 'Download {path}',
       chooseFile: 'Choose file',
@@ -529,6 +532,7 @@ export const messages = {
       stop: 'Stop generation',
     },
     runtime: {
+      modelsLoading: 'Loading models…',
       balance: {
         loading: 'Loading balance',
         empty: 'Balance --',

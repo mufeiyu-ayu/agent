@@ -515,6 +515,7 @@ export const messages = {
       },
     },
     errors: {
+      requestPending: '操作正在进行，请稍后重试',
       invalidDate: '无效日期：{date}',
       apiUnavailable: '无法连接 Admin API。',
       invalidResponse: 'Admin API 返回了无效响应。',

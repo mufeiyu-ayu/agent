@@ -1,5 +1,6 @@
 import type { AdminRuntimeConfig, AdminRuntimeConfigInput } from '@agent/contracts'
 import { ref, shallowRef } from 'vue'
+import { i18n } from '@/i18n'
 
 import { formatAdminRunError } from '../shared/admin-api'
 import { fetchRuntimeConfig, updateRuntimeConfig } from './runtime-config-api'
@@ -53,6 +54,8 @@ export function createRuntimeConfigState() {
   const saving = ref(false)
 
   async function load() {
+    if (loading.value)
+      return
     loading.value = true
     error.value = ''
 
@@ -68,6 +71,8 @@ export function createRuntimeConfigState() {
   }
 
   async function save(form: RuntimeConfigForm) {
+    if (saving.value)
+      throw new Error(i18n.global.t('errors.requestPending'))
     saving.value = true
 
     try {

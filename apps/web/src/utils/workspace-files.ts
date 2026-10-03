@@ -6,9 +6,7 @@ export function workspaceArtifacts(run: TurnRun, currentFiles: WorkspaceFile[]):
   const saved = run.steps.filter(step => step.status !== 'running' && step.status !== 'stopped'
     && (step.workspace?.revision ?? 0) > 0 && Array.isArray(step.workspace?.files)).at(-1)?.workspace?.files ?? []
   const hashes = new Map(saved.map(file => [file.path, file.sha256]))
-  const files = currentFiles.filter(file => hashes.get(file.path) === file.sha256)
-  const pages = files.filter(file => file.path.toLowerCase().endsWith('.html'))
-  return pages.length ? pages : files
+  return currentFiles.filter(file => hashes.get(file.path) === file.sha256)
 }
 
 export function workspaceFileType(path: string) {

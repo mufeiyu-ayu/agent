@@ -44,10 +44,14 @@ function selectChat() {
 }
 
 function toggleMenu() {
+  if (props.chat.pending)
+    return
   menuOpen.value = !menuOpen.value
 }
 
 async function startRename() {
+  if (props.chat.pending)
+    return
   menuOpen.value = false
   editing.value = true
   titleDraft.value = props.chat.title
@@ -59,7 +63,7 @@ async function startRename() {
 }
 
 function submitRename() {
-  if (!editing.value)
+  if (!editing.value || props.chat.pending)
     return
 
   const nextTitle = titleDraft.value.trim()
@@ -80,6 +84,8 @@ function cancelRename() {
 }
 
 function deleteChat() {
+  if (props.chat.pending)
+    return
   menuOpen.value = false
   emit('deleteChat', props.chat.id)
 }
@@ -108,10 +114,12 @@ function deleteChat() {
       type="button"
       class="flex h-8 w-full min-w-0 items-center gap-2 rounded-lg px-2.5 pr-8 text-left text-[13px] font-normal transition focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-agent-focus/40"
       :class="chat.active ? 'text-agent-ink' : 'text-agent-ink-soft'"
-      :aria-busy="chat.running || undefined"
+      :aria-busy="chat.pending || chat.running || undefined"
       @click="selectChat"
     >
+      <AppIcon v-if="chat.pending" name="tabler:loader-2" :size="14" class="shrink-0 animate-spin motion-reduce:animate-none" aria-hidden="true" />
       <span
+        v-else
         class="size-2 shrink-0 rounded-full border"
         :class="chat.running
           ? 'border-transparent bg-agent-copper motion-safe:animate-[pulse-soft_2.4s_ease-in-out_infinite]'
@@ -130,6 +138,7 @@ function deleteChat() {
       <button
         v-if="!editing"
         type="button"
+        :disabled="chat.pending"
         :title="t('layout.sidebar.chatOptions')"
         :aria-label="t('layout.sidebar.chatOptions')"
         class="grid size-6 place-items-center rounded-md text-agent-ink-muted opacity-0 transition hover:bg-agent-surface-sunken hover:text-agent-ink focus:opacity-100 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-agent-focus/40 group-hover:opacity-100"

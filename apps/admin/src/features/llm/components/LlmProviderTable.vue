@@ -23,6 +23,7 @@ defineProps<{
   providers: AdminLlmProvider[]
   selectedId: string | null
   loading: boolean
+  pendingWrites: Set<string>
 }>()
 
 const emit = defineEmits<{
@@ -75,6 +76,7 @@ const { locale, t } = useI18n()
             <Tooltip :title="provider.enabled ? t('llmModels.statusEnabled') : t('llmModels.statusDisabled')">
               <Switch
                 :checked="provider.enabled"
+                :loading="pendingWrites.has(`provider:${provider.id}`)"
                 size="small"
                 @change="(checked) => emit('toggleEnabled', provider.id, Boolean(checked))"
               />
@@ -112,6 +114,7 @@ const { locale, t } = useI18n()
                 type="text"
                 size="small"
                 class="action-btn"
+                :disabled="pendingWrites.has(`provider:${provider.id}`)"
                 @click="emit('edit', provider)"
               >
                 <template #icon>
@@ -134,6 +137,7 @@ const { locale, t } = useI18n()
                   danger
                   size="small"
                   class="action-btn is-danger"
+                  :loading="pendingWrites.has(`provider:${provider.id}`)"
                 >
                   <template #icon>
                     <DeleteOutlined />

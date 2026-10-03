@@ -2,9 +2,10 @@
 import type { WorkspaceSnapshot } from '@agent/contracts'
 import { useElementSize } from '@vueuse/core'
 import { DialogClose, DialogContent, DialogPortal, DialogRoot, DialogTitle, DialogTrigger } from 'reka-ui'
-import { computed, onScopeDispose, reactive, ref, watch } from 'vue'
+import { computed, onScopeDispose, provide, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useCopyFeedback } from '../../hooks/useCopyFeedback'
+import { HTML_PREVIEW } from '../../hooks/useHtmlPreview'
 import { useWorkspaceTheme } from '../../hooks/useWorkspaceTheme'
 import { highlightCode } from '../../utils/code-highlighter'
 import { isPreviewableHtml } from '../../utils/html-preview'
@@ -12,6 +13,7 @@ import { FILE_CODE_LIMIT, fileFormatParser, formatFileCode, highlightedCodeLines
 import { workspaceFileTree, workspaceFileType } from '../../utils/workspace-files'
 import AppIcon from '../common/AppIcon.vue'
 import AppTooltip from '../common/AppTooltip.vue'
+import AgentMarkdownContent from './AgentMarkdownContent.vue'
 import HtmlPreviewPanel from './HtmlPreviewPanel.vue'
 
 const props = defineProps<{
@@ -20,11 +22,14 @@ const props = defineProps<{
   error: string
   conversationId: string | null
   readFile: (path: string, expectedSha256?: string) => Promise<{ bytes: Uint8Array, text: string }>
+  cachedFile: (path: string, expectedSha256?: string) => { bytes: Uint8Array, text: string } | undefined
   autoPreview?: boolean
 }>()
 const emit = defineEmits<{ close: [], refresh: [] }>()
 const { t } = useI18n()
 const { workspaceTheme } = useWorkspaceTheme()
+// 文件中的 Markdown 只阅读，不借用会关闭本面板的聊天 HTML 预览上下文。
+provide(HTML_PREVIEW, undefined)
 const { copied, copy } = useCopyFeedback()
 const panel = ref<HTMLElement | null>(null)
 const { width } = useElementSize(panel)
@@ -33,17 +38,21 @@ const selected = ref('')
 const code = ref('')
 const mode = ref<'code' | 'preview'>('code')
 const pending = ref(false)
+const contentLoading = computed(() => pending.value || (props.loading && !props.snapshot))
 const fileError = ref('')
 const search = ref('')
 const collapsed = reactive(new Set<string>())
 let request = 0
 let expectedSha256: string | undefined
+let shownSha256: string | undefined
+let pendingSha256: string | undefined
 const showEnvironment = ref(localStorage.getItem('kuro-show-environment') === 'true')
 watch(showEnvironment, value => localStorage.setItem('kuro-show-environment', String(value)))
 const stateLabel = computed(() => t(`workspace.states.${props.snapshot?.state ?? 'idle'}`))
 const totalBytes = computed(() => props.snapshot?.files.reduce((sum, file) => sum + file.bytes, 0) ?? 0)
 const previewable = computed(() => selected.value.toLowerCase().endsWith('.html') && isPreviewableHtml(code.value, 'html'))
 const fileType = computed(() => workspaceFileType(selected.value))
+const markdown = computed(() => fileType.value.language === 'markdown')
 const formattedCode = ref<string>()
 const formatting = ref(false)
 const formatError = ref('')
@@ -68,9 +77,37 @@ watch([code, selected], () => {
   formatError.value = ''
 })
 let autoPreviewed = false
-watch(() => props.snapshot?.files, (files) => {
-  const html = files?.find(file => file.path.toLowerCase().endsWith('.html'))
-  if (props.autoPreview !== false && html && !autoPreviewed && !selected.value) {
+watch([() => props.snapshot, () => props.loading, () => props.error], () => {
+  if (!props.snapshot) {
+    request++
+    selected.value = ''
+    code.value = ''
+    shownSha256 = undefined
+    pending.value = false
+    return
+  }
+  if (props.loading || props.error)
+    return
+  if (selected.value) {
+    const file = props.snapshot.files.find(file => file.path === selected.value)
+    if (file) {
+      // 未改的正文不重开，避免后台清单刷新抢走在途下载的请求序号。
+      if ((shownSha256 !== file.sha256 && (!pending.value || pendingSha256 !== file.sha256)) || fileError.value)
+        void open(selected.value, mode.value === 'preview', expectedSha256)
+    }
+    else {
+      request++
+      selected.value = ''
+      code.value = ''
+      shownSha256 = undefined
+      mode.value = 'code'
+      pending.value = false
+      fileError.value = ''
+    }
+    return
+  }
+  const html = props.snapshot.files.find(file => file.path.toLowerCase().endsWith('.html'))
+  if (props.autoPreview !== false && html && !autoPreviewed) {
     autoPreviewed = true
     void open(html.path, true)
   }
@@ -80,6 +117,7 @@ watch(() => props.conversationId, () => {
   request++
   autoPreviewed = false
   expectedSha256 = undefined
+  shownSha256 = undefined
   selected.value = ''
   code.value = ''
   mode.value = 'code'
@@ -88,22 +126,6 @@ watch(() => props.conversationId, () => {
   search.value = ''
   collapsed.clear()
 })
-watch(() => props.snapshot?.revision, (next, previous) => {
-  if (next === previous || previous === undefined || !selected.value)
-    return
-  if (props.snapshot?.files.some(file => file.path === selected.value)) {
-    void open(selected.value, mode.value === 'preview', expectedSha256)
-  }
-  else {
-    request++
-    selected.value = ''
-    code.value = ''
-    mode.value = 'code'
-    pending.value = false
-    fileError.value = ''
-  }
-})
-
 function toggleDirectory(path: string) {
   if (collapsed.has(path))
     collapsed.delete(path)
@@ -143,12 +165,18 @@ async function open(path: string, preview = false, sha256?: string) {
   expectedSha256 = sha256
   autoPreviewed = true
   // 先确定读取目标，版本变化时才能重读它；不能用上一次成功打开的文件抢回选择。
-  if (selected.value !== path) {
-    selected.value = path
+  const hash = props.snapshot?.files.find(file => file.path === path)?.sha256
+  const cached = props.cachedFile(path, sha256)
+  const alreadyShown = selected.value === path && shownSha256 !== undefined && shownSha256 === hash
+    && !props.error && (sha256 === undefined || sha256 === hash)
+  if (selected.value !== path || (!cached && !alreadyShown)) {
     code.value = ''
+    shownSha256 = undefined
   }
+  selected.value = path
   mode.value = preview && path.toLowerCase().endsWith('.html') ? 'preview' : 'code'
-  pending.value = true
+  pending.value = !cached && !alreadyShown
+  pendingSha256 = hash
   fileError.value = ''
   try {
     if (sha256 !== undefined && !props.snapshot?.files.some(file => file.path === path && file.sha256 === sha256)) {
@@ -157,9 +185,14 @@ async function open(path: string, preview = false, sha256?: string) {
       mode.value = 'code'
       throw new Error('交付文件内容已改变')
     }
-    const result = await props.readFile(path, sha256)
+    if (alreadyShown) {
+      mode.value = preview && previewable.value ? 'preview' : 'code'
+      return
+    }
+    const result = cached ?? await props.readFile(path, sha256)
     if (current !== request)
       return
+    shownSha256 = props.snapshot?.files.find(file => file.path === path)?.sha256
     code.value = result.text
     mode.value = preview && path.toLowerCase().endsWith('.html') && isPreviewableHtml(result.text, 'html') ? 'preview' : 'code'
   }
@@ -176,11 +209,16 @@ async function open(path: string, preview = false, sha256?: string) {
 defineExpose({ openFile: (path: string, sha256: string) => open(path, true, sha256) })
 
 async function download(path: string) {
+  if (pending.value || props.loading || props.error)
+    return
   const current = ++request
-  pending.value = true
+  const sha256 = path === selected.value ? expectedSha256 : undefined
+  const cached = props.cachedFile(path, sha256)
+  pending.value = !cached
+  pendingSha256 = props.snapshot?.files.find(file => file.path === path)?.sha256
   fileError.value = ''
   try {
-    const result = await props.readFile(path, path === selected.value ? expectedSha256 : undefined)
+    const result = cached ?? await props.readFile(path, sha256)
     if (current !== request)
       return
     const url = URL.createObjectURL(new Blob([result.bytes as Uint8Array<ArrayBuffer>], { type: 'application/octet-stream' }))
@@ -206,7 +244,7 @@ async function download(path: string) {
     <header class="file-toolbar">
       <div class="file-title" :title="selected || t('workspace.files')">
         <AppIcon :name="selected ? fileType.icon : 'vscode-icons:default-folder-opened'" :size="18" />
-        <select v-if="width < 620 && selected && (snapshot?.files.length ?? 0) > 1" :value="selected" :disabled="pending" :aria-label="t('workspace.chooseFile')" @change="open(($event.target as HTMLSelectElement).value, true)">
+        <select v-if="width < 620 && selected && (snapshot?.files.length ?? 0) > 1" :value="selected" :disabled="pending || loading || !!error" :aria-label="t('workspace.chooseFile')" @change="open(($event.target as HTMLSelectElement).value, true)">
           <option v-for="file in snapshot?.files" :key="file.path" :value="file.path">
             {{ file.path }}
           </option>
@@ -216,7 +254,7 @@ async function download(path: string) {
         </h2>
       </div>
       <div class="toolbar-actions">
-        <div v-if="selected" class="view-switch" :aria-label="t('workspace.viewMode')" role="group">
+        <div v-if="selected && !markdown" class="view-switch" :aria-label="t('workspace.viewMode')" role="group">
           <button :aria-pressed="mode === 'code'" @click="mode = 'code'">
             {{ t('workspace.code') }}
           </button>
@@ -230,11 +268,11 @@ async function download(path: string) {
           </button>
         </AppTooltip>
         <AppTooltip v-if="selected" :content="t('workspace.downloadFile', { path: selected })">
-          <button class="workspace-action" :disabled="pending" :aria-label="t('workspace.downloadFile', { path: selected })" @click="download(selected)">
+          <button class="workspace-action" :disabled="pending || loading || !!error" :aria-label="t('workspace.downloadFile', { path: selected })" @click="download(selected)">
             <AppIcon name="tabler:download" :size="17" />
           </button>
         </AppTooltip>
-        <DialogRoot v-if="previewable" v-model:open="expandedPreview">
+        <DialogRoot v-if="previewable && !error && !fileError" v-model:open="expandedPreview">
           <AppTooltip :content="t('workspace.expandPreview')">
             <DialogTrigger as-child>
               <button class="workspace-action" :disabled="pending" :aria-label="t('workspace.expandPreview')">
@@ -250,7 +288,7 @@ async function download(path: string) {
                   {{ selected.split('/').at(-1) }}
                 </DialogTitle>
                 <AppTooltip :content="t('workspace.downloadFile', { path: selected })">
-                  <button class="workspace-action" :disabled="pending" :aria-label="t('workspace.downloadFile', { path: selected })" @click="download(selected)">
+                  <button class="workspace-action" :disabled="pending || loading || !!error" :aria-label="t('workspace.downloadFile', { path: selected })" @click="download(selected)">
                     <AppIcon name="tabler:download" :size="17" />
                   </button>
                 </AppTooltip>
@@ -273,6 +311,9 @@ async function download(path: string) {
     </header>
     <p v-if="error || fileError || snapshot?.lastError" role="alert" class="workspace-error">
       {{ error || fileError || snapshot?.lastError }}
+      <button v-if="error || fileError" :disabled="pending || loading" class="underline" @click="error || !selected ? emit('refresh') : open(selected, mode === 'preview', expectedSha256)">
+        {{ t('workspace.retry') }}
+      </button>
     </p>
     <div class="workspace-body">
       <aside v-if="showTree" class="file-sidebar" :class="{ 'is-browser': !selected }" :aria-label="t('workspace.files')">
@@ -307,11 +348,11 @@ async function download(path: string) {
                 <span>{{ entry.name }}</span>
               </button>
               <template v-else>
-                <button class="tree-entry tree-file" :disabled="pending" :title="entry.path" :aria-label="entry.path" :aria-current="selected === entry.path ? 'true' : undefined" @click="open(entry.path, true)">
+                <button class="tree-entry tree-file" :disabled="pending || loading || !!error" :title="entry.path" :aria-label="entry.path" :aria-current="selected === entry.path ? 'true' : undefined" @click="open(entry.path, true)">
                   <AppIcon :name="workspaceFileType(entry.path).icon" :size="17" />
                   <span>{{ entry.name }}</span>
                 </button>
-                <button class="workspace-action tree-download" :disabled="pending" :aria-label="t('workspace.downloadFile', { path: entry.path })" @click="download(entry.path)">
+                <button class="workspace-action tree-download" :disabled="pending || loading || !!error" :aria-label="t('workspace.downloadFile', { path: entry.path })" @click="download(entry.path)">
                   <AppIcon name="tabler:download" :size="14" />
                 </button>
               </template>
@@ -319,9 +360,19 @@ async function download(path: string) {
           </template>
         </div>
       </aside>
-      <main v-if="selected || width >= 620" class="file-viewport">
-        <HtmlPreviewPanel v-if="mode === 'preview' && previewable" :code="code" :conversation-id="conversationId ?? undefined" interactive embedded @close="close" />
-        <div v-else-if="selected && mode === 'code'" class="source-panel">
+      <main v-if="selected || width >= 620" class="file-viewport" :aria-busy="contentLoading">
+        <div v-if="contentLoading" data-workspace-content-loading class="workspace-placeholder workspace-loading" role="status">
+          <div class="loading-balls" aria-hidden="true">
+            <span v-for="n in 3" :key="`circle-${n}`" class="loading-circle" />
+            <span v-for="n in 3" :key="`shadow-${n}`" class="loading-shadow" />
+          </div>
+          <span class="sr-only">{{ t('workspace.loading') }}</span>
+        </div>
+        <HtmlPreviewPanel v-if="!error && !fileError && mode === 'preview' && previewable" :inert="contentLoading || undefined" :code="code" :conversation-id="conversationId ?? undefined" interactive embedded @close="close" />
+        <div v-else-if="!error && !fileError && markdown" data-workspace-markdown :inert="contentLoading || undefined" class="markdown-preview">
+          <AgentMarkdownContent v-if="code" :key="selected" :text="code" />
+        </div>
+        <div v-else-if="!error && !fileError && selected && mode === 'code'" :inert="contentLoading || undefined" class="source-panel">
           <div class="source-header">
             <span>{{ fileType.label }} <span class="source-readonly">{{ t('workspace.readonly') }}</span></span>
             <div class="source-actions">
@@ -349,14 +400,14 @@ async function download(path: string) {
             <pre v-else class="source-plain"><code class="hljs" v-html="highlighted" /></pre>
           </div>
         </div>
-        <div v-else class="workspace-placeholder">
+        <div v-else-if="!contentLoading && !error && !fileError" class="workspace-placeholder">
           <AppIcon name="tabler:file-code" :size="28" /><p>{{ t('workspace.selectFile') }}</p>
         </div>
       </main>
     </div>
     <footer class="workspace-status">
       <span class="saved-version">{{ t('workspace.savedVersion', { n: snapshot?.revision ?? 0 }) }} · {{ (totalBytes / 1024).toFixed(1) }} KB</span>
-      <span v-if="pending" role="status" class="status-loading">{{ t('workspace.loading') }}</span>
+      <span v-if="pending" class="status-loading">{{ t('workspace.loading') }}</span>
       <AppTooltip :content="t('workspace.interactiveNotice')">
         <span class="isolation-icon" :aria-label="t('workspace.interactiveNotice')"><AppIcon name="tabler:shield-lock" :size="14" /></span>
       </AppTooltip>
@@ -402,8 +453,32 @@ async function download(path: string) {
 .tree-arrow { color: var(--agent-ink-faint); }
 .tree-download { width: 22px; height: 24px; opacity: 0; }
 .tree-row:hover .tree-download, .tree-row:focus-within .tree-download { opacity: 1; }
-.file-viewport { display: flex; flex: 1; min-width: 0; min-height: 0; flex-direction: column; overflow: hidden; }
+.file-viewport { position: relative; display: flex; flex: 1; min-width: 0; min-height: 0; flex-direction: column; overflow: hidden; }
 .workspace-placeholder { display: grid; flex: 1; align-content: center; justify-items: center; gap: 12px; padding: 24px; color: var(--agent-ink-muted); text-align: center; font-size: 13px; }
+.workspace-loading { --loading-cream: #c8a875; position: absolute; inset: 0; z-index: 1; background: var(--agent-canvas); }
+.markdown-preview { flex: 1; min-height: 0; overflow: auto; padding: 20px 24px; }
+.loading-balls { position: relative; z-index: 1; width: 200px; max-width: 100%; height: 60px; }
+.loading-circle { position: absolute; top: 0; left: 15%; width: 20px; height: 20px; border-radius: 50%; background: var(--loading-cream); box-shadow: inset 0 0 0 1px rgb(124 96 52 / 0.12); transform-origin: 50%; animation: workspace-loading-circle 0.5s alternate infinite ease; }
+.loading-circle:nth-child(2) { left: 45%; animation-delay: 0.2s; }
+.loading-circle:nth-child(3) { right: 15%; left: auto; animation-delay: 0.3s; }
+.loading-shadow { position: absolute; top: 62px; left: 15%; z-index: -1; width: 20px; height: 4px; border-radius: 50%; background: color-mix(in oklch, var(--loading-cream) 45%, transparent); filter: blur(1px); transform-origin: 50%; animation: workspace-loading-shadow 0.5s alternate infinite ease; }
+.loading-shadow:nth-child(5) { left: 45%; animation-delay: 0.2s; }
+.loading-shadow:nth-child(6) { right: 15%; left: auto; animation-delay: 0.3s; }
+@keyframes workspace-loading-circle {
+  0% { top: 60px; height: 5px; border-radius: 50px 50px 25px 25px; transform: scaleX(1.7); }
+  40% { height: 20px; border-radius: 50%; transform: scaleX(1); }
+  100% { top: 0; }
+}
+@keyframes workspace-loading-shadow {
+  0% { transform: scaleX(1.5); }
+  40% { transform: scaleX(1); opacity: 0.7; }
+  100% { transform: scaleX(0.2); opacity: 0.4; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .loading-circle, .loading-shadow { animation: none; }
+  .loading-circle { top: 20px; }
+  .loading-shadow { transform: scaleX(0.7); opacity: 0.4; }
+}
 .workspace-empty { padding: 16px 8px; color: var(--agent-ink-muted); font-size: 12px; line-height: 1.7; }
 .workspace-error { flex-shrink: 0; padding: 8px 12px; color: var(--agent-error); font-size: 12px; }
 .workspace-status { display: flex; flex-shrink: 0; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 6px 12px; border-top: 1px solid var(--agent-border-soft); background: var(--agent-surface); color: var(--agent-ink-muted); font-size: 11px; }

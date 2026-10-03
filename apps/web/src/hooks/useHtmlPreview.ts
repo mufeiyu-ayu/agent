@@ -11,7 +11,7 @@ interface HtmlPreviewContext {
   release: (source: () => string) => void
 }
 
-export const HTML_PREVIEW: InjectionKey<HtmlPreviewContext> = Symbol('html-preview')
+export const HTML_PREVIEW: InjectionKey<HtmlPreviewContext | undefined> = Symbol('html-preview')
 
 /** 工作区持有选择与打开状态，深层代码卡片只请求打开，不创建自己的预览。 */
 export function useHtmlPreview(conversationId: Ref<string | null>) {

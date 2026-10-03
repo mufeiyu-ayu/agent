@@ -62,6 +62,8 @@ interface ChatRequestState {
 interface UseChatWorkspaceOptions {
   /** 发送因模型行不可用被拒（HTTP 400）：由调用方重新拉取模型列表并纠正选中项。 */
   onModelUnavailable?: () => void
+  /** 只在后端确认删除后清理关联工作文件缓存。 */
+  onConversationDeleted?: (conversationId: string) => void
 }
 
 export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
@@ -70,12 +72,14 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
   const conversations = ref<Conversation[]>([])
   const activeConversationId = ref<string | null>(null)
   const messages = ref<ConversationMessage[]>([])
-  const isLoadingConversations = ref(false)
+  const loadingConversationList = ref(false)
   const isLoadingMoreConversations = ref(false)
   const isLoadingMessages = ref(false)
   const shouldAnchorLatestTurn = ref(false)
   const hasMoreConversations = ref(false)
   const conversationError = ref('')
+  const mutatingConversations = shallowReactive(new Map<string, 'rename' | 'delete'>())
+  const isLoadingConversations = computed(() => loadingConversationList.value || [...mutatingConversations.values()].includes('delete'))
   const localTurnErrors = ref<Record<string, string>>({})
   // 每轮的等待过程（#208），按助手消息 id 存在页面内存里；刷新后由消息的 activity 还原（#212）。
   const turnRuns = shallowRef<Record<string, TurnRun>>({})
@@ -121,6 +125,7 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
       title: conversation.title,
       active: conversation.id === activeConversationId.value,
       running: requests.get(conversation.id)?.active ?? false,
+      pending: mutatingConversations.has(conversation.id),
     }))
   })
 
@@ -180,11 +185,11 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
 
   async function deleteConversationById(conversationId: string) {
     // 保留原有生成中禁止删除的边界，包括当前没在看的请求。
-    if ([...requests.values()].some(request => request.active))
+    if (mutatingConversations.has(conversationId) || [...requests.values()].some(request => request.active))
       return
 
+    mutatingConversations.set(conversationId, 'delete')
     try {
-      isLoadingConversations.value = true
       conversationError.value = ''
 
       await deleteConversation(conversationId)
@@ -197,6 +202,7 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
       conversationMessagesCache.delete(conversationId)
       conversationMessagesVersion.delete(conversationId)
       requests.delete(conversationId)
+      options.onConversationDeleted?.(conversationId)
 
       const nextConversations = conversations.value.filter(item => item.id !== conversationId)
 
@@ -220,16 +226,17 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
       handleWorkspaceError(error)
     }
     finally {
-      isLoadingConversations.value = false
+      mutatingConversations.delete(conversationId)
     }
   }
 
   async function renameConversationById(conversationId: string, title: string) {
     const nextTitle = title.trim()
 
-    if (!nextTitle)
+    if (!nextTitle || mutatingConversations.has(conversationId))
       return
 
+    mutatingConversations.set(conversationId, 'rename')
     try {
       conversationError.value = ''
 
@@ -241,6 +248,9 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
     }
     catch (error) {
       handleWorkspaceError(error)
+    }
+    finally {
+      mutatingConversations.delete(conversationId)
     }
   }
 
@@ -458,7 +468,7 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
 
   async function loadConversationList() {
     try {
-      isLoadingConversations.value = true
+      loadingConversationList.value = true
       conversationError.value = ''
 
       const response = await listConversations({
@@ -473,7 +483,7 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
       handleWorkspaceError(error)
     }
     finally {
-      isLoadingConversations.value = false
+      loadingConversationList.value = false
     }
   }
 

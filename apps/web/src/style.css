@@ -5,7 +5,7 @@
 
 @import "tw-animate-css";
 
-@custom-variant dark (&:is(.dark *));
+@custom-variant dark (&:is(.dark *, [data-agent-workspace-theme='olive-ember'] *, [data-agent-workspace-theme='olive-ember']));
 
 :root {
   color: oklch(0.190 0.018 65);

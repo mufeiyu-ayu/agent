@@ -75,6 +75,8 @@ async function run(action: () => Promise<void>, successKey: string) {
 
 /** 通过待审核 / 启用 → ACTIVE；拒绝待审核 / 停用 → DISABLED。 */
 function setStatus(user: AdminUser, status: Exclude<UserStatus, 'PENDING'>) {
+  if (state.pendingUserIds.value.has(user.id))
+    return
   const successKey = user.status === 'PENDING'
     ? status === 'ACTIVE' ? 'users.approved' : 'users.rejected'
     : status === 'ACTIVE' ? 'users.enabled' : 'users.disabled'
@@ -82,6 +84,8 @@ function setStatus(user: AdminUser, status: Exclude<UserStatus, 'PENDING'>) {
 }
 
 function changeRole(user: AdminUser, role: UserRole) {
+  if (state.pendingUserIds.value.has(user.id))
+    return
   void run(() => state.update(user.id, { role }), 'users.roleChanged')
 }
 
@@ -100,8 +104,16 @@ function openCreate() {
   createOpen.value = true
 }
 
+const validatingCreate = ref(false)
+const creating = computed(() => validatingCreate.value || state.creating.value)
+
 async function submitCreate() {
-  if (!await isValid(createFormRef.value))
+  if (creating.value)
+    return
+  validatingCreate.value = true
+  const valid = await isValid(createFormRef.value)
+  validatingCreate.value = false
+  if (!valid)
     return
 
   await run(async () => {
@@ -118,13 +130,19 @@ function openReset(user: AdminUser) {
   resetTarget.value = user
 }
 
+const validatingReset = ref(false)
+const resetting = computed(() => validatingReset.value || (resetTarget.value !== null && state.pendingUserIds.value.has(resetTarget.value.id)))
+
 async function submitReset() {
   const target = resetTarget.value
 
-  if (!target)
+  if (!target || resetting.value)
     return
 
-  if (!await isValid(resetFormRef.value))
+  validatingReset.value = true
+  const valid = await isValid(resetFormRef.value)
+  validatingReset.value = false
+  if (!valid)
     return
 
   await run(async () => {
@@ -181,11 +199,11 @@ async function submitReset() {
           </Button>
           <!-- 待审核只给通过 / 拒绝；拒绝后该邮箱不能再申请，管理员之后可手动启用。 -->
           <Space v-if="record.status === 'PENDING'">
-            <Button size="small" type="primary" :disabled="state.submitting.value" @click="setStatus(record, 'ACTIVE')">
+            <Button size="small" type="primary" :loading="state.pendingUserIds.value.has(record.id)" @click="setStatus(record, 'ACTIVE')">
               {{ t('users.approve') }}
             </Button>
             <Popconfirm :title="t('users.confirmReject', { email: record.email })" @confirm="setStatus(record, 'DISABLED')">
-              <Button size="small" danger :disabled="state.submitting.value">
+              <Button size="small" danger :loading="state.pendingUserIds.value.has(record.id)">
                 {{ t('users.reject') }}
               </Button>
             </Popconfirm>
@@ -195,20 +213,21 @@ async function submitReset() {
             <Select
               size="small"
               :value="record.role"
+              :loading="state.pendingUserIds.value.has(record.id)"
               :options="roleOptions"
-              :disabled="state.submitting.value"
+              :disabled="state.pendingUserIds.value.has(record.id)"
               :aria-label="t('users.columns.role')"
               class="users-role"
               @change="changeRole(record, $event as UserRole)"
             />
-            <Button size="small" :disabled="state.submitting.value" @click="openReset(record)">
+            <Button size="small" :disabled="state.pendingUserIds.value.has(record.id)" @click="openReset(record)">
               {{ t('users.resetPassword') }}
             </Button>
             <Popconfirm
               :title="t(record.status === 'DISABLED' ? 'users.confirmEnable' : 'users.confirmDisable', { email: record.email })"
               @confirm="setStatus(record, record.status === 'DISABLED' ? 'ACTIVE' : 'DISABLED')"
             >
-              <Button size="small" :danger="record.status !== 'DISABLED'" :disabled="state.submitting.value">
+              <Button size="small" :danger="record.status !== 'DISABLED'" :loading="state.pendingUserIds.value.has(record.id)">
                 {{ t(record.status === 'DISABLED' ? 'users.enable' : 'users.disable') }}
               </Button>
             </Popconfirm>
@@ -220,12 +239,16 @@ async function submitReset() {
     <Modal
       v-model:open="createOpen"
       :title="t('users.create')"
-      :confirm-loading="state.submitting.value"
+      :confirm-loading="creating"
+      :closable="!creating"
+      :mask-closable="!creating"
+      :keyboard="!creating"
+      :cancel-button-props="{ disabled: creating }"
       :ok-text="t('users.create')"
       destroy-on-close
       @ok="submitCreate"
     >
-      <Form ref="createFormRef" layout="vertical" :model="createForm">
+      <Form ref="createFormRef" :disabled="creating" layout="vertical" :model="createForm">
         <FormItem :label="t('users.columns.email')" name="email" :rules="[{ required: true, type: 'email', message: t('users.emailInvalid') }]">
           <Input v-model:value="createForm.email" type="email" autocomplete="off" />
         </FormItem>
@@ -241,12 +264,16 @@ async function submitReset() {
     <Modal
       :open="resetTarget !== null"
       :title="t('users.resetPasswordFor', { email: resetTarget?.email ?? '' })"
-      :confirm-loading="state.submitting.value"
+      :confirm-loading="resetting"
+      :closable="!resetting"
+      :mask-closable="!resetting"
+      :keyboard="!resetting"
+      :cancel-button-props="{ disabled: resetting }"
       destroy-on-close
       @ok="submitReset"
       @cancel="resetTarget = null"
     >
-      <Form ref="resetFormRef" layout="vertical" :model="resetForm">
+      <Form ref="resetFormRef" :disabled="resetting" layout="vertical" :model="resetForm">
         <FormItem :label="t('users.temporaryPassword')" name="password" :rules="passwordRules" :extra="t('users.initialPasswordHint')">
           <InputPassword v-model:value="resetForm.password" autocomplete="new-password" />
         </FormItem>

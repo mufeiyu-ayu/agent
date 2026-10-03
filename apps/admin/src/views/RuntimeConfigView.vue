@@ -81,15 +81,21 @@ onMounted(() => {
   void state.load()
 })
 
+const validating = ref(false)
+
 async function save() {
-  if (!dirty.value || state.saving.value)
+  if (!dirty.value || validating.value || state.saving.value)
     return
 
+  validating.value = true
   try {
     await formRef.value?.validate()
   }
   catch {
     return
+  }
+  finally {
+    validating.value = false
   }
 
   try {
@@ -108,7 +114,7 @@ async function save() {
       <template #actions>
         <Button
           type="primary"
-          :loading="state.saving.value"
+          :loading="validating || state.saving.value"
           :disabled="!dirty"
           @click="save"
         >

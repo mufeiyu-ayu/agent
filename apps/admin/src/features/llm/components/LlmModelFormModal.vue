@@ -130,12 +130,21 @@ watch(
   { immediate: true },
 )
 
+const validating = ref(false)
+const busy = computed(() => validating.value || props.submitting)
+
 async function handleOk() {
+  if (busy.value)
+    return
+  validating.value = true
   try {
     await formRef.value?.validate()
   }
   catch {
     return
+  }
+  finally {
+    validating.value = false
   }
 
   const input: AdminLlmModelInput = {
@@ -158,7 +167,11 @@ async function handleOk() {
   <Modal
     :open="open"
     :title="t('llmModels.models.edit')"
-    :confirm-loading="submitting"
+    :confirm-loading="busy"
+    :closable="!busy"
+    :mask-closable="!busy"
+    :keyboard="!busy"
+    :cancel-button-props="{ disabled: busy }"
     :ok-text="t('llmModels.actions.confirm')"
     :cancel-text="t('llmModels.actions.cancel')"
     :width="520"
@@ -170,6 +183,7 @@ async function handleOk() {
     <Form
       ref="formRef"
       :model="formState"
+      :disabled="busy"
       :rules="rules"
       layout="vertical"
       class="model-form"

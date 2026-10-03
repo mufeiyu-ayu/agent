@@ -18,6 +18,7 @@ import { useAutosizeTextarea } from '@/hooks/useAutosizeTextarea'
 const props = defineProps<{
   message: string
   models: LlmModelOption[]
+  modelsLoading: boolean
   selectedModel: string | null
   selectedReasoningEffort: ReasoningEffort | null
   /** 模型列表读取失败时的提示。 */
@@ -197,6 +198,7 @@ function updateMessage(value: string | number) {
           </span>
           <ChatModelMenu
             :models="models"
+            :models-loading="modelsLoading"
             :selected-model="selectedModel"
             :selected-reasoning-effort="selectedReasoningEffort"
             @update:selected-model="emit('update:selectedModel', $event)"
@@ -242,6 +244,7 @@ function updateMessage(value: string | number) {
           <ChatModelMenu
             compact
             :models="models"
+            :models-loading="modelsLoading"
             :selected-model="selectedModel"
             :selected-reasoning-effort="selectedReasoningEffort"
             @update:selected-model="emit('update:selectedModel', $event)"

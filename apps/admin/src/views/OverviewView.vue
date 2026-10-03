@@ -79,7 +79,7 @@ function openFailureReason(errorCode: AgentRunErrorCode) {
         </span>
       </div>
       <div class="overview-toolbar__right">
-        <Button size="small" type="text" :loading="statsLoading" @click="refresh">
+        <Button size="small" type="text" :loading="statsLoading || balanceLoading" @click="refresh">
           <template #icon>
             <ReloadOutlined />
           </template>
