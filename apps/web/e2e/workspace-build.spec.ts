@@ -986,7 +986,8 @@ test('清单只更新 revision 或状态时，不打断另一个未读文件的�
   revision = 2
   await panel.getByRole('button', { name: '刷新文件', exact: true }).click()
   await expect(panel.getByText(/已保存版本 2/)).toBeVisible()
-  await expect(panel.locator('.file-viewport')).toHaveAttribute('aria-busy', 'true')
+  await expect(panel.locator('.file-viewport')).toHaveAttribute('aria-busy', 'false')
+  await expect(panel.locator('[data-workspace-download-loading]')).toContainText('b.txt')
   await finish()
   assert.equal(await readFile((await (await download).path())!, 'utf8'), '下载 B')
   await expect(panel.locator('.file-viewport')).toHaveAttribute('aria-busy', 'false')

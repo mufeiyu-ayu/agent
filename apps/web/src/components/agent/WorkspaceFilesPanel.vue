@@ -37,12 +37,18 @@ const expandedPreview = ref(false)
 const selected = ref('')
 const code = ref('')
 const mode = ref<'code' | 'preview'>('code')
-const pending = ref(false)
-const contentLoading = computed(() => pending.value || (props.loading && !props.snapshot))
-const fileError = ref('')
+const previewPending = ref(false)
+const contentLoading = computed(() => previewPending.value || (props.loading && !props.snapshot))
+const previewError = ref('')
+const downloadPending = ref(false)
+const downloadTarget = ref<{ path: string, sha256: string }>()
+const downloadError = ref(false)
+const downloadChanged = computed(() => !!downloadTarget.value && !props.snapshot?.files.some(file => file.path === downloadTarget.value!.path && file.sha256 === downloadTarget.value!.sha256))
+const downloadErrorText = computed(() => downloadTarget.value ? t(downloadChanged.value ? 'workspace.downloadChanged' : 'workspace.downloadFailed', { path: downloadTarget.value.path }) : '')
 const search = ref('')
 const collapsed = reactive(new Set<string>())
-let request = 0
+let previewRequest = 0
+let downloadRequest = 0
 let expectedSha256: string | undefined
 let shownSha256: string | undefined
 let pendingSha256: string | undefined
@@ -59,9 +65,17 @@ const formatError = ref('')
 const wrapLines = ref(false)
 let formatRequest = 0
 onScopeDispose(() => {
-  request++
+  previewRequest++
+  resetDownload()
   formatRequest++
 })
+
+function resetDownload() {
+  downloadRequest++
+  downloadPending.value = false
+  downloadTarget.value = undefined
+  downloadError.value = false
+}
 const displayedCode = computed(() => formattedCode.value ?? code.value)
 const highlighted = computed(() => highlightCode(displayedCode.value, fileType.value.language, FILE_CODE_LIMIT))
 // ponytail: 超过 5000 行退回完整 pre，避免为大文件创建数万个节点；需要大文件编辑时换虚拟化编辑器。
@@ -79,12 +93,19 @@ watch([code, selected], () => {
 let autoPreviewed = false
 watch([() => props.snapshot, () => props.loading, () => props.error], () => {
   if (!props.snapshot) {
-    request++
+    previewRequest++
     selected.value = ''
     code.value = ''
     shownSha256 = undefined
-    pending.value = false
+    previewPending.value = false
+    resetDownload()
     return
+  }
+  if (downloadPending.value && downloadChanged.value) {
+    // 只失效下载自己的身份；A 更新/删除不影响仍有效的 B。
+    downloadRequest++
+    downloadPending.value = false
+    downloadError.value = true
   }
   if (props.loading || props.error)
     return
@@ -92,17 +113,17 @@ watch([() => props.snapshot, () => props.loading, () => props.error], () => {
     const file = props.snapshot.files.find(file => file.path === selected.value)
     if (file) {
       // 未改的正文不重开，避免后台清单刷新抢走在途下载的请求序号。
-      if ((shownSha256 !== file.sha256 && (!pending.value || pendingSha256 !== file.sha256)) || fileError.value)
+      if ((shownSha256 !== file.sha256 && (!previewPending.value || pendingSha256 !== file.sha256)) || previewError.value)
         void open(selected.value, mode.value === 'preview', expectedSha256)
     }
     else {
-      request++
+      previewRequest++
       selected.value = ''
       code.value = ''
       shownSha256 = undefined
       mode.value = 'code'
-      pending.value = false
-      fileError.value = ''
+      previewPending.value = false
+      previewError.value = ''
     }
     return
   }
@@ -114,15 +135,16 @@ watch([() => props.snapshot, () => props.loading, () => props.error], () => {
 }, { immediate: true })
 
 watch(() => props.conversationId, () => {
-  request++
+  previewRequest++
+  resetDownload()
   autoPreviewed = false
   expectedSha256 = undefined
   shownSha256 = undefined
   selected.value = ''
   code.value = ''
   mode.value = 'code'
-  pending.value = false
-  fileError.value = ''
+  previewPending.value = false
+  previewError.value = ''
   search.value = ''
   collapsed.clear()
 })
@@ -157,11 +179,14 @@ async function toggleFormat() {
 }
 
 function close() {
+  previewRequest++
+  previewPending.value = false
+  resetDownload()
   emit('close')
 }
 
 async function open(path: string, preview = false, sha256?: string) {
-  const current = ++request
+  const current = ++previewRequest
   expectedSha256 = sha256
   autoPreviewed = true
   // 先确定读取目标，版本变化时才能重读它；不能用上一次成功打开的文件抢回选择。
@@ -175,9 +200,9 @@ async function open(path: string, preview = false, sha256?: string) {
   }
   selected.value = path
   mode.value = preview && path.toLowerCase().endsWith('.html') ? 'preview' : 'code'
-  pending.value = !cached && !alreadyShown
+  previewPending.value = !cached && !alreadyShown
   pendingSha256 = hash
-  fileError.value = ''
+  previewError.value = ''
   try {
     if (sha256 !== undefined && !props.snapshot?.files.some(file => file.path === path && file.sha256 === sha256)) {
       code.value = ''
@@ -190,52 +215,64 @@ async function open(path: string, preview = false, sha256?: string) {
       return
     }
     const result = cached ?? await props.readFile(path, sha256)
-    if (current !== request)
+    if (current !== previewRequest)
       return
     shownSha256 = props.snapshot?.files.find(file => file.path === path)?.sha256
     code.value = result.text
     mode.value = preview && path.toLowerCase().endsWith('.html') && isPreviewableHtml(result.text, 'html') ? 'preview' : 'code'
   }
   catch {
-    if (current === request)
-      fileError.value = t('workspace.fileFailed')
+    if (current === previewRequest)
+      previewError.value = t('workspace.fileFailed')
   }
   finally {
-    if (current === request)
-      pending.value = false
+    if (current === previewRequest)
+      previewPending.value = false
   }
 }
 
 defineExpose({ openFile: (path: string, sha256: string) => open(path, true, sha256) })
 
-async function download(path: string) {
-  if (pending.value || props.loading || props.error)
+async function download(path: string, sha256?: string) {
+  if (downloadPending.value || props.loading || props.error)
     return
-  const current = ++request
-  const sha256 = path === selected.value ? expectedSha256 : undefined
-  const cached = props.cachedFile(path, sha256)
-  pending.value = !cached
-  pendingSha256 = props.snapshot?.files.find(file => file.path === path)?.sha256
-  fileError.value = ''
+  const current = ++downloadRequest
+  // 重试固定失败下载的 path + SHA，不从当前预览选择重新推导身份。
+  const target = { path, sha256: sha256 ?? (path === selected.value ? expectedSha256 : undefined) ?? props.snapshot?.files.find(file => file.path === path)?.sha256 ?? '' }
+  downloadTarget.value = target
+  downloadError.value = false
+  const cached = props.cachedFile(path, target.sha256)
+  downloadPending.value = !cached
   try {
-    const result = cached ?? await props.readFile(path, sha256)
-    if (current !== request)
+    if (downloadChanged.value)
+      throw new Error('下载文件身份已失效')
+    const result = cached ?? await props.readFile(path, target.sha256)
+    if (current !== downloadRequest)
       return
+    if (props.error || downloadChanged.value)
+      throw new Error('下载文件尚未确认或已失效')
     const url = URL.createObjectURL(new Blob([result.bytes as Uint8Array<ArrayBuffer>], { type: 'application/octet-stream' }))
     const link = document.createElement('a')
     link.href = url
     link.download = path.split('/').at(-1) ?? 'file'
     link.click()
     setTimeout(() => URL.revokeObjectURL(url), 1000)
+    downloadTarget.value = undefined
   }
   catch {
-    if (current === request)
-      fileError.value = t('workspace.fileFailed')
+    if (current === downloadRequest)
+      downloadError.value = true
   }
   finally {
-    if (current === request)
-      pending.value = false
+    if (current === downloadRequest)
+      downloadPending.value = false
   }
+}
+
+function retryDownload() {
+  const target = downloadTarget.value
+  if (target)
+    void download(target.path, target.sha256)
 }
 </script>
 
@@ -244,7 +281,7 @@ async function download(path: string) {
     <header class="file-toolbar">
       <div class="file-title" :title="selected || t('workspace.files')">
         <AppIcon :name="selected ? fileType.icon : 'vscode-icons:default-folder-opened'" :size="18" />
-        <select v-if="width < 620 && selected && (snapshot?.files.length ?? 0) > 1" :value="selected" :disabled="pending || loading || !!error" :aria-label="t('workspace.chooseFile')" @change="open(($event.target as HTMLSelectElement).value, true)">
+        <select v-if="width < 620 && selected && (snapshot?.files.length ?? 0) > 1" :value="selected" :disabled="previewPending || loading || !!error" :aria-label="t('workspace.chooseFile')" @change="open(($event.target as HTMLSelectElement).value, true)">
           <option v-for="file in snapshot?.files" :key="file.path" :value="file.path">
             {{ file.path }}
           </option>
@@ -268,14 +305,14 @@ async function download(path: string) {
           </button>
         </AppTooltip>
         <AppTooltip v-if="selected" :content="t('workspace.downloadFile', { path: selected })">
-          <button class="workspace-action" :disabled="pending || loading || !!error" :aria-label="t('workspace.downloadFile', { path: selected })" @click="download(selected)">
-            <AppIcon name="tabler:download" :size="17" />
+          <button class="workspace-action" :disabled="downloadPending || loading || !!error" :aria-busy="downloadPending && downloadTarget?.path === selected" :aria-label="t('workspace.downloadFile', { path: selected })" @click="download(selected)">
+            <AppIcon :name="downloadPending && downloadTarget?.path === selected ? 'tabler:loader-2' : 'tabler:download'" :size="17" :class="{ 'animate-spin motion-reduce:animate-none': downloadPending && downloadTarget?.path === selected }" />
           </button>
         </AppTooltip>
-        <DialogRoot v-if="previewable && !error && !fileError" v-model:open="expandedPreview">
+        <DialogRoot v-if="previewable && !error && !previewError" v-model:open="expandedPreview">
           <AppTooltip :content="t('workspace.expandPreview')">
             <DialogTrigger as-child>
-              <button class="workspace-action" :disabled="pending" :aria-label="t('workspace.expandPreview')">
+              <button class="workspace-action" :disabled="previewPending" :aria-label="t('workspace.expandPreview')">
                 <AppIcon name="tabler:maximize" :size="16" />
               </button>
             </DialogTrigger>
@@ -288,8 +325,8 @@ async function download(path: string) {
                   {{ selected.split('/').at(-1) }}
                 </DialogTitle>
                 <AppTooltip :content="t('workspace.downloadFile', { path: selected })">
-                  <button class="workspace-action" :disabled="pending || loading || !!error" :aria-label="t('workspace.downloadFile', { path: selected })" @click="download(selected)">
-                    <AppIcon name="tabler:download" :size="17" />
+                  <button class="workspace-action" :disabled="downloadPending || loading || !!error" :aria-busy="downloadPending && downloadTarget?.path === selected" :aria-label="t('workspace.downloadFile', { path: selected })" @click="download(selected)">
+                    <AppIcon :name="downloadPending && downloadTarget?.path === selected ? 'tabler:loader-2' : 'tabler:download'" :size="17" :class="{ 'animate-spin motion-reduce:animate-none': downloadPending && downloadTarget?.path === selected }" />
                   </button>
                 </AppTooltip>
                 <AppTooltip :content="t('workspace.closeExpandedPreview')">
@@ -298,6 +335,15 @@ async function download(path: string) {
                   </DialogClose>
                 </AppTooltip>
               </header>
+              <p v-if="downloadPending && downloadTarget" data-workspace-download-loading role="status" class="shrink-0 truncate px-3 py-2 text-xs text-agent-ink-muted">
+                {{ t('workspace.downloading', { path: downloadTarget.path }) }}
+              </p>
+              <p v-if="downloadError" data-workspace-download-error role="alert" class="workspace-error">
+                {{ downloadErrorText }}
+                <button :disabled="downloadPending || loading || !!error" class="underline" @click="retryDownload">
+                  {{ t('workspace.retryDownload', { path: downloadTarget?.path }) }}
+                </button>
+              </p>
               <HtmlPreviewPanel :code="code" :conversation-id="conversationId ?? undefined" interactive embedded @close="expandedPreview = false" />
             </DialogContent>
           </DialogPortal>
@@ -309,10 +355,16 @@ async function download(path: string) {
         </AppTooltip>
       </div>
     </header>
-    <p v-if="error || fileError || snapshot?.lastError" role="alert" class="workspace-error">
-      {{ error || fileError || snapshot?.lastError }}
-      <button v-if="error || fileError" :disabled="pending || loading" class="underline" @click="error || !selected ? emit('refresh') : open(selected, mode === 'preview', expectedSha256)">
+    <p v-if="error || previewError || snapshot?.lastError" data-workspace-preview-error role="alert" class="workspace-error">
+      {{ error || previewError || snapshot?.lastError }}
+      <button v-if="error || previewError" :disabled="previewPending || loading" class="underline" @click="error || !selected ? emit('refresh') : open(selected, mode === 'preview', expectedSha256)">
         {{ t('workspace.retry') }}
+      </button>
+    </p>
+    <p v-if="downloadError" data-workspace-download-error role="alert" class="workspace-error">
+      {{ downloadErrorText }}
+      <button :disabled="downloadPending || loading || !!error" class="underline" @click="retryDownload">
+        {{ t('workspace.retryDownload', { path: downloadTarget?.path }) }}
       </button>
     </p>
     <div class="workspace-body">
@@ -348,12 +400,12 @@ async function download(path: string) {
                 <span>{{ entry.name }}</span>
               </button>
               <template v-else>
-                <button class="tree-entry tree-file" :disabled="pending || loading || !!error" :title="entry.path" :aria-label="entry.path" :aria-current="selected === entry.path ? 'true' : undefined" @click="open(entry.path, true)">
+                <button class="tree-entry tree-file" :disabled="previewPending || loading || !!error" :title="entry.path" :aria-label="entry.path" :aria-current="selected === entry.path ? 'true' : undefined" @click="open(entry.path, true)">
                   <AppIcon :name="workspaceFileType(entry.path).icon" :size="17" />
                   <span>{{ entry.name }}</span>
                 </button>
-                <button class="workspace-action tree-download" :disabled="pending || loading || !!error" :aria-label="t('workspace.downloadFile', { path: entry.path })" @click="download(entry.path)">
-                  <AppIcon name="tabler:download" :size="14" />
+                <button class="workspace-action tree-download" :disabled="downloadPending || loading || !!error" :aria-busy="downloadPending && downloadTarget?.path === entry.path" :aria-label="t('workspace.downloadFile', { path: entry.path })" @click="download(entry.path)">
+                  <AppIcon :name="downloadPending && downloadTarget?.path === entry.path ? 'tabler:loader-2' : 'tabler:download'" :size="14" :class="{ 'animate-spin motion-reduce:animate-none': downloadPending && downloadTarget?.path === entry.path }" />
                 </button>
               </template>
             </div>
@@ -368,11 +420,11 @@ async function download(path: string) {
           </div>
           <span class="sr-only">{{ t('workspace.loading') }}</span>
         </div>
-        <HtmlPreviewPanel v-if="!error && !fileError && mode === 'preview' && previewable" :inert="contentLoading || undefined" :code="code" :conversation-id="conversationId ?? undefined" interactive embedded @close="close" />
-        <div v-else-if="!error && !fileError && markdown" data-workspace-markdown :inert="contentLoading || undefined" class="markdown-preview">
+        <HtmlPreviewPanel v-if="!error && !previewError && mode === 'preview' && previewable" :inert="contentLoading || undefined" :code="code" :conversation-id="conversationId ?? undefined" interactive embedded @close="close" />
+        <div v-else-if="!error && !previewError && markdown" data-workspace-markdown :inert="contentLoading || undefined" class="markdown-preview">
           <AgentMarkdownContent v-if="code" :key="selected" :text="code" />
         </div>
-        <div v-else-if="!error && !fileError && selected && mode === 'code'" :inert="contentLoading || undefined" class="source-panel">
+        <div v-else-if="!error && !previewError && selected && mode === 'code'" :inert="contentLoading || undefined" class="source-panel">
           <div class="source-header">
             <span>{{ fileType.label }} <span class="source-readonly">{{ t('workspace.readonly') }}</span></span>
             <div class="source-actions">
@@ -400,14 +452,15 @@ async function download(path: string) {
             <pre v-else class="source-plain"><code class="hljs" v-html="highlighted" /></pre>
           </div>
         </div>
-        <div v-else-if="!contentLoading && !error && !fileError" class="workspace-placeholder">
+        <div v-else-if="!contentLoading && !error && !previewError" class="workspace-placeholder">
           <AppIcon name="tabler:file-code" :size="28" /><p>{{ t('workspace.selectFile') }}</p>
         </div>
       </main>
     </div>
     <footer class="workspace-status">
       <span class="saved-version">{{ t('workspace.savedVersion', { n: snapshot?.revision ?? 0 }) }} · {{ (totalBytes / 1024).toFixed(1) }} KB</span>
-      <span v-if="pending" class="status-loading">{{ t('workspace.loading') }}</span>
+      <span v-if="previewPending" class="status-loading">{{ t('workspace.loading') }}</span>
+      <span v-if="downloadPending && downloadTarget" data-workspace-download-loading role="status" class="status-loading truncate" :title="downloadTarget.path">{{ t('workspace.downloading', { path: downloadTarget.path }) }}</span>
       <AppTooltip :content="t('workspace.interactiveNotice')">
         <span class="isolation-icon" :aria-label="t('workspace.interactiveNotice')"><AppIcon name="tabler:shield-lock" :size="14" /></span>
       </AppTooltip>
