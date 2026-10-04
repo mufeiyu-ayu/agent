@@ -142,7 +142,7 @@ abstract class WorkspaceTool<T extends { path?: string, command?: string, title?
                 exitCode: data.exitCode,
                 stderr: boundedOutput(String(data.stderr ?? '')),
                 stdout: boundedOutput(String(data.stdout ?? '')),
-                truncated: data.truncated,
+                truncated: data.truncated === true || String(data.stdout ?? '').length > 12_000 || String(data.stderr ?? '').length > 12_000,
               }
             : data),
           ...(commit ? { saved: true, revision: commit.expectedRevision + 1, files: files?.slice(0, 20) } : {}),
