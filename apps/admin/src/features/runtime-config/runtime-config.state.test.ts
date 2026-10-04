@@ -1,8 +1,8 @@
 import type { AdminRuntimeConfig } from '@agent/contracts'
 import assert from 'node:assert/strict'
-import { describe, it } from 'vitest'
+import { describe, it, onTestFinished, vi } from 'vitest'
 
-import { isRuntimeConfigDirty, toRuntimeConfigForm, toRuntimeConfigInput } from './runtime-config.state'
+import { createRuntimeConfigState, isRuntimeConfigDirty, toRuntimeConfigForm, toRuntimeConfigInput } from './runtime-config.state'
 
 const CONFIG: AdminRuntimeConfig = {
   runDeadlineMs: 600_000,
@@ -37,4 +37,44 @@ describe('运行配置表单映射', () => {
     assert.equal(isRuntimeConfigDirty({ ...form, compactionKeepRecentTokens: 15_000 }, CONFIG), true)
     assert.equal(isRuntimeConfigDirty({ ...form, debugCaptureModelIo: true }, CONFIG), true)
   })
+})
+
+it('加载与保存各自防重复，失败后复位并可重试，保存仍映射为毫秒且不回填密钥', async () => {
+  const requests: { method: string, body: unknown, resolve: (response: Response) => void }[] = []
+  const fetch = vi.spyOn(globalThis, 'fetch').mockImplementation((_url, init) => new Promise<Response>((resolve) => {
+    requests.push({ method: init!.method!, body: init?.body ? JSON.parse(String(init.body)) : undefined, resolve })
+  }))
+  onTestFinished(() => fetch.mockRestore())
+  const state = createRuntimeConfigState()
+  const respond = (index: number, status: number) => requests[index]!.resolve(new Response(JSON.stringify({
+    success: status === 200,
+    data: CONFIG,
+    message: '保存失败',
+  }), { status }))
+
+  const load = state.load()
+  await state.load()
+  assert.equal(requests.length, 1)
+  assert.equal(state.loading.value, true)
+  respond(0, 200)
+  await load
+  assert.equal(state.loading.value, false)
+  assert.deepEqual(state.config.value, CONFIG)
+
+  const form = { ...toRuntimeConfigForm(CONFIG), runDeadlineSeconds: 90 }
+  const save = state.save(form)
+  await assert.rejects(state.save(form), /操作正在进行/)
+  assert.equal(requests.length, 2)
+  assert.equal(requests[1]!.method, 'PATCH')
+  assert.equal((requests[1]!.body as { runDeadlineMs: number }).runDeadlineMs, 90_000)
+  assert.equal(state.saving.value, true)
+  respond(1, 502)
+  await assert.rejects(save, /保存失败/)
+  assert.equal(state.saving.value, false)
+  assert.deepEqual(state.config.value, CONFIG)
+  const retry = state.save(form)
+  respond(2, 200)
+  await retry
+  assert.equal(state.saving.value, false)
+  assert.equal(requests.length, 3)
 })

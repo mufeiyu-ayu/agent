@@ -10,7 +10,7 @@ import type {
   OverviewTrend,
 } from './overview.model'
 
-import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
+import { computed, onScopeDispose, ref, shallowRef, watch } from 'vue'
 
 import { formatAdminRunError } from '../shared/admin-api'
 import { fetchOverviewStats, fetchProviderBalance } from './overview-api'
@@ -43,10 +43,14 @@ export function useOverviewDashboard() {
 
   const lastUpdatedAt = ref<string | null>(null)
 
+  let statsWindow: AdminOverviewWindow | undefined
   let statsAbortController = new AbortController()
   let balanceAbortController = new AbortController()
 
   async function loadStats() {
+    if (statsLoading.value && statsWindow === activeWindow.value)
+      return
+    statsWindow = activeWindow.value
     statsAbortController.abort()
     statsAbortController = new AbortController()
     const { signal } = statsAbortController
@@ -70,6 +74,8 @@ export function useOverviewDashboard() {
   }
 
   async function loadBalance() {
+    if (balanceLoading.value)
+      return
     balanceAbortController.abort()
     balanceAbortController = new AbortController()
     const { signal } = balanceAbortController
@@ -93,6 +99,8 @@ export function useOverviewDashboard() {
   }
 
   function refresh() {
+    if (statsLoading.value || balanceLoading.value)
+      return
     void loadStats()
     void loadBalance()
   }
@@ -101,7 +109,7 @@ export function useOverviewDashboard() {
   watch(activeWindow, () => {
     void loadStats()
   })
-  onBeforeUnmount(() => {
+  onScopeDispose(() => {
     statsAbortController.abort()
     balanceAbortController.abort()
   })

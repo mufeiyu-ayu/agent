@@ -1,5 +1,6 @@
 import type { AdminUser, CreateAdminUserRequest, UpdateAdminUserRequest } from '@agent/contracts'
-import { ref, shallowRef } from 'vue'
+import { computed, ref, shallowRef } from 'vue'
+import { i18n } from '@/i18n'
 
 import { formatAdminRunError } from '../shared/admin-api'
 import { createAdminUser, fetchAdminUsers, resetAdminUserPassword, updateAdminUser } from './users-api'
@@ -13,9 +14,13 @@ export function createUsersState() {
   const users = shallowRef<AdminUser[]>([])
   const loading = ref(false)
   const error = ref('')
-  const submitting = ref(false)
+  const pendingKeys = shallowRef(new Set<string>())
+  const creating = computed(() => pendingKeys.value.has('create'))
+  const pendingUserIds = computed(() => new Set([...pendingKeys.value].filter(key => key !== 'create')))
 
   async function load() {
+    if (loading.value)
+      return
     loading.value = true
     error.value = ''
 
@@ -30,9 +35,11 @@ export function createUsersState() {
     }
   }
 
-  async function write(action: () => Promise<AdminUser>) {
-    submitting.value = true
+  async function write(key: string, action: () => Promise<AdminUser>) {
+    if (pendingKeys.value.has(key))
+      throw new Error(i18n.global.t('errors.requestPending'))
 
+    pendingKeys.value = new Set([...pendingKeys.value, key])
     try {
       const user = await action()
       const index = users.value.findIndex(item => item.id === user.id)
@@ -41,7 +48,9 @@ export function createUsersState() {
         : users.value.map(item => item.id === user.id ? user : item)
     }
     finally {
-      submitting.value = false
+      const remaining = new Set(pendingKeys.value)
+      remaining.delete(key)
+      pendingKeys.value = remaining
     }
   }
 
@@ -49,10 +58,11 @@ export function createUsersState() {
     users,
     loading,
     error,
-    submitting,
+    creating,
+    pendingUserIds,
     load,
-    create: (input: CreateAdminUserRequest) => write(() => createAdminUser(input)),
-    update: (userId: string, input: UpdateAdminUserRequest) => write(() => updateAdminUser(userId, input)),
-    resetPassword: (userId: string, password: string) => write(() => resetAdminUserPassword(userId, password)),
+    create: (input: CreateAdminUserRequest) => write('create', () => createAdminUser(input)),
+    update: (userId: string, input: UpdateAdminUserRequest) => write(userId, () => updateAdminUser(userId, input)),
+    resetPassword: (userId: string, password: string) => write(userId, () => resetAdminUserPassword(userId, password)),
   }
 }

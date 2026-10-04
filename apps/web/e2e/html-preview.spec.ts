@@ -189,11 +189,11 @@ test('TS/JS/JSX 和 HTML 片段没有预览入口；完整 HTML 的英文控件�
     await expect(card.getByRole('button', { name: '复制代码' })).toBeVisible()
   }
   await expect(page.locator('[data-html-preview-panel]')).toHaveCount(0)
-  await page.evaluate(async () => {
-    const modulePath = '/src/i18n/index.ts'
-    const { i18n } = await import(modulePath)
-    i18n.global.locale.value = 'en-US'
-  })
+  // 走真实设置入口；热更新服务上直接 import 无时间戳的模块可能创建第二份 i18n。
+  await page.getByRole('button', { name: '用户设置', exact: true }).click()
+  await page.getByRole('menuitem', { name: '设置', exact: true }).click()
+  await page.getByRole('radio', { name: 'English', exact: true }).click()
+  await page.getByRole('button', { name: 'Close settings', exact: true }).click()
   const card = page.locator('.agent-code-card').nth(4)
   await card.getByRole('button', { name: 'Preview', exact: true }).click()
   await expect(page.locator('[data-html-preview-panel] > iframe')).toHaveAttribute('title', 'HTML preview')

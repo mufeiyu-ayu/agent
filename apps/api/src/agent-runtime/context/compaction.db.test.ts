@@ -45,6 +45,7 @@ import {
   restoreGroups,
   turnSummaryMessage,
 } from './conversation-history.js'
+import { estimateRequestTokens } from './token-estimate.js'
 
 // 本入口不允许 skip：缺少隔离数据库时必须显式失败，而不是假装通过。
 const testDatabaseUrl = process.env.TEST_DATABASE_URL?.trim()
@@ -65,14 +66,15 @@ const { Pool: PgPool } = createRequire(import.meta.url)('pg') as {
 /** 触发线 4,000：用例按粗估（ASCII 每 4 个字符 1 token）构造体积；保留预算 min(20,000, 1,000)，块预算 2,000，预压线 3,200。 */
 const MODEL = { ...createResolvedLlmModel(), maxInputTokens: 4_000 }
 const RUNTIME_CONFIG = createRuntimeConfigSnapshot({ limits: { runDeadlineMs: 60_000 } })
-/** 与 runtime 发给模型的工具定义同一形状（约 190 token）：检查点 B 的估算要带上它。 */
+/** 与 runtime 发给模型的工具定义同一形状：检查点 B 的估算要带上它。 */
 const MODEL_TOOLS = TOOL_DEFINITIONS.map(definition => ({
   name: definition.name,
   description: definition.description,
   inputSchema: definition.input.schema,
 }))
-/** 约 1,500 token 的系统提示词：让检查点 B 的估算越过预压线，而要摘要的历史仍在一块之内。 */
-const LONG_INSTRUCTIONS: MessageInputItem[] = [{ type: 'message', role: 'system', content: 's'.repeat(6_000) }]
+const TOOL_TOKENS = estimateRequestTokens({ items: [], tools: MODEL_TOOLS })
+/** 工具与指令合计 1,700 token：新增工具不改变并发用例预设的压缩触发点。 */
+const LONG_INSTRUCTIONS: MessageInputItem[] = [{ type: 'message', role: 'system', content: 's'.repeat((1_700 - TOOL_TOKENS) * 4) }]
 
 type SamplingStream = (signal: AbortSignal | undefined) => AsyncGenerator<ModelStreamEvent>
 type SummaryStream = (request: string) => AsyncGenerator<ModelStreamEvent>
@@ -522,7 +524,8 @@ describe('上下文压缩（真实库，#220）', { timeout: 60_000 }, () => {
       [['history', AgentStepStatus.COMPLETED], ['turn', AgentStepStatus.COMPLETED]],
     )
 
-    const next = await ask(conversationId, '第 100 问')
+    // 本步只验证快照恢复；给完整历史另加工具预算，避免新增工具让验证问答再次压缩。
+    const next = await ask(conversationId, '第 100 问', { maxInputTokens: MODEL.maxInputTokens + TOOL_TOKENS })
     const input = next.samplingCalls[0]!
 
     assert.deepEqual(input.slice(0, 3), [historySummaryMessage(record!.summary), userMessage('第 0 问'), assistantMessage('0'.padEnd(1_600, 'x'))])
@@ -538,6 +541,7 @@ describe('上下文压缩（真实库，#220）', { timeout: 60_000 }, () => {
     /** 摘要调用的模型流；不给时回显覆盖了哪些问题。 */
     summary?: SummaryStream
     instructions?: MessageInputItem[]
+    maxInputTokens?: number
     webFetch?: (index: number) => ToolResult | Promise<ToolResult>
     /** 检查点 B 不发起（模拟不需要它的场景）。 */
     skipAfterRun?: boolean
@@ -584,7 +588,7 @@ describe('上下文压缩（真实库，#220）', { timeout: 60_000 }, () => {
     for await (const event of runtime.runTurnStream({
       conversationId,
       userContent,
-      model: MODEL,
+      model: { ...MODEL, maxInputTokens: options.maxInputTokens ?? MODEL.maxInputTokens },
       runtimeConfig: RUNTIME_CONFIG,
       instructions: options.instructions ?? [],
     })) {

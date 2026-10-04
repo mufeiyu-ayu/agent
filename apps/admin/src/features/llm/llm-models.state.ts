@@ -9,6 +9,7 @@ import type {
 } from '@agent/contracts'
 import type { Ref } from 'vue'
 import { computed, ref, shallowRef } from 'vue'
+import { i18n } from '@/i18n'
 
 import { formatAdminRunError } from '../shared/admin-api'
 import {
@@ -70,14 +71,15 @@ export function createLlmModelsState() {
   /** 服务商弹窗里拉取回来的候选模型名与加载态。 */
   const fetchedModelNames = shallowRef<string[]>([])
   const fetchingModels = ref(false)
+  let fetchingInput: string | undefined
   /** 勾选后自动测试的逐个结果，按 wireName 取；重新拉取时清空。 */
   const modelTestResults = shallowRef<Record<string, AdminLlmModelTestResult>>({})
   /** 已发起、结果还没回来的模型名。 */
   const testingWireNames = shallowRef(new Set<string>())
   /** 正在重测的模型 id，表格据此转圈。 */
   const probingModelIds = shallowRef(new Set<string>())
-  /** 任一写操作进行中为 true，表单提交按钮据此禁用。 */
-  const submitting = ref(false)
+  /** 正在提交的资源：只禁用对应行，其他资源仍可独立操作。 */
+  const pendingWrites = shallowRef(new Set<string>())
 
   const controllers = { providers: undefined, models: undefined, fetch: undefined } as Record<
     'providers' | 'models' | 'fetch',
@@ -142,6 +144,9 @@ export function createLlmModelsState() {
 
   function clearFetchedModelNames(): void {
     controllers.fetch?.abort()
+    controllers.fetch = undefined
+    fetchingModels.value = false
+    fetchingInput = undefined
     testGeneration.abort()
     testGeneration = new AbortController()
     fetchedModelNames.value = []
@@ -176,21 +181,29 @@ export function createLlmModelsState() {
     })
   }
 
-  /** 写操作共用：置 submitting，成功后由 operation 自己刷新受影响的列表。 */
-  async function submit<T>(operation: () => Promise<T>): Promise<T> {
-    submitting.value = true
+  /** 同一资源的写操作防重；成功后由 operation 自己刷新受影响的列表。 */
+  async function submit<T>(key: string, operation: () => Promise<T>): Promise<T> {
+    if (pendingWrites.value.has(key))
+      throw new Error(i18n.global.t('errors.requestPending'))
 
+    pendingWrites.value = new Set([...pendingWrites.value, key])
     try {
       return await operation()
     }
     finally {
-      submitting.value = false
+      const remaining = new Set(pendingWrites.value)
+      remaining.delete(key)
+      pendingWrites.value = remaining
     }
   }
 
   /** 用表单凭据拉模型名：同一时间只保留最后一次的结果；被中止（重新拉取、关弹窗、离开页面）时静默结束。 */
   async function fetchModelNames(input: AdminLlmCredentialsInput): Promise<void> {
+    const key = JSON.stringify(input)
+    if (fetchingModels.value && fetchingInput === key)
+      return
     clearFetchedModelNames()
+    fetchingInput = key
     const controller = new AbortController()
     controllers.fetch = controller
     fetchingModels.value = true
@@ -206,8 +219,10 @@ export function createLlmModelsState() {
         throw error
     }
     finally {
-      if (controllers.fetch === controller)
+      if (controllers.fetch === controller) {
         fetchingModels.value = false
+        fetchingInput = undefined
+      }
     }
   }
 
@@ -258,10 +273,13 @@ export function createLlmModelsState() {
   }
 
   async function probeModels(modelIds: string[]): Promise<void> {
-    probingModelIds.value = new Set([...probingModelIds.value, ...modelIds])
+    const pending = [...new Set(modelIds)].filter(id => !probingModelIds.value.has(id))
+    if (!pending.length)
+      return
+    probingModelIds.value = new Set([...probingModelIds.value, ...pending])
 
     try {
-      const probed = await probeLlmModels(modelIds)
+      const probed = await probeLlmModels(pending)
       const byId = new Map(probed.map(model => [model.id, model]))
 
       // 只替换测过的行，不打断用户正在看的列表。
@@ -269,7 +287,7 @@ export function createLlmModelsState() {
     }
     finally {
       const remaining = new Set(probingModelIds.value)
-      for (const id of modelIds)
+      for (const id of pending)
         remaining.delete(id)
       probingModelIds.value = remaining
     }
@@ -296,7 +314,7 @@ export function createLlmModelsState() {
     modelTestResults,
     testingWireNames,
     probingModelIds,
-    submitting,
+    pendingWrites,
 
     loadProviders,
     loadModels,
@@ -306,7 +324,7 @@ export function createLlmModelsState() {
     testModels,
     probeModels,
 
-    createProvider: (input: AdminLlmProviderInput) => submit(async () => {
+    createProvider: (input: AdminLlmProviderInput) => submit('create-provider', async () => {
       const created = await createLlmProvider({
         ...input,
         importTestResults: pickTestResults(input.importWireNames ?? [], input),
@@ -318,7 +336,7 @@ export function createLlmModelsState() {
      * 家族、地址、密钥或是否走代理变了，服务端会改模型行（清不兼容的强度、清探活结论），模型表跟着重载；
      * 只改备注或启用状态时不动模型表。
      */
-    updateProvider: (providerId: string, input: Partial<AdminLlmProviderInput>) => submit(async () => {
+    updateProvider: (providerId: string, input: Partial<AdminLlmProviderInput>) => submit(`provider:${providerId}`, async () => {
       const current = providers.value.find(provider => provider.id === providerId)
       const touchesModels = (input.family !== undefined && input.family !== current?.family)
         || (input.baseUrl !== undefined && input.baseUrl !== current?.baseUrl)
@@ -330,26 +348,26 @@ export function createLlmModelsState() {
       await updateLlmProvider(providerId, useProxy === current?.useProxy ? rest : input)
       await (touchesModels ? Promise.all([loadProviders(), loadModels()]) : loadProviders())
     }),
-    deleteProvider: (providerId: string) => submit(async () => {
+    deleteProvider: (providerId: string) => submit(`provider:${providerId}`, async () => {
       await deleteLlmProvider(providerId)
       await Promise.all([loadProviders(), loadModels()])
       if (selectedProviderId.value === providerId)
         selectProvider(null)
     }),
-    updateModel: (modelId: string, input: Partial<AdminLlmModelInput>) => submit(async () => {
+    updateModel: (modelId: string, input: Partial<AdminLlmModelInput>) => submit(`model:${modelId}`, async () => {
       await updateLlmModel(modelId, input)
       await loadModels()
     }),
-    deleteModel: (modelId: string) => submit(async () => {
+    deleteModel: (modelId: string) => submit(`model:${modelId}`, async () => {
       await deleteLlmModel(modelId)
       await Promise.all([loadModels(), loadProviders()])
     }),
-    setDefaultModel: (modelId: string) => submit(async () => {
+    setDefaultModel: (modelId: string) => submit(`model:${modelId}`, async () => {
       await updateLlmModel(modelId, { isDefault: true })
       await loadModels()
     }),
     /** 编辑服务商时把弹窗里勾选的模型导入该服务商；返回导入 / 跳过条数供页面提示。 */
-    importModels: (wireNames: string[], providerId: string, credentials: ProviderCredentials) => submit(async () => {
+    importModels: (wireNames: string[], providerId: string, credentials: ProviderCredentials) => submit(`import:${providerId}`, async () => {
       const result = await importLlmProviderModels(providerId, wireNames, pickTestResults(wireNames, credentials))
       await Promise.all([loadModels(), loadProviders()])
 

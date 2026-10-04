@@ -23,6 +23,7 @@ const props = defineProps<{
   balanceHidden: boolean
   balanceLabel: string
   balanceStatus: LlmRuntimeStatus
+  loggingOut: boolean
   hasMoreRecentChats: boolean
   isLoadingMoreRecentChats: boolean
   navigationItems: AgentNavigationItem[]
@@ -112,6 +113,7 @@ function openSettings() {
       :balance-hidden="props.balanceHidden"
       :balance-label="props.balanceLabel"
       :balance-status="props.balanceStatus"
+      :logging-out="props.loggingOut"
       :collapsed="sidebarCollapsed"
       :has-more-recent-chats="props.hasMoreRecentChats"
       :is-loading-more-recent-chats="props.isLoadingMoreRecentChats"
@@ -148,6 +150,7 @@ function openSettings() {
           :balance-hidden="props.balanceHidden"
           :balance-label="props.balanceLabel"
           :balance-status="props.balanceStatus"
+          :logging-out="props.loggingOut"
           :collapsed="false"
           :has-more-recent-chats="props.hasMoreRecentChats"
           :is-loading-more-recent-chats="props.isLoadingMoreRecentChats"

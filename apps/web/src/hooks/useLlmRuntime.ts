@@ -2,7 +2,7 @@ import type { ApiErrorResponse, ReasoningEffort } from '@agent/contracts'
 import type { LlmBalanceInfo, LlmBalanceState, LlmModelOption, LlmRuntimeStatus } from '../types/llm'
 
 import { isAxiosError } from 'axios'
-import { computed, ref, watch } from 'vue'
+import { computed, onScopeDispose, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import { fetchLlmBalance, fetchLlmModels } from '../api/llm'
@@ -19,7 +19,14 @@ export function useLlmRuntime() {
   const modelError = ref('')
   /** 原选中模型失效被自动换掉后的新 id；用户改选或下一次请求开始后清除。 */
   const replacedModel = ref<{ id: string | null } | null>(null)
-  let modelsRequestId = 0
+  const modelsLoading = ref(false)
+  let modelsRequest: Promise<void> | undefined
+  let modelsRefreshPending = false
+  let balanceRequest: Promise<void> | undefined
+  let disposed = false
+  onScopeDispose(() => {
+    disposed = true
+  })
 
   const selectedModelOption = computed(() => models.value.find(model => model.id === selectedModel.value))
 
@@ -65,35 +72,62 @@ export function useLlmRuntime() {
    * 挂载时、打开模型下拉时、发送因模型不可用被拒后都重新拉取：管理台隐藏 / 删除模型或停用服务商后，
    * 前台不刷新页面也能纠正选中项。失败时保留已有列表，只给出错误提示。
    */
-  async function loadModels() {
-    const requestId = ++modelsRequestId
-
-    try {
-      const nextModels = await fetchLlmModels()
-
-      if (requestId !== modelsRequestId)
-        return
-
-      models.value = nextModels
-      modelError.value = ''
-      ensureSelectedModelExists()
+  function loadModels(forceRefresh = false): Promise<void> {
+    if (disposed)
+      return Promise.resolve()
+    if (modelsRequest) {
+      // 模型被服务端拒绝后的纠正不能复用拒绝之前发出的列表请求。
+      modelsRefreshPending ||= forceRefresh
+      return modelsRequest
     }
-    catch (error) {
-      if (requestId === modelsRequestId)
-        modelError.value = getRuntimeErrorMessage(error, t('runtime.errors.models'))
-    }
+    modelsLoading.value = true
+    modelsRequest = (async () => {
+      do {
+        modelsRefreshPending = false
+        try {
+          const nextModels = await fetchLlmModels()
+          if (disposed)
+            return
+          if (!modelsRefreshPending) {
+            models.value = nextModels
+            modelError.value = ''
+            ensureSelectedModelExists()
+          }
+        }
+        catch (error) {
+          if (!disposed && !modelsRefreshPending)
+            modelError.value = getRuntimeErrorMessage(error, t('runtime.errors.models'))
+        }
+        if (disposed)
+          return
+      } while (modelsRefreshPending)
+    })().finally(() => {
+      modelsLoading.value = false
+      modelsRequest = undefined
+    })
+    return modelsRequest
   }
 
-  async function refreshBalance() {
+  function refreshBalance(): Promise<void> {
+    if (disposed)
+      return Promise.resolve()
+    if (balanceRequest)
+      return balanceRequest
     balanceStatus.value = 'loading'
-
-    try {
-      balance.value = await fetchLlmBalance()
-      balanceStatus.value = 'success'
-    }
-    catch {
-      balanceStatus.value = 'error'
-    }
+    balanceRequest = (async () => {
+      try {
+        const nextBalance = await fetchLlmBalance()
+        if (disposed)
+          return
+        balance.value = nextBalance
+        balanceStatus.value = 'success'
+      }
+      catch {
+        if (!disposed)
+          balanceStatus.value = 'error'
+      }
+    })().finally(() => { balanceRequest = undefined })
+    return balanceRequest
   }
 
   /** 初始（或当前选项消失时）优先选 Admin 设的默认模型，其次列表第一条。 */
@@ -122,6 +156,7 @@ export function useLlmRuntime() {
 
   return {
     models,
+    modelsLoading,
     selectedModel,
     selectedReasoningEffort,
     balanceLabel,

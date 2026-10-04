@@ -34,6 +34,7 @@ export function toChatStreamEvent(event: AgentRuntimeEvent): ChatStreamEvent {
         assistantMessageId: event.assistantMessageId,
         callId: event.callId,
         toolName: event.toolName,
+        ...(event.workspace === undefined ? {} : { workspace: event.workspace }),
         ...(event.query === undefined ? {} : { query: event.query }),
         ...(event.url === undefined ? {} : { url: event.url }),
       }
@@ -46,6 +47,7 @@ export function toChatStreamEvent(event: AgentRuntimeEvent): ChatStreamEvent {
         assistantMessageId: event.assistantMessageId,
         callId: event.callId,
         ok: event.ok,
+        ...(event.workspace === undefined ? {} : { workspace: event.workspace }),
         ...(event.failure === undefined ? {} : { failure: event.failure }),
         ...(event.results === undefined ? {} : { results: event.results }),
         ...(event.finalUrl === undefined ? {} : { finalUrl: event.finalUrl }),

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { WorkspaceFile } from '@agent/contracts'
 import type { ConversationTurn } from '../../types/chat'
 
 import { computed, ref } from 'vue'
@@ -14,13 +15,17 @@ import AgentAssistantReply from './AgentAssistantReply.vue'
 import AgentMessage from './AgentMessage.vue'
 import AgentRunStatus from './AgentRunStatus.vue'
 import AgentUserMessage from './AgentUserMessage.vue'
+import AgentWorkspaceArtifact from './AgentWorkspaceArtifact.vue'
 
 const props = defineProps<{
   turns: ConversationTurn[]
   isLoadingMessages: boolean
   conversationId: string | null
   anchorLatestTurn: boolean
+  workspaceFiles: WorkspaceFile[]
+  openingArtifact: boolean
 }>()
+const emit = defineEmits<{ openFile: [file: WorkspaceFile] }>()
 
 const { locale, t } = useI18n()
 const { workspaceTheme } = useWorkspaceTheme()
@@ -88,7 +93,7 @@ const showFloatingLoading = computed(() => {
             <template
               v-for="(turn, turnIndex) in turns"
               :key="turn.id"
-              v-memo="[turn.userMessage, turn.createdAt, turn.reply, turn.status, turn.errorMessage, turn.run, anchorLatestTurn && turnIndex === turns.length - 1, locale]"
+              v-memo="[turn.userMessage, turn.createdAt, turn.reply, turn.status, turn.errorMessage, turn.run, anchorLatestTurn && turnIndex === turns.length - 1, locale, workspaceFiles, openingArtifact]"
             >
               <!-- eslint-enable vue/no-useless-template-attributes -->
               <AgentMessage
@@ -113,6 +118,7 @@ const showFloatingLoading = computed(() => {
                     :is-streaming="turn.status === 'generating'"
                   />
                 </AgentRunStatus>
+                <AgentWorkspaceArtifact v-if="turn.run?.phase === 'ended'" :run="turn.run" :files="workspaceFiles" :opening="openingArtifact" @open-file="emit('openFile', $event)" />
                 <div
                   v-if="turn.status === 'error'"
                   class="mt-2 inline-flex max-w-[620px] items-start gap-2.5 rounded-2xl border border-agent-copper/30 bg-agent-copper-soft px-4 py-3 text-sm font-semibold leading-6 text-agent-ink-soft"

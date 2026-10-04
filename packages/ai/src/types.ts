@@ -3,9 +3,10 @@ import type { ResolvedChatRequestConfig } from './config.js'
 /** 当前工具输入需要的最小 JSON Schema 子集。 */
 export type JsonSchemaProperty
   = | { type: 'boolean', description?: string }
-    | { type: 'integer', description?: string }
+    | { type: 'integer', description?: string, minimum?: number, maximum?: number, enum?: number[] }
     | { type: 'string', description?: string }
-    | { type: 'array', items: { type: 'string' }, description?: string }
+    | { type: 'array', items: JsonSchemaProperty, minItems?: number, maxItems?: number, description?: string }
+    | JsonObjectSchema
 
 export interface JsonObjectSchema {
   type: 'object'

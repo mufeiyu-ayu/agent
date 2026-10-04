@@ -22,7 +22,7 @@ export interface ConversationTurn {
  */
 export interface TurnRunStep
   extends Pick<ChatStreamToolStartedEvent, 'callId' | 'toolName' | 'query' | 'url'>,
-  Pick<ChatStreamToolFinishedEvent, 'failure' | 'results' | 'finalUrl' | 'title' | 'chars'> {
+  Pick<ChatStreamToolFinishedEvent, 'failure' | 'results' | 'finalUrl' | 'title' | 'chars' | 'workspace'> {
   /** stopped：执行中被停止或出错打断，没有等到 tool_finished。 */
   status: 'running' | 'ok' | 'failed' | 'stopped'
 }

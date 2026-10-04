@@ -68,7 +68,11 @@ test('运行配置：三组分区、四项配置，没改动时保存不可点�
   await page.getByLabel('抓取模型原始请求').click()
   await expect(save).toBeEnabled()
 
-  await save.click()
+  // 同一事件循环内重复点击，覆盖 validate 尚未完成时的提交窗口。
+  await save.evaluate((button) => {
+    button.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    button.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+  })
   await expect(save).toHaveClass(/ant-btn-loading/)
   await expect(page.getByText('运行配置已保存，下一次问答生效')).toBeVisible()
   await expect(save).toBeDisabled()
@@ -180,7 +184,10 @@ test('模型弹窗：三组分割线、单次输入上限带说明、token 千�
   await expect(page.getByRole('tooltip')).toHaveText('每次请求最多发给模型的内容；超出时自动把较早的对话整理成摘要')
 
   await dialog.getByLabel('单次输入上限 Tokens').fill('600000')
-  await dialog.getByRole('button', { name: /确/ }).click()
+  await dialog.getByRole('button', { name: /确/ }).evaluate((button) => {
+    button.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    button.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+  })
   await expect(page.getByText('单次输入上限不能超过 上下文窗口 − 最大输出 − 安全余量 16,384 = 599,616，当前为 600,000')).toBeVisible()
   await expect(dialog).toBeVisible()
 

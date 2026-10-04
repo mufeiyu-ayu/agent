@@ -7,6 +7,7 @@ import {
   CloseCircleFilled,
   DeleteOutlined,
   EditOutlined,
+  LoadingOutlined,
   MinusCircleOutlined,
   PushpinFilled,
   PushpinOutlined,
@@ -31,6 +32,7 @@ const props = defineProps<{
   /** 用来渲染「服务商」列的标识与备注。 */
   providers: AdminLlmProvider[]
   loading: boolean
+  pendingWrites: Set<string>
   /** 正在重测的模型 id，状态图标转圈。 */
   probingIds: Set<string>
 }>()
@@ -184,10 +186,12 @@ function onEdit(record: unknown) {
               class="default-star-btn"
               :class="{ 'is-default': record.isDefault }"
               :title="record.isDefault ? t('llmModels.models.defaultTag') : t('llmModels.models.setDefault')"
-              :disabled="record.isDefault"
+              :disabled="record.isDefault || pendingWrites.has(`model:${record.id}`)"
+              :aria-busy="pendingWrites.has(`model:${record.id}`)"
               @click="emit('setDefault', record.id)"
             >
-              <PushpinFilled v-if="record.isDefault" />
+              <LoadingOutlined v-if="pendingWrites.has(`model:${record.id}`)" spin />
+              <PushpinFilled v-else-if="record.isDefault" />
               <PushpinOutlined v-else />
             </button>
           </div>
@@ -211,6 +215,8 @@ function onEdit(record: unknown) {
           <Select
             v-if="effortOptionsOf(record).length > 0"
             :value="record.reasoningEffort ?? undefined"
+            :loading="pendingWrites.has(`model:${record.id}`)"
+            :disabled="pendingWrites.has(`model:${record.id}`)"
             :options="effortOptionsOf(record)"
             :placeholder="t('llmModels.models.form.reasoningEffortNone')"
             size="small"
@@ -245,6 +251,7 @@ function onEdit(record: unknown) {
         <template v-else-if="column.key === 'visible'">
           <Switch
             :checked="record.visible"
+            :loading="pendingWrites.has(`model:${record.id}`)"
             size="small"
             @change="(checked) => emit('toggleVisible', record.id, Boolean(checked))"
           />
@@ -263,6 +270,7 @@ function onEdit(record: unknown) {
                 type="text"
                 size="small"
                 class="action-icon-btn"
+                :disabled="pendingWrites.has(`model:${record.id}`)"
                 @click="onEdit(record)"
               >
                 <template #icon>
@@ -285,6 +293,7 @@ function onEdit(record: unknown) {
                   danger
                   size="small"
                   class="action-icon-btn is-danger"
+                  :loading="pendingWrites.has(`model:${record.id}`)"
                 >
                   <template #icon>
                     <DeleteOutlined />

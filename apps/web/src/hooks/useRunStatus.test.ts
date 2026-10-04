@@ -211,23 +211,22 @@ describe('#208 等待过程的显示（假时钟）', () => {
     assert.ok(turn.history.slice(firstRow).every(frame => frame.startsWith('行') || frame.startsWith('摘要')))
   })
 
-  it('正文开始后才调工具、之前没有状态行：不插状态行，进度写在尾点旁的浮层里，结束后随尾点淡出', () => {
+  it('先输出进度说明再调用工具：显示状态行，结束后保留可展开的摘要', () => {
     const turn = createTurn()
 
     turn.start()
     turn.emit(delta)
     vi.advanceTimersByTime(3000)
     turn.emit(search('call-1', 'sitemap'))
-    assert.equal(turn.snapshot(), '尾点 浮层[搜索 sitemap]')
+    assert.equal(turn.snapshot(), '行[搜索 sitemap · 3 秒] 呼吸点')
     vi.advanceTimersByTime(300)
     turn.emit(finished('call-1'))
-    assert.equal(at(turn, 4199), '尾点 浮层[搜索 sitemap]')
-    assert.equal(at(turn, 4200), '尾点 浮层[思考中]')
+    assert.equal(at(turn, 4199), '行[搜索 sitemap · 4 秒] 呼吸点')
+    assert.equal(at(turn, 4200), '行[思考中 · 4 秒] 呼吸点')
     turn.emit(delta)
-    assert.equal(turn.snapshot(), '尾点')
+    assert.equal(turn.snapshot(), '摘要[已搜索 1 次 · 用时 不到 1 秒]')
     turn.end()
-    assert.equal(turn.snapshot(), '无')
-    assert.ok(turn.history.every(frame => !frame.includes('行') && !frame.includes('摘要')))
+    assert.equal(turn.snapshot(), '摘要[已搜索 1 次 · 用时 不到 1 秒]')
   })
 
   it('error / aborted 收尾：已完成的照常计入摘要，被打断的不计；全被打断时写「已停止」', () => {
@@ -370,16 +369,16 @@ describe('#209 状态行的思考短句（假时钟）', () => {
     assert.equal(at(turn, 7700), '摘要[已搜索 1 次 · 用时 6 秒]')
   })
 
-  it('正文开始后才调工具：尾点旁的浮层同样显示思考短句', () => {
+  it('进度说明之后调用工具，状态行仍显示后续思考短句', () => {
     const turn = createTurn()
 
     turn.start()
     turn.emit(delta)
     turn.emit(search('call-1', 'a'))
-    assert.equal(at(turn, 100), '尾点 浮层[搜索 a]')
+    assert.equal(at(turn, 100), '行[搜索 a] 呼吸点')
     turn.emit(finished('call-1'))
     turn.emit(think('再补一句说明。'))
-    assert.equal(at(turn, 1300), '尾点 浮层[再补一句说明。]')
+    assert.equal(at(turn, 1300), '行[再补一句说明。 · 1 秒] 呼吸点')
   })
 })
 
@@ -469,11 +468,11 @@ describe('#212 刷新后还原：同一份数据，实时结束时与还原后�
       zh: '摘要[已搜索 1 次、阅读 1 个网页 · 用时 17 秒 · 2 步失败]',
     },
     {
-      name: '正文 1 秒内开始、之后才调工具：实时没有状态行，还原也没有',
+      name: '文字 1 秒内开始、之后才调工具：实时与还原都显示工具摘要',
       script: [[400, delta], [600, search('s', 'seo')], [1_500, finished('s', { results: sources })]],
       endAt: 3_000,
       activity: { answerStartedMs: 400, toolBeforeAnswer: false, items: [{ kind: 'tool', callId: 's', toolName: 'web_search', query: 'seo', ok: true, results: sources }] },
-      zh: '无',
+      zh: '摘要[已搜索 1 次 · 用时 不到 1 秒]',
     },
     {
       name: '只有思考且正文 1 秒内开始：没有状态行',

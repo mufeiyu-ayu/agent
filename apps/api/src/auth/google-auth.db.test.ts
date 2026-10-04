@@ -10,7 +10,7 @@ import { createServer } from 'node:http'
 import { createRequire } from 'node:module'
 import process from 'node:process'
 import { afterAll, beforeAll, describe, it } from 'vitest'
-import { Module } from '@nestjs/common'
+import { ConsoleLogger, Module } from '@nestjs/common'
 import { APP_GUARD, NestFactory } from '@nestjs/core'
 
 import { AdminUsersController } from '../admin-users/admin-users.controller.js'
@@ -168,7 +168,8 @@ describe('Google 登录（真实库 + 本地假 Google）', { timeout: 60_000 },
     })
     class TestModule {}
 
-    app = await NestFactory.create(TestModule, { logger: ['error', 'warn'] })
+    // 全局测试 setup 禁用了默认 Logger；本用例必须真实输出，才能检查日志是否泄密。
+    app = await NestFactory.create(TestModule, { logger: new ConsoleLogger({ logLevels: ['error', 'warn'] }) })
     // 用 X-Forwarded-For 给每个用例一个独立 IP，限流互不干扰。
     app.getHttpAdapter().getInstance().set('trust proxy', 'loopback')
     registerAppGlobals(app)

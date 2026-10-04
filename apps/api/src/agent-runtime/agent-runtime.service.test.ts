@@ -24,6 +24,7 @@ import type {
   ToolResult,
   UnvalidatedToolCallEnvelope,
 } from '../tools/core/tool.types.js'
+import type { WorkspaceService } from '../workspaces/workspace.service.js'
 import type { AgentRuntimeEvent, RunTurnStreamInput } from './agent-runtime.types.js'
 import type { HistoryRunRow, HistoryStepRow } from './context/conversation-history.js'
 import type { AgentRunRecorderService } from './lifecycle/agent-run-recorder.service.js'
@@ -75,6 +76,39 @@ import { estimateRequestTokens, roughTokens } from './context/token-estimate.js'
 const MODEL_TOOL_NAMES = TOOL_DEFINITIONS.map(definition => definition.name)
 
 describe('AgentRuntimeService model stream', () => {
+  it('R1：交付终态事件前已启动工作区交接，云端 kill 尚未返回也不漏掉清理', async () => {
+    for (const terminal of ['run_completed', 'run_failed', 'run_aborted']) {
+      let finish!: () => void
+      const cleanup = new Promise<void>((resolve) => {
+        finish = resolve
+      })
+      const releaseRun = vi.fn(() => cleanup)
+      const workspaces = { cloud: { configured: true }, releaseRun } as unknown as WorkspaceService
+      const controller = new AbortController()
+      const harness = createHarness(() => {
+        if (terminal === 'run_failed')
+          throw new Error('fixture failure')
+        if (terminal === 'run_aborted')
+          controller.abort(new Error('fixture abort'))
+        return toModelStream([{ type: 'text_delta', delta: '完成' }, { type: 'response_completed', finishReason: 'stop' }])
+      }, controller.signal, undefined, {}, workspaces)
+      const stream = harness.run()
+      try {
+        while (true) {
+          const event = await stream.next()
+          assert.equal(event.done, false)
+          if (event.value?.type === terminal)
+            break
+        }
+        assert.ok(releaseRun.mock.calls.length > 0, `${terminal} 发出时下一轮必须已能找到收尾 Promise`)
+      }
+      finally {
+        finish()
+        await stream.return(undefined)
+      }
+    }
+  })
+
   it('保持普通文本流的现有完成行为', async () => {
     const harness = createHarness(() => toModelStream([
       { type: 'text_delta', delta: '你' },
@@ -520,6 +554,123 @@ describe('AgentRuntimeService model stream', () => {
       },
     ])
     assert.doesNotMatch(JSON.stringify(events), /AgentStep|runId|toolResult|rawArguments/)
+  })
+
+  it('文件保存确认后才推工具完成和回喂；事务失败不发成功结果，两个分支都释放 Run 实例', async () => {
+    for (const confirmed of [true, false]) {
+      const releasedRuns = new Set<string>()
+      const releaseRun = async (id: string) => {
+        releasedRuns.add(id)
+      }
+      const workspaces = { cloud: { configured: true }, releaseRun } as unknown as WorkspaceService
+      const commit = { conversationId: 'conversation-1', runId: 'run-1', expectedRevision: 0, files: [] }
+      const harness = createHarness((_, __, index) => toModelStream(index === 0
+        ? [toolCallEvent('write-file', 'write', '{"path":"a.txt","content":"ok"}'), { type: 'response_completed', finishReason: 'tool_calls' }]
+        : [{ type: 'text_delta', delta: '完成' }, { type: 'response_completed', finishReason: 'stop' }]), undefined, async (_call, context) => {
+        assert.equal(context.workspace?.userId, 'trusted-user')
+        assert.equal(context.workspace?.conversationId, 'conversation-1')
+        assert.equal(context.workspace?.runId, 'run-1')
+        return { ok: true, modelContent: '已保存版本 1', workspaceCommit: commit }
+      }, {}, workspaces)
+      const complete = harness.recorder.completeStep.bind(harness.recorder)
+      let committed = false
+      vi.spyOn(harness.recorder, 'completeStep').mockImplementation(async (id, deadline, input) => {
+        if (input && 'workspaceCommit' in input) {
+          assert.deepEqual(input.workspaceCommit, commit)
+          if (!confirmed)
+            throw new Error('文件事务确认失败')
+          committed = true
+        }
+        await complete(id, deadline, input)
+      })
+      const events: AgentRuntimeEvent[] = []
+      for await (const event of harness.service.runTurnStream({ userId: 'trusted-user', conversationId: 'conversation-1', userContent: '生成文件', instructions: [] })) {
+        if (event.type === 'tool_finished')
+          assert.equal(committed, true)
+        events.push(event)
+      }
+      assert.equal(events.some(event => event.type === 'tool_finished'), confirmed)
+      assert.equal(harness.llmCalls.length, confirmed ? 2 : 1)
+      if (confirmed) {
+        assert.ok(harness.llmCalls[1]!.messages.some(item => item.type === 'tool_result' && item.content === '已保存版本 1'))
+        assert.equal((findStep(harness, 'tool_execution')?.output as { observation: string }).observation, '已保存版本 1')
+      }
+      assert.equal(events.at(-1)?.type, confirmed ? 'run_completed' : 'run_failed')
+      assert.deepEqual([...releasedRuns], ['run-1'])
+    }
+  })
+
+  it('文件 COMMIT 确认后的停止不再推 tool_finished，确认未知向用户说明而非声称回滚', async () => {
+    for (const unknown of [false, true]) {
+      const controller = new AbortController()
+      const harness = createHarness(() => toModelStream([
+        toolCallEvent('save', 'write', '{"path":"a.txt","content":"ok"}'),
+        { type: 'response_completed', finishReason: 'tool_calls' },
+      ]), controller.signal, async () => ({ ok: true, modelContent: '已保存', workspaceCommit: { conversationId: 'conversation-1', runId: 'run-1', expectedRevision: 0, files: [] } }))
+      const complete = harness.recorder.completeStep.bind(harness.recorder)
+      vi.spyOn(harness.recorder, 'completeStep').mockImplementation(async (id, deadline, input) => {
+        if (input && 'workspaceCommit' in input && unknown)
+          throw new DatabaseCommitOutcomeUnknownError()
+        await complete(id, deadline, input)
+        if (input && 'workspaceCommit' in input)
+          controller.abort(new Error('stop after file COMMIT'))
+      })
+      const events = await collectEvents(harness.run())
+      assert.equal(events.some(event => event.type === 'tool_finished'), false)
+      assert.equal(harness.llmCalls.length, 1)
+      const terminal = events.at(-1)
+      if (unknown) {
+        assert.ok(terminal?.type === 'run_failed')
+        assert.match(terminal.message, /提交结果未知/)
+        assert.match(terminal.message, /不要假设改动已经回滚/)
+      }
+      else {
+        assert.equal(terminal?.type, 'run_aborted')
+        assert.equal(findStep(harness, 'tool_execution')?.status, AgentStepStatus.COMPLETED)
+      }
+    }
+  })
+
+  it('文件 COMMIT 响应未知与停止或 deadline 同时发生时保留原终态并持久化未知提示', async () => {
+    for (const source of ['user', 'deadline'] as const) {
+      const controller = new AbortController()
+      const harness = createHarness(() => toModelStream([
+        { type: 'text_delta', delta: '正在保存文件。' },
+        toolCallEvent('save', 'write', '{"path":"a.txt","content":"ok"}'),
+        { type: 'response_completed', finishReason: 'tool_calls' },
+      ]), controller.signal, async () => ({ ok: true, modelContent: '已保存', workspaceCommit: { conversationId: 'conversation-1', runId: 'run-1', expectedRevision: 0, files: [] } }), { runDeadlineMs: 100 })
+      const complete = harness.recorder.completeStep.bind(harness.recorder)
+      vi.spyOn(harness.recorder, 'completeStep').mockImplementation(async (id, deadline, input) => {
+        await complete(id, deadline, input)
+        if (input && 'workspaceCommit' in input) {
+          if (source === 'user')
+            controller.abort(new Error('stop while waiting for file COMMIT'))
+          else
+            await waitForAbort(deadline.signal!)
+          throw new DatabaseCommitOutcomeUnknownError()
+        }
+      })
+      const events = await collectEvents(harness.run())
+      const terminal = events.at(-1)
+      assert.equal(events.some(event => event.type === 'tool_finished'), false)
+      assert.equal(harness.llmCalls.length, 1)
+      assert.equal(findStep(harness, 'tool_execution')?.status, AgentStepStatus.COMPLETED)
+      const content = harness.assistantMessage()?.content
+      assert.match(content ?? '', /^正在保存文件。/)
+      assert.match(content ?? '', /提交结果未知/)
+      assert.match(content ?? '', /不要假设改动已经回滚/)
+      if (source === 'user') {
+        assert.ok(terminal?.type === 'run_aborted')
+        assert.equal(terminal.content, content)
+        assert.equal(harness.assistantMessage()?.status, MessageStatus.ABORTED)
+        assert.deepEqual(harness.recorder.abortedRunIds, ['run-1'])
+      }
+      else {
+        assert.ok(terminal?.type === 'run_failed')
+        assert.match(terminal.message, /提交结果未知/)
+        assert.equal(harness.recorder.runErrorCode, 'deadline')
+      }
+    }
   })
 
   it('执行一次工具并把 Observation 回填第二轮模型输入', async () => {
@@ -3636,17 +3787,19 @@ describe('上下文自动压缩（#220）', () => {
   })
 
   it('AC-08(h) 后台任务随进程重启丢失：下一次提问由检查点 A 同步压缩，结果正确', async () => {
+    const toolTokens = estimateRequestTokens({ items: [], tools: TOOL_DEFINITIONS.map(definition => ({ name: definition.name, description: definition.description, inputSchema: definition.input.schema })) })
+    const model = { ...SMALL_MODEL, maxInputTokens: toolTokens + 3800 }
     // 第一次问答的回答较长：它把历史推过触发线，本该由检查点 B 预压。
     const harness = createHarness(routed({ sampling: index => finalAnswer(index === 0 ? 'y'.repeat(2_000) : '好的。') }))
 
     // 模拟丢失：检查点 B 什么都没做。
     harness.compactionService.compactAfterRun = async () => {}
     seedHistory(harness, 7, 2_000)
-    await run(harness, { userContent: '第一问（这次）' })
+    await run(harness, { userContent: '第一问（这次）', model })
 
     assert.equal(harness.prisma.compactions.length, 0)
 
-    await run(harness, { userContent: '下一问' })
+    await run(harness, { userContent: '下一问', model })
 
     const [record] = harness.prisma.compactions
 
@@ -4019,6 +4172,7 @@ function createHarness(
   signal?: AbortSignal,
   invokeTool: InvokeTool = async () => successfulToolResult,
   limits: Partial<RunLimits> = {},
+  workspaces?: WorkspaceService,
 ) {
   const prisma = new FakePrismaService()
   const recorder = new FakeAgentRunRecorderService(prisma)
@@ -4066,6 +4220,7 @@ function createHarness(
     recorder as unknown as AgentRunRecorderService,
     toolInvocationService as unknown as ToolInvocationService,
     compactionService,
+    workspaces,
   )
   // 模型行与运行配置快照由 ChatService 在 Run 之前读好；这里给用例一份默认快照，省得每处都写。
   // 默认打开调试抓取：fake 模型流总会回调 debugCapture，关掉时的行为单独覆盖。

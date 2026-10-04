@@ -94,6 +94,12 @@ export const router = createRouter({
           meta: { title: 'Runtime Settings', titleKey: 'navigation.runtimeConfig', tab: true },
         },
         {
+          path: 'workspaces',
+          name: 'workspaces',
+          component: () => import('@/views/WorkspacesView.vue'),
+          meta: { title: 'Workspaces', titleKey: 'navigation.workspaces', tab: true },
+        },
+        {
           path: 'users',
           name: 'users',
           component: () => import('@/views/UsersView.vue'),

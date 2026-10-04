@@ -68,6 +68,7 @@ export interface ChatStreamReasoningDeltaEvent {
  * `query` / `url` 是模型给的参数，仅供展示：尽力取出、按长度截断，取不到就没有；前台一律按纯文本渲染。
  */
 export interface ChatStreamToolStartedEvent {
+  workspace?: import('./workspace.js').WorkspaceToolDisplay
   type: 'tool_started'
   conversationId: string
   assistantMessageId: string
@@ -82,6 +83,7 @@ export interface ChatStreamToolStartedEvent {
 
 /** 工具执行结束（#208）：用户停止或到 deadline 时不发，由随后的 aborted / error 收尾。 */
 export interface ChatStreamToolFinishedEvent {
+  workspace?: import('./workspace.js').WorkspaceToolDisplay
   type: 'tool_finished'
   conversationId: string
   assistantMessageId: string

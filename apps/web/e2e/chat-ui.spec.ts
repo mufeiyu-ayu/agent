@@ -99,7 +99,9 @@ test('代码卡片保持同一 DOM；闭合、终态未闭合、复制、键盘 
   await expect(card.getByLabel('正在生成...')).toHaveCount(0)
   await expect(card.getByRole('button', { name: '复制代码' })).toBeVisible()
   await page.evaluate(async () => {
-    const themePath = '/src/hooks/useWorkspaceTheme.ts'
+    // 复用真实组件引用的 HMR 模块，不能另建一份不带时间戳的主题单例。
+    const source = await (await fetch('/src/components/agent/AgentCodeBlock.vue')).text()
+    const themePath = source.match(/from "(\/src\/hooks\/useWorkspaceTheme\.ts[^"]*)"/)![1]
     const { useWorkspaceTheme } = await import(themePath)
     useWorkspaceTheme().updateWorkspaceTheme('olive-ember')
   })

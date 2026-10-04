@@ -21,6 +21,7 @@ import { dropdownMenuOptionClass, dropdownMenuPanelClass } from '@/components/ui
 
 const props = defineProps<{
   models: LlmModelOption[]
+  modelsLoading: boolean
   selectedModel: string | null
   selectedReasoningEffort: ReasoningEffort | null
   /** 对话中放在输入框下方的小号样式。 */
@@ -78,12 +79,13 @@ function handleModelMenuOpen(open: boolean) {
     <DropdownMenuTrigger
       type="button"
       :aria-label="t('composer.modelSelectAria')"
+      :aria-busy="modelsLoading"
       class="inline-flex min-w-0 items-center gap-1.5 rounded-lg font-medium text-agent-ink-soft transition hover:bg-agent-surface-sunken/55 hover:text-agent-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-agent-focus/40 data-[state=open]:bg-agent-surface-sunken/55 data-[state=open]:text-agent-ink"
       :class="compact ? 'h-7 px-1.5 text-xs' : 'h-8 px-2 text-[13px]'"
     >
       <span class="truncate">{{ selectedModelLabel }}</span>
       <span v-if="showReasoningEffort" class="shrink-0 text-agent-ink-muted">{{ effortLabel(effectiveReasoningEffort) }}</span>
-      <AppIcon name="tabler:chevron-down" :size="compact ? 12 : 14" class="shrink-0 text-agent-ink-muted" />
+      <AppIcon :name="modelsLoading ? 'tabler:loader-2' : 'tabler:chevron-down'" :size="compact ? 12 : 14" class="shrink-0 text-agent-ink-muted" :class="{ 'animate-spin motion-reduce:animate-none': modelsLoading }" />
     </DropdownMenuTrigger>
 
     <DropdownMenuPortal>
@@ -92,6 +94,9 @@ function handleModelMenuOpen(open: boolean) {
         :side-offset="8"
         class="w-[270px]" :class="[dropdownMenuPanelClass]"
       >
+        <p v-if="modelsLoading" role="status" class="px-3 py-2 text-sm text-agent-ink-muted">
+          {{ t('runtime.modelsLoading') }}
+        </p>
         <DropdownMenuItem
           v-for="model in primaryModels"
           :key="model.id"

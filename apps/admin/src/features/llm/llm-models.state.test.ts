@@ -308,3 +308,104 @@ function deferred<T>(): { promise: Promise<T>, resolve: (value: T) => void } {
 
   return { promise, resolve }
 }
+
+it('模型行写操作按资源防重、失败释放，其他行独立进行；必要列表刷新仍保留', async () => {
+  const originalFetch = globalThis.fetch
+  const calls: FetchCall[] = []
+  const firstResponse = deferred<Response>()
+  const secondResponse = deferred<Response>()
+  globalThis.fetch = async (input, init) => {
+    const call = recordCall(calls, input, init)
+    if (call.method === 'PATCH')
+      return (await (call.url.endsWith('/a') ? firstResponse.promise : secondResponse.promise)).clone()
+    return jsonResponse([model('a', null), model('b', null)])
+  }
+  try {
+    const state = createLlmModelsState()
+    const first = state.updateModel('a', { visible: false })
+    await assert.rejects(state.updateModel('a', { visible: false }), /操作正在进行/)
+    const second = state.updateModel('b', { visible: false })
+    assert.deepEqual([...state.pendingWrites.value], ['model:a', 'model:b'])
+    assert.equal(calls.length, 2)
+    firstResponse.resolve(new Response(JSON.stringify({ success: false, message: '写入失败' }), { status: 502 }))
+    await assert.rejects(first, /写入失败/)
+    assert.deepEqual([...state.pendingWrites.value], ['model:b'])
+    secondResponse.resolve(jsonResponse(model('b', null)))
+    await second
+    assert.equal(state.pendingWrites.value.size, 0)
+    assert.equal(calls.filter(call => call.method === 'GET').length, 1)
+    await assert.rejects(state.updateModel('a', { visible: false }), /写入失败/)
+    assert.equal(calls.filter(call => call.method === 'PATCH').length, 3, '失败后能够重新发起')
+  }
+  finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
+it('单行与批量探活交叠时同一模型只请求一次，失败与旧批次完成不会释放其他批次', async () => {
+  const originalFetch = globalThis.fetch
+  const calls: FetchCall[] = []
+  const firstResponse = deferred<Response>()
+  const secondResponse = deferred<Response>()
+  globalThis.fetch = async (input, init) => {
+    recordCall(calls, input, init)
+    return (await (calls.length === 1 ? firstResponse.promise : secondResponse.promise)).clone()
+  }
+  try {
+    const state = createLlmModelsState()
+    state.models.value = [model('a', null), model('b', null)]
+    const first = state.probeModels(['a'])
+    const second = state.probeModels(['a', 'b', 'b'])
+    await state.probeModels(['a', 'b'])
+    assert.deepEqual(calls.map(call => call.body), [{ modelIds: ['a'] }, { modelIds: ['b'] }])
+    firstResponse.resolve(jsonResponse([{ ...model('a', null), lastProbeOk: true }]))
+    await first
+    assert.deepEqual([...state.probingModelIds.value], ['b'])
+    assert.equal(state.models.value[0]!.lastProbeOk, true)
+    secondResponse.resolve(new Response(JSON.stringify({ success: false, message: '探活失败' }), { status: 502 }))
+    await assert.rejects(second, /探活失败/)
+    assert.equal(state.probingModelIds.value.size, 0)
+    await assert.rejects(state.probeModels(['b']), /探活失败/)
+    assert.equal(calls.length, 3)
+  }
+  finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
+it('候选名单相同凭据加载防重，取消立即复位，新凭据不被旧 finally 清除 loading', async () => {
+  const originalFetch = globalThis.fetch
+  const responses = [deferred<Response>(), deferred<Response>(), deferred<Response>()]
+  const signals: AbortSignal[] = []
+  globalThis.fetch = async (_input, init) => {
+    signals.push(init!.signal as AbortSignal)
+    return responses[signals.length - 1]!.promise
+  }
+  try {
+    const state = createLlmModelsState()
+    const input = { baseUrl: 'https://fixture.invalid', apiKey: 'fixture', useProxy: false }
+    const first = state.fetchModelNames(input)
+    await state.fetchModelNames(input)
+    assert.equal(signals.length, 1)
+    const second = state.fetchModelNames({ ...input, baseUrl: 'https://new.invalid' })
+    assert.equal(signals.length, 2)
+    assert.equal(signals[0]!.aborted, true)
+    responses[0]!.resolve(jsonResponse({ models: ['stale'] }))
+    await first
+    assert.equal(state.fetchingModels.value, true)
+    assert.deepEqual(state.fetchedModelNames.value, [])
+    state.clearFetchedModelNames()
+    assert.equal(state.fetchingModels.value, false, '取消不必等待网络承认 abort')
+    const third = state.fetchModelNames(input)
+    responses[1]!.resolve(jsonResponse({ models: ['also-stale'] }))
+    await second
+    assert.equal(state.fetchingModels.value, true)
+    responses[2]!.resolve(jsonResponse({ models: ['current'] }))
+    await third
+    assert.equal(state.fetchingModels.value, false)
+    assert.deepEqual(state.fetchedModelNames.value, ['current'])
+  }
+  finally {
+    globalThis.fetch = originalFetch
+  }
+})

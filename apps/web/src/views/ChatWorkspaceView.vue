@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import type { AgentNavigationItem, AgentPlatformUser } from '../types/agent-platform'
+import type { WorkspaceFile } from '@agent/contracts'
 
+import type { AgentNavigationItem, AgentPlatformUser } from '../types/agent-platform'
 import { userDisplayName, userInitial } from '@agent/contracts'
 import { useElementSize } from '@vueuse/core'
 import { SplitterGroup, SplitterPanel, SplitterResizeHandle } from 'reka-ui'
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, onScopeDispose, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 
@@ -12,14 +13,17 @@ import workspaceBgOliveEmberDeepUrl from '../assets/bg-olive.webp'
 import workspaceBgAiBalancedUrl from '../assets/bg-warm.webp'
 import AgentConversation from '../components/agent/AgentConversation.vue'
 import HtmlPreviewPanel from '../components/agent/HtmlPreviewPanel.vue'
+import WorkspaceFilesPanel from '../components/agent/WorkspaceFilesPanel.vue'
 import ChatComposer from '../components/chat/ChatComposer.vue'
 import AppIcon from '../components/common/AppIcon.vue'
 import AppMessage from '../components/common/AppMessage.vue'
+import AppTooltip from '../components/common/AppTooltip.vue'
 import AppShell from '../components/layout/AppShell.vue'
 import { useAuth } from '../hooks/useAuth'
 import { useChatWorkspace } from '../hooks/useChatWorkspace'
 import { useHtmlPreview } from '../hooks/useHtmlPreview'
 import { useLlmRuntime } from '../hooks/useLlmRuntime'
+import { useWorkspaceFiles } from '../hooks/useWorkspaceFiles'
 import { useWorkspaceTheme } from '../hooks/useWorkspaceTheme'
 
 const navigationConfig = [
@@ -53,6 +57,7 @@ const navigationItems = computed<AgentNavigationItem[]>(() => {
 
 const {
   models,
+  modelsLoading,
   selectedModel,
   selectedReasoningEffort,
   balanceLabel,
@@ -65,6 +70,8 @@ const {
   dismissModelNotice,
   refreshBalance,
 } = useLlmRuntime()
+
+let forgetWorkspaceConversation: ((id: string) => void) | undefined
 
 const {
   message,
@@ -87,7 +94,10 @@ const {
   stopGeneration,
   showMessage,
   hideMessage,
-} = useChatWorkspace({ onModelUnavailable: loadModels })
+} = useChatWorkspace({
+  onModelUnavailable: () => { void loadModels(true) },
+  onConversationDeleted: id => forgetWorkspaceConversation?.(id),
+})
 
 const composer = ref<InstanceType<typeof ChatComposer> | null>(null)
 const workspaceElement = ref<HTMLElement | null>(null)
@@ -98,26 +108,203 @@ const previewDragging = ref(false)
 const chatPanel = ref<InstanceType<typeof SplitterPanel> | null>(null)
 const { isOpen: previewOpen, source: previewSource, close: closePreview, layout: previewLayout, rememberLayout } = useHtmlPreview(activeConversationId)
 const previewCode = computed(() => previewSource.value?.() ?? '')
+const filesOpen = ref(false)
+const filesPanel = ref<InstanceType<typeof WorkspaceFilesPanel> | null>(null)
+const openingArtifact = ref(false)
+// 与 loading 分离：交付打开被重建取消后，仍不能自动改选当前最新文件。
+const filesAutoPreview = ref(true)
+let artifactRequest = 0
+type SideAnimationState = 'idle' | 'opening-init' | 'opening' | 'open' | 'closing'
+const sideAnimationState = ref<SideAnimationState>('idle')
+const sideVisible = ref(false)
+let sideAnimTimer: ReturnType<typeof setTimeout> | undefined
+let sideAnimFrame: number | undefined
+let sideAnimEpoch = 0
 
-watch([previewOpen, splitPreview], async ([open, split]) => {
+function invalidateSideAnimation() {
+  sideAnimEpoch++
+  if (sideAnimTimer !== undefined) {
+    clearTimeout(sideAnimTimer)
+    sideAnimTimer = undefined
+  }
+  if (sideAnimFrame !== undefined) {
+    cancelAnimationFrame(sideAnimFrame)
+    sideAnimFrame = undefined
+  }
+}
+onScopeDispose(invalidateSideAnimation)
+const sideOpen = computed(() => previewOpen.value || filesOpen.value)
+const {
+  snapshot: workspaceSnapshot,
+  loading: workspaceLoading,
+  error: workspaceError,
+  refresh: refreshFiles,
+  readFile,
+  cachedFile,
+  forgetConversation,
+} = useWorkspaceFiles(
+  activeConversationId,
+  status,
+  computed(() => currentUser.value?.id ?? null),
+)
+forgetWorkspaceConversation = forgetConversation
+watch(previewOpen, (open) => {
+  if (open) {
+    filesOpen.value = false
+    artifactRequest++
+    openingArtifact.value = false
+  }
+})
+watch([activeConversationId, () => currentUser.value?.id], () => {
+  invalidateSideAnimation()
+  sideVisible.value = false
+  sideAnimationState.value = 'idle'
+  filesOpen.value = false
+  artifactRequest++
+  openingArtifact.value = false
+  filesAutoPreview.value = true
+})
+watch(filesOpen, (open) => {
+  if (!open) {
+    artifactRequest++
+    openingArtifact.value = false
+  }
+}, { flush: 'sync' })
+watch(splitPreview, () => {
+  if (filesOpen.value && !filesAutoPreview.value) {
+    // 两个布局会重建面板：明确取消旧打开，让用户重新选择，不让旧 finally 恢复自动预览。
+    artifactRequest++
+    openingArtifact.value = false
+    showMessage(t('workspace.selectFile'))
+  }
+}, { flush: 'sync' })
+async function openFiles(file?: WorkspaceFile) {
+  if (openingArtifact.value || (!file && filesOpen.value))
+    return
+  const conversationId = activeConversationId.value
+  // 交付卡先确认内容身份再挂载面板，避免自动预览或 revision watcher 抢先打开新内容。
+  if (file)
+    filesOpen.value = false
+  const request = ++artifactRequest
+  filesAutoPreview.value = !file
+  openingArtifact.value = true
+  void closePreview()
+  try {
+    await refreshFiles()
+    if (request !== artifactRequest || activeConversationId.value !== conversationId)
+      return
+    if (workspaceError.value || !workspaceSnapshot.value || (file && !workspaceSnapshot.value.files.some(current => current.path === file.path && current.sha256 === file.sha256))) {
+      showMessage(t('workspace.fileFailed'), 'error')
+      return
+    }
+    filesOpen.value = true
+    await nextTick()
+    if (file && request === artifactRequest && activeConversationId.value === conversationId && filesOpen.value)
+      await filesPanel.value?.openFile(file.path, file.sha256)
+  }
+  finally {
+    if (request === artifactRequest)
+      openingArtifact.value = false
+  }
+}
+
+function prefersReducedMotion(): boolean {
+  return typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+}
+
+const chatPanelStyle = computed(() => {
+  return sideOpen.value && splitPreview.value && sideAnimationState.value === 'open'
+    ? { minWidth: '320px' }
+    : undefined
+})
+
+const previewPanelStyle = computed(() => {
+  return sideOpen.value && splitPreview.value && sideAnimationState.value === 'open'
+    ? { minWidth: '320px' }
+    : undefined
+})
+
+watch([sideOpen, splitPreview], async ([open, split]) => {
+  invalidateSideAnimation()
+  const animationEpoch = sideAnimEpoch
+
   if (!open || !split) {
     // Reka 通过 window mouseup 结束拖动；在收起/窄屏前主动结束，避免 iframe 吞掉晚到的松手。
     if (previewDragging.value) {
       window.dispatchEvent(new MouseEvent('mouseup'))
       previewDragging.value = false
     }
+  }
+
+  // 窄屏模式下由 Vue Transition 管理显示与滑入滑出
+  if (!split) {
+    sideVisible.value = open
+    sideAnimationState.value = open ? 'open' : 'idle'
     return
   }
-  // 打开或恢复分栏后还原上次比例，两侧的最小宽度仍由 Splitter 约束。
-  const savedSize = previewLayout.value[0] ?? 50
-  await nextTick()
-  if (previewOpen.value && splitPreview.value)
-    chatPanel.value?.resize(savedSize)
+
+  // 偏好减弱动态效果时跳过过渡
+  if (prefersReducedMotion()) {
+    sideVisible.value = open
+    sideAnimationState.value = open ? 'open' : 'idle'
+    if (open) {
+      const savedSize = previewLayout.value[0] ?? 50
+      await nextTick()
+      if (animationEpoch === sideAnimEpoch)
+        chatPanel.value?.resize(savedSize)
+    }
+    return
+  }
+
+  if (open) {
+    // 打开流程：初始为 0 宽度且右偏，下一帧触发展开与向左滑入
+    sideVisible.value = true
+    sideAnimationState.value = 'opening-init'
+
+    const savedSize = previewLayout.value[0] ?? 50
+    await nextTick()
+    if (animationEpoch !== sideAnimEpoch)
+      return
+
+    sideAnimFrame = requestAnimationFrame(() => {
+      if (animationEpoch !== sideAnimEpoch)
+        return
+      sideAnimFrame = undefined
+      sideAnimationState.value = 'opening'
+      chatPanel.value?.resize(savedSize)
+
+      sideAnimTimer = setTimeout(() => {
+        if (animationEpoch !== sideAnimEpoch)
+          return
+        sideAnimationState.value = 'open'
+        sideAnimTimer = undefined
+      }, 300)
+    })
+  }
+  else {
+    // 收起流程：保持渲染以播放向右滑出及收拢动画，完成后隐藏
+    if (sideVisible.value) {
+      sideAnimationState.value = 'closing'
+      sideAnimTimer = setTimeout(() => {
+        if (animationEpoch !== sideAnimEpoch)
+          return
+        sideVisible.value = false
+        sideAnimationState.value = 'idle'
+        sideAnimTimer = undefined
+      }, 260)
+    }
+    else {
+      sideAnimationState.value = 'idle'
+    }
+  }
 }, { flush: 'sync' })
 
 function onPreviewLayout(sizes: number[]) {
-  // 关闭时左栏放宽/右栏注销的过渡布局不能覆盖用户最后调整的比例。
-  if (previewOpen.value && splitPreview.value)
+  // 展开或收起过渡期间的临时布局不能覆盖用户最后调整的比例。
+  if (sideAnimationState.value === 'opening-init' || sideAnimationState.value === 'opening' || sideAnimationState.value === 'closing')
+    return
+
+  if (sideOpen.value && splitPreview.value)
     rememberLayout(sizes)
 }
 
@@ -127,17 +314,22 @@ async function newChat() {
   composer.value?.focus()
 }
 
+const loggingOut = ref(false)
 async function logout() {
+  if (loggingOut.value)
+    return
+  loggingOut.value = true
   try {
     await signOut()
+    // 主动退出回首页，不弹登录框；导航结束前保持防重复。
+    await router.replace('/')
   }
   catch {
     showMessage(t('auth.logoutFailed'), 'error')
-    return
   }
-
-  // 主动退出回首页，不弹登录框
-  await router.replace('/')
+  finally {
+    loggingOut.value = false
+  }
 }
 
 // 请求真正发出（未被节流 / 生成中拦下）才算用户已经看到模型替换提示。
@@ -183,6 +375,7 @@ function send() {
     :balance-hidden="balanceHidden"
     :balance-label="balanceLabel"
     :balance-status="balanceStatus"
+    :logging-out="loggingOut"
     :has-more-recent-chats="hasMoreConversations"
     :is-loading-more-recent-chats="isLoadingMoreConversations"
     :navigation-items="navigationItems"
@@ -209,7 +402,19 @@ function send() {
       />
 
       <SplitterGroup direction="horizontal" class="relative z-10 min-h-0 flex-1" @layout="onPreviewLayout">
-        <SplitterPanel id="chat" ref="chatPanel" :default-size="previewLayout[0]" :min-size="previewOpen && splitPreview ? minPanelSize : 0" :style="previewOpen && splitPreview ? { minWidth: '320px' } : undefined" class="flex min-h-0 min-w-0 flex-col">
+        <SplitterPanel
+          id="chat"
+          ref="chatPanel"
+          :default-size="previewLayout[0]"
+          :min-size="sideOpen && splitPreview && sideAnimationState === 'open' ? minPanelSize : 0"
+          :style="chatPanelStyle"
+          class="flex min-h-0 min-w-0 flex-col"
+          :class="{
+            'chat-panel-closing': sideAnimationState === 'closing',
+            'chat-panel-opening-init': sideAnimationState === 'opening-init',
+            'panel-transition': sideAnimationState === 'opening',
+          }"
+        >
           <div
             v-if="showConversationEmptyState"
             class="relative z-10 flex min-h-0 flex-1 flex-col items-center overflow-y-auto px-4 pb-6 pt-14 sm:px-6"
@@ -227,6 +432,7 @@ function send() {
                 hero
                 class="mt-10"
                 :models="models"
+                :models-loading="modelsLoading"
                 :model-error="modelError"
                 :model-notice="modelNotice"
                 :status="status"
@@ -250,12 +456,22 @@ function send() {
             </div>
           </div>
 
-          <div v-else data-chat-pane :inert="previewOpen && !splitPreview || undefined" class="relative z-10 flex min-h-0 min-w-0 flex-1 flex-col">
+          <div v-else data-chat-pane :inert="sideOpen && !splitPreview || undefined" class="relative z-10 flex min-h-0 min-w-0 flex-1 flex-col">
+            <div v-if="activeConversationId" class="flex shrink-0 justify-end px-4 pt-2">
+              <AppTooltip :content="t('workspace.files')">
+                <button type="button" data-open-workspace-files :disabled="openingArtifact || workspaceLoading" :aria-busy="openingArtifact || workspaceLoading" :aria-label="t('workspace.files')" :aria-expanded="filesOpen" class="grid size-8 place-items-center rounded-md text-agent-ink-muted hover:bg-agent-surface-raised hover:text-agent-ink focus-visible:outline-agent-focus" @click="openFiles()">
+                  <AppIcon :name="openingArtifact || workspaceLoading ? 'tabler:loader-2' : 'tabler:folder'" :size="18" :class="{ 'animate-spin motion-reduce:animate-none': openingArtifact || workspaceLoading }" />
+                </button>
+              </AppTooltip>
+            </div>
             <AgentConversation
               :anchor-latest-turn="shouldAnchorLatestTurn"
               :conversation-id="activeConversationId"
               :is-loading-messages="isLoadingMessages"
               :turns="conversationTurns"
+              :workspace-files="workspaceSnapshot?.files ?? []"
+              :opening-artifact="openingArtifact"
+              @open-file="openFiles"
             />
 
             <ChatComposer
@@ -264,6 +480,7 @@ function send() {
               v-model:selected-model="selectedModel"
               v-model:selected-reasoning-effort="selectedReasoningEffort"
               :models="models"
+              :models-loading="modelsLoading"
               :model-error="modelError"
               :model-notice="modelNotice"
               :status="status"
@@ -275,22 +492,89 @@ function send() {
           </div>
         </SplitterPanel>
         <SplitterResizeHandle
-          v-show="previewOpen && splitPreview"
+          v-show="sideVisible && splitPreview && sideAnimationState === 'open'"
           :aria-label="t('conversation.actions.codeBlock.resizePreview')"
           class="relative w-1 shrink-0 bg-agent-border-soft outline-none transition-colors hover:bg-agent-accent focus-visible:bg-agent-accent data-[state=drag]:bg-agent-accent"
           @dragging="previewDragging = $event"
         />
-        <SplitterPanel v-show="previewOpen && splitPreview" id="preview" :default-size="previewLayout[1]" :min-size="previewOpen && splitPreview ? minPanelSize : 0" style="min-width: 320px" class="flex min-h-0 min-w-0">
-          <HtmlPreviewPanel v-if="previewOpen && splitPreview" :code="previewCode" @close="closePreview" />
+        <SplitterPanel
+          v-show="sideVisible && splitPreview"
+          id="preview"
+          :default-size="previewLayout[1]"
+          :min-size="sideOpen && splitPreview && sideAnimationState === 'open' ? minPanelSize : 0"
+          :style="previewPanelStyle"
+          class="flex min-h-0 min-w-0 overflow-hidden"
+          :class="{
+            'splitter-panel-closing': sideAnimationState === 'closing',
+            'splitter-panel-opening-init': sideAnimationState === 'opening-init',
+            'panel-transition': sideAnimationState === 'opening',
+          }"
+        >
+          <div
+            class="flex h-full w-full min-w-[320px] flex-col transition-transform ease-out"
+            :class="{
+              'translate-x-full duration-0': sideAnimationState === 'opening-init',
+              'translate-x-0 duration-300': sideAnimationState === 'opening',
+              'translate-x-full duration-250': sideAnimationState === 'closing',
+              'translate-x-0 duration-0': sideAnimationState === 'open',
+            }"
+          >
+            <HtmlPreviewPanel v-if="previewOpen && splitPreview" :code="previewCode" @close="closePreview" />
+            <WorkspaceFilesPanel
+              v-if="filesOpen && splitPreview"
+              ref="filesPanel"
+              :snapshot="workspaceSnapshot"
+              :loading="workspaceLoading"
+              :error="workspaceError"
+              :conversation-id="activeConversationId"
+              :read-file="readFile"
+              :cached-file="cachedFile"
+              :auto-preview="filesAutoPreview"
+              @refresh="refreshFiles"
+              @close="filesOpen = false"
+            />
+          </div>
         </SplitterPanel>
       </SplitterGroup>
-      <HtmlPreviewPanel
-        v-if="previewOpen && !splitPreview"
-        :code="previewCode"
-        focus-close
-        class="absolute inset-0 z-40"
-        @close="closePreview"
-      />
+      <Transition
+        enter-active-class="transition-transform duration-300 ease-out motion-reduce:transition-none motion-reduce:duration-0"
+        enter-from-class="translate-x-full"
+        enter-to-class="translate-x-0"
+        leave-active-class="transition-transform duration-250 ease-in motion-reduce:transition-none motion-reduce:duration-0"
+        leave-from-class="translate-x-0"
+        leave-to-class="translate-x-full"
+      >
+        <HtmlPreviewPanel
+          v-if="previewOpen && !splitPreview"
+          :code="previewCode"
+          focus-close
+          class="absolute inset-0 z-40"
+          @close="closePreview"
+        />
+      </Transition>
+      <Transition
+        enter-active-class="transition-transform duration-300 ease-out motion-reduce:transition-none motion-reduce:duration-0"
+        enter-from-class="translate-x-full"
+        enter-to-class="translate-x-0"
+        leave-active-class="transition-transform duration-250 ease-in motion-reduce:transition-none motion-reduce:duration-0"
+        leave-from-class="translate-x-0"
+        leave-to-class="translate-x-full"
+      >
+        <WorkspaceFilesPanel
+          v-if="filesOpen && !splitPreview"
+          ref="filesPanel"
+          :snapshot="workspaceSnapshot"
+          :loading="workspaceLoading"
+          :error="workspaceError"
+          :conversation-id="activeConversationId"
+          :read-file="readFile"
+          :cached-file="cachedFile"
+          :auto-preview="filesAutoPreview"
+          class="absolute inset-0 z-40"
+          @refresh="refreshFiles"
+          @close="filesOpen = false"
+        />
+      </Transition>
     </div>
   </AppShell>
 </template>
@@ -299,5 +583,45 @@ function send() {
 .workspace-greeting {
   font-family: "Libre Baskerville", Georgia, "Songti SC", "Noto Serif SC", ui-serif, serif;
   text-wrap: balance;
+}
+
+.panel-transition {
+  transition: flex-grow 300ms cubic-bezier(0.16, 1, 0.3, 1),
+              max-width 300ms cubic-bezier(0.16, 1, 0.3, 1),
+              min-width 300ms cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+.splitter-panel-opening-init {
+  flex-grow: 0 !important;
+  max-width: 0 !important;
+  min-width: 0 !important;
+  overflow: hidden !important;
+}
+
+.chat-panel-opening-init {
+  flex-grow: 100 !important;
+}
+
+.splitter-panel-closing {
+  flex-grow: 0 !important;
+  max-width: 0 !important;
+  min-width: 0 !important;
+  overflow: hidden !important;
+  transition: flex-grow 260ms cubic-bezier(0.16, 1, 0.3, 1),
+              max-width 260ms cubic-bezier(0.16, 1, 0.3, 1),
+              min-width 260ms cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+.chat-panel-closing {
+  flex-grow: 100 !important;
+  transition: flex-grow 260ms cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .panel-transition,
+  .splitter-panel-closing,
+  .chat-panel-closing {
+    transition: none !important;
+  }
 }
 </style>

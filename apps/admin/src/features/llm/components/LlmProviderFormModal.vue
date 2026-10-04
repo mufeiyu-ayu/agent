@@ -203,12 +203,21 @@ watch(selectedWireNames, (names) => {
     emit('testModels', formCredentials(), fresh)
 })
 
+const validating = ref(false)
+const busy = computed(() => validating.value || props.submitting)
+
 async function handleOk() {
+  if (busy.value)
+    return
+  validating.value = true
   try {
     await formRef.value?.validate()
   }
   catch {
     return
+  }
+  finally {
+    validating.value = false
   }
 
   const input: AdminLlmProviderInput = {
@@ -230,7 +239,11 @@ async function handleOk() {
   <Modal
     :open="open"
     :title="isEdit ? t('llmModels.providers.edit') : t('llmModels.providers.add')"
-    :confirm-loading="submitting"
+    :confirm-loading="busy"
+    :closable="!busy"
+    :mask-closable="!busy"
+    :keyboard="!busy"
+    :cancel-button-props="{ disabled: busy }"
     :ok-text="t('llmModels.actions.confirm')"
     :cancel-text="t('llmModels.actions.cancel')"
     :width="660"
@@ -243,6 +256,7 @@ async function handleOk() {
       <Form
         ref="formRef"
         :model="formState"
+        :disabled="busy"
         :rules="rules"
         layout="vertical"
         class="provider-form"

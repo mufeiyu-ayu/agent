@@ -45,7 +45,7 @@ import {
   LLMServerError,
   resolveChatRequestConfig,
 } from '@agent/ai'
-import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common'
+import { Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common'
 import { getAiExceptionMessage } from '../common/utils/llm-error-message.util.js'
 import { MessageRole, MessageStatus } from '../generated/prisma/client.js'
 import { LLMService } from '../llm/llm.service.js'
@@ -56,6 +56,7 @@ import {
 import { ToolInvocationService } from '../tools/core/tool-invocation.service.js'
 import { TOOL_DEFINITIONS } from '../tools/tool-definitions.js'
 import { toToolProgressArguments } from '../tools/web/tool-progress-arguments.js'
+import { WorkspaceService } from '../workspaces/workspace.service.js'
 import {
   AGENT_RUN_DEADLINE_EXCEEDED_MESSAGE,
   AgentRunTerminalizationError,
@@ -132,6 +133,8 @@ export class AgentRuntimeService {
 
     @Inject(ContextCompactionService)
     private readonly contextCompactionService: ContextCompactionService,
+    @Optional() @Inject(WorkspaceService)
+    private readonly workspaces?: WorkspaceService,
   ) {}
 
   async* runTurnStream(input: RunTurnStreamInput): AsyncGenerator<AgentRuntimeEvent> {
@@ -546,6 +549,7 @@ export class AgentRuntimeService {
           calls, // 模型要调用的工具
           argumentsTruncated, // 模型输出是否被截断，arguments 可能不完整
           serperApiKey: input.runtimeConfig.serperApiKey, // 运行配置快照里的 Serper Key，只有 web_search 用
+          ...(input.userId ? { userId: input.userId } : {}),
 
           // 情况 2 用不上
           runCancellation, // 本轮 sampling 的取消信号
@@ -610,6 +614,8 @@ export class AgentRuntimeService {
       })
       runCancellation.dispose()
 
+      // 先发布本地收尾 Promise，再交付终态；下一轮可按旧 owner 有界等待，不必阻塞完成事件。
+      void this.workspaces?.releaseRun(currentAgentRunId)
       yield {
         type: 'run_completed',
         runId: currentAgentRunId,
@@ -649,6 +655,12 @@ export class AgentRuntimeService {
       const userAborted = runCancellation?.source === 'user'
         || (!runCancellation && (input.signal?.aborted ?? false))
       const runCause = runCancellation?.reason ?? error
+      const commitWarning = error instanceof DatabaseCommitOutcomeUnknownError
+        ? describeRuntimeError(error)!.message
+        : undefined
+      // 停止原因仍先到先得，但它不能抹掉文件 COMMIT 的不确定性；实时结果与刷新后的文本都保留提醒。
+      if (commitWarning)
+        terminal.content = [terminal.content, commitWarning].filter(Boolean).join('\n\n')
 
       runCancellation?.dispose()
 
@@ -677,6 +689,8 @@ export class AgentRuntimeService {
           }
         }
 
+        if (agentRunId)
+          void this.workspaces?.releaseRun(agentRunId)
         if (assistantMessage) {
           yield {
             type: 'run_aborted',
@@ -691,6 +705,8 @@ export class AgentRuntimeService {
       }
 
       const runFailure = describeRunFailure(runCancellation?.source, runCause)
+      if (commitWarning && runCancellation?.source === 'deadline')
+        runFailure.message += `\n\n${commitWarning}`
       const errorMessage = runFailure.message
 
       if (agentRunId) {
@@ -721,6 +737,8 @@ export class AgentRuntimeService {
         }
       }
 
+      if (agentRunId)
+        void this.workspaces?.releaseRun(agentRunId)
       yield {
         type: 'run_failed',
         ...(agentRunId ? { runId: agentRunId } : {}),
@@ -777,6 +795,8 @@ export class AgentRuntimeService {
           )
         }
       }
+      if (agentRunId)
+        await this.workspaces?.releaseRun(agentRunId)
       runCancellation?.dispose()
     }
   }
@@ -790,6 +810,7 @@ export class AgentRuntimeService {
    * yield 点都落在没有进行中 tool Step 的位置，消费者此时 return() 不会留下 RUNNING 的 Step。
    */
   private async* executeToolBatch(input: {
+    userId?: string
     runId: string
     samplingAttemptId: string
     conversationId: string
@@ -816,7 +837,7 @@ export class AgentRuntimeService {
 
     const toolResults: ToolFeedback[] = []
 
-    // 顺序执行，每个 call 一个 tool_execution Step；当前工具只读，并行没有收益。
+    // 顺序执行，每个 call 一个 tool_execution Step；写文件的确认顺序必须与模型收到的结果一致。
     for (const call of calls) {
       // 消费者在上一个 tool_finished 处暂停期间可能已停止或到期：不推一个不会执行的 tool_started。
       runCancellation.throwIfUnavailable()
@@ -825,7 +846,7 @@ export class AgentRuntimeService {
         ...progress,
         callId: call.callId,
         toolName: call.toolName,
-        ...toToolProgressArguments(call.rawArgumentsJson),
+        ...toToolProgressArguments(call.rawArgumentsJson, call.toolName),
       }
 
       // callId / toolName 是模型原样给的，落库副本同样要能进 jsonb。
@@ -847,7 +868,7 @@ export class AgentRuntimeService {
         // 截断批次、查无此工具、参数无效都由 invoke 直接返回失败结果，只有校验通过的调用才真正执行。
         invocation = await this.toolInvocationService.invoke(
           call,
-          { signal: runSignal, databaseDeadline, argumentsTruncated, serperApiKey },
+          { signal: runSignal, databaseDeadline, argumentsTruncated, serperApiKey, ...(input.userId ? { workspace: { userId: input.userId, conversationId, runId, deadlineAt: databaseDeadline.deadlineAt } } : {}) },
         )
         runCancellation.throwIfUnavailable()
       }
@@ -900,7 +921,7 @@ export class AgentRuntimeService {
         await this.agentRunRecorderService.completeStep(
           toolStep.id,
           databaseDeadline,
-          toolStepClose,
+          { ...toolStepClose, ...(toolResult.workspaceCommit ? { workspaceCommit: toolResult.workspaceCommit } : {}) },
         )
       }
       else {
@@ -914,6 +935,8 @@ export class AgentRuntimeService {
         )
       }
 
+      // 文件 COMMIT 确认期间可能已停止：保留已确认文件，但不继续推成功事件或调用下一轮模型。
+      runCancellation.throwIfUnavailable()
       // 成功时带工具给界面的 display（可能自己标了 failure）；失败只分超时与其他。
       const display: ToolDisplay | undefined = toolResult.ok
         ? toolResult.display
@@ -956,6 +979,8 @@ export class AgentRuntimeService {
         : String(input.terminalizationCause),
     )
 
+    if (input.agentRunId)
+      void this.workspaces?.releaseRun(input.agentRunId)
     yield {
       type: 'run_failed',
       ...(input.agentRunId ? { runId: input.agentRunId } : {}),
@@ -995,11 +1020,13 @@ export class AgentRuntimeService {
    */
   private resolveRunConfiguration(input: RunTurnStreamInput) {
     // 工具始终全部提供给模型；顺序即工具清单的顺序。模型只看到名称、说明与输入 Schema，timeout 与 Observation 预算留在服务端。
-    const modelTools = TOOL_DEFINITIONS.map(definition => ({
-      name: definition.name,
-      description: definition.description,
-      inputSchema: definition.input.schema,
-    }))
+    const modelTools = TOOL_DEFINITIONS
+      .filter(definition => !this.workspaces || this.workspaces.cloud.configured || !['read', 'write', 'edit', 'bash'].includes(definition.name))
+      .map(definition => ({
+        name: definition.name,
+        description: definition.description,
+        inputSchema: definition.input.schema,
+      }))
     const request = resolveChatRequestConfig(input.model.profile, {
       ...(input.reasoningEffort === undefined
         ? {}
@@ -1259,6 +1286,8 @@ function describeRuntimeError(
   // 模型没以 stop / tool_calls 完整结束（length / content_filter / unknown / 缺 response_completed）。
   if (error instanceof ModelSamplingIncompleteError)
     return { errorCode: 'llm_protocol', message: error.message }
+  if (error instanceof DatabaseCommitOutcomeUnknownError)
+    return { errorCode: 'internal', message: '数据库提交结果未知，请刷新会话与工作文件核对，不要假设改动已经回滚。' }
 
   return undefined
 }
@@ -1354,6 +1383,7 @@ function toPersistedSamplingContent(
  */
 function toPersistedToolDisplay(display: ToolDisplay): Prisma.InputJsonObject {
   return {
+    ...(display.workspace ? { workspace: JSON.parse(JSON.stringify(display.workspace, (_key, value: unknown) => typeof value === 'string' ? toPersistableText(value) : value)) as Prisma.InputJsonObject } : {}),
     ...(display.failure === undefined ? {} : { failure: display.failure }),
     ...(display.results === undefined
       ? {}

@@ -26,6 +26,7 @@ const props = defineProps<{
   balanceHidden: boolean
   balanceLabel: string
   balanceStatus: LlmRuntimeStatus
+  loggingOut: boolean
   collapsed: boolean
   hasMoreRecentChats: boolean
   isLoadingMoreRecentChats: boolean
@@ -293,9 +294,11 @@ function handleBalanceSelect(event: Event) {
 
             <DropdownMenuItem
               class="flex cursor-pointer items-center gap-2.5 rounded-xl px-3 py-2 text-sm outline-none transition data-[highlighted]:bg-agent-surface-sunken/50"
-              @select="emit('logout')"
+              :disabled="loggingOut"
+              :aria-busy="loggingOut"
+              @select.prevent="emit('logout')"
             >
-              <AppIcon name="tabler:logout" :size="16" class="text-agent-ink-muted" />
+              <AppIcon :name="loggingOut ? 'tabler:loader-2' : 'tabler:logout'" :size="16" class="text-agent-ink-muted" :class="{ 'animate-spin motion-reduce:animate-none': loggingOut }" />
               {{ t('auth.menu.logout') }}
             </DropdownMenuItem>
           </DropdownMenuContent>

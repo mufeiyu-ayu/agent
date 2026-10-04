@@ -29,7 +29,7 @@
 
 ## 学习路径
 
-当前阶段只看 [`tasks/README.md`](./tasks/README.md)。2026-09-15 用户指定：完成当前学习后，由 AI 以 Pi 为主要参照实现云端 Agent，用户不读 Pi 代码；研究资料与架构图见 [`pi-reference/README.md`](./research/pi-reference/README.md)，每步的 Pi 素材与证明完成见 [Pi 实现 roadmap](./research/pi-reference/roadmap.md)，先后看工作台方向第 7 节。参照方法见 [`learning-method.md`](research/pi-reference/learning-method.md)。Phase 8 链路仍可按以下顺序回读：
+当前阶段只看 [`tasks/README.md`](./tasks/README.md)。2026-09-15 用户指定：完成当前学习后，由 AI 以 Pi 为主要参照实现云端 Agent，用户不读 Pi 代码；研究资料与架构图见 [`pi-reference/README.md`](./research/pi-reference/README.md)，每步的 Pi 素材与证明完成见 [Pi 实现 roadmap](./research/pi-reference/roadmap.md)，先后看工作台方向第 7 节。参照方法见 [`learning-method.md`](research/pi-reference/learning-method.md)。Phase 8 已删除；回读归档时可参考以下历史链路，它不是当前源码入口：
 
 ```text
 索引入口
@@ -82,7 +82,7 @@
 - LangChain / LangGraph / 独立 Vector DB；
 - DeepSeek Responses adapter（#117 Gated）；
 - RBAC 与细粒度权限：第一期只做账号密码登录与每人对话隔离（2026-09-27 进工作台第 1 档）；角色、按组授权等真实需要时再做；
-- `packages/ai` / `packages/contracts` 的 src / dist 构建方式：typecheck 读 src，运行时与 api 测试读 dist，dev 期间不重建。2026-09-23 用户决定保留，只修导图描述；触发为 dist 过期造成一次真实误判；
+- `packages/ai` / `packages/contracts` 的 src / dist 构建方式：typecheck 读 src，运行时读 dist，Vitest 用别名直接读 src；当前 dev 会 watch 共享包并重建 dist（见 `apps/api/scripts/dev-watch.mjs`）。2026-09-23 用户决定保留 src / dist 结构；后续结构调整仍以真实问题触发；
 - 并行 Tool Call；
 - Memory、MCP、Multi-agent。
 
