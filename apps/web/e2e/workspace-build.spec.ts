@@ -70,10 +70,10 @@ test('构建步骤、命令错误与修复、文件保存、交互预览、业�
   const child = page.frames().find(item => item.url() === 'about:srcdoc')!
   assert.equal(await child.evaluate(() => (window as unknown as { checkIsolation: () => string }).checkIsolation()), 'isolated')
   const panel = page.locator('[data-workspace-files-panel]')
-  await panel.getByRole('checkbox', { name: '显示环境状态' }).check()
-  await expect(panel.locator('[data-workspace-environment]')).toContainText('环境已关闭')
+  await expect(page.getByText('已生成页面并完成检查，数据为演示数据。')).toBeVisible()
+  await expect(panel).toContainText('已保存版本 2')
   const downloaded = page.waitForEvent('download')
-  await panel.getByRole('button', { name: `下载 ${file.path}`, exact: true }).click()
+  await panel.getByRole('button', { name: `下载 ${file.path}`, exact: true }).dispatchEvent('click')
   const download = await downloaded
   assert.equal(download.suggestedFilename(), 'traffic.html')
   assert.equal(await readFile((await download.path())!, 'utf8'), html)

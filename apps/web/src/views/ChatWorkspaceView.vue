@@ -494,7 +494,7 @@ function send() {
         <SplitterResizeHandle
           v-show="sideVisible && splitPreview && sideAnimationState === 'open'"
           :aria-label="t('conversation.actions.codeBlock.resizePreview')"
-          class="relative w-1 shrink-0 bg-agent-border-soft outline-none transition-colors hover:bg-agent-accent focus-visible:bg-agent-accent data-[state=drag]:bg-agent-accent"
+          class="relative w-px shrink-0 bg-agent-border-soft outline-none transition-colors hover:bg-agent-accent focus-visible:bg-agent-accent data-[state=drag]:bg-agent-accent after:absolute after:inset-y-0 after:-left-1 after:w-3 after:content-['']"
           @dragging="previewDragging = $event"
         />
         <SplitterPanel
