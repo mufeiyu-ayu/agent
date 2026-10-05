@@ -573,17 +573,16 @@ function retryDownload() {
   background: var(--agent-surface);
   color: var(--agent-ink);
   overflow: hidden;
-  position: relative;
 }
 .file-toolbar {
   display: flex;
   flex-shrink: 0;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
   min-height: 44px;
-  height: 44px;
-  padding: 0 14px;
+  padding: 6px 14px;
   border-bottom: 1px solid var(--agent-border-soft);
   background: color-mix(in oklch, var(--agent-surface) 96%, transparent);
   backdrop-filter: blur(16px);
@@ -657,11 +656,19 @@ function retryDownload() {
   max-width: 220px;
 }
 .workspace-panel.is-compact .file-toolbar {
-  padding: 0 10px;
+  padding: 6px 10px;
   gap: 6px;
 }
 .workspace-panel.is-compact .file-header-left {
+  flex-basis: 100%;
   gap: 6px;
+}
+.workspace-panel.is-compact .file-title {
+  min-width: 0;
+  max-width: 100%;
+}
+.workspace-panel.is-compact .file-title select {
+  min-width: 0;
 }
 .workspace-panel.is-compact .saved-version {
   font-size: 11px;
