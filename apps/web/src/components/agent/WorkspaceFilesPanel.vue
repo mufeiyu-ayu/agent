@@ -52,10 +52,17 @@ let downloadRequest = 0
 let expectedSha256: string | undefined
 let shownSha256: string | undefined
 let pendingSha256: string | undefined
-const showEnvironment = ref(localStorage.getItem('kuro-show-environment') === 'true')
-watch(showEnvironment, value => localStorage.setItem('kuro-show-environment', String(value)))
-const stateLabel = computed(() => t(`workspace.states.${props.snapshot?.state ?? 'idle'}`))
 const totalBytes = computed(() => props.snapshot?.files.reduce((sum, file) => sum + file.bytes, 0) ?? 0)
+const selectedFile = computed(() => props.snapshot?.files.find(file => file.path === selected.value))
+const metaSizeText = computed(() => {
+  if (selectedFile.value) {
+    const kb = (selectedFile.value.bytes / 1024).toFixed(1)
+    if (code.value)
+      return `${kb} KB · ${t('workspace.characters', { n: code.value.length.toLocaleString() })}`
+    return `${kb} KB`
+  }
+  return `${(totalBytes.value / 1024).toFixed(1)} KB`
+})
 const previewable = computed(() => selected.value.toLowerCase().endsWith('.html') && isPreviewableHtml(code.value, 'html'))
 const fileType = computed(() => workspaceFileType(selected.value))
 const markdown = computed(() => fileType.value.language === 'markdown')
@@ -279,16 +286,28 @@ function retryDownload() {
 <template>
   <section ref="panel" data-workspace-files-panel class="workspace-panel" :class="{ 'is-compact': width < 620 }" :data-dark="workspaceTheme === 'olive-ember'" @keydown.esc.stop="close">
     <header class="file-toolbar">
-      <div class="file-title" :title="selected || t('workspace.files')">
-        <AppIcon :name="selected ? fileType.icon : 'vscode-icons:default-folder-opened'" :size="18" />
-        <select v-if="width < 620 && selected && (snapshot?.files.length ?? 0) > 1" :value="selected" :disabled="previewPending || loading || !!error" :aria-label="t('workspace.chooseFile')" @change="open(($event.target as HTMLSelectElement).value, true)">
-          <option v-for="file in snapshot?.files" :key="file.path" :value="file.path">
-            {{ file.path }}
-          </option>
-        </select>
-        <h2 v-else>
-          {{ selected ? selected.split('/').at(-1) : t('workspace.files') }}
-        </h2>
+      <div class="file-header-left">
+        <div class="file-title" :title="t('workspace.files')">
+          <AppIcon name="vscode-icons:default-folder-opened" :size="18" class="shrink-0" />
+          <select v-if="width < 620 && selected && (snapshot?.files.length ?? 0) > 1" :value="selected" :disabled="previewPending || loading || !!error" :aria-label="t('workspace.chooseFile')" @change="open(($event.target as HTMLSelectElement).value, true)">
+            <option v-for="file in snapshot?.files" :key="file.path" :value="file.path">
+              {{ file.path }}
+            </option>
+          </select>
+          <h2 v-else>
+            {{ t('workspace.files') }}
+          </h2>
+        </div>
+        <span
+          v-if="downloadPending && downloadTarget"
+          data-workspace-download-loading
+          role="status"
+          class="meta-downloading truncate"
+          :title="downloadTarget.path"
+        >
+          <AppIcon name="tabler:loader-2" :size="12" class="animate-spin motion-reduce:animate-none shrink-0" />
+          <span class="truncate">{{ t('workspace.downloading', { path: downloadTarget.path }) }}</span>
+        </span>
       </div>
       <div class="toolbar-actions">
         <div v-if="selected && !markdown" class="view-switch" :aria-label="t('workspace.viewMode')" role="group">
@@ -299,24 +318,22 @@ function retryDownload() {
             {{ t('workspace.preview') }}
           </button>
         </div>
-        <AppTooltip :content="t('workspace.refresh')">
-          <button class="workspace-action" :disabled="loading" :aria-label="t('workspace.refresh')" @click="emit('refresh')">
-            <AppIcon name="tabler:refresh" :size="16" :class="{ 'animate-spin motion-reduce:animate-none': loading }" />
-          </button>
-        </AppTooltip>
-        <AppTooltip v-if="selected" :content="t('workspace.downloadFile', { path: selected })">
-          <button class="workspace-action" :disabled="downloadPending || loading || !!error" :aria-busy="downloadPending && downloadTarget?.path === selected" :aria-label="t('workspace.downloadFile', { path: selected })" @click="download(selected)">
-            <AppIcon :name="downloadPending && downloadTarget?.path === selected ? 'tabler:loader-2' : 'tabler:download'" :size="17" :class="{ 'animate-spin motion-reduce:animate-none': downloadPending && downloadTarget?.path === selected }" />
-          </button>
-        </AppTooltip>
+        <div v-if="selected && !markdown" class="toolbar-divider" />
+        <span class="saved-version">
+          {{ t('workspace.savedVersion', { n: snapshot?.revision ?? 0 }) }}
+        </span>
+        <button class="workspace-action" :disabled="loading" :title="t('workspace.refresh')" :aria-label="t('workspace.refresh')" @click="emit('refresh')">
+          <AppIcon name="tabler:refresh" :size="16" :class="{ 'animate-spin motion-reduce:animate-none': loading }" />
+        </button>
+        <button v-if="selected" class="workspace-action" :disabled="downloadPending || loading || !!error" :aria-busy="downloadPending && downloadTarget?.path === selected" :title="t('workspace.downloadFile', { path: selected })" :aria-label="t('workspace.downloadFile', { path: selected })" @click="download(selected)">
+          <AppIcon :name="downloadPending && downloadTarget?.path === selected ? 'tabler:loader-2' : 'tabler:download'" :size="16" :class="{ 'animate-spin motion-reduce:animate-none': downloadPending && downloadTarget?.path === selected }" />
+        </button>
         <DialogRoot v-if="previewable && !error && !previewError" v-model:open="expandedPreview">
-          <AppTooltip :content="t('workspace.expandPreview')">
-            <DialogTrigger as-child>
-              <button class="workspace-action" :disabled="previewPending" :aria-label="t('workspace.expandPreview')">
-                <AppIcon name="tabler:maximize" :size="16" />
-              </button>
-            </DialogTrigger>
-          </AppTooltip>
+          <DialogTrigger as-child>
+            <button class="workspace-action" :disabled="previewPending" :title="t('workspace.expandPreview')" :aria-label="t('workspace.expandPreview')">
+              <AppIcon name="tabler:maximize" :size="16" />
+            </button>
+          </DialogTrigger>
           <DialogPortal>
             <DialogContent data-expanded-preview :aria-describedby="undefined" class="fixed inset-0 z-[70] flex h-dvh w-full flex-col overflow-hidden bg-agent-surface outline-none">
               <header class="flex h-11 shrink-0 items-center gap-2 border-b border-agent-border-soft px-3 text-agent-ink">
@@ -324,16 +341,12 @@ function retryDownload() {
                 <DialogTitle class="min-w-0 flex-1 truncate text-[13px] font-medium" :title="selected">
                   {{ selected.split('/').at(-1) }}
                 </DialogTitle>
-                <AppTooltip :content="t('workspace.downloadFile', { path: selected })">
-                  <button class="workspace-action" :disabled="downloadPending || loading || !!error" :aria-busy="downloadPending && downloadTarget?.path === selected" :aria-label="t('workspace.downloadFile', { path: selected })" @click="download(selected)">
-                    <AppIcon :name="downloadPending && downloadTarget?.path === selected ? 'tabler:loader-2' : 'tabler:download'" :size="17" :class="{ 'animate-spin motion-reduce:animate-none': downloadPending && downloadTarget?.path === selected }" />
-                  </button>
-                </AppTooltip>
-                <AppTooltip :content="t('workspace.closeExpandedPreview')">
-                  <DialogClose class="workspace-action" :aria-label="t('workspace.closeExpandedPreview')">
-                    <AppIcon name="tabler:x" :size="17" />
-                  </DialogClose>
-                </AppTooltip>
+                <button class="workspace-action" :disabled="downloadPending || loading || !!error" :aria-busy="downloadPending && downloadTarget?.path === selected" :title="t('workspace.downloadFile', { path: selected })" :aria-label="t('workspace.downloadFile', { path: selected })" @click="download(selected)">
+                  <AppIcon :name="downloadPending && downloadTarget?.path === selected ? 'tabler:loader-2' : 'tabler:download'" :size="17" :class="{ 'animate-spin motion-reduce:animate-none': downloadPending && downloadTarget?.path === selected }" />
+                </button>
+                <DialogClose class="workspace-action" :title="t('workspace.closeExpandedPreview')" :aria-label="t('workspace.closeExpandedPreview')">
+                  <AppIcon name="tabler:x" :size="17" />
+                </DialogClose>
               </header>
               <p v-if="downloadPending && downloadTarget" data-workspace-download-loading role="status" class="shrink-0 truncate px-3 py-2 text-xs text-agent-ink-muted">
                 {{ t('workspace.downloading', { path: downloadTarget.path }) }}
@@ -348,11 +361,9 @@ function retryDownload() {
             </DialogContent>
           </DialogPortal>
         </DialogRoot>
-        <AppTooltip :content="t('workspace.close')">
-          <button class="workspace-action" :aria-label="t('workspace.close')" @click="close">
-            <AppIcon name="tabler:x" :size="17" />
-          </button>
-        </AppTooltip>
+        <button class="workspace-action" :title="t('workspace.close')" :aria-label="t('workspace.close')" @click="close">
+          <AppIcon name="tabler:x" :size="17" />
+        </button>
       </div>
     </header>
     <p v-if="error || previewError || snapshot?.lastError" data-workspace-preview-error role="alert" class="workspace-error">
@@ -426,7 +437,16 @@ function retryDownload() {
         </div>
         <div v-else-if="!error && !previewError && selected && mode === 'code'" :inert="contentLoading || undefined" class="source-panel">
           <div class="source-header">
-            <span>{{ fileType.label }} <span class="source-readonly">{{ t('workspace.readonly') }}</span></span>
+            <div class="source-file-info">
+              <AppIcon :name="fileType.icon" :size="15" class="shrink-0" />
+              <span class="source-filename" :title="selected">{{ selected.split('/').at(-1) }}</span>
+              <span class="source-tag">{{ fileType.label }}</span>
+              <span class="source-readonly">{{ t('workspace.readonly') }}</span>
+              <template v-if="metaSizeText">
+                <span class="source-sep">·</span>
+                <span class="source-meta">{{ metaSizeText }}</span>
+              </template>
+            </div>
             <div class="source-actions">
               <button v-if="canFormat" class="source-format" :disabled="formatting" @click="toggleFormat">
                 <AppIcon :name="formatting ? 'tabler:loader-2' : 'tabler:source-code'" :size="15" :class="{ 'animate-spin motion-reduce:animate-none': formatting }" />
@@ -452,61 +472,394 @@ function retryDownload() {
             <pre v-else class="source-plain"><code class="hljs" v-html="highlighted" /></pre>
           </div>
         </div>
-        <div v-else-if="!contentLoading && !error && !previewError" class="workspace-placeholder">
-          <AppIcon name="tabler:file-code" :size="28" /><p>{{ t('workspace.selectFile') }}</p>
+        <div v-else-if="!contentLoading && !error && !previewError && !snapshot?.files.length" class="workspace-empty-stage workspace-empty-state" role="status">
+          <div class="stage-ambient-glow" aria-hidden="true" />
+          <div class="stage-card-stack" aria-hidden="true">
+            <div class="stack-card card-back">
+              <span class="card-line card-line-sm" />
+              <span class="card-line card-line-md" />
+              <span class="card-line card-line-lg" />
+            </div>
+            <div class="stack-card card-middle">
+              <div class="card-browser-bar">
+                <span class="browser-dot" />
+                <span class="browser-dot" />
+                <span class="browser-dot" />
+              </div>
+              <div class="card-wireframe" />
+            </div>
+            <div class="stack-card card-front">
+              <div class="card-chip">
+                WORKSPACE
+              </div>
+              <div class="card-icon-wrap is-workspace">
+                <AppIcon name="tabler:sparkles" :size="30" class="card-icon" />
+              </div>
+              <div class="card-preview-lines" aria-hidden="true">
+                <span class="preview-line preview-line-1" />
+                <span class="preview-line preview-line-2" />
+              </div>
+            </div>
+          </div>
+          <div class="stage-content">
+            <h3 class="stage-title empty-title">
+              {{ t('workspace.emptyTitle') }}
+            </h3>
+            <p class="stage-desc empty-desc">
+              {{ t('workspace.empty') }}
+            </p>
+            <div class="stage-hint-pill">
+              <AppIcon name="tabler:sparkles" :size="13" class="hint-icon" />
+              <span>{{ t('workspace.emptyHint') }}</span>
+            </div>
+          </div>
+        </div>
+        <div v-else-if="!contentLoading && !error && !previewError" class="workspace-empty-stage workspace-empty-state is-select-file" role="status">
+          <div class="stage-ambient-glow" aria-hidden="true" />
+          <div class="stage-card-stack" aria-hidden="true">
+            <div class="stack-card card-back">
+              <span class="card-line card-line-sm" />
+              <span class="card-line card-line-md" />
+              <span class="card-line card-line-lg" />
+            </div>
+            <div class="stack-card card-middle">
+              <div class="card-browser-bar">
+                <span class="browser-dot" />
+                <span class="browser-dot" />
+                <span class="browser-dot" />
+              </div>
+              <div class="card-wireframe" />
+            </div>
+            <div class="stack-card card-front">
+              <div class="card-chip">
+                PREVIEW
+              </div>
+              <div class="card-icon-wrap is-preview">
+                <AppIcon name="tabler:device-desktop-code" :size="30" class="card-icon" />
+              </div>
+              <div class="card-preview-lines" aria-hidden="true">
+                <span class="preview-line preview-line-1" />
+                <span class="preview-line preview-line-2" />
+              </div>
+            </div>
+          </div>
+          <div class="stage-content">
+            <h3 class="stage-title empty-title">
+              {{ t('workspace.selectFileTitle') }}
+            </h3>
+            <p class="stage-desc empty-desc">
+              {{ t('workspace.selectFileDesc') }}
+            </p>
+            <div class="stage-hint-pill">
+              <AppIcon name="tabler:layout-sidebar-left-collapse" :size="13" class="hint-icon" />
+              <span>{{ t('workspace.selectFileHint') }}</span>
+            </div>
+          </div>
         </div>
       </main>
     </div>
-    <footer class="workspace-status">
-      <span class="saved-version">{{ t('workspace.savedVersion', { n: snapshot?.revision ?? 0 }) }} · {{ (totalBytes / 1024).toFixed(1) }} KB</span>
-      <span v-if="previewPending" class="status-loading">{{ t('workspace.loading') }}</span>
-      <span v-if="downloadPending && downloadTarget" data-workspace-download-loading role="status" class="status-loading truncate" :title="downloadTarget.path">{{ t('workspace.downloading', { path: downloadTarget.path }) }}</span>
-      <AppTooltip :content="t('workspace.interactiveNotice')">
-        <span class="isolation-icon" :aria-label="t('workspace.interactiveNotice')"><AppIcon name="tabler:shield-lock" :size="14" /></span>
-      </AppTooltip>
-      <label class="environment-toggle"><input v-model="showEnvironment" type="checkbox" class="accent-agent-accent"><span>{{ t('workspace.environment') }}</span></label>
-    </footer>
-    <p v-if="showEnvironment" data-workspace-environment class="environment-status" aria-live="polite">
-      {{ stateLabel }}
-    </p>
   </section>
 </template>
 
 <style scoped>
-.workspace-panel { display: flex; flex: 1; min-width: 0; min-height: 0; flex-direction: column; background: var(--agent-canvas); color: var(--agent-ink); }
-.file-toolbar { display: flex; flex-shrink: 0; flex-wrap: wrap; align-items: center; gap: 6px 12px; min-height: 44px; padding: 6px 12px; border-bottom: 1px solid var(--agent-border-soft); background: var(--agent-surface); }
-.file-title { display: flex; flex: 1; min-width: 100px; align-items: center; gap: 8px; }
-.file-title h2 { overflow: hidden; margin: 0; font-size: 13px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
-.file-title select { width: 100%; min-width: 0; background: transparent; color: var(--agent-ink); font-size: 13px; }
-.file-title select:focus-visible { outline: 2px solid var(--agent-focus); outline-offset: 2px; }
-.file-title option { background: var(--agent-surface); color: var(--agent-ink); }
-.toolbar-actions { display: flex; flex-shrink: 0; align-items: center; gap: 3px; margin-left: auto; }
-.workspace-action { display: grid; width: 28px; height: 28px; flex-shrink: 0; place-items: center; border-radius: 5px; color: var(--agent-ink-muted); }
-.workspace-action:hover { background: var(--agent-surface-sunken); color: var(--agent-ink); }
-.workspace-action:focus-visible, .view-switch button:focus-visible, .tree-entry:focus-visible { outline: 2px solid var(--agent-focus); outline-offset: -2px; }
-.workspace-action:disabled, .tree-entry:disabled { opacity: 0.45; cursor: wait; }
-.view-switch { display: inline-flex; gap: 2px; padding: 2px; border-radius: 6px; background: var(--agent-surface-sunken); }
-.view-switch button { padding: 3px 9px; border-radius: 4px; color: var(--agent-ink-muted); font-size: 12px; }
-.view-switch button[aria-pressed='true'] { background: var(--agent-surface-raised); color: var(--agent-ink); }
-.workspace-body { display: flex; flex: 1; min-width: 0; min-height: 0; }
-.file-sidebar { display: flex; width: 210px; max-width: 40%; flex-shrink: 0; flex-direction: column; border-right: 1px solid var(--agent-border-soft); background: var(--agent-sidebar); }
-.file-search { display: flex; min-width: 0; align-items: center; gap: 7px; margin: 12px 10px 0; padding: 6px 8px; border: 1px solid var(--agent-border-soft); border-radius: 6px; background: var(--agent-surface-raised); color: var(--agent-ink-muted); }
-.file-search:focus-within { outline: 2px solid var(--agent-focus); outline-offset: 1px; }
-.file-search input { width: 100%; min-width: 0; outline: none; background: transparent; color: var(--agent-ink); font-size: 12px; }
-.file-search input::placeholder { color: var(--agent-ink-muted); }
-.file-tree-heading { padding: 12px 14px 6px; color: var(--agent-ink-muted); font-size: 11px; font-weight: 600; }
-.file-tree { flex: 1; min-height: 0; overflow: auto; padding: 0 6px 12px; }
-.tree-root, .tree-row { display: flex; min-height: 32px; align-items: center; gap: 6px; padding: 0 6px; border-radius: 6px; font-size: 12px; }
-.tree-root { gap: 7px; color: var(--agent-ink-muted); }
-.tree-row:hover { background: color-mix(in oklch, var(--agent-surface-sunken) 55%, transparent); }
-.tree-row.is-selected { background: var(--agent-surface-sunken); color: var(--agent-ink); }
-.tree-entry { display: flex; flex: 1; min-width: 0; min-height: 32px; align-items: center; gap: 6px; text-align: left; color: var(--agent-ink-soft); }
-.tree-entry span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.tree-file { padding-left: 15px; }
-.tree-arrow { color: var(--agent-ink-faint); }
-.tree-download { width: 22px; height: 24px; opacity: 0; }
-.tree-row:hover .tree-download, .tree-row:focus-within .tree-download { opacity: 1; }
-.file-viewport { position: relative; display: flex; flex: 1; min-width: 0; min-height: 0; flex-direction: column; overflow: hidden; }
+.workspace-panel {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  padding: 0;
+  gap: 0;
+  background: var(--agent-surface);
+  color: var(--agent-ink);
+  overflow: hidden;
+}
+.file-toolbar {
+  display: flex;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 44px;
+  padding: 6px 14px;
+  border-bottom: 1px solid var(--agent-border-soft);
+  background: color-mix(in oklch, var(--agent-surface) 96%, transparent);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  z-index: 10;
+}
+:global([data-agent-workspace-theme='olive-ember']) .file-toolbar {
+  background: color-mix(in oklch, var(--agent-surface) 92%, transparent);
+  border-bottom-color: rgba(255, 255, 255, 0.08);
+}
+.file-header-left {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+  gap: 10px;
+}
+.file-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 100px;
+}
+.file-title h2 {
+  overflow: hidden;
+  margin: 0;
+  font-size: 13.5px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--agent-ink);
+}
+.file-title select {
+  width: 100%;
+  min-width: 100px;
+  background: transparent;
+  color: var(--agent-ink);
+  font-size: 13px;
+  font-weight: 500;
+  border: none;
+  outline: none;
+}
+.file-title select:focus-visible {
+  outline: 2px solid var(--agent-focus);
+  outline-offset: 2px;
+}
+.file-title option {
+  background: var(--agent-surface);
+  color: var(--agent-ink);
+}
+.saved-version {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11.5px;
+  color: var(--agent-ink-muted);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  padding: 0 4px;
+}
+.meta-downloading {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  background: color-mix(in oklch, var(--agent-accent) 12%, transparent);
+  color: var(--agent-accent);
+  font-size: 11px;
+  font-weight: 500;
+  max-width: 220px;
+}
+.workspace-panel.is-compact .file-toolbar {
+  padding: 6px 10px;
+  gap: 6px;
+}
+.workspace-panel.is-compact .file-header-left {
+  flex-basis: 100%;
+  gap: 6px;
+}
+.workspace-panel.is-compact .file-title {
+  min-width: 0;
+  max-width: 100%;
+}
+.workspace-panel.is-compact .file-title select {
+  min-width: 0;
+}
+.workspace-panel.is-compact .saved-version {
+  font-size: 11px;
+}
+.workspace-panel.is-compact .toolbar-divider {
+  display: none;
+}
+.toolbar-actions {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 3px;
+  margin-left: auto;
+}
+.toolbar-divider {
+  width: 1px;
+  height: 16px;
+  background: var(--agent-border-soft);
+  margin: 0 4px;
+}
+.workspace-action {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  place-items: center;
+  border-radius: 6px;
+  color: var(--agent-ink-muted);
+  transition: all 0.16s ease;
+}
+.workspace-action:hover {
+  background: var(--agent-surface-sunken);
+  color: var(--agent-ink);
+}
+.workspace-action:focus-visible, .view-switch button:focus-visible, .tree-entry:focus-visible {
+  outline: 2px solid var(--agent-focus);
+  outline-offset: -2px;
+}
+.workspace-action:disabled, .tree-entry:disabled {
+  opacity: 0.45;
+  cursor: wait;
+}
+.view-switch {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 6px;
+  background: var(--agent-surface-sunken);
+}
+.view-switch button {
+  padding: 3px 9px;
+  border-radius: 4px;
+  color: var(--agent-ink-muted);
+  font-size: 11.5px;
+  font-weight: 500;
+  transition: all 0.16s ease;
+}
+.view-switch button[aria-pressed='true'] {
+  background: var(--agent-surface-raised);
+  color: var(--agent-ink);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+.workspace-body {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  gap: 0;
+}
+.file-sidebar {
+  display: flex;
+  width: 220px;
+  max-width: 38%;
+  flex-shrink: 0;
+  flex-direction: column;
+  border-right: 1px solid var(--agent-border-soft);
+  background: color-mix(in oklch, var(--agent-sidebar) 85%, transparent);
+  overflow: hidden;
+}
+:global([data-agent-workspace-theme='olive-ember']) .file-sidebar {
+  background: color-mix(in oklch, var(--agent-sidebar) 75%, transparent);
+  border-right-color: rgba(255, 255, 255, 0.07);
+}
+.file-search {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 7px;
+  margin: 10px 10px 4px;
+  padding: 6px 10px;
+  border: 1px solid var(--agent-border-soft);
+  border-radius: 8px;
+  background: var(--agent-surface);
+  color: var(--agent-ink-muted);
+  transition: all 0.2s ease;
+}
+.file-search:focus-within {
+  background: var(--agent-surface-raised);
+  border-color: color-mix(in oklch, var(--agent-accent) 40%, var(--agent-border-soft));
+  box-shadow: 0 0 0 2px color-mix(in oklch, var(--agent-accent) 15%, transparent);
+  color: var(--agent-ink);
+}
+.file-search input {
+  width: 100%;
+  min-width: 0;
+  outline: none;
+  background: transparent;
+  color: var(--agent-ink);
+  font-size: 12px;
+}
+.file-search input::placeholder {
+  color: var(--agent-ink-faint);
+}
+.file-tree-heading {
+  padding: 8px 12px 4px;
+  color: var(--agent-ink-faint);
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.file-tree {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 2px 6px 10px;
+}
+.tree-root, .tree-row {
+  display: flex;
+  min-height: 30px;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+  border-radius: 6px;
+  font-size: 12.5px;
+  margin: 1px 0;
+  transition: all 0.15s ease;
+}
+.tree-root {
+  gap: 7px;
+  color: var(--agent-ink-muted);
+  font-size: 12px;
+}
+.tree-row:hover {
+  background: color-mix(in oklch, var(--agent-surface-sunken) 70%, transparent);
+}
+.tree-row.is-selected {
+  background: var(--agent-surface-raised);
+  color: var(--agent-ink);
+  font-weight: 500;
+  box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.04);
+}
+.tree-entry {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 30px;
+  align-items: center;
+  gap: 6px;
+  text-align: left;
+  color: var(--agent-ink-soft);
+}
+.tree-entry span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tree-file {
+  padding-left: 15px;
+}
+.tree-arrow {
+  color: var(--agent-ink-faint);
+}
+.tree-download {
+  width: 22px;
+  height: 24px;
+  opacity: 0;
+}
+.tree-row:hover .tree-download, .tree-row:focus-within .tree-download {
+  opacity: 1;
+}
+.file-viewport {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  background: var(--agent-surface);
+  overflow: hidden;
+}
 .workspace-placeholder { display: grid; flex: 1; align-content: center; justify-items: center; gap: 12px; padding: 24px; color: var(--agent-ink-muted); text-align: center; font-size: 13px; }
 .workspace-loading { --loading-cream: #c8a875; position: absolute; inset: 0; z-index: 1; background: var(--agent-canvas); }
 .markdown-preview { flex: 1; min-height: 0; overflow: auto; padding: 20px 24px; }
@@ -528,23 +881,65 @@ function retryDownload() {
   100% { transform: scaleX(0.2); opacity: 0.4; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .loading-circle, .loading-shadow { animation: none; }
+  .loading-circle, .loading-shadow, .stage-card-stack { animation: none !important; }
   .loading-circle { top: 20px; }
   .loading-shadow { transform: scaleX(0.7); opacity: 0.4; }
+  .stage-card-stack:hover .card-back,
+  .stage-card-stack:hover .card-middle,
+  .stage-card-stack:hover .card-front { transform: none !important; }
 }
+.workspace-empty-stage { position: relative; display: flex; flex: 1; min-width: 0; min-height: 0; flex-direction: column; align-items: center; justify-content: center; padding: 40px 24px; text-align: center; user-select: none; overflow: hidden; border-radius: inherit; }
+.stage-ambient-glow { position: absolute; top: 42%; left: 50%; width: 280px; height: 180px; transform: translate(-50%, -50%); border-radius: 50%; pointer-events: none; opacity: 0.85; filter: blur(48px); background: radial-gradient(ellipse at center, color-mix(in oklch, var(--agent-accent) 22%, transparent) 0%, transparent 72%); transition: opacity 0.3s ease; }
+.stage-card-stack { position: relative; width: 172px; height: 124px; margin-bottom: 22px; perspective: 600px; cursor: default; animation: stage-float 6s ease-in-out infinite; }
+.stack-card { position: absolute; border-radius: 12px; transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.4s ease, border-color 0.3s ease; will-change: transform; }
+.card-back { width: 148px; height: 96px; top: 14px; left: 12px; background: color-mix(in oklch, var(--agent-surface-raised) 70%, var(--agent-surface-sunken)); border: 1px solid var(--agent-border-soft); box-shadow: 0 4px 14px -3px rgb(0 0 0 / 0.05); transform: translate(-16px, 4px) rotate(-8deg); z-index: 1; display: flex; flex-direction: column; gap: 7px; padding: 14px 12px; }
+.card-line { height: 5px; border-radius: 3px; background: color-mix(in oklch, var(--agent-ink) 12%, transparent); }
+.card-line-sm { width: 35%; }
+.card-line-md { width: 68%; }
+.card-line-lg { width: 85%; }
+.card-middle { width: 152px; height: 100px; top: 12px; left: 10px; background: color-mix(in oklch, var(--agent-surface) 80%, var(--agent-surface-raised)); border: 1px solid var(--agent-border-soft); box-shadow: 0 6px 18px -4px rgb(0 0 0 / 0.07); transform: translate(14px, -2px) rotate(6deg); z-index: 2; padding: 8px 10px; display: flex; flex-direction: column; gap: 8px; }
+.card-browser-bar { display: flex; gap: 4px; align-items: center; padding-bottom: 6px; border-bottom: 1px solid var(--agent-border-subtle); }
+.browser-dot { width: 5px; height: 5px; border-radius: 50%; background: color-mix(in oklch, var(--agent-ink) 18%, transparent); }
+.card-wireframe { flex: 1; border-radius: 4px; border: 1px dashed color-mix(in oklch, var(--agent-ink) 12%, transparent); background: color-mix(in oklch, var(--agent-surface-sunken) 40%, transparent); }
+.card-front { width: 158px; height: 108px; top: 8px; left: 7px; background: var(--agent-surface-raised); border: 1px solid var(--agent-border-soft); box-shadow: 0 16px 32px -8px rgb(0 0 0 / 0.1), 0 4px 12px -2px rgb(0 0 0 / 0.04), inset 0 1px 0 rgb(255 255 255 / 0.8); transform: translate(0, 0); z-index: 3; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding: 10px; }
+.card-chip { position: absolute; top: 6px; left: 8px; font-size: 8.5px; font-weight: 700; letter-spacing: 0.08em; padding: 1.5px 6px; border-radius: 4px; background: color-mix(in oklch, var(--agent-accent) 12%, transparent); color: var(--agent-accent); }
+.card-icon-wrap { display: flex; align-items: center; justify-content: center; color: color-mix(in oklch, var(--agent-accent) 72%, transparent); margin-bottom: 2px; }
+.card-icon { flex-shrink: 0; filter: drop-shadow(0 2px 6px color-mix(in oklch, var(--agent-accent) 15%, transparent)); }
+.card-preview-lines { display: flex; flex-direction: column; align-items: center; gap: 3.5px; margin-top: 1px; }
+.preview-line { height: 3px; border-radius: 2px; background: color-mix(in oklch, var(--agent-ink) 14%, transparent); }
+.preview-line-1 { width: 48px; }
+.preview-line-2 { width: 28px; opacity: 0.65; }
+.stage-card-stack:hover .card-back { transform: translate(-26px, 8px) rotate(-14deg); box-shadow: 0 8px 20px -4px rgb(0 0 0 / 0.1); }
+.stage-card-stack:hover .card-middle { transform: translate(24px, -4px) rotate(12deg); box-shadow: 0 10px 24px -5px rgb(0 0 0 / 0.12); }
+.stage-card-stack:hover .card-front { transform: translateY(-4px) scale(1.03); box-shadow: 0 22px 40px -10px rgb(0 0 0 / 0.15), 0 6px 16px -2px rgb(0 0 0 / 0.06), inset 0 1px 0 rgb(255 255 255 / 0.9); }
+.stage-content { display: flex; flex-direction: column; align-items: center; gap: 6px; max-width: 320px; z-index: 2; }
+.stage-title { margin: 0; font-size: 14.5px; font-weight: 600; line-height: 1.4; letter-spacing: -0.01em; color: var(--agent-ink); }
+.stage-desc { margin: 0; font-size: 12.5px; line-height: 1.55; color: var(--agent-ink-muted); }
+.stage-hint-pill { display: inline-flex; align-items: center; gap: 6px; margin-top: 10px; padding: 5px 12px; border-radius: 9999px; border: 1px solid var(--agent-border-soft); background: var(--agent-surface-raised); color: var(--agent-ink-muted); font-size: 11.5px; font-weight: 450; box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.03); transition: all 0.2s ease; }
+.stage-hint-pill:hover { border-color: color-mix(in oklch, var(--agent-accent) 40%, var(--agent-border-soft)); color: var(--agent-ink); }
+.hint-icon { flex-shrink: 0; color: var(--agent-accent); }
+:global([data-agent-workspace-theme='olive-ember']) .stage-ambient-glow { background: radial-gradient(ellipse at center, color-mix(in oklch, var(--agent-accent) 26%, transparent) 0%, transparent 72%); opacity: 0.95; filter: blur(52px); }
+:global([data-agent-workspace-theme='olive-ember']) .card-back { background: color-mix(in oklch, var(--agent-surface) 90%, black); border-color: color-mix(in oklch, var(--agent-border-soft) 80%, transparent); box-shadow: 0 8px 24px -4px rgb(0 0 0 / 0.5); }
+:global([data-agent-workspace-theme='olive-ember']) .card-middle { background: color-mix(in oklch, var(--agent-surface-raised) 70%, var(--agent-surface)); border-color: color-mix(in oklch, var(--agent-border-soft) 90%, transparent); box-shadow: 0 12px 30px -6px rgb(0 0 0 / 0.6); }
+:global([data-agent-workspace-theme='olive-ember']) .card-front { background: linear-gradient(160deg, color-mix(in oklch, var(--agent-surface-raised) 95%, white 5%), var(--agent-surface-raised)); border-color: color-mix(in oklch, var(--agent-accent) 25%, var(--agent-border-soft)); box-shadow: 0 20px 42px -10px rgb(0 0 0 / 0.7), 0 4px 12px -2px rgb(0 0 0 / 0.4), inset 0 1px 0 rgb(255 255 255 / 0.12); }
+:global([data-agent-workspace-theme='olive-ember']) .card-icon { filter: drop-shadow(0 2px 8px color-mix(in oklch, var(--agent-accent) 45%, transparent)); }
+:global([data-agent-workspace-theme='olive-ember']) .preview-line { background: color-mix(in oklch, var(--agent-ink) 22%, transparent); }
+:global([data-agent-workspace-theme='olive-ember']) .stage-hint-pill { background: color-mix(in oklch, var(--agent-surface-raised) 80%, transparent); border-color: var(--agent-border-soft); box-shadow: 0 2px 8px -2px rgb(0 0 0 / 0.3), inset 0 1px 0 rgb(255 255 255 / 0.05); }
+@keyframes stage-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
 .workspace-empty { padding: 16px 8px; color: var(--agent-ink-muted); font-size: 12px; line-height: 1.7; }
-.workspace-error { flex-shrink: 0; padding: 8px 12px; color: var(--agent-error); font-size: 12px; }
-.workspace-status { display: flex; flex-shrink: 0; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 6px 12px; border-top: 1px solid var(--agent-border-soft); background: var(--agent-surface); color: var(--agent-ink-muted); font-size: 11px; }
-.saved-version { flex: 1; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.environment-toggle { display: inline-flex; flex-shrink: 0; align-items: center; gap: 5px; cursor: pointer; }
-.environment-toggle input { width: 12px; height: 12px; }
-.environment-status { padding: 6px 12px; background: var(--agent-surface); color: var(--agent-ink-muted); font-size: 11px; }
-.isolation-icon { display: grid; place-items: center; }
+.workspace-error { flex-shrink: 0; padding: 6px 12px; color: var(--agent-error); font-size: 12px; background: color-mix(in oklch, var(--agent-error) 8%, transparent); border-bottom: 1px solid color-mix(in oklch, var(--agent-error) 20%, transparent); }
+
 .source-panel { --code-ink: #383a42; --code-keyword: #a626a4; --code-title: #4078f2; --code-string: #50a14f; --code-value: #986801; --code-tag: #e45649; --code-comment: #6d727d; --code-type: #c18401; --code-symbol: #0184bc; display: flex; flex: 1; min-width: 0; min-height: 0; flex-direction: column; background: #f4f4f5; }
 [data-dark='true'] .source-panel { --code-ink: #abb2bf; --code-keyword: #c678dd; --code-title: #61afef; --code-string: #98c379; --code-value: #d19a66; --code-tag: #e06c75; --code-comment: #8b919c; --code-type: #e5c07b; --code-symbol: #56b6c2; background: #1e1e20; }
-.source-header { display: flex; min-height: 38px; flex-shrink: 0; align-items: center; justify-content: space-between; padding: 0 16px; border-bottom: 1px solid var(--agent-border-soft); background: var(--agent-surface); color: var(--agent-ink-muted); font-size: 11px; }
-.source-readonly { margin-left: 8px; font-family: var(--font-sans); font-weight: 400; }
-.source-actions { display: flex; align-items: center; gap: 6px; }
+.source-header { display: flex; min-height: 38px; flex-shrink: 0; align-items: center; justify-content: space-between; gap: 8px; padding: 0 14px; border-bottom: 1px solid var(--agent-border-soft); background: var(--agent-surface); color: var(--agent-ink-muted); font-size: 11px; }
+.source-file-info { display: flex; align-items: center; gap: 7px; min-width: 0; overflow: hidden; }
+.source-filename { font-weight: 500; color: var(--agent-ink); font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.source-tag { display: inline-flex; align-items: center; padding: 1px 5px; border-radius: 4px; background: var(--agent-surface-sunken); color: var(--agent-ink-soft); font-size: 10px; font-weight: 600; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; line-height: 1.3; }
+.source-readonly { font-size: 11px; font-family: var(--font-sans); font-weight: 400; color: var(--agent-ink-muted); }
+.source-sep { color: var(--agent-ink-faint); opacity: 0.6; }
+.source-meta { font-size: 11.5px; color: var(--agent-ink-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.workspace-panel.is-compact .source-meta, .workspace-panel.is-compact .source-sep { display: none; }
+.source-actions { display: flex; flex-shrink: 0; align-items: center; gap: 6px; }
 .source-format { display: inline-flex; align-items: center; gap: 5px; padding: 4px 6px; border-radius: 4px; color: var(--agent-ink-muted); font-size: 12px; }
 .source-format:hover, .source-actions [aria-pressed='true'] { background: var(--agent-surface-sunken); color: var(--agent-ink); }
 .source-format:disabled { opacity: 0.5; cursor: wait; }

@@ -70,10 +70,11 @@ test('构建步骤、命令错误与修复、文件保存、交互预览、业�
   const child = page.frames().find(item => item.url() === 'about:srcdoc')!
   assert.equal(await child.evaluate(() => (window as unknown as { checkIsolation: () => string }).checkIsolation()), 'isolated')
   const panel = page.locator('[data-workspace-files-panel]')
-  await panel.getByRole('checkbox', { name: '显示环境状态' }).check()
-  await expect(panel.locator('[data-workspace-environment]')).toContainText('环境已关闭')
+  await expect(page.getByText('已生成页面并完成检查，数据为演示数据。')).toBeVisible()
+  await expect(panel).toContainText('已保存版本 2')
   const downloaded = page.waitForEvent('download')
-  await panel.getByRole('button', { name: `下载 ${file.path}`, exact: true }).click()
+  // 从跨域 iframe 返回宿主时给 Chrome 一帧派发 mouseup；仍使用真实命中检查。
+  await panel.getByRole('button', { name: `下载 ${file.path}`, exact: true }).click({ delay: 50 })
   const download = await downloaded
   assert.equal(download.suggestedFilename(), 'traffic.html')
   assert.equal(await readFile((await download.path())!, 'utf8'), html)
@@ -137,23 +138,45 @@ test('快速文字之后的工具过程和交付卡片刷新可恢复，卡片�
   assert.equal(await page.evaluate(() => window.__chatRequests?.length ?? 0), 0)
 })
 
-test('工作文件在窄屏可关闭，页面不产生横向溢出', async ({ page }) => {
-  await installApiRoutes(page, () => [{ id: 'saved-question', conversationId: CONVERSATION_ID, role: 'USER', content: '制作看板', status: 'COMPLETED', createdAt: '2026-10-02T00:00:00Z', updatedAt: '2026-10-02T00:00:00Z' }])
-  await installBrowserStubs(page, { lines: [], holdBeforeIndex: -1 })
-  await page.route('**/api/conversations/*/workspace**', (route) => {
-    const url = new URL(route.request().url())
-    return route.fulfill({ json: { success: true, code: 0, data: url.pathname.endsWith('/file') ? { encoding: 'base64', content: Buffer.from(url.searchParams.get('path') === 'src/example.ts' ? 'const answer: number = 42' : html).toString('base64') } : snapshot } })
+for (const width of [320, 390]) {
+  test(`工作文件在 ${width}px 覆盖工作区，顶栏可操作且无横向溢出`, async ({ page }) => {
+    await installApiRoutes(page, () => [{ id: 'saved-question', conversationId: CONVERSATION_ID, role: 'USER', content: '制作看板', status: 'COMPLETED', createdAt: '2026-10-02T00:00:00Z', updatedAt: '2026-10-02T00:00:00Z' }])
+    await installBrowserStubs(page, { lines: [], holdBeforeIndex: -1 })
+    await page.route('**/api/conversations/*/workspace**', (route) => {
+      const url = new URL(route.request().url())
+      return route.fulfill({ json: { success: true, code: 0, data: url.pathname.endsWith('/file') ? { encoding: 'base64', content: Buffer.from(url.searchParams.get('path') === 'src/example.ts' ? 'const answer: number = 42' : html).toString('base64') } : snapshot } })
+    })
+    await page.setViewportSize({ width, height: 844 })
+    await openWorkspaceFiles(page)
+    const panel = page.locator('[data-workspace-files-panel]')
+    await expect(panel.locator('[data-html-preview-panel]')).toBeVisible()
+    await expect(panel).not.toHaveClass(/transition-transform/)
+    const layout = await panel.evaluate((element) => {
+      const rect = element.getBoundingClientRect()
+      const parent = element.parentElement!.getBoundingClientRect()
+      const controls = Array.from(element.querySelectorAll<HTMLElement>('header button, header select'))
+      return {
+        position: getComputedStyle(element).position,
+        coversWorkspace: (['x', 'y', 'width', 'height'] as const).every(key => Math.abs(rect[key] - parent[key]) < 1),
+        controlsReachable: controls.every((control) => {
+          const bounds = control.getBoundingClientRect()
+          const hit = document.elementFromPoint(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2)
+          return bounds.left >= rect.left && bounds.right <= rect.right && !!hit && control.contains(hit)
+        }),
+      }
+    })
+    assert.deepEqual(layout, { position: 'absolute', coversWorkspace: true, controlsReachable: true })
+    const downloaded = page.waitForEvent('download')
+    await panel.getByRole('button', { name: `下载 ${file.path}`, exact: true }).click()
+    assert.equal(await readFile((await (await downloaded).path())!, 'utf8'), html)
+    await panel.getByRole('combobox', { name: '选择文件' }).click()
+    await panel.getByRole('combobox', { name: '选择文件' }).selectOption('src/example.ts')
+    await expect(panel.locator('[data-workspace-source]')).toContainText('const answer: number = 42')
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false)
+    await panel.getByRole('button', { name: '关闭文件面板' }).click()
+    await expect(panel).toHaveCount(0)
   })
-  await page.setViewportSize({ width: 390, height: 844 })
-  await openWorkspaceFiles(page)
-  const panel = page.locator('[data-workspace-files-panel]')
-  await expect(panel).toBeVisible()
-  await panel.getByRole('combobox', { name: '选择文件' }).selectOption('src/example.ts')
-  await expect(panel.locator('[data-workspace-source]')).toContainText('const answer: number = 42')
-  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false)
-  await panel.getByRole('button', { name: '关闭文件面板' }).click()
-  await expect(panel).toHaveCount(0)
-})
+}
 
 test('独立预览覆盖整个应用，按钮与 iframe 内 Esc 关闭后回到工作区', async ({ page }) => {
   await installApiRoutes(page, () => [{ id: 'saved-files', conversationId: CONVERSATION_ID, role: 'USER', content: '查看工作文件', status: 'COMPLETED', createdAt: '2026-10-02T00:00:00Z', updatedAt: '2026-10-02T00:00:00Z' }])
@@ -581,6 +604,7 @@ test('交互预览禁网、自身导航受限，伪造消息不能改外层或�
   await openWorkspaceFiles(page)
   const frame = page.frameLocator('[data-workspace-files-panel] [data-html-preview-panel] > iframe').frameLocator('iframe')
   await expect(frame.getByRole('heading', { name: '消息桥接验证' })).toBeVisible()
+  await expect(page.getByRole('separator', { name: '调整聊天与预览宽度' })).toBeVisible()
   await frame.getByRole('button', { name: '伪造宿主消息' }).click()
   await frame.getByRole('button', { name: '合法桥接' }).click()
   await expect.poll(() => queries.length).toBe(1)
