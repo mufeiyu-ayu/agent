@@ -24,9 +24,11 @@ let artifactController: AbortController | undefined
 let readyTimer: ReturnType<typeof setTimeout> | undefined
 let expiryTimer: ReturnType<typeof setTimeout> | undefined
 let artifactGeneration = ''
+let artifactFailed = false
 function navigateArtifact(url: string) {
   const generation = crypto.randomUUID()
   artifactGeneration = generation
+  artifactFailed = false
   artifactLoading.value = true
   artifactError.value = false
   const target = new URL(url, location.origin)
@@ -48,6 +50,7 @@ async function loadArtifact() {
   artifactExpired.value = false
   artifactUrl.value = ''
   artifactGeneration = ''
+  artifactFailed = false
   artifactLoading.value = false
   artifactError.value = false
   if (!props.artifactId || !props.conversationId)
@@ -70,6 +73,7 @@ async function loadArtifact() {
   }
   catch (error) {
     if (current === artifactRequest) {
+      artifactFailed = true
       artifactExpired.value = isAxiosError(error) && [404, 410].includes(error.response?.status ?? 0)
       artifactLoading.value = false
       artifactError.value = true
@@ -105,13 +109,15 @@ async function handleQuery(event: MessageEvent) {
     return
   }
   if (props.artifactId && data.type === 'artifact-ready') {
-    if (!artifactError.value) {
+    if (!artifactFailed) {
       clearTimeout(readyTimer)
+      artifactError.value = false
       artifactLoading.value = false
     }
     return
   }
   if (props.artifactId && data.type === 'artifact-error') {
+    artifactFailed = true
     clearTimeout(readyTimer)
     artifactLoading.value = false
     artifactError.value = true

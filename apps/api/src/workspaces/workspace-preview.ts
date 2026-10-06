@@ -36,6 +36,36 @@ function cssReferences(source: string): string[] {
   return references.map(reference => reference.replace(/\\([\da-f]{1,6}[ \t\r\n\f]?|[\s\S])/gi, (_match, escaped: string) => /^[\da-f]/i.test(escaped) ? String.fromCodePoint(Number.parseInt(escaped.trim(), 16) || 0xFFFD) : escaped))
 }
 
+/** 按 srcset 的 URL/描述符边界取候选；URL 内的逗号（如 data URL）不是分隔符。 */
+function srcsetReferences(source: string): string[] {
+  const references: string[] = []
+  let position = 0
+  while (position < source.length) {
+    while (position < source.length && /[\t\n\f\r ,]/.test(source[position]!))
+      position++
+    const start = position
+    while (position < source.length && !/[\t\n\f\r ]/.test(source[position]!))
+      position++
+    const url = source.slice(start, position)
+    if (!url)
+      break
+    references.push(url.replace(/,+$/, ''))
+    if (url.endsWith(','))
+      continue
+    let inParentheses = false
+    while (position < source.length) {
+      const character = source[position++]!
+      if (character === '(')
+        inParentheses = true
+      else if (character === ')')
+        inParentheses = false
+      else if (character === ',' && !inParentheses)
+        break
+    }
+  }
+  return references
+}
+
 const MIME: Record<string, string> = {
   '.html': 'text/html',
   '.js': 'text/javascript',
@@ -74,8 +104,16 @@ export function validateArtifact(files: Array<{ path: string, content: Buffer }>
     const source = file.content.toString('utf8')
     if (mime === 'text/html') {
       const { document } = parseHTML(source)
-      for (const element of document.querySelectorAll('script[src],img[src],link[href],source[src],video[src],audio[src]'))
-        references.push(element.getAttribute(element.hasAttribute('src') ? 'src' : 'href')!)
+      for (const [selector, attribute] of [
+        ['script[src],img[src],source[src],video[src],audio[src],track[src],input[type="image"][src]', 'src'],
+        ['link[href]', 'href'],
+        ['video[poster]', 'poster'],
+      ] as const) {
+        for (const element of document.querySelectorAll(selector))
+          references.push(element.getAttribute(attribute)!)
+      }
+      for (const element of document.querySelectorAll('img[srcset],source[srcset]'))
+        references.push(...srcsetReferences(element.getAttribute('srcset')!))
     }
     if (mime === 'text/css')
       references.push(...cssReferences(source))
@@ -92,12 +130,15 @@ export function validateArtifact(files: Array<{ path: string, content: Buffer }>
         }
       }
     }
-    for (const reference of references) {
+    for (const value of references) {
+      const reference = value.trim()
       if (/^(?:data:|#)/i.test(reference))
         continue
       if (/^(?:[a-z][\w+.-]*:|\/)/i.test(reference))
         throw new WorkspaceOperationError('构建资源必须使用项目内相对路径，不能引用外部网络。')
       const target = new URL(reference, `https://artifact.invalid/${file.path}`)
+      if (target.origin !== 'https://artifact.invalid')
+        throw new WorkspaceOperationError('构建资源必须使用项目内相对路径，不能引用外部网络。')
       const path = artifactPath(decodeURIComponent(target.pathname.slice(1)))
       if (!paths.has(path))
         throw new WorkspaceOperationError(`构建缺少引用资源：${path}`)

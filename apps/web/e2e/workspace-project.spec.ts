@@ -254,6 +254,34 @@ test('ready 等内层有效 load；空 load 和旧代次消息无效，错误后
   await expect(preview.getByRole('button', { name: '重试' })).toBeEnabled()
 })
 
+test('超时提示可被同代次真实 ready 恢复，但真实错误仍锁存', async ({ page, baseURL }) => {
+  await page.clock.install()
+  await setup(page, baseURL!, dist)
+  let release!: () => Promise<void>
+  await page.route('**/files/assets/main.js?*', (route) => {
+    release = () => route.fallback()
+  })
+  await page.goto('/workspace')
+  await page.locator('[data-open-workspace-files]').click()
+  const preview = page.locator('[data-workspace-files-panel] [data-html-preview-panel]')
+  await expect.poll(() => !!release).toBe(true)
+  await expect(preview).toHaveAttribute('aria-busy', 'true')
+  await page.clock.runFor(10_001)
+  await expect(preview.getByRole('alert')).toBeVisible()
+  await release()
+  await expect(preview.frameLocator(':scope > iframe').frameLocator('iframe').locator('body')).toHaveAttribute('data-loaded', 'true')
+  await expect(preview.getByRole('alert')).toHaveCount(0)
+  await expect(preview).toHaveAttribute('aria-busy', 'false')
+  // 与超时共用文案不等于同一终态：真实页面错误不能由迟到 ready 洗掉。
+  await page.evaluate(() => {
+    const frame = document.querySelector<HTMLIFrameElement>('[data-workspace-files-panel] [data-html-preview-panel] > iframe')!
+    const generation = new URL(frame.src).searchParams.get('generation')
+    for (const type of ['artifact-error', 'artifact-ready'])
+      dispatchEvent(new MessageEvent('message', { source: frame.contentWindow, origin: 'null', data: { type, generation } }))
+  })
+  await expect(preview.getByRole('alert')).toBeVisible()
+})
+
 test('实际页面错误后的 load 不假报 ready，显式重试恢复', async ({ page, baseURL }) => {
   const scripts = { ...dist, 'assets/main.js': 'throw new Error("injected page error")' }
   await setup(page, baseURL!, scripts)

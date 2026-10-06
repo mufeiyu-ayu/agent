@@ -84,6 +84,32 @@ it('Source 与 Artifact 分别遵守 200 文件、2 MiB 单文件、8 MiB 总量
   }
 })
 
+it('声明式图片候选、poster、track 与图片按钮统一校验，不把 data URL 逗号拆成路径', () => {
+  const valid = '<picture><source srcset="./assets/small.webp 400w, ./assets/large.webp 800w"><img srcset="data:image/png;base64,AAAA 1x, ./assets/large.webp?v=2 2x"></picture><video poster="./assets/small.webp"><track src="./captions.txt"></video><input type="image" src=" ./assets/small.webp ">'
+  const files = ['assets/small.webp', 'assets/large.webp', 'captions.txt'].map(path => ({ path, content: Buffer.from('fixture') }))
+  const validate = (html: string) => validateArtifact([{ path: 'index.html', content: Buffer.from(html) }, ...files])
+  validate(valid)
+  validate('<img srcset="./assets/small.webp, ./assets/large.webp">')
+  validate('<img srcset="data:image/png;base64,AAAA,">')
+  validate('<img srcset="data:image/png;base64,AAAA foo((x), ./assets/large.webp 2x">')
+  for (const html of [
+    '<img srcset="./missing.webp 1x">',
+    '<source srcset="./assets/small.webp 1x, ./missing.webp 2x">',
+    '<img srcset="data:image/png;base64,AAAA foo((x), ./missing.webp 2x">',
+    '<img srcset="./assets/small.webp, ./missing.webp">',
+    '<video poster="./missing.webp"></video>',
+    '<track src="./missing.txt">',
+    '<input type="image" src="./missing.webp">',
+  ]) assert.throws(() => validate(html), /缺少引用资源/)
+  for (const html of [
+    '<img srcset="https://evil.test/assets/small.webp 1x">',
+    '<img srcset="data:image/png;base64,AAAA foo((x), https://evil.test/missing.webp 2x">',
+    '<source srcset="./assets/small.webp 1x, //evil.test/large.webp 2x">',
+    '<video poster=" https://evil.test/assets/small.webp "></video>',
+    '<img srcset="https:&#10;//evil.test/assets/small.webp 1x">',
+  ]) assert.throws(() => validate(html), /相对路径/)
+})
+
 it('完整 dist 允许相对模块/CSS/图片、查询参数及 MIME；缺失、外网或不支持资源拒绝发布', () => {
   const files = [
     ['index.html', '<html><head><script type="module" src="./assets/main.js?v=1"></script><link rel="stylesheet" href="./assets/main.css"></head><body><img src="./icon.svg#icon"></body></html>'],
