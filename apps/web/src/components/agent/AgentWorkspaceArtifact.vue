@@ -323,18 +323,18 @@ async function toggleExpand() {
 }
 
 /* 暗色主题衬托：深橄榄余烬微光，边框与图标呼应主题琥珀金色 */
-:global([data-agent-workspace-theme='olive-ember']) .artifact-panel-btn {
+[data-agent-workspace-theme='olive-ember'] .artifact-panel-btn {
   border-color: color-mix(in oklch, var(--agent-accent) 30%, var(--agent-border-soft));
   background: color-mix(in oklch, var(--agent-accent) 12%, var(--agent-surface-sunken));
   color: var(--agent-ink-soft);
   box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.25);
 }
 
-:global([data-agent-workspace-theme='olive-ember']) .artifact-panel-btn .panel-btn-icon {
+[data-agent-workspace-theme='olive-ember'] .artifact-panel-btn .panel-btn-icon {
   color: var(--agent-accent);
 }
 
-:global([data-agent-workspace-theme='olive-ember']) .artifact-panel-btn:hover:not(:disabled) {
+[data-agent-workspace-theme='olive-ember'] .artifact-panel-btn:hover:not(:disabled) {
   border-color: color-mix(in oklch, var(--agent-accent) 55%, var(--agent-border-soft));
   background: color-mix(in oklch, var(--agent-accent) 20%, var(--agent-surface-sunken));
   color: var(--agent-ink);
@@ -413,32 +413,32 @@ async function toggleExpand() {
   color: var(--agent-accent);
 }
 
-:global([data-agent-workspace-theme='olive-ember']) .artifact-panel-btn:hover:not(:disabled) .panel-btn-icon {
+[data-agent-workspace-theme='olive-ember'] .artifact-panel-btn:hover:not(:disabled) .panel-btn-icon {
   color: var(--agent-accent);
 }
 
-:global([data-agent-workspace-theme='olive-ember']) .artifacts-expander-pill {
+[data-agent-workspace-theme='olive-ember'] .artifacts-expander-pill {
   border-color: color-mix(in oklch, var(--agent-accent) 25%, var(--agent-border-soft));
   background: color-mix(in oklch, var(--agent-surface-raised) 90%, black);
   box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.3);
 }
 
-:global([data-agent-workspace-theme='olive-ember']) .artifacts-expander-pill .expander-chevron {
+[data-agent-workspace-theme='olive-ember'] .artifacts-expander-pill .expander-chevron {
   color: var(--agent-ink-soft);
 }
 
-:global([data-agent-workspace-theme='olive-ember']) .artifacts-expander-pill:hover {
+[data-agent-workspace-theme='olive-ember'] .artifacts-expander-pill:hover {
   border-color: color-mix(in oklch, var(--agent-accent) 55%, var(--agent-border-soft));
   background: color-mix(in oklch, var(--agent-accent) 18%, var(--agent-surface-raised));
   box-shadow: 0 2px 8px -1px rgb(0 0 0 / 0.5);
   transform: translateY(-0.5px);
 }
 
-:global([data-agent-workspace-theme='olive-ember']) .artifacts-expander-pill:active {
+[data-agent-workspace-theme='olive-ember'] .artifacts-expander-pill:active {
   transform: translateY(0.5px) scale(0.95);
 }
 
-:global([data-agent-workspace-theme='olive-ember']) .artifacts-expander-pill:hover .expander-chevron {
+[data-agent-workspace-theme='olive-ember'] .artifacts-expander-pill:hover .expander-chevron {
   color: var(--agent-accent);
 }
 </style>

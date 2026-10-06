@@ -136,7 +136,7 @@ const languageOptions = computed(() => localeOptions.map(option => ({
     0 2px 8px rgb(0 0 0 / 24%);
 }
 
-:global([data-agent-workspace-theme='olive-ember']) .settings-panel {
+[data-agent-workspace-theme='olive-ember'] .settings-panel {
   /* 主题的 surface 在暗处偏棕，右侧改由左栏底色提亮一档，保证两侧同色相 */
   --settings-panel-bg: color-mix(in oklch, var(--agent-surface-sunken), white 4%);
   --settings-nav-bg: var(--agent-surface-sunken);
