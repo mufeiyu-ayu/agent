@@ -997,3 +997,65 @@ test('减少动态效果时，窄屏 HTML 预览和文件面板的打开关闭�
   }
   assert.ok(samples.every(sample => sample.duration.split(',').every(duration => Number.parseFloat(duration) === 0)), JSON.stringify(samples))
 })
+
+test('交付卡片文件超过 3 行时折叠，点击展开与收起高度平滑过渡', async ({ page }) => {
+  const manyFiles = Array.from({ length: 24 }, (_, i) => ({
+    path: `src/components/feature-${i + 1}.tsx`,
+    bytes: 1024 + i * 50,
+    sha256: `${i}`.padStart(64, '0'),
+  }))
+  const activity = {
+    answerStartedMs: 910,
+    toolBeforeAnswer: false,
+    items: [
+      {
+        kind: 'tool',
+        callId: 'save-many',
+        toolName: 'write',
+        ok: true,
+        workspace: {
+          operation: 'write',
+          title: '生成组件文件',
+          path: manyFiles[0]!.path,
+          revision: 1,
+          files: manyFiles,
+        },
+      },
+    ],
+  }
+  await installApiRoutes(page, () => [
+    { id: 'user-many', conversationId: CONVERSATION_ID, role: 'USER', content: '批量生成组件', status: 'COMPLETED', createdAt: '2026-10-02T00:00:00Z', updatedAt: '2026-10-02T00:00:00Z' },
+    { id: 'assistant-many', conversationId: CONVERSATION_ID, role: 'ASSISTANT', content: '组件已全部生成。', status: 'COMPLETED', activity, createdAt: '2026-10-02T00:00:00Z', updatedAt: '2026-10-02T00:01:00Z' },
+  ])
+  await installBrowserStubs(page, { lines: [], holdBeforeIndex: -1 })
+  await page.route('**/api/conversations/*/workspace**', route => route.fulfill({ json: { success: true, code: 0, data: { ...snapshot, files: manyFiles } } }))
+  await page.goto('/workspace')
+
+  const artifact = page.locator('[data-workspace-artifact]')
+  await expect(artifact).toBeVisible()
+  const grid = artifact.locator('.artifacts-grid')
+  await expect(grid).toHaveClass(/is-clamped/)
+
+  // 3 行折叠状态高度在 100px 左右
+  const clampedBox = await grid.boundingBox()
+  assert.ok(clampedBox && clampedBox.height <= 104, `折叠高度必须在 3 行内 (<= 104px)，当前为 ${clampedBox?.height}`)
+
+  const toggle = artifact.getByRole('button', { name: '展开全部 (24)' })
+  await expect(toggle).toBeVisible()
+
+  // 点击展开
+  await toggle.click()
+  await expect(artifact.getByRole('button', { name: '收起' })).toBeVisible()
+  await expect.poll(async () => {
+    const box = await grid.boundingBox()
+    return box ? box.height : 0
+  }).toBeGreaterThan(150)
+
+  // 点击收起
+  await artifact.getByRole('button', { name: '收起' }).click()
+  await expect(artifact.getByRole('button', { name: '展开全部 (24)' })).toBeVisible()
+  await expect.poll(async () => {
+    const box = await grid.boundingBox()
+    return box ? box.height : 0
+  }).toBeLessThanOrEqual(104)
+})

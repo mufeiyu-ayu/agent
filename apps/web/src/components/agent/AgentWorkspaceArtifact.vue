@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { WorkspaceFile } from '@agent/contracts'
 import type { TurnRun } from '../../types/chat'
-import { computed } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { workspaceArtifacts, workspaceFileType } from '../../utils/workspace-files'
 import AppIcon from '../common/AppIcon.vue'
@@ -15,6 +15,154 @@ function formatBytes(bytes: number) {
   if (bytes < 1024)
     return `${bytes} B`
   return `${(bytes / 1024).toFixed(1)} KB`
+}
+
+const COLLAPSED_HEIGHT = 96
+const containerRef = ref<HTMLElement | null>(null)
+const isExpanded = ref(false)
+const isClamped = ref(true)
+const isAnimating = ref(false)
+const measuredOverflow = ref<boolean | null>(null)
+
+// 初始根据文件数估算是否可能溢出 3 行（>= 8 个通常超过 3 行），挂载后以实测 scrollHeight 为准，避免闪烁
+const hasOverflow = computed(() => measuredOverflow.value ?? (artifacts.value.length >= 8))
+
+function checkOverflow() {
+  const el = containerRef.value
+  if (!el)
+    return
+  // 3 行标准高度 28 * 3 + 6 * 2 = 96px，超过 100px 明确代表已折到第 4 行
+  measuredOverflow.value = el.scrollHeight > 100
+}
+
+let resizeObserver: ResizeObserver | null = null
+
+onMounted(() => {
+  nextTick(() => {
+    checkOverflow()
+    if (containerRef.value && typeof ResizeObserver !== 'undefined') {
+      resizeObserver = new ResizeObserver(() => {
+        checkOverflow()
+      })
+      resizeObserver.observe(containerRef.value)
+    }
+  })
+})
+
+onUnmounted(() => {
+  resizeObserver?.disconnect()
+  resizeObserver = null
+})
+
+watch(() => props.files, () => {
+  measuredOverflow.value = null
+  nextTick(checkOverflow)
+}, { deep: true })
+
+async function toggleExpand() {
+  const el = containerRef.value
+  if (!el || isAnimating.value)
+    return
+
+  const prefersReducedMotion = typeof window !== 'undefined'
+    && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+
+  if (prefersReducedMotion) {
+    isExpanded.value = !isExpanded.value
+    isClamped.value = !isExpanded.value
+    el.style.height = ''
+    el.style.transition = ''
+    return
+  }
+
+  isAnimating.value = true
+
+  if (!isExpanded.value) {
+    // 展开：从当前高度平滑过渡到 scrollHeight
+    const startHeight = el.offsetHeight
+    const targetHeight = el.scrollHeight
+
+    if (targetHeight <= startHeight) {
+      isExpanded.value = true
+      isClamped.value = false
+      isAnimating.value = false
+      return
+    }
+
+    el.style.height = `${startHeight}px`
+    isExpanded.value = true
+    isClamped.value = false
+    await nextTick()
+
+    void el.offsetHeight
+    el.style.transition = 'height 280ms cubic-bezier(0.16, 1, 0.3, 1)'
+    el.style.height = `${targetHeight}px`
+
+    let timer: ReturnType<typeof setTimeout> | undefined
+    let onEnd: (e: TransitionEvent) => void = () => {}
+    let cleaned = false
+    const cleanup = () => {
+      if (cleaned)
+        return
+      cleaned = true
+      el.removeEventListener('transitionend', onEnd)
+      if (timer)
+        clearTimeout(timer)
+      if (isExpanded.value) {
+        el.style.height = ''
+        el.style.transition = ''
+      }
+      isAnimating.value = false
+    }
+
+    onEnd = (e: TransitionEvent) => {
+      if (e.target === el && e.propertyName === 'height') {
+        cleanup()
+      }
+    }
+
+    timer = setTimeout(cleanup, 340)
+    el.addEventListener('transitionend', onEnd)
+  }
+  else {
+    // 收起：从当前实际展开高度平滑过渡到 3 行收折高度
+    const startHeight = el.offsetHeight
+    el.style.height = `${startHeight}px`
+    isExpanded.value = false
+    await nextTick()
+
+    void el.offsetHeight
+    el.style.transition = 'height 240ms cubic-bezier(0.16, 1, 0.3, 1)'
+    el.style.height = `${COLLAPSED_HEIGHT}px`
+
+    let timer: ReturnType<typeof setTimeout> | undefined
+    let onEnd: (e: TransitionEvent) => void = () => {}
+    let cleaned = false
+    const cleanup = async () => {
+      if (cleaned)
+        return
+      cleaned = true
+      el.removeEventListener('transitionend', onEnd)
+      if (timer)
+        clearTimeout(timer)
+      if (!isExpanded.value) {
+        isClamped.value = true
+        await nextTick()
+        el.style.height = ''
+        el.style.transition = ''
+      }
+      isAnimating.value = false
+    }
+
+    onEnd = (e: TransitionEvent) => {
+      if (e.target === el && e.propertyName === 'height') {
+        cleanup()
+      }
+    }
+
+    timer = setTimeout(cleanup, 300)
+    el.addEventListener('transitionend', onEnd)
+  }
 }
 </script>
 
@@ -55,7 +203,7 @@ function formatBytes(bytes: number) {
       </button>
     </div>
 
-    <!-- 多文件场景：轻量标头统计，下方横向优雅流式文件胶囊列表 -->
+    <!-- 多文件场景：轻量标头统计，下方横向优雅流式文件胶囊列表（多于 3 行时折叠展开） -->
     <div v-else class="flex min-w-0 flex-col gap-1.5 p-0.5">
       <header class="flex items-center justify-between gap-2 px-1 pt-0.5">
         <div class="flex items-center gap-1.5 text-agent-ink-muted">
@@ -78,7 +226,11 @@ function formatBytes(bytes: number) {
         </button>
       </header>
 
-      <div class="flex min-w-0 flex-wrap items-center gap-1.5 px-0.5 pb-0.5">
+      <div
+        ref="containerRef"
+        class="artifacts-grid flex min-w-0 flex-wrap items-center gap-1.5 px-0.5"
+        :class="{ 'is-clamped': hasOverflow && isClamped, 'is-animating': isAnimating }"
+      >
         <button
           v-for="file in artifacts"
           :key="file.path"
@@ -96,6 +248,24 @@ function formatBytes(bytes: number) {
           <span class="shrink-0 text-[10.5px] tabular-nums text-agent-ink-muted/80">
             {{ formatBytes(file.bytes) }}
           </span>
+        </button>
+      </div>
+
+      <div v-if="hasOverflow" class="artifacts-expander-row flex items-center justify-center pt-1.5 pb-0.5">
+        <button
+          type="button"
+          :aria-expanded="isExpanded"
+          :aria-label="isExpanded ? t('workspace.collapseFiles') : t('workspace.expandFiles', { n: artifacts.length })"
+          :title="isExpanded ? t('workspace.collapseFiles') : t('workspace.expandFiles', { n: artifacts.length })"
+          class="artifacts-expander-pill group"
+          @click="toggleExpand"
+        >
+          <AppIcon
+            name="tabler:chevron-down"
+            :size="14"
+            class="expander-chevron"
+            :class="{ 'is-expanded': isExpanded }"
+          />
         </button>
       </div>
     </div>
@@ -170,7 +340,105 @@ function formatBytes(bytes: number) {
   color: var(--agent-ink);
 }
 
+.artifacts-grid {
+  will-change: height;
+}
+
+.artifacts-grid.is-clamped,
+.artifacts-grid.is-animating {
+  overflow: hidden;
+}
+
+.artifacts-grid.is-clamped {
+  max-height: 96px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .artifacts-grid {
+    transition: none !important;
+  }
+}
+
+.artifacts-expander-row {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+  padding-top: 6px;
+  padding-bottom: 2px;
+}
+
+.artifacts-expander-pill {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 22px;
+  border-radius: 9999px;
+  border: 1px solid var(--agent-border-soft);
+  background: var(--agent-surface);
+  box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.05), 0 1px 2px -1px rgb(0 0 0 / 0.05);
+  cursor: pointer;
+  outline: none;
+  transition: all 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.artifacts-expander-pill:hover {
+  border-color: color-mix(in oklch, var(--agent-accent) 45%, var(--agent-border-soft));
+  background: var(--agent-surface-raised);
+  box-shadow: 0 3px 8px -1px rgb(0 0 0 / 0.08), 0 1px 3px 0 rgb(0 0 0 / 0.04);
+  transform: translateY(-0.5px);
+}
+
+.artifacts-expander-pill:active {
+  transform: translateY(0.5px) scale(0.95);
+}
+
+.artifacts-expander-pill:focus-visible {
+  outline: 2px solid var(--agent-focus);
+  outline-offset: 2px;
+}
+
+.expander-chevron {
+  color: var(--agent-ink-muted);
+  transition: transform 260ms cubic-bezier(0.16, 1, 0.3, 1), color 180ms ease;
+}
+
+.expander-chevron.is-expanded {
+  transform: rotate(180deg);
+}
+
+.artifacts-expander-pill:hover .expander-chevron {
+  color: var(--agent-accent);
+}
+
 :global([data-agent-workspace-theme='olive-ember']) .artifact-panel-btn:hover:not(:disabled) .panel-btn-icon {
+  color: var(--agent-accent);
+}
+
+:global([data-agent-workspace-theme='olive-ember']) .artifacts-expander-pill {
+  border-color: color-mix(in oklch, var(--agent-accent) 25%, var(--agent-border-soft));
+  background: color-mix(in oklch, var(--agent-surface-raised) 90%, black);
+  box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.3);
+}
+
+:global([data-agent-workspace-theme='olive-ember']) .artifacts-expander-pill .expander-chevron {
+  color: var(--agent-ink-soft);
+}
+
+:global([data-agent-workspace-theme='olive-ember']) .artifacts-expander-pill:hover {
+  border-color: color-mix(in oklch, var(--agent-accent) 55%, var(--agent-border-soft));
+  background: color-mix(in oklch, var(--agent-accent) 18%, var(--agent-surface-raised));
+  box-shadow: 0 2px 8px -1px rgb(0 0 0 / 0.5);
+  transform: translateY(-0.5px);
+}
+
+:global([data-agent-workspace-theme='olive-ember']) .artifacts-expander-pill:active {
+  transform: translateY(0.5px) scale(0.95);
+}
+
+:global([data-agent-workspace-theme='olive-ember']) .artifacts-expander-pill:hover .expander-chevron {
   color: var(--agent-accent);
 }
 </style>

@@ -150,7 +150,7 @@ onUnmounted(() => {
       class="agent-code-scroll min-h-0 flex-1 overflow-auto overscroll-contain px-4 pt-2.5 pb-4"
       @scroll="onScroll"
     >
-      <pre class="agent-code-pre m-0 p-0 text-[13.5px] leading-[1.65]"><code class="hljs" v-html="highlightedHtml" /><span v-if="props.isStreaming" class="ml-0.5 inline-block h-3.5 w-1.5 translate-y-[2px] rounded-[1px] animate-pulse motion-reduce:animate-none" :class="isDark ? 'bg-[#61afef]' : 'bg-agent-accent'" /></pre>
+      <pre class="agent-code-pre m-0 p-0 text-[12.5px] leading-[1.6]"><code class="hljs" v-html="highlightedHtml" /><span v-if="props.isStreaming" class="ml-0.5 inline-block h-3.5 w-1.5 translate-y-[2px] rounded-[1px] animate-pulse motion-reduce:animate-none" :class="isDark ? 'bg-[#61afef]' : 'bg-agent-accent'" /></pre>
     </div>
   </div>
 </template>
