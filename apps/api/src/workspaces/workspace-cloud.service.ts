@@ -26,6 +26,15 @@ export class WorkspaceCreatedError extends WorkspaceOperationError {
   }
 }
 
+/** PUT 未得到明确成功或拒绝响应；不能仅按超时认定没有迟到写入。 */
+export class WorkspaceUploadOutcomeUnknownError extends WorkspaceOperationError {
+  constructor() { super('文件上传结果未知，保留待核查目标。') }
+}
+
+export class WorkspaceDeleteOutcomeUnknownError extends WorkspaceOperationError {
+  constructor() { super('对象删除结果未知，保持存储写入保护。') }
+}
+
 /** 两家已选服务的 SDK 入口；凭据只在此处读取，不复制到沙箱环境。 */
 @Injectable()
 export class WorkspaceCloudService {
@@ -227,18 +236,49 @@ export class WorkspaceCloudService {
     }
   }
 
+  get storageBucket(): string {
+    return process.env.OSS_BUCKET?.trim() ?? ''
+  }
+
+  async listFiles(prefix: string, marker?: string): Promise<{ keys: string[], nextMarker?: string }> {
+    const result = await this.oss.list({ prefix, 'max-keys': 1000, ...(marker ? { marker } : {}) }, { timeout: 15_000 })
+    const keys = (result.objects ?? []).map(object => object.name)
+    if (keys.some(key => !key.startsWith(prefix)) || (result.isTruncated && !result.nextMarker)
+      || (result.nextMarker && (!result.nextMarker.startsWith(prefix) || (marker && result.nextMarker <= marker)))) {
+      throw new WorkspaceOperationError('存储清单不完整，未回收对象。')
+    }
+    return { keys, ...(result.nextMarker ? { nextMarker: result.nextMarker } : {}) }
+  }
+
+  async deleteFile(key: string): Promise<void> {
+    // DeleteObject 对不存在的对象也返回 204；不做删除标记/历史版本清理。
+    try {
+      await this.oss.delete(key, { timeout: 15_000 })
+    }
+    catch (error) {
+      const status = error && typeof error === 'object' && 'status' in error ? Number(error.status) : 0
+      if (status >= 400 && status < 500 && status !== 408)
+        throw new WorkspaceOperationError('对象删除被存储服务拒绝。')
+      throw new WorkspaceDeleteOutcomeUnknownError()
+    }
+  }
+
   async putFile(file: StoredWorkspaceFile, content: Buffer, signal: AbortSignal): Promise<void> {
     signal.throwIfAborted()
     try {
       await this.oss.put(file.key, content, { headers: { 'x-oss-forbid-overwrite': 'true' }, timeout: 15_000 })
     }
     catch (error) {
-      if (!error || typeof error !== 'object' || !('code' in error) || error.code !== 'FileAlreadyExists')
-        throw error
+      if (!error || typeof error !== 'object' || !('code' in error) || error.code !== 'FileAlreadyExists') {
+        const status = error && typeof error === 'object' && 'status' in error ? Number(error.status) : 0
+        if (status >= 400 && status < 500 && status !== 408)
+          throw new WorkspaceOperationError('文件上传被存储服务拒绝。')
+        throw new WorkspaceUploadOutcomeUnknownError()
+      }
       // 失败重试可能命中上次留下的对象；名称相同不代表内容正确，不能把损坏对象确认为已保存。
       await this.readFile(file, signal)
     }
-    signal.throwIfAborted()
+    // 返回的是 PUT/校验的实际确认；调用方登记 settled 后再响应晚到的取消。
   }
 
   async readFile(file: StoredWorkspaceFile, signal?: AbortSignal): Promise<Buffer> {
@@ -281,6 +321,8 @@ export class WorkspaceCloudService {
       secure: true,
       authorizationV4: true,
       timeout: 15_000,
+      // 单次外部写入结局必须可核查；禁止超时后自动重试掩盖前一次迟到 PUT/DELETE。
+      retryMax: 0,
       enableProxy: false,
     }
     this.storage ??= new OSS(options)

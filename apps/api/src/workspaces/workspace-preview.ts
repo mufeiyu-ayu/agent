@@ -111,6 +111,7 @@ export function previewDocument(code: string, resourceBase: string, documentPath
   return `<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;height:100%;overflow:hidden}iframe{display:block;width:100%;height:100%;border:0}</style></head><body><iframe title="Build preview" sandbox="allow-scripts" referrerpolicy="no-referrer"></iframe><script>
 const input=${data};
 const generation=new URL(location.href).searchParams.get('generation');
+const loadToken=Array.from(crypto.getRandomValues(new Uint8Array(16)),x=>x.toString(16).padStart(2,'0')).join('');
 let failed=false;
 const notify=type=>parent.postMessage({type,generation},'*');
 const parsed=new DOMParser().parseFromString(input.code,'text/html');
@@ -118,13 +119,13 @@ parsed.querySelectorAll('base,meta[http-equiv],iframe,frame,object,embed').forEa
 const documentUrl=new URL(input.documentPath,input.resourceBase);
 const base=parsed.createElement('base');base.href=new URL('.',documentUrl).href;parsed.head.prepend(base);
 const guard=parsed.createElement('script');
-guard.textContent="for(const name of ['RTCPeerConnection','webkitRTCPeerConnection','mozRTCPeerConnection','Worker','SharedWorker'])Object.defineProperty(window,name,{value:undefined,writable:false,configurable:false});addEventListener('keydown',e=>{if(e.key==='Escape')parent.postMessage({type:'artifact-close'},'*')},true);addEventListener('error',()=>parent.postMessage({type:'artifact-error'},'*'),true);addEventListener('unhandledrejection',()=>parent.postMessage({type:'artifact-error'},'*'));addEventListener('load',()=>parent.postMessage({type:'artifact-loaded'},'*'),{once:true});";
+guard.textContent="(()=>{const loadToken="+JSON.stringify(loadToken)+";let loaded=false;const notify=parent.postMessage.bind(parent);for(const name of ['RTCPeerConnection','webkitRTCPeerConnection','mozRTCPeerConnection','Worker','SharedWorker'])Object.defineProperty(window,name,{value:undefined,writable:false,configurable:false});addEventListener('keydown',e=>{if(e.key==='Escape')parent.postMessage({type:'artifact-close'},'*')},true);addEventListener('error',()=>parent.postMessage({type:'artifact-error'},'*'),true);addEventListener('unhandledrejection',()=>parent.postMessage({type:'artifact-error'},'*'));Object.getOwnPropertyDescriptor(Document.prototype,'currentScript').get.call(document).remove();addEventListener('load',e=>{if(e.isTrusted&&!loaded){loaded=true;notify({type:'artifact-loaded',loadToken},'*')}});})();";
 parsed.head.insertBefore(guard,base.nextSibling);
 const links=parsed.createElement('script');
 links.textContent="addEventListener('click',e=>{const a=e.target.closest?.('a[href]');if(!a)return;const href=a.getAttribute('href');if(href.startsWith('#')){e.preventDefault();try{const id=decodeURIComponent(href.slice(1));const target=document.getElementById(id)||document.getElementsByName(id)[0];if(target)target.scrollIntoView();else if(!id)scrollTo(0,0)}catch{};return}e.preventDefault();parent.postMessage({type:'artifact-navigate',href:a.href},'*')},true);";
 parsed.head.insertBefore(links,guard.nextSibling);
 const frame=document.querySelector('iframe');frame.srcdoc='<!doctype html>'+parsed.documentElement.outerHTML;
-addEventListener('message',e=>{if(e.source!==frame.contentWindow||e.origin!=='null')return;if(e.data?.type==='artifact-error'){failed=true;notify('artifact-error')}if(e.data?.type==='artifact-close')notify('artifact-close');if(e.data?.type==='artifact-loaded'&&!failed)notify('artifact-ready');if(e.data?.type==='artifact-navigate'){try{const url=new URL(e.data.href);if(url.href.startsWith(input.resourceBase)&&url.pathname.endsWith('.html')){const path=decodeURIComponent(url.pathname.slice(new URL(input.resourceBase).pathname.length));parent.postMessage({type:'artifact-page',path,generation},'*')}}catch{}}});
+addEventListener('message',e=>{if(e.source!==frame.contentWindow||e.origin!=='null')return;if(e.data?.type==='artifact-error'){failed=true;notify('artifact-error')}if(e.data?.type==='artifact-close')notify('artifact-close');if(e.data?.type==='artifact-loaded'&&e.data.loadToken===loadToken&&!failed)notify('artifact-ready');if(e.data?.type==='artifact-navigate'){try{const url=new URL(e.data.href);if(url.href.startsWith(input.resourceBase)&&url.pathname.endsWith('.html')){const path=decodeURIComponent(url.pathname.slice(new URL(input.resourceBase).pathname.length));parent.postMessage({type:'artifact-page',path,generation},'*')}}catch{}}});
 </script></body></html>`
 }
 

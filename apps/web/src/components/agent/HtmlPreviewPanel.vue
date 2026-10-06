@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useObjectUrl } from '@vueuse/core'
+import { isAxiosError } from 'axios'
 import { computed, onMounted, onScopeDispose, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
@@ -8,7 +9,7 @@ import AppTooltip from '@/components/common/AppTooltip.vue'
 import { getWorkspaceTraffic, openWorkspacePreview } from '../../api/workspace'
 
 const props = defineProps<{ code: string, focusClose?: boolean, interactive?: boolean, conversationId?: string, embedded?: boolean, artifactId?: string }>()
-const emit = defineEmits<{ close: [] }>()
+const emit = defineEmits<{ close: [], current: [] }>()
 const { t } = useI18n()
 const title = computed(() => t(props.artifactId ? 'workspace.buildPreview' : 'conversation.actions.codeBlock.previewTitle'))
 const frame = ref<HTMLIFrameElement | null>(null)
@@ -16,10 +17,12 @@ const closeButton = ref<HTMLButtonElement | null>(null)
 const previewUrl = `${import.meta.env.BASE_URL}html-preview.html`
 const artifactUrl = ref('')
 const artifactError = ref(false)
+const artifactExpired = ref(false)
 const artifactLoading = ref(false)
 let artifactRequest = 0
 let artifactController: AbortController | undefined
 let readyTimer: ReturnType<typeof setTimeout> | undefined
+let expiryTimer: ReturnType<typeof setTimeout> | undefined
 let artifactGeneration = ''
 function navigateArtifact(url: string) {
   const generation = crypto.randomUUID()
@@ -41,6 +44,8 @@ async function loadArtifact() {
   const current = ++artifactRequest
   artifactController?.abort()
   clearTimeout(readyTimer)
+  clearTimeout(expiryTimer)
+  artifactExpired.value = false
   artifactUrl.value = ''
   artifactGeneration = ''
   artifactLoading.value = false
@@ -50,13 +55,22 @@ async function loadArtifact() {
   artifactLoading.value = true
   artifactController = new AbortController()
   try {
-    const url = await openWorkspacePreview(props.conversationId, props.artifactId, artifactController.signal)
+    const grant = await openWorkspacePreview(props.conversationId, props.artifactId, artifactController.signal)
     if (current !== artifactRequest)
       return
-    navigateArtifact(url)
+    navigateArtifact(grant.url)
+    expiryTimer = setTimeout(() => {
+      if (current === artifactRequest) {
+        clearTimeout(readyTimer)
+        artifactExpired.value = true
+        artifactLoading.value = false
+        artifactError.value = true
+      }
+    }, Math.max(0, grant.expiresAt - Date.now()))
   }
-  catch {
+  catch (error) {
     if (current === artifactRequest) {
+      artifactExpired.value = isAxiosError(error) && [404, 410].includes(error.response?.status ?? 0)
       artifactLoading.value = false
       artifactError.value = true
     }
@@ -80,6 +94,8 @@ async function handleQuery(event: MessageEvent) {
     return
   }
   if (props.artifactId && (!('generation' in data) || data.generation !== artifactGeneration))
+    return
+  if (props.artifactId && artifactExpired.value && data.type !== 'artifact-close')
     return
   if (props.artifactId && data.type === 'artifact-page' && 'path' in data && typeof data.path === 'string' && artifactUrl.value) {
     const url = new URL(artifactUrl.value, location.origin)
@@ -136,6 +152,7 @@ onScopeDispose(() => {
   artifactRequest++
   artifactController?.abort()
   clearTimeout(readyTimer)
+  clearTimeout(expiryTimer)
   window.removeEventListener('message', handleQuery)
   queryControllers.forEach(controller => controller.abort())
 })
@@ -175,9 +192,12 @@ onMounted(() => {
       {{ t('workspace.loading') }}
     </p>
     <p v-if="artifactError" role="alert" class="p-3 text-sm">
-      {{ t('workspace.artifactFailed') }}
+      {{ t(artifactExpired ? 'workspace.artifactExpired' : 'workspace.artifactFailed') }}
       <button class="underline" @click="loadArtifact">
         {{ t('workspace.retry') }}
+      </button>
+      <button class="ml-2 underline" @click="emit('current')">
+        {{ t('workspace.openCurrentBuild') }}
       </button>
     </p>
     <iframe

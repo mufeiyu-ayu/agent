@@ -23,11 +23,14 @@ export async function getWorkspaceArchive(conversationId: string, revision: numb
   return Uint8Array.from(atob(response.data.content), character => character.charCodeAt(0))
 }
 
-export async function openWorkspacePreview(conversationId: string, artifactId: string, signal: AbortSignal): Promise<string> {
-  const response = await http.get<{ artifactId: string, url: string }>(`/api/conversations/${encodeURIComponent(conversationId)}/workspace/artifacts/${encodeURIComponent(artifactId)}/preview`, { params: { origin: window.location.origin }, signal })
+export async function openWorkspacePreview(conversationId: string, artifactId: string, signal: AbortSignal): Promise<{ url: string, expiresAt: number }> {
+  const response = await http.get<{ artifactId: string, url: string, expiresAt: string }>(`/api/conversations/${encodeURIComponent(conversationId)}/workspace/artifacts/${encodeURIComponent(artifactId)}/preview`, { params: { origin: window.location.origin }, signal })
   if (response.data.artifactId !== artifactId || !/^\/api\/workspace-preview\/[a-f0-9]{64}\/document$/.test(response.data.url))
     throw new Error('构建预览响应无效')
-  return response.data.url
+  const expiresAt = Date.parse(response.data.expiresAt)
+  if (!Number.isFinite(expiresAt))
+    throw new Error('构建预览有效期无效')
+  return { url: response.data.url, expiresAt }
 }
 
 export async function getWorkspaceTraffic(conversationId: string, signal?: AbortSignal): Promise<unknown> {

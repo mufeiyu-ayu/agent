@@ -12,7 +12,7 @@
 
 保存顺序为：采集受限普通文件 → 上传不可变对象 → recorder 在同一事务内更新当前文件清单并确认工具结果 → 推送工具完成并回喂模型。上传失败或事务回滚不发布半份文件。文件事务进入 COMMIT 后等待真实确认，晚到停止只阻止后续事件和模型调用，不伪装成回滚；提交响应丢失则明确提示结果未知。取消和超时关闭整个实例，仅保证最近已确认的文件；当前未确认改动可被舍弃。锁定的 e2b 2.31.0 在创建阶段返回认证拒绝或限流（401/429）时，记录 `create_failed` 并按 owner 条件释放租约；适配器沿用 SDK 的受保护创建入口，并在其创建后兼容检查调用 `kill` 时记录已知实例，避免把后置检查/清理的同类异常当成未创建。该阶段记录按调用隔离，不替换 SDK 全局方法；云适配器显式固定 `debug: false`，确保创建、构造和清理不被 `E2B_DEBUG` 切入本地短路而假报释放。SDK 升级需重跑本地 HTTP fixture。其他错误、响应丢失和释放失败继续保守处理，已知实例 ID 用于登记及清理，未知资源由云端超时兜底；工具报错不能把维护状态改回运行中，不把未知状态报告为已释放。
 
-Source 与每份 Artifact 分别限制为 200 个文件、单个 2 MiB、总计 8 MiB（两份不共用计数）；stdout 与 stderr 各保存最多 32 KiB 的头尾内容。新 Source 排除 dist、node_modules、store/cache、.git、临时目录、.env* 与私钥文件；Artifact 独立采集完整 dist（包括名为 tmp/dist 的普通资源子目录），禁止的依赖/cache/Secret 路径拒绝整次发布，不静默裁剪。旧已确认清单按原安全路径读取/恢复，百分号或曾命名 tmp/dist 的 HTML 不使整份清单失效；后续保存时，仅保留清单中仍实际存在的旧工作文件，资格不随 Web Project 标签改变，删除不复活。旧文件目录归档保留这类旧 HTML 的原路径，它们不是新 Build Artifact；依赖/cache/Secret 仍不导出。文件接口通过后端会话归属检查；前台无法直接访问私有 Bucket。删除会话后数据库文件入口消失，迟到发布被拒绝；本版本不做 OSS 历史对象物理回收，业务服务不调用 DeleteObject。停用沙箱配置不影响已有文件的 OSS 读取；交付卡代表该次回答保存的内容，以 path + sha256 匹配；点击携带预期哈希，刷新后再次核对，再按当前有效 revision 读取。同 SHA 可跨 manifest revision 打开；内容改变则取消并提示失效，不自动改读新内容，也不提供历史版本回看。普通文件列表仍可显式选择当前文件；切换会话或关闭面板后丢弃迟到结果。
+Source 与每份 Artifact 分别限制为 200 个文件、单个 2 MiB、总计 8 MiB（两份不共用计数）；stdout 与 stderr 各保存最多 32 KiB 的头尾内容。新 Source 排除 dist、node_modules、store/cache、.git、临时目录、.env* 与私钥文件；Artifact 独立采集完整 dist（包括名为 tmp/dist 的普通资源子目录），禁止的依赖/cache/Secret 路径拒绝整次发布，不静默裁剪。旧已确认清单按原安全路径读取/恢复，百分号或曾命名 tmp/dist 的 HTML 不使整份清单失效；后续保存时，仅保留清单中仍实际存在的旧工作文件，资格不随 Web Project 标签改变，删除不复活。旧文件目录归档保留这类旧 HTML 的原路径，它们不是新 Build Artifact；依赖/cache/Secret 仍不导出。文件接口通过后端会话归属检查；前台无法直接访问私有 Bucket。删除会话后数据库文件入口消失，迟到发布被拒绝；独立持久清理目标与上传核查记录不随级联丢失。引用回收同时保护完整 Source、当前成功 Artifact 和有界旧预览，故障重试不改判已确认保存。实现、启用、维护 dry-run、未知上传核查与恢复限制见 [对象回收](GC.md)。停用沙箱配置不影响已有文件的 OSS 读取；交付卡代表该次回答保存的内容，以 path + sha256 匹配；点击携带预期哈希，刷新后再次核对，再按当前有效 revision 读取。同 SHA 可跨 manifest revision 打开；内容改变则取消并提示失效，不自动改读新内容，也不提供历史版本回看。普通文件列表仍可显式选择当前文件；切换会话或关闭面板后丢弃迟到结果。
 
 `read` 的脚本与最终模型 observation 共用 24,000 字符上限，计入 JSON 转义和续读元数据，只返回完整行；`nextOffset` 指向实际未返回的第一行，只有读完才为 `null`。超长单行不静默截短，返回 `readCommand`：通过现有 `bash` 每次读取 1,000 个 Unicode 字符，按输出 `nextCharOffset` 续读，再回到 `read` 的下一行。全局 observation 限制保持启用。
 
@@ -28,7 +28,7 @@ Source 与每份 Artifact 分别限制为 200 个文件、单个 2 MiB、总计 
 
 ## 多文件 Preview 的边界
 
-宿主认证后为一个不可变 Artifact 获取 10 分钟的随机只读 capability；最多保留 1000 个活动入口，进程重启后失效；每个入口在读取前扣除 32 MiB / 2000 次请求预算，防止生成页面通过重复资源请求制造无界并发/OSS 流量。每次资源读取仍检查会话归属、用户状态、过期与删除，能力不是 Session 或 Agent 授权。当前 Source/Artifact 更新不改变已经打开的资源目标；失效或读取失败由宿主重试同一个 Artifact。
+宿主认证后为一个不可变 Artifact 获取 10 分钟的随机只读 capability；最多保留 1000 个活动入口，进程重启后失效；每个入口在读取前扣除 32 MiB / 2000 次请求预算，防止生成页面通过重复资源请求制造无界并发/OSS 流量。每次资源读取仍检查会话归属、用户状态、过期与删除，能力不是 Session 或 Agent 授权。当前 Source/Artifact 更新不改变已经打开的资源目标；预览保护时限持久化，旧构建确认退役后禁止重开/续期，有效能力到期后淘汰旧记录及独占对象。失效提示可按需打开当前最近成功构建，不把旧 token 偷换新内容。
 
 入口响应仅含可信包装器，HTTP CSP 强制 `sandbox allow-scripts`（无 allow-same-origin），即使直接导航/新窗口也不变成 Kuro origin 的生成页面。包装器在另一个 opaque srcdoc 中渲染原构建 HTML，仅补固定资源 base 与 RTC/Worker 锁定，不把 dist 合并或改写成 self-contained。继承的 CSP 仅允许该 capability 资源路径的脚本、CSS、图片与字体；禁 connect/frame/worker/form/WebRTC，父包装器阻断子页面自身导航，生成页面不接收 Cookie/平台密钥。原始资源返回 attachment + nosniff + 无脚本 sandbox；模块/字体只向 opaque origin 提供无凭据 CORS，HTML 原文永不直接作为可执行文档响应。相对模块、CSS url、SVG/图片、查询参数及 MIME 保持真实文件链路。普通 `href="#section"` 在当前 opaque 文档内滚动；原生 `.html` 内部链接只允许同 capability 资源目录，由可信包装器通知宿主切到固定清单的 `/document?path=...` 再隔离渲染，不放开生成页面自身导航或外网，也不提供通用路由。
 
@@ -51,10 +51,12 @@ Source 与每份 Artifact 分别限制为 200 个文件、单个 2 MiB、总计 
 ## 验证
 
 - 常规测试：`workspace-files.test.ts`、`workspace.service.test.ts`、`workspace-tools.test.ts`。`tools/workspace/workspace-read.test.ts` 需要本机 Python 3（仅标准库），以临时目录/当前账号映射运行真实 FILE_SCRIPT，经 ReadTool、ToolInvocation 和 observation 验证分页及超长行替代命令；不是云端 Linux 隔离验证。
+- GC 引用/故障：`workspace-gc.db.test.ts` 用独立 schema、受控 OSS 与真实 PostgreSQL 锁验证共享引用、重复 Artifact PUT 优化、旧预览保护/退役、COMMIT 响应丢失、回滚、删除/迟到 PUT、GC 与新 owner、未知上传及部分删除失败/新进程重试；不连接真实业务 Bucket。
 - 真实 PostgreSQL：`workspace.db.test.ts`，仅允许 TEST_DATABASE_URL，在隔离 schema 中验证发布事务、回滚、过期/旧 owner、并发及归属，以及实例复用、取消/超时释放、释放失败、创建记录失败与删会话后保留历史。
 - SDK 与云监测：`workspace-cloud.service.test.ts` 用本机 HTTP fixture 和真实锁定 SDK 验证 401/429、丢失响应及创建后检查失败的分类，不创建真实云资源；另验证 OSS SDK 返回结构、直连、缓存与失败保留；管理台 `e2e/workspaces.spec.ts` 验证历史分页、时长与未知状态展示。
 - 浏览器：`apps/web/e2e/workspace-build.spec.ts` 覆盖旧 HTML/演示桥接与只读源码兼容；`workspace-project.spec.ts` 覆盖真实多文件模块/CSS/SVG/查询参数、侧栏/整页/窄屏、Source ZIP 与构建隔离。`workspace-project.test.ts` 用真实 Python 文件采集和标准库 ZIP 解包验证 Source/dist 分离、目录/链接/文件类型、容量及静态资源引用；`workspace.db.test.ts` 增加 Artifact 同事务、CAS/回滚、固定资源版本、归档和删会话期间迟到读取。
 - 两个真实 Agent 案例：在获准本机开发/测试库和开发云资源下，在 `apps/api` 运行 `node --env-file=../../.env --import tsx src/workspaces/workspace-project.smoke.ts`。只读开发库现有模型配置（默认模型，缺省选已探活可见 DeepSeek），在独立 TEST_DATABASE_URL schema 经真实 ChatService 执行 React 与 HTML 两例的生成/续改，另验证 Python；不启动应用 dev server，不部署。提示可直接复制脚本中的 CASES。records.json、真实 Source/dist、ZIP、浏览器截图及 report.json 留在本机输出目录；脚本清理本轮随机用户 OSS、临时沙箱和 schema。失败记录不是 PASS，不能用 fixture 或母版 smoke 代替。
+- GC 手动云验证：在 `apps/api` 运行 `node --env-file=../../.env --import tsx src/workspaces/workspace-gc.smoke.ts`；严格核对已核定开发 Bucket、private/未启用版本控制与 TEST_DATABASE_URL，随机 `users/gc_check_<id>/conversations/gc-check-<id>/` 和独立 schema。实际 OSS 读写/回收与持久引用验证，不调用模型、不执行 build、不创建沙箱，不当作 #231 Agent 案例；确认测试前缀为空才删除本轮 schema，未知结局保留核查目标。原始报告和 ZIP 留在 `/tmp/agent-gc-cloud-<id>/`。
 - 手动云验证：先确认账号、地域、Bucket 和模板均为获准开发资源，再在 `apps/api` 下运行 `node --env-file=../../.env --import tsx src/workspaces/workspace-cloud.smoke.ts`。测试凭据需允许本轮 `_checks/<runId>/` 的读、写、删除。检查纠错、超时、输出、Python/shell 提权、envd 绕过、入站鉴权、网络隔离、后台进程清理、链接拒绝和跨实例 OSS 恢复；最后分页核对本轮所有实例不存在，并删除本轮对象、用 HeadObject 确认不存在。失败时保留输出的 runId / 对象 key 供核查，不把清理未知当成功；不进默认测试。
 
 命令监督启用 Linux child subreaper，后台子孙通过内核重新归属监督进程，重复冻结、杀死并 waitpid 到 ECHILD 才确认清空，不依赖单次 PID 快照。工作区元数据写入和收尾使用独立 5 秒数据库预算，数据库实际等待受 statement timeout 约束；租约复核、状态更新和对应文件清单读取共用同一事务，恢复路径不再另做无预算读取。

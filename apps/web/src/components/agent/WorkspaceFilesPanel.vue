@@ -97,8 +97,10 @@ const sourceLines = computed(() => displayedCode.value.split('\n').length <= 500
 const canFormat = computed(() => !!fileFormatParser(selected.value) && code.value.length <= FILE_CODE_LIMIT)
 const tree = computed(() => workspaceFileTree(visibleFiles.value.map(file => file.path), search.value, collapsed))
 const showTree = computed(() => width.value >= 620 || (!selected.value && (mode.value !== 'preview' || !props.snapshot?.artifact)))
-watch([mode, previewable, () => props.snapshot?.artifact?.id], () => {
-  if (mode.value === 'preview' && previewable.value) {
+watch([mode, previewable, () => props.snapshot, () => props.loading, () => props.error], () => {
+  if (mode.value === 'preview' && props.snapshot && !previewable.value && !props.loading && !props.error)
+    mode.value = 'code'
+  if (mode.value === 'preview' && previewable.value && !props.loading && !props.error) {
     previewStarted.value = true
     previewArtifactId.value = props.snapshot?.artifact?.id
   }
@@ -221,6 +223,13 @@ async function toggleFormat() {
   }
 }
 
+function openCurrentBuild() {
+  expandedPreview.value = false
+  previewStarted.value = false
+  previewArtifactId.value = undefined
+  emit('refresh')
+}
+
 function close() {
   previewRequest++
   previewPending.value = false
@@ -283,7 +292,7 @@ async function download(revision = props.snapshot?.revision) {
   const current = ++downloadRequest
   downloadController?.abort()
   downloadController = new AbortController()
-  const target = { path: `project-v${revision}.zip`, revision }
+  const target = { path: 'project.zip', revision }
   downloadTarget.value = target
   downloadError.value = false
   downloadPending.value = true
@@ -355,9 +364,6 @@ function retryDownload() {
           </button>
         </div>
         <div v-if="selected && !markdown" class="toolbar-divider" />
-        <span class="saved-version">
-          {{ t('workspace.savedVersion', { n: snapshot?.revision ?? 0 }) }}
-        </span>
         <button class="workspace-action" :disabled="loading" :title="t('workspace.refresh')" :aria-label="t('workspace.refresh')" @click="emit('refresh')">
           <AppIcon name="tabler:refresh" :size="16" :class="{ 'animate-spin motion-reduce:animate-none': loading }" />
         </button>
@@ -384,8 +390,8 @@ function retryDownload() {
         {{ t('workspace.retryDownload', { path: downloadTarget?.path }) }}
       </button>
     </p>
-    <p v-if="mode === 'preview' && snapshot?.artifact" class="px-3 py-1 text-xs text-agent-ink-muted" data-build-identity>
-      {{ t('workspace.buildVersion', { n: snapshot.artifact.sourceRevision }) }} · {{ snapshot.artifact.id.slice(0, 8) }}
+    <p v-if="mode === 'preview' && snapshot?.artifact && snapshot.artifact.sourceRevision !== snapshot.revision" class="px-3 py-1 text-xs text-agent-ink-muted" data-build-identity>
+      {{ t('workspace.previousBuild') }}
     </p>
     <div class="workspace-body">
       <aside v-if="showTree" class="file-sidebar" :class="{ 'is-browser': !selected }" :aria-label="t('workspace.files')">
@@ -459,7 +465,7 @@ function retryDownload() {
               {{ t('workspace.retryDownload', { path: downloadTarget?.path }) }}
             </button>
           </p>
-          <HtmlPreviewPanel :code="code" :artifact-id="previewArtifactId" :conversation-id="conversationId ?? undefined" interactive embedded @close="expandedPreview ? expandedPreview = false : close()" />
+          <HtmlPreviewPanel :code="code" :artifact-id="previewArtifactId" :conversation-id="conversationId ?? undefined" interactive embedded @current="openCurrentBuild" @close="expandedPreview ? expandedPreview = false : close()" />
         </dialog>
         <div v-if="mode === 'code' && !error && !previewError && markdown" data-workspace-markdown :inert="contentLoading || undefined" class="markdown-preview">
           <AgentMarkdownContent v-if="code" :key="selected" :text="code" />
@@ -663,15 +669,6 @@ function retryDownload() {
   background: var(--agent-surface);
   color: var(--agent-ink);
 }
-.saved-version {
-  display: inline-flex;
-  align-items: center;
-  font-size: 11.5px;
-  color: var(--agent-ink-muted);
-  white-space: nowrap;
-  font-variant-numeric: tabular-nums;
-  padding: 0 4px;
-}
 .meta-downloading {
   display: inline-flex;
   align-items: center;
@@ -698,9 +695,6 @@ function retryDownload() {
 }
 .workspace-panel.is-compact .file-title select {
   min-width: 0;
-}
-.workspace-panel.is-compact .saved-version {
-  font-size: 11px;
 }
 .workspace-panel.is-compact .toolbar-divider {
   display: none;

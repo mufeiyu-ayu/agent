@@ -104,6 +104,8 @@ describe('工作区获取与恢复', () => {
     let created = 0
     const row = { conversationId: 'c', userId: 'u', revision: 0, files: [] }
     const prisma = {
+      $executeRaw: async () => 1,
+      workspaceGcTarget: { findUnique: async () => null },
       withDeadlineTransaction: async (_deadline: unknown, callback: (transaction: { execute: (operation: (db: PrismaService) => Promise<unknown>) => Promise<unknown> }) => Promise<unknown>) => callback({ execute: operation => operation(prisma) }),
       conversation: { findFirst: async () => ({ id: 'c', title: '工作区' }) },
       conversationWorkspace: {

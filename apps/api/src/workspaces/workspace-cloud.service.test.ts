@@ -5,15 +5,17 @@ import { createServer } from 'node:http'
 import { Readable } from 'node:stream'
 import { AuthenticationError, RateLimitError, Sandbox, TemplateError } from 'e2b'
 import { afterEach, beforeEach, it, vi } from 'vitest'
-import { WorkspaceCloudService, WorkspaceCreatedError } from './workspace-cloud.service.js'
+import { WorkspaceCloudService, WorkspaceCreatedError, WorkspaceUploadOutcomeUnknownError } from './workspace-cloud.service.js'
 import { fileHash, WorkspaceOperationError } from './workspace-files.js'
 
-const storage = vi.hoisted(() => ({ options: {} as Record<string, unknown>, query: vi.fn(), put: vi.fn(), getStream: vi.fn() }))
+const storage = vi.hoisted(() => ({ options: {} as Record<string, unknown>, query: vi.fn(), put: vi.fn(), getStream: vi.fn(), list: vi.fn(), delete: vi.fn() }))
 vi.mock('ali-oss', () => ({ default: class {
   constructor(options: Record<string, unknown>) { storage.options = options }
   getBucketStat() { return storage.query() }
   put(...args: unknown[]) { return storage.put(...args) }
   getStream(...args: unknown[]) { return storage.getStream(...args) }
+  list(...args: unknown[]) { return storage.list(...args) }
+  delete(...args: unknown[]) { return storage.delete(...args) }
 } }))
 
 beforeEach(() => {
@@ -26,6 +28,8 @@ beforeEach(() => {
   storage.query.mockReset()
   storage.put.mockReset()
   storage.getStream.mockReset()
+  storage.list.mockReset()
+  storage.delete.mockReset()
 })
 afterEach(() => {
   vi.restoreAllMocks()
@@ -39,6 +43,7 @@ it('OSS 查询不继承代理，并发请求复用缓存；失败保留最后有
   storage.query.mockResolvedValueOnce({ res: { status: 200 }, stat: { Storage: '345148', ObjectCount: '24', LastModifiedTime: '1790959200' } })
   const [first, same] = await Promise.all([cloud.inspectStorage(), cloud.inspectStorage()])
   assert.equal(storage.options.enableProxy, false)
+  assert.equal(storage.options.retryMax, 0)
   assert.equal(storage.options.proxy, undefined)
   assert.equal(storage.query.mock.calls.length, 1)
   assert.deepEqual(first, same)
@@ -158,6 +163,35 @@ it('不可变对象冲突必须校验真实内容，不能把损坏对象当成�
   assert.equal(storage.put.mock.calls[0]![2].headers['x-oss-forbid-overwrite'], 'true')
   storage.getStream.mockResolvedValueOnce({ stream: Readable.from([Buffer.from('wrong')]) })
   await assert.rejects(cloud.putFile(file, content, signal), /校验失败/)
+})
+
+it('GC SDK 分页完整性与幂等 DeleteObject；未确认 PUT 不当成明确拒绝', async () => {
+  const cloud = new WorkspaceCloudService()
+  storage.list.mockResolvedValueOnce({ objects: [{ name: 'users/u/a' }], isTruncated: true, nextMarker: 'users/u/a' })
+  assert.deepEqual(await cloud.listFiles('users/u/'), { keys: ['users/u/a'], nextMarker: 'users/u/a' })
+  assert.equal(Object.hasOwn(storage.list.mock.calls[0]![0], 'marker'), false, '首次请求不能传 undefined marker：SDK 的签名与 URL 编码对 undefined 不同')
+  storage.list.mockResolvedValueOnce({ objects: [], isTruncated: false })
+  assert.deepEqual(await cloud.listFiles('users/u/', 'users/u/a'), { keys: [] })
+  for (const result of [{ objects: [], isTruncated: true }, { objects: [{ name: '_checks/outside' }] }, { objects: [], nextMarker: 'users/u/a' }]) {
+    storage.list.mockResolvedValueOnce(result)
+    await assert.rejects(cloud.listFiles('users/u/', 'users/u/a'), /不完整/)
+  }
+  storage.delete.mockResolvedValue({ res: { status: 204 } })
+  await cloud.deleteFile('users/u/a')
+  await cloud.deleteFile('users/u/a')
+  assert.equal(storage.delete.mock.calls.length, 2)
+  const content = Buffer.from('upload')
+  const file = { path: 'a', key: 'users/u/a', bytes: content.length, sha256: fileHash(content) }
+  storage.put.mockRejectedValueOnce(new Error('network timeout SECRET'))
+  await assert.rejects(cloud.putFile(file, content, new AbortController().signal), WorkspaceUploadOutcomeUnknownError)
+  storage.put.mockRejectedValueOnce({ status: 403, code: 'AccessDenied' })
+  await assert.rejects(cloud.putFile(file, content, new AbortController().signal), error => error instanceof WorkspaceOperationError && !(error instanceof WorkspaceUploadOutcomeUnknownError))
+  const controller = new AbortController()
+  storage.put.mockImplementationOnce(async () => {
+    controller.abort()
+  })
+  await cloud.putFile(file, content, controller.signal)
+  assert.equal(controller.signal.aborted, true, '已确认 PUT 返回实际结局，由调用方登记后响应取消')
 })
 
 it('R2：锁定 SDK 的 HTTP 拒绝没有 statusCode，适配器仅将创建阶段的 401/429 标为确定未创建', async () => {

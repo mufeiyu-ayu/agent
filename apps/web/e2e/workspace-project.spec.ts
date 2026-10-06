@@ -26,11 +26,15 @@ async function setup(page: import('@playwright/test').Page, baseURL: string, scr
   await installBrowserStubs(page, { lines: [], holdBeforeIndex: -1 })
   let revision = 3
   let currentArtifact: typeof artifact | null = artifact
+  let previewTtl = 600_000
   await page.route('**/api/conversations/*/workspace**', (route) => {
     const url = new URL(route.request().url())
     let data: unknown = { ...snapshot, revision, artifact: currentArtifact }
-    if (url.pathname.endsWith('/preview'))
-      data = { artifactId: currentArtifact?.id, url: `/api/workspace-preview/${token}/document` }
+    if (url.pathname.endsWith('/preview')) {
+      if (!currentArtifact || url.pathname.split('/').at(-2) !== currentArtifact.id)
+        return route.fulfill({ status: 404, json: { success: false, message: '旧构建已退役' } })
+      data = { artifactId: currentArtifact.id, url: `/api/workspace-preview/${currentArtifact.id === 'build-2' ? secondToken : token}/document`, expiresAt: new Date(Date.now() + previewTtl).toISOString() }
+    }
     if (url.pathname.endsWith('/file'))
       data = { encoding: 'base64', content: source.find(file => file.path === url.searchParams.get('path'))!.content.toString('base64') }
     if (url.pathname.endsWith('/archive'))
@@ -41,7 +45,7 @@ async function setup(page: import('@playwright/test').Page, baseURL: string, scr
     const url = new URL(route.request().url())
     if (url.pathname.includes(secondToken))
       onCrossArtifact()
-    const base = `${baseURL}/api/workspace-preview/${token}/files/`
+    const base = `${baseURL}/api/workspace-preview/${url.pathname.split('/')[3]}/files/`
     if (url.pathname.endsWith('/document'))
       return route.fulfill({ body: previewDocument(scripts[url.searchParams.get('path') ?? 'index.html']!, base, url.searchParams.get('path') ?? 'index.html'), headers: { 'Content-Type': 'text/html', 'Content-Security-Policy': previewCsp(base), 'Referrer-Policy': 'no-referrer' } })
     const path = url.pathname.split('/files/')[1]!
@@ -49,6 +53,7 @@ async function setup(page: import('@playwright/test').Page, baseURL: string, scr
   })
   return {
     setArtifact: (id: string | null) => { currentArtifact = id ? { ...artifact, id } : null },
+    expireAfter: (ms: number) => { previewTtl = ms },
     changeVersion: () => { revision++ },
   }
 }
@@ -67,14 +72,16 @@ for (const width of [1920, 390]) {
     await expect(frame.locator('#value')).toHaveText('84')
     assert.equal(await frame.locator('body').evaluate(element => getComputedStyle(element).color), 'rgb(10, 20, 30)')
     assert.equal(await frame.locator('img').evaluate((element: HTMLImageElement) => element.naturalWidth), 20)
-    await expect(panel.locator('[data-build-identity]')).toContainText('源码版本 2')
-    await expect(panel).toContainText('已保存版本 3')
+    await expect(panel.locator('[data-build-identity]')).toContainText('当前显示上次成功构建')
+    await expect(panel).not.toContainText('已保存版本')
+    await expect(panel).not.toContainText('源码版本')
+    await expect(panel).not.toContainText(artifact.id)
     await expect(panel).toContainText('本轮构建失败')
     await expect(panel.getByRole('button', { name: '下载 src/App.tsx', exact: true })).toHaveCount(0)
     const downloading = page.waitForEvent('download')
     await panel.getByRole('button', { name: '下载源码 ZIP', exact: true }).click({ delay: 50 })
     const download = await downloading
-    assert.equal(download.suggestedFilename(), 'project-v3.zip')
+    assert.equal(download.suggestedFilename(), 'project.zip')
     assert.deepEqual(await readFile((await download.path())!), sourceZip(source))
     await panel.getByRole('button', { name: '代码', exact: true }).click()
     await expect(panel.locator('[data-workspace-source]')).toContainText('export default function App')
@@ -154,6 +161,31 @@ test('只看 Code 不预加载新 Artifact；切预览才加载一次', async ({
   assert.equal(capabilities.length, 1)
 })
 
+test('旧预览到期明确失效，重试旧 Artifact 不重开；按需打开当前成功构建', async ({ page, baseURL }) => {
+  const state = await setup(page, baseURL!)
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  state.expireAfter(1500)
+  const capabilities: string[] = []
+  page.on('request', (r) => {
+    if (r.url().includes('/preview?'))
+      capabilities.push(r.url())
+  })
+  await page.goto('/workspace')
+  await page.locator('[data-open-workspace-files]').click()
+  const panel = page.locator('[data-workspace-files-panel]')
+  const preview = panel.locator('[data-html-preview-panel]')
+  await expect(preview.frameLocator(':scope > iframe').frameLocator('iframe').locator('body')).toHaveAttribute('data-loaded', 'true')
+  state.setArtifact('build-2')
+  state.expireAfter(600_000)
+  await expect(preview.getByRole('alert')).toContainText('此预览已失效')
+  await preview.getByRole('button', { name: '重试', exact: true }).click({ delay: 50 })
+  await expect(preview.getByRole('alert')).toContainText('此预览已失效')
+  await preview.getByRole('button', { name: '打开当前最近成功构建', exact: true }).click({ delay: 50 })
+  await expect(preview.frameLocator(':scope > iframe').frameLocator('iframe').locator('body')).toHaveAttribute('data-loaded', 'true')
+  await expect(preview.getByRole('alert')).toHaveCount(0)
+  assert.deepEqual(capabilities.map(url => new URL(url).pathname.split('/').at(-2)), ['build-1', 'build-1', 'build-2'])
+})
+
 test('所有展示文件被隐藏时准确空态，Source 非空仍可下载完整 ZIP', async ({ page, baseURL }) => {
   await setup(page, baseURL!)
   const hidden = source.slice(4)
@@ -172,7 +204,24 @@ test('所有展示文件被隐藏时准确空态，Source 非空仍可下载完�
 })
 
 test('ready 等内层有效 load；空 load 和旧代次消息无效，错误后 ready 不覆盖失败', async ({ page, baseURL }) => {
-  await setup(page, baseURL!)
+  // 同一 source 的 postMessage 有序：wrapper 收到攻击后的 checkpoint 再转发给宿主，
+  // 宿主看到 checkpoint 时，可能被伪造的 ready 已处理，不能只等 module 请求挂起。
+  await page.addInitScript(() => {
+    if (window.top === window) {
+      addEventListener('message', (event) => {
+        const frame = document.querySelector<HTMLIFrameElement>('[data-workspace-files-panel] [data-html-preview-panel] > iframe')
+        if (event.source === frame?.contentWindow && event.data?.type === 'artifact-test-checkpoint')
+          document.documentElement.dataset.artifactAttackObserved = 'true'
+      })
+    }
+    else if (location.pathname.endsWith('/document')) {
+      addEventListener('message', (event) => {
+        if (event.source === document.querySelector('iframe')?.contentWindow && event.data?.type === 'attack-checkpoint')
+          parent.postMessage({ type: 'artifact-test-checkpoint' }, '*')
+      })
+    }
+  })
+  await setup(page, baseURL!, { ...dist, 'index.html': html.replace('</body>', '<form name="currentScript"></form><script>parent.postMessage({type:"artifact-loaded"},"*");window.dispatchEvent(new Event("load"));parent.postMessage({type:"attack-checkpoint"},"*");document.body.dataset.attackSent="true";</script></body>') })
   let release!: () => Promise<void>
   await page.route('**/files/assets/main.js?*', (route) => {
     release = () => route.fallback()
@@ -181,6 +230,8 @@ test('ready 等内层有效 load；空 load 和旧代次消息无效，错误后
   await page.locator('[data-open-workspace-files]').click()
   const preview = page.locator('[data-workspace-files-panel] [data-html-preview-panel]')
   await expect.poll(() => !!release).toBe(true)
+  await expect(preview.frameLocator(':scope > iframe').frameLocator('iframe').locator('body')).toHaveAttribute('data-attack-sent', 'true')
+  await expect.poll(() => page.evaluate(() => document.documentElement.dataset.artifactAttackObserved)).toBe('true')
   const wrapper = await (await preview.locator(':scope > iframe').elementHandle())!.contentFrame()
   await wrapper!.evaluate(() => document.querySelector('iframe')!.dispatchEvent(new Event('load')))
   await page.evaluate(() => {
@@ -303,11 +354,11 @@ test('源码 ZIP 重试固定 revision；变版取消旧归档，迟到结果不
   const button = panel.getByRole('button', { name: '下载源码 ZIP', exact: true })
   await button.click()
   const error = panel.locator('[data-workspace-download-error]')
-  await expect(error).toContainText('下载 project-v3.zip 失败')
+  await expect(error).toContainText('下载 project.zip 失败')
   const retry = error.getByRole('button')
   const download = page.waitForEvent('download')
   await retry.click()
-  assert.equal((await download).suggestedFilename(), 'project-v3.zip')
+  assert.equal((await download).suggestedFilename(), 'project.zip')
   assert.deepEqual(revisions, [3, 3])
   hold = true
   await button.click()
@@ -324,7 +375,7 @@ test('源码 ZIP 重试固定 revision；变版取消旧归档，迟到结果不
   hold = false
   const current = page.waitForEvent('download')
   await button.click({ delay: 50 })
-  assert.equal((await current).suggestedFilename(), 'project-v4.zip')
+  assert.equal((await current).suggestedFilename(), 'project.zip')
   assert.deepEqual(revisions, [3, 3, 3, 4])
 })
 

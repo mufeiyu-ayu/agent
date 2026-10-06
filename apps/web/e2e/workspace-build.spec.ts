@@ -70,7 +70,7 @@ test('构建步骤、命令错误与修复、文件保存、交互预览、业�
   assert.equal(await child.evaluate(() => (window as unknown as { checkIsolation: () => string }).checkIsolation()), 'isolated')
   const panel = page.locator('[data-workspace-files-panel]')
   await expect(page.getByText('已生成页面并完成检查，数据为演示数据。')).toBeVisible()
-  await expect(panel).toContainText('已保存版本 2')
+  await expect(panel).not.toContainText('已保存版本')
   await expect(panel.getByRole('button', { name: '下载源码 ZIP', exact: true })).toBeVisible()
   await expect(panel.getByRole('button', { name: `下载 ${file.path}`, exact: true })).toHaveCount(0)
   await page.setViewportSize({ width: 1920, height: 1080 })
@@ -306,7 +306,7 @@ test('R3：交付卡片等待同 SHA 的最新 manifest revision，读取的仍�
   releaseRefresh!()
   await expect(frame.getByRole('heading', { name: '内容 A' })).toBeVisible()
   await expect(button).toBeEnabled()
-  await expect(panel.getByText(/已保存版本 2/)).toBeVisible()
+  await expect(panel).not.toContainText('已保存版本')
   assert.deepEqual(revisions, [1], '清单 revision 更新但交付 SHA 不变时复用缓存，不再下载')
 })
 
@@ -430,8 +430,10 @@ for (const [from, to] of [[1400, 620], [620, 1400]] as const) {
     await expect(panel).toHaveCount(1)
     const oldFailure = page.waitForEvent('requestfailed', request => new URL(request.url()).pathname.endsWith('/workspace/file') && new URL(request.url()).searchParams.get('revision') === '1')
     changed = true
+    const changedSnapshot = page.waitForResponse(response => new URL(response.url()).pathname.endsWith('/workspace'))
     await panel.getByRole('button', { name: '刷新文件', exact: true }).click()
-    await expect(panel.getByText(/已保存版本 2/)).toBeVisible()
+    assert.equal((await (await changedSnapshot).json()).data.revision, 2)
+    await expect(panel.getByRole('button', { name: '刷新文件', exact: true })).toBeEnabled()
     await finishA!()
     await oldFailure
     // 等浏览器完成旧读取的 Promise/框架更新，再触发 G；不能只验证重建瞬间。
@@ -742,8 +744,9 @@ test('同面板 A→B→A 复用已读文件，编辑 B 后失效而未改的 A 
   await expect(source).toContainText('A 内容不变')
   assert.deepEqual(reads, [{ path: 'a.txt', revision: 1 }, { path: 'b.txt', revision: 1 }])
   revision = 2
+  const changedSnapshot = page.waitForResponse(response => new URL(response.url()).pathname.endsWith('/workspace'))
   await panel.getByRole('button', { name: '刷新文件', exact: true }).click()
-  await expect(panel.getByText(/已保存版本 2/)).toBeVisible()
+  assert.equal((await (await changedSnapshot).json()).data.revision, 2)
   await expect(panel.getByRole('button', { name: '刷新文件', exact: true })).toBeEnabled()
   assert.equal(reads.length, 2, '只改 B 不应重新下载 A')
   await panel.getByRole('button', { name: 'b.txt', exact: true }).click()

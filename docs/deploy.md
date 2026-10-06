@@ -145,6 +145,8 @@ docker compose exec -e ADMIN_EMAIL=<邮箱> -e ADMIN_PASSWORD api node dist/crea
 
 **还原会丢失备份之后写入的全部数据，每次都要用户确认后再执行。** 备份 `<时间>-before-<版本>.dump` 是部署该版本、执行迁移之前的库。
 
+**数据库备份不等于完整工作区文件备份。** OSS 引用回收后，旧数据库中的 Source/Artifact 指针可能已不存在，需要重新生成文件和构建，不能保证完整工作区恢复或用户历史回滚。恢复前先停写与暂停自动 GC，核对 Bucket、持久清理目标及上传未知记录；不要把旧备份覆盖后的引用当作仍有效文件。回收启用/维护与故障核查见 [工作区 GC](../apps/api/src/workspaces/GC.md)：先 migration、停止旧 API、核定清理范围后才设 `OSS_WORKSPACE_GC_ENABLED=true`，默认不删除既有对象。
+
 ```bash
 ssh agent-hk
 cd ~/kuro && export KURO_VERSION=$(cat current)

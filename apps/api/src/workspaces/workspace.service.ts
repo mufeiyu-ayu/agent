@@ -10,9 +10,10 @@ import { BadRequestException, ConflictException, Inject, Injectable, Logger, Not
 import { PrismaService } from '../prisma/prisma.service.js'
 import { BASH_SCRIPT, FILE_SCRIPT } from './sandbox-scripts.js'
 import { sourceZip } from './workspace-archive.js'
-import { WorkspaceCloudService, WorkspaceCreatedError, WorkspaceCreationRejectedError } from './workspace-cloud.service.js'
-import { workspaceDb } from './workspace-db.js'
+import { WorkspaceCloudService, WorkspaceCreatedError, WorkspaceCreationRejectedError, WorkspaceUploadOutcomeUnknownError } from './workspace-cloud.service.js'
+import { lockWorkspaceStorage, workspaceDb } from './workspace-db.js'
 import { artifactPath, fileHash, MAX_FILE_BYTES, MAX_WORKSPACE_BYTES, MAX_WORKSPACE_FILES, parseStoredFiles, privateWorkspacePath, storedWorkspacePath, WorkspaceOperationError, workspacePath } from './workspace-files.js'
+import { WorkspaceGcService } from './workspace-gc.service.js'
 import { WorkspaceMonitoringService } from './workspace-monitoring.service.js'
 import { validateArtifact } from './workspace-preview.js'
 
@@ -34,6 +35,7 @@ export class WorkspaceService implements OnModuleDestroy {
     @Inject(PrismaService) private readonly prisma: PrismaService,
     @Inject(WorkspaceCloudService) readonly cloud: WorkspaceCloudService,
     @Inject(WorkspaceMonitoringService) private readonly monitoring: WorkspaceMonitoringService,
+    @Inject(WorkspaceGcService) private readonly gc = new WorkspaceGcService(prisma, cloud),
   ) {}
 
   async snapshot(userId: string, conversationId: string): Promise<WorkspaceSnapshot> {
@@ -176,40 +178,61 @@ export class WorkspaceService implements OnModuleDestroy {
     const row = await this.operation(execution, 'saving')
     const prefix = this.prefix(execution.userId, execution.conversationId)
     const previous = parseStoredFiles(row.files, prefix)
-    const existingHashes = new Set(previous.map(file => file.sha256))
-    const upload = async (contents: Array<{ path: string, content: Buffer }>) => {
-      const files: StoredWorkspaceFile[] = []
-      for (const { path, content } of contents) {
-        signal.throwIfAborted()
-        const sha256 = fileHash(content)
-        const file = { path, bytes: content.length, sha256, key: `${prefix}objects/${sha256}` }
-        if (!existingHashes.has(sha256)) {
-          await this.cloud.putFile(file, content, signal)
-          existingHashes.add(sha256)
+    const uploadId = await this.gc.beginUpload(execution)
+    let unknownUpload = false
+    try {
+      const confirmedArtifact = row.artifactId ? await this.prisma.workspaceArtifact.findFirst({ where: { id: row.artifactId, userId: execution.userId, conversationId: execution.conversationId } }) : null
+      // 当前 Source/Artifact 受 owner + 持久上传登记保护；GC 与取得 owner 共用互斥。
+      // 不复用任意历史 hash，也不依赖一次存在性检查避免检查后被删的竞态。
+      const existingHashes = new Set([...previous, ...parseStoredFiles(confirmedArtifact?.files ?? [], prefix)].map(file => file.sha256))
+      const upload = async (contents: Array<{ path: string, content: Buffer }>) => {
+        const files: StoredWorkspaceFile[] = []
+        for (const { path, content } of contents) {
+          signal.throwIfAborted()
+          const sha256 = fileHash(content)
+          const file = { path, bytes: content.length, sha256, key: `${prefix}objects/${sha256}` }
+          if (!existingHashes.has(sha256)) {
+            await this.gc.uploading(uploadId, file.key)
+            try {
+              await this.cloud.putFile(file, content, signal)
+            }
+            catch (error) {
+              unknownUpload ||= error instanceof WorkspaceUploadOutcomeUnknownError
+              throw error
+            }
+            existingHashes.add(sha256)
+            signal.throwIfAborted()
+          }
+          files.push(file)
         }
-        files.push(file)
+        return parseStoredFiles(files, prefix)
       }
-      return parseStoredFiles(files, prefix)
+      const files = await upload(await this.collectFiles(active.sandbox, signal, false, previous.filter(file => !privateWorkspacePath(file.path)).map(file => file.path)))
+      const hashes = new Map(previous.map(file => [file.path, file.sha256]))
+      const sourceChanged = previous.length !== files.length || files.some(file => hashes.get(file.path) !== file.sha256)
+      const build = active.build
+      active.build = undefined
+      let artifact: WorkspaceCommit['artifact']
+      if (build) {
+        if (build.sourceHashes.size !== files.length || files.some(file => build.sourceHashes.get(file.path) !== file.sha256))
+          throw new WorkspaceOperationError('构建期间源码发生变化，未发布 Artifact；请重新检查构建。')
+        const contents = await this.collectFiles(active.sandbox, signal, true)
+        validateArtifact(contents)
+        artifact = { id: build.id, userId: execution.userId, sourceRevision: row.revision + Number(sourceChanged), command: build.command, createdAt: build.createdAt, files: await upload(contents) }
+      }
+      const webProject = (row.webProject ?? false) || !!artifact || (files.some(file => file.path === 'pnpm-lock.yaml') && files.some(file => /^vite\.config\.[cm]?[jt]s$/.test(file.path)))
+      if (!sourceChanged && !artifact && webProject === (row.webProject ?? false)) {
+        await this.operation(execution, 'running')
+        return undefined
+      }
+      signal.throwIfAborted()
+      return { conversationId: execution.conversationId, runId: execution.runId, expectedRevision: row.revision, expectedArtifactId: row.artifactId, files, sourceChanged, webProject, ...(artifact ? { artifact } : {}) }
     }
-    const files = await upload(await this.collectFiles(active.sandbox, signal, false, previous.filter(file => !privateWorkspacePath(file.path)).map(file => file.path)))
-    const hashes = new Map(previous.map(file => [file.path, file.sha256]))
-    const sourceChanged = previous.length !== files.length || files.some(file => hashes.get(file.path) !== file.sha256)
-    const build = active.build
-    active.build = undefined
-    let artifact: WorkspaceCommit['artifact']
-    if (build) {
-      if (build.sourceHashes.size !== files.length || files.some(file => build.sourceHashes.get(file.path) !== file.sha256))
-        throw new WorkspaceOperationError('构建期间源码发生变化，未发布 Artifact；请重新检查构建。')
-      const contents = await this.collectFiles(active.sandbox, signal, true)
-      validateArtifact(contents)
-      artifact = { id: build.id, userId: execution.userId, sourceRevision: row.revision + Number(sourceChanged), command: build.command, createdAt: build.createdAt, files: await upload(contents) }
+    finally {
+      // 登记失败保持 active（不丢待核查目标），不能覆盖原保存/取消结果。
+      await this.gc.finishUpload(uploadId, unknownUpload).catch(() => this.logger.warn({ event: 'workspace_upload_pending', uploadId }))
+      await this.gc.afterRun(execution.runId)
     }
-    const webProject = (row.webProject ?? false) || !!artifact || (files.some(file => file.path === 'pnpm-lock.yaml') && files.some(file => /^vite\.config\.[cm]?[jt]s$/.test(file.path)))
-    if (!sourceChanged && !artifact && webProject === (row.webProject ?? false)) {
-      await this.operation(execution, 'running')
-      return undefined
-    }
-    return { conversationId: execution.conversationId, runId: execution.runId, expectedRevision: row.revision, expectedArtifactId: row.artifactId, files, sourceChanged, webProject, ...(artifact ? { artifact } : {}) }
   }
 
   releaseRun(runId: string, error?: string): Promise<void> {
@@ -218,7 +241,7 @@ export class WorkspaceService implements OnModuleDestroy {
       return releasing
     const pending = this.running.get(runId)
     if (!pending)
-      return Promise.resolve()
+      return this.gc.afterRun(runId)
     // 收尾期间保留实例槽位；超时后的下一次工具调用必须等旧实例收尾，不能被迟到的清理清掉新租约。
     const cleanup = this.release(pending, runId, error).finally(() => {
       if (this.running.get(runId) === pending)
@@ -251,6 +274,10 @@ export class WorkspaceService implements OnModuleDestroy {
         where: { ownerRunId: runId },
         data: { state: 'cleanup_pending', lastError: error ?? '沙箱释放未确认，云端到期时间兜底' },
       })).catch(() => {})
+    }
+    finally {
+      if (active)
+        await this.gc.afterRun(runId)
     }
   }
 
@@ -316,6 +343,7 @@ export class WorkspaceService implements OnModuleDestroy {
     if (!this.cloud.configured)
       throw new WorkspaceOperationError('沙箱和文件存储尚未配置。')
     const { conversationId, userId, runId } = execution
+    await this.gc.waitForDeletion(execution, signal)
     const previous = await this.withDb(db => db.conversationWorkspace.upsert({ where: { conversationId }, create: { conversationId, userId }, update: {} }), signal)
     // 只等待本进程已启动的收尾；未知实例/真实并发仍由数据库租约拒绝。过期的其他 Run 不阻止新 owner。
     if (previous.ownerRunId && previous.leaseExpiresAt && previous.leaseExpiresAt.getTime() > Date.now())
@@ -328,10 +356,15 @@ export class WorkspaceService implements OnModuleDestroy {
     let leaseAttempted = false
     try {
       leaseAttempted = true
-      const acquired = await this.withDb(db => db.conversationWorkspace.updateMany({
-        where: { conversationId, userId, OR: [{ ownerRunId: null }, { leaseExpiresAt: { lt: new Date() } }] },
-        data: { ownerRunId: runId, leaseExpiresAt: new Date(execution.deadlineAt + 60_000), sandboxId: null, state: 'creating', lastOperation: 'creating', lastError: null },
-      }), signal)
+      const acquired = await this.withDb(async (db) => {
+        await lockWorkspaceStorage(db, conversationId)
+        if ((await db.workspaceGcTarget.findUnique({ where: { conversationId } }))?.deletingKey)
+          throw new WorkspaceOperationError('对象回收结局未确认，暂时不能取得写入所有权。', true)
+        return db.conversationWorkspace.updateMany({
+          where: { conversationId, userId, OR: [{ ownerRunId: null }, { leaseExpiresAt: { lt: new Date() } }] },
+          data: { ownerRunId: runId, leaseExpiresAt: new Date(execution.deadlineAt + 60_000), sandboxId: null, state: 'creating', lastOperation: 'creating', lastError: null },
+        })
+      }, signal)
       if (acquired.count !== 1) {
         leaseAttempted = false
         const current = await this.withDb(db => db.conversationWorkspace.findUniqueOrThrow({ where: { conversationId }, select: { state: true } }), signal)

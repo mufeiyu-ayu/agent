@@ -59,12 +59,12 @@ test('ZIP 失败重试固定版本、原字节，保留预览交互', async ({ p
   state.fail = true
   await panel.getByRole('button', { name: '下载源码 ZIP', exact: true }).click()
   const error = panel.locator('[data-workspace-download-error]')
-  await expect(error).toContainText('project-v1.zip')
+  await expect(error).toContainText('project.zip')
   state.fail = false
   const pending = page.waitForEvent('download')
   await error.getByRole('button').click({ delay: 50 })
   const result = await pending
-  assert.equal(result.suggestedFilename(), 'project-v1.zip')
+  assert.equal(result.suggestedFilename(), 'project.zip')
   assert.deepEqual(await readFile((await result.path())!), zip)
   assert.deepEqual(state.requests.map(request => request.revision), [1, 1])
   assert.equal(await outer.evaluate(element => element.isConnected), true)
@@ -91,7 +91,7 @@ test('ZIP 变版取消；忽略 Abort 的迟到结果不下载，重试不能切
   state.hold = false
   const pending = page.waitForEvent('download')
   await panel.getByRole('button', { name: '下载源码 ZIP', exact: true }).click()
-  assert.equal((await pending).suggestedFilename(), 'project-v2.zip')
+  assert.equal((await pending).suggestedFilename(), 'project.zip')
   assert.deepEqual(state.requests.map(request => request.revision), [1, 2])
 })
 

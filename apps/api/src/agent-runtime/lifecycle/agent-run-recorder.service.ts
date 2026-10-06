@@ -15,6 +15,7 @@ import {
   MessageStatus,
 } from '../../generated/prisma/client.js'
 import { PrismaService } from '../../prisma/prisma.service.js'
+import { lockWorkspaceStorage } from '../../workspaces/workspace-db.js'
 
 /** 用量的落库形态（采样 Step 的 output.usage、压缩 Step 与压缩记录的 usage 同一形状）：去掉缺失的字段。 */
 export function toPersistedModelUsage(
@@ -361,9 +362,13 @@ export class AgentRunRecorderService {
       if (!step)
         throw new RecorderInvariantError(`AgentStep ${stepId} 不存在`)
 
+      if (input.workspaceCommit)
+        await transaction.execute(db => lockWorkspaceStorage(db, input.workspaceCommit!.conversationId))
       const run = await this.assertRunningRunLocked(transaction, step.runId)
       if (input.workspaceCommit) {
         const commit = input.workspaceCommit
+        if ((await transaction.execute(db => db.workspaceGcTarget.findUnique({ where: { conversationId: commit.conversationId } })))?.deletingKey)
+          throw new RecorderInvariantError('对象回收结局未确认，不能发布新文件引用')
         if (commit.runId !== step.runId || commit.conversationId !== run.conversationId)
           throw new RecorderInvariantError('文件版本的 Run 身份不匹配')
         const sourceChanged = commit.sourceChanged !== false
@@ -374,6 +379,7 @@ export class AgentRunRecorderService {
           const owner = await transaction.execute(prisma => prisma.conversation.findFirst({ where: { id: commit.conversationId, userId: artifact.userId } }))
           if (!owner)
             throw new RecorderInvariantError('Artifact 与会话归属不匹配')
+          await transaction.execute(prisma => prisma.workspaceArtifact.updateMany({ where: { conversationId: commit.conversationId, retiredAt: null }, data: { retiredAt: new Date() } }))
           await transaction.execute(prisma => prisma.workspaceArtifact.create({ data: {
             ...artifact,
             conversationId: commit.conversationId,
