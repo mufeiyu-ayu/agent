@@ -1,16 +1,16 @@
 <script setup lang="ts">
 import type { WorkspaceSnapshot } from '@agent/contracts'
 import { useElementSize } from '@vueuse/core'
-import { DialogClose, DialogContent, DialogPortal, DialogRoot, DialogTitle, DialogTrigger } from 'reka-ui'
-import { computed, onScopeDispose, provide, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onScopeDispose, provide, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { getWorkspaceArchive } from '../../api/workspace'
 import { useCopyFeedback } from '../../hooks/useCopyFeedback'
 import { HTML_PREVIEW } from '../../hooks/useHtmlPreview'
 import { useWorkspaceTheme } from '../../hooks/useWorkspaceTheme'
 import { highlightCode } from '../../utils/code-highlighter'
 import { isPreviewableHtml } from '../../utils/html-preview'
 import { FILE_CODE_LIMIT, fileFormatParser, formatFileCode, highlightedCodeLines } from '../../utils/source-code'
-import { workspaceFileTree, workspaceFileType } from '../../utils/workspace-files'
+import { visibleWorkspaceFiles, workspaceFileTree, workspaceFileType } from '../../utils/workspace-files'
 import AppIcon from '../common/AppIcon.vue'
 import AppTooltip from '../common/AppTooltip.vue'
 import AgentMarkdownContent from './AgentMarkdownContent.vue'
@@ -34,16 +34,20 @@ const { copied, copy } = useCopyFeedback()
 const panel = ref<HTMLElement | null>(null)
 const { width } = useElementSize(panel)
 const expandedPreview = ref(false)
+const previewDialog = ref<HTMLDialogElement | null>(null)
+const previewStarted = ref(false)
+const previewArtifactId = ref<string>()
 const selected = ref('')
 const code = ref('')
 const mode = ref<'code' | 'preview'>('code')
 const previewPending = ref(false)
-const contentLoading = computed(() => previewPending.value || (props.loading && !props.snapshot))
+const contentLoading = computed(() => mode.value === 'preview' && props.snapshot?.artifact ? false : previewPending.value || (props.loading && !props.snapshot))
 const previewError = ref('')
 const downloadPending = ref(false)
-const downloadTarget = ref<{ path: string, sha256: string }>()
+const downloadTarget = ref<{ path: string, revision: number }>()
+let downloadController: AbortController | undefined
 const downloadError = ref(false)
-const downloadChanged = computed(() => !!downloadTarget.value && !props.snapshot?.files.some(file => file.path === downloadTarget.value!.path && file.sha256 === downloadTarget.value!.sha256))
+const downloadChanged = computed(() => !!downloadTarget.value && props.snapshot?.revision !== downloadTarget.value.revision)
 const downloadErrorText = computed(() => downloadTarget.value ? t(downloadChanged.value ? 'workspace.downloadChanged' : 'workspace.downloadFailed', { path: downloadTarget.value.path }) : '')
 const search = ref('')
 const collapsed = reactive(new Set<string>())
@@ -53,7 +57,8 @@ let expectedSha256: string | undefined
 let shownSha256: string | undefined
 let pendingSha256: string | undefined
 const totalBytes = computed(() => props.snapshot?.files.reduce((sum, file) => sum + file.bytes, 0) ?? 0)
-const selectedFile = computed(() => props.snapshot?.files.find(file => file.path === selected.value))
+const visibleFiles = computed(() => visibleWorkspaceFiles(props.snapshot?.files ?? []))
+const selectedFile = computed(() => visibleFiles.value.find(file => file.path === selected.value))
 const metaSizeText = computed(() => {
   if (selectedFile.value) {
     const kb = (selectedFile.value.bytes / 1024).toFixed(1)
@@ -63,7 +68,7 @@ const metaSizeText = computed(() => {
   }
   return `${(totalBytes.value / 1024).toFixed(1)} KB`
 })
-const previewable = computed(() => selected.value.toLowerCase().endsWith('.html') && isPreviewableHtml(code.value, 'html'))
+const previewable = computed(() => !!props.snapshot?.artifact || (!props.snapshot?.webProject && selected.value.toLowerCase().endsWith('.html') && isPreviewableHtml(code.value, 'html')))
 const fileType = computed(() => workspaceFileType(selected.value))
 const markdown = computed(() => fileType.value.language === 'markdown')
 const formattedCode = ref<string>()
@@ -73,11 +78,13 @@ const wrapLines = ref(false)
 let formatRequest = 0
 onScopeDispose(() => {
   previewRequest++
+  previewDialog.value?.close()
   resetDownload()
   formatRequest++
 })
 
 function resetDownload() {
+  downloadController?.abort()
   downloadRequest++
   downloadPending.value = false
   downloadTarget.value = undefined
@@ -88,8 +95,25 @@ const highlighted = computed(() => highlightCode(displayedCode.value, fileType.v
 // ponytail: 超过 5000 行退回完整 pre，避免为大文件创建数万个节点；需要大文件编辑时换虚拟化编辑器。
 const sourceLines = computed(() => displayedCode.value.split('\n').length <= 5000 ? highlightedCodeLines(highlighted.value) : undefined)
 const canFormat = computed(() => !!fileFormatParser(selected.value) && code.value.length <= FILE_CODE_LIMIT)
-const tree = computed(() => workspaceFileTree(props.snapshot?.files.map(file => file.path) ?? [], search.value, collapsed))
-const showTree = computed(() => !selected.value || width.value >= 620)
+const tree = computed(() => workspaceFileTree(visibleFiles.value.map(file => file.path), search.value, collapsed))
+const showTree = computed(() => width.value >= 620 || (!selected.value && (mode.value !== 'preview' || !props.snapshot?.artifact)))
+watch([mode, previewable, () => props.snapshot, () => props.loading, () => props.error], () => {
+  if (mode.value === 'preview' && props.snapshot && !previewable.value && !props.loading && !props.error)
+    mode.value = 'code'
+  if (mode.value === 'preview' && previewable.value && !props.loading && !props.error) {
+    previewStarted.value = true
+    previewArtifactId.value = props.snapshot?.artifact?.id
+  }
+}, { immediate: true })
+watch(expandedPreview, async (open) => {
+  if (open)
+    mode.value = 'preview'
+  await nextTick()
+  if (expandedPreview.value)
+    previewDialog.value?.showModal()
+  else
+    previewDialog.value?.close()
+})
 watch(selected, () => expandedPreview.value = false)
 watch([code, selected], () => {
   formatRequest++
@@ -109,7 +133,8 @@ watch([() => props.snapshot, () => props.loading, () => props.error], () => {
     return
   }
   if (downloadPending.value && downloadChanged.value) {
-    // 只失效下载自己的身份；A 更新/删除不影响仍有效的 B。
+    // 归档固定整个 Source revision，任何变版都不能切换下载目标。
+    downloadController?.abort()
     downloadRequest++
     downloadPending.value = false
     downloadError.value = true
@@ -117,24 +142,34 @@ watch([() => props.snapshot, () => props.loading, () => props.error], () => {
   if (props.loading || props.error)
     return
   if (selected.value) {
-    const file = props.snapshot.files.find(file => file.path === selected.value)
+    const file = visibleFiles.value.find(file => file.path === selected.value)
     if (file) {
       // 未改的正文不重开，避免后台清单刷新抢走在途下载的请求序号。
       if ((shownSha256 !== file.sha256 && (!previewPending.value || pendingSha256 !== file.sha256)) || previewError.value)
-        void open(selected.value, mode.value === 'preview', expectedSha256)
+        void open(selected.value, mode.value === 'preview', expectedSha256, mode.value === 'preview' && !!props.snapshot.artifact)
     }
     else {
       previewRequest++
       selected.value = ''
       code.value = ''
       shownSha256 = undefined
-      mode.value = 'code'
+      if (!props.snapshot.artifact)
+        mode.value = 'code'
       previewPending.value = false
       previewError.value = ''
     }
     return
   }
-  const html = props.snapshot.files.find(file => file.path.toLowerCase().endsWith('.html'))
+  if (props.autoPreview !== false && props.snapshot.artifact && !autoPreviewed) {
+    autoPreviewed = true
+    const source = visibleFiles.value.find(file => file.path === 'src/App.tsx') ?? visibleFiles.value[0]
+    if (source) {
+      void open(source.path, false, undefined, true)
+    }
+    else { mode.value = 'preview' }
+    return
+  }
+  const html = !props.snapshot.webProject && visibleFiles.value.find(file => file.path.toLowerCase().endsWith('.html'))
   if (props.autoPreview !== false && html && !autoPreviewed) {
     autoPreviewed = true
     void open(html.path, true)
@@ -145,6 +180,9 @@ watch(() => props.conversationId, () => {
   previewRequest++
   resetDownload()
   autoPreviewed = false
+  expandedPreview.value = false
+  previewStarted.value = false
+  previewArtifactId.value = undefined
   expectedSha256 = undefined
   shownSha256 = undefined
   selected.value = ''
@@ -185,6 +223,13 @@ async function toggleFormat() {
   }
 }
 
+function openCurrentBuild() {
+  expandedPreview.value = false
+  previewStarted.value = false
+  previewArtifactId.value = undefined
+  emit('refresh')
+}
+
 function close() {
   previewRequest++
   previewPending.value = false
@@ -192,7 +237,7 @@ function close() {
   emit('close')
 }
 
-async function open(path: string, preview = false, sha256?: string) {
+async function open(path: string, preview = false, sha256?: string, artifactPreview = false) {
   const current = ++previewRequest
   expectedSha256 = sha256
   autoPreviewed = true
@@ -206,7 +251,7 @@ async function open(path: string, preview = false, sha256?: string) {
     shownSha256 = undefined
   }
   selected.value = path
-  mode.value = preview && path.toLowerCase().endsWith('.html') ? 'preview' : 'code'
+  mode.value = artifactPreview || (preview && !props.snapshot?.webProject && path.toLowerCase().endsWith('.html')) ? 'preview' : 'code'
   previewPending.value = !cached && !alreadyShown
   pendingSha256 = hash
   previewError.value = ''
@@ -218,7 +263,7 @@ async function open(path: string, preview = false, sha256?: string) {
       throw new Error('交付文件内容已改变')
     }
     if (alreadyShown) {
-      mode.value = preview && previewable.value ? 'preview' : 'code'
+      mode.value = artifactPreview || (preview && !props.snapshot?.webProject && previewable.value) ? 'preview' : 'code'
       return
     }
     const result = cached ?? await props.readFile(path, sha256)
@@ -226,7 +271,7 @@ async function open(path: string, preview = false, sha256?: string) {
       return
     shownSha256 = props.snapshot?.files.find(file => file.path === path)?.sha256
     code.value = result.text
-    mode.value = preview && path.toLowerCase().endsWith('.html') && isPreviewableHtml(result.text, 'html') ? 'preview' : 'code'
+    mode.value = artifactPreview || (preview && !props.snapshot?.webProject && path.toLowerCase().endsWith('.html') && isPreviewableHtml(result.text, 'html')) ? 'preview' : 'code'
   }
   catch {
     if (current === previewRequest)
@@ -240,28 +285,29 @@ async function open(path: string, preview = false, sha256?: string) {
 
 defineExpose({ openFile: (path: string, sha256: string) => open(path, true, sha256) })
 
-async function download(path: string, sha256?: string) {
-  if (downloadPending.value || props.loading || props.error)
+async function download(revision = props.snapshot?.revision) {
+  const id = props.conversationId
+  if (downloadPending.value || props.loading || props.error || !id || revision === undefined)
     return
   const current = ++downloadRequest
-  // 重试固定失败下载的 path + SHA，不从当前预览选择重新推导身份。
-  const target = { path, sha256: sha256 ?? (path === selected.value ? expectedSha256 : undefined) ?? props.snapshot?.files.find(file => file.path === path)?.sha256 ?? '' }
+  downloadController?.abort()
+  downloadController = new AbortController()
+  const target = { path: 'project.zip', revision }
   downloadTarget.value = target
   downloadError.value = false
-  const cached = props.cachedFile(path, target.sha256)
-  downloadPending.value = !cached
+  downloadPending.value = true
   try {
     if (downloadChanged.value)
-      throw new Error('下载文件身份已失效')
-    const result = cached ?? await props.readFile(path, target.sha256)
+      throw new Error('源码版本已失效')
+    const bytes = await getWorkspaceArchive(id, revision, downloadController.signal)
     if (current !== downloadRequest)
       return
-    if (props.error || downloadChanged.value)
-      throw new Error('下载文件尚未确认或已失效')
-    const url = URL.createObjectURL(new Blob([result.bytes as Uint8Array<ArrayBuffer>], { type: 'application/octet-stream' }))
+    if (props.error || downloadChanged.value || id !== props.conversationId)
+      throw new Error('源码归档身份已失效')
+    const url = URL.createObjectURL(new Blob([bytes as Uint8Array<ArrayBuffer>], { type: 'application/zip' }))
     const link = document.createElement('a')
     link.href = url
-    link.download = path.split('/').at(-1) ?? 'file'
+    link.download = target.path
     link.click()
     setTimeout(() => URL.revokeObjectURL(url), 1000)
     downloadTarget.value = undefined
@@ -277,20 +323,19 @@ async function download(path: string, sha256?: string) {
 }
 
 function retryDownload() {
-  const target = downloadTarget.value
-  if (target)
-    void download(target.path, target.sha256)
+  if (downloadTarget.value)
+    void download(downloadTarget.value.revision)
 }
 </script>
 
 <template>
-  <section ref="panel" data-workspace-files-panel class="workspace-panel" :class="{ 'is-compact': width < 620 }" :data-dark="workspaceTheme === 'olive-ember'" @keydown.esc.stop="close">
+  <section ref="panel" data-workspace-files-panel class="workspace-panel" :class="{ 'is-compact': width < 620 }" :data-dark="workspaceTheme === 'olive-ember'" @keydown.esc.stop="expandedPreview ? expandedPreview = false : close()">
     <header class="file-toolbar">
       <div class="file-header-left">
         <div class="file-title" :title="t('workspace.files')">
           <AppIcon name="vscode-icons:default-folder-opened" :size="18" class="shrink-0" />
-          <select v-if="width < 620 && selected && (snapshot?.files.length ?? 0) > 1" :value="selected" :disabled="previewPending || loading || !!error" :aria-label="t('workspace.chooseFile')" @change="open(($event.target as HTMLSelectElement).value, true)">
-            <option v-for="file in snapshot?.files" :key="file.path" :value="file.path">
+          <select v-if="width < 620 && selected && visibleFiles.length > 1" :value="selected" :disabled="previewPending || loading || !!error" :aria-label="t('workspace.chooseFile')" @change="open(($event.target as HTMLSelectElement).value, true)">
+            <option v-for="file in visibleFiles" :key="file.path" :value="file.path">
               {{ file.path }}
             </option>
           </select>
@@ -310,7 +355,7 @@ function retryDownload() {
         </span>
       </div>
       <div class="toolbar-actions">
-        <div v-if="selected && !markdown" class="view-switch" :aria-label="t('workspace.viewMode')" role="group">
+        <div v-if="(selected && !markdown) || snapshot?.artifact" class="view-switch" :aria-label="t('workspace.viewMode')" role="group">
           <button :aria-pressed="mode === 'code'" @click="mode = 'code'">
             {{ t('workspace.code') }}
           </button>
@@ -319,48 +364,15 @@ function retryDownload() {
           </button>
         </div>
         <div v-if="selected && !markdown" class="toolbar-divider" />
-        <span class="saved-version">
-          {{ t('workspace.savedVersion', { n: snapshot?.revision ?? 0 }) }}
-        </span>
         <button class="workspace-action" :disabled="loading" :title="t('workspace.refresh')" :aria-label="t('workspace.refresh')" @click="emit('refresh')">
           <AppIcon name="tabler:refresh" :size="16" :class="{ 'animate-spin motion-reduce:animate-none': loading }" />
         </button>
-        <button v-if="selected" class="workspace-action" :disabled="downloadPending || loading || !!error" :aria-busy="downloadPending && downloadTarget?.path === selected" :title="t('workspace.downloadFile', { path: selected })" :aria-label="t('workspace.downloadFile', { path: selected })" @click="download(selected)">
-          <AppIcon :name="downloadPending && downloadTarget?.path === selected ? 'tabler:loader-2' : 'tabler:download'" :size="16" :class="{ 'animate-spin motion-reduce:animate-none': downloadPending && downloadTarget?.path === selected }" />
+        <button v-if="snapshot?.files.length" class="workspace-action" :disabled="downloadPending || loading || !!error" :aria-busy="downloadPending" :title="t('workspace.downloadProject')" :aria-label="t('workspace.downloadProject')" @click="download()">
+          <AppIcon :name="downloadPending ? 'tabler:loader-2' : 'tabler:download'" :size="16" :class="{ 'animate-spin motion-reduce:animate-none': downloadPending }" />
         </button>
-        <DialogRoot v-if="previewable && !error && !previewError" v-model:open="expandedPreview">
-          <DialogTrigger as-child>
-            <button class="workspace-action" :disabled="previewPending" :title="t('workspace.expandPreview')" :aria-label="t('workspace.expandPreview')">
-              <AppIcon name="tabler:maximize" :size="16" />
-            </button>
-          </DialogTrigger>
-          <DialogPortal>
-            <DialogContent data-expanded-preview :aria-describedby="undefined" class="fixed inset-0 z-[70] flex h-dvh w-full flex-col overflow-hidden bg-agent-surface outline-none">
-              <header class="flex h-11 shrink-0 items-center gap-2 border-b border-agent-border-soft px-3 text-agent-ink">
-                <AppIcon :name="fileType.icon" :size="18" />
-                <DialogTitle class="min-w-0 flex-1 truncate text-[13px] font-medium" :title="selected">
-                  {{ selected.split('/').at(-1) }}
-                </DialogTitle>
-                <button class="workspace-action" :disabled="downloadPending || loading || !!error" :aria-busy="downloadPending && downloadTarget?.path === selected" :title="t('workspace.downloadFile', { path: selected })" :aria-label="t('workspace.downloadFile', { path: selected })" @click="download(selected)">
-                  <AppIcon :name="downloadPending && downloadTarget?.path === selected ? 'tabler:loader-2' : 'tabler:download'" :size="17" :class="{ 'animate-spin motion-reduce:animate-none': downloadPending && downloadTarget?.path === selected }" />
-                </button>
-                <DialogClose class="workspace-action" :title="t('workspace.closeExpandedPreview')" :aria-label="t('workspace.closeExpandedPreview')">
-                  <AppIcon name="tabler:x" :size="17" />
-                </DialogClose>
-              </header>
-              <p v-if="downloadPending && downloadTarget" data-workspace-download-loading role="status" class="shrink-0 truncate px-3 py-2 text-xs text-agent-ink-muted">
-                {{ t('workspace.downloading', { path: downloadTarget.path }) }}
-              </p>
-              <p v-if="downloadError" data-workspace-download-error role="alert" class="workspace-error">
-                {{ downloadErrorText }}
-                <button :disabled="downloadPending || loading || !!error" class="underline" @click="retryDownload">
-                  {{ t('workspace.retryDownload', { path: downloadTarget?.path }) }}
-                </button>
-              </p>
-              <HtmlPreviewPanel :code="code" :conversation-id="conversationId ?? undefined" interactive embedded @close="expandedPreview = false" />
-            </DialogContent>
-          </DialogPortal>
-        </DialogRoot>
+        <button v-if="previewable && (snapshot?.artifact || (!error && !previewError))" class="workspace-action" :disabled="previewPending && !snapshot?.artifact" :title="t('workspace.expandPreview')" :aria-label="t('workspace.expandPreview')" @click="expandedPreview = true">
+          <AppIcon name="tabler:maximize" :size="16" />
+        </button>
         <button class="workspace-action" :title="t('workspace.close')" :aria-label="t('workspace.close')" @click="close">
           <AppIcon name="tabler:x" :size="17" />
         </button>
@@ -368,7 +380,7 @@ function retryDownload() {
     </header>
     <p v-if="error || previewError || snapshot?.lastError" data-workspace-preview-error role="alert" class="workspace-error">
       {{ error || previewError || snapshot?.lastError }}
-      <button v-if="error || previewError" :disabled="previewPending || loading" class="underline" @click="error || !selected ? emit('refresh') : open(selected, mode === 'preview', expectedSha256)">
+      <button v-if="error || previewError" :disabled="previewPending || loading" class="underline" @click="error || !selected ? emit('refresh') : open(selected, mode === 'preview', expectedSha256, mode === 'preview' && !!snapshot?.artifact)">
         {{ t('workspace.retry') }}
       </button>
     </p>
@@ -377,6 +389,9 @@ function retryDownload() {
       <button :disabled="downloadPending || loading || !!error" class="underline" @click="retryDownload">
         {{ t('workspace.retryDownload', { path: downloadTarget?.path }) }}
       </button>
+    </p>
+    <p v-if="mode === 'preview' && snapshot?.artifact && snapshot.artifact.sourceRevision !== snapshot.revision" class="px-3 py-1 text-xs text-agent-ink-muted" data-build-identity>
+      {{ t('workspace.previousBuild') }}
     </p>
     <div class="workspace-body">
       <aside v-if="showTree" class="file-sidebar" :class="{ 'is-browser': !selected }" :aria-label="t('workspace.files')">
@@ -397,33 +412,30 @@ function retryDownload() {
           <p v-else-if="!snapshot.files.length" class="workspace-empty">
             {{ t('workspace.empty') }}
           </p>
+          <p v-else-if="!visibleFiles.length" class="workspace-empty">
+            {{ t('workspace.displayEmpty') }}
+          </p>
           <p v-else-if="!tree.length" class="workspace-empty">
             {{ t('workspace.noMatches') }}
           </p>
           <template v-else>
-            <div class="tree-root">
-              <AppIcon name="vscode-icons:default-folder-opened" :size="18" /><span>project</span>
-            </div>
-            <div v-for="entry in tree" :key="entry.path" class="tree-row" :class="{ 'is-selected': selected === entry.path }" :style="{ paddingLeft: `${10 + entry.depth * 14}px` }">
+            <div v-for="entry in tree" :key="entry.path" class="tree-row" :class="{ 'is-selected': selected === entry.path }" :style="{ paddingLeft: `${6 + entry.depth * 12}px` }">
               <button v-if="entry.directory" class="tree-entry" :aria-label="entry.path" :aria-expanded="!!search.trim() || !collapsed.has(entry.path)" @click="toggleDirectory(entry.path)">
-                <AppIcon :name="!search.trim() && collapsed.has(entry.path) ? 'tabler:chevron-right' : 'tabler:chevron-down'" :size="13" class="tree-arrow" />
-                <AppIcon :name="!search.trim() && collapsed.has(entry.path) ? 'vscode-icons:default-folder' : 'vscode-icons:default-folder-opened'" :size="18" />
+                <AppIcon :name="!search.trim() && collapsed.has(entry.path) ? 'tabler:chevron-right' : 'tabler:chevron-down'" :size="12" class="tree-arrow shrink-0" />
+                <AppIcon :name="!search.trim() && collapsed.has(entry.path) ? 'vscode-icons:default-folder' : 'vscode-icons:default-folder-opened'" :size="15" class="shrink-0" />
                 <span>{{ entry.name }}</span>
               </button>
               <template v-else>
                 <button class="tree-entry tree-file" :disabled="previewPending || loading || !!error" :title="entry.path" :aria-label="entry.path" :aria-current="selected === entry.path ? 'true' : undefined" @click="open(entry.path, true)">
-                  <AppIcon :name="workspaceFileType(entry.path).icon" :size="17" />
+                  <AppIcon :name="workspaceFileType(entry.path).icon" :size="15" class="shrink-0" />
                   <span>{{ entry.name }}</span>
-                </button>
-                <button class="workspace-action tree-download" :disabled="downloadPending || loading || !!error" :aria-busy="downloadPending && downloadTarget?.path === entry.path" :aria-label="t('workspace.downloadFile', { path: entry.path })" @click="download(entry.path)">
-                  <AppIcon :name="downloadPending && downloadTarget?.path === entry.path ? 'tabler:loader-2' : 'tabler:download'" :size="14" :class="{ 'animate-spin motion-reduce:animate-none': downloadPending && downloadTarget?.path === entry.path }" />
                 </button>
               </template>
             </div>
           </template>
         </div>
       </aside>
-      <main v-if="selected || width >= 620" class="file-viewport" :aria-busy="contentLoading">
+      <main v-if="selected || width >= 620 || previewStarted || (mode === 'preview' && snapshot?.artifact)" class="file-viewport" :aria-busy="contentLoading">
         <div v-if="contentLoading" data-workspace-content-loading class="workspace-placeholder workspace-loading" role="status">
           <div class="loading-balls" aria-hidden="true">
             <span v-for="n in 3" :key="`circle-${n}`" class="loading-circle" />
@@ -431,8 +443,31 @@ function retryDownload() {
           </div>
           <span class="sr-only">{{ t('workspace.loading') }}</span>
         </div>
-        <HtmlPreviewPanel v-if="!error && !previewError && mode === 'preview' && previewable" :inert="contentLoading || undefined" :code="code" :conversation-id="conversationId ?? undefined" interactive embedded @close="close" />
-        <div v-else-if="!error && !previewError && markdown" data-workspace-markdown :inert="contentLoading || undefined" class="markdown-preview">
+        <!-- native dialog 进入 top layer，不搬 DOM、不创建第二个 iframe。 -->
+        <dialog v-if="previewStarted" v-show="mode === 'preview' || expandedPreview" ref="previewDialog" class="preview-container" :role="expandedPreview ? 'dialog' : 'region'" :data-expanded-preview="expandedPreview ? '' : undefined" :aria-label="t('workspace.buildPreview')" @cancel.prevent="expandedPreview = false">
+          <header v-show="expandedPreview" class="flex h-11 shrink-0 items-center gap-2 border-b border-agent-border-soft px-3 text-agent-ink">
+            <h2 class="min-w-0 flex-1 truncate text-[13px] font-medium">
+              {{ previewArtifactId ? t('workspace.buildPreview') : selected.split('/').at(-1) }}
+            </h2>
+            <button class="workspace-action" :disabled="downloadPending || loading || !!error || !snapshot?.files.length" :aria-busy="downloadPending" :title="t('workspace.downloadProject')" :aria-label="t('workspace.downloadProject')" @click="download()">
+              <AppIcon name="tabler:download" :size="17" />
+            </button>
+            <button class="workspace-action" :title="t('workspace.closeExpandedPreview')" :aria-label="t('workspace.closeExpandedPreview')" @click="expandedPreview = false">
+              <AppIcon name="tabler:x" :size="17" />
+            </button>
+          </header>
+          <p v-if="expandedPreview && downloadPending && downloadTarget" data-workspace-download-loading role="status" class="shrink-0 truncate px-3 py-2 text-xs text-agent-ink-muted">
+            {{ t('workspace.downloading', { path: downloadTarget.path }) }}
+          </p>
+          <p v-if="expandedPreview && downloadError" data-workspace-download-error role="alert" class="workspace-error">
+            {{ downloadErrorText }}
+            <button :disabled="downloadPending || loading || !!error" class="underline" @click="retryDownload">
+              {{ t('workspace.retryDownload', { path: downloadTarget?.path }) }}
+            </button>
+          </p>
+          <HtmlPreviewPanel :code="code" :artifact-id="previewArtifactId" :conversation-id="conversationId ?? undefined" interactive embedded @current="openCurrentBuild" @close="expandedPreview ? expandedPreview = false : close()" />
+        </dialog>
+        <div v-if="mode === 'code' && !error && !previewError && markdown" data-workspace-markdown :inert="contentLoading || undefined" class="markdown-preview">
           <AgentMarkdownContent v-if="code" :key="selected" :text="code" />
         </div>
         <div v-else-if="!error && !previewError && selected && mode === 'code'" :inert="contentLoading || undefined" class="source-panel">
@@ -464,15 +499,15 @@ function retryDownload() {
               </AppTooltip>
             </div>
           </div>
-          <p v-if="formatError" class="workspace-error" role="alert">
-            {{ formatError }}
+          <p v-if="formatError || (fileFormatParser(selected) && !canFormat)" class="workspace-error" role="status">
+            {{ formatError || t('workspace.formatLarge') }}
           </p>
           <div data-workspace-source tabindex="0" class="source-scroll" :class="{ 'is-wrapped': wrapLines }">
             <pre v-if="sourceLines" class="source-lines"><code><span v-for="(line, index) in sourceLines" :key="index" class="source-row"><span class="source-gutter" aria-hidden="true">{{ index + 1 }}</span><span class="source-line" v-html="line || '&#8203;'" /></span></code></pre>
             <pre v-else class="source-plain"><code class="hljs" v-html="highlighted" /></pre>
           </div>
         </div>
-        <div v-else-if="!contentLoading && !error && !previewError && !snapshot?.files.length" class="workspace-empty-stage workspace-empty-state" role="status">
+        <div v-else-if="mode === 'code' && !contentLoading && !error && !previewError && !snapshot?.files.length" class="workspace-empty-stage workspace-empty-state" role="status">
           <div class="stage-ambient-glow" aria-hidden="true" />
           <div class="stage-card-stack" aria-hidden="true">
             <div class="stack-card card-back">
@@ -514,7 +549,7 @@ function retryDownload() {
             </div>
           </div>
         </div>
-        <div v-else-if="!contentLoading && !error && !previewError" class="workspace-empty-stage workspace-empty-state is-select-file" role="status">
+        <div v-else-if="mode === 'code' && !contentLoading && !error && !previewError" class="workspace-empty-stage workspace-empty-state is-select-file" role="status">
           <div class="stage-ambient-glow" aria-hidden="true" />
           <div class="stage-card-stack" aria-hidden="true">
             <div class="stack-card card-back">
@@ -548,7 +583,7 @@ function retryDownload() {
               {{ t('workspace.selectFileTitle') }}
             </h3>
             <p class="stage-desc empty-desc">
-              {{ t('workspace.selectFileDesc') }}
+              {{ t(visibleFiles.length ? 'workspace.selectFileDesc' : 'workspace.displayEmpty') }}
             </p>
             <div class="stage-hint-pill">
               <AppIcon name="tabler:layout-sidebar-left-collapse" :size="13" class="hint-icon" />
@@ -634,15 +669,6 @@ function retryDownload() {
   background: var(--agent-surface);
   color: var(--agent-ink);
 }
-.saved-version {
-  display: inline-flex;
-  align-items: center;
-  font-size: 11.5px;
-  color: var(--agent-ink-muted);
-  white-space: nowrap;
-  font-variant-numeric: tabular-nums;
-  padding: 0 4px;
-}
 .meta-downloading {
   display: inline-flex;
   align-items: center;
@@ -669,9 +695,6 @@ function retryDownload() {
 }
 .workspace-panel.is-compact .file-title select {
   min-width: 0;
-}
-.workspace-panel.is-compact .saved-version {
-  font-size: 11px;
 }
 .workspace-panel.is-compact .toolbar-divider {
   display: none;
@@ -794,42 +817,54 @@ function retryDownload() {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  padding: 2px 6px 10px;
+  padding: 3px 4px 10px;
 }
-.tree-root, .tree-row {
+.tree-row {
   display: flex;
-  min-height: 30px;
+  height: 24px;
+  min-height: 24px;
   align-items: center;
-  gap: 6px;
-  padding: 0 8px;
-  border-radius: 6px;
-  font-size: 12.5px;
-  margin: 1px 0;
-  transition: all 0.15s ease;
-}
-.tree-root {
-  gap: 7px;
-  color: var(--agent-ink-muted);
+  gap: 4px;
+  padding: 0 4px;
+  border-radius: 4px;
   font-size: 12px;
+  margin: 1px 0;
+  transition: background-color 0.12s ease;
+  user-select: none;
 }
 .tree-row:hover {
-  background: color-mix(in oklch, var(--agent-surface-sunken) 70%, transparent);
+  background: color-mix(in oklch, var(--agent-ink) 5%, transparent);
+}
+:global([data-agent-workspace-theme='olive-ember']) .tree-row:hover {
+  background: rgba(255, 255, 255, 0.05);
 }
 .tree-row.is-selected {
-  background: var(--agent-surface-raised);
+  background: color-mix(in oklch, var(--agent-ink) 8%, transparent);
   color: var(--agent-ink);
-  font-weight: 500;
-  box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.04);
+  box-shadow: none;
+}
+:global([data-agent-workspace-theme='olive-ember']) .tree-row.is-selected {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
 }
 .tree-entry {
   display: flex;
   flex: 1;
   min-width: 0;
-  min-height: 30px;
+  height: 100%;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   text-align: left;
   color: var(--agent-ink-soft);
+  font-size: 12px;
+  line-height: 24px;
+}
+.tree-row.is-selected .tree-entry {
+  color: var(--agent-ink);
+  font-weight: 500;
+}
+:global([data-agent-workspace-theme='olive-ember']) .tree-row.is-selected .tree-entry {
+  color: #fff;
 }
 .tree-entry span {
   overflow: hidden;
@@ -837,19 +872,35 @@ function retryDownload() {
   white-space: nowrap;
 }
 .tree-file {
-  padding-left: 15px;
+  padding-left: 17px;
 }
 .tree-arrow {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  height: 12px;
   color: var(--agent-ink-faint);
+  transition: transform 0.12s ease;
 }
-.tree-download {
-  width: 22px;
-  height: 24px;
-  opacity: 0;
+.preview-container {
+  position: relative;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  width: 100%;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: var(--agent-surface);
+  color: var(--agent-ink);
+  overflow: hidden;
 }
-.tree-row:hover .tree-download, .tree-row:focus-within .tree-download {
-  opacity: 1;
-}
+.preview-container[open] { position: fixed; inset: 0; width: 100vw; height: 100dvh; }
 .file-viewport {
   position: relative;
   display: flex;
@@ -862,7 +913,40 @@ function retryDownload() {
 }
 .workspace-placeholder { display: grid; flex: 1; align-content: center; justify-items: center; gap: 12px; padding: 24px; color: var(--agent-ink-muted); text-align: center; font-size: 13px; }
 .workspace-loading { --loading-cream: #c8a875; position: absolute; inset: 0; z-index: 1; background: var(--agent-canvas); }
-.markdown-preview { flex: 1; min-height: 0; overflow: auto; padding: 20px 24px; }
+.markdown-preview {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 16px 20px;
+}
+.markdown-preview :deep(.agent-markdown-content) {
+  font-size: 13px !important;
+  line-height: 1.6;
+}
+.markdown-preview :deep(.agent-markdown-prose + .agent-markdown-prose) {
+  margin-top: 0.75rem;
+}
+.markdown-preview :deep(p + p) {
+  margin-top: 0.75rem;
+}
+.markdown-preview :deep(ol),
+.markdown-preview :deep(ul) {
+  margin: 0.75rem 0 0;
+  padding-left: 1.25rem;
+}
+.markdown-preview :deep(li) {
+  margin-top: 0.35rem;
+}
+.markdown-preview :deep(h1),
+.markdown-preview :deep(h2),
+.markdown-preview :deep(h3),
+.markdown-preview :deep(h4) {
+  margin: 1rem 0 0.4rem;
+}
+.markdown-preview :deep(.agent-code-pre) {
+  font-size: 12px;
+  line-height: 1.55;
+}
 .loading-balls { position: relative; z-index: 1; width: 200px; max-width: 100%; height: 60px; }
 .loading-circle { position: absolute; top: 0; left: 15%; width: 20px; height: 20px; border-radius: 50%; background: var(--loading-cream); box-shadow: inset 0 0 0 1px rgb(124 96 52 / 0.12); transform-origin: 50%; animation: workspace-loading-circle 0.5s alternate infinite ease; }
 .loading-circle:nth-child(2) { left: 45%; animation-delay: 0.2s; }
@@ -944,15 +1028,15 @@ function retryDownload() {
 .source-format:hover, .source-actions [aria-pressed='true'] { background: var(--agent-surface-sunken); color: var(--agent-ink); }
 .source-format:disabled { opacity: 0.5; cursor: wait; }
 .source-format:focus-visible, .source-scroll:focus-visible { outline: 2px solid var(--agent-focus); outline-offset: -2px; }
-.source-scroll { flex: 1; min-height: 0; overflow: auto; padding: 12px 0; color: var(--code-ink); font: 13px/22px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; tab-size: 2; }
+.source-scroll { flex: 1; min-height: 0; overflow: auto; padding: 10px 0; color: var(--code-ink); font: 12px/20px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; tab-size: 2; }
 .source-scroll pre { margin: 0; font: inherit; }
 .source-lines { width: max-content; min-width: 100%; }
-.source-row { display: grid; grid-template-columns: 52px minmax(0, 1fr); min-height: 22px; }
+.source-row { display: grid; grid-template-columns: 46px minmax(0, 1fr); min-height: 20px; }
 .source-row:hover { background: color-mix(in oklch, var(--agent-ink) 4%, transparent); }
-.source-gutter { position: sticky; left: 0; padding: 0 12px 0 6px; border-right: 1px solid var(--agent-border-subtle); background: #f4f4f5; color: #6d727d; text-align: right; font-variant-numeric: tabular-nums; user-select: none; }
+.source-gutter { position: sticky; left: 0; padding: 0 10px 0 6px; border-right: 1px solid var(--agent-border-subtle); background: #f4f4f5; color: #6d727d; text-align: right; font-variant-numeric: tabular-nums; user-select: none; font-size: 11px; line-height: 20px; }
 [data-dark='true'] .source-gutter { background: #1e1e20; color: #8b919c; }
-.source-line { display: block; min-width: 0; padding: 0 16px; white-space: pre; }
-.source-plain { padding: 0 16px; }
+.source-line { display: block; min-width: 0; padding: 0 12px; white-space: pre; }
+.source-plain { padding: 0 12px; }
 .is-wrapped .source-lines { width: 100%; }
 .is-wrapped .source-line, .is-wrapped .source-plain { white-space: pre-wrap; overflow-wrap: anywhere; }
 .source-panel :deep(.hljs) { color: var(--code-ink); background: transparent; }
@@ -965,5 +1049,4 @@ function retryDownload() {
 .source-panel :deep(.hljs-type), .source-panel :deep(.hljs-built_in) { color: var(--code-type); }
 .source-panel :deep(.hljs-symbol), .source-panel :deep(.hljs-selector-id), .source-panel :deep(.hljs-selector-class) { color: var(--code-symbol); }
 .workspace-panel.is-compact .file-sidebar.is-browser { width: 100%; max-width: none; border-right: 0; }
-@media (hover: none) { .tree-download { opacity: 1; } }
 </style>

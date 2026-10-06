@@ -10,6 +10,7 @@ import type {
 } from './tool.types.js'
 import { Inject, Injectable, Logger } from '@nestjs/common'
 
+import { WORKSPACE_TOOL_NAMES } from '../../chat/prompts/workspace-development.prompt.js'
 import { DatabaseOperationDeadlineExceededError } from '../../prisma/prisma.service.js'
 import { normalizeToolObservation } from './tool-observation.js'
 import { ToolRegistryService } from './tool-registry.service.js'
@@ -65,6 +66,14 @@ export class ToolInvocationService {
         code: 'invalid_arguments',
         modelContent: `工具 ${envelope.toolName} 的参数无效。`,
       }, false, tool.definition.maxObservationChars)
+    }
+
+    if (context.workspaceGuideRequired && WORKSPACE_TOOL_NAMES.includes(envelope.toolName)) {
+      return toInvocationResult({
+        ok: false,
+        code: 'workspace_replan',
+        modelContent: '已加载工作区开发指南，本次调用未执行、未创建沙箱；请先遵循指南重新计划，再发起工作区调用。',
+      }, true, tool.definition.maxObservationChars)
     }
 
     // 参数已通过校验：之后无论成功、超时还是执行失败，回喂与落库的都是原参数。

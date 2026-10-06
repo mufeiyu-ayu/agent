@@ -183,7 +183,7 @@ function fallbackColor(site: string): string {
                 <pre class="text-agent-error">{{ item.workspace.stderr }}</pre>
               </template>
               <p v-if="item.workspace.revision">
-                {{ t('workspace.savedVersion', { n: item.workspace.revision }) }}
+                {{ t('workspace.saved') }}
               </p>
               <p v-if="item.reason" class="run-note">
                 {{ item.reason }}

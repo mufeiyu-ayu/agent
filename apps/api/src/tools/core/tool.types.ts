@@ -46,6 +46,8 @@ export interface ToolExecutionContext {
 
 /** Runtime 交给 `invoke` 的上下文：执行上下文加上本批 arguments 是否被截断。 */
 export interface ToolInvocationContext extends ToolExecutionContext {
+  /** 首次工作区计划未经开发指南约束，只记录未执行结果，下一轮重采样。 */
+  workspaceGuideRequired?: boolean
   /** 模型输出达到长度限制，arguments 可能不完整：`invoke` 不查找、不校验、不执行。 */
   argumentsTruncated: boolean
 }
@@ -61,6 +63,8 @@ export interface ToolDisplay {
   chars?: number
   /** 模型拿到了说明、但界面上算失败的情况（如网页内容类型不支持）。 */
   failure?: 'timeout' | 'failed'
+  /** 已记录但未执行；指南生效后重新采样，不是成功或失败。 */
+  skipped?: 'workspace_replan'
 }
 
 export type ToolResult
@@ -74,6 +78,7 @@ export type ToolResult
     ok: false
     code:
       | 'execution_failed'
+      | 'workspace_replan'
       | 'invalid_arguments'
       | 'timeout'
       // 模型输出达到长度限制、arguments 不完整，本次未执行。

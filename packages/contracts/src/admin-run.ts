@@ -101,6 +101,7 @@ export type AdminModelFinishReason = typeof ADMIN_MODEL_FINISH_REASONS[number]
 
 export const ADMIN_TOOL_RESULT_CODES = [
   'execution_failed',
+  'workspace_replan',
   'invalid_arguments',
   'timeout',
   // 模型输出达到长度限制、arguments 不完整，本次未执行。

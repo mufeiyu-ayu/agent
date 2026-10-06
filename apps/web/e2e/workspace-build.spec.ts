@@ -2,7 +2,6 @@ import type { Page } from '@playwright/test'
 import assert from 'node:assert/strict'
 import { Buffer } from 'node:buffer'
 import dgram from 'node:dgram'
-import { readFile } from 'node:fs/promises'
 import { expect, test } from '@playwright/test'
 import { CONVERSATION_ID, installApiRoutes, installBrowserStubs } from './fixtures'
 
@@ -71,13 +70,9 @@ test('构建步骤、命令错误与修复、文件保存、交互预览、业�
   assert.equal(await child.evaluate(() => (window as unknown as { checkIsolation: () => string }).checkIsolation()), 'isolated')
   const panel = page.locator('[data-workspace-files-panel]')
   await expect(page.getByText('已生成页面并完成检查，数据为演示数据。')).toBeVisible()
-  await expect(panel).toContainText('已保存版本 2')
-  const downloaded = page.waitForEvent('download')
-  // 从跨域 iframe 返回宿主时给 Chrome 一帧派发 mouseup；仍使用真实命中检查。
-  await panel.getByRole('button', { name: `下载 ${file.path}`, exact: true }).click({ delay: 50 })
-  const download = await downloaded
-  assert.equal(download.suggestedFilename(), 'traffic.html')
-  assert.equal(await readFile((await download.path())!, 'utf8'), html)
+  await expect(panel).not.toContainText('已保存版本')
+  await expect(panel.getByRole('button', { name: '下载源码 ZIP', exact: true })).toBeVisible()
+  await expect(panel.getByRole('button', { name: `下载 ${file.path}`, exact: true })).toHaveCount(0)
   await page.setViewportSize({ width: 1920, height: 1080 })
   await expect(panel.getByRole('complementary', { name: '工作文件' })).toBeVisible()
   const sourceFolder = panel.getByRole('button', { name: 'src', exact: true })
@@ -166,9 +161,7 @@ for (const width of [320, 390]) {
       }
     })
     assert.deepEqual(layout, { position: 'absolute', coversWorkspace: true, controlsReachable: true })
-    const downloaded = page.waitForEvent('download')
-    await panel.getByRole('button', { name: `下载 ${file.path}`, exact: true }).click()
-    assert.equal(await readFile((await (await downloaded).path())!, 'utf8'), html)
+    await expect(panel.getByRole('button', { name: '下载源码 ZIP', exact: true })).toBeVisible()
     await panel.getByRole('combobox', { name: '选择文件' }).click()
     await panel.getByRole('combobox', { name: '选择文件' }).selectOption('src/example.ts')
     await expect(panel.locator('[data-workspace-source]')).toContainText('const answer: number = 42')
@@ -240,10 +233,6 @@ test('超过 20 KB 的代码有高亮与行号；格式化、换行和恢复原�
   await panel.getByRole('button', { name: '长行换行', exact: true }).click()
   await expect(panel.getByRole('button', { name: '长行换行', exact: true })).toHaveAttribute('aria-pressed', 'true')
   assert.equal(await source.evaluate(element => element.scrollWidth > element.clientWidth + 1), false)
-  const downloaded = page.waitForEvent('download')
-  await panel.getByRole('button', { name: `下载 ${file.path}`, exact: true }).click()
-  const download = await downloaded
-  assert.equal(await readFile((await download.path())!, 'utf8'), longHtml)
   await panel.getByRole('button', { name: '查看原文', exact: true }).click()
   await expect(source).toContainText('color:red;margin:0')
   await expect(panel.getByRole('button', { name: '格式化', exact: true })).toBeVisible()
@@ -317,7 +306,7 @@ test('R3：交付卡片等待同 SHA 的最新 manifest revision，读取的仍�
   releaseRefresh!()
   await expect(frame.getByRole('heading', { name: '内容 A' })).toBeVisible()
   await expect(button).toBeEnabled()
-  await expect(panel.getByText(/已保存版本 2/)).toBeVisible()
+  await expect(panel).not.toContainText('已保存版本')
   assert.deepEqual(revisions, [1], '清单 revision 更新但交付 SHA 不变时复用缓存，不再下载')
 })
 
@@ -441,8 +430,10 @@ for (const [from, to] of [[1400, 620], [620, 1400]] as const) {
     await expect(panel).toHaveCount(1)
     const oldFailure = page.waitForEvent('requestfailed', request => new URL(request.url()).pathname.endsWith('/workspace/file') && new URL(request.url()).searchParams.get('revision') === '1')
     changed = true
+    const changedSnapshot = page.waitForResponse(response => new URL(response.url()).pathname.endsWith('/workspace'))
     await panel.getByRole('button', { name: '刷新文件', exact: true }).click()
-    await expect(panel.getByText(/已保存版本 2/)).toBeVisible()
+    assert.equal((await (await changedSnapshot).json()).data.revision, 2)
+    await expect(panel.getByRole('button', { name: '刷新文件', exact: true })).toBeEnabled()
     await finishA!()
     await oldFailure
     // 等浏览器完成旧读取的 Promise/框架更新，再触发 G；不能只验证重建瞬间。
@@ -466,50 +457,6 @@ for (const [from, to] of [[1400, 620], [620, 1400]] as const) {
     console.log('R3 remount after explicit selection:', JSON.stringify({ from, to, reads, preview: 'Content B' }))
   })
 }
-
-test('下载途中当前文件被新版本删除时解除 loading，迟到结果不覆盖其他文件', async ({ page }) => {
-  await installApiRoutes(page, () => [{ id: 'read-files', conversationId: CONVERSATION_ID, role: 'USER', content: '查看文件', status: 'COMPLETED', createdAt: '2026-10-02T00:00:00Z', updatedAt: '2026-10-02T00:00:00Z' }])
-  await installBrowserStubs(page, { lines: [], holdBeforeIndex: -1 })
-  let holdDownload = false
-  let removed = false
-  let finishDownload: (() => void) | undefined
-  const kept = { path: 'keep.txt', bytes: 1, sha256: 'b'.repeat(64) }
-  await page.route('**/api/conversations/*/workspace**', async (route) => {
-    const url = new URL(route.request().url())
-    if (url.pathname.endsWith('/file')) {
-      // 已加载文件现在直接复用 bytes；首次读取失败后下载才需要网络。
-      if (!holdDownload && url.searchParams.get('path') === file.path)
-        return route.fulfill({ status: 503, json: { success: false, message: '暂时不可用' } })
-      if (holdDownload && url.searchParams.get('path') === file.path) {
-        await new Promise<void>((resolve) => {
-          finishDownload = resolve
-        })
-      }
-      return route.fulfill({ json: { success: true, code: 0, data: { encoding: 'base64', content: Buffer.from(url.searchParams.get('path') === file.path ? html : 'B').toString('base64') } } })
-    }
-    return route.fulfill({ json: { success: true, code: 0, data: { ...snapshot, revision: removed ? 3 : 2, files: removed ? [kept] : [file, kept] } } })
-  })
-  await openWorkspaceFiles(page)
-  const panel = page.locator('[data-workspace-files-panel]')
-  await expect(panel.getByRole('alert')).toContainText('文件已更新或暂时不可用')
-  holdDownload = true
-  const lateFailure = page.waitForEvent('requestfailed', request => new URL(request.url()).pathname.endsWith('/workspace/file') && new URL(request.url()).searchParams.get('path') === file.path)
-  await panel.getByRole('button', { name: `下载 ${file.path}`, exact: true }).first().click()
-  try {
-    await expect.poll(() => Boolean(finishDownload)).toBe(true)
-    removed = true
-    await panel.getByRole('button', { name: '刷新文件', exact: true }).click()
-    const other = panel.getByRole('button', { name: 'keep.txt', exact: true })
-    await expect(other).toBeEnabled()
-    await other.click()
-    await expect(panel.locator('[data-workspace-source]')).toContainText('B')
-  }
-  finally {
-    finishDownload?.()
-    await lateFailure
-  }
-  await expect(panel.locator('[data-workspace-source]')).toContainText('B')
-})
 
 test('关闭未完成的交付文件后可重新打开并合并在途读取，完成前保持新面板 loading', async ({ page }) => {
   const textFile = { path: 'report.txt', bytes: 1, sha256: 'a'.repeat(64) }
@@ -761,9 +708,7 @@ test('Markdown 文件直接渲染标题列表与代码块，不自动加载外�
   await expect(preview.getByRole('button', { name: '预览', exact: true })).toBeDisabled()
   assert.equal(await page.evaluate(() => '__mdUnsafe' in window), false)
   assert.equal(imageRequests, 0)
-  const download = page.waitForEvent('download')
-  await panel.getByRole('button', { name: '下载 README.md', exact: true }).first().click()
-  assert.deepEqual(await readFile((await (await download).path())!), bytes)
+  await expect(panel.getByRole('button', { name: '下载 README.md', exact: true })).toHaveCount(0)
 })
 
 test('同面板 A→B→A 复用已读文件，编辑 B 后失效而未改的 A 不重新下载', async ({ page }) => {
@@ -799,8 +744,9 @@ test('同面板 A→B→A 复用已读文件，编辑 B 后失效而未改的 A 
   await expect(source).toContainText('A 内容不变')
   assert.deepEqual(reads, [{ path: 'a.txt', revision: 1 }, { path: 'b.txt', revision: 1 }])
   revision = 2
+  const changedSnapshot = page.waitForResponse(response => new URL(response.url()).pathname.endsWith('/workspace'))
   await panel.getByRole('button', { name: '刷新文件', exact: true }).click()
-  await expect(panel.getByText(/已保存版本 2/)).toBeVisible()
+  assert.equal((await (await changedSnapshot).json()).data.revision, 2)
   await expect(panel.getByRole('button', { name: '刷新文件', exact: true })).toBeEnabled()
   assert.equal(reads.length, 2, '只改 B 不应重新下载 A')
   await panel.getByRole('button', { name: 'b.txt', exact: true }).click()
@@ -871,10 +817,6 @@ test('同文件重复选择与下载复用原始字节，失败恢复、显式�
   await panel.getByRole('button', { name: '代码', exact: true }).click()
   await panel.getByRole('button', { name: '格式化', exact: true }).click()
   await expect(panel.getByRole('button', { name: '查看原文', exact: true })).toBeVisible()
-  const downloaded = page.waitForEvent('download')
-  await panel.getByRole('button', { name: `下载 ${file.path}`, exact: true }).first().click()
-  assert.deepEqual(await readFile((await (await downloaded).path())!), original, '下载保留 BOM、CRLF，不使用格式化文本')
-  assert.deepEqual(reads, [1, 1])
   const beforeRefresh = manifests
   await page.locator('[data-open-workspace-files]').click()
   await page.locator('[data-open-workspace-files]').click()
@@ -976,51 +918,6 @@ test('重新打开先等待清单，不按旧版本预读；清单失败不能�
   assert.deepEqual(reads, [1, 2], '重新确认清单成功后可以复用相同 SHA 的缓存')
 })
 
-test('清单只更新 revision 或状态时，不打断另一个未读文件的在途下载', async ({ page }) => {
-  await page.setViewportSize({ width: 1920, height: 1080 })
-  await installApiRoutes(page, () => [{ id: 'cache-download', conversationId: CONVERSATION_ID, role: 'USER', content: '下载文件', status: 'COMPLETED', createdAt: '2026-10-03T00:00:00Z', updatedAt: '2026-10-03T00:00:00Z' }])
-  await installBrowserStubs(page, { lines: [], holdBeforeIndex: -1 })
-  let revision = 1
-  let finish!: () => Promise<void>
-  const reads: string[] = []
-  await page.route('**/api/conversations/*/workspace**', (route) => {
-    const url = new URL(route.request().url())
-    if (url.pathname.endsWith('/file')) {
-      const path = url.searchParams.get('path')!
-      reads.push(path)
-      const respond = () => route.fulfill({ json: { success: true, code: 0, data: { encoding: 'base64', content: Buffer.from(path === 'a.txt' ? '正文 A' : '下载 B').toString('base64') } } })
-      if (path === 'b.txt') {
-        finish = respond
-        return
-      }
-      return respond()
-    }
-    return route.fulfill({ json: { success: true, code: 0, data: { ...snapshot, revision, files: [
-      { path: 'a.txt', bytes: 8, sha256: 'a'.repeat(64) },
-      { path: 'b.txt', bytes: 8, sha256: 'b'.repeat(64) },
-    ] } } })
-  })
-  await openWorkspaceFiles(page)
-  const panel = page.locator('[data-workspace-files-panel]')
-  await panel.getByRole('button', { name: 'a.txt', exact: true }).click()
-  await expect(panel.locator('[data-workspace-source]')).toContainText('正文 A')
-  const download = page.waitForEvent('download')
-  await panel.getByRole('button', { name: '下载 b.txt', exact: true }).click()
-  await expect.poll(() => typeof finish).toBe('function')
-  revision = 2
-  await panel.getByRole('button', { name: '刷新文件', exact: true }).click()
-  await expect(panel.getByText(/已保存版本 2/)).toBeVisible()
-  await expect(panel.locator('.file-viewport')).toHaveAttribute('aria-busy', 'false')
-  await expect(panel.locator('[data-workspace-download-loading]')).toContainText('b.txt')
-  await finish()
-  assert.equal(await readFile((await (await download).path())!, 'utf8'), '下载 B')
-  await expect(panel.locator('.file-viewport')).toHaveAttribute('aria-busy', 'false')
-  await expect(panel.locator('[data-workspace-source]')).toContainText('正文 A')
-  await panel.getByRole('button', { name: 'b.txt', exact: true }).click()
-  await expect(panel.locator('[data-workspace-source]')).toContainText('下载 B')
-  assert.deepEqual(reads, ['a.txt', 'b.txt'], '下载成功的字节进入缓存，切到该文件不重读')
-})
-
 test('桌面打开动画的旧帧晚到，不能让旧关闭定时器隐藏重开的文件面板', async ({ page }) => {
   await page.setViewportSize({ width: 1600, height: 1000 })
   await page.emulateMedia({ reducedMotion: 'no-preference' })
@@ -1102,4 +999,66 @@ test('减少动态效果时，窄屏 HTML 预览和文件面板的打开关闭�
       assert.ok(samples.some(sample => sample.kind === kind && sample.phase === phase), `必须实际检查 ${kind} 的 ${phase} 过渡`)
   }
   assert.ok(samples.every(sample => sample.duration.split(',').every(duration => Number.parseFloat(duration) === 0)), JSON.stringify(samples))
+})
+
+test('交付卡片文件超过 3 行时折叠，点击展开与收起高度平滑过渡', async ({ page }) => {
+  const manyFiles = Array.from({ length: 24 }, (_, i) => ({
+    path: `src/components/feature-${i + 1}.tsx`,
+    bytes: 1024 + i * 50,
+    sha256: `${i}`.padStart(64, '0'),
+  }))
+  const activity = {
+    answerStartedMs: 910,
+    toolBeforeAnswer: false,
+    items: [
+      {
+        kind: 'tool',
+        callId: 'save-many',
+        toolName: 'write',
+        ok: true,
+        workspace: {
+          operation: 'write',
+          title: '生成组件文件',
+          path: manyFiles[0]!.path,
+          revision: 1,
+          files: manyFiles,
+        },
+      },
+    ],
+  }
+  await installApiRoutes(page, () => [
+    { id: 'user-many', conversationId: CONVERSATION_ID, role: 'USER', content: '批量生成组件', status: 'COMPLETED', createdAt: '2026-10-02T00:00:00Z', updatedAt: '2026-10-02T00:00:00Z' },
+    { id: 'assistant-many', conversationId: CONVERSATION_ID, role: 'ASSISTANT', content: '组件已全部生成。', status: 'COMPLETED', activity, createdAt: '2026-10-02T00:00:00Z', updatedAt: '2026-10-02T00:01:00Z' },
+  ])
+  await installBrowserStubs(page, { lines: [], holdBeforeIndex: -1 })
+  await page.route('**/api/conversations/*/workspace**', route => route.fulfill({ json: { success: true, code: 0, data: { ...snapshot, files: manyFiles } } }))
+  await page.goto('/workspace')
+
+  const artifact = page.locator('[data-workspace-artifact]')
+  await expect(artifact).toBeVisible()
+  const grid = artifact.locator('.artifacts-grid')
+  await expect(grid).toHaveClass(/is-clamped/)
+
+  // 3 行折叠状态高度在 100px 左右
+  const clampedBox = await grid.boundingBox()
+  assert.ok(clampedBox && clampedBox.height <= 104, `折叠高度必须在 3 行内 (<= 104px)，当前为 ${clampedBox?.height}`)
+
+  const toggle = artifact.getByRole('button', { name: '展开全部 (24)' })
+  await expect(toggle).toBeVisible()
+
+  // 点击展开
+  await toggle.click()
+  await expect(artifact.getByRole('button', { name: '收起' })).toBeVisible()
+  await expect.poll(async () => {
+    const box = await grid.boundingBox()
+    return box ? box.height : 0
+  }).toBeGreaterThan(150)
+
+  // 点击收起
+  await artifact.getByRole('button', { name: '收起' }).click()
+  await expect(artifact.getByRole('button', { name: '展开全部 (24)' })).toBeVisible()
+  await expect.poll(async () => {
+    const box = await grid.boundingBox()
+    return box ? box.height : 0
+  }).toBeLessThanOrEqual(104)
 })

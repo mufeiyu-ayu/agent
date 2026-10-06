@@ -23,7 +23,6 @@ export function useWorkspaceFiles(conversationId: Ref<string | null>, status: Re
   let cacheBytes = 0
   let epoch = 0
   let controller: AbortController | undefined
-  let timer: ReturnType<typeof setTimeout> | undefined
   let disposed = false
   let refreshPending = false
   let refreshing: Promise<void> | undefined
@@ -84,22 +83,12 @@ export function useWorkspaceFiles(conversationId: Ref<string | null>, status: Re
       if (requestEpoch === epoch) {
         loading.value = false
         refreshing = undefined
+        // Vue 的收尾 watcher 可能在读取循环退出、finally 执行之前排入刷新。
+        if (refreshPending && !disposed)
+          return refresh(false)
       }
     })
     return refreshing
-  }
-
-  function schedule() {
-    clearTimeout(timer)
-    if (disposed)
-      return
-    if (['thinking', 'generating'].includes(status.value) || ['creating', 'restoring', 'running', 'saving', 'read', 'write', 'edit', 'bash'].includes(snapshot.value?.state ?? '')) {
-      timer = setTimeout(async () => {
-        if (typeof document === 'undefined' || !document.hidden)
-          await refresh(false)
-        schedule()
-      }, 2000)
-    }
   }
 
   function resetActive() {
@@ -108,7 +97,6 @@ export function useWorkspaceFiles(conversationId: Ref<string | null>, status: Re
     for (const read of reads.values())
       read.controller.abort()
     reads.clear()
-    clearTimeout(timer)
     snapshot.value = undefined
     error.value = ''
     loading.value = false
@@ -122,17 +110,18 @@ export function useWorkspaceFiles(conversationId: Ref<string | null>, status: Re
       cache.clear()
       cacheBytes = 0
     }
-    void refresh(false).finally(schedule)
+    void refresh(false)
   }, { immediate: true, flush: 'sync' })
-  watch([conversationId, status], ([id], [previousId]) => {
-    // 切会话造成的 empty/idle 变化已由上面的同步 watcher 刷新；同会话终态变化仍要求新请求。
-    if (id === previousId)
-      void refresh().finally(schedule)
+  watch([conversationId, status], ([id, current], [previousId, previous]) => {
+    // 本地收尾不证明后端最终 COMMIT 已确认；只读取接口此刻最近已确认版本。
+    // 终态前有读取在途时排一次新读取，后续确认由打开/刷新/恢复可见观察，不轮询。
+    if (id === previousId && ['thinking', 'generating'].includes(previous) && !['thinking', 'generating'].includes(current))
+      void refresh()
   })
 
   function restoreVisibility() {
     if (!document.hidden)
-      void refresh(false).finally(schedule)
+      void refresh(false)
   }
   if (typeof window !== 'undefined') {
     window.addEventListener('focus', restoreVisibility)

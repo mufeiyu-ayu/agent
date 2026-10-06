@@ -1,13 +1,103 @@
 import type { WorkspaceSnapshot } from '@agent/contracts'
 import assert from 'node:assert/strict'
 import { afterEach, it, vi } from 'vitest'
-import { effectScope, nextTick, ref } from 'vue'
+import { effectScope, nextTick, ref, watch } from 'vue'
 import { getWorkspace, getWorkspaceFile } from '../api/workspace'
 import { useWorkspaceFiles } from './useWorkspaceFiles'
 
 vi.mock('../api/workspace', () => ({ getWorkspace: vi.fn(), getWorkspaceFile: vi.fn() }))
-afterEach(() => vi.resetAllMocks())
+afterEach(() => {
+  vi.resetAllMocks()
+  vi.useRealTimers()
+})
 const snapshot = (revision: number, conversationId = 'a'): WorkspaceSnapshot => ({ configured: true, conversationId, revision, state: 'idle', files: [{ path: 'index.html', sha256: 'a', bytes: 1 }], lastOperation: null, lastError: null, updatedAt: null })
+
+it('30 秒生成/快照 running 或 saving 无轮询，非终态变化不查询；各终态仅一次刷新', async () => {
+  vi.useFakeTimers()
+  const status = ref<'idle' | 'thinking' | 'generating' | 'done' | 'error' | 'aborted'>('idle')
+  vi.mocked(getWorkspace).mockResolvedValue({ ...snapshot(1), state: 'running' })
+  const scope = effectScope()
+  const files = scope.run(() => useWorkspaceFiles(ref('a'), status))!
+  try {
+    await files.refresh(false)
+    assert.equal(vi.mocked(getWorkspace).mock.calls.length, 1)
+    for (const terminal of ['done', 'error', 'aborted'] as const) {
+      const before = vi.mocked(getWorkspace).mock.calls.length
+      status.value = 'thinking'
+      await nextTick()
+      await vi.advanceTimersByTimeAsync(30_000)
+      status.value = 'generating'
+      await nextTick()
+      await vi.advanceTimersByTimeAsync(30_000)
+      assert.equal(vi.mocked(getWorkspace).mock.calls.length, before)
+      vi.mocked(getWorkspace).mockResolvedValue({ ...snapshot(before + 1), state: 'saving' })
+      status.value = terminal
+      await nextTick()
+      await files.refresh(false)
+      assert.equal(vi.mocked(getWorkspace).mock.calls.length, before + 1)
+      status.value = terminal
+      await nextTick()
+      await vi.advanceTimersByTimeAsync(30_000)
+      assert.equal(vi.mocked(getWorkspace).mock.calls.length, before + 1)
+      assert.equal(files.snapshot.value?.state, 'saving', '本地终态不冒充后端完成')
+    }
+    scope.stop()
+    assert.equal(vi.getTimerCount(), 0)
+  }
+  finally { scope.stop() }
+})
+
+it('终态前旧请求不代替终态后新读取，重复收尾合并；切会话拒绝迟到结果', async () => {
+  const responses: Array<(data: WorkspaceSnapshot) => void> = []
+  vi.mocked(getWorkspace).mockImplementation(() => new Promise(resolve => responses.push(resolve)))
+  const status = ref<'thinking' | 'generating' | 'done' | 'idle'>('thinking')
+  const conversation = ref<string | null>('a')
+  const scope = effectScope()
+  const files = scope.run(() => useWorkspaceFiles(conversation, status))!
+  try {
+    status.value = 'generating'
+    await nextTick()
+    assert.equal(responses.length, 1)
+    status.value = 'done'
+    await nextTick()
+    status.value = 'idle'
+    await nextTick()
+    const pending = files.refresh(false)
+    responses[0]!(snapshot(1))
+    await vi.waitFor(() => assert.equal(responses.length, 2))
+    responses[1]!(snapshot(2))
+    await pending
+    assert.equal(files.snapshot.value?.revision, 2)
+    const old = files.refresh(false)
+    conversation.value = 'b'
+    const current = files.refresh(false)
+    responses[3]!(snapshot(4, 'b'))
+    await current
+    responses[2]!(snapshot(3))
+    await old
+    assert.equal(files.snapshot.value?.conversationId, 'b')
+    assert.equal(files.snapshot.value?.revision, 4)
+  }
+  finally { scope.stop() }
+})
+
+it('读取循环已退出但 finally 未执行时排入的刷新仍有效', async () => {
+  vi.mocked(getWorkspace).mockResolvedValueOnce(snapshot(1)).mockResolvedValue(snapshot(2))
+  const scope = effectScope()
+  const files = scope.run(() => useWorkspaceFiles(ref('a'), ref('generating')))!
+  const stop = watch(files.snapshot, () => {
+    void files.refresh()
+  }, { once: true })
+  try {
+    await files.refresh(false)
+    assert.equal(vi.mocked(getWorkspace).mock.calls.length, 2)
+    assert.equal(files.snapshot.value?.revision, 2)
+  }
+  finally {
+    stop()
+    scope.stop()
+  }
+})
 
 it('显式刷新等到在途请求之后的新快照，不能提前用旧版本打开文件', async () => {
   const responses: Array<(value: WorkspaceSnapshot) => void> = []

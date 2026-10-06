@@ -15,6 +15,7 @@ import { createRequire } from 'node:module'
 import process from 'node:process'
 import { Logger } from '@nestjs/common'
 import { afterAll, beforeAll, describe, it, onTestFinished, vi } from 'vitest'
+import { WORKSPACE_DEVELOPMENT_INSTRUCTION } from '../chat/prompts/workspace-development.prompt.js'
 import { ConversationsService } from '../conversations/conversations.service.js'
 import { MessagesService } from '../conversations/messages.service.js'
 import {
@@ -30,6 +31,7 @@ import { ToolInvocationService } from '../tools/core/tool-invocation.service.js'
 import { ToolRegistryService } from '../tools/core/tool-registry.service.js'
 import { webFetchDefinition } from '../tools/web/web-fetch.tool.js'
 import { webSearchDefinition, WebSearchTool } from '../tools/web/web-search.tool.js'
+import { writeDefinition } from '../tools/workspace/workspace-tools.js'
 import { AgentRuntimeService } from './agent-runtime.service.js'
 import { ContextCompactionService } from './context/context-compaction.service.js'
 import { AgentRunRecorderService } from './lifecycle/agent-run-recorder.service.js'
@@ -614,6 +616,27 @@ describe('AgentRuntime PostgreSQL integration', () => {
     const item = messages[1]?.activity?.items[0]
 
     assert.equal(item?.kind === 'tool' && item.query, '新的')
+  })
+
+  it('指南重新规划的正常开发 Run：工具只执行一次，流与数据库历史均不制造失败', async () => {
+    const { userId, conversationId } = await createOwnedConversation()
+    const execute = vi.fn(async () => ({ ok: true as const, modelContent: '已执行' }))
+    const plan = () => toModelStream([toolCallEvent('write', 'write', '{"path":"a.txt","content":"ok"}'), { type: 'response_completed', finishReason: 'tool_calls' }])
+    const harness = createHarness(conversationId, [plan, plan, () => toModelStream([{ type: 'text_delta', delta: '完成' }, { type: 'response_completed', finishReason: 'stop' }])], undefined, { tools: [{ definition: writeDefinition, executor: { execute } }] })
+    const events = await collectEvents(harness.run())
+    assert.equal(events.at(-1)?.type, 'run_completed')
+    assert.equal(execute.mock.calls.length, 1)
+    const steps = await listSteps((await requireRun(conversationId)).id)
+    const tools = steps.filter(step => step.type === 'tool_execution')
+    assert.deepEqual(tools.map(step => step.status), [AgentStepStatus.COMPLETED, AgentStepStatus.COMPLETED])
+    assert.deepEqual(tools.map(step => (step.output as { code?: string }).code ?? 'ok'), ['workspace_replan', 'ok'])
+    const guide = steps.find(step => step.type === 'workspace_development')!
+    assert.deepEqual(guide.output, { instruction: WORKSPACE_DEVELOPMENT_INSTRUCTION })
+    assert.equal(((steps.filter(step => step.type === 'model_sampling')[1]!.input as { workspaceDevelopment: { stepId: string } }).workspaceDevelopment).stepId, guide.id)
+    const activity = (await new MessagesService(prisma, new ConversationsService(prisma)).listMessages(userId, conversationId)).at(-1)!.activity!
+    const history = activity.items.filter(item => item.kind === 'tool')
+    const live = events.filter(event => event.type === 'tool_finished')
+    assert.deepEqual(history.map(item => [item.ok, item.failure, item.skipped]), live.map(event => [event.ok, event.failure, event.skipped]))
   })
 
   // ── 脚手架 ──────────────────────────────────────────────

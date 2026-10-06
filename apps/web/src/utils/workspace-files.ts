@@ -1,12 +1,19 @@
 import type { WorkspaceFile } from '@agent/contracts'
 import type { TurnRun } from '../types/chat'
 
+const HIDDEN_WORKSPACE_FILES = new Set(['README.md', 'SHADCN-LICENSE.md', '.gitignore', '.npmrc', '.nvmrc'])
+
+/** 仅展示取舍；不修改原始 Source，恢复/ZIP/回收仍使用完整清单。 */
+export function visibleWorkspaceFiles(files: WorkspaceFile[]): WorkspaceFile[] {
+  return files.filter(file => !HIDDEN_WORKSPACE_FILES.has(file.path) && !file.path.startsWith('tests/'))
+}
+
 /** 交付卡代表该次回答保存的内容；只保留当前仍是同路径、同哈希的文件，不提供历史版本。 */
 export function workspaceArtifacts(run: TurnRun, currentFiles: WorkspaceFile[]): WorkspaceFile[] {
   const saved = run.steps.filter(step => step.status !== 'running' && step.status !== 'stopped'
     && (step.workspace?.revision ?? 0) > 0 && Array.isArray(step.workspace?.files)).at(-1)?.workspace?.files ?? []
   const hashes = new Map(saved.map(file => [file.path, file.sha256]))
-  return currentFiles.filter(file => hashes.get(file.path) === file.sha256)
+  return visibleWorkspaceFiles(currentFiles).filter(file => hashes.get(file.path) === file.sha256)
 }
 
 export function workspaceFileType(path: string) {

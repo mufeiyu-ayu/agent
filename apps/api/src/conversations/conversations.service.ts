@@ -8,6 +8,9 @@ import type { CreateConversationDto, ListConversationsQueryDto, UpdateConversati
 import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common'
 
 import { PrismaService } from '../prisma/prisma.service.js'
+import { WorkspaceCloudService } from '../workspaces/workspace-cloud.service.js'
+import { lockWorkspaceStorage } from '../workspaces/workspace-db.js'
+import { WorkspaceGcService } from '../workspaces/workspace-gc.service.js'
 
 const DEFAULT_CONVERSATION_TITLE = '新的会话'
 const DEFAULT_CONVERSATION_PAGE_SIZE = 20
@@ -18,6 +21,7 @@ export class ConversationsService {
   constructor(
     @Inject(PrismaService)
     private readonly prismaService: PrismaService,
+    @Inject(WorkspaceGcService) private readonly gc = new WorkspaceGcService(prismaService, new WorkspaceCloudService()),
   ) {}
 
   async create(userId: string, input: CreateConversationDto): Promise<Conversation> {
@@ -94,11 +98,15 @@ export class ConversationsService {
   async delete(userId: string, conversationId: string): Promise<DeleteConversationResponse> {
     await this.assertOwnConversation(userId, conversationId)
 
-    await this.prismaService.conversation.delete({
-      where: {
-        id: conversationId,
-      },
+    await this.prismaService.$transaction(async (db) => {
+      await lockWorkspaceStorage(db, conversationId)
+      const own = await db.conversation.findFirst({ where: { id: conversationId, userId } })
+      if (!own)
+        throw new NotFoundException('会话不存在或已被删除')
+      await this.gc.register(db, userId, conversationId, new Date())
+      await db.conversation.delete({ where: { id: conversationId } })
     })
+    this.gc.kick(conversationId)
 
     return {
       deleted: true,

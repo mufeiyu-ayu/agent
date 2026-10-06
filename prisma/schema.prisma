@@ -113,6 +113,7 @@ model Conversation {
   agentRuns   AgentRun[]
   compactions ConversationCompaction[]
   workspace   ConversationWorkspace?
+  artifacts   WorkspaceArtifact[]
   createdAt   DateTime                 @default(now())
   updatedAt   DateTime                 @updatedAt
 
@@ -129,6 +130,8 @@ model ConversationWorkspace {
   userId String
   revision Int @default(0)
   files Json @default("[]")
+  webProject Boolean @default(false)
+  artifactId String?
   ownerRunId String?
   leaseExpiresAt DateTime?
   sandboxId String?
@@ -140,6 +143,53 @@ model ConversationWorkspace {
 
   @@index([state, leaseExpiresAt])
   @@index([userId])
+}
+
+// 不可变成功构建清单；源码继续使用工作区 revision，旧预览固定到自己的构建。
+model WorkspaceArtifact {
+  id String @id
+  conversationId String
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  userId String
+  runId String
+  sourceRevision Int
+  command String
+  files Json
+  createdAt DateTime
+  retiredAt DateTime?
+  previewExpiresAt DateTime?
+
+  @@index([conversationId, createdAt])
+}
+
+// 清理目标不随会话级联删除；Bucket 身份固定，失败/重启由相同入口重试。
+model WorkspaceGcTarget {
+  conversationId String @id
+  userId String
+  bucket String
+  deletedAt DateTime?
+  deletingKey String?
+  deleteId String?
+  deleteState String?
+  pending Boolean @default(true)
+  generation Int @default(1)
+  updatedAt DateTime @updatedAt
+
+  @@index([pending])
+}
+
+// OSS 与 DB 不能原子提交；活跃/未知上传阻止回收，不能仅按租约过期判定安全。
+model WorkspaceUpload {
+  id String @id
+  conversationId String
+  runId String
+  bucket String
+  keys String[] @default([])
+  state String @default("active")
+  startedAt DateTime @default(now())
+  endedAt DateTime?
+
+  @@index([conversationId, state])
 }
 
 // 平台观察到的沙箱生命周期；不设会话 / Run 外键，删除会话不抹掉使用统计。
