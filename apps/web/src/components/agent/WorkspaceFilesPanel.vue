@@ -418,18 +418,15 @@ function retryDownload() {
             {{ t('workspace.noMatches') }}
           </p>
           <template v-else>
-            <div class="tree-root">
-              <AppIcon name="vscode-icons:default-folder-opened" :size="18" /><span>project</span>
-            </div>
-            <div v-for="entry in tree" :key="entry.path" class="tree-row" :class="{ 'is-selected': selected === entry.path }" :style="{ paddingLeft: `${10 + entry.depth * 14}px` }">
+            <div v-for="entry in tree" :key="entry.path" class="tree-row" :class="{ 'is-selected': selected === entry.path }" :style="{ paddingLeft: `${6 + entry.depth * 12}px` }">
               <button v-if="entry.directory" class="tree-entry" :aria-label="entry.path" :aria-expanded="!!search.trim() || !collapsed.has(entry.path)" @click="toggleDirectory(entry.path)">
-                <AppIcon :name="!search.trim() && collapsed.has(entry.path) ? 'tabler:chevron-right' : 'tabler:chevron-down'" :size="13" class="tree-arrow" />
-                <AppIcon :name="!search.trim() && collapsed.has(entry.path) ? 'vscode-icons:default-folder' : 'vscode-icons:default-folder-opened'" :size="18" />
+                <AppIcon :name="!search.trim() && collapsed.has(entry.path) ? 'tabler:chevron-right' : 'tabler:chevron-down'" :size="12" class="tree-arrow shrink-0" />
+                <AppIcon :name="!search.trim() && collapsed.has(entry.path) ? 'vscode-icons:default-folder' : 'vscode-icons:default-folder-opened'" :size="15" class="shrink-0" />
                 <span>{{ entry.name }}</span>
               </button>
               <template v-else>
                 <button class="tree-entry tree-file" :disabled="previewPending || loading || !!error" :title="entry.path" :aria-label="entry.path" :aria-current="selected === entry.path ? 'true' : undefined" @click="open(entry.path, true)">
-                  <AppIcon :name="workspaceFileType(entry.path).icon" :size="17" />
+                  <AppIcon :name="workspaceFileType(entry.path).icon" :size="15" class="shrink-0" />
                   <span>{{ entry.name }}</span>
                 </button>
               </template>
@@ -808,42 +805,54 @@ function retryDownload() {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  padding: 2px 6px 10px;
+  padding: 3px 4px 10px;
 }
-.tree-root, .tree-row {
+.tree-row {
   display: flex;
-  min-height: 30px;
+  height: 24px;
+  min-height: 24px;
   align-items: center;
-  gap: 6px;
-  padding: 0 8px;
-  border-radius: 6px;
-  font-size: 12.5px;
-  margin: 1px 0;
-  transition: all 0.15s ease;
-}
-.tree-root {
-  gap: 7px;
-  color: var(--agent-ink-muted);
+  gap: 4px;
+  padding: 0 4px;
+  border-radius: 4px;
   font-size: 12px;
+  margin: 1px 0;
+  transition: background-color 0.12s ease;
+  user-select: none;
 }
 .tree-row:hover {
-  background: color-mix(in oklch, var(--agent-surface-sunken) 70%, transparent);
+  background: color-mix(in oklch, var(--agent-ink) 5%, transparent);
+}
+:global([data-agent-workspace-theme='olive-ember']) .tree-row:hover {
+  background: rgba(255, 255, 255, 0.05);
 }
 .tree-row.is-selected {
-  background: var(--agent-surface-raised);
+  background: color-mix(in oklch, var(--agent-ink) 8%, transparent);
   color: var(--agent-ink);
-  font-weight: 500;
-  box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.04);
+  box-shadow: none;
+}
+:global([data-agent-workspace-theme='olive-ember']) .tree-row.is-selected {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
 }
 .tree-entry {
   display: flex;
   flex: 1;
   min-width: 0;
-  min-height: 30px;
+  height: 100%;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   text-align: left;
   color: var(--agent-ink-soft);
+  font-size: 12px;
+  line-height: 24px;
+}
+.tree-row.is-selected .tree-entry {
+  color: var(--agent-ink);
+  font-weight: 500;
+}
+:global([data-agent-workspace-theme='olive-ember']) .tree-row.is-selected .tree-entry {
+  color: #fff;
 }
 .tree-entry span {
   overflow: hidden;
@@ -851,18 +860,16 @@ function retryDownload() {
   white-space: nowrap;
 }
 .tree-file {
-  padding-left: 15px;
+  padding-left: 17px;
 }
 .tree-arrow {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  height: 12px;
   color: var(--agent-ink-faint);
-}
-.tree-download {
-  width: 22px;
-  height: 24px;
-  opacity: 0;
-}
-.tree-row:hover .tree-download, .tree-row:focus-within .tree-download {
-  opacity: 1;
+  transition: transform 0.12s ease;
 }
 .file-viewport {
   position: relative;
@@ -979,5 +986,4 @@ function retryDownload() {
 .source-panel :deep(.hljs-type), .source-panel :deep(.hljs-built_in) { color: var(--code-type); }
 .source-panel :deep(.hljs-symbol), .source-panel :deep(.hljs-selector-id), .source-panel :deep(.hljs-selector-class) { color: var(--code-symbol); }
 .workspace-panel.is-compact .file-sidebar.is-browser { width: 100%; max-width: none; border-right: 0; }
-@media (hover: none) { .tree-download { opacity: 1; } }
 </style>
