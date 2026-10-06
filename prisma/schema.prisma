@@ -172,6 +172,7 @@ model WorkspaceGcTarget {
   deleteId String?
   deleteState String?
   pending Boolean @default(true)
+  generation Int @default(1)
   updatedAt DateTime @updatedAt
 
   @@index([pending])

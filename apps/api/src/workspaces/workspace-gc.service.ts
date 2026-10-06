@@ -56,7 +56,7 @@ export class WorkspaceGcService implements OnModuleInit, OnModuleDestroy {
     const previous = await db.workspaceGcTarget.findUnique({ where: { conversationId } })
     if (previous && (previous.userId !== userId || previous.bucket !== this.bucket || (previous.deletedAt && !deletedAt)))
       throw new WorkspaceOperationError('存储环境或清理目标身份不匹配，需人工核查。')
-    await db.workspaceGcTarget.upsert({ where: { conversationId }, create: { conversationId, userId, bucket: this.bucket, ...(deletedAt ? { deletedAt } : {}) }, update: { pending: true, ...(deletedAt ? { deletedAt } : {}) } })
+    await db.workspaceGcTarget.upsert({ where: { conversationId }, create: { conversationId, userId, bucket: this.bucket, ...(deletedAt ? { deletedAt } : {}) }, update: { pending: true, generation: { increment: 1 }, ...(deletedAt ? { deletedAt } : {}) } })
   }
 
   /** 等明确的删除收尾状态，不用固定延迟当作已完成；未知结局不自动解除。 */
@@ -96,7 +96,13 @@ export class WorkspaceGcService implements OnModuleInit, OnModuleDestroy {
 
   async finishUpload(id: string, unknown: boolean): Promise<void> {
     // 不使用已取消的工具 signal；实际 PUT 结束后仍要保留可恢复的收尾事实。
-    await workspaceDb(this.prisma, db => db.workspaceUpload.update({ where: { id }, data: { state: unknown ? 'unknown' : 'settled', endedAt: new Date() } }).then(() => {}))
+    await workspaceDb(this.prisma, async (db) => {
+      const upload = await db.workspaceUpload.findUniqueOrThrow({ where: { id }, select: { conversationId: true } })
+      await lockWorkspaceStorage(db, upload.conversationId)
+      await db.workspaceUpload.update({ where: { id }, data: { state: unknown ? 'unknown' : 'settled', endedAt: new Date() } })
+      // 在途上传结束可能留下新孤儿；收尾事实与新清理需求同事务确认。
+      await db.workspaceGcTarget.update({ where: { conversationId: upload.conversationId }, data: { pending: true, generation: { increment: 1 } } })
+    })
   }
 
   async afterRun(runId: string): Promise<void> {
@@ -155,10 +161,11 @@ export class WorkspaceGcService implements OnModuleInit, OnModuleDestroy {
         await this.register(db, userId, conversationId)
       })
     }
-    report.blocked = await workspaceDb(this.prisma, async (db) => {
+    const scan = await workspaceDb(this.prisma, async (db) => {
       await lockWorkspaceStorage(db, conversationId)
-      return (await this.references(db, userId, conversationId, prefix)).blocked
+      return this.references(db, userId, conversationId, prefix)
     })
+    report.blocked = scan.blocked
     let marker: string | undefined
     do {
       const page = await this.cloud.listFiles(prefix, marker)
@@ -224,7 +231,11 @@ export class WorkspaceGcService implements OnModuleInit, OnModuleDestroy {
           await db.workspaceArtifact.deleteMany({ where: { conversationId, userId, id: { not: state.artifactId ?? '' }, retiredAt: { not: null }, OR: [{ previewExpiresAt: null }, { previewExpiresAt: { lte: now } }] } })
           await db.workspaceUpload.deleteMany({ where: { conversationId, state: 'settled' } })
         }
-        await db.workspaceGcTarget.update({ where: { conversationId }, data: { pending: !!state.blocked || state.protectedOld || report.failed.length > 0 || report.unknown.length > 0 } })
+        if (scan.generation === undefined)
+          throw new WorkspaceOperationError('清理需求记录缺失，未确认回收完成。')
+        // DELETE 屏障的登记/收尾属于本扫描，不推进需求代次；并发删除会话、
+        // 新上传/维护核查则推进代次。旧扫描不能把这些新需求的 pending 清掉。
+        await db.workspaceGcTarget.updateMany({ where: { conversationId, generation: scan.generation }, data: { pending: !!state.blocked || state.protectedOld || report.failed.length > 0 || report.unknown.length > 0 } })
       })
     }
     return report
@@ -273,7 +284,7 @@ export class WorkspaceGcService implements OnModuleInit, OnModuleDestroy {
         protectedOld ||= !current && protectedPreview
       }
     }
-    return { keys, blocked, protectedOld, deleted: !!target?.deletedAt, artifactId: workspace?.artifactId }
+    return { keys, blocked, protectedOld, generation: target?.generation, deleted: !!target?.deletedAt, artifactId: workspace?.artifactId }
   }
 
   private resume(): Promise<void> {

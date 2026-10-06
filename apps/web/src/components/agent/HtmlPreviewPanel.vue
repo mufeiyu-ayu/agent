@@ -100,6 +100,7 @@ async function handleQuery(event: MessageEvent) {
   if (props.artifactId && data.type === 'artifact-page' && 'path' in data && typeof data.path === 'string' && artifactUrl.value) {
     const url = new URL(artifactUrl.value, location.origin)
     url.searchParams.set('path', data.path)
+    url.hash = 'fragment' in data && typeof data.fragment === 'string' ? data.fragment : ''
     navigateArtifact(url.href)
     return
   }

@@ -22,7 +22,7 @@ Source 与每份 Artifact 分别限制为 200 个文件、单个 2 MiB、总计 
 
 `bash` 的 `build:true` 仅接受 `pnpm build`：采集构建前 Source hash → 清除旧 dist → 非特权真实执行 → 成功后核对 Source 未改变、dist 类型/容量/静态引用 → 上传不可变对象 → recorder 同事务确认 Source、不可变 `WorkspaceArtifact`、当前 Artifact 指针和工具记录。Source revision 只在源码变化时递增；Artifact 绑定 user/conversation/run、sourceRevision、命令、开始时点和完整资源清单。失败构建、普通 write/edit/bash 和残留 dist 都不发布新 Artifact。失败保留最近已确认 Source 与上次成功 Preview，stderr/退出码仍在工具记录与时间线。
 
-源码目录 ZIP 直接从同一已确认 Source revision 读取 OSS，保留根配置、lockfile、src/public 的原字节和相对路径。使用有界 ZIP STORE，不创建沙箱。读取期间变版、删会话、取消或内容损坏时不交付半份归档；UI 失败重试固定原 revision，只有明确再次下载才选择当前版本。Code 只读，展示格式化不修改 Source/Artifact；单文件下载入口从工作文件面板移除，普通聊天代码片段保持原行为。
+源码目录 ZIP 使用最多 4 个并发读取直接从同一已确认 Source revision 读取 OSS，保留根配置、lockfile、src/public 的原字节和相对路径。使用有界 ZIP STORE，不创建沙箱。读取期间变版、删会话、取消或内容损坏时不交付半份归档；UI 失败重试固定原 revision，只有明确再次下载才选择当前版本。Code 只读，展示格式化不修改 Source/Artifact；单文件下载入口从工作文件面板移除，普通聊天代码片段保持原行为。
 
 `topuplist_traffic` 仍是七天演示数据，不是真实统计。新页面把演示输入写入 Source，本地交互不依赖业务 API 或宿主查询；默认 React，但用户指定 HTML + Tailwind 时使用同一 Vite/Tailwind 底座的原生入口。旧单文件 HTML 不迁移，继续使用已有隔离预览与演示桥接；普通 Markdown 代码预览维持静态策略。
 
@@ -30,7 +30,7 @@ Source 与每份 Artifact 分别限制为 200 个文件、单个 2 MiB、总计 
 
 宿主认证后为一个不可变 Artifact 获取 10 分钟的随机只读 capability；最多保留 1000 个活动入口，进程重启后失效；每个入口在读取前扣除 32 MiB / 2000 次请求预算，防止生成页面通过重复资源请求制造无界并发/OSS 流量。每次资源读取仍检查会话归属、用户状态、过期与删除，能力不是 Session 或 Agent 授权。当前 Source/Artifact 更新不改变已经打开的资源目标；预览保护时限持久化，旧构建确认退役后禁止重开/续期，有效能力到期后淘汰旧记录及独占对象。失效提示可按需打开当前最近成功构建，不把旧 token 偷换新内容。
 
-入口响应仅含可信包装器，HTTP CSP 强制 `sandbox allow-scripts`（无 allow-same-origin），即使直接导航/新窗口也不变成 Kuro origin 的生成页面。包装器在另一个 opaque srcdoc 中渲染原构建 HTML，仅补固定资源 base 与 RTC/Worker 锁定，不把 dist 合并或改写成 self-contained。继承的 CSP 仅允许该 capability 资源路径的脚本、CSS、图片与字体；禁 connect/frame/worker/form/WebRTC，父包装器阻断子页面自身导航，生成页面不接收 Cookie/平台密钥。原始资源返回 attachment + nosniff + 无脚本 sandbox；模块/字体只向 opaque origin 提供无凭据 CORS，HTML 原文永不直接作为可执行文档响应。相对模块、CSS url、SVG/图片、查询参数及 MIME 保持真实文件链路。普通 `href="#section"` 在当前 opaque 文档内滚动；原生 `.html` 内部链接只允许同 capability 资源目录，由可信包装器通知宿主切到固定清单的 `/document?path=...` 再隔离渲染，不放开生成页面自身导航或外网，也不提供通用路由。
+入口响应仅含可信包装器，HTTP CSP 强制 `sandbox allow-scripts`（无 allow-same-origin），即使直接导航/新窗口也不变成 Kuro origin 的生成页面。包装器在另一个 opaque srcdoc 中渲染原构建 HTML，仅补固定资源 base 与 RTC/Worker 锁定，不把 dist 合并或改写成 self-contained。继承的 CSP 仅允许该 capability 资源路径的脚本、CSS、图片与字体；禁 connect/frame/worker/form/WebRTC，父包装器阻断子页面自身导航，生成页面不接收 Cookie/平台密钥。原始资源返回 attachment + nosniff + 无脚本 sandbox；模块/字体只向 opaque origin 提供无凭据 CORS，HTML 原文永不直接作为可执行文档响应。相对模块、CSS url、SVG/图片、查询参数及 MIME 保持真实文件链路。普通 `href="#section"` 在当前 opaque 文档内滚动；原生 `.html` 内部链接只允许同 capability 资源目录，由可信包装器通知宿主切到固定清单的 `/document?path=...` 再隔离渲染，跨页 fragment 与文件 path 分离，在目标内页真实 load 后定位，不把锚点传入 OSS 路径；不放开生成页面自身导航或外网，也不提供通用路由。
 
 前台清单只在同会话 Run 从执行态收尾或按需（打开面板、显式刷新、切会话/账号、恢复可见）读取；终态前在途请求之后排一次新读取，无周期轮询。本地停止/断流不等于后端 COMMIT 确认，接口只反映最近已确认版本。前端精确隐藏指定模板辅助路径，完整 Source、恢复和 ZIP 不裁剪。已加载预览在面板生命周期内保留同一 iframe；Code 切换隐藏，native dialog 全屏进入 top layer，不搬 DOM。新 Artifact 仅需要预览时加载，ready 等生成文档有效 load 且校验加载代次，错误后 load 不覆盖失败。
 

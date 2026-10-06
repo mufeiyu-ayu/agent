@@ -36,7 +36,7 @@ async function main() {
         if (!upload || activeRuns)
           throw new Error('核查目标不存在或仍有运行，未解除上传保护')
         await db.workspaceUpload.update({ where: { id: upload.id }, data: { state: 'settled', endedAt: new Date() } })
-        await db.workspaceGcTarget.update({ where: { conversationId: upload.conversationId }, data: { pending: true } })
+        await db.workspaceGcTarget.update({ where: { conversationId: upload.conversationId }, data: { pending: true, generation: { increment: 1 } } })
       })
     }
     if (values['settle-delete']) {
@@ -48,7 +48,7 @@ async function main() {
         const activeRuns = await db.agentRun.count({ where: { conversationId: values.conversation!, status: 'RUNNING' } })
         if (!target?.deletingKey || activeRuns)
           throw new Error('删除核查目标不存在或仍有运行，未解除写入屏障')
-        await db.workspaceGcTarget.update({ where: { conversationId: target.conversationId }, data: { deletingKey: null, deleteId: null, deleteState: null, pending: true } })
+        await db.workspaceGcTarget.update({ where: { conversationId: target.conversationId }, data: { deletingKey: null, deleteId: null, deleteState: null, pending: true, generation: { increment: 1 } } })
       })
     }
     // 只读全量已知会话范围，不列举任意 Bucket 前缀；旧孤儿/测试前缀需另行核定。

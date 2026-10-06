@@ -401,6 +401,45 @@ test('普通锚点滚动、原生多页链接保持固定 Artifact 和隔离', a
   await expect(frame.getByRole('link', { name: 'Features' })).toBeVisible()
 })
 
+test('F2：固定 Artifact 跨页锚点往返在有效加载后定位真实目标', async ({ page, baseURL }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  const navigations: string[] = []
+  const capabilities: string[] = []
+  page.on('request', (request) => {
+    const url = new URL(request.url())
+    if (url.pathname.endsWith('/preview'))
+      capabilities.push(url.pathname)
+    if (url.pathname.includes('/workspace-preview/') && url.pathname.endsWith('/document'))
+      navigations.push(request.url())
+  })
+  await setup(page, baseURL!, {
+    ...dist,
+    'index.html': '<!doctype html><a href="./pages/about 团队.html#pricing">About pricing</a><div style="height:1500px"></div><section id="features"><h2>Features area</h2></section><div style="height:1500px"></div>',
+    'pages/about 团队.html': '<!doctype html><a href="../index.html#features">Home features</a><div style="height:1700px"></div><section id="pricing"><h2>Pricing area</h2></section><div style="height:1500px"></div><script src="../assets/about.js"></script>',
+    'assets/about.js': 'document.body.dataset.loaded="about";',
+  })
+  await page.goto('/workspace')
+  await page.locator('[data-open-workspace-files]').click()
+  const frame = page.frameLocator('[data-workspace-files-panel] [data-html-preview-panel] > iframe').frameLocator('iframe')
+  await frame.getByRole('link', { name: 'About pricing' }).click({ delay: 50 })
+  await expect(frame.locator('body')).toHaveAttribute('data-loaded', 'about')
+  await expect(frame.getByRole('heading', { name: 'Pricing area' })).toBeInViewport()
+  const pricing = await frame.locator('#pricing').evaluate(element => ({ top: element.getBoundingClientRect().top, y: scrollY }))
+  assert.ok(pricing.y >= 1700)
+  assert.ok(Math.abs(pricing.top) < 2)
+  await frame.getByRole('link', { name: 'Home features' }).click({ delay: 50 })
+  await expect(frame.getByRole('heading', { name: 'Features area' })).toBeInViewport()
+  const features = await frame.locator('#features').evaluate(element => ({ top: element.getBoundingClientRect().top, y: scrollY }))
+  assert.ok(features.y >= 1500)
+  assert.ok(Math.abs(features.top) < 2)
+  assert.equal(capabilities.length, 1)
+  assert.ok(capabilities[0]!.includes(`/artifacts/${artifact.id}/preview`))
+  assert.equal(navigations.length, 3)
+  assert.ok(navigations.every(url => new URL(url).pathname === `/api/workspace-preview/${token}/document`))
+  assert.deepEqual(navigations.map(url => new URL(url).searchParams.get('path')), [null, 'pages/about 团队.html', 'index.html'], 'fragment 不进入资源 path')
+  console.log('F2 navigation:', JSON.stringify({ pricing, features, capabilityCount: capabilities.length, documentPaths: navigations.map(url => new URL(url).searchParams.get('path')) }))
+})
+
 test('Source 读取失败不阻断独立成功 Artifact 的侧栏和整页预览', async ({ page, baseURL }) => {
   await setup(page, baseURL!)
   let fail = true

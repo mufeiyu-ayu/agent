@@ -125,6 +125,68 @@ describe('OSS GC PostgreSQL 引用与故障边界（内存 OSS，不访问业务
     return { user, conversation, prefix, objects, source, dist, put, remove, list, cloud, gc, service, previews, newRun, confirm, end, restored: () => restored, key: (content: string) => `${prefix}objects/${fileHash(Buffer.from(content))}` }
   }
 
+  it('F1：会话删除的新清理需求不能被旧扫描吞掉，启动恢复自动排空前缀', async () => {
+    const f = await fixture()
+    const run = await f.newRun()
+    const a = 'Source A'
+    let o = 'orphan O'
+    while (f.key(o) < f.key(a))
+      o += 'x'
+    f.source.push({ path: 'a.txt', content: Buffer.from(a) })
+    await f.confirm(run)
+    await f.end(run)
+    f.objects.set(f.key(o), Buffer.from(o))
+    const other = 'users/other/conversations/other/objects/preserved'
+    f.objects.set(other, Buffer.from('other'))
+    let deleting = false
+    let release!: () => void
+    const hold = new Promise<void>(resolve => release = resolve)
+    f.remove.mockImplementationOnce(async (key) => {
+      assert.equal(key, f.key(o))
+      deleting = true
+      await hold
+      f.objects.delete(key)
+    })
+    const first = f.gc.collect(f.conversation.id, true)
+    await vi.waitFor(() => assert.equal(deleting, true))
+    const secondGc = new WorkspaceGcService(prisma, f.cloud)
+    const collect = secondGc.collect.bind(secondGc)
+    let secondFinished = false
+    vi.spyOn(secondGc, 'collect').mockImplementation(async (...args) => {
+      const result = await collect(...args)
+      assert.match(result.blocked!, /活动\/未知删除/)
+      secondFinished = true
+      return result
+    })
+    vi.stubEnv('OSS_WORKSPACE_GC_ENABLED', 'true')
+    let firstReport
+    try {
+      await new ConversationsService(prisma, secondGc).delete(f.user.id, f.conversation.id)
+      await vi.waitFor(() => assert.equal(secondFinished, true))
+    }
+    finally {
+      release()
+      firstReport = await first
+      await secondGc.onModuleDestroy()
+    }
+    assert.deepEqual(firstReport.retained, [f.key(a)], '旧扫描先保留 A，再等待 O 的 DELETE')
+    assert.ok(f.objects.has(f.key(a)))
+    const restarted = new WorkspaceGcService(prisma, f.cloud)
+    restarted.onModuleInit()
+    try {
+      await vi.waitFor(async () => {
+        assert.equal([...f.objects.keys()].filter(key => key.startsWith(f.prefix)).length, 0)
+        const target = await prisma.workspaceGcTarget.findUniqueOrThrow({ where: { conversationId: f.conversation.id } })
+        assert.equal(target.pending, false, '只有自动恢复完整扫描后才能取消 pending')
+      })
+      assert.ok(f.objects.has(other))
+    }
+    finally {
+      await restarted.onModuleDestroy()
+      vi.stubEnv('OSS_WORKSPACE_GC_ENABLED', 'false')
+    }
+  })
+
   it('AC-01/02/03/12：A→B→C 收尾回收，完整 Source 与共享内容保护；删除不会恢复，分页不漏目标', async () => {
     const f = await fixture()
     const run = await f.newRun()

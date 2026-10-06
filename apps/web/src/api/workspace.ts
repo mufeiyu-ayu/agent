@@ -17,7 +17,7 @@ export async function getWorkspaceFile(conversationId: string, path: string, rev
 }
 
 export async function getWorkspaceArchive(conversationId: string, revision: number, signal: AbortSignal): Promise<Uint8Array> {
-  const response = await http.get<{ revision: number, encoding: string, content: string }>(`/api/conversations/${encodeURIComponent(conversationId)}/workspace/archive`, { params: { revision }, signal })
+  const response = await http.get<{ revision: number, encoding: string, content: string }>(`/api/conversations/${encodeURIComponent(conversationId)}/workspace/archive`, { params: { revision }, signal, timeout: 35_000 })
   if (response.data.revision !== revision || response.data.encoding !== 'base64' || response.data.content.length > 13_000_000)
     throw new Error('源码归档响应无效')
   return Uint8Array.from(atob(response.data.content), character => character.charCodeAt(0))

@@ -98,13 +98,22 @@ export class WorkspaceService implements OnModuleDestroy {
       throw new ConflictException('源码版本已更新，请重新选择下载版本')
     const files = parseStoredFiles(row.files, this.prefix(userId, conversationId)).filter(file => !privateWorkspacePath(file.path))
     const contents: Array<{ path: string, content: Buffer }> = []
+    const reads = new AbortController()
+    const readSignal = AbortSignal.any([signal, reads.signal])
+    let next = 0
     try {
-      for (const file of files) {
-        signal.throwIfAborted()
-        contents.push({ path: file.path, content: await this.cloud.readFile(file, signal) })
-      }
+      // 有界并发，避免完整工程逐文件往返超过归档请求预算；顺序仍固定为清单顺序。
+      await Promise.all(Array.from({ length: Math.min(4, files.length) }, async () => {
+        while (next < files.length) {
+          readSignal.throwIfAborted()
+          const index = next++
+          const file = files[index]!
+          contents[index] = { path: file.path, content: await this.cloud.readFile(file, readSignal) }
+        }
+      }))
     }
     catch {
+      reads.abort()
       throw new ServiceUnavailableException('源码归档读取失败，请重试同一版本。')
     }
     signal.throwIfAborted()
