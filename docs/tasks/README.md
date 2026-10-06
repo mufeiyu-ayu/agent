@@ -7,9 +7,9 @@
 ```text
 阶段 1-8：Completed
 当前阶段：工作台第 1 档（第一期上线）
-Active Agent Task：#231 Web Project / Artifact（实现与真实验收中；不部署）
+Active Agent Task：无（#231、#233、#234 已合并收口；不部署）
 Next：无；第 0.5 档额外真实对话验证按用户 2026-10-01 决定暂缓（不标已通过；线上管理台 Serper Key 与公司同意、开放运营的前提不变）
-线上最近部署记录：5dbe61f3（2026-10-01，#212～#220）；#222、#224、PR #226、#228、PR #230 尚未部署。管理台 Serper Key 配置前搜索不可用，`.env` 的 `SERPER_API_KEY` 先保留供回退到 504b4f26。
+线上最近部署记录：5dbe61f3（2026-10-01，#212～#220）；#222、#224、PR #226、#228、PR #230、PR #232 尚未部署。管理台 Serper Key 配置前搜索不可用，`.env` 的 `SERPER_API_KEY` 先保留供回退到 504b4f26。
 Gated：#117 Responses API adapter（2026-09-18），触发条件见看板
 产品方向：给 topuplist 运营用的 AI 工作台，分两期、上云、gsc 延后（2026-09-20 定案、2026-09-27 改为两期，docs/research/workbench-direction.md）；档、顺序与触发只在其第 7 节
 候选子系统：session 事件流与 replay、审批门、定时任务（未立 Issue，各自的档见 workbench 第 7 节；compaction 已作为 E3 进入第 1 档）
@@ -20,7 +20,9 @@ Admin Task 4：Closed（2026-09-27：Auth 由 #195 完成；RBAC 不做（两种
 
 | 任务 | 状态 | 说明 |
 | --- | --- | --- |
-| #231 Web Project / Artifact | Active | 真实前端项目、Source ZIP 与完整 dist 隔离预览正在实现和验收，不改变 M1 或运营开放前提。 |
+| #234 工作区对象回收与技术版本隐藏 | Completed | 持久引用保护和恢复回收闭环、旧预览有界退役及前台技术版本隐藏完成。PR #232 |
+| #233 工作文件刷新与预览复用 | Completed | 清单按需与终态刷新、同 iframe 复用及精确模板文件展示过滤完成。PR #232 |
+| #231 Web Project / Artifact | Completed | 真实项目生成续改、完整 Source ZIP 与多文件 dist 隔离预览闭环完成，未部署。PR #232 |
 | 工作文件面板视觉优化 | Completed | 精简面板顶栏与状态信息、补齐空态与暗色样式，并保证窄屏覆盖和顶栏操作可用。PR #230 |
 | #228 bash 工具层截短输出后正确标记 truncated | Completed | 模型收到的截断标记同时反映采集层与工具层的实际截短，保留原有输出和保存行为。PR #229 |
 | 会话沙箱与工作文件 | Completed | 支持沙箱生成与检查、OSS 保存、隔离交互预览及跨会话文件缓存，补齐预览/下载隔离与双端请求防重。PR #226 |
