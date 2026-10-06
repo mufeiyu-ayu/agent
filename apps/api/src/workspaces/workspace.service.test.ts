@@ -2,6 +2,7 @@ import type { Prisma } from '../generated/prisma/client.js'
 import type { WorkspaceCloudService } from './workspace-cloud.service.js'
 import type { WorkspaceMonitoringService } from './workspace-monitoring.service.js'
 import assert from 'node:assert/strict'
+import { Buffer } from 'node:buffer'
 import { BadRequestException, Logger, ServiceUnavailableException } from '@nestjs/common'
 import { describe, it, onTestFinished, vi } from 'vitest'
 import { DatabaseCommitOutcomeUnknownError, PrismaService } from '../prisma/prisma.service.js'
@@ -9,6 +10,22 @@ import { workspaceDb } from './workspace-db.js'
 import { WorkspaceService } from './workspace.service.js'
 
 describe('工作区获取与恢复', () => {
+  it('旧已确认的百分号、tmp 和 dist HTML 不使整份清单失效，未配置沙箱仍能读取/归档', async () => {
+    const content = Buffer.from('<html><body>legacy</body></html>')
+    const files = ['report%.html', 'tmp/page.html', 'dist/index.html'].map(path => ({ path, bytes: content.length, sha256: 'a'.repeat(64), key: `users/u/conversations/c/objects/${'a'.repeat(64)}` }))
+    const row = { revision: 1, files, updatedAt: new Date(), state: 'idle' }
+    const prisma = { conversation: { findFirst: async () => ({ id: 'c' }) }, conversationWorkspace: { findUnique: async () => row } } as unknown as PrismaService
+    const cloud = { configured: false, readFile: async () => content, create: () => {
+      throw new Error('只读不能创建沙箱')
+    } } as unknown as WorkspaceCloudService
+    const service = new WorkspaceService(prisma, cloud, {} as WorkspaceMonitoringService)
+    assert.deepEqual((await service.snapshot('u', 'c')).files.map(file => file.path), files.map(file => file.path))
+    for (const path of files.map(file => file.path))
+      assert.deepEqual(await service.savedFile('u', 'c', path, 1), content)
+    assert.ok((await service.archive('u', 'c', 1, new AbortController().signal)).length > content.length)
+    await assert.rejects(service.savedFile('u', 'c', '../other/index.html'))
+  })
+
   it('首次归属查询使用有限事务，停止不被迟到查询卡住实例收尾', async () => {
     let queryStarted!: () => void
     const started = new Promise<void>((resolve) => {

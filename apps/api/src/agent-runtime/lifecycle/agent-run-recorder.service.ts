@@ -38,6 +38,7 @@ export const AGENT_STEP_TYPES = {
   assistantOutput: 'assistant_output',
   /** 上下文压缩：把较早的历史或本次问答前面的工具步骤写成摘要（#220） */
   contextCompaction: 'context_compaction',
+  workspaceDevelopment: 'workspace_development',
 } as const
 
 export type AgentStepType = typeof AGENT_STEP_TYPES[keyof typeof AGENT_STEP_TYPES]
@@ -48,6 +49,7 @@ const AGENT_STEP_TITLES: Record<AgentStepType, string> = {
   tool_execution: '执行工具',
   assistant_output: '生成助手回复',
   context_compaction: '上下文压缩',
+  workspace_development: '加载工作区开发指南',
 }
 
 const UNFINISHED_STEP_STATUSES = [
@@ -359,14 +361,37 @@ export class AgentRunRecorderService {
       if (!step)
         throw new RecorderInvariantError(`AgentStep ${stepId} 不存在`)
 
-      await this.assertRunningRunLocked(transaction, step.runId)
+      const run = await this.assertRunningRunLocked(transaction, step.runId)
       if (input.workspaceCommit) {
         const commit = input.workspaceCommit
-        if (commit.runId !== step.runId)
+        if (commit.runId !== step.runId || commit.conversationId !== run.conversationId)
           throw new RecorderInvariantError('文件版本的 Run 身份不匹配')
+        const sourceChanged = commit.sourceChanged !== false
+        if (commit.artifact) {
+          const artifact = commit.artifact
+          if (artifact.sourceRevision !== commit.expectedRevision + Number(sourceChanged))
+            throw new RecorderInvariantError('Artifact 与源码版本不匹配')
+          const owner = await transaction.execute(prisma => prisma.conversation.findFirst({ where: { id: commit.conversationId, userId: artifact.userId } }))
+          if (!owner)
+            throw new RecorderInvariantError('Artifact 与会话归属不匹配')
+          await transaction.execute(prisma => prisma.workspaceArtifact.create({ data: {
+            ...artifact,
+            conversationId: commit.conversationId,
+            runId: commit.runId,
+            createdAt: new Date(artifact.createdAt),
+            files: artifact.files as unknown as Prisma.InputJsonArray,
+          } }))
+        }
         const updated = await transaction.execute(prisma => prisma.conversationWorkspace.updateMany({
-          where: { conversationId: commit.conversationId, ownerRunId: step.runId, revision: commit.expectedRevision, leaseExpiresAt: { gt: new Date() } },
-          data: { files: commit.files as unknown as Prisma.InputJsonArray, revision: { increment: 1 }, state: 'running', lastError: null },
+          where: { conversationId: commit.conversationId, ownerRunId: step.runId, revision: commit.expectedRevision, ...(commit.expectedArtifactId !== undefined ? { artifactId: commit.expectedArtifactId } : {}), leaseExpiresAt: { gt: new Date() } },
+          data: {
+            files: commit.files as unknown as Prisma.InputJsonArray,
+            ...(sourceChanged ? { revision: { increment: 1 } } : {}),
+            ...(commit.webProject !== undefined ? { webProject: commit.webProject } : {}),
+            ...(commit.artifact ? { artifactId: commit.artifact.id } : {}),
+            state: 'running',
+            lastError: null,
+          },
         }))
         this.assertSingleUpdate(updated.count, '工作文件提交未取得所有权或版本已改变')
       }

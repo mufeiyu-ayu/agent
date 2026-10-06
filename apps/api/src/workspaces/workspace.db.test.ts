@@ -12,8 +12,9 @@ import { AgentRunRecorderService } from '../agent-runtime/lifecycle/agent-run-re
 import { AgentStepStatus } from '../generated/prisma/client.js'
 import { DatabaseCommitOutcomeUnknownError, PrismaService } from '../prisma/prisma.service.js'
 import { WorkspaceCloudService, WorkspaceCreatedError, WorkspaceCreationRejectedError } from './workspace-cloud.service.js'
-import { WorkspaceOperationError } from './workspace-files.js'
+import { fileHash, WorkspaceOperationError } from './workspace-files.js'
 import { WorkspaceMonitoringService } from './workspace-monitoring.service.js'
+import { WorkspacePreviewService } from './workspace-preview.service.js'
 import { WorkspaceService } from './workspace.service.js'
 
 const url = process.env.TEST_DATABASE_URL?.trim()
@@ -73,6 +74,180 @@ describe('工作文件 PostgreSQL 确认边界', () => {
 
   const deadline = () => ({ deadlineAt: Date.now() + 5000, signal: new AbortController().signal, createTimeoutError: () => new Error('测试超时') })
 
+  it('Source/完整 Artifact 同事务确认；失败构建、普通命令和旧 dist 不替换成功 Preview', async () => {
+    const fixture = await seed()
+    await prisma.conversationWorkspace.update({ where: { conversationId: fixture.conversation.id }, data: { ownerRunId: null } })
+    let exitCode = 0
+    const source = [{ path: 'src/App.tsx', content: Buffer.from('export default 42').toString('base64') }]
+    const dist = [{ path: 'index.html', content: Buffer.from('<html><script type="module" src="./assets/app.js"></script></html>').toString('base64') }, { path: 'assets/app.js', content: Buffer.from('document.body.dataset.loaded="true"').toString('base64') }]
+    let cleared = 0
+    const cloud = {
+      configured: true,
+      sandboxConfiguration: { template: 'test', apiHost: 'test.invalid' },
+      create: async () => ({ sandboxId: `s-${fixture.run.id}`, kill: async () => true }),
+      putFile: async () => {},
+      readFile: async () => Buffer.from('export default 42'),
+      request: async (_sandbox: unknown, _script: unknown, request: { action?: string, artifact?: boolean }) => {
+        if (request.action === 'snapshot')
+          return { files: request.artifact ? dist : source }
+        if (request.action === 'clear-dist')
+          cleared++
+        if (!request.action)
+          return { exitCode, stdout: '', stderr: exitCode ? 'error import' : '', timedOut: false, truncated: false }
+        return {}
+      },
+    } as unknown as WorkspaceCloudService
+    const service = new WorkspaceService(prisma, cloud, new WorkspaceMonitoringService(prisma, cloud))
+    const execution = { userId: fixture.user.id, conversationId: fixture.conversation.id, runId: fixture.run.id, deadlineAt: Date.now() + 60_000 }
+    const signal = new AbortController().signal
+    try {
+      await service.bash(execution, 'pnpm build', 60, signal, true)
+      const commit = await service.prepareCommit(execution, signal)
+      assert.ok(commit?.artifact)
+      assert.deepEqual(commit.files.map(file => file.path), ['src/App.tsx'])
+      assert.deepEqual(commit.artifact.files.map(file => file.path), ['index.html', 'assets/app.js'])
+      await recorder.completeStep(fixture.step.id, deadline(), { workspaceCommit: commit })
+      const first = await service.snapshot(fixture.user.id, fixture.conversation.id)
+      assert.equal(first.artifact?.sourceRevision, first.revision)
+      assert.equal(first.artifact?.id, commit.artifact.id)
+      exitCode = 1
+      assert.equal((await service.bash(execution, 'pnpm build', 60, signal, true)).stderr, 'error import')
+      assert.equal(await service.prepareCommit(execution, signal), undefined)
+      assert.equal((await service.snapshot(fixture.user.id, fixture.conversation.id)).artifact?.id, first.artifact?.id)
+      await service.bash(execution, 'echo ordinary', 60, signal)
+      assert.equal(await service.prepareCommit(execution, signal), undefined)
+      assert.equal(cleared, 2)
+    }
+    finally { await service.releaseRun(fixture.run.id) }
+  })
+
+  it('Vite .js/.mjs 配置在 Source 保存时记录 Web Project，下轮恢复依赖且不覆盖删除的源文件', async () => {
+    for (const configuration of ['vite.config.js', 'vite.config.mjs']) {
+      const fixture = await seed()
+      await prisma.conversationWorkspace.update({ where: { conversationId: fixture.conversation.id }, data: { ownerRunId: null } })
+      let instance = 0
+      let restored: { webProject?: boolean, files?: Array<{ path: string }> } | undefined
+      const source = [configuration, 'pnpm-lock.yaml', 'src/kept.ts'].map(path => ({ path, content: Buffer.from('SOURCE').toString('base64') }))
+      const cloud = { configured: true, sandboxConfiguration: { template: 'test', apiHost: 'test.invalid' }, create: async () => ({ sandboxId: `${fixture.run.id}-${++instance}`, kill: async () => true }), putFile: async () => {}, readFile: async () => Buffer.from('SOURCE'), request: async (_sandbox: unknown, _script: unknown, request: { action: string, webProject?: boolean, files?: Array<{ path: string }> }) => {
+        if (request.action === 'restore')
+          restored = request
+        return request.action === 'snapshot' ? { files: source } : {}
+      } } as unknown as WorkspaceCloudService
+      const service = new WorkspaceService(prisma, cloud, new WorkspaceMonitoringService(prisma, cloud))
+      const execution = { userId: fixture.user.id, conversationId: fixture.conversation.id, runId: fixture.run.id, deadlineAt: Date.now() + 60_000 }
+      const signal = new AbortController().signal
+      try {
+        const commit = await service.prepareCommit(execution, signal)
+        assert.equal(commit?.webProject, true)
+        await recorder.completeStep(fixture.step.id, deadline(), { workspaceCommit: commit! })
+        await service.releaseRun(fixture.run.id)
+        await service.fileOperation(execution, { action: 'read', path: 'src/kept.ts' }, signal)
+        assert.equal(restored?.webProject, true)
+        assert.deepEqual(restored?.files?.map(file => file.path), source.map(file => file.path))
+        assert.ok(!restored?.files?.some(file => file.path === 'src/App.tsx'))
+      }
+      finally { await service.releaseRun(fixture.run.id) }
+    }
+  })
+
+  it('旧路径保留资格不随 Web Project 标签改变：连续两次无修改保存不删除旧 HTML/百分号文件', async () => {
+    const fixture = await seed()
+    const content = Buffer.from('SOURCE')
+    const paths = ['pnpm-lock.yaml', 'vite.config.js', 'tmp/page.html', 'dist/index.html', 'report%.html']
+    const files = paths.map(path => ({ path, bytes: content.length, sha256: fileHash(content), key: `users/${fixture.user.id}/conversations/${fixture.conversation.id}/objects/${fileHash(content)}` }))
+    await prisma.conversationWorkspace.update({ where: { conversationId: fixture.conversation.id }, data: { ownerRunId: null, files, revision: 1 } })
+    const cloud = { configured: true, sandboxConfiguration: { template: 'test', apiHost: 'test.invalid' }, create: async () => ({ sandboxId: fixture.run.id, kill: async () => true }), putFile: async () => {}, readFile: async () => content, request: async (_sandbox: unknown, _script: unknown, request: { action: string, preserve?: string[] }) => request.action === 'snapshot'
+      ? { files: paths.filter(path => !['tmp/page.html', 'dist/index.html'].includes(path) || request.preserve?.includes(path)).map(path => ({ path, content: content.toString('base64') })) }
+      : {} } as unknown as WorkspaceCloudService
+    const service = new WorkspaceService(prisma, cloud, new WorkspaceMonitoringService(prisma, cloud))
+    const execution = { userId: fixture.user.id, conversationId: fixture.conversation.id, runId: fixture.run.id, deadlineAt: Date.now() + 60_000 }
+    const signal = new AbortController().signal
+    try {
+      const first = await service.prepareCommit(execution, signal)
+      assert.equal(first?.webProject, true)
+      assert.equal(first?.sourceChanged, false)
+      await recorder.completeStep(fixture.step.id, deadline(), { workspaceCommit: first! })
+      assert.equal(await service.prepareCommit(execution, signal), undefined)
+      const snapshot = await service.snapshot(fixture.user.id, fixture.conversation.id)
+      assert.equal(snapshot.revision, 1)
+      assert.deepEqual(snapshot.files.map(file => file.path), paths)
+      assert.deepEqual(await service.savedFile(fixture.user.id, fixture.conversation.id, 'report%.html', 1), content)
+      await assert.rejects(service.bash(execution, 'pnpm build', 60, signal, true), /旧已确认文件位于 dist/)
+      assert.deepEqual((await service.snapshot(fixture.user.id, fixture.conversation.id)).files.map(file => file.path), paths)
+    }
+    finally { await service.releaseRun(fixture.run.id) }
+  })
+
+  it('Artifact 与源码事务回滚、并发 CAS、旧 owner 和源码版本变更均不发布半份清单', async () => {
+    for (const fault of ['step', 'owner', 'source', 'artifact']) {
+      const fixture = await seed()
+      const commit = { ...fixture.commit, expectedArtifactId: null, artifact: {
+        id: randomUUID(),
+        userId: fixture.user.id,
+        sourceRevision: 1,
+        command: 'pnpm build',
+        createdAt: new Date().toISOString(),
+        files: fixture.commit.files,
+      } }
+      if (fault === 'step')
+        await prisma.agentStep.update({ where: { id: fixture.step.id }, data: { status: 'COMPLETED' } })
+      if (fault === 'owner')
+        await prisma.conversationWorkspace.update({ where: { conversationId: fixture.conversation.id }, data: { ownerRunId: 'new-owner' } })
+      if (fault === 'source')
+        await prisma.conversationWorkspace.update({ where: { conversationId: fixture.conversation.id }, data: { revision: 2 } })
+      if (fault === 'artifact')
+        await prisma.conversationWorkspace.update({ where: { conversationId: fixture.conversation.id }, data: { artifactId: 'new-artifact' } })
+      await assert.rejects(recorder.completeStep(fixture.step.id, deadline(), { workspaceCommit: commit }))
+      assert.equal(await prisma.workspaceArtifact.count({ where: { id: commit.artifact.id } }), 0)
+      const row = await prisma.conversationWorkspace.findUniqueOrThrow({ where: { conversationId: fixture.conversation.id } })
+      assert.deepEqual(row.files, [])
+      assert.equal(row.artifactId, fault === 'artifact' ? 'new-artifact' : null)
+    }
+  })
+
+  it('未配置沙箱仍能归档与预览；用户隔离、固定 Artifact、删除期间迟到读取和 Source 变版被拒绝', async () => {
+    const fixture = await seed()
+    const source = Buffer.from('SOURCE')
+    const html = Buffer.from('<html><body>BUILD</body></html>')
+    const stored = (path: string, content: Buffer) => ({ path, bytes: content.length, sha256: fileHash(content), key: `users/${fixture.user.id}/conversations/${fixture.conversation.id}/objects/${fileHash(content)}` })
+    const id = randomUUID()
+    await prisma.conversationWorkspace.update({ where: { conversationId: fixture.conversation.id }, data: { files: [stored('src/App.tsx', source)], revision: 1, artifactId: id } })
+    await prisma.workspaceArtifact.create({ data: { id, userId: fixture.user.id, conversationId: fixture.conversation.id, runId: fixture.run.id, sourceRevision: 1, command: 'pnpm build', createdAt: new Date(), files: [stored('index.html', html)] } })
+    let finishRead: (() => void) | undefined
+    const cloud = { configured: false, create: () => {
+      throw new Error('查看不能创建沙箱')
+    }, readFile: async (file: { path: string }) => {
+      if (finishRead)
+        await new Promise<void>((resolve) => { finishRead = resolve })
+      return file.path === 'index.html' ? html : source
+    } } as unknown as WorkspaceCloudService
+    const service = new WorkspaceService(prisma, cloud, new WorkspaceMonitoringService(prisma, cloud))
+    const preview = new WorkspacePreviewService(prisma, cloud)
+    const signal = new AbortController().signal
+    const grant = await preview.open(fixture.user.id, fixture.conversation.id, id, 'http://localhost:5173')
+    const token = grant.url.split('/')[3]!
+    await assert.rejects(preview.open('other-user', fixture.conversation.id, id, 'http://localhost:5173'))
+    await assert.rejects(service.archive('other-user', fixture.conversation.id, 1, signal))
+    assert.ok((await service.archive(fixture.user.id, fixture.conversation.id, 1, signal)).length > source.length)
+    await prisma.conversationWorkspace.update({ where: { conversationId: fixture.conversation.id }, data: { artifactId: 'new-artifact' } })
+    assert.deepEqual((await preview.resource(token, 'index.html', signal)).content, html)
+    for (const path of ['../index.html', '%2e%2e/index.html', '/index.html', 'assets/no.js'])
+      await assert.rejects(preview.resource(token, path, signal))
+    finishRead = () => {}
+    const pending = service.archive(fixture.user.id, fixture.conversation.id, 1, signal)
+    await new Promise(resolve => setTimeout(resolve, 20))
+    await prisma.conversationWorkspace.update({ where: { conversationId: fixture.conversation.id }, data: { revision: 2 } })
+    finishRead()
+    await assert.rejects(pending, /版本已更新/)
+    finishRead = () => {}
+    const reading = preview.resource(token, 'index.html', signal)
+    await new Promise(resolve => setTimeout(resolve, 20))
+    await prisma.conversation.delete({ where: { id: fixture.conversation.id } })
+    finishRead()
+    await assert.rejects(reading, /已删除/)
+    assert.equal(await prisma.workspaceArtifact.count({ where: { id } }), 0)
+  })
+
   it('最新文件引用和工具结果同事务确认', async () => {
     const fixture = await seed()
     await recorder.completeStep(fixture.step.id, deadline(), { workspaceCommit: fixture.commit, output: { ok: true, observation: '已保存' } })
@@ -86,6 +261,7 @@ describe('工作文件 PostgreSQL 确认边界', () => {
   it('文件事务开始 COMMIT 后保留真实确认；晚到停止不伪装成回滚，丢失响应仍暴露未知', async () => {
     for (const loseResponse of [false, true]) {
       const fixture = await seed()
+      fixture.commit.artifact = { id: randomUUID(), userId: fixture.user.id, sourceRevision: 1, command: 'pnpm build', createdAt: new Date().toISOString(), files: fixture.commit.files }
       const controller = new AbortController()
       const transaction = prisma.$transaction.bind(prisma)
       // 数据库真实提交成功，模拟驱动延迟或丢失响应；停止发生在 COMMIT 开始之后。
@@ -103,7 +279,10 @@ describe('工作文件 PostgreSQL 确认边界', () => {
           await assert.rejects(completion, DatabaseCommitOutcomeUnknownError)
         else
           await completion
-        assert.equal((await prisma.conversationWorkspace.findUniqueOrThrow({ where: { conversationId: fixture.conversation.id } })).revision, 1)
+        const workspace = await prisma.conversationWorkspace.findUniqueOrThrow({ where: { conversationId: fixture.conversation.id } })
+        assert.equal(workspace.revision, 1)
+        assert.equal(workspace.artifactId, fixture.commit.artifact.id)
+        assert.equal(await prisma.workspaceArtifact.count({ where: { id: fixture.commit.artifact.id } }), 1)
         assert.equal((await prisma.agentStep.findUniqueOrThrow({ where: { id: fixture.step.id } })).status, AgentStepStatus.COMPLETED)
       }
       finally { delayedResponse.mockRestore() }

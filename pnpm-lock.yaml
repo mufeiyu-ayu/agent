@@ -132,6 +132,9 @@ importers:
       e2b:
         specifier: 2.31.0
         version: 2.31.0
+      es-module-lexer:
+        specifier: 2.3.2
+        version: 2.3.2
       linkedom:
         specifier: ^0.18.13
         version: 0.18.13
@@ -141,6 +144,9 @@ importers:
       pg:
         specifier: ^8.23.0
         version: 8.23.0
+      postcss:
+        specifier: 8.5.28
+        version: 8.5.28
       proxy-agent:
         specifier: 5.0.0
         version: 5.0.0

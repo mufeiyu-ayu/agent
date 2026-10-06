@@ -46,6 +46,7 @@ import {
   resolveChatRequestConfig,
 } from '@agent/ai'
 import { Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common'
+import { WORKSPACE_DEVELOPMENT_INSTRUCTION, WORKSPACE_DEVELOPMENT_VERSION, WORKSPACE_TOOL_NAMES } from '../chat/prompts/workspace-development.prompt.js'
 import { getAiExceptionMessage } from '../common/utils/llm-error-message.util.js'
 import { MessageRole, MessageStatus } from '../generated/prisma/client.js'
 import { LLMService } from '../llm/llm.service.js'
@@ -228,6 +229,7 @@ export class AgentRuntimeService {
       }
       // 服务商报超长后已经压缩重试过、之后还没有成功采样（照 Pi：连续超长只救一次）。
       let overflowRetried = false
+      let workspaceGuideStepId: string | undefined
 
       // 创建助手消息与 Run 关联必须同事务提交，避免 deadline 下留下未关联的 late Message。
       assistantMessage = await this.agentRunRecorderService.createAssistantMessage(
@@ -290,6 +292,7 @@ export class AgentRuntimeService {
             samplingIndex: samplingAttempt,
             samplingAttemptId,
             initialContext: toPersistedInitialContext(input.model, resolvedRequestConfig.model, modelTools),
+            ...(workspaceGuideStepId ? { workspaceDevelopment: { version: WORKSPACE_DEVELOPMENT_VERSION, stepId: workspaceGuideStepId } } : {}),
           },
         }, databaseDeadline)
         // debug 捕获暂存：只有运行配置打开「抓取模型原始请求」时才给 client 回调，
@@ -536,6 +539,18 @@ export class AgentRuntimeService {
         const argumentsTruncated
           = samplingDecision.summary.finishReason === 'length'
 
+        const workspaceGuideRequired = !workspaceGuideStepId && !argumentsTruncated && calls.some(call => WORKSPACE_TOOL_NAMES.includes(call.toolName))
+        if (workspaceGuideRequired) {
+          const guide = await this.agentRunRecorderService.startStep({
+            runId: currentAgentRunId,
+            type: AGENT_STEP_TYPES.workspaceDevelopment,
+            input: { version: WORKSPACE_DEVELOPMENT_VERSION, activatedAfterSamplingAttemptId: samplingAttemptId },
+          }, databaseDeadline)
+          await this.agentRunRecorderService.completeStep(guide.id, databaseDeadline, { output: { instruction: WORKSPACE_DEVELOPMENT_INSTRUCTION as unknown as Prisma.InputJsonObject } })
+          workspaceGuideStepId = guide.id
+          modelContext.addInstruction(WORKSPACE_DEVELOPMENT_INSTRUCTION)
+        }
+
         // 拿到执行工具的结果；执行过程中逐个推出 tool_started / tool_finished 给前台显示进度。
         const toolResults = yield* this.executeToolBatch({
           // 记账
@@ -548,6 +563,7 @@ export class AgentRuntimeService {
           // toos 相关
           calls, // 模型要调用的工具
           argumentsTruncated, // 模型输出是否被截断，arguments 可能不完整
+          workspaceGuideRequired,
           serperApiKey: input.runtimeConfig.serperApiKey, // 运行配置快照里的 Serper Key，只有 web_search 用
           ...(input.userId ? { userId: input.userId } : {}),
 
@@ -817,6 +833,7 @@ export class AgentRuntimeService {
     assistantMessageId: string
     calls: UnvalidatedToolCallEnvelope[]
     argumentsTruncated: boolean
+    workspaceGuideRequired?: boolean
     serperApiKey: SerperApiKey
     runCancellation: RunCancellation
     terminal: RunTerminalSlots
@@ -868,7 +885,7 @@ export class AgentRuntimeService {
         // 截断批次、查无此工具、参数无效都由 invoke 直接返回失败结果，只有校验通过的调用才真正执行。
         invocation = await this.toolInvocationService.invoke(
           call,
-          { signal: runSignal, databaseDeadline, argumentsTruncated, serperApiKey, ...(input.userId ? { workspace: { userId: input.userId, conversationId, runId, deadlineAt: databaseDeadline.deadlineAt } } : {}) },
+          { signal: runSignal, databaseDeadline, argumentsTruncated, workspaceGuideRequired: input.workspaceGuideRequired === true, serperApiKey, ...(input.userId ? { workspace: { userId: input.userId, conversationId, runId, deadlineAt: databaseDeadline.deadlineAt } } : {}) },
         )
         runCancellation.throwIfUnavailable()
       }
@@ -1021,7 +1038,7 @@ export class AgentRuntimeService {
   private resolveRunConfiguration(input: RunTurnStreamInput) {
     // 工具始终全部提供给模型；顺序即工具清单的顺序。模型只看到名称、说明与输入 Schema，timeout 与 Observation 预算留在服务端。
     const modelTools = TOOL_DEFINITIONS
-      .filter(definition => !this.workspaces || this.workspaces.cloud.configured || !['read', 'write', 'edit', 'bash'].includes(definition.name))
+      .filter(definition => !this.workspaces || this.workspaces.cloud.configured || !WORKSPACE_TOOL_NAMES.includes(definition.name))
       .map(definition => ({
         name: definition.name,
         description: definition.description,

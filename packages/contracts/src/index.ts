@@ -139,4 +139,4 @@ export type {
   UpdateConversationRequest,
 } from './conversation.js'
 export { RUN_ROW_DELAY_MS } from './conversation.js'
-export type { SandboxExecutionRecord, WorkspaceCloudInstance, WorkspaceCloudOverview, WorkspaceFile, WorkspaceHistoryResponse, WorkspaceMonitorItem, WorkspaceMonitorResponse, WorkspaceSnapshot, WorkspaceToolDisplay } from './workspace.js'
+export type { SandboxExecutionRecord, WorkspaceArtifact, WorkspaceCloudInstance, WorkspaceCloudOverview, WorkspaceFile, WorkspaceHistoryResponse, WorkspaceMonitorItem, WorkspaceMonitorResponse, WorkspaceSnapshot, WorkspaceToolDisplay } from './workspace.js'

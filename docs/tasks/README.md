@@ -7,7 +7,7 @@
 ```text
 阶段 1-8：Completed
 当前阶段：工作台第 1 档（第一期上线）
-Active Agent Task：无
+Active Agent Task：#231 Web Project / Artifact（实现与真实验收中；不部署）
 Next：无；第 0.5 档额外真实对话验证按用户 2026-10-01 决定暂缓（不标已通过；线上管理台 Serper Key 与公司同意、开放运营的前提不变）
 线上最近部署记录：5dbe61f3（2026-10-01，#212～#220）；#222、#224、PR #226、#228、PR #230 尚未部署。管理台 Serper Key 配置前搜索不可用，`.env` 的 `SERPER_API_KEY` 先保留供回退到 504b4f26。
 Gated：#117 Responses API adapter（2026-09-18），触发条件见看板
@@ -20,6 +20,7 @@ Admin Task 4：Closed（2026-09-27：Auth 由 #195 完成；RBAC 不做（两种
 
 | 任务 | 状态 | 说明 |
 | --- | --- | --- |
+| #231 Web Project / Artifact | Active | 真实前端项目、Source ZIP 与完整 dist 隔离预览正在实现和验收，不改变 M1 或运营开放前提。 |
 | 工作文件面板视觉优化 | Completed | 精简面板顶栏与状态信息、补齐空态与暗色样式，并保证窄屏覆盖和顶栏操作可用。PR #230 |
 | #228 bash 工具层截短输出后正确标记 truncated | Completed | 模型收到的截断标记同时反映采集层与工具层的实际截短，保留原有输出和保存行为。PR #229 |
 | 会话沙箱与工作文件 | Completed | 支持沙箱生成与检查、OSS 保存、隔离交互预览及跨会话文件缓存，补齐预览/下载隔离与双端请求防重。PR #226 |

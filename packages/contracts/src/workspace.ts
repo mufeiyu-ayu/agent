@@ -6,10 +6,21 @@ export interface WorkspaceFile {
   sha256: string
 }
 
+export interface WorkspaceArtifact {
+  id: string
+  sourceRevision: number
+  runId: string
+  command: string
+  createdAt: string
+  files: WorkspaceFile[]
+}
+
 export interface WorkspaceSnapshot {
   configured: boolean
   conversationId: string
   revision: number
+  webProject?: boolean
+  artifact?: WorkspaceArtifact | null
   state: string
   files: WorkspaceFile[]
   lastOperation: string | null
@@ -28,6 +39,7 @@ export interface WorkspaceToolDisplay {
   revision?: number
   files?: WorkspaceFile[]
   preview?: string
+  artifact?: WorkspaceArtifact
 }
 
 export interface WorkspaceMonitorItem {

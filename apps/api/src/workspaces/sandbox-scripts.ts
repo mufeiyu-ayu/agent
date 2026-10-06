@@ -2,7 +2,7 @@ import { MAX_READ_OBSERVATION_CHARS } from './workspace-files.js'
 
 // 固定的执行监督代码；用户代码只在沙箱中的非特权子进程里执行，平台凭据不传入环境。
 export const FILE_SCRIPT = String.raw`
-import os,sys,json,base64,stat,pwd,shlex
+import os,sys,json,base64,stat,pwd,shlex,shutil,re
 ROOT='/workspace/project'
 MAX_FILE=2097152
 MAX_TOTAL=8388608
@@ -56,23 +56,40 @@ def write(path,content):
         try: os.unlink(temporary,dir_fd=fd)
         except FileNotFoundError: pass
         os.close(fd)
-def snapshot():
+def excluded(name):
+    return name in ('node_modules','.git','.venv','__pycache__','.vite-cache','.cache','.pnpm-store','dist','tmp','.tmp') or re.match(r'^\.env(?:\.|$)',name,re.I) or re.search(r'\.(pem|key|p12|pfx)$',name,re.I)
+def snapshot(artifact=False):
     files=[];total=0
-    for folder,dirs,names in os.walk(ROOT,followlinks=False):
-        dirs[:]=sorted(d for d in dirs if d not in ('node_modules','.git','.venv','__pycache__'))
+    base=ROOT+'/dist' if artifact else ROOT
+    if os.path.islink(base) or not os.path.isdir(base): raise ValueError('构建目录不存在或无效')
+    preserve=set(data.get('preserve',[]))
+    for folder,dirs,names in os.walk(base,followlinks=False):
+        dirs[:]=sorted(d for d in dirs if artifact or not excluded(d) or any(p.startswith(os.path.relpath(os.path.join(folder,d),base)+'/') for p in preserve))
         for d in dirs:
             if os.path.islink(os.path.join(folder,d)): raise ValueError('工作区不能包含符号链接')
         for name in sorted(names):
-            path=os.path.relpath(os.path.join(folder,name),ROOT)
-            content=read(path);total+=len(content)
+            absolute=os.path.join(folder,name)
+            path=os.path.relpath(absolute,base)
+            if not artifact and any(excluded(p) for p in path.split('/')) and path not in preserve: continue
+            content=read(os.path.relpath(absolute,ROOT));total+=len(content)
             if total>MAX_TOTAL or len(files)>=MAX_FILES: raise ValueError('工作区最多 200 个文件、总计 8 MiB')
             files.append({'path':path,'content':base64.b64encode(content).decode()})
     return {'files':files}
 try:
     action=data['action']
-    if action=='snapshot': result=snapshot()
+    if action=='snapshot': result=snapshot(data.get('artifact',False))
+    elif action=='clear-dist':
+        path=ROOT+'/dist'
+        if os.path.lexists(path):
+            if os.path.islink(path) or not os.path.isdir(path): raise ValueError('构建目录必须是普通目录')
+            shutil.rmtree(path)
+        result={'cleared':True}
     elif action=='restore':
         for item in data['files']: write(item['path'],base64.b64decode(item['content']))
+        if data.get('webProject',False):
+            dependency=ROOT+'/node_modules'
+            if os.path.lexists(dependency): raise ValueError('恢复实例的依赖目录必须为空')
+            os.symlink('/opt/react-template/node_modules',dependency)
         result={'restored':len(data['files'])}
     elif action=='write':
         write(data['path'],data['content'].encode('utf-8'));result={'path':data['path'],'written':True}

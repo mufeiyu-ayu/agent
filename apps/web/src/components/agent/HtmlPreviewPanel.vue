@@ -5,18 +5,54 @@ import { useI18n } from 'vue-i18n'
 
 import AppIcon from '@/components/common/AppIcon.vue'
 import AppTooltip from '@/components/common/AppTooltip.vue'
-import { getWorkspaceTraffic } from '../../api/workspace'
+import { getWorkspaceTraffic, openWorkspacePreview } from '../../api/workspace'
 
-const props = defineProps<{ code: string, focusClose?: boolean, interactive?: boolean, conversationId?: string, embedded?: boolean }>()
+const props = defineProps<{ code: string, focusClose?: boolean, interactive?: boolean, conversationId?: string, embedded?: boolean, artifactId?: string }>()
 const emit = defineEmits<{ close: [] }>()
 const { t } = useI18n()
-const title = computed(() => t('conversation.actions.codeBlock.previewTitle'))
+const title = computed(() => t(props.artifactId ? 'workspace.buildPreview' : 'conversation.actions.codeBlock.previewTitle'))
 const frame = ref<HTMLIFrameElement | null>(null)
 const closeButton = ref<HTMLButtonElement | null>(null)
 const previewUrl = `${import.meta.env.BASE_URL}html-preview.html`
+const artifactUrl = ref('')
+const artifactError = ref(false)
+const artifactLoading = ref(false)
+let artifactRequest = 0
+let artifactController: AbortController | undefined
+let readyTimer: ReturnType<typeof setTimeout> | undefined
+async function loadArtifact() {
+  const current = ++artifactRequest
+  artifactController?.abort()
+  clearTimeout(readyTimer)
+  artifactUrl.value = ''
+  artifactError.value = false
+  if (!props.artifactId || !props.conversationId)
+    return
+  artifactLoading.value = true
+  artifactController = new AbortController()
+  try {
+    const url = await openWorkspacePreview(props.conversationId, props.artifactId, artifactController.signal)
+    if (current !== artifactRequest)
+      return
+    artifactUrl.value = url
+    readyTimer = setTimeout(() => {
+      artifactLoading.value = false
+      artifactError.value = true
+    }, 10_000)
+  }
+  catch {
+    if (current === artifactRequest) {
+      artifactLoading.value = false
+      artifactError.value = true
+    }
+  }
+}
+watch([() => props.artifactId, () => props.conversationId], loadArtifact, { immediate: true })
 const downloadUrl = useObjectUrl(computed(() => new Blob([props.code], { type: 'text/html;charset=utf-8' })))
 
 function renderDocument() {
+  if (props.artifactId)
+    return
   frame.value?.contentWindow?.postMessage({ type: 'html-preview', code: props.code, title: title.value, interactive: props.interactive === true }, '*')
 }
 
@@ -24,15 +60,26 @@ let nextQueryAt = 0
 const queryControllers = new Set<AbortController>()
 async function handleQuery(event: MessageEvent) {
   const data: unknown = event.data
-  if (!props.interactive || event.source !== frame.value?.contentWindow || event.origin !== 'null'
+  if ((!props.interactive && !props.artifactId) || event.source !== frame.value?.contentWindow || event.origin !== 'null'
     || !data || typeof data !== 'object' || !('type' in data)) {
     return
   }
-  if (data.type === 'html-preview-close') {
+  if (props.artifactId && data.type === 'artifact-ready') {
+    clearTimeout(readyTimer)
+    artifactLoading.value = false
+    return
+  }
+  if (props.artifactId && data.type === 'artifact-error') {
+    clearTimeout(readyTimer)
+    artifactLoading.value = false
+    artifactError.value = true
+    return
+  }
+  if (data.type === 'html-preview-close' || (props.artifactId && data.type === 'artifact-close')) {
     emit('close')
     return
   }
-  if (!props.conversationId || data.type !== 'workspace-query'
+  if (props.artifactId || !props.conversationId || data.type !== 'workspace-query'
     || !('id' in data) || typeof data.id !== 'string' || !/^[\w-]{1,80}$/.test(data.id)
     || !('query' in data) || data.query !== 'topuplist.traffic') {
     return
@@ -61,6 +108,9 @@ async function handleQuery(event: MessageEvent) {
 }
 window.addEventListener('message', handleQuery)
 onScopeDispose(() => {
+  artifactRequest++
+  artifactController?.abort()
+  clearTimeout(readyTimer)
   window.removeEventListener('message', handleQuery)
   queryControllers.forEach(controller => controller.abort())
 })
@@ -84,7 +134,7 @@ onMounted(() => {
       <h2 class="min-w-0 flex-1 truncate text-sm font-medium">
         {{ title }}
       </h2>
-      <AppTooltip :content="t('conversation.actions.codeBlock.download')">
+      <AppTooltip v-if="!conversationId" :content="t('conversation.actions.codeBlock.download')">
         <a :href="downloadUrl" download="index.html" :aria-label="t('conversation.actions.codeBlock.download')" class="preview-action">
           <AppIcon name="tabler:download" :size="18" />
         </a>
@@ -95,12 +145,22 @@ onMounted(() => {
         </button>
       </AppTooltip>
     </header>
+    <p v-if="artifactLoading" role="status" class="p-3 text-sm">
+      {{ t('workspace.loading') }}
+    </p>
+    <p v-if="artifactError" role="alert" class="p-3 text-sm">
+      {{ t('workspace.artifactFailed') }}
+      <button class="underline" @click="loadArtifact">
+        {{ t('workspace.retry') }}
+      </button>
+    </p>
     <iframe
+      v-if="!artifactId || artifactUrl"
       ref="frame"
       :title="title"
       sandbox="allow-scripts"
       referrerpolicy="no-referrer"
-      :src="previewUrl"
+      :src="artifactId ? artifactUrl : previewUrl"
       class="min-h-0 w-full flex-1 border-0 bg-white"
       @load="renderDocument"
     />

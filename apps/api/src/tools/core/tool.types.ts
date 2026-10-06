@@ -46,6 +46,8 @@ export interface ToolExecutionContext {
 
 /** Runtime 交给 `invoke` 的上下文：执行上下文加上本批 arguments 是否被截断。 */
 export interface ToolInvocationContext extends ToolExecutionContext {
+  /** 首次工作区计划未经开发指南约束，只记录未执行结果，下一轮重采样。 */
+  workspaceGuideRequired?: boolean
   /** 模型输出达到长度限制，arguments 可能不完整：`invoke` 不查找、不校验、不执行。 */
   argumentsTruncated: boolean
 }

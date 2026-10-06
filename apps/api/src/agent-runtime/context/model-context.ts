@@ -68,7 +68,7 @@ export class ModelContext {
   ) {}
 
   static create(input: CreateModelContextInput): ModelContext {
-    return new ModelContext(input.instructions, input.history, input.currentUser)
+    return new ModelContext([...input.instructions], input.history, input.currentUser)
   }
 
   get conversationHistory(): ConversationHistory {
@@ -85,6 +85,12 @@ export class ModelContext {
 
   get question(): { content: string, createdAt: Date } {
     return this.currentUser
+  }
+
+  /** 只在对应启用 Step 确认后追加，清掉旧用量锚点，下一轮重新计入指令。 */
+  addInstruction(instruction: MessageInputItem): void {
+    this.instructions.push(instruction)
+    this.usageAnchor = undefined
   }
 
   /** 调模型前：组装完整输入并估算。 */

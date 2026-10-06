@@ -47,6 +47,7 @@ import { describe, it, onTestFinished, vi } from 'vitest'
 
 import { projectAdminRunDetail } from '../admin-runs/projection/admin-run.projector.js'
 import { toChatStreamEvent } from '../chat/chat-stream-event.mapper.js'
+import { WORKSPACE_DEVELOPMENT_INSTRUCTION, WORKSPACE_TOOL_NAMES } from '../chat/prompts/workspace-development.prompt.js'
 import { getAiExceptionMessage } from '../common/utils/llm-error-message.util.js'
 import {
   AgentRunStatus,
@@ -76,6 +77,27 @@ import { estimateRequestTokens, roughTokens } from './context/token-estimate.js'
 const MODEL_TOOL_NAMES = TOOL_DEFINITIONS.map(definition => definition.name)
 
 describe('AgentRuntimeService model stream', () => {
+  it('开发指南先落库再重采样；整批旧工作区计划不执行，续轮只执行新计划', async () => {
+    const args = ['{"path":"src/App.tsx"}', '{"path":"a.py","content":"print(42)"}', '{"path":"a.py","edits":[{"oldText":"42","newText":"43"}]}', '{"command":"pnpm check"}']
+    const harness = createHarness((_messages, _options, index) => index < 2
+      ? toModelStream([...WORKSPACE_TOOL_NAMES.map((name, i) => toolCallEvent(`call-${index}-${i}`, name, args[i]!, '', i)), { type: 'response_completed', finishReason: 'tool_calls' }])
+      : toModelStream([{ type: 'response_completed', finishReason: 'stop' }]))
+    await collectEvents(harness.run())
+    assert.equal(harness.toolInvocations.length, 4)
+    assert.ok(harness.toolInvocations.every(call => call.callId.startsWith('call-1-')))
+    assert.equal(harness.llmCalls[0]!.messages.some(item => item.type === 'message' && item.content === WORKSPACE_DEVELOPMENT_INSTRUCTION.content), false)
+    assert.deepEqual(harness.llmCalls[1]!.messages[0], WORKSPACE_DEVELOPMENT_INSTRUCTION)
+    const guide = harness.recorder.steps.find(step => step.type === 'workspace_development')!
+    assert.equal(guide.status, AgentStepStatus.COMPLETED)
+    assert.deepEqual(guide.output, { instruction: WORKSPACE_DEVELOPMENT_INSTRUCTION })
+    const firstResults = harness.recorder.steps.filter(step => step.type === 'tool_execution').slice(0, 4)
+    assert.ok(firstResults.every(step => (step.output as Record<string, unknown>).ok === false))
+    const sampling = harness.recorder.steps.filter(step => step.type === 'model_sampling')
+    assert.equal((sampling[0]!.input as Record<string, unknown>).workspaceDevelopment, undefined)
+    assert.equal(((sampling[1]!.input as Record<string, unknown>).workspaceDevelopment as Record<string, unknown>).stepId, guide.id)
+    assertNoUnfinishedSteps(harness)
+  })
+
   it('R1：交付终态事件前已启动工作区交接，云端 kill 尚未返回也不漏掉清理', async () => {
     for (const terminal of ['run_completed', 'run_failed', 'run_aborted']) {
       let finish!: () => void
@@ -564,8 +586,8 @@ describe('AgentRuntimeService model stream', () => {
       }
       const workspaces = { cloud: { configured: true }, releaseRun } as unknown as WorkspaceService
       const commit = { conversationId: 'conversation-1', runId: 'run-1', expectedRevision: 0, files: [] }
-      const harness = createHarness((_, __, index) => toModelStream(index === 0
-        ? [toolCallEvent('write-file', 'write', '{"path":"a.txt","content":"ok"}'), { type: 'response_completed', finishReason: 'tool_calls' }]
+      const harness = createHarness((_, __, index) => toModelStream(index < 2
+        ? [toolCallEvent(index === 0 ? 'guide-plan' : 'write-file', 'write', '{"path":"a.txt","content":"ok"}'), { type: 'response_completed', finishReason: 'tool_calls' }]
         : [{ type: 'text_delta', delta: '完成' }, { type: 'response_completed', finishReason: 'stop' }]), undefined, async (_call, context) => {
         assert.equal(context.workspace?.userId, 'trusted-user')
         assert.equal(context.workspace?.conversationId, 'conversation-1')
@@ -585,15 +607,15 @@ describe('AgentRuntimeService model stream', () => {
       })
       const events: AgentRuntimeEvent[] = []
       for await (const event of harness.service.runTurnStream({ userId: 'trusted-user', conversationId: 'conversation-1', userContent: '生成文件', instructions: [] })) {
-        if (event.type === 'tool_finished')
+        if (event.type === 'tool_finished' && event.callId === 'write-file')
           assert.equal(committed, true)
         events.push(event)
       }
-      assert.equal(events.some(event => event.type === 'tool_finished'), confirmed)
-      assert.equal(harness.llmCalls.length, confirmed ? 2 : 1)
+      assert.equal(events.some(event => event.type === 'tool_finished' && event.callId === 'write-file'), confirmed)
+      assert.equal(harness.llmCalls.length, confirmed ? 3 : 2)
       if (confirmed) {
-        assert.ok(harness.llmCalls[1]!.messages.some(item => item.type === 'tool_result' && item.content === '已保存版本 1'))
-        assert.equal((findStep(harness, 'tool_execution')?.output as { observation: string }).observation, '已保存版本 1')
+        assert.ok(harness.llmCalls[2]!.messages.some(item => item.type === 'tool_result' && item.content === '已保存版本 1'))
+        assert.equal((harness.recorder.steps.filter(step => step.type === 'tool_execution').at(-1)?.output as { observation: string }).observation, '已保存版本 1')
       }
       assert.equal(events.at(-1)?.type, confirmed ? 'run_completed' : 'run_failed')
       assert.deepEqual([...releasedRuns], ['run-1'])
@@ -603,8 +625,8 @@ describe('AgentRuntimeService model stream', () => {
   it('文件 COMMIT 确认后的停止不再推 tool_finished，确认未知向用户说明而非声称回滚', async () => {
     for (const unknown of [false, true]) {
       const controller = new AbortController()
-      const harness = createHarness(() => toModelStream([
-        toolCallEvent('save', 'write', '{"path":"a.txt","content":"ok"}'),
+      const harness = createHarness((_, __, index) => toModelStream([
+        toolCallEvent(index === 0 ? 'guide-plan' : 'save', 'write', '{"path":"a.txt","content":"ok"}'),
         { type: 'response_completed', finishReason: 'tool_calls' },
       ]), controller.signal, async () => ({ ok: true, modelContent: '已保存', workspaceCommit: { conversationId: 'conversation-1', runId: 'run-1', expectedRevision: 0, files: [] } }))
       const complete = harness.recorder.completeStep.bind(harness.recorder)
@@ -616,8 +638,8 @@ describe('AgentRuntimeService model stream', () => {
           controller.abort(new Error('stop after file COMMIT'))
       })
       const events = await collectEvents(harness.run())
-      assert.equal(events.some(event => event.type === 'tool_finished'), false)
-      assert.equal(harness.llmCalls.length, 1)
+      assert.equal(events.some(event => event.type === 'tool_finished' && event.callId === 'save'), false)
+      assert.equal(harness.llmCalls.length, 2)
       const terminal = events.at(-1)
       if (unknown) {
         assert.ok(terminal?.type === 'run_failed')
@@ -626,7 +648,7 @@ describe('AgentRuntimeService model stream', () => {
       }
       else {
         assert.equal(terminal?.type, 'run_aborted')
-        assert.equal(findStep(harness, 'tool_execution')?.status, AgentStepStatus.COMPLETED)
+        assert.equal(harness.recorder.steps.filter(step => step.type === 'tool_execution').at(-1)?.status, AgentStepStatus.COMPLETED)
       }
     }
   })
@@ -634,9 +656,9 @@ describe('AgentRuntimeService model stream', () => {
   it('文件 COMMIT 响应未知与停止或 deadline 同时发生时保留原终态并持久化未知提示', async () => {
     for (const source of ['user', 'deadline'] as const) {
       const controller = new AbortController()
-      const harness = createHarness(() => toModelStream([
+      const harness = createHarness((_, __, index) => toModelStream([
         { type: 'text_delta', delta: '正在保存文件。' },
-        toolCallEvent('save', 'write', '{"path":"a.txt","content":"ok"}'),
+        toolCallEvent(index === 0 ? 'guide-plan' : 'save', 'write', '{"path":"a.txt","content":"ok"}'),
         { type: 'response_completed', finishReason: 'tool_calls' },
       ]), controller.signal, async () => ({ ok: true, modelContent: '已保存', workspaceCommit: { conversationId: 'conversation-1', runId: 'run-1', expectedRevision: 0, files: [] } }), { runDeadlineMs: 100 })
       const complete = harness.recorder.completeStep.bind(harness.recorder)
@@ -652,9 +674,9 @@ describe('AgentRuntimeService model stream', () => {
       })
       const events = await collectEvents(harness.run())
       const terminal = events.at(-1)
-      assert.equal(events.some(event => event.type === 'tool_finished'), false)
-      assert.equal(harness.llmCalls.length, 1)
-      assert.equal(findStep(harness, 'tool_execution')?.status, AgentStepStatus.COMPLETED)
+      assert.equal(events.some(event => event.type === 'tool_finished' && event.callId === 'save'), false)
+      assert.equal(harness.llmCalls.length, 2)
+      assert.equal(harness.recorder.steps.filter(step => step.type === 'tool_execution').at(-1)?.status, AgentStepStatus.COMPLETED)
       const content = harness.assistantMessage()?.content
       assert.match(content ?? '', /^正在保存文件。/)
       assert.match(content ?? '', /提交结果未知/)
@@ -3712,13 +3734,15 @@ describe('上下文自动压缩（#220）', () => {
       },
     }))
 
-    // 系统提示词 1,500 + 4 组约 1,612 + 工具定义 190：这次问答没超触发线（不压），
-    // 加上这次的问答后超过 0.8 × 4,000 = 3,200；保留预算 1,000 放得下这次与最新两组。
+    // 工具定义按真实清单粗估；模型预算加 3,800，初次采样不超线、后台超过 0.8。
+    // 固定保留预算 1,000，工具描述扩展不能改变该测试预期的历史切点。
     const instructions: MessageInputItem[] = [{ type: 'message', role: 'system', content: 's'.repeat(6_000) }]
 
     seedHistory(harness, 4, 1_600)
 
-    const events = await run(harness, { instructions })
+    const toolTokens = estimateRequestTokens({ items: [], tools: TOOL_DEFINITIONS.map(definition => ({ name: definition.name, description: definition.description, inputSchema: definition.input.schema })) })
+    const config = { instructions, model: { ...SMALL_MODEL, maxInputTokens: toolTokens + 3800 }, keepRecentTokens: 1000 }
+    const events = await run(harness, config)
 
     assert.equal(events.at(-1)?.type, 'run_completed')
     assert.equal(compactionSteps(harness).length, 0)
@@ -3729,7 +3753,7 @@ describe('上下文自动压缩（#220）', () => {
     assert.equal(harness.prisma.compactions.length, 0)
 
     // 下一次问答不等 B：它自己的估算没超触发线，直接用当时的历史。
-    const second = await run(harness, { userContent: '再问一句', instructions })
+    const second = await run(harness, { userContent: '再问一句', ...config })
 
     assert.equal(second.at(-1)?.type, 'run_completed')
     assert.equal(harness.prisma.compactions.length, 0)
@@ -3776,7 +3800,8 @@ describe('上下文自动压缩（#220）', () => {
         harness.prisma.compactionCreateError = new Error('database unavailable')
       seedHistory(harness, 6, 2_100)
       // 后台时限取本 Run 快照的单次最长时间。
-      await run(harness, { runDeadlineMs: 200 })
+      const toolTokens = estimateRequestTokens({ items: [], tools: TOOL_DEFINITIONS.map(definition => ({ name: definition.name, description: definition.description, inputSchema: definition.input.schema })) })
+      await run(harness, { runDeadlineMs: 200, model: { ...SMALL_MODEL, maxInputTokens: toolTokens + 3800 } })
       await Promise.all(harness.afterRunCompactions)
 
       assert.equal(harness.prisma.compactions.length, 0, failure)
@@ -4274,6 +4299,13 @@ class FakeToolInvocationService {
 
     if (context.argumentsTruncated || !definition)
       return await this.notExecuted.invoke(envelope, context)
+    if (context.workspaceGuideRequired && WORKSPACE_TOOL_NAMES.includes(envelope.toolName)) {
+      const registry = new ToolRegistryService()
+      registry.register({ definition, executor: { execute: async () => {
+        throw new Error('旧计划不可执行')
+      } } })
+      return new ToolInvocationService(registry).invoke(envelope, context)
+    }
 
     this.invocations.push(envelope)
     this.contexts.push(context)

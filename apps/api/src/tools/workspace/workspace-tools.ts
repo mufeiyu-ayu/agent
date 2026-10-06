@@ -7,7 +7,7 @@ import { WorkspaceService } from '../../workspaces/workspace.service.js'
 interface ReadInput { path: string, offset: number, limit: number }
 interface WriteInput { path: string, content: string }
 interface EditInput { path: string, edits: Array<{ oldText: string, newText: string }> }
-interface BashInput { command: string, timeout: number, title: string }
+interface BashInput { command: string, timeout: number, title: string, build?: boolean }
 
 function object(value: unknown, allowed: string[]): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).some(key => !allowed.includes(key)))
@@ -86,14 +86,16 @@ export const editDefinition: ToolDefinition<EditInput> = {
 export const bashDefinition: ToolDefinition<BashInput> = {
   name: 'bash',
   version: '1',
-  description: '在当前会话沙箱 /workspace/project 中执行 Bash 命令，返回 stdout、stderr、退出码。用于运行、查验、编译和测试代码，失败后修正再验证。默认 60 秒，最长 90 秒；禁止网络连接（含 localhost），不支持常驻服务。',
+  description: '在当前会话沙箱 /workspace/project 中执行 Bash 命令，返回 stdout、stderr、退出码。用于运行、查验、编译和测试代码，失败后修正再验证。默认 60 秒，最长 90 秒；禁止网络连接（含 localhost），不支持常驻服务。仅 pnpm build 可带 build:true：清理旧 dist，成功后验证保存完整构建 Artifact；普通命令不会发布预览。',
   timeoutMs: 120_000,
   maxObservationChars: 24_000,
   input: {
-    schema: { type: 'object', properties: { command: { type: 'string' }, timeout: { type: 'integer', minimum: 1, maximum: 90 }, title: { type: 'string', description: '给用户看的简短操作说明，例如检查页面脚本和数据' } }, required: ['command'], additionalProperties: false },
+    schema: { type: 'object', properties: { command: { type: 'string', description: '工作目录已是 /workspace/project。build:true 时必须逐字为 pnpm build，不加 cd、管道或重定向；工具自行返回 stdout/stderr 和退出码。' }, build: { type: 'boolean', description: '仅 pnpm build 使用 true，发布成功的完整 dist；检查/脚本不设置' }, timeout: { type: 'integer', minimum: 1, maximum: 90 }, title: { type: 'string', description: '给用户看的简短操作说明，例如检查页面脚本和数据' } }, required: ['command'], additionalProperties: false },
     parse(value) {
-      const input = object(value, ['command', 'timeout', 'title'])
-      return { command: text(input.command, 32_000), timeout: integer(input.timeout, 60, 90), title: input.title === undefined ? '执行并检查代码' : text(input.title, 120) }
+      const input = object(value, ['command', 'timeout', 'title', 'build'])
+      if (input.build !== undefined && (typeof input.build !== 'boolean' || (input.build && input.command !== 'pnpm build')))
+        throw new Error('构建参数只支持 pnpm build')
+      return { command: text(input.command, 32_000), timeout: integer(input.timeout, 60, 90), title: input.title === undefined ? '执行并检查代码' : text(input.title, 120), ...(input.build !== undefined ? { build: input.build } : {}) }
     },
   },
 }
@@ -113,13 +115,15 @@ abstract class WorkspaceTool<T extends { path?: string, command?: string, title?
     context.signal.addEventListener('abort', stop, { once: true })
     try {
       const result = this.action === 'bash'
-        ? await this.workspaces.bash(execution, input.command!, (input as unknown as BashInput).timeout, context.signal)
+        ? await this.workspaces.bash(execution, input.command!, (input as unknown as BashInput).timeout, context.signal, (input as unknown as BashInput).build)
         : await this.workspaces.fileOperation(execution, { action: this.action, ...input }, context.signal)
       context.signal.throwIfAborted()
       const data = result as Record<string, unknown>
       if (data.timedOut === true)
         return { ok: false, code: 'timeout', modelContent: '命令执行超时，沙箱已终止；当前命令未保存的改动已舍弃，保留上次已保存版本。' }
       const commit = this.action === 'read' ? undefined : await this.workspaces.prepareCommit(execution, context.signal)
+      const revision = commit ? commit.expectedRevision + Number(commit.sourceChanged !== false) : undefined
+      const artifact = commit?.artifact ? { id: commit.artifact.id, sourceRevision: commit.artifact.sourceRevision, command: commit.artifact.command, createdAt: commit.artifact.createdAt, runId: execution.runId, files: commit.artifact.files.map(({ path, bytes, sha256 }) => ({ path, bytes, sha256 })) } : undefined
       const files = commit?.files.map(({ path, bytes, sha256 }) => ({ path, bytes, sha256 }))
       const workspace = {
         operation: this.action,
@@ -132,7 +136,8 @@ abstract class WorkspaceTool<T extends { path?: string, command?: string, title?
         ...(typeof data.stdout === 'string' ? { stdout: data.stdout } : {}),
         ...(typeof data.stderr === 'string' ? { stderr: data.stderr } : {}),
         ...(typeof data.exitCode === 'number' ? { exitCode: data.exitCode } : {}),
-        ...(commit ? { revision: commit.expectedRevision + 1, files: files! } : {}),
+        ...(commit ? { revision: revision!, files: files! } : {}),
+        ...(artifact ? { artifact } : {}),
       }
       return {
         ok: true,
@@ -145,7 +150,8 @@ abstract class WorkspaceTool<T extends { path?: string, command?: string, title?
                 truncated: data.truncated === true || String(data.stdout ?? '').length > 12_000 || String(data.stderr ?? '').length > 12_000,
               }
             : data),
-          ...(commit ? { saved: true, revision: commit.expectedRevision + 1, files: files?.slice(0, 20) } : {}),
+          ...(commit ? { saved: true, revision, files: files?.slice(0, 20) } : {}),
+          ...(artifact ? { artifact: { id: artifact.id, sourceRevision: artifact.sourceRevision, fileCount: artifact.files.length, files: artifact.files.slice(0, 20) } } : {}),
         }),
         display: { workspace, ...(typeof data.exitCode === 'number' && data.exitCode !== 0 ? { failure: 'failed' as const } : {}) },
         ...(commit ? { workspaceCommit: commit } : {}),

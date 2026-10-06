@@ -4,6 +4,7 @@ import type { StoredWorkspaceFile } from './workspace-files.js'
 import { Buffer } from 'node:buffer'
 import { randomUUID } from 'node:crypto'
 import process from 'node:process'
+import { gunzipSync } from 'node:zlib'
 import { Injectable } from '@nestjs/common'
 import OSS from 'ali-oss'
 import { AuthenticationError, RateLimitError, Sandbox } from 'e2b'
@@ -190,11 +191,13 @@ export class WorkspaceCloudService {
   async request(sandbox: Sandbox, script: string, request: unknown, signal: AbortSignal, timeoutMs = 20_000): Promise<unknown> {
     signal.throwIfAborted()
     const path = `/tmp/kuro-${randomUUID()}.json`
+    const outputPath = `${path}.result`
     try {
       await sandbox.files.write(path, JSON.stringify(request), { user: 'root', signal, requestTimeoutMs: 15_000 })
       const code = Buffer.from(script).toString('base64')
       // SDK 默认在 /home/user 启动登录 shell；用户可写该目录，不能从那里导入 root 的 Python 模块或 shell 配置。
-      const result = await sandbox.commands.run(`/usr/local/bin/python3 -I -S -c "import base64;exec(base64.b64decode('${code}'))" '${path}'`, {
+      // 大快照不能走 envd 命令 stdout；可信监督结果先写 root-only 文件，再由 SDK 有界流式读取。
+      await sandbox.commands.run(`/usr/local/bin/python3 -I -S -c "import base64,gzip,io,os,sys;fd=os.open(sys.argv[2],os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600);sys.stdout=io.TextIOWrapper(gzip.GzipFile(fileobj=os.fdopen(fd,'wb'),mode='wb'),encoding='utf-8');exec(base64.b64decode('${code}'));sys.stdout.close()" '${path}' '${outputPath}'`, {
         user: 'root',
         cwd: '/',
         envs: { HOME: '/root', PATH: '/usr/local/bin:/usr/bin:/bin', BASH_ENV: '/dev/null', ENV: '/dev/null' },
@@ -203,13 +206,24 @@ export class WorkspaceCloudService {
         requestTimeoutMs: 15_000,
       })
       signal.throwIfAborted()
-      const value: unknown = JSON.parse(result.stdout)
+      const stream = await sandbox.files.read(outputPath, { user: 'root', format: 'stream', signal, requestTimeoutMs: 15_000 })
+      const chunks: Uint8Array[] = []
+      let bytes = 0
+      for await (const chunk of stream) {
+        signal.throwIfAborted()
+        bytes += chunk.byteLength
+        if (bytes > 12 * 1024 * 1024)
+          throw new WorkspaceOperationError('沙箱结果超过传输容量限制。')
+        chunks.push(chunk)
+      }
+      signal.throwIfAborted()
+      const value: unknown = JSON.parse(gunzipSync(Buffer.concat(chunks), { maxOutputLength: 12 * 1024 * 1024 }).toString('utf8'))
       if (value && typeof value === 'object' && 'error' in value && typeof value.error === 'string')
         throw new WorkspaceOperationError(value.error)
       return value
     }
     finally {
-      await sandbox.files.remove(path, { user: 'root', requestTimeoutMs: 5_000 }).catch(() => {})
+      await Promise.all([path, outputPath].map(file => sandbox.files.remove(file, { user: 'root', requestTimeoutMs: 5_000 }).catch(() => {})))
     }
   }
 
