@@ -84,7 +84,7 @@ export interface MessageActivityThought {
  */
 export interface MessageActivityTool
   extends Pick<ChatStreamToolStartedEvent, 'callId' | 'toolName' | 'query' | 'url'>,
-  Pick<ChatStreamToolFinishedEvent, 'ok' | 'failure' | 'results' | 'finalUrl' | 'title' | 'chars' | 'workspace'> {
+  Pick<ChatStreamToolFinishedEvent, 'ok' | 'failure' | 'skipped' | 'results' | 'finalUrl' | 'title' | 'chars' | 'workspace'> {
   kind: 'tool'
   /** 步骤的起止时间差。 */
   durationMs?: number

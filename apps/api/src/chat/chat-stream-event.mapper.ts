@@ -49,6 +49,7 @@ export function toChatStreamEvent(event: AgentRuntimeEvent): ChatStreamEvent {
         ok: event.ok,
         ...(event.workspace === undefined ? {} : { workspace: event.workspace }),
         ...(event.failure === undefined ? {} : { failure: event.failure }),
+        ...(event.skipped === undefined ? {} : { skipped: event.skipped }),
         ...(event.results === undefined ? {} : { results: event.results }),
         ...(event.finalUrl === undefined ? {} : { finalUrl: event.finalUrl }),
         ...(event.title === undefined ? {} : { title: event.title }),

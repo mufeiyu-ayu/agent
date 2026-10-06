@@ -933,12 +933,13 @@ export class AgentRuntimeService {
         },
       }
 
-      if (toolResult.ok) {
-        // 工具执行成功：写入 Step output，下一轮回喂给模型的参数也写进 Step input。
+      const skipped = !toolResult.ok && toolResult.code === 'workspace_replan'
+      if (toolResult.ok || skipped) {
+        // 记录已收口：未执行的重新规划保留 ok:false / code，不伪造执行成功。
         await this.agentRunRecorderService.completeStep(
           toolStep.id,
           databaseDeadline,
-          { ...toolStepClose, ...(toolResult.workspaceCommit ? { workspaceCommit: toolResult.workspaceCommit } : {}) },
+          { ...toolStepClose, ...(toolResult.ok && toolResult.workspaceCommit ? { workspaceCommit: toolResult.workspaceCommit } : {}) },
         )
       }
       else {
@@ -957,13 +958,13 @@ export class AgentRuntimeService {
       // 成功时带工具给界面的 display（可能自己标了 failure）；失败只分超时与其他。
       const display: ToolDisplay | undefined = toolResult.ok
         ? toolResult.display
-        : { failure: toolResult.code === 'timeout' ? 'timeout' : 'failed' }
+        : skipped ? { skipped: 'workspace_replan' } : { failure: toolResult.code === 'timeout' ? 'timeout' : 'failed' }
 
       yield {
         type: 'tool_finished',
         ...progress,
         callId: call.callId,
-        ok: !display?.failure,
+        ok: !skipped && !display?.failure,
         ...display,
       }
       toolResults.push({

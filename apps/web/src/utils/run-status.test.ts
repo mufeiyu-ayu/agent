@@ -6,11 +6,33 @@ import { describe, it } from 'vitest'
 import { createI18n } from 'vue-i18n'
 
 import { messages } from '../i18n/messages'
-import { applyRunEvent, endRun, latestThoughtSentence, liveThought, runStepText, safeHref, siteName, startRun, thoughtHasMore, thoughtTitle } from './run-status'
+import { applyRunEvent, endRun, latestThoughtSentence, liveThought, restoreRun, runStepText, runSummaryText, safeHref, siteName, startRun, thoughtHasMore, thoughtTitle } from './run-status'
 
 const ids = { conversationId: 'c', assistantMessageId: 'a' }
 
 describe('#208 等待过程的数据', () => {
+  it('重新规划实时与恢复一致：未执行不计为成功或失败，真实失败仍计入', () => {
+    let run = applyRunEvent(startRun(0), { ...ids, type: 'tool_started', callId: 'guide', toolName: 'write' }, 1)
+    run = applyRunEvent(run, { ...ids, type: 'tool_finished', callId: 'guide', ok: false, skipped: 'workspace_replan' }, 2)
+    run = applyRunEvent(run, { ...ids, type: 'tool_started', callId: 'write', toolName: 'write' }, 3)
+    run = applyRunEvent(run, { ...ids, type: 'tool_finished', callId: 'write', ok: true }, 4)
+    const restored = restoreRun({ toolBeforeAnswer: true, items: [
+      { kind: 'tool', toolName: 'write', callId: 'guide', ok: false, skipped: 'workspace_replan' },
+      { kind: 'tool', toolName: 'write', callId: 'write', ok: true },
+    ] }, 'done')
+    const t = createI18n({ legacy: false, locale: 'zh-CN', messages }).global.t
+    assert.deepEqual(run.steps, restored.steps)
+    assert.equal(runSummaryText(restored, t).warning, undefined)
+    assert.equal(runSummaryText(restored, t).label, runSummaryText(run, t).label)
+    assert.match(runStepText(restored.steps[0]!, t, 'zh-CN').meta!, /未执行/)
+    const skippedOnly = restoreRun({ toolBeforeAnswer: true, items: [{ kind: 'tool', toolName: 'write', callId: 'guide', ok: false, skipped: 'workspace_replan' }] }, 'done')
+    assert.equal(runSummaryText(skippedOnly, t).label, '未执行，按指南重新规划')
+    assert.equal(runSummaryText(skippedOnly, t).warning, undefined)
+    run = applyRunEvent(run, { ...ids, type: 'tool_started', callId: 'failed', toolName: 'bash' }, 5)
+    run = applyRunEvent(run, { ...ids, type: 'tool_finished', callId: 'failed', ok: false, failure: 'timeout' }, 6)
+    assert.match(runSummaryText(run, t).warning!, /1 步失败/)
+  })
+
   it('事件按顺序归并：工具起止、正文开始、结束时把没收尾的步骤记为已停止；结束后的事件忽略', () => {
     const events: ChatStreamEvent[] = [
       { ...ids, type: 'tool_started', callId: 's', toolName: 'web_search', query: 'seo' },

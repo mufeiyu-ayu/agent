@@ -67,7 +67,7 @@ export function applyRunEvent(run: TurnRun, event: ChatStreamEvent, now: number)
       }
 
     case 'tool_finished': {
-      const { callId, ok, failure, results, finalUrl, title, chars, workspace } = event
+      const { callId, ok, failure, skipped, results, finalUrl, title, chars, workspace } = event
       // 工具顺序执行，结束的总是最后一步；只按 callId 找不行，不同轮次的 callId 可能重复。
       const steps = [...run.steps]
       const last = steps.at(-1)
@@ -76,7 +76,7 @@ export function applyRunEvent(run: TurnRun, event: ChatStreamEvent, now: number)
       if (last?.callId === callId && last.status === 'running') {
         steps[steps.length - 1] = {
           ...last,
-          status: ok ? 'ok' : 'failed',
+          status: skipped ? 'skipped' : ok ? 'ok' : 'failed',
           ...(workspace === undefined ? {} : { workspace: { ...last.workspace, ...workspace } }),
           ...(failure === undefined ? {} : { failure }),
           ...(results === undefined ? {} : { results }),
@@ -129,7 +129,7 @@ export function restoreRun(activity: MessageActivity, outcome: NonNullable<TurnR
       continue
     }
 
-    const { callId, toolName, query, url, ok, failure, results, finalUrl, title, chars, workspace } = item
+    const { callId, toolName, query, url, ok, failure, skipped, results, finalUrl, title, chars, workspace } = item
 
     steps.push({
       callId,
@@ -138,7 +138,7 @@ export function restoreRun(activity: MessageActivity, outcome: NonNullable<TurnR
       ...(query === undefined ? {} : { query }),
       ...(url === undefined ? {} : { url }),
       // ok 为 false 且没有 failure：执行中被停止或中断，与实时路径没等到 tool_finished 的步骤一样。
-      status: ok ? 'ok' : failure ? 'failed' : 'stopped',
+      status: skipped ? 'skipped' : ok ? 'ok' : failure ? 'failed' : 'stopped',
       ...(failure === undefined ? {} : { failure }),
       ...(results === undefined ? {} : { results }),
       ...(finalUrl === undefined ? {} : { finalUrl }),
@@ -202,7 +202,7 @@ export function runSummaryText(run: TurnRun, t: Translate): RunSummaryText {
   if (parts.length === 0) {
     return run.steps.length === 0
       ? { label: took === undefined ? t('conversation.run.thoughtDone') : t('conversation.run.thought', { time: took }) }
-      : { label: t('conversation.run.stopped'), ...meta }
+      : { label: t(run.steps.every(step => step.status === 'skipped') ? 'conversation.run.replanned' : 'conversation.run.stopped'), ...meta }
   }
 
   const summary = t('conversation.run.summary', { parts: parts.join(t('conversation.run.partSeparator')) })
@@ -219,7 +219,7 @@ export function runSummaryText(run: TurnRun, t: Translate): RunSummaryText {
 export function runStepText(step: TurnRunStep, t: Translate, locale: string): RunStepText {
   const outcome = step.status === 'failed'
     ? t(`conversation.run.failure.${step.failure ?? 'failed'}`)
-    : step.status === 'stopped' ? t('conversation.run.stopped') : undefined
+    : step.status === 'skipped' ? t('conversation.run.replanned') : step.status === 'stopped' ? t('conversation.run.stopped') : undefined
 
   if (step.workspace)
     return { verb: t(`workspace.operations.${step.workspace.operation}`), object: step.workspace.path ?? step.workspace.title, meta: outcome ?? (step.workspace.exitCode !== undefined ? `exit ${step.workspace.exitCode}` : undefined) }

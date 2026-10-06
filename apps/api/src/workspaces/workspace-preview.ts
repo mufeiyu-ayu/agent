@@ -106,18 +106,22 @@ export function validateArtifact(files: Array<{ path: string, content: Buffer }>
 }
 
 /** 入口只执行可信包装器；生成 HTML 从不作为受信任 origin 下的文档响应。 */
-export function previewDocument(code: string, resourceBase: string): string {
-  const data = JSON.stringify({ code, resourceBase }).replaceAll('<', '\\u003c')
+export function previewDocument(code: string, resourceBase: string, documentPath = 'index.html'): string {
+  const data = JSON.stringify({ code, resourceBase, documentPath }).replaceAll('<', '\\u003c')
   return `<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;height:100%;overflow:hidden}iframe{display:block;width:100%;height:100%;border:0}</style></head><body><iframe title="Build preview" sandbox="allow-scripts" referrerpolicy="no-referrer"></iframe><script>
 const input=${data};
 const parsed=new DOMParser().parseFromString(input.code,'text/html');
 parsed.querySelectorAll('base,meta[http-equiv],iframe,frame,object,embed').forEach(x=>x.remove());
-const base=parsed.createElement('base');base.href=input.resourceBase;parsed.head.prepend(base);
+const documentUrl=new URL(input.documentPath,input.resourceBase);
+const base=parsed.createElement('base');base.href=new URL('.',documentUrl).href;parsed.head.prepend(base);
 const guard=parsed.createElement('script');
 guard.textContent="for(const name of ['RTCPeerConnection','webkitRTCPeerConnection','mozRTCPeerConnection','Worker','SharedWorker'])Object.defineProperty(window,name,{value:undefined,writable:false,configurable:false});addEventListener('keydown',e=>{if(e.key==='Escape')parent.postMessage({type:'artifact-close'},'*')},true);addEventListener('error',()=>parent.postMessage({type:'artifact-error'},'*'),true);addEventListener('unhandledrejection',()=>parent.postMessage({type:'artifact-error'},'*'));";
 parsed.head.insertBefore(guard,base.nextSibling);
+const links=parsed.createElement('script');
+links.textContent="addEventListener('click',e=>{const a=e.target.closest?.('a[href]');if(!a)return;const href=a.getAttribute('href');if(href.startsWith('#')){e.preventDefault();try{const id=decodeURIComponent(href.slice(1));const target=document.getElementById(id)||document.getElementsByName(id)[0];if(target)target.scrollIntoView();else if(!id)scrollTo(0,0)}catch{};return}e.preventDefault();parent.postMessage({type:'artifact-navigate',href:a.href},'*')},true);";
+parsed.head.insertBefore(links,guard.nextSibling);
 const frame=document.querySelector('iframe');frame.srcdoc='<!doctype html>'+parsed.documentElement.outerHTML;parent.postMessage({type:'artifact-ready'},'*');
-addEventListener('message',e=>{if(e.source===frame.contentWindow&&e.origin==='null'&&['artifact-close','artifact-error'].includes(e.data?.type))parent.postMessage({type:e.data.type},'*')});
+addEventListener('message',e=>{if(e.source!==frame.contentWindow||e.origin!=='null')return;if(['artifact-close','artifact-error'].includes(e.data?.type))parent.postMessage({type:e.data.type},'*');if(e.data?.type==='artifact-navigate'){try{const url=new URL(e.data.href);if(url.href.startsWith(input.resourceBase)&&url.pathname.endsWith('.html')){const path=decodeURIComponent(url.pathname.slice(new URL(input.resourceBase).pathname.length));parent.postMessage({type:'artifact-page',path},'*')}}catch{}}});
 </script></body></html>`
 }
 

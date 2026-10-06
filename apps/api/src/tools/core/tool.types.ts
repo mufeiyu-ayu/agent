@@ -63,6 +63,8 @@ export interface ToolDisplay {
   chars?: number
   /** 模型拿到了说明、但界面上算失败的情况（如网页内容类型不支持）。 */
   failure?: 'timeout' | 'failed'
+  /** 已记录但未执行；指南生效后重新采样，不是成功或失败。 */
+  skipped?: 'workspace_replan'
 }
 
 export type ToolResult
@@ -76,6 +78,7 @@ export type ToolResult
     ok: false
     code:
       | 'execution_failed'
+      | 'workspace_replan'
       | 'invalid_arguments'
       | 'timeout'
       // 模型输出达到长度限制、arguments 不完整，本次未执行。

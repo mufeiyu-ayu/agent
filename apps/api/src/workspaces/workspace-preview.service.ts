@@ -65,13 +65,15 @@ export class WorkspacePreviewService {
     return { content, mime: artifactMime(normalized) }
   }
 
-  async document(token: string, signal: AbortSignal): Promise<{ content: string, csp: string }> {
-    const { content } = await this.resource(token, 'index.html', signal)
+  async document(token: string, signal: AbortSignal, path = 'index.html'): Promise<{ content: string, csp: string }> {
+    if (typeof path !== 'string' || !path.endsWith('.html'))
+      throw new NotFoundException('预览页面不存在')
+    const { content } = await this.resource(token, path, signal)
     const grant = this.grants.get(token)
     if (!grant)
       throw new NotFoundException('预览已失效，请重新打开')
     const resourceBase = `${grant.origin}/api/workspace-preview/${token}/files/`
-    return { content: previewDocument(content.toString('utf8'), resourceBase), csp: previewCsp(resourceBase) }
+    return { content: previewDocument(content.toString('utf8'), resourceBase, artifactPath(path)), csp: previewCsp(resourceBase) }
   }
 
   private async artifact(grant: PreviewGrant) {

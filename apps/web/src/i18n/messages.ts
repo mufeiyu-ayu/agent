@@ -200,6 +200,7 @@ export const messages = {
         usedTools: '使用工具 {n} 次',
         failedSteps: '{n} 步失败',
         stopped: '已停止',
+        replanned: '未执行，按指南重新规划',
         steps: {
           search: '搜索',
           read: '阅读',
@@ -488,6 +489,7 @@ export const messages = {
         usedTools: 'used {n} tool | used {n} tools',
         failedSteps: '{n} step failed | {n} steps failed',
         stopped: 'Stopped',
+        replanned: 'Not executed; replanned with development guide',
         steps: {
           search: 'Searched',
           read: 'Read',

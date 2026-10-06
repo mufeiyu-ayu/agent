@@ -71,7 +71,7 @@ export class ToolInvocationService {
     if (context.workspaceGuideRequired && WORKSPACE_TOOL_NAMES.includes(envelope.toolName)) {
       return toInvocationResult({
         ok: false,
-        code: 'execution_failed',
+        code: 'workspace_replan',
         modelContent: '已加载工作区开发指南，本次调用未执行、未创建沙箱；请先遵循指南重新计划，再发起工作区调用。',
       }, true, tool.definition.maxObservationChars)
     }

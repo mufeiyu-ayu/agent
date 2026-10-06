@@ -64,6 +64,19 @@ async function handleQuery(event: MessageEvent) {
     || !data || typeof data !== 'object' || !('type' in data)) {
     return
   }
+  if (props.artifactId && data.type === 'artifact-page' && 'path' in data && typeof data.path === 'string' && artifactUrl.value) {
+    const url = new URL(artifactUrl.value, location.origin)
+    url.searchParams.set('path', data.path)
+    artifactLoading.value = true
+    artifactError.value = false
+    artifactUrl.value = url.href
+    clearTimeout(readyTimer)
+    readyTimer = setTimeout(() => {
+      artifactLoading.value = false
+      artifactError.value = true
+    }, 10_000)
+    return
+  }
   if (props.artifactId && data.type === 'artifact-ready') {
     clearTimeout(readyTimer)
     artifactLoading.value = false

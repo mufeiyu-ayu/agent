@@ -30,7 +30,7 @@ Source 与每份 Artifact 分别限制为 200 个文件、单个 2 MiB、总计 
 
 宿主认证后为一个不可变 Artifact 获取 10 分钟的随机只读 capability；最多保留 1000 个活动入口，进程重启后失效；每个入口在读取前扣除 32 MiB / 2000 次请求预算，防止生成页面通过重复资源请求制造无界并发/OSS 流量。每次资源读取仍检查会话归属、用户状态、过期与删除，能力不是 Session 或 Agent 授权。当前 Source/Artifact 更新不改变已经打开的资源目标；失效或读取失败由宿主重试同一个 Artifact。
 
-入口响应仅含可信包装器，HTTP CSP 强制 `sandbox allow-scripts`（无 allow-same-origin），即使直接导航/新窗口也不变成 Kuro origin 的生成页面。包装器在另一个 opaque srcdoc 中渲染原构建 HTML，仅补固定资源 base 与 RTC/Worker 锁定，不把 dist 合并或改写成 self-contained。继承的 CSP 仅允许该 capability 资源路径的脚本、CSS、图片与字体；禁 connect/frame/worker/form/WebRTC，父包装器阻断子页面自身导航，生成页面不接收 Cookie/平台密钥。原始资源返回 attachment + nosniff + 无脚本 sandbox；模块/字体只向 opaque origin 提供无凭据 CORS，HTML 原文永不直接作为可执行文档响应。相对模块、CSS url、SVG/图片、查询参数及 MIME 保持真实文件链路。
+入口响应仅含可信包装器，HTTP CSP 强制 `sandbox allow-scripts`（无 allow-same-origin），即使直接导航/新窗口也不变成 Kuro origin 的生成页面。包装器在另一个 opaque srcdoc 中渲染原构建 HTML，仅补固定资源 base 与 RTC/Worker 锁定，不把 dist 合并或改写成 self-contained。继承的 CSP 仅允许该 capability 资源路径的脚本、CSS、图片与字体；禁 connect/frame/worker/form/WebRTC，父包装器阻断子页面自身导航，生成页面不接收 Cookie/平台密钥。原始资源返回 attachment + nosniff + 无脚本 sandbox；模块/字体只向 opaque origin 提供无凭据 CORS，HTML 原文永不直接作为可执行文档响应。相对模块、CSS url、SVG/图片、查询参数及 MIME 保持真实文件链路。普通 `href="#section"` 在当前 opaque 文档内滚动；原生 `.html` 内部链接只允许同 capability 资源目录，由可信包装器通知宿主切到固定清单的 `/document?path=...` 再隔离渲染，不放开生成页面自身导航或外网，也不提供通用路由。
 
 用户入口：`GET /api/conversations/:id/workspace`、`/file?path=...&revision=...`、`/archive?revision=...`、`/artifacts/:artifactId/preview?origin=...`、兼容 `/traffic`；capability 入口在 `/api/workspace-preview/:token/`。详细参数、检查结果与构建身份仍记录在 Run Trace。
 

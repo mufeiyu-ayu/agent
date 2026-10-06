@@ -91,6 +91,8 @@ export interface ChatStreamToolFinishedEvent {
   ok: boolean
   /** ok 为 false 时：timeout 是工具超时，其余（截断、未知工具、参数无效、执行失败）都是 failed。 */
   failure?: 'timeout' | 'failed'
+  /** 未执行，指南生效后重新规划；ok:false，不计入执行失败。 */
+  skipped?: 'workspace_replan'
   /** web_search 成功：来源列表，最多 10 条。 */
   results?: Array<{ title: string, url: string }>
   /** web_fetch 成功：重定向后的最终地址。 */

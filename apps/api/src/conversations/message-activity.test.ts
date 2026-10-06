@@ -76,6 +76,14 @@ describe('toMessageActivity（#212）', () => {
     assert.equal(items?.[0]?.kind === 'tool' && items[0].finalUrl, 'https://b.example/')
   })
 
+  it('指南重新规划保留未执行身份，不恢复成失败或成功', () => {
+    const item = toMessageActivity([toolStep(2, { ok: false, code: 'workspace_replan' })])?.items[0]
+    assert.ok(item?.kind === 'tool')
+    assert.equal(item.ok, false)
+    assert.equal(item.skipped, 'workspace_replan')
+    assert.equal(item.failure, undefined)
+  })
+
   it('AC-05 旧运行（没有 display / answerStartedMs / 最后一轮思考）按降级规则给出：不带来源与用时', () => {
     assert.deepEqual(toMessageActivity([
       samplingStep(2, { reasoningContent: 'Tool Call 轮的思考' }),

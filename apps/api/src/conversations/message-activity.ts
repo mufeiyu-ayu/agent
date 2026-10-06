@@ -75,12 +75,15 @@ export function toMessageActivity(steps: MessageActivityStepRow[]): MessageActiv
 function toToolItem(step: MessageActivityStepRow, toolName: string): MessageActivityTool {
   const display = isRecord(step.display) ? step.display : {}
   const displayFailure = readFailure(display.failure)
-  const failure = step.ok === true
-    ? displayFailure
-    : step.ok === false
-      // 旧数据没有 display：按失败码推出。
-      ? displayFailure ?? (step.code === 'timeout' ? 'timeout' : 'failed')
-      : undefined
+  const skipped = step.code === 'workspace_replan'
+  const failure = skipped
+    ? undefined
+    : step.ok === true
+      ? displayFailure
+      : step.ok === false
+        // 旧数据没有 display：按失败码推出。
+        ? displayFailure ?? (step.code === 'timeout' ? 'timeout' : 'failed')
+        : undefined
   const results = readResults(display.results)
   const durationMs = step.startedAt && step.endedAt
     ? Math.max(0, step.endedAt.getTime() - step.startedAt.getTime())
@@ -97,6 +100,7 @@ function toToolItem(step: MessageActivityStepRow, toolName: string): MessageActi
       ? { workspace: display.workspace as unknown as NonNullable<MessageActivityTool['workspace']> }
       : {}),
     ok: step.ok === true && !failure,
+    ...(skipped ? { skipped: 'workspace_replan' as const } : {}),
     ...(failure ? { failure } : {}),
     ...(durationMs === undefined ? {} : { durationMs }),
     ...(results ? { results } : {}),

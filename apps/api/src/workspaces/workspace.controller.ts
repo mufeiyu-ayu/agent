@@ -71,13 +71,13 @@ export class WorkspacePreviewController {
   constructor(@Inject(WorkspacePreviewService) private readonly previews: WorkspacePreviewService) {}
 
   @Get(':token/document')
-  async document(@Param('token') token: string, @Res() response: ServerResponse) {
+  async document(@Param('token') token: string, @Query('path') path: string | undefined, @Res() response: ServerResponse) {
     response.setHeader('Content-Security-Policy', 'sandbox allow-scripts; default-src \'none\'')
     response.setHeader('Referrer-Policy', 'no-referrer')
     response.setHeader('Cache-Control', 'no-store')
     response.setHeader('X-Content-Type-Options', 'nosniff')
     response.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=(), usb=()')
-    const { content, csp } = await this.previews.document(token, responseSignal(response))
+    const { content, csp } = await this.previews.document(token, responseSignal(response), path)
     response.setHeader('Content-Security-Policy', csp)
     response.setHeader('Content-Type', 'text/html; charset=utf-8')
     response.end(content)

@@ -382,7 +382,7 @@ function retryDownload() {
     </header>
     <p v-if="error || previewError || snapshot?.lastError" data-workspace-preview-error role="alert" class="workspace-error">
       {{ error || previewError || snapshot?.lastError }}
-      <button v-if="error || previewError" :disabled="previewPending || loading" class="underline" @click="error || !selected ? emit('refresh') : open(selected, mode === 'preview', expectedSha256)">
+      <button v-if="error || previewError" :disabled="previewPending || loading" class="underline" @click="error || !selected ? emit('refresh') : open(selected, mode === 'preview', expectedSha256, mode === 'preview' && !!snapshot?.artifact)">
         {{ t('workspace.retry') }}
       </button>
     </p>

@@ -42,7 +42,7 @@ async function setup(page: import('@playwright/test').Page, baseURL: string, scr
       onCrossArtifact()
     const base = `${baseURL}/api/workspace-preview/${token}/files/`
     if (url.pathname.endsWith('/document'))
-      return route.fulfill({ body: previewDocument(scripts['index.html']!, base), headers: { 'Content-Type': 'text/html', 'Content-Security-Policy': previewCsp(base), 'Referrer-Policy': 'no-referrer' } })
+      return route.fulfill({ body: previewDocument(scripts[url.searchParams.get('path') ?? 'index.html']!, base, url.searchParams.get('path') ?? 'index.html'), headers: { 'Content-Type': 'text/html', 'Content-Security-Policy': previewCsp(base), 'Referrer-Policy': 'no-referrer' } })
     const path = url.pathname.split('/files/')[1]!
     return route.fulfill({ body: scripts[path] ?? '', status: scripts[path] === undefined ? 404 : 200, headers: { 'Content-Type': artifactMime(path), 'Access-Control-Allow-Origin': 'null', 'Content-Disposition': 'attachment', 'Content-Security-Policy': 'sandbox; default-src \'none\'', 'X-Content-Type-Options': 'nosniff' } })
   })
@@ -187,16 +187,41 @@ test('源码 ZIP 重试固定 revision；变版取消旧归档，迟到结果不
   assert.deepEqual(revisions, [3, 3, 3, 4])
 })
 
+test('普通锚点滚动、原生多页链接保持固定 Artifact 和隔离', async ({ page, baseURL }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await setup(page, baseURL!, {
+    ...dist,
+    'index.html': '<!doctype html><a href="#features">Features</a><a href="./pages/about 团队.html">About</a><div style="height:1500px"></div><h2 id="features">目标锚点</h2>',
+    'pages/about 团队.html': '<!doctype html><h1>About page</h1><a href="../index.html">Home</a><script src="../assets/about.js"></script>',
+    'assets/about.js': 'document.body.dataset.loaded="about";',
+  })
+  await page.goto('/workspace')
+  await page.locator('[data-open-workspace-files]').click()
+  const frame = page.frameLocator('[data-workspace-files-panel] [data-html-preview-panel] > iframe').frameLocator('iframe')
+  await frame.getByRole('link', { name: 'Features' }).click()
+  await expect(frame.getByRole('heading', { name: '目标锚点' })).toBeInViewport()
+  assert.ok(await frame.locator('body').evaluate(() => scrollY > 0))
+  await frame.locator('body').evaluate(() => scrollTo(0, 0))
+  await frame.getByRole('link', { name: 'About', exact: true }).click({ delay: 50 })
+  await expect(frame.getByRole('heading')).toHaveText('About page')
+  await expect(frame.locator('body')).toHaveAttribute('data-loaded', 'about')
+  await frame.getByRole('link', { name: 'Home' }).click({ delay: 50 })
+  await expect(frame.getByRole('link', { name: 'Features' })).toBeVisible()
+})
+
 test('Source 读取失败不阻断独立成功 Artifact 的侧栏和整页预览', async ({ page, baseURL }) => {
   await setup(page, baseURL!)
-  await page.route('**/workspace/file?**', route => route.fulfill({ status: 503, json: { success: false, message: 'Source 暂时不可读取' } }))
+  let fail = true
+  await page.route('**/workspace/file?**', route => fail ? route.fulfill({ status: 503, json: { success: false, message: 'Source 暂时不可读取' } }) : route.fallback())
   await page.goto('/workspace')
   await page.locator('[data-open-workspace-files]').click()
   const panel = page.locator('[data-workspace-files-panel]')
   await expect(panel.getByRole('alert')).toContainText('文件已更新或暂时不可用')
   await expect(panel.frameLocator('[data-html-preview-panel] > iframe').frameLocator('iframe').locator('body')).toHaveAttribute('data-loaded', 'true')
-  await panel.getByRole('button', { name: '代码', exact: true }).click()
-  await panel.getByRole('button', { name: '预览', exact: true }).click()
+  fail = false
+  await panel.getByRole('button', { name: '重试', exact: true }).click()
+  await expect(panel.locator('[data-workspace-preview-error]')).toContainText('本轮构建失败')
+  await expect(panel.getByRole('button', { name: '预览', exact: true })).toHaveAttribute('aria-pressed', 'true')
   await expect(panel.frameLocator('[data-html-preview-panel] > iframe').frameLocator('iframe').locator('body')).toHaveAttribute('data-loaded', 'true')
   await panel.getByRole('button', { name: '放大预览' }).click()
   await expect(page.locator('[data-expanded-preview]').frameLocator('[data-html-preview-panel] > iframe').frameLocator('iframe').locator('body')).toHaveAttribute('data-loaded', 'true')
