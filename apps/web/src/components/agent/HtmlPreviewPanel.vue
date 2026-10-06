@@ -20,11 +20,30 @@ const artifactLoading = ref(false)
 let artifactRequest = 0
 let artifactController: AbortController | undefined
 let readyTimer: ReturnType<typeof setTimeout> | undefined
+let artifactGeneration = ''
+function navigateArtifact(url: string) {
+  const generation = crypto.randomUUID()
+  artifactGeneration = generation
+  artifactLoading.value = true
+  artifactError.value = false
+  const target = new URL(url, location.origin)
+  target.searchParams.set('generation', generation)
+  artifactUrl.value = target.href
+  clearTimeout(readyTimer)
+  readyTimer = setTimeout(() => {
+    if (artifactGeneration === generation) {
+      artifactLoading.value = false
+      artifactError.value = true
+    }
+  }, 10_000)
+}
 async function loadArtifact() {
   const current = ++artifactRequest
   artifactController?.abort()
   clearTimeout(readyTimer)
   artifactUrl.value = ''
+  artifactGeneration = ''
+  artifactLoading.value = false
   artifactError.value = false
   if (!props.artifactId || !props.conversationId)
     return
@@ -34,11 +53,7 @@ async function loadArtifact() {
     const url = await openWorkspacePreview(props.conversationId, props.artifactId, artifactController.signal)
     if (current !== artifactRequest)
       return
-    artifactUrl.value = url
-    readyTimer = setTimeout(() => {
-      artifactLoading.value = false
-      artifactError.value = true
-    }, 10_000)
+    navigateArtifact(url)
   }
   catch {
     if (current === artifactRequest) {
@@ -64,22 +79,19 @@ async function handleQuery(event: MessageEvent) {
     || !data || typeof data !== 'object' || !('type' in data)) {
     return
   }
+  if (props.artifactId && (!('generation' in data) || data.generation !== artifactGeneration))
+    return
   if (props.artifactId && data.type === 'artifact-page' && 'path' in data && typeof data.path === 'string' && artifactUrl.value) {
     const url = new URL(artifactUrl.value, location.origin)
     url.searchParams.set('path', data.path)
-    artifactLoading.value = true
-    artifactError.value = false
-    artifactUrl.value = url.href
-    clearTimeout(readyTimer)
-    readyTimer = setTimeout(() => {
-      artifactLoading.value = false
-      artifactError.value = true
-    }, 10_000)
+    navigateArtifact(url.href)
     return
   }
   if (props.artifactId && data.type === 'artifact-ready') {
-    clearTimeout(readyTimer)
-    artifactLoading.value = false
+    if (!artifactError.value) {
+      clearTimeout(readyTimer)
+      artifactLoading.value = false
+    }
     return
   }
   if (props.artifactId && data.type === 'artifact-error') {
@@ -139,8 +151,9 @@ onMounted(() => {
   <section
     data-html-preview-panel
     :aria-label="title"
+    :aria-busy="artifactLoading"
     class="flex min-h-0 min-w-0 flex-1 flex-col bg-agent-surface text-agent-ink"
-    @keydown.esc="emit('close')"
+    @keydown.esc.stop="emit('close')"
   >
     <header v-if="!embedded" class="flex h-12 shrink-0 items-center gap-2 border-b border-agent-border-soft px-3">
       <AppIcon name="tabler:browser" :size="18" class="text-agent-ink-muted" />

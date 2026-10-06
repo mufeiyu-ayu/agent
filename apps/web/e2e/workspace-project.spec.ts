@@ -9,7 +9,7 @@ import { CONVERSATION_ID, installApiRoutes, installBrowserStubs } from './fixtur
 
 const token = 'a'.repeat(64)
 const secondToken = 'b'.repeat(64)
-const source = [{ path: 'src/App.tsx', content: Buffer.from('export default function App(){return <h1>演示数据</h1>}') }, { path: 'public/icon.svg', content: Buffer.from('<svg/>') }, { path: 'package.json', content: Buffer.from('{}') }, { path: 'pnpm-lock.yaml', content: Buffer.from('lockfileVersion: 9') }]
+const source = [{ path: 'src/App.tsx', content: Buffer.from('export default function App(){return <h1>演示数据</h1>}') }, { path: 'public/icon.svg', content: Buffer.from('<svg/>') }, { path: 'package.json', content: Buffer.from('{}') }, { path: 'pnpm-lock.yaml', content: Buffer.from('lockfileVersion: 9') }, ...['README.md', 'SHADCN-LICENSE.md', '.gitignore', '.npmrc', '.nvmrc', 'tests/kuro-api.test.ts'].map(path => ({ path, content: Buffer.from(`preserved ${path}`) }))]
 const html = '<!doctype html><html><head><script type="module" src="./assets/main.js?v=1"></script><link rel="stylesheet" href="./assets/main.css?v=1"></head><body><h1>演示数据看板</h1><button id="metric">切换指标</button><output id="value">42</output><img src="./icon.svg?v=1"><div id="probe"></div></body></html>'
 const dist: Record<string, string> = {
   'index.html': html,
@@ -25,11 +25,12 @@ async function setup(page: import('@playwright/test').Page, baseURL: string, scr
   await installApiRoutes(page, () => [{ id: 'question', conversationId: CONVERSATION_ID, role: 'USER', content: '做一个页面', status: 'COMPLETED', createdAt: '2026-10-04T00:00:00Z', updatedAt: '2026-10-04T00:00:00Z' }])
   await installBrowserStubs(page, { lines: [], holdBeforeIndex: -1 })
   let revision = 3
+  let currentArtifact: typeof artifact | null = artifact
   await page.route('**/api/conversations/*/workspace**', (route) => {
     const url = new URL(route.request().url())
-    let data: unknown = { ...snapshot, revision }
+    let data: unknown = { ...snapshot, revision, artifact: currentArtifact }
     if (url.pathname.endsWith('/preview'))
-      data = { artifactId: artifact.id, url: `/api/workspace-preview/${token}/document` }
+      data = { artifactId: currentArtifact?.id, url: `/api/workspace-preview/${token}/document` }
     if (url.pathname.endsWith('/file'))
       data = { encoding: 'base64', content: source.find(file => file.path === url.searchParams.get('path'))!.content.toString('base64') }
     if (url.pathname.endsWith('/archive'))
@@ -46,9 +47,10 @@ async function setup(page: import('@playwright/test').Page, baseURL: string, scr
     const path = url.pathname.split('/files/')[1]!
     return route.fulfill({ body: scripts[path] ?? '', status: scripts[path] === undefined ? 404 : 200, headers: { 'Content-Type': artifactMime(path), 'Access-Control-Allow-Origin': 'null', 'Content-Disposition': 'attachment', 'Content-Security-Policy': 'sandbox; default-src \'none\'', 'X-Content-Type-Options': 'nosniff' } })
   })
-  return { changeVersion: () => {
-    revision++
-  } }
+  return {
+    setArtifact: (id: string | null) => { currentArtifact = id ? { ...artifact, id } : null },
+    changeVersion: () => { revision++ },
+  }
 }
 
 for (const width of [1920, 390]) {
@@ -85,6 +87,145 @@ for (const width of [1920, 390]) {
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false)
   })
 }
+
+test('同一 iframe 浏览上下文跨 Code/Preview 和 native 全屏复用，Source 刷新不重载', async ({ page, baseURL }) => {
+  const state = await setup(page, baseURL!)
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await page.setViewportSize({ width: 1920, height: 900 })
+  const requests: string[] = []
+  page.on('request', (request) => {
+    if (request.url().includes('/preview?') || request.url().includes('/api/workspace-preview/'))
+      requests.push(request.url())
+  })
+  await page.goto('/workspace')
+  await page.locator('[data-open-workspace-files]').click()
+  const panel = page.locator('[data-workspace-files-panel]')
+  const child = panel.frameLocator('[data-html-preview-panel] > iframe').frameLocator('iframe')
+  await expect(child.locator('body')).toHaveAttribute('data-loaded', 'true')
+  const outer = (await panel.locator('[data-html-preview-panel] > iframe').elementHandle())!
+  const inner = (await (await outer.contentFrame())!.locator('iframe').elementHandle())!
+  await child.getByRole('button', { name: '切换指标' }).click({ delay: 50 })
+  await child.locator('body').evaluate(() => {
+    document.body.style.height = '1800px'
+    scrollTo(0, 200)
+  })
+  const before = [...requests]
+  await panel.getByRole('button', { name: '代码', exact: true }).click()
+  await panel.getByRole('button', { name: '预览', exact: true }).click()
+  await expect(child.locator('#value')).toHaveText('84')
+  assert.equal(await child.locator('body').evaluate(() => scrollY), 200)
+  state.changeVersion()
+  await panel.getByRole('button', { name: '刷新文件', exact: true }).click()
+  await panel.getByRole('button', { name: '放大预览' }).click()
+  const expanded = page.locator('[data-expanded-preview]')
+  await expect(expanded).toBeVisible()
+  await expect(expanded.frameLocator('[data-html-preview-panel] > iframe').frameLocator('iframe').locator('#value')).toHaveText('84')
+  await expanded.getByRole('button', { name: '关闭放大预览' }).click()
+  await expect(panel.getByRole('button', { name: '放大预览' })).toBeFocused()
+  await panel.getByRole('button', { name: '放大预览' }).click()
+  await page.keyboard.press('Escape')
+  await expect(expanded).toHaveCount(0)
+  assert.equal(await outer.evaluate(element => element.isConnected), true)
+  assert.equal(await inner.evaluate(element => element.isConnected), true)
+  await expect(child.locator('#value')).toHaveText('84')
+  assert.equal(await child.locator('body').evaluate(() => scrollY), 200)
+  assert.deepEqual(requests, before)
+  console.log('iframe-reuse requests:', JSON.stringify(requests))
+})
+
+test('只看 Code 不预加载新 Artifact；切预览才加载一次', async ({ page, baseURL }) => {
+  const state = await setup(page, baseURL!)
+  state.setArtifact(null)
+  const capabilities: string[] = []
+  page.on('request', (r) => {
+    if (r.url().includes('/preview?'))
+      capabilities.push(r.url())
+  })
+  await page.goto('/workspace')
+  await page.locator('[data-open-workspace-files]').click()
+  const panel = page.locator('[data-workspace-files-panel]')
+  await panel.getByRole('button', { name: 'src/App.tsx', exact: true }).click()
+  state.setArtifact('build-2')
+  await panel.getByRole('button', { name: '刷新文件', exact: true }).click()
+  await expect(panel.getByRole('button', { name: '预览', exact: true })).toBeVisible()
+  assert.deepEqual(capabilities, [])
+  await panel.getByRole('button', { name: '预览', exact: true }).click()
+  await expect(panel.frameLocator('[data-html-preview-panel] > iframe').frameLocator('iframe').locator('body')).toHaveAttribute('data-loaded', 'true')
+  assert.equal(capabilities.length, 1)
+})
+
+test('所有展示文件被隐藏时准确空态，Source 非空仍可下载完整 ZIP', async ({ page, baseURL }) => {
+  await setup(page, baseURL!)
+  const hidden = source.slice(4)
+  await page.route('**/api/conversations/*/workspace', route => route.fulfill({ json: { success: true, code: 0, data: { ...snapshot, artifact: null, files: hidden.map(file => ({ path: file.path, bytes: file.content.length, sha256: 'a'.repeat(64) })) } } }))
+  await page.route('**/workspace/archive?**', route => route.fulfill({ json: { success: true, code: 0, data: { revision: 3, encoding: 'base64', content: sourceZip(hidden).toString('base64') } } }))
+  await page.goto('/workspace')
+  await page.locator('[data-open-workspace-files]').click()
+  const panel = page.locator('[data-workspace-files-panel]')
+  await expect(panel.getByText('没有默认展示的文件，完整源码仍可下载。').first()).toBeVisible()
+  await expect(panel.getByText('会话中生成的文件将保存在这里。')).toHaveCount(0)
+  for (const file of hidden)
+    await expect(panel.getByRole('button', { name: file.path, exact: true })).toHaveCount(0)
+  const pending = page.waitForEvent('download')
+  await panel.getByRole('button', { name: '下载源码 ZIP', exact: true }).click({ delay: 50 })
+  assert.deepEqual(await readFile((await (await pending).path())!), sourceZip(hidden))
+})
+
+test('ready 等内层有效 load；空 load 和旧代次消息无效，错误后 ready 不覆盖失败', async ({ page, baseURL }) => {
+  await setup(page, baseURL!)
+  let release!: () => Promise<void>
+  await page.route('**/files/assets/main.js?*', (route) => {
+    release = () => route.fallback()
+  })
+  await page.goto('/workspace')
+  await page.locator('[data-open-workspace-files]').click()
+  const preview = page.locator('[data-workspace-files-panel] [data-html-preview-panel]')
+  await expect.poll(() => !!release).toBe(true)
+  const wrapper = await (await preview.locator(':scope > iframe').elementHandle())!.contentFrame()
+  await wrapper!.evaluate(() => document.querySelector('iframe')!.dispatchEvent(new Event('load')))
+  await page.evaluate(() => {
+    const frame = document.querySelector<HTMLIFrameElement>('[data-workspace-files-panel] [data-html-preview-panel] > iframe')!
+    for (const type of ['artifact-ready', 'artifact-error'])
+      dispatchEvent(new MessageEvent('message', { source: frame.contentWindow, origin: 'null', data: { type, generation: 'previous-generation' } }))
+  })
+  await expect(preview).toHaveAttribute('aria-busy', 'true')
+  await expect(preview.getByRole('status')).toBeVisible()
+  await release()
+  await expect(preview.frameLocator(':scope > iframe').frameLocator('iframe').locator('body')).toHaveAttribute('data-loaded', 'true')
+  await expect(preview).toHaveAttribute('aria-busy', 'false')
+  await page.evaluate(() => {
+    const frame = document.querySelector<HTMLIFrameElement>('[data-workspace-files-panel] [data-html-preview-panel] > iframe')!
+    const generation = new URL(frame.src).searchParams.get('generation')
+    for (const type of ['artifact-error', 'artifact-ready'])
+      dispatchEvent(new MessageEvent('message', { source: frame.contentWindow, origin: 'null', data: { type, generation } }))
+  })
+  await expect(preview.getByRole('alert')).toBeVisible()
+  await expect(preview.getByRole('button', { name: '重试' })).toBeEnabled()
+})
+
+test('实际页面错误后的 load 不假报 ready，显式重试恢复', async ({ page, baseURL }) => {
+  const scripts = { ...dist, 'assets/main.js': 'throw new Error("injected page error")' }
+  await setup(page, baseURL!, scripts)
+  await page.goto('/workspace')
+  await page.locator('[data-open-workspace-files]').click()
+  const preview = page.locator('[data-workspace-files-panel] [data-html-preview-panel]')
+  await expect(preview.getByRole('alert')).toBeVisible()
+  await expect(preview).toHaveAttribute('aria-busy', 'false')
+  const outer = (await preview.locator(':scope > iframe').elementHandle())!
+  const panel = page.locator('[data-workspace-files-panel]')
+  await panel.getByRole('button', { name: '放大预览' }).click()
+  await preview.getByRole('button', { name: '重试', exact: true }).focus()
+  await page.keyboard.press('Escape')
+  await expect(page.locator('[data-expanded-preview]')).toHaveCount(0)
+  await expect(panel).toBeVisible()
+  await expect(panel.getByRole('button', { name: '放大预览' })).toBeFocused()
+  assert.equal(await outer.evaluate(element => element.isConnected), true)
+  scripts['assets/main.js'] = dist['assets/main.js']!
+  await preview.getByRole('button', { name: '重试', exact: true }).click({ delay: 50 })
+  await expect(preview.frameLocator(':scope > iframe').frameLocator('iframe').locator('body')).toHaveAttribute('data-loaded', 'true')
+  await expect(preview.getByRole('alert')).toHaveCount(0)
+  await expect(preview).toHaveAttribute('aria-busy', 'false')
+})
 
 test('dist 隔离覆盖直接打开/新窗口、Cookie/父页面、外网、自身导航、跨 Artifact、Worker 与 WebRTC', async ({ page, baseURL, context }) => {
   const socket = dgram.createSocket('udp4')

@@ -32,6 +32,8 @@ Source 与每份 Artifact 分别限制为 200 个文件、单个 2 MiB、总计 
 
 入口响应仅含可信包装器，HTTP CSP 强制 `sandbox allow-scripts`（无 allow-same-origin），即使直接导航/新窗口也不变成 Kuro origin 的生成页面。包装器在另一个 opaque srcdoc 中渲染原构建 HTML，仅补固定资源 base 与 RTC/Worker 锁定，不把 dist 合并或改写成 self-contained。继承的 CSP 仅允许该 capability 资源路径的脚本、CSS、图片与字体；禁 connect/frame/worker/form/WebRTC，父包装器阻断子页面自身导航，生成页面不接收 Cookie/平台密钥。原始资源返回 attachment + nosniff + 无脚本 sandbox；模块/字体只向 opaque origin 提供无凭据 CORS，HTML 原文永不直接作为可执行文档响应。相对模块、CSS url、SVG/图片、查询参数及 MIME 保持真实文件链路。普通 `href="#section"` 在当前 opaque 文档内滚动；原生 `.html` 内部链接只允许同 capability 资源目录，由可信包装器通知宿主切到固定清单的 `/document?path=...` 再隔离渲染，不放开生成页面自身导航或外网，也不提供通用路由。
 
+前台清单只在同会话 Run 从执行态收尾或按需（打开面板、显式刷新、切会话/账号、恢复可见）读取；终态前在途请求之后排一次新读取，无周期轮询。本地停止/断流不等于后端 COMMIT 确认，接口只反映最近已确认版本。前端精确隐藏指定模板辅助路径，完整 Source、恢复和 ZIP 不裁剪。已加载预览在面板生命周期内保留同一 iframe；Code 切换隐藏，native dialog 全屏进入 top layer，不搬 DOM。新 Artifact 仅需要预览时加载，ready 等生成文档有效 load 且校验加载代次，错误后 load 不覆盖失败。
+
 用户入口：`GET /api/conversations/:id/workspace`、`/file?path=...&revision=...`、`/archive?revision=...`、`/artifacts/:artifactId/preview?origin=...`、兼容 `/traffic`；capability 入口在 `/api/workspace-preview/:token/`。详细参数、检查结果与构建身份仍记录在 Run Trace。
 
 ## 管理台监测
