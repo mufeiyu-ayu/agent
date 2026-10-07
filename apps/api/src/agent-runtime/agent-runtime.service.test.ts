@@ -307,6 +307,8 @@ describe('AgentRuntimeService model stream', () => {
         { createdAt: 'asc' },
         { id: 'asc' },
       ],
+      // 第一步只读元数据，不带正文（#239）。
+      select: { id: true, conversationId: true, role: true, status: true, createdAt: true, updatedAt: true },
     }])
     const firstSamplingMessages = harness.llmCalls[0]?.messages ?? []
     const contents = firstSamplingMessages
@@ -4370,6 +4372,14 @@ class FakePrismaService {
     findMany: async (
       arguments_: FakeMessageFindManyArguments,
     ): Promise<Message[]> => {
+      // 读历史分两步（#239）：先按状态与上界读元数据，再按保留下来的 ID 读正文；只记第一步的参数。
+      const ids = arguments_.where.id?.in
+
+      if (ids) {
+        return this.messages.filter(message =>
+          message.conversationId === arguments_.where.conversationId && ids.includes(message.id))
+      }
+
       this.findManyArguments.push(structuredClone(arguments_))
 
       return this.messages
@@ -4534,10 +4544,12 @@ type FakeStrictlyBeforeOr = [
 interface FakeMessageFindManyArguments {
   where: {
     conversationId: string
-    status: Message['status']
+    status?: Message['status']
     OR?: FakeStrictlyBeforeOr
+    id?: { in: string[] }
   }
-  orderBy: Array<{ createdAt: 'asc' } | { id: 'asc' }>
+  orderBy?: Array<{ createdAt: 'asc' } | { id: 'asc' }>
+  select?: Partial<Record<keyof Message, true>>
 }
 
 interface FakeCompactionRecord {
