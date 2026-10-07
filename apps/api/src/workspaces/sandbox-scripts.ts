@@ -2,7 +2,7 @@ import { MAX_READ_OBSERVATION_CHARS } from './workspace-files.js'
 
 // 固定的执行监督代码；用户代码只在沙箱中的非特权子进程里执行，平台凭据不传入环境。
 export const FILE_SCRIPT = String.raw`
-import os,sys,json,base64,stat,pwd,shlex,shutil,re
+import os,sys,json,base64,stat,pwd,shlex,shutil,re,hashlib
 ROOT='/workspace/project'
 MAX_FILE=2097152
 MAX_TOTAL=8388608
@@ -73,7 +73,10 @@ def snapshot(artifact=False):
             if not artifact and any(excluded(p) for p in path.split('/')) and path not in preserve: continue
             content=read(os.path.relpath(absolute,ROOT));total+=len(content)
             if total>MAX_TOTAL or len(files)>=MAX_FILES: raise ValueError('工作区最多 200 个文件、总计 8 MiB')
-            files.append({'path':path,'content':base64.b64encode(content).decode()})
+            sha=hashlib.sha256(content).hexdigest()
+            entry={'path':path,'sha256':sha,'bytes':len(content)}
+            if data.get('known',{}).get(sha)!=len(content): entry['content']=base64.b64encode(content).decode()
+            files.append(entry)
     return {'files':files}
 try:
     action=data['action']

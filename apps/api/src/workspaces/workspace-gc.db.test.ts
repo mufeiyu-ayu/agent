@@ -91,11 +91,11 @@ describe('OSS GC PostgreSQL 引用与故障边界（内存 OSS，不访问业务
       assert.equal(content.length, file.bytes)
       assert.equal(fileHash(content), file.sha256)
       return content
-    }, request: async (_sandbox: unknown, _script: string, request: { action?: string, artifact?: boolean, files?: typeof restored }) => {
+    }, request: async (_sandbox: unknown, _script: string, request: { action?: string, artifact?: boolean, files?: typeof restored, known?: Record<string, number> }) => {
       if (request.action === 'restore')
         restored = request.files ?? []
       if (request.action === 'snapshot')
-        return { files: (request.artifact ? dist : source).map(file => ({ path: file.path, content: file.content.toString('base64') })) }
+        return { files: (request.artifact ? dist : source).map(file => ({ path: file.path, bytes: file.content.length, sha256: fileHash(file.content), ...(request.known?.[fileHash(file.content)] === file.content.length ? {} : { content: file.content.toString('base64') }) })) }
       return request.action ? {} : { stdout: '', stderr: '', exitCode: 0, timedOut: false, truncated: false }
     } } as unknown as WorkspaceCloudService
     const gc = new WorkspaceGcService(prisma, cloud)
@@ -172,6 +172,30 @@ describe('OSS GC PostgreSQL 引用与故障边界（内存 OSS，不访问业务
       assert.ok(await prisma.workspaceArtifact.findUnique({ where: { id: current.commit.artifact!.id } }))
     }
     finally { await restarted.onModuleDestroy() }
+  })
+
+  it('#239：初始保留集只用于跳过，扫描期间新发布的候选仍重新复核，旧引用留给下一代回收', async () => {
+    const f = await fixture()
+    const run = await f.newRun()
+    f.source.push({ path: 'file.txt', content: Buffer.from('old reference') })
+    await f.confirm(run)
+    await f.end(run)
+    const list = f.list.getMockImplementation()!
+    f.list.mockImplementationOnce(async (...args) => {
+      const next = await f.newRun()
+      f.source.splice(0, 1, { path: 'file.txt', content: Buffer.from('new reference') })
+      await f.confirm(next)
+      await f.end(next)
+      return list(...args)
+    })
+    const first = await f.gc.collect(f.conversation.id, true)
+    assert.ok(first.retained.includes(f.key('old reference')))
+    assert.ok(first.retained.includes(f.key('new reference')))
+    assert.equal(f.remove.mock.calls.length, 0)
+    assert.equal((await prisma.workspaceGcTarget.findUniqueOrThrow({ where: { conversationId: f.conversation.id } })).pending, true)
+    await f.gc.collect(f.conversation.id, true)
+    assert.equal(f.objects.has(f.key('old reference')), false)
+    assert.equal(f.objects.has(f.key('new reference')), true)
   })
 
   it('S1：blocked 自动 GC 不列举 OSS，保留 pending；dry-run 可列举，解除后仍能回收', async () => {

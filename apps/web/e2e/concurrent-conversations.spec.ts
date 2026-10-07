@@ -527,6 +527,33 @@ test('B8：初始化列表迟到不抢回新草稿，发送仍创建新会话', 
   await visible(page, '仍属于新会话')
 })
 
+test('#239：首次不点新建直接发送，列表先于创建返回仍显示新回答', async ({ page }) => {
+  await setup(page)
+  const lists: Route[] = []
+  const creates: Route[] = []
+  await page.route('**/api/conversations?*', (route) => {
+    lists.push(route)
+  })
+  await page.route('**/api/conversations', (route) => {
+    creates.push(route)
+  })
+  await page.reload({ waitUntil: 'domcontentloaded' })
+  await expect.poll(() => lists.length).toBe(1)
+  await page.getByRole('textbox').first().fill('首次直接发送')
+  await page.getByRole('button', { name: '发送消息', exact: true }).click()
+  await expect.poll(() => creates.length).toBe(1)
+  await lists[0]!.fulfill(json({ items: [conversation(CONVERSATION_ID, '会话 A')], nextCursor: null }))
+  await page.getByRole('button', { name: '会话 A', exact: true }).waitFor()
+  await expect(page.getByRole('button', { name: '停止生成', exact: true })).toBeVisible()
+  await creates[0]!.fulfill(json(conversation('direct-new', '首次直接发送')))
+  await poll(page, 'length', 1)
+  assert.equal(await page.evaluate(() => window.__concurrentFlows[0]!.conversationId), 'direct-new')
+  await start(page, 0)
+  await done(page, 0, '首次直接发送的回答在这里')
+  await visible(page, '首次直接发送的回答在这里')
+  await expect(page.getByRole('textbox').first()).toHaveValue('')
+})
+
 test('B9：未缓存历史有等待/重试提示，Enter 和按钮均禁发，历史就绪后旧消息仍在', async ({ page }) => {
   await setup(page)
   const pending: Route[] = []

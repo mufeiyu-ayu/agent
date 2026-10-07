@@ -37,6 +37,18 @@ it('真实文件采集分离 Source/dist，过滤依赖、缓存、Secret，拒�
   }
   const saved = await run({ action: 'snapshot' })
   assert.deepEqual(saved.files.map((file: { path: string }) => file.path).sort(), source.map(file => file.path).sort())
+  const known = Object.fromEntries(saved.files.map((file: { sha256: string, bytes: number }) => [file.sha256, file.bytes]))
+  const unchanged = await run({ action: 'snapshot', known })
+  assert.ok(unchanged.files.every((file: object) => !('content' in file)))
+  assert.deepEqual(unchanged.files, saved.files.map(({ content: _content, ...file }: { content: string }) => file))
+  await writeFile(join(root, 'package.json'), '{"changed":true}')
+  await writeFile(join(root, 'duplicate.svg'), source[1]!.content)
+  const changed = await run({ action: 'snapshot', known })
+  assert.deepEqual(changed.files.filter((file: object) => 'content' in file).map((file: { path: string }) => file.path), ['package.json'])
+  assert.equal(Buffer.from(changed.files.find((file: { path: string }) => file.path === 'package.json').content, 'base64').toString(), '{"changed":true}')
+  // 错长度不能仅凭同 SHA 省略；不认识的 hash 同样返回原字节。
+  const invalidKnown = Object.fromEntries(Object.keys(known).map(hash => [hash, -1]))
+  assert.ok((await run({ action: 'snapshot', known: invalidKnown })).files.every((file: object) => 'content' in file))
   assert.deepEqual((await run({ action: 'snapshot', artifact: true })).files.map((file: { path: string }) => file.path), ['index.html', 'tmp/icon.svg'])
   await symlink(join(root, 'package.json'), join(root, 'src/link'))
   assert.match((await run({ action: 'snapshot' })).error, /symbolic|符号|Too many levels/)
@@ -59,8 +71,8 @@ it('Source 与 Artifact 分别遵守 200 文件、2 MiB 单文件、8 MiB 总量
     await rm(input, { force: true })
   })
   const script = `import os,pwd\npwd.getpwnam=lambda _:pwd.getpwuid(os.getuid())\n${FILE_SCRIPT.replace('ROOT=\'/workspace/project\'', `ROOT=${JSON.stringify(root)}`)}`
-  const run = async (artifact: boolean) => {
-    await writeFile(input, JSON.stringify({ action: 'snapshot', artifact }))
+  const run = async (artifact: boolean, known?: Record<string, number>) => {
+    await writeFile(input, JSON.stringify({ action: 'snapshot', artifact, known }))
     return JSON.parse((await exec('python3', ['-I', '-S', '-c', script, input], { maxBuffer: 12 * 1024 * 1024 })).stdout)
   }
   await mkdir(join(root, 'dist'))
@@ -76,9 +88,15 @@ it('Source 与 Artifact 分别遵守 200 文件、2 MiB 单文件、8 MiB 总量
       await rm(join(directory, `${i}.txt`))
     for (let i = 0; i < 4; i++)
       await writeFile(join(directory, `${i}.bin`), Buffer.alloc(2 * 1024 * 1024))
-    assert.equal((await run(artifact)).files.length, 4)
+    const full = await run(artifact)
+    assert.equal(full.files.length, 4)
+    const known = Object.fromEntries(full.files.map((file: { sha256: string, bytes: number }) => [file.sha256, file.bytes]))
+    const compact = await run(artifact, known)
+    assert.ok(compact.files.every((file: object) => !('content' in file)))
+    assert.ok(JSON.stringify(compact).length < JSON.stringify(full).length / 1000)
+    console.log('snapshot controlled bytes', { artifact, full: JSON.stringify(full).length, unchanged: JSON.stringify(compact).length })
     await writeFile(join(directory, 'overflow.bin'), 'x')
-    assert.match((await run(artifact)).error, /8 MiB/)
+    assert.match((await run(artifact, known)).error, /8 MiB/)
     for (const name of ['0.bin', '1.bin', '2.bin', '3.bin', 'overflow.bin'])
       await rm(join(directory, name))
   }

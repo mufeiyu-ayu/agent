@@ -120,10 +120,13 @@ describe('上下文压缩（真实库，#220）', { timeout: 60_000 }, () => {
     const historySummary = '## Goal\n- 历史摘要\u0000\uD83D'
     const pages = ['1', '2', '3'].map(page => ({ page, content: page.padEnd(6_000, 'w') }))
 
-    // 第 0 问：一问一答。
-    const first = await ask(conversationId, '第 0 问', { sampling: [answerStream('a'.repeat(400))] })
+    // 本例只验证同步压缩与重建；后台预压另有独立竞态用例，避免工具 schema 增长改变本例时序。
+    const first = await ask(conversationId, '第 0 问', { sampling: [answerStream('a'.repeat(400))], skipAfterRun: true })
     // 第 1 问：三轮读网页，第 4 次调用前超触发线，把前两轮写成前缀摘要（历史只有很小的第 0 问，不压历史）。
     const second = await ask(conversationId, '读三篇资料', {
+      // 只用正文体积决定本例的切点，新增工具 schema 不应把压缩提前一轮。
+      maxInputTokens: MODEL.maxInputTokens + TOOL_TOKENS,
+      skipAfterRun: true,
       sampling: [
         ...pages.map(({ page }) => () => toModelStream([
           ...(page === '1' ? [{ type: 'text_delta', delta: '先读第一篇。' } as const] : []),
@@ -136,11 +139,11 @@ describe('上下文压缩（真实库，#220）', { timeout: 60_000 }, () => {
       summary: () => textStream(turnSummary),
     })
     // 第 2 问：历史里第 1 问按压缩后的样子还原。
-    const third = await ask(conversationId, '第 2 问', { sampling: [answerStream('b'.repeat(1_200))] })
+    const third = await ask(conversationId, '第 2 问', { sampling: [answerStream('b'.repeat(1_200))], skipAfterRun: true })
     // 第 3 问很长：超触发线，压历史；第 1 问是边界组，以「问题 + 回答全文」保留，第 0 问进摘要。
     const longQuestion = 'q'.repeat(8_000)
-    const fourth = await ask(conversationId, longQuestion, { summary: () => textStream(historySummary) })
-    const fifth = await ask(conversationId, '第 4 问')
+    const fourth = await ask(conversationId, longQuestion, { summary: () => textStream(historySummary), skipAfterRun: true })
+    const fifth = await ask(conversationId, '第 4 问', { skipAfterRun: true })
 
     const persistedTurnSummary = '## Original Request\n- 读三篇�'
     const persistedHistorySummary = '## Goal\n- 历史摘要��'

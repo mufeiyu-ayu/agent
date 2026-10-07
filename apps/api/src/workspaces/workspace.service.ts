@@ -17,6 +17,8 @@ import { WorkspaceGcService } from './workspace-gc.service.js'
 import { WorkspaceMonitoringService } from './workspace-monitoring.service.js'
 import { validateArtifact } from './workspace-preview.js'
 
+interface CollectedFile { path: string, sha256: string, bytes: number, content?: Buffer }
+
 interface RunningWorkspace {
   sandbox: Sandbox
   execution: WorkspaceExecution
@@ -148,7 +150,7 @@ export class WorkspaceService implements OnModuleDestroy {
         const preserved = parseStoredFiles(row.files, this.prefix(execution.userId, execution.conversationId)).filter(file => !privateWorkspacePath(file.path)).map(file => file.path)
         if (preserved.some(path => path.startsWith('dist/')))
           throw new WorkspaceOperationError('旧已确认文件位于 dist，未清理或覆盖；请先明确移动旧文件后再构建。')
-        sourceHashes = new Map((await this.collectFiles(sandbox, signal, false, preserved)).map(file => [file.path, fileHash(file.content)]))
+        sourceHashes = new Map((await this.collectFiles(sandbox, signal, false, preserved)).map(file => [file.path, file.sha256]))
         await this.cloud.request(sandbox, FILE_SCRIPT, { action: 'clear-dist' }, signal)
       }
       const createdAt = new Date().toISOString()
@@ -182,30 +184,54 @@ export class WorkspaceService implements OnModuleDestroy {
       const confirmedArtifact = artifactId ? await this.withDb(db => db.workspaceArtifact.findFirst({ where: { id: artifactId, userId: execution.userId, conversationId: execution.conversationId } }), signal) : null
       // 当前 Source/Artifact 受 owner + 持久上传登记保护；GC 与取得 owner 共用互斥。
       // 不复用任意历史 hash，也不依赖一次存在性检查避免检查后被删的竞态。
-      const existingHashes = new Set([...previous, ...parseStoredFiles(confirmedArtifact?.files ?? [], prefix)].map(file => file.sha256))
-      const upload = async (contents: Array<{ path: string, content: Buffer }>) => {
+      const existingHashes = new Map([...previous, ...parseStoredFiles(confirmedArtifact?.files ?? [], prefix)].map(file => [file.sha256, file.bytes]))
+      const upload = async (contents: CollectedFile[]) => {
         const files: StoredWorkspaceFile[] = []
-        for (const { path, content } of contents) {
-          signal.throwIfAborted()
-          const sha256 = fileHash(content)
-          const file = { path, bytes: content.length, sha256, key: `${prefix}objects/${sha256}` }
-          if (!existingHashes.has(sha256)) {
-            await this.gc.uploading(uploadId, file.key)
+        const uploads = new Map<string, Promise<void>>()
+        let next = 0
+        let failed = false
+        let failure: unknown
+        // 每路自行收集失败，所有已启动 PUT 的真实结局都返回后才允许 finishUpload。
+        await Promise.all(Array.from({ length: Math.min(4, contents.length) }, async () => {
+          while (!failed && next < contents.length) {
+            const index = next++
+            const { path, content, sha256, bytes } = contents[index]!
+            const file = { path, bytes, sha256, key: `${prefix}objects/${sha256}` }
             try {
-              await this.cloud.putFile(file, content, signal)
+              signal.throwIfAborted()
+              if (!existingHashes.has(sha256)) {
+                let pending = uploads.get(sha256)
+                if (!pending) {
+                  if (!content)
+                    throw new WorkspaceOperationError('待上传文件缺少内容。')
+                  pending = (async () => {
+                    await this.gc.uploading(uploadId, file.key)
+                    signal.throwIfAborted()
+                    if (failed)
+                      return
+                    await this.cloud.putFile(file, content, signal)
+                    existingHashes.set(sha256, bytes)
+                  })()
+                  uploads.set(sha256, pending)
+                }
+                await pending
+              }
+              signal.throwIfAborted()
+              files[index] = file
             }
             catch (error) {
               unknownUpload ||= error instanceof WorkspaceUploadOutcomeUnknownError
-              throw error
+              if (!failed)
+                failure = error
+              failed = true
             }
-            existingHashes.add(sha256)
-            signal.throwIfAborted()
           }
-          files.push(file)
-        }
+        }))
+        if (failed)
+          throw failure
         return parseStoredFiles(files, prefix)
       }
-      const files = await upload(await this.collectFiles(active.sandbox, signal, false, previous.filter(file => !privateWorkspacePath(file.path)).map(file => file.path)))
+      const files = await upload(await this.collectFiles(active.sandbox, signal, false, previous.filter(file => !privateWorkspacePath(file.path)).map(file => file.path), existingHashes))
       const hashes = new Map(previous.map(file => [file.path, file.sha256]))
       const sourceChanged = previous.length !== files.length || files.some(file => hashes.get(file.path) !== file.sha256)
       const build = active.build
@@ -215,7 +241,7 @@ export class WorkspaceService implements OnModuleDestroy {
         if (build.sourceHashes.size !== files.length || files.some(file => build.sourceHashes.get(file.path) !== file.sha256))
           throw new WorkspaceOperationError('构建期间源码发生变化，未发布 Artifact；请重新检查构建。')
         const contents = await this.collectFiles(active.sandbox, signal, true)
-        validateArtifact(contents)
+        validateArtifact(contents.map(file => ({ path: file.path, content: file.content! })))
         artifact = { id: build.id, userId: execution.userId, sourceRevision: row.revision + Number(sourceChanged), command: build.command, createdAt: build.createdAt, files: await upload(contents) }
       }
       const webProject = (row.webProject ?? false) || !!artifact || (files.some(file => file.path === 'pnpm-lock.yaml') && files.some(file => /^vite\.config\.[cm]?[jt]s$/.test(file.path)))
@@ -438,22 +464,36 @@ export class WorkspaceService implements OnModuleDestroy {
     })
   }
 
-  private async collectFiles(sandbox: Sandbox, signal: AbortSignal, artifact = false, preserve: string[] = []): Promise<Array<{ path: string, content: Buffer }>> {
-    const snapshot = await this.cloud.request(sandbox, FILE_SCRIPT, { action: 'snapshot', ...(artifact ? { artifact: true } : {}), ...(preserve.length ? { preserve } : {}) }, signal)
+  private async collectFiles(sandbox: Sandbox, signal: AbortSignal, artifact = false, preserve: string[] = [], known = new Map<string, number>()): Promise<CollectedFile[]> {
+    const snapshot = await this.cloud.request(sandbox, FILE_SCRIPT, { action: 'snapshot', ...(artifact ? { artifact: true } : {}), ...(preserve.length ? { preserve } : {}), ...(known.size ? { known: Object.fromEntries(known) } : {}) }, signal)
     if (!snapshot || typeof snapshot !== 'object' || !('files' in snapshot) || !Array.isArray(snapshot.files) || snapshot.files.length > MAX_WORKSPACE_FILES)
       throw new WorkspaceOperationError('沙箱文件清单无效。')
     let total = 0
     const paths = new Set<string>()
     return snapshot.files.map((raw: unknown) => {
-      if (!raw || typeof raw !== 'object' || !('path' in raw) || typeof raw.path !== 'string' || !('content' in raw) || typeof raw.content !== 'string' || raw.content.length > Math.ceil(MAX_FILE_BYTES / 3) * 4)
-        throw new WorkspaceOperationError('沙箱文件超过容量限制。')
+      if (!raw || typeof raw !== 'object' || !('path' in raw) || typeof raw.path !== 'string')
+        throw new WorkspaceOperationError('沙箱文件清单无效。')
       const path = artifact ? artifactPath(raw.path) : preserve.includes(raw.path) ? storedWorkspacePath(raw.path) : workspacePath(raw.path)
-      const content = Buffer.from(raw.content, 'base64')
-      total += content.length
-      if (paths.has(path) || content.toString('base64') !== raw.content || content.length > MAX_FILE_BYTES || total > MAX_WORKSPACE_BYTES)
+      let file: CollectedFile
+      if ('content' in raw) {
+        if (typeof raw.content !== 'string' || raw.content.length > Math.ceil(MAX_FILE_BYTES / 3) * 4)
+          throw new WorkspaceOperationError('沙箱文件超过容量限制。')
+        const content = Buffer.from(raw.content, 'base64')
+        const sha256 = fileHash(content)
+        if (content.toString('base64') !== raw.content || ('sha256' in raw && raw.sha256 !== sha256) || ('bytes' in raw && raw.bytes !== content.length))
+          throw new WorkspaceOperationError('沙箱文件哈希或长度无效。')
+        file = { path, content, sha256, bytes: content.length }
+      }
+      else {
+        if (!('sha256' in raw) || typeof raw.sha256 !== 'string' || !('bytes' in raw) || typeof raw.bytes !== 'number' || known.get(raw.sha256) !== raw.bytes)
+          throw new WorkspaceOperationError('沙箱省略的文件没有受保护的已确认内容。')
+        file = { path, sha256: raw.sha256, bytes: raw.bytes }
+      }
+      total += file.bytes
+      if (paths.has(path) || file.bytes > MAX_FILE_BYTES || total > MAX_WORKSPACE_BYTES)
         throw new WorkspaceOperationError('沙箱文件清单重复或超过容量限制。')
       paths.add(path)
-      return { path, content }
+      return file
     })
   }
 

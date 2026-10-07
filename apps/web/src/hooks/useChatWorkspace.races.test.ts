@@ -77,6 +77,42 @@ it('B8：旧初始化不抢回新视图/草稿，也不抹掉期间创建的会�
   assert.ok(creating.conversations.value.some(item => item.id === 'created'))
 })
 
+it.each(['sending', 'stopped', 'failed', 'switched'] as const)('首次直接发送在 %s 状态时初始化列表返回，不抢走视图', async (phase) => {
+  const listing = deferred<Awaited<ReturnType<typeof listConversations>>>()
+  const creating = deferred<Awaited<ReturnType<typeof createConversation>>>()
+  vi.mocked(listConversations).mockReturnValueOnce(listing.promise)
+  vi.mocked(createConversation).mockReturnValueOnce(creating.promise)
+  const workspace = useChatWorkspace()
+  lifecycle.mounted()
+  workspace.message.value = 'first question'
+  const sending = workspace.sendMessage()
+  assert.equal(vi.mocked(createConversation).mock.calls.length, 1)
+  if (phase === 'stopped')
+    workspace.stopGeneration()
+  if (phase === 'failed') {
+    creating.reject(new Error('create failed'))
+    await sending
+  }
+  if (phase === 'switched')
+    await workspace.selectConversation('b')
+  listing.resolve({ items: [conversation('a')], nextCursor: null })
+  await vi.waitFor(() => assert.equal(workspace.conversations.value.length, 1))
+  assert.equal(workspace.activeConversationId.value, phase === 'switched' ? 'b' : null)
+  if (phase !== 'failed') {
+    creating.resolve(conversation('created'))
+    await sending
+  }
+  if (phase === 'sending') {
+    assert.equal(workspace.activeConversationId.value, 'created')
+    assert.equal(workspace.message.value, '')
+    assert.ok(workspace.messages.value.some(item => item.content === 'latest reply'))
+  }
+  else {
+    assert.equal(workspace.activeConversationId.value, phase === 'switched' ? 'b' : null)
+    assert.equal(workspace.message.value, phase === 'switched' ? '' : 'first question')
+  }
+})
+
 it.each(['done', 'error', 'aborted'] as const)('B5：回切 GET 在 %s 后失败，消息与缓存仍在；下一轮保留历史', async (terminal) => {
   const workspace = useChatWorkspace()
   lifecycle.mounted()
