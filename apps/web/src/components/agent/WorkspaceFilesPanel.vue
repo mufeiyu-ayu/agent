@@ -624,7 +624,7 @@ function retryDownload() {
   -webkit-backdrop-filter: blur(16px);
   z-index: 10;
 }
-:global([data-agent-workspace-theme='olive-ember']) .file-toolbar {
+[data-agent-workspace-theme='olive-ember'] .file-toolbar {
   background: color-mix(in oklch, var(--agent-surface) 92%, transparent);
   border-bottom-color: rgba(255, 255, 255, 0.08);
 }
@@ -771,7 +771,7 @@ function retryDownload() {
   background: color-mix(in oklch, var(--agent-sidebar) 85%, transparent);
   overflow: hidden;
 }
-:global([data-agent-workspace-theme='olive-ember']) .file-sidebar {
+[data-agent-workspace-theme='olive-ember'] .file-sidebar {
   background: color-mix(in oklch, var(--agent-sidebar) 75%, transparent);
   border-right-color: rgba(255, 255, 255, 0.07);
 }
@@ -835,7 +835,7 @@ function retryDownload() {
 .tree-row:hover {
   background: color-mix(in oklch, var(--agent-ink) 5%, transparent);
 }
-:global([data-agent-workspace-theme='olive-ember']) .tree-row:hover {
+[data-agent-workspace-theme='olive-ember'] .tree-row:hover {
   background: rgba(255, 255, 255, 0.05);
 }
 .tree-row.is-selected {
@@ -843,7 +843,7 @@ function retryDownload() {
   color: var(--agent-ink);
   box-shadow: none;
 }
-:global([data-agent-workspace-theme='olive-ember']) .tree-row.is-selected {
+[data-agent-workspace-theme='olive-ember'] .tree-row.is-selected {
   background: rgba(255, 255, 255, 0.1);
   color: #fff;
 }
@@ -863,7 +863,7 @@ function retryDownload() {
   color: var(--agent-ink);
   font-weight: 500;
 }
-:global([data-agent-workspace-theme='olive-ember']) .tree-row.is-selected .tree-entry {
+[data-agent-workspace-theme='olive-ember'] .tree-row.is-selected .tree-entry {
   color: #fff;
 }
 .tree-entry span {
@@ -1002,13 +1002,13 @@ function retryDownload() {
 .stage-hint-pill { display: inline-flex; align-items: center; gap: 6px; margin-top: 10px; padding: 5px 12px; border-radius: 9999px; border: 1px solid var(--agent-border-soft); background: var(--agent-surface-raised); color: var(--agent-ink-muted); font-size: 11.5px; font-weight: 450; box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.03); transition: all 0.2s ease; }
 .stage-hint-pill:hover { border-color: color-mix(in oklch, var(--agent-accent) 40%, var(--agent-border-soft)); color: var(--agent-ink); }
 .hint-icon { flex-shrink: 0; color: var(--agent-accent); }
-:global([data-agent-workspace-theme='olive-ember']) .stage-ambient-glow { background: radial-gradient(ellipse at center, color-mix(in oklch, var(--agent-accent) 26%, transparent) 0%, transparent 72%); opacity: 0.95; filter: blur(52px); }
-:global([data-agent-workspace-theme='olive-ember']) .card-back { background: color-mix(in oklch, var(--agent-surface) 90%, black); border-color: color-mix(in oklch, var(--agent-border-soft) 80%, transparent); box-shadow: 0 8px 24px -4px rgb(0 0 0 / 0.5); }
-:global([data-agent-workspace-theme='olive-ember']) .card-middle { background: color-mix(in oklch, var(--agent-surface-raised) 70%, var(--agent-surface)); border-color: color-mix(in oklch, var(--agent-border-soft) 90%, transparent); box-shadow: 0 12px 30px -6px rgb(0 0 0 / 0.6); }
-:global([data-agent-workspace-theme='olive-ember']) .card-front { background: linear-gradient(160deg, color-mix(in oklch, var(--agent-surface-raised) 95%, white 5%), var(--agent-surface-raised)); border-color: color-mix(in oklch, var(--agent-accent) 25%, var(--agent-border-soft)); box-shadow: 0 20px 42px -10px rgb(0 0 0 / 0.7), 0 4px 12px -2px rgb(0 0 0 / 0.4), inset 0 1px 0 rgb(255 255 255 / 0.12); }
-:global([data-agent-workspace-theme='olive-ember']) .card-icon { filter: drop-shadow(0 2px 8px color-mix(in oklch, var(--agent-accent) 45%, transparent)); }
-:global([data-agent-workspace-theme='olive-ember']) .preview-line { background: color-mix(in oklch, var(--agent-ink) 22%, transparent); }
-:global([data-agent-workspace-theme='olive-ember']) .stage-hint-pill { background: color-mix(in oklch, var(--agent-surface-raised) 80%, transparent); border-color: var(--agent-border-soft); box-shadow: 0 2px 8px -2px rgb(0 0 0 / 0.3), inset 0 1px 0 rgb(255 255 255 / 0.05); }
+[data-agent-workspace-theme='olive-ember'] .stage-ambient-glow { background: radial-gradient(ellipse at center, color-mix(in oklch, var(--agent-accent) 26%, transparent) 0%, transparent 72%); opacity: 0.95; filter: blur(52px); }
+[data-agent-workspace-theme='olive-ember'] .card-back { background: color-mix(in oklch, var(--agent-surface) 90%, black); border-color: color-mix(in oklch, var(--agent-border-soft) 80%, transparent); box-shadow: 0 8px 24px -4px rgb(0 0 0 / 0.5); }
+[data-agent-workspace-theme='olive-ember'] .card-middle { background: color-mix(in oklch, var(--agent-surface-raised) 70%, var(--agent-surface)); border-color: color-mix(in oklch, var(--agent-border-soft) 90%, transparent); box-shadow: 0 12px 30px -6px rgb(0 0 0 / 0.6); }
+[data-agent-workspace-theme='olive-ember'] .card-front { background: linear-gradient(160deg, color-mix(in oklch, var(--agent-surface-raised) 95%, white 5%), var(--agent-surface-raised)); border-color: color-mix(in oklch, var(--agent-accent) 25%, var(--agent-border-soft)); box-shadow: 0 20px 42px -10px rgb(0 0 0 / 0.7), 0 4px 12px -2px rgb(0 0 0 / 0.4), inset 0 1px 0 rgb(255 255 255 / 0.12); }
+[data-agent-workspace-theme='olive-ember'] .card-icon { filter: drop-shadow(0 2px 8px color-mix(in oklch, var(--agent-accent) 45%, transparent)); }
+[data-agent-workspace-theme='olive-ember'] .preview-line { background: color-mix(in oklch, var(--agent-ink) 22%, transparent); }
+[data-agent-workspace-theme='olive-ember'] .stage-hint-pill { background: color-mix(in oklch, var(--agent-surface-raised) 80%, transparent); border-color: var(--agent-border-soft); box-shadow: 0 2px 8px -2px rgb(0 0 0 / 0.3), inset 0 1px 0 rgb(255 255 255 / 0.05); }
 @keyframes stage-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
 .workspace-empty { padding: 16px 8px; color: var(--agent-ink-muted); font-size: 12px; line-height: 1.7; }
 .workspace-error { flex-shrink: 0; padding: 6px 12px; color: var(--agent-error); font-size: 12px; background: color-mix(in oklch, var(--agent-error) 8%, transparent); border-bottom: 1px solid color-mix(in oklch, var(--agent-error) 20%, transparent); }
