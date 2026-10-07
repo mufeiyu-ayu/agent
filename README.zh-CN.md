@@ -65,7 +65,7 @@ DeepSeek 官方 API 和 OpenAI-compatible 中转站（GPT / Grok / Gemini）用�
 
 ## 一屏看完整个循环
 
-[`agent-runtime.service.ts`](./apps/api/src/agent-runtime/agent-runtime.service.ts) 主循环的简化版：
+[`agent-runtime.ts`](./packages/agent/src/agent-runtime.ts) 主循环的简化版：
 
 ```ts
 // 不限轮数与工具调用次数：模型一直做到给出回答，只由单次最长时间兜底。
@@ -103,9 +103,10 @@ flowchart LR
 
 | 模块 | 做什么 |
 | --- | --- |
-| `apps/api` | NestJS API：Agent Runtime、工具、模型接入配置 |
+| `apps/api` | NestJS API：Agent Runtime 的宿主（事务、凭据、产品策略）、工具、模型接入配置 |
 | `apps/web` | Vue 3 对话前台，流式 Markdown 渲染 |
 | `apps/admin` | 运维控制台：概览、会话记录、Run Trace、模型接入 |
+| `packages/agent` | 不依赖框架的 Agent 执行内核：主循环、上下文与压缩、取消与终态（零 Nest、零 Prisma） |
 | `packages/ai` | 不依赖框架的模型客户端：流适配、重试、错误（零 Nest、零 Prisma） |
 | `packages/contracts` | 前后端共享的类型 |
 
@@ -134,8 +135,8 @@ pnpm dev
 | # | 读什么 | 看懂什么 |
 | --- | --- | --- |
 | 1 | [`chat.controller.ts`](./apps/api/src/chat/chat.controller.ts) | 用户关掉页面怎样变成 Abort 信号 |
-| 2 | [`agent-runtime.service.ts`](./apps/api/src/agent-runtime/agent-runtime.service.ts) | 主循环：采样、分派、执行工具、续轮、收尾 |
-| 3 | [`context-compaction.service.ts`](./apps/api/src/agent-runtime/context/context-compaction.service.ts) | 上下文超过模型上限时，哪些写成摘要、哪些保留原文 |
+| 2 | [`agent-runtime.ts`](./packages/agent/src/agent-runtime.ts) | 主循环：采样、分派、执行工具、续轮、收尾 |
+| 3 | [`context-compaction.service.ts`](./packages/agent/src/context/context-compaction.service.ts) | 上下文超过模型上限时，哪些写成摘要、哪些保留原文 |
 | 4 | [`openai-completions-stream.ts`](./packages/ai/src/api/openai-completions-stream.ts) | 服务商的流怎样变成干净的事件 |
 | 5 | [`agent-run-recorder.service.ts`](./apps/api/src/agent-runtime/lifecycle/agent-run-recorder.service.ts) | 终态所有权与原子提交 |
 

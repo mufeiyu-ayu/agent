@@ -6,7 +6,7 @@
 
 多租户已否决（workbench 第 9 节）：下文的「租户」按「用户 / 团队」读，隔离边界是人与团队，不是 tenant。
 
-目标产品：用户可以通过 Web 长期使用自己的云端 Agent，运行可观察、会话可继续、工具行为可控制；保留我们已有 RAG / Grounding 与 Admin 的价值。不是把 Pi TUI 逐屏翻译成 Vue。
+目标产品：用户可以通过 Web 长期使用自己的云端 Agent，运行可观察、会话可继续、工具行为可控制；保留 Admin 轨迹的价值（RAG / Grounding 已由 #185–189 删除，以下早期 R1/R3/R4 设想不能作为当前代码事实）。不是把 Pi TUI 逐屏翻译成 Vue。
 
 ## 零、先说清不借鉴什么
 
@@ -24,11 +24,9 @@
 
 **AI 查的素材**：[07 图](./diagrams/07-classic-loop.html)；[产品主链 §3](./modules/coding-agent-tui.md)、[运行内核 §2](./modules/runtime-session.md)（toolCall 续轮与文本回复两条分支、`agent_end ≠ 空闲`）；[模型边界 §2–3、§4.1、§7](./modules/model-telemetry-evals.md)（事件流、transformMessages、compat 检测、usage 归一化、两层重试、overflow 判定）。对照点在 [current-agent-mapping](./current-agent-mapping.md) 的 `runTurnStream` 行。
 
-### `web_fetch`（Gated，触发见 workbench 第 7 节「后」行）
+### `web_fetch`（#206 已落地，非 Gated）
 
-只读、内容不可信的网络工具。曾设想的第一个用途：盯 Pi 上游，读固定 revision 到 HEAD 的 compare / commits 页面，对照 pi-reference 判断哪些结论可能过期；第一版只读不写。
-
-**范围**：只允许 http/https；解析后拦截内网与保留地址，防 SSRF；体积与超时上限；HTML 转正文；observation 按 untrusted 标记，复用现有 Tool Observation 治理。不做 web_search，它需要搜索 API 与账单，进 R5 候选。
+只读、内容不可信的网络工具，具体实现留 API，不随 #241 迁入 agent。已按 #206 实现 SSRF / 重定向检查、体积与超时上限及 HTML worker 正文提取；#239 补进程共享并发上限。`web_search` 已由 #204 落地。工具正文低信任由产品系统指令声明，不另包 untrusted 标记。
 
 **AI 查的素材**：Pi 没有 fetch 工具，抓网页靠 `bash` 跑 `curl`，云端不能照搬；体积控制参照 `coding-agent/src/core/tools/truncate.ts` 与 `output-accumulator.ts`；工具定义与注册参照 [产品主链 §6.4](./modules/coding-agent-tui.md)。
 
@@ -38,17 +36,19 @@
 
 **最少持久集合（R2 内完成，不等 R1）**：operation ID、owner 主体与资源归属、状态/版本、终态、输入引用。accept 落库后、执行者收到内存通知前进程退出，重启必须能从数据库重新发现未完成的 operation 并继续或收口，轮询即可，不引入消息中间件。R1 只负责会话树、分支与模型输入的可重建引用。
 
-**第一步：分包（2026-09-16 定案）**。仿 Pi 的 `agent / ai / coding-agent` 三层，但只分两个纯包，不照搬 11 个包：
+**分包独立提前（#241，2026-10-07 用户确认）**。R2 的 operation 工作仍按原触发，本次只提取现有机制，保留 async generator、顺序工具、关页取消与 PostgreSQL 原子发布。源码参照固定为 Pi `295cc72b03058ee4df1936046b1e1ec67978af4d` 的 `agent-loop.ts`、`agent.ts` 与 coding-agent 宿主；不照搬包数量或 durable Harness：
 
 | 包 | 内容 | 规则 |
 | --- | --- | --- |
-| `packages/agent` | 循环、operation 状态、上下文投影、工具契约、取消 | 零 Nest、零 Prisma；依赖 `contracts` 与 `ai` 的模型类型（`ModelInputItem` / `ModelStreamEvent` / `ModelToolSpec`），与 Pi 的 agent → ai 方向一致；存储与模型客户端实例只定义接口、由宿主注入 |
+| `packages/agent` | 现有 Run 循环、上下文/压缩、采样、工具反馈契约与取消 | 零 Nest、零 Prisma；依赖 ai/contracts；宿主函数绑定 I/O，await finishStep 保持原子确认；不含 operation 恢复模型 |
 | `packages/ai` | 已由 #120 先行抽出；#115 的重试已在包内实现；第二 wire 随 #117 转 Gated | 零 Nest |
-| `apps/api`（保留） | Nest 模块、Prisma 仓储、HTTP 控制器、Grounding 落库 | 实现上面两包的接口，在边缘注入 |
+| `apps/api`（保留） | Nest、HTTP、Prisma 事务、模型凭据、具体工具、工作区/OSS/GC 与产品指南 | 每 Run 闭包注入，工具唯一校验入口及 Source/Artifact + Step 同事务确认保持 |
 
-不先搬旧文件：R2 新写的代码从第一天放进 `packages/agent`，旧代码按被替换的节奏迁入。Grounding 要拆成“校验规则”进包、“落库”留 apps，这是分包里最费工的部分。搬 ModelContext 时把「工作副本 → commit」协议退化为数组加纯函数（删 `forPlanning` / `commitPlan`），planner 直接返回裁剪后的输入。第三个包等出现第二个宿主（如独立 worker）再拆。分包不单独占周期，算在 R2 内。
+本次迁移已有循环，不写新 operation。现有 ModelContext 已非早期 forPlanning/commitPlan 协议，保留其当前上下文与压缩语义，不退化为删历史。只新增一个 agent 包，不做工具/存储子包；宿主契约仅满足现有调用点，接受 R2 届时调整。
 
-**分包验收**：`packages/agent` 与 `packages/ai` 的测试不启动 Nest、不连数据库即可运行；`apps/api` 不再直接持有循环与 operation 状态。
+**分包证明完成**：包可脱离 Nest/数据库运行；冻结现有主循环与 DB 用例正文，只改 import/harness；暂停 finishStep 时不得推成功或续轮，去掉 await 的变异会失败；保留真实库终态竞争、COMMIT unknown、模型输入重建与文件发布回归。完整 AC 以 #241 正文为准，状态见看板。
+
+下列仍是 **R2 的证明要求，不是 #241 的验收范围**：
 
 **证明完成**：两个订阅者之一断开不影响另一个；显式 Abort 只命中目标 operation；旧 owner 不能覆盖新 owner；数据库提交结果不确定时停止猜测；accept 落库后进程退出，重启能找到该 operation，不永久悬挂。若跨进程争用，使用 DB 所有权/fencing 机制，不能复制 Pi 进程内 Map 或文件锁就宣布完成。
 
@@ -105,12 +105,12 @@
 | 工作 | Pi 对应 | 估计 |
 | --- | --- | --- |
 | R0 #115–116 | 已合并（2026-09-18 / 2026-09-19） | 完成 |
-| R2 运行解耦（含分包） | `harness/runtime` 的 lane/drive/checkpoint；包结构参照 `agent / ai / coding-agent` | 3～4 周 |
+| R2 运行解耦（分包单列 #241） | `harness/runtime` 的 lane/drive/checkpoint；包结构参照 `agent / ai / coding-agent` | 3～4 周 |
 | R1 durable 事实 | `harness/session` + `drive/recovery` | 3 周 |
 | R3 工具 journal 与审批（鉴权 2026-09-27 进工作台第 1 档） | `drive/tools` + `execution/tools`；审批与租户 Pi 无参照 | 4～5 周 |
 | R4 多端订阅与 Web 改造 | `Lane.watch` + Transcript + 服务端缓冲 | 4 周 |
 
-前提：PostgreSQL 事务边界要重新设计（Pi 的 MutationLine 是进程内），Grounding 迁到新 operation 模型下而不重写。
+R2 前提：按真实 operation 模型重新核对 PostgreSQL 事务边界（Pi 的 MutationLine 是进程内）；#241 仅保留现有事务，不以分包证明 R2 完成。
 
 ## 三、每个正式改动的交付模板
 

@@ -6,7 +6,7 @@ Tool Calling 的框架与具体工具。一次工具调用的全部判定都在 
 
 | 位置 | 放什么 |
 | --- | --- |
-| `core/` | 框架，与具体工具无关：类型（`tool.types.ts`）、Registry、`invoke`、Observation 修剪（`tool-observation.ts`） |
+| `core/` | 框架，与具体工具无关：类型（`tool.types.ts`）、Registry、`invoke`；Observation 修剪（`normalizeToolObservation`）与调用 / 显示契约在 `@agent/agent` 的 `src/tools/` |
 | `web/` | 具体工具，每个工具的定义、执行器、参数解析与结果拼装在一个文件：`web-search.tool.ts`（经 Serper 查 Google）、`web-fetch.tool.ts`（服务器直接抓网页）；只给 `web_fetch` 用的两个文件：`ssrf-guard.ts`（SSRF 检查）、`page-text.worker.ts`（在 worker 线程里用 Readability 提取正文） |
 | `tool-definitions.ts` | 唯一的工具清单 `TOOLS`（定义 + 执行器类）；`TOOL_DEFINITIONS` 由它派生 |
 | `tools.module.ts` | 按清单把执行器放进 providers，`onModuleInit` 时成对注册进 Registry |
@@ -14,7 +14,8 @@ Tool Calling 的框架与具体工具。一次工具调用的全部判定都在 
 ## 一次调用
 
 ```text
-AgentRuntimeService.executeToolBatch：每个 call 开一个 tool_execution Step
+@agent/agent 的 AgentRuntime.executeToolBatch：每个 call 开一个 tool_execution Step
+  -> 宿主 invokeTool 闭包（agent-runtime-host.ts）补上 serperApiKey 与 workspace 上下文，内核不持有它们
   -> ToolInvocationService.invoke(call, { signal, databaseDeadline, argumentsTruncated, serperApiKey })
        外部中断先抛 -> 截断批次直接失败 -> 按名字查找 -> JSON.parse + input.parse
        -> 执行器与 timeout / 停止赛跑 -> 按工具的 maxObservationChars 修剪
@@ -31,7 +32,7 @@ runtime：result 定 Step 的 ok / code；argumentsValidated 定回喂参数的�
 
 1. 在业务目录（如 `web/`）写工具文件：
    - `ToolDefinition`：`name`、`description`、`input.schema` 给模型看；`input.parse` 在服务端把参数校验并规范化成输入类型，不合法就抛错；`timeoutMs`、`maxObservationChars` 只在服务端用。
-   - 执行器类：`@Injectable()`，实现 `ToolExecutor<输入类型>`，依赖用 `@Inject` 注入（`WebSearchTool` 没有 Nest 依赖）；只收到校验过的输入，请求与查询时尊重 `context.signal`，查库时还要尊重 `context.databaseDeadline`；成功返回 `{ ok: true, modelContent }`，失败直接抛错交给 `invoke` 脱敏，不要自己返回 `invalid_arguments` 等只该由 `invoke` 给出的 code。前台要显示结构化结果时再加可选的 `display`（字段见 `ToolDisplay`，不进模型上下文；runtime 按协议字段存进 tool Step 给刷新后还原用），没有就不给。
+   - 执行器类：`@Injectable()`，实现 `ToolExecutor<输入类型>`，依赖用 `@Inject` 注入（`WebSearchTool` 没有 Nest 依赖）；只收到校验过的输入，请求与查询时尊重 `context.signal`，查库时还要尊重 `context.databaseDeadline`；成功返回 `{ ok: true, modelContent }`，失败直接抛错交给 `invoke` 脱敏，不要自己返回 `invalid_arguments` 等只该由 `invoke` 给出的 code。前台要显示结构化结果时再加可选的 `display`（字段见 `@agent/agent` 的 `ToolDisplay`，不进模型上下文；runtime 按协议字段存进 tool Step 给刷新后还原用），没有就不给。
 2. 在 `tool-definitions.ts` 的 `TOOLS` 加一行 `toolEntry(definition, 执行器类)`（两者输入类型不一致时编译不过）：模型可见的工具、Registry 注册与 Admin 概览的工具名都跟着变。执行器依赖的 Nest 模块不在 `ToolsModule.imports` 里时一并加上。
 3. 在系统提示词（`chat/prompts/agent.prompt.ts`）写清这个工具什么时候用、什么时候不用。
 4. 测试放在工具文件旁边（如 `web/web-search.tool.test.ts`），测三件事：

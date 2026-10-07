@@ -1,3 +1,4 @@
+import type { AgentRuntimeEvent } from '@agent/agent'
 import type {
   ChatStreamOptions,
   ModelInputItem,
@@ -7,7 +8,6 @@ import type { Prisma } from '../generated/prisma/client.js'
 import type { LLMService } from '../llm/llm.service.js'
 import type { SerperApiKey } from '../runtime-config/runtime-config.service.js'
 import type { RegisteredTool, ToolDefinition, ToolResult } from '../tools/core/tool.types.js'
-import type { AgentRuntimeEvent } from './agent-runtime.types.js'
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { readdir, readFile } from 'node:fs/promises'

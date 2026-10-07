@@ -11,10 +11,10 @@
 | 项 | 现状 | 位置 |
 | --- | --- | --- |
 | 历史 | #218 前只带之前各轮已完成的「用户问题 + 最终回答」，工具调用与结果都不带（#119 / #152 的设计，当时只有站内文章工具）；#218 起按原生格式带回之前问答的工具调用与结果，见第 5 节 E1；#220 起在一个快照里连同最新的压缩记录一起读 | `agent-runtime/context/conversation-history.ts`（`loadConversationHistory`） |
-| 输入预算 | 模型行的单次输入上限 `LlmModel.maxInputTokens`（#216，存量行迁移为 262,144），保存时校验不超过 窗口 − 最大输出 − 16,384；#220 起就是压缩的触发线 | `apps/api/src/admin-llm/admin-llm.service.ts`（校验）、`agent-runtime/context/context-compaction.service.ts`（使用） |
-| 超预算 | #220 前：本地 DeepSeek V4 估算器算 token，从最旧的历史删起，再截短本 Run 的工具结果。#220 起只靠压缩，不删历史、不截短工具结果，见第 5 节 E3 | `agent-runtime/context/compaction.ts`、`context-compaction.service.ts` |
-| 单条工具结果 | 硬上限 128,000 字符 | `apps/api/src/tools/core/tool-observation.ts` |
-| 真实用量 | 每次采样的 provider usage（输入、总量、缓存命中）存在 AgentStep 的 `output.usage`；管理台概览在用，#220 起同一次问答内也作下一次估算的锚点 | `agent-runtime/context/model-context.ts`、`apps/api/src/admin-overview/admin-overview.service.ts` |
+| 输入预算 | 模型行的单次输入上限 `LlmModel.maxInputTokens`（#216，存量行迁移为 262,144），保存时校验不超过 窗口 − 最大输出 − 16,384；#220 起就是压缩的触发线 | `apps/api/src/admin-llm/admin-llm.service.ts`（校验）、`packages/agent/src/context/context-compaction.service.ts`（使用） |
+| 超预算 | #220 前：本地 DeepSeek V4 估算器算 token，从最旧的历史删起，再截短本 Run 的工具结果。#220 起只靠压缩，不删历史、不截短工具结果，见第 5 节 E3 | `packages/agent/src/context/compaction.ts`、`context-compaction.service.ts` |
+| 单条工具结果 | 硬上限 128,000 字符 | `packages/agent/src/tools/tool-observation.ts` |
+| 真实用量 | 每次采样的 provider usage（输入、总量、缓存命中）存在 AgentStep 的 `output.usage`；管理台概览在用，#220 起同一次问答内也作下一次估算的锚点 | `packages/agent/src/context/model-context.ts`、`apps/api/src/admin-overview/admin-overview.service.ts` |
 | 窗口大小 | 模型表 `LlmModel.contextWindowTokens` / `maxOutputTokens`，管理台人工维护 | `prisma/schema.prisma` |
 | 压缩 | #220 起自动压缩，没有手动入口；前台用量显示已取消（见第 5 节 E2） | 见第 5 节 E3 |
 

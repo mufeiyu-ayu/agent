@@ -4,9 +4,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "predev": "pnpm --workspace-root prisma:generate && pnpm --filter @agent/contracts build && pnpm --filter @agent/ai build && tsc",
+    "predev": "pnpm --workspace-root prisma:generate && pnpm --filter @agent/contracts build && pnpm --filter @agent/ai build && pnpm --filter @agent/agent build && tsc",
     "dev": "node scripts/dev-watch.mjs",
-    "prebuild": "pnpm --workspace-root prisma:generate && pnpm --filter @agent/contracts build && pnpm --filter @agent/ai build",
+    "prebuild": "pnpm --workspace-root prisma:generate && pnpm --filter @agent/contracts build && pnpm --filter @agent/ai build && pnpm --filter @agent/agent build",
     "build": "tsc",
     "start": "node dist/main.js",
     "test": "vitest run --root ../.. --project api",
@@ -16,6 +16,7 @@
     "lint:fix": "eslint src scripts --fix"
   },
   "dependencies": {
+    "@agent/agent": "workspace:*",
     "@agent/ai": "workspace:*",
     "@agent/contracts": "workspace:*",
     "@mozilla/readability": "^0.6.0",

@@ -1,3 +1,4 @@
+import type { AgentRuntimeEvent, HistoryRunRow, HistoryStepRow, ToolDisplay, UnvalidatedToolCallEnvelope } from '@agent/agent'
 import type {
   ChatStreamOptions,
   MessageInputItem,
@@ -16,20 +17,14 @@ import type {
   PrismaService,
 } from '../prisma/prisma.service.js'
 import type { RunLimits, RuntimeConfigSnapshot } from '../runtime-config/runtime-config.service.js'
-import type {
-  ToolDisplay,
-  ToolExecutionContext,
-  ToolInvocationContext,
-  ToolInvocationResult,
-  ToolResult,
-  UnvalidatedToolCallEnvelope,
-} from '../tools/core/tool.types.js'
+import type { ToolExecutionContext, ToolInvocationContext, ToolInvocationResult, ToolResult } from '../tools/core/tool.types.js'
 import type { WorkspaceService } from '../workspaces/workspace.service.js'
-import type { AgentRuntimeEvent, RunTurnStreamInput } from './agent-runtime.types.js'
-import type { HistoryRunRow, HistoryStepRow } from './context/conversation-history.js'
+import type { RunTurnStreamInput } from './agent-runtime.types.js'
 import type { AgentRunRecorderService } from './lifecycle/agent-run-recorder.service.js'
 import assert from 'node:assert/strict'
 import { setTimeout as sleep } from 'node:timers/promises'
+import { AgentRunTerminalizationError, estimateRequestTokens, historySummaryMessage, normalizeToolObservation, roughTokens, SUMMARIZATION_SYSTEM_PROMPT, turnSummaryMessage } from '@agent/agent'
+
 import {
   adaptOpenAICompatibleStream,
   LLMApiError,
@@ -44,7 +39,6 @@ import {
 } from '@agent/ai'
 import { familyCompatOf } from '@agent/contracts'
 import { describe, it, onTestFinished, vi } from 'vitest'
-
 import { projectAdminRunDetail } from '../admin-runs/projection/admin-run.projector.js'
 import { toChatStreamEvent } from '../chat/chat-stream-event.mapper.js'
 import { WORKSPACE_DEVELOPMENT_INSTRUCTION, WORKSPACE_TOOL_NAMES } from '../chat/prompts/workspace-development.prompt.js'
@@ -62,15 +56,10 @@ import {
 } from '../prisma/prisma.service.js'
 import { createRuntimeConfigSnapshot } from '../runtime-config/__fixtures__.js'
 import { ToolInvocationService } from '../tools/core/tool-invocation.service.js'
-import { normalizeToolObservation } from '../tools/core/tool-observation.js'
 import { ToolRegistryService } from '../tools/core/tool-registry.service.js'
 import { TOOL_DEFINITIONS } from '../tools/tool-definitions.js'
-import { AgentRunTerminalizationError } from './agent-runtime.errors.js'
 import { AgentRuntimeService } from './agent-runtime.service.js'
-import { SUMMARIZATION_SYSTEM_PROMPT } from './context/compaction.js'
 import { ContextCompactionService } from './context/context-compaction.service.js'
-import { historySummaryMessage, turnSummaryMessage } from './context/conversation-history.js'
-import { estimateRequestTokens, roughTokens } from './context/token-estimate.js'
 
 // 模型每轮看到的就是工具清单、与清单同序；不写死名字，清单加工具时 runtime 用例不用跟着改。
 // 清单里少了 web_search 时，大量以它为工具的用例会因 unknown_tool 失败，不靠这里兜。

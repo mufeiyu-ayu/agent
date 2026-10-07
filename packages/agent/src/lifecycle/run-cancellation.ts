@@ -1,8 +1,4 @@
-import type { DatabaseOperationDeadline } from '../../prisma/prisma.service.js'
-
-import {
-  DatabaseOperationDeadlineExceededError,
-} from '../../prisma/prisma.service.js'
+import type { ClassifyHostError, OperationDeadline } from '../host.js'
 import { AgentRunDeadlineExceededError } from '../agent-runtime.errors.js'
 
 const TERMINALIZATION_DEADLINE_MS = 5_000
@@ -15,7 +11,7 @@ export type RunTerminationSource
     | 'user'
 
 export interface RunCancellation {
-  databaseDeadline: DatabaseOperationDeadline
+  databaseDeadline: OperationDeadline
   reason?: unknown
   signal: AbortSignal
   source?: RunTerminationSource
@@ -52,6 +48,7 @@ export function createRunCancellation(
   userSignal: AbortSignal | undefined,
   /** 从 AgentRun 创建成功开始计算的最长执行时间，单位为毫秒。 */
   deadlineMs: number,
+  createTimeoutError: () => Error,
 ): RunCancellation {
   // 外部 userSignal 只能表示用户取消；内部 controller 还能表示 deadline / failure。
   const controller = new AbortController()
@@ -104,7 +101,7 @@ export function createRunCancellation(
     databaseDeadline: {
       deadlineAt,
       signal: controller.signal,
-      createTimeoutError: () => new DatabaseOperationDeadlineExceededError(),
+      createTimeoutError,
     },
     // LLM / Tool 使用这一份信号；任一停止原因生效后它都会变成 aborted。
     signal: controller.signal,
@@ -186,8 +183,9 @@ export function createRunCancellation(
 export function claimRunTermination(
   cancellation: RunCancellation,
   error: unknown,
+  classifyError: ClassifyHostError,
 ): void {
-  if (error instanceof DatabaseOperationDeadlineExceededError) {
+  if (classifyError(error) === 'deadline') {
     if (cancellation.source === 'completing') {
       cancellation.claimCompletionFailure(
         'deadline',
@@ -206,7 +204,7 @@ export function claimRunTermination(
     cancellation.claimFailure(error)
 }
 
-export function createTerminalizationDeadline(): DatabaseOperationDeadline {
+export function createTerminalizationDeadline(): OperationDeadline {
   return {
     deadlineAt: Date.now() + TERMINALIZATION_DEADLINE_MS,
     createTimeoutError: () => new Error('Agent Run 终态收口超过数据库等待上限。'),

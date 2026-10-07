@@ -1,18 +1,11 @@
+import type { UnvalidatedToolCallEnvelope } from '@agent/agent'
 import type { DatabaseOperationDeadline } from '../../prisma/prisma.service.js'
-import type {
-  RegisteredTool,
-  ToolExecutionContext,
-  ToolInvocationContext,
-  ToolInvocationResult,
-  ToolResult,
-  UnvalidatedToolCallEnvelope,
-  ValidatedToolInvocation,
-} from './tool.types.js'
-import { Inject, Injectable, Logger } from '@nestjs/common'
+import type { RegisteredTool, ToolExecutionContext, ToolInvocationContext, ToolInvocationResult, ToolResult, ValidatedToolInvocation } from './tool.types.js'
+import { normalizeToolObservation } from '@agent/agent'
 
+import { Inject, Injectable, Logger } from '@nestjs/common'
 import { WORKSPACE_TOOL_NAMES } from '../../chat/prompts/workspace-development.prompt.js'
 import { DatabaseOperationDeadlineExceededError } from '../../prisma/prisma.service.js'
-import { normalizeToolObservation } from './tool-observation.js'
 import { ToolRegistryService } from './tool-registry.service.js'
 
 @Injectable()

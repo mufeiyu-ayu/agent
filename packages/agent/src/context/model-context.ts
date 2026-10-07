@@ -6,7 +6,7 @@ import type {
   ModelUsage,
   ToolResultInputItem,
 } from '@agent/ai'
-import type { UnvalidatedToolCallEnvelope } from '../../tools/core/tool.types.js'
+import type { UnvalidatedToolCallEnvelope } from '../tools/tool.types.js'
 import type { ConversationHistory, HistoryCompactionRecord } from './conversation-history.js'
 
 import { groupItems, historyItems, turnSummaryMessage } from './conversation-history.js'
@@ -29,7 +29,7 @@ export interface TurnCompaction {
   keptFrom: number
 }
 
-/** 一次调模型前的规划：发出的输入与估算；落库哪些字段见 agent-runtime.service.ts 的 toPersistedContextPlan。 */
+/** 一次调模型前的规划：发出的输入与估算；落库哪些字段见 agent-runtime.ts 的 toPersistedContextPlan。 */
 export interface SamplingContextPlan {
   items: ModelInputItem[]
   estimatedInputTokens: number

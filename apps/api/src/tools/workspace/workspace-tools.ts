@@ -1,7 +1,7 @@
 import type { ToolDefinition, ToolExecutionContext, ToolExecutor, ToolResult, ValidatedToolInvocation } from '../core/tool.types.js'
 import { Buffer } from 'node:buffer'
+import { truncateCodeUnits } from '@agent/agent'
 import { Inject, Injectable } from '@nestjs/common'
-import { truncateCodeUnits } from '../../agent-runtime/persistable-text.js'
 import { MAX_FILE_BYTES, MAX_READ_OBSERVATION_CHARS, WorkspaceOperationError, workspacePath } from '../../workspaces/workspace-files.js'
 import { WorkspaceService } from '../../workspaces/workspace.service.js'
 

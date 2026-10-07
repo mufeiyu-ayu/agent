@@ -1,5 +1,5 @@
+import type { AgentRuntimeEvent } from '@agent/agent'
 import type { ChatStreamEvent } from '@agent/contracts'
-import type { AgentRuntimeEvent } from '../agent-runtime/agent-runtime.types.js'
 
 export function toChatStreamEvent(event: AgentRuntimeEvent): ChatStreamEvent {
   switch (event.type) {

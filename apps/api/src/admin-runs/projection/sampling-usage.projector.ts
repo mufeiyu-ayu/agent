@@ -1,7 +1,7 @@
 import type { AdminRunTokenUsage, AgentRunErrorCode } from '@agent/contracts'
-import { AGENT_RUN_ERROR_CODES } from '@agent/contracts'
+import { AGENT_STEP_TYPES } from '@agent/agent'
 
-import { AGENT_STEP_TYPES } from '../../agent-runtime/lifecycle/agent-run-recorder.service.js'
+import { AGENT_RUN_ERROR_CODES } from '@agent/contracts'
 import { readNonNegativeInteger, readObject } from './safe-readers.js'
 
 /** 上游模型调用本身失败的类别：请求已经发出，所以这类失败也算一次调用。概览 SQL 用同一份。 */

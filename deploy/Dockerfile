@@ -11,11 +11,12 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/api/package.json apps/api/
 COPY apps/web/package.json apps/web/
 COPY apps/admin/package.json apps/admin/
+COPY packages/agent/package.json packages/agent/
 COPY packages/ai/package.json packages/ai/
 COPY packages/contracts/package.json packages/contracts/
 RUN pnpm install --frozen-lockfile
 COPY . .
-# api 的 prebuild 先生成 Prisma client、构建 contracts 与 ai，前台与管理台的构建依赖 contracts 的 dist。
+# api 的 prebuild 先生成 Prisma client、构建 contracts、ai 与 agent，前台与管理台的构建依赖 contracts 的 dist。
 RUN pnpm --filter @agent/api build \
   && pnpm --filter @agent/web build \
   && pnpm --filter @agent/admin build
@@ -28,6 +29,7 @@ WORKDIR /app
 RUN corepack enable
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/api/package.json apps/api/
+COPY packages/agent/package.json packages/agent/
 COPY packages/ai/package.json packages/ai/
 COPY packages/contracts/package.json packages/contracts/
 # prisma CLI 与 dotenv 已作为 @prisma/client 的 peer 依赖装进来（版本同锁文件）；提升到根目录，
@@ -40,6 +42,7 @@ COPY prisma/schema.prisma prisma/
 COPY prisma/migrations prisma/migrations/
 COPY --from=build /app/packages/contracts/dist packages/contracts/dist/
 COPY --from=build /app/packages/ai/dist packages/ai/dist/
+COPY --from=build /app/packages/agent/dist packages/agent/dist/
 COPY --from=build /app/apps/api/dist apps/api/dist/
 WORKDIR /app/apps/api
 USER node

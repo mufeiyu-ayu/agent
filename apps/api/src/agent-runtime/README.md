@@ -1,41 +1,39 @@
-# Agent Runtime 模块导航
+# Agent Runtime 宿主导航
 
-本目录负责一次用户输入对应的 AgentRun 编排。根目录只保留模块公共入口与公共语言；内部实现按领域分组。
+真正的循环、取消状态机、上下文与压缩机制在 [`@agent/agent`](../../../../packages/agent/AGENTS.md)。本目录只绑定 Nest、产品策略、凭据与持久化，不保留第二套内核。
 
-## 入口
+## 文件
 
 | 文件 | 职责 |
 | --- | --- |
 | `agent-runtime.module.ts` | Nest Provider 组装 |
-| `agent-runtime.service.ts` | 单次 Run 的主编排入口 `runTurnStream()` |
-| `agent-runtime.types.ts` | Runtime 输入与内部事件 |
-| `agent-runtime.errors.ts` | Runtime 公开错误语义 |
-| `persistable-text.ts` | 写进 `Message.content` 与 Step JSON 前把 U+0000 / 孤立代理项换成 U+FFFD（PostgreSQL 拒收，见 `context/README.md`）；截断时不切开代理对（`truncateCodeUnits`）；service、`sampling/` 的 debug 抓取与 `context/` 的摘要输入共用 |
+| `agent-runtime.service.ts` | 保留原 DI / 调用入口；投影无凭据快照，委托包内 AgentRuntime |
+| `agent-runtime-host.ts` | 每 Run 独立的宿主闭包：模型凭据绑定、指南激活与采样引用、工具进度投影、原异常分类、强制工具提交与资源释放 |
+| `agent-runtime.types.ts` | ChatService 传入的可信宿主快照；内部事件从包入口 import |
+| `lifecycle/agent-run-recorder.service.ts` | Run/Step 的真实事务与行锁；Source/Artifact 指针和工具 Step 同事务发布 |
+| `context/conversation-history.ts` | REPEATABLE READ 历史 SQL：轻量元数据/Run 配对后，仅读保留组正文/Step；调用包内纯投影 |
+| `context/context-compaction.service.ts` | 绑定摘要模型与 ConversationCompaction 存储；A/C/B 策略与循环全在包内 |
 
-## 内部领域
-
-| 目录 | 职责 |
-| --- | --- |
-| `lifecycle/` | Run / Step 持久化与取消、deadline、终态竞争 |
-| `context/` | 模型上下文：历史读取与还原（`conversation-history.ts`）、每轮输入组装与粗估计数（`model-context.ts`、`token-estimate.ts`）、上下文压缩（切点与提示词在 `compaction.ts`，编排在 `context-compaction.service.ts`） |
-| `sampling/` | 模型流到 Sampling Decision 的转换与安全 Debug 捕获 |
-
-## 主调用链
+## 一次请求
 
 ```text
-ChatService（LlmModelConfigService.resolveModel 解析模型行快照；RuntimeConfigService.loadSnapshot 读运行配置快照：单次最长时间、压缩保留最近 Tokens、调试开关、Serper Key）
-  -> AgentRuntimeService.runTurnStream()
-  -> lifecycle: create Run + cancellation（deadline 取自 input.runtimeConfig.limits；不限轮数与工具调用次数，只由它兜底）
-  -> resolveRunConfiguration()（私有方法）：模型可见的 Tool 说明（工具清单 TOOL_DEFINITIONS 全部）+ resolveChatRequestConfig
-  -> context: 在一个 REPEATABLE READ 快照里读最新压缩记录、全部已完成消息的轻量元数据、各组 Run 的状态，再仅读未被覆盖组的正文与回答 Step，还原成「摘要 + 按问答分组、带之前工具记录的历史」；不删历史、不截短工具结果
-  -> 每轮调模型前（检查点 A）：估算超过模型「单次输入上限」就先压缩（先把较早的已结束问答写成历史摘要，仍超线再把本 Run 前面的工具轮写成前缀摘要），压缩 Step 排在采样 Step 之前
-  -> sampling: consume model stream and return decision（正文推 assistant_delta；思考原文推 reasoning_delta，只给界面，不进正文与模型上下文；每轮完整思考随采样 Step 落库，只有收完的 Tool Call 轮是回填内容，最后一轮与被停止 / 失败那一轮的只为界面还原；第一段正文的时刻记成 answerStartedMs，此后收口的采样 Step 都带上）
-  -> executeToolBatch()（私有 async generator）：顺序处理一批 Tool Call，每个 call 一个 tool_execution Step；判定与执行都交给 ToolInvocationService.invoke，这里按它返回的 result / argumentsValidated / observation 记账与回喂；开 Step 前推 tool_started、收口后推 tool_finished（只给界面，不进模型上下文；工具给的 display 同时存进 tool Step，只为刷新后还原），被停止或 deadline 打断的 call 不推 tool_finished
-  -> 服务商报输入超长（检查点 C）：本轮没推出过 delta 时，失败的采样 Step 照常收口，强制压缩一次后新开采样重试；连续超长只救一次
-  -> lifecycle: atomic terminalization
-  -> 提交确认后（检查点 B）：不 await，在后台对下一次问答的历史预压，超过触发线 0.8 才压；只写压缩记录、失败只记日志
+ChatService 读模型行/运行配置快照
+  → AgentRuntimeService 投影核心输入（密钥只留在宿主闭包）
+  → @agent/agent：检查会话、创建用户消息并 touch、createRun
+  → 启用 deadline，再解析请求配置
+  → 宿主加载历史快照，内核组装 ModelContext
+  → 检查点 A：超线压缩 → 采样（正文/思考事件按原顺序）
+  → 宿主按需确认指南 Step → 内核追加 instruction
+  → tool_started → startStep → ToolInvocationService.invoke
+  → await finishStep（宿主事务确认）→ 复核取消 → tool_finished → 回喂续轮
+  → 检查点 C：无已推 delta 时，超长强制压缩后最多重试一次
+  → completeRun（commit-owned callback → 真实 COMMIT 确认）
+  → 检查点 B：成功确认后后台预压，不 await；启动资源释放再交付终态
+  → finally：消费者提前 return 的兜底收口与必要释放等待
 ```
 
-领域目录可以依赖根目录的公共错误与类型；根编排器负责组合各领域。不要把领域状态机放进通用 `utils/`，也不要新增仅做路径转发的 barrel。
+记录器保留实际事务、所有权/version 检查和 COMMIT 未知处理。工具发布闭包不进 JSON、不靠全局 Map、不可当作持久恢复凭据。指南状态与 Provider/Serper Key 按 Run 隔离；配置事后变更不影响本次采样或后台摘要。
 
-上下文、reasoning 与持久化重建的详细契约和已知偏差见 [context/README.md](context/README.md)，只在修改对应路径时读取。
+错误对象不跨边界包装：Prisma 的 timeout / COMMIT unknown 及 Nest NotFoundException 由同一宿主分类函数识别；核心决定终态与类别，LLM 用户文案仍复用全局异常过滤器的工具函数。日志在未知终态事件之前写入。
+
+HTTP close 仍 abort 并 drain；本次分包不含 R2 关页续跑或恢复。详细字段与已知偏差见 [context/README.md](context/README.md)。

@@ -1,3 +1,4 @@
+import type { AgentRuntimeEvent, HistoryStepRow } from '@agent/agent'
 import type {
   ChatStreamOptions,
   MessageInputItem,
@@ -8,14 +9,13 @@ import type { AgentStep } from '../../generated/prisma/client.js'
 import type { LLMService } from '../../llm/llm.service.js'
 import type { DatabaseOperationDeadline, DeadlineTransaction } from '../../prisma/prisma.service.js'
 import type { RegisteredTool, ToolResult } from '../../tools/core/tool.types.js'
-import type { AgentRuntimeEvent } from '../agent-runtime.types.js'
-import type { HistoryStepRow } from './conversation-history.js'
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { readdir, readFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import process from 'node:process'
 import { setTimeout as sleep } from 'node:timers/promises'
+import { estimateRequestTokens, historyItems, historySummaryMessage, pairHistory, restoreGroups, SUMMARIZATION_SYSTEM_PROMPT, turnSummaryMessage } from '@agent/agent'
 import { LLMContextOverflowError } from '@agent/ai'
 import { afterAll, afterEach, beforeAll, describe, it } from 'vitest'
 import { ConversationsService } from '../../conversations/conversations.service.js'
@@ -35,17 +35,8 @@ import { TOOL_DEFINITIONS } from '../../tools/tool-definitions.js'
 import { webFetchDefinition } from '../../tools/web/web-fetch.tool.js'
 import { AgentRuntimeService } from '../agent-runtime.service.js'
 import { AgentRunRecorderService } from '../lifecycle/agent-run-recorder.service.js'
-import { SUMMARIZATION_SYSTEM_PROMPT } from './compaction.js'
 import { ContextCompactionService } from './context-compaction.service.js'
-import {
-  historyItems,
-  historySummaryMessage,
-  loadConversationHistory,
-  pairHistory,
-  restoreGroups,
-  turnSummaryMessage,
-} from './conversation-history.js'
-import { estimateRequestTokens } from './token-estimate.js'
+import { loadConversationHistory } from './conversation-history.js'
 
 // 本入口不允许 skip：缺少隔离数据库时必须显式失败，而不是假装通过。
 const testDatabaseUrl = process.env.TEST_DATABASE_URL?.trim()

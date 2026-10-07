@@ -1,9 +1,6 @@
+import type { AgentRuntimeEvent, AgentRuntimeRunFailedEvent } from '@agent/agent'
 import type { AgentRuntimeService } from '../agent-runtime/agent-runtime.service.js'
-import type {
-  AgentRuntimeEvent,
-  AgentRuntimeRunFailedEvent,
-  RunTurnStreamInput,
-} from '../agent-runtime/agent-runtime.types.js'
+import type { RunTurnStreamInput } from '../agent-runtime/agent-runtime.types.js'
 import type { ConversationsService } from '../conversations/conversations.service.js'
 import type { LlmModelConfigService } from '../llm/llm-model-config.service.js'
 import type { RuntimeConfigService } from '../runtime-config/runtime-config.service.js'
