@@ -31,6 +31,7 @@ import { createResolvedLlmModel } from '../llm/__fixtures__.js'
 import { LlmModelConfigService } from '../llm/llm-model-config.service.js'
 import { PrismaService } from '../prisma/prisma.service.js'
 import { RuntimeConfigService } from '../runtime-config/runtime-config.service.js'
+import { WorkspaceGcService } from '../workspaces/workspace-gc.service.js'
 import { AuthController } from './auth.controller.js'
 import { AuthGuard } from './auth.guard.js'
 import { AuthService, LOGIN_FAILED_MESSAGE } from './auth.service.js'
@@ -99,6 +100,8 @@ describe('鉴权与会话隔离（真实库）', { timeout: 60_000 }, () => {
         AdminUsersService,
         AdminConversationsService,
         ConversationsService,
+        // 鉴权用例不验证对象回收：会话删除依赖的回收服务用空实现，不随本机 OSS 配置访问云。
+        { provide: WorkspaceGcService, useValue: { register: async () => {}, kick: () => {} } satisfies Pick<WorkspaceGcService, 'register' | 'kick'> },
         MessagesService,
         ChatService,
         {
