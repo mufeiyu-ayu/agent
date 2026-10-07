@@ -110,6 +110,20 @@ it('声明式图片候选、poster、track 与图片按钮统一校验，不把 
   ]) assert.throws(() => validate(html), /相对路径/)
 })
 
+it('Artifact 根外普通/编码点段拒绝；非加载 link 不误拒绝，内联 CSS 与独立 CSS 同一校验', () => {
+  const validate = (html: string, resources: Array<{ path: string, content: Buffer }> = []) => validateArtifact([{ path: 'index.html', content: Buffer.from(html) }, ...resources])
+  const icon = { path: 'icon.svg', content: Buffer.from('<svg/>') }
+  for (const path of ['../icon.svg', '%2e%2e/icon.svg', './assets/../../icon.svg'])
+    assert.throws(() => validate(`<img src="${path}">`, [icon]), /构建目录/)
+  validate('<link rel="canonical" href="./article"><link rel="canonical" href="https://example.test/article"><link rel="alternate" href="https://example.test/feed">')
+  validate('<style>body{background:url(./icon.svg)}</style><i style="mask:url(./icon.svg#mask)">x</i>', [icon])
+  for (const html of ['<style>body{background:url(./missing.svg)}</style>', '<i style="background:url(./missing.svg)">x</i>', '<link rel="stylesheet" href="./missing.css">', '<link rel="ALTERNATE STYLESHEET" href="./missing.css">', '<link rel="shortcut ICON" href="./missing.svg">'])
+    assert.throws(() => validate(html), /缺少引用资源/)
+  for (const html of ['<style>@import "https://evil.test/a.css";</style>', '<i style="background:url(//evil.test/icon.svg)">x</i>', '<link rel="stylesheet" href="https://evil.test/a.css">'])
+    assert.throws(() => validate(html), /相对路径/)
+  validateArtifact([{ path: 'index.html', content: Buffer.from('<html/>') }, { path: 'pages/inner.html', content: Buffer.from('<style>body{background:url(../icon.svg)}</style>') }, icon])
+})
+
 it('完整 dist 允许相对模块/CSS/图片、查询参数及 MIME；缺失、外网或不支持资源拒绝发布', () => {
   const files = [
     ['index.html', '<html><head><script type="module" src="./assets/main.js?v=1"></script><link rel="stylesheet" href="./assets/main.css"></head><body><img src="./icon.svg#icon"></body></html>'],

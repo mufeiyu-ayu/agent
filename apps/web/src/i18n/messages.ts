@@ -278,6 +278,8 @@ export const messages = {
       disclaimer: '回答由 AI 生成，可能出错。',
       send: '发送消息',
       stop: '停止生成',
+      historyLoading: '正在加载会话历史，请稍候再发送。',
+      retryHistory: '重试加载历史',
     },
     runtime: {
       modelsLoading: '正在读取模型…',
@@ -570,6 +572,8 @@ export const messages = {
       disclaimer: 'Answers are AI-generated and may be wrong.',
       send: 'Send message',
       stop: 'Stop generation',
+      historyLoading: 'Loading conversation history. Please wait before sending.',
+      retryHistory: 'Retry history',
     },
     runtime: {
       modelsLoading: 'Loading models…',

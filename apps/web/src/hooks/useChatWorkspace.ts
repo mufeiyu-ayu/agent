@@ -75,6 +75,7 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
   const loadingConversationList = ref(false)
   const isLoadingMoreConversations = ref(false)
   const isLoadingMessages = ref(false)
+  const isHistoryReady = ref(true)
   const shouldAnchorLatestTurn = ref(false)
   const hasMoreConversations = ref(false)
   const conversationError = ref('')
@@ -148,7 +149,10 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
   })
 
   async function initializeWorkspace() {
+    const initialView = currentViewKey.value
     await loadConversationList()
+    if (isUnmounted || currentViewKey.value !== initialView)
+      return
 
     const initialConversationId = conversations.value[0]?.id ?? null
     activeConversationId.value = initialConversationId
@@ -215,7 +219,10 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
 
       activeConversationId.value = nextActiveConversationId
       shouldAnchorLatestTurn.value = false
-      clearActiveMessages()
+      if (nextActiveConversationId)
+        applyCachedMessagesForConversation(nextActiveConversationId)
+      else
+        clearActiveMessages()
       resetComposerState()
 
       if (nextActiveConversationId) {
@@ -475,7 +482,9 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
         limit: CONVERSATION_PAGE_SIZE,
       })
 
-      conversations.value = response.items
+      if (isUnmounted)
+        return
+      conversations.value = sortConversationsByUpdatedAt(mergeConversations(response.items, conversations.value))
       conversationNextCursor = response.nextCursor
       hasMoreConversations.value = Boolean(response.nextCursor)
     }
@@ -534,6 +543,8 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
   async function loadMessagesForConversation(conversationId: string) {
     const runId = ++messageLoadRunId
     const versionBeforeLoad = conversationMessagesVersion.get(conversationId) ?? 0
+    if (!conversationMessagesCache.has(conversationId))
+      isHistoryReady.value = false
 
     try {
       isLoadingMessages.value = true
@@ -555,8 +566,10 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
       if (request?.active || request?.status === 'error' || request?.status === 'aborted' || versionChanged) {
         const cachedMessages = conversationMessagesCache.get(conversationId)
 
-        if (cachedMessages)
+        if (cachedMessages) {
           messages.value = [...cachedMessages]
+          isHistoryReady.value = true
+        }
 
         return
       }
@@ -567,8 +580,7 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
       if (isUnmounted || runId !== messageLoadRunId)
         return
 
-      if (!requests.get(conversationId)?.active)
-        clearActiveMessages()
+      // HTTP 失败不是本地消息消失的事实，不能清空刚到达的流终态或已有历史。
       handleWorkspaceError(error)
     }
     finally {
@@ -855,8 +867,10 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
     )
     cacheMessagesForConversation(conversationId, sortedMessages)
 
-    if (conversationId === activeConversationId.value)
+    if (conversationId === activeConversationId.value) {
       messages.value = [...sortedMessages]
+      isHistoryReady.value = true
+    }
   }
 
   function upsertConversation(conversation: Conversation) {
@@ -953,6 +967,7 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
     const cachedMessages = conversationMessagesCache.get(conversationId)
 
     messages.value = cachedMessages ? [...cachedMessages] : []
+    isHistoryReady.value = cachedMessages !== undefined
   }
 
   function cacheMessagesForConversation(
@@ -966,6 +981,7 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
     messageLoadRunId += 1
     messages.value = []
     isLoadingMessages.value = false
+    isHistoryReady.value = activeConversationId.value === null
   }
 
   function resetComposerState() {
@@ -976,7 +992,7 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
 
   function canStartChatRequest(): boolean {
     const request = currentRequest.value
-    return !isUnmounted && !request?.active && Boolean(message.value.trim())
+    return !isUnmounted && isHistoryReady.value && !request?.active && Boolean(message.value.trim())
       && (!request || Date.now() - request.requestedAt >= CHAT_REQUEST_INTERVAL_MS)
   }
 
@@ -1080,6 +1096,8 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
     isLoadingConversations,
     isLoadingMoreConversations,
     isLoadingMessages,
+    isHistoryReady,
+    reloadMessages: () => activeConversationId.value ? loadMessagesForConversation(activeConversationId.value) : Promise.resolve(),
     shouldAnchorLatestTurn,
     hasMoreConversations,
     conversationError,

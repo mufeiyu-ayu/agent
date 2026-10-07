@@ -9,7 +9,7 @@ import { BadRequestException, Inject, Injectable, NotFoundException } from '@nes
 
 import { PrismaService } from '../prisma/prisma.service.js'
 import { WorkspaceCloudService } from '../workspaces/workspace-cloud.service.js'
-import { lockWorkspaceStorage } from '../workspaces/workspace-db.js'
+import { lockWorkspaceStorage, workspaceDb } from '../workspaces/workspace-db.js'
 import { WorkspaceGcService } from '../workspaces/workspace-gc.service.js'
 
 const DEFAULT_CONVERSATION_TITLE = '新的会话'
@@ -98,7 +98,7 @@ export class ConversationsService {
   async delete(userId: string, conversationId: string): Promise<DeleteConversationResponse> {
     await this.assertOwnConversation(userId, conversationId)
 
-    await this.prismaService.$transaction(async (db) => {
+    await workspaceDb(this.prismaService, async (db) => {
       await lockWorkspaceStorage(db, conversationId)
       const own = await db.conversation.findFirst({ where: { id: conversationId, userId } })
       if (!own)

@@ -2,7 +2,7 @@ import type { ConversationMessage } from '@agent/contracts'
 import type { Page, Route } from '@playwright/test'
 
 import assert from 'node:assert/strict'
-import { test } from '@playwright/test'
+import { expect, test } from '@playwright/test'
 
 import { CONVERSATION_ID, installApiRoutes } from './fixtures'
 
@@ -505,4 +505,105 @@ test('新建对话自动聚焦：连续新建无需点输入框，打字占位�
   assert.equal(await focused(), true)
   await page.keyboard.type('手机也能直接输入')
   assert.equal(await input.inputValue(), '手机也能直接输入')
+})
+
+test('B8：初始化列表迟到不抢回新草稿，发送仍创建新会话', async ({ page }) => {
+  await setup(page)
+  const pending: Route[] = []
+  await page.route('**/api/conversations?*', (route) => {
+    pending.push(route)
+  })
+  await page.reload({ waitUntil: 'domcontentloaded' })
+  await expect.poll(() => pending.length).toBe(1)
+  await page.getByRole('button', { name: '新建对话', exact: true }).click()
+  await page.getByRole('textbox').first().fill('新会话草稿不能发给旧会话')
+  await pending[0]!.fulfill(json({ items: [conversation(CONVERSATION_ID, '会话 A')], nextCursor: null }))
+  await page.getByRole('button', { name: '会话 A', exact: true }).waitFor()
+  await page.getByRole('button', { name: '发送消息', exact: true }).click()
+  await poll(page, 'length', 1)
+  assert.equal(await page.evaluate(() => window.__concurrentFlows[0]!.conversationId), 'created-1')
+  await start(page, 0)
+  await done(page, 0, '仍属于新会话')
+  await visible(page, '仍属于新会话')
+})
+
+test('B9：未缓存历史有等待/重试提示，Enter 和按钮均禁发，历史就绪后旧消息仍在', async ({ page }) => {
+  await setup(page)
+  const pending: Route[] = []
+  await page.route('**/api/conversations/conversation-b/messages', (route) => {
+    pending.push(route)
+  })
+  await select(page, '会话 B')
+  await expect.poll(() => pending.length).toBe(1)
+  await page.getByRole('textbox').first().fill('B 草稿')
+  const sendButton = page.getByRole('button', { name: '发送消息', exact: true })
+  await expect(sendButton).toBeDisabled()
+  await visible(page, '正在加载会话历史，请稍候再发送。')
+  await page.getByRole('textbox').first().press('Enter')
+  assert.equal(await page.evaluate(() => window.__concurrentFlows.length), 0)
+  await pending[0]!.fulfill({ status: 503, json: { success: false, message: '历史暂不可用' } })
+  await page.getByRole('button', { name: '重试加载历史', exact: true }).click()
+  await expect.poll(() => pending.length).toBe(2)
+  await pending[1]!.fulfill(json([{ id: 'question-b', conversationId: 'conversation-b', role: 'USER', content: 'B 旧问题', status: 'COMPLETED', createdAt: '2026-10-01T00:00:00Z', updatedAt: '2026-10-01T00:00:00Z' }, { id: 'past-b', conversationId: 'conversation-b', role: 'ASSISTANT', content: 'B 既有历史', status: 'COMPLETED', createdAt: '2026-10-01T00:00:00Z', updatedAt: '2026-10-01T00:00:00Z' }]))
+  await visible(page, 'B 既有历史')
+  await expect(sendButton).toBeEnabled()
+  await sendButton.click()
+  await poll(page, 'length', 1)
+  await start(page, 0)
+  await done(page, 0, 'B 最新回答')
+  await visible(page, 'B 最新回答')
+  await visible(page, 'B 既有历史')
+})
+
+test('删除当前 A 自动回到失败的 B，历史仍在且发送按钮恢复可用', async ({ page }) => {
+  await setup(page)
+  await select(page, '会话 B')
+  await send(page, 'B 请求', 1)
+  await start(page, 0)
+  await push(page, 0, { type: 'delta', contentDelta: 'B 失败前正文仍保留' })
+  await visible(page, 'B 失败前正文仍保留')
+  await push(page, 0, { type: 'error', message: 'B 受控失败', userMessagePersisted: true })
+  await visible(page, 'B 受控失败')
+  await select(page, '会话 A')
+  await page.route(`**/api/conversations/${CONVERSATION_ID}`, route => route.fulfill(json({ id: CONVERSATION_ID, deleted: true })))
+  const row = page.getByRole('button', { name: '会话 A', exact: true }).locator('..')
+  await row.getByRole('button', { name: '对话选项', exact: true }).click()
+  await row.getByRole('button', { name: '删除对话', exact: true }).click()
+  await page.getByRole('button', { name: '会话 A', exact: true }).waitFor({ state: 'detached' })
+  await visible(page, 'B 失败前正文仍保留')
+  await page.getByRole('textbox').first().fill('B 重试问题')
+  const sendButton = page.getByRole('button', { name: '发送消息', exact: true })
+  await expect(sendButton).toBeEnabled()
+  // 仅跳过现有同会话 800ms 节流；验证的是 readiness，而不是请求节流。
+  await page.evaluate(() => {
+    const now = Date.now()
+    Date.now = () => now + 1000
+  })
+  await sendButton.click()
+  await poll(page, 'length', 2)
+  await start(page, 1)
+  await done(page, 1, 'B 重试已正常发送')
+  await visible(page, 'B 重试已正常发送')
+})
+
+test('B5：回切 GET 在 done 后失败，不清空历史或最新回答', async ({ page }) => {
+  await setup(page)
+  await page.route(`**/api/conversations/${CONVERSATION_ID}/messages`, route => route.fulfill(json([{ id: 'question-a', conversationId: CONVERSATION_ID, role: 'USER', content: 'A 旧问题', status: 'COMPLETED', createdAt: '2026-10-01T00:00:00Z', updatedAt: '2026-10-01T00:00:00Z' }, { id: 'past-a', conversationId: CONVERSATION_ID, role: 'ASSISTANT', content: 'A 既有历史', status: 'COMPLETED', createdAt: '2026-10-01T00:00:00Z', updatedAt: '2026-10-01T00:00:00Z' }])))
+  await page.reload()
+  await visible(page, 'A 既有历史')
+  await send(page, 'A 请求', 1)
+  await start(page, 0)
+  await select(page, '会话 B')
+  const pending: Route[] = []
+  await page.route(`**/api/conversations/${CONVERSATION_ID}/messages`, (route) => {
+    pending.push(route)
+  })
+  await select(page, '会话 A')
+  await expect.poll(() => pending.length).toBe(1)
+  await done(page, 0, 'A 新回答不能消失')
+  await visible(page, 'A 新回答不能消失')
+  await pending[0]!.fulfill({ status: 503, json: { success: false, message: '晚到历史读取失败' } })
+  await visible(page, '晚到历史读取失败')
+  await visible(page, 'A 既有历史')
+  await visible(page, 'A 新回答不能消失')
 })

@@ -69,7 +69,7 @@ export class WorkspacePreviewService {
     grant.remainingBytes -= file.bytes
     const content = await this.read(file, signal)
     signal.throwIfAborted()
-    await this.artifact(grant) // 删除、停用和过期期间的迟到读取不能交付。
+    await this.artifact(grant, this.prisma, false) // 删除、停用和过期期间的迟到读取不能交付。
     if (this.grants.get(token) !== grant)
       throw new NotFoundException('预览已失效，请重新打开')
     return { content, mime: artifactMime(normalized) }
@@ -86,7 +86,7 @@ export class WorkspacePreviewService {
     return { content: previewDocument(content.toString('utf8'), resourceBase, artifactPath(path)), csp: previewCsp(resourceBase) }
   }
 
-  private async artifact(grant: PreviewGrant, db: Prisma.TransactionClient = this.prisma) {
+  private async artifact(grant: PreviewGrant, db: Prisma.TransactionClient = this.prisma, includeFiles = true) {
     if (grant.expiresAt <= Date.now())
       throw new NotFoundException('预览已失效，请打开当前最近成功构建')
     const row = await db.workspaceArtifact.findFirst({ where: {
@@ -94,7 +94,7 @@ export class WorkspacePreviewService {
       userId: grant.userId,
       conversationId: grant.conversationId,
       conversation: { userId: grant.userId, user: { disabled: false, pendingApproval: false } },
-    } })
+    }, select: { retiredAt: true, previewExpiresAt: true, files: includeFiles } })
     if (!row)
       throw new NotFoundException('构建不存在或会话已删除')
     if (row.retiredAt && (!row.previewExpiresAt || row.previewExpiresAt.getTime() <= Date.now()))

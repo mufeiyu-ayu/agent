@@ -248,6 +248,43 @@ describe('工作文件 PostgreSQL 确认边界', () => {
     assert.equal(await prisma.workspaceArtifact.count({ where: { id } }), 0)
   })
 
+  it('S2：预览 OSS 返回后只取授权字段，停用/退役过期/删除的迟到内容均不交付', async () => {
+    for (const fault of ['disabled', 'expired', 'deleted']) {
+      const fixture = await seed()
+      const html = Buffer.from('<html>private build</html>')
+      const id = randomUUID()
+      const file = { path: 'index.html', bytes: html.length, sha256: fileHash(html), key: `users/${fixture.user.id}/conversations/${fixture.conversation.id}/objects/${fileHash(html)}` }
+      await prisma.workspaceArtifact.create({ data: { id, userId: fixture.user.id, conversationId: fixture.conversation.id, runId: fixture.run.id, sourceRevision: 0, command: 'pnpm build', createdAt: new Date(), files: [file] } })
+      await prisma.conversationWorkspace.update({ where: { conversationId: fixture.conversation.id }, data: { artifactId: id } })
+      let finish!: () => void
+      const hold = new Promise<void>(resolve => finish = resolve)
+      const read = vi.fn(async () => {
+        await hold
+        return html
+      })
+      const preview = new WorkspacePreviewService(prisma, { readFile: read } as unknown as WorkspaceCloudService)
+      const grant = await preview.open(fixture.user.id, fixture.conversation.id, id, 'http://localhost:5173')
+      const queries = vi.spyOn(prisma.workspaceArtifact, 'findFirst')
+      const pending = preview.resource(grant.url.split('/')[3]!, 'index.html', new AbortController().signal)
+      const rejected = assert.rejects(pending, /不存在|删除|过期/)
+      try {
+        await vi.waitFor(() => assert.equal(read.mock.calls.length, 1))
+        if (fault === 'disabled')
+          await prisma.user.update({ where: { id: fixture.user.id }, data: { disabled: true } })
+        else if (fault === 'expired')
+          await prisma.workspaceArtifact.update({ where: { id }, data: { retiredAt: new Date(), previewExpiresAt: new Date(Date.now() - 1) } })
+        else
+          await prisma.conversation.delete({ where: { id: fixture.conversation.id } })
+      }
+      finally { finish() }
+      await rejected
+      assert.equal(queries.mock.calls.length, 2)
+      assert.equal(queries.mock.calls[0]![0]!.select!.files, true)
+      assert.equal(queries.mock.calls[1]![0]!.select!.files, false)
+      queries.mockRestore()
+    }
+  })
+
   it('最新文件引用和工具结果同事务确认', async () => {
     const fixture = await seed()
     await recorder.completeStep(fixture.step.id, deadline(), { workspaceCommit: fixture.commit, output: { ok: true, observation: '已保存' } })

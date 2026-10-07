@@ -27,6 +27,9 @@ const props = defineProps<{
   modelNotice: string
   status: GenerationStatus
   messageCharacterCount: number
+  historyReady?: boolean
+  historyLoading?: boolean
+  historyError?: string
   /** 空态大输入框；否则是对话中底部的单行胶囊。 */
   hero?: boolean
 }>()
@@ -38,6 +41,7 @@ const emit = defineEmits<{
   'refreshModels': []
   'send': []
   'stop': []
+  'retryHistory': []
 }>()
 
 const { t } = useI18n()
@@ -100,7 +104,7 @@ function focus() {
 defineExpose({ focus })
 
 function submitComposer() {
-  if (isGenerationInProgress.value || !props.message.trim())
+  if (props.historyReady === false || isGenerationInProgress.value || !props.message.trim())
     return
 
   emit('send')
@@ -140,6 +144,12 @@ function updateMessage(value: string | number) {
       : 'relative z-10 shrink-0 px-3 pb-2 pt-2 sm:px-4 sm:pb-3'"
   >
     <div class="mx-auto w-full" :class="hero ? '' : 'max-w-[720px]'">
+      <p v-if="historyReady === false" role="status" class="px-2 pb-2 text-xs text-agent-ink-muted">
+        {{ historyLoading ? t('composer.historyLoading') : historyError }}
+        <button v-if="!historyLoading" class="ml-2 underline" @click="emit('retryHistory')">
+          {{ t('composer.retryHistory') }}
+        </button>
+      </p>
       <div
         class="composer-card border border-agent-border-soft bg-agent-surface-raised shadow-[0_1px_2px_rgb(61_49_36/4%),0_4px_8px_rgb(61_49_36/5%)] transition-colors focus-within:border-agent-border"
         :class="isStacked ? 'composer-card--stacked rounded-[20px] p-3' : 'composer-card--compact rounded-[20px] p-1.5'"
@@ -213,6 +223,8 @@ function updateMessage(value: string | number) {
             size="icon-lg"
             :aria-label="isGenerationInProgress ? t('composer.stop') : t('composer.send')"
             data-composer-primary
+            :disabled="historyReady === false && !isGenerationInProgress"
+            :aria-busy="historyLoading || undefined"
             variant="ghost"
             class="composer-send size-9 rounded-lg bg-transparent shadow-none hover:bg-agent-surface-sunken/55"
             :class="isGenerationInProgress ? 'text-agent-copper hover:text-agent-copper' : 'text-agent-ink hover:text-agent-ink'"

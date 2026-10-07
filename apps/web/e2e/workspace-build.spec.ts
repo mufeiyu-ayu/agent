@@ -200,6 +200,8 @@ test('独立预览覆盖整个应用，按钮与 iframe 内 Esc 关闭后回到�
   await expect(frame.getByRole('heading', { name: 'topuplist 最近七天流量' })).toBeVisible()
   await dialog.getByRole('button', { name: '关闭放大预览', exact: true }).click()
   await expect(dialog).toHaveCount(0)
+  // 全屏仅改变布局，退出仍保留 Preview；显式切 Code 再检查原文。
+  await panel.getByRole('button', { name: '代码', exact: true }).click()
   await expect(panel.locator('[data-workspace-source]')).toContainText('topuplist 最近七天流量')
   await expect(panel.getByRole('complementary', { name: '工作文件' })).toBeVisible()
   await panel.getByRole('button', { name: '放大预览', exact: true }).click()
@@ -491,7 +493,7 @@ test('关闭未完成的交付文件后可重新打开并合并在途读取，�
   await expect(panel.locator('[data-workspace-source]')).toContainText('B')
 })
 
-test('手动打开面板后首次预览读取期间版本更新，会重读最新版本并丢弃旧文件', async ({ page }) => {
+test('手动打开面板后首次文件读取期间版本更新，会重读最新版本并丢弃旧文件', async ({ page }) => {
   await installApiRoutes(page, () => [{ id: 'view-file', conversationId: CONVERSATION_ID, role: 'USER', content: '查看文件', status: 'COMPLETED', createdAt: '2026-10-02T00:00:00Z', updatedAt: '2026-10-02T00:00:00Z' }])
   await installBrowserStubs(page, { lines: [], holdBeforeIndex: -1 })
   let revision = 1
@@ -515,6 +517,8 @@ test('手动打开面板后首次预览读取期间版本更新，会重读最�
   const oldFailure = page.waitForEvent('requestfailed', request => new URL(request.url()).pathname.endsWith('/workspace/file'))
   revision = 2
   await panel.getByRole('button', { name: '刷新文件', exact: true }).click()
+  await expect(panel.locator('[data-workspace-source]')).toContainText('版本 2')
+  await panel.getByRole('button', { name: '预览', exact: true }).click()
   const frame = page.frameLocator('[data-workspace-files-panel] [data-html-preview-panel] > iframe').frameLocator('iframe')
   await expect(frame.getByRole('heading', { name: '版本 2' })).toBeVisible()
   await finishOld!()
@@ -999,6 +1003,56 @@ test('减少动态效果时，窄屏 HTML 预览和文件面板的打开关闭�
       assert.ok(samples.some(sample => sample.kind === kind && sample.phase === phase), `必须实际检查 ${kind} 的 ${phase} 过渡`)
   }
   assert.ok(samples.every(sample => sample.duration.split(',').every(duration => Number.parseFloat(duration) === 0)), JSON.stringify(samples))
+})
+
+test('B6/S3：延迟清单及单多文件节点重建后仍随宽度折叠，减少动画和卸载正常', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  const manyFiles = Array.from({ length: 8 }, (_, index) => ({ path: `src/f${index}.tsx`, bytes: 1024, sha256: `${index}`.padStart(64, '0') }))
+  const activity = { answerStartedMs: 1, toolBeforeAnswer: false, items: [{ kind: 'tool', callId: 'save', toolName: 'write', ok: true, workspace: { operation: 'write', title: '保存', revision: 1, files: manyFiles } }] }
+  await installApiRoutes(page, () => [{ id: 'user-delayed', conversationId: CONVERSATION_ID, role: 'USER', content: '生成文件', status: 'COMPLETED', createdAt: '2026-10-07T00:00:00Z', updatedAt: '2026-10-07T00:00:00Z' }, { id: 'assistant-delayed', conversationId: CONVERSATION_ID, role: 'ASSISTANT', content: '延迟清单已准备', status: 'COMPLETED', activity, createdAt: '2026-10-07T00:00:00Z', updatedAt: '2026-10-07T00:00:00Z' }])
+  await installBrowserStubs(page, { lines: [], holdBeforeIndex: -1 })
+  let count = 0
+  let files = manyFiles
+  let release!: () => void
+  const hold = new Promise<void>(resolve => release = resolve)
+  await page.route('**/api/conversations/*/workspace**', async (route) => {
+    if (++count === 1)
+      await hold
+    await route.fulfill({ json: { success: true, code: 0, data: { ...snapshot, files } } })
+  })
+  const errors: string[] = []
+  page.on('pageerror', error => errors.push(error.message))
+  await page.goto('/workspace')
+  await page.getByText('延迟清单已准备', { exact: true }).waitFor()
+  await expect(page.locator('.artifacts-grid')).toHaveCount(0)
+  release()
+  const artifact = page.locator('[data-workspace-artifact]')
+  const grid = artifact.locator('.artifacts-grid')
+  await expect(grid).toBeVisible()
+  await expect(artifact.getByRole('button', { name: '展开全部 (8)' })).toHaveCount(0)
+  for (let cycle = 0; cycle < 2; cycle++) {
+    await page.setViewportSize({ width: 390, height: 844 })
+    await expect(grid).toHaveClass(/is-clamped/)
+    const expand = artifact.getByRole('button', { name: '展开全部 (8)' })
+    await expect(expand).toBeVisible()
+    await page.emulateMedia({ reducedMotion: 'reduce' })
+    await expand.click()
+    await expect(grid).not.toHaveClass(/is-clamped/)
+    await artifact.getByRole('button', { name: '收起' }).click()
+    await expect(grid).toHaveClass(/is-clamped/)
+    await page.setViewportSize({ width: 1440, height: 900 })
+    if (cycle === 0) {
+      files = [manyFiles[0]!]
+      await page.evaluate(() => window.dispatchEvent(new Event('focus')))
+      await expect(grid).toHaveCount(0)
+      files = manyFiles
+      await page.evaluate(() => window.dispatchEvent(new Event('focus')))
+      await expect(grid).toBeVisible()
+      await expect(expand).toHaveCount(0)
+    }
+  }
+  await page.goto('/')
+  assert.deepEqual(errors, [])
 })
 
 test('交付卡片文件超过 3 行时折叠，点击展开与收起高度平滑过渡', async ({ page }) => {
