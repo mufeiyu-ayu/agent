@@ -1,4 +1,4 @@
-import type { RunRecorder, RuntimeHost, RuntimeModel, StoredMessage } from '@agent/agent'
+import type { RunRecorder, RuntimeConfig, RuntimeHost, RuntimeModel, StoredMessage } from '@agent/agent'
 import type { Prisma } from '../generated/prisma/client.js'
 import type { ResolvedLlmModel } from '../llm/llm-model-config.service.js'
 import type { LLMService } from '../llm/llm.service.js'
@@ -22,6 +22,11 @@ function messageSnapshot(message: StoredMessage): StoredMessage {
 
 export function runtimeModel(model: ResolvedLlmModel): RuntimeModel {
   return { modelId: model.modelId, providerId: model.provider.providerId, family: model.family, profile: model.profile, maxInputTokens: model.maxInputTokens }
+}
+
+/** 只留内核需要的运行配置，Serper Key 留在宿主。 */
+export function runtimeConfig(config: RuntimeConfig): RuntimeConfig {
+  return { limits: config.limits, compactionKeepRecentTokens: config.compactionKeepRecentTokens, debugCaptureModelIo: config.debugCaptureModelIo }
 }
 
 /** 保留原始异常对象及其类，工具层与全局异常过滤器仍识别同一实例。 */
@@ -77,7 +82,7 @@ export function createRuntimeHost(input: RunTurnStreamInput, deps: {
       compactBeforeSampling: run => compaction.compactBeforeSampling({ ...run, model: input.model }),
       canCompact: run => compaction.canCompact({ ...run, model: input.model }),
       compactAfterOverflow: run => compaction.compactAfterOverflow({ ...run, model: input.model }),
-      compactAfterRun: run => compaction.compactAfterRun({ ...run, model: input.model, runtimeConfig: input.runtimeConfig }),
+      compactAfterRun: run => compaction.compactAfterRun({ ...run, model: input.model }),
     },
     classifyError: classifyHostError,
     aiErrorMessage: getAiExceptionMessage,

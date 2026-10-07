@@ -12,7 +12,7 @@ import { DatabaseOperationDeadlineExceededError } from '../prisma/prisma.service
 import { createRuntimeConfigSnapshot } from '../runtime-config/__fixtures__.js'
 import { ToolInvocationService } from '../tools/core/tool-invocation.service.js'
 import { ToolRegistryService } from '../tools/core/tool-registry.service.js'
-import { createRuntimeHost } from './agent-runtime-host.js'
+import { createRuntimeHost, runtimeConfig } from './agent-runtime-host.js'
 
 it('核心产生的 deadline 工厂经真实 invoke 仍抛原 DB 超时类，归因为 deadline 而不是工具失败', async () => {
   let original: Error | undefined
@@ -77,6 +77,11 @@ it('并发宿主指南状态各自独立，发布对象只由本次 finishStep �
   assert.equal(commits.at(-1), commit)
   assert.equal(await a.prepareToolBatch(batch, deadline), undefined)
   assert.ok(await b.prepareToolBatch({ ...batch, runId: 'b' }, deadline))
+})
+
+it('给内核的运行配置不带 Serper Key', () => {
+  const snapshot = createRuntimeConfigSnapshot({ serperApiKey: { status: 'set', value: 'serper-secret' } })
+  assert.deepEqual(Object.keys(runtimeConfig(snapshot)).sort(), ['compactionKeepRecentTokens', 'debugCaptureModelIo', 'limits'])
 })
 
 function createHost(tools: ToolInvocationService, recorder = {} as AgentRunRecorderService) {

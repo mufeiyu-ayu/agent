@@ -5,7 +5,7 @@ import type {
   ModelUsage,
   ResolvedChatRequestConfig,
 } from '@agent/ai'
-import type { CompactionHost, OperationDeadline as DatabaseOperationDeadline, JsonObject, RuntimeModel as ResolvedLlmModel, RuntimeConfig as RuntimeConfigSnapshot } from '../host.js'
+import type { CompactionHost, JsonObject, OperationDeadline, RuntimeConfig, RuntimeModel } from '../host.js'
 import type { RunCancellation } from '../lifecycle/run-cancellation.js'
 import type { HistorySummaryChunk } from './compaction.js'
 import type { HistoryCompactionRecord } from './conversation-history.js'
@@ -42,7 +42,7 @@ type CompactionReason = 'threshold' | 'overflow' | 'after_run'
 export interface CompactionRun {
   runId: string
   conversationId: string
-  model: ResolvedLlmModel
+  model: RuntimeModel
   /** 运行配置「压缩保留最近 Tokens」。 */
   keepRecentTokens: number
   tools: ModelToolSpec[]
@@ -75,9 +75,6 @@ type SummaryResult
 export class ContextCompactionService {
   constructor(private readonly host: CompactionHost) {}
 
-  private get logger() { return this.host.logger }
-  private get agentRunRecorderService() { return this.host.recorder }
-
   /**
    * 检查点 A：每次调模型前（照抄 Pi；每次问答第 1 次调用前也查是我们加的，因为每次问答都从库重建）。
    * 估算超过触发线（模型行「单次输入上限」）且没停用时尝试一次：有可摘要的历史先压历史，没有或压完仍超线再压本轮。
@@ -106,7 +103,7 @@ export class ContextCompactionService {
    * 压缩失败时返回 false，runtime 按原来的超长错误收口。
    */
   async compactAfterOverflow(run: CompactionRun): Promise<boolean> {
-    this.logger.warn({ event: 'context_overflow_compaction', runId: run.runId })
+    this.host.logger.warn({ event: 'context_overflow_compaction', runId: run.runId })
 
     return await this.attempt(run, 'overflow', run.context.estimateInputTokens(run.tools)) === 'compacted'
   }
@@ -119,15 +116,15 @@ export class ContextCompactionService {
   compactAfterRun(input: {
     runId: string
     conversationId: string
-    model: ResolvedLlmModel
-    runtimeConfig: RuntimeConfigSnapshot
+    model: RuntimeModel
+    runtimeConfig: RuntimeConfig
     instructions: MessageInputItem[]
     tools: ModelToolSpec[]
   }): Promise<void> {
     const startedAt = performance.now()
 
     return this.compactAfterRunInBackground(input).catch((error: unknown) => {
-      this.logger.warn({
+      this.host.logger.warn({
         event: 'after_run_compaction_failed',
         runId: input.runId,
         durationMs: Math.round(performance.now() - startedAt),
@@ -191,7 +188,7 @@ export class ContextCompactionService {
     let compacted = false
 
     for (const chunk of chunks) {
-      const step = await this.agentRunRecorderService.startStep({
+      const step = await this.host.recorder.startStep({
         runId: run.runId,
         type: AGENT_STEP_TYPES.contextCompaction,
         input: { kind: 'history' },
@@ -201,7 +198,7 @@ export class ContextCompactionService {
       const durationMs = Math.round(performance.now() - startedAt)
 
       if (!result.ok) {
-        await this.agentRunRecorderService.failStep(step.id, databaseDeadline, {
+        await this.host.recorder.failStep(step.id, databaseDeadline, {
           errorMessage: result.reason,
           output: { tokensBefore, ...toUsageOutput(result.usage), durationMs },
         })
@@ -221,7 +218,7 @@ export class ContextCompactionService {
         modelId: run.model.modelId,
       }, databaseDeadline)
 
-      await this.agentRunRecorderService.completeStep(step.id, databaseDeadline, {
+      await this.host.recorder.completeStep(step.id, databaseDeadline, {
         output: { compactionId: record.id, tokensBefore, ...toUsageOutput(result.usage), durationMs },
       })
       context.applyHistoryCompaction(record)
@@ -245,7 +242,7 @@ export class ContextCompactionService {
       question: previous ? undefined : context.question,
       exchanges: context.exchanges.slice(previous?.keptFrom ?? 0, cut),
     })
-    const step = await this.agentRunRecorderService.startStep({
+    const step = await this.host.recorder.startStep({
       runId: run.runId,
       type: AGENT_STEP_TYPES.contextCompaction,
       input: { kind: 'turn', keptFromSamplingAttemptId },
@@ -259,14 +256,14 @@ export class ContextCompactionService {
     const durationMs = Math.round(performance.now() - startedAt)
 
     if (!result.ok) {
-      await this.agentRunRecorderService.failStep(step.id, databaseDeadline, {
+      await this.host.recorder.failStep(step.id, databaseDeadline, {
         errorMessage: result.reason,
         output: { tokensBefore, ...toUsageOutput(result.usage), durationMs },
       })
       return false
     }
 
-    await this.agentRunRecorderService.completeStep(step.id, databaseDeadline, {
+    await this.host.recorder.completeStep(step.id, databaseDeadline, {
       output: { summary: result.summary, tokensBefore, ...toUsageOutput(result.usage), durationMs },
     })
     context.applyTurnCompaction({ stepId: step.id, summary: result.summary, keptFrom: cut })
@@ -281,7 +278,7 @@ export class ContextCompactionService {
 
       run.cancellation.throwIfUnavailable()
       if (!result.ok)
-        this.logger.warn({ event: 'context_compaction_failed', runId: run.runId, message: result.reason })
+        this.host.logger.warn({ event: 'context_compaction_failed', runId: run.runId, message: result.reason })
 
       return result
     }
@@ -295,7 +292,7 @@ export class ContextCompactionService {
     const { runDeadlineMs } = input.runtimeConfig.limits
     // 自己的时限：取本 Run 快照的单次最长时间；数据库操作同一个上界。
     const signal = AbortSignal.timeout(runDeadlineMs)
-    const deadline: DatabaseOperationDeadline = {
+    const deadline: OperationDeadline = {
       deadlineAt: Date.now() + runDeadlineMs,
       signal,
       createTimeoutError: this.host.createTimeoutError,
@@ -343,7 +340,7 @@ export class ContextCompactionService {
    * thinking disabled，其他家族取最低一档 reasoning_effort，没有就不发。`length`、报错、正文为空（我们加的）都算失败；
    * 临时性错误的重试交给 SDK，流中途断开按失败处理。只有信号已中止时才抛出。
    */
-  private async summarize(model: ResolvedLlmModel, text: string, maxTokens: number, signal: AbortSignal): Promise<SummaryResult> {
+  private async summarize(model: RuntimeModel, text: string, maxTokens: number, signal: AbortSignal): Promise<SummaryResult> {
     // 各家族的强度按从低到高列出。
     const lowestEffort = reasoningEffortsOf(model.family)[0]
     const request: ResolvedChatRequestConfig = {
@@ -404,7 +401,7 @@ export class ContextCompactionService {
     tokensBefore: number
     usage: ModelUsage | null
     modelId: string
-  }, deadline: DatabaseOperationDeadline): Promise<HistoryCompactionRecord> {
+  }, deadline: OperationDeadline): Promise<HistoryCompactionRecord> {
     return await this.host.insertCompaction({
       conversationId: input.conversationId,
       runId: input.runId,

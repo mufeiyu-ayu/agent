@@ -9,7 +9,7 @@ import type {
 } from './agent-runtime.types.js'
 import type { CompactionRun } from './context/context-compaction.service.js'
 import type { SamplingContextPlan } from './context/model-context.js'
-import type { CloseAgentStepInput, JsonObject, JsonValue, StoredMessage as Message, RuntimeModel as ResolvedLlmModel, RuntimeHost } from './host.js'
+import type { CloseAgentStepInput, JsonObject, JsonValue, RuntimeHost, RuntimeModel, StoredMessage } from './host.js'
 import type {
   RunCancellation,
   RunTerminationSource,
@@ -94,12 +94,8 @@ interface RunTerminalSlots {
 export class AgentRuntime {
   constructor(private readonly host: RuntimeHost) {}
 
-  private get logger() { return this.host.logger }
-  private get agentRunRecorderService() { return this.host.recorder }
-  private get contextCompactionService() { return this.host.compaction }
-
   async* runTurnStream(input: RunTurnStreamInput): AsyncGenerator<AgentRuntimeEvent> {
-    let assistantMessage: Message | undefined
+    let assistantMessage: StoredMessage | undefined
     let agentRunId: string | undefined
     let runCancellation: RunCancellation | undefined
     // 终态收口是否已由正常完成或 catch 接管。消费者提前 return()（如
@@ -118,7 +114,7 @@ export class AgentRuntime {
       const userMessage = await this.host.createUserMessage(input.conversationId, normalizedMessage)
       userMessagePersisted = true
 
-      const agentRun = await this.agentRunRecorderService.createRun({
+      const agentRun = await this.host.recorder.createRun({
         conversationId: input.conversationId,
         userMessageId: userMessage.id,
       })
@@ -139,7 +135,7 @@ export class AgentRuntime {
       // 终态化，不改变 Run 生命周期语义。
       const { request: resolvedRequestConfig, modelTools }
         = this.resolveRunConfiguration(input)
-      const loadHistoryStep = await this.agentRunRecorderService.startStep({
+      const loadHistoryStep = await this.host.recorder.startStep({
         runId: currentAgentRunId,
         type: AGENT_STEP_TYPES.loadConversationHistory,
       }, databaseDeadline)
@@ -163,7 +159,7 @@ export class AgentRuntime {
         // 当前用户消息；创建时间给本轮压缩的摘要输入写日期
         currentUser: { content: userMessage.content, createdAt: userMessage.createdAt },
       })
-      await this.agentRunRecorderService.completeStep(
+      await this.host.recorder.completeStep(
         loadHistoryStep.id,
         databaseDeadline,
         {
@@ -187,7 +183,7 @@ export class AgentRuntime {
       let overflowRetried = false
 
       // 创建助手消息与 Run 关联必须同事务提交，避免 deadline 下留下未关联的 late Message。
-      assistantMessage = await this.agentRunRecorderService.createAssistantMessage(
+      assistantMessage = await this.host.recorder.createAssistantMessage(
         currentAgentRunId,
         input.conversationId,
         databaseDeadline,
@@ -215,7 +211,7 @@ export class AgentRuntime {
         if (assistantOutputStepId)
           return
 
-        const step = await this.agentRunRecorderService.startStep({
+        const step = await this.host.recorder.startStep({
           runId: currentAgentRunId,
           type: AGENT_STEP_TYPES.assistantOutput,
           input: {
@@ -237,10 +233,10 @@ export class AgentRuntime {
       for (let samplingAttempt = 1; ; samplingAttempt += 1) {
         runCancellation.throwIfUnavailable()
         // 检查点 A：估算超触发线就先压缩；压缩 Step 排在采样 Step 之前，采样耗时不含压缩，前台照旧显示「思考中」。
-        await this.contextCompactionService.compactBeforeSampling(compactionRun)
+        await this.host.compaction.compactBeforeSampling(compactionRun)
         const samplingAttemptId = `${currentAgentRunId}:sampling-${samplingAttempt}`
         //  创建模型采样 step
-        const samplingStep = await this.agentRunRecorderService.startStep({
+        const samplingStep = await this.host.recorder.startStep({
           runId: currentAgentRunId,
           type: AGENT_STEP_TYPES.modelSampling,
           input: {
@@ -310,7 +306,7 @@ export class AgentRuntime {
                 await sampling.return(undefined as never)
               }
               catch {
-                this.logger.warn({
+                this.host.logger.warn({
                   event: 'model_sampling_iterator_close_failed',
                   runId: currentAgentRunId,
                   samplingAttemptId,
@@ -383,7 +379,7 @@ export class AgentRuntime {
           completedSamplingDecision = samplingDecision
 
           runCancellation.throwIfUnavailable()
-          await this.agentRunRecorderService.completeStep(
+          await this.host.recorder.completeStep(
             samplingStep.id,
             databaseDeadline,
             {
@@ -430,7 +426,7 @@ export class AgentRuntime {
             && !roundDeltaPushed
             && !overflowRetried
             && isContextOverflow(error)
-            && this.contextCompactionService.canCompact(compactionRun)
+            && this.host.compaction.canCompact(compactionRun)
           ) {
             const overflow = describeRunFailure(this.host, undefined, error)
 
@@ -440,11 +436,11 @@ export class AgentRuntime {
               errorMessage: overflow.message,
               output: failedSamplingOutput(overflow.errorCode),
             }
-            await this.agentRunRecorderService.failStep(samplingStep.id, databaseDeadline, terminal.stepFailure)
+            await this.host.recorder.failStep(samplingStep.id, databaseDeadline, terminal.stepFailure)
             delete terminal.stepFailure
             modelContext.forgetSamplingUsage()
 
-            if (await this.contextCompactionService.compactAfterOverflow(compactionRun)) {
+            if (await this.host.compaction.compactAfterOverflow(compactionRun)) {
               this.logSamplingDebugCaptureClosed(debugModelIO, 'failure')
               continue
             }
@@ -544,7 +540,7 @@ export class AgentRuntime {
       runCancellation.throwIfUnavailable()
       await startAssistantOutputStep()
       runCancellation.throwIfUnavailable()
-      const completedMessage = await this.agentRunRecorderService.completeRun(
+      const completedMessage = await this.host.recorder.completeRun(
         {
           runId: currentAgentRunId,
           conversationId: input.conversationId,
@@ -559,7 +555,7 @@ export class AgentRuntime {
       terminalizationHandled = true
       // 检查点 B：提交确认之后在后台提前压缩下一次问答的历史；不 await，不延迟 run_completed。
       // 提交结果不确定（completeRun 抛错）的分支走 catch，不发起。
-      void this.contextCompactionService.compactAfterRun({
+      void this.host.compaction.compactAfterRun({
         runId: currentAgentRunId,
         conversationId: input.conversationId,
         model: input.model,
@@ -622,7 +618,7 @@ export class AgentRuntime {
       if (userAborted) {
         if (agentRunId) {
           try {
-            await this.agentRunRecorderService.abortRun(
+            await this.host.recorder.abortRun(
               agentRunId,
               createTerminalizationDeadline(),
               this.toAssistantMessageSnapshot(
@@ -668,7 +664,7 @@ export class AgentRuntime {
         this.logRunFailure(agentRunId, terminal.stepFailure?.id, runFailure)
 
         try {
-          await this.agentRunRecorderService.failRun(
+          await this.host.recorder.failRun(
             agentRunId,
             errorMessage,
             runFailure.errorCode,
@@ -728,7 +724,7 @@ export class AgentRuntime {
         }
 
         try {
-          await this.agentRunRecorderService.abortRun(
+          await this.host.recorder.abortRun(
             agentRunId,
             createTerminalizationDeadline(),
             this.toAssistantMessageSnapshot(
@@ -742,7 +738,7 @@ export class AgentRuntime {
         catch (terminalizationCause) {
           // return 路径上没有消费者能接收异常；从 finally 抛出只会
           // 变成 return() 调用点的意外拒绝，这里记录后放弃。
-          this.logger.error(
+          this.host.logger.error(
             `Agent Run ${agentRunId} 兜底收口失败`,
             terminalizationCause instanceof Error
               ? terminalizationCause.stack
@@ -809,7 +805,7 @@ export class AgentRuntime {
       }
 
       // 创建执行工具的 step
-      const toolStep = await this.agentRunRecorderService.startStep({
+      const toolStep = await this.host.recorder.startStep({
         runId,
         type: AGENT_STEP_TYPES.toolExecution,
         input: toolStepInput,
@@ -902,11 +898,11 @@ export class AgentRuntime {
   private async* emitTerminalizationFailure(input: {
     conversationId: string
     agentRunId: string | undefined
-    assistantMessage: Message | undefined
+    assistantMessage: StoredMessage | undefined
     runCause: unknown
     terminalizationCause: unknown
   }): AsyncGenerator<AgentRuntimeEvent, never> {
-    this.logger.error(
+    this.host.logger.error(
       `Agent Run ${input.agentRunId ?? '(未创建)'} 终态收口失败，DB 状态可能停留在非终态`,
       input.terminalizationCause instanceof Error
         ? input.terminalizationCause.stack
@@ -935,7 +931,7 @@ export class AgentRuntime {
   }
 
   private toAssistantMessageSnapshot(
-    assistantMessage: Message | undefined,
+    assistantMessage: StoredMessage | undefined,
     conversationId: string,
     content: string,
   ): { id: string, conversationId: string, content: string } | undefined {
@@ -982,7 +978,7 @@ export class AgentRuntime {
       : undefined
     const httpStatus = typeof status === 'number' ? status : undefined
 
-    this.logger.warn({
+    this.host.logger.warn({
       event: 'agent_run_failed',
       runId,
       stepId: stepId ?? null,
@@ -1044,7 +1040,7 @@ export class AgentRuntime {
         output.debugRequestBody = envelope as unknown as JsonValue
       }
       else {
-        this.logger.warn({
+        this.host.logger.warn({
           event: 'model_sampling_debug_capture_serialization_failed',
           runId: debugModelIO.runId,
           samplingAttemptId: debugModelIO.samplingAttemptId,
@@ -1061,7 +1057,7 @@ export class AgentRuntime {
         output.debugRawResponse = envelope as unknown as JsonValue
       }
       else {
-        this.logger.warn({
+        this.host.logger.warn({
           event: 'model_sampling_debug_capture_serialization_failed',
           runId: debugModelIO.runId,
           samplingAttemptId: debugModelIO.samplingAttemptId,
@@ -1087,7 +1083,7 @@ export class AgentRuntime {
       return
 
     debugModelIO.failedSides.push(side)
-    this.logger.warn({
+    this.host.logger.warn({
       event: 'model_sampling_debug_capture_failed',
       runId: debugModelIO.runId,
       samplingAttemptId: debugModelIO.samplingAttemptId,
@@ -1104,7 +1100,7 @@ export class AgentRuntime {
     if (!capture)
       return
 
-    this.logger.warn({
+    this.host.logger.warn({
       event: 'model_sampling_debug_capture_closed',
       runId: debugModelIO.runId,
       samplingAttemptId: debugModelIO.samplingAttemptId,
@@ -1209,7 +1205,7 @@ function toLlmErrorCode(error: LLMError): AgentRunErrorCode {
  * （当次部署的工具清单全部）；工具定义本身取自当次部署的代码（已知偏差）。读到的历史条数在 load_conversation_history 的 output。
  */
 function toPersistedInitialContext(
-  model: ResolvedLlmModel,
+  model: RuntimeModel,
   resolvedModel: string,
   modelTools: ModelToolSpec[],
 ): JsonObject {

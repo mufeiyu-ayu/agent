@@ -14,7 +14,7 @@
 
 | 改动 | 档位 |
 | --- | --- |
-| 高风险（定义见 `docs/workflow.md` 第 2 节）或核心层（`apps/api/src/agent-runtime/`、`packages/ai`） | `xhigh` |
+| 高风险（定义见 `docs/workflow.md` 第 2 节）或核心层（`apps/api/src/agent-runtime/`、`packages/agent`、`packages/ai`） | `xhigh` |
 | 其余正式 Issue | `high` |
 | 小改动例外（非高风险、单一关注点） | `medium` |
 | docs-only | 跳过 |

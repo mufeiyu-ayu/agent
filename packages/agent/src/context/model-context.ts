@@ -29,7 +29,7 @@ export interface TurnCompaction {
   keptFrom: number
 }
 
-/** 一次调模型前的规划：发出的输入与估算；落库哪些字段见 agent-runtime.service.ts 的 toPersistedContextPlan。 */
+/** 一次调模型前的规划：发出的输入与估算；落库哪些字段见 agent-runtime.ts 的 toPersistedContextPlan。 */
 export interface SamplingContextPlan {
   items: ModelInputItem[]
   estimatedInputTokens: number

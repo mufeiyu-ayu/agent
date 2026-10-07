@@ -8,7 +8,7 @@ import { PrismaService } from '../prisma/prisma.service.js'
 import { ToolInvocationService } from '../tools/core/tool-invocation.service.js'
 import { TOOL_DEFINITIONS } from '../tools/tool-definitions.js'
 import { WorkspaceService } from '../workspaces/workspace.service.js'
-import { createRuntimeHost, runtimeModel } from './agent-runtime-host.js'
+import { createRuntimeHost, runtimeConfig, runtimeModel } from './agent-runtime-host.js'
 import { ContextCompactionService } from './context/context-compaction.service.js'
 import { AgentRunRecorderService } from './lifecycle/agent-run-recorder.service.js'
 
@@ -40,11 +40,7 @@ export class AgentRuntimeService {
       conversationId: input.conversationId,
       userContent: input.userContent,
       model: runtimeModel(input.model),
-      runtimeConfig: {
-        limits: input.runtimeConfig.limits,
-        compactionKeepRecentTokens: input.runtimeConfig.compactionKeepRecentTokens,
-        debugCaptureModelIo: input.runtimeConfig.debugCaptureModelIo,
-      },
+      runtimeConfig: runtimeConfig(input.runtimeConfig),
       tools: TOOL_DEFINITIONS
         .filter(definition => !this.workspaces || this.workspaces.cloud.configured || !WORKSPACE_TOOL_NAMES.includes(definition.name))
         .map(definition => ({ name: definition.name, description: definition.description, inputSchema: definition.input.schema })),

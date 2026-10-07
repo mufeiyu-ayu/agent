@@ -65,7 +65,7 @@ Non-trivial changes start as an issue with current-code facts, out-of-scope item
 
 ## The whole loop in one screen
 
-A simplified view of the core loop in [`agent-runtime.service.ts`](./apps/api/src/agent-runtime/agent-runtime.service.ts):
+A simplified view of the core loop in [`agent-runtime.ts`](./packages/agent/src/agent-runtime.ts):
 
 ```ts
 // No cap on rounds or tool calls: the model keeps going until it answers; only the run deadline stops it.
@@ -103,9 +103,10 @@ flowchart LR
 
 | Layer | What it does |
 | --- | --- |
-| `apps/api` | NestJS API: agent runtime, tools, model provider config |
+| `apps/api` | NestJS API: host of the agent runtime (transactions, credentials, product policy), tools, model provider config |
 | `apps/web` | Vue 3 chat app with streaming Markdown |
 | `apps/admin` | Admin console: overview, conversations, run trace, model providers |
+| `packages/agent` | Framework-free agent kernel: main loop, context and compaction, cancellation and final state (no Nest, no Prisma) |
 | `packages/ai` | Framework-free model client: stream adapter, retries, errors (no Nest, no Prisma) |
 | `packages/contracts` | Types shared by frontend and backend |
 
@@ -134,8 +135,8 @@ Follow one request from the HTTP call to the database, in this order:
 | # | Read | You'll understand |
 | --- | --- | --- |
 | 1 | [`chat.controller.ts`](./apps/api/src/chat/chat.controller.ts) | How a closed browser tab becomes an abort signal |
-| 2 | [`agent-runtime.service.ts`](./apps/api/src/agent-runtime/agent-runtime.service.ts) | The main loop: sample, dispatch, run tools, continue, finish |
-| 3 | [`context-compaction.service.ts`](./apps/api/src/agent-runtime/context/context-compaction.service.ts) | What happens when the context outgrows the model: what gets summarized, what stays verbatim |
+| 2 | [`agent-runtime.ts`](./packages/agent/src/agent-runtime.ts) | The main loop: sample, dispatch, run tools, continue, finish |
+| 3 | [`context-compaction.service.ts`](./packages/agent/src/context/context-compaction.service.ts) | What happens when the context outgrows the model: what gets summarized, what stays verbatim |
 | 4 | [`openai-completions-stream.ts`](./packages/ai/src/api/openai-completions-stream.ts) | How a provider's stream becomes clean events |
 | 5 | [`agent-run-recorder.service.ts`](./apps/api/src/agent-runtime/lifecycle/agent-run-recorder.service.ts) | Final-state ownership and atomic commits |
 

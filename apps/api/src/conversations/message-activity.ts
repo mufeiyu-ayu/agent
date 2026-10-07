@@ -1,7 +1,7 @@
 import type { MessageActivity, MessageActivityItem, MessageActivityTool } from '@agent/contracts'
 
-import { RUN_ROW_DELAY_MS } from '@agent/contracts'
 import { AGENT_STEP_TYPES } from '@agent/agent'
+import { RUN_ROW_DELAY_MS } from '@agent/contracts'
 import { toToolProgressArguments } from '../tools/web/tool-progress-arguments.js'
 import { RESULT_COUNT } from '../tools/web/web-search.tool.js'
 
