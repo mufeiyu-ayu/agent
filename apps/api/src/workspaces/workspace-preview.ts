@@ -109,11 +109,18 @@ export function validateArtifact(files: Array<{ path: string, content: Buffer }>
         ['link[href]', 'href'],
         ['video[poster]', 'poster'],
       ] as const) {
-        for (const element of document.querySelectorAll(selector))
+        for (const element of document.querySelectorAll(selector)) {
+          if (element.localName === 'link' && !(element.getAttribute('rel') ?? '').toLowerCase().split(/\s+/).some(rel => ['stylesheet', 'modulepreload', 'preload', 'prefetch', 'icon', 'apple-touch-icon', 'mask-icon'].includes(rel)))
+            continue
           references.push(element.getAttribute(attribute)!)
+        }
       }
       for (const element of document.querySelectorAll('img[srcset],source[srcset]'))
         references.push(...srcsetReferences(element.getAttribute('srcset')!))
+      for (const element of document.querySelectorAll('style'))
+        references.push(...cssReferences(element.textContent ?? ''))
+      for (const element of document.querySelectorAll('[style]'))
+        references.push(...cssReferences(element.getAttribute('style')!))
     }
     if (mime === 'text/css')
       references.push(...cssReferences(source))
@@ -136,10 +143,11 @@ export function validateArtifact(files: Array<{ path: string, content: Buffer }>
         continue
       if (/^(?:[a-z][\w+.-]*:|\/)/i.test(reference))
         throw new WorkspaceOperationError('构建资源必须使用项目内相对路径，不能引用外部网络。')
-      const target = new URL(reference, `https://artifact.invalid/${file.path}`)
-      if (target.origin !== 'https://artifact.invalid')
-        throw new WorkspaceOperationError('构建资源必须使用项目内相对路径，不能引用外部网络。')
-      const path = artifactPath(decodeURIComponent(target.pathname.slice(1)))
+      const base = 'https://artifact.invalid/files/'
+      const target = new URL(reference, `${base}${file.path}`)
+      if (!target.href.startsWith(base))
+        throw new WorkspaceOperationError('构建资源必须使用项目内相对路径，不能越出构建目录。')
+      const path = artifactPath(decodeURIComponent(target.pathname.slice('/files/'.length)))
       if (!paths.has(path))
         throw new WorkspaceOperationError(`构建缺少引用资源：${path}`)
     }

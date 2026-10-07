@@ -125,6 +125,123 @@ describe('OSS GC PostgreSQL 引用与故障边界（内存 OSS，不访问业务
     return { user, conversation, prefix, objects, source, dist, put, remove, list, cloud, gc, service, previews, newRun, confirm, end, restored: () => restored, key: (content: string) => `${prefix}objects/${fileHash(Buffer.from(content))}` }
   }
 
+  it('B7：旧预览在本扫描保留后到期，启动恢复仍自动回收独占对象，当前/共享引用不删', async () => {
+    const f = await fixture()
+    const run = await f.newRun()
+    f.source.push({ path: 'keep.txt', content: Buffer.from('shared') })
+    const oldHtml = '<html><img src="./old.svg"></html>'
+    const oldIcon = '<svg id="old"/>'
+    f.dist.push({ path: 'index.html', content: Buffer.from(oldHtml) }, { path: 'old.svg', content: Buffer.from(oldIcon) }, { path: 'shared.txt', content: Buffer.from('shared') })
+    const old = await f.confirm(run, true)
+    const now = Date.now()
+    const expiry = now + 1000
+    await prisma.workspaceArtifact.update({ where: { id: old.commit.artifact!.id }, data: { previewExpiresAt: new Date(expiry) } })
+    f.dist.splice(0, f.dist.length, { path: 'index.html', content: Buffer.from('<html>new</html>') })
+    const current = await f.confirm(run, true)
+    await f.end(run)
+    let orphan = 'slow orphan'
+    const oldKeys = [f.key(oldHtml), f.key(oldIcon)]
+    while (oldKeys.some(key => key >= f.key(orphan)))
+      orphan += 'x'
+    const orphanKey = f.key(orphan)
+    f.objects.set(orphanKey, Buffer.from(orphan))
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(now)
+    onTestFinished(() => {
+      vi.useRealTimers()
+    })
+    f.remove.mockImplementation(async (key) => {
+      if (key === orphanKey)
+        vi.setSystemTime(expiry + 1)
+      f.objects.delete(key)
+    })
+    const first = await f.gc.collect(f.conversation.id, true)
+    assert.ok(oldKeys.every(key => first.retained.includes(key) && f.objects.has(key)))
+    assert.equal(await prisma.workspaceArtifact.findUnique({ where: { id: old.commit.artifact!.id } }), null)
+    assert.equal((await prisma.workspaceGcTarget.findUniqueOrThrow({ where: { conversationId: f.conversation.id } })).pending, true)
+    vi.stubEnv('OSS_WORKSPACE_GC_ENABLED', 'true')
+    const restarted = new WorkspaceGcService(prisma, f.cloud)
+    restarted.onModuleInit()
+    try {
+      await vi.waitFor(async () => {
+        assert.ok(oldKeys.every(key => !f.objects.has(key)))
+        assert.equal((await prisma.workspaceGcTarget.findUniqueOrThrow({ where: { conversationId: f.conversation.id } })).pending, false)
+      })
+      assert.ok(f.objects.has(f.key('shared')))
+      assert.ok(f.objects.has(f.key('<html>new</html>')))
+      assert.ok(await prisma.workspaceArtifact.findUnique({ where: { id: current.commit.artifact!.id } }))
+    }
+    finally { await restarted.onModuleDestroy() }
+  })
+
+  it('S1：blocked 自动 GC 不列举 OSS，保留 pending；dry-run 可列举，解除后仍能回收', async () => {
+    const f = await fixture()
+    const run = await f.newRun()
+    f.source.push({ path: 'current.txt', content: Buffer.from('current') })
+    await f.confirm(run)
+    f.objects.set(f.key('orphan'), Buffer.from('orphan'))
+    const blocked = await f.gc.collect(f.conversation.id, true)
+    assert.match(blocked.blocked!, /运行\/提交/)
+    assert.equal(f.list.mock.calls.length, 0)
+    assert.equal(f.remove.mock.calls.length, 0)
+    assert.equal((await prisma.workspaceGcTarget.findUniqueOrThrow({ where: { conversationId: f.conversation.id } })).pending, true)
+    await f.gc.collect(f.conversation.id)
+    assert.ok(f.list.mock.calls.length > 0)
+    assert.equal(f.remove.mock.calls.length, 0)
+    await f.end(run)
+    await f.gc.collect(f.conversation.id, true)
+    assert.equal(f.objects.has(f.key('orphan')), false)
+    assert.ok(f.objects.has(f.key('current')))
+  })
+
+  it('D1：ConversationsService.delete 的 advisory lock 等待有实际 SQL 预算，连接不继续等待', async () => {
+    const f = await fixture()
+    const locker = await pool.connect()
+    await locker.query('BEGIN')
+    await locker.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [`workspace-storage:${f.conversation.id}`])
+    const service = new ConversationsService(prisma, f.gc)
+    try {
+      const start = Date.now()
+      await assert.rejects(service.delete(f.user.id, f.conversation.id), /工作区状态操作超时/)
+      assert.ok(Date.now() - start < 6500)
+      const waiting = await pool.query('SELECT count(*)::int AS count FROM pg_stat_activity WHERE wait_event = \'advisory\' AND state = \'active\' AND pid <> pg_backend_pid()') as { rows: Array<{ count: number }> }
+      assert.equal(waiting.rows[0]!.count, 0, '锁仍持有时，SQL 等待已结束，不仅是调用方返回')
+      assert.ok(await prisma.conversation.findUnique({ where: { id: f.conversation.id } }))
+      assert.equal(await prisma.workspaceGcTarget.findUnique({ where: { conversationId: f.conversation.id } }), null)
+    }
+    finally {
+      await locker.query('ROLLBACK')
+      locker.release()
+    }
+    await service.delete(f.user.id, f.conversation.id)
+    assert.equal(await prisma.conversation.findUnique({ where: { id: f.conversation.id } }), null)
+    assert.ok((await prisma.workspaceGcTarget.findUniqueOrThrow({ where: { conversationId: f.conversation.id } })).deletedAt)
+  }, 15000)
+
+  it('D1：prepareCommit 的 Artifact 查询受 SQL 预算，失败后上传登记仍明确收尾', async () => {
+    const f = await fixture()
+    const run = await f.newRun()
+    f.source.push({ path: 'a.txt', content: Buffer.from('current') })
+    f.dist.push({ path: 'index.html', content: Buffer.from('<html/>') })
+    const first = await f.confirm(run, true)
+    const locker = await pool.connect()
+    await locker.query('BEGIN')
+    await locker.query(`LOCK TABLE "${schema}"."WorkspaceArtifact" IN ACCESS EXCLUSIVE MODE`)
+    try {
+      const start = Date.now()
+      await assert.rejects(f.service.prepareCommit(run, new AbortController().signal), /工作区状态操作超时/)
+      assert.ok(Date.now() - start < 6500)
+      assert.equal(await prisma.workspaceUpload.count({ where: { conversationId: f.conversation.id, state: { not: 'settled' } } }), 0)
+      assert.equal((await prisma.conversationWorkspace.findUniqueOrThrow({ where: { conversationId: f.conversation.id } })).artifactId, first.commit.artifact!.id)
+      assert.equal(f.put.mock.calls.length, 2, '被锁定的查询后不启动新上传')
+    }
+    finally {
+      await locker.query('ROLLBACK')
+      locker.release()
+      await f.end(run)
+    }
+  }, 15000)
+
   it('F1：会话删除的新清理需求不能被旧扫描吞掉，启动恢复自动排空前缀', async () => {
     const f = await fixture()
     const run = await f.newRun()

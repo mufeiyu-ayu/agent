@@ -91,6 +91,33 @@ test('用户审核只有当前行 loading、防重复，另一行仍可操作，
   assert.equal(reads, 1)
 })
 
+test('B10：初始列表等待中创建用户，旧 GET 返回后新用户仍可见', async ({ page }) => {
+  await authenticate(page)
+  const pending: Route[] = []
+  let creates = 0
+  const user: AdminUser = { id: 'new-user', email: 'new-user@example.com', name: null, avatarUrl: null, role: 'MEMBER', status: 'ACTIVE', mustChangePassword: true, lastLoginAt: null, createdAt: '2026-10-07T00:00:00Z' }
+  await page.route('**/api/admin/users', (route) => {
+    if (route.request().method() === 'GET') {
+      pending.push(route)
+      return
+    }
+    creates++
+    return fulfill(route, user)
+  })
+  await page.goto('/users')
+  await expect.poll(() => pending.length).toBe(1)
+  await page.getByRole('button', { name: /新建用户$/ }).click()
+  const dialog = page.getByRole('dialog')
+  await dialog.getByLabel('邮箱').fill(user.email)
+  await dialog.getByLabel('初始密码', { exact: true }).fill('fixture-password-123')
+  await dialog.getByRole('button', { name: /新建用户$/ }).click()
+  await expect(dialog).not.toBeVisible()
+  assert.equal(creates, 1)
+  await fulfill(pending[0]!, [])
+  await expect(page.getByRole('row').filter({ hasText: user.email })).toBeVisible()
+  assert.equal(pending.length, 1)
+})
+
 test('模型行可见性写入有 loading 且防重复，失败恢复并可重试；切服务商是本地操作', async ({ page }) => {
   await authenticate(page)
   const provider: AdminLlmProvider = {

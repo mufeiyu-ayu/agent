@@ -17,20 +17,29 @@ export function createUsersState() {
   const pendingKeys = shallowRef(new Set<string>())
   const creating = computed(() => pendingKeys.value.has('create'))
   const pendingUserIds = computed(() => new Set([...pendingKeys.value].filter(key => key !== 'create')))
+  let writesDuringLoad: Map<string, AdminUser> | undefined
 
   async function load() {
     if (loading.value)
       return
     loading.value = true
     error.value = ''
+    const writes = new Map<string, AdminUser>()
+    writesDuringLoad = writes
 
     try {
-      users.value = await fetchAdminUsers()
+      const fetched = await fetchAdminUsers()
+      const ids = new Set(fetched.map(user => user.id))
+      users.value = [
+        ...fetched.map(user => writes.get(user.id) ?? user),
+        ...[...writes.values()].filter(user => !ids.has(user.id)),
+      ]
     }
     catch (caught) {
       error.value = formatAdminRunError(caught)
     }
     finally {
+      writesDuringLoad = undefined
       loading.value = false
     }
   }
@@ -42,6 +51,7 @@ export function createUsersState() {
     pendingKeys.value = new Set([...pendingKeys.value, key])
     try {
       const user = await action()
+      writesDuringLoad?.set(user.id, user)
       const index = users.value.findIndex(item => item.id === user.id)
       users.value = index === -1
         ? [...users.value, user]

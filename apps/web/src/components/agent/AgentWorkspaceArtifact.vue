@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import type { WorkspaceFile } from '@agent/contracts'
 import type { TurnRun } from '../../types/chat'
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { useResizeObserver } from '@vueuse/core'
+import { computed, nextTick, onScopeDispose, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { workspaceArtifacts, workspaceFileType } from '../../utils/workspace-files'
 import AppIcon from '../common/AppIcon.vue'
@@ -35,23 +36,13 @@ function checkOverflow() {
   measuredOverflow.value = el.scrollHeight > 100
 }
 
-let resizeObserver: ResizeObserver | null = null
-
-onMounted(() => {
-  nextTick(() => {
-    checkOverflow()
-    if (containerRef.value && typeof ResizeObserver !== 'undefined') {
-      resizeObserver = new ResizeObserver(() => {
-        checkOverflow()
-      })
-      resizeObserver.observe(containerRef.value)
-    }
-  })
-})
-
-onUnmounted(() => {
-  resizeObserver?.disconnect()
-  resizeObserver = null
+// VueUse 随实际条件节点重绑并在 scope 结束时断开，不只观察第一次 mounted 的节点。
+useResizeObserver(containerRef, checkOverflow)
+let finishAnimation: (() => void) | undefined
+let disposed = false
+onScopeDispose(() => {
+  disposed = true
+  finishAnimation?.()
 })
 
 watch(() => props.files, () => {
@@ -75,94 +66,50 @@ async function toggleExpand() {
     return
   }
 
+  const expanding = !isExpanded.value
+  const startHeight = el.offsetHeight
+  const targetHeight = expanding ? el.scrollHeight : COLLAPSED_HEIGHT
+  const duration = expanding ? 280 : 240
   isAnimating.value = true
-
-  if (!isExpanded.value) {
-    // 展开：从当前高度平滑过渡到 scrollHeight
-    const startHeight = el.offsetHeight
-    const targetHeight = el.scrollHeight
-
-    if (targetHeight <= startHeight) {
-      isExpanded.value = true
-      isClamped.value = false
-      isAnimating.value = false
-      return
-    }
-
-    el.style.height = `${startHeight}px`
-    isExpanded.value = true
+  el.style.height = `${startHeight}px`
+  isExpanded.value = expanding
+  if (expanding)
     isClamped.value = false
-    await nextTick()
-
-    void el.offsetHeight
-    el.style.transition = 'height 280ms cubic-bezier(0.16, 1, 0.3, 1)'
-    el.style.height = `${targetHeight}px`
-
-    let timer: ReturnType<typeof setTimeout> | undefined
-    let onEnd: (e: TransitionEvent) => void = () => {}
-    let cleaned = false
-    const cleanup = () => {
-      if (cleaned)
-        return
-      cleaned = true
-      el.removeEventListener('transitionend', onEnd)
-      if (timer)
-        clearTimeout(timer)
-      if (isExpanded.value) {
-        el.style.height = ''
-        el.style.transition = ''
-      }
-      isAnimating.value = false
-    }
-
-    onEnd = (e: TransitionEvent) => {
-      if (e.target === el && e.propertyName === 'height') {
-        cleanup()
-      }
-    }
-
-    timer = setTimeout(cleanup, 340)
-    el.addEventListener('transitionend', onEnd)
+  await nextTick()
+  if (disposed || el !== containerRef.value) {
+    el.style.height = ''
+    isAnimating.value = false
+    return
   }
-  else {
-    // 收起：从当前实际展开高度平滑过渡到 3 行收折高度
-    const startHeight = el.offsetHeight
-    el.style.height = `${startHeight}px`
-    isExpanded.value = false
-    await nextTick()
-
-    void el.offsetHeight
-    el.style.transition = 'height 240ms cubic-bezier(0.16, 1, 0.3, 1)'
-    el.style.height = `${COLLAPSED_HEIGHT}px`
-
-    let timer: ReturnType<typeof setTimeout> | undefined
-    let onEnd: (e: TransitionEvent) => void = () => {}
-    let cleaned = false
-    const cleanup = async () => {
-      if (cleaned)
-        return
-      cleaned = true
-      el.removeEventListener('transitionend', onEnd)
-      if (timer)
-        clearTimeout(timer)
-      if (!isExpanded.value) {
-        isClamped.value = true
-        await nextTick()
-        el.style.height = ''
-        el.style.transition = ''
-      }
-      isAnimating.value = false
-    }
-
-    onEnd = (e: TransitionEvent) => {
-      if (e.target === el && e.propertyName === 'height') {
-        cleanup()
-      }
-    }
-
-    timer = setTimeout(cleanup, 300)
-    el.addEventListener('transitionend', onEnd)
+  void el.offsetHeight
+  el.style.transition = `height ${duration}ms cubic-bezier(0.16, 1, 0.3, 1)`
+  el.style.height = `${targetHeight}px`
+  let cleaned = false
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const onEnd = (event: TransitionEvent) => {
+    if (event.target === el && event.propertyName === 'height')
+      finishAnimation?.()
   }
+  const cleanup = async () => {
+    if (cleaned)
+      return
+    cleaned = true
+    clearTimeout(timer)
+    el.removeEventListener('transitionend', onEnd)
+    finishAnimation = undefined
+    if (!isExpanded.value) {
+      isClamped.value = true
+      await nextTick()
+    }
+    el.style.height = ''
+    el.style.transition = ''
+    isAnimating.value = false
+  }
+  timer = setTimeout(cleanup, duration + 60)
+  finishAnimation = () => {
+    void cleanup()
+  }
+  el.addEventListener('transitionend', onEnd)
 }
 </script>
 

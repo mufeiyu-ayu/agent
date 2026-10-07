@@ -1,6 +1,7 @@
 import type { ToolDefinition, ToolExecutionContext, ToolExecutor, ToolResult, ValidatedToolInvocation } from '../core/tool.types.js'
 import { Buffer } from 'node:buffer'
 import { Inject, Injectable } from '@nestjs/common'
+import { truncateCodeUnits } from '../../agent-runtime/persistable-text.js'
 import { MAX_FILE_BYTES, MAX_READ_OBSERVATION_CHARS, WorkspaceOperationError, workspacePath } from '../../workspaces/workspace-files.js'
 import { WorkspaceService } from '../../workspaces/workspace.service.js'
 
@@ -139,20 +140,13 @@ abstract class WorkspaceTool<T extends { path?: string, command?: string, title?
         ...(commit ? { revision: revision!, files: files! } : {}),
         ...(artifact ? { artifact } : {}),
       }
+      const delivery = {
+        ...(commit ? { saved: true, revision, files: files!.slice(0, 20) } : {}),
+        ...(artifact ? { artifact: { id: artifact.id, sourceRevision: artifact.sourceRevision, fileCount: artifact.files.length, files: artifact.files.slice(0, 20) } } : {}),
+      }
       return {
         ok: true,
-        modelContent: JSON.stringify({
-          ...(this.action === 'bash'
-            ? {
-                exitCode: data.exitCode,
-                stderr: boundedOutput(String(data.stderr ?? '')),
-                stdout: boundedOutput(String(data.stdout ?? '')),
-                truncated: data.truncated === true || String(data.stdout ?? '').length > 12_000 || String(data.stderr ?? '').length > 12_000,
-              }
-            : data),
-          ...(commit ? { saved: true, revision, files: files?.slice(0, 20) } : {}),
-          ...(artifact ? { artifact: { id: artifact.id, sourceRevision: artifact.sourceRevision, fileCount: artifact.files.length, files: artifact.files.slice(0, 20) } } : {}),
-        }),
+        modelContent: this.action === 'bash' ? bashModelContent(data, delivery, files?.length ?? 0) : JSON.stringify({ ...data, ...delivery }),
         display: { workspace, ...(typeof data.exitCode === 'number' && data.exitCode !== 0 ? { failure: 'failed' as const } : {}) },
         ...(commit ? { workspaceCommit: commit } : {}),
       }
@@ -176,8 +170,57 @@ abstract class WorkspaceTool<T extends { path?: string, command?: string, title?
   }
 }
 
-function boundedOutput(value: string): string {
-  return value.length <= 12_000 ? value : `${value.slice(0, 6000)}\n[中间输出已截断]\n${value.slice(-6000)}`
+/** 交付身份优先，按最终 JSON 的 code point 预算分配日志；全局 observation 上限仍保留。 */
+function bashModelContent(data: Record<string, unknown>, delivery: {
+  saved?: boolean
+  revision?: number | undefined
+  files?: unknown[]
+  artifact?: { id: string, sourceRevision: number, fileCount: number, files: unknown[] }
+}, sourceCount: number): string {
+  const stdout = String(data.stdout ?? '')
+  const stderr = String(data.stderr ?? '')
+  const artifactCount = delivery.artifact?.fileCount ?? 0
+  const serialize = (limit: number) => JSON.stringify({
+    exitCode: data.exitCode,
+    ...delivery,
+    ...(sourceCount !== (delivery.files?.length ?? 0) ? { filesOmitted: sourceCount - delivery.files!.length } : {}),
+    ...(artifactCount !== (delivery.artifact?.files.length ?? 0) ? { artifactFilesOmitted: artifactCount - delivery.artifact!.files.length } : {}),
+    stderr: boundedOutput(stderr, limit),
+    stdout: boundedOutput(stdout, limit),
+    truncated: data.truncated === true || stdout.length > limit || stderr.length > limit,
+  })
+  const length = (text: string) => [...text].length
+  const full = serialize(12_000)
+  if (length(full) <= MAX_READ_OBSERVATION_CHARS)
+    return full
+  // 清单原本就是部分展示；给两路诊断留至少半份预算，不移除保存状态或 Artifact 身份。
+  while (length(serialize(0)) > MAX_READ_OBSERVATION_CHARS / 2) {
+    if ((delivery.files?.length ?? 0) >= (delivery.artifact?.files.length ?? 0))
+      delivery.files?.pop()
+    else
+      delivery.artifact?.files.pop()
+  }
+  let low = 0
+  let high = 12_000
+  while (low < high) {
+    const middle = Math.ceil((low + high) / 2)
+    if (length(serialize(middle)) <= MAX_READ_OBSERVATION_CHARS)
+      low = middle
+    else
+      high = middle - 1
+  }
+  return serialize(low)
+}
+
+function boundedOutput(value: string, limit: number): string {
+  if (value.length <= limit)
+    return value
+  const marker = '\n[中间输出已截断]\n'
+  if (limit <= marker.length)
+    return truncateCodeUnits(marker, limit)
+  const kept = limit - marker.length
+  const tail = value.slice(value.length - Math.ceil(kept / 2)).replace(/^[\uDC00-\uDFFF]/, '')
+  return `${truncateCodeUnits(value, Math.floor(kept / 2))}${marker}${tail}`
 }
 
 @Injectable()

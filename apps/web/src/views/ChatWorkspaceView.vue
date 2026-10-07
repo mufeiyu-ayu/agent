@@ -81,6 +81,9 @@ const {
   hasMoreConversations,
   isLoadingMoreConversations,
   isLoadingMessages,
+  isHistoryReady,
+  conversationError,
+  reloadMessages,
   shouldAnchorLatestTurn,
   activeConversationId,
   conversationTurns,
@@ -437,6 +440,10 @@ function send() {
                 :model-notice="modelNotice"
                 :status="status"
                 :message-character-count="messageCharacterCount"
+                :history-ready="isHistoryReady"
+                :history-loading="isLoadingMessages && !isHistoryReady"
+                :history-error="conversationError"
+                @retry-history="reloadMessages"
                 @refresh-models="loadModels"
                 @send="send"
                 @stop="stopGeneration"
@@ -485,6 +492,10 @@ function send() {
               :model-notice="modelNotice"
               :status="status"
               :message-character-count="messageCharacterCount"
+              :history-ready="isHistoryReady"
+              :history-loading="isLoadingMessages && !isHistoryReady"
+              :history-error="conversationError"
+              @retry-history="reloadMessages"
               @refresh-models="loadModels"
               @send="send"
               @stop="stopGeneration"

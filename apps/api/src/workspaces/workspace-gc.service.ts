@@ -163,9 +163,16 @@ export class WorkspaceGcService implements OnModuleInit, OnModuleDestroy {
     }
     const scan = await workspaceDb(this.prisma, async (db) => {
       await lockWorkspaceStorage(db, conversationId)
-      return this.references(db, userId, conversationId, prefix)
+      const state = await this.references(db, userId, conversationId, prefix)
+      if (apply && state.blocked)
+        await db.workspaceGcTarget.update({ where: { conversationId }, data: { pending: true } })
+      return state
     })
     report.blocked = scan.blocked
+    if (apply && scan.blocked)
+      return report
+    // 到期不是一次业务登记：本扫描曾保护的旧预览仍需下一轮复查，不能只看收尾时钟。
+    let protectedOld = scan.protectedOld
     let marker: string | undefined
     do {
       const page = await this.cloud.listFiles(prefix, marker)
@@ -181,7 +188,7 @@ export class WorkspaceGcService implements OnModuleInit, OnModuleDestroy {
             if (state.blocked)
               return { kind: 'blocked' as const, reason: state.blocked }
             if (state.keys.has(key))
-              return { kind: 'retained' as const }
+              return { kind: 'retained' as const, protectedOld: state.protectedOld }
             if (!state.deleted && !/^objects\/[a-f0-9]{64}$/.test(key.slice(prefix.length)))
               return { kind: 'unknown' as const }
             if (apply)
@@ -193,6 +200,7 @@ export class WorkspaceGcService implements OnModuleInit, OnModuleDestroy {
             report.unknown.push(key)
           }
           else if (verdict.kind === 'retained') {
+            protectedOld ||= verdict.protectedOld
             report.retained.push(key)
           }
           else if (verdict.kind === 'unknown') {
@@ -235,7 +243,7 @@ export class WorkspaceGcService implements OnModuleInit, OnModuleDestroy {
           throw new WorkspaceOperationError('清理需求记录缺失，未确认回收完成。')
         // DELETE 屏障的登记/收尾属于本扫描，不推进需求代次；并发删除会话、
         // 新上传/维护核查则推进代次。旧扫描不能把这些新需求的 pending 清掉。
-        await db.workspaceGcTarget.updateMany({ where: { conversationId, generation: scan.generation }, data: { pending: !!state.blocked || state.protectedOld || report.failed.length > 0 || report.unknown.length > 0 } })
+        await db.workspaceGcTarget.updateMany({ where: { conversationId, generation: scan.generation }, data: { pending: !!state.blocked || protectedOld || state.protectedOld || report.failed.length > 0 || report.unknown.length > 0 } })
       })
     }
     return report

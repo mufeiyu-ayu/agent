@@ -97,23 +97,11 @@ export class WorkspaceService implements OnModuleDestroy {
     if (!row || row.revision !== revision)
       throw new ConflictException('源码版本已更新，请重新选择下载版本')
     const files = parseStoredFiles(row.files, this.prefix(userId, conversationId)).filter(file => !privateWorkspacePath(file.path))
-    const contents: Array<{ path: string, content: Buffer }> = []
-    const reads = new AbortController()
-    const readSignal = AbortSignal.any([signal, reads.signal])
-    let next = 0
+    let contents: Array<{ path: string, content: Buffer }>
     try {
-      // 有界并发，避免完整工程逐文件往返超过归档请求预算；顺序仍固定为清单顺序。
-      await Promise.all(Array.from({ length: Math.min(4, files.length) }, async () => {
-        while (next < files.length) {
-          readSignal.throwIfAborted()
-          const index = next++
-          const file = files[index]!
-          contents[index] = { path: file.path, content: await this.cloud.readFile(file, readSignal) }
-        }
-      }))
+      contents = await this.readSourceFiles(files, signal)
     }
     catch {
-      reads.abort()
       throw new ServiceUnavailableException('源码归档读取失败，请重试同一版本。')
     }
     signal.throwIfAborted()
@@ -190,7 +178,8 @@ export class WorkspaceService implements OnModuleDestroy {
     const uploadId = await this.gc.beginUpload(execution)
     let unknownUpload = false
     try {
-      const confirmedArtifact = row.artifactId ? await this.prisma.workspaceArtifact.findFirst({ where: { id: row.artifactId, userId: execution.userId, conversationId: execution.conversationId } }) : null
+      const artifactId = row.artifactId
+      const confirmedArtifact = artifactId ? await this.withDb(db => db.workspaceArtifact.findFirst({ where: { id: artifactId, userId: execution.userId, conversationId: execution.conversationId } }), signal) : null
       // 当前 Source/Artifact 受 owner + 持久上传登记保护；GC 与取得 owner 共用互斥。
       // 不复用任意历史 hash，也不依赖一次存在性检查避免检查后被删的竞态。
       const existingHashes = new Set([...previous, ...parseStoredFiles(confirmedArtifact?.files ?? [], prefix)].map(file => file.sha256))
@@ -393,18 +382,7 @@ export class WorkspaceService implements OnModuleDestroy {
       signal.throwIfAborted()
       const row = await this.operation(execution, 'restoring', sandbox.sandboxId)
       const files = parseStoredFiles(row.files, this.prefix(userId, conversationId))
-      const restored: Array<{ path: string, content: string }> = []
-      const contents = new Map<string, string>()
-      for (const file of files) {
-        signal.throwIfAborted()
-        const cacheKey = `${file.sha256}:${file.bytes}`
-        let content = contents.get(cacheKey)
-        if (content === undefined) {
-          content = (await this.cloud.readFile(file, signal)).toString('base64')
-          contents.set(cacheKey, content)
-        }
-        restored.push({ path: file.path, content })
-      }
+      const restored = (await this.readSourceFiles(files, signal)).map(({ path, content }) => ({ path, content: content.toString('base64') }))
       await this.cloud.request(sandbox, FILE_SCRIPT, { action: 'restore', files: restored, webProject: row.webProject }, signal)
       return { sandbox, execution, historyId, startedAt }
     }
@@ -477,6 +455,37 @@ export class WorkspaceService implements OnModuleDestroy {
       paths.add(path)
       return { path, content }
     })
+  }
+
+  /** 恢复与 ZIP 共用四路读取；同 SHA/长度只读取一次，失败取消同批读取，不发布半份内容。 */
+  private async readSourceFiles(files: StoredWorkspaceFile[], signal: AbortSignal): Promise<Array<{ path: string, content: Buffer }>> {
+    const contents: Array<{ path: string, content: Buffer }> = []
+    const cache = new Map<string, Promise<Buffer>>()
+    const reads = new AbortController()
+    const readSignal = AbortSignal.any([signal, reads.signal])
+    let next = 0
+    try {
+      await Promise.all(Array.from({ length: Math.min(4, files.length) }, async () => {
+        while (next < files.length) {
+          readSignal.throwIfAborted()
+          const index = next++
+          const file = files[index]!
+          const key = `${file.sha256}:${file.bytes}`
+          let pending = cache.get(key)
+          if (!pending) {
+            pending = this.cloud.readFile(file, readSignal)
+            cache.set(key, pending)
+          }
+          contents[index] = { path: file.path, content: await pending }
+        }
+      }))
+      readSignal.throwIfAborted()
+      return contents
+    }
+    catch (error) {
+      reads.abort()
+      throw error
+    }
   }
 
   private withDb<T>(operation: (db: Prisma.TransactionClient) => Promise<T>, signal?: AbortSignal): Promise<T> {
