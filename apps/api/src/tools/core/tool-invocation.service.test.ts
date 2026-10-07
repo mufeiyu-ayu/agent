@@ -1,21 +1,13 @@
+import type { NormalizedToolObservation, UnvalidatedToolCallEnvelope } from '@agent/agent'
 import type { Logger } from '@nestjs/common'
 import type { DatabaseOperationDeadline } from '../../prisma/prisma.service.js'
-import type { NormalizedToolObservation } from './tool-observation.js'
-import type {
-  RegisteredTool,
-  ToolExecutionContext,
-  ToolExecutor,
-  ToolInvocationContext,
-  ToolResult,
-  UnvalidatedToolCallEnvelope,
-  ValidatedToolInvocation,
-} from './tool.types.js'
+import type { RegisteredTool, ToolExecutionContext, ToolExecutor, ToolInvocationContext, ToolResult, ValidatedToolInvocation } from './tool.types.js'
 import assert from 'node:assert/strict'
-import { describe, it, vi } from 'vitest'
+import { normalizeToolObservation } from '@agent/agent'
 
+import { describe, it, vi } from 'vitest'
 import { DatabaseOperationDeadlineExceededError } from '../../prisma/prisma.service.js'
 import { ToolInvocationService } from './tool-invocation.service.js'
-import { normalizeToolObservation } from './tool-observation.js'
 import { ToolRegistryService } from './tool-registry.service.js'
 
 interface EchoInput {

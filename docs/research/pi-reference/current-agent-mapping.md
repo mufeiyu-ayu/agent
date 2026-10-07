@@ -1,6 +1,6 @@
 # 对照我们当前的 Agent
 
-基线：`4e53bf681b9958ceac6991280cedbdad35612e80`。这些是本次读取代码的快照；实际生效环境变量和线上运行状态不在本次验证范围。
+基线：`4e53bf681b9958ceac6991280cedbdad35612e80`。这是历史研究快照，部分条目后来局部追更，不代表当前代码或线上状态。#241 提前分包后的准确职责见[内核导图](../../../packages/agent/AGENTS.md)和[API 宿主导航](../../../apps/api/src/agent-runtime/README.md)；本次只对齐迁移入口，不重写其余历史判断。
 
 ## 1. 已有基础与真实差异
 
@@ -11,7 +11,7 @@
 | 模型重试 | `OpenAICompatibleClient.createClient()` 常量 `maxRetries: 2`，交给 openai SDK 内置重试，边界为首个响应头之前；`chatStream` 内 abort 与 `create()` 竞速、派生一次性 signal（#115，2026-09-18 合并） | Pi 有 adapter request retry（`maxRetryDelayMs` 封顶），也有 durable runtime 的 attempt/retry_wait | 请求前重试已做；已产生输出后的新 attempt 属 session 事件流 / replay 阶段 |
 | 工具循环 | 不限轮数与工具调用次数（#218）：采样循环直到模型给出最终回答，只由 `runDeadlineMs` 兜底；#115 / #116 的 `maxSamplingRounds`、`maxToolCalls` 与 `AgentLoopLimitExceededError` 已删 | Agent loop 无轮次上限（`packages/agent/src/agent-loop.ts` 的 `while (true)`），靠 `shouldStopAfterTurn`；新 Drive 靠 durable 状态与 retry attempt 上限 | 已照抄 Pi（#218）；长任务的上下文增长由 E3 压缩处理 |
 | 同轮输出 | `streamModelSampling` 只按 `finishReason` 分派：本轮 = 可选文本 + 一个或多个 Tool Call（`SamplingDecision.tool_call.calls[]`），顺序执行；`length` 截断整批不执行、逐 call 记 `truncated_arguments` 回喂；流协议不变量（含 reasoning_content 必需、同批 call id 不重复、`length` 例外）只在 `packages/ai` adapter 一处（#116，2026-09-19 合并） | Pi assistant content 可同时含 text/toolCall；adapter 对 DeepSeek 用 `requiresReasoningContentOnAssistantMessages` 表达同一约束；Pi 截断用 `failToolCallsFromTruncatedMessage` 整批回喂 | 并行 Tool Call 仍后置 |
-| 流协议与取消 | 统一 NDJSON：`start / delta / done / error / aborted` 五种事件（[contracts/chat.ts](../../../packages/contracts/src/chat.ts)）；`RunCancellation` 三个来源 user / deadline / failure，`completing → completed` 处理 COMMIT 不确定态（[run-cancellation.ts](../../../apps/api/src/agent-runtime/lifecycle/run-cancellation.ts)）；`runDeadlineMs` 默认 600s | Pi 的 live 事件与 durable entry 分离；取消是 `cancel_requested` 标记 + reconcile，不是 signal | R2/R4 的直接基线：先在这套事件与取消语义上加 operation ID 与 snapshot/cursor，不另起协议 |
+| 流协议与取消 | 统一 NDJSON：`start / delta / done / error / aborted` 五种事件（[contracts/chat.ts](../../../packages/contracts/src/chat.ts)）；`RunCancellation` 三个来源 user / deadline / failure，`completing → completed` 处理 COMMIT 不确定态（[run-cancellation.ts](../../../packages/agent/src/lifecycle/run-cancellation.ts)）；`runDeadlineMs` 默认 600s | Pi 的 live 事件与 durable entry 分离；取消是 `cancel_requested` 标记 + reconcile，不是 signal | R2/R4 的直接基线：先在这套事件与取消语义上加 operation ID 与 snapshot/cursor，不另起协议 |
 | 上下文 | source-aware `ModelContext`、每轮 `SamplingContextPlanner`、历史预算/Observation 治理 | branch context、compaction、request transforms | 保留预算与不可信数据边界；建立可持久化有效输入的契约 |
 | 运行记录 | Prisma Conversation / Message / AgentRun / AgentStep；Step input/output 记录统计及可选 debug payload | 旧 JSONL 与新 Session 的 branch/op/journal 是不同层级 | AgentStep 不是可恢复 operation journal，不能直接当 replay 驱动日志 |
 | 断线 | HTTP `close` 且响应未正常结束 → AbortController.abort；继续 drain generator 完成 ABORTED 收口 | durable 路径将 observer、attachment、lane operation 分开 | 云端运行独立于订阅，需要改变命令/观察协议与所有权；不能只删 abort |
@@ -22,14 +22,14 @@
 
 - [Runtime 导航](../../../apps/api/src/agent-runtime/README.md)
 - [运行配置](../../../apps/api/src/runtime-config/runtime-config.service.ts)
-- [SamplingDecision](../../../apps/api/src/agent-runtime/sampling/model-sampling-decision.ts)
+- [SamplingDecision](../../../packages/agent/src/sampling/model-sampling-decision.ts)
 - [LLM client](../../../packages/ai/src/api/openai-completions.ts)
 - [HTTP 断线](../../../apps/api/src/chat/chat.controller.ts)
 - [Prisma 事实层](../../../prisma/schema.prisma)
 
 ## 2. 最容易混淆的现状：可观测不等于可恢复
 
-当前 [Runtime](../../../apps/api/src/agent-runtime/agent-runtime.service.ts) 原文节选：
+以下 [Runtime](../../../packages/agent/src/agent-runtime.ts) 调试片段在 #241 后位于内核：
 
 ```ts
 // debug 捕获暂存：只有运行配置打开「抓取模型原始请求」时才给 client 回调，
@@ -46,7 +46,7 @@ Pi 也有同样需要审慎对待的边界：branch history 可恢复，但 exte
 
 ## 3. 目录映射
 
-依赖方向与分包由 [roadmap R2](./roadmap.md) 唯一决定（2026-09-16 定案：`packages/agent` + `packages/ai`，`apps/api` 只做宿主），本节不重复也不另给方向。当前已有目录：
+当前依赖方向和分包顺序只以[工作台方向第 7 节](../workbench-direction.md)与 #241 为准，Pi 对照见[迁移说明](./roadmap.md)。下面是历史基线目录，不是分包后的导航：
 
 ```text
 apps/api/src/
@@ -62,7 +62,7 @@ packages/ai/        # 已有（#120）：OpenAICompatibleClient、流适配、Mo
 packages/contracts/ # 已有：ChatStreamEvent、AgentRun/AgentStep 投影；R1/R4 改协议先动这里
 ```
 
-R2 起新写的循环、operation 状态、工具契约进 `packages/agent`，并依赖 `@agent/ai` 的模型类型；上面各目录按被替换的节奏迁入。对应 Issue 定案前不建新目录。
+#241 单独提取现有循环、上下文/压缩与取消；SQL、凭据和具体工具保留 API。原「等 R2 再迁入」计划被替代，operation/续跑仍按原触发，不由内核包的存在自动启动。
 
 ## 4. 迁移时必须保留的东西
 

@@ -1,10 +1,11 @@
+import type { HistoryRunRow } from '@agent/agent'
 import type { Message } from '../../generated/prisma/client.js'
 import type { PrismaService } from '../../prisma/prisma.service.js'
-import type { HistoryRunRow } from './conversation-history.js'
 import assert from 'node:assert/strict'
 import { Buffer } from 'node:buffer'
+import { pairHistory, restoreGroups } from '@agent/agent'
 import { it } from 'vitest'
-import { loadConversationHistory, pairHistory, restoreGroups } from './conversation-history.js'
+import { loadConversationHistory } from './conversation-history.js'
 
 it.each([0, 990, 1000])('历史覆盖 %s/1000 组时仅加载剩余正文，完整配对和 messageCount 不变', async (coveredCount) => {
   const now = new Date()

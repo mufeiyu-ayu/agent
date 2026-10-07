@@ -1,6 +1,6 @@
 # 测试规范
 
-单测与真实库测试用 Vitest（根目录 `vitest.config.ts`，分 api / db / ai / web / admin / scripts 六个项目），浏览器回归用 Playwright。
+单测与真实库测试用 Vitest（根目录 `vitest.config.ts`，分 api / db / agent / ai / web / admin / scripts 七个项目），浏览器回归用 Playwright。
 
 ## 放哪、叫什么
 
@@ -17,7 +17,7 @@
 | 命令 | 什么时候用 |
 | --- | --- |
 | `pnpm test` | 需要跨包或完整单测回归时；局部改动优先定向运行，不需要数据库或先 build 共享包 |
-| `pnpm --filter <包> test` | 只改了一个包（api / ai / web / admin）时单跑本包 |
+| `pnpm --filter <包> test` | 只改了一个包（api / agent / ai / web / admin）时单跑本包 |
 | `pnpm test:db` | 改了事务、deadline、落库清洗等只有真实 PostgreSQL 才能验证的行为 |
 | `pnpm test:e2e` | 需要两端完整浏览器回归时；局部交互优先对应 app / 场景，使用本机 Chrome |
 
@@ -31,7 +31,8 @@
 - mock 用 `vi`：`vi.spyOn(obj, 'method')`；替换了全局对象（如 `fetch`）的，在用例结束时恢复（`onTestFinished(() => spy.mockRestore())`）。
 - 不写共享的 test util 层或 fixture 工厂：fixture 放在测试文件里，确有多个测试文件共用时才放同目录的 `__fixtures__.ts`。
 - api 测试经 swc 编译，装饰器元数据生效：controller 测试可以起真实 Nest 应用，走全局 ValidationPipe。
-- `@agent/contracts`、`@agent/ai` 在测试里直接解析到源码，改了共享包不用先 build。
+- `@agent/contracts`、`@agent/ai`、`@agent/agent` 在测试里直接解析到源码，改了共享包不用先 build；agent 项目不加载 Nest/数据库。
+- `pnpm check:agent-boundary` 是 TypeScript AST / 模块解析的架构检查，已接入根 typecheck；检查 type-only / dynamic import、barrel、别名与相对目录逃逸，不是正则断言业务源码。
 
 ## 真实库测试
 
@@ -57,4 +58,4 @@
 
 ## 变异验证
 
-核心层（`apps/api/src/agent-runtime/`、`packages/ai`）与高风险 Issue 的验收标准要求时做：临时改坏被测代码或去掉一条保护，确认对应用例失败，再恢复；改动、命令与输出写进 PR。
+核心层（`apps/api/src/agent-runtime/`、`packages/agent`、`packages/ai`）与高风险 Issue 的验收标准要求时做：临时改坏被测代码或去掉一条保护，确认对应用例失败，再恢复；改动、命令与输出写进 PR。

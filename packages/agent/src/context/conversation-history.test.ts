@@ -1,10 +1,7 @@
 import type { ModelInputItem } from '@agent/ai'
-import type { Message } from '../../generated/prisma/client.js'
-import type { ConversationHistory, HistoryGroup, HistoryRunRow, HistoryStepRow } from './conversation-history.js'
+import type { ConversationHistory, HistoryGroup, HistoryRunRow, HistoryStepRow, HistoryMessage as Message } from './conversation-history.js'
 import assert from 'node:assert/strict'
 import { describe, it } from 'vitest'
-
-import { MessageRole, MessageStatus } from '../../generated/prisma/client.js'
 import {
   groupItems,
   historyItems,
@@ -14,6 +11,8 @@ import {
   separateFromPreviousText,
   turnSummaryMessage,
 } from './conversation-history.js'
+
+const MessageRole = { USER: 'USER', ASSISTANT: 'ASSISTANT' } as const
 
 describe('历史还原结构（#218 AC-01）', () => {
   it('一步多个工具、多步、带中间文本：还原为 user → tool_calls → 结果… → 最终回答，中间文本不重复', () => {
@@ -328,7 +327,7 @@ function answerMessage(id: string, content: string): Message {
 function message(id: string, role: Message['role'], content: string): Message {
   const createdAt = new Date('2026-09-29T00:00:00.000Z')
 
-  return { id, conversationId: 'conversation-1', role, content, status: MessageStatus.COMPLETED, createdAt, updatedAt: createdAt }
+  return { id, role, content, createdAt }
 }
 
 function run(id: string, userMessageId: string, assistantMessageId: string | null, status: HistoryRunRow['status'] = 'COMPLETED'): HistoryRunRow {

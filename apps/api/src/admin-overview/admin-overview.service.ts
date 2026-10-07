@@ -9,17 +9,17 @@ import type {
   AdminProviderBalance,
   AgentRunStatus,
 } from '@agent/contracts'
+import { AGENT_STEP_TYPES } from '@agent/agent'
 import {
   ADMIN_OVERVIEW_UNKNOWN_TOOL,
   ADMIN_TOOL_RESULT_CODES,
   AGENT_RUN_ERROR_CODES,
 } from '@agent/contracts'
-import { Inject, Injectable, Logger } from '@nestjs/common'
 
+import { Inject, Injectable, Logger } from '@nestjs/common'
 import { resolveAdminModelRefs } from '../admin-runs/admin-model-refs.js'
 import { readObject, readString, toAllowedString } from '../admin-runs/projection/safe-readers.js'
 import { LLM_CALL_ERROR_CODES } from '../admin-runs/projection/sampling-usage.projector.js'
-import { AGENT_STEP_TYPES } from '../agent-runtime/lifecycle/agent-run-recorder.service.js'
 import { Prisma } from '../generated/prisma/client.js'
 import { LlmModelConfigService } from '../llm/llm-model-config.service.js'
 import { LLMService } from '../llm/llm.service.js'

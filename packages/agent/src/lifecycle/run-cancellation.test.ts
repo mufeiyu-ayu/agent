@@ -3,8 +3,10 @@ import { describe, it } from 'vitest'
 
 import { AgentRunDeadlineExceededError } from '../agent-runtime.errors.js'
 import {
-  createRunCancellation,
+  createRunCancellation as createCancellation,
 } from './run-cancellation.js'
+
+const createRunCancellation = (signal: AbortSignal | undefined, ms: number) => createCancellation(signal, ms, () => new Error('fixture database deadline'))
 
 describe('createRunCancellation', () => {
   it('传入已经 aborted 的 userSignal 时立即取得 user 终止权', () => {

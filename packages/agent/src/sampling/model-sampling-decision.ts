@@ -4,7 +4,7 @@ import type {
   ModelUsage,
   UnvalidatedModelToolCall,
 } from '@agent/ai'
-import type { UnvalidatedToolCallEnvelope } from '../../tools/core/tool.types.js'
+import type { UnvalidatedToolCallEnvelope } from '../tools/tool.types.js'
 import { mergeModelUsage } from '@agent/ai'
 
 import { ModelSamplingIncompleteError } from '../agent-runtime.errors.js'

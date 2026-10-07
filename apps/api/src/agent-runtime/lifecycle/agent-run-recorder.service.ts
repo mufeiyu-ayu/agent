@@ -1,4 +1,3 @@
-import type { ModelUsage } from '@agent/ai'
 import type { AgentRunErrorCode } from '@agent/contracts'
 import type { AgentRun, AgentStep, Message, Prisma } from '../../generated/prisma/client.js'
 import type {
@@ -6,6 +5,7 @@ import type {
   DeadlineTransaction,
 } from '../../prisma/prisma.service.js'
 import type { WorkspaceCommit } from '../../workspaces/workspace-files.js'
+import { AGENT_STEP_TYPES as CORE_STEP_TYPES } from '@agent/agent'
 import { Inject, Injectable } from '@nestjs/common'
 
 import {
@@ -17,28 +17,8 @@ import {
 import { PrismaService } from '../../prisma/prisma.service.js'
 import { lockWorkspaceStorage } from '../../workspaces/workspace-db.js'
 
-/** 用量的落库形态（采样 Step 的 output.usage、压缩 Step 与压缩记录的 usage 同一形状）：去掉缺失的字段。 */
-export function toPersistedModelUsage(
-  usage: ModelUsage | null,
-): Prisma.InputJsonObject | null {
-  return usage
-    ? Object.fromEntries(
-      Object.entries(usage).filter(([, value]) => value !== undefined),
-    ) as Prisma.InputJsonObject
-    : null
-}
-
 export const AGENT_STEP_TYPES = {
-  /** 加载会话上下文 */
-  loadConversationHistory: 'load_conversation_history',
-  /** 模型采样 */
-  modelSampling: 'model_sampling',
-  /** 执行工具 */
-  toolExecution: 'tool_execution',
-  /** 生成助手回复 */
-  assistantOutput: 'assistant_output',
-  /** 上下文压缩：把较早的历史或本次问答前面的工具步骤写成摘要（#220） */
-  contextCompaction: 'context_compaction',
+  ...CORE_STEP_TYPES,
   workspaceDevelopment: 'workspace_development',
 } as const
 

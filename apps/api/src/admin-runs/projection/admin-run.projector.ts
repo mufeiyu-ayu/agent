@@ -20,13 +20,13 @@ import type {
 import type { Prisma } from '../../generated/prisma/client.js'
 import type { ModelKey } from '../admin-model-refs.js'
 import type { ADMIN_RUN_COMPACTION_SELECT, ADMIN_RUN_DETAIL_SELECT } from '../admin-runs.service.js'
+import { AGENT_STEP_TYPES } from '@agent/agent'
+
 import {
   ADMIN_MODEL_FINISH_REASONS,
   ADMIN_TOOL_RESULT_CODES,
   AGENT_RUN_ERROR_CODES,
 } from '@agent/contracts'
-
-import { AGENT_STEP_TYPES } from '../../agent-runtime/lifecycle/agent-run-recorder.service.js'
 import {
   elapsedMs,
   readAllowedString,

@@ -1,9 +1,9 @@
 import type { ConversationMessage, MessageActivity } from '@agent/contracts'
 import type { Message } from '../generated/prisma/client.js'
 import type { MessageActivityStepRow } from './message-activity.js'
-import { Inject, Injectable, Logger } from '@nestjs/common'
+import { AGENT_STEP_TYPES } from '@agent/agent'
 
-import { AGENT_STEP_TYPES } from '../agent-runtime/lifecycle/agent-run-recorder.service.js'
+import { Inject, Injectable, Logger } from '@nestjs/common'
 import { MessageRole, Prisma } from '../generated/prisma/client.js'
 import { PrismaService } from '../prisma/prisma.service.js'
 import { ConversationsService } from './conversations.service.js'

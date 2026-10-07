@@ -5,14 +5,14 @@ import type {
 } from '@agent/contracts'
 import type { ListAdminRunsQueryDto } from './dto/admin-runs.dto.js'
 import type { AdminRunListStepRecord } from './projection/admin-run.projector.js'
+import { AGENT_STEP_TYPES } from '@agent/agent'
+
 import {
   BadRequestException,
   Inject,
   Injectable,
   NotFoundException,
 } from '@nestjs/common'
-
-import { AGENT_STEP_TYPES } from '../agent-runtime/lifecycle/agent-run-recorder.service.js'
 import { Prisma } from '../generated/prisma/client.js'
 import { PrismaService } from '../prisma/prisma.service.js'
 import { resolveAdminModelRefs } from './admin-model-refs.js'

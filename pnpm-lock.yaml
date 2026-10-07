@@ -96,6 +96,9 @@ importers:
 
   apps/api:
     dependencies:
+      '@agent/agent':
+        specifier: workspace:*
+        version: link:../../packages/agent
       '@agent/ai':
         specifier: workspace:*
         version: link:../../packages/ai
@@ -248,6 +251,22 @@ importers:
       vue-tsc:
         specifier: ^3.3.11
         version: 3.3.11(typescript@6.0.3)
+
+  packages/agent:
+    dependencies:
+      '@agent/ai':
+        specifier: workspace:*
+        version: link:../ai
+      '@agent/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+    devDependencies:
+      '@types/node':
+        specifier: ^24.19.0
+        version: 24.19.0
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
 
   packages/ai:
     dependencies:

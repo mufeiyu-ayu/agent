@@ -36,7 +36,7 @@
 
 ## 4. 目录与局部约束
 
-涉及某个 app / 包的行为、协议或结构时，读取它的导图：`apps/api/AGENTS.md`、`apps/web/AGENTS.md`、`apps/admin/AGENTS.md`、`packages/ai/AGENTS.md`、`packages/contracts/AGENTS.md`。纯 typo 或已明确局部范围的机械改动无需例行读取所有导图。
+涉及某个 app / 包的行为、协议或结构时，读取它的导图：`apps/api/AGENTS.md`、`apps/web/AGENTS.md`、`apps/admin/AGENTS.md`、`packages/agent/AGENTS.md`、`packages/ai/AGENTS.md`、`packages/contracts/AGENTS.md`。纯 typo 或已明确局部范围的机械改动无需例行读取所有导图。
 
 模块内部导航在对应 `README.md`，如 `apps/api/src/agent-runtime/README.md`。先复用相邻 service、controller、hook、component、utils 和 contract；新增、移动或删除导图中的模块或核心文件时同步对应导图。导图写入口、分层、核心文件与不变量，不罗列普通文件，不靠压成长行规避精简。
 

@@ -10,6 +10,7 @@ export default defineConfig({
     alias: {
       '@agent/contracts': fromRoot('./packages/contracts/src/index.ts'),
       '@agent/ai': fromRoot('./packages/ai/src/index.ts'),
+      '@agent/agent': fromRoot('./packages/agent/src/index.ts'),
     },
   },
   test: {
@@ -35,6 +36,7 @@ export default defineConfig({
         },
       },
       { test: { name: 'ai', include: ['packages/ai/src/**/*.test.ts'] } },
+      { test: { name: 'agent', include: ['packages/agent/src/**/*.test.ts'] } },
       {
         resolve: { alias: { '@': fromRoot('./apps/web/src') } },
         test: { name: 'web', include: ['apps/web/src/**/*.test.ts'] },
