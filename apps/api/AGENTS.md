@@ -41,7 +41,7 @@ Prisma schema 在仓库根 `prisma/`，生成的 client 在 `src/generated/prism
 - 失败归因同源：Run 的 `errorCode`、失败采样 Step 的文案与前台 error 事件都在终态确立后由 `agent-runtime.service.ts` 的 `describeRunFailure` 一处得出；LLMError 的用户文案与 `AllExceptionsFilter` 共用 `common/utils/llm-error-message.util.ts`。
 - 服务商 API Key 与运行配置的 Serper Key 只以密文入库，任何接口只回显尾四位，加解密都经 `LlmModelConfigService` 的 cipher；主密钥 `AGENT_SECRET_KEY` 只在 `llm/` 内使用。库里的密钥只发往库里的地址：拉取 / 测试只带 providerId 时用库里的 baseUrl，换地址（含 PATCH 服务商）必须同时重填 key；余额只查 https 的官方 DeepSeek 账号，响应只投影声明字段。
 - 出站代理：地址只在 `.env` 的 `OUTBOUND_PROXY_URL`（不读 `HTTPS_PROXY` / `NO_PROXY`），`LLMService`、`GoogleAuthService`、`WebSearchTool` 与 `WebFetchTool` 各持有一个代理 agent（都由 `outbound-proxy.ts` 构造），模型请求按服务商 `useProxy` 显式传代理或直连 dispatcher，Google 登录、联网搜索与读网页配了代理就走代理，不替换进程的全局 dispatcher；勾选了但没配时失败（`llm_network`），不静默直连。进文案、接口与日志的只有去掉凭据的 `协议://主机:端口`。
-- `web_fetch` 的网址与网页都不可信（#206）：每一跳（含重定向，手动跟、最多 5 跳）请求前解析出全部地址过黑名单，直连时 undici Agent 的 `connect.lookup` 在连接那一刻再校验一次防 DNS 换绑；走代理时由代理解析域名，连接时的检查失效，所以线上不配 `OUTBOUND_PROXY_URL`。HTML 解析与 Readability 是同步计算，只在 worker 线程里跑，超时或停止时终止 worker，不在主线程解析网页。
+- `web_fetch` 的网址与网页都不可信（#206）：每一跳（含重定向，手动跟、最多 5 跳）请求前解析出全部地址过黑名单，直连时 undici Agent 的 `connect.lookup` 在连接那一刻再校验一次防 DNS 换绑；走代理时由代理解析域名，连接时的检查失效，所以线上不配 `OUTBOUND_PROXY_URL`。HTML 解析与 Readability 是同步计算，只在 worker 线程里跑；每进程最多两路、最多八个等待者，排队共享工具 deadline，取消移除等待项，真实 exit 才释放运行槽位；不在主线程解析网页。
 - 家族协议事实（thinking / reasoning_effort 取值）只在 `@agent/contracts` 的 `LLM_FAMILY_CAPABILITIES` 一处。
 - 管理台「模型调用」口径同源：有 usage 或以 llm_* 类别失败的 action sampling 才算，运行列表与 Run Trace 走 `sampling-usage.projector.ts` 的 `aggregateRunModelCalls`，概览 SQL 复用同文件的 `LLM_CALL_ERROR_CODES`；改一处要同步另一处。
 

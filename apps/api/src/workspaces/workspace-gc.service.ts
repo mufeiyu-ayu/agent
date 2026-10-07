@@ -179,9 +179,14 @@ export class WorkspaceGcService implements OnModuleInit, OnModuleDestroy {
       for (const key of page.keys) {
         if (!key.startsWith(prefix))
           throw new WorkspaceOperationError('列举越过核定范围，停止回收。')
+        // 已确认需要保留的对象只会多保留一轮；发布/删除推进 generation，旧预览到期由 protectedOld 续扫。
+        // 旧快照绝不能用于决定删除，只有候选才进入下面的锁内复核。
+        if (scan.keys.has(key)) {
+          report.retained.push(key)
+          continue
+        }
         const deleteId = randomUUID()
         try {
-          // ponytail: 每个对象一次引用复核，清单有界；实际 GC 吞吐不足再按锁定批次优化。
           const verdict = await workspaceDb(this.prisma, async (db) => {
             await lockWorkspaceStorage(db, conversationId)
             const state = await this.references(db, userId, conversationId, prefix)

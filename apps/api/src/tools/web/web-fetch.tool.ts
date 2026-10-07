@@ -43,6 +43,39 @@ const META_CHARSET_SCAN_BYTES = 64 * 1024
 // 2 MB 的页面解析完约占 300 MB 堆，超过堆上限只终止 worker，不拖垮 API 进程。
 const PAGE_TEXT_WORKER = new URL(`./page-text.worker${extname(fileURLToPath(import.meta.url))}`, import.meta.url)
 const PAGE_TEXT_WORKER_MAX_HEAP_MB = 512
+// 同进程跨会话共享；排队仍消耗原工具 deadline，不另开超时或任务平台。
+let activePageTextWorkers = 0
+const pageTextWaiters: Array<{ start: () => void }> = []
+
+function acquirePageTextSlot(signal: AbortSignal): Promise<void> {
+  signal.throwIfAborted()
+  if (activePageTextWorkers < 2) {
+    activePageTextWorkers++
+    return Promise.resolve()
+  }
+  if (pageTextWaiters.length >= 8)
+    return Promise.reject(new Error('web_fetch: page parsing is busy, retry later'))
+  return new Promise((resolve, reject) => {
+    const waiter = { start: () => {
+      signal.removeEventListener('abort', abort)
+      activePageTextWorkers++
+      resolve()
+    } }
+    function abort() {
+      const index = pageTextWaiters.indexOf(waiter)
+      if (index !== -1)
+        pageTextWaiters.splice(index, 1)
+      reject(signal.reason)
+    }
+    pageTextWaiters.push(waiter)
+    signal.addEventListener('abort', abort, { once: true })
+  })
+}
+
+function releasePageTextSlot() {
+  activePageTextWorkers--
+  pageTextWaiters.shift()?.start()
+}
 
 export interface WebFetchInput {
   url: string
@@ -235,13 +268,22 @@ function createDecoder(label: string | undefined): TextDecoder | undefined {
 
 /** 在 worker 里提取正文：同步计算只能靠终止线程打断，超时或停止时直接终止，交给 invoke 按超时或停止处理。 */
 async function extractPageText(html: string, signal: AbortSignal): Promise<PageText> {
-  signal.throwIfAborted()
+  await acquirePageTextSlot(signal)
 
   return new Promise((resolve, reject) => {
-    const worker = new Worker(PAGE_TEXT_WORKER, {
-      workerData: html,
-      resourceLimits: { maxOldGenerationSizeMb: PAGE_TEXT_WORKER_MAX_HEAP_MB },
-    })
+    let worker: Worker
+    try {
+      signal.throwIfAborted()
+      worker = new Worker(PAGE_TEXT_WORKER, {
+        workerData: html,
+        resourceLimits: { maxOldGenerationSizeMb: PAGE_TEXT_WORKER_MAX_HEAP_MB },
+      })
+    }
+    catch (error) {
+      releasePageTextSlot()
+      reject(error)
+      return
+    }
     const terminate = (): void => void worker.terminate()
 
     signal.addEventListener('abort', terminate, { once: true })
@@ -254,7 +296,11 @@ async function extractPageText(html: string, signal: AbortSignal): Promise<PageT
     // 正常结束时 Promise 已经 resolve，这里的 reject 不生效。
     worker.once('exit', (code) => {
       signal.removeEventListener('abort', terminate)
+      // message/error 到达不证明线程已退出；只在 exit 释放真实并发槽位。
+      releasePageTextSlot()
       reject(signal.reason ?? new Error(`web_fetch: page text worker exited with code ${code}`))
     })
+    if (signal.aborted)
+      terminate()
   })
 }

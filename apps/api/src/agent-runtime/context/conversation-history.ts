@@ -94,7 +94,8 @@ export async function loadConversationHistory(
       orderBy: [{ readAt: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }],
       select: { id: true, summary: true, coveredGroupIds: true, answerOnlyGroupId: true },
     }))
-    const messages = await transaction.execute(prisma => prisma.message.findMany({
+    // 先配对轻量元数据：覆盖组仍参与顺序/计数，但不再搬运已压缩正文。
+    const metadata = await transaction.execute(prisma => prisma.message.findMany({
       where: {
         conversationId,
         status: MessageStatus.COMPLETED,
@@ -112,7 +113,9 @@ export async function loadConversationHistory(
         { createdAt: 'asc' },
         { id: 'asc' },
       ],
+      select: { id: true, conversationId: true, role: true, status: true, createdAt: true, updatedAt: true },
     }))
+    const messages = metadata.map(message => ({ ...message, content: '' }))
     const userMessageIds = messages.filter(message => message.role === MessageRole.USER).map(message => message.id)
     const runs = userMessageIds.length === 0
       ? []
@@ -123,6 +126,20 @@ export async function loadConversationHistory(
         }))
     const covered = new Set(compaction?.coveredGroupIds)
     const groups = pairHistory(messages, runs).filter(group => !covered.has(group.key))
+    const retainedMessages = groups.flatMap(group => [...(group.question ? [group.question] : []), ...group.answers.map(answer => answer.message)])
+    if (retainedMessages.length) {
+      const contents = await transaction.execute(prisma => prisma.message.findMany({
+        where: { conversationId, id: { in: retainedMessages.map(message => message.id) } },
+        select: { id: true, content: true },
+      }))
+      const byId = new Map(contents.map(message => [message.id, message.content]))
+      for (const message of retainedMessages) {
+        const content = byId.get(message.id)
+        if (content === undefined)
+          throw new Error('历史消息正文缺失，停止使用不完整快照')
+        message.content = content
+      }
+    }
     // 边界组也查 Step：它按退回形式发出，但本 Run 内新写的记录可能既不覆盖它、也不再以它为边界，
     // 那之后要按完整形态发出，才与按新记录重建的一致。
     const runIds = groups.flatMap(group => group.answers.flatMap(answer => answer.runId ? [answer.runId] : []))

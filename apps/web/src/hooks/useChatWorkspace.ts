@@ -97,6 +97,7 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
   let messageLoadRunId = 0
   let conversationNextCursor: string | null = null
   let isUnmounted = false
+  let initialSelectionAllowed = true
   const newConversationKey = ref(createClientMessageId())
   // 每个会话只留最后一次请求，终态也保留，切回时可还原控件；旧回调只能更新自己。
   const requests = shallowReactive(new Map<string, ChatRequestState>())
@@ -151,7 +152,7 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
   async function initializeWorkspace() {
     const initialView = currentViewKey.value
     await loadConversationList()
-    if (isUnmounted || currentViewKey.value !== initialView)
+    if (isUnmounted || !initialSelectionAllowed || currentViewKey.value !== initialView)
       return
 
     const initialConversationId = conversations.value[0]?.id ?? null
@@ -268,6 +269,7 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
     if (!canStartChatRequest())
       return
 
+    initialSelectionAllowed = false
     const submittedMessage = message.value
     const messageContent = submittedMessage.trim()
     const request = shallowReactive<ChatRequestState>({

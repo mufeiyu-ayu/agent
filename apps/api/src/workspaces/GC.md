@@ -7,7 +7,7 @@
 - 上传前持久登记 `WorkspaceUpload`（Run、Bucket、目标 key），明确结束后记 `settled`；PUT 未得到明确响应或登记收尾失败，保留 `active/unknown`。超时、租约过期、进程消失都不是“云端一定没有迟到 PUT”的证明。
 - `WorkspaceGcTarget` 不设会话 FK，记录固定 user/conversation/Bucket；会话删除与 tombstone 同事务，级联不会丢清理目标。删除确认后 API 立即失效，旧 owner 不能发布；在途上传阻止清空，迟到确认之后再对账。切换 Bucket 的旧目标不自动迁移或删除。
 - Source、Artifact 与 Step 仍同事务确认。上传完成不等于指针已确认；COMMIT 响应未知时，GC 与 recorder 共用 PostgreSQL advisory transaction lock，等待实际事务结局后读取完整有效引用，不把未知当回滚。
-- 取得 owner、上传登记、文件确认、预览授权、删除与 GC 共用会话存储互斥。GC 逐对象在锁内重新判定并确认持久删除屏障，再执行 OSS 删除；屏障与操作 ID 阻止新 owner、上传和同 SHA 发布，直到得到明确云请求结局。不能仅靠数据库锁：SDK/事务超时后，云端 DELETE 仍可能迟到。旧 dry-run 结果不能作为直接删除清单。正在执行/提交或不明 owner，以及活动/未知上传都保守跳过。
+- 取得 owner、上传登记、文件确认、预览授权、删除与 GC 共用会话存储互斥。初始快照需要保留的对象本轮保守跳过（引用解除由 generation/旧预览到期续扫），GC 对其余候选逐对象在锁内重新判定并确认持久删除屏障，再执行 OSS 删除；屏障与操作 ID 阻止新 owner、上传和同 SHA 发布，直到得到明确云请求结局。不能仅靠数据库锁：SDK/事务超时后，云端 DELETE 仍可能迟到。旧 dry-run 结果不能作为直接删除清单。正在执行/提交或不明 owner，以及活动/未知上传都保守跳过。
 - 当前 Source 与当前 Artifact 的已确认 SHA 才可跳过 PUT；owner 与上传登记在此次保存确认前持续保护引用，不能任意复用历史 hash。多个路径、Source/Artifact 共享同对象，只有全部有效引用解除才可删；前端隐藏的文件仍完整参与引用、恢复与 ZIP。
 - 新 Artifact 确认时，旧构建记 `retiredAt`，不能历史重开/无限续期。当前构建发放能力前在同一互斥内持久记录 `previewExpiresAt`（10 分钟）；旧能力在保护期内固定旧资源，回收进程不依赖 API 的内存 Map。过期后独占对象与旧记录一起淘汰；失败构建不切换当前 Artifact。能力进程重启后失效，前台可打开当前最近成功构建，不将旧 token 映射新内容。
 - 清理需求持久化 `generation`：目标登记（包括会话 tombstone）、上传收尾及维护解除未知保护推进代次；Source/Artifact 保存被同一上传保护流程覆盖。逐对象 DELETE 屏障及其收尾不推进代次。collector 只用开始扫描的代次 CAS 确认 pending，不能吞掉扫描期间新增的删除/孤儿清理需求；启动/定时恢复继续扫描新需求。本扫描曾因旧预览保护保留对象时，收尾即使已到期也保留 pending，由下一轮重新列举；自然到期不靠 generation 推进。自动 apply 初次明确 blocked 时保留 pending 并停止无效 OSS 扫描，人工 dry-run 仍可完整列举。
