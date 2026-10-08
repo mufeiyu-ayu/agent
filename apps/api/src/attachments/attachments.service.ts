@@ -7,7 +7,7 @@ import type { Attachment, Prisma } from '../generated/prisma/client.js'
 import { randomUUID } from 'node:crypto'
 import { userMessageContent } from '@agent/agent'
 import { ATTACHMENT_MAX_COUNT } from '@agent/contracts'
-import { BadRequestException, Inject, Injectable, Logger, NotFoundException, ServiceUnavailableException } from '@nestjs/common'
+import { BadRequestException, ConflictException, Inject, Injectable, Logger, NotFoundException, ServiceUnavailableException } from '@nestjs/common'
 import { PrismaService } from '../prisma/prisma.service.js'
 import {
   attachmentKindOf,
@@ -93,7 +93,7 @@ export class AttachmentsService implements OnApplicationBootstrap, OnModuleDestr
     if (!matchesFileSignature(name, input.content))
       throw new BadRequestException('文件内容和扩展名对不上')
 
-    // 抽不出文字的文档直接拒绝：不让用户以为模型看到了。
+    // 解析失败（损坏、加密、超时）的文档直接拒绝；解析成功但没有文字的（扫描件）收下，正文写明没有可读文字，由模型告诉用户。
     const extractedText = kind === 'file' ? toModelDocumentText(await this.documentText(name, input.content, input.signal)) : null
     input.signal?.throwIfAborted()
     const id = randomUUID()
@@ -148,6 +148,16 @@ export class AttachmentsService implements OnApplicationBootstrap, OnModuleDestr
     if (count === 0)
       throw new NotFoundException('附件不存在或已经发出')
     this.kickSweep()
+  }
+
+  /**
+   * 发送前、流的响应头写出之前先确认这批附件都还能绑：放久了被清掉的、其实已经发出过的，在这里给出明确原因（409）。
+   * 运行开始之后的失败只有通用文案。真正的绑定仍以事务里的 `bind` 为准。
+   */
+  async assertSendable(userId: string, ids: string[]): Promise<void> {
+    const sendable = await this.prisma.attachment.count({ where: { id: { in: ids }, userId, messageId: null, deletedAt: null } })
+    if (sendable !== ids.length)
+      throw new ConflictException('有附件不存在或已经发送过，请重新添加')
   }
 
   /**

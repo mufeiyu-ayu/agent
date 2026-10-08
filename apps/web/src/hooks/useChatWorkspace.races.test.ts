@@ -1,7 +1,8 @@
 import type { ChatStreamEvent, ConversationMessage } from '@agent/contracts'
+import type { ComposerAttachment } from '../types/chat'
 import assert from 'node:assert/strict'
 import { afterEach, beforeEach, it, vi } from 'vitest'
-import { streamChat } from '../api/chat'
+import { ChatStreamHttpError, streamChat } from '../api/chat'
 import { createConversation, deleteConversation, listConversationMessages, listConversations } from '../api/conversations'
 import { useChatWorkspace } from './useChatWorkspace'
 
@@ -202,4 +203,100 @@ it('B9：未缓存历史期间不能发，读取失败可重试，成功后保�
   await workspace.sendMessage()
   assert.equal(vi.mocked(streamChat).mock.calls.length, 1)
   assert.ok(workspace.messages.value.some(item => item.id === 'past-b'))
+})
+
+function draft(index: number): ComposerAttachment {
+  return { id: `local-${index}`, remoteId: `remote-${index}`, kind: 'file', name: `${index}.md`, bytes: 1, url: `blob:${index}`, status: 'ready', progress: 1 }
+}
+function sentQuestion(conversationId: string, id: string, remoteId: string): ConversationMessage {
+  return { id, conversationId, role: 'USER', content: '', status: 'COMPLETED', createdAt: time, updatedAt: time, attachments: [{ id: remoteId, kind: 'file', name: '1.md', bytes: 1 }] }
+}
+
+// 后端的事实（提交后、运行开始前，消息接口就带着这批附件）由 attachments.db.test.ts 在真实库上验证；这里的消息接口是模拟边界。
+it.each(['committed', 'uncommitted', 'unknown'] as const)('没等到 start 就停止、后端 %s：确认去向前保持锁定；已绑走的不留作草稿，其余解锁；之后新加的附件不受影响', async (phase) => {
+  vi.mocked(streamChat).mockImplementationOnce(async function* (_request, options) {
+    await new Promise((_resolve, reject) => options?.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError'))))
+  })
+  const workspace = useChatWorkspace()
+  lifecycle.mounted()
+  await vi.waitFor(() => assert.ok(workspace.activeConversationId.value === 'a' && !workspace.isLoadingMessages.value))
+  workspace.attachments.value = [draft(1)]
+  workspace.message.value = 'with file'
+  const sending = workspace.sendMessage()
+  await vi.waitFor(() => assert.equal(vi.mocked(streamChat).mock.calls.length, 1))
+  assert.deepEqual(vi.mocked(streamChat).mock.calls[0]![0].attachmentIds, ['remote-1'])
+  const checking = deferred<ConversationMessage[]>()
+  vi.mocked(listConversationMessages).mockReturnValueOnce(checking.promise)
+  workspace.stopGeneration()
+  await sending
+  assert.equal(workspace.attachments.value[0]?.locked, true, '去向不明时不能直接恢复成可重发')
+  workspace.attachments.value = [...workspace.attachments.value, draft(2)]
+
+  if (phase === 'unknown')
+    checking.reject(new Error('offline'))
+  else
+    checking.resolve(phase === 'committed' ? [...history('a'), sentQuestion('a', 'persisted', 'remote-1')] : history('a'))
+  const expected = phase === 'committed' ? ['local-2'] : ['local-1', 'local-2']
+  await vi.waitFor(() => assert.deepEqual(workspace.attachments.value.map(item => [item.id, Boolean(item.locked)]), expected.map(id => [id, false])))
+  assert.equal(workspace.message.value, phase === 'committed' ? '' : 'with file')
+})
+
+it('这次页面里发出的附件：消息换成接口地址、会话删除或离开工作区时放掉本地地址，仍在用的不动', async () => {
+  const revoke = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
+  const revoked = () => revoke.mock.calls.map(([url]) => url)
+  const lastTurn = (workspace: ReturnType<typeof useChatWorkspace>) => workspace.conversationTurns.value.at(-1)?.attachments?.map(item => item.url)
+  vi.mocked(streamChat).mockImplementation(async function* (request) {
+    yield { type: 'start', conversationId: request.conversationId, userMessageId: `sent-${request.conversationId}`, assistantMessageId: `reply-${request.conversationId}` }
+    yield { type: 'done', conversationId: request.conversationId, assistantMessageId: `reply-${request.conversationId}`, content: 'ok', generatedAt: time }
+  })
+  const workspace = useChatWorkspace()
+  lifecycle.mounted()
+  await vi.waitFor(() => assert.ok(workspace.activeConversationId.value === 'a' && !workspace.isLoadingMessages.value))
+
+  workspace.attachments.value = [draft(1)]
+  await workspace.sendMessage()
+  assert.deepEqual(lastTurn(workspace), ['blob:1'])
+  assert.deepEqual(revoked(), [], '消息还在用本地地址显示')
+
+  await workspace.selectConversation('b')
+  workspace.attachments.value = [draft(2)]
+  await workspace.sendMessage()
+  // 切回 a：服务端快照里这条消息已经带着附件，改用接口地址。
+  vi.mocked(listConversationMessages).mockResolvedValueOnce([sentQuestion('a', 'sent-a', 'remote-1')])
+  await workspace.selectConversation('a')
+  assert.deepEqual(revoked(), ['blob:1'])
+  assert.deepEqual(lastTurn(workspace), ['/api/attachments/remote-1/content'])
+
+  vi.mocked(deleteConversation).mockResolvedValueOnce({ deleted: true, id: 'b' })
+  await workspace.deleteConversationById('b')
+  assert.deepEqual(revoked(), ['blob:1', 'blob:2'])
+})
+
+it('进入流之前被拒绝（如 409 附件已发出过）直接解锁并显示原因；卸载后不再读消息确认', async () => {
+  const workspace = useChatWorkspace()
+  lifecycle.mounted()
+  await vi.waitFor(() => assert.ok(workspace.activeConversationId.value === 'a' && !workspace.isLoadingMessages.value))
+  const reads = () => vi.mocked(listConversationMessages).mock.calls.length
+  const before = reads()
+
+  vi.mocked(streamChat).mockImplementationOnce(async function* () {
+    throw new (ChatStreamHttpError as unknown as new (message: string) => Error)('有附件不存在或已经发送过，请重新添加')
+  })
+  workspace.attachments.value = [draft(1)]
+  await workspace.sendMessage()
+  assert.deepEqual(workspace.attachments.value.map(item => [item.id, Boolean(item.locked)]), [['local-1', false]])
+  assert.equal(workspace.appMessage.value.text, '有附件不存在或已经发送过，请重新添加')
+
+  await workspace.selectConversation('b')
+  vi.mocked(streamChat).mockImplementationOnce(async function* (_request, options) {
+    await new Promise((_resolve, reject) => options?.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError'))))
+  })
+  workspace.attachments.value = [draft(2)]
+  const sending = workspace.sendMessage()
+  await vi.waitFor(() => assert.equal(vi.mocked(streamChat).mock.calls.length, 2))
+  const afterSelect = reads()
+  lifecycle.unmounted()
+  await sending
+  assert.equal(afterSelect, before + 1)
+  assert.equal(reads(), afterSelect)
 })

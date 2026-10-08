@@ -7,13 +7,13 @@ import { readdir, readFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import process from 'node:process'
 import { Readable } from 'node:stream'
-import { setTimeout as sleep } from 'node:timers/promises'
-import { BadRequestException, NotFoundException } from '@nestjs/common'
+import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common'
 import { afterAll, beforeAll, beforeEach, describe, it } from 'vitest'
 
 import { createRuntimeHost } from '../agent-runtime/agent-runtime-host.js'
 import { loadConversationHistory } from '../agent-runtime/context/conversation-history.js'
 import { ConversationsService } from '../conversations/conversations.service.js'
+import { MessagesService } from '../conversations/messages.service.js'
 import { MessageRole, MessageStatus } from '../generated/prisma/client.js'
 import { PrismaService } from '../prisma/prisma.service.js'
 import { AttachmentsService } from './attachments.service.js'
@@ -169,53 +169,47 @@ describe('附件（真实库）', { timeout: 60_000 }, () => {
     assert.equal(await prisma.attachment.count(), 0)
   })
 
-  it('删除会话的标记与提交之间，发送等待同一锁并在删除后拒绝绑定', async () => {
+  it('删会话的标记之后才绑上的附件：随消息级联解绑，不留在消息上，由过期清理收走', async () => {
     const owner = await prisma.user.create({ data: { email: `${randomUUID()}@example.invalid` } })
     await prisma.conversation.update({ where: { id: conversationId }, data: { userId: owner.id } })
     const file = await service.upload(owner.id, { name: 'file.md', content: Buffer.from('test') })
-    let marked!: () => void
-    const didMark = new Promise<void>((resolve) => {
-      marked = resolve
-    })
-    let release!: () => void
-    const gate = new Promise<void>((resolve) => {
-      release = resolve
-    })
+    // 只调用宿主提交方法，不调用模型/工具；其他宿主依赖在这条路径上不会执行。
+    const host = createRuntimeHost({ userId: owner.id } as Parameters<typeof createRuntimeHost>[0], { prisma, attachments: service, recorder: {} } as Parameters<typeof createRuntimeHost>[1])
+    // 发送路径不和删会话抢锁：把一次发送插在「标记附件」与「删会话」之间，这是标记漏掉它的唯一窗口。
     const mark = service.markConversationDeleted.bind(service)
     service.markConversationDeleted = async (...args) => {
       await mark(...args)
-      marked()
-      await gate
+      await host.createUserMessage(conversationId, 'test', [file.id])
     }
     const conversations = new ConversationsService(prisma, { register: async () => {}, kick: () => {} } as unknown as WorkspaceGcService, service)
-    const deleting = conversations.delete(owner.id, conversationId)
-    await didMark
-    // 只调用宿主提交方法，不调用模型/工具；其他宿主依赖在这条路径上不会执行。
+    await conversations.delete(owner.id, conversationId)
+
+    assert.equal(await prisma.message.count(), 0)
+    const row = await prisma.attachment.findUniqueOrThrow({ where: { id: file.id } })
+    assert.deepEqual([row.messageId, row.deletedAt], [null, null])
+    await prisma.attachment.update({ where: { id: file.id }, data: { createdAt: new Date(Date.now() - 25 * 60 * 60 * 1000) } })
+    await service.sweep()
+    assert.equal(await prisma.attachment.count(), 0)
+    assert.equal(storage.objects.size, 0)
+  })
+
+  it('发送已提交、运行还没开始（客户端等不到 start）：消息接口已经带着这批附件，同一批原样再发整体被拒', async () => {
+    const owner = await prisma.user.create({ data: { email: `${randomUUID()}@example.invalid` } })
+    await prisma.conversation.update({ where: { id: conversationId }, data: { userId: owner.id } })
+    const file = await service.upload(owner.id, { name: 'file.md', content: Buffer.from('test') })
     const host = createRuntimeHost({ userId: owner.id } as Parameters<typeof createRuntimeHost>[0], { prisma, attachments: service, recorder: {} } as Parameters<typeof createRuntimeHost>[1])
-    let settled = false
-    const sending = host.createUserMessage(conversationId, 'test', [file.id]).then(
-      () => {
-        settled = true
-        return undefined
-      },
-      (error) => {
-        settled = true
-        return error as unknown
-      },
-    )
-    try {
-      await sleep(50)
-      assert.equal(settled, false, '删除尚未提交时发送不能越过其锁')
-      release()
-      await deleting
-      assert.ok(await sending instanceof NotFoundException)
-      assert.equal(await prisma.message.count(), 0)
-      assert.equal((await prisma.attachment.findUniqueOrThrow({ where: { id: file.id } })).messageId, null)
-    }
-    finally {
-      release()
-      await Promise.allSettled([deleting, sending])
-    }
+    await service.assertSendable(owner.id, [file.id])
+    // 只走到提交：不建 Run、不读历史、不发 run_started，等同于客户端在这之后断开或停止。
+    const message = await host.createUserMessage(conversationId, '看看', [file.id])
+
+    const conversations = new ConversationsService(prisma, { register: async () => {}, kick: () => {} } as unknown as WorkspaceGcService, service)
+    const listed = await new MessagesService(prisma, conversations).listMessages(owner.id, conversationId)
+    assert.deepEqual(listed.map(item => [item.id, item.attachments?.map(attachment => attachment.id)]), [[message.id, [file.id]]])
+
+    // 再发：写响应头之前的检查先拦下并给出原因；即使越过它，事务里的绑定也整体失败。
+    await assert.rejects(service.assertSendable(owner.id, [file.id]), ConflictException)
+    await assert.rejects(host.createUserMessage(conversationId, '再发', [file.id]), BadRequestException)
+    assert.equal(await prisma.message.count(), 1)
   })
 
   it('拒绝的上传不留东西：类型不对、内容与扩展名不符、图片解不开（已存的对象由清理删掉）', async () => {

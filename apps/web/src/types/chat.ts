@@ -25,7 +25,7 @@ export interface ChatAttachment {
 export interface ComposerAttachment extends ChatAttachment {
   /** 上传成功后服务端给的附件 id，发送时带的是它；`id` 只是页面里的本地标识。 */
   remoteId?: string
-  /** 已交给正在提交的请求：确认前不能移除并撤销消息副本使用的 URL。 */
+  /** 已交给正在提交的请求：去向确认前不能移除、不能再发，也不撤销消息副本使用的 URL。 */
   locked?: boolean
   status: 'uploading' | 'ready' | 'error'
   /** 0–1。 */

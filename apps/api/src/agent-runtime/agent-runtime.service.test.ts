@@ -4467,9 +4467,6 @@ class FakePrismaService {
     },
   }
 
-  // 会话写入与删除使用事务级 advisory lock；此单测夹具不模拟 PostgreSQL 的锁等待。
-  async $executeRaw(): Promise<number> { return 0 }
-
   async $transaction<T>(operation: (prisma: FakePrismaService) => Promise<T>): Promise<T> {
     return await operation(this)
   }

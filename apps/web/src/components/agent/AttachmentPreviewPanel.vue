@@ -7,7 +7,7 @@ import { useI18n } from 'vue-i18n'
 
 import AppIcon from '@/components/common/AppIcon.vue'
 import AppTooltip from '@/components/common/AppTooltip.vue'
-import { readSheets, renderDocx } from '@/utils/attachment-documents'
+import { PREVIEW_COLUMN_LIMIT as COLUMN_LIMIT, readSheets, renderDocx, PREVIEW_ROW_LIMIT as ROW_LIMIT } from '@/utils/attachment-documents'
 import { attachmentPreviewMode, decodeText, parseCsv } from '@/utils/attachments'
 import { workspaceFileType } from '@/utils/workspace-files'
 
@@ -29,10 +29,8 @@ const emit = defineEmits<{
 
 const { t } = useI18n()
 
-/** 文本最多渲染这么多字，表格最多这么多行和列，更多的下载后看：DOM 节点数是这里的性能上限。 */
+/** 文本最多渲染这么多字，更多的下载后看：DOM 节点数是这里的性能上限。表格的行列上限在数据交给页面之前就生效。 */
 const TEXT_LIMIT = 200_000
-const ROW_LIMIT = 500
-const COLUMN_LIMIT = 30
 
 const closeButton = ref<HTMLButtonElement | null>(null)
 onMounted(() => {
@@ -85,7 +83,7 @@ watch(() => props.attachment, async (attachment, _previous, onCleanup) => {
       if (props.attachment !== attachment)
         return
       if (mode.value === 'table')
-        tables.value = [{ name: attachment.name, rows: parseCsv(content) }]
+        tables.value = [{ name: attachment.name, rows: parseCsv(content, ROW_LIMIT + 2, COLUMN_LIMIT + 1) }]
       else
         text.value = content
     }

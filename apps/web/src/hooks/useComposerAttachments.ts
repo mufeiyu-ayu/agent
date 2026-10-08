@@ -4,7 +4,7 @@ import type { ComposerAttachment } from '../types/chat'
 
 import { ATTACHMENT_MAX_COUNT } from '@agent/contracts'
 import { isAxiosError } from 'axios'
-import { watch } from 'vue'
+import { onScopeDispose, watch } from 'vue'
 
 import { useI18n } from 'vue-i18n'
 import { deleteAttachment, uploadAttachment } from '../api/attachments'
@@ -127,6 +127,18 @@ export function useComposerAttachments(attachments: Ref<ComposerAttachment[]>, n
       files.delete(id)
     }
   }, { flush: 'sync' })
+
+  // 离开工作区后没有人再清这份列表：取消还在传的（迟到的尺寸与上传结果都认不到文件，不会回填），
+  // 放掉没发出去的本地地址。服务端那份草稿不在这里删，由过期清理收走。
+  onScopeDispose(() => {
+    for (const controller of uploads.values())
+      controller.abort()
+    files.clear()
+    for (const item of attachments.value) {
+      if (!item.locked)
+        URL.revokeObjectURL(item.url)
+    }
+  })
 
   return { add, remove, retry: upload }
 }

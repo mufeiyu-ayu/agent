@@ -23,7 +23,7 @@ src/main.ts -> src/App.vue -> src/router/index.ts   # / 首页、/privacy（公�
 | `components/layout/` | 壳、头部、侧栏、会话列表、设置弹窗（主题 / 文字亮度 / 语言） | `AppShell.vue`、`SettingsDialog.vue` |
 | `components/home/` | 首页「Agent for Teams」各部分：导航、hero 与演示窗口、五个场景、收尾、页脚。按设计稿百分百还原：CSS 照搬原稿、只有英文、始终浅色，不接 i18n 与主题；「Start asking」未登录时弹登录框 | `HomeHeroDemo.vue`、`HomeStartLink.vue`、`home-login.ts`（HomeView 提供的登录态） |
 | `components/ui/` | shadcn 风格基础组件 | |
-| `utils/` | 纯函数：会话分轮、时间格式、Markdown 分块与高亮、流式尾块补齐、渐显批次与 VNode 路径支持的 token、等待过程的事件归并与刷新后还原（#212）、思考短句与文案、首页缓动 | `conversation-turns.ts`、`markdown-blocks.ts`、`streaming-markdown.ts`、`markdown-fade.ts`（只支持常见行内 token，其余整块回退 v-html）、`run-status.ts`、`attachments.ts`（附件类型与上限、预览方式、图片显示尺寸、CSV 解析）、`attachment-documents.ts`（xlsx 线程入口与 docx 离线渲染，悬停时预拉取解析库）、`attachment-sheets.worker.ts`（xlsx 解压、解析与单元格格式化，关闭/切换预览时终止） |
+| `utils/` | 纯函数：会话分轮、时间格式、Markdown 分块与高亮、流式尾块补齐、渐显批次与 VNode 路径支持的 token、等待过程的事件归并与刷新后还原（#212）、思考短句与文案、首页缓动 | `conversation-turns.ts`、`markdown-blocks.ts`、`streaming-markdown.ts`、`markdown-fade.ts`（只支持常见行内 token，其余整块回退 v-html）、`run-status.ts`、`attachments.ts`（附件类型与上限、预览方式、图片显示尺寸、按预览上限提前停下的 CSV 解析）、`attachment-documents.ts`（xlsx 线程入口与 docx 离线渲染，悬停 Word 文件时预拉取解析库）、`attachment-sheets.worker.ts`（xlsx 解压、解析与单元格格式化，关闭/切换预览时终止） |
 | `public/` | 静态资源 | `html-preview.html`（可信预览外层：CSP 禁网、消息来源校验与隔离 iframe） |
 | `types/` | 前台内部类型；跨端协议一律从 `@agent/contracts` 取 | |
 | 工作文件 | 只读 Source 文件树、展示格式化与固定版本源码 ZIP；成功多文件 dist 按 Artifact 身份隔离预览，失败保留旧构建；旧 HTML/演示桥接兼容。回答下方的交付卡片从保存记录恢复并打开对应源码 | `hooks/useWorkspaceFiles.ts`、`api/workspace.ts`、`components/agent/WorkspaceFilesPanel.vue`、`components/agent/AgentWorkspaceArtifact.vue`、`public/html-preview.html` |
@@ -34,8 +34,8 @@ src/main.ts -> src/App.vue -> src/router/index.ts   # / 首页、/privacy（公�
 - 前端不保存模型平台 API Key；模型只以后台模型行 id 引用。
 - UI message ≠ model message ≠ runtime event；流里的 delta 不等于持久化事实，以 `done` 事件与后端记录为准。
 - 全局样式让 `button` 继承字体：按钮上的字号 / 行高 / 字重工具类不生效，写在按钮里面的元素上。
-- 附件先上传拿到服务端 id，发送时只带 id；这次页面里发出的附件继续用本地 object URL 显示，其余消息的附件来自接口（图片在列表里用缩略图地址）。类型一律按扩展名判断，上限与扩展名表取自 `@agent/contracts`。选中的模型不能看图片而附件里有图片时不让发送。
-- 上传的文档内容不可信：docx 在离线容器渲染后进入禁脚本、禁网、无 same-origin 权限的 iframe，样式不能进入应用页面；不渲染内嵌 HTML，链接只留 http / https / mailto。xlsx 的解析/格式化在原生 Worker 中，预览限制行列数；两种解析库不进首屏。
+- 附件先上传拿到服务端 id，发送时只带 id；这次页面里发出的附件继续用本地 object URL 显示，其余消息的附件来自接口（图片在列表里用缩略图地址）；消息换成服务端快照、会话删除或离开工作区时放掉本地地址。请求发出后没等到 start 就断了（停止、断网），这批附件保持锁定，读一次会话消息确认有没有被绑走，再决定移出输入框还是解锁，不直接当成可重发的草稿。类型一律按扩展名判断，上限与扩展名表取自 `@agent/contracts`。选中的模型不能看图片而附件里有图片时不让发送。
+- 上传的文档内容不可信：docx 在离线容器渲染后进入禁脚本、禁网、无 same-origin 权限的 iframe，样式不能进入应用页面；不渲染内嵌 HTML，链接只留 http / https / mailto。xlsx 的解析/格式化在原生 Worker 中，整本在线程里解析，但只格式化并回传预览范围内的行列；CSV 凑够预览行数就停止解析；两种解析库不进首屏。
 - 不为了拆而拆，也不让单个 hook / 组件无限膨胀。
 
 ## 验证

@@ -17,7 +17,6 @@ import { getAiExceptionMessage } from '../common/utils/llm-error-message.util.js
 import { MessageRole, MessageStatus } from '../generated/prisma/client.js'
 import { DatabaseCommitOutcomeUnknownError, DatabaseOperationDeadlineExceededError } from '../prisma/prisma.service.js'
 import { toToolProgressArguments } from '../tools/web/tool-progress-arguments.js'
-import { lockWorkspaceStorage } from '../workspaces/workspace-db.js'
 import { loadConversationHistory } from './context/conversation-history.js'
 
 function messageSnapshot(message: StoredMessage): StoredMessage {
@@ -102,10 +101,6 @@ export function createRuntimeHost(input: RunTurnStreamInput, deps: {
     },
     createUserMessage: async (conversationId, content, attachmentIds) => {
       const { message, rows } = await prisma.$transaction(async (db) => {
-        // 和删会话共用锁；锁内再确认，不能在删除标记之后插入新的附件绑定。
-        await lockWorkspaceStorage(db, conversationId)
-        if (!await db.conversation.findUnique({ where: { id: conversationId }, select: { id: true } }))
-          throw new NotFoundException('会话不存在或已被删除')
         const message = await db.message.create({ data: { conversationId, role: MessageRole.USER, content, status: MessageStatus.COMPLETED } })
         const rows = await attachments.bind(db, { userId: input.userId, conversationId, messageId: message.id, attachmentIds })
         await db.conversation.update({ where: { id: conversationId }, data: { updatedAt: new Date() } })

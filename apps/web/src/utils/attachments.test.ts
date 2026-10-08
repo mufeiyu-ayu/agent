@@ -82,6 +82,16 @@ it('CSV 按行列拆开，引号里的逗号、换行和转义引号留在同一
   ])
 })
 
+it('CSV 预览在解析时就限行限列：凑够就停，引号里的逗号与换行不算分隔，超长单元格只留开头', () => {
+  const big = `表头1,表头2,表头3\r\n${'1,"x,\ny ""引"" ",3\n\n'.repeat(300_000)}`
+  assert.deepEqual(parseCsv(big, 3, 2), [['表头1', '表头2'], ['1', 'x,\ny "引" '], ['1', 'x,\ny "引" ']])
+  assert.equal(parseCsv(big, 502, 31).length, 502)
+  assert.deepEqual(parseCsv('a,b\r\nc,d', 1), [['a', 'b']])
+  // 只在被截掉的列里有字的行仍是一行；全空的行不算。
+  assert.deepEqual(parseCsv(',,x\n,,\n1,2,3', Infinity, 2), [['', ''], ['1', '2']])
+  assert.equal(parseCsv(`"${'长'.repeat(5000)}",尾`)[0]![0]!.length, 2000)
+})
+
 it('文本先按 UTF-8 解，解不开按 GB18030', () => {
   assert.equal(decodeText(new TextEncoder().encode('日期').buffer as ArrayBuffer), '日期')
   assert.equal(decodeText(new Uint8Array([0xC8, 0xD5, 0xC6, 0xDA]).buffer), '日期')

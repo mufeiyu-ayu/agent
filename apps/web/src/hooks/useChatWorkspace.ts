@@ -157,6 +157,7 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
 
     if (messageTimer !== undefined)
       window.clearTimeout(messageTimer)
+    releaseTurnAttachments(Object.keys(turnAttachments.value))
   })
 
   async function initializeWorkspace() {
@@ -214,6 +215,7 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
         request.controller.abort()
         clearRequestBuffers(request)
       }
+      releaseTurnAttachments(conversationMessagesCache.get(conversationId)?.map(item => item.id) ?? [])
       conversationMessagesCache.delete(conversationId)
       conversationMessagesVersion.delete(conversationId)
       requests.delete(conversationId)
@@ -304,6 +306,8 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
     attachments.value = attachments.value.map(item => submittedAttachmentIds.has(item.id) ? { ...item, locked: true } : item)
     shouldAnchorLatestTurn.value = true
     let pendingMessage: ConversationMessage | undefined
+    // 这批附件的去向是否已经明确：收到 start / error 事件，或请求在进入流之前就被拒绝。
+    let attachmentsSettled = sentAttachments.length === 0
 
     try {
       if (!request.conversationId) {
@@ -370,9 +374,12 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
           if (currentViewKey.value === request.key && message.value === submittedMessage)
             message.value = ''
           if (sentAttachments.length > 0) {
-            turnAttachments.value = { ...turnAttachments.value, [event.userMessageId]: sentAttachments }
+            // 消息换成了服务端 id：本地地址跟着换到新 id 下，旧的占位 id 不再留一份引用。
+            const { [pendingMessage.id]: _pending, ...others } = turnAttachments.value
+            turnAttachments.value = { ...others, [event.userMessageId]: sentAttachments }
             // 按本地 id 只拿走这次发出的；状态回填会换对象，不能用对象引用判断。
             attachments.value = attachments.value.filter(item => !submittedAttachmentIds.has(item.id))
+            attachmentsSettled = true
           }
           request.status = 'generating'
           touchConversation(conversationId)
@@ -391,6 +398,8 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
           if (request.assistantMessageId)
             endTurnRun(request.assistantMessageId, 'error')
           request.error = event.message
+          // 不带 userMessagePersisted 的 error 是消息没写下：附件没被绑走，解锁后可以重发。
+          attachmentsSettled = true
           if (event.userMessagePersisted) {
             touchConversation(conversationId)
             // start 前的失败也可能已经提交，附件已被消费，不能留作再次绑定的重试。
@@ -415,6 +424,9 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
         throw new Error('流式响应提前结束，请稍后重试')
     }
     catch (error) {
+      // 进入流之前就被 HTTP 拒绝：运行还没开始，消息没写下。
+      if (error instanceof ChatStreamHttpError)
+        attachmentsSettled = true
       // 已有终态、被停止、卸载或同会话新请求接管时，尾部异常不能再改旧/新任务。
       if (!ownsActiveRequest(request))
         return
@@ -444,8 +456,36 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
       }
     }
     finally {
-      attachments.value = attachments.value.map(item => submittedAttachmentIds.has(item.id) ? { ...item, locked: false } : item)
+      // 没有占位消息说明请求还没发出去；卸载后不再确认（退出登录时这次读取会 401 并把页面带去登录页）。
+      if (attachmentsSettled || !pendingMessage || isUnmounted)
+        unlockAttachments()
+      else
+        void settleAttachments(pendingMessage.conversationId)
       clearRequestBuffers(request)
+    }
+
+    function unlockAttachments() {
+      attachments.value = attachments.value.map(item => submittedAttachmentIds.has(item.id) ? { ...item, locked: false } : item)
+    }
+
+    /**
+     * 请求发出后没等到 start 就断了（停止、断网）：后端可能已经写下消息并绑走了附件，原样再发会被拒绝。
+     * 读一次会话消息确认去向，期间保持锁定。连确认也读不到（多半是断网，请求根本没到后端）时解锁留给用户重试：
+     * 万一其实已经发出，再发会在进入流之前被后端拒绝（409）并提示重新添加。只按本地 id 处理这次提交的，不碰之后新加的。
+     */
+    async function settleAttachments(conversationId: string) {
+      const consumed = await listConversationMessages(conversationId).then(
+        persisted => persisted.some(item => item.attachments?.some(attachment => attachmentIds.includes(attachment.id))),
+        () => false,
+      )
+      if (isUnmounted)
+        return
+      if (!consumed)
+        return unlockAttachments()
+
+      attachments.value = attachments.value.filter(item => !submittedAttachmentIds.has(item.id))
+      if (currentViewKey.value === request.key && message.value === submittedMessage)
+        message.value = ''
     }
   }
 
@@ -467,6 +507,21 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
     request.reasoningTimer = undefined
     request.pendingDelta = null
     request.pendingReasoning = null
+  }
+
+  /** 这些消息不再用本地文件显示（会话删了、换成了接口地址、离开工作区）：放掉 object URL，文件才能被回收。 */
+  function releaseTurnAttachments(messageIds: string[]) {
+    const held = messageIds.filter(id => turnAttachments.value[id])
+    if (held.length === 0)
+      return
+
+    const rest = { ...turnAttachments.value }
+    for (const id of held) {
+      for (const attachment of rest[id]!)
+        URL.revokeObjectURL(attachment.url)
+      delete rest[id]
+    }
+    turnAttachments.value = rest
   }
 
   function attachmentsOf(message: ConversationMessage): ChatAttachment[] | undefined {
@@ -623,6 +678,8 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
       }
 
       setMessagesForConversation(conversationId, nextMessages)
+      // 快照里的消息自带附件记录，改用接口地址显示：这次页面里留着的本地文件可以放了。
+      releaseTurnAttachments(nextMessages.flatMap(item => item.attachments?.length ? [item.id] : []))
     }
     catch (error) {
       if (isUnmounted || runId !== messageLoadRunId)
@@ -1045,7 +1102,7 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
     const request = currentRequest.value
     return !isUnmounted && isHistoryReady.value && !request?.active
       && (Boolean(message.value.trim()) || attachments.value.length > 0)
-      && attachments.value.every(item => item.status === 'ready' && item.remoteId)
+      && attachments.value.every(item => item.status === 'ready' && item.remoteId && !item.locked)
       && (!request || Date.now() - request.requestedAt >= CHAT_REQUEST_INTERVAL_MS)
   }
 

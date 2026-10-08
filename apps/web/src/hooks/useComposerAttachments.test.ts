@@ -50,3 +50,37 @@ it('附件同步占名额；切视图丢弃迟到尺寸；提交锁阻止移除�
   assert.equal(attachments.value.length, 0)
   assert.equal(vi.mocked(deleteAttachment).mock.calls.length, 1)
 })
+
+it('离开工作区：取消在途上传，放掉没发出去的本地地址（锁定的留给消息用）；迟到的上传结果不回填', async () => {
+  let finishUpload!: (uploaded: { id: string }) => void
+  let uploadSignal: AbortSignal | undefined
+  vi.mocked(uploadAttachment).mockImplementationOnce((_file, options) => {
+    uploadSignal = options.signal
+    return new Promise((resolve) => {
+      finishUpload = resolve as typeof finishUpload
+    })
+  })
+  vi.mocked(deleteAttachment).mockClear()
+  let next = 0
+  const create = vi.spyOn(URL, 'createObjectURL').mockImplementation(() => `blob:${next++}`)
+  const revoke = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
+  const scope = effectScope()
+  onTestFinished(() => {
+    scope.stop()
+    create.mockRestore()
+    revoke.mockRestore()
+  })
+  const attachments = ref<ComposerAttachment[]>([])
+  const hook = scope.run(() => useComposerAttachments(attachments, vi.fn()))!
+  await hook.add([new File(['a'], 'uploading.txt'), new File(['b'], 'submitted.txt')])
+  await vi.waitFor(() => assert.equal(attachments.value[1]?.status, 'ready'))
+  attachments.value = attachments.value.map((item, index) => index === 1 ? { ...item, locked: true } : item)
+
+  scope.stop()
+  assert.equal(uploadSignal?.aborted, true)
+  assert.deepEqual(revoke.mock.calls.map(([url]) => url), ['blob:0'])
+  const snapshot = attachments.value
+  finishUpload({ id: 'late-remote' })
+  await vi.waitFor(() => assert.deepEqual(vi.mocked(deleteAttachment).mock.calls, [['late-remote']]))
+  assert.equal(attachments.value, snapshot, '迟到的上传结果不能回填已经退出的作用域')
+})

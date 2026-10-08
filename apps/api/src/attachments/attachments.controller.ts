@@ -32,7 +32,8 @@ export class AttachmentsController {
 
   /**
    * 附件内容：图片可带 `?variant=thumb` 取缩略图。Content-Type 只按扩展名从固定表里取，加 nosniff，
-   * 浏览器不会把内容当成别的类型执行；不留 HTTP 缓存，换账号/删除后必须重新经过归属检查。
+   * 浏览器不会把内容当成别的类型执行。内容不会变、地址里的 id 猜不到，只让浏览器自己长期缓存（private）：
+   * 消息列表里的缩略图不用每次进会话都经后端从存储重取。
    */
   @Get(':id/content')
   async content(@CurrentAuth() auth: AuthContext, @Param('id') id: string, @Query('variant') variant: string | undefined, @Res() response: ServerResponse) {
@@ -42,7 +43,7 @@ export class AttachmentsController {
       'Content-Type': file.contentType,
       'Content-Disposition': `${file.inline ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(file.name)}`,
       'X-Content-Type-Options': 'nosniff',
-      'Cache-Control': 'private, no-store',
+      'Cache-Control': 'private, max-age=31536000, immutable',
     })
     // 用户关页或切走时连接断开，pipeline 以错误结束并销毁 OSS 流；响应头已发出，没有可回的内容。
     await pipeline(file.stream, response).catch(() => {})

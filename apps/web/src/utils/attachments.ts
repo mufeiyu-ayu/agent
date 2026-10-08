@@ -92,21 +92,48 @@ export function fitImageSize(width: number, height: number, max = 320, min = 120
   return { width: side(width), height: side(height) }
 }
 
-/** CSV 拆成行列：支持引号包住的逗号、换行与 `""` 转义；末尾的空行不要。 */
-export function parseCsv(text: string): string[][] {
+/** 预览里一个单元格最多留这么多字：表格里本来就只显示得下开头一小段。 */
+const CSV_CELL_MAX_CHARS = 2000
+
+/**
+ * CSV 拆成行列给预览用：支持引号包住的逗号、换行与 `""` 转义；空行不要。
+ * 凑够 `maxRows` 行就停，每行只留前 `maxColumns` 列，不把整份文件拆完再丢掉。
+ * 调用方多要一行、一列，就能知道后面还有没有内容。
+ */
+export function parseCsv(text: string, maxRows = Infinity, maxColumns = Infinity): string[][] {
   const rows: string[][] = []
   let row: string[] = []
   let cell = ''
   let quoted = false
 
-  for (let index = 0; index < text.length; index++) {
+  const add = (char: string) => {
+    if (cell.length < CSV_CELL_MAX_CHARS)
+      cell += char
+  }
+  // 这一行有没有内容按全部列算：只在被截掉的列里有字的行也是一行。
+  let filled = false
+  const endCell = () => {
+    filled ||= cell !== ''
+    if (row.length < maxColumns)
+      row.push(cell)
+    cell = ''
+  }
+  const endRow = () => {
+    endCell()
+    if (filled)
+      rows.push(row)
+    row = []
+    filled = false
+  }
+
+  for (let index = 0; index < text.length && rows.length < maxRows; index++) {
     const char = text[index]!
 
     if (quoted) {
       if (char !== '"')
-        cell += char
+        add(char)
       else if (text[index + 1] === '"')
-        cell += text[index++]
+        add(text[index++]!)
       else
         quoted = false
     }
@@ -114,24 +141,21 @@ export function parseCsv(text: string): string[][] {
       quoted = true
     }
     else if (char === ',') {
-      row.push(cell)
-      cell = ''
+      endCell()
     }
     else if (char === '\n' || char === '\r') {
       if (char === '\r' && text[index + 1] === '\n')
         index++
-      rows.push([...row, cell])
-      row = []
-      cell = ''
+      endRow()
     }
     else {
-      cell += char
+      add(char)
     }
   }
 
-  if (cell || row.length > 0)
-    rows.push([...row, cell])
-  return rows.filter(cells => cells.some(Boolean))
+  if (rows.length < maxRows && (cell || row.length > 0))
+    endRow()
+  return rows
 }
 
 /** 文本文件解码：先按 UTF-8，解不开再按 GB18030（中文 Windows 的 Excel 导出的 CSV 常是 GBK），与后端抽文字时一致。 */

@@ -1,6 +1,6 @@
 import { attachmentPreviewMode } from './attachments'
 
-export { formatSheetCell } from './attachment-sheet-cells'
+export { formatSheetCell, PREVIEW_COLUMN_LIMIT, PREVIEW_ROW_LIMIT } from './attachment-sheet-cells'
 
 /** 一张要渲染的表：CSV 是一张，xlsx 每个工作表一张。第一行当表头。 */
 export interface PreviewTable {
@@ -8,16 +8,17 @@ export interface PreviewTable {
   rows: string[][]
 }
 
-// 两个解析库只在真的要看 xlsx / docx 时才下载，不进首屏。
-const loadSheetReader = () => import('read-excel-file/web-worker')
+// 解析库只在真的要看 docx 时才下载，不进首屏；xlsx 的那份打在 worker 自己的包里。
 const loadDocxRenderer = () => import('docx-preview')
 
-/** 鼠标移到文件上就先把对应的解析库拉下来，点开时少等一段。 */
+/**
+ * 鼠标移到 Word 文件上就先把解析库拉下来，点开时少等一段。
+ * xlsx 不预拉：主线程拉到的是另一份产物，worker 用不上。
+ */
 export function warmAttachmentPreview(name: string) {
-  const mode = attachmentPreviewMode(name)
-  const load = mode === 'sheet' ? loadSheetReader : mode === 'docx' ? loadDocxRenderer : undefined
   // 拉取失败不用管：真正打开时会再试一次并显示失败。
-  load?.().catch(() => {})
+  if (attachmentPreviewMode(name) === 'docx')
+    loadDocxRenderer().catch(() => {})
 }
 
 /** 全部工作表在独立线程里读取；切换/关闭预览会终止旧线程，超时同样终止。 */

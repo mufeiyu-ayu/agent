@@ -101,7 +101,8 @@ const isGenerationInProgress = computed(() => {
 const hasContent = computed(() => props.message.trim().length > 0 || props.attachments.length > 0)
 /** 附件没传完或有失败的：发送按钮照常显示，但点了不发。 */
 const attachmentsPending = computed(() => props.attachments.some(item => item.status !== 'ready'))
-const attachmentsBlockSend = computed(() => attachmentsPending.value || Boolean(props.imagesUnsupported))
+// 锁定中的附件正在确认去向（上一次请求没等到 start）：这段时间也不发。
+const attachmentsBlockSend = computed(() => attachmentsPending.value || Boolean(props.imagesUnsupported) || props.attachments.some(item => item.locked))
 const sendLabel = computed(() => {
   if (attachmentsPending.value)
     return t(props.attachments.some(item => item.status === 'error') ? 'composer.attachments.sendFailed' : 'composer.attachments.sendUploading')

@@ -204,6 +204,42 @@ test('发送确认前锁住附件，确认后消息仍能用原地址预览', as
   await expect(page.locator('[data-attachment-preview-panel]').getByRole('heading', { name: '正文保留' })).toBeVisible()
 })
 
+test('没等到 start 就停止：后端已绑走的附件不留在输入框里再发一次，没绑走的解锁后可以移除', async ({ page }) => {
+  // 消息接口是模拟边界：后端「提交后、运行开始前就能读到这批附件」的事实由 attachments.db.test.ts 在真实库上验证。
+  let committed = true
+  const time = '2026-10-08T00:00:00.000Z'
+  await installApiRoutes(page, () => committed
+    ? [{ id: 'user-1', conversationId: CONVERSATION_ID, role: 'USER', content: '', status: 'COMPLETED', createdAt: time, updatedAt: time, attachments: [{ id: 'att-1', kind: 'file', name: '已发出.md', bytes: 4 }] }]
+    : [])
+  const { removed } = await installAttachmentRoutes(page)
+  await installBrowserStubs(page, { lines: toNdjsonLines(), holdBeforeIndex: 0 })
+  await page.goto('/workspace')
+  await expect(page.getByRole('textbox').first()).toBeVisible()
+  const pending = page.getByRole('list', { name: '待发送的附件' })
+
+  await page.locator('input[type=file]').setInputFiles({ name: '已发出.md', mimeType: 'text/markdown', buffer: Buffer.from('# 一') })
+  await expect(page.locator('[data-composer-primary]')).not.toHaveAttribute('aria-disabled', 'true')
+  await page.locator('[data-composer-primary]').click()
+  await page.getByRole('button', { name: '停止生成' }).click()
+  await expect(pending).toHaveCount(0)
+  expect(removed).toEqual([])
+
+  // 这次后端没写下消息：附件留在输入框里，解锁后能移除（移除才会删服务端那份）。
+  committed = false
+  await page.locator('input[type=file]').setInputFiles({ name: '没发出.md', mimeType: 'text/markdown', buffer: Buffer.from('# 二') })
+  await expect(page.locator('[data-composer-primary]')).not.toHaveAttribute('aria-disabled', 'true')
+  // 同一视图两次发送之间有 800ms 节流，节流内的点击不发。
+  await page.waitForTimeout(850)
+  await page.locator('[data-composer-primary]').click()
+  await page.getByRole('button', { name: '停止生成' }).click()
+  const remove = page.getByRole('button', { name: '移除 没发出.md' })
+  await expect(remove).toBeEnabled()
+  await pending.hover()
+  await remove.click()
+  await expect(pending).toHaveCount(0)
+  expect(removed).toEqual(['att-2'])
+})
+
 test('DOCX 的样式只能影响文档，不得隐藏工作区页面', async ({ page }) => {
   await installApiRoutes(page, () => [])
   await installAttachmentRoutes(page)

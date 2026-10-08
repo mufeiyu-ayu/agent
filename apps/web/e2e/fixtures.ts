@@ -102,6 +102,14 @@ export async function installBrowserStubs(
         const encoder = new TextEncoder()
         const body = new ReadableStream<Uint8Array>({
           async start(controller) {
+            // 和真实 fetch 一样：请求被中断时响应体以 AbortError 结束，挂起中的读取随之失败。
+            let aborted = false
+            init?.signal?.addEventListener('abort', () => {
+              aborted = true
+              controller.error(new DOMException('The user aborted a request.', 'AbortError'))
+              release?.()
+            })
+
             for (const [index, line] of streamPlan.lines.entries()) {
               if (index === streamPlan.holdBeforeIndex && !isReleased) {
                 await new Promise<void>((resolve) => {
@@ -111,12 +119,15 @@ export async function installBrowserStubs(
 
               if (streamPlan.delaysMs?.[index])
                 await new Promise(resolve => setTimeout(resolve, streamPlan.delaysMs![index]))
+              if (aborted)
+                return
 
               controller.enqueue(encoder.encode(`${line}\n`))
               await new Promise(resolve => setTimeout(resolve, 20))
             }
 
-            controller.close()
+            if (!aborted)
+              controller.close()
           },
         })
 

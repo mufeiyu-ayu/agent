@@ -34,14 +34,17 @@ export class AttachmentStorageService {
     return (await this.oss.getStream(key, { ...(process ? { process } : {}), timeout: 30_000 })).stream as Readable
   }
 
-  /** OSS 解不出图片时返回 400，这里原样抛出，由上传接口按「图片读不出来」拒绝。 */
+  /**
+   * 图片显示出来的宽高。OSS 解不出图片时返回 400，这里原样抛出，由上传接口按「图片读不出来」拒绝。
+   * `image/info` 给的是旋转前的像素尺寸：EXIF Orientation 为 5–8（手机竖拍）时显示出来是横竖对调的。
+   */
   async imageSize(key: string): Promise<{ width: number, height: number }> {
     const info = JSON.parse((await this.read(key, 'image/info')).toString('utf8')) as Record<string, { value?: string } | undefined>
     const width = Number(info.ImageWidth?.value)
     const height = Number(info.ImageHeight?.value)
     if (!Number.isInteger(width) || !Number.isInteger(height) || width <= 0 || height <= 0)
       throw new Error('image/info 没有返回尺寸')
-    return { width, height }
+    return Number(info.Orientation?.value) >= 5 ? { width: height, height: width } : { width, height }
   }
 
   /** DeleteObject 对不存在的对象也返回成功，重复清理是安全的。 */

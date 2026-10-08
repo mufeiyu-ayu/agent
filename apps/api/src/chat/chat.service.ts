@@ -1,8 +1,9 @@
 import type { ChatStreamEvent, ReasoningEffort } from '@agent/contracts'
 import type { ChatDto } from './dto/chat.dto.js'
-import { BadRequestException, Inject, Injectable } from '@nestjs/common'
+import { BadRequestException, Inject, Injectable, Optional } from '@nestjs/common'
 
 import { AgentRuntimeService } from '../agent-runtime/agent-runtime.service.js'
+import { AttachmentsService } from '../attachments/attachments.service.js'
 import { ConversationsService } from '../conversations/conversations.service.js'
 import { LlmModelConfigService } from '../llm/llm-model-config.service.js'
 import { LlmModelUnavailableError } from '../llm/llm.errors.js'
@@ -25,6 +26,7 @@ export class ChatService {
     private readonly conversationsService: ConversationsService,
     @Inject(RuntimeConfigService)
     private readonly runtimeConfigService: RuntimeConfigService,
+    @Optional() @Inject(AttachmentsService) private readonly attachments?: AttachmentsService,
   ) {}
 
   /**
@@ -38,6 +40,9 @@ export class ChatService {
     options: ChatStreamOptions = {},
   ): Promise<AsyncGenerator<ChatStreamEvent>> {
     await this.conversationsService.assertOwnConversation(userId, input.conversationId)
+    // 附件已经发出过或放久了被清掉：在写出响应头之前拒绝（409），前台能把原因告诉用户。
+    if (input.attachmentIds?.length)
+      await this.attachments?.assertSendable(userId, input.attachmentIds)
 
     const model = await this.resolveModel(input.model, input.reasoningEffort)
     // 与模型行一样是本次问答的快照：后台修改对下一次问答生效。
