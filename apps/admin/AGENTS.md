@@ -17,7 +17,7 @@ views 组合 -> features/<领域>/ 的 state + api + components -> features/shar
 | `views/` | 每个路由一个页面，只做组合 | `RunDetailView.vue`、`LlmModelsView.vue` |
 | `features/shared/` | 所有 feature 共用 | `admin-api.ts`（请求层，解包 `{ success, data }`、错误文案、401 / 需改密码的 403 统一跳页）、`paged-list.state.ts`、`detail-fetch.state.ts` |
 | `features/runs/` | Run Trace：列表、详情、时间线与 Inspector；上下文压缩在时间线里是 `context_compaction` 条目、摘要全文在检查器里，问答结束后的后台压缩在详情页单独一个页签 | `run-detail.state.ts`、`trace/run-trace.presenter.ts`、`trace/RunTraceWorkspace.vue`、`trace/inspectors/` |
-| `features/conversations/` | 会话记录：按用户与最近活跃时间筛选，筛选条件只存在地址栏（用户列表「查看对话」带 `userId` 跳入） | `conversation-api.ts`、`conversation-detail.state.ts` |
+| `features/conversations/` | 会话记录：按用户与最近活跃时间筛选，筛选条件只存在地址栏（用户列表「查看对话」带 `userId` 跳入） | `conversation-api.ts`、`conversation-detail.state.ts`、`ConversationMarkdown.vue`（助手正文专用安全 HTML 入口；解析在 `conversation-markdown.ts`，禁原始 HTML / 危险链接，图片转链接） |
 | `features/overview/` | 概览：健康 / 延迟 / 用量 / 工具，统计与余额两路并行；不读模型目录，模型的可见 / 默认 / 探活只在模型接入页 | `overview.state.ts`（加载与派生）、`overview.model.ts`（纯映射，`overview.model.test.ts` 覆盖）、`components/`（KPI 含余额 / 趋势 / 失败原因（点击下钻运行列表）/ 模型表 / 工具表） |
 | `features/llm/` | 模型接入：服务商 / 模型 / 可见性 / 默认 / 推理强度 / 单次输入上限（token 数一律千分位） | `llm-models.state.ts`（状态与动作）、`llm-api.ts`、`components/LlmModelTable.vue`、`components/LlmProviderFormModal.vue` |
 | `features/runtime-config/` | 系统管理 → 运行配置：单次最长时间、压缩保留最近 Tokens、Serper Key、调试开关，整页一个保存（时限按秒编辑、按毫秒提交） | `runtime-config.state.ts`（加载、保存与表单映射）、`runtime-config-api.ts` |

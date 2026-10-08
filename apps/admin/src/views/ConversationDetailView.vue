@@ -20,6 +20,7 @@ import DataTable from '@/components/common/DataTable.vue'
 import PageContainer from '@/components/common/PageContainer.vue'
 import UserIdentity from '@/components/common/UserIdentity.vue'
 import { createConversationDetailState } from '@/features/conversations/conversation-detail.state'
+import ConversationMarkdown from '@/features/conversations/ConversationMarkdown.vue'
 import RunStatusTag from '@/features/runs/components/RunStatusTag.vue'
 import { fetchAdminRuns } from '@/features/runs/run-api'
 import {
@@ -209,7 +210,10 @@ function handleRunsPageChange(page: number, pageSize: number) {
                 </span>
                 <div class="transcript-message__body">
                   <div class="transcript-message__bubble">
-                    <p>{{ message.content }}</p>
+                    <ConversationMarkdown v-if="message.role === 'ASSISTANT'" :content="message.content" />
+                    <p v-else>
+                      {{ message.content }}
+                    </p>
                   </div>
                   <footer>
                     <span>{{ message.role === 'USER' ? t('conversationDetail.roleUser') : t('conversationDetail.roleAssistant') }}</span>
@@ -311,8 +315,9 @@ function handleRunsPageChange(page: number, pageSize: number) {
 <style scoped>
 .conversation-page {
   display: flex;
-  min-height: 380px;
-  max-height: calc(100dvh - var(--admin-header-height) - var(--admin-tabs-height) - 40px);
+  flex: none;
+  min-height: 0;
+  height: calc(100dvh - var(--admin-header-height) - var(--admin-tabs-height) - 40px);
   flex-direction: column;
 }
 
@@ -410,18 +415,20 @@ function handleRunsPageChange(page: number, pageSize: number) {
   font-weight: 600;
 }
 
-.detail-tabs :deep(.ant-tabs-content-holder) {
+/* holder → content → 活跃 pane 连续传递剩余高度，不依赖 block 的百分比高度。 */
+.detail-tabs :deep(.ant-tabs-content-holder),
+.detail-tabs :deep(.ant-tabs-content) {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.detail-tabs :deep(.ant-tabs-tabpane-active) {
+  display: flex;
   flex: 1;
   min-height: 0;
-}
-
-.detail-tabs :deep(.ant-tabs-content) {
-  height: 100%;
-}
-
-.detail-tabs :deep(.ant-tabs-tabpane) {
-  display: flex;
-  height: 100%;
   flex-direction: column;
   overflow-y: auto;
 }
@@ -445,6 +452,7 @@ function handleRunsPageChange(page: number, pageSize: number) {
 .transcript-message {
   display: flex;
   max-width: 78%;
+  flex: none;
   gap: 8px;
 }
 
@@ -493,6 +501,8 @@ function handleRunsPageChange(page: number, pageSize: number) {
 }
 
 .transcript-message__bubble {
+  max-width: 100%;
+  min-width: 0;
   padding: 11px 15px;
   border: 1px solid var(--admin-border);
   border-radius: var(--admin-radius-lg);
