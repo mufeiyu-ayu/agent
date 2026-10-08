@@ -17,6 +17,8 @@
     "ant-design-vue": "^4.2.6",
     "dayjs": "^1.11.23",
     "echarts": "^6.1.0",
+    "markdown-it": "^14.3.2",
+    "markdown-it-cjk-friendly": "^3.0.0",
     "pinia": "^3.0.4",
     "vue": "^3.5.43",
     "vue-echarts": "^8.3.0",
@@ -26,6 +28,7 @@
   },
   "devDependencies": {
     "@playwright/test": "1.63.0",
+    "@types/markdown-it": "^14.2.0",
     "@vitejs/plugin-vue": "^6.0.9",
     "typescript": "^6.0.3",
     "vite": "^7.3.6",

@@ -48,7 +48,7 @@ export default antfu({
     'test/prefer-lowercase-title': 'off',
   },
 }, {
-  // 管理台展示的参数、observation、模型文本都是不可信数据，一律按文本渲染；前台 Markdown 渲染另有净化，不受此限。
+  // 管理台默认只渲染文本；ConversationMarkdown 仅对安全解析结果局部豁免，其他入口仍禁止 v-html。
   files: ['apps/admin/**/*.vue'],
   rules: {
     'vue/no-v-html': 'error',
