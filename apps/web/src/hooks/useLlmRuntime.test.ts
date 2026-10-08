@@ -8,7 +8,7 @@ import { useLlmRuntime } from './useLlmRuntime'
 vi.mock('../api/llm', () => ({ fetchLlmModels: vi.fn(), fetchLlmBalance: vi.fn() }))
 vi.mock('vue-i18n', () => ({ useI18n: () => ({ locale: ref('zh-CN'), t: (key: string) => key }) }))
 afterEach(() => vi.resetAllMocks())
-const model: LlmModelOption = { id: 'model-a', displayName: 'A', isDefault: true, reasoningEffort: null, reasoningEffortOptions: [] }
+const model: LlmModelOption = { id: 'model-a', displayName: 'A', isDefault: true, reasoningEffort: null, reasoningEffortOptions: [], supportsImageInput: false }
 
 it('挂载与下拉重复打开共享在途列表，失败保留旧选项并解除 loading，下次打开重新读取', async () => {
   vi.mocked(fetchLlmBalance).mockResolvedValue(null)

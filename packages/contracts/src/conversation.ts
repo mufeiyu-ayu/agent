@@ -1,3 +1,4 @@
+import type { MessageAttachment } from './attachment.js'
 import type { ChatStreamToolFinishedEvent, ChatStreamToolStartedEvent } from './chat.js'
 
 export interface Conversation {
@@ -55,6 +56,8 @@ export interface ConversationMessage {
   updatedAt: string
   /** 回答的等待过程（#212）：只有 assistant 消息、且对应运行调过工具、有思考或正文满 1 秒才开始时才有。 */
   activity?: MessageActivity
+  /** 用户随这条消息发出的图片与文档；没有时省略。 */
+  attachments?: MessageAttachment[]
 }
 
 /**

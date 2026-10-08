@@ -7,6 +7,8 @@ import type { Conversation as PrismaConversation } from '../generated/prisma/cli
 import type { CreateConversationDto, ListConversationsQueryDto, UpdateConversationDto } from './dto/conversation.dto.js'
 import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common'
 
+import { AttachmentStorageService } from '../attachments/attachment-storage.service.js'
+import { AttachmentsService } from '../attachments/attachments.service.js'
 import { PrismaService } from '../prisma/prisma.service.js'
 import { WorkspaceCloudService } from '../workspaces/workspace-cloud.service.js'
 import { lockWorkspaceStorage, workspaceDb } from '../workspaces/workspace-db.js'
@@ -22,6 +24,7 @@ export class ConversationsService {
     @Inject(PrismaService)
     private readonly prismaService: PrismaService,
     @Inject(WorkspaceGcService) private readonly gc = new WorkspaceGcService(prismaService, new WorkspaceCloudService()),
+    @Inject(AttachmentsService) private readonly attachments = new AttachmentsService(prismaService, new AttachmentStorageService()),
   ) {}
 
   async create(userId: string, input: CreateConversationDto): Promise<Conversation> {
@@ -104,9 +107,12 @@ export class ConversationsService {
       if (!own)
         throw new NotFoundException('会话不存在或已被删除')
       await this.gc.register(db, userId, conversationId, new Date())
+      // 附件不随会话级联删除：同事务先标记，提交后由后台删 OSS 对象、再删行。
+      await this.attachments.markConversationDeleted(db, conversationId)
       await db.conversation.delete({ where: { id: conversationId } })
     })
     this.gc.kick(conversationId)
+    this.attachments.kickSweep()
 
     return {
       deleted: true,

@@ -25,6 +25,7 @@ import type {
   ToolDisplay,
   UnvalidatedToolCallEnvelope,
 } from './tools/tool.types.js'
+import { aborted } from 'node:util'
 import {
   LLMAuthError,
   LLMBalanceError,
@@ -111,7 +112,7 @@ export class AgentRuntime {
 
       // 落库与进模型上下文的是同一个替换后的串。
       const normalizedMessage = toPersistableText(input.userContent.trim())
-      const userMessage = await this.host.createUserMessage(input.conversationId, normalizedMessage)
+      const userMessage = await this.host.createUserMessage(input.conversationId, normalizedMessage, input.attachmentIds ?? [])
       userMessagePersisted = true
 
       const agentRun = await this.host.recorder.createRun({
@@ -145,20 +146,12 @@ export class AgentRuntime {
       runCancellation.throwIfUnavailable()
       // 同一个快照里读最新压缩记录与严格早于当前问题的历史（#220）：被覆盖的问答由摘要代替，其余按问答分组、
       // 最旧在前，带回之前问答的工具调用与结果（#218），不按条数截断。
-      const { history, messageCount } = await this.host.loadHistory(
-        input.conversationId,
-        userMessage,
-        databaseDeadline,
-      )
+      const { history, messageCount } = await Promise.race([
+        this.host.loadHistory(input.conversationId, userMessage, databaseDeadline),
+        aborted(runSignal, userMessage).then(() => Promise.reject(runSignal.reason)),
+      ])
       runCancellation.throwIfUnavailable()
 
-      const modelContext = ModelContext.create({
-        // 系统提示词
-        instructions: input.instructions,
-        history,
-        // 当前用户消息；创建时间给本轮压缩的摘要输入写日期
-        currentUser: { content: userMessage.content, createdAt: userMessage.createdAt },
-      })
       await this.host.recorder.completeStep(
         loadHistoryStep.id,
         databaseDeadline,
@@ -168,17 +161,6 @@ export class AgentRuntime {
           output: { messageCount },
         },
       )
-      // 本 Run 的压缩状态：检查点 A、C 都用它（#220）。
-      const compactionRun: CompactionRun = {
-        runId: currentAgentRunId,
-        conversationId: input.conversationId,
-        model: input.model,
-        keepRecentTokens: input.runtimeConfig.compactionKeepRecentTokens,
-        tools: modelTools,
-        context: modelContext,
-        cancellation: runCancellation,
-        loop: { attemptedSinceSampling: false, ineffectiveAttempts: 0 },
-      }
       // 服务商报超长后已经压缩重试过、之后还没有成功采样（照 Pi：连续超长只救一次）。
       let overflowRetried = false
 
@@ -202,6 +184,29 @@ export class AgentRuntime {
         conversationId: input.conversationId,
         userMessageId: userMessage.id,
         assistantMessageId,
+      }
+
+      // 先发布已提交的消息/Run 身份，再做可失败的图片读取；失败由现有 Run 终态收口。
+      runCancellation.throwIfUnavailable()
+      const preparedUserMessage = await Promise.race([
+        this.host.loadUserMessage(userMessage),
+        aborted(runSignal, userMessage).then(() => Promise.reject(runSignal.reason)),
+      ])
+      runCancellation.throwIfUnavailable()
+      const modelContext = ModelContext.create({
+        instructions: input.instructions,
+        history,
+        currentUser: { content: preparedUserMessage.modelContent, ...(preparedUserMessage.images ? { images: preparedUserMessage.images } : {}), createdAt: userMessage.createdAt },
+      })
+      const compactionRun: CompactionRun = {
+        runId: currentAgentRunId,
+        conversationId: input.conversationId,
+        model: input.model,
+        keepRecentTokens: input.runtimeConfig.compactionKeepRecentTokens,
+        tools: modelTools,
+        context: modelContext,
+        cancellation: runCancellation,
+        loop: { attemptedSinceSampling: false, ineffectiveAttempts: 0 },
       }
 
       let assistantOutputStepId: string | undefined

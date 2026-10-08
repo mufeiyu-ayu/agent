@@ -10,6 +10,8 @@ import type { AgentRecentChat } from '../types/agent-platform'
 import type {
   AppMessageState,
   AppMessageType,
+  ChatAttachment,
+  ComposerAttachment,
   GenerationStatus,
   TurnRun,
 } from '../types/chat'
@@ -18,6 +20,7 @@ import { isAxiosError } from 'axios'
 import { computed, onMounted, onUnmounted, ref, shallowReactive, shallowRef } from 'vue'
 import { useI18n } from 'vue-i18n'
 
+import { attachmentContentUrl } from '../api/attachments'
 import { ChatStreamHttpError, streamChat } from '../api/chat'
 import {
   createConversation,
@@ -69,6 +72,8 @@ interface UseChatWorkspaceOptions {
 export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
   const { t } = useI18n()
   const message = ref('')
+  // 输入框里待发送的附件：增删由 useComposerAttachments 负责，这里只在发送与切会话时清。
+  const attachments = ref<ComposerAttachment[]>([])
   const conversations = ref<Conversation[]>([])
   const activeConversationId = ref<string | null>(null)
   const messages = ref<ConversationMessage[]>([])
@@ -84,6 +89,10 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
   const localTurnErrors = ref<Record<string, string>>({})
   // 每轮的等待过程（#208），按助手消息 id 存在页面内存里；刷新后由消息的 activity 还原（#212）。
   const turnRuns = shallowRef<Record<string, TurnRun>>({})
+  // 这次页面里发出的附件按用户消息 id 留着本地地址：图片不用再从后端下载一遍。其余消息的附件来自接口。
+  const turnAttachments = shallowRef<Record<string, ChatAttachment[]>>({})
+  // 接口附件的映射结果按消息对象记住，理由同 restoredRuns：历史轮次要保持同一个数组，v-memo 才不失效。
+  const fetchedAttachments = new WeakMap<ConversationMessage, ChatAttachment[]>()
   // 还原结果按消息对象记住：流式时每帧都会重算全部轮次，历史轮次的 run 要保持同一个对象，
   // 否则 AgentConversation 的 v-memo 失效、每帧重渲染所有历史轮次。消息更新时换成新对象，自然重新还原。
   const restoredRuns = new WeakMap<ConversationMessage, TurnRun | undefined>()
@@ -117,6 +126,7 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
       activeTurnId: currentRequest.value?.active ? currentRequest.value.turnId : null,
       turnErrors: localTurnErrors.value,
       runs: turnRuns.value,
+      attachmentsOf,
       restoredRun: restoredRunOf,
     })
   })
@@ -272,6 +282,10 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
     initialSelectionAllowed = false
     const submittedMessage = message.value
     const messageContent = submittedMessage.trim()
+    const submittedAttachments = attachments.value
+    const submittedAttachmentIds = new Set(submittedAttachments.map(item => item.id))
+    const attachmentIds = submittedAttachments.flatMap(item => item.remoteId ? [item.remoteId] : [])
+    const sentAttachments = submittedAttachments.map(({ status: _status, progress: _progress, remoteId: _remoteId, ...attachment }) => attachment)
     const request = shallowReactive<ChatRequestState>({
       key: currentViewKey.value,
       requestId: createClientMessageId(),
@@ -287,13 +301,15 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
       pendingReasoning: null,
     })
     requests.set(request.key, request)
+    attachments.value = attachments.value.map(item => submittedAttachmentIds.has(item.id) ? { ...item, locked: true } : item)
     shouldAnchorLatestTurn.value = true
     let pendingMessage: ConversationMessage | undefined
 
     try {
       if (!request.conversationId) {
         const conversation = await createConversation({
-          title: createConversationTitle(messageContent),
+          // 只发附件时用第一个文件名当会话标题。
+          title: createConversationTitle(messageContent || sentAttachments[0]?.name || ''),
         }, { signal: request.controller.signal })
 
         if (!ownsActiveRequest(request))
@@ -310,9 +326,11 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
       }
 
       const conversationId = request.conversationId
-      const payload = buildChatRequest(conversationId, messageContent, model, reasoningEffort)
-      pendingMessage = createPendingUserMessage(conversationId, payload.message)
+      const payload = buildChatRequest(conversationId, messageContent, attachmentIds, model, reasoningEffort)
+      pendingMessage = createPendingUserMessage(conversationId, messageContent)
       request.turnId = pendingMessage.id
+      if (sentAttachments.length > 0)
+        turnAttachments.value = { ...turnAttachments.value, [pendingMessage.id]: sentAttachments }
       upsertMessageInConversation(pendingMessage)
 
       for await (const event of streamChat(payload, { signal: request.controller.signal })) {
@@ -351,6 +369,11 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
           // 创建和 start 都可能在切走后到达，不抢选中会话，也不清掉另一视图的输入。
           if (currentViewKey.value === request.key && message.value === submittedMessage)
             message.value = ''
+          if (sentAttachments.length > 0) {
+            turnAttachments.value = { ...turnAttachments.value, [event.userMessageId]: sentAttachments }
+            // 按本地 id 只拿走这次发出的；状态回填会换对象，不能用对象引用判断。
+            attachments.value = attachments.value.filter(item => !submittedAttachmentIds.has(item.id))
+          }
           request.status = 'generating'
           touchConversation(conversationId)
           continue
@@ -368,8 +391,13 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
           if (request.assistantMessageId)
             endTurnRun(request.assistantMessageId, 'error')
           request.error = event.message
-          if (event.userMessagePersisted)
+          if (event.userMessagePersisted) {
             touchConversation(conversationId)
+            // start 前的失败也可能已经提交，附件已被消费，不能留作再次绑定的重试。
+            attachments.value = attachments.value.filter(item => !submittedAttachmentIds.has(item.id))
+            if (currentViewKey.value === request.key && message.value === submittedMessage)
+              message.value = ''
+          }
           handleStreamErrorEvent(event, pendingMessage)
           finishRequest(request, 'error')
           if (currentViewKey.value === request.key)
@@ -416,6 +444,7 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
       }
     }
     finally {
+      attachments.value = attachments.value.map(item => submittedAttachmentIds.has(item.id) ? { ...item, locked: false } : item)
       clearRequestBuffers(request)
     }
   }
@@ -438,6 +467,23 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
     request.reasoningTimer = undefined
     request.pendingDelta = null
     request.pendingReasoning = null
+  }
+
+  function attachmentsOf(message: ConversationMessage): ChatAttachment[] | undefined {
+    const local = turnAttachments.value[message.id]
+    if (local || !message.attachments?.length)
+      return local
+
+    let mapped = fetchedAttachments.get(message)
+    if (!mapped) {
+      mapped = message.attachments.map(attachment => ({
+        ...attachment,
+        url: attachmentContentUrl(attachment.id),
+        ...(attachment.kind === 'image' ? { thumbUrl: attachmentContentUrl(attachment.id, 'thumb') } : {}),
+      }))
+      fetchedAttachments.set(message, mapped)
+    }
+    return mapped
   }
 
   function restoredRunOf(message: ConversationMessage): TurnRun | undefined {
@@ -595,6 +641,7 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
   function buildChatRequest(
     conversationId: string,
     messageContent: string,
+    attachmentIds: string[],
     model?: string | null,
     reasoningEffort?: ReasoningEffort,
   ): ChatRequest {
@@ -603,6 +650,7 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
     return {
       conversationId,
       message: messageContent,
+      ...(attachmentIds.length > 0 ? { attachmentIds } : {}),
       ...(nextModel ? { model: nextModel } : {}),
       ...(reasoningEffort ? { reasoningEffort } : {}),
     }
@@ -988,13 +1036,16 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
 
   function resetComposerState() {
     message.value = ''
+    attachments.value = []
     hideMessage()
     shouldAnchorLatestTurn.value = false
   }
 
   function canStartChatRequest(): boolean {
     const request = currentRequest.value
-    return !isUnmounted && isHistoryReady.value && !request?.active && Boolean(message.value.trim())
+    return !isUnmounted && isHistoryReady.value && !request?.active
+      && (Boolean(message.value.trim()) || attachments.value.length > 0)
+      && attachments.value.every(item => item.status === 'ready' && item.remoteId)
       && (!request || Date.now() - request.requestedAt >= CHAT_REQUEST_INTERVAL_MS)
   }
 
@@ -1090,6 +1141,7 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
 
   return {
     message,
+    attachments,
     status,
     errorMessage,
     conversations,

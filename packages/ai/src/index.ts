@@ -34,6 +34,7 @@ export type {
   AssistantToolCallInputItem,
   ChatStreamOptions,
   JsonObjectSchema,
+  MessageImage,
   MessageInputItem,
   ModelFinishReason,
   ModelInputItem,

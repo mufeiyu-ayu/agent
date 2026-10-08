@@ -24,6 +24,8 @@ export interface LLMModelProfile {
   maxOutputTokens: number
   compat: LlmFamilyCompat
   reasoningEffort: ReasoningEffort | null
+  /** 模型能不能看图片；省略按不能。为假时请求里的图片换成说明文字，见 `toOpenAIModelInputItem`。 */
+  supportsImageInput?: boolean
 }
 
 /**
@@ -37,6 +39,8 @@ export interface ResolvedChatRequestConfig {
   contextWindowTokens: number
   maxOutputTokens: number
   compat: LlmFamilyCompat
+  /** 省略按不能看图。 */
+  supportsImageInput?: boolean
   /** 省略表示请求体不带 reasoning_effort。 */
   reasoningEffort?: ReasoningEffort
   /** 关掉 compat 的思考开关（DeepSeek 发 `thinking: { type: 'disabled' }`）；省略时按家族照常开启。 */
@@ -60,6 +64,7 @@ export function resolveChatRequestConfig(
     contextWindowTokens: profile.contextWindowTokens,
     maxOutputTokens: profile.maxOutputTokens,
     compat: profile.compat,
+    ...(profile.supportsImageInput ? { supportsImageInput: true } : {}),
     ...(reasoningEffort ? { reasoningEffort } : {}),
   }
 }

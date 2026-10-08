@@ -2,6 +2,8 @@ import type { CompactionRun as CoreCompactionRun } from '@agent/agent'
 import type { ResolvedLlmModel } from '../../llm/llm-model-config.service.js'
 import { ContextCompactionService as CoreCompaction } from '@agent/agent'
 import { Inject, Injectable, Logger } from '@nestjs/common'
+import { AttachmentStorageService } from '../../attachments/attachment-storage.service.js'
+import { AttachmentsService } from '../../attachments/attachments.service.js'
 import { LLMService } from '../../llm/llm.service.js'
 import { DatabaseOperationDeadlineExceededError, PrismaService } from '../../prisma/prisma.service.js'
 import { runRecorder, runtimeConfig, runtimeModel } from '../agent-runtime-host.js'
@@ -20,6 +22,7 @@ export class ContextCompactionService {
     @Inject(LLMService) private readonly llmService: LLMService,
     @Inject(PrismaService) private readonly prismaService: PrismaService,
     @Inject(AgentRunRecorderService) private readonly agentRunRecorderService: AgentRunRecorderService,
+    @Inject(AttachmentsService) private readonly attachments = new AttachmentsService(prismaService, new AttachmentStorageService()),
   ) {}
 
   compactBeforeSampling(run: CompactionRun): Promise<void> {
@@ -44,7 +47,8 @@ export class ContextCompactionService {
       recorder: runRecorder(this.agentRunRecorderService),
       logger: this.logger,
       createTimeoutError: () => new DatabaseOperationDeadlineExceededError(),
-      loadHistory: (conversationId, before, deadline) => loadConversationHistory(this.prismaService, conversationId, before, deadline),
+      // 这里读的历史只用来写摘要：摘要输入是纯文字，不读图片。
+      loadHistory: (conversationId, before, deadline) => loadConversationHistory(this.prismaService, conversationId, before, deadline, this.attachments, { images: false }),
       insertCompaction: (input, deadline) => this.prismaService.withDeadlineTransaction(deadline, transaction => transaction.execute(prisma => prisma.conversationCompaction.create({
         data: input,
         select: { id: true, summary: true, coveredGroupIds: true, answerOnlyGroupId: true },

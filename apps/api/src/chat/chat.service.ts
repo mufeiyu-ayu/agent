@@ -47,6 +47,7 @@ export class ChatService {
       userId,
       conversationId: input.conversationId,
       userContent: input.message,
+      ...(input.attachmentIds?.length ? { attachmentIds: input.attachmentIds } : {}),
       model,
       runtimeConfig,
       ...(input.reasoningEffort

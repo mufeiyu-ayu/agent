@@ -4,9 +4,38 @@ export type GenerationStatus = 'empty' | 'idle' | 'thinking' | 'generating' | 'd
 
 export type ConversationTurnStatus = 'thinking' | 'generating' | 'success' | 'error' | 'aborted'
 
+/**
+ * 消息里的一个附件。`url` 是完整内容的地址：这次页面里刚发出的是本地 object URL（不用再下载一遍），
+ * 从接口读到的是后端地址。
+ */
+export interface ChatAttachment {
+  id: string
+  kind: 'image' | 'file'
+  name: string
+  bytes: number
+  url: string
+  /** 图片在消息列表里显示用的缩略图地址；没有就直接用 `url`。 */
+  thumbUrl?: string
+  /** 图片原始尺寸：消息列表按它预留位置，加载出来不推动下面的内容。 */
+  width?: number
+  height?: number
+}
+
+/** 输入框里还没发出的附件。 */
+export interface ComposerAttachment extends ChatAttachment {
+  /** 上传成功后服务端给的附件 id，发送时带的是它；`id` 只是页面里的本地标识。 */
+  remoteId?: string
+  /** 已交给正在提交的请求：确认前不能移除并撤销消息副本使用的 URL。 */
+  locked?: boolean
+  status: 'uploading' | 'ready' | 'error'
+  /** 0–1。 */
+  progress: number
+}
+
 export interface ConversationTurn {
   id: string
   userMessage: string
+  attachments?: ChatAttachment[]
   status: ConversationTurnStatus
   createdAt: string
   reply?: string

@@ -141,6 +141,7 @@ test('模型行可见性写入有 loading 且防重复，失败恢复并可重�
     maxInputTokens: 32000,
     maxOutputTokens: 8192,
     reasoningEffort: null,
+    supportsImageInput: false,
     visible: true,
     isDefault: false,
     sortOrder: 0,
@@ -161,7 +162,7 @@ test('模型行可见性写入有 loading 且防重复，失败恢复并可重�
     writes.push(route)
   })
   await page.goto('/llm-models')
-  const visible = page.getByRole('row').filter({ hasText: 'fixture-model' }).getByRole('switch')
+  const visible = page.getByRole('row').filter({ hasText: 'fixture-model' }).getByRole('switch', { name: '前台可见' })
   await page.locator('.provider-card').click()
   assert.equal(modelReads, 1)
   await visible.click()

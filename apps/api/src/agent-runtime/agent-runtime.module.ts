@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common'
+import { AttachmentsModule } from '../attachments/attachments.module.js'
 import { PrismaModule } from '../prisma/prisma.module.js'
 
 import { ToolsModule } from '../tools/tools.module.js'
@@ -8,7 +9,7 @@ import { ContextCompactionService } from './context/context-compaction.service.j
 import { AgentRunRecorderService } from './lifecycle/agent-run-recorder.service.js'
 
 @Module({
-  imports: [PrismaModule, ToolsModule, WorkspacesModule],
+  imports: [PrismaModule, ToolsModule, WorkspacesModule, AttachmentsModule],
   providers: [
     ContextCompactionService,
     AgentRunRecorderService,

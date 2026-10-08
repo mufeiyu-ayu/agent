@@ -172,6 +172,7 @@ export async function installApiRoutes(
     reasoningEffort: 'high',
     reasoningEffortOptions: ['low', 'high', 'max'],
     isDefault: true,
+    supportsImageInput: true,
   }])))
 
   await page.route('**/api/llm/balance', route => route.fulfill(json({

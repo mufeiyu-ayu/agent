@@ -81,6 +81,17 @@ export type {
   ApiSuccessResponse,
 } from './api-response.js'
 export type {
+  AttachmentKind,
+  MessageAttachment,
+} from './attachment.js'
+export {
+  ATTACHMENT_FILE_EXTENSIONS,
+  ATTACHMENT_FILE_MAX_BYTES,
+  ATTACHMENT_IMAGE_EXTENSIONS,
+  ATTACHMENT_IMAGE_MAX_BYTES,
+  ATTACHMENT_MAX_COUNT,
+} from './attachment.js'
+export type {
   AdminUser,
   AuthConfig,
   AuthUser,

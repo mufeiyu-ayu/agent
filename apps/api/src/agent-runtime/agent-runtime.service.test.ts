@@ -40,6 +40,7 @@ import {
 import { familyCompatOf } from '@agent/contracts'
 import { describe, it, onTestFinished, vi } from 'vitest'
 import { projectAdminRunDetail } from '../admin-runs/projection/admin-run.projector.js'
+import { AttachmentsService } from '../attachments/attachments.service.js'
 import { toChatStreamEvent } from '../chat/chat-stream-event.mapper.js'
 import { WORKSPACE_DEVELOPMENT_INSTRUCTION, WORKSPACE_TOOL_NAMES } from '../chat/prompts/workspace-development.prompt.js'
 import { getAiExceptionMessage } from '../common/utils/llm-error-message.util.js'
@@ -66,6 +67,46 @@ import { ContextCompactionService } from './context/context-compaction.service.j
 const MODEL_TOOL_NAMES = TOOL_DEFINITIONS.map(definition => definition.name)
 
 describe('AgentRuntimeService model stream', () => {
+  it('提交后读图失败仍保留用户消息与 Run，先确认 start 再按已持久化失败收口', async () => {
+    const spy = vi.spyOn(AttachmentsService.prototype, 'modelInput').mockRejectedValue(new Error('storage read timeout'))
+    onTestFinished(() => spy.mockRestore())
+    const harness = createHarness(() => {
+      throw new Error('不应调用模型')
+    })
+    const events = await collectEvents(harness.run())
+    assert.equal(events[0]?.type, 'run_started')
+    const failure = events.find(event => event.type === 'run_failed')
+    assert.equal(failure?.userMessagePersisted, true)
+    assert.deepEqual(harness.recorder.failedRunIds, ['run-1'])
+    assert.equal(harness.prisma.messages.filter(message => message.role === MessageRole.USER).length, 1)
+    assert.equal(harness.assistantMessage()?.status, MessageStatus.FAILED)
+    assert.equal(harness.llmCalls.length, 0)
+  })
+
+  it('读附件尚未返回时停止立即收口，迟到读取不能恢复运行或调用模型', async () => {
+    const gate = createDeferred()
+    const controller = new AbortController()
+    const spy = vi.spyOn(AttachmentsService.prototype, 'modelInput').mockImplementation(async () => {
+      await gate.promise
+      return { modelContent: 'late image input' }
+    })
+    onTestFinished(() => spy.mockRestore())
+    const harness = createHarness(() => {
+      throw new Error('不应调用模型')
+    }, controller.signal)
+    const stream = harness.run()
+    assert.equal((await stream.next()).value?.type, 'run_started')
+    const waiting = stream.next()
+    controller.abort(new Error('user stop'))
+    assert.equal((await waiting).value?.type, 'run_aborted')
+    assert.equal((await stream.next()).done, true)
+    gate.resolve()
+    await Promise.resolve()
+    assert.deepEqual(harness.recorder.abortedRunIds, ['run-1'])
+    assert.deepEqual(harness.recorder.failedRunIds, [])
+    assert.equal(harness.llmCalls.length, 0)
+  })
+
   it('开发指南先落库再重采样；整批旧工作区计划不执行，续轮只执行新计划', async () => {
     const args = ['{"path":"src/App.tsx"}', '{"path":"a.py","content":"print(42)"}', '{"path":"a.py","edits":[{"oldText":"42","newText":"43"}]}', '{"command":"pnpm check"}']
     const harness = createHarness((_messages, _options, index) => index < 2
@@ -4426,6 +4467,9 @@ class FakePrismaService {
     },
   }
 
+  // 会话写入与删除使用事务级 advisory lock；此单测夹具不模拟 PostgreSQL 的锁等待。
+  async $executeRaw(): Promise<number> { return 0 }
+
   async $transaction<T>(operation: (prisma: FakePrismaService) => Promise<T>): Promise<T> {
     return await operation(this)
   }
@@ -4434,6 +4478,9 @@ class FakePrismaService {
     findMany: async ({ where }: { where: { conversationId: string, userMessageId: { in: string[] } } }): Promise<HistoryRunRow[]> =>
       structuredClone(this.historyRuns.filter(run => where.userMessageId.in.includes(run.userMessageId))),
   }
+
+  // 这些用例的消息都不带附件。
+  readonly attachment = { findMany: async () => [] }
 
   readonly conversationCompaction = {
     findFirst: async ({ where }: { where: { conversationId: string } }) => {

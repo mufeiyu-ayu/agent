@@ -12,6 +12,9 @@ export function roughTokens(text: string): number {
   return Math.ceil(Buffer.byteLength(text, 'utf8') / 4)
 }
 
+/** 每张图片按固定值估（照抄 Pi `compaction.ts` 的 4800 字符 ÷ 4，ce950d78），与实际分辨率无关。 */
+export const IMAGE_TOKENS = 1200
+
 /**
  * 一个输入项发给模型的文字：正文、`reasoning_content`、工具名 + 参数 JSON、工具结果；
  * 每项各自取整再求和（同 Codex），role 与 callId 这类包装不计。
@@ -19,6 +22,7 @@ export function roughTokens(text: string): number {
 export function estimateItemTokens(item: ModelInputItem): number {
   switch (item.type) {
     case 'message':
+      return roughTokens(item.content) + (item.images?.length ?? 0) * IMAGE_TOKENS
     case 'tool_result':
       return roughTokens(item.content)
     case 'assistant_tool_call':

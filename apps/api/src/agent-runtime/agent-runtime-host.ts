@@ -1,4 +1,5 @@
 import type { RunRecorder, RuntimeConfig, RuntimeHost, RuntimeModel, StoredMessage } from '@agent/agent'
+import type { AttachmentModelRow } from '../attachments/attachments.service.js'
 import type { Prisma } from '../generated/prisma/client.js'
 import type { ResolvedLlmModel } from '../llm/llm-model-config.service.js'
 import type { LLMService } from '../llm/llm.service.js'
@@ -9,11 +10,14 @@ import type { RunTurnStreamInput } from './agent-runtime.types.js'
 import type { ContextCompactionService } from './context/context-compaction.service.js'
 import type { AgentRunRecorderService } from './lifecycle/agent-run-recorder.service.js'
 import { NotFoundException } from '@nestjs/common'
+import { AttachmentStorageService } from '../attachments/attachment-storage.service.js'
+import { AttachmentsService } from '../attachments/attachments.service.js'
 import { WORKSPACE_DEVELOPMENT_INSTRUCTION, WORKSPACE_DEVELOPMENT_VERSION, WORKSPACE_TOOL_NAMES } from '../chat/prompts/workspace-development.prompt.js'
 import { getAiExceptionMessage } from '../common/utils/llm-error-message.util.js'
 import { MessageRole, MessageStatus } from '../generated/prisma/client.js'
 import { DatabaseCommitOutcomeUnknownError, DatabaseOperationDeadlineExceededError } from '../prisma/prisma.service.js'
 import { toToolProgressArguments } from '../tools/web/tool-progress-arguments.js'
+import { lockWorkspaceStorage } from '../workspaces/workspace-db.js'
 import { loadConversationHistory } from './context/conversation-history.js'
 
 function messageSnapshot(message: StoredMessage): StoredMessage {
@@ -61,9 +65,12 @@ export function createRuntimeHost(input: RunTurnStreamInput, deps: {
   tools: ToolInvocationService
   compaction: ContextCompactionService
   logger: RuntimeHost['logger']
+  attachments?: AttachmentsService
   workspaces?: WorkspaceService
 }): RuntimeHost {
   const { prisma, recorder, compaction } = deps
+  const attachments = deps.attachments ?? new AttachmentsService(prisma, new AttachmentStorageService())
+  let userAttachmentRows: AttachmentModelRow[] = []
   let guideStepId: string | undefined
   let guideRequired = false
   return {
@@ -87,17 +94,28 @@ export function createRuntimeHost(input: RunTurnStreamInput, deps: {
     classifyError: classifyHostError,
     aiErrorMessage: getAiExceptionMessage,
     createTimeoutError: () => new DatabaseOperationDeadlineExceededError(),
-    loadHistory: (conversationId, before, deadline) => loadConversationHistory(prisma, conversationId, before, deadline),
+    loadHistory: (conversationId, before, deadline) => loadConversationHistory(prisma, conversationId, before, deadline, attachments),
     assertConversationExists: async (conversationId) => {
       const conversation = await prisma.conversation.findUnique({ where: { id: conversationId }, select: { id: true } })
       if (!conversation)
         throw new NotFoundException('会话不存在或已被删除')
     },
-    createUserMessage: (conversationId, content) => prisma.$transaction(async (db) => {
-      const message = await db.message.create({ data: { conversationId, role: MessageRole.USER, content, status: MessageStatus.COMPLETED } })
-      await db.conversation.update({ where: { id: conversationId }, data: { updatedAt: new Date() } })
+    createUserMessage: async (conversationId, content, attachmentIds) => {
+      const { message, rows } = await prisma.$transaction(async (db) => {
+        // 和删会话共用锁；锁内再确认，不能在删除标记之后插入新的附件绑定。
+        await lockWorkspaceStorage(db, conversationId)
+        if (!await db.conversation.findUnique({ where: { id: conversationId }, select: { id: true } }))
+          throw new NotFoundException('会话不存在或已被删除')
+        const message = await db.message.create({ data: { conversationId, role: MessageRole.USER, content, status: MessageStatus.COMPLETED } })
+        const rows = await attachments.bind(db, { userId: input.userId, conversationId, messageId: message.id, attachmentIds })
+        await db.conversation.update({ where: { id: conversationId }, data: { updatedAt: new Date() } })
+        return { message, rows }
+      })
+      userAttachmentRows = rows
+      // 提交确认只返回持久身份，不让后续存储错误把成功提交误报成未提交。
       return messageSnapshot(message)
-    }),
+    },
+    loadUserMessage: async message => ({ ...messageSnapshot(message), ...await attachments.modelInput(message.content, userAttachmentRows) }),
     prepareToolBatch: async (batch, deadline) => {
       guideRequired = !guideStepId && !batch.argumentsTruncated && batch.calls.some(call => WORKSPACE_TOOL_NAMES.includes(call.toolName))
       if (!guideRequired)

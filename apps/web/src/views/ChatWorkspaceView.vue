@@ -2,16 +2,18 @@
 import type { WorkspaceFile } from '@agent/contracts'
 
 import type { AgentNavigationItem, AgentPlatformUser } from '../types/agent-platform'
+import type { ChatAttachment } from '../types/chat'
 import { userDisplayName, userInitial } from '@agent/contracts'
 import { useElementSize } from '@vueuse/core'
 import { SplitterGroup, SplitterPanel, SplitterResizeHandle } from 'reka-ui'
-import { computed, nextTick, onScopeDispose, ref, watch } from 'vue'
+import { computed, nextTick, onScopeDispose, ref, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 
 import workspaceBgOliveEmberDeepUrl from '../assets/bg-olive.webp'
 import workspaceBgAiBalancedUrl from '../assets/bg-warm.webp'
 import AgentConversation from '../components/agent/AgentConversation.vue'
+import AttachmentPreviewPanel from '../components/agent/AttachmentPreviewPanel.vue'
 import HtmlPreviewPanel from '../components/agent/HtmlPreviewPanel.vue'
 import WorkspaceFilesPanel from '../components/agent/WorkspaceFilesPanel.vue'
 import ChatComposer from '../components/chat/ChatComposer.vue'
@@ -21,6 +23,7 @@ import AppTooltip from '../components/common/AppTooltip.vue'
 import AppShell from '../components/layout/AppShell.vue'
 import { useAuth } from '../hooks/useAuth'
 import { useChatWorkspace } from '../hooks/useChatWorkspace'
+import { useComposerAttachments } from '../hooks/useComposerAttachments'
 import { useHtmlPreview } from '../hooks/useHtmlPreview'
 import { useLlmRuntime } from '../hooks/useLlmRuntime'
 import { useWorkspaceFiles } from '../hooks/useWorkspaceFiles'
@@ -75,6 +78,7 @@ let forgetWorkspaceConversation: ((id: string) => void) | undefined
 
 const {
   message,
+  attachments,
   status,
   appMessage,
   recentChats,
@@ -100,6 +104,18 @@ const {
 } = useChatWorkspace({
   onModelUnavailable: () => { void loadModels(true) },
   onConversationDeleted: id => forgetWorkspaceConversation?.(id),
+})
+
+const {
+  add: addAttachments,
+  remove: removeAttachment,
+  retry: retryAttachment,
+} = useComposerAttachments(attachments, text => showMessage(text, 'error'))
+
+// 选中的模型不能看图片、而待发送的附件里有图片时拦住发送；模型列表还没读到时不拦。
+const imagesUnsupported = computed(() => {
+  const model = models.value.find(option => option.id === selectedModel.value)
+  return Boolean(model) && !model!.supportsImageInput && attachments.value.some(item => item.kind === 'image')
 })
 
 const composer = ref<InstanceType<typeof ChatComposer> | null>(null)
@@ -136,7 +152,25 @@ function invalidateSideAnimation() {
   }
 }
 onScopeDispose(invalidateSideAnimation)
-const sideOpen = computed(() => previewOpen.value || filesOpen.value)
+// 右侧面板里正在预览的上传附件；和 HTML 预览、工作文件面板三者同一时间只开一个。
+const previewedAttachment = shallowRef<ChatAttachment>()
+let attachmentTrigger: Element | null = null
+const sideOpen = computed(() => previewOpen.value || filesOpen.value || previewedAttachment.value !== undefined)
+
+function openAttachment(attachment: ChatAttachment) {
+  attachmentTrigger = document.activeElement
+  filesOpen.value = false
+  void closePreview()
+  previewedAttachment.value = attachment
+}
+
+async function closeAttachment() {
+  previewedAttachment.value = undefined
+  await nextTick()
+  // 焦点回到打开它的那一行文件上。
+  if (attachmentTrigger instanceof HTMLElement && attachmentTrigger.isConnected)
+    attachmentTrigger.focus({ preventScroll: true })
+}
 const {
   snapshot: workspaceSnapshot,
   loading: workspaceLoading,
@@ -153,6 +187,7 @@ const {
 forgetWorkspaceConversation = forgetConversation
 watch(previewOpen, (open) => {
   if (open) {
+    previewedAttachment.value = undefined
     filesOpen.value = false
     artifactRequest++
     openingArtifact.value = false
@@ -163,6 +198,7 @@ watch([activeConversationId, () => currentUser.value?.id], () => {
   sideVisible.value = false
   sideAnimationState.value = 'idle'
   filesOpen.value = false
+  previewedAttachment.value = undefined
   artifactRequest++
   openingArtifact.value = false
   filesAutoPreview.value = true
@@ -192,6 +228,7 @@ async function openFiles(file?: WorkspaceFile) {
   filesAutoPreview.value = !file
   openingArtifact.value = true
   void closePreview()
+  previewedAttachment.value = undefined
   try {
     await refreshFiles()
     if (request !== artifactRequest || activeConversationId.value !== conversationId)
@@ -434,6 +471,8 @@ function send() {
                 v-model:selected-reasoning-effort="selectedReasoningEffort"
                 hero
                 class="mt-10"
+                :attachments="attachments"
+                :images-unsupported="imagesUnsupported"
                 :models="models"
                 :models-loading="modelsLoading"
                 :model-error="modelError"
@@ -443,6 +482,9 @@ function send() {
                 :history-ready="isHistoryReady"
                 :history-loading="isLoadingMessages && !isHistoryReady"
                 :history-error="conversationError"
+                @add-files="addAttachments"
+                @remove-attachment="removeAttachment"
+                @retry-attachment="retryAttachment"
                 @retry-history="reloadMessages"
                 @refresh-models="loadModels"
                 @send="send"
@@ -479,6 +521,7 @@ function send() {
               :workspace-files="workspaceSnapshot?.files ?? []"
               :opening-artifact="openingArtifact"
               @open-file="openFiles"
+              @preview-attachment="openAttachment"
             />
 
             <ChatComposer
@@ -486,6 +529,8 @@ function send() {
               v-model:message="message"
               v-model:selected-model="selectedModel"
               v-model:selected-reasoning-effort="selectedReasoningEffort"
+              :attachments="attachments"
+              :images-unsupported="imagesUnsupported"
               :models="models"
               :models-loading="modelsLoading"
               :model-error="modelError"
@@ -495,6 +540,9 @@ function send() {
               :history-ready="isHistoryReady"
               :history-loading="isLoadingMessages && !isHistoryReady"
               :history-error="conversationError"
+              @add-files="addAttachments"
+              @remove-attachment="removeAttachment"
+              @retry-attachment="retryAttachment"
               @retry-history="reloadMessages"
               @refresh-models="loadModels"
               @send="send"
@@ -531,6 +579,7 @@ function send() {
             }"
           >
             <HtmlPreviewPanel v-if="previewOpen && splitPreview" :code="previewCode" @close="closePreview" />
+            <AttachmentPreviewPanel v-if="previewedAttachment && splitPreview" :attachment="previewedAttachment" @close="closeAttachment" />
             <WorkspaceFilesPanel
               v-if="filesOpen && splitPreview"
               ref="filesPanel"
@@ -561,6 +610,22 @@ function send() {
           focus-close
           class="absolute inset-0 z-40"
           @close="closePreview"
+        />
+      </Transition>
+      <Transition
+        enter-active-class="transition-transform duration-300 ease-out motion-reduce:transition-none motion-reduce:duration-0"
+        enter-from-class="translate-x-full"
+        enter-to-class="translate-x-0"
+        leave-active-class="transition-transform duration-250 ease-in motion-reduce:transition-none motion-reduce:duration-0"
+        leave-from-class="translate-x-0"
+        leave-to-class="translate-x-full"
+      >
+        <AttachmentPreviewPanel
+          v-if="previewedAttachment && !splitPreview"
+          :attachment="previewedAttachment"
+          focus-close
+          class="absolute inset-0 z-40"
+          @close="closeAttachment"
         />
       </Transition>
       <Transition

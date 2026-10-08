@@ -5,7 +5,10 @@ export const CHAT_MESSAGE_MAX_CHARS = 64_000
 
 export interface ChatRequest {
   conversationId: string
+  /** 带了附件时可以是空串。 */
   message: string
+  /** 已上传、还没发出过的附件 id，最多 `ATTACHMENT_MAX_COUNT` 个；发出后绑定到这条用户消息。 */
+  attachmentIds?: string[]
   /** Admin 配置的模型行 id（`ChatModelOption.id`）；省略时用默认模型。 */
   model?: string
   /** 按次覆盖模型行的默认 reasoning_effort；只能取该模型家族的值（`ChatModelOption.reasoningEffortOptions`）。 */
@@ -22,6 +25,8 @@ export interface ChatModelOption {
   reasoningEffortOptions: readonly ReasoningEffort[]
   /** Admin 设的默认模型，前台初始选中它。 */
   isDefault: boolean
+  /** 模型能不能看图片；为假时前台不让带图片发送。 */
+  supportsImageInput: boolean
 }
 
 /**

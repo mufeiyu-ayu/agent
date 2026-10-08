@@ -67,6 +67,21 @@ describe('ChatDto', () => {
     }
   })
 
+  it('带了附件时文字可以为空；附件 id 必须是不重复的非空字符串且不超过上限', async () => {
+    const withAttachments = (message: unknown, attachmentIds: unknown) => validate(Object.assign(createDto(''), { message, attachmentIds }))
+    const invalid = async (message: unknown, attachmentIds: unknown) => (await withAttachments(message, attachmentIds)).map(error => error.property)
+
+    assert.deepEqual(await invalid('', ['a']), [])
+    assert.deepEqual(await invalid('看看', ['a', 'b']), [])
+    // 空数组等于没带附件，空文字照旧拒绝；带了附件也不收非字符串的 message。
+    assert.deepEqual(await invalid('', []), ['message'])
+    assert.deepEqual(await invalid(undefined, ['a']), ['message'])
+    assert.deepEqual(await invalid('', ['a', 'a']), ['attachmentIds'])
+    assert.deepEqual(await invalid('', ['']), ['attachmentIds'])
+    assert.deepEqual(await invalid('', [1]), ['attachmentIds'])
+    assert.deepEqual(await invalid('', Array.from({ length: 11 }, (_, index) => `id-${index}`)), ['attachmentIds'])
+  })
+
   it('接受含非空白字符的用户消息', async () => {
     for (const message of MEANINGFUL_MESSAGES) {
       const errors = await validate(createDto(message))

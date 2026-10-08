@@ -61,6 +61,7 @@ export class LlmModelConfigService {
         displayName: true,
         isDefault: true,
         reasoningEffort: true,
+        supportsImageInput: true,
         provider: { select: { family: true } },
       },
     })
@@ -104,6 +105,7 @@ export class LlmModelConfigService {
         maxOutputTokens: model.maxOutputTokens,
         compat: familyCompatOf(model.provider.family),
         reasoningEffort: model.reasoningEffort as ReasoningEffort | null,
+        supportsImageInput: model.supportsImageInput,
       },
       maxInputTokens: model.maxInputTokens,
     }

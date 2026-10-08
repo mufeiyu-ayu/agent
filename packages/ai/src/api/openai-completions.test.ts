@@ -298,6 +298,26 @@ describe('OpenAICompatibleClient runtime config', () => {
     })
   })
 
+  it('debug 抓取的请求体不含图片的 base64，发给服务商的请求仍带原图', async () => {
+    const harness = createHarness({ captureModelIO: true })
+    let captured: unknown
+
+    await collectEvents(harness.client.chatStream(
+      [{ type: 'message', role: 'user', content: '看图', images: [{ name: 'a.png', mimeType: 'image/png', data: 'QUJD' }] }],
+      { request: { ...DEEPSEEK_REQUEST, supportsImageInput: true }, debugCapture: {
+        onRequest: (request) => {
+          captured = request
+        },
+        onResponse: () => {},
+        onCaptureError: () => {},
+      } },
+    ))
+
+    assert.equal(JSON.stringify(captured).includes('QUJD'), false)
+    assert.match(JSON.stringify(captured), /image data omitted from capture/)
+    assert.match(JSON.stringify(harness.calls.find(call => call.kind === 'stream')?.params), /data:image\/png;base64,QUJD/)
+  })
+
   it('debug 回调失败只通知安全失败侧，不影响正常模型事件', async () => {
     const harness = createHarness({ captureModelIO: true })
     const failedSides: string[] = []

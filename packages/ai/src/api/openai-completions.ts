@@ -12,6 +12,7 @@ import type {
 } from '../provider-metadata.js'
 import type {
   ChatStreamOptions,
+  MessageImage,
   ModelInputItem,
   ModelIODebugCapture,
   ModelIODebugCaptureSide,
@@ -141,7 +142,7 @@ export class OpenAICompatibleClient {
     try {
       const requestParams = {
         ...this.buildBaseChatCompletionParams(
-          messages.map(item => toOpenAIModelInputItem(item, options.request.compat.requiresReasoningContent)),
+          messages.map(item => toOpenAIModelInputItem(item, options.request.compat.requiresReasoningContent, options.request.supportsImageInput)),
           options,
         ),
         ...toOpenAIChatTools(options.tools),
@@ -386,26 +387,71 @@ function toThinkingParams(
 
 function safelyCaptureRequest(
   debugCapture: ModelIODebugCapture | undefined,
-  requestParams: unknown,
+  requestParams: { messages: ChatCompletionMessageParam[] },
   onCaptureError: (side: ModelIODebugCaptureSide) => void,
 ): void {
   if (!debugCapture)
     return
 
   try {
-    debugCapture.onRequest(requestParams)
+    debugCapture.onRequest(omitImageData(requestParams))
   }
   catch {
     onCaptureError('request')
   }
 }
 
+/** debug 抓取会落库：图片的 base64 动辄几 MB，换成一句说明，其余请求体原样。 */
+function omitImageData(requestParams: { messages: ChatCompletionMessageParam[] }): unknown {
+  return {
+    ...requestParams,
+    messages: requestParams.messages.map(message => message.role !== 'user' || typeof message.content === 'string'
+      ? message
+      : {
+          ...message,
+          content: message.content.map(part => part.type === 'image_url'
+            ? { type: 'image_url', image_url: { url: `[image data omitted from capture: ${part.image_url.url.length} chars]` } }
+            : part),
+        }),
+  }
+}
+
+/**
+ * 带图片的用户消息。模型能看图：文字块在前、图片块在后，图片是 base64 data URL，不设 `detail`
+ * （照抄 Pi `openai-completions.ts`，ce950d78）。模型不能看图：每张图换成一句让模型转告用户的说明
+ * （文案取自 opencode `provider/transform.ts` 的 `unsupportedParts`，5a8c1d81；三家都只改这次请求、不改历史，
+ * 换回能看图的模型图片就恢复）。
+ */
+function toUserMessageWithImages(content: string, images: MessageImage[], supportsImageInput: boolean): ChatCompletionMessageParam {
+  if (!supportsImageInput) {
+    return {
+      role: 'user',
+      content: [
+        ...(content ? [content] : []),
+        ...images.map(image => `ERROR: Cannot read "${image.name}" (this model does not support image input). Inform the user.`),
+      ].join('\n'),
+    }
+  }
+
+  return {
+    role: 'user',
+    content: [
+      ...(content ? [{ type: 'text' as const, text: content }] : []),
+      ...images.map(image => ({ type: 'image_url' as const, image_url: { url: `data:${image.mimeType};base64,${image.data}` } })),
+    ],
+  }
+}
+
 export function toOpenAIModelInputItem(
   item: ModelInputItem,
   requiresReasoningContent: boolean,
+  supportsImageInput = false,
 ): ChatCompletionMessageParam {
   switch (item.type) {
     case 'message': {
+      if (item.role === 'user' && item.images?.length)
+        return toUserMessageWithImages(item.content, item.images, supportsImageInput)
+
       if (item.role !== 'assistant' || !requiresReasoningContent)
         return { role: item.role, content: item.content }
 

@@ -47,6 +47,7 @@ interface FormState {
   maxOutputTokens: number
   /** 空串表示不发，提交时转成 null。 */
   reasoningEffort: ReasoningEffort | ''
+  supportsImageInput: boolean
   visible: boolean
   isDefault: boolean
   sortOrder: number
@@ -59,6 +60,7 @@ const formState = reactive<FormState>({
   maxInputTokens: 103424,
   maxOutputTokens: 8192,
   reasoningEffort: '',
+  supportsImageInput: false,
   visible: true,
   isDefault: false,
   sortOrder: 0,
@@ -123,6 +125,7 @@ watch(
       && (props.family === null || reasoningEffortsOf(props.family).includes(props.model.reasoningEffort))
       ? props.model.reasoningEffort
       : ''
+    formState.supportsImageInput = props.model.supportsImageInput
     formState.visible = props.model.visible
     formState.isDefault = props.model.isDefault
     formState.sortOrder = props.model.sortOrder
@@ -154,6 +157,7 @@ async function handleOk() {
     maxInputTokens: Math.floor(formState.maxInputTokens),
     maxOutputTokens: Math.floor(formState.maxOutputTokens),
     reasoningEffort: formState.reasoningEffort || null,
+    supportsImageInput: formState.supportsImageInput,
     visible: formState.visible,
     isDefault: formState.isDefault,
     sortOrder: Math.floor(formState.sortOrder || 0),
@@ -324,6 +328,15 @@ async function handleOk() {
           <span class="toggle-label">{{ t('llmModels.models.form.isDefault') }}</span>
           <Switch v-model:checked="formState.isDefault" size="small" @click.stop />
         </div>
+
+        <div
+          class="toggle-card"
+          :class="{ 'is-active': formState.supportsImageInput }"
+          @click="formState.supportsImageInput = !formState.supportsImageInput"
+        >
+          <span class="toggle-label">{{ t('llmModels.models.form.imageInput') }}</span>
+          <Switch v-model:checked="formState.supportsImageInput" size="small" @click.stop />
+        </div>
       </div>
     </Form>
   </Modal>
@@ -368,7 +381,7 @@ async function handleOk() {
 
 .toggles-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr 1fr 1fr;
   gap: 12px;
   margin-top: 4px;
   margin-bottom: 4px;

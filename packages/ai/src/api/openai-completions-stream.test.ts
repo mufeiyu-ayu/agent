@@ -59,6 +59,29 @@ describe('OpenAI-compatible request mapping', () => {
     }
   })
 
+  it('带图片的用户消息：能看图时文字块在前、图片是 data URL；不能看图时每张图换成说明文字', () => {
+    const item = {
+      type: 'message' as const,
+      role: 'user' as const,
+      content: '看看这张图',
+      images: [{ name: '首页.png', mimeType: 'image/png', data: 'AAAA' }],
+    }
+
+    assert.deepEqual(toOpenAIModelInputItem(item, false, true), {
+      role: 'user',
+      content: [
+        { type: 'text', text: '看看这张图' },
+        { type: 'image_url', image_url: { url: 'data:image/png;base64,AAAA' } },
+      ],
+    })
+    assert.deepEqual(toOpenAIModelInputItem(item, false, false), {
+      role: 'user',
+      content: '看看这张图\nERROR: Cannot read "首页.png" (this model does not support image input). Inform the user.',
+    })
+    // 没有图片的消息保持字符串正文，请求体与之前逐字相同。
+    assert.deepEqual(toOpenAIModelInputItem({ ...item, images: [] }, false, true), { role: 'user', content: '看看这张图' })
+  })
+
   it('requiresReasoningContent 为真时 assistant Tool Call 一律带 reasoning_content，没思考回空串', () => {
     const calls = [{ callId: 'call-1', name: 'search_articles', rawArgumentsJson: '{"query":"seo"}' }]
     const expectedToolCalls = [{

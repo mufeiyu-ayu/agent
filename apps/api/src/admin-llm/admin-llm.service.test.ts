@@ -568,6 +568,7 @@ describe('AdminLlmService.updateModel 单次输入上限', () => {
       maxInputTokens: 262_144,
       maxOutputTokens: 65_536,
       reasoningEffort: null,
+      supportsImageInput: false,
       visible: true,
       isDefault: false,
       sortOrder: 0,

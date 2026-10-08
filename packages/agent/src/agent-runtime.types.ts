@@ -81,7 +81,10 @@ export interface AgentRuntimeRunFailedEvent {
 
 export interface RunTurnStreamInput {
   conversationId: string
+  /** 带了附件时可以是空串。 */
   userContent: string
+  /** 已上传、随这条消息发出的附件 id。 */
+  attachmentIds?: string[]
   /** Run 开始前解析好的模型配置快照：整个 Run 用同一份，后台改配置对下一个 Run 生效。 */
   model: RuntimeModel
   tools: ModelToolSpec[]
