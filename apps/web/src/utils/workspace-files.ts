@@ -31,6 +31,11 @@ export function workspaceFileType(path: string) {
     sh: ['vscode-icons:file-type-shell', 'bash'],
     yml: ['vscode-icons:file-type-yaml', 'yaml'],
     yaml: ['vscode-icons:file-type-yaml', 'yaml'],
+    txt: ['vscode-icons:file-type-text', ''],
+    csv: ['vscode-icons:file-type-text', ''],
+    pdf: ['vscode-icons:file-type-pdf2', ''],
+    docx: ['vscode-icons:file-type-word', ''],
+    xlsx: ['vscode-icons:file-type-excel', ''],
   }
   const [icon, language] = types[extension] ?? ['tabler:file-text', '']
   return { icon, language, label: extension.toUpperCase() || 'TEXT' }

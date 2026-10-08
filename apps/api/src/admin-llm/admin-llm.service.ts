@@ -577,6 +577,7 @@ function toAdminLlmModel(model: LlmModel): AdminLlmModel {
     maxInputTokens: model.maxInputTokens,
     maxOutputTokens: model.maxOutputTokens,
     reasoningEffort: toReasoningEffort(model.reasoningEffort),
+    supportsImageInput: model.supportsImageInput,
     visible: model.visible,
     isDefault: model.isDefault,
     sortOrder: model.sortOrder,

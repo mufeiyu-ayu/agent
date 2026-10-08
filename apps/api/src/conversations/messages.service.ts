@@ -1,5 +1,5 @@
 import type { ConversationMessage, MessageActivity } from '@agent/contracts'
-import type { Message } from '../generated/prisma/client.js'
+import type { Attachment, Message } from '../generated/prisma/client.js'
 import type { MessageActivityStepRow } from './message-activity.js'
 import { AGENT_STEP_TYPES } from '@agent/agent'
 
@@ -32,6 +32,14 @@ export class MessagesService {
       },
       orderBy: {
         createdAt: 'asc',
+      },
+      include: {
+        // 只带展示要用的列；抽出的文字与对象 key 不出库。
+        attachments: {
+          where: { deletedAt: null },
+          orderBy: { position: 'asc' },
+          select: { id: true, kind: true, name: true, bytes: true, width: true, height: true },
+        },
       },
     })
     // 先读消息再读 Step：Run 收口时先提交最后一个采样 Step、再把消息改成终态，
@@ -116,7 +124,7 @@ export class MessagesService {
 }
 
 function toConversationMessageResponse(
-  message: Message,
+  message: Message & { attachments: Array<Pick<Attachment, 'id' | 'kind' | 'name' | 'bytes' | 'width' | 'height'>> },
   activity: MessageActivity | undefined,
 ): ConversationMessage {
   return {
@@ -128,5 +136,14 @@ function toConversationMessageResponse(
     createdAt: message.createdAt.toISOString(),
     updatedAt: message.updatedAt.toISOString(),
     ...(activity ? { activity } : {}),
+    ...(message.attachments.length > 0
+      ? {
+          attachments: message.attachments.map(({ width, height, kind, ...attachment }) => ({
+            ...attachment,
+            kind: kind === 'image' ? 'image' as const : 'file' as const,
+            ...(width && height ? { width, height } : {}),
+          })),
+        }
+      : {}),
   }
 }

@@ -1,11 +1,31 @@
-import type { AssistantToolCallInputItem, MessageInputItem, ModelInputItem, ToolResultInputItem } from '@agent/ai'
+import type { AssistantToolCallInputItem, MessageImage, MessageInputItem, ModelInputItem, ToolResultInputItem } from '@agent/ai'
 import { AGENT_STEP_TYPES } from '../host.js'
 
 export interface HistoryMessage {
   id: string
   role: 'USER' | 'ASSISTANT'
+  /** 模型看到的正文：用户消息带附件时，附件文字已按 `userMessageContent` 拼在前面。 */
   content: string
+  /** 用户消息带的图片，宿主读历史时从存储取出。 */
+  images?: MessageImage[]
   createdAt: Date
+}
+
+/** 一个用户问题发给模型的内容；创建时间给压缩的摘要输入写日期。 */
+export interface HistoryQuestion {
+  content: string
+  images?: MessageImage[]
+  createdAt: Date
+}
+
+/** 问题成为一条 user 消息；没有图片时不带 images 键，请求与之前逐字相同。 */
+export function questionItem(question: HistoryQuestion): MessageInputItem {
+  return {
+    type: 'message',
+    role: 'user',
+    content: question.content,
+    ...(question.images?.length ? { images: question.images } : {}),
+  }
 }
 
 /** 历史里一次问答的 Run：只取配对、判断终态与找 Step 要用的列。 */
@@ -53,7 +73,7 @@ export interface HistoryGroup {
   summarizable: boolean
   /** 有回答消息；失败 / 停止的 Run 只留问题，序列化时标 unanswered。 */
   answered: boolean
-  question: { content: string, createdAt: Date } | undefined
+  question: HistoryQuestion | undefined
   /** 问题之后的还原形态：工具轮与最终回答；做过本轮压缩的问答是前缀摘要 + 保留的工具轮 + 最终回答。 */
   answer: ModelInputItem[]
   /** 问题之后的退回形式：回答消息全文（含中间文本），空回答不带。压缩的边界组按它保留。 */
@@ -182,7 +202,7 @@ export function restoreGroups(groups: PairedGroup[], steps: HistoryStepRow[]): H
     messageCount: (group.question ? 1 : 0) + group.answers.length,
     summarizable: group.summarizable,
     answered: group.answers.length > 0,
-    question: group.question && { content: group.question.content, createdAt: group.question.createdAt },
+    question: group.question && { content: group.question.content, ...(group.question.images ? { images: group.question.images } : {}), createdAt: group.question.createdAt },
     answer: group.answers.flatMap(({ message, runId }) => (runId && restoreToolRecords(message.content, stepsByRun.get(runId) ?? []))
       || toAnswerItems(message.content)),
     answerOnly: group.answers.flatMap(({ message }) => toAnswerItems(message.content)),
@@ -192,7 +212,7 @@ export function restoreGroups(groups: PairedGroup[], steps: HistoryStepRow[]): H
 /** 一次问答发给模型的样子：问题 + 还原形态，或问题 + 退回形式。 */
 export function groupItems(group: HistoryGroup, answerOnly: boolean): ModelInputItem[] {
   return [
-    ...(group.question ? [{ type: 'message' as const, role: 'user' as const, content: group.question.content }] : []),
+    ...(group.question ? [questionItem(group.question)] : []),
     ...(answerOnly ? group.answerOnly : group.answer),
   ]
 }

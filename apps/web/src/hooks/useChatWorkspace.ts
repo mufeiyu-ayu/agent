@@ -10,6 +10,8 @@ import type { AgentRecentChat } from '../types/agent-platform'
 import type {
   AppMessageState,
   AppMessageType,
+  ChatAttachment,
+  ComposerAttachment,
   GenerationStatus,
   TurnRun,
 } from '../types/chat'
@@ -18,6 +20,7 @@ import { isAxiosError } from 'axios'
 import { computed, onMounted, onUnmounted, ref, shallowReactive, shallowRef } from 'vue'
 import { useI18n } from 'vue-i18n'
 
+import { attachmentContentUrl } from '../api/attachments'
 import { ChatStreamHttpError, streamChat } from '../api/chat'
 import {
   createConversation,
@@ -69,6 +72,8 @@ interface UseChatWorkspaceOptions {
 export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
   const { t } = useI18n()
   const message = ref('')
+  // 输入框里待发送的附件：增删由 useComposerAttachments 负责，这里只在发送与切会话时清。
+  const attachments = ref<ComposerAttachment[]>([])
   const conversations = ref<Conversation[]>([])
   const activeConversationId = ref<string | null>(null)
   const messages = ref<ConversationMessage[]>([])
@@ -84,6 +89,10 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
   const localTurnErrors = ref<Record<string, string>>({})
   // 每轮的等待过程（#208），按助手消息 id 存在页面内存里；刷新后由消息的 activity 还原（#212）。
   const turnRuns = shallowRef<Record<string, TurnRun>>({})
+  // 这次页面里发出的附件按用户消息 id 留着本地地址：图片不用再从后端下载一遍。其余消息的附件来自接口。
+  const turnAttachments = shallowRef<Record<string, ChatAttachment[]>>({})
+  // 接口附件的映射结果按消息对象记住，理由同 restoredRuns：历史轮次要保持同一个数组，v-memo 才不失效。
+  const fetchedAttachments = new WeakMap<ConversationMessage, ChatAttachment[]>()
   // 还原结果按消息对象记住：流式时每帧都会重算全部轮次，历史轮次的 run 要保持同一个对象，
   // 否则 AgentConversation 的 v-memo 失效、每帧重渲染所有历史轮次。消息更新时换成新对象，自然重新还原。
   const restoredRuns = new WeakMap<ConversationMessage, TurnRun | undefined>()
@@ -117,6 +126,7 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
       activeTurnId: currentRequest.value?.active ? currentRequest.value.turnId : null,
       turnErrors: localTurnErrors.value,
       runs: turnRuns.value,
+      attachmentsOf,
       restoredRun: restoredRunOf,
     })
   })
@@ -147,6 +157,7 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
 
     if (messageTimer !== undefined)
       window.clearTimeout(messageTimer)
+    releaseTurnAttachments(Object.keys(turnAttachments.value))
   })
 
   async function initializeWorkspace() {
@@ -204,6 +215,7 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
         request.controller.abort()
         clearRequestBuffers(request)
       }
+      releaseTurnAttachments(conversationMessagesCache.get(conversationId)?.map(item => item.id) ?? [])
       conversationMessagesCache.delete(conversationId)
       conversationMessagesVersion.delete(conversationId)
       requests.delete(conversationId)
@@ -272,6 +284,10 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
     initialSelectionAllowed = false
     const submittedMessage = message.value
     const messageContent = submittedMessage.trim()
+    const submittedAttachments = attachments.value
+    const submittedAttachmentIds = new Set(submittedAttachments.map(item => item.id))
+    const attachmentIds = submittedAttachments.flatMap(item => item.remoteId ? [item.remoteId] : [])
+    const sentAttachments = submittedAttachments.map(({ status: _status, progress: _progress, remoteId: _remoteId, ...attachment }) => attachment)
     const request = shallowReactive<ChatRequestState>({
       key: currentViewKey.value,
       requestId: createClientMessageId(),
@@ -287,13 +303,17 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
       pendingReasoning: null,
     })
     requests.set(request.key, request)
+    attachments.value = attachments.value.map(item => submittedAttachmentIds.has(item.id) ? { ...item, locked: true } : item)
     shouldAnchorLatestTurn.value = true
     let pendingMessage: ConversationMessage | undefined
+    // 这批附件的去向是否已经明确：收到 start / error 事件，或请求在进入流之前就被拒绝。
+    let attachmentsSettled = sentAttachments.length === 0
 
     try {
       if (!request.conversationId) {
         const conversation = await createConversation({
-          title: createConversationTitle(messageContent),
+          // 只发附件时用第一个文件名当会话标题。
+          title: createConversationTitle(messageContent || sentAttachments[0]?.name || ''),
         }, { signal: request.controller.signal })
 
         if (!ownsActiveRequest(request))
@@ -310,9 +330,11 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
       }
 
       const conversationId = request.conversationId
-      const payload = buildChatRequest(conversationId, messageContent, model, reasoningEffort)
-      pendingMessage = createPendingUserMessage(conversationId, payload.message)
+      const payload = buildChatRequest(conversationId, messageContent, attachmentIds, model, reasoningEffort)
+      pendingMessage = createPendingUserMessage(conversationId, messageContent)
       request.turnId = pendingMessage.id
+      if (sentAttachments.length > 0)
+        turnAttachments.value = { ...turnAttachments.value, [pendingMessage.id]: sentAttachments }
       upsertMessageInConversation(pendingMessage)
 
       for await (const event of streamChat(payload, { signal: request.controller.signal })) {
@@ -351,6 +373,14 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
           // 创建和 start 都可能在切走后到达，不抢选中会话，也不清掉另一视图的输入。
           if (currentViewKey.value === request.key && message.value === submittedMessage)
             message.value = ''
+          if (sentAttachments.length > 0) {
+            // 消息换成了服务端 id：本地地址跟着换到新 id 下，旧的占位 id 不再留一份引用。
+            const { [pendingMessage.id]: _pending, ...others } = turnAttachments.value
+            turnAttachments.value = { ...others, [event.userMessageId]: sentAttachments }
+            // 按本地 id 只拿走这次发出的；状态回填会换对象，不能用对象引用判断。
+            attachments.value = attachments.value.filter(item => !submittedAttachmentIds.has(item.id))
+            attachmentsSettled = true
+          }
           request.status = 'generating'
           touchConversation(conversationId)
           continue
@@ -368,8 +398,15 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
           if (request.assistantMessageId)
             endTurnRun(request.assistantMessageId, 'error')
           request.error = event.message
-          if (event.userMessagePersisted)
+          // 不带 userMessagePersisted 的 error 是消息没写下：附件没被绑走，解锁后可以重发。
+          attachmentsSettled = true
+          if (event.userMessagePersisted) {
             touchConversation(conversationId)
+            // start 前的失败也可能已经提交，附件已被消费，不能留作再次绑定的重试。
+            attachments.value = attachments.value.filter(item => !submittedAttachmentIds.has(item.id))
+            if (currentViewKey.value === request.key && message.value === submittedMessage)
+              message.value = ''
+          }
           handleStreamErrorEvent(event, pendingMessage)
           finishRequest(request, 'error')
           if (currentViewKey.value === request.key)
@@ -387,6 +424,9 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
         throw new Error('流式响应提前结束，请稍后重试')
     }
     catch (error) {
+      // 进入流之前就被 HTTP 拒绝：运行还没开始，消息没写下。
+      if (error instanceof ChatStreamHttpError)
+        attachmentsSettled = true
       // 已有终态、被停止、卸载或同会话新请求接管时，尾部异常不能再改旧/新任务。
       if (!ownsActiveRequest(request))
         return
@@ -416,7 +456,36 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
       }
     }
     finally {
+      // 没有占位消息说明请求还没发出去；卸载后不再确认（退出登录时这次读取会 401 并把页面带去登录页）。
+      if (attachmentsSettled || !pendingMessage || isUnmounted)
+        unlockAttachments()
+      else
+        void settleAttachments(pendingMessage.conversationId)
       clearRequestBuffers(request)
+    }
+
+    function unlockAttachments() {
+      attachments.value = attachments.value.map(item => submittedAttachmentIds.has(item.id) ? { ...item, locked: false } : item)
+    }
+
+    /**
+     * 请求发出后没等到 start 就断了（停止、断网）：后端可能已经写下消息并绑走了附件，原样再发会被拒绝。
+     * 读一次会话消息确认去向，期间保持锁定。连确认也读不到（多半是断网，请求根本没到后端）时解锁留给用户重试：
+     * 万一其实已经发出，再发会在进入流之前被后端拒绝（409）并提示重新添加。只按本地 id 处理这次提交的，不碰之后新加的。
+     */
+    async function settleAttachments(conversationId: string) {
+      const consumed = await listConversationMessages(conversationId).then(
+        persisted => persisted.some(item => item.attachments?.some(attachment => attachmentIds.includes(attachment.id))),
+        () => false,
+      )
+      if (isUnmounted)
+        return
+      if (!consumed)
+        return unlockAttachments()
+
+      attachments.value = attachments.value.filter(item => !submittedAttachmentIds.has(item.id))
+      if (currentViewKey.value === request.key && message.value === submittedMessage)
+        message.value = ''
     }
   }
 
@@ -438,6 +507,38 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
     request.reasoningTimer = undefined
     request.pendingDelta = null
     request.pendingReasoning = null
+  }
+
+  /** 这些消息不再用本地文件显示（会话删了、换成了接口地址、离开工作区）：放掉 object URL，文件才能被回收。 */
+  function releaseTurnAttachments(messageIds: string[]) {
+    const held = messageIds.filter(id => turnAttachments.value[id])
+    if (held.length === 0)
+      return
+
+    const rest = { ...turnAttachments.value }
+    for (const id of held) {
+      for (const attachment of rest[id]!)
+        URL.revokeObjectURL(attachment.url)
+      delete rest[id]
+    }
+    turnAttachments.value = rest
+  }
+
+  function attachmentsOf(message: ConversationMessage): ChatAttachment[] | undefined {
+    const local = turnAttachments.value[message.id]
+    if (local || !message.attachments?.length)
+      return local
+
+    let mapped = fetchedAttachments.get(message)
+    if (!mapped) {
+      mapped = message.attachments.map(attachment => ({
+        ...attachment,
+        url: attachmentContentUrl(attachment.id),
+        ...(attachment.kind === 'image' ? { thumbUrl: attachmentContentUrl(attachment.id, 'thumb') } : {}),
+      }))
+      fetchedAttachments.set(message, mapped)
+    }
+    return mapped
   }
 
   function restoredRunOf(message: ConversationMessage): TurnRun | undefined {
@@ -577,6 +678,8 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
       }
 
       setMessagesForConversation(conversationId, nextMessages)
+      // 快照里的消息自带附件记录，改用接口地址显示：这次页面里留着的本地文件可以放了。
+      releaseTurnAttachments(nextMessages.flatMap(item => item.attachments?.length ? [item.id] : []))
     }
     catch (error) {
       if (isUnmounted || runId !== messageLoadRunId)
@@ -595,6 +698,7 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
   function buildChatRequest(
     conversationId: string,
     messageContent: string,
+    attachmentIds: string[],
     model?: string | null,
     reasoningEffort?: ReasoningEffort,
   ): ChatRequest {
@@ -603,6 +707,7 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
     return {
       conversationId,
       message: messageContent,
+      ...(attachmentIds.length > 0 ? { attachmentIds } : {}),
       ...(nextModel ? { model: nextModel } : {}),
       ...(reasoningEffort ? { reasoningEffort } : {}),
     }
@@ -988,13 +1093,16 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
 
   function resetComposerState() {
     message.value = ''
+    attachments.value = []
     hideMessage()
     shouldAnchorLatestTurn.value = false
   }
 
   function canStartChatRequest(): boolean {
     const request = currentRequest.value
-    return !isUnmounted && isHistoryReady.value && !request?.active && Boolean(message.value.trim())
+    return !isUnmounted && isHistoryReady.value && !request?.active
+      && (Boolean(message.value.trim()) || attachments.value.length > 0)
+      && attachments.value.every(item => item.status === 'ready' && item.remoteId && !item.locked)
       && (!request || Date.now() - request.requestedAt >= CHAT_REQUEST_INTERVAL_MS)
   }
 
@@ -1090,6 +1198,7 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
 
   return {
     message,
+    attachments,
     status,
     errorMessage,
     conversations,

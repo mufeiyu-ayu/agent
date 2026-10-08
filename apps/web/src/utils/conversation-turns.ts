@@ -1,5 +1,5 @@
 import type { Conversation, ConversationMessage } from '@agent/contracts'
-import type { ConversationTurn, ConversationTurnStatus, TurnRun } from '../types/chat'
+import type { ChatAttachment, ConversationTurn, ConversationTurnStatus, TurnRun } from '../types/chat'
 
 import { restoreRun } from './run-status'
 
@@ -8,6 +8,8 @@ interface MapConversationMessagesOptions {
   turnErrors: Record<string, string>
   /** 按助手消息 id 的等待过程；只有当前页面里发出的轮次才有，优先于接口下发的 activity。 */
   runs?: Record<string, TurnRun>
+  /** 用户消息的附件：调用方决定用本地的还是接口下发的，并保证同一条消息返回同一个数组。 */
+  attachmentsOf?: (message: ConversationMessage) => ChatAttachment[] | undefined
   /** 其余回答的等待过程：restoreMessageRun，或调用方带缓存的同一个函数。 */
   restoredRun: (message: ConversationMessage) => TurnRun | undefined
 }
@@ -33,10 +35,12 @@ export function mapMessagesToConversationTurns(
   return messages.reduce<ConversationTurn[]>((turns, item) => {
     if (item.role === 'USER') {
       const errorMessage = options.turnErrors[item.id]
+      const attachments = options.attachmentsOf?.(item)
 
       turns.push({
         id: item.id,
         userMessage: item.content,
+        ...(attachments ? { attachments } : {}),
         status: getUserMessageTurnStatus(item.id, options.activeTurnId, errorMessage),
         createdAt: item.createdAt,
         ...(errorMessage ? { errorMessage } : {}),

@@ -41,6 +41,8 @@ const emit = defineEmits<{
   edit: [model: AdminLlmModel]
   delete: [id: string]
   toggleVisible: [id: string, visible: boolean]
+  /** 模型能不能看图片；关着时带图的消息里图片会换成说明文字。 */
+  toggleImageInput: [id: string, supportsImageInput: boolean]
   /** 表格里直接改推理强度；null 表示不发。 */
   updateReasoningEffort: [id: string, reasoningEffort: ReasoningEffort | null]
   setDefault: [id: string]
@@ -101,6 +103,12 @@ const columns = computed<TableColumnsType<AdminLlmModel>>(() => [
     title: t('llmModels.models.columns.probe'),
     key: 'probe',
     width: '9%',
+    align: 'center',
+  },
+  {
+    title: t('llmModels.models.columns.imageInput'),
+    key: 'imageInput',
+    width: '7%',
     align: 'center',
   },
   {
@@ -247,11 +255,23 @@ function onEdit(record: unknown) {
           </Tooltip>
         </template>
 
+        <!-- 图片输入列 -->
+        <template v-else-if="column.key === 'imageInput'">
+          <Switch
+            :checked="record.supportsImageInput"
+            :loading="pendingWrites.has(`model:${record.id}`)"
+            :aria-label="t('llmModels.models.columns.imageInput')"
+            size="small"
+            @change="(checked) => emit('toggleImageInput', record.id, Boolean(checked))"
+          />
+        </template>
+
         <!-- 5. 前台可见列 -->
         <template v-else-if="column.key === 'visible'">
           <Switch
             :checked="record.visible"
             :loading="pendingWrites.has(`model:${record.id}`)"
+            :aria-label="t('llmModels.models.columns.visible')"
             size="small"
             @change="(checked) => emit('toggleVisible', record.id, Boolean(checked))"
           />

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { WorkspaceFile } from '@agent/contracts'
-import type { ConversationTurn } from '../../types/chat'
+import type { ChatAttachment, ConversationTurn } from '../../types/chat'
 
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -25,7 +25,7 @@ const props = defineProps<{
   workspaceFiles: WorkspaceFile[]
   openingArtifact: boolean
 }>()
-const emit = defineEmits<{ openFile: [file: WorkspaceFile] }>()
+const emit = defineEmits<{ openFile: [file: WorkspaceFile], previewAttachment: [attachment: ChatAttachment] }>()
 
 const { locale, t } = useI18n()
 const { workspaceTheme } = useWorkspaceTheme()
@@ -93,14 +93,14 @@ const showFloatingLoading = computed(() => {
             <template
               v-for="(turn, turnIndex) in turns"
               :key="turn.id"
-              v-memo="[turn.userMessage, turn.createdAt, turn.reply, turn.status, turn.errorMessage, turn.run, anchorLatestTurn && turnIndex === turns.length - 1, locale, workspaceFiles, openingArtifact]"
+              v-memo="[turn.userMessage, turn.attachments, turn.createdAt, turn.reply, turn.status, turn.errorMessage, turn.run, anchorLatestTurn && turnIndex === turns.length - 1, locale, workspaceFiles, openingArtifact]"
             >
               <!-- eslint-enable vue/no-useless-template-attributes -->
               <AgentMessage
                 role="user"
                 :data-agent-user-turn-id="turn.id"
               >
-                <AgentUserMessage :text="turn.userMessage" :created-at="turn.createdAt" />
+                <AgentUserMessage :text="turn.userMessage" :created-at="turn.createdAt" :attachments="turn.attachments" @preview-file="emit('previewAttachment', $event)" />
               </AgentMessage>
 
               <AgentMessage

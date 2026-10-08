@@ -233,11 +233,54 @@ model Message {
   // 必须用具名关系 @relation("名字") 在两侧一一对应。
   userAgentRuns         AgentRun[] @relation("AgentRunUserMessage")
   assistantAgentRuns    AgentRun[] @relation("AgentRunAssistantMessage")
+  // 用户随这条消息发出的图片与文档。
+  attachments           Attachment[]
   createdAt             DateTime   @default(now())
   updatedAt             DateTime   @updatedAt
 
   // 「取某会话最近消息并按时间排序」是高频查询，用复合索引覆盖。
   @@index([conversationId, createdAt])
+}
+
+// 用户上传的附件：文件本身在私有 OSS（users/<userId>/attachments/<id>/），这里是唯一索引。
+// 上传时还没有会话与消息，发送时才绑定；`modelObjectKey` 与 `extractedText` 是模型看到的那一份，
+// 上传时定型、之后不变，历史才能按记录重建。
+// 不随会话或消息级联删除：删会话时同事务标记 deletedAt，后台删完 OSS 对象才删行，
+// 否则 OSS 删除失败后对象就无记录可查。
+model Attachment {
+  id             String    @id @default(cuid())
+  userId         String
+  conversationId String?
+  messageId      String?
+  message        Message?  @relation(fields: [messageId], references: [id], onDelete: SetNull)
+  // 在所属消息里的顺序：发送时按用户选择的顺序写入。上传并发完成，创建时间不代表顺序。
+  position       Int       @default(0)
+  // image | file
+  kind           String
+  name           String
+  bytes          Int
+  // 图片的原始尺寸，前台按它预留位置。
+  width          Int?
+  height         Int?
+  bucket         String
+  // 用户上传的原文件，给预览与下载。
+  objectKey      String
+  // 图片超出尺寸或体积上限时缩放后的那份；为空表示直接把原文件发给模型。
+  modelObjectKey String?
+  // 发给模型的那份图片的格式（缩放时可能从 PNG 变成 JPEG）。
+  modelMimeType  String?
+  // 文档抽出的文字，已按上限截断并带截断说明。
+  extractedText  String?
+  createdAt      DateTime  @default(now())
+  // 待删除标记：非空的行等后台清理 OSS 对象后删除，任何读取都当它不存在。
+  deletedAt      DateTime?
+
+  // 以后按用户列出全部资源。
+  @@index([userId, createdAt])
+  @@index([messageId])
+  @@index([conversationId])
+  // 后台清理找待删除的行与长期没发出去的上传。
+  @@index([deletedAt])
 }
 
 model AgentRun {
@@ -396,6 +439,8 @@ model LlmModel {
   maxOutputTokens     Int
   // 默认发给服务商的 reasoning_effort；null 不发。取值按家族由 contracts 的 LLM_FAMILY_CAPABILITIES 约束。
   reasoningEffort     String?
+  // 模型能不能看图片，管理台人工勾选；为假时请求里的图片换成一句说明文字，前台也不让带图发送。
+  supportsImageInput  Boolean     @default(false)
   // 前台模型下拉只列 visible 为真的行；拉取导入默认为假。
   visible             Boolean     @default(false)
   // 全局唯一的默认模型；前台不传 model 时使用。

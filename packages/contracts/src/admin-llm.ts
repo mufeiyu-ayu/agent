@@ -157,6 +157,8 @@ export interface AdminLlmModel {
   maxOutputTokens: number
   /** 默认发给服务商的 reasoning_effort；null 表示不发。 */
   reasoningEffort: ReasoningEffort | null
+  /** 模型能不能看图片，人工勾选。 */
+  supportsImageInput: boolean
   visible: boolean
   isDefault: boolean
   sortOrder: number
@@ -180,6 +182,7 @@ export interface AdminLlmModelInput {
   maxInputTokens: number
   maxOutputTokens: number
   reasoningEffort: ReasoningEffort | null
+  supportsImageInput: boolean
   visible: boolean
   isDefault: boolean
   sortOrder: number

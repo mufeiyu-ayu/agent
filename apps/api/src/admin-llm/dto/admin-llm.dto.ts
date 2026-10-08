@@ -207,6 +207,10 @@ export class UpdateAdminLlmModelDto implements Partial<AdminLlmModelInput> {
 
   @IsOptional()
   @IsBoolean()
+  supportsImageInput?: boolean
+
+  @IsOptional()
+  @IsBoolean()
   visible?: boolean
 
   @IsOptional()

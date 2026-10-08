@@ -20,6 +20,7 @@ import { AdminConversationsService } from '../admin-conversations/admin-conversa
 import { AdminUsersController } from '../admin-users/admin-users.controller.js'
 import { AdminUsersService } from '../admin-users/admin-users.service.js'
 import { AgentRuntimeService } from '../agent-runtime/agent-runtime.service.js'
+import { AttachmentsService } from '../attachments/attachments.service.js'
 import { ChatController } from '../chat/chat.controller.js'
 import { ChatService } from '../chat/chat.service.js'
 import { registerAppGlobals } from '../common/bootstrap/register-app-globals.js'
@@ -102,6 +103,8 @@ describe('鉴权与会话隔离（真实库）', { timeout: 60_000 }, () => {
         ConversationsService,
         // 鉴权用例不验证对象回收：会话删除依赖的回收服务用空实现，不随本机 OSS 配置访问云。
         { provide: WorkspaceGcService, useValue: { register: async () => {}, kick: () => {} } satisfies Pick<WorkspaceGcService, 'register' | 'kick'> },
+        // 同理：附件清理用空实现，不访问云存储。
+        { provide: AttachmentsService, useValue: { markConversationDeleted: async () => {}, kickSweep: () => {} } satisfies Pick<AttachmentsService, 'markConversationDeleted' | 'kickSweep'> },
         MessagesService,
         ChatService,
         {

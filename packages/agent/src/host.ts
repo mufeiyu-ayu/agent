@@ -1,4 +1,4 @@
-import type { ChatStreamOptions, LLMError, LLMModelProfile, MessageInputItem, ModelInputItem, ModelStreamEvent, ModelUsage } from '@agent/ai'
+import type { ChatStreamOptions, LLMError, LLMModelProfile, MessageImage, MessageInputItem, ModelInputItem, ModelStreamEvent, ModelUsage } from '@agent/ai'
 import type { AgentRunErrorCode } from '@agent/contracts'
 import type { ContextCompactionService } from './context/context-compaction.service.js'
 import type { ConversationHistory, HistoryCompactionRecord } from './context/conversation-history.js'
@@ -32,6 +32,14 @@ export interface StoredMessage {
   content: string
   createdAt: Date
   updatedAt: Date
+}
+/**
+ * 用户消息落库后交给内核的那一份。`content` 仍是用户打的字；`modelContent` 与 `images` 是模型看到的：
+ * 附件抽出的文字已按 `userMessageContent` 拼进正文，图片已从存储读出。两者都取自落库的附件记录，历史读取时按同样的方式还原。
+ */
+export interface StoredUserMessage extends StoredMessage {
+  modelContent: string
+  images?: MessageImage[]
 }
 export interface StepClose {
   input?: JsonObject
@@ -97,7 +105,10 @@ export interface RuntimeHost extends Omit<CompactionHost, 'insertCompaction'> {
   classifyError: ClassifyHostError
   aiErrorMessage: (error: LLMError) => string
   assertConversationExists: (conversationId: string) => Promise<void>
-  createUserMessage: (conversationId: string, content: string) => Promise<StoredMessage>
+  /** 同一个事务里写消息并把附件绑到它上面；附件不属于当前用户、已发出过或已删除时整体失败，不留下消息。 */
+  createUserMessage: (conversationId: string, content: string, attachmentIds: string[]) => Promise<StoredMessage>
+  /** 提交已确认、Run 已创建后才读取模型输入；存储故障不能倒退用户消息的持久状态。 */
+  loadUserMessage: (message: StoredMessage) => Promise<StoredUserMessage>
   prepareToolBatch: (input: { runId: string, samplingAttemptId: string, calls: UnvalidatedToolCallEnvelope[], argumentsTruncated: boolean }, deadline: OperationDeadline) => Promise<MessageInputItem | undefined>
   toolProgress: (rawArgumentsJson: string, toolName: string) => Pick<ToolDisplay, 'workspace'> & { query?: string, url?: string }
   invokeTool: (call: UnvalidatedToolCallEnvelope, context: { runId: string, conversationId: string, signal: AbortSignal, databaseDeadline: OperationDeadline, argumentsTruncated: boolean }) => Promise<ToolInvocationResult & {

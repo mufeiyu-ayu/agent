@@ -181,6 +181,10 @@ function handleToggleModelVisible(id: string, visible: boolean) {
   void runWrite(() => state.updateModel(id, { visible }))
 }
 
+function handleToggleModelImageInput(id: string, supportsImageInput: boolean) {
+  void runWrite(() => state.updateModel(id, { supportsImageInput }))
+}
+
 function handleSetDefaultModel(id: string) {
   void runWrite(() => state.setDefaultModel(id))
 }
@@ -332,6 +336,7 @@ function handleProbeVisibleModels() {
               @edit="handleEditModel"
               @delete="handleDeleteModel"
               @toggle-visible="handleToggleModelVisible"
+              @toggle-image-input="handleToggleModelImageInput"
               @update-reasoning-effort="handleUpdateModelReasoningEffort"
               @set-default="handleSetDefaultModel"
               @probe="handleProbeModel"

@@ -35,6 +35,7 @@ for (const abortAfterCommit of [false, true]) {
       createTimeoutError: () => new Error('test deadline'),
       assertConversationExists: async () => {},
       createUserMessage: async (_id, content) => message('user', content),
+      loadUserMessage: async message => ({ ...message, modelContent: message.content }),
       loadHistory: async () => ({ history: { readAt: new Date(), compaction: undefined, groups: [] }, messageCount: 0 }),
       recorder: {
         createRun: async () => ({ id: 'run' }),

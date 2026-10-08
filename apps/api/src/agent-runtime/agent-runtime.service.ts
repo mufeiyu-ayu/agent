@@ -2,6 +2,8 @@ import type { AgentRuntimeEvent } from '@agent/agent'
 import type { RunTurnStreamInput } from './agent-runtime.types.js'
 import { AgentRuntime } from '@agent/agent'
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common'
+import { AttachmentStorageService } from '../attachments/attachment-storage.service.js'
+import { AttachmentsService } from '../attachments/attachments.service.js'
 import { WORKSPACE_TOOL_NAMES } from '../chat/prompts/workspace-development.prompt.js'
 import { LLMService } from '../llm/llm.service.js'
 import { PrismaService } from '../prisma/prisma.service.js'
@@ -24,6 +26,7 @@ export class AgentRuntimeService {
     @Inject(ToolInvocationService) private readonly toolInvocationService: ToolInvocationService,
     @Inject(ContextCompactionService) private readonly contextCompactionService: ContextCompactionService,
     @Optional() @Inject(WorkspaceService) private readonly workspaces?: WorkspaceService,
+    @Inject(AttachmentsService) private readonly attachments = new AttachmentsService(prismaService, new AttachmentStorageService()),
   ) {}
 
   async* runTurnStream(input: RunTurnStreamInput): AsyncGenerator<AgentRuntimeEvent> {
@@ -34,10 +37,12 @@ export class AgentRuntimeService {
       tools: this.toolInvocationService,
       compaction: this.contextCompactionService,
       logger: this.logger,
+      attachments: this.attachments,
       ...(this.workspaces ? { workspaces: this.workspaces } : {}),
     })
     yield* new AgentRuntime(host).runTurnStream({
       conversationId: input.conversationId,
+      ...(input.attachmentIds?.length ? { attachmentIds: input.attachmentIds } : {}),
       userContent: input.userContent,
       model: runtimeModel(input.model),
       runtimeConfig: runtimeConfig(input.runtimeConfig),

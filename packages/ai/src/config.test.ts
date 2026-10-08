@@ -39,6 +39,11 @@ describe('resolveChatRequestConfig', () => {
     )
   })
 
+  it('模型行勾了能看图片才带 supportsImageInput', () => {
+    assert.equal(resolveChatRequestConfig({ ...DEEPSEEK_PROFILE, supportsImageInput: true }).supportsImageInput, true)
+    assert.equal('supportsImageInput' in resolveChatRequestConfig(DEEPSEEK_PROFILE), false)
+  })
+
   it('请求级只覆盖 reasoningEffort，compat 随模型行', () => {
     assert.deepEqual(
       resolveChatRequestConfig(

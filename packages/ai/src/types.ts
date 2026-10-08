@@ -113,11 +113,28 @@ export function mergeModelUsage(
   return Object.keys(merged).length > 0 ? merged : null
 }
 
+/**
+ * 随用户消息发给模型的一张图片：base64 与格式照抄 Pi 的 `ImageContent`（`packages/ai/src/types.ts`，ce950d78）。
+ * `name` 是我们加的：模型不支持图片时的说明文字与 debug 抓取里用它指代这张图。
+ */
+export interface MessageImage {
+  /** base64，不带 `data:` 前缀。 */
+  data: string
+  mimeType: string
+  name: string
+}
+
 /** Runtime 传给模型的普通消息；工具调用过程不会进入用户可见消息。 */
 export interface MessageInputItem {
   type: 'message'
   role: 'system' | 'user' | 'assistant'
   content: string
+  /**
+   * 只有 user 消息会带，发请求时排在文字后面（同 Pi `Agent.prompt(input, images)`）。
+   * 形状与 Pi 不同：Pi 把 content 改成「文字块 | 图片块」数组，我们保留字符串正文、图片另挂一个字段，
+   * 计数、压缩、历史还原这些只看文字的地方不用跟着改。
+   */
+  images?: MessageImage[]
 }
 
 /** 模型在同一轮里提出的一个或多个 Tool Call，映射为一条带 tool_calls[] 的 assistant 消息。 */

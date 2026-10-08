@@ -1,12 +1,15 @@
 <script setup lang="ts">
 import type { ReasoningEffort } from '@agent/contracts'
-import type { GenerationStatus } from '../../types/chat'
+import type { ComposerAttachment, GenerationStatus } from '../../types/chat'
 import type { LlmModelOption } from '../../types/llm'
 
 import { CHAT_MESSAGE_MAX_CHARS } from '@agent/contracts'
+import { useEventListener } from '@vueuse/core'
 import { computed, nextTick, ref, toRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
+import ChatAttachMenu from '@/components/chat/ChatAttachMenu.vue'
+import ChatComposerAttachments from '@/components/chat/ChatComposerAttachments.vue'
 import ChatModelMenu from '@/components/chat/ChatModelMenu.vue'
 import ChatTypewriterPlaceholder from '@/components/chat/ChatTypewriterPlaceholder.vue'
 import AppIcon from '@/components/common/AppIcon.vue'
@@ -14,9 +17,13 @@ import AppTooltip from '@/components/common/AppTooltip.vue'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { useAutosizeTextarea } from '@/hooks/useAutosizeTextarea'
+import { ATTACHMENT_ACCEPT } from '@/utils/attachments'
 
 const props = defineProps<{
   message: string
+  attachments: ComposerAttachment[]
+  /** 当前选中的模型不能看图片、而附件里有图片：不让发送，提示换模型或移除图片。 */
+  imagesUnsupported?: boolean
   models: LlmModelOption[]
   modelsLoading: boolean
   selectedModel: string | null
@@ -36,6 +43,9 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   'update:message': [value: string]
+  'addFiles': [files: File[]]
+  'removeAttachment': [id: string]
+  'retryAttachment': [id: string]
   'update:selectedModel': [value: string]
   'update:selectedReasoningEffort': [value: ReasoningEffort | null]
   'refreshModels': []
@@ -75,7 +85,8 @@ watch(() => props.message, (message) => {
   if (message.length === 0)
     isExpanded.value = false
 })
-const isStacked = computed(() => Boolean(props.hero) || isExpanded.value)
+// 有附件时也用上下两层：附件排在输入文字上方。
+const isStacked = computed(() => Boolean(props.hero) || isExpanded.value || props.attachments.length > 0)
 // 两套排布的内边距不同，切换后按新排布重算高度。
 watch(isStacked, resizeTextarea, { flush: 'post' })
 
@@ -87,8 +98,19 @@ const isGenerationInProgress = computed(() => {
   return props.status === 'thinking' || props.status === 'generating'
 })
 
+const hasContent = computed(() => props.message.trim().length > 0 || props.attachments.length > 0)
+/** 附件没传完或有失败的：发送按钮照常显示，但点了不发。 */
+const attachmentsPending = computed(() => props.attachments.some(item => item.status !== 'ready'))
+// 锁定中的附件正在确认去向（上一次请求没等到 start）：这段时间也不发。
+const attachmentsBlockSend = computed(() => attachmentsPending.value || Boolean(props.imagesUnsupported) || props.attachments.some(item => item.locked))
+const sendLabel = computed(() => {
+  if (attachmentsPending.value)
+    return t(props.attachments.some(item => item.status === 'error') ? 'composer.attachments.sendFailed' : 'composer.attachments.sendUploading')
+  return t(props.imagesUnsupported ? 'composer.attachments.sendImagesUnsupported' : 'composer.send')
+})
+
 /** 没有内容时不显示发送按钮；生成中始终显示停止按钮。 */
-const showPrimaryAction = computed(() => isGenerationInProgress.value || props.message.trim().length > 0)
+const showPrimaryAction = computed(() => isGenerationInProgress.value || hasContent.value)
 // 键盘焦点停在停止按钮上时生成结束，按钮卸载前把焦点交还输入框，不掉到 body。
 watch(showPrimaryAction, async (show) => {
   if (show || !document.activeElement?.hasAttribute('data-composer-primary'))
@@ -104,7 +126,7 @@ function focus() {
 defineExpose({ focus })
 
 function submitComposer() {
-  if (props.historyReady === false || isGenerationInProgress.value || !props.message.trim())
+  if (props.historyReady === false || isGenerationInProgress.value || !hasContent.value || attachmentsBlockSend.value)
     return
 
   emit('send')
@@ -135,6 +157,69 @@ function triggerPrimaryAction() {
 function updateMessage(value: string | number) {
   emit('update:message', String(value))
 }
+
+const fileInput = ref<HTMLInputElement | null>(null)
+
+function addFiles(files: FileList | null | undefined) {
+  if (files?.length)
+    emit('addFiles', [...files])
+}
+
+function handleFilesPicked() {
+  addFiles(fileInput.value?.files)
+  // 清空后同一个文件才能再选一次。
+  if (fileInput.value)
+    fileInput.value.value = ''
+}
+
+/**
+ * 剪贴板里有文件（截图、复制的文件）就当附件收下；纯文字照常粘贴。
+ * Excel / Word 里复制的内容会同时带一张渲染图：既有富文本又有纯文本时按文字粘贴。
+ */
+function handlePaste(event: ClipboardEvent) {
+  const data = event.clipboardData
+  if (!data?.files.length || (data.types.includes('text/html') && data.types.includes('text/plain')))
+    return
+
+  event.preventDefault()
+  addFiles(data.files)
+}
+
+/**
+ * 拖放接在整个窗口上：拖偏一点松手也收得到，同时拦住浏览器「打开这个文件」的默认行为。
+ * dragenter / dragleave 会在每个子元素上成对触发，用计数判断是否真的离开了窗口。
+ */
+const isDraggingFiles = ref(false)
+let dragDepth = 0
+
+function carriesFiles(event: DragEvent) {
+  return event.dataTransfer?.types.includes('Files') ?? false
+}
+
+useEventListener(window, 'dragenter', (event) => {
+  if (!carriesFiles(event))
+    return
+  dragDepth++
+  isDraggingFiles.value = true
+})
+useEventListener(window, 'dragleave', (event) => {
+  if (!carriesFiles(event))
+    return
+  dragDepth = Math.max(0, dragDepth - 1)
+  isDraggingFiles.value = dragDepth > 0
+})
+useEventListener(window, 'dragover', (event) => {
+  if (carriesFiles(event))
+    event.preventDefault()
+})
+useEventListener(window, 'drop', (event) => {
+  if (!carriesFiles(event))
+    return
+  event.preventDefault()
+  dragDepth = 0
+  isDraggingFiles.value = false
+  addFiles(event.dataTransfer?.files)
+})
 </script>
 
 <template>
@@ -151,48 +236,60 @@ function updateMessage(value: string | number) {
         </button>
       </p>
       <div
-        class="composer-card border border-agent-border-soft bg-agent-surface-raised shadow-[0_1px_2px_rgb(61_49_36/4%),0_4px_8px_rgb(61_49_36/5%)] transition-colors focus-within:border-agent-border"
-        :class="isStacked ? 'composer-card--stacked rounded-[20px] p-3' : 'composer-card--compact rounded-[20px] p-1.5'"
+        class="composer-card relative border bg-agent-surface-raised shadow-[0_1px_2px_rgb(61_49_36/4%),0_4px_8px_rgb(61_49_36/5%)] transition-colors"
+        :class="[
+          isStacked ? 'composer-card--stacked rounded-[20px] p-3' : 'composer-card--compact rounded-[20px] p-1.5',
+          isDraggingFiles ? 'border-agent-accent' : 'border-agent-border-soft focus-within:border-agent-border',
+        ]"
       >
-        <div ref="inputContainer" class="composer-input relative min-w-0">
-          <Textarea
-            :model-value="message"
-            :maxlength="CHAT_MESSAGE_MAX_CHARS"
-            rows="1"
-            class="resize-none border-0 bg-transparent text-base font-normal leading-6 text-agent-ink shadow-none field-sizing-fixed focus-visible:ring-0 placeholder:text-agent-ink-muted"
-            :class="[
-              hero ? 'min-h-16' : 'min-h-9',
-              isStacked ? 'px-1.5 pb-1 pt-1.5' : 'px-2 py-1.5',
-              showTypewriter && 'placeholder:text-transparent',
-            ]"
-            :placeholder="hero ? placeholderHints[0] : t('composer.replyPlaceholder')"
-            @update:model-value="updateMessage"
-            @keydown.enter.exact="handleEnterKeydown"
-            @focus="isTextareaFocused = true"
-            @blur="isTextareaFocused = false"
-            @compositionstart="isComposing = true"
-            @compositionend="isComposing = false"
+        <div class="composer-body min-w-0">
+          <ChatComposerAttachments
+            v-if="attachments.length > 0"
+            :attachments="attachments"
+            @remove="emit('removeAttachment', $event)"
+            @retry="emit('retryAttachment', $event)"
           />
+          <div ref="inputContainer" class="composer-input relative min-w-0">
+            <Textarea
+              :model-value="message"
+              :maxlength="CHAT_MESSAGE_MAX_CHARS"
+              rows="1"
+              class="resize-none border-0 bg-transparent text-base font-normal leading-6 text-agent-ink shadow-none field-sizing-fixed focus-visible:ring-0 placeholder:text-agent-ink-muted"
+              :class="[
+                hero ? 'min-h-16' : 'min-h-9',
+                isStacked ? 'px-1.5 pb-1 pt-1.5' : 'px-2 py-1.5',
+                showTypewriter && 'placeholder:text-transparent',
+              ]"
+              :placeholder="hero ? placeholderHints[0] : t('composer.replyPlaceholder')"
+              @update:model-value="updateMessage"
+              @keydown.enter.exact="handleEnterKeydown"
+              @focus="isTextareaFocused = true"
+              @blur="isTextareaFocused = false"
+              @paste="handlePaste"
+              @compositionstart="isComposing = true"
+              @compositionend="isComposing = false"
+            />
 
-          <ChatTypewriterPlaceholder
-            v-if="showTypewriter"
-            :phrases="placeholderHints"
-            :hide-caret="isTextareaFocused"
-          />
+            <ChatTypewriterPlaceholder
+              v-if="showTypewriter"
+              :phrases="placeholderHints"
+              :hide-caret="isTextareaFocused"
+            />
+          </div>
         </div>
 
-        <AppTooltip :content="t('composer.attachSoon')">
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-lg"
-            aria-disabled="true"
-            :aria-label="t('composer.attachSoon')"
-            class="composer-plus size-9 cursor-default rounded-lg bg-transparent text-agent-ink-soft shadow-none hover:bg-agent-surface-sunken/55 hover:text-agent-ink"
-          >
-            <AppIcon name="tabler:plus" :size="18" />
-          </Button>
-        </AppTooltip>
+        <input
+          ref="fileInput"
+          type="file"
+          multiple
+          hidden
+          tabindex="-1"
+          :accept="ATTACHMENT_ACCEPT"
+          @change="handleFilesPicked"
+        >
+        <div class="composer-plus flex">
+          <ChatAttachMenu :side="hero ? 'bottom' : 'top'" @pick-files="fileInput?.click()" />
+        </div>
 
         <div v-if="isStacked" class="composer-meta flex min-w-0 items-center justify-end gap-1">
           <p
@@ -217,16 +314,17 @@ function updateMessage(value: string | number) {
           />
         </div>
 
-        <AppTooltip v-if="showPrimaryAction" :content="isGenerationInProgress ? t('composer.stop') : t('composer.send')">
+        <AppTooltip v-if="showPrimaryAction" :content="isGenerationInProgress ? t('composer.stop') : sendLabel">
           <Button
             type="button"
             size="icon-lg"
-            :aria-label="isGenerationInProgress ? t('composer.stop') : t('composer.send')"
+            :aria-label="isGenerationInProgress ? t('composer.stop') : sendLabel"
             data-composer-primary
             :disabled="historyReady === false && !isGenerationInProgress"
+            :aria-disabled="(!isGenerationInProgress && attachmentsBlockSend) || undefined"
             :aria-busy="historyLoading || undefined"
             variant="ghost"
-            class="composer-send size-9 rounded-lg bg-transparent shadow-none hover:bg-agent-surface-sunken/55"
+            class="composer-send size-9 rounded-lg bg-transparent shadow-none hover:bg-agent-surface-sunken/55 aria-disabled:cursor-default aria-disabled:opacity-40 aria-disabled:hover:bg-transparent"
             :class="isGenerationInProgress ? 'text-agent-copper hover:text-agent-copper' : 'text-agent-ink hover:text-agent-ink'"
             @click="triggerPrimaryAction"
           >
@@ -234,6 +332,17 @@ function updateMessage(value: string | number) {
             <AppIcon v-else name="tabler:arrow-up" :size="19" />
           </Button>
         </AppTooltip>
+
+        <!-- 盖在卡片上、不占位：拖入时输入框本身不动。 -->
+        <div
+          v-if="isDraggingFiles"
+          class="pointer-events-none absolute inset-0 grid place-items-center rounded-[19px] bg-agent-surface-raised/92 text-sm font-medium text-agent-accent"
+        >
+          <span class="inline-flex items-center gap-2">
+            <AppIcon name="tabler:cloud-upload" :size="18" />
+            {{ t('composer.attachments.dropHint') }}
+          </span>
+        </div>
       </div>
 
       <div v-if="!hero" class="flex min-h-7 items-center justify-between gap-3 px-2 pt-1">
@@ -294,7 +403,7 @@ function updateMessage(value: string | number) {
   align-items: end;
 }
 
-.composer-input {
+.composer-body {
   grid-area: input;
 }
 

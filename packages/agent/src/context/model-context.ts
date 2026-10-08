@@ -7,9 +7,9 @@ import type {
   ToolResultInputItem,
 } from '@agent/ai'
 import type { UnvalidatedToolCallEnvelope } from '../tools/tool.types.js'
-import type { ConversationHistory, HistoryCompactionRecord } from './conversation-history.js'
+import type { ConversationHistory, HistoryCompactionRecord, HistoryQuestion } from './conversation-history.js'
 
-import { groupItems, historyItems, turnSummaryMessage } from './conversation-history.js'
+import { groupItems, historyItems, questionItem, turnSummaryMessage } from './conversation-history.js'
 import { estimateItemTokens, estimateRequestTokens, roughTokens } from './token-estimate.js'
 
 /** 一轮 sampling 产生的 assistant Tool Call 消息与逐个 call 对应的结果。 */
@@ -44,7 +44,7 @@ export interface SamplingContextPlan {
 interface CreateModelContextInput {
   instructions: MessageInputItem[]
   history: ConversationHistory
-  currentUser: { content: string, createdAt: Date }
+  currentUser: HistoryQuestion
 }
 
 /**
@@ -64,7 +64,7 @@ export class ModelContext {
     private readonly instructions: MessageInputItem[],
     // 本 Run 开始时读到的历史：历史压缩后换成新记录、去掉被覆盖的组，不重读消息。
     private history: ConversationHistory,
-    private readonly currentUser: { content: string, createdAt: Date },
+    private readonly currentUser: HistoryQuestion,
   ) {}
 
   static create(input: CreateModelContextInput): ModelContext {
@@ -83,7 +83,7 @@ export class ModelContext {
     return this.turn
   }
 
-  get question(): { content: string, createdAt: Date } {
+  get question(): HistoryQuestion {
     return this.currentUser
   }
 
@@ -216,7 +216,7 @@ export class ModelContext {
     return [
       ...this.instructions,
       ...historyItems(this.history),
-      { type: 'message', role: 'user', content: this.currentUser.content },
+      questionItem(this.currentUser),
       ...(this.turn ? [turnSummaryMessage(this.turn.summary)] : []),
       ...this.toolExchanges.slice(this.turn?.keptFrom ?? 0).flatMap(exchange => [exchange.assistantCall, ...exchange.results]),
     ]

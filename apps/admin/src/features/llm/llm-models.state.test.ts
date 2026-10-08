@@ -282,6 +282,7 @@ function model(id: string, reasoningEffort: AdminLlmModel['reasoningEffort']): A
     maxInputTokens: 262_144,
     maxOutputTokens: 8_192,
     reasoningEffort,
+    supportsImageInput: false,
     visible: true,
     isDefault: false,
     sortOrder: 0,

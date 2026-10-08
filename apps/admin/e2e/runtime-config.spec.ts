@@ -144,6 +144,7 @@ test('模型弹窗：三组分割线、单次输入上限带说明、token 千�
     maxInputTokens: 262_144,
     maxOutputTokens: 384_000,
     reasoningEffort: 'high',
+    supportsImageInput: false,
     visible: true,
     isDefault: true,
     sortOrder: 0,

@@ -20,6 +20,7 @@ it.each([0, 990, 1000])('历史覆盖 %s/1000 组时仅加载剩余正文，完�
   let rawQueries = 0
   const db = {
     $queryRaw: async () => rawQueries++ === 0 ? [{ readAt: now }] : [],
+    attachment: { findMany: async () => [] },
     conversationCompaction: { findFirst: async () => coveredCount ? ({ id: 'summary', summary: 'summary', coveredGroupIds: covered, answerOnlyGroupId: null }) : null },
     message: { findMany: async (args: { where: { id?: { in: string[] } }, select: { content?: boolean } }) => {
       if (!args.select.content)

@@ -113,7 +113,7 @@ class FakePrisma {
   readonly message = {
     findMany: async () => {
       this.messageQueries += 1
-      return this.messages
+      return this.messages.map(message => ({ ...message, attachments: [] }))
     },
   }
 
