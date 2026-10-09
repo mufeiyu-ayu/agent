@@ -311,7 +311,7 @@ async function handleOk() {
               <Switch
                 v-model:checked="formState.enabled"
                 size="small"
-                @click.stop
+                @click="(_checked, event) => event.stopPropagation()"
               />
             </div>
           </FormItem>

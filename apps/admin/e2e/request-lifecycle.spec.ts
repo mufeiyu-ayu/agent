@@ -118,9 +118,11 @@ test('B10：初始列表等待中创建用户，旧 GET 返回后新用户仍可
   assert.equal(pending.length, 1)
 })
 
-test('模型行可见性写入有 loading 且防重复，失败恢复并可重试；切服务商是本地操作', async ({ page }) => {
+test('模型写入防重且可重试；模型与服务商编辑开关只切换一次并正确保存', async ({ page }) => {
   await authenticate(page)
-  const provider: AdminLlmProvider = {
+  const errors: string[] = []
+  page.on('pageerror', error => errors.push(error.message))
+  let provider: AdminLlmProvider = {
     id: 'p',
     family: 'openai',
     note: 'fixture',
@@ -154,6 +156,10 @@ test('模型行可见性写入有 loading 且防重复，失败恢复并可重�
   let modelReads = 0
   const writes: Route[] = []
   await page.route('**/api/admin/llm/providers', route => fulfill(route, [provider]))
+  await page.route('**/api/admin/llm/providers/p', (route) => {
+    provider = { ...provider, ...route.request().postDataJSON() }
+    return fulfill(route, provider)
+  })
   await page.route('**/api/admin/llm/models', (route) => {
     modelReads++
     return fulfill(route, [model])
@@ -181,4 +187,44 @@ test('模型行可见性写入有 loading 且防重复，失败恢复并可重�
   await expect(visible).not.toBeChecked()
   await expect(visible).toBeEnabled()
   assert.equal(modelReads, 2)
+
+  const row = page.getByRole('row').filter({ hasText: 'fixture-model' })
+  await row.locator('.action-icon-btn').filter({ has: page.locator('[aria-label="edit"]') }).click()
+  const modelDialog = page.getByRole('dialog', { name: '编辑模型' })
+  for (const label of ['前台可见', '设为默认模型', '图片输入']) {
+    const card = modelDialog.locator('.toggle-card').filter({ hasText: label })
+    const toggle = card.getByRole('switch')
+    await expect(toggle).not.toBeChecked()
+    await toggle.click()
+    await expect(toggle).toBeChecked()
+    await card.getByText(label, { exact: true }).click()
+    await expect(toggle).not.toBeChecked()
+    await toggle.press('Space')
+    await expect(toggle).toBeChecked()
+  }
+  assert.deepEqual(errors, [])
+  await modelDialog.getByRole('button', { name: /确\s*定$/ }).click()
+  await expect.poll(() => writes.length).toBe(3)
+  const input = writes[2]!.request().postDataJSON()
+  assert.deepEqual([input.visible, input.isDefault, input.supportsImageInput], [true, true, true])
+  model = { ...model, ...input }
+  await fulfill(writes[2]!, model)
+  await expect(modelDialog).not.toBeVisible()
+  await expect(row.getByRole('switch', { name: '图片输入' })).toBeChecked()
+
+  await page.locator('.provider-card .footer-actions .action-btn').filter({ has: page.locator('[aria-label="edit"]') }).click()
+  const providerDialog = page.getByRole('dialog', { name: '编辑服务商' })
+  const statusCard = providerDialog.locator('.status-toggle-card')
+  const enabled = statusCard.getByRole('switch')
+  await expect(enabled).toBeChecked()
+  await enabled.click()
+  await expect(enabled).not.toBeChecked()
+  await statusCard.locator('.status-label').click()
+  await expect(enabled).toBeChecked()
+  await enabled.press('Space')
+  await expect(enabled).not.toBeChecked()
+  assert.deepEqual(errors, [])
+  await providerDialog.getByRole('button', { name: /确\s*定$/ }).click()
+  await expect(providerDialog).not.toBeVisible()
+  assert.equal(provider.enabled, false)
 })

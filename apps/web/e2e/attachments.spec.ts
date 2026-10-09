@@ -401,6 +401,27 @@ test('DOCX 的样式只能影响文档，不得隐藏工作区页面', async ({ 
   await expect(panel.locator('[data-docx-preview]')).toHaveAttribute('sandbox', 'allow-popups allow-popups-to-escape-sandbox')
 })
 
+for (const action of ['Enter', 'click'] as const) {
+  test(`先上传图片再输入文字：图片输入已开启时通过 ${action} 发送`, async ({ page }) => {
+    await installApiRoutes(page, () => [])
+    await installAttachmentRoutes(page)
+    await installBrowserStubs(page, { lines: toNdjsonLines(), holdBeforeIndex: -1 })
+    await page.goto('/workspace')
+    const textbox = page.getByRole('textbox').first()
+    await expect(textbox).toBeVisible()
+    await page.locator('input[type=file]').setInputFiles({ name: 'portrait.png', mimeType: 'image/png', buffer: await pngOf(page, 64, 64) })
+    const send = page.locator('[data-composer-primary]')
+    await expect(send).not.toHaveAttribute('aria-disabled', 'true')
+    await textbox.fill('这是谁啊')
+    if (action === 'Enter')
+      await textbox.press('Enter')
+    else
+      await send.click()
+    await expect(page.locator('[data-agent-user-turn-id="user-live"]').getByText('这是谁啊')).toBeVisible()
+    expect(await page.evaluate(() => window.__chatRequests)).toEqual([expect.objectContaining({ message: '这是谁啊', attachmentIds: ['att-1'] })])
+  })
+}
+
 test('选中的模型不能看图片时带图不让发送，移除图片后恢复', async ({ page }) => {
   await installApiRoutes(page, () => [])
   await installBrowserStubs(page, { lines: toNdjsonLines(), holdBeforeIndex: -1 })

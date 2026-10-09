@@ -317,7 +317,7 @@ async function handleOk() {
           @click="formState.visible = !formState.visible"
         >
           <span class="toggle-label">{{ t('llmModels.models.form.visible') }}</span>
-          <Switch v-model:checked="formState.visible" size="small" @click.stop />
+          <Switch v-model:checked="formState.visible" size="small" @click="(_checked, event) => event.stopPropagation()" />
         </div>
 
         <div
@@ -326,7 +326,7 @@ async function handleOk() {
           @click="formState.isDefault = !formState.isDefault"
         >
           <span class="toggle-label">{{ t('llmModels.models.form.isDefault') }}</span>
-          <Switch v-model:checked="formState.isDefault" size="small" @click.stop />
+          <Switch v-model:checked="formState.isDefault" size="small" @click="(_checked, event) => event.stopPropagation()" />
         </div>
 
         <div
@@ -335,7 +335,7 @@ async function handleOk() {
           @click="formState.supportsImageInput = !formState.supportsImageInput"
         >
           <span class="toggle-label">{{ t('llmModels.models.form.imageInput') }}</span>
-          <Switch v-model:checked="formState.supportsImageInput" size="small" @click.stop />
+          <Switch v-model:checked="formState.supportsImageInput" size="small" @click="(_checked, event) => event.stopPropagation()" />
         </div>
       </div>
     </Form>
