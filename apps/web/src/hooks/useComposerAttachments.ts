@@ -32,12 +32,14 @@ export function useComposerAttachments(attachments: Ref<ComposerAttachment[]>, n
 
   async function upload(id: string) {
     const file = files.get(id)
-    if (!file || uploads.has(id))
+    const item = attachments.value.find(item => item.id === id)
+    if (!file || !item || item.locked || uploads.has(id))
       return
 
     const controller = new AbortController()
     uploads.set(id, controller)
-    patch(id, { status: 'uploading', progress: 0 })
+    // 旧地址还在消息里预览，手动重新上传时给草稿一份独立地址。
+    patch(id, { status: 'uploading', progress: 0, remoteId: undefined, ...(item.inMessage ? { url: URL.createObjectURL(file), inMessage: false } : {}) })
 
     try {
       const uploaded = await uploadAttachment(file, { signal: controller.signal, onProgress: progress => patch(id, { progress }) })
@@ -115,7 +117,8 @@ export function useComposerAttachments(attachments: Ref<ComposerAttachment[]>, n
     for (const item of previous) {
       if (alive.has(item.id) || item.locked)
         continue
-      URL.revokeObjectURL(item.url)
+      if (!item.inMessage)
+        URL.revokeObjectURL(item.url)
       if (item.remoteId)
         deleteAttachment(item.remoteId)
     }
@@ -129,15 +132,13 @@ export function useComposerAttachments(attachments: Ref<ComposerAttachment[]>, n
   }, { flush: 'sync' })
 
   // 离开工作区后没有人再清这份列表：取消还在传的（迟到的尺寸与上传结果都认不到文件，不会回填），
-  // 放掉没发出去的本地地址。服务端那份草稿不在这里删，由过期清理收走。
+  // 输入框仍持有的地址包括创建会话期间锁定的草稿；退出后消息也不再预览。远程草稿由过期清理收走。
   onScopeDispose(() => {
     for (const controller of uploads.values())
       controller.abort()
     files.clear()
-    for (const item of attachments.value) {
-      if (!item.locked)
-        URL.revokeObjectURL(item.url)
-    }
+    for (const item of attachments.value)
+      URL.revokeObjectURL(item.url)
   })
 
   return { add, remove, retry: upload }

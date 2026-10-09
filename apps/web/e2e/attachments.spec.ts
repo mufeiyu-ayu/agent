@@ -204,7 +204,7 @@ test('发送确认前锁住附件，确认后消息仍能用原地址预览', as
   await expect(page.locator('[data-attachment-preview-panel]').getByRole('heading', { name: '正文保留' })).toBeVisible()
 })
 
-test('没等到 start 就停止：后端已绑走的附件不留在输入框里再发一次，没绑走的解锁后可以移除', async ({ page }) => {
+test('没等到 start 就停止：已绑走的移出；尚未查到的须重新上传，可以移除但不删去向不明的远程附件', async ({ page }) => {
   // 消息接口是模拟边界：后端「提交后、运行开始前就能读到这批附件」的事实由 attachments.db.test.ts 在真实库上验证。
   let committed = true
   const time = '2026-10-08T00:00:00.000Z'
@@ -224,7 +224,7 @@ test('没等到 start 就停止：后端已绑走的附件不留在输入框里�
   await expect(pending).toHaveCount(0)
   expect(removed).toEqual([])
 
-  // 这次后端没写下消息：附件留在输入框里，解锁后能移除（移除才会删服务端那份）。
+  // 一次查询尚未查到，不能证明原提交已结束；清掉旧 ID 后可手动移除。
   committed = false
   await page.locator('input[type=file]').setInputFiles({ name: '没发出.md', mimeType: 'text/markdown', buffer: Buffer.from('# 二') })
   await expect(page.locator('[data-composer-primary]')).not.toHaveAttribute('aria-disabled', 'true')
@@ -234,10 +234,149 @@ test('没等到 start 就停止：后端已绑走的附件不留在输入框里�
   await page.getByRole('button', { name: '停止生成' }).click()
   const remove = page.getByRole('button', { name: '移除 没发出.md' })
   await expect(remove).toBeEnabled()
+  await expect(pending.getByRole('button', { name: '重新上传 没发出.md' })).toBeVisible()
   await pending.hover()
   await remove.click()
   await expect(pending).toHaveCount(0)
-  expect(removed).toEqual(['att-2'])
+  expect(removed).toEqual([])
+})
+
+for (const confirmation of ['offline', 'early-query'] as const) {
+  test(`发送结果 ${confirmation}：不自动重传或重发，手动上传取得新 ID 后才能再次发送`, async ({ page }) => {
+    await installApiRoutes(page, () => [])
+    const { removed, idsByName } = await installAttachmentRoutes(page)
+    await installBrowserStubs(page, { lines: toNdjsonLines(), holdBeforeIndex: 0 })
+    let checking = false
+    if (confirmation === 'offline') {
+      await page.route(`**/api/conversations/${CONVERSATION_ID}/messages`, route => checking
+        ? route.abort('failed')
+        : route.fulfill({ json: { success: true, code: 0, message: 'ok', data: [] } }))
+    }
+    await page.goto('/workspace')
+    await expect(page.getByRole('textbox').first()).toBeVisible()
+    await page.locator('input[type=file]').setInputFiles({ name: '保留.md', mimeType: 'text/markdown', buffer: Buffer.from('# 保留正文') })
+    const send = page.locator('[data-composer-primary]')
+    const pending = page.getByRole('list', { name: '待发送的附件' })
+    await expect(send).not.toHaveAttribute('aria-disabled', 'true')
+    await send.click()
+    checking = true
+    await page.getByRole('button', { name: '停止生成' }).click()
+    await expect(page.getByRole('status').filter({ hasText: '发送结果未确认，请先检查已有消息' })).toBeVisible()
+    await expect(send).toHaveAttribute('aria-disabled', 'true')
+    await send.click({ force: true })
+    expect(await page.evaluate(() => window.__chatRequests)).toHaveLength(1)
+    expect(idsByName.get('保留.md')).toBe('att-1')
+    expect(removed).toEqual([])
+
+    await pending.getByRole('button', { name: '重新上传 保留.md' }).click()
+    await expect(send).not.toHaveAttribute('aria-disabled', 'true')
+    expect(idsByName.get('保留.md')).toBe('att-2')
+    expect(await page.evaluate(() => window.__chatRequests)).toHaveLength(1)
+    await page.evaluate(() => window.__releaseStream?.())
+    await page.waitForTimeout(850)
+    await send.click()
+    await expect(pending).toHaveCount(0)
+    expect(await page.evaluate(() => window.__chatRequests)).toEqual([
+      expect.objectContaining({ attachmentIds: ['att-1'] }),
+      expect.objectContaining({ attachmentIds: ['att-2'] }),
+    ])
+    await page.locator('[data-agent-user-turn-id="user-live"]').getByRole('button', { name: '预览 保留.md' }).click()
+    await expect(page.locator('[data-attachment-preview-panel]').getByRole('heading', { name: '保留正文' })).toBeVisible()
+    expect(removed).toEqual([])
+  })
+}
+
+test('附件失效 409：显示原因及恢复提示，阻止旧 ID 重发，手动重新上传后正常发送', async ({ page }) => {
+  await installApiRoutes(page, () => [])
+  const { removed } = await installAttachmentRoutes(page)
+  await installBrowserStubs(page, { lines: toNdjsonLines(), holdBeforeIndex: -1 })
+  await page.goto('/workspace')
+  await expect(page.getByRole('textbox').first()).toBeVisible()
+  await page.evaluate(() => {
+    const originalFetch = window.fetch
+    let first = true
+    window.fetch = async (input, init) => {
+      if (String(input).includes('/api/chat/stream') && first) {
+        first = false
+        window.__chatRequests?.push(JSON.parse(String(init?.body)))
+        return new Response(JSON.stringify({ message: '有附件不存在或已经发送过，请重新添加' }), { status: 409, headers: { 'Content-Type': 'application/json' } })
+      }
+      return originalFetch(input, init)
+    }
+  })
+  await page.locator('input[type=file]').setInputFiles({ name: '失效.md', mimeType: 'text/markdown', buffer: Buffer.from('# 重新上传') })
+  const send = page.locator('[data-composer-primary]')
+  await expect(send).not.toHaveAttribute('aria-disabled', 'true')
+  await send.click()
+  await expect(page.getByRole('status').filter({ hasText: '有附件不存在或已经发送过，请重新添加；请先检查已有消息' })).toBeVisible()
+  await expect(send).toHaveAttribute('aria-disabled', 'true')
+  await send.click({ force: true })
+  expect(await page.evaluate(() => window.__chatRequests)).toHaveLength(1)
+  await page.getByRole('button', { name: '重新上传 失效.md' }).click()
+  await expect(send).not.toHaveAttribute('aria-disabled', 'true')
+  await page.waitForTimeout(850)
+  await send.click()
+  await expect(page.getByRole('list', { name: '待发送的附件' })).toHaveCount(0)
+  expect(await page.evaluate(() => window.__chatRequests)).toEqual([
+    expect.objectContaining({ attachmentIds: ['att-1'] }),
+    expect.objectContaining({ attachmentIds: ['att-2'] }),
+  ])
+  expect(removed).toEqual([])
+})
+
+test('创建新会话尚未返回时退出：取消创建，回收锁定草稿 URL，不删除远程附件', async ({ page }) => {
+  await installApiRoutes(page, () => [])
+  const { removed } = await installAttachmentRoutes(page)
+  await installBrowserStubs(page, { lines: [], holdBeforeIndex: -1 })
+  let releaseCreation!: () => void
+  let creating = false
+  let aborted = false
+  const creation = new Promise<void>((resolve) => {
+    releaseCreation = resolve
+  })
+  await page.route('**/api/conversations', async (route) => {
+    creating = true
+    await creation
+    await route.fulfill({ json: { success: true, code: 0, message: 'ok', data: { id: 'late-created', title: 'late', createdAt: '2026-10-09T00:00:00Z', updatedAt: '2026-10-09T00:00:00Z' } } }).catch(() => {})
+  })
+  page.on('requestfailed', (request) => {
+    if (request.method() === 'POST' && request.url().endsWith('/api/conversations'))
+      aborted = true
+  })
+  await page.goto('/workspace')
+  await expect(page.getByRole('textbox').first()).toBeVisible()
+  await page.getByRole('button', { name: '新建对话', exact: true }).click()
+  await page.evaluate(() => {
+    const created: string[] = []
+    const revoked: string[] = []
+    const create = URL.createObjectURL.bind(URL)
+    const revoke = URL.revokeObjectURL.bind(URL)
+    URL.createObjectURL = (blob) => {
+      const url = create(blob)
+      created.push(url)
+      return url
+    }
+    URL.revokeObjectURL = (url) => {
+      revoked.push(url)
+      revoke(url)
+    }
+    Object.assign(window, { attachmentUrls: { created, revoked } })
+  })
+  await page.locator('input[type=file]').setInputFiles({ name: '创建中.md', mimeType: 'text/markdown', buffer: Buffer.from('x') })
+  await expect(page.locator('[data-composer-primary]')).not.toHaveAttribute('aria-disabled', 'true')
+  await page.locator('[data-composer-primary]').click()
+  await expect.poll(() => creating).toBe(true)
+  await expect(page.getByRole('button', { name: '移除 创建中.md' })).toBeDisabled()
+  await page.getByRole('button', { name: '用户设置', exact: true }).click()
+  await page.getByRole('menuitem', { name: '修改密码', exact: true }).click()
+  await expect(page).toHaveURL(/\/change-password/)
+  releaseCreation()
+  await expect.poll(() => aborted).toBe(true)
+  const urls = await page.evaluate(() => (window as Window & { attachmentUrls: { created: string[], revoked: string[] } }).attachmentUrls)
+  expect(urls.created).toHaveLength(1)
+  expect(urls.revoked).toEqual(urls.created)
+  expect(await page.evaluate(() => window.__chatRequests)).toEqual([])
+  expect(removed).toEqual([])
 })
 
 test('DOCX 的样式只能影响文档，不得隐藏工作区页面', async ({ page }) => {
