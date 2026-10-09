@@ -27,6 +27,8 @@ export interface ComposerAttachment extends ChatAttachment {
   remoteId?: string
   /** 已交给正在提交的请求：去向确认前不能移除、不能再发，也不撤销消息副本使用的 URL。 */
   locked?: boolean
+  /** 此地址已经用于消息预览，由工作区回收；重新上传给草稿另建地址。 */
+  inMessage?: boolean
   status: 'uploading' | 'ready' | 'error'
   /** 0–1。 */
   progress: number

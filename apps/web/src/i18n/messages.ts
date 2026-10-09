@@ -300,7 +300,9 @@ export const messages = {
         retry: '重新上传 {name}',
         dropHint: '松开即可添加',
         sendUploading: '附件上传完才能发送',
-        sendFailed: '有附件上传失败，重试或移除后再发送',
+        sendFailed: '有附件需要重新上传，重试或移除后再发送',
+        sendUnconfirmed: '发送结果未确认，请先检查已有消息；确认需要重发后，可点击附件上的重新上传或移除。',
+        reuploadHint: '请先检查已有消息，再决定是否重新上传或移除附件。',
         sendImagesUnsupported: '当前模型不能看图片，换一个模型或移除图片后再发送',
         errors: {
           unsupported: '暂不支持这种文件：{name}',
@@ -628,7 +630,9 @@ export const messages = {
         retry: 'Retry uploading {name}',
         dropHint: 'Drop to add',
         sendUploading: 'Wait for attachments to finish uploading',
-        sendFailed: 'An attachment failed to upload. Retry or remove it first',
+        sendFailed: 'An attachment needs uploading again. Retry or remove it first',
+        sendUnconfirmed: 'The send result is unconfirmed. Check existing messages first, then choose whether to upload the attachment again or remove it.',
+        reuploadHint: 'Check existing messages first, then choose whether to upload the attachment again or remove it.',
         sendImagesUnsupported: 'This model cannot read images. Switch models or remove the images first',
         errors: {
           unsupported: 'This file type is not supported yet: {name}',

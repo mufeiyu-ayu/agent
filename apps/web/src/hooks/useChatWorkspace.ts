@@ -333,8 +333,10 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
       const payload = buildChatRequest(conversationId, messageContent, attachmentIds, model, reasoningEffort)
       pendingMessage = createPendingUserMessage(conversationId, messageContent)
       request.turnId = pendingMessage.id
-      if (sentAttachments.length > 0)
+      if (sentAttachments.length > 0) {
         turnAttachments.value = { ...turnAttachments.value, [pendingMessage.id]: sentAttachments }
+        attachments.value = attachments.value.map(item => submittedAttachmentIds.has(item.id) ? { ...item, inMessage: true } : item)
+      }
       upsertMessageInConversation(pendingMessage)
 
       for await (const event of streamChat(payload, { signal: request.controller.signal })) {
@@ -425,8 +427,12 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
     }
     catch (error) {
       // 进入流之前就被 HTTP 拒绝：运行还没开始，消息没写下。
-      if (error instanceof ChatStreamHttpError)
+      if (error instanceof ChatStreamHttpError) {
         attachmentsSettled = true
+        // 此接口的 409 来自附件可绑定性检查；其他明确拒绝仍可用原附件重试。
+        if (error.status === 409)
+          requireAttachmentUpload()
+      }
       // 已有终态、被停止、卸载或同会话新请求接管时，尾部异常不能再改旧/新任务。
       if (!ownsActiveRequest(request))
         return
@@ -439,7 +445,9 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
 
       if (request.assistantMessageId)
         endTurnRun(request.assistantMessageId, 'error')
-      const nextErrorMessage = getRequestErrorMessage(error)
+      const nextErrorMessage = error instanceof ChatStreamHttpError && error.status === 409 && attachmentIds.length > 0
+        ? `${getRequestErrorMessage(error)}；${t('composer.attachments.reuploadHint')}`
+        : getRequestErrorMessage(error)
       request.error = nextErrorMessage
       if (request.assistantMessageId && request.conversationId) {
         setLocalTurnError(request.assistantMessageId, nextErrorMessage)
@@ -468,24 +476,29 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
       attachments.value = attachments.value.map(item => submittedAttachmentIds.has(item.id) ? { ...item, locked: false } : item)
     }
 
-    /**
-     * 请求发出后没等到 start 就断了（停止、断网）：后端可能已经写下消息并绑走了附件，原样再发会被拒绝。
-     * 读一次会话消息确认去向，期间保持锁定。连确认也读不到（多半是断网，请求根本没到后端）时解锁留给用户重试：
-     * 万一其实已经发出，再发会在进入流之前被后端拒绝（409）并提示重新添加。只按本地 id 处理这次提交的，不碰之后新加的。
-     */
-    async function settleAttachments(conversationId: string) {
-      const consumed = await listConversationMessages(conversationId).then(
-        persisted => persisted.some(item => item.attachments?.some(attachment => attachmentIds.includes(attachment.id))),
-        () => false,
-      )
-      if (isUnmounted)
-        return
-      if (!consumed)
-        return unlockAttachments()
+    function requireAttachmentUpload() {
+      attachments.value = attachments.value.map(item => submittedAttachmentIds.has(item.id)
+        ? { ...item, status: 'error', remoteId: undefined, locked: false }
+        : item)
+    }
 
-      attachments.value = attachments.value.filter(item => !submittedAttachmentIds.has(item.id))
-      if (currentViewKey.value === request.key && message.value === submittedMessage)
-        message.value = ''
+    // 一次读取只能证明已经绑定；失败或暂未读到时，保留文件供用户确认后手动重新上传。
+    async function settleAttachments(conversationId: string) {
+      const persisted = await listConversationMessages(conversationId).catch(() => null)
+      if (isUnmounted || !attachments.value.some(item => submittedAttachmentIds.has(item.id)))
+        return
+
+      const stillViewingRequest = currentViewKey.value === request.key && requests.get(request.key) === request
+      if (persisted?.some(item => item.attachments?.some(attachment => attachmentIds.includes(attachment.id)))) {
+        attachments.value = attachments.value.filter(item => !submittedAttachmentIds.has(item.id))
+        if (stillViewingRequest && message.value === submittedMessage)
+          message.value = ''
+      }
+      else {
+        requireAttachmentUpload()
+        if (stillViewingRequest)
+          showMessage(t('composer.attachments.sendUnconfirmed'), 'error')
+      }
     }
   }
 

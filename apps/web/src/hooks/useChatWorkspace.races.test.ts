@@ -1,10 +1,13 @@
 import type { ChatStreamEvent, ConversationMessage } from '@agent/contracts'
 import type { ComposerAttachment } from '../types/chat'
 import assert from 'node:assert/strict'
-import { afterEach, beforeEach, it, vi } from 'vitest'
+import { afterEach, beforeEach, it, onTestFinished, vi } from 'vitest'
+import { effectScope } from 'vue'
+import { deleteAttachment, uploadAttachment } from '../api/attachments'
 import { ChatStreamHttpError, streamChat } from '../api/chat'
 import { createConversation, deleteConversation, listConversationMessages, listConversations } from '../api/conversations'
 import { useChatWorkspace } from './useChatWorkspace'
+import { useComposerAttachments } from './useComposerAttachments'
 
 const lifecycle = vi.hoisted(() => ({ mounted: () => {}, unmounted: () => {} }))
 vi.mock('vue', async original => ({
@@ -14,7 +17,8 @@ vi.mock('vue', async original => ({
 }))
 vi.mock('vue-i18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
 vi.mock('../api/conversations', () => ({ createConversation: vi.fn(), deleteConversation: vi.fn(), listConversationMessages: vi.fn(), listConversations: vi.fn(), updateConversation: vi.fn() }))
-vi.mock('../api/chat', () => ({ streamChat: vi.fn(), ChatStreamHttpError: class extends Error {} }))
+vi.mock('../api/chat', async original => ({ ...await original<typeof import('../api/chat')>(), streamChat: vi.fn() }))
+vi.mock('../api/attachments', async original => ({ ...await original<typeof import('../api/attachments')>(), uploadAttachment: vi.fn(), deleteAttachment: vi.fn() }))
 const time = '2026-10-07T00:00:00Z'
 const conversation = (id: string) => ({ id, title: id, createdAt: time, updatedAt: time })
 function history(id: string): ConversationMessage[] {
@@ -213,9 +217,11 @@ function sentQuestion(conversationId: string, id: string, remoteId: string): Con
 }
 
 // 后端的事实（提交后、运行开始前，消息接口就带着这批附件）由 attachments.db.test.ts 在真实库上验证；这里的消息接口是模拟边界。
-it.each(['committed', 'uncommitted', 'unknown'] as const)('没等到 start 就停止、后端 %s：确认去向前保持锁定；已绑走的不留作草稿，其余解锁；之后新加的附件不受影响', async (phase) => {
+it.each(['committed', 'early-query', 'unknown', 'disconnect'] as const)('没收到 start、确认结果 %s：已绑定移出，其余须手动重新上传；新增附件不受影响', async (phase) => {
+  const interrupted = deferred<void>()
   vi.mocked(streamChat).mockImplementationOnce(async function* (_request, options) {
-    await new Promise((_resolve, reject) => options?.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError'))))
+    options?.signal?.addEventListener('abort', () => interrupted.reject(new DOMException('aborted', 'AbortError')))
+    await interrupted.promise
   })
   const workspace = useChatWorkspace()
   lifecycle.mounted()
@@ -227,7 +233,10 @@ it.each(['committed', 'uncommitted', 'unknown'] as const)('没等到 start 就�
   assert.deepEqual(vi.mocked(streamChat).mock.calls[0]![0].attachmentIds, ['remote-1'])
   const checking = deferred<ConversationMessage[]>()
   vi.mocked(listConversationMessages).mockReturnValueOnce(checking.promise)
-  workspace.stopGeneration()
+  if (phase === 'disconnect')
+    interrupted.reject(new Error('connection lost'))
+  else
+    workspace.stopGeneration()
   await sending
   assert.equal(workspace.attachments.value[0]?.locked, true, '去向不明时不能直接恢复成可重发')
   workspace.attachments.value = [...workspace.attachments.value, draft(2)]
@@ -239,6 +248,17 @@ it.each(['committed', 'uncommitted', 'unknown'] as const)('没等到 start 就�
   const expected = phase === 'committed' ? ['local-2'] : ['local-1', 'local-2']
   await vi.waitFor(() => assert.deepEqual(workspace.attachments.value.map(item => [item.id, Boolean(item.locked)]), expected.map(id => [id, false])))
   assert.equal(workspace.message.value, phase === 'committed' ? '' : 'with file')
+  assert.deepEqual(workspace.attachments.value.at(-1), draft(2))
+  if (phase !== 'committed') {
+    assert.equal(workspace.attachments.value[0]?.status, 'error')
+    assert.equal(workspace.attachments.value[0]?.remoteId, undefined)
+    assert.equal(workspace.appMessage.value.text, 'composer.attachments.sendUnconfirmed')
+    // 这次查询即使先于原事务返回，也不能让旧 ID 再次进入请求。
+    vi.mocked(listConversationMessages).mockResolvedValue([...history('a'), sentQuestion('a', 'late-commit', 'remote-1')])
+    vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 1000)
+    await workspace.sendMessage()
+    assert.equal(vi.mocked(streamChat).mock.calls.length, 1)
+  }
 })
 
 it('这次页面里发出的附件：消息换成接口地址、会话删除或离开工作区时放掉本地地址，仍在用的不动', async () => {
@@ -272,7 +292,94 @@ it('这次页面里发出的附件：消息换成接口地址、会话删除或�
   assert.deepEqual(revoked(), ['blob:1', 'blob:2'])
 })
 
-it('进入流之前被拒绝（如 409 附件已发出过）直接解锁并显示原因；卸载后不再读消息确认', async () => {
+it.each(['committed', 'missing', 'offline'] as const)('迟到的 %s 确认不恢复已移除的附件，也不修改另一视图的同文草稿', async (phase) => {
+  vi.mocked(streamChat).mockImplementationOnce(async function* (_request, options) {
+    await new Promise((_resolve, reject) => options?.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError'))))
+  })
+  const workspace = useChatWorkspace()
+  lifecycle.mounted()
+  await vi.waitFor(() => assert.ok(workspace.activeConversationId.value === 'a' && !workspace.isLoadingMessages.value))
+  workspace.attachments.value = [draft(1)]
+  workspace.message.value = 'same text'
+  const sending = workspace.sendMessage()
+  const checking = deferred<ConversationMessage[]>()
+  vi.mocked(listConversationMessages).mockReturnValueOnce(checking.promise)
+  workspace.stopGeneration()
+  await sending
+  await workspace.selectConversation('b')
+  workspace.attachments.value = [draft(2)]
+  workspace.message.value = 'same text'
+  // 切回原视图后写了新的同文草稿，也不能被旧确认清空。
+  await workspace.selectConversation('a')
+  workspace.attachments.value = [draft(3)]
+  workspace.message.value = 'same text'
+  const notice = workspace.appMessage.value
+  if (phase === 'offline')
+    checking.reject(new Error('offline'))
+  else
+    checking.resolve(phase === 'committed' ? [sentQuestion('a', 'persisted', 'remote-1')] : [])
+  await checking.promise.catch(() => {})
+  await Promise.resolve()
+  assert.deepEqual(workspace.attachments.value, [draft(3)])
+  assert.equal(workspace.message.value, 'same text')
+  assert.equal(workspace.appMessage.value, notice)
+})
+
+it.each([false, true])('start 前明确 error、userMessagePersisted=%s：未提交保留旧 ID 重试，已提交移出并保留消息预览', async (persisted) => {
+  vi.mocked(streamChat).mockImplementationOnce(async function* () {
+    yield { type: 'error', conversationId: 'a', message: 'explicit rejection', userMessagePersisted: persisted }
+  })
+  const workspace = useChatWorkspace()
+  lifecycle.mounted()
+  await vi.waitFor(() => assert.ok(workspace.activeConversationId.value === 'a' && !workspace.isLoadingMessages.value))
+  const reads = vi.mocked(listConversationMessages).mock.calls.length
+  workspace.attachments.value = [draft(1)]
+  await workspace.sendMessage()
+  assert.equal(vi.mocked(listConversationMessages).mock.calls.length, reads)
+  if (persisted) {
+    assert.deepEqual(workspace.attachments.value, [])
+    assert.deepEqual(workspace.conversationTurns.value.at(-1)?.attachments?.map(item => item.url), ['blob:1'])
+  }
+  else {
+    assert.equal(workspace.attachments.value[0]?.remoteId, 'remote-1')
+    assert.equal(workspace.attachments.value[0]?.status, 'ready')
+    assert.equal(workspace.attachments.value[0]?.locked, false)
+    vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 1000)
+    await workspace.sendMessage()
+    assert.deepEqual(vi.mocked(streamChat).mock.calls[1]?.[0].attachmentIds, ['remote-1'])
+  }
+})
+
+it('新会话创建尚未返回时退出：取消请求并回收锁定草稿 URL，不删远程附件，不接管迟到创建结果', async () => {
+  const creating = deferred<Awaited<ReturnType<typeof createConversation>>>()
+  vi.mocked(createConversation).mockReturnValueOnce(creating.promise)
+  vi.mocked(uploadAttachment).mockResolvedValueOnce({ id: 'remote-1', kind: 'file', name: 'draft.md', bytes: 1 })
+  vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:creating')
+  const revoke = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
+  const scope = effectScope()
+  onTestFinished(() => scope.stop())
+  const workspace = scope.run(() => useChatWorkspace())!
+  const composer = scope.run(() => useComposerAttachments(workspace.attachments, vi.fn()))!
+  workspace.resetWorkspace()
+  await composer.add([new File(['x'], 'draft.md')])
+  await vi.waitFor(() => assert.equal(workspace.attachments.value[0]?.status, 'ready'))
+  const sending = workspace.sendMessage()
+  assert.equal(workspace.attachments.value[0]?.locked, true)
+  const signal = vi.mocked(createConversation).mock.calls[0]?.[1]?.signal
+  lifecycle.unmounted()
+  scope.stop()
+  assert.equal(signal?.aborted, true)
+  assert.deepEqual(revoke.mock.calls, [['blob:creating']])
+  assert.deepEqual(vi.mocked(deleteAttachment).mock.calls, [])
+  creating.resolve(conversation('late-created'))
+  await sending
+  assert.equal(vi.mocked(streamChat).mock.calls.length, 0)
+  assert.equal(vi.mocked(listConversationMessages).mock.calls.length, 0)
+  assert.equal(workspace.activeConversationId.value, null)
+  assert.equal(workspace.conversations.value.length, 0)
+})
+
+it.each([409, 400, 503])('进入流之前 HTTP %s：仅附件失效清掉旧 ID，其余明确拒绝保留重试；卸载后不再确认', async (httpStatus) => {
   const workspace = useChatWorkspace()
   lifecycle.mounted()
   await vi.waitFor(() => assert.ok(workspace.activeConversationId.value === 'a' && !workspace.isLoadingMessages.value))
@@ -280,12 +387,14 @@ it('进入流之前被拒绝（如 409 附件已发出过）直接解锁并显�
   const before = reads()
 
   vi.mocked(streamChat).mockImplementationOnce(async function* () {
-    throw new (ChatStreamHttpError as unknown as new (message: string) => Error)('有附件不存在或已经发送过，请重新添加')
+    throw new ChatStreamHttpError('request rejected', httpStatus, httpStatus === 400)
   })
   workspace.attachments.value = [draft(1)]
   await workspace.sendMessage()
   assert.deepEqual(workspace.attachments.value.map(item => [item.id, Boolean(item.locked)]), [['local-1', false]])
-  assert.equal(workspace.appMessage.value.text, '有附件不存在或已经发送过，请重新添加')
+  assert.equal(workspace.attachments.value[0]?.status, httpStatus === 409 ? 'error' : 'ready')
+  assert.equal(workspace.attachments.value[0]?.remoteId, httpStatus === 409 ? undefined : 'remote-1')
+  assert.equal(workspace.appMessage.value.text, httpStatus === 409 ? 'request rejected；composer.attachments.reuploadHint' : 'request rejected')
 
   await workspace.selectConversation('b')
   vi.mocked(streamChat).mockImplementationOnce(async function* (_request, options) {

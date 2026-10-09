@@ -51,7 +51,7 @@ it('附件同步占名额；切视图丢弃迟到尺寸；提交锁阻止移除�
   assert.equal(vi.mocked(deleteAttachment).mock.calls.length, 1)
 })
 
-it('离开工作区：取消在途上传，放掉没发出去的本地地址（锁定的留给消息用）；迟到的上传结果不回填', async () => {
+it('离开工作区：取消上传，回收输入框仍持有的 URL（含锁定草稿）；迟到上传不回填，不删已发附件', async () => {
   let finishUpload!: (uploaded: { id: string }) => void
   let uploadSignal: AbortSignal | undefined
   vi.mocked(uploadAttachment).mockImplementationOnce((_file, options) => {
@@ -78,9 +78,48 @@ it('离开工作区：取消在途上传，放掉没发出去的本地地址（�
 
   scope.stop()
   assert.equal(uploadSignal?.aborted, true)
-  assert.deepEqual(revoke.mock.calls.map(([url]) => url), ['blob:0'])
+  assert.deepEqual(revoke.mock.calls.map(([url]) => url), ['blob:0', 'blob:1'])
+  assert.deepEqual(vi.mocked(deleteAttachment).mock.calls, [])
   const snapshot = attachments.value
   finishUpload({ id: 'late-remote' })
   await vi.waitFor(() => assert.deepEqual(vi.mocked(deleteAttachment).mock.calls, [['late-remote']]))
   assert.equal(attachments.value, snapshot, '迟到的上传结果不能回填已经退出的作用域')
+})
+
+it('手动重新上传保留原文件，草稿另建 URL；只回填本地 id，移除不释放消息 URL 或删除旧远程附件', async () => {
+  vi.mocked(deleteAttachment).mockClear()
+  let next = 0
+  const create = vi.spyOn(URL, 'createObjectURL').mockImplementation(() => `blob:retry-${next++}`)
+  const revoke = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
+  const scope = effectScope()
+  onTestFinished(() => {
+    scope.stop()
+    create.mockRestore()
+    revoke.mockRestore()
+  })
+  const attachments = ref<ComposerAttachment[]>([])
+  const hook = scope.run(() => useComposerAttachments(attachments, vi.fn()))!
+  const file = new File(['x'], 'retained.md')
+  await hook.add([file])
+  await vi.waitFor(() => assert.equal(attachments.value[0]?.status, 'ready'))
+  const id = attachments.value[0]!.id
+  attachments.value = [{ ...attachments.value[0]!, status: 'error', remoteId: undefined, inMessage: true }]
+  let finishUpload!: (uploaded: { id: string }) => void
+  vi.mocked(uploadAttachment).mockImplementationOnce(() => new Promise((resolve) => {
+    finishUpload = resolve as typeof finishUpload
+  }))
+  const retrying = hook.retry(id)
+  await hook.add([new File(['y'], 'new.md')])
+  await vi.waitFor(() => assert.equal(attachments.value[1]?.status, 'ready'))
+  const newDraft = attachments.value[1]
+  finishUpload({ id: 'fresh-id' })
+  await retrying
+  assert.equal(vi.mocked(uploadAttachment).mock.calls.at(-2)?.[0], file)
+  assert.equal(attachments.value[0]?.remoteId, 'fresh-id')
+  assert.equal(attachments.value[0]?.status, 'ready')
+  assert.equal(attachments.value[0]?.url, 'blob:retry-1')
+  assert.equal(attachments.value[1], newDraft)
+  hook.remove(id)
+  assert.deepEqual(revoke.mock.calls, [['blob:retry-1']])
+  assert.deepEqual(vi.mocked(deleteAttachment).mock.calls, [['fresh-id']])
 })
