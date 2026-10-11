@@ -277,6 +277,7 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
   async function sendMessage(
     model?: string | null,
     reasoningEffort?: ReasoningEffort,
+    skillIds?: string[],
   ) {
     if (!canStartChatRequest())
       return
@@ -330,7 +331,7 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
       }
 
       const conversationId = request.conversationId
-      const payload = buildChatRequest(conversationId, messageContent, attachmentIds, model, reasoningEffort)
+      const payload = { ...buildChatRequest(conversationId, messageContent, attachmentIds, model, reasoningEffort), ...(skillIds?.length ? { skillIds } : {}) }
       pendingMessage = createPendingUserMessage(conversationId, messageContent)
       request.turnId = pendingMessage.id
       if (sentAttachments.length > 0) {

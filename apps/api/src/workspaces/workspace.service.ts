@@ -1,4 +1,5 @@
 import type { WorkspaceSnapshot } from '@agent/contracts'
+import type { SkillPackage } from '@agent/skills'
 import type { OnModuleDestroy } from '@nestjs/common'
 import type { Sandbox } from 'e2b'
 import type { Prisma } from '../generated/prisma/client.js'
@@ -6,9 +7,11 @@ import type { StoredWorkspaceFile, WorkspaceCommit, WorkspaceExecution } from '.
 import { Buffer } from 'node:buffer'
 import { randomUUID } from 'node:crypto'
 import { setTimeout as sleep } from 'node:timers/promises'
+import { fileBytes } from '@agent/skills'
 import { BadRequestException, ConflictException, Inject, Injectable, Logger, NotFoundException, ServiceUnavailableException } from '@nestjs/common'
 import { PrismaService } from '../prisma/prisma.service.js'
 import { BASH_SCRIPT, FILE_SCRIPT } from './sandbox-scripts.js'
+import { SKILL_RESOURCES_SCRIPT } from './skill-resources-script.js'
 import { sourceZip } from './workspace-archive.js'
 import { WorkspaceCloudService, WorkspaceCreatedError, WorkspaceCreationRejectedError, WorkspaceUploadOutcomeUnknownError } from './workspace-cloud.service.js'
 import { lockWorkspaceStorage, workspaceDb } from './workspace-db.js'
@@ -112,6 +115,15 @@ export class WorkspaceService implements OnModuleDestroy {
     if (current?.revision !== revision)
       throw new ConflictException('源码版本已更新，此次下载未交付')
     return sourceZip(contents)
+  }
+
+  async prepareSkills(execution: WorkspaceExecution, packages: SkillPackage[], signal: AbortSignal): Promise<void> {
+    const { sandbox } = await this.ensure(execution, signal)
+    await this.cloud.request(sandbox, SKILL_RESOURCES_SCRIPT, packages.map(pkg => ({
+      fingerprint: pkg.fingerprint,
+      name: pkg.name,
+      files: pkg.files.map(file => ({ path: file.path, content: fileBytes(file).toString('base64') })),
+    })), signal)
   }
 
   async fileOperation(execution: WorkspaceExecution, request: Record<string, unknown>, signal: AbortSignal): Promise<unknown> {

@@ -6,6 +6,7 @@ import { AGENT_STEP_TYPES, pairHistory, restoreGroups } from '@agent/agent'
 import { AttachmentStorageService } from '../../attachments/attachment-storage.service.js'
 import { ATTACHMENT_MODEL_SELECT, AttachmentsService } from '../../attachments/attachments.service.js'
 import { MessageRole, MessageStatus, Prisma } from '../../generated/prisma/client.js'
+import { withSkillSelection } from '../../skills/skill-selection.js'
 
 /**
  * 在同一个 REPEATABLE READ 快照里读历史（#220）：最新压缩记录、消息、各组 Run 的状态与需要还原的 Step。
@@ -77,10 +78,12 @@ export async function loadConversationHistory(
     }
     // 边界组也查 Step：它按退回形式发出，但本 Run 内新写的记录可能既不覆盖它、也不再以它为边界，
     // 那之后要按完整形态发出，才与按新记录重建的一致。
-    const runIds = groups.flatMap(group => group.answers.flatMap(answer => answer.runId ? [answer.runId] : []))
+    const retainedQuestionIds = new Set(groups.flatMap(group => group.question ? [group.question.id] : []))
+    const questionRuns = runs.filter(run => retainedQuestionIds.has(run.userMessageId))
+    const runIds = [...new Set([...questionRuns.map(run => run.id), ...groups.flatMap(group => group.answers.flatMap(answer => answer.runId ? [answer.runId] : []))])]
     const steps = runIds.length === 0
       ? []
-      : await transaction.execute(prisma => prisma.$queryRaw<HistoryStepRow[]>(historyStepsQuery(runIds)))
+      : await transaction.execute(prisma => prisma.$queryRaw<Array<HistoryStepRow & { selectedSkillIds?: unknown }>>(historyStepsQuery(runIds)))
 
     const questions = groups.flatMap(group => group.question ? [group.question] : [])
     const attachmentRows = questions.length === 0
@@ -91,18 +94,21 @@ export async function loadConversationHistory(
           select: { ...ATTACHMENT_MODEL_SELECT, messageId: true },
         }))
 
-    return { readAt, compaction, groups, steps, questions, attachmentRows, messageCount: messages.length }
+    return { readAt, compaction, groups, steps, questions, questionRuns, attachmentRows, messageCount: messages.length }
   }, undefined, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead })
 
+  const runByQuestion = new Map(snapshot.questionRuns.map(run => [run.userMessageId, run.id]))
+  const selectionByRun = new Map(snapshot.steps.filter(step => step.type === AGENT_STEP_TYPES.modelSampling && Array.isArray(step.selectedSkillIds)).map(step => [step.runId, step.selectedSkillIds]))
   await Promise.all(snapshot.questions.map(async (question) => {
     const rows = snapshot.attachmentRows.filter(row => row.messageId === question.id)
-    if (rows.length === 0)
-      return
-
-    const input = await attachments.modelInput(question.content, rows, options)
-    question.content = input.modelContent
-    if (input.images)
-      question.images = input.images
+    if (rows.length) {
+      const input = await attachments.modelInput(question.content, rows, options)
+      question.content = input.modelContent
+      if (input.images)
+        question.images = input.images
+    }
+    const runId = runByQuestion.get(question.id)
+    question.content = withSkillSelection(question.content, runId ? selectionByRun.get(runId) : undefined)
   }))
 
   return {
@@ -126,6 +132,7 @@ function historyStepsQuery(runIds: string[]): Prisma.Sql {
       s."sequence",
       s."type",
       s."input" -> 'samplingAttemptId' AS "samplingAttemptId",
+      CASE WHEN s."type" = ${sampling} THEN s."input" -> 'skills' -> 'selectedIds' END AS "selectedSkillIds",
       CASE WHEN s."type" = ${sampling} THEN s."output" -> 'toolCallCount' END AS "toolCallCount",
       CASE WHEN s."type" = ${sampling} THEN s."output" -> 'intermediateText' END AS "intermediateText",
       CASE WHEN s."type" = ${tool} THEN s."input" -> 'callId' END AS "callId",

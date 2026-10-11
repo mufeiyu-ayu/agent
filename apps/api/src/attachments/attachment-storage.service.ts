@@ -25,7 +25,23 @@ export class AttachmentStorageService {
   }
 
   /** `process` 是 OSS 图片处理参数（缩放、转格式），省略读原对象。 */
-  async read(key: string, process?: string): Promise<Buffer> {
+  async read(key: string, process?: string, maxBytes?: number): Promise<Buffer> {
+    if (maxBytes !== undefined) {
+      const stream = await this.stream(key, process)
+      const chunks: Buffer[] = []
+      let size = 0
+      try {
+        for await (const chunk of stream) {
+          const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as Uint8Array)
+          size += bytes.length
+          if (size > maxBytes)
+            throw new Error('存储对象超过已确认大小')
+          chunks.push(bytes)
+        }
+        return Buffer.concat(chunks)
+      }
+      finally { stream.destroy() }
+    }
     const result = await this.oss.get(key, { ...(process ? { process } : {}), timeout: 30_000 })
     return Buffer.isBuffer(result.content) ? result.content : Buffer.from(result.content)
   }

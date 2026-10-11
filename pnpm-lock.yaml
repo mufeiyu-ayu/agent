@@ -114,6 +114,9 @@ importers:
       '@agent/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@agent/skills':
+        specifier: workspace:*
+        version: link:../../packages/skills
       '@mozilla/readability':
         specifier: ^0.6.0
         version: 0.6.0
@@ -313,6 +316,19 @@ importers:
 
   packages/contracts:
     devDependencies:
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+
+  packages/skills:
+    dependencies:
+      yaml:
+        specifier: 2.9.1
+        version: 2.9.1
+    devDependencies:
+      '@types/node':
+        specifier: ^24.19.0
+        version: 24.19.0
       typescript:
         specifier: ^6.0.3
         version: 6.0.3

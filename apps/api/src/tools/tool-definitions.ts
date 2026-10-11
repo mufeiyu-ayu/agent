@@ -1,5 +1,6 @@
 import type { Type } from '@nestjs/common'
 import type { ToolDefinition, ToolExecutor } from './core/tool.types.js'
+import { readSkillDefinition, readSkillDraftDefinition, ReadSkillDraftTool, ReadSkillTool, saveSkillDraftDefinition, SaveSkillDraftTool } from './skill-tools.js'
 import { webFetchDefinition, WebFetchTool } from './web/web-fetch.tool.js'
 import { webSearchDefinition, WebSearchTool } from './web/web-search.tool.js'
 import { TopuplistTrafficTool, trafficDefinition } from './workspace/topuplist-traffic.tool.js'
@@ -10,6 +11,9 @@ import { bashDefinition, BashTool, editDefinition, EditTool, readDefinition, Rea
  * 执行器依赖的 Nest 模块与系统提示词里的用法说明另见 `tools/README.md`。
  */
 export const TOOLS = [
+  toolEntry(readSkillDefinition, ReadSkillTool),
+  toolEntry(readSkillDraftDefinition, ReadSkillDraftTool),
+  toolEntry(saveSkillDraftDefinition, SaveSkillDraftTool),
   toolEntry(webSearchDefinition, WebSearchTool),
   toolEntry(webFetchDefinition, WebFetchTool),
   toolEntry(readDefinition, ReadTool),

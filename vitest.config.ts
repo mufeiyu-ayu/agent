@@ -8,6 +8,7 @@ export default defineConfig({
   resolve: {
     // 共享包直接解析到源码，测试不依赖 dist。
     alias: {
+      '@agent/skills': fromRoot('./packages/skills/src/index.ts'),
       '@agent/contracts': fromRoot('./packages/contracts/src/index.ts'),
       '@agent/ai': fromRoot('./packages/ai/src/index.ts'),
       '@agent/agent': fromRoot('./packages/agent/src/index.ts'),
@@ -36,6 +37,7 @@ export default defineConfig({
         },
       },
       { test: { name: 'ai', include: ['packages/ai/src/**/*.test.ts'] } },
+      { test: { name: 'skills', include: ['packages/skills/src/**/*.test.ts'] } },
       { test: { name: 'agent', include: ['packages/agent/src/**/*.test.ts'] } },
       {
         resolve: { alias: { '@': fromRoot('./apps/web/src') } },
