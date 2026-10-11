@@ -16,6 +16,7 @@ import { WORKSPACE_DEVELOPMENT_INSTRUCTION, WORKSPACE_DEVELOPMENT_VERSION, WORKS
 import { getAiExceptionMessage } from '../common/utils/llm-error-message.util.js'
 import { MessageRole, MessageStatus } from '../generated/prisma/client.js'
 import { DatabaseCommitOutcomeUnknownError, DatabaseOperationDeadlineExceededError } from '../prisma/prisma.service.js'
+import { withSkillSelection } from '../skills/skill-selection.js'
 import { toToolProgressArguments } from '../tools/web/tool-progress-arguments.js'
 import { loadConversationHistory } from './context/conversation-history.js'
 
@@ -72,6 +73,7 @@ export function createRuntimeHost(input: RunTurnStreamInput, deps: {
   let userAttachmentRows: AttachmentModelRow[] = []
   let guideStepId: string | undefined
   let guideRequired = false
+  const runSkills = input.skills ? { snapshot: input.skills, loaded: new Map(input.skills.selected.map(selected => [selected.id, selected.package])) } : undefined
   return {
     logger: deps.logger,
     stream: (items, options) => deps.llm.chatStream(input.model.provider, items, options),
@@ -79,8 +81,12 @@ export function createRuntimeHost(input: RunTurnStreamInput, deps: {
       ...runRecorder(recorder),
       startStep: async (step, deadline) => ({ id: (await recorder.startStep({
         ...step,
-        ...(step.type === 'model_sampling' && guideStepId
-          ? { input: { ...step.input, workspaceDevelopment: { version: WORKSPACE_DEVELOPMENT_VERSION, stepId: guideStepId } } }
+        ...(step.type === 'model_sampling' && (input.skills || guideStepId)
+          ? { input: {
+              ...step.input,
+              ...(input.skills ? { skills: { entries: input.skills.entries, selectedIds: input.skills.selected.map(selected => selected.id), instructions: input.instructions } as unknown as Prisma.InputJsonObject } : {}),
+              ...(guideStepId ? { workspaceDevelopment: { version: WORKSPACE_DEVELOPMENT_VERSION, stepId: guideStepId } } : {}),
+            } }
           : {}),
       }, deadline)).id }),
     },
@@ -110,7 +116,10 @@ export function createRuntimeHost(input: RunTurnStreamInput, deps: {
       // 提交确认只返回持久身份，不让后续存储错误把成功提交误报成未提交。
       return messageSnapshot(message)
     },
-    loadUserMessage: async message => ({ ...messageSnapshot(message), ...await attachments.modelInput(message.content, userAttachmentRows) }),
+    loadUserMessage: async (message) => {
+      const modelInput = await attachments.modelInput(message.content, userAttachmentRows)
+      return { ...messageSnapshot(message), ...modelInput, modelContent: withSkillSelection(modelInput.modelContent, input.skills?.selected.map(selected => selected.id)) }
+    },
     prepareToolBatch: async (batch, deadline) => {
       guideRequired = !guideStepId && !batch.argumentsTruncated && batch.calls.some(call => WORKSPACE_TOOL_NAMES.includes(call.toolName))
       if (!guideRequired)
@@ -132,6 +141,7 @@ export function createRuntimeHost(input: RunTurnStreamInput, deps: {
         argumentsTruncated: context.argumentsTruncated,
         workspaceGuideRequired: guideRequired,
         serperApiKey: input.runtimeConfig.serperApiKey,
+        ...(runSkills ? { skills: runSkills } : {}),
         ...(input.userId ? { workspace: { userId: input.userId, conversationId: context.conversationId, runId: context.runId, deadlineAt: context.databaseDeadline.deadlineAt } } : {}),
       })
       const result = invocation.result

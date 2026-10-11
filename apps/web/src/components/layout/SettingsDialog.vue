@@ -9,11 +9,13 @@ import {
   DialogRoot,
   DialogTitle,
 } from 'reka-ui'
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-
 import AppIcon from '@/components/common/AppIcon.vue'
+import SkillsList from '@/components/skills/SkillsList.vue'
+
 import { useLocale } from '@/hooks/useLocale'
+import { useSkills } from '@/hooks/useSkills'
 import { useWorkspaceTheme } from '@/hooks/useWorkspaceTheme'
 
 import SettingsSegmented from './SettingsSegmented.vue'
@@ -21,6 +23,11 @@ import SettingsSegmented from './SettingsSegmented.vue'
 const open = defineModel<boolean>('open', { required: true })
 
 const { t } = useI18n()
+const tab = ref<'general' | 'skills'>('general')
+const skills = useSkills()
+watch(skills.chatRequested, () => {
+  open.value = false
+})
 const { workspaceTheme, workspaceThemeOptions, updateWorkspaceTheme, inkLevel, inkLevelOptions, updateInkLevel } = useWorkspaceTheme()
 const { localeOptions, currentLocale, updateLocale } = useLocale()
 
@@ -52,10 +59,13 @@ const languageOptions = computed(() => localeOptions.map(option => ({
           <DialogTitle class="px-2 py-1.5 text-xs text-agent-ink-faint">
             {{ t('layout.settings.title') }}
           </DialogTitle>
-          <span aria-current="page" class="settings-nav-item flex h-8 items-center gap-3 rounded-lg pl-2 text-sm font-medium">
+          <button :aria-current="tab === 'general' ? 'page' : undefined" :class="{ 'settings-nav-item': tab === 'general' }" class="flex h-8 items-center gap-3 rounded-lg pl-2 text-sm font-medium" @click="tab = 'general'">
             <AppIcon name="tabler:settings" :size="18" />
             {{ t('layout.settings.nav.general') }}
-          </span>
+          </button>
+          <button :aria-current="tab === 'skills' ? 'page' : undefined" :class="{ 'settings-nav-item': tab === 'skills' }" class="mt-2 rounded-lg p-2 text-left" @click="tab = 'skills'; skills.reload()">
+            技能
+          </button>
         </nav>
 
         <div class="relative min-w-0 flex-1 overflow-y-auto px-6 pb-10 pt-[60px]">
@@ -69,7 +79,16 @@ const languageOptions = computed(() => localeOptions.map(option => ({
             {{ t('layout.settings.title') }}
           </p>
 
-          <section>
+          <div class="mb-4 flex gap-4 sm:hidden">
+            <button @click="tab = 'general'">
+              通用
+            </button>
+            <button @click="tab = 'skills'; skills.reload()">
+              技能
+            </button>
+          </div>
+          <SkillsList v-if="tab === 'skills'" manage />
+          <section v-if="tab === 'general'">
             <h3 class="mb-4 text-[15px] font-semibold leading-5">
               {{ t('layout.settings.sections.appearance') }}
             </h3>
@@ -94,7 +113,7 @@ const languageOptions = computed(() => localeOptions.map(option => ({
             </div>
           </section>
 
-          <section class="mt-10">
+          <section v-if="tab === 'general'" class="mt-10">
             <h3 class="mb-4 text-[15px] font-semibold leading-5">
               {{ t('layout.settings.sections.language') }}
             </h3>

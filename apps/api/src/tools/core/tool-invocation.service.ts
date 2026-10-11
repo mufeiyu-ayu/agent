@@ -5,7 +5,7 @@ import { normalizeToolObservation } from '@agent/agent'
 
 import { Inject, Injectable, Logger } from '@nestjs/common'
 import { WORKSPACE_TOOL_NAMES } from '../../chat/prompts/workspace-development.prompt.js'
-import { DatabaseOperationDeadlineExceededError } from '../../prisma/prisma.service.js'
+import { DatabaseCommitOutcomeUnknownError, DatabaseOperationDeadlineExceededError } from '../../prisma/prisma.service.js'
 import { ToolRegistryService } from './tool-registry.service.js'
 
 @Injectable()
@@ -97,6 +97,7 @@ export class ToolInvocationService {
       toolDeadlineAt,
     )
     let hasCancellationOutcome = false
+    let commitOwned = false
     let resolveCancellation!: (outcome: ToolInvocationOutcome) => void
     const cancellation = new Promise<ToolInvocationOutcome>((resolve) => {
       resolveCancellation = resolve
@@ -112,10 +113,14 @@ export class ToolInvocationService {
       return true
     }
     const handleRunAbort = (): void => {
+      if (commitOwned)
+        return
       if (settleCancellation({ type: 'aborted' }))
         executionController.abort(context.signal.reason)
     }
     const timeoutId = setTimeout(() => {
+      if (commitOwned)
+        return
       if (settleCancellation({ type: 'timeout' })) {
         executionController.abort(
           new DOMException('tool execution timeout', 'TimeoutError'),
@@ -132,7 +137,13 @@ export class ToolInvocationService {
       .then(() => tool.executor.execute(invocation, {
         databaseDeadline,
         signal: executionController.signal,
+        onCommitOwned: () => {
+          executionController.signal.throwIfAborted()
+          commitOwned = true
+          clearTimeout(timeoutId)
+        },
         serperApiKey: context.serperApiKey,
+        ...(context.skills ? { skills: context.skills } : {}),
         ...(context.workspace ? { workspace: context.workspace } : {}),
       }))
       .then<ToolInvocationOutcome, ToolInvocationOutcome>(
@@ -161,6 +172,8 @@ export class ToolInvocationService {
           return outcome.result
 
         case 'error':
+          if (outcome.error instanceof DatabaseCommitOutcomeUnknownError)
+            throw outcome.error
           context.signal.throwIfAborted()
 
           if (outcome.error instanceof ToolDatabaseDeadlineExceededError) {

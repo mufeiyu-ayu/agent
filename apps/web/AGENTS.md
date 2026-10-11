@@ -41,3 +41,7 @@ src/main.ts -> src/App.vue -> src/router/index.ts   # / 首页、/privacy（公�
 ## 验证
 
 `pnpm --filter @agent/web typecheck`、`lint`、`test`（Vitest 单测），必要时 `build`；浏览器回归用根目录 `pnpm test:e2e`（Playwright）。测试规范见 `docs/testing.md`。
+
+技能：`api/skills.ts` 发请求，`hooks/useSkills.ts` 在工作台提供共享状态，`components/skills/SkillsList.vue` 用于技能库、选择和设置管理，`SkillsDialog.vue` 安全预览完整文件并确认发布；创建和编辑回到同一个聊天入口。
+
+`/skills` 是工作台壳下的独立子路由，`views/SkillsView.vue` 展示技能库；创建/编辑、新建/选择会话返回 `/workspace`。库列表不再使用弹窗，聊天技能选择与预览仍使用弹窗。

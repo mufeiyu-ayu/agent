@@ -9,6 +9,7 @@ const commands = [
   [tscCommand, ['--watch', '--preserveWatchOutput', '-p', '../../packages/contracts']],
   [tscCommand, ['--watch', '--preserveWatchOutput', '-p', '../../packages/ai']],
   [tscCommand, ['--watch', '--preserveWatchOutput', '-p', '../../packages/agent']],
+  [tscCommand, ['--watch', '--preserveWatchOutput', '-p', '../../packages/skills']],
   [process.execPath, [
     '--env-file-if-exists=../../.env',
     '--watch',

@@ -50,3 +50,5 @@ Prisma schema 在仓库根 `prisma/`，生成的 client 在 `src/generated/prism
 ## 验证
 
 `pnpm --filter @agent/api typecheck`、`lint`、`test`（Vitest 单测）；涉及事务、deadline、落库时加根目录 `pnpm test:db`（只连 `TEST_DATABASE_URL`）；涉及 schema 时 `pnpm prisma:generate` 与 `pnpm exec prisma validate`。测试规范见 `docs/testing.md`。
+
+技能云端业务在 `src/skills/`（导航 `src/skills/README.md`），包格式在 `@agent/skills`；`tools/skill-tools.ts` 负责读取正文/草稿及保存草稿，确认发布只由受认证管理接口执行。

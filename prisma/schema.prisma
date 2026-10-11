@@ -473,3 +473,34 @@ model RuntimeConfig {
   serperApiKeyLast4          String?
   updatedAt                  DateTime @updatedAt
 }
+
+// 个人技能只保留待确认草稿和当前发布指针；不可变资源用于已开始运行和审计。
+model Skill {
+  id String @id
+  userId String
+  conversationId String
+  enabled Boolean @default(true)
+  draftId String?
+  publishedId String?
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([userId, deletedAt])
+}
+
+// 上传前登记对象身份；adopted=false 的超时残留可安全清理。已采用内容固定供运行读取。
+model SkillContent {
+  id String @id
+  userId String
+  skillId String
+  name String
+  description String
+  fingerprint String
+  objectKey String
+  bucket String
+  bytes Int
+  adopted Boolean @default(false)
+  createdAt DateTime @default(now())
+  @@index([adopted, createdAt])
+  @@index([skillId])
+}

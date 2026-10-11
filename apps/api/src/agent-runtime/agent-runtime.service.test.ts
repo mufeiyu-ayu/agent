@@ -4055,7 +4055,8 @@ describe('上下文自动压缩（#220）', () => {
 
     // 当前问题约 2,500 token + 6 组历史约 1,518 token：第 1 次调用前就超线；历史压成后回到线内（有效）。
     seedHistory(harness, 6, 1_000)
-    await run(harness, { keepRecentTokens: 10, userContent: 'q'.repeat(10_000) })
+    const toolTokens = estimateRequestTokens({ items: [], tools: TOOL_DEFINITIONS.map(definition => ({ name: definition.name, description: definition.description, inputSchema: definition.input.schema })) })
+    await run(harness, { model: { ...SMALL_MODEL, maxInputTokens: toolTokens + 3_800 }, keepRecentTokens: 10, userContent: 'q'.repeat(10_000) })
 
     assert.deepEqual(compactionSteps(harness).map(step => [(step.input as { kind: string }).kind, step.status]), [
       ['history', AgentStepStatus.FAILED],

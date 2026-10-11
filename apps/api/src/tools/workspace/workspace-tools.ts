@@ -115,6 +115,8 @@ abstract class WorkspaceTool<T extends { path?: string, command?: string, title?
     }
     context.signal.addEventListener('abort', stop, { once: true })
     try {
+      if (this.action === 'bash' && context.skills?.loaded.size)
+        await this.workspaces.prepareSkills(execution, [...context.skills.loaded.values()], context.signal)
       const result = this.action === 'bash'
         ? await this.workspaces.bash(execution, input.command!, (input as unknown as BashInput).timeout, context.signal, (input as unknown as BashInput).build)
         : await this.workspaces.fileOperation(execution, { action: this.action, ...input }, context.signal)

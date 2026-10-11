@@ -4,6 +4,7 @@ import type { ReasoningEffort } from './admin-llm.js'
 export const CHAT_MESSAGE_MAX_CHARS = 64_000
 
 export interface ChatRequest {
+  skillIds?: string[]
   conversationId: string
   /** 带了附件时可以是空串。 */
   message: string

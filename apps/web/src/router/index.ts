@@ -39,6 +39,7 @@ export const router = createRouter({
       name: 'workspace',
       component: () => import('@/views/ChatWorkspaceView.vue'),
       meta: { requiresAuth: true },
+      children: [{ path: '/skills', name: 'skills', component: () => import('@/views/SkillsView.vue') }],
     },
   ],
 })

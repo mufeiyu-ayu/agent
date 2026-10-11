@@ -1,14 +1,16 @@
 <script setup lang="ts">
 import type { WorkspaceFile } from '@agent/contracts'
-
 import type { AgentNavigationItem, AgentPlatformUser } from '../types/agent-platform'
 import type { ChatAttachment } from '../types/chat'
+
 import { userDisplayName, userInitial } from '@agent/contracts'
 import { useElementSize } from '@vueuse/core'
 import { SplitterGroup, SplitterPanel, SplitterResizeHandle } from 'reka-ui'
 import { computed, nextTick, onScopeDispose, ref, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useRouter } from 'vue-router'
+import { RouterView, useRoute, useRouter } from 'vue-router'
+import SkillsDialog from '@/components/skills/SkillsDialog.vue'
+import { provideSkills } from '@/hooks/useSkills'
 
 import workspaceBgOliveEmberDeepUrl from '../assets/bg-olive.webp'
 import workspaceBgAiBalancedUrl from '../assets/bg-warm.webp'
@@ -39,6 +41,8 @@ const navigationConfig = [
 
 const { t } = useI18n()
 const router = useRouter()
+const route = useRoute()
+const isSkillsPage = computed(() => route.name === 'skills')
 const { currentUser, signOut } = useAuth()
 
 const user = computed<AgentPlatformUser>(() => currentUser.value
@@ -50,12 +54,12 @@ const {
 } = useWorkspaceTheme()
 
 const navigationItems = computed<AgentNavigationItem[]>(() => {
-  return navigationConfig.map(item => ({
+  return [{ id: 'skills', label: '技能', icon: 'tabler:script', active: isSkillsPage.value }, ...navigationConfig.map(item => ({
     id: item.id,
     label: t(item.labelKey),
     icon: item.icon,
-    active: 'active' in item ? item.active : undefined,
-  }))
+    active: 'active' in item ? item.active && !isSkillsPage.value : undefined,
+  }))]
 })
 
 const {
@@ -349,9 +353,15 @@ function onPreviewLayout(sizes: number[]) {
 }
 
 async function newChat() {
+  await router.push({ name: 'workspace' })
   resetWorkspace()
   await nextTick()
   composer.value?.focus()
+}
+
+async function openConversation(id: string) {
+  await router.push({ name: 'workspace' })
+  await selectConversation(id)
 }
 
 const loggingOut = ref(false)
@@ -403,9 +413,25 @@ function applySuggestedPrompt(prompt: string) {
   message.value = prompt
 }
 
+const skills = provideSkills((skillId, prompt) => {
+  void router.push({ name: 'workspace' })
+  skills.selectedIds.value = [skillId]
+  if (prompt)
+    message.value = prompt
+  void nextTick(() => composer.value?.focus())
+})
+void skills.reload()
+watch(activeConversationId, () => {
+  skills.selectedIds.value = []
+  void skills.reload()
+})
+const skillDrafts = computed(() => skills.items.value.filter(item => item.hasDraft && item.conversationId === activeConversationId.value))
 /** 没选强度就不带 reasoningEffort，后端用模型行默认。 */
 function send() {
-  void sendMessage(selectedModel.value, selectedReasoningEffort.value ?? undefined)
+  const selected = [...skills.selectedIds.value]
+  void sendMessage(selectedModel.value, selectedReasoningEffort.value ?? undefined, selected).finally(() => {
+    void skills.reload()
+  })
 }
 </script>
 
@@ -429,11 +455,22 @@ function send() {
     @load-more-chats="loadMoreConversations"
     @logout="logout"
     @new-chat="newChat"
+    @open-skills="router.push({ name: 'skills' })"
     @refresh-balance="refreshBalance"
     @rename-chat="renameConversationById"
-    @select-chat="selectConversation"
+    @select-chat="openConversation"
   >
-    <div ref="workspaceElement" class="relative flex min-h-0 min-w-0 flex-1 overflow-hidden">
+    <SkillsDialog :conversation-id="activeConversationId" />
+    <RouterView v-if="isSkillsPage" />
+    <div v-show="!isSkillsPage" class="absolute right-4 top-16 z-20 flex max-w-[80vw] flex-wrap gap-2">
+      <button v-if="skillDrafts.length" class="rounded-lg bg-agent-surface-raised px-3 py-2 shadow" @click="skills.show('drafts')">
+        技能草稿 · {{ skillDrafts.length }}
+      </button>
+      <button v-for="id in skills.selectedIds.value" :key="id" class="rounded-lg bg-agent-surface-raised px-3 py-2 shadow" :aria-label="`取消选择技能 ${skills.items.value.find(item => item.id === id)?.name ?? id}`" @click="skills.selectedIds.value = skills.selectedIds.value.filter(value => value !== id)">
+        {{ skills.items.value.find(item => item.id === id)?.name ?? id }} ×
+      </button>
+    </div>
+    <div v-show="!isSkillsPage" ref="workspaceElement" class="relative flex min-h-0 min-w-0 flex-1 overflow-hidden">
       <AppMessage
         :visible="appMessage.visible"
         :type="appMessage.type"

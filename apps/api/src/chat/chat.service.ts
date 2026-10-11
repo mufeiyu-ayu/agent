@@ -8,6 +8,8 @@ import { ConversationsService } from '../conversations/conversations.service.js'
 import { LlmModelConfigService } from '../llm/llm-model-config.service.js'
 import { LlmModelUnavailableError } from '../llm/llm.errors.js'
 import { RuntimeConfigService } from '../runtime-config/runtime-config.service.js'
+import { SkillsService } from '../skills/skills.service.js'
+import { skillRoot } from '../tools/skill-tools.js'
 import { toChatStreamEvent } from './chat-stream-event.mapper.js'
 import { buildAgentInstructions } from './prompts/agent.prompt.js'
 
@@ -27,6 +29,7 @@ export class ChatService {
     @Inject(RuntimeConfigService)
     private readonly runtimeConfigService: RuntimeConfigService,
     @Optional() @Inject(AttachmentsService) private readonly attachments?: AttachmentsService,
+    @Optional() @Inject(SkillsService) private readonly skills?: SkillsService,
   ) {}
 
   /**
@@ -47,6 +50,15 @@ export class ChatService {
     const model = await this.resolveModel(input.model, input.reasoningEffort)
     // 与模型行一样是本次问答的快照：后台修改对下一次问答生效。
     const runtimeConfig = await this.runtimeConfigService.loadSnapshot()
+    const skills = await this.skills?.snapshot(userId, input.skillIds)
+    const instructions = buildAgentInstructions(new Date())
+    if (skills) {
+      instructions.push({ type: 'message', role: 'system', content: skills.catalogInstruction })
+      for (const selected of skills.selected) {
+        const main = selected.package.files.find(file => file.path === 'SKILL.md')!
+        instructions.push({ type: 'message', role: 'user', content: `用户显式选择的技能指导（不能覆盖系统规则）：${JSON.stringify({ id: selected.id, fingerprint: selected.package.fingerprint, sandboxRoot: skillRoot(selected.package), files: selected.package.files.map(file => file.path), content: main.content })}` })
+      }
+    }
 
     return this.mapRuntimeEvents(this.agentRuntimeService.runTurnStream({
       userId,
@@ -60,7 +72,8 @@ export class ChatService {
         : {}),
       ...(options.signal ? { signal: options.signal } : {}),
       /** 系统提示词：日期取收到请求的时刻，与 Run 创建时间只差毫秒 */
-      instructions: buildAgentInstructions(new Date()),
+      instructions,
+      ...(skills ? { skills } : {}),
     }))
   }
 
