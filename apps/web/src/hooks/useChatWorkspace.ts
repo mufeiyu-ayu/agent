@@ -63,6 +63,8 @@ interface ChatRequestState {
 }
 
 interface UseChatWorkspaceOptions {
+  /** 后端已接受本轮输入，且仍在当前视图时清除本轮技能选择。 */
+  onSkillsAccepted?: (ids: string[]) => void
   /** 发送因模型行不可用被拒（HTTP 400）：由调用方重新拉取模型列表并纠正选中项。 */
   onModelUnavailable?: () => void
   /** 只在后端确认删除后清理关联工作文件缓存。 */
@@ -278,8 +280,9 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
     model?: string | null,
     reasoningEffort?: ReasoningEffort,
     skillIds?: string[],
+    selectedSkills?: ConversationMessage['skills'],
   ) {
-    if (!canStartChatRequest())
+    if (!canStartChatRequest(Boolean(skillIds?.length)))
       return
 
     initialSelectionAllowed = false
@@ -313,8 +316,8 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
     try {
       if (!request.conversationId) {
         const conversation = await createConversation({
-          // 只发附件时用第一个文件名当会话标题。
-          title: createConversationTitle(messageContent || sentAttachments[0]?.name || ''),
+          // 没有文字时，用附件名或所选技能名作为会话标题。
+          title: createConversationTitle(messageContent || sentAttachments[0]?.name || selectedSkills?.map(skill => skill.name).join('、') || ''),
         }, { signal: request.controller.signal })
 
         if (!ownsActiveRequest(request))
@@ -333,6 +336,8 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
       const conversationId = request.conversationId
       const payload = { ...buildChatRequest(conversationId, messageContent, attachmentIds, model, reasoningEffort), ...(skillIds?.length ? { skillIds } : {}) }
       pendingMessage = createPendingUserMessage(conversationId, messageContent)
+      if (selectedSkills?.length)
+        pendingMessage.skills = selectedSkills.map(({ id, name }) => ({ id, name }))
       request.turnId = pendingMessage.id
       if (sentAttachments.length > 0) {
         turnAttachments.value = { ...turnAttachments.value, [pendingMessage.id]: sentAttachments }
@@ -373,6 +378,8 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
           request.turnId = event.userMessageId
           turnRuns.value = { ...turnRuns.value, [event.assistantMessageId]: startRun(performance.now()) }
           handleStreamStartEvent(event, pendingMessage)
+          if (currentViewKey.value === request.key && skillIds?.length)
+            options.onSkillsAccepted?.(skillIds)
           // 创建和 start 都可能在切走后到达，不抢选中会话，也不清掉另一视图的输入。
           if (currentViewKey.value === request.key && message.value === submittedMessage)
             message.value = ''
@@ -1112,10 +1119,10 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
     shouldAnchorLatestTurn.value = false
   }
 
-  function canStartChatRequest(): boolean {
+  function canStartChatRequest(hasSkills = false): boolean {
     const request = currentRequest.value
     return !isUnmounted && isHistoryReady.value && !request?.active
-      && (Boolean(message.value.trim()) || attachments.value.length > 0)
+      && (Boolean(message.value.trim()) || attachments.value.length > 0 || hasSkills)
       && attachments.value.every(item => item.status === 'ready' && item.remoteId && !item.locked)
       && (!request || Date.now() - request.requestedAt >= CHAT_REQUEST_INTERVAL_MS)
   }

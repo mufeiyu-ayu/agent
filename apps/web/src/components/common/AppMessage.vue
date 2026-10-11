@@ -42,7 +42,8 @@ const messageClass = computed(() => {
   >
     <div
       v-if="visible && text"
-      class="pointer-events-none fixed left-1/2 top-4 z-50 max-w-[calc(100vw-32px)] -translate-x-1/2 sm:top-5 sm:max-w-[520px]"
+      class="pointer-events-none fixed left-1/2 top-4 z-[100] max-w-[calc(100vw-32px)] -translate-x-1/2 sm:top-5 sm:max-w-[520px]"
+      data-app-message
       role="status"
       aria-live="polite"
     >

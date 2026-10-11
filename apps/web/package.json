@@ -30,7 +30,8 @@
     "tailwind-merge": "^3.7.0",
     "vue": "^3.5.43",
     "vue-i18n": "^11.4.12",
-    "vue-router": "^5.3.1"
+    "vue-router": "^5.3.1",
+    "yaml": "2.9.1"
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0",

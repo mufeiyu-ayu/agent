@@ -12,7 +12,6 @@ import AppIcon from '@/components/common/AppIcon.vue'
 
 import { Button } from '@/components/ui/button'
 import { dropdownMenuOptionClass, dropdownMenuPanelClass } from '@/components/ui/dropdown-menu'
-import { useSkills } from '@/hooks/useSkills'
 
 defineProps<{
   /** 菜单往哪边开：空态输入框在页面中部，往上会盖住标题。 */
@@ -24,7 +23,6 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
-const skills = useSkills()
 
 /** 占位：这几个入口还没有功能，先把菜单的样子定下来；做一个就从这里挪走一个。 */
 const UPCOMING = [
@@ -68,9 +66,6 @@ const itemClass = 'flex items-center gap-2 rounded-lg px-1.5 py-1 text-[13px] le
           <span class="text-agent-ink">{{ t('composer.attachMenu.files') }}</span>
         </DropdownMenuItem>
 
-        <DropdownMenuItem :class="[itemClass, dropdownMenuOptionClass(false)]" @select="skills.show('select')">
-          <AppIcon name="tabler:script" :size="16" /><span>技能</span>
-        </DropdownMenuItem>
         <DropdownMenuSeparator class="mx-1 my-1 h-px bg-agent-border-subtle" />
 
         <DropdownMenuItem

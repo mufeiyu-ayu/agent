@@ -6,7 +6,7 @@ export const CHAT_MESSAGE_MAX_CHARS = 64_000
 export interface ChatRequest {
   skillIds?: string[]
   conversationId: string
-  /** 带了附件时可以是空串。 */
+  /** 带了附件或显式选择技能时可以是空串。 */
   message: string
   /** 已上传、还没发出过的附件 id，最多 `ATTACHMENT_MAX_COUNT` 个；发出后绑定到这条用户消息。 */
   attachmentIds?: string[]
@@ -89,6 +89,8 @@ export interface ChatStreamToolStartedEvent {
 
 /** 工具执行结束（#208）：用户停止或到 deadline 时不发，由随后的 aborted / error 收尾。 */
 export interface ChatStreamToolFinishedEvent {
+  /** 成功读取或保存的技能身份；步骤显示名称，只有保存操作生成文件预览入口。 */
+  skill?: { id: string, name: string }
   workspace?: import('./workspace.js').WorkspaceToolDisplay
   type: 'tool_finished'
   conversationId: string

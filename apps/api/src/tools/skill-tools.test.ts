@@ -44,6 +44,7 @@ it('只允许本轮快照中的技能，取消后不登记为读取完成，不�
   assert.equal(result.ok, true)
   assert.equal(context.skills!.loaded.size, 1)
   assert.match(result.modelContent, /sandboxRoot/)
+  assert.deepEqual(result.display?.skill, { id: 'own', name: pkg.name })
   context.skills!.loaded.clear()
   controller.abort()
   await assert.rejects(tool.execute({ toolName: 'read_skill', input: { id: 'own', path: 'SKILL.md', offset: 0 } }, context))
@@ -193,4 +194,8 @@ it('草稿 COMMIT 后的工具超时或用户停止等待结局，提交未知�
     const result = await outcome
     assert.ok('error' in result && result.error === unknown)
   }
+})
+
+it('模型保存工具不能携带直接发布标志', () => {
+  assert.throws(() => saveSkillDraftDefinition.input.parse({ files: pkg.files, publish: true }), /技能参数无效/)
 })

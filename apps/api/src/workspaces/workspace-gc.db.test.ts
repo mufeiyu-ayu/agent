@@ -125,6 +125,23 @@ describe('OSS GC PostgreSQL 引用与故障边界（内存 OSS，不访问业务
     return { user, conversation, prefix, objects, source, dist, put, remove, list, cloud, gc, service, previews, newRun, confirm, end, restored: () => restored, key: (content: string) => `${prefix}objects/${fileHash(Buffer.from(content))}` }
   }
 
+  it('关闭常规 GC 仍执行用户明确删除会话的清理，失败目标可由重启恢复', async () => {
+    const f = await fixture()
+    const key = f.key('会话文件')
+    f.objects.set(key, Buffer.from('会话文件'))
+    f.remove.mockRejectedValueOnce(new WorkspaceOperationError('OSS 明确拒绝删除'))
+    await new ConversationsService(prisma, f.gc).delete(f.user.id, f.conversation.id)
+    await f.gc.onModuleDestroy()
+    assert.equal(f.objects.has(key), true)
+    assert.equal((await prisma.workspaceGcTarget.findUniqueOrThrow({ where: { conversationId: f.conversation.id } })).pending, true)
+    const restarted = new WorkspaceGcService(prisma, f.cloud)
+    restarted.onModuleInit()
+    try {
+      await vi.waitFor(() => assert.equal(f.objects.has(key), false))
+    }
+    finally { await restarted.onModuleDestroy() }
+  })
+
   it('B7：旧预览在本扫描保留后到期，启动恢复仍自动回收独占对象，当前/共享引用不删', async () => {
     const f = await fixture()
     const run = await f.newRun()

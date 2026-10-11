@@ -115,6 +115,7 @@ function deleteChat() {
       class="flex h-8 w-full min-w-0 items-center gap-2 rounded-lg px-2.5 pr-8 text-left text-[13px] font-normal transition focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-agent-focus/40"
       :class="chat.active ? 'text-agent-ink' : 'text-agent-ink-soft'"
       :aria-busy="chat.pending || chat.running || undefined"
+      :aria-current="chat.active ? 'page' : undefined"
       @click="selectChat"
     >
       <AppIcon v-if="chat.pending" name="tabler:loader-2" :size="14" class="shrink-0 animate-spin motion-reduce:animate-none" aria-hidden="true" />

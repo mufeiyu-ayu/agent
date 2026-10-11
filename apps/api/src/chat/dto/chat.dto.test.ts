@@ -120,6 +120,16 @@ describe('ChatDto', () => {
 })
 
 describe('ChatDto 在 App ValidationPipe 边界的行为', () => {
+  it('只选择技能可以发送空文字，但空选择与非法技能参数仍拒绝', async () => {
+    const pipe = createAppValidationPipe()
+    const transformed = await pipe.transform({ ...createPayload(''), skillIds: ['builtin:skill-creator'] }, BODY_METADATA) as ChatDto
+    assert.equal(transformed.message, '')
+    assert.deepEqual(transformed.skillIds, ['builtin:skill-creator'])
+    for (const skillIds of [[], [''], ['same', 'same'], 'skill-id', Array.from({ length: 6 }, (_, index) => `skill-${index}`)])
+      await assert.rejects(pipe.transform({ ...createPayload(''), skillIds }, BODY_METADATA), BadRequestException)
+    await assert.rejects(pipe.transform({ ...createPayload(''), message: null, skillIds: ['skill-id'] }, BODY_METADATA), BadRequestException)
+  })
+
   it('纯空白 body 抛出 400 且不进入下游处理', async () => {
     const pipe = createAppValidationPipe()
 

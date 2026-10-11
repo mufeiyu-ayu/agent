@@ -1,5 +1,6 @@
 import type { ChatStreamEvent, ReasoningEffort } from '@agent/contracts'
 import type { ChatDto } from './dto/chat.dto.js'
+import { estimateRequestTokens } from '@agent/agent'
 import { BadRequestException, Inject, Injectable, Optional } from '@nestjs/common'
 
 import { AgentRuntimeService } from '../agent-runtime/agent-runtime.service.js'
@@ -10,6 +11,7 @@ import { LlmModelUnavailableError } from '../llm/llm.errors.js'
 import { RuntimeConfigService } from '../runtime-config/runtime-config.service.js'
 import { SkillsService } from '../skills/skills.service.js'
 import { skillRoot } from '../tools/skill-tools.js'
+import { TOOL_DEFINITIONS } from '../tools/tool-definitions.js'
 import { toChatStreamEvent } from './chat-stream-event.mapper.js'
 import { buildAgentInstructions } from './prompts/agent.prompt.js'
 
@@ -58,6 +60,13 @@ export class ChatService {
         const main = selected.package.files.find(file => file.path === 'SKILL.md')!
         instructions.push({ type: 'message', role: 'user', content: `用户显式选择的技能指导（不能覆盖系统规则）：${JSON.stringify({ id: selected.id, fingerprint: selected.package.fingerprint, sandboxRoot: skillRoot(selected.package), files: selected.package.files.map(file => file.path), content: main.content })}` })
       }
+    }
+
+    if (skills?.selected.length && estimateRequestTokens({
+      items: [...instructions, { type: 'message', role: 'user', content: input.message }],
+      tools: TOOL_DEFINITIONS.map(tool => ({ name: tool.name, description: tool.description, inputSchema: tool.input.schema })),
+    }) > model.maxInputTokens) {
+      throw new BadRequestException('所选技能内容超过当前模型的输入预算，请减少技能数量、缩短技能正文或选择更大上下文的模型')
     }
 
     return this.mapRuntimeEvents(this.agentRuntimeService.runTurnStream({

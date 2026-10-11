@@ -14,6 +14,7 @@ import { useWorkspaceTheme } from '@/hooks/useWorkspaceTheme'
 import AgentAssistantReply from './AgentAssistantReply.vue'
 import AgentMessage from './AgentMessage.vue'
 import AgentRunStatus from './AgentRunStatus.vue'
+import AgentSkillArtifact from './AgentSkillArtifact.vue'
 import AgentUserMessage from './AgentUserMessage.vue'
 import AgentWorkspaceArtifact from './AgentWorkspaceArtifact.vue'
 
@@ -24,8 +25,9 @@ const props = defineProps<{
   anchorLatestTurn: boolean
   workspaceFiles: WorkspaceFile[]
   openingArtifact: boolean
+  openingSkill?: boolean
 }>()
-const emit = defineEmits<{ openFile: [file: WorkspaceFile], previewAttachment: [attachment: ChatAttachment] }>()
+const emit = defineEmits<{ openFile: [file: WorkspaceFile], previewAttachment: [attachment: ChatAttachment], previewSkill: [id: string] }>()
 
 const { locale, t } = useI18n()
 const { workspaceTheme } = useWorkspaceTheme()
@@ -93,18 +95,19 @@ const showFloatingLoading = computed(() => {
             <template
               v-for="(turn, turnIndex) in turns"
               :key="turn.id"
-              v-memo="[turn.userMessage, turn.attachments, turn.createdAt, turn.reply, turn.status, turn.errorMessage, turn.run, anchorLatestTurn && turnIndex === turns.length - 1, locale, workspaceFiles, openingArtifact]"
+              v-memo="[turn.userMessage, turn.skills, turn.attachments, turn.createdAt, turn.reply, turn.status, turn.errorMessage, turn.run, anchorLatestTurn && turnIndex === turns.length - 1, locale, workspaceFiles, openingArtifact, openingSkill]"
             >
               <!-- eslint-enable vue/no-useless-template-attributes -->
               <AgentMessage
                 role="user"
                 :data-agent-user-turn-id="turn.id"
               >
-                <AgentUserMessage :text="turn.userMessage" :created-at="turn.createdAt" :attachments="turn.attachments" @preview-file="emit('previewAttachment', $event)" />
+                <AgentUserMessage :text="turn.userMessage" :skills="turn.skills" :created-at="turn.createdAt" :attachments="turn.attachments" @preview-file="emit('previewAttachment', $event)" />
               </AgentMessage>
 
               <AgentMessage
                 role="agent"
+                :data-agent-assistant-turn-id="turn.id"
                 :class="anchorLatestTurn && turnIndex === turns.length - 1 ? 'min-h-[75dvh]' : undefined"
               >
                 <!--
@@ -118,6 +121,7 @@ const showFloatingLoading = computed(() => {
                     :is-streaming="turn.status === 'generating'"
                   />
                 </AgentRunStatus>
+                <AgentSkillArtifact v-if="turn.run?.phase === 'ended'" :run="turn.run" :opening="openingSkill ?? false" @preview="emit('previewSkill', $event)" />
                 <AgentWorkspaceArtifact v-if="turn.run?.phase === 'ended'" :run="turn.run" :files="workspaceFiles" :opening="openingArtifact" @open-file="emit('openFile', $event)" />
                 <div
                   v-if="turn.status === 'error'"

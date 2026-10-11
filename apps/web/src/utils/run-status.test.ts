@@ -250,3 +250,25 @@ describe('#209 思考原文', () => {
     assert.equal(liveThought(run), '第二轮还没写完，现在写完了。')
   })
 })
+
+it('技能文件入口在流式工具结果与刷新还原后保持一致', () => {
+  const skill = { id: 'skill-id', name: 'opening-greeting' }
+  let run = applyRunEvent(startRun(0), { ...ids, type: 'tool_started', callId: 'save', toolName: 'save_skill_draft' }, 1)
+  run = applyRunEvent(run, { ...ids, type: 'tool_finished', callId: 'save', ok: true, skill }, 2)
+  const restored = restoreRun({ toolBeforeAnswer: true, items: [{ kind: 'tool', callId: 'save', toolName: 'save_skill_draft', ok: true, skill }] }, 'done')
+  assert.deepEqual(run.steps, restored.steps)
+  assert.deepEqual(run.steps[0]?.skill, skill)
+})
+
+it('使用技能步骤实时和刷新后显示名称，中英文一致且失败不冒充成功', () => {
+  const skill = { id: 'skill-id', name: 'opening-greeting' }
+  let run = applyRunEvent(startRun(0), { ...ids, type: 'tool_started', callId: 'read', toolName: 'read_skill' }, 1)
+  run = applyRunEvent(run, { ...ids, type: 'tool_finished', callId: 'read', ok: true, skill }, 2)
+  const restored = restoreRun({ toolBeforeAnswer: true, items: [{ kind: 'tool', callId: 'read', toolName: 'read_skill', ok: true, skill }] }, 'done')
+  assert.deepEqual(run.steps, restored.steps)
+  for (const [locale, verb] of [['zh-CN', '使用技能'], ['en-US', 'Used skill']] as const) {
+    const t = createI18n({ legacy: false, locale, messages }).global.t
+    assert.deepEqual(runStepText(restored.steps[0]!, t, locale), { verb, object: skill.name })
+    assert.notEqual(runStepText({ ...restored.steps[0]!, status: 'failed' }, t, locale).verb, verb)
+  }
+})

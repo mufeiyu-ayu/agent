@@ -5495,3 +5495,19 @@ function delayedSseResponse(parts: Array<{ delayMs: number, data: string }>): Re
     },
   }))
 }
+
+it('技能文件 display 随工具结果提交，并透传聊天事件供回复末尾显示', async () => {
+  const skill = { id: 'skill-id', name: 'opening-greeting' }
+  const harness = createHarness((_, __, index) => toModelStream(index === 0
+    ? [toolCallEvent('save', 'save_skill_draft', '{"files":[]}'), { type: 'response_completed', finishReason: 'tool_calls' }]
+    : [{ type: 'text_delta', delta: '草稿已保存' }, { type: 'response_completed', finishReason: 'stop' }]), undefined, async () => ({ ok: true, modelContent: '草稿已保存', display: { skill } }))
+  const events = await collectEvents(harness.run())
+  const finished = events.find(event => event.type === 'tool_finished')
+  assert.ok(finished?.type === 'tool_finished')
+  assert.deepEqual(finished.skill, skill)
+  const chat = toChatStreamEvent(finished)
+  assert.ok(chat.type === 'tool_finished')
+  assert.deepEqual(chat.skill, skill)
+  const saved = harness.recorder.steps.find(step => step.type === 'tool_execution')
+  assert.deepEqual((saved?.output as { display: unknown }).display, { skill })
+})

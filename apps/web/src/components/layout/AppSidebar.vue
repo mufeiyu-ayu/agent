@@ -156,6 +156,7 @@ function handleBalanceSelect(event: Event) {
         type="button"
         :title="collapsed ? item.label : undefined"
         :aria-label="collapsed ? item.label : undefined"
+        :aria-current="item.active ? 'page' : undefined"
         class="flex h-9 w-full items-center rounded-lg text-sm text-agent-ink-muted transition hover:bg-agent-surface-sunken/45 hover:text-agent-ink focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-agent-focus/40"
         :class="[
           collapsed ? 'justify-center px-0' : 'gap-2.5 px-2.5',
@@ -219,6 +220,7 @@ function handleBalanceSelect(event: Event) {
         type="button"
         :title="chat.title"
         :aria-label="chat.title"
+        :aria-current="chat.active ? 'page' : undefined"
         :aria-busy="chat.running || undefined"
         class="grid size-11 place-items-center rounded-xl text-agent-ink-muted transition hover:bg-agent-surface-sunken/45 hover:text-agent-ink focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-agent-focus/40"
         :class="{ 'bg-agent-surface-sunken/45 text-agent-accent ring-1 ring-agent-border-soft': chat.active }"

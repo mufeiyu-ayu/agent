@@ -21,6 +21,10 @@ const props = defineProps<{
   attachment: ChatAttachment
   /** 窄屏时面板盖住对话：打开后把焦点放到关闭按钮上。 */
   focusClose?: boolean
+  /** 技能文件需要完整查看源文，不按扩展名切换为文档渲染。 */
+  previewMode?: 'text'
+  /** 已由技能包容量校验限制的源文可以完整显示，普通附件仍保留渲染上限。 */
+  fullText?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -35,10 +39,10 @@ const TEXT_LIMIT = 200_000
 const closeButton = ref<HTMLButtonElement | null>(null)
 onMounted(() => {
   if (props.focusClose)
-    closeButton.value?.focus()
+    closeButton.value?.focus({ preventScroll: true })
 })
 
-const mode = computed(() => attachmentPreviewMode(props.attachment.name))
+const mode = computed(() => props.previewMode ?? attachmentPreviewMode(props.attachment.name))
 
 const state = ref<'loading' | 'ready' | 'failed'>('loading')
 const text = ref('')
@@ -101,7 +105,7 @@ const isTable = computed(() => mode.value === 'table' || mode.value === 'sheet')
 const table = computed(() => tables.value[activeTable.value])
 const headerRow = computed(() => table.value?.rows[0]?.slice(0, COLUMN_LIMIT) ?? [])
 const bodyRows = computed(() => table.value?.rows.slice(1, ROW_LIMIT + 1) ?? [])
-const shownText = computed(() => text.value.slice(0, TEXT_LIMIT))
+const shownText = computed(() => props.fullText ? text.value : text.value.slice(0, TEXT_LIMIT))
 
 const truncatedNotice = computed(() => {
   if (isTable.value) {
@@ -111,7 +115,7 @@ const truncatedNotice = computed(() => {
       ? t('conversation.attachments.tableTruncated', { rows: ROW_LIMIT.toLocaleString(), columns: COLUMN_LIMIT })
       : ''
   }
-  return text.value.length > TEXT_LIMIT ? t('conversation.attachments.truncated', { count: TEXT_LIMIT.toLocaleString() }) : ''
+  return !props.fullText && text.value.length > TEXT_LIMIT ? t('conversation.attachments.truncated', { count: TEXT_LIMIT.toLocaleString() }) : ''
 })
 </script>
 
@@ -150,6 +154,7 @@ const truncatedNotice = computed(() => {
         </button>
       </AppTooltip>
     </header>
+    <slot name="toolbar" />
 
     <!-- 多个工作表时在这里切换；数据已经全部读好，切换不再解析。 -->
     <div v-if="tables.length > 1" role="tablist" class="flex shrink-0 gap-1 overflow-x-auto border-b border-agent-border-soft px-3 py-1.5">
@@ -220,6 +225,7 @@ const truncatedNotice = computed(() => {
         <pre v-else-if="mode === 'text'" class="whitespace-pre-wrap break-words px-6 py-5 font-mono text-[13px] leading-6 text-agent-ink-soft">{{ shownText }}</pre>
       </template>
     </div>
+    <slot name="footer" />
   </section>
 </template>
 

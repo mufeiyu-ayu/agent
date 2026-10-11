@@ -1270,6 +1270,7 @@ function toPersistedSamplingContent(
  */
 function toPersistedToolDisplay(display: ToolDisplay): JsonObject {
   return {
+    ...(display.skill ? { skill: { id: toPersistableText(display.skill.id), name: toPersistableText(display.skill.name) } } : {}),
     ...(display.workspace ? { workspace: JSON.parse(JSON.stringify(display.workspace, (_key, value: unknown) => typeof value === 'string' ? toPersistableText(value) : value)) as JsonObject } : {}),
     ...(display.failure === undefined ? {} : { failure: display.failure }),
     ...(display.results === undefined

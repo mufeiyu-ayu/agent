@@ -36,7 +36,7 @@ export class WorkspaceGcService implements OnModuleInit, OnModuleDestroy {
   get enabled(): boolean { return process.env.OSS_WORKSPACE_GC_ENABLED === 'true' }
 
   onModuleInit() {
-    if (!this.enabled)
+    if (!this.bucket)
       return
     void this.resume()
     this.timer = setInterval(() => {
@@ -123,8 +123,8 @@ export class WorkspaceGcService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  kick(conversationId: string): void {
-    if (!this.enabled || this.stopping)
+  kick(conversationId: string, conversationDeleted = false): void {
+    if ((!this.enabled && !conversationDeleted) || this.stopping)
       return
     const task = this.collect(conversationId, true)
       .then((report) => {
@@ -306,7 +306,7 @@ export class WorkspaceGcService implements OnModuleInit, OnModuleDestroy {
     this.sweep = (async () => {
       let cursor: string | undefined
       for (;;) {
-        const targets = await workspaceDb(this.prisma, db => db.workspaceGcTarget.findMany({ where: { pending: true, bucket: this.bucket }, orderBy: { conversationId: 'asc' }, take: 50, ...(cursor ? { cursor: { conversationId: cursor }, skip: 1 } : {}) }))
+        const targets = await workspaceDb(this.prisma, db => db.workspaceGcTarget.findMany({ where: { pending: true, bucket: this.bucket, ...(!this.enabled ? { deletedAt: { not: null } } : {}) }, orderBy: { conversationId: 'asc' }, take: 50, ...(cursor ? { cursor: { conversationId: cursor }, skip: 1 } : {}) }))
         for (const target of targets)
           await this.collect(target.conversationId, true).catch(() => this.logger.warn({ event: 'workspace_gc_pending', conversationId: target.conversationId }))
         if (targets.length < 50)

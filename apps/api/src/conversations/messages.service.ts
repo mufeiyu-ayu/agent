@@ -7,7 +7,7 @@ import { Inject, Injectable, Logger } from '@nestjs/common'
 import { MessageRole, Prisma } from '../generated/prisma/client.js'
 import { PrismaService } from '../prisma/prisma.service.js'
 import { ConversationsService } from './conversations.service.js'
-import { toMessageActivity } from './message-activity.js'
+import { readMessageSkills, toMessageActivity } from './message-activity.js'
 
 const SAMPLING = AGENT_STEP_TYPES.modelSampling
 const TOOL = AGENT_STEP_TYPES.toolExecution
@@ -44,20 +44,23 @@ export class MessagesService {
     })
     // 先读消息再读 Step：Run 收口时先提交最后一个采样 Step、再把消息改成终态，
     // 这样读到已结束的消息时，它的 Step 一定也已提交，activity 不会缺最后一轮。
-    const activities = await this.listActivities(conversationId)
+    const { activities, selections } = await this.listActivities(conversationId)
 
     return messages.map(message => toConversationMessageResponse(
       message,
       message.role === MessageRole.ASSISTANT ? activities.get(message.id) : undefined,
+      message.role === MessageRole.USER ? selections.get(message.id) : undefined,
     ))
   }
 
   /**
    * 整个会话一次查询（#212）：每条回答取最新的一次运行，只取它的采样与工具 Step，
-   * 按 Step 类型只取还原要用的 jsonb 路径，不把 observation 读出来；查询次数与消息数无关。
+   * 按 Step 类型只取还原要用的 jsonb 路径；仅旧版 save_skill_draft 缺少 display 时取其短 observation，查询次数与消息数无关。
    * 这些只是界面展示用的数据：查询失败时记日志、不带 activity，消息照常返回。
    */
-  private async listActivities(conversationId: string): Promise<Map<string, MessageActivity>> {
+  private async listActivities(conversationId: string) {
+    const selections = new Map<string, NonNullable<ConversationMessage['skills']>>()
+    const activities = new Map<string, MessageActivity>()
     let rows: MessageActivityStepRow[]
 
     try {
@@ -69,19 +72,20 @@ export class MessagesService {
         conversationId,
         message: error instanceof Error ? error.message : String(error),
       })
-      return new Map()
+      return { activities, selections }
     }
 
     const stepsByMessage = new Map<string, MessageActivityStepRow[]>()
 
     for (const row of rows) {
+      const selected = readMessageSkills(row.selectedSkills)
+      if (row.userMessageId && selected.length && !selections.has(row.userMessageId))
+        selections.set(row.userMessageId, selected)
       const steps = stepsByMessage.get(row.messageId) ?? []
 
       steps.push(row)
       stepsByMessage.set(row.messageId, steps)
     }
-
-    const activities = new Map<string, MessageActivity>()
 
     for (const [messageId, steps] of stepsByMessage) {
       const activity = toMessageActivity(steps)
@@ -90,14 +94,20 @@ export class MessagesService {
         activities.set(messageId, activity)
     }
 
-    return activities
+    return { activities, selections }
   }
 
-  /** 每个 `->` 都会把整列 jsonb 解压一次：只对需要的类型取对应路径，采样 Step 不碰 input，tool Step 只取三项 output。 */
+  /** 按 Step 类型取展示字段；技能仅返回显式选择的 id/name，不读取正文或完整 instructions。 */
   private queryActivitySteps(conversationId: string): Promise<MessageActivityStepRow[]> {
     return this.prismaService.$queryRaw<MessageActivityStepRow[]>(Prisma.sql`
       SELECT
         r."assistantMessageId" AS "messageId",
+        r."userMessageId",
+        CASE WHEN s."type" = ${SAMPLING} THEN (
+          SELECT jsonb_agg(jsonb_build_object('id', entry ->> 'id', 'name', entry ->> 'name'))
+          FROM jsonb_array_elements(s."input" -> 'skills' -> 'entries') entry
+          WHERE (s."input" -> 'skills' -> 'selectedIds') ? (entry ->> 'id')
+        ) END AS "selectedSkills",
         s."sequence",
         s."type",
         s."startedAt",
@@ -109,9 +119,13 @@ export class MessagesService {
         CASE WHEN s."type" = ${TOOL} THEN s."input" -> 'arguments' END AS "arguments",
         CASE WHEN s."type" = ${TOOL} THEN s."output" -> 'ok' END AS "ok",
         CASE WHEN s."type" = ${TOOL} THEN s."output" -> 'code' END AS "code",
-        CASE WHEN s."type" = ${TOOL} THEN s."output" -> 'display' END AS "display"
+        CASE WHEN s."type" = ${TOOL} THEN s."output" -> 'display' END AS "display",
+        CASE WHEN s."type" = ${TOOL}
+          AND s."input" ->> 'toolName' = 'save_skill_draft'
+          AND s."output" -> 'display' -> 'skill' IS NULL
+          THEN s."output" ->> 'observation' END AS "skillObservation"
       FROM (
-        SELECT DISTINCT ON (run."assistantMessageId") run."id", run."assistantMessageId"
+        SELECT DISTINCT ON (run."assistantMessageId") run."id", run."assistantMessageId", run."userMessageId"
         FROM "AgentRun" run
         WHERE run."conversationId" = ${conversationId}
           AND run."assistantMessageId" IS NOT NULL
@@ -119,6 +133,7 @@ export class MessagesService {
       ) r
       JOIN "AgentStep" s ON s."runId" = r."id"
       WHERE s."type" IN (${SAMPLING}, ${TOOL})
+      ORDER BY s."sequence" ASC
     `)
   }
 }
@@ -126,6 +141,7 @@ export class MessagesService {
 function toConversationMessageResponse(
   message: Message & { attachments: Array<Pick<Attachment, 'id' | 'kind' | 'name' | 'bytes' | 'width' | 'height'>> },
   activity: MessageActivity | undefined,
+  skills: ConversationMessage['skills'],
 ): ConversationMessage {
   return {
     id: message.id,
@@ -136,6 +152,7 @@ function toConversationMessageResponse(
     createdAt: message.createdAt.toISOString(),
     updatedAt: message.updatedAt.toISOString(),
     ...(activity ? { activity } : {}),
+    ...(skills?.length ? { skills } : {}),
     ...(message.attachments.length > 0
       ? {
           attachments: message.attachments.map(({ width, height, kind, ...attachment }) => ({

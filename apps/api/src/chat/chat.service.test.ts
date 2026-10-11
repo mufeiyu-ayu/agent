@@ -4,11 +4,13 @@ import type { RunTurnStreamInput } from '../agent-runtime/agent-runtime.types.js
 import type { ConversationsService } from '../conversations/conversations.service.js'
 import type { LlmModelConfigService } from '../llm/llm-model-config.service.js'
 import type { RuntimeConfigService } from '../runtime-config/runtime-config.service.js'
+import type { SkillsService } from '../skills/skills.service.js'
 import assert from 'node:assert/strict'
+import { validateSkillPackage } from '@agent/skills'
+
 import { BadRequestException, ServiceUnavailableException } from '@nestjs/common'
 
 import { describe, it, vi } from 'vitest'
-
 import { createResolvedLlmModel } from '../llm/__fixtures__.js'
 import { LlmModelUnavailableError } from '../llm/llm.errors.js'
 import { createRuntimeConfigSnapshot } from '../runtime-config/__fixtures__.js'
@@ -20,6 +22,32 @@ const RESOLVED_MODEL = createResolvedLlmModel()
 const RUNTIME_CONFIG = createRuntimeConfigSnapshot({ limits: { runDeadlineMs: 30_000 } })
 
 describe('ChatService', () => {
+  it('显式技能正文超出固定输入预算时在创建运行前拒绝，短技能仍可使用', async () => {
+    const runtime = new FakeAgentRuntimeService([runCompletedEvent('完成')])
+    let content = '检查标题'
+    const skills = { snapshot: async () => ({
+      userId: 'user-1',
+      entries: [],
+      catalogInstruction: '技能目录',
+      selected: [{ id: 'skill-1', package: validateSkillPackage([{ path: 'SKILL.md', encoding: 'utf8', content: `---\nname: test-skill\ndescription: 检查标题\n---\n${content}` }]) }],
+    }) } as unknown as SkillsService
+    const service = new ChatService(
+      runtime as unknown as AgentRuntimeService,
+      { resolveModel: async () => ({ ...RESOLVED_MODEL, maxInputTokens: 32768 }) } as unknown as LlmModelConfigService,
+      { assertOwnConversation: async () => {} } as unknown as ConversationsService,
+      { loadSnapshot: async () => RUNTIME_CONFIG } as unknown as RuntimeConfigService,
+      undefined,
+      skills,
+    )
+    content = 'x'.repeat(256 * 1024)
+    await assert.rejects(service.chatStream('user-1', { ...createInput(), skillIds: ['skill-1'] }), /输入预算/)
+    assert.equal(runtime.inputs.length, 0)
+    content = '检查标题'
+    await collectEvents(await service.chatStream('user-1', { ...createInput(), message: '', skillIds: ['skill-1'] }))
+    assert.equal(runtime.inputs.length, 1)
+    assert.equal(runtime.inputs[0]?.userContent, '')
+  })
+
   it('流式入口把 DTO 映射为 RunTurnStreamInput，透传 signal，只注入系统提示词', async () => {
     const abortController = new AbortController()
     const harness = createHarness([runCompletedEvent('流式回答')])

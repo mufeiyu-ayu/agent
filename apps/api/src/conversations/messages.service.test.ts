@@ -41,8 +41,8 @@ describe('MessagesService.listMessages（#212 activity）', () => {
         'tool_execution: output.display',
       ],
     )
-    assert.equal([...query.sql.matchAll(/s\."(input|output)"/g)].length, 8)
-    assert.doesNotMatch(query.sql, /observation/)
+    assert.equal([...query.sql.matchAll(/s\."(input|output)"/g)].length, 13)
+    assert.match(query.sql, /'save_skill_draft'/)
     assert.ok(query.values.includes('conversation-1'))
   })
 
