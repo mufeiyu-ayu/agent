@@ -10,8 +10,8 @@ import { loadConversationHistory } from './conversation-history.js'
 it.each([0, 990, 1000])('历史覆盖 %s/1000 组时仅加载剩余正文，完整配对和 messageCount 不变', async (coveredCount) => {
   const now = new Date()
   const messages: Message[] = Array.from({ length: 1000 }, (_, i) => [
-    { id: `u${i}`, conversationId: 'c', role: 'USER' as const, status: 'COMPLETED' as const, content: 'question', createdAt: now, updatedAt: now },
-    { id: `a${i}`, conversationId: 'c', role: 'ASSISTANT' as const, status: 'COMPLETED' as const, content: 'a'.repeat(32000), createdAt: now, updatedAt: now },
+    { id: `u${i}`, conversationId: 'c', role: 'USER' as const, status: 'COMPLETED' as const, content: 'question', skills: [], createdAt: now, updatedAt: now },
+    { id: `a${i}`, conversationId: 'c', role: 'ASSISTANT' as const, status: 'COMPLETED' as const, content: 'a'.repeat(32000), skills: [], createdAt: now, updatedAt: now },
   ]).flat()
   const runs: HistoryRunRow[] = Array.from({ length: 1000 }, (_, i) => ({ id: `r${i}`, userMessageId: `u${i}`, assistantMessageId: `a${i}`, status: 'COMPLETED' }))
   const covered = runs.slice(0, coveredCount).map(run => run.userMessageId)
@@ -30,7 +30,7 @@ it.each([0, 990, 1000])('历史覆盖 %s/1000 组时仅加载剩余正文，完�
       const ids = new Set(args.where.id.in)
       const result = messages.filter(message => ids.has(message.id))
       contentBytes += result.reduce((sum, message) => sum + Buffer.byteLength(message.content), 0)
-      return result.map(({ id, content }) => ({ id, content }))
+      return result.map(({ id, content, skills }) => ({ id, content, skills }))
     } },
     agentRun: { findMany: async () => runs },
   }

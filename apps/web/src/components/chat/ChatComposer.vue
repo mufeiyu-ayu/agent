@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { ReasoningEffort } from '@agent/contracts'
+import type { ReasoningEffort, SkillSummary } from '@agent/contracts'
 import type { ComposerAttachment, GenerationStatus } from '../../types/chat'
 import type { LlmModelOption } from '../../types/llm'
 
@@ -11,17 +11,20 @@ import { useI18n } from 'vue-i18n'
 import ChatAttachMenu from '@/components/chat/ChatAttachMenu.vue'
 import ChatComposerAttachments from '@/components/chat/ChatComposerAttachments.vue'
 import ChatModelMenu from '@/components/chat/ChatModelMenu.vue'
+import ChatSlashMenu from '@/components/chat/ChatSlashMenu.vue'
 import ChatTypewriterPlaceholder from '@/components/chat/ChatTypewriterPlaceholder.vue'
 import AppIcon from '@/components/common/AppIcon.vue'
 import AppTooltip from '@/components/common/AppTooltip.vue'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { useAutosizeTextarea } from '@/hooks/useAutosizeTextarea'
+import { useSkills } from '@/hooks/useSkills'
 import { ATTACHMENT_ACCEPT } from '@/utils/attachments'
 
 const props = defineProps<{
   message: string
   attachments: ComposerAttachment[]
+  skills?: Array<{ id: string, name: string }>
   /** 当前选中的模型不能看图片、而附件里有图片：不让发送，提示换模型或移除图片。 */
   imagesUnsupported?: boolean
   models: LlmModelOption[]
@@ -45,6 +48,7 @@ const emit = defineEmits<{
   'update:message': [value: string]
   'addFiles': [files: File[]]
   'removeAttachment': [id: string]
+  'removeSkill': [id: string]
   'retryAttachment': [id: string]
   'update:selectedModel': [value: string]
   'update:selectedReasoningEffort': [value: ReasoningEffort | null]
@@ -98,7 +102,7 @@ const isGenerationInProgress = computed(() => {
   return props.status === 'thinking' || props.status === 'generating'
 })
 
-const hasContent = computed(() => props.message.trim().length > 0 || props.attachments.length > 0)
+const hasContent = computed(() => props.message.trim().length > 0 || props.attachments.length > 0 || Boolean(props.skills?.length))
 /** 附件没传完或有失败的：发送按钮照常显示，但点了不发。 */
 const attachmentsPending = computed(() => props.attachments.some(item => item.status !== 'ready'))
 // 锁定中的附件正在确认去向（上一次请求没等到 start）：这段时间也不发。
@@ -132,6 +136,57 @@ function submitComposer() {
   emit('send')
 }
 
+const skillsState = useSkills()
+const isSlashMenuDismissed = ref(false)
+
+const slashQuery = computed(() => {
+  const trimmed = props.message.trimStart()
+  if (!trimmed.startsWith('/'))
+    return null
+  return trimmed.slice(1).trim().toLowerCase()
+})
+
+watch(() => props.message, (newMsg) => {
+  if (!newMsg.trimStart().startsWith('/')) {
+    isSlashMenuDismissed.value = false
+  }
+})
+
+const availableSkills = computed(() => {
+  return skillsState.items.value.filter(item => item.published && item.enabled)
+})
+
+const filteredSlashSkills = computed(() => {
+  if (slashQuery.value === null)
+    return []
+  if (!slashQuery.value)
+    return availableSkills.value
+  return availableSkills.value.filter(item =>
+    item.name.toLowerCase().includes(slashQuery.value!)
+    || item.description?.toLowerCase().includes(slashQuery.value!),
+  )
+})
+
+const isSlashMenuOpen = computed(() => {
+  return !isSlashMenuDismissed.value
+    && slashQuery.value !== null
+    && filteredSlashSkills.value.length > 0
+})
+
+const activeSlashIndex = ref(0)
+watch(filteredSlashSkills, () => {
+  activeSlashIndex.value = 0
+})
+
+function selectSlashSkill(skill: SkillSummary) {
+  if (!skillsState.selectedIds.value.includes(skill.id) && skillsState.selectedIds.value.length < 5) {
+    skillsState.selectedIds.value = [...skillsState.selectedIds.value, skill.id]
+  }
+  updateMessage('')
+  isSlashMenuDismissed.value = true
+  focus()
+}
+
 /**
  * 中文输入法组词期间按 Enter 是在确认候选词，不应发送消息。
  * Safari 会在 compositionend 之后才派发 keydown（isComposing 已为 false），
@@ -143,6 +198,46 @@ function handleEnterKeydown(event: KeyboardEvent) {
 
   event.preventDefault()
   submitComposer()
+}
+
+function handleKeydown(event: KeyboardEvent) {
+  if (isComposing.value || event.isComposing || event.keyCode === 229)
+    return
+  if (isSlashMenuOpen.value && filteredSlashSkills.value.length > 0) {
+    if (event.key === 'ArrowDown') {
+      event.preventDefault()
+      activeSlashIndex.value = (activeSlashIndex.value + 1) % filteredSlashSkills.value.length
+      return
+    }
+    if (event.key === 'ArrowUp') {
+      event.preventDefault()
+      activeSlashIndex.value = (activeSlashIndex.value - 1 + filteredSlashSkills.value.length) % filteredSlashSkills.value.length
+      return
+    }
+    if (event.key === 'Enter' && !event.isComposing && event.keyCode !== 229) {
+      event.preventDefault()
+      const target = filteredSlashSkills.value[activeSlashIndex.value]
+      if (target) {
+        selectSlashSkill(target)
+      }
+      return
+    }
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      isSlashMenuDismissed.value = true
+      return
+    }
+  }
+
+  if (event.key === 'Backspace' && !props.message && props.skills?.length) {
+    event.preventDefault()
+    emit('removeSkill', props.skills[props.skills.length - 1]!.id)
+    return
+  }
+
+  if (event.key === 'Enter' && !event.shiftKey) {
+    handleEnterKeydown(event)
+  }
 }
 
 function triggerPrimaryAction() {
@@ -250,33 +345,67 @@ useEventListener(window, 'drop', (event) => {
             @retry="emit('retryAttachment', $event)"
           />
           <div ref="inputContainer" class="composer-input relative min-w-0">
-            <Textarea
-              :model-value="message"
-              :maxlength="CHAT_MESSAGE_MAX_CHARS"
-              rows="1"
-              class="resize-none border-0 bg-transparent text-base font-normal leading-6 text-agent-ink shadow-none field-sizing-fixed focus-visible:ring-0 placeholder:text-agent-ink-muted"
-              :class="[
-                hero ? 'min-h-16' : 'min-h-9',
-                isStacked ? 'px-1.5 pb-1 pt-1.5' : 'px-2 py-1.5',
-                showTypewriter && 'placeholder:text-transparent',
-              ]"
-              :placeholder="hero ? placeholderHints[0] : t('composer.replyPlaceholder')"
-              @update:model-value="updateMessage"
-              @keydown.enter.exact="handleEnterKeydown"
-              @focus="isTextareaFocused = true"
-              @blur="isTextareaFocused = false"
-              @paste="handlePaste"
-              @compositionstart="isComposing = true"
-              @compositionend="isComposing = false"
-            />
+            <div
+              class="relative flex flex-wrap gap-x-1.5 gap-y-1"
+              :class="isStacked ? 'items-baseline px-1.5 pb-1 pt-1.5' : 'items-center px-2 py-1.5'"
+            >
+              <!-- 行内前缀技能标签：与输入文本在同一水平行内流动展示 -->
+              <span
+                v-if="skills?.length"
+                class="inline-flex shrink-0 flex-wrap items-center gap-1.5"
+                data-composer-skills
+              >
+                <span
+                  v-for="skill in skills"
+                  :key="skill.id"
+                  class="inline-flex items-center gap-1.5 font-medium text-[#b86e28] select-none dark:text-[#e09b52]"
+                >
+                  <AppIcon name="tabler:cube" :size="16" class="shrink-0 text-[#c8a875] dark:text-[#dec293]" />
+                  <span>{{ skill.name }}</span>
+                </span>
+              </span>
 
-            <ChatTypewriterPlaceholder
-              v-if="showTypewriter"
-              :phrases="placeholderHints"
-              :hide-caret="isTextareaFocused"
-            />
+              <!-- 输入框 Textarea：紧随技能标签同一行展示 -->
+              <div class="relative min-w-[120px] flex-1">
+                <Textarea
+                  :model-value="message"
+                  :maxlength="CHAT_MESSAGE_MAX_CHARS"
+                  rows="1"
+                  class="resize-none border-0 bg-transparent p-0 text-base font-normal leading-6 text-agent-ink shadow-none field-sizing-fixed focus-visible:ring-0 placeholder:text-agent-ink-muted"
+                  :class="[
+                    hero ? 'min-h-16' : 'min-h-6',
+                    showTypewriter && 'placeholder:text-transparent',
+                  ]"
+                  :placeholder="skills?.length ? '' : (hero ? placeholderHints[0] : t('composer.replyPlaceholder'))"
+                  @update:model-value="updateMessage"
+                  @keydown="handleKeydown"
+                  @focus="isTextareaFocused = true"
+                  @blur="isTextareaFocused = false"
+                  @paste="handlePaste"
+                  @compositionstart="isComposing = true"
+                  @compositionend="isComposing = false"
+                />
+
+                <ChatTypewriterPlaceholder
+                  v-if="showTypewriter && !skills?.length"
+                  :phrases="placeholderHints"
+                  :hide-caret="isTextareaFocused"
+                />
+              </div>
+            </div>
           </div>
         </div>
+
+        <!-- 斜杠命令菜单（新建对话位于输入框下方，已有对话位于输入框上方） -->
+        <ChatSlashMenu
+          v-if="isSlashMenuOpen"
+          :skills="filteredSlashSkills"
+          :active-index="activeSlashIndex"
+          :side="hero ? 'bottom' : 'top'"
+          @select="selectSlashSkill"
+          @hover="activeSlashIndex = $event"
+          @close="isSlashMenuDismissed = true"
+        />
 
         <input
           ref="fileInput"

@@ -63,8 +63,9 @@ const languageOptions = computed(() => localeOptions.map(option => ({
             <AppIcon name="tabler:settings" :size="18" />
             {{ t('layout.settings.nav.general') }}
           </button>
-          <button :aria-current="tab === 'skills' ? 'page' : undefined" :class="{ 'settings-nav-item': tab === 'skills' }" class="mt-2 rounded-lg p-2 text-left" @click="tab = 'skills'; skills.reload()">
-            技能
+          <button :aria-current="tab === 'skills' ? 'page' : undefined" :class="{ 'settings-nav-item': tab === 'skills' }" class="mt-2 flex h-8 items-center gap-3 rounded-lg pl-2 text-sm font-medium" @click="tab = 'skills'; skills.reload()">
+            <AppIcon name="tabler:script" :size="18" />
+            {{ t('skills.title') }}
           </button>
         </nav>
 
@@ -81,10 +82,10 @@ const languageOptions = computed(() => localeOptions.map(option => ({
 
           <div class="mb-4 flex gap-4 sm:hidden">
             <button @click="tab = 'general'">
-              通用
+              {{ t('layout.settings.nav.general') }}
             </button>
             <button @click="tab = 'skills'; skills.reload()">
-              技能
+              {{ t('skills.title') }}
             </button>
           </div>
           <SkillsList v-if="tab === 'skills'" manage />

@@ -58,6 +58,8 @@ export interface ConversationMessage {
   activity?: MessageActivity
   /** 用户随这条消息发出的图片与文档；没有时省略。 */
   attachments?: MessageAttachment[]
+  /** 用户随这条消息显式选择的技能；名称来自该次运行的目录快照。 */
+  skills?: Array<{ id: string, name: string }>
 }
 
 /**
@@ -87,7 +89,7 @@ export interface MessageActivityThought {
  */
 export interface MessageActivityTool
   extends Pick<ChatStreamToolStartedEvent, 'callId' | 'toolName' | 'query' | 'url'>,
-  Pick<ChatStreamToolFinishedEvent, 'ok' | 'failure' | 'skipped' | 'results' | 'finalUrl' | 'title' | 'chars' | 'workspace'> {
+  Pick<ChatStreamToolFinishedEvent, 'ok' | 'failure' | 'skipped' | 'results' | 'finalUrl' | 'title' | 'chars' | 'workspace' | 'skill'> {
   kind: 'tool'
   /** 步骤的起止时间差。 */
   durationMs?: number

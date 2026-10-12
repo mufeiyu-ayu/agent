@@ -24,6 +24,7 @@ const TOOL_ICONS: Record<string, string> = {
   edit: 'tabler:file-pencil',
   bash: 'tabler:terminal-2',
   topuplist_traffic: 'tabler:chart-line',
+  read_skill: 'tabler:script',
 }
 
 const { t, locale } = useI18n()
@@ -35,6 +36,7 @@ const brokenIcons = reactive<Record<string, boolean>>({})
 
 /** 时间线的一行：工具步骤，或一轮思考（#209）。 */
 interface TimelineItem {
+  skill?: boolean
   workspace?: TurnRunStep['workspace']
   key: string
   icon: string
@@ -95,6 +97,7 @@ function stepItem(step: TurnRunStep, index: number): TimelineItem {
 
   return {
     key: `step:${index}`,
+    skill: step.toolName === 'read_skill' && step.status === 'ok' && !!step.skill,
     icon: failed ? 'tabler:alert-circle' : TOOL_ICONS[step.toolName] ?? 'tabler:tool',
     failed,
     text: runStepText(step, t, locale.value),
@@ -134,7 +137,7 @@ function fallbackColor(site: string): string {
       v-for="item in items"
       :key="item.key"
       class="run-tl-item"
-      :class="{ 'is-failed': item.failed }"
+      :class="{ 'is-failed': item.failed, 'is-skill': item.skill }"
     >
       <span class="run-tl-icon" aria-hidden="true">
         <span>
@@ -150,7 +153,7 @@ function fallbackColor(site: string): string {
         @keydown.enter.space.prevent="item.expandable && toggle(item.key)"
       >
         <span v-if="item.text.verb" class="run-tl-verb">{{ item.text.verb }}</span>
-        <span class="run-tl-object">{{ item.text.object }}</span>
+        <span class="run-tl-object" :title="item.skill ? item.text.object : undefined">{{ item.text.object }}</span>
         <span v-if="item.text.meta" class="run-tl-meta">{{ item.text.meta }}</span>
         <svg v-if="item.expandable" class="run-tl-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M9 6l6 6-6 6" />
@@ -326,6 +329,15 @@ function fallbackColor(site: string): string {
   text-overflow: ellipsis;
   white-space: nowrap;
   transition: color 0.2s;
+}
+
+.run-tl-item.is-skill .run-tl-icon > span {
+  color: var(--agent-ink);
+}
+
+.run-tl-item.is-skill .run-tl-object {
+  color: var(--agent-ink);
+  font-weight: 600;
 }
 
 .run-tl-meta {

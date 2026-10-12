@@ -42,6 +42,7 @@ export function toChatStreamEvent(event: AgentRuntimeEvent): ChatStreamEvent {
     // 逐字段列出：工具在 display 里多带的字段不会发到浏览器。
     case 'tool_finished':
       return {
+        ...(event.skill === undefined ? {} : { skill: event.skill }),
         type: 'tool_finished',
         conversationId: event.conversationId,
         assistantMessageId: event.assistantMessageId,

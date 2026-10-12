@@ -8,7 +8,7 @@ export interface UnvalidatedToolCallEnvelope {
 }
 
 /** 仅跨端协议的显示字段，不包含宿主执行对象。 */
-export type ToolDisplay = Pick<ChatStreamToolFinishedEvent, 'workspace' | 'results' | 'finalUrl' | 'title' | 'chars' | 'failure' | 'skipped'>
+export type ToolDisplay = Pick<ChatStreamToolFinishedEvent, 'workspace' | 'skill' | 'results' | 'finalUrl' | 'title' | 'chars' | 'failure' | 'skipped'>
 
 export type ToolResult
   = | { ok: true, modelContent: string, display?: ToolDisplay }

@@ -16,6 +16,7 @@ const props = defineProps<{
   text: string
   createdAt: string
   attachments?: ChatAttachment[]
+  skills?: Array<{ id: string, name: string }>
 }>()
 
 const emit = defineEmits<{
@@ -54,9 +55,17 @@ function copyMessage(event: MouseEvent) {
       :class="text ? 'mb-1.5' : undefined"
       @open="openAttachment"
     />
-    <!-- 只发附件时没有文字气泡。 -->
-    <div v-if="text" class="max-w-[660px] whitespace-pre-wrap rounded-2xl bg-agent-user-bubble px-4 py-2.5 text-base leading-7 text-agent-user-bubble-text min-[960px]:text-[15px] min-[960px]:leading-6">
-      {{ text }}
+    <div v-if="text || skills?.length" class="max-w-[660px] whitespace-pre-wrap rounded-2xl bg-agent-user-bubble px-4 py-2.5 text-base leading-7 text-agent-user-bubble-text min-[960px]:text-[15px] min-[960px]:leading-6">
+      <span v-if="skills?.length" class="inline-flex flex-wrap items-center gap-1.5 mr-2 align-middle select-none" data-message-skills>
+        <span
+          v-for="skill in skills"
+          :key="skill.id"
+          class="inline-flex items-center gap-1.5 font-medium text-[#b86e28] select-none dark:text-[#e09b52]"
+        >
+          <AppIcon name="tabler:cube" :size="16" class="shrink-0 text-[#c8a875] dark:text-[#dec293]" />
+          <span :title="skill.name">{{ skill.name }}</span>
+        </span>
+      </span><span>{{ text }}</span>
     </div>
 
     <div class="mt-1 flex h-8 items-center gap-1 opacity-0 transition-opacity duration-150 group-hover/user:opacity-100 group-focus-within/user:opacity-100">

@@ -10,6 +10,7 @@ import { BadRequestException, Inject, Injectable, NotFoundException } from '@nes
 import { AttachmentStorageService } from '../attachments/attachment-storage.service.js'
 import { AttachmentsService } from '../attachments/attachments.service.js'
 import { PrismaService } from '../prisma/prisma.service.js'
+import { SkillsService } from '../skills/skills.service.js'
 import { WorkspaceCloudService } from '../workspaces/workspace-cloud.service.js'
 import { lockWorkspaceStorage, workspaceDb } from '../workspaces/workspace-db.js'
 import { WorkspaceGcService } from '../workspaces/workspace-gc.service.js'
@@ -25,6 +26,7 @@ export class ConversationsService {
     private readonly prismaService: PrismaService,
     @Inject(WorkspaceGcService) private readonly gc = new WorkspaceGcService(prismaService, new WorkspaceCloudService()),
     @Inject(AttachmentsService) private readonly attachments = new AttachmentsService(prismaService, new AttachmentStorageService()),
+    @Inject(SkillsService) private readonly skills = new SkillsService(prismaService, new AttachmentStorageService()),
   ) {}
 
   async create(userId: string, input: CreateConversationDto): Promise<Conversation> {
@@ -109,10 +111,12 @@ export class ConversationsService {
       await this.gc.register(db, userId, conversationId, new Date())
       // 附件不随会话级联删除：同事务先标记，提交后由后台删 OSS 对象、再删行。
       await this.attachments.markConversationDeleted(db, conversationId)
+      await this.skills.markConversationDeleted(db, userId, conversationId)
       await db.conversation.delete({ where: { id: conversationId } })
     })
-    this.gc.kick(conversationId)
+    this.gc.kick(conversationId, true)
     this.attachments.kickSweep()
+    this.skills.kickSweep()
 
     return {
       deleted: true,

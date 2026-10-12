@@ -107,7 +107,7 @@ export function createRuntimeHost(input: RunTurnStreamInput, deps: {
     },
     createUserMessage: async (conversationId, content, attachmentIds) => {
       const { message, rows } = await prisma.$transaction(async (db) => {
-        const message = await db.message.create({ data: { conversationId, role: MessageRole.USER, content, status: MessageStatus.COMPLETED } })
+        const message = await db.message.create({ data: { conversationId, role: MessageRole.USER, content, status: MessageStatus.COMPLETED, skills: input.skills?.selected.map(selected => ({ id: selected.id, name: selected.package.name })) ?? [] } })
         const rows = await attachments.bind(db, { userId: input.userId, conversationId, messageId: message.id, attachmentIds })
         await db.conversation.update({ where: { id: conversationId }, data: { updatedAt: new Date() } })
         return { message, rows }

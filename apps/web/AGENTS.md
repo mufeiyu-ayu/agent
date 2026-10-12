@@ -42,6 +42,12 @@ src/main.ts -> src/App.vue -> src/router/index.ts   # / 首页、/privacy（公�
 
 `pnpm --filter @agent/web typecheck`、`lint`、`test`（Vitest 单测），必要时 `build`；浏览器回归用根目录 `pnpm test:e2e`（Playwright）。测试规范见 `docs/testing.md`。
 
-技能：`api/skills.ts` 发请求，`hooks/useSkills.ts` 在工作台提供共享状态，`components/skills/SkillsList.vue` 用于技能库、选择和设置管理，`SkillsDialog.vue` 安全预览完整文件并确认发布；创建和编辑回到同一个聊天入口。
+技能：`api/skills.ts` 发请求，`hooks/useSkills.ts` 在工作台提供共享状态，`components/skills/SkillsList.vue` 用于技能库和设置管理，`SkillsDialog.vue` 安全预览完整文件并确认发布；创建支持聊天或手动输入，已有技能通过 `SkillEditorDialog.vue` 手动编辑，无聊天编辑入口。
 
-`/skills` 是工作台壳下的独立子路由，`views/SkillsView.vue` 展示技能库；创建/编辑、新建/选择会话返回 `/workspace`。库列表不再使用弹窗，聊天技能选择与预览仍使用弹窗。
+`/skills` 是工作台壳下的独立子路由，`views/SkillsView.vue` 展示技能库；对话创建技能、新建/选择会话返回 `/workspace`，手动创建留在当前页。技能选择使用输入框 `/` 菜单，技能库和设置中的预览使用弹窗。
+
+`AgentSkillArtifact.vue` 在保存技能的对应回复末尾展示 SKILL.md 预览卡片，实时工具 display 与刷新后的 activity 共用同一入口。
+
+聊天技能文件由 `components/skills/SkillPreviewPanel.vue` 复用 `AttachmentPreviewPanel.vue` 渲染，接入现有右侧分栏/窄屏覆盖；设置中的预览仍使用弹窗。切换会话或预览类型取消旧技能读取。
+
+技能页只展示已发布内容，没有草稿分类。手动创建复用 `SkillEditorDialog.vue`，只提供发布；已发布技能只提供保存修改；未发布草稿从来源对话打开，取消未保存内容不生成记录。

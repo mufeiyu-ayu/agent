@@ -29,8 +29,8 @@ export class ChatDto implements ChatRequest {
   @IsString()
   // 只校验「至少包含一个非空白字符」，不做 trim：
   // trim 与持久化规范化仍由 AgentRuntime 负责，MaxLength 也保持在 trim 前生效。
-  // 带了附件时文字可以为空：只发图片或文件也是一条消息。
-  @ValidateIf((object: ChatDto) => !Array.isArray(object.attachmentIds) || object.attachmentIds.length === 0 || typeof object.message !== 'string' || object.message.length > 0)
+  // 带了附件或显式选择技能时允许空串；非字符串与非空文本仍完整校验。
+  @ValidateIf((object: ChatDto) => (!(Array.isArray(object.attachmentIds) && object.attachmentIds.length > 0) && !(Array.isArray(object.skillIds) && object.skillIds.length > 0)) || typeof object.message !== 'string' || object.message.length > 0)
   @IsNotEmpty()
   @Matches(/\S/u, {
     message: 'message 不能只包含空白字符',

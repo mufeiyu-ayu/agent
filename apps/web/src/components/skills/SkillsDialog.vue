@@ -1,20 +1,40 @@
 <script setup lang="ts">
-import { DialogClose, DialogContent, DialogOverlay, DialogPortal, DialogRoot, DialogTitle } from 'reka-ui'
+import {
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogOverlay,
+  DialogPortal,
+  DialogRoot,
+  DialogTitle,
+} from 'reka-ui'
 import { computed, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
+import AppIcon from '@/components/common/AppIcon.vue'
+import AppTooltip from '@/components/common/AppTooltip.vue'
 import { useSkills } from '@/hooks/useSkills'
-import SkillsList from './SkillsList.vue'
+import SkillLoading from './SkillLoading.vue'
 
-defineProps<{ conversationId: string | null }>()
+const { t } = useI18n()
+
 const skills = useSkills()
 const selectedPath = ref('SKILL.md')
+
 watch(skills.preview, () => {
   selectedPath.value = 'SKILL.md'
 })
-const file = computed(() => skills.preview.value?.files.find(file => file.path === selectedPath.value))
+
+const currentSkillName = computed(() => skills.preview.value?.name ?? skills.previewItem.value?.name ?? t('skills.previewTitle'))
+const isBuiltin = computed(() => skills.preview.value ? skills.preview.value.builtin : skills.previewItem.value?.builtin)
+
+const file = computed(() => skills.preview.value?.files.find(f => f.path === selectedPath.value))
+
 function download() {
   if (!file.value)
     return
-  const content = file.value.encoding === 'utf8' ? new TextEncoder().encode(file.value.content) : Uint8Array.from(atob(file.value.content), c => c.charCodeAt(0))
+  const content = file.value.encoding === 'utf8'
+    ? new TextEncoder().encode(file.value.content)
+    : Uint8Array.from(atob(file.value.content), c => c.charCodeAt(0))
   const url = URL.createObjectURL(new Blob([content], { type: 'application/octet-stream' }))
   const anchor = document.createElement('a')
   anchor.href = url
@@ -22,74 +42,233 @@ function download() {
   anchor.click()
   setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
-const panelClass = 'fixed inset-0 z-[60] m-auto flex h-[min(800px,calc(100dvh-32px))] w-[min(900px,calc(100vw-24px))] flex-col overflow-auto rounded-2xl bg-agent-canvas p-5 text-agent-ink shadow-xl outline-none sm:p-8'
+
+function handleManualEdit() {
+  if (skills.preview.value) {
+    const previewItem = skills.preview.value
+    skills.dismissPreview()
+    skills.openEditor(previewItem)
+  }
+}
 </script>
 
 <template>
-  <DialogRoot v-model:open="skills.open.value">
+  <!-- 技能预览弹窗（对齐 Setting 缩放淡入动效、弹窗内 Loading、纯源码展示） -->
+  <DialogRoot
+    :open="skills.previewDialogOpen.value"
+    @update:open="!$event && skills.dismissPreview()"
+  >
     <DialogPortal>
-      <DialogOverlay class="fixed inset-0 z-[60] bg-black/40" />
-      <DialogContent :class="panelClass" :aria-describedby="undefined">
-        <div class="mb-6 flex items-center justify-between gap-4">
-          <DialogTitle class="text-xl font-semibold">
-            {{ skills.mode.value === 'select' ? '选择技能' : '技能草稿' }}
-          </DialogTitle>
-          <DialogClose aria-label="关闭技能选择" class="rounded-lg px-3 py-2">
-            关闭
-          </DialogClose>
-        </div>
-        <SkillsList :select="skills.mode.value === 'select'" :drafts="skills.mode.value === 'drafts'" :conversation-id="conversationId" />
-      </DialogContent>
-    </DialogPortal>
-  </DialogRoot>
-  <DialogRoot :open="skills.preview.value !== null" @update:open="!$event && (skills.preview.value = null)">
-    <DialogPortal>
-      <DialogOverlay class="fixed inset-0 z-[70] bg-black/40" />
-      <DialogContent class="!z-[70]" :class="[panelClass]" :aria-describedby="undefined">
-        <div class="mb-3 flex items-center justify-between gap-4">
-          <DialogTitle class="break-all text-xl font-semibold">
-            {{ skills.preview.value?.name }}
-          </DialogTitle>
-          <DialogClose aria-label="关闭技能预览" class="shrink-0 rounded-lg px-3 py-2">
-            关闭
-          </DialogClose>
-        </div>
-        <p class="mb-4 text-sm text-agent-ink-muted">
-          {{ skills.preview.value?.description }}
-        </p>
-        <p v-if="skills.error.value" role="alert" class="mb-3 text-red-600">
-          {{ skills.error.value }}
-        </p>
-        <button v-if="skills.error.value && skills.preview.value" :disabled="skills.busy.value" @click="skills.showPreview(skills.preview.value, true)">
-          重新预览
-        </button>
-        <label class="mb-2 text-sm" for="skill-file">技能文件</label>
-        <select id="skill-file" v-model="selectedPath" class="mb-3 rounded-lg border border-agent-border bg-agent-surface-raised p-2">
-          <option v-for="resource in skills.preview.value?.files" :key="resource.path" :value="resource.path">
-            {{ resource.path }}
-          </option>
-        </select>
-        <pre v-if="file?.encoding === 'utf8'" class="min-h-40 flex-1 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-agent-surface-raised p-4 text-sm">{{ file.content }}</pre>
-        <p v-else class="flex-1 py-8">
-          二进制资源：{{ file?.path }}
-        </p>
-        <div class="mt-4 flex flex-wrap items-center gap-4">
-          <button class="underline underline-offset-4" @click="download">
-            下载当前文件
-          </button>
-          <template v-if="skills.preview.value && !skills.preview.value.builtin">
-            <button @click="skills.start(skills.preview.value)">
-              继续聊天修改
+      <DialogOverlay class="preview-overlay fixed inset-0 z-[70] bg-black/40 backdrop-blur-xs" />
+      <DialogContent
+        class="preview-panel fixed inset-0 z-[70] m-auto flex h-[min(720px,calc(100dvh-32px))] w-[min(840px,calc(100vw-24px))] flex-col overflow-hidden rounded-xl text-agent-ink outline-none"
+        :aria-describedby="undefined"
+      >
+        <!-- 弹窗 Header -->
+        <header class="flex h-13 shrink-0 items-center justify-between border-b border-agent-border-subtle bg-agent-surface-raised px-5">
+          <div class="flex min-w-0 items-center gap-3">
+            <div class="flex items-center gap-2">
+              <AppIcon name="tabler:script" :size="16" class="text-agent-ink-muted" />
+              <DialogTitle class="break-all font-mono text-sm font-semibold tracking-tight text-agent-ink">
+                {{ currentSkillName }}
+              </DialogTitle>
+            </div>
+            <DialogDescription class="sr-only">
+              {{ t('skills.previewDescription') }}
+            </DialogDescription>
+
+            <!-- 属性小标签 -->
+            <span v-if="isBuiltin !== undefined" class="rounded-md border border-agent-border-subtle bg-agent-surface px-2 py-0.5 text-xs text-agent-ink-muted">
+              {{ isBuiltin ? t('skills.builtin') : t('skills.personal') }}
+            </span>
+
+            <!-- 草稿小标签（仅当是草稿时展示，已发布不展示） -->
+            <span v-if="skills.preview.value?.draft" class="rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-amber-600 dark:text-amber-400">
+              {{ t('skills.draft') }}
+            </span>
+
+            <!-- 多文件切换 -->
+            <div v-if="skills.preview.value?.files && skills.preview.value.files.length > 1" class="ml-1 flex items-center gap-1.5">
+              <label for="preview-skill-file" class="sr-only">{{ t('skills.switchFile') }}</label>
+              <select
+                id="preview-skill-file"
+                v-model="selectedPath"
+                class="h-7 rounded-md border border-agent-border-subtle bg-agent-surface px-2 text-xs font-mono text-agent-ink focus:border-agent-border focus:outline-none"
+              >
+                <option v-for="resource in skills.preview.value?.files" :key="resource.path" :value="resource.path">
+                  {{ resource.path }}
+                </option>
+              </select>
+            </div>
+          </div>
+
+          <!-- 右侧操作栏：草稿发布按钮 + 下载图标 + 编辑图标 + 分隔线 + 关闭按钮 -->
+          <div class="flex items-center gap-1.5">
+            <!-- 草稿发布按钮 -->
+            <button
+              v-if="skills.preview.value?.draft && !skills.preview.value.builtin"
+              :disabled="skills.busy.value"
+              class="mr-1 inline-flex h-7 items-center gap-1.5 rounded-lg bg-agent-ink px-2.5 text-agent-canvas shadow-xs transition-opacity hover:opacity-90 active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-agent-focus disabled:opacity-50"
+              @click="skills.publish()"
+            >
+              <AppIcon v-if="skills.busy.value" name="tabler:loader-2" :size="13" class="animate-spin" />
+              <AppIcon v-else name="tabler:upload" :size="13" />
+              <span class="text-xs font-medium">{{ skills.busy.value ? t('skills.publishing') : skills.preview.value.published ? t('skills.confirmUpdate') : t('skills.publish') }}</span>
             </button>
-            <button v-if="skills.preview.value.draft" :disabled="skills.busy.value" class="ml-auto rounded-lg bg-agent-ink px-4 py-2 text-agent-canvas disabled:opacity-50" @click="skills.publish()">
-              <span>{{ skills.busy.value ? '正在发布…' : skills.preview.value.published ? '确认更新技能' : '发布到我的技能' }}</span>
-            </button>
-            <p v-else role="status" class="ml-auto text-agent-ink-muted">
-              已发布
-            </p>
-          </template>
+
+            <!-- 下载文件图标按钮 -->
+            <AppTooltip v-if="file" :content="t('skills.download')" side="bottom">
+              <button
+                type="button"
+                :aria-label="t('skills.download')"
+                class="flex h-7 w-7 items-center justify-center rounded-lg text-agent-ink-muted transition-colors hover:bg-agent-surface-sunken hover:text-agent-ink focus-visible:outline-2 focus-visible:outline-agent-focus"
+                @click="download"
+              >
+                <AppIcon name="tabler:download" :size="16" />
+              </button>
+            </AppTooltip>
+
+            <!-- 手动编辑图标按钮 -->
+            <AppTooltip v-if="skills.preview.value && !skills.preview.value.builtin" :content="t('skills.manualEdit')" side="bottom">
+              <button
+                type="button"
+                :aria-label="t('skills.manualEdit')"
+                :disabled="skills.busy.value"
+                class="flex h-7 w-7 items-center justify-center rounded-lg text-agent-ink-muted transition-colors hover:bg-agent-surface-sunken hover:text-agent-ink focus-visible:outline-2 focus-visible:outline-agent-focus disabled:opacity-50"
+                @click="handleManualEdit"
+              >
+                <AppIcon name="tabler:edit" :size="16" />
+              </button>
+            </AppTooltip>
+
+            <div class="mx-0.5 h-3.5 w-px bg-agent-border-subtle" />
+
+            <!-- 关闭按钮 -->
+            <DialogClose
+              :aria-label="t('skills.closePreview')"
+              class="flex h-7 w-7 items-center justify-center rounded-lg text-agent-ink-muted transition-colors hover:bg-agent-surface-sunken hover:text-agent-ink focus-visible:outline-2 focus-visible:outline-agent-focus"
+            >
+              <AppIcon name="tabler:x" :size="16" />
+            </DialogClose>
+          </div>
+        </header>
+
+        <!-- 弹窗内容主体 -->
+        <div class="flex min-h-0 flex-1 flex-col overflow-hidden bg-agent-canvas">
+          <!-- 弹窗内 Loading 状态（Hide and Seek 字符波浪升降动效） -->
+          <SkillLoading v-if="skills.previewLoading.value" />
+
+          <!-- 加载失败错误提示 -->
+          <div v-else-if="skills.error.value && !skills.preview.value" class="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
+            <div role="alert" class="rounded-xl border border-red-500/20 bg-red-500/5 px-5 py-4 text-xs text-red-600 dark:text-red-400">
+              <p class="font-medium">
+                {{ t('skills.loadFailed') }}
+              </p>
+              <p class="mt-1 text-agent-ink-muted">
+                {{ skills.error.value }}
+              </p>
+              <button
+                v-if="skills.previewItem.value"
+                class="mt-3 inline-flex items-center gap-1 rounded-md border border-red-500/30 bg-agent-surface px-2.5 py-1 text-xs font-medium text-agent-ink hover:bg-agent-surface-sunken"
+                @click="skills.showPreview(skills.previewItem.value, true)"
+              >
+                <span>{{ t('skills.retry') }}</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- 源码展示主体（无嵌套卡片边框，源码平铺沉浸阅读） -->
+          <div v-else class="flex min-h-0 flex-1 flex-col overflow-hidden">
+            <!-- 运行期错误条 -->
+            <div
+              v-if="skills.error.value"
+              role="alert"
+              class="mx-5 mt-4 flex items-center justify-between rounded-lg border border-red-500/20 bg-red-500/5 px-3 py-2 text-xs text-red-600 dark:text-red-400"
+            >
+              <span>{{ skills.error.value }}</span>
+              <button
+                v-if="skills.preview.value"
+                :disabled="skills.busy.value"
+                class="text-xs underline hover:no-underline"
+                @click="skills.showPreview(skills.preview.value, true)"
+              >
+                <span>{{ t('skills.reload') }}</span>
+              </button>
+            </div>
+
+            <!-- 源码查看容器：直接平铺，无内部边框 -->
+            <div v-if="file?.encoding === 'utf8'" class="min-h-0 flex-1 overflow-auto p-5 sm:p-6">
+              <pre class="m-0 min-h-full whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-agent-ink-soft select-text">{{ file.content }}</pre>
+            </div>
+
+            <!-- 二进制资源提示 -->
+            <div v-else class="flex flex-1 flex-col items-center justify-center py-16 text-center text-xs text-agent-ink-muted">
+              <AppIcon name="tabler:file-binary" :size="32" class="mb-2 text-agent-ink-faint" />
+              <p>{{ t('skills.binaryFile', { path: file?.path ?? '' }) }}</p>
+            </div>
+          </div>
         </div>
       </DialogContent>
     </DialogPortal>
   </DialogRoot>
 </template>
+
+<style scoped>
+.preview-panel {
+  --preview-panel-bg: var(--agent-surface-raised);
+  --preview-edge: color-mix(in oklch, var(--agent-ink) 10%, transparent);
+
+  background: var(--preview-panel-bg);
+  box-shadow:
+    inset 0 0 0 1px var(--preview-edge),
+    0 1px 2px rgb(0 0 0 / 6%),
+    0 2px 8px rgb(0 0 0 / 24%);
+}
+
+[data-agent-workspace-theme='olive-ember'] .preview-panel {
+  --preview-panel-bg: color-mix(in oklch, var(--agent-surface-sunken), white 4%);
+}
+
+.preview-panel[data-state='open'] {
+  animation: preview-panel-in 180ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.preview-panel[data-state='closed'] {
+  animation: preview-panel-out 140ms ease-in both;
+}
+
+.preview-overlay[data-state='open'] {
+  animation: preview-fade-in 180ms ease-out both;
+}
+
+.preview-overlay[data-state='closed'] {
+  animation: preview-fade-in 140ms ease-in reverse both;
+}
+
+@keyframes preview-panel-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+}
+
+@keyframes preview-panel-out {
+  to {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+}
+
+@keyframes preview-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .preview-panel[data-state='open'],
+  .preview-panel[data-state='closed'] {
+    animation-name: preview-fade-in;
+  }
+}
+</style>

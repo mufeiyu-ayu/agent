@@ -40,6 +40,7 @@ export function mapMessagesToConversationTurns(
       turns.push({
         id: item.id,
         userMessage: item.content,
+        ...(item.skills?.length ? { skills: item.skills } : {}),
         ...(attachments ? { attachments } : {}),
         status: getUserMessageTurnStatus(item.id, options.activeTurnId, errorMessage),
         createdAt: item.createdAt,

@@ -24,6 +24,7 @@ export interface MessageActivityStepRow {
   ok: unknown
   code: unknown
   display: unknown
+  skillObservation?: unknown
 }
 
 /**
@@ -85,12 +86,16 @@ function toToolItem(step: MessageActivityStepRow, toolName: string): MessageActi
         ? displayFailure ?? (step.code === 'timeout' ? 'timeout' : 'failed')
         : undefined
   const results = readResults(display.results)
+  const skill = step.ok === true && (toolName === 'save_skill_draft' || toolName === 'read_skill')
+    ? readSkillFile(display.skill, toolName === 'save_skill_draft' ? step.skillObservation : undefined)
+    : undefined
   const durationMs = step.startedAt && step.endedAt
     ? Math.max(0, step.endedAt.getTime() - step.startedAt.getTime())
     : undefined
 
   return {
     kind: 'tool',
+    ...(skill ? { skill } : {}),
     callId: typeof step.callId === 'string' ? step.callId : '',
     toolName,
     // 与 tool_started 同一规则：取不到就没有、按参数上限截断。
@@ -148,4 +153,29 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isNonNegativeNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0
+}
+
+export function readMessageSkills(value: unknown): NonNullable<import('@agent/contracts').ConversationMessage['skills']> {
+  if (!Array.isArray(value))
+    return []
+  return value.flatMap((item) => {
+    const skill = readSkillFile(item)
+    return skill ? [skill] : []
+  })
+}
+
+function readSkillFile(display: unknown, observation?: unknown): MessageActivityTool['skill'] {
+  let value = display
+  if (!isRecord(value) && typeof observation === 'string' && observation.length <= 8_000) {
+    try {
+      const result: unknown = JSON.parse(observation)
+      value = isRecord(result) && result.draft === true ? result : undefined
+    }
+    catch { return undefined }
+  }
+  if (!isRecord(value) || typeof value.id !== 'string' || !value.id || value.id.length > 128
+    || typeof value.name !== 'string' || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value.name) || value.name.length > 64) {
+    return undefined
+  }
+  return { id: value.id, name: value.name }
 }

@@ -67,7 +67,7 @@ export function applyRunEvent(run: TurnRun, event: ChatStreamEvent, now: number)
       }
 
     case 'tool_finished': {
-      const { callId, ok, failure, skipped, results, finalUrl, title, chars, workspace } = event
+      const { callId, ok, failure, skipped, results, finalUrl, title, chars, workspace, skill } = event
       // 工具顺序执行，结束的总是最后一步；只按 callId 找不行，不同轮次的 callId 可能重复。
       const steps = [...run.steps]
       const last = steps.at(-1)
@@ -77,6 +77,7 @@ export function applyRunEvent(run: TurnRun, event: ChatStreamEvent, now: number)
         steps[steps.length - 1] = {
           ...last,
           status: skipped ? 'skipped' : ok ? 'ok' : 'failed',
+          ...(ok && skill ? { skill } : {}),
           ...(workspace === undefined ? {} : { workspace: { ...last.workspace, ...workspace } }),
           ...(failure === undefined ? {} : { failure }),
           ...(results === undefined ? {} : { results }),
@@ -129,11 +130,12 @@ export function restoreRun(activity: MessageActivity, outcome: NonNullable<TurnR
       continue
     }
 
-    const { callId, toolName, query, url, ok, failure, skipped, results, finalUrl, title, chars, workspace } = item
+    const { callId, toolName, query, url, ok, failure, skipped, results, finalUrl, title, chars, workspace, skill } = item
 
     steps.push({
       callId,
       toolName,
+      ...(ok && skill ? { skill } : {}),
       ...(workspace === undefined ? {} : { workspace }),
       ...(query === undefined ? {} : { query }),
       ...(url === undefined ? {} : { url }),
@@ -223,6 +225,9 @@ export function runStepText(step: TurnRunStep, t: Translate, locale: string): Ru
 
   if (step.workspace)
     return { verb: t(`workspace.operations.${step.workspace.operation}`), object: step.workspace.path ?? step.workspace.title, meta: outcome ?? (step.workspace.exitCode !== undefined ? `exit ${step.workspace.exitCode}` : undefined) }
+
+  if (step.toolName === 'read_skill' && step.status === 'ok' && step.skill)
+    return { verb: t('conversation.run.steps.skill'), object: step.skill.name }
 
   switch (step.toolName) {
     case 'web_search':

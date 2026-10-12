@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { WorkspaceFile } from '@agent/contracts'
+import type { SkillSummary, WorkspaceFile } from '@agent/contracts'
 import type { AgentNavigationItem, AgentPlatformUser } from '../types/agent-platform'
 import type { ChatAttachment } from '../types/chat'
 
@@ -9,9 +9,12 @@ import { SplitterGroup, SplitterPanel, SplitterResizeHandle } from 'reka-ui'
 import { computed, nextTick, onScopeDispose, ref, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { RouterView, useRoute, useRouter } from 'vue-router'
+import SkillEditorDialog from '@/components/skills/SkillEditorDialog.vue'
+import SkillPreviewPanel from '@/components/skills/SkillPreviewPanel.vue'
 import SkillsDialog from '@/components/skills/SkillsDialog.vue'
 import { provideSkills } from '@/hooks/useSkills'
 
+import { getConversationSkillDrafts } from '../api/skills'
 import workspaceBgOliveEmberDeepUrl from '../assets/bg-olive.webp'
 import workspaceBgAiBalancedUrl from '../assets/bg-warm.webp'
 import AgentConversation from '../components/agent/AgentConversation.vue'
@@ -32,7 +35,7 @@ import { useWorkspaceFiles } from '../hooks/useWorkspaceFiles'
 import { useWorkspaceTheme } from '../hooks/useWorkspaceTheme'
 
 const navigationConfig = [
-  { id: 'knowledge-qa', labelKey: 'navigation.knowledgeQa', icon: 'tabler:file-search', active: true },
+  { id: 'knowledge-qa', labelKey: 'navigation.knowledgeQa', icon: 'tabler:file-search' },
   { id: 'article-search', labelKey: 'navigation.articleSearch', icon: 'tabler:bulb' },
   { id: 'run-trace', labelKey: 'navigation.runTrace', icon: 'tabler:checklist' },
   { id: 'history', labelKey: 'navigation.history', icon: 'tabler:history' },
@@ -54,11 +57,10 @@ const {
 } = useWorkspaceTheme()
 
 const navigationItems = computed<AgentNavigationItem[]>(() => {
-  return [{ id: 'skills', label: '技能', icon: 'tabler:script', active: isSkillsPage.value }, ...navigationConfig.map(item => ({
+  return [{ id: 'skills', label: t('skills.title'), icon: 'tabler:script', active: isSkillsPage.value }, ...navigationConfig.map(item => ({
     id: item.id,
     label: t(item.labelKey),
     icon: item.icon,
-    active: 'active' in item ? item.active && !isSkillsPage.value : undefined,
   }))]
 })
 
@@ -106,9 +108,12 @@ const {
   showMessage,
   hideMessage,
 } = useChatWorkspace({
+  onSkillsAccepted: clearSubmittedSkills,
   onModelUnavailable: () => { void loadModels(true) },
-  onConversationDeleted: id => forgetWorkspaceConversation?.(id),
+  onConversationDeleted: clearDeletedConversation,
 })
+
+const sidebarChats = computed(() => recentChats.value.map(chat => ({ ...chat, active: !isSkillsPage.value && chat.active })))
 
 const {
   add: addAttachments,
@@ -133,6 +138,57 @@ const { isOpen: previewOpen, source: previewSource, close: closePreview, layout:
 const previewCode = computed(() => previewSource.value?.() ?? '')
 const filesOpen = ref(false)
 const filesPanel = ref<InstanceType<typeof WorkspaceFilesPanel> | null>(null)
+const skills = provideSkills(async (skillId, prompt) => {
+  await newChat()
+  skills.selectedIds.value = [skillId]
+  message.value = prompt ?? ''
+  await nextTick()
+  composer.value?.focus()
+}, text => showMessage(text, 'success'))
+const conversationSkillDrafts = ref<SkillSummary[]>([])
+const conversationDraftError = ref('')
+watch([activeConversationId, status, isSkillsPage, isLoadingMessages], async ([id, currentStatus, onSkills, loading], _previous, onCleanup) => {
+  conversationSkillDrafts.value = []
+  conversationDraftError.value = ''
+  if (!id || onSkills || loading || currentStatus === 'thinking' || currentStatus === 'generating')
+    return
+  const request = new AbortController()
+  onCleanup(() => request.abort())
+  try {
+    const drafts = await getConversationSkillDrafts(id, request.signal)
+    if (!request.signal.aborted)
+      conversationSkillDrafts.value = drafts.filter(item => item.hasDraft)
+  }
+  catch {
+    if (!request.signal.aborted)
+      conversationDraftError.value = t('skills.loadFailed')
+  }
+}, { immediate: true })
+const selectedSkills = computed(() => skills.items.value.filter(item => skills.selectedIds.value.includes(item.id)))
+function clearDeletedConversation(id: string) {
+  forgetWorkspaceConversation?.(id)
+  if (activeConversationId.value === id)
+    skills.selectedIds.value = []
+}
+function clearSubmittedSkills(ids: string[]) {
+  skills.selectedIds.value = skills.selectedIds.value.filter(id => !ids.includes(id))
+}
+function removeSelectedSkill(id: string) {
+  skills.selectedIds.value = skills.selectedIds.value.filter(selectedId => selectedId !== id)
+}
+const skillPreviewOpen = computed(() => skills.previewSurface.value === 'panel' && skills.preview.value !== null)
+let skillPreviewTrigger: Element | null = null
+function dismissSkillPanel() {
+  if (skills.previewSurface.value === 'panel')
+    skills.dismissPreview()
+}
+async function closeSkillPanel() {
+  dismissSkillPanel()
+  await nextTick()
+  if (skillPreviewTrigger instanceof HTMLElement && skillPreviewTrigger.isConnected)
+    skillPreviewTrigger.focus({ preventScroll: true })
+}
+
 const openingArtifact = ref(false)
 // 与 loading 分离：交付打开被重建取消后，仍不能自动改选当前最新文件。
 const filesAutoPreview = ref(true)
@@ -156,12 +212,13 @@ function invalidateSideAnimation() {
   }
 }
 onScopeDispose(invalidateSideAnimation)
-// 右侧面板里正在预览的上传附件；和 HTML 预览、工作文件面板三者同一时间只开一个。
+// 右侧面板在附件、HTML、工作文件与技能预览之间互斥切换。
 const previewedAttachment = shallowRef<ChatAttachment>()
 let attachmentTrigger: Element | null = null
-const sideOpen = computed(() => previewOpen.value || filesOpen.value || previewedAttachment.value !== undefined)
+const sideOpen = computed(() => previewOpen.value || filesOpen.value || previewedAttachment.value !== undefined || skillPreviewOpen.value)
 
 function openAttachment(attachment: ChatAttachment) {
+  dismissSkillPanel()
   attachmentTrigger = document.activeElement
   filesOpen.value = false
   void closePreview()
@@ -191,6 +248,7 @@ const {
 forgetWorkspaceConversation = forgetConversation
 watch(previewOpen, (open) => {
   if (open) {
+    dismissSkillPanel()
     previewedAttachment.value = undefined
     filesOpen.value = false
     artifactRequest++
@@ -198,6 +256,7 @@ watch(previewOpen, (open) => {
   }
 })
 watch([activeConversationId, () => currentUser.value?.id], () => {
+  dismissSkillPanel()
   invalidateSideAnimation()
   sideVisible.value = false
   sideAnimationState.value = 'idle'
@@ -222,6 +281,7 @@ watch(splitPreview, () => {
   }
 }, { flush: 'sync' })
 async function openFiles(file?: WorkspaceFile) {
+  dismissSkillPanel()
   if (openingArtifact.value || (!file && filesOpen.value))
     return
   const conversationId = activeConversationId.value
@@ -354,6 +414,7 @@ function onPreviewLayout(sizes: number[]) {
 
 async function newChat() {
   await router.push({ name: 'workspace' })
+  skills.selectedIds.value = []
   resetWorkspace()
   await nextTick()
   composer.value?.focus()
@@ -361,6 +422,7 @@ async function newChat() {
 
 async function openConversation(id: string) {
   await router.push({ name: 'workspace' })
+  skills.selectedIds.value = []
   await selectConversation(id)
 }
 
@@ -413,23 +475,24 @@ function applySuggestedPrompt(prompt: string) {
   message.value = prompt
 }
 
-const skills = provideSkills((skillId, prompt) => {
-  void router.push({ name: 'workspace' })
-  skills.selectedIds.value = [skillId]
-  if (prompt)
-    message.value = prompt
-  void nextTick(() => composer.value?.focus())
-})
 void skills.reload()
 watch(activeConversationId, () => {
-  skills.selectedIds.value = []
   void skills.reload()
 })
-const skillDrafts = computed(() => skills.items.value.filter(item => item.hasDraft && item.conversationId === activeConversationId.value))
+async function previewSkill(id: string) {
+  skillPreviewTrigger = document.activeElement
+  filesOpen.value = false
+  previewedAttachment.value = undefined
+  void closePreview()
+  await skills.showPreview({ id }, true, 'panel')
+  if (skills.error.value)
+    showMessage(skills.error.value, 'error')
+}
 /** 没选强度就不带 reasoningEffort，后端用模型行默认。 */
 function send() {
   const selected = [...skills.selectedIds.value]
-  void sendMessage(selectedModel.value, selectedReasoningEffort.value ?? undefined, selected).finally(() => {
+  const currentSkills = [...selectedSkills.value]
+  void sendMessage(selectedModel.value, selectedReasoningEffort.value ?? undefined, selected, currentSkills).finally(() => {
     void skills.reload()
   })
 }
@@ -445,7 +508,7 @@ function send() {
     :has-more-recent-chats="hasMoreConversations"
     :is-loading-more-recent-chats="isLoadingMoreConversations"
     :navigation-items="navigationItems"
-    :recent-chats="recentChats"
+    :recent-chats="sidebarChats"
     :user="user"
     :workspace-background="workspaceBackground"
     :workspace-theme="workspaceTheme"
@@ -460,24 +523,18 @@ function send() {
     @rename-chat="renameConversationById"
     @select-chat="openConversation"
   >
-    <SkillsDialog :conversation-id="activeConversationId" />
+    <SkillsDialog />
+    <SkillEditorDialog />
     <RouterView v-if="isSkillsPage" />
-    <div v-show="!isSkillsPage" class="absolute right-4 top-16 z-20 flex max-w-[80vw] flex-wrap gap-2">
-      <button v-if="skillDrafts.length" class="rounded-lg bg-agent-surface-raised px-3 py-2 shadow" @click="skills.show('drafts')">
-        技能草稿 · {{ skillDrafts.length }}
-      </button>
-      <button v-for="id in skills.selectedIds.value" :key="id" class="rounded-lg bg-agent-surface-raised px-3 py-2 shadow" :aria-label="`取消选择技能 ${skills.items.value.find(item => item.id === id)?.name ?? id}`" @click="skills.selectedIds.value = skills.selectedIds.value.filter(value => value !== id)">
-        {{ skills.items.value.find(item => item.id === id)?.name ?? id }} ×
-      </button>
-    </div>
-    <div v-show="!isSkillsPage" ref="workspaceElement" class="relative flex min-h-0 min-w-0 flex-1 overflow-hidden">
+    <Teleport to="body">
       <AppMessage
         :visible="appMessage.visible"
         :type="appMessage.type"
         :text="appMessage.text"
         @close="hideMessage"
       />
-
+    </Teleport>
+    <div v-show="!isSkillsPage" ref="workspaceElement" class="relative flex min-h-0 min-w-0 flex-1 overflow-hidden">
       <SplitterGroup direction="horizontal" class="relative z-10 min-h-0 flex-1" @layout="onPreviewLayout">
         <SplitterPanel
           id="chat"
@@ -509,6 +566,7 @@ function send() {
                 hero
                 class="mt-10"
                 :attachments="attachments"
+                :skills="selectedSkills"
                 :images-unsupported="imagesUnsupported"
                 :models="models"
                 :models-loading="modelsLoading"
@@ -521,6 +579,7 @@ function send() {
                 :history-error="conversationError"
                 @add-files="addAttachments"
                 @remove-attachment="removeAttachment"
+                @remove-skill="removeSelectedSkill"
                 @retry-attachment="retryAttachment"
                 @retry-history="reloadMessages"
                 @refresh-models="loadModels"
@@ -557,16 +616,25 @@ function send() {
               :turns="conversationTurns"
               :workspace-files="workspaceSnapshot?.files ?? []"
               :opening-artifact="openingArtifact"
+              :opening-skill="skills.busy.value"
+              @preview-skill="previewSkill"
               @open-file="openFiles"
               @preview-attachment="openAttachment"
             />
 
+            <div v-if="conversationSkillDrafts.length || conversationDraftError" data-conversation-skill-drafts class="flex shrink-0 flex-wrap gap-2 px-4 py-2 text-xs">
+              <span v-if="conversationDraftError" role="alert">{{ conversationDraftError }}</span>
+              <button v-for="draft in conversationSkillDrafts" :key="draft.id" :disabled="skills.busy.value" class="rounded-lg border border-agent-border-subtle px-3 py-2 hover:bg-agent-surface-raised" @click="previewSkill(draft.id)">
+                {{ t('skills.draft') }} · {{ draft.name }}
+              </button>
+            </div>
             <ChatComposer
               ref="composer"
               v-model:message="message"
               v-model:selected-model="selectedModel"
               v-model:selected-reasoning-effort="selectedReasoningEffort"
               :attachments="attachments"
+              :skills="selectedSkills"
               :images-unsupported="imagesUnsupported"
               :models="models"
               :models-loading="modelsLoading"
@@ -579,6 +647,7 @@ function send() {
               :history-error="conversationError"
               @add-files="addAttachments"
               @remove-attachment="removeAttachment"
+              @remove-skill="removeSelectedSkill"
               @retry-attachment="retryAttachment"
               @retry-history="reloadMessages"
               @refresh-models="loadModels"
@@ -615,6 +684,7 @@ function send() {
               'translate-x-0 duration-0': sideAnimationState === 'open',
             }"
           >
+            <SkillPreviewPanel v-if="skillPreviewOpen && splitPreview" @close="closeSkillPanel" />
             <HtmlPreviewPanel v-if="previewOpen && splitPreview" :code="previewCode" @close="closePreview" />
             <AttachmentPreviewPanel v-if="previewedAttachment && splitPreview" :attachment="previewedAttachment" @close="closeAttachment" />
             <WorkspaceFilesPanel
@@ -633,6 +703,16 @@ function send() {
           </div>
         </SplitterPanel>
       </SplitterGroup>
+      <Transition
+        enter-active-class="transition-transform duration-300 ease-out motion-reduce:transition-none"
+        enter-from-class="translate-x-full"
+        enter-to-class="translate-x-0"
+        leave-active-class="transition-transform duration-250 ease-in motion-reduce:transition-none"
+        leave-from-class="translate-x-0"
+        leave-to-class="translate-x-full"
+      >
+        <SkillPreviewPanel v-if="skillPreviewOpen && !splitPreview" focus-close class="absolute inset-0 z-40" @close="closeSkillPanel" />
+      </Transition>
       <Transition
         enter-active-class="transition-transform duration-300 ease-out motion-reduce:transition-none motion-reduce:duration-0"
         enter-from-class="translate-x-full"

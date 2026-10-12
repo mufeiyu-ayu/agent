@@ -5,6 +5,7 @@ import type { DatabaseOperationDeadline, PrismaService } from '../../prisma/pris
 import { AGENT_STEP_TYPES, pairHistory, restoreGroups } from '@agent/agent'
 import { AttachmentStorageService } from '../../attachments/attachment-storage.service.js'
 import { ATTACHMENT_MODEL_SELECT, AttachmentsService } from '../../attachments/attachments.service.js'
+import { readMessageSkills } from '../../conversations/message-activity.js'
 import { MessageRole, MessageStatus, Prisma } from '../../generated/prisma/client.js'
 import { withSkillSelection } from '../../skills/skill-selection.js'
 
@@ -66,9 +67,9 @@ export async function loadConversationHistory(
     if (retainedMessages.length) {
       const contents = await transaction.execute(prisma => prisma.message.findMany({
         where: { conversationId, id: { in: retainedMessages.map(message => message.id) } },
-        select: { id: true, content: true },
+        select: { id: true, content: true, skills: true },
       }))
-      const byId = new Map(contents.map(message => [message.id, message.content]))
+      const byId = new Map(contents.map(message => [message.id, withSkillSelection(message.content, readMessageSkills(message.skills).map(skill => skill.id))]))
       for (const message of retainedMessages) {
         const content = byId.get(message.id)
         if (content === undefined)
@@ -83,7 +84,7 @@ export async function loadConversationHistory(
     const runIds = [...new Set([...questionRuns.map(run => run.id), ...groups.flatMap(group => group.answers.flatMap(answer => answer.runId ? [answer.runId] : []))])]
     const steps = runIds.length === 0
       ? []
-      : await transaction.execute(prisma => prisma.$queryRaw<Array<HistoryStepRow & { selectedSkillIds?: unknown }>>(historyStepsQuery(runIds)))
+      : await transaction.execute(prisma => prisma.$queryRaw<HistoryStepRow[]>(historyStepsQuery(runIds)))
 
     const questions = groups.flatMap(group => group.question ? [group.question] : [])
     const attachmentRows = questions.length === 0
@@ -97,8 +98,6 @@ export async function loadConversationHistory(
     return { readAt, compaction, groups, steps, questions, questionRuns, attachmentRows, messageCount: messages.length }
   }, undefined, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead })
 
-  const runByQuestion = new Map(snapshot.questionRuns.map(run => [run.userMessageId, run.id]))
-  const selectionByRun = new Map(snapshot.steps.filter(step => step.type === AGENT_STEP_TYPES.modelSampling && Array.isArray(step.selectedSkillIds)).map(step => [step.runId, step.selectedSkillIds]))
   await Promise.all(snapshot.questions.map(async (question) => {
     const rows = snapshot.attachmentRows.filter(row => row.messageId === question.id)
     if (rows.length) {
@@ -107,8 +106,6 @@ export async function loadConversationHistory(
       if (input.images)
         question.images = input.images
     }
-    const runId = runByQuestion.get(question.id)
-    question.content = withSkillSelection(question.content, runId ? selectionByRun.get(runId) : undefined)
   }))
 
   return {
@@ -132,7 +129,6 @@ function historyStepsQuery(runIds: string[]): Prisma.Sql {
       s."sequence",
       s."type",
       s."input" -> 'samplingAttemptId' AS "samplingAttemptId",
-      CASE WHEN s."type" = ${sampling} THEN s."input" -> 'skills' -> 'selectedIds' END AS "selectedSkillIds",
       CASE WHEN s."type" = ${sampling} THEN s."output" -> 'toolCallCount' END AS "toolCallCount",
       CASE WHEN s."type" = ${sampling} THEN s."output" -> 'intermediateText' END AS "intermediateText",
       CASE WHEN s."type" = ${tool} THEN s."input" -> 'callId' END AS "callId",

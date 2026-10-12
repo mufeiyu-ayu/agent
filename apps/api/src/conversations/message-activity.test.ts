@@ -182,3 +182,25 @@ function baseStep(sequence: number, type: string): MessageActivityStepRow {
     display: null,
   }
 }
+
+it('技能文件入口来自成功保存记录，新 display 和已有 observation 都能恢复', () => {
+  const skill = { id: 'skill-id', name: 'opening-greeting' }
+  const records = [
+    toolStep(1, { toolName: 'save_skill_draft', ok: true, display: { skill } }),
+    { ...toolStep(2, { toolName: 'save_skill_draft', ok: true }), skillObservation: JSON.stringify({ ...skill, draft: true, files: ['SKILL.md'] }) },
+    { ...toolStep(3, { toolName: 'save_skill_draft', ok: false }), skillObservation: JSON.stringify({ ...skill, draft: true }) },
+    { ...toolStep(4, { toolName: 'save_skill_draft', ok: true }), skillObservation: '{truncated' },
+    toolStep(5, { toolName: 'save_skill_draft', ok: true, display: { skill: { id: 'id', name: '<script>' } } }),
+  ]
+  const items = toMessageActivity(records)!.items
+  assert.deepEqual(items.map(item => item.kind === 'tool' ? item.skill : undefined), [skill, skill, undefined, undefined, undefined])
+})
+
+it('成功读取技能的名称从持久化 display 恢复，失败不显示为使用成功', () => {
+  const skill = { id: 'skill-id', name: 'opening-greeting' }
+  const items = toMessageActivity([
+    toolStep(1, { toolName: 'read_skill', ok: true, display: { skill } }),
+    toolStep(2, { toolName: 'read_skill', ok: false, display: { skill } }),
+  ])!.items
+  assert.deepEqual(items.map(item => item.kind === 'tool' ? item.skill : undefined), [skill, undefined])
+})

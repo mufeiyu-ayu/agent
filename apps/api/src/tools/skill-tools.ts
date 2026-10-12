@@ -102,7 +102,7 @@ export class ReadSkillTool implements ToolExecutor<ReadSkillInput> {
       context.signal.throwIfAborted()
       const page = skillPage(pkg, input.path, input.offset)
       run.loaded.set(input.id, pkg)
-      return { ok: true, modelContent: JSON.stringify({ id: input.id, fingerprint: pkg.fingerprint, sandboxRoot: skillRoot(pkg), files: pkg.files.map(file => file.path), ...page }) }
+      return { ok: true, display: { skill: { id: input.id, name: pkg.name } }, modelContent: JSON.stringify({ id: input.id, fingerprint: pkg.fingerprint, sandboxRoot: skillRoot(pkg), files: pkg.files.map(file => file.path), ...page }) }
     }
     catch (error) {
       context.signal.throwIfAborted()
@@ -138,7 +138,7 @@ export class SaveSkillDraftTool implements ToolExecutor<SaveDraftInput> {
     try {
       const preview = await this.skills.saveDraft(context.workspace.userId, context.workspace.conversationId, input, context.databaseDeadline, context.onCommitOwned)
       context.signal.throwIfAborted()
-      return { ok: true, modelContent: JSON.stringify({ id: preview.id, fingerprint: preview.fingerprint, name: preview.name, draft: true, published: false, preview: '当前聊天的技能草稿入口或设置→技能', files: preview.files.map(file => file.path) }) }
+      return { ok: true, display: { skill: { id: preview.id, name: preview.name } }, modelContent: JSON.stringify({ id: preview.id, fingerprint: preview.fingerprint, name: preview.name, draft: true, published: false, preview: '本条回复末尾的技能文件卡片', files: preview.files.map(file => file.path) }) }
     }
     catch (error) {
       context.signal.throwIfAborted()

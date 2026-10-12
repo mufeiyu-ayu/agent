@@ -27,3 +27,5 @@ src/admin-conversation.ts / src/admin-overview.ts   # 管理台其他读模型
 - `package.json` 的 `exports` 里 `types` 指向 `src`、`import` 指向 `dist`：其他包的 typecheck 读 src，api 运行时与 web / admin 的 Vite（含 e2e）读 dist；测试经 Vitest 别名直接读 src，不需要先 build。`pnpm dev` 会 watch 本包并重建 dist。
 
 `src/skill.ts`：技能列表、完整预览及文件协议；`ChatRequest.skillIds` 指定本轮显式使用的技能。
+
+`ChatStreamToolFinishedEvent.skill` / `MessageActivityTool.skill` 保存成功读取或保存的技能身份（id/name），用于步骤名称；仅保存操作展示文件卡片，不进入模型上下文。

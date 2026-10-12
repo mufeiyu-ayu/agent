@@ -225,6 +225,8 @@ model Message {
   conversation          Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   role                  MessageRole
   content               String
+  // 本次用户选择的 id/name，与用户消息同事务保存，不依赖模型采样轨迹。
+  skills                Json       @default("[]")
   status                MessageStatus @default(COMPLETED)
   // 同一条 Message 可能被 AgentRun 从两个角度引用：
   //   作为「用户输入」-> userAgentRuns
@@ -474,11 +476,11 @@ model RuntimeConfig {
   updatedAt                  DateTime @updatedAt
 }
 
-// 个人技能只保留待确认草稿和当前发布指针；不可变资源用于已开始运行和审计。
+// 个人技能只保留待确认草稿和当前发布指针；新对象提交后替换指针并清理旧对象，不保存历史版本。
 model Skill {
   id String @id
   userId String
-  conversationId String
+  conversationId String?
   enabled Boolean @default(true)
   draftId String?
   publishedId String?
@@ -488,7 +490,7 @@ model Skill {
   @@index([userId, deletedAt])
 }
 
-// 上传前登记对象身份；adopted=false 的超时残留可安全清理。已采用内容固定供运行读取。
+// 当前技能内容；adopted=false 标记待清理对象，OSS 删除确认后才移除记录。
 model SkillContent {
   id String @id
   userId String
@@ -500,6 +502,7 @@ model SkillContent {
   bucket String
   bytes Int
   adopted Boolean @default(false)
+  uploadId String?
   createdAt DateTime @default(now())
   @@index([adopted, createdAt])
   @@index([skillId])
