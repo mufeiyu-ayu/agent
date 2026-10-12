@@ -15,6 +15,7 @@ export class AdminRunApiError extends Error {
     readonly status: number,
     readonly messageSource: AdminRunErrorMessage,
     options?: ErrorOptions,
+    readonly code?: string,
   ) {
     super(typeof messageSource === 'string' ? messageSource : messageSource(), options)
     this.name = 'AdminRunApiError'
@@ -81,6 +82,8 @@ export async function requestAdminRun<T>(
     throw new AdminRunApiError(
       response.status,
       getErrorMessageSource(payload, response),
+      undefined,
+      (payload as Partial<ApiErrorResponse> | undefined)?.error?.error,
     )
   }
 

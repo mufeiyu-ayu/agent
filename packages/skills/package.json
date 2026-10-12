@@ -8,6 +8,12 @@
       "types": "./src/index.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
+    },
+    "./markdown": {
+      "types": "./src/markdown.ts",
+      "browser": "./src/markdown.ts",
+      "import": "./dist/markdown.js",
+      "default": "./dist/markdown.js"
     }
   },
   "types": "./src/index.ts",

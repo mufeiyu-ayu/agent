@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@agent/contracts": "workspace:*",
+    "@agent/skills": "workspace:*",
     "@ant-design/icons-vue": "^7.0.1",
     "ant-design-vue": "^4.2.6",
     "dayjs": "^1.11.23",

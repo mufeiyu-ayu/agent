@@ -1098,3 +1098,16 @@ for (const switchBeforeResponse of [false, true]) {
     }
   })
 }
+
+test('系统创建技能停用后聊天创建明确提示不可用，手动创建仍可打开', async ({ page }) => {
+  await setup(page, true)
+  await page.getByRole('button', { name: '技能', exact: true }).click()
+  await page.route('**/api/skills', route => route.fulfill({ json: { success: true, code: 0, data: [] } }))
+  await page.getByRole('button', { name: '创建技能', exact: true }).click()
+  await page.getByRole('menuitem', { name: '对话创建', exact: true }).click()
+  await expect(page.getByRole('alert')).toContainText('该技能已停用或不可用')
+  await expect(page).toHaveURL(/\/skills$/)
+  await page.getByRole('button', { name: '创建技能', exact: true }).click()
+  await page.getByRole('menuitem', { name: '手动创建', exact: true }).click()
+  await expect(page.getByRole('dialog')).toBeVisible()
+})
