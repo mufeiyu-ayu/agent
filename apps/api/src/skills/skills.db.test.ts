@@ -298,12 +298,21 @@ describe('技能草稿与发布：隔离 PostgreSQL', { timeout: 60_000 }, () =>
       assert.equal(unchanged.mock.calls.length, 0)
       unchanged.mockRestore()
       await service.publish(userId, draft.id, draft.fingerprint)
+      // 旧实现发布后留着 adopted=true 的备用草稿槽，升级后也须清理。
+      const current = await prisma.skillContent.findFirstOrThrow({ where: { skillId: draft.id, adopted: true } })
+      const legacyKey = `users/${userId}/skills/${draft.id}/legacy-draft.json`
+      await prisma.skillContent.create({ data: { ...current, id: randomUUID(), objectKey: legacyKey } })
+      objects.set(legacyKey, Buffer.from(JSON.stringify(draft.files)))
       const noPut = vi.spyOn(storage, 'put')
       const noChange = await service.saveManualDraft(userId, draft.id, draft.files, draft.fingerprint)
       assert.equal(noChange.draft, true)
       assert.equal(noPut.mock.calls.length, 0)
       noPut.mockRestore()
+      await service.sweep()
+      assert.equal(objects.has(legacyKey), false)
       await service.publish(userId, draft.id, noChange.fingerprint)
+      await service.sweep()
+      assert.equal(objects.has(legacyKey), false)
       assert.equal(await prisma.skillContent.count({ where: { skillId: draft.id } }), 1)
       for (let index = 0; index < 3; index++) {
         const before = await service.preview(userId, draft.id)

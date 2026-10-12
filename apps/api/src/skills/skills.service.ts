@@ -111,6 +111,7 @@ export class SkillsService implements OnModuleInit, OnModuleDestroy {
         throw new ConflictException('上次技能上传结果尚未确认，请刷新核对并联系管理员核查上传身份')
       if (sourcePackage?.fingerprint === pkg.fingerprint) {
         const row = previous!.draftId ? previous! : await db.skill.update({ where: { id: skillId }, data: { draftId: source!.id, conversationId } })
+        await db.skillContent.updateMany({ where: { skillId, userId, id: { notIn: [source!.id, ...(previous!.publishedId ? [previous!.publishedId] : [])] }, adopted: true, uploadId: null }, data: { adopted: false } })
         return { ...this.summary(row, pkg), fingerprint: pkg.fingerprint, files: pkg.files, draft: true }
       }
       const id = randomUUID()
@@ -128,8 +129,7 @@ export class SkillsService implements OnModuleInit, OnModuleDestroy {
         const row = previous
           ? await db.skill.update({ where: { id: skillId }, data: { draftId: id, conversationId } })
           : await db.skill.create({ data: { id: skillId, userId, conversationId, ...(input.publish ? { publishedId: id } : { draftId: id }) } })
-        if (previous?.draftId && previous.draftId !== previous.publishedId)
-          await db.skillContent.update({ where: { id: previous.draftId }, data: { adopted: false } })
+        await db.skillContent.updateMany({ where: { skillId, userId, id: { notIn: [id, ...(previous?.publishedId ? [previous.publishedId] : [])] }, adopted: true, uploadId: null }, data: { adopted: false } })
         deadline.signal?.throwIfAborted()
         putStarted = true
         try {
@@ -201,8 +201,7 @@ export class SkillsService implements OnModuleInit, OnModuleDestroy {
       if (await db.skillContent.findFirst({ where: { skillId: id, userId, uploadId: { not: null } } }))
         throw new ConflictException('上次技能上传结果尚未确认，请刷新核对并联系管理员核查上传身份')
       const published = await db.skill.update({ where: { id }, data: { publishedId: row.draftId, draftId: null, conversationId: null } })
-      if (row.publishedId !== row.draftId)
-        await db.skillContent.update({ where: { id: row.publishedId }, data: { adopted: false } })
+      await db.skillContent.updateMany({ where: { skillId: id, userId, id: { not: row.draftId }, adopted: true, uploadId: null }, data: { adopted: false } })
       return { ...this.summary(published, pkg), fingerprint, files: pkg.files, draft: false }
     }), () => {})
     this.kickSweep()
