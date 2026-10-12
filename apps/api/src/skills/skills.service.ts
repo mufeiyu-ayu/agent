@@ -76,6 +76,11 @@ export class SkillsService implements OnModuleInit, OnModuleDestroy {
     return { ...this.summary(row, pkg), fingerprint: pkg.fingerprint, files: pkg.files, draft: row.draftId === contentId }
   }
 
+  async previewPrivateDraft(userId: string, id: string): Promise<AdminSkillDetail> {
+    await this.owned(userId, id)
+    return this.preview(userId, id, true)
+  }
+
   async saveDraft(userId: string | null, conversationId: string | null, input: { id?: string, expectedFingerprint?: string, files: unknown, preservePaths?: string[], publish?: true }, deadline: DatabaseOperationDeadline, onCommitOwned: () => void = () => {}): Promise<AdminSkillDetail> {
     const skillId = input.id ?? randomUUID()
     let uploadFinished: Promise<void> | undefined

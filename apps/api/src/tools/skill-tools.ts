@@ -118,7 +118,7 @@ export class ReadSkillDraftTool implements ToolExecutor<ReadSkillInput> {
     if (!context.workspace)
       return { ok: false, code: 'execution_failed', modelContent: '缺少当前用户身份。' }
     try {
-      const preview = await this.skills.preview(context.workspace.userId, input.id, true)
+      const preview = await this.skills.previewPrivateDraft(context.workspace.userId, input.id)
       context.signal.throwIfAborted()
       return { ok: true, modelContent: JSON.stringify({ id: preview.id, fingerprint: preview.fingerprint, files: preview.files.map(file => ({ path: file.path, encoding: file.encoding })), ...skillPage({ ...preview }, input.path, input.offset, true) }) }
     }

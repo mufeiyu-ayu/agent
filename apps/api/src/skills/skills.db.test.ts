@@ -19,6 +19,9 @@ import { registerAppGlobals } from '../common/bootstrap/register-app-globals.js'
 import { ConversationsService } from '../conversations/conversations.service.js'
 import { MessagesService } from '../conversations/messages.service.js'
 import { DatabaseCommitOutcomeUnknownError, PrismaService } from '../prisma/prisma.service.js'
+import { ToolInvocationService } from '../tools/core/tool-invocation.service.js'
+import { ToolRegistryService } from '../tools/core/tool-registry.service.js'
+import { readSkillDefinition, readSkillDraftDefinition, ReadSkillDraftTool, ReadSkillTool } from '../tools/skill-tools.js'
 import { AdminSkillsController } from './admin-skills.controller.js'
 import { withSkillSelection } from './skill-selection.js'
 import { SkillsController } from './skills.controller.js'
@@ -699,5 +702,83 @@ describe('技能草稿与发布：隔离 PostgreSQL', { timeout: 60_000 }, () =>
       assert.equal(unrelated.status, 413)
     }
     finally { await app.close() }
+  })
+  for (const kind of ['ordinary', 'creator'] as const) {
+    it(`草稿工具私人边界：停用 ${kind} 后新调用不能读取正文或参考文件`, async () => {
+      const original = kind === 'creator' ? await service.preview(null, CREATOR_ID) : undefined
+      const marker = `DRAFT_BOUNDARY_${kind}`
+      const resources = [...(original?.files ?? files(marker)).map(file => ({ ...file, content: file.path === 'SKILL.md' ? `${file.content}\n${marker}` : file.content })), { path: 'references/boundary.txt', encoding: 'utf8', content: marker }]
+      const system = original
+        ? await service.saveSystemSkill(CREATOR_ID, resources, original.fingerprint)
+        : await service.createManualSkill(null, resources)
+      const registry = new ToolRegistryService()
+      registry.register({ definition: readSkillDefinition, executor: new ReadSkillTool(service) })
+      registry.register({ definition: readSkillDraftDefinition, executor: new ReadSkillDraftTool(service) })
+      const invocation = new ToolInvocationService(registry)
+      const operation = deadline()
+      const context = {
+        signal: operation.signal,
+        databaseDeadline: operation,
+        argumentsTruncated: false,
+        serperApiKey: { status: 'missing' as const },
+        workspace: { userId, conversationId, runId: randomUUID(), deadlineAt: operation.deadlineAt },
+        skills: { snapshot: await service.snapshot(userId), loaded: new Map() },
+      }
+      const read = (toolName: string, path: string, run = context) => invocation.invoke({ callId: randomUUID(), toolName, rawArgumentsJson: JSON.stringify({ id: system.id, path }) }, run)
+      try {
+        const enabled = await read('read_skill', 'SKILL.md')
+        assert.equal(enabled.result.ok, true)
+        assert.match(enabled.result.modelContent, new RegExp(marker))
+        await service.setEnabled(null, system.id, false)
+        const fresh = { ...context, skills: { snapshot: await service.snapshot(userId), loaded: new Map() } }
+        assert.equal(fresh.skills.snapshot.entries.some(entry => entry.id === system.id), false)
+        for (const path of ['SKILL.md', 'references/boundary.txt']) {
+          assert.equal((await read('read_skill', path, fresh)).result.ok, false)
+          const denied = await read('read_skill_draft', path, fresh)
+          assert.equal(denied.result.ok, false)
+          assert.equal(denied.result.modelContent.includes(marker), false)
+        }
+        assert.ok((await service.preview(null, system.id)).files.some(file => file.content.includes(marker)))
+        // 原 Run 已加载的整包继续使用；本次不改变缓存生命周期。
+        assert.equal((await read('read_skill', 'references/boundary.txt')).result.ok, true)
+        await service.setEnabled(null, system.id, true)
+        assert.equal((await read('read_skill_draft', 'SKILL.md')).result.ok, false)
+      }
+      finally {
+        if (original) {
+          await service.saveSystemSkill(CREATOR_ID, original.files, system.fingerprint)
+          await service.setEnabled(null, CREATOR_ID, original.enabled)
+        }
+      }
+    })
+  }
+
+  it('草稿工具私人边界：本人停用草稿与已发布内容仍可读，其他用户不能读取', async () => {
+    const registry = new ToolRegistryService()
+    registry.register({ definition: readSkillDraftDefinition, executor: new ReadSkillDraftTool(service) })
+    const invocation = new ToolInvocationService(registry)
+    const ownDraft = await service.saveDraft(userId, conversationId, { files: files('PRIVATE_DRAFT_BODY') }, deadline())
+    const ownPublished = await service.createManualSkill(userId, files('PRIVATE_PUBLISHED_BODY'))
+    const other = await prisma.user.create({ data: { email: `${randomUUID()}@example.test` } })
+    const otherConversation = await prisma.conversation.create({ data: { userId: other.id, title: '其他用户工具上下文' } })
+    for (const skill of [ownDraft, ownPublished]) {
+      await service.setEnabled(userId, skill.id, false)
+      for (const actor of [userId, other.id]) {
+        const operation = deadline()
+        const result = await invocation.invoke({ callId: randomUUID(), toolName: 'read_skill_draft', rawArgumentsJson: JSON.stringify({ id: skill.id }) }, {
+          signal: operation.signal,
+          databaseDeadline: operation,
+          argumentsTruncated: false,
+          serperApiKey: { status: 'missing' },
+          workspace: { userId: actor, conversationId: actor === userId ? conversationId : otherConversation.id, runId: randomUUID(), deadlineAt: operation.deadlineAt },
+          skills: { snapshot: await service.snapshot(actor), loaded: new Map() },
+        })
+        assert.equal(result.result.ok, actor === userId)
+        if (actor === userId)
+          assert.equal(JSON.parse(result.result.modelContent).content, skill.files[0]!.content)
+        else
+          assert.equal(result.result.modelContent.includes('PRIVATE_'), false)
+      }
+    }
   })
 })
