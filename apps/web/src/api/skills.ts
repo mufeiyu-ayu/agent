@@ -4,6 +4,9 @@ import { http } from './http'
 export async function getSkills(signal?: AbortSignal): Promise<SkillSummary[]> {
   return (await http.get<SkillSummary[]>('/api/skills', { signal })).data
 }
+export async function getConversationSkillDrafts(conversationId: string, signal?: AbortSignal): Promise<SkillSummary[]> {
+  return (await http.get<SkillSummary[]>('/api/skills', { params: { conversationId }, signal })).data
+}
 export async function getSkill(id: string, draft = false, signal?: AbortSignal): Promise<SkillPreview> {
   return (await http.get<SkillPreview>(`/api/skills/${encodeURIComponent(id)}`, { params: { draft }, signal })).data
 }

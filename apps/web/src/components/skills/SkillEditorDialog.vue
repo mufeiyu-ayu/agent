@@ -103,7 +103,7 @@ const skillParseResult = computed(() => {
     return { name: '', description: '', body: '', error: t('skills.missingMain') }
   }
 
-  const name = skillName.value.trim()
+  const name = skillName.value
   const description = skillDescription.value.trim()
   const body = skillBody.value
 
@@ -170,7 +170,7 @@ function handleTabKey(e: KeyboardEvent) {
 
 // 保存草稿
 async function handleSaveDraft() {
-  if (!skills.editingSkill.value || skillParseResult.value.error)
+  if (!skills.editingSkill.value || skills.busy.value || skills.editorOutcomeUnknown.value || skillParseResult.value.error)
     return
   syncSkillMarkdownFile()
   saveStatus.value = 'saving'
@@ -189,7 +189,7 @@ async function handleSaveDraft() {
 
 // 发布生效
 async function handlePublish() {
-  if (!skills.editingSkill.value || skillParseResult.value.error)
+  if (!skills.editingSkill.value || skills.busy.value || skills.editorOutcomeUnknown.value || skillParseResult.value.error)
     return
   syncSkillMarkdownFile()
   saveStatus.value = 'publishing'
@@ -240,6 +240,7 @@ function handleOpenChange(open: boolean) {
               <select
                 id="editor-file-select"
                 v-model="selectedPath"
+                :disabled="skills.busy.value"
                 class="h-7 rounded-md border border-agent-border-subtle bg-agent-surface px-2 text-xs font-mono text-agent-ink focus:border-agent-border focus:outline-none"
               >
                 <option v-for="file in draftFiles" :key="file.path" :value="file.path">
@@ -348,6 +349,7 @@ function handleOpenChange(open: boolean) {
                   <input
                     id="skill-name"
                     v-model="skillName"
+                    :disabled="skills.busy.value"
                     type="text"
                     maxlength="64"
                     :placeholder="t('skills.namePlaceholder')"
@@ -378,6 +380,7 @@ function handleOpenChange(open: boolean) {
                   <textarea
                     id="skill-desc"
                     v-model="skillDescription"
+                    :disabled="skills.busy.value"
                     rows="2"
                     maxlength="1024"
                     :placeholder="t('skills.triggerPlaceholder')"
@@ -408,6 +411,7 @@ function handleOpenChange(open: boolean) {
                   <textarea
                     id="skill-body"
                     v-model="skillBody"
+                    :disabled="skills.busy.value"
                     class="h-full w-full resize-none bg-transparent p-4 font-mono text-[11px] leading-relaxed text-agent-ink placeholder:text-agent-ink-faint focus:outline-none"
                     :placeholder="t('skills.bodyPlaceholder')"
                     spellcheck="false"
@@ -421,6 +425,7 @@ function handleOpenChange(open: boolean) {
             <div v-else class="relative min-h-0 flex-1">
               <textarea
                 v-model="currentFileContent"
+                :disabled="skills.busy.value"
                 class="h-full w-full resize-none bg-transparent p-4 font-mono text-[11px] leading-relaxed text-agent-ink placeholder:text-agent-ink-faint focus:outline-none"
                 :placeholder="t('skills.filePlaceholder')"
                 spellcheck="false"
@@ -484,6 +489,9 @@ function handleOpenChange(open: boolean) {
             <template v-else-if="skills.editorError.value">
               <span class="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-red-500" />
               <span class="truncate text-red-600 dark:text-red-400">{{ skills.editorError.value }}</span>
+              <button v-if="skills.editorOutcomeUnknown.value" class="shrink-0 underline" @click="skills.closeEditor(); skills.reload()">
+                {{ t('skills.reload') }}
+              </button>
             </template>
             <template v-else-if="saveStatus === 'saved'">
               <span class="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-agent-moss" />
@@ -515,7 +523,7 @@ function handleOpenChange(open: boolean) {
 
             <button
               v-if="skills.editingSkill.value?.conversationId && !skills.editingSkill.value.published"
-              :disabled="skills.busy.value || !!skillParseResult.error"
+              :disabled="skills.busy.value || skills.editorOutcomeUnknown.value || !!skillParseResult.error"
               class="inline-flex h-8 items-center gap-1.5 rounded-lg border border-agent-border-subtle bg-agent-surface px-3 text-agent-ink-soft transition-colors hover:bg-agent-surface-sunken hover:text-agent-ink focus-visible:outline-2 focus-visible:outline-agent-focus disabled:opacity-50"
               @click="handleSaveDraft"
             >
@@ -524,7 +532,7 @@ function handleOpenChange(open: boolean) {
             </button>
 
             <button
-              :disabled="skills.busy.value || !!skillParseResult.error"
+              :disabled="skills.busy.value || skills.editorOutcomeUnknown.value || !!skillParseResult.error"
               class="inline-flex h-8 items-center gap-1.5 rounded-lg bg-agent-ink px-3.5 text-agent-canvas shadow-xs transition-opacity hover:opacity-90 active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-agent-focus disabled:opacity-50"
               @click="handlePublish"
             >

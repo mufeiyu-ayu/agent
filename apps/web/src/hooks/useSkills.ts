@@ -12,7 +12,6 @@ export function provideSkills(startChat: (skillId: string, prompt?: string) => P
   const items = ref<SkillSummary[]>([])
   const selectedIds = ref<string[]>([])
   const chatRequested = ref(0)
-  const open = ref(false)
   const preview = ref<SkillPreview | null>(null)
   const previewSurface = ref<'dialog' | 'panel'>('dialog')
   const previewDialogOpen = ref(false)
@@ -23,6 +22,7 @@ export function provideSkills(startChat: (skillId: string, prompt?: string) => P
   const editorLoading = ref(false)
   const editingSkill = ref<SkillPreview | null>(null)
   const editorError = ref('')
+  const editorOutcomeUnknown = ref(false)
   let editorRequest: AbortController | undefined
   const loading = ref(false)
   const busy = ref(false)
@@ -39,7 +39,12 @@ export function provideSkills(startChat: (skillId: string, prompt?: string) => P
     editorOpen.value = false
     editorLoading.value = false
   })
+  function commitUnknown(cause: unknown) {
+    return isAxiosError(cause) && cause.response?.data?.error?.error === 'DatabaseCommitOutcomeUnknown'
+  }
   function message(cause: unknown) {
+    if (commitUnknown(cause))
+      return t('skills.resultUnknown')
     if (locale.value !== 'zh-CN' && isAxiosError(cause)) {
       const status = cause.response?.status
       return t(status === 409 ? 'skills.conflict' : status === 400 ? 'skills.invalidRequest' : status === 404 ? 'skills.notFound' : 'skills.operationFailed')
@@ -140,6 +145,7 @@ export function provideSkills(startChat: (skillId: string, prompt?: string) => P
     editorLoading.value = false
     editingSkill.value = null
     editorError.value = ''
+    editorOutcomeUnknown.value = false
   }
 
   async function manage(item: SkillSummary, action: 'toggle' | 'delete') {
@@ -193,7 +199,7 @@ export function provideSkills(startChat: (skillId: string, prompt?: string) => P
   async function openEditor(item: Pick<SkillSummary, 'id'> | SkillPreview, draft?: boolean) {
     closeEditor()
     editorError.value = ''
-    if ('files' in item && Array.isArray((item as SkillPreview).files)) {
+    if ('files' in item && Array.isArray((item as SkillPreview).files) && !(!item.draft && item.hasDraft)) {
       editingSkill.value = item as SkillPreview
       editorLoading.value = false
       editorOpen.value = true
@@ -242,6 +248,10 @@ export function provideSkills(startChat: (skillId: string, prompt?: string) => P
     catch (cause) {
       const msg = message(cause)
       editorError.value = msg
+      if (commitUnknown(cause)) {
+        editorOutcomeUnknown.value = true
+        await reload()
+      }
       throw cause
     }
     finally {
@@ -278,6 +288,10 @@ export function provideSkills(startChat: (skillId: string, prompt?: string) => P
     catch (cause) {
       const msg = message(cause)
       editorError.value = msg
+      if (commitUnknown(cause)) {
+        editorOutcomeUnknown.value = true
+        await reload()
+      }
       throw cause
     }
     finally {
@@ -289,7 +303,6 @@ export function provideSkills(startChat: (skillId: string, prompt?: string) => P
     if (busy.value)
       return
     chatRequested.value++
-    open.value = false
     dismissPreview()
     busy.value = true
     error.value = ''
@@ -299,20 +312,10 @@ export function provideSkills(startChat: (skillId: string, prompt?: string) => P
     catch (cause) { error.value = message(cause) }
     finally { busy.value = false }
   }
-  function select(item: SkillSummary) {
-    if (!selectedIds.value.includes(item.id) && selectedIds.value.length < 5)
-      selectedIds.value = [...selectedIds.value, item.id]
-    open.value = false
-  }
-  function show() {
-    open.value = true
-    void reload()
-  }
   const state = {
     items,
     selectedIds,
     chatRequested,
-    open,
     preview,
     previewSurface,
     previewDialogOpen,
@@ -327,12 +330,11 @@ export function provideSkills(startChat: (skillId: string, prompt?: string) => P
     publish,
     manage,
     start,
-    select,
-    show,
     editorOpen,
     editorLoading,
     editingSkill,
     editorError,
+    editorOutcomeUnknown,
     openEditor,
     createManual,
     closeEditor,

@@ -59,7 +59,7 @@ watch(() => props.attachment, async (attachment, _previous, onCleanup) => {
   tables.value = []
   activeTable.value = 0
   docxHtml.value = ''
-  if (mode.value === 'pdf') {
+  if (mode.value === 'pdf' || mode.value === 'image' || !mode.value) {
     state.value = 'ready'
     return
   }
@@ -203,7 +203,11 @@ const truncatedNotice = computed(() => {
       />
 
       <template v-if="state === 'ready'">
-        <table v-if="isTable" :key="activeTable" class="attachment-table">
+        <img v-if="mode === 'image'" :src="attachment.url" :alt="attachment.name" class="mx-auto max-h-full max-w-full object-contain p-5" @error="state = 'failed'">
+        <p v-else-if="!mode" class="p-5 text-sm text-agent-ink-muted">
+          {{ t('skills.binaryFile', { path: attachment.name }) }}
+        </p>
+        <table v-else-if="isTable" :key="activeTable" class="attachment-table">
           <thead>
             <tr>
               <th v-for="(cell, column) in headerRow" :key="column" scope="col">

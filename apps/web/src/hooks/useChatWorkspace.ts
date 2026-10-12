@@ -411,6 +411,8 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
           // 不带 userMessagePersisted 的 error 是消息没写下：附件没被绑走，解锁后可以重发。
           attachmentsSettled = true
           if (event.userMessagePersisted) {
+            if (currentViewKey.value === request.key && skillIds?.length)
+              options.onSkillsAccepted?.(skillIds)
             touchConversation(conversationId)
             // start 前的失败也可能已经提交，附件已被消费，不能留作再次绑定的重试。
             attachments.value = attachments.value.filter(item => !submittedAttachmentIds.has(item.id))

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { WorkspaceFile } from '@agent/contracts'
+import type { SkillSummary, WorkspaceFile } from '@agent/contracts'
 import type { AgentNavigationItem, AgentPlatformUser } from '../types/agent-platform'
 import type { ChatAttachment } from '../types/chat'
 
@@ -14,6 +14,7 @@ import SkillPreviewPanel from '@/components/skills/SkillPreviewPanel.vue'
 import SkillsDialog from '@/components/skills/SkillsDialog.vue'
 import { provideSkills } from '@/hooks/useSkills'
 
+import { getConversationSkillDrafts } from '../api/skills'
 import workspaceBgOliveEmberDeepUrl from '../assets/bg-olive.webp'
 import workspaceBgAiBalancedUrl from '../assets/bg-warm.webp'
 import AgentConversation from '../components/agent/AgentConversation.vue'
@@ -144,6 +145,25 @@ const skills = provideSkills(async (skillId, prompt) => {
   await nextTick()
   composer.value?.focus()
 }, text => showMessage(text, 'success'))
+const conversationSkillDrafts = ref<SkillSummary[]>([])
+const conversationDraftError = ref('')
+watch([activeConversationId, status, isSkillsPage, isLoadingMessages], async ([id, currentStatus, onSkills, loading], _previous, onCleanup) => {
+  conversationSkillDrafts.value = []
+  conversationDraftError.value = ''
+  if (!id || onSkills || loading || currentStatus === 'thinking' || currentStatus === 'generating')
+    return
+  const request = new AbortController()
+  onCleanup(() => request.abort())
+  try {
+    const drafts = await getConversationSkillDrafts(id, request.signal)
+    if (!request.signal.aborted)
+      conversationSkillDrafts.value = drafts.filter(item => item.hasDraft)
+  }
+  catch {
+    if (!request.signal.aborted)
+      conversationDraftError.value = t('skills.loadFailed')
+  }
+}, { immediate: true })
 const selectedSkills = computed(() => skills.items.value.filter(item => skills.selectedIds.value.includes(item.id)))
 function clearSubmittedSkills(ids: string[]) {
   skills.selectedIds.value = skills.selectedIds.value.filter(id => !ids.includes(id))
@@ -498,7 +518,7 @@ function send() {
     @rename-chat="renameConversationById"
     @select-chat="openConversation"
   >
-    <SkillsDialog :conversation-id="activeConversationId" />
+    <SkillsDialog />
     <SkillEditorDialog />
     <RouterView v-if="isSkillsPage" />
     <Teleport to="body">
@@ -597,6 +617,12 @@ function send() {
               @preview-attachment="openAttachment"
             />
 
+            <div v-if="conversationSkillDrafts.length || conversationDraftError" data-conversation-skill-drafts class="flex shrink-0 flex-wrap gap-2 px-4 py-2 text-xs">
+              <span v-if="conversationDraftError" role="alert">{{ conversationDraftError }}</span>
+              <button v-for="draft in conversationSkillDrafts" :key="draft.id" :disabled="skills.busy.value" class="rounded-lg border border-agent-border-subtle px-3 py-2 hover:bg-agent-surface-raised" @click="previewSkill(draft.id)">
+                {{ t('skills.draft') }} · {{ draft.name }}
+              </button>
+            </div>
             <ChatComposer
               ref="composer"
               v-model:message="message"

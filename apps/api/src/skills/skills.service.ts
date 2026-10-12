@@ -6,7 +6,7 @@ import type { DatabaseOperationDeadline } from '../prisma/prisma.service.js'
 import { Buffer } from 'node:buffer'
 import { randomUUID } from 'node:crypto'
 import { formatSkillCatalog, validateSkillPackage } from '@agent/skills'
-import { BadRequestException, ConflictException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common'
+import { BadRequestException, ConflictException, Inject, Injectable, Logger, NotFoundException, ServiceUnavailableException } from '@nestjs/common'
 import { AttachmentStorageService } from '../attachments/attachment-storage.service.js'
 import { PrismaService } from '../prisma/prisma.service.js'
 import { lockWorkspaceStorage } from '../workspaces/workspace-db.js'
@@ -48,7 +48,21 @@ export class SkillsService implements OnModuleInit, OnModuleDestroy {
   async list(userId: string): Promise<SkillSummary[]> {
     const rows = await this.prisma.skill.findMany({ where: { userId, deletedAt: null, publishedId: { not: null } }, orderBy: { updatedAt: 'desc' } })
     const contents = await this.prisma.skillContent.findMany({ where: { userId, id: { in: rows.flatMap(row => [row.draftId, row.publishedId].filter((id): id is string => !!id)) } } })
-    return [this.builtin(), ...rows.map(row => this.summary(row, contents.find(content => content.id === (row.publishedId ?? row.draftId))!))]
+    return [this.builtin(), ...rows.flatMap((row) => {
+      const content = contents.find(content => content.id === row.publishedId)
+      return content ? [this.summary(row, content)] : []
+    })]
+  }
+
+  async listConversationDrafts(userId: string, conversationId: string): Promise<SkillSummary[]> {
+    if (!await this.prisma.conversation.findFirst({ where: { id: conversationId, userId }, select: { id: true } }))
+      throw new NotFoundException('会话不存在')
+    const rows = await this.prisma.skill.findMany({ where: { userId, conversationId, deletedAt: null, draftId: { not: null } }, orderBy: { createdAt: 'asc' } })
+    const contents = await this.prisma.skillContent.findMany({ where: { userId, id: { in: rows.map(row => row.draftId!) } } })
+    return rows.flatMap((row) => {
+      const content = contents.find(content => content.id === row.draftId)
+      return content ? [this.summary(row, content)] : []
+    })
   }
 
   async preview(userId: string, id: string, draft = false): Promise<SkillPreview> {
@@ -93,41 +107,48 @@ export class SkillsService implements OnModuleInit, OnModuleDestroy {
       catch (error) { throw new BadRequestException(error instanceof Error ? error.message : '技能包无效') }
       if (pkg.name === creator.name)
         throw new BadRequestException('skill-creator 是内置技能名称，请换一个名称')
-      // 发布后仍复用原草稿槽；已存在的旧式草稿也继续覆盖原对象，不另建副本。
-      const target = previous?.draftId
-        ? await this.content(userId, previous.draftId, db)
-        : await db.skillContent.findFirst({ where: { userId, skillId, adopted: true, ...(previous?.publishedId ? { id: { not: previous.publishedId } } : {}) }, orderBy: { createdAt: 'asc' } })
-      const id = target?.id ?? (previous?.publishedId ? randomUUID() : `${skillId}:content`)
-      if (target?.uploadId)
-        throw new ConflictException('上次技能上传尚未确认完成，请稍后重试')
-      // 被删除的草稿槽不复用 key，避免迟到 DELETE 影响后续新草稿；正常编辑仍覆盖原槽。
-      const objectKey = target?.objectKey ?? `users/${userId}/skills/${skillId}/${previous?.publishedId ? `draft-${id}` : 'skill'}.json`
-      this.assertBucket(target)
-      const data = Buffer.from(JSON.stringify(pkg.files))
-      const metadata = { userId, skillId, name: pkg.name, description: pkg.description, fingerprint: pkg.fingerprint, objectKey, bucket: this.storage.bucket, bytes: data.length, adopted: true }
-      const needsUpload = target?.id !== source?.id || pkg.fingerprint !== sourcePackage?.fingerprint
-      const uploadId = needsUpload ? randomUUID() : undefined
-      // 独立提交登记，外层保存事务回滚后仍能定位已上传对象。
-      if (uploadId) {
-        deadline.signal?.throwIfAborted()
-        if (!target)
-          await this.prisma.skillContent.createMany({ data: [{ id, ...metadata, adopted: false }], skipDuplicates: true })
-        const claimed = await this.prisma.skillContent.updateMany({ where: { id, uploadId: null }, data: { uploadId } })
-        if (claimed.count !== 1)
-          throw new ConflictException('上次技能上传尚未确认完成，请稍后重试')
+      if (await db.skillContent.findFirst({ where: { skillId, userId, uploadId: { not: null } } }))
+        throw new ConflictException('上次技能上传结果尚未确认，请刷新核对并联系管理员核查上传身份')
+      if (sourcePackage?.fingerprint === pkg.fingerprint) {
+        const row = previous!.draftId ? previous! : await db.skill.update({ where: { id: skillId }, data: { draftId: source!.id, conversationId } })
+        return { ...this.summary(row, pkg), fingerprint: pkg.fingerprint, files: pkg.files, draft: true }
       }
+      const id = randomUUID()
+      const objectKey = `users/${userId}/skills/${skillId}/${id}.json`
+      const data = Buffer.from(JSON.stringify(pkg.files))
+      const metadata = { userId, skillId, name: pkg.name, description: pkg.description, fingerprint: pkg.fingerprint, objectKey, bucket: this.storage.bucket, bytes: data.length }
+      const uploadId = randomUUID()
+      let putStarted = false
+      let putSettled = false
       try {
-        await db.skillContent.upsert({ where: { id }, create: { id, ...metadata }, update: metadata })
+        deadline.signal?.throwIfAborted()
+        // 独立登记不可变对象；保存事务失败也保留上传与清理依据。
+        await this.prisma.skillContent.create({ data: { id, ...metadata, adopted: false, uploadId } })
+        await db.skillContent.update({ where: { id }, data: { adopted: true } })
         const row = previous
           ? await db.skill.update({ where: { id: skillId }, data: { draftId: id, conversationId } })
           : await db.skill.create({ data: { id: skillId, userId, conversationId, ...(input.publish ? { publishedId: id } : { draftId: id }) } })
+        if (previous?.draftId && previous.draftId !== previous.publishedId)
+          await db.skillContent.update({ where: { id: previous.draftId }, data: { adopted: false } })
         deadline.signal?.throwIfAborted()
-        if (needsUpload)
+        putStarted = true
+        try {
           await this.storage.put(objectKey, data, 'application/json')
+          putSettled = true
+        }
+        catch (error) {
+          const status = error && typeof error === 'object' && 'status' in error ? Number(error.status) : 0
+          putSettled = (status >= 400 && status < 500 && status !== 408)
+            || (error instanceof ServiceUnavailableException && !this.storage.configured)
+          if (!putSettled)
+            throw new ConflictException({ message: '技能上传结果未知，请刷新核对；该技能暂停写入与回收，请联系管理员核查上传身份', details: { skillId, contentId: id, uploadId } })
+          throw error
+        }
         return { ...this.summary(row, pkg), fingerprint: pkg.fingerprint, files: pkg.files, draft: !input.publish }
       }
       finally {
-        if (uploadId)
+        // 未发起、确认成功或明确拒绝才收尾；连接超时等未知结果保留身份。
+        if (!putStarted || putSettled)
           uploadFinished = this.finishUpload(id, skillId, uploadId)
       }
     }), onCommitOwned)
@@ -162,7 +183,6 @@ export class SkillsService implements OnModuleInit, OnModuleDestroy {
 
   async publish(userId: string, id: string, fingerprint: string): Promise<SkillPreview> {
     const deadline = { deadlineAt: Date.now() + 75_000, createTimeoutError: () => new Error('技能发布超时') }
-    let uploadFinished: Promise<void> | undefined
     const result = await this.prisma.withDeadlineTransaction(deadline, transaction => transaction.execute(async (db) => {
       await db.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`skill:${id}`}))`
       const row = await this.owned(userId, id, db)
@@ -178,27 +198,14 @@ export class SkillsService implements OnModuleInit, OnModuleDestroy {
         const published = await db.skill.update({ where: { id }, data: { publishedId: row.draftId, draftId: null, conversationId: null } })
         return { ...this.summary(published, pkg), fingerprint, files: pkg.files, draft: false }
       }
-      const target = await this.content(userId, row.publishedId, db)
-      if (target.uploadId)
-        throw new ConflictException('上次技能上传尚未确认完成，请稍后重试')
-      this.assertBucket(target)
-      const publishedId = target.id
-      const objectKey = target.objectKey
-      const data = Buffer.from(JSON.stringify(pkg.files))
-      const metadata = { userId, skillId: id, name: pkg.name, description: pkg.description, fingerprint, objectKey, bucket: this.storage.bucket, bytes: data.length, adopted: true }
-      const uploadId = randomUUID()
-      const claimed = await this.prisma.skillContent.updateMany({ where: { id: publishedId, uploadId: null }, data: { uploadId } })
-      if (claimed.count !== 1)
-        throw new ConflictException('上次技能上传尚未确认完成，请稍后重试')
-      try {
-        await db.skillContent.update({ where: { id: publishedId }, data: metadata })
-        const published = await db.skill.update({ where: { id }, data: { publishedId, draftId: null, conversationId: null } })
-        await this.storage.put(objectKey, data, 'application/json')
-        return { ...this.summary(published, pkg), fingerprint, files: pkg.files, draft: false }
-      }
-      finally { uploadFinished = this.finishUpload(publishedId, id, uploadId) }
+      if (await db.skillContent.findFirst({ where: { skillId: id, userId, uploadId: { not: null } } }))
+        throw new ConflictException('上次技能上传结果尚未确认，请刷新核对并联系管理员核查上传身份')
+      const published = await db.skill.update({ where: { id }, data: { publishedId: row.draftId, draftId: null, conversationId: null } })
+      if (row.publishedId !== row.draftId)
+        await db.skillContent.update({ where: { id: row.publishedId }, data: { adopted: false } })
+      return { ...this.summary(published, pkg), fingerprint, files: pkg.files, draft: false }
     }), () => {})
-    await uploadFinished
+    this.kickSweep()
     return result
   }
 
@@ -266,11 +273,9 @@ export class SkillsService implements OnModuleInit, OnModuleDestroy {
   async snapshot(userId: string, selectedIds: string[] = []): Promise<RunSkills> {
     const rows = await this.prisma.skill.findMany({ where: { userId, deletedAt: null, enabled: true, publishedId: { not: null } } })
     const contents = await this.prisma.skillContent.findMany({ where: { userId, id: { in: rows.map(row => row.publishedId!) }, adopted: true } })
-    const entries: RunSkillEntry[] = [{ id: CREATOR_ID, name: creator.name, description: creator.description, contentId: CREATOR_ID, fingerprint: creator.fingerprint }, ...rows.map((row) => {
+    const entries: RunSkillEntry[] = [{ id: CREATOR_ID, name: creator.name, description: creator.description, contentId: CREATOR_ID, fingerprint: creator.fingerprint }, ...rows.flatMap((row) => {
       const content = contents.find(content => content.id === row.publishedId)
-      if (!content)
-        throw new NotFoundException('技能内容缺失')
-      return { id: row.id, name: content.name, description: content.description, contentId: content.id, fingerprint: content.fingerprint }
+      return content ? [{ id: row.id, name: content.name, description: content.description, contentId: content.id, fingerprint: content.fingerprint }] : []
     })]
     const selected: RunSkills['selected'] = []
     for (const id of selectedIds) {
@@ -295,9 +300,11 @@ export class SkillsService implements OnModuleInit, OnModuleDestroy {
 
   private async readContent(content: SkillContent): Promise<SkillPackage> {
     this.assertBucket(content)
-    // 覆盖写入后以文件实际内容为准；元数据更新失败也不能把仍可读取的文件锁死。
     const data = await this.storage.read(content.objectKey, undefined, 16 * 1024 * 1024)
-    return validateSkillPackage(JSON.parse(data.toString('utf8')))
+    const pkg = validateSkillPackage(JSON.parse(data.toString('utf8')))
+    if (pkg.fingerprint !== content.fingerprint)
+      throw new ConflictException('技能文件与已确认内容不一致，请联系管理员核查')
+    return pkg
   }
 
   private async content(userId: string, id: string, db: Prisma.TransactionClient = this.prisma): Promise<SkillContent> {

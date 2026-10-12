@@ -11,7 +11,6 @@ import { LlmModelUnavailableError } from '../llm/llm.errors.js'
 import { RuntimeConfigService } from '../runtime-config/runtime-config.service.js'
 import { SkillsService } from '../skills/skills.service.js'
 import { skillRoot } from '../tools/skill-tools.js'
-import { TOOL_DEFINITIONS } from '../tools/tool-definitions.js'
 import { toChatStreamEvent } from './chat-stream-event.mapper.js'
 import { buildAgentInstructions } from './prompts/agent.prompt.js'
 
@@ -64,7 +63,7 @@ export class ChatService {
 
     if (skills?.selected.length && estimateRequestTokens({
       items: [...instructions, { type: 'message', role: 'user', content: input.message }],
-      tools: TOOL_DEFINITIONS.map(tool => ({ name: tool.name, description: tool.description, inputSchema: tool.input.schema })),
+      tools: this.agentRuntimeService.availableTools(),
     }) > model.maxInputTokens) {
       throw new BadRequestException('所选技能内容超过当前模型的输入预算，请减少技能数量、缩短技能正文或选择更大上下文的模型')
     }

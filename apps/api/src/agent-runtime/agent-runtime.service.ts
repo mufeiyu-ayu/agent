@@ -29,6 +29,12 @@ export class AgentRuntimeService {
     @Inject(AttachmentsService) private readonly attachments = new AttachmentsService(prismaService, new AttachmentStorageService()),
   ) {}
 
+  availableTools() {
+    return TOOL_DEFINITIONS
+      .filter(definition => !this.workspaces || this.workspaces.cloud.configured || !WORKSPACE_TOOL_NAMES.includes(definition.name))
+      .map(definition => ({ name: definition.name, description: definition.description, inputSchema: definition.input.schema }))
+  }
+
   async* runTurnStream(input: RunTurnStreamInput): AsyncGenerator<AgentRuntimeEvent> {
     const host = createRuntimeHost(input, {
       llm: this.llmService,
@@ -46,9 +52,7 @@ export class AgentRuntimeService {
       userContent: input.userContent,
       model: runtimeModel(input.model),
       runtimeConfig: runtimeConfig(input.runtimeConfig),
-      tools: TOOL_DEFINITIONS
-        .filter(definition => !this.workspaces || this.workspaces.cloud.configured || !WORKSPACE_TOOL_NAMES.includes(definition.name))
-        .map(definition => ({ name: definition.name, description: definition.description, inputSchema: definition.input.schema })),
+      tools: this.availableTools(),
       instructions: input.instructions,
       ...(input.reasoningEffort === undefined ? {} : { reasoningEffort: input.reasoningEffort }),
       ...(input.signal ? { signal: input.signal } : {}),

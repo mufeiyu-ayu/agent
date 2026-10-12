@@ -27,7 +27,9 @@ export class SkillsController {
   constructor(@Inject(SkillsService) private readonly skills: SkillsService) {}
 
   @Get()
-  list(@CurrentAuth() auth: AuthContext) { return this.skills.list(auth.user.id) }
+  list(@CurrentAuth() auth: AuthContext, @Query('conversationId') conversationId?: string) {
+    return conversationId ? this.skills.listConversationDrafts(auth.user.id, conversationId) : this.skills.list(auth.user.id)
+  }
 
   @Post()
   create(@CurrentAuth() auth: AuthContext, @Body() body: CreateSkillDraftDto) {

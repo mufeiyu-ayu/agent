@@ -17,7 +17,6 @@ import { useSkills } from '@/hooks/useSkills'
 
 const props = defineProps<{
   manage?: boolean
-  select?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -43,7 +42,7 @@ async function confirmDelete(item: SkillSummary) {
 type FilterTab = 'all' | 'builtin' | 'custom'
 const activeTab = ref<FilterTab>('all')
 const counts = computed(() => {
-  const items = skills.items.value.filter(item => item.published && (!props.select || item.enabled))
+  const items = skills.items.value.filter(item => item.published)
   return {
     all: items.length,
     builtin: items.filter(item => item.builtin).length,
@@ -55,8 +54,6 @@ const counts = computed(() => {
 const filtered = computed(() => {
   return skills.items.value.filter((item) => {
     if (props.manage && item.builtin)
-      return false
-    if (props.select && (!item.published || !item.enabled))
       return false
     if (!item.published)
       return false
@@ -145,7 +142,7 @@ function handleManualEdit() {
         </div>
 
         <!-- 下拉形式的创建技能按钮 -->
-        <DropdownMenuRoot v-if="!props.select && !props.manage">
+        <DropdownMenuRoot v-if="!props.manage">
           <DropdownMenuTrigger
             :aria-label="t('skills.create')"
             class="flex h-8 shrink-0 items-center gap-1 rounded-lg bg-agent-ink px-3 text-agent-canvas transition-opacity hover:opacity-90 active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-agent-focus"
@@ -260,19 +257,8 @@ function handleManualEdit() {
               </button>
             </AppTooltip>
 
-            <!-- 选择使用（选择模式） -->
-            <AppTooltip v-if="select" :content="t('skills.select')">
-              <button
-                :aria-label="t('skills.select')"
-                class="flex h-7 w-7 items-center justify-center rounded-lg text-agent-ink-soft transition-colors hover:bg-agent-surface-sunken hover:text-agent-ink focus-visible:outline-2 focus-visible:outline-agent-focus"
-                @click="skills.select(item)"
-              >
-                <AppIcon name="tabler:check" :size="16" />
-              </button>
-            </AppTooltip>
-
             <!-- 对话使用（普通模式） -->
-            <AppTooltip v-if="!select && item.published && item.enabled" :content="t('skills.useInChat')">
+            <AppTooltip v-if="item.published && item.enabled" :content="t('skills.useInChat')">
               <button
                 :disabled="skills.busy.value"
                 :aria-label="t('skills.useInChat')"
@@ -284,7 +270,7 @@ function handleManualEdit() {
             </AppTooltip>
 
             <!-- 个人/自建技能管理操作 -->
-            <template v-if="!item.builtin && (manage || !select)">
+            <template v-if="!item.builtin">
               <!-- 手动编辑 -->
               <AppTooltip :content="t('skills.manualEdit')">
                 <button

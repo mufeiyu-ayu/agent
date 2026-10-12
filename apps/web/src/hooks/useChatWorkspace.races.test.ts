@@ -329,12 +329,14 @@ it.each([false, true])('start 前明确 error、userMessagePersisted=%s：未提
   vi.mocked(streamChat).mockImplementationOnce(async function* () {
     yield { type: 'error', conversationId: 'a', message: 'explicit rejection', userMessagePersisted: persisted }
   })
-  const workspace = useChatWorkspace()
+  const accepted = vi.fn()
+  const workspace = useChatWorkspace({ onSkillsAccepted: accepted })
   lifecycle.mounted()
   await vi.waitFor(() => assert.ok(workspace.activeConversationId.value === 'a' && !workspace.isLoadingMessages.value))
   const reads = vi.mocked(listConversationMessages).mock.calls.length
   workspace.attachments.value = [draft(1)]
-  await workspace.sendMessage()
+  await workspace.sendMessage(undefined, undefined, ['selected-skill'], [{ id: 'selected-skill', name: 'selected-name' }])
+  assert.deepEqual(accepted.mock.calls, persisted ? [[['selected-skill']]] : [])
   assert.equal(vi.mocked(listConversationMessages).mock.calls.length, reads)
   if (persisted) {
     assert.deepEqual(workspace.attachments.value, [])

@@ -44,12 +44,12 @@ export class MessagesService {
     })
     // 先读消息再读 Step：Run 收口时先提交最后一个采样 Step、再把消息改成终态，
     // 这样读到已结束的消息时，它的 Step 一定也已提交，activity 不会缺最后一轮。
-    const { activities, selections } = await this.listActivities(conversationId)
+    const { activities } = await this.listActivities(conversationId)
 
     return messages.map(message => toConversationMessageResponse(
       message,
       message.role === MessageRole.ASSISTANT ? activities.get(message.id) : undefined,
-      message.role === MessageRole.USER ? selections.get(message.id) : undefined,
+      message.role === MessageRole.USER ? readMessageSkills(message.skills) : undefined,
     ))
   }
 
@@ -59,7 +59,6 @@ export class MessagesService {
    * 这些只是界面展示用的数据：查询失败时记日志、不带 activity，消息照常返回。
    */
   private async listActivities(conversationId: string) {
-    const selections = new Map<string, NonNullable<ConversationMessage['skills']>>()
     const activities = new Map<string, MessageActivity>()
     let rows: MessageActivityStepRow[]
 
@@ -72,15 +71,12 @@ export class MessagesService {
         conversationId,
         message: error instanceof Error ? error.message : String(error),
       })
-      return { activities, selections }
+      return { activities }
     }
 
     const stepsByMessage = new Map<string, MessageActivityStepRow[]>()
 
     for (const row of rows) {
-      const selected = readMessageSkills(row.selectedSkills)
-      if (row.userMessageId && selected.length && !selections.has(row.userMessageId))
-        selections.set(row.userMessageId, selected)
       const steps = stepsByMessage.get(row.messageId) ?? []
 
       steps.push(row)
@@ -94,7 +90,7 @@ export class MessagesService {
         activities.set(messageId, activity)
     }
 
-    return { activities, selections }
+    return { activities }
   }
 
   /** 按 Step 类型取展示字段；技能仅返回显式选择的 id/name，不读取正文或完整 instructions。 */
@@ -102,12 +98,6 @@ export class MessagesService {
     return this.prismaService.$queryRaw<MessageActivityStepRow[]>(Prisma.sql`
       SELECT
         r."assistantMessageId" AS "messageId",
-        r."userMessageId",
-        CASE WHEN s."type" = ${SAMPLING} THEN (
-          SELECT jsonb_agg(jsonb_build_object('id', entry ->> 'id', 'name', entry ->> 'name'))
-          FROM jsonb_array_elements(s."input" -> 'skills' -> 'entries') entry
-          WHERE (s."input" -> 'skills' -> 'selectedIds') ? (entry ->> 'id')
-        ) END AS "selectedSkills",
         s."sequence",
         s."type",
         s."startedAt",

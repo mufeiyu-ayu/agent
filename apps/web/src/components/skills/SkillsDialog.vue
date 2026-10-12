@@ -13,9 +13,6 @@ import { useI18n } from 'vue-i18n'
 import AppIcon from '@/components/common/AppIcon.vue'
 import AppTooltip from '@/components/common/AppTooltip.vue'
 import { useSkills } from '@/hooks/useSkills'
-import SkillsList from './SkillsList.vue'
-
-defineProps<{ conversationId: string | null }>()
 
 const { t } = useI18n()
 
@@ -55,32 +52,6 @@ function handleManualEdit() {
 </script>
 
 <template>
-  <!-- 技能选择 / 技能草稿弹窗 -->
-  <DialogRoot v-model:open="skills.open.value">
-    <DialogPortal>
-      <DialogOverlay class="fixed inset-0 z-[60] bg-black/45 backdrop-blur-xs transition-opacity" />
-      <DialogContent
-        class="fixed inset-0 z-[60] m-auto flex h-[min(800px,calc(100dvh-32px))] w-[min(900px,calc(100vw-24px))] flex-col overflow-hidden rounded-2xl border border-agent-border-subtle bg-agent-canvas p-6 text-agent-ink shadow-2xl outline-none sm:p-8"
-        :aria-describedby="undefined"
-      >
-        <div class="mb-5 flex items-center justify-between gap-4 border-b border-agent-border-subtle pb-4">
-          <DialogTitle class="text-lg font-semibold tracking-tight text-agent-ink">
-            {{ t('skills.selectTitle') }}
-          </DialogTitle>
-          <DialogClose
-            :aria-label="t('skills.closeSelection')"
-            class="flex h-7 w-7 items-center justify-center rounded-lg text-agent-ink-muted transition-colors hover:bg-agent-surface-sunken hover:text-agent-ink focus-visible:outline-2 focus-visible:outline-agent-focus"
-          >
-            <AppIcon name="tabler:x" :size="16" />
-          </DialogClose>
-        </div>
-        <div class="min-h-0 flex-1 overflow-y-auto">
-          <SkillsList select />
-        </div>
-      </DialogContent>
-    </DialogPortal>
-  </DialogRoot>
-
   <!-- 技能预览弹窗（对齐 Setting 缩放淡入动效、弹窗内 Loading、纯源码展示） -->
   <DialogRoot
     :open="skills.previewDialogOpen.value"

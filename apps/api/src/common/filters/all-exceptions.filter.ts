@@ -9,6 +9,7 @@ import {
 } from '@agent/ai'
 import { Catch, HttpException, HttpStatus, Logger } from '@nestjs/common'
 
+import { DatabaseCommitOutcomeUnknownError } from '../../prisma/prisma.service.js'
 import { getRequestId, getRequestPath } from '../utils/http-request.util.js'
 import { getAiExceptionMessage } from '../utils/llm-error-message.util.js'
 
@@ -78,6 +79,9 @@ export class AllExceptionsFilter implements ExceptionFilter {
 }
 
 function getExceptionStatusCode(exception: unknown): number {
+  if (isBodyTooLarge(exception))
+    return HttpStatus.PAYLOAD_TOO_LARGE
+
   if (exception instanceof HttpException) {
     return exception.getStatus()
   }
@@ -93,7 +97,14 @@ function getExceptionStatusCode(exception: unknown): number {
   return HttpStatus.INTERNAL_SERVER_ERROR
 }
 
+function isBodyTooLarge(exception: unknown): boolean {
+  return typeof exception === 'object' && exception !== null && 'type' in exception && exception.type === 'entity.too.large'
+}
+
 function normalizeException(exception: unknown, statusCode: number): NormalizedException {
+  if (isBodyTooLarge(exception))
+    return { statusCode, message: '请求体超过允许大小', error: getDefaultError(statusCode), details: [] }
+
   if (exception instanceof HttpException) {
     const response = exception.getResponse()
 
@@ -116,6 +127,10 @@ function normalizeException(exception: unknown, statusCode: number): NormalizedE
         details,
       }
     }
+  }
+
+  if (exception instanceof DatabaseCommitOutcomeUnknownError) {
+    return { statusCode, message: '写入结果未知，请刷新核对后再操作；不要直接重复创建', error: 'DatabaseCommitOutcomeUnknown', details: [] }
   }
 
   if (exception instanceof LLMError) {

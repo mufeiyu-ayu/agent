@@ -533,6 +533,7 @@ class FakePrismaService {
       const message: Message = {
         id: `assistant-${this.nextMessageId++}`,
         ...data,
+        skills: [],
         createdAt: now,
         updatedAt: now,
       }

@@ -41,7 +41,7 @@ describe('MessagesService.listMessages（#212 activity）', () => {
         'tool_execution: output.display',
       ],
     )
-    assert.equal([...query.sql.matchAll(/s\."(input|output)"/g)].length, 13)
+    assert.equal([...query.sql.matchAll(/s\."(input|output)"/g)].length, 11)
     assert.match(query.sql, /'save_skill_draft'/)
     assert.ok(query.values.includes('conversation-1'))
   })
@@ -139,6 +139,7 @@ function createMessage(id: string, role: Message['role']): Message {
     conversationId: 'conversation-1',
     role,
     content: '内容',
+    skills: [],
     status: 'COMPLETED',
     createdAt,
     updatedAt: createdAt,

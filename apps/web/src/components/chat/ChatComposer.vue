@@ -207,6 +207,8 @@ function handleEnterKeydown(event: KeyboardEvent) {
 }
 
 function handleKeydown(event: KeyboardEvent) {
+  if (isComposing.value || event.isComposing || event.keyCode === 229)
+    return
   if (isSlashMenuOpen.value && filteredSlashSkills.value.length > 0) {
     if (event.key === 'ArrowDown') {
       event.preventDefault()

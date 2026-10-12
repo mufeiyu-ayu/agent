@@ -225,6 +225,8 @@ model Message {
   conversation          Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   role                  MessageRole
   content               String
+  // 本次用户选择的 id/name，与用户消息同事务保存，不依赖模型采样轨迹。
+  skills                Json       @default("[]")
   status                MessageStatus @default(COMPLETED)
   // 同一条 Message 可能被 AgentRun 从两个角度引用：
   //   作为「用户输入」-> userAgentRuns

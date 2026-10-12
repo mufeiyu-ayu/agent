@@ -11,6 +11,7 @@ import { serializeGroup } from '@agent/agent'
 import { Module } from '@nestjs/common'
 import { APP_GUARD, NestFactory } from '@nestjs/core'
 import { afterAll, beforeAll, describe, it, vi } from 'vitest'
+import { createRuntimeHost } from '../agent-runtime/agent-runtime-host.js'
 import { loadConversationHistory } from '../agent-runtime/context/conversation-history.js'
 import { AuthGuard } from '../auth/auth.guard.js'
 import { AuthService } from '../auth/auth.service.js'
@@ -70,23 +71,21 @@ describe('技能草稿与发布：隔离 PostgreSQL', { timeout: 60_000 }, () =>
     await pool.end()
   })
 
-  it('草稿不可发现，过期预览拒绝，重复发布幂等，修改确认前继续使用旧包', async () => {
-    const draft = await service.saveDraft(userId, conversationId, { files: files() }, deadline())
+  it('草稿不可发现，过期预览拒绝，重复发布幂等；更新只维护一个当前技能', async () => {
+    const draft = await service.saveDraft(userId, conversationId, { files: files('原说明') }, deadline())
     assert.equal((await service.snapshot(userId)).entries.some(item => item.id === draft.id), false)
-    const edited = await service.saveDraft(userId, conversationId, { id: draft.id, expectedFingerprint: draft.fingerprint, files: files('修改') }, deadline())
+    const edited = await service.saveDraft(userId, conversationId, { id: draft.id, expectedFingerprint: draft.fingerprint, files: files('确认说明') }, deadline())
     await assert.rejects(service.publish(userId, draft.id, draft.fingerprint), /预览已过期/)
     await Promise.all([service.publish(userId, draft.id, edited.fingerprint), service.publish(userId, draft.id, edited.fingerprint)])
-    assert.equal(await prisma.skill.count({ where: { id: draft.id } }), 1)
-    const snapshot = await service.snapshot(userId, [draft.id])
     const another = await service.saveDraft(userId, conversationId, { id: draft.id, expectedFingerprint: edited.fingerprint, files: files('再次修改') }, deadline())
     assert.equal((await service.preview(userId, draft.id)).fingerprint, edited.fingerprint)
     await service.publish(userId, draft.id, another.fingerprint)
-    assert.match((await service.readPackage(userId, snapshot.entries.find(item => item.id === draft.id)!.contentId)).files[0]!.content, /再次修改$/)
+    assert.equal((await service.list(userId)).filter(item => item.id === draft.id).length, 1)
+    assert.match((await service.preview(userId, draft.id)).files[0]!.content, /再次修改$/)
     await service.setEnabled(userId, draft.id, false)
     await assert.rejects(service.snapshot(userId, [draft.id]), /不可用/)
     await service.remove(userId, draft.id)
-    await assert.rejects(service.preview(userId, draft.id))
-    await assert.rejects(service.readPackage(userId, snapshot.entries.find(item => item.id === draft.id)!.contentId), /不存在/)
+    await assert.rejects(service.preview(userId, draft.id), /不存在/)
   })
 
   it('跨用户所有入口均拒绝，内置名称不能覆盖，非法文件与会话归属拒绝', async () => {
@@ -111,7 +110,7 @@ describe('技能草稿与发布：隔离 PostgreSQL', { timeout: 60_000 }, () =>
 
   it('OSS 保存/读取与 DB 提交失败保持原草稿；取消不绑定新内容', async () => {
     const original = await service.saveDraft(userId, conversationId, { files: files() }, deadline())
-    const put = vi.spyOn(storage, 'put').mockRejectedValueOnce(new Error('storage down'))
+    const put = vi.spyOn(storage, 'put').mockRejectedValueOnce(Object.assign(new Error('AccessDenied'), { status: 403 }))
     await assert.rejects(service.saveDraft(userId, conversationId, { id: original.id, expectedFingerprint: original.fingerprint, files: files('bad') }, deadline()))
     put.mockRestore()
     const read = vi.spyOn(storage, 'read').mockRejectedValueOnce(new Error('storage down'))
@@ -137,7 +136,7 @@ describe('技能草稿与发布：隔离 PostgreSQL', { timeout: 60_000 }, () =>
       await assert.rejects(service.saveDraft(userId, conversationId, { id: original.id, expectedFingerprint: original.fingerprint, files: files('事务中途失败') }, deadline()))
       const row = await prisma.skill.findUniqueOrThrow({ where: { id: original.id } })
       assert.equal((await prisma.skillContent.findUniqueOrThrow({ where: { id: row.draftId! } })).fingerprint, original.fingerprint)
-      assert.equal(await prisma.skillContent.count({ where: { skillId: original.id, adopted: false } }), 0)
+      assert.equal((await service.preview(userId, original.id, true)).fingerprint, original.fingerprint)
     }
     finally {
       await prisma.$executeRawUnsafe('ALTER TABLE "SkillContent" DROP CONSTRAINT "skills_test_reject_adoption"')
@@ -163,56 +162,37 @@ describe('技能草稿与发布：隔离 PostgreSQL', { timeout: 60_000 }, () =>
     await assert.rejects(service.saveDraft(userId, conversationId, { id: original.id, expectedFingerprint: edited.fingerprint, files: files(), preservePaths: ['assets/missing.png'] }, deadline()), /不在当前草稿/)
   })
 
-  it('过期保存的迟到登记不能覆盖仍在上传的新身份', async () => {
+  it('PUT 结果未知保留身份，后续保存和 sweep 不能绕过；迟到 A 不覆盖已确认 B', async () => {
     const original = await service.saveDraft(userId, conversationId, { files: files('原文') }, deadline())
-    const row = await prisma.skill.findUniqueOrThrow({ where: { id: original.id } })
-    const delegate = prisma.skillContent.updateMany.bind(prisma.skillContent)
-    let releaseClaim!: () => void
-    let releasePut!: () => void
-    const claimGate = new Promise<void>((resolve) => {
-      releaseClaim = resolve
+    let latePut!: () => void
+    let key = ''
+    const put = vi.spyOn(storage, 'put').mockImplementationOnce(async (objectKey, data) => {
+      key = objectKey
+      latePut = () => objects.set(objectKey, data)
+      throw Object.assign(new Error('connection timeout'), { code: 'ConnectionTimeoutError' })
     })
-    const putGate = new Promise<void>((resolve) => {
-      releasePut = resolve
-    })
-    let calls = 0
-    let lateClaimFinished = false
-    let putStarted = false
-    const delayedClaim = async (args: Parameters<typeof delegate>[0]) => {
-      if (++calls === 1) {
-        await claimGate
-        const result = await delegate(args)
-        lateClaimFinished = true
-        return result
-      }
-      return delegate(args)
-    }
-    const claim = vi.spyOn(prisma.skillContent, 'updateMany').mockImplementation(delayedClaim as unknown as typeof delegate)
-    const put = vi.spyOn(storage, 'put').mockImplementationOnce(async (key, data) => {
-      putStarted = true
-      objects.set(key, data)
-      await putGate
-    })
-    const first = service.saveDraft(userId, conversationId, { id: original.id, expectedFingerprint: original.fingerprint, files: files('旧请求') }, { ...deadline(), deadlineAt: Date.now() + 200 })
     try {
-      await assert.rejects(first)
-      const second = service.saveDraft(userId, conversationId, { id: original.id, expectedFingerprint: original.fingerprint, files: files('新请求') }, { ...deadline(), deadlineAt: Date.now() + 300 })
-      const secondRejected = assert.rejects(second)
-      await vi.waitFor(() => assert.equal(putStarted, true))
-      const activeId = (await prisma.skillContent.findUniqueOrThrow({ where: { id: row.draftId! } })).uploadId
-      assert.ok(activeId)
-      await secondRejected
-      releaseClaim()
-      await vi.waitFor(() => assert.equal(lateClaimFinished, true))
-      assert.equal((await prisma.skillContent.findUniqueOrThrow({ where: { id: row.draftId! } })).uploadId, activeId)
-      releasePut()
-      await vi.waitFor(async () => assert.equal((await prisma.skillContent.findUniqueOrThrow({ where: { id: row.draftId! } })).uploadId, null))
+      await assert.rejects(service.saveDraft(userId, conversationId, { id: original.id, expectedFingerprint: original.fingerprint, files: files('A') }, deadline()), /结果未知/)
+      const reserved = await prisma.skillContent.findFirstOrThrow({ where: { objectKey: key } })
+      assert.ok(reserved.uploadId)
+      await assert.rejects(service.saveDraft(userId, conversationId, { id: original.id, expectedFingerprint: original.fingerprint, files: files('B') }, deadline()), /尚未确认/)
+      storage.configured = true
+      await service.sweep()
+      assert.equal((await prisma.skillContent.findUniqueOrThrow({ where: { id: reserved.id } })).uploadId, reserved.uploadId)
+      latePut()
+      await service.sweep()
+      assert.equal(objects.has(key), true)
+      assert.equal((await service.preview(userId, original.id, true)).fingerprint, original.fingerprint)
+      // 故障模拟器确认迟到 PUT 已结束；相当于管理员核查确切上传身份后解锁。
+      await prisma.skillContent.updateMany({ where: { id: reserved.id, uploadId: reserved.uploadId }, data: { uploadId: null } })
+      const saved = await service.saveDraft(userId, conversationId, { id: original.id, expectedFingerprint: original.fingerprint, files: files('B') }, deadline())
+      latePut()
+      assert.equal((await service.preview(userId, original.id, true)).fingerprint, saved.fingerprint)
+      assert.match((await service.preview(userId, original.id, true)).files[0]!.content, /B$/)
     }
     finally {
-      releaseClaim()
-      releasePut()
-      claim.mockRestore()
       put.mockRestore()
+      storage.configured = false
     }
   })
 
@@ -264,14 +244,16 @@ describe('技能草稿与发布：隔离 PostgreSQL', { timeout: 60_000 }, () =>
     }
     finally { spy.mockRestore() }
     assert.equal(await prisma.skill.count(), before + 1)
-    const saved = await prisma.skill.findFirstOrThrow({ orderBy: { createdAt: 'desc' } })
-    assert.equal(saved.publishedId, null)
+    const drafts = await service.listConversationDrafts(userId, conversationId)
+    const saved = drafts.at(-1)!
+    assert.equal(saved.published, false)
     assert.ok((await service.preview(userId, saved.id, true)).files.length)
+    await assert.rejects(service.listConversationDrafts('other', conversationId), /不存在/)
   })
 
   it('只发技能不依赖用户文字和 read_skill 工具，刷新历史和摘要输入仍有选择身份', async () => {
     const selectedIds = ['builtin:skill-creator']
-    const question = await prisma.message.create({ data: { conversationId, role: 'USER', content: '', status: 'COMPLETED' } })
+    const question = await prisma.message.create({ data: { conversationId, role: 'USER', content: '', status: 'COMPLETED', skills: [{ id: 'builtin:skill-creator', name: 'skill-creator' }] } })
     const answer = await prisma.message.create({ data: { conversationId, role: 'ASSISTANT', content: '已处理。', status: 'COMPLETED' } })
     const run = await prisma.agentRun.create({ data: { conversationId, userMessageId: question.id, assistantMessageId: answer.id, status: 'COMPLETED' } })
     await prisma.agentStep.create({ data: { runId: run.id, sequence: 1, type: 'model_sampling', title: '模型采样', status: 'COMPLETED', input: { samplingAttemptId: 'selected-test', skills: { selectedIds, entries: [{ id: 'builtin:skill-creator', name: 'skill-creator' }, { id: 'unselected', name: 'other-skill' }] } }, output: { toolCallCount: 0 } } })
@@ -291,7 +273,7 @@ describe('技能草稿与发布：隔离 PostgreSQL', { timeout: 60_000 }, () =>
 
   it('停止和失败的问答仍从用户问题所属 Run 恢复显式选择', async () => {
     for (const status of ['ABORTED', 'FAILED'] as const) {
-      const question = await prisma.message.create({ data: { conversationId, role: 'USER', content: `先前${status}的问题`, status: 'COMPLETED' } })
+      const question = await prisma.message.create({ data: { conversationId, role: 'USER', content: `先前${status}的问题`, status: 'COMPLETED', skills: [{ id: 'selected-before-stop', name: 'selected-skill' }] } })
       const answer = await prisma.message.create({ data: { conversationId, role: 'ASSISTANT', content: '', status } })
       const run = await prisma.agentRun.create({ data: { conversationId, userMessageId: question.id, assistantMessageId: answer.id, status } })
       await prisma.agentStep.create({ data: { runId: run.id, sequence: 1, type: 'model_sampling', title: '模型采样', status, input: { skills: { selectedIds: ['selected-before-stop'] } } } })
@@ -302,32 +284,80 @@ describe('技能草稿与发布：隔离 PostgreSQL', { timeout: 60_000 }, () =>
       assert.equal(group.answered, false)
     }
   })
-  it('连续编辑草稿只覆盖一份文件和记录，发布后反复修改也不累积副本', async () => {
+  it('只保留当前草稿/发布内容；替换后的旧对象直接清理', async () => {
     let draft = await service.saveDraft(userId, conversationId, { files: files('初稿') }, deadline())
-    const original = await prisma.skillContent.findFirstOrThrow({ where: { skillId: draft.id } })
-    const countObjects = () => [...objects.keys()].filter(key => key.startsWith(`users/${userId}/skills/${draft.id}/`)).length
-    for (let index = 0; index < 12; index++)
-      draft = await service.saveDraft(userId, conversationId, { id: draft.id, expectedFingerprint: draft.fingerprint, files: files(`草稿修改 ${index}`) }, deadline())
-    assert.equal(await prisma.skillContent.count({ where: { skillId: draft.id } }), 1)
-    assert.equal(countObjects(), 1)
-    const unchanged = vi.spyOn(storage, 'put')
-    await service.saveDraft(userId, conversationId, { id: draft.id, expectedFingerprint: draft.fingerprint, files: draft.files }, deadline())
-    assert.equal(unchanged.mock.calls.length, 0)
-    unchanged.mockRestore()
-    await service.publish(userId, draft.id, draft.fingerprint)
-    assert.equal(countObjects(), 1)
-    for (let index = 0; index < 12; index++) {
-      const before = await service.preview(userId, draft.id)
-      draft = await service.saveDraft(userId, conversationId, { id: draft.id, expectedFingerprint: before.fingerprint, files: files(`已发布后修改 ${index}`) }, deadline())
-      assert.equal((await service.preview(userId, draft.id)).fingerprint, before.fingerprint)
+    storage.configured = true
+    try {
+      for (let index = 0; index < 3; index++) {
+        draft = await service.saveDraft(userId, conversationId, { id: draft.id, expectedFingerprint: draft.fingerprint, files: files(`草稿 ${index}`) }, deadline())
+        await service.sweep()
+        assert.equal(await prisma.skillContent.count({ where: { skillId: draft.id } }), 1)
+      }
+      const unchanged = vi.spyOn(storage, 'put')
+      await service.saveDraft(userId, conversationId, { id: draft.id, expectedFingerprint: draft.fingerprint, files: draft.files }, deadline())
+      assert.equal(unchanged.mock.calls.length, 0)
+      unchanged.mockRestore()
       await service.publish(userId, draft.id, draft.fingerprint)
-      const row = await prisma.skill.findUniqueOrThrow({ where: { id: draft.id } })
-      assert.equal(row.publishedId, original.id)
-      assert.equal((await prisma.skillContent.findUniqueOrThrow({ where: { id: original.id } })).objectKey, original.objectKey)
+      const noPut = vi.spyOn(storage, 'put')
+      const noChange = await service.saveManualDraft(userId, draft.id, draft.files, draft.fingerprint)
+      assert.equal(noChange.draft, true)
+      assert.equal(noPut.mock.calls.length, 0)
+      noPut.mockRestore()
+      await service.publish(userId, draft.id, noChange.fingerprint)
+      assert.equal(await prisma.skillContent.count({ where: { skillId: draft.id } }), 1)
+      for (let index = 0; index < 3; index++) {
+        const before = await service.preview(userId, draft.id)
+        draft = await service.saveDraft(userId, conversationId, { id: draft.id, expectedFingerprint: before.fingerprint, files: files(`发布修改 ${index}`) }, deadline())
+        assert.equal((await service.preview(userId, draft.id)).fingerprint, before.fingerprint)
+        await service.publish(userId, draft.id, draft.fingerprint)
+        await service.sweep()
+        assert.equal(await prisma.skillContent.count({ where: { skillId: draft.id } }), 1)
+      }
     }
-    assert.equal(await prisma.skillContent.count({ where: { skillId: draft.id } }), 2)
-    assert.equal(countObjects(), 2)
-    assert.match((await service.preview(userId, draft.id)).files.find(file => file.path === 'SKILL.md')!.content, /已发布后修改 11/)
+    finally { storage.configured = false }
+  })
+
+  it('用户选择与 Message 同事务落库；无 Run/首采样也能恢复仅技能消息，附件失败不抹掉选择', async () => {
+    const snapshot = await service.snapshot(userId, ['builtin:skill-creator'])
+    const host = createRuntimeHost({ userId, skills: snapshot } as Parameters<typeof createRuntimeHost>[0], {
+      prisma,
+      recorder: {},
+      attachments: { bind: async () => [], modelInput: async () => { throw new Error('before sampling failed') } },
+    } as unknown as Parameters<typeof createRuntimeHost>[1])
+    {
+      const question = await host.createUserMessage(conversationId, '', [])
+      await assert.rejects(host.loadUserMessage!(question), /before sampling failed/)
+      assert.equal(await prisma.agentRun.count({ where: { userMessageId: question.id } }), 0)
+      const messages = await new MessagesService(prisma, new ConversationsService(prisma)).listMessages(userId, conversationId)
+      assert.deepEqual(messages.find(message => message.id === question.id)?.skills, [{ id: 'builtin:skill-creator', name: 'skill-creator' }])
+      const { history } = await loadConversationHistory(prisma, conversationId, undefined, deadline())
+      assert.match(history.groups.find(group => group.key === question.id)!.question!.content, /builtin:skill-creator/)
+    }
+  })
+
+  it('PUT 成功后真实 COMMIT 约束失败，列表/预览/发布保持原内容，孤立对象可回收', async () => {
+    const original = await service.createManualSkill(userId, files('已确认'))
+    await prisma.$executeRawUnsafe(`CREATE FUNCTION reject_skill_commit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW."draftId" IS NOT NULL THEN RAISE EXCEPTION 'reject deferred skill commit'; END IF; RETURN NEW; END $$`)
+    await prisma.$executeRawUnsafe('CREATE CONSTRAINT TRIGGER reject_skill_commit AFTER UPDATE ON "Skill" DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_skill_commit()')
+    const put = vi.spyOn(storage, 'put')
+    try {
+      await assert.rejects(service.saveManualDraft(userId, original.id, files('未确认'), original.fingerprint))
+      assert.equal(put.mock.calls.length, 1)
+      assert.ok(objects.has(put.mock.calls[0]![0]))
+      assert.equal((await service.list(userId)).find(row => row.id === original.id)?.name, original.name)
+      assert.equal((await service.preview(userId, original.id, true)).fingerprint, original.fingerprint)
+      assert.equal((await service.preview(userId, original.id)).draft, false)
+      await vi.waitFor(async () => assert.equal((await prisma.skillContent.findFirstOrThrow({ where: { objectKey: put.mock.calls[0]![0] } })).uploadId, null))
+      storage.configured = true
+      await service.sweep()
+      assert.equal(objects.has(put.mock.calls[0]![0]), false)
+    }
+    finally {
+      storage.configured = false
+      put.mockRestore()
+      await prisma.$executeRawUnsafe('DROP TRIGGER reject_skill_commit ON "Skill"')
+      await prisma.$executeRawUnsafe('DROP FUNCTION reject_skill_commit()')
+    }
   })
 
   it('删除对话清理草稿和 OSS，保留已发布及其他对话技能；失败能重试', async () => {
@@ -378,6 +408,26 @@ describe('技能草稿与发布：隔离 PostgreSQL', { timeout: 60_000 }, () =>
     }
   })
 
+  it('列表两次查询间内容被删除时跳过缺失项，仍返回剩余技能', async () => {
+    const skill = await service.createManualSkill(userId, files())
+    const find = prisma.skillContent.findMany.bind(prisma.skillContent)
+    const spy = vi.spyOn(prisma.skillContent, 'findMany').mockImplementationOnce((async (args: Parameters<typeof find>[0]) => {
+      await service.remove(userId, skill.id)
+      storage.configured = true
+      await service.sweep()
+      return find(args)
+    }) as typeof find)
+    try {
+      const items = await service.list(userId)
+      assert.equal(items.some(item => item.id === skill.id), false)
+      assert.ok(items.some(item => item.builtin))
+    }
+    finally {
+      spy.mockRestore()
+      storage.configured = false
+    }
+  })
+
   it('实际 HTTP 鉴权、CSRF、归属和 DTO 校验；用户确认才能发布', async () => {
     const draft = await service.saveDraft(userId, conversationId, { files: files() }, deadline())
     const other = await prisma.user.create({ data: { email: `${randomUUID()}@example.test`, mustChangePassword: false } })
@@ -393,6 +443,23 @@ describe('技能草稿与发布：隔离 PostgreSQL', { timeout: 60_000 }, () =>
     const base = await app.getUrl()
     const request = (path: string, token: string | undefined, method = 'GET', body?: unknown, origin = 'http://localhost:5173') => fetch(`${base}/api/skills${path}`, { method, headers: { origin, 'content-type': 'application/json', ...(token ? { cookie: `agent_session=${token}` } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}) })
     try {
+      const realWrite = prisma.withDeadlineTransaction.bind(prisma)
+      const unknown = vi.spyOn(prisma, 'withDeadlineTransaction').mockImplementationOnce((async (...args: Parameters<typeof realWrite>) => {
+        await realWrite(...args)
+        throw new DatabaseCommitOutcomeUnknownError('INTERNAL_CONNECTION_SECRET')
+      }) as typeof realWrite)
+      try {
+        const response = await request('', tokens[0], 'POST', { files: files('已提交但返回未知') })
+        assert.equal(response.status, 500)
+        const body = await response.json()
+        assert.match(body.message, /结果未知.*刷新核对/)
+        assert.equal(body.error.error, 'DatabaseCommitOutcomeUnknown')
+        assert.equal(JSON.stringify(body).includes('INTERNAL_CONNECTION_SECRET'), false)
+        assert.ok((await service.list(userId)).some(item => item.published))
+      }
+      finally { unknown.mockRestore() }
+      const smallRoute = await fetch(`${base}/api/unrelated`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ data: 'x'.repeat(160 * 1024) }) })
+      assert.equal(smallRoute.status, 413)
       assert.equal((await request('', undefined)).status, 401)
       assert.equal((await request('', undefined, 'POST', { files: files() })).status, 401)
       assert.equal((await request('', tokens[0], 'POST', { files: files() }, 'https://evil.example')).status, 403)

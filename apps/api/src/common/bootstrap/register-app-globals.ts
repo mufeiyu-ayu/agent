@@ -6,8 +6,15 @@ import { ResponseTransformInterceptor } from '../interceptors/response-transform
 import { createAppValidationPipe } from '../pipes/app-validation.pipe.js'
 
 export function registerAppGlobals(app: INestApplication): void {
-  // 2 MiB 技能包经过 JSON 转义最多约 12 MiB，业务层仍校验解码后的文件上限。
-  ;(app as NestExpressApplication).useBodyParser('json', { limit: '16mb' })
+  // 解析仍先于 AuthGuard；只为技能包写入口放宽，其他 JSON 保留 100 KiB。
+  const expressApp = app as NestExpressApplication
+  expressApp.useBodyParser('json', {
+    limit: '16mb',
+    type: request => /^application\/json(?:;|$)/iu.test(request.headers['content-type'] ?? '')
+      && ((request.method === 'POST' && /^\/api\/skills\/?$/u.test(request.url ?? ''))
+        || (request.method === 'PUT' && /^\/api\/skills\/[^/?]+\/draft\/?(?:\?.*)?$/u.test(request.url ?? ''))),
+  })
+  expressApp.useBodyParser('json', { limit: '100kb' })
   app.setGlobalPrefix('api')
   app.useGlobalPipes(createAppValidationPipe())
   app.useGlobalInterceptors(new ResponseTransformInterceptor())

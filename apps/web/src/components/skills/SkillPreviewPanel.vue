@@ -22,7 +22,9 @@ watch(file, (resource, _old, onCleanup) => {
   if (!resource)
     return
   const bytes = resource.encoding === 'utf8' ? new TextEncoder().encode(resource.content) : Uint8Array.from(atob(resource.content), character => character.charCodeAt(0))
-  const url = URL.createObjectURL(new Blob([bytes], { type: resource.path.endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream' }))
+  const imageType = resource.path.toLowerCase().match(/\.(png|jpe?g|gif|webp)$/u)?.[1]
+  const type = imageType ? `image/${imageType === 'jpg' ? 'jpeg' : imageType}` : resource.path.endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream'
+  const url = URL.createObjectURL(new Blob([bytes], { type }))
   onCleanup(() => URL.revokeObjectURL(url))
   attachment.value = { id: `${skills.preview.value!.fingerprint}:${resource.path}`, kind: 'file', name: resource.path, bytes: bytes.length, url }
 }, { immediate: true })
