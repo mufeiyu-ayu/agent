@@ -110,7 +110,7 @@ const {
 } = useChatWorkspace({
   onSkillsAccepted: clearSubmittedSkills,
   onModelUnavailable: () => { void loadModels(true) },
-  onConversationDeleted: id => forgetWorkspaceConversation?.(id),
+  onConversationDeleted: clearDeletedConversation,
 })
 
 const sidebarChats = computed(() => recentChats.value.map(chat => ({ ...chat, active: !isSkillsPage.value && chat.active })))
@@ -165,6 +165,11 @@ watch([activeConversationId, status, isSkillsPage, isLoadingMessages], async ([i
   }
 }, { immediate: true })
 const selectedSkills = computed(() => skills.items.value.filter(item => skills.selectedIds.value.includes(item.id)))
+function clearDeletedConversation(id: string) {
+  forgetWorkspaceConversation?.(id)
+  if (activeConversationId.value === id)
+    skills.selectedIds.value = []
+}
 function clearSubmittedSkills(ids: string[]) {
   skills.selectedIds.value = skills.selectedIds.value.filter(id => !ids.includes(id))
 }

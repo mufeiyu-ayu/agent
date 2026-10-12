@@ -144,6 +144,7 @@ function handleManualEdit() {
         <!-- 下拉形式的创建技能按钮 -->
         <DropdownMenuRoot v-if="!props.manage">
           <DropdownMenuTrigger
+            :disabled="skills.busy.value"
             :aria-label="t('skills.create')"
             class="flex h-8 shrink-0 items-center gap-1 rounded-lg bg-agent-ink px-3 text-agent-canvas transition-opacity hover:opacity-90 active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-agent-focus"
           >
@@ -274,6 +275,7 @@ function handleManualEdit() {
               <!-- 手动编辑 -->
               <AppTooltip :content="t('skills.manualEdit')">
                 <button
+                  :disabled="skills.busy.value"
                   :aria-label="t('skills.manualEdit')"
                   class="flex h-7 w-7 items-center justify-center rounded-lg text-agent-ink-muted transition-colors hover:bg-agent-surface-sunken hover:text-agent-ink focus-visible:outline-2 focus-visible:outline-agent-focus"
                   @click="skills.openEditor(item)"

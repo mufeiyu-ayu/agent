@@ -178,12 +178,6 @@ watch(filteredSlashSkills, () => {
   activeSlashIndex.value = 0
 })
 
-watch(isSlashMenuOpen, (open) => {
-  if (open && skillsState.items.value.length === 0) {
-    void skillsState.reload()
-  }
-})
-
 function selectSlashSkill(skill: SkillSummary) {
   if (!skillsState.selectedIds.value.includes(skill.id) && skillsState.selectedIds.value.length < 5) {
     skillsState.selectedIds.value = [...skillsState.selectedIds.value, skill.id]

@@ -88,6 +88,28 @@ describe('技能草稿与发布：隔离 PostgreSQL', { timeout: 60_000 }, () =>
     await assert.rejects(service.preview(userId, draft.id), /不存在/)
   })
 
+  it('同内容保存转移草稿来源会话且复用对象，删除旧会话不影响新入口', async () => {
+    const first = await prisma.conversation.create({ data: { userId, title: '原会话' } })
+    const second = await prisma.conversation.create({ data: { userId, title: '当前会话' } })
+    const draft = await service.saveDraft(userId, first.id, { files: files() }, deadline())
+    const before = await prisma.skill.findUniqueOrThrow({ where: { id: draft.id } })
+    const put = vi.spyOn(storage, 'put')
+    try {
+      const saved = await service.saveDraft(userId, second.id, { id: draft.id, files: files(), expectedFingerprint: draft.fingerprint }, deadline())
+      assert.equal(saved.conversationId, second.id)
+      assert.equal((await prisma.skill.findUniqueOrThrow({ where: { id: draft.id } })).draftId, before.draftId)
+      assert.equal(put.mock.calls.length, 0)
+      assert.deepEqual(await service.listConversationDrafts(userId, first.id), [])
+      assert.equal((await service.listConversationDrafts(userId, second.id))[0]?.id, draft.id)
+      const gc = { register: vi.fn(async () => {}), kick: vi.fn() } as unknown as WorkspaceGcService
+      const attachments = { markConversationDeleted: vi.fn(async () => {}), kickSweep: vi.fn() } as unknown as AttachmentsService
+      await new ConversationsService(prisma, gc, attachments, service).delete(userId, first.id)
+      assert.equal((await service.preview(userId, draft.id, true)).conversationId, second.id)
+      assert.equal(await prisma.skillContent.count({ where: { skillId: draft.id, adopted: true } }), 1)
+    }
+    finally { put.mockRestore() }
+  })
+
   it('跨用户所有入口均拒绝，内置名称不能覆盖，非法文件与会话归属拒绝', async () => {
     const draft = await service.saveDraft(userId, conversationId, { files: files() }, deadline())
     const row = await prisma.skill.findUniqueOrThrow({ where: { id: draft.id } })

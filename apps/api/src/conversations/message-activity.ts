@@ -11,8 +11,6 @@ import { RESULT_COUNT } from '../tools/web/web-search.tool.js'
  */
 export interface MessageActivityStepRow {
   messageId: string
-  userMessageId?: string
-  selectedSkills?: unknown
   sequence: number
   type: string
   startedAt: Date | null

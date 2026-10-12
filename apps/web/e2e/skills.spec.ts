@@ -34,7 +34,10 @@ async function setup(page: import('@playwright/test').Page, published = false) {
   const requests: unknown[] = []
   const json = (data: unknown) => ({ contentType: 'application/json', body: JSON.stringify({ success: true, code: 0, message: 'ok', data }) })
   await page.route('**/api/conversations', route => route.fulfill(json({ id: 'created-skill-chat', title: '技能新对话', createdAt: '2026-10-11T10:02:00.000Z', updatedAt: '2026-10-11T10:02:00.000Z' })))
-  await page.route('**/api/skills', route => route.fulfill(json([builtin, ...deleted ? [] : [current]])))
+  await page.route('**/api/skills', (route) => {
+    const { id, name, description, builtin: isBuiltin, enabled, published, hasDraft, conversationId } = current
+    return route.fulfill(json([builtin, ...deleted ? [] : [{ id, name, description, builtin: isBuiltin, enabled, published, hasDraft, conversationId }]]))
+  })
   await page.route('**/api/skills?conversationId=*', route => route.fulfill(json(!deleted && current.hasDraft ? [current] : [])))
   await page.route('**/api/skills/skill-1?*', route => route.fulfill(json(current)))
   await page.route('**/api/skills/skill-1', async (route) => {
@@ -856,3 +859,242 @@ test('start 后重新选择同一技能，已提交 error 保留下一条文字�
   await expect(textarea).toHaveValue('检查标题')
   await expect(page.locator('[data-composer-skills]')).toContainText(draft.name)
 })
+
+for (const action of ['toggle', 'delete'] as const) {
+  test(`${action} 连点只发一次，明确失败后允许重试`, async ({ page }) => {
+    await setup(page, true)
+    let calls = 0
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    await page.route('**/api/skills/skill-1', async (route) => {
+      calls++
+      if (calls === 1) {
+        await gate
+        await route.fulfill({ status: 500, json: { success: false, message: '本次明确失败' } })
+        return
+      }
+      await route.fulfill({ json: { success: true, code: 0, data: {} } })
+    })
+    await page.getByRole('button', { name: '技能', exact: true }).click()
+    const card = page.getByRole('listitem').filter({ has: page.getByRole('heading', { name: draft.name }) })
+    if (action === 'delete')
+      await card.getByRole('button', { name: '删除', exact: true }).click()
+    const button = card.getByRole('button', { name: action === 'delete' ? '确认删除' : '停用', exact: true })
+    await button.dblclick()
+    try {
+      await expect.poll(() => calls).toBe(1)
+    }
+    finally { release() }
+    await expect(page.getByRole('alert').last()).toContainText('本次明确失败')
+    await button.click()
+    await expect.poll(() => calls).toBe(2)
+  })
+}
+
+test('发布连点只发送一次', async ({ page }) => {
+  await setup(page)
+  let calls = 0
+  let release!: () => void
+  const gate = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  await page.route('**/api/skills/skill-1/publish', async (route) => {
+    calls++
+    await gate
+    await route.fulfill({ json: { success: true, code: 0, data: { ...draft, published: true, draft: false, hasDraft: false } } })
+  })
+  await page.getByRole('button', { name: '预览技能文件 article-check' }).click()
+  await page.getByRole('button', { name: '发布到我的技能' }).dblclick()
+  try {
+    await expect.poll(() => calls).toBe(1)
+  }
+  finally { release() }
+  await expect(page.locator('[data-skill-preview-panel]').getByRole('status').filter({ hasText: /^已发布$/ })).toHaveText('已发布')
+})
+
+test('保存草稿连点只发送一次', async ({ page }) => {
+  await setup(page)
+  let calls = 0
+  let release!: () => void
+  const gate = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  await page.route('**/api/skills/skill-1/draft', async (route) => {
+    calls++
+    await gate
+    await route.fulfill({ json: { success: true, code: 0, data: { ...draft, files: route.request().postDataJSON().files, fingerprint: 'saved' } } })
+  })
+  await page.getByRole('button', { name: '预览技能文件 article-check' }).click()
+  await page.locator('[data-skill-preview-panel]').getByRole('button', { name: '手动编辑' }).click()
+  const editor = page.getByRole('dialog')
+  await editor.getByRole('button', { name: '保存草稿', exact: true }).dblclick()
+  try {
+    await expect.poll(() => calls).toBe(1)
+    await expect(editor.locator('#skill-body')).toBeDisabled()
+  }
+  finally { release() }
+  await expect(editor.locator('#skill-body')).toBeEnabled()
+})
+
+test('手动创建连点只创建一次', async ({ page }) => {
+  await setup(page, true)
+  let calls = 0
+  let release!: () => void
+  const gate = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  await page.route('**/api/skills', async (route) => {
+    if (route.request().method() !== 'POST') {
+      await route.fallback()
+      return
+    }
+    calls++
+    await gate
+    await route.fulfill({ json: { success: true, code: 0, data: { ...draft, published: true, draft: false } } })
+  })
+  await page.getByRole('button', { name: '技能', exact: true }).click()
+  await page.getByRole('button', { name: '创建技能', exact: true }).click()
+  await page.getByRole('menuitem', { name: /手动创建/ }).click()
+  const editor = page.getByRole('dialog')
+  await editor.locator('#skill-name').fill('click-check')
+  await editor.locator('#skill-desc').fill('检查连点')
+  await editor.locator('#skill-body').fill('检查一次')
+  await editor.getByRole('button', { name: '发布生效', exact: true }).dblclick()
+  try {
+    await expect.poll(() => calls).toBe(1)
+    await expect(editor.locator('#skill-body')).toBeDisabled()
+  }
+  finally { release() }
+  await expect(editor).toHaveCount(0)
+})
+
+test('启停在途禁止进入编辑或创建，随后保存期间保持锁定', async ({ page }) => {
+  await setup(page, true)
+  let releaseToggle!: () => void, releaseSave!: () => void
+  const toggleGate = new Promise<void>((resolve) => {
+    releaseToggle = resolve
+  })
+  const saveGate = new Promise<void>((resolve) => {
+    releaseSave = resolve
+  })
+  let toggleStarted = false
+  let saveStarted = false
+  await page.route('**/api/skills/skill-1', async (route) => {
+    toggleStarted = true
+    await toggleGate
+    await route.fulfill({ json: { success: true, code: 0, data: {} } })
+  })
+  await page.route('**/api/skills/skill-1/draft', async (route) => {
+    saveStarted = true
+    await saveGate
+    await route.fulfill({ json: { success: true, code: 0, data: { ...draft, published: true, files: route.request().postDataJSON().files, fingerprint: 'saved' } } })
+  })
+  await page.route('**/api/skills/skill-1/publish', route => route.fulfill({ json: { success: true, code: 0, data: { ...draft, published: true, draft: false } } }))
+  await page.getByRole('button', { name: '技能', exact: true }).click()
+  const card = page.getByRole('listitem').filter({ has: page.getByRole('heading', { name: draft.name }) })
+  await card.getByRole('button', { name: '停用', exact: true }).click()
+  await expect.poll(() => toggleStarted).toBe(true)
+  try {
+    await expect(card.getByRole('button', { name: '手动编辑', exact: true })).toBeDisabled()
+    await expect(page.getByRole('button', { name: '创建技能', exact: true })).toBeDisabled()
+    releaseToggle()
+    await card.getByRole('button', { name: '手动编辑', exact: true }).click()
+    const editor = page.getByRole('dialog')
+    const body = editor.locator('#skill-body')
+    await expect(body).toBeEnabled()
+    await body.fill('保存 A')
+    await editor.getByRole('button', { name: '保存修改', exact: true }).click()
+    await expect.poll(() => saveStarted).toBe(true)
+    await expect(body).toBeDisabled()
+    await expect(editor.getByRole('button', { name: '取消', exact: true })).toBeDisabled()
+    await expect(body).toHaveValue('保存 A')
+    releaseSave()
+    await expect(editor).toHaveCount(0)
+  }
+  finally {
+    releaseToggle()
+    releaseSave()
+  }
+})
+
+test('保存修改连点只有一次保存和一次发布', async ({ page }) => {
+  await setup(page, true)
+  let saves = 0
+  let publishes = 0
+  let release!: () => void
+  const gate = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  await page.route('**/api/skills/skill-1/draft', async (route) => {
+    saves++
+    await gate
+    await route.fulfill({ json: { success: true, code: 0, data: { ...draft, published: true, files: route.request().postDataJSON().files, fingerprint: 'saved' } } })
+  })
+  await page.route('**/api/skills/skill-1/publish', async (route) => {
+    publishes++
+    await route.fulfill({ json: { success: true, code: 0, data: { ...draft, published: true, draft: false } } })
+  })
+  await page.getByRole('button', { name: '技能', exact: true }).click()
+  await page.getByRole('button', { name: '手动编辑', exact: true }).click()
+  const editor = page.getByRole('dialog')
+  await editor.getByRole('button', { name: '保存修改', exact: true }).dblclick()
+  try {
+    await expect.poll(() => saves).toBe(1)
+    await expect(editor.locator('#skill-body')).toBeDisabled()
+    expect(publishes).toBe(0)
+  }
+  finally { release() }
+  await expect(editor).toHaveCount(0)
+  expect(saves).toBe(1)
+  expect(publishes).toBe(1)
+})
+
+for (const switchBeforeResponse of [false, true]) {
+  test(`删除会话响应${switchBeforeResponse ? '迟到时保留其他会话选择' : '切换当前会话时清理技能选择'}`, async ({ page }) => {
+    await setup(page, true)
+    const json = (data: unknown) => ({ json: { success: true, code: 0, data } })
+    await page.route('**/api/conversations?*', route => route.fulfill(json({ items: [
+      { id: CONVERSATION_ID, title: '会话 A', createdAt: '2026-10-12T00:00:00Z', updatedAt: '2026-10-12T00:00:00Z' },
+      { id: 'conversation-b', title: '会话 B', createdAt: '2026-10-12T00:00:00Z', updatedAt: '2026-10-12T00:00:00Z' },
+    ], nextCursor: null })))
+    await page.route('**/api/conversations/conversation-b/messages', route => route.fulfill(json([])))
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    await page.route(`**/api/conversations/${CONVERSATION_ID}`, async (route) => {
+      await gate
+      await route.fulfill(json({ deleted: true }))
+    })
+    await page.reload()
+    const input = page.getByRole('textbox').first()
+    await input.fill('/article')
+    await input.press('Enter')
+    await expect(page.locator('[data-composer-skills]')).toContainText(draft.name)
+    const row = page.getByRole('button', { name: '会话 A', exact: true }).locator('..')
+    await row.getByRole('button', { name: '对话选项', exact: true }).click()
+    await row.getByRole('button', { name: '删除对话', exact: true }).click()
+    try {
+      if (switchBeforeResponse) {
+        await page.getByRole('button', { name: '会话 B', exact: true }).click()
+        await expect(input).toBeEnabled()
+        await input.fill('/article')
+        await input.press('Enter')
+        await input.fill('B 的下一条消息')
+      }
+    }
+    finally { release() }
+    await expect(page.getByRole('button', { name: '会话 A', exact: true })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: '会话 B', exact: true })).toHaveAttribute('aria-current', 'page')
+    if (switchBeforeResponse) {
+      await expect(page.locator('[data-composer-skills]')).toContainText(draft.name)
+      await expect(input).toHaveValue('B 的下一条消息')
+    }
+    else {
+      await expect(page.locator('[data-composer-skills]')).toHaveCount(0)
+      await expect(input).toHaveValue('')
+    }
+  })
+}

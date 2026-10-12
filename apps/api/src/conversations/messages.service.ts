@@ -44,7 +44,7 @@ export class MessagesService {
     })
     // 先读消息再读 Step：Run 收口时先提交最后一个采样 Step、再把消息改成终态，
     // 这样读到已结束的消息时，它的 Step 一定也已提交，activity 不会缺最后一轮。
-    const { activities } = await this.listActivities(conversationId)
+    const activities = await this.listActivities(conversationId)
 
     return messages.map(message => toConversationMessageResponse(
       message,
@@ -71,7 +71,7 @@ export class MessagesService {
         conversationId,
         message: error instanceof Error ? error.message : String(error),
       })
-      return { activities }
+      return activities
     }
 
     const stepsByMessage = new Map<string, MessageActivityStepRow[]>()
@@ -90,10 +90,10 @@ export class MessagesService {
         activities.set(messageId, activity)
     }
 
-    return { activities }
+    return activities
   }
 
-  /** 按 Step 类型取展示字段；技能仅返回显式选择的 id/name，不读取正文或完整 instructions。 */
+  /** 按 Step 类型取展示字段；技能工具只取 id/name，不读取完整 instructions。 */
   private queryActivitySteps(conversationId: string): Promise<MessageActivityStepRow[]> {
     return this.prismaService.$queryRaw<MessageActivityStepRow[]>(Prisma.sql`
       SELECT
@@ -115,7 +115,7 @@ export class MessagesService {
           AND s."output" -> 'display' -> 'skill' IS NULL
           THEN s."output" ->> 'observation' END AS "skillObservation"
       FROM (
-        SELECT DISTINCT ON (run."assistantMessageId") run."id", run."assistantMessageId", run."userMessageId"
+        SELECT DISTINCT ON (run."assistantMessageId") run."id", run."assistantMessageId"
         FROM "AgentRun" run
         WHERE run."conversationId" = ${conversationId}
           AND run."assistantMessageId" IS NOT NULL

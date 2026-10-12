@@ -177,6 +177,8 @@ export function provideSkills(startChat: (skillId: string, prompt?: string) => P
     finally { busy.value = false }
   }
   function createManual() {
+    if (busy.value)
+      return
     closeEditor()
     editorError.value = ''
     editorLoading.value = false
@@ -197,6 +199,8 @@ export function provideSkills(startChat: (skillId: string, prompt?: string) => P
   }
 
   async function openEditor(item: Pick<SkillSummary, 'id'> | SkillPreview, draft?: boolean) {
+    if (busy.value)
+      return
     closeEditor()
     editorError.value = ''
     if ('files' in item && Array.isArray((item as SkillPreview).files) && !(!item.draft && item.hasDraft)) {

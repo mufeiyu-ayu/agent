@@ -476,7 +476,7 @@ model RuntimeConfig {
   updatedAt                  DateTime @updatedAt
 }
 
-// 个人技能只保留待确认草稿和当前发布指针；内容覆盖原对象，不保存历史版本。
+// 个人技能只保留待确认草稿和当前发布指针；新对象提交后替换指针并清理旧对象，不保存历史版本。
 model Skill {
   id String @id
   userId String

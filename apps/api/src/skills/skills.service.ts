@@ -110,7 +110,7 @@ export class SkillsService implements OnModuleInit, OnModuleDestroy {
       if (await db.skillContent.findFirst({ where: { skillId, userId, uploadId: { not: null } } }))
         throw new ConflictException('上次技能上传结果尚未确认，请刷新核对并联系管理员核查上传身份')
       if (sourcePackage?.fingerprint === pkg.fingerprint) {
-        const row = previous!.draftId ? previous! : await db.skill.update({ where: { id: skillId }, data: { draftId: source!.id, conversationId } })
+        const row = await db.skill.update({ where: { id: skillId }, data: { draftId: source!.id, conversationId } })
         await db.skillContent.updateMany({ where: { skillId, userId, id: { notIn: [source!.id, ...(previous!.publishedId ? [previous!.publishedId] : [])] }, adopted: true, uploadId: null }, data: { adopted: false } })
         return { ...this.summary(row, pkg), fingerprint: pkg.fingerprint, files: pkg.files, draft: true }
       }

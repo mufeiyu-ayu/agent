@@ -16,6 +16,7 @@ import AppIcon from '@/components/common/AppIcon.vue'
 import AppTooltip from '@/components/common/AppTooltip.vue'
 import { useSkills } from '@/hooks/useSkills'
 import { readSkillMarkdown, writeSkillMarkdown } from '@/utils/skill-markdown'
+import SkillLoading from './SkillLoading.vue'
 
 const { t } = useI18n()
 
@@ -31,8 +32,6 @@ const activeMobileTab = ref<'edit' | 'preview'>('edit')
 const skillName = ref('')
 const skillDescription = ref('')
 const skillBody = ref('')
-
-let isSyncing = false
 
 // 同步表单内容回 draftFiles 中的 SKILL.md 文件
 function syncSkillMarkdownFile() {
@@ -54,7 +53,6 @@ watch(() => skills.editingSkill.value, (skill) => {
     activeMobileTab.value = 'edit'
 
     const skillFile = draftFiles.value.find(f => f.path === 'SKILL.md')
-    isSyncing = true
     if (skillFile) {
       const parsed = readSkillMarkdown(skillFile.content)
       skillName.value = parsed.name || skill.name || ''
@@ -66,8 +64,6 @@ watch(() => skills.editingSkill.value, (skill) => {
       skillDescription.value = skill.description || ''
       skillBody.value = ''
     }
-    syncSkillMarkdownFile()
-    isSyncing = false
   }
   else {
     draftFiles.value = []
@@ -79,8 +75,6 @@ watch(() => skills.editingSkill.value, (skill) => {
 
 // 监听表单项变更，自动写回 SKILL.md
 watch([skillName, skillDescription, skillBody], () => {
-  if (isSyncing)
-    return
   syncSkillMarkdownFile()
 })
 
@@ -283,17 +277,7 @@ function handleOpenChange(open: boolean) {
         </header>
 
         <!-- 弹窗内 Loading 状态（Hide and Seek 字符波浪升降动效） -->
-        <div v-if="skills.editorLoading.value" class="flex flex-1 items-center justify-center py-28" role="status" :aria-label="t('skills.loadingDefinition')">
-          <div class="loader" aria-hidden="true">
-            <span class="letter l">L</span>
-            <span class="letter o">O</span>
-            <span class="letter a">A</span>
-            <span class="letter d">D</span>
-            <span class="letter ispan i">I</span>
-            <span class="letter n">N</span>
-            <span class="letter g">G</span>
-          </div>
-        </div>
+        <SkillLoading v-if="skills.editorLoading.value" />
 
         <!-- 加载失败错误提示 -->
         <div v-else-if="skills.editorError.value && !draftFiles.length" class="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
@@ -602,94 +586,6 @@ function handleOpenChange(open: boolean) {
   .editor-panel[data-state='open'],
   .editor-panel[data-state='closed'] {
     animation-name: editor-fade-in;
-  }
-
-  .loader .letter {
-    animation: none !important;
-    transform: translateY(0) !important;
-  }
-}
-
-/* 动效：Hide and Seek 3D 立体硬阴影字符波浪动效（对齐 SkillsDialog 预览弹窗） */
-.loader {
-  --ANIMATION-DELAY-MULTIPLIER: 70ms;
-  padding: 0;
-  margin: 0;
-  display: flex;
-  flex-direction: row;
-  justify-content: center;
-  align-items: center;
-  height: 4.5rem;
-  overflow: hidden;
-  user-select: none;
-}
-
-.loader .letter {
-  display: inline-block;
-  width: fit-content;
-  height: 4.5rem;
-  line-height: 4.5rem;
-  font-family: "Arial Black", Impact, Gadget, system-ui, -apple-system, sans-serif;
-  font-size: 3rem;
-  font-weight: 900;
-  color: #fda4af;
-  -webkit-text-stroke: 2px var(--agent-ink);
-  text-shadow:
-    1px 1px 0 var(--agent-ink),
-    2px 2px 0 var(--agent-ink),
-    3px 3px 0 var(--agent-ink),
-    4px 4px 0 var(--agent-ink),
-    5px 5px 0 var(--agent-ink),
-    6px 6px 0 var(--agent-ink);
-  letter-spacing: -0.01em;
-  margin-inline: 1px;
-  transform: translateY(5rem);
-  animation: hideAndSeek 1s alternate infinite cubic-bezier(0.86, 0, 0.07, 1);
-}
-
-.loader .letter:last-child {
-  letter-spacing: 0;
-}
-
-.loader .i {
-  margin-inline: 4px;
-}
-
-.loader .l {
-  animation-delay: calc(var(--ANIMATION-DELAY-MULTIPLIER) * 0);
-}
-
-.loader .o {
-  animation-delay: calc(var(--ANIMATION-DELAY-MULTIPLIER) * 1);
-}
-
-.loader .a {
-  animation-delay: calc(var(--ANIMATION-DELAY-MULTIPLIER) * 2);
-}
-
-.loader .d {
-  animation-delay: calc(var(--ANIMATION-DELAY-MULTIPLIER) * 3);
-}
-
-.loader .ispan {
-  animation-delay: calc(var(--ANIMATION-DELAY-MULTIPLIER) * 4);
-}
-
-.loader .n {
-  animation-delay: calc(var(--ANIMATION-DELAY-MULTIPLIER) * 5);
-}
-
-.loader .g {
-  animation-delay: calc(var(--ANIMATION-DELAY-MULTIPLIER) * 6);
-}
-
-@keyframes hideAndSeek {
-  0% {
-    transform: translateY(5rem);
-  }
-
-  100% {
-    transform: translateY(0rem);
   }
 }
 
