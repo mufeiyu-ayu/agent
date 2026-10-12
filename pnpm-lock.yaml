@@ -47,6 +47,9 @@ importers:
       '@agent/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@agent/skills':
+        specifier: workspace:*
+        version: link:../../packages/skills
       '@ant-design/icons-vue':
         specifier: ^7.0.1
         version: 7.0.1(vue@3.5.43(typescript@6.0.3))
@@ -202,6 +205,9 @@ importers:
       '@agent/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@agent/skills':
+        specifier: workspace:*
+        version: link:../../packages/skills
       '@iconify/vue':
         specifier: ^5.0.3
         version: 5.0.3(vue@3.5.43(typescript@6.0.3))

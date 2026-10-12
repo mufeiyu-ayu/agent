@@ -1,7 +1,10 @@
 import type { AuthContext } from '../auth/auth.decorators.js'
 import { Body, Controller, Delete, Get, Inject, Param, Patch, Post, Put, Query } from '@nestjs/common'
-import { IsArray, IsBoolean, IsString, MaxLength } from 'class-validator'
+import { IsBoolean, IsString, MaxLength } from 'class-validator'
 import { CurrentAuth } from '../auth/auth.decorators.js'
+// DTO 必须保留运行时值，供 Nest 生成请求体验证元数据。
+// eslint-disable-next-line ts/consistent-type-imports
+import { CreateSkillDraftDto, SaveSkillDraftDto } from './skill-write.dto.js'
 import { SkillsService } from './skills.service.js'
 
 class PublishSkillDto {
@@ -11,15 +14,6 @@ class PublishSkillDto {
 class EnabledSkillDto {
   @IsBoolean()
   enabled!: boolean
-}
-class CreateSkillDraftDto {
-  // 保留原始文件对象，避免隐式类型转换把数组元素转成数组；内容由技能包校验器检查。
-  @IsArray()
-  files!: unknown
-}
-class SaveSkillDraftDto extends CreateSkillDraftDto {
-  @IsString() @MaxLength(128)
-  expectedFingerprint!: string
 }
 
 @Controller('skills')

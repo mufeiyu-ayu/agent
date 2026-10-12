@@ -105,6 +105,12 @@ export const router = createRouter({
           component: () => import('@/views/UsersView.vue'),
           meta: { title: 'Users', titleKey: 'navigation.users', tab: true },
         },
+        {
+          path: 'skills',
+          name: 'skills',
+          component: () => import('@/views/SkillsView.vue'),
+          meta: { title: 'System Skills', titleKey: 'navigation.skills', tab: true },
+        },
       ],
     },
     {

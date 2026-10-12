@@ -23,3 +23,5 @@ Skill（#249）：每个采样 Step 的 `input.skills` 保存本次目录/conten
 `read_skill` 成功结果同样持久化 `display.skill`，实时及历史步骤显示所用技能名称；读取操作不生成草稿文件卡片。
 
 用户消息的 `skills` 展示字段只读同事务保存的 `Message.skills`，不依赖采样 Step，不修改 Message.content，不从当前技能列表反查历史名称。
+
+系统技能（#252）沿用相同目录、contentId、显式选择与 tool observation 持久化格式。公共归属只改变可用目录来源，不扩大个人技能读写权限；管理员更新后的包由下一次问答读取，停用/删除后从新目录移除。默认 creator 的代码包只用于初始发布指针，管理员保存后使用持久内容，不能因重启或停用回退默认包。

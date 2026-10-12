@@ -12,6 +12,8 @@ export function registerAppGlobals(app: INestApplication): void {
     limit: '16mb',
     type: request => /^application\/json(?:;|$)/iu.test(request.headers['content-type'] ?? '')
       && ((request.method === 'POST' && /^\/api\/skills\/?$/u.test(request.url ?? ''))
+        || (request.method === 'POST' && /^\/api\/admin\/skills\/?(?:\?.*)?$/u.test(request.url ?? ''))
+        || (request.method === 'PATCH' && /^\/api\/admin\/skills\/[^/?]+\/?(?:\?.*)?$/u.test(request.url ?? ''))
         || (request.method === 'PUT' && /^\/api\/skills\/[^/?]+\/draft\/?(?:\?.*)?$/u.test(request.url ?? ''))),
   })
   expressApp.useBodyParser('json', { limit: '100kb' })

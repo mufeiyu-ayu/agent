@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {
   ApiOutlined,
+  CodeOutlined,
   CommentOutlined,
   ControlOutlined,
   DashboardOutlined,
@@ -34,6 +35,7 @@ const sections = [
       { path: '/llm-models', labelKey: 'navigation.llmModels', icon: ApiOutlined },
       { path: '/runtime-config', labelKey: 'navigation.runtimeConfig', icon: ControlOutlined },
       { path: '/users', labelKey: 'navigation.users', icon: TeamOutlined },
+      { path: '/skills', labelKey: 'navigation.skills', icon: CodeOutlined },
     ],
   },
 ]

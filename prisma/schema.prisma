@@ -479,7 +479,8 @@ model RuntimeConfig {
 // 个人技能只保留待确认草稿和当前发布指针；新对象提交后替换指针并清理旧对象，不保存历史版本。
 model Skill {
   id String @id
-  userId String
+  // null 表示管理员维护的公共技能。
+  userId String?
   conversationId String?
   enabled Boolean @default(true)
   draftId String?
@@ -493,7 +494,8 @@ model Skill {
 // 当前技能内容；adopted=false 标记待清理对象，OSS 删除确认后才移除记录。
 model SkillContent {
   id String @id
-  userId String
+  // null 表示管理员维护的公共技能。
+  userId String?
   skillId String
   name String
   description String

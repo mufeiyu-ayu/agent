@@ -52,7 +52,7 @@ export function provideSkills(startChat: (skillId: string, prompt?: string) => P
     const detail = isAxiosError(cause) ? cause.response?.data?.message : undefined
     return typeof detail === 'string' ? detail : cause instanceof Error ? cause.message : t('skills.operationFailed')
   }
-  async function reload() {
+  async function reload(): Promise<boolean> {
     const request = ++epoch
     controller?.abort()
     controller = new AbortController()
@@ -60,14 +60,16 @@ export function provideSkills(startChat: (skillId: string, prompt?: string) => P
     try {
       const data = await getSkills(controller.signal)
       if (request !== epoch)
-        return
+        return false
       items.value = data
       selectedIds.value = selectedIds.value.filter(id => data.some(item => item.id === id && item.enabled && item.published))
       error.value = ''
+      return true
     }
     catch (cause) {
       if (request === epoch)
         error.value = message(cause)
+      return false
     }
     finally {
       if (request === epoch)
@@ -311,6 +313,10 @@ export function provideSkills(startChat: (skillId: string, prompt?: string) => P
     busy.value = true
     error.value = ''
     try {
+      if (!await reload())
+        return
+      if (!items.value.some(item => item.id === skillId && item.enabled && item.published))
+        throw new Error(t('skills.unavailable'))
       await startChat(skillId, prompt)
     }
     catch (cause) { error.value = message(cause) }

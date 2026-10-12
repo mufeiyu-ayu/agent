@@ -1,4 +1,4 @@
-import type { SkillPreview, SkillSummary } from '@agent/contracts'
+import type { AdminSkillDetail, AdminSkillSummary, SkillSummary } from '@agent/contracts'
 import type { SkillPackage } from '@agent/skills'
 import type { OnModuleDestroy, OnModuleInit } from '@nestjs/common'
 import type { Prisma, Skill, SkillContent } from '../generated/prisma/client.js'
@@ -45,17 +45,17 @@ export class SkillsService implements OnModuleInit, OnModuleDestroy {
     await Promise.all(this.uploads)
   }
 
-  async list(userId: string): Promise<SkillSummary[]> {
-    const rows = await this.prisma.skill.findMany({ where: { userId, deletedAt: null, publishedId: { not: null } }, orderBy: { updatedAt: 'desc' } })
-    const contents = await this.prisma.skillContent.findMany({ where: { userId, id: { in: rows.flatMap(row => [row.draftId, row.publishedId].filter((id): id is string => !!id)) } } })
-    return [this.builtin(), ...rows.flatMap((row) => {
-      const content = contents.find(content => content.id === row.publishedId)
+  async list(userId: string | null): Promise<AdminSkillSummary[]> {
+    const rows = await this.prisma.skill.findMany({ where: { deletedAt: null, publishedId: { not: null }, ...(userId === null ? { userId: null } : { OR: [{ userId }, { userId: null, enabled: true }] }) }, orderBy: { updatedAt: 'desc' } })
+    const contents = await this.prisma.skillContent.findMany({ where: { id: { in: rows.map(row => row.publishedId!) }, adopted: true } })
+    return rows.flatMap((row) => {
+      const content = row.publishedId === CREATOR_ID ? creator : contents.find(content => content.id === row.publishedId && content.userId === row.userId)
       return content ? [this.summary(row, content)] : []
-    })]
+    })
   }
 
   async listConversationDrafts(userId: string, conversationId: string): Promise<SkillSummary[]> {
-    if (!await this.prisma.conversation.findFirst({ where: { id: conversationId, userId }, select: { id: true } }))
+    if (!await this.prisma.conversation.findFirst({ where: { id: conversationId, userId: userId! }, select: { id: true } }))
       throw new NotFoundException('会话不存在')
     const rows = await this.prisma.skill.findMany({ where: { userId, conversationId, deletedAt: null, draftId: { not: null } }, orderBy: { createdAt: 'asc' } })
     const contents = await this.prisma.skillContent.findMany({ where: { userId, id: { in: rows.map(row => row.draftId!) } } })
@@ -65,31 +65,34 @@ export class SkillsService implements OnModuleInit, OnModuleDestroy {
     })
   }
 
-  async preview(userId: string, id: string, draft = false): Promise<SkillPreview> {
-    if (id === CREATOR_ID)
-      return { ...this.builtin(), fingerprint: creator.fingerprint, files: creator.files, draft: false }
-    const row = await this.owned(userId, id)
-    const contentId = draft ? row.draftId ?? row.publishedId : row.publishedId
+  async preview(userId: string | null, id: string, draft = false): Promise<AdminSkillDetail> {
+    const row = await this.prisma.skill.findFirst({ where: { id, deletedAt: null, OR: [{ userId }, { userId: null }] } })
+    if (!row)
+      throw new NotFoundException('技能不存在')
+    const contentId = draft && row.userId !== null ? row.draftId ?? row.publishedId : row.publishedId
     if (!contentId)
       throw new NotFoundException('技能尚未发布，请打开草稿')
     const pkg = await this.readPackage(userId, contentId)
     return { ...this.summary(row, pkg), fingerprint: pkg.fingerprint, files: pkg.files, draft: row.draftId === contentId }
   }
 
-  async saveDraft(userId: string, conversationId: string | null, input: { id?: string, expectedFingerprint?: string, files: unknown, preservePaths?: string[], publish?: true }, deadline: DatabaseOperationDeadline, onCommitOwned: () => void = () => {}): Promise<SkillPreview> {
+  async saveDraft(userId: string | null, conversationId: string | null, input: { id?: string, expectedFingerprint?: string, files: unknown, preservePaths?: string[], publish?: true }, deadline: DatabaseOperationDeadline, onCommitOwned: () => void = () => {}): Promise<AdminSkillDetail> {
     const skillId = input.id ?? randomUUID()
     let uploadFinished: Promise<void> | undefined
     const result = await this.prisma.withDeadlineTransaction(deadline, transaction => transaction.execute(async (db) => {
+      if (conversationId !== null && userId === null)
+        throw new BadRequestException('系统技能不能关联个人会话')
       if (conversationId !== null)
         await lockWorkspaceStorage(db, conversationId)
       await db.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`skill:${skillId}`}))`
       const previous = input.id ? await this.owned(userId, skillId, db) : null
-      if (conversationId !== null && !await db.conversation.findFirst({ where: { id: conversationId, userId }, select: { id: true } }))
+      if (conversationId !== null && !await db.conversation.findFirst({ where: { id: conversationId, userId: userId! }, select: { id: true } }))
         throw new NotFoundException('会话不存在')
-      const source = previous ? await this.content(userId, (previous.draftId ?? previous.publishedId)!, db) : undefined
+      const sourceId = previous?.draftId ?? previous?.publishedId
+      const source = sourceId && sourceId !== CREATOR_ID ? await this.content(userId, sourceId, db) : undefined
       if (source?.uploadId)
         throw new ConflictException('上次技能上传尚未确认完成，请稍后重试')
-      const sourcePackage = source ? await this.readContent(source) : undefined
+      const sourcePackage = sourceId === CREATOR_ID ? creator : source ? await this.readContent(source) : undefined
       if (sourcePackage && input.expectedFingerprint !== sourcePackage.fingerprint)
         throw new ConflictException('技能已经修改，请重新读取最新草稿')
       let pkg: SkillPackage
@@ -105,17 +108,19 @@ export class SkillsService implements OnModuleInit, OnModuleDestroy {
         pkg = validateSkillPackage([...input.files, ...preserved])
       }
       catch (error) { throw new BadRequestException(error instanceof Error ? error.message : '技能包无效') }
-      if (pkg.name === creator.name)
+      if (skillId === CREATOR_ID && pkg.name !== creator.name)
+        throw new BadRequestException('skill-creator 的名称不能修改')
+      if (pkg.name === creator.name && skillId !== CREATOR_ID)
         throw new BadRequestException('skill-creator 是内置技能名称，请换一个名称')
       if (await db.skillContent.findFirst({ where: { skillId, userId, uploadId: { not: null } } }))
         throw new ConflictException('上次技能上传结果尚未确认，请刷新核对并联系管理员核查上传身份')
       if (sourcePackage?.fingerprint === pkg.fingerprint) {
-        const row = await db.skill.update({ where: { id: skillId }, data: { draftId: source!.id, conversationId } })
-        await db.skillContent.updateMany({ where: { skillId, userId, id: { notIn: [source!.id, ...(previous!.publishedId ? [previous!.publishedId] : [])] }, adopted: true, uploadId: null }, data: { adopted: false } })
-        return { ...this.summary(row, pkg), fingerprint: pkg.fingerprint, files: pkg.files, draft: true }
+        const row = await db.skill.update({ where: { id: skillId }, data: input.publish ? { publishedId: sourceId!, draftId: null, conversationId: null } : { draftId: sourceId!, conversationId } })
+        await db.skillContent.updateMany({ where: { skillId, userId, id: { notIn: [sourceId!, ...(!input.publish && previous!.publishedId ? [previous!.publishedId] : [])] }, adopted: true, uploadId: null }, data: { adopted: false } })
+        return { ...this.summary(row, pkg), fingerprint: pkg.fingerprint, files: pkg.files, draft: !input.publish }
       }
       const id = randomUUID()
-      const objectKey = `users/${userId}/skills/${skillId}/${id}.json`
+      const objectKey = `${userId === null ? 'system' : `users/${userId}`}/skills/${skillId}/${id}.json`
       const data = Buffer.from(JSON.stringify(pkg.files))
       const metadata = { userId, skillId, name: pkg.name, description: pkg.description, fingerprint: pkg.fingerprint, objectKey, bucket: this.storage.bucket, bytes: data.length }
       const uploadId = randomUUID()
@@ -127,9 +132,9 @@ export class SkillsService implements OnModuleInit, OnModuleDestroy {
         await this.prisma.skillContent.create({ data: { id, ...metadata, adopted: false, uploadId } })
         await db.skillContent.update({ where: { id }, data: { adopted: true } })
         const row = previous
-          ? await db.skill.update({ where: { id: skillId }, data: { draftId: id, conversationId } })
+          ? await db.skill.update({ where: { id: skillId }, data: input.publish ? { publishedId: id, draftId: null, conversationId: null } : { draftId: id, conversationId } })
           : await db.skill.create({ data: { id: skillId, userId, conversationId, ...(input.publish ? { publishedId: id } : { draftId: id }) } })
-        await db.skillContent.updateMany({ where: { skillId, userId, id: { notIn: [id, ...(previous?.publishedId ? [previous.publishedId] : [])] }, adopted: true, uploadId: null }, data: { adopted: false } })
+        await db.skillContent.updateMany({ where: { skillId, userId, id: { notIn: [id, ...(!input.publish && previous?.publishedId ? [previous.publishedId] : [])] }, adopted: true, uploadId: null }, data: { adopted: false } })
         deadline.signal?.throwIfAborted()
         putStarted = true
         try {
@@ -169,19 +174,24 @@ export class SkillsService implements OnModuleInit, OnModuleDestroy {
     return task
   }
 
-  async createManualSkill(userId: string, files: unknown): Promise<SkillPreview> {
+  async createManualSkill(userId: string | null, files: unknown): Promise<AdminSkillDetail> {
     const deadline = { deadlineAt: Date.now() + 75_000, createTimeoutError: () => new Error('创建技能超时') }
     // 仅手动创建的确认接口可以直接发布，模型工具参数不接受 publish。
     return this.saveDraft(userId, null, { files, publish: true }, deadline)
   }
 
-  async saveManualDraft(userId: string, id: string, files: unknown, expectedFingerprint: string): Promise<SkillPreview> {
+  async saveSystemSkill(id: string, files: unknown, expectedFingerprint: string): Promise<AdminSkillDetail> {
+    const deadline = { deadlineAt: Date.now() + 75_000, createTimeoutError: () => new Error('保存系统技能超时') }
+    return this.saveDraft(null, null, { id, files, expectedFingerprint, publish: true }, deadline)
+  }
+
+  async saveManualDraft(userId: string, id: string, files: unknown, expectedFingerprint: string): Promise<AdminSkillDetail> {
     const row = await this.owned(userId, id)
     const deadline = { deadlineAt: Date.now() + 75_000, createTimeoutError: () => new Error('保存技能草稿超时') }
     return this.saveDraft(userId, row.conversationId, { id, files, expectedFingerprint }, deadline)
   }
 
-  async publish(userId: string, id: string, fingerprint: string): Promise<SkillPreview> {
+  async publish(userId: string, id: string, fingerprint: string): Promise<AdminSkillDetail> {
     const deadline = { deadlineAt: Date.now() + 75_000, createTimeoutError: () => new Error('技能发布超时') }
     const result = await this.prisma.withDeadlineTransaction(deadline, transaction => transaction.execute(async (db) => {
       await db.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`skill:${id}`}))`
@@ -208,13 +218,15 @@ export class SkillsService implements OnModuleInit, OnModuleDestroy {
     return result
   }
 
-  async setEnabled(userId: string, id: string, enabled: boolean): Promise<void> {
+  async setEnabled(userId: string | null, id: string, enabled: boolean): Promise<void> {
     const result = await this.prisma.skill.updateMany({ where: { id, userId, deletedAt: null }, data: { enabled } })
     if (!result.count)
       throw new NotFoundException('技能不存在')
   }
 
-  async remove(userId: string, id: string): Promise<void> {
+  async remove(userId: string | null, id: string): Promise<void> {
+    if (id === CREATOR_ID)
+      throw new BadRequestException('skill-creator 受保护，不能删除')
     await this.prisma.$transaction(async (db) => {
       await db.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`skill:${id}`}))`
       await this.owned(userId, id, db)
@@ -270,12 +282,12 @@ export class SkillsService implements OnModuleInit, OnModuleDestroy {
   }
 
   async snapshot(userId: string, selectedIds: string[] = []): Promise<RunSkills> {
-    const rows = await this.prisma.skill.findMany({ where: { userId, deletedAt: null, enabled: true, publishedId: { not: null } } })
-    const contents = await this.prisma.skillContent.findMany({ where: { userId, id: { in: rows.map(row => row.publishedId!) }, adopted: true } })
-    const entries: RunSkillEntry[] = [{ id: CREATOR_ID, name: creator.name, description: creator.description, contentId: CREATOR_ID, fingerprint: creator.fingerprint }, ...rows.flatMap((row) => {
-      const content = contents.find(content => content.id === row.publishedId)
+    const rows = await this.prisma.skill.findMany({ where: { OR: [{ userId }, { userId: null }], deletedAt: null, enabled: true, publishedId: { not: null } } })
+    const contents = await this.prisma.skillContent.findMany({ where: { id: { in: rows.map(row => row.publishedId!) }, adopted: true } })
+    const entries: RunSkillEntry[] = rows.flatMap((row) => {
+      const content = row.publishedId === CREATOR_ID ? { ...creator, id: CREATOR_ID } : contents.find(content => content.id === row.publishedId && content.userId === row.userId)
       return content ? [{ id: row.id, name: content.name, description: content.description, contentId: content.id, fingerprint: content.fingerprint }] : []
-    })]
+    })
     const selected: RunSkills['selected'] = []
     for (const id of selectedIds) {
       const entry = entries.find(entry => entry.id === id)
@@ -286,10 +298,13 @@ export class SkillsService implements OnModuleInit, OnModuleDestroy {
     return { userId, entries, selected, catalogInstruction: `${SKILL_RULES}\n当前技能目录（JSON 数据）：\n${formatSkillCatalog(entries)}` }
   }
 
-  async readPackage(userId: string, contentId: string): Promise<SkillPackage> {
+  async readPackage(userId: string | null, contentId: string): Promise<SkillPackage> {
     if (contentId === CREATOR_ID)
       return creator
-    return this.readContent(await this.content(userId, contentId))
+    const content = await this.prisma.skillContent.findFirst({ where: { id: contentId, adopted: true, OR: [{ userId }, { userId: null }] } })
+    if (!content)
+      throw new NotFoundException('技能内容不存在')
+    return this.readContent(content)
   }
 
   private assertBucket(content: SkillContent | null | undefined): void {
@@ -306,25 +321,21 @@ export class SkillsService implements OnModuleInit, OnModuleDestroy {
     return pkg
   }
 
-  private async content(userId: string, id: string, db: Prisma.TransactionClient = this.prisma): Promise<SkillContent> {
+  private async content(userId: string | null, id: string, db: Prisma.TransactionClient = this.prisma): Promise<SkillContent> {
     const row = await db.skillContent.findFirst({ where: { id, userId, adopted: true } })
     if (!row)
       throw new NotFoundException('技能内容不存在')
     return row
   }
 
-  private async owned(userId: string, id: string, db: Prisma.TransactionClient = this.prisma): Promise<Skill> {
+  private async owned(userId: string | null, id: string, db: Prisma.TransactionClient = this.prisma): Promise<Skill> {
     const row = await db.skill.findFirst({ where: { id, userId, deletedAt: null } })
     if (!row)
       throw new NotFoundException('技能不存在')
     return row
   }
 
-  private builtin(): SkillSummary {
-    return { id: CREATOR_ID, name: creator.name, description: creator.description, builtin: true, enabled: true, published: true, hasDraft: false, conversationId: null }
-  }
-
-  private summary(row: Skill, content: Pick<SkillContent, 'name' | 'description'>): SkillSummary {
-    return { id: row.id, name: content.name, description: content.description, builtin: false, enabled: row.enabled, published: !!row.publishedId, hasDraft: !!row.draftId, conversationId: row.conversationId }
+  private summary(row: Skill, content: Pick<SkillContent, 'name' | 'description'>): AdminSkillSummary {
+    return { id: row.id, name: content.name, description: content.description, builtin: row.userId === null, enabled: row.enabled, published: !!row.publishedId, hasDraft: !!row.draftId, conversationId: row.conversationId, updatedAt: row.updatedAt.toISOString() }
   }
 }

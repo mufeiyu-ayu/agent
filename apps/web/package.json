@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@agent/contracts": "workspace:*",
+    "@agent/skills": "workspace:*",
     "@iconify/vue": "^5.0.3",
     "@vueuse/core": "^14.4.0",
     "axios": "^1.20.0",

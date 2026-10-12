@@ -19,9 +19,10 @@ import { registerAppGlobals } from '../common/bootstrap/register-app-globals.js'
 import { ConversationsService } from '../conversations/conversations.service.js'
 import { MessagesService } from '../conversations/messages.service.js'
 import { DatabaseCommitOutcomeUnknownError, PrismaService } from '../prisma/prisma.service.js'
+import { AdminSkillsController } from './admin-skills.controller.js'
 import { withSkillSelection } from './skill-selection.js'
 import { SkillsController } from './skills.controller.js'
-import { SkillsService } from './skills.service.js'
+import { CREATOR_ID, SkillsService } from './skills.service.js'
 
 const url = process.env.TEST_DATABASE_URL?.trim()
 if (!url || url === process.env.DATABASE_URL?.trim())
@@ -537,5 +538,166 @@ describe('技能草稿与发布：隔离 PostgreSQL', { timeout: 60_000 }, () =>
       // app.close 会调用同一个 Prisma 实例的 disconnect；后续用例会自动重连。
       await app.close()
     }
+  })
+  it('公共技能只由系统作用域写入，两个用户共享读取，更新与回收不影响私人内容', async () => {
+    const other = (await prisma.user.create({ data: { email: `${randomUUID()}@example.test` } })).id
+    const personal = await service.createManualSkill(userId, files('私人内容'))
+    const resources = [...files('读取 `references/check.md`。'), { path: 'references/check.md', encoding: 'utf8', content: '系统参考资料' }, { path: 'assets/a.woff', encoding: 'base64', content: 'AQID' }]
+    const system = await service.createManualSkill(null, resources)
+    assert.equal(system.builtin, true)
+    assert.equal(system.draft, false)
+    assert.equal((await service.list(null)).some(item => item.id === personal.id), false)
+    for (const id of [userId, other]) {
+      assert.ok((await service.list(id)).some(item => item.id === system.id))
+      const snapshot = await service.snapshot(id, [system.id])
+      assert.deepEqual(snapshot.selected[0]?.package.files, [...resources].sort((a, b) => a.path.localeCompare(b.path)))
+      assert.deepEqual((await service.preview(id, system.id, true)).files, [...resources].sort((a, b) => a.path.localeCompare(b.path)))
+      await assert.rejects(service.saveManualDraft(id, system.id, resources, system.fingerprint), /不存在/)
+      await assert.rejects(service.publish(id, system.id, system.fingerprint), /不存在/)
+      await assert.rejects(service.setEnabled(id, system.id, false), /不存在/)
+      await assert.rejects(service.remove(id, system.id), /不存在/)
+    }
+    await assert.rejects(service.preview(other, personal.id), /不存在/)
+    await assert.rejects(service.preview(null, personal.id), /不存在/)
+    await assert.rejects(service.saveSystemSkill(personal.id, files(), personal.fingerprint), /不存在/)
+    await assert.rejects(service.remove(null, personal.id), /不存在/)
+    const results = await Promise.allSettled(['A', 'B'].map(text => service.saveSystemSkill(system.id, files(text), system.fingerprint)))
+    assert.equal(results.filter(result => result.status === 'fulfilled').length, 1)
+    const current = await service.preview(null, system.id)
+    assert.notEqual(current.fingerprint, system.fingerprint)
+    assert.equal(current.id, system.id)
+    assert.equal((await service.snapshot(other, [system.id])).selected[0]?.package.fingerprint, current.fingerprint)
+    storage.configured = true
+    try {
+      await service.sweep()
+    }
+    finally { storage.configured = false }
+    assert.equal(await prisma.skillContent.count({ where: { skillId: system.id } }), 1)
+    assert.equal((await service.preview(userId, personal.id)).fingerprint, personal.fingerprint)
+    await service.setEnabled(null, system.id, false)
+    assert.ok((await service.list(null)).some(item => item.id === system.id && !item.enabled))
+    assert.equal((await service.list(other)).some(item => item.id === system.id), false)
+    await assert.rejects(service.snapshot(other, [system.id]), /不可用/)
+    await service.remove(null, system.id)
+    storage.configured = true
+    try {
+      await service.sweep()
+    }
+    finally { storage.configured = false }
+    assert.equal(await prisma.skillContent.count({ where: { skillId: system.id } }), 0)
+    assert.ok(await service.preview(userId, personal.id))
+  })
+
+  it('creator 身份与名称受保护，编辑后新实例读取持久内容，停用不回退默认包', async () => {
+    const original = await service.preview(null, CREATOR_ID)
+    await assert.rejects(service.remove(null, CREATOR_ID), /不能删除/)
+    await assert.rejects(service.saveSystemSkill(CREATOR_ID, files(), original.fingerprint), /名称不能修改/)
+    const updated = await service.saveSystemSkill(CREATOR_ID, original.files.map(file => ({ ...file, content: `${file.content}\n管理员补充指令` })), original.fingerprint)
+    const restarted = new SkillsService(prisma, storage as unknown as AttachmentStorageService)
+    assert.equal((await restarted.preview(userId, CREATOR_ID)).fingerprint, updated.fingerprint)
+    assert.match((await restarted.snapshot(userId, [CREATOR_ID])).selected[0]!.package.files[0]!.content, /管理员补充指令/)
+    await service.setEnabled(null, CREATOR_ID, false)
+    assert.equal((await restarted.snapshot(userId)).entries.some(item => item.id === CREATOR_ID), false)
+    await assert.rejects(restarted.snapshot(userId, [CREATOR_ID]), /不可用/)
+    assert.equal((await restarted.list(userId)).some(item => item.id === CREATOR_ID), false)
+    assert.ok((await restarted.list(null)).some(item => item.id === CREATOR_ID && !item.enabled))
+    await service.setEnabled(null, CREATOR_ID, true)
+    await service.saveSystemSkill(CREATOR_ID, original.files, updated.fingerprint)
+  })
+
+  it('系统直接保存的 PUT 未知保留身份；真正 COMMIT 失败不改变已发布内容', async () => {
+    const system = await service.createManualSkill(null, files('旧发布'))
+    const put = vi.spyOn(storage, 'put').mockRejectedValueOnce(new Error('connection timeout'))
+    try {
+      await assert.rejects(service.saveSystemSkill(system.id, files('未知上传'), system.fingerprint), /上传结果未知/)
+    }
+    finally { put.mockRestore() }
+    const unknown = await prisma.skillContent.findFirstOrThrow({ where: { skillId: system.id, uploadId: { not: null } } })
+    await assert.rejects(service.saveSystemSkill(system.id, files('不能覆盖'), system.fingerprint), /尚未确认/)
+    storage.configured = true
+    try {
+      await service.sweep()
+    }
+    finally { storage.configured = false }
+    assert.equal((await prisma.skillContent.findUniqueOrThrow({ where: { id: unknown.id } })).uploadId, unknown.uploadId)
+    assert.equal((await service.preview(null, system.id)).fingerprint, system.fingerprint)
+
+    const second = await service.createManualSkill(null, files('可靠旧发布'))
+    await prisma.$executeRawUnsafe(`CREATE FUNCTION reject_system_commit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW."userId" IS NULL AND NEW."publishedId" IS DISTINCT FROM OLD."publishedId" THEN RAISE EXCEPTION 'reject system commit'; END IF; RETURN NEW; END $$`)
+    await prisma.$executeRawUnsafe('CREATE CONSTRAINT TRIGGER reject_system_commit AFTER UPDATE ON "Skill" DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_system_commit()')
+    const succeededPut = vi.spyOn(storage, 'put')
+    try {
+      await assert.rejects(service.saveSystemSkill(second.id, files('不会生效'), second.fingerprint))
+      assert.equal(succeededPut.mock.calls.length, 1)
+      assert.equal((await service.preview(null, second.id)).fingerprint, second.fingerprint)
+      assert.equal((await service.snapshot(userId, [second.id])).selected[0]?.package.fingerprint, second.fingerprint)
+      await vi.waitFor(async () => assert.equal((await prisma.skillContent.findFirstOrThrow({ where: { objectKey: succeededPut.mock.calls[0]![0] } })).uploadId, null))
+      storage.configured = true
+      await service.sweep()
+      assert.equal(await prisma.skillContent.count({ where: { skillId: second.id } }), 1)
+    }
+    finally {
+      storage.configured = false
+      succeededPut.mockRestore()
+      await prisma.$executeRawUnsafe('DROP TRIGGER reject_system_commit ON "Skill"')
+      await prisma.$executeRawUnsafe('DROP FUNCTION reject_system_commit()')
+    }
+  })
+
+  it('系统技能真实 HTTP：管理员 CRUD、成员拒绝、请求体边界与 COMMIT unknown', async () => {
+    const admin = await prisma.user.create({ data: { email: `${randomUUID()}@example.test`, role: 'ADMIN', mustChangePassword: false } })
+    await prisma.user.update({ where: { id: userId }, data: { mustChangePassword: false } })
+    const tokens = [randomUUID(), randomUUID()]
+    for (const [index, id] of [admin.id, userId].entries())
+      await prisma.session.create({ data: { userId: id, tokenHash: createHash('sha256').update(tokens[index]!).digest('hex'), expiresAt: new Date(Date.now() + 60000) } })
+    @Module({ controllers: [AdminSkillsController, SkillsController], providers: [{ provide: SkillsService, useValue: service }, { provide: PrismaService, useValue: prisma }, AuthService, { provide: APP_GUARD, useClass: AuthGuard }] })
+    class SystemTestApp {}
+    const app = await NestFactory.create(SystemTestApp, { logger: false })
+    registerAppGlobals(app)
+    await app.listen(0, '127.0.0.1')
+    const base = await app.getUrl()
+    const request = (path: string, token: string | undefined, method = 'GET', body?: unknown, origin = 'http://localhost:5174') => fetch(`${base}/api/admin/skills${path}`, { method, headers: { origin, 'content-type': 'application/json', ...(token ? { cookie: `agent_session=${token}` } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}) })
+    try {
+      assert.equal((await request('', undefined)).status, 401)
+      assert.equal((await request('', tokens[1])).status, 403)
+      assert.equal((await request('', tokens[1], 'POST', { files: files() })).status, 403)
+      assert.equal((await request('', tokens[0], 'POST', { files: files() }, 'https://evil.example')).status, 403)
+      assert.equal((await request('', tokens[0], 'POST', { files: 'invalid' })).status, 400)
+      const createdResponse = await request('', tokens[0], 'POST', { files: files('x'.repeat(160 * 1024)) })
+      assert.equal(createdResponse.status, 201)
+      const created = (await createdResponse.json()).data
+      assert.equal(created.builtin, true)
+      assert.equal(typeof created.updatedAt, 'string')
+      for (const [method, suffix, body] of [['PATCH', '', { files: files(), expectedFingerprint: created.fingerprint }], ['POST', '/toggle', { enabled: false }], ['DELETE', '', undefined]] as const)
+        assert.equal((await request(`/${created.id}${suffix}`, tokens[1], method, body)).status, 403)
+      assert.equal((await request(`/${created.id}`, tokens[0], 'PATCH', { files: files() })).status, 400)
+      assert.equal((await request(`/${created.id}`, tokens[0], 'PATCH', { files: files(), expectedFingerprint: 'stale' })).status, 409)
+      const updatedResponse = await request(`/${created.id}`, tokens[0], 'PATCH', { files: files('y'.repeat(160 * 1024)), expectedFingerprint: created.fingerprint })
+      assert.equal(updatedResponse.status, 200)
+      const updated = (await updatedResponse.json()).data
+      assert.notEqual(updated.fingerprint, created.fingerprint)
+      assert.equal(updated.draft, false)
+      assert.equal((await request(`/${created.id}/toggle`, tokens[0], 'POST', { enabled: false })).status, 201)
+      assert.equal((await request(`/${CREATOR_ID}`, tokens[0], 'DELETE')).status, 400)
+      assert.equal((await request(`/${created.id}`, tokens[0], 'DELETE')).status, 200)
+      assert.equal((await request(`/${created.id}`, tokens[0])).status, 404)
+      const realWrite = prisma.withDeadlineTransaction.bind(prisma)
+      const uncertain = vi.spyOn(prisma, 'withDeadlineTransaction').mockImplementationOnce((async (...args: Parameters<typeof realWrite>) => {
+        await realWrite(...args)
+        throw new DatabaseCommitOutcomeUnknownError('INTERNAL_ONLY')
+      }) as typeof realWrite)
+      try {
+        const response = await request('', tokens[0], 'POST', { files: files('提交未知') })
+        assert.equal(response.status, 500)
+        const body = await response.json()
+        assert.equal(body.error.error, 'DatabaseCommitOutcomeUnknown')
+        assert.match(body.message, /刷新核对/)
+        assert.equal(JSON.stringify(body).includes('INTERNAL_ONLY'), false)
+      }
+      finally { uncertain.mockRestore() }
+      const unrelated = await fetch(`${base}/api/admin/unrelated`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ value: 'x'.repeat(160 * 1024) }) })
+      assert.equal(unrelated.status, 413)
+    }
+    finally { await app.close() }
   })
 })
