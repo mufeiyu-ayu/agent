@@ -813,3 +813,46 @@ test('手动创建 COMMIT unknown 保留刷新核对语义并禁止盲目重复�
   await editor.getByRole('button', { name: '重新加载', exact: true }).click()
   await expect(editor).toHaveCount(0)
 })
+
+test('start 后重新选择同一技能，已提交 error 保留下一条文字和技能', async ({ page }) => {
+  await setup(page, true)
+  await page.getByRole('button', { name: '技能', exact: true }).click()
+  await page.getByRole('listitem').filter({ has: page.getByRole('heading', { name: draft.name }) }).getByRole('button', { name: '对话使用' }).click()
+  await page.evaluate(() => {
+    const original = window.fetch.bind(window)
+    const encoder = new TextEncoder()
+    let release!: () => void
+    const ending = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    window.__releaseStream = release
+    window.fetch = async (input, init) => {
+      if (!String(input).includes('/api/chat/stream'))
+        return original(input, init)
+      const { conversationId } = JSON.parse(String(init?.body))
+      return new Response(new ReadableStream({
+        start(controller) {
+          controller.enqueue(encoder.encode(`${JSON.stringify({ type: 'start', conversationId, userMessageId: 'accepted-user', assistantMessageId: 'accepted-answer' })}\n`))
+          void ending.then(() => {
+            controller.enqueue(encoder.encode(`${JSON.stringify({ type: 'error', conversationId, assistantMessageId: 'accepted-answer', message: '本次生成失败', userMessagePersisted: true })}\n`))
+            controller.close()
+          })
+        },
+      }), { headers: { 'content-type': 'application/x-ndjson' } })
+    }
+  })
+  const textarea = page.locator('textarea')
+  await textarea.fill('检查标题')
+  await textarea.press('Enter')
+  await expect(page.locator('[data-composer-skills]')).toHaveCount(0)
+  await expect(textarea).toHaveValue('')
+  await textarea.fill('/article')
+  await expect(page.getByRole('option', { name: /article-check/ })).toBeVisible()
+  await textarea.press('Enter')
+  await textarea.fill('检查标题')
+  await expect(page.locator('[data-composer-skills]')).toContainText(draft.name)
+  await page.evaluate(() => window.__releaseStream?.())
+  await expect(page.locator('[data-app-message]')).toContainText('本次生成失败')
+  await expect(textarea).toHaveValue('检查标题')
+  await expect(page.locator('[data-composer-skills]')).toContainText(draft.name)
+})

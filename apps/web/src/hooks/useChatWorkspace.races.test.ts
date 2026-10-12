@@ -2,7 +2,7 @@ import type { ChatStreamEvent, ConversationMessage } from '@agent/contracts'
 import type { ComposerAttachment } from '../types/chat'
 import assert from 'node:assert/strict'
 import { afterEach, beforeEach, it, onTestFinished, vi } from 'vitest'
-import { effectScope } from 'vue'
+import { effectScope, ref } from 'vue'
 import { deleteAttachment, uploadAttachment } from '../api/attachments'
 import { ChatStreamHttpError, streamChat } from '../api/chat'
 import { createConversation, deleteConversation, listConversationMessages, listConversations } from '../api/conversations'
@@ -329,14 +329,20 @@ it.each([false, true])('start 前明确 error、userMessagePersisted=%s：未提
   vi.mocked(streamChat).mockImplementationOnce(async function* () {
     yield { type: 'error', conversationId: 'a', message: 'explicit rejection', userMessagePersisted: persisted }
   })
-  const accepted = vi.fn()
+  const selected = ref(['selected-skill'])
+  const accepted = vi.fn((ids: string[]) => {
+    selected.value = selected.value.filter(id => !ids.includes(id))
+  })
   const workspace = useChatWorkspace({ onSkillsAccepted: accepted })
   lifecycle.mounted()
   await vi.waitFor(() => assert.ok(workspace.activeConversationId.value === 'a' && !workspace.isLoadingMessages.value))
   const reads = vi.mocked(listConversationMessages).mock.calls.length
   workspace.attachments.value = [draft(1)]
+  workspace.message.value = '待重试文字'
   await workspace.sendMessage(undefined, undefined, ['selected-skill'], [{ id: 'selected-skill', name: 'selected-name' }])
   assert.deepEqual(accepted.mock.calls, persisted ? [[['selected-skill']]] : [])
+  assert.deepEqual(selected.value, persisted ? [] : ['selected-skill'])
+  assert.equal(workspace.message.value, persisted ? '' : '待重试文字')
   assert.equal(vi.mocked(listConversationMessages).mock.calls.length, reads)
   if (persisted) {
     assert.deepEqual(workspace.attachments.value, [])
@@ -350,6 +356,66 @@ it.each([false, true])('start 前明确 error、userMessagePersisted=%s：未提
     await workspace.sendMessage()
     assert.deepEqual(vi.mocked(streamChat).mock.calls[1]?.[0].attachmentIds, ['remote-1'])
   }
+})
+
+it.each(['下一条新文字', '本次文字'])('start 后重选同一技能再收到已提交 error，保留下一条草稿：%s', async (nextText) => {
+  const ending = deferred<void>()
+  onTestFinished(() => ending.resolve())
+  vi.mocked(streamChat).mockImplementationOnce(async function* () {
+    yield { type: 'start', conversationId: 'a', userMessageId: 'accepted-user', assistantMessageId: 'accepted-reply' }
+    await ending.promise
+    yield { type: 'error', conversationId: 'a', assistantMessageId: 'accepted-reply', message: 'generation failed', userMessagePersisted: true }
+  })
+  const selected = ref(['skill-a'])
+  const accepted = vi.fn((ids: string[]) => {
+    selected.value = selected.value.filter(id => !ids.includes(id))
+  })
+  const workspace = useChatWorkspace({ onSkillsAccepted: accepted })
+  lifecycle.mounted()
+  await vi.waitFor(() => assert.ok(workspace.activeConversationId.value === 'a' && !workspace.isLoadingMessages.value))
+  workspace.message.value = '本次文字'
+  const sending = workspace.sendMessage(undefined, undefined, ['skill-a'], [{ id: 'skill-a', name: 'skill-a' }])
+  await vi.waitFor(() => assert.equal(accepted.mock.calls.length, 1))
+  assert.deepEqual(selected.value, [])
+  assert.equal(workspace.message.value, '')
+  selected.value = ['skill-a']
+  workspace.message.value = nextText
+  ending.resolve()
+  await sending
+  assert.equal(accepted.mock.calls.length, 1)
+  assert.deepEqual(selected.value, ['skill-a'])
+  assert.equal(workspace.message.value, nextText)
+})
+
+it.each([false, true])('切换会话后迟到已提交 error 不清理新视图的文字或技能，先收到 start=%s', async (started) => {
+  const ending = deferred<void>()
+  const waiting = deferred<void>()
+  onTestFinished(() => ending.resolve())
+  vi.mocked(streamChat).mockImplementationOnce(async function* () {
+    if (started)
+      yield { type: 'start', conversationId: 'a', userMessageId: 'accepted-user', assistantMessageId: 'accepted-reply' }
+    waiting.resolve()
+    await ending.promise
+    yield { type: 'error', conversationId: 'a', message: 'late failure', userMessagePersisted: true }
+  })
+  const selected = ref(['skill-a'])
+  const accepted = vi.fn((ids: string[]) => {
+    selected.value = selected.value.filter(id => !ids.includes(id))
+  })
+  const workspace = useChatWorkspace({ onSkillsAccepted: accepted })
+  lifecycle.mounted()
+  await vi.waitFor(() => assert.ok(workspace.activeConversationId.value === 'a' && !workspace.isLoadingMessages.value))
+  workspace.message.value = 'A 本次文字'
+  const sending = workspace.sendMessage(undefined, undefined, ['skill-a'], [{ id: 'skill-a', name: 'skill-a' }])
+  await waiting.promise
+  await workspace.selectConversation('b')
+  selected.value = ['skill-a']
+  workspace.message.value = 'B 下一条文字'
+  ending.resolve()
+  await sending
+  assert.equal(accepted.mock.calls.length, started ? 1 : 0)
+  assert.deepEqual(selected.value, ['skill-a'])
+  assert.equal(workspace.message.value, 'B 下一条文字')
 })
 
 it('新会话创建尚未返回时退出：取消请求并回收锁定草稿 URL，不删远程附件，不接管迟到创建结果', async () => {
