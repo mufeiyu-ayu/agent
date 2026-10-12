@@ -52,3 +52,5 @@ Prisma schema 在仓库根 `prisma/`，生成的 client 在 `src/generated/prism
 `pnpm --filter @agent/api typecheck`、`lint`、`test`（Vitest 单测）；涉及事务、deadline、落库时加根目录 `pnpm test:db`（只连 `TEST_DATABASE_URL`）；涉及 schema 时 `pnpm prisma:generate` 与 `pnpm exec prisma validate`。测试规范见 `docs/testing.md`。
 
 技能云端业务在 `src/skills/`（导航 `src/skills/README.md`），包格式在 `@agent/skills`；`tools/skill-tools.ts` 负责读取正文/草稿及保存草稿，确认发布只由受认证管理接口执行。`skills/admin-skills.controller.ts` 是系统技能写入口，强制管理员鉴权；个人与公共归属共用保存/清理，用户写接口不能修改公共技能。
+
+技能发布的三条使用示例由 `skills/skill-examples.service.ts` 调用现有模型生成；在事务外生成、事务内核对指纹并随发布内容原子保存，失败不切换发布版本。

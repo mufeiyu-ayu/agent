@@ -1,6 +1,7 @@
 import type { AttachmentStorageService } from '../attachments/attachment-storage.service.js'
 import type { AttachmentsService } from '../attachments/attachments.service.js'
 import type { WorkspaceGcService } from '../workspaces/workspace-gc.service.js'
+import type { SkillExamplesService } from './skill-examples.service.js'
 import assert from 'node:assert/strict'
 import { Buffer } from 'node:buffer'
 import { createHash, randomUUID } from 'node:crypto'
@@ -50,6 +51,7 @@ describe('技能草稿与发布：隔离 PostgreSQL', { timeout: 60_000 }, () =>
       return value
     },
   }
+  const examples = { generate: vi.fn(async () => ['请使用这个技能帮我处理一份工作材料。', '请使用这个技能检查已有内容并提出改进建议。', '请按照这个技能整理一份可复用的工作清单。']) }
   let prisma: PrismaService
   let service: SkillsService
   let conversationId: string
@@ -67,7 +69,7 @@ describe('技能草稿与发布：隔离 PostgreSQL', { timeout: 60_000 }, () =>
     await prisma.$connect()
     userId = (await prisma.user.create({ data: { email: `${schema}@example.test` } })).id
     conversationId = (await prisma.conversation.create({ data: { title: '技能测试', userId } })).id
-    service = new SkillsService(prisma, storage as unknown as AttachmentStorageService)
+    service = new SkillsService(prisma, storage as unknown as AttachmentStorageService, examples as unknown as SkillExamplesService)
   })
   afterAll(async () => {
     await prisma?.$disconnect()
@@ -428,7 +430,7 @@ describe('技能草稿与发布：隔离 PostgreSQL', { timeout: 60_000 }, () =>
       await service.sweep()
       assert.equal(await prisma.skillContent.count({ where: { id: { in: doomed.map(row => row.id) } } }), 2)
       failDelete.mockRestore()
-      await new SkillsService(prisma, storage as unknown as AttachmentStorageService).sweep()
+      await new SkillsService(prisma, storage as unknown as AttachmentStorageService, examples as unknown as SkillExamplesService).sweep()
       for (const row of doomed)
         assert.equal(objects.has(row.objectKey), false)
       assert.equal(await prisma.skill.findUnique({ where: { id: unpublished.id } }), null)
@@ -596,7 +598,7 @@ describe('技能草稿与发布：隔离 PostgreSQL', { timeout: 60_000 }, () =>
     await assert.rejects(service.remove(null, CREATOR_ID), /不能删除/)
     await assert.rejects(service.saveSystemSkill(CREATOR_ID, files(), original.fingerprint), /名称不能修改/)
     const updated = await service.saveSystemSkill(CREATOR_ID, original.files.map(file => ({ ...file, content: `${file.content}\n管理员补充指令` })), original.fingerprint)
-    const restarted = new SkillsService(prisma, storage as unknown as AttachmentStorageService)
+    const restarted = new SkillsService(prisma, storage as unknown as AttachmentStorageService, examples as unknown as SkillExamplesService)
     assert.equal((await restarted.preview(userId, CREATOR_ID)).fingerprint, updated.fingerprint)
     assert.match((await restarted.snapshot(userId, [CREATOR_ID])).selected[0]!.package.files[0]!.content, /管理员补充指令/)
     await service.setEnabled(null, CREATOR_ID, false)
@@ -780,5 +782,89 @@ describe('技能草稿与发布：隔离 PostgreSQL', { timeout: 60_000 }, () =>
           assert.equal(result.result.modelContent.includes('PRIVATE_'), false)
       }
     }
+  })
+
+  it('发布生成示例并持久化，重复发布不重新生成；生成失败不改变发布内容', async () => {
+    const initial = await service.createManualSkill(userId, files('EXAMPLE_ORIGINAL'))
+    assert.equal(initial.examples.length, 3)
+    assert.equal(initial.createdAt, (await prisma.skill.findUniqueOrThrow({ where: { id: initial.id } })).createdAt.toISOString())
+    const beforeCalls = examples.generate.mock.calls.length
+    await service.publish(userId, initial.id, initial.fingerprint)
+    assert.equal(examples.generate.mock.calls.length, beforeCalls)
+    const next = await service.saveManualDraft(userId, initial.id, files('EXAMPLE_CHANGED'), initial.fingerprint)
+    examples.generate.mockRejectedValueOnce(new Error('generation failed'))
+    await assert.rejects(service.publish(userId, initial.id, next.fingerprint), /generation failed/u)
+    const unchanged = await service.preview(userId, initial.id)
+    assert.equal(unchanged.fingerprint, initial.fingerprint)
+    assert.deepEqual(unchanged.examples, initial.examples)
+    const generated = ['请用更新后的技能完成第一种实际任务。', '请用更新后的技能完成第二种实际任务。', '请用更新后的技能完成第三种实际任务。']
+    examples.generate.mockResolvedValueOnce(generated)
+    const published = await service.publish(userId, initial.id, next.fingerprint)
+    assert.deepEqual(published.examples, generated)
+    assert.deepEqual((await service.list(userId)).find(item => item.id === initial.id)?.examples, generated)
+    const count = await prisma.skill.count()
+    examples.generate.mockRejectedValueOnce(new Error('generation failed'))
+    await assert.rejects(service.createManualSkill(userId, files()), /generation failed/u)
+    assert.equal(await prisma.skill.count(), count)
+  })
+
+  it('草稿改动后恢复原内容时复用原示例，不依赖模型可用性', async () => {
+    const original = await service.createManualSkill(userId, files('RESTORED_ORIGINAL'))
+    const changed = await service.saveManualDraft(userId, original.id, files('INTERMEDIATE_CHANGE'), original.fingerprint)
+    const restored = await service.saveManualDraft(userId, original.id, original.files, changed.fingerprint)
+    const row = await prisma.skill.findUniqueOrThrow({ where: { id: original.id } })
+    assert.notEqual(row.draftId, row.publishedId)
+    assert.equal(restored.fingerprint, original.fingerprint)
+    const calls = examples.generate.mock.calls.length
+    const unavailable = new SkillsService(prisma, storage as unknown as AttachmentStorageService, {
+      generate: async () => { throw new Error('模型不可用') },
+    } as unknown as SkillExamplesService)
+    const published = await unavailable.publish(userId, original.id, restored.fingerprint)
+    assert.deepEqual(published.examples, original.examples)
+    assert.equal(published.hasDraft, false)
+    assert.equal(examples.generate.mock.calls.length, calls)
+  })
+
+  it('生成示例不持有技能锁，期间草稿变化时拒绝发布旧示例', async () => {
+    const initial = await service.createManualSkill(userId, files('RACE_ORIGINAL'))
+    const first = await service.saveManualDraft(userId, initial.id, files('RACE_FIRST'), initial.fingerprint)
+    let release!: (value: string[]) => void
+    let started!: () => void
+    const entered = new Promise<void>((resolve) => {
+      started = resolve
+    })
+    examples.generate.mockImplementationOnce(() => new Promise<string[]>((resolve) => {
+      release = resolve
+      started()
+    }))
+    const publishing = service.publish(userId, initial.id, first.fingerprint)
+    const rejected = assert.rejects(publishing, /预览已过期/u)
+    await entered
+    try {
+      await service.saveManualDraft(userId, initial.id, files('RACE_SECOND'), first.fingerprint)
+    }
+    finally { release(['第一条旧内容对应的使用示例。', '第二条旧内容对应的使用示例。', '第三条旧内容对应的使用示例。']) }
+    await rejected
+    assert.equal((await service.preview(userId, initial.id)).fingerprint, initial.fingerprint)
+    assert.deepEqual((await service.preview(userId, initial.id)).examples, initial.examples)
+  })
+
+  it('使用次数按用户问答去重，包含显式选择和成功自动读取，不计失败与其他用户', async () => {
+    const system = await service.createManualSkill(null, files('USAGE_COUNT'))
+    const other = await prisma.user.create({ data: { email: `${randomUUID()}@example.test` } })
+    const otherConversation = await prisma.conversation.create({ data: { userId: other.id, title: '其他用户' } })
+    const selected = await prisma.message.create({ data: { conversationId, role: 'USER', content: '显式选择', skills: [{ id: system.id, name: system.name }] } })
+    const auto = await prisma.message.create({ data: { conversationId, role: 'USER', content: '自动读取' } })
+    const failed = await prisma.message.create({ data: { conversationId, role: 'USER', content: '失败读取' } })
+    await prisma.message.create({ data: { conversationId: otherConversation.id, role: 'USER', content: '其他用户使用', skills: [{ id: system.id, name: system.name }] } })
+    for (const message of [selected, auto, failed]) {
+      const run = await prisma.agentRun.create({ data: { conversationId, userMessageId: message.id } })
+      for (const sequence of [1, 2])
+        await prisma.agentStep.create({ data: { runId: run.id, sequence, type: 'tool_execution', title: '读取技能', status: 'COMPLETED', input: { toolName: 'read_skill' }, output: { ok: message.id !== failed.id, display: { skill: { id: system.id, name: system.name } } } } })
+    }
+    assert.equal((await service.list(userId)).find(item => item.id === system.id)?.usageCount, 2)
+    assert.equal((await service.preview(userId, system.id)).usageCount, 2)
+    assert.equal((await service.list(other.id)).find(item => item.id === system.id)?.usageCount, 1)
+    assert.equal((await service.list(null)).find(item => item.id === system.id)?.usageCount, 3)
   })
 })

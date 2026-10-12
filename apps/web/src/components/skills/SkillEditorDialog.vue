@@ -38,7 +38,8 @@ function syncSkillMarkdownFile() {
   const skillFile = draftFiles.value.find(f => f.path === 'SKILL.md')
   if (skillFile) {
     skillFile.content = writeSkillMarkdown(skillFile.content, skillName.value, skillDescription.value, skillBody.value)
-    saveStatus.value = 'idle'
+    if (!skills.busy.value)
+      saveStatus.value = 'idle'
   }
 }
 
@@ -49,7 +50,8 @@ watch(() => skills.editingSkill.value, (skill) => {
     selectedPath.value = draftFiles.value.some(f => f.path === 'SKILL.md')
       ? 'SKILL.md'
       : (draftFiles.value[0]?.path ?? 'SKILL.md')
-    saveStatus.value = 'idle'
+    if (!skills.busy.value)
+      saveStatus.value = 'idle'
     activeMobileTab.value = 'edit'
 
     const skillFile = draftFiles.value.find(f => f.path === 'SKILL.md')
@@ -337,7 +339,7 @@ function handleOpenChange(open: boolean) {
                     type="text"
                     maxlength="64"
                     :placeholder="t('skills.namePlaceholder')"
-                    class="h-8 w-full rounded-lg border border-agent-border-subtle bg-agent-surface px-2.5 font-mono text-[11px] text-agent-ink placeholder:text-agent-ink-faint focus:border-agent-border focus:outline-none transition-colors"
+                    class="h-8 w-full rounded-lg border border-agent-border-subtle bg-agent-surface px-2.5 font-mono skill-editor-input text-agent-ink placeholder:text-agent-ink-faint focus:border-agent-border focus:outline-none transition-colors"
                     spellcheck="false"
                   >
                 </div>
@@ -368,7 +370,7 @@ function handleOpenChange(open: boolean) {
                     rows="2"
                     maxlength="1024"
                     :placeholder="t('skills.triggerPlaceholder')"
-                    class="w-full resize-none rounded-lg border border-agent-border-subtle bg-agent-surface p-2 text-[11px] leading-relaxed text-agent-ink placeholder:text-agent-ink-faint focus:border-agent-border focus:outline-none transition-colors"
+                    class="w-full resize-none rounded-lg border border-agent-border-subtle bg-agent-surface p-2 skill-editor-input leading-relaxed text-agent-ink placeholder:text-agent-ink-faint focus:border-agent-border focus:outline-none transition-colors"
                     spellcheck="false"
                   />
                 </div>
@@ -396,7 +398,7 @@ function handleOpenChange(open: boolean) {
                     id="skill-body"
                     v-model="skillBody"
                     :disabled="skills.busy.value"
-                    class="h-full w-full resize-none bg-transparent p-4 font-mono text-[11px] leading-relaxed text-agent-ink placeholder:text-agent-ink-faint focus:outline-none"
+                    class="h-full w-full resize-none bg-transparent p-4 font-mono skill-editor-input leading-relaxed text-agent-ink placeholder:text-agent-ink-faint focus:outline-none"
                     :placeholder="t('skills.bodyPlaceholder')"
                     spellcheck="false"
                     @keydown.tab.prevent="handleTabKey"
@@ -531,6 +533,12 @@ function handleOpenChange(open: boolean) {
 </template>
 
 <style scoped>
+/* 局部覆盖全局表单 font: inherit，让三个输入区实际使用较小字号。 */
+.skill-editor-input {
+  font-size: 14px;
+  line-height: 1.6;
+}
+
 .editor-panel {
   --editor-panel-bg: var(--agent-surface-raised);
   --editor-edge: color-mix(in oklch, var(--agent-ink) 10%, transparent);

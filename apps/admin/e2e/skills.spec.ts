@@ -16,6 +16,9 @@ function initial(id = 'system-one'): AdminSkillDetail {
     draft: false,
     conversationId: null,
     updatedAt: '2026-10-12T00:00:00Z',
+    createdAt: '2026-10-10T00:00:00Z',
+    usageCount: 0,
+    examples: [],
     fingerprint: 'initial',
     files: [{ path: 'SKILL.md', encoding: 'utf8', content: `---\nname: ${id === creatorId ? 'skill-creator' : 'shared-check'}\ndescription: 检查共享技能\nlicense: MIT\n---\n\n主技能正文` }, { path: 'references/check.md', encoding: 'utf8', content: '只属于参考文件的内容<script>window.badSkill=true</script>' }, { path: 'assets/sample.woff', encoding: 'base64', content: 'AQID' }],
   }

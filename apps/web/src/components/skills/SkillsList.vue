@@ -14,6 +14,7 @@ import AppIcon from '@/components/common/AppIcon.vue'
 import AppTooltip from '@/components/common/AppTooltip.vue'
 import { dropdownMenuOptionClass, dropdownMenuPanelClass } from '@/components/ui/dropdown-menu'
 import { useSkills } from '@/hooks/useSkills'
+import SkillDetailsDrawer from './SkillDetailsDrawer.vue'
 
 const props = defineProps<{
   manage?: boolean
@@ -29,9 +30,29 @@ const skills = useSkills()
 const query = ref('')
 const deletingId = ref<string | null>(null)
 const searchInput = ref<HTMLInputElement | null>(null)
+const detailItem = ref<SkillSummary | null>(null)
+const detailsOpen = ref(false)
+let detailTrigger: HTMLElement | null = null
+
+function showDetails(item: SkillSummary, event: MouseEvent) {
+  detailItem.value = item
+  detailTrigger = event.currentTarget as HTMLElement
+  detailsOpen.value = true
+}
+
+function restoreDetailFocus(event: Event) {
+  event.preventDefault()
+  // 切换到预览或编辑时，让新弹窗接管焦点。
+  if (skills.previewDialogOpen.value || skills.editorOpen.value)
+    return
+  if (detailTrigger?.isConnected)
+    detailTrigger.focus()
+  else
+    searchInput.value?.focus()
+}
 
 async function confirmDelete(item: SkillSummary) {
-  if (await skills.manage(item, 'delete')) {
+  if (await skills.remove(item)) {
     deletingId.value = null
     await nextTick()
     searchInput.value?.focus()
@@ -86,55 +107,59 @@ function handleManualEdit() {
 </script>
 
 <template>
-  <div class="space-y-5">
-    <!-- 极简工具栏：Tab 筛选与搜索 + 创建 -->
-    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+  <div class="skills-list space-y-6" :class="{ 'skills-list--manage': props.manage }">
+    <!-- 筛选、搜索和创建沿用现有行为。 -->
+    <div class="flex flex-wrap items-center justify-between gap-x-5 gap-y-4">
       <!-- 极简文字 Tabs -->
       <div
         v-if="!props.manage"
-        class="flex items-center gap-1 border-b border-transparent text-xs"
+        class="flex min-w-0 flex-wrap items-center gap-1 text-sm"
       >
         <button
-          class="rounded-md px-2.5 py-1.5 transition-colors"
-          :class="activeTab === 'all' ? 'bg-agent-surface-sunken font-medium text-agent-ink' : 'text-agent-ink-muted hover:text-agent-ink'"
+          class="rounded-full px-3.5 py-2.5 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-agent-focus"
+          :class="activeTab === 'all' ? 'bg-agent-surface-sunken/50 font-medium text-agent-ink' : 'text-agent-ink-muted hover:text-agent-ink'"
+          :aria-pressed="activeTab === 'all'"
           @click="activeTab = 'all'"
         >
           <span>{{ t('skills.all') }}</span>
-          <span class="ml-1 opacity-60">{{ counts.all }}</span>
+          <span class="ml-1.5 text-xs text-agent-ink-muted">{{ counts.all }}</span>
         </button>
         <button
-          class="rounded-md px-2.5 py-1.5 transition-colors"
-          :class="activeTab === 'builtin' ? 'bg-agent-surface-sunken font-medium text-agent-ink' : 'text-agent-ink-muted hover:text-agent-ink'"
+          class="rounded-full px-3.5 py-2.5 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-agent-focus"
+          :class="activeTab === 'builtin' ? 'bg-agent-surface-sunken/50 font-medium text-agent-ink' : 'text-agent-ink-muted hover:text-agent-ink'"
+          :aria-pressed="activeTab === 'builtin'"
           @click="activeTab = 'builtin'"
         >
           <span>{{ t('skills.builtinTab') }}</span>
-          <span class="ml-1 opacity-60">{{ counts.builtin }}</span>
+          <span class="ml-1.5 text-xs text-agent-ink-muted">{{ counts.builtin }}</span>
         </button>
         <button
-          class="rounded-md px-2.5 py-1.5 transition-colors"
-          :class="activeTab === 'custom' ? 'bg-agent-surface-sunken font-medium text-agent-ink' : 'text-agent-ink-muted hover:text-agent-ink'"
+          class="rounded-full px-3.5 py-2.5 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-agent-focus"
+          :class="activeTab === 'custom' ? 'bg-agent-surface-sunken/50 font-medium text-agent-ink' : 'text-agent-ink-muted hover:text-agent-ink'"
+          :aria-pressed="activeTab === 'custom'"
           @click="activeTab = 'custom'"
         >
           <span>{{ t('skills.mine') }}</span>
-          <span class="ml-1 opacity-60">{{ counts.custom }}</span>
+          <span class="ml-1.5 text-xs text-agent-ink-muted">{{ counts.custom }}</span>
         </button>
       </div>
 
       <!-- 右侧操作区：搜索框与创建技能按钮 -->
-      <div class="flex items-center gap-2 sm:ml-auto">
-        <div class="relative w-full sm:w-56">
+      <div class="flex w-full items-center gap-3 sm:ml-auto sm:w-auto">
+        <div class="relative min-w-0 flex-1 sm:w-44">
+          <AppIcon name="tabler:search" :size="18" class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-agent-ink-muted" />
           <input
             ref="searchInput"
             v-model="query"
             type="text"
             :aria-label="t('skills.search')"
             :placeholder="t('skills.searchPlaceholder')"
-            class="h-8 w-full rounded-lg border border-agent-border-subtle bg-agent-surface px-2.5 text-xs text-agent-ink placeholder:text-agent-ink-faint focus:border-agent-border focus:outline-none"
+            class="h-11 w-full rounded-xl border border-agent-border-subtle bg-agent-surface/60 pl-9 pr-8 text-sm text-agent-ink placeholder:text-agent-ink-muted focus-visible:outline-2 focus-visible:outline-agent-focus"
           >
           <button
             v-if="query"
             :aria-label="t('skills.clearSearch')"
-            class="absolute inset-y-0 right-0 flex items-center pr-2 text-agent-ink-faint hover:text-agent-ink"
+            class="absolute inset-y-0 right-0 flex w-8 items-center justify-center rounded-lg text-agent-ink-muted hover:text-agent-ink focus-visible:outline-2 focus-visible:outline-agent-focus"
             @click="query = ''"
           >
             <AppIcon name="tabler:x" :size="13" />
@@ -146,10 +171,10 @@ function handleManualEdit() {
           <DropdownMenuTrigger
             :disabled="skills.busy.value"
             :aria-label="t('skills.create')"
-            class="flex h-8 shrink-0 items-center gap-1 rounded-lg bg-agent-ink px-3 text-agent-canvas transition-opacity hover:opacity-90 active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-agent-focus"
+            class="flex h-11 shrink-0 items-center gap-2 rounded-xl bg-agent-ink px-4 text-agent-canvas transition-opacity hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-agent-focus disabled:opacity-50"
           >
-            <AppIcon name="tabler:plus" :size="14" />
-            <span class="text-xs font-medium">{{ t('skills.create') }}</span>
+            <AppIcon name="tabler:plus" :size="19" />
+            <span class="text-sm font-medium">{{ t('skills.create') }}</span>
             <AppIcon name="tabler:chevron-down" :size="12" class="ml-0.5 opacity-70 transition-transform data-[state=open]:rotate-180" />
           </DropdownMenuTrigger>
 
@@ -225,115 +250,153 @@ function handleManualEdit() {
       </button>
     </div>
 
-    <!-- 极简技能列表 -->
-    <ul v-else class="space-y-2.5">
+    <!-- 设置保持紧凑列表，技能页按可用宽度排列卡片。 -->
+    <ul v-else :class="props.manage ? 'space-y-2.5' : 'skills-grid'">
       <li
         v-for="item in filtered"
         :key="item.id"
-        class="group rounded-xl border border-agent-border-subtle bg-agent-surface-raised px-3.5 py-3 transition-colors hover:border-agent-border/60"
-        :class="{ 'opacity-65': item.published && !item.enabled }"
+        class="group rounded-xl border border-agent-border-subtle transition-colors hover:border-agent-border"
+        :class="[props.manage ? 'bg-agent-surface-raised px-3.5 py-3' : 'skill-card relative flex min-w-0 flex-col bg-agent-surface/70 p-5 hover:bg-agent-surface', { 'ring-1 ring-agent-ink/60': detailsOpen && detailItem?.id === item.id }]"
       >
-        <!-- 头部：左侧技能名与标签，右上角操作图标组 -->
-        <div class="flex items-center justify-between gap-3">
-          <div class="flex min-w-0 items-center gap-2">
-            <h3 class="truncate font-mono text-sm font-medium text-agent-ink" :title="item.name">
-              {{ item.name }}
-            </h3>
-            <span class="shrink-0 rounded-md border border-agent-border-subtle bg-agent-surface px-1.5 py-0.5 text-xs text-agent-ink-muted">
-              {{ item.builtin ? t('skills.builtin') : t('skills.personal') }}{{ item.published && !item.enabled ? t('skills.disabledSuffix') : '' }}
+        <template v-if="props.manage">
+          <!-- 头部：左侧技能名与标签，右上角操作图标组 -->
+          <div class="flex items-center justify-between gap-3">
+            <div class="flex min-w-0 items-center gap-2">
+              <h3 class="truncate font-mono text-sm font-medium text-agent-ink" :title="item.name">
+                {{ item.name }}
+              </h3>
+              <span class="shrink-0 rounded-md border border-agent-border-subtle bg-agent-surface px-1.5 py-0.5 text-xs text-agent-ink-muted">
+                {{ item.builtin ? t('skills.builtin') : t('skills.personal') }}{{ item.published && !item.enabled ? t('skills.disabledSuffix') : '' }}
+              </span>
+            </div>
+
+            <!-- 右上角图标操作组：尺寸适中饱满，鼠标 hover 显示对应语义 -->
+            <div class="flex shrink-0 items-center gap-1">
+              <!-- 预览 -->
+              <AppTooltip v-if="item.published" :content="t('skills.preview')">
+                <button
+                  :disabled="skills.busy.value"
+                  :aria-label="t('skills.preview')"
+                  class="flex h-7 w-7 items-center justify-center rounded-lg text-agent-ink-muted transition-colors hover:bg-agent-surface-sunken hover:text-agent-ink focus-visible:outline-2 focus-visible:outline-agent-focus disabled:opacity-50"
+                  @click="skills.showPreview(item)"
+                >
+                  <AppIcon name="tabler:eye" :size="16" />
+                </button>
+              </AppTooltip>
+
+              <!-- 对话使用（普通模式） -->
+              <AppTooltip v-if="item.published && item.enabled" :content="t('skills.useInChat')">
+                <button
+                  :disabled="skills.busy.value"
+                  :aria-label="t('skills.useInChat')"
+                  class="flex h-7 w-7 items-center justify-center rounded-lg text-agent-ink-soft transition-colors hover:bg-agent-surface-sunken hover:text-agent-ink focus-visible:outline-2 focus-visible:outline-agent-focus disabled:opacity-50"
+                  @click="useInChat(item)"
+                >
+                  <AppIcon name="tabler:message-2" :size="16" />
+                </button>
+              </AppTooltip>
+
+              <!-- 个人/自建技能管理操作 -->
+              <template v-if="!item.builtin">
+                <!-- 手动编辑 -->
+                <AppTooltip :content="t('skills.manualEdit')">
+                  <button
+                    :disabled="skills.busy.value"
+                    :aria-label="t('skills.manualEdit')"
+                    class="flex h-7 w-7 items-center justify-center rounded-lg text-agent-ink-muted transition-colors hover:bg-agent-surface-sunken hover:text-agent-ink focus-visible:outline-2 focus-visible:outline-agent-focus"
+                    @click="skills.openEditor(item)"
+                  >
+                    <AppIcon name="tabler:edit" :size="16" />
+                  </button>
+                </AppTooltip>
+
+                <template v-if="deletingId === item.id">
+                  <button
+                    :disabled="skills.busy.value"
+                    class="flex h-7 items-center rounded px-2 py-1 text-red-600 hover:bg-red-500/10 focus-visible:outline-2 focus-visible:outline-agent-focus disabled:opacity-50"
+                    @click="confirmDelete(item)"
+                  >
+                    <span class="text-xs">{{ skills.busy.value ? t('skills.deleting') : t('skills.confirmDelete') }}</span>
+                  </button>
+                  <button
+                    :disabled="skills.busy.value"
+                    class="flex h-7 items-center rounded px-2 py-1 text-agent-ink-muted hover:bg-agent-surface-sunken focus-visible:outline-2 focus-visible:outline-agent-focus disabled:opacity-50"
+                    @click="deletingId = null"
+                  >
+                    <span class="text-xs">{{ t('skills.cancel') }}</span>
+                  </button>
+                </template>
+                <AppTooltip v-else :content="t('skills.delete')">
+                  <button
+                    :disabled="skills.busy.value"
+                    :aria-label="t('skills.delete')"
+                    class="flex h-7 w-7 items-center justify-center rounded-lg text-agent-ink-faint transition-colors hover:bg-red-500/10 hover:text-red-600 focus-visible:outline-2 focus-visible:outline-agent-focus disabled:opacity-50"
+                    @click="deletingId = item.id"
+                  >
+                    <AppIcon name="tabler:trash" :size="16" />
+                  </button>
+                </AppTooltip>
+              </template>
+            </div>
+          </div>
+
+          <!-- 技能描述文本 -->
+          <p
+            class="mt-1.5 truncate text-xs leading-5 text-agent-ink-muted"
+            :title="item.description || t('skills.noDescription')"
+          >
+            {{ item.description || t('skills.noDescription') }}
+          </p>
+        </template>
+        <template v-else>
+          <div class="mb-4 flex items-start justify-between gap-3">
+            <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-agent-surface-sunken/40 text-agent-ink-soft" aria-hidden="true">
+              <AppIcon name="tabler:file-text" :size="22" />
+            </div>
+            <span class="rounded-full bg-agent-surface-sunken/35 px-2.5 py-1 text-xs leading-4 text-agent-ink-muted">
+              {{ item.builtin ? t('skills.builtin') : t('skills.personal') }}{{ !item.enabled ? t('skills.disabledSuffix') : '' }}
             </span>
           </div>
-
-          <!-- 右上角图标操作组：尺寸适中饱满，鼠标 hover 显示对应语义 -->
-          <div class="flex shrink-0 items-center gap-1">
-            <!-- 预览 -->
-            <AppTooltip v-if="item.published" :content="t('skills.preview')">
-              <button
-                :disabled="skills.busy.value"
-                :aria-label="t('skills.preview')"
-                class="flex h-7 w-7 items-center justify-center rounded-lg text-agent-ink-muted transition-colors hover:bg-agent-surface-sunken hover:text-agent-ink focus-visible:outline-2 focus-visible:outline-agent-focus disabled:opacity-50"
-                @click="skills.showPreview(item)"
-              >
-                <AppIcon name="tabler:eye" :size="16" />
-              </button>
-            </AppTooltip>
-
-            <!-- 对话使用（普通模式） -->
-            <AppTooltip v-if="item.published && item.enabled" :content="t('skills.useInChat')">
-              <button
-                :disabled="skills.busy.value"
-                :aria-label="t('skills.useInChat')"
-                class="flex h-7 w-7 items-center justify-center rounded-lg text-agent-ink-soft transition-colors hover:bg-agent-surface-sunken hover:text-agent-ink focus-visible:outline-2 focus-visible:outline-agent-focus disabled:opacity-50"
-                @click="useInChat(item)"
-              >
-                <AppIcon name="tabler:message-2" :size="16" />
-              </button>
-            </AppTooltip>
-
-            <!-- 个人/自建技能管理操作 -->
-            <template v-if="!item.builtin">
-              <!-- 手动编辑 -->
-              <AppTooltip :content="t('skills.manualEdit')">
-                <button
-                  :disabled="skills.busy.value"
-                  :aria-label="t('skills.manualEdit')"
-                  class="flex h-7 w-7 items-center justify-center rounded-lg text-agent-ink-muted transition-colors hover:bg-agent-surface-sunken hover:text-agent-ink focus-visible:outline-2 focus-visible:outline-agent-focus"
-                  @click="skills.openEditor(item)"
-                >
-                  <AppIcon name="tabler:edit" :size="16" />
-                </button>
-              </AppTooltip>
-
-              <!-- 停用 / 启用 -->
-              <AppTooltip v-if="item.published" :content="item.enabled ? t('skills.disable') : t('skills.enable')">
-                <button
-                  :disabled="skills.busy.value"
-                  :aria-label="item.enabled ? t('skills.disable') : t('skills.enable')"
-                  class="flex h-7 w-7 items-center justify-center rounded-lg text-agent-ink-muted transition-colors hover:bg-agent-surface-sunken hover:text-agent-ink focus-visible:outline-2 focus-visible:outline-agent-focus disabled:opacity-50"
-                  @click="skills.manage(item, 'toggle')"
-                >
-                  <AppIcon :name="item.enabled ? 'tabler:player-pause' : 'tabler:player-play'" :size="16" />
-                </button>
-              </AppTooltip>
-
-              <template v-if="deletingId === item.id">
-                <button
-                  :disabled="skills.busy.value"
-                  class="flex h-7 items-center rounded px-2 py-1 text-red-600 hover:bg-red-500/10 focus-visible:outline-2 focus-visible:outline-agent-focus disabled:opacity-50"
-                  @click="confirmDelete(item)"
-                >
-                  <span class="text-xs">{{ skills.busy.value ? t('skills.deleting') : t('skills.confirmDelete') }}</span>
-                </button>
-                <button
-                  :disabled="skills.busy.value"
-                  class="flex h-7 items-center rounded px-2 py-1 text-agent-ink-muted hover:bg-agent-surface-sunken focus-visible:outline-2 focus-visible:outline-agent-focus disabled:opacity-50"
-                  @click="deletingId = null"
-                >
-                  <span class="text-xs">{{ t('skills.cancel') }}</span>
-                </button>
-              </template>
-              <AppTooltip v-else :content="t('skills.delete')">
-                <button
-                  :disabled="skills.busy.value"
-                  :aria-label="t('skills.delete')"
-                  class="flex h-7 w-7 items-center justify-center rounded-lg text-agent-ink-faint transition-colors hover:bg-red-500/10 hover:text-red-600 focus-visible:outline-2 focus-visible:outline-agent-focus disabled:opacity-50"
-                  @click="deletingId = item.id"
-                >
-                  <AppIcon name="tabler:trash" :size="16" />
-                </button>
-              </AppTooltip>
-            </template>
-          </div>
-        </div>
-
-        <!-- 技能描述文本 -->
-        <p
-          class="mt-1.5 truncate text-xs leading-5 text-agent-ink-muted"
-          :title="item.description || t('skills.noDescription')"
-        >
-          {{ item.description || t('skills.noDescription') }}
-        </p>
+          <button
+            :disabled="skills.busy.value"
+            :aria-label="t('skills.drawer.view')"
+            :aria-describedby="`skill-title-${item.id}`"
+            :aria-expanded="detailsOpen && detailItem?.id === item.id"
+            aria-haspopup="dialog"
+            class="absolute inset-0 rounded-xl focus-visible:outline-2 focus-visible:outline-agent-focus disabled:cursor-wait"
+            @click="showDetails(item, $event)"
+          />
+          <h3 :id="`skill-title-${item.id}`" class="skill-name line-clamp-2 text-lg leading-snug text-agent-ink" :title="item.name">
+            {{ item.name }}
+          </h3>
+          <p class="mt-2 line-clamp-2 text-[13px] leading-5 text-agent-ink-muted" :title="item.description || t('skills.noDescription')">
+            {{ item.description || t('skills.noDescription') }}
+          </p>
+        </template>
       </li>
     </ul>
+    <SkillDetailsDrawer v-model:open="detailsOpen" :skill="detailItem" @close-auto-focus="restoreDetailFocus" />
   </div>
 </template>
+
+<style scoped>
+.skills-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr));
+  gap: 16px;
+}
+
+.skill-card {
+  min-height: 176px;
+}
+
+.skill-name {
+  font-family: "Libre Baskerville", Georgia, "Songti SC", "Noto Serif SC", ui-serif, serif;
+  overflow-wrap: anywhere;
+}
+
+.skills-list--manage input {
+  height: 2rem;
+  font-size: 0.75rem;
+}
+</style>

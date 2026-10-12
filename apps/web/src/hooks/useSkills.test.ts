@@ -8,7 +8,7 @@ import { provideSkills } from './useSkills'
 vi.mock('vue', async importOriginal => ({ ...await importOriginal<typeof import('vue')>(), provide: vi.fn() }))
 vi.mock('vue-i18n', () => ({ useI18n: () => ({ t: (key: string) => key, locale: { value: 'zh-CN' } }) }))
 vi.mock('@/api/skills', () => ({ getSkills: vi.fn() }))
-const creator: SkillSummary = { id: 'builtin:skill-creator', name: 'skill-creator', description: '创建', builtin: true, enabled: true, published: true, hasDraft: false, conversationId: null }
+const creator: SkillSummary = { id: 'builtin:skill-creator', name: 'skill-creator', description: '创建', builtin: true, enabled: true, published: true, hasDraft: false, conversationId: null, createdAt: '2026-10-10T00:00:00Z', updatedAt: '2026-10-12T00:00:00Z', usageCount: 0, examples: [] }
 beforeEach(() => {
   vi.resetAllMocks()
   vi.mocked(getSkills).mockResolvedValue([creator])

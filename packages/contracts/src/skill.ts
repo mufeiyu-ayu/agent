@@ -8,6 +8,10 @@ export interface SkillSummary {
   published: boolean
   hasDraft: boolean
   conversationId: string | null
+  createdAt: string
+  updatedAt: string
+  usageCount: number
+  examples: string[]
 }
 export interface SkillPreview extends SkillSummary {
   fingerprint: string

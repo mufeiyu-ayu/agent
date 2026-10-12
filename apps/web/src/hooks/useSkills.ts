@@ -3,7 +3,7 @@ import type { InjectionKey } from 'vue'
 import { isAxiosError } from 'axios'
 import { inject, onScopeDispose, provide, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { createSkill, deleteSkill, enableSkill, getSkill, getSkills, publishSkill, saveSkillDraft } from '@/api/skills'
+import { createSkill, deleteSkill, getSkill, getSkills, publishSkill, saveSkillDraft } from '@/api/skills'
 
 const skillsKey: InjectionKey<ReturnType<typeof provideSkills>> = Symbol('skills')
 
@@ -150,25 +150,20 @@ export function provideSkills(startChat: (skillId: string, prompt?: string) => P
     editorOutcomeUnknown.value = false
   }
 
-  async function manage(item: SkillSummary, action: 'toggle' | 'delete') {
+  async function remove(item: SkillSummary) {
     if (busy.value)
       return false
     busy.value = true
     error.value = ''
     try {
-      if (action === 'toggle') {
-        await enableSkill(item.id, !item.enabled)
-      }
-      else {
-        await deleteSkill(item.id)
-        items.value = items.value.filter(skill => skill.id !== item.id)
-        selectedIds.value = selectedIds.value.filter(id => id !== item.id)
-        if (preview.value?.id === item.id || previewItem.value?.id === item.id)
-          dismissPreview()
-        if (editingSkill.value?.id === item.id)
-          closeEditor()
-      }
-      notifySuccess(t(action === 'delete' ? 'skills.feedback.deleted' : item.enabled ? 'skills.feedback.disabled' : 'skills.feedback.enabled'))
+      await deleteSkill(item.id)
+      items.value = items.value.filter(skill => skill.id !== item.id)
+      selectedIds.value = selectedIds.value.filter(id => id !== item.id)
+      if (preview.value?.id === item.id || previewItem.value?.id === item.id)
+        dismissPreview()
+      if (editingSkill.value?.id === item.id)
+        closeEditor()
+      notifySuccess(t('skills.feedback.deleted'))
       await reload()
       return true
     }
@@ -195,6 +190,10 @@ export function provideSkills(startChat: (skillId: string, prompt?: string) => P
       hasDraft: true,
       draft: true,
       conversationId: null,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      usageCount: 0,
+      examples: [],
       files: [{ path: 'SKILL.md', encoding: 'utf8', content: '---\nname: \ndescription: \n---\n\n' }],
     }
     editorOpen.value = true
@@ -338,7 +337,7 @@ export function provideSkills(startChat: (skillId: string, prompt?: string) => P
     reload,
     showPreview,
     publish,
-    manage,
+    remove,
     start,
     editorOpen,
     editorLoading,

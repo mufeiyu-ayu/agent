@@ -19,6 +19,9 @@ const skill: AdminSkillDetail = {
   conversationId: null,
   fingerprint: 'original',
   updatedAt: '2026-10-12T00:00:00Z',
+  createdAt: '2026-10-10T00:00:00Z',
+  usageCount: 0,
+  examples: [],
   files: [{ path: 'SKILL.md', encoding: 'utf8', content: '---\nname: system-test\ndescription: |\n  用途: 查标题\nlicense: MIT\nmetadata:\n  author: Ayu\n---\n\n原正文' }, { path: 'assets/a.woff', encoding: 'base64', content: 'AQID' }],
 }
 
