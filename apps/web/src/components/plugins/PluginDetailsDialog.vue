@@ -92,7 +92,7 @@ function parseDescription(text: string): { intro: string, items: string[] } {
     }
   }
   return {
-    intro: introLines.join('\n') || text,
+    intro: introLines.join('\n'),
     items,
   }
 }
@@ -308,6 +308,7 @@ function parseDescription(text: string): { intro: string, items: string[] } {
 
                   <!-- 展开时的完整正文描述（无分界线，紧随标题平滑展开） -->
                   <div
+                    v-if="parseDescription(tool.description).intro"
                     class="grid transition-[grid-template-rows] duration-250 ease-out"
                     :class="expandedTools.has(tool.name) ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'"
                   >

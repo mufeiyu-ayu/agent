@@ -22,7 +22,7 @@ export function useSystemPlugins() {
   const controller = new AbortController()
   let alive = true
   let epoch = 0
-  let redirecting = false
+  const redirecting = ref(false)
   async function reload() {
     if (busy.value)
       return
@@ -56,11 +56,13 @@ export function useSystemPlugins() {
       await operation()
     }
     catch (cause) {
-      if (alive)
+      if (alive) {
+        redirecting.value = false
         error.value = formatAdminRunError(cause)
+      }
     }
     finally {
-      if (alive && !redirecting) {
+      if (alive && !redirecting.value) {
         busy.value = false
         if (reloadAfter && !error.value)
           void reload()
@@ -112,20 +114,27 @@ export function useSystemPlugins() {
     if (!plugin)
       return
     await run(async () => {
+      testMessage.value = ''
       const result = await testSystemPlugin(plugin, headers, controller.signal)
       if (!alive)
         return
       replace(result.plugin)
-      testMessage.value = `连接成功，发现 ${result.plugin.tools.length} 个工具。此授权仅属于当前管理员。`
       if (result.authorizationUrl) {
-        redirecting = true
+        redirecting.value = true
         window.location.assign(result.authorizationUrl)
+      }
+      else if (result.plugin.connected) {
+        testMessage.value = `连接成功，发现 ${result.plugin.tools.length} 个工具。此授权仅属于当前管理员。`
+      }
+      else {
+        error.value = '连接尚未完成，请重新测试。'
       }
     })
   }
   function pageShow(event: PageTransitionEvent) {
     if (event.persisted) {
-      redirecting = false
+      redirecting.value = false
+      testMessage.value = ''
       busy.value = false
       void reload()
     }
@@ -150,6 +159,7 @@ export function useSystemPlugins() {
     selected,
     testPlugin,
     testMessage,
+    redirecting,
     reload,
     edit,
     save,

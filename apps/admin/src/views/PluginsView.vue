@@ -311,6 +311,14 @@ function test(plugin: McpPlugin) {
         />
 
         <Alert
+          v-if="p.redirecting.value"
+          type="info"
+          show-icon
+          message="正在跳转授权，完成授权后请重新测试连接。"
+          class="plugin-test-alert"
+        />
+
+        <Alert
           v-if="p.testMessage.value"
           type="success"
           show-icon
