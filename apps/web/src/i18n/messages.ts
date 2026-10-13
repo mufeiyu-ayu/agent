@@ -1,5 +1,6 @@
 export const messages = {
   'zh-CN': {
+    plugins: { title: '插件' },
     skills: {
       conflict: '技能已修改，请重新读取后再保存',
       invalidRequest: '技能请求无效，请检查内容、所选数量和模型输入预算',
@@ -456,6 +457,7 @@ export const messages = {
     },
   },
   'en-US': {
+    plugins: { title: 'Plugins' },
     skills: {
       conflict: 'This skill has changed. Reload it before saving.',
       invalidRequest: 'Invalid skill request. Check its contents, selection count, and model input budget.',

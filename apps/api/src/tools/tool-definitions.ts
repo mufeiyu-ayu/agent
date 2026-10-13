@@ -7,7 +7,7 @@ import { TopuplistTrafficTool, trafficDefinition } from './workspace/topuplist-t
 import { bashDefinition, BashTool, editDefinition, EditTool, readDefinition, ReadTool, writeDefinition, WriteTool } from './workspace/workspace-tools.js'
 
 /**
- * 唯一的工具清单，顺序即暴露给模型的顺序：新增工具在这里加一行，就完成注册与暴露。
+ * 唯一的内置工具清单，顺序即暴露给模型的顺序：新增工具在这里加一行，就完成注册与暴露。
  * 执行器依赖的 Nest 模块与系统提示词里的用法说明另见 `tools/README.md`。
  */
 export const TOOLS = [

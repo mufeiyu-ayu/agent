@@ -16,11 +16,13 @@ Prisma schema 在仓库根 `prisma/`，生成的 client 在 `src/generated/prism
 
 ## 模块
 
+MCP 插件在 `src/mcp/`（见模块 README）：用户凭据和连接按用户隔离，系统目录由管理员维护。动态工具只进入本轮宿主集合，复用 ToolInvocation 与 Step，不能写入全局静态 Registry。
+
 | 目录 | 职责 | 核心文件 |
 | --- | --- | --- |
 | `chat/` | 前台对话入口：DTO、系统提示词、NDJSON 流协议适配 | `chat.controller.ts`（`POST /api/chat/stream`）、`chat.service.ts`、`prompts/` |
 | `agent-runtime/` | `@agent/agent` 的 Nest 宿主：绑定模型/配置快照、产品指南、具体工具与持久事务；核心包持有循环、上下文/压缩、采样与唯一取消状态机 | `agent-runtime.service.ts`（DI 门面）、`agent-runtime-host.ts`（每 Run 能力与工具提交闭包）、`agent-runtime.types.ts`（可信宿主输入）、`context/conversation-history.ts`（REPEATABLE READ SQL）、`context/context-compaction.service.ts`（摘要存储/模型绑定）、`lifecycle/agent-run-recorder.service.ts`（原子发布与终态事务）；细节见目录内 `README.md` |
-| `tools/` | Tool Calling：一次调用的全部判定（截断批次、查找、参数校验、执行、Observation 修剪、`argumentsValidated`）都在 `invoke`，runtime 只记账与回喂；`core/` 是框架，`web/` 是具体工具（`web_search` 经 Serper 查 Google，密钥随运行配置快照经执行上下文传入；`web_fetch` 由服务器直接抓网页，SSRF 检查在 `web/ssrf-guard.ts`，正文提取在 `web/page-text.worker.ts`）；写新工具见目录内 `README.md` | `tool-definitions.ts`（唯一的工具清单）、`core/tool-invocation.service.ts`（`invoke`）、`tools.module.ts`（按清单注册） |
+| `tools/` | Tool Calling：一次调用的全部判定（截断批次、查找、参数校验、执行、Observation 修剪、`argumentsValidated`）都在 `invoke`，runtime 只记账与回喂；`core/` 是框架，`web/` 是具体工具（`web_search` 经 Serper 查 Google，密钥随运行配置快照经执行上下文传入；`web_fetch` 由服务器直接抓网页，SSRF 检查在 `web/ssrf-guard.ts`，正文提取在 `web/page-text.worker.ts`）；写新工具见目录内 `README.md` | `tool-definitions.ts`（唯一的内置工具清单）、`core/tool-invocation.service.ts`（`invoke`）、`tools.module.ts`（按清单注册） |
 | `llm/` | LLM 的 Nest 壳（读侧）：模型行解析、密钥 cipher 唯一持有、前台模型下拉与余额 | `llm.service.ts`（`@agent/ai` 门面）、`llm-model-config.service.ts`（`resolveModel` / `listVisibleModels`）、`api-key-cipher.ts`、`llm-runtime-config.service.ts`（只读 env：主密钥与出站代理，不对外导出）、`outbound-proxy.ts`（`OUTBOUND_PROXY_URL` 解析与代理 agent 构造） |
 | `admin-llm/` | LLM 配置的写侧：服务商 / 模型 CRUD、拉取、探测、导入预设；单次输入上限保存时校验 ≤ 窗口 − 输出上限 − 安全余量 | `admin-llm.service.ts`、`llm-model-presets.ts`（按家族的官方上限与默认强度、安全余量） |
 | `runtime-config/` | 运行配置（#216）：单行表 `RuntimeConfig` 的读写，`GET` / `PATCH /api/admin/runtime-config`；`ChatService` 在写入任何消息前读快照，读不到返回 503，没有 env 兜底 | `runtime-config.service.ts`（`loadSnapshot` / `update`） |

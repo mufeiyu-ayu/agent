@@ -500,12 +500,7 @@ export function toOpenAIChatTool(tool: ModelToolSpec): ChatCompletionTool {
     function: {
       name: tool.name,
       description: tool.description,
-      parameters: {
-        type: tool.inputSchema.type,
-        properties: tool.inputSchema.properties,
-        required: tool.inputSchema.required,
-        additionalProperties: tool.inputSchema.additionalProperties,
-      },
+      parameters: { ...tool.inputSchema },
     },
   }
 }

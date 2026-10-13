@@ -29,8 +29,8 @@ export class AgentRuntimeService {
     @Inject(AttachmentsService) private readonly attachments = new AttachmentsService(prismaService, new AttachmentStorageService()),
   ) {}
 
-  availableTools() {
-    return TOOL_DEFINITIONS
+  availableTools(mcp?: RunTurnStreamInput['mcp']) {
+    return [...TOOL_DEFINITIONS, ...[...(mcp?.tools.values() ?? [])].map(tool => tool.definition)]
       .filter(definition => !this.workspaces || this.workspaces.cloud.configured || !WORKSPACE_TOOL_NAMES.includes(definition.name))
       .map(definition => ({ name: definition.name, description: definition.description, inputSchema: definition.input.schema }))
   }
@@ -52,7 +52,7 @@ export class AgentRuntimeService {
       userContent: input.userContent,
       model: runtimeModel(input.model),
       runtimeConfig: runtimeConfig(input.runtimeConfig),
-      tools: this.availableTools(),
+      tools: this.availableTools(input.mcp),
       instructions: input.instructions,
       ...(input.reasoningEffort === undefined ? {} : { reasoningEffort: input.reasoningEffort }),
       ...(input.signal ? { signal: input.signal } : {}),

@@ -36,6 +36,7 @@ const sections = [
       { path: '/runtime-config', labelKey: 'navigation.runtimeConfig', icon: ControlOutlined },
       { path: '/users', labelKey: 'navigation.users', icon: TeamOutlined },
       { path: '/skills', labelKey: 'navigation.skills', icon: CodeOutlined },
+      { path: '/plugins', labelKey: 'navigation.plugins', icon: CodeOutlined },
     ],
   },
 ]

@@ -46,6 +46,7 @@ const { t } = useI18n()
 const router = useRouter()
 const route = useRoute()
 const isSkillsPage = computed(() => route.name === 'skills')
+const isLibraryPage = computed(() => isSkillsPage.value || route.name === 'plugins')
 const { currentUser, signOut } = useAuth()
 
 const user = computed<AgentPlatformUser>(() => currentUser.value
@@ -57,7 +58,7 @@ const {
 } = useWorkspaceTheme()
 
 const navigationItems = computed<AgentNavigationItem[]>(() => {
-  return [{ id: 'skills', label: t('skills.title'), icon: 'tabler:script', active: isSkillsPage.value }, ...navigationConfig.map(item => ({
+  return [{ id: 'skills', label: t('skills.title'), icon: 'tabler:script', active: isSkillsPage.value }, { id: 'plugins', label: t('plugins.title'), icon: 'tabler:plug', active: route.name === 'plugins' }, ...navigationConfig.map(item => ({
     id: item.id,
     label: t(item.labelKey),
     icon: item.icon,
@@ -113,7 +114,7 @@ const {
   onConversationDeleted: clearDeletedConversation,
 })
 
-const sidebarChats = computed(() => recentChats.value.map(chat => ({ ...chat, active: !isSkillsPage.value && chat.active })))
+const sidebarChats = computed(() => recentChats.value.map(chat => ({ ...chat, active: !isLibraryPage.value && chat.active })))
 
 const {
   add: addAttachments,
@@ -147,7 +148,7 @@ const skills = provideSkills(async (skillId, prompt) => {
 }, text => showMessage(text, 'success'))
 const conversationSkillDrafts = ref<SkillSummary[]>([])
 const conversationDraftError = ref('')
-watch([activeConversationId, status, isSkillsPage, isLoadingMessages], async ([id, currentStatus, onSkills, loading], _previous, onCleanup) => {
+watch([activeConversationId, status, isLibraryPage, isLoadingMessages], async ([id, currentStatus, onSkills, loading], _previous, onCleanup) => {
   conversationSkillDrafts.value = []
   conversationDraftError.value = ''
   if (!id || onSkills || loading || currentStatus === 'thinking' || currentStatus === 'generating')
@@ -519,13 +520,14 @@ function send() {
     @logout="logout"
     @new-chat="newChat"
     @open-skills="router.push({ name: 'skills' })"
+    @open-plugins="router.push({ name: 'plugins' })"
     @refresh-balance="refreshBalance"
     @rename-chat="renameConversationById"
     @select-chat="openConversation"
   >
     <SkillsDialog />
     <SkillEditorDialog />
-    <RouterView v-if="isSkillsPage" />
+    <RouterView v-if="isLibraryPage" />
     <Teleport to="body">
       <AppMessage
         :visible="appMessage.visible"
@@ -534,7 +536,7 @@ function send() {
         @close="hideMessage"
       />
     </Teleport>
-    <div v-show="!isSkillsPage" ref="workspaceElement" class="relative flex min-h-0 min-w-0 flex-1 overflow-hidden">
+    <div v-show="!isLibraryPage" ref="workspaceElement" class="relative flex min-h-0 min-w-0 flex-1 overflow-hidden">
       <SplitterGroup direction="horizontal" class="relative z-10 min-h-0 flex-1" @layout="onPreviewLayout">
         <SplitterPanel
           id="chat"

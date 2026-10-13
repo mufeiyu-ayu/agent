@@ -2,12 +2,13 @@ import type { ChatStreamEvent, ReasoningEffort } from '@agent/contracts'
 import type { ChatDto } from './dto/chat.dto.js'
 import { estimateRequestTokens } from '@agent/agent'
 import { BadRequestException, Inject, Injectable, Optional } from '@nestjs/common'
-
 import { AgentRuntimeService } from '../agent-runtime/agent-runtime.service.js'
+
 import { AttachmentsService } from '../attachments/attachments.service.js'
 import { ConversationsService } from '../conversations/conversations.service.js'
 import { LlmModelConfigService } from '../llm/llm-model-config.service.js'
 import { LlmModelUnavailableError } from '../llm/llm.errors.js'
+import { McpService } from '../mcp/mcp.service.js'
 import { RuntimeConfigService } from '../runtime-config/runtime-config.service.js'
 import { SkillsService } from '../skills/skills.service.js'
 import { skillRoot } from '../tools/skill-tools.js'
@@ -31,6 +32,7 @@ export class ChatService {
     private readonly runtimeConfigService: RuntimeConfigService,
     @Optional() @Inject(AttachmentsService) private readonly attachments?: AttachmentsService,
     @Optional() @Inject(SkillsService) private readonly skills?: SkillsService,
+    @Optional() @Inject(McpService) private readonly mcp?: McpService,
   ) {}
 
   /**
@@ -52,6 +54,7 @@ export class ChatService {
     // 与模型行一样是本次问答的快照：后台修改对下一次问答生效。
     const runtimeConfig = await this.runtimeConfigService.loadSnapshot()
     const skills = await this.skills?.snapshot(userId, input.skillIds)
+    const mcp = await this.mcp?.snapshot(userId, options.signal)
     const instructions = buildAgentInstructions(new Date())
     if (skills) {
       instructions.push({ type: 'message', role: 'system', content: skills.catalogInstruction })
@@ -61,11 +64,11 @@ export class ChatService {
       }
     }
 
-    if (skills?.selected.length && estimateRequestTokens({
+    if ((skills?.selected.length || mcp?.tools.size) && estimateRequestTokens({
       items: [...instructions, { type: 'message', role: 'user', content: input.message }],
-      tools: this.agentRuntimeService.availableTools(),
+      tools: this.agentRuntimeService.availableTools(mcp),
     }) > model.maxInputTokens) {
-      throw new BadRequestException('所选技能内容超过当前模型的输入预算，请减少技能数量、缩短技能正文或选择更大上下文的模型')
+      throw new BadRequestException('技能或插件工具超过当前模型的输入预算，请减少所选技能、停用部分插件或选择更大上下文的模型')
     }
 
     return this.mapRuntimeEvents(this.agentRuntimeService.runTurnStream({
@@ -82,6 +85,7 @@ export class ChatService {
       /** 系统提示词：日期取收到请求的时刻，与 Run 创建时间只差毫秒 */
       instructions,
       ...(skills ? { skills } : {}),
+      ...(mcp ? { mcp } : {}),
     }))
   }
 

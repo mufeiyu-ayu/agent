@@ -22,6 +22,8 @@ scripts/record-tool-call-stream-fixtures.ts  # 一次性手动录制脚本：用
 
 ## 不变量
 
+- 模型工具支持远端 MCP 的完整对象 JSON Schema，`toOpenAIChatTool` 保留组合、引用定义等字段；参数执行校验属于 API 工具层，不能在协议转换时静默裁成内置工具的有限字段。
+
 - 出口不在本包决定：`fetchOptions`（如 undici `dispatcher`，由 api 按服务商的代理勾选构造）原样交给 SDK，本包不依赖 undici、不读代理环境变量。
 - 只有一套 wire 协议（Chat Completions）；直连 Anthropic / Gemini 原生接口时才加第二套，现在不做。
 - 家族差异只读 `@agent/contracts` 的 compat 表（`LlmFamilyCompat`）：`thinkingFormat='deepseek'` 才发 `thinking`（默认 enabled，请求的 `thinking: 'disabled'` 发 disabled，写上下文摘要时用）；`requiresReasoningContent` 为真时 assistant 消息都带 `reasoning_content`：续轮的 Tool Call 消息回填本轮推理，模型没思考时回空串（缺字段官方端点 400），历史回放的 assistant 回复给空串（官方文档要求带 tools 时历史轮也带），其他家族空就不写；`toolCallIndexOptional` / `toolCallsMayFinishWithStop` 为真时（目前只有 gemini）分片缺 index 取还没被占用的最小槽位、显式 index 固定映射到同一槽位（`ToolCallSlots`，谁先到都不撞号，debug tee 共用）、带 Tool Call 的 stop 归一成 tool_calls，其余家族缺 index 或 stop 带调用都报错；`reasoning_effort` 任何家族配置了就发。

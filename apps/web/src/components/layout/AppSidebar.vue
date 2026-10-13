@@ -44,6 +44,7 @@ const emit = defineEmits<{
   newChat: []
   openSettings: []
   openSkills: []
+  openPlugins: []
   refreshBalance: []
   renameChat: [chatId: string, title: string]
   selectChat: [chatId: string]
@@ -162,7 +163,7 @@ function handleBalanceSelect(event: Event) {
           collapsed ? 'justify-center px-0' : 'gap-2.5 px-2.5',
           item.active ? 'bg-agent-surface-sunken/60 font-medium text-agent-ink' : 'font-normal',
         ]"
-        @click="item.id === 'skills' ? emit('openSkills') : item.id === 'settings' ? openSettings() : undefined"
+        @click="item.id === 'skills' ? emit('openSkills') : item.id === 'plugins' ? emit('openPlugins') : item.id === 'settings' ? openSettings() : undefined"
       >
         <AppIcon
           :name="item.icon"

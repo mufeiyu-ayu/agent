@@ -37,7 +37,7 @@ export class ToolInvocationService {
       }, false)
     }
 
-    const tool = this.registry.get(envelope.toolName)
+    const tool = envelope.toolName.startsWith('mcp_') ? context.mcpTools?.get(envelope.toolName) : this.registry.get(envelope.toolName)
 
     if (!tool) {
       return toInvocationResult({
@@ -84,6 +84,9 @@ export class ToolInvocationService {
     input: unknown,
     context: ToolExecutionContext,
   ): Promise<ToolResult> {
+    const timeoutContent = context.mcpTools?.has(envelope.toolName)
+      ? `工具 ${envelope.toolName} 执行超时，远端结果未知；若涉及写入，不要自动重复执行同一操作，请先核查结果。`
+      : `工具 ${envelope.toolName} 执行超时。`
     // 将校验后的输入与服务端工具名组装为执行器唯一允许接收的可信调用。
     const invocation: ValidatedToolInvocation = {
       toolName: tool.definition.name,
@@ -164,7 +167,7 @@ export class ToolInvocationService {
           return {
             ok: false,
             code: 'timeout',
-            modelContent: `工具 ${envelope.toolName} 执行超时。`,
+            modelContent: timeoutContent,
           }
 
         case 'result':
@@ -180,7 +183,7 @@ export class ToolInvocationService {
             return {
               ok: false,
               code: 'timeout',
-              modelContent: `工具 ${envelope.toolName} 执行超时。`,
+              modelContent: timeoutContent,
             }
           }
 

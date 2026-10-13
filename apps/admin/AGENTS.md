@@ -12,6 +12,8 @@ views 组合 -> features/<领域>/ 的 state + api + components -> features/shar
 
 ## 目录
 
+系统插件入口 `/plugins`，`views/PluginsView.vue` 组合 `features/mcp/` 的表单、请求和状态。管理员测试使用自己的连接，不广播测试凭据；用户个人连接不作为系统目录配置回显。
+
 | 目录 | 职责 | 核心文件 |
 | --- | --- | --- |
 | `views/` | 每个路由一个页面，只做组合 | `RunDetailView.vue`、`LlmModelsView.vue`、`SkillsView.vue` |

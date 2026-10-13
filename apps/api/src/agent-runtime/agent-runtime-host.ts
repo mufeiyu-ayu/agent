@@ -81,9 +81,10 @@ export function createRuntimeHost(input: RunTurnStreamInput, deps: {
       ...runRecorder(recorder),
       startStep: async (step, deadline) => ({ id: (await recorder.startStep({
         ...step,
-        ...(step.type === 'model_sampling' && (input.skills || guideStepId)
+        ...(step.type === 'model_sampling' && (input.skills || input.mcp || guideStepId)
           ? { input: {
               ...step.input,
+              ...(input.mcp ? { mcp: input.mcp.snapshot as unknown as Prisma.InputJsonObject[] } : {}),
               ...(input.skills ? { skills: { entries: input.skills.entries, selectedIds: input.skills.selected.map(selected => selected.id), instructions: input.instructions } as unknown as Prisma.InputJsonObject } : {}),
               ...(guideStepId ? { workspaceDevelopment: { version: WORKSPACE_DEVELOPMENT_VERSION, stepId: guideStepId } } : {}),
             } }
@@ -140,6 +141,7 @@ export function createRuntimeHost(input: RunTurnStreamInput, deps: {
         databaseDeadline: context.databaseDeadline,
         argumentsTruncated: context.argumentsTruncated,
         workspaceGuideRequired: guideRequired,
+        ...(input.mcp ? { mcpTools: input.mcp.tools } : {}),
         serperApiKey: input.runtimeConfig.serperApiKey,
         ...(runSkills ? { skills: runSkills } : {}),
         ...(input.userId ? { workspace: { userId: input.userId, conversationId: context.conversationId, runId: context.runId, deadlineAt: context.databaseDeadline.deadlineAt } } : {}),

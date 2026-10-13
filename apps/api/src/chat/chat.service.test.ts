@@ -2,6 +2,7 @@ import type { AgentRuntimeEvent, AgentRuntimeRunFailedEvent } from '@agent/agent
 import type { RunTurnStreamInput } from '../agent-runtime/agent-runtime.types.js'
 import type { ConversationsService } from '../conversations/conversations.service.js'
 import type { LlmModelConfigService } from '../llm/llm-model-config.service.js'
+import type { McpService, RunMcpTools } from '../mcp/mcp.service.js'
 import type { RuntimeConfigService } from '../runtime-config/runtime-config.service.js'
 import type { SkillsService } from '../skills/skills.service.js'
 import assert from 'node:assert/strict'
@@ -24,6 +25,18 @@ const RESOLVED_MODEL = createResolvedLlmModel()
 const RUNTIME_CONFIG = createRuntimeConfigSnapshot({ limits: { runDeadlineMs: 30_000 } })
 
 describe('ChatService', () => {
+  it('只有插件没有技能时仍在建消息前按本轮真实工具规格拒绝超预算输入', async () => {
+    const runtime = new FakeAgentRuntimeService([runCompletedEvent('完成')])
+    let description = 'x'.repeat(200_000)
+    const mcp = { snapshot: async () => ({ tools: new Map([['mcp_test', { definition: { name: 'mcp_test', description, input: { schema: { type: 'object', properties: {}, required: [], additionalProperties: false }, parse: (value: unknown) => value }, timeoutMs: 1000, maxObservationChars: 1000, version: '1' }, executor: { execute: async () => ({ ok: true, modelContent: 'ok' }) } }]]), snapshot: [] } as RunMcpTools) }
+    runtime.availableTools = (input?: RunMcpTools) => AgentRuntimeService.prototype.availableTools.call({ workspaces: { cloud: { configured: false } } } as unknown as AgentRuntimeService, input)
+    const service = new ChatService(runtime as unknown as AgentRuntimeService, { resolveModel: async () => ({ ...RESOLVED_MODEL, maxInputTokens: 10000 }) } as unknown as LlmModelConfigService, { assertOwnConversation: async () => {} } as unknown as ConversationsService, { loadSnapshot: async () => RUNTIME_CONFIG } as unknown as RuntimeConfigService, undefined, undefined, mcp as unknown as McpService)
+    await assert.rejects(service.chatStream('user-1', createInput()), /输入预算/)
+    assert.equal(runtime.inputs.length, 0)
+    description = '短工具说明'
+    await collectEvents(await service.chatStream('user-1', createInput()))
+    assert.equal(runtime.inputs[0]?.mcp?.tools.size, 1)
+  })
   it('显式技能正文超出固定输入预算时在创建运行前拒绝，短技能仍可使用', async () => {
     const runtime = new FakeAgentRuntimeService([runCompletedEvent('完成')])
     let content = '检查标题'

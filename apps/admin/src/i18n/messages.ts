@@ -43,6 +43,7 @@ export const messages = {
       system: '系统管理',
       users: '用户列表',
       skills: '系统技能',
+      plugins: '系统插件',
       notFound: '页面不存在',
       expandSidebar: '展开侧边栏',
       collapseSidebar: '折叠侧边栏',

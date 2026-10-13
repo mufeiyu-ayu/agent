@@ -22,6 +22,8 @@ src/admin-conversation.ts / src/admin-overview.ts   # 管理台其他读模型
 
 ## 约束
 
+`src/mcp.ts`：系统/个人 MCP 插件、认证类型、配置输入、连接反馈和工具目录。对外详情没有用户密钥/令牌或 OAuth Client Secret，仅提供是否配置的标记。
+
 - 改这里等于改协议：api 的 DTO、web / admin 的调用都要跟着看一遍，`pnpm typecheck` 全仓跑。
 - 取值表（家族、强度、状态枚举）以这里为准，api 的 DTO 用它做 `IsIn`，前端用它渲染选项，不各自再抄一份。
 - `package.json` 的 `exports` 里 `types` 指向 `src`、`import` 指向 `dist`：其他包的 typecheck 读 src，api 运行时与 web / admin 的 Vite（含 e2e）读 dist；测试经 Vitest 别名直接读 src，不需要先 build。`pnpm dev` 会 watch 本包并重建 dist。

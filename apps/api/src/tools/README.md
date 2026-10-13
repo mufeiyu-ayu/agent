@@ -8,7 +8,7 @@ Tool Calling 的框架与具体工具。一次工具调用的全部判定都在 
 | --- | --- |
 | `core/` | 框架，与具体工具无关：类型（`tool.types.ts`）、Registry、`invoke`；Observation 修剪（`normalizeToolObservation`）与调用 / 显示契约在 `@agent/agent` 的 `src/tools/` |
 | `web/` | 具体工具，每个工具的定义、执行器、参数解析与结果拼装在一个文件：`web-search.tool.ts`（经 Serper 查 Google）、`web-fetch.tool.ts`（服务器直接抓网页）；只给 `web_fetch` 用的两个文件：`ssrf-guard.ts`（SSRF 检查）、`page-text.worker.ts`（在 worker 线程里用 Readability 提取正文） |
-| `tool-definitions.ts` | 唯一的工具清单 `TOOLS`（定义 + 执行器类）；`TOOL_DEFINITIONS` 由它派生 |
+| `tool-definitions.ts` | 唯一的内置工具清单 `TOOLS`（定义 + 执行器类）；`TOOL_DEFINITIONS` 由它派生 |
 | `tools.module.ts` | 按清单把执行器放进 providers，`onModuleInit` 时成对注册进 Registry |
 
 ## 一次调用
@@ -43,3 +43,5 @@ runtime：result 定 Step 的 ok / code；argumentsValidated 定回喂参数的�
 `invoke` 自己的分支（截断批次、查找、超时、脱敏、`argumentsValidated`）在 `core/tool-invocation.service.test.ts`，新工具不用重复测。测试文件按命名放好就会被 `pnpm --filter @agent/api test` 运行，不用登记；写法见 `docs/testing.md`。
 
 `skill-tools.ts`：read_skill 分页读取本轮授权包，read_skill_draft 读取本人草稿，save_skill_draft 保存待确认包；没有发布工具。SkillsModule 提供云端存储与权限，纯文本读取不进入工作区工具指南。
+
+`mcp_*` 工具只从宿主提供的本轮 `mcpTools` 查找，普通内置工具仍从 Registry 查找；两者共用 invoke 的校验、deadline 和 observation。远端调用由 `mcp/` 执行前再核对个人连接，不把模型生成的工具名当作授权。
