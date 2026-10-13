@@ -2,12 +2,10 @@
 import type { McpPlugin, ReasoningEffort } from '@agent/contracts'
 import type { ChatSlashItem, ComposerAttachment, GenerationStatus } from '../../types/chat'
 import type { LlmModelOption } from '../../types/llm'
-
 import { CHAT_MESSAGE_MAX_CHARS } from '@agent/contracts'
 import { useEventListener } from '@vueuse/core'
 import { computed, nextTick, ref, toRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-
 import ChatAttachMenu from '@/components/chat/ChatAttachMenu.vue'
 import ChatComposerAttachments from '@/components/chat/ChatComposerAttachments.vue'
 import ChatModelMenu from '@/components/chat/ChatModelMenu.vue'
@@ -20,6 +18,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { useAutosizeTextarea } from '@/hooks/useAutosizeTextarea'
 import { useSkills } from '@/hooks/useSkills'
 import { ATTACHMENT_ACCEPT } from '@/utils/attachments'
+import { pluginText } from '@/utils/plugin-text'
 
 const props = defineProps<{
   message: string
@@ -65,7 +64,7 @@ const emit = defineEmits<{
   'retryHistory': []
 }>()
 
-const { t } = useI18n()
+const { locale, t } = useI18n()
 
 const PLACEHOLDER_HINT_KEYS = ['ask', 'search'] as const
 
@@ -164,13 +163,19 @@ const availableSkills = computed(() => {
 })
 
 const slashItems = computed<ChatSlashItem[]>(() => {
-  if (slashQuery.value === null)
+  const query = slashQuery.value
+  if (query === null)
     return []
   const items: ChatSlashItem[] = [
     ...availableSkills.value.map(skill => ({ kind: 'skill' as const, id: skill.id, name: skill.name, description: skill.description })),
     ...(props.availablePlugins ?? []).map(plugin => ({ kind: 'plugin' as const, id: plugin.id, name: plugin.name, description: plugin.description, icon: plugin.icon })),
   ]
-  return items.filter(item => !slashQuery.value || item.name.toLowerCase().includes(slashQuery.value) || item.description.toLowerCase().includes(slashQuery.value))
+  return items.filter((item) => {
+    const translated = item.kind === 'plugin'
+      ? `${pluginText(item, 'name', locale.value)} ${pluginText(item, 'description', locale.value)}`
+      : ''
+    return `${item.name} ${item.description} ${translated}`.toLowerCase().includes(query)
+  })
 })
 watch(() => slashQuery.value !== null, (open) => {
   if (open)
@@ -385,8 +390,8 @@ useEventListener(window, 'drop', (event) => {
               <span v-if="plugins?.length" class="inline-flex shrink-0 flex-wrap items-center gap-1.5" data-composer-plugins>
                 <span v-for="plugin in plugins" :key="plugin.id" class="inline-flex items-center gap-1.5 font-medium text-[#b86e28] select-none dark:text-[#e09b52]">
                   <AppIcon name="tabler:plug" :size="16" class="shrink-0 text-[#c8a875] dark:text-[#dec293]" />
-                  <span>{{ plugin.name }}</span>
-                  <button type="button" :aria-label="t('plugins.removeSelection', { name: plugin.name })" class="rounded hover:bg-agent-ink/5" @click="emit('removePlugin', plugin.id)">
+                  <span>{{ pluginText(plugin, 'name', locale) }}</span>
+                  <button type="button" :aria-label="t('plugins.removeSelection', { name: pluginText(plugin, 'name', locale) })" class="rounded hover:bg-agent-ink/5" @click="emit('removePlugin', plugin.id)">
                     <AppIcon name="tabler:x" :size="12" />
                   </button>
                 </span>

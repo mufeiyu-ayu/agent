@@ -1,14 +1,12 @@
 <script setup lang="ts">
 import type { ChatAttachment } from '../../types/chat'
-
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-
 import AppIcon from '@/components/common/AppIcon.vue'
 import AppTooltip from '@/components/common/AppTooltip.vue'
 import { useCopyFeedback } from '@/hooks/useCopyFeedback'
+import { pluginText } from '@/utils/plugin-text'
 import { formatMessageTime } from '@/utils/time-format'
-
 import AgentAttachmentPreview from './AgentAttachmentPreview.vue'
 import AgentMessageAttachments from './AgentMessageAttachments.vue'
 
@@ -69,7 +67,7 @@ function copyMessage(event: MouseEvent) {
       </span><span v-if="plugins?.length" class="inline-flex flex-wrap items-center gap-1.5 mr-2 align-middle select-none" data-message-plugins>
         <span v-for="plugin in plugins" :key="plugin.id" class="inline-flex items-center gap-1.5 font-medium text-[#b86e28] dark:text-[#e09b52]">
           <AppIcon name="tabler:plug" :size="16" class="shrink-0 text-[#c8a875] dark:text-[#dec293]" />
-          <span>{{ plugin.name }}</span>
+          <span>{{ pluginText(plugin, 'name', locale) }}</span>
         </span>
       </span><span>{{ text }}</span>
     </div>

@@ -9,8 +9,9 @@ import PluginEditorDialog from '@/components/plugins/PluginEditorDialog.vue'
 import { dropdownMenuOptionClass, dropdownMenuPanelClass } from '@/components/ui/dropdown-menu'
 import { usePlugins } from '@/hooks/usePlugins'
 import { pluginIconName } from '@/utils/plugin-icon-name'
+import { pluginText } from '@/utils/plugin-text'
 
-const { t } = useI18n()
+const { locale, t } = useI18n()
 
 const p = usePlugins()
 const search = ref('')
@@ -41,7 +42,7 @@ const filtered = computed(() =>
   p.items.value.filter(
     item =>
       item.system === (tab.value === 'system')
-      && `${item.name} ${item.description}`.toLowerCase().includes(search.value.trim().toLowerCase()),
+      && `${item.name} ${item.description} ${pluginText(item, 'name', locale.value)} ${pluginText(item, 'description', locale.value)}`.toLowerCase().includes(search.value.trim().toLowerCase()),
   ),
 )
 </script>
@@ -159,8 +160,8 @@ const filtered = computed(() =>
               <AppIcon v-else :name="pluginIconName(plugin.id)" :size="23" />
             </span>
             <span class="min-w-0 flex-1">
-              <span class="block truncate text-sm font-medium text-agent-ink">{{ plugin.name }}</span>
-              <span class="mt-1 block truncate text-xs text-agent-ink-muted">{{ plugin.description || plugin.url }}</span>
+              <span class="block truncate text-sm font-medium text-agent-ink">{{ pluginText(plugin, 'name', locale) }}</span>
+              <span class="mt-1 block truncate text-xs text-agent-ink-muted">{{ pluginText(plugin, 'description', locale) || plugin.url }}</span>
             </span>
             <AppIcon v-if="!plugin.connected && !plugin.needsAuth" name="tabler:plus" :size="19" class="shrink-0 text-agent-ink-muted" />
           </button>
@@ -168,7 +169,7 @@ const filtered = computed(() =>
             <DropdownMenuTrigger
               :disabled="p.busy.value"
               :aria-label="t('plugins.actions')"
-              :title="t('plugins.actionsFor', { name: plugin.name })"
+              :title="t('plugins.actionsFor', { name: pluginText(plugin, 'name', locale) })"
               class="mr-2 flex size-7 shrink-0 items-center justify-center rounded-full text-agent-ink-muted hover:bg-agent-surface-sunken focus-visible:outline-2 focus-visible:outline-agent-focus disabled:opacity-40 data-[state=open]:bg-agent-surface-sunken"
             >
               <AppIcon name="tabler:dots" :size="18" />

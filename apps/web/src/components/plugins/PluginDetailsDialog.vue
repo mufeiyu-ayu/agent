@@ -5,6 +5,7 @@ import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import AppIcon from '@/components/common/AppIcon.vue'
 import { pluginIconName } from '@/utils/plugin-icon-name'
+import { pluginText } from '@/utils/plugin-text'
 
 const props = defineProps<{
   plugin: McpPlugin | null
@@ -24,7 +25,7 @@ const emit = defineEmits<{
   remove: []
 }>()
 
-const { t } = useI18n()
+const { locale, t } = useI18n()
 
 const connecting = computed(() => !props.plugin?.connected || props.plugin.needsAuth)
 const headers = ref<Record<string, string>>({})
@@ -120,7 +121,7 @@ function parseDescription(text: string): { intro: string, items: string[] } {
           <div class="min-w-0 flex-1 pt-0.5">
             <div class="flex flex-wrap items-center gap-2">
               <DialogTitle class="tracking-tight text-agent-ink" :class="connecting ? 'text-lg font-semibold' : 'text-xl font-bold'">
-                {{ plugin.name }}
+                {{ pluginText(plugin, 'name', locale) }}
               </DialogTitle>
               <span
                 v-if="plugin.connected"
@@ -135,7 +136,7 @@ function parseDescription(text: string): { intro: string, items: string[] } {
               </span>
             </div>
             <DialogDescription class="mt-1.5 text-agent-ink-muted" :class="connecting ? 'text-xs leading-5' : 'text-sm leading-relaxed'">
-              {{ plugin.description || t('plugins.detailsFallback') }}
+              {{ pluginText(plugin, 'description', locale) || t('plugins.detailsFallback') }}
             </DialogDescription>
             <div class="mt-2 flex items-center gap-1.5 text-xs text-agent-ink-muted/80">
               <AppIcon name="tabler:link" :size="14" class="shrink-0" />

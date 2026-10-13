@@ -1,6 +1,6 @@
 import type { ConversationMessage, McpPlugin, SkillSummary } from '@agent/contracts'
 import assert from 'node:assert/strict'
-import { test } from '@playwright/test'
+import { expect, test } from '@playwright/test'
 import { CONVERSATION_ID, installApiRoutes, installBrowserStubs } from './fixtures'
 
 const plugin: McpPlugin = {
@@ -177,4 +177,27 @@ test('英文聊天中所选插件已失效时显示英文并保留输入供修�
   await page.getByText('The selected plugin is no longer available. Check its connection and enabled status, then select it again.', { exact: true }).first().waitFor({ timeout: 3000 })
   assert.equal(await page.locator('textarea').inputValue(), 'Find Firebase docs')
   assert.match((await page.locator('[data-composer-plugins]').textContent())!, /Google/)
+})
+
+
+test('英文内置插件候选、选择和消息标签一致，请求仍提交原始插件 ID', async ({ page }) => {
+  await setup(page)
+  await page.route('**/api/mcp', route => route.fulfill({ json: { success: true, code: 0, data: [{
+    ...plugin,
+    id: 'google-developer-knowledge',
+    description: '搜索和阅读 Google 官方开发文档，查询 API 用法与开发指南。',
+  }] } }))
+  await page.addInitScript(() => localStorage.setItem('agent-web-locale', 'en-US'))
+  await page.reload()
+  const textarea = page.locator('textarea')
+  await textarea.fill('/development guides')
+  const option = page.getByRole('option', { name: /Google Developer Knowledge/ })
+  await expect(option).toContainText('Search and read official Google developer documentation')
+  await option.click()
+  await expect(page.locator('[data-composer-plugins]')).toHaveText('Google Developer Knowledge')
+  await textarea.fill('Search Firebase docs')
+  await textarea.press('Enter')
+  await expect(page.locator('[data-message-plugins]')).toHaveText('Google Developer Knowledge')
+  const requests = await page.evaluate(() => window.__chatRequests) as Array<{ pluginIds: string[] }>
+  assert.deepEqual(requests[0]!.pluginIds, ['google-developer-knowledge'])
 })

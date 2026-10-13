@@ -1,6 +1,24 @@
 export const messages = {
   'zh-CN': {
     plugins: {
+      builtins: {
+        'google-developer-knowledge': {
+          name: 'Google 开发文档',
+          description: '搜索和阅读 Google 官方开发文档，查询 API 用法与开发指南。',
+        },
+        'github': {
+          name: 'GitHub',
+          description: '查询和管理代码仓库、Issue 与 Pull Request。由平台配置 OAuth 应用后，使用你的 GitHub 账号授权。',
+        },
+        'cloudflare': {
+          name: 'Cloudflare',
+          description: '连接你的 Cloudflare 账号，查询和管理 DNS、Workers、R2 等服务，授权时选择允许访问的权限。',
+        },
+        'gmail': {
+          name: 'Gmail',
+          description: '搜索和阅读邮件、创建草稿及管理标签。Google 官方 MCP 当前要求 Workspace Developer Preview 资格，由平台配置 OAuth 应用。',
+        },
+      },
       title: '插件',
       slashLabel: '技能与插件',
       selectionUnavailable: '所选插件已不可用，请检查连接和启用状态后重新选择',
@@ -562,6 +580,24 @@ export const messages = {
   },
   'en-US': {
     plugins: {
+      builtins: {
+        'google-developer-knowledge': {
+          name: 'Google Developer Knowledge',
+          description: 'Search and read official Google developer documentation, API references, and development guides.',
+        },
+        'github': {
+          name: 'GitHub',
+          description: 'Find and manage repositories, issues, and pull requests. Connect your GitHub account once the platform has configured its OAuth app.',
+        },
+        'cloudflare': {
+          name: 'Cloudflare',
+          description: 'Connect your Cloudflare account to query and manage DNS, Workers, R2, and more. Choose which permissions to grant during authorization.',
+        },
+        'gmail': {
+          name: 'Gmail',
+          description: 'Search and read email, create drafts, and manage labels. Google’s official MCP currently requires Workspace Developer Preview access and a platform-configured OAuth app.',
+        },
+      },
       title: 'Plugins',
       slashLabel: 'Skills and plugins',
       selectionUnavailable: 'The selected plugin is no longer available. Check its connection and enabled status, then select it again.',

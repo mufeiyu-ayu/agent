@@ -373,3 +373,22 @@ test('英文连接详情、快捷菜单和未知提交反馈完整，私人删�
   await expect(dialog.getByRole('alert')).toContainText('request outcome is unknown')
   await expect(dialog.getByRole('alert')).toContainText('Refresh and check')
 })
+
+
+test('内置默认名称和简介随语言切换，英文搜索及详情一致，自定义文案保留', async ({ page }) => {
+  await setup(page, false, [
+    { ...initial, description: '搜索和阅读 Google 官方开发文档，查询 API 用法与开发指南。' },
+    { ...initial, id: 'github', name: '团队 GitHub', description: '管理员自己的介绍' },
+  ])
+  await expect(page.getByRole('button', { name: /^Google 开发文档/ })).toBeVisible()
+  await page.addInitScript(() => localStorage.setItem('agent-web-locale', 'en-US'))
+  await page.reload()
+  await expect(page.getByRole('button', { name: /^Google Developer Knowledge/ })).toContainText('Search and read official Google developer documentation')
+  await expect(page.getByRole('button', { name: /^团队 GitHub/ })).toContainText('管理员自己的介绍')
+  await page.getByRole('searchbox').fill('development guides')
+  await expect(page.locator('[data-plugin-id]')).toHaveCount(1)
+  await page.getByRole('button', { name: /^Google Developer Knowledge/ }).click()
+  const dialog = page.getByRole('dialog')
+  await expect(dialog.getByRole('heading', { name: 'Google Developer Knowledge' })).toBeVisible()
+  await expect(dialog).toContainText('Search and read official Google developer documentation')
+})

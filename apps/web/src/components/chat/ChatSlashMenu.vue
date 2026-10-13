@@ -5,6 +5,7 @@ import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import AppIcon from '@/components/common/AppIcon.vue'
 import { pluginIconName } from '@/utils/plugin-icon-name'
+import { pluginText } from '@/utils/plugin-text'
 
 defineProps<{
   items: ChatSlashItem[]
@@ -20,7 +21,7 @@ const emit = defineEmits<{
   close: []
 }>()
 
-const { t } = useI18n()
+const { locale, t } = useI18n()
 
 const menuRef = ref<HTMLElement | null>(null)
 onClickOutside(menuRef, () => {
@@ -52,8 +53,8 @@ onClickOutside(menuRef, () => {
         >
           <img v-if="item.icon" :src="item.icon" alt="" class="size-3.5 shrink-0 object-contain">
           <AppIcon v-else :name="item.kind === 'skill' ? 'tabler:script' : pluginIconName(item.id)" :size="14" class="shrink-0 text-agent-ink-muted group-hover:text-agent-ink" />
-          <span class="shrink-0 font-mono text-xs font-medium text-agent-ink">{{ item.name }}</span>
-          <span class="min-w-0 flex-1 truncate text-xs text-agent-ink-muted">{{ item.description || t('skills.noDescription') }}</span>
+          <span class="shrink-0 font-mono text-xs font-medium text-agent-ink">{{ item.kind === 'plugin' ? pluginText(item, 'name', locale) : item.name }}</span>
+          <span class="min-w-0 flex-1 truncate text-xs text-agent-ink-muted">{{ (item.kind === 'plugin' ? pluginText(item, 'description', locale) : item.description) || t('skills.noDescription') }}</span>
         </button>
       </template>
       <p v-if="pluginsLoading || pluginsError" role="status" class="px-2 py-1 text-xs text-agent-ink-muted">
