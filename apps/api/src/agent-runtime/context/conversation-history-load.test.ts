@@ -10,8 +10,8 @@ import { loadConversationHistory } from './conversation-history.js'
 it.each([0, 990, 1000])('历史覆盖 %s/1000 组时仅加载剩余正文，完整配对和 messageCount 不变', async (coveredCount) => {
   const now = new Date()
   const messages: Message[] = Array.from({ length: 1000 }, (_, i) => [
-    { id: `u${i}`, conversationId: 'c', role: 'USER' as const, status: 'COMPLETED' as const, content: 'question', skills: [], createdAt: now, updatedAt: now },
-    { id: `a${i}`, conversationId: 'c', role: 'ASSISTANT' as const, status: 'COMPLETED' as const, content: 'a'.repeat(32000), skills: [], createdAt: now, updatedAt: now },
+    { id: `u${i}`, conversationId: 'c', role: 'USER' as const, status: 'COMPLETED' as const, content: 'question', skills: [], plugins: [], createdAt: now, updatedAt: now },
+    { id: `a${i}`, conversationId: 'c', role: 'ASSISTANT' as const, status: 'COMPLETED' as const, content: 'a'.repeat(32000), skills: [], plugins: [], createdAt: now, updatedAt: now },
   ]).flat()
   const runs: HistoryRunRow[] = Array.from({ length: 1000 }, (_, i) => ({ id: `r${i}`, userMessageId: `u${i}`, assistantMessageId: `a${i}`, status: 'COMPLETED' }))
   const covered = runs.slice(0, coveredCount).map(run => run.userMessageId)

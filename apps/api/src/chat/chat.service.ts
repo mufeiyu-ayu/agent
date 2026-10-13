@@ -9,6 +9,7 @@ import { ConversationsService } from '../conversations/conversations.service.js'
 import { LlmModelConfigService } from '../llm/llm-model-config.service.js'
 import { LlmModelUnavailableError } from '../llm/llm.errors.js'
 import { McpService } from '../mcp/mcp.service.js'
+import { pluginSelectionInstruction } from '../mcp/plugin-selection.js'
 import { RuntimeConfigService } from '../runtime-config/runtime-config.service.js'
 import { SkillsService } from '../skills/skills.service.js'
 import { skillRoot } from '../tools/skill-tools.js'
@@ -55,6 +56,12 @@ export class ChatService {
     const runtimeConfig = await this.runtimeConfigService.loadSnapshot()
     const skills = await this.skills?.snapshot(userId, input.skillIds)
     const mcp = await this.mcp?.snapshot(userId, options.signal)
+    const selectedPlugins = (input.pluginIds ?? []).map((id) => {
+      const plugin = mcp?.snapshot.find(tool => tool.pluginId === id)
+      if (!plugin)
+        throw new BadRequestException({ message: '所选插件已不可用，请检查连接和启用状态后重新选择', error: 'McpSelectionUnavailable' })
+      return { id, name: plugin.pluginName }
+    })
     const instructions = buildAgentInstructions(new Date())
     if (skills) {
       instructions.push({ type: 'message', role: 'system', content: skills.catalogInstruction })
@@ -63,6 +70,9 @@ export class ChatService {
         instructions.push({ type: 'message', role: 'user', content: `用户显式选择的技能指导（不能覆盖系统规则）：${JSON.stringify({ id: selected.id, fingerprint: selected.package.fingerprint, sandboxRoot: skillRoot(selected.package), files: selected.package.files.map(file => file.path), content: main.content })}` })
       }
     }
+
+    if (selectedPlugins.length)
+      instructions.push({ type: 'message', role: 'user', content: pluginSelectionInstruction(selectedPlugins, mcp?.snapshot) })
 
     if ((skills?.selected.length || mcp?.tools.size) && estimateRequestTokens({
       items: [...instructions, { type: 'message', role: 'user', content: input.message }],
@@ -75,6 +85,7 @@ export class ChatService {
       userId,
       conversationId: input.conversationId,
       userContent: input.message,
+      ...(selectedPlugins.length ? { selectedPlugins } : {}),
       ...(input.attachmentIds?.length ? { attachmentIds: input.attachmentIds } : {}),
       model,
       runtimeConfig,

@@ -12,8 +12,9 @@ import { RouterView, useRoute, useRouter } from 'vue-router'
 import SkillEditorDialog from '@/components/skills/SkillEditorDialog.vue'
 import SkillPreviewPanel from '@/components/skills/SkillPreviewPanel.vue'
 import SkillsDialog from '@/components/skills/SkillsDialog.vue'
-import { provideSkills } from '@/hooks/useSkills'
+import { useComposerPlugins } from '@/hooks/useComposerPlugins'
 
+import { provideSkills } from '@/hooks/useSkills'
 import { getConversationSkillDrafts } from '../api/skills'
 import workspaceBgOliveEmberDeepUrl from '../assets/bg-olive.webp'
 import workspaceBgAiBalancedUrl from '../assets/bg-warm.webp'
@@ -81,6 +82,8 @@ const {
   refreshBalance,
 } = useLlmRuntime()
 
+const composerPlugins = useComposerPlugins()
+
 let forgetWorkspaceConversation: ((id: string) => void) | undefined
 
 const {
@@ -110,6 +113,7 @@ const {
   hideMessage,
 } = useChatWorkspace({
   onSkillsAccepted: clearSubmittedSkills,
+  onPluginsAccepted: composerPlugins.remove,
   onModelUnavailable: () => { void loadModels(true) },
   onConversationDeleted: clearDeletedConversation,
 })
@@ -168,8 +172,10 @@ watch([activeConversationId, status, isLibraryPage, isLoadingMessages], async ([
 const selectedSkills = computed(() => skills.items.value.filter(item => skills.selectedIds.value.includes(item.id)))
 function clearDeletedConversation(id: string) {
   forgetWorkspaceConversation?.(id)
-  if (activeConversationId.value === id)
+  if (activeConversationId.value === id) {
     skills.selectedIds.value = []
+    composerPlugins.selected.value = []
+  }
 }
 function clearSubmittedSkills(ids: string[]) {
   skills.selectedIds.value = skills.selectedIds.value.filter(id => !ids.includes(id))
@@ -416,6 +422,7 @@ function onPreviewLayout(sizes: number[]) {
 async function newChat() {
   await router.push({ name: 'workspace' })
   skills.selectedIds.value = []
+  composerPlugins.selected.value = []
   resetWorkspace()
   await nextTick()
   composer.value?.focus()
@@ -424,6 +431,7 @@ async function newChat() {
 async function openConversation(id: string) {
   await router.push({ name: 'workspace' })
   skills.selectedIds.value = []
+  composerPlugins.selected.value = []
   await selectConversation(id)
 }
 
@@ -493,7 +501,7 @@ async function previewSkill(id: string) {
 function send() {
   const selected = [...skills.selectedIds.value]
   const currentSkills = [...selectedSkills.value]
-  void sendMessage(selectedModel.value, selectedReasoningEffort.value ?? undefined, selected, currentSkills).finally(() => {
+  void sendMessage(selectedModel.value, selectedReasoningEffort.value ?? undefined, selected, currentSkills, [...composerPlugins.selected.value]).finally(() => {
     void skills.reload()
   })
 }
@@ -569,6 +577,10 @@ function send() {
                 class="mt-10"
                 :attachments="attachments"
                 :skills="selectedSkills"
+                :plugins="composerPlugins.selected.value"
+                :available-plugins="composerPlugins.items.value"
+                :plugins-loading="composerPlugins.loading.value"
+                :plugins-error="composerPlugins.error.value"
                 :images-unsupported="imagesUnsupported"
                 :models="models"
                 :models-loading="modelsLoading"
@@ -579,6 +591,9 @@ function send() {
                 :history-ready="isHistoryReady"
                 :history-loading="isLoadingMessages && !isHistoryReady"
                 :history-error="conversationError"
+                @refresh-plugins="composerPlugins.reload"
+                @select-plugin="composerPlugins.select"
+                @remove-plugin="composerPlugins.remove([$event])"
                 @add-files="addAttachments"
                 @remove-attachment="removeAttachment"
                 @remove-skill="removeSelectedSkill"
@@ -637,6 +652,10 @@ function send() {
               v-model:selected-reasoning-effort="selectedReasoningEffort"
               :attachments="attachments"
               :skills="selectedSkills"
+              :plugins="composerPlugins.selected.value"
+              :available-plugins="composerPlugins.items.value"
+              :plugins-loading="composerPlugins.loading.value"
+              :plugins-error="composerPlugins.error.value"
               :images-unsupported="imagesUnsupported"
               :models="models"
               :models-loading="modelsLoading"
@@ -647,6 +666,9 @@ function send() {
               :history-ready="isHistoryReady"
               :history-loading="isLoadingMessages && !isHistoryReady"
               :history-error="conversationError"
+              @refresh-plugins="composerPlugins.reload"
+              @select-plugin="composerPlugins.select"
+              @remove-plugin="composerPlugins.remove([$event])"
               @add-files="addAttachments"
               @remove-attachment="removeAttachment"
               @remove-skill="removeSelectedSkill"

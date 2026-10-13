@@ -2,6 +2,7 @@
 import type { McpPlugin, McpPluginInput } from '@agent/contracts'
 import { DialogContent, DialogDescription, DialogOverlay, DialogPortal, DialogRoot, DialogTitle } from 'reka-ui'
 import { ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import AppIcon from '@/components/common/AppIcon.vue'
 import { readPluginIcon } from '@/utils/plugin-icon'
 
@@ -18,6 +19,7 @@ const props = defineProps<{
     selected: boolean
   }>
 }>()
+
 const emit = defineEmits<{
   'update:open': [open: boolean]
   'save': [input: McpPluginInput]
@@ -25,6 +27,9 @@ const emit = defineEmits<{
   'import': []
   'selectImport': [index: number, selected: boolean]
 }>()
+
+const { t } = useI18n()
+
 const form = ref<McpPluginInput>({
   name: '',
   description: '',
@@ -84,9 +89,9 @@ async function upload(event: Event) {
       iconError.value = ''
     }
   }
-  catch (error) {
+  catch {
     if (epoch === imageEpoch)
-      iconError.value = error instanceof Error ? error.message : '图片读取失败'
+      iconError.value = t('plugins.iconFailed')
   }
   finally {
     if (epoch === imageEpoch)
@@ -114,27 +119,27 @@ function save() {
     <DialogPortal>
       <DialogOverlay class="fixed inset-0 z-50 bg-black/25 backdrop-blur-sm" />
       <DialogContent
-        class="plugin-editor fixed left-1/2 top-1/2 z-50 max-h-[88dvh] w-[min(560px,calc(100vw-32px))] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-2xl border border-agent-border bg-agent-surface p-6 text-agent-ink shadow-xl"
+        class="plugin-editor fixed left-1/2 top-1/2 z-50 max-h-[88dvh] w-[min(560px,calc(100vw-32px))] -translate-x-1/2 -translate-y-1/2 overflow-y-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden rounded-2xl border border-agent-border bg-agent-surface p-6 text-agent-ink shadow-xl"
         @escape-key-down="busy && $event.preventDefault()"
         @interact-outside="busy && $event.preventDefault()"
       >
         <DialogTitle class="text-lg font-semibold">
-          {{ importing ? "从 JSON 导入" : plugin ? "编辑插件" : "添加插件" }}
+          {{ importing ? t('plugins.importTitle') : plugin ? t('plugins.editTitle') : t('plugins.addTitle') }}
         </DialogTitle>
         <DialogDescription class="mt-2 text-sm text-agent-ink-muted">
-          {{ importing ? "解析远端 MCP 配置，核对后保存到个人插件。" : "连接远端 MCP 服务，为 Kuro 添加可用工具。" }}
+          {{ importing ? t('plugins.importDescription') : t('plugins.editorDescription') }}
         </DialogDescription>
         <form class="mt-6 space-y-5" @submit.prevent="importing ? emit('parse', json) : save()">
           <fieldset :disabled="busy || iconLoading" class="space-y-5 disabled:opacity-60">
             <template v-if="importing">
-              <label class="block text-sm">MCP 配置 JSON<textarea
+              <label class="block text-sm">{{ t('plugins.jsonLabel') }}<textarea
                 v-model="json"
                 required
-                aria-label="MCP 配置 JSON"
+                :aria-label="t('plugins.jsonLabel')"
                 rows="8"
                 maxlength="32000"
                 class="plugin-field mt-2 font-mono text-xs"
-                placeholder="{&quot;mcpServers&quot;:{&quot;服务名称&quot;:{&quot;url&quot;:&quot;https://example.com/mcp&quot;}}}"
+                placeholder="{&quot;mcpServers&quot;:{&quot;server-name&quot;:{&quot;url&quot;:&quot;https://example.com/mcp&quot;}}}"
               />
               </label>
               <div v-if="imported.length" class="space-y-3 rounded-xl border border-agent-border p-4">
@@ -147,10 +152,10 @@ function save() {
                   >
                   <span class="min-w-0"><span class="block">{{ entry.config.name }}</span><span class="mt-1 block break-all text-xs text-agent-ink-muted">{{ entry.config.url }}</span><span class="text-xs text-agent-ink-muted">{{
                     entry.config.authType === "oauth"
-                      ? "OAuth 授权"
+                      ? t('plugins.oauthAuth')
                       : entry.config.authType === "headers"
-                        ? "密钥认证（已导入的值不会回显）"
-                        : "无需认证"
+                        ? t('plugins.importedCredentials')
+                        : t('plugins.noAuth')
                   }}</span></span>
                 </label>
               </div>
@@ -160,23 +165,23 @@ function save() {
                 <div
                   class="flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-agent-border bg-agent-surface-raised"
                 >
-                  <img v-if="form.icon" :src="form.icon" alt="插件图标预览" class="size-full object-contain"><AppIcon
+                  <img v-if="form.icon" :src="form.icon" :alt="t('plugins.iconPreview')" class="size-full object-contain"><AppIcon
                     v-else
                     name="tabler:plug"
                     :size="25"
                   />
                 </div>
                 <div>
-                  <label class="cursor-pointer text-sm underline underline-offset-4">{{ iconLoading ? "正在处理…" : "上传图标"
+                  <label class="cursor-pointer text-sm underline underline-offset-4">{{ iconLoading ? t('plugins.processing') : t('plugins.uploadIcon')
                   }}<input
                     type="file"
                     accept="image/png,image/jpeg,image/webp"
                     class="sr-only"
-                    aria-label="上传图标"
+                    :aria-label="t('plugins.uploadIcon')"
                     @change="upload"
                   ></label>
                   <p class="mt-1 text-xs text-agent-ink-muted">
-                    PNG、JPEG 或 WebP，最多 5 MB
+                    {{ t('plugins.iconHint') }}
                   </p>
                   <button
                     v-if="form.icon"
@@ -184,26 +189,26 @@ function save() {
                     class="mt-1 text-xs text-agent-ink-muted"
                     @click="form.icon = null"
                   >
-                    移除图标
+                    {{ t('plugins.removeIcon') }}
                   </button>
                 </div>
               </div>
-              <label class="block text-sm">名称<input
+              <label class="block text-sm">{{ t('plugins.name') }}<input
                 v-model="form.name"
                 required
                 maxlength="80"
                 class="plugin-field mt-2"
-                placeholder="例如：Google 开发文档"
+                :placeholder="t('plugins.namePlaceholder')"
               ></label>
-              <label class="block text-sm">简介<textarea
+              <label class="block text-sm">{{ t('plugins.summary') }}<textarea
                 v-model="form.description"
                 maxlength="1000"
                 rows="2"
                 class="plugin-field mt-2"
-                placeholder="这个插件能帮你做什么？"
+                :placeholder="t('plugins.summaryPlaceholder')"
               />
               </label>
-              <label class="block text-sm">服务地址<input
+              <label class="block text-sm">{{ t('plugins.url') }}<input
                 v-model="form.url"
                 type="url"
                 required
@@ -211,25 +216,25 @@ function save() {
                 class="plugin-field mt-2"
                 placeholder="https://example.com/mcp"
               ></label>
-              <label class="block text-sm">认证方式<select v-model="form.authType" class="plugin-field mt-2">
-                <option value="none">无需认证</option>
+              <label class="block text-sm">{{ t('plugins.authType') }}<select v-model="form.authType" class="plugin-field mt-2">
+                <option value="none">{{ t('plugins.noAuth') }}</option>
                 <option value="headers">API Key / Token</option>
-                <option value="oauth">OAuth 账号授权</option>
+                <option value="oauth">{{ t('plugins.oauthAccount') }}</option>
               </select></label>
-              <label v-if="form.authType === 'headers'" class="block text-sm">认证请求头名称<textarea
+              <label v-if="form.authType === 'headers'" class="block text-sm">{{ t('plugins.headerNames') }}<textarea
                 v-model="headersText"
                 rows="2"
                 required
                 class="plugin-field mt-2"
                 placeholder="Authorization"
-              /><span class="mt-1 block text-xs text-agent-ink-muted">每行一个，例如 Authorization 或 X-Goog-Api-Key。密钥在连接时填写。</span></label>
+              /><span class="mt-1 block text-xs text-agent-ink-muted">{{ t('plugins.headersHint') }}</span></label>
               <details v-if="form.authType === 'oauth'" class="rounded-xl border border-agent-border p-4 text-sm">
                 <summary class="cursor-pointer">
-                  OAuth 高级配置
+                  {{ t('plugins.advanced') }}
                 </summary>
                 <div class="mt-4 space-y-4">
                   <p class="text-xs leading-5 text-agent-ink-muted">
-                    服务不支持自动注册时，填写你在服务商后台申请的应用配置。
+                    {{ t('plugins.advancedHint') }}
                   </p>
                   <label class="block">Client ID<input v-model="form.oauthClientId" class="plugin-field mt-2" maxlength="1000"></label><label class="block">Client Secret<input
                     v-model="form.oauthClientSecret"
@@ -237,15 +242,15 @@ function save() {
                     autocomplete="new-password"
                     class="plugin-field mt-2"
                     maxlength="4000"
-                    :placeholder="plugin?.hasClientSecret ? '已配置，留空不修改' : '仅在服务要求时填写'"
+                    :placeholder="plugin?.hasClientSecret ? t('plugins.secretConfigured') : t('plugins.secretPlaceholder')"
                   ></label><label class="block">Scopes<input
                     v-model="form.oauthScopes"
                     class="plugin-field mt-2"
                     maxlength="2000"
-                    placeholder="按服务要求填写，空格分隔"
+                    :placeholder="t('plugins.scopesPlaceholder')"
                   ></label>
                   <p class="break-all text-xs text-agent-ink-muted">
-                    回调地址：{{ callbackUrl || "正在读取…" }}
+                    {{ t('plugins.callback', { url: callbackUrl || t('plugins.reading') }) }}
                   </p>
                 </div>
               </details>
@@ -261,14 +266,14 @@ function save() {
               class="rounded-full px-4 py-2 text-sm disabled:opacity-40"
               @click="emit('update:open', false)"
             >
-              取消
+              {{ t('plugins.cancel') }}
             </button>
             <button
               type="submit"
               :disabled="busy || iconLoading"
               class="rounded-full bg-agent-ink px-5 py-2 text-sm text-agent-surface disabled:opacity-40"
             >
-              {{ busy ? "处理中…" : importing ? "解析配置" : "保存插件" }}
+              {{ busy ? t('plugins.working') : importing ? t('plugins.parse') : t('plugins.save') }}
             </button>
             <button
               v-if="importing && imported.length"
@@ -277,7 +282,7 @@ function save() {
               class="rounded-full bg-agent-ink px-5 py-2 text-sm text-agent-surface disabled:opacity-40"
               @click="emit('import')"
             >
-              导入所选
+              {{ t('plugins.importSelected') }}
             </button>
           </div>
         </form>

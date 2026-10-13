@@ -1,4 +1,5 @@
 import type { ModelInputItem } from '@agent/ai'
+import type { Message } from '../generated/prisma/client.js'
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { readdir, readFile, writeFile } from 'node:fs/promises'
@@ -121,8 +122,10 @@ describe('MCP 真实 Google 与模型验证', () => {
               user.id,
               {
                 conversationId: conversation.id,
-                message:
-                  '请调用 Google 开发文档插件的 search_documents 搜索 Search Console 点击与展示的定义。读取一次搜索结果即可，然后用两句话解释差异并提供官方来源链接。不要调用其他工具。',
+                ...(index === 1 ? { pluginIds: ['google-developer-knowledge'] } : {}),
+                message: index === 1
+                  ? '查询 Firebase Authentication 如何接入 Google 登录。查询一次官方文档即可，简短回答并附来源。'
+                  : '请调用 Google 开发文档插件的 search_documents 搜索 Search Console 点击与展示的定义。读取一次搜索结果即可，然后用两句话解释差异并提供官方来源链接。不要调用其他工具。',
               },
               { signal: AbortSignal.timeout(75_000) },
             ))
@@ -133,6 +136,13 @@ describe('MCP 真实 Google 与模型验证', () => {
             )
             assert.ok(!events.some(event => event.type === 'error'))
             const run = await prisma.agentRun.findFirstOrThrow({ where: { conversationId: conversation.id } })
+            if (index === 1) {
+              const userMessage: Message = await prisma.message.findUniqueOrThrow({ where: { id: run.userMessageId } })
+              assert.deepEqual(userMessage.plugins, [{ id: 'google-developer-knowledge', name: 'Google 开发文档' }])
+              assert.ok(wire[start]?.some(item => item.type === 'message' && item.role === 'user' && typeof item.content === 'string' && item.content.includes('用户本次明确选择了')))
+              const sampling = await prisma.agentStep.findFirstOrThrow({ where: { runId: run.id, type: 'model_sampling' } })
+              assert.ok((sampling.input as Record<string, unknown>).pluginSelection)
+            }
             const steps = await prisma.agentStep.findMany({
               where: { runId: run.id, type: 'tool_execution', status: 'COMPLETED' },
             })

@@ -22,7 +22,7 @@ import { createApiKeyCipher } from '../llm/api-key-cipher.js'
 import { resolveLlmEnvConfig } from '../llm/llm-runtime-config.service.js'
 import { PrismaService } from '../prisma/prisma.service.js'
 import { compileMcpSchema, discoverMcpTools, mcpResultText, withMcpClient } from './mcp-client.js'
-import { checkHeaderName, checkHeaders, checkIcon, mcpUrl } from './mcp-config.js'
+import { checkHeaderName, checkHeaders, checkIcon, mcpUrl, oauthSetupMessage } from './mcp-config.js'
 import { mcpFetch } from './mcp-network.js'
 
 interface Credentials {
@@ -240,6 +240,9 @@ export class McpService {
           throw new ConflictException('插件配置已变化，请刷新核对后再连接')
         if (!plugin.enabled && !admin)
           throw new BadRequestException('插件已停用')
+        const setupMessage = oauthSetupMessage(plugin)
+        if (setupMessage)
+          throw new BadRequestException(setupMessage)
         const row = await tx.mcpConnection.upsert({
           where: { userId_pluginId: { userId, pluginId: id } },
           create: { userId, pluginId: id, authState: hash(state), authExpiresAt: new Date(Date.now() + 600_000) },
@@ -670,6 +673,7 @@ export class McpService {
   }
 
   private view(row: PluginRow, connection?: McpConnection | null, admin = false): McpPlugin {
+    const setupMessage = oauthSetupMessage(row)
     return {
       id: row.id,
       configRevision: configRevision(row),
@@ -679,6 +683,7 @@ export class McpService {
       icon: row.icon,
       system: row.userId === null,
       available: row.enabled,
+      ...(setupMessage ? { setupMessage } : {}),
       authType: row.authType as McpPlugin['authType'],
       headerNames: row.headerNames,
       oauthClientId: admin || row.userId ? row.oauthClientId : '',

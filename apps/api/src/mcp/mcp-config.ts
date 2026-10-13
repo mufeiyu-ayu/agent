@@ -148,3 +148,15 @@ export function parseMcpImport(json: string): Array<{ config: McpPluginInput, he
     }
   })
 }
+
+/** 已确认不支持动态注册的官方服务，缺应用配置时在连接前说明原因。 */
+export function oauthSetupMessage(plugin: { url: string, authType: string, oauthClientId: string, oauthClientSecret: string | null }): string | undefined {
+  if (plugin.authType !== 'oauth')
+    return undefined
+  const host = new URL(plugin.url).hostname
+  if (['api.githubcopilot.com', 'gmailmcp.googleapis.com', 'developerknowledge.googleapis.com'].includes(host)
+    && (!plugin.oauthClientId || !plugin.oauthClientSecret)) {
+    return '需要先配置 OAuth 应用的 Client ID 和 Client Secret；系统插件请联系管理员，个人插件请编辑高级配置。'
+  }
+  return undefined
+}

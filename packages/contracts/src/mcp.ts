@@ -29,6 +29,8 @@ export interface McpPlugin {
   icon: string | null
   system: boolean
   available: boolean
+  /** 服务要求预注册应用但平台尚未配置时，给用户的安全提示。 */
+  setupMessage?: string
   authType: McpAuthType
   headerNames: string[]
   oauthClientId: string

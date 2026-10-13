@@ -19,3 +19,7 @@
 首版只支持远端 Streamable HTTP、文本及结构化 JSON；不支持 stdio、旧 SSE transport、自动抓取资源链接与任意外部 HTML。目录每插件最多 100 个工具/10 页/200 KB，本人启用插件最多 10 个；参数规格有大小和深度限制，不支持外部/递归/动态引用、嵌套 schema 身份或正则表达式规格，不能跳过校验后执行。
 
 验证：`mcp-config.test.ts` / `mcp-network.test.ts` 为模拟依赖边界；`mcp.db.test.ts` 为真实隔离 PostgreSQL + 受控 HTTP MCP/OAuth；`mcp.live.db.test.ts` 仅在显式 `MCP_LIVE_VALIDATION=1` 且临时提供 `MCP_GOOGLE_API_KEY` 时运行真实 Google / 模型验证，普通测试不消耗公网配额。真实浏览器 OAuth 与生产应用发布条件需另行核对，不能以受控服务代替。
+
+`plugin-selection.ts` 生成显式选择指示及历史选择事实；ChatService 用本轮有效工具目录校验插件 ID，不信任前端名称。Message.plugins 保存 id/name，采样另存指示原文，旧选择不授予新权限。
+
+系统目录初始包含 Google 开发文档、GitHub、Cloudflare、Gmail；新增目录不代替用户授权。GitHub/Gmail 的静态 OAuth 应用缺失会返回 setupMessage 并在建连接前拒绝。Gmail 的 Workspace Developer Preview/API 开通条件须由平台核实。

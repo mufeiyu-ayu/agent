@@ -12,6 +12,7 @@ import {
 export function useSystemPlugins() {
   const rows = ref<McpPlugin[]>([])
   const busy = ref(false)
+  const togglingId = ref<string | null>(null)
   const loading = ref(false)
   const error = ref('')
   const editorOpen = ref(false)
@@ -68,7 +69,10 @@ export function useSystemPlugins() {
   }
   function replace(plugin: McpPlugin) {
     if (alive) {
-      rows.value = [...rows.value.filter(row => row.id !== plugin.id), plugin]
+      const index = rows.value.findIndex(row => row.id === plugin.id)
+      rows.value = index < 0
+        ? [...rows.value, plugin]
+        : rows.value.map((row, position) => position === index ? plugin : row)
     }
   }
   function edit(plugin: McpPlugin | null) {
@@ -86,7 +90,15 @@ export function useSystemPlugins() {
     })
   }
   async function toggle(plugin: McpPlugin) {
-    await run(async () => replace(await toggleSystemPlugin(plugin.id, !plugin.available, controller.signal)))
+    if (busy.value)
+      return
+    togglingId.value = plugin.id
+    try {
+      await run(async () => replace(await toggleSystemPlugin(plugin.id, !plugin.available, controller.signal)))
+    }
+    finally {
+      togglingId.value = null
+    }
   }
   async function remove(plugin: McpPlugin) {
     await run(async () => {
@@ -131,6 +143,7 @@ export function useSystemPlugins() {
   return {
     rows,
     busy,
+    togglingId,
     loading,
     error,
     editorOpen,

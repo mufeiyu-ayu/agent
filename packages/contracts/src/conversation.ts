@@ -60,6 +60,8 @@ export interface ConversationMessage {
   attachments?: MessageAttachment[]
   /** 用户随这条消息显式选择的技能；名称来自该次运行的目录快照。 */
   skills?: Array<{ id: string, name: string }>
+  /** 用户本次选择的插件身份，随用户消息保存，不代表当前授权。 */
+  plugins?: Array<{ id: string, name: string }>
 }
 
 /**

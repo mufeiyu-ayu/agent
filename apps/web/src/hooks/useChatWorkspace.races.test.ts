@@ -333,14 +333,19 @@ it.each([false, true])('start 前明确 error、userMessagePersisted=%s：未提
   const accepted = vi.fn((ids: string[]) => {
     selected.value = selected.value.filter(id => !ids.includes(id))
   })
-  const workspace = useChatWorkspace({ onSkillsAccepted: accepted })
+  const plugins = ref(['google'])
+  const pluginsAccepted = vi.fn((ids: string[]) => {
+    plugins.value = plugins.value.filter(id => !ids.includes(id))
+  })
+  const workspace = useChatWorkspace({ onSkillsAccepted: accepted, onPluginsAccepted: pluginsAccepted })
   lifecycle.mounted()
   await vi.waitFor(() => assert.ok(workspace.activeConversationId.value === 'a' && !workspace.isLoadingMessages.value))
   const reads = vi.mocked(listConversationMessages).mock.calls.length
   workspace.attachments.value = [draft(1)]
   workspace.message.value = '待重试文字'
-  await workspace.sendMessage(undefined, undefined, ['selected-skill'], [{ id: 'selected-skill', name: 'selected-name' }])
+  await workspace.sendMessage(undefined, undefined, ['selected-skill'], [{ id: 'selected-skill', name: 'selected-name' }], [{ id: 'google', name: 'Google 开发文档' }])
   assert.deepEqual(accepted.mock.calls, persisted ? [[['selected-skill']]] : [])
+  assert.deepEqual(plugins.value, persisted ? [] : ['google'])
   assert.deepEqual(selected.value, persisted ? [] : ['selected-skill'])
   assert.equal(workspace.message.value, persisted ? '' : '待重试文字')
   assert.equal(vi.mocked(listConversationMessages).mock.calls.length, reads)
@@ -370,19 +375,26 @@ it.each(['下一条新文字', '本次文字'])('start 后重选同一技能再�
   const accepted = vi.fn((ids: string[]) => {
     selected.value = selected.value.filter(id => !ids.includes(id))
   })
-  const workspace = useChatWorkspace({ onSkillsAccepted: accepted })
+  const plugins = ref(['google'])
+  const pluginsAccepted = vi.fn((ids: string[]) => {
+    plugins.value = plugins.value.filter(id => !ids.includes(id))
+  })
+  const workspace = useChatWorkspace({ onSkillsAccepted: accepted, onPluginsAccepted: pluginsAccepted })
   lifecycle.mounted()
   await vi.waitFor(() => assert.ok(workspace.activeConversationId.value === 'a' && !workspace.isLoadingMessages.value))
   workspace.message.value = '本次文字'
-  const sending = workspace.sendMessage(undefined, undefined, ['skill-a'], [{ id: 'skill-a', name: 'skill-a' }])
+  const sending = workspace.sendMessage(undefined, undefined, ['skill-a'], [{ id: 'skill-a', name: 'skill-a' }], [{ id: 'google', name: 'Google 开发文档' }])
   await vi.waitFor(() => assert.equal(accepted.mock.calls.length, 1))
   assert.deepEqual(selected.value, [])
   assert.equal(workspace.message.value, '')
   selected.value = ['skill-a']
+  plugins.value = ['google']
   workspace.message.value = nextText
   ending.resolve()
   await sending
   assert.equal(accepted.mock.calls.length, 1)
+  assert.equal(pluginsAccepted.mock.calls.length, 1)
+  assert.deepEqual(plugins.value, ['google'])
   assert.deepEqual(selected.value, ['skill-a'])
   assert.equal(workspace.message.value, nextText)
 })
@@ -402,17 +414,24 @@ it.each([false, true])('切换会话后迟到已提交 error 不清理新视图�
   const accepted = vi.fn((ids: string[]) => {
     selected.value = selected.value.filter(id => !ids.includes(id))
   })
-  const workspace = useChatWorkspace({ onSkillsAccepted: accepted })
+  const plugins = ref(['google'])
+  const pluginsAccepted = vi.fn((ids: string[]) => {
+    plugins.value = plugins.value.filter(id => !ids.includes(id))
+  })
+  const workspace = useChatWorkspace({ onSkillsAccepted: accepted, onPluginsAccepted: pluginsAccepted })
   lifecycle.mounted()
   await vi.waitFor(() => assert.ok(workspace.activeConversationId.value === 'a' && !workspace.isLoadingMessages.value))
   workspace.message.value = 'A 本次文字'
-  const sending = workspace.sendMessage(undefined, undefined, ['skill-a'], [{ id: 'skill-a', name: 'skill-a' }])
+  const sending = workspace.sendMessage(undefined, undefined, ['skill-a'], [{ id: 'skill-a', name: 'skill-a' }], [{ id: 'google', name: 'Google 开发文档' }])
   await waiting.promise
   await workspace.selectConversation('b')
   selected.value = ['skill-a']
+  plugins.value = ['google']
   workspace.message.value = 'B 下一条文字'
   ending.resolve()
   await sending
+  assert.equal(pluginsAccepted.mock.calls.length, started ? 1 : 0)
+  assert.deepEqual(plugins.value, ['google'])
   assert.equal(accepted.mock.calls.length, started ? 1 : 0)
   assert.deepEqual(selected.value, ['skill-a'])
   assert.equal(workspace.message.value, 'B 下一条文字')

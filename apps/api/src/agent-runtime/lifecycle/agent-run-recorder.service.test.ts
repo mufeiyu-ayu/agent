@@ -534,6 +534,7 @@ class FakePrismaService {
         id: `assistant-${this.nextMessageId++}`,
         ...data,
         skills: [],
+        plugins: [],
         createdAt: now,
         updatedAt: now,
       }

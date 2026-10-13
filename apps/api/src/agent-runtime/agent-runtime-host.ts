@@ -15,6 +15,7 @@ import { AttachmentsService } from '../attachments/attachments.service.js'
 import { WORKSPACE_DEVELOPMENT_INSTRUCTION, WORKSPACE_DEVELOPMENT_VERSION, WORKSPACE_TOOL_NAMES } from '../chat/prompts/workspace-development.prompt.js'
 import { getAiExceptionMessage } from '../common/utils/llm-error-message.util.js'
 import { MessageRole, MessageStatus } from '../generated/prisma/client.js'
+import { pluginSelectionInstruction } from '../mcp/plugin-selection.js'
 import { DatabaseCommitOutcomeUnknownError, DatabaseOperationDeadlineExceededError } from '../prisma/prisma.service.js'
 import { withSkillSelection } from '../skills/skill-selection.js'
 import { toToolProgressArguments } from '../tools/web/tool-progress-arguments.js'
@@ -85,6 +86,7 @@ export function createRuntimeHost(input: RunTurnStreamInput, deps: {
           ? { input: {
               ...step.input,
               ...(input.mcp ? { mcp: input.mcp.snapshot as unknown as Prisma.InputJsonObject[] } : {}),
+              ...(input.selectedPlugins?.length ? { pluginSelection: { plugins: input.selectedPlugins, instruction: pluginSelectionInstruction(input.selectedPlugins, input.mcp?.snapshot) } } : {}),
               ...(input.skills ? { skills: { entries: input.skills.entries, selectedIds: input.skills.selected.map(selected => selected.id), instructions: input.instructions } as unknown as Prisma.InputJsonObject } : {}),
               ...(guideStepId ? { workspaceDevelopment: { version: WORKSPACE_DEVELOPMENT_VERSION, stepId: guideStepId } } : {}),
             } }
@@ -108,7 +110,7 @@ export function createRuntimeHost(input: RunTurnStreamInput, deps: {
     },
     createUserMessage: async (conversationId, content, attachmentIds) => {
       const { message, rows } = await prisma.$transaction(async (db) => {
-        const message = await db.message.create({ data: { conversationId, role: MessageRole.USER, content, status: MessageStatus.COMPLETED, skills: input.skills?.selected.map(selected => ({ id: selected.id, name: selected.package.name })) ?? [] } })
+        const message = await db.message.create({ data: { conversationId, role: MessageRole.USER, content, status: MessageStatus.COMPLETED, plugins: input.selectedPlugins ?? [], skills: input.skills?.selected.map(selected => ({ id: selected.id, name: selected.package.name })) ?? [] } })
         const rows = await attachments.bind(db, { userId: input.userId, conversationId, messageId: message.id, attachmentIds })
         await db.conversation.update({ where: { id: conversationId }, data: { updatedAt: new Date() } })
         return { message, rows }

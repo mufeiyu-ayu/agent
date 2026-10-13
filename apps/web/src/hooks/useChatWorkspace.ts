@@ -65,6 +65,7 @@ interface ChatRequestState {
 interface UseChatWorkspaceOptions {
   /** 后端已接受本轮输入，且仍在当前视图时清除本轮技能选择。 */
   onSkillsAccepted?: (ids: string[]) => void
+  onPluginsAccepted?: (ids: string[]) => void
   /** 发送因模型行不可用被拒（HTTP 400）：由调用方重新拉取模型列表并纠正选中项。 */
   onModelUnavailable?: () => void
   /** 只在后端确认删除后清理关联工作文件缓存。 */
@@ -281,6 +282,7 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
     reasoningEffort?: ReasoningEffort,
     skillIds?: string[],
     selectedSkills?: ConversationMessage['skills'],
+    selectedPlugins?: ConversationMessage['plugins'],
   ) {
     if (!canStartChatRequest(Boolean(skillIds?.length)))
       return
@@ -334,10 +336,12 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
       }
 
       const conversationId = request.conversationId
-      const payload = { ...buildChatRequest(conversationId, messageContent, attachmentIds, model, reasoningEffort), ...(skillIds?.length ? { skillIds } : {}) }
+      const payload = { ...buildChatRequest(conversationId, messageContent, attachmentIds, model, reasoningEffort), ...(skillIds?.length ? { skillIds } : {}), ...(selectedPlugins?.length ? { pluginIds: selectedPlugins.map(plugin => plugin.id) } : {}) }
       pendingMessage = createPendingUserMessage(conversationId, messageContent)
       if (selectedSkills?.length)
         pendingMessage.skills = selectedSkills.map(({ id, name }) => ({ id, name }))
+      if (selectedPlugins?.length)
+        pendingMessage.plugins = selectedPlugins.map(({ id, name }) => ({ id, name }))
       request.turnId = pendingMessage.id
       if (sentAttachments.length > 0) {
         turnAttachments.value = { ...turnAttachments.value, [pendingMessage.id]: sentAttachments }
@@ -380,6 +384,8 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
           handleStreamStartEvent(event, pendingMessage)
           if (currentViewKey.value === request.key && skillIds?.length)
             options.onSkillsAccepted?.(skillIds)
+          if (currentViewKey.value === request.key && selectedPlugins?.length)
+            options.onPluginsAccepted?.(selectedPlugins.map(plugin => plugin.id))
           // 创建和 start 都可能在切走后到达，不抢选中会话，也不清掉另一视图的输入。
           if (currentViewKey.value === request.key && message.value === submittedMessage)
             message.value = ''
@@ -416,6 +422,8 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
             if (!request.assistantMessageId) {
               if (currentViewKey.value === request.key && skillIds?.length)
                 options.onSkillsAccepted?.(skillIds)
+              if (currentViewKey.value === request.key && selectedPlugins?.length)
+                options.onPluginsAccepted?.(selectedPlugins.map(plugin => plugin.id))
               // start 前的失败也可能已经提交，附件已被消费，不能留作再次绑定的重试。
               attachments.value = attachments.value.filter(item => !submittedAttachmentIds.has(item.id))
               if (currentViewKey.value === request.key && message.value === submittedMessage)
@@ -1162,6 +1170,9 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
   }
 
   function getRequestErrorMessage(error: unknown): string {
+    if (error instanceof ChatStreamHttpError && error.errorCode === 'McpSelectionUnavailable')
+      return t('plugins.selectionUnavailable')
+
     if (isAxiosError<ApiErrorResponse>(error)) {
       const responseData = error.response?.data
       const details = responseData?.error?.details

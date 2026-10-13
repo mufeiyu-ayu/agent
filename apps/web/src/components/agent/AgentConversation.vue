@@ -95,14 +95,14 @@ const showFloatingLoading = computed(() => {
             <template
               v-for="(turn, turnIndex) in turns"
               :key="turn.id"
-              v-memo="[turn.userMessage, turn.skills, turn.attachments, turn.createdAt, turn.reply, turn.status, turn.errorMessage, turn.run, anchorLatestTurn && turnIndex === turns.length - 1, locale, workspaceFiles, openingArtifact, openingSkill]"
+              v-memo="[turn.userMessage, turn.skills, turn.plugins, turn.attachments, turn.createdAt, turn.reply, turn.status, turn.errorMessage, turn.run, anchorLatestTurn && turnIndex === turns.length - 1, locale, workspaceFiles, openingArtifact, openingSkill]"
             >
               <!-- eslint-enable vue/no-useless-template-attributes -->
               <AgentMessage
                 role="user"
                 :data-agent-user-turn-id="turn.id"
               >
-                <AgentUserMessage :text="turn.userMessage" :skills="turn.skills" :created-at="turn.createdAt" :attachments="turn.attachments" @preview-file="emit('previewAttachment', $event)" />
+                <AgentUserMessage :text="turn.userMessage" :skills="turn.skills" :plugins="turn.plugins" :created-at="turn.createdAt" :attachments="turn.attachments" @preview-file="emit('previewAttachment', $event)" />
               </AgentMessage>
 
               <AgentMessage

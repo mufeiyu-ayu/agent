@@ -1,6 +1,7 @@
 import type { McpPlugin, McpPluginInput } from '@agent/contracts'
 import { isAxiosError } from 'axios'
 import { onMounted, onScopeDispose, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import {
   connectPlugin,
   deletePlugin,
@@ -14,6 +15,7 @@ import {
 } from '@/api/mcp'
 
 export function usePlugins() {
+  const { t, locale } = useI18n()
   const items = ref<McpPlugin[]>([])
   const selected = ref<McpPlugin | null>(null)
   const editing = ref<McpPlugin | null>(null)
@@ -23,6 +25,10 @@ export function usePlugins() {
   const loading = ref(false)
   const error = ref('')
   const callbackUrl = ref('')
+  const authorizing = ref(false)
+  const cancellingAuthorization = ref(false)
+  let authorizationPluginId: string | undefined
+  let finishAuthorization: ((result: string) => void) | undefined
   const imported = ref<
     Array<{
       config: McpPluginInput
@@ -34,16 +40,22 @@ export function usePlugins() {
   let readEpoch = 0
   let detailEpoch = 0
   let alive = true
-  let navigating = false
   function message(cause: unknown) {
     if (isAxiosError(cause)) {
       if (!cause.response || cause.response.data?.error?.error === 'DatabaseCommitOutcomeUnknown') {
-        return '请求结果未确认，请刷新核对后再操作，避免重复创建。'
+        return t('plugins.resultUnknown')
       }
-      if (typeof cause.response.data?.message === 'string')
-        return cause.response.data.message
+      const detail = cause.response.data?.message
+      if (locale.value !== 'zh-CN') {
+        if (typeof detail === 'string' && detail.includes('仅支持远端 HTTP'))
+          return t('plugins.remoteOnly')
+        const status = cause.response.status
+        return t(status === 409 ? 'plugins.conflict' : status === 404 ? 'plugins.notFound' : status === 400 ? 'plugins.invalidRequest' : 'plugins.operationFailed')
+      }
+      if (typeof detail === 'string')
+        return detail
     }
-    return cause instanceof Error ? cause.message : '操作失败，请重试'
+    return cause instanceof Error ? cause.message : t('plugins.operationFailed')
   }
   async function reload() {
     if (busy.value)
@@ -86,8 +98,9 @@ export function usePlugins() {
         error.value = message(cause)
     }
     finally {
-      if (alive && !navigating) {
-        busy.value = false
+      if (alive) {
+        // 授权回调可能先结束；取消请求确认前仍禁止发起下一次写入。
+        busy.value = cancellingAuthorization.value
         if (reloadAfter && !error.value)
           void reload()
       }
@@ -96,7 +109,10 @@ export function usePlugins() {
   function replace(plugin: McpPlugin) {
     if (!alive)
       return
-    items.value = [...items.value.filter(item => item.id !== plugin.id), plugin]
+    const index = items.value.findIndex(item => item.id === plugin.id)
+    items.value = index < 0
+      ? [...items.value, plugin]
+      : items.value.map((item, position) => position === index ? plugin : item)
     if (selected.value?.id === plugin.id)
       selected.value = plugin
   }
@@ -157,16 +173,90 @@ export function usePlugins() {
     })
   }
   async function connect(plugin: McpPlugin, headers?: Record<string, string>) {
-    await run(async () => {
-      const result = await connectPlugin(plugin, headers, controller.signal)
-      if (!alive)
+    if (busy.value)
+      return
+    if (plugin.setupMessage) {
+      error.value = t('plugins.setupRequired')
+      return
+    }
+    let popup: Window | null = null
+    let channel: BroadcastChannel | undefined
+    let timer: ReturnType<typeof setTimeout> | undefined
+    let completion: Promise<string> | undefined
+    if (plugin.authType === 'oauth') {
+      if (callbackUrl.value && new URL(callbackUrl.value).origin !== window.location.origin) {
+        error.value = t('plugins.originRequired', { origin: new URL(callbackUrl.value).origin })
         return
-      replace(result.plugin)
-      if (result.authorizationUrl) {
-        navigating = true
-        window.location.assign(result.authorizationUrl)
       }
-    })
+      // 在用户点击时打开，避免等待接口后被浏览器当成广告弹窗拦截。
+      popup = window.open('', '_blank', 'popup,width=720,height=780')
+      if (!popup) {
+        error.value = t('plugins.popupBlocked')
+        return
+      }
+      popup.opener = null
+      const channelId = `kuro-mcp-${Array.from(crypto.getRandomValues(new Uint8Array(16)), byte => byte.toString(16).padStart(2, '0')).join('')}`
+      popup.sessionStorage.setItem('kuro-mcp-oauth-channel', channelId)
+      popup.document.title = t('plugins.preparingAuth')
+      popup.document.body.textContent = t('plugins.preparingHint')
+      channel = new BroadcastChannel(channelId)
+      completion = new Promise((resolve) => {
+        finishAuthorization = resolve
+      })
+      channel.onmessage = (event) => {
+        if (event.data === 'connected' || event.data === 'failed')
+          finishAuthorization?.(event.data)
+      }
+      timer = setTimeout(() => finishAuthorization?.('timeout'), 600_000)
+    }
+    try {
+      await run(async () => {
+        const result = await connectPlugin(plugin, headers, controller.signal)
+        if (!alive)
+          return
+        replace(result.plugin)
+        if (result.authorizationUrl && popup && completion) {
+          authorizationPluginId = plugin.id
+          authorizing.value = true
+          popup.location.replace(result.authorizationUrl)
+          const outcome = await completion
+          if (!alive || outcome === 'cancelled')
+            return
+          const latest = await getPlugin(plugin.id, controller.signal)
+          replace(latest)
+          if (!latest.connected || latest.needsAuth)
+            throw new Error(outcome === 'timeout' ? t('plugins.authTimeout') : t('plugins.authIncomplete'))
+        }
+      })
+    }
+    finally {
+      if (timer)
+        clearTimeout(timer)
+      channel?.close()
+      popup?.close()
+      finishAuthorization = undefined
+      authorizationPluginId = undefined
+      authorizing.value = false
+    }
+  }
+  async function cancelAuthorization() {
+    if (!authorizing.value || !authorizationPluginId || cancellingAuthorization.value)
+      return
+    const finish = finishAuthorization
+    cancellingAuthorization.value = true
+    try {
+      replace(await disconnectPlugin(authorizationPluginId, controller.signal))
+      finish?.('cancelled')
+    }
+    catch (cause) {
+      if (alive)
+        error.value = message(cause)
+    }
+    finally {
+      cancellingAuthorization.value = false
+      if (!authorizing.value)
+        busy.value = false
+    }
   }
   async function toggle(plugin: McpPlugin) {
     await run(async () => replace(await enablePlugin(plugin.id, !plugin.enabled, controller.signal)))
@@ -184,11 +274,8 @@ export function usePlugins() {
     })
   }
   function pageShow(event: PageTransitionEvent) {
-    if (event.persisted) {
-      navigating = false
-      busy.value = false
+    if (event.persisted)
       void reload()
-    }
   }
   onMounted(() => {
     void reload()
@@ -205,6 +292,7 @@ export function usePlugins() {
     ++readEpoch
     ++detailEpoch
     controller.abort()
+    finishAuthorization?.('cancelled')
     window.removeEventListener('pageshow', pageShow)
   })
   return {
@@ -218,6 +306,9 @@ export function usePlugins() {
     loading,
     error,
     callbackUrl,
+    authorizing,
+    cancellingAuthorization,
+    cancelAuthorization,
     reload,
     preview,
     openEditor,

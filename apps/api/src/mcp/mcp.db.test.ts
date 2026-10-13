@@ -8,9 +8,13 @@ import process from 'node:process'
 import { Module } from '@nestjs/common'
 import { APP_GUARD, NestFactory } from '@nestjs/core'
 import { afterAll, beforeAll, describe, it, vi } from 'vitest'
+import { createRuntimeHost } from '../agent-runtime/agent-runtime-host.js'
+import { loadConversationHistory } from '../agent-runtime/context/conversation-history.js'
 import { AuthGuard } from '../auth/auth.guard.js'
 import { AuthService } from '../auth/auth.service.js'
 import { registerAppGlobals } from '../common/bootstrap/register-app-globals.js'
+import { ConversationsService } from '../conversations/conversations.service.js'
+import { MessagesService } from '../conversations/messages.service.js'
 import { PrismaService } from '../prisma/prisma.service.js'
 import { ToolInvocationService } from '../tools/core/tool-invocation.service.js'
 import { ToolRegistryService } from '../tools/core/tool-registry.service.js'
@@ -290,6 +294,53 @@ describe('MCP：真实隔离 PostgreSQL + 实际 SDK / HTTP，模拟外部服务
       },
     )
   }
+
+  it('常用系统插件独立上架，缺少静态 OAuth 应用时明确提示且不创建连接', async () => {
+    const list = await service.list(userId)
+    for (const id of ['gmail', 'github', 'cloudflare']) {
+      const plugin = list.find(row => row.id === id)!
+      assert.ok(plugin)
+      assert.equal(plugin.connected, false)
+      assert.equal(plugin.authType, 'oauth')
+      assert.equal(!!plugin.setupMessage, id !== 'cloudflare')
+    }
+    for (const id of ['gmail', 'github']) {
+      await assert.rejects(service.connect(userId, id), /需要先配置 OAuth 应用/)
+      assert.equal(await prisma.mcpConnection.count({ where: { userId, pluginId: id } }), 0)
+    }
+    assert.equal((await service.detail(userId, 'google-developer-knowledge')).setupMessage, undefined)
+  })
+
+  it('插件选择同事务保存；首采样前失败仍回显，历史不丢身份，事务失败不留消息', async () => {
+    const conversationId = (await prisma.conversation.create({ data: { userId, title: '插件选择测试' } })).id
+    const selectedPlugins = [{ id: 'google-developer-knowledge', name: 'Google 开发文档' }]
+    let rejectBind = false
+    const host = createRuntimeHost({ userId, selectedPlugins } as Parameters<typeof createRuntimeHost>[0], {
+      prisma,
+      recorder: {},
+      attachments: {
+        bind: async () => {
+          if (rejectBind)
+            throw new Error('bind failed')
+          return []
+        },
+        modelInput: async () => { throw new Error('before sampling failed') },
+      },
+    } as unknown as Parameters<typeof createRuntimeHost>[1])
+    const question = await host.createUserMessage(conversationId, 'Firebase 如何登录？', [])
+    await assert.rejects(host.loadUserMessage!(question), /before sampling failed/)
+    assert.equal(await prisma.agentRun.count({ where: { userMessageId: question.id } }), 0)
+    const messages = await new MessagesService(prisma, new ConversationsService(prisma)).listMessages(userId, conversationId)
+    assert.deepEqual(messages[0]?.plugins, selectedPlugins)
+    assert.equal(messages[0]?.content, 'Firebase 如何登录？')
+    const deadline = { deadlineAt: Date.now() + 30_000, signal: new AbortController().signal, createTimeoutError: () => new Error('timeout') }
+    const { history } = await loadConversationHistory(prisma, conversationId, undefined, deadline)
+    assert.match(history.groups[0]!.question!.content, /Google 开发文档/)
+    assert.match(history.groups[0]!.question!.content, /历史选择不代表当前授权/)
+    rejectBind = true
+    await assert.rejects(host.createUserMessage(conversationId, '不应落库', []), /bind failed/)
+    assert.equal(await prisma.message.count({ where: { conversationId } }), 1)
+  })
 
   it('私人创建/更新/删除隔离；系统目录可见但未自动连接', async () => {
     await assert.rejects(service.save(userId, config({ headers: { Authorization: 'test' } })), /仅密钥/)

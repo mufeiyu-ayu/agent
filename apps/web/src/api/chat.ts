@@ -15,11 +15,9 @@ export class ChatStreamHttpError extends Error {
   constructor(
     message: string,
     readonly status: number,
-    /**
-     * 模型行不可用（已隐藏 / 删除、服务商停用、强度不属于该家族）：这是流接口写出响应头前唯一的业务 400，
-     * 不带 `error.details`；DTO 校验失败的 400 带 details。
-     */
+    /** 既有模型不可用 400；带明确业务错误码的插件失效不归入此类。 */
     readonly isModelUnavailable: boolean,
+    readonly errorCode?: string,
   ) {
     super(message)
     this.name = 'ChatStreamHttpError'
@@ -209,9 +207,10 @@ async function readStreamHttpError(response: Response): Promise<ChatStreamHttpEr
 
   if (typeof payload?.message === 'string') {
     const details = payload.error?.details
-    const isModelUnavailable = response.status === 400 && !(Array.isArray(details) && details.length > 0)
+    const errorCode = typeof payload.error?.error === 'string' ? payload.error.error : undefined
+    const isModelUnavailable = response.status === 400 && errorCode !== 'McpSelectionUnavailable' && !(Array.isArray(details) && details.length > 0)
 
-    return new ChatStreamHttpError(payload.message, response.status, isModelUnavailable)
+    return new ChatStreamHttpError(payload.message, response.status, isModelUnavailable, errorCode)
   }
 
   return new ChatStreamHttpError(`请求失败（${response.status}）`, response.status, false)

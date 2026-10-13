@@ -455,7 +455,7 @@ test('新建对话中输入斜杠在下方弹出技能盒子，已有对话在�
   await page.getByRole('button', { name: '新建对话', exact: true }).click()
   const heroComposer = page.getByRole('textbox').first()
   await heroComposer.fill('/')
-  const slashMenu = page.getByRole('listbox', { name: '快捷技能指令' })
+  const slashMenu = page.getByRole('listbox', { name: '技能与插件' })
   await expect(slashMenu).toBeVisible()
   await expect(slashMenu.getByText('skill-creator')).toBeVisible()
 
@@ -634,7 +634,7 @@ test('英文设置覆盖技能页、编辑弹窗、创建菜单和快捷技能�
   await page.getByRole('button', { name: 'Close skill editor' }).click()
   await page.getByRole('button', { name: 'New chat', exact: true }).click()
   await page.locator('textarea').fill('/')
-  await expect(page.getByRole('listbox', { name: 'Skill shortcuts' })).toBeVisible()
+  await expect(page.getByRole('listbox', { name: 'Skills and plugins' })).toBeVisible()
 })
 
 test('技能选择在请求被接受后清除，发送前失败保留以便重试', async ({ page }) => {
@@ -782,7 +782,7 @@ test('IME 组词及 keyCode 229 不删除技能；非组词空输入仍可退格
   await expect(page.locator('[data-composer-skills]')).toContainText(draft.name)
   await textarea.dispatchEvent('compositionend')
   await textarea.fill('/')
-  const menu = page.getByRole('listbox', { name: '快捷技能指令' })
+  const menu = page.getByRole('listbox', { name: '技能与插件' })
   await expect(menu).toBeVisible()
   const beforeArrow = await menu.getByRole('option', { selected: true }).textContent()
   await textarea.dispatchEvent('compositionstart')

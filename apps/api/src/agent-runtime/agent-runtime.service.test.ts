@@ -4384,7 +4384,7 @@ class FakePrismaService {
 
   readonly message = {
     create: async ({ data }: {
-      data: Pick<Message, 'conversationId' | 'role' | 'content'> & Partial<Pick<Message, 'status' | 'skills'>>
+      data: Pick<Message, 'conversationId' | 'role' | 'content'> & Partial<Pick<Message, 'status' | 'skills' | 'plugins'>>
     }): Promise<Message> => {
       const now = this.nextMessageCreatedAt ?? new Date()
       const message: Message = {
@@ -4393,6 +4393,7 @@ class FakePrismaService {
         role: data.role,
         content: data.content,
         skills: data.skills ?? [],
+        plugins: data.plugins ?? [],
         status: data.status ?? MessageStatus.COMPLETED,
         createdAt: now,
         updatedAt: now,
@@ -4565,6 +4566,7 @@ class FakePrismaService {
       role: input.role ?? MessageRole.USER,
       content: input.content,
       skills: [],
+      plugins: [],
       status: input.status,
       createdAt: input.createdAt,
       updatedAt: input.createdAt,

@@ -5,6 +5,7 @@ import { AGENT_STEP_TYPES } from '@agent/agent'
 
 import { Inject, Injectable, Logger } from '@nestjs/common'
 import { MessageRole, Prisma } from '../generated/prisma/client.js'
+import { readMessagePlugins } from '../mcp/plugin-selection.js'
 import { PrismaService } from '../prisma/prisma.service.js'
 import { ConversationsService } from './conversations.service.js'
 import { readMessageSkills, toMessageActivity } from './message-activity.js'
@@ -50,6 +51,7 @@ export class MessagesService {
       message,
       message.role === MessageRole.ASSISTANT ? activities.get(message.id) : undefined,
       message.role === MessageRole.USER ? readMessageSkills(message.skills) : undefined,
+      message.role === MessageRole.USER ? readMessagePlugins(message.plugins) : undefined,
     ))
   }
 
@@ -132,6 +134,7 @@ function toConversationMessageResponse(
   message: Message & { attachments: Array<Pick<Attachment, 'id' | 'kind' | 'name' | 'bytes' | 'width' | 'height'>> },
   activity: MessageActivity | undefined,
   skills: ConversationMessage['skills'],
+  plugins: ConversationMessage['plugins'],
 ): ConversationMessage {
   return {
     id: message.id,
@@ -143,6 +146,7 @@ function toConversationMessageResponse(
     updatedAt: message.updatedAt.toISOString(),
     ...(activity ? { activity } : {}),
     ...(skills?.length ? { skills } : {}),
+    ...(plugins?.length ? { plugins } : {}),
     ...(message.attachments.length > 0
       ? {
           attachments: message.attachments.map(({ width, height, kind, ...attachment }) => ({
