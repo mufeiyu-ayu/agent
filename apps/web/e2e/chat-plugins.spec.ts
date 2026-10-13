@@ -179,7 +179,6 @@ test('英文聊天中所选插件已失效时显示英文并保留输入供修�
   assert.match((await page.locator('[data-composer-plugins]').textContent())!, /Google/)
 })
 
-
 test('英文内置插件候选、选择和消息标签一致，请求仍提交原始插件 ID', async ({ page }) => {
   await setup(page)
   await page.route('**/api/mcp', route => route.fulfill({ json: { success: true, code: 0, data: [{

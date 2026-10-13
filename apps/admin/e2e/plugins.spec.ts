@@ -124,9 +124,19 @@ test('上架状态为独立开关列：慢请求防连点、失败保持原状�
 })
 
 const testPluginRow = {
-  id: 'oauth-test', name: '授权测试插件', description: '', url: 'https://example.com/mcp',
-  configRevision: 'a'.repeat(64), authType: 'oauth', headerNames: [],
-  available: true, system: true, connected: false, enabled: false, needsAuth: false, tools: [],
+  id: 'oauth-test',
+  name: '授权测试插件',
+  description: '',
+  url: 'https://example.com/mcp',
+  configRevision: 'a'.repeat(64),
+  authType: 'oauth',
+  headerNames: [],
+  available: true,
+  system: true,
+  connected: false,
+  enabled: false,
+  needsAuth: false,
+  tools: [],
 }
 const response = (data: unknown) => ({ json: { success: true, code: 0, data } })
 
