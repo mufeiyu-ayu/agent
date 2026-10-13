@@ -38,6 +38,14 @@ const BODY_METADATA: ArgumentMetadata = {
 }
 
 describe('ChatDto', () => {
+  it('插件选择只接受有界唯一 ID，不能用只有插件的空消息触发调用', async () => {
+    const pipe = createAppValidationPipe()
+    const transformed = await pipe.transform({ ...createPayload('查询文档'), pluginIds: ['google'] }, BODY_METADATA) as ChatDto
+    assert.deepEqual(transformed.pluginIds, ['google'])
+    for (const pluginIds of [[''], ['same', 'same'], 'id', Array.from({ length: 11 }, (_, i) => `plugin-${i}`)])
+      await assert.rejects(pipe.transform({ ...createPayload('查询文档'), pluginIds }, BODY_METADATA), BadRequestException)
+    await assert.rejects(pipe.transform({ ...createPayload(''), pluginIds: ['google'] }, BODY_METADATA), BadRequestException)
+  })
   it('接受共享上限内的用户消息', async () => {
     const errors = await validate(createDto('a'.repeat(CHAT_MESSAGE_MAX_CHARS)))
 

@@ -251,7 +251,7 @@ export function runStepText(step: TurnRunStep, t: Translate, locale: string): Ru
     }
 
     default:
-      return { verb: t('conversation.run.steps.tool'), object: step.toolName, meta: outcome }
+      return { verb: t('conversation.run.steps.tool'), object: step.title || step.toolName, meta: outcome }
   }
 }
 

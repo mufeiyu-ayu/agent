@@ -19,7 +19,7 @@ export interface JsonObjectSchema {
 export interface ModelToolSpec {
   name: string
   description: string
-  inputSchema: JsonObjectSchema
+  inputSchema: JsonObjectSchema | (Record<string, unknown> & { type: 'object' })
 }
 
 /** 模型单次 sampling 的结束原因，已与具体 Provider 类型解耦。 */

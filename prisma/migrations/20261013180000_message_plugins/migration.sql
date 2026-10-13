@@ -1,0 +1,1 @@
+ALTER TABLE "Message" ADD COLUMN "plugins" JSONB NOT NULL DEFAULT '[]';

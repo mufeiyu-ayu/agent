@@ -21,6 +21,9 @@ export class ChatDto implements ChatRequest {
   @IsOptional() @IsArray() @ArrayMaxSize(5) @ArrayUnique() @IsString({ each: true }) @IsNotEmpty({ each: true }) @MaxLength(128, { each: true })
   skillIds?: string[]
 
+  @IsOptional() @IsArray() @ArrayMaxSize(10) @ArrayUnique() @IsString({ each: true }) @IsNotEmpty({ each: true }) @MaxLength(128, { each: true })
+  pluginIds?: string[]
+
   @IsString()
   @IsNotEmpty()
   @MaxLength(128)

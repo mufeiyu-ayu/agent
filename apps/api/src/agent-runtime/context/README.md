@@ -8,6 +8,10 @@
 
 ## 输入重建与已知偏差
 
+MCP 显式选择：`Message.plugins` 与用户消息同事务保存当次 id/name，UI 正文不变。当前请求增加独立 user 使用指示，采样 `input.pluginSelection` 保存选择与指示原文；历史消息只追加该条消息的选择事实，不重新授予工具权限。无 Run / 首采样前失败仍能从 Message 回显选择。
+
+MCP 插件：采样 Step 的 `input.mcp` 保存本轮实际工具名、原始服务工具名、插件身份、完整说明及参数 JSON Schema；只存无凭据快照。工具参数和模型实际收到的 observation 沿用 tool Step 原样记录。历史记录不重新授予权限，执行时还需复核当前用户连接及平台启停。没有 MCP 历史版本管理界面或旧连接保留。
+
 工作区开发指南按需启用：首次工作区工具意图后，`workspace_development` Step 的 input 保存 version / activatedAfterSamplingAttemptId，output 保存完整 system instruction。启用 Step 确认后追加到 ModelContext 并清掉旧 token 用量锚点；同批旧工作区计划以 `ok:false / code:workspace_replan` 记录为未执行，Step 正常收口，流与历史统一显示“按指南重新规划”，不计执行失败也不伪造成功；下一轮重新采样。后续采样 input.workspaceDevelopment 指向版本与启用 Step；普通解释没有该 Step 或整段指南。新 Run 按需重新启用，不依赖历史压缩摘要里的隐式状态。重建时从被引用 Step 取当次原文，不能从当前部署常量推导已启用版本。
 
 - 历史读取在同一 REPEATABLE READ 内先读全部已完成消息的轻量元数据和 Run 配对，再仅读未覆盖组的正文与 Step；覆盖组仍计入历史加载 messageCount，不将空占位正文回喂模型，不改变摘要边界与并发问答排序。

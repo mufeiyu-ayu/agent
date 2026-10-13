@@ -161,7 +161,10 @@ export async function installApiRoutes(
     body: JSON.stringify({ success: true, code: 0, message: 'ok', data }),
   })
 
+  await page.route('**/api/mcp', route => route.fulfill(json([])))
+
   await page.route('**/api/skills', route => route.fulfill(json([])))
+  await page.route('**/api/skills?conversationId=*', route => route.fulfill(json([])))
 
   // 默认已登录（#195 起 /workspace 需要登录）；登录流程的用例自己覆盖这条路由。
   await page.route('**/api/auth/me', route => route.fulfill(json(E2E_USER)))

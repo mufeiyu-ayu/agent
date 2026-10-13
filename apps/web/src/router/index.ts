@@ -39,7 +39,10 @@ export const router = createRouter({
       name: 'workspace',
       component: () => import('@/views/ChatWorkspaceView.vue'),
       meta: { requiresAuth: true },
-      children: [{ path: '/skills', name: 'skills', component: () => import('@/views/SkillsView.vue') }],
+      children: [
+        { path: '/skills', name: 'skills', component: () => import('@/views/SkillsView.vue') },
+        { path: '/plugins', name: 'plugins', component: () => import('@/views/PluginsView.vue') },
+      ],
     },
   ],
 })

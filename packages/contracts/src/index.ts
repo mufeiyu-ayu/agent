@@ -150,6 +150,8 @@ export type {
   UpdateConversationRequest,
 } from './conversation.js'
 export { RUN_ROW_DELAY_MS } from './conversation.js'
+export { MCP_AUTH_TYPES } from './mcp.js'
+export type { McpAuthType, McpConnectResult, McpPlugin, McpPluginInput, McpTool } from './mcp.js'
 export type { AdminSkillDetail, AdminSkillSummary, CreateAdminSkillRequest, SkillPreview, SkillResource, SkillSummary, UpdateAdminSkillRequest } from './skill.js'
 
 export type { SandboxExecutionRecord, WorkspaceArtifact, WorkspaceCloudInstance, WorkspaceCloudOverview, WorkspaceFile, WorkspaceHistoryResponse, WorkspaceMonitorItem, WorkspaceMonitorResponse, WorkspaceSnapshot, WorkspaceToolDisplay } from './workspace.js'

@@ -106,6 +106,12 @@ export const router = createRouter({
           meta: { title: 'Users', titleKey: 'navigation.users', tab: true },
         },
         {
+          path: 'plugins',
+          name: 'plugins',
+          component: () => import('@/views/PluginsView.vue'),
+          meta: { title: 'System Plugins', titleKey: 'navigation.plugins', tab: true },
+        },
+        {
           path: 'skills',
           name: 'skills',
           component: () => import('@/views/SkillsView.vue'),

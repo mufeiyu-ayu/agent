@@ -7,6 +7,7 @@ import { AttachmentStorageService } from '../../attachments/attachment-storage.s
 import { ATTACHMENT_MODEL_SELECT, AttachmentsService } from '../../attachments/attachments.service.js'
 import { readMessageSkills } from '../../conversations/message-activity.js'
 import { MessageRole, MessageStatus, Prisma } from '../../generated/prisma/client.js'
+import { readMessagePlugins, withPluginSelection } from '../../mcp/plugin-selection.js'
 import { withSkillSelection } from '../../skills/skill-selection.js'
 
 /**
@@ -67,9 +68,9 @@ export async function loadConversationHistory(
     if (retainedMessages.length) {
       const contents = await transaction.execute(prisma => prisma.message.findMany({
         where: { conversationId, id: { in: retainedMessages.map(message => message.id) } },
-        select: { id: true, content: true, skills: true },
+        select: { id: true, content: true, skills: true, plugins: true },
       }))
-      const byId = new Map(contents.map(message => [message.id, withSkillSelection(message.content, readMessageSkills(message.skills).map(skill => skill.id))]))
+      const byId = new Map(contents.map(message => [message.id, withPluginSelection(withSkillSelection(message.content, readMessageSkills(message.skills).map(skill => skill.id)), readMessagePlugins(message.plugins))]))
       for (const message of retainedMessages) {
         const content = byId.get(message.id)
         if (content === undefined)

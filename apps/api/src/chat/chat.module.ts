@@ -1,15 +1,16 @@
 import { Module } from '@nestjs/common'
 import { AgentRuntimeModule } from '../agent-runtime/agent-runtime.module.js'
-
 import { AttachmentsModule } from '../attachments/attachments.module.js'
+
 import { ConversationsModule } from '../conversations/conversations.module.js'
+import { McpModule } from '../mcp/mcp.module.js'
 import { RuntimeConfigModule } from '../runtime-config/runtime-config.module.js'
 import { SkillsModule } from '../skills/skills.module.js'
 import { ChatController } from './chat.controller.js'
 import { ChatService } from './chat.service.js'
 
 @Module({
-  imports: [SkillsModule, AgentRuntimeModule, AttachmentsModule, ConversationsModule, RuntimeConfigModule],
+  imports: [McpModule, SkillsModule, AgentRuntimeModule, AttachmentsModule, ConversationsModule, RuntimeConfigModule],
   controllers: [ChatController],
   providers: [ChatService],
 })

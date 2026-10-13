@@ -1,5 +1,13 @@
 import type { ChatStreamToolFinishedEvent, ChatStreamToolStartedEvent } from '@agent/contracts'
 
+export interface ChatSlashItem {
+  kind: 'skill' | 'plugin'
+  id: string
+  name: string
+  description: string
+  icon?: string | null
+}
+
 export type GenerationStatus = 'empty' | 'idle' | 'thinking' | 'generating' | 'done' | 'error' | 'aborted'
 
 export type ConversationTurnStatus = 'thinking' | 'generating' | 'success' | 'error' | 'aborted'
@@ -38,6 +46,7 @@ export interface ConversationTurn {
   id: string
   userMessage: string
   skills?: Array<{ id: string, name: string }>
+  plugins?: Array<{ id: string, name: string }>
   attachments?: ChatAttachment[]
   status: ConversationTurnStatus
   createdAt: string

@@ -16,7 +16,7 @@ import {
   LLMRateLimitError,
   LLMServerError,
 } from '../errors.js'
-import { OpenAICompatibleClient } from './openai-completions.js'
+import { OpenAICompatibleClient, toOpenAIChatTool } from './openai-completions.js'
 
 /** DeepSeek thinking 模型的 resolved 请求：带 thinking 参数，Tool Call 要求 reasoning_content。 */
 const DEEPSEEK_REQUEST: ResolvedChatRequestConfig = {
@@ -36,6 +36,13 @@ const RELAY_REQUEST: ResolvedChatRequestConfig = {
 }
 
 describe('OpenAICompatibleClient runtime config', () => {
+  it('远端工具的完整 JSON Schema 进入模型请求，不丢弃组合与引用定义', () => {
+    const inputSchema = { type: 'object' as const, properties: { value: { $ref: '#/$defs/value' } }, $defs: { value: { anyOf: [{ type: 'string' }, { type: 'integer' }] } }, required: ['value'] }
+    const tool = toOpenAIChatTool({ name: 'mcp_test', description: '远端工具', inputSchema })
+    assert.equal(tool.type, 'function')
+    if (tool.type === 'function')
+      assert.deepEqual(tool.function.parameters, inputSchema)
+  })
   it('metadata 与 Stream 分别使用 10s 和 10min', async () => {
     const harness = createHarness()
 

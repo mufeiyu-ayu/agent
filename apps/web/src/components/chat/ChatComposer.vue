@@ -1,13 +1,11 @@
 <script setup lang="ts">
-import type { ReasoningEffort, SkillSummary } from '@agent/contracts'
-import type { ComposerAttachment, GenerationStatus } from '../../types/chat'
+import type { McpPlugin, ReasoningEffort } from '@agent/contracts'
+import type { ChatSlashItem, ComposerAttachment, GenerationStatus } from '../../types/chat'
 import type { LlmModelOption } from '../../types/llm'
-
 import { CHAT_MESSAGE_MAX_CHARS } from '@agent/contracts'
 import { useEventListener } from '@vueuse/core'
 import { computed, nextTick, ref, toRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-
 import ChatAttachMenu from '@/components/chat/ChatAttachMenu.vue'
 import ChatComposerAttachments from '@/components/chat/ChatComposerAttachments.vue'
 import ChatModelMenu from '@/components/chat/ChatModelMenu.vue'
@@ -20,11 +18,16 @@ import { Textarea } from '@/components/ui/textarea'
 import { useAutosizeTextarea } from '@/hooks/useAutosizeTextarea'
 import { useSkills } from '@/hooks/useSkills'
 import { ATTACHMENT_ACCEPT } from '@/utils/attachments'
+import { pluginText } from '@/utils/plugin-text'
 
 const props = defineProps<{
   message: string
   attachments: ComposerAttachment[]
   skills?: Array<{ id: string, name: string }>
+  plugins?: Array<{ id: string, name: string }>
+  availablePlugins?: McpPlugin[]
+  pluginsLoading?: boolean
+  pluginsError?: boolean
   /** 当前选中的模型不能看图片、而附件里有图片：不让发送，提示换模型或移除图片。 */
   imagesUnsupported?: boolean
   models: LlmModelOption[]
@@ -49,6 +52,9 @@ const emit = defineEmits<{
   'addFiles': [files: File[]]
   'removeAttachment': [id: string]
   'removeSkill': [id: string]
+  'removePlugin': [id: string]
+  'selectPlugin': [plugin: { id: string, name: string }]
+  'refreshPlugins': []
   'retryAttachment': [id: string]
   'update:selectedModel': [value: string]
   'update:selectedReasoningEffort': [value: ReasoningEffort | null]
@@ -58,7 +64,7 @@ const emit = defineEmits<{
   'retryHistory': []
 }>()
 
-const { t } = useI18n()
+const { locale, t } = useI18n()
 
 const PLACEHOLDER_HINT_KEYS = ['ask', 'search'] as const
 
@@ -156,31 +162,41 @@ const availableSkills = computed(() => {
   return skillsState.items.value.filter(item => item.published && item.enabled)
 })
 
-const filteredSlashSkills = computed(() => {
-  if (slashQuery.value === null)
+const slashItems = computed<ChatSlashItem[]>(() => {
+  const query = slashQuery.value
+  if (query === null)
     return []
-  if (!slashQuery.value)
-    return availableSkills.value
-  return availableSkills.value.filter(item =>
-    item.name.toLowerCase().includes(slashQuery.value!)
-    || item.description?.toLowerCase().includes(slashQuery.value!),
-  )
+  const items: ChatSlashItem[] = [
+    ...availableSkills.value.map(skill => ({ kind: 'skill' as const, id: skill.id, name: skill.name, description: skill.description })),
+    ...(props.availablePlugins ?? []).map(plugin => ({ kind: 'plugin' as const, id: plugin.id, name: plugin.name, description: plugin.description, icon: plugin.icon })),
+  ]
+  return items.filter((item) => {
+    const translated = item.kind === 'plugin'
+      ? `${pluginText(item, 'name', locale.value)} ${pluginText(item, 'description', locale.value)}`
+      : ''
+    return `${item.name} ${item.description} ${translated}`.toLowerCase().includes(query)
+  })
 })
-
-const isSlashMenuOpen = computed(() => {
-  return !isSlashMenuDismissed.value
-    && slashQuery.value !== null
-    && filteredSlashSkills.value.length > 0
+watch(() => slashQuery.value !== null, (open) => {
+  if (open)
+    emit('refreshPlugins')
 })
-
+const isSlashMenuOpen = computed(() => !isSlashMenuDismissed.value && slashQuery.value !== null
+  && (slashItems.value.length > 0 || props.pluginsLoading || props.pluginsError))
 const activeSlashIndex = ref(0)
-watch(filteredSlashSkills, () => {
-  activeSlashIndex.value = 0
+watch([slashQuery, slashItems], ([query, items], [previousQuery, previousItems]) => {
+  const active = previousItems[activeSlashIndex.value]
+  activeSlashIndex.value = query === previousQuery && active
+    ? Math.max(0, items.findIndex(item => item.kind === active.kind && item.id === active.id))
+    : 0
 })
 
-function selectSlashSkill(skill: SkillSummary) {
-  if (!skillsState.selectedIds.value.includes(skill.id) && skillsState.selectedIds.value.length < 5) {
-    skillsState.selectedIds.value = [...skillsState.selectedIds.value, skill.id]
+function selectSlashItem(item: ChatSlashItem) {
+  if (item.kind === 'plugin') {
+    emit('selectPlugin', item)
+  }
+  else if (!skillsState.selectedIds.value.includes(item.id) && skillsState.selectedIds.value.length < 5) {
+    skillsState.selectedIds.value = [...skillsState.selectedIds.value, item.id]
   }
   updateMessage('')
   isSlashMenuDismissed.value = true
@@ -203,22 +219,22 @@ function handleEnterKeydown(event: KeyboardEvent) {
 function handleKeydown(event: KeyboardEvent) {
   if (isComposing.value || event.isComposing || event.keyCode === 229)
     return
-  if (isSlashMenuOpen.value && filteredSlashSkills.value.length > 0) {
-    if (event.key === 'ArrowDown') {
+  if (isSlashMenuOpen.value) {
+    if (event.key === 'ArrowDown' && slashItems.value.length) {
       event.preventDefault()
-      activeSlashIndex.value = (activeSlashIndex.value + 1) % filteredSlashSkills.value.length
+      activeSlashIndex.value = (activeSlashIndex.value + 1) % slashItems.value.length
       return
     }
-    if (event.key === 'ArrowUp') {
+    if (event.key === 'ArrowUp' && slashItems.value.length) {
       event.preventDefault()
-      activeSlashIndex.value = (activeSlashIndex.value - 1 + filteredSlashSkills.value.length) % filteredSlashSkills.value.length
+      activeSlashIndex.value = (activeSlashIndex.value - 1 + slashItems.value.length) % slashItems.value.length
       return
     }
     if (event.key === 'Enter' && !event.isComposing && event.keyCode !== 229) {
       event.preventDefault()
-      const target = filteredSlashSkills.value[activeSlashIndex.value]
+      const target = slashItems.value[activeSlashIndex.value]
       if (target) {
-        selectSlashSkill(target)
+        selectSlashItem(target)
       }
       return
     }
@@ -227,6 +243,12 @@ function handleKeydown(event: KeyboardEvent) {
       isSlashMenuDismissed.value = true
       return
     }
+  }
+
+  if (event.key === 'Backspace' && !props.message && props.plugins?.length) {
+    event.preventDefault()
+    emit('removePlugin', props.plugins[props.plugins.length - 1]!.id)
+    return
   }
 
   if (event.key === 'Backspace' && !props.message && props.skills?.length) {
@@ -321,7 +343,7 @@ useEventListener(window, 'drop', (event) => {
   <section
     :class="hero
       ? 'w-full'
-      : 'relative z-10 shrink-0 px-3 pb-2 pt-2 sm:px-4 sm:pb-3'"
+      : 'relative z-30 shrink-0 px-3 pb-2 pt-2 sm:px-4 sm:pb-3'"
   >
     <div class="mx-auto w-full" :class="hero ? '' : 'max-w-[720px]'">
       <p v-if="historyReady === false" role="status" class="px-2 pb-2 text-xs text-agent-ink-muted">
@@ -365,7 +387,16 @@ useEventListener(window, 'drop', (event) => {
                 </span>
               </span>
 
-              <!-- 输入框 Textarea：紧随技能标签同一行展示 -->
+              <span v-if="plugins?.length" class="inline-flex shrink-0 flex-wrap items-center gap-1.5" data-composer-plugins>
+                <span v-for="plugin in plugins" :key="plugin.id" class="inline-flex items-center gap-1.5 font-medium text-[#b86e28] select-none dark:text-[#e09b52]">
+                  <AppIcon name="tabler:plug" :size="16" class="shrink-0 text-[#c8a875] dark:text-[#dec293]" />
+                  <span>{{ pluginText(plugin, 'name', locale) }}</span>
+                  <button type="button" :aria-label="t('plugins.removeSelection', { name: pluginText(plugin, 'name', locale) })" class="rounded hover:bg-agent-ink/5" @click="emit('removePlugin', plugin.id)">
+                    <AppIcon name="tabler:x" :size="12" />
+                  </button>
+                </span>
+              </span>
+              <!-- 输入框 Textarea：紧随所选标签同一行展示 -->
               <div class="relative min-w-[120px] flex-1">
                 <Textarea
                   :model-value="message"
@@ -376,7 +407,7 @@ useEventListener(window, 'drop', (event) => {
                     hero ? 'min-h-16' : 'min-h-6',
                     showTypewriter && 'placeholder:text-transparent',
                   ]"
-                  :placeholder="skills?.length ? '' : (hero ? placeholderHints[0] : t('composer.replyPlaceholder'))"
+                  :placeholder="skills?.length || plugins?.length ? '' : (hero ? placeholderHints[0] : t('composer.replyPlaceholder'))"
                   @update:model-value="updateMessage"
                   @keydown="handleKeydown"
                   @focus="isTextareaFocused = true"
@@ -387,7 +418,7 @@ useEventListener(window, 'drop', (event) => {
                 />
 
                 <ChatTypewriterPlaceholder
-                  v-if="showTypewriter && !skills?.length"
+                  v-if="showTypewriter && !skills?.length && !plugins?.length"
                   :phrases="placeholderHints"
                   :hide-caret="isTextareaFocused"
                 />
@@ -399,10 +430,12 @@ useEventListener(window, 'drop', (event) => {
         <!-- 斜杠命令菜单（新建对话位于输入框下方，已有对话位于输入框上方） -->
         <ChatSlashMenu
           v-if="isSlashMenuOpen"
-          :skills="filteredSlashSkills"
+          :items="slashItems"
+          :plugins-loading="pluginsLoading"
+          :plugins-error="pluginsError"
           :active-index="activeSlashIndex"
           :side="hero ? 'bottom' : 'top'"
-          @select="selectSlashSkill"
+          @select="selectSlashItem"
           @hover="activeSlashIndex = $event"
           @close="isSlashMenuDismissed = true"
         />

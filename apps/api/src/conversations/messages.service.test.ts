@@ -140,6 +140,7 @@ function createMessage(id: string, role: Message['role']): Message {
     role,
     content: '内容',
     skills: [],
+    plugins: [],
     status: 'COMPLETED',
     createdAt,
     updatedAt: createdAt,

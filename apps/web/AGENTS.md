@@ -40,11 +40,13 @@ src/main.ts -> src/App.vue -> src/router/index.ts   # / 首页、/privacy（公�
 
 ## 验证
 
+插件：`/plugins` 与技能共用工作台壳，`views/PluginsView.vue` 展示无分类分组的系统/个人双列列表，`hooks/usePlugins.ts` 管请求与迟到隔离，`api/mcp.ts` 调后端；`components/plugins/` 提供配置/JSON 导入及连接详情，支持小尺寸图标上传。个人凭据由后端保存，OAuth 在无 opener 的独立窗口完成；随机 BroadcastChannel 只通知结果，主窗口重新读取服务端连接状态。等待时可取消并断开待授权连接，bfcache 返回复位。UI 视觉由用户验收。
+
 `pnpm --filter @agent/web typecheck`、`lint`、`test`（Vitest 单测），必要时 `build`；浏览器回归用根目录 `pnpm test:e2e`（Playwright）。测试规范见 `docs/testing.md`。
 
 技能：`api/skills.ts` 发请求，`hooks/useSkills.ts` 在工作台提供共享状态，`components/skills/SkillsList.vue` 用于技能库和设置管理，`SkillDetailsDrawer.vue` 展示真实时间/使用次数与示例卡片，示例点击新建会话、选中技能并填入文本待发送；复用现有预览、编辑、对话使用和删除操作；前台不提供启停入口，系统技能启停留在管理台，`SkillsDialog.vue` 安全预览完整文件并确认发布；创建支持聊天或手动输入，已有技能通过 `SkillEditorDialog.vue` 手动编辑，无聊天编辑入口。
 
-`/skills` 是工作台壳下的独立子路由，`views/SkillsView.vue` 展示技能库；对话创建技能、新建/选择会话返回 `/workspace`，手动创建留在当前页。技能选择使用输入框 `/` 菜单，技能库和设置中的预览使用弹窗。
+`/skills` 是工作台壳下的独立子路由，`views/SkillsView.vue` 展示技能库；对话创建技能、新建/选择会话返回 `/workspace`，手动创建留在当前页。技能与已启用插件共用输入框 `/` 分组菜单；`useComposerPlugins.ts` 按需读取本人可用连接并管理选择，技能库和设置中的预览使用弹窗。
 
 `AgentSkillArtifact.vue` 在保存技能的对应回复末尾展示 SKILL.md 预览卡片，实时工具 display 与刷新后的 activity 共用同一入口。
 

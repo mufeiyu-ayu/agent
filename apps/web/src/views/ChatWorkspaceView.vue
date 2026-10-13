@@ -12,8 +12,9 @@ import { RouterView, useRoute, useRouter } from 'vue-router'
 import SkillEditorDialog from '@/components/skills/SkillEditorDialog.vue'
 import SkillPreviewPanel from '@/components/skills/SkillPreviewPanel.vue'
 import SkillsDialog from '@/components/skills/SkillsDialog.vue'
-import { provideSkills } from '@/hooks/useSkills'
+import { useComposerPlugins } from '@/hooks/useComposerPlugins'
 
+import { provideSkills } from '@/hooks/useSkills'
 import { getConversationSkillDrafts } from '../api/skills'
 import workspaceBgOliveEmberDeepUrl from '../assets/bg-olive.webp'
 import workspaceBgAiBalancedUrl from '../assets/bg-warm.webp'
@@ -46,6 +47,7 @@ const { t } = useI18n()
 const router = useRouter()
 const route = useRoute()
 const isSkillsPage = computed(() => route.name === 'skills')
+const isLibraryPage = computed(() => isSkillsPage.value || route.name === 'plugins')
 const { currentUser, signOut } = useAuth()
 
 const user = computed<AgentPlatformUser>(() => currentUser.value
@@ -57,7 +59,7 @@ const {
 } = useWorkspaceTheme()
 
 const navigationItems = computed<AgentNavigationItem[]>(() => {
-  return [{ id: 'skills', label: t('skills.title'), icon: 'tabler:script', active: isSkillsPage.value }, ...navigationConfig.map(item => ({
+  return [{ id: 'skills', label: t('skills.title'), icon: 'tabler:script', active: isSkillsPage.value }, { id: 'plugins', label: t('plugins.title'), icon: 'tabler:plug', active: route.name === 'plugins' }, ...navigationConfig.map(item => ({
     id: item.id,
     label: t(item.labelKey),
     icon: item.icon,
@@ -79,6 +81,8 @@ const {
   dismissModelNotice,
   refreshBalance,
 } = useLlmRuntime()
+
+const composerPlugins = useComposerPlugins()
 
 let forgetWorkspaceConversation: ((id: string) => void) | undefined
 
@@ -109,11 +113,12 @@ const {
   hideMessage,
 } = useChatWorkspace({
   onSkillsAccepted: clearSubmittedSkills,
+  onPluginsAccepted: composerPlugins.remove,
   onModelUnavailable: () => { void loadModels(true) },
   onConversationDeleted: clearDeletedConversation,
 })
 
-const sidebarChats = computed(() => recentChats.value.map(chat => ({ ...chat, active: !isSkillsPage.value && chat.active })))
+const sidebarChats = computed(() => recentChats.value.map(chat => ({ ...chat, active: !isLibraryPage.value && chat.active })))
 
 const {
   add: addAttachments,
@@ -147,7 +152,7 @@ const skills = provideSkills(async (skillId, prompt) => {
 }, text => showMessage(text, 'success'))
 const conversationSkillDrafts = ref<SkillSummary[]>([])
 const conversationDraftError = ref('')
-watch([activeConversationId, status, isSkillsPage, isLoadingMessages], async ([id, currentStatus, onSkills, loading], _previous, onCleanup) => {
+watch([activeConversationId, status, isLibraryPage, isLoadingMessages], async ([id, currentStatus, onSkills, loading], _previous, onCleanup) => {
   conversationSkillDrafts.value = []
   conversationDraftError.value = ''
   if (!id || onSkills || loading || currentStatus === 'thinking' || currentStatus === 'generating')
@@ -167,8 +172,10 @@ watch([activeConversationId, status, isSkillsPage, isLoadingMessages], async ([i
 const selectedSkills = computed(() => skills.items.value.filter(item => skills.selectedIds.value.includes(item.id)))
 function clearDeletedConversation(id: string) {
   forgetWorkspaceConversation?.(id)
-  if (activeConversationId.value === id)
+  if (activeConversationId.value === id) {
     skills.selectedIds.value = []
+    composerPlugins.selected.value = []
+  }
 }
 function clearSubmittedSkills(ids: string[]) {
   skills.selectedIds.value = skills.selectedIds.value.filter(id => !ids.includes(id))
@@ -415,6 +422,7 @@ function onPreviewLayout(sizes: number[]) {
 async function newChat() {
   await router.push({ name: 'workspace' })
   skills.selectedIds.value = []
+  composerPlugins.selected.value = []
   resetWorkspace()
   await nextTick()
   composer.value?.focus()
@@ -423,6 +431,7 @@ async function newChat() {
 async function openConversation(id: string) {
   await router.push({ name: 'workspace' })
   skills.selectedIds.value = []
+  composerPlugins.selected.value = []
   await selectConversation(id)
 }
 
@@ -492,7 +501,7 @@ async function previewSkill(id: string) {
 function send() {
   const selected = [...skills.selectedIds.value]
   const currentSkills = [...selectedSkills.value]
-  void sendMessage(selectedModel.value, selectedReasoningEffort.value ?? undefined, selected, currentSkills).finally(() => {
+  void sendMessage(selectedModel.value, selectedReasoningEffort.value ?? undefined, selected, currentSkills, [...composerPlugins.selected.value]).finally(() => {
     void skills.reload()
   })
 }
@@ -519,13 +528,14 @@ function send() {
     @logout="logout"
     @new-chat="newChat"
     @open-skills="router.push({ name: 'skills' })"
+    @open-plugins="router.push({ name: 'plugins' })"
     @refresh-balance="refreshBalance"
     @rename-chat="renameConversationById"
     @select-chat="openConversation"
   >
     <SkillsDialog />
     <SkillEditorDialog />
-    <RouterView v-if="isSkillsPage" />
+    <RouterView v-if="isLibraryPage" />
     <Teleport to="body">
       <AppMessage
         :visible="appMessage.visible"
@@ -534,7 +544,7 @@ function send() {
         @close="hideMessage"
       />
     </Teleport>
-    <div v-show="!isSkillsPage" ref="workspaceElement" class="relative flex min-h-0 min-w-0 flex-1 overflow-hidden">
+    <div v-show="!isLibraryPage" ref="workspaceElement" class="relative flex min-h-0 min-w-0 flex-1 overflow-hidden">
       <SplitterGroup direction="horizontal" class="relative z-10 min-h-0 flex-1" @layout="onPreviewLayout">
         <SplitterPanel
           id="chat"
@@ -567,6 +577,10 @@ function send() {
                 class="mt-10"
                 :attachments="attachments"
                 :skills="selectedSkills"
+                :plugins="composerPlugins.selected.value"
+                :available-plugins="composerPlugins.items.value"
+                :plugins-loading="composerPlugins.loading.value"
+                :plugins-error="composerPlugins.error.value"
                 :images-unsupported="imagesUnsupported"
                 :models="models"
                 :models-loading="modelsLoading"
@@ -577,6 +591,9 @@ function send() {
                 :history-ready="isHistoryReady"
                 :history-loading="isLoadingMessages && !isHistoryReady"
                 :history-error="conversationError"
+                @refresh-plugins="composerPlugins.reload"
+                @select-plugin="composerPlugins.select"
+                @remove-plugin="composerPlugins.remove([$event])"
                 @add-files="addAttachments"
                 @remove-attachment="removeAttachment"
                 @remove-skill="removeSelectedSkill"
@@ -635,6 +652,10 @@ function send() {
               v-model:selected-reasoning-effort="selectedReasoningEffort"
               :attachments="attachments"
               :skills="selectedSkills"
+              :plugins="composerPlugins.selected.value"
+              :available-plugins="composerPlugins.items.value"
+              :plugins-loading="composerPlugins.loading.value"
+              :plugins-error="composerPlugins.error.value"
               :images-unsupported="imagesUnsupported"
               :models="models"
               :models-loading="modelsLoading"
@@ -645,6 +666,9 @@ function send() {
               :history-ready="isHistoryReady"
               :history-loading="isLoadingMessages && !isHistoryReady"
               :history-error="conversationError"
+              @refresh-plugins="composerPlugins.reload"
+              @select-plugin="composerPlugins.select"
+              @remove-plugin="composerPlugins.remove([$event])"
               @add-files="addAttachments"
               @remove-attachment="removeAttachment"
               @remove-skill="removeSelectedSkill"

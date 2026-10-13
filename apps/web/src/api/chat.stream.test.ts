@@ -219,6 +219,7 @@ describe('streamChat', () => {
     const cases = [
       { status: 400, error: { statusCode: 400, error: 'Bad Request', details: [] }, expected: true },
       { status: 400, error: { statusCode: 400, error: 'Bad Request', details: ['message must be a string'] }, expected: false },
+      { status: 400, error: { statusCode: 400, error: 'McpSelectionUnavailable', details: [] }, expected: false },
       { status: 503, error: { statusCode: 503, error: 'Service Unavailable', details: [] }, expected: false },
     ]
 
@@ -231,7 +232,8 @@ describe('streamChat', () => {
           (thrown: unknown) => thrown instanceof ChatStreamHttpError
             && thrown.status === status
             && thrown.isModelUnavailable === expected
-            && thrown.message === '请求的模型未对前台开放',
+            && thrown.message === '请求的模型未对前台开放'
+            && thrown.errorCode === error.error,
         )
       }
       finally {

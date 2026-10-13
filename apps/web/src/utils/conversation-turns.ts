@@ -41,6 +41,7 @@ export function mapMessagesToConversationTurns(
         id: item.id,
         userMessage: item.content,
         ...(item.skills?.length ? { skills: item.skills } : {}),
+        ...(item.plugins?.length ? { plugins: item.plugins } : {}),
         ...(attachments ? { attachments } : {}),
         status: getUserMessageTurnStatus(item.id, options.activeTurnId, errorMessage),
         createdAt: item.createdAt,

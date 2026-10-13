@@ -5,6 +5,8 @@ export const CHAT_MESSAGE_MAX_CHARS = 64_000
 
 export interface ChatRequest {
   skillIds?: string[]
+  /** 本次明确选择的插件，仍须是本人已连接且启用的插件。 */
+  pluginIds?: string[]
   conversationId: string
   /** 带了附件或显式选择技能时可以是空串。 */
   message: string

@@ -86,9 +86,49 @@ model User {
   lockedUntil        DateTime?
   lastLoginAt        DateTime?
   sessions           Session[]
+  mcpPlugins         McpPlugin[]
+  mcpConnections     McpConnection[]
   conversations      Conversation[]
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
+}
+
+model McpPlugin {
+  id String @id @default(cuid())
+  userId String?
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name String
+  description String
+  url String
+  icon String?
+  authType String
+  headerNames String[] @default([])
+  oauthClientId String @default("")
+  oauthClientSecret String?
+  oauthScopes String @default("")
+  enabled Boolean @default(true)
+  connections McpConnection[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([userId])
+}
+
+model McpConnection {
+  id String @id @default(cuid())
+  userId String
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  pluginId String
+  plugin McpPlugin @relation(fields: [pluginId], references: [id], onDelete: Cascade)
+  enabled Boolean @default(false)
+  connected Boolean @default(false)
+  needsAuth Boolean @default(false)
+  revision Int @default(0)
+  credentials String?
+  tools Json @default("[]")
+  authState String? @unique
+  authExpiresAt DateTime?
+  updatedAt DateTime @updatedAt
+  @@unique([userId, pluginId])
 }
 
 // 服务端 Session：Cookie 里是随机 token，库里只存它的 SHA-256。
@@ -227,6 +267,7 @@ model Message {
   content               String
   // 本次用户选择的 id/name，与用户消息同事务保存，不依赖模型采样轨迹。
   skills                Json       @default("[]")
+  plugins               Json       @default("[]")
   status                MessageStatus @default(COMPLETED)
   // 同一条 Message 可能被 AgentRun 从两个角度引用：
   //   作为「用户输入」-> userAgentRuns

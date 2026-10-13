@@ -41,6 +41,7 @@ const emit = defineEmits<{
   newChat: []
   focusComposer: []
   openSkills: []
+  openPlugins: []
   refreshBalance: []
   renameChat: [chatId: string, title: string]
   selectChat: [chatId: string]
@@ -128,6 +129,7 @@ function openSettings() {
       @new-chat="handleNewChat"
       @open-settings="openSettings"
       @open-skills="closeMobileSidebar(); emit('openSkills')"
+      @open-plugins="closeMobileSidebar(); emit('openPlugins')"
       @refresh-balance="emit('refreshBalance')"
       @rename-chat="handleRenameChat"
       @select-chat="handleSelectChat"
@@ -167,6 +169,7 @@ function openSettings() {
           @new-chat="handleNewChat"
           @open-settings="openSettings"
           @open-skills="closeMobileSidebar(); emit('openSkills')"
+          @open-plugins="closeMobileSidebar(); emit('openPlugins')"
           @refresh-balance="emit('refreshBalance')"
           @rename-chat="handleRenameChat"
           @select-chat="handleSelectChat"
