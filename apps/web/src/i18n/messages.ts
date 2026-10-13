@@ -131,6 +131,8 @@ export const messages = {
       title: '技能',
       pageHeading: '为 Kuro 添加技能',
       pageNote: '把常用方法，变成可复用的技能。',
+      source: '技能分类',
+      refresh: '刷新技能',
       moreActions: '更多操作',
       drawer: {
         view: '查看技能详情',
@@ -151,6 +153,7 @@ export const messages = {
       search: '搜索技能',
       searchPlaceholder: '搜索技能...',
       clearSearch: '清除搜索',
+      add: '添加',
       create: '创建技能',
       createInChat: '对话创建',
       createManually: '手动创建',
@@ -710,6 +713,8 @@ export const messages = {
       title: 'Skills',
       pageHeading: 'Extend Kuro’s capabilities',
       pageNote: 'Turn your everyday know-how into reusable skills.',
+      source: 'Skill categories',
+      refresh: 'Refresh skills',
       moreActions: 'More actions',
       drawer: {
         view: 'View skill details',
@@ -730,6 +735,7 @@ export const messages = {
       search: 'Search skills',
       searchPlaceholder: 'Search skills…',
       clearSearch: 'Clear search',
+      add: 'Add',
       create: 'Create skill',
       createInChat: 'Create in chat',
       createManually: 'Create manually',

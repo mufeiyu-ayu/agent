@@ -108,12 +108,119 @@ function handleManualEdit() {
 
 <template>
   <div class="skills-list space-y-6" :class="{ 'skills-list--manage': props.manage }">
-    <!-- 筛选、搜索和创建沿用现有行为。 -->
-    <div class="flex flex-wrap items-center justify-between gap-x-5 gap-y-4">
-      <!-- 极简文字 Tabs -->
+    <!-- 管理模式（设置弹窗内）：仅保留搜索框 -->
+    <div v-if="props.manage" class="flex w-full items-center gap-3 sm:ml-auto sm:w-auto">
+      <label class="flex h-9 w-full items-center gap-2 rounded-full border border-agent-border px-3 sm:w-52">
+        <AppIcon name="tabler:search" :size="15" class="text-agent-ink-muted" />
+        <input
+          ref="searchInput"
+          v-model="query"
+          type="text"
+          :aria-label="t('skills.search')"
+          :placeholder="t('skills.searchPlaceholder')"
+          class="min-w-0 flex-1 bg-transparent text-xs text-agent-ink outline-none"
+        >
+        <button
+          v-if="query"
+          :aria-label="t('skills.clearSearch')"
+          class="flex size-4 items-center justify-center rounded-full text-agent-ink-muted hover:text-agent-ink"
+          @click="query = ''"
+        >
+          <AppIcon name="tabler:x" :size="12" />
+        </button>
+      </label>
+    </div>
+
+    <!-- 技能主页：第一行头部（标题与描述在左，搜索框、刷新与创建在右，与插件模块保持一致） -->
+    <template v-else>
+      <header class="flex flex-wrap items-start justify-between gap-6">
+        <div>
+          <h1 class="text-[23px] font-semibold tracking-tight text-agent-ink">
+            {{ t('skills.pageHeading') }}
+          </h1>
+          <p class="mt-2 text-sm text-agent-ink-muted">
+            {{ t('skills.pageNote') }}
+          </p>
+        </div>
+
+        <div class="flex items-center gap-3">
+          <label class="flex h-9 w-44 items-center gap-2 rounded-full border border-agent-border px-3 sm:w-52">
+            <AppIcon name="tabler:search" :size="15" class="text-agent-ink-muted" />
+            <input
+              ref="searchInput"
+              v-model="query"
+              type="text"
+              :aria-label="t('skills.search')"
+              :placeholder="t('skills.searchPlaceholder')"
+              class="min-w-0 flex-1 bg-transparent text-xs text-agent-ink outline-none"
+            >
+            <button
+              v-if="query"
+              :aria-label="t('skills.clearSearch')"
+              class="flex size-4 items-center justify-center rounded-full text-agent-ink-muted hover:text-agent-ink"
+              @click="query = ''"
+            >
+              <AppIcon name="tabler:x" :size="12" />
+            </button>
+          </label>
+
+          <button
+            :aria-label="t('skills.refresh')"
+            :disabled="skills.loading.value || skills.busy.value"
+            class="rounded-full p-2 text-agent-ink-muted hover:bg-agent-surface-raised disabled:opacity-40"
+            @click="skills.reload"
+          >
+            <AppIcon name="tabler:refresh" :size="17" :class="{ 'animate-spin': skills.loading.value }" />
+          </button>
+
+          <!-- 下拉形式的添加技能按钮 -->
+          <DropdownMenuRoot>
+            <DropdownMenuTrigger
+              :disabled="skills.busy.value"
+              :aria-label="t('skills.add')"
+              class="inline-flex h-8 cursor-pointer items-center gap-1 rounded-full bg-agent-ink px-4 text-xs font-normal text-agent-surface transition-opacity hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-agent-focus disabled:opacity-50"
+            >
+              {{ t('skills.add') }}<AppIcon name="tabler:chevron-down" :size="13" class="opacity-70 transition-transform data-[state=open]:rotate-180" />
+            </DropdownMenuTrigger>
+
+            <DropdownMenuPortal>
+              <DropdownMenuContent
+                align="end"
+                :side-offset="6"
+                class="min-w-[130px] w-auto !p-1"
+                :class="dropdownMenuPanelClass"
+              >
+                <!-- 对话创建 -->
+                <DropdownMenuItem
+                  class="flex cursor-pointer items-center gap-2 rounded-xl px-2.5 py-1.5 outline-none transition-colors"
+                  :class="dropdownMenuOptionClass(false)"
+                  @select="skills.start()"
+                >
+                  <AppIcon name="tabler:message-2" :size="14" class="shrink-0 text-agent-ink-muted" />
+                  <span class="whitespace-nowrap text-xs font-medium text-agent-ink">{{ t('skills.createInChat') }}</span>
+                </DropdownMenuItem>
+
+                <DropdownMenuSeparator class="mx-1 my-1 h-px bg-agent-border-subtle" />
+
+                <!-- 手动创建 -->
+                <DropdownMenuItem
+                  class="flex cursor-pointer items-center gap-2 rounded-xl px-2.5 py-1.5 outline-none transition-colors"
+                  :class="dropdownMenuOptionClass(false)"
+                  @select="handleManualEdit"
+                >
+                  <AppIcon name="tabler:edit" :size="14" class="shrink-0 text-agent-ink-muted" />
+                  <span class="whitespace-nowrap text-xs font-medium text-agent-ink">{{ t('skills.createManually') }}</span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenuPortal>
+          </DropdownMenuRoot>
+        </div>
+      </header>
+
+      <!-- 第二行：极简文字 Tabs，单独左对齐，与插件模块对齐 -->
       <div
-        v-if="!props.manage"
         class="flex min-w-0 flex-wrap items-center gap-1 text-sm"
+        :aria-label="t('skills.source')"
       >
         <button
           class="rounded-full px-3.5 py-2.5 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-agent-focus"
@@ -143,74 +250,7 @@ function handleManualEdit() {
           <span class="ml-1.5 text-xs text-agent-ink-muted">{{ counts.custom }}</span>
         </button>
       </div>
-
-      <!-- 右侧操作区：搜索框与创建技能按钮 -->
-      <div class="flex w-full items-center gap-3 sm:ml-auto sm:w-auto">
-        <div class="relative min-w-0 flex-1 sm:w-44">
-          <AppIcon name="tabler:search" :size="18" class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-agent-ink-muted" />
-          <input
-            ref="searchInput"
-            v-model="query"
-            type="text"
-            :aria-label="t('skills.search')"
-            :placeholder="t('skills.searchPlaceholder')"
-            class="h-11 w-full rounded-xl border border-agent-border-subtle bg-agent-surface/60 pl-9 pr-8 text-sm text-agent-ink placeholder:text-agent-ink-muted focus-visible:outline-2 focus-visible:outline-agent-focus"
-          >
-          <button
-            v-if="query"
-            :aria-label="t('skills.clearSearch')"
-            class="absolute inset-y-0 right-0 flex w-8 items-center justify-center rounded-lg text-agent-ink-muted hover:text-agent-ink focus-visible:outline-2 focus-visible:outline-agent-focus"
-            @click="query = ''"
-          >
-            <AppIcon name="tabler:x" :size="13" />
-          </button>
-        </div>
-
-        <!-- 下拉形式的创建技能按钮 -->
-        <DropdownMenuRoot v-if="!props.manage">
-          <DropdownMenuTrigger
-            :disabled="skills.busy.value"
-            :aria-label="t('skills.create')"
-            class="flex h-11 shrink-0 items-center gap-2 rounded-xl bg-agent-ink px-4 text-agent-canvas transition-opacity hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-agent-focus disabled:opacity-50"
-          >
-            <AppIcon name="tabler:plus" :size="19" />
-            <span class="text-sm font-medium">{{ t('skills.create') }}</span>
-            <AppIcon name="tabler:chevron-down" :size="12" class="ml-0.5 opacity-70 transition-transform data-[state=open]:rotate-180" />
-          </DropdownMenuTrigger>
-
-          <DropdownMenuPortal>
-            <DropdownMenuContent
-              align="end"
-              :side-offset="6"
-              class="min-w-[100px] w-auto !p-1"
-              :class="dropdownMenuPanelClass"
-            >
-              <!-- 对话创建 -->
-              <DropdownMenuItem
-                class="flex cursor-pointer items-center gap-2 rounded-xl px-2.5 py-1.5 outline-none transition-colors"
-                :class="dropdownMenuOptionClass(false)"
-                @select="skills.start()"
-              >
-                <AppIcon name="tabler:message-2" :size="14" class="shrink-0 text-agent-ink-muted" />
-                <span class="whitespace-nowrap text-xs font-medium text-agent-ink">{{ t('skills.createInChat') }}</span>
-              </DropdownMenuItem>
-
-              <DropdownMenuSeparator class="mx-1 my-1 h-px bg-agent-border-subtle" />
-
-              <!-- 手动创建 -->
-              <DropdownMenuItem
-                class="flex cursor-pointer items-center gap-2 rounded-xl px-2.5 py-1.5 outline-none transition-colors"
-                :class="dropdownMenuOptionClass(false)"
-                @select="handleManualEdit"
-              >
-                <AppIcon name="tabler:edit" :size="14" class="shrink-0 text-agent-ink-muted" />
-                <span class="whitespace-nowrap text-xs font-medium text-agent-ink">{{ t('skills.createManually') }}</span>
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenuPortal>
-        </DropdownMenuRoot>
-      </div>
-    </div>
+    </template>
 
     <!-- 异常状态 -->
     <div

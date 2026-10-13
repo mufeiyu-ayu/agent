@@ -75,30 +75,47 @@ const filtered = computed(() =>
           >
             <AppIcon name="tabler:refresh" :size="17" :class="{ 'animate-spin': p.loading.value }" />
           </button>
-          <details class="relative">
-            <summary
-              class="flex cursor-pointer list-none items-center gap-1 rounded-full bg-agent-ink px-4 py-2 text-xs text-agent-surface"
+          <!-- 下拉形式的添加插件按钮（与 skills 模块结构与样式完全一致） -->
+          <DropdownMenuRoot>
+            <DropdownMenuTrigger
+              :disabled="p.busy.value"
+              :aria-label="t('plugins.add')"
+              class="inline-flex h-8 cursor-pointer items-center gap-1 rounded-full bg-agent-ink px-4 text-xs font-normal text-agent-surface transition-opacity hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-agent-focus disabled:opacity-50"
             >
-              {{ t('plugins.add') }}<AppIcon name="tabler:chevron-down" :size="13" />
-            </summary>
-            <div
-              class="absolute right-0 top-full z-20 mt-2 w-36 rounded-xl border border-agent-border bg-agent-surface p-1.5 text-sm text-agent-ink shadow-lg"
-            >
-              <button
-                :disabled="p.busy.value"
-                class="w-full rounded-lg px-3 py-2 text-left hover:bg-agent-surface-raised"
-                @click="p.openEditor()"
+              {{ t('plugins.add') }}<AppIcon name="tabler:chevron-down" :size="13" class="opacity-70 transition-transform data-[state=open]:rotate-180" />
+            </DropdownMenuTrigger>
+
+            <DropdownMenuPortal>
+              <DropdownMenuContent
+                align="end"
+                :side-offset="6"
+                class="min-w-[130px] w-auto !p-1"
+                :class="dropdownMenuPanelClass"
               >
-                {{ t('plugins.addUrl') }}
-              </button><button
-                :disabled="p.busy.value"
-                class="w-full rounded-lg px-3 py-2 text-left hover:bg-agent-surface-raised"
-                @click="p.openEditor(null, true)"
-              >
-                {{ t('plugins.importJson') }}
-              </button>
-            </div>
-          </details>
+                <!-- 通过 URL 添加 -->
+                <DropdownMenuItem
+                  class="flex cursor-pointer items-center gap-2 rounded-xl px-2.5 py-1.5 outline-none transition-colors"
+                  :class="dropdownMenuOptionClass(false)"
+                  @select="p.openEditor()"
+                >
+                  <AppIcon name="tabler:link" :size="14" class="shrink-0 text-agent-ink-muted" />
+                  <span class="whitespace-nowrap text-xs font-medium text-agent-ink">{{ t('plugins.addUrl') }}</span>
+                </DropdownMenuItem>
+
+                <DropdownMenuSeparator class="mx-1 my-1 h-px bg-agent-border-subtle" />
+
+                <!-- 导入 JSON 配置 -->
+                <DropdownMenuItem
+                  class="flex cursor-pointer items-center gap-2 rounded-xl px-2.5 py-1.5 outline-none transition-colors"
+                  :class="dropdownMenuOptionClass(false)"
+                  @select="p.openEditor(null, true)"
+                >
+                  <AppIcon name="tabler:code" :size="14" class="shrink-0 text-agent-ink-muted" />
+                  <span class="whitespace-nowrap text-xs font-medium text-agent-ink">{{ t('plugins.importJson') }}</span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenuPortal>
+          </DropdownMenuRoot>
         </div>
       </header>
       <div class="mt-6 flex min-w-0 flex-wrap items-center gap-1 text-sm" role="tablist" :aria-label="t('plugins.source')">
