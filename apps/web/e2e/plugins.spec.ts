@@ -376,7 +376,6 @@ test('英文连接详情、快捷菜单和未知提交反馈完整，私人删�
   await expect(dialog.getByRole('alert')).toContainText('Refresh and check')
 })
 
-
 test('内置默认名称和简介随语言切换，英文搜索及详情一致，自定义文案保留', async ({ page }) => {
   await setup(page, false, [
     { ...initial, description: '搜索和阅读 Google 官方开发文档，查询 API 用法与开发指南。' },
@@ -402,18 +401,20 @@ for (const [kind, description, expected] of [
 ] as const) {
   test(`工具说明${kind}展开只显示一次且折叠仍可预览`, async ({ page }) => {
     await setup(page, false, [{ ...initial, connected: true, enabled: true, tools: [{
-      name: 'search_documents', description, inputSchema: { type: 'object' },
+      name: 'search_documents',
+      description,
+      inputSchema: { type: 'object' },
     }] }])
     await page.getByRole('button', { name: /^Google 开发文档/ }).click()
     const dialog = page.getByRole('dialog')
     await expect(dialog.getByText('search_documents', { exact: true })).toBeVisible()
-    const text = await dialog.innerText()
+    const text = await dialog.textContent() ?? ''
     for (const line of expected)
       expect(text.split(line).length - 1).toBe(1)
     await dialog.getByRole('button', { name: '折叠工具详情' }).click()
     await expect(dialog.locator('p.truncate')).toHaveText(description.split('\n')[0]!)
     await dialog.getByRole('button', { name: '展开工具详情' }).click()
     for (const line of expected)
-      expect((await dialog.innerText()).split(line).length - 1).toBe(1)
+      expect((await dialog.textContent() ?? '').split(line).length - 1).toBe(1)
   })
 }
