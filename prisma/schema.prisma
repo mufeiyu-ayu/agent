@@ -89,6 +89,7 @@ model User {
   mcpPlugins         McpPlugin[]
   mcpConnections     McpConnection[]
   googleData         GoogleDataConnection?
+  googleInspections  GoogleInspection[]
   conversations      Conversation[]
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
@@ -571,4 +572,25 @@ model GoogleDataConnection {
   ga4Property String?
   ga4Stream String?
   updatedAt DateTime @updatedAt
+}
+
+// 只保存成功的索引检查事实；读取仍需当前 Google 授权，换账号不复用。
+model GoogleInspection {
+  id String @id
+  userId String
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  googleSub String
+  siteUrl String
+  url String
+  result Json
+  checkedAt DateTime
+  @@index([userId])
+}
+
+// 本平台按站点和太平洋日记账，不代表 Google 实时剩余额度。
+model GoogleInspectionBudget {
+  siteUrl String
+  day String
+  used Int @default(0)
+  @@id([siteUrl, day])
 }

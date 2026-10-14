@@ -37,6 +37,8 @@ MCP 插件在 `src/mcp/`（见模块 README）：用户凭据和连接按用户�
 
 Google 数据连接在 `src/google-data/`（见模块 README）：个人 Web OAuth、资源选择与查询；`GoogleQueryService` 为 gsc_query / ga4_metadata / ga4_query 提供按用户和 Run 连接版本隔离的取数，结果沿用 Step；与登录、MCP 独立，凭据只在宿主保存。
 
+公司公开文章清单在 `src/articles/`（见模块 README），`articles_query` 按篇与语言 URL 分别计数。`google-data/gsc-inspection.service.ts` 为 `gsc_inspect` 提供按个人账号隔离的收录缓存与按站点原子记账的检查预算；只读 Google 已记录索引，不请求编入索引。
+
 ## 不变量
 
 - 鉴权在后端：全局 Guard 默认拦截，新接口不标 `@Public()` 就要登录，`admin/*` Controller 自动要求 ADMIN。会话归属按 `userId` 过滤，别人的会话与不存在的一律 404（`conversations`、`messages`、`chat/stream`）；`admin-*` 可观测看全部。库里只存密码的 scrypt 串与 token 的 SHA-256；停用、重置密码、改角色删该用户全部 Session，自己改密码保留当前这条。账号三态（启用 / 待审核 / 停用）在库里是 `disabled` 与 `pendingApproval` 两个布尔（迁移只加不删），一律经 `userStatus` 读。Google 登录（#198）：两种方式校验完都进 `GoogleAuthService.signIn`，绑定以 `sub` 为准，陌生账号建为待审核（上限 50）；回调地址只由 `APP_ORIGINS` 拼出；授权码、token、`code_verifier`、客户端密钥不进日志与响应（错误响应的 path 不带查询串）。首个管理员用 `pnpm create-admin`（`src/create-admin.ts`，生产镜像里是 `node dist/create-admin.js`）建，同时认领无主存量会话。

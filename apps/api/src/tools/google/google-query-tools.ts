@@ -1,9 +1,12 @@
 import type { Ga4QueryInput, GscQueryInput, MetadataInput } from '../../google-data/google-query-input.js'
+import type { InspectionInput } from '../../google-data/gsc-inspection.js'
 import type { ToolDefinition, ToolExecutionContext, ToolExecutor, ValidatedToolInvocation } from '../core/tool.types.js'
 import { HttpException, Inject, Injectable } from '@nestjs/common'
 import { GoogleDataError } from '../../google-data/google-data-client.js'
 import { ga4QuerySchema, gscQuerySchema, metadataSchema, parseGa4Query, parseGscQuery, parseMetadata } from '../../google-data/google-query-input.js'
 import { GoogleQueryService, queryObservation } from '../../google-data/google-query.service.js'
+import { inspectionObservation, inspectionSchema, parseInspection } from '../../google-data/gsc-inspection.js'
+import { GscInspectionService } from '../../google-data/gsc-inspection.service.js'
 
 export const gscQueryDefinition: ToolDefinition<GscQueryInput> = {
   name: 'gsc_query',
@@ -30,6 +33,8 @@ export const ga4QueryDefinition: ToolDefinition<Ga4QueryInput> = {
   maxObservationChars: 24_000,
 }
 const messages: Record<string, string> = {
+  pageOutsideSite: '精确筛选的页面 URL 不在所选 GSC 站点范围内，请先在插件页核对站点。',
+  inspectionOutsideSite: '待检查 URL 不属于当前选择的 GSC 站点，请核对站点范围。',
   needsAuth: '请在插件页连接 Google 数据或重新授权。',
   selectResource: '请先在 Google 数据连接中选择并保存所需服务的资源。',
   missingScope: '尚未授予此服务的只读权限，请调整 Google 授权。',
@@ -46,14 +51,14 @@ const messages: Record<string, string> = {
   hourlyWindow: 'GSC 小时数据仅支持按美国太平洋日期计算的最近10天，请缩小日期范围或改用日级数据。',
   resultTooLarge: '结果或查询说明超过工具输出上限，请减少列或缩小筛选；本次未返回不完整 JSON。',
 }
-async function execute(context: ToolExecutionContext, query: () => Promise<Parameters<typeof queryObservation>[0]>) {
+async function execute<T>(context: ToolExecutionContext, query: () => Promise<T>, observation: (result: T) => string) {
   context.signal.throwIfAborted()
   if (!context.googleData)
     return { ok: false as const, code: 'execution_failed' as const, modelContent: '当前请求缺少登录身份，不能查询 Google 数据。' }
   try {
     const result = await query()
     context.signal.throwIfAborted()
-    return { ok: true as const, modelContent: queryObservation(result) }
+    return { ok: true as const, modelContent: observation(result) }
   }
   catch (error) {
     context.signal.throwIfAborted()
@@ -64,15 +69,29 @@ async function execute(context: ToolExecutionContext, query: () => Promise<Param
 @Injectable()
 export class GscQueryTool implements ToolExecutor<GscQueryInput> {
   constructor(@Inject(GoogleQueryService) private readonly queries: GoogleQueryService) {}
-  execute({ input }: ValidatedToolInvocation<GscQueryInput>, context: ToolExecutionContext) { return execute(context, () => this.queries.gsc(input, context.googleData!, context.signal)) }
+  execute({ input }: ValidatedToolInvocation<GscQueryInput>, context: ToolExecutionContext) { return execute(context, () => this.queries.gsc(input, context.googleData!, context.signal), queryObservation) }
 }
 @Injectable()
 export class Ga4MetadataTool implements ToolExecutor<MetadataInput> {
   constructor(@Inject(GoogleQueryService) private readonly queries: GoogleQueryService) {}
-  execute({ input }: ValidatedToolInvocation<MetadataInput>, context: ToolExecutionContext) { return execute(context, () => this.queries.fields(input, context.googleData!, context.signal)) }
+  execute({ input }: ValidatedToolInvocation<MetadataInput>, context: ToolExecutionContext) { return execute(context, () => this.queries.fields(input, context.googleData!, context.signal), queryObservation) }
 }
 @Injectable()
 export class Ga4QueryTool implements ToolExecutor<Ga4QueryInput> {
   constructor(@Inject(GoogleQueryService) private readonly queries: GoogleQueryService) {}
-  execute({ input }: ValidatedToolInvocation<Ga4QueryInput>, context: ToolExecutionContext) { return execute(context, () => this.queries.ga4(input, context.googleData!, context.signal)) }
+  execute({ input }: ValidatedToolInvocation<Ga4QueryInput>, context: ToolExecutionContext) { return execute(context, () => this.queries.ga4(input, context.googleData!, context.signal), queryObservation) }
+}
+
+export const gscInspectDefinition: ToolDefinition<InspectionInput> = {
+  name: 'gsc_inspect',
+  version: '1',
+  description: '检查当前已选GSC站点内1至20个明确URL的Google索引状态；文章URL可从articles_query取得。urls必填；refresh默认false复用24小时成功缓存，true强制重查。不是实时抓取或请求收录。每站点本平台每日最多2000次检查，外部用量未知。保留原检查时间，区分其他规范页/失败/未检查；按omittedUrls继续读取被输出预算省略的结果。先报告目标URL规模，不把抽样称为全量收录率。禁止指定用户/站点/凭据。',
+  input: { schema: inspectionSchema, parse: parseInspection },
+  timeoutMs: 60_000,
+  maxObservationChars: 24_000,
+}
+@Injectable()
+export class GscInspectTool implements ToolExecutor<InspectionInput> {
+  constructor(@Inject(GscInspectionService) private readonly inspection: GscInspectionService) {}
+  execute({ input }: ValidatedToolInvocation<InspectionInput>, context: ToolExecutionContext) { return execute(context, () => this.inspection.inspect(input, context.googleData!, context.signal), inspectionObservation) }
 }

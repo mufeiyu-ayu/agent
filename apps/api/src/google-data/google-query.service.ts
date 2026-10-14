@@ -4,6 +4,7 @@ import { BadRequestException, ConflictException, Inject, Injectable } from '@nes
 import { GOOGLE_DATA_URLS, GoogleDataError, object, rows, text } from './google-data-client.js'
 import { GoogleDataService } from './google-data.service.js'
 import { filterFields } from './google-query-input.js'
+import { withinGscSite } from './gsc-inspection.js'
 
 /** 每 Run 一份可信状态；无凭据，仅在首次调用时固定连接，普通聊天无需读 Google。 */
 export interface GoogleQueryRun {
@@ -45,6 +46,17 @@ export class GoogleQueryService {
         throw new BadRequestException('hourlyWindow')
     }
     const row = await this.connection(run, 'gsc', signal)
+    for (const filter of input.dimensionFilterGroups?.flatMap(group => group.filters) ?? []) {
+      if (filter.dimension === 'page' && (filter.operator ?? 'equals') === 'equals') {
+        let matches = false
+        try {
+          matches = withinGscSite(filter.expression, row.gscSite!)
+        }
+        catch { /* 精确页面筛选必须是所属站点内的完整 URL。 */ }
+        if (!matches)
+          throw new BadRequestException('pageOutsideSite')
+      }
+    }
     const query = { dimensions: [] as string[], type: 'web', dataState: 'final', aggregationType: 'auto', rowLimit: 100, startRow: 0, ...input }
     const result = await this.google.queryRequest(row, `${GOOGLE_DATA_URLS.gsc}/sites/${encodeURIComponent(row.gscSite!)}/searchAnalytics/query`, query, signal)
     const data = rows(result.rows)

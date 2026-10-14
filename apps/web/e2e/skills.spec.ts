@@ -21,6 +21,36 @@ const draft: SkillPreview = {
 }
 const builtin: SkillSummary = { id: 'builtin:skill-creator', name: 'skill-creator', description: '创建自己的技能', builtin: true, enabled: true, published: true, hasDraft: false, conversationId: null, createdAt: '2026-10-10T00:00:00Z', updatedAt: '2026-10-12T00:00:00Z', usageCount: 0, examples: [] }
 
+test('选择多个Skill后的长文本和显式换行使用完整输入宽度', async ({ page }) => {
+  await setup(page, true)
+  const input = page.locator('textarea')
+  for (const name of ['article-check', 'skill-creator']) {
+    await input.fill(`/${name}`)
+    await input.press('Enter')
+  }
+  for (const width of [1280, 390]) {
+    await page.setViewportSize({ width, height: 900 })
+    await input.fill(`${'这是用于验证长文本自动换行的输入。'.repeat(8)}\n这是显式换行后的第二段。`)
+    await expect(page.locator('[data-composer-skills]')).toContainText('article-check')
+    await expect(page.locator('[data-composer-skills]')).toContainText('skill-creator')
+    await expect.poll(async () => {
+      const textarea = await input.boundingBox()
+      const tags = await page.locator('[data-composer-skills]').boundingBox()
+      return Boolean(textarea && tags && textarea.y >= tags.y + tags.height && Math.abs(textarea.x - tags.x) <= 2)
+    }).toBe(true)
+    const widthRatio = await input.evaluate((element) => {
+      const wrapper = element.closest('.composer-input')!
+      return element.getBoundingClientRect().width / wrapper.getBoundingClientRect().width
+    })
+    expect(widthRatio).toBeGreaterThan(0.9)
+    await expect(input).toHaveValue(/\n这是显式换行后的第二段。$/)
+  }
+  await input.fill('')
+  await input.press('Backspace')
+  await expect(page.locator('[data-composer-skills]')).not.toContainText('article-check')
+  await expect(page.locator('[data-composer-skills]')).toContainText('skill-creator')
+})
+
 async function setup(page: import('@playwright/test').Page, published = false) {
   const history: ConversationMessage[] = [
     { id: 'user-skill', conversationId: CONVERSATION_ID, role: 'USER', content: '创建文章检查技能', status: 'COMPLETED', createdAt: '2026-10-11T10:00:00.000Z', updatedAt: '2026-10-11T10:00:00.000Z' },

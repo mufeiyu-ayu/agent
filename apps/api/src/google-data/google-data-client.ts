@@ -15,6 +15,7 @@ export const GOOGLE_DATA_URLS = {
   gsc: 'https://www.googleapis.com/webmasters/v3',
   admin: 'https://analyticsadmin.googleapis.com/v1beta',
   data: 'https://analyticsdata.googleapis.com/v1beta',
+  inspect: 'https://searchconsole.googleapis.com/v1/urlInspection/index:inspect',
 }
 
 export class GoogleDataError extends BadGatewayException {

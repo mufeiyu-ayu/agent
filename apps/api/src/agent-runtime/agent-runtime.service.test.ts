@@ -3515,6 +3515,7 @@ function useFakeClock() {
 describe('上下文自动压缩（#220）', () => {
   /** 触发线 4,000 的模型：用例按粗估（ASCII 每 4 个字符 1 token）构造体积。 */
   const SMALL_MODEL: ResolvedLlmModel = { ...createResolvedLlmModel(), maxInputTokens: 4_000 }
+  const overflowTestLimit = estimateRequestTokens({ items: [], tools: TOOL_DEFINITIONS.map(definition => ({ name: definition.name, description: definition.description, inputSchema: definition.input.schema })) }) + 6_000
   const SUMMARY_TEXT = '## Goal\n- 摘要正文'
 
   type Harness = ReturnType<typeof createHarness>
@@ -3871,8 +3872,8 @@ describe('上下文自动压缩（#220）', () => {
   })
 
   it('AC-06 检查点 C：服务商报超长时失败的采样照常收口、不推失败事件，强制压缩后新开采样重试成功；管理台轨迹照常投影', async () => {
-    // 触发线 8,000：估算没超线，检查点 A 不压；服务商按自己的上限报超长。
-    const model = { ...SMALL_MODEL, maxInputTokens: 8_000 }
+    // 为实际工具定义留足预算：检查点 A 不压，服务商按自己的上限报超长。
+    const model = { ...SMALL_MODEL, maxInputTokens: overflowTestLimit }
     const harness = createHarness(routed({
       sampling: index => index === 0 ? failingStream(new LLMContextOverflowError(400)) : finalAnswer(),
     }))
@@ -3904,7 +3905,7 @@ describe('上下文自动压缩（#220）', () => {
 
   it('AC-08(b) 连续两次报超长、或强制压缩失败：Run 以 llm_context_overflow 失败并正常收口，前台显示超长文案', async () => {
     const overflowMessage = getAiExceptionMessage(new LLMContextOverflowError(400))
-    const model = { ...SMALL_MODEL, maxInputTokens: 8_000 }
+    const model = { ...SMALL_MODEL, maxInputTokens: overflowTestLimit }
     const cases: Array<[string, Parameters<typeof routed>[0], string[][]]> = [
       ['连续两次超长', { sampling: () => failingStream(new LLMContextOverflowError(400)) }, [
         ['load_conversation_history', AgentStepStatus.COMPLETED],
@@ -3948,7 +3949,7 @@ describe('上下文自动压缩（#220）', () => {
 
       seedHistory(harness, 8, 2_000)
 
-      const events = await run(harness, { model: { ...SMALL_MODEL, maxInputTokens: 8_000 } })
+      const events = await run(harness, { model: { ...SMALL_MODEL, maxInputTokens: overflowTestLimit } })
 
       assert.equal(events.at(-1)?.type, 'run_failed', pushed.type)
       assert.equal(compactionSteps(harness).length, 0, pushed.type)

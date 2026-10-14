@@ -47,3 +47,5 @@ runtime：result 定 Step 的 ok / code；argumentsValidated 定回喂参数的�
 `mcp_*` 工具只从宿主提供的本轮 `mcpTools` 查找，普通内置工具仍从 Registry 查找；两者共用 invoke 的校验、deadline 和 observation。远端调用由 `mcp/` 执行前再核对个人连接，不把模型生成的工具名当作授权。
 
 `google/google-query-tools.ts`：`gsc_query`、`ga4_metadata`、`ga4_query` 经 `GoogleQueryService` 调用当前用户的已选资源。`googleData` 上下文由 Runtime 宿主按 Run 创建，身份不能被 arguments 覆盖；signal 透传、版本变更拒绝旧请求，工具输出为保留质量标记与完整分页组的有界 JSON。参数与协议边界见 `google-data/README.md`。
+
+`articles-query.tool.ts` 查询配置的公司公开文章清单；`google/google-query-tools.ts` 的 `gsc_inspect` 逐 URL 读取 Google 索引记录。文章清单、语言页面与收录状态分别呈现，新工具结果仍经同一 ToolInvocation 与 Step 落库，参数和完整输出边界见对应模块 README。

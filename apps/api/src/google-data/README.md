@@ -18,6 +18,8 @@
 
 ## 聊天查询
 
+`gsc_inspect` 由 `gsc-inspection.ts` 校验最多20个所属站点 URL，`GscInspectionService` 调用 URL Inspection。成功结果按 userId / Google sub / site / URL 保存到 GoogleInspection，24小时内默认复用；每次仍核对连接 revision。失败不覆盖旧成功，返回错误或未检查，不当作未收录。GoogleInspectionBudget 用 PostgreSQL 原子预留同站点太平洋日最多2000次本平台预算，失败计数；这不是 Google 实时余额，其他系统用量未知。每批两路请求、45秒内部期限，用户取消或连接改变后停止并排空工作，迟到结果不交付。缓存不是实时抓取，必须展示原 checkedAt。
+
 `google-query-input.ts` 为三个工具维护共用 Schema 与执行端解析；`GoogleQueryService` 复用连接层的查询授权与固定 Google 出口。工具位于 `tools/google/google-query-tools.ts`，不新增 HTTP Controller。
 
 - `gsc_query`：明确日期，date/hour/page/query/country/device/searchAppearance 分组、AND 字符串/正则过滤、搜索类型和聚合方式。hour 与 hourly_all 配对，按 America/Los_Angeles 当前日限制最近10天；日查询不伪换算成北京自然日。

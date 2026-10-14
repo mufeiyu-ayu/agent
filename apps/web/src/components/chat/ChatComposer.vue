@@ -95,8 +95,8 @@ watch(() => props.message, (message) => {
   if (message.length === 0)
     isExpanded.value = false
 })
-// 有附件时也用上下两层：附件排在输入文字上方。
-const isStacked = computed(() => Boolean(props.hero) || isExpanded.value || props.attachments.length > 0)
+// 已选标签与附件排在输入区上方，让每行文字使用完整宽度。
+const isStacked = computed(() => Boolean(props.hero) || isExpanded.value || props.attachments.length > 0 || Boolean(props.skills?.length || props.plugins?.length))
 // 两套排布的内边距不同，切换后按新排布重算高度。
 watch(isStacked, resizeTextarea, { flush: 'post' })
 
@@ -371,7 +371,7 @@ useEventListener(window, 'drop', (event) => {
               class="relative flex flex-wrap gap-x-1.5 gap-y-1"
               :class="isStacked ? 'items-baseline px-1.5 pb-1 pt-1.5' : 'items-center px-2 py-1.5'"
             >
-              <!-- 行内前缀技能标签：与输入文本在同一水平行内流动展示 -->
+              <!-- 选择标签在独立行内排列，不挤占多行输入宽度。 -->
               <span
                 v-if="skills?.length"
                 class="inline-flex shrink-0 flex-wrap items-center gap-1.5"
@@ -396,8 +396,7 @@ useEventListener(window, 'drop', (event) => {
                   </button>
                 </span>
               </span>
-              <!-- 输入框 Textarea：紧随所选标签同一行展示 -->
-              <div class="relative min-w-[120px] flex-1">
+              <div class="relative min-w-[120px] flex-1" :class="{ 'basis-full': Boolean(skills?.length || plugins?.length) }">
                 <Textarea
                   :model-value="message"
                   :maxlength="CHAT_MESSAGE_MAX_CHARS"

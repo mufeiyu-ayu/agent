@@ -25,11 +25,12 @@ import { PrismaService } from '../prisma/prisma.service.js'
 import { createRuntimeConfigSnapshot } from '../runtime-config/__fixtures__.js'
 import { ToolInvocationService } from '../tools/core/tool-invocation.service.js'
 import { ToolRegistryService } from '../tools/core/tool-registry.service.js'
-import { ga4MetadataDefinition, Ga4MetadataTool, ga4QueryDefinition, Ga4QueryTool, gscQueryDefinition, GscQueryTool } from '../tools/google/google-query-tools.js'
+import { ga4MetadataDefinition, Ga4MetadataTool, ga4QueryDefinition, Ga4QueryTool, gscInspectDefinition, GscInspectTool, gscQueryDefinition, GscQueryTool } from '../tools/google/google-query-tools.js'
 import { GOOGLE_DATA_SCOPES, GoogleDataClient } from './google-data-client.js'
 import { GoogleDataController } from './google-data.controller.js'
 import { GoogleDataService } from './google-data.service.js'
 import { GoogleQueryService } from './google-query.service.js'
+import { GscInspectionService } from './gsc-inspection.service.js'
 
 const url = process.env.TEST_DATABASE_URL?.trim()
 if (!url || url === process.env.DATABASE_URL?.trim())
@@ -93,6 +94,8 @@ describe('Google 数据：真实隔离库与受控 HTTP OAuth/API', { timeout: 6
     }
     if (apiStatus !== 200)
       return reply({ error: { message: 'upstream contains secret-refresh' } }, apiStatus)
+    if (path.endsWith('/urlInspection/index:inspect'))
+      return reply(malformed ? { inspectionResult: {} } : { inspectionResult: { indexStatusResult: { verdict: 'PASS', googleCanonical: body.inspectionUrl, coverageState: 'Submitted and indexed', lastCrawlTime: '2026-10-12T00:00:00Z' } } })
     if (path.endsWith('/sites'))
       return reply({ siteEntry: [{ siteUrl: 'sc-domain:topuplist.com', permissionLevel: 'siteOwner' }, { siteUrl: 'sc-domain:unverified.test', permissionLevel: 'siteUnverifiedUser' }] })
     if (path.endsWith('/accountSummaries'))
@@ -368,6 +371,7 @@ describe('Google 数据：真实隔离库与受控 HTTP OAuth/API', { timeout: 6
     registry.register({ definition: gscQueryDefinition, executor: new GscQueryTool(queries) })
     registry.register({ definition: ga4MetadataDefinition, executor: new Ga4MetadataTool(queries) })
     registry.register({ definition: ga4QueryDefinition, executor: new Ga4QueryTool(queries) })
+    registry.register({ definition: gscInspectDefinition, executor: new GscInspectTool(new GscInspectionService(service, prisma)) })
     return new ToolInvocationService(registry)
   }
   function invoke(tools: ToolInvocationService, toolName: string, input: unknown, run: GoogleQueryRun, signal = new AbortController().signal) {
@@ -431,6 +435,9 @@ describe('Google 数据：真实隔离库与受控 HTTP OAuth/API', { timeout: 6
   })
   it('Google错误、取消与小时窗口不能伪装成无数据', async () => {
     const tools = await queryHarness()
+    const outside = await invoke(tools, 'gsc_query', { ...range, dimensionFilterGroups: [{ groupType: 'and', filters: [{ dimension: 'page', operator: 'equals', expression: 'https://other.test/blogs/detail/example' }] }] }, { userId: auth.user.id })
+    assert.equal(outside.result.ok, false)
+    assert.match(outside.result.modelContent, /站点范围/)
     for (const status of [400, 403, 429, 503]) {
       apiStatus = status
       const output = await invoke(tools, 'gsc_query', range, { userId: auth.user.id })
@@ -481,6 +488,101 @@ describe('Google 数据：真实隔离库与受控 HTTP OAuth/API', { timeout: 6
     const normal = []
     for await (const event of runtime.runTurnStream({ userId: other.user.id, conversationId: otherConversation.id, userContent: '你好', model, runtimeConfig: createRuntimeConfigSnapshot(), instructions: [] })) normal.push(event)
     assert.equal(normal[normal.length - 1]?.type, 'run_completed')
+  })
+  it('收录经实际工具保存缓存；跨用户/账号/站点及断开后不能复用', async () => {
+    const tools = await queryHarness()
+    const urls = ['https://topuplist.com/blogs/detail/one']
+    const count = () => requests.filter(item => item.path.endsWith('/urlInspection/index:inspect')).length
+    const before = count()
+    const first = await invoke(tools, 'gsc_inspect', { urls }, { userId: auth.user.id })
+    assert.equal(first.result.ok, true)
+    const firstData = JSON.parse(first.result.modelContent)
+    assert.equal(firstData.rows[0].status, 'indexed')
+    const cached = JSON.parse((await invoke(tools, 'gsc_inspect', { urls }, { userId: auth.user.id })).result.modelContent)
+    assert.equal(cached.rows[0].cached, true)
+    assert.equal(cached.rows[0].checkedAt, firstData.rows[0].checkedAt)
+    assert.equal(count(), before + 1)
+    assert.equal((await invoke(tools, 'gsc_inspect', { urls }, { userId: other.user.id })).result.ok, false)
+    assert.equal((await invoke(tools, 'gsc_inspect', { urls: ['https://topuplist.com.evil.test/'] }, { userId: auth.user.id })).result.ok, false)
+    await service.callback(auth, await begin(undefined, 'another-google-account'))
+    const view = await service.detail(auth.user.id)
+    await service.select(auth.user.id, 'gsc', view.revision, 'sc-domain:topuplist.com')
+    const changed = await invoke(tools, 'gsc_inspect', { urls }, { userId: auth.user.id })
+    assert.equal(JSON.parse(changed.result.modelContent).rows[0].cached, false)
+    assert.equal(count(), before + 2)
+    await service.disconnect(auth.user.id)
+    assert.equal((await invoke(tools, 'gsc_inspect', { urls }, { userId: auth.user.id })).result.ok, false)
+  })
+  it('收录失败计预算但保留旧成功，429停止后续且不把失败记成未收录', async () => {
+    const tools = await queryHarness()
+    const urls = ['https://topuplist.com/blogs/detail/failure']
+    const run = { userId: auth.user.id }
+    await invoke(tools, 'gsc_inspect', { urls }, run)
+    const original = await prisma.googleInspection.findFirstOrThrow({ where: { userId: auth.user.id, url: urls[0]! } })
+    const quota = (await prisma.googleInspectionBudget.findFirstOrThrow()).used
+    for (const status of [503, 403, 429]) {
+      apiStatus = status
+      const result = await invoke(tools, 'gsc_inspect', { urls, refresh: true }, run)
+      assert.equal(result.result.ok, true)
+      assert.equal(JSON.parse(result.result.modelContent).rows[0].status, 'error')
+      assert.ok(!result.result.modelContent.includes('secret-refresh'))
+    }
+    apiStatus = 200
+    malformed = true
+    const invalid = await invoke(tools, 'gsc_inspect', { urls, refresh: true }, run)
+    malformed = false
+    assert.equal(JSON.parse(invalid.result.modelContent).rows[0].status, 'error')
+    assert.equal((await prisma.googleInspectionBudget.findFirstOrThrow()).used, quota + 4)
+    assert.equal((await prisma.googleInspection.findUniqueOrThrow({ where: { id: original.id } })).checkedAt.toISOString(), original.checkedAt.toISOString())
+    apiStatus = 429
+    const stopped = JSON.parse((await invoke(tools, 'gsc_inspect', { urls: Array.from({ length: 5 }, (_, i) => `https://topuplist.com/blocked-${i}`) }, run)).result.modelContent)
+    apiStatus = 200
+    assert.ok(stopped.summary.failedCount >= 1 && stopped.summary.failedCount <= 2)
+    assert.ok(stopped.summary.uncheckedCount >= 3)
+  })
+  it('收录401令连接需重授权，成功缓存不能绕过失效连接', async () => {
+    const tools = await queryHarness()
+    const urls = ['https://topuplist.com/revoked']
+    assert.equal((await invoke(tools, 'gsc_inspect', { urls }, { userId: auth.user.id })).result.ok, true)
+    apiStatus = 401
+    try {
+      assert.equal((await invoke(tools, 'gsc_inspect', { urls, refresh: true }, { userId: auth.user.id })).result.ok, false)
+      assert.equal((await service.detail(auth.user.id)).needsAuth, true)
+    }
+    finally { apiStatus = 200 }
+    assert.equal((await invoke(tools, 'gsc_inspect', { urls }, { userId: auth.user.id })).result.ok, false)
+  })
+  it('同站点检查预算并发争抢不超过2000，取消与迟到响应不交付', async () => {
+    const tools = await queryHarness()
+    const day = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date())
+    await prisma.googleInspectionBudget.upsert({ where: { siteUrl_day: { siteUrl: 'sc-domain:topuplist.com', day } }, create: { siteUrl: 'sc-domain:topuplist.com', day, used: 1999 }, update: { used: 1999 } })
+    const before = requests.filter(item => item.path.endsWith('/urlInspection/index:inspect')).length
+    const results = await Promise.all([0, 1, 2].map(i => invoke(tools, 'gsc_inspect', { urls: [`https://topuplist.com/budget-${i}`] }, { userId: auth.user.id })))
+    assert.equal(results.filter(result => JSON.parse(result.result.modelContent).summary.checkedCount === 1).length, 1)
+    assert.equal(requests.filter(item => item.path.endsWith('/urlInspection/index:inspect')).length, before + 1)
+    assert.equal((await prisma.googleInspectionBudget.findFirstOrThrow()).used, 2000)
+    const cachedUrl = results.map(result => JSON.parse(result.result.modelContent)).find(data => data.summary.checkedCount === 1).rows[0].url
+    const mixed = JSON.parse((await invoke(tools, 'gsc_inspect', { urls: ['https://topuplist.com/uncached-a', 'https://topuplist.com/uncached-b', cachedUrl] }, { userId: auth.user.id })).result.modelContent)
+    assert.equal(mixed.summary.cachedCount, 1)
+    assert.equal(mixed.summary.uncheckedCount, 2)
+    assert.equal(requests.filter(item => item.path.endsWith('/urlInspection/index:inspect')).length, before + 1)
+    await prisma.googleInspectionBudget.updateMany({ data: { used: 0 } })
+    const gate = barrier('/v1/urlInspection/index:inspect')
+    const pending = invoke(tools, 'gsc_inspect', { urls: ['https://topuplist.com/late'] }, { userId: auth.user.id })
+    await gate.began
+    await service.disconnect(auth.user.id)
+    gate.release()
+    assert.equal((await pending).result.ok, false)
+    assert.equal(await prisma.googleInspection.count({ where: { url: 'https://topuplist.com/late' } }), 0)
+    const fresh = await queryHarness()
+    const controller = new AbortController()
+    const cancelGate = barrier('/v1/urlInspection/index:inspect')
+    const canceled = invoke(fresh, 'gsc_inspect', { urls: ['https://topuplist.com/cancel'] }, { userId: auth.user.id }, controller.signal)
+    const rejected = assert.rejects(canceled, /stop/)
+    await cancelGate.began
+    controller.abort(new Error('stop'))
+    cancelGate.release()
+    await rejected
   })
   it('HTTP 入口沿用鉴权与全局 DTO 校验', async () => {
     assert.equal((await fetch(`${apiUrl}/api/google-data`)).status, 401)
