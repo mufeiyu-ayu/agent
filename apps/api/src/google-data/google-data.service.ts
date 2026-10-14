@@ -207,6 +207,24 @@ export class GoogleDataService {
     return { revision: row.revision, service, checkedAt: new Date().toISOString(), hasData }
   }
 
+  /** 仅供宿主查询工具使用；凭据行只停留在服务端，不进入模型上下文。 */
+  async queryConnection(userId: string, service: Service, revision?: number) {
+    const row = await this.authorized(userId, service)
+    if (revision !== undefined && row.revision !== revision)
+      throw new ConflictException('connectionChanged')
+    if (service === 'gsc' ? !row.gscSite : !row.ga4Property || !row.ga4Stream)
+      throw new BadRequestException('selectResource')
+    return row
+  }
+
+  async queryRequest(row: Connection, url: string, body: Record<string, unknown> | undefined, signal: AbortSignal) {
+    signal.throwIfAborted()
+    const result = await this.api(row, url, body, signal)
+    signal.throwIfAborted()
+    await this.current(row)
+    return result
+  }
+
   private services(row: Connection): Service[] {
     return (['gsc', 'ga4'] as const).filter(service => row.scopes.includes(GOOGLE_DATA_SCOPES[service]))
   }

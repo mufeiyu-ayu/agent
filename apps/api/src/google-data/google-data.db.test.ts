@@ -1,5 +1,8 @@
+import type { ModelInputItem, ModelStreamEvent } from '@agent/ai'
 import type { INestApplication } from '@nestjs/common'
 import type { AuthContext } from '../auth/auth.decorators.js'
+import type { LLMService } from '../llm/llm.service.js'
+import type { GoogleQueryRun } from './google-query.service.js'
 import assert from 'node:assert/strict'
 import { createHash, randomUUID } from 'node:crypto'
 import { readdir, readFile } from 'node:fs/promises'
@@ -9,15 +12,24 @@ import process from 'node:process'
 import { Module } from '@nestjs/common'
 import { APP_GUARD, NestFactory } from '@nestjs/core'
 import { afterAll, beforeAll, describe, it, vi } from 'vitest'
+import { AgentRuntimeService } from '../agent-runtime/agent-runtime.service.js'
+import { ContextCompactionService } from '../agent-runtime/context/context-compaction.service.js'
+import { AgentRunRecorderService } from '../agent-runtime/lifecycle/agent-run-recorder.service.js'
 import { AuthGuard } from '../auth/auth.guard.js'
 import { AuthService } from '../auth/auth.service.js'
 import { registerAppGlobals } from '../common/bootstrap/register-app-globals.js'
+import { createResolvedLlmModel } from '../llm/__fixtures__.js'
 import { createApiKeyCipher } from '../llm/api-key-cipher.js'
 import { resolveLlmEnvConfig } from '../llm/llm-runtime-config.service.js'
 import { PrismaService } from '../prisma/prisma.service.js'
+import { createRuntimeConfigSnapshot } from '../runtime-config/__fixtures__.js'
+import { ToolInvocationService } from '../tools/core/tool-invocation.service.js'
+import { ToolRegistryService } from '../tools/core/tool-registry.service.js'
+import { ga4MetadataDefinition, Ga4MetadataTool, ga4QueryDefinition, Ga4QueryTool, gscQueryDefinition, GscQueryTool } from '../tools/google/google-query-tools.js'
 import { GOOGLE_DATA_SCOPES, GoogleDataClient } from './google-data-client.js'
 import { GoogleDataController } from './google-data.controller.js'
 import { GoogleDataService } from './google-data.service.js'
+import { GoogleQueryService } from './google-query.service.js'
 
 const url = process.env.TEST_DATABASE_URL?.trim()
 if (!url || url === process.env.DATABASE_URL?.trim())
@@ -46,6 +58,7 @@ describe('Google 数据：真实隔离库与受控 HTTP OAuth/API', { timeout: 6
   let malformed = false
   let refreshed = 0
   let noRefresh = false
+  let queryRows = false
   let paginate = false
   const server = createServer(async (req, res) => {
     let raw = ''
@@ -86,7 +99,18 @@ describe('Google 数据：真实隔离库与受控 HTTP OAuth/API', { timeout: 6
       return reply({ accountSummaries: [{ propertySummaries: [{ property: 'properties/42', displayName: 'Topuplist' }] }], ...(paginate ? { nextPageToken: 'next' } : {}) })
     if (path.endsWith('/dataStreams'))
       return reply({ dataStreams: [{ name: 'properties/42/dataStreams/7', displayName: '生产流', type: 'WEB_DATA_STREAM', webStreamData: { defaultUri: 'https://topuplist.com' } }, { name: 'properties/42/dataStreams/9', displayName: '未填网址', type: 'WEB_DATA_STREAM', webStreamData: {} }, { name: 'properties/42/dataStreams/8', displayName: 'App', type: 'ANDROID_APP_DATA_STREAM' }] })
-    return reply(malformed ? { rows: 'not-an-array' } : { rows: [] })
+    if (path.endsWith('/metadata')) {
+      return reply({
+        dimensions: [{ apiName: 'date', uiName: 'Date' }, { apiName: 'streamId' }, { apiName: 'country' }, { apiName: 'customEvent:payment_method', uiName: 'Payment method', customDefinition: true }],
+        metrics: [{ apiName: 'sessions', type: 'TYPE_INTEGER' }, { apiName: 'totalUsers', type: 'TYPE_INTEGER' }],
+      })
+    }
+    if (path.endsWith(':runReport') && Array.isArray(body.dimensions)) {
+      const dims = [...body.dimensions as Array<{ name: string }>, ...((body.dateRanges as unknown[]).length > 1 ? [{ name: 'dateRange' }] : [])]
+      const metrics = body.metrics as Array<{ name: string }>
+      return reply({ dimensionHeaders: dims, metricHeaders: metrics.map(metric => ({ ...metric, type: 'TYPE_INTEGER' })), rows: queryRows ? [{ dimensionValues: dims.map(dim => ({ value: dim.name === 'dateRange' ? 'date_range_0' : 'value' })), metricValues: metrics.map(() => ({ value: '7' })) }] : [], rowCount: queryRows ? 1 : 0, metadata: { timeZone: 'Asia/Shanghai', currencyCode: 'USD', subjectToThresholding: true }, propertyQuota: { tokensPerDay: { remaining: 100 } } })
+    }
+    return reply(malformed ? { rows: 'not-an-array' } : { rows: queryRows ? [{ keys: (body.dimensions as string[] ?? []).map(() => 'value'), clicks: 2, impressions: 4, ctr: 0.5, position: 3 }] : [], responseAggregationType: 'byProperty', metadata: { first_incomplete_date: '2026-10-07' } })
   })
   beforeAll(async () => {
     vi.stubEnv('GOOGLE_DATA_CLIENT_ID', 'data-client')
@@ -99,6 +123,7 @@ describe('Google 数据：真实隔离库与受控 HTTP OAuth/API', { timeout: 6
     for (const entry of (await readdir(directory)).filter(name => name !== 'migration_lock.toml').sort()) await pool.query(await readFile(new URL(`${entry}/migration.sql`, directory), 'utf8'))
     const connection = new URL(url)
     connection.searchParams.set('schema', schema)
+    connection.searchParams.set('options', `-c search_path=${schema},public`)
     prisma = new PrismaService(connection.toString())
     await prisma.$connect()
     const users = await Promise.all(['owner', 'other'].map(name => prisma.user.create({ data: { email: `${name}@${schema}.test`, mustChangePassword: false } })))
@@ -333,6 +358,129 @@ describe('Google 数据：真实隔离库与受控 HTTP OAuth/API', { timeout: 6
     await rejected
     apiStatus = 200
     assert.equal((await service.detail(auth.user.id)).needsAuth, false)
+  })
+  async function queryHarness() {
+    let view = await connect()
+    view = await service.select(auth.user.id, 'gsc', view.revision, 'sc-domain:topuplist.com')
+    await service.select(auth.user.id, 'ga4', view.revision, 'properties/42', 'properties/42/dataStreams/7')
+    const queries = new GoogleQueryService(service)
+    const registry = new ToolRegistryService()
+    registry.register({ definition: gscQueryDefinition, executor: new GscQueryTool(queries) })
+    registry.register({ definition: ga4MetadataDefinition, executor: new Ga4MetadataTool(queries) })
+    registry.register({ definition: ga4QueryDefinition, executor: new Ga4QueryTool(queries) })
+    return new ToolInvocationService(registry)
+  }
+  function invoke(tools: ToolInvocationService, toolName: string, input: unknown, run: GoogleQueryRun, signal = new AbortController().signal) {
+    return tools.invoke({ toolName, callId: randomUUID(), rawArgumentsJson: JSON.stringify(input) }, {
+      googleData: run,
+      argumentsTruncated: false,
+      signal,
+      serperApiKey: { status: 'missing' },
+      databaseDeadline: { deadlineAt: Date.now() + 30_000, signal, createTimeoutError: () => new Error('deadline') },
+    })
+  }
+  const range = { startDate: '2026-10-01', endDate: '2026-10-07' }
+  it('三个查询工具实际协议、metadata复用和强制stream AND，不允许模型覆盖身份', async () => {
+    const tools = await queryHarness()
+    const run = { userId: auth.user.id }
+    queryRows = true
+    try {
+      const gsc = await invoke(tools, 'gsc_query', { ...range, dimensions: ['date'], dimensionFilterGroups: [{ groupType: 'and', filters: [{ dimension: 'query', operator: 'excludingRegex', expression: 'brand' }] }] }, run)
+      assert.equal(gsc.result.ok, true)
+      assert.equal(JSON.parse(gsc.result.modelContent).rows[0].clicks, 2)
+      const metadata = await invoke(tools, 'ga4_metadata', { search: 'payment' }, run)
+      assert.equal(JSON.parse(metadata.result.modelContent).fields[0].apiName, 'customEvent:payment_method')
+      const input = { dateRanges: [range, { startDate: '2026-09-01', endDate: '2026-09-07' }], dimensions: ['date'], metrics: ['sessions'], dimensionFilter: { orGroup: { expressions: [{ filter: { fieldName: 'streamId', stringFilter: { matchType: 'EXACT', value: 'evil-stream' } } }] } }, metricFilter: { filter: { fieldName: 'sessions', numericFilter: { operation: 'GREATER_THAN', value: { doubleValue: 0 } } } }, orderBys: [{ metric: { metricName: 'sessions' }, desc: true }], currencyCode: 'USD' }
+      const before = requests.filter(call => call.path.endsWith('/metadata')).length
+      const ga4 = await invoke(tools, 'ga4_query', input, run)
+      assert.equal(ga4.result.ok, true)
+      const output = JSON.parse(ga4.result.modelContent)
+      assert.equal(output.rows[0].metricValues[0].value, '7')
+      assert.equal(output.metadata.subjectToThresholding, true)
+      assert.equal(requests.filter(call => call.path.endsWith('/metadata')).length, before)
+      const request = [...requests].reverse().find(call => call.path.endsWith(':runReport'))!
+      assert.deepEqual((request.body.dimensionFilter as { andGroup: { expressions: unknown[] } }).andGroup.expressions[0], { filter: { fieldName: 'streamId', stringFilter: { matchType: 'EXACT', value: '7' } } })
+      assert.equal(request.body.returnPropertyQuota, true)
+      assert.equal(request.body.limit, '100')
+      const bad = await invoke(tools, 'ga4_query', { ...input, userId: other.user.id }, run)
+      assert.equal(bad.result.ok, false)
+      assert.equal(bad.argumentsValidated, false)
+      const isolated = await invoke(tools, 'ga4_query', { dateRanges: [range], metrics: ['sessions'] }, { userId: other.user.id })
+      assert.equal(isolated.result.ok, false)
+      assert.ok(!isolated.result.modelContent.includes('secret-refresh'))
+      const unknown = await invoke(tools, 'ga4_query', { dateRanges: [range], metrics: ['inventedMetric'] }, run)
+      assert.match(unknown.result.modelContent, /ga4_metadata/)
+    }
+    finally { queryRows = false }
+  })
+  it('同 Run 的连接变化、断开与迟到Google响应不能跨资源回传', async () => {
+    const tools = await queryHarness()
+    const run = { userId: auth.user.id }
+    assert.equal((await invoke(tools, 'ga4_metadata', {}, run)).result.ok, true)
+    const view = await service.detail(auth.user.id)
+    await service.select(auth.user.id, 'gsc', view.revision, 'sc-domain:topuplist.com')
+    const changed = await invoke(tools, 'ga4_query', { dateRanges: [range], metrics: ['sessions'] }, run)
+    assert.equal(changed.result.ok, false)
+    assert.match(changed.result.modelContent, /已改变/)
+    const gate = barrier('/webmasters/v3/sites/sc-domain%3Atopuplist.com/searchAnalytics/query')
+    const late = invoke(tools, 'gsc_query', range, { userId: auth.user.id })
+    await gate.began
+    await service.disconnect(auth.user.id)
+    gate.release()
+    assert.equal((await late).result.ok, false)
+  })
+  it('Google错误、取消与小时窗口不能伪装成无数据', async () => {
+    const tools = await queryHarness()
+    for (const status of [400, 403, 429, 503]) {
+      apiStatus = status
+      const output = await invoke(tools, 'gsc_query', range, { userId: auth.user.id })
+      assert.equal(output.result.ok, false)
+      assert.ok(!output.result.modelContent.includes('secret-refresh'))
+    }
+    apiStatus = 200
+    const window = await invoke(tools, 'gsc_query', { startDate: '2020-01-01', endDate: '2020-01-02', dimensions: ['hour'], dataState: 'hourly_all' }, { userId: auth.user.id })
+    assert.equal(window.result.ok, false)
+    const controller = new AbortController()
+    const gate = barrier('/webmasters/v3/sites/sc-domain%3Atopuplist.com/searchAnalytics/query')
+    const pending = invoke(tools, 'gsc_query', range, { userId: auth.user.id }, controller.signal)
+    const rejected = assert.rejects(pending, /stop/)
+    await gate.began
+    controller.abort(new Error('stop'))
+    gate.release()
+    await rejected
+  })
+  it('真实宿主透传个人上下文，工具结果落库且成为下一轮模型输入；无连接普通聊天正常', async () => {
+    const tools = await queryHarness()
+    const model = createResolvedLlmModel()
+    const recorder = new AgentRunRecorderService(prisma)
+    const wire: ModelInputItem[][] = []
+    const llm = { async* chatStream(_provider: unknown, input: ModelInputItem[]): AsyncGenerator<ModelStreamEvent> {
+      wire.push(structuredClone(input))
+      if (wire.length === 1) {
+        yield { type: 'tool_call_completed', reasoningContent: '', toolCall: { providerCallId: 'google-call', name: 'gsc_query', argumentsJson: JSON.stringify(range), index: 0 } }
+        yield { type: 'response_completed', finishReason: 'tool_calls' }
+      }
+      else {
+        yield { type: 'text_delta', delta: '已查询。' }
+        yield { type: 'response_completed', finishReason: 'stop' }
+      }
+    } } as unknown as LLMService
+    const runtime = new AgentRuntimeService(llm, prisma, recorder, tools, new ContextCompactionService(llm, prisma, recorder))
+    const conversation = await prisma.conversation.create({ data: { userId: auth.user.id, title: 'query protocol test' } })
+    const events = []
+    for await (const event of runtime.runTurnStream({ userId: auth.user.id, conversationId: conversation.id, userContent: '查询搜索表现', model, runtimeConfig: createRuntimeConfigSnapshot(), instructions: [] })) events.push(event)
+    assert.equal(events[events.length - 1]?.type, 'run_completed')
+    const run = await prisma.agentRun.findFirstOrThrow({ where: { conversationId: conversation.id } })
+    const step = await prisma.agentStep.findFirstOrThrow({ where: { runId: run.id, type: 'tool_execution' } })
+    const output = step.output as { observation: string, ok: boolean }
+    assert.equal(output.ok, true)
+    assert.equal(JSON.parse(output.observation).source.siteUrl, 'sc-domain:topuplist.com')
+    assert.ok(wire[1]!.some(item => item.type === 'tool_result' && item.content === output.observation))
+    assert.ok(!JSON.stringify(step).includes('secret-refresh'))
+    const otherConversation = await prisma.conversation.create({ data: { userId: other.user.id, title: 'normal chat' } })
+    const normal = []
+    for await (const event of runtime.runTurnStream({ userId: other.user.id, conversationId: otherConversation.id, userContent: '你好', model, runtimeConfig: createRuntimeConfigSnapshot(), instructions: [] })) normal.push(event)
+    assert.equal(normal[normal.length - 1]?.type, 'run_completed')
   })
   it('HTTP 入口沿用鉴权与全局 DTO 校验', async () => {
     assert.equal((await fetch(`${apiUrl}/api/google-data`)).status, 401)

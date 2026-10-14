@@ -103,7 +103,9 @@ export class GoogleDataClient {
             ? 'needsAuth'
             : response.status === 403
               ? 'permissionDenied'
-              : response.status === 429 ? 'quotaExceeded' : 'upstreamFailed'
+              : response.status === 429
+                ? 'quotaExceeded'
+                : response.status === 400 && (target.pathname.endsWith(':runReport') || target.pathname.endsWith('/searchAnalytics/query')) ? 'queryRejected' : 'upstreamFailed'
         throw new GoogleDataError(response.status, reason)
       }
       return result

@@ -27,6 +27,13 @@
 
 ## 隐私与边界
 
-连接验证仅由 Kuro 后端请求 Google，不发给模型。后续分析功能需要把相关查询结果交给用户选择的模型服务商并随对话保存，必须与届时真实行为及隐私说明一致。当前不提供聊天数据工具或分析 Skill。
+连接验证仅由 Kuro 后端请求 Google，不发给模型。后续分析功能需要把相关查询结果交给用户选择的模型服务商并随对话保存，必须与届时真实行为及隐私说明一致。聊天可使用 gsc_query、ga4_metadata、ga4_query 查询当前用户已选资源；平台不预设公司的事件/收入口径，不含公司专属分析 Skill。
 
 官方依据：[Web OAuth 与离线授权](https://developers.google.com/identity/protocols/oauth2/web-server)、[部分授权](https://developers.google.com/identity/protocols/oauth2/resources/granular-permissions)、[GSC 站点列表](https://developers.google.com/webmaster-tools/v1/sites/list)、[GA4 资源列表](https://developers.google.com/analytics/devguides/config/admin/v1/rest/v1beta/accountSummaries/list)、[应用验证](https://developers.google.com/identity/protocols/oauth2/production-readiness/sensitive-scope-verification)。
+
+
+## 在聊天中使用
+
+资源保存后可直接问“查询所选 GSC 站点某日期范围的点击和展示”或“查询所选 GA4 资源某日期范围的 sessions”。未知自定义字段先让模型读取字段元数据。工具不要求再次填写站点、property 或 stream ID，也不能从问题中覆盖它们。
+
+结果会标注数据来源、日期和质量限制。同一次问答中切换资源、断开或重新授权后，旧查询会被拒绝；确认插件页选择后发起新问题即可。GSC URL 前缀资源与域名资源覆盖不同，选中 www 前缀所得的0不代表其他主机或整个域名为0。工具返回 Google 明确的0与没有返回行是两种事实。
