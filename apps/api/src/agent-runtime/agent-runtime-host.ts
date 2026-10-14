@@ -74,6 +74,7 @@ export function createRuntimeHost(input: RunTurnStreamInput, deps: {
   let userAttachmentRows: AttachmentModelRow[] = []
   let guideStepId: string | undefined
   let guideRequired = false
+  const googleData = input.userId ? { userId: input.userId } : undefined
   const runSkills = input.skills ? { snapshot: input.skills, loaded: new Map(input.skills.selected.map(selected => [selected.id, selected.package])) } : undefined
   return {
     logger: deps.logger,
@@ -145,6 +146,7 @@ export function createRuntimeHost(input: RunTurnStreamInput, deps: {
         workspaceGuideRequired: guideRequired,
         ...(input.mcp ? { mcpTools: input.mcp.tools } : {}),
         serperApiKey: input.runtimeConfig.serperApiKey,
+        ...(googleData ? { googleData } : {}),
         ...(runSkills ? { skills: runSkills } : {}),
         ...(input.userId ? { workspace: { userId: input.userId, conversationId: context.conversationId, runId: context.runId, deadlineAt: context.databaseDeadline.deadlineAt } } : {}),
       })

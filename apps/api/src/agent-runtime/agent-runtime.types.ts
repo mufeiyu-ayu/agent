@@ -10,7 +10,7 @@ export interface RunTurnStreamInput {
   mcp?: RunMcpTools
   selectedPlugins?: ConversationMessage['plugins']
   skills?: RunSkills
-  /** 由后端登录态提供，仅代码工具使用。 */
+  /** 由后端登录态提供，供需要个人权限的宿主工具使用。 */
   userId?: string
   conversationId: string
   /** 带了附件时可以是空串。 */

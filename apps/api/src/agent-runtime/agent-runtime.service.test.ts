@@ -3811,7 +3811,8 @@ describe('上下文自动压缩（#220）', () => {
     const harness = createHarness(routed({ sampling: () => finalAnswer() }))
 
     seedHistory(harness, 3, 2_000)
-    await run(harness)
+    const toolTokens = estimateRequestTokens({ items: [], tools: harness.service.availableTools() })
+    await run(harness, { model: { ...SMALL_MODEL, maxInputTokens: toolTokens + 4_000 } })
     await Promise.all(harness.afterRunCompactions)
 
     assert.equal(summaryCalls(harness).length, 0)
@@ -3980,8 +3981,8 @@ describe('上下文自动压缩（#220）', () => {
 
     // 用量锚点很小：检查点 A 的估算一直不超线；服务商按自己的上限报超长。历史一块就能摘要完。
     seedHistory(harness, 6, 1_000)
-
-    const events = await run(harness, { keepRecentTokens: 10 })
+    const toolTokens = estimateRequestTokens({ items: [], tools: harness.service.availableTools() })
+    const events = await run(harness, { keepRecentTokens: 10, model: { ...SMALL_MODEL, maxInputTokens: toolTokens + 4_000 } })
 
     assert.equal(events.at(-1)?.type, 'run_completed')
     assert.deepEqual(stepTrail(harness).filter(([type]) => type !== 'tool_execution'), [
@@ -4074,7 +4075,9 @@ describe('上下文自动压缩（#220）', () => {
         return toModelStream(summaryEvents(`前缀摘要 ${index + 1}`))
       },
     }), undefined, async () => ({ ok: true, modelContent: 'w'.repeat(4_000) }))
-    const events = await run(harness)
+    // 固定消息与保留预算，新增无关工具不能改变长循环需要压缩的行为。
+    const toolTokens = estimateRequestTokens({ items: [], tools: harness.service.availableTools() })
+    const events = await run(harness, { keepRecentTokens: 1_000, model: { ...SMALL_MODEL, maxInputTokens: toolTokens + 4_000 } })
     const turns = compactionSteps(harness)
     const requests = summaryCalls(harness)
 

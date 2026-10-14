@@ -1,6 +1,7 @@
 import type { OnModuleInit } from '@nestjs/common'
 import { Inject, Module } from '@nestjs/common'
 import { ModuleRef } from '@nestjs/core'
+import { GoogleDataModule } from '../google-data/google-data.module.js'
 import { SkillsModule } from '../skills/skills.module.js'
 
 import { WorkspacesModule } from '../workspaces/workspaces.module.js'
@@ -9,7 +10,7 @@ import { ToolRegistryService } from './core/tool-registry.service.js'
 import { TOOLS } from './tool-definitions.js'
 
 @Module({
-  imports: [SkillsModule, WorkspacesModule],
+  imports: [SkillsModule, WorkspacesModule, GoogleDataModule],
   providers: [
     ToolRegistryService,
     ToolInvocationService,

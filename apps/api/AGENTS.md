@@ -35,7 +35,7 @@ MCP 插件在 `src/mcp/`（见模块 README）：用户凭据和连接按用户�
 | `prisma/` | `PrismaService` 与连接可靠性 | `prisma.service.ts` |
 | `common/` | 全局管道 / 拦截器 / 过滤器 / 中间件 / 工具 | `bootstrap/register-app-globals.ts` |
 
-Google 数据连接在 `src/google-data/`（见模块 README）：个人 Web OAuth、GSC/GA4 资源选择与有界验证；与登录、MCP 独立，凭据加密按用户保存，迟到结果受 revision 限制。
+Google 数据连接在 `src/google-data/`（见模块 README）：个人 Web OAuth、资源选择与查询；`GoogleQueryService` 为 gsc_query / ga4_metadata / ga4_query 提供按用户和 Run 连接版本隔离的取数，结果沿用 Step；与登录、MCP 独立，凭据只在宿主保存。
 
 ## 不变量
 

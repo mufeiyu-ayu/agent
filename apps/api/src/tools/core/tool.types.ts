@@ -1,6 +1,7 @@
 import type { ToolInvocationResult as CoreInvocationResult, ToolResult as CoreToolResult } from '@agent/agent'
 import type { ModelToolSpec } from '@agent/ai'
 import type { SkillPackage } from '@agent/skills'
+import type { GoogleQueryRun } from '../../google-data/google-query.service.js'
 import type { DatabaseOperationDeadline } from '../../prisma/prisma.service.js'
 import type { SerperApiKey } from '../../runtime-config/runtime-config.service.js'
 import type { RunSkills } from '../../skills/skills.service.js'
@@ -31,6 +32,7 @@ export interface ValidatedToolInvocation<TInput = unknown> {
 
 /** 完全由服务端提供，不允许模型 arguments 覆盖。 */
 export interface ToolExecutionContext {
+  googleData?: GoogleQueryRun
   mcpTools?: Map<string, RegisteredTool>
   /** 持久化已进入 COMMIT；调用层等待数据库的有界结局，不能先返回普通超时。 */
   onCommitOwned?: () => void

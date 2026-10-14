@@ -146,6 +146,7 @@ export class ToolInvocationService {
           clearTimeout(timeoutId)
         },
         serperApiKey: context.serperApiKey,
+        ...(context.googleData ? { googleData: context.googleData } : {}),
         ...(context.skills ? { skills: context.skills } : {}),
         ...(context.workspace ? { workspace: context.workspace } : {}),
       }))
