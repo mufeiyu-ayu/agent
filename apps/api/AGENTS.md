@@ -35,6 +35,8 @@ MCP 插件在 `src/mcp/`（见模块 README）：用户凭据和连接按用户�
 | `prisma/` | `PrismaService` 与连接可靠性 | `prisma.service.ts` |
 | `common/` | 全局管道 / 拦截器 / 过滤器 / 中间件 / 工具 | `bootstrap/register-app-globals.ts` |
 
+Google 数据连接在 `src/google-data/`（见模块 README）：个人 Web OAuth、GSC/GA4 资源选择与有界验证；与登录、MCP 独立，凭据加密按用户保存，迟到结果受 revision 限制。
+
 ## 不变量
 
 - 鉴权在后端：全局 Guard 默认拦截，新接口不标 `@Public()` 就要登录，`admin/*` Controller 自动要求 ADMIN。会话归属按 `userId` 过滤，别人的会话与不存在的一律 404（`conversations`、`messages`、`chat/stream`）；`admin-*` 可观测看全部。库里只存密码的 scrypt 串与 token 的 SHA-256；停用、重置密码、改角色删该用户全部 Session，自己改密码保留当前这条。账号三态（启用 / 待审核 / 停用）在库里是 `disabled` 与 `pendingApproval` 两个布尔（迁移只加不删），一律经 `userStatus` 读。Google 登录（#198）：两种方式校验完都进 `GoogleAuthService.signIn`，绑定以 `sub` 为准，陌生账号建为待审核（上限 50）；回调地址只由 `APP_ORIGINS` 拼出；授权码、token、`code_verifier`、客户端密钥不进日志与响应（错误响应的 path 不带查询串）。首个管理员用 `pnpm create-admin`（`src/create-admin.ts`，生产镜像里是 `node dist/create-admin.js`）建，同时认领无主存量会话。

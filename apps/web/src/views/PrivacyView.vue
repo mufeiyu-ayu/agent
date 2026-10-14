@@ -12,10 +12,14 @@
           and letting an administrator approve your access).
         </p>
         <p>
-          We do not use this information for any other purpose, and we do not sell or share it with third parties.
-          We do not access your Google data beyond these basic profile fields.
+          We use basic profile information for sign-in and account identification, and do not sell it.
+          If you separately connect Google data, we request read-only access to your selected Search Console or
+          Analytics services, store encrypted authorization tokens on our server, and read the resources you select.
+          Connection verification makes a limited read request and does not send the results to a model.
+          When you later ask Kuro to analyze this data, relevant query results may be sent to your selected model provider
+          and stored with the conversation. Tokens are never sent to the model.
         </p>
-        <p>To have your account and its data removed, contact the administrator who manages your access.</p>
+        <p>You can disconnect Google data in Plugins to remove saved credentials and resource selections. Existing conversations remain until deleted. Disconnecting does not revoke access in your Google account; use Google’s connection settings for that. To remove your Kuro account and its data, contact your administrator.</p>
       </section>
 
       <section class="space-y-3" lang="zh-CN">
@@ -27,8 +31,8 @@
           使用 Google 登录时，我们只读取你 Google 账号的邮箱、名字和头像，仅用于登录与账号识别
           （例如显示你的名字和头像、供管理员审核你的使用申请）。
         </p>
-        <p>这些信息不做其他用途，也不会出售或提供给任何第三方；除上述基本资料外，我们不访问你的任何 Google 数据。</p>
-        <p>如需删除你的账号及相关数据，请联系为你开通权限的管理员。</p>
+        <p>基本资料用于登录与账号识别，不会出售。你另行连接 Google 数据时，我们申请所选 Search Console／Analytics 服务的只读权限，在服务端加密保存授权令牌，并读取你选择的资源。连接验证只进行有界读取，不把结果发送给模型。后续当你要求 Kuro 分析数据时，相关查询结果可能发送给你选择的模型服务商，并随对话保存；授权令牌不会交给模型。</p>
+        <p>你可以在插件页断开 Google 数据，删除本站保存的凭据与资源选择；已有聊天记录保留至你删除。断开不会撤销 Google 端授权，可前往 Google 账号连接设置管理。如需删除 Kuro 账号及相关数据，请联系管理员。</p>
       </section>
     </article>
   </main>

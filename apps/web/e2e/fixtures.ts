@@ -161,6 +161,7 @@ export async function installApiRoutes(
     body: JSON.stringify({ success: true, code: 0, message: 'ok', data }),
   })
 
+  await page.route('**/api/google-data', route => route.fulfill(json({ configured: false, connected: false, needsAuth: false, authorizing: false, email: null, services: [], selection: { gscSite: null, ga4Property: null, ga4Stream: null }, revision: 0 })))
   await page.route('**/api/mcp', route => route.fulfill(json([])))
 
   await page.route('**/api/skills', route => route.fulfill(json([])))

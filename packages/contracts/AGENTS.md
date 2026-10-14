@@ -31,3 +31,5 @@ src/admin-conversation.ts / src/admin-overview.ts   # 管理台其他读模型
 `src/skill.ts`：个人/系统技能列表、真实时间/历史使用次数、三条使用示例及完整文件预览协议，管理员写入请求携带完整包与编辑指纹；`ChatRequest.skillIds` 指定本轮显式使用的技能；`pluginIds` 指定本轮插件意图，`ConversationMessage.plugins` 回显同事务保存的插件身份。
 
 `ChatStreamToolFinishedEvent.skill` / `MessageActivityTool.skill` 保存成功读取或保存的技能身份（id/name），用于步骤名称；仅保存操作展示文件卡片，不进入模型上下文。
+
+`src/google-data.ts`：个人 Google 数据连接状态、服务范围、资源选择与验证结果；不含凭据。

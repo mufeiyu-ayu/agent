@@ -53,3 +53,5 @@ src/main.ts -> src/App.vue -> src/router/index.ts   # / 首页、/privacy（公�
 聊天技能文件由 `components/skills/SkillPreviewPanel.vue` 复用 `AttachmentPreviewPanel.vue` 渲染，接入现有右侧分栏/窄屏覆盖；设置中的预览仍使用弹窗。切换会话或预览类型取消旧技能读取。
 
 技能页只展示已发布内容，没有草稿分类。手动创建复用 `SkillEditorDialog.vue`，只提供发布；已发布技能只提供保存修改；未发布草稿从来源对话打开，取消未保存内容不生成记录。
+
+Google 数据卡片由 `components/plugins/GoogleDataCard.vue` 组合 `useGoogleData` 与 `api/google-data.ts`，在插件系统目录展示；整页授权返回后读取服务端事实，GSC/GA4 分别选择与验证，列表失败按服务隔离，验证绑定连接版本；普通用户不填密钥。
