@@ -20,22 +20,32 @@ export function useGoogleData() {
   const property = ref('')
   const stream = ref('')
   const verification = ref<Partial<Record<GoogleDataService, GoogleDataVerification>>>({})
+  const verificationErrors = ref<Partial<Record<GoogleDataService, string>>>({})
+  const progress = ref<{ service: GoogleDataService, phase: 'saving' | 'verifying' } | null>(null)
   watch(site, () => {
     delete verification.value.gsc
-  })
+    delete verificationErrors.value.gsc
+  }, { flush: 'sync' })
   watch([property, stream], () => {
     delete verification.value.ga4
-  })
+    delete verificationErrors.value.ga4
+  }, { flush: 'sync' })
   const controller = new AbortController()
   let alive = true
   let epoch = 0
   function update(value: GoogleDataConnection) {
     if (connection.value?.revision !== value.revision) {
       verification.value = {}
+      verificationErrors.value = {}
+    }
+    if (connection.value?.email !== value.email || !value.connected || value.needsAuth) {
+      resourceErrors.value = {}
       sites.value = []
       properties.value = []
       streams.value = []
     }
+    if (property.value !== (value.selection.ga4Property ?? ''))
+      streams.value = []
     connection.value = value
     site.value = value.selection.gscSite ?? ''
     property.value = value.selection.ga4Property ?? ''
@@ -73,12 +83,27 @@ export function useGoogleData() {
     catch (cause) {
       if (alive) {
         error.value = message(cause)
+        if (connection.value)
+          update(connection.value)
         await reload()
+        if (connection.value?.connected && !connection.value.needsAuth && property.value && !streams.value.length) {
+          try {
+            const values = await getGoogleResources('ga4', controller.signal, property.value)
+            if (alive)
+              streams.value = values
+          }
+          catch (restoreError) {
+            if (alive)
+              resourceErrors.value.ga4 = message(restoreError)
+          }
+        }
       }
     }
     finally {
-      if (alive && (!redirect || !completed))
+      if (alive && (!redirect || !completed)) {
         busy.value = false
+        progress.value = null
+      }
     }
   }
   async function resources() {
@@ -135,29 +160,74 @@ export function useGoogleData() {
       }
     })
   }
-  async function save(service: GoogleDataService) {
-    await run(async () => {
-      if (!connection.value)
-        return
-      const value = await selectGoogleResource(service, connection.value.revision, service === 'gsc' ? site.value : property.value, service === 'ga4' ? stream.value : undefined, controller.signal)
-      if (alive) {
-        update(value)
-        notice.value = t('googleData.saved')
-      }
-    })
-    if (!error.value)
-      await resources()
-  }
-  async function verify(service: GoogleDataService) {
+  async function verifySaved(service: GoogleDataService) {
+    const revision = connection.value?.revision
+    if (revision === undefined)
+      return
     delete verification.value[service]
-    await run(async () => {
-      const revision = connection.value?.revision
-      if (revision === undefined)
-        return
+    delete verificationErrors.value[service]
+    progress.value = { service, phase: 'verifying' }
+    try {
       const value = await verifyGoogleData(service, revision, controller.signal)
       if (alive && value.revision === connection.value?.revision)
         verification.value[service] = value
+    }
+    catch (cause) {
+      if (alive) {
+        verificationErrors.value[service] = message(cause)
+        await reload()
+        if (connection.value?.revision !== revision && !connection.value?.needsAuth)
+          error.value = message(cause)
+      }
+    }
+  }
+  async function saveSelection(service: GoogleDataService) {
+    const current = connection.value
+    if (!current || busy.value || (service === 'gsc' ? !site.value : !property.value || !stream.value))
+      return
+    if (service === 'gsc'
+      ? site.value === current.selection.gscSite
+      : property.value === current.selection.ga4Property && stream.value === current.selection.ga4Stream) {
+      return
+    }
+    await run(async () => {
+      progress.value = { service, phase: 'saving' }
+      const value = await selectGoogleResource(service, current.revision, service === 'gsc' ? site.value : property.value, service === 'ga4' ? stream.value : undefined, controller.signal)
+      if (!alive)
+        return
+      // 保存响应可能包含另一个标签页的最新选择；验证前先同步本服务，保留另一服务草稿。
+      connection.value = value
+      verification.value = {}
+      if (current.selection.gscSite !== value.selection.gscSite)
+        delete verificationErrors.value.gsc
+      if (current.selection.ga4Property !== value.selection.ga4Property || current.selection.ga4Stream !== value.selection.ga4Stream)
+        delete verificationErrors.value.ga4
+      if (service === 'gsc') {
+        site.value = value.selection.gscSite ?? ''
+      }
+      else {
+        const propertyChanged = property.value !== (value.selection.ga4Property ?? '')
+        property.value = value.selection.ga4Property ?? ''
+        stream.value = value.selection.ga4Stream ?? ''
+        if (propertyChanged) {
+          streams.value = []
+          try {
+            const values = property.value ? await getGoogleResources('ga4', controller.signal, property.value) : []
+            if (alive)
+              streams.value = values
+          }
+          catch (cause) {
+            if (alive)
+              resourceErrors.value.ga4 = message(cause)
+          }
+        }
+      }
+      if (alive)
+        await verifySaved(service)
     })
+  }
+  async function retryVerification(service: GoogleDataService) {
+    await run(() => verifySaved(service))
   }
   async function connect() {
     await run(async () => {
@@ -200,5 +270,5 @@ export function useGoogleData() {
     controller.abort()
     window.removeEventListener('pageshow', pageShow)
   })
-  return { connection, open, busy, error, notice, resourceErrors, requested, sites, properties, streams, site, property, stream, verification, reload, preview, resources, changeProperty, save, verify, connect, cancel, disconnect }
+  return { connection, open, busy, error, notice, resourceErrors, requested, sites, properties, streams, site, property, stream, verification, verificationErrors, progress, reload, preview, resources, changeProperty, saveSelection, retryVerification, connect, cancel, disconnect }
 }

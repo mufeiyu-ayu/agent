@@ -11,6 +11,7 @@ const g = useGoogleData()
 const route = useRoute()
 const router = useRouter()
 const confirmingDisconnect = ref(false)
+const editingAuthorization = ref(false)
 const returned = route.query.googleData
 const status = computed(() => !g.connection.value?.configured
   ? 'unconfigured'
@@ -21,9 +22,16 @@ const status = computed(() => !g.connection.value?.configured
       : g.connection.value.connected ? 'connected' : 'disconnected')
 const ready = computed(() => status.value === 'connected')
 const inputClass = 'mt-2 w-full rounded-lg border border-agent-border bg-agent-surface px-3 py-2 text-sm disabled:opacity-50'
-const actionClass = 'rounded-lg border border-agent-border px-3 py-2 text-xs hover:bg-agent-surface-raised disabled:opacity-40'
+const primaryClass = 'flex h-11 min-w-0 flex-1 items-center justify-center gap-2 rounded-xl bg-agent-ink px-3 text-sm font-medium text-agent-surface transition-opacity hover:opacity-90 disabled:opacity-40'
+const secondaryClass = 'flex h-11 min-w-0 flex-1 items-center justify-center gap-2 rounded-xl border border-agent-border bg-agent-surface px-3 text-sm font-medium text-agent-ink transition-colors hover:bg-agent-surface-raised disabled:opacity-40'
+watch(g.open, () => {
+  editingAuthorization.value = false
+  confirmingDisconnect.value = false
+})
 let handled = false
 watch(g.connection, async (value) => {
+  if (!value?.connected)
+    confirmingDisconnect.value = false
   if (!value || handled || !returned)
     return
   handled = true
@@ -83,26 +91,42 @@ defineExpose({ reload: g.reload })
             <p v-if="!g.connection.value.configured" class="mt-4 text-sm text-agent-ink-muted">
               {{ t('googleData.setup') }}
             </p>
-            <div v-else class="mt-5">
-              <p class="text-sm font-medium">
-                {{ t('googleData.chooseServices') }}
-              </p>
-              <div class="mt-3 flex flex-wrap gap-5">
-                <label v-for="service in ['gsc', 'ga4'] as const" :key="service" class="flex items-center gap-2 text-sm">
-                  <input v-model="g.requested.value" type="checkbox" :value="service" :disabled="g.busy.value || g.connection.value.authorizing">{{ t(`googleData.${service}`) }}
-                </label>
+            <div class="mt-5">
+              <template v-if="g.connection.value.configured && (!ready || editingAuthorization)">
+                <p class="text-sm font-medium">
+                  {{ t('googleData.chooseServices') }}
+                </p>
+                <div class="mt-3 flex flex-wrap gap-5">
+                  <label v-for="service in ['gsc', 'ga4'] as const" :key="service" class="flex items-center gap-2 text-sm">
+                    <input v-model="g.requested.value" type="checkbox" :value="service" :disabled="g.busy.value || g.connection.value.authorizing">{{ t(`googleData.${service}`) }}
+                  </label>
+                </div>
+                <p class="mt-3 text-xs leading-5 text-agent-ink-muted">
+                  {{ t('googleData.consent') }} <RouterLink to="/privacy" class="underline">
+                    {{ t('googleData.privacy') }}
+                  </RouterLink>
+                </p>
+              </template>
+              <div class="mt-4 flex items-stretch gap-3" data-google-actions>
+                <button v-if="g.connection.value.authorizing" :disabled="g.busy.value" :class="primaryClass" @click="g.cancel">
+                  <span>{{ t('googleData.cancel') }}</span>
+                </button>
+                <button v-else :disabled="g.busy.value || !g.connection.value.configured || ((!ready || editingAuthorization) && !g.requested.value.length)" :class="primaryClass" @click="ready && !editingAuthorization ? editingAuthorization = true : g.connect()">
+                  <AppIcon :name="g.busy.value && !g.progress.value ? 'tabler:loader-2' : 'tabler:refresh'" :size="18" class="shrink-0" :class="{ 'animate-spin': g.busy.value && !g.progress.value }" />
+                  <span>{{ t(ready && !editingAuthorization ? 'googleData.reconnect' : g.connection.value.connected ? 'googleData.continueAuthorization' : 'googleData.connect') }}</span>
+                </button>
+                <button v-if="g.connection.value.connected" :disabled="g.busy.value" :class="secondaryClass" @click="confirmingDisconnect ? g.disconnect() : confirmingDisconnect = true">
+                  <AppIcon name="tabler:link-off" :size="18" class="shrink-0" />
+                  <span>{{ t(confirmingDisconnect ? 'googleData.confirmDisconnect' : 'googleData.disconnect') }}</span>
+                </button>
               </div>
-              <p class="mt-3 text-xs leading-5 text-agent-ink-muted">
-                {{ t('googleData.consent') }} <RouterLink to="/privacy" class="underline">
-                  {{ t('googleData.privacy') }}
-                </RouterLink>
-              </p>
-              <button v-if="g.connection.value.authorizing" :disabled="g.busy.value" :class="actionClass" class="mt-4" @click="g.cancel">
-                {{ t('googleData.cancel') }}
-              </button>
-              <button v-else :disabled="g.busy.value || !g.requested.value.length" class="mt-4 rounded-full bg-agent-ink px-4 py-2 text-sm text-agent-surface disabled:opacity-40" @click="g.connect">
-                {{ g.busy.value ? t('googleData.working') : t(g.connection.value.connected ? 'googleData.reconnect' : 'googleData.connect') }}
-              </button>
+              <div v-if="confirmingDisconnect" class="mt-3 rounded-xl bg-agent-surface-raised/60 px-3.5 py-2.5 text-xs leading-5 text-agent-ink-muted">
+                {{ t('googleData.disconnectHint') }}
+                <a href="https://myaccount.google.com/connections" target="_blank" rel="noopener noreferrer" class="underline">{{ t('googleData.googlePermissions') }}</a>
+                <button :disabled="g.busy.value" class="ml-2 underline disabled:opacity-40" @click="confirmingDisconnect = false">
+                  {{ t('plugins.cancel') }}
+                </button>
+              </div>
             </div>
             <div v-if="ready" class="mt-6 space-y-5">
               <section v-for="service in g.connection.value.services" :key="service" class="border-t border-agent-border pt-5">
@@ -111,11 +135,14 @@ defineExpose({ reload: g.reload })
                 </h3>
                 <p v-if="g.resourceErrors.value[service]" role="alert" class="mt-2 text-xs text-red-600">
                   {{ g.resourceErrors.value[service] }}
+                  <button :disabled="g.busy.value" class="ml-2 underline disabled:opacity-40" @click="g.resources">
+                    {{ t('googleData.retry') }}
+                  </button>
                 </p>
                 <template v-if="service === 'gsc'">
                   <label class="mt-3 block text-sm">{{ t('googleData.site') }}
-                    <select v-model="g.site.value" :disabled="g.busy.value" :class="inputClass">
-                      <option value="">{{ t('googleData.chooseResource') }}</option>
+                    <select v-model="g.site.value" :disabled="g.busy.value" :class="inputClass" @change="g.saveSelection('gsc')">
+                      <option value="" disabled>{{ t('googleData.chooseResource') }}</option>
                       <option v-for="item in g.sites.value" :key="item.id" :value="item.id">{{ item.name }}</option>
                     </select>
                   </label>
@@ -126,13 +153,13 @@ defineExpose({ reload: g.reload })
                 <template v-else>
                   <label class="mt-3 block text-sm">{{ t('googleData.property') }}
                     <select v-model="g.property.value" :disabled="g.busy.value" :class="inputClass" @change="g.changeProperty">
-                      <option value="">{{ t('googleData.chooseResource') }}</option>
+                      <option value="" disabled>{{ t('googleData.chooseResource') }}</option>
                       <option v-for="item in g.properties.value" :key="item.id" :value="item.id">{{ item.name }} · {{ item.id }}</option>
                     </select>
                   </label>
                   <label class="mt-3 block text-sm">{{ t('googleData.stream') }}
-                    <select v-model="g.stream.value" :disabled="g.busy.value || !g.property.value" :class="inputClass">
-                      <option value="">{{ t('googleData.chooseResource') }}</option>
+                    <select v-model="g.stream.value" :disabled="g.busy.value || !g.property.value" :class="inputClass" @change="g.saveSelection('ga4')">
+                      <option value="" disabled>{{ t('googleData.chooseResource') }}</option>
                       <option v-for="item in g.streams.value" :key="item.id" :value="item.id">{{ item.name }} · {{ item.url || t('googleData.noWebsite') }}</option>
                     </select>
                   </label>
@@ -143,37 +170,22 @@ defineExpose({ reload: g.reload })
                     {{ t('googleData.noProperties') }}
                   </p>
                 </template>
-                <div class="mt-3 flex flex-wrap gap-2">
-                  <button :disabled="g.busy.value || (service === 'gsc' ? !g.site.value : !g.property.value || !g.stream.value)" :class="actionClass" @click="g.save(service)">
-                    {{ t('googleData.save') }}
+                <p v-if="g.progress.value?.service === service" role="status" class="mt-3 flex items-center gap-2 text-xs text-agent-ink-muted">
+                  <AppIcon name="tabler:loader-2" :size="14" class="animate-spin" />{{ t(`googleData.${g.progress.value.phase}`) }}
+                </p>
+                <p v-else-if="g.verificationErrors.value[service]" role="alert" class="mt-3 text-xs text-red-600">
+                  {{ t('googleData.savedVerificationFailed') }} {{ g.verificationErrors.value[service] }}
+                  <button :disabled="g.busy.value" class="ml-2 underline disabled:opacity-40" @click="g.retryVerification(service)">
+                    {{ t('googleData.retry') }}
                   </button>
-                  <button :disabled="g.busy.value || (service === 'gsc' ? !g.connection.value.selection.gscSite || g.site.value !== g.connection.value.selection.gscSite : !g.connection.value.selection.ga4Stream || g.property.value !== g.connection.value.selection.ga4Property || g.stream.value !== g.connection.value.selection.ga4Stream)" :class="actionClass" @click="g.verify(service)">
-                    {{ t('googleData.verify') }}
-                  </button>
-                </div>
+                </p>
                 <p v-if="g.verification.value[service]" role="status" class="mt-3 text-xs text-agent-ink-muted">
                   {{ t(g.verification.value[service]?.hasData ? 'googleData.verified' : 'googleData.verifiedEmpty') }} · {{ new Date(g.verification.value[service]!.checkedAt).toLocaleString() }}
                 </p>
               </section>
-              <button :disabled="g.busy.value" :class="actionClass" @click="g.resources">
-                {{ t('googleData.refresh') }}
-              </button>
-            </div>
-            <div v-if="g.connection.value.connected" class="mt-6 border-t border-agent-border pt-5">
-              <p class="text-xs leading-5 text-agent-ink-muted">
-                {{ t('googleData.disconnectHint') }} <a href="https://myaccount.google.com/connections" target="_blank" rel="noopener noreferrer" class="underline">{{ t('googleData.googlePermissions') }}</a>
+              <p class="text-xs text-agent-ink-muted">
+                {{ t('googleData.autoSaveHint') }}
               </p>
-              <div v-if="confirmingDisconnect" class="mt-3 flex flex-wrap gap-2">
-                <button :disabled="g.busy.value" :class="actionClass" class="text-red-600" @click="g.disconnect(); confirmingDisconnect = false">
-                  {{ t('googleData.confirmDisconnect') }}
-                </button>
-                <button :disabled="g.busy.value" :class="actionClass" @click="confirmingDisconnect = false">
-                  {{ t('plugins.close') }}
-                </button>
-              </div>
-              <button v-else :disabled="g.busy.value" class="mt-3 text-sm text-red-600 disabled:opacity-40" @click="confirmingDisconnect = true">
-                {{ t('googleData.disconnect') }}
-              </button>
             </div>
           </template>
         </DialogContent>
