@@ -22,7 +22,7 @@
           .forEach(element => element.remove());
         if (interactive) {
           const bridge = parsed.createElement('script');
-          bridge.textContent = `(()=>{for(const name of ['RTCPeerConnection','webkitRTCPeerConnection','mozRTCPeerConnection','Worker','SharedWorker']){Object.defineProperty(window,name,{value:undefined,writable:false,configurable:false})}const pending=new Map();window.kuro={query:(query)=>new Promise((resolve,reject)=>{if(query!=='topuplist.traffic'||pending.size>=4){reject(new Error('不支持的查询'));return}const id=crypto.randomUUID?.()??'q'+Date.now()+Math.random().toString(36).slice(2);const timer=setTimeout(()=>{pending.delete(id);reject(new Error('查询超时'))},10000);pending.set(id,{resolve,reject,timer});parent.postMessage({type:'workspace-query',id,query},'*')})};addEventListener('keydown',event=>{if(event.key==='Escape')parent.postMessage({type:'html-preview-close'},'*')},true);addEventListener('message',event=>{if(event.source!==parent||event.data?.type!=='workspace-query-result')return;const item=pending.get(event.data.id);if(!item)return;clearTimeout(item.timer);pending.delete(event.data.id);event.data.error?item.reject(new Error(event.data.error)):item.resolve(event.data.result)})})();`;
+          bridge.textContent = `(()=>{for(const name of ['RTCPeerConnection','webkitRTCPeerConnection','mozRTCPeerConnection','Worker','SharedWorker']){Object.defineProperty(window,name,{value:undefined,writable:false,configurable:false})}addEventListener('keydown',event=>{if(event.key==='Escape')parent.postMessage({type:'html-preview-close'},'*')},true)})();`;
           parsed.head.prepend(bridge);
         }
         frame.srcdoc = '<!doctype html>' + parsed.documentElement.outerHTML;
@@ -31,11 +31,6 @@
         const frame = document.querySelector('iframe');
         if (event.source === frame.contentWindow && event.origin === 'null' && event.data?.type === 'html-preview-close')
           window.parent.postMessage({ type: 'html-preview-close' }, '*');
-        if (event.source === frame.contentWindow && event.origin === 'null' && event.data?.type === 'workspace-query'
-          && event.data.query === 'topuplist.traffic' && typeof event.data.id === 'string' && /^[\w-]{1,80}$/.test(event.data.id))
-          window.parent.postMessage(event.data, '*');
-        if (event.source === window.parent && event.data?.type === 'workspace-query-result')
-          frame.contentWindow?.postMessage(event.data, '*');
       });
     </script>
   </body>

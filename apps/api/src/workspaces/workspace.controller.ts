@@ -4,7 +4,6 @@ import { Controller, Get, HttpCode, Inject, Param, Post, Query, Res } from '@nes
 import { Type } from 'class-transformer'
 import { IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator'
 import { CurrentAuth, Public } from '../auth/auth.decorators.js'
-import { topuplistTraffic } from '../tools/workspace/topuplist-traffic.tool.js'
 import { WorkspaceMonitoringService } from './workspace-monitoring.service.js'
 import { WorkspacePreviewService } from './workspace-preview.service.js'
 import { WorkspaceService } from './workspace.service.js'
@@ -49,12 +48,6 @@ export class WorkspaceController {
   @Get('artifacts/:artifactId/preview')
   preview(@CurrentAuth() auth: AuthContext, @Param('conversationId') conversationId: string, @Param('artifactId') artifactId: string, @Query('origin') origin: string) {
     return this.previews.open(auth.user.id, conversationId, artifactId, origin)
-  }
-
-  @Get('traffic')
-  async traffic(@CurrentAuth() auth: AuthContext, @Param('conversationId') conversationId: string) {
-    await this.workspaces.snapshot(auth.user.id, conversationId)
-    return topuplistTraffic()
   }
 }
 

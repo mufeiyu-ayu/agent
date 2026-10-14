@@ -26,7 +26,7 @@ src/main.ts -> src/App.vue -> src/router/index.ts   # / 首页、/privacy（公�
 | `utils/` | 纯函数：会话分轮、时间格式、Markdown 分块与高亮、流式尾块补齐、渐显批次与 VNode 路径支持的 token、等待过程的事件归并与刷新后还原（#212）、思考短句与文案、首页缓动 | `conversation-turns.ts`、`markdown-blocks.ts`、`streaming-markdown.ts`、`markdown-fade.ts`（只支持常见行内 token，其余整块回退 v-html）、`run-status.ts`、`attachments.ts`（附件类型与上限、预览方式、图片显示尺寸、按预览上限提前停下的 CSV 解析）、`attachment-documents.ts`（xlsx 线程入口与 docx 离线渲染，悬停 Word 文件时预拉取解析库）、`attachment-sheets.worker.ts`（xlsx 解压、解析与单元格格式化，关闭/切换预览时终止） |
 | `public/` | 静态资源 | `html-preview.html`（可信预览外层：CSP 禁网、消息来源校验与隔离 iframe） |
 | `types/` | 前台内部类型；跨端协议一律从 `@agent/contracts` 取 | |
-| 工作文件 | 只读 Source 文件树、展示格式化与固定版本源码 ZIP；成功多文件 dist 按 Artifact 身份隔离预览，失败保留旧构建；旧 HTML/演示桥接兼容。回答下方的交付卡片从保存记录恢复并打开对应源码 | `hooks/useWorkspaceFiles.ts`、`api/workspace.ts`、`components/agent/WorkspaceFilesPanel.vue`、`components/agent/AgentWorkspaceArtifact.vue`、`public/html-preview.html` |
+| 工作文件 | 只读 Source 文件树、展示格式化与固定版本源码 ZIP；成功多文件 dist 按 Artifact 身份隔离预览，失败保留旧构建；旧 HTML 保留离线交互与隔离预览。回答下方的交付卡片从保存记录恢复并打开对应源码 | `hooks/useWorkspaceFiles.ts`、`api/workspace.ts`、`components/agent/WorkspaceFilesPanel.vue`、`components/agent/AgentWorkspaceArtifact.vue`、`public/html-preview.html` |
 | `i18n/` | 中英文案，`messages.test.ts` 校验两份键一致 | |
 
 ## 约束

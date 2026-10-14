@@ -4,7 +4,6 @@ import { ga4MetadataDefinition, Ga4MetadataTool, ga4QueryDefinition, Ga4QueryToo
 import { readSkillDefinition, readSkillDraftDefinition, ReadSkillDraftTool, ReadSkillTool, saveSkillDraftDefinition, SaveSkillDraftTool } from './skill-tools.js'
 import { webFetchDefinition, WebFetchTool } from './web/web-fetch.tool.js'
 import { webSearchDefinition, WebSearchTool } from './web/web-search.tool.js'
-import { TopuplistTrafficTool, trafficDefinition } from './workspace/topuplist-traffic.tool.js'
 import { bashDefinition, BashTool, editDefinition, EditTool, readDefinition, ReadTool, writeDefinition, WriteTool } from './workspace/workspace-tools.js'
 
 /**
@@ -24,7 +23,6 @@ export const TOOLS = [
   toolEntry(writeDefinition, WriteTool),
   toolEntry(editDefinition, EditTool),
   toolEntry(bashDefinition, BashTool),
-  toolEntry(trafficDefinition, TopuplistTrafficTool),
 ]
 
 /** 由清单派生：Run 暴露给模型的工具与 Admin 概览的工具名都读它。 */

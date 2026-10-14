@@ -5,7 +5,7 @@ import dgram from 'node:dgram'
 import { expect, test } from '@playwright/test'
 import { CONVERSATION_ID, installApiRoutes, installBrowserStubs } from './fixtures'
 
-const html = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><style>body{font:16px system-ui;padding:24px;background:#f5f8f4;color:#173b2a}button{padding:8px 16px}table{margin-top:24px}</style></head><body><h1>topuplist 最近七天流量</h1><p>演示数据</p><button id="metric">访客</button><p id="metricValue">34360</p><button id="refresh">刷新数据</button><p id="fresh"></p><script>document.querySelector('#metric').onclick=()=>{document.querySelector('#metric').textContent='浏览量';document.querySelector('#metricValue').textContent='81940'};document.querySelector('#refresh').onclick=async()=>{const data=await window.kuro.query('topuplist.traffic');document.querySelector('#fresh').textContent='数据已更新：'+data.totals.visitors};window.checkIsolation=()=>{try{return parent.document.cookie}catch{return 'isolated'}};</script></body></html>`
+const html = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><style>body{font:16px system-ui;padding:24px;background:#f5f8f4;color:#173b2a}button{padding:8px 16px}table{margin-top:24px}</style></head><body><h1>topuplist 最近七天流量</h1><p>演示数据</p><button id="metric">访客</button><p id="metricValue">34360</p><script>document.querySelector('#metric').onclick=()=>{document.querySelector('#metric').textContent='浏览量';document.querySelector('#metricValue').textContent='81940'};window.checkIsolation=()=>{try{return parent.document.cookie}catch{return 'isolated'}};</script></body></html>`
 const identity = { conversationId: CONVERSATION_ID, assistantMessageId: 'assistant-build' }
 const event = (data: Record<string, unknown>) => JSON.stringify({ ...identity, ...data })
 const file = { path: 'outputs/traffic.html', bytes: Buffer.byteLength(html), sha256: 'a'.repeat(64) }
@@ -17,18 +17,13 @@ async function openWorkspaceFiles(page: Page) {
   await page.locator('[data-open-workspace-files]').click()
 }
 
-test('构建步骤、命令错误与修复、文件保存、交互预览、业务桥接和下载形成闭环', async ({ page }) => {
+test('构建步骤、命令错误与修复、文件保存、离线交互预览和下载形成闭环', async ({ page }) => {
   await installApiRoutes(page, () => [])
   let submitted = false
-  let queries = 0
   await page.route('**/api/conversations/*/workspace**', async (route) => {
     const url = new URL(route.request().url())
     let data: unknown
-    if (url.pathname.endsWith('/traffic')) {
-      queries++
-      data = { source: 'demo', totals: { visitors: 34360 } }
-    }
-    else if (url.pathname.endsWith('/file')) {
+    if (url.pathname.endsWith('/file')) {
       data = { encoding: 'base64', content: Buffer.from(url.searchParams.get('path') === file.path ? html : 'const answer: number = 42').toString('base64') }
     }
     else {
@@ -63,10 +58,8 @@ test('构建步骤、命令错误与修复、文件保存、交互预览、业�
   await expect(frame.getByRole('heading', { name: 'topuplist 最近七天流量' })).toBeVisible()
   await frame.getByRole('button', { name: '访客', exact: true }).click()
   await expect(frame.locator('#metricValue')).toHaveText('81940')
-  await frame.getByRole('button', { name: '刷新数据', exact: true }).click()
-  await expect(frame.locator('#fresh')).toHaveText('数据已更新：34360')
-  assert.equal(queries, 1)
   const child = page.frames().find(item => item.url() === 'about:srcdoc')!
+  assert.equal(await child.evaluate(() => (window as unknown as { kuro?: unknown }).kuro), undefined)
   assert.equal(await child.evaluate(() => (window as unknown as { checkIsolation: () => string }).checkIsolation()), 'isolated')
   const panel = page.locator('[data-workspace-files-panel]')
   await expect(page.getByText('已生成页面并完成检查，数据为演示数据。')).toBeVisible()
@@ -527,7 +520,7 @@ test('手动打开面板后首次文件读取期间版本更新，会重读最�
   await expect(panel.getByRole('alert')).toHaveCount(0)
 })
 
-test('交互预览禁网、自身导航受限，伪造消息不能改外层或冒用其他会话查询', async ({ page, baseURL }) => {
+test('交互预览禁网、自身导航受限，伪造消息不能改外层或触发宿主数据查询', async ({ page, baseURL }) => {
   const target = `${baseURL}/preview-leak`
   let leaked = 0
   const queries: string[] = []
@@ -535,7 +528,7 @@ test('交互预览禁网、自身导航受限，伪造消息不能改外层或�
     leaked++
     return route.abort()
   })
-  const unsafe = `<html><body><h1>消息桥接验证</h1><button id="direct">伪造宿主消息</button><button id="query">合法桥接</button><a href="${target}/navigation">导航</a><img src="${target}/image"><script>
+  const unsafe = `<html><body><h1>消息桥接验证</h1><button id="direct">伪造宿主消息</button><button id="query">伪造查询消息</button><a href="${target}/navigation">导航</a><img src="${target}/image"><script>
     fetch('${target}/fetch').catch(()=>{});
     parent.postMessage({type:'html-preview',title:'attack',code:'<html><body>REPLACED</body></html>'},'*');
     document.querySelector('#direct').onclick=()=>parent.parent.postMessage({type:'workspace-query',id:'direct',query:'topuplist.traffic'},'*');
@@ -547,7 +540,7 @@ test('交互预览禁网、自身导航受限，伪造消息不能改外层或�
     const url = new URL(route.request().url())
     if (url.pathname.endsWith('/traffic')) {
       queries.push(url.pathname)
-      return route.fulfill({ json: { success: true, code: 0, data: { source: 'demo' } } })
+      return route.abort()
     }
     const data = url.pathname.endsWith('/file') ? { encoding: 'base64', content: Buffer.from(unsafe).toString('base64') } : { ...snapshot, files: [file] }
     return route.fulfill({ json: { success: true, code: 0, data } })
@@ -557,13 +550,12 @@ test('交互预览禁网、自身导航受限，伪造消息不能改外层或�
   await expect(frame.getByRole('heading', { name: '消息桥接验证' })).toBeVisible()
   await expect(page.getByRole('separator', { name: '调整聊天与预览宽度' })).toBeVisible()
   await frame.getByRole('button', { name: '伪造宿主消息' }).click()
-  await frame.getByRole('button', { name: '合法桥接' }).click()
-  await expect.poll(() => queries.length).toBe(1)
-  assert.deepEqual(queries, [`/api/conversations/${CONVERSATION_ID}/workspace/traffic`])
+  await frame.getByRole('button', { name: '伪造查询消息' }).click()
   await expect(frame.getByRole('heading', { name: '消息桥接验证' })).toBeVisible()
   await frame.getByRole('link', { name: '导航', exact: true }).click()
   await page.waitForTimeout(200)
   assert.equal(leaked, 0)
+  assert.deepEqual(queries, [])
   assert.equal(new URL(page.url()).pathname, '/workspace')
 })
 
@@ -769,15 +761,10 @@ test('同文件重复选择与下载复用原始字节，失败恢复、显式�
   const original = Buffer.from(`\uFEFF${html}\r\n`)
   let revision = 1
   let manifests = 0
-  let queries = 0
   const reads: number[] = []
   let failFirst!: () => Promise<void>
   await page.route('**/api/conversations/*/workspace**', (route) => {
     const url = new URL(route.request().url())
-    if (url.pathname.endsWith('/traffic')) {
-      queries++
-      return route.fulfill({ json: { success: true, code: 0, data: { totals: { visitors: 99 } } } })
-    }
     if (url.pathname.endsWith('/file')) {
       reads.push(Number(url.searchParams.get('revision')))
       if (reads.length === 1) {
@@ -815,9 +802,6 @@ test('同文件重复选择与下载复用原始字节，失败恢复、显式�
   await expect(frame.locator('#metricValue')).toHaveText('81940')
   await expect(panel.getByRole('status')).toHaveCount(0)
   assert.deepEqual(reads, [1, 1], '重复选择不下载、不重建预览或闪 loading')
-  await frame.getByRole('button', { name: '刷新数据', exact: true }).click()
-  await expect(frame.locator('#fresh')).toHaveText('数据已更新：99')
-  assert.equal(queries, 1, '页面内显式业务查询不受文件复用影响')
   await panel.getByRole('button', { name: '代码', exact: true }).click()
   await panel.getByRole('button', { name: '格式化', exact: true }).click()
   await expect(panel.getByRole('button', { name: '查看原文', exact: true })).toBeVisible()

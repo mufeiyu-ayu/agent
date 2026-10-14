@@ -32,7 +32,3 @@ export async function openWorkspacePreview(conversationId: string, artifactId: s
     throw new Error('构建预览有效期无效')
   return { url: response.data.url, expiresAt }
 }
-
-export async function getWorkspaceTraffic(conversationId: string, signal?: AbortSignal): Promise<unknown> {
-  return (await http.get(`/api/conversations/${encodeURIComponent(conversationId)}/workspace/traffic`, { signal })).data
-}

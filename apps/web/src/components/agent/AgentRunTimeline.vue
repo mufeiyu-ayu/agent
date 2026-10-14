@@ -23,7 +23,6 @@ const TOOL_ICONS: Record<string, string> = {
   write: 'tabler:file-plus',
   edit: 'tabler:file-pencil',
   bash: 'tabler:terminal-2',
-  topuplist_traffic: 'tabler:chart-line',
   read_skill: 'tabler:script',
 }
 

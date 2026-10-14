@@ -30,7 +30,7 @@ export interface WorkspaceSnapshot {
 
 export interface WorkspaceToolDisplay {
   title: string
-  operation: 'read' | 'write' | 'edit' | 'bash' | 'traffic'
+  operation: 'read' | 'write' | 'edit' | 'bash'
   path?: string
   command?: string
   stdout?: string

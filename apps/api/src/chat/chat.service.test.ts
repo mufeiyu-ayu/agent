@@ -87,7 +87,9 @@ describe('ChatService', () => {
   it('工作区不可用时预检复用真实工具规格，边界内接受，真正超预算仍在运行前拒绝', async () => {
     const runtime = new FakeAgentRuntimeService([runCompletedEvent('完成')])
     const tools = AgentRuntimeService.prototype.availableTools.call({ workspaces: { cloud: { configured: false } } } as unknown as AgentRuntimeService)
-    assert.ok(tools.some(tool => tool.name === 'topuplist_traffic'))
+    assert.ok(!tools.some(tool => tool.name === 'topuplist_traffic'))
+    for (const name of ['gsc_query', 'ga4_metadata', 'ga4_query'])
+      assert.ok(tools.some(tool => tool.name === name))
     assert.ok(!tools.some(tool => ['read', 'write', 'edit', 'bash'].includes(tool.name)))
     runtime.availableTools = () => tools
     const pkg = validateSkillPackage([{ path: 'SKILL.md', encoding: 'utf8', content: '---\nname: test-skill\ndescription: 检查标题\n---\n检查标题' }])

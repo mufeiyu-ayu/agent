@@ -6,7 +6,7 @@ import { useI18n } from 'vue-i18n'
 
 import AppIcon from '@/components/common/AppIcon.vue'
 import AppTooltip from '@/components/common/AppTooltip.vue'
-import { getWorkspaceTraffic, openWorkspacePreview } from '../../api/workspace'
+import { openWorkspacePreview } from '../../api/workspace'
 
 const props = defineProps<{ code: string, focusClose?: boolean, interactive?: boolean, conversationId?: string, embedded?: boolean, artifactId?: string }>()
 const emit = defineEmits<{ close: [], current: [] }>()
@@ -89,9 +89,7 @@ function renderDocument() {
   frame.value?.contentWindow?.postMessage({ type: 'html-preview', code: props.code, title: title.value, interactive: props.interactive === true }, '*')
 }
 
-let nextQueryAt = 0
-const queryControllers = new Set<AbortController>()
-async function handleQuery(event: MessageEvent) {
+function handleMessage(event: MessageEvent) {
   const data: unknown = event.data
   if ((!props.interactive && !props.artifactId) || event.source !== frame.value?.contentWindow || event.origin !== 'null'
     || !data || typeof data !== 'object' || !('type' in data)) {
@@ -125,43 +123,15 @@ async function handleQuery(event: MessageEvent) {
   }
   if (data.type === 'html-preview-close' || (props.artifactId && data.type === 'artifact-close')) {
     emit('close')
-    return
-  }
-  if (props.artifactId || !props.conversationId || data.type !== 'workspace-query'
-    || !('id' in data) || typeof data.id !== 'string' || !/^[\w-]{1,80}$/.test(data.id)
-    || !('query' in data) || data.query !== 'topuplist.traffic') {
-    return
-  }
-  const id = props.conversationId
-  const source = frame.value?.contentWindow
-  if (Date.now() < nextQueryAt) {
-    source?.postMessage({ type: 'workspace-query-result', id: data.id, error: '请稍后再查询' }, '*')
-    return
-  }
-  nextQueryAt = Date.now() + 1000
-  const controller = new AbortController()
-  queryControllers.add(controller)
-  try {
-    const result = await getWorkspaceTraffic(id, controller.signal)
-    if (id === props.conversationId && source === frame.value?.contentWindow)
-      source?.postMessage({ type: 'workspace-query-result', id: data.id, result }, '*')
-  }
-  catch {
-    if (id === props.conversationId && source === frame.value?.contentWindow)
-      source?.postMessage({ type: 'workspace-query-result', id: data.id, error: '数据查询暂时失败' }, '*')
-  }
-  finally {
-    queryControllers.delete(controller)
   }
 }
-window.addEventListener('message', handleQuery)
+window.addEventListener('message', handleMessage)
 onScopeDispose(() => {
   artifactRequest++
   artifactController?.abort()
   clearTimeout(readyTimer)
   clearTimeout(expiryTimer)
-  window.removeEventListener('message', handleQuery)
-  queryControllers.forEach(controller => controller.abort())
+  window.removeEventListener('message', handleMessage)
 })
 
 watch([() => props.code, title], renderDocument, { flush: 'post' })

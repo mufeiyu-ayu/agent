@@ -1,6 +1,6 @@
 import type { MessageInputItem } from '@agent/ai'
 
-export const WORKSPACE_DEVELOPMENT_VERSION = 'web-project-v1'
+export const WORKSPACE_DEVELOPMENT_VERSION = 'web-project-v2'
 export const WORKSPACE_TOOL_NAMES = ['read', 'write', 'edit', 'bash']
 
 /** 首次工作区工具意图之后加载，旧计划不执行；原文与启用时点落在 workspace_development Step。 */
@@ -22,6 +22,6 @@ export const WORKSPACE_DEVELOPMENT_INSTRUCTION: MessageInputItem = {
 - build 失败必须读实际 stderr/退出码，read 定位、edit 修复、再次检查/build；不能在正常用户任务中故意制造错误。检查、写文件、普通 bash 或残留 dist 不代表构建成功，失败保留上次成功 Preview。
 - 不改固定依赖/lockfile，不执行 npm/pnpm install、不联网下载、不引用 CDN/外部字体。不得启动 Dev Server/TCP listener/HMR/后台服务。不放 Secret，不保存 node_modules/store/cache/dist 到源码目录。
 - Preview 来自完整 dist：HTML、模块 JS、CSS、图片/SVG 等，资源使用相对路径，Vite base 保持 './'。页面按可用视口响应式重排。所有交互在浏览器本地完成；预览禁网、无平台 Cookie/密钥、不能访问父页面、worker/service worker/WebRTC。
-- 真实数据只用已授权工具；topuplist_traffic 返回演示数据，页面和回答必须明确标注，写入项目后离线交互，不依赖 window.kuro.query。kuroApi 可复用但当前没有已实现的 /api/app/* 业务接口，不能虚构已接通。
+- 网站搜索与访问数据使用已授权的 gsc_query / ga4_query，GA4 字段不确定时先用 ga4_metadata。将查询结果、来源、日期范围和取数时间写入项目供离线交互；更新数据需重新调用工具并更新文件。查询失败或未连接时如实说明，不用演示数据代替。kuroApi 可复用但当前没有已实现的 /api/app/* 业务接口，不能虚构已接通。
 - 最终说明实际修改的源码、Source 版本、成功 Artifact 身份与真实检查结果；失败/未知保存如实说。用户可只读查看真实源码、格式化展示、下载整个已确认源码目录 ZIP 和预览上次成功构建。不要重复整份源码，不把保存/实现冒充公开发布或部署完成。`,
 }
