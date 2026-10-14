@@ -88,6 +88,7 @@ model User {
   sessions           Session[]
   mcpPlugins         McpPlugin[]
   mcpConnections     McpConnection[]
+  googleData         GoogleDataConnection?
   conversations      Conversation[]
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
@@ -550,4 +551,24 @@ model SkillContent {
   createdAt DateTime @default(now())
   @@index([adopted, createdAt])
   @@index([skillId])
+}
+
+// 个人 Google 数据连接；与 Google 登录身份及 MCP 协议独立。
+model GoogleDataConnection {
+  userId String @id
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  revision Int @default(0)
+  credentials String?
+  googleSub String?
+  email String?
+  scopes String[] @default([])
+  needsAuth Boolean @default(false)
+  configHash String
+  authState String? @unique
+  authExpiresAt DateTime?
+  pending String?
+  gscSite String?
+  ga4Property String?
+  ga4Stream String?
+  updatedAt DateTime @updatedAt
 }

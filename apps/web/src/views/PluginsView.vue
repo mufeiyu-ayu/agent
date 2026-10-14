@@ -4,6 +4,7 @@ import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import AppIcon from '@/components/common/AppIcon.vue'
+import GoogleDataCard from '@/components/plugins/GoogleDataCard.vue'
 import PluginDetailsDialog from '@/components/plugins/PluginDetailsDialog.vue'
 import PluginEditorDialog from '@/components/plugins/PluginEditorDialog.vue'
 import { dropdownMenuOptionClass, dropdownMenuPanelClass } from '@/components/ui/dropdown-menu'
@@ -14,8 +15,10 @@ import { pluginText } from '@/utils/plugin-text'
 const { locale, t } = useI18n()
 
 const p = usePlugins()
+const google = ref<InstanceType<typeof GoogleDataCard>>()
 const search = ref('')
 const tab = ref<'system' | 'personal'>('system')
+const showGoogle = computed(() => tab.value === 'system' && `${t('googleData.title')} Google Search Console GSC GA4 Analytics`.toLowerCase().includes(search.value.trim().toLowerCase()))
 const route = useRoute()
 const router = useRouter()
 const oauthNotice = ref(
@@ -36,7 +39,7 @@ if (route.query.oauth === 'connected' || route.query.oauth === 'failed') {
   }
   void router.replace({ name: 'plugins' })
 }
-const systemCount = computed(() => p.items.value.filter(item => item.system).length)
+const systemCount = computed(() => p.items.value.filter(item => item.system).length + 1)
 const personalCount = computed(() => p.items.value.filter(item => !item.system).length)
 const filtered = computed(() =>
   p.items.value.filter(
@@ -71,7 +74,7 @@ const filtered = computed(() =>
             :aria-label="t('plugins.refresh')"
             :disabled="p.loading.value || p.busy.value"
             class="rounded-full p-2 text-agent-ink-muted hover:bg-agent-surface-raised disabled:opacity-40"
-            @click="p.reload"
+            @click="p.reload(); google?.reload()"
           >
             <AppIcon name="tabler:refresh" :size="17" :class="{ 'animate-spin': p.loading.value }" />
           </button>
@@ -144,10 +147,10 @@ const filtered = computed(() =>
       >
         {{ p.error.value }}
       </p>
-      <div v-if="p.loading.value && !p.items.value.length" class="py-20 text-center text-sm text-agent-ink-muted">
+      <div v-if="p.loading.value && !p.items.value.length && !showGoogle" class="py-20 text-center text-sm text-agent-ink-muted">
         {{ t('plugins.loading') }}
       </div>
-      <div v-else-if="!filtered.length" class="py-24 text-center">
+      <div v-else-if="!filtered.length && !showGoogle" class="py-24 text-center">
         <AppIcon name="tabler:plug" :size="30" class="mx-auto text-agent-ink-muted" />
         <p class="mt-4 text-sm text-agent-ink-muted">
           {{ search ? t('plugins.noMatches') : tab === "personal" ? t('plugins.personalEmpty') : t('plugins.systemEmpty') }}
@@ -161,6 +164,7 @@ const filtered = computed(() =>
         </button>
       </div>
       <div v-else class="mt-9 grid grid-cols-1 gap-x-14 gap-y-2 md:grid-cols-2">
+        <GoogleDataCard v-show="showGoogle" ref="google" />
         <div
           v-for="plugin in filtered"
           :key="plugin.id"
