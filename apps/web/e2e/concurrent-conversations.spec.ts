@@ -148,6 +148,34 @@ async function select(page: Page, title: string) {
   await page.getByRole('button', { name: title, exact: true }).click()
 }
 
+for (const submit of ['click', 'enter'] as const) {
+  test(`#264：${submit} 发送在响应头返回前清空，迟到确认保留同文新草稿`, async ({ page }) => {
+    await setup(page, { holdHeaders: true })
+    if (submit === 'enter') {
+      await page.route('**/api/conversations/conversation-b/messages', route => route.fulfill(json([
+        { id: 'old-user', conversationId: 'conversation-b', role: 'USER', content: '历史问题', status: 'COMPLETED', createdAt: '2026-10-01T00:00:00Z', updatedAt: '2026-10-01T00:00:00Z' },
+      ])))
+      await select(page, '会话 B')
+      await visible(page, '历史问题')
+    }
+    const input = page.getByRole('textbox').first()
+    await input.fill('本次发送文字')
+    if (submit === 'click')
+      await page.getByRole('button', { name: '发送消息', exact: true }).click()
+    else
+      await input.press('Enter')
+    await poll(page, 'length', 1)
+    assert.equal(await input.inputValue(), '')
+    await visible(page, '本次发送文字')
+    await input.fill('本次发送文字')
+    await page.evaluate(() => window.__concurrentFlows[0]!.headers())
+    await start(page, 0)
+    await done(page, 0, '回复完成')
+    await visible(page, '回复完成')
+    assert.equal(await input.inputValue(), '本次发送文字')
+  })
+}
+
 test('AC-01/02/04：等待响应头时新建和切换不取消，同会话防重复、跨会话无节流，停止只取消当前请求', async ({ page }) => {
   await setup(page, { holdHeaders: true })
   await send(page, 'A 请求', 1)

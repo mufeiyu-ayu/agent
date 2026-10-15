@@ -17,7 +17,7 @@ import type {
 } from '../types/chat'
 
 import { isAxiosError } from 'axios'
-import { computed, onMounted, onUnmounted, ref, shallowReactive, shallowRef } from 'vue'
+import { computed, onMounted, onUnmounted, ref, shallowReactive, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import { attachmentContentUrl } from '../api/attachments'
@@ -75,6 +75,11 @@ interface UseChatWorkspaceOptions {
 export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
   const { t } = useI18n()
   const message = ref('')
+  let composerRevision = 0
+  // 编辑后又删空也算新草稿，不能被旧请求的失败恢复覆盖。
+  watch(message, () => {
+    composerRevision++
+  }, { flush: 'sync' })
   // 输入框里待发送的附件：增删由 useComposerAttachments 负责，这里只在发送与切会话时清。
   const attachments = ref<ComposerAttachment[]>([])
   const conversations = ref<Conversation[]>([])
@@ -309,6 +314,8 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
       pendingReasoning: null,
     })
     requests.set(request.key, request)
+    message.value = ''
+    const submittedRevision = composerRevision
     attachments.value = attachments.value.map(item => submittedAttachmentIds.has(item.id) ? { ...item, locked: true } : item)
     shouldAnchorLatestTurn.value = true
     let pendingMessage: ConversationMessage | undefined
@@ -386,9 +393,6 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
             options.onSkillsAccepted?.(skillIds)
           if (currentViewKey.value === request.key && selectedPlugins?.length)
             options.onPluginsAccepted?.(selectedPlugins.map(plugin => plugin.id))
-          // 创建和 start 都可能在切走后到达，不抢选中会话，也不清掉另一视图的输入。
-          if (currentViewKey.value === request.key && message.value === submittedMessage)
-            message.value = ''
           if (sentAttachments.length > 0) {
             // 消息换成了服务端 id：本地地址跟着换到新 id 下，旧的占位 id 不再留一份引用。
             const { [pendingMessage.id]: _pending, ...others } = turnAttachments.value
@@ -418,7 +422,7 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
           attachmentsSettled = true
           if (event.userMessagePersisted) {
             touchConversation(conversationId)
-            // start 已清理本次输入；之后的新草稿即使同文同技能，也不能再次清理。
+            // start 已清理本次选择；之后的新草稿即使同文同技能，也不能再次清理。
             if (!request.assistantMessageId) {
               if (currentViewKey.value === request.key && skillIds?.length)
                 options.onSkillsAccepted?.(skillIds)
@@ -426,9 +430,10 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
                 options.onPluginsAccepted?.(selectedPlugins.map(plugin => plugin.id))
               // start 前的失败也可能已经提交，附件已被消费，不能留作再次绑定的重试。
               attachments.value = attachments.value.filter(item => !submittedAttachmentIds.has(item.id))
-              if (currentViewKey.value === request.key && message.value === submittedMessage)
-                message.value = ''
             }
+          }
+          else if (!request.assistantMessageId) {
+            restoreSubmittedMessage()
           }
           handleStreamErrorEvent(event, pendingMessage)
           finishRequest(request, 'error')
@@ -458,6 +463,9 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
       if (!ownsActiveRequest(request))
         return
 
+      if (error instanceof ChatStreamHttpError)
+        restoreSubmittedMessage()
+
       flushPendingDelta(request)
       if (isAbortError(error)) {
         markGenerationAborted(request)
@@ -485,12 +493,22 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
       }
     }
     finally {
+      // 会话创建失败或被取消时，聊天请求还没发出。
+      if (!pendingMessage)
+        restoreSubmittedMessage()
       // 没有占位消息说明请求还没发出去；卸载后不再确认（退出登录时这次读取会 401 并把页面带去登录页）。
       if (attachmentsSettled || !pendingMessage || isUnmounted)
         unlockAttachments()
       else
         void settleAttachments(pendingMessage.conversationId)
       clearRequestBuffers(request)
+    }
+
+    function restoreSubmittedMessage() {
+      if (!isUnmounted && currentViewKey.value === request.key && requests.get(request.key) === request
+        && composerRevision === submittedRevision) {
+        message.value = submittedMessage
+      }
     }
 
     function unlockAttachments() {
@@ -512,8 +530,6 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
       const stillViewingRequest = currentViewKey.value === request.key && requests.get(request.key) === request
       if (persisted?.some(item => item.attachments?.some(attachment => attachmentIds.includes(attachment.id)))) {
         attachments.value = attachments.value.filter(item => !submittedAttachmentIds.has(item.id))
-        if (stillViewingRequest && message.value === submittedMessage)
-          message.value = ''
       }
       else {
         requireAttachmentUpload()
@@ -1126,6 +1142,7 @@ export function useChatWorkspace(options: UseChatWorkspaceOptions = {}) {
   }
 
   function resetComposerState() {
+    composerRevision++
     message.value = ''
     attachments.value = []
     hideMessage()

@@ -55,6 +55,71 @@ afterEach(() => {
   vi.resetAllMocks()
 })
 
+it.each([false, true])('发送立即清空，创建会话等待=%s；迟到 start 不清理同文新草稿', async (creating) => {
+  const ready = deferred<void>()
+  const created = deferred<Awaited<ReturnType<typeof createConversation>>>()
+  vi.mocked(streamChat).mockImplementationOnce(async function* (request) {
+    await ready.promise
+    yield { type: 'start', conversationId: request.conversationId, userMessageId: 'accepted', assistantMessageId: 'reply' }
+    yield { type: 'done', conversationId: request.conversationId, assistantMessageId: 'reply', content: 'ok', generatedAt: time }
+  })
+  const workspace = useChatWorkspace()
+  lifecycle.mounted()
+  await vi.waitFor(() => assert.ok(workspace.activeConversationId.value === 'a' && !workspace.isLoadingMessages.value))
+  if (creating) {
+    workspace.resetWorkspace()
+    vi.mocked(createConversation).mockReturnValueOnce(created.promise)
+  }
+  workspace.message.value = '本次文字'
+  const sending = workspace.sendMessage()
+  try {
+    assert.equal(workspace.message.value, '')
+    workspace.message.value = '本次文字'
+  }
+  finally {
+    created.resolve(conversation('created'))
+    ready.resolve()
+    await sending
+  }
+  assert.equal(vi.mocked(streamChat).mock.calls[0]?.[0].message, '本次文字')
+  assert.equal(workspace.message.value, '本次文字')
+})
+
+it.each(['http', 'event'] as const)('明确拒绝 %s 仅恢复未编辑、未离开过的草稿', async (failure) => {
+  for (const action of ['untouched', 'edited', 'cleared', 'switched-back'] as const) {
+    const rejected = deferred<void>()
+    vi.mocked(streamChat).mockImplementationOnce(async function* (request) {
+      await rejected.promise
+      if (failure === 'http')
+        throw new ChatStreamHttpError('rejected', 400, false)
+      yield { type: 'error', conversationId: request.conversationId, message: 'rejected' }
+    })
+    const workspace = useChatWorkspace()
+    lifecycle.mounted()
+    await vi.waitFor(() => assert.ok(workspace.activeConversationId.value === 'a' && !workspace.isLoadingMessages.value))
+    workspace.message.value = ' 待重试文字 '
+    const sending = workspace.sendMessage()
+    try {
+      assert.equal(workspace.message.value, '')
+      if (action === 'edited' || action === 'cleared') {
+        workspace.message.value = '下一条草稿'
+        if (action === 'cleared')
+          workspace.message.value = ''
+      }
+      if (action === 'switched-back') {
+        await workspace.selectConversation('b')
+        await workspace.selectConversation('a')
+      }
+    }
+    finally {
+      rejected.resolve()
+      await sending
+    }
+    assert.equal(workspace.message.value, action === 'untouched' ? ' 待重试文字 ' : action === 'edited' ? '下一条草稿' : '')
+    lifecycle.unmounted()
+  }
+})
+
 it('B8：旧初始化不抢回新视图/草稿，也不抹掉期间创建的会话', async () => {
   const initial = deferred<Awaited<ReturnType<typeof listConversations>>>()
   vi.mocked(listConversations).mockReturnValueOnce(initial.promise)
@@ -247,7 +312,8 @@ it.each(['committed', 'early-query', 'unknown', 'disconnect'] as const)('没收�
     checking.resolve(phase === 'committed' ? [...history('a'), sentQuestion('a', 'persisted', 'remote-1')] : history('a'))
   const expected = phase === 'committed' ? ['local-2'] : ['local-1', 'local-2']
   await vi.waitFor(() => assert.deepEqual(workspace.attachments.value.map(item => [item.id, Boolean(item.locked)]), expected.map(id => [id, false])))
-  assert.equal(workspace.message.value, phase === 'committed' ? '' : 'with file')
+  assert.equal(workspace.message.value, '', '结果未知时不把已发出的文字恢复成可重发草稿')
+  assert.ok(workspace.messages.value.some(item => item.content === 'with file'), '发送内容仍可从消息区查看')
   assert.deepEqual(workspace.attachments.value.at(-1), draft(2))
   if (phase !== 'committed') {
     assert.equal(workspace.attachments.value[0]?.status, 'error')
