@@ -141,6 +141,13 @@ docker compose exec -e ADMIN_EMAIL=<邮箱> -e ADMIN_PASSWORD api node dist/crea
   - JavaScript 来源（One Tap 要用）：`https://askkuro.com`、`http://localhost:5173`、`http://localhost:5174`。
 - 陌生 Google 账号登录后是「待审核」，需要管理员在管理台「系统管理 → 用户列表」通过。用户说登不进去时先查这里。
 
+### Google 数据与系统技能
+
+- 数据授权独立于 Google 登录，生产 `~/kuro/.env` 配置 `GOOGLE_DATA_CLIENT_ID` / `GOOGLE_DATA_CLIENT_SECRET`；`APP_ORIGINS` 第一项决定回调地址，当前站点应为 `https://askkuro.com/api/google-data/oauth/callback`。不覆盖登录使用的 `GOOGLE_OAUTH_*`，也不更换 `AGENT_SECRET_KEY`。
+- 文章查询还需 `ARTICLE_SITE_URL` / `ARTICLE_EXCLUDED_SLUGS`，分别提供文章站根地址及与其 sitemap 一致的非博客排除项。服务只读 `/api/user/slugs` 与 `/api/user/languages`；若生产出口收到 Cloudflare 的 403 验证页面，应定位上游访问规则，不能把 HTML 当成文章清单。
+- 系统技能的发布指针在数据库、正文在 OSS，不随代码镜像发布。跨环境迁移使用现有系统技能保存流程，分别保存对象并核对正文指纹、示例与启用状态，不直接共用另一环境的对象引用。
+- 个人 Google 授权与 MCP 连接不随系统技能迁移；各用户在线上连接。配置和健康检查通过不等于真实 OAuth 授权已验证，连接配置与验收见 [Google 数据连接配置](google-data-connection.md)。
+
 ### 数据库手动恢复
 
 **还原会丢失备份之后写入的全部数据，每次都要用户确认后再执行。** 备份 `<时间>-before-<版本>.dump` 是部署该版本、执行迁移之前的库。
